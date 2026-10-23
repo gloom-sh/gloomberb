@@ -475,7 +475,7 @@ async function runFredList(filter: string, ctx: Parameters<CliCommandDef["execut
       { key: "title", header: "Title", minWidth: 30, stackPriority: 1 },
       { key: "group", header: "Group", shrink: false },
     ],
-    empty: filter ? `No supported FRED series match "${filter}". Run gloomberb fred --list to see them all.` : "No FRED series are listed.",
+    empty: filter ? `No supported FRED series match "${filter}". Run gloom fred --list to see them all.` : "No FRED series are listed.",
   });
 }
 
@@ -489,7 +489,7 @@ async function runFred(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
   // Bare `fred` lists the series it can fetch, grouped by topic, as `fred --list` does.
   if (list || rawArgs.length === 0) {
     if (start != null || sort != null || changeGiven) {
-      ctx.fail("--list takes a filter, not --start, --sort or --change.", `Usage: gloomberb ${FRED_LIST_USAGE}`);
+      ctx.fail("--list takes a filter, not --start, --sort or --change.", `Usage: gloom ${FRED_LIST_USAGE}`);
     }
     return runFredList(args.join(" ").trim(), ctx);
   }
@@ -504,7 +504,7 @@ async function runFred(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
   // A change needs the observation it is measured from: the fetch reaches back before the first row shown.
   const fetchStart = horizon ? fredChangeFetchStart(startDate) : startDate;
   const data = await apiClient.getCloudFredSeries(seriesId, { startDate: fetchStart, sortOrder }).catch((error: unknown) => {
-    if (isUnsupportedSeries(error)) ctx.fail(`Unsupported FRED series ${seriesId}. List supported series with: gloomberb fred --list`);
+    if (isUnsupportedSeries(error)) ctx.fail(`Unsupported FRED series ${seriesId}. List supported series with: gloom fred --list`);
     throw error;
   });
   // Every observation exports as `value`, a spread in basis points; its unit goes in the `currency_or_unit` column.
@@ -641,8 +641,8 @@ async function runCorrelation(rawArgs: string[], ctx: Parameters<CliCommandDef["
   const args = [...rawArgs];
   const exchange = takeOption(args, "--exchange");
   const usage = "correlation <symbol-a> <symbol-b>";
-  requireArg(args[0], `Usage: gloomberb ${usage}`, ctx);
-  requireArg(args[1], `Usage: gloomberb ${usage}`, ctx);
+  requireArg(args[0], `Usage: gloom ${usage}`, ctx);
+  requireArg(args[1], `Usage: gloom ${usage}`, ctx);
   rejectExtraArgs(args, 2, { usage, takes: "two symbols", advice: "Run it once per pair." }, ctx);
   await withCliServices(ctx, async (services) => {
     // --exchange is for a symbol that names no exchange of its own.
@@ -759,7 +759,7 @@ export const overviewCliCommands: CliCommandDef[] = [
       sections: [{
         title: "Series",
         lines: [
-          "Gloom Cloud serves a curated set of FRED series and needs no sign-in for them. gloomberb fred (or fred --list) prints them by topic; any other ID fails with that pointer.",
+          "Gloom Cloud serves a curated set of FRED series and needs no sign-in for them. gloom fred (or fred --list) prints them by topic; any other ID fails with that pointer.",
         ],
       }],
       examples: ["fred CPIAUCSL", "fred DGS10 --tail 5", "fred DGS10 --change 1D --tail 5", "fred UNRATE --start 2020-01-01 --csv", "fred", "fred --list credit", "fred --list fx"],

@@ -39,14 +39,14 @@ The backend supports US grid queues, historical US queue benchmarks, US generati
 ## CLI and REST
 
 ```sh
-gloomberb fn POWER --json
-gloomberb fn POWER NEE --tab queue --json
-gloomberb fn POWER --region PJM --fuel storage --status active --json
-gloomberb fn POWER --tab history --historical --json
-gloomberb fn POWER --tab outcomes --country US --json
-gloomberb fn POWER --tab utilities --json
-gloomberb fn POWER --tab coverage --json
-gloomberb shot POWER --tab queue --width 1280 --height 540 --output power-queue.png
+gloom fn POWER --json
+gloom fn POWER NEE --tab queue --json
+gloom fn POWER --region PJM --fuel storage --status active --json
+gloom fn POWER --tab history --historical --json
+gloom fn POWER --tab outcomes --country US --json
+gloom fn POWER --tab utilities --json
+gloom fn POWER --tab coverage --json
+gloom shot POWER --tab queue --width 1280 --height 540 --output power-queue.png
 ```
 
 The headless report traverses all available pages for the selected table. JSON keeps primary URLs, raw evidence, dates, entity confidence, revision identifiers, coverage and access limitations. Preview accounts receive only the server-authorized subset.

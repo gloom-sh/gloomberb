@@ -49,14 +49,14 @@ async function jsonError(error: unknown) {
 
 test("history and ticker of a symbol whose company moved serve nothing of their own and name its new symbol, in one line and in --json", async () => {
   const hfc = await runHistory(["HFC"]);
-  expect((hfc.error as Error).message).toBe("HFC became DINO on 2022-03-15: `gloomberb history DINO`");
+  expect((hfc.error as Error).message).toBe("HFC became DINO on 2022-03-15: `gloom history DINO`");
   expect(hfc.printed).toBeUndefined();
   expect(await jsonError(hfc.error)).toEqual({
     ok: false,
     error: {
       code: "ticker_moved",
-      message: "HFC became DINO on 2022-03-15: `gloomberb history DINO`",
-      retry: "gloomberb history DINO",
+      message: "HFC became DINO on 2022-03-15: `gloom history DINO`",
+      retry: "gloom history DINO",
       tickerChange: {
         symbol: "HFC", kind: "moved", note: "HFC became DINO on 2022-03-15", changes: [HFC_HOP],
         tradesAs: "DINO", issuer: "HF Sinclair", listed: null,
@@ -65,12 +65,12 @@ test("history and ticker of a symbol whose company moved serve nothing of their 
   });
   // The range asked for carries over; SHEL's bars are not served under RDS-A's name.
   const rds = await runHistory(["RDS-A", "--range", "5Y"]);
-  expect((rds.error as Error).message).toBe("RDS-A became SHEL on 2022-01-31: `gloomberb history SHEL --range 5Y`");
+  expect((rds.error as Error).message).toBe("RDS-A became SHEL on 2022-01-31: `gloom history SHEL --range 5Y`");
   expect(rds.printed).toBeUndefined();
 
   for (const [symbol, line] of [
-    ["HFC", "HFC became DINO on 2022-03-15: `gloomberb ticker DINO`"],
-    ["RDS-A", "RDS-A became SHEL on 2022-01-31: `gloomberb ticker SHEL`"],
+    ["HFC", "HFC became DINO on 2022-03-15: `gloom ticker DINO`"],
+    ["RDS-A", "RDS-A became SHEL on 2022-01-31: `gloom ticker SHEL`"],
   ] as const) {
     const report = await runTicker(symbol);
     expect((report.error as Error).message).toBe(line);
@@ -89,8 +89,8 @@ async function runQuote(symbols: string[]) {
 test("quote of a moved symbol names its new symbol beside the old line's last price and reads STALE; META and AAPL are served as before", async () => {
   const moved = await runQuote(["HFC", "RDS-A"]);
   expect(moved.result.warnings).toEqual([
-    "HFC became DINO on 2022-03-15: `gloomberb quote DINO`",
-    "RDS-A became SHEL on 2022-01-31: `gloomberb quote SHEL`",
+    "HFC became DINO on 2022-03-15: `gloom quote DINO`",
+    "RDS-A became SHEL on 2022-01-31: `gloom quote SHEL`",
     "HFC: no longer trading since 2022-03-14 (last price $36.39)",
     "RDS-A (Shell Plc Sponsored American Depositary Receipt): no longer trading since 2022-01-28 (last price $51.04)",
   ]);
@@ -116,7 +116,7 @@ test("quote of a moved symbol names its new symbol beside the old line's last pr
 test("a stopped line waits for a slow change lookup before serving, while a symbol that trades never waits on one", async () => {
   // Bars answer at once (a cached history); the change answers 500 ms later, past the short grace.
   const slow = source((symbol) => Bun.sleep(500).then(() => CHANGES[symbol] ?? null));
-  expect(((await runHistory(["HFC"], slow)).error as Error).message).toBe("HFC became DINO on 2022-03-15: `gloomberb history DINO`");
+  expect(((await runHistory(["HFC"], slow)).error as Error).message).toBe("HFC became DINO on 2022-03-15: `gloom history DINO`");
   // A lookup that hangs: META's bars come back without waiting for it.
   const hung = source((_symbol, options) => new Promise((_resolve, reject) => {
     options?.signal?.addEventListener("abort", () => reject(new Error("aborted")));
@@ -158,9 +158,9 @@ async function runFn(args: string[], dataProvider = source()) {
 
 test("fn HIVG and fn VCA of a moved symbol serve nothing and name the new symbol with the same function; META's are served", async () => {
   for (const [args, line] of [
-    [["HIVG", "HFC"], "HFC became DINO on 2022-03-15: `gloomberb fn HIVG DINO`"],
-    [["HIVG", "RDS-A"], "RDS-A became SHEL on 2022-01-31: `gloomberb fn HIVG SHEL`"],
-    [["VCA", "HFC"], "HFC became DINO on 2022-03-15: `gloomberb fn VCA DINO`"],
+    [["HIVG", "HFC"], "HFC became DINO on 2022-03-15: `gloom fn HIVG DINO`"],
+    [["HIVG", "RDS-A"], "RDS-A became SHEL on 2022-01-31: `gloom fn HIVG SHEL`"],
+    [["VCA", "HFC"], "HFC became DINO on 2022-03-15: `gloom fn VCA DINO`"],
   ] as const) {
     const { error, printed } = await runFn([...args]);
     expect((error as Error).message).toBe(line);
@@ -205,7 +205,7 @@ test("fn given a company's name where its ticker goes answers as quote does: not
     expect((error as Error).message).toBe("Not a ticker: PALANTIR.");
     // The same hint `quote` adds, from what the reader typed.
     const { stderr } = await captureConsole(() => printCliError(error, { ...DEFAULT_CLI_OPTIONS, color: false }, { command: "fn", args: [code, "Palantir"] }));
-    expect(stderr).toBe("error: Not a ticker: PALANTIR. Try `gloomberb search Palantir`.");
+    expect(stderr).toBe("error: Not a ticker: PALANTIR. Try `gloom search Palantir`.");
   }
   // A ticker the function has data for is served as before.
   expect((await runFn(["HIVG", "META"])).error).toBeNull();

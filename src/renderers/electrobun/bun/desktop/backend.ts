@@ -1,4 +1,5 @@
 import { ApplicationMenu, BrowserView, Utils, type BrowserWindow } from "electrobun/bun";
+import { homedir } from "os";
 import { createAppServices, type AppServices } from "../../../../core/app-services";
 import { syncConfigActiveLayoutState, type PaneRuntimeState } from "../../../../core/state/app/state";
 import {
@@ -18,6 +19,8 @@ import { createNodeCrashReporterHost } from "../../../../telemetry/crash-reports
 import { installUpdateFailureReporter, reviewLastUpdateAttempt } from "../../../../telemetry/update-failures";
 import { createNodeUpdateFailureHost } from "../../../../telemetry/update-failures-node";
 import type { AppConfig } from "../../../../types/config";
+import { linkDesktopCommands } from "../../../../updater/command-names";
+import { debugLog } from "../../../../utils/debug-log";
 import type { DesktopSharedStateSnapshot } from "../../../../types/desktop-window";
 import type {
   ContextMenuSelectMessage,
@@ -148,6 +151,15 @@ export class DesktopBackend {
       }));
       reviewLastUpdateAttempt();
       void removeUpdateAsides();
+      // An install from before the rename updates its bundle in place and
+      // keeps only the `gloomberb` command its installer linked.
+      const addedCommands = linkDesktopCommands({
+        platform: process.platform,
+        homeDir: homedir(),
+        pathEnv: process.env.PATH ?? "",
+        localAppData: process.env.LOCALAPPDATA,
+      });
+      if (addedCommands.length > 0) debugLog.createLogger("desktop-command").info(`Added the gloom command in ${addedCommands.length} folder(s)`);
     }
     // The native menu shows the same accelerators the keys use, so a rebind
     // rebuilds it.

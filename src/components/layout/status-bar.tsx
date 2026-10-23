@@ -592,7 +592,7 @@ function StatusBarSummary({
           onPress={() => { void rendererHost.openExternal(DESKTOP_DOWNLOAD_URL); }}
           role="link"
           setHoveredControl={setHoveredControl}
-          title={t("Get Gloomberb for Mac or Windows")}
+          title={t("Get Gloom for Mac or Windows")}
         />
       )}
     </>

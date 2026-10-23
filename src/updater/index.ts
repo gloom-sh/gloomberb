@@ -1,6 +1,7 @@
 import type { UpdateChannel } from "../types/config";
 import { reportUpdateFailure, type UpdateInstallKind } from "../telemetry/update-failures";
 import { compareSemver, isPrereleaseVersion } from "../utils/semver";
+import { PACKAGE_NAME } from "../version";
 import {
   classifyUpdateError,
   httpStatusFailureCode,
@@ -279,7 +280,7 @@ export function detectUpdateAction(
     || entrypoint.includes("/.bun/install/")
     || entrypoint.includes("/install/global/")
   ) {
-    return { kind: "manual", command: "bun install -g gloomberb@latest" };
+    return { kind: "manual", command: `bun install -g ${PACKAGE_NAME}@latest` };
   }
 
   if (
@@ -302,7 +303,7 @@ export function detectUpdateAction(
     || entrypoint.includes("/lib/node_modules/")
     || entrypoint.includes("/node_modules/")
   ) {
-    return { kind: "manual", command: "npm install -g gloomberb@latest" };
+    return { kind: "manual", command: `npm install -g ${PACKAGE_NAME}@latest` };
   }
 
   return null;
@@ -507,7 +508,7 @@ export async function performUpdate(
       error: action.kind === "manual"
         ? `Run ${action.command}`
         : action.kind === "managed"
-          ? `Update through the package manager that installed Gloomberb: ${action.reason}.`
+          ? `Update through the package manager that installed Gloom: ${action.reason}.`
           : "This update type is unavailable in the current runtime.",
     });
     return;
@@ -525,7 +526,7 @@ export async function performUpdate(
   if (!execPath) {
     onProgress({
       phase: "error",
-      error: "Self-update is unavailable when running from source or via Bun/Node. Relaunch the packaged gloomberb binary to update.",
+      error: "Self-update is unavailable when running from source or via Bun/Node. Relaunch the packaged gloom binary to update.",
     });
     return;
   }

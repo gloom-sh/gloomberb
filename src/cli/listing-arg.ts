@@ -284,7 +284,7 @@ export interface ListingDataRequest {
   noun: string;
   /**
    * The retry for one listing, when the key does not go right after the
-   * command (`gloomberb watchlist add Growth SAN:EPA`); null names the listings alone.
+   * command (`gloom watchlist add Growth SAN:EPA`); null names the listings alone.
    */
   retry?: ((key: string) => string) | null;
   /**
@@ -352,7 +352,7 @@ export function listingChoiceNote(
     .filter((exchange) => exchange !== chosen.exchange);
   if (others.length === 0) return null;
   const more = others.length - MAX_OTHER_LISTINGS;
-  const also = `${others.slice(0, MAX_OTHER_LISTINGS).join(", ")}${more > 0 ? ` and ${more} more: gloomberb search ${symbol}` : ""}`;
+  const also = `${others.slice(0, MAX_OTHER_LISTINGS).join(", ")}${more > 0 ? ` and ${more} more: gloom search ${symbol}` : ""}`;
   return `${symbol} = ${name ? `${shortCompanyName(name)}, ` : ""}${chosen.exchange} (also ${also})`;
 }
 
@@ -456,7 +456,7 @@ async function usListingOfCompany(
  * instead of a bare error or another company's numbers under the same
  * symbol: "Time and sales covers US listings only, and SAN:EPA is Sanofi on
  * Euronext Paris (EPA).", then the company's US listing with the command that
- * asks for it ("Sanofi's US listing: SNY (try: gloomberb fn TAS SNY)"), or that
+ * asks for it ("Sanofi's US listing: SNY (try: gloom fn TAS SNY)"), or that
  * none was found.
  */
 export async function usListingsOnlyMessage(
@@ -510,17 +510,17 @@ interface OtherListingsMessage {
 }
 
 /**
- * The command that asks again for another listing: `gloomberb history SAN:EPA
+ * The command that asks again for another listing: `gloom history SAN:EPA
  * --range 5Y` keeps the options. Null where the request names listings alone.
  */
 function retryCommand(request: Pick<ListingDataRequest, "command" | "retry">, key: string): string | null {
   if (request.retry !== undefined) return request.retry?.(key) ?? null;
   const [command, ...options] = request.command.split(" ");
-  return ["gloomberb", command, key, ...options].join(" ");
+  return ["gloom", command, key, ...options].join(" ");
 }
 
 /**
- * "GC=F Gold future (try: gloomberb quote GC=F)", under a bare futures board
+ * "GC=F Gold future (try: gloom quote GC=F)", under a bare futures board
  * code a security keeps (GC, NG) when that security has no data: the future is
  * the other thing the code names. Null for any other symbol.
  */
@@ -544,7 +544,7 @@ function describeOtherListings(
     const retry = retryCommand(request, key);
     return `${key}${venue.name ? ` ${venue.name}` : ""}${retry ? ` (try: ${retry})` : ""}`;
   });
-  if (others.length > MAX_OTHER_LISTINGS) lines.push(`and ${others.length - MAX_OTHER_LISTINGS} more: gloomberb search ${listing.symbol}`);
+  if (others.length > MAX_OTHER_LISTINGS) lines.push(`and ${others.length - MAX_OTHER_LISTINGS} more: gloom search ${listing.symbol}`);
   if (future) lines.push(future);
   const heading = choose ? "Listings" : "Other listings";
   return {
@@ -565,7 +565,7 @@ function describeOtherListings(
  * the symbol's other listings, each with the command that asks for it, such
  * as "SXR8 resolved to iShares Core S&P 500 UCITS ETF USD (Acc) (XETRA), which has
  * no history." and "SXR8:BUD iShares Core S&P 500 UCITS ETF USD (Acc) (try:
- * gloomberb history SXR8:BUD)". When several
+ * gloom history SXR8:BUD)". When several
  * companies list the code, it went to none of them: "Choose an exchange for
  * 2222." and every listing with its retry command, as `2222:` asks. Null when
  * the symbol named its exchange or has no other listing. It searches, so ask
@@ -710,14 +710,14 @@ export function chosenListingNote(symbol: string, exchange: string, others: read
   const aside = [
     without.length > 0 ? `no quote on ${without.join(", ")}` : "",
     others.length > 0
-      ? `other listings: ${others.slice(0, MAX_OTHER_LISTINGS).join(", ")}${more > 0 ? ` and ${more} more: gloomberb search ${symbol}` : ""}`
+      ? `other listings: ${others.slice(0, MAX_OTHER_LISTINGS).join(", ")}${more > 0 ? ` and ${more} more: gloom search ${symbol}` : ""}`
       : "",
   ].filter(Boolean).join("; ");
   return `${symbol} -> ${exchange}${aside ? ` (${aside})` : ""}`;
 }
 
 /**
- * "HFC became DINO on 2022-03-15: `gloomberb history DINO`": a symbol whose
+ * "HFC became DINO on 2022-03-15: `gloom history DINO`": a symbol whose
  * company moved, with the command that asks for it under its new symbol.
  */
 export function movedSymbolLine(change: MovedTickerChange, retry: string | null): string {

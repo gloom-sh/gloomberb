@@ -69,7 +69,7 @@ if (!rootElement) throw new Error("Missing root element");
 const appRootElement = rootElement;
 appRootElement.tabIndex = -1;
 const root = createRoot(appRootElement);
-root.render(<div className="gloom-loading">Starting Gloomberb...</div>);
+root.render(<div className="gloom-loading">Starting Gloom...</div>);
 
 async function boot(): Promise<void> {
   // Read before anything can save a workspace or tidy the address.
@@ -145,7 +145,7 @@ async function boot(): Promise<void> {
   root.render(
     <DomErrorBoundary label="Browser renderer crashed" fallback={(error) => (
       <div className="gloom-fatal">
-        <h1>Gloomberb crashed</h1>
+        <h1>Gloom crashed</h1>
         <pre>{error instanceof Error ? error.message : String(error)}</pre>
         <button onClick={() => window.location.reload()}>Reload</button>
       </div>
@@ -168,5 +168,5 @@ async function boot(): Promise<void> {
 void boot().catch((error) => {
   reportCrash(error, { kind: "uncaught" });
   const message = error instanceof Error ? error.message : String(error);
-  root.render(<div className="gloom-fatal"><h1>Gloomberb failed to start</h1><pre>{message}</pre></div>);
+  root.render(<div className="gloom-fatal"><h1>Gloom failed to start</h1><pre>{message}</pre></div>);
 });

@@ -142,7 +142,7 @@ export async function handleDesktopHostRequest(
     case "host.notify":
       playNotificationSound(normalizeText(request.payload.sound));
       Utils.showNotification({
-        title: normalizeText(request.payload.title) ?? "Gloomberb",
+        title: normalizeText(request.payload.title) ?? "Gloom",
         body: normalizeText(request.payload.body),
         subtitle: normalizeText(request.payload.subtitle),
         silent: true,

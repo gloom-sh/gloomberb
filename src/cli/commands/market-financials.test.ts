@@ -96,7 +96,7 @@ test("valuation --csv is one clean table; financials --csv writes raw amounts un
     "# Publication time: not published",
     // The years served are the ones it says it has: this report holds two, from 2024, and the line takes the year from them.
     "# note: annual history from 2024; older years not served",
-    "# note: earlier years, one metric at a time: gloomberb fn GF SBK.JO --period annual --periods 40",
+    "# note: earlier years, one metric at a time: gloom fn GF SBK.JO --period annual --periods 40",
   ]);
   expect(statements.at(-3)).toStartWith("# Retrieval time: ");
   // NDJSON writes the statement rows flat, each ending with the same five fields.

@@ -379,7 +379,7 @@ function searchCandidateRows(candidates: TickerSearchCandidate[]) {
 }
 
 /**
- * "^VIX  Cboe Volatility Index (try: gloomberb quote ^VIX)" for a bare index root, whose
+ * "^VIX  Cboe Volatility Index (try: gloom quote ^VIX)" for a bare index root, whose
  * search finds funds named after the index but not the index, unless it does list it.
  */
 function indexRootNote(query: string, candidates: TickerSearchCandidate[]): string | null {
@@ -397,14 +397,14 @@ function searchedCentralBank(query: string): CentralBank | null {
   return centralBankAskedAbout(query) ?? centralBankCiting(query.replace(/^FRED:/i, ""));
 }
 
-/** "Swiss National Bank (Switzerland): policy rate on the CBR board, gloomberb fn CBR." */
+/** "Swiss National Bank (Switzerland): policy rate on the CBR board, gloom fn CBR." */
 function centralBankLine(bank: CentralBank): string {
-  return `${bank.name} (${bank.place}): policy rate on the CBR board, gloomberb fn CBR.`;
+  return `${bank.name} (${bank.place}): policy rate on the CBR board, gloom fn CBR.`;
 }
 
 /** Search finds tickers and companies; a function, a dataset or a term is in the catalog, so an empty search points there. */
 function catalogHint(query: string): string {
-  return `Search finds tickers and company names. Try: gloomberb catalog "${query.replace(/"/g, "")}"`;
+  return `Search finds tickers and company names. Try: gloom catalog "${query.replace(/"/g, "")}"`;
 }
 
 /**
@@ -436,7 +436,7 @@ function renderFunctionMatches(functions: readonly SearchFunctionMatch[]): strin
     renderSection("Functions"),
     ...renderDefinitions(functions.map((match) => [`${match.token}  ${match.label}`, match.description] as const), { width, termStyle: cliStyles.command }),
     "",
-    ...wrapText("No ticker or company matches. gloomberb catalog <function> shows a function's options and examples.", width)
+    ...wrapText("No ticker or company matches. gloom catalog <function> shows a function's options and examples.", width)
       .map((line) => cliStyles.muted(line)),
   ].join("\n");
 }
@@ -555,7 +555,7 @@ export async function search(query: string, dependencies: SearchCommandDependenc
   const failCommand = dependencies.fail ?? fail;
   const initMarketDataFn = dependencies.initMarketData ?? initMarketData;
   if (!trimmedQuery) {
-    failCommand("Usage: gloomberb search <query>");
+    failCommand("Usage: gloom search <query>");
   }
 
   await withMarketData(initMarketDataFn, async (context) => {

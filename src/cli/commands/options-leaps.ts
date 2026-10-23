@@ -23,7 +23,7 @@ import {
 import { takeFlag, takeOption } from "./command-utils";
 
 /**
- * `gloomberb options <symbol...> --leaps`: long-dated contracts ranked across
+ * `gloom options <symbol...> --leaps`: long-dated contracts ranked across
  * symbols for a stock replacement, by what the time value costs per year.
  * Delta, IV and carry come from the same solver and formulas as the options
  * pane (`carry.ts`, `analytics.ts`); IV rank and the ex-dividend date from

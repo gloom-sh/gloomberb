@@ -30,12 +30,15 @@ import { isPluginPackageName, pluginDirectoryNames } from "./plugin-names";
 // host-modules.ts), so one that imports it should fail to resolve.
 const LINKED_PACKAGES = ["gloomberb", "react"] as const;
 
+/**
+ * The names the host is published under: `@gloom/terminal`, and `gloomberb`,
+ * which existing installs update from and plugins import as.
+ */
+const HOST_PACKAGE_NAMES: ReadonlySet<string> = new Set(["gloomberb", "@gloom/terminal"]);
+
 let cachedHostRoot: string | null | undefined;
 
-/**
- * Walks up from this module to the directory holding the `gloomberb` package.json.
- * @knipignore Also imported by the script host-resolver.test.ts compiles and runs.
- */
+/** Walks up from this module to the directory holding the host's package.json. */
 export function findHostPackageRoot(startDir: string = import.meta.dir): string | null {
   if (cachedHostRoot !== undefined && startDir === import.meta.dir) return cachedHostRoot;
   let dir = resolve(startDir);
@@ -44,7 +47,7 @@ export function findHostPackageRoot(startDir: string = import.meta.dir): string 
     if (existsSync(pkgPath)) {
       try {
         const pkg = JSON.parse(readFileSync(pkgPath, "utf-8")) as { name?: string };
-        if (pkg.name === "gloomberb") {
+        if (pkg.name && HOST_PACKAGE_NAMES.has(pkg.name)) {
           if (startDir === import.meta.dir) cachedHostRoot = dir;
           return dir;
         }
@@ -394,7 +397,7 @@ export function linkHostPackages(
       linked: peers,
       skipped: [...LINKED_PACKAGES],
       provider: "process",
-      error: "Could not locate the Gloomberb install.",
+      error: "Could not locate the Gloom install.",
     };
   }
 

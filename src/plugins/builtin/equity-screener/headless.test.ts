@@ -46,7 +46,7 @@ test("the catalog's example definition passes the real validator, and a bad one 
   expect(definition.criteria.map((criterion) => criterion.op)).toEqual(["in", "gte", "between"]);
   expect(option.normalize!(json)).toBe(json);
   expect(() => option.normalize!(JSON.stringify({ ...definition, criteria: [{ field: "industry", op: "eq", value: "Gold" }] })))
-    .toThrow(/criteria\[0\] \(industry\): op "eq" is not supported: industry takes in, present, missing\. The example in gloomberb catalog EQS/);
+    .toThrow(/criteria\[0\] \(industry\): op "eq" is not supported: industry takes in, present, missing\. The example in gloom catalog EQS/);
   expect(() => option.normalize!('{"version":1}')).toThrow(/criteria is missing.*sort is missing.*currency is missing/);
 });
 
@@ -81,7 +81,7 @@ test("a screen its currency emptied says the currency keeps only listings quoted
   const empty = (await load(tobacco))!.split("\n");
   expect(empty[0]).toBe("No listing quoted in CAD matches. Currency CAD keeps only the listings quoted in CAD and converts nothing.");
   const base = JSON.parse(/--definition '(.+)'$/.exec(empty[1]!)![1]!);
-  expect(empty[1]).toStartWith("In the base currency, USD: gloomberb fn EQS --definition '");
+  expect(empty[1]).toStartWith("In the base currency, USD: gloom fn EQS --definition '");
   expect(base).toEqual({ ...tobacco.definition, currency: "USD" });
   // A currency no covered listing is quoted in says so; an empty screen in USD keeps the plain empty line.
   const usdOnly = { ...tobacco, universe: { ...tobacco.universe, currencies: ["USD"] } };

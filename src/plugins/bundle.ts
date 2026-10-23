@@ -32,7 +32,7 @@ import { PLUGIN_HOST_GLOBAL, SHARED_SPECIFIERS, importPluginHostModule } from ".
 export function buildSharedModuleSource(specifier: string, exportNames: readonly string[]): string {
   const lines = [
     `const mod = globalThis[${JSON.stringify(PLUGIN_HOST_GLOBAL)}]?.[${JSON.stringify(specifier)}];`,
-    `if (!mod) throw new Error(${JSON.stringify(`Gloomberb host module "${specifier}" is unavailable. The plugin host was not installed before this plugin loaded.`)});`,
+    `if (!mod) throw new Error(${JSON.stringify(`Gloom host module "${specifier}" is unavailable. The plugin host was not installed before this plugin loaded.`)});`,
     "export default mod;",
   ];
   for (const name of exportNames) {

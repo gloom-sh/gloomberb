@@ -27,7 +27,7 @@ export interface CliErrorContext {
   command?: string;
   /** What the user typed after the command, so a hint can repeat their own spelling of a symbol. */
   args?: readonly string[];
-  /** Which symbols are FRED series the catalog charts, so their hint is `gloomberb fred`. */
+  /** Which symbols are FRED series the catalog charts, so their hint is `gloom fred`. */
   isFredSeries?: FredSeriesCheck;
 }
 
@@ -133,7 +133,7 @@ function formatCliErrorText(error: CliErrorObject, context: CliErrorContext): st
       ...details.map((line) => cliStyles.muted(line)),
     ];
     if (context.command) {
-      lines.push(cliStyles.muted(`Run gloomberb help ${context.command} for details.`));
+      lines.push(cliStyles.muted(`Run gloom help ${context.command} for details.`));
     }
     return lines.join("\n");
   }

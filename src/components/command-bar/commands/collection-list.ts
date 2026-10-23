@@ -42,7 +42,7 @@ export interface PastedSymbolList {
 }
 
 /**
- * The entries of text typed or pasted after `AW`, split as `gloomberb quote`
+ * The entries of text typed or pasted after `AW`, split as `gloom quote`
  * splits its arguments (`splitSymbolArgs`): on commas, semicolons, tabs and
  * lines when it has them, where an entry with spaces may be a company's name
  * or several symbols, else on spaces. Null for one word or none, which keep
@@ -136,7 +136,7 @@ export async function refuseTypedChoice(rawInput: string, deps: SharedWorkflowDe
 
 /**
  * Adds every symbol of a pasted list to a watchlist in one step. Each symbol
- * resolves as `gloomberb watchlist add` resolves it (Gloom Cloud search and
+ * resolves as `gloom watchlist add` resolves it (Gloom Cloud search and
  * quote, the venue its own quote is on), except that a symbol several listings
  * carry is never given the first: it is left out and named, for the single add
  * to ask which. One that is unknown or already listed does not stop the rest.

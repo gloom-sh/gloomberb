@@ -131,7 +131,7 @@ export class DesktopDetachedWindowManager {
   private resolveTitle(instanceId: string): string {
     const config = this.backend.config;
     const instance = config ? findPaneInstance(config.layout, instanceId) : null;
-    if (!instance) return "Gloomberb";
+    if (!instance) return "Gloom";
     return instance.title?.trim() || instance.paneId;
   }
 

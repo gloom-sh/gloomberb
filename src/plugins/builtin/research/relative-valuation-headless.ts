@@ -148,7 +148,7 @@ export const relativeValuationHeadless: HeadlessPaneDefinition<"rows"> = {
     }) ?? [];
     const conversionText = capCurrency && converted ? conversionNote(capCurrency, converted.conversions) : null;
     const notes = [
-      ...selection ? [`Peers chosen automatically: ${selection.basis}. To choose your own: gloomberb fn RV ${selection.subject} <tickers>.`] : [],
+      ...selection ? [`Peers chosen automatically: ${selection.basis}. To choose your own: gloom fn RV ${selection.subject} <tickers>.`] : [],
       ...extra.notes,
     ];
     // Last and Chg% are the regular session; an extended print gets a column only when a peer has one.

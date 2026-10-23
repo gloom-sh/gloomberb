@@ -89,7 +89,7 @@ export function ShareView({
     return (
       <main className="pane">
         <header>
-          <p className="eyebrow">Shared via Gloomberb</p>
+          <p className="eyebrow">Shared via Gloom</p>
           <h1>{share.data.title}</h1>
           {share.data.description ? <p className="pane-description">{share.data.description}</p> : null}
         </header>

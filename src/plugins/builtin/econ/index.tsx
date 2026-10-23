@@ -319,7 +319,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     ...(showStale ? [{ id: "stale", parts: [{ text: "STALE", tone: "warning" as const }] }] : []),
     ...(staleness ? [{ id: "updated", parts: [{ text: staleness, tone: "muted" as const }] }] : []),
   ], [detailEvent, listedAfterStatus, nextText, showStale, staleness]);
-  // A report of the pane (`gloomberb fn ECO`) says it too.
+  // A report of the pane (`gloom fn ECO`) says it too.
   const listedThrough = listedEnd ? dateKey(listedEnd) : null;
   useRemoteUiNode(listedAfter && listedThrough ? {
     role: "report-notice",

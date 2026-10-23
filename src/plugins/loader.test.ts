@@ -73,7 +73,7 @@ describe("loadExternalPlugin", () => {
     const loaded = await loadExternalPlugin(dir);
 
     expect(loaded?.needsGloomberb).toBe("999.0.0");
-    expect(loaded?.error).toBe(`Needs Gloomberb 999.0.0, this is ${VERSION}.`);
+    expect(loaded?.error).toBe(`Needs Gloom 999.0.0, this is ${VERSION}.`);
   });
 
   test("names the host export a stale plugin imports, from Bun's own error", async () => {
@@ -84,7 +84,7 @@ describe("loadExternalPlugin", () => {
     const loaded = await loadExternalPlugin(dir);
 
     expect(loaded?.error).toBe(
-      `Uses RemovedLongAgo from gloomberb/theme, which Gloomberb ${VERSION} does not have. Update the plugin, or Gloomberb if the plugin is newer.`,
+      `Uses RemovedLongAgo from gloomberb/theme, which Gloom ${VERSION} does not have. Update the plugin, or Gloom if the plugin is newer.`,
     );
   });
 
@@ -265,7 +265,7 @@ describe("a plugin whose sibling plugin was linked after its import failed", () 
  * upgraded installs still have their external checkouts. Loaded beside the
  * built-in, one fails on the duplicate id and reports a crash on every launch,
  * so the loader skips it before linking or importing anything, and leaves the
- * folder as it is for an older Gloomberb that may share it.
+ * folder as it is for an older Gloom that may share it.
  */
 describe("leftover checkouts of plugins that are built in now", () => {
   const imported = `throw new Error("imported");\n`;

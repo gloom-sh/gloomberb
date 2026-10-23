@@ -76,12 +76,12 @@ import { addOneSymbol, addSymbols, FILE_OPTION, printSymbolRows, removeSymbols, 
 import { readNameEntries } from "../../../../cli/name-entries";
 import { DRIP_DEFAULT_YEARS, DRIP_MAX_YEARS, parseDripYears, parseWithholding } from "../income";
 
-const ADD_USAGE = "Usage: gloomberb portfolio add <portfolio> <symbols...> [--file <path>]";
-const POSITION_USAGE = "Usage: gloomberb portfolio position set <portfolio> <ticker> <shares|contracts> <avg-cost> [currency] [--date <purchase date> | --cost-fx <rate>]";
-const REMOVE_USAGE = "Usage: gloomberb portfolio remove <portfolio> <symbols...> [--file <path>]";
-const CASH_USAGE = "Usage: gloomberb portfolio cash set <portfolio> <amount> [currency] | portfolio cash clear <portfolio>";
-const TARGET_USAGE = "Usage: gloomberb portfolio target set <portfolio> <symbol|CASH> <weight%> | target clear <portfolio> [symbol] | target show <portfolio>";
-const IMPORT_USAGE = "Usage: gloomberb portfolio import --13f <CIK|fund name> [--top N] [--name <portfolio>] [--notional <amount>] [--replace]";
+const ADD_USAGE = "Usage: gloom portfolio add <portfolio> <symbols...> [--file <path>]";
+const POSITION_USAGE = "Usage: gloom portfolio position set <portfolio> <ticker> <shares|contracts> <avg-cost> [currency] [--date <purchase date> | --cost-fx <rate>]";
+const REMOVE_USAGE = "Usage: gloom portfolio remove <portfolio> <symbols...> [--file <path>]";
+const CASH_USAGE = "Usage: gloom portfolio cash set <portfolio> <amount> [currency] | portfolio cash clear <portfolio>";
+const TARGET_USAGE = "Usage: gloom portfolio target set <portfolio> <symbol|CASH> <weight%> | target clear <portfolio> [symbol] | target show <portfolio>";
+const IMPORT_USAGE = "Usage: gloom portfolio import --13f <CIK|fund name> [--top N] [--name <portfolio>] [--notional <amount>] [--replace]";
 const IMPORT_DEFAULT_TOP = 10;
 const IMPORT_MAX_TOP = 100;
 const IMPORT_DEFAULT_NOTIONAL = 100_000;
@@ -191,7 +191,7 @@ async function addTickerToPortfolioCommand(portfolio: Portfolio, symbol: string,
     symbol,
     exchange,
     collection: { kind: "portfolio", name: portfolio.name },
-    retry: (key) => `gloomberb portfolio add ${portfolio.name} ${key}`,
+    retry: (key) => `gloom portfolio add ${portfolio.name} ${key}`,
     reject: cashRefusal(portfolio, exchange),
     add: (ticker) => addTickerToPortfolio(ticker, portfolio.id),
   });
@@ -205,7 +205,7 @@ async function addToPortfolioCommand(args: string[], file: string | undefined, e
       await addTickerToPortfolioCommand(portfolio, list.single, exchange, ctx, market);
       return;
     }
-    const retry = (key: string) => `gloomberb portfolio add ${/\s/.test(portfolio.name) ? `"${portfolio.name}"` : portfolio.name} ${key}`;
+    const retry = (key: string) => `gloom portfolio add ${/\s/.test(portfolio.name) ? `"${portfolio.name}"` : portfolio.name} ${key}`;
     const dryRun = ctx.cliOptions.dryRun;
     const rows = await addSymbols({
       symbols: list.symbols,
@@ -649,7 +649,7 @@ async function showTargetsCommand(name: string, ctx: CliCommandContext) {
       }
       console.log(cliStyles.bold(`${portfolio.name} targets`));
       if (rows.length === 0) {
-        console.log(cliStyles.muted(`No targets. Set one with: gloomberb portfolio target set "${portfolio.name}" <symbol|CASH> <weight%>`));
+        console.log(cliStyles.muted(`No targets. Set one with: gloom portfolio target set "${portfolio.name}" <symbol|CASH> <weight%>`));
         return;
       }
       console.log("");
@@ -699,7 +699,7 @@ function parseImportOptions(args: string[], ctx: CliCommandContext): ThirteenFIm
   const path = args.find((arg) => /\.(csv|tsv|txt)$/i.test(arg));
   if (!query && path) {
     ctx.fail(
-      `portfolio import reads a manager's 13F filing. To add the symbols in ${path}, run: gloomberb portfolio add <portfolio> --file ${path}`,
+      `portfolio import reads a manager's 13F filing. To add the symbols in ${path}, run: gloom portfolio add <portfolio> --file ${path}`,
       IMPORT_USAGE,
     );
   }
@@ -729,7 +729,7 @@ function parseImportOptions(args: string[], ctx: CliCommandContext): ThirteenFIm
 async function importThirteenFCommand(options: ThirteenFImportOptions, ctx: CliCommandContext) {
   // The manager's holdings as `fn 13F <manager>` reports them, through the 13F function of the plugins that are on.
   const thirteenF = ctx.plugins.flatMap((plugin) => plugin.paneTemplates ?? []).find((template) => template.shortcut?.prefix === "13F")?.headless;
-  if (!thirteenF) ctx.fail("13F filings are not available: the Ownership & Insiders plugin is off.", "Turn it on with gloomberb plugin enable ownership.");
+  if (!thirteenF) ctx.fail("13F filings are not available: the Ownership & Insiders plugin is off.", "Turn it on with gloom plugin enable ownership.");
   await withMarketData(ctx, async ({ config, store, dataProvider }) => {
     try {
       const report = await thirteenF.load(
@@ -916,7 +916,7 @@ export const portfolioCliCommand: CliCommandDef = {
       { flags: "--replace", description: "portfolio import: replace the positions of an existing portfolio of that name" },
       { flags: "--date <purchase date>", description: `position set: the day it was bought, as ${DATE_OPTION_EXAMPLES}; a holding in another currency converts its cost at that day's FX close` },
       { flags: "--cost-fx <rate>", description: "position set: the rate a holding in another currency was bought at, in the portfolio's currency per unit of the holding's (32.15 TRY per USD)" },
-      { flags: "--explain", description: "portfolio show: follow the report with what its terms mean (Weight, Target, Drift, Trade); gloomberb catalog glossary lists every term" },
+      { flags: "--explain", description: "portfolio show: follow the report with what its terms mean (Weight, Target, Drift, Trade); gloom catalog glossary lists every term" },
     ],
     examples: [
       "portfolio show Research",
@@ -961,11 +961,11 @@ export const portfolioCliCommand: CliCommandDef = {
     if (explain && !shows) {
       ctx.fail(
         `--explain is an option of portfolio show, not portfolio ${action ?? "list"}.`,
-        "Run gloomberb portfolio show <name> --explain, or gloomberb catalog glossary for every term.",
+        "Run gloom portfolio show <name> --explain, or gloom catalog glossary for every term.",
       );
     }
-    if (close && !shows) ctx.fail(`--close is an option of portfolio show, not portfolio ${action ?? "list"}.`, "Usage: gloomberb portfolio show <name> --close");
-    const dripUsage = "Usage: gloomberb portfolio show <name> --drip [--years 1-5] [--withholding <pct>]";
+    if (close && !shows) ctx.fail(`--close is an option of portfolio show, not portfolio ${action ?? "list"}.`, "Usage: gloom portfolio show <name> --close");
+    const dripUsage = "Usage: gloom portfolio show <name> --drip [--years 1-5] [--withholding <pct>]";
     if ((dripFlag || hasYears || hasWithholding) && !shows) {
       ctx.fail(`${dripFlag ? "--drip" : hasYears ? "--years" : "--withholding"} is an option of portfolio show, not portfolio ${action ?? "list"}.`, dripUsage);
     }
@@ -1003,21 +1003,21 @@ export const portfolioCliCommand: CliCommandDef = {
 
     if (action === "show") {
       const name = args.slice(1).join(" ");
-      if (!name) ctx.fail("Usage: gloomberb portfolio show <name> [--close] [--explain] [--drip]");
+      if (!name) ctx.fail("Usage: gloom portfolio show <name> [--close] [--explain] [--drip]");
       await showCollection(name, ctx, { explain, basis, drip });
       return;
     }
 
     if (action === "create") {
       const name = args.slice(1).join(" ");
-      if (!name) ctx.fail("Usage: gloomberb portfolio create <name>");
+      if (!name) ctx.fail("Usage: gloom portfolio create <name>");
       await createPortfolioCommand(name, ctx);
       return;
     }
 
     if (action === "delete" || action === "rm") {
       const name = args.slice(1).join(" ");
-      if (!name) ctx.fail("Usage: gloomberb portfolio delete <name>");
+      if (!name) ctx.fail("Usage: gloom portfolio delete <name>");
       await deletePortfolioCommand(name, ctx);
       return;
     }

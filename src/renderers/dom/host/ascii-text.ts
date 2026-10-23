@@ -9,6 +9,20 @@ const WEB_GLOOMBERB_WORDMARK = [
   " \\____|_|\\___/ \\___/|_| |_| |_|_.__/ \\___|_|  |_.__/ ",
 ];
 
+const WEB_GLOOM_WORDMARK = [
+  "  ____ _                       ",
+  " / ___| | ___   ___  _ __ ___  ",
+  "| |  _| |/ _ \\ / _ \\| '_ ` _ \\ ",
+  "| |_| | | (_) | (_) | | | | | |",
+  " \\____|_|\\___/ \\___/|_| |_| |_|",
+];
+
+/** The web wordmarks, by the text they spell. */
+const WEB_WORDMARKS = new Map<string, string[]>([
+  ["gloom", WEB_GLOOM_WORDMARK],
+  ["gloomberb", WEB_GLOOMBERB_WORDMARK],
+]);
+
 type WebWordmarkVariant = "legacy" | "compat" | null;
 
 /**
@@ -22,7 +36,7 @@ export function webAsciiTextWordmarkVariant(
   font: AsciiFontName = "tiny",
   desktopPlatform?: string,
 ): WebWordmarkVariant {
-  if (font !== "wordmark" || text.trim().toLowerCase() !== "gloomberb") return null;
+  if (font !== "wordmark" || !WEB_WORDMARKS.has(text.trim().toLowerCase())) return null;
   return detectPlatform(desktopPlatform) === "darwin" ? "legacy" : "compat";
 }
 
@@ -32,6 +46,6 @@ export function webAsciiTextLines(
   desktopPlatform?: string,
 ): string[] {
   return webAsciiTextWordmarkVariant(text, font, desktopPlatform) === "compat"
-    ? WEB_GLOOMBERB_WORDMARK
+    ? WEB_WORDMARKS.get(text.trim().toLowerCase())!
     : renderAsciiText(text, font);
 }

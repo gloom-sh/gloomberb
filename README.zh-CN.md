@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="src/assets/gloomberb-logo.svg" alt="Gloomberb 标志" width="76" />
+<img src="src/assets/gloomberb-logo.svg" alt="Gloom 标志" width="76" />
 
-# Gloomberb
+# Gloom
 
 **开源金融终端。快速、键盘驱动、可扩展。**
 
@@ -21,7 +21,7 @@
 <br />
 <br />
 
-<img src="https://gloom.sh/landing-terminal.png" alt="Gloomberb 终端界面，显示投资组合、自选列表、市场数据和图表面板。" width="720" />
+<img src="https://gloom.sh/landing-terminal.png" alt="Gloom 终端界面，显示投资组合、自选列表、市场数据和图表面板。" width="720" />
 
 <sub>由 <a href="https://adjacent.markets/?ref=gloomberb"><img src="docs/assets/adjacent.svg" alt="" width="12" height="12" /> Adjacent</a> 赞助支持</sub>
 
@@ -47,7 +47,7 @@ brew install --cask gloomberb
 
 在 **Windows 11** 上，[下载安装程序](https://github.com/gloom-sh/gloomberb/releases/latest/download/stable-win-x64-GloomberbSetup.exe)。支持 x64，也可通过 x64 仿真在 ARM64 上运行。
 
-两个平台的桌面安装程序均包含 `gloomberb` 终端命令。
+两个平台的桌面安装程序均包含 `gloom` 终端命令。
 
 ### 终端版
 
@@ -62,10 +62,10 @@ curl -fsSL gloom.sh/install | bash
 也可在 macOS、Linux 或 Windows x64 上通过 [Bun](https://bun.sh) 安装：
 
 ```bash
-bun install -g gloomberb
+bun install -g @gloom/terminal
 ```
 
-运行 `gloomberb` 即可启动。要显示图形，请使用兼容 Kitty 图形协议的终端，例如 Ghostty、Kitty 或 WezTerm。直接下载、安装位置与更新方式详见[安装指南（英文）](docs/installation.md)。
+运行 `gloom` 即可启动。0.19 之前命令名为 `gloomberb`，该名称仍可使用。要显示图形，请使用兼容 Kitty 图形协议的终端，例如 Ghostty、Kitty 或 WezTerm。直接下载、安装位置与更新方式详见[安装指南（英文）](docs/installation.md)。
 
 ## 开始使用
 
@@ -86,9 +86,9 @@ bun install -g gloomberb
 直接在 shell 中运行命令：
 
 ```bash
-gloomberb quote AAPL
-gloomberb quote AAPL --json
-gloomberb help
+gloom quote AAPL
+gloom quote AAPL --json
+gloom help
 ```
 
 默认输出便于阅读；脚本可使用 `--json`、`--csv` 或 `--ndjson` 获取结构化输出。命令与参数详见 [CLI 参考（英文）](docs/usage.md#cli)。
@@ -98,7 +98,7 @@ gloomberb help
 插件可添加面板、数据源、券商连接与命令。从 GitHub 安装插件：
 
 ```bash
-gloomberb install gloom-sh/gloom-tv
+gloom install gloom-sh/gloom-tv
 ```
 
 详见[插件开发指南（英文）](PLUGINS.md)、[直播电视配置（英文）](docs/usage.md#live-tv)或[贡献指南（英文）](CONTRIBUTING.md)。
@@ -111,6 +111,6 @@ gloomberb install gloom-sh/gloom-tv
 
 <a href="https://adjacent.markets/?ref=gloomberb"><img src="docs/assets/adjacent.svg" alt="Adjacent" width="56" /></a>
 
-[Adjacent](https://adjacent.markets/?ref=gloomberb) 提供预测市场指数、参考利率与数据。感谢其对 Gloomberb 开源开发的支持。
+[Adjacent](https://adjacent.markets/?ref=gloomberb) 提供预测市场指数、参考利率与数据。感谢其对 Gloom 开源开发的支持。
 
-如需赞助 Gloomberb，请发送邮件至 [hello@gloom.sh](mailto:hello@gloom.sh)。
+如需赞助 Gloom，请发送邮件至 [hello@gloom.sh](mailto:hello@gloom.sh)。

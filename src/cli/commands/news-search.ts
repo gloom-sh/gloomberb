@@ -26,7 +26,7 @@ export function newsSearchText(args: readonly string[]): string | null {
 }
 
 /** How to type a word as text to search from a shell: `'"gold"'` keeps the quotes a shell would drop. */
-export const quotedSearchCommand = (word: string) => `gloomberb news '"${word}"'`;
+export const quotedSearchCommand = (word: string) => `gloom news '"${word}"'`;
 
 /**
  * Whether a word typed for `news` may mean more than the listing it found:
@@ -135,7 +135,7 @@ export function noMetalStoriesMessage(route: MetalNewsRoute): string {
   return `No metals stories match "${route.metal}". For every story that mentions it, try: ${quotedSearchCommand(route.metal)}`;
 }
 
-/** The futures news route a search offers when no story matches it: `gloomberb news KC=F` for "arabica". */
+/** The futures news route a search offers when no story matches it: `gloom news KC=F` for "arabica". */
 export interface CommodityNewsRoute {
   contract: FuturesContract;
   command: string;
@@ -151,7 +151,7 @@ export async function commodityNewsRoute(text: string): Promise<CommodityNewsRou
   const name = contract ? commoditySearchName(contract) : null;
   if (!contract || !name || isCommodityName(text, name)) return null;
   const stories = await searchNewsStories(name, 1).catch(logFailure("cli.news-search", "Search a commodity's stories failed", []));
-  return stories.length > 0 ? { contract, command: `gloomberb news ${contract.symbol}` } : null;
+  return stories.length > 0 ? { contract, command: `gloom news ${contract.symbol}` } : null;
 }
 
 /** What a search that matched no story says: never a near miss, and the commodity's futures news where it has some. */

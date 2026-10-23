@@ -34,9 +34,9 @@ const dataProvider = createTestDataProvider({
 });
 const deps = { store: { loadTicker: async () => null, loadAllTickers: async () => [] }, dataProvider };
 
-/** Each `gloomberb ...` command a hint suggests, as the words typed. */
+/** Each `gloom ...` command a hint suggests, as the words typed. */
 function suggestedCommands(text: string): string[][] {
-  return [...text.matchAll(/gloomberb ([^()`\n]+)/g)].map((match) => match[1]!.trim().replace(/\.$/, "").split(/\s+/));
+  return [...text.matchAll(/gloom ([^()`\n]+)/g)].map((match) => match[1]!.trim().replace(/\.$/, "").split(/\s+/));
 }
 
 /** The listing a suggested command names, as the command itself reads it. */

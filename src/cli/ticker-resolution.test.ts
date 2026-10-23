@@ -67,7 +67,7 @@ test("a bare symbol no quote settles goes to the listing `quote` reads, and ever
     },
   });
   const store = tickerStore();
-  const retry = (key: string) => `gloomberb watchlist add Growth ${key}`;
+  const retry = (key: string) => `gloom watchlist add Growth ${key}`;
 
   // One company: its first listing in search order with a quote, as `quote 123` reads it.
   const sassy = await resolveCliTicker("123", store, dataProvider, undefined, { retry });
@@ -78,7 +78,7 @@ test("a bare symbol no quote settles goes to the listing `quote` reads, and ever
   const choose = await failed(resolveCliTicker("2222", store, dataProvider, undefined, { retry }));
   expect(choose).toBeInstanceOf(ListingArgError);
   expect(choose?.message).toBe("Choose an exchange for 2222.");
-  const offered = [...(choose?.details ?? "").matchAll(/try: gloomberb watchlist add Growth (\S+)\)/g)].map((match) => match[1]!);
+  const offered = [...(choose?.details ?? "").matchAll(/try: gloom watchlist add Growth (\S+)\)/g)].map((match) => match[1]!);
   expect(offered).toEqual(["2222:JPX", "2222:TADAWUL"]);
   for (const key of offered) {
     expect(savedListingName((await resolveCliTicker(key, store, dataProvider)).ticker).key).toBe(key);
@@ -243,12 +243,12 @@ test("a symbol several companies list names their listings and, when its own com
       changes: [{ from: "NEP", to: "XIFR", date: "2025-02-03" }],
     } : null,
   });
-  const retry = (key: string) => `gloomberb watchlist add Growth ${key}`;
+  const retry = (key: string) => `gloom watchlist add Growth ${key}`;
 
   const alone = await failed(resolveCliTicker("NEP", tickerStore(), dataProvider, undefined, { retry }));
   expect(alone).toBeInstanceOf(ListingChoiceError);
   expect(alone?.message).toBe("Choose an exchange for NEP.");
-  expect(alone?.details?.split("\n").at(-1)).toBe("NEP became XIFR on 2025-02-03: `gloomberb watchlist add Growth XIFR`");
+  expect(alone?.details?.split("\n").at(-1)).toBe("NEP became XIFR on 2025-02-03: `gloom watchlist add Growth XIFR`");
 
   // A list's line says the same in one line, also past the length that skips change lookups for the rest.
   for (const symbols of [["NEP", "ZZ"], ["NEP", ...Array.from({ length: 10 }, (_, index) => `ZZ${index}`)]]) {

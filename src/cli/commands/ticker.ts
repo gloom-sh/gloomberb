@@ -877,7 +877,7 @@ function fundamentalsReportMetrics(snapshot: FundamentalsReportData, view: "fund
   return valuation.length === 0 ? [] : [...valuationPriceMetrics(financials).filter((metric) => metric.text !== "—"), ...valuation];
 }
 
-/** Text for `gloomberb fundamentals` and `gloomberb valuation`: the ticker report's fundamentals without the rest. */
+/** Text for `gloom fundamentals` and `gloom valuation`: the ticker report's fundamentals without the rest. */
 export function renderFundamentalsReport(
   financials: FundamentalsReportData,
   view: "fundamentals" | "valuation",

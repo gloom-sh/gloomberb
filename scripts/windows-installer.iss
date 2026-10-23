@@ -12,14 +12,15 @@
 
 [Setup]
 AppId={{D7B2304C-840B-4E5F-956A-3D1C66E67B35}
-AppName=Gloomberb
+AppName=Gloom
 AppVersion={#AppVersion}
-AppPublisher=Gloomberb
+AppPublisher=Gloom
 AppPublisherURL=https://gloom.sh
 AppSupportURL=https://github.com/gloom-sh/gloomberb/issues
 AppUpdatesURL=https://github.com/gloom-sh/gloomberb/releases
+; Kept under the previous name, as existing installs and their PATH entry have it.
 DefaultDirName={localappdata}\Programs\Gloomberb
-DefaultGroupName=Gloomberb
+DefaultGroupName=Gloom
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
@@ -41,12 +42,17 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription:
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
+[InstallDelete]
+; Shortcuts an install from before the rename made under the old name.
+Type: files; Name: "{autoprograms}\Gloomberb.lnk"
+Type: files; Name: "{autodesktop}\Gloomberb.lnk"
+
 [Icons]
-Name: "{autoprograms}\Gloomberb"; Filename: "{app}\bin\launcher.exe"; WorkingDir: "{app}\bin"; IconFilename: "{app}\Resources\gloomberb-logo.ico"
-Name: "{autodesktop}\Gloomberb"; Filename: "{app}\bin\launcher.exe"; WorkingDir: "{app}\bin"; IconFilename: "{app}\Resources\gloomberb-logo.ico"; Tasks: desktopicon
+Name: "{autoprograms}\Gloom"; Filename: "{app}\bin\launcher.exe"; WorkingDir: "{app}\bin"; IconFilename: "{app}\Resources\gloomberb-logo.ico"
+Name: "{autodesktop}\Gloom"; Filename: "{app}\bin\launcher.exe"; WorkingDir: "{app}\bin"; IconFilename: "{app}\Resources\gloomberb-logo.ico"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\bin\launcher.exe"; Description: "Launch Gloomberb"; Flags: nowait postinstall skipifsilent; WorkingDir: "{app}\bin"
+Filename: "{app}\bin\launcher.exe"; Description: "Launch Gloom"; Flags: nowait postinstall skipifsilent; WorkingDir: "{app}\bin"
 
 [Code]
 const

@@ -42,21 +42,21 @@ test("declared options, their values and global flags pass; anything after -- or
 test("an undeclared option fails with the command's options, a close match and its own hint", () => {
   expect(failure(() => check(history, ["ZAR=X", "--from", "1995-01-01"]))).toEqual({
     message: "Unknown option --from for history.",
-    details: "history takes a --range instead of dates.\nOptions: --range, --exchange, --all. See gloomberb help history.",
+    details: "history takes a --range instead of dates.\nOptions: --range, --exchange, --all. See gloom help history.",
   });
   expect(failure(() => check(history, ["AAPL", "--rnage=5Y"])).details).toContain("Did you mean --range?");
   expect(failure(() => check(history, ["AAPL", "--all=yes"])).message).toBe("--all takes no value.");
-  expect(failure(() => check({ ...history, help: {} }, ["--range", "1Y"])).details).toBe("history takes no options. See gloomberb help history.");
+  expect(failure(() => check({ ...history, help: {} }, ["--range", "1Y"])).details).toBe("history takes no options. See gloom help history.");
   // --explain, which fn and portfolio show take, points at the glossary on a command without one.
   expect(failure(() => check(history, ["AAPL", "--explain"])).details).toStartWith(
-    "--explain follows the reports of fn <function> and portfolio show. gloomberb catalog explain <term> prints what one term means; gloomberb catalog glossary lists every term.",
+    "--explain follows the reports of fn <function> and portfolio show. gloom catalog explain <term> prints what one term means; gloom catalog glossary lists every term.",
   );
 });
 
 test("financials --quarterly points at the functions that list quarters, with the symbol typed", () => {
   const financials = marketDataCliCommands.find((command) => command.name === "financials")!;
-  const hint = "financials lists fiscal years. For quarters: gloomberb fn GF WFC --period quarterly --periods 40 (one metric at a time), "
-    + "or gloomberb fn FA WFC --period quarterly (the statements).";
+  const hint = "financials lists fiscal years. For quarters: gloom fn GF WFC --period quarterly --periods 40 (one metric at a time), "
+    + "or gloom fn FA WFC --period quarterly (the statements).";
   for (const flag of ["--quarterly", "--period", "--freq"]) {
     const value = flag === "--quarterly" ? [] : ["quarterly"];
     expect(failure(() => check(financials, ["WFC", flag, ...value])).details).toStartWith(hint);

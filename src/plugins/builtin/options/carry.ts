@@ -4,7 +4,7 @@ import { optionSpread } from "./market-reference";
 
 /**
  * What holding a contract costs in time value, read the same way by the OMON
- * columns and the LEAPS screen (`gloomberb options --leaps`):
+ * columns and the LEAPS screen (`gloom options --leaps`):
  *
  *   intrinsic          = max(0, spot - strike) for a call, max(0, strike - spot) for a put
  *   extrinsic          = midpoint - intrinsic, the midpoint of a two-sided quote
@@ -50,7 +50,7 @@ export function optionCarry(
 
 /**
  * Extrinsic per year net of financing and dividends, a fraction of spot per
- * year (`gloomberb options --leaps --columns carry-net`):
+ * year (`gloom options --leaps --columns carry-net`):
  *
  *   call: (extrinsic - strike x rate x years + spot x dividend yield x years) / spot / years
  *   put:  (extrinsic + strike x rate x years - spot x dividend yield x years) / spot / years

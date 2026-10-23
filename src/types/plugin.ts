@@ -186,7 +186,7 @@ export interface PaneDef {
   /**
    * Options a rendered-view report takes (`fn OMON AAPL --strikes 10`):
    * each sets the pane setting of its key, is checked by its `normalize`, and
-   * is listed with its example by `gloomberb catalog`.
+   * is listed with its example by `gloom catalog`.
    */
   reportOptions?: readonly PaneReportOptionDef[];
   /**
@@ -207,7 +207,7 @@ export interface PaneDef {
   reportLockNote?(lock: PaneLock): string | Promise<string>;
   /**
    * What a rendered-view report needs before it shows anything, such as a
-   * sign-in: `gloomberb catalog` lists it under Requires, as it does a
+   * sign-in: `gloom catalog` lists it under Requires, as it does a
    * `headless` model's `discovery.dataRequirements`.
    */
   reportRequirements?: readonly string[];
@@ -625,14 +625,14 @@ interface CliCommandHelpOption {
 }
 
 interface CliCommandHelp {
-  /** Heading `gloomberb help` lists the command under. Plugin commands without one share a plugin heading. */
+  /** Heading `gloom help` lists the command under. Plugin commands without one share a plugin heading. */
   group?: string;
   /** Invocations without the leading `gloomberb`, e.g. `quote <symbol...>`. */
   usage?: string[];
   options?: CliCommandHelpOption[];
   /** Complete invocations without the leading `gloomberb`. */
   examples?: string[];
-  /** Extra blocks shown only in the command's own help (`gloomberb help <command>`). */
+  /** Extra blocks shown only in the command's own help (`gloom help <command>`). */
   sections?: CliCommandHelpSection[];
 }
 

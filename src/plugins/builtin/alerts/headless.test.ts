@@ -55,7 +55,7 @@ test("--tab events lists the event alerts the Events tab shows, with their dates
   expect(prices.rows[0]).toMatchObject({ lastCheckedPrice: 90, awayPercent: expect.closeTo(11.11, 1) });
   expect(prices.rows[0]).not.toHaveProperty("lastQuoteProviderId");
   expect(renderHeadlessPaneText(alertsHeadless, prices, createTestHeadlessArgs(), "ALRT")).toMatch(/Active\s+CRWV\s+90\.00\s+100\.00\s+\+11\.1%\s+Above/);
-  expect(prices.notes).toEqual(["2 event alerts not listed here: gloomberb fn ALRT --tab events"]);
+  expect(prices.notes).toEqual(["2 event alerts not listed here: gloom fn ALRT --tab events"]);
   expect((await alertsHeadless.load(createTestHeadlessArgs({ options: { tab: "prices" } }), contextWith([], []))).notes).toBeUndefined();
 });
 

@@ -98,7 +98,7 @@ function boardTickerNotice(symbol: string, board: ReadonlyArray<{ symbol: string
   const where = report ? `${symbol} reports on ${report.date}` : `${symbol} is not on it`;
   const days = from === to ? from : `${from} to ${to}`;
   return {
-    notice: `EVTS is the market's earnings board for ${days}, not one company's: ${where}. For ${symbol}'s own report dates run \`gloomberb fn ERN ${symbol}\`.`,
+    notice: `EVTS is the market's earnings board for ${days}, not one company's: ${where}. For ${symbol}'s own report dates run \`gloom fn ERN ${symbol}\`.`,
     date: report?.date ?? null,
   };
 }
@@ -291,7 +291,7 @@ export function createEarningsHeadless(deps: EarningsHeadlessDependencies = defa
       const range = boardRange(args.options);
       if (args.symbols.length === 1 && range) {
         const symbol = args.symbols[0]!;
-        throw new Error(`ERN ${symbol} is its report history, past reports included; --date and --week pick the board's days. Run \`gloomberb fn EVTS ${symbol} ${args.options.date ? `--date ${args.options.date}` : `--week ${args.options.week}`}\` for the market's.`);
+        throw new Error(`ERN ${symbol} is its report history, past reports included; --date and --week pick the board's days. Run \`gloom fn EVTS ${symbol} ${args.options.date ? `--date ${args.options.date}` : `--week ${args.options.week}`}\` for the market's.`);
       }
       return args.symbols.length === 1 ? historyReport(args.symbols[0]!, context, deps) : boardRows(args, context, deps, undefined, range);
     },

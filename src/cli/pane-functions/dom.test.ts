@@ -278,7 +278,7 @@ test("a pane walled whole cites no source, and one that says how to reach it say
   const signedOut = await walled("sign-in", "EK NEM Sign in to read 8-K filings. Log in \u21B5 Sign up free");
   expect(signedOut.data).toMatchObject({ locked: "sign-in", complete: false });
   expect(signedOut.data.freshness).toBeUndefined();
-  expect(signedOut.data.reason).toContain("Free, with no sign-in: gloomberb fn SEC NEM lists NEM's recent filings");
+  expect(signedOut.data.reason).toContain("Free, with no sign-in: gloom fn SEC NEM lists NEM's recent filings");
   expect(signedOut.text).not.toContain("Sign up free");
   expect(signedOut.tables.footer.some((line) => /^Source:|^Retrieval time/.test(line))).toBe(false);
   const footer = appendDomReportFooter(signedOut.text, 10, domReportView(signedOut.data), signedOut.data.freshness);

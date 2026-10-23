@@ -112,7 +112,7 @@ test("an empty window names the latest observation, or says no results when ther
   expect(fredEmptyMessage("2026-10-11", { date: "2026-10-09", value: null })).toBe("Latest observation: 2026-10-09. Nothing on or after 2026-10-11.");
   expect(fredEmptyMessage("2026-10-11", null)).toBe("No results.");
   // A CSV of nothing fails with a start that reaches the latest observation.
-  expect(fredEmptyAdvice("DGS10", { date: "2026-10-09" })).toBe("Latest observation: 2026-10-09. Try: gloomberb fred DGS10 --start 2026");
+  expect(fredEmptyAdvice("DGS10", { date: "2026-10-09" })).toBe("Latest observation: 2026-10-09. Try: gloom fred DGS10 --start 2026");
 });
 
 test("a lagging series carries its note, in any case", () => {

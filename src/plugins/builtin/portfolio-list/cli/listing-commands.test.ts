@@ -213,23 +213,23 @@ test("one pasted list where the list name goes is a list of symbols, not a missi
     watchlists: [{ id: "growth", name: "Growth" }, { id: "watch-two", name: "Watch Two" }],
   };
   const run = (command: CliCommandDef, args: string[]) => caught(command.execute(args, hintedContext({ config, store }).context));
-  const watchlistUsage = "Usage: gloomberb watchlist add <watchlist> <symbols...> [--file <path>]";
+  const watchlistUsage = "Usage: gloom watchlist add <watchlist> <symbols...> [--file <path>]";
 
   const pasted = await run(watchlistCliCommand, ["add", "  usdngn=x , USDZAR=X;  usdsar=x\n"]);
   expect(pasted?.message).toBe(
-    '"usdngn=x , USDZAR=X; usdsar=x" reads as a list of symbols, not a watchlist name; did you mean `gloomberb watchlist add <name> <list>`; lists: Growth, Watch Two',
+    '"usdngn=x , USDZAR=X; usdsar=x" reads as a list of symbols, not a watchlist name; did you mean `gloom watchlist add <name> <list>`; lists: Growth, Watch Two',
   );
   expect(pasted?.details).toBe(watchlistUsage);
   // Whichever separator the paste has, and for remove and portfolios too.
   for (const text of ["NVDA,MSFT", "NVDA;MSFT", "NVDA MSFT", "NVDA\nMSFT", "NVDA, "]) {
     expect((await run(watchlistCliCommand, ["add", text]))?.message).toContain("reads as a list of symbols");
   }
-  expect((await run(watchlistCliCommand, ["remove", "NVDA MSFT"]))?.message).toContain("`gloomberb watchlist remove <name> <list>`");
+  expect((await run(watchlistCliCommand, ["remove", "NVDA MSFT"]))?.message).toContain("`gloom watchlist remove <name> <list>`");
   const portfolio = await run(portfolioCliCommand, ["add", "nvda, msft"]);
-  expect(portfolio?.message).toBe('"nvda, msft" reads as a list of symbols, not a portfolio name; did you mean `gloomberb portfolio add <name> <list>`; portfolios: Main');
-  expect(portfolio?.details).toBe("Usage: gloomberb portfolio add <portfolio> <symbols...> [--file <path>]");
+  expect(portfolio?.message).toBe('"nvda, msft" reads as a list of symbols, not a portfolio name; did you mean `gloom portfolio add <name> <list>`; portfolios: Main');
+  expect(portfolio?.details).toBe("Usage: gloom portfolio add <portfolio> <symbols...> [--file <path>]");
   expect((await caught(watchlistCliCommand.execute(["add", "NVDA,MSFT"], hintedContext({ config: { ...config, watchlists: [] }, store }).context)))?.message)
-    .toContain("no lists yet, create one with `gloomberb watchlist create <name>`");
+    .toContain("no lists yet, create one with `gloom watchlist create <name>`");
 
   // A name that exists keeps its behaviour, with spaces or without; one that does not, with no separators or with --file, is still not found.
   expect((await run(watchlistCliCommand, ["add", "Growth"]))?.message).toBe(watchlistUsage);
@@ -377,8 +377,8 @@ test("a list of more than ten symbols checks each one's history, and one symbol 
     expect(text).toContain("Needs a choice, not added (3):");
     expect(text).toContain("DFS was Discover Financial Services until 2025, now Capital One Financial: COF; DFS matched DFS:LSE (DFS Furniture plc), a listing abroad");
     expect(text).toContain(`BRKL was Brookline Bancorp until ${brooklineLeft.slice(0, 4)}, now Beacon Financial: BBT; BRKL matched BRKL:BATS (Corgi Brookline ETF), another company's listing`);
-    expect(text).toContain("Add what they trade as now: gloomberb watchlist add Banks COF FLG BBT");
-    expect(text).toContain("To keep a match instead, name its listing: gloomberb watchlist add Banks DFS:LSE NYCB:NYSE BRKL:BATS");
+    expect(text).toContain("Add what they trade as now: gloom watchlist add Banks COF FLG BBT");
+    expect(text).toContain("To keep a match instead, name its listing: gloom watchlist add Banks DFS:LSE NYCB:NYSE BRKL:BATS");
     // Five Star took FSBC years ago: added, saying who had it.
     expect(text).toContain("  FSBC was First Savings Bancorp until");
     expect(text).toContain('Watchlist "Banks": 12 added; 3 need a choice: DFS, NYCB, BRKL.');
@@ -391,7 +391,7 @@ test("a list of more than ten symbols checks each one's history, and one symbol 
   for (const [symbol, successor, match] of [["DFS", "COF", "DFS:LSE"], ["BRKL", "BBT", "BRKL:BATS"]] as const) {
     const { error, saved } = await add([symbol], false);
     expect(error?.message).toStartWith(`${symbol} was `);
-    expect(error?.details).toBe(`Add what it trades as now: gloomberb watchlist add Banks ${successor}\nTo keep the match instead, name its listing: gloomberb watchlist add Banks ${match}`);
+    expect(error?.details).toBe(`Add what it trades as now: gloom watchlist add Banks ${successor}\nTo keep the match instead, name its listing: gloom watchlist add Banks ${match}`);
     expect(saved).toEqual([]);
   }
   expect((await add(["FSBC"], false)).saved).toEqual(["FSBC"]);

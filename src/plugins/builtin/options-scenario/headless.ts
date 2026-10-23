@@ -90,7 +90,7 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
     // Several names to sell puts on are a screen, not one scenario.
     const names = args.rawArgument.split(/[\s,;]+/).filter(Boolean);
     if (names.length > 1 && args.options.strategy === "csp") {
-      throw new Error(`OSA values one underlying. To rank cash-secured puts across ${names.join(", ")}: gloomberb fn CSP ${names.join(" ")}`);
+      throw new Error(`OSA values one underlying. To rank cash-secured puts across ${names.join(", ")}: gloom fn CSP ${names.join(" ")}`);
     }
     const settings: Record<string, unknown> = { ...ctx.settings, ...args.options, symbol };
     // Bad hedge inputs fail before any market request.

@@ -135,7 +135,7 @@ function scheduleRememberedWindow(): void {
 }
 
 const mainWindow = createAppWindow({
-  title: "Gloomberb",
+  title: "Gloom",
   frame: initialMainWindowFrame,
   rpc: mainRpc,
   minSize: MAIN_WINDOW_MIN_SIZE,

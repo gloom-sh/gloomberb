@@ -156,20 +156,29 @@ function bundleCandidates(os: TargetOs): string[] {
   return [...new Set(candidates)];
 }
 
-function installShim(runtimePath: string, resourcesPath: string, os: TargetOs): void {
-  if (os === "win") {
-    const shimPath = join(runtimePath, "gloomberb.cmd");
-    writeFileSync(shimPath, WINDOWS_CMD_SHIM);
-    console.log(`Installed TUI shim: ${shimPath}`);
-    return;
-  }
+/**
+ * The terminal command, as `gloom` and as its previous name `gloomberb`.
+ * Existing installs link `gloomberb` (Homebrew, install.sh, the Windows PATH),
+ * so that file stays where it was.
+ */
+const COMMAND_NAMES = ["gloom", "gloomberb"] as const;
 
-  const shimPath = os === "darwin"
-    ? join(resourcesPath, "gloomberb")
-    : join(runtimePath, "gloomberb");
-  writeFileSync(shimPath, os === "darwin" ? MACOS_SHIM : LINUX_SHIM);
-  chmodSync(shimPath, 0o755);
-  console.log(`Installed TUI shim: ${shimPath}`);
+function installShim(runtimePath: string, resourcesPath: string, os: TargetOs): void {
+  for (const name of COMMAND_NAMES) {
+    if (os === "win") {
+      const shimPath = join(runtimePath, `${name}.cmd`);
+      writeFileSync(shimPath, WINDOWS_CMD_SHIM);
+      console.log(`Installed TUI shim: ${shimPath}`);
+      continue;
+    }
+
+    const shimPath = os === "darwin"
+      ? join(resourcesPath, name)
+      : join(runtimePath, name);
+    writeFileSync(shimPath, os === "darwin" ? MACOS_SHIM : LINUX_SHIM);
+    chmodSync(shimPath, 0o755);
+    console.log(`Installed TUI shim: ${shimPath}`);
+  }
 }
 
 function normalizeWindowsExecutableNames(runtimePath: string): void {

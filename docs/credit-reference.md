@@ -12,7 +12,7 @@ A new trade counts only as an execution. Swaption exercises (which print at the 
 
 CDX IG, iTraxx Main and Crossover trade on spread and show in basis points. CDX HY and CDX EM trade on price and show as the price, as quoted. Moves and ranges stay in the same unit: basis points for the spread indexes, points of price for HY and EM. Wider spreads and lower prices are the adverse direction and show in red.
 
-`gloomberb fn CDX --json` gives each level and move as a number with its unit beside it: `level` with `unit` (`bp` or `price`) and `change1D`, `change1W` with `changeUnit` (`bp` or `pts`). `--csv` writes the numbers with a `5Y unit`, `1D unit` and `1W unit` column. `fn SOVR` does the same, every row in `bp`; `fn SOVR Brazil` lists that country's row alone, named by its name or code (`BR`), and `SOVR Brazil` in the app opens the board on it.
+`gloom fn CDX --json` gives each level and move as a number with its unit beside it: `level` with `unit` (`bp` or `price`) and `change1D`, `change1W` with `changeUnit` (`bp` or `pts`). `--csv` writes the numbers with a `5Y unit`, `1D unit` and `1W unit` column. `fn SOVR` does the same, every row in `bp`; `fn SOVR Brazil` lists that country's row alone, named by its name or code (`BR`), and `SOVR Brazil` in the app opens the board on it.
 
 Every exported row says what it is and when it is from, in the [five fixed columns](usage.md#what-every-exported-row-says): `symbol_or_series` is the series (`cdx:hy`, `sovereign-cds:br`, the IDs `history` and the data catalog take), `currency_or_unit` the row's unit (`bp` or `price`), `interval` `daily`, and `as_of` the row's own day, never the day of the export: a sovereign whose last print was two weeks ago is dated two weeks ago. A named index's history dates each day's row by that day. The 1Y rank is a whole number, as the board draws it. `fn CDS` dates each issuer by its 5Y level's day (by its last trade when it has none), each trade by its own time, and a name's 5Y figures by their level's day.
 
@@ -50,7 +50,7 @@ Index prints are dated by their New York trade date, so a day is complete once N
 
 ## History export
 
-`gloomberb fn CDX XOVER` adds an index's daily levels, newest first, under the board: the date, the level, HY's and EM's spread equivalent, the prints behind it and the contract on the run that day, with today's row flagged `so far` while it trades. Name an index by its code (IG, HY, EM, MAIN, XOVER) or name; `CDX XOVER` in the app opens the board on that index. `--days` reaches back up to 1,100 days, as far as DTCC's files go, and `--csv --section 2` writes the history alone.
+`gloom fn CDX XOVER` adds an index's daily levels, newest first, under the board: the date, the level, HY's and EM's spread equivalent, the prints behind it and the contract on the run that day, with today's row flagged `so far` while it trades. Name an index by its code (IG, HY, EM, MAIN, XOVER) or name; `CDX XOVER` in the app opens the board on that index. `--days` reaches back up to 1,100 days, as far as DTCC's files go, and `--csv --section 2` writes the history alone.
 
 ## Sovereigns and currencies
 

@@ -73,9 +73,9 @@ const bootLog = debugLog.createLogger("electrobun-web-boot");
 let appMounted = false;
 
 appRootElement.tabIndex = -1;
-root.render(<div className="gloom-loading">Starting Gloomberb...</div>);
+root.render(<div className="gloom-loading">Starting Gloom...</div>);
 
-function renderFatalError(error: unknown, details?: string, title = "Gloomberb failed to start"): void {
+function renderFatalError(error: unknown, details?: string, title = "Gloom failed to start"): void {
   root.render(
     <DesktopFatalScreen
       title={title}
@@ -95,7 +95,7 @@ window.__gloomRenderFatalError = (error, details, source) => {
   }) === "ignore") {
     return;
   }
-  renderFatalError(error, details, "Gloomberb crashed");
+  renderFatalError(error, details, "Gloom crashed");
 };
 
 function focusWebSurface(): void {

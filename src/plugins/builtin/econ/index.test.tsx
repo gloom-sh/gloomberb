@@ -182,7 +182,7 @@ describe("EconCalendarPane", () => {
     expect(frame).not.toContain("No events listed after");
   });
 
-  // Rows group by UTC day and print the UTC clock, as `gloomberb econ` does,
+  // Rows group by UTC day and print the UTC clock, as `gloom econ` does,
   // whatever zone the process runs in. The release sits at 23:30 UTC, which is
   // after local midnight east of UTC; the test cannot change process.env.TZ
   // without leaking into later files, so it checks the zone it has.

@@ -35,13 +35,13 @@ Published search summaries and award detail records can refresh on different dat
 ## CLI and REST
 
 ```sh
-gloomberb fn AWARDS --json
-gloomberb fn AWARDS LMT --tab all --currency USD --json
-gloomberb fn AWARDS --tab agencies --jurisdiction US --from 2023-10-01 --json
-gloomberb fn AWARDS --tab events --json
-gloomberb fn AWARDS --award '<stable-award-id>' --json
-gloomberb fn AWARDS --cursor '<nextCursor>' --limit 100 --json
-gloomberb shot AWARDS LMT --tab company --currency USD --width 1280 --height 540 --output awards.png
+gloom fn AWARDS --json
+gloom fn AWARDS LMT --tab all --currency USD --json
+gloom fn AWARDS --tab agencies --jurisdiction US --from 2023-10-01 --json
+gloom fn AWARDS --tab events --json
+gloom fn AWARDS --award '<stable-award-id>' --json
+gloom fn AWARDS --cursor '<nextCursor>' --limit 100 --json
+gloom shot AWARDS LMT --tab company --currency USD --width 1280 --height 540 --output awards.png
 ```
 
 `GET /cloud/awards` accepts `ticker`, `jurisdiction`, `currency`, `awardType`, `agency`, `sector`, `from`, `to`, `query`, `cursor` and `limit`. It returns rows, agency/sector aggregates, monthly history, revenue-comparable events, revision-aware provenance and coverage metadata. `GET /cloud/awards/detail/:id` returns evidence, revisions, subawards, modifications and contract relationships. `GET /cloud/awards/status` reports source collection status. Routes require a verified Gloom Cloud account and apply the existing preview/Pro entitlements.

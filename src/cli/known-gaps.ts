@@ -69,8 +69,8 @@ export function isSubMinuteInterval(value: string): boolean {
  * (checked 2026-10-19).
  */
 export const MUNI_LINE = "Municipal bonds: no AAA muni curve (MMD and BVAL are licensed). Muni bond funds: MUB, VTEB, TFI (national), SUB (short-term), "
-  + "CMF, VTEC (California), NYF, MUNY (New York). SEC yield, distribution yield, yield to worst and duration: gloomberb fn DVD <fund> or "
-  + "gloomberb fundamentals <fund>; tax-equivalent yield and muni/Treasury ratio: add --tax-rate 40.8 (with --state-rate 13.3 --state CA for a "
+  + "CMF, VTEC (California), NYF, MUNY (New York). SEC yield, distribution yield, yield to worst and duration: gloom fn DVD <fund> or "
+  + "gloom fundamentals <fund>; tax-equivalent yield and muni/Treasury ratio: add --tax-rate 40.8 (with --state-rate 13.3 --state CA for a "
   + "single-state fund).";
 
 /**
@@ -78,7 +78,7 @@ export const MUNI_LINE = "Municipal bonds: no AAA muni curve (MMD and BVAL are l
  * or, while no source carries it, the nearest thing the app does have, with
  * the traded proxies either way. `search` and `catalog` answer a query that
  * names one with this line instead of pointing at each other. One entry per
- * subject; every proxy named is a listing `gloomberb quote` answers (checked
+ * subject; every proxy named is a listing `gloom quote` answers (checked
  * 2026-10-11: CO2:LSE is the physical EUA ETC, while a bare CO2 is a Brent
  * future; BDRY, SBLK, GNK and DSX on 2026-10-17), a function `fn` runs, or a
  * command that answers (`news "dry bulk"`).
@@ -129,11 +129,11 @@ const KNOWN_GAPS: ReadonlyArray<{ terms: readonly string[]; tickers?: readonly s
  */
 const BANK_FIGURES_TOPIC = {
   topic: "Bank deposits, uninsured share and CRE / capital",
-  availability: "in the Bank section of gloomberb fundamentals <ticker>",
+  availability: "in the Bank section of gloom fundamentals <ticker>",
   phrases: ["nim", "nims", "net interest margin", "net interest margins", "deposits", "deposit growth", "deposit flows",
     "deposit outflows", "deposit base", "uninsured", "cre", "commercial real estate"],
   closestLabel: "net interest margin",
-  closest: [["EQS", "NIM%, Pro: gloomberb fn EQS --metric kpiNimPercent"]],
+  closest: [["EQS", "NIM%, Pro: gloom fn EQS --metric kpiNimPercent"]],
 } as const;
 
 /**
@@ -141,7 +141,7 @@ const BANK_FIGURES_TOPIC = {
  * command or a function. One example, writing a file.
  */
 function exportLine(symbol = "LMT"): string {
-  return `Export: add --csv or --json to any command to print its result as CSV or JSON, e.g. gloomberb history ${symbol} --csv > ${
+  return `Export: add --csv or --json to any command to print its result as CSV or JSON, e.g. gloom history ${symbol} --csv > ${
     symbol.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.csv`;
 }
 
@@ -158,8 +158,8 @@ const BANK_FIGURES_POINTER = {
   names: ["bank", "banks", "banking"],
   words: ["figures", "figure", "data", "metrics", "holding", "company", "companies", "section", "kpi", "kpis", "ratios",
     "fundamentals", "stats", "statistics", "balance", "sheet"],
-  line: "Bank figures (deposits, uninsured share, CRE / capital, lead bank): gloomberb fundamentals <ticker>, Bank section. "
-    + "Net interest margin (Pro): gloomberb fn EQS --metric kpiNimPercent",
+  line: "Bank figures (deposits, uninsured share, CRE / capital, lead bank): gloom fundamentals <ticker>, Bank section. "
+    + "Net interest margin (Pro): gloom fn EQS --metric kpiNimPercent",
 };
 
 /**
@@ -205,7 +205,7 @@ const TOPIC_POINTERS: ReadonlyArray<{
       "ethereum exchange reserves", "exchange inflows", "exchange outflows", "exchange netflow", "exchange netflows", "exchange net flows",
       "coins on exchanges", "bitcoin on exchanges", "btc on exchanges"],
     whole: ["exchange reserves", "exchange reserve", "exchange balances", "exchange balance", "exchange flows"],
-    closest: [["CRYP", "DeFi TVL by protocol and chain: gloomberb fn CRYP --list defi; stablecoin supply: --list stablecoin"]],
+    closest: [["CRYP", "DeFi TVL by protocol and chain: gloom fn CRYP --list defi; stablecoin supply: --list stablecoin"]],
   },
 ];
 
@@ -260,18 +260,18 @@ const COMMAND_POINTERS: ReadonlyArray<{
   {
     names: ["theme", "themes", "light", "dark", "colorblind", "colourblind", "blind"],
     words: ["mode", "color", "colour", "colors", "colours", "high", "contrast", "change", "switch", "set", "setting", "settings"],
-    line: "Themes: gloomberb config themes",
+    line: "Themes: gloom config themes",
   },
   {
     names: ["drip", "drips", "reinvest", "reinvested", "reinvesting", "reinvestment", "income"],
     words: ["dividend", "dividends", "portfolio", "my", "annual", "yearly", "passive", "projection", "project", "projected",
       "plan", "planner", "calculator", "forecast", "yield", "growth"],
-    line: "Portfolio income, yield and DRIP projection: gloomberb portfolio show <name> --drip",
+    line: "Portfolio income, yield and DRIP projection: gloom portfolio show <name> --drip",
   },
   {
     names: ["tether", "usdt", "usdc", "depeg", "depegs", "depegged", "depegging", "peg", "pegs", "pegged", "stablecoin", "stablecoins"],
     words: ["stable", "coin", "coins", "off", "check", "monitor", "watch", "scare", "risk", "dollar", "usd", "status", "price", "prices", "low"],
-    line: "Stablecoins against their peg, off peg in bp, 24h low and high: gloomberb fn CRYP --list stablecoin",
+    line: "Stablecoins against their peg, off peg in bp, 24h low and high: gloom fn CRYP --list stablecoin",
   },
   {
     // A currency forward, not a forward rate on a yield curve, forward guidance, a forward P/E or the forward
@@ -281,13 +281,13 @@ const COMMAND_POINTERS: ReadonlyArray<{
       "6m", "1y"],
     qualifiers: ["fx", "currency", "currencies", "point", "points", "pips", "cip", "covered", "parity", "outright",
       "usd", "mxn", "eur", "gbp", "usdmxn", "eurusd", "gbpusd", "eurmxn", "peso", "dollar", "euro", "sterling"],
-    line: "FX forwards implied by both currencies' short rates (covered interest parity), with forward points and the hedge cost: gloomberb fx USD/MXN --forward 30d",
+    line: "FX forwards implied by both currencies' short rates (covered interest parity), with forward points and the hedge cost: gloom fx USD/MXN --forward 30d",
   },
   {
     names: ["defi", "tvl", "tvls", "total value locked", "on-chain", "onchain", "aave", "lido", "eigenlayer", "morpho"],
     words: ["protocol", "protocols", "chain", "chains", "crypto", "data", "top", "by", "history",
       "change", "ranking", "rankings", "dashboard", "lending", "staking"],
-    line: "DeFi TVL, top protocols and chains with 7D and 30D change: gloomberb fn CRYP --list defi (by chain: --by chain)",
+    line: "DeFi TVL, top protocols and chains with 7D and 30D change: gloom fn CRYP --list defi (by chain: --by chain)",
   },
 ];
 
@@ -305,7 +305,7 @@ export function commandPointerLeads(query: string): boolean {
 }
 
 /**
- * The line for a command word typed as `gloomberb export LMT`: exporting is a flag every command takes, not a
+ * The line for a command word typed as `gloom export LMT`: exporting is a flag every command takes, not a
  * command, so the example runs on the symbol typed. Null for any other word.
  */
 export function exportCommandPointer(token: string, args: readonly string[]): string | null {
@@ -340,8 +340,8 @@ export function bankFigurePointer(name: string, arg: string): { message: string;
   return {
     message: `${name} is not a function: a bank's figures are in the Bank section of fundamentals.`,
     details: [
-      `Deposits, uninsured share, CRE / capital and the lead bank: gloomberb fundamentals ${symbol || "<ticker>"}`,
-      `Net interest margin (Pro): ${symbol ? nimCommand(symbol) : "gloomberb fn EQS --metric kpiNimPercent"}`,
+      `Deposits, uninsured share, CRE / capital and the lead bank: gloom fundamentals ${symbol || "<ticker>"}`,
+      `Net interest margin (Pro): ${symbol ? nimCommand(symbol) : "gloom fn EQS --metric kpiNimPercent"}`,
     ].join("\n"),
   };
 }

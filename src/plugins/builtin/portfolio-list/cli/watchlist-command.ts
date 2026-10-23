@@ -25,8 +25,8 @@ import { addOneSymbol, addSymbols, FILE_OPTION, printSymbolRows, removeSymbols, 
 import { readNameEntries } from "../../../../cli/name-entries";
 import { CLI_COMMAND_GROUPS } from "../../../../cli/help";
 
-const ADD_USAGE = "Usage: gloomberb watchlist add <watchlist> <symbols...> [--file <path>]";
-const REMOVE_USAGE = "Usage: gloomberb watchlist remove <watchlist> <symbols...> [--file <path>]";
+const ADD_USAGE = "Usage: gloom watchlist add <watchlist> <symbols...> [--file <path>]";
+const REMOVE_USAGE = "Usage: gloom watchlist remove <watchlist> <symbols...> [--file <path>]";
 /** A collection's name as a command argument: quoted when it has spaces. */
 const quotedName = (name: string) => /\s/.test(name) ? `"${name}"` : name;
 
@@ -59,7 +59,7 @@ function requireWatchlistArgs(
 async function createWatchlist(name: string, ctx: CliCommandContext) {
   await withConfigData(ctx, async ({ config }) => {
     const trimmedName = name.trim();
-    if (!trimmedName) ctx.fail("Usage: gloomberb watchlist create <name>");
+    if (!trimmedName) ctx.fail("Usage: gloom watchlist create <name>");
 
     const id = slugifyName(trimmedName, "watchlist");
     const duplicate = config.watchlists.some((watchlist) =>
@@ -99,7 +99,7 @@ async function addTickerToWatchlistCommand(watchlist: Watchlist, symbol: string,
     symbol,
     exchange,
     collection: { kind: "watchlist", name: watchlist.name },
-    retry: (key) => `gloomberb watchlist add ${quotedName(watchlist.name)} ${key}`,
+    retry: (key) => `gloom watchlist add ${quotedName(watchlist.name)} ${key}`,
     add: (ticker) => addTickerToWatchlist(ticker, watchlist.id),
   });
 }
@@ -112,7 +112,7 @@ async function addToWatchlistCommand(args: string[], file: string | undefined, e
       await addTickerToWatchlistCommand(watchlist, list.single, exchange, ctx, market);
       return;
     }
-    const retry = (key: string) => `gloomberb watchlist add ${quotedName(watchlist.name)} ${key}`;
+    const retry = (key: string) => `gloom watchlist add ${quotedName(watchlist.name)} ${key}`;
     const dryRun = ctx.cliOptions.dryRun;
     const rows = await addSymbols({
       symbols: list.symbols,
@@ -247,21 +247,21 @@ export const watchlistCliCommand: CliCommandDef = {
 
     if (action === "show") {
       const name = args.slice(1).join(" ");
-      if (!name) ctx.fail("Usage: gloomberb watchlist show <name>");
+      if (!name) ctx.fail("Usage: gloom watchlist show <name>");
       await showCollection(name, ctx);
       return;
     }
 
     if (action === "create") {
       const name = args.slice(1).join(" ");
-      if (!name) ctx.fail("Usage: gloomberb watchlist create <name>");
+      if (!name) ctx.fail("Usage: gloom watchlist create <name>");
       await createWatchlist(name, ctx);
       return;
     }
 
     if (action === "delete" || action === "rm") {
       const name = args.slice(1).join(" ");
-      if (!name) ctx.fail("Usage: gloomberb watchlist delete <name>");
+      if (!name) ctx.fail("Usage: gloom watchlist delete <name>");
       await deleteWatchlist(name, ctx);
       return;
     }
@@ -282,7 +282,7 @@ export const watchlistCliCommand: CliCommandDef = {
       const path = /\.\w+$/.test(rest.at(-1) ?? "") ? rest.at(-1)! : null;
       const name = (path ? rest.slice(0, -1) : rest).join(" ") || "<watchlist>";
       ctx.fail(
-        `watchlist has no import. To add the symbols in ${path ?? "a file"}, run: gloomberb watchlist add ${/\s/.test(name) ? `"${name}"` : name} --file ${path ?? "<path>"}`,
+        `watchlist has no import. To add the symbols in ${path ?? "a file"}, run: gloom watchlist add ${/\s/.test(name) ? `"${name}"` : name} --file ${path ?? "<path>"}`,
         ADD_USAGE,
       );
     }

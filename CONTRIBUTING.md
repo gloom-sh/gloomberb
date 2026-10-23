@@ -1,6 +1,6 @@
 # Contributing
 
-Gloomberb is one Bun and React codebase with three front ends: the terminal app, rendered with [OpenTUI](https://opentui.com/); the desktop app, built on Electrobun; and the web app at term.gloom.sh. Almost every feature is a plugin drawn with a shared UI kit, so the same pane runs in all three.
+Gloom is one Bun and React codebase with three front ends: the terminal app, rendered with [OpenTUI](https://opentui.com/); the desktop app, built on Electrobun; and the web app at term.gloom.sh. Almost every feature is a plugin drawn with a shared UI kit, so the same pane runs in all three.
 
 Bug reports and pull requests are welcome. Please follow the [code of conduct](CODE_OF_CONDUCT.md), and report security issues privately as described in [SECURITY.md](SECURITY.md). Questions or ideas: join #contributors on [Discord](https://gloom.sh/discord).
 
@@ -49,7 +49,7 @@ This fetches the latest upstream version.
 | `src/renderers/electrobun/` | The desktop app: `bun/` is the native process, `view/` the desktop-only parts of the web view, `shared/` the protocol and RPC codec both use |
 | `src/renderers/browser/`, `src/renderers/cloudflare/` | The web app and the Cloudflare Worker that serves it |
 | `src/renderers/share/` | Public share pages |
-| `src/cli/` | `gloomberb <command>`, including the `fn` and `shot` pane reports |
+| `src/cli/` | `gloom <command>`, including the `fn` and `shot` pane reports |
 | `src/public/`, `src/types/` | The public plugin API, published as `gloomberb/*` (the `exports` in package.json) |
 | `src/i18n/` | Locale dictionaries |
 | `src/test-support/` | Shared test fixtures and fakes |
@@ -131,7 +131,7 @@ Tests run on `bun test` and sit next to the code they cover as `*.test.ts` or `*
 
 ### Host imports
 
-Built-in code under `src/` imports the host by relative path (`../../../ui`, `../../../components`, `../../../public/react`, `../../../theme/colors`). The `gloomberb/*` specifiers are the external-plugin API: Bun on Linux resolves them as a package self-reference, so typecheck and tests pass, but the Windows desktop bundle cannot resolve them and the Windows verify workflow on `main` fails. `src/architecture/import-boundaries.test.ts` fails on a `gloomberb` or `gloomberb/*` import in built-in code.
+Built-in code under `src/` imports the host by relative path (`../../../ui`, `../../../components`, `../../../public/react`, `../../../theme/colors`). The `gloomberb/*` specifiers are the external-plugin API: Bun on Linux resolves them as a package self-reference, so typecheck and tests pass, but the Windows desktop bundle cannot resolve them and the Windows verify workflow on `main` fails. `src/architecture/import-boundaries.test.ts` fails on a `gloom` or `gloomberb/*` import in built-in code.
 
 Core code outside `src/plugins/builtin/` should not import a specific built-in plugin. `src/architecture/core-builtin-boundary.test.ts` checks runtime sources, including type imports and dynamic imports, against `src/architecture/core-builtin-allowlist.json` and fails on new or stale file/plugin pairs. Move shared code to `src/<area>/` or `src/plugins/builtin/shared`; run `bun scripts/update-core-builtin-allowlist.ts` after removing an edge so the allowlist shrinks. If a new edge is necessary, regenerate the allowlist and explain why in the PR.
 

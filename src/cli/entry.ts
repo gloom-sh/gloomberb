@@ -7,6 +7,8 @@ import { measurePerfAsync } from "../utils/perf-marks";
 import { flushCrashReports, reportCrash } from "../telemetry/crash-reports";
 import { CRASH_REPORT_EXIT_FLUSH_MS } from "../telemetry/crash-reports-node";
 import type { CliLaunchRequest } from "../types/plugin";
+import { detectUpdateAction } from "../updater";
+import { linkStandaloneCommand } from "../updater/command-names";
 import {
   OPEN_TUI_NATIVE_SMOKE_COMMAND,
   OPEN_TUI_RUNTIME_SMOKE_COMMAND,
@@ -57,6 +59,10 @@ export async function runCliEntrypoint(rawArgs = process.argv.slice(2)): Promise
     await smokeShotView();
     process.exit(0);
   }
+
+  // The standalone binary updates by replacing itself, so one installed as
+  // `gloomberb` before the rename gets `gloom` beside it here.
+  if (detectUpdateAction()?.kind === "self") linkStandaloneCommand(process.execPath);
 
   if (!command || ((command === "launch-ui" || command === "ui") && !rawArgs.some(isCliHelpFlag))) {
     await launchOpenTuiApp();

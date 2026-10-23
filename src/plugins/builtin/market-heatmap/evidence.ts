@@ -1,5 +1,5 @@
 /**
- * What `gloomberb shot HM` certifies: the tab the heat map drew, what its tiles
+ * What `gloom shot HM` certifies: the tab the heat map drew, what its tiles
  * are sized by, how many tiles and sectors are plotted, and whether its
  * snapshot had loaded. The heat map has
  * no table rows or labeled values, so this is how a capture counts as data.

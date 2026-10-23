@@ -197,7 +197,7 @@ describe("createAppRemoteController", () => {
       expect(data.resources.some((resource) => resource.uri === "ui://tree")).toBe(true);
       expect(data.operations.some((operation) => operation.id === "ui.invoke")).toBe(true);
       expect(data.help).toMatchObject({
-        title: "Gloomberb remote control guide",
+        title: "Gloom remote control guide",
       });
     }
 
@@ -744,7 +744,7 @@ describe("view operations", () => {
 
     const noArgument = await create({ pane: "QQ" });
     expect(noArgument.ok).toBe(false);
-    if (!noArgument.ok) expect(noArgument.error.message).toContain("Usage: gloomberb fn QQ <symbol>");
+    if (!noArgument.ok) expect(noArgument.error.message).toContain("Usage: gloom fn QQ <symbol>");
 
     const badOption = await create({ pane: "MOST", options: { list: "stale" } });
     expect(badOption.ok).toBe(false);

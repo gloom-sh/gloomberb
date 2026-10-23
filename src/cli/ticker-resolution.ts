@@ -90,7 +90,7 @@ export interface CliTicker {
 }
 
 export interface CliTickerOptions {
-  /** The command that takes one listing, for the choices a failure names: `gloomberb watchlist add Growth 2222:JPX`. */
+  /** The command that takes one listing, for the choices a failure names: `gloom watchlist add Growth 2222:JPX`. */
   retry?: (key: string) => string;
   /** `--exchange` only fills in the symbols that name no exchange of their own, as for a list of symbols. */
   ownExchangeWins?: boolean;

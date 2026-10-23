@@ -1,6 +1,6 @@
 # Building Plugins
 
-Gloomberb is built on a plugin architecture — top-level product areas such as Portfolio and Ticker Research are plugins themselves. You can extend the app by writing your own.
+Gloom is built on a plugin architecture — top-level product areas such as Portfolio and Ticker Research are plugins themselves. You can extend the app by writing your own.
 
 ## Installing plugins
 
@@ -10,22 +10,22 @@ there is registered in the running session: its panes and commands exist as
 soon as the install finishes. The same operations exist as CLI commands:
 
 ```bash
-gloomberb install user/repo        # from GitHub shorthand
-gloomberb install https://github.com/user/repo  # from full URL
+gloom install user/repo        # from GitHub shorthand
+gloom install https://github.com/user/repo  # from full URL
 ```
 
 Manage installed plugins:
 
 ```bash
-gloomberb plugins                  # list installed plugins
-gloomberb update                   # update all plugins
-gloomberb update my-plugin         # update a specific plugin
-gloomberb remove my-plugin         # remove a plugin
-gloomberb plugin enable my-plugin  # turn one on or off without removing it
-gloomberb plugin disable my-plugin
+gloom plugins                  # list installed plugins
+gloom update                   # update all plugins
+gloom update my-plugin         # update a specific plugin
+gloom remove my-plugin         # remove a plugin
+gloom plugin enable my-plugin  # turn one on or off without removing it
+gloom plugin disable my-plugin
 ```
 
-Plugins are installed to `~/.gloomberb/plugins/`, or under `$GLOOMBERB_HOME/plugins/` when that variable relocates the folder. A new Linux install without `~/.gloomberb` uses `~/.local/share/gloomberb/plugins/` (see [Where your data lives](docs/installation.md#where-your-data-lives)); `gloomberb plugins` prints the folder in use.
+Plugins are installed to `~/.gloomberb/plugins/`, or under `$GLOOMBERB_HOME/plugins/` when that variable relocates the folder. A new Linux install without `~/.gloomberb` uses `~/.local/share/gloomberb/plugins/` (see [Where your data lives](docs/installation.md#where-your-data-lives)); `gloom plugins` prints the folder in use.
 
 A plugin listed at [gloom.sh/plugins](https://gloom.sh/plugins) uses the
 registry's published tag or commit when available. If the registry supplies a
@@ -40,17 +40,17 @@ registry, from the Plugins pane and the CLI alike.
 Either way the Plugins pane says when an update is waiting. For a pinned
 plugin that is the registry's commit; otherwise, including for a private
 repository, the pane asks the checkout's own remote where its default branch
-is, which is exactly where `update` would land it. `gloomberb plugins --check`
+is, which is exactly where `update` would land it. `gloom plugins --check`
 answers the same question from the terminal. The check needs whatever
 credentials the clone needs: a private repository without them is reported as
 nothing new rather than as an error, and it never blocks on a prompt.
 
 Official plugins, the registry entries published under
 [github.com/gloom-sh](https://github.com/gloom-sh), update themselves: once
-shortly after Gloomberb starts on a new version, then at most once a day, and
+shortly after Gloom starts on a new version, then at most once a day, and
 at startup for one that failed to load because it uses something this
-Gloomberb does not have. They take the same steps as `update`, forward only
-and never to code this Gloomberb is too old for, peers first. A linked
+Gloom does not have. They take the same steps as `update`, forward only
+and never to code this Gloom is too old for, peers first. A linked
 checkout, one with local edits, and one whose dependencies need `bun` when it
 is not on `PATH` are left alone, and the debug log says why. A plugin split
 across several files finishes updating at the next launch, and a single toast
@@ -67,7 +67,7 @@ Gateway, Public, Robinhood, SimpleFIN, Polls, Prediction Markets and BYOK AI.
 Windows does not ship `git`: install
 [Git for Windows](https://git-scm.com/download/win), then restart Gloom.
 Without it the app starts without them and says so at each launch, and
-`gloomberb doctor` names them; offline, it says once that it tries again at
+`gloom doctor` names them; offline, it says once that it tries again at
 the next launch. Git runs quietly: a failure reports git's last line.
 
 ## Developing a plugin
@@ -76,8 +76,8 @@ Work on a plugin from its own checkout rather than editing under
 `~/.gloomberb/plugins`:
 
 ```bash
-gloomberb plugin link ./my-plugin  # symlink the checkout into the plugins folder
-gloomberb plugin doctor my-plugin  # check it the way the app and the desktop build will
+gloom plugin link ./my-plugin  # symlink the checkout into the plugins folder
+gloom plugin doctor my-plugin  # check it the way the app and the desktop build will
 ```
 
 A linked plugin loads like an installed one, shows as `linked` in the Plugins
@@ -85,11 +85,11 @@ pane, is never reported as behind the registry, and is skipped by `update`.
 Removing it removes the link and leaves the checkout alone.
 
 Removal stops the plugin before deleting its files. If cleanup fails, the
-files stay in place and the Plugins pane asks you to restart Gloomberb before
+files stay in place and the Plugins pane asks you to restart Gloom before
 trying again; restarting is needed when cleanup left background work uncertain.
 
 `doctor` runs the checks that otherwise surface as a `failed` row in the pane
-or as a broken pane on the desktop: the entry file resolves, the Gloomberb the
+or as a broken pane on the desktop: the entry file resolves, the Gloom the
 plugin declares is not newer than this one, it imports nothing the host has
 removed or deprecated, the module evaluates, the export is a `GloomPlugin`,
 the id is not reserved, the targets are real, the hosts the source reaches are
@@ -99,22 +99,22 @@ sit in CI.
 
 ## Plugin compatibility
 
-Gloomberb updates itself and its official plugins; any other plugin moves only
+Gloom updates itself and its official plugins; any other plugin moves only
 when its user updates it, and an automatic update can be turned off or held
-back by local edits, so a checkout can be older or newer than the Gloomberb
+back by local edits, so a checkout can be older or newer than the Gloom
 loading it. Declare the
-oldest Gloomberb the plugin runs on in its `gloom.json`, and raise it whenever
+oldest Gloom the plugin runs on in its `gloom.json`, and raise it whenever
 the plugin starts using something a release added:
 
 ```json
 { "id": "my-plugin", "minGloom": "0.15.0" }
 ```
 
-A `>=0.15.0` range on `gloomberb` in `peerDependencies` works too; `gloom.json`
-wins when both are set, and anything else is ignored. An older Gloomberb does
+A `>=0.15.0` range on `gloom` in `peerDependencies` works too; `gloom.json`
+wins when both are set, and anything else is ignored. An older Gloom does
 not import the plugin at all: the Plugins pane shows `needs 0.15.0` on its row,
-and `gloomberb plugins` says why it is not loaded. A linked checkout is loaded
-anyway, since its author is usually running Gloomberb from source, and
+and `gloom plugins` says why it is not loaded. A linked checkout is loaded
+anyway, since its author is usually running Gloom from source, and
 `plugin doctor` reports the range instead.
 
 The plugin API changes by these rules:
@@ -125,7 +125,7 @@ The plugin API changes by these rules:
   `src/plugins/compat.ts`, which `plugin doctor` reports. It keeps working for
   at least one release after the official plugins have migrated off it.
 - A removed export is listed in `REMOVED_HOST_EXPORTS`. A stale checkout that
-  still imports it fails with "Uses X from gloomberb/y, removed in Gloomberb
+  still imports it fails with "Uses X from gloomberb/y, removed in Gloom
   Z. Update the plugin." rather than a bare import error, and `plugin doctor`
   fails on it.
 - Types can change in any release: a removed type never breaks a plugin at
@@ -250,7 +250,7 @@ is named in `gloom.json`, as a path inside the checkout; it is read up to
 
 Plugin IDs must not reuse current or retired built-in IDs. Retired module IDs remain reserved so saved configuration can be migrated safely to their current owning plugin.
 
-`ticker-research`, `macro` and `market-overview` are retired too: each now names the group of built-ins it was split into. In `disabledPlugins` the old id stands for all of its successors, and `gloomberb plugin enable|disable <id>` switches them together.
+`ticker-research`, `macro` and `market-overview` are retired too: each now names the group of built-ins it was split into. In `disabledPlugins` the old id stands for all of its successors, and `gloom plugin enable|disable <id>` switches them together.
 
 A plugin that changes its id keeps the state its users already have by declaring the old one as `stateId`:
 
@@ -362,7 +362,7 @@ build fails rather than shipping a pane that cannot fetch.
 
 ## What plugins can do
 
-Use `setup()` for interactive runtime registration, `capabilities` for reusable headless services, and `cliCommands` for root-level CLI commands that should be discoverable without rendering panes. Capability operations can still declare `cli` manifests (`summary`, input/output shape, formats, safety notes, side-effect level) for `gloomberb api list`.
+Use `setup()` for interactive runtime registration, `capabilities` for reusable headless services, and `cliCommands` for root-level CLI commands that should be discoverable without rendering panes. Capability operations can still declare `cli` manifests (`summary`, input/output shape, formats, safety notes, side-effect level) for `gloom api list`.
 
 ## Headless pane models
 
@@ -412,9 +412,9 @@ export default {
 
 A pane with `headless` automatically gets:
 
-- `gloomberb fn <TOKEN>` text output with shared aligned tables and section headings
-- `gloomberb fn <TOKEN> --json` through the normal `{ ok, data }` result envelope
-- `reportReadiness: "ready"` plus its declared options in `gloomberb catalog`
+- `gloom fn <TOKEN>` text output with shared aligned tables and section headings
+- `gloom fn <TOKEN> --json` through the normal `{ ok, data }` result envelope
+- `reportReadiness: "ready"` plus its declared options in `gloom catalog`
 - strict option validation for `fn`, including allowed enum values and numeric bounds
 
 The definition is the only structured report contract. Optional `discovery` metadata supplies semantic aliases, a stable capability ID, limitations, and screenshot readiness; the catalog derives argument cardinality and options directly. No central pane capability map or report switch is needed.
@@ -479,11 +479,11 @@ For a pane that fetches inside its component:
 3. Make the React pane call those same client and projection functions.
 4. Export a typed `headless` definition and attach it to the pane registration, or to each template when one pane has multiple contracts.
 5. Declare every supported argument and option. Do not read pane or renderer state from `load`.
-6. Verify text, JSON, option errors, and catalog readiness with `gloomberb fn` and `gloomberb catalog`.
+6. Verify text, JSON, option errors, and catalog readiness with `gloom fn` and `gloom catalog`.
 
 ## Renderer-neutral UI
 
-Plugins should treat Gloomberb's UI APIs as the renderer contract. Official plugins may render panes, Ticker Research tabs, and slot widgets with React, but plugin UI should import shared Gloom APIs such as `gloomberb/ui`, `gloomberb/react`, or the plugin runtime hooks instead of importing OpenTUI, Electrobun, DOM, or terminal renderer packages directly. Renderer-specific details like terminal keyboard events, kitty images, DOM pointer behavior, dialogs, and notifications belong in the renderer adapters.
+Plugins should treat Gloom's UI APIs as the renderer contract. Official plugins may render panes, Ticker Research tabs, and slot widgets with React, but plugin UI should import shared Gloom APIs such as `gloomberb/ui`, `gloomberb/react`, or the plugin runtime hooks instead of importing OpenTUI, Electrobun, DOM, or terminal renderer packages directly. Renderer-specific details like terminal keyboard events, kitty images, DOM pointer behavior, dialogs, and notifications belong in the renderer adapters.
 
 React plugin panes and Ticker Research tabs are wrapped in a plugin render context. Use plugin runtime hooks for app services from render code.
 
@@ -510,7 +510,7 @@ The `setup()` function receives a context object with these capabilities:
 
 ### Context menus
 
-Plugins can contribute items to native desktop context menus without importing Electrobun, the DOM, or OpenTUI directly. Use Gloomberb APIs from the plugin context, and let the renderer decide whether a native menu is available.
+Plugins can contribute items to native desktop context menus without importing Electrobun, the DOM, or OpenTUI directly. Use Gloom APIs from the plugin context, and let the renderer decide whether a native menu is available.
 
 ```typescript
 ctx.registerContextMenuProvider({
@@ -647,7 +647,7 @@ export const myPlugin: GloomPlugin = {
       },
       async execute(args, ctx) {
         if (args[0] !== "run") {
-          ctx.fail("Usage: gloomberb my-plugin run");
+          ctx.fail("Usage: gloom my-plugin run");
         }
 
         const services = await ctx.initServices();
@@ -674,7 +674,7 @@ export const myPlugin: GloomPlugin = {
 };
 ```
 
-`gloomberb help` lists every command under its `help.group`: one of Research, Company data, Markets, Functions, Portfolios, Plugins, or App, or a heading of your own. Commands without a group appear under Plugin commands. `gloomberb help <command>` and `gloomberb <command> --help` print the description, `usage` lines, aliases, `options`, any `sections` (`{ title, lines?, columns?, rows? }`), and `examples`. Write usage and examples without the leading `gloomberb`. The host handles `--help` and `-h` before `execute` runs, so a command never receives them as arguments.
+`gloom help` lists every command under its `help.group`: one of Research, Company data, Markets, Functions, Portfolios, Plugins, or App, or a heading of your own. Commands without a group appear under Plugin commands. `gloom help <command>` and `gloom <command> --help` print the description, `usage` lines, aliases, `options`, any `sections` (`{ title, lines?, columns?, rows? }`), and `examples`. Write usage and examples without the leading `gloom`. The host handles `--help` and `-h` before `execute` runs, so a command never receives them as arguments.
 
 Each CLI command owns one root namespace and parses its own subactions internally. Commands should call shared service/model code or capabilities, not pane React components. Only explicit visual commands such as screenshots should route through pane rendering.
 
@@ -777,7 +777,7 @@ Capability operations can also include CLI manifest metadata. This is what makes
     formats: ["text", "json"],
     sideEffectLevel: "none",
     requirements: ["enabled plugin"],
-    examples: ['gloomberb api invoke my-plugin.research \'{"symbol":"AAPL"}\' --json'],
+    examples: ['gloom api invoke my-plugin.research \'{"symbol":"AAPL"}\' --json'],
   },
   handler: async (input) => ({ symbol: input.symbol, rating: "watch", notes: [] }),
 }

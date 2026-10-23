@@ -5,7 +5,7 @@ import type { GloomPlugin, PaneDef } from "../types/plugin";
 
 /**
  * Every built-in pane definition, the panes a plugin registers in `setup()`
- * included, as `gloomberb catalog` finds them. `dispose` stops the plugins
+ * included, as `gloom catalog` finds them. `dispose` stops the plugins
  * that were set up.
  */
 export async function loadBuiltinPanes(): Promise<{ panes: Map<string, PaneDef>; dispose: () => void }> {

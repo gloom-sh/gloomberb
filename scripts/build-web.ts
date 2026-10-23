@@ -25,14 +25,14 @@ await mkdir(outdir, { recursive: true });
 // Tabs get the plain mark, like gloom.sh; the app icon tile is too small to read at 16px.
 await writeFile(join(outdir, "favicon.svg"), await readFile(join(root, "src/assets/gloomberb-mark.svg")));
 await writeFile(join(outdir, "favicon.ico"), await readFile(join(root, "src/assets/gloomberb-mark.ico")));
-// A web app manifest makes the browser offer "Install Gloomberb": the terminal
+// A web app manifest makes the browser offer "Install Gloom": the terminal
 // then gets its own window and a Dock or taskbar icon. People who start in the
 // browser come back far less often than people with the app installed.
 await writeFile(join(outdir, "app-icon-256.png"), await readFile(join(root, "icon.iconset/icon_256x256.png")));
 await writeFile(join(outdir, "app-icon-512.png"), await readFile(join(root, "icon.iconset/icon_512x512.png")));
 await writeFile(join(outdir, "manifest.webmanifest"), `${JSON.stringify({
-  name: "Gloomberb",
-  short_name: "Gloomberb",
+  name: "Gloom",
+  short_name: "Gloom",
   description: "An open-source financial terminal.",
   start_url: "/",
   scope: "/",
@@ -123,9 +123,9 @@ console.log(`Bundled ${bundledPlugins.length} plugins: ${bundledPlugins.map((ent
 await buildPage(
   "app",
   join(root, "src/renderers/browser/main.tsx"),
-  "Gloomberb",
-  "Loading Gloomberb...",
+  "Gloom",
+  "Loading Gloom...",
   "index.html",
   { __GLOOM_WEB_PLUGINS__: JSON.stringify(bundledPlugins) },
 );
-await buildPage("share", join(root, "src/renderers/share/main.tsx"), "Gloomberb Share", "Loading shared view...", "share.html");
+await buildPage("share", join(root, "src/renderers/share/main.tsx"), "Gloom Share", "Loading shared view...", "share.html");

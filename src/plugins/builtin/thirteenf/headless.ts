@@ -471,10 +471,10 @@ function thirteenFShotState(args: HeadlessPaneLoadArgs, metadata: Record<string,
       });
     }
     case "crowding":
-      if (query) throw new Error(`The 13F pane draws the whole crowding ranking, not one ticker's rank. Drop "${query}" from shot, or run the report: gloomberb fn 13F ${query} --view crowding`);
+      if (query) throw new Error(`The 13F pane draws the whole crowding ranking, not one ticker's rank. Drop "${query}" from shot, or run the report: gloom fn 13F ${query} --view crowding`);
       return { pluginState: { [PANE_STATE_ID]: { browserTab: "crowding", "13f-crowding:ranking": CROWDING_RANKING[String(metadata.rank ?? "new")] ?? "newCount" } } };
     case "performance":
-      if (cik) throw new Error(`The 13F pane draws the performance ranking, not one fund's row. Run the report for ${metadata.fund ?? cik}: gloomberb fn 13F ${cik} --view performance, or gloomberb shot 13F --view performance for the ranking.`);
+      if (cik) throw new Error(`The 13F pane draws the performance ranking, not one fund's row. Run the report for ${metadata.fund ?? cik}: gloom fn 13F ${cik} --view performance, or gloom shot 13F --view performance for the ranking.`);
       return browser("");
     case "latest":
       return browser("latest");
@@ -484,7 +484,7 @@ function thirteenFShotState(args: HeadlessPaneLoadArgs, metadata: Record<string,
       return browser(query);
     case "byTicker":
       // The pane lists a ticker's holders with their positions, and their whole books only when it cannot.
-      if (String(args.options.view) !== "auto") throw new Error(`The 13F pane lists a ticker's holders with their positions. Drop --view ${args.options.view} from shot, or run the report: gloomberb fn 13F ${query} --view by-ticker`);
+      if (String(args.options.view) !== "auto") throw new Error(`The 13F pane lists a ticker's holders with their positions. Drop --view ${args.options.view} from shot, or run the report: gloom fn 13F ${query} --view by-ticker`);
       return browser(query);
     default:
       return {};
@@ -796,7 +796,7 @@ export function createThirteenFHeadless(
       // A fund's own row of the performance list, with the command that copies its basket.
       if (view === "performance" && query && inferBrowserTabFromQuery(query) === "funds") {
         const fund = await resolveFund(query, args, ctx, dependencies, {
-          notFound: `No 13F fund matched "${query}". For the performance ranking, run gloomberb fn 13F --view performance; for one fund, give its CIK, as in gloomberb fn 13F 0001067983 --view performance.`,
+          notFound: `No 13F fund matched "${query}". For the performance ranking, run gloom fn 13F --view performance; for one fund, give its CIK, as in gloom fn 13F 0001067983 --view performance.`,
         });
         const performance = await dependencies.loadPerformance(fund.cik, fund.name, ctx);
         const row = performance.rows[0]!;
@@ -832,7 +832,7 @@ export function createThirteenFHeadless(
               performance.skipped?.length ? splitUnreadText(performance.skipped, "Left out of Est 13F") : "",
               performance.unavailable ? `No Est 13F${rankingText ? ` (${rankingText})` : ""}: ${performance.unavailable}` : "",
               ...filingGapNotes(performance.period ?? null, performance.filingGap ?? null),
-              `Copy this basket: gloomberb portfolio import --13f ${row.cik}`,
+              `Copy this basket: gloom portfolio import --13f ${row.cik}`,
             ].filter(Boolean),
           },
         };

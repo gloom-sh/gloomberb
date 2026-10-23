@@ -86,7 +86,7 @@ test("a bare symbol with no quote is asked on the venue it resolved to, then its
   // With no quote anywhere, one company's listings name the venue it resolved to and the others to try.
   const unquoted = await runQuote(["CSPX"], venueSource("CSPX", ["XETRA", "LSE"], {}));
   expect(unquoted.failure?.message).toBe("CSPX resolved to CSPX Fund (XETRA), which has no quote.");
-  expect(unquoted.failure?.details).toContain("CSPX:LSE CSPX Fund (try: gloomberb quote CSPX:LSE)");
+  expect(unquoted.failure?.details).toContain("CSPX:LSE CSPX Fund (try: gloom quote CSPX:LSE)");
 });
 
 test("a code several companies list is never quoted on one of them: it asks for an exchange, and only its row fails", async () => {
@@ -97,8 +97,8 @@ test("a code several companies list is never quoted on one of them: it asks for 
 
   const alone = await runQuote(["2222"], source);
   expect(alone.failure?.message).toBe("Choose an exchange for 2222.");
-  expect(alone.failure?.details).toContain("2222:JPX Kotobuki Spirits Co., Ltd. (try: gloomberb quote 2222:JPX)");
-  expect(alone.failure?.details).toContain("2222:TADAWUL Saudi Arabian Oil Co. (try: gloomberb quote 2222:TADAWUL)");
+  expect(alone.failure?.details).toContain("2222:JPX Kotobuki Spirits Co., Ltd. (try: gloom quote 2222:JPX)");
+  expect(alone.failure?.details).toContain("2222:TADAWUL Saudi Arabian Oil Co. (try: gloom quote 2222:TADAWUL)");
   // No listing was asked for its quote.
   expect(source.batches).toEqual([["2222"]]);
 
@@ -120,7 +120,7 @@ test("BDI asks for an exchange and says the Baltic Dry Index is not covered; on 
 
   const bare = await runQuote(["BDI"], source);
   expect(bare.failure?.message).toBe("Choose an exchange for BDI.");
-  expect(bare.failure?.details).toContain("BDI:TSX Black Diamond Group Limited (try: gloomberb quote BDI:TSX)");
+  expect(bare.failure?.details).toContain("BDI:TSX Black Diamond Group Limited (try: gloom quote BDI:TSX)");
   expect(bare.failure?.details).toContain("Baltic indices (BDI, Capesize, Panamax, Supramax) and freight forwards (FFA) are not covered.");
 
   const named = await runQuote(["BDI:TSX"], source);
@@ -196,9 +196,9 @@ test("a futures board code quotes its future where no security uses it, and name
   const names = { CSE: "Goldcana Resources Inc.", SET: "Global Connections Public Company Limited" };
   const gc = await runQuote(["GC"], venueSource("GC", ["CSE", "SET"], {}, names));
   expect(gc.failure?.message).toBe("Choose an exchange for GC.");
-  expect(gc.failure?.details).toContain("GC=F Gold future (try: gloomberb quote GC=F)");
+  expect(gc.failure?.details).toContain("GC=F Gold future (try: gloom quote GC=F)");
   // With no listing search knows, the future is still named.
-  expect((await runQuote(["ES"], venueSource("ES", [], {}))).failure?.details).toBe("ES=F E-Mini S&P 500 future (try: gloomberb quote ES=F)");
+  expect((await runQuote(["ES"], venueSource("ES", [], {}))).failure?.details).toBe("ES=F E-Mini S&P 500 future (try: gloom quote ES=F)");
   // A security that quotes keeps its code and says nothing of the future.
   const nova = await runQuote(["NG"], venueSource("NG", ["AMEX"], { NG: createTestQuote({ symbol: "NG", name: "NovaGold Resources Inc." }) }));
   expect([nova.rows.map((row) => row.target.symbol), nova.warnings]).toEqual([["NG"], []]);
@@ -206,7 +206,7 @@ test("a futures board code quotes its future where no security uses it, and name
 
 test("a bare index root points at its ^ index, whether it found nothing or another instrument", async () => {
   const none = await runQuote(["VIX"], venueSource("VIX", [], {}));
-  expect(none.failure?.details).toContain("gloomberb quote ^VIX");
+  expect(none.failure?.details).toContain("gloom quote ^VIX");
 
   const corvex = createTestQuote({ symbol: "MOVE", name: "Corvex, Inc.", instrumentType: "EQUITY" });
   const other = venueSource("MOVE", ["NASDAQ"], { MOVE: corvex, "MOVE:NASDAQ": corvex, "^MOVE": { ...corvex, instrumentType: "INDEX" } });
@@ -215,7 +215,7 @@ test("a bare index root points at its ^ index, whether it found nothing or anoth
   expect((await runQuote(["MOVE:NASDAQ"], other)).warnings).toEqual([]);
   expect((await runQuote(["^MOVE"], other)).warnings).toEqual([]);
 
-  expect(buildSearchReport({ query: "vix", candidates: [] })).toContain("gloomberb quote ^VIX");
+  expect(buildSearchReport({ query: "vix", candidates: [] })).toContain("gloom quote ^VIX");
   expect(buildSearchReport({ query: "AAPL", candidates: [] })).not.toContain("^");
 });
 
@@ -366,7 +366,7 @@ test("search lists a symbol it no longer finds as no longer trading with its las
   expect(fb.warnings).toEqual([`FB now lists ${fund}; Meta Platforms trades as META (changed 2022-06-09)`]);
   expect((fb.data as Array<{ category: string }>).map((row) => row.category)).not.toContain("No Longer Trading");
   // A symbol with no change and no quote says nothing more.
-  expect((await json("ZZZZ")).warnings).toEqual(['Search finds tickers and company names. Try: gloomberb catalog "ZZZZ"']);
+  expect((await json("ZZZZ")).warnings).toEqual(['Search finds tickers and company names. Try: gloom catalog "ZZZZ"']);
 });
 
 test("a pasted list is one row per symbol, in order, however it is separated, for quote and compare alike", async () => {

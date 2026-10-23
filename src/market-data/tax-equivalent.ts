@@ -112,7 +112,7 @@ export const TAX_RATE_OPTIONS: HeadlessPaneOptionDef[] = [
   },
 ];
 
-/** The same options in `gloomberb help fundamentals`. */
+/** The same options in `gloom help fundamentals`. */
 export const TAX_RATE_HELP_OPTIONS = [
   {
     flags: "--tax-rate <pct>",

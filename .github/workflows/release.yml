@@ -94,7 +94,7 @@ jobs:
             echo "Homebrew tap already up to date."
             exit 0
           fi
-          git commit -m "Update Gloomberb to $VERSION"
+          git commit -m "Update Gloom to $VERSION"
           git push
 
       - uses: actions/setup-node@v4
@@ -105,6 +105,10 @@ jobs:
       - name: Install npm 11 (required for trusted publishing)
         run: npm install -g npm@11
 
+      # One build under two names: @gloom/terminal, and gloomberb, the name
+      # installs from before the rename update from. Both install the gloom
+      # and gloomberb commands. A version already on npm is skipped, so a
+      # rerun publishes only what is missing.
       - name: Publish to npm
         run: |
           set -euo pipefail
@@ -113,7 +117,15 @@ jobs:
             echo "package.json is at $PACKAGE_VERSION but the tag is $GITHUB_REF_NAME; tag the commit bump-version.sh made." >&2
             exit 1
           fi
-          npm publish --access public --provenance
+          for PACKAGE_NAME in gloomberb @gloom/terminal; do
+            if npm view "$PACKAGE_NAME@$PACKAGE_VERSION" version >/dev/null 2>&1; then
+              echo "$PACKAGE_NAME@$PACKAGE_VERSION is already on npm."
+              continue
+            fi
+            npm pkg set "name=$PACKAGE_NAME"
+            npm publish --access public --provenance
+          done
+          git checkout -- package.json
 
       # The website re-captures its function screenshots against this release
       # and opens a PR there when a pane's layout changed.

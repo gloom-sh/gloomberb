@@ -288,7 +288,7 @@ test("fx --forward with --date says the forward is today's only and how to get e
     for (const args of [["USD/MXN", "--forward", "30d", "--date", "2026-09-02"], ["USD/MXN", "--date", "2026-09-02", "--forward", "30d"]]) {
       await expect(fx.execute(args, context)).rejects.toThrow(
         "fx --forward does not take --date: the forward is implied from today's spot and the latest short rates, and past short rates are not served.\n"
-        + "For that day's close: gloomberb fx USD/MXN --date 2026-09-02. For today's forward, drop --date.");
+        + "For that day's close: gloom fx USD/MXN --date 2026-09-02. For today's forward, drop --date.");
     }
     expect(spy).not.toHaveBeenCalled();
     expect(run.asked).toEqual([]);

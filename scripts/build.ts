@@ -120,11 +120,13 @@ async function smokeTestBinary(outfile: string, os: string, arch: string) {
 
   console.log("Smoke testing packaged binary...");
   const smokeDir = mkdtempSync(join(tmpdir(), "gloomberb-smoke-"));
+  // Named as installs from before the rename have it, so the run below also
+  // checks that the binary adds the gloom command beside itself.
   const smokeBinary = join(smokeDir, os === "windows" ? "gloomberb.exe" : "gloomberb");
   copyFileSync(outfile, smokeBinary);
   if (os !== "windows") chmodSync(smokeBinary, 0o755);
 
-  const checks = [
+  const checks: Array<{ command?: string; args: string[]; failureMessage: string }> = [
     {
       args: [OPEN_TUI_NATIVE_SMOKE_COMMAND],
       failureMessage: `Packaged binary failed to load OpenTUI native package: ${outfile}`,
@@ -145,13 +147,19 @@ async function smokeTestBinary(outfile: string, os: string, arch: string) {
       args: ["help"],
       failureMessage: `Packaged binary failed to launch: ${outfile}`,
     },
+    // Symlinks need extra rights on Windows, where the desktop installer ships both commands instead.
+    ...(os === "windows" ? [] : [{
+      command: join(smokeDir, "gloom"),
+      args: ["help"],
+      failureMessage: `Packaged binary did not add the gloom command beside gloomberb: ${outfile}`,
+    }]),
   ];
   let failureMessage: string | undefined;
 
   try {
     for (const check of checks) {
       const code = await runProcess(
-        [smokeBinary, ...check.args],
+        [check.command ?? smokeBinary, ...check.args],
         check.failureMessage,
         { cwd: smokeDir, stdout: "ignore" },
         true,

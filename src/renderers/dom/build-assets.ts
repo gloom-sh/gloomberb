@@ -40,7 +40,7 @@ function minifyOption(keepNames: boolean | undefined) {
 }
 
 // From this file rather than the working directory, so a build started from
-// any folder (`gloomberb shot` run from a checkout or a package install) finds
+// any folder (`gloom shot` run from a checkout or a package install) finds
 // the sources.
 const ELECTROBUN_VIEW_DIR = join(import.meta.dir, "..", "electrobun", "view");
 

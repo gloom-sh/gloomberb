@@ -55,7 +55,7 @@ import type { AlertCondition, AlertRule } from "./types";
  */
 const PRICE_DELIVERY = "the app alerts while it is running; sign in with Cloud sync for email or phone alerts when it is closed";
 
-const ADD_USAGE = "Usage: gloomberb alerts add <symbol> <above|below|crosses> <price>, alerts add <symbol> earnings [--days <n> | results], alerts add <CPI|FOMC> [--days <n>], alerts add [symbol] news <keyword>, alerts add [symbol] flow [premium] [calls|puts] [sweeps|blocks], alerts add <symbol> <iv|rr> <above|below> <level>, or alerts add <OCC contract> iv spike <points>";
+const ADD_USAGE = "Usage: gloom alerts add <symbol> <above|below|crosses> <price>, alerts add <symbol> earnings [--days <n> | results], alerts add <CPI|FOMC> [--days <n>], alerts add [symbol] news <keyword>, alerts add [symbol] flow [premium] [calls|puts] [sweeps|blocks], alerts add <symbol> <iv|rr> <above|below> <level>, or alerts add <OCC contract> iv spike <points>";
 const DAYS_RULE = `--days takes a whole number of days from 1 to ${MAX_LEAD_DAYS}; without it the alert goes off 1 day before.`;
 
 /** What `alerts add` was asked for, before any listing or date is looked up. */
@@ -109,7 +109,7 @@ export function parseAlertAddArgs(args: readonly string[], days: string | null |
     const event = parseMacroEventName(first);
     if (event) return { kind: "macro", event, leadDays: leadDays() };
     if (first.toLowerCase() === "earnings") {
-      throw new Error("Name the company: gloomberb alerts add <symbol> earnings, such as alerts add CRWV earnings --days 3.");
+      throw new Error("Name the company: gloom alerts add <symbol> earnings, such as alerts add CRWV earnings --days 3.");
     }
     throw new Error(
       `Unknown event "${first}". Event alerts take ${MACRO_EVENT_CLI_NAMES} (alerts add CPI --days 1) or a symbol with earnings (alerts add CRWV earnings --days 3); price alerts take a condition and a price (alerts add AAPL above 250).`,
@@ -152,15 +152,15 @@ const LEVEL_DIRECTIONS = ["above", "below"] as const;
 function readLevel(metric: IvLevelMetric, typed: string | undefined, symbol: string): number {
   const word = metric === "atm" ? "iv" : "rr";
   const example = metric === "atm" ? `alerts add ${symbol} iv above 50` : `alerts add ${symbol} rr below -5`;
-  if (!typed) throw new Error(`Name the level: gloomberb ${example}.`);
+  if (!typed) throw new Error(`Name the level: gloom ${example}.`);
   const unitError = ivLevelUnitError(metric, typed);
-  if (unitError) throw new Error(`${unitError}: gloomberb ${example}.`);
+  if (unitError) throw new Error(`${unitError}: gloom ${example}.`);
   const level = parseIvLevel(typed);
   const { min, max } = IV_LEVEL_RANGES[metric];
   if (!Number.isFinite(level) || level < min || level > max) {
     throw new Error(metric === "atm"
-      ? `An ${word} level is the 30-day ATM IV in percent, ${min} to ${max}, not "${typed}": gloomberb ${example}.`
-      : `An ${word} level is the 30-day 25-delta risk reversal in vol points, ${min} to ${max}, not "${typed}": gloomberb ${example}.`);
+      ? `An ${word} level is the 30-day ATM IV in percent, ${min} to ${max}, not "${typed}": gloom ${example}.`
+      : `An ${word} level is the 30-day 25-delta risk reversal in vol points, ${min} to ${max}, not "${typed}": gloom ${example}.`);
   }
   return level;
 }
@@ -181,7 +181,7 @@ function parseResearchAddArgs(args: readonly string[]): ResearchAddRequest | nul
     : [first, word(second), args.slice(2)] as const;
   if (kind === "news") {
     const keyword = tail.join(" ").trim();
-    if (!keyword) throw new Error(`Name a keyword or phrase: gloomberb alerts add ${symbol ?? "AAPL"} news buyback, or alerts add news "rate cut" for any company.`);
+    if (!keyword) throw new Error(`Name a keyword or phrase: gloom alerts add ${symbol ?? "AAPL"} news buyback, or alerts add news "rate cut" for any company.`);
     return { kind: "news", symbol, keyword };
   }
   if (kind === "flow") {
@@ -203,20 +203,20 @@ function parseResearchAddArgs(args: readonly string[]): ResearchAddRequest | nul
   if (!symbol || (kind !== "iv" && kind !== "rr")) return null;
   if (OCC_CONTRACT.test(symbol)) {
     if (kind !== "iv" || word(third) !== "spike") {
-      throw new Error(`An option contract takes an IV spike in vol points: gloomberb alerts add ${symbol.toUpperCase()} iv spike 5. For a level, name the underlying: alerts add ${symbol.replace(/^O:/i, "").match(/^[A-Z.]+/i)![0]!.toUpperCase()} iv above 50.`);
+      throw new Error(`An option contract takes an IV spike in vol points: gloom alerts add ${symbol.toUpperCase()} iv spike 5. For a level, name the underlying: alerts add ${symbol.replace(/^O:/i, "").match(/^[A-Z.]+/i)![0]!.toUpperCase()} iv above 50.`);
     }
     // Vol points, with the unit or without it: `5`, `5 pts`.
     const typed = rest.join(" ");
     const value = typed && !/%/.test(typed) ? parseIvLevel(typed) : Number.NaN;
     if (!Number.isFinite(value) || value < 0.1 || value > 100) {
-      throw new Error(`An IV spike is a rise of 0.1 to 100 vol points: gloomberb alerts add ${symbol.toUpperCase()} iv spike 5.`);
+      throw new Error(`An IV spike is a rise of 0.1 to 100 vol points: gloom alerts add ${symbol.toUpperCase()} iv spike 5.`);
     }
     return { kind: "iv_spike", contract: symbol.toUpperCase(), points: value };
   }
   const metric: IvLevelMetric = kind === "iv" ? "atm" : "rr";
   const direction = word(third);
   if (!(LEVEL_DIRECTIONS as readonly string[]).includes(direction)) {
-    throw new Error(`${kind === "iv" ? "An iv" : "An rr"} alert takes above or below and a level: gloomberb alerts add ${symbol} ${kind} ${kind === "iv" ? "above 50" : "below -5"}${kind === "iv" ? ", or iv spike on one OCC contract" : ""}.`);
+    throw new Error(`${kind === "iv" ? "An iv" : "An rr"} alert takes above or below and a level: gloom alerts add ${symbol} ${kind} ${kind === "iv" ? "above 50" : "below -5"}${kind === "iv" ? ", or iv spike on one OCC contract" : ""}.`);
   }
   // The level, with its unit or without it: `50`, `50%`, `-5.5 pts`.
   return { kind: "iv_level", symbol, metric, direction: direction as "above" | "below", level: readLevel(metric, rest.join(" "), symbol) };
@@ -254,7 +254,7 @@ const RESEARCH_EXCHANGES = new Set(["NASDAQ", "NYSE", "AMEX", "ARCA", "BATS", "O
 
 /** `alerts add` as typed, with another price: what an error tells someone to type. */
 function retypeCommand(symbol: string, condition: AlertCondition, price: number, exchange: string | null | undefined): string {
-  return `gloomberb alerts add ${symbol} ${condition} ${price}${exchange ? ` --exchange ${exchange}` : ""}`;
+  return `gloom alerts add ${symbol} ${condition} ${price}${exchange ? ` --exchange ${exchange}` : ""}`;
 }
 
 /**
@@ -435,7 +435,7 @@ export const alertsCliCommand: CliCommandDef = {
           if (!isUsListingExchange(venue)) {
             const what = research.kind === "news" ? "News alerting" : research.kind === "flow" ? "Options flow" : "Options data";
             const { message, details } = await usListingsOnlyMessage(what, quoted.listing, market,
-              (key) => `gloomberb alerts add ${key} ${args.slice(2).join(" ")}`);
+              (key) => `gloom alerts add ${key} ${args.slice(2).join(" ")}`);
             ctx.fail(message, details);
           }
         }
@@ -520,7 +520,7 @@ export const alertsCliCommand: CliCommandDef = {
           { key: "lastCheckedPrice", header: "Last Price", align: "right", optional: true },
           { key: "triggeredAt", header: "Triggered", optional: true },
         ],
-        empty: "No alerts. Add one with gloomberb alerts add AAPL above 250, alerts add CRWV earnings --days 3, or alerts add CPI --days 1.",
+        empty: "No alerts. Add one with gloom alerts add AAPL above 250, alerts add CRWV earnings --days 3, or alerts add CPI --days 1.",
       });
       return;
     }
@@ -565,7 +565,7 @@ export const alertsCliCommand: CliCommandDef = {
         const rules = requireEvents();
         const existing = rules.find((entry) => entry.kind === rule.kind && entry.target === rule.target && entry.value.toLowerCase() === rule.value.toLowerCase());
         if (existing) ctx.fail(`This alert already exists (ID ${existing.id}).`);
-        if (rules.length >= MAX_EVENT_ALERTS) ctx.fail(`Keep at most ${MAX_EVENT_ALERTS} event alerts. Delete one with gloomberb alerts delete <id>.`);
+        if (rules.length >= MAX_EVENT_ALERTS) ctx.fail(`Keep at most ${MAX_EVENT_ALERTS} event alerts. Delete one with gloom alerts delete <id>.`);
         await save({ events: [...rules, rule] });
         const kind = research!.kind;
         ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, alert: rule }, ...(read.length > 0 ? { warnings: read } : {}) }, {
@@ -582,7 +582,7 @@ export const alertsCliCommand: CliCommandDef = {
         if (existing) ctx.fail(scheduled.trigger === "results"
           ? `An alert for ${name} results already exists (ID ${existing.id}).`
           : `An alert ${plural(scheduled.leadDays, "day")} before ${name} already exists (ID ${existing.id}).`);
-        if (rules.length >= MAX_EVENT_ALERTS) ctx.fail(`Keep at most ${MAX_EVENT_ALERTS} event alerts. Delete one with gloomberb alerts delete <id>.`);
+        if (rules.length >= MAX_EVENT_ALERTS) ctx.fail(`Keep at most ${MAX_EVENT_ALERTS} event alerts. Delete one with gloom alerts delete <id>.`);
         await save({ events: [...rules, rule] });
         const eventDate = rule.eventDate!;
         const due = scheduledPhase(eventDate, scheduled.leadDays, undefined, today) === "due";
@@ -599,7 +599,7 @@ export const alertsCliCommand: CliCommandDef = {
         return;
       }
       if (action === "delete" || action === "rm") {
-        const id = requireArg(args[1], "Usage: gloomberb alerts delete <id>", ctx);
+        const id = requireArg(args[1], "Usage: gloom alerts delete <id>", ctx);
         const isPrice = alerts.some((alert) => alert.id === id);
         const isEvent = !isPrice && events.rules.some((rule) => rule.id === id);
         if (!isPrice && !isEvent && alertsError) ctx.fail(alertsError);
@@ -614,7 +614,7 @@ export const alertsCliCommand: CliCommandDef = {
         return;
       }
       if (action === "rearm") {
-        const id = requireArg(args[1], "Usage: gloomberb alerts rearm <id>", ctx);
+        const id = requireArg(args[1], "Usage: gloom alerts rearm <id>", ctx);
         const isPrice = alerts.some((alert) => alert.id === id);
         const rule = isPrice ? null : events.rules.find((entry) => entry.id === id) ?? null;
         if (!isPrice && !rule && alertsError) ctx.fail(alertsError);
@@ -634,7 +634,7 @@ export const alertsCliCommand: CliCommandDef = {
         });
         return;
       }
-      ctx.fail("Usage: gloomberb alerts list|add|delete|rearm");
+      ctx.fail("Usage: gloom alerts list|add|delete|rearm");
     });
   },
 };

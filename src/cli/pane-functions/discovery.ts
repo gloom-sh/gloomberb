@@ -37,7 +37,7 @@ function unavailable<T>(name: string): T {
  * Context that collects `setup()`-registered panes and templates without
  * booting the real plugin runtime or its polling engines. Keep this object
  * exhaustively typed so additions to GloomPluginContext fail at compile time
- * instead of crashing `gloomberb catalog` at runtime.
+ * instead of crashing `gloom catalog` at runtime.
  */
 export function createPaneDiscoveryContext(options: PaneDiscoveryOptions): GloomPluginContext & {
   panes: Map<string, PaneDef>;

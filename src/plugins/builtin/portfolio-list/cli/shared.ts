@@ -91,9 +91,9 @@ export function misplacedSymbolList(
   const more = collections.length - names.length;
   const existing = names.length > 0
     ? `${label}: ${names.join(", ")}${more > 0 ? ` and ${more} more` : ""}`
-    : `no ${label} yet, create one with \`gloomberb ${noun} create <name>\``;
+    : `no ${label} yet, create one with \`gloom ${noun} create <name>\``;
   return {
-    message: `"${preview}" reads as a list of symbols, not a ${noun} name; did you mean \`gloomberb ${noun} ${verb} <name> <list>\`; ${existing}`,
+    message: `"${preview}" reads as a list of symbols, not a ${noun} name; did you mean \`gloom ${noun} ${verb} <name> <list>\`; ${existing}`,
     details: usage,
   };
 }
@@ -146,6 +146,6 @@ export function rejectCashSymbol(symbol: string, exchange: string | undefined, p
   if (!isCashArgument(symbol, exchange)) return;
   throw new PortfolioCliError(
     "CASH is the portfolio's cash line, not a ticker.",
-    `Record cash with: gloomberb portfolio cash set "${portfolioName}" <amount> [currency]. For the stock that trades as CASH, name its exchange: CASH:NASDAQ.`,
+    `Record cash with: gloom portfolio cash set "${portfolioName}" <amount> [currency]. For the stock that trades as CASH, name its exchange: CASH:NASDAQ.`,
   );
 }

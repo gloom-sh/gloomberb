@@ -464,7 +464,7 @@ describe("performUpdate", () => {
     expect(fetched).toBe(false);
     expect(progress).toEqual([{
       phase: "error",
-      error: "Update through the package manager that installed Gloomberb: the install is on a read-only file system.",
+      error: "Update through the package manager that installed Gloom: the install is on a read-only file system.",
     }]);
   });
 
@@ -494,7 +494,7 @@ describe("performUpdate", () => {
       expect(progress).toEqual([
         {
           phase: "error",
-          error: "Self-update is unavailable when running from source or via Bun/Node. Relaunch the packaged gloomberb binary to update.",
+          error: "Self-update is unavailable when running from source or via Bun/Node. Relaunch the packaged gloom binary to update.",
         },
       ]);
     } finally {
