@@ -1,5 +1,5 @@
 import { Box } from "../../../ui";
-import { Button, PaneStatusBody, PaneFooterScope, usePaneTabs } from "../../../components";
+import { Button, Notice, PaneStatusBody, PaneFooterScope, usePaneTabs } from "../../../components";
 import { usePluginPaneState } from "../../runtime";
 import { EventAlertsPane } from "./events-pane";
 import { AlertHistoryPane } from "./history-pane";
@@ -114,22 +114,16 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
   const showHorizontalScrollbar = ALERT_TABLE_CONTENT_WIDTH > width;
   const storeError = useMemo(() => readAlertsStoreError(alertsJson), [alertsJson]);
 
-  const { alerts, rows, quoteError } = useMemo(() => {
+  const { alerts, rows } = useMemo(() => {
     const parsed = deserializeAlerts(alertsJson);
     const activeAlerts = parsed.filter((a) => a.status === "active");
     const triggeredAlerts = parsed
       .filter((a) => a.status === "triggered")
       .sort((a, b) => (b.triggeredAt ?? 0) - (a.triggeredAt ?? 0));
 
-    // A quote one alert could not get is said on its row ("No quote"). Only
-    // when none came is it the whole pane's, in its footer.
-    const failed = activeAlerts.flatMap((alert) => alert.lastCheckError ? [alert.lastCheckError] : []);
-    const reasons = [...new Set(failed)];
-    const noQuotes = activeAlerts.length > 0 && failed.length === activeAlerts.length;
     return {
       alerts: parsed,
       rows: [...activeAlerts, ...triggeredAlerts],
-      quoteError: !noQuotes ? null : reasons.length === 1 ? reasons[0]! : "quotes unavailable",
     };
   }, [alertsJson]);
 
@@ -162,6 +156,16 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
     const quote = streamedAlertQuote(resolveEntryData(liveEntries.get(buildQuoteKey(alertInstrument(alert)))));
     return quote ? { ...alert, ...quoteAlertFields(quote, quote.receivedAt) } : alert;
   }), [liveEntries, rows]);
+  // A quote one alert could not get is said on its row ("No quote"), and in
+  // full under the table while the row is selected. Only when no active alert
+  // got one is it the whole pane's, in its footer.
+  const quoteError = useMemo(() => {
+    const active = displayRows.filter((alert) => alert.status === "active");
+    const failed = active.flatMap((alert) => alert.lastCheckError ? [alert.lastCheckError] : []);
+    if (active.length === 0 || failed.length < active.length) return null;
+    const reasons = [...new Set(failed)];
+    return reasons.length === 1 ? reasons[0]! : "quotes unavailable";
+  }, [displayRows]);
 
   const savePaneAlerts = useCallback((next: (current: AlertRule[]) => AlertRule[]): string | null => {
     let error: string | null = null;
@@ -209,6 +213,12 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
   }, [deleteAlert, rows, selectedIdx]);
 
   const selectedRule = rows[selectedIdx];
+  const selectedShown = displayRows[selectedIdx];
+  const selectedQuoteError = !quoteError && selectedShown?.lastCheckError
+    ? selectedShown.lastCheckError.includes(selectedShown.symbol)
+      ? selectedShown.lastCheckError
+      : `${selectedShown.symbol}: ${selectedShown.lastCheckError}`
+    : null;
   const selectedTarget = useMemo(() => selectedRule ? alertTarget(priceRuleSubject(selectedRule)) : null, [selectedRule]);
   const openTarget = useOpenAlertTarget();
 
@@ -370,6 +380,11 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
       renderCell={renderCell}
       selectedTextOverridesCellColor
       status={displayRows.length === 0 && storeError ? { error: storeError, subject: "price alerts" } : undefined}
+      rootAfter={selectedQuoteError ? (
+        <Box paddingX={1} flexShrink={0}>
+          <Notice tone="warning">{selectedQuoteError}</Notice>
+        </Box>
+      ) : undefined}
       emptyStateTitle="No alerts"
       emptyContent={
         <PaneStatusBody empty emptyTitle="No alerts" actions={<Button label="Add alert" compact onPress={startAddAlert} />} />

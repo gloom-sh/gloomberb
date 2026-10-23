@@ -39,7 +39,7 @@ import { isPlainKey } from "../../../utils/keyboard";
 import { usePluginAppActions, usePluginBrokerActions } from "../../runtime";
 import { BrokerProfileForm, profileFieldWidth, type BrokerEditKey } from "./detail";
 import { useBrokerManagerKeyboard } from "./keyboard";
-import type { BrokerManagerMessage, BrokerRowNote } from "./pane-actions";
+import type { BrokerManagerMessage, BrokerRowNoteInput } from "./pane-actions";
 
 /**
  * Adding a profile, one step at a time in the pane's detail: the broker, how
@@ -90,7 +90,7 @@ export function useBrokerAddFlow({
   setBusy: (busy: string | null) => void;
   setMessage: (message: BrokerManagerMessage | null) => void;
   /** Says on the new profile's row why its first sync failed. */
-  setRowNote: (profileId: string, note: Omit<BrokerRowNote, "at"> | null) => void;
+  setRowNote: (profileId: string, note: BrokerRowNoteInput | null) => void;
   /** Lands the pane on the profile the flow made, with the flow closed. */
   onProfileAdded: (instanceId: string) => void;
 }) {
@@ -282,7 +282,7 @@ export function useBrokerAddFlow({
     } finally {
       if (committing) committingRef.current = false;
     }
-  }, [createBrokerInstance, dialog, getState, setMessage, setStep, showAttempt, syncNewProfile]);
+  }, [createBrokerInstance, dialog, getState, setMessage, setStep, showAttempt, syncNewProfile, updateBrokerInstance]);
 
   const chooseMethod = useCallback((entry: BrokerDirectoryEntry, method: BrokerMethod) => {
     const current = flowRef.current;

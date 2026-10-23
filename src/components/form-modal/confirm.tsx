@@ -74,7 +74,8 @@ export function ConfirmModalContent({
       pendingRef.current = false;
       if (!mountedRef.current) {
         // Closed while it ran: the inline error has nowhere to go.
-        runtime.getDeps().pluginRegistry.notify({ body: errorMessage(failure), type: "error" });
+        if (confirm.onFailureAfterClose) confirm.onFailureAfterClose(failure);
+        else runtime.getDeps().pluginRegistry.notify({ body: errorMessage(failure), type: "error" });
         return;
       }
       setPending(false);

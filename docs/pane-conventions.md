@@ -342,12 +342,16 @@ each is that row's.
   the row, the cell says so (`Syncing…`, `removing`).
 - The full reason goes in the row's own detail, where the app already shows
   the row (the stack detail Enter opens, the inspector): the broker's words,
-  the step that failed. Name the step that failed, not the action the user
-  asked for: enabling a profile that then fails to sync says it was enabled
-  and that the sync failed.
+  the step that failed. A table with no detail says it under the table while
+  the row is selected (`rootAfter`, a `Notice`), as Alerts does. Name the
+  step that failed, not the action the user asked for: enabling a profile
+  that then fails to sync says it was enabled and that the sync failed.
 - The state stands until the next action on the row, or until the row's own
-  status moves on past it. A success the row's cells already show (Connected,
-  synced now) needs no message.
+  status really changes (its state, its message, a sync), never on a
+  timestamp a poll can bump. A success the row's cells already show
+  (Connected, synced now) needs no message.
+- What stops a form from saving is the form's, not the row's: it goes beside
+  the form's Save, where it is in view, and goes with the form.
 - Only when the row is gone (removed, left the list) is what became of it a
   toast. When every row fails the same way (no quotes at all), that is the
   pane's, in its footer.

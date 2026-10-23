@@ -218,8 +218,8 @@ function EntryDetail({ entry, width, host, status, failure }: {
   host: MarketplaceHost | null;
   /** The row's STATUS. */
   status: MarketplaceStatus;
-  /** What the last install, update or removal of this plugin ran into, in full. */
-  failure: string | null;
+  /** What the last action on this plugin ran into, said in full. */
+  failure: ActionFailure | null;
 }) {
   const contributes = describeContributions(entry, host);
   const live = entry.installed && host ? host.contributions(entry.id) : null;
@@ -245,7 +245,7 @@ function EntryDetail({ entry, width, host, status, failure }: {
 
       {failure ? (
         <Box paddingTop={1} flexDirection="column">
-          <Text fg={colors.negative} wrapText>{failure}</Text>
+          <Text fg={STATUS_COLORS[failure.kind ?? "failed"]} wrapText>{failure.text}</Text>
         </Box>
       ) : null}
 
@@ -414,12 +414,22 @@ function PackChangeBody({ change, name }: { change: PackChange; name: (id: strin
 type Busy = { id: string; verb: "installing" | "updating" | "removing" } | null;
 
 /**
- * What the last install, update or removal of one plugin ran into, said on its
- * row: `status` in STATUS, `text` in its detail.
+ * What the last action on one plugin ran into, said on its row: `status` in
+ * STATUS, `text` in its detail. It stands while the row's own status is what
+ * it was when the failure first showed (`baseline`), and goes when that moves:
+ * a toggle, a restart, a later install.
  */
 interface ActionFailure {
   status: string;
   text: string;
+  /** STATUS's tone; a failure by default. */
+  kind?: MarketplaceStatusKind;
+  baseline?: string;
+}
+
+function statusKey(entry: MarketplaceEntry): string {
+  const status = statusOf(entry);
+  return `${status.kind}:${status.text}`;
 }
 
 export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
@@ -443,7 +453,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
   const [busy, setBusy] = useState<Busy>(null);
   // By plugin id, until the next action on the plugin.
   const [failures, setFailures] = useState<Readonly<Record<string, ActionFailure>>>({});
-  const setFailure = useCallback((id: string, failure: ActionFailure | null) => {
+  const setFailure = useCallback((id: string, failure: Omit<ActionFailure, "baseline"> | null) => {
     setFailures((current) => {
       if (!failure && !current[id]) return current;
       const { [id]: _previous, ...rest } = current;
@@ -493,12 +503,31 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
       return facts;
     };
   }, [entries, host]);
+  // A failure takes the row's status as the list shows it after the action,
+  // and goes once that status moves on.
+  useEffect(() => {
+    setFailures((current) => {
+      let next: Record<string, ActionFailure> | null = null;
+      for (const [id, failure] of Object.entries(current)) {
+        const entry = entries.find((candidate) => candidate.id === id);
+        if (!entry) continue;
+        const key = statusKey(entry);
+        if (failure.baseline === undefined) (next ??= { ...current })[id] = { ...failure, baseline: key };
+        else if (failure.baseline !== key) delete (next ??= { ...current })[id];
+      }
+      return next ?? current;
+    });
+  }, [entries, failures]);
+  const failureFor = useCallback((entry: MarketplaceEntry): ActionFailure | null => {
+    const failure = failures[entry.id];
+    return failure && (failure.baseline === undefined || failure.baseline === statusKey(entry)) ? failure : null;
+  }, [failures]);
   // What an action on one plugin is doing, or ran into, is said on its row.
   const rowStatus = useCallback((entry: MarketplaceEntry): MarketplaceStatus => {
     if (busy?.id === entry.id) return { kind: "none", text: busy.verb };
-    const failure = failures[entry.id];
-    return failure ? { kind: "failed", text: failure.status } : statusOf(entry);
-  }, [busy, failures]);
+    const failure = failureFor(entry);
+    return failure ? { kind: failure.kind ?? "failed", text: failure.status } : statusOf(entry);
+  }, [busy, failureFor]);
   const renderRow = useCallback((
     row: MarketplaceRow,
     column: Column,
@@ -601,15 +630,24 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
 
   /**
    * The registry's code for this plugin needs a newer Gloomberb. Installing or
-   * updating would land it anyway and it would then fail to compile, so the
-   * keys do nothing: the row's STATUS and its detail say what it needs. Also
-   * leaves a working older checkout alone, and does not update one that
-   * already needs a newer Gloomberb: updates only move forward, so that would
-   * not help either.
+   * updating would land it anyway and it would then fail to compile, so say
+   * what to do instead, on the row: its STATUS already says `needs …` unless
+   * something outranks it there (`failed`, `needs restart`). Also leaves a
+   * working older checkout alone, and does not update one that already needs
+   * a newer Gloomberb: updates only move forward, so that would not help either.
    */
-  const refuseTooNew = useCallback((entry: MarketplaceEntry): boolean => (
-    !!(requiredGloomberb(entry.minGloomberb) ?? entry.needsGloomberb)
-  ), []);
+  const refuseTooNew = useCallback((entry: MarketplaceEntry): boolean => {
+    const required = requiredGloomberb(entry.minGloomberb) ?? entry.needsGloomberb;
+    if (!required) return false;
+    if (statusOf(entry).kind !== "needs-gloomberb") {
+      setFailure(entry.id, {
+        kind: "needs-gloomberb",
+        status: `needs ${required}`,
+        text: `${entry.name} needs Gloomberb ${required}. Update Gloomberb first.`,
+      });
+    }
+    return true;
+  }, [setFailure]);
 
   const installSelected = useCallback(async () => {
     if (!selected || !isInstallable(selected) || !manager || !host || busy) return;
@@ -677,6 +715,18 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
     }
   }, [announceAdded, bump, busy, host, manager, notify, refuseTooNew, selected, setFailure]);
 
+  /**
+   * A removal that failed is said on the plugin's row while the list still
+   * has one. A stopped plugin can leave the list, files and all; then only a
+   * toast is left to say it.
+   */
+  const failRemoval = useCallback((entry: MarketplaceEntry, failure: Omit<ActionFailure, "baseline">) => {
+    const installed = host?.listInstalled() ?? [];
+    const listed = mergeCatalog({ registry, installed, target, remoteHeads }).some((candidate) => candidate.id === entry.id);
+    if (listed) setFailure(entry.id, failure);
+    else notify({ body: failure.text, type: "error" });
+  }, [host, notify, registry, remoteHeads, setFailure, target]);
+
   const removeSelected = useCallback(async () => {
     if (!selected || !isManaged(selected) || !manager || !host || busy) return;
     const entry = selected;
@@ -698,19 +748,19 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
       await manager.deactivate?.(entry.id);
       await host.deactivate(entry.id, entry.directory);
       removalStarted = true;
-      // Stopped, the plugin has left the list: what removing it came to has no row to go on.
       const result = await manager.remove(entry.directory!);
       if (result.ok) notify({ body: `Removed ${entry.name}.`, type: "success" });
-      else notify({ body: `Could not remove ${entry.name}: ${result.error}`, type: "error" });
+      else failRemoval(entry, { status: "remove failed", text: `Could not remove ${entry.name}: ${result.error}` });
     } catch (error) {
       logFailure("plugin-marketplace.pane", "Remove plugin failed")(error);
-      if (removalStarted) notify({ body: `Could not remove ${entry.name}. Removal failed. Restart and try again.`, type: "error" });
-      else setFailure(entry.id, { status: "stop failed", text: `Could not remove ${entry.name}. Plugin could not be stopped. Files kept. Restart before removing it.` });
+      failRemoval(entry, removalStarted
+        ? { status: "remove failed", text: `Could not remove ${entry.name}. Removal failed. Restart and try again.` }
+        : { status: "stop failed", text: `Could not remove ${entry.name}. Plugin could not be stopped. Files kept. Restart before removing it.` });
     } finally {
       setBusy(null);
       bump();
     }
-  }, [bump, busy, confirmWidth, dialog, host, manager, notify, selected, setFailure]);
+  }, [bump, busy, confirmWidth, dialog, failRemoval, host, manager, notify, selected]);
 
   const toggleSelected = useCallback(async () => {
     if (!host || !selected || !selected.installed || !selected.toggleable || selected.loadError) return;
@@ -975,7 +1025,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
         detailContent={selected
           ? selected.bundled
             ? <BuiltinDetail entry={selected} width={width} facts={factsFor(selected)} scrollRef={detailScrollRef} />
-            : <EntryDetail entry={selected} width={width} host={host} status={rowStatus(selected)} failure={failures[selected.id]?.text ?? null} />
+            : <EntryDetail entry={selected} width={width} host={host} status={rowStatus(selected)} failure={failureFor(selected)} />
           : null}
         detailTitle={selected?.name}
         rootBefore={(

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import {
   buildBrokerProfileConfig,
   createBrokerProfileDraft,
@@ -35,12 +35,28 @@ export interface BrokerManagerMessage {
  * message. It stands until the next action on the profile, or until the
  * profile's own status or sync moves on past it.
  */
-export interface BrokerRowNote {
+export interface BrokerRowNoteInput {
   tone: "info" | "error";
   text: string;
   /** A failure's short state for STATUS, "Sync failed"; none keeps the row's own state. */
   status?: string;
-  at: number;
+}
+
+export interface BrokerRowNote extends BrokerRowNoteInput {
+  /**
+   * What the row said when the note first showed (`rowSignature`). A change
+   * to it is newer news than the note, which then goes.
+   */
+  baseline?: string;
+}
+
+/**
+ * The parts of a row a real change moves: its state, its status message and
+ * when it last synced. Not the status's `updatedAt`, which an adapter may
+ * stamp on every read, nor a sign-in's end, which the pane reads on its own.
+ */
+function rowSignature(row: BrokerProfileRow): string {
+  return [row.state, row.stateLabel, row.message, row.lastSyncedAt].join("\0");
 }
 
 /** What a row shows of the pane's own work on it. */
@@ -55,6 +71,7 @@ function errorText(error: unknown, fallback: string): string {
 }
 
 export function useBrokerManagerActions({
+  rows,
   selectedRow,
   editDraft,
   setEditDraft,
@@ -63,6 +80,7 @@ export function useBrokerManagerActions({
   setSelectedId,
   refreshStatuses,
 }: {
+  rows: readonly BrokerProfileRow[];
   selectedRow: BrokerProfileRow | null;
   editDraft: BrokerProfileDraft | null;
   setEditDraft: Dispatch<SetStateAction<BrokerProfileDraft | null>>;
@@ -87,16 +105,33 @@ export function useBrokerManagerActions({
   }, []);
   const busy = busyState?.text ?? null;
   const [message, setMessage] = useState<BrokerManagerMessage | null>(null);
+  // What stops the open edit form from saving, said beside its Save.
+  const [editError, setEditError] = useState<string | null>(null);
   const [rowNotes, setRowNotes] = useState<ReadonlyMap<string, BrokerRowNote>>(() => new Map());
-  const setRowNote = useCallback((profileId: string, note: Omit<BrokerRowNote, "at"> | null) => {
+  const setRowNote = useCallback((profileId: string, note: BrokerRowNoteInput | null) => {
     setRowNotes((current) => {
       if (!note && !current.has(profileId)) return current;
       const next = new Map(current);
-      if (note) next.set(profileId, { ...note, at: Date.now() });
+      if (note) next.set(profileId, note);
       else next.delete(profileId);
       return next;
     });
   }, []);
+  // A note takes the row as it is when the note first shows, with the status
+  // the failure left, and goes when that row moves on: a new state, message or sync.
+  useEffect(() => {
+    setRowNotes((current) => {
+      let next: Map<string, BrokerRowNote> | null = null;
+      for (const [id, note] of current) {
+        const row = rows.find((entry) => entry.id === id);
+        if (!row) continue;
+        const signature = rowSignature(row);
+        if (note.baseline === undefined) (next ??= new Map(current)).set(id, { ...note, baseline: signature });
+        else if (note.baseline !== signature) (next ??= new Map(current)).delete(id);
+      }
+      return next ?? current;
+    });
+  }, [rowNotes, rows]);
   /** Starts an action on a profile: its row says so, in place of the last one's result. */
   const startRowAction = useCallback((profileId: string, text: string) => {
     setRowNote(profileId, null);
@@ -106,8 +141,7 @@ export function useBrokerManagerActions({
     const note = rowNotes.get(row.id);
     return {
       busy: busyState?.profileId === row.id ? busyState.text : null,
-      // A later status or sync, from anywhere, is newer news than the note.
-      note: note && row.updatedAt <= note.at && row.lastSyncedAt <= note.at ? note : null,
+      note: note && (note.baseline === undefined || note.baseline === rowSignature(row)) ? note : null,
     };
   }, [busyState, rowNotes]);
 
@@ -119,23 +153,33 @@ export function useBrokerManagerActions({
     }
     setEditDraft(draft);
     setActiveEditKey("label");
-    setRowNote(selectedRow.id, null);
+    setEditError(null);
+    setMessage(null);
     setDetailOpen(true);
-  }, [selectedRow, setActiveEditKey, setDetailOpen, setEditDraft, setRowNote]);
+  }, [selectedRow, setActiveEditKey, setDetailOpen, setEditDraft]);
 
-  // The edit form is in the profile's detail, so what stops a save is said there, not in STATUS.
+  // The form goes, and what it said with it.
+  const cancelEdit = useCallback(() => {
+    setEditDraft(null);
+    setEditError(null);
+    setMessage(null);
+  }, [setEditDraft]);
+
+  // What stops a save is about the open form, so it is said beside its Save, not on the row.
   const saveEdit = useCallback(async () => {
     if (!selectedRow?.adapter || !editDraft) return;
+    setMessage(null);
     const label = editDraft.label.trim();
     if (!label) {
-      setRowNote(selectedRow.id, { tone: "error", text: t("Profile label is required.") });
+      setEditError(t("Profile label is required."));
       return;
     }
     const validationError = validateBrokerProfileValues(selectedRow.adapter, editDraft.values, selectedRow.instance);
     if (validationError) {
-      setRowNote(selectedRow.id, { tone: "error", text: validationError });
+      setEditError(validationError);
       return;
     }
+    setEditError(null);
 
     try {
       startRowAction(selectedRow.id, t("Saving…"));
@@ -155,11 +199,11 @@ export function useBrokerManagerActions({
       // The row shows the saved profile.
       setEditDraft(null);
     } catch (error) {
-      setRowNote(selectedRow.id, { tone: "error", text: errorText(error, t("Failed to save broker profile.")) });
+      setEditError(errorText(error, t("Failed to save broker profile.")));
     } finally {
       setBusy(null);
     }
-  }, [dialog, editDraft, selectedRow, setBusy, setEditDraft, setRowNote, startRowAction, updateBrokerInstance]);
+  }, [dialog, editDraft, selectedRow, setBusy, setEditDraft, startRowAction, updateBrokerInstance]);
 
   const connectSelected = useCallback(async () => {
     if (!selectedRow) return;
@@ -276,25 +320,39 @@ export function useBrokerManagerActions({
   const removeSelected = useCallback(() => {
     if (!selectedRow) return;
     const { id, brokerName, label } = selectedRow;
-    const confirm = brokerProfileRemovalConfirm(selectedRow.instance, brokerName, async () => {
-      // Read when confirmed: the profile can change, or go, while the confirm is open.
-      const instances = getState().config.brokerInstances;
-      const instance = instances.find((entry) => entry.id === id);
-      if (!instance) return;
-      const nextSelectedId = neighbourBrokerProfileId(instances, id);
-      try {
-        startRowAction(id, t("Disconnecting…"));
-        const removal = await removeBrokerProfile(instance, brokerName, removeBrokerInstance);
-        setEditDraft(null);
-        setDetailOpen(false);
-        setSelectedId(nextSelectedId);
-        setRowNote(id, null);
-        setMessage(null);
-        notify({ body: removal.message, type: removal.accountKept ? "info" : "success" });
-      } finally {
-        setBusy(null);
-      }
-    });
+    // A removal that failed is said on the profile's row while it has one.
+    // Once the row is gone, only a toast can say it.
+    const listed = () => getState().config.brokerInstances.some((entry) => entry.id === id);
+    const failureText = (error: unknown) => errorText(error, tf("Failed to remove {label}.", { label }));
+    const toastIfGone = (error: unknown) => {
+      if (!listed()) notify({ body: failureText(error), type: "error" });
+    };
+    const confirm = {
+      ...brokerProfileRemovalConfirm(selectedRow.instance, brokerName, async () => {
+        // Read when confirmed: the profile can change, or go, while the confirm is open.
+        const instances = getState().config.brokerInstances;
+        const instance = instances.find((entry) => entry.id === id);
+        if (!instance) return;
+        const nextSelectedId = neighbourBrokerProfileId(instances, id);
+        try {
+          startRowAction(id, t("Disconnecting…"));
+          const removal = await removeBrokerProfile(instance, brokerName, removeBrokerInstance);
+          setEditDraft(null);
+          setDetailOpen(false);
+          setSelectedId(nextSelectedId);
+          setRowNote(id, null);
+          setMessage(null);
+          notify({ body: removal.message, type: removal.accountKept ? "info" : "success" });
+        } catch (error) {
+          // An open confirm says it inline too; the row keeps it once that closes.
+          if (listed()) setRowNote(id, { tone: "error", status: t("Remove failed"), text: failureText(error) });
+          throw error;
+        } finally {
+          setBusy(null);
+        }
+      }),
+      onFailureAfterClose: toastIfGone,
+    };
     if (openConfirmModal(confirm)) return;
     // A detached window has no confirm modal; its own dialog asks instead.
     void (async () => {
@@ -308,7 +366,7 @@ export function useBrokerManagerActions({
       try {
         await confirm.onConfirm();
       } catch (error) {
-        setRowNote(id, { tone: "error", status: t("Remove failed"), text: errorText(error, tf("Failed to remove {label}.", { label })) });
+        toastIfGone(error);
       }
     })();
   }, [dialog, getState, notify, removeBrokerInstance, selectedRow, setBusy, setDetailOpen, setEditDraft, setRowNote, setSelectedId, startRowAction]);
@@ -318,11 +376,13 @@ export function useBrokerManagerActions({
     /** The add flow's running action, which has no row to show it on. */
     paneBusy: busyState && busyState.profileId === null ? busyState.text : null,
     message,
+    editError,
     rowActivity,
     setBusy,
     setMessage,
     setRowNote,
     startEdit,
+    cancelEdit,
     saveEdit,
     connectSelected,
     enableSelected,

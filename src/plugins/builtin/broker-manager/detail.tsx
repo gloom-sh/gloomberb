@@ -112,6 +112,7 @@ export function BrokerProfileForm({
   scope,
   paneFocused,
   submitLabel,
+  error,
   rowRef,
   onActiveKeyChange,
   onLabelChange,
@@ -134,6 +135,8 @@ export function BrokerProfileForm({
   /** The form's fields take keys only while the pane has the keyboard. */
   paneFocused: boolean;
   submitLabel: string;
+  /** What stopped the last submit, said beside the buttons so it is in view. */
+  error?: string | null;
   /** Each field's outer box, for the form's field ring to scroll into view. */
   rowRef: (key: BrokerEditKey) => RowRef;
   onActiveKeyChange: (key: BrokerEditKey) => void;
@@ -209,6 +212,7 @@ export function BrokerProfileForm({
           </Text>
         ) : null}
       </Box>
+      {error ? <Text fg={colors.negative} width={width} wrapText>{error}</Text> : null}
       <Box flexDirection="row" gap={1}>
         <Button label={submitLabel} shortcut="Enter" variant="primary" onPress={onSubmit} disabled={!!busy} />
         <Button label={t("Cancel")} shortcut="Esc" variant="secondary" onPress={onCancel} disabled={!!busy} />
@@ -231,6 +235,7 @@ export function BrokerDetailContent({
   editKeys,
   busy,
   activity,
+  editError,
   width,
   editScope,
   paneFocused,
@@ -252,6 +257,8 @@ export function BrokerDetailContent({
   busy: string | null;
   /** The pane's action running on this profile, and what the last one came to. */
   activity: BrokerRowActivity;
+  /** What stops the edit form from saving. */
+  editError: string | null;
   width: number;
   /** The edit form's shortcut scope, shared with the pane's field ring. */
   editScope: string;
@@ -328,6 +335,7 @@ export function BrokerDetailContent({
               scope={editScope}
               paneFocused={paneFocused}
               submitLabel={t("Save")}
+              error={editError}
               rowRef={rowRef}
               onActiveKeyChange={onActiveEditKeyChange}
               onLabelChange={onDraftLabelChange}

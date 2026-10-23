@@ -18,7 +18,11 @@ afterEach(() => {
   setHttpFetchTransport(null);
 });
 
-async function mount(failure: "view" | "native" | "remove" | null, native = true) {
+/**
+ * `refuse`: the folder removal answers that it failed. `stoppedStaysListed`:
+ * a host that lists a stopped plugin while its files remain.
+ */
+async function mount(failure: "view" | "native" | "remove" | "refuse" | null, native = true, { stoppedStaysListed = false } = {}) {
   setHttpFetchTransport(async () => Response.json({ version: 1, generatedAt: "", plugins: [] }));
   const id = PLUGIN_MARKETPLACE_PANE_ID;
   const initial = createInitialState(createTestPaneConfig(":memory:", { instanceId: id, paneId: id }));
@@ -27,6 +31,7 @@ async function mount(failure: "view" | "native" | "remove" | null, native = true
   const calls: string[] = [];
   const notes: AppNotificationRequest[] = [];
   const active = { view: true, native, files: true };
+  let enabled = true;
   let reads = 0;
   const dispatch = (action: AppAction) => {
     stateRef.current = appReducer(stateRef.current, action);
@@ -35,10 +40,10 @@ async function mount(failure: "view" | "native" | "remove" | null, native = true
   setMarketplaceHost({
     listInstalled: () => {
       reads++;
-      return active.view ? [{ id: "fixture-plugin", name: "Fixture Plugin", version: "1.0.0", toggleable: true,
-        enabled: true, source: "external", directory: "fixture-plugin", path: "/fixture/plugins/fixture-plugin" }] : [];
+      return active.view || (stoppedStaysListed && active.files) ? [{ id: "fixture-plugin", name: "Fixture Plugin", version: "1.0.0", toggleable: true,
+        enabled, source: "external", directory: "fixture-plugin", path: "/fixture/plugins/fixture-plugin" }] : [];
     },
-    setPluginEnabled() {}, setPluginsEnabled() {},
+    setPluginEnabled(_id, value) { enabled = value; }, setPluginsEnabled() {},
     contributions: () => ({ panes: [], templates: [], commands: [], capabilities: 0, broker: false }),
     activate: async () => {},
     deactivate: async () => {
@@ -60,6 +65,7 @@ async function mount(failure: "view" | "native" | "remove" | null, native = true
     remove: async (directory) => {
       calls.push("files.remove");
       if (failure === "remove") throw new Error("Removal request unavailable");
+      if (failure === "refuse") return { ok: false, error: "Folder is in use" };
       active.files = false;
       return { ok: true, directory };
     },
@@ -103,6 +109,12 @@ for (const failure of ["view", "native"] as const) {
     await tui.waitForFrameToContain("Plugin could not be stopped. Files kept.");
     await run.press("escape", "\u001b");
 
+    // The failure follows the row: turning the plugin off moves its status on.
+    await run.press("e");
+    await tui.waitForFrameToExclude("stop failed");
+    expect(tui.frame()).toMatch(/Fixture Plugin[^\n]* off/);
+    await run.press("e");
+
     run.recover();
     await run.remove();
     await tui.waitForFrameToExclude("Fixture Plugin");
@@ -121,6 +133,16 @@ test("a thrown file-removal request clears the busy state and reports failure", 
   expect(tui.frame()).not.toContain("stop failed");
   expect(run.active.files).toBe(true);
   expect(run.notes).toMatchObject([{ type: "error", body: "Could not remove Fixture Plugin. Removal failed. Restart and try again." }]);
+});
+
+test("a removal that fails while the plugin stays listed is said on its row, not as a toast", async () => {
+  const run = await mount("refuse", true, { stoppedStaysListed: true });
+  await run.remove();
+  const frame = await tui.waitForFrameToContain("remove failed");
+  expect(frame).not.toContain("removing");
+  expect(run.notes).toEqual([]);
+  await run.press("return", "\r");
+  await tui.waitForFrameToContain("Could not remove Fixture Plugin: Folder is in use");
 });
 
 test("terminal removal works without a separate native host", async () => {

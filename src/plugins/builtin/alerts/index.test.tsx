@@ -132,6 +132,50 @@ describe("AlertsPane", () => {
     expect(frame).toContain("[a]dd alert");
   });
 
+  test("a quote one alert could not get is said on its row and, selected, in full under the table; the footer only when none came", async () => {
+    const checkedAt = Date.now() - 60_000;
+    const quoted = (alert: AlertRule, price: number): AlertRule => ({ ...alert, lastCheckedPrice: price, lastCheckedAt: checkedAt });
+    const missed = (alert: AlertRule, error: string): AlertRule => ({ ...alert, lastCheckedAt: checkedAt, lastCheckError: error });
+    const footerLine = () => tui.frame().split("\n").find((line) => line.includes("[a]dd alert")) ?? "";
+    await tui.render(
+      <AlertsHarness height={14} alerts={[
+        quoted(makeAlert("alert-aapl", "AAPL", "above", 400), 343),
+        missed(makeAlert("alert-bad", "ZZQXW", "above", 10), "Not a ticker: ZZQXW."),
+        missed(makeAlert("alert-msft", "MSFT", "below", 200), "Rate limited."),
+      ]} />,
+      { width: 110, height: 14 },
+    );
+    await renderSettled();
+    expect(tui.frame().split("\n").find((line) => line.includes("ZZQXW"))).toContain("No quote");
+    expect(tui.frame()).not.toContain("Not a ticker");
+    expect(footerLine()).not.toMatch(/Not a ticker|Rate limited/);
+
+    await act(async () => {
+      tui.setup().mockInput.pressArrow("down");
+      await tui.setup().renderOnce();
+    });
+    await tui.waitForFrameToContain("Not a ticker: ZZQXW.");
+    expect(footerLine()).not.toContain("Not a ticker");
+    await act(async () => {
+      tui.setup().mockInput.pressArrow("down");
+      await tui.setup().renderOnce();
+    });
+    // A reason that does not name the symbol is given it.
+    await tui.waitForFrameToContain("MSFT: Rate limited.");
+
+    // No alert got a quote: that is the pane's, in its footer, and said once.
+    await tui.render(
+      <AlertsHarness height={14} alerts={[
+        missed(makeAlert("alert-bad", "ZZQXW", "above", 10), "Quotes are unavailable."),
+        missed(makeAlert("alert-msft", "MSFT", "below", 200), "Quotes are unavailable."),
+      ]} />,
+      { width: 110, height: 14 },
+    );
+    await renderSettled();
+    expect(footerLine()).toContain("Quotes are unavailable.");
+    expect(tui.frame().split("Quotes are unavailable.").length).toBe(2);
+  });
+
   test("edits the selected alert through the prefilled edit dialog", async () => {
     await tui.render(
       <AlertsHarness alerts={[makeAlert("alert-aapl", "AAPL", "above", 200)]} />,
