@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, expect, setSystemTime, test } from "bun:test";
 import { ApiRequestError } from "../../../api-client/errors";
 import { headlessReportTables, type LoadedHeadlessPaneModel, renderHeadlessPaneText, reportCoverage } from "../../../cli/pane-functions/headless";
-import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
+import { deriveHeadlessFreshness, paneStatusLine } from "../../../cli/pane-functions/freshness";
 import { renderReportCsv } from "../../../cli/report-tables";
 import type { HeadlessPaneContext } from "../../../types/headless";
 import { cryptoBoardHeadless } from "./headless";
+import { buildCryptoRows, CRYPTO_BOARD_FRESHNESS, cryptoRowObservations } from "./model";
 import { CRYPTO_FIXTURE_NOW, cryptoFixture, defiTvlFixture, stablecoinSupplyFixture } from "./test-fixture";
 
 const ARGS = { rawArgument: "", argument: null, symbols: [], options: { list: "stablecoin" } };
@@ -77,4 +78,15 @@ test("the DeFi list states the total and its source, ranks protocols or chains, 
   const history = csv.slice(csv.indexOf("# section: Total DeFi TVL")).split("\n");
   expect(history[1]).toStartWith("Date,TVL,");
   expect(history.slice(2, 5).map((line) => line.split(",").slice(0, 2).join(","))).toEqual(["2026-09-19,90000000000", "2026-09-20,91000000000", "2026-09-21,"]);
+});
+
+test("the coin report dates the board as the pane footer does: its age, live, never delayed", async () => {
+  const args = { ...ARGS, options: { list: "coin" } };
+  const apiClient = { getCloudCryptoMarkets: async () => cryptoFixture() };
+  const result = await cryptoBoardHeadless.load(args, { apiClient, signal: new AbortController().signal } as unknown as HeadlessPaneContext);
+  const report = paneStatusLine(deriveHeadlessFreshness(cryptoBoardHeadless, result, CRYPTO_FIXTURE_NOW));
+  const rows = buildCryptoRows(cryptoFixture().assets, "coin", new Map(), CRYPTO_FIXTURE_NOW);
+  const pane = paneStatusLine(deriveHeadlessFreshness({ shape: "rows" }, { rows: cryptoRowObservations(rows), freshness: CRYPTO_BOARD_FRESHNESS }, CRYPTO_FIXTURE_NOW));
+  expect(report).toBe("11:59 UTC · oldest 1 min · live");
+  expect(pane).toBe(report);
 });

@@ -2,6 +2,7 @@ import type { CryptoAssetKind, CryptoMarketAsset, CryptoPeg } from "../../../api
 import type { DataTableColumn } from "../../../components";
 import { getTableWidth } from "../../../components/ui/table-layout";
 import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors";
+import { delayedFeedLagMs } from "../../../market-data/market/freshness";
 import type { QueryEntry } from "../../../market-data/result-types";
 import type { PricePoint, Quote } from "../../../types/financials";
 import type { HeadlessPaneFreshness } from "../../../types/headless";
@@ -12,11 +13,16 @@ import { formatUtcWeekdayTime } from "../../../utils/utc-time";
 
 const DAY_MS = 86_400_000;
 
+/** The venue code every coin is quoted under (`cryptoQuoteKey`). */
+const CRYPTO_EXCHANGE = "CCC";
+
 /**
- * How the board's report, capture and footer date its prices: crypto trades around the clock, so a price an hour old
- * has stopped refreshing, and coins are quoted apart, so the line says how old the oldest is.
+ * How the board's report, capture and footer date its prices: Gloom Cloud renews the board every 15 seconds, so a
+ * coin is live unless a row says its quote is held back (a delayed feed, `cryptoRowObservations`). Crypto trades
+ * around the clock, so a price an hour old has stopped refreshing, and coins are quoted apart (one that has not
+ * traded lately keeps its own time), so the line says how old the oldest is.
  */
-export const CRYPTO_BOARD_FRESHNESS: HeadlessPaneFreshness = { maxAgeMinutes: 60, oldestAge: true };
+export const CRYPTO_BOARD_FRESHNESS: HeadlessPaneFreshness = { status: "live", maxAgeMinutes: 60, oldestAge: true };
 
 /** A tab of the board: a list of assets, or DeFi's value locked. */
 export type CryptoTab = CryptoAssetKind | "defi";
@@ -76,7 +82,10 @@ export interface CryptoRow extends CryptoRowSupply {
   history: PricePoint[];
   /** Epoch ms of the price shown. */
   updatedAt: number | null;
+  /** The price is a streamed quote, so it moves between board refreshes. */
   live: boolean;
+  /** The price is a quote from a delayed feed, held back from the market. A price read from the board is not. */
+  delayed: boolean;
   /** A stablecoin's peg; null for a coin, or a server that does not send it. */
   peg: CryptoPeg | null;
   /** `USD`, `EUR 1.1242` (the target in dollars), `USD yield`; empty without a peg. */
@@ -94,7 +103,7 @@ export interface CryptoRow extends CryptoRowSupply {
 }
 
 export const cryptoQuoteKey = (asset: Pick<CryptoMarketAsset, "symbol">) =>
-  buildQuoteKey({ symbol: asset.symbol, exchange: "CCC" });
+  buildQuoteKey({ symbol: asset.symbol, exchange: CRYPTO_EXCHANGE });
 
 const positive = (value: number | null | undefined): value is number => isFiniteNumber(value) && value > 0;
 
@@ -204,6 +213,7 @@ function buildCryptoRow(
     history,
     updatedAt: updated,
     live: !!quote && quote.delivery === "stream" && quote.stale !== true,
+    delayed: quote?.dataSource === "delayed",
     peg,
     pegText: formatPegTarget(peg),
     offPegBp: offPegBasisPoints(price, peg),
@@ -317,9 +327,26 @@ export function withCryptoSupply(rows: readonly CryptoRow[], supply: ReadonlyMap
   });
 }
 
-/** What a capture and the footer read of each row: when its price is from, and whether it is streaming live. */
-export function cryptoRowObservations(rows: readonly CryptoRow[]): Array<{ quoteTime: string; dataSource: "live" | "delayed" }> {
-  return rows.flatMap((row) => row.updatedAt == null ? [] : [{ quoteTime: new Date(row.updatedAt).toISOString(), dataSource: row.live ? "live" as const : "delayed" as const }]);
+/** One row's price as a capture and the footer date it: when it is from and, when it says so, how current it is. */
+type CryptoRowObservation = {
+  quoteTime: string;
+  dataSource?: "live" | "delayed";
+  delayMinutes?: number;
+};
+
+/**
+ * What a capture and the footer read of each row: when its price is from, and how current it is. A streamed row is
+ * live and a quote from a delayed feed is held back by the feed's lag. A row priced from the board (a coin the
+ * live feed does not carry, every coin without real-time access) says neither: Gloom Cloud renews the board every
+ * 15 seconds, so it is dated by its own time, which is how old it is.
+ */
+export function cryptoRowObservations(rows: readonly CryptoRow[]): CryptoRowObservation[] {
+  return rows.flatMap((row): CryptoRowObservation[] => {
+    if (row.updatedAt == null) return [];
+    const quoteTime = new Date(row.updatedAt).toISOString();
+    if (row.delayed) return [{ quoteTime, dataSource: "delayed", delayMinutes: delayedFeedLagMs(CRYPTO_EXCHANGE) / 60_000 }];
+    return [row.live ? { quoteTime, dataSource: "live" } : { quoteTime }];
+  });
 }
 
 /**
