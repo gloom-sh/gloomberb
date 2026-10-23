@@ -15,6 +15,7 @@ const dateOrNull = (value: unknown) => value === null || date(value);
 const count = (value: unknown): value is number => typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 const countOrNull = (value: unknown) => value === null || count(value);
 const sharesOrNull = (value: unknown) => value === null || typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= Number.MAX_SAFE_INTEGER;
+const sharesOrNull = (value: unknown) => value === null || typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= Number.MAX_SAFE_INTEGER;
 const numberOrNull = (value: unknown) => value === null || typeof value === "number" && Number.isFinite(value) && value >= 0;
 const url = (value: unknown): value is string => typeof value === "string" && /^https?:\/\//.test(value);
 
@@ -40,7 +41,7 @@ export function validatePublication(payload: PublicationPayload, symbol: string,
     let observed: string;
     let identity: string;
     if (kind === "ftd") {
-      if (!("date" in row) || !date(row.date) || !/^[A-Z0-9]{9}$/.test(row.cusip) || !count(row.quantity)
+      if (!("date" in row) || !date(row.date) || !/^[A-Z0-9*@#]{9}$/.test(row.cusip) || !count(row.quantity)
         || !numberOrNull(row.price) || typeof row.description !== "string") return invalid();
       observed = row.date;
       identity = `${row.date}:${row.cusip}`;

@@ -61,7 +61,7 @@ export function ShortSidePublicationPane({ kind, width, height, focused }: Pick<
       detailContent={openRow ? <DetailReader width={width} resetScrollKey={rowKey(openRow)} facts={[
         ...columns.filter((column) => column.id !== "date" && column.id !== "cusip").map((column) => ({ label: column.detailLabel,
           value: openRow[column.id] == null ? "Not published" : typeof openRow[column.id] === "number" && column.id !== "atsSharePercent" && column.id !== "price"
-            ? Number(openRow[column.id]).toLocaleString("en-US") : publicationCell(column, openRow[column.id] ?? null) })),
+            ? Number(openRow[column.id]).toLocaleString("en-US", { maximumFractionDigits: 6 }) : publicationCell(column, openRow[column.id] ?? null) })),
         { label: "Published through", value: data.sourceAsOf ?? "--" },
         { label: "Retrieved", value: data.fetchedAt.replace("T", " ").replace(/\.\d+Z$/, " UTC") },
       ]} /> : null}
