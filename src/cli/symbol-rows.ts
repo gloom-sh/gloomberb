@@ -4,9 +4,11 @@ import { listingFields, savedListingName, type ListingChoice } from "./listing-a
 import { StagedTickerRepository, type TickerSource } from "./staged-tickers";
 import { symbolInputKey } from "./symbol-args";
 import { describeSuggestion, isPlainNoMatch, suggestListings } from "./listing-suggestion";
+import { NotASymbolError } from "./symbol-cells";
 import {
   CoinListingError,
   ListingChoiceError,
+  LookupUnansweredError,
   resolveCliTicker,
   resolveTickersForCli,
   TickerNotFoundError,
@@ -25,9 +27,12 @@ import { isCurrencyPairListing } from "../utils/fx-market-hours";
  * What became of one symbol of an add or remove. `needs_choice`: a symbol of
  * an add whose company moved or merged away, whose listing stopped trading, or
  * that matched only a listing abroad; it is not added, and the row offers what
- * to add instead.
+ * to add instead. `not_a_symbol`: an entry refused before any lookup (`N/A`,
+ * `$$$`, a price). `not_looked_up`: Gloom Cloud kept refusing its lookup, so
+ * it is neither found nor missing, and is worth adding again.
  */
-export type SymbolStatus = "added" | "already_listed" | "removed" | "not_listed" | "not_found" | "needs_choice" | "failed";
+export type SymbolStatus =
+  | "added" | "already_listed" | "removed" | "not_listed" | "not_found" | "needs_choice" | "failed" | "not_a_symbol" | "not_looked_up";
 
 /** One symbol's line: the `--json` and `--csv` row, and a line of text. */
 export interface SymbolRow extends Record<string, unknown> {
@@ -91,7 +96,15 @@ export function listingRow(
     ...readAs ? { readAs } : {}, ...extra };
 }
 
-export function failedRow(input: string, error: Error, status: SymbolStatus = error instanceof TickerNotFoundError ? "not_found" : "failed"): SymbolRow {
+/** The status a failure gives its row: not found, not a symbol, not looked up, or failed for its own reason. */
+function failureStatus(error: Error): SymbolStatus {
+  if (error instanceof TickerNotFoundError) return "not_found";
+  if (error instanceof NotASymbolError) return "not_a_symbol";
+  if (error instanceof LookupUnansweredError) return "not_looked_up";
+  return "failed";
+}
+
+export function failedRow(input: string, error: Error, status: SymbolStatus = failureStatus(error)): SymbolRow {
   const hint = error instanceof CoinListingError ? error.hint : null;
   const choice = error instanceof ListingChoiceError
     ? { choices: error.choices, listingCount: error.listingCount, ...error.successor ? { successor: error.successor } : {} }
@@ -201,7 +214,9 @@ export const NO_MATCH = /^No ticker match found for /;
  * went nowhere are named so the list can be fixed.
  */
 export function summarizeSymbolRows(rows: readonly SymbolRow[], verb: Verb, repeated: number): string {
-  const inputs = (status: SymbolStatus) => rows.filter((row) => row.status === status).map((row) => symbolInputKey(row.input));
+  // An entry that is no symbol is named as it was written: `$$$`, not `$$`.
+  const inputs = (status: SymbolStatus) => rows.filter((row) => row.status === status)
+    .map((row) => status === "not_a_symbol" ? row.input.trim() : symbolInputKey(row.input));
   const counts = SETTLED[verb]
     .map(([status, word], index) => ({ count: inputs(status).length, word, index }))
     .filter(({ count, index }) => index === 0 || count > 0)
@@ -213,6 +228,12 @@ export function summarizeSymbolRows(rows: readonly SymbolRow[], verb: Verb, repe
   if (choices.length > 0) groups.push(`${choices.length} need${choices.length === 1 ? "s" : ""} a choice: ${choices.join(", ")}`);
   const failed = inputs("failed");
   if (failed.length > 0) groups.push(`${failed.length} not ${verb === "add" ? "added" : "removed"}: ${failed.join(", ")}`);
+  const unanswered = inputs("not_looked_up");
+  if (unanswered.length > 0) groups.push(`${unanswered.length} not looked up: ${unanswered.join(", ")}`);
+  const junk = inputs("not_a_symbol");
+  if (junk.length > 0) {
+    groups.push(`${junk.length} not ${junk.length === 1 ? "a symbol" : "symbols"}: ${junk.join(junk.some((input) => input.includes(",")) ? "; " : ", ")}`);
+  }
   if (repeated > 0) groups.push(`${repeated} repeat${repeated === 1 ? "" : "s"} skipped`);
   return `${groups.join("; ")}.`;
 }

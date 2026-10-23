@@ -46,6 +46,7 @@ import {
 import { batchedListLookups, type ListLookupPlan } from "../tickers/batched-lookups";
 import { providerSearchQueries } from "../tickers/search";
 import { coinElsewhereNote, savedListingCoinNote } from "./commands/crypto-hints";
+import { NotASymbolError, notASymbolError } from "./symbol-cells";
 
 /** The saved ticker for a symbol (`SAN:EPA`, or `SAN` with `--exchange EPA`), saving it from search first if needed. */
 export async function resolveTickerForCli(
@@ -160,13 +161,26 @@ export class TickerNotFoundError extends ListingArgError {
 }
 
 /**
+ * A list's symbol Gloom Cloud kept refusing to look up, through every wait:
+ * the lookup did not happen, so the symbol is neither found nor missing.
+ */
+export class LookupUnansweredError extends Error {
+  constructor(readonly input: string) {
+    super(`Could not look up ${input}: Gloom Cloud did not answer. Try again in a minute.`);
+    this.name = "LookupUnansweredError";
+  }
+}
+
+/**
  * `resolveTickerForCli`, saying which listing a bare symbol went to. A bare
  * symbol goes where `quote` reads it: the listing its own quote is on, else,
  * when no quote settles it, the first of its listings with a quote
  * (`quoteBareListing`); a code several companies list asks which. A symbol
  * search no longer lists, whose quote stopped long ago, is no longer trading,
  * and a named exchange the symbol is not on says where it is. Those failures
- * are `ListingArgError`s, with any choices in `details`.
+ * are `ListingArgError`s, with any choices in `details`. What cannot be a
+ * symbol (`N/A`, `$$$`, a price such as `2.582,52`) fails with
+ * `NotASymbolError` before anything is asked.
  */
 export async function resolveCliTicker(
   symbol: string,
@@ -178,6 +192,8 @@ export async function resolveCliTicker(
   if (!symbol.trim()) {
     throw new Error("Ticker symbol is required.");
   }
+  const notSymbol = notASymbolError(symbol);
+  if (notSymbol) throw notSymbol;
   const deps: ListingDeps = { store, dataProvider };
   const listing = await resolveCliListing(symbol, exchange, deps, { ownExchangeWins: options.ownExchangeWins });
   const read = listingReadNotes(listing);
@@ -368,6 +384,11 @@ function watchFailedRequests(): { count: () => number; stop: () => void } {
   return { count: () => failures.size, stop: () => { unsubscribe(); dispose?.(); } };
 }
 
+/** Whether a lookup's failure may be the service refusing it, so a new look could answer: not one refused before any request. */
+function mayBeRefusal(error: Error): boolean {
+  return !(error instanceof NotASymbolError);
+}
+
 function lookUpTickers(
   symbols: readonly string[],
   concurrency: number,
@@ -389,6 +410,8 @@ function lookUpTickers(
  * is searched as it always is.
  */
 function listLookupPlan(input: string, exchange: string | undefined): ListLookupPlan {
+  // What cannot be a symbol is refused without a request.
+  if (notASymbolError(input)) return { searches: [], changes: null };
   try {
     const listing = parseListingArg(input, exchange, { ownExchangeWins: true });
     const searchable = !listing.exchange && /^[A-Z0-9][A-Z0-9.-]{0,11}$/.test(listing.symbol);
@@ -410,7 +433,9 @@ function listLookupPlan(input: string, exchange: string | undefined): ListLookup
  * few batched requests first (`batchedListLookups`). "Not found" means search
  * found no listing: while the service refuses requests, the symbols that
  * failed are looked up again after a pause, and any it still did not answer
- * for say so.
+ * for fail with `LookupUnansweredError`. One that cannot be a symbol fails
+ * with `NotASymbolError` at once: it is never asked for, looked up again or
+ * waited for.
  */
 export async function resolveTickersForCli(
   symbols: readonly string[],
@@ -448,7 +473,7 @@ export async function resolveTickersForCli(
     let lookups = symbols.map((input) => looked.get(input)!);
     let failing = failedRequests.count() > 0;
     for (const waitMs of retryWaitsMs) {
-      const failed = lookups.filter((entry) => entry.error).map((entry) => entry.input);
+      const failed = lookups.filter((entry) => entry.error && mayBeRefusal(entry.error)).map((entry) => entry.input);
       if (!failing || failed.length === 0) break;
       onRetry?.(failed.length, waitMs);
       await new Promise((resolveWait) => setTimeout(resolveWait, waitMs));
@@ -459,8 +484,8 @@ export async function resolveTickersForCli(
     }
     if (!failing) return lookups;
     // Still refused after the last wait: a failure may only be the refusal, so none is called not found.
-    return lookups.map((entry) => entry.error
-      ? { input: entry.input, error: new Error(`Could not look up ${entry.input}: Gloom Cloud did not answer. Try again in a minute.`) }
+    return lookups.map((entry) => entry.error && mayBeRefusal(entry.error)
+      ? { input: entry.input, error: new LookupUnansweredError(entry.input) }
       : entry);
   } finally {
     failedRequests.stop();

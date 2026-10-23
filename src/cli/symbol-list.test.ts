@@ -80,3 +80,38 @@ test("a separator stuck to a symbol in a list is dropped before any lookup and n
   // Typed, only the ends of the list can be stray: in the middle a separator is what splits it.
   expect(await readSymbolList({ args: ["GME,", "UPST;"] })).toEqual({ symbols: ["GME", "UPST"], repeated: 0, notes: ['Ignored the stray ";" after UPST.'] });
 });
+
+test("a European sheet's prices are number cells, never symbols, whatever splits each line", async () => {
+  // Before, the comma of `2.582,52` split the line, and `2.582` was added as 2582:HKEX.
+  const pasted = "ED 2.582,52\nCNX;1.899,21\nEQT\t3.594,10\n$$$\nN/A\n";
+  expect(await readSymbolList({ args: ["-"], readStdin: async () => pasted })).toEqual({
+    symbols: ["ED", "CNX", "EQT", "$$$", "N/A"],
+    repeated: 0,
+    notes: ["Read the first column as symbols; ignored the 3 number cells beside it: 2.582,52; 1.899,21; 3.594,10."],
+  });
+  // US and European forms, signs, percents and currency marks, beside a symbol or on a line of their own.
+  const figures = ["2.582,52", "1,899.21", "1.899", "-2,5%", "+4", "12%", "$12.50", "€1.234,56", "(1,234.56)"];
+  for (const separator of [" ", "\t", ";", ","]) {
+    const read = await readSymbolList({ args: ["-"], readStdin: async () => `${figures.map((figure) => `XOM${separator}${figure}`).join("\n")}\n1.899,21\n` });
+    expect(read.symbols).toEqual(["XOM"]);
+    expect(read.notes.at(-1)).toBe("Ignored 1.899,21, a number, not a symbol.");
+  }
+  // Typed, a number is never a symbol either: beside one (a pasted line) or on its own.
+  expect(await readSymbolList({ args: ["ED 2.582,52\nCNX;1.899,21", "1.899", "EQT"] })).toEqual({
+    symbols: ["ED", "CNX", "EQT"],
+    repeated: 0,
+    notes: ["Ignored 3 numbers, not symbols: 2.582,52; 1.899,21; 1.899."],
+  });
+});
+
+test("a numeric ticker is a symbol alone or in the symbol column, and a bare number beside a symbol is its value", async () => {
+  const read = (text: string) => readSymbolList({ args: ["-"], readStdin: async () => text });
+  const codes = ["7203", "0700.HK", "2330:TWSE", "2582:HKEX"];
+  expect((await read(`${codes.join("\n")}\n`)).symbols).toEqual(codes);
+  expect((await readSymbolList({ args: codes })).symbols).toEqual(codes);
+  expect((await read("7203;1.899,21\n2582:HKEX\t3.594,10\nED 2582\n")).symbols).toEqual(["7203", "2582:HKEX", "ED"]);
+  expect((await readSymbolList({ args: ["ED 2582"] })).symbols).toEqual(["ED"]);
+  // Codes among symbols, or side by side, stay codes: `7203,6758` holds no decimal comma.
+  for (const args of [["7203 6758"], ["7203,6758"]]) expect((await readSymbolList({ args })).symbols).toEqual(["7203", "6758"]);
+  expect((await readSymbolList({ args: ["amd 2222 pltr"] })).symbols).toEqual(["amd", "2222", "pltr"]);
+});

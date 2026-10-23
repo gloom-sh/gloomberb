@@ -12,6 +12,9 @@ import { createDefaultConfig } from "../../../../types/config";
 import { setCliColorEnabledOverride } from "../../../../utils/cli-output";
 import type { CliCommandDef } from "../../../../types/plugin";
 import type { TickerChanges } from "../../../../types/ticker-changes";
+import { LookupUnansweredError } from "../../../../cli/ticker-resolution";
+import { failedRow, listingRow } from "../../../../cli/symbol-rows";
+import { printSymbolRows } from "./bulk-symbols";
 import { portfolioCliCommand } from "./portfolio-command";
 import { watchlistCliCommand } from "./watchlist-command";
 
@@ -313,6 +316,65 @@ test("a list file with a separator left on a symbol adds the symbol and names th
   expect((result.data as Array<Record<string, unknown>>).map((row) => [row.status, row.listing])).toEqual([["added", "UPST:NASDAQ"]]);
   expect(result.warnings).toContain('Ignored the stray ";" after UPST.');
   expect(searched.filter((query) => query.includes(";"))).toEqual([]);
+});
+
+test("a list pasted from a European sheet adds its symbols alone: prices are left out in one line, and what names nothing is never looked up", async () => {
+  const persistence = new AppPersistence(":memory:");
+  persistences.push(persistence);
+  const store = new TickerRepository(persistence.tickers);
+  const config = { ...createDefaultConfig("/unused"), watchlists: [{ id: "repro", name: "REPRO" }] };
+  const asked: string[] = [];
+  const names: Record<string, string> = { ED: "Consolidated Edison Inc.", CNX: "CNX Resources Corporation", EQT: "EQT Corporation" };
+  const dataProvider = createTestDataProvider({
+    search: async (query) => {
+      asked.push(query);
+      return names[query] ? [{ providerId: "test", symbol: query, name: names[query]!, exchange: "NYSE", type: "Common Stock", currency: "USD" }] : [];
+    },
+    getQuote: async (symbol) => {
+      asked.push(symbol);
+      if (!names[symbol]) throw new Error(`Not a ticker: ${symbol}.`);
+      return createTestQuote({ symbol, name: names[symbol], listingExchangeName: "NYSE", exchangeName: "NYSE" });
+    },
+  });
+  // Before, 2.582,52 was read as 2582:HKEX and 3.594,10 as 3594:TWSE, and $$$ and N/A were searched.
+  setCliColorEnabledOverride(false);
+  const dataDir = await mkdtemp(join(tmpdir(), "gloomberb-european-"));
+  dataDirs.push(dataDir);
+  const file = join(dataDir, "energy.txt");
+  await Bun.write(file, "ED 2.582,52\nCNX;1.899,21\nEQT\t3.594,10\n$$$\nN/A\n");
+  const cli = createTestCliContext({ config, store, dataProvider });
+  await watchlistCliCommand.execute(["add", "REPRO", "--file", file], cli.context);
+  const { result, options } = cli.printed[0]!;
+  expect((result.data as Array<Record<string, unknown>>).map((row) => [row.input, row.status, row.listing])).toEqual([
+    ["ED", "added", "ED:NYSE"], ["CNX", "added", "CNX:NYSE"], ["EQT", "added", "EQT:NYSE"], ["$$$", "not_a_symbol", null], ["N/A", "not_a_symbol", null],
+  ]);
+  expect(result.warnings).toEqual(["Read the first column as symbols; ignored the 3 number cells beside it: 2.582,52; 1.899,21; 3.594,10."]);
+  expect(result.metadata).toMatchObject({ added: 3, notASymbol: 2, summary: 'Watchlist "REPRO": 3 added; 2 not symbols: $$$, N/A.' });
+  expect(options?.text?.(result.data).split("\n").slice(3, 5)).toEqual(["Not a symbol: $$$", "Not a symbol: N/A"]);
+  expect(asked.filter((query) => !names[query.replace(/[.-]/g, "")])).toEqual([]);
+});
+
+test("symbols Gloom Cloud did not answer for are listed apart from the rest, with one command that adds them again", () => {
+  setCliColorEnabledOverride(false);
+  const cli = createTestCliContext();
+  const rows = [
+    listingRow("AAPL", "added", createTestTicker("AAPL", "Apple Inc.", { exchange: "NASDAQ" })),
+    failedRow("NVDA", new LookupUnansweredError("NVDA")),
+    failedRow("msft", new LookupUnansweredError("msft")),
+  ];
+  printSymbolRows(cli.context, rows, {
+    verb: "add", collection: { kind: "watchlist", name: "Growth" }, repeated: 0, notes: [], retry: (keys) => `gloomberb watchlist add Growth ${keys}`,
+  });
+  const { result, options } = cli.printed[0]!;
+  expect(options?.text?.(result.data).split("\n")).toEqual([
+    "Added AAPL:NASDAQ (Apple Inc.)",
+    "",
+    "Gloom Cloud did not answer for 2 symbols, so they were not looked up: NVDA, MSFT",
+    "Try again in a minute: gloomberb watchlist add Growth NVDA MSFT",
+    "",
+    'Watchlist "Growth": 1 added; 2 not looked up: NVDA, MSFT.',
+  ]);
+  expect(result.metadata).toMatchObject({ notLookedUp: 2 });
 });
 
 test("a list of more than ten symbols checks each one's history, and one symbol alone is decided the same: a match abroad, a dead listing or a symbol taken over lately needs a choice and saves nothing", async () => {

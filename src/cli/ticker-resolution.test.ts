@@ -143,6 +143,40 @@ test("a symbol whose search the service refused is looked up again, never report
   expect(refusedThroughout.outcomes.every((outcome) => outcome?.startsWith("Could not look up"))).toBe(true);
 });
 
+test("what cannot be a symbol fails before any request, and never makes a list wait to look it up again", async () => {
+  // Before, `$$$` and `N/A` were searched, failed with the refused requests around them, and were looked up
+  // again after waits of 6, 15 and 30 s before being blamed on Gloom Cloud.
+  const nvda = { providerId: "test", symbol: "NVDA", name: "NVIDIA Corporation", exchange: "NASDAQ", currency: "USD", type: "Common Stock" };
+  const asked: string[] = [];
+  const dataProvider = createTestDataProvider({
+    search: async (query) => {
+      asked.push(query);
+      // Another request of the list was refused meanwhile, as when the service limits the rate.
+      connectionHealth.reportRequest(GLOOM_CLOUD_HTTP_CONNECTION_ID, {
+        operation: "GET /market/search", success: false, latencyMs: asked.length, error: new Error("Anonymous market rate limit exceeded"),
+      });
+      return query === "NVDA" ? [nvda] : [];
+    },
+    getQuote: async (symbol) => {
+      asked.push(symbol);
+      return createTestQuote({ symbol, listingExchangeName: "NASDAQ", exchangeName: "NASDAQ" });
+    },
+  });
+  const retries: number[] = [];
+  const junk = ["$$$", "N/A", "--", "-", "1.899", "2.582,52"];
+  const results = await resolveTickersForCli([...junk, "NVDA"], tickerStore(), dataProvider, undefined, {
+    retryWaitsMs: [60_000], onRetry: (count) => retries.push(count),
+  });
+  expect(retries).toEqual([]);
+  // Only NVDA, in the spellings its search tries, was asked for.
+  expect(asked.every((query) => query.replace(/[.-]/g, "") === "NVDA")).toBe(true);
+  expect(results.map((result) => result.ticker?.metadata.ticker ?? result.error?.message)).toEqual([
+    "$$$ is not a symbol.", "N/A is not a symbol.", "-- is not a symbol.", "- is not a symbol.",
+    "1.899 is a number, not a symbol.", "2.582,52 is a number, not a symbol.", "NVDA",
+  ]);
+  expect(results.slice(0, junk.length).map((result) => failedRow(result.input, result.error!).status)).toEqual(junk.map(() => "not_a_symbol"));
+});
+
 test("batched answers that leave a symbol out, answer it with nothing, or come back out of order still give each symbol of a list its own listing", async () => {
   const row = (symbol: string) => ({ providerId: "test", symbol, name: `${symbol} Corp`, exchange: "NYSE", currency: "USD", type: "Common Stock" });
   const quote = (symbol: string) => createTestQuote({ symbol, name: `${symbol} Corp`, listingExchangeName: "NYSE", exchangeName: "NYSE", lastUpdated: Date.now() });

@@ -1,3 +1,5 @@
+import { isNumberCell, protectFigureCommas, restoreFigureCommas } from "./symbol-cells";
+
 /** The quote marks a pasted list wraps its entries in: "AAPL", 'MSFT', “NVDA”. */
 const QUOTE_MARKS = "\"'`\u2018\u2019\u201C\u201D";
 const QUOTE_EDGES = new RegExp(`^[${QUOTE_MARKS}]+|[${QUOTE_MARKS}]+$`, "g");
@@ -14,16 +16,23 @@ const LIST_SEPARATOR = /[,;\t\r\n]/;
  * (`brk.b bf-b` on a pasted line); one without them is split on spaces (`JNK
  * EMB BRK.B`). Which an entry with a space is takes a search: a command that
  * resolves its symbols reads them with `readNameEntries`, and a parser that
- * looks nothing up takes `splitSymbolWords`.
+ * looks nothing up takes `splitSymbolWords`. A comma inside a figure
+ * (`2.582,52`, `1,899.21`) is no separator: the figure stays one entry.
  */
 export function splitSymbolArgs(args: readonly string[]): string[] {
-  return args
-    .flatMap((arg) => {
-      const text = arg.replace(/^\uFEFF/, "");
-      return LIST_SEPARATOR.test(text) ? text.split(LIST_SEPARATOR) : text.split(/\s+/);
-    })
-    .map((entry) => entry.trim().replace(QUOTE_EDGES, "").trim().replace(/\s+/g, " "))
-    .filter(Boolean);
+  return args.flatMap((arg) => splitSymbolArgLines(arg).flat());
+}
+
+/**
+ * `splitSymbolArgs` of one argument, its entries kept by the line they are
+ * on, so a figure can be told to sit beside the symbol on its line.
+ */
+export function splitSymbolArgLines(arg: string): string[][] {
+  const text = protectFigureCommas(arg.replace(/^\uFEFF/, ""));
+  const separated = LIST_SEPARATOR.test(text);
+  return text.split(/\r\n?|\n/).map((line) => (separated ? line.split(/[,;\t]/) : line.split(/\s+/))
+    .map((entry) => restoreFigureCommas(entry).trim().replace(QUOTE_EDGES, "").trim().replace(/\s+/g, " "))
+    .filter(Boolean));
 }
 
 /**
@@ -32,14 +41,15 @@ export function splitSymbolArgs(args: readonly string[]): string[] {
  * "Apple Inc"` or a pasted line `quote "AAPL MSFT"`. Which of those it is
  * takes a lookup (`readPhraseArgument`); `splitSymbolArgs` would split it
  * into words, each a symbol (10, YEAR, YIELD). Null for anything else:
- * several arguments, one word, or a list with commas.
+ * several arguments, one word, a list with commas, or a pasted line with a
+ * price in it (`ED 2.582,52`), which is read as a list is.
  */
 export function quotedPhrase(args: readonly string[]): string | null {
   if (args.length !== 1) return null;
   const text = args[0]!.replace(/^\uFEFF/, "");
-  if (LIST_SEPARATOR.test(text)) return null;
+  if (LIST_SEPARATOR.test(protectFigureCommas(text))) return null;
   const phrase = text.trim().replace(QUOTE_EDGES, "").trim().replace(/\s+/g, " ");
-  return phrase.includes(" ") ? phrase : null;
+  return phrase.includes(" ") && !phrase.split(" ").some(isNumberCell) ? phrase : null;
 }
 
 /**

@@ -189,6 +189,7 @@ import {
   listingFateLoader,
   meantQuestion,
   movedSymbolLine,
+  ListingArgError,
   requireCliListing,
   resolveCliListing,
   type CliListing,
@@ -210,6 +211,7 @@ import { quotedPhrase, splitSymbolArgs, uniqueSecuritySymbols } from "../symbol-
 import { isCompanyNameInput } from "../../tickers/company-name-listing";
 import { readNameEntries, readPhraseArgument } from "../name-entries";
 import { readSymbolList, SymbolListError } from "../symbol-list";
+import { notASymbolError } from "../symbol-cells";
 import { cliPerpetualContract, perpetualContractStats, type PerpetualContractPayload } from "../perpetual-contract";
 import { knownGapMessage, subMinuteDataMessage } from "../known-gaps";
 import { phraseSearchReport } from "./search";
@@ -343,10 +345,11 @@ async function readSymbols(symbols: readonly string[], dataProvider: Parameters<
 }
 
 /**
- * The symbols of `--file <path>` or standard input (`-`), with any typed
- * beside them, read by the parser `watchlist add` uses, and its notes on what
- * it left out. Standard input is read only when asked for, so a script that
- * pipes in nothing never waits on it.
+ * The symbols typed, of `--file <path>` and of standard input (`-`), read by
+ * the reader `watchlist add` uses, and its notes on what it left out (a
+ * stray separator, the prices beside the symbols, in one line). Standard
+ * input is read only when asked for, so a script that pipes in nothing never
+ * waits on it.
  */
 async function readListedSymbols(
   args: readonly string[],
@@ -359,7 +362,11 @@ async function readListedSymbols(
     const list = await readSymbolList({
       args, file, stdinPiped: false, readEntries: (entries) => readNameEntries(entries, market.dataProvider),
     });
-    if (list.symbols.length === 0) ctx.fail(`No symbols in ${file && file !== "-" ? file : "standard input"}.`, usage);
+    // Only numbers, or nothing: the message says what was left out (`Ignored 1.899, a number, not a symbol.`).
+    if (list.symbols.length === 0) {
+      const where = file && file !== "-" ? file : args.includes("-") ? "standard input" : "what was given";
+      ctx.fail([`No symbols in ${where}.`, ...list.notes].join(" "), usage);
+    }
     return { symbols: uniqueEntries(list.symbols), notes: list.notes };
   } catch (error) {
     if (error instanceof SymbolListError) ctx.fail(error.message, usage);
@@ -823,16 +830,33 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
   await withMarketData(ctx, async (market) => {
     const read = phrase ? await readPhraseArgument(phrase, market.dataProvider) : null;
     if (read?.kind === "phrase") return answerPhrase(read.phrase, market, ctx);
-    // A list read from a file names what it left out: a stray separator, the cells beside a table's symbols.
-    const list = listed && !read ? await readListedSymbols(args, file, market, ctx, usage) : null;
+    // Typed or from a file, one reader names what it left out: a stray separator, the prices beside the symbols.
+    const list = read ? null : await readListedSymbols(args, file, market, ctx, usage);
     const symbols = read?.kind === "name" ? [read.name]
       : read?.kind === "symbols" ? uniqueEntries(read.symbols)
-      : list ? list.symbols
-      : await readSymbols(entries, market.dataProvider);
-    // With several symbols, --exchange is for the ones that name no exchange of their own.
-    const listings = await Promise.all(symbols.map((symbol) => requireCliListing(
-      symbol, exchange, market, ctx, { ownExchangeWins: symbols.length > 1 },
-    )));
+      : list!.symbols;
+    // What cannot be a symbol (N/A, $$$, a price alone) is never looked up; one line names it.
+    const refused = symbols.flatMap((symbol) => notASymbolError(symbol) ?? []);
+    if (refused.length === symbols.length) {
+      ctx.fail(refused.length === 1 ? refused[0]!.message : `Nothing to quote: ${refusedList(refused)} are not symbols.`, usage);
+    }
+    // With several symbols, --exchange is for the ones that name no exchange of their own, and one that names no
+    // listing (EQT:NYSE:US) is named in a line while the others are quoted.
+    const resolvedListings = await Promise.all(symbols.filter((symbol) => !notASymbolError(symbol)).map(async (symbol) => {
+      if (symbols.length === 1) return { symbol, listing: await requireCliListing(symbol, exchange, market, ctx) };
+      try {
+        return { symbol, listing: await resolveCliListing(symbol, exchange, market, { ownExchangeWins: true }) };
+      } catch (error) {
+        if (error instanceof ListingArgError) return { symbol, error };
+        throw error;
+      }
+    }));
+    const unread = resolvedListings.flatMap((entry) => "error" in entry && entry.error ? [{ symbol: entry.symbol, error: entry.error }] : []);
+    const listings = resolvedListings.flatMap((entry) => "listing" in entry && entry.listing ? [entry.listing] : []);
+    if (listings.length === 0) {
+      const [first] = unread;
+      ctx.fail(first!.error.message, [...unread.slice(1).map(unreadLine), ...refused.length > 0 ? [refusedLine(refused)] : []].join("\n") || first!.error.details);
+    }
     const targets: QuoteSubscriptionTarget[] = listings.map((listing) => ({ symbol: listing.request.symbol, exchange: listing.request.exchange }));
     // A bare symbol's venues load beside its quote, to name the company it was read as when several list it.
     // Each costs a search, so a long list (a portfolio check, not a lookup) names none.
@@ -863,7 +887,7 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     const tickerChanges = symbolChanges.map(({ change }) => change);
     const formerIssuers = symbolChanges.map(({ formerIssuer }) => formerIssuer);
     const failed = answers[0]?.failure;
-    if (listings.length === 1 && failed) {
+    if (symbols.length === 1 && failed) {
       ctx.fail(failed.message, [quoteChangeLine(tickerChanges[0], formerIssuers[0]), failed.details].filter(Boolean).join("\n") || undefined);
     }
     // A futures quote adds its dated settlement and contract terms, as `ticker` prints them; `compare` stays a table.
@@ -901,6 +925,8 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     }));
     const notes = [
       ...list?.notes ?? [],
+      ...refused.length > 0 ? [refusedLine(refused)] : [],
+      ...unread.map(unreadLine),
       // FB now lists another security; the company that was FB trades as META. A symbol a
       // company renamed into (META) is what was typed: its change is in the row, not here.
       // GOGL was Golden Ocean, which merged into CMB.Tech; a fund lists there now.
@@ -939,9 +965,25 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
         ? columns.map((column) => column.key === "changePercent" ? { ...column, header: "Chg" } : column)
         : columns),
     });
-    // The table names each symbol it found nothing for; with none found, the exit status says so too.
+    // The table and the warnings name each symbol it found nothing for; with none found, the exit status says so too.
     if (data.every((row) => !row.quote)) process.exitCode = CLI_EXIT_CODES.error;
   });
+}
+
+/** The entries refused before any lookup, named as written: `$$$, N/A`, split by semicolons when one has a comma. */
+function refusedList(refused: ReadonlyArray<{ input: string }>): string {
+  const inputs = refused.map((error) => error.input.trim());
+  return inputs.join(inputs.some((input) => input.includes(",")) ? "; " : ", ");
+}
+
+/** The one line a quote prints for what it did not look up: `Not a symbol, not quoted: $$$, N/A.` */
+function refusedLine(refused: ReadonlyArray<{ input: string }>): string {
+  return `Not ${refused.length === 1 ? "a symbol" : "symbols"}, not quoted: ${refusedList(refused)}.`;
+}
+
+/** A symbol of a list that names no listing: `Not quoted: EQT:NYSE:US (Unknown exchange US for EQT:NYSE).` */
+function unreadLine({ symbol, error }: { symbol: string; error: ListingArgError }): string {
+  return `Not quoted: ${symbol} (${error.message.replace(/\.$/, "")}).`;
 }
 
 /**

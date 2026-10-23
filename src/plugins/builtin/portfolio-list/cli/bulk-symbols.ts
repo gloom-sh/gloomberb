@@ -4,7 +4,8 @@ import type { MarketContext } from "../../../../cli/types";
 import { listingFields, loadSavedListing, parseListingArg, savedListingName } from "../../../../cli/listing-arg";
 import { withSuggestion } from "../../../../cli/listing-suggestion";
 import { StagedTickerRepository } from "../../../../cli/staged-tickers";
-import { splitSymbolWords, symbolInputKey } from "../../../../cli/symbol-args";
+import { splitSymbolArgs, splitSymbolWords, symbolInputKey } from "../../../../cli/symbol-args";
+import { notASymbolError } from "../../../../cli/symbol-cells";
 import { readSymbolList, SymbolListError } from "../../../../cli/symbol-list";
 import { cliStyles } from "../../../../utils/cli-output";
 import { dryRunNote } from "../../../../cli/helpers";
@@ -37,8 +38,8 @@ export const FILE_OPTION = {
 export const SYMBOL_LIST_HELP = {
   title: "Several symbols",
   lines: [
-    "add and remove take any number of symbols split by spaces, commas or newlines, a --file, or piped input (or -). An entry of a list with commas, semicolons or newlines that has spaces in it is a company's name when search finds one (philip morris intl is PM), read as its US listing first with a line under it saying which, else the symbols it holds when each is written as a symbol or has a quote (AAPL MSFT), and otherwise a name not found. A file or piped list reads each line as such an entry. A CSV is read from its Symbol, Ticker or Code column, else its Name or Company column as names. Without that header every cell is a symbol, unless names, prices or weights sit beside them: then the first column is read and the cells left out are named. Quote a list name with spaces.",
-    "Each symbol gets a line, then a summary. Exit status 0 when at least one symbol was added (or removed) or already was, 1 when none resolved or the usage is wrong.",
+    "add and remove take any number of symbols split by spaces, commas or newlines, a --file, or piped input (or -). An entry of a list with commas, semicolons or newlines that has spaces in it is a company's name when search finds one (philip morris intl is PM), read as its US listing first with a line under it saying which, else the symbols it holds when each is written as a symbol or has a quote (AAPL MSFT), and otherwise a name not found. A file or piped list reads each line as such an entry. A CSV is read from its Symbol, Ticker or Code column, else its Name or Company column as names. Without that header every cell is a symbol, unless names, prices or weights sit beside them: then the first column is read and the cells left out are named. Each line is split by its own tab, semicolon, comma or spaces, and a price is never a symbol, written either way (2.582,52 or 1,899.21). Quote a list name with spaces.",
+    "Each symbol gets a line, then a summary. An entry that cannot be a symbol (N/A, $$$, --, a price alone) is named as not a symbol without a lookup. Symbols Gloom Cloud did not answer for are listed together with one command that adds them again. Exit status 0 when at least one symbol was added (or removed) or already was, 1 when none resolved or the usage is wrong.",
     "A bare US-style symbol is not added when the listing it matched stopped trading, is abroad (DFS as DFS:LSE) or was taken by another company in the last two years (BRKL), or when nothing lists under it now and its company trades as another. Those are listed under Needs a choice, with the add for what their company trades as now and the listing that matched, which naming keeps; one symbol alone fails with the same. A symbol another company took longer ago says so under its line.",
     "add --dry-run looks every symbol up and prints the same lines without saving.",
   ],
@@ -71,7 +72,25 @@ function rowLine(row: SymbolRow, verb: Verb): string {
     case "not_found": return cliStyles.danger(`Not found: ${typed}${row.message && !NO_MATCH.test(row.message) ? ` (${reason(row.message, typed)})` : ""}${row.suggestion ? `; did you mean ${row.suggestion}?` : ""}`);
     case "needs_choice": return cliStyles.warning(`  ${row.message ?? typed}`);
     case "failed": return cliStyles.danger(`Not ${verb === "add" ? "added" : "removed"}: ${typed} (${failedReason(row, typed)})`);
+    // Named as written (`$$$`), and a figure says it is one.
+    case "not_a_symbol": return cliStyles.warning(`Not a symbol: ${row.input.trim()}${row.message?.includes("a number") ? " (a number)" : ""}`);
+    case "not_looked_up": return cliStyles.danger(`Not looked up: ${typed}`);
   }
+}
+
+/**
+ * The symbols of an add Gloom Cloud did not answer for, after the other
+ * lines: one line naming them, and one command that adds them all again.
+ */
+function unansweredLines(rows: readonly SymbolRow[], retry: ((keys: string) => string) | undefined): string[] {
+  const unanswered = rows.filter((row) => row.status === "not_looked_up").map((row) => symbolInputKey(row.input));
+  if (unanswered.length === 0) return [];
+  const count = unanswered.length === 1 ? "1 symbol" : `${unanswered.length} symbols`;
+  return [
+    "",
+    cliStyles.danger(`Gloom Cloud did not answer for ${count}, so ${unanswered.length === 1 ? "it was" : "they were"} not looked up: ${unanswered.join(", ")}`),
+    ...retry ? [`Try again in a minute: ${retry(unanswered.join(" "))}`] : [],
+  ];
 }
 
 /**
@@ -131,18 +150,21 @@ export function printSymbolRows(
 ): void {
   const summary = `${collection.kind === "watchlist" ? "Watchlist" : "Portfolio"} "${collection.name}": ${summarizeSymbolRows(rows, verb, repeated)}`;
   const count = (status: SymbolStatus) => rows.filter((row) => row.status === status).length;
+  const extra = (key: string, status: SymbolStatus) => count(status) > 0 ? { [key]: count(status) } : {};
   const counts = verb === "add"
     ? { added: count("added"), alreadyListed: count("already_listed"), notFound: count("not_found"), notAdded: count("failed"),
-      ...count("needs_choice") > 0 ? { needsChoice: count("needs_choice") } : {} }
-    : { removed: count("removed"), notListed: count("not_listed"), notFound: count("not_found"), notRemoved: count("failed") };
+      ...extra("needsChoice", "needs_choice"), ...extra("notLookedUp", "not_looked_up"), ...extra("notASymbol", "not_a_symbol") }
+    : { removed: count("removed"), notListed: count("not_listed"), notFound: count("not_found"), notRemoved: count("failed"),
+      ...extra("notASymbol", "not_a_symbol") };
   ctx.printResult({
     data: rows,
     metadata: { [collection.kind]: collection.name, ...counts, repeated, summary, ...dryRun ? { dryRun } : {} },
     ...notes.length > 0 ? { warnings: [...notes] } : {},
   }, {
     text: () => [
-      ...rows.filter((row) => row.status !== "needs_choice").map((row) => rowLines(row, verb)),
+      ...rows.filter((row) => row.status !== "needs_choice" && row.status !== "not_looked_up").map((row) => rowLines(row, verb)),
       ...choiceLines(rows, retry),
+      ...unansweredLines(rows, retry),
       "",
       `${summary}${dryRunNote(dryRun)}`,
     ].join("\n"),
@@ -225,11 +247,13 @@ export async function requireSymbolList(
       typed ??= read;
       return read;
     } });
-    if (list.symbols.length === 0) ctx.fail(usage);
+    // Only numbers or strays says what it left out, not only how to call the command.
+    if (list.symbols.length === 0) ctx.fail(list.notes.length > 0 ? ["No symbols.", ...list.notes].join(" ") : usage, list.notes.length > 0 ? usage : undefined);
     // One symbol typed alone keeps the single-symbol output and errors. It goes as typed, so a separator
-    // left on it (`UPST;`) is named by the listing it resolves to.
+    // left on it (`UPST;`) is named by the listing it resolves to; a figure typed beside it (`ED 2.582,52`) is not.
     const entries: string[] = typed ?? [];
-    const single = file == null && !args.includes("-") && entries.length === 1 ? (args.length === 1 ? args[0]!.trim() : entries[0]!) : null;
+    const whole = args.length === 1 && splitSymbolArgs(args).length === 1;
+    const single = file == null && !args.includes("-") && entries.length === 1 ? (whole ? args[0]!.trim() : entries[0]!) : null;
     return { ...list, single };
   } catch (error) {
     if (error instanceof SymbolListError) ctx.fail(error.message, usage);
@@ -256,7 +280,7 @@ export async function removeSymbols({
   const staged = new StagedTickerRepository(store);
   const rows: SymbolRow[] = [];
   for (const input of symbols) {
-    const refusal = reject?.(input);
+    const refusal = notASymbolError(input) ?? reject?.(input);
     if (refusal) {
       rows.push(failedRow(input, refusal));
       continue;
