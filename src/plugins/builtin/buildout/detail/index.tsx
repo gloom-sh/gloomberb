@@ -1,5 +1,5 @@
 import { Box, ScrollBox } from "../../../../ui";
-import { EmptyState } from "../../../../components";
+import { EmptyState, Notice } from "../../../../components";
 import type { BuildoutRow } from "../model/types";
 import type { InlineTickerCatalog } from "./ui";
 import { CompanyDetail } from "./company";
@@ -13,12 +13,15 @@ export {
 
 export function BuildoutDetail({
   row,
+  note = null,
   width,
   height,
   catalog,
   openTicker,
 }: {
   row: BuildoutRow | null;
+  /** What the row's last star ran into, in full. */
+  note?: string | null;
   width: number;
   height: number;
   catalog: InlineTickerCatalog;
@@ -45,6 +48,7 @@ export function BuildoutDetail({
         focusable={false}
       >
         <Box flexDirection="column" paddingX={1} width={bodyWidth}>
+          {note ? <Box paddingBottom={1}><Notice tone="negative">{note}</Notice></Box> : null}
           {row.kind === "company" ? (
             <CompanyDetail
               company={row.item}

@@ -19,6 +19,8 @@ import { favoriteKey } from "./table-model";
 
 interface BuildoutCellContext {
   favoriteBusyKey: string | null;
+  /** The row's last star did not take. */
+  favoriteFailed?: boolean;
   toggleFavorite: (row: BuildoutRow) => void | Promise<void>;
 }
 
@@ -60,6 +62,7 @@ export function renderBuildoutCell(
             <FavoriteCell
               starred={company.starred === true}
               busy={busy}
+              failed={context.favoriteFailed}
               selected={rowState.selected}
               onPress={() => { void context.toggleFavorite(row); }}
             />
@@ -120,6 +123,7 @@ export function renderBuildoutCell(
             <FavoriteCell
               starred={site.starred === true}
               busy={busy}
+              failed={context.favoriteFailed}
               selected={rowState.selected}
               onPress={() => { void context.toggleFavorite(row); }}
             />

@@ -244,7 +244,7 @@ never goes there.
 |---|---|---|
 | A pane action (add, edit, open source, sync, save search) | Footer hint | `usePaneFooter({ hints })` |
 | Changing status (loading, error, live/delayed, stale, updated 2m ago, saving) | Footer info | `usePaneStatusFooter`, `loadingErrorFooterInfo` |
-| A message about one row of a list (a broker profile, an account, an alert, a plugin, an order): its state, an action running on it, what that action came to | On that row: a short state in its status cell, the full reason in its detail. Never the footer, never a toast | [Row messages](#row-messages) |
+| A message about one row of a list (a broker profile, an account, an alert, a plugin, an order, a team member): its state, an action running on it, what that action came to | On that row: a short state in its status cell, the full reason in its detail. Never the footer, never a toast | [Row messages](#row-messages), `useRowNotes`, a settings action's `setRowNote` |
 | Summary figures for the whole pane or an open detail (VWAP, spread, percentile, range) | Header zone, under the query bar | `StatGrid` |
 | A control that changes what the pane shows (range, window, scope, level) | Query bar, never a cycling footer hint | `QueryBar` |
 | Non-blocking data limitation (missing period, fallback dates, partial source) | One amber `⚠` in the footer, `!` or click opens details | `usePaneNoticeFooter` |
@@ -352,9 +352,11 @@ each is that row's.
 - The full reason goes in the row's own detail, where the app already shows
   the row (the stack detail Enter opens, the inspector): the broker's words,
   the step that failed. A table with no detail says it under the table while
-  the row is selected (`rootAfter`, a `Notice`), as Alerts does. Name the
-  step that failed, not the action the user asked for: enabling a profile
-  that then fails to sync says it was enabled and that the sync failed.
+  the row is selected (`rootAfter`, a `Notice`), as Orders does; a list of
+  rows with their own buttons says it under the row while one of its
+  buttons has focus, as Team does. Name the step that failed, not the
+  action the user asked for: enabling a profile that then fails to sync
+  says it was enabled and that the sync failed.
 - The state stands until the next action on the row, or until the row's own
   status really changes (its state, its message, a sync), never on a
   timestamp a poll can bump. A success the row's cells already show
@@ -365,8 +367,15 @@ each is that row's.
   toast. A failure of the whole pane (its feed is down, it is signed out)
   goes in its footer.
 
+`useRowNotes` (`gloomberb/components`) keeps the notes: `setNote(key,
+note)` after an action, `noteFor(row)` in the status cell and the detail.
+Give it the row's `signature` (its state and message, never a timestamp)
+and a note goes once the row moves past it. A pane settings action row says
+it with `context.setRowNote` (PLUGINS.md, Pane settings).
+
 Reference: Brokers (`broker-manager/pane-actions.tsx`, `table.ts`
-`brokerRowStatus`) and Plugins (`plugin-marketplace/pane.tsx` `rowStatus`).
+`brokerRowStatus`), Plugins (`plugin-marketplace/pane.tsx` `rowStatus`),
+Orders (`broker-trading/orders.tsx`) and Team (`cloud/team/pane.tsx`).
 
 Table header labels are uppercased by the kit; write them in any case.
 Section headings read in title case, bright and bold: the kit capitalises

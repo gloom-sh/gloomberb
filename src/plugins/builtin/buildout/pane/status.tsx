@@ -26,7 +26,6 @@ export function updateBuildoutFooterInfo(
   activeTab: BuildoutTabId,
   selectedList: BuildoutList | null,
   messages: {
-    favoriteMessage: string | null;
     upgradeMessage: string | null;
     partialList: boolean;
     onUpgrade: () => void;
@@ -65,9 +64,6 @@ export function updateBuildoutFooterInfo(
   }
   if (page?.error) {
     info.push({ id: "page-error", parts: [{ text: page.error, tone: "negative" }] });
-  }
-  if (messages.favoriteMessage) {
-    info.push({ id: "favorite-error", parts: [{ text: messages.favoriteMessage, tone: "negative" }] });
   }
   if (messages.upgradeMessage) {
     info.push({ id: "upgrade-error", parts: [{ text: messages.upgradeMessage, tone: "negative" }] });

@@ -842,6 +842,7 @@ A symbol is read as `gloomberb quote` reads it and must be a US listing, as in t
 - A bare coin ticker whose listing is a fund says so as `quote` does (`BTC is Grayscale Bitcoin Mini Trust ETF, not bitcoin. For bitcoin use BTC-USD.`), and so do `fn` reports such as `fn OPX BTC`.
 - A target more than 10 times the last price, or under a tenth of it, is refused, in **Add Alert** too (`alerts add btc above 85000` is bitcoin's price typed on the fund).
 - If saved price alerts cannot be read, the app and CLI leave the data unchanged and price checks pause until it is repaired. The pane and `gloomberb alerts list` show the read error, and event alerts stay usable.
+- On **Prices**, Enter opens an alert in full: its state, the price and how far it is from the level, and when its quote was checked. An alert that could not get a quote shows that in red on its row, and its detail says why. `m` re-arms an alert that went off.
 
 ### Alerts before earnings, CPI and FOMC
 

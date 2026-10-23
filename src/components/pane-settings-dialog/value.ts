@@ -1,5 +1,6 @@
-import type { PaneSettingField } from "../../types/plugin";
+import type { PaneSettingField, PaneSettingRowNote } from "../../types/plugin";
 import { t } from "../../i18n";
+import { colors } from "../../theme/colors";
 
 export function isSpaceKey(event: { name?: string; sequence?: string }): boolean {
   return event.name === "space" || event.name === " " || event.sequence === " ";
@@ -8,6 +9,12 @@ export function isSpaceKey(event: { name?: string; sequence?: string }): boolean
 /** An action row that cannot run now: the mouse ignores it and the cursor steps over it. */
 export function isPaneSettingDisabled(field: PaneSettingField): boolean {
   return field.type === "action" && field.disabled === true;
+}
+
+/** A row note's tone, for its state and its reason. */
+export function noteColor(note: PaneSettingRowNote | null | undefined): string | undefined {
+  if (!note) return undefined;
+  return note.tone === "negative" ? colors.negative : colors.warning;
 }
 
 export function summarizePaneSettingValue(field: PaneSettingField, value: unknown): string {

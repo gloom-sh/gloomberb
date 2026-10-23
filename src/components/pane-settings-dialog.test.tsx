@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { act } from "react";
+import { act, useState } from "react";
 import type { PluginRegistry } from "../plugins/registry";
 import type {
   PaneSettingActionContext,
@@ -130,6 +130,70 @@ describe("pane settings action rows", () => {
     expect(typeof calls[0]?.openCommandBar).toBe("function");
     expect(dismissed).toBe(true);
     expect(opened).toEqual(["AI LOGIN"]);
+  });
+
+  test("an action says what it is doing and what stopped it on its own row, and learns when the row is gone", async () => {
+    let finish: (() => void) | null = null;
+    const answers: boolean[] = [];
+    let latest: PaneSettingActionContext | null = null;
+    let runs = 0;
+    const field = makeField({
+      action: async (nextContext) => {
+        runs += 1;
+        latest = nextContext;
+        answers.push(nextContext.setRowNote?.({ status: "Connecting…", text: "Enter code ABCD-1234 at example.com/device.", tone: "warning" }) ?? false);
+        await new Promise<void>((resolve) => { finish = resolve; });
+        answers.push(nextContext.setRowNote?.({ status: "Sign-in failed", text: "The code expired.", tone: "negative" }) ?? false);
+      },
+    });
+    let dismiss: () => void = () => {};
+    function Host() {
+      const [open, setOpen] = useState(true);
+      dismiss = () => setOpen(false);
+      return open ? (
+        <PaneSettingsDialogContent
+          dismiss={() => setOpen(false)}
+          paneId={context.paneId}
+          pluginRegistry={makeRegistry(field)}
+          applyFieldValue={async () => {}}
+        />
+      ) : null;
+    }
+    await tui.render(<TestDialogProvider><Host /></TestDialogProvider>, { width: 72, height: 14 });
+    await tui.setup().renderOnce();
+
+    await act(async () => {
+      tui.setup().mockInput.pressEnter();
+      await Promise.resolve();
+      await tui.setup().renderOnce();
+    });
+    // Its state where its action label was, its next step where its description was.
+    let frame = await tui.waitForFrameToContain("Enter code ABCD-1234");
+    expect(frame.split("\n").find((line) => line.includes("AI Account"))).toContain("Connecting…");
+    expect(frame).not.toContain("Connect an account used by this pane.");
+    // A second Enter while it runs does not start it again.
+    await act(async () => {
+      tui.setup().mockInput.pressEnter();
+      await Promise.resolve();
+    });
+    expect(runs).toBe(1);
+
+    await act(async () => {
+      finish?.();
+      await Promise.resolve();
+      await Promise.resolve();
+      await tui.setup().renderOnce();
+    });
+    frame = await tui.waitForFrameToContain("The code expired.");
+    expect(frame.split("\n").find((line) => line.includes("AI Account"))).toContain("Sign-in failed");
+
+    // Once the dialog has closed, the row is gone: the action is told so, to toast instead.
+    await act(async () => {
+      dismiss();
+      await tui.setup().renderOnce();
+    });
+    expect(latest!.setRowNote?.({ status: "Sign-in failed", tone: "negative" })).toBe(false);
+    expect(answers).toEqual([true, true]);
   });
 
   test("activates enabled TUI action rows by mouse and ignores disabled rows", async () => {

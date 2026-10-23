@@ -349,11 +349,28 @@ interface PaneSettingOrderedMultiSelectField extends PaneSettingFieldBase {
   searchable?: boolean;
 }
 
+/** What an action row says of its own action (docs/pane-conventions.md, "Row messages"). */
+export interface PaneSettingRowNote {
+  /** A short state, where the row's action label is: `Connecting…`, `Sign-in failed`. */
+  status: string;
+  /** The full reason or the next step, in place of the row's description. */
+  text?: string;
+  tone: "warning" | "negative";
+}
+
 export interface PaneSettingActionContext extends PaneSettingsContext {
   surface: "pane-dialog" | "command-bar";
   close(): void;
   openCommandBar(query?: string): void;
   notify(notification: AppNotificationRequest): void;
+  /**
+   * Says on the row the action runs from what it is doing or what stopped it,
+   * or clears that with null. A success the row's own description and label
+   * show once they change needs no note. False once the row is off screen
+   * (the dialog closed): say it with `notify` then, as a row that has left a
+   * list is a toast. Older hosts do not pass it.
+   */
+  setRowNote?(note: PaneSettingRowNote | null): boolean;
 }
 
 export type PaneSettingActionHandler = (

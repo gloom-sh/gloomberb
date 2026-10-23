@@ -40,7 +40,7 @@ import { isPlainKey } from "../../../utils/keyboard";
 import { usePluginAppActions, usePluginBrokerActions } from "../../runtime";
 import { BrokerProfileForm, profileFieldWidth, type BrokerEditKey } from "./detail";
 import { useBrokerManagerKeyboard } from "./keyboard";
-import type { BrokerManagerMessage, BrokerRowNoteInput } from "./pane-actions";
+import type { BrokerManagerMessage, BrokerRowNote } from "./pane-actions";
 
 /**
  * Adding a profile, one step at a time in the pane's detail: the broker, how
@@ -91,7 +91,7 @@ export function useBrokerAddFlow({
   setBusy: (busy: string | null) => void;
   setMessage: (message: BrokerManagerMessage | null) => void;
   /** Says on the new profile's row why its first sync failed. */
-  setRowNote: (profileId: string, note: BrokerRowNoteInput | null) => void;
+  setRowNote: (profileId: string, note: BrokerRowNote | null) => void;
   /** Lands the pane on the profile the flow made, with the flow closed. */
   onProfileAdded: (instanceId: string) => void;
 }) {

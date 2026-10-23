@@ -13,20 +13,22 @@ const tui = createOpenTuiTestHarness({ width: 90, height: 30 });
 afterEach(() => brokerOrderFeed.clear());
 const paneId = "broker-orders:test";
 
-async function mount(options: DemoBrokerOptions = {}, selectedAccount?: string | null, confirmedCancel = false) {
+async function mount(options: DemoBrokerOptions = {}, selectedAccount?: string | null, confirmedCancel = false, compact = false) {
   const demo = createDemoBroker(options);
+  const toasts: string[] = [];
   if (confirmedCancel) demo.adapter.getOrderStatus = async (_instance, orderId) => demo.order(demo.draft, "CANCELED", orderId);
   const config = createTestPaneConfig("/synthetic/orders-render", { instanceId: paneId, paneId: "broker-orders", binding: { kind: "none" }, settings: {} });
   config.brokerInstances = [demo.instance];
   const state = createInitialState(config); state.focusedPaneId = paneId;
   const modifications: BrokerOrder[] = [];
   let returnedToTicket = 0;
-  await act(async () => { await tui.render(<TestPaneFrame state={state} paneId={paneId} pluginId="broker-trading" runtime={createTestPluginRuntime()} width={90} height={30} footerKeys>
-    {(body) => <BrokerOrdersView {...body} focused broker={demo.adapter} instance={demo.instance} accounts={demo.accounts()} accountId={selectedAccount === null ? undefined : selectedAccount ?? demo.draft.accountId}
+  const runtime = createTestPluginRuntime({ notify: (notification) => { toasts.push(notification.title ?? notification.body ?? ""); } });
+  await act(async () => { await tui.render(<TestPaneFrame state={state} paneId={paneId} pluginId="broker-trading" runtime={runtime} width={90} height={30} footerKeys>
+    {(body) => <BrokerOrdersView {...body} compact={compact} focused broker={demo.adapter} instance={demo.instance} accounts={demo.accounts()} accountId={selectedAccount === null ? undefined : selectedAccount ?? demo.draft.accountId}
       onAccountChange={() => {}} onModify={(order) => modifications.push(order)} onBack={() => { returnedToTicket++; }} />}
   </TestPaneFrame>); });
-  await tui.waitForFrameToContain(selectedAccount === null ? "Choose an account" : "Working");
-  return { demo, modifications, returnedToTicket: () => returnedToTicket, mutations: () => demo.calls.filter((call) => ["placeOrder", "modifyOrder", "cancelOrder"].includes(call.method)) };
+  await tui.waitForFrameToContain(selectedAccount === null ? "Choose an account" : compact ? "Open Orders (2)" : "Working");
+  return { demo, modifications, toasts, returnedToTicket: () => returnedToTicket, mutations: () => demo.calls.filter((call) => ["placeOrder", "modifyOrder", "cancelOrder"].includes(call.method)) };
 }
 
 test("docked rows step a selected order into review and keep cancel confirmation safe across resize", async () => {
@@ -234,4 +236,50 @@ test("a broker-confirmed terminal state suppresses stale open-row mutation contr
   await tui.emitKeypress([{ name: "m", sequence: "m" }, { name: "c", sequence: "c" }], { trackPropagation: true });
   expect(f.modifications).toEqual([]);
   expect(f.mutations().map((call) => call.method)).toEqual(["cancelOrder"]);
+});
+
+const refused = (message: string) => Object.assign(new Error(message), { refused: true });
+/** The pane's footer: its last line. */
+const footer = () => tui.frame().trimEnd().split("\n").at(-1) ?? "";
+
+test("a refused or unconfirmed cancel is said on its order's row and in full under the table, not in the footer or a toast", async () => {
+  const f = await mount();
+  f.demo.adapter.cancelOrder = async () => { throw refused("Too late to cancel this order."); };
+  await tui.emitKeypress({ name: "j", sequence: "j" }, { trackPropagation: true });
+  await tui.emitKeypress({ name: "c", sequence: "c" }, { trackPropagation: true });
+  await tui.waitForFrameToContain("Cancel AAPL order?");
+  await tui.emitKeypress({ name: "enter", sequence: "\r" }, { trackPropagation: true });
+  await tui.waitForFrameToContain("Cancel refused");
+  const row = tui.frame().split("\n").find((line) => line.includes("Cancel refused"));
+  expect(row).toContain("BUY");
+  expect(tui.frame()).toContain("Too late to cancel this order");
+  expect(footer()).not.toContain("Too late");
+  expect(f.toasts).toEqual([]);
+  // Another order chosen hides the reason; the row keeps its state.
+  await tui.emitKeypress({ name: "j", sequence: "j" }, { trackPropagation: true });
+  await tui.waitForFrameToExclude("Too late to cancel");
+  expect(tui.frame()).toContain("Cancel refused");
+  await tui.destroy();
+
+  const unknown = await mount({ outcome: "unknown" });
+  await tui.emitKeypress({ name: "j", sequence: "j" }, { trackPropagation: true });
+  await tui.emitKeypress({ name: "c", sequence: "c" }, { trackPropagation: true });
+  await tui.waitForFrameToContain("Cancel AAPL order?");
+  await tui.emitKeypress({ name: "enter", sequence: "\r" }, { trackPropagation: true });
+  await tui.waitForFrameToContain("Outcome unknown. Checking with the broker.");
+  expect(footer()).not.toContain("Outcome unknown");
+  expect(unknown.toasts).toEqual([]);
+});
+
+test("a cancel the broker refused because the order ended first is a toast once the drawer no longer lists it", async () => {
+  const f = await mount({}, undefined, false, true);
+  f.demo.adapter.cancelOrder = async () => { throw refused("Order is not open."); };
+  f.demo.adapter.getOrderStatus = async (_instance, orderId) => f.demo.order(f.demo.draft, "FILLED", orderId);
+  await tui.emitKeypress({ name: "j", sequence: "j" }, { trackPropagation: true });
+  await tui.emitKeypress({ name: "c", sequence: "c" }, { trackPropagation: true });
+  await tui.waitForFrameToContain("Cancel Buy 10 AAPL?");
+  await tui.emitKeypress({ name: "enter", sequence: "\r" }, { trackPropagation: true });
+  for (let attempt = 0; attempt < 40 && !f.toasts.length; attempt++) await act(async () => { await Bun.sleep(25); });
+  expect(f.toasts).toEqual(["Already filled"]);
+  expect(tui.frame()).not.toContain("Cancel refused");
 });

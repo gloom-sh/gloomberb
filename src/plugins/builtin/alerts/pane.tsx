@@ -1,12 +1,12 @@
-import { Box } from "../../../ui";
-import { Button, Notice, PaneStatusBody, PaneFooterScope, usePaneTabs } from "../../../components";
+import { Box, type ScrollBoxRenderable } from "../../../ui";
+import { Button, DetailScrollBody, KeyValueRow, Notice, PaneStatusBody, PaneFooterScope, usePaneTabs } from "../../../components";
 import { usePluginPaneState } from "../../runtime";
 import { EventAlertsPane } from "./events-pane";
 import { AlertHistoryPane } from "./history-pane";
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from "react";
 import {
   confirmDialog,
-  DataTableView,
+  DataTableStackView,
   usePaneFooter,
   type DataTableCell,
   type DataTableColumn,
@@ -73,6 +73,39 @@ const ALERT_TABLE_CONTENT_WIDTH = ALERT_COLUMNS.reduce(
   2,
 );
 
+const DETAIL_ROW = { labelWidth: 10, emphasis: false } as const;
+
+/** "AAPL above 400.00": the rule, which titles its detail. */
+function alertTitle(alert: AlertRule): string {
+  return `${alert.symbol} ${conditionLabel(alert.condition).toLowerCase()} ${formatAlertTargetPrice(alert)}`;
+}
+
+/**
+ * One price alert in full: why it has no quote, when there is a reason, then
+ * the figures its row shortens. The title names the rule.
+ */
+function AlertDetail({ alert, scrollRef }: { alert: AlertRule; scrollRef: RefObject<ScrollBoxRenderable | null> }) {
+  const reason = alert.lastCheckError
+    ? alert.lastCheckError.includes(alert.symbol) ? alert.lastCheckError : `${alert.symbol}: ${alert.lastCheckError}`
+    : null;
+  return (
+    <DetailScrollBody ref={scrollRef} resetScrollKey={alert.id}>
+      <Box flexDirection="column">
+        {reason ? <Box paddingBottom={1}><Notice tone="warning">{reason}</Notice></Box> : null}
+        <KeyValueRow {...DETAIL_ROW} label="State" value={alert.status === "triggered" ? "Triggered" : "Active"} tone={alert.status === "triggered" ? "positive" : "muted"} />
+        {/* With no quote the reason above says why; the price and its distance wait for one. */}
+        {reason ? null : <KeyValueRow {...DETAIL_ROW} label="Current" value={formatCurrentPrice(alert, 24)} />}
+        {reason ? null : <KeyValueRow {...DETAIL_ROW} label="Away" value={formatAlertDistance(alert)} />}
+        {reason
+          ? alert.lastCheckedAt ? <KeyValueRow {...DETAIL_ROW} label="Checked" value={relativeTime(alert.lastCheckedAt)} tone="muted" /> : null
+          : <KeyValueRow {...DETAIL_ROW} label="Quote" value={formatQuoteChecked(alert)} tone="muted" />}
+        {alert.triggeredAt ? <KeyValueRow {...DETAIL_ROW} label="Alerted" value={relativeTime(alert.triggeredAt)} /> : null}
+        <KeyValueRow {...DETAIL_ROW} label="Armed" value={relativeTime(alert.armedAt ?? alert.createdAt)} tone="muted" />
+      </Box>
+    </DetailScrollBody>
+  );
+}
+
 export function AlertsPane(props: PaneProps) {
   const [tab, setTab] = usePluginPaneState<string>("tab", "prices");
   // A missed price alert opened from the Unread list selects its rule on Prices.
@@ -111,6 +144,8 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
   const { openPluginCommandWorkflow, notify } = usePluginAppActions();
   const dialog = useDialog();
   const [selectedIdx, setSelectedIdx] = useState(0);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const detailScrollRef = useRef<ScrollBoxRenderable | null>(null);
   const showHorizontalScrollbar = ALERT_TABLE_CONTENT_WIDTH > width;
   const storeError = useMemo(() => readAlertsStoreError(alertsJson), [alertsJson]);
 
@@ -204,13 +239,8 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
 
   const selectedRule = rows[selectedIdx];
   // A quote one alert could not get is said on its row (Current and Quote),
-  // and in full under the table while the row is selected: the table has no detail.
+  // and in full in its detail.
   const selectedShown = displayRows[selectedIdx];
-  const selectedQuoteError = selectedShown?.lastCheckError
-    ? selectedShown.lastCheckError.includes(selectedShown.symbol)
-      ? selectedShown.lastCheckError
-      : `${selectedShown.symbol}: ${selectedShown.lastCheckError}`
-    : null;
   const selectedTarget = useMemo(() => selectedRule ? alertTarget(priceRuleSubject(selectedRule)) : null, [selectedRule]);
   const openTarget = useOpenAlertTarget();
 
@@ -294,6 +324,8 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
 
   useEffect(() => {
     setSelectedIdx((prev) => (rows.length === 0 ? 0 : Math.min(prev, rows.length - 1)));
+    // A detail whose alert was deleted goes with it.
+    if (rows.length === 0) setDetailOpen(false);
   }, [rows.length]);
 
   // The footer hints bind a, e, d and m; `n` is a second key for adding.
@@ -348,8 +380,13 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
   }, []);
 
   return (
-    <DataTableView<AlertRule, AlertColumn>
+    <DataTableStackView<AlertRule, AlertColumn>
       focused={focused}
+      detailOpen={detailOpen && !!selectedShown}
+      onBack={() => setDetailOpen(false)}
+      detailTitle={selectedShown ? alertTitle(selectedShown) : undefined}
+      detailContent={selectedShown ? <AlertDetail alert={selectedShown} scrollRef={detailScrollRef} /> : null}
+      detailScrollRef={detailScrollRef}
       selection={{
         kind: "index",
         selectedIndex: selectedIdx,
@@ -364,17 +401,11 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
       sortColumnId={null}
       sortDirection="asc"
       getItemKey={(alert) => alert.id}
-      onActivate={(alert) => {
-        if (alert.status === "triggered") rearmAlert(alert.id);
-      }}
+      // Enter opens the alert; `m` re-arms a triggered one.
+      onActivate={() => setDetailOpen(true)}
       renderCell={renderCell}
       selectedTextOverridesCellColor
       status={displayRows.length === 0 && storeError ? { error: storeError, subject: "price alerts" } : undefined}
-      rootAfter={selectedQuoteError ? (
-        <Box paddingX={1} flexShrink={0}>
-          <Notice tone="warning">{selectedQuoteError}</Notice>
-        </Box>
-      ) : undefined}
       emptyStateTitle="No alerts"
       emptyContent={
         <PaneStatusBody empty emptyTitle="No alerts" actions={<Button label="Add alert" compact onPress={startAddAlert} />} />
