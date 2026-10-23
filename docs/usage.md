@@ -267,7 +267,7 @@ When Gloom Cloud is too busy to run a search, the list says `Search is busy` rat
 | `RIPL [tickers]` | Earnings Ripple: customers and suppliers of your holdings (or the named tickers) that report in the next 30 days, with the disclosed revenue share; Pro adds companies two hops away |
 | `RDCF <ticker>` | Reverse DCF: the ten-year free cash flow growth the enterprise value prices in, against past growth, by discount rate |
 | `PEB <ticker>` | P/E band: weekly price against round multiples of trailing EPS, today's P/E and its percentile in the stock's own history |
-| `MDAY <ticker>` | Macro-day reaction: average absolute and signed move and up share on CPI, jobs and FOMC days against a normal day, and every release day |
+| `MDAY <ticker>` | Macro-day reaction: average absolute and signed move and up share on CPI, jobs, FOMC and Brazil IPCA days against a normal day, and every release day with its actual, forecast and prior |
 | `HIVG <ticker>` | Implied volatility history against realized, with IV rank and percentile |
 | `VCA [tickers]` | Rich/cheap implied volatility across a list: IV rank, percentile, term slope, skew, IV/HV |
 | `OSA <ticker>` | Multi-leg option positions, scenario P&L, payoff charts and aggregate Greeks; a hedge budget, a collar, or a cash-secured put with its yield on cash at the mid and at the bid |
@@ -1522,10 +1522,17 @@ The FUT board's codes work wherever a symbol is typed: in `quote`, `history`, `t
 - `--tail <n>` without `--from` keeps the last n events of the whole calendar, the past week's too.
 - When the calendar stops less than a week past its first day, text output ends with `No events listed after <date>` (an empty result says the same). `--json` carries the last day listed as `metadata.listedThrough`, and the ECO pane says it in its footer.
 
+**Times**
+
+- Rows are listed by their UTC day at their UTC time. A release a statistics office or a central bank times itself also shows its own clock (`09:00 Sao Paulo`).
+- `--tz <zone>` adds a column with each release's time on another clock, named by its city: `econ --country BR --tz America/New_York` shows the IPCA at `08:00` under `New York`. When that clock is on another day than the UTC date the row is listed under, the cell leads with its weekday (`Tue 21:30`). `--json` carries it as `viewerDate` and `viewerTime` on each timed row and the zone as `metadata.timeZone`. A name that is no IANA zone fails with `Unknown time zone`.
+- With `config set timezone`, the ECO pane has the same column for your zone beside `TIME (UTC)`, where the pane is wide enough to keep the event names readable.
+
 **Countries**
 
 - `--country` takes the ECO pane's regions (`US`, `G7`, `EU`, `all`) or any country by its ISO two-letter code, several comma separated. `UK` reads as `GB`, and `G7,MX` adds Mexico to the G7.
 - `econ --country TR` lists Türkiye's CPI releases (`CPI y/y` and `CPI m/m`), the next one with no actual yet. `econ --country MX,BR,ZA,IN,KR` lists the emerging markets a peso or real book watches.
+- `econ --country BR` lists IBGE's IPCA and IPCA-15 releases as `IPCA CPI m/m` and `IPCA-15 Mid-Month CPI m/m`, with the actual and the prior from the central bank's SGS series (433 and 7478) once the release time has passed, and the forecast where the calendar has a consensus. The series themselves chart as `FRED:BRAIPCAMOM` and `FRED:BRAIPCA15MOM`, and `catalog IPCA` or `catalog brazil inflation` finds them.
 - A national release in the euro area is its member's. The feeds list `German Ifo Business Climate` under the euro area with the member's adjective in front of its name, and the calendar shows it as `DE` (on the desktop and the web with Germany's flag). The ECB's and the euro area's own releases stay `EU`. `EU` still lists the members' releases, and `econ --country DE` lists Germany's.
 - A country with nothing in the window says so plainly, `No scheduled releases for MX in this window.`, under the rows when others have some. A code that is no country (`TUR`, `XQ`) fails with `Unknown country`.
 - `ECO MX,BR` and `fn ECO --country MX,BR` open the pane on the same countries.

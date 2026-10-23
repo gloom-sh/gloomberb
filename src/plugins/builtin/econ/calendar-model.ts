@@ -43,6 +43,7 @@ export type DisplayRow =
 
 type EconCalendarColumnId =
   | "time"
+  | "readerTime"
   | "impact"
   | "country"
   | "event"

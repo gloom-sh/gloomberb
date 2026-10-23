@@ -10,11 +10,13 @@ import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box } from "../../../ui";
 import { loadMacroDayEarnings, loadMacroDayHistory, loadMacroReleases, macroDayEarningsNotice } from "./client";
-import { macroDayEventLabel, projectMacroDays, type MacroDayEvent, type MacroDayModel } from "./model";
-import { MACRO_EVENT_KINDS, MACRO_EVENT_LABELS, staleMacroReleasesNotice, type MacroEventKind } from "./releases";
+import { macroDayEventLabel, macroDayStats, matchesSurprise, projectMacroDays, type MacroDayEvent, type MacroDayModel } from "./model";
+import { MACRO_EVENT_KINDS, MACRO_EVENT_LABELS, MACRO_SURPRISE_LABELS, MACRO_SURPRISES, staleMacroReleasesNotice, type MacroEventKind,
+  type MacroSurprise } from "./releases";
 
 export const LOOKBACK_OPTIONS = [{ value: "1", label: "1Y" }, { value: "2", label: "2Y" }, { value: "3", label: "3Y" }, { value: "5", label: "5Y" }];
 const RELEASE_OPTIONS = [{ value: "all", label: "All" }, ...MACRO_EVENT_KINDS.map((kind) => ({ value: kind, label: MACRO_EVENT_LABELS[kind] }))];
+const SURPRISE_OPTIONS = [{ value: "all", label: "All" }, ...MACRO_SURPRISES.map((surprise) => ({ value: surprise, label: MACRO_SURPRISE_LABELS[surprise] }))];
 
 function pct(value: number | null | undefined, signed = true): string {
   if (value == null) return "--";
@@ -29,6 +31,12 @@ const MOVE: DataTableColumn[] = [
   { id: "move", label: "Move", width: 9, align: "right" },
   { id: "multiple", label: "vs Normal", width: 10, align: "right" },
 ];
+/** What each release came out with, shown once any listed day has it. */
+const FIGURES: DataTableColumn[] = [
+  { id: "actual", label: "Actual", width: 7, align: "right" },
+  { id: "forecast", label: "Fcst", width: 7, align: "right" },
+  { id: "prior", label: "Prior", width: 7, align: "right" },
+];
 
 /**
  * With every release listed, the release's name, widened to take the earnings marker where a row has one. With one
@@ -36,14 +44,29 @@ const MOVE: DataTableColumn[] = [
  */
 function columnsFor(release: string, rows: readonly MacroDayEvent[]): DataTableColumn[] {
   const marked = rows.some((event) => event.earnings);
-  if (release === "all") return [DATE, { id: "release", label: "Release", width: marked ? 15 : 8, align: "left" }, ...MOVE];
-  return marked ? [DATE, { id: "release", label: "Note", width: EARNINGS_MARK.length, align: "left" }, ...MOVE] : [DATE, ...MOVE];
+  const values = [...rows.some((event) => event.figures) ? FIGURES : [], ...MOVE];
+  if (release === "all") return [DATE, { id: "release", label: "Release", width: marked ? 15 : 8, align: "left" }, ...values];
+  return marked ? [DATE, { id: "release", label: "Note", width: EARNINGS_MARK.length, align: "left" }, ...values] : [DATE, ...values];
+}
+
+const tone = (value: number | null) => value == null ? undefined : value >= 0 ? "positive" as const : "negative" as const;
+
+/** The figures over the days a surprise filter keeps: the same four as one release's. */
+function surpriseFigures(model: MacroDayModel, rows: readonly MacroDayEvent[]): StatItem[] {
+  const stats = macroDayStats(rows, model.normal.meanAbs);
+  return [
+    { id: "abs", label: "Avg |move|", value: pct(stats.meanAbs, false), detail: stats.count ? `${times(stats.multiple)} normal` : undefined },
+    { id: "mean", label: "Avg move", value: pct(stats.mean), tone: tone(stats.mean) },
+    { id: "up", label: "Up", value: stats.hitRate == null ? "--" : `${Math.round(stats.hitRate * 100)}%`,
+      detail: stats.count ? `${Math.round(stats.hitRate! * stats.count)} of ${stats.count}` : undefined },
+    { id: "normal", label: "Normal day", value: pct(model.normal.meanAbs, false), detail: "avg |move|" },
+  ];
 }
 
 function figures(model: MacroDayModel, release: string): StatItem[] {
   const normal: StatItem = { id: "normal", label: "Normal day", value: pct(model.normal.meanAbs, false), detail: "avg |move|" };
   if (release === "all") {
-    return [...MACRO_EVENT_KINDS.map((kind): StatItem => {
+    return [...model.kinds.map((kind): StatItem => {
       const stats = model.byKind[kind];
       return { id: kind, label: `${MACRO_EVENT_LABELS[kind]} day`, value: pct(stats.meanAbs, false),
         detail: stats.count ? `${times(stats.multiple)} normal` : undefined };
@@ -51,7 +74,6 @@ function figures(model: MacroDayModel, release: string): StatItem[] {
       detail: `${times(model.earnings.multiple)} normal` }] : []), normal];
   }
   const stats = model.byKind[release as MacroEventKind];
-  const tone = (value: number | null) => value == null ? undefined : value >= 0 ? "positive" as const : "negative" as const;
   return [
     { id: "abs", label: "Avg |move|", value: pct(stats.meanAbs, false), detail: stats.count ? `${times(stats.multiple)} normal` : undefined },
     { id: "mean", label: "Avg move", value: pct(stats.mean), tone: tone(stats.mean) },
@@ -66,6 +88,7 @@ export function MacroDayPane({ width, height, focused }: PaneProps) {
   const { symbol, ticker, error: identityError } = usePaneTicker();
   const [lookback, setLookback] = usePaneSettingValue("lookbackYears", "5");
   const [release, setRelease] = usePluginPaneState("release", "all");
+  const [surprise, setSurprise] = usePluginPaneState<MacroSurprise | "all">("surprise", "all");
   const [selectedRow, setSelectedRow] = usePluginPaneState<string | null>("selectedRow", null);
   const instrument = instrumentFromTicker(ticker, symbol);
   const instrumentKey = JSON.stringify(instrument);
@@ -88,8 +111,10 @@ export function MacroDayPane({ width, height, focused }: PaneProps) {
   [history.data, lookback, symbol]);
   const releasesNotice = history.data ? staleMacroReleasesNotice(history.data.releases) : null;
   const earningsNotice = history.data ? macroDayEarningsNotice(history.data.earnings) : null;
-  const rows = useMemo(() => model ? model.events.filter((event) => release === "all" || event.kind === release) : [], [model, release]);
-  const stats = useMemo(() => model?.events.length ? figures(model, release) : [], [model, release]);
+  const rows = useMemo(() => model ? model.events.filter((event) => (release === "all" || event.kind === release)
+    && matchesSurprise(event, surprise)) : [], [model, release, surprise]);
+  const stats = useMemo(() => !model?.events.length ? [] : surprise === "all" ? figures(model, release) : surpriseFigures(model, rows),
+    [model, release, surprise, rows]);
   const columns = useMemo(() => columnsFor(release, rows), [release, rows]);
 
   usePaneNoticeFooter({ registrationId: "macro-day-notices", focused,
@@ -103,6 +128,11 @@ export function MacroDayPane({ width, height, focused }: PaneProps) {
   const renderCell = useCallback((event: MacroDayEvent, column: DataTableColumn): DataTableCell => {
     if (column.id === "date") return { text: event.session === event.date ? event.date : `${event.date} → ${event.session.slice(5)}`, value: event.date };
     if (column.id === "release") return { text: release === "all" ? macroDayEventLabel(event) : event.earnings ? EARNINGS_MARK : "" };
+    // The print colored against the consensus, as the economic calendar colors it.
+    if (column.id === "actual") return { text: event.figures?.actual ?? "", color: event.figures?.surprise === "hot" ? colors.positive
+      : event.figures?.surprise === "cool" ? colors.negative : undefined };
+    if (column.id === "forecast") return { text: event.figures?.forecast ?? "" };
+    if (column.id === "prior") return { text: event.figures?.prior ?? "" };
     if (column.id === "move") return { text: pct(event.move), value: event.move * 100,
       color: event.move > 0 ? colors.positive : event.move < 0 ? colors.negative : undefined };
     return { text: times(event.multiple), value: event.multiple };
@@ -114,6 +144,7 @@ export function MacroDayPane({ width, height, focused }: PaneProps) {
   return <Box width={width} height={height} flexDirection="column" overflow="hidden">
     <QueryBar width={width} filters={[
       { id: "release", label: "Release", value: release, options: RELEASE_OPTIONS, onChange: setRelease, inline: true },
+      { id: "surprise", label: "Surprise", value: surprise, options: SURPRISE_OPTIONS, onChange: (value) => setSurprise(value as MacroSurprise | "all") },
       { id: "lookback", label: "Lookback", value: String(lookback), options: LOOKBACK_OPTIONS, onChange: setLookback },
     ]} />
     {!symbol ? <EmptyState title="Select a ticker." /> : <PaneStatusBody subject="macro-day moves" loading={history.loading && !model}
@@ -121,7 +152,7 @@ export function MacroDayPane({ width, height, focused }: PaneProps) {
       {model ? <>
         <StatGrid items={stats} width={width} />
         <DataTableView<MacroDayEvent> focused={focused} columns={columns} items={rows} rootWidth={width} rootHeight={contentHeight}
-          getItemKey={key} emptyStateTitle="No release days." sortColumnId={null} sortDirection="desc" selectedTextOverridesCellColor
+          getItemKey={key} emptyStateTitle={surprise === "all" ? "No release days." : `No ${MACRO_SURPRISE_LABELS[surprise].toLowerCase()} prints.`} sortColumnId={null} sortDirection="desc" selectedTextOverridesCellColor
           selection={{ kind: "id", selectedId: selectedRow, getId: key, onChange: (id) => setSelectedRow(id) }}
           getExportMetadata={() => [["symbol", model.symbol], ["from", model.start ?? ""], ["to", model.asOf ?? ""],
             ["units", "percent, close to close on the release day"]]}

@@ -7,7 +7,7 @@ import { HV_WINDOWS, type HvWindow, type IvLookback, type IvStatRow, projectIvHi
 import { vcaUniverse } from "./universe";
 import { offsetText, releaseOffsetRows } from "./events";
 import { loadMacroReleases } from "../macro-day/client";
-import { MACRO_EVENT_KINDS, MACRO_EVENT_LABELS, MACRO_RELEASE_SOURCES, staleMacroReleasesNotice, type MacroEventKind, type MacroRelease,
+import { MACRO_EVENT_LABELS, MACRO_RELEASE_SOURCES, staleMacroReleasesNotice, US_MACRO_EVENT_KINDS, type MacroRelease, type UsMacroEventKind,
   type MacroReleaseList } from "../macro-day/releases";
 import { lookupScheduledDates } from "../alerts/scheduled";
 import { fetchCpiBoard } from "../cpi/client";
@@ -33,7 +33,7 @@ export const ivHistoryHeadless: HeadlessPaneDefinition<"bundle"> = {
   options: [
     { key: "lookback", type: "enum", values: [{ value: "1Y" }, { value: "2Y" }, { value: "ALL" }], defaultValue: "1Y", description: "Visible history" },
     { key: "hvWindow", type: "enum", values: HV_WINDOWS.map((window) => ({ value: String(window) })), defaultValue: "20", description: "Realized volatility window in sessions" },
-    { key: "event", type: "enum", aliases: ["release"], values: MACRO_EVENT_KINDS.map((value) => ({ value, ...value === "jobs" ? { aliases: ["nfp", "payrolls"] } : {} })),
+    { key: "event", type: "enum", aliases: ["release"], values: US_MACRO_EVENT_KINDS.map((value) => ({ value, ...value === "jobs" ? { aliases: ["nfp", "payrolls"] } : {} })),
       description: "One row per release of this kind whose session at --offset has closed (the next scheduled FOMC or CPI included), in place of the daily history",
       example: "--event fomc --offset -6", shot: { reportOnly: "lists the readings around past release days" } },
     { key: "offset", type: "integer", minimum: -60, maximum: 60, defaultValue: 0,
@@ -41,7 +41,7 @@ export const ivHistoryHeadless: HeadlessPaneDefinition<"bundle"> = {
       example: "--event cpi --offset -1", shot: { reportOnly: "picks the session read around each release" } },
   ],
   async load(args, ctx) {
-    const event = typeof args.options.event === "string" && args.options.event ? args.options.event as MacroEventKind : null;
+    const event = typeof args.options.event === "string" && args.options.event ? args.options.event as UsMacroEventKind : null;
     const offset = Number(args.options.offset) || 0;
     if (!event && offset !== 0) throw new Error("--offset counts sessions from a release day: add --event fomc, cpi or jobs.");
     const instrument = await resolveHeadlessInstrument(ctx, args.symbols[0]!);
@@ -215,7 +215,7 @@ export const ivScreenHeadless: HeadlessPaneDefinition<"bundle"> = {
  * from the CPI board's release calendar or the FOMC meetings WIRP prices, as
  * scheduled alerts read them. Payrolls have no schedule to read.
  */
-async function eventReleases(event: MacroEventKind, ctx: HeadlessPaneContext): Promise<{
+async function eventReleases(event: UsMacroEventKind, ctx: HeadlessPaneContext): Promise<{
   list: MacroReleaseList; upcoming: string | null; upcomingNote: string | null;
 }> {
   const label = MACRO_EVENT_LABELS[event];

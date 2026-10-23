@@ -13,7 +13,8 @@ import {
   type PaneFooterSegment,
 } from "../../../components";
 import { usePluginPaneState } from "../../runtime";
-import { usePaneSettingValue } from "../../../public/react";
+import { useAppConfig, usePaneSettingValue } from "../../../public/react";
+import { readerTimeZone, timeZoneCity, zonedClock } from "../../../utils/utc-time";
 import { usePaneInstance } from "../../../state/app/context";
 import { commandRequestParams } from "../shared/command-tab";
 import { useAsyncResource } from "../../../react/async-resource";
@@ -247,6 +248,8 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
 
   // The desktop and the web lead each country's code with its flag.
   const flagged = useUiCapabilities().nativePaneChrome === true;
+  // A reader who set a time zone (`config set timezone`) gets their clock in a column beside UTC.
+  const readerZone = readerTimeZone(useAppConfig().timezone);
   const columns = useMemo<EconCalendarColumn[]>(() => {
     // The header names the zone, so the column is as wide as the header needs.
     const timeLabelText = `TIME (${CALENDAR_TIME_ZONE_LABEL})`;
@@ -255,16 +258,22 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     const forecastWidth = valueColumnWidth(filtered, "forecast", 10);
     const priorWidth = valueColumnWidth(filtered, "prior", 9);
     const minEventWidth = 12;
+    // The reader's clock, with the weekday on rows where it is another day than the UTC one they are listed under.
+    const readerLabel = readerZone ? timeZoneCity(readerZone).toUpperCase() : null;
+    const readerWidth = !readerZone || !readerLabel ? 0 : tableColumnWidth({ label: readerLabel,
+      width: filtered.some((ev) => !hasNoStatedTime(ev) && zonedClock(ev.date.getTime(), readerZone).label.length > 5) ? 9 : 5 });
     // Padding, one gap per column boundary, and the vertical scrollbar lane;
     // one column short of that clipped the PRIOR values at the right edge.
-    const columnCount = 7;
-    const eventRoom = (impactWidth: number, countryWidth: number) => (
-      width - 3 - columnCount - (timeWidth + impactWidth + countryWidth + actualWidth + forecastWidth + priorWidth)
+    const roomBeside = (count: number, timesWidth: number) => (impactWidth: number, countryWidth: number) => (
+      width - 3 - count - (timesWidth + impactWidth + countryWidth + actualWidth + forecastWidth + priorWidth)
     );
+    const codeWidth = 2 + (flagged ? COUNTRY_FLAG_CELLS : 0);
+    // The reader's column only where the event names keep room to read beside it, under the short headers.
+    const withReader = readerWidth > 0 && roomBeside(8, timeWidth + readerWidth)(4, Math.max(3, codeWidth)) >= minEventWidth;
+    const eventRoom = withReader ? roomBeside(8, timeWidth + readerWidth) : roomBeside(7, timeWidth);
     // IMPACT and COUNTRY in words while event names keep room to read; the
     // short labels otherwise, with the word on hover where there is one.
     const spelledImpactWidth = tableColumnWidth({ width: 1, label: SPELLED_IMPACT });
-    const codeWidth = 2 + (flagged ? COUNTRY_FLAG_CELLS : 0);
     const spelledCountryWidth = Math.max(codeWidth, tableColumnWidth({ width: 1, label: SPELLED_COUNTRY }));
     const spelled = eventRoom(spelledImpactWidth, spelledCountryWidth) >= SPELLED_HEADER_MIN_EVENT_WIDTH;
     const impactColumn = spelled
@@ -277,6 +286,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
 
     return [
       { id: "time", label: timeLabelText, width: timeWidth, align: "left" },
+      ...withReader ? [{ id: "readerTime" as const, label: readerLabel!, width: readerWidth, align: "left" as const, title: readerZone! }] : [],
       { id: "impact", ...impactColumn, align: "left" },
       { id: "country", ...countryColumn, align: "left" },
       { id: "event", label: "EVENT", width: eventWidth, align: "left" },
@@ -284,7 +294,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
       { id: "forecast", label: "FORECAST", width: forecastWidth, align: "right" },
       { id: "prior", label: "PRIOR", width: priorWidth, align: "right" },
     ];
-  }, [filtered, flagged, width]);
+  }, [filtered, flagged, readerZone, width]);
   const separatorBg = blendHex(colors.bg, colors.border, 0.3);
   const staleness = fetchedAt ? formatStaleness(fetchedAt, now) : "";
   // The calendar has events and the filters hid them all: say which, with the way back.
@@ -382,6 +392,8 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
       case "time":
         // A bank that states no time has none here; its detail says why.
         return { text: hasNoStatedTime(ev) ? "" : timeLabel(ev.date), color: colors.textMuted };
+      case "readerTime":
+        return { text: hasNoStatedTime(ev) || !readerZone ? "" : zonedClock(ev.date.getTime(), readerZone).label, color: colors.textMuted };
       case "impact": {
         const indicator = impactIndicator(ev.impact);
         return {
@@ -409,7 +421,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
       case "prior":
         return { text: ev.prior ?? "—", color: colors.textDim };
     }
-  }, [flagged]);
+  }, [flagged, readerZone]);
 
   const selectedEvent = filtered[selectedIdx];
   const filterControls = (
@@ -533,7 +545,8 @@ export const economicCalendarModule: PluginModule = {
     label: "Economic Calendar",
     description: "Upcoming economic events, releases, and indicators.",
     // "econ" stays a keyword so the old ECON prefix still finds this pane.
-    keywords: ["econ", "economic", "calendar", "events", "macro", "releases", "fed", "cpi", "gdp", "rate decision"],
+    keywords: ["econ", "economic", "calendar", "events", "macro", "releases", "fed", "cpi", "gdp", "rate decision", "ipca",
+      "brazil inflation"],
     // ECO MX,BR opens the calendar on those countries.
     shortcut: {
       prefix: "ECO",

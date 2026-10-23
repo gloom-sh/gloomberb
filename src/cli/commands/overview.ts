@@ -51,7 +51,7 @@ import { formatChangePercentCell, formatCompactCell } from "../helpers";
 import { WORLD_INDICES } from "../../plugins/builtin/world-indices/indices";
 import { getSectorCollection, SECTOR_COLLECTIONS } from "../../plugins/builtin/sectors/sector-data";
 import { DAILY_CLOSES } from "../../plugins/builtin/shared/report-freshness";
-import { localTimeSuffix, newestReportTime, oldestReportTime } from "../../utils/utc-time";
+import { canonicalTimeZone, localTimeSuffix, newestReportTime, oldestReportTime, timeZoneCity, zonedClock } from "../../utils/utc-time";
 import { quotesFreshness, rowsFreshness } from "../freshness";
 import { periodicityOf } from "../pane-functions/freshness";
 import { formatBasisPoints, toBasisPoints } from "../../utils/basis-points";
@@ -273,21 +273,23 @@ async function runQuoteBasket(symbols: string[], ctx: Parameters<CliCommandDef["
   });
 }
 
-/** The UTC date, or the UTC time with its zone named (and the reader's own beside it), of an event's timestamp. */
-function utcDateTimePart(value: unknown, part: "date" | "time"): string {
+/**
+ * The UTC date, or the UTC time with its zone named, of an event's timestamp;
+ * with `readerClock`, the reader's configured clock beside it.
+ */
+function utcDateTimePart(value: unknown, part: "date" | "time", readerClock = true): string {
   const date = new Date(String(value));
   if (Number.isNaN(date.getTime())) return "";
   const iso = date.toISOString();
-  return part === "date" ? iso.slice(0, 10) : `${iso.slice(11, 16)} UTC${localTimeSuffix(date.getTime())}`;
+  return part === "date" ? iso.slice(0, 10) : `${iso.slice(11, 16)} UTC${readerClock ? localTimeSuffix(date.getTime()) : ""}`;
 }
 
-const ECON_USAGE = "econ [--country <regions or countries>] [--impact <level>] [--from <date>]";
+const ECON_USAGE = "econ [--country <regions or countries>] [--impact <level>] [--from <date>] [--tz <zone>]";
 
 /** A publisher's clock for a row it times itself: `13:00 Mexico City` from 13:00 in America/Mexico_City. */
 function publisherClock(localTime: unknown, timeZone: unknown): string {
   if (typeof localTime !== "string" || !localTime || typeof timeZone !== "string" || !timeZone) return "";
-  const city = timeZone.split("/").at(-1)!.replaceAll("_", " ");
-  return `${localTime} ${city}`;
+  return `${localTime} ${timeZoneCity(timeZone)}`;
 }
 const DAY_MS = 86_400_000;
 
@@ -354,6 +356,11 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
   const country = parseCountry(takeOption(rawArgs, "--country"), ctx);
   const impact: ImpactFilter = parseFilter(takeOption(rawArgs, "--impact"), FILTER_CYCLE, "impact", ctx);
   const fromOption = parseDateOption(takeOption(rawArgs, "--from"), "--from", ctx);
+  const tzOption = takeOption(rawArgs, "--tz");
+  const viewerZone = tzOption == null ? null : canonicalTimeZone(tzOption);
+  if (tzOption != null && !viewerZone) {
+    ctx.fail(`Unknown time zone "${tzOption}".`, "Use an IANA zone name, such as America/New_York, Europe/London or Asia/Tokyo.");
+  }
   rejectArgs(rawArgs, ECON_USAGE, ctx, "Filter with --country and --impact.");
   await withCliServices(ctx, async () => {
     const todayStart = Math.floor(Date.now() / DAY_MS) * DAY_MS;
@@ -387,6 +394,11 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
       .map((event) => ({
         date: isoDate(event.date),
         time: hasNoStatedTime(event) ? "" : event.time,
+        // The viewer's clock (--tz) for a row with a time: its date and time there.
+        ...(viewerZone ? (() => {
+          const clock = hasNoStatedTime(event) || event.time === "All Day" ? null : zonedClock(event.date.getTime(), viewerZone);
+          return { viewerDate: clock?.date ?? null, viewerTime: clock?.time ?? null };
+        })() : {}),
         country: eventCountry(event),
         impact: event.impact,
         event: event.event,
@@ -410,7 +422,7 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
     ctx.printResult({
       data: rows,
       ...(unread ? { warnings: [unread] } : {}),
-      metadata: { country, impact, from, listedThrough, storedFrom: past?.storedFrom ?? null },
+      metadata: { country, impact, from, listedThrough, storedFrom: past?.storedFrom ?? null, ...(viewerZone ? { timeZone: viewerZone } : {}) },
       // The calendar as read, not its rows: those are scheduled, mostly ahead.
       freshness: rowsFreshness([], { status: "not-a-feed", basis: "calendar", asOf: fetchedAt }, { stale }),
     }, {
@@ -421,7 +433,12 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
       columns: [
         // Text shows both halves of the event timestamp in UTC, never the host's zone; exports keep the source values.
         { key: "date", header: "Date", format: (value) => utcDateTimePart(value, "date") },
-        { key: "time", header: "Time", format: (value, row) => value === "All Day" ? "All day" : value === "" ? "" : utcDateTimePart(row.date, "time") },
+        // With --tz the viewer's clock has its own column, so the UTC time does not repeat it.
+        { key: "time", header: "Time", format: (value, row) => value === "All Day" ? "All day" : value === ""
+          ? "" : utcDateTimePart(row.date, "time", !viewerZone) },
+        // Only --tz fills it: the viewer's clock, with the weekday when it is another day there.
+        { key: "viewerTime", header: viewerZone ? timeZoneCity(viewerZone) : "Viewer", shrink: false,
+          format: (value, row) => value == null || !viewerZone ? "" : zonedClock(Date.parse(String(row.date)), viewerZone).label },
         // Only rows a publisher times itself fill it, so the feeds' calendar prints as before.
         { key: "localTime", header: "Local", optional: true, dropPriority: 1, format: (value, row) => publisherClock(value, row.timeZone) },
         { key: "country", header: "Country" },
@@ -736,8 +753,10 @@ export const overviewCliCommands: CliCommandDef[] = [
         { flags: "--country <regions or countries>", description: "US, G7, EU, all (default), or countries by their two-letter codes, comma separated, such as MX or MX,BR,ZA" },
         { flags: "--impact <level>", description: "high, medium, low, or all (default all)" },
         { flags: "--from <date>", description: `First day listed, as ${DATE_OPTION_EXAMPLES} (default today, UTC); an earlier day lists past events from the stored calendar and says where it starts` },
+        { flags: "--tz <zone>", description: "Add a column with each release's time on that clock, an IANA zone such as America/New_York; with the weekday when it falls on another day than the UTC date" },
       ],
-      examples: ["econ", "econ --country US --impact high", "econ --country MX,BR,ZA,IN,KR", "econ --from 2026-10-12 --country US", "econ --tail 20"],
+      examples: ["econ", "econ --country US --impact high", "econ --country MX,BR,ZA,IN,KR", "econ --from 2026-10-12 --country US",
+        "econ --country BR --tz America/New_York", "econ --tail 20"],
     },
     execute: runEcon,
   },
