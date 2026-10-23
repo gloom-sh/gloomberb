@@ -1,7 +1,19 @@
 import type { BrokerContractRef } from "./instrument";
 
 type BrokerOrderAction = "BUY" | "SELL";
-export type BrokerOrderType = "MKT" | "LMT" | "STP" | "STP LMT";
+/** `TRAIL` is a trailing stop: its trigger follows the market by `trailingAmount` or `trailingPercent`. */
+export type BrokerOrderType = "MKT" | "LMT" | "STP" | "STP LMT" | "TRAIL";
+/**
+ * Orders a broker holds together as one, and runs itself.
+ * - `bracket`: the order is an entry, with a take-profit limit and a stop-loss stop (one or both) on the other side
+ *   for the same quantity. They work once the entry fills, and one filling cancels the other.
+ * - `oco`: a limit order and a stop order on the same side for the same quantity; one filling cancels the other.
+ */
+export type BrokerOrderClass = "bracket" | "oco";
+/** A trailing stop's distance, in price or in percent of the price. */
+export type BrokerTrailingUnit = "amount" | "percent";
+/** What an order is to the others the broker holds it with. */
+export type BrokerOrderLinkRole = "entry" | "takeProfit" | "stopLoss";
 
 /** Explicit account classification for order confirmation. Missing values are treated as unknown. */
 export type BrokerTradingMode = "simulation" | "live" | "unknown";
@@ -31,6 +43,19 @@ export interface BrokerTradingCapabilities {
    * for a combo contract (`secType: "BAG"`); omit when the broker takes none.
    */
   maxLegs?: number;
+  /**
+   * Linked orders the broker places and runs itself. The ticket never makes one
+   * from separate orders: a class missing here is shown unavailable, and an
+   * adapter that omits it never receives it.
+   */
+  orderClasses?: BrokerOrderClass[];
+  /** How a trailing stop (`TRAIL` in `orderTypes`) can be set: by price, by percent or both. */
+  trailing?: BrokerTrailingUnit[];
+  /**
+   * Why the broker takes no bracket, OCO or trailing stop here, when there is
+   * more to say than that it takes none.
+   */
+  unavailableReasons?: Partial<Record<BrokerOrderClass | "trailing", string>>;
 }
 
 export interface BrokerCashBalance {
@@ -133,6 +158,20 @@ export interface BrokerOrderRequest {
    * `limitPrice` is the positive net price of one spread.
    */
   legs?: BrokerOrderLeg[];
+  /** A trailing stop's distance in price. Exactly one of this and `trailingPercent` with `TRAIL`. */
+  trailingAmount?: number;
+  /** A trailing stop's distance in percent, such as 2 for 2%. */
+  trailingPercent?: number;
+  /**
+   * Orders placed with this one and held together by the broker. A bracket
+   * takes `takeProfitPrice`, `stopLossPrice` or both; an OCO is this limit order
+   * (`orderType: "LMT"`) with a stop at `stopLossPrice`.
+   */
+  orderClass?: BrokerOrderClass;
+  /** A bracket's take-profit limit. */
+  takeProfitPrice?: number;
+  /** A bracket's stop-loss trigger, or an OCO's stop. */
+  stopLossPrice?: number;
 }
 
 export interface BrokerOrderPreview {
@@ -190,6 +229,14 @@ export interface BrokerOrder {
   contract: BrokerContractRef;
   /** A multi-leg order's legs, as on its request. */
   legs?: BrokerOrderLeg[];
+  trailingAmount?: number;
+  trailingPercent?: number;
+  /**
+   * Orders the broker holds together (a bracket's entry and exits, an OCO
+   * pair) share this id; the broker cancels or activates them as one fills.
+   */
+  linkGroup?: string;
+  linkRole?: BrokerOrderLinkRole;
 }
 
 export interface BrokerExecution {

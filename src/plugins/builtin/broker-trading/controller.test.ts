@@ -689,3 +689,77 @@ describe("spreads", () => {
     expect(f.count("previewOrder")).toBe(0);
   });
 });
+
+describe("brackets, OCO pairs and trailing stops", () => {
+  const fresh = { realtime: true, quoteAgeMs: 0 };
+  test("a broker that does not declare one refuses it before any broker request, so no bare entry can be placed", async () => {
+    const f = setup(fresh);
+    const caps = f.demo.adapter.getTradingCapabilities!.bind(f.demo.adapter);
+    f.demo.adapter.getTradingCapabilities = (instance, contract, type) => ({ ...caps(instance, contract, type), orderClasses: undefined, trailing: undefined, orderTypes: ["MKT", "LMT", "STP", "STP LMT"] });
+    for (const draft of [
+      { ...f.demo.draft, orderClass: "bracket", takeProfitPrice: 345, stopLossPrice: 330 },
+      { ...f.demo.draft, action: "SELL", orderClass: "oco", limitPrice: 345, stopLossPrice: 330 },
+      { ...f.demo.draft, orderType: "TRAIL", limitPrice: undefined, trailingAmount: 2 },
+    ] as BrokerOrderRequest[]) {
+      f.controller.setDraft(draft);
+      await expect(f.controller.review()).rejects.toThrow(/does not (take|support)/);
+    }
+    expect(f.count("previewOrder")).toBe(0);
+    expect(f.count("placeOrder")).toBe(0);
+  });
+
+  test.each([
+    ["take profit at the entry", { takeProfitPrice: 336.5 }, /take profit must be above the entry/],
+    ["stop loss above the entry", { stopLossPrice: 337 }, /stop loss must be below the entry/],
+    ["no exit at all", {}, /take profit, a stop loss or both/],
+  ] as const)("a buy bracket with a %s is refused", async (_name, exits, message) => {
+    const f = setup(fresh);
+    f.controller.setDraft({ ...f.demo.draft, orderClass: "bracket", ...exits });
+    await expect(f.controller.review()).rejects.toThrow(message);
+  });
+
+  test("a sell bracket mirrors the sides, and a market entry checks its exits against each other", async () => {
+    const f = setup(fresh);
+    f.controller.setDraft({ ...f.demo.draft, action: "SELL", quantity: 10, orderClass: "bracket", takeProfitPrice: 330, stopLossPrice: 345 });
+    await f.controller.review();
+    f.controller.setDraft({ ...f.demo.draft, orderType: "MKT", limitPrice: undefined, orderClass: "bracket", takeProfitPrice: 330, stopLossPrice: 345 });
+    await expect(f.controller.review()).rejects.toThrow(/take profit must be above the stop loss/);
+  });
+
+  test("a bracket places as one order with its exits, and review warns about a stop loss already through the market", async () => {
+    const f = setup(fresh);
+    f.controller.setDraft({ ...f.demo.draft, orderClass: "bracket", takeProfitPrice: 350, stopLossPrice: 336.45 });
+    await f.controller.review();
+    expect(f.controller.getSnapshot().review?.warnings).toContain("The stop loss is through the market, so it triggers as soon as the entry fills.");
+    await f.controller.confirm();
+    const placed = f.demo.calls.filter((call) => call.method === "placeOrder");
+    expect(placed).toHaveLength(1);
+    expect(placed[0]!.request).toMatchObject({ orderClass: "bracket", takeProfitPrice: 350, stopLossPrice: 336.45 });
+  });
+
+  test("an OCO pair is a limit beyond its stop on one side", async () => {
+    const f = setup(fresh);
+    f.controller.setDraft({ ...f.demo.draft, action: "SELL", quantity: 10, orderClass: "oco", limitPrice: 330, stopLossPrice: 340 });
+    await expect(f.controller.review()).rejects.toThrow(/sell OCO's limit sits above its stop/);
+    f.controller.setDraft({ ...f.demo.draft, action: "SELL", quantity: 10, orderClass: "oco", limitPrice: 350, stopLossPrice: 330 });
+    await f.controller.review();
+    expect(f.controller.getSnapshot().phase).toBe("review");
+  });
+
+  test("a trailing stop takes one distance in a unit the broker declares, and a change keeps its unit", async () => {
+    const f = setup(fresh);
+    const trail = { ...f.demo.draft, orderType: "TRAIL", limitPrice: undefined } as BrokerOrderRequest;
+    f.controller.setDraft({ ...trail, trailingPercent: 100 });
+    await expect(f.controller.review()).rejects.toThrow(/valid trailing distance/);
+    f.controller.setDraft({ ...trail, trailingAmount: 1.5, trailingPercent: 2 });
+    await expect(f.controller.review()).rejects.toThrow(/in price or in percent/);
+    f.controller.setDraft({ ...trail, trailingPercent: 2 });
+    await f.controller.review();
+    await f.controller.confirm();
+    const working = f.controller.getSnapshot().result!;
+    f.controller.reset();
+    f.controller.beginModify(working);
+    expect(f.controller.getSnapshot().draft).toMatchObject({ orderType: "TRAIL", trailingPercent: 2 });
+    expect(() => f.controller.setDraft({ ...f.controller.getSnapshot().draft!, trailingPercent: undefined, trailingAmount: 1 })).toThrow(/keeps the original/);
+  });
+});

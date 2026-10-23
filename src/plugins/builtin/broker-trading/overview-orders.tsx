@@ -16,6 +16,7 @@ import { strategyShape } from "./strategy";
 import { brokerOrderDone, brokerOrderKey, brokerOrderStatus, canChangeBrokerOrder, formatOrderPrice as money, formatOrderQuantity as amount, isBuySide } from "./orders-data";
 import { useBrokerOrderFeeds } from "./order-feed";
 import { ticketTypeName } from "./ticket-parts";
+import { linkRoleName, trailingText } from "./linked-orders";
 import { resolveTicketContract, subscribeTradingStatus } from "./pane-model";
 
 export interface TickerOrderSource {
@@ -58,8 +59,8 @@ function ago(timestamp: number, now: number): string {
 
 function orderSummary(order: BrokerOrder): string {
   const status = brokerOrderStatus(order.status);
-  const type = ticketTypeName[order.orderType] ?? order.orderType;
-  const priced = order.orderType === "MKT" ? type : `${type} ${money(order.limitPrice ?? order.stopPrice)}`;
+  const type = order.linkRole && order.linkRole !== "entry" ? linkRoleName[order.linkRole] : ticketTypeName[order.orderType] ?? order.orderType;
+  const priced = order.orderType === "MKT" ? type : order.orderType === "TRAIL" ? trailingText(order, money) : `${type} ${money(order.limitPrice ?? order.stopPrice)}`;
   const state = status === "Partially filled" ? `${amount(order.filled)} of ${amount(order.quantity)} filled` : status === "Working" ? "" : status;
   return [`${order.action === "BUY" ? "Buy" : "Sell"} ${amount(order.quantity)}${order.legs?.length ? ` ${strategyShape(order.legs)}` : ""}`, priced, state].filter(Boolean).join(" · ");
 }

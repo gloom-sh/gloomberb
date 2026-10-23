@@ -5,6 +5,7 @@ import type { Quote } from "../../../types/financials";
 import type { BrokerAccount, BrokerOrder, BrokerOrderPreview, BrokerOrderRequest, BrokerTradingCapabilities } from "../../../types/trading";
 import { optionContractIdentity } from "../../../utils/options";
 import { isStrategyOrder, strategyQuote } from "./strategy";
+import { checkLinkedOrder } from "./linked-orders";
 import { brokerOrderDone, brokerOrderStatus, orderEstimatePrice, ticketEditingPriceStep } from "./orders-data";
 
 export interface BrokerTradingContext {
@@ -228,7 +229,9 @@ export class BrokerTradingController {
     this.editable();
     const original = this.modifyOrder;
     if (original && (canonical(request.contract) !== canonical(original.contract) || canonical(request.legs ?? null) !== canonical(original.legs ?? null)
-      || request.action !== original.action || request.accountId !== original.accountId || request.orderType !== original.orderType || request.tif !== original.tif)) {
+      || request.action !== original.action || request.accountId !== original.accountId || request.orderType !== original.orderType || request.tif !== original.tif
+      // One order of a bracket or an OCO pair changes alone; a trailing stop keeps its unit.
+      || request.orderClass !== undefined || (request.trailingPercent !== undefined) !== (original.trailingPercent !== undefined))) {
       throw new Error("A modification keeps the original account, instrument, legs, side, type and time in force.");
     }
     // A spread's legs are its instrument: other legs need another quote.
@@ -277,15 +280,20 @@ export class BrokerTradingController {
     if (request.outsideRth && (!capabilities.extendedHours || (capabilities.extendedHoursTif && !capabilities.extendedHoursTif.includes(request.tif ?? "DAY")))) throw new Error("Extended hours are unavailable for this order and time in force.");
     const limit = request.orderType === "LMT" || request.orderType === "STP LMT";
     const stop = request.orderType === "STP" || request.orderType === "STP LMT";
+    const checkPrice = (value: number) => {
+      const decimals = capabilities.priceDecimals;
+      if (decimals !== undefined && (!Number.isInteger(decimals) || decimals < 0 || decimals > 18 || Number(value.toFixed(decimals)) !== value)) {
+        throw new Error("Price precision exceeds the broker's limit.");
+      }
+      if (capabilities.priceStep !== undefined && !matchesNumberStep(value, capabilities.priceStep)) throw new Error("Price does not match the broker's allowed increment.");
+    };
     for (const [needed, value, label] of [[limit, request.limitPrice, "limit"], [stop, request.stopPrice, "stop"]] as const) {
       if (needed && !positive(value)) throw new Error(`Enter a valid ${label} price.`);
       if (!needed && value !== undefined) throw new Error(`Remove the ${label} price for this order type.`);
-      const decimals = capabilities.priceDecimals;
-      if (value !== undefined && decimals !== undefined && (!Number.isInteger(decimals) || decimals < 0 || decimals > 18 || Number(value.toFixed(decimals)) !== value)) {
-        throw new Error("Price precision exceeds the broker's limit.");
-      }
-      if (value !== undefined && capabilities.priceStep !== undefined && !matchesNumberStep(value, capabilities.priceStep)) throw new Error("Price does not match the broker's allowed increment.");
+      if (value !== undefined) checkPrice(value);
     }
+    // A bracket, an OCO pair or a trailing stop only where the broker runs it itself.
+    checkLinkedOrder(request, capabilities, context.adapter.describeInstance?.(context.instance).brokerName ?? context.adapter.name, checkPrice);
     return copy(request);
   }
 
@@ -475,6 +483,16 @@ export class BrokerTradingController {
         && (request.action === "SELL" ? request.stopPrice >= touch : request.stopPrice <= touch)) {
         warnings.push(request.action === "SELL" ? "This sell stop is at or above the bid, so it triggers at once." : "This buy stop is at or below the ask, so it triggers at once.");
       }
+      // An exit already through the market trades the moment it works: an OCO's at once, a bracket's once the entry fills.
+      // A bracket's exits trade the other way from its entry; an OCO's two orders trade its own way.
+      const exitSells = request.orderClass === "oco" ? request.action === "SELL" : request.action === "BUY";
+      const exitTouch = exitSells ? quote.quote.bid : quote.quote.ask;
+      if (request.orderClass && positive(exitTouch) && positive(request.stopLossPrice) && (exitSells ? request.stopLossPrice >= exitTouch : request.stopLossPrice <= exitTouch)) {
+        warnings.push(request.orderClass === "oco" ? `This ${exitSells ? "sell" : "buy"} stop is through the market, so it triggers at once.` : "The stop loss is through the market, so it triggers as soon as the entry fills.");
+      }
+      if (request.orderClass === "bracket" && positive(exitTouch) && positive(request.takeProfitPrice) && (exitSells ? request.takeProfitPrice <= exitTouch : request.takeProfitPrice >= exitTouch)) {
+        warnings.push("The take profit is through the market, so it fills as soon as the entry does.");
+      }
       if (quote.quote.marketState === "CLOSED") warnings.push("The broker reports the market is closed. The order may wait for another session.");
       // Legs whose quotes net the other way: a debit order that would be paid, or a credit order that would pay.
       if (request.legs?.length && Number.isFinite(quote.quote.price) && quote.quote.price <= 0) warnings.push(request.action === "BUY"
@@ -539,7 +557,7 @@ export class BrokerTradingController {
     const { context, capabilities } = this.context(true, request);
     this.checkOrder(order, context, "modify");
     if (!capabilities.modify || !context.adapter.modifyOrder) throw new Error("This broker does not support modifying this order.");
-    if (!["MKT", "LMT", "STP", "STP LMT"].includes(order.orderType)) throw new Error("This order type cannot be modified in the shared ticket.");
+    if (!["MKT", "LMT", "STP", "STP LMT", "TRAIL"].includes(order.orderType)) throw new Error("This order type cannot be modified in the shared ticket.");
     this.modifyOrder = undefined;
     this.setDraft({ ...request, brokerInstanceId: context.instance.id });
     this.modifyOrder = copy(order);
@@ -563,7 +581,10 @@ export class BrokerTradingController {
 
   private orderRequest(order: BrokerOrder): BrokerOrderRequest {
     return { brokerInstanceId: order.brokerInstanceId, accountId: order.accountId, contract: copy(order.contract), action: order.action,
-      orderType: order.orderType as BrokerOrderRequest["orderType"], quantity: order.quantity, limitPrice: order.limitPrice, stopPrice: order.stopPrice, tif: order.tif,
+      orderType: order.orderType as BrokerOrderRequest["orderType"], quantity: order.quantity, tif: order.tif,
+      // A trailing stop's trigger is the broker's to move: a change sets its distance.
+      ...(order.orderType === "TRAIL" ? order.trailingPercent !== undefined ? { trailingPercent: order.trailingPercent } : { trailingAmount: order.trailingAmount }
+        : { limitPrice: order.limitPrice, stopPrice: order.stopPrice }),
       ...(order.legs?.length ? { legs: copy(order.legs) } : {}) };
   }
 

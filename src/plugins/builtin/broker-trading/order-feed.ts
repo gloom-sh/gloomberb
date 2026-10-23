@@ -5,6 +5,7 @@ import type { AppNotificationRequest } from "../../../types/plugin";
 import type { BrokerOrder } from "../../../types/trading";
 import { brokerOrderDone, brokerOrderStatus } from "./orders-data";
 import { orderInstrumentLabel } from "./strategy";
+import { linkRoleName, trailingText } from "./linked-orders";
 
 /** Reconcile with open orders this often while the broker pushes changes. */
 const LIVE_RECONCILE_MS = 60_000;
@@ -71,8 +72,11 @@ export function orderToastBody(order: BrokerOrder): string {
   const symbol = orderInstrumentLabel(order);
   const qty = (value: number) => value.toLocaleString("en-US", { maximumFractionDigits: 4 });
   const filled = order.filled > 0 && Number.isFinite(order.avgFillPrice) ? ` · ${qty(order.filled)} filled at ${order.avgFillPrice!.toLocaleString("en-US", { maximumFractionDigits: 4 })}` : "";
-  const limit = order.orderType === "MKT" ? "market" : `${order.orderType === "STP" ? "stop" : "limit"} ${(order.limitPrice ?? order.stopPrice)?.toLocaleString("en-US", { maximumFractionDigits: 4 }) ?? ""}`.trim();
-  return `${order.action === "BUY" ? "Buy" : "Sell"} ${qty(order.quantity)} ${symbol} ${limit}${filled}`;
+  const limit = order.orderType === "MKT" ? "market" : order.orderType === "TRAIL" ? trailingText(order, qty).toLowerCase()
+    : `${order.orderType === "STP" ? "stop" : "limit"} ${(order.limitPrice ?? order.stopPrice)?.toLocaleString("en-US", { maximumFractionDigits: 4 }) ?? ""}`.trim();
+  // A bracket's exit says which one filled or ended.
+  const role = order.linkRole && order.linkRole !== "entry" ? ` ${linkRoleName[order.linkRole].toLowerCase()}` : "";
+  return `${order.action === "BUY" ? "Buy" : "Sell"} ${qty(order.quantity)} ${symbol}${role} ${limit}${filled}`;
 }
 
 /**
@@ -247,6 +251,9 @@ class ProfileOrderFeed {
     if (publish) { this.prune(); this.publish(); }
     // An order that started working needs the faster cadence without a stream.
     if (!this.live && !brokerOrderDone(order.status) && (!previous || brokerOrderDone(previous.status))) this.schedule();
+    // One of a bracket or OCO pair ending moves the others (cancelled, or working once an entry fills): the broker's
+    // list says how, now rather than at the next read.
+    if (order.linkGroup && source !== "baseline" && source !== "poll" && brokerOrderDone(order.status) && !(previous && brokerOrderDone(previous.status))) this.refresh();
   }
 
   private prune(): void {

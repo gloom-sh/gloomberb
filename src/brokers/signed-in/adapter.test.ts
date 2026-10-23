@@ -189,6 +189,28 @@ describe("signedInBrokerAdapter, direct orders (SnapTrade)", () => {
     await expect(adapter.placeOrder!(profile, order)).rejects.toMatchObject({ refused: true });
   });
 
+  test("a bracket, OCO pair or trailing stop goes only to a server that names it, which would otherwise place a bare order", async () => {
+    const { adapter, calls } = snaptrade((_method, path) => (path === "" ? connection(true) : { status: "preview", previewId: "p", expiresAt: new Date(240_000).toISOString(), impact: { source: "broker" } }));
+    await adapter.connect!(profile);
+    const linked = [
+      { ...order, orderClass: "bracket" as const, takeProfitPrice: 240, stopLossPrice: 220 },
+      { ...order, action: "SELL" as const, orderClass: "oco" as const, limitPrice: 240, stopLossPrice: 220 },
+      { ...order, orderType: "TRAIL" as const, limitPrice: undefined, trailingPercent: 2 },
+    ];
+    for (const request of linked) await expect(adapter.previewOrder!(profile, request)).rejects.toMatchObject({ refused: true });
+    expect(calls.filter((call) => call.path === "/orders")).toHaveLength(0);
+    SNAPTRADE.capabilities = { ...SNAPTRADE.capabilities, orders: { mode: "direct", types: ["MKT", "LMT", "TRAIL"], tif: ["DAY"], orderClasses: ["bracket", "oco"], trailing: ["percent"] } };
+    try {
+      expect(adapter.getTradingCapabilities!(profile)).toMatchObject({ orderClasses: ["bracket", "oco"], trailing: ["percent"] });
+      for (const request of linked) await adapter.previewOrder!(profile, request);
+      expect(calls.filter((call) => call.path === "/orders").map((call) => call.body)).toMatchObject([
+        { orderClass: "bracket", takeProfitPrice: 240, stopLossPrice: 220 }, { orderClass: "oco", stopLossPrice: 220 }, { orderType: "TRAIL", trailingPercent: 2 }]);
+      await expect(adapter.previewOrder!(profile, { ...linked[2]!, trailingPercent: undefined, trailingAmount: 1 })).rejects.toMatchObject({ refused: true });
+    } finally {
+      SNAPTRADE.capabilities = { ...SNAPTRADE.capabilities, orders: { mode: "direct", types: ["MKT", "LMT"], tif: ["DAY", "GTC"] } };
+    }
+  });
+
   test("a refused order leaves the profile connected; a lost answer is not a refusal", async () => {
     const { adapter } = snaptrade((method, path, body) => {
       if (path === "") return connection(true);

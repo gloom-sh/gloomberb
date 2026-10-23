@@ -190,3 +190,27 @@ test("a fill or partial fill re-syncs its profile's positions once per burst; an
     globalThis.clearTimeout = realClearTimeout;
   }
 });
+
+test("one of a bracket filling moves the other at once, as the broker's open orders say, and its toast names it", async () => {
+  const f = setup({ stream: true });
+  const target = order({ orderId: 8, brokerOrderId: "synthetic-8", action: "SELL", limitPrice: 110, linkGroup: "g", linkRole: "takeProfit" });
+  const stop = order({ orderId: 9, brokerOrderId: "synthetic-9", action: "SELL", orderType: "STP", limitPrice: undefined, stopPrice: 90, linkGroup: "g", linkRole: "stopLoss" });
+  f.setOpen([target, stop]);
+  const release = f.feed.hold(f.broker, instance);
+  await settle();
+  f.live(true);
+  await settle();
+  const reads = f.calls.filter((call) => call === "listOpenOrders").length;
+  // A working change of a linked order needs no read; its end does, without waiting for the minute's reconcile.
+  f.push({ ...target, updatedAt: Date.now() });
+  await settle();
+  expect(f.calls.filter((call) => call === "listOpenOrders")).toHaveLength(reads);
+  f.setOpen([]);
+  f.setStatus({ ...stop, status: "CANCELED", updatedAt: Date.now() });
+  f.push({ ...target, status: "FILLED", filled: 10, remaining: 0, avgFillPrice: 110, updatedAt: Date.now() });
+  await settle();
+  expect(f.calls.filter((call) => call === "listOpenOrders")).toHaveLength(reads + 1);
+  expect(f.feed.snapshot(instance.id).orders.find((value) => value.orderId === 9)?.status).toBe("CANCELED");
+  expect(f.toasts.map((toast) => toast.body)).toEqual(["Sell 10 AAPL take profit limit 110 · 10 filled at 110", "Sell 10 AAPL stop loss stop 90"]);
+  release();
+});

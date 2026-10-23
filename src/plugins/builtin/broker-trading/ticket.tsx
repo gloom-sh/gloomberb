@@ -11,11 +11,13 @@ import type { BrokerAccount, BrokerOrder, BrokerOrderPreview, BrokerOrderRequest
 import { Box, ScrollBox, Text, TextAttributes, useUiCapabilities, type BoxRenderable, type ScrollBoxRenderable } from "../../../ui";
 import { useDialogState } from "../../../ui/dialog";
 import { BrokerAccountPicker, type BrokerAccountChoice } from "./account-picker";
-import { TicketLegs, TicketSection, TicketOrderHeadline, TicketOrderSummary, TicketReceiptRow, TicketStatus, ticketImpactMoney, ticketImpactSource, ticketMoney as money, ticketNumber as number, ticketTifName, ticketTypeName as typeName } from "./ticket-parts";
+import { TicketExits, TicketLegs, TicketSection, TicketOrderHeadline, TicketOrderSummary, TicketReceiptRow, TicketStatus, ticketImpactMoney, ticketImpactSource, ticketMoney as money, ticketNumber as number, ticketTifName, ticketTypeName as typeName } from "./ticket-parts";
 import { brokerOrderDone, orderEstimatePrice, ticketEditingPriceStep } from "./orders-data";
+import { linkedFeature, trailingText, trailingUnit } from "./linked-orders";
 
 export type TicketAction = "enable" | "review" | "submit" | "back" | "confirm" | "refresh" | "orders" | "new" | "cancel" | "all" | "quantity25" | "quantity50" | "priceBid" | "priceMid" | "priceAsk" | "priceLast";
-export type TicketField = "action" | "orderType" | "quantity" | "limitPrice" | "stopPrice" | "tif" | "outsideRth" | "typedConfirmation" | "confirmOrders";
+export type TicketField = "action" | "orderType" | "quantity" | "limitPrice" | "stopPrice" | "tif" | "outsideRth" | "typedConfirmation" | "confirmOrders"
+  | "bracket" | "takeProfitPrice" | "stopLossPrice" | "trailing" | "trailingUnit";
 export interface TicketViewModel {
   brokerName: string; symbol: string; accounts: BrokerAccount[]; accountId?: string;
   accountChoices?: readonly BrokerAccountChoice[]; accountChoiceValue?: string;
@@ -52,11 +54,17 @@ export interface BrokerTicketViewProps {
   /** Terminal content measurement; the DOM uses intrinsic flex layout. */
   onContentHeight?(height: number): void;
 }
-/** "Limit at $759.50 · Day", "Stop $750.00 · Day": an order's terms, each named once. */
-function orderTerms(order: Pick<BrokerOrder, "orderType" | "limitPrice" | "stopPrice" | "tif"> & { outsideRth?: boolean }, limitWord: string, money: (value: number) => string): string {
+/**
+ * "Limit at $759.50 · Day", "Stop $750.00 · Day", "Trailing $1.50 · Day", "Limit $790.00 · stop $740.00, one cancels
+ * the other · GTC": an order's terms, each named once.
+ */
+function orderTerms(order: Pick<BrokerOrder, "orderType" | "limitPrice" | "stopPrice" | "tif" | "trailingAmount" | "trailingPercent"> & Pick<BrokerOrderRequest, "orderClass" | "stopLossPrice"> & { outsideRth?: boolean },
+  limitWord: string, money: (value: number) => string): string {
   const limit = order.limitPrice !== undefined ? `${limitWord} ${money(order.limitPrice)}` : "";
   const stop = order.stopPrice !== undefined ? `Stop ${money(order.stopPrice)}` : "";
-  const price = order.orderType === "STP" && stop ? [stop] : order.orderType === "STP LMT" && stop ? [stop, ...(order.limitPrice !== undefined ? [`limit ${money(order.limitPrice)}`] : [])]
+  const price = order.orderType === "TRAIL" ? [trailingText(order, money)]
+    : order.orderClass === "oco" ? [`Limit ${money(order.limitPrice ?? NaN)}`, `stop ${money(order.stopLossPrice ?? NaN)}, one cancels the other`]
+    : order.orderType === "STP" && stop ? [stop] : order.orderType === "STP LMT" && stop ? [stop, ...(order.limitPrice !== undefined ? [`limit ${money(order.limitPrice)}`] : [])]
     : [`${typeName[order.orderType] ?? order.orderType}${limit ? ` ${limit}` : ""}`, ...(stop ? [stop] : [])];
   return [...price, ...(order.tif ? [ticketTifName[order.tif] ?? order.tif] : []), ...(order.outsideRth ? ["Outside RTH"] : [])].join(" · ");
 }
@@ -86,6 +94,8 @@ function replacementChanges(original: BrokerOrder, draft: BrokerOrderRequest, pr
     original.quantity !== draft.quantity ? `Quantity ${number(original.quantity)} → ${number(draft.quantity)}` : "",
     original.limitPrice !== draft.limitPrice && draft.limitPrice !== undefined ? `Limit ${price(original.limitPrice)} → ${price(draft.limitPrice)}` : "",
     original.stopPrice !== draft.stopPrice && draft.stopPrice !== undefined ? `Stop ${price(original.stopPrice)} → ${price(draft.stopPrice)}` : "",
+    original.trailingAmount !== draft.trailingAmount && draft.trailingAmount !== undefined ? `Trail ${price(original.trailingAmount)} → ${price(draft.trailingAmount)}` : "",
+    original.trailingPercent !== draft.trailingPercent && draft.trailingPercent !== undefined ? `Trail ${number(original.trailingPercent)}% → ${number(draft.trailingPercent)}%` : "",
   ].filter(Boolean);
   return changes.length ? changes.join(" · ") : "No change from the working order";
 }
@@ -180,6 +190,16 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
   const editing = m.phase === "editing" || m.phase === "previewing" || fastSubmitting;
   const showLimit = draft?.orderType === "LMT" || draft?.orderType === "STP LMT";
   const showStop = draft?.orderType === "STP" || draft?.orderType === "STP LMT";
+  // An OCO is a limit and a stop on one side; a bracket adds exits to an entry; a trailing stop follows the market.
+  const oco = draft?.orderClass === "oco";
+  const bracket = draft?.orderClass === "bracket";
+  const trailing = draft?.orderType === "TRAIL";
+  const trailUnit = draft ? trailingUnit(draft) : "amount";
+  const trailValue = trailUnit === "percent" ? draft?.trailingPercent : draft?.trailingAmount;
+  const bracketFeature = linkedFeature(m.capabilities, "bracket", m.brokerName);
+  const ocoFeature = linkedFeature(m.capabilities, "oco", m.brokerName);
+  const trailingFeature = linkedFeature(m.capabilities, "trailing", m.brokerName);
+  const showBracket = !!draft && !strategy && !m.modifying && !trailing && !oco;
   const extendedHours = m.capabilities?.extendedHours && (!m.capabilities.extendedHoursTif || m.capabilities.extendedHoursTif.includes(draft?.tif ?? "DAY"));
   const inner = Math.max(28, width - (docked ? 2 : native ? 6 : 2));
   const formWidth = wide ? Math.min(74, Math.floor((inner - 3) * 0.58)) : inner;
@@ -210,6 +230,10 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
       "account", "action", "orderType", "quantity", "quantity25", "quantity50", "all",
       ...(showLimit ? ["limitPrice", "priceBid", "priceMid", "priceAsk", "priceLast"] : []),
       ...(showStop ? ["stopPrice"] : []),
+      ...(oco ? ["stopLossPrice"] : []),
+      ...(trailing ? ["trailing", "trailingUnit"] : []),
+      ...(showBracket ? ["bracket"] : []),
+      ...(bracket ? ["takeProfitPrice", "stopLossPrice"] : []),
       "tif",
       ...(extendedHours ? ["outsideRth"] : []),
       ...(mode === "simulation" && !m.modifying ? ["confirmOrders"] : []),
@@ -221,7 +245,7 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
     if (finished) return ["new", "orders"];
     if (resultStatus === "UNKNOWN") return ["refresh", "orders"];
     return ["refresh", "orders", "new"];
-  }, [m.phase, editing, review, live, showLimit, showStop, extendedHours, resultStatus, finished, m.tradingEnabled, mode, m.modifying]);
+  }, [m.phase, editing, review, live, showLimit, showStop, oco, trailing, showBracket, bracket, extendedHours, resultStatus, finished, m.tradingEnabled, mode, m.modifying]);
   const previousFocus = useRef<{ phase: TicketViewModel["phase"]; revision?: number } | undefined>(undefined);
   useEffect(() => {
     if (previousFocus.current?.phase !== m.phase || previousFocus.current?.revision !== m.focusRevision) {
@@ -242,11 +266,15 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
   const typedMatches = !live || m.typedConfirmation?.trim().toUpperCase() === confirmationSymbol;
   const holdingBlocked = sell && !strategy && !m.capabilities?.shortSelling && (m.position === undefined || (draft?.quantity ?? 0) > Math.max(0, m.position));
   const validPrice = (value: number | undefined) => value !== undefined && Number.isFinite(value) && value > 0;
+  // A bracket needs one exit at least; each one shown is a price or left empty.
+  const exitOk = (value: number | undefined) => value === undefined || validPrice(value);
   const canReview = m.connected && m.tradingEnabled && !!account && !!draft && validPrice(draft.quantity) && !holdingBlocked && !busy
-    && (!showLimit || validPrice(draft.limitPrice)) && (!showStop || validPrice(draft.stopPrice));
+    && (!showLimit || validPrice(draft.limitPrice)) && (!showStop || validPrice(draft.stopPrice)) && (!oco || validPrice(draft.stopLossPrice))
+    && (!trailing || validPrice(trailValue))
+    && (!bracket || exitOk(draft.takeProfitPrice) && exitOk(draft.stopLossPrice) && (validPrice(draft.takeProfitPrice) || validPrice(draft.stopLossPrice)));
   const blockingPreview = !!m.preview?.errors?.length;
   const canConfirm = review && typedMatches && !blockingPreview && m.connected && m.tradingEnabled && !busy;
-  const textActive = ["quantity", "limitPrice", "stopPrice", "typedConfirmation"].includes(active);
+  const textActive = ["quantity", "limitPrice", "stopPrice", "takeProfitPrice", "stopLossPrice", "trailing", "typedConfirmation"].includes(active);
   // Leaving a field must return h/l to the research strip, including after a command.
   useEffect(() => {
     onCapture?.(focused && textActive);
@@ -264,6 +292,12 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
     if (active === "confirmOrders") { if (mode === "simulation" && !m.modifying) onEdit("confirmOrders", m.confirmOrders === false); return; }
     if (active === "tif") { if (!m.modifying) tifControl.current?.open(); return; }
     if (active === "outsideRth") { if (!m.modifying && extendedHours) onEdit("outsideRth", !draft?.outsideRth); return; }
+    if (active === "bracket") { if (bracketFeature.available) onEdit("bracket", !bracket); return; }
+    if (active === "trailingUnit") {
+      const other = trailUnit === "percent" ? "amount" : "percent";
+      if (m.capabilities?.trailing?.includes(other)) onEdit("trailingUnit", other);
+      return;
+    }
     if (active === "review") { if (canReview) onAction("submit"); return; }
     if (active === "confirm") { if (canConfirm) onAction("confirm"); return; }
     if (quickActions.includes(active as TicketAction)) { if (!quickDisabled(active as TicketAction)) onAction(active as TicketAction); return; }
@@ -351,6 +385,7 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
     <Button label={label} displayLabel={!native && marker(key) ? `> ${label}` : undefined} variant="quiet" compact active={active === key && focused}
       disabled={disabled || busy} onPress={() => { setActive(key); onAction(key); }} />
   </Box>;
+  const numericLabels: Partial<Record<TicketField, string>> = { limitPrice: "Limit price", stopPrice: "Stop price", takeProfitPrice: "Take profit price", stopLossPrice: oco ? "Stop price" : "Stop loss price", trailing: trailUnit === "percent" ? "Trailing percent" : "Trailing amount" };
   const numeric = (key: TicketField, label: string, value: number | undefined, suffix: string, picks?: ReactNode) => {
     const inlinePicks = !!picks && formWidth >= 60;
     const quantity = key === "quantity";
@@ -358,12 +393,13 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
     const quantityStep = m.capabilities?.fractionalQuantity ? reportedStep : wholeNumberStep(reportedStep) ?? NaN;
     // Decimal precision is not a declared exchange tick. The fallback is an editing convenience only.
     const priceStep = m.capabilities?.priceStep ?? ticketEditingPriceStep(value ?? m.quote?.price, m.capabilities?.priceDecimals);
-    const step = quantity ? quantityStep : priceStep;
+    // A trailing percent steps by a tenth of a point.
+    const step = quantity ? quantityStep : key === "trailing" && trailUnit === "percent" ? 0.1 : priceStep;
     return <Box flexDirection="column" gap={0}>
     <Box flexDirection="row" alignItems="center" gap={1}>
     <Box ref={nodeRef(key)} onMouseDown={() => { if (!busy) setActive(key); }} flexDirection="row" alignItems="center" gap={1} flexGrow={1}>
       <FieldLabel label={label} width={labelWidth} active={active === key} />
-      <Box flexGrow={1}><TicketNumberInput accessibleLabel={key === "limitPrice" ? "Limit price" : key === "stopPrice" ? "Stop price" : label} value={value}
+      <Box flexGrow={1}><TicketNumberInput accessibleLabel={numericLabels[key] ?? label} value={value}
         width={Math.max(14, formWidth - (docked ? 11 : native ? 21 : 24) - (inlinePicks ? 20 : 0))} focused={focused && active === key && !busy} active={active === key} disabled={busy}
         step={step} min={quantity ? Math.max(step, m.capabilities?.minQuantity ?? step) : step} max={quantity && sell && !m.capabilities?.shortSelling ? Math.max(0, m.position ?? 0) : undefined}
         onChange={(text) => { if (!busy) onEdit(key, text); }} onSubmit={() => setActive(m.tradingEnabled ? "review" : "enable")} /></Box>
@@ -462,8 +498,13 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
               </Box>
               <Box ref={nodeRef("orderType")} flexDirection="row" gap={1} alignItems="center" onMouseDown={() => { if (!busy) setActive("orderType"); }}>
                 <FieldLabel label={docked ? "Type" : "Order type"} width={labelWidth} active={active === "orderType"} />
-                <SelectButton label="Order type" showLabel={false} variant="well" width={selectWidth} value={draft.orderType}
-                  options={(m.capabilities?.orderTypes ?? ["LMT"]).map((t) => ({ value: t, label: typeName[t] ?? t }))} disabled={busy || m.modifying}
+                <SelectButton label="Order type" showLabel={false} variant="well" width={selectWidth} value={oco ? "OCO" : draft.orderType}
+                  options={[...(m.capabilities?.orderTypes ?? ["LMT"]).filter((t) => t !== "TRAIL").map((t) => ({ value: t, label: typeName[t] ?? t })),
+                    // A spread takes neither. Elsewhere both are listed, and a broker that takes none says why.
+                    ...(strategy ? [] : [
+                      { value: "TRAIL", label: typeName.TRAIL!, disabled: !trailingFeature.available, description: trailingFeature.reason },
+                      { value: "OCO", label: "OCO", disabled: !ocoFeature.available, description: ocoFeature.reason ?? "A limit and a stop: one filling cancels the other" },
+                    ])]} disabled={busy || m.modifying}
                   emphasized={focused && active === "orderType"} controlRef={orderTypeControl} onFocus={() => setActive("orderType")} onChange={(v) => onEdit("orderType", v)} />
               </Box>
               {strategy ? <TicketLegs model={m} width={formWidth} inset /> : null}
@@ -479,6 +520,21 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
                 {strategy ? null : quick("priceLast", "Last", !m.quote?.price)}
               </>) : null}
               {showStop ? numeric("stopPrice", docked ? "Stop" : "Stop price", draft.stopPrice, currency) : null}
+              {oco ? numeric("stopLossPrice", docked ? "Stop" : "Stop price", draft.stopLossPrice, currency) : null}
+              {trailing ? numeric("trailing", "Trail", trailValue, trailUnit === "percent" ? "%" : currency, <Box ref={nodeRef("trailingUnit")} onMouseDown={() => { if (!busy) setActive("trailingUnit"); }}>
+                <SegmentedControl accessibleLabel="Trailing unit" value={trailUnit} focused={focused && active === "trailingUnit"} shortcutScope={scope}
+                  options={[{ value: "amount", label: "Price", disabled: busy || !m.capabilities?.trailing?.includes("amount") },
+                    { value: "percent", label: "%", disabled: busy || !m.capabilities?.trailing?.includes("percent") }]}
+                  onChange={(value) => { setActive("trailingUnit"); onEdit("trailingUnit", value); }} />
+              </Box>) : null}
+              {showBracket ? <Box ref={nodeRef("bracket")} flexDirection="column" onMouseDown={() => { if (!busy) setActive("bracket"); }}>
+                <Checkbox label="Take profit / stop loss" checked={bracket} disabled={busy || !bracketFeature.available} active={focused && active === "bracket"}
+                  onChange={(value) => { setActive("bracket"); onEdit("bracket", value); }} />
+                {bracketFeature.available ? null : <Box paddingLeft={native ? 0 : 2}><Text fg={c.textDim} wrapText>{bracketFeature.reason}</Text></Box>}
+              </Box> : null}
+              {/* Beside the chart, under "Take profit / stop loss", as the order rows tag them. */}
+              {bracket ? numeric("takeProfitPrice", docked ? "TP" : "Take profit", draft.takeProfitPrice, currency) : null}
+              {bracket ? numeric("stopLossPrice", docked ? "SL" : "Stop loss", draft.stopLossPrice, currency) : null}
               <Box flexDirection="row" flexWrap="wrap" alignItems="center" gap={docked ? rowGap : 1}>
                 <Box ref={nodeRef("tif")} flexDirection="row" alignItems="center" gap={1} onMouseDown={() => setActive("tif")}>
                   <FieldLabel label="TIF" width={labelWidth} active={active === "tif"} />
@@ -519,8 +575,10 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
           <TicketOrderHeadline model={m} large />
           {strategy ? <TicketLegs model={m} width={formWidth} /> : null}
           <Text fg={c.textDim}>{orderTerms({ orderType: draft?.orderType ?? "LMT", limitPrice: showLimit ? draft?.limitPrice : undefined,
-            stopPrice: showStop ? draft?.stopPrice : undefined, tif: draft?.tif ?? "DAY", outsideRth: draft?.outsideRth }, strategy ? sell ? "net credit" : "net debit" : "at", (value) => money(value, currency))}</Text>
+            stopPrice: showStop ? draft?.stopPrice : undefined, tif: draft?.tif ?? "DAY", outsideRth: draft?.outsideRth, trailingAmount: draft?.trailingAmount, trailingPercent: draft?.trailingPercent,
+            orderClass: draft?.orderClass, stopLossPrice: draft?.stopLossPrice }, strategy ? sell ? "net credit" : "net debit" : "at", (value) => money(value, currency))}</Text>
           {m.original && draft ? <Text fg={c.warning}>{replacementChanges(m.original, draft, (value) => money(value, currency))}</Text> : null}
+          {bracket ? <TicketExits model={m} width={formWidth} currency={currency} /> : null}
           <Box marginTop={native && wide ? 1 : 0} flexDirection="column" gap={native && wide ? 0.4 : 0}>
             {impactSource ? <TicketReceiptRow label="Impact source" value={impactSource} width={formWidth} /> : null}
             <TicketReceiptRow label="Fees" value={ticketImpactMoney(m.preview, m.preview?.fees, currency)} width={formWidth} />
@@ -554,7 +612,8 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
         </TicketSection> : null}
         {m.phase === "result" ? <Box flexDirection={wide ? "row" : "column"} gap={3}><TicketSection width={formWidth} title={title} selectable>
           <TicketOrderHeadline model={m} large />{strategy ? <TicketLegs model={m} width={formWidth} /> : null}
-          {m.result ? <Text fg={c.textDim}>{orderTerms(m.result, strategy ? "net" : "at", (value) => money(value, currency))}</Text> : null}
+          {m.result ? <Text fg={c.textDim}>{orderTerms({ ...m.result, orderClass: draft?.orderClass, stopLossPrice: draft?.stopLossPrice }, strategy ? "net" : "at", (value) => money(value, currency))}</Text> : null}
+          {bracket ? <TicketExits model={m} width={formWidth} currency={currency} /> : null}
           <TicketStatus model={m} width={formWidth} />
           {m.resultQuantities === "last-known" ? <Text fg={c.warning}>Last known quantities</Text> : null}
           {!["PARTIALLY_FILLED", "FILLED"].includes(resultStatus) ? <TicketReceiptRow label="Filled" value={resultQuantity(m.result?.filled)} width={formWidth} /> : null}
