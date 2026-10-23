@@ -50,6 +50,6 @@ test("a holder's change is a fraction of its prior position however far it moved
   // The pane and its 13D/G tab read the record's fraction the same way.
   expect(formatHolderChangePercent(1.086171)).toBe("+108.62%");
   expect(formatHolderChangePercent(-0.6)).toBe("-60.00%");
-  expect(thirteenFAction({ id: "cwi", ownerType: "institution", name: "Capital World Investors", changePercent: 1.086171 })?.label).toBe("+109%");
-  expect(thirteenFAction({ id: "sold", ownerType: "institution", name: "Sold most", changePercent: -0.6 })?.label).toBe("-60%");
+  expect(thirteenFAction({ ownerType: "institution", name: "Capital World Investors", changePercent: 1.086171 })?.label).toBe("+109%");
+  expect(thirteenFAction({ ownerType: "institution", name: "Sold most", changePercent: -0.6 })?.label).toBe("-60%");
 });
