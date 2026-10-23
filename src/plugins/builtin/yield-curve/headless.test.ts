@@ -4,6 +4,7 @@ import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
 import { createYieldCurveHeadless, type YieldCurveHeadlessDependencies } from "./headless";
 import { completeYieldCurve } from "./history";
 import { TREASURY_MATURITIES, type YieldPoint } from "./treasury-data";
+import { swapFixture } from "./test-fixture-swaps";
 
 const args: HeadlessPaneLoadArgs = { rawArgument: "", argument: null, symbols: [], options: {} };
 
@@ -22,6 +23,21 @@ const stored = (yields: Record<string, number | null>, day: Record<string, numbe
 });
 
 describe("yield curve headless model", () => {
+  test("the swaps tab selects tenor history without requesting government curves and keeps bp and gaps", async () => {
+    const headless = createYieldCurveHeadless({
+      load: async () => { throw new Error("Government curve should not load for swaps"); },
+      swaps: async (tenor) => swapFixture(tenor),
+    });
+    const swapArgs = { ...args, options: { tab: "swaps", tenor: "2Y" } };
+    const result = await headless.load(swapArgs, {} as HeadlessPaneContext);
+    expect(result.rows.find((row) => row.tenor === "5Y")).toMatchObject({ rate: null, tradeCount: 2, spreadBp: null });
+    expect(result.rows.find((row) => row.tenor === "15Y")!.spreadBp).toBeNull();
+    expect(result.metadata).toMatchObject({ asOf: "2026-10-20", treasuryDate: "2026-10-20", history: { tenor: "2Y" } });
+    const lines = renderHeadlessPaneText(headless, result, swapArgs, "GC").split("\n");
+    expect(lines.find((line) => line.startsWith("1Y "))).toMatch(/3\.50%\s+\+1\.2bp\s+-20\.5bp/);
+    expect(lines.find((line) => line.startsWith("5Y "))).toMatch(/-\s+-\s+-\s+2\s+missing/);
+  });
+
   test("marks a partial, mixed-date curve incomplete and does not calculate a spread", async () => {
     const headless = createYieldCurveHeadless({
       load: async () => ({

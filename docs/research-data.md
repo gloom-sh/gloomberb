@@ -361,6 +361,18 @@ A breakeven is the nominal yield minus the real yield at the same tenor on a dat
 
 The figures above the chart are the 2s10s (10Y minus 2Y), 3m10y (10Y minus 3M) and 5s30s (30Y minus 5Y) spreads in basis points, for the spreads the curve's tenors allow. A negative value indicates inversion and is shown as a warning. Each shows its move since the session before and its one-year percentile: the share of the trailing 365 days' sessions with a lower spread, ties counted half. A spread needs both tenors from one session. The table's 1D, 1W and 1M changes compare each tenor with the last session on or before the day before, seven days before and the same day a month before (its last day when the month is shorter); the chart draws the week and month look-backs as ghosts. Missing tenors remain unavailable.
 
+### USD SOFR swaps
+
+GC's **Swaps** tab shows daily estimates of USD spot-starting SOFR overnight-indexed swap fixed rates at 1Y, 2Y, 3Y, 5Y, 7Y, 10Y, 15Y, 20Y and 30Y. The curve compares the latest trade date with one week and one month earlier. Select a tenor in the table and choose **History**, or press Enter on its row, to see its year of daily rates. The tab, chart view and selected tenor are saved.
+
+The estimates use DTCC's public rates trade reports. Only clean USD fixed-versus-SOFR trades with a standard tenor and a spot start qualify; amendments, cancellations and non-vanilla contracts are excluded. A robust notional-weighted median of eligible trades estimates each tenor's daily par fixed rate after outlier filtering. This is a daily estimate from reported executions, not an executable quote or a closing market mid. Public notional caps and the timing and mix of trades can affect it.
+
+**Trades** is the number of inlier executions behind the point. At least three are required to publish a rate; three or four are marked **Thin**. A missing rate retains its trade count and remains a gap in the curve and history. Rates are percentages, while **1D** and **Spread** are basis points. The daily change needs a rate for both sessions. Swap spread is `(swap rate − same-tenor Treasury par yield) × 100`, using the same date for both legs. Treasury publishes no 15Y par tenor, so the 15Y swap spread is blank. Missing Treasury yields are not interpolated or carried from another day.
+
+The source files' URLs, publication and fetch times, hashes and parsed eligible-trade records are retained so estimates can be re-derived. Historical coverage depends on the files DTCC still serves publicly. The displayed as-of date is the trade date; fetch time is separate. Refresh failures keep the last usable curve with a footer error, and stale data is marked there.
+
+`gloomberb fn GC --tab swaps --tenor 10Y` prints the tenor table; `--json` includes comparison curves and the selected tenor's history. `gloomberb shot GC --tab swaps --tenor 10Y --swap-view history` selects that history chart for a screenshot. The default Swaps chart view is **Curve**.
+
 ### Was it a big day? Move ranks
 
 After the spreads come the selected tenor's 1D and 1W moves, each with how big it was against every move of the same horizon in that tenor's stored history (`10Y 1D  -1bp  16 pctl since 1990`); `fn GC` gives every tenor's ranks as the `1D pctl`, `1W pctl` and `Since` columns. ECST does the same for its daily rates (EFFR, the 10-year and 2-year yields, 2s10s and the 10-year real yield) in its detail, against the FRED series' whole history (`1D  -1bp  21 pctl since 1962` for DGS10), whatever the range.

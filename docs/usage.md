@@ -595,7 +595,7 @@ A zero or negative price is kept for a futures instrument. For any other instrum
 | `ETFF` | Daily net flows of the US spot bitcoin and ether ETFs, fund by fund in US$ millions, with the last 5 and 20 days and the running total since launch |
 | `ECO` | Economic events and releases, grouped by day and timed in UTC. Opens on high-impact releases until you pick another impact |
 | `ECST [statistic]` | Economic statistics: inflation, labour, growth, consumer, housing, rates |
-| `GC [curve] [date]` | Government yield curves (UST, TIPS real, breakeven, euro AAA, Bund, Gilt, JGB, Canada) with spreads and percentiles, a compare date, the one-year-forward curve and a World tab. CLI: `--curve`, `--date`, `--compare 1D` (or 1W, 1M, 3M, 1Y, or a date) and `--tab world` |
+| `GC [curve] [date]` | Government yield curves (UST, TIPS real, breakeven, euro AAA, Bund, Gilt, JGB, Canada) with spreads and percentiles, a compare date, the one-year-forward curve, a World tab and USD SOFR Swaps. CLI: `--curve`, `--date`, `--compare 1D` (or 1W, 1M, 3M, 1Y, or a date), `--tab world`, or `--tab swaps --tenor 10Y` |
 | `WIRP` / `FFIP` | Fed funds futures implied FOMC path, conditional target probabilities, SOFR contracts and Fed projections |
 | `BTMM` | Money markets: funding rates, Treasury bill curves and Federal Reserve liquidity |
 | `YAS` | Fixed-coupon bond calculator: price/yield, accrued interest, duration, convexity, DV01 and Treasury spread |

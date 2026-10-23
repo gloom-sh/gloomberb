@@ -36,6 +36,7 @@ import type { CentralBankRatesPayload } from "./central-bank-rates";
 import type { EstimateRevisionsPayload } from "./estimate-revisions";
 import type { MoneyMarketsPayload } from "./money-markets";
 import type { CloudCurveHistory, CloudCurveId, CloudCurveView, CloudWorldCurves } from "./yield-curves";
+import type { SwapCurvePayload, SwapTenor } from "./swap-curve";
 import type { CdxBoardPayload, CloudCreditBoardParams, SovrBoardPayload } from "./credit-boards";
 import type { ShortVolumePayload, ShortVolumeScope } from "./short-volume";
 import type { FailsToDeliverPayload, OtcVolumePayload } from "./short-side-publications";
@@ -823,6 +824,12 @@ export class CloudDataApi {
 
   async getCloudYieldCurve(): Promise<CloudYieldPointPayload[]> {
     return this.request<CloudYieldPointPayload[]>("/cloud/econ/yield-curve");
+  }
+
+  /** Daily USD SOFR swap estimates, comparisons and the selected tenor's history. */
+  async getCloudSwapCurve(tenor: SwapTenor = "10Y", days = 365): Promise<SwapCurvePayload> {
+    const query = new URLSearchParams({ tenor, days: String(days) });
+    return this.request<SwapCurvePayload>(`/cloud/econ/swap-curve?${query}`, { signal: AbortSignal.timeout(30_000) });
   }
 
   /** A curve's session on or before `date` (latest without one), with look-backs and spreads. */
