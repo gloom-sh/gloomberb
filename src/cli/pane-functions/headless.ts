@@ -742,6 +742,27 @@ function rowIdentitiesOf(
 }
 
 /**
+ * The row fields a table of a report about several symbols names each row by:
+ * the ones it declares, else each row's own `symbol` and `currency`, so
+ * `fn RV NESN:SWX AAPL` says on every row which ticker it is and what its
+ * price is in. A report about one symbol or none keeps what it declares.
+ */
+function rowKeysOf(
+  rows: readonly HeadlessPaneRow[],
+  declared: { rowUnitKey?: string; rowSymbolKey?: string; rowAsOfKey?: string },
+  symbolCount: number,
+): { rowUnitKey?: string; rowSymbolKey?: string; rowAsOfKey?: string } {
+  const carries = (key: string) => symbolCount > 1 && rows.some((row) => typeof row[key] === "string" && (row[key] as string).trim() !== "");
+  const rowSymbolKey = declared.rowSymbolKey ?? (carries("symbol") ? "symbol" : undefined);
+  const rowUnitKey = declared.rowUnitKey ?? (carries("currency") ? "currency" : undefined);
+  return {
+    ...(rowUnitKey ? { rowUnitKey } : {}),
+    ...(rowSymbolKey ? { rowSymbolKey } : {}),
+    ...(declared.rowAsOfKey ? { rowAsOfKey: declared.rowAsOfKey } : {}),
+  };
+}
+
+/**
  * The tables of a headless report for `--csv` and `--ndjson`, with the text
  * view's columns: a rows or snapshot report is one table, a bundle one per
  * section (key/value sections as `Metric,Value`), a series report one per
@@ -762,8 +783,9 @@ export function headlessReportTables(
     case "rows": {
       const rowsResult = result as HeadlessRowsResult;
       const columns = displayedColumns(columnsFor(rowsResult.rows, rowsResult.columns, definition.columns));
-      const rowIdentities = rowIdentitiesOf(rowsResult.rows, rowsResult);
-      const own = exportRowsTable(title, columns, rowsResult.rows, { status: true });
+      const keys = rowKeysOf(rowsResult.rows, rowsResult, (result.symbols ?? args.symbols).length);
+      const rowIdentities = rowIdentitiesOf(rowsResult.rows, keys);
+      const own = exportRowsTable(title, columns, rowsResult.rows, { status: true, ...(keys.rowUnitKey ? { rowUnitKey: keys.rowUnitKey } : {}) });
       const interval = rowsResult.interval?.trim();
       tables = [{ ...own, ...(rowIdentities ? { rowIdentities } : {}), ...(interval ? { identity: { interval } } : {}) }, ...(rowsResult.exportTables ?? []).map((extra) => {
         const identity = {

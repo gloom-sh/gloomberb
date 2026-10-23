@@ -164,21 +164,42 @@ export function parseSeriesExpression(value: string): ParsedSeriesExpression | n
 
 const SERIES_FORMS = "Use SYMBOL, SYMBOL:field, FUT:code, UST:maturity, FRED:series, GEO:series, or CAP:capability-id:series-id.";
 
+/** A word that reads as a series, not an operator or a number of a formula. */
+const LIST_WORD = /^[A-Za-z^][\w.^=:/~-]*$/;
+
+/**
+ * One leg of a list: a series, or series typed with spaces between them
+ * (`AAPL MSFT`, as `fn G AAPL MSFT` passes them), each word a series of its
+ * own. Null when it is neither.
+ */
+function parseLeg(leg: string): ParsedSeriesExpression[] | null {
+  const parsed = parseSeriesExpression(leg);
+  if (parsed) return [parsed];
+  const words = leg.trim().split(/\s+/);
+  if (words.length < 2) return null;
+  const series = words.map(parseSeriesExpression);
+  return series.every((entry): entry is ParsedSeriesExpression => entry != null) ? series : null;
+}
+
 export function parseChartExpression(value: string): ParsedSeriesExpression[] {
   if (!value.trim()) return [];
   // A list pasted with a stray separator (`BRK.B,SPY,`, `,SPY`, `A,,B`) has no series between them.
   const legs = value.split(/[;,\n]/).filter((leg) => leg.trim());
   // Separators alone name no series at all.
   if (legs.length === 0) throw new Error(`Invalid chart series "${value.trim()}": no series between its separators. ${SERIES_FORMS}`);
-  if (legs.length > MAX_CHART_COMPOSER_SERIES) {
+
+  const series = legs.flatMap((leg) => {
+    const parsed = parseLeg(leg);
+    if (parsed) return parsed;
+    // Words with spaces between them, none of them an operator, that are not all series: a list is written with commas.
+    const words = leg.trim().split(/\s+/);
+    const listHint = words.length > 1 && words.every((word) => LIST_WORD.test(word)) ? ` Separate series with commas: ${words.join(",")}.` : "";
+    throw new Error(`Invalid chart series "${leg.trim()}".${listHint} ${SERIES_FORMS}`);
+  });
+  if (series.length > MAX_CHART_COMPOSER_SERIES) {
     throw new Error(`Charts support up to ${MAX_CHART_COMPOSER_SERIES} base series.`);
   }
-
-  return legs.map((leg) => {
-    const parsed = parseSeriesExpression(leg);
-    if (parsed) return parsed;
-    throw new Error(`Invalid chart series "${leg.trim()}". ${SERIES_FORMS}`);
-  });
+  return series;
 }
 
 export function formatSeriesExpression(series: ChartSeriesSpec): string {

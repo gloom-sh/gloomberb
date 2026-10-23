@@ -101,7 +101,7 @@ const COLUMN_SPECS: Record<ExtraColumnId, ColumnSpec> = {
   target: {
     label: "Avg Target",
     columns: [
-      { key: "targetMean", header: "Avg Target", align: "right", unitKey: "targetCurrency",
+      { key: "targetMean", header: "Avg Target", align: "right", unitKey: "targetCurrency", unitColumn: true,
         format: (value, row) => (typeof value === "number" ? formatAnalystPrice(value, typeof row.targetCurrency === "string" ? row.targetCurrency : undefined) : "-") },
       { key: "analystCount", header: "Analysts", align: "right", format: (value) => (typeof value === "number" ? String(value) : "-") },
     ],

@@ -38,12 +38,12 @@ export function isPastPriceWindow(window: PriceWindow, now = new Date()): boolea
 
 const FORMATS = "a year (2007) or a date (2008-09-15)";
 
-function readBound(value: string, flag: "--from" | "--to", now: Date): string {
+function readBound(value: string, edge: "start" | "end", flag: string, now: Date): string {
   const text = value.trim();
-  if (YEAR.test(text)) return flag === "--from" ? `${text}-01-01` : `${text}-12-31`;
+  if (YEAR.test(text)) return edge === "start" ? `${text}-01-01` : `${text}-12-31`;
   const date = text ? readCalendarDate(text) : null;
   if (date) return date;
-  throw new Error(`Invalid ${flag} "${value}". ${dateOptionError(text, flag, { now, subject: `the window's ${flag === "--from" ? "start" : "end"}`, formats: FORMATS, example: flag === "--from" ? "2007" : "2009" })}`);
+  throw new Error(`Invalid ${flag} "${value}". ${dateOptionError(text, flag, { now, subject: `the window's ${edge}`, formats: FORMATS, example: edge === "start" ? "2007" : "2009" })}`);
 }
 
 /**
@@ -52,15 +52,23 @@ function readBound(value: string, flag: "--from" | "--to", now: Date): string {
  * alone, a start after the end, or a start still ahead. An end past today
  * stops at today.
  */
-export function readPriceWindow(from: string | undefined, to: string | undefined, now = new Date(), timeZone?: string): PriceWindow | null {
+export function readPriceWindow(
+  from: string | undefined,
+  to: string | undefined,
+  now = new Date(),
+  timeZone?: string,
+  /** The options as typed, for the messages: `--start` and `--end` where a command takes those too. */
+  flags: { from: string; to: string } = { from: "--from", to: "--to" },
+): PriceWindow | null {
   if (from == null && to == null) return null;
-  if (from == null) throw new Error(`--to needs a --from: --from ${YEAR.test(to!.trim()) ? Number(to!.trim()) - 2 : 2007} --to ${to!.trim()}.`);
+  const { from: fromFlag, to: toFlag } = flags;
+  if (from == null) throw new Error(`${toFlag} needs a ${fromFlag}: ${fromFlag} ${YEAR.test(to!.trim()) ? Number(to!.trim()) - 2 : 2007} ${toFlag} ${to!.trim()}.`);
   const today = priceWindowToday(now, timeZone);
-  const start = readBound(from, "--from", now);
-  const typedEnd = to == null ? today : readBound(to, "--to", now);
-  if (start > today) throw new Error(`--from ${from.trim()} has not started yet. Use a start on or before ${today}.`);
+  const start = readBound(from, "start", fromFlag, now);
+  const typedEnd = to == null ? today : readBound(to, "end", toFlag, now);
+  if (start > today) throw new Error(`${fromFlag} ${from.trim()} has not started yet. Use a start on or before ${today}.`);
   if (start > typedEnd) {
-    throw new Error(`--from ${from.trim()} is after --to ${to!.trim()}. The window runs from the earlier to the later, such as --from ${to!.trim()} --to ${from.trim()}.`);
+    throw new Error(`${fromFlag} ${from.trim()} is after ${toFlag} ${to!.trim()}. The window runs from the earlier to the later, such as ${fromFlag} ${to!.trim()} ${toFlag} ${from.trim()}.`);
   }
   return { from: start, to: typedEnd > today ? today : typedEnd };
 }
