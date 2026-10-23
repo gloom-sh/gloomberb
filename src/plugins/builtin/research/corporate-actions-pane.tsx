@@ -141,7 +141,7 @@ export function matchEarningsSecFiling(row: { status: string; date: string; date
   return best?.filing ?? null;
 }
 
-/** The one currency every EPS and revenue cell is in, so the headers carry it once. */
+/** Share the currency label; EE marks any unstated currencies separately. */
 function sharedMetricCurrency(rows: readonly EventRow[], allowUnstated = false): string | undefined {
   const currencies = new Set<string | undefined>();
   for (const row of rows) {
@@ -627,7 +627,8 @@ export function CorporateActionsView({
         const value = eps ? row.qEps ?? row.annualEps : row.qRevenue ?? row.annualRevenue;
         const currency = eps ? row.epsCurrency : row.revenueCurrency;
         const text = formatEventMetric(value, unit ? undefined : currency, eps ? "eps" : "revenue");
-        return { text: value != null && !currency ? `${text} ?` : text, value, color: colors.textDim };
+        return { text: value != null && !currency ? `${text} ?` : text,
+          value: unit && currency ? value : undefined, color: colors.textDim };
       }
       case "surprise":
         return { text: row.status === "Earnings" ? row.value : "-", value: row.surprisePercent, color: row.status === "Earnings" ? toneColor(row.tone) : colors.textDim };
@@ -697,6 +698,10 @@ export function CorporateActionsView({
       sortDirection="desc"
       getItemKey={eventRowKey}
       renderCell={renderCell}
+      getExportMetadata={variant === "earnings-estimates" ? () => [
+        ...(unit ? [["Currency", unit]] : []),
+        ...(hasUnstatedCurrency ? [["?", "Currency unstated"]] : []),
+      ] : undefined}
       selectedTextOverridesCellColor
       getRowBackgroundColor={rowBackground}
       emptyStateTitle={loading

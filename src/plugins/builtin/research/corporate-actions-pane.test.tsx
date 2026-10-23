@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { act, useState } from "react";
-import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
+import { createOpenTuiTestHarness, takeSavedTextFile } from "../../../renderers/opentui/test-utils";
+import { exportPaneTable } from "../../../state/pane-table-export-registry";
 import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { TestPaneProvider, createTestTicker, createTestPaneConfig } from "../../../test-support/pane";
@@ -87,6 +88,12 @@ test("EE keeps surprise visible with annual and quarterly estimates and never as
   expect(screen.match(/USD/g)).toHaveLength(1);
   expect(screen).not.toContain("basis unknown");
   expect(getTableWidth(buildEventColumns(88, "USD", "earnings-estimates"))).toBeLessThan(88);
+  await exportPaneTable("earnings-estimates:TEST", "estimates.csv");
+  const csv = takeSavedTextFile()!.text;
+  expect(csv).toContain("Currency,USD");
+  expect(csv).toContain("?,Currency unstated");
+  expect(csv).toContain("1.50 ?");
+  expect(csv).toContain("1000000000");
 });
 
 test("opening a fiscal-period row cannot select a same-day pending announcement", async () => {
