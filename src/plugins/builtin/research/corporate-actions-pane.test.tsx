@@ -5,7 +5,7 @@ import { appReducer, createInitialState, type AppAction, type AppState } from ".
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { TestPaneProvider, createTestTicker, createTestPaneConfig } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
-import type { CorporateActionsData } from "../../../types/financials";
+import type { AnalystResearchData, CorporateActionsData } from "../../../types/financials";
 import { Box } from "../../../ui";
 import { buildEventColumns, buildEventDetail, CorporateActionsView, matchEarningsSecFiling, type EventDetailSection } from "./corporate-actions-pane";
 import { getTableWidth } from "../../../components/ui/table-layout";
@@ -36,7 +36,7 @@ async function frame() {
   await act(async () => { await tui.setup().renderOnce(); });
 }
 
-async function render(actions: CorporateActionsData, variant: "corporate-actions" | "earnings-estimates", width = 80) {
+async function render(actions: CorporateActionsData, variant: "corporate-actions" | "earnings-estimates", width = 80, estimates?: AnalystResearchData) {
   const paneId = `${variant}:TEST`;
   const config = createTestPaneConfig("/tmp/gloom-corporate-actions-pane-test", {
     instanceId: paneId, paneId: variant, binding: { kind: "fixed", symbol: "TEST" },
@@ -46,7 +46,7 @@ async function render(actions: CorporateActionsData, variant: "corporate-actions
   state.tickers = new Map([["TEST", createTestTicker("TEST", "Test", { exchange: "ASX", currency: "AUD" })]]);
   const provider = createTestDataProvider({
     getCorporateActions: async () => actions,
-    getAnalystResearch: async () => ({ symbol: "TEST", recommendations: [], ratings: [], earningsEstimates: [], revenueEstimates: [] }),
+    getAnalystResearch: async () => estimates ?? ({ symbol: "TEST", recommendations: [], ratings: [], earningsEstimates: [], revenueEstimates: [] }),
   });
   const runtime = createTestPluginRuntime({ getMarketData: () => provider });
   function Harness() {
@@ -67,6 +67,27 @@ async function render(actions: CorporateActionsData, variant: "corporate-actions
   });
   for (let index = 0; index < 4; index++) await frame();
 }
+
+test("EE keeps surprise visible with annual and quarterly estimates and never assigns a missing currency", async () => {
+  await render({ symbol: "TEST", dividends: [], splits: [], earnings: [
+    { date: "2026-07-30", epsActual: 2, epsEstimate: 1, currency: "USD", epsBasis: "adjusted" },
+    { date: "2025-07-30", epsActual: 1.5, epsEstimate: 1 },
+  ] }, "earnings-estimates", 88, {
+    symbol: "TEST", recommendations: [], ratings: [],
+    earningsEstimates: [{ date: "2027-09-30", period: "next_year", average: 9.5, growth: .2, currency: "USD" }],
+    revenueEstimates: [{ date: "2026-12-31", period: "next_quarter", average: 1e9, growth: .1, currency: "USD" }],
+  });
+  const screen = tui.frame();
+  expect(screen).toContain("EPS SURP");
+  expect(screen).toContain("+100.00%");
+  expect(screen).toContain("+20.00% EPS");
+  expect(screen).toContain("+10.00% rev");
+  expect(screen).toContain("9.50");
+  expect(screen).toContain("1.50 ?");
+  expect(screen.match(/USD/g)).toHaveLength(1);
+  expect(screen).not.toContain("basis unknown");
+  expect(getTableWidth(buildEventColumns(88, "USD", "earnings-estimates"))).toBeLessThan(88);
+});
 
 test("opening a fiscal-period row cannot select a same-day pending announcement", async () => {
   await render({ symbol: "TEST", dividends: [], splits: [], earnings: [
