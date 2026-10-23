@@ -1,0 +1,1175 @@
+{
+  "base": "23ee2cf78a94c40aa0b81f5d58e6159a44eb858e",
+  "head": "f3cb85fc5970b7918d3542eccf4278a90d602811",
+  "complete": true,
+  "changed": 0,
+  "views": 490,
+  "changedViews": [],
+  "unsteadyExcluded": [
+    "VOLS--tab-curve",
+    "VOLS--root",
+    "FI--root",
+    "FI--tab-bonds",
+    "FI--tab-issuer-debt",
+    "FI--tab-treasury",
+    "GE--root",
+    "CFNG--detail",
+    "CHOKE--root",
+    "OSA--detail",
+    "VIX--root",
+    "VIX--tab-cross-asset"
+  ],
+  "oneSided": {
+    "gone": [],
+    "new": []
+  },
+  "failed": {
+    "before": [],
+    "after": []
+  },
+  "pixelComparisonErrors": [],
+  "shards": {
+    "expected": 4,
+    "finished": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "unfinished": []
+  },
+  "targetShellPixelChange": {
+    "command-bar": {
+      "640": 0,
+      "1280": 0
+    },
+    "theme-picker": {
+      "640": 0,
+      "1280": 0
+    },
+    "command-bar-search": {
+      "640": 0,
+      "1280": 0
+    }
+  },
+  "uiTokens": {
+    "passed": true,
+    "allowedValues": 2,
+    "registryWarnings": 0
+  },
+  "coverage": {
+    "before": {
+      "viewRecords": 547,
+      "picturedViews": 490,
+      "recordsWithoutImages": [
+        {
+          "view": "CDS--tab-treasury-bills",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CDS--tab-treasury-notes",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CDS--tab-treasury-bonds-2-4",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CDX--tab-treasury-bills",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CDX--tab-treasury-notes",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CDX--tab-treasury-bonds-2-4",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "TRACE--tab-treasury-bills",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "TRACE--tab-treasury-notes",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "TRACE--tab-treasury-bonds-2-4",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "COT--tab-inventories-products",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "COT--tab-inventories-gas-storage",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CRD--tab-treasury-bills",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CRD--tab-treasury-notes",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CRD--tab-treasury-bonds-2-4",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "DOE--tab-positioning-disaggregated",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "FI--tab-treasury-bills",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "FI--tab-treasury-notes",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "FI--tab-treasury-bonds-2-4",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "COVN--tab-treasury-bills",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "COVN--tab-treasury-notes",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "COVN--tab-treasury-bonds-3-4",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CRDOC--tab-treasury-bills",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CRDOC--tab-treasury-notes",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CRDOC--tab-treasury-bonds-3-4",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CTM--tab-positioning-disaggregated",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CTM--tab-inventories-products",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CTM--tab-inventories-gas-storage",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "FUT--tab-positioning-disaggregated",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "FUT--tab-inventories-products",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "FUT--tab-inventories-gas-storage",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "PSD--tab-positioning-disaggregated",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "PSD--tab-inventories-products",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "PSD--tab-inventories-gas-storage",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "T--tab-catalysts-changes",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "T--tab-hiring-momentum-chart-2-2",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "T--tab-hiring-momentum-mix",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "T--tab-hiring-momentum-peers",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "T--tab-hiring-momentum-evidence",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "T--tab-hiring-momentum-moves",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "T--tab-apps-chart-2-2",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "T--tab-apps-markets",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "T--tab-apps-peers",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "T--tab-apps-evidence",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "DDIS--tab-treasury-bills",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "DDIS--tab-treasury-notes",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "DDIS--tab-treasury-bonds-3-4",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "JODI--tab-positioning-disaggregated",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "JODI--tab-inventories-products",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "JODI--tab-inventories-gas-storage",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "LAY--detail",
+          "recordKind": "detail",
+          "reason": "Enter activates a layout and closes the gallery, so the original pane is absent when the harness tries to record its detail."
+        },
+        {
+          "view": "NGS--tab-positioning-disaggregated",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "SOVR--tab-treasury-bills",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "SOVR--tab-treasury-notes",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "SOVR--tab-treasury-bonds-2-4",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "YAS--tab-treasury-bills",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "YAS--tab-treasury-notes",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "YAS--tab-treasury-bonds-3-4",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        }
+      ],
+      "measuredViews": 490,
+      "measuredFunctionsAndShells": 170,
+      "measurements": 979,
+      "viewRecordKinds": {
+        "root": 170,
+        "detail": 22,
+        "tab": 299,
+        "skipped": 56
+      },
+      "zeroViewCatalogEntries": [
+        "BR",
+        "ERN",
+        "EVTS",
+        "HDS",
+        "IBKR",
+        "PL",
+        "TBO",
+        "VIEW",
+        "debug-log"
+      ],
+      "skippedOrUnmeasured": [
+        {
+          "view": "CDS--tab-treasury-bills",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CDS--tab-treasury-notes",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CDS--tab-treasury-bonds-2-4",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CDX--tab-treasury-bills",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CDX--tab-treasury-notes",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CDX--tab-treasury-bonds-2-4",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "TRACE--tab-treasury-bills",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "TRACE--tab-treasury-notes",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "TRACE--tab-treasury-bonds-2-4",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "COT--tab-inventories-products",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "COT--tab-inventories-gas-storage",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CRD--tab-treasury-bills",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CRD--tab-treasury-notes",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CRD--tab-treasury-bonds-2-4",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "DOE--tab-positioning-disaggregated",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "FI--tab-treasury-bills",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "FI--tab-treasury-notes",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "FI--tab-treasury-bonds-2-4",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "COVN--tab-treasury-bills",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "COVN--tab-treasury-notes",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "COVN--tab-treasury-bonds-3-4",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CRDOC--tab-treasury-bills",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CRDOC--tab-treasury-notes",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CRDOC--tab-treasury-bonds-3-4",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CTM--tab-positioning-disaggregated",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CTM--tab-inventories-products",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CTM--tab-inventories-gas-storage",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "FUT--tab-positioning-disaggregated",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "FUT--tab-inventories-products",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "FUT--tab-inventories-gas-storage",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "PSD--tab-positioning-disaggregated",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "PSD--tab-inventories-products",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "PSD--tab-inventories-gas-storage",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "T--tab-catalysts-changes",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "T--tab-hiring-momentum-chart-2-2",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "T--tab-hiring-momentum-mix",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "T--tab-hiring-momentum-peers",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "T--tab-hiring-momentum-evidence",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "T--tab-hiring-momentum-moves",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "T--tab-apps-chart-2-2",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "T--tab-apps-markets",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "T--tab-apps-peers",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "T--tab-apps-evidence",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "DDIS--tab-treasury-bills",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "DDIS--tab-treasury-notes",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "DDIS--tab-treasury-bonds-3-4",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "JODI--tab-positioning-disaggregated",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "JODI--tab-inventories-products",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "JODI--tab-inventories-gas-storage",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "NGS--tab-positioning-disaggregated",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "SOVR--tab-treasury-bills",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "SOVR--tab-treasury-notes",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "SOVR--tab-treasury-bonds-2-4",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "YAS--tab-treasury-bills",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "YAS--tab-treasury-notes",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "YAS--tab-treasury-bonds-3-4",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        }
+      ]
+    },
+    "after": {
+      "viewRecords": 546,
+      "picturedViews": 489,
+      "recordsWithoutImages": [
+        {
+          "view": "CDS--tab-treasury-bills",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CDS--tab-treasury-notes",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CDS--tab-treasury-bonds-2-4",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CDX--tab-treasury-bills",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CDX--tab-treasury-notes",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CDX--tab-treasury-bonds-2-4",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "TRACE--tab-treasury-bills",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "TRACE--tab-treasury-notes",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "TRACE--tab-treasury-bonds-2-4",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "COT--tab-inventories-products",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "COT--tab-inventories-gas-storage",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CRD--tab-treasury-bills",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CRD--tab-treasury-notes",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CRD--tab-treasury-bonds-2-4",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "DOE--tab-positioning-disaggregated",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "FI--tab-treasury-bills",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "FI--tab-treasury-notes",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "FI--tab-treasury-bonds-2-4",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "COVN--tab-treasury-bills",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "COVN--tab-treasury-notes",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "COVN--tab-treasury-bonds-3-4",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CRDOC--tab-treasury-bills",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CRDOC--tab-treasury-notes",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CRDOC--tab-treasury-bonds-3-4",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CTM--tab-positioning-disaggregated",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CTM--tab-inventories-products",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CTM--tab-inventories-gas-storage",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "FUT--tab-positioning-disaggregated",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "FUT--tab-inventories-products",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "FUT--tab-inventories-gas-storage",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "PSD--tab-positioning-disaggregated",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "PSD--tab-inventories-products",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "PSD--tab-inventories-gas-storage",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "T--tab-catalysts-changes",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "T--tab-hiring-momentum-chart-2-2",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "T--tab-hiring-momentum-mix",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "T--tab-hiring-momentum-peers",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "T--tab-hiring-momentum-evidence",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "T--tab-hiring-momentum-moves",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "T--tab-apps-chart-2-2",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "T--tab-apps-markets",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "T--tab-apps-peers",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "T--tab-apps-evidence",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "DDIS--tab-treasury-bills",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "DDIS--tab-treasury-notes",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "DDIS--tab-treasury-bonds-3-4",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "JODI--tab-positioning-disaggregated",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "JODI--tab-inventories-products",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "JODI--tab-inventories-gas-storage",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "LAY--detail",
+          "recordKind": "detail",
+          "reason": "Enter activates a layout and closes the gallery, so the original pane is absent when the harness tries to record its detail."
+        },
+        {
+          "view": "NGS--tab-positioning-disaggregated",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "SOVR--tab-treasury-bills",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "SOVR--tab-treasury-notes",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "SOVR--tab-treasury-bonds-2-4",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "YAS--tab-treasury-bills",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "YAS--tab-treasury-notes",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "YAS--tab-treasury-bonds-3-4",
+          "recordKind": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        }
+      ],
+      "measuredViews": 489,
+      "measuredFunctionsAndShells": 170,
+      "measurements": 974,
+      "viewRecordKinds": {
+        "root": 170,
+        "detail": 21,
+        "tab": 299,
+        "skipped": 56
+      },
+      "zeroViewCatalogEntries": [
+        "BR",
+        "ERN",
+        "EVTS",
+        "HDS",
+        "IBKR",
+        "PL",
+        "TBO",
+        "VIEW",
+        "debug-log"
+      ],
+      "skippedOrUnmeasured": [
+        {
+          "view": "CDS--tab-treasury-bills",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CDS--tab-treasury-notes",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CDS--tab-treasury-bonds-2-4",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CDX--tab-treasury-bills",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CDX--tab-treasury-notes",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CDX--tab-treasury-bonds-2-4",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "TRACE--tab-treasury-bills",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "TRACE--tab-treasury-notes",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "TRACE--tab-treasury-bonds-2-4",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "COT--tab-inventories-products",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "COT--tab-inventories-gas-storage",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CRD--tab-treasury-bills",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CRD--tab-treasury-notes",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CRD--tab-treasury-bonds-2-4",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "DOE--tab-positioning-disaggregated",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "FI--tab-treasury-bills",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "FI--tab-treasury-notes",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "FI--tab-treasury-bonds-2-4",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "COVN--tab-treasury-bills",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "COVN--tab-treasury-notes",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "COVN--tab-treasury-bonds-3-4",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CRDOC--tab-treasury-bills",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CRDOC--tab-treasury-notes",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CRDOC--tab-treasury-bonds-3-4",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CTM--tab-positioning-disaggregated",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CTM--tab-inventories-products",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "CTM--tab-inventories-gas-storage",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "FUT--tab-positioning-disaggregated",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "FUT--tab-inventories-products",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "FUT--tab-inventories-gas-storage",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "PSD--tab-positioning-disaggregated",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "PSD--tab-inventories-products",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "PSD--tab-inventories-gas-storage",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "T--tab-catalysts-changes",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "T--tab-hiring-momentum-chart-2-2",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "T--tab-hiring-momentum-mix",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "T--tab-hiring-momentum-peers",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "T--tab-hiring-momentum-evidence",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "T--tab-hiring-momentum-moves",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "T--tab-apps-chart-2-2",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "T--tab-apps-markets",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "T--tab-apps-peers",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "T--tab-apps-evidence",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "DDIS--tab-treasury-bills",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "DDIS--tab-treasury-notes",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "DDIS--tab-treasury-bonds-3-4",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "JODI--tab-positioning-disaggregated",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "JODI--tab-inventories-products",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "JODI--tab-inventories-gas-storage",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "NGS--tab-positioning-disaggregated",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "SOVR--tab-treasury-bills",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "SOVR--tab-treasury-notes",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "SOVR--tab-treasury-bonds-2-4",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "YAS--tab-treasury-bills",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "YAS--tab-treasury-notes",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "view": "YAS--tab-treasury-bonds-3-4",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        }
+      ]
+    }
+  },
+  "method": {
+    "widths": [
+      640,
+      1280
+    ],
+    "height": 800,
+    "theme": "white",
+    "browser": "Chrome for Testing 155.0.8059.39",
+    "runtime": "Bun 1.3.11",
+    "data": "same pinned offline replay on both sides, signed out",
+    "tabDepth": 1,
+    "rootAndEnterDetail": true,
+    "hoverVariants": false,
+    "bodyCropPixels": {
+      "top": 42,
+      "bottom": 42
+    },
+    "changeThresholdFraction": 0.0005,
+    "registryLockEntries": 21,
+    "bundledPlugins": 2,
+    "additionalRegistryPlugins": 15,
+    "registryEntriesNowBuiltIn": 4
+  },
+  "localInvocationRecovery": {
+    "baselineShard": 1,
+    "interruptedExit": 143,
+    "resumed": true,
+    "samePinnedRevisionAndBuild": true,
+    "catalogTokensCompleted": 53,
+    "catalogTokensExpected": 53,
+    "duplicatePartialMeasurementsRemoved": 1,
+    "deduplicationKey": [
+      "id",
+      "width",
+      "theme"
+    ],
+    "kept": "complete redraw and matching screenshot",
+    "rawMeasurementsPreserved": true
+  }
+}
