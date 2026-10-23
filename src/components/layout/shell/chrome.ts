@@ -19,7 +19,7 @@ const COMMAND_SURFACE_MIN_WIDTH = { native: 46, terminal: 42 };
  * step is the worst case for what it shows, so a ticking countdown or a longer
  * state label can never push the cluster past its columns:
  *
- *   42  PRE-MKT · 5h 30m  SPY 1,234.56 -10.60%  USD
+ *   58  PRE-MKT · 5h 30m to regular open  SPY 1,234.56 -10.60%  USD
  *   31  the state label and SPY
  *   21  SPY alone
  *
@@ -28,7 +28,7 @@ const COMMAND_SURFACE_MIN_WIDTH = { native: 46, terminal: 42 };
  * step for "everything but the countdown", which would cost the sheet eleven
  * columns to add the base currency, the one value here that barely moves.
  */
-const HEADER_MARKET_TIERS = [42, 31, 21] as const;
+const HEADER_MARKET_TIERS = [58, 31, 21] as const;
 
 /**
  * Update status is transient, so on a narrow header it gives most of its
