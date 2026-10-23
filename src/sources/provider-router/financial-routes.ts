@@ -175,7 +175,10 @@ export class ProviderRouterFinancialRoutes {
           ? mergeFinancials(providerResult?.value ?? null, cached.providerValue)
           : providerResult?.value ?? cached.providerValue ?? null,
       );
-      const answer = isOptionTicker && !merged?.quote ? quoteOnlyFinancials(merged ?? cached.value) : merged ?? cached.value;
+      if (isOptionTicker && !merged?.quote) {
+        return quoteOnlyFinancials(merged ?? cached.value);
+      }
+      const answer = merged ?? cached.value;
       // The refresh failed and the saved copy answers: marked with when its
       // oldest part was saved, and its quote too unless a broker's live one
       // replaced it, since the quote is what a report's closing line dates.
