@@ -82,9 +82,43 @@ test("a missing deal currency stays blank, and an explicit code still prints", (
   expect(formatDealValue(null, "USD")).toBe("--");
 });
 
+// Athabasca: each holder takes CAD 12.00 or 0.264 Cenovus, prorated. blueharbor: $12.70 and 1.0534 TowneBank for every share.
+const athabasca = (election: boolean | undefined) => deal(
+  { target: { name: "Athabasca Oil", symbol: "ATH.TO", country: "CA" }, acquirer: { name: "Cenovus Energy", symbol: "CVE.TO", country: "CA" }, expectedClose: "2026-12-31" },
+  { consideration: "mixed", cashPerShare: 12, exchangeRatio: 0.264, ratioSymbol: "CVE.TO", currency: "CAD", election },
+);
+const blueharbor = (election: boolean | undefined) => deal(
+  { target: { name: "blueharbor bank", symbol: "BLHK", country: "US" }, acquirer: { name: "TowneBank", symbol: "TOWN", country: "US" }, expectedClose: "2027-03-31" },
+  { consideration: "mixed", cashPerShare: 12.7, exchangeRatio: 1.0534, ratioSymbol: "TOWN", election },
+);
+
+test("an election is priced at its cash leg, and legs paid together add up", () => {
+  const ath = dealSpread(athabasca(true), quote("ATH.TO", 12.06, "CAD"), quote("CVE.TO", 46.54, "CAD"), NOW)!;
+  expect(ath.offer).toBe(12);
+  expect(formatPercentShort(ath.spread)).toBe("-0.50%");
+  expect(ath.annualized).toBeNull();
+  // The cash leg needs no quote for the shares.
+  expect(dealSpread(athabasca(true), quote("ATH.TO", 11.8, "CAD"), null, NOW)!.offer).toBe(12);
+  // Cash the quote cannot be compared with: the stock leg stands in.
+  expect(dealSpread(athabasca(true), quote("ATH.TO", 12.06, "USD"), quote("CVE.TO", 46.54, "USD"), NOW)!.offer).toBeCloseTo(12.287, 3);
+
+  const blhk = dealSpread(blueharbor(false), quote("BLHK", 49.5), quote("TOWN", 36.15), NOW)!;
+  expect(blhk.offer).toBeCloseTo(50.78, 2);
+  expect(formatPercentShort(blhk.spread)).toBe("2.6%");
+  expect(blhk.annualized!).toBeCloseTo(0.0511, 3);
+  expect(dealSpread(blueharbor(false), quote("BLHK", 49.5), null, NOW)).toBeNull();
+});
+
+test("a server without the election field keeps pricing both legs", () => {
+  expect(dealSpread(blueharbor(undefined), quote("BLHK", 49.5), quote("TOWN", 36.15), NOW)!.offer).toBeCloseTo(50.78, 2);
+  expect(dealSpread(athabasca(undefined), quote("ATH.TO", 12.06, "CAD"), quote("CVE.TO", 46.54, "CAD"), NOW)!.offer).toBeCloseTo(24.287, 3);
+  expect(termsLabel(athabasca(undefined).terms)).toBe("CAD 12.00 + 0.264 CVE.TO");
+});
+
 test("terms read as what one share gets", () => {
   expect(termsLabel(deal().terms)).toBe("$10.50 cash");
-  expect(termsLabel(deal({}, { exchangeRatio: 0.5, ratioSymbol: "CPRT", consideration: "mixed" }).terms)).toBe("$10.50 + 0.5 CPRT");
+  expect(termsLabel(blueharbor(false).terms)).toBe("$12.70 + 1.0534 TOWN");
+  expect(termsLabel(athabasca(true).terms)).toBe("CAD 12.00 or 0.264 CVE.TO");
   expect(termsLabel(deal({}, { cvr: true, partial: true }).terms)).toBe("$10.50 cash + CVR, partial");
   expect(termsLabel(deal({}, { cashPerShare: null, currency: null, consideration: "undisclosed" }).terms)).toBe("--");
 });

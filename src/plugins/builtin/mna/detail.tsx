@@ -31,6 +31,7 @@ import {
   formatPercentShort,
   formatPerShare,
   formatPrice,
+  isElection,
   MISSING,
   stageLabel,
   termsLabel,
@@ -74,7 +75,8 @@ async function dailyCloses(provider: AssetDataProvider, symbol: string, from: st
 function useDealHistory(deal: MnaDeal | null) {
   const provider = useAssetData();
   const target = deal?.target.symbol ?? null;
-  const ratio = deal?.terms.exchangeRatio != null ? deal.terms.ratioSymbol : null;
+  // An election's offer line is its cash leg, which needs no listing's history.
+  const ratio = deal?.terms.exchangeRatio != null && !isElection(deal.terms) ? deal.terms.ratioSymbol : null;
   const from = deal ? shiftDay(deal.announced, -LEAD_DAYS) : null;
   const [history, setHistory] = useState<{ key: string; target: PricePoint[]; ratio: PricePoint[] } | null>(null);
   const key = `${target}:${ratio}:${from}`;
@@ -95,8 +97,9 @@ function useDealHistory(deal: MnaDeal | null) {
 }
 
 /**
- * What the terms were worth each day since the announcement: flat for cash,
- * the ratio times the paying listing's close for stock.
+ * What the terms were worth each day since the announcement: flat for cash
+ * and for an election (priced at its cash leg, as the spread is), the ratio
+ * times the paying listing's close for stock.
  */
 function offerSeries(deal: MnaDeal, ratioCloses: readonly PricePoint[], days: readonly string[]): Array<{ day: string; value: number }> {
   const { cashPerShare, exchangeRatio, currency } = deal.terms;
@@ -108,7 +111,7 @@ function offerSeries(deal: MnaDeal, ratioCloses: readonly PricePoint[], days: re
   let lastRatio: number | null = null;
   for (const day of days) {
     if (day < deal.announced) continue;
-    if (exchangeRatio == null) {
+    if (exchangeRatio == null || isElection(deal.terms)) {
       out.push({ day, value: cash });
       continue;
     }
@@ -175,7 +178,7 @@ export function MnaDealDetail({ id, seed, focused, width, height }: {
         tone: spread.spread < 0 ? "warning" : undefined,
       });
       if (spread.annualized != null) items.push({ id: "ann", label: "Ann.", value: formatPercentShort(spread.annualized) });
-      if (unaffected && unaffected.close > 0 && deal.terms.exchangeRatio == null) {
+      if (unaffected && unaffected.close > 0 && (deal.terms.exchangeRatio == null || isElection(deal.terms))) {
         items.push({
           id: "premium",
           label: "Premium",

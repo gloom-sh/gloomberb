@@ -33,6 +33,11 @@ function ratioLabel(ratio: number, symbol: string | null): string {
   return symbol ? `${shares} ${symbol}` : `${shares} sh`;
 }
 
+/** Each holder gets the cash or the shares, not both. Older servers never say so. */
+export function isElection(terms: MnaTerms): boolean {
+  return terms.election === true && terms.cashPerShare != null && terms.exchangeRatio != null;
+}
+
 /** What one target share gets, in as few characters as the terms allow. */
 export function termsLabel(terms: MnaTerms): string {
   const parts: string[] = [];
@@ -48,7 +53,7 @@ export function termsLabel(terms: MnaTerms): string {
         : terms.consideration === "mixed" ? "Cash and stock"
           : MISSING);
   }
-  let label = parts.join(" + ");
+  let label = parts.join(isElection(terms) ? " or " : " + ");
   if (terms.cvr) label += " + CVR";
   if (terms.partial) label += ", partial";
   return label;
@@ -85,28 +90,40 @@ function inQuoteCurrency(amount: number, from: string | null, quoteCurrency: str
   return offer.toUpperCase() === quote.toUpperCase() ? amount : null;
 }
 
+function cashLeg(terms: MnaTerms, targetQuote: Quote | null): number | null {
+  return terms.cashPerShare == null ? null : inQuoteCurrency(terms.cashPerShare, terms.currency, targetQuote?.currency);
+}
+
+function stockLeg(terms: MnaTerms, targetQuote: Quote | null, ratioQuote: Quote | null): number | null {
+  const price = ratioQuote?.price;
+  if (terms.exchangeRatio == null || !terms.ratioSymbol || price == null || !Number.isFinite(price) || price <= 0) return null;
+  const leg = inQuoteCurrency(price, ratioQuote?.currency ?? null, targetQuote?.currency);
+  return leg == null ? null : terms.exchangeRatio * leg;
+}
+
 /**
  * What the terms pay per target share at the latest prices, in the target
  * quote's currency. Null when a leg cannot be priced: no terms, a ratio
  * without its listing, or cash in another currency.
+ *
+ * An election pays each holder the cash or the shares, never both, so it is
+ * priced at its cash leg: the legs are set about equal at signing, proration
+ * means a holder cannot count on getting the stock, and the cash does not
+ * move. The stock leg stands in only when the cash cannot be compared with
+ * the quote.
  */
 function offerValue(deal: MnaDeal, targetQuote: Quote | null, ratioQuote: Quote | null): number | null {
   const { terms } = deal;
   if (terms.cashPerShare == null && terms.exchangeRatio == null) return null;
-  let total = 0;
-  if (terms.cashPerShare != null) {
-    const cash = inQuoteCurrency(terms.cashPerShare, terms.currency, targetQuote?.currency);
-    if (cash == null) return null;
-    total += cash;
+  let total: number | null;
+  if (isElection(terms)) {
+    total = cashLeg(terms, targetQuote) ?? stockLeg(terms, targetQuote, ratioQuote);
+  } else {
+    const cash = terms.cashPerShare == null ? 0 : cashLeg(terms, targetQuote);
+    const stock = terms.exchangeRatio == null ? 0 : stockLeg(terms, targetQuote, ratioQuote);
+    total = cash == null || stock == null ? null : cash + stock;
   }
-  if (terms.exchangeRatio != null) {
-    const price = ratioQuote?.price;
-    if (!terms.ratioSymbol || price == null || !Number.isFinite(price) || price <= 0) return null;
-    const leg = inQuoteCurrency(price, ratioQuote?.currency ?? null, targetQuote?.currency);
-    if (leg == null) return null;
-    total += terms.exchangeRatio * leg;
-  }
-  return total > 0 ? total : null;
+  return total != null && total > 0 ? total : null;
 }
 
 export interface DealSpread {
