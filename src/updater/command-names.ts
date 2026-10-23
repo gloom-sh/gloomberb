@@ -1,4 +1,5 @@
-import { existsSync, lstatSync, readFileSync, readlinkSync, symlinkSync, writeFileSync } from "fs";
+import { lstatSync, symlinkSync } from "fs";
+import { lstat, readFile, readlink, stat, symlink, writeFile } from "fs/promises";
 import { basename, dirname, join, resolve } from "path";
 
 /**
@@ -10,6 +11,10 @@ import { basename, dirname, join, resolve } from "path";
  * its bundle) never add a command. So the new build adds `gloom` beside
  * `gloomberb` when it runs. A `gloom` that is already there, whatever it is,
  * is left alone, and a folder this user cannot write is skipped.
+ *
+ * The desktop app looks through PATH, which can hold a slow or unreachable
+ * network folder, so its half only reads and writes asynchronously and runs
+ * once the app is up.
  */
 const COMMAND_NAME = "gloom";
 const LEGACY_COMMAND_NAME = "gloomberb";
@@ -69,15 +74,25 @@ function macCommandFolders(homeDir: string, pathEnv: string, homebrewBins: reado
   ].filter(Boolean))];
 }
 
+async function pathExistsAsync(path: string, followLinks = false): Promise<boolean> {
+  try {
+    await (followLinks ? stat(path) : lstat(path));
+    return true;
+  } catch {
+    // Intentional ignore: a missing path, or one this user cannot see; either way nothing is added there.
+    return false;
+  }
+}
+
 /**
  * Next to a `gloomberb` link into an app bundle, adds `gloom` linked to the
  * same bundle's `gloom`. The target is written the way Homebrew writes its
  * own links, so a later `brew upgrade` sees the link as its own.
  */
-function linkMacCommand(folder: string): string | null {
+async function linkMacCommand(folder: string): Promise<string | null> {
   let target: string;
   try {
-    target = readlinkSync(join(folder, LEGACY_COMMAND_NAME));
+    target = await readlink(join(folder, LEGACY_COMMAND_NAME));
   } catch {
     // Intentional ignore: not there, or not a link; a standalone binary adds its own when it runs.
     return null;
@@ -86,8 +101,14 @@ function linkMacCommand(folder: string): string | null {
   if (!absolute.endsWith(`.app/Contents/Resources/${LEGACY_COMMAND_NAME}`)) return null;
   const bundleCommand = join(dirname(absolute), COMMAND_NAME);
   const path = join(folder, COMMAND_NAME);
-  if (!existsSync(bundleCommand) || pathExists(path)) return null;
-  return addSymlink(bundleCommand, path);
+  if (!(await pathExistsAsync(bundleCommand, true)) || await pathExistsAsync(path)) return null;
+  try {
+    await symlink(bundleCommand, path);
+    return path;
+  } catch {
+    // Intentional ignore: a read-only or root-owned folder keeps the command it has.
+    return null;
+  }
 }
 
 /**
@@ -95,19 +116,19 @@ function linkMacCommand(folder: string): string | null {
  * contents. The command finds the app from its own folder, so the copy runs
  * the same app.
  */
-function copyWindowsCommand(folder: string): string | null {
+async function copyWindowsCommand(folder: string): Promise<string | null> {
   let shim: string;
   try {
-    shim = readFileSync(join(folder, `${LEGACY_COMMAND_NAME}.cmd`), "utf8");
+    shim = await readFile(join(folder, `${LEGACY_COMMAND_NAME}.cmd`), "utf8");
   } catch {
     // Intentional ignore: no gloomberb.cmd, so this PATH folder belongs to another program.
     return null;
   }
   if (!shim.includes(WINDOWS_SHIM_ENTRY)) return null;
   const path = join(folder, `${COMMAND_NAME}.cmd`);
-  if (pathExists(path)) return null;
+  if (await pathExistsAsync(path)) return null;
   try {
-    writeFileSync(path, shim, { flag: "wx" });
+    await writeFile(path, shim, { flag: "wx" });
     return path;
   } catch {
     // Intentional ignore: a folder this user cannot write keeps the command it has.
@@ -129,25 +150,26 @@ interface DesktopCommandOptions {
 /**
  * For the desktop app, which updates by replacing its bundle: adds `gloom`
  * wherever an installer put the app's `gloomberb` command (install.sh and
- * Homebrew links on a Mac, the installer's PATH folder on Windows). Returns
- * the commands it added.
+ * Homebrew links on a Mac, the installer's PATH folder on Windows). Resolves
+ * to the commands it added. Folders are looked at side by side, so a slow one
+ * holds up only itself.
  */
-export function linkDesktopCommands({
+export async function linkDesktopCommands({
   platform,
   homeDir,
   pathEnv,
   localAppData,
   homebrewBins = HOMEBREW_BINS,
-}: DesktopCommandOptions): string[] {
+}: DesktopCommandOptions): Promise<string[]> {
+  let added: Array<string | null> = [];
   if (platform === "darwin") {
-    return macCommandFolders(homeDir, pathEnv, homebrewBins).flatMap((folder) => linkMacCommand(folder) ?? []);
-  }
-  if (platform === "win32") {
+    added = await Promise.all(macCommandFolders(homeDir, pathEnv, homebrewBins).map(linkMacCommand));
+  } else if (platform === "win32") {
     const folders = new Set([
       localAppData ? join(localAppData, "Programs", "Gloomberb", "bin") : "",
       ...pathEnv.split(";"),
     ].filter(Boolean));
-    return [...folders].flatMap((folder) => copyWindowsCommand(folder) ?? []);
+    added = await Promise.all([...folders].map(copyWindowsCommand));
   }
-  return [];
+  return added.filter((path): path is string => path !== null);
 }

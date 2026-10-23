@@ -170,6 +170,29 @@ main() {
     fi
   }
 
+  # A `gloom` already in the install folder is replaced only when it is ours:
+  # a link into Gloomberb.app or to the `gloomberb` beside it, or the binary
+  # this script installed, which it pairs with a `gloomberb` link to it.
+  # Anything else is another program's command and stays as it is.
+  owns_command() {
+    command_path="$1"
+    command_dir="$(dirname "$command_path")"
+    if [ -L "$command_path" ]; then
+      case "$(readlink "$command_path")" in
+        gloomberb|./gloomberb|"${command_dir}/gloomberb") return 0 ;;
+        */Gloomberb.app/Contents/Resources/gloom|*/Gloomberb.app/Contents/Resources/gloomberb) return 0 ;;
+        *) return 1 ;;
+      esac
+    fi
+    [ -e "$command_path" ] || return 0
+    [ -L "${command_dir}/gloomberb" ] && [ "$(readlink "${command_dir}/gloomberb")" = "gloom" ]
+  }
+
+  skip_command() {
+    echo "Left $1 as it is: it belongs to another program. Use gloomberb to run Gloom."
+    RUN_COMMAND="gloomberb"
+  }
+
   install_macos_app() {
     select_asset "stable-macos-arm64-Gloomberb.app.zip"
     ZIP_PATH="${TMP_DIR}/${ASSET}"
@@ -223,11 +246,16 @@ main() {
       APP_CLI="${APP_RESOURCES}/gloomberb"
     fi
 
-    install_symlink "$APP_CLI" "$DEST_CLI"
-    install_symlink "${APP_RESOURCES}/gloomberb" "${INSTALL_DIR}/gloomberb"
-
-    echo "Installed Gloomberb.app to ${DEST_APP}"
-    echo "Installed terminal command to ${DEST_CLI} (gloomberb runs it too)"
+    if owns_command "$DEST_CLI"; then
+      install_symlink "$APP_CLI" "$DEST_CLI"
+      install_symlink "${APP_RESOURCES}/gloomberb" "${INSTALL_DIR}/gloomberb"
+      echo "Installed Gloomberb.app to ${DEST_APP}"
+      echo "Installed terminal command to ${DEST_CLI} (gloomberb runs it too)"
+    else
+      install_symlink "${APP_RESOURCES}/gloomberb" "${INSTALL_DIR}/gloomberb"
+      echo "Installed Gloomberb.app to ${DEST_APP}"
+      skip_command "$DEST_CLI"
+    fi
   }
 
   install_standalone_cli() {
@@ -253,6 +281,11 @@ main() {
     mv "$TMP" "$TMP.gz"
     gunzip "$TMP.gz"
     chmod +x "$TMP"
+    if ! owns_command "$INSTALL_DIR/gloom"; then
+      install_file "$TMP" "$INSTALL_DIR/gloomberb"
+      skip_command "$INSTALL_DIR/gloom"
+      return
+    fi
     install_file "$TMP" "$INSTALL_DIR/gloom"
     # The command's previous name, kept for scripts and habits. This also
     # turns an install from before the rename into a link to the new binary.
@@ -261,6 +294,7 @@ main() {
     echo "Installed gloom to ${INSTALL_DIR}/gloom (gloomberb runs it too)"
   }
 
+  RUN_COMMAND="gloom"
   echo "Fetching release metadata from https://api.github.com/repos/${REPO}/releases/latest"
   : > "$TMP_DIR/assets"
   if download_file "https://api.github.com/repos/${REPO}/releases/latest" "$TMP_DIR/release.json" 2>/dev/null; then
@@ -283,7 +317,7 @@ main() {
        echo "  export PATH=\"$INSTALL_DIR:\$PATH\"" ;;
   esac
 
-  echo "Run 'gloom' to start."
+  echo "Run '${RUN_COMMAND}' to start."
 }
 
 # Keep invocation last: a truncated download must not begin installing.

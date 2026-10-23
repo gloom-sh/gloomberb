@@ -73,7 +73,7 @@ describe("desktop app on a Mac", () => {
     return resources;
   }
 
-  test("adds gloom beside each gloomberb link into the app, written as Homebrew writes it", () => {
+  test("adds gloom beside each gloomberb link into the app, written as Homebrew writes it", async () => {
     const resources = bundle(["gloom", "gloomberb"]);
     const home = folder("home");
     const local = folder("home", ".local", "bin");
@@ -81,21 +81,21 @@ describe("desktop app on a Mac", () => {
     symlinkSync(join(resources, "gloomberb"), join(local, "gloomberb"));
     symlinkSync(join(resources, "gloomberb"), join(brew, "gloomberb"));
 
-    const added = linkDesktopCommands({ platform: "darwin", homeDir: home, pathEnv: `${brew}:/usr/bin`, homebrewBins: [] });
+    const added = await linkDesktopCommands({ platform: "darwin", homeDir: home, pathEnv: `${brew}:/usr/bin`, homebrewBins: [] });
 
     expect(added.sort()).toEqual([join(brew, "gloom"), join(local, "gloom")].sort());
     expect(linkOf(join(local, "gloom"))).toBe(join(resources, "gloom"));
     expect(linkOf(join(brew, "gloom"))).toBe(join(resources, "gloom"));
     // A second launch finds them there.
-    expect(linkDesktopCommands({ platform: "darwin", homeDir: home, pathEnv: brew, homebrewBins: [] })).toEqual([]);
+    expect(await linkDesktopCommands({ platform: "darwin", homeDir: home, pathEnv: brew, homebrewBins: [] })).toEqual([]);
   });
 
-  test("adds nothing for an app without gloom, a gloomberb that is not a link into an app, or an existing gloom", () => {
+  test("adds nothing for an app without gloom, a gloomberb that is not a link into an app, or an existing gloom", async () => {
     const resources = bundle(["gloomberb"]);
     const home = folder("home");
     const local = folder("home", ".local", "bin");
     symlinkSync(join(resources, "gloomberb"), join(local, "gloomberb"));
-    expect(linkDesktopCommands({ platform: "darwin", homeDir: home, pathEnv: "", homebrewBins: [] })).toEqual([]);
+    expect(await linkDesktopCommands({ platform: "darwin", homeDir: home, pathEnv: "", homebrewBins: [] })).toEqual([]);
 
     writeFileSync(join(resources, "gloom"), "#!/bin/sh\n");
     const standalone = folder("standalone");
@@ -104,7 +104,7 @@ describe("desktop app on a Mac", () => {
     symlinkSync(join(resources, "gloomberb"), join(other, "gloomberb"));
     writeFileSync(join(other, "gloom"), "another program");
 
-    expect(linkDesktopCommands({ platform: "darwin", homeDir: home, pathEnv: `${standalone}:${other}`, homebrewBins: [] }))
+    expect(await linkDesktopCommands({ platform: "darwin", homeDir: home, pathEnv: `${standalone}:${other}`, homebrewBins: [] }))
       .toEqual([join(local, "gloom")]);
     expect(existsSync(join(standalone, "gloom"))).toBe(false);
     expect(readFileSync(join(other, "gloom"), "utf8")).toBe("another program");
@@ -112,7 +112,7 @@ describe("desktop app on a Mac", () => {
 });
 
 describe("desktop app on Windows", () => {
-  test("copies the app's gloomberb.cmd to gloom.cmd in its PATH folder only", () => {
+  test("copies the app's gloomberb.cmd to gloom.cmd in its PATH folder only", async () => {
     const shim = '@echo off\r\n"%APP_DIR%\\bin\\bun.exe" "%APP_DIR%\\Resources\\gloomberb-tui\\tui-entry.js" %*\r\n';
     const localAppData = folder("AppData", "Local");
     const installed = folder("AppData", "Local", "Programs", "Gloomberb", "bin");
@@ -122,7 +122,7 @@ describe("desktop app on Windows", () => {
     const unrelated = folder("unrelated");
     writeFileSync(join(unrelated, "gloomberb.cmd"), "@echo another program\r\n");
 
-    const added = linkDesktopCommands({
+    const added = await linkDesktopCommands({
       platform: "win32",
       homeDir: "",
       pathEnv: [elsewhere, unrelated, installed].join(";"),

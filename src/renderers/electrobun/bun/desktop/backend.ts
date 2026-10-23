@@ -61,6 +61,8 @@ export type DesktopRpc = ReturnType<typeof BrowserView.defineRPC<ElectrobunDeskt
 
 /** How long a quit waits for the view to flush and exit on its own. */
 const QUIT_FALLBACK_MS = 2_500;
+/** How long after the main window is up the app looks for its `gloomberb` command to add `gloom` beside it. */
+const COMMAND_LINK_DELAY_MS = 10_000;
 const MAX_PENDING_DEEP_LINKS = 20;
 
 function summarizeError(error: unknown): string {
@@ -117,6 +119,7 @@ export class DesktopBackend {
   private crashReporterInstalled = false;
   private restartInProgress = false;
   private pluginAutoUpdatesStarted = false;
+  private commandLinksScheduled = false;
   private remoteControlServer: RemoteControlServer | null = null;
   private readonly pendingDeepLinks: string[] = [];
   private readonly contextMenuRequestRpcs = new Map<string, DesktopRpc>();
@@ -151,15 +154,6 @@ export class DesktopBackend {
       }));
       reviewLastUpdateAttempt();
       void removeUpdateAsides();
-      // An install from before the rename updates its bundle in place and
-      // keeps only the `gloomberb` command its installer linked.
-      const addedCommands = linkDesktopCommands({
-        platform: process.platform,
-        homeDir: homedir(),
-        pathEnv: process.env.PATH ?? "",
-        localAppData: process.env.LOCALAPPDATA,
-      });
-      if (addedCommands.length > 0) debugLog.createLogger("desktop-command").info(`Added the gloom command in ${addedCommands.length} folder(s)`);
     }
     // The native menu shows the same accelerators the keys use, so a rebind
     // rebuilds it.
@@ -404,8 +398,34 @@ export class DesktopBackend {
         console.error("[remote] desktop control endpoint failed", summarizeError(error));
       });
       this.ensurePluginAutoUpdates();
+      this.scheduleCommandLinks();
     }
     return init;
+  }
+
+  /**
+   * An install from before the rename updates its bundle in place and keeps
+   * only the `gloomberb` command its installer linked, so the app adds `gloom`
+   * beside it. That looks through PATH, which can hold a slow network folder,
+   * so it runs a while after the main window is up and never in its way.
+   */
+  private scheduleCommandLinks(): void {
+    if (this.commandLinksScheduled) return;
+    this.commandLinksScheduled = true;
+    const log = debugLog.createLogger("desktop-command");
+    const timer = setTimeout(() => {
+      void linkDesktopCommands({
+        platform: process.platform,
+        homeDir: homedir(),
+        pathEnv: process.env.PATH ?? "",
+        localAppData: process.env.LOCALAPPDATA,
+      }).then((added) => {
+        if (added.length > 0) log.info(`Added the gloom command in ${added.length} folder(s)`);
+      }, (error: unknown) => {
+        log.warn("Could not add the gloom command", summarizeError(error));
+      });
+    }, COMMAND_LINK_DELAY_MS);
+    timer.unref?.();
   }
 
   private flushPendingDeepLinks(): void {
