@@ -8,7 +8,8 @@ import type {
   HeadlessRowsResult,
 } from "../../../types/plugin";
 import type { EarningsEvent } from "../../../types/data-provider";
-import { addDays, boardReport, fallbackReport, marketDays, MIN_AVERAGE_REPORTS, newYorkToday } from "./board-model";
+import { addDays, boardReport, fallbackReport, MIN_AVERAGE_REPORTS, newYorkToday } from "./board-model";
+import { BOARD_WEEKS, boardRangeDays, boardRangeLabel, isBoardWeek, requestedBoardRange, type BoardRange } from "./calendar-model";
 import { fetchEarningsCalendar, fetchEarningsHistory } from "./client";
 import { loadEarningsCalendar } from "./data/cache";
 import { epsText, impliedText, moneyText, moveSize, signedPercent, TIMING_LABEL } from "./format";
@@ -20,6 +21,8 @@ import { listingAbroadVenue } from "../../../utils/sec";
 import { findUsListingOfCompany } from "../../../tickers/us-listing";
 import { shortCompanyName } from "../../../tickers/company-name";
 import { REPORT_ROWS } from "../shared/headless-options";
+import { DATE_OPTION_EXAMPLES, isoDateOption } from "../../../utils/calendar-date";
+import type { HeadlessPaneOptionDef } from "../../../types/headless";
 
 const right = "right" as const;
 const num = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : null);
@@ -93,29 +96,35 @@ function boardTickerNotice(symbol: string, board: ReadonlyArray<{ symbol: string
   // The board lists US tickers; a listing named abroad is never one of them.
   const report = venue && !isUsListingExchange(venue) ? undefined : board.find((entry) => entry.symbol.toUpperCase() === bare);
   const where = report ? `${symbol} reports on ${report.date}` : `${symbol} is not on it`;
+  const days = from === to ? from : `${from} to ${to}`;
   return {
-    notice: `EVTS is the market's earnings board for ${from} to ${to}, not one company's: ${where}. For ${symbol}'s own report dates run \`gloomberb fn ERN ${symbol}\`.`,
+    notice: `EVTS is the market's earnings board for ${days}, not one company's: ${where}. For ${symbol}'s own report dates run \`gloomberb fn ERN ${symbol}\`.`,
     date: report?.date ?? null,
   };
 }
 
-async function boardRows(args: HeadlessPaneLoadArgs, context: HeadlessPaneContext, deps: EarningsHeadlessDependencies, highlight?: string): Promise<HeadlessRowsResult> {
+async function boardRows(args: HeadlessPaneLoadArgs, context: HeadlessPaneContext, deps: EarningsHeadlessDependencies, highlight?: string, range: BoardRange = ""): Promise<HeadlessRowsResult> {
   const today = newYorkToday();
   const named = args.symbols;
-  const days = marketDays(today);
-  const query = named.length
+  const days = boardRangeDays(range, today);
+  // Named companies' upcoming reports by default; a chosen week or day reads that range for them as for the market.
+  const query = named.length && !range
     ? { from: today, to: addDays(today, 90), perDay: 0, symbols: named }
-    : { from: days[0]!.from, to: days.at(-1)!.to, perDay: 200, symbols: [] };
+    : { from: days[0]!.from, to: days.at(-1)!.to, perDay: named.length ? 0 : 200, symbols: named };
+  const inRange = (event: EarningsEvent) => {
+    const date = event.earningsDate.toISOString().slice(0, 10);
+    return !range || (date >= query.from && date <= query.to);
+  };
   const [cloud, fallback] = await Promise.allSettled([
     deps.calendar(query, context),
-    named.length ? deps.upcoming(named, context) : Promise.resolve([]),
+    named.length ? deps.upcoming(named, context).then((events) => events.filter(inRange)) : Promise.resolve([]),
   ]);
   if (cloud.status === "rejected" && (!named.length || fallback.status === "rejected")) throw cloud.reason;
   const payload = cloud.status === "fulfilled" ? cloud.value : null;
   const reports = (payload?.reports ?? []).map((report) => boardReport(report, NO_OWNERSHIP));
   const covered = new Set(reports.map((report) => report.symbol));
   const extra = fallback.status === "fulfilled"
-    ? fallback.value.filter((event) => !covered.has(event.symbol)).map((event) => fallbackReport(event, NO_OWNERSHIP))
+    ? fallback.value.filter((event) => !covered.has(event.symbol)).map((event) => fallbackReport(event, NO_OWNERSHIP, today))
     : [];
   const limit = Number(args.options.limit ?? 200);
   const all = [...reports, ...extra].sort((left, right) => left.date.localeCompare(right.date) || (right.marketCap ?? 0) - (left.marketCap ?? 0));
@@ -223,18 +232,36 @@ async function historyReport(symbol: string, context: HeadlessPaneContext, deps:
 /** EVTS: the market board, whatever ticker is given. */
 export const EARNINGS_CALENDAR: HeadlessPaneFreshness = { status: "not-a-feed", basis: "calendar" };
 
+/** The board's days, as the pane's Range saves them: a day, a week, or the days ahead. */
+const BOARD_RANGE_OPTIONS: HeadlessPaneOptionDef[] = [
+  { key: "date", type: "string", settingKey: "date", placeholder: "date", example: "--date 2026-10-15", exampleWithoutArgument: true,
+    description: `One day's reports, past or ahead, as ${DATE_OPTION_EXAMPLES}.`, normalize: (value) => isoDateOption(value, "date") },
+  { key: "week", type: "enum", settingKey: "week", values: BOARD_WEEKS.map((value) => ({ value })), example: "--week last", exampleWithoutArgument: true,
+    description: "A week's reports, Monday to Friday: last, this or next. Without it or --date, the days ahead." },
+];
+
+/** The days `--date` or `--week` asks for; the days ahead without either. */
+function boardRange(options: HeadlessPaneLoadArgs["options"]): BoardRange {
+  if (options.date && isBoardWeek(options.week)) throw new Error("Use --date or --week, not both.");
+  return requestedBoardRange(options.date, options.week);
+}
+
 export function createEarningsBoardHeadless(deps: EarningsHeadlessDependencies = defaultDependencies): HeadlessPaneDefinition<"rows"> {
   return {
     shape: "rows",
     freshness: EARNINGS_CALENDAR,
     argument: { kind: "ticker", placeholder: "ticker", description: "Optional; the board is the same.", minimum: 0, maximum: 1 },
     options: [
+      ...BOARD_RANGE_OPTIONS,
       { key: "limit", shot: REPORT_ROWS, description: "Maximum rows.", type: "integer", defaultValue: 200, minimum: 1, maximum: 1000 },
     ],
     columns: BOARD_COLUMNS,
-    describe: () => "Earnings Calendar",
-    load(args, context) {
-      return boardRows({ ...args, symbols: [] }, context, deps, args.symbols[0]);
+    describe: (args) => {
+      const range = boardRangeLabel(boardRange(args.options), newYorkToday());
+      return range ? `Earnings Calendar | ${range}` : "Earnings Calendar";
+    },
+    async load(args, context) {
+      return boardRows({ ...args, symbols: [] }, context, deps, args.symbols[0], boardRange(args.options));
     },
   };
 }
@@ -251,12 +278,22 @@ export function createEarningsHeadless(deps: EarningsHeadlessDependencies = defa
       maximum: 100,
     },
     options: [
+      ...BOARD_RANGE_OPTIONS,
       { key: "limit", shot: REPORT_ROWS, description: "Maximum rows on the market board or a ticker list.", type: "integer", defaultValue: 200, minimum: 1, maximum: 1000 },
     ],
     columns: BOARD_COLUMNS,
-    describe: (args) => (args.symbols.length === 0 ? "Earnings Calendar" : `ERN ${args.symbols.join(", ")}`),
-    load(args, context) {
-      return args.symbols.length === 1 ? historyReport(args.symbols[0]!, context, deps) : boardRows(args, context, deps);
+    describe: (args) => {
+      const range = args.symbols.length === 1 ? null : boardRangeLabel(boardRange(args.options), newYorkToday());
+      const title = args.symbols.length === 0 ? "Earnings Calendar" : `ERN ${args.symbols.join(", ")}`;
+      return range ? `${title} | ${range}` : title;
+    },
+    async load(args, context) {
+      const range = boardRange(args.options);
+      if (args.symbols.length === 1 && range) {
+        const symbol = args.symbols[0]!;
+        throw new Error(`ERN ${symbol} is its report history, past reports included; --date and --week pick the board's days. Run \`gloomberb fn EVTS ${symbol} ${args.options.date ? `--date ${args.options.date}` : `--week ${args.options.week}`}\` for the market's.`);
+      }
+      return args.symbols.length === 1 ? historyReport(args.symbols[0]!, context, deps) : boardRows(args, context, deps, undefined, range);
     },
   };
 }

@@ -31,6 +31,8 @@ import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import { SignInWall } from "../cloud/auth-actions";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { useBoundTicker as useSymbolBinding, useTickerRequest } from "../shared/ticker-request";
+import { loadEarningsCalendar } from "../earnings/data/cache";
+import { calendarEventOf, newYorkDay, withResolvedEarnings } from "../shared/earnings-calendar";
 import {
   documentContentKey,
   formatCompactDocumentLabel,
@@ -450,12 +452,22 @@ export function CorporateActionsView({
     if (!dataProvider?.getAnalystResearch) return null;
     return dataProvider.getAnalystResearch(nextSymbol, nextExchange, forceRefresh ? { cacheMode: "refresh" } : undefined);
   }, [dataProvider, cloudSession.requestKey]);
+  // The earnings calendar's next report, which the rows are resolved against as `earnings` and ERN read it.
+  const calendarLoader = useCallback((nextSymbol: string, _exchange: string, forceRefresh: boolean) => (
+    loadEarningsCalendar(dataProvider, [nextSymbol], { force: forceRefresh }).then((result) => calendarEventOf(result.events, nextSymbol))
+  ), [dataProvider]);
   const {
-    data: actionsData,
+    data: recordedActions,
     loading: actionsLoading,
     error: actionsError,
     reload: reloadActions,
   } = useTickerRequest<CorporateActionsData>(actionsLoader, symbol, exchange);
+  const { data: calendarEvent, reload: reloadCalendar } = useTickerRequest(calendarLoader, symbol, exchange);
+  const today = newYorkDay();
+  const actionsData = useMemo(
+    () => (recordedActions ? withResolvedEarnings(recordedActions, calendarEvent, today) : recordedActions),
+    [calendarEvent, recordedActions, today],
+  );
   const {
     data: analystData,
     loading: analystLoading,
@@ -506,7 +518,8 @@ export function CorporateActionsView({
   const reload = useCallback(() => {
     reloadActions();
     reloadAnalyst();
-  }, [reloadActions, reloadAnalyst]);
+    reloadCalendar();
+  }, [reloadActions, reloadAnalyst, reloadCalendar]);
   const openRow = openRowId
     ? rows.find((row) => row.id === openRowId) ?? null
     : null;

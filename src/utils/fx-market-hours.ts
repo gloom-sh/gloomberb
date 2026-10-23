@@ -1,5 +1,5 @@
 import { canonicalExchange, parsePublicTickerKey } from "./exchanges";
-import { zonedDateTimeParts, zonedWallClockToUtcMs } from "./zoned-date-time";
+import { zonedDateKey, zonedDateTimeParts, zonedWallClockToUtcMs } from "./zoned-date-time";
 
 const HOUR_MS = 60 * 60_000;
 const DAY_MS = 24 * HOUR_MS;
@@ -27,6 +27,15 @@ export function isFxMarketOpen(time: number): boolean {
   if (weekday === "Sun") return hour >= 17;
   if (weekday === "Fri") return hour < 17;
   return true;
+}
+
+/**
+ * The FX trading day an instant belongs to, as "YYYY-MM-DD": the day rolls
+ * at 17:00 New York time, so Wednesday 18:00 New York is Thursday's.
+ */
+export function fxTradingDay(time: number): string {
+  // The roll is 17:00, seven hours before New York's midnight, daylight saving or not.
+  return zonedDateKey(time + 7 * HOUR_MS, NEW_YORK);
 }
 
 /** The latest 17:00 New York on `weekday` (0 is Sunday) at or before `time`. */

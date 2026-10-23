@@ -1381,6 +1381,8 @@ interface CloudSecFilingPayload {
   primaryDocumentUrl?: string;
   /** The filing's SEC file number for this company, empty when it has none. Absent from older servers. */
   fileNumber?: string;
+  /** In a fund's list from a trust that runs several funds: filed for the fund's own series. Absent from older servers. */
+  fundSeries?: boolean;
 }
 
 interface CloudSecDocumentPayload {

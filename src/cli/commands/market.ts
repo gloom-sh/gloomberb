@@ -39,7 +39,7 @@ import {
   quoteChangeText,
 } from "../helpers";
 import { cliStyles, colorBySign, renderSection, renderStats } from "../../utils/cli-output";
-import { stalePeriodNote, statementHistoryNotes } from "../../utils/financial-statements";
+import { filledPeriodsNote, stalePeriodNote, statementHistoryNotes } from "../../utils/financial-statements";
 import { formatPerShareNumber } from "../../utils/reported-money";
 import {
   analystTargetCurrency,
@@ -125,7 +125,24 @@ import { CRYPTO_BOARD_HINT, quoteNotes } from "./crypto-hints";
 import { bareFuturesCode, futuresBoardContract } from "../../market-data/futures-board";
 import { commodityNamedIn, commoditySearchName } from "../../market-data/commodity-names";
 import { newsEmptyMessage } from "./news-hints";
-import { commodityNewsRoute, commonWordCandidate, newsFallbackText, newsSearchHeading, newsSearchText, newsSearchTextProblem, noStoriesMessage, quotedSearchCommand, searchNewsStories, wordMeansMore } from "./news-search";
+import {
+  commodityNewsRoute,
+  commonWordCandidate,
+  METALS_NEWS_TOPIC,
+  metalCodeNewsRoute,
+  type MetalNewsRoute,
+  metalNewsHeading,
+  metalNewsRoute,
+  newsFallbackText,
+  newsSearchHeading,
+  newsSearchText,
+  newsSearchTextProblem,
+  noMetalStoriesMessage,
+  noStoriesMessage,
+  quotedSearchCommand,
+  searchNewsStories,
+  wordMeansMore,
+} from "./news-search";
 import { formatUtcTime } from "../../utils/utc-time";
 import { DAY_SO_FAR_TEXT, withSessionBar } from "../../time-series/session-bar";
 import { isFiniteNumber } from "../../utils/guards";
@@ -151,6 +168,14 @@ import {
   showsEpsBasis,
 } from "../../plugins/builtin/shared/earnings-report";
 import {
+  calendarEventOf,
+  calendarStatus,
+  newYorkDay,
+  resolveListingEvents,
+  withResolvedEarnings,
+  type ResolvedEarningsEvent,
+} from "../../plugins/builtin/shared/earnings-calendar";
+import {
   EXCHANGE_OPTION,
   listingHeading,
   listingIdentity,
@@ -164,6 +189,7 @@ import {
   listingFateLoader,
   movedSymbolLine,
   requireCliListing,
+  resolveCliListing,
   type CliListing,
   type ListingIdentity,
 } from "../listing-arg";
@@ -751,13 +777,13 @@ function formatEpsCell(value: unknown): string {
   return typeof value === "number" && Number.isFinite(value) ? value.toFixed(2) : "";
 }
 
-function earningsRows(events: EarningsEvent[]) {
+function earningsRows(events: ResolvedEarningsEvent[]) {
   return events.map((event) => ({
     symbol: event.symbol,
     name: event.name,
     date: isoDate(event.earningsDate).slice(0, 10),
-    // Whether the company announced the date or it is projected from past reports.
-    status: earningsDateLabel(event),
+    // Out, announced by the company, or projected from its past reports.
+    status: earningsDateLabel(event.dateStatus),
     timing: event.timing,
     epsEstimate: event.epsEstimate,
     epsActual: event.epsActual,
@@ -1102,9 +1128,9 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     // A coin's volume is traded value in its quote currency: said in every row and on the status line.
     const volume = historyVolume(unit, traded);
     const rows = historyRows(points, resolution, unit.currency, unit.unit, volume);
-    const served = range === "YTD" ? rows.slice(Math.max(0, yearToDateStartIndex(rows.map((row) => row.date), rows[0]?.interval))) : rows;
     // Bars stop arriving on the listing's own trading days, not New York's.
     const venue = quote?.listingExchangeName || exchange || undefined;
+    const served = range === "YTD" ? rows.slice(Math.max(0, yearToDateStartIndex(rows.map((row) => row.date), rows[0]?.interval, venue))) : rows;
     // October's monthly bar on 16 Oct runs through the 15th: marked partial, and the status line says how far.
     const forming = formingPeriodBar(served, venue);
     // A complete one is dated by the day its last session closed, the day its close is from.
@@ -1340,7 +1366,10 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
     // The rows are the annual years served; older ones are not, and the closing lines say so, after how old
     // the latest year is when it ended over 15 months ago.
     const stale = stalePeriodNote(rows.map((row) => ({ date: row.date, lead: row.revenue != null })));
-    const historyNotes = [...stale ? [stale] : [], ...statementHistoryNotes("annual", rows.map((row) => row.date), listing.key)];
+    // Years filled from the listing's exchange, for the revenue and net income columns.
+    const filled = filledPeriodsNote(financials.annualStatements.filter((statement) => rows.some((row) => row.date === statement.date)),
+      new Set(["totalRevenue", "netIncome"]));
+    const historyNotes = [...stale ? [stale] : [], ...filled ? [filled] : [], ...statementHistoryNotes("annual", rows.map((row) => row.date), listing.key)];
     // NDJSON keeps the raw statement rows it always wrote; CSV gets the table and its closing lines.
     const tables = tabular
       ? selectTables({
@@ -1423,6 +1452,50 @@ async function printNewsSearch(
   });
 }
 
+/** The ticker a metal's name is in capitals, when one answers to exactly that: GOLD, Gold.com Inc., for "gold". */
+async function tickerOfWord(word: string, market: MarketContext): Promise<{ symbol: string; name: string | null } | null> {
+  const symbol = word.toUpperCase();
+  const listing = await resolveCliListing(symbol, null, market).catch(() => {
+    // Intentional ignore: a word no listing answers to offers no ticker under the metal's news.
+    return null;
+  });
+  if (!listing || listing.symbol.toUpperCase() !== symbol) return null;
+  const quote = await loadListingQuote(market.dataProvider, listing);
+  const identity = listingIdentity(listing, quote);
+  return quote !== null || identity.name != null ? { symbol: listing.symbol, name: identity.name ?? null } : null;
+}
+
+/**
+ * A metal's market news (GLO-1158): the stories tagged METALS that mention
+ * it, for its future, its board code or its name. Under them, the ticker its
+ * name is in capitals, whose company news `news GOLD` keeps.
+ */
+async function printMetalNews(route: MetalNewsRoute, limit: number, ctx: Parameters<CliCommandDef["execute"]>[1], market?: MarketContext) {
+  const search = searchNewsStories(route.metal, limit, [METALS_NEWS_TOPIC]).then((found) => ({ found, failure: undefined }), (error: unknown) => {
+    logFailure("cli.commands-market", "Search metals news failed")(error);
+    return { found: [] as NewsArticle[], failure: errorMessage(error) ?? "no answer" };
+  });
+  const word = route.word;
+  const ticker = word
+    ? await (market ? tickerOfWord(word, market) : withMarketData(ctx, (context) => tickerOfWord(word, context)))
+      .catch(logFailure("cli.commands-market", "Read the ticker a metal's name is failed", null))
+    : null;
+  const { found, failure } = await search;
+  const companyNews = ticker ? `gloomberb news ${ticker.symbol}` : null;
+  ctx.printResult({
+    data: found,
+    ...(failure === undefined ? {} : { warnings: [`Searching metals stories for "${route.metal}" failed: ${failure}`] }),
+    metadata: { ticker: null, search: route.metal, topics: [METALS_NEWS_TOPIC], feed: null, ...(companyNews ? { companyNews } : {}) },
+    freshness: rowsFreshness(newsRows(found), cloudNewsFreshness(await cloudRealtimeAccess())),
+  }, {
+    heading: metalNewsHeading(route),
+    rows: newsRows,
+    columns: NEWS_COLUMNS,
+    empty: failure === undefined ? noMetalStoriesMessage(route) : "No stories to show.",
+    ...(ticker ? { footnote: `${word} → ${route.metal}'s market news. For ${ticker.name ?? ticker.symbol} (ticker ${ticker.symbol}), try: ${companyNews}` } : {}),
+  });
+}
+
 async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const args = [...rawArgs];
   const feed = parseNewsFeed(takeOption(args, "--feed"));
@@ -1435,6 +1508,12 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
     const problem = newsSearchTextProblem(text);
     if (problem) ctx.fail(problem);
     await printNewsSearch(text, await searchNewsStories(text, limit), {}, ctx);
+    return;
+  }
+  // A metal's future or name is its market's news, not a company's: GOLD in capitals stays Gold.com's.
+  const metal = args.length === 1 && !exchangeOption && !feed ? metalNewsRoute(args[0]!) : null;
+  if (metal) {
+    await printMetalNews(metal, limit, ctx);
     return;
   }
   if (exchangeOption && !args[0]) ctx.fail("--exchange needs a symbol: gloomberb news <symbol> --exchange <code>");
@@ -1478,6 +1557,12 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
     const emptyMessage = (searched: boolean) => listing && identity
       ? newsEmptyMessage(searched && word ? word : listing.symbol, listingTitle(identity), quote, resolved, searched)
       : undefined;
+    // A metal's board code no listing answers to (GC, SI) is the metal's market news.
+    const metalCode = !resolved && unfiled && !exchangeOption ? metalCodeNewsRoute(args[0]!) : null;
+    if (metalCode) {
+      await printMetalNews(metalCode, limit, ctx, market);
+      return;
+    }
     if (word && reason) {
       // The lookup that found no ticker already answered; a search that fails leaves that answer.
       const search = await searchNewsStories(word, limit).then((found) => ({ found, failure: undefined }), (error: unknown) => {
@@ -2001,13 +2086,18 @@ async function runEvents(rawArgs: string[], ctx: Parameters<CliCommandDef["execu
   await withMarketData(ctx, async (market) => {
     const listing = await requireCliListing(raw, exchangeOption, market, ctx);
     const venues = loadBareVenues(listing, market);
-    const [data, quote] = await Promise.all([
+    // The earnings rows are resolved against the calendar `earnings` reads, so the next report is the same in both.
+    const calendar = market.dataProvider.getEarningsCalendar?.([listing.key])
+      .catch(logFailure("cli.commands-market", "Read the earnings calendar for events failed", [] as EarningsEvent[]));
+    const [recorded, quote, events] = await Promise.all([
       loadForListing(
         listing, market, ctx, () => market.dataProvider.getCorporateActions(listing.request.symbol, listing.request.exchange),
         undefined, { command: "events", noun: "corporate events" },
       ),
       loadListingQuote(market.dataProvider, listing),
+      calendar,
     ]);
+    const data = withResolvedEarnings(recorded, calendarEventOf(events, listing.key), newYorkDay());
     const identity = listingIdentity(listing, quote);
     const choice = await listingChoiceNotes(listing, market, quote, venues);
     ctx.printResult({
@@ -2448,9 +2538,9 @@ async function runEarnings(rawArgs: string[], ctx: Parameters<CliCommandDef["exe
     // Each bare symbol's venues cost a search, so a long list (a portfolio check, not a lookup) names none.
     const venues = new Map(listings.length > MAX_CHOICE_LOOKUPS ? []
       : listings.map((listing) => [listing, loadBareVenues(listing, services)] as const));
-    let events: EarningsEvent[];
+    let calendar: EarningsEvent[];
     try {
-      events = await loadForListing(
+      calendar = await loadForListing(
         listings, services, ctx,
         () => services.dataProvider.getEarningsCalendar(keys),
         (found) => found.length === 0,
@@ -2460,6 +2550,15 @@ async function runEarnings(rawArgs: string[], ctx: Parameters<CliCommandDef["exe
       if (failure) ctx.fail(failure);
       throw error;
     }
+    // Each date is resolved as events, EE, ERN and OSA resolve it: one that has come is read against the
+    // company's quarters on record, for its actual and the next report on record (shared/earnings-calendar).
+    const today = newYorkDay();
+    const resolved = await resolveListingEvents(services.dataProvider, listings.map((listing) => ({
+      key: listing.key, symbol: listing.request.symbol, exchange: listing.request.exchange,
+    })), calendar, today);
+    const events: ResolvedEarningsEvent[] = calendar
+      .map((event) => resolved.get(event.symbol.toUpperCase()) ?? { ...event, dateStatus: calendarStatus(event, today) })
+      .sort((left, right) => left.earningsDate.getTime() - right.earningsDate.getTime());
     const eventOf = (listing: CliListing) => events.find((event) => event.symbol.toUpperCase() === listing.key.toUpperCase());
     const [abroadNotes, choiceNotes] = await Promise.all([
       // A listing abroad with no date of its own says so, with its US line's date when that line is the same company.
@@ -2479,7 +2578,8 @@ async function runEarnings(rawArgs: string[], ctx: Parameters<CliCommandDef["exe
     ];
     ctx.printResult({
       data: events,
-      freshness: rowsFreshness(earningsRows(events), { status: "not-a-feed", basis: "calendar", observedKey: "date", oldest: null }),
+      // Dated by when it was read: a row's date is when the report is, not how old the calendar is.
+      freshness: rowsFreshness([], { status: "not-a-feed", basis: "calendar", oldest: null }),
       ...(warnings.length > 0 ? { warnings } : {}),
     }, {
       rows: earningsRows,

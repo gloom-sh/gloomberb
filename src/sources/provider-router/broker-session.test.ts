@@ -52,3 +52,23 @@ test("broker price and provider session survive scalar, batch and cached financi
     }
   }
 });
+
+test("a broker whose quotes serve only its order ticket is never asked for market quotes", async () => {
+  const store = new AppPersistence(":memory:");
+  try {
+    const gloom: Quote = { symbol: "AAPL", providerId: "gloom", dataSource: "delayed", price: 231.5, currency: "USD", change: 0, changePercent: 0, lastUpdated: Date.now() };
+    let brokerCalls = 0;
+    const router = new AssetDataRouter({ ...fallbackProvider, id: "gloom", getQuote: async () => gloom }, [], store.resources);
+    attachTestRegistry(router, { brokers: [["signed-in", {
+      id: "signed-in", name: "Signed-in broker", configSchema: [], validate: async () => true, importPositions: async () => [], ticketQuotesOnly: true,
+      getQuote: async () => { brokerCalls += 1; return { ...gloom, providerId: "snaptrade", price: 1 }; },
+    }]] });
+    setBrokerInstances(router, [brokerInstance({ id: "snap", brokerType: "signed-in", connectionMode: "snaptrade" })]);
+    // Neither a plain request nor one naming the profile reaches it: each would spend SnapTrade's small allowance.
+    expect((await router.getQuote("AAPL", "NASDAQ")).price).toBe(231.5);
+    expect((await router.getQuote("AAPL", "NASDAQ", { brokerId: "signed-in", brokerInstanceId: "snap" })).price).toBe(231.5);
+    expect(brokerCalls).toBe(0);
+  } finally {
+    store.close();
+  }
+});

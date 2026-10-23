@@ -3,6 +3,8 @@ import type { DataProvider } from "../../../types/data-provider";
 import type { HeadlessPaneEntry } from "../../../types/headless";
 import { loadEarningsCalendar } from "../earnings/data/cache";
 import { optionSpread } from "../options/market-reference";
+import { newYorkDay, resolveListingEvents, upcomingReportDate } from "../shared/earnings-calendar";
+import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { formatHedgePrice } from "./hedge";
 import { amountUnit, UNKNOWN_CURRENCY, type ScenarioPosition } from "./model";
 
@@ -136,23 +138,31 @@ export function cashSecuredPut(
 }
 
 /**
- * The next report date from the earnings calendar, YYYY-MM-DD; null when the
- * calendar has none for the symbol or cannot be read.
+ * The next report date, YYYY-MM-DD, as every earnings surface resolves it
+ * (shared/earnings-calendar): the calendar's, or once that date has passed
+ * the next one on record; null when there is none or the calendar cannot be
+ * read.
  */
-export async function loadNextEarningsDate(provider: DataProvider | null | undefined, symbol: string): Promise<string | null> {
-  return (await loadNextEarningsDates(provider, [symbol])).get(symbol.trim().toUpperCase()) ?? null;
+export async function loadNextEarningsDate(provider: DataProvider | null | undefined, symbol: string, today = newYorkDay()): Promise<string | null> {
+  return (await loadNextEarningsDates(provider, [symbol], today)).get(symbol.trim().toUpperCase()) ?? null;
 }
 
-/** The next report date of each symbol, by its upper-case symbol, in one calendar request; a symbol with none is left out. */
-export async function loadNextEarningsDates(provider: DataProvider | null | undefined, symbols: readonly string[]): Promise<Map<string, string>> {
+/** The next report date of each symbol, by its upper-case symbol, from one calendar request; a symbol with none is left out. */
+export async function loadNextEarningsDates(
+  provider: DataProvider | null | undefined, symbols: readonly string[], today = newYorkDay(),
+): Promise<Map<string, string>> {
   const keys = [...new Set(symbols.map((symbol) => symbol.trim().toUpperCase()))];
   const result = await loadEarningsCalendar(provider, keys).catch(() => null);
-  const dates = new Map<string, string>();
-  for (const key of keys) {
-    const time = result?.events.find((entry) => entry.symbol.trim().toUpperCase() === key)?.earningsDate.getTime();
-    if (time != null && Number.isFinite(time)) dates.set(key, new Date(time).toISOString().slice(0, 10));
-  }
-  return dates;
+  if (!provider || !result?.events.length) return new Map();
+  const listings = keys.map((key) => {
+    const listing = parsePublicTickerKey(key);
+    return { key, symbol: listing.symbol, exchange: listing.exchange ?? "" };
+  });
+  const resolved = await resolveListingEvents(provider, listings, result.events, today);
+  return new Map(keys.flatMap((key) => {
+    const date = upcomingReportDate(resolved.get(key));
+    return date ? [[key, date] as const] : [];
+  }));
 }
 
 const money = (value: number) => value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });

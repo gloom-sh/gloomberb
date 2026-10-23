@@ -71,6 +71,49 @@ test("financial statements say how old a latest period over 15 months old is, pa
   }
 });
 
+// The same statements with FY2025 and FY2026 filled from ASX, whose revenue is defined otherwise than the source's.
+test("years filled from the exchange are named with their lines, and growth is not read across the two sources", async () => {
+  setSystemTime(new Date("2026-10-22T02:00:00Z"));
+  try {
+    const filledFrom = (fields: Array<"totalRevenue" | "netIncome" | "totalAssets" | "totalLiabilities">) => ({
+      source: "asx" as const, page: "https://www.asx.com.au/markets/company/EVN", retrievedAt: "2026-10-22T01:00:00.000Z", fields,
+    });
+    const ctx = {
+      marketData: createTestDataProvider({
+        async getTickerFinancials() {
+          return {
+            financialCurrency: "AUD",
+            annualStatements: [
+              { date: "2024-06-30", currency: "AUD", totalRevenue: 3.304e9, netIncome: 4.22e8, totalAssets: 8.82e9, eps: 0.2195 },
+              { date: "2025-06-30", currency: "AUD", eps: 0.4641, totalRevenue: 4.351e9, netIncome: 9.26e8, filledFrom: filledFrom(["totalRevenue", "netIncome"]) },
+              { date: "2026-06-30", currency: "AUD", totalRevenue: 5.559e9, netIncome: 1.475e9, totalAssets: 10.546e9, totalLiabilities: 4.717e9,
+                filledFrom: filledFrom(["totalRevenue", "netIncome", "totalAssets", "totalLiabilities"]) },
+            ],
+            quarterlyStatements: [], priceHistory: [],
+          };
+        },
+      }),
+    } as HeadlessPaneContext;
+    const load = (statement: string) => financialStatementsHeadless.load(args(["EVN:ASX"], { period: "annual", statement }), ctx);
+    const income = await load("income");
+    expect(income.notes?.[0]).toBe("From ASX key statistics (read 2026-10-22): 2026-06-30 revenue, net income; 2025-06-30 revenue, net income.");
+    const growth = (metric: string) => Object.fromEntries((income.rows.find((row) => row.id === metric)!.cells as Array<{ date: string; growth: number | null }>)
+      .map(({ date, growth }) => [date, growth]));
+    // ASX's FY2026 against its FY2025, never against the source's FY2024; the source's EPS keeps its growth.
+    expect(growth("income:revenue")["2026-06-30"]).toBeCloseTo(5.559 / 4.351 - 1, 6);
+    expect(growth("income:revenue")["2025-06-30"]).toBeNull();
+    expect(growth("eps:1")["2025-06-30"]).toBeCloseTo(0.4641 / 0.2195 - 1, 6);
+    // JSON names each filled year's source and read time.
+    expect((income.metadata?.columns as Array<{ date: string; filledFrom?: unknown }>).map(({ date, filledFrom }) => [date, filledFrom ?? null]))
+      .toEqual([["2026-06-30", filledFrom(["totalRevenue", "netIncome", "totalAssets", "totalLiabilities"])], ["2025-06-30", filledFrom(["totalRevenue", "netIncome"])], ["2024-06-30", null]]);
+    expect((await load("balance")).notes?.[0]).toBe("From ASX key statistics (read 2026-10-22): 2026-06-30 total assets, total liabilities.");
+    // The cash flow statement shows net income, and none of ASX's other lines.
+    expect((await load("cashflow")).notes?.[0]).toBe("From ASX key statistics (read 2026-10-22): 2026-06-30 net income; 2025-06-30 net income.");
+  } finally {
+    setSystemTime();
+  }
+});
+
 test("financial exports distinguish provider dates from SEC period evidence and derived TTM", async () => {
   const dateEvidence = { accessionNumber: "0000909832-24-000049", filed: "2024-10-09", startDate: "2023-09-04" };
   const ctx = { marketData: createTestDataProvider({ async getTickerFinancials() {

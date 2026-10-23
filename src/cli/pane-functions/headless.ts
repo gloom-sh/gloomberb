@@ -187,7 +187,7 @@ async function loadHeadlessPaneModel(
   return result;
 }
 
-type HeadlessMarketContext = Pick<MarketContext, "config" | "store" | "refresh" | "resolveBroker"> & Partial<Pick<MarketContext, "persistence" | "seriesCapabilities">> & {
+type HeadlessMarketContext = Pick<MarketContext, "config" | "store" | "refresh" | "resolveBroker"> & Partial<Pick<MarketContext, "persistence" | "seriesCapabilities" | "findCatalogSeries">> & {
   dataProvider: HeadlessPaneContext["marketData"];
 };
 
@@ -205,6 +205,8 @@ export function createHeadlessPaneContext(
     ...(context.refresh ? { refresh: true } : {}),
     settings: resolved.instance.settings,
     capabilities: getSharedRegistry() ?? context.seriesCapabilities,
+    catalogSeriesName: (expression) => (getSharedRegistry()?.series.findByExpression(expression)?.definition
+      ?? context.findCatalogSeries?.(expression))?.name,
     resolveBroker: context.resolveBroker,
     async resolvePortfolio(id) {
       const portfolio = findNamedCollection(context.config.portfolios, id);
@@ -484,7 +486,8 @@ function seriesPointExportDate(series: HeadlessSeries, date: SeriesPointDate, da
 }
 
 /**
- * A latest value as the series report prints it: percentages, multiples and
+ * A latest value as the series report prints it: percentages and percentage
+ * points, multiples and
  * ratios (P/E, EV/EBITDA, one series over another, VIX 3M / VIX) to two
  * decimals, which a ratio under 0.1 trades for three significant digits so it
  * is not flattened to 0.03, and a 0 to 100 score to a tenth of a point. The
@@ -495,7 +498,7 @@ function seriesValue(series: HeadlessSeries, value: number | null): string {
   if (value == null) return "-";
   if (!Number.isFinite(value)) return displayNumber(value);
   const unit = series.unit?.trim().toLowerCase();
-  if (unit === "%") return value.toFixed(2);
+  if (unit === "%" || unit === "pp") return value.toFixed(2);
   if (unit === "x" || unit === "ratio") return value !== 0 && Math.abs(value) < 0.1 ? value.toPrecision(3) : value.toFixed(2);
   if (unit === "score") return value.toFixed(1);
   return displayNumber(value);
@@ -525,6 +528,7 @@ function renderRows(
       minWidth: column.minWidth,
       stackPriority: column.stackPriority,
       stackRows: column.stackRows,
+      minTableWidth: column.minTableWidth,
     })),
     rows.map((row) => columns.map((column) => cell(row, column))),
     {

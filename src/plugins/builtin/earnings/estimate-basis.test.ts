@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import type { EarningsEvent, EarningsEstimateBasis } from "../../../types/data-provider";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { attachEarningsCalendarPersistence, loadEarningsCalendar, resetEarningsCalendarPersistence } from "./data/cache";
-import { coherentEarningsValue, earningsEpsChange30d, earningsForecastPeriod } from "./estimate-basis";
+import { coherentEarningsValue, earningsEpsChange30d, earningsForecastPeriod } from "../shared/earnings-estimate-basis";
 import { recordedEarnings } from "./estimate-fixtures.test-data";
 
 afterEach(resetEarningsCalendarPersistence);

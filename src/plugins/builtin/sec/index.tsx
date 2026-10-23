@@ -44,7 +44,7 @@ import {
 import { usePaneStatusLinkFooter } from "../../../components/layout/pane/status-footer";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { SignInWall } from "../cloud/auth-actions";
-import { ETF_FORMS_SETTING, filterFilingsByForms, parseFormsSetting, SEC_FILING_FETCH_LIMIT } from "./forms";
+import { ETF_FORMS_SETTING, filterFilingsByForms, fundSeriesFilings, parseFormsSetting, SEC_FILING_FETCH_LIMIT } from "./forms";
 import { fundHeadless, secHeadless } from "./headless";
 import { FundFactsSummary, FundViewNotice, useFundFacts } from "./fund-facts-view";
 import { fundFactPublishers, fundFactsCache, listNames } from "./fund-facts";
@@ -296,8 +296,9 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
   const issuerFilings = useResolvedEntryValue(filingsEntry) ?? NO_FILINGS;
   // The filter runs over every filing the service returned for the issuer,
   // the same list the unfiltered pane shows, not over a first page of it.
+  // The fund view keeps the fund's own series out of its trust's filings.
   const formFilings = useMemo(
-    () => (forms ? filterFilingsByForms(issuerFilings, forms) : issuerFilings),
+    () => (forms ? filterFilingsByForms(fundSeriesFilings(issuerFilings), forms) : issuerFilings),
     [forms, issuerFilings],
   );
   // The fund view (ETF) has its own groups; each view keeps its own choice.
@@ -626,8 +627,9 @@ export const secModule: PluginModule = {
         id: "sec-etf-pane",
         paneId: "sec",
         label: "Fund Facts",
-        description: "A US-listed fund's fee, NAV, premium or discount, net assets, sponsor, inception and index, then its SEC filings: prospectus updates, shareholder reports, N-CEN and N-PORT.",
-        keywords: ["etf", "fund", "expense ratio", "fee", "nav", "premium", "discount", "aum", "net assets", "n-1a", "485bpos", "497", "n-csr", "n-cen", "n-port", "prospectus"],
+        description: "A US-listed fund's fee, NAV, premium or discount, net assets, sponsor, inception and index, a leveraged or inverse fund's daily objective, then the fund's own SEC filings: prospectus updates, shareholder reports, N-CEN and N-PORT.",
+        keywords: ["etf", "fund", "expense ratio", "fee", "nav", "premium", "discount", "aum", "net assets", "n-1a", "485bpos", "497", "n-csr", "n-cen", "n-port", "prospectus",
+          "leveraged", "inverse", "daily objective", "daily-reset", "decay"],
         shortcut: "ETF",
         viewKey: "etf",
         canCreate: (_context, options) => !options?.ticker || mayBeUsEquityOrFundTicker(options.ticker),

@@ -75,9 +75,12 @@ describe("entry submission", () => {
     expect(f.count("placeOrder")).toBe(0);
   });
 
-  test.each(["warning", "errors", "delayed", "stale"] as const)("fast mode still opens review for %s", async (risk) => {
+  test.each(["warning", "errors", "delayed", "stale", "disclosure", "no impact"] as const)("fast mode still opens review for %s", async (risk) => {
     const f = setup({ ...fresh, realtime: risk !== "delayed", quoteAgeMs: risk === "stale" ? 70_000 : 0, previewError: risk === "errors" ? "Insufficient funds" : undefined });
     if (risk === "warning") f.demo.adapter.previewOrder = async () => ({ warnings: ["Review market risk"] });
+    // A broker's terms for its figures, or for having none, are the user's to accept.
+    if (risk === "disclosure") f.demo.adapter.previewOrder = async () => ({ impactSource: "broker", estimatedCost: 694.5, disclosure: "Estimated results." });
+    if (risk === "no impact") f.demo.adapter.previewOrder = async () => ({ impactSource: "unavailable" });
     f.controller.setConfirmOrders(false);
     await f.controller.submitFromEntry();
     expect(f.controller.getSnapshot().phase).toBe("review");

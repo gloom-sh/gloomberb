@@ -30,6 +30,13 @@ export interface CliTableColumn {
   stackPriority?: number;
   /** Once moved under the rows, only the first `stackRows` rows print the column; 0 leaves it out. */
   stackRows?: number;
+  /**
+   * Left out of a table fitted to fewer terminal columns than this, whether
+   * or not it would fit: a detail a narrow table has no room for beside what
+   * it is about (a filing's acceptance time beside its filed date). Piped
+   * output keeps it.
+   */
+  minTableWidth?: number;
 }
 
 export interface CliTableOptions {
@@ -525,7 +532,7 @@ export function renderTable(columns: CliTableColumn[], rows: string[][], options
   let shown = columns.map((column, index) => {
     const cellWidths = rows.map((row) => visibleLength(row[index] ?? ""));
     return { column, index, width: column.width ?? Math.max(visibleLength(column.header), ...cellWidths), floor: 0, wraps: false, text: false };
-  });
+  }).filter(({ column }) => maxWidth == null || column.minTableWidth == null || maxWidth >= column.minTableWidth);
   // Cells are only cut or wrapped when the table is fitted to a terminal; piped output keeps them whole.
   if (available == null || tableWidth(shown.map((entry) => entry.width)) <= available) {
     return renderTableLayout(columns, rows, options, shown, [], available, false);

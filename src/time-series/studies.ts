@@ -17,6 +17,7 @@ import type {
   TimeSeriesPoint,
 } from "./types";
 import { isFiniteNumber } from "../utils/guards";
+import { dailyLeverageGrowth, isLeverageFactor, leverageDecayPoints, leverageFactorLabel, leverageSymbol, sessionCloses, type StudyAnchor } from "./leverage";
 import { GALLONS_PER_BARREL, isPerBarrelUnit, isPerGallonUnit, perBarrelUnit, quantityIdentity, unitCurrencyToken } from "./price-units";
 
 export interface StudyResolutionResult {
@@ -45,7 +46,10 @@ const KIND_COLORS: Partial<Record<ChartStudyKind, string>> = {
   "anchored-vwap": "#b197fc",
   "volume-profile": "#adb5bd",
   atr: "#63e6be",
+  leverage: "#e599f7",
 };
+/** The decay study's two lines: the fund against the daily line, the daily line against the period multiple. */
+const DECAY_COLORS = ["#ffa94d", "#66d9e8"] as const;
 /**
  * One per anchor, so eight lines never repeat a colour. None is red or pink
  * (falling candles take the theme's negative), orange (VWAP), yellow (the
@@ -1084,7 +1088,70 @@ function resolveFormula(
 }
 
 function requiredInputs(kind: ChartStudyKind): number {
-  return kind === "ratio" || kind === "spread" || kind === "correlation" ? 2 : 1;
+  return kind === "ratio" || kind === "spread" || kind === "correlation" || kind === "leverage-decay" ? 2 : 1;
+}
+
+/** The objective's line and its decay compound session returns: they need daily bars, whatever the chart's range. */
+function dailyBarsIssue(spec: ChartStudySpec, input: ResolvedSeries, marketResolution: ManualChartResolution | undefined): string | null {
+  const resolution = input.historyResolution === undefined ? marketResolution : input.historyResolution;
+  if (input.nativeFrequency === "daily" && (resolution === undefined || resolution === "1d")) return null;
+  return `${spec.id}: ${leverageFactorLabel(Number(spec.parameters.factor))} daily needs daily bars. Choose D bars.`;
+}
+
+/**
+ * The line a leveraged or inverse fund's daily objective draws from its index
+ * fund, in percent from where the chart compares (3× daily QQQ beside TQQQ),
+ * on the percent axis the compared legs share.
+ */
+function resolveLeverageLine(spec: ChartStudySpec, index: ResolvedSeries, color: string, anchor: StudyAnchor | undefined): ResolvedSeries[] {
+  const factor = spec.parameters.factor as number;
+  const closes = sessionCloses(index, anchor);
+  const growth = dailyLeverageGrowth(closes.map((entry) => entry.close), factor);
+  return [outputSeries(spec, index, {
+    label: `${leverageFactorLabel(factor)} daily ${leverageSymbol(index)}`,
+    points: closes.map((entry, position) => derivedPoint({ point: entry.point, value: entry.close }, (growth[position]! - 1) * 100)),
+    color,
+    unit: "%",
+    unitGroup: "percent",
+    statedUnit: null,
+    priceAssetCategory: null,
+    axis: "left",
+  })];
+}
+
+/**
+ * How far the fund falls short of its daily objective, in percentage points
+ * from where the chart compares: the fund against the daily line (fees,
+ * financing, tracking), and the daily line against the factor times the index
+ * fund's return over the period (compounding, which daily resets cost in a
+ * market that swings).
+ */
+function resolveLeverageDecay(
+  spec: ChartStudySpec,
+  fund: ResolvedSeries,
+  index: ResolvedSeries,
+  anchors: ReadonlyMap<string, StudyAnchor> | undefined,
+): ResolvedSeries[] {
+  const factor = spec.parameters.factor as number;
+  const decay = leverageDecayPoints(sessionCloses(fund, anchors?.get(fund.id)), sessionCloses(index, anchors?.get(index.id)), factor);
+  const daily = `${leverageFactorLabel(factor)} daily`;
+  const line = (id: string, label: string, color: string, value: (point: (typeof decay)[number]) => number) => outputSeries(spec, fund, {
+    id: `${spec.id}:${id}`,
+    label,
+    points: decay.map((entry) => derivedPoint({ point: entry.point, value: entry.fund }, value(entry))),
+    color: spec.color ?? color,
+    unit: "pp",
+    // Not a percent group: a difference of returns reads in points (-0.96 pp), not as a return.
+    unitGroup: "pp",
+    statedUnit: null,
+    priceAssetCategory: null,
+    axis: "left",
+  });
+  return [
+    line("fund", `${leverageSymbol(fund)} decay vs ${daily} ${leverageSymbol(index)}`, DECAY_COLORS[0], (entry) => entry.fund - entry.daily),
+    // `3× QQQ`: three times QQQ's return over the period, the multiple a daily reset does not deliver.
+    line("compounding", `${daily} ${leverageSymbol(index)} decay vs ${leverageFactorLabel(factor)} ${leverageSymbol(index)}`, DECAY_COLORS[1], (entry) => entry.daily - entry.period),
+  ];
 }
 
 /**
@@ -1188,16 +1255,23 @@ export function activeStudyInputSeriesIds(
     .flatMap((spec) => spec.inputSeriesIds));
 }
 
+/**
+ * `anchors`: where each input series is measured from and to, for studies
+ * that read returns over the chart's period (a leveraged fund's daily line and
+ * its decay start where a comparison starts its legs). Without one, a series'
+ * own first and last observations.
+ */
 export function resolveStudies(
   baseSeries: readonly ResolvedSeries[],
   studySpecs: readonly ChartStudySpec[],
   marketResolution?: ManualChartResolution,
   historicalPriceSeries?: ReadonlyMap<string, ResolvedSeries>,
+  anchors?: ReadonlyMap<string, StudyAnchor>,
 ): StudyResolutionResult {
   // With one security on the chart its volume is just "Volume"; beside a
   // comparison the legend names whose volume it is.
   const nameVolumeInput = baseSeries.filter((series) => series.observationKind === "market").length > 1;
-  return resolveStudySpecs(baseSeries, studySpecs, nameVolumeInput, marketResolution, historicalPriceSeries);
+  return resolveStudySpecs(baseSeries, studySpecs, nameVolumeInput, marketResolution, historicalPriceSeries, anchors);
 }
 
 function resolveStudySpecs(
@@ -1206,6 +1280,7 @@ function resolveStudySpecs(
   nameVolumeInput: boolean,
   marketResolution?: ManualChartResolution,
   historicalPriceSeries?: ReadonlyMap<string, ResolvedSeries>,
+  anchors?: ReadonlyMap<string, StudyAnchor>,
 ): StudyResolutionResult {
   const byId = new Map(baseSeries.map((series) => [series.id, series]));
   const resolved: ResolvedSeries[] = [];
@@ -1241,6 +1316,26 @@ function resolveStudySpecs(
       terms = read as FormulaTerms;
     }
     const color = spec.color ?? KIND_COLORS[spec.kind] ?? STUDY_COLORS[index % STUDY_COLORS.length]!;
+    if (spec.kind === "leverage" || spec.kind === "leverage-decay") {
+      const index = inputs.at(-1)!;
+      if (!isLeverageFactor(spec.parameters.factor)) {
+        errors.push(`${spec.id}: choose a nonzero leverage factor of at most 5.`);
+        return;
+      }
+      const issue = inputs.map((entry) => dailyBarsIssue(spec, entry!, marketResolution)).find(Boolean);
+      if (issue) {
+        warnings.push(issue);
+        return;
+      }
+      const outputs = spec.kind === "leverage"
+        ? resolveLeverageLine(spec, index, color, anchors?.get(index.id))
+        : resolveLeverageDecay(spec, input, index, anchors);
+      if (outputs.every((output) => output.points.length < 2)) {
+        warnings.push(`${spec.id}: not enough shared daily closes to measure ${leverageFactorLabel(spec.parameters.factor as number)} daily ${leverageSymbol(index)}.`);
+      }
+      resolved.push(...outputs);
+      return;
+    }
     if (spec.kind === "realized-vol") {
       const window = spec.parameters.window ?? 30;
       if (typeof window !== "number" || !Number.isInteger(window) || window < 2

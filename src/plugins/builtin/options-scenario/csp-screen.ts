@@ -202,7 +202,7 @@ export async function loadCspScreen(
   const symbols = instruments.map((instrument) => instrument.symbol.trim().toUpperCase());
   const [ivRanks, earnings] = await Promise.all([
     loadIvRanks(symbols, signal, dependencies.ivApi),
-    loadNextEarningsDates(dependencies.earnings, symbols),
+    loadNextEarningsDates(dependencies.earnings, symbols, zonedDateKey(now, "America/New_York")),
   ]);
   signal?.throwIfAborted();
   const target = cspTargetDate(criteria, now);

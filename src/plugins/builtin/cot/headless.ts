@@ -1,8 +1,9 @@
-import type { CotClass, CotClassSummary } from "../../../api-client/cot";
+import type { CotClass, CotClassSummary, CotContractPayload, CotHistoryPoint } from "../../../api-client/cot";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchCotBoard, fetchCotContract } from "./client";
-import { COT_MAJOR_CODES, COT_SCOPES, cotClass, cotContractCode, cotInteger, cotMarketName, cotScope, cotUnknownMarketMessage } from "./model";
+import { COT_MAJOR_CODES, COT_SCOPES, cotClass, cotContractCode, cotContractUnitText, cotInteger, cotMarketName, cotScope, cotUnknownMarketMessage } from "./model";
 import { COMMODITIES_VIEW_STATE } from "../commodities-energy/view-state";
+import { REPORT_ROWS } from "../shared/headless-options";
 
 const camelClass = (id: CotClass) => id.replace(/-(\w)/g, (_match, letter: string) => letter.toUpperCase());
 const rounded = (value: number | null, digits: number) => value == null ? null : Number(value.toFixed(digits));
@@ -17,6 +18,22 @@ function cotPositionRow(row: CotClassSummary) {
     netPercentOfOpenInterest: rounded(row.netPercentOfOpenInterest, 1), weeklyChange: row.weeklyChange, previousReportDate: row.previousReportDate,
     oneYearPercentile: rounded(row.percentile1Y.value, 0), threeYearPercentile: rounded(row.percentile3Y.value, 0) };
 }
+/**
+ * A market's title line: its name, the report date (the Tuesday the positions
+ * are of) and what one contract is, so a net of +207,879 reads in ounces too.
+ */
+function cotContractTitle(data: CotContractPayload, code: string): string {
+  const units = cotContractUnitText(data.contract?.contractUnits);
+  return [data.contract ? cotMarketName(data.contract.marketName) : code, data.asOf ? `report date ${data.asOf}` : null, units]
+    .filter(Boolean).join("  ·  ");
+}
+
+/** The weekly reports newest first, the newest `limit` of them when given. */
+function cotWeeklyRows(history: readonly CotHistoryPoint[], limit: number | null): CotHistoryPoint[] {
+  const newest = [...history].reverse();
+  return limit == null ? newest : newest.slice(0, limit);
+}
+
 const POSITION_COLUMNS: HeadlessPaneColumn[] = [
   { key: "net", header: "Net", align: "right", format: signed },
   { key: "weeklyChange", header: "1W Δ", align: "right", format: signed },
@@ -34,7 +51,10 @@ export const cotHeadless: HeadlessPaneDefinition<"bundle"> = {
     { key: "traderClass", type: "enum", values: ["noncommercial", "commercial", "producer", "swap", "managed-money", "other-reportable", "nonreportable"].map((value) => ({ value })), description: "Trader class for the extremes board; defaults by report family.",
       pluginState: { pluginId: COMMODITIES_VIEW_STATE.cot, key: "class" } },
     { key: "scope", type: "enum", values: COT_SCOPES.map(({ value }) => ({ value })), defaultValue: "major", description: "Markets on the extremes board, as in the pane.",
-      pluginState: { pluginId: COMMODITIES_VIEW_STATE.cot, key: "scope" } }],
+      pluginState: { pluginId: COMMODITIES_VIEW_STATE.cot, key: "scope" } },
+    // Weekly reports come newest first, so --tail asks for the same newest n as --limit.
+    { key: "limit", type: "integer", aliases: ["tail", "weeks", "rows"], minimum: 1, maximum: 2000, shot: REPORT_ROWS,
+      description: "Newest weekly reports a market lists; every one by default." }],
   discovery: { aliases: ["COT", "CFTC"], dataRequirements: ["Gloom Cloud CFTC history"], limitations: ["Futures-only positions aggregate all maturities.", "Legacy and disaggregated classes differ.", "Observation date is not publication date.", "Some markets have short or suppressed histories."] },
   describe: "CFTC positioning",
   async load(args, ctx) {
@@ -44,14 +64,16 @@ export const cotHeadless: HeadlessPaneDefinition<"bundle"> = {
       if (!code) throw new Error(cotUnknownMarketMessage(args.argument));
       const data = await fetchCotContract(code, family, ctx.apiClient);
       const classes = data.positions.map((row) => row.id);
-      return { sections: [{ title: data.contract ? cotMarketName(data.contract.marketName) : code,
+      const limit = args.options.limit == null ? null : Number(args.options.limit);
+      const weeks = cotWeeklyRows(data.history, limit);
+      return { sections: [{ title: cotContractTitle(data, code),
         columns: [{ key: "class", header: "Class" }, { key: "long", header: "Long", align: "right", format: count },
           { key: "short", header: "Short", align: "right", format: count }, ...POSITION_COLUMNS],
         rows: data.positions.map((row) => ({ class: row.label, ...cotPositionRow(row) })) },
-      { title: "Weekly positions",
+      { title: weeks.length < data.history.length ? `Weekly positions  ·  newest ${weeks.length} of ${data.history.length}` : "Weekly positions",
         columns: [{ key: "reportDate", header: "Report date" }, { key: "openInterest", header: "Open interest", align: "right", format: count },
           ...classes.map((id) => ({ key: `${camelClass(id)}Net`, header: `${data.positions.find((row) => row.id === id)?.label ?? id} net`, align: "right" as const, format: signed }))],
-        rows: data.history.map((row) => ({ reportDate: row.reportDate, openInterest: row.openInterest,
+        rows: weeks.map((row) => ({ reportDate: row.reportDate, openInterest: row.openInterest,
           ...Object.fromEntries(row.positions.map((position) => [`${camelClass(position.id)}Net`, position.net])) })) }],
       errors: data.gaps, metadata: { ...data, complete: data.status === "available" } };
     }

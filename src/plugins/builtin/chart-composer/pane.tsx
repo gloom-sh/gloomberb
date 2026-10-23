@@ -52,13 +52,17 @@ import { colors } from "../../../theme/colors";
 import { isUsListingExchange, parsePublicTickerKey, publicTickerKey } from "../../../utils/exchanges";
 import { isMarketFieldId } from "../../../time-series/field-catalog";
 import { isDatasetChart } from "../../../time-series/spec";
+import { seriesMessageName } from "../../../time-series/series-name";
 import { CHART_COMPOSER_PANE_ID } from "../../../types/config";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { SeriesEditorDialog } from "./editor";
 import { chartComposerSemanticMetadata } from "./semantic";
+import { comparedFundTickers, LEVERAGE_FACTS_PANE_TIMEOUT_MS, loadDailyObjectives, withLeverageOverlay } from "./leverage-overlay";
+import { loadFundFacts } from "../sec/fund-facts";
 import {
   canToggleChartSeries,
   CHART_INTERACTION_VIEWPORT_SETTING_KEY,
+  CHART_LEVERAGE_PENDING_SETTING_KEY,
   CHART_PINNED_MOMENT_SETTING_KEY,
   CHART_SPEC_SETTING_KEY,
   parseChartInteractionViewport,
@@ -940,9 +944,9 @@ function ChartComposerSurface({
   const formulaStudy = spec.studies.find((study) => (study.kind === "spread" || study.kind === "formula")
     && statusError?.startsWith(`${study.id}: `));
   const statusErrorNotice = formulaStudy ? statusError?.slice(`${formulaStudy.id}: `.length) : statusError;
-  // Failed series use their authored id in errors and their display label in warnings.
-  const errorSeries = spec.series.find((entry) => statusError?.startsWith(`${entry.label ?? entry.id}: `));
-  const errorMessage = errorSeries ? statusError?.slice(`${errorSeries.label ?? errorSeries.id}: `.length) : undefined;
+  // Failed series name what was asked for in errors and their display label in warnings.
+  const errorSeries = spec.series.find((entry) => statusError?.startsWith(`${seriesMessageName(entry)}: `));
+  const errorMessage = errorSeries ? statusError?.slice(`${seriesMessageName(errorSeries)}: `.length) : undefined;
   // The label the resolver wrote its warnings with, before the legend named the company.
   const errorSeriesLabel = (resolution.legendSeries?.find((entry) => entry.id === errorSeries?.id)
     ?? legendSeries?.find((entry) => entry.id === errorSeries?.id))?.label;
@@ -1287,6 +1291,26 @@ export function ChartComposerPane({ paneId, focused, width, height }: PaneProps)
       savedForTarget.current = targetKey;
     }
   }, [follows, ownedIds, savedIds, setSpec, spec, stored, target, unlinkedFrom, updateSettings]);
+  // A comparison CMP opened draws each leveraged or inverse fund's daily objective once its facts are read.
+  const leveragePending = instance?.settings?.[CHART_LEVERAGE_PENDING_SETTING_KEY] === true;
+  const storedRef = useRef(stored);
+  storedRef.current = stored;
+  useEffect(() => {
+    if (!leveragePending) return;
+    const mounted = new AbortController();
+    // The chart draws meanwhile, so it can wait longer for them than a report does.
+    void loadDailyObjectives(comparedFundTickers(storedRef.current),
+      async (ticker, signal) => (await loadFundFacts(ticker, false, { signal })).payload,
+      { timeoutMs: LEVERAGE_FACTS_PANE_TIMEOUT_MS, signal: mounted.signal })
+      .then((objectives) => {
+        if (mounted.signal.aborted) return;
+        updateSettings({
+          [CHART_SPEC_SETTING_KEY]: withLeverageOverlay(storedRef.current, objectives),
+          [CHART_LEVERAGE_PENDING_SETTING_KEY]: undefined,
+        });
+      });
+    return () => mounted.abort();
+  }, [leveragePending, updateSettings]);
   if (follows && !target && ownedIds.length > 0) {
     return <EmptyState title={error ?? "Select a ticker."} />;
   }

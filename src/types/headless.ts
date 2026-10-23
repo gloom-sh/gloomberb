@@ -103,6 +103,8 @@ export interface HeadlessPaneContext {
   /** Effective instance settings, after template creation and option normalization. */
   settings?: Record<string, unknown>;
   capabilities?: CapabilityInvoker;
+  /** The catalog's name for the series charted as an expression (`FRED:DFII10`); undefined for one it does not list. */
+  catalogSeriesName?: (expression: string) => string | undefined;
   /** Locally registered broker adapters. Reports may read account data; they never submit orders. */
   resolveBroker?: (brokerType: string) => import("./broker").BrokerAdapter | null;
   /** Read one local portfolio without passing holdings through a remote endpoint. */
@@ -158,6 +160,8 @@ export interface HeadlessPaneColumn {
   stackPriority?: number;
   /** Once moved under the rows, only the first `stackRows` rows print the column; 0 leaves it out of a narrow table. */
   stackRows?: number;
+  /** The text table leaves the column out when fitted to fewer terminal columns than this; exports and piped output keep it. */
+  minTableWidth?: number;
   description?: string;
   format?: (value: unknown, row: HeadlessPaneRow) => string;
   /** What the text report prints when it can say more than an export should (a unit word beside a number); CSV and NDJSON keep `format`. */

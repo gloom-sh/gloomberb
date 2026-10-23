@@ -1,6 +1,6 @@
 import type { EarningsEstimateBasis, EarningsEstimateField, EarningsEvent } from "../../../types/data-provider";
 
-const EARNINGS_ESTIMATE_FIELDS: readonly EarningsEstimateField[] = [
+export const EARNINGS_ESTIMATE_FIELDS: readonly EarningsEstimateField[] = [
   "epsEstimate", "epsLow", "epsHigh", "epsYearAgo", "epsGrowth", "epsAnalysts",
   "epsTrend7dAgo", "epsTrend30dAgo", "epsRevisionUp7d", "epsRevisionUp30d", "epsRevisionDown7d", "epsRevisionDown30d",
   "revenueEstimate", "revenueLow", "revenueHigh", "revenueYearAgo", "revenueGrowth", "revenueAnalysts",

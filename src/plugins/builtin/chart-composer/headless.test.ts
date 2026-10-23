@@ -1,6 +1,6 @@
 import { describe, expect, setSystemTime, test } from "bun:test";
 import { createTestDataProvider } from "../../../test-support/data-provider";
-import { chartHeadless, chartResolutionDrop, periodChartDates, type ChartPaneModel } from "./headless";
+import { bareFredSeries, chartHeadless, chartResolutionDrop, periodChartDates, type ChartPaneModel } from "./headless";
 import { setPairStudies } from "./studies";
 import { buildCustomChartPreset, buildIntradayPriceChartPreset } from "./presets";
 import { createTestHeadlessContext } from "../../../test-support/headless";
@@ -318,4 +318,85 @@ test("an economic chart is dated by its observations' day, and by their period w
   const catalog = (seriesId: string) => ({ source: { kind: "capability" as const, capabilityId: "c", seriesId } });
   expect(periodChartDates([{ id: "ratio", label: "VIX 3M / VIX", points: days }], { series: [catalog("ratio")] } as never)).toEqual({ asOf: "2026-10-09" });
   expect(periodChartDates([cpi], { series: [catalog("s"), { source: { kind: "security" } }] } as never)).toEqual({});
+});
+
+test("fn G DFII10 charts the FRED series once no listing answers to it, and a ticker of the same letters still charts as the ticker", async () => {
+  const days = ["2026-10-19", "2026-10-20", "2026-10-21"];
+  const fredCalls: string[] = [];
+  const catalog = (expression: string) => ({ "FRED:DFII10": "10Y TIPS real yield", "FRED:IR": "Some FRED series" })[expression];
+  const notATicker = (symbol: string) => Promise.reject(new Error(`Not a ticker: ${symbol}.`));
+  const context = (getQuote: (symbol: string) => Promise<unknown>, chartSpec = buildCustomChartPreset("DFII10")) => {
+    chartSpec.viewport.dateWindow = { start: "2026-10-19", end: "2026-10-22" };
+    return createTestHeadlessContext({
+      marketData: createTestDataProvider({
+        getTickerFinancials: async () => { throw new Error("Not a ticker: DFII10."); },
+        getQuote: getQuote as never,
+      }),
+      apiClient: { getCloudFredSeries: async (id: string) => {
+        fredCalls.push(id);
+        return { info: null, observations: days.map((date, index) => ({ date, value: 2.8 - index / 100 })) };
+      } } as never,
+      settings: { chartSpec },
+      catalogSeriesName: catalog,
+      resolveListing: async () => null,
+    });
+  };
+  const result = await chartHeadless("chart-composer-pane").load(
+    { argument: "DFII10", rawArgument: "DFII10", symbols: [], options: {} }, context(notATicker)) as ChartPaneModel;
+  expect(fredCalls).toEqual(["DFII10"]);
+  expect(result.errors).toEqual([]);
+  expect(result.series[0]).toMatchObject({ label: "10Y TIPS real yield" });
+  expect(result.series[0]!.points.map(({ value }) => value)).toEqual([2.8, 2.79, 2.78]);
+
+  const dfii10 = buildCustomChartPreset("DFII10").series[0]!;
+  const ir = buildCustomChartPreset("IR").series[0]!;
+  const quoted = async (symbol: string) => ({ symbol, price: 79, change: 0, changePercent: 0, currency: "USD", lastUpdated: 0 });
+  const guard = (getQuote: (symbol: string) => Promise<unknown>) => ({ marketData: createTestDataProvider({ getQuote: getQuote as never }), catalogSeriesName: catalog });
+  // A listing read, a quote that answers, or a failure that is not "not a ticker" keep the ticker.
+  expect(await bareFredSeries(ir, async () => ({ symbol: "IR", exchange: "NYSE" }), guard(notATicker))).toBeNull();
+  expect(await bareFredSeries(ir, async () => null, guard(quoted))).toBeNull();
+  expect(await bareFredSeries(dfii10, async () => null, guard(() => Promise.reject(new Error("fetch failed"))))).toBeNull();
+  // A symbol the catalog does not list is never asked about.
+  let asked = 0;
+  expect(await bareFredSeries(buildCustomChartPreset("ZZQX").series[0]!, async () => { asked++; return null; }, guard(notATicker))).toBeNull();
+  expect(asked).toBe(0);
+  expect(await bareFredSeries(dfii10, async () => null, guard(notATicker))).toMatchObject({
+    id: dfii10.id, source: { kind: "economic", provider: "fred", seriesId: "DFII10" }, label: "10Y TIPS real yield",
+  });
+});
+
+test("fn CMP reads a leg's fund facts once through their cache, and never a leg a cached quote calls a stock", async () => {
+  const { buildComparisonChartPreset } = await import("./presets");
+  const { fundFactsCache } = await import("../sec/fund-facts");
+  fundFactsCache.reset();
+  const asked: string[] = [];
+  const facts = (ticker: string) => ({
+    ticker, covered: true, name: null, structure: "registered", expenseRatio: null, nav: null, closingPrice: null, premiumDiscount: null,
+    netAssets: null, sponsor: null, inception: null, index: null, stale: false, fetchedAt: null,
+    leverage: { value: 3, asOf: "2026-10-21", source: "ProShares", reset: "daily", benchmark: "Nasdaq-100 Index", proxy: { ticker: "QQQ", basis: "index-fund" } },
+  });
+  const provider = createTestDataProvider({
+    getTickerFinancials: async () => ({ annualStatements: [], quarterlyStatements: [], priceHistory: [] }),
+    getPriceHistoryForResolution: async () => [{ date: new Date("2026-08-03"), close: 100 }, { date: new Date("2026-08-04"), close: 110 }],
+    // AAPL's quote, cached from an earlier read, says it is a stock.
+    getCachedFinancialsForTargets: (targets) => new Map(targets.filter((target) => target.symbol === "AAPL").map((target) => [target.symbol, {
+      annualStatements: [], quarterlyStatements: [], priceHistory: [],
+      quote: { symbol: "AAPL", price: 1, change: 0, changePercent: 0, currency: "USD", lastUpdated: 0, instrumentType: "EQUITY" },
+    }])),
+  });
+  const apiClient = { getFundFacts: async (ticker: string) => { asked.push(ticker); return facts(ticker); } };
+  const context = { ...fixture().context, marketData: provider, apiClient: apiClient as never };
+  const symbols = ["AAPL:NASDAQ", "TQQQ:NASDAQ"];
+  const load = () => chartHeadless("comparison-chart-pane").load(
+    { argument: symbols, rawArgument: symbols.join(","), symbols, options: {} },
+    { ...context, settings: { chartSpec: buildComparisonChartPreset(symbols) } },
+  ) as Promise<ChartPaneModel>;
+  try {
+    const first = await load();
+    expect(first.spec.studies.map((study) => study.kind)).toEqual(["leverage", "leverage-decay"]);
+    await load();
+    expect(asked).toEqual(["TQQQ"]);
+  } finally {
+    fundFactsCache.reset();
+  }
 });
