@@ -114,8 +114,7 @@ export async function handleDesktopHostRequest(
         throw new Error("host.openExternal requires a URL.");
       }
       const externalUrl = safeExternalUrl(request.payload.url);
-      if (externalUrl) Utils.openExternal(externalUrl);
-      return null;
+      return externalUrl ? Utils.openExternal(externalUrl) !== false : false;
     }
     case "host.copyText":
       Utils.clipboardWriteText(normalizeText(request.payload.text) ?? "");

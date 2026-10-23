@@ -127,6 +127,45 @@ test("a checkout that cannot be created falls back to the Cloud page once and le
   expect(opened).toEqual(["https://gloom.sh/cloud?handoff=one-time", "https://checkout.example/session"]);
 });
 
+test("checkout opens under the hand-off, which reopens the same checkout and closes once Pro arrives", async () => {
+  apiClient.createCloudCheckout = (async () => {
+    checkouts += 1;
+    return { url: "https://checkout.example/session", link: "https://gloom.sh/checkout/abc" };
+  }) as typeof apiClient.createCloudCheckout;
+  let upgrade!: (options?: unknown) => Promise<void>;
+  function ProStep() {
+    upgrade = useCloudUpgradeAction("onboarding-pro");
+    // A terminal over SSH: nothing opens there.
+    useRendererHost().openExternal = async (url: string) => {
+      opened.push(url);
+      return false;
+    };
+    return null;
+  }
+  await tui.render(<ProStep />, { width: 100, height: 40 });
+
+  await act(async () => {
+    await upgrade({ sheet: false });
+  });
+  await tui.waitForFrameToContain("Waiting for checkout...");
+  expect(tui.frame()).toContain("No browser opens from here.");
+  expect(tui.frame()).toContain("https://gloom.sh/checkout/abc");
+
+  // The browser button opens the same checkout again, not a second one.
+  await act(async () => {
+    await tui.emitKeypress({ name: "b", sequence: "b" });
+  });
+  expect(opened).toEqual(["https://checkout.example/session", "https://checkout.example/session"]);
+  expect(checkouts).toBe(1);
+
+  await act(async () => {
+    apiClient.restoreCachedUser({ id: "user-free", email: "free@example.com", emailVerified: true, plan: "pro" });
+  });
+  await tui.waitForFrameToContain("Pro is on.");
+  await tui.emitKeypress({ name: "return" });
+  await tui.waitForFrameToExclude("Finish checkout in your browser");
+});
+
 test("the UPGRADE command still opens checkout after the newest prompt closes", async () => {
   apiClient.setSessionToken(null);
   apiClient.restoreCachedUser(null);

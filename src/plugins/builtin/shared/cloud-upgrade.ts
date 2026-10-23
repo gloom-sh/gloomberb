@@ -12,8 +12,9 @@ import { getSharedRegistry } from "../../registry";
 import { requestAccountManagementTab } from "../account-management/navigation";
 import { resolvePlanAccess, usePlanAccess, type PlanAccess } from "../../../api-client/plan-access";
 import { useViewport } from "../../../react/input";
-import { useOptionalDialog } from "../../../ui/dialog";
+import { type DialogApi, useOptionalDialog } from "../../../ui/dialog";
 import { promptCloudUpgrade } from "../../../account/upgrade-dialog";
+import { type CheckoutHandoffTarget, promptCheckoutHandoff } from "../../../account/checkout-handoff";
 
 const CLOUD_UPGRADE_URL = "https://gloom.sh/cloud?upgrade=pro";
 
@@ -120,8 +121,12 @@ export function resetCloudUpgradeGuardForTests(): void {
   cloudUpgradeBlockedUntil.clear();
 }
 
+function cloudUpgradeReturnTo(): string | undefined {
+  return getCurrentPluginTarget() === "web" ? window.location.href : undefined;
+}
+
 async function resolveCloudUpgradeUrl(page: CloudUpgradePage, options: CloudUpgradeOptions): Promise<string> {
-  const returnTo = getCurrentPluginTarget() === "web" ? window.location.href : undefined;
+  const returnTo = cloudUpgradeReturnTo();
   if (page === "cloud") return researchUpgradeUrl(returnTo);
   const { url } = page === "portal"
     ? await apiClient.createBillingPortal()
@@ -136,6 +141,26 @@ async function openCloudUpgrade(
   options: CloudUpgradeOptions,
 ): Promise<void> {
   await rendererHost.openExternal(await resolveCloudUpgradeUrl(page, options));
+}
+
+/**
+ * Opens checkout with the hand-off over the app: it says checkout is in the
+ * browser, reopens that same checkout, shows the short link where no browser
+ * opened, and waits for Pro. Settles once the browser was asked to open it;
+ * the dialog stays until Pro arrives or it is closed.
+ */
+async function openCheckoutWithHandoff(
+  dialog: DialogApi,
+  rendererHost: Pick<RendererHost, "openExternal">,
+  options: CloudUpgradeOptions,
+): Promise<void> {
+  const target = (async (): Promise<CheckoutHandoffTarget> => {
+    const { url, link } = await apiClient.createCloudCheckout(cloudUpgradeReturnTo(), options.interval ?? "month");
+    const opened = await rendererHost.openExternal(url);
+    return { url, link: link ?? null, opened: opened !== false };
+  })();
+  void promptCheckoutHandoff(dialog, target);
+  await target;
 }
 
 /**
@@ -166,9 +191,9 @@ function isCloudUpgradeOptions(value: unknown): value is CloudUpgradeOptions {
  * a held Enter would otherwise open a checkout per keypress.
  *
  * A signed-in account without Pro sees the upgrade sheet first (what Pro adds,
- * what today costs), and checkout opens only once they choose to go on.
- * Signed-out users get the public Cloud page and Pro accounts the billing
- * portal, as before.
+ * what today costs), and checkout opens only once they choose to go on, with
+ * the checkout hand-off over the app until Pro arrives. Signed-out users get
+ * the public Cloud page and Pro accounts the billing portal, as before.
  */
 export function useCloudUpgradeAction(placement: string): (options?: unknown) => Promise<void> {
   const rendererHost = useRendererHost();
@@ -184,7 +209,8 @@ export function useCloudUpgradeAction(placement: string): (options?: unknown) =>
       const page = currentCloudUpgradePage();
       await openCloudUpgradePage(page, async () => {
         resolved.onOpening?.();
-        await openCloudUpgrade(rendererHost, page, resolved);
+        if (page === "checkout" && dialog) await openCheckoutWithHandoff(dialog, rendererHost, resolved);
+        else await openCloudUpgrade(rendererHost, page, resolved);
       }).catch(() => (
         // Keep the Cloud page reachable when checkout cannot be created; a native
         // session still rides along on the server's one-time handoff URL. Under

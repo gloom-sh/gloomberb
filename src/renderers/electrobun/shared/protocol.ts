@@ -205,7 +205,7 @@ interface DesktopBackendRequestMap {
   "host.exit": { request: null; response: null };
   "host.windowControl": { request: { action: DesktopWindowControlAction }; response: null };
   "host.windowFullscreen": { request: null; response: boolean };
-  "host.openExternal": { request: { url: string }; response: null };
+  "host.openExternal": { request: { url: string }; response: boolean };
   "host.copyText": { request: { text: string }; response: null };
   "host.focusWindow": { request: null; response: null };
   "host.copyPngImage": { request: { pngBase64: string }; response: null };

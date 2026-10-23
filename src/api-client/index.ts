@@ -373,9 +373,13 @@ class GloomApiClient {
   requestPasswordReset = this.auth.requestPasswordReset.bind(this.auth);
   createBrowserHandoff = this.auth.createBrowserHandoff.bind(this.auth);
 
-  /** Creates a Stripe checkout session for Cloud Pro; the URL opens in a browser. */
-  async createCloudCheckout(returnTo?: string, interval: "month" | "year" = "month"): Promise<{ url: string }> {
-    return this.request<{ url: string }>("/stripe/checkout", { method: "POST", body: JSON.stringify({ returnTo, interval }) });
+  /**
+   * Creates a Stripe checkout session for Cloud Pro; the URL opens in a browser.
+   * `link` is a short link to the same checkout, to read or scan on another
+   * device. Older servers send none.
+   */
+  async createCloudCheckout(returnTo?: string, interval: "month" | "year" = "month"): Promise<{ url: string; link?: string }> {
+    return this.request<{ url: string; link?: string }>("/stripe/checkout", { method: "POST", body: JSON.stringify({ returnTo, interval }) });
   }
 
   async recordResearchActivity(payload: {
