@@ -5,7 +5,7 @@ import { criterionText, parseScreenDefinition, screenDefinitionKey, screenLabel 
 /** One listing, with the same exchange aliases the rest of the app accepts. */
 export function screenCheckTicker(text: string): { symbol: string; exchange?: string } {
   const ticker = parsePublicTickerKey(text.trim());
-  if (!/^[A-Z0-9][A-Z0-9.^/_-]{0,39}$/.test(ticker.symbol)
+  if (!/^[A-Z0-9][A-Z0-9./-]{0,31}$/.test(ticker.symbol)
     || (ticker.exchange !== undefined && !/^[A-Z0-9_-]{1,24}$/.test(ticker.exchange)))
     throw new Error("Enter one ticker, such as NVDA or NVDA:NASDAQ.");
   return ticker;
@@ -62,7 +62,7 @@ export function validateScreenCheck(
   return data;
 }
 
-const number = (value: number) => value.toLocaleString("en-US", { maximumSignificantDigits: 16 });
+const number = (value: number) => value.toLocaleString("en-US", { maximumSignificantDigits: 21 });
 function checkCriterionText(criterion: ScreenCriterion): string {
   if (!("value" in criterion) || criterion.op === "in") return criterionText(criterion);
   const operators = { gte: ">=", lte: "<=", gt: ">", lt: "<", eq: "=", between: "between" };

@@ -48,6 +48,8 @@ test("checks are pinned to the requested definition, listing and snapshot, prese
     expect(() => validateScreenCheck(bad, definition, { symbol: "NVDA", exchange: "NASDAQ" }, "one")).toThrow();
   }
   expect(() => screenCheckTicker("NVDA MSFT")).toThrow("Enter one ticker");
+  data.criteria[1]!.value = 1.0000000000000002;
+  expect(checkRows(data)[1]!.value).toBe("1.0000000000000002 x");
   const alternate = fixture();
   alternate.symbol = "BRK-B";
   alternate.row!.symbol = "BRK.B";
