@@ -67,18 +67,91 @@ const DATE_CELL = /^\d{4}-\d{2}(?:-\d{2})?(?:[ T]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)
 // A number with its sign, currency, unit or range (`-1.0bp`, `$1,200`, `3.75-4.00%`, `481.75c`).
 const NUMBER_PART = String.raw`[+\-−±]?[$€£¥]?\d[\d,]*(?:\.\d+)?`;
 const NUMBER_TOKEN = new RegExp(String.raw`^\(?${NUMBER_PART}(?:[-–]${NUMBER_PART})?(?:%|¢|[a-zA-Z]{1,3})?\)?$`);
-// What may sit between the numbers of one cell (`3.875% 82% / 4.125% 18%`, `+25bp ↑`).
-const NUMBER_JOINER = /^(?:\/|·|→|↑|↓|[-–])$/;
+// What may sit between the numbers of one cell (`3.875% 82% / 4.125% 18%`, `+25bp ↑`, plain `+25bp up`).
+const NUMBER_JOINER = /^(?:\/|·|→|↑|↓|[-–]|to|up|down)$/;
+// What a plain table writes in a cell with no value.
+const PLAIN_EMPTY_CELL = "—";
 let colorEnabledOverride: boolean | null = null;
 let widthOverride: number | null = null;
+let plainOverride: boolean | null = null;
 
 function colorEnabled(): boolean {
   if (colorEnabledOverride != null) return colorEnabledOverride;
-  return !!process.stdout.isTTY && process.env.NO_COLOR !== "1" && process.env.TERM !== "dumb";
+  if (plainOverride === true) return false;
+  return !!process.stdout.isTTY && !process.env.NO_COLOR && process.env.TERM !== "dumb";
 }
 
 export function setCliColorEnabledOverride(value: boolean | null): void {
   colorEnabledOverride = value;
+}
+
+/**
+ * Plain output, for a screen reader, very large text or a pipe: tables have
+ * no rule under their header, keep every column they have with "—" in an
+ * empty cell, and say their arrows in words (`plainWords`), as do the
+ * markers the CLI writes itself (`cliArrow`); a user's own text is never
+ * rewritten. Colour is off unless `--color` asks for it. The CLI turns it on
+ * for NO_COLOR and output that is not a terminal (`plainByDefault`), and
+ * `--plain` / `--no-plain` decide it either way; unset, it is off.
+ */
+export function setCliPlainOverride(value: boolean | null): void {
+  plainOverride = value;
+}
+
+export function cliPlainEnabled(): boolean {
+  return plainOverride === true;
+}
+
+/**
+ * Whether output is plain without `--plain` or `--no-plain`: NO_COLOR is set
+ * to a value (an empty one is unset, as the convention says), or stdout is
+ * not a terminal.
+ */
+export function plainByDefault(env: Record<string, string | undefined> = process.env, stdout: { isTTY?: boolean } = process.stdout): boolean {
+  return !!env.NO_COLOR || !stdout.isTTY;
+}
+
+const ARROW_WORDS: Record<string, string> = { "→": "to", "←": "from", "↑": "up", "↓": "down", "▲": "up", "▼": "down" };
+const ARROW = /[←→↑↓▲▼]/;
+
+/**
+ * An arrow the CLI writes itself, beside text it did not (`gold → gold's
+ * market news`), in words when output is plain: "to" for `→`. Table cells
+ * and headers are worded by `renderTable`; nothing else is rewritten.
+ */
+export function cliArrow(arrow: "→" | "←" | "↑" | "↓"): string {
+  return cliPlainEnabled() ? ARROW_WORDS[arrow]! : arrow;
+}
+
+/**
+ * Arrows as the words they stand for, so a screen reader says them: a range
+ * `2026-04-03 → 04-06` reads "2026-04-03 to 04-06", `+25bp ↑` "+25bp up",
+ * the keys `←/→` "left/right". Text without an arrow is returned as it is.
+ * For a plain table's cells and headers, never a whole output.
+ */
+export function plainWords(text: string): string {
+  if (!ARROW.test(text)) return text;
+  return text
+    .replace(/←\s*\/\s*→/g, "left/right")
+    .replace(/↑\s*\/\s*↓/g, "up/down")
+    .replace(/([ \t]*)([←→↑↓▲▼])([ \t]*)/g, (match: string, lead: string, arrow: string, _trail: string, offset: number, whole: string) => {
+      // An arrow that starts a line keeps the line's indent; one that ends it leaves no space after its word.
+      const atStart = offset === 0 || whole[offset - 1] === "\n";
+      const end = offset + match.length;
+      const atEnd = end === whole.length || whole[end] === "\n";
+      return `${atStart ? lead : " "}${ARROW_WORDS[arrow]}${atEnd ? "" : " "}`;
+    });
+}
+
+/** A table header's sort mark in words: `MKT VAL ▼` is "MKT VAL (sorted descending)". */
+function plainHeader(header: string): string {
+  const sorted = header.replace(/\s*([▲▼])\s*$/, (_match, mark: string) => ` (sorted ${mark === "▲" ? "ascending" : "descending"})`);
+  return plainWords(sorted.trimStart());
+}
+
+/** A plain table's cell: arrows in words, and "—" for no value. */
+function plainCell(cell: string): string {
+  return EMPTY_CELL.test(stripAnsi(cell).trim()) ? PLAIN_EMPTY_CELL : plainWords(cell);
 }
 
 function applyAnsi(text: string, code: string): string {
@@ -482,7 +555,8 @@ function renderTableLayout(
   };
 
   const header = renderRow(columns.map((column) => column.header), cliStyles.bold);
-  const divider = `${indent}${shown.map(({ width }) => cliStyles.muted("─".repeat(width))).join(" ".repeat(COLUMN_GAP))}`;
+  // A plain table has no rule under its header: a screen reader reads it as a row of dashes.
+  const divider = cliPlainEnabled() ? [] : [`${indent}${shown.map(({ width }) => cliStyles.muted("─".repeat(width))).join(" ".repeat(COLUMN_GAP))}`];
   const belowIndent = `${indent}${" ".repeat(COLUMN_GAP)}`;
   const belowWidth = Math.max(1, (available ?? 0) - COLUMN_GAP);
   const renderBelow = (index: number) => (options.below?.[index] ?? []).flatMap((line) => (
@@ -516,7 +590,7 @@ function renderTableLayout(
     if (line) lines.push(line);
     return lines.map((text) => `${belowIndent}${text}`.trimEnd());
   };
-  return [header, divider, ...rows.flatMap((row, index) => [renderRow(row), ...renderStacked(row, index), ...renderBelow(index)])].join("\n");
+  return [header, ...divider, ...rows.flatMap((row, index) => [renderRow(row), ...renderStacked(row, index), ...renderBelow(index)])].join("\n");
 }
 
 /**
@@ -525,8 +599,15 @@ function renderTableLayout(
  * text marked `shrink: true`: text wraps in its cell and columns move under
  * their rows, each value whole after its header. Of the ways that fit, the
  * one with the fewest lines prints, the one that moves fewer columns on a tie.
+ * Plain output (`setCliPlainOverride`) has no rule under the header, words
+ * for arrows and "—" in every empty cell.
  */
 export function renderTable(columns: CliTableColumn[], rows: string[][], options: CliTableOptions = {}): string {
+  if (cliPlainEnabled()) {
+    columns = columns.map((column) => ({ ...column, header: plainHeader(column.header) }));
+    rows = rows.map((row) => columns.map((_, index) => plainCell(row[index] ?? "")));
+    if (options.below) options = { ...options, below: options.below.map((lines) => lines?.map(plainWords)) };
+  }
   const maxWidth = options.maxWidth === undefined ? cliTerminalWidth() : options.maxWidth;
   const available = maxWidth == null ? null : maxWidth - (options.indent ?? 0);
   let shown = columns.map((column, index) => {

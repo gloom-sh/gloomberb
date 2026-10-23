@@ -40,6 +40,7 @@ import { settleWithin } from "../../utils/async-deadline";
 import { companyNameExtraWords } from "../company-name";
 import { withHomeListingLead } from "./home-listing";
 import { delistingLabel } from "../../market-data/quotes/delisting";
+import { hasNonLatinLetters } from "../../utils/typed-text";
 export type {
   ResolvedTickerSearch,
   TickerSearchCandidate,
@@ -733,7 +734,9 @@ async function searchProviderResults(
     }
   }
 
-  return { results: [...byKey.values()], busy };
+  // Listings are named in Latin letters, and a source can fail on a name typed in another script (任天堂)
+  // every time it is asked: nothing found for it is no answer to wait for and ask again.
+  return { results: [...byKey.values()], busy: busy && !hasNonLatinLetters(query) };
 }
 
 /** Two search texts the server answers alike: its search ignores case and runs of spaces. */

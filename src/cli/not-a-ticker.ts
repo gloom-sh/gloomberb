@@ -40,11 +40,13 @@ export type FredSeriesCheck = (seriesId: string) => boolean;
  * series id (DFEDTARU) is no ticker search finds, so its hint is the `fred` command instead, a
  * coin on the crypto board typed bare (USDT, TETHER) names its one symbol, USDT-USD, once
  * `primeBoardCoins` has read the board, and a Treasury yield typed as a ticker (US10Y) names the
- * commands that have it.
+ * commands that have it. A one-word company name a line says was read as a listing ("Read
+ * "APPLE" as AAPL:NASDAQ") is put back in the user's spelling too.
  */
 export function withSearchHints(text: string, args: readonly string[], isFredSeries: FredSeriesCheck = () => false): string {
-  return text.includes("Not a ticker: ")
-    ? text.replace(NOT_A_TICKER_SENTENCE, (sentence, symbol: string) => {
+  const named = withTypedNames(text, args);
+  return named.includes("Not a ticker: ")
+    ? named.replace(NOT_A_TICKER_SENTENCE, (sentence, symbol: string) => {
       const typed = typedSymbol(symbol, args);
       const id = typed.toUpperCase();
       if (/^[A-Z0-9]+$/.test(id) && isFredSeries(id)) return `${sentence} Try \`gloom fred ${id}\`.`;
@@ -53,7 +55,15 @@ export function withSearchHints(text: string, args: readonly string[], isFredSer
       const tenor = treasuryYieldTenor(typed);
       return `${sentence} ${tenor ? treasuryYieldHint(tenor) : searchHint(typed)}`;
     })
-    : text;
+    : named;
+}
+
+// "Read "APPLE" as AAPL:NASDAQ (Apple Inc.)." as a list reads a one-word name, upper-cased like a symbol.
+const READ_AS_NAME = /Read "([^"\n]+)" as /g;
+
+/** A company's name the line says was read as a listing, in the user's own spelling from `args` (`Apple`). */
+function withTypedNames(text: string, args: readonly string[]): string {
+  return text.includes("Read \"") ? text.replace(READ_AS_NAME, (_line, name: string) => `Read "${typedSymbol(name, args)}" as `) : text;
 }
 
 /**

@@ -1,6 +1,7 @@
 import "./opentui-libc";
 import { inferCliErrorOptions, printCliError } from "./errors";
 import { isCliHelpFlag } from "./options";
+import { plainByDefault, setCliPlainOverride } from "../utils/cli-output";
 import { loadExternalPlugins } from "../plugins/loader";
 import { restoreExtractedPlugins } from "./restore-plugins";
 import { measurePerfAsync } from "../utils/perf-marks";
@@ -72,6 +73,9 @@ export async function runCliEntrypoint(rawArgs = process.argv.slice(2)): Promise
   // Loaded only for a command: a bare launch never reads the commands, and
   // their modules are a noticeable part of what it would load before drawing.
   const { dispatchCli, failUnknownCliCommand } = await import("./index");
+  // For a screen reader, a pipe or NO_COLOR: no rule lines, arrows in words, fixed table columns. Set
+  // for this process only; `--plain` / `--no-plain` decide it in dispatchCli, and commands run in-process keep theirs.
+  setCliPlainOverride(plainByDefault());
   const externalPlugins = await loadExternalPlugins();
   const dispatchResult = await dispatchCli(rawArgs, { externalPlugins });
   if (dispatchResult.kind === "handled") return;

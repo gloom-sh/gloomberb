@@ -72,12 +72,24 @@ describe("chart composer expressions", () => {
       .toThrow('Invalid chart series "MSFT:revenu"');
   });
 
-  // `fn G AAPL MSFT` passes "AAPL MSFT": two series, as `fn G AAPL,MSFT` charts them. (GLO-1263)
-  test("tickers typed with spaces between them are a list, and words that are not all series are told to use commas", () => {
+  // `fn G AAPL MSFT` passes "AAPL MSFT": two series, as `fn G AAPL,MSFT` charts them.
+  test("tickers typed with spaces between them are a list; a Bloomberg code, a currency pair and a field with spaces are not, and say what to write", () => {
     const symbols = (value: string) => parseChartExpression(value).map((leg) => leg.kind === "security" ? leg.symbol : leg.kind);
     expect(symbols("AAPL MSFT")).toEqual(["AAPL", "MSFT"]);
     expect(symbols("AAPL MSFT, FRED:DGS10")).toEqual(["AAPL", "MSFT", "economic"]);
     expect(() => parseChartExpression("AAPL MSFT:revenu")).toThrow('Invalid chart series "AAPL MSFT:revenu". Separate series with commas: AAPL,MSFT:revenu.');
+    // Words that are one thing, not tickers side by side, are told what to write instead of charting each.
+    const hint = (value: string) => { try { parseChartExpression(value); return null; } catch (error) { return (error as Error).message.split(" Use SYMBOL")[0]; } };
+    expect(hint("AAPL US Equity")).toBe('Invalid chart series "AAPL US Equity". That is a Bloomberg code: write it AAPL.');
+    expect(hint("SPX Index")).toBe('Invalid chart series "SPX Index". That is a Bloomberg code: write it ^GSPC.');
+    expect(hint("US Govt")).toContain("That is a Bloomberg security: write the ticker alone");
+    expect(hint("EUR USD")).toBe('Invalid chart series "EUR USD". EUR USD reads as a currency pair: write it EUR/USD, or separate tickers with commas.');
+    // A field with spaces in it is no list, and no list of commas is offered for its words.
+    expect(parseSeriesExpression("MSFT:net income")).toMatchObject({ symbol: "MSFT", fieldId: "fundamental.netIncome" });
+    expect(hint("AAPL MSFT:net income")).toBe('Invalid chart series "AAPL MSFT:net income".');
+    // Two tickers that are not currencies, and a list with a field, are still lists.
+    expect(symbols("AAPL USD2")).toEqual(["AAPL", "USD2"]);
+    expect(parseChartExpression("AAPL:price MSFT").map((leg) => leg.kind === "security" ? `${leg.symbol}:${leg.fieldId}` : leg.kind)).toEqual(["AAPL:market.ohlcv", "MSFT:market.ohlcv"]);
     // A formula keeps its spaces and is no list.
     expect(buildCustomChartPreset("42*HO=F - CL=F").series.length).toBeGreaterThan(0);
   });

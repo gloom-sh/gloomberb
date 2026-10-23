@@ -70,7 +70,7 @@ test("options takes --expiration as a date, asks for its UTC midnight, and rejec
   expect(hit.requests[0]!.slice(0, 3)).toEqual(["AAPL", "", EXPIRIES[1]]);
   expect(hit.cli.printed[0]!.options!.rows!(hit.cli.printed[0]!.result.data)).toHaveLength(1);
 
-  for (const bad of ["2028-02-30", "next-friday", "2028-3-17"]) {
+  for (const bad of ["2028-02-30", "next-friday", "17-3-2028"]) {
     const miss = expiryProvider([]);
     await expect(options.execute(["AAPL", "--expiration", bad], miss.cli.context)).rejects.toThrow(`Invalid --expiration "${bad}"`);
     expect(miss.requests).toEqual([]);

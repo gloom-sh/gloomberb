@@ -114,7 +114,7 @@ gloom fn DOCS        # the index, cut at the first screen (it says so)
 
 A name with no entry fails with `No docs entry for zzzz.` and points at `gloom fn DOCS`.
 
-Wide tables keep their columns in narrow panes. Use the horizontal scrollbar or wheel, or `Ctrl+Left` / `Ctrl+Right`.
+Wide tables keep their columns in narrow panes. Use the horizontal scrollbar or wheel, or `Ctrl+Left` / `Ctrl+Right`. In the terminal, a header that ends in `more →` has columns past its right edge, and a click on it moves right. With no room for the words it reads `more` or `→`; it never hides a column.
 
 ### Custom keybindings
 
@@ -419,7 +419,7 @@ G GAA/VOO
 G MSFT:revenue / AAPL:revenue
 ```
 
-Series are separated by commas, and tickers separated by spaces are a list too: `fn G AAPL MSFT` charts both, as `fn G AAPL,MSFT` does. `A/B` charts the ratio of two series and `A - B` the spread. A slash that is part of the symbol stays one series (`EUR/USD`, `BTC/USD`).
+Series are separated by commas, and tickers separated by spaces are a list too: `fn G AAPL MSFT` charts both, as `fn G AAPL,MSFT` does. Words that are one thing, not tickers side by side, are refused with what to write: a Bloomberg code (`AAPL US Equity` reads as `AAPL`), a currency pair (`EUR USD` is `EUR/USD`) and a series whose field has spaces (`MSFT:net income`, one series among commas). `A/B` charts the ratio of two series and `A - B` the spread. A slash that is part of the symbol stays one series (`EUR/USD`, `BTC/USD`).
 
 A formula adds and subtracts series, each times a number, and charts the result in the Formula panel. The number goes on either side of its series (`HO=F*42`), and only the whole formula, in brackets, is divided by a number:
 
@@ -885,14 +885,20 @@ News panes refresh every two minutes while the app is visible (a hidden browser 
 
 ## CLI
 
-Running `gloomberb` with no arguments launches the terminal UI. Normal commands run headless. Use `gloom launch-ui` when a script should explicitly open the UI.
+Running `gloom` with no arguments launches the terminal UI. Normal commands run headless. Use `gloom launch-ui` when a script should explicitly open the UI.
 
 ### Output and flags
 
 Human-readable output is the default: tables fit the terminal width, and a single result prints as aligned label and value lines. Piped text keeps every cell whole.
 
 - `--json`, `--csv` and `--ndjson` give structured output, which is how to export anything (`gloom history LMT --csv > lmt.csv`). JSON uses the richest model and includes display-column metadata. CSV and NDJSON use the tabular rows.
-- Common global flags: `--limit`, `--tail`, `--width`, `--refresh`, `--quiet`, `--no-color`, `--dry-run`, `--yes`.
+- Common global flags: `--limit`, `--tail`, `--width`, `--refresh`, `--quiet`, `--no-color`, `--plain`, `--no-plain`, `--dry-run`, `--yes`.
+
+**Plain output.** `--plain` prints text for a screen reader or very large text. It is on without the flag when `NO_COLOR` is set to a non-empty value (an empty `NO_COLOR` is the same as unset) or the output is not a terminal (piped or redirected). `--no-plain` turns it off, piped or not.
+
+- Tables have no rule under their header and keep the same columns from one query to the next: an empty cell reads `—` (`econ` prints Actual and Forecast before they are out).
+- Arrows are words in tables and in the lines the CLI writes itself: a sort mark after a header reads `(sorted descending)` instead of `▼`, and `→` reads `to`. Free text outside a table, such as a note or an answer, prints as it is.
+- Colour is off unless `--color` asks for it. `--json`, `--csv` and `--ndjson` are the same with or without it.
 
 Cboe's Treasury yield indices (`^IRX`, `^FVX`, `^TNX`, `^TYX`) print their level in percent (`5.24%`) and their change in basis points (`+1.3bp`) under a `Chg` header. `--json` adds `unit` and `changeBasisPoints` to their rows and keeps the percent change.
 
@@ -900,7 +906,7 @@ Cboe's Treasury yield indices (`^IRX`, `^FVX`, `^TNX`, `^TYX`) print their level
 
 `--width <n>` fits text tables, help and notes to n columns, in a terminal or piped (`gloom quote AAPL TSLA NVDA MSFT --width 80`). Without it a terminal's own width applies and piped output is not fitted.
 
-- A table gives up its least useful columns first (`quote` drops Updated, Feed and Cur, in that order, and `compare` drops Cur, Volume and Day Range). No cell is cut short: text wraps, and columns that still do not fit move onto indented lines under each row.
+- A table gives up its least useful columns first (`compare` drops Cur, Volume and Day Range). `quote` drops none: at 80 or 100 columns it moves Updated, Feed, Cur and Chg Basis onto a labelled line under each row (`Feed delayed  Updated 2026-10-23 15:40 UTC`). No cell is cut short: text wraps, and columns that still do not fit move onto indented lines under each row.
 - The function list of `catalog` is the one table that cuts (a description ends in `…`, and `catalog <function>` prints it whole).
 
 `shot` has its own `--width`, in pixels. The layout is 720 to 2400 wide and 360 to 1800 tall (`--height`), and the PNG is drawn at twice that size, so the default 1280 by 720 writes 2560 by 1440.
@@ -910,7 +916,10 @@ Cboe's Treasury yield indices (`^IRX`, `^FVX`, `^TNX`, `^TYX`) print their level
 
 ### Typed symbols
 
-**Not a ticker.** A symbol that no listing carries (a company name or a typo) ends in ``Not a ticker: APPLE. Try `gloom search Apple`.`` on `quote`, `compare`, `history`, `ticker` and the `fn` reports (an `fn` report of one symbol that finds nothing, such as `fn RDCF Palantir`, fails with that line too).
+**Not a ticker.** A symbol that no listing carries (a typo, or a word that names no company) ends in ``Not a ticker: APPLEX. Try `gloom search Applex`.`` on `quote`, `compare`, `history`, `ticker` and the `fn` reports (an `fn` report of one symbol that finds nothing, such as `fn RDCF Palantir`, fails with that line too).
+
+- A one-word company name is read the way a longer one is: `quote Apple` is AAPL, with `Read "Apple" as AAPL:NASDAQ (Apple Inc.).` A real ticker always wins over a name (`quote GOLD` is GOLD). A word many names share is read only as search's top result or a listing named exactly that word, never as any listing that merely has the word in its name. A coin's name (`bitcoin`) keeps its coin hint (`BTC-USD`), and a subject such as `carbon` or `freight` keeps its search hint.
+- `notes show`, `notes set` and `notes delete` pick the same note. A note already saved under the word as typed comes first. Otherwise the symbol is read as `quote` reads it: `notes set Petrobras "…"` saves the note for PBR. `notes set` fails only when the word is definitely not a ticker. Offline, with the data service down, for a symbol with no quote, or with `--dry-run`, the note goes under the symbol as typed.
 
 - A FRED series id points to the command that prints it: ``Not a ticker: DFEDTARU. Try `gloom fred DFEDTARU`.``
 - A US Treasury yield typed as a ticker (`US10Y`, `UST10Y`, `US10YR`, `US2Y`, `US30Y`, `10Y`, `TNX`) names the commands that have it: ``Not a ticker: US10Y. Try `gloom quote ^TNX`, `gloom fred DGS10` or `gloom yield-curve` for the US 10-year Treasury yield.`` `search` and `catalog` answer those spellings, or `"10 year yield"`, the same way.
@@ -1046,7 +1055,7 @@ A command fails on an option it does not take instead of ignoring it. `gloom his
 
 `gloom history`, `fn HP` and `fn RETURN` also take a window of dates in place of a range: `--from` and `--to`, each a year or a date. `history JPM --from 2007 --to 2009` is every bar from 1 Jan 2007 to 31 Dec 2009. `history` also takes them as `--start` and `--end`.
 
-- `--to` defaults to today and needs a `--from`. A `--range` typed with `--from` is refused (`--from replaces --range; give one of them.`). `shot HP` and `shot RETURN` refuse `--from` and `--to`.
+- `--to` defaults to today and needs a `--from`. A `--range` typed with `--from` (or `--start`) is refused (`--from replaces --range; give one of them.`, naming the option as typed). `--end` alone asks for a `--start`. `shot HP` and `shot RETURN` refuse `--from` and `--to`.
 - A window of up to five years comes in daily bars, up to twenty in weekly bars and a longer one in monthly bars. Where the source keeps no bars of the interval so far back it reads daily bars and says so: `1H bars do not cover 2015-03-01 to 2015-03-31; these are 1D bars.`
 - `--json` carries the dates asked for as `metadata.requestedWindow` (`from`, `to`). A window that ended before today is not stale: its closing line reads `not a live feed (daily bars, 2007 to 2009)`.
 
@@ -1061,7 +1070,7 @@ A command fails on an option it does not take instead of ignoring it. `gloom his
 
 - Symbols load eight at a time. A list of more than ten skips the lookups of a bare symbol's other venues, as `quote` does.
 - The `--csv` header is a single symbol's. Each row names its symbol, its currency and its own symbol's as-of in `symbol_or_series`, `currency_or_unit` and `as_of`.
-- A symbol with no bars is one row with its reason in `status` (`Not a ticker: ZZZZQQ.`) and a warning on stderr. The command exits 1 only when no symbol has any. Warnings shared by several symbols are said once, naming them.
+- A symbol with no bars is one row with its reason in `status` (`Not a ticker: ZZZZQQ.`) and a warning on stderr. A list answered from a saved copy ends `couldn't refresh; saved <time>` with the oldest copy's time, as one symbol does. The command exits 1 only when no symbol has any. Warnings shared by several symbols are said once, naming them.
 - `--tail` and `--limit` apply per symbol. `--json` has the bars as one list, each with its `symbol`, and `metadata.symbols` describes each symbol or gives its `error`.
 
 ### `fx`
@@ -1250,7 +1259,7 @@ A command exits 0 when it worked and 1 when it failed (bad input, no data found,
 
 **`quote` and `compare`** exit 1 when none of the symbols given has a quote and 0 when at least one does. The others are named in the table, on standard error and in `--json`'s `warnings`: a symbol with no quote, one that names no listing (`EQT:NYSE:US`), and an entry that is not a symbol (`N/A`, `$$$`).
 
-- Their `--csv` writes Last, Chg%, Prev Close and each extended print as plain numbers (`55.06`, `209500`), the currency in `Cur` and `currency_or_unit`. An extended print's move is in `Pre-Market Chg%`, `After Hours Chg%` or `Overnight Chg%`, and `compare` adds `Day Low` and `Day High`, all after the columns the export already had. A cell is never `NaN`: a row with no figure says why in its `status` column (`Not a ticker: ZZZZQQ.`, `Chg%: no previous close`), and the failures are on stderr with `--csv` and `--ndjson` too.
+- Their `--csv` writes Last, Chg%, Prev Close and each extended print as plain numbers (`55.06`, `209500`), the currency in `Cur` and `currency_or_unit`. An extended print's move is in `Pre-Market Chg%`, `After Hours Chg%` or `Overnight Chg%`, and `compare` adds `Day Low` and `Day High`, all after the columns the export already had. A cell is never `NaN`: a row with no figure says why in its `status` column (`Not a ticker: ZZZZQQ.`, `Chg%: no previous close`), and the failures are on stderr with `--csv` and `--ndjson` too. `--ndjson` rows carry the reason as `status` too (`value_status` beside a field of that name), with a figure that is no number as `null`.
 
 **`shot`** saves its PNG, prints the Reason line and exits 0 even when the pane drew an error, was empty, was still loading or was behind an access gate. `shot --strict` exits 2 in those cases, with the PNG still saved (`--json` carries `usable` and `unusableReason`). `fn` fails on `--strict`.
 
@@ -1262,7 +1271,7 @@ In short DVD panes, Page Up/Down scroll the summary, arrows or j/k navigate hist
 
 | Command | Use |
 |---------|-----|
-| `gloomberb` | Launch the terminal UI |
+| `gloom` | Launch the terminal UI |
 | `gloom launch-ui` | Explicitly launch the terminal UI |
 | `gloom help` | Show all CLI commands, grouped, under a short Start here list |
 | `gloom help <command>` / `<command> --help` | Show a command's usage, options, and examples |
@@ -1521,7 +1530,7 @@ Exports end each row with five fixed columns, so a row still says what it is aft
 | `source` | The source the `# Source:` line names: `Gloom Cloud`, `FRED` |
 | `as_of` | The `# Observation date:` of the export in ISO 8601, the same on every row; blank when it reads `not published`. Rows dated apart carry their own (a `fn DVD` ranking dates each ticker's row by the price its yields are over) |
 
-A row's own `symbol` and `currency` fill the first two when a command does not state them, in a `fn` report of several symbols too (`fn RV NESN:SWX AAPL`). `--ndjson` writes one JSON object per table row, keyed by the same column names, with a `section` field when the report has several tables. `--json` is the full report with every field, plus the export `source` object.
+A row's own `symbol` and `currency` fill the first two when a command does not state them. A `fn` report whose rows are of different symbols says which fields name them, as `fn RV NESN:SWX AAPL` does for each peer's ticker and currency. `--ndjson` writes one JSON object per table row, keyed by the same column names, with a `section` field when the report has several tables. `--json` is the full report with every field, plus the export `source` object.
 
 `fundamentals` and `valuation` follow the same rules: `Metric,Value` rows with the unit in each label (`Market Cap (ZAR)`, `Dividend Yield (forward) (%)`), and for `fundamentals` a second `Profile` table. `financials --csv` writes the statement table with plain amounts under its displayed columns. All three end with the source line.
 

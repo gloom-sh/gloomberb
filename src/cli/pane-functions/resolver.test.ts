@@ -9,11 +9,12 @@ import { ipoCalendarPlugin } from "../../plugins/builtin/ipo-calendar";
 import { ratePathModule } from "../../plugins/builtin/rate-path";
 import { paneSchemas } from "../../plugins/builtin/chart-composer/headless-schema";
 import { createDefaultConfig } from "../../types/config";
+import { createTestDataProvider, createTestQuote } from "../../test-support/data-provider";
 import type { HeadlessPaneDefinition, PaneDef, PaneTemplateDef } from "../../types/plugin";
 import type { MarketContext } from "../types";
 import type { PaneFunctionCatalog } from "./catalog";
 import { parsePaneFunctionArgs } from "./options";
-import { resolvePaneFunction, UnknownPaneFunctionError } from "./resolver";
+import { applyListingArgument, resolvePaneFunction, UnknownPaneFunctionError } from "./resolver";
 
 const pane = (id: string): PaneDef => ({ id, name: id, component: () => null, defaultPosition: "right" });
 const template = (prefix: string, paneId: string, headless: HeadlessPaneDefinition): PaneTemplateDef => ({
@@ -198,4 +199,32 @@ test("CMP of one ticker says it needs two or more and how to ask, before any cha
   expect(await refusal("fn", ["CMP", "SPY"])).toBe("CMP needs two or more tickers: fn CMP SPY,QQQ");
   expect(await refusal("shot", ["CMP", "aapl"])).toBe("CMP needs two or more tickers: shot CMP AAPL,SPY");
   expect(await refusal("fn", ["CMP", "SPY,QQQ"])).toBeNull();
+});
+
+test("a list typed as words is a company search names, the tickers it holds, or a name nothing lists, which asks for tickers", async () => {
+  const watch: HeadlessPaneDefinition<"bundle"> = { shape: "bundle", argument: { kind: "symbol-list" }, options: [], load: () => ({ sections: [] }) };
+  const lists: PaneFunctionCatalog = { panes: new Map([["watch", pane("watch")]]), paneTemplates: new Map([["watch-pane", template("SIW", "watch", watch)]]), destroy: () => {} };
+  const beyond = { providerId: "test", symbol: "BYND", name: "Beyond Meat, Inc.", exchange: "NASDAQ", currency: "USD", type: "Common Stock" };
+  const market = {
+    config: context.config,
+    store: { loadTicker: async () => null, loadAllTickers: async () => [] },
+    dataProvider: createTestDataProvider({
+      search: async (query) => /beyond meat/i.test(query) ? [beyond] : [],
+      // MEAT and BEYOND are tickers too: "Beyond Meat" read word by word was two other companies.
+      getQuote: async (symbol) => {
+        if (["GME", "AMC", "BYND", "BEYOND", "MEAT"].includes(symbol)) return createTestQuote({ symbol });
+        throw new Error(`Not a ticker: ${symbol}.`);
+      },
+    }),
+  } as unknown as MarketContext;
+  const read = (arg: string) => applyListingArgument(lists, market, parsePaneFunctionArgs(["SIW", arg]));
+  expect((await read("Beyond Meat")).arg).toBe("BYND:NASDAQ");
+  expect((await read("GME AMC")).arg).toBe("GME, AMC");
+  expect(await read("Foo Barbazqux").catch((error: Error & { details?: string }) => `${error.message}\n${error.details}`)).toBe(
+    'No company found for "Foo Barbazqux"; type tickers.\nSuch as gloom fn SIW GME,AMC. Find a company\'s ticker with gloom search "Foo Barbazqux".',
+  );
+  // In a list, a name nothing lists is left out with the same answer, in any script.
+  const partial = await read("任天堂 ソニー, Foo Barbazqux, AMC");
+  expect(partial.arg).toBe("AMC");
+  expect(partial.listingNotes).toContain('No company found for "任天堂 ソニー", "Foo Barbazqux"; type tickers, such as GME,AMC.');
 });

@@ -1,12 +1,14 @@
 import { apiClient } from "../../../api-client";
-import { withCliServices, withConfigData } from "../../../cli/scoped-context";
+import { withCliServices, withConfigData, withMarketData } from "../../../cli/scoped-context";
 import type { CliServicesContext } from "../../../cli/types";
 import { CLI_COMMAND_GROUPS } from "../../../cli/help";
 import { dryRunNote } from "../../../cli/helpers";
 import { requireArg, takeOption } from "../../../cli/commands/command-utils";
 import { EXCHANGE_OPTION, listingReadNotes, requireListingArg } from "../../../cli/listing-arg";
+import { isNotATickerMessage } from "../../../cli/not-a-ticker";
+import { requireQuotedListing } from "../../../cli/quote-answer";
 import { createPluginPersistence } from "../../plugin-persistence";
-import type { CliCommandDef } from "../../../types/plugin";
+import type { BuiltinCliCommandDef } from "../../../cli/command-options";
 import { cliStyles } from "../../../utils/cli-output";
 import { errorMessage } from "../../../utils/errors";
 import { logFailure } from "../../../utils/log-failure";
@@ -15,9 +17,11 @@ import { describeExportSkip, exportNotesToDirectory, type NotesExportSource } fr
 import { NotesFiles } from "./files";
 import { CloudNotesStore } from "./store";
 
-export const notesCliCommand: CliCommandDef = {
+export const notesCliCommand: BuiltinCliCommandDef = {
   name: "notes",
   description: "Read, write, or export ticker notes",
+  // A note's text is saved as typed, and an export's folder is a path; the symbol is read as any other.
+  keepsArgAsTyped: ([action], index) => (action === "set" && index >= 2) || (action === "export" && index >= 1),
   help: {
     group: CLI_COMMAND_GROUPS.portfolios,
     usage: ["notes show <symbol>", "notes set <symbol> <text...>", "notes delete <symbol>", "notes quick list", "notes export [dir]"],
@@ -28,13 +32,43 @@ export const notesCliCommand: CliCommandDef = {
     const args = [...rawArgs];
     const exchange = takeOption(args, "--exchange");
     // A note belongs to one listing: SAN:EPA, or SAN with --exchange EPA.
-    // What a typed listing was read as (7203:TSE as 7203:JPX) is said beside the note.
+    // What a typed listing was read as (7203:TSE as 7203:JPX, Apple as AAPL) is said beside the note.
     let read: { warnings?: string[] } = {};
-    const noteSymbol = async (usage: string) => {
-      const listing = await requireListingArg(requireArg(args[1], usage, ctx), exchange, ctx);
-      const notes = listingReadNotes(listing);
-      if (notes.length > 0) read = { warnings: notes };
-      return listing.key;
+    const said = (warnings: string[]) => {
+      if (warnings.length > 0) read = { warnings };
+    };
+    /**
+     * The file a note of the symbol typed is kept in, the same for show, set
+     * and delete. A note already kept under what was typed is the one, so a
+     * note written before names were read (APPLE.md) or for a symbol that
+     * stopped trading stays reachable. Otherwise the symbol is read as
+     * `quote` reads it (`requireQuotedListing`): a company's name is its
+     * listing (`Apple` is AAPL, under the bare symbol as the app keeps a
+     * ticker it was not given a venue for), and a pair its listing
+     * (USDNGN=X). With `refuse`, a definite "Not a ticker" fails the command
+     * with `quote`'s search hint, so no note is written for a symbol that
+     * does not exist. Any other failure (offline, the data service down, a
+     * symbol with no quote) keeps what was typed, as does `lookUp: false`,
+     * which opens no data source.
+     */
+    const noteSymbol = async (usage: string, notes: NotesFiles, options: { refuse?: boolean; lookUp?: boolean } = {}) => {
+      const raw = requireArg(args[1], usage, ctx);
+      const typed = await requireListingArg(raw, exchange, ctx);
+      const asTyped = () => {
+        said(listingReadNotes(typed));
+        return typed.key;
+      };
+      if ((await notes.load(typed.key).catch(logFailure("notes.cli", "Read the note kept under a typed symbol failed", ""))).trim()) return asTyped();
+      if (options.lookUp === false) return asTyped();
+      try {
+        const quoted = await withMarketData(ctx, (market) => requireQuotedListing(raw, exchange, market, ctx, `notes ${args[0] ?? "show"}`));
+        said(quoted.notes);
+        return typed.exchange ? quoted.listing.key : quoted.listing.symbol;
+      } catch (error) {
+        if (!isNotATickerMessage(errorMessage(error))) logFailure("notes.cli", "Read a note's symbol as quote does failed")(error);
+        else if (options.refuse) throw error;
+        return asTyped();
+      }
     };
     await withConfigData(ctx, async (config) => {
       const notes = new NotesFiles(config.dataDir);
@@ -102,14 +136,15 @@ export const notesCliCommand: CliCommandDef = {
         return;
       }
       if (action === "show") {
-        const symbol = await noteSymbol("Usage: gloom notes show <symbol>");
+        const symbol = await noteSymbol("Usage: gloom notes show <symbol>", notes);
         ctx.printResult({ data: { symbol, text: await notes.load(symbol) }, ...read }, {
           text: (data) => data.text?.trim() ? data.text.trimEnd() : cliStyles.muted(`No note for ${symbol}.`),
         });
         return;
       }
       if (action === "set") {
-        const symbol = await noteSymbol("Usage: gloom notes set <symbol> <text...>");
+        // A dry run looks nothing up: it says the note it would write under the symbol as typed.
+        const symbol = await noteSymbol("Usage: gloom notes set <symbol> <text...>", notes, { refuse: true, lookUp: !ctx.cliOptions.dryRun });
         const text = args.slice(2).join(" ");
         if (!ctx.cliOptions.dryRun) await notes.save(symbol, text);
         ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, symbol, bytes: text.length }, ...read }, {
@@ -118,7 +153,7 @@ export const notesCliCommand: CliCommandDef = {
         return;
       }
       if (action === "delete" || action === "rm") {
-        const symbol = await noteSymbol("Usage: gloom notes delete <symbol>");
+        const symbol = await noteSymbol("Usage: gloom notes delete <symbol>", notes);
         const existed = await notes.load(symbol).then((text) => !!text?.trim(), () => {
           // Intentional ignore: an unreadable note is still deleted, so the message says it existed.
           return true;
