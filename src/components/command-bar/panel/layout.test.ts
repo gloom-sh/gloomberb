@@ -36,7 +36,8 @@ describe("command bar sheet geometry", () => {
    * change there silently narrows every result row.
    */
   test("shares the prompt's left edge and width on every window size", () => {
-    const expectedWidths: Record<number, number> = { 46: 40, 80: 49, 120: 63, 200: 96 };
+    // At 120 columns the full countdown gives way to the state and quote tier.
+    const expectedWidths: Record<number, number> = { 46: 40, 80: 49, 120: 74, 200: 96 };
     for (const termWidth of [46, 80, 120, 200]) {
       const layout = resolveCommandBarPanelLayout({ ...BASE, termHeight: 40, termWidth });
       const prompt = resolveHeaderPromptGeometry({ termWidth });
