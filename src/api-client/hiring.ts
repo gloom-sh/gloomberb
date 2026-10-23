@@ -236,8 +236,8 @@ export type HiringSignalKind = "new_country" | "new_city" | "location_spike" | "
 export type HiringSignalsFilter = "all" | HiringSignalKind
 /** Why a company's week gives no signal at all. */
 export type HiringSignalHold = "unmeasured" | "short_watch" | "recounted"
-/** Why a kind was not looked for at a company, or a first was dropped. */
-export type HiringSignalSkip = "thin_history" | "unplaced_history" | "unplaced_cities" | "unclassified_history" | "reformatted" | "posted_before_watch"
+/** Why a kind was not looked for at a company, or a first or a spike was dropped. */
+export type HiringSignalSkip = "thin_history" | "unplaced_history" | "unplaced_cities" | "unclassified_history" | "reformatted" | "posted_before_watch" | "similar_city" | "one_day"
 /** A spike shown last: a seldom-read board, or a week Moves flagged. */
 export type HiringSignalFlag = "few_reads" | "one_day_batch"
 

@@ -101,10 +101,10 @@ test("the Expansion board opens a company on its own Expansion tab", async () =>
     return Response.json({ error: "not in this test" }, { status: 404 });
   });
   await mount("expansion", () => {}, false, { symbol: null, settings: { expansionSnapshot: realExpansion } });
-  expect(await tui.waitForFrameToContain("Mexico")).toContain("Never means");
+  expect(await tui.waitForFrameToContain("Mexico")).toContain("First seen since");
   await tui.emitKeypress({ name: "return" });
   const frame = await tui.waitForFrameToContain("2026-10-12");
   expect(frame).toContain("New country");
-  expect(frame).toContain("since Sep 18");
+  expect(frame).toContain("Sep 18");
   expect(requests.some((url) => url.includes("/cloud/hiring/signals/company/JBHT"))).toBe(true);
 });

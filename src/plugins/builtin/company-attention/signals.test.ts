@@ -36,17 +36,17 @@ test("the Expansion board lists firsts with how far back never goes, and leaves 
   expect(board.rows[0]!.values).toMatchObject({ symbol: "JBHT", kind: "New country", label: "Mexico", country: "MX", newRoles: 7, titles: 6, prior: 703, since: "Sep 18" });
   expect(board.rows.map((row) => row.values.kind)).toEqual([...Array(8).fill("New country"), ...Array(8).fill("New city")]);
   expect(board.columns.map((column) => column.id)).toEqual(["symbol", "name", "kind", "label", "newRoles", "titles", "prior", "since", "title"]);
-  expect(model.figures.map((figure) => [figure.label, figure.value])).toEqual([["New countries", "8"], ["New cities", "26"], ["Measured", "1,618"], ["Never means", "since Sep 17"], ["Held", "508"]]);
+  expect(model.figures.map((figure) => [figure.label, figure.value])).toEqual([["New countries", "8"], ["New cities", "26"], ["Measured", "1,618"], ["First seen since", "Sep 17"], ["Held", "508"]]);
   expect(signalsBoardModel({ ...expansion(), signals: [], total: 0, filter: "new_city" }, "new_city").sections.board!.empty).toBe("None of this kind this week.");
   expect(signalsBoardModel({ ...expansion(), week: null, signals: [] }, "all").sections.board!.empty).toBe("No week has been computed yet.");
 });
 
 test("a first's detail says why and gives every number behind it", () => {
   const signal = jbht().signals[0]!;
-  expect(signal.why).toContain("its first there: none of the 703 postings");
+  expect(signal.why).toContain("the first seen there since Sep 18, 2026: none of the 703 postings");
   expect(signalFacts(signal)).toEqual(expect.arrayContaining([
     { label: "New roles", value: "7 under 6 titles, week of Oct 12, 2026" },
-    { label: "Never before", value: "since Sep 18, 2026, 703 earlier postings (98% placed)" },
+    { label: "First seen since", value: "Sep 18, 2026, none of 703 earlier postings (98% placed)" },
     { label: "Cities", value: "Querétaro, MX (7)" },
   ]));
   expect(signalFacts(signal).some((fact) => fact.label === "Average before")).toBe(false);
@@ -99,7 +99,10 @@ test("a free company read counts what each tab holds back, and a held week says 
   expect(held.held).toBe("Postings well above its new roles (re-listed roles)");
   expect(held.sections.signals!.empty).toBe("No signal this week: postings well above its new roles (re-listed roles).");
   const skipped = companySignalsModel({ ...stt(), signals: [], skipped: ["thin_history", "posted_before_watch"] }, "expansion");
-  expect(skipped.figures.at(-1)).toMatchObject({ label: "Not looked for", value: "Under 30 earlier postings, Roles dated before its first read" });
+  expect(skipped.figures.at(-1)).toMatchObject({ label: "Not looked for", value: "Under 6 weeks of reads or 100 earlier postings, Roles dated before its first read" });
+  // A spelling of a known city and a one-day batch say so.
+  const dropped = companySignalsModel({ ...stt(), signals: [], skipped: ["similar_city", "one_day"] }, "anomalies");
+  expect(dropped.figures.at(-1)).toMatchObject({ label: "Not looked for", value: "A new city named like a known one, A spike mostly posted on one day" });
 });
 
 test("a free board is the group's first three whatever kind was asked, and says so", () => {

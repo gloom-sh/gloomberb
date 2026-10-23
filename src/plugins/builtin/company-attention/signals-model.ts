@@ -9,8 +9,8 @@ import type { AttentionRow } from "./model";
  * HIRE's Expansion and Anomalies tabs (docs/hiring-app-attention.md):
  * a company's first roles in a country or city, one place or role family far
  * above its own weeks, and role families it never posted, in the latest
- * complete week. "Never" goes back to the company's first read, and every
- * row says since when.
+ * complete week. "Never" goes back to the company's first read: a first is
+ * the first seen since then, never the first ever, and every row says since when.
  */
 export type SignalsView = "signals" | "postings";
 export const SIGNALS_VIEWS: ReadonlyArray<{ value: SignalsView; label: string }> = [{ value: "signals", label: "Signals" }, { value: "postings", label: "Postings" }];
@@ -34,12 +34,14 @@ const HOLD_LABELS: Record<HiringSignalHold, string> = {
   recounted: "Postings well above its new roles (re-listed roles)",
 };
 const SKIP_LABELS: Record<HiringSignalSkip, string> = {
-  thin_history: "Under 30 earlier postings",
-  unplaced_history: "Earlier postings mostly unplaced",
-  unplaced_cities: "Earlier postings mostly without a city",
-  unclassified_history: "Earlier postings mostly without a role family",
+  thin_history: "Under 6 weeks of reads or 100 earlier postings",
+  unplaced_history: "Under 90% of earlier postings placed",
+  unplaced_cities: "Under 90% of earlier postings naming a city",
+  unclassified_history: "Under 90% of earlier postings with a role family",
   reformatted: "Its boards wrote their places anew",
   posted_before_watch: "Roles dated before its first read",
+  similar_city: "A new city named like a known one",
+  one_day: "A spike mostly posted on one day",
 };
 const kindText = (kind: HiringSignalKind) => KIND_LABELS[kind] ?? humanLabel(kind);
 const flagText = (signal: Pick<HiringWeekSignal, "flags">) => signal.flags.map((flag) => FLAG_LABELS[flag] ?? humanLabel(flag)).join(", ") || null;
@@ -69,10 +71,10 @@ export function signalsNumber(columnId: string, value: number): string {
   return count(value);
 }
 
-/** How far back "never" goes for this company: "since Sep 17, 2026, 703 earlier postings (98% placed)". */
+/** How far back "never" goes for this company: "Sep 17, 2026, none of 703 earlier postings (98% placed)". */
 function neverText(signal: HiringWeekSignal): string {
   const what = signal.dimension === "function" ? "with a role family" : signal.dimension === "city" ? "naming a city" : "placed";
-  return `since ${dayLabel(signal.history.watchedSince, true)}, ${count(signal.history.priorPostings)} earlier postings (${percent(signal.history.priorShare)} ${what})`;
+  return `${dayLabel(signal.history.watchedSince, true)}, none of ${count(signal.history.priorPostings)} earlier postings (${percent(signal.history.priorShare)} ${what})`;
 }
 
 /** A signal's numbers, as its detail lists them with the sentence that says why. */
@@ -82,7 +84,7 @@ export function signalFacts(signal: HiringWeekSignal): Array<{ label: string; va
     { label: "Signal", value: kindText(signal.kind) },
     { label: signal.dimension === "function" ? "Role family" : signal.dimension === "city" ? "City" : "Country", value: signal.label },
     { label: "New roles", value: `${count(signal.newRoles)} under ${countOf(signal.titles, "title")}, week of ${dayLabel(signal.week, true)}` },
-    ...(isFirst(signal) ? [{ label: "Never before", value: neverText(signal) }] : []),
+    ...(isFirst(signal) ? [{ label: "First seen since", value: neverText(signal) }] : []),
     ...(baseline ? [
       { label: "Average before", value: `${average(baseline.mean)} a week over ${countOf(baseline.weeks, "measured week")}${baseline.values.length ? `: ${baseline.values.map((row) => count(row.newRoles)).join(", ")}` : ""}` },
       { label: "Pace", value: `${pace(signal.ratio)} its average${signal.zScore == null ? "" : `, z ${signed(signal.zScore, 1)}`}` },
@@ -149,7 +151,7 @@ function boardFigures(board: HiringSignalsBoard): StatItem[] {
     ...own,
     { label: "Measured", value: count(coverage.measured), detail: `week of ${dayLabel(board.week)}`, detailVariants: [`wk ${dayLabel(board.week)}`, ""] },
     // How far back "never" goes: the first reads of the companies measured.
-    ...(board.group === "expansion" || coverage.watchedFrom ? [{ label: "Never means", value: `since ${dayLabel(coverage.watchedFrom)}`, detail: "first reads", detailVariants: [""] }] : []),
+    ...(board.group === "expansion" || coverage.watchedFrom ? [{ label: "First seen since", value: dayLabel(coverage.watchedFrom), detail: "first reads", detailVariants: [""] }] : []),
     { label: "Held", value: count(held), detail: "week not comparable", detailVariants: [""] },
   ] : [];
 }
@@ -188,7 +190,7 @@ export function companySignalsModel(data: HiringCompanySignals, group: HiringSig
   const figures: StatItem[] = data.week ? [
     { label: "Signals", value: count(current.length), detail: `week of ${dayLabel(data.week)}`, detailVariants: [`wk ${dayLabel(data.week)}`, ""] },
     ...(data.preview && lockedRows ? [{ label: "In Pro", value: count(lockedRows), detail: "this week and earlier", detailVariants: [""] }] : []),
-    ...(data.watchedSince ? [{ label: "Never means", value: `since ${dayLabel(data.watchedSince)}`, detail: "its first read", detailVariants: [""] }] : []),
+    ...(data.watchedSince ? [{ label: "First seen since", value: dayLabel(data.watchedSince), detail: "its first read", detailVariants: [""] }] : []),
     ...(held ? [{ label: "No signal", value: held, wide: true }] : data.skipped.length ? [{ label: "Not looked for", value: skipText(data.skipped), wide: true }] : []),
   ] : [];
   const empty = held ? `No signal this week: ${held.toLowerCase()}.` : lockedRows ? `This company's ${group === "expansion" ? "expansion" : "anomaly"} signals are in Pro.`
