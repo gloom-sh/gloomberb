@@ -499,12 +499,17 @@ describe("CLI search helpers", () => {
     expect(candidates.filter((candidate) => candidate.category === "Primary Listing")).toHaveLength(1);
     expect(candidates.find((candidate) => candidate.label === "LUFTH")?.category).toBe("Other Listings");
 
-    // A line that is already the most searched of its company stays, whatever else lists.
-    const scored = await searchCandidatesForCli({ query: "deutsche bank", tickers: [], dataProvider: createTestDataProvider({ search: async () => [
+    // A line that is already the most searched of its company stays, unless the service marks another as its home.
+    const deutsche = [
       line("DB", "NYSE", "Deutsche Bank AG", { currency: "USD", popularity: 21718 }),
       line("DBK", "XETRA", "Deutsche Bank AG", { popularity: 20718 }),
-    ] }) });
+    ];
+    const scored = await searchCandidatesForCli({ query: "deutsche bank", tickers: [], dataProvider: createTestDataProvider({ search: async () => deutsche }) });
     expect(scored[0]).toMatchObject({ label: "DB", category: "Primary Listing" });
+    const marked = await searchCandidatesForCli({ query: "deutsche bank", tickers: [], dataProvider: createTestDataProvider({
+      search: async () => deutsche.map((row) => row.symbol === "DBK" ? { ...row, homeListing: true } : row),
+    }) });
+    expect(marked[0]).toMatchObject({ label: "DBK", category: "Primary Listing", result: { exchange: "XETRA" } });
   });
 
   test("renders an empty state when no search results match", () => {

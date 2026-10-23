@@ -277,12 +277,15 @@ function searchableChartSeriesManifests(invoker: CapabilityInvoker) {
   return chartSeriesCapabilityManifests(invoker).filter((manifest) => manifest.sourceId !== REGISTERED_SERIES_SOURCE_ID);
 }
 
-export async function searchChartSeriesCapabilities(
+type CatalogSuggestion = ChartSeriesCatalogItem & { capabilityId: string; capabilityName: string };
+
+/** Partial search results retain failures for the shared picker error state. */
+export async function searchChartSeriesCatalogs(
   invoker: CapabilityInvoker,
   query: string,
   limit = 8,
   signal?: AbortSignal,
-): Promise<Array<ChartSeriesCatalogItem & { capabilityId: string; capabilityName: string }>> {
+): Promise<{ items: CatalogSuggestion[]; errors: string[] }> {
   const manifests = searchableChartSeriesManifests(invoker);
   const results = await Promise.allSettled(manifests.map(async (manifest) => {
     const items = await invoker.invokeCapability<ChartSeriesCatalogItem[]>(
@@ -298,15 +301,27 @@ export async function searchChartSeriesCapabilities(
     }));
   }));
   if (signal?.aborted) throw signal.reason ?? new DOMException("Aborted", "AbortError");
+  const errors: string[] = [];
   for (const [index, result] of results.entries()) {
     if (result.status === "rejected") {
+      errors.push(`${manifests[index]!.name} search unavailable.`);
       chartSeriesLog.warn("Chart series provider catalog failed", {
         capabilityId: manifests[index]?.id,
         error: result.reason instanceof Error ? result.reason.message : String(result.reason),
       });
     }
   }
-  return results.flatMap((result) => result.status === "fulfilled" ? result.value : []).slice(0, limit);
+  return { items: results.flatMap((result) => result.status === "fulfilled" ? result.value : []).slice(0, limit), errors };
+}
+
+/** The public list-only API keeps its existing partial-results contract. */
+export async function searchChartSeriesCapabilities(
+  invoker: CapabilityInvoker,
+  query: string,
+  limit = 8,
+  signal?: AbortSignal,
+): Promise<CatalogSuggestion[]> {
+  return (await searchChartSeriesCatalogs(invoker, query, limit, signal)).items;
 }
 
 export function chartSeriesSourceKey(

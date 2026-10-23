@@ -442,7 +442,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: [],
   },
   ATS: {
-    summary: "The short interest pane on Weekly ATS/OTC: ATS and non-ATS off-exchange shares and trades. ATS / OTC % is ATS shares divided by published off-exchange shares, not total market volume or short volume.",
+    summary: "The short interest pane on Weekly ATS/OTC: ATS and non-ATS off-exchange shares and trades. ATS % is ATS shares divided by published off-exchange shares, not total market volume or short volume.",
     usage: ["ATS AAPL"],
     keys: [key("v", "iew"), OPEN, OPEN_SOURCE],
     data: same("Weekly with FINRA's publication delay"),

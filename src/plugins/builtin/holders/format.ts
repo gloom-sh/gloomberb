@@ -1,19 +1,14 @@
 import type { HolderData, HolderRecord } from "../../../types/financials";
-import { formatCompact, formatPercent, formatPercentRaw } from "../../../utils/format";
+import { formatCompact, MISSING_VALUE } from "../../../utils/format";
 import type { HolderRow } from "./types";
 
 export function formatMoneyCompact(value: number | undefined, currency = "USD"): string {
-  if (value == null) return "-";
+  if (value == null) return MISSING_VALUE;
   if (currency === "USD") {
     const sign = value < 0 ? "-" : "";
     return `${sign}$${formatCompact(Math.abs(value))}`;
   }
   return `${formatCompact(value)} ${currency}`;
-}
-
-export function formatMaybePercent(value: number | undefined): string {
-  if (value == null) return "-";
-  return Math.abs(value) <= 1 ? formatPercent(value) : formatPercentRaw(value);
 }
 
 /**
@@ -51,21 +46,37 @@ export function resolveHolderOwnershipPercent(row: Pick<HolderRecord, "percentHe
 }
 
 /**
- * A stake or a change in percent (0.59 for 0.59%), as reports carry it. A
- * source gives a fraction (0.0059) or, above 1, percent points; the pane reads
- * them the same way. Six significant digits drop a source's float noise.
+ * A holder's stake or quarter's change in percent, as the reports carry it.
+ * Every holder record gives both as a fraction: 0.0059 is a 0.59% stake,
+ * 1.086 a position that grew 108.6%, -0.6 one that fell 60%. Six significant
+ * digits drop a source's float noise.
  */
-export function holderPercent(value: number | null | undefined): number | null {
-  if (value == null || !Number.isFinite(value)) return null;
-  const percent = Math.abs(value) <= 1 ? value * 100 : value;
-  return Number(percent.toPrecision(6));
+export function holderPercent(fraction: number | null | undefined): number | null {
+  if (fraction == null || !Number.isFinite(fraction)) return null;
+  return Number((fraction * 100).toPrecision(6));
 }
 
 /** A stake in percent too small for two decimals reads "<0.01%", not a zero. */
 export function formatPercentHeld(percent: number | null | undefined): string {
-  if (percent == null) return "-";
+  if (percent == null) return MISSING_VALUE;
   if (percent > 0 && percent < 0.005) return "<0.01%";
   return `${percent.toFixed(2)}%`;
+}
+
+/**
+ * A change in percent, signed, to two decimals; from 1000% on to none, so a
+ * position that grew tenfold still fits its column.
+ */
+export function formatChangePercent(percent: number | null | undefined): string {
+  if (percent == null || !Number.isFinite(percent)) return MISSING_VALUE;
+  const fixed = Math.abs(percent).toFixed(Math.abs(percent) >= 1000 ? 0 : 2);
+  if (!/[1-9]/.test(fixed)) return `${fixed}%`;
+  return `${percent > 0 ? "+" : "-"}${fixed}%`;
+}
+
+/** A holder record's quarter's change, a fraction, as the pane shows it. */
+export function formatHolderChangePercent(fraction: number | null | undefined): string {
+  return formatChangePercent(holderPercent(fraction));
 }
 
 /** A stake too small for two decimals reads "<0.01%", not a zero. */
@@ -79,11 +90,11 @@ export function formatHolderOwnershipLine(row: HolderRow, marketCap: number | un
 }
 
 export function formatSignedCompact(value: number | undefined): string {
-  if (value == null) return "-";
+  if (value == null) return MISSING_VALUE;
   const sign = value > 0 ? "+" : "";
   return `${sign}${formatCompact(value)}`;
 }
 
 export function displayDate(value: string | undefined): string {
-  return value?.slice(0, 10) ?? "-";
+  return value?.slice(0, 10) ?? MISSING_VALUE;
 }

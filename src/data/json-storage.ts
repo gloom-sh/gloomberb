@@ -52,4 +52,6 @@ export const BROWSER_STORAGE_KEYS = {
   session: "gloomberb.web.session.v1",
   /** Broker account snapshots; other caches stay in memory. */
   resources: "gloomberb.web.resources.v1",
+  /** The layout the page draws before its script loads (renderers/dom/boot-frame.ts). */
+  bootFrame: "gloomberb.web.boot-frame.v1",
 } as const;

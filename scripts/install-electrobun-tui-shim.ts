@@ -260,12 +260,16 @@ for (const bundlePath of bundleCandidates(os)) {
   rmSync(tuiBundleDir, { recursive: true, force: true });
   mkdirSync(tuiBundleDir, { recursive: true });
 
+  // Production React and JSX, as the standalone binary ships (see build.ts
+  // for why it takes `--production` rather than NODE_ENV): the development
+  // build is twice the size and every launch of the desktop CLI paid to load it.
   const build = Bun.spawnSync({
     cmd: [
       process.execPath,
       "build",
       join(process.cwd(), "src", "renderers", "electrobun", "bun", "tui-entry.ts"),
       "--target=bun",
+      "--production",
       `--outdir=${tuiBundleDir}`,
       ...OPEN_TUI_NATIVE_PACKAGES.map((packageName) => `--external=${packageName}`),
     ],

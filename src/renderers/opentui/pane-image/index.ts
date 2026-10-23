@@ -1,5 +1,4 @@
 import type { CliRenderer } from "@opentui/core";
-import { Jimp } from "jimp";
 import type { NativeSurfaceManager } from "../../../components/chart/native/surface/manager";
 import type { CellRect } from "../../../components/chart/native/chart-rasterizer";
 import { intersectCellRects } from "../../../components/chart/native/chart-rasterizer";
@@ -95,6 +94,8 @@ export async function captureTerminalPaneImage(
   const base = hexRgb(background);
   const layers = imageLayers(manager, clipRect(rect, renderer.currentRenderBuffer.width, renderer.currentRenderBuffer.height)!);
   const image = rasterizeFrame(frame, layers, base);
+  // Loaded on the first capture rather than with the terminal.
+  const { Jimp } = await import("jimp");
   const jimp = new Jimp({ width: image.width, height: image.height, data: Buffer.from(image.pixels.buffer, image.pixels.byteOffset, image.pixels.byteLength) });
   const png = await jimp.getBuffer("image/png");
   return {

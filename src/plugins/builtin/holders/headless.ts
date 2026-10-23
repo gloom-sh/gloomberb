@@ -108,7 +108,7 @@ export function createHoldersHeadless(
         key: "limit",
         shot: REPORT_ROWS,
         aliases: ["count", "rows"],
-        description: "Maximum holder rows.",
+        description: "Maximum holder rows. 13F holders stop at the source's 10 largest (fn 13F lists every filer); 13D/13G owners go up to 200.",
         type: "integer",
         defaultValue: 25,
         minimum: 1,

@@ -16,9 +16,9 @@ describe("ERN pane scope", () => {
     const context = { activeCollectionId: "main" } as unknown as PaneTemplateContext;
 
     const scoped = await template?.createInstance?.(context, { arg: "nke, msft" });
-    expect(scopedSymbolsFromSettings(scoped?.settings)).toEqual(["NKE", "MSFT"]);
+    expect(scopedSymbolsFromSettings(scoped?.settings).symbols).toEqual(["NKE", "MSFT"]);
 
     const unscoped = await template?.createInstance?.(context, undefined);
-    expect(scopedSymbolsFromSettings(unscoped?.settings)).toEqual([]);
+    expect(scopedSymbolsFromSettings(unscoped?.settings).symbols).toEqual([]);
   });
 });

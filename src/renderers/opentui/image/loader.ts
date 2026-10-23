@@ -1,4 +1,3 @@
-import { Jimp } from "jimp";
 import type { NativeChartBitmap } from "../../../components/chart/native/chart-rasterizer";
 
 type ImageObjectFit = "contain" | "cover";
@@ -67,7 +66,9 @@ function loadSourceImage(src: string): Promise<JimpImageLike> {
   if (cached) return cached;
 
   const promise = fetchImageBytes(src)
-    .then((bytes) => Jimp.read(bytes))
+    // Loaded with the first image: the decoder is a large part of what the
+    // terminal would otherwise load before it draws anything.
+    .then(async (bytes) => (await import("jimp")).Jimp.read(bytes))
     .then(adaptJimpImage)
     .catch((error) => {
       sourceImageCache.delete(src);

@@ -12,7 +12,7 @@ import { chartQuoteOverrideKeyForSource } from "./live-quotes";
 import { resolveChartSpecData } from "./resolve";
 import { ChartResolveCache } from "./resolve-context";
 import { seedChartResolutionResult } from "./chart-seed";
-import { mergePriceHistoryWindows } from "./history-acquisition";
+import { mergePriceHistoryWindows, priceHistoryWindowsAgree } from "./history-acquisition";
 import { CHART_SPEC_VERSION, type ChartSeriesSpec, type ChartSpec } from "./types";
 
 function chartSeries(input: Pick<ChartSeriesSpec, "source"> & Partial<ChartSeriesSpec>): ChartSeriesSpec {
@@ -2723,7 +2723,8 @@ describe("mergePriceHistoryWindows", () => {
     ];
     const incoming = [
       point("2026-07-27T22:00:00Z", 111),
-      point("2026-07-29T13:30:00Z", 999),
+      // A revision of the session, not a close on another split basis (priceHistoryWindowsAgree).
+      point("2026-07-29T13:30:00Z", 117),
       point("2026-07-29T22:00:00Z", 121),
     ];
 
@@ -2734,6 +2735,20 @@ describe("mergePriceHistoryWindows", () => {
         );
       }
     }
+  });
+
+  test("a window on another split basis is dropped, not merged into the new one", () => {
+    // NRDY around its 1-for-15 reverse split of 19 Aug 2026: a window acquired the evening
+    // before, and the next day's tail with the same session on the new basis.
+    const point = (date: string, close: number) => ({ date: new Date(date), close });
+    const before = [point("2026-08-14T00:00:00Z", 0.7071), point("2026-08-17T00:00:00Z", 0.6855), point("2026-08-18T00:00:00Z", 0.6539)];
+    const after = [point("2026-08-18T04:00:00Z", 9.809), point("2026-08-19T04:00:00Z", 10.1)];
+    expect(priceHistoryWindowsAgree(before, after, "1d")).toBe(false);
+    expect(mergePriceHistoryWindows(before, after, "1d").map((bar) => bar.close)).toEqual([9.809, 10.1]);
+    // A revised close, or windows that share no session, merge as before.
+    const revised = [point("2026-08-18T00:00:00Z", 0.66), point("2026-08-19T00:00:00Z", 0.67)];
+    expect(mergePriceHistoryWindows(before, revised, "1d").map((bar) => bar.close)).toEqual([0.7071, 0.6855, 0.66, 0.67]);
+    expect(priceHistoryWindowsAgree(before, [point("2026-08-20T00:00:00Z", 9.94)], "1d")).toBe(true);
   });
 });
 

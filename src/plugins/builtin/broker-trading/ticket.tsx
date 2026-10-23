@@ -6,6 +6,7 @@ import { useShortcut } from "../../../react/input";
 import { afterLayout, revealInScrollBox } from "../../../components/ui/reveal-in-scroll-box";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { Quote } from "../../../types/financials";
+import { quoteAgeText } from "../../../market-data/quotes/freshness";
 import { formatPercentRaw } from "../../../utils/format";
 import type { BrokerAccount, BrokerOrder, BrokerOrderPreview, BrokerOrderRequest, BrokerTradingCapabilities } from "../../../types/trading";
 import { Box, ScrollBox, Text, TextAttributes, useUiCapabilities, type BoxRenderable, type ScrollBoxRenderable } from "../../../ui";
@@ -72,10 +73,7 @@ function orderTerms(order: Pick<BrokerOrder, "orderType" | "limitPrice" | "stopP
 }
 
 export function ticketQuoteAge(quote: Quote | undefined, now = Date.now()): string {
-  const at = quote?.lastTradeTime ?? quote?.lastUpdated;
-  if (!at || at > now) return "Age unknown";
-  const seconds = Math.max(0, Math.floor((now - at) / 1000));
-  return seconds < 60 ? `${seconds}s old` : seconds < 3600 ? `${Math.floor(seconds / 60)}m old` : `${Math.floor(seconds / 3600)}h ${Math.floor(seconds % 3600 / 60)}m old`;
+  return quoteAgeText(quote?.lastTradeTime ?? quote?.lastUpdated, now);
 }
 /** The decimals a price step needs: 0.01 and 0.05 take two, 0.0001 four. Never fewer than two. */
 function stepDecimals(step: number): number {

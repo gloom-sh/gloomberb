@@ -45,7 +45,9 @@ type PriceHistoryCachePolicyKey = Extract<
 >;
 // Bumped instead of adding markers: every older record is a miss and refetches.
 // Refetch source/session metadata under the current public backend contract.
-const PRICE_HISTORY_CACHE_VERSION = 7;
+// 8: copies saved while Gloom Cloud could serve bars on two split bases (NRDY
+// after its 1-for-15 reverse split of 19 Aug 2026) are not shown again.
+const PRICE_HISTORY_CACHE_VERSION = 8;
 interface HistoryRequestDescriptor {
   target: { symbol: string; exchange: string };
   identity: RouterRequestIdentity;

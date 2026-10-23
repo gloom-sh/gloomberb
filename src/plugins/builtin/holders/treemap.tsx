@@ -2,8 +2,8 @@ import { useMemo } from "react";
 import { MetricTreemapSurface, type MetricTreemapItem } from "../../../components/metric-treemap";
 import { formatCompact } from "../../../utils/format";
 import {
+  formatHolderChangePercent,
   formatHolderOwnershipLine,
-  formatMaybePercent,
   formatMoneyCompact,
 } from "./format";
 import type { HolderRow } from "./types";
@@ -22,7 +22,7 @@ export function HoldersTreemap({ rows, width, height, selectedId, onSelect, onAc
 }) {
   const items = useMemo<Array<MetricTreemapItem<HolderRow>>>(() => rows.map((row) => {
     const ownership = formatHolderOwnershipLine(row, marketCap);
-    const change = row.changePercent != null ? formatMaybePercent(row.changePercent) : "No change";
+    const change = row.changePercent != null ? formatHolderChangePercent(row.changePercent) : "No change";
     return {
       id: row.id,
       label: row.name,

@@ -105,6 +105,77 @@ async function resolveDesktopDataDir(): Promise<string> {
   return dataDir;
 }
 
+/** The launch work, in order. Injected so a test can watch the order without a data folder. */
+export interface DesktopLaunchSteps {
+  readConfig(): Promise<AppConfig>;
+  /** Installs plugins that moved into their own repositories; returns the seed record to merge. */
+  restorePlugins(): Promise<Partial<AppConfig> | null>;
+  startServices(config: AppConfig): Promise<unknown>;
+  /** Starts compiling the plugins for the view; not awaited. */
+  prefetchPluginBundles(): void;
+}
+
+function desktopLaunchSteps(backend: DesktopBackend): DesktopLaunchSteps {
+  return {
+    readConfig: async () => initDataDir(await resolveDesktopDataDir()),
+    // Restore plugins that moved into their own repositories before the
+    // catalog is read, the same as the terminal does at startup. Without it a
+    // desktop-only user silently loses a feature the day it is extracted,
+    // since nothing else installs it for them.
+    restorePlugins: restoreExtractedPlugins,
+    startServices: (config) => backend.startServices(config),
+    prefetchPluginBundles: () => backend.prefetchExternalPluginBundles(),
+  };
+}
+
+const launches = new WeakMap<object, Promise<void>>();
+
+/**
+ * Opens the data folder and starts the services every window shares: the
+ * config, restored plugins, and every plugin registered. That takes most of
+ * a second, and it used to wait for the view to load its bundle and ask for
+ * `init`. Started when the process starts, it runs while the window opens
+ * and the view loads, and `init` finds it done or nearly so. The plugins the
+ * view runs then start compiling, still before the view asks for them, and
+ * after the services imported them, so two loads never link one plugin at once.
+ *
+ * Callers share a run in flight. With the services up it does nothing; after
+ * they were torn down (all data reset) or a run failed, it starts over.
+ */
+export function startDesktopBackend(
+  backend: DesktopBackend,
+  steps: DesktopLaunchSteps = desktopLaunchSteps(backend),
+): Promise<void> {
+  const running = launches.get(backend);
+  if (running) return running;
+  if (backend.config && backend.services) return Promise.resolve();
+  const launch = (async () => {
+    const initialConfig = await steps.readConfig();
+    const seed = await steps.restorePlugins();
+    await steps.startServices(seed ? { ...initialConfig, ...seed } : initialConfig);
+    steps.prefetchPluginBundles();
+  })();
+  launches.set(backend, launch);
+  const settled = () => {
+    if (launches.get(backend) === launch) launches.delete(backend);
+  };
+  // The caller that awaits the launch reports a failure; this only lets the next one start over.
+  launch.then(settled, settled);
+  return launch;
+}
+
+/**
+ * Waits for a launch in flight, and starts none: for a request that wants
+ * what the launch makes but must not start the services itself. Only `init`
+ * (and the process start) launches, so services torn down by a config import
+ * or a reset are not brought up twice. Settles either way; a failed launch
+ * is for `init` to report.
+ */
+export function joinDesktopBackendLaunch(backend: DesktopBackend): Promise<void> {
+  const running = launches.get(backend);
+  return running ? running.then(() => {}, () => {}) : Promise.resolve();
+}
+
 export async function initializeDesktopBackend(
   backend: DesktopBackend,
   rpc: DesktopRpc,
@@ -114,22 +185,12 @@ export async function initializeDesktopBackend(
   backend.rpcs.markWindowRpcReady(rpc);
   backend.stateBroadcaster.forgetWindowState(rpc);
 
-  const currentConfig = backend.config;
-  const currentServices = backend.services;
-  if (currentConfig && currentServices) {
-    if (!backend.workspace) {
-      backend.workspace = createDesktopWorkspace(currentConfig, backend.getSessionSnapshot());
-      backend.detachedWindows.reconcile();
-    }
-    return buildInitializationPayload(backend, currentConfig, currentServices, windowTarget);
+  await startDesktopBackend(backend);
+  const config = backend.requireConfig();
+  const services = backend.requireServices();
+  if (!backend.workspace) {
+    backend.workspace = createDesktopWorkspace(config, backend.getSessionSnapshot());
+    backend.detachedWindows.reconcile();
   }
-
-  const initialConfig = await initDataDir(await resolveDesktopDataDir());
-  // Restore plugins that moved into their own repositories before the catalog
-  // is read, the same as the terminal does at startup. Without it a
-  // desktop-only user silently loses a feature the day it is extracted, since
-  // nothing else installs it for them.
-  const seed = await restoreExtractedPlugins();
-  const { config, services } = await backend.startServices(seed ? { ...initialConfig, ...seed } : initialConfig);
   return buildInitializationPayload(backend, config, services, windowTarget);
 }

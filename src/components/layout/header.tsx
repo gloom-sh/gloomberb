@@ -790,14 +790,14 @@ function HeaderMarketSummary({ nativePaneChrome, width }: { nativePaneChrome: bo
   return (
     <>
       {fit.showState && marketLabel ? (
-        <Box paddingRight={1} flexShrink={0}>
+        <Box paddingRight={1} flexShrink={0} data-gloom-role="header-market">
           <Text fg={summary.marketColor} {...(nativePaneChrome ? { attributes: TextAttributes.BOLD } : {})}>
             {marketLabel}
           </Text>
         </Box>
       ) : null}
       {fit.showSpy ? (
-        <Box paddingRight={1} flexShrink={0}>
+        <Box paddingRight={1} flexShrink={0} data-gloom-role="header-market">
           <Text fg={summary.spyColor}>{summary.spyText}</Text>
         </Box>
       ) : null}

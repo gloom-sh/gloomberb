@@ -53,11 +53,16 @@ function surfaceSunkenColour(palette: Palette): string {
   return palette.bg;
 }
 
+/** A row or control under the pointer: halfway from the background to the selection. */
+export function hoverColour(palette: Palette): string {
+  return blendHex(palette.bg, palette.selected, 0.5);
+}
+
 /**
  * The colour roles the palette names indirectly, as `--gloom-*` variables:
  * styles.css and inline styles read these, never a blend of their own.
  */
-export function roleColours(palette: Palette): Array<[string, string]> {
+function roleColours(palette: Palette): Array<[string, string]> {
   return [
     ["--gloom-surface-raised", surfaceRaisedColour(palette)],
     ["--gloom-surface-sunken", surfaceSunkenColour(palette)],
@@ -67,5 +72,36 @@ export function roleColours(palette: Palette): Array<[string, string]> {
     ["--gloom-link-hover", palette.textBright],
     ["--gloom-error", palette.negative],
     ["--gloom-locked", palette.textDim],
+  ];
+}
+
+/** The palette entries styles.css reads as they are. */
+const PALETTE_VARIABLES: Array<[keyof Palette, string]> = [
+  ["bg", "--gloom-bg"],
+  ["panel", "--gloom-panel"],
+  ["border", "--gloom-border"],
+  ["borderFocused", "--gloom-border-focused"],
+  ["text", "--gloom-text"],
+  ["textDim", "--gloom-text-dim"],
+  ["textBright", "--gloom-text-bright"],
+  ["textMuted", "--gloom-text-muted"],
+  ["positive", "--gloom-positive"],
+  ["negative", "--gloom-negative"],
+  ["neutral", "--gloom-neutral"],
+  ["warning", "--gloom-warning"],
+  ["header", "--gloom-header"],
+  ["headerText", "--gloom-header-text"],
+  ["selected", "--gloom-selected"],
+  ["selectedText", "--gloom-selected-text"],
+  ["commandBg", "--gloom-command-bg"],
+  ["commandBorder", "--gloom-command-border"],
+];
+
+/** Every custom property a theme sets on the document root, which the desktop and web stylesheet draws with. */
+export function themeCssVariables(palette: Palette): Array<[string, string]> {
+  return [
+    ...PALETTE_VARIABLES.map(([key, name]): [string, string] => [name, palette[key]]),
+    ["--gloom-hover-bg", hoverColour(palette)],
+    ...roleColours(palette),
   ];
 }

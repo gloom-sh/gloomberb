@@ -7,7 +7,7 @@ import type { TickerFinancials } from "../types/financials";
 import { getPricePointTimestamp } from "../utils/price-history";
 import { type ChartResolveSources, type ChartResolveCache, requestContext } from "./resolve-context";
 import { DAY_MS } from "./chart-bounds";
-import { priceHistoryAcquisitionIdentity, priceHistoryTailAcquisition, mergePriceHistoryWindows } from "./history-acquisition";
+import { priceHistoryAcquisitionIdentity, priceHistoryTailAcquisition, priceHistoryWindowsAgree, mergePriceHistoryWindows } from "./history-acquisition";
 
 /** Recent-window requests for the same history, shared by every chart asking at once. */
 const tailRequestsInFlight = new WeakMap<DataProvider, Map<string, Promise<PriceHistoryResult | null>>>();
@@ -96,6 +96,9 @@ export function reconcileChartTail(
     });
     // A full refetch that landed meanwhile supersedes this window.
     if (points.length === 0 || cache.priceHistoryByRequest.get(key) !== pending) return false;
+    // A tail on another split basis (a split since the window was loaded) is not drawn beside it:
+    // the window stays as loaded, on one basis, until it is refetched whole.
+    if (!priceHistoryWindowsAgree(loaded.points, points, tail.resolution)) return false;
     const refreshed = mergePriceHistoryWindows(loaded.points, points, tail.resolution);
     if (samePricePoints(refreshed, loaded.points)) return false;
     const acquisition = priceHistoryTailAcquisition(loaded, result);

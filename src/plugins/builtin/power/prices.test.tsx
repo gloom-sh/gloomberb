@@ -1,11 +1,16 @@
+import { ApiRequestError } from "../../../api-client/errors";
+import type { DesktopPaneShotPayload } from "../../../cli/desktop-pane-shot";
+import type { ResolvedPaneFunction } from "../../../cli/pane-functions/resolver";
+import { createRemoteUiRegistry, RemoteUiRegistryProvider } from "../../../remote/semantic-tree";
+import { powerScreenshotEvidence, type PowerPricesSnapshot } from "./evidence";
 import { act, useReducer } from "react";
-import { afterEach, expect, test } from "bun:test";
-import { setCloudApiFetchTransport } from "../../../api-client";
+import { afterEach, expect, spyOn, test } from "bun:test";
+import { apiClient, setCloudApiFetchTransport } from "../../../api-client";
 import type { CarbonBoard, EuropePowerBoard, GasStorageBoard, GasStorageRow, GasStorageSeasonal, PowerPriceRow } from "../../../api-client/europe-energy";
 import { PaneFooterBar, PaneFooterKeys, PaneFooterProvider } from "../../../components/layout/pane/footer";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState } from "../../../state/app/context";
-import { createTestPaneConfig, TestPaneProvider } from "../../../test-support/pane";
+import { createTestPaneConfig, TestPaneFrame, TestPaneProvider } from "../../../test-support/pane";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { Box } from "../../../ui";
@@ -233,4 +238,48 @@ test("EPWR GAS opens on the area it names; the report lists every area, or one a
   const loaded = await (net as Extract<typeof net, { load: unknown }>).load({});
   expect(loaded).toMatchObject({ points: [{ date: "2026-10-10", value: 675.5 }, { date: "2026-10-12", value: 362.54 }],
     attribution: { source: "GIE AGSI+" } });
+});
+
+
+test("a prepared partial power capture retains its carbon warning in the pane and verified evidence", async () => {
+  serve();
+  const failure = spyOn(apiClient, "getCloudEuropeCarbon").mockRejectedValue(new ApiRequestError("Fixture unavailable", 503));
+  try {
+    const resolved = { options: { tab: "prices" }, createOptions: {} } as unknown as ResolvedPaneFunction;
+    const prepared = await powerScreenshotEvidence.prepare!({ resolved, settings: {} } as Parameters<NonNullable<typeof powerScreenshotEvidence.prepare>>[0]);
+    const snapshot = prepared.settings.powerPricesSnapshot as PowerPricesSnapshot;
+    const message = "The EU carbon auction price is not available yet.";
+    expect(snapshot).toMatchObject({ board, carbon: null, carbonError: message });
+    expect<unknown>(snapshot.history).toEqual(history("DE"));
+    const id = "power:captured";
+    const settings = { tab: "prices", ...prepared.settings };
+    const config = createTestPaneConfig("/unused/carbon-capture-test", { paneId: "power", instanceId: id, settings });
+    const registry = createRemoteUiRegistry();
+    // A frozen capture must not fetch carbon a second time during rendering.
+    failure.mockClear();
+    await tui.render(<RemoteUiRegistryProvider registry={registry}>
+      <TestPaneFrame state={createInitialState(config)} paneId={id} pluginId="power" runtime={createTestPluginRuntime()}
+        width={120} height={30} footerKeys>
+        {(size) => <PowerPane paneId={id} paneType="power" {...size} focused />}
+      </TestPaneFrame>
+    </RemoteUiRegistryProvider>, { width: 120, height: 30 });
+    await tui.waitForFrameToContain("Germany");
+    const raw = registry.snapshot().find((node) => node.role === "chart-data" && node.metadata?.kind === "power")!.metadata;
+    const evidence = powerScreenshotEvidence.read(raw)!;
+    expect(evidence).toMatchObject({ complete: true, carbon: null, carbonError: message });
+    const request = { resolved, payload: { paneId: id, config } as DesktopPaneShotPayload };
+    expect(powerScreenshotEvidence.mismatches(evidence, request)).toEqual([]);
+    expect(powerScreenshotEvidence.unavailable(evidence, request)).toEqual([]);
+    expect(powerScreenshotEvidence.mismatches({ ...evidence, carbonError: undefined }, request)).toHaveLength(1);
+    expect(powerScreenshotEvidence.read({ ...raw, carbonError: 5 })).toBeNull();
+    expect(failure).not.toHaveBeenCalled();
+    await tui.emitKeypress({ name: "!", sequence: "!" });
+    await tui.waitForFrameToContain(message);
+    // An empty error response still carries the same fallback notice as the live resource.
+    failure.mockRejectedValue(new ApiRequestError("", 500));
+    const blank = await powerScreenshotEvidence.prepare!({ resolved, settings: {} } as Parameters<NonNullable<typeof powerScreenshotEvidence.prepare>>[0]);
+    expect(blank.settings.powerPricesSnapshot).toMatchObject({ carbon: null, carbonError: "Request failed" });
+  } finally {
+    failure.mockRestore();
+  }
 });

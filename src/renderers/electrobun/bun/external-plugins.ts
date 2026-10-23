@@ -158,6 +158,33 @@ export async function collectExternalPluginBundles(): Promise<DesktopExternalPlu
   return bundles;
 }
 
+let prefetchedBundles: Promise<DesktopExternalPluginBundle[]> | null = null;
+
+/**
+ * Starts compiling every plugin for the view before it asks. The bundle cache
+ * above lives in memory, so the first window of a launch always compiles;
+ * started at launch, that runs while the view loads its own bundle.
+ */
+export function prefetchExternalPluginBundles(): void {
+  if (prefetchedBundles) return;
+  const bundles = collectExternalPluginBundles();
+  // The view's request reports a failure; this one only must not go unhandled.
+  bundles.catch(() => {
+    // Intentional ignore: the window that takes these bundles reports the failure.
+  });
+  prefetchedBundles = bundles;
+}
+
+/**
+ * The bundles for a window: the launch's prefetch once, then a new collection,
+ * which the mtime cache keeps cheap, so a later window sees plugins installed since.
+ */
+export function takeExternalPluginBundles(): Promise<DesktopExternalPluginBundle[]> {
+  const prefetched = prefetchedBundles;
+  prefetchedBundles = null;
+  return prefetched ?? collectExternalPluginBundles();
+}
+
 /** One plugin, compiled fresh, so the view can activate what was just installed or updated. */
 export function bundleExternalPluginDirectory(directory: string): Promise<DesktopExternalPluginBundle | null> {
   return bundlePluginDirectory(join(getPluginsDir(), directory), { fresh: true });

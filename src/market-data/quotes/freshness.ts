@@ -6,6 +6,7 @@ import { quoteFutureToleranceMs } from "./clock";
 import {
   activeUsExtendedHoursSession,
   isAlwaysOpenExchange,
+  isRegularSessionTime,
   isTimestampStaleForExchangeSession,
   isUsPriorSessionPremarketQuote,
   isUsRegularCloseQuoteInPostSession,
@@ -117,6 +118,47 @@ export function isQuoteBeforeLatestSession(quote: Quote | null | undefined, now 
   if (!latest) return now - printed > LONGEST_SESSION_GAP_MS;
   const open = latestRegularSessionOpen(venue, latest.close);
   return open != null ? printed < open : zonedDateKey(printed, latest.timeZone) < latest.date;
+}
+
+/**
+ * How old a stale print is, as an order ticket and a quote with no prints
+ * today say it: `45s old`, `12m old`, `10h 0m old`; `Age unknown` without a
+ * time, or with one ahead of `now`.
+ */
+export function quoteAgeText(at: number | null | undefined, now = Date.now()): string {
+  if (!at || !Number.isFinite(at) || at > now) return "Age unknown";
+  const seconds = Math.max(0, Math.floor((now - at) / 1000));
+  return seconds < 60 ? `${seconds}s old`
+    : seconds < 3600 ? `${Math.floor(seconds / 60)}m old`
+    : `${Math.floor(seconds / 3600)}h ${Math.floor(seconds % 3600 / 60)}m old`;
+}
+
+const PRINT_WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+const PRINT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
+
+/**
+ * When a stale quote last printed, while its venue's regular session is open
+ * and nothing has printed in it. A stalled feed and a closure the calendar
+ * does not know (TWSE's typhoon days) read alike, so a quote says only this.
+ * Null for a quote that is current, a venue that is closed or without known
+ * hours, and a print from today's session.
+ */
+export function noPrintsTodaySince(quote: Quote | null | undefined, now = Date.now()): number | null {
+  if (!quote || quote.delisting || !isQuoteStaleForCurrentSession(quote, now) || !hasValidQuoteObservationTime(quote, now)) return null;
+  const venue = quote.listingExchangeName || quote.exchangeName;
+  if (isRegularSessionTime(venue, now) !== true) return null;
+  const open = latestRegularSessionOpen(venue, now);
+  const printed = Math.min(quote.lastUpdated, now);
+  return open != null && printed < open ? printed : null;
+}
+
+/** `no prints today since Thu 22 Oct 05:30 UTC (20h 50m old)`, or null as noPrintsTodaySince. */
+export function noPrintsTodayText(quote: Quote | null | undefined, now = Date.now()): string | null {
+  const since = noPrintsTodaySince(quote, now);
+  if (since == null) return null;
+  const at = new Date(since);
+  const time = `${PRINT_WEEKDAYS[at.getUTCDay()]} ${at.getUTCDate()} ${PRINT_MONTHS[at.getUTCMonth()]} ${at.toISOString().slice(11, 16)} UTC`;
+  return `no prints today since ${time} (${quoteAgeText(since, now)})`;
 }
 
 export function hasFreshQuoteForCurrentSession(

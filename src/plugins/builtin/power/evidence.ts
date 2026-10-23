@@ -22,6 +22,7 @@ interface PowerEvidence {
   /** The day-ahead board and the EUA board, on the Prices tab. */
   prices?: EuropePowerBoard | null;
   carbon?: CarbonBoard | null;
+  carbonError?: string;
   /** The gas storage board, on the Prices tab's gas board. */
   gas?: GasStorageBoard | null;
   tab: string;
@@ -34,6 +35,8 @@ export interface PowerPricesSnapshot {
   history: EuropePowerHistory | CarbonHistory | null;
   /** Null when the server has no EUA price yet; the tab then shows the board alone. */
   carbon: CarbonBoard | null;
+  /** A completed optional read that failed; older snapshots omit this field. */
+  carbonError?: string;
 }
 /** What the gas board draws, frozen by `shot`: the board and the selected area's seasonal range. */
 export interface GasStorageSnapshot {
@@ -46,10 +49,10 @@ export function usePowerEvidence(board: PowerBoard | undefined, history: PowerHi
     plottedValueCount: rowIds.length, board, history: history ?? null, tab, rowIds,
   }) });
 }
-export function usePowerPricesEvidence(prices: EuropePowerBoard | null, carbon: CarbonBoard | null, rowIds: string[], loading: boolean) {
+export function usePowerPricesEvidence(prices: EuropePowerBoard | null, carbon: CarbonBoard | null, rowIds: string[], loading: boolean, carbonError?: string | null) {
   useRemoteUiNode({ role: "chart-data", label: "Rendered day-ahead power and carbon prices", getMetadata: () => ({
     kind: "power", version: 1, complete: !!prices && !loading, ready: !!prices && !loading,
-    plottedValueCount: rowIds.length, board: null, history: null, prices, carbon, tab: "prices", rowIds,
+    plottedValueCount: rowIds.length, board: null, history: null, prices, carbon, ...(carbonError ? { carbonError } : {}), tab: "prices", rowIds,
   }) });
 }
 export function useGasStorageEvidence(gas: GasStorageBoard | null, rowIds: string[], loading: boolean) {
@@ -72,13 +75,19 @@ export const powerScreenshotEvidence: PaneScreenshotEvidenceHook<PowerEvidence> 
     }
     if (tab === "prices") {
       const board = await fetchPowerPrices();
-      // The carbon figures are captured when the server has them, and left out when it does not.
-      const carbon = await fetchCarbonPrice().catch(logFailure("power.evidence", "Load carbon price for capture failed", null));
+      // Optional carbon failure travels with the board, just as it does in the live pane.
+      let carbonError: string | undefined;
+      const carbon = await fetchCarbonPrice().catch((error: unknown) => {
+        logFailure("power.evidence", "Load carbon price for capture failed")(error);
+        const message = error instanceof Error ? error.message : String(error);
+        carbonError = message.trim() ? message : "Request failed";
+        return null;
+      });
       const arg = resolved.createOptions?.arg;
       const market = powerPriceMarket(arg)?.code ?? DEFAULT_PRICE_MARKET;
       const history = isCarbonQuery(arg) && carbon?.row.date ? await fetchCarbonHistory()
         : board.rows.some((row) => row.code === market && row.date) ? await fetchPowerPriceHistory(market) : null;
-      return { settings: { powerPricesSnapshot: { board, history, carbon } satisfies PowerPricesSnapshot }, financials: [] };
+      return { settings: { powerPricesSnapshot: { board, history, carbon, ...(carbonError ? { carbonError } : {}) } satisfies PowerPricesSnapshot }, financials: [] };
     }
     const symbol = resolved.createOptions?.symbol ?? resolved.createOptions?.arg;
     const filter = powerQuery({ ...settings, ...resolved.options, tab }, symbol);
@@ -104,6 +113,7 @@ export const powerScreenshotEvidence: PaneScreenshotEvidenceHook<PowerEvidence> 
         if (!isRecord(value.prices)) return null;
         const prices = validatePowerPrices(value.prices as unknown as EuropePowerBoard);
         if (value.carbon != null) validateCarbonPrice(value.carbon as unknown as CarbonBoard);
+        if (value.carbonError !== undefined && (typeof value.carbonError !== "string" || !value.carbonError.trim() || value.carbon != null)) return null;
         if (value.rowIds.some((id) => !prices.rows.some((row) => row.code === id))) return null;
         return value as unknown as PowerEvidence;
       }
@@ -127,7 +137,8 @@ export const powerScreenshotEvidence: PaneScreenshotEvidenceHook<PowerEvidence> 
     } else if (evidence.tab === "prices") {
       const snapshot = settings?.powerPricesSnapshot;
       if (!isRecord(snapshot) || JSON.stringify(snapshot.board) !== JSON.stringify(evidence.prices)
-        || JSON.stringify(snapshot.carbon ?? null) !== JSON.stringify(evidence.carbon ?? null)) errors.push("Power prices differ from the captured data.");
+        || JSON.stringify(snapshot.carbon ?? null) !== JSON.stringify(evidence.carbon ?? null)
+        || (snapshot.carbonError ?? null) !== (evidence.carbonError ?? null)) errors.push("Power prices differ from the captured data.");
     } else {
       const snapshot = settings?.powerSnapshot;
       if (!isRecord(snapshot) || JSON.stringify(snapshot.board) !== JSON.stringify(evidence.board)

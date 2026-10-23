@@ -1,5 +1,4 @@
 import "./opentui-libc";
-import { dispatchCli, failUnknownCliCommand } from "./index";
 import { inferCliErrorOptions, printCliError } from "./errors";
 import { isCliHelpFlag } from "./options";
 import { loadExternalPlugins } from "../plugins/loader";
@@ -64,6 +63,9 @@ export async function runCliEntrypoint(rawArgs = process.argv.slice(2)): Promise
     return;
   }
 
+  // Loaded only for a command: a bare launch never reads the commands, and
+  // their modules are a noticeable part of what it would load before drawing.
+  const { dispatchCli, failUnknownCliCommand } = await import("./index");
   const externalPlugins = await loadExternalPlugins();
   const dispatchResult = await dispatchCli(rawArgs, { externalPlugins });
   if (dispatchResult.kind === "handled") return;

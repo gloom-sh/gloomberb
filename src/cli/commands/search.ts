@@ -13,7 +13,9 @@ import type { Quote } from "../../types/financials";
 import { quotedListingName } from "../../tickers/listing-name";
 import type { TickerRecord } from "../../types/ticker";
 import {
+  candidateExchange,
   LISTING_SEARCH_LIMIT,
+  listingDistance,
   searchTickerCandidates,
   type TickerSearchCandidate,
 } from "../../tickers/search";
@@ -208,15 +210,10 @@ function formerIssuerNotes(candidates: readonly TickerSearchCandidate[], fate: S
 /** A query that is a bare symbol (CAR, BRK.B), not a name or a phrase. */
 const BARE_SYMBOL = /^[A-Z0-9][A-Z0-9.\-]{0,11}$/;
 
-function candidateExchange(candidate: TickerSearchCandidate): string {
-  return canonicalExchange(candidate.result?.exchange === "SMART"
-    ? candidate.result.primaryExchange
-    : candidate.result?.exchange || candidate.result?.primaryExchange || candidate.ticker?.metadata.exchange || candidate.right);
-}
-
 /**
  * For a bare symbol several companies list (CAR: Avis, Carrefour, CAR Group),
- * the listing `quote CAR` reads goes first as the primary listing, then each
+ * the company of the listing `quote CAR` reads goes first, under its home
+ * line when the service marks one of its listings so, then each
  * other company's first listing, then the rest of their venues, so a short
  * list still shows every company. A saved listing is the user's choice and
  * stays where search put it. Any other query keeps search's order.
@@ -232,8 +229,10 @@ function withPrimaryListingFirst(
   const listed = exact.filter((candidate) => candidate.kind === "search" && (candidate.instrumentClass === "equity" || candidate.instrumentClass === "other"));
   const companies = groupByCompany(listed, resolveSearchName);
   if (companies.length < 2) return candidates;
-  const primary = quotedCandidate(listed, quote);
-  if (!primary) return candidates;
+  const quoted = quotedCandidate(listed, quote);
+  if (!quoted) return candidates;
+  // That company leads with its home line where it lists one under the symbol too (TD on TSX before NYSE).
+  const primary = companies.find((group) => group.includes(quoted))?.find((candidate) => candidate.result?.homeListing === true) ?? quoted;
   const firsts = companies.filter((group) => !group.includes(primary)).map((group) => group[0]!);
   const ordered = [primary, ...firsts, ...listed.filter((candidate) => candidate !== primary && !firsts.includes(candidate))];
   const at = candidates.indexOf(listed[0]!);
@@ -245,19 +244,6 @@ function withPrimaryListingFirst(
   ));
 }
 
-/** Venues that only quote shares listed elsewhere: the OTC tiers, Frankfurt's open market and Germany's regional exchanges. */
-const SECONDARY_VENUES = new Set(["OTC", "PNK", "OTCQX", "OTCQB", "FWB2", "MUNICH", "XSTU", "XDUS", "XBER", "XHAM", "HANOVER"]);
-
-/**
- * How far a listing is from being its company's own line: 0 a plain one, 1 a
- * line that only quotes shares listed elsewhere (a regional venue, OTC, a
- * Milan 4MSFT or London 0XXX code), 2 a depositary receipt.
- */
-function listingDistance(candidate: TickerSearchCandidate): 0 | 1 | 2 {
-  if (/depositary|^(?:ADR|ADS|GDR|CDR|BDR)$/i.test(candidate.instrumentType ?? "")) return 2;
-  return SECONDARY_VENUES.has(candidateExchange(candidate)) || /\d/.test(candidate.symbol) && /[A-Za-z]/.test(candidate.symbol) ? 1 : 0;
-}
-
 /**
  * A company searched by name lists its home line as the primary listing. A
  * search row names no home exchange or volume, so a company's lines go by
@@ -266,7 +252,8 @@ function listingDistance(candidate: TickerSearchCandidate): 0 | 1 | 2 {
  * listing search put first, often the one-off cross-listing whose short name
  * matched the query (LUFTHANSA on Budapest), gives way only to a closer line,
  * or to one searched at least twice as often, or any scored line when it has
- * no score. A listing searched by its own symbol is not moved.
+ * no score. A listing searched by its own symbol is not moved, and nor is
+ * the line the service marks as the company's home (`homeListing`).
  *
  * The line the service marks with the name as typed is the company the name
  * means ("coca cola" is The Coca-Cola Company's KO). A company whose name
@@ -276,7 +263,8 @@ function listingDistance(candidate: TickerSearchCandidate): 0 | 1 | 2 {
  */
 function withHomeListingPrimary(query: string, candidates: TickerSearchCandidate[]): TickerSearchCandidate[] {
   const primary = candidates.find((candidate) => candidate.category === "Primary Listing");
-  if (!primary || primary.kind !== "search" || primary.symbol.toUpperCase() === query.toUpperCase()) return candidates;
+  if (!primary || primary.kind !== "search" || primary.result?.homeListing === true
+    || primary.symbol.toUpperCase() === query.toUpperCase()) return candidates;
   const company = resolveSearchName(primary);
   const marked = !!primary.result && namedByService(query, primary.result);
   const lines = candidates.filter((candidate) => candidate.kind === "search" && candidate.category !== "Funds & Derivatives"

@@ -1,5 +1,5 @@
 import { Box, Text, useNativeRenderer, useUiCapabilities } from "../../../ui";
-import { DialogFrame, ListView, TextField } from "../../../components/ui";
+import { EmptyState, DialogFrame, ListView, TextField } from "../../../components/ui";
 import type { PromptContext } from "../../../ui/dialog";
 import { colors } from "../../../theme/colors";
 import type { ChartSpec } from "../../../time-series/types";
@@ -49,6 +49,7 @@ export function SeriesEditorDialog({ dialogId, resolve, initialSpec }: SeriesEdi
     quickAddActive,
     quickAddItems,
     quickAddLoading,
+    quickAddError,
     quickAddQuery,
     quickAddRef,
     quickAddSelection,
@@ -137,6 +138,8 @@ export function SeriesEditorDialog({ dialogId, resolve, initialSpec }: SeriesEdi
                 onActivate={(_, index) => { beginQuickAdd(); addCatalogSuggestion(quickAddSuggestions[index]); }}
               />
             </Box>
+          ) : !quickAddLoading && quickAddError ? (
+            <EmptyState title={quickAddError} status="error" />
           ) : (
             <Text fg={colors.textMuted}>
               {quickAddLoading ? "Searching instruments…" : "No matching security or metric."}

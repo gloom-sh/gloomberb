@@ -5,7 +5,7 @@ import {
 } from "../../../tickers/search";
 import { useOptionalAppSelector } from "../../../state/app/context";
 import type { TickerRecord } from "../../../types/ticker";
-import { searchChartSeriesCapabilities } from "../../../capabilities";
+import { searchChartSeriesCatalogs } from "../../../capabilities/chart-series";
 import { SERIES_CATALOG_CAPABILITY_ID } from "../../../series/capability";
 import type { SeriesCatalogEntry } from "../../../series/types";
 import { getSharedRegistry } from "../../registry";
@@ -274,12 +274,12 @@ export function useSeriesCatalogSuggestions({
     const controller = new AbortController();
     setProviderSearch({ query: normalizedQuery, suggestions: [], loading: true, error: null });
     const timer = setTimeout(() => {
-      void searchChartSeriesCapabilities(registry, normalizedQuery, MAX_SERIES_SUGGESTIONS, controller.signal).then((items) => {
+      void searchChartSeriesCatalogs(registry, normalizedQuery, MAX_SERIES_SUGGESTIONS, controller.signal).then(({ items, errors }) => {
         if (!cancelled) setProviderSearch({
           query: normalizedQuery,
           suggestions: buildCapabilitySeriesSuggestions(items),
           loading: false,
-          error: null,
+          error: errors.join(" ") || null,
         });
       }).catch((error: unknown) => {
         if (controller.signal.aborted || cancelled) return;

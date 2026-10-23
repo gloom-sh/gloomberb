@@ -33,9 +33,10 @@ import { registerElectrobunCoreCapabilities } from "../core-capabilities";
 import {
   activateExternalPlugin,
   bundleExternalPluginDirectory,
-  collectExternalPluginBundles,
   deactivateExternalPlugin,
   desktopPluginManager,
+  prefetchExternalPluginBundles,
+  takeExternalPluginBundles,
 } from "../external-plugins";
 import { MAIN_WINDOW_RPC_KEY } from "../window/focus";
 import { handleDesktopBackendRequest } from "./backend-requests";
@@ -45,7 +46,7 @@ import { DesktopDetachedWindowManager } from "./detached-windows";
 import { handleDesktopHostRequest } from "./host-requests";
 import { handleHttpFetch } from "./http-fetch";
 import { DesktopHttpStreamBridge } from "./http-stream";
-import { initializeDesktopBackend } from "./initialization";
+import { initializeDesktopBackend, joinDesktopBackendLaunch } from "./initialization";
 import { applyMacosDockIcon } from "./macos-dock-icon";
 import { handleDesktopPluginStateRequest } from "./plugin-state";
 import { scheduleDesktopRelaunch } from "./relaunch";
@@ -190,6 +191,11 @@ export class DesktopBackend {
     this.workspace = createDesktopWorkspace(config, this.getSessionSnapshot());
     this.detachedWindows.reconcile();
     return { config, services };
+  }
+
+  /** Compiles the view's plugins ahead of its first `plugins.listExternal`. */
+  prefetchExternalPluginBundles(): void {
+    prefetchExternalPluginBundles();
   }
 
   teardownServices(): void {
@@ -485,7 +491,11 @@ export class DesktopBackend {
       case "pluginState.delete":
         return handleDesktopPluginStateRequest(this.requireServices().persistence.pluginState, request);
       case "plugins.listExternal":
-        return collectExternalPluginBundles();
+        // The view asks beside `init`. Waiting for a launch in flight takes
+        // the bundles it compiles, and keeps a second load of the plugins
+        // from running beside the one the services do. It never starts a
+        // launch of its own: that is `init`'s.
+        return joinDesktopBackendLaunch(this).then(takeExternalPluginBundles);
       case "plugins.install":
         return desktopPluginManager.install(request.payload.ref, request.payload.pin);
       case "plugins.update":
@@ -511,6 +521,7 @@ export class DesktopBackend {
       case "host.saveTextFile":
       case "host.notify":
       case "host.showContextMenu":
+      case "host.saveBootFrame":
       case "host.setAppBadge":
         return handleDesktopHostRequest(this, rpc, request);
       case "update.check":
