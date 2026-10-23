@@ -54,11 +54,12 @@ test("a settlement served with the share count known when it was published reads
     counted("2026-08-14", 54_040_000, 448_691_257, "2026-06-05"),
     counted("2026-09-30", 42_673_721, 504_500_990, "2026-09-03"),
   ];
-  const today = snapshot(461_240_030, { sharesOutstanding: 504_500_990, floatSharesAsOf: "2026-09-03" });
+  // The float is the source's, undated: only the earlier rows' counts carry a day.
+  const today = snapshot(461_240_030, { sharesOutstanding: 504_500_990 });
   const { records } = await loadShortInterestWithFloat("TEST", { client: client(points, "finra"), loadSnapshots: async () => [today] });
   const august = 54_040_000 / (448_691_257 * (461_240_030 / 504_500_990)) * 100;
   expect(records.map((record) => record.shortPercentFloat)).toEqual([null, expect.closeTo(august, 6), expect.closeTo(9.252, 3)]);
-  expect(records.map((record) => record.floatAsOf ?? null)).toEqual([null, "2026-06-05", "2026-09-03"]);
+  expect(records.map((record) => record.floatAsOf ?? null)).toEqual([null, "2026-06-05", null]);
   // Point in time (--as-of): the newest too is read on its own day's count, not on today's float with its statistics.
   const statistics = { shortInterestDate: "2026-09-30", shortPercentOfFloat: 0.095 };
   const cut = await loadShortInterestWithFloat("TEST", {

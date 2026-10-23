@@ -114,26 +114,25 @@ test("--section names the sections a report has, and is only for --csv and --ndj
 });
 
 test("fundamentals prints the float and the short interest of one dated settlement, as its JSON gives them", async () => {
-  // GLO-760, GME as Gloom Cloud serves it: the share count of its 10-Q cover with the day it was counted, the float
-  // held within it, the 30 September settlement's shares short and days to cover. The text view used to leave these
+  // GLO-760, GME as Gloom Cloud serves it: the share count of its 10-Q cover with the day it was counted, the source's
+  // undated float held within it, the 30 September settlement's shares short and days to cover. The text view used to leave these
   // out, so scripts read the JSON alone; an undated 449.1M read as current when the 10-Q stated 504.5M.
   const gme: TickerFinancials = {
     quote: { symbol: "GME", name: "GameStop Corp.", price: 29.84, currency: "USD", change: 0, changePercent: 0, lastUpdated: Date.parse("2026-10-14T13:00:00Z") },
     fundamentals: {
-      sharesOutstanding: 504_500_990, sharesOutstandingAsOf: "2026-09-03", floatShares: 461_240_030, floatSharesAsOf: "2026-09-03",
+      sharesOutstanding: 504_500_990, sharesOutstandingAsOf: "2026-09-03", floatShares: 461_240_030,
       sharesShort: 42_673_721, shortPercentOfFloat: 42_673_721 / 461_240_030, shortRatio: 3.98, shortInterestDate: "2026-09-30",
     },
     annualStatements: [], quarterlyStatements: [], priceHistory: [],
   };
   const text = (await run("fundamentals", [], "text", gme)).join("\n").replace(/\u001b\[[0-9;]*m/g, "").replace(/ {2,}/g, " ");
-  expect(text).toContain("Shares Outstanding 504.5M (as of 2026-09-03)\nFloat 461.24M (as of 2026-09-03)\nShort Interest 42.67M (settled 2026-09-30)\nShort % of Float 9.25%\nDays to Cover 3.98\n");
+  expect(text).toContain("Shares Outstanding 504.5M (as of 2026-09-03)\nFloat 461.24M\nShort Interest 42.67M (settled 2026-09-30)\nShort % of Float 9.25%\nDays to Cover 3.98\n");
   const json = JSON.parse((await run("fundamentals", [], "json", gme)).join("\n"));
   expect(json.data.fundamentals).toMatchObject({
     sharesOutstandingAsOf: "2026-09-03", floatShares: 461_240_030, sharesShort: 42_673_721, shortRatio: 3.98, shortInterestDate: "2026-09-30",
   });
   expect(await run("fundamentals", [], "csv", gme)).toEqual(expect.arrayContaining([
     expect.stringMatching(/^Shares Outstanding As Of,2026-09-03,GME,/),
-    expect.stringMatching(/^Float As Of,2026-09-03,GME,/),
     expect.stringMatching(/^Short Interest \(shares\),42673721,GME,/),
     expect.stringMatching(/^Short Interest Settlement,2026-09-30,GME,/),
     expect.stringMatching(/^Days to Cover,3.98,GME,/),

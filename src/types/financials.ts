@@ -314,7 +314,7 @@ export interface Fundamentals extends DepositaryReceiptFacts {
   sharesOutstandingAsOf?: string;
   /** Free float: shares outstanding less insider and strategic holdings, never above `sharesOutstanding`. */
   floatShares?: number;
-  /** YYYY-MM-DD of the dated share count `floatShares` is held within. */
+  /** YYYY-MM-DD `floatShares` was counted, when it is a dated count itself (held at a cover count); a source's own float is undated. */
   floatSharesAsOf?: string;
   beta?: number;
   /** Shares short at the latest FINRA settlement, the one `SI` and `SIW` show; dated by `shortInterestDate`. */

@@ -101,7 +101,7 @@ export function settlementPercentFloat(
 /** The float a percent of float is read against today, and the share count it floats out of. */
 export interface CurrentFloat {
   floatShares: number | null | undefined;
-  /** YYYY-MM-DD of the share count the float is held within, when it is dated. */
+  /** YYYY-MM-DD the float was counted, when it is dated (the statistics' `floatSharesAsOf`); a source's own float is not. */
   floatAsOf?: string | null;
   /** The share count the float is held within (the statistics' shares outstanding). */
   sharesOutstanding?: number | null;
@@ -188,8 +188,8 @@ export function sortRows(rows: ShortInterestRow[], preference: SortPreference): 
  * of one settlement read as a row: when it settled, when FINRA published it
  * (what a trader could see that day), then its figures. FINRA settlement
  * history carries no float, so percent of float is null for every row unless
- * it is read against a float (`withPercentFloat`), dated by the share count
- * that float is held within. Keeping the column with nothing in it drew a
+ * it is read against a float (`withPercentFloat`), dated where that float is:
+ * an earlier settlement's by the count it is read on. Keeping the column with nothing in it drew a
  * header over a column of dashes, which reads as missing data rather than
  * data the source never had.
  */
