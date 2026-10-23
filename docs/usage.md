@@ -122,6 +122,8 @@ Text that no command claims searches symbols and names, and every result carries
 
 A symbol that trades in several places lists its exchanges after a colon: `NET:` shows each one, your saved listing first and the rest in search order. The list reads as many search rows as the CLI does, so a symbol several companies use lists them all: `CAR:` offers CAR Group on ASX as well as Avis and Carrefour. Letters after the colon narrow the list (`NET:L` keeps exchanges whose name or code starts with L), and `NET:XLON` names one listing.
 
+Enter on a typed symbol or ticker command uses the standard listing resolution, even after search suggestions arrive. For example, `DES HFC` opens the former US listing and shows its move to DINO, as `quote HFC` and `shot DES HFC` do. Use the arrow keys or click a search row to choose another listing explicitly; a saved symbol keeps its saved listing.
+
 When Gloom Cloud is too busy to run a search, the list says `Search is busy` rather than `No matches`, and saved tickers that match still show. `gloomberb search` then fails with `Search is busy, try again in a moment.` and exits 1; its `--json` error has `code` `search_busy` and `retryable` `true`. So does a command that looks a symbol or a company's name up through search, such as `quote "Eagle Bulk"` or `watchlist add`, instead of saying no ticker matched; in a list of symbols, each one search could not look up says so on its line. A search that ran and found nothing still says `No matches`.
 
 ### Company Research

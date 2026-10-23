@@ -253,21 +253,23 @@ describe("CommandBar pane and layout routes", () => {
     expect(opened).toEqual(["layout-marketplace"]);
   });
 
-  test("renders filtered saved layouts with textual previews", async () => {
+  test("switches directly to a filtered saved layout on the first Enter", async () => {
+    const actions: AppAction[] = [];
     await tui.render(<CommandBarHarness
       query="LMA Research"
+      live
       configureConfig={layoutModeConfig}
       configureState={layoutModeState}
+      onAction={(action) => actions.push(action)}
     />, {
       width: 120,
       height: 18,
     });
 
-    await tui.setup().renderOnce();
-
-    const frame = tui.frame();
-    expect(frame).toContain("Research");
-    expect(frame).toContain("1c / 1d");
+    await waitForFrameToContain("Research");
+    await tui.emitKeypress({ name: "return", sequence: "\r" });
+    await waitForFrameToContain("bar:closed");
+    expect(actions.filter((action) => action.type === "SWITCH_LAYOUT")).toEqual([{ type: "SWITCH_LAYOUT", index: 1 }]);
   });
 
   test("keeps related pane matches visible beside a bare shortcut", async () => {
