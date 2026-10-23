@@ -1,0 +1,1257 @@
+{
+ "generatedAt": "2026-10-19T08:12:40.000Z",
+ "proRequired": true,
+ "preview": false,
+ "filter": "all",
+ "week": "2026-10-12",
+ "total": 4,
+ "locked": 0,
+ "coverage": {
+  "measured": 308,
+  "counts": {
+   "function": 3,
+   "theme": 1
+  },
+  "held": {
+   "thin": 1195
+  },
+  "skipped": {
+   "unclassified": 16
+  },
+  "themeTitles": {
+   "titles": 11903,
+   "read": 11903,
+   "usd": 0
+  },
+  "computedAt": "2026-10-19T06:04:11.000Z"
+ },
+ "shifts": [
+  {
+   "symbol": "OKTA",
+   "name": "Okta, Inc.",
+   "sector": "Technology",
+   "industry": "Software - Infrastructure",
+   "sourceTickers": [
+    "OKTA"
+   ],
+   "week": "2026-10-12",
+   "dimension": "function",
+   "key": "sales",
+   "label": "Sales",
+   "recent": {
+    "weeks": 2,
+    "roles": 45,
+    "total": 117,
+    "share": 0.38461538461538464,
+    "values": [
+     {
+      "week": "2026-10-05",
+      "roles": 14,
+      "total": 53
+     },
+     {
+      "week": "2026-10-12",
+      "roles": 31,
+      "total": 64
+     }
+    ]
+   },
+   "before": {
+    "weeks": 2,
+    "roles": 17,
+    "total": 115,
+    "share": 0.14782608695652175,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "roles": 6,
+      "total": 44
+     },
+     {
+      "week": "2026-09-28",
+      "roles": 11,
+      "total": 71
+     }
+    ]
+   },
+   "change": 0.2367892976588629,
+   "ratio": 2.6018099547511313,
+   "zScore": 4.074999946952233,
+   "titles": 27,
+   "topTitles": [
+    {
+     "title": "Strategic Account Executive",
+     "count": 7
+    },
+    {
+     "title": "Strategic Account Executive, Auth0",
+     "count": 4
+    },
+    {
+     "title": "Auth0 Account Executive- New Business",
+     "count": 3
+    }
+   ],
+   "postings": [
+    {
+     "id": "20571719",
+     "title": "Strategic Account Executive, Auth0",
+     "url": "https://www.okta.com/company/careers/opportunity/8288022?gh_jid=8288022",
+     "location": "Sydney, Australia",
+     "country": "GB",
+     "jobFunction": "sales",
+     "seniority": "executive",
+     "firstSeenAt": "2026-10-17T01:24:17.845Z",
+     "closedAt": null,
+     "sourceTicker": "OKTA"
+    },
+    {
+     "id": "20571718",
+     "title": "Strategic Account Executive, Auth0",
+     "url": "https://www.okta.com/company/careers/opportunity/8289887?gh_jid=8289887",
+     "location": "Florida",
+     "country": "US",
+     "jobFunction": "sales",
+     "seniority": "executive",
+     "firstSeenAt": "2026-10-17T01:24:17.845Z",
+     "closedAt": null,
+     "sourceTicker": "OKTA"
+    },
+    {
+     "id": "20571717",
+     "title": "Strategic Account Executive, Auth0",
+     "url": "https://www.okta.com/company/careers/opportunity/8289910?gh_jid=8289910",
+     "location": "Texas",
+     "country": "US",
+     "jobFunction": "sales",
+     "seniority": "executive",
+     "firstSeenAt": "2026-10-17T01:24:17.845Z",
+     "closedAt": null,
+     "sourceTicker": "OKTA"
+    },
+    {
+     "id": "20571716",
+     "title": "Strategic Account Executive, Auth0",
+     "url": "https://www.okta.com/company/careers/opportunity/8289915?gh_jid=8289915",
+     "location": "Georgia",
+     "country": "US",
+     "jobFunction": "sales",
+     "seniority": "executive",
+     "firstSeenAt": "2026-10-17T01:24:17.845Z",
+     "closedAt": null,
+     "sourceTicker": "OKTA"
+    },
+    {
+     "id": "20571714",
+     "title": "Strategic Account Executive",
+     "url": "https://www.okta.com/company/careers/opportunity/8289582?gh_jid=8289582",
+     "location": "Los Angeles, California",
+     "country": "US",
+     "jobFunction": "sales",
+     "seniority": "executive",
+     "firstSeenAt": "2026-10-17T01:24:17.845Z",
+     "closedAt": null,
+     "sourceTicker": "OKTA"
+    },
+    {
+     "id": "20571713",
+     "title": "Strategic Account Executive",
+     "url": "https://www.okta.com/company/careers/opportunity/8289576?gh_jid=8289576",
+     "location": "Minnesota",
+     "country": "US",
+     "jobFunction": "sales",
+     "seniority": "executive",
+     "firstSeenAt": "2026-10-17T01:24:17.845Z",
+     "closedAt": null,
+     "sourceTicker": "OKTA"
+    },
+    {
+     "id": "20571712",
+     "title": "Strategic Account Executive",
+     "url": "https://www.okta.com/company/careers/opportunity/8288308?gh_jid=8288308",
+     "location": "Singapore",
+     "country": "SG",
+     "jobFunction": "sales",
+     "seniority": "executive",
+     "firstSeenAt": "2026-10-17T01:24:17.845Z",
+     "closedAt": null,
+     "sourceTicker": "OKTA"
+    },
+    {
+     "id": "20571711",
+     "title": "Strategic Account Executive",
+     "url": "https://www.okta.com/company/careers/opportunity/8287817?gh_jid=8287817",
+     "location": "Sydney, Australia",
+     "country": "GB",
+     "jobFunction": "sales",
+     "seniority": "executive",
+     "firstSeenAt": "2026-10-17T01:24:17.845Z",
+     "closedAt": null,
+     "sourceTicker": "OKTA"
+    },
+    {
+     "id": "20571709",
+     "title": "Strategic Account Executive",
+     "url": "https://www.okta.com/company/careers/opportunity/8289604?gh_jid=8289604",
+     "location": "Texas",
+     "country": "US",
+     "jobFunction": "sales",
+     "seniority": "executive",
+     "firstSeenAt": "2026-10-17T01:24:17.845Z",
+     "closedAt": null,
+     "sourceTicker": "OKTA"
+    },
+    {
+     "id": "20571708",
+     "title": "Strategic Account Executive",
+     "url": "https://www.okta.com/company/careers/opportunity/8289589?gh_jid=8289589",
+     "location": "San Francisco, California",
+     "country": "US",
+     "jobFunction": "sales",
+     "seniority": "executive",
+     "firstSeenAt": "2026-10-17T01:24:17.845Z",
+     "closedAt": null,
+     "sourceTicker": "OKTA"
+    },
+    {
+     "id": "20571706",
+     "title": "Strategic Account Executive",
+     "url": "https://www.okta.com/company/careers/opportunity/8289602?gh_jid=8289602",
+     "location": "Kansas City, Missouri",
+     "country": "US",
+     "jobFunction": "sales",
+     "seniority": "executive",
+     "firstSeenAt": "2026-10-17T01:24:17.845Z",
+     "closedAt": null,
+     "sourceTicker": "OKTA"
+    },
+    {
+     "id": "20571240",
+     "title": "Okta Account Executive- New Business",
+     "url": "https://www.okta.com/company/careers/opportunity/8289127?gh_jid=8289127",
+     "location": "Washington, DC",
+     "country": "US",
+     "jobFunction": "sales",
+     "seniority": "mid",
+     "firstSeenAt": "2026-10-17T01:24:17.838Z",
+     "closedAt": null,
+     "sourceTicker": "OKTA"
+    },
+    {
+     "id": "20571239",
+     "title": "Okta Account Executive- New Business",
+     "url": "https://www.okta.com/company/careers/opportunity/8289109?gh_jid=8289109",
+     "location": "Chicago, Illinois",
+     "country": "US",
+     "jobFunction": "sales",
+     "seniority": "executive",
+     "firstSeenAt": "2026-10-17T01:24:17.838Z",
+     "closedAt": null,
+     "sourceTicker": "OKTA"
+    },
+    {
+     "id": "20571238",
+     "title": "Okta Account Executive- New Business",
+     "url": "https://www.okta.com/company/careers/opportunity/8289869?gh_jid=8289869",
+     "location": "San Francisco, California",
+     "country": "US",
+     "jobFunction": "sales",
+     "seniority": "mid",
+     "firstSeenAt": "2026-10-17T01:24:17.838Z",
+     "closedAt": null,
+     "sourceTicker": "OKTA"
+    },
+    {
+     "id": "20571213",
+     "title": "Federal Sales Manager",
+     "url": "https://www.okta.com/company/careers/opportunity/8289804?gh_jid=8289804",
+     "location": "Washington, DC",
+     "country": "US",
+     "jobFunction": "sales",
+     "seniority": "manager",
+     "firstSeenAt": "2026-10-17T01:24:17.838Z",
+     "closedAt": null,
+     "sourceTicker": "OKTA"
+    },
+    {
+     "id": "20571191",
+     "title": "Enablement Business Partner",
+     "url": "https://www.okta.com/company/careers/opportunity/8277098?gh_jid=8277098",
+     "location": "Bellevue, Washington; Chicago, Illinois; San Francisco, California",
+     "country": "US",
+     "jobFunction": "sales",
+     "seniority": "mid",
+     "firstSeenAt": "2026-10-17T01:24:17.838Z",
+     "closedAt": null,
+     "sourceTicker": "OKTA"
+    },
+    {
+     "id": "20571169",
+     "title": "Corporate New Business Account Executive",
+     "url": "https://www.okta.com/company/careers/opportunity/8289745?gh_jid=8289745",
+     "location": "San Francisco, California",
+     "country": "US",
+     "jobFunction": "sales",
+     "seniority": "mid",
+     "firstSeenAt": "2026-10-17T01:24:17.838Z",
+     "closedAt": null,
+     "sourceTicker": "OKTA"
+    },
+    {
+     "id": "20571163",
+     "title": "Commercial Account Executive",
+     "url": "https://www.okta.com/company/careers/opportunity/8288348?gh_jid=8288348",
+     "location": "Singapore",
+     "country": "SG",
+     "jobFunction": "sales",
+     "seniority": "mid",
+     "firstSeenAt": "2026-10-17T01:24:17.838Z",
+     "closedAt": null,
+     "sourceTicker": "OKTA"
+    },
+    {
+     "id": "20571157",
+     "title": "Auth0 Account Executive- New Business",
+     "url": "https://www.okta.com/company/careers/opportunity/8292594?gh_jid=8292594",
+     "location": "San Francisco, California",
+     "country": "US",
+     "jobFunction": "sales",
+     "seniority": "mid",
+     "firstSeenAt": "2026-10-17T01:24:17.838Z",
+     "closedAt": null,
+     "sourceTicker": "OKTA"
+    },
+    {
+     "id": "20571156",
+     "title": "Auth0 Account Executive- New Business",
+     "url": "https://www.okta.com/company/careers/opportunity/8292623?gh_jid=8292623",
+     "location": "Washington, DC",
+     "country": "US",
+     "jobFunction": "sales",
+     "seniority": "mid",
+     "firstSeenAt": "2026-10-17T01:24:17.838Z",
+     "closedAt": null,
+     "sourceTicker": "OKTA"
+    }
+   ],
+   "why": "Sales: 38% of OKTA's new roles in the last 2 weeks (45 of 117 with a role family), up from 15% in the 2 weeks before (17 of 115).",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z"
+  },
+  {
+   "symbol": "NTR",
+   "name": "Nutrien Ltd.",
+   "sector": null,
+   "industry": null,
+   "sourceTickers": [
+    "NTR"
+   ],
+   "week": "2026-10-12",
+   "dimension": "function",
+   "key": "supply_chain",
+   "label": "Supply chain",
+   "recent": {
+    "weeks": 2,
+    "roles": 50,
+    "total": 204,
+    "share": 0.24509803921568626,
+    "values": [
+     {
+      "week": "2026-10-05",
+      "roles": 31,
+      "total": 120
+     },
+     {
+      "week": "2026-10-12",
+      "roles": 19,
+      "total": 84
+     }
+    ]
+   },
+   "before": {
+    "weeks": 2,
+    "roles": 25,
+    "total": 210,
+    "share": 0.11904761904761904,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "roles": 17,
+      "total": 118
+     },
+     {
+      "week": "2026-09-28",
+      "roles": 8,
+      "total": 92
+     }
+    ]
+   },
+   "change": 0.12605042016806722,
+   "ratio": 2.058823529411765,
+   "zScore": 3.3291910505764304,
+   "titles": 46,
+   "topTitles": [
+    {
+     "title": "CDL Delivery Driver",
+     "count": 3
+    },
+    {
+     "title": "Oberlin CDL Delivery Driver KS",
+     "count": 2
+    },
+    {
+     "title": "Tangent CDL Delivery Driver OR",
+     "count": 2
+    }
+   ],
+   "postings": [
+    {
+     "id": "20582527",
+     "title": "Brookstead Storeperson Delivery Driver Brookstead, QLD QLD",
+     "url": "https://jobs.nutrien.com/Australia/job/Brookstead-Storeperson-Delivery-Driver-Brookstead%2C-QLD-QLD-4364/607079917/",
+     "location": null,
+     "country": null,
+     "jobFunction": "supply_chain",
+     "seniority": "mid",
+     "firstSeenAt": "2026-10-17T01:24:33.614Z",
+     "closedAt": null,
+     "sourceTicker": "NTR"
+    },
+    {
+     "id": "20582292",
+     "title": "Saskatoon Co Op Student, Planning And Delivery SK",
+     "url": "https://jobs.nutrien.com/North-America/job/Saskatoon-Co-op-Student%2C-Planning-and-Delivery-SK-S7K-5R6/607098517/",
+     "location": null,
+     "country": null,
+     "jobFunction": "supply_chain",
+     "seniority": "intern",
+     "firstSeenAt": "2026-10-17T01:24:33.604Z",
+     "closedAt": null,
+     "sourceTicker": "NTR"
+    },
+    {
+     "id": "20582048",
+     "title": "CDL Delivery Driver",
+     "url": "https://jobs.nutrien.com/North-America/job/Goodland-CDL-Delivery-Driver-KS-67735/607112117/",
+     "location": "Goodland, KS, US",
+     "country": "US",
+     "jobFunction": "supply_chain",
+     "seniority": "mid",
+     "firstSeenAt": "2026-10-17T01:24:33.583Z",
+     "closedAt": null,
+     "sourceTicker": "NTR"
+    },
+    {
+     "id": "19783887",
+     "title": "Bentley Seasonal Chemical Delivery Driver AB T0C 0J0",
+     "url": "https://jobs.nutrien.com/North-America/job/Bentley-Seasonal-Chemical-Delivery-Driver-AB-T0C-0J0/607065417/",
+     "location": null,
+     "country": null,
+     "jobFunction": "supply_chain",
+     "seniority": "entry",
+     "firstSeenAt": "2026-10-16T01:22:08.886Z",
+     "closedAt": "2026-10-21T01:36:46.061Z",
+     "sourceTicker": "NTR"
+    },
+    {
+     "id": "19783614",
+     "title": "Pocomoke CDL Delivery Driver MD",
+     "url": "https://jobs.nutrien.com/North-America/job/Pocomoke-CDL-Delivery-Driver-MD-21851/607051917/",
+     "location": "MD, US",
+     "country": "US",
+     "jobFunction": "supply_chain",
+     "seniority": "mid",
+     "firstSeenAt": "2026-10-16T01:22:08.859Z",
+     "closedAt": null,
+     "sourceTicker": "NTR"
+    },
+    {
+     "id": "19783606",
+     "title": "Melfa CDL Delivery Driver Seasonal VA",
+     "url": "https://jobs.nutrien.com/North-America/job/Melfa-CDL-Delivery-Driver-Seasonal-VA-23410/607063017/",
+     "location": "VA, US",
+     "country": "US",
+     "jobFunction": "supply_chain",
+     "seniority": "mid",
+     "firstSeenAt": "2026-10-16T01:22:08.859Z",
+     "closedAt": null,
+     "sourceTicker": "NTR"
+    },
+    {
+     "id": "19783452",
+     "title": "White Springs Buyer%2C White Springs FL",
+     "url": "https://jobs.nutrien.com/North-America/job/White-Springs-Buyer%2C-White-Springs-FL-32096/607048017/",
+     "location": null,
+     "country": null,
+     "jobFunction": "supply_chain",
+     "seniority": "mid",
+     "firstSeenAt": "2026-10-16T01:22:08.859Z",
+     "closedAt": "2026-10-20T01:31:35.683Z",
+     "sourceTicker": "NTR"
+    },
+    {
+     "id": "19783135",
+     "title": "Ekron CDL Delivery Driver KY",
+     "url": "https://jobs.nutrien.com/North-America/job/Ekron-CDL-Delivery-Driver-KY-40117/607061517/",
+     "location": "KY, US",
+     "country": "US",
+     "jobFunction": "supply_chain",
+     "seniority": "mid",
+     "firstSeenAt": "2026-10-16T01:22:08.732Z",
+     "closedAt": null,
+     "sourceTicker": "NTR"
+    },
+    {
+     "id": "19011009",
+     "title": "Saskatoon Intern, Distribution & Truck SK",
+     "url": "https://jobs.nutrien.com/North-America/job/Saskatoon-Intern%2C-Distribution-&-Truck-SK-S7K-5R6/607008217/",
+     "location": null,
+     "country": null,
+     "jobFunction": "supply_chain",
+     "seniority": "intern",
+     "firstSeenAt": "2026-10-15T01:17:33.897Z",
+     "closedAt": null,
+     "sourceTicker": "NTR"
+    },
+    {
+     "id": "19010946",
+     "title": "Osceola Warehouse Specialist AR",
+     "url": "https://jobs.nutrien.com/North-America/job/Osceola-Warehouse-Specialist-AR-72370/607028317/",
+     "location": null,
+     "country": null,
+     "jobFunction": "supply_chain",
+     "seniority": "mid",
+     "firstSeenAt": "2026-10-15T01:17:33.892Z",
+     "closedAt": "2026-10-21T01:36:46.061Z",
+     "sourceTicker": "NTR"
+    },
+    {
+     "id": "19010834",
+     "title": "Purchasing Coordinator",
+     "url": "https://jobs.nutrien.com/North-America/job/Loveland-Purchasing-Coordinator-CO-80538/607031617/",
+     "location": "Loveland, CO, US",
+     "country": "US",
+     "jobFunction": "supply_chain",
+     "seniority": "entry",
+     "firstSeenAt": "2026-10-15T01:17:33.892Z",
+     "closedAt": null,
+     "sourceTicker": "NTR"
+    },
+    {
+     "id": "18291064",
+     "title": "Seasonal CDL Delivery Driver",
+     "url": "https://jobs.nutrien.com/North-America/job/Wayland-Seasonal-CDL-Delivery-Driver-MI-49348/606967817/",
+     "location": "Wayland, MI, US",
+     "country": "US",
+     "jobFunction": "supply_chain",
+     "seniority": "entry",
+     "firstSeenAt": "2026-10-14T01:12:26.046Z",
+     "closedAt": null,
+     "sourceTicker": "NTR"
+    },
+    {
+     "id": "17561771",
+     "title": "Hill City CDL Delivery Driver KS",
+     "url": "https://jobs.nutrien.com/North-America/job/Hill-City-CDL-Delivery-Driver-KS-67642/606944817/",
+     "location": "KS, US",
+     "country": "US",
+     "jobFunction": "supply_chain",
+     "seniority": "mid",
+     "firstSeenAt": "2026-10-13T01:07:57.937Z",
+     "closedAt": null,
+     "sourceTicker": "NTR"
+    },
+    {
+     "id": "17561768",
+     "title": "CDL Delivery Driver",
+     "url": "https://jobs.nutrien.com/North-America/job/Clinton-CDL-Delivery-Driver-IA-52732/606944917/",
+     "location": "Clinton, IA, US",
+     "country": "US",
+     "jobFunction": "supply_chain",
+     "seniority": "mid",
+     "firstSeenAt": "2026-10-13T01:07:57.937Z",
+     "closedAt": null,
+     "sourceTicker": "NTR"
+    },
+    {
+     "id": "17561765",
+     "title": "Bunkie CDL Delivery Driver LA",
+     "url": "https://jobs.nutrien.com/North-America/job/Bunkie-CDL-Delivery-Driver-LA-71322/606942517/",
+     "location": null,
+     "country": null,
+     "jobFunction": "supply_chain",
+     "seniority": "mid",
+     "firstSeenAt": "2026-10-13T01:07:57.937Z",
+     "closedAt": "2026-10-16T01:22:08.994Z",
+     "sourceTicker": "NTR"
+    },
+    {
+     "id": "17561758",
+     "title": "Grady CDL Delivery Driver AR",
+     "url": "https://jobs.nutrien.com/North-America/job/Grady-CDL-Delivery-Driver-AR-71644/606945417/",
+     "location": null,
+     "country": null,
+     "jobFunction": "supply_chain",
+     "seniority": "mid",
+     "firstSeenAt": "2026-10-13T01:07:57.937Z",
+     "closedAt": "2026-10-20T01:31:35.683Z",
+     "sourceTicker": "NTR"
+    },
+    {
+     "id": "17561757",
+     "title": "Salem CDL Delivery Driver Class A CDL With Air Brakes, Hazmat And Tanker Endorsements KY",
+     "url": "https://jobs.nutrien.com/North-America/job/Salem-CDL-Delivery-Driver-Class-A-CDL-with-Air-Brakes%2C-Hazmat-and-Tanker-Endorsements-KY-42078/606944017/",
+     "location": "KY, US",
+     "country": "US",
+     "jobFunction": "supply_chain",
+     "seniority": "mid",
+     "firstSeenAt": "2026-10-13T01:07:57.937Z",
+     "closedAt": null,
+     "sourceTicker": "NTR"
+    },
+    {
+     "id": "17561551",
+     "title": "Clarendon CDL Delivery Driver AR",
+     "url": "https://jobs.nutrien.com/North-America/job/Clarendon-CDL-Delivery-Driver-AR-72029/606945317/",
+     "location": null,
+     "country": null,
+     "jobFunction": "supply_chain",
+     "seniority": "mid",
+     "firstSeenAt": "2026-10-13T01:07:57.933Z",
+     "closedAt": "2026-10-15T01:17:33.930Z",
+     "sourceTicker": "NTR"
+    },
+    {
+     "id": "17561546",
+     "title": "CDL Delivery Driver",
+     "url": "https://jobs.nutrien.com/North-America/job/Plainview-CDL-Delivery-Driver-TX-79072/606941717/",
+     "location": "Plainview, TX, US",
+     "country": "US",
+     "jobFunction": "supply_chain",
+     "seniority": "mid",
+     "firstSeenAt": "2026-10-13T01:07:57.933Z",
+     "closedAt": null,
+     "sourceTicker": "NTR"
+    },
+    {
+     "id": "15326142",
+     "title": "Irvington Seasonal CDL Delivery Driver IA",
+     "url": "https://jobs.nutrien.com/North-America/job/Irvington-Seasonal-CDL-Delivery-Driver-IA-50560/606895117/",
+     "location": null,
+     "country": null,
+     "jobFunction": "supply_chain",
+     "seniority": "entry",
+     "firstSeenAt": "2026-10-10T00:57:10.436Z",
+     "closedAt": "2026-10-13T01:07:57.971Z",
+     "sourceTicker": "NTR"
+    }
+   ],
+   "why": "Supply chain: 25% of NTR's new roles in the last 2 weeks (50 of 204 with a role family), up from 12% in the 2 weeks before (25 of 210).",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z"
+  },
+  {
+   "symbol": "ADSK",
+   "name": "Autodesk, Inc.",
+   "sector": "Technology",
+   "industry": "Software - Application",
+   "sourceTickers": [
+    "ADSK"
+   ],
+   "week": "2026-10-12",
+   "dimension": "function",
+   "key": "sales",
+   "label": "Sales",
+   "recent": {
+    "weeks": 2,
+    "roles": 34,
+    "total": 108,
+    "share": 0.3148148148148148,
+    "values": [
+     {
+      "week": "2026-10-05",
+      "roles": 19,
+      "total": 61
+     },
+     {
+      "week": "2026-10-12",
+      "roles": 15,
+      "total": 47
+     }
+    ]
+   },
+   "before": {
+    "weeks": 2,
+    "roles": 13,
+    "total": 102,
+    "share": 0.12745098039215685,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "roles": 9,
+      "total": 57
+     },
+     {
+      "week": "2026-09-28",
+      "roles": 4,
+      "total": 45
+     }
+    ]
+   },
+   "change": 0.18736383442265797,
+   "ratio": 2.47008547008547,
+   "zScore": 3.255851928162172,
+   "titles": 33,
+   "topTitles": [
+    {
+     "title": "Fusion Account Executive - Expansion English speaker",
+     "count": 2
+    }
+   ],
+   "postings": [
+    {
+     "id": "20056007",
+     "title": "Territory Account Sales Exec 4",
+     "url": "https://autodesk.wd1.myworkdayjobs.com/Ext/job/AMER---Canada---Ontario---Toronto---University-Ave/Territory-Account-Sales-Exec-4_26WD101597-2",
+     "location": "AMER - Canada - Ontario - Toronto - University Ave",
+     "country": "CA",
+     "jobFunction": "sales",
+     "seniority": "senior",
+     "firstSeenAt": "2026-10-16T14:23:46.247Z",
+     "closedAt": "2026-10-21T14:39:21.945Z",
+     "sourceTicker": "ADSK"
+    },
+    {
+     "id": "20056006",
+     "title": "Sr. Associate Digital Business Representative",
+     "url": "https://autodesk.wd1.myworkdayjobs.com/Ext/job/AMER---Costa-Rica---SanJose---Belen/Sr-Associate-Digital-Business-Representative_26WD101525-3",
+     "location": "AMER - Costa Rica - SanJose - Belen",
+     "country": "CR",
+     "jobFunction": "sales",
+     "seniority": "senior",
+     "firstSeenAt": "2026-10-16T14:23:46.247Z",
+     "closedAt": "2026-10-21T14:39:21.945Z",
+     "sourceTicker": "ADSK"
+    },
+    {
+     "id": "19293062",
+     "title": "Fusion Account Executive - Expansion English speaker",
+     "url": "https://autodesk.wd1.myworkdayjobs.com/Ext/job/Spain---Remote/Fusion-Account-Executive---Expansion-English-speaker_26WD101553",
+     "location": "Spain - Remote",
+     "country": "ES",
+     "jobFunction": "sales",
+     "seniority": "executive",
+     "firstSeenAt": "2026-10-15T14:17:35.030Z",
+     "closedAt": "2026-10-21T14:39:21.945Z",
+     "sourceTicker": "ADSK"
+    },
+    {
+     "id": "19293061",
+     "title": "Fusion Account Executive - Expansion English speaker",
+     "url": "https://autodesk.wd1.myworkdayjobs.com/Ext/job/Spain---Remote/Fusion-Account-Executive---Expansion-English-speaker_26WD101630",
+     "location": "Spain - Remote; Dublin, IRL",
+     "country": "ES",
+     "jobFunction": "sales",
+     "seniority": "executive",
+     "firstSeenAt": "2026-10-15T14:17:35.030Z",
+     "closedAt": "2026-10-21T14:39:21.945Z",
+     "sourceTicker": "ADSK"
+    },
+    {
+     "id": "19293060",
+     "title": "Emerging Technology Adoption Specialist",
+     "url": "https://autodesk.wd1.myworkdayjobs.com/Ext/job/Denver-CO-USA/Emerging-Technology-Adoption-Specialist_26WD100530",
+     "location": "Denver, CO, USA",
+     "country": "US",
+     "jobFunction": "sales",
+     "seniority": "mid",
+     "firstSeenAt": "2026-10-15T14:17:35.030Z",
+     "closedAt": "2026-10-17T14:26:46.089Z",
+     "sourceTicker": "ADSK"
+    },
+    {
+     "id": "19293050",
+     "title": "Senior Associate Digital Business Representative, EMEA (French Speaker)",
+     "url": "https://autodesk.wd1.myworkdayjobs.com/Ext/job/Barcelona-ESP/Senior-Associate-Digital-Business-Representative--EMEA--French-Speaker-_26WD101570",
+     "location": "Barcelona, ESP",
+     "country": "ES",
+     "jobFunction": "sales",
+     "seniority": "senior",
+     "firstSeenAt": "2026-10-15T14:17:35.030Z",
+     "closedAt": "2026-10-21T14:39:21.945Z",
+     "sourceTicker": "ADSK"
+    },
+    {
+     "id": "18571398",
+     "title": "Senior Manager, Platform Technology Partnerships",
+     "url": "https://autodesk.wd1.myworkdayjobs.com/Ext/job/Portland-OR-USA/Senior-Manager--Platform-Technology-Partnerships_26WD101275",
+     "location": "Portland, OR, USA; Colorado, USA - Remote; Montreal, QC, CAN; Pennsylvania, USA - Remote; Georgia, USA - Remote; Vancouver, BC, CAN; Novi, MI, USA; Toronto, ON, CAN; Oregon, USA - Remote; Denver, CO, USA; Texas, USA - Remote",
+     "country": "US",
+     "jobFunction": "sales",
+     "seniority": "manager",
+     "firstSeenAt": "2026-10-14T14:08:54.573Z",
+     "closedAt": "2026-10-21T14:39:21.945Z",
+     "sourceTicker": "ADSK"
+    },
+    {
+     "id": "17850007",
+     "title": "Flow Capture Principal Sales Specialist",
+     "url": "https://autodesk.wd1.myworkdayjobs.com/Ext/job/Colorado-USA---Remote/Flow-Capture-Principal-Sales-Specialist_26WD101535-2",
+     "location": "Colorado, USA - Remote",
+     "country": "US",
+     "jobFunction": "sales",
+     "seniority": "lead",
+     "firstSeenAt": "2026-10-13T14:05:33.333Z",
+     "closedAt": "2026-10-21T14:39:21.945Z",
+     "sourceTicker": "ADSK"
+    },
+    {
+     "id": "17850006",
+     "title": "Flow Studio Sales Representative",
+     "url": "https://autodesk.wd1.myworkdayjobs.com/Ext/job/Colorado-USA---Remote/Flow-Studio-Sales-Representative_26WD101531-2",
+     "location": "Colorado, USA - Remote",
+     "country": "US",
+     "jobFunction": "sales",
+     "seniority": "entry",
+     "firstSeenAt": "2026-10-13T14:05:33.333Z",
+     "closedAt": "2026-10-21T14:39:21.945Z",
+     "sourceTicker": "ADSK"
+    },
+    {
+     "id": "17850005",
+     "title": "Flow Senior Technical Sales Specialist",
+     "url": "https://autodesk.wd1.myworkdayjobs.com/Ext/job/Colorado-USA---Remote/Flow-Sr-Technical-Sales-Specialist_26WD101539-2",
+     "location": "Colorado, USA - Remote",
+     "country": "US",
+     "jobFunction": "sales",
+     "seniority": "senior",
+     "firstSeenAt": "2026-10-13T14:05:33.333Z",
+     "closedAt": "2026-10-21T14:39:21.945Z",
+     "sourceTicker": "ADSK"
+    },
+    {
+     "id": "17850002",
+     "title": "Account technical lead - Enterprise (AEC) - French Speaker",
+     "url": "https://autodesk.wd1.myworkdayjobs.com/Ext/job/Paris-FRA/Account-technical-lead---Enterprise--AEC----French-Speaker_26WD101424-2",
+     "location": "Paris, FRA; France - Remote",
+     "country": "FR",
+     "jobFunction": "sales",
+     "seniority": "lead",
+     "firstSeenAt": "2026-10-13T14:05:33.333Z",
+     "closedAt": "2026-10-19T14:32:30.472Z",
+     "sourceTicker": "ADSK"
+    },
+    {
+     "id": "17850001",
+     "title": "Territory Account Representative - Thailand Market",
+     "url": "https://autodesk.wd1.myworkdayjobs.com/Ext/job/Kuala-Lumpur-MYS/Territory-Account-Representative---Thailand-Market_26WD101448-3",
+     "location": "Kuala Lumpur, MYS",
+     "country": "MY",
+     "jobFunction": "sales",
+     "seniority": "entry",
+     "firstSeenAt": "2026-10-13T14:05:33.333Z",
+     "closedAt": null,
+     "sourceTicker": "ADSK"
+    },
+    {
+     "id": "17126980",
+     "title": "License Compliance Sales Representative (Philippines)",
+     "url": "https://autodesk.wd1.myworkdayjobs.com/Ext/job/Philippines---Remote/License-Compliance-Sales-Representative--Philippines-_26WD100859-1",
+     "location": "Philippines - Remote",
+     "country": "PH",
+     "jobFunction": "sales",
+     "seniority": "entry",
+     "firstSeenAt": "2026-10-12T14:02:22.305Z",
+     "closedAt": "2026-10-21T14:39:21.945Z",
+     "sourceTicker": "ADSK"
+    },
+    {
+     "id": "17126978",
+     "title": "Territory Account Representative, Thailand Market",
+     "url": "https://autodesk.wd1.myworkdayjobs.com/Ext/job/Kuala-Lumpur-MYS/Territory-Account-Representative--Thailand-Market_26WD101497-1",
+     "location": "Kuala Lumpur, MYS",
+     "country": "MY",
+     "jobFunction": "sales",
+     "seniority": "entry",
+     "firstSeenAt": "2026-10-12T14:02:22.305Z",
+     "closedAt": null,
+     "sourceTicker": "ADSK"
+    },
+    {
+     "id": "17126977",
+     "title": "Territory Account Representative - Philippines Market",
+     "url": "https://autodesk.wd1.myworkdayjobs.com/Ext/job/Kuala-Lumpur-MYS/Territory-Account-Representative---Philippines-Market_26WD101452-1",
+     "location": "Kuala Lumpur, MYS",
+     "country": "MY",
+     "jobFunction": "sales",
+     "seniority": "entry",
+     "firstSeenAt": "2026-10-12T14:02:22.305Z",
+     "closedAt": null,
+     "sourceTicker": "ADSK"
+    },
+    {
+     "id": "15635713",
+     "title": "Senior Manager, Forecasting & Revenue Intelligence, Global Sales",
+     "url": "https://autodesk.wd1.myworkdayjobs.com/Ext/job/Denver-CO-USA/Senior-Manager--Forecasting---Revenue-Intelligence--Global-Sales_26WD101383",
+     "location": "Denver, CO, USA; New Jersey, USA - Remote; New Hampshire, USA - Remote; Michigan, USA - Remote; Massachusetts, USA - Remote; Louisiana, USA - Remote; Kentucky, USA - Remote; Indiana, USA - Remote; Illinois, USA - Remote; Florida, USA - Remote; District of Columbia, USA - Remote; Minnesota, USA - Rem",
+     "country": "US",
+     "jobFunction": "sales",
+     "seniority": "manager",
+     "firstSeenAt": "2026-10-10T13:56:11.659Z",
+     "closedAt": "2026-10-19T14:32:30.472Z",
+     "sourceTicker": "ADSK"
+    },
+    {
+     "id": "15635711",
+     "title": "Business Development Representative",
+     "url": "https://autodesk.wd1.myworkdayjobs.com/Ext/job/AMER---United-States---Raleigh---150-Fayetteville/Business-Development-Representative_26WD101576",
+     "location": "AMER - United States - Raleigh - 150 Fayetteville",
+     "country": "US",
+     "jobFunction": "sales",
+     "seniority": "entry",
+     "firstSeenAt": "2026-10-10T13:56:11.659Z",
+     "closedAt": null,
+     "sourceTicker": "ADSK"
+    },
+    {
+     "id": "15635710",
+     "title": "Manager, Business Development",
+     "url": "https://autodesk.wd1.myworkdayjobs.com/Ext/job/Denver-CO-USA/Manager--Business-Development_26WD101577",
+     "location": "Denver, CO, USA; North Carolina, USD; Montreal, QC, CAN",
+     "country": "US",
+     "jobFunction": "sales",
+     "seniority": "manager",
+     "firstSeenAt": "2026-10-10T13:56:11.659Z",
+     "closedAt": "2026-10-21T14:39:21.945Z",
+     "sourceTicker": "ADSK"
+    },
+    {
+     "id": "15635709",
+     "title": "Account Executive - Midmarket",
+     "url": "https://autodesk.wd1.myworkdayjobs.com/Ext/job/Toronto-ON-CAN/Account-Executive---Midmarket_26WD101578",
+     "location": "Toronto, ON, CAN; North Carolina, USD; Montreal, QC, CAN; Plano, TX, USA; AMER - United States - Miami - Brickell City Centr; Denver, CO, USA",
+     "country": "CA",
+     "jobFunction": "sales",
+     "seniority": "mid",
+     "firstSeenAt": "2026-10-10T13:56:11.659Z",
+     "closedAt": "2026-10-21T14:39:21.945Z",
+     "sourceTicker": "ADSK"
+    },
+    {
+     "id": "14889046",
+     "title": "Fusion Account Executive - Expansion German speaker",
+     "url": "https://autodesk.wd1.myworkdayjobs.com/Ext/job/Spain---Remote/Fusion-Account-Executive---Expansion-German-speaker_26WD101552",
+     "location": "Spain - Remote",
+     "country": "ES",
+     "jobFunction": "sales",
+     "seniority": "executive",
+     "firstSeenAt": "2026-10-09T13:52:15.494Z",
+     "closedAt": null,
+     "sourceTicker": "ADSK"
+    }
+   ],
+   "why": "Sales: 31% of ADSK's new roles in the last 2 weeks (34 of 108 with a role family), up from 13% in the 2 weeks before (13 of 102).",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z"
+  },
+  {
+   "symbol": "GM",
+   "name": "General Motors Co",
+   "sector": "Consumer Cyclical",
+   "industry": "Auto Manufacturers",
+   "sourceTickers": [
+    "GM"
+   ],
+   "week": "2026-10-12",
+   "dimension": "theme",
+   "key": "ai_ml",
+   "label": "AI & machine learning",
+   "recent": {
+    "weeks": 2,
+    "roles": 29,
+    "total": 365,
+    "share": 0.07945205479452055,
+    "values": [
+     {
+      "week": "2026-10-05",
+      "roles": 13,
+      "total": 180
+     },
+     {
+      "week": "2026-10-12",
+      "roles": 16,
+      "total": 185
+     }
+    ]
+   },
+   "before": {
+    "weeks": 2,
+    "roles": 11,
+    "total": 377,
+    "share": 0.029177718832891247,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "roles": 2,
+      "total": 206
+     },
+     {
+      "week": "2026-09-28",
+      "roles": 9,
+      "total": 171
+     }
+    ]
+   },
+   "change": 0.05027433596162931,
+   "ratio": 2.723038605230386,
+   "zScore": 3.03156476858641,
+   "titles": 29,
+   "topTitles": [],
+   "postings": [
+    {
+     "id": "20195042",
+     "title": "Principal Engineer, AI Acceleration",
+     "url": "https://generalmotors.wd5.myworkdayjobs.com/Careers_GM/job/Warren-Michigan-United-States-of-America/Principal-Engineer--AI-Acceleration_JR-202621933",
+     "location": "Warren, Michigan, United States of America; Austin, Texas, United States of America",
+     "country": "US",
+     "jobFunction": "engineering",
+     "seniority": "lead",
+     "firstSeenAt": "2026-10-16T16:39:06.680Z",
+     "closedAt": null,
+     "sourceTicker": "GM"
+    },
+    {
+     "id": "20195028",
+     "title": "2027 Summer Intern, AI Research, Embodied AI (Masters)",
+     "url": "https://generalmotors.wd5.myworkdayjobs.com/Careers_GM/job/Sunnyvale-California-United-States-of-America/XMLNAME-2027-Summer-Intern--AI-Research--Embodied-AI--Masters-_JR-202622535",
+     "location": "Sunnyvale, California, United States of America",
+     "country": "US",
+     "jobFunction": "data_ai",
+     "seniority": "intern",
+     "firstSeenAt": "2026-10-16T16:39:06.680Z",
+     "closedAt": null,
+     "sourceTicker": "GM"
+    },
+    {
+     "id": "20195026",
+     "title": "2027 Summer Intern, SEAM, Embodied AI (Masters)",
+     "url": "https://generalmotors.wd5.myworkdayjobs.com/Careers_GM/job/Sunnyvale-California-United-States-of-America/XMLNAME-2027-Summer-Intern--SEAM--Embodied-AI--Masters-_JR-202622537",
+     "location": "Sunnyvale, California, United States of America",
+     "country": "US",
+     "jobFunction": "data_ai",
+     "seniority": "intern",
+     "firstSeenAt": "2026-10-16T16:39:06.680Z",
+     "closedAt": null,
+     "sourceTicker": "GM"
+    },
+    {
+     "id": "20195025",
+     "title": "2027 Summer Intern, AI/ML Engineer, Mapping (Masters)",
+     "url": "https://generalmotors.wd5.myworkdayjobs.com/Careers_GM/job/Warren-Michigan-United-States-of-America/XMLNAME-2027-Summer-Intern--AI-ML-Engineer--Mapping--Masters-_JR-202622539",
+     "location": "Warren, Michigan, United States of America",
+     "country": "US",
+     "jobFunction": "data_ai",
+     "seniority": "intern",
+     "firstSeenAt": "2026-10-16T16:39:06.680Z",
+     "closedAt": null,
+     "sourceTicker": "GM"
+    },
+    {
+     "id": "20195022",
+     "title": "2027 Summer Intern, Data Scaling, Embodied AI (Masters)",
+     "url": "https://generalmotors.wd5.myworkdayjobs.com/Careers_GM/job/Sunnyvale-California-United-States-of-America/XMLNAME-2027-Summer-Intern---Data-Scaling--Embodied-AI--Masters-_JR-202622540",
+     "location": "Sunnyvale, California, United States of America",
+     "country": "US",
+     "jobFunction": "data_ai",
+     "seniority": "intern",
+     "firstSeenAt": "2026-10-16T16:39:06.680Z",
+     "closedAt": null,
+     "sourceTicker": "GM"
+    },
+    {
+     "id": "20195021",
+     "title": "2027 Summer Intern, Onboard Autonomy, Embodied AI (Masters)",
+     "url": "https://generalmotors.wd5.myworkdayjobs.com/Careers_GM/job/Sunnyvale-California-United-States-of-America/XMLNAME-2027-Summer-Intern--Onboard-Autonomy--Embodied-AI--Masters-_JR-202622543",
+     "location": "Sunnyvale, California, United States of America",
+     "country": "US",
+     "jobFunction": "data_ai",
+     "seniority": "intern",
+     "firstSeenAt": "2026-10-16T16:39:06.680Z",
+     "closedAt": null,
+     "sourceTicker": "GM"
+    },
+    {
+     "id": "19429970",
+     "title": "2027 Intern - AI/ML Engineer, Autonomous Vehicle ML Infrastructure",
+     "url": "https://generalmotors.wd5.myworkdayjobs.com/Careers_GM/job/Sunnyvale-California-United-States-of-America/XMLNAME-2027-Intern---AI-ML-Engineer--Autonomous-Vehicle-ML-Infrastructure_JR-202622410",
+     "location": "Sunnyvale, California, United States of America",
+     "country": "US",
+     "jobFunction": "data_ai",
+     "seniority": "intern",
+     "firstSeenAt": "2026-10-15T16:33:58.426Z",
+     "closedAt": null,
+     "sourceTicker": "GM"
+    },
+    {
+     "id": "19429969",
+     "title": "2027 Intern - AI/ML Engineer - Capacity & Performance Engineering, Autonomous Vehicles",
+     "url": "https://generalmotors.wd5.myworkdayjobs.com/Careers_GM/job/Sunnyvale-California-United-States-of-America/XMLNAME-2027-Intern---AI-ML-Engineer---Capacity---Performance-Engineering--Autonomous-Vehicles_JR-202622406",
+     "location": "Sunnyvale, California, United States of America",
+     "country": "US",
+     "jobFunction": "data_ai",
+     "seniority": "intern",
+     "firstSeenAt": "2026-10-15T16:33:58.426Z",
+     "closedAt": null,
+     "sourceTicker": "GM"
+    },
+    {
+     "id": "19429921",
+     "title": "Robotics AI Strategy & Program Lead, Early Career",
+     "url": "https://generalmotors.wd5.myworkdayjobs.com/Careers_GM/job/Warren-Michigan-United-States-of-America/Robotics-AI-Strategy---Program-Lead--Early-Career_JR-202622340-1",
+     "location": "Warren, Michigan, United States of America",
+     "country": "US",
+     "jobFunction": "data_ai",
+     "seniority": "intern",
+     "firstSeenAt": "2026-10-15T16:33:58.426Z",
+     "closedAt": null,
+     "sourceTicker": "GM"
+    },
+    {
+     "id": "18713298",
+     "title": "R&D Researcher – AI and Machine Learning",
+     "url": "https://generalmotors.wd5.myworkdayjobs.com/Careers_GM/job/Warren-Michigan-United-States-of-America/R-D-Researcher---AI-and-Machine-Learning_JR-202621474",
+     "location": "Warren, Michigan, United States of America",
+     "country": "US",
+     "jobFunction": "data_ai",
+     "seniority": "mid",
+     "firstSeenAt": "2026-10-14T16:27:46.348Z",
+     "closedAt": null,
+     "sourceTicker": "GM"
+    },
+    {
+     "id": "18713291",
+     "title": "AI Researcher (AV) - Internship",
+     "url": "https://generalmotors.wd5.myworkdayjobs.com/Careers_GM/job/Herzliya-Tel-Aviv-District-Israel/AI-Research--AV----Summer-Internship_JR-202605668",
+     "location": "Herzliya, Tel Aviv District, Israel",
+     "country": "IL",
+     "jobFunction": "data_ai",
+     "seniority": "intern",
+     "firstSeenAt": "2026-10-14T16:27:46.348Z",
+     "closedAt": "2026-10-19T16:55:45.418Z",
+     "sourceTicker": "GM"
+    },
+    {
+     "id": "18713256",
+     "title": "Staff Software Engineer– AI Enablement",
+     "url": "https://generalmotors.wd5.myworkdayjobs.com/Careers_GM/job/Milford-Michigan-United-States-of-America/Staff-Software-Engineer--AI-Enablement_JR-202621998",
+     "location": "Milford, Michigan, United States of America; Remote - United States; Warren, Michigan, United States of America",
+     "country": "US",
+     "jobFunction": "data_ai",
+     "seniority": "lead",
+     "firstSeenAt": "2026-10-14T16:27:46.348Z",
+     "closedAt": "2026-10-22T17:21:35.929Z",
+     "sourceTicker": "GM"
+    },
+    {
+     "id": "17262531",
+     "title": "Entry-Level – AI/Machine Learning Researcher",
+     "url": "https://generalmotors.wd5.myworkdayjobs.com/Careers_GM/job/Mountain-View-California-United-States-of-America/Entry-Level---AI-Machine-Learning-Researcher_JR-202621753",
+     "location": "Mountain View, California, United States of America",
+     "country": "US",
+     "jobFunction": "data_ai",
+     "seniority": "entry",
+     "firstSeenAt": "2026-10-12T16:15:10.680Z",
+     "closedAt": null,
+     "sourceTicker": "GM"
+    },
+    {
+     "id": "17262527",
+     "title": "Entry-Level – AI and Machine Learning for Automation Researcher",
+     "url": "https://generalmotors.wd5.myworkdayjobs.com/Careers_GM/job/Warren-Michigan-United-States-of-America/Entry-Level---AI-and-Machine-Learning-for-Automation-Researcher_JR-202621769",
+     "location": "Warren, Michigan, United States of America",
+     "country": "US",
+     "jobFunction": "data_ai",
+     "seniority": "entry",
+     "firstSeenAt": "2026-10-12T16:15:10.680Z",
+     "closedAt": null,
+     "sourceTicker": "GM"
+    },
+    {
+     "id": "17262518",
+     "title": "2027 Summer Intern - Research and Development - AI/Machine Learning",
+     "url": "https://generalmotors.wd5.myworkdayjobs.com/Careers_GM/job/Mountain-View-California-United-States-of-America/XMLNAME-2027-Summer-Intern---Research-and-Development---AI-Machine-Learning_JR-202621620",
+     "location": "Mountain View, California, United States of America",
+     "country": "US",
+     "jobFunction": "data_ai",
+     "seniority": "intern",
+     "firstSeenAt": "2026-10-12T16:15:10.680Z",
+     "closedAt": null,
+     "sourceTicker": "GM"
+    },
+    {
+     "id": "17262514",
+     "title": "2027 Summer Intern - Research and Development - Machine Learning for Automation",
+     "url": "https://generalmotors.wd5.myworkdayjobs.com/Careers_GM/job/Warren-Michigan-United-States-of-America/XMLNAME-2027-Summer-Intern---Research-and-Development---Machine-Learning-for-Automation_JR-202621724",
+     "location": "Warren, Michigan, United States of America",
+     "country": "US",
+     "jobFunction": "data_ai",
+     "seniority": "intern",
+     "firstSeenAt": "2026-10-12T16:15:10.680Z",
+     "closedAt": null,
+     "sourceTicker": "GM"
+    },
+    {
+     "id": "16551743",
+     "title": "Gen AI Staff Researcher",
+     "url": "https://generalmotors.wd5.myworkdayjobs.com/Careers_GM/job/Herzliya-Tel-Aviv-District-Israel/Gen-AI-Staff-Researcher_JR-202621235-1",
+     "location": "Herzliya, Tel Aviv District, Israel",
+     "country": "IL",
+     "jobFunction": "data_ai",
+     "seniority": "lead",
+     "firstSeenAt": "2026-10-11T16:09:52.982Z",
+     "closedAt": null,
+     "sourceTicker": "GM"
+    },
+    {
+     "id": "15772620",
+     "title": "2027 Summer Intern, Onboard Autonomy, Embodied AI",
+     "url": "https://generalmotors.wd5.myworkdayjobs.com/Careers_GM/job/Sunnyvale-California-United-States-of-America/XMLNAME-2027-Summer-Intern--Onboard-Autonomy--Embodied-AI_JR-202622135",
+     "location": "Sunnyvale, California, United States of America",
+     "country": "US",
+     "jobFunction": "data_ai",
+     "seniority": "intern",
+     "firstSeenAt": "2026-10-10T16:04:20.217Z",
+     "closedAt": null,
+     "sourceTicker": "GM"
+    },
+    {
+     "id": "15772617",
+     "title": "2027 Summer Intern, SEAM, Embodied AI",
+     "url": "https://generalmotors.wd5.myworkdayjobs.com/Careers_GM/job/Sunnyvale-California-United-States-of-America/XMLNAME-2027-Summer-Intern--SEAM--Embodied-AI_JR-202622143",
+     "location": "Sunnyvale, California, United States of America",
+     "country": "US",
+     "jobFunction": "data_ai",
+     "seniority": "intern",
+     "firstSeenAt": "2026-10-10T16:04:20.217Z",
+     "closedAt": null,
+     "sourceTicker": "GM"
+    },
+    {
+     "id": "15772616",
+     "title": "2027 Summer Intern, AI Research, Embodied AI",
+     "url": "https://generalmotors.wd5.myworkdayjobs.com/Careers_GM/job/Sunnyvale-California-United-States-of-America/XMLNAME-2027-Summer-Intern--AI-Research--Embodied-AI_JR-202622146",
+     "location": "Sunnyvale, California, United States of America",
+     "country": "US",
+     "jobFunction": "data_ai",
+     "seniority": "intern",
+     "firstSeenAt": "2026-10-10T16:04:20.217Z",
+     "closedAt": null,
+     "sourceTicker": "GM"
+    }
+   ],
+   "why": "AI & machine learning: 7.9% of GM's new roles in the last 2 weeks (29 of 365), up from 2.9% in the 2 weeks before (11 of 377).",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z"
+  }
+ ]
+}

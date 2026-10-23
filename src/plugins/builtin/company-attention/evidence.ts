@@ -1,7 +1,8 @@
 import type { PaneScreenshotEvidenceHook } from "../../../cli/pane-functions/screenshot-evidence";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { isRecord } from "../../../utils/guards";
-import { fetchAppRank, fetchAttention, fetchMoves, fetchSignals, validateAttention, type AttentionPayload } from "./client";
+import { fetchAppRank, fetchAttention, fetchBuilding, fetchMoves, fetchSignals, validateAttention, type AttentionPayload } from "./client";
+import { isBuildingFilter } from "./building-model";
 import { isMovesFilter } from "./moves-model";
 import { isSignalGroup, isSignalsFilter } from "./signals-model";
 import type { AttentionKind } from "./model";
@@ -36,11 +37,14 @@ export function attentionScreenshotEvidence(kind: AttentionKind): PaneScreenshot
       const group = kind === "hiring" && typeof resolved.options.tab === "string" && isSignalGroup(resolved.options.tab) ? resolved.options.tab : null;
       const signalsKind = typeof resolved.options.kind === "string" ? resolved.options.kind : "all";
       const signals = group ? await fetchSignals(group, symbol, { filter: isSignalsFilter(group, signalsKind) ? signalsKind : "all" }) : null;
-      return { settings: { attentionSnapshot: payload, ...(moves ? { movesSnapshot: moves } : {}), ...(group && signals ? { [`${group}Snapshot`]: signals } : {}) }, financials: symbol ? [[symbol, { annualStatements: [], quarterlyStatements: [], priceHistory: [] }]] : [] };
+      // And Building.
+      const dimension = typeof resolved.options.dimension === "string" && isBuildingFilter(resolved.options.dimension) ? resolved.options.dimension : "all";
+      const building = kind === "hiring" && resolved.options.tab === "building" ? await fetchBuilding(symbol, { filter: dimension }) : null;
+      return { settings: { attentionSnapshot: payload, ...(moves ? { movesSnapshot: moves } : {}), ...(group && signals ? { [`${group}Snapshot`]: signals } : {}), ...(building ? { buildingSnapshot: building } : {}) }, financials: symbol ? [[symbol, { annualStatements: [], quarterlyStatements: [], priceHistory: [] }]] : [] };
     },
     read(value) {
       if (!isRecord(value) || value.kind !== kind || value.version !== 1 || value.complete !== true || !isRecord(value.payload)
-        || !["table", "chart", "mix", "peers", "evidence", ...(kind === "hiring" ? ["moves", "expansion", "anomalies"] : [])].includes(String(value.tab)) || !Array.isArray(value.rowIds) || !value.rowIds.every((id) => typeof id === "string") || value.plottedValueCount !== value.rowIds.length) return null;
+        || !["table", "chart", "mix", "peers", "evidence", ...(kind === "hiring" ? ["moves", "expansion", "anomalies", "building"] : [])].includes(String(value.tab)) || !Array.isArray(value.rowIds) || !value.rowIds.every((id) => typeof id === "string") || value.plottedValueCount !== value.rowIds.length) return null;
       try { if (!(kind === "apps" && Array.isArray(value.payload.rankHistory))) validateAttention(kind, value.payload as unknown as AttentionPayload); return value as unknown as AttentionEvidence; } catch { return null; }
     },
     mismatches(evidence, { resolved, payload }) {
