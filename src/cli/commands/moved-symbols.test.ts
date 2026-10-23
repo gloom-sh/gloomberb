@@ -3,7 +3,8 @@ import { apiClient } from "../../api-client";
 import { AppPersistence } from "../../data/app-persistence";
 import { TickerRepository } from "../../data/ticker-repository";
 import { getLoadablePlugins } from "../../plugins/catalog";
-import { runPaneFunction } from "../pane-functions";
+import { runPaneFunction, runPaneScreenshot } from "../pane-functions";
+import * as paneShot from "../desktop-pane-shot";
 import type { MarketContext } from "../types";
 import { createDefaultConfig } from "../../types/config";
 import { createTestCliContext, type PrintedCliResult } from "../../test-support/cli-context";
@@ -142,13 +143,13 @@ function impliedVolatility(path: string) {
   })) };
 }
 
-async function runFn(args: string[], dataProvider = source()) {
+async function runFn(args: string[], dataProvider = source(), command = runPaneFunction) {
   const persistence = new AppPersistence(":memory:");
   const iv = spyOn(apiClient, "impliedVolatility").mockImplementation(async (path: string) => impliedVolatility(path) as never);
   const cli = createTestCliContext({ config, dataProvider, persistence, store: new TickerRepository(persistence.tickers) });
   (cli.context as { plugins?: unknown }).plugins = getLoadablePlugins();
   try {
-    const { result: error } = await captureConsole(() => runPaneFunction(args, cli.context).then(() => null, (failure: unknown) => failure));
+    const { result: error } = await captureConsole(() => command(args, cli.context).then(() => null, (failure: unknown) => failure));
     return { error, printed: cli.printed[0] as PrintedCliResult | undefined };
   } finally {
     iv.mockRestore();
@@ -209,4 +210,36 @@ test("fn given a company's name where its ticker goes answers as quote does: not
   }
   // A ticker the function has data for is served as before.
   expect((await runFn(["HIVG", "META"])).error).toBeNull();
+});
+
+test("shot rejects a company's name before starting a renderer, including charts that retain failed series", async () => {
+  const render = spyOn(paneShot, "renderDesktopPaneScreenshot").mockImplementation(async () => {
+    throw new Error("Capture renderer reached");
+  });
+  const provider = source(undefined, {
+    getPriceHistoryWithMetadata: async (symbol) => {
+      if (symbol === "PALANTIR") throw new Error("Not a ticker: PALANTIR.");
+      return { resolution: "1d", points: [{ date: new Date("2026-10-14"), close: 736.72 }] };
+    },
+  });
+  try {
+    for (const code of ["G", "RDCF", "HIVG"]) {
+      const { error, printed } = await runFn([code, "palantir"], provider, runPaneScreenshot);
+      expect(printed).toBeUndefined();
+      expect((error as Error).message).toBe("Not a ticker: PALANTIR.");
+      const { stderr } = await captureConsole(() => printCliError(error, { ...DEFAULT_CLI_OPTIONS, color: false }, { command: "shot", args: [code, "palantir"] }));
+      expect(stderr).toBe("error: Not a ticker: PALANTIR. Try `gloomberb search palantir`.");
+    }
+    expect(render).not.toHaveBeenCalled();
+    // A known ticker and a source outage still take the capture path.
+    for (const dataProvider of [provider, source(undefined, {
+      getTickerFinancials: async () => { throw new Error("Source unavailable"); },
+      getPriceHistoryWithMetadata: async () => { throw new Error("Source unavailable"); },
+    })]) {
+      expect(((await runFn(["G", "META"], dataProvider, runPaneScreenshot)).error as Error).message).toBe("Capture renderer reached");
+    }
+    expect(render).toHaveBeenCalledTimes(2);
+  } finally {
+    render.mockRestore();
+  }
 });

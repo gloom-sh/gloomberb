@@ -5,6 +5,7 @@ import type { BrokerOrder, BrokerOrderRequest } from "../../../types/trading";
 import { brokerOrderKey, brokerOrderStatus, canChangeBrokerOrder, ticketEditingPriceStep, withLatestOrder } from "./orders-data";
 import { sameBrokerContract } from "../../../utils/instrument-identity";
 import { isStrategyOrder } from "./strategy";
+import { linkRoleName } from "./linked-orders";
 
 export function ticketOrderMatches(order: Pick<BrokerOrder, "accountId" | "brokerInstanceId" | "contract" | "legs">, contract: BrokerContractRef, profileId: string, accountId?: string): boolean {
   if (!accountId || order.accountId !== accountId || order.brokerInstanceId && order.brokerInstanceId !== profileId
@@ -38,13 +39,23 @@ export function ticketChartLevels({ draft, editing, orders, latestOrder, avgCost
   };
   if (draft && editing) {
     const color = draft.action === "SELL" ? colors.negative : colors.positive;
+    // A bracket's exits trade the other way; an OCO's stop is its own side's.
+    const exitColor = draft.action === "SELL" ? colors.positive : colors.negative;
     if (["LMT", "STP LMT"].includes(draft.orderType)) add("ticket:limit", draft.limitPrice, "Draft limit", color, true);
     if (["STP", "STP LMT"].includes(draft.orderType)) add("ticket:stop", draft.stopPrice, "Draft stop", color, true);
+    if (draft.orderClass === "oco") add("ticket:stop-loss", draft.stopLossPrice, "Draft stop", color, true);
+    if (draft.orderClass === "bracket") {
+      add("ticket:take-profit", draft.takeProfitPrice, "Draft take profit", exitColor, true);
+      add("ticket:stop-loss", draft.stopLossPrice, "Draft stop loss", exitColor, true);
+    }
   }
   const projected = latestOrder ? withLatestOrder(orders, latestOrder) : orders;
   for (const order of projected) {
     if (!canChangeBrokerOrder(order)) continue;
-    const label = `${order.action === "BUY" ? "Buy" : "Sell"} ${order.remaining} ${({ "Partially filled": "partial", Replacing: "replacing" } as Record<string, string>)[brokerOrderStatus(order.status)] ?? "working"}`;
+    const state = ({ "Partially filled": "partial", Replacing: "replacing" } as Record<string, string>)[brokerOrderStatus(order.status)];
+    // A bracket's exit or a trailing stop says what it is; a plain order says how it stands.
+    const kind = order.linkRole && order.linkRole !== "entry" ? linkRoleName[order.linkRole].toLowerCase() : order.orderType === "TRAIL" ? "trailing" : undefined;
+    const label = `${order.action === "BUY" ? "Buy" : "Sell"} ${order.remaining} ${[kind, state].filter(Boolean).join(" ") || "working"}`;
     const color = order.action === "SELL" ? colors.negative : colors.positive;
     add(`order:${brokerOrderKey(order)}`, order.limitPrice ?? order.stopPrice, label, color);
     if (order.orderType === "STP LMT") add(`stop:${brokerOrderKey(order)}`, order.stopPrice, `${label} stop`, color);

@@ -1,4 +1,5 @@
 import type { HeadlessPaneContext } from "../../../types/headless";
+import type { QueryEntry } from "../../../market-data/result-types";
 import { MarketDataCoordinator, resolveEntryValue } from "../../../market-data/coordinator";
 import { fxLegForCurrency } from "../../../market-data/coordinator/fx-legs";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
@@ -32,6 +33,12 @@ export type ConvertedCapRow<Row extends CapRow> = Row & {
 };
 
 const usable = (rate: number | undefined): rate is number => rate != null && Number.isFinite(rate) && rate > 0;
+
+/** A loaded rate as a `UsdRate`: with its source's observation time and when it was read, from the entry it came in. */
+export function usdRateFromEntry(rate: number, entry: Pick<QueryEntry<number>, "asOf" | "fetchedAt"> | null | undefined): UsdRate {
+  const time = (value: number | null | undefined) => (value != null && Number.isFinite(value) ? new Date(value).toISOString() : null);
+  return { rate, asOf: time(entry?.asOf), retrievedAt: time(entry?.fetchedAt) };
+}
 
 function olderOf(left: string | null, right: string | null): string | null {
   if (!left || !right) return left ?? right;
@@ -105,13 +112,14 @@ function rateTimeText(asOf: string): string {
 
 /**
  * The status line's note naming each rate and its date:
- * `market caps in USD at EUR/USD 1.1612 (2026-10-13 21:00 UTC)`.
+ * `market caps in USD at EUR/USD 1.1612 (2026-10-13 21:00 UTC)`; the pane
+ * names its column instead, `MCAP USD at …`.
  */
-export function conversionNote(target: string, conversions: readonly CapConversion[]): string | null {
+export function conversionNote(target: string, conversions: readonly CapConversion[], subject = `market caps in ${target}`): string | null {
   if (conversions.length === 0) return null;
   const rates = conversions.map((conversion) => `${conversionPairText(conversion)} (${conversion.asOf ? rateTimeText(conversion.asOf)
     : conversion.retrievedAt ? `retrieved ${rateTimeText(conversion.retrievedAt)}` : "time not stated"})`);
-  return `market caps in ${target} at ${rates.join(", ")}`;
+  return `${subject} at ${rates.join(", ")}`;
 }
 
 /**
@@ -134,8 +142,7 @@ export async function loadFxLegs(
         const entry = await coordinator.loadFxRate(currency);
         const rate = resolveEntryValue(entry);
         if (!usable(rate ?? undefined)) throw new Error(entry.error?.message ?? "no usable rate");
-        const time = (value: number | null | undefined) => (value != null && Number.isFinite(value) ? new Date(value).toISOString() : null);
-        legs.set(currency, { rate: rate!, asOf: time(entry.asOf), retrievedAt: time(entry.fetchedAt) });
+        legs.set(currency, usdRateFromEntry(rate!, entry));
       } catch (error) {
         failed.push({ currency, reason: errorMessage(error) });
       }

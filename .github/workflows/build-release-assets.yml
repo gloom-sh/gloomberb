@@ -37,6 +37,14 @@ jobs:
             asset: gloomberb-linux-x64
           - os: ubuntu-24.04-arm
             asset: gloomberb-linux-arm64
+          # Alpine and other musl systems. build.ts smoke tests them in an
+          # Alpine container, since the runner itself is glibc.
+          - os: ubuntu-latest
+            asset: gloomberb-linux-x64-musl
+            target: linux-x64-musl
+          - os: ubuntu-24.04-arm
+            asset: gloomberb-linux-arm64-musl
+            target: linux-arm64-musl
           - os: windows-latest
             asset: gloomberb-windows-x64
     runs-on: ${{ matrix.os }}
@@ -55,7 +63,7 @@ jobs:
         run: npm pkg set "version=$BUILD_VERSION"
 
       - name: Build
-        run: bun run scripts/build.ts
+        run: bun run scripts/build.ts ${{ matrix.target && format('--target {0}', matrix.target) || '' }}
 
       - uses: actions/upload-artifact@v4
         with:

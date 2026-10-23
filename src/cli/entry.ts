@@ -1,3 +1,4 @@
+import "./opentui-libc";
 import { dispatchCli, failUnknownCliCommand } from "./index";
 import { inferCliErrorOptions, printCliError } from "./errors";
 import { isCliHelpFlag } from "./options";

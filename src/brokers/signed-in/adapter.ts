@@ -296,6 +296,17 @@ export function createSignedInBrokerAdapter(overrides: Partial<SignedInBrokerAda
     if (!orders.types.includes(request.orderType)) {
       throw refused(`${name} does not take ${request.orderType} orders from Gloom.`);
     }
+    // A server that does not say it takes a bracket, an OCO pair or a trailing stop would drop its fields and place a bare
+    // order: never send one it has not named.
+    if (!request.orderClass && (request.takeProfitPrice !== undefined || request.stopLossPrice !== undefined)) {
+      throw refused("A take profit or stop loss needs a bracket or OCO order.");
+    }
+    if (request.orderClass && !orders.orderClasses?.includes(request.orderClass)) {
+      throw refused(`${name} does not take ${request.orderClass === "oco" ? "OCO" : "bracket"} orders from Gloom.`);
+    }
+    if (request.orderType === "TRAIL" && !orders.trailing?.includes(request.trailingPercent !== undefined ? "percent" : "amount")) {
+      throw refused(`${name} does not take this trailing stop from Gloom.`);
+    }
     if (!(request.quantity > 0)) throw refused("Quantity must be positive.");
     const needsLimit = request.orderType === "LMT" || request.orderType === "STP LMT";
     if (needsLimit && !(typeof request.limitPrice === "number" && request.limitPrice > 0)) {
@@ -456,6 +467,8 @@ export function createSignedInBrokerAdapter(overrides: Partial<SignedInBrokerAda
         enabled: granted && switchedOn,
         orderTypes: [...orders.types],
         tif: orders.tif?.length ? [...orders.tif] : DIRECT_TIF,
+        ...(orders.orderClasses?.length ? { orderClasses: [...orders.orderClasses] } : {}),
+        ...(orders.trailing?.length ? { trailing: [...orders.trailing] } : {}),
         minQuantity: 1,
         quantityStep: 1,
         modify: true,

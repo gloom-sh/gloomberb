@@ -30,6 +30,8 @@ curl -fsSL gloom.sh/install | bash
 
 This installs `gloomberb` to `~/.local/bin` by default. A Linux desktop package is not published yet.
 
+On Alpine and other musl distributions the script installs the musl build, which needs `libstdc++` (`apk add libstdc++`). `bun install -g gloomberb` works there too.
+
 ## Windows
 
 Install the desktop app:
@@ -80,7 +82,7 @@ The [install script](../scripts/install.sh) downloads a binary or app archive fr
 
 On Apple Silicon Macs it installs the desktop app in `/Applications` and links the `gloomberb` command into `~/.local/bin`. On Intel Macs and Linux it installs the standalone terminal binary, a single Bun-compiled executable that needs no separate Bun installation, in `~/.local/bin`. `GLOOMBERB_INSTALL_DIR` changes the command's destination and `GLOOMBERB_APP_DIR` the Mac app's. It uses `sudo` only when a destination directory is not writable.
 
-To install by hand on Linux, download the [x64](https://github.com/gloom-sh/gloomberb/releases/latest/download/gloomberb-linux-x64.gz) or [ARM64](https://github.com/gloom-sh/gloomberb/releases/latest/download/gloomberb-linux-arm64.gz) binary, unpack it with `gzip`, mark it executable and put it on your `PATH` as `gloomberb`.
+To install by hand on Linux, download the [x64](https://github.com/gloom-sh/gloomberb/releases/latest/download/gloomberb-linux-x64.gz) or [ARM64](https://github.com/gloom-sh/gloomberb/releases/latest/download/gloomberb-linux-arm64.gz) binary (on musl, [x64](https://github.com/gloom-sh/gloomberb/releases/latest/download/gloomberb-linux-x64-musl.gz) or [ARM64](https://github.com/gloom-sh/gloomberb/releases/latest/download/gloomberb-linux-arm64-musl.gz)), unpack it with `gzip`, mark it executable and put it on your `PATH` as `gloomberb`.
 
 On first start, the app clones its missing official plugins from GitHub once a local profile exists. That needs Git and network access ([which plugins](../PLUGINS.md#official-plugins-that-need-git)). Packaged apps use their bundled Bun runtime to install plugin dependencies. See [plugin installation](../PLUGINS.md).
 

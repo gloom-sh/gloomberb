@@ -407,7 +407,7 @@ The market boards follow the same rule, so after the close and through a weekend
 - In `BI` and on `MOST`'s lists a tick after the close moves only that column, and a pre-market tick leaves `BI` on the completed session it ranks.
 - `MOST`'s Pre-market, After hours and Gaps lists are the session's own movers and keep that session's print as Last.
 - `WEI`, `FUT` and the `GPU` equities board show the regular session and no extended column.
-- The header's SPY is the regular close and its move once the market is closed. While the pre-market or after-hours session is open it is that session's price and its move from the close, beside the `PRE-MKT` or `AFTER-HRS` label.
+- The header's SPY is the regular close and its move once the market is closed. While the pre-market or after-hours session is open it is that session's price and its move from the close, beside the `PRE-MKT` or `AFTER-HRS` label. The pre-market countdown says `to regular open` and counts to 09:30 New York time; a narrow header hides the countdown when its full label does not fit.
 
 **Trending quotes that fail to load.** The `MOST` Trending list and `fn MOST --list trending` name symbols whose quotes could not be loaded.
 
@@ -2409,6 +2409,8 @@ A command that shows a copy saved earlier because it could not refresh it says `
 **Rendered views.** A rendered-view report (a pane without a structured report) names the pane's source. Its status is the one the pane declares for its data or its own footer states, and otherwise reads "status not reported".
 
 `FXC`'s report is dated by the USD rates its crosses come from, as its matrix is: the newest rate's time, how far the feed is held back, how many rates are stale, and where the FX market stands.
+
+`gloomberb shot G palantir` stops with `Not a ticker: PALANTIR` and suggests `gloomberb search palantir`, before rendering or saving a pane. A company name must first be resolved to its ticker.
 
 **In `shot` images.** `gloomberb shot` draws the same line in the pane footer of the image. It sits inside the requested size (the pane's body gives up its last row for it).
 

@@ -16,6 +16,16 @@ A spread of two to four option legs on one underlying trades as one order, fille
 
 The ticket lists each leg with its side, ratio times the spread quantity, contract and mid. Quantity counts spreads. Buy pays a net debit and Sell receives a net credit; the price is always the positive net per spread, and switching side turns every leg over. The spread's bid and ask come from its legs' broker quotes: buying it pays the long legs' asks and receives the short legs' bids, and the bid is the reverse. Review names the strategy, such as `AAPL call vertical`, lists the legs and warns when the quotes net the other way from the side chosen. Spread orders appear in Open orders and on Overview for the underlying, with the strategy's name, and change and cancel like any other order; a change keeps the legs and their ratios. Spreads take market or limit orders, DAY or GTC, with no extended hours. Whether each leg opens or closes a position is the broker's to decide from the account's holdings.
 
+## Brackets, OCO and trailing stops
+
+Where the broker places them itself, the ticket offers three kinds of orders that work without the app open. A broker that takes none of a kind does not show it. Each is one order to review and confirm, and the broker holds and runs its parts.
+
+- **Take profit / stop loss** (a bracket): tick it under the price, then enter a take profit, a stop loss or both. They are placed with the entry, on the other side for the same quantity: a limit at the take profit and a stop at the stop loss. They work once the entry fills, and one filling cancels the other. A buy's take profit is above its limit or stop and its stop loss below; a sell's the other way round.
+- **OCO**, in Type: a limit and a stop on the same side for the same quantity, where one filling cancels the other, such as selling a holding at a target above the market or a stop below it.
+- **Trailing stop**, in Type: a stop that follows the market by a price distance or a percent, as the broker allows. Switching between price and percent clears the distance.
+
+Brackets, OCO pairs and trailing stops are only ever the broker's own: the ticket never imitates one with separate orders, which would protect a position only while the app is open. Review lists the take profit and stop loss. An exit on the wrong side of the entry's price is refused. For an entry that trades now, review also warns when an exit is already through the market. An entry resting away from the market fills at its own price, so its exits are measured from that price alone. Open orders list a bracket's orders together, the entry first and its exits under it, and an OCO pair together; when one of them fills or is cancelled, the others update as the broker reports them. Each order of a bracket or pair changes and cancels on its own.
+
 ## Review and confirmation
 
 1. Choose the account and check its SIM or LIVE mode.
@@ -63,7 +73,8 @@ The footer shows at most three ticket actions relevant to the current screen. Th
 | Trade with multiple brokers, or standalone Orders | `d` | Choose broker or broker profile |
 | Ticket editing | `t` | Choose time in force |
 | Ticket editing | `x` | Toggle extended hours, where supported |
-| Ticket editing | `1`, `2`, `3`, `4` | Market, Limit, Stop, Stop limit, where supported |
+| Ticket editing | `1`, `2`, `3`, `4` | Market, Limit, Stop, Stop limit, where supported; Trailing stop and OCO from Type |
+| Take profit / stop loss checkbox | Tab/Shift+Tab, then Space or Enter | Add or remove a bracket's exits, where the broker takes brackets |
 | Ticket editing | `5`, `6`, `7` | 25%, 50%, Max quantity |
 | Ticket editing | `8`, `9`, `0`, `p` | Broker bid, mid, ask, last price |
 | Trading off | `e` | Open the trading consent screen |

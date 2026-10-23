@@ -7,6 +7,7 @@ import { relativeValuationValues } from "./relative-valuation-model";
 import { relativeValuationHeadless } from "./relative-valuation-headless";
 import { exportRowsTable } from "../../../cli/report-tables";
 import { renderFundamentalsReport } from "../../../cli/commands/ticker";
+import { withSearchHints } from "../../../cli/not-a-ticker";
 
 test("fresh quotes do not hide stale fundamentals in a peer research report", async () => {
   const symbols = ["BAC", "JPM"];
@@ -298,4 +299,41 @@ test("RV reads the EV valuation shows: an insurer's computed one, N/M at or belo
   const valuation = renderFundamentalsReport({ ...cour, symbol: "COUR" }, "valuation").replace(/ {2,}/g, " ");
   expect(valuation).toContain("Market Cap 1.39B USD\n");
   expect(result.metadata?.notices).toContain("COUR: Market cap 1.39B USD is the 274.5M shares shown x 5.07 USD; the provider's is 1.34B USD.");
+});
+
+test("RV's footer dates the trailing figures and the quarter its growth column compares, peer by peer when they differ", async () => {
+  const statements = (...dates: string[]) => dates.map((date) => ({ date }));
+  const peers: Record<string, { annual: string[]; quarterly: string[]; revenueGrowth?: number }> = {
+    DUOL: { annual: ["2025-12-31"], quarterly: ["2026-03-31", "2026-06-30"], revenueGrowth: 0.18 },
+    MSFT: { annual: ["2025-06-30"], quarterly: ["2026-03-31", "2026-06-30"], revenueGrowth: 0.17 },
+    // June fiscal year, quarter not reported yet: its trailing figures reach the year's end.
+    LRN: { annual: ["2026-06-30"], quarterly: ["2026-03-31"], revenueGrowth: 0.03 },
+  };
+  const ctx = { signal: new AbortController().signal, marketData: createTestDataProvider({
+    async getTickerFinancials(symbol) {
+      const peer = peers[symbol]!;
+      return { annualStatements: statements(...peer.annual), quarterlyStatements: statements(...peer.quarterly), priceHistory: [],
+        quote: { symbol, price: 10, change: 0, changePercent: 0, currency: "USD", lastUpdated: 1, marketCap: 100 },
+        fundamentals: { financialCurrency: "USD", revenueGrowth: peer.revenueGrowth, operatingMargin: 0.1 } };
+    },
+  }) } as HeadlessPaneContext;
+  const load = async (symbols: string[]) => relativeValuationHeadless.load({ symbols, argument: symbols, rawArgument: symbols.join(","), options: {} }, ctx);
+  // One period for every peer, and growth for the quarter that ends it: one clause.
+  expect((await load(["DUOL", "MSFT"])).freshness?.note).toBe("fundamentals through 2026-06-30, Quarter Revenue YoY for that quarter");
+  const mixed = await load(["DUOL", "MSFT", "LRN"]);
+  expect(mixed.rows.map((row) => [row.fundamentalsThrough, row.revenueGrowthQuarter]))
+    .toEqual([["2026-06-30", "2026-06-30"], ["2026-06-30", "2026-06-30"], ["2026-06-30", "2026-03-31"]]);
+  expect(mixed.freshness?.note).toBe("fundamentals through 2026-06-30 · Quarter Revenue YoY: quarter to 2026-06-30 (LRN 2026-03-31)");
+});
+
+test("--peers on a word that is no ticker says so, with the search to run, before it looks for an industry", async () => {
+  let screened = false;
+  const ctx = { signal: new AbortController().signal, apiClient: { equityScreener: async () => { screened = true; throw new Error("unreachable"); } },
+    marketData: createTestDataProvider({ async getTickerFinancials(symbol) { throw new Error(`Not a ticker: ${symbol}.`); } }) } as unknown as HeadlessPaneContext;
+  const args = { symbols: ["DUOLINGO"], argument: ["DUOLINGO"], rawArgument: "duolingo", options: { peers: true } };
+  const failure = await relativeValuationHeadless.expandArgument!(args, ctx).then(() => null, (error: Error) => error.message);
+  expect(failure).toBe("Not a ticker: DUOLINGO.");
+  // The CLI reads it as it reads `fn RV duolingo lrn`'s.
+  expect(withSearchHints(failure!, ["RV", "duolingo", "--peers"])).toBe("Not a ticker: DUOLINGO. Try `gloomberb search duolingo`.");
+  expect(screened).toBe(false);
 });

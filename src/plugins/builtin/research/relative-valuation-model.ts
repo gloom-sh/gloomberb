@@ -4,6 +4,7 @@ import { marketCapBasisNote, viewMarketCapitalization } from "../../../utils/mar
 import { enterpriseValueNotMeaningful, enterpriseValueReconciliationNote, enterpriseValueWithdrawn, reportedEnterpriseValue } from "../../../utils/fundamentals";
 import { getExtendedSessionDisplay, getQuoteSessionFields } from "../../../market-data/market/status";
 import { atRegularSessionPrice, movePriceDerivedFigures, regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
+import { latestFinancialPeriod, latestReportedPeriod } from "../../../utils/latest-financial-period";
 import type { Quote, TickerFinancials } from "../../../types/financials";
 
 export function formatRelativePrice(price: number | null | undefined, currency: string | null | undefined): string {
@@ -125,6 +126,10 @@ export function relativeValuationValues(snapshot: TickerFinancials | null) {
       source: fundamentals.source ?? null, retrievedAt: fundamentals.fetchedAt ?? null,
       stale: fundamentals.stale ?? null,
     } : null,
+    /** The newest statement period the trailing figures run through, as `valuation` names it. */
+    fundamentalsThrough: fundamentals && snapshot ? latestReportedPeriod(snapshot) : null,
+    /** The end of the latest quarter, the one revenueGrowth compares with a year earlier. */
+    revenueGrowthQuarter: revenueGrowth != null ? latestFinancialPeriod(snapshot?.quarterlyStatements, (row) => row.date)?.date ?? null : null,
     currency: quote?.currency ?? null,
     marketCap: capitalization?.value ?? null,
     marketCapCurrency: capitalization?.currency ?? null,
