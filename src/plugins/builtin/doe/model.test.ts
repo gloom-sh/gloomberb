@@ -128,13 +128,14 @@ describe("DOE report dates", () => {
     const dated = async (tab: string, argument = "") => {
       const args = { symbols: [], argument: argument ? [argument] : [], rawArgument: argument, options: { tab } } as unknown as HeadlessPaneLoadArgs;
       const { freshness } = await doeHeadless("all").load(args, {} as HeadlessPaneContext) as HeadlessBundleResult;
-      return [freshness?.asOf, freshness?.nextExpectedAt];
+      return [freshness?.asOf, freshness?.releasedOn, freshness?.nextExpectedAt];
     };
-    expect(await dated("crude")).toEqual([petroleum.releasedAt, petroleum.nextReleaseAt]);
-    expect(await dated("gas")).toEqual([gas.releasedAt, gas.nextReleaseAt]);
+    // Each is the week the report covers and when it was released.
+    expect(await dated("crude")).toEqual(["2026-10-02", petroleum.releasedAt, petroleum.nextReleaseAt]);
+    expect(await dated("gas")).toEqual(["2026-10-02", gas.releasedAt, gas.nextReleaseAt]);
     // A series is dated by its tab's release; all three tabs by the newest, due by the soonest.
-    expect(await dated("all", "crude-commercial")).toEqual([petroleum.releasedAt, petroleum.nextReleaseAt]);
-    expect(await dated("all")).toEqual([gas.releasedAt, petroleum.nextReleaseAt]);
+    expect(await dated("all", "crude-commercial")).toEqual(["2026-10-02", petroleum.releasedAt, petroleum.nextReleaseAt]);
+    expect(await dated("all")).toEqual(["2026-10-02", gas.releasedAt, petroleum.nextReleaseAt]);
   });
 });
 

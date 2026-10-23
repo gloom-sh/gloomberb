@@ -52,8 +52,12 @@ export const cpiHeadless: HeadlessPaneDefinition<"bundle"> = {
     const headline = data.rows.find((row) => row.code === "SA0") ?? null;
     const argument = Array.isArray(args.argument) ? args.argument.join(" ") : args.argument;
     const metadata = { ...data, complete: data.status === "available" };
+    // The month the figures cover and when BLS released them: `Sep 2026, released Wed 14 Oct 12:30 UTC`.
+    const period = data.release.period && data.release.releasedAt
+      ? { asOf: `${data.release.period}-01`, periodicity: "monthly" as const, releasedOn: data.release.releasedAt }
+      : { asOf: data.release.releasedAt };
     const freshness = { source: "BLS", status: "not-a-feed" as const, basis: "monthly release",
-      asOf: data.release.releasedAt, nextExpectedAt: data.release.nextReleaseAt };
+      ...period, nextExpectedAt: data.release.nextReleaseAt };
     if (argument) {
       const option = cpiRowOption(argument);
       const row = option ? data.rows.find((entry) => entry.id === option.value) : null;
