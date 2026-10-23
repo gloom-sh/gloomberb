@@ -159,6 +159,36 @@ describe("P/E band", () => {
     expect(knownAt([{ date: "2019-01-29", fiscalPeriod: "2018-12", reportedAt: "2019-01-29T21:30:18.000Z" }])).toBe("2019-01-29T21:30:18.000Z");
   });
 
+  test("across a fiscal Q4 its 10-K reports only inside the year, and a split, the sums are the year's EPS plus the quarters since less those a year earlier", () => {
+    // NVDA around its June 2021 4-for-1 split as its SEC history serves it: each figure restated onto the 2024 share
+    // count and known at its first filing; the quarter to January 2021 has no EPS of its own.
+    const restated = (date: string, eps: number, originalFiled: string, factor: number): FinancialStatement => ({
+      ...quarter(date, eps, "2024-08-28"),
+      epsBasis: { status: "split-adjusted", source: "sec", originalValue: eps * factor, originalFiled, basisDate: "2024-06-30", evidence: [], factor },
+    });
+    const quarters: FinancialStatement[] = [
+      restated("2020-04-26", 0.03675, "2020-05-21", 40), restated("2020-07-26", 0.02475, "2020-08-19", 40),
+      restated("2020-10-25", 0.053, "2020-11-18", 40), { date: "2021-01-31", currency: "USD", operatingCashFlow: 1_874_000_000 },
+      restated("2021-05-02", 0.07575, "2021-05-26", 40), restated("2021-08-01", 0.094, "2021-08-20", 10),
+      restated("2021-10-31", 0.097, "2021-11-22", 10),
+    ];
+    const year = restated("2021-01-31", 0.1725, "2021-02-26", 40);
+    const sums = (quarterly: FinancialStatement[], annual: FinancialStatement[]) => trailingEpsSteps(financials(quarterly, annual))
+      .filter((step) => step.basis === "ttm" && step.periodEnd > "2021-01-31")
+      .map((step) => [step.periodEnd, step.eps == null ? null : Number(step.eps.toFixed(6)), step.knownAt.toISOString().slice(0, 10)]);
+    // 0.2115 is FY2021's 0.1725 plus 0.07575 for the first quarter after it, less 0.03675 for the same quarter a year earlier.
+    expect(sums(quarters, [year])).toEqual([
+      ["2021-05-02", 0.2115, "2021-05-26"], ["2021-08-01", 0.28075, "2021-08-20"], ["2021-10-31", 0.32475, "2021-11-22"],
+    ]);
+    // A fourth quarter whose EPS is withheld, a year on an unverified share basis, or a quarter outside the four that
+    // the sum reads on one, leave them unknown.
+    const withheld = quarters.map((row) => row.date === "2021-01-31" ? { ...row, unavailableEarnings: ["eps" as const] } : row);
+    expect(sums(withheld, [year]).filter(([, eps]) => eps != null)).toEqual([]);
+    const unverified = (row: FinancialStatement): FinancialStatement => ({ ...row, epsBasis: { ...row.epsBasis!, status: "unresolved" } });
+    expect(sums(quarters, [unverified(year)]).filter(([, eps]) => eps != null)).toEqual([]);
+    expect(sums([unverified(quarters[0]!), ...quarters.slice(1)], [year]).filter(([, eps]) => eps != null)).toEqual([]);
+  });
+
   test("a sum with one quarter no report covers stays undated even when its newest quarter is dated", () => {
     const quarters = [
       quarter("2023-12-31", 1, "2024-02-05"), quarter("2024-03-31", 1, "2024-05-01"), unfiled("2024-06-30", 1),

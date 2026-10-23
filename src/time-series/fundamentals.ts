@@ -6,6 +6,7 @@ import { areNearbyFinancialPeriodEnds, completeAvailability, statementFieldAvail
 import { copyIncomeField, incomeFieldKnowledgeDate, incomeFieldOwner, isIncomeStatementField } from "../utils/income-statement";
 import { fiscalPeriodLabel, fiscalYearEndMonth, ttmPeriodLabel } from "../utils/fiscal-period";
 import { hasStatementGap, mergeStatementGaps } from "../utils/statement-gaps";
+import { trailingEpsAcrossFiscalYearEnd } from "../utils/trailing-eps";
 import { canonicalTimeSeriesFieldId, getTimeSeriesField } from "./field-catalog";
 import { forwardPeHistory, realizedNtmPeHistory } from "./forward-valuation";
 import { reportingCurrencySeries } from "./reporting-currency";
@@ -72,6 +73,7 @@ const QUARTERLY_SNAPSHOT_FIELDS: readonly NumericStatementField[] = [
 const QUARTERLY_AVERAGE_FIELDS: readonly NumericStatementField[] = ["basicShares", "dilutedShares"];
 // Reported common-income allocations and EPS may be summed for TTM, but
 // independently determined annual values cannot establish a missing quarter.
+// A trailing year across a fiscal Q4 without EPS reads that year's own EPS.
 const TTM_SUM_FIELDS: readonly NumericStatementField[] = [...QUARTERLY_FLOW_FIELDS, "netIncomeCommonStockholders", "eps"];
 
 const NUMERIC_STATEMENT_FIELDS: readonly NumericStatementField[] = [
@@ -398,8 +400,12 @@ export function deriveQuarterlyStatements(
   return mergeStatementsByPeriod([...byDate.values()]);
 }
 
-function buildTtmStatements(statements: readonly FinancialStatement[]): InternalStatement[] {
+function buildTtmStatements(
+  statements: readonly FinancialStatement[],
+  annualStatements: readonly FinancialStatement[],
+): InternalStatement[] {
   const sorted = mergeStatementsByPeriod(statements);
+  const annual = mergeStatementsByPeriod(annualStatements);
   const result: InternalStatement[] = [];
   for (let index = 3; index < sorted.length; index += 1) {
     const window = sorted.slice(index - 3, index + 1);
@@ -450,6 +456,15 @@ function buildTtmStatements(statements: readonly FinancialStatement[]): Internal
         statementFieldAvailability(statement, field)
       )));
       if (availableAt) ttm.fieldAvailability![field] = availableAt;
+    }
+    // A fiscal Q4 the 10-K reports only inside its year: the year's EPS plus the quarters since, less the same quarters a year earlier.
+    const acrossYearEnd = statementNumber(ttm, "eps") === null && !unresolvedEps
+      ? trailingEpsAcrossFiscalYearEnd(window, sorted, annual, "eps") : null;
+    if (acrossYearEnd) {
+      ttm.eps = acrossYearEnd.value;
+      ttm.__timeSeriesDerivedFields!.push("eps");
+      const availableAt = completeAvailability(acrossYearEnd.inputs.map((statement) => statementFieldAvailability(statement, "eps")));
+      if (availableAt) ttm.fieldAvailability!.eps = availableAt;
     }
 
     for (const field of QUARTERLY_SNAPSHOT_FIELDS) {
@@ -503,7 +518,7 @@ function sourceStatements(
     return { statements: mergeStatementsByPeriod(known.annual), period: "annual" };
   }
   if (normalized === "ttm" || valuationMetric) {
-    const ttm = buildTtmStatements(quarterly);
+    const ttm = buildTtmStatements(quarterly, known.annual);
     if (normalized === "ttm" && ttm.length > 0) return { statements: ttm, period: "ttm" };
     if (valuationMetric && ttm.some((statement) => hasValuationInputs(statement, valuationMetric))) {
       return { statements: ttm, period: "ttm" };
@@ -860,7 +875,7 @@ function currentValuationStatements(
 ): InternalStatement[] {
   if (selected.period !== "annual") return selected.statements;
   const known = valuationStatements(financials);
-  const trailing = buildTtmStatements(deriveQuarterlyStatements(known.quarterly, known.annual))
+  const trailing = buildTtmStatements(deriveQuarterlyStatements(known.quarterly, known.annual), known.annual)
     .filter((statement) => hasValuationInputs(statement, metric));
   return [...selected.statements, ...trailing];
 }

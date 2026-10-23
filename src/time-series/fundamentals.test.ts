@@ -586,7 +586,7 @@ describe("fundamental series extraction", () => {
 
 describe("AAPL's quarterly trailing multiples across fiscal year ends", () => {
   // AAPL as served: 10-Q quarters dated by their filings. No 10-K has stated
-  // a quarter since 2021, so the fiscal Q4 rows carry cash flow only, except
+  // a quarter since 2021, so the fiscal Q4 rows carry no EPS, except
   // FY2025's, which another source reports without a publication date.
   const quarter = (date: string, eps: number, dilutedShares: number, filed: string): FinancialStatement => ({
     date, eps, dilutedShares, fieldAvailability: { eps: filed, dilutedShares: filed },
@@ -616,16 +616,22 @@ describe("AAPL's quarterly trailing multiples across fiscal year ends", () => {
   const prices = Array.from({ length: 1_400 }, (_, day) => ({ date: new Date(Date.UTC(2022, 11, 1) + day * 86_400_000), close: 100 }));
   const day = (date: Date | undefined) => date?.toISOString().slice(0, 10);
 
-  test("a gap kept in the line raises no missing-date warning; an undated value does", () => {
-    // Every trailing four quarters across FY2023's or FY2024's fourth quarter
-    // has no EPS: no filing states it, and it is not rebuilt from the year.
+  test("across a fourth quarter without EPS the trailing year is the year's EPS plus the quarters since, less the same quarters a year earlier", () => {
     const definition = source("valuation.trailingPE", "quarterly");
     const datedFourth = quarterly.map((row) => row.date === "2025-09-27"
       ? { ...row, fieldAvailability: { eps: "2025-10-30", dilutedShares: "2025-10-30" } } : row);
     const dated = financials(datedFourth, annual, prices);
-    const historical = extractFundamentalSeries(dated, definition).filter((point) => point.periodLabel !== "Current");
-    expect(historical.filter((point) => point.value !== null).map((point) => day(point.observedAt)))
-      .toEqual(["2025-09-27", "2025-12-27", "2026-03-28", "2026-06-27"]);
+    // AAPL's own trailing EPS: 6.43 to December 2023 is 6.13 + 2.18 - 1.88, known with the newest quarter's filing.
+    // FY2025's fourth quarter is reported, so its four quarters sum to 7.47 beside the year's 7.46.
+    expect(extractFundamentalSeries(dated, source("fundamental.eps", "ttm"))
+      .map((point) => [day(point.observedAt), day(point.date), Number(point.value!.toFixed(2))])).toEqual([
+      ["2023-09-30", "2023-11-03", 6.13], ["2023-12-30", "2024-02-02", 6.43], ["2024-03-30", "2024-05-03", 6.44],
+      ["2024-06-29", "2024-08-02", 6.58], ["2024-09-28", "2024-11-01", 6.08], ["2024-12-28", "2025-01-31", 6.3],
+      ["2025-03-29", "2025-05-02", 6.42], ["2025-06-28", "2025-08-01", 6.59], ["2025-09-27", "2025-10-30", 7.47],
+      ["2025-12-27", "2026-01-30", 7.91], ["2026-03-28", "2026-05-01", 8.27], ["2026-06-27", "2026-07-31", 8.72],
+    ]);
+    expect(extractFundamentalSeries(dated, definition).filter((point) => point.periodLabel !== "Current").every((point) => point.value !== null))
+      .toBe(true);
     expect(fundamentalSeriesUsesAvailabilityFallback(dated, definition)).toBe(false);
     // As served, FY2025's fourth quarter has no publication date, so the four
     // multiples it is in are placed at their period ends.

@@ -519,7 +519,7 @@ export function selectFinancialStatements(
     .filter((candidate) => !tabRows || tabRows.some((row) => hasFinancialRowValue(row, [candidate])))
     .slice(-limit)
     .reverse();
-  const trailing = period === "annual" && statement !== "balance" ? computeTTM(quarterlyStatements) : null;
+  const trailing = period === "annual" && statement !== "balance" ? computeTTM(quarterlyStatements, annualStatements) : null;
   // Right after a fiscal year closes, the last four quarters are that year:
   // the reported year is shown, not a second column of the same period.
   const ttm = trailing && !coversLatestYear(trailing, rawStatements[0]) ? trailing : null;

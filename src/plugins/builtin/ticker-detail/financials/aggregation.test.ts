@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import type { FinancialStatement } from "../../../../types/financials";
 import type { SecEpsBasis } from "../../../../utils/sec-eps-basis";
-import { computeTTM } from "./aggregation";
+import { computeTTM, trailingFourQuarters } from "./aggregation";
 import { buildFinancialTableModel } from "./model";
 
 const dates = ["2025-03-31", "2025-06-30", "2025-09-30", "2025-12-31"];
@@ -93,4 +93,26 @@ test("TTM EPS is withheld when a quarter declares it unavailable or its share ba
   const unresolved = computeTTM(quarters({ epsBasis: basis }))!;
   expect(unresolved.eps).toBeUndefined();
   expect(unresolved).toMatchObject({ basicEps: 4, epsBasis: { status: "unresolved" } });
+});
+
+test("a quarterly column's trailing EPS across a fiscal Q4 without EPS reads the year, unless an input is withheld", () => {
+  // MSFT: the 10-K reports FY2023 (to June) but not its fourth quarter.
+  const quarter = (date: string, eps: number, basicEps: number): FinancialStatement => ({ date, currency: "USD", eps, basicEps, availableAt: date });
+  const quarters: FinancialStatement[] = [
+    quarter("2022-09-30", 2.35, 2.35), quarter("2022-12-31", 2.2, 2.2), quarter("2023-03-31", 2.45, 2.46),
+    { date: "2023-06-30", currency: "USD", operatingCashFlow: 28_771_000_000 },
+    quarter("2023-09-30", 2.99, 3), quarter("2023-12-31", 2.93, 2.94),
+  ];
+  const year: FinancialStatement = { date: "2023-06-30", currency: "USD", eps: 9.68, basicEps: 9.72, availableAt: "2023-07-27" };
+  // 9.68 + 2.99 + 2.93 - 2.35 - 2.2, known with the newest quarter.
+  const ttm = trailingFourQuarters(quarters, "2023-12-31", [year])!;
+  expect(ttm.eps).toBeCloseTo(11.05, 10);
+  expect(ttm.basicEps).toBeCloseTo(11.11, 10);
+  expect(ttm.fieldAvailability).toMatchObject({ eps: "2023-12-31", basicEps: "2023-12-31" });
+  expect(trailingFourQuarters(quarters, "2023-12-31")!.eps).toBeUndefined();
+  const basis: SecEpsBasis = { status: "unresolved", source: "sec", originalValue: 9.68, basisDate: "2023-07-27", evidence: [] };
+  expect(trailingFourQuarters(quarters, "2023-12-31", [{ ...year, epsBasis: basis }])!.eps).toBeUndefined();
+  const gap = quarters.map((row) => row.date === "2023-06-30" ? { ...row, unavailableEarnings: ["eps" as const] } : row);
+  expect(trailingFourQuarters(gap, "2023-12-31", [year])).toMatchObject({ basicEps: expect.closeTo(11.11, 10), unavailableEarnings: ["eps"] });
+  expect(trailingFourQuarters(gap, "2023-12-31", [year])!.eps).toBeUndefined();
 });
