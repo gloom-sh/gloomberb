@@ -1,6 +1,7 @@
-import { useRef } from "react";
+import { useEffect, useRef, type Ref } from "react";
 import { Box, ScrollBox, Text, TextAttributes, type BoxRenderable, type ScrollBoxRenderable } from "../../../ui";
 import { Button, FieldLabel, NumberField, SectionHeading, SegmentedControl, TextField, useFieldRing } from "../../../components";
+import { afterLayout, revealInScrollBox } from "../../../components/ui/reveal-in-scroll-box";
 import {
   PRESERVED_PASSWORD_HINT,
   type BrokerProfileDraft,
@@ -113,6 +114,7 @@ export function BrokerProfileForm({
   paneFocused,
   submitLabel,
   error,
+  actionsRef,
   rowRef,
   onActiveKeyChange,
   onLabelChange,
@@ -135,8 +137,10 @@ export function BrokerProfileForm({
   /** The form's fields take keys only while the pane has the keyboard. */
   paneFocused: boolean;
   submitLabel: string;
-  /** What stopped the last submit, said beside the buttons so it is in view. */
+  /** What stopped the last submit, said beside the buttons. */
   error?: string | null;
+  /** The error and the buttons, for the detail to scroll into view when the error shows. */
+  actionsRef?: Ref<BoxRenderable>;
   /** Each field's outer box, for the form's field ring to scroll into view. */
   rowRef: (key: BrokerEditKey) => RowRef;
   onActiveKeyChange: (key: BrokerEditKey) => void;
@@ -212,10 +216,12 @@ export function BrokerProfileForm({
           </Text>
         ) : null}
       </Box>
-      {error ? <Text fg={colors.negative} width={width} wrapText>{error}</Text> : null}
-      <Box flexDirection="row" gap={1}>
-        <Button label={submitLabel} shortcut="Enter" variant="primary" onPress={onSubmit} disabled={!!busy} />
-        <Button label={t("Cancel")} shortcut="Esc" variant="secondary" onPress={onCancel} disabled={!!busy} />
+      <Box ref={actionsRef} flexDirection="column">
+        {error ? <Text fg={colors.negative} width={width} wrapText>{error}</Text> : null}
+        <Box flexDirection="row" gap={1}>
+          <Button label={submitLabel} shortcut="Enter" variant="primary" onPress={onSubmit} disabled={!!busy} />
+          <Button label={t("Cancel")} shortcut="Esc" variant="secondary" onPress={onCancel} disabled={!!busy} />
+        </Box>
       </Box>
     </>
   );
@@ -284,6 +290,13 @@ export function BrokerDetailContent({
     wrap: true,
     scrollRef,
   });
+  // Enter saves from any field, so what stopped the save can be below the
+  // fold; bring it and the buttons into view.
+  const actionsRef = useRef<BoxRenderable | null>(null);
+  useEffect(() => {
+    if (!editError) return;
+    return afterLayout(() => revealInScrollBox(scrollRef.current, actionsRef.current));
+  }, [editError]);
 
   if (!row) return <Box flexGrow={1} />;
 
@@ -336,6 +349,7 @@ export function BrokerDetailContent({
               paneFocused={paneFocused}
               submitLabel={t("Save")}
               error={editError}
+              actionsRef={actionsRef}
               rowRef={rowRef}
               onActiveKeyChange={onActiveEditKeyChange}
               onLabelChange={onDraftLabelChange}

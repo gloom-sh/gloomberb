@@ -372,18 +372,20 @@ describe("BrokersPane", () => {
   test("what stops a save is said beside Save, and goes with the form", async () => {
     const calls: string[] = [];
     const instance = { ...createGatewayInstance(), connectionMode: undefined, config: { connectionMode: "token", credentials: { token: "secret", accountId: "" } } };
-    await tui.render(<Harness calls={calls} instance={instance} height={40} />, { width: 92, height: 40 });
+    // Too short for the whole form: Save starts below the fold.
+    await tui.render(<Harness calls={calls} instance={instance} height={20} />, { width: 92, height: 20 });
     await settle();
 
     await pressKey("e");
+    expect(frame()).not.toContain("Cancel");
     await pressKey("RETURN");
+    await settle();
     expect(calls).toEqual([]);
     const lines = frame().split("\n");
     const errorAt = lines.findIndex((line) => line.includes("Account is required."));
     const saveAt = lines.findIndex((line) => line.includes("Save") && line.includes("Cancel"));
     expect(errorAt).toBeGreaterThan(0);
-    // Right above the buttons, past the form's one-row gap.
-    expect(saveAt - errorAt).toBe(2);
+    expect(saveAt - errorAt).toBe(1);
 
     await pressEscape();
     expect(frame()).not.toContain("Edit Profile");
