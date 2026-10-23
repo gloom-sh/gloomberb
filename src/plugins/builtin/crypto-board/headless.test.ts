@@ -80,13 +80,13 @@ test("the DeFi list states the total and its source, ranks protocols or chains, 
   expect(history.slice(2, 5).map((line) => line.split(",").slice(0, 2).join(","))).toEqual(["2026-09-19,90000000000", "2026-09-20,91000000000", "2026-09-21,"]);
 });
 
-test("the coin report dates the board as the pane footer does: its age, live, never delayed", async () => {
+test("the coin report dates the board as the pane footer does: its time and age, with no feed label", async () => {
   const args = { ...ARGS, options: { list: "coin" } };
   const apiClient = { getCloudCryptoMarkets: async () => cryptoFixture() };
   const result = await cryptoBoardHeadless.load(args, { apiClient, signal: new AbortController().signal } as unknown as HeadlessPaneContext);
   const report = paneStatusLine(deriveHeadlessFreshness(cryptoBoardHeadless, result, CRYPTO_FIXTURE_NOW));
   const rows = buildCryptoRows(cryptoFixture().assets, "coin", new Map(), CRYPTO_FIXTURE_NOW);
   const pane = paneStatusLine(deriveHeadlessFreshness({ shape: "rows" }, { rows: cryptoRowObservations(rows), freshness: CRYPTO_BOARD_FRESHNESS }, CRYPTO_FIXTURE_NOW));
-  expect(report).toBe("11:59 UTC · oldest 1 min · live");
+  expect(report).toBe("11:59 UTC · oldest 1 min");
   expect(pane).toBe(report);
 });

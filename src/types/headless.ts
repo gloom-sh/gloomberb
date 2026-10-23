@@ -334,6 +334,14 @@ export interface HeadlessPaneFreshness {
   /** Say how old the oldest observation is (`oldest 4 min`): rows polled apart from one source. */
   oldestAge?: boolean;
   /**
+   * Say how old the data is, the newest observation's time and `oldest 4 min`, and no more: no status word.
+   * For rows priced apart from a snapshot refreshed on a schedule (CRYP's board), where `live` would call prices
+   * that are minutes old real-time and `delayed` would call a snapshot renewed every few seconds held back. A row
+   * that states its own feed (`dataSource`, `delayMinutes`) still says it, and so does a declared `status`.
+   * Says how old the oldest observation is, as `oldestAge` does.
+   */
+  ageOnly?: boolean;
+  /**
    * Rows quoted on several markets (a US line beside Xetra and Paris ones)
    * date each market's session in the status line, `US, XETRA and EPA Tue 13
    * Oct 2026 close`, instead of only the newest row's.

@@ -102,6 +102,25 @@ describe("report freshness", () => {
     // One source says how old its oldest row is the same way.
     expect(line(rows({ status: "delayed", oldestAge: true }), { rows: [{ quoteTime: "2026-10-09T04:59:00Z" }, { quoteTime: "2026-10-09T04:56:00Z" }] }))
       .toBe("Source: Gloom Cloud · Fri 9 Oct 2026 04:59 UTC · oldest 4 min · delayed");
+    // Rows dated apart from a snapshot that states no feed say their time and age and nothing about a feed...
+    const board = { rows: [{ quoteTime: "2026-10-09T04:59:00Z" }, { quoteTime: "2026-10-09T04:56:00Z" }] };
+    const ageOnly = deriveHeadlessFreshness(rows({ ageOnly: true }), board, NOW);
+    expect(formatFreshnessLine(ageOnly)).toBe("Source: Gloom Cloud · Fri 9 Oct 2026 04:59 UTC · oldest 4 min");
+    expect(paneStatusLine(ageOnly)).toBe("04:59 UTC · oldest 4 min");
+    expect(ageOnly).toMatchObject({ status: "unreported", ageOnly: true, oldestAgeMinutes: 4 });
+    // ...unless a row states its feed, or the newest price has gone past what the data allows.
+    expect(line(rows({ ageOnly: true }), { rows: [{ quoteTime: "2026-10-09T04:59:00Z", dataSource: "live" }] }))
+      .toBe("Source: Gloom Cloud · Fri 9 Oct 2026 04:59 UTC · oldest 1 min · live");
+    expect(line(rows({ ageOnly: true, maxAgeMinutes: 60 }), { rows: [{ quoteTime: "2026-10-09T02:00:00Z" }] }))
+      .toBe("Source: Gloom Cloud · Fri 9 Oct 2026 02:00 UTC · oldest 3 hours · stale");
+    // A pane publishes the same declaration to a capture, whose line reads the same.
+    const semanticUi = [{ id: "ui:1", role: "report-freshness", actions: [], metadata: { ageOnly: true, maxAgeMinutes: 60, observations: board.rows } }];
+    const published = renderedReportFreshness(semanticUi);
+    expect(published).toEqual({ ageOnly: true, maxAgeMinutes: 60 });
+    expect(statusLineVariants(deriveRenderedFreshness(published, { footerText: "", cellTimes: [], observed: renderedReportObservations(semanticUi) }, NOW))[0])
+      .toBe("Fri 9 Oct 2026 04:59 UTC · oldest 4 min");
+    // Other reports that state no feed still say so.
+    expect(line(rows(), board)).toBe("Source: Gloom Cloud · Fri 9 Oct 2026 04:59 UTC · status not reported");
   });
 
   test("a dataset cites its source, observation date and lag; quote rows on its pane keep the market line", () => {

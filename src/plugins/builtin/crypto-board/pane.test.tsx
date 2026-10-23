@@ -98,15 +98,15 @@ test("streamed quotes move the visible rows' price, change, returns and market c
   expect(frame).toContain("1.10T");
 });
 
-test("the footer dates a board without a live feed by its age and never calls it delayed", async () => {
+test("the footer dates a board without a live feed by its time and age, never as live or delayed", async () => {
   // A free board: nothing streams, so every coin is priced from the board the server renews every 15 seconds.
   setSystemTime(new Date(CRYPTO_FIXTURE_NOW));
   const query = spyOn(apiClient, "getCloudCryptoMarkets").mockImplementation(async () => cryptoFixture());
   restore = () => query.mockRestore();
   await mountPane(130, 20, true);
   const frame = tui.frame();
-  expect(frame).toContain("11:59 UTC · oldest 1 min · live");
-  expect(frame).not.toMatch(/delayed/i);
+  expect(frame).toContain("11:59 UTC · oldest 1 min");
+  expect(frame).not.toMatch(/delayed|live|status not reported/i);
 });
 
 test("crypto board lists coins by market cap, switches to stablecoins and keeps rows through a failed refresh", async () => {

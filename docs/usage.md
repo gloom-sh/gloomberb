@@ -2398,7 +2398,7 @@ A command that shows a copy saved earlier because it could not refresh it says `
 - `delayed` means the venues are polled, not streamed. It reads `stale` when a venue has stopped answering.
 - When the view shows funding, the last part says what the rate is: a venue's current estimate, with when it pays (and which venues pay then, when they differ), its last paid rate, or a continuous rate.
 - `--json` carries each venue's time as `sources` (`[{ "source": "Binance", "asOf": "…" }]`), the age as `oldestAgeMinutes` and the funding part as `note`.
-- `fn CRYP` says how old its oldest price is the same way (`oldest 3 min`).
+- `fn CRYP`, and the `CRYP` footer, say when the newest price is from and how old the oldest is (`22:48 UTC · oldest 4 min`) and no feed status: a coin the live stream does not carry, and every coin without real-time access, is priced from the board Gloom Cloud renews every 15 seconds, which is neither real-time nor held back. `live` appears only when every price in the view is streamed, and `15 min delayed` only for a quote from a delayed feed. In `--json` its `status` reads `unreported`, with `oldestAgeMinutes`.
 
 **Notes, errors and Pro lines.** A report that loaded can still carry caveats: what it leaves out, what it assumes, how a value was marked. The text report prints them under `Notes:`, one per line, and keeps `Errors:` for what failed, such as a source that did not answer.
 

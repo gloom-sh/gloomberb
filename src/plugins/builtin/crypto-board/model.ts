@@ -17,12 +17,12 @@ const DAY_MS = 86_400_000;
 const CRYPTO_EXCHANGE = "CCC";
 
 /**
- * How the board's report, capture and footer date its prices: Gloom Cloud renews the board every 15 seconds, so a
- * coin is live unless a row says its quote is held back (a delayed feed, `cryptoRowObservations`). Crypto trades
- * around the clock, so a price an hour old has stopped refreshing, and coins are quoted apart (one that has not
- * traded lately keeps its own time), so the line says how old the oldest is.
+ * How the board's report, capture and footer date its prices. Coins are priced apart, and a coin that has not traded
+ * lately keeps its own time, so the line says when the newest price is from and how old the oldest is, and no more: a
+ * price read from the board is neither real-time nor held back, so it claims no feed (`ageOnly`). Crypto trades
+ * around the clock, so a newest price an hour old means the board has stopped refreshing.
  */
-export const CRYPTO_BOARD_FRESHNESS: HeadlessPaneFreshness = { status: "live", maxAgeMinutes: 60, oldestAge: true };
+export const CRYPTO_BOARD_FRESHNESS: HeadlessPaneFreshness = { ageOnly: true, maxAgeMinutes: 60 };
 
 /** A tab of the board: a list of assets, or DeFi's value locked. */
 export type CryptoTab = CryptoAssetKind | "defi";
@@ -335,17 +335,18 @@ type CryptoRowObservation = {
 };
 
 /**
- * What a capture and the footer read of each row: when its price is from, and how current it is. A streamed row is
- * live and a quote from a delayed feed is held back by the feed's lag. A row priced from the board (a coin the
- * live feed does not carry, every coin without real-time access) says neither: Gloom Cloud renews the board every
- * 15 seconds, so it is dated by its own time, which is how old it is.
+ * What a capture and the footer read of each row: when its price is from and, when it is a feed's, how current it
+ * is. A quote from a delayed feed is held back by the feed's lag. A price read from the board (a coin the live feed
+ * does not carry, every coin without real-time access) states no feed, and is dated by its own time. A streamed row
+ * says `live` only when the whole view is streamed: one price minutes old beside it, and the line would call
+ * minutes-old data live.
  */
 export function cryptoRowObservations(rows: readonly CryptoRow[]): CryptoRowObservation[] {
-  return rows.flatMap((row): CryptoRowObservation[] => {
-    if (row.updatedAt == null) return [];
-    const quoteTime = new Date(row.updatedAt).toISOString();
-    if (row.delayed) return [{ quoteTime, dataSource: "delayed", delayMinutes: delayedFeedLagMs(CRYPTO_EXCHANGE) / 60_000 }];
-    return [row.live ? { quoteTime, dataSource: "live" } : { quoteTime }];
+  const dated = rows.flatMap((row) => row.updatedAt == null ? [] : [{ row, quoteTime: new Date(row.updatedAt).toISOString() }]);
+  const allLive = dated.length > 0 && dated.every(({ row }) => row.live && !row.delayed);
+  return dated.map(({ row, quoteTime }): CryptoRowObservation => {
+    if (row.delayed) return { quoteTime, dataSource: "delayed", delayMinutes: delayedFeedLagMs(CRYPTO_EXCHANGE) / 60_000 };
+    return allLive ? { quoteTime, dataSource: "live" } : { quoteTime };
   });
 }
 

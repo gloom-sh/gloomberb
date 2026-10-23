@@ -196,17 +196,24 @@ function boardWithQuietCoins() {
   return { btc: btc!, assets: [btc!, quiet("TON-USD", 4), quiet("RAIN-USD", 7), quiet("BTW-USD", 9)] };
 }
 
-test("the footer dates a coin priced from the board by its age, never as delayed", () => {
+test("the footer dates a coin priced from the board by its time and age, with no feed label", () => {
   const { btc, assets } = boardWithQuietCoins();
   // Pro: bitcoin streams, the other coins come from the board the server renews every 15 seconds.
   const streamed = entry({ price: 101, lastUpdated: CRYPTO_FIXTURE_NOW - 5_000, delivery: "stream", dataSource: "live", stale: false });
-  const pro = footerLine(assets, [[cryptoQuoteKey(btc), streamed]]);
-  expect(pro).toBe("11:59 UTC · oldest 9 min · live");
-  // Free: nothing streams, so every coin is priced from the board; the line still dates the oldest and does not call it delayed.
-  const free = footerLine(assets);
-  expect(free).toBe("11:59 UTC · oldest 9 min · live");
+  expect(footerLine(assets, [[cryptoQuoteKey(btc), streamed]])).toBe("11:59 UTC · oldest 9 min");
+  // Free: nothing streams, so every coin is priced from the board.
+  expect(footerLine(assets)).toBe("11:59 UTC · oldest 9 min");
   // Fetched once, not streamed (a poll without a delayed feed) is the board's price all the same.
-  expect(footerLine(assets, [[cryptoQuoteKey(btc), { ...streamed, data: { ...streamed.data!, delivery: "poll" } }]])).toBe(pro);
+  expect(footerLine(assets, [[cryptoQuoteKey(btc), { ...streamed, data: { ...streamed.data!, delivery: "poll" } }]])).toBe("11:59 UTC · oldest 9 min");
+});
+
+test("only a view whose every price is streamed says live", () => {
+  const { btc, assets } = boardWithQuietCoins();
+  const streams = assets.map((asset, index) => [cryptoQuoteKey(asset), entry({
+    price: 100 + index, lastUpdated: CRYPTO_FIXTURE_NOW - 5_000, delivery: "stream", dataSource: "live", stale: false,
+  })] as [string, QueryEntry<Quote>]);
+  expect(footerLine(assets, streams)).toBe("11:59 UTC · oldest 0 min · live");
+  expect(footerLine([btc], streams.slice(0, 1))).toBe("11:59 UTC · oldest 0 min · live");
 });
 
 test("a quote from a delayed feed, streamed or polled, still says how far it is held back", () => {
