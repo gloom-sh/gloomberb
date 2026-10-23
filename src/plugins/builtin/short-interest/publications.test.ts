@@ -33,9 +33,6 @@ test("weekly shares use both published categories; missing, zero and inconsisten
   const missing = ats(); missing.status = "partial";
   Object.assign(missing.history[0]!, { nonAtsShares: null, nonAtsTrades: null, totalShares: null, atsSharePercent: null });
   expect(validatePublication(missing, "AAPL", "ats").history[0]).toEqual(missing.history[0]);
-  const fractional = ats();
-  Object.assign(fractional.history[0]!, { atsShares: 125.000001, totalShares: 500.000001, atsSharePercent: 125.000001 / 500.000001 * 100 });
-  expect(publicationRows(validatePublication(fractional, "AAPL", "ats"))[0]!.atsShares).toBe(125.000001);
   const zero = ats(); Object.assign(zero.history[0]!, { atsShares: 0, nonAtsShares: 0, totalShares: 0, atsSharePercent: null });
   expect(validatePublication(zero, "AAPL", "ats").history[0]).toEqual(zero.history[0]);
   for (const patch of [{ totalShares: 501 }, { atsSharePercent: 0.25 }, { weekStart: "2026-09-22" }, { atsTrades: 1.5 }, { nonAtsShares: null }]) {
@@ -63,7 +60,6 @@ test("headless reports retain exact fail quantities and partial weekly source me
   expect(weekly.metadata?.coverage).toEqual(data.coverage);
   expect(weekly.sections[0]!.rows![0]!.atsSharePercent).toBe(25);
 });
-
 
 test("weekly off-exchange history preserves fractional shares while trade counts remain integers", () => {
   const payload = ats();
