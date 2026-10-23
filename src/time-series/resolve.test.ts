@@ -424,6 +424,25 @@ describe("resolveChartSpecData", () => {
     expect(resolved.series[0]?.points[0]?.value).toBe(42);
   });
 
+  test("a log scale that hides values names the series, never the panel's id", async () => {
+    const spec: ChartSpec = chartSpec({
+      viewport: { range: "1M", resolution: "auto" },
+      panels: [{ id: "main", scale: "log" }],
+      series: [chartSeries({ id: "plugin-series", source: { kind: "capability", capabilityId: "charts.test", seriesId: "one" } })],
+    });
+    const result = await resolveChartSpecData(spec, {
+      dataProvider: null,
+      loadFredSeries: async () => fredLoad(),
+      now: new Date("2026-02-01"),
+      resolveCapabilitySeries: async () => ({
+        id: "provider-id", label: "Provider Label", color: "#fff", unit: "value", unitGroup: "value", nativeFrequency: "daily",
+        dataShape: "scalar", style: "line", transform: "raw", axis: "left", panelId: "main", interpolation: "none",
+        points: [0, 5].map((value, day) => ({ date: new Date(Date.UTC(2026, 0, 10 + day)), observedAt: new Date(Date.UTC(2026, 0, 10 + day)), value })),
+      }),
+    });
+    expect(result.warnings).toContain("Provider Label: 1 non-positive observation is hidden on the logarithmic scale.");
+  });
+
   test("keeps a panned dataset loaded to its newest observation, so the view can go back to it", async () => {
     // A daily series published days late, served only for the dates asked, as the map's series route does.
     const newest = Date.parse("2026-02-26T00:00:00.000Z");

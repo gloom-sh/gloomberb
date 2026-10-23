@@ -55,7 +55,7 @@ import { colors } from "../../../theme/colors";
 import { isUsListingExchange, parsePublicTickerKey, publicTickerKey } from "../../../utils/exchanges";
 import { isMarketFieldId } from "../../../time-series/field-catalog";
 import { isDatasetChart } from "../../../time-series/spec";
-import { seriesMessageName } from "../../../time-series/series-name";
+import { seriesMessageName, studyMessageName } from "../../../time-series/series-name";
 import { CHART_COMPOSER_PANE_ID } from "../../../types/config";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { SeriesEditorDialog } from "./editor";
@@ -1000,10 +1000,10 @@ function ChartComposerSurface({
   const loading = resolution.loading || listings.pending;
   // A bare code several companies list asks which, as `quote` does, before anything else is said.
   const statusError = listings.errors[0] ?? resolution.errors[0];
-  // A spread or formula error names its legs and their units; the study's id adds nothing to it.
+  // A spread or formula error names its legs and their units; the study's name adds nothing to it.
   const formulaStudy = spec.studies.find((study) => (study.kind === "spread" || study.kind === "formula")
-    && statusError?.startsWith(`${study.id}: `));
-  const statusErrorNotice = formulaStudy ? statusError?.slice(`${formulaStudy.id}: `.length) : statusError;
+    && statusError?.startsWith(`${studyMessageName(study)}: `));
+  const statusErrorNotice = formulaStudy ? statusError?.slice(`${studyMessageName(formulaStudy)}: `.length) : statusError;
   // Failed series name what was asked for in errors and their display label in warnings.
   const errorSeries = spec.series.find((entry) => statusError?.startsWith(`${seriesMessageName(entry)}: `));
   const errorMessage = errorSeries ? statusError?.slice(`${seriesMessageName(errorSeries)}: `.length) : undefined;
@@ -1029,9 +1029,9 @@ function ChartComposerSurface({
     && !FORWARD_VALUATION_BASIS_NOTICES.has(warning)
     && !duplicateErrorNotices.has(warning) && !comparisonEmptyNotices.has(warning)
     && !spec.studies.some((study) => (
-      (study.kind === "ratio" && warning.startsWith(`${study.id}: ratio inputs use different currencies (`)
+      (study.kind === "ratio" && warning.startsWith(`${studyMessageName(study)}: ratio inputs use different currencies (`)
         && warning.endsWith("); raw values are not FX-converted."))
-      || (study.kind === "correlation" && warning.startsWith(`${study.id}: correlation mixes `)
+      || (study.kind === "correlation" && warning.startsWith(`${studyMessageName(study)}: correlation mixes `)
         && warning.endsWith("; only matching observation times contribute."))
     ))
   ));
