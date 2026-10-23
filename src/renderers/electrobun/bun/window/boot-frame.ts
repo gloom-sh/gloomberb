@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "fs";
+import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
 import { getGloomberbDirs } from "../../../../data/config/home";
 import { isBootFrame, type BootFrame } from "../../../dom/boot-frame-page";
@@ -23,11 +23,34 @@ export function readDesktopBootFrame(path: string): BootFrame | null {
   }
 }
 
-export function writeDesktopBootFrame(path: string, frame: BootFrame): void {
+interface BootFrameSender {
+  /** The main window's view; a popped-out pane's draws no frame. */
+  mainWindow: boolean;
+  /** A session is up. After all data was reset there is none until the next launch. */
+  session: boolean;
+}
+
+/**
+ * Keeps the frame a view sent, if it may: from the main window, while a
+ * session is up, and of the right shape and size. A closing window's last
+ * frame, sent after a reset, is dropped. Returns whether it was written.
+ */
+export function saveDesktopBootFrame(path: string, frame: unknown, sender: BootFrameSender): boolean {
+  if (!sender.mainWindow || !sender.session || !isBootFrame(frame)) return false;
   mkdirSync(dirname(path), { recursive: true });
   const temporary = `${path}.${process.pid}.tmp`;
   writeFileSync(temporary, JSON.stringify(frame));
   renameSync(temporary, path);
+  return true;
+}
+
+/**
+ * Forgets the frame, with the rest of the data on a reset. It sits beside
+ * the config, which a custom data folder is not, so removing the data folder
+ * alone could leave it behind.
+ */
+export function removeDesktopBootFrame(path: string): void {
+  rmSync(path, { force: true });
 }
 
 /**

@@ -1,4 +1,5 @@
 import { setConfigStoreHost, type ConfigStoreHost } from "../../../data/config/store";
+import { stopBootFrameRecorders } from "../../dom/boot-frame";
 import type { AppConfig } from "../../../types/config";
 import { backendRequest, getElectrobunBackendInitSnapshot } from "./backend-rpc";
 
@@ -20,6 +21,8 @@ const electrobunConfigStoreHost: ConfigStoreHost = {
     return config;
   },
   async resetAllData(dataDir: string) {
+    // Before the reset, or the frame saved as the window closes would bring the old layout back.
+    stopBootFrameRecorders();
     await backendRequest("config.resetAllData", { dataDir });
   },
   async exportConfig(config: AppConfig, destPath: string) {

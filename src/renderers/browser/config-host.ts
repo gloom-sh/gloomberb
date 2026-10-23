@@ -16,6 +16,7 @@ import {
 } from "../../types/config";
 import { researchEntryFromSearch } from "./research-entry";
 import { BROWSER_STORAGE_KEYS, SafeJsonStorage, type StorageLike } from "../../data/json-storage";
+import { stopBootFrameRecorders } from "../dom/boot-frame";
 
 export const BROWSER_DATA_DIR = "browser://local";
 
@@ -168,6 +169,8 @@ export function createBrowserConfigStore(storage: StorageLike, search = ""): Con
       return config;
     },
     async resetAllData(dataDir) {
+      // Before the keys go, or the frame saved as the page closes would bring the old layout back.
+      stopBootFrameRecorders();
       for (const key of Object.values(BROWSER_STORAGE_KEYS)) {
         try { storage.removeItem(key); } catch {}
       }

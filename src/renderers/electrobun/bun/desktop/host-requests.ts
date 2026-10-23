@@ -12,8 +12,7 @@ import { MAIN_WINDOW_RPC_KEY } from "../window/focus";
 import { applyDesktopWindowControl } from "../window/controls";
 import { saveTextFileToDownloads } from "../../../../utils/save-text-file";
 import { setAppBadge } from "./app-badge";
-import { isBootFrame } from "../../../dom/boot-frame-page";
-import { desktopBootFramePath, writeDesktopBootFrame } from "../window/boot-frame";
+import { desktopBootFramePath, saveDesktopBootFrame } from "../window/boot-frame";
 import type { DesktopBackend, DesktopRpc } from "./backend";
 
 function normalizeText(value: unknown): string | undefined {
@@ -158,10 +157,10 @@ export async function handleDesktopHostRequest(
       return true;
     }
     case "host.saveBootFrame":
-      // One frame, the main window's; a popped-out pane's view draws none.
-      if (backend.rpcs.getRpcWindowKey(rpc) === MAIN_WINDOW_RPC_KEY && isBootFrame(request.payload.frame)) {
-        writeDesktopBootFrame(desktopBootFramePath(), request.payload.frame);
-      }
+      saveDesktopBootFrame(desktopBootFramePath(), request.payload.frame, {
+        mainWindow: backend.rpcs.getRpcWindowKey(rpc) === MAIN_WINDOW_RPC_KEY,
+        session: backend.config !== null,
+      });
       return null;
     case "host.setAppBadge":
       // One badge for the app, from the main window; a popped-out pane's view
