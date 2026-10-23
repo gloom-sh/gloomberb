@@ -1,11 +1,12 @@
-import { expect, test } from "bun:test";
+import { expect, setSystemTime, test } from "bun:test";
 import type { HeadlessPaneContext } from "../../../types/headless";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
 import { convertMarketCapitalization } from "../../../utils/market-capitalization";
 import { relativeValuationValues } from "./relative-valuation-model";
 import { relativeValuationHeadless } from "./relative-valuation-headless";
-import { exportRowsTable } from "../../../cli/report-tables";
+import { exportRowsTable, renderReportCsv } from "../../../cli/report-tables";
+import { headlessReportTables } from "../../../cli/pane-functions/headless";
 import { renderFundamentalsReport } from "../../../cli/commands/ticker";
 import { withSearchHints } from "../../../cli/not-a-ticker";
 
@@ -243,9 +244,12 @@ test("every blank RV cell says why in the export's status, and the cap is the on
     "EV/S: revenue ccy unstated; FCF Yield: no TTM FCF",
     "Mkt Cap, Quarter Revenue YoY: not reported; EV/S: revenue ccy unstated; FCF Yield: no TTM FCF",
   ]);
-  // No blank cell without its reason.
+  // No blank figure without its reason; a session with no print is no missing figure.
   table.rows.forEach((row) => row.forEach((cell, index) => {
-    if (cell === "" && index !== status) expect(String(row[status])).toContain(table.columns[index]!.replace(/ \(.*\)$| unit$/, ""));
+    const column = table.columns[index]!;
+    if (cell === "" && index !== status && !/^(?:Pre-Market|After Hours|Overnight)/.test(column)) {
+      expect(String(row[status])).toContain(column.replace(/ \(.*\)$| unit$/, ""));
+    }
   }));
   // The share count times the price, as `valuation` shows it, with the provider's figure in the notices.
   expect(result.rows[0]!.marketCap).toBeCloseTo(1_985_877_758 * 11.93, 0);
@@ -290,4 +294,46 @@ test("--peers on a word that is no ticker says so, with the search to run, befor
   // The CLI reads it as it reads `fn RV duolingo lrn`'s.
   expect(withSearchHints(failure!, ["RV", "duolingo", "--peers"])).toBe("Not a ticker: DUOLINGO. Try `gloomberb search duolingo`.");
   expect(screened).toBe(false);
+});
+
+// NESN's last in francs beside AAPL's in dollars: the header claims no currency, each row names its own. (GLO-1263)
+test("RV's export writes each peer's Last as a number in its own currency, named on its row with its ticker, in every market state", async () => {
+  const quote = (symbol: string, currency: string, price: number, at: string, extra: Record<string, unknown> = {}) => ({
+    annualStatements: [], quarterlyStatements: [], priceHistory: [], financialCurrency: currency,
+    quote: { symbol, price, change: 0.5, changePercent: 0.6, previousClose: price - 0.5, currency, lastUpdated: Date.parse(at), ...extra },
+    fundamentals: { marketCap: 2e11, marketCapCurrency: currency, trailingPE: 20, eps: price / 20 },
+  });
+  const peers: Record<string, ReturnType<typeof quote>> = {
+    NESN: quote("NESN", "CHF", 84.37, "2026-10-23T15:30:00Z", { marketState: "CLOSED", listingExchangeName: "SWX" }),
+    AAPL: quote("AAPL", "USD", 336.64, "2026-10-23T20:55:00Z", { marketState: "POST", listingExchangeName: "NASDAQ", regularClose: 336.64,
+      regularCloseSessionDate: "2026-10-23", postMarketPrice: 337.2, postMarketChange: 0.56, postMarketChangePercent: 0.1664 }),
+  };
+  const ctx = { signal: new AbortController().signal, marketData: createTestDataProvider({
+    async getTickerFinancials(symbol) { return peers[symbol]!; },
+  }) } as HeadlessPaneContext;
+  const csvOf = async (symbols: string[]) => {
+    const args = { symbols, argument: symbols, rawArgument: symbols.join(","), options: {} };
+    const result = await relativeValuationHeadless.load(args, ctx);
+    const freshness = deriveHeadlessFreshness(relativeValuationHeadless, result);
+    const tables = headlessReportTables(relativeValuationHeadless, result, args, "RV", freshness, { complete: true, unavailableSymbols: [] });
+    const lines = renderReportCsv(tables, freshness).split("\n\n")[0]!.split("\n");
+    const cells = (line: string) => line.match(/("[^"]*"|[^,]*)(,|$)/g)!.slice(0, -1).map((cell) => cell.replace(/,$/, "").replace(/^"|"$/g, ""));
+    const [header, ...rows] = lines.map(cells);
+    return { header: header!, row: (ticker: string) => Object.fromEntries(header!.map((column, index) => [column, rows.find((row) => row[0] === ticker)![index]])) };
+  };
+  setSystemTime(new Date("2026-10-23T21:00:00Z"));
+  try {
+    const both = await csvOf(["NESN:SWX", "AAPL"]);
+    expect(both.header.slice(0, 3)).toEqual(["Ticker", "Last", "Chg%"]);
+    expect(both.row("NESN:SWX")).toMatchObject({ Last: "84.37", symbol_or_series: "NESN:SWX", currency_or_unit: "CHF", "Mkt Cap unit": "CHF" });
+    expect(both.row("AAPL")).toMatchObject({ Last: "336.64", "After Hours": "337.2", symbol_or_series: "AAPL", currency_or_unit: "USD" });
+    expect(Number(both.row("AAPL")["After Hours Chg%"])).toBeCloseTo(0.1663, 4);
+    // A figure a peer does not have is empty, its reason in status, never words in a column of numbers.
+    expect(both.row("AAPL")).toMatchObject({ "Fwd P/E": "", "P/E": "20" });
+    expect(both.row("AAPL").status).toMatch(/^Fwd P\/E[^;]*: not reported/);
+    // A peer set with no extended print, or all in one currency, has the same header.
+    expect((await csvOf(["NESN:SWX"])).header).toEqual(both.header);
+  } finally {
+    setSystemTime();
+  }
 });

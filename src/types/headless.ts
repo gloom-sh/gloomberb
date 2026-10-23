@@ -181,9 +181,13 @@ export interface HeadlessPaneColumn {
    * The row field naming the unit of this column's number, for a column whose
    * rows are quoted in different units (CDX spreads in `bp`, prices in
    * `price`). Exports write the bare number and that unit: in the header when
-   * every row shares it, otherwise in a `<header> unit` column.
+   * every row shares it, otherwise in a `<header> unit` column. A column whose
+   * unit is the row's own (`rowUnitKey`) exports the bare number under its own
+   * header, the row's `currency_or_unit` naming the unit.
    */
   unitKey?: string;
+  /** With `unitKey`: always a `<header> unit` column, so the header is the same whichever rows loaded. */
+  unitColumn?: boolean;
   /**
    * The text report prints the value on its own lines under the row instead
    * of in a column, for a footnote that belongs to that row; an empty value
@@ -428,6 +432,8 @@ export interface HeadlessRowsResult extends HeadlessPaneResultBase {
    * (an ISO date or instant), for rows of several series dated apart: each
    * exported row names them in `currency_or_unit`, `symbol_or_series` and
    * `as_of`, as a bundle section's `rowUnitKey`, `rowSymbolKey` and `rowAsOfKey` do.
+   * In a report of several symbols, rows with their own `symbol` and
+   * `currency` fields name them without these.
    */
   rowUnitKey?: string;
   rowSymbolKey?: string;

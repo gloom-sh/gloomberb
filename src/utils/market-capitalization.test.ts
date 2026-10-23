@@ -54,3 +54,19 @@ test("a view's cap is the share count times the price from more than 2% to 10% o
   expect(view(11.01e9).computed).toBeUndefined();
   expect(marketCapBasisNote(view(11.01e9))).toBe("Market cap 11.01B USD is the provider's and does not rest on the 1B shares shown (x 10.00 USD = 10B).");
 });
+
+test("a count a recent split moved says where it came from, and the provider's cap it replaced", () => {
+  // NRDY on 22 Oct 2026: its 10-Q's 191.61M shares as of 31 Jul, after the 1-for-15 reverse split of 19 Aug.
+  const nrdyQuote = { ...quote, symbol: "NRDY", price: 5.81 };
+  const filed = { ...fundamentals, marketCap: 74_216_899, sharesOutstanding: 12_773_993, splitShareBasis: {
+    exDate: "2026-08-19", priceFactor: 15, method: "filing" as const, reportedShares: 191_609_890, reportedAsOf: "2026-07-31",
+    providerMarketCap: 450_717_802 } };
+  const view = viewMarketCapitalization(nrdyQuote, filed);
+  expect(view?.value).toBe(74_216_899);
+  expect(marketCapBasisNote(view)).toBe("12.77M shares: 191.61M filed 2026-07-31, adjusted for the 1-for-15 reverse split on 2026-08-19.");
+  // NVDA after its 10-for-1 split, with only the provider's cap on the new basis.
+  const provider = { ...fundamentals, marketCap: 2.995e12, sharesOutstanding: 24_592_331_062, splitShareBasis: {
+    exDate: "2024-06-10", priceFactor: 0.1, method: "provider_cap" as const, reportedShares: 2_460_000_000 } };
+  expect(marketCapBasisNote(viewMarketCapitalization({ ...quote, price: 121.79 }, provider)))
+    .toBe("Provider's market cap; its 2.46B share count predates the 10-for-1 split on 2024-06-10.");
+});

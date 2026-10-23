@@ -99,11 +99,58 @@ function isSortedPriceHistory(points: TickerFinancials["priceHistory"]): boolean
   return true;
 }
 
+/** Two closes of one session further apart than this are on different split bases, not a revision. */
+const SAME_BASIS_LIMIT = Math.log(1.4);
+
+/**
+ * Whether two windows of one history are on the same split basis: most of the
+ * sessions both hold close within 40% of each other. A window acquired before
+ * a split and one acquired after it hold the same sessions about the split's
+ * ratio apart (NRDY's 18 Aug 2026 close, 0.654 before its 1-for-15 reverse
+ * split and 9.81 after it), and merged they would draw that ratio as a move.
+ * Windows that share no session cannot be told apart and agree.
+ */
+export function priceHistoryWindowsAgree(
+  current: TickerFinancials["priceHistory"],
+  incoming: TickerFinancials["priceHistory"],
+  resolution: ManualChartResolution,
+): boolean {
+  if (current.length === 0 || incoming.length === 0) return true;
+  // Daily and slower bars stamped differently by two sources are one session within this.
+  const tolerance = isIntradayResolution(resolution) ? 0 : CHART_RESOLUTION_STEP_MS[resolution] * 0.8;
+  const closes = current
+    .map((point) => ({ time: getPricePointTimestamp(point), close: point.close }))
+    .filter((point) => Number.isFinite(point.time) && Number.isFinite(point.close) && point.close > 0)
+    .sort((left, right) => left.time - right.time);
+  let same = 0;
+  let other = 0;
+  for (const point of incoming) {
+    const time = getPricePointTimestamp(point);
+    if (!Number.isFinite(time) || !Number.isFinite(point.close) || !(point.close > 0)) continue;
+    let low = 0;
+    let high = closes.length;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (closes[middle]!.time < time) low = middle + 1;
+      else high = middle;
+    }
+    const nearest = [closes[low - 1], closes[low]]
+      .filter((candidate) => candidate && Math.abs(candidate.time - time) <= tolerance)
+      .sort((left, right) => Math.abs(left!.time - time) - Math.abs(right!.time - time))[0];
+    if (!nearest) continue;
+    if (Math.abs(Math.log(point.close / nearest.close)) > SAME_BASIS_LIMIT) other += 1;
+    else same += 1;
+  }
+  return other <= same;
+}
+
 export function mergePriceHistoryWindows(
   current: TickerFinancials["priceHistory"],
   incoming: TickerFinancials["priceHistory"],
   resolution: ManualChartResolution,
 ): TickerFinancials["priceHistory"] {
+  // A window on another split basis than the incoming one is dropped, never merged into it.
+  if (!priceHistoryWindowsAgree(current, incoming, resolution)) current = [];
   let sorted: TickerFinancials["priceHistory"];
   if (!isSortedPriceHistory(current) || !isSortedPriceHistory(incoming)) {
     const byTimestamp = new Map<number, TickerFinancials["priceHistory"][number]>();

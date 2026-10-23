@@ -98,6 +98,11 @@ export interface CliResultRenderOptions<T = unknown, Row = Record<string, unknow
    * `metadata.rows` in JSON.
    */
   dateKey?: string;
+  /**
+   * The row key that splits the rows into series of their own, each windowed
+   * apart: with `symbol`, `--tail 5` keeps every symbol's newest five rows.
+   */
+  seriesKey?: string;
   /** How many rows to show when neither `--limit` nor `--tail` is given; every row when absent. */
   defaultLimit?: number;
   /**
@@ -114,6 +119,15 @@ export interface CliResultRenderOptions<T = unknown, Row = Record<string, unknow
   exportIdentity?: ExportIdentity | ((row: Row) => ExportIdentity);
   /** What CSV says after the source lines as `# note:` lines: what the rows do not show, such as where a series begins. */
   exportNotes?: readonly string[];
+  /**
+   * Why a row's figures are empty (`Not a ticker: ZZZZQQ.`, `Chg%: no previous
+   * close`), for the `status` column CSV writes after the row's own columns and
+   * the `status` field of an NDJSON row; empty for a whole row. The column is
+   * there whenever this is, with rows or without, so the header never depends
+   * on what loaded. A figure that is no number (NaN) is written empty and,
+   * without a reason here, named as `<header>: not available`.
+   */
+  exportStatus?: (row: Row) => string | null | undefined;
 }
 
 interface CliResultJsonEnvelope<T> extends Omit<CliResult<T>, "freshness" | "exportFreshness" | "failure"> {
@@ -149,11 +163,28 @@ function rowWindowOptions(options: CliGlobalOptions, renderOptions: Pick<CliResu
 function windowed<Row>(
   rows: readonly Row[],
   options: CliGlobalOptions,
-  renderOptions: Pick<CliResultRenderOptions, "dateKey" | "defaultLimit">,
+  renderOptions: Pick<CliResultRenderOptions, "dateKey" | "defaultLimit" | "seriesKey">,
 ): RowWindow<Row> {
-  const { dateKey } = renderOptions;
+  const { dateKey, seriesKey } = renderOptions;
   const dateOf = dateKey ? (row: Row) => (isPlainObject(row) ? row[dateKey] : undefined) : undefined;
-  return windowRows(rows, rowWindowOptions(options, renderOptions), dateOf);
+  const windowOptions = rowWindowOptions(options, renderOptions);
+  if (!seriesKey) return windowRows(rows, windowOptions, dateOf);
+  const series = new Map<unknown, Row[]>();
+  for (const row of rows) {
+    const key = isPlainObject(row) ? row[seriesKey] : undefined;
+    const group = series.get(key);
+    if (group) group.push(row);
+    else series.set(key, [row]);
+  }
+  const windows = [...series.values()].map((group) => windowRows(group, windowOptions, dateOf));
+  const count = windowOptions.tail ?? windowOptions.limit;
+  return {
+    rows: windows.flatMap((window) => window.rows),
+    total: rows.length,
+    kept: windows.find((window) => window.kept)?.kept ?? null,
+    note: windows.some((window) => window.note)
+      ? `showing the oldest ${count} ${count === 1 ? "row" : "rows"} of each ${seriesKey}; --tail ${count} for the latest` : null,
+  };
 }
 
 function asRows<T, Row>(data: T, rows?: (data: T) => Row[]): Row[] {
@@ -291,21 +322,55 @@ function serializeColumns<Row>(columns?: CliResultColumn<Row>[]) {
   }));
 }
 
+/** A number a spreadsheet cannot read: NaN or an infinity, which exports write empty, never as the word. */
+function isNonFiniteNumber(value: unknown): boolean {
+  return typeof value === "number" && !Number.isFinite(value);
+}
+
+/**
+ * What a row's status cell says: the command's reason, else the figures
+ * written empty for being no number. Empty when nothing is missing.
+ */
+function exportStatusText(reason: string | null | undefined, blanked: readonly string[]): string {
+  const own = reason?.trim();
+  if (own) return own;
+  return blanked.length > 0 ? `${blanked.join(", ")}: not available` : "";
+}
+
+/** `status`, or `value_status` beside a column of the table's own named Status. */
+function statusHeader(headers: readonly string[]): string {
+  return headers.some((header) => header.trim().toLowerCase() === "status") ? "value_status" : "status";
+}
+
 function renderCsv<Row extends Record<string, unknown>>(
   rows: Row[],
   columns?: CliResultColumn<Row>[],
   identity?: (row: Row) => string[],
+  status?: (row: Row) => string | null | undefined,
 ): string {
   const resolvedColumns = columns && columns.length > 0
     ? columns
     : inferColumns(rows as Record<string, unknown>[]) as CliResultColumn<Row>[];
+  const headers = resolvedColumns.map((column) => column.header);
   return serializeCsv([
-    [...resolvedColumns.map((column) => column.header), ...identity ? EXPORT_IDENTITY_COLUMNS : []],
-    ...rows.map((row) => [
-      ...resolvedColumns.map((column) => (column.value ? column.value(row) : row[column.key])),
-      ...identity?.(row) ?? [],
-    ]),
+    [...headers, ...status ? [statusHeader(headers)] : [], ...identity ? EXPORT_IDENTITY_COLUMNS : []],
+    ...rows.map((row) => {
+      const values = resolvedColumns.map((column) => (column.value ? column.value(row) : row[column.key]));
+      const blanked = resolvedColumns.flatMap((column, index) => isNonFiniteNumber(values[index]) ? [column.header] : []);
+      return [
+        ...values.map((value) => isNonFiniteNumber(value) ? "" : value),
+        ...status ? [exportStatusText(status(row), blanked)] : [],
+        ...identity?.(row) ?? [],
+      ];
+    }),
   ]);
+}
+
+/** An NDJSON row: a figure that is no number is null, and the row says why its figures are empty when the command does. */
+function ndjsonRow<Row extends Record<string, unknown>>(row: Row, status?: (row: Row) => string | null | undefined): Record<string, unknown> {
+  const blanked = Object.entries(row).flatMap(([key, value]) => isNonFiniteNumber(value) ? [key] : []);
+  const own = blanked.length > 0 ? { ...row, ...Object.fromEntries(blanked.map((key) => [key, null])) } : row;
+  return status ? { ...own, status: exportStatusText(status(row), blanked) || null } : own;
 }
 
 function stringField(row: Record<string, unknown>, key: string): string | null {
@@ -449,14 +514,17 @@ function serializeCliRows<T, Row extends Record<string, unknown>>(
   }
   const window = windowed(asRows(result.data, renderOptions.rows), options, renderOptions);
   const rows = window.rows;
+  const status = renderOptions.exportStatus;
   if (options.format === "ndjson") {
-    return rows.map((row) => JSON.stringify(cited && isPlainObject(row)
-      ? { ...row, ...exportIdentityFields(cited, rowIdentity(row as Row, renderOptions.exportIdentity)) }
-      : row)).join("\n");
+    return rows.map((row) => {
+      if (!isPlainObject(row)) return JSON.stringify(row);
+      const fields = ndjsonRow(row as Row, status);
+      return JSON.stringify(cited ? { ...fields, ...exportIdentityFields(cited, rowIdentity(row as Row, renderOptions.exportIdentity)) } : fields);
+    }).join("\n");
   }
   if (options.format === "csv") {
-    if (!cited) return renderCsv(rows as Row[], renderOptions.columns);
-    const csv = renderCsv(rows as Row[], renderOptions.columns, (row) => exportIdentityCells(cited, rowIdentity(row, renderOptions.exportIdentity)));
+    if (!cited) return renderCsv(rows as Row[], renderOptions.columns, undefined, status);
+    const csv = renderCsv(rows as Row[], renderOptions.columns, (row) => exportIdentityCells(cited, rowIdentity(row, renderOptions.exportIdentity)), status);
     return withCsvFooter(csv, [...exportSourceLines(cited), ...(renderOptions.exportNotes ?? []).map((note) => `note: ${note}`)]);
   }
   if (renderOptions.text) {

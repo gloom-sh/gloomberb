@@ -1,5 +1,8 @@
 import { fixedUsdRate, heldCurrencyUnit, minorUnitSign } from "./currency-units";
 
+/** What a cell or figure reads when the source gave no value; an export writes it as an empty cell. */
+export const MISSING_VALUE = "—";
+
 const currencyFormatters = new Map<string, Intl.NumberFormat>();
 const numberFormatters = new Map<number, Intl.NumberFormat>();
 
@@ -72,7 +75,7 @@ export function formatCurrency(
   currency = "USD",
   maximumFractionDigits: number = currencyPriceDigits(currency),
 ): string {
-  if (value == null || !Number.isFinite(value)) return "—";
+  if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
   return formatMoney(value, currency, maximumFractionDigits);
 }
 
@@ -87,7 +90,7 @@ export function formatCurrencyCode(
   currency = "USD",
   maximumFractionDigits: number = currencyPriceDigits(currency),
 ): string {
-  if (value == null || !Number.isFinite(value)) return "—";
+  if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
   if (minorUnitSign(currency)) return formatMoney(value, currency, maximumFractionDigits);
   const code = currency.trim().toUpperCase();
   const body = new Intl.NumberFormat("en-US", {
@@ -99,7 +102,7 @@ export function formatCurrencyCode(
 
 /** Preserve fractional per-share distributions, including split-adjusted history. */
 export function formatDistributionAmount(value: number | undefined, currency = "USD"): string {
-  if (value == null || !Number.isFinite(value)) return "—";
+  if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
   return formatMoney(value, currency, 6);
 }
 
@@ -112,20 +115,20 @@ function signedFixed(value: number, decimals: number): string {
 
 /** Format a number as percentage (e.g., +1.23%) */
 export function formatPercent(value: number | undefined): string {
-  if (value == null || !Number.isFinite(value)) return "—";
+  if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
   return `${signedFixed(value * 100, 2)}%`;
 }
 
 /** Format a level such as a yield or margin (0.0123 -> 1.23%). Levels are not changes, so they carry no sign. */
 export function formatLevelPercent(value: number | undefined): string {
-  if (value == null || !Number.isFinite(value)) return "—";
+  if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
   const fixed = (value * 100).toFixed(2);
   return `${/[1-9]/.test(fixed) ? fixed : fixed.replace("-", "")}%`;
 }
 
 /** Format a percentage that's already in percent form (e.g., 1.23 -> +1.23%) */
 export function formatPercentRaw(value: number | undefined): string {
-  if (value == null || !Number.isFinite(value)) return "—";
+  if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
   return `${signedFixed(value, 2)}%`;
 }
 
@@ -134,7 +137,7 @@ export function formatPercentRaw(value: number | undefined): string {
  * pass `fixedDecimals` so 1.70T lines up with 1.33T.
  */
 export function formatCompact(value: number | undefined, { fixedDecimals = false }: { fixedDecimals?: boolean } = {}): string {
-  if (value == null || !Number.isFinite(value)) return "—";
+  if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
   const { fixed, suffix } = compactParts(Math.abs(value));
   // Strip unnecessary trailing zeros after decimal point
   const trimmed = fixed.includes(".") && (!fixedDecimals || !suffix) ? fixed.replace(/\.?0+$/, "") : fixed;
@@ -170,7 +173,7 @@ function compactParts(abs: number): { fixed: string; suffix: string } {
  * carries + or -, except one that rounds to zero.
  */
 export function formatCompactAmount(value: number | undefined, { signed = false }: { signed?: boolean } = {}): string {
-  if (value == null || !Number.isFinite(value)) return "—";
+  if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
   const { fixed, suffix } = compactParts(Math.abs(value));
   if (!/[1-9]/.test(fixed)) return `${fixed}${suffix}`;
   const sign = value < 0 ? "-" : signed && value > 0 ? "+" : "";
@@ -183,13 +186,13 @@ export function formatCompactCurrency(
   currency = "USD",
   options: { fixedDecimals?: boolean } = {},
 ): string {
-  if (value == null || !Number.isFinite(value)) return "—";
+  if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
   return `${formatCompact(value, options)} ${currency}`;
 }
 
 /** Format a plain number with commas */
 export function formatNumber(value: number | undefined, decimals = 2): string {
-  if (value == null || !Number.isFinite(value)) return "—";
+  if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
   return getNumberFormatter(decimals).format(value);
 }
 
@@ -235,7 +238,7 @@ export function pickUnit(values: (number | undefined)[]): { suffix: string; divi
 
 /** Format a number using a pre-determined divisor (no unit suffix) */
 export function formatWithDivisor(value: number | undefined, divisor: number): string {
-  if (value === undefined || value === null) return "—";
+  if (value === undefined || value === null) return MISSING_VALUE;
   const scaled = value / divisor;
   const abs = Math.abs(scaled);
   const decimals = abs >= 100 ? 1 : 2;

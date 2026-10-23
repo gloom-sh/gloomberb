@@ -169,6 +169,8 @@ describe("holders headless with the service's units", () => {
     const result = await headless.load({ ...args(), rawArgument: "AAPL", argument: "AAPL", symbols: ["AAPL"] }, createTestHeadlessContext());
     expect(result.metadata).toMatchObject({ shown: 2, total: 6137, truncated: true });
     expect((result.metadata?.notices as string[])[0]).toBe("Apple Inc. | NASDAQ | USD | 2 of 6,137 holders");
+    // A higher limit shows no more: the source names only its largest holders.
+    expect(result.metadata?.notices).toContain("The source lists its 2 largest holders; fn 13F AAPL lists all 6,137.");
     expect(result.columns?.map((column) => column.key)).not.toContain("shareBasis");
   });
 });

@@ -9,6 +9,9 @@ import type { PriceHistoryResult } from "../../types/price-history";
 
 const history = marketDataCliCommands.find((command) => command.name === "history")!;
 
+/** Every history export's own columns, whatever the symbol or the market's state. */
+const HISTORY_CSV_HEADER = "Date,Open,High,Low,Close,Volume,Flag,Partial,Filled,Unsettled,Volume unit,Volume note,Venue volume,Volume venue,status";
+
 test("history CSV keeps the price columns first, every row ends with its flag, what it is a bar of, its currency, interval and source, and it ends with its source", async () => {
   const cli = createTestCliContext({
     config: createDefaultConfig("/tmp/gloom-history-command-fixture"),
@@ -27,9 +30,9 @@ test("history CSV keeps the price columns first, every row ends with its flag, w
   const [{ result, options }] = cli.printed;
   const lines = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options).split("\n");
   expect(lines.slice(0, 4)).toEqual([
-    "Date,Open,High,Low,Close,Volume,Flag,symbol_or_series,currency_or_unit,interval,source,as_of",
-    "2025-10-09,,,,,,low>open,SBK.JO,ZAR,1d,Gloom Cloud,2025-10-10",
-    "2025-10-10,249,258.15,249,256,4093192,,SBK.JO,ZAR,1d,Gloom Cloud,2025-10-10",
+    `${HISTORY_CSV_HEADER},symbol_or_series,currency_or_unit,interval,source,as_of`,
+    "2025-10-09,,,,,,low>open,false,false,false,,,,,prices left blank: low>open,SBK.JO,ZAR,1d,Gloom Cloud,2025-10-10",
+    "2025-10-10,249,258.15,249,256,4093192,,false,false,false,,,,,,SBK.JO,ZAR,1d,Gloom Cloud,2025-10-10",
     "",
   ]);
   expect(lines.slice(4).map((line) => line.split(":")[0])).toEqual(["# Source", "# Publisher", "# Observation date", "# Publication time", "# Retrieval time"]);
@@ -243,7 +246,7 @@ test("a break in the series is flagged on the bar after it in every export, and 
     const csv = await run("csv", { points: [...old, ...shekels] });
     expect(csv.result.warnings).toEqual(warnings);
     // Dated by the January bar's last session, not the day it opens.
-    expect(csv.text.split("\n").filter((line) => /gap|jump/.test(line))).toEqual(["1992-12-01,,,,2.763,,\"gap,jump\",USDILS=X,ILS,1mo,Gloom Cloud,1993-01-29"]);
+    expect(csv.text.split("\n").filter((line) => /gap|jump/.test(line))).toEqual(["1992-12-01,,,,2.763,,\"gap,jump\",false,false,false,,,,,,USDILS=X,ILS,1mo,Gloom Cloud,1993-01-29"]);
     const text = await run("text", { points: [...old, ...shekels] });
     expect(text.text).toContain("ILS per USD  \u00b7  monthly bars  \u00b7  1977-10-01 to 1993-01-01  \u00b7  36 bars  \u00b7  unbroken from 1992-12-01");
     // Gloom Cloud clips the pair at the new shekel and says why; the bars it serves have no break.
@@ -318,4 +321,67 @@ test("history reads a Bloomberg code as its listing: VOD LN Equity is Vodafone i
   await history.execute(["VOD LN Equity"], cli.context);
   expect(asked).toEqual(["VOD:LSE@LSE"]);
   expect(cli.printed[0]!.result.warnings).toContain('Read "VOD LN Equity" as VOD:LSE.');
+});
+
+// 244 symbols were 244 calls and as many files whose headers changed with the market's state.
+test("history of several symbols is one long table with the single-symbol header, each row naming its symbol and currency, a symbol with none a row with its reason", async () => {
+  // Fri 23 Oct 2026, 15:00 UTC: Nasdaq trades, so AAPL's day is a partial bar; KRX has closed.
+  setSystemTime(new Date("2026-10-23T15:00:00Z"));
+  const bar = (date: string, close: number) => ({ date: new Date(date), open: close, high: close, low: close, close, volume: 1000 });
+  const quotes: Record<string, ReturnType<typeof createTestQuote>> = {
+    AAPL: createTestQuote({ symbol: "AAPL", currency: "USD", listingExchangeName: "NASDAQ", instrumentType: "Common Stock", marketState: "REGULAR",
+      price: 347.79, previousClose: 348.22, open: 349.12, high: 351.73, low: 347.26, volume: 9_050_207, changeSessionDate: "2026-10-23",
+      lastUpdated: Date.parse("2026-10-23T14:45:00Z") }),
+    "000660.KS": createTestQuote({ symbol: "000660.KS", currency: "KRW", listingExchangeName: "KRX", marketState: "CLOSED", price: 1_277_000,
+      lastUpdated: Date.parse("2026-10-23T06:30:00Z") }),
+  };
+  const windows: Array<[string, string]> = [];
+  try {
+    const cli = createTestCliContext({
+      config: createDefaultConfig("/tmp/gloom-history-command-fixture"),
+      dataProvider: createTestDataProvider({
+        getQuote: async (symbol) => {
+          if (!quotes[symbol]) throw new Error(`Not a ticker: ${symbol}.`);
+          return quotes[symbol]!;
+        },
+        getDetailedPriceHistoryWithMetadata: async (symbol, _exchange, start, end) => {
+          if (symbol === "ENDED") return { resolution: "1d", points: [] };
+          if (!quotes[symbol]) throw new Error(`Not a ticker: ${symbol}.`);
+          windows.push([start.toISOString().slice(0, 10), end.toISOString().slice(0, 10)]);
+          return { resolution: "1d", points: symbol === "AAPL" ? [bar("2026-10-21", 344.5), bar("2026-10-22", 348.22)] : [bar("2026-10-22", 1_223_000), bar("2026-10-23", 1_277_000)] };
+        },
+      }),
+    }, { format: "csv" });
+    await history.execute(["AAPL", "000660.KS", "ZZZZQQ", "ENDED", "--start", "2026-10-21", "--end", "2026-10-23"], cli.context);
+    const [{ result, options }] = cli.printed;
+    expect(windows).toEqual([["2026-10-21", "2026-10-23"], ["2026-10-21", "2026-10-23"]]);
+    const lines = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options).split("\n");
+    expect(lines.slice(0, 9)).toEqual([
+      `${HISTORY_CSV_HEADER},symbol_or_series,currency_or_unit,interval,source,as_of`,
+      "2026-10-21,344.5,344.5,344.5,344.5,1000,,false,false,false,,,,,,AAPL,USD,1d,Gloom Cloud,2026-10-23T14:45:00.000Z",
+      "2026-10-22,348.22,348.22,348.22,348.22,1000,,false,false,false,,,,,,AAPL,USD,1d,Gloom Cloud,2026-10-23T14:45:00.000Z",
+      "2026-10-23,349.12,351.73,347.26,347.79,9050207,,true,false,false,,,,,,AAPL,USD,1d,Gloom Cloud,2026-10-23T14:45:00.000Z",
+      "2026-10-22,1223000,1223000,1223000,1223000,1000,,false,false,false,,,,,,000660.KS,KRW,1d,Gloom Cloud,2026-10-23",
+      "2026-10-23,1277000,1277000,1277000,1277000,1000,,false,false,false,,,,,,000660.KS,KRW,1d,Gloom Cloud,2026-10-23",
+      ",,,,,,,,,,,,,,Not a ticker: ZZZZQQ.,ZZZZQQ,,,Gloom Cloud,",
+      // A window the source has no bar in is a row with its reason too, never left out.
+      ",,,,,,,,,,,,,,No bars for ENDED from 2026-10-21 to today.,ENDED,,,Gloom Cloud,",
+      "",
+    ]);
+    expect(result.warnings).toEqual(expect.arrayContaining(["Not a ticker: ZZZZQQ.", "No bars for ENDED from 2026-10-21 to today."]));
+    expect(result.failure).toBeUndefined();
+    // One symbol alone writes the same header in the same market state.
+    const single = createTestCliContext({
+      config: createDefaultConfig("/tmp/gloom-history-command-fixture"),
+      dataProvider: createTestDataProvider({
+        getQuote: async () => quotes["000660.KS"]!,
+        getPriceHistoryWithMetadata: async () => ({ resolution: "1d", points: [bar("2026-10-23", 1_277_000)] }),
+      }),
+    }, { format: "csv" });
+    await history.execute(["000660.KS"], single.context);
+    const [printed] = single.printed;
+    expect(serializeCliResult(printed!.result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, printed!.options).split("\n")[0]).toBe(lines[0]);
+  } finally {
+    setSystemTime();
+  }
 });

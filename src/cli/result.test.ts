@@ -107,6 +107,33 @@ describe("serializeCliResult", () => {
     expect(serializeCliResult({ data: [] }, baseOptions, { empty: "No alerts." })).toBe("No alerts.");
   });
 
+  // A spreadsheet reads every cell of a figure column as a number, and every row says why it has none. (GLO-1263)
+  test("exports write a figure that is no number empty, with the reason in a status column that is there with rows or without", () => {
+    const columns = [{ key: "symbol", header: "Symbol" }, { key: "last", header: "Last" }, { key: "move", header: "Chg%" }];
+    const render: CliResultRenderOptions = { columns, exportStatus: (row) => typeof row.error === "string" ? row.error : null };
+    const rows = [
+      { symbol: "AAPL", last: 349.8, move: 0.45 },
+      { symbol: "STALE", last: 12, move: Number.NaN },
+      { symbol: "ZZZZQQ", last: null, move: null, error: "Not a ticker: ZZZZQQ." },
+    ];
+    const csv = serializeCliResult({ data: rows }, { ...baseOptions, format: "csv" }, render);
+    expect(csv).toBe("Symbol,Last,Chg%,status\nAAPL,349.8,0.45,\nSTALE,12,,Chg%: not available\nZZZZQQ,,,Not a ticker: ZZZZQQ.");
+    expect(serializeCliResult({ data: [] }, { ...baseOptions, format: "csv" }, render)).toBe("Symbol,Last,Chg%,status");
+    const ndjson = serializeCliResult({ data: rows }, { ...baseOptions, format: "ndjson" }, render).split("\n").map((line) => JSON.parse(line));
+    expect(ndjson.map((row) => [row.move, row.status])).toEqual([[0.45, null], [null, "move: not available"], [null, "Not a ticker: ZZZZQQ."]]);
+  });
+
+  test("--tail and --limit keep each series' own rows when rows of several symbols share one table", () => {
+    const bars = ["AAPL", "MSFT"].flatMap((symbol) => ["2026-10-21", "2026-10-22", "2026-10-23"].map((date) => ({ symbol, date })));
+    const kept = (options: Partial<CliGlobalOptions>) => JSON.parse(serializeCliResult({ data: bars }, { ...baseOptions, format: "json", ...options },
+      { dateKey: "date", seriesKey: "symbol" }));
+    expect(kept({ tail: 1 }).data).toEqual([{ symbol: "AAPL", date: "2026-10-23" }, { symbol: "MSFT", date: "2026-10-23" }]);
+    expect(kept({ limit: 1 })).toMatchObject({
+      data: [{ symbol: "AAPL", date: "2026-10-21" }, { symbol: "MSFT", date: "2026-10-21" }],
+      metadata: { rows: { shown: 2, total: 6, kept: "oldest", note: "showing the oldest 1 row of each symbol; --tail 1 for the latest" } },
+    });
+  });
+
   test("renders NDJSON rows", () => {
     const output = serializeCliResult(
       { data: [{ symbol: "AAPL" }, { symbol: "MSFT" }] },
