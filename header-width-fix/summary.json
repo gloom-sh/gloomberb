@@ -61,6 +61,11 @@
     "before": {
       "viewRecords": 547,
       "picturedViews": 490,
+      "viewsPicturedAtOneWidthOnly": {
+        "CFNG--detail": [
+          640
+        ]
+      },
       "recordsWithoutImages": [
         {
           "view": "CDS--tab-treasury-bills",
@@ -598,6 +603,20 @@
     "after": {
       "viewRecords": 546,
       "picturedViews": 489,
+      "viewsPicturedAtOneWidthOnly": {
+        "FI--tab-treasury": [
+          640
+        ],
+        "FI--tab-bonds": [
+          640
+        ],
+        "FI--root": [
+          640
+        ],
+        "FI--tab-issuer-debt": [
+          640
+        ]
+      },
       "recordsWithoutImages": [
         {
           "view": "CDS--tab-treasury-bills",
