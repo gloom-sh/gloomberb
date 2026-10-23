@@ -1,5 +1,5 @@
 /** Daily outstanding fails are separate settlement snapshots, never additive through time. */
-export interface FailsToDeliverObservation {
+interface FailsToDeliverObservation {
   date: string;
   cusip: string;
   quantity: number;
@@ -9,7 +9,7 @@ export interface FailsToDeliverObservation {
 }
 
 /** ATS share is a percentage of published off-exchange shares, not total market volume. */
-export interface OtcVolumeObservation {
+interface OtcVolumeObservation {
   weekStart: string;
   atsShares: number | null;
   nonAtsShares: number | null;
