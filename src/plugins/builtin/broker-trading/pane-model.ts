@@ -202,10 +202,13 @@ export function editTicketDraft(broker: BrokerAdapter, instance: BrokerInstanceC
     else { delete next.orderClass; delete next.takeProfitPrice; delete next.stopLossPrice; }
     return next;
   }
-  // A trailing distance is in one unit at a time; the number stays as typed.
+  // A trailing distance is in one unit at a time. A number in one unit means nothing in the other: $1.50 is not 1.5%,
+  // so switching the unit clears it.
   if (field === "trailingUnit" || field === "trailing") {
-    const unit = field === "trailingUnit" ? value === "percent" ? "percent" : "amount" : trailingUnit(draft);
-    const typed = field === "trailing" ? value === "" ? NaN : Number(value) : trailingUnit(draft) === "percent" ? draft.trailingPercent : draft.trailingAmount;
+    const current = trailingUnit(draft);
+    const unit = field === "trailingUnit" ? value === "percent" ? "percent" : "amount" : current;
+    const typed = field === "trailing" ? value === "" ? NaN : Number(value)
+      : unit !== current ? NaN : current === "percent" ? draft.trailingPercent : draft.trailingAmount;
     const { trailingAmount: _amount, trailingPercent: _percent, ...rest } = draft;
     return { ...rest, [unit === "percent" ? "trailingPercent" : "trailingAmount"]: typed ?? NaN };
   }

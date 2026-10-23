@@ -1,3 +1,4 @@
+import type { Quote } from "../../../types/financials";
 import type { BrokerOrder, BrokerOrderClass, BrokerOrderLinkRole, BrokerOrderRequest, BrokerTradingCapabilities, BrokerTrailingUnit } from "../../../types/trading";
 
 /**
@@ -10,13 +11,13 @@ export type LinkedFeature = BrokerOrderClass | "trailing";
 
 const FEATURE_NAME: Record<LinkedFeature, string> = { bracket: "brackets", oco: "OCO orders", trailing: "trailing stops" };
 
-/** Whether the broker takes a bracket, an OCO pair or a trailing stop here, and why not. */
+/** Whether the broker takes a bracket, an OCO pair or a trailing stop here, and the refusal when it does not. */
 export function linkedFeature(capabilities: BrokerTradingCapabilities | undefined, feature: LinkedFeature, brokerName: string): { available: boolean; reason?: string } {
   const available = feature === "trailing"
     ? !!capabilities?.orderTypes.includes("TRAIL") && !!capabilities.trailing?.length
     : !!capabilities?.orderClasses?.includes(feature);
   if (available) return { available };
-  return { available, reason: capabilities?.unavailableReasons?.[feature] ?? `${brokerName} does not take ${FEATURE_NAME[feature]}.` };
+  return { available, reason: `${brokerName} does not take ${FEATURE_NAME[feature]}.` };
 }
 
 /** The trailing unit a draft edits: percent once it holds one, else the amount. */
@@ -33,6 +34,23 @@ const positive = (value: number | undefined): value is number => value !== undef
 function entryPrice(request: BrokerOrderRequest): number | undefined {
   if (request.orderType === "LMT" || request.orderType === "STP LMT") return request.limitPrice;
   if (request.orderType === "STP") return request.stopPrice;
+  return undefined;
+}
+
+/**
+ * The entry's price when it rests away from the market, where it fills: a buy
+ * limit under the ask or a buy stop over it, a sell the mirror. None for one
+ * that trades now, or without a quote.
+ */
+export function restingEntryPrice(request: BrokerOrderRequest, quote: Pick<Quote, "bid" | "ask">): number | undefined {
+  const buy = request.action === "BUY";
+  const touch = buy ? quote.ask : quote.bid;
+  if (!positive(touch)) return undefined;
+  const entry = entryPrice(request);
+  if (request.orderType === "LMT") return positive(entry) && (buy ? entry < touch : entry > touch) ? entry : undefined;
+  if (request.orderType === "STP" || request.orderType === "STP LMT") {
+    return positive(request.stopPrice) && (buy ? request.stopPrice > touch : request.stopPrice < touch) ? entry : undefined;
+  }
   return undefined;
 }
 

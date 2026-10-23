@@ -206,6 +206,11 @@ describe("signedInBrokerAdapter, direct orders (SnapTrade)", () => {
       expect(calls.filter((call) => call.path === "/orders").map((call) => call.body)).toMatchObject([
         { orderClass: "bracket", takeProfitPrice: 240, stopLossPrice: 220 }, { orderClass: "oco", stopLossPrice: 220 }, { orderType: "TRAIL", trailingPercent: 2 }]);
       await expect(adapter.previewOrder!(profile, { ...linked[2]!, trailingPercent: undefined, trailingAmount: 1 })).rejects.toMatchObject({ refused: true });
+      // Exits without a class would reach the broker as a bare entry, even from a server that takes brackets.
+      for (const exits of [{ takeProfitPrice: 240 }, { stopLossPrice: 220 }]) {
+        await expect(adapter.previewOrder!(profile, { ...order, ...exits })).rejects.toMatchObject({ refused: true, message: "A take profit or stop loss needs a bracket or OCO order." });
+      }
+      expect(calls.filter((call) => call.path === "/orders")).toHaveLength(3);
     } finally {
       SNAPTRADE.capabilities = { ...SNAPTRADE.capabilities, orders: { mode: "direct", types: ["MKT", "LMT"], tif: ["DAY", "GTC"] } };
     }

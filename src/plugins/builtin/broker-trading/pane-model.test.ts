@@ -127,13 +127,14 @@ describe("linked order drafts", () => {
     expect(edit(withStop, "orderType", "OCO")).toEqual(withStop);
     expect(edit(withStop, "orderType", "LMT").orderClass).toBeUndefined();
     expect(edit(bracket, "bracket", false)).not.toHaveProperty("stopLossPrice");
-    // A trailing stop's number stays as typed when its unit changes, and goes when the type does.
+    // A trailing stop's number is cleared when its unit changes ($1.50 is not 1.5%), and goes when the type does.
     const trail = edit(edit(bracket, "orderType", "TRAIL"), "trailing", "1.5");
     expect(trail).toMatchObject({ orderType: "TRAIL", trailingAmount: 1.5 });
     expect(trail).not.toHaveProperty("orderClass");
     const percent = edit(trail, "trailingUnit", "percent");
-    expect(percent).toMatchObject({ trailingPercent: 1.5 });
+    expect(percent.trailingPercent).toBeNaN();
     expect(percent).not.toHaveProperty("trailingAmount");
-    expect(edit(percent, "orderType", "LMT")).not.toHaveProperty("trailingPercent");
+    expect(edit(trail, "trailingUnit", "amount")).toMatchObject({ trailingAmount: 1.5 });
+    expect(edit(edit(percent, "trailing", "2"), "orderType", "LMT")).not.toHaveProperty("trailingPercent");
   });
 });

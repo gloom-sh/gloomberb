@@ -5,7 +5,7 @@ import type { Quote } from "../../../types/financials";
 import type { BrokerAccount, BrokerOrder, BrokerOrderPreview, BrokerOrderRequest, BrokerTradingCapabilities } from "../../../types/trading";
 import { optionContractIdentity } from "../../../utils/options";
 import { isStrategyOrder, strategyQuote } from "./strategy";
-import { checkLinkedOrder } from "./linked-orders";
+import { checkLinkedOrder, restingEntryPrice } from "./linked-orders";
 import { brokerOrderDone, brokerOrderStatus, orderEstimatePrice, ticketEditingPriceStep } from "./orders-data";
 
 export interface BrokerTradingContext {
@@ -484,9 +484,12 @@ export class BrokerTradingController {
         warnings.push(request.action === "SELL" ? "This sell stop is at or above the bid, so it triggers at once." : "This buy stop is at or below the ask, so it triggers at once.");
       }
       // An exit already through the market trades the moment it works: an OCO's at once, a bracket's once the entry fills.
-      // A bracket's exits trade the other way from its entry; an OCO's two orders trade its own way.
+      // A bracket's exits trade the other way from its entry; an OCO's two orders trade its own way. An entry resting away
+      // from the market fills at its own price, and its exits were checked against that: only one that trades now, at
+      // the market, can leave an exit through it.
       const exitSells = request.orderClass === "oco" ? request.action === "SELL" : request.action === "BUY";
-      const exitTouch = exitSells ? quote.quote.bid : quote.quote.ask;
+      const exitTouch = request.orderClass === "bracket" && restingEntryPrice(request, quote.quote) !== undefined ? undefined
+        : exitSells ? quote.quote.bid : quote.quote.ask;
       if (request.orderClass && positive(exitTouch) && positive(request.stopLossPrice) && (exitSells ? request.stopLossPrice >= exitTouch : request.stopLossPrice <= exitTouch)) {
         warnings.push(request.orderClass === "oco" ? `This ${exitSells ? "sell" : "buy"} stop is through the market, so it triggers at once.` : "The stop loss is through the market, so it triggers as soon as the entry fills.");
       }

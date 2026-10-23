@@ -288,6 +288,9 @@ export function createSignedInBrokerAdapter(overrides: Partial<SignedInBrokerAda
     }
     // A server that does not say it takes a bracket, an OCO pair or a trailing stop would drop its fields and place a bare
     // order: never send one it has not named.
+    if (!request.orderClass && (request.takeProfitPrice !== undefined || request.stopLossPrice !== undefined)) {
+      throw refused("A take profit or stop loss needs a bracket or OCO order.");
+    }
     if (request.orderClass && !orders.orderClasses?.includes(request.orderClass)) {
       throw refused(`${name} does not take ${request.orderClass === "oco" ? "OCO" : "bracket"} orders from Gloom.`);
     }

@@ -51,11 +51,6 @@ export interface BrokerTradingCapabilities {
   orderClasses?: BrokerOrderClass[];
   /** How a trailing stop (`TRAIL` in `orderTypes`) can be set: by price, by percent or both. */
   trailing?: BrokerTrailingUnit[];
-  /**
-   * Why the broker takes no bracket, OCO or trailing stop here, when there is
-   * more to say than that it takes none.
-   */
-  unavailableReasons?: Partial<Record<BrokerOrderClass | "trailing", string>>;
 }
 
 export interface BrokerCashBalance {

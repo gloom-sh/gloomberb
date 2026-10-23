@@ -737,6 +737,31 @@ describe("brackets, OCO pairs and trailing stops", () => {
     expect(placed[0]!.request).toMatchObject({ orderClass: "bracket", takeProfitPrice: 350, stopLossPrice: 336.45 });
   });
 
+  test("an entry resting away from the market measures its exits from its own price, not the quote", async () => {
+    const f = setup(fresh);
+    // A buy limit at 320 fills at 320, under a take profit at 335, though 335 is under the bid now.
+    f.controller.setDraft({ ...f.demo.draft, limitPrice: 320, orderClass: "bracket", takeProfitPrice: 335, stopLossPrice: 310 });
+    await f.controller.review();
+    expect(f.controller.getSnapshot().review?.warnings.filter((text) => /through the market/.test(text))).toEqual([]);
+    // At the market, the same take profit fills as soon as the entry does.
+    f.controller.setDraft({ ...f.demo.draft, orderType: "MKT", limitPrice: undefined, orderClass: "bracket", takeProfitPrice: 335, stopLossPrice: 310 });
+    await f.controller.review();
+    expect(f.controller.getSnapshot().review?.warnings).toContain("The take profit is through the market, so it fills as soon as the entry does.");
+  });
+
+  test("exits without a class, or a trailing unit the broker does not declare, are refused before any broker request", async () => {
+    const f = setup(fresh);
+    for (const exits of [{ takeProfitPrice: 345 }, { stopLossPrice: 330 }]) {
+      f.controller.setDraft({ ...f.demo.draft, ...exits });
+      await expect(f.controller.review()).rejects.toThrow(/Remove the take profit and stop loss, or make the order a bracket/);
+    }
+    const caps = f.demo.adapter.getTradingCapabilities!.bind(f.demo.adapter);
+    f.demo.adapter.getTradingCapabilities = (instance, contract, type) => ({ ...caps(instance, contract, type), trailing: ["amount"] });
+    f.controller.setDraft({ ...f.demo.draft, orderType: "TRAIL", limitPrice: undefined, trailingPercent: 2 } as BrokerOrderRequest);
+    await expect(f.controller.review()).rejects.toThrow(/takes a trailing stop in price, not percent/);
+    expect(f.count("previewOrder")).toBe(0);
+  });
+
   test("an OCO pair is a limit beyond its stop on one side", async () => {
     const f = setup(fresh);
     f.controller.setDraft({ ...f.demo.draft, action: "SELL", quantity: 10, orderClass: "oco", limitPrice: 330, stopLossPrice: 340 });
