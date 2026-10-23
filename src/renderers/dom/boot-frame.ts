@@ -32,10 +32,16 @@ const FRAME_ROLES = ["app-header", "pane-window", "dock-divider", "status-bar"];
 const FRAME_SELECTOR = FRAME_ROLES.map((role) => `[data-gloom-role="${role}"]`).join(", ");
 /**
  * Kept empty: pane bodies and footers are most of the page and are the data
- * the app fills from its cache as it starts, and an update status said last
- * session ("Restart to update") is not true at the next launch.
+ * the app fills from its cache as it starts. The market state and SPY quote in
+ * the header, and an update status said last session ("Restart to update"),
+ * are not true at the next launch.
  */
-const EMPTIED_SELECTOR = '[data-gloom-role="pane-body"], [data-gloom-role="pane-footer"], [data-gloom-role="header-update-status"]';
+const EMPTIED_SELECTOR = [
+  "pane-body",
+  "pane-footer",
+  "header-market",
+  "header-update-status",
+].map((role) => `[data-gloom-role="${role}"]`).join(", ");
 /** Nothing that loads, plays or runs is redrawn. */
 const DROPPED_SELECTOR = "script, style, link, iframe, object, embed, img, video, audio, canvas";
 
@@ -59,6 +65,7 @@ function scrubAttributes(element: Element): void {
       || name === "value"
       || name === "autofocus"
       || name === "data-gloom-pane-id"
+      || name === "data-gloom-remote-node-id"
     ) {
       element.removeAttribute(attribute.name);
     }

@@ -23,8 +23,8 @@ function runFrameScript(window: Window, script: string, globals: Record<string, 
 
 const APP_LAYOUT = `
   <div style="display: flex">
-    <div data-gloom-role="app-header" onclick="steal()"><span>Search or run a command</span><div data-gloom-role="header-update-status">Restart to update</div></div>
-    <div data-gloom-role="pane-window" data-gloom-pane-id="portfolio:main" id="pane-1" tabindex="0">
+    <div data-gloom-role="app-header" onclick="steal()"><span>Search or run a command</span><div data-gloom-role="header-update-status">Restart to update</div><div data-gloom-role="header-market">SPY 763.96</div><div>USD</div></div>
+    <div data-gloom-role="pane-window" data-gloom-pane-id="portfolio:main" data-gloom-remote-node-id="ui:7" id="pane-1" tabindex="0">
       <div data-gloom-role="pane-header"><span data-gloom-role="pane-title">Main Portfolio</span></div>
       <div data-gloom-role="pane-body"><table><tr><td>AAPL</td><td>187.30</td></tr></table><canvas></canvas></div>
       <div data-gloom-role="pane-footer">as of 16:00</div>
@@ -52,11 +52,14 @@ test("a launch frame keeps the layout's chrome and none of its data", () => {
   expect(copy.querySelector('[data-gloom-role="pane-footer"]')?.textContent).toBe("");
   expect(copy.querySelector('[data-gloom-role="header-update-status"]')?.textContent).toBe("");
   expect(frame.html).not.toContain("187.30");
+  expect(frame.html).not.toContain("763.96");
+  expect(copy.querySelector('[data-gloom-role="app-header"]')?.textContent).toContain("USD");
   expect(frame.html).not.toContain("gloom-popover");
   // Nothing in it can run, take focus or be found as the app's own pane.
   expect(frame.html).not.toContain("onclick");
   expect(frame.html).not.toContain("tabindex");
   expect(frame.html).not.toContain("data-gloom-pane-id");
+  expect(frame.html).not.toContain("data-gloom-remote-node-id");
   expect(frame.html).not.toContain('id="pane-1"');
 });
 
