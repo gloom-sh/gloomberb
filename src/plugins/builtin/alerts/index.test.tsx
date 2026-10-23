@@ -277,6 +277,45 @@ describe("AlertsPane", () => {
 
     expect(storedAlerts().map((alert) => alert.id)).toEqual(["alert-aapl"]);
   });
+
+  test("an open detail stays on its alert when re-arming moves it, and goes back to the list when it is deleted", async () => {
+    await tui.render(
+      <AlertsHarness
+        alerts={[
+          makeAlert("alert-nvda", "NVDA", "above", 100, "triggered"),
+          makeAlert("alert-aapl", "AAPL", "above", 200),
+          makeAlert("alert-msft", "MSFT", "below", 300),
+        ]}
+      />,
+      { width: 110, height: 12 },
+    );
+    await renderSettled();
+    const press = async (key: "down" | "enter" | "m" | "d") => act(async () => {
+      if (key === "down") tui.setup().mockInput.pressArrow("down");
+      else if (key === "enter") tui.setup().mockInput.pressEnter();
+      else await tui.setup().mockInput.typeText(key);
+      await tui.setup().renderOnce();
+    });
+    // The triggered alert lists last; re-armed, it is active and lists first.
+    await press("down");
+    await press("down");
+    await press("enter");
+    await tui.waitForFrameToContain("NVDA above 100.00");
+    await press("m");
+    await renderSettled();
+    expect(storedAlerts().find((alert) => alert.id === "alert-nvda")?.status).toBe("active");
+    expect(tui.frame()).toContain("NVDA above 100.00");
+
+    await press("d");
+    await tui.waitForFrameToContain("Delete alert?");
+    await press("enter");
+    await renderSettled();
+    expect(storedAlerts().map((alert) => alert.id)).toEqual(["alert-aapl", "alert-msft"]);
+    // Back on the list, not on the alert that took its row.
+    const frame = await tui.waitForFrameToContain("SYMBOL");
+    expect(frame).not.toContain("AAPL above 200.00");
+    expect(frame).toContain("MSFT");
+  });
 });
 
 // Every tab gives its selected row the same `v`; one mapping decides what opens (targets.test.ts).

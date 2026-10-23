@@ -35,14 +35,14 @@ function makeField(overrides: Partial<PaneSettingActionField> = {}): PaneSetting
 
 function makeRegistry(
   field: PaneSettingActionField,
-  options: { openCommandBar?: (query?: string) => void } = {},
+  options: { openCommandBar?: (query?: string) => void; fields?: () => PaneSettingField[] } = {},
 ): PluginRegistry {
   return {
     resolvePaneSettings: () => ({
       paneId: context.paneId,
       pane: { title: "AI", paneId: "test-pane" },
       paneDef: { name: "AI" },
-      settingsDef: { title: "AI Settings", fields: [field] },
+      settingsDef: { title: "AI Settings", fields: options.fields?.() ?? [field] },
       context,
     }),
     openCommandBar: options.openCommandBar ?? (() => {}),
@@ -194,6 +194,43 @@ describe("pane settings action rows", () => {
     });
     expect(latest!.setRowNote?.({ status: "Sign-in failed", tone: "negative" })).toBe(false);
     expect(answers).toEqual([true, true]);
+  });
+
+  test("an action whose row has left the settings is told the row is gone, so it can toast instead", async () => {
+    // An account that only had a Gloomberb sign-in has nothing left to connect once it disconnects, so its row goes.
+    let listed = true;
+    const answers: boolean[] = [];
+    const other = makeField({ key: "provider", label: "Provider", actionId: "ai.provider", actionLabel: "Choose" });
+    const field = makeField({
+      actionLabel: "Disconnect",
+      action: async (nextContext) => {
+        answers.push(nextContext.setRowNote?.({ status: "Disconnecting…", tone: "warning" }) ?? false);
+        await Promise.resolve();
+        listed = false;
+        answers.push(nextContext.setRowNote?.(null) ?? true);
+      },
+    });
+    await tui.render(
+      <TestDialogProvider>
+        <PaneSettingsDialogContent
+          dismiss={() => {}}
+          paneId={context.paneId}
+          pluginRegistry={makeRegistry(field, { fields: () => (listed ? [field, other] : [other]) })}
+          applyFieldValue={async () => {}}
+          initialFieldKey="connection"
+        />
+      </TestDialogProvider>,
+      { width: 72, height: 14 },
+    );
+    await tui.setup().renderOnce();
+    await act(async () => {
+      tui.setup().mockInput.pressEnter();
+      await Promise.resolve();
+      await Promise.resolve();
+      await tui.setup().renderOnce();
+    });
+    expect(answers).toEqual([true, false]);
+    expect(await tui.waitForFrameToExclude("AI Account")).toContain("Provider");
   });
 
   test("activates enabled TUI action rows by mouse and ignores disabled rows", async () => {

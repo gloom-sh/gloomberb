@@ -145,6 +145,8 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
   const dialog = useDialog();
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [detailOpen, setDetailOpen] = useState(false);
+  // The alert the open detail shows, by id, so it never becomes whichever alert takes its row.
+  const detailAlertId = useRef<string | null>(null);
   const detailScrollRef = useRef<ScrollBoxRenderable | null>(null);
   const showHorizontalScrollbar = ALERT_TABLE_CONTENT_WIDTH > width;
   const storeError = useMemo(() => readAlertsStoreError(alertsJson), [alertsJson]);
@@ -324,9 +326,21 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
 
   useEffect(() => {
     setSelectedIdx((prev) => (rows.length === 0 ? 0 : Math.min(prev, rows.length - 1)));
-    // A detail whose alert was deleted goes with it.
-    if (rows.length === 0) setDetailOpen(false);
   }, [rows.length]);
+
+  // While the detail is open, a change to the list keeps it on its alert: it follows the alert to its new row (re-armed
+  // or triggered, it changes group) and goes back to the list once the alert is deleted, from here or elsewhere.
+  // Declared before the effect below, so a delete is checked against the alert shown, not the row that takes its place.
+  useEffect(() => {
+    if (!detailOpen) return;
+    const index = rows.findIndex((row) => row.id === detailAlertId.current);
+    if (index < 0) setDetailOpen(false);
+    else setSelectedIdx(index);
+  }, [detailOpen, rows]);
+  // A new selection while it is open (an alert focused from Unread) is the alert it shows from then on.
+  useEffect(() => {
+    if (detailOpen) detailAlertId.current = rows[selectedIdx]?.id ?? null;
+  }, [detailOpen, selectedIdx]);
 
   // The footer hints bind a, e, d and m; `n` is a second key for adding.
   const handleTableKeyDown = useCallback((event: DataTableKeyEvent) => {
@@ -402,7 +416,10 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
       sortDirection="asc"
       getItemKey={(alert) => alert.id}
       // Enter opens the alert; `m` re-arms a triggered one.
-      onActivate={() => setDetailOpen(true)}
+      onActivate={(alert) => {
+        detailAlertId.current = alert.id;
+        setDetailOpen(true);
+      }}
       renderCell={renderCell}
       selectedTextOverridesCellColor
       status={displayRows.length === 0 && storeError ? { error: storeError, subject: "price alerts" } : undefined}

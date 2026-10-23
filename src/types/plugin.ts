@@ -367,8 +367,9 @@ export interface PaneSettingActionContext extends PaneSettingsContext {
    * Says on the row the action runs from what it is doing or what stopped it,
    * or clears that with null. A success the row's own description and label
    * show once they change needs no note. False once the row is off screen
-   * (the dialog closed): say it with `notify` then, as a row that has left a
-   * list is a toast. Older hosts do not pass it.
+   * (the dialog closed, or the action removed its own field): say it with
+   * `notify` then, as a row that has left a list is a toast. Older hosts do
+   * not pass it.
    */
   setRowNote?(note: PaneSettingRowNote | null): boolean;
 }

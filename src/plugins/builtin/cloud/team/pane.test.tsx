@@ -74,7 +74,7 @@ const PANE_INSTANCE_ID = "team:test";
 const toasts: string[] = [];
 const paneRuntime = createTestPluginRuntime({ notify: (notification) => { toasts.push(notification.body ?? ""); } });
 
-function Pane({ focused = true }: { focused?: boolean }) {
+function Pane({ focused = true, width = 100 }: { focused?: boolean; width?: number }) {
   // The open section is pane state, so the harness needs a real reducer.
   const [paneState, setPaneState] = useState<AppState["paneState"]>({});
   const state = createInitialState(createTestPaneConfig("/tmp/team-pane-test", {
@@ -89,7 +89,7 @@ function Pane({ focused = true }: { focused?: boolean }) {
       paneId={PANE_INSTANCE_ID}
       pluginId="gloomberb-cloud"
       runtime={paneRuntime}
-      width={100}
+      width={width}
       height={25}
     >
       {(body) => <TeamPane paneId="team" paneType="team" focused={focused} {...body} />}
@@ -227,6 +227,21 @@ describe("TeamPane", () => {
     await flush();
     expect(toasts).toEqual(["Removed @bob."]);
     expect(footer(tui.frame())).not.toContain("Removed");
+  });
+
+  test("in a narrow pane a row's status takes the display name's columns, so its buttons stay in view", async () => {
+    await act(async () => {
+      await tui.render(<Pane width={84} />, { width: 84, height: 25 });
+    });
+    await tui.waitForFrameToContain("@bob");
+    failing = new Set(["/teams/org-1/members/m-3"]);
+    await clickInRow("@bob", "Remove");
+    await tui.waitForFrameToContain("Remove @bob?");
+    // Its answer holds the ring.
+    await tui.emitKeypress({ name: "return", sequence: "\r" });
+    await flush();
+    const row = rowOf(await tui.waitForFrameToContain("Remove failed"), "@bob");
+    expect(row).toMatch(/Remove failed\s+Make admin\s+Remove\s*│?$/);
   });
 
   test("a canceled invitation or an invite that fails says so on its row or under its Send, not in the footer or a toast", async () => {

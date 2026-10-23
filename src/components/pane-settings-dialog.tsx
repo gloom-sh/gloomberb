@@ -101,7 +101,12 @@ export function PaneSettingsDialogContent({
           },
           notify: (notification) => pluginRegistry.notify(notification),
           setRowNote: (note) => {
+            // The row is off screen once the dialog has closed, or once its field has left the settings (an
+            // account that disconnected and has nothing left to connect). The settings are read again here, as
+            // the action may have changed them since the dialog last drew.
             if (closed || !mounted.current) return false;
+            const current = pluginRegistry.resolvePaneSettings(paneId)?.settingsDef.fields ?? [];
+            if (!current.some((entry) => entry.key === field.key)) return false;
             setRowNote(field.key, note);
             return true;
           },
