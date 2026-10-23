@@ -78,8 +78,20 @@ export function solveChainVolatilities(
 ): ChainVolatilities {
   const valuationTime = optionQuoteValuationTime(chain, now);
   const byStrike = new Map<number, number>();
+  // A venue that marks every contract (Deribit) states its volatility: the out-of-the-money side's at each strike.
+  if ([...chain.calls, ...chain.puts].some((contract) => contract.mark)) {
+    for (const [side, contracts] of [["call", chain.calls], ["put", chain.puts]] as const) {
+      for (const contract of contracts) {
+        const mark = contract.mark;
+        if (!mark || !positive(mark.iv)) continue;
+        const outOfTheMoney = side === "call" ? contract.strike >= mark.forward : contract.strike < mark.forward;
+        if (outOfTheMoney || !byStrike.has(contract.strike)) byStrike.set(contract.strike, mark.iv);
+      }
+    }
+    return { valuationTime, byStrike };
+  }
   if (!positive(spot)) return { valuationTime, byStrike };
-  const rate = DEFAULT_OPTION_CALC_DRAFT.rate;
+  const rate = optionChainRate(chain);
   const carry = Number.isFinite(dividendYield) ? dividendYield! : 0;
   const expirations = new Set([...chain.calls, ...chain.puts].map((contract) => contract.expiration));
   for (const expiration of expirations) {
@@ -185,7 +197,15 @@ export function calculateOptionsSummary(
   };
 }
 
-/** Greeks at the displayed spot, from the strike's solved volatility (0 when the market prices no time value). */
+/** The rate a chain's premiums are valued at: the venue's own when it states one (Deribit's zero), else the model rate. */
+function optionChainRate(chain: Pick<OptionsChain, "rate">): number {
+  return Number.isFinite(chain.rate) ? chain.rate! : DEFAULT_OPTION_CALC_DRAFT.rate;
+}
+
+/**
+ * Greeks at the displayed spot, from the strike's solved volatility (0 when the market prices no time value).
+ * A contract its venue marks (Deribit) has the venue's greeks, at the expiry's forward.
+ */
 export function calculateOptionGreeks(
   contract: OptionContract | undefined,
   side: OptionSide,
@@ -193,6 +213,10 @@ export function calculateOptionGreeks(
   dividendYield: number | undefined,
   volatilities: ChainVolatilities,
 ): OptionValuation | undefined {
+  if (contract?.mark) {
+    const { price, delta, gamma, theta, vega } = contract.mark;
+    return { price, delta, gamma, thetaPerDay: theta, vegaPerPoint: vega, rhoPerPoint: 0 };
+  }
   const volatility = contract ? volatilities.byStrike.get(contract.strike) : undefined;
   // A side nobody bids has no market to measure sensitivity against.
   if (!contract || optionMid(contract) == null || !positive(spot) || !positive(contract.strike) || volatility == null || !(volatility >= 0)) {

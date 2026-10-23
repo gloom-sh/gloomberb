@@ -6,12 +6,14 @@ import { isPlainKey } from "../../../utils/keyboard";
 import { formatCompact, formatPercentRaw } from "../../../utils/format";
 import { formatMarketPrice, formatSignedMarketPrice, liveQuoteFormatOptions } from "../../../market-data/market/format";
 import { getRegularSessionDisplay } from "../../../market-data/market/status";
-import { chainOptionContract, formatExpDate, optionContractName, resolveOptionsTarget } from "../../../utils/options";
+import { chainOptionContract, formatExpDate, formatStrikeLabel, optionContractName, resolveOptionsTarget } from "../../../utils/options";
 import {
   expiryIsoDate, findListedExpiry, formatDaysToExpiry, daysToExpiry, missingExpiryMessage, missingExpiryText, readOptionExpiration,
 } from "../../../utils/option-expiry";
 import { canonicalTickerKey } from "../../../utils/exchanges";
-import { isOptionsUnavailableError, listedOptionsAlternative, optionsUnavailableTitle } from "../../../market-data/options-alternatives";
+import {
+  COIN_OPTIONS_HINT, isCoinWithoutOptions, isOptionsUnavailableError, listedOptionsAlternative, optionsUnavailableTitle,
+} from "../../../market-data/options-alternatives";
 import { useChartQueries, useOptionsQuery, useResolvedEntryValue, useTickerFinancials } from "../../../market-data/hooks";
 import {
   Button,
@@ -48,7 +50,6 @@ import {
   createOptionColumns,
   findNearestStrikeIndex,
   formatIv,
-  formatStrikeLabel,
   optionColumnColor,
   renderOptionCell,
   resolveDefaultStrikeTarget,
@@ -904,6 +905,19 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
     return <EmptyState title="Select a ticker." />;
   }
   if (loading && !chain) return <Spinner label="Loading options chain..." />;
+  if (error && !chain && isOptionsUnavailableError(error) && isCoinWithoutOptions(effectiveTicker)) {
+    // A coin other than BTC and ETH: the coins that have options, and a bitcoin-linked fund's.
+    return (
+      <EmptyState
+        title={optionsUnavailableTitle(effectiveTicker)}
+        hint={COIN_OPTIONS_HINT}
+        actions={<>
+          <Button label="BTC-USD options" onPress={() => createPaneFromTemplate("options-pane", { symbol: "BTC-USD" })} />
+          <Button label="IBIT options" onPress={() => createPaneFromTemplate("options-pane", { symbol: "IBIT" })} />
+        </>}
+      />
+    );
+  }
   if (error && !chain && isOptionsUnavailableError(error)) {
     // A future or commodity with no chain of its own: the listed fund whose options stand in, and OSA on it.
     const alternative = listedOptionsAlternative(effectiveTicker);

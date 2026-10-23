@@ -13,8 +13,9 @@ import {
   chainOpenInterestAsOf, loadListedOpenInterest, openInterestAsOfLabel, type OpenInterestAsOf, statedOpenInterestAsOf,
 } from "../../plugins/builtin/options/open-interest-as-of";
 import { DEFAULT_OPTION_CALC_DRAFT } from "../../plugins/builtin/options-calculator/model";
-import { expiryIsoDate, OPTION_EXPIRATION_PLACEHOLDER, parseOptionExpiration } from "../../utils/option-expiry";
+import { expiryIsoDate, OPTION_EXPIRATION_PLACEHOLDER, parseOptionExpiration, settlementStampTime } from "../../utils/option-expiry";
 import { loadModelDividendYield } from "../../market-data/model-dividend-yield";
+import { formatUtcTime } from "../../utils/utc-time";
 
 export const OPTIONS_USAGE = `options <symbol> [--expiration <${OPTION_EXPIRATION_PLACEHOLDER}>]`;
 
@@ -67,6 +68,24 @@ interface OptionModelFigures {
 
 /** The risk-free rate every options valuation in the app assumes. */
 export const OPTION_MODEL_RATE = DEFAULT_OPTION_CALC_DRAFT.rate;
+
+/** The venue's own marks a chain carries (Deribit's), stated in its JSON metadata in place of OPTION_VOLATILITY_FIELDS. */
+export const MARKED_OPTION_FIELDS = {
+  iv: "The venue's mark implied volatility (decimal), one per contract. Delta and the other greeks under mark are the venue's too: "
+    + "Black-76 at the expiry's forward with no discounting, to its settlement.",
+  bid: "Prices in USD are the coin prices (coin) at the expiry's forward (mark.forward), the venue's own model price.",
+  mark: "price in USD; iv; delta and gamma per 1.00 move in the underlying; vega per volatility point and theta per calendar day, in USD.",
+} as const;
+
+/** Whether a venue marks the chain's contracts itself (Deribit): its IV and greeks are then used as they are. */
+export function isMarkedChain(chain: OptionsChain): boolean {
+  return [...chain.calls, ...chain.puts].some((contract) => contract.mark != null);
+}
+
+/** The coin a chain's premiums are quoted in (BTC), when a venue quotes them in one. */
+export function chainCoinCurrency(chain: OptionsChain): string | null {
+  return [...chain.calls, ...chain.puts].find((contract) => contract.coin)?.coin?.currency ?? null;
+}
 
 /** What each contract's two volatilities are, stated in the chain's JSON metadata so neither is read as the other. */
 export const OPTION_VOLATILITY_FIELDS = {
@@ -189,10 +208,23 @@ export async function loadOptionsChainOpenInterest(symbol: string, chain: Option
 
 /**
  * The line under the chain: `Greeks at spot 89.79 (close Mon 12 Oct 20:00 UTC), dividend yield 2.34%, rate 4% · OI as of Fri 9 Oct`.
- * An open interest whose date cannot be established says why.
+ * An open interest whose date cannot be established says why. A chain its
+ * venue marks says whose marks they are: `Deribit marks: IV and greeks at
+ * each expiry's forward, rate 0%; $ is the BTC price at the forward · OI live, Thu 22 Oct 22:42 UTC`.
  */
-export function optionsBasisFootnote(basis: OptionsChainBasis): string {
+export function optionsBasisFootnote(basis: OptionsChainBasis, chain?: OptionsChain): string {
   const parts: string[] = [];
+  if (chain && isMarkedChain(chain)) {
+    const coin = chainCoinCurrency(chain);
+    parts.push(`${chain.venue ?? "Venue"} marks: IV and greeks at each expiry's forward, rate ${Number(((chain.rate ?? 0) * 100).toFixed(2))}%`
+      + (coin ? `; $ is the ${coin} price at the forward` : ""));
+    // Its expiries settle at a stated time (08:00 UTC), which the expiration stamps carry.
+    const settles = [...chain.calls, ...chain.puts].map((contract) => settlementStampTime(contract.expiration)).find(Boolean);
+    if (settles) parts.push(`expiries settle ${settles}`);
+    const asOf = chain.asOf ? Date.parse(chain.asOf) : Number.NaN;
+    parts.push(Number.isFinite(asOf) ? `OI live, ${formatUtcTime(new Date(asOf).toISOString())}` : openInterestAsOfLabel(basis.openInterest));
+    return parts.join(" · ");
+  }
   if (basis.spot) {
     parts.push(`Greeks at spot ${formatModelSpotPrice(basis.spot.price)} (${modelSpotLabel(basis.spot)}), `
       // An unknown yield is valued as none, and says so rather than read as a stated 0%.
@@ -236,8 +268,32 @@ export function optionRows(chain: OptionsChain) {
       iv: modeled.iv ?? null,
       delta: modeled.delta ?? null,
       expiration: expiryIsoDate(contract.expiration),
+      // A venue's marks and coin prices (Deribit), beside the dollar ones.
+      ...(contract.mark ? {
+        mark: contract.mark.price, gamma: contract.mark.gamma, vega: contract.mark.vega, theta: contract.mark.theta,
+        forward: contract.mark.forward, expiresAt: new Date(contract.expiration * 1000).toISOString(),
+      } : {}),
+      ...(contract.coin ? {
+        coinCurrency: contract.coin.currency, coinBid: contract.coin.bid, coinAsk: contract.coin.ask,
+        coinMark: contract.coin.mark, coinLast: contract.coin.last,
+      } : {}),
     };
   });
+}
+
+/** A premium in a coin, to the venue's tick (0.0001 BTC); a dash for none. */
+export function formatCoinPremiumCell(value: unknown): string {
+  return isFiniteNumber(value) && value > 0 ? value.toFixed(4) : "—";
+}
+
+/** A dollar greek or mark (vega, theta, mark) to cents; a dash for none. */
+export function formatOptionDollarCell(value: unknown): string {
+  return isFiniteNumber(value) ? value.toFixed(2) : "—";
+}
+
+/** Gamma per 1.00 move, tiny for a coin worth 80,000 dollars: to six places, as the venue shows it to five. */
+export function formatOptionGammaCell(value: unknown): string {
+  return isFiniteNumber(value) ? value.toFixed(6) : "—";
 }
 
 export function formatOptionQuoteCell(row: Record<string, unknown>, side: "bid" | "ask"): string {

@@ -154,7 +154,10 @@ export function modelSpotExtendedPrint(
   return `${EXTENDED_SESSION_WORDS[print.session]}${print.mark ? " mid" : ""} ${format(print.price)}`;
 }
 
-/** A price to the cent, or to the tick it was quoted at below a dollar. */
+/**
+ * Spot as every options pane writes it (OMON, OPX, OVDV): grouped, to the
+ * cent, or to the tick it was quoted at below a dollar.
+ */
 export function formatModelSpotPrice(price: number): string {
-  return price.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: price < 1 ? 4 : 2, useGrouping: false });
+  return price.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: price < 1 ? 4 : 2 });
 }

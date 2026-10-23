@@ -82,4 +82,14 @@ describe("series axis collision layout", () => {
       expect(placeSeriesAxisTags(tags, height, 18)).toEqual(result);
     }
   });
+
+  test("draws a leader only for a tag pushed off its value, so a lone tag never reads as a minus sign", () => {
+    const [alone] = placeSeriesAxisTags([tag("alone", 0.25)], 240, 18);
+    expect(alone).toMatchObject({ leader: false, centerY: alone!.anchorY });
+    const [first, second] = placeSeriesAxisTags([tag("first", 0.5), tag("second", 0.5)], 240, 18);
+    expect(first!.leader).toBe(false);
+    expect(second).toMatchObject({ leader: true, centerY: first!.centerY + 18 });
+    // Clamped at the edge by less than half a label, the badge still covers its value.
+    expect(placeSeriesAxisTags([tag("edge", 0)], 240, 18)[0]!.leader).toBe(false);
+  });
 });

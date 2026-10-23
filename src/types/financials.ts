@@ -949,6 +949,29 @@ export interface OptionContract {
   lastTradeDate: number;
   /** Millisecond timestamp for the latest streamed quote applied to this snapshot. */
   lastUpdated?: number;
+  /**
+   * A venue's own mark, for a venue that marks every contract (Deribit): the
+   * premium in `currency`, its implied volatility (a decimal) and Black-76
+   * greeks at the expiry's forward (delta per 1.00, gamma per 1.00, vega per
+   * volatility point, theta per calendar day). These replace the solved ones.
+   */
+  mark?: OptionMark;
+  /**
+   * The premiums in the coin a venue quotes them in (Deribit's BTC and ETH
+   * options); null where there is none. The contract's own prices are these
+   * at the expiry's forward.
+   */
+  coin?: { currency: string; bid: number | null; ask: number | null; mark: number; last: number | null };
+}
+
+export interface OptionMark {
+  price: number;
+  iv: number;
+  delta: number;
+  gamma: number;
+  vega: number;
+  theta: number;
+  forward: number;
 }
 
 export interface OptionsChain {
@@ -958,11 +981,18 @@ export interface OptionsChain {
   puts: OptionContract[];
   providerId?: string;
   dataSource?: "live" | "delayed";
-  feed?: "opra" | "gloom";
+  feed?: "opra" | "gloom" | "deribit";
   delayMinutes?: number;
   realtimeEligible?: boolean;
   /** ISO timestamp for the upstream options snapshot. */
   asOf?: string;
+  /**
+   * The rate the venue prices its premiums at (Deribit marks at zero); the
+   * model rate when absent, as for US listed options.
+   */
+  rate?: number;
+  /** The venue a chain is listed on when it is not a US options exchange (Deribit). */
+  venue?: string;
   /**
    * The session the chain's open interest counts, YYYY-MM-DD, as Gloom Cloud
    * states it; null when none of its counts is dated. Absent from a source

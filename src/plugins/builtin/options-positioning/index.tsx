@@ -56,11 +56,11 @@ export const optionsPositioningModule: PluginModule = {
     positioningTemplate({
       id: "options-positioning-pane",
       label: "Options Positioning",
-      description: "Open interest by strike and expiry, max pain, and dealer gamma (GEX).",
-      keywords: ["opx", "open interest", "max pain", "put call", "expiry", "options"],
+      description: "Open interest by strike and expiry, max pain, walls and dealer gamma (GEX); BTC-USD and ETH-USD from Deribit.",
+      keywords: ["opx", "open interest", "max pain", "put call", "expiry", "options", "deribit", "bitcoin options", "ether options", "crypto options"],
       shortcut: "OPX",
       shortcutAliases: ["MAXPAIN"],
-    }, "strikes", "Options open interest by strike and expiry, max pain, and dealer gamma (GEX) for a US underlying."),
+    }, "strikes", "Options open interest by strike and expiry, max pain, and dealer gamma (GEX) for a US underlying, or Deribit's BTC-USD and ETH-USD options."),
     positioningTemplate({
       id: "options-positioning-gex",
       label: "Dealer Gamma",

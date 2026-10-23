@@ -1,3 +1,5 @@
+import { isRoundTheClockCoin } from "../utils/crypto-pair";
+import { parsePublicTickerKey } from "../utils/exchanges";
 import { parseFuturesGeneric } from "../utils/futures-generic";
 
 /** A US-listed fund whose options track an instrument that has none of its own. */
@@ -66,4 +68,62 @@ export function isOptionsUnavailableError(error: unknown): boolean {
 /** "Options are not available for GC=F.": the dead end itself, before any follow-up. */
 export function optionsUnavailableTitle(symbol: string): string {
   return `Options are not available for ${symbol.trim().toUpperCase()}.`;
+}
+
+/**
+ * The coins whose options Gloom Cloud serves, from Deribit, as BTC-USD and
+ * ETH-USD: the standard options path (options, OMON, OPX, OVDV).
+ */
+const COIN_OPTION_UNDERLYINGS: Readonly<Record<string, string>> = { BTC: "BTC-USD", ETH: "ETH-USD" };
+
+/** BTC-USD or ETH-USD for a coin pair whose options are listed (on the coin board or bare); null otherwise. */
+export function listedCoinOptions(symbol: string): string | null {
+  const parsed = parsePublicTickerKey(symbol.trim().toUpperCase());
+  if (!isRoundTheClockCoin(parsed.symbol, parsed.exchange)) return null;
+  const pair = /^([A-Z0-9]+)-USD$/.exec(parsed.symbol)?.[1];
+  return pair ? COIN_OPTION_UNDERLYINGS[pair] ?? null : null;
+}
+
+/** A coin (SOL-USD, DOGE-USD) nothing lists options on: only BTC and ETH have them. */
+export function isCoinWithoutOptions(symbol: string): boolean {
+  const parsed = parsePublicTickerKey(symbol.trim().toUpperCase());
+  return isRoundTheClockCoin(parsed.symbol, parsed.exchange) && listedCoinOptions(symbol) == null;
+}
+
+/**
+ * What exists instead for a coin without options, worded for the CLI:
+ * BTC and ETH options, and the bitcoin-linked US listings with their own,
+ * each as the command that reads it (`options`, or `fn OPX`).
+ */
+export function coinOptionsAlternativesText(command = "options"): string {
+  const run = (symbol: string) => `gloomberb ${command} ${symbol}`;
+  return `Listed crypto options cover BTC and ETH: ${run("BTC-USD")}, ${run("ETH-USD")}.`
+    + ` Bitcoin-linked US listings have their own: ${run("IBIT")}.`;
+}
+
+/** The same for a pane, which has no commands to give. */
+export const COIN_OPTIONS_HINT = "Listed crypto options cover BTC-USD and ETH-USD; bitcoin-linked US funds such as IBIT list their own.";
+
+/**
+ * An options function's `refuseSymbol`: a coin nothing lists options on
+ * (SOL-USD) is answered before any request, with what exists instead.
+ */
+export function coinWithoutOptionsRefusal(code: string) {
+  return (key: string): { message: string; details: string } | null => isCoinWithoutOptions(key)
+    ? { message: optionsUnavailableTitle(parsePublicTickerKey(key.trim().toUpperCase()).symbol), details: coinOptionsAlternativesText(`fn ${code}`) }
+    : null;
+}
+
+/**
+ * A CLI options function's `symbolAlias` (`gloomberb fn OPX BTC`, `shot`): a
+ * bare BTC or ETH is read as the coin, with a note naming the Grayscale fund's
+ * listing (BTC:ARCA) for its own options (`code` is the function, OPX). The
+ * command bar and panes keep a bare BTC as the fund, as everywhere else.
+ */
+export function coinOptionsAlias(code: string) {
+  return (typed: string): { symbol: string; note: string } | null => {
+    const key = typed.trim().toUpperCase();
+    const pair = COIN_OPTION_UNDERLYINGS[key];
+    return pair ? { symbol: pair, note: `${key} read as ${pair}, the coin's options. For the US fund that trades as ${key}: gloomberb fn ${code} ${key}:ARCA` } : null;
+  };
 }

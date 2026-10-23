@@ -4,9 +4,14 @@ import type { ProjectedChartPoint } from "../../../components/chart/core/data";
 import { resolveChartPalette } from "../../../components/chart/core/palette";
 import { useThemeColors } from "../../../theme/theme-context";
 import { Box, ScrollBox, Text } from "../../../ui";
+import { formatStrikeLabel } from "../../../utils/options";
 import { evaluateSmile, optionDelta } from "../shared/volatility";
-import { buildSurfaceGrid, evaluateSurfaceSmile, type SurfaceExpiry, type SurfaceSnapshot } from "./model";
+import { buildSurfaceGrid, deltaBasis, evaluateSurfaceSmile, type SurfaceExpiry, type SurfaceSnapshot } from "./model";
 import { expiryLabel, formatPrice } from "./tables";
+
+// A strike tick reads as OMON writes strikes; the moneyness and delta axes stay whole numbers.
+const tickLabel = (value: number, axis: string) => axis === "strike" ? formatStrikeLabel(Number(value.toFixed(2)))
+  : `${value.toFixed(0)}${axis === "spot" || axis === "forward" ? "%" : ""}`;
 
 const point = (x: number, y: number): ProjectedChartPoint => ({ date: new Date(Math.round(x * 1_000_000)), open: y, high: y, low: y, close: y, volume: 0 });
 
@@ -25,8 +30,8 @@ export function SmileChart({ snapshot, expiry, overlay, axis, width, height, foc
       if (axis === "strike") return strike;
       if (axis === "delta") {
         const volatility = evaluateSmile(expiry.fit!, Math.log(strike / expiry.forward!));
-        const delta = volatility == null ? null : optionDelta({ spot: snapshot.spot, years: expiry.years,
-          volatility, rate: expiry.rate ?? 0, dividendYield: expiry.dividendYield ?? 0 }, strike, "call");
+        const delta = volatility == null ? null : optionDelta({ ...deltaBasis(expiry.rateMethod, snapshot.spot, expiry.forward!,
+          expiry.rate ?? 0, expiry.dividendYield ?? 0), years: expiry.years, volatility }, strike, "call");
         return delta == null ? NaN : (1 - delta) * 100;
       }
       return strike / (axis === "forward" ? expiry.forward! : snapshot.spot) * 100;
@@ -57,7 +62,7 @@ export function SmileChart({ snapshot, expiry, overlay, axis, width, height, foc
     }
     const left = observations[0]?.x ?? 0, right = observations.at(-1)?.x ?? 1;
     return { points: observations.map((entry) => point(entry.x, entry.iv * 100)), overlays,
-      ticks: Array.from({ length: 5 }, (_, i) => ({ ratio: i / 4, label: `${(left + (right - left) * i / 4).toFixed(axis === "strike" ? 2 : 0)}${axis === "spot" || axis === "forward" ? "%" : ""}` })),
+      ticks: Array.from({ length: 5 }, (_, i) => ({ ratio: i / 4, label: tickLabel(left + (right - left) * i / 4, axis) })),
       left, right };
   }, [axis, colors, expiry, overlay, snapshot]);
   if (!model) return <EmptyState title="Smile unavailable." hint="No clean quoted smile for this expiry." />;

@@ -12,6 +12,8 @@ export interface ExpiryOpenInterest {
   /** Change since `previousOiDate`; null without a stored session to compare with. */
   callChange: number | null;
   putChange: number | null;
+  /** The instant it settles, when the venue states one: 08:00 UTC for Deribit's BTC and ETH options. */
+  expiresAt?: string;
 }
 
 export interface StrikeOpenInterest {
@@ -22,6 +24,12 @@ export interface StrikeOpenInterest {
   putChange: number | null;
   /** What the expiry would pay holders if the underlying settled here, in dollars. */
   payout: number | null;
+}
+
+/** What one contract is: 1 BTC for Deribit's options, 100 shares for a US listing's (absent from US payloads). */
+interface PositioningContract {
+  size: number;
+  unit: string;
 }
 
 export interface OpenInterestPayload {
@@ -39,6 +47,12 @@ export interface OpenInterestPayload {
   expiry: string | null;
   strikes: StrikeOpenInterest[];
   warnings: string[];
+  /** When the counts were read, for a venue that publishes them live (Deribit); `oiDate` is then that UTC day. */
+  oiAsOf?: string | null;
+  /** The venue listing the options, when it is not the US exchanges: Deribit. */
+  venue?: string;
+  /** Open interest counts contracts of this size; absent means 100 shares. */
+  contract?: PositioningContract;
 }
 
 export interface GammaStrike {
@@ -56,6 +70,9 @@ interface GammaExpiry {
   /** Short, as a positive number. */
   puts: number;
   net: number;
+  /** The expiry's strikes with the most call and put gamma; absent from older servers. */
+  callWall?: number | null;
+  putWall?: number | null;
 }
 
 export interface GammaPayload {
@@ -84,6 +101,8 @@ export interface GammaPayload {
   byExpiry?: GammaExpiry[];
   quotesAsOf: string | null;
   warnings: string[];
+  /** The venue listing the options, when it is not the US exchanges: Deribit. */
+  venue?: string;
 }
 
 export type OptionsPositioningApi = Pick<typeof apiClient, "optionsPositioning">;
