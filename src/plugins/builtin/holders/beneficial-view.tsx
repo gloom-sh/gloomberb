@@ -14,6 +14,7 @@ import type { IssuerListingParams } from "../../../api-client/paths";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { colors, priceColor } from "../../../theme/colors";
+import { MISSING_VALUE } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import { usePluginAppActions, usePluginPaneState } from "../../runtime";
@@ -204,12 +205,12 @@ export function BeneficialOwnersView({
       case "shares":
         return { text: formatOwnerShares(filing.shares), value: filing.shares, color: tone };
       case "eventDate":
-        return { text: filing.eventDate ?? "-", value: filing.eventDate, color: colors.textDim };
+        return { text: filing.eventDate ?? MISSING_VALUE, value: filing.eventDate, color: colors.textDim };
       case "filingDate":
         return { text: filing.filingDate, value: filing.filingDate, color: colors.textDim };
       case "thirteenF": {
         const action = row.thirteenF;
-        if (!action) return { text: "-", value: null, color: colors.textDim };
+        if (!action) return { text: MISSING_VALUE, value: null, color: colors.textDim };
         return { text: action.label, color: action.value === 0 ? colors.textDim : priceColor(action.value) };
       }
     }

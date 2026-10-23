@@ -22,8 +22,8 @@ import { THIRTEENF_TEMPLATE_ID } from "../thirteenf/model";
 import { useInResearchTab } from "../ticker-detail/research-tab-keys";
 import {
   displayDate,
+  formatHolderChangePercent,
   formatHolderOwnershipPercent,
-  formatMaybePercent,
   formatMoneyCompact,
   formatSignedCompact,
   holderStakeMarketCap,
@@ -94,7 +94,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
   const rows = useMemo(() => buildRows(data), [data]);
   const periodsDiffer = useMemo(() => holderPeriodsDiffer(rows), [rows]);
   const sortedRows = useMemo(() => sortRows(rows, sortPreference, marketCap), [marketCap, rows, sortPreference]);
-  // Change columns only when the source reports a change; otherwise they read "-" on every row.
+  // Change columns only when the source reports a change; otherwise every row would read as missing.
   const showChange = useMemo(() => hasHolderChanges(rows), [rows]);
   const columns = useMemo(() => buildColumns(width, showChange), [showChange, width]);
   const selectedIdx = selectedId
@@ -261,7 +261,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
         };
       case "changePercent":
         return {
-          text: formatMaybePercent(row.changePercent),
+          text: formatHolderChangePercent(row.changePercent),
           color: row.changePercent != null ? priceColor(row.changePercent) : colors.textDim,
         };
       case "percentHeld":

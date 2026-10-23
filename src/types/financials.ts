@@ -318,8 +318,10 @@ export interface HolderRecord {
   reportDate?: string;
   shares?: number;
   value?: number;
+  /** The stake as a fraction of the shares outstanding: 0.0519 is 5.19%. */
   percentHeld?: number;
   changeShares?: number;
+  /** The quarter's change as a fraction of the prior position: 1.086 is +108.6%, -0.6 is -60%. */
   changePercent?: number;
   /** Set when the position's filing ties it to the receipts or to the ordinary shares. */
   shareBasis?: ShareBasis;

@@ -1,7 +1,7 @@
 import type { BeneficialOwnerFiling, BeneficialOwnerStatus } from "../../../api-client/beneficial-owners";
 import type { DataTableColumn } from "../../../components";
 import type { HolderRecord } from "../../../types/financials";
-import { clipToDisplayWidth, displayWidth, formatCompact } from "../../../utils/format";
+import { clipToDisplayWidth, displayWidth, formatCompact, MISSING_VALUE } from "../../../utils/format";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
 import { matchFilerToHolder, type Holder13FMatch } from "./thirteenf-match";
 
@@ -98,11 +98,8 @@ export function thirteenFAction(holder: HolderRecord | undefined): ThirteenFActi
     if (changeShares > 0 && prior === 0) return { label: "NEW", value: Number.POSITIVE_INFINITY };
     if (prior > 0) return { label: signedPercent(changeShares / prior), value: changeShares / prior };
   }
-  if (changePercent != null && Number.isFinite(changePercent)) {
-    // The Table tab reads a provider's change the same way: a fraction up to 1, percent points above.
-    const fraction = Math.abs(changePercent) <= 1 ? changePercent : changePercent / 100;
-    return { label: signedPercent(fraction), value: fraction };
-  }
+  // A holder record's change is a fraction of the prior position, as the Table tab reads it.
+  if (changePercent != null && Number.isFinite(changePercent)) return { label: signedPercent(changePercent), value: changePercent };
   return null;
 }
 
@@ -308,7 +305,7 @@ export function formatPercentOfClass(
 ): string {
   const value = row.filing.percentOfClass;
   const mark = marker ? stakeMarker(row.stake) : "";
-  if (value == null) return mark || "-";
+  if (value == null) return mark || MISSING_VALUE;
   return mark ? `${formatClassPercent(value)} ${mark}` : formatClassPercent(value);
 }
 
@@ -320,7 +317,7 @@ export function formatPointChange(value: number | null): string {
 }
 
 export function formatOwnerShares(value: number | null): string {
-  return value == null ? "-" : formatCompact(value);
+  return value == null ? MISSING_VALUE : formatCompact(value);
 }
 
 /**
