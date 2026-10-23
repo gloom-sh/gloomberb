@@ -483,6 +483,30 @@ test("one symbol that names no listing, or nothing at all, never sinks the batch
   expect(asked).toEqual([["EQT", "UNG"]]);
 });
 
+test("a quoted phrase with a figure in it gets the phrase answer, never quotes for its words", async () => {
+  const asked: string[] = [];
+  const tickers = new Set(["YEAR", "YIELD", "FED", "FUNDS", "RATE"]);
+  const dataProvider = createTestDataProvider({
+    search: async () => [],
+    getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => {
+      asked.push(...targets.map((target) => target.symbol));
+      return targets.map((target) => tickers.has(target.symbol)
+        ? { target, quote: createTestQuote({ symbol: target.symbol }) }
+        : { target, quote: null, error: new Error(`Not a ticker: ${target.symbol}.`) });
+    },
+  });
+  const answer = async (phrase: string) => {
+    const cli = createTestCliContext({ dataProvider }, { format: "json" });
+    return quoteCommand.execute([phrase], cli.context).then(() => cli.printed, (error: Error) => error.message);
+  };
+  // A figure made the phrase a list, so YEAR and YIELD, or FED, FUNDS and RATE, were quoted.
+  for (const phrase of ["10 year yield", "10.5 year yield", "fed funds rate 5.25%"]) {
+    expect(await answer(phrase)).toBe(`"${phrase}" is not a ticker or a company's name.`);
+  }
+  // A number is never asked for as a ticker; a whole one (10) is a code and still is.
+  expect(asked.filter((symbol) => /\d/.test(symbol))).toEqual(["10"]);
+});
+
 test("quote --file of a European sheet asks only for its symbols and names its prices in one line", async () => {
   const asked: string[][] = [];
   const dataProvider = createTestDataProvider({

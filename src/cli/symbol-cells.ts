@@ -34,6 +34,8 @@ const FIGURE_RUN = new RegExp(`(?<![\\p{L}\\p{N}.])(?:${SIGN}|${CURRENCY})*\\d[\
 const PLACEHOLDER = /^(?:#?n\/a|n\.a\.?|#(?:value!|ref!|div\/0!|name\?|num!|null!|spill!|calc!|getting_data))$/i;
 /** Stands in for a comma inside a figure while a line is split on its separators. */
 const FIGURE_COMMA = "\u0000";
+/** Plain digits split by commas (`7203,10`, `5,700`): a decimal comma, or the line's separator between two codes. */
+const PLAIN_COMMA_RUN = /^\d+(?:,\d+)+$/;
 
 /**
  * A figure as a sheet or a keyboard writes it, a bare whole number (7203)
@@ -81,16 +83,35 @@ export function notASymbolError(cell: string): NotASymbolError | null {
 }
 
 /**
- * The text with each comma inside a figure (`2.582,52`, `1,899.21`, `2,5`)
- * swapped for a stand-in, so splitting on commas leaves the figure whole;
- * `restoreFigureCommas` puts them back. A run that is no figure keeps its
- * commas as separators: `7203,6758` is two codes.
+ * Whether a comma between plain digits on a line is a decimal comma (`ED
+ * 2,5`, `CNX;1899,21`): the line has another separator, a tab, a semicolon or
+ * spaces between its cells. Otherwise the comma is the line's only separator
+ * and splits the digits into cells, as a sheet of codes exports them
+ * (`0700,25`, `7203,10`). Quoted cells and separators at the ends are not
+ * counted.
  */
-export function protectFigureCommas(text: string): string {
+export function hasDecimalCommas(line: string): boolean {
+  const bare = line.replace(/"(?:[^"]|"")*"/g, "\"\"").replace(/^[\s,;]+|[\s,;]+$/g, "");
+  return /[\t;]/.test(bare) || /[^\s,;]\s+[^\s,;]/.test(bare);
+}
+
+/**
+ * The text with each comma inside a figure swapped for a stand-in, so
+ * splitting on commas leaves the figure whole; `restoreFigureCommas` puts
+ * them back. A figure only a number can be (`2.582,52`, `1,899.21`, `2,5%`)
+ * keeps its comma. One of plain digits (`7203,10`) keeps it only where its
+ * comma is a decimal comma: `decimalCommas`, else `hasDecimalCommas` of each
+ * line. A run that is no figure keeps its commas as separators.
+ */
+export function protectFigureCommas(text: string, decimalCommas?: boolean): string {
+  if (decimalCommas == null) {
+    return text.split(/(\r\n?|\n)/).map((part, index) => index % 2 === 1 ? part : protectFigureCommas(part, hasDecimalCommas(part))).join("");
+  }
   return text.replace(FIGURE_RUN, (run) => {
     const body = run.replace(/[.,'\u2019]+$/, "");
     const tail = run.slice(body.length);
-    return body.includes(",") && isFigure(body) ? `${body.replaceAll(",", FIGURE_COMMA)}${tail}` : run;
+    const figure = body.includes(",") && isFigure(body) && (decimalCommas || !PLAIN_COMMA_RUN.test(body));
+    return figure ? `${body.replaceAll(",", FIGURE_COMMA)}${tail}` : run;
   });
 }
 

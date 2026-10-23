@@ -1,7 +1,7 @@
 import { readFile } from "fs/promises";
 import { fstatSync } from "fs";
 import { splitSymbolArgLines, splitSymbolWords, stripStrayEdges, uniqueSymbols } from "./symbol-args";
-import { isFigure, isJunkCell, isNumberCell, protectFigureCommas, restoreFigureCommas } from "./symbol-cells";
+import { hasDecimalCommas, isFigure, isJunkCell, isNumberCell, protectFigureCommas, restoreFigureCommas } from "./symbol-cells";
 
 /** Header cells that name a spreadsheet's symbol column, compared without case, spaces or punctuation. */
 const SYMBOL_HEADERS = new Set(["symbol", "symbols", "ticker", "tickers", "code", "stockcode", "securitycode", "instrument"]);
@@ -63,15 +63,16 @@ function splitRecords(text: string): string[] {
  * splits cells, not one inside a figure (`ED 2.582,52` is split by its space,
  * `CNX;1.899,21` by its semicolon). Null for a line split by spaces. A
  * separator at either end is a stray (`UPST;`), named when the cell is read.
+ * `decimalCommas` says whether a comma between plain digits is a decimal one.
  */
-function lineDelimiter(record: string): string | null {
-  const bare = protectFigureCommas(record).replace(/^[\s,;]+|[\s,;]+$/g, "").replace(/"(?:[^"]|"")*"/g, "");
+function lineDelimiter(record: string, decimalCommas: boolean): string | null {
+  const bare = protectFigureCommas(record, decimalCommas).replace(/^[\s,;]+|[\s,;]+$/g, "").replace(/"(?:[^"]|"")*"/g, "");
   return ["\t", ";", ","].find((delimiter) => bare.includes(delimiter)) ?? null;
 }
 
 /** The cells of a line split by `delimiter`; a quoted cell may hold the delimiter and doubled quotes. */
-function splitCells(record: string, delimiter: string): string[] {
-  const text = protectFigureCommas(record);
+function splitCells(record: string, delimiter: string, decimalCommas: boolean): string[] {
+  const text = protectFigureCommas(record, decimalCommas);
   const cells: string[] = [];
   let cell = "";
   let quoted = false;
@@ -107,20 +108,35 @@ function splitCells(record: string, delimiter: string): string[] {
  * (`lineDelimiter`), as a list pasted from several sheets mixes them. A line
  * with no separator in a list whose other lines have one is one cell (a
  * company's name), unless a figure follows its first word (`ED 2.582,52`).
- * `delimited` says whether any line had a separator.
+ * A comma between plain digits is a decimal comma on a line with another
+ * separator, or under a header split by tabs or semicolons; otherwise it
+ * splits the line (`0700,25` is a code and a weight). `delimited` says
+ * whether any line had a separator.
  */
 function readRecords(text: string): { records: string[][]; delimited: boolean } {
-  const lines = splitRecords(text)
-    .filter((record) => record.replace(/[\s,;"']/g, ""))
-    .map((record) => {
-      const delimiter = lineDelimiter(record);
-      return delimiter ? { cells: splitCells(record, delimiter), delimited: true } : { cells: record.trim().split(/\s+/), delimited: false };
-    });
+  const kept = splitRecords(text).filter((record) => record.replace(/[\s,;"']/g, ""));
+  const sheetDecimals = headerSplitsOnTabsOrSemicolons(kept[0]);
+  const lines = kept.map((record) => {
+    const decimalCommas = sheetDecimals || hasDecimalCommas(record);
+    const delimiter = lineDelimiter(record, decimalCommas);
+    return delimiter
+      ? { cells: splitCells(record, delimiter, decimalCommas), delimited: true }
+      : { cells: record.trim().split(/\s+/), delimited: false };
+  });
   const delimited = lines.some((line) => line.delimited);
   const records = lines.map(({ cells, delimited: own }) => (
     own || !delimited || cells.slice(1).some(isFigure) ? cells : [cells.join(" ")]
   ));
   return { records: records.filter((cells) => cells.some(Boolean) && !isComment(cells[0] ?? "")), delimited };
+}
+
+/** Whether a header line (one with a Symbol, Ticker, Code or Name cell) splits its cells on tabs or semicolons. */
+function headerSplitsOnTabsOrSemicolons(record: string | undefined): boolean {
+  if (!record) return false;
+  const delimiter = lineDelimiter(record, false);
+  if (delimiter !== "\t" && delimiter !== ";") return false;
+  return splitCells(record, delimiter, false).map(headerKey)
+    .some((key) => SYMBOL_HEADERS.has(key) || NAME_HEADERS.has(key) || key.includes("symbol") || key.includes("ticker"));
 }
 
 function looksLikeSymbol(cell: string): boolean {

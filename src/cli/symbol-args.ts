@@ -1,4 +1,4 @@
-import { isNumberCell, protectFigureCommas, restoreFigureCommas } from "./symbol-cells";
+import { isFigure, isNumberCell, protectFigureCommas, restoreFigureCommas } from "./symbol-cells";
 
 /** The quote marks a pasted list wraps its entries in: "AAPL", 'MSFT', “NVDA”. */
 const QUOTE_MARKS = "\"'`\u2018\u2019\u201C\u201D";
@@ -17,7 +17,9 @@ const LIST_SEPARATOR = /[,;\t\r\n]/;
  * EMB BRK.B`). Which an entry with a space is takes a search: a command that
  * resolves its symbols reads them with `readNameEntries`, and a parser that
  * looks nothing up takes `splitSymbolWords`. A comma inside a figure
- * (`2.582,52`, `1,899.21`) is no separator: the figure stays one entry.
+ * (`2.582,52`, `1,899.21`) is no separator: the figure stays one entry. One
+ * between plain digits is a decimal comma only on a line with another
+ * separator (`ED 2,5`); alone it splits codes (`9988,5`, `700,388`).
  */
 export function splitSymbolArgs(args: readonly string[]): string[] {
   return args.flatMap((arg) => splitSymbolArgLines(arg).flat());
@@ -28,9 +30,9 @@ export function splitSymbolArgs(args: readonly string[]): string[] {
  * on, so a figure can be told to sit beside the symbol on its line.
  */
 export function splitSymbolArgLines(arg: string): string[][] {
-  const text = protectFigureCommas(arg.replace(/^\uFEFF/, ""));
-  const separated = LIST_SEPARATOR.test(text);
-  return text.split(/\r\n?|\n/).map((line) => (separated ? line.split(/[,;\t]/) : line.split(/\s+/))
+  const lines = arg.replace(/^\uFEFF/, "").split(/\r\n?|\n/).map((line) => protectFigureCommas(line));
+  const separated = lines.length > 1 || lines.some((line) => LIST_SEPARATOR.test(line));
+  return lines.map((line) => (separated ? line.split(/[,;\t]/) : line.split(/\s+/))
     .map((entry) => restoreFigureCommas(entry).trim().replace(QUOTE_EDGES, "").trim().replace(/\s+/g, " "))
     .filter(Boolean));
 }
@@ -40,16 +42,28 @@ export function splitSymbolArgLines(arg: string): string[][] {
  * spaces and no list separator into it: `quote "10 year yield"`, `quote
  * "Apple Inc"` or a pasted line `quote "AAPL MSFT"`. Which of those it is
  * takes a lookup (`readPhraseArgument`); `splitSymbolArgs` would split it
- * into words, each a symbol (10, YEAR, YIELD). Null for anything else:
- * several arguments, one word, a list with commas, or a pasted line with a
- * price in it (`ED 2.582,52`), which is read as a list is.
+ * into words, each a symbol (10, YEAR, YIELD). A figure in it is part of
+ * the phrase (`"10.5 year yield"`, `"fed funds rate 5.25%"`). Null for
+ * anything else: several arguments, one word, a list with commas, or a
+ * pasted row of symbols each followed by its prices (`ED 2.582,52`, `AAPL
+ * 150.00 MSFT 300.00`), which is read as a list is.
  */
 export function quotedPhrase(args: readonly string[]): string | null {
   if (args.length !== 1) return null;
   const text = args[0]!.replace(/^\uFEFF/, "");
   if (LIST_SEPARATOR.test(protectFigureCommas(text))) return null;
   const phrase = text.trim().replace(QUOTE_EDGES, "").trim().replace(/\s+/g, " ");
-  return phrase.includes(" ") && !phrase.split(" ").some(isNumberCell) ? phrase : null;
+  return phrase.includes(" ") && !isPricedRow(phrase.split(" ")) ? phrase : null;
+}
+
+/**
+ * Words that are a sheet's row rather than a phrase: a number (`2.582,52`)
+ * among them, and each word that is no figure followed by one (`ED
+ * 2.582,52`), so no two words of a name or a phrase sit side by side.
+ */
+function isPricedRow(words: readonly string[]): boolean {
+  if (!words.some(isNumberCell) || isFigure(words[0]!)) return false;
+  return words.every((word, index) => isFigure(word) || (index + 1 < words.length && isFigure(words[index + 1]!)));
 }
 
 /**

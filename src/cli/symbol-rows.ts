@@ -214,9 +214,9 @@ export const NO_MATCH = /^No ticker match found for /;
  * went nowhere are named so the list can be fixed.
  */
 export function summarizeSymbolRows(rows: readonly SymbolRow[], verb: Verb, repeated: number): string {
-  // An entry that is no symbol is named as it was written: `$$$`, not `$$`.
+  // An entry that is no symbol, or was not looked up, is named as it was written: `$$$`, `philip morris intl`.
   const inputs = (status: SymbolStatus) => rows.filter((row) => row.status === status)
-    .map((row) => status === "not_a_symbol" ? row.input.trim() : symbolInputKey(row.input));
+    .map((row) => status === "not_a_symbol" || status === "not_looked_up" ? row.input.trim() : symbolInputKey(row.input));
   const counts = SETTLED[verb]
     .map(([status, word], index) => ({ count: inputs(status).length, word, index }))
     .filter(({ count, index }) => index === 0 || count > 0)

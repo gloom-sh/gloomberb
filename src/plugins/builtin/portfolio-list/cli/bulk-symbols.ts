@@ -38,12 +38,21 @@ export const FILE_OPTION = {
 export const SYMBOL_LIST_HELP = {
   title: "Several symbols",
   lines: [
-    "add and remove take any number of symbols split by spaces, commas or newlines, a --file, or piped input (or -). An entry of a list with commas, semicolons or newlines that has spaces in it is a company's name when search finds one (philip morris intl is PM), read as its US listing first with a line under it saying which, else the symbols it holds when each is written as a symbol or has a quote (AAPL MSFT), and otherwise a name not found. A file or piped list reads each line as such an entry. A CSV is read from its Symbol, Ticker or Code column, else its Name or Company column as names. Without that header every cell is a symbol, unless names, prices or weights sit beside them: then the first column is read and the cells left out are named. Each line is split by its own tab, semicolon, comma or spaces, and a price is never a symbol, written either way (2.582,52 or 1,899.21). Quote a list name with spaces.",
+    "add and remove take any number of symbols split by spaces, commas or newlines, a --file, or piped input (or -). An entry of a list with commas, semicolons or newlines that has spaces in it is a company's name when search finds one (philip morris intl is PM), read as its US listing first with a line under it saying which, else the symbols it holds when each is written as a symbol or has a quote (AAPL MSFT), and otherwise a name not found. A file or piped list reads each line as such an entry. A CSV is read from its Symbol, Ticker or Code column, else its Name or Company column as names. Without that header every cell is a symbol, unless names, prices or weights sit beside them: then the first column is read and the cells left out are named. Each line is split by its own tab, semicolon, comma or spaces, and a price is never a symbol, written either way (2.582,52 or 1,899.21). A comma between plain digits (0700,25) splits them unless the line also has a tab, a semicolon or spaces between cells. Quote a list name with spaces.",
     "Each symbol gets a line, then a summary. An entry that cannot be a symbol (N/A, $$$, --, a price alone) is named as not a symbol without a lookup. Symbols Gloom Cloud did not answer for are listed together with one command that adds them again. Exit status 0 when at least one symbol was added (or removed) or already was, 1 when none resolved or the usage is wrong.",
     "A bare US-style symbol is not added when the listing it matched stopped trading, is abroad (DFS as DFS:LSE) or was taken by another company in the last two years (BRKL), or when nothing lists under it now and its company trades as another. Those are listed under Needs a choice, with the add for what their company trades as now and the listing that matched, which naming keeps; one symbol alone fails with the same. A symbol another company took longer ago says so under its line.",
     "add --dry-run looks every symbol up and prints the same lines without saving.",
   ],
 };
+
+/**
+ * One word of a command line as a shell reads it back: as written when it
+ * holds nothing a shell treats specially (`NVDA`, `SAN:EPA`, `BRK.B`), else
+ * in single quotes (`'Altria Group'`, `'$nvda'`, `'AT&T'`).
+ */
+export function shellWord(word: string): string {
+  return /^[\p{L}\p{N}._:@%+,/][\p{L}\p{N}._:@%+,/=-]*$/u.test(word) ? word : `'${word.replaceAll("'", "'\\''")}'`;
+}
 
 /**
  * A row's line, and under it the listing a company's name was read as, the
@@ -80,16 +89,17 @@ function rowLine(row: SymbolRow, verb: Verb): string {
 
 /**
  * The symbols of an add Gloom Cloud did not answer for, after the other
- * lines: one line naming them, and one command that adds them all again.
+ * lines: one line naming them as they were written, and one command that adds
+ * them all again, each entry one shell word (`'philip morris intl'`).
  */
 function unansweredLines(rows: readonly SymbolRow[], retry: ((keys: string) => string) | undefined): string[] {
-  const unanswered = rows.filter((row) => row.status === "not_looked_up").map((row) => symbolInputKey(row.input));
+  const unanswered = rows.filter((row) => row.status === "not_looked_up").map((row) => row.input.trim());
   if (unanswered.length === 0) return [];
   const count = unanswered.length === 1 ? "1 symbol" : `${unanswered.length} symbols`;
   return [
     "",
     cliStyles.danger(`Gloom Cloud did not answer for ${count}, so ${unanswered.length === 1 ? "it was" : "they were"} not looked up: ${unanswered.join(", ")}`),
-    ...retry ? [`Try again in a minute: ${retry(unanswered.join(" "))}`] : [],
+    ...retry ? [`Try again in a minute: ${retry(unanswered.map(shellWord).join(" "))}`] : [],
   ];
 }
 
@@ -101,7 +111,7 @@ function unansweredLines(rows: readonly SymbolRow[], retry: ((keys: string) => s
 function choiceOffers(choices: readonly SymbolRow[], retry: ((keys: string) => string) | undefined): { successors: string | null; matches: string | null } {
   const successors = [...new Set(choices.flatMap((row) => row.tradesAs ? [row.tradesAs] : []))];
   const matches = [...new Set(choices.flatMap((row) => row.listing ? [row.listing] : []))];
-  const command = (keys: string[]) => retry ? retry(keys.join(" ")) : keys.join(" ");
+  const command = (keys: string[]) => retry ? retry(keys.map(shellWord).join(" ")) : keys.join(" ");
   const one = choices.length === 1;
   return {
     successors: successors.length > 0 ? `Add what ${one ? "it trades" : "they trade"} as now: ${command(successors)}` : null,
@@ -177,16 +187,18 @@ export function printSymbolRows(
 /**
  * `watchlist add` and `portfolio add` given one symbol: added as a symbol of a
  * list is (`addSymbol`), and said as one listing, added or already there with
- * its notes as warnings. A symbol a list would leave for a choice fails the
+ * its notes as warnings, after `notes` on what was left out of the input (the
+ * price of `ED 2.582,52`). A symbol a list would leave for a choice fails the
  * command, saying why, with what a list offers under the error; any other
  * failure fails it as the lookup's error, a busy service's to retry.
  */
 export async function addOneSymbol(
   ctx: CliCommandContext,
   market: MarketContext,
-  { symbol, exchange, collection, retry, reject, add }: {
+  { symbol, exchange, collection, notes: inputNotes = [], retry, reject, add }: {
     symbol: string;
     exchange: string | undefined;
+    notes?: readonly string[];
     collection: CollectionRef;
     /** The add of one listing, for the choices a failure names. */
     retry: (key: string) => string;
@@ -211,7 +223,7 @@ export async function addOneSymbol(
   const { change, formerIssuer, notes } = lookup;
   const data = { changed, ...listingFields(saved), [collection.kind]: collection.name,
     ...change ? { tickerChange: change } : {}, ...formerIssuer ? { formerIssuer } : {}, ...dryRun ? { dryRun } : {} };
-  const warnings = notes.length > 0 ? notes : undefined;
+  const warnings = inputNotes.length + notes.length > 0 ? [...inputNotes, ...notes] : undefined;
   ctx.printResult({ data, warnings }, {
     text: () => changed
       ? `${cliStyles.success(`Added ${saved.label} to "${collection.name}".`)}${dryRunNote(dryRun)}`
@@ -230,7 +242,9 @@ export function retryNotice(ctx: CliCommandContext): (count: number, waitMs: num
 /**
  * The symbols an add or remove was given, failing the command when there are
  * none or the file cannot be read. An add reads a typed company's name with
- * `readNameEntries`; without it (a remove) every entry is its words.
+ * `readNameEntries`; without it (a remove) every entry is its words. `single`
+ * is the one symbol typed alone, and `notes` what the single command says
+ * beside it: none when it goes as typed, else what was left out of it.
  */
 export async function requireSymbolList(
   ctx: CliCommandContext,
@@ -250,11 +264,13 @@ export async function requireSymbolList(
     // Only numbers or strays says what it left out, not only how to call the command.
     if (list.symbols.length === 0) ctx.fail(list.notes.length > 0 ? ["No symbols.", ...list.notes].join(" ") : usage, list.notes.length > 0 ? usage : undefined);
     // One symbol typed alone keeps the single-symbol output and errors. It goes as typed, so a separator
-    // left on it (`UPST;`) is named by the listing it resolves to; a figure typed beside it (`ED 2.582,52`) is not.
+    // left on it (`UPST;`) is named by the listing it resolves to; without the figure typed beside it
+    // (`ED 2.582,52`), which the notes name.
     const entries: string[] = typed ?? [];
-    const whole = args.length === 1 && splitSymbolArgs(args).length === 1;
-    const single = file == null && !args.includes("-") && entries.length === 1 ? (whole ? args[0]!.trim() : entries[0]!) : null;
-    return { ...list, single };
+    const split = splitSymbolArgs(args);
+    const asTyped = args.length === 1 && split.length === 1 && split[0] === entries[0];
+    const single = file == null && !args.includes("-") && entries.length === 1 ? (asTyped ? args[0]!.trim() : entries[0]!) : null;
+    return { ...list, single, notes: single && asTyped ? [] : list.notes };
   } catch (error) {
     if (error instanceof SymbolListError) ctx.fail(error.message, usage);
     throw error;
