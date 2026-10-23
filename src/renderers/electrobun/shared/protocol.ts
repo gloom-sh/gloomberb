@@ -10,6 +10,7 @@ import type { CapabilityManifest } from "../../../capabilities";
 import type { PluginOperationResult, PluginPin } from "../../../plugins/marketplace/store";
 import type { RemoteControlRequest, RemoteControlResponse } from "../../../remote/types";
 import type { HttpProxyRequestEnvelope, HttpProxyResponseEnvelope } from "../../../utils/http-proxy-response";
+import type { BootFrame } from "../../dom/boot-frame-page";
 
 export const ELECTROBUN_CONTEXT_MENU_ACTION = "gloom.context-menu.select";
 
@@ -219,6 +220,8 @@ interface DesktopBackendRequestMap {
     response: null;
   };
   "host.showContextMenu": { request: { menu: DesktopContextMenuItem[] }; response: boolean };
+  /** The layout the main window draws at the next launch before its script loads (dom/boot-frame.ts). Only the main window's is kept. */
+  "host.saveBootFrame": { request: { frame: BootFrame }; response: null };
   /** The unread count for the Dock icon badge: `""` (none), `"1"` to `"99"` or `"99+"`. Only the main window's is applied. */
   "host.setAppBadge": { request: { label: string }; response: null };
   /** `channel` absent (an older view) means stable. */

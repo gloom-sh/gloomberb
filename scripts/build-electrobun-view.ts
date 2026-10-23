@@ -4,6 +4,8 @@ import {
   electrobunViewPath,
   writeElectrobunViewPage,
 } from "../src/renderers/dom/build-assets";
+import { BOOT_FRAME_ELEMENT_ID } from "../src/renderers/dom/boot-frame-page";
+import { DESKTOP_BOOT_FRAME_GLOBAL } from "../src/renderers/electrobun/shared/boot-frame";
 
 const outdir = join(process.cwd(), "dist", "electrobun-view");
 
@@ -16,7 +18,12 @@ await writeElectrobunViewPage({
   failureMessage: "Failed to build Electrobun view assets",
   missingEntryMessage: "Electrobun view build did not produce a JavaScript entrypoint",
   title: "Gloomberb",
-  loadingText: "Loading Gloomberb...",
+  // The Bun process hands the main window its frame before the page loads; a
+  // window holding a popped-out pane gets none and draws no frame.
+  bootFrame: {
+    source: `window.${DESKTOP_BOOT_FRAME_GLOBAL}`,
+    skip: `window.${DESKTOP_BOOT_FRAME_GLOBAL} === undefined`,
+  },
   bootstrapScript: `
       const bootstrapFatalHtml = [
         '<div class="gloom-fatal">',
@@ -44,6 +51,7 @@ await writeElectrobunViewPage({
         const message = error && typeof error === "object" && "message" in error ? error.message : String(error);
         const stack = error && typeof error === "object" && "stack" in error ? error.stack : "";
         const errorText = [message, details, stack].filter(Boolean).join("\\n");
+        document.getElementById(${JSON.stringify(BOOT_FRAME_ELEMENT_ID)})?.remove();
         root.innerHTML = bootstrapFatalHtml;
         root.querySelector("pre").textContent = errorText;
         root.querySelector('[data-action="reload"]')?.addEventListener("click", () => window.location.reload());
@@ -67,6 +75,5 @@ await writeElectrobunViewPage({
         renderBootstrapError(error, details, "error");
       });
       window.addEventListener("unhandledrejection", (event) => renderBootstrapError(event.reason, "", "unhandledrejection"));
-      document.getElementById("root").innerHTML = '<div class="gloom-loading">Booting Gloomberb renderer...</div>';
 `,
 });

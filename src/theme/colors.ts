@@ -145,11 +145,16 @@ function syncThemeCssVariables(): void {
   if (cssThemeId === currentThemeId && cssThemeDocument === documentLike) return;
   cssThemeId = currentThemeId;
   cssThemeDocument = documentLike;
-  for (const [key, name] of THEME_CSS_VARIABLES) {
-    style.setProperty(name, currentColors[key]);
-  }
-  style.setProperty("--gloom-hover-bg", hoverBg());
-  for (const [name, value] of roleColours(currentColors)) style.setProperty(name, value);
+  for (const [name, value] of themeCssVariables(currentColors)) style.setProperty(name, value);
+}
+
+/** The custom properties a theme sets on the document root, which the DOM stylesheet draws with. */
+export function themeCssVariables(palette: ThemeColors): Array<[string, string]> {
+  return [
+    ...THEME_CSS_VARIABLES.map(([key, name]): [string, string] => [name, palette[key]]),
+    ["--gloom-hover-bg", hoverBg(palette)],
+    ...roleColours(palette),
+  ];
 }
 
 export function commandBarBg(palette: ThemeColors = colors): string {
