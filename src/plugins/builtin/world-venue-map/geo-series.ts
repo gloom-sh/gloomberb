@@ -235,9 +235,9 @@ function matchKeyChokepoint(wanted: string): string | null {
 export async function chokepointSeriesFor(request: GeoRequest, typed: string, signal?: AbortSignal): Promise<string | null> {
   const wanted = compact(typed);
   if (!wanted) return null;
+  let series: GeoSeriesSearchHit[];
   try {
-    const { series } = await searchGeoSeries(request, typed, signal);
-    return matchIndexedChokepoint(series, wanted) ?? matchKeyChokepoint(wanted);
+    ({ series } = await searchGeoSeries(request, typed, signal));
   } catch (error) {
     if (signal?.aborted) throw error;
     logFailure("world-venue-map.geo-series", "Find chokepoint series failed")(error);
@@ -245,6 +245,7 @@ export async function chokepointSeriesFor(request: GeoRequest, typed: string, si
     if (known) return known;
     throw new Error("Chokepoint search unavailable. Try again.", { cause: error });
   }
+  return matchIndexedChokepoint(series, wanted) ?? matchKeyChokepoint(wanted);
 }
 
 /** What CHOKE tells text that names no chokepoint: the key straits, as it takes them typed. */
