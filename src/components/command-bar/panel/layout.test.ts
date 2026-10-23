@@ -36,9 +36,8 @@ describe("command bar sheet geometry", () => {
    * change there silently narrows every result row.
    */
   test("shares the prompt's left edge and width on every window size", () => {
-    // At 120 columns the full countdown gives way to the state and quote tier.
-    const expectedWidths: Record<number, number> = { 46: 40, 80: 49, 120: 74, 200: 96 };
-    for (const termWidth of [46, 80, 120, 200]) {
+    const expectedWidths: Record<number, number> = { 46: 40, 80: 49, 103: 48, 120: 63, 121: 64, 140: 83, 160: 96, 200: 96 };
+    for (const termWidth of [46, 80, 103, 120, 121, 140, 160, 200]) {
       const layout = resolveCommandBarPanelLayout({ ...BASE, termHeight: 40, termWidth });
       const prompt = resolveHeaderPromptGeometry({ termWidth });
       expect(prompt.width).toBe(expectedWidths[termWidth]!);
@@ -68,6 +67,16 @@ describe("command bar sheet geometry", () => {
     expect(desktop.panelBounds.x).toBe(desktopPrompt.left);
     expect(desktop.panelBounds.width).toBe(desktopPrompt.width);
     expect(desktop.panelBounds.y).toBeCloseTo(28 / 18, 6);
+
+    // The 1280px web header has 160 cells: a longer market label must not
+    // take columns from its 102-cell prompt, or from any attached sheet.
+    for (const sheet of [{}, { themePickerActive: true, themePickerRowCount: 12 }]) {
+      const web = resolveCommandBarPanelLayout({ ...DESKTOP, nativeWindowChrome: false, titleBarOverlay: false, termHeight: 40, termWidth: 160, ...sheet });
+      const webPrompt = resolveHeaderPromptGeometry({ nativePaneChrome: true, termWidth: 160 });
+      expect(webPrompt.width).toBe(102);
+      expect(web.panelBounds.x).toBe(webPrompt.left);
+      expect(web.panelBounds.width).toBe(webPrompt.width);
+    }
   });
 
   /**

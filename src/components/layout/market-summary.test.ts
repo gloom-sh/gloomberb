@@ -62,11 +62,19 @@ describe("header market cluster", () => {
 
   /**
    * The reserve lives with the prompt geometry and the widths live here, so
-   * this is the seam where the two can drift: a reserve a column short would
-   * silently drop the countdown on a window wide enough to show it.
+   * this is the seam where the two can drift: a longer countdown must use
+   * spare columns without shortening the command prompt.
    */
-  test("fits the whole cluster in the columns the header reserves for it", () => {
-    for (const termWidth of [140, 200]) {
+  test("fits the whole cluster only when spare room preserves the prompt", () => {
+    for (const termWidth of [120, 140, 160]) {
+      const { marketColumns } = resolveHeaderPromptGeometry({ termWidth });
+      expect(resolveMarketSummaryFit({ available: marketColumns, ...CLUSTER })).toMatchObject({
+        showSpy: true,
+        showState: true,
+        showCountdown: false,
+      });
+    }
+    for (const termWidth of [180, 200]) {
       const { marketColumns } = resolveHeaderPromptGeometry({ termWidth });
       expect(resolveMarketSummaryFit({ available: marketColumns, ...CLUSTER })).toEqual({
         showSpy: true,
@@ -74,6 +82,11 @@ describe("header market cluster", () => {
         showBaseCurrency: true,
         showCountdown: true,
       });
+      const updating = resolveHeaderPromptGeometry({ termWidth, allowMarketExpansion: false });
+      const quiet = resolveHeaderPromptGeometry({ termWidth });
+      expect(updating.width).toBe(quiet.width);
+      expect(updating.marketColumns).toBe(42);
+      expect(updating.updateColumns - quiet.updateColumns).toBe(16);
     }
 
     // 80 columns keeps only SPY, and reserves nothing it cannot spend.

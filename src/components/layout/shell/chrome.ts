@@ -15,11 +15,11 @@ const HEADER_PROMPT_COMFORT_WIDTH = 48;
 const COMMAND_SURFACE_MIN_WIDTH = { native: 46, terminal: 42 };
 
 /**
- * The market cluster's reserve at the header's right edge, widest first. Each
- * step is the worst case for what it shows, so a ticking countdown or a longer
- * state label can never push the cluster past its columns:
+ * Market budgets used to size the command prompt, widest first. These stay
+ * independent of label wording so a longer countdown cannot resize the prompt
+ * or the sheet attached to it:
  *
- *   58  PRE-MKT · 5h 30m to regular open  SPY 1,234.56 -10.60%  USD
+ *   42  state, SPY, currency and a short countdown
  *   31  the state label and SPY
  *   21  SPY alone
  *
@@ -28,7 +28,9 @@ const COMMAND_SURFACE_MIN_WIDTH = { native: 46, terminal: 42 };
  * step for "everything but the countdown", which would cost the sheet eleven
  * columns to add the base currency, the one value here that barely moves.
  */
-const HEADER_MARKET_TIERS = [58, 31, 21] as const;
+const HEADER_MARKET_TIERS = [42, 31, 21] as const;
+/** Full pre-market label, including "to regular open", when spare room allows. */
+const HEADER_MARKET_FULL_COLUMNS = 58;
 
 /**
  * Update status is transient, so on a narrow header it gives most of its
@@ -94,6 +96,8 @@ export function resolveHeaderPromptGeometry(options: {
   platform?: string;
   titleBarOverlay?: boolean;
   windowFullscreen?: boolean;
+  /** An active update status keeps its spare room ahead of a longer market label. */
+  allowMarketExpansion?: boolean;
 }): HeaderPromptGeometry {
   const { nativePaneChrome, platform, termWidth, titleBarOverlay, windowFullscreen } = options;
   const nativeWindowChrome = options.nativeWindowChrome ?? titleBarOverlay;
@@ -102,13 +106,19 @@ export function resolveHeaderPromptGeometry(options: {
     : 0;
   const left = leadingInset + 1;
   const updateReserve = headerPromptUpdateColumns(termWidth);
-  const marketColumns = headerMarketColumns(termWidth, left, updateReserve);
+  const marketReserve = headerMarketColumns(termWidth, left, updateReserve);
   const width = Math.max(
     HEADER_PROMPT_MIN_WIDTH,
     Math.min(
       resolveCommandSurfaceWidth({ nativePaneChrome, termWidth }),
-      termWidth - left - updateReserve - marketColumns,
+      termWidth - left - updateReserve - marketReserve,
     ),
   );
+  // Spend only space left after the prompt and update reserve have their room.
+  // The longer market label gives way before either can lose a column.
+  const marketColumns = options.allowMarketExpansion !== false
+    && termWidth - left - width - updateReserve >= HEADER_MARKET_FULL_COLUMNS
+    ? HEADER_MARKET_FULL_COLUMNS
+    : marketReserve;
   return { left, width, marketColumns, updateColumns: Math.max(0, termWidth - left - width - marketColumns) };
 }
