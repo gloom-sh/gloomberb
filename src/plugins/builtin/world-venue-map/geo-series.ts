@@ -1,3 +1,4 @@
+import { ApiRequestError } from "../../../api-client/errors";
 import { logFailure } from "../../../utils/log-failure";
 /**
  * Map series in G: numbers over time for things with a place (chokepoint
@@ -55,9 +56,20 @@ export async function resolveGeoChartSeries(
   viewport: ChartViewportSpec,
   signal?: AbortSignal,
 ): Promise<ResolvedSeries> {
-  const hit = await resolveGeoSeries(request, token, signal).catch(logFailure("world-venue-map.geo-series", "Resolve map series failed", null));
+  let indexFailed = false;
+  const hit = await resolveGeoSeries(request, token, signal).catch((error: unknown) => {
+    if (signal?.aborted) throw error;
+    logFailure("world-venue-map.geo-series", "Resolve map series failed")(error);
+    indexFailed = true;
+    return null;
+  });
   const payload = await getGeoSeries(request, hit?.id ?? token, geoSeriesRange(viewport), signal).catch((error: unknown) => {
-    throw hit ? error : new Error(`No map series named ${token}.`);
+    if (signal?.aborted) throw error;
+    if (hit) throw error;
+    if (!indexFailed && error instanceof ApiRequestError && error.status === 404) {
+      throw new Error(`No map series named ${token}.`);
+    }
+    throw new Error("Map series unavailable.", { cause: error });
   });
   const points: TimeSeriesPoint[] = (payload.points ?? []).flatMap(([day, value]) => {
     const date = new Date(`${day}T00:00:00Z`);
@@ -84,7 +96,11 @@ export async function resolveGeoChartSeries(
 
 export function createGeoChartSeriesCapability(request: GeoRequest = cloudGeoRequest): ChartSeriesCapability {
   const search = async (query: string, limit: number, signal?: AbortSignal) => {
-    const { series } = await searchGeoSeries(request, query, signal).catch(logFailure("world-venue-map.geo-series", "Search map series failed", { series: [] as GeoSeriesSearchHit[] }));
+    const { series } = await searchGeoSeries(request, query, signal).catch((error: unknown) => {
+      if (signal?.aborted) throw error;
+      logFailure("world-venue-map.geo-series", "Search map series failed")(error);
+      throw new Error("Map series search unavailable.", { cause: error });
+    });
     return series.slice(0, limit).map(catalogItem);
   };
   return chartSeriesProvider({
@@ -219,8 +235,16 @@ function matchKeyChokepoint(wanted: string): string | null {
 export async function chokepointSeriesFor(request: GeoRequest, typed: string, signal?: AbortSignal): Promise<string | null> {
   const wanted = compact(typed);
   if (!wanted) return null;
-  const { series } = await searchGeoSeries(request, typed, signal).catch(logFailure("world-venue-map.geo-series", "Find chokepoint series failed", { series: [] as GeoSeriesSearchHit[] }));
-  return matchIndexedChokepoint(series, wanted) ?? matchKeyChokepoint(wanted);
+  try {
+    const { series } = await searchGeoSeries(request, typed, signal);
+    return matchIndexedChokepoint(series, wanted) ?? matchKeyChokepoint(wanted);
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    logFailure("world-venue-map.geo-series", "Find chokepoint series failed")(error);
+    const known = matchKeyChokepoint(wanted);
+    if (known) return known;
+    throw new Error("Chokepoint search unavailable. Try again.", { cause: error });
+  }
 }
 
 /** What CHOKE tells text that names no chokepoint: the key straits, as it takes them typed. */
