@@ -13,6 +13,7 @@ import { isRecord } from "../../utils/guards";
 import { latestRegularSessionClose, readIndexSession } from "../../market-data/market/freshness";
 import { reportMarketSession, reportVenueSessionDates, type ReportMarket, type SessionObservation, type VenueSessionDate } from "./market-session";
 import { savedCopyShownAt } from "../../data/saved-copies";
+import { releasedText } from "../../utils/release-date";
 
 /**
  * The four states of docs/usage.md#how-current-a-report-is, plus `unreported`
@@ -24,10 +25,26 @@ type ReportFreshnessStatus = HeadlessFreshnessStatus | "unreported";
 /** What every `fn` report cites about its data, in its JSON and its last text line. */
 export interface ReportFreshness {
   source: string;
-  /** Newest observation: an ISO instant in UTC, or an ISO date. Null when nothing in the data is dated. */
+  /**
+   * Newest observation: an ISO instant in UTC, or an ISO date. For a figure
+   * dated by the period it covers whose release is known (`referencePeriod`),
+   * the day or time it was released. Null when nothing in the data is dated.
+   */
   asOf: string | null;
+  /**
+   * The newest observation's own date when `asOf` is its release: the first
+   * day of its period with `periodicity` (`2026-09-01` is Sep 2026), else the
+   * day it is dated by (a weekly figure's week end). The status line then
+   * reads `Sep 2026, released Tue 20 Oct`.
+   */
+  referencePeriod?: string;
   /** Oldest observation, when it is more than a day older than `asOf`. */
   oldest?: string;
+  /**
+   * How often the oldest observation publishes, when its rows say and it is
+   * not `periodicity` (a quarterly figure beside a monthly one); null for a day.
+   */
+  oldestPeriodicity?: ReportFreshness["periodicity"] | null;
   /** With a declared `citeOldest`: the oldest observation whenever it is older than `asOf`. Exports cite it. */
   oldestObservation?: string;
   status: ReportFreshnessStatus;
@@ -163,6 +180,40 @@ interface Observations {
   units: ReportTime[];
   /** Metadata and snapshot stamps: candidates for `asOf` only. */
   extra: ReportTime[];
+  /** A unit dated by the period it covers whose row says when it was released (`releasedOn`), and how often. */
+  releases?: Map<ReportTime, UnitRelease>;
+}
+
+interface UnitRelease {
+  released: ReportTime | null;
+  periodicity?: NonNullable<HeadlessPaneFreshness["periodicity"]>;
+}
+
+const PERIODICITIES = new Set<unknown>(["monthly", "quarterly", "semiannual", "annual"]);
+
+/** What a dated row says of its release: `releasedOn` and its `periodicity`, when it names either. */
+function readUnitRelease(record: Record<string, unknown>, time: ReportTime, now: number, observations: Observations): void {
+  const hasPeriodicity = PERIODICITIES.has(record.periodicity);
+  if (!time.dateOnly || (record.releasedOn == null && !hasPeriodicity)) return;
+  (observations.releases ??= new Map()).set(time, {
+    released: releaseTime(record.releasedOn as HeadlessPaneFreshness["releasedOn"], time, now),
+    ...(hasPeriodicity ? { periodicity: record.periodicity as UnitRelease["periodicity"] } : {}),
+  });
+}
+
+/**
+ * The release and periodicity of the newest observation when the rows dated
+ * `asOf` all say the same one; nothing when any of them names none, or they
+ * disagree (a monthly and a weekly figure dated the same day).
+ */
+function newestUnitRelease(observations: Observations, asOf: ReportTime): UnitRelease | null {
+  if (observations.extra.some((time) => time.time > asOf.time)) return null;
+  const newest = observations.units.filter((time) => time.time === asOf.time);
+  const releases = newest.map((time) => observations.releases?.get(time) ?? null);
+  const [first] = releases;
+  if (!first || releases.some((release) => !release
+    || release.released?.time !== first.released?.time || release.periodicity !== first.periodicity)) return null;
+  return first;
 }
 
 function emptySignals(): FeedSignals {
@@ -254,7 +305,10 @@ function collect(
       ?? (observedKey ? null : observedTime(row, now, UPDATE_KEYS));
     if (!ignoreStaleFlags) readUnitStale(row, time, signals);
     readSession(row, time, signals);
-    if (time) observations.units.push(time);
+    if (time) {
+      observations.units.push(time);
+      readUnitRelease(row, time, now, observations);
+    }
   }
   if (definition.shape === "series" && !declaredObservations) {
     for (const series of (result as HeadlessSeriesResult).series) {
@@ -382,6 +436,17 @@ function declaredSources(declared: HeadlessPaneFreshness, now: number): Array<{ 
   });
 }
 
+/**
+ * A declared release of the newest observation, when it is after the
+ * observation's day (or a time on it) and not in the future; null for anything
+ * else, a figure released the day it is dated by among them.
+ */
+function releaseTime(declared: HeadlessPaneFreshness["releasedOn"], observed: ReportTime, now: number): ReportTime | null {
+  const released = parseReportTime(declared);
+  if (!released || released.time < observed.time || released.time > now + FUTURE_TOLERANCE_MS) return null;
+  return released.dateOnly && released.time === observed.time ? null : released;
+}
+
 /** A declared bar period still forming, its last day read as a date; null for anything else. */
 function readPeriodToDate(declared: HeadlessPaneFreshness["periodToDate"], now: number): { period: "week" | "month"; through: ReportTime | null } | null {
   if (declared?.period !== "week" && declared?.period !== "month") return null;
@@ -464,7 +529,10 @@ function resolveFreshness({ declared, signals, observations, now }: FreshnessInp
   const asOfClose = closeDate && asOf && !declaredAsOf ? closeDate : null;
   const tradingDayMarket = asOfClose ? closeMarket
     : asOf?.dateOnly ? declared.tradingDayMarket?.trim() || null : null;
-  const periodicity = declared.periodicity && asOf?.dateOnly ? declared.periodicity : undefined;
+  // Rows dated by the period they cover can say how often they publish and when the newest was released.
+  const unitRelease = asOf && !declaredAsOf && !periodToDate ? newestUnitRelease(observations, asOf) : null;
+  const periodicity = (declared.periodicity ?? unitRelease?.periodicity) && asOf?.dateOnly
+    ? declared.periodicity ?? unitRelease?.periodicity : undefined;
   // Rows that are quotes (a feed, a venue's session) keep the market line, even on a dataset's pane.
   const quoted = rowsAreQuotes(signals);
   // A dataset disseminated with a delay (DTCC's swap tape) lags its newest observation all the same.
@@ -478,10 +546,21 @@ function resolveFreshness({ declared, signals, observations, now }: FreshnessInp
   const schedule = declared.schedule?.trim();
   const publisher = declared.publisher?.trim();
   const publishedAt = parseReportTime(declared.publishedAt);
+  // A figure dated by the period it covers is as of its release: September's permits
+  // are dated 1 Sep and were released 20 Oct. Age, staleness and the oldest stay the observation's.
+  const released = asOf?.dateOnly && !declared.dataset && !periodToDate
+    ? releaseTime(declared.releasedOn, asOf, now) ?? unitRelease?.released ?? null : null;
+  // The oldest row's own period, when the rows name theirs (a quarterly figure among daily ones).
+  const oldestRelease = !declared.periodicity && oldestTime ? observations.releases?.get(oldestTime) : undefined;
+  const oldestPeriodicity = oldestRelease ? oldestRelease.periodicity ?? null : unitRelease?.periodicity ? null : undefined;
   return {
     source: declared.source?.trim() || (sources.length ? [...new Set(sources.map(({ source }) => source))].join(", ") : DEFAULT_REPORT_SOURCE),
-    asOf: asOf ? isoTime(asOf) : null,
-    ...(asOf && oldestTime && asOf.time - oldestTime.time > OLDEST_GAP_MS ? { oldest: isoTime(oldestTime) } : {}),
+    asOf: released ? isoTime(released) : asOf ? isoTime(asOf) : null,
+    ...(released && asOf ? { referencePeriod: isoTime(asOf) } : {}),
+    ...(asOf && oldestTime && asOf.time - oldestTime.time > OLDEST_GAP_MS ? {
+      oldest: isoTime(oldestTime),
+      ...(oldestPeriodicity !== undefined && (oldestPeriodicity ?? undefined) !== periodicity ? { oldestPeriodicity } : {}),
+    } : {}),
     ...(asOf && oldestUnit && oldestUnit.time < asOf.time ? { oldestObservation: isoTime(oldestUnit) } : {}),
     status,
     ...(delayMinutes != null && delayMinutes > 0 ? { delayMinutes } : {}),
@@ -584,7 +663,11 @@ export function deriveRenderedFreshness(
     declared: merged,
     signals,
     // Rendered rows are often a history (a news list, a filing feed), so only the newest is cited.
-    observations: { units: observed?.observations.units ?? [], extra: [...(observed?.observations.extra ?? []), ...units] },
+    observations: {
+      units: observed?.observations.units ?? [],
+      extra: [...(observed?.observations.extra ?? []), ...units],
+      ...(observed?.observations.releases ? { releases: observed.observations.releases } : {}),
+    },
     now,
   });
 }
@@ -774,14 +857,19 @@ function asOfText(freshness: ReportFreshness, short: boolean, local: boolean, un
   const market = freshness.tradingDayMarket;
   const period = freshness.periodicity;
   const time = parseReportTime(freshness.asOf);
-  const asOf = freshness.periodToDate ? periodToDateText(freshness.periodToDate, freshness.asOf)
+  const reference = freshness.referencePeriod;
+  // `Sep 2026, released Tue 20 Oct`: the period the figure covers, then when it was released.
+  const released = reference ? releasedText(freshness.asOf, reference) : null;
+  const asOf = released && reference ? `${period ? periodText(reference, period) : dayText(reference)}, ${released}`
+    : freshness.periodToDate ? periodToDateText(freshness.periodToDate, freshness.asOf)
     : period ? `${periodText(freshness.asOf, period)} (${period})`
     : freshness.asOfClose
       ? `${tradingDayText(freshness.asOfClose, market)} close`
       : time?.dateOnly ? tradingDayText(freshness.asOf, market)
         : undated && time && onRetrievalDay(new Date(time.time).toISOString(), freshness.retrievedAt)
           ? `${new Date(time.time).toISOString().slice(11, 16)} UTC` : timeText(freshness.asOf, local);
-  const oldest = freshness.oldest && (period ? periodText(freshness.oldest, period) : dayText(freshness.oldest));
+  const oldestPeriod = freshness.oldestPeriodicity !== undefined ? freshness.oldestPeriodicity : period;
+  const oldest = freshness.oldest && (oldestPeriod ? periodText(freshness.oldest, oldestPeriod) : dayText(freshness.oldest));
   // A list dated by its newest entry names it, so the time is not read as when the list was read.
   const dated = freshness.asOfLabel ? `${freshness.asOfLabel} ${asOf}` : asOf;
   return oldest && !short && freshness.oldestAgeMinutes == null ? `${dated} (oldest ${oldest})` : dated;

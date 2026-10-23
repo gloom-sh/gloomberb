@@ -70,7 +70,8 @@ function detailEntries(view: StatViewModel, cutoffShown: boolean): HeadlessPaneE
     })),
     // FRED dates a monthly reading at the month's first day; the text says which period it is.
     // A Treasury yield adds when in the day it was taken, so it is not read against ^TNX's earlier close.
-    { label: "Period", value: view.latest.date, formatted: view.stat.cutoff && !cutoffShown ? `${view.reading} ${view.stat.cutoff}` : view.reading },
+    // A figure dated by its period also says when it was released: "Sep 2026, released Tue 20 Oct".
+    { label: "Period", value: view.latest.date, formatted: view.stat.cutoff && !cutoffShown ? `${view.reading} ${view.stat.cutoff}` : view.readingReleased },
     { label: "Source", value: `FRED ${view.stat.seriesId}` },
   ];
 }
@@ -115,6 +116,11 @@ export function projectStatsHeadlessBundle(
           format: (value: unknown) => formatNumber(Number(value), 0),
         },
         { key: "asOf", header: "Period", format: (_value: unknown, row: Record<string, unknown>) => String(row.reading) },
+        {
+          key: "releasedOn",
+          header: "Released",
+          format: (_value: unknown, row: Record<string, unknown>) => typeof row.released === "string" ? row.released.replace(/^released /, "") : "",
+        },
       ],
       rows: categoryViews.map((view) => ({
         id: view.stat.id,
@@ -129,8 +135,12 @@ export function projectStatsHeadlessBundle(
           previousBasisPoints: view.previous ? toBasisPoints(view.previous.value) : null,
         } : {}),
         percentile: view.percentile,
+        // The period the figure covers; `releasedOn` is when it was published, which the report is as of.
         asOf: view.latest.date,
+        releasedOn: view.releasedOn,
+        ...(view.periodicity ? { periodicity: view.periodicity } : {}),
         reading: view.reading,
+        released: view.released,
         stale: view.observationStale || view.cacheStale,
         fetchedAt: view.fetchedAt,
         cacheStale: view.cacheStale,

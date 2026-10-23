@@ -33,6 +33,50 @@ describe("report freshness", () => {
       .toEqual(["monthly", "quarterly", "annual", null, null, null]);
   });
 
+  test("a figure dated by its period is as of its release, and says both: `Sep 2026, released Tue 20 Oct`", () => {
+    const now = Date.parse("2026-10-23T15:00:00Z");
+    const fred = { source: "FRED", status: "not-a-feed" as const, basis: "published statistics", observedKey: "date", oldest: null };
+    const permits = { rows: [{ date: "2026-09-01" }, { date: "2026-08-01" }] };
+    // Declared by the loader (`fred PERMIT`, a chart of FRED series).
+    const declared = deriveHeadlessFreshness(rows({ ...fred, periodicity: "monthly", releasedOn: "2026-10-20" }), permits, now);
+    expect(declared).toMatchObject({ asOf: "2026-10-20", referencePeriod: "2026-09-01", periodicity: "monthly" });
+    expect(formatFreshnessLine(declared)).toBe("Source: FRED · Sep 2026, released Tue 20 Oct · not a live feed (published statistics)");
+    // A weekly figure is its day; a release in another year names it; a release at a time names the time.
+    expect(formatFreshnessLine(deriveHeadlessFreshness(rows({ ...fred, releasedOn: "2026-10-22" }), { rows: [{ date: "2026-10-17" }] }, now)))
+      .toBe("Source: FRED · Sat 17 Oct 2026, released Thu 22 Oct · not a live feed (published statistics)");
+    expect(formatFreshnessLine(deriveHeadlessFreshness(rows({ ...fred, periodicity: "monthly", releasedOn: "2027-01-15" }), { rows: [{ date: "2026-12-01" }] }, Date.parse("2027-01-20T00:00:00Z"))))
+      .toBe("Source: FRED · Dec 2026, released Fri 15 Jan 2027 · not a live feed (published statistics)");
+    expect(formatFreshnessLine(deriveHeadlessFreshness(rows({ ...fred, periodicity: "monthly", releasedOn: "2026-10-14T12:30:00Z" }), { rows: [{ date: "2026-09-01" }] }, now)))
+      .toBe("Source: FRED · Sep 2026, released Wed 14 Oct 12:30 UTC · not a live feed (published statistics)");
+    // A release before the period, after now, or on the day the figure is dated by says nothing new.
+    for (const releasedOn of ["2026-08-20", "2026-10-30", "2026-09-01", "not a date"]) {
+      const freshness = deriveHeadlessFreshness(rows({ ...fred, periodicity: "monthly", releasedOn }), permits, now);
+      expect(freshness).toMatchObject({ asOf: "2026-09-01" });
+      expect(freshness.referencePeriod).toBeUndefined();
+    }
+
+    // Rows that say their own release and period (ECST): the newest row's.
+    const board = rows({ source: "FRED", status: "not-a-feed", basis: "published statistics" });
+    const stats = deriveHeadlessFreshness(board, { rows: [
+      { asOf: "2026-09-01", releasedOn: "2026-10-20", periodicity: "monthly" },
+      { asOf: "2026-04-01", releasedOn: "2026-09-25", periodicity: "quarterly" },
+    ] }, now);
+    expect(stats).toMatchObject({ asOf: "2026-10-20", referencePeriod: "2026-09-01", periodicity: "monthly", oldest: "2026-04-01", oldestPeriodicity: "quarterly" });
+    expect(formatFreshnessLine(stats)).toBe("Source: FRED · Sep 2026, released Tue 20 Oct (oldest Q2 2026) · not a live feed (published statistics)");
+    // A period without a release names the period; a daily row newest keeps its day.
+    expect(formatFreshnessLine(deriveHeadlessFreshness(board, { rows: [{ asOf: "2026-10-01", periodicity: "monthly" }] }, now)))
+      .toBe("Source: FRED · Oct 2026 (monthly) · not a live feed (published statistics)");
+    expect(formatFreshnessLine(deriveHeadlessFreshness(board, { rows: [{ asOf: "2026-10-22" }, { asOf: "2026-09-01", releasedOn: "2026-10-20", periodicity: "monthly" }] }, now)))
+      .toBe("Source: FRED · Thu 22 Oct 2026 (oldest Sep 2026) · not a live feed (published statistics)");
+    // Two figures dated the same day that disagree on their release name neither.
+    const split = deriveHeadlessFreshness(board, { rows: [
+      { asOf: "2026-09-01", releasedOn: "2026-10-20", periodicity: "monthly" },
+      { asOf: "2026-09-01", releasedOn: "2026-10-02", periodicity: "monthly" },
+    ] }, now);
+    expect(split).toMatchObject({ asOf: "2026-09-01" });
+    expect(split.referencePeriod).toBeUndefined();
+  });
+
   test("says how long a delay is in minutes or hours, as a range when rows differ", () => {
     expect([15, 20, 60, 90, 720, 3 * 24 * 60].map(delayLength)).toEqual(["15 min", "20 min", "1 h", "90 min", "12 h", "3 days"]);
     const delayed = (delayMinutes: number) => ({ dataSource: "delayed", delayMinutes, lastUpdated: NOW - 20 * 60_000 });

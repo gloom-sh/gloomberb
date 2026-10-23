@@ -3,6 +3,7 @@ import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/p
 import { valuationCache } from "./cache";
 import { marketValuationHeadless } from "./headless";
 import { createTestHeadlessContext } from "../../../test-support/headless";
+import { deriveHeadlessFreshness, formatFreshnessLine } from "../../../cli/pane-functions/freshness";
 
 beforeEach(() => valuationCache.reset());
 afterEach(() => valuationCache.reset());
@@ -52,8 +53,11 @@ describe("market valuation headless model", () => {
       "Shiller CAPE",
     ]);
     expect(result.sections[0]).toMatchObject({
-      rows: [{ id: "shiller-cape", value: 39, formattedValue: "39.0", unit: "x" }],
+      rows: [{ id: "shiller-cape", value: 39, formattedValue: "39.0", unit: "x", asOf: "2026-01-01", periodicity: "annual" }],
     });
+    // The report names the period the reading covers, never its first day.
+    expect(formatFreshnessLine(deriveHeadlessFreshness(marketValuationHeadless, result, Date.parse("2026-02-01T00:00:00Z"))))
+      .toStartWith("Source: Gloom Cloud · 2026 (annual) · ");
     expect(result.sections[1]).toMatchObject({ entries: expect.arrayContaining([
       { label: "Basis", value: expect.stringContaining("real earnings") },
     ]) });

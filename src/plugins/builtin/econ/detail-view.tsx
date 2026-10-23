@@ -108,7 +108,9 @@ function SourceLine({ source, kind, width }: { source: NonNullable<EconEvent["so
   const label = truncateToDisplayWidth(source.name, Math.max(4, width - 2 - displayWidth(detail)));
   return (
     <Box flexDirection="row" paddingX={1} height={1} flexShrink={0}>
-      <ExternalLinkText url={source.url} label={label} color={colors.text} />
+      {source.url
+        ? <ExternalLinkText url={source.url} label={label} color={colors.text} />
+        : <Text fg={colors.text}>{label}</Text>}
       <Text fg={colors.textDim}>{detail}</Text>
     </Box>
   );

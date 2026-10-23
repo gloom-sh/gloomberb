@@ -4,6 +4,8 @@ import type { PluginPersistence } from "../../../types/plugin";
 export interface DatedObservation {
   date: string;
   value: number | null;
+  /** The day the value was released, when the source says (FRED's newest monthly figure). */
+  releasedOn?: string;
 }
 
 export interface SeriesCacheMetadata {

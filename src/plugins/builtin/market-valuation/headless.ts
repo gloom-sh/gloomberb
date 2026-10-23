@@ -74,7 +74,9 @@ function projectValuationHeadlessBundle(
     richPercentile: view.richPercentile,
     richSigma: view.richSigma,
     historyStart: view.historyStart,
+    // The first day of the period the reading covers; the report names the period, not that day.
     asOf: view.asOf,
+    ...(view.periodicity ? { periodicity: view.periodicity } : {}),
     stale: view.observationStale,
   }));
 

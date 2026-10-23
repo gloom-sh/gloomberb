@@ -514,7 +514,8 @@ export interface CloudEconEventPayload {
   timeNote?: string | null;
   priorAsOf?: string | null;
   referencePeriod?: string | null;
-  source?: { name: string; url: string };
+  /** Who publishes the release (Freddie Mac for the 30-year mortgage rate), and its page when one is named. */
+  source?: { name: string; url?: string };
 }
 
 /** One currency's short-term rate, as GET /cloud/econ/short-rates serves it. */
@@ -564,6 +565,12 @@ export interface CloudFredObservationPayload {
   publisher?: string;
   /** When that publisher's value was first read, ISO in UTC. */
   publishedAt?: string;
+  /**
+   * The day FRED's source released this value (`YYYY-MM-DD`), on the newest
+   * observation of a weekly to annual series: September's permits are dated
+   * 1 Sep and were released 20 Oct. Absent on daily series and older points.
+   */
+  releasedOn?: string;
 }
 
 export interface CloudFredSeriesInfoPayload {

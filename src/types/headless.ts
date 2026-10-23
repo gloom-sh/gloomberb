@@ -267,6 +267,13 @@ export interface HeadlessPaneFreshness {
    */
   periodicity?: "monthly" | "quarterly" | "semiannual" | "annual";
   /**
+   * When the newest observation was released, for figures dated by the period
+   * they cover (a monthly statistic's 1 Sep): a date, or the time when the
+   * publisher states it. The report is then as of that release and names both,
+   * `Sep 2026, released Tue 20 Oct`; its age and staleness stay the period's.
+   */
+  releasedOn?: string | number | Date | null;
+  /**
    * The newest row is a weekly or monthly bar whose period had not ended when
    * it was served (October's bar on 16 Oct), and the last day it covers so
    * far. The report is then dated by that day, `month to date, through Thu 15

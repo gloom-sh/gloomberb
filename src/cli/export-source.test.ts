@@ -32,3 +32,19 @@ test("what the data does not state is said to be not published, never guessed", 
   ]);
   expect(exportSource(undated)).toMatchObject({ publisher: null, observationDate: null, publicationTime: null });
 });
+
+test("a figure as of its release cites the period it covers as its observation date and the release as its publication", () => {
+  const { publisher: _publisher, publishedAt: _publishedAt, ...permits } = fred;
+  const released: ReportFreshness = { ...permits, asOf: "2026-10-20", referencePeriod: "2026-09-01", periodicity: "monthly" };
+  expect(exportSourceLines(released)).toEqual([
+    "Source: FRED \u00b7 Sep 2026, released Tue 20 Oct \u00b7 not a live feed (published statistics)",
+    "Publisher: not published",
+    "Observation date: 2026-09-01",
+    "Publication time: 2026-10-20",
+    "Retrieval time: 2026-10-11T15:58:18.735Z",
+  ]);
+  // A publication time the publisher states to the second is kept over the release day.
+  expect(exportSource({ ...released, publishedAt: "2026-10-20T12:33:50.000Z" })).toMatchObject({
+    observationDate: "2026-09-01", publicationTime: "2026-10-20T12:33:50.000Z",
+  });
+});

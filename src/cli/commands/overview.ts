@@ -398,6 +398,8 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
         timeZone: event.timeZone ?? null,
         timeNote: event.timeNote ?? null,
         priorAsOf: event.priorAsOf ?? null,
+        // Who publishes the figure (Freddie Mac for the 30-year mortgage rate), the period it covers and its page.
+        publisher: event.source?.name ?? null,
         referencePeriod: event.referencePeriod ?? null,
         source: event.source?.name ?? null,
         sourceUrl: event.source?.url ?? null,
@@ -430,6 +432,7 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
         { key: "actual", header: "Actual" },
         { key: "forecast", header: "Forecast" },
         { key: "prior", header: "Prior" },
+        { key: "publisher", header: "Publisher", format: (value) => typeof value === "string" ? value : "" },
       ],
     });
   });
@@ -544,6 +547,8 @@ async function runFred(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
   // FRED names the series' publisher when Gloom Cloud passes it on, and when it last updated the series.
   const publisher = ahead?.publisher ?? data.info?.source?.trim();
   const publishedAt = ahead ? ahead.publishedAt : fredPublicationTime(data.info, newestDate);
+  // When the newest figure was released: the report is as of then, `Sep 2026, released Tue 20 Oct`.
+  const releasedOn = ahead ? undefined : data.observations.find((observation) => observation.date === newestDate)?.releasedOn;
   ctx.printResult({
     data: rows,
     metadata: {
@@ -556,6 +561,7 @@ async function runFred(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
       source: ahead?.source ?? notOnFredSource(seriesId) ?? "FRED", status: "not-a-feed", basis: "published statistics", observedKey: "date", oldest: null,
       // A monthly or quarterly observation is dated the first of its period, not a day it was seen.
       ...(periodicity ? { periodicity } : {}),
+      ...(releasedOn ? { releasedOn } : {}),
       ...(publisher ? { publisher } : {}),
       ...(publishedAt ? { publishedAt } : {}),
     }),

@@ -150,7 +150,7 @@ export function EconStatisticsPane({ focused, width, height }: PaneProps) {
     // A Treasury yield names when in the day it was taken, as GC does, so it is not read against ^TNX's earlier close.
     const cutoff = selected.stat.cutoff ? ` ${selected.stat.cutoff}` : "";
     const info: PaneFooterSegment[] = [
-      { id: "as-of", parts: [{ text: `reading for ${selected.reading}${cutoff}`, tone: "muted" }] },
+      { id: "as-of", parts: [{ text: `reading for ${cutoff ? selected.reading : selected.readingReleased}${cutoff}`, tone: "muted" }] },
     ];
     // The cached first paint is being replaced; its age only counts once that load fails.
     const seeding = resource.loading && resource.updatedAt === null && !selected.refreshError;

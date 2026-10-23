@@ -25,8 +25,8 @@ export interface EconEvent {
   priorAsOf?: string | null;
   /** The period a release covers, as its publisher names it. */
   referencePeriod?: string | null;
-  /** Whose calendar lists it, and where. */
-  source?: { name: string; url: string };
+  /** Who publishes it (Freddie Mac for the 30-year mortgage rate), and its page when one is named. */
+  source?: { name: string; url?: string };
 }
 
 /** Whether a row's time is blank because its publisher states none (a bank whose calendar gives the day only). */

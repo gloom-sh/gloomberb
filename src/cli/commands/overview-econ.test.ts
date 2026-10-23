@@ -147,3 +147,28 @@ test("rows a bank or a statistics office times itself show its clock; a bank tha
   // The feeds' own calendar prints without the publisher's clock column.
   expect(await econText(twoWeeks, ["--country", "US"])).not.toContain("Local");
 });
+
+test("a row names who publishes it, the period it covers and its page, in the table and in every export", async () => {
+  const mortgages = [
+    ...twoWeeks,
+    { ...event("2026-10-21T11:00:00.000Z", "US", "low", "MBA 30-Year Mortgage Rate"), actual: "7.48%", referencePeriod: "16 Oct 2026",
+      source: { name: "Mortgage Bankers Association", url: "https://www.mba.org/" } },
+    { ...event("2026-10-22T16:00:00.000Z", "US", "medium", "30-Year Mortgage Rate"), actual: "7.32%", prior: "7.40%", referencePeriod: "22 Oct 2026",
+      source: { name: "Freddie Mac", url: "https://www.freddiemac.com/" } },
+    // A publisher named without a page keeps its name.
+    { ...event("2026-10-22T14:30:00.000Z", "US", "low", "EIA Natural Gas Stocks Change"), source: { name: "Energy Information Administration" } },
+  ];
+  const rows = (await econPrinted(mortgages, ["--country", "US"])).result.data as Record<string, unknown>[];
+  expect(rows.find((row) => row.event === "30-Year Mortgage Rate")).toMatchObject({
+    publisher: "Freddie Mac", referencePeriod: "22 Oct 2026", source: "Freddie Mac", sourceUrl: "https://www.freddiemac.com/", actual: "7.32%",
+  });
+  expect(rows.find((row) => row.event === "MBA 30-Year Mortgage Rate")).toMatchObject({ publisher: "Mortgage Bankers Association", referencePeriod: "16 Oct 2026" });
+  expect(rows.find((row) => row.event === "EIA Natural Gas Stocks Change")).toMatchObject({ publisher: "Energy Information Administration", sourceUrl: null });
+  // The feed's own rows name nobody.
+  expect(rows.find((row) => row.event === "Housing Starts")).toMatchObject({ publisher: null, referencePeriod: null, source: null, sourceUrl: null });
+  const text = await econText(mortgages, ["--country", "US"]);
+  expect(text).toMatch(/Publisher/);
+  expect(text).toMatch(/30-Year Mortgage Rate\s+7\.32%\s+7\.40%\s+Freddie Mac/);
+  // A calendar without publishers prints no empty column for them.
+  expect(await econText(twoWeeks, ["--country", "US"])).not.toContain("Publisher");
+});

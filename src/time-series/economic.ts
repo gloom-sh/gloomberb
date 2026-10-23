@@ -43,6 +43,8 @@ export interface FredObservationLike {
   value: string | number | null;
   realtime_start?: string;
   realtimeStart?: string;
+  /** The day the value was released, which Gloom Cloud sets on a series' newest observation. */
+  releasedOn?: string;
 }
 
 export interface FredExtractionOptions {
@@ -70,7 +72,7 @@ export function extractFredSeries(
         ? Number(observation.value)
         : Number.NaN;
     if (!observedAt || !Number.isFinite(numericValue)) continue;
-    const availableAt = parsedDate(observation.realtime_start ?? observation.realtimeStart);
+    const availableAt = parsedDate(observation.realtime_start ?? observation.realtimeStart ?? observation.releasedOn);
     points.push({
       date: options.timestampMode !== "period-end" && availableAt ? availableAt : observedAt,
       observedAt,

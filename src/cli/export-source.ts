@@ -36,9 +36,10 @@ export function exportSource(freshness: ReportFreshness): ExportSource {
   return {
     name: freshness.source,
     publisher: freshness.publisher ?? null,
-    observationDate: freshness.asOf,
+    // A figure as of its release is still dated by the period it covers; the release is its publication time.
+    observationDate: freshness.referencePeriod ?? freshness.asOf,
     ...(freshness.oldestObservation ? { oldestObservationDate: freshness.oldestObservation } : {}),
-    publicationTime: freshness.publishedAt ?? null,
+    publicationTime: freshness.publishedAt ?? (freshness.referencePeriod ? freshness.asOf : null),
     retrievalTime: freshness.retrievedAt,
     ...(freshness.savedAt ? { savedTime: freshness.savedAt } : {}),
   };

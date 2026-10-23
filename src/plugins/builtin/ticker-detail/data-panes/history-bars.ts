@@ -1,6 +1,7 @@
 import { BAR_INTERVAL_LABELS } from "../../../../cli/history-rows";
 import { periodToDateText } from "../../../../cli/pane-functions/freshness";
 import { barLastSession, barPeriodToDate, type BarPeriod, type BarPeriodToDate } from "../../../../market-data/market/bar-period";
+import { isIntradayDailyBar } from "../../../../market-data/market/period-return";
 import { barSizeFromGap, medianBarGap } from "../../../../time-series/bar-spacing";
 import type { TimeRange } from "../../../../time-series/range";
 import { CHART_RESOLUTION_STEP_MS, type ManualChartResolution } from "../../../../time-series/resolution";
@@ -76,10 +77,12 @@ export function formingHistoryBar(
 }
 
 /**
- * The day the newest weekly or monthly bar, dated `date` by the start of its
- * period, closed on once that period has ended (barLastSession): the week of
- * Mon 12 Oct 2026 is Fri 16 Oct, the day its close is from. Null while it
- * forms (formingHistoryBar dates it then), and for any other bar.
+ * The day the newest daily, weekly or monthly bar, dated `date` by the start
+ * of its period, closed on once that period has ended (barLastSession): the
+ * week of Mon 12 Oct 2026 is Fri 16 Oct, the day its close is from, and a
+ * daily bar its own day once its session has closed, as `history` dates it,
+ * never its midnight. Null while it forms (formingHistoryBar dates it then,
+ * and a daily bar by its latest quote), and for an intraday bar.
  */
 export function closedHistoryBarDay(
   size: HistoryBarSize,
@@ -87,6 +90,7 @@ export function closedHistoryBarDay(
   venue: string | undefined,
   now: number,
 ): string | null {
+  if (size === "1d") return date && !isIntradayDailyBar(date.slice(0, 10), venue, now) ? date.slice(0, 10) : null;
   const period = historyBarPeriod(size);
   return period && date && !barPeriodToDate(date, period, venue, now) ? barLastSession(date, period, venue, now) : null;
 }

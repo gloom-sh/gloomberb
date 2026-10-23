@@ -412,6 +412,9 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
     const forming = formingHistoryBar(size, rows.at(-1)?.date, venue, now);
     // A complete one is dated by the day its last session closed, the day its close is from.
     const closedDay = closedHistoryBarDay(size, rows.at(-1)?.date, venue, now);
+    // A daily bar of a session still trading is as of its listing's latest quote, never its midnight.
+    const quotedAt = size === "1d" && !closedDay && rows.length && quote && Number.isFinite(quote.lastUpdated)
+      && quote.lastUpdated >= Date.parse(`${rows.at(-1)!.date.slice(0, 10)}T00:00:00Z`) ? new Date(quote.lastUpdated).toISOString() : null;
     const shown = forming ? [...rows.slice(0, -1), { ...rows.at(-1)!, partial: true }] : rows;
     // One decimal count for the table, by the instrument's display rules when the quote names its kind.
     const decimals = barPriceDecimals(rows, quoteFormatOptions(quote).assetCategory);
@@ -429,7 +432,7 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
     const freshness = pastWindow ? pastWindowFreshness(window, size, "date") : {
       ...barHistoryFreshness(isDailyOrLongerBar(size) ? size : null),
       observedKey: "date", oldest: null,
-      ...(forming ? { periodToDate: forming } : closedDay ? { asOf: closedDay } : {}),
+      ...(forming ? { periodToDate: forming } : closedDay ? { asOf: closedDay } : quotedAt ? { asOf: quotedAt } : {}),
       ...(dayToDate ? { basis: "daily bars", note: `the newest bar is ${DAY_SO_FAR_TEXT}`, ...(quote ? { asOf: new Date(quote.lastUpdated).toISOString() } : {}) } : {}),
     };
     // The largest fall from a close to a later one in the bars shown, said under the title.

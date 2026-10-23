@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { CloudFredSeriesInfoPayload } from "../api-client";
-import { fredCreditCoverageNotice } from "./economic";
+import { extractFredSeries, fredCreditCoverageNotice } from "./economic";
 
 const info: CloudFredSeriesInfoPayload = {
   id: "BAMLC0A0CM", title: "ICE BofA US Corporate Index Option-Adjusted Spread",
@@ -41,4 +41,13 @@ test("usable observations outside declared coverage invalidate dates without inv
     { date: "2026-09-14", value: null }, { date: "2023-09-11", value: NaN },
     { date: "2026-02-30", value: 1 }, { date: "2026-09-10", value: 0 },
   ])).toContain("2023-09-12 to 2026-09-10");
+});
+
+test("the newest observation's release becomes its availability, and a chart by period keeps its period date", () => {
+  const points = extractFredSeries([
+    { date: "2026-08-01", value: 1330 },
+    { date: "2026-09-01", value: 1412, releasedOn: "2026-10-20" },
+  ], { providerId: "fred", timestampMode: "period-end" });
+  expect(points.map((point) => [point.date.toISOString().slice(0, 10), point.availableAt?.toISOString().slice(0, 10) ?? null]))
+    .toEqual([["2026-08-01", null], ["2026-09-01", "2026-10-20"]]);
 });

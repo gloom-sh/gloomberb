@@ -181,6 +181,39 @@ test("a chart of weekly bars dates its latest close and the report by the week's
   }
 });
 
+test("a chart of daily bars is as of its newest point: the closed session's day, or the time a session still trading was quoted", async () => {
+  const { applyChartComposerCapabilityOptions } = await import("./cli-options");
+  const { renderHeadlessPaneText } = await import("../../../cli/pane-functions/headless");
+  const daily = ["2026-10-21", "2026-10-22", "2026-10-23"].map((date, index) => ({ date: new Date(`${date}T00:00:00Z`), open: 150, high: 152, low: 149, close: 150 + index }));
+  const quotedAt = Date.parse("2026-10-23T15:42:00Z");
+  const provider = createTestDataProvider({
+    getTickerFinancials: async () => ({ annualStatements: [], quarterlyStatements: [], priceHistory: [] }),
+    getQuote: async () => ({ symbol: "DHI", price: 152, change: 1, changePercent: 0.66, currency: "USD", lastUpdated: quotedAt }),
+    getChartResolutionSupport: () => [{ resolution: "1d", maxRange: "5Y" }],
+    getPriceHistoryForResolution: async () => daily,
+  });
+  const spec = applyChartComposerCapabilityOptions(buildCustomChartPreset("DHI:NYSE"), "chart-composer", { rangePreset: "1M", chartResolution: "1d" });
+  const definition = chartHeadless("chart-composer-pane");
+  const args = { argument: "DHI:NYSE", rawArgument: "DHI:NYSE", symbols: [], options: {} };
+  const load = async () => await definition.load(args, { ...fixture().context, marketData: provider, settings: { chartSpec: spec } });
+  try {
+    // Fri 23 Oct 2026, 15:45 UTC: the session is trading, last quoted at 15:42.
+    setSystemTime(new Date("2026-10-23T15:45:00Z"));
+    const trading = await load();
+    expect(trading.freshness).toMatchObject({ basis: "daily closes", asOf: "2026-10-23T15:42:00.000Z" });
+    expect(renderHeadlessPaneText(definition, trading, args, "Custom Chart")).toContain("Fri 23 Oct 2026 15:42 UTC");
+    // Once it has closed, the day the close is from, as `history` dates it; never 00:00 UTC.
+    setSystemTime(new Date("2026-10-23T22:50:00Z"));
+    const closed = await load();
+    expect(closed.freshness).toMatchObject({ basis: "daily closes", asOf: "2026-10-23" });
+    const text = renderHeadlessPaneText(definition, closed, args, "Custom Chart");
+    expect(text).toContain("Fri 23 Oct 2026 · not a live feed (daily closes)");
+    expect(text).not.toContain("00:00 UTC");
+  } finally {
+    setSystemTime();
+  }
+});
+
 describe("GIP headless sessions", () => {
   test("selects the latest one/five sessions or a historical session, retaining its last bar without another history fetch", async () => {
     for (const [range, session, days] of [["1D", undefined, 1], ["1W", undefined, 5], ["1W", "2026-09-01", 1]] as const) {
@@ -318,6 +351,12 @@ test("an economic chart is dated by its observations' day, and by their period w
   const catalog = (seriesId: string) => ({ source: { kind: "capability" as const, capabilityId: "c", seriesId } });
   expect(periodChartDates([{ id: "ratio", label: "VIX 3M / VIX", points: days }], { series: [catalog("ratio")] } as never)).toEqual({ asOf: "2026-10-09" });
   expect(periodChartDates([cpi], { series: [catalog("s"), { source: { kind: "security" } }] } as never)).toEqual({});
+  // The newest figure's release, which Gloom Cloud sets on it, dates the chart beside its period.
+  const permits = { id: "permit", label: "PERMIT", points: [...months(23, "2026-08-01"), { date: "2026-09-01T00:00:00.000Z", value: 1400, availableAt: new Date("2026-10-20T00:00:00Z") }] };
+  expect(periodChartDates([permits], fred("PERMIT"))).toEqual({ asOf: "2026-09-01", periodicity: "monthly", releasedOn: "2026-10-20" });
+  // Two series ending the same period with different releases name neither.
+  const other = { ...permits, id: "starts", points: [...permits.points.slice(0, -1), { ...permits.points.at(-1)!, availableAt: new Date("2026-10-21T00:00:00Z") }] };
+  expect(periodChartDates([permits, other], fred("PERMIT", "HOUST"))).toEqual({ asOf: "2026-09-01", periodicity: "monthly" });
 });
 
 test("fn G DFII10 charts the FRED series once no listing answers to it, and a ticker of the same letters still charts as the ticker", async () => {

@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, setSystemTime, test } from "bun:test";
 import { setCloudApiFetchTransport } from "../../api-client/request";
 import { inferCliErrorOptions, printCliError } from "../errors";
 import { createTestCliContext } from "../../test-support/cli-context";
@@ -70,7 +70,7 @@ test("fred --list filters the served series by id, title or group, and says when
 });
 
 /** Gloom Cloud's FRED endpoint: each request's query is kept, and `answer` says what comes back. */
-function serveSeries(answer: (query: URLSearchParams) => { observations: Array<{ date: string; value: number | null; publisher?: string; publishedAt?: string }>; info?: Record<string, unknown> }) {
+function serveSeries(answer: (query: URLSearchParams) => { observations: Array<{ date: string; value: number | null; publisher?: string; publishedAt?: string; releasedOn?: string }>; info?: Record<string, unknown> }) {
   const queries: URLSearchParams[] = [];
   setCloudApiFetchTransport(async (url) => {
     const query = new URL(url).searchParams;
@@ -225,6 +225,22 @@ test("a monthly series is dated by its month, and a lagging one carries its note
   expect(text).toContain("FRED publishes the University of Michigan survey with a lag; latest preliminary reading: fn ECO");
   expect(result.metadata?.notes).toHaveLength(2);
   expect(result.freshness).toMatchObject({ asOf: "2026-08-01", periodicity: "monthly" });
+});
+
+test("a monthly series names its month and the day it was released, and the report is as of that release", async () => {
+  setSystemTime(new Date("2026-10-23T15:00:00Z"));
+  try {
+    serveSeries(() => ({
+      observations: [{ date: "2026-09-01", value: 1412, releasedOn: "2026-10-20" }, { date: "2026-08-01", value: 1330 }],
+      info: { id: "PERMIT", units: "Thousands of Units", frequency: "Monthly", observationStart: "1960-01-01", observationEnd: "2026-09-01",
+        lastUpdated: "2026-10-20 07:33:50-05", source: "U.S. Census Bureau" },
+    }));
+    const { result, text } = await runFred(["PERMIT"]);
+    expect(text.split("\n").at(-1)).toBe("Source: FRED \u00b7 Sep 2026, released Tue 20 Oct \u00b7 not a live feed (published statistics)");
+    expect(result.freshness).toMatchObject({ asOf: "2026-10-20", referencePeriod: "2026-09-01", periodicity: "monthly", publisher: "U.S. Census Bureau" });
+  } finally {
+    setSystemTime();
+  }
 });
 
 test("a quarterly flow at a seasonally adjusted annual rate says so in its value header and its unit column", async () => {

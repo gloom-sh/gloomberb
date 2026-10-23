@@ -6,6 +6,7 @@ import { econStatisticsHeadless, projectStatsHeadlessBundle } from "./headless";
 import { resolveStatArg } from "./stats";
 import { projectStat } from "./view";
 import { createTestHeadlessContext } from "../../../test-support/headless";
+import { deriveHeadlessFreshness, formatFreshnessLine } from "../../../cli/pane-functions/freshness";
 
 beforeEach(() => statsCache.reset());
 afterEach(() => statsCache.reset());
@@ -63,6 +64,29 @@ describe("economic statistics headless model", () => {
     const all = await econStatisticsHeadless.load({ ...args, options: { range: "ALL" } }, createTestHeadlessContext({ apiClient }));
     // On the full history there is nothing further back to point to.
     expect(all.notes).toEqual(["%ile is the share of past readings at or below the latest one, over the full history."]);
+  });
+
+  test("a reading says when it was released, and the report is as of that release", async () => {
+    const permits = resolveStatArg("building-permits")!;
+    const observations = ["2026-06-01", "2026-07-01", "2026-08-01", "2026-09-01"].map((date, index) => ({
+      date, value: 1400 + index, ...(date === "2026-09-01" ? { releasedOn: "2026-10-20" } : {}),
+    }));
+    const bundle = await loadStatsBundle({ loader: async () => observations, stats: [permits] });
+    const report = projectStatsHeadlessBundle(bundle, "ALL", permits.id);
+    const [table, detail] = report.sections as Array<{ columns?: Array<{ header: string; format?: (value: unknown, row: Record<string, unknown>) => string }>; rows?: Array<Record<string, unknown>>; entries?: Array<{ label: string; value: unknown; formatted?: string }> }>;
+    const row = table!.rows![0]!;
+    // The row keeps the period it covers and says when it was published.
+    expect(row).toMatchObject({ asOf: "2026-09-01", releasedOn: "2026-10-20", periodicity: "monthly", reading: "Sep 2026" });
+    expect(table!.columns!.find((column) => column.header === "Released")!.format!(row.releasedOn, row)).toBe("Tue 20 Oct");
+    expect(detail!.entries!.find((entry) => entry.label === "Period")).toMatchObject({ value: "2026-09-01", formatted: "Sep 2026, released Tue 20 Oct" });
+    const freshness = deriveHeadlessFreshness(econStatisticsHeadless, report, Date.parse("2026-10-23T15:00:00Z"));
+    expect(freshness).toMatchObject({ asOf: "2026-10-20", referencePeriod: "2026-09-01" });
+    expect(formatFreshnessLine(freshness)).toBe("Source: FRED · Sep 2026, released Tue 20 Oct · not a live feed (published statistics)");
+    // Before Gloom Cloud sends the release, the report names the period, never its first day.
+    const unreleased = projectStatsHeadlessBundle(
+      await loadStatsBundle({ loader: async () => observations.map(({ date, value }) => ({ date, value })), stats: [permits] }), "ALL", permits.id);
+    expect(formatFreshnessLine(deriveHeadlessFreshness(econStatisticsHeadless, unreleased, Date.parse("2026-10-23T15:00:00Z"))))
+      .toBe("Source: FRED · Sep 2026 (monthly) · not a live feed (published statistics)");
   });
 
   test("prints a spread in basis points while its values stay in percentage points", async () => {
