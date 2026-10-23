@@ -115,7 +115,7 @@ test("euro and dollar caps under MCAP USD name the rate in the footer, beside th
   // A capture's status line ends with the same words, after each market's session, from what the pane publishes.
   const published = registry.snapshot().find((node) => node.role === "report-freshness")?.metadata;
   const shorter = "MCAP USD at EUR/USD 1.1612 · fundamentals through 2026-06-30, Q REV% for that quarter";
-  expect(published).toMatchObject({ datesEachVenue: true, note: footer, noteVariants: [shorter, "MCAP USD at EUR/USD 1.1612 · fundamentals through 2026-06-30"] });
+  expect(published).toMatchObject({ datesEachVenue: true, note: footer, noteVariants: [shorter, "MCAP USD at EUR/USD 1.1612 · fundamentals through 2026-06-30", "MCAP USD at EUR/USD 1.1612"] });
   expect((published?.observations as Array<Record<string, unknown>>).map((row) => row.delayMinutes)).toEqual([15, 15]);
   // A narrow pane keeps the rate and the period, without the rate's time.
   await act(async () => { await tui.render(<Harness width={80} symbols={["LHA:XETRA", "BRK-B"]} />, { width: 80, height: 16 }); });

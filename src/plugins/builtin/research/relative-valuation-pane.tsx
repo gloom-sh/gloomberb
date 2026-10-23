@@ -61,7 +61,8 @@ const REVENUE_GROWTH_LABEL = "Q REV%";
  * The footer's word on the figures, longest first: the rates MCAP was
  * converted at with their times, the statement period the trailing figures
  * run through and the quarter Q REV% compares, as `fn RV` ends; shorter forms
- * keep the rates without their times, then the period alone after them.
+ * keep the rates without their times, then the period alone after them, then
+ * the rates alone.
  */
 function basisFooterSegment(conversions: Parameters<typeof conversionNote>[1], baseCurrency: string, basis: readonly string[], through: string | null): PaneFooterSegment | null {
   const column = `MCAP ${baseCurrency}`;
@@ -70,6 +71,7 @@ function basisFooterSegment(conversions: Parameters<typeof conversionNote>[1], b
     [conversionNote(baseCurrency, conversions, column), ...basis],
     [rates, ...basis],
     [rates, through],
+    [rates ?? through],
   ].map((form) => form.filter((part): part is string => !!part).join(" · "));
   if (!forms[0]) return null;
   const variants = [...new Set(forms.slice(1))].filter((form) => form && form !== forms[0]);
