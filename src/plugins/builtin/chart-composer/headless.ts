@@ -12,10 +12,12 @@ import { notATickerSymbol } from "../../../sources/provider-errors";
 import { resolveChartSpecData } from "../../../time-series/resolve";
 import { mergePriceHistoryWindows, priceHistoryAcquisitionIdentity, priceHistoryTailAcquisition } from "../../../time-series/history-acquisition";
 import {
+  chartBarSizeSource,
   getSupportMaxRange,
   intersectChartResolutionSupport,
   isIntradayResolution,
   normalizeChartResolutionSupport,
+  type ChartBarSize,
   type ManualChartResolution,
 } from "../../../time-series/resolution";
 import type { ChartResolution } from "../../../time-series/range";
@@ -388,8 +390,8 @@ function askedSymbol(source: ChartSeriesSource): string {
  * observes (`quarterly`), else how far apart its points are (a FRED series
  * charts at its own frequency, `daily` for DEXSFUS).
  */
-function servedInterval(series: Pick<ResolvedSeries, "historyResolution" | "nativeFrequency"> & Pick<HeadlessSeries, "points">): string | undefined {
-  if (series.historyResolution) return series.historyResolution;
+function servedInterval(series: Pick<ResolvedSeries, "historyResolution" | "barSize" | "nativeFrequency"> & Pick<HeadlessSeries, "points">): string | undefined {
+  if (series.historyResolution) return series.barSize ?? series.historyResolution;
   if (series.nativeFrequency && series.nativeFrequency !== "auto") return series.nativeFrequency;
   const spacing = inferSeriesFrequency(series.points.map((point) => ({ date: point.date, value: 0 })));
   return spacing === "irregular" ? undefined : spacing;
@@ -397,8 +399,8 @@ function servedInterval(series: Pick<ResolvedSeries, "historyResolution" | "nati
 
 /** A dropped resolution, as JSON's `metadata.resolution` states it. */
 export interface ChartResolutionDrop {
-  requested: ManualChartResolution;
-  returned: ManualChartResolution;
+  requested: ChartBarSize;
+  returned: ChartBarSize;
   range: string;
   reason: string;
 }
@@ -412,18 +414,21 @@ export interface ChartResolutionDrop {
 export function chartResolutionDrop(
   requested: ChartResolution,
   viewport: Pick<ChartViewportSpec, "range" | "dateWindow">,
-  series: ReadonlyArray<Pick<ResolvedSeries, "historyResolution"> & { symbol?: string }>,
+  series: ReadonlyArray<Pick<ResolvedSeries, "historyResolution" | "barSize"> & { symbol?: string }>,
   support: ChartResolutionResult["resolutionSupport"],
 ): { drop: ChartResolutionDrop; warning: string } | null {
   if (requested === "auto") return null;
-  const dropped = series.filter((entry) => entry.historyResolution && entry.historyResolution !== requested);
-  const returned = dropped[0]?.historyResolution;
+  const servedIn = (entry: Pick<ResolvedSeries, "historyResolution" | "barSize">) => entry.historyResolution ? entry.barSize ?? entry.historyResolution : null;
+  const dropped = series.filter((entry) => servedIn(entry) && servedIn(entry) !== requested);
+  const returned = dropped[0] ? servedIn(dropped[0]) : null;
   if (!returned) return null;
   const range = viewport.dateWindow ? "this window" : viewport.range;
   const symbols = [...new Set(dropped.flatMap((entry) => entry.symbol ? [entry.symbol] : []))];
-  const maxRange = support?.length ? getSupportMaxRange(support, requested) : null;
+  // A size built from shorter bars reaches back as far as those do.
+  const source = chartBarSizeSource(requested, support ?? []);
+  const maxRange = support?.length ? getSupportMaxRange(support, source) : null;
   const reason = !support?.length ? `the source returned ${returned} bars`
-    : maxRange == null ? `the source does not serve ${requested} bars`
+    : maxRange == null ? `the source does not serve ${source === requested ? requested : `the ${source} bars ${requested} bars are built from`}`
       : `${requested} bars go back ${maxRange} at most`;
   const on = symbols.length > 0 ? ` on ${symbols.join(" and ")}` : "";
   return {
@@ -611,13 +616,13 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
       const asked = new Map(parsed.series.map((series) => [series.id, askedSymbol(series.source)]));
       model.series = model.series.map((series) => {
         const symbol = asked.get(series.id);
-        const interval = servedInterval(series as HeadlessSeries & Pick<ResolvedSeries, "historyResolution" | "nativeFrequency">);
+        const interval = servedInterval(series as HeadlessSeries & Pick<ResolvedSeries, "historyResolution" | "barSize" | "nativeFrequency">);
         return { ...series, ...(symbol ? { symbol } : {}), ...(interval ? { interval } : {}) };
       });
       const dropped = chartResolutionDrop(
         parsed.viewport.resolution,
         model.spec.viewport,
-        (model.series as Array<HeadlessSeries & Pick<ResolvedSeries, "historyResolution"> & { derived?: boolean }>).filter((series) => !series.derived),
+        (model.series as Array<HeadlessSeries & Pick<ResolvedSeries, "historyResolution" | "barSize"> & { derived?: boolean }>).filter((series) => !series.derived),
         model.chart.resolutionSupport,
       );
       if (dropped) {

@@ -42,7 +42,7 @@ import type { ResolvedPaneFunction } from "./resolver";
 import { isRecord } from "../../utils/guards";
 import { splitSymbolWords } from "../symbol-args";
 import { formatUtcTime, localTimeSuffix } from "../../utils/utc-time";
-import { deriveHeadlessFreshness, formatFreshnessLine, staleRowsText, type ReportFreshness } from "./freshness";
+import { deriveHeadlessFreshness, formatFreshnessLine, staleRowsText, withSavedCopy, type ReportFreshness } from "./freshness";
 import { accessGateStatus, errorsAccessGate, isProLock, reportGateText } from "./access-gate";
 import { noArgumentMessage } from "./capabilities";
 import { lockedHeadlessReport } from "./lock-note";
@@ -977,7 +977,8 @@ export async function buildHeadlessFunctionReport(
   }
   const { complete, unavailableSymbols, rowCount, symbols } = reportCoverage(loaded);
   const serialized = serializeHeadlessPaneResult(loaded.definition, loaded.result);
-  const freshness = deriveHeadlessFreshness(loaded.definition, loaded.result);
+  // What the report shows from a saved copy, its refresh having failed, says so.
+  const freshness = withSavedCopy(deriveHeadlessFreshness(loaded.definition, loaded.result), loaded.result);
   return {
     data: {
       kind: loaded.definition.shape,

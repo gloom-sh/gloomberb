@@ -14,7 +14,7 @@ import {
 /** `--section` of a command whose report has several tables. */
 export const TABLE_SECTION_OPTION = {
   flags: "--section <title|n>",
-  description: "With --csv or --ndjson, write only that table, by its title or number",
+  description: "With --csv or --ndjson, write only that table, by its title, the start of it, or its number",
 };
 
 /** Headings of `gloomberb help`, in display order. */

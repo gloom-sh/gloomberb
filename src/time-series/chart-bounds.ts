@@ -4,11 +4,13 @@ import {
   subtractTimeRange,
 } from "./date-window";
 import {
-  CHART_RESOLUTION_STEP_MS,
+  chartBarSizeSource,
+  chartBarSizeStepMs,
   getBestSupportedResolutionForVisibleWindow,
   getNextBufferRange,
   getSupportedPresetResolution,
   getSupportMaxRange,
+  type ChartBarSize,
   type ChartResolutionSupport,
   type ManualChartResolution,
 } from "./resolution";
@@ -120,6 +122,8 @@ export function requestResolution(
   options: ChartResolveOptions,
   sharedSupport: readonly ChartResolutionSupport[],
   provisionalSupport = false,
+  /** When a futures listing's sessions open, which its built bars' source bars must divide (`chartBarSizeSource`). */
+  openMinute: number | null = null,
 ): ManualChartResolution {
   const duration = rangeDurationBounds(spec, bounds);
   if (spec.viewport.resolution === "auto" && spec.studies.some((study) => study.kind === "realized-vol" && study.visible !== false)) {
@@ -130,7 +134,9 @@ export function requestResolution(
         && isDateWindowWithinTimeRange(new Date(duration.start), new Date(duration.end), maxRange))) return "1d";
   }
   if (spec.viewport.resolution !== "auto") {
-    const maxRange = getSupportMaxRange(sharedSupport, spec.viewport.resolution);
+    // A bar size the source does not serve is built from one it does, which must reach back far enough.
+    const source = chartBarSizeSource(spec.viewport.resolution, provisionalSupport ? [] : sharedSupport, openMinute);
+    const maxRange = getSupportMaxRange(sharedSupport, source);
     // A placeholder list cannot rule out a manual pick; the real list decides
     // on the next pass.
     const supported = sharedSupport.length === 0
@@ -146,7 +152,7 @@ export function requestResolution(
           maxRange,
         )
       );
-    if (supported) return spec.viewport.resolution;
+    if (supported) return source;
   }
   const runtimeBounds = runtimeAutoBounds(options);
   const adaptive = runtimeBounds && runtimeBounds.start !== null && runtimeBounds.end !== null
@@ -172,7 +178,7 @@ export function requestResolution(
 export function calculationBounds(
   spec: ChartSpec,
   visibleBounds: DateBounds,
-  resolution: ManualChartResolution,
+  resolution: ChartBarSize,
 ): DateBounds {
   if (visibleBounds.start === null) return visibleBounds;
   const warmupPoints = maxStudyWarmupPoints(spec.studies);
@@ -187,7 +193,7 @@ export function calculationBounds(
   if (warmupPoints > 0) {
     // Calendar gaps and closed sessions mean N observations often span more
     // than N nominal bars. The doubled point window is a bounded safety margin.
-    const pointWarmup = warmupPoints * CHART_RESOLUTION_STEP_MS[resolution] * 2;
+    const pointWarmup = warmupPoints * chartBarSizeStepMs(resolution) * 2;
     start = Math.min(start, visibleBounds.start - pointWarmup);
   }
   return { start: Math.min(start, visibleBounds.start), end: visibleBounds.end };

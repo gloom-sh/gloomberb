@@ -1,7 +1,7 @@
 import { scalarPointValue } from "./alignment";
 import { getTimeSeriesField } from "./field-catalog";
 import type { ChartSpec, ResolvedSeries, TimeSeriesPoint } from "./types";
-import type { ManualChartResolution } from "./resolution";
+import { chartBarSizeSource, type ManualChartResolution } from "./resolution";
 import type { TimeRange } from "./range";
 import { zonedDateTimeParts } from "../utils/zoned-date-time";
 import { barLastSession } from "../market-data/market/bar-period";
@@ -137,7 +137,7 @@ export function resolvePriceComparison(
   spec: ChartSpec,
   series: readonly ResolvedSeries[],
   bounds: { start: number | null; end: number | null },
-  resolution: ManualChartResolution | "auto" = spec.viewport.resolution,
+  resolution: ManualChartResolution | "auto" = spec.viewport.resolution === "auto" ? "auto" : chartBarSizeSource(spec.viewport.resolution),
   dateWindow: ChartSpec["viewport"]["dateWindow"] | null = spec.viewport.dateWindow,
   options: PriceComparisonOptions = {},
 ): PriceComparison | null {

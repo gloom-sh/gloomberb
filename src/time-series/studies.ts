@@ -121,6 +121,7 @@ function outputSeries(
     nativeFrequency: options.nativeFrequency ?? input.nativeFrequency,
     ...(historyResolution !== undefined ? { historyResolution } : {}),
     ...(input.historyStart && historyResolution === input.historyResolution ? { historyStart: input.historyStart } : {}),
+    ...(input.barSize && historyResolution === input.historyResolution ? { barSize: input.barSize } : {}),
     dataShape: "scalar",
     style: options.style ?? "line",
     transform: "raw",

@@ -1,5 +1,5 @@
 import type { AttentionPayload, AttentionWindow } from "./attention";
-import type { HiringBoard, HiringPayload } from "./hiring";
+import type { HiringBoard, HiringCompanyMoves, HiringMovesBoard, HiringMovesFilter, HiringPayload } from "./hiring";
 import type { AppAttentionFilter, AppAttentionPayload, AppRankPayload } from "./app-attention";
 import type { CatalystResponse, CatalystDetail, CatalystFilters, CatalystStatus, CatalystChanges } from "./catalysts";
 import type { KpisPayload, GuidancePayload, KpiQueryOptions } from "./company-kpis";
@@ -608,6 +608,12 @@ export class CloudDataApi {
   async getCloudHiring(symbol?: string, query: { limit?: number; offset?: number } = {}, signal?: AbortSignal): Promise<HiringBoard | HiringPayload> {
     const params = new URLSearchParams({ limit: String(query.limit ?? 100), offset: String(query.offset ?? 0) });
     return this.request<HiringBoard | HiringPayload>(symbol ? `/cloud/hiring/${encodeURIComponent(symbol)}` : `/cloud/hiring?${params}`, { signal });
+  }
+
+  /** HIRE's moves: the board of the latest computed week, or one company's weeks. */
+  async getCloudHiringMoves(symbol?: string, query: { limit?: number; offset?: number; signal?: HiringMovesFilter } = {}, signal?: AbortSignal): Promise<HiringMovesBoard | HiringCompanyMoves> {
+    const params = new URLSearchParams({ limit: String(query.limit ?? 100), offset: String(query.offset ?? 0), signal: query.signal ?? "moves" });
+    return this.request<HiringMovesBoard | HiringCompanyMoves>(symbol ? `/cloud/hiring/moves/${encodeURIComponent(symbol)}` : `/cloud/hiring/moves?${params}`, { signal });
   }
 
   async getCloudAppRankHistory(store: "app-store" | "google-play", appId: string, query: AppAttentionFilter = {}, signal?: AbortSignal): Promise<AppRankPayload> {

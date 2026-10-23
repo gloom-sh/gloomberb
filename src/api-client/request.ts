@@ -16,6 +16,7 @@ import {
   type ConnectionHealthRegistry,
 } from "../core/connection-health";
 import { SESSION_COOKIE_NAMES } from "./session-cookie";
+import { asDataServiceFailure } from "../utils/network-failure";
 
 /** The public Gloom Cloud API, which the web app's same-origin `/api` path forwards to. */
 export const DEFAULT_API_URL = "https://api.gloom.sh";
@@ -162,6 +163,22 @@ function throwIfRequestAborted(signal: AbortSignal | null | undefined): void {
   );
 }
 
+/**
+ * Sends one request, saying the same thing whichever fetch failed to connect
+ * (Bun's "Unable to connect", a browser's "Failed to fetch", a refused proxy):
+ * every command, pane and status line then reads "Gloom couldn't reach its
+ * data service", and code that falls back to a saved copy can tell it apart.
+ * A caller's abort stays an abort.
+ */
+async function reachService<R>(fetch: () => Promise<R>, signal: AbortSignal | null | undefined): Promise<R> {
+  try {
+    return await fetch();
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    throw asDataServiceFailure(error);
+  }
+}
+
 export class CloudApiRequestTransport {
   private sessionToken: string | null = null;
   private sessionCookieName: SessionCookieName | null = null;
@@ -263,11 +280,11 @@ export class CloudApiRequestTransport {
       GLOOM_CLOUD_HTTP_CONNECTION_ID,
       operation,
       async () => {
-        const response = await streamFetch(`${this.baseUrl}${path}`, {
+        const response = await reachService(() => streamFetch(`${this.baseUrl}${path}`, {
           ...options,
           headers,
           credentials: "include",
-        });
+        }), options.signal);
         throwIfRequestAborted(options.signal);
         if (!response.ok) {
           const text = await response.text().catch(logFailure("cloud-request", "Error response body read failed", ""));
@@ -372,14 +389,14 @@ export class CloudApiRequestTransport {
 
     const operation = `${options?.method ?? "GET"} ${path.split("?")[0]}`;
     const request = async () => {
-      const res = await (send ?? this.fetchTransport ?? cloudApiFetchTransport)(
+      const res = await reachService(() => (send ?? this.fetchTransport ?? cloudApiFetchTransport)(
         `${this.baseUrl}${path}`,
         {
           ...options,
           headers,
           credentials: "include",
         },
-      );
+      ), options?.signal);
       throwIfRequestAborted(options?.signal);
       const ownsCredential = canApplySession() && this.sessionToken === sessionTokenAtRequestStart;
       if (ownsCredential) this.extractSessionCookie(res);

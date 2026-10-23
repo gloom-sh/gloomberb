@@ -9,7 +9,8 @@ import type {
   SeriesTransform,
   TimeSeriesPoint,
 } from "../time-series/types";
-import { CHART_RESOLUTIONS, TIME_RANGES } from "../time-series/range";
+import { TIME_RANGES } from "../time-series/range";
+import { isChartResolution } from "../time-series/resolution";
 import type {
   CapabilityInvoker,
   CapabilitySchema,
@@ -26,7 +27,6 @@ const CAPABILITY_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/;
 const SERIES_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._~%:/-]{0,239}$/;
 const chartSeriesLog = debugLog.createLogger("chart-series");
 const ranges = new Set<string>(TIME_RANGES);
-const resolutions = new Set<string>(CHART_RESOLUTIONS);
 const periods = new Set(["auto", "daily", "weekly", "monthly", "quarterly", "annual", "ttm"]);
 const styles = new Set(["line", "area", "step", "columns", "points", "candles", "ohlc", "hlc"]);
 const transforms = new Set(["raw", "percent", "index100", "yoy", "qoq", "log"]);
@@ -103,7 +103,8 @@ function viewport(value: unknown): ChartViewportSpec {
   const input = object(value, "resolve viewport");
   onlyKeys(input, "resolve viewport", ["range", "resolution", "dateWindow", "maxPoints"]);
   const range = enumValue<ChartViewportSpec["range"]>(input.range, "viewport range", ranges);
-  const resolution = enumValue<ChartViewportSpec["resolution"]>(input.resolution, "viewport resolution", resolutions);
+  if (!isChartResolution(input.resolution)) fail("viewport resolution", `unsupported value ${String(input.resolution)}.`);
+  const resolution = input.resolution;
   let dateWindow: ChartViewportSpec["dateWindow"];
   if (input.dateWindow !== undefined) {
     const window = object(input.dateWindow, "viewport date window");

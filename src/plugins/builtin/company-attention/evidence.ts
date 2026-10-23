@@ -1,7 +1,8 @@
 import type { PaneScreenshotEvidenceHook } from "../../../cli/pane-functions/screenshot-evidence";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { isRecord } from "../../../utils/guards";
-import { fetchAppRank, fetchAttention, validateAttention, type AttentionPayload } from "./client";
+import { fetchAppRank, fetchAttention, fetchMoves, validateAttention, type AttentionPayload } from "./client";
+import { isMovesFilter } from "./moves-model";
 import type { AttentionKind } from "./model";
 import type { AppChart, AppRankPayload } from "../../../api-client/app-attention";
 
@@ -27,11 +28,14 @@ export function attentionScreenshotEvidence(kind: AttentionKind): PaneScreenshot
       }
       const symbol = resolved.createOptions?.symbol ?? resolved.createOptions?.arg;
       const payload = await fetchAttention(kind, symbol, { country: typeof resolved.options.country === "string" ? resolved.options.country : undefined, chart: resolved.options.chart as "free" | "paid" | undefined, days: Number(resolved.options.days) || 90 });
-      return { settings: { attentionSnapshot: payload }, financials: symbol ? [[symbol, { annualStatements: [], quarterlyStatements: [], priceHistory: [] }]] : [] };
+      // HIRE's Moves tab reads its own payload.
+      const moves = kind === "hiring" && resolved.options.tab === "moves"
+        ? await fetchMoves(symbol, { filter: typeof resolved.options.moves === "string" && isMovesFilter(resolved.options.moves) ? resolved.options.moves : "moves" }) : null;
+      return { settings: { attentionSnapshot: payload, ...(moves ? { movesSnapshot: moves } : {}) }, financials: symbol ? [[symbol, { annualStatements: [], quarterlyStatements: [], priceHistory: [] }]] : [] };
     },
     read(value) {
       if (!isRecord(value) || value.kind !== kind || value.version !== 1 || value.complete !== true || !isRecord(value.payload)
-        || !["table", "chart", "mix", "peers", "evidence"].includes(String(value.tab)) || !Array.isArray(value.rowIds) || !value.rowIds.every((id) => typeof id === "string") || value.plottedValueCount !== value.rowIds.length) return null;
+        || !["table", "chart", "mix", "peers", "evidence", ...(kind === "hiring" ? ["moves"] : [])].includes(String(value.tab)) || !Array.isArray(value.rowIds) || !value.rowIds.every((id) => typeof id === "string") || value.plottedValueCount !== value.rowIds.length) return null;
       try { if (!(kind === "apps" && Array.isArray(value.payload.rankHistory))) validateAttention(kind, value.payload as unknown as AttentionPayload); return value as unknown as AttentionEvidence; } catch { return null; }
     },
     mismatches(evidence, { resolved, payload }) {

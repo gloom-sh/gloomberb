@@ -1,0 +1,661 @@
+{
+ "generatedAt": "2026-10-19T14:00:00.000Z",
+ "proRequired": true,
+ "preview": false,
+ "symbol": "RIVN",
+ "name": "Rivian Automotive, Inc. / DE",
+ "latest": {
+  "symbol": "RIVN",
+  "name": "Rivian Automotive, Inc. / DE",
+  "sector": "Consumer Cyclical",
+  "industry": "Auto Manufacturers",
+  "sourceTickers": [
+   "RIVN"
+  ],
+  "week": "2026-10-12",
+  "newRoles": 311,
+  "closedRoles": 191,
+  "openRoles": 979,
+  "baseline": {
+   "weeks": 3,
+   "mean": 91,
+   "sd": 13.45362404707371,
+   "values": [
+    {
+     "week": "2026-09-21",
+     "newRoles": 102
+    },
+    {
+     "week": "2026-09-28",
+     "newRoles": 95
+    },
+    {
+     "week": "2026-10-05",
+     "newRoles": 76
+    }
+   ]
+  },
+  "ratio": 3.4175824175824174,
+  "zScore": 14.122696252860127,
+  "peers": {
+   "group": "sector",
+   "label": "Consumer Cyclical",
+   "companies": 130,
+   "medianRatio": 0.8952309737454305
+  },
+  "peerRelative": 3.8175426429718766,
+  "direction": "accelerating",
+  "signal": "accelerating",
+  "drivers": [
+   {
+    "id": "operations",
+    "label": "Operations",
+    "newRoles": 222,
+    "baselineMean": 13.333333333333334
+   },
+   {
+    "id": "manufacturing",
+    "label": "Manufacturing",
+    "newRoles": 32,
+    "baselineMean": 16
+   },
+   {
+    "id": "retail",
+    "label": "Retail & hospitality",
+    "newRoles": 9,
+    "baselineMean": 5
+   }
+  ],
+  "topTitles": [
+   {
+    "title": "Manager, Field Service",
+    "count": 4
+   },
+   {
+    "title": "Parts Advisor",
+    "count": 3
+   },
+   {
+    "title": "Service Production Supervisor",
+    "count": 3
+   }
+  ],
+  "flags": [],
+  "peakDay": {
+   "day": "2026-10-17",
+   "newRoles": 113
+  },
+  "priorMaxOpen": 852,
+  "why": "311 new roles in the week of Oct 12, 2026, 3.4x the average of 91 a week over the 3 measured weeks before. Consumer Cyclical peers (130): 0.9x. Most of the rise in Operations: +209 against 13 a week.",
+  "firstComputedAt": "2026-10-19T06:04:11.000Z",
+  "computedAt": "2026-10-19T06:04:11.000Z",
+  "signalSince": "2026-10-19T00:04:09.000Z",
+  "confirmed": true
+ },
+ "week": {
+  "week": "2026-10-12",
+  "newRoles": 311,
+  "closedRoles": 191,
+  "openRoles": 979,
+  "reads": 7,
+  "measured": true,
+  "excluded": []
+ },
+ "weeks": [
+  {
+   "week": "2026-10-12",
+   "newRoles": 311,
+   "closedRoles": 191,
+   "openRoles": 979,
+   "reads": 7,
+   "measured": true,
+   "excluded": []
+  },
+  {
+   "week": "2026-10-05",
+   "newRoles": 76,
+   "closedRoles": 74,
+   "openRoles": 852,
+   "reads": 7,
+   "measured": true,
+   "excluded": []
+  },
+  {
+   "week": "2026-09-28",
+   "newRoles": 95,
+   "closedRoles": 91,
+   "openRoles": 834,
+   "reads": 7,
+   "measured": true,
+   "excluded": []
+  },
+  {
+   "week": "2026-09-21",
+   "newRoles": 102,
+   "closedRoles": 81,
+   "openRoles": 825,
+   "reads": 6,
+   "measured": true,
+   "excluded": []
+  },
+  {
+   "week": "2026-09-14",
+   "newRoles": 805,
+   "closedRoles": 2,
+   "openRoles": 803,
+   "reads": 2,
+   "measured": false,
+   "excluded": [
+    "first_read"
+   ]
+  }
+ ],
+ "history": [
+  {
+   "week": "2026-10-12",
+   "newRoles": 311,
+   "ratio": 3.4175824175824174,
+   "zScore": 14.122696252860127,
+   "peerRelative": 3.8175426429718766,
+   "direction": "accelerating",
+   "signal": "accelerating",
+   "computedAt": "2026-10-19T06:04:11.000Z"
+  }
+ ],
+ "evidence": {
+  "added": [
+   {
+    "id": "21514386",
+    "title": "Field Service Technician - Belgrade, MT",
+    "url": "https://internal-careers-rivian.icims.com/jobs/34733/field-service-technician---belgrade%2c-mt/job?in_iframe=1",
+    "location": "Bozeman, MT, US",
+    "country": "US",
+    "jobFunction": "operations",
+    "seniority": "mid",
+    "firstSeenAt": "2026-10-18T02:25:04.082Z",
+    "closedAt": null,
+    "sourceTicker": "RIVN"
+   },
+   {
+    "id": "21514383",
+    "title": "Field Service Technician, Night Shift - Belgrade, MT",
+    "url": "https://internal-careers-rivian.icims.com/jobs/34739/field-service-technician%2c-night-shift---belgrade%2c-mt/job?in_iframe=1",
+    "location": "Belgrade, MT, US",
+    "country": "US",
+    "jobFunction": "operations",
+    "seniority": "mid",
+    "firstSeenAt": "2026-10-18T02:25:04.082Z",
+    "closedAt": null,
+    "sourceTicker": "RIVN"
+   },
+   {
+    "id": "21514382",
+    "title": "Sr. Field Service Technician - Belgrade, MT",
+    "url": "https://internal-careers-rivian.icims.com/jobs/34740/sr.-field-service-technician---belgrade%2c-mt/job?in_iframe=1",
+    "location": "Belgrade, MT, US",
+    "country": "US",
+    "jobFunction": "operations",
+    "seniority": "senior",
+    "firstSeenAt": "2026-10-18T02:25:04.082Z",
+    "closedAt": null,
+    "sourceTicker": "RIVN"
+   },
+   {
+    "id": "21514381",
+    "title": "Sr. Field Service Technician, Night Shift - Belgrade, MT",
+    "url": "https://internal-careers-rivian.icims.com/jobs/34742/sr.-field-service-technician%2c-night-shift---belgrade%2c-mt/job?in_iframe=1",
+    "location": "Belgrade, MT, US",
+    "country": "US",
+    "jobFunction": "operations",
+    "seniority": "senior",
+    "firstSeenAt": "2026-10-18T02:25:04.082Z",
+    "closedAt": null,
+    "sourceTicker": "RIVN"
+   },
+   {
+    "id": "21514380",
+    "title": "Sr. Field Service Technician - Salt Lake City, UT",
+    "url": "https://internal-careers-rivian.icims.com/jobs/34745/sr.-field-service-technician---salt-lake-city%2c-ut/job?in_iframe=1",
+    "location": "Salt Lake City, UT, US",
+    "country": "US",
+    "jobFunction": "operations",
+    "seniority": "senior",
+    "firstSeenAt": "2026-10-18T02:25:04.082Z",
+    "closedAt": null,
+    "sourceTicker": "RIVN"
+   },
+   {
+    "id": "21514379",
+    "title": "Sr. Field Service Technician, Night Shift - Salt Lake City, UT",
+    "url": "https://internal-careers-rivian.icims.com/jobs/34746/sr.-field-service-technician%2c-night-shift---salt-lake-city%2c-ut/job?in_iframe=1",
+    "location": "Salt Lake City, UT, US",
+    "country": "US",
+    "jobFunction": "operations",
+    "seniority": "senior",
+    "firstSeenAt": "2026-10-18T02:25:04.082Z",
+    "closedAt": null,
+    "sourceTicker": "RIVN"
+   },
+   {
+    "id": "20677926",
+    "title": "Sr. Process Engineer, R2 General Assembly (Night Shift)",
+    "url": "https://internal-careers-rivian.icims.com/jobs/30471/sr.-process-engineer%2c-r2-general-assembly-%28night-shift%29/job?in_iframe=1",
+    "location": "Normal, IL, US",
+    "country": "US",
+    "jobFunction": "manufacturing",
+    "seniority": "senior",
+    "firstSeenAt": "2026-10-17T02:18:36.826Z",
+    "closedAt": null,
+    "sourceTicker": "RIVN"
+   },
+   {
+    "id": "20677362",
+    "title": "Sr. Manager, Enterprise Systems",
+    "url": "https://internal-careers-rivian.icims.com/jobs/34109/sr.-manager%2c-enterprise-systems/job?in_iframe=1",
+    "location": "Normal, IL, US",
+    "country": "US",
+    "jobFunction": "engineering",
+    "seniority": "manager",
+    "firstSeenAt": "2026-10-17T02:18:36.792Z",
+    "closedAt": null,
+    "sourceTicker": "RIVN"
+   },
+   {
+    "id": "20677293",
+    "title": "Workforce Management Analyst, Service Support Operations",
+    "url": "https://internal-careers-rivian.icims.com/jobs/34321/workforce-management-analyst%2c-service-support-operations/job?in_iframe=1",
+    "location": "Plymouth, MI, US",
+    "country": "US",
+    "jobFunction": "operations",
+    "seniority": "mid",
+    "firstSeenAt": "2026-10-17T02:18:36.792Z",
+    "closedAt": null,
+    "sourceTicker": "RIVN"
+   },
+   {
+    "id": "20677275",
+    "title": "Service Production Supervisor - Mid Shift - Portland, OR",
+    "url": "https://internal-careers-rivian.icims.com/jobs/34388/service-production-supervisor---mid-shift---portland%2c-or/job?in_iframe=1",
+    "location": "Portland, OR, US",
+    "country": "US",
+    "jobFunction": "operations",
+    "seniority": "manager",
+    "firstSeenAt": "2026-10-17T02:18:36.792Z",
+    "closedAt": null,
+    "sourceTicker": "RIVN"
+   },
+   {
+    "id": "20677247",
+    "title": "Product Guide III - Denver Showroom",
+    "url": "https://internal-careers-rivian.icims.com/jobs/34424/product-guide-iii---denver-showroom/job?in_iframe=1",
+    "location": "Denver, CO, US",
+    "country": "US",
+    "jobFunction": "retail",
+    "seniority": "senior",
+    "firstSeenAt": "2026-10-17T02:18:36.792Z",
+    "closedAt": null,
+    "sourceTicker": "RIVN"
+   },
+   {
+    "id": "20677243",
+    "title": "Field Service Technician - Cleveland, OH",
+    "url": "https://internal-careers-rivian.icims.com/jobs/34439/field-service-technician---cleveland%2c-oh/job?in_iframe=1",
+    "location": "Cleveland, OH, US",
+    "country": "US",
+    "jobFunction": "operations",
+    "seniority": "mid",
+    "firstSeenAt": "2026-10-17T02:18:36.792Z",
+    "closedAt": null,
+    "sourceTicker": "RIVN"
+   },
+   {
+    "id": "20677242",
+    "title": "Field Service Technician, Night Shift - Cleveland, OH",
+    "url": "https://internal-careers-rivian.icims.com/jobs/34440/field-service-technician%2c-night-shift---cleveland%2c-oh/job?in_iframe=1",
+    "location": "Cleveland, OH, US",
+    "country": "US",
+    "jobFunction": "operations",
+    "seniority": "mid",
+    "firstSeenAt": "2026-10-17T02:18:36.792Z",
+    "closedAt": null,
+    "sourceTicker": "RIVN"
+   },
+   {
+    "id": "20677241",
+    "title": "Sr. Field Service Technician - Cleveland, OH",
+    "url": "https://internal-careers-rivian.icims.com/jobs/34441/sr.-field-service-technician---cleveland%2c-oh/job?in_iframe=1",
+    "location": "Cleveland, OH, US",
+    "country": "US",
+    "jobFunction": "operations",
+    "seniority": "senior",
+    "firstSeenAt": "2026-10-17T02:18:36.792Z",
+    "closedAt": null,
+    "sourceTicker": "RIVN"
+   },
+   {
+    "id": "20677240",
+    "title": "Sr. Field Service Technician, Night Shift - Cleveland, OH",
+    "url": "https://internal-careers-rivian.icims.com/jobs/34442/sr.-field-service-technician%2c-night-shift---cleveland%2c-oh/job?in_iframe=1",
+    "location": "Cleveland, OH, US",
+    "country": "US",
+    "jobFunction": "operations",
+    "seniority": "senior",
+    "firstSeenAt": "2026-10-17T02:18:36.778Z",
+    "closedAt": null,
+    "sourceTicker": "RIVN"
+   },
+   {
+    "id": "20677239",
+    "title": "Field Service Technician - Sharonville, OH",
+    "url": "https://internal-careers-rivian.icims.com/jobs/34443/field-service-technician---sharonville%2c-oh/job?in_iframe=1",
+    "location": "Sharonville, OH, US",
+    "country": "US",
+    "jobFunction": "operations",
+    "seniority": "mid",
+    "firstSeenAt": "2026-10-17T02:18:36.778Z",
+    "closedAt": null,
+    "sourceTicker": "RIVN"
+   },
+   {
+    "id": "20677238",
+    "title": "Field Service Technician, Night Shift - Sharonville, OH",
+    "url": "https://internal-careers-rivian.icims.com/jobs/34444/field-service-technician%2c-night-shift---sharonville%2c-oh/job?in_iframe=1",
+    "location": "Sharonville, OH, US",
+    "country": "US",
+    "jobFunction": "operations",
+    "seniority": "mid",
+    "firstSeenAt": "2026-10-17T02:18:36.778Z",
+    "closedAt": null,
+    "sourceTicker": "RIVN"
+   },
+   {
+    "id": "20677237",
+    "title": "Sr. Field Service Technician - Sharonville, OH",
+    "url": "https://internal-careers-rivian.icims.com/jobs/34445/sr.-field-service-technician---sharonville%2c-oh/job?in_iframe=1",
+    "location": "Sharonville, OH, US",
+    "country": "US",
+    "jobFunction": "operations",
+    "seniority": "senior",
+    "firstSeenAt": "2026-10-17T02:18:36.778Z",
+    "closedAt": null,
+    "sourceTicker": "RIVN"
+   },
+   {
+    "id": "20677236",
+    "title": "Sr. Field Service Technician, Night Shift - Sharonville, OH",
+    "url": "https://internal-careers-rivian.icims.com/jobs/34446/sr.-field-service-technician%2c-night-shift---sharonville%2c-oh/job?in_iframe=1",
+    "location": "Sharonville, OH, US",
+    "country": "US",
+    "jobFunction": "operations",
+    "seniority": "senior",
+    "firstSeenAt": "2026-10-17T02:18:36.778Z",
+    "closedAt": null,
+    "sourceTicker": "RIVN"
+   },
+   {
+    "id": "20677235",
+    "title": "Field Service Technician - Groveport, OH",
+    "url": "https://internal-careers-rivian.icims.com/jobs/34447/field-service-technician---groveport%2c-oh/job?in_iframe=1",
+    "location": "Groveport, OH, US",
+    "country": "US",
+    "jobFunction": "operations",
+    "seniority": "mid",
+    "firstSeenAt": "2026-10-17T02:18:36.778Z",
+    "closedAt": null,
+    "sourceTicker": "RIVN"
+   }
+  ],
+  "closed": [
+   {
+    "id": "18368060",
+    "title": "Field Service Parts Advisor III",
+    "url": "https://internal-careers-rivian.icims.com/jobs/34393/field-service-parts-advisor-iii/job?in_iframe=1",
+    "location": "Woodbury, NY, US",
+    "country": "US",
+    "jobFunction": "operations",
+    "seniority": "senior",
+    "firstSeenAt": "2026-10-14T01:58:11.172Z",
+    "closedAt": "2026-10-18T02:25:04.278Z",
+    "sourceTicker": "RIVN"
+   },
+   {
+    "id": "1258731",
+    "title": "Field Service Technician - Denver, CO",
+    "url": "https://internal-careers-rivian.icims.com/jobs/26568/field-service-technician---denver%2c-co/job?in_iframe=1",
+    "location": "Denver, CO, US",
+    "country": "US",
+    "jobFunction": "operations",
+    "seniority": "mid",
+    "firstSeenAt": "2026-09-19T23:35:06.100Z",
+    "closedAt": "2026-10-18T02:25:04.278Z",
+    "sourceTicker": "RIVN"
+   },
+   {
+    "id": "1258715",
+    "title": "Field Service Technician, Night Shift - Salt Lake City, UT",
+    "url": "https://internal-careers-rivian.icims.com/jobs/27619/field-service-technician%2c-night-shift---salt-lake-city%2c-ut/job?in_iframe=1",
+    "location": "Salt Lake City, UT, US",
+    "country": "US",
+    "jobFunction": "operations",
+    "seniority": "mid",
+    "firstSeenAt": "2026-09-19T23:35:06.100Z",
+    "closedAt": "2026-10-18T02:25:04.278Z",
+    "sourceTicker": "RIVN"
+   },
+   {
+    "id": "1258334",
+    "title": "Product Guide IV - Laguna Spaces",
+    "url": "https://internal-careers-rivian.icims.com/jobs/32687/product-guide-iv---laguna-spaces/job?in_iframe=1",
+    "location": "Laguna Beach, CA, US",
+    "country": "US",
+    "jobFunction": "product",
+    "seniority": "senior",
+    "firstSeenAt": "2026-09-19T23:35:06.075Z",
+    "closedAt": "2026-10-18T02:25:04.278Z",
+    "sourceTicker": "RIVN"
+   },
+   {
+    "id": "1258101",
+    "title": "Service Advisor - San Diego, CA",
+    "url": "https://internal-careers-rivian.icims.com/jobs/33397/service-advisor---san-diego%2c-ca/job?in_iframe=1",
+    "location": "San Diego, CA, US",
+    "country": "US",
+    "jobFunction": "customer",
+    "seniority": "mid",
+    "firstSeenAt": "2026-09-19T23:35:06.064Z",
+    "closedAt": "2026-10-18T02:25:04.278Z",
+    "sourceTicker": "RIVN"
+   },
+   {
+    "id": "1257953",
+    "title": "Field Service Technician - Salt Lake City, UT",
+    "url": "https://internal-careers-rivian.icims.com/jobs/33828/field-service-technician---salt-lake-city%2c-ut/job?in_iframe=1",
+    "location": "Salt Lake City, UT, US",
+    "country": "US",
+    "jobFunction": "operations",
+    "seniority": "mid",
+    "firstSeenAt": "2026-09-19T23:35:06.064Z",
+    "closedAt": "2026-10-18T02:25:04.278Z",
+    "sourceTicker": "RIVN"
+   },
+   {
+    "id": "19096010",
+    "title": "Product Guide IV - West Henrietta Service Center",
+    "url": "https://internal-careers-rivian.icims.com/jobs/34222/product-guide-iv---west-henrietta-service-center/job?in_iframe=1",
+    "location": "West Henrietta, NY, US",
+    "country": "US",
+    "jobFunction": "retail",
+    "seniority": "senior",
+    "firstSeenAt": "2026-10-15T02:02:49.747Z",
+    "closedAt": "2026-10-17T02:18:36.898Z",
+    "sourceTicker": "RIVN"
+   },
+   {
+    "id": "19095981",
+    "title": "Product Guide IV - Woodbury Service Center",
+    "url": "https://internal-careers-rivian.icims.com/jobs/34296/product-guide-iv---woodbury-service-center/job?in_iframe=1",
+    "location": "Woodbury, NY, US",
+    "country": "US",
+    "jobFunction": "retail",
+    "seniority": "senior",
+    "firstSeenAt": "2026-10-15T02:02:49.747Z",
+    "closedAt": "2026-10-17T02:18:36.898Z",
+    "sourceTicker": "RIVN"
+   },
+   {
+    "id": "18368376",
+    "title": "Process Engineering Technician, R1 Body",
+    "url": "https://internal-careers-rivian.icims.com/jobs/33488/process-engineering-technician%2c-r1-body/job?in_iframe=1",
+    "location": "Normal, IL, US",
+    "country": "US",
+    "jobFunction": "manufacturing",
+    "seniority": "mid",
+    "firstSeenAt": "2026-10-14T01:58:11.180Z",
+    "closedAt": "2026-10-17T02:18:36.898Z",
+    "sourceTicker": "RIVN"
+   },
+   {
+    "id": "18368135",
+    "title": "Field Service Technician IV",
+    "url": "https://internal-careers-rivian.icims.com/jobs/34159/field-service-technician-iv/job?in_iframe=1",
+    "location": "Fort Myers, FL, US",
+    "country": "US",
+    "jobFunction": "operations",
+    "seniority": "senior",
+    "firstSeenAt": "2026-10-14T01:58:11.172Z",
+    "closedAt": "2026-10-17T02:18:36.898Z",
+    "sourceTicker": "RIVN"
+   },
+   {
+    "id": "18368067",
+    "title": "Service Production Supervisor - Bothell, WA",
+    "url": "https://internal-careers-rivian.icims.com/jobs/34379/service-production-supervisor---bothell%2c-wa/job?in_iframe=1",
+    "location": "Bothell, WA, US",
+    "country": "US",
+    "jobFunction": "operations",
+    "seniority": "manager",
+    "firstSeenAt": "2026-10-14T01:58:11.172Z",
+    "closedAt": "2026-10-17T02:18:36.898Z",
+    "sourceTicker": "RIVN"
+   },
+   {
+    "id": "15410415",
+    "title": "Manager, Paint Operations (3rd Shift)",
+    "url": "https://internal-careers-rivian.icims.com/jobs/34256/manager%2c-paint-operations-%283rd-shift%29/job?in_iframe=1",
+    "location": "Normal, IL, US",
+    "country": "US",
+    "jobFunction": "manufacturing",
+    "seniority": "manager",
+    "firstSeenAt": "2026-10-10T01:25:26.320Z",
+    "closedAt": "2026-10-17T02:18:36.898Z",
+    "sourceTicker": "RIVN"
+   },
+   {
+    "id": "13250751",
+    "title": "Product Guide III (Part-time) - Venice Showroom",
+    "url": "https://internal-careers-rivian.icims.com/jobs/34043/product-guide-iii-%28part-time%29---venice-showroom/job?in_iframe=1",
+    "location": "Venice, CA, US",
+    "country": "US",
+    "jobFunction": "retail",
+    "seniority": "senior",
+    "firstSeenAt": "2026-10-07T01:09:03.812Z",
+    "closedAt": "2026-10-17T02:18:36.898Z",
+    "sourceTicker": "RIVN"
+   },
+   {
+    "id": "10328260",
+    "title": "Metrology Technician I, Drive Unit (2nd Shift)",
+    "url": "https://internal-careers-rivian.icims.com/jobs/34116/metrology-technician-i%2c-drive-unit-%282nd-shift%29/job?in_iframe=1",
+    "location": "Normal, IL, US",
+    "country": "US",
+    "jobFunction": "manufacturing",
+    "seniority": "entry",
+    "firstSeenAt": "2026-10-03T00:34:18.013Z",
+    "closedAt": "2026-10-17T02:18:36.898Z",
+    "sourceTicker": "RIVN"
+   },
+   {
+    "id": "9652115",
+    "title": "Inside Product Guide - Normal",
+    "url": "https://internal-careers-rivian.icims.com/jobs/34014/inside-product-guide---normal/job?in_iframe=1",
+    "location": "Normal, IL, US",
+    "country": "US",
+    "jobFunction": "retail",
+    "seniority": "mid",
+    "firstSeenAt": "2026-10-02T00:24:06.183Z",
+    "closedAt": "2026-10-17T02:18:36.898Z",
+    "sourceTicker": "RIVN"
+   },
+   {
+    "id": "9652092",
+    "title": "Vehicle Operator Specialist (2nd Shift), Autonomy Systems Validation",
+    "url": "https://internal-careers-rivian.icims.com/jobs/34104/vehicle-operator-specialist-%282nd-shift%29%2c-autonomy-systems-validation/job?in_iframe=1",
+    "location": "Miami, FL, US",
+    "country": "US",
+    "jobFunction": "operations",
+    "seniority": "mid",
+    "firstSeenAt": "2026-10-02T00:24:06.183Z",
+    "closedAt": "2026-10-17T02:18:36.898Z",
+    "sourceTicker": "RIVN"
+   },
+   {
+    "id": "8956491",
+    "title": "MES Technical Support Engineer",
+    "url": "https://internal-careers-rivian.icims.com/jobs/34018/mes-technical-support-engineer/job?in_iframe=1",
+    "location": "Normal, IL, US",
+    "country": "US",
+    "jobFunction": "engineering",
+    "seniority": "mid",
+    "firstSeenAt": "2026-10-01T00:20:03.895Z",
+    "closedAt": "2026-10-17T02:18:36.898Z",
+    "sourceTicker": "RIVN"
+   },
+   {
+    "id": "2600140",
+    "title": "Adventure Readiness Specialist - Richmond, VA",
+    "url": "https://internal-careers-rivian.icims.com/jobs/33374/adventure-readiness-specialist---richmond%2c-va/job?in_iframe=1",
+    "location": "Richmond, VA, US",
+    "country": "US",
+    "jobFunction": "customer",
+    "seniority": "mid",
+    "firstSeenAt": "2026-09-21T23:43:06.259Z",
+    "closedAt": "2026-10-17T02:18:36.898Z",
+    "sourceTicker": "RIVN"
+   },
+   {
+    "id": "2599983",
+    "title": "Sr. Technical Program Manager, NPI",
+    "url": "https://internal-careers-rivian.icims.com/jobs/33781/sr.-technical-program-manager%2c-npi/job?in_iframe=1",
+    "location": "Irvine, CA, US",
+    "country": "US",
+    "jobFunction": "product",
+    "seniority": "manager",
+    "firstSeenAt": "2026-09-21T23:43:06.259Z",
+    "closedAt": "2026-10-17T02:18:36.898Z",
+    "sourceTicker": "RIVN"
+   },
+   {
+    "id": "1258728",
+    "title": "Field Service Technician, Night Shift - Canton, MA",
+    "url": "https://internal-careers-rivian.icims.com/jobs/26832/field-service-technician%2c-night-shift---canton%2c-ma/job?in_iframe=1",
+    "location": "Canton, MA, US",
+    "country": "US",
+    "jobFunction": "operations",
+    "seniority": "mid",
+    "firstSeenAt": "2026-09-19T23:35:06.100Z",
+    "closedAt": "2026-10-17T02:18:36.898Z",
+    "sourceTicker": "RIVN"
+   }
+  ]
+ },
+ "evidenceTotals": {
+  "added": 311,
+  "closed": 188
+ },
+ "locked": {
+  "history": 0,
+  "added": 0,
+  "closed": 0,
+  "move": 0
+ }
+}

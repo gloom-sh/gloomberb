@@ -28,6 +28,8 @@ export interface ExportSource {
   publicationTime: string | null;
   /** When the data was retrieved for this export: an ISO instant in UTC. */
   retrievalTime: string;
+  /** Refreshing the data failed and a copy saved earlier answered: when it was saved, an ISO instant in UTC. */
+  savedTime?: string;
 }
 
 export function exportSource(freshness: ReportFreshness): ExportSource {
@@ -38,6 +40,7 @@ export function exportSource(freshness: ReportFreshness): ExportSource {
     ...(freshness.oldestObservation ? { oldestObservationDate: freshness.oldestObservation } : {}),
     publicationTime: freshness.publishedAt ?? null,
     retrievalTime: freshness.retrievedAt,
+    ...(freshness.savedAt ? { savedTime: freshness.savedAt } : {}),
   };
 }
 
@@ -100,7 +103,8 @@ export function exportIdentityFields(freshness: ReportFreshness, identity: Expor
  * The lines an export ends with: the source line the text report ends with,
  * then the publisher, observation date (the newest; the oldest follows when
  * the data cites it), publication time and retrieval time, each `not
- * published` when the data does not say.
+ * published` when the data does not say, and when the copy was saved when a
+ * saved copy answered because refreshing it failed.
  */
 export function exportSourceLines(freshness: ReportFreshness): string[] {
   const source = exportSource(freshness);
@@ -112,5 +116,6 @@ export function exportSourceLines(freshness: ReportFreshness): string[] {
     ...(source.oldestObservationDate ? [`Oldest observation: ${source.oldestObservationDate}`] : []),
     `Publication time: ${stated(source.publicationTime)}`,
     `Retrieval time: ${source.retrievalTime}`,
+    ...(source.savedTime ? [`Saved time: ${source.savedTime}`] : []),
   ];
 }

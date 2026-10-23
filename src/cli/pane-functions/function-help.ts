@@ -515,9 +515,9 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: [],
   },
   HIRE: {
-    summary: "Pro hiring momentum: weekly observed open roles, additions and removals, role families, seniority, remote and location mix, peers and primary posting evidence. Observed requisitions are not headcount. No argument opens the covered-company board.",
-    usage: ["HIRE", "HIRE NET", "HIRE 0700:HKEX"],
-    keys: [TABS, OPEN, key("e", "vidence"), key("o", "pen source"), key("d", "es"), key("g", "raph")],
+    summary: "Pro hiring momentum: weekly observed open roles, additions and removals, role families, seniority, remote and location mix, peers and primary posting evidence. Moves ranks the companies whose new roles accelerated or slowed against their own weeks and their peers, with why and the postings behind it. Observed requisitions are not headcount. No argument opens the covered-company board.",
+    usage: ["HIRE", "HIRE NET", "HIRE 0700:HKEX", "gloomberb fn HIRE RIVN --tab moves"],
+    keys: [TABS, OPEN, key("e", "vidence"), key("o", "pen source"), key("d", "es"), key("g", "raph"), key("n", "otify")],
     data: { free: "Latest values and three rows per section", pro: "Weekly history, all stored observations and evidence" },
     access: "preview",
     bloomberg: [],

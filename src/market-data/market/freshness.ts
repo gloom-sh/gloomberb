@@ -285,6 +285,16 @@ export function isTradingWeekday(exchange: string, weekday: number, weekendDays?
   return !(weekendDays ?? WEEKEND_DAYS[exchange] ?? DEFAULT_WEEKEND_DAYS).includes(weekday);
 }
 
+/**
+ * Whether the venue trades on its local `date` (YYYY-MM-DD): a day of its
+ * trading week that is not a published closure. A venue without published
+ * closures counts every day of its trading week; an unknown venue Monday to
+ * Friday.
+ */
+export function isVenueTradingDay(exchange: string | undefined, date: string): boolean {
+  return isLocalTradingDay(canonicalExchange(exchange), date);
+}
+
 /** `weekendDays` replaces the venue's days off (historySourceWeekendDays). */
 function isLocalTradingDay(exchange: string, date: string, weekendDays?: readonly number[]): boolean {
   const weekday = localWeekday(date);

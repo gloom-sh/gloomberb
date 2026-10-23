@@ -576,7 +576,8 @@ function readinessCell(readiness: PaneFunctionReadiness): string {
 function optionDescription(option: PaneFunctionOptionDef): string {
   const choices = optionChoices(option);
   const parts = [option.description.replace(/\.$/, "")];
-  if (choices.join("|").length > MAX_INLINE_CHOICES) parts.push(`One of ${choices.join(", ")}`);
+  // An enum that also reads other values (a bar size of any length) lists its values as examples.
+  if (choices.join("|").length > MAX_INLINE_CHOICES) parts.push(`${option.normalize ? "Such as" : "One of"} ${choices.join(", ")}`);
   if (option.defaultValue !== undefined && option.defaultValue !== "") parts.push(`Default ${String(option.defaultValue)}`);
   return `${parts.join(". ")}.`;
 }

@@ -16,6 +16,7 @@ import {
   resolvePluginEntry,
 } from "./loader";
 import { pluginDirectoryNames } from "./plugin-names";
+import { gitInstallAdvice } from "./extracted-plugins";
 import { pluginFromModule } from "./plugin-export";
 import type { GloomPlugin } from "../types/plugin";
 import { cliStyles } from "../utils/cli-output";
@@ -137,12 +138,35 @@ function run(
   });
 }
 
+/** Whether a `git` command is on the PATH; plugins from GitHub need one to install or update. */
+export function gitInstalled(): boolean {
+  if (typeof Bun !== "undefined") return Bun.which("git") !== null;
+  return gitSucceeds(["--version"], process.cwd());
+}
+
+/** What a plugin install says when there is no git to run: what to install, then to try again. */
+function gitMissingMessage(platform: string = process.platform): string {
+  const advice = gitInstallAdvice(platform, true);
+  return `Git is not installed. Plugins from GitHub need it: ${advice}, then try again.`;
+}
+
+/**
+ * Runs git with its output kept off the terminal: progress, "Cloning into" and
+ * the detached-HEAD advice a pinned checkout prints are chatter, and a failure
+ * says what went wrong in its error, from git's last line.
+ */
 async function git(args: string[], cwd: string, quiet: boolean, failure: string): Promise<string> {
   // Quiet means the app owns the screen, or there is no terminal at all: a
   // repository that wants credentials fails instead of prompting on it.
   const env = quiet ? { ...process.env, GIT_TERMINAL_PROMPT: "0" } : undefined;
-  const result = await run("git", args, cwd, { stdout: "pipe", stderr: quiet ? "pipe" : "inherit" }, env)
-    .catch((): RunResult => { /* Intentional ignore: git immediately throws GitError when the command cannot start. */ return { code: null, stdout: "", stderr: "" }; });
+  let result: RunResult;
+  try {
+    result = await run("git", ["-c", "advice.detachedHead=false", ...args], cwd, { stdout: "pipe", stderr: "pipe" }, env);
+  } catch (error) {
+    // git could not start: almost always because it is not installed.
+    const missing = (error as NodeJS.ErrnoException | null)?.code === "ENOENT";
+    throw new GitError(failure, missing ? gitMissingMessage() : String(error));
+  }
   if (result.code !== 0) throw new GitError(failure, result.stderr);
   return result.stdout.trim();
 }

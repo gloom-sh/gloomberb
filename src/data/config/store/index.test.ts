@@ -188,6 +188,13 @@ test("existing users retain pending and completed plugin migrations", async () =
   expect(loaded.seededPlugins).toEqual(["substack"]);
   await saveConfig(loaded);
   expect((await loadConfig(dataDir)).seededPlugins).toEqual(["substack"]);
+
+  // What a launch could not install survives a save, which doctor and the launch notice read; clearing it sticks.
+  await saveConfig({ ...loaded, pluginSeedFailure: { plugins: ["tv", "polls"], gitMissing: true } });
+  const failed = await loadConfig(dataDir);
+  expect(failed.pluginSeedFailure).toEqual({ plugins: ["polls", "tv"], gitMissing: true });
+  await saveConfig({ ...failed, pluginSeedFailure: undefined });
+  expect((await loadConfig(dataDir)).pluginSeedFailure).toBeUndefined();
 });
 
 describe("sanitizeLayout", () => {

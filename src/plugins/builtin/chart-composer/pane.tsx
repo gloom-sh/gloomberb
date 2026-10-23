@@ -26,10 +26,13 @@ import type { PaneProps, TickerResearchTabProps } from "../../../types/plugin";
 import type { ChartResolution, TimeRange } from "../../../components/chart/core/types";
 import type { ChartSpec, ResolvedSeries } from "../../../time-series/types";
 import {
-  getSupportedChartResolutionsForViewport,
+  getSupportedChartBarSizesForViewport,
   isIntradayResolution,
+  parseChartBarSize,
+  type ChartBarSize,
   type ManualChartResolution,
 } from "../../../time-series/resolution";
+import { futuresSessionOpenMinute } from "../../../market-data/market/trading-sessions";
 import { useResolvedChartSpec } from "../../../time-series/hooks";
 import { shortCompanyName } from "../../../tickers/company-name";
 import { useSeriesListings } from "./series-listings";
@@ -110,11 +113,13 @@ import { buildEmptyChartPreset, buildPriceChartPreset } from "./presets";
 import type { ChartInteractionViewport } from "./chart-spec";
 import {
   CHART_FORMULA_OPTIONS,
+  CHART_BAR_SIZE_PRESETS,
   CHART_RANGES as RANGES,
-  CHART_RESOLUTIONS as RESOLUTIONS,
+  CHART_RESOLUTIONS,
   chartStudyOptionsFor,
   chartStudyPeriodTitle,
   chartStudySettingLabel,
+  withChartBarSize,
 } from "./settings";
 import { resolveChartComposerShortcut } from "./shortcuts";
 import { describeChartResolution, formatChartDateWindow, formatChartResolution } from "./viewport-labels";
@@ -138,6 +143,9 @@ import { CHART_FOLLOW_SERIES_SETTING_KEY, rebindFollowChartSpec, resolveFollowSe
 import type { InstrumentRef } from "../../../market-data/request-types";
 
 const RANGE_OPTIONS = RANGES.map((range, index) => ({ label: range, value: range, hint: String(index + 1) }));
+const SOURCE_BAR_SIZES = CHART_RESOLUTIONS.filter((value): value is ManualChartResolution => value !== "auto");
+/** The bar size dialog's last choice, which asks for a size to type. */
+const CUSTOM_BAR_SIZE_CHOICE = "custom";
 const AUTO_VIEWPORT_DEBOUNCE_MS = 350;
 /** A load for a moving view that has not answered in this long no longer holds the next one back. */
 const LOAD_AHEAD_TIMEOUT_MS = 4_000;
@@ -383,28 +391,46 @@ function ChartComposerSurface({
   const hasMarketSeries = spec.series.some((entry) => (
     entry.source.kind === "security" && isMarketFieldId(entry.source.fieldId)
   ));
-  const availableResolutions = useMemo<ChartResolution[]>(() => {
+  // Bars built from a future's clock-aligned bars must not straddle its session's open.
+  const openMinute = useMemo(() => {
+    const listing = spec.series.find((entry) => entry.source.kind === "security" && isMarketFieldId(entry.source.fieldId));
+    return listing?.source.kind === "security" ? futuresSessionOpenMinute(listing.source.instrument.symbol, listing.source.instrument.exchange) : null;
+  }, [spec.series]);
+  // The sizes of `sizes` this chart can draw now, after Auto.
+  const availableOf = useCallback((sizes: readonly ChartBarSize[]): ChartResolution[] => {
     if (!resolution.resolutionSupport) {
       if (!hasMarketSeries) return ["auto"];
-      if (!resolution.loading) return RESOLUTIONS;
+      if (!resolution.loading) return ["auto", ...sizes];
       return spec.viewport.resolution === "auto"
         ? ["auto"]
         : ["auto", spec.viewport.resolution];
     }
-    const supported = new Set(getSupportedChartResolutionsForViewport(
+    return ["auto", ...getSupportedChartBarSizesForViewport(
       spec.viewport.range,
       resolution.resolutionSupport,
+      sizes,
       spec.viewport.dateWindow,
-    ));
-    return RESOLUTIONS.filter((value) => value === "auto" || supported.has(value));
+      openMinute,
+    )];
   }, [
     hasMarketSeries,
+    openMinute,
     resolution.loading,
     resolution.resolutionSupport,
     spec.viewport.dateWindow,
     spec.viewport.range,
     spec.viewport.resolution,
   ]);
+  // The bar lists the sizes sources serve, and a built one (4h) while the chart is set to it;
+  // the bar size dialog (b) lists the built ones too, and takes any other typed in.
+  const availableResolutions = useMemo(
+    () => availableOf(withChartBarSize(SOURCE_BAR_SIZES, spec.viewport.resolution)),
+    [availableOf, spec.viewport.resolution],
+  );
+  const dialogResolutions = useMemo(
+    () => availableOf(withChartBarSize(CHART_BAR_SIZE_PRESETS, spec.viewport.resolution)),
+    [availableOf, spec.viewport.resolution],
+  );
   // Auto names the bars it is on, which change as the view moves: a pan back
   // past where a source keeps 30-minute bars charts days instead.
   const autoBars = spec.viewport.resolution === "auto" ? resolution.resolution ?? null : null;
@@ -875,23 +901,57 @@ function ChartComposerSurface({
         content: (context: PromptContext<string>) => (
           <ChoiceDialog
             {...context}
-            title="Chart Resolution"
+            title="Bar Size"
             selectedChoiceId={spec.viewport.resolution}
-            choices={availableResolutions.map((value) => ({
-              id: value,
-              label: formatChartResolution(value),
-              description: describeChartResolution(value),
-            }))}
+            choices={[
+              ...dialogResolutions.map((value) => ({
+                id: value,
+                label: formatChartResolution(value),
+                description: describeChartResolution(value),
+              })),
+              ...(hasMarketSeries ? [{ id: CUSTOM_BAR_SIZE_CHOICE, label: "Custom…", description: "Type any number of minutes, hours, days, weeks or months." }] : []),
+            ]}
           />
         ),
       }).catch(() => "");
-      if (availableResolutions.includes(next as ChartResolution)) setResolution(next as ChartResolution);
+      if (next === CUSTOM_BAR_SIZE_CHOICE) {
+        // A row picked with the mouse closes on mousedown; the field opens after the
+        // click has placed the focus, or the desktop leaves it on the dialog.
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        const typed = await dialog.prompt<string>({
+          content: (ctx: PromptContext<string>) => (
+            <TextPromptDialog {...ctx} title="Custom Bar Size" placeholder="10m, 90m, 4h, 2D, 3W, 6mo" confirmLabel="Chart" width={44} />
+          ),
+        }).catch(() => undefined);
+        if (!typed) return;
+        const size = parseChartBarSize(typed);
+        const count = /^\s*(\d+)\s*M\s*$/.exec(typed)?.[1];
+        if (!size) {
+          notify({
+            body: count
+              ? `Write ${count}m for ${count} minutes or ${count}mo for ${count} months.`
+              : `${typed} is not a bar size. Use a number and a unit: 10m, 4h, 2D, 3W, 6mo; up to a day of minutes or hours, a year of days or weeks, or 12 months.`,
+            type: "error",
+          });
+          return;
+        }
+        if (!availableOf(withChartBarSize([], size)).includes(size)) {
+          notify({ body: `${formatChartResolution(size)} bars are unavailable for this range.`, type: "error" });
+          return;
+        }
+        setResolution(size);
+        return;
+      }
+      if (dialogResolutions.includes(next as ChartResolution)) setResolution(next as ChartResolution);
     } finally {
       setInteractionCaptured("prompt", false);
     }
   }, [
-    availableResolutions,
+    availableOf,
     dialog,
+    dialogResolutions,
+    hasMarketSeries,
+    notify,
     setInteractionCaptured,
     setResolution,
     spec.viewport.resolution,
@@ -927,7 +987,7 @@ function ChartComposerSurface({
         void openSeriesEditor();
         return;
       case "resolution":
-        if (availableResolutions.length > 1) void openResolutionPicker();
+        if (dialogResolutions.length > 1) void openResolutionPicker();
     }
   }, { enabled: focused && !dialogOpen });
 
