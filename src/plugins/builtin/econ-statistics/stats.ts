@@ -288,7 +288,7 @@ export const STATS: readonly StatDef[] = [
     id: "financial-stress",
     measurementBasis: "Weekly · index",
     label: "St. Louis Fed Financial Stress",
-    shortLabel: "Financial stress",
+    shortLabel: "St. Louis FSI",
     category: "nowcasts",
     seriesId: "STLFSI4",
     transform: "level",
