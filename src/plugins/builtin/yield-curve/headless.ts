@@ -161,8 +161,8 @@ export function createYieldCurveHeadless(
         throw new Error(`Unknown curve ${String(args.options.curve)}; use ${CURVE_OPTIONS.map((option) => option.aliases[0]).join(", ")}.`);
       }
       const curve = optionCurve ?? argument.curve ?? "us";
-      const requestedDate = args.options.date != null ? yieldCurveDate(args.options.date) : argument.date;
-      const compareInput = args.options.compare == null ? "" : parseCompareInput(String(args.options.compare));
+      const requestedDate = args.options.date != null ? yieldCurveDate(args.options.date, new Date(), "--date") : argument.date;
+      const compareInput = args.options.compare == null ? "" : parseCompareInput(String(args.options.compare), new Date(), "--compare");
       const data = await dependencies.load(curve, requestedDate, context);
       const points = data.points;
       const session = curveAsOf(points);

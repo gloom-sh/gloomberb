@@ -1,5 +1,6 @@
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
+import { DATE_OPTION_EXAMPLES } from "../../../utils/calendar-date";
 import {
   expirationOptionSeconds, OPTION_EXPIRATION_FORMAT, OPTION_EXPIRATION_PLACEHOLDER, readOptionExpiration,
 } from "../../../utils/option-expiry";
@@ -76,8 +77,8 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
     { key: "rate", type: "string", description: "Continuously compounded annual risk-free rate, percent" },
     { key: "dividendYield", aliases: ["dividend-yield"], type: "string", description: "Continuous annual dividend yield, percent" },
     { key: "currency", type: "string", description: "Currency of the inputs, such as USD; the underlying's when omitted" },
-    { key: "asOf", aliases: ["as-of"], type: "string", description: "Position valuation timestamp: UTC ISO or YYYY-MM-DD" },
-    { key: "date", type: "string", description: "Scenario date: UTC ISO or YYYY-MM-DD" },
+    { key: "asOf", aliases: ["as-of"], type: "string", description: `Position valuation date, as ${DATE_OPTION_EXAMPLES}, or a UTC ISO timestamp` },
+    { key: "date", type: "string", description: `Scenario date, as ${DATE_OPTION_EXAMPLES}, or a UTC ISO timestamp` },
     { key: "volShift", aliases: ["vol-shift"], type: "string", defaultValue: "0", description: "Parallel volatility shift, percentage points" },
     { key: "spotRange", aliases: ["spot-range"], type: "string", defaultValue: "30", description: "Spot grid range above and below current spot, percent" },
     { key: "nav", type: "string", description: "Portfolio NAV for a hedge budget, such as 100m, 2.5bn, 250k, 1,000,000 or $100m. Needs --budget-bps" },

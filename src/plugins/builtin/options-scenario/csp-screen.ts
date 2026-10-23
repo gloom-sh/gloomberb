@@ -4,7 +4,7 @@ import type { HeadlessPaneFreshness } from "../../../types/plugin";
 import { mapWithConcurrency } from "../../../utils/concurrency";
 import { numberErrorMessage } from "../../../utils/decimal-comma";
 import { errorMessage } from "../../../utils/errors";
-import { expiryIsoDate, readOptionExpiration } from "../../../utils/option-expiry";
+import { expirationHint, expiryIsoDate, readOptionExpiration } from "../../../utils/option-expiry";
 import { zonedDateKey } from "../../../utils/zoned-date-time";
 import { loadIvScreen, type ImpliedVolatilityApi, type IvScreenRow } from "../iv-history/client";
 import { quoteObservation } from "../shared/report-freshness";
@@ -82,7 +82,7 @@ export function readCspScreenCriteria(options: Record<string, unknown>): CspScre
     ? readNumber(options.maxSpread, "max-spread", "a percent of the midpoint above 0, such as 10") : CSP_SCREEN_DEFAULTS.maxSpreadPercent;
   if (!(maxSpreadPercent > 0)) throw new Error(`Invalid --max-spread "${String(options.maxSpread)}". Use a percent of the midpoint above 0, such as 10.`);
   const expiration = supplied(options.expiration) ? readOptionExpiration(options.expiration) : null;
-  if (supplied(options.expiration) && expiration == null) throw new Error(`Invalid --expiration "${String(options.expiration)}". Use a date such as 2026-11-20.`);
+  if (supplied(options.expiration) && expiration == null) throw new Error(`Invalid --expiration "${String(options.expiration)}". Use a date such as 2026-11-20.${expirationHint(String(options.expiration))}`);
   if (expiration != null && supplied(options.days)) throw new Error("--days and --expiration each pick the expiry; give one of them");
   return { delta, days, expiration, maxSpreadPercent };
 }

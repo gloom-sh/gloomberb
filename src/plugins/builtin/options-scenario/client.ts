@@ -15,6 +15,7 @@ import { loadModelDividendYield, type ModelDividendYield } from "../../../market
 import { abortable, abortError } from "../../../utils/async-deadline";
 import { extendedSession, modelSpotStamp, modelSpotStampVariants, type OptionModelSpot } from "../options/model-spot";
 import { errorMessage } from "../../../utils/errors";
+import { dateOptionError, dateOptionFormatsOr, readCalendarDate } from "../../../utils/calendar-date";
 
 export interface ScenarioMarketSnapshot {
   symbol: string;
@@ -225,13 +226,17 @@ function numericSetting(settings: Record<string, unknown>, key: string): number 
   return Number(value);
 }
 
-/** Dates are explicit UTC ISO timestamps or UTC calendar dates. Milliseconds are accepted in persisted state. */
+/** Dates are explicit UTC ISO timestamps or UTC calendar dates, written as a date option takes them. Milliseconds are accepted in persisted state. */
 function dateSetting(settings: Record<string, unknown>, key: string): number | undefined {
   const value = settings[key];
   if (!supplied(value)) return undefined;
   if (typeof value === "number" && positive(value) && Number.isFinite(new Date(value).getTime())) return value;
+  const day = typeof value === "string" ? readCalendarDate(value) : null;
+  if (day) return Date.parse(`${day}T00:00:00Z`);
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?Z)?$/.test(value)) {
-    throw new Error(`${key} must be YYYY-MM-DD or an ISO timestamp ending in Z`);
+    throw new Error(dateOptionError(String(value), key === "asOf" ? "--as-of" : `--${key}`, {
+      subject: key === "asOf" ? "a valuation date" : "a scenario date", formats: dateOptionFormatsOr("an ISO timestamp ending in Z"),
+    }));
   }
   const date = Date.parse(value);
   if (!positive(date) || new Date(date).toISOString().slice(0, 10) !== value.slice(0, 10)) throw new Error(`${key} is not a valid date`);

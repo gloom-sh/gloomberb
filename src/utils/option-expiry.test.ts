@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { daysToExpiry, findListedExpiry, formatDaysToExpiry, parseOptionExpiration, readOptionExpiration } from "./option-expiry";
+import { daysToExpiry, expirationOptionSeconds, findListedExpiry, formatDaysToExpiry, parseOptionExpiration, readOptionExpiration } from "./option-expiry";
 
 const at = (date: string) => Date.parse(`${date}T00:00:00Z`) / 1000;
 
@@ -28,4 +28,9 @@ test("days to expiry count calendar days from the as-of date, whatever its time 
   expect(daysToExpiry(at("2028-01-21"), Date.parse("2026-10-09T23:59:59Z"))).toBe(469);
   expect(formatDaysToExpiry(at("2026-10-09"), Date.parse("2026-10-09T19:59:00Z"))).toBe("0d");
   expect(formatDaysToExpiry(at("2026-10-09"), Date.parse("2026-10-10T03:00:00Z"))).toBe("expired");
+});
+
+test("an expiry written day first gets the date to type, and one that names no date gets only the formats", () => {
+  expect(() => expirationOptionSeconds("22/10/2028")).toThrow('Invalid --expiration "22/10/2028". Use YYYY-MM-DD (2028-01-21), DD.MM.YYYY, Jan 21 2028, 21 January 2028 or Unix seconds (1832025600). Type --expiration 2028-10-22 for 22/10/2028.');
+  expect(() => expirationOptionSeconds("soon", "expiry")).toThrow(/Unix seconds \(1832025600\)\.$/);
 });

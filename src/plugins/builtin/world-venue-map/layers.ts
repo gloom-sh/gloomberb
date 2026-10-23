@@ -163,7 +163,7 @@ const LAYER_COVERAGE: Readonly<Record<string, string>> = {
 
 /**
  * Why a layer can have nothing for a search or a view outside its region:
- * "Terminals cover the United States only (as of 31 Aug 2023)." Null for a
+ * "Terminals cover the United States only (as of 1 Oct 2026)." Null for a
  * worldwide layer.
  */
 export function layerCoverageNote(layer: Pick<GeoLayerInfo, "id" | "name" | "asOf" | "cadence">): string | null {

@@ -530,6 +530,8 @@ export interface HeadlessSeries {
   symbol?: string;
   /** The bar interval or observation frequency the points are at (`1d`, `1mo`, `daily`), as served, not as asked. */
   interval?: string;
+  /** Decimal places the text report prints the latest value to (a correlation to 3); JSON and CSV keep every digit. */
+  textDecimals?: number;
   points: HeadlessSeriesPoint[];
 }
 

@@ -138,7 +138,7 @@ When Gloom Cloud is too busy to run a search, the list says `Search is busy` rat
 | `HP <ticker>` | Historical OHLCV prices, in daily bars over 3M to start; the range sets the bar size (5Y weekly, ALL monthly) and the footer names it; the newest bar reads `DTD`, `WTD` or `MTD` while its day, week or month runs on |
 | `GF <tickers>` | Fundamental statement graph |
 | `GE <tickers>` | Valuation multiple graph |
-| `GR <tickers>` | Security relationship graph: the ratio, rolling correlation and regression of two tickers, such as the gold/silver ratio (`GR GC=F SI=F`), which `catalog "gold silver ratio"` and `search "gold silver ratio"` find |
+| `GR <tickers>` | Security relationship graph: the ratio, rolling correlation and regression of two tickers, such as the gold/silver ratio (`GR GC=F SI=F`), which `catalog "gold silver ratio"` and `search "gold silver ratio"` find; beta and alpha regress the first ticker's daily returns on the second's and say so (`EQT on UNG: beta`), and text prints the rolling correlation to three decimals where `--json` and `--csv` keep every digit |
 | `EE <ticker>` | Events view with earnings and revenue estimates |
 | `ERN [tickers]` | Earnings history of a ticker (the active one when typed alone) with implied and realized moves; several tickers, their upcoming reports; nothing active, the market's report days, or with Mine the names in your portfolios and watchlists. The bar's Range looks back or ahead, as in `EVTS`. On the desktop and the web Mine is one choice of the bar's Names filter, beside each portfolio, each watchlist and each sector fund `SECT` charts (Technology (XLK), Healthcare (XLV) and the others), whose companies are the S&P 500's holdings in that GICS sector as `MEMB IVV` lists them; it narrows the table and the calendar alike. There the bar's Calendar shows a week instead, a column per day with the companies reporting before the open and after the close as their logos, largest first, each with its ticker under it (green or red once reported, by its surprise); its Range picks the week, from last week to three weeks ahead, and a day with more reports than fit ends on `+N more`, which shows the rest of that group in place (the arrows reach it, Enter opens it). Enter or a second click opens a company's reports, as a table row does, and `n` (notify) sets an `ALRT` earnings alert on it for when its results are out |
 | `EVTS [ticker]` | The market's report days with implied and average moves, and each report out today's actual, surprise and move so far; a ticker selects its row, and its report says whether the ticker is on the board and points to `ERN <ticker>` for its own dates. The bar's Range looks back or ahead: a week from last week to three weeks ahead, Monday to Friday, with a section per day (`gloomberb fn EVTS --week last`, or `this` or `next`), or one day (`--date 2026-10-15`), whose reports carry their actuals and surprises; the default is today, the next session and the rest of its week |
@@ -678,7 +678,7 @@ The FUT board's codes work wherever a symbol is typed: in `quote`, `history`, `t
 
 Once a high-impact release's time passes with no actual, the app asks Gloom Cloud for the calendar again after about 15 seconds, then 30, then once a minute, for 20 minutes, while ECO is in view or **Notifications** is on in ECO's settings, so an open ECO fills in the number as it comes; a covered or hidden ECO asks nothing. With Notifications on (off until you turn it on), the number also shows in a toast when it prints, even while ECO is closed: `CPI m/m 0.3% vs 0.3%`, the forecast after `vs`. A number that comes later than those 20 minutes shows in ECO without a toast. Each toast also stays in Unread.
 
-A date option (`econ --from`, `fred --start`, `fn CATL --from`, `fn KPIS --asOf`, `fn OVDV --date`, `fn GC --date`, `--expiration`, `options --leaps --expiry-from` and the rest, and a pane's date field such as the supply chain graph's filing cutoff) takes the date as `2026-10-01`, `1.10.2026` (day first, as dots are written), `Oct 1 2026`, `1 Oct 2026` or `October 1, 2026`. A date with spaces is one argument only in quotes: `econ --from "Oct 1 2026"`. A slash is written both ways round, so a slashed date is refused with the formats a date option takes, and with the date to type when one part can only be the day: `--from 14/10/2026` ends in `Use a --from date as YYYY-MM-DD, DD.MM.YYYY, Oct 14 2026 or 14 October 2026: type --from 2026-10-14 for 14/10/2026.`
+A date option (`econ --from`, `fred --start`, `fn CATL --from`, `fn KPIS --asOf`, `fn OVDV --date`, `fn GC --date`, `fn CTM --date`, `fn GIP --session`, `fn EM --period`, `--expiration`, `options --leaps --expiry-from` and the rest, and a pane's date field such as the supply chain graph's filing cutoff) takes the date as `2026-10-01`, `1.10.2026` (day first, as dots are written), `Oct 1 2026`, `1 Oct 2026` or `October 1, 2026`. A date with spaces is one argument only in quotes: `econ --from "Oct 1 2026"`. A slash is written both ways round, so a slashed date is refused with the formats a date option takes, and with the date to type when one part can only be the day: `--from 14/10/2026` ends in `Use a --from date as YYYY-MM-DD, DD.MM.YYYY, Oct 14 2026 or 14 October 2026: type --from 2026-10-14 for 14/10/2026.`
 
 Headless chart text includes a Unit column when a series supplies one; values keep that unit's scale (for example, `2.7 %` versus `270 bp`). DVD text labels cash growth, CAGR and earnings payout as percentages, while their structured `value` fields remain fractional ratios (`0.03` means 3%), to the sixth decimal, as are its yields (`0.045527`, `4.5527` in a CSV percent column).
 
@@ -1341,12 +1341,17 @@ sma(50) crosses above sma(200) and rsi(14) < 70
 close > highest(55)
 ```
 
-Operands are `close`, `open`, `high`, `low`, a number, `sma(n)`, `ema(n)`,
-`rsi(n)`, `macd(fast,slow,signal)`, `macd_signal(fast,slow,signal)`,
-`bb_upper(n,k)`, `bb_lower(n,k)`, `highest(n)` and `lowest(n)`. Comparisons are
-`>`, `<`, `>=`, `<=`, `crosses above` and `crosses below`. Settings also choose
-the lookback (5 years, 10 years or all history) and the cost per side in basis
-points.
+Operands are `close`, `open`, `high`, `low`, a number, `weekday` (1 Monday to 7
+Sunday), `day_of_month` (1 to 31), `sma(n)`, `ema(n)`, `rsi(n)`,
+`macd(fast,slow,signal)`, `macd_signal(fast,slow,signal)`, `bb_upper(n,k)`,
+`bb_lower(n,k)`, `highest(n)` and `lowest(n)`. Comparisons are `>`, `<`, `>=`,
+`<=`, `==`, `!=`, `crosses above` and `crosses below`. `weekday` and
+`day_of_month` are the session's UTC calendar date, so `weekday == 3` is a
+calendar rule; like any rule it fills at the next session's open, which makes
+`--entry 'weekday == 3' --exit 'weekday == 4'` hold from Thursday's open to
+Friday's. A rule that cannot be read lists every operand and comparison, and
+`gloomberb fn BT --help` does too. Settings also choose the lookback (5 years, 10
+years or all history) and the cost per side in basis points.
 
 **Summary** plots the strategy and buy-and-hold as growth multiples on a log
 scale with the strategy's drawdown below, beside the price return (the closes

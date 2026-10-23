@@ -63,6 +63,7 @@ describe("historical Treasury curves", () => {
       expect(() => yieldCurveDate(date, now)).toThrow("YYYY-MM-DD");
     }
     expect(() => yieldCurveDate("2026-09-11", now)).toThrow("future date");
+    expect(() => yieldCurveDate("22/09/2026", now, "--date")).toThrow("type --date 2026-09-22 for 22/09/2026");
     let calls = 0;
     await expect(loadHistoricalYieldCurve("2023-02-29", async (id) => { calls++; return payload(id, []); })).rejects.toThrow("YYYY-MM-DD");
     expect(calls).toBe(0);
