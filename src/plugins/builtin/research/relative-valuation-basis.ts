@@ -30,6 +30,12 @@ interface BasisRow {
   revenueGrowthQuarter?: string | null;
 }
 
+/** `fundamentals through 2026-06-30`, the newest statement period of each peer's trailing figures; null when none is dated. */
+export function fundamentalsThroughText(rows: readonly BasisRow[]): string | null {
+  const through = peerDatesText(rows.map(({ symbol, fundamentalsThrough }) => ({ symbol, date: fundamentalsThrough })));
+  return through ? `fundamentals through ${through}` : null;
+}
+
 /**
  * `fundamentals through 2026-06-30` and the quarter the revenue growth column
  * compares with a year earlier, named by the column's header where the table
@@ -39,14 +45,14 @@ interface BasisRow {
  * through that date; the forward P/E says forward in its own header.
  */
 export function fundamentalsBasisParts(rows: readonly BasisRow[], revenueGrowthHeader: string): string[] {
-  const through = peerDatesText(rows.map(({ symbol, fundamentalsThrough }) => ({ symbol, date: fundamentalsThrough })));
+  const through = fundamentalsThroughText(rows);
   const growing = rows.filter((row) => row.revenueGrowth != null);
   const quarter = peerDatesText(growing.map(({ symbol, revenueGrowthQuarter }) => ({ symbol, date: revenueGrowthQuarter })));
   if (through && quarter && growing.every((row) => row.revenueGrowthQuarter === row.fundamentalsThrough)) {
-    return [`fundamentals through ${through}, ${revenueGrowthHeader} for that quarter`];
+    return [`${through}, ${revenueGrowthHeader} for that quarter`];
   }
   return [
-    ...(through ? [`fundamentals through ${through}`] : []),
+    ...(through ? [through] : []),
     ...(quarter ? [`${revenueGrowthHeader}: quarter to ${quarter}`] : []),
   ];
 }

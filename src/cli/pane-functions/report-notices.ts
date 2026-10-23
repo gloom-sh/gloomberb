@@ -66,10 +66,14 @@ function publishedSources(value: unknown): NonNullable<HeadlessPaneFreshness["so
   return sources.length ? sources : null;
 }
 
+function isStringList(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
 /**
  * How current a rendered pane says its data is, from the `report-freshness`
  * node it publishes: `{ asOf?, status?, delayMinutes?, source?, sources?,
- * maxAgeMinutes?, oldestAge?, note?, basis?, asOfLabel?, datesEachVenue? }`; `basis` names what a pane
+ * maxAgeMinutes?, oldestAge?, note?, noteVariants?, basis?, asOfLabel?, datesEachVenue? }`; `basis` names what a pane
  * that is not a feed lists, when one pane lists different things (NI's
  * stories, and its LTR code's letters). A capture keeps no footer status and
  * few cells carry a time, so a pane that knows its feed (OMON's chain) dates
@@ -81,10 +85,10 @@ function publishedSources(value: unknown): NonNullable<HeadlessPaneFreshness["so
  */
 export function renderedReportFreshness(
   semanticUi: readonly RemoteUiNodeSnapshot[],
-): Pick<HeadlessPaneFreshness, "asOf" | "status" | "delayMinutes" | "source" | "sources" | "maxAgeMinutes" | "oldestAge" | "note" | "basis" | "asOfLabel" | "datesEachVenue"> {
+): Pick<HeadlessPaneFreshness, "asOf" | "status" | "delayMinutes" | "source" | "sources" | "maxAgeMinutes" | "oldestAge" | "note" | "noteVariants" | "basis" | "asOfLabel" | "datesEachVenue"> {
   const metadata = semanticUi.find((node) => node.role === "report-freshness")?.metadata;
   if (!metadata) return {};
-  const { asOf, status, delayMinutes, source, maxAgeMinutes, oldestAge, note, basis, asOfLabel, datesEachVenue } = metadata as Record<string, unknown>;
+  const { asOf, status, delayMinutes, source, maxAgeMinutes, oldestAge, note, noteVariants, basis, asOfLabel, datesEachVenue } = metadata as Record<string, unknown>;
   const sources = publishedSources(metadata.sources);
   return {
     ...(typeof asOf === "string" || isFiniteNumber(asOf) ? { asOf } : {}),
@@ -95,6 +99,7 @@ export function renderedReportFreshness(
     ...(isFiniteNumber(maxAgeMinutes) && maxAgeMinutes > 0 ? { maxAgeMinutes } : {}),
     ...(oldestAge === true ? { oldestAge } : {}),
     ...(typeof note === "string" && note.trim() ? { note } : {}),
+    ...(isStringList(noteVariants) && noteVariants.length > 0 ? { noteVariants } : {}),
     ...(typeof basis === "string" && basis.trim() ? { basis } : {}),
     ...(typeof asOfLabel === "string" && asOfLabel.trim() ? { asOfLabel } : {}),
     ...(datesEachVenue === true ? { datesEachVenue } : {}),

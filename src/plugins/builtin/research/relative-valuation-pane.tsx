@@ -34,7 +34,7 @@ import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { quoteFreshnessFields } from "../shared/report-freshness";
 import { RELATIVE_VALUATION_STALE_FUNDAMENTALS_NOTICE, formatRelativePrice, relativeValuationValues, withLiveQuote } from "./relative-valuation-model";
 import { conversionNote, conversionPairText, convertMarketCaps, usdRateFromEntry } from "./relative-valuation-currency";
-import { fundamentalsBasisParts } from "./relative-valuation-basis";
+import { fundamentalsBasisParts, fundamentalsThroughText } from "./relative-valuation-basis";
 
 type ExtendedColumnId = "preMarket" | "afterHours" | "overnight";
 type RelativeColumnId = "symbol" | "price" | "changePercent" | ExtendedColumnId | "marketCap" | "trailingPE" | "forwardPE" | "evSales" | "fcfYield" | "revenueGrowth" | "operatingMargin";
@@ -63,13 +63,13 @@ const REVENUE_GROWTH_LABEL = "Q REV%";
  * run through and the quarter Q REV% compares, as `fn RV` ends; shorter forms
  * keep the rates without their times, then the period alone after them.
  */
-function basisFooterSegment(conversions: Parameters<typeof conversionNote>[1], baseCurrency: string, basis: readonly string[]): PaneFooterSegment | null {
+function basisFooterSegment(conversions: Parameters<typeof conversionNote>[1], baseCurrency: string, basis: readonly string[], through: string | null): PaneFooterSegment | null {
   const column = `MCAP ${baseCurrency}`;
   const rates = conversions.length > 0 ? `${column} at ${conversions.map(conversionPairText).join(", ")}` : null;
   const forms = [
     [conversionNote(baseCurrency, conversions, column), ...basis],
     [rates, ...basis],
-    [rates, ...basis.slice(0, 1)],
+    [rates, through],
   ].map((form) => form.filter((part): part is string => !!part).join(" · "));
   if (!forms[0]) return null;
   const variants = [...new Set(forms.slice(1))].filter((form) => form && form !== forms[0]);
@@ -234,7 +234,8 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
     return convertMarketCaps(converted, baseCurrency, legs).conversions;
   }, [baseCurrency, comparableRows, fxRates, rows]);
   const basis = useMemo(() => fundamentalsBasisParts(rows, REVENUE_GROWTH_LABEL), [rows]);
-  const basisSegment = useMemo(() => basisFooterSegment(conversions, baseCurrency, basis), [baseCurrency, basis, conversions]);
+  const through = useMemo(() => fundamentalsThroughText(rows), [rows]);
+  const basisSegment = useMemo(() => basisFooterSegment(conversions, baseCurrency, basis, through), [baseCurrency, basis, conversions, through]);
   const footerInfo = useMemo(() => (basisSegment ? [basisSegment] : []), [basisSegment]);
   // A capture of the pane ends as `fn RV` does: each venue's session, the feed's delay, then the footer's word on
   // the figures. The pane draws the session part nowhere; its footer keeps the rest.
@@ -243,7 +244,10 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
     label: "Peer freshness",
     getMetadata: () => ({
       datesEachVenue: true,
-      ...(basisSegment ? { note: basisSegment.parts[0]!.text } : {}),
+      ...(basisSegment ? {
+        note: basisSegment.parts[0]!.text,
+        noteVariants: (basisSegment.variants ?? []).map((variant) => variant[0]!.text),
+      } : {}),
       observations: snapshots.map(({ financials }, index) => ({
         ...quoteFreshnessFields(financials?.quote),
         quoteAsOf: rows[index]?.quoteAsOf ?? null,
