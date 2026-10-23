@@ -1,4 +1,5 @@
 import type { HeadlessPaneDefinition, HeadlessPaneEntry } from "../../../types/plugin";
+import { formatStrikeLabel } from "../../../utils/options";
 import { expirationOptionSeconds, expiryIsoDate, OPTION_EXPIRATION_FORMAT, OPTION_EXPIRATION_PLACEHOLDER } from "../../../utils/option-expiry";
 import { formatUtcTime } from "../../../utils/utc-time";
 import { loadGamma, loadOpenInterest, positioningSymbol, type GammaPayload, type OpenInterestPayload } from "./client";
@@ -21,7 +22,6 @@ import {
   formatPositioningSpot,
   formatPayout,
   formatRatio,
-  formatStrike,
   GAMMA_UNIT,
   gammaWalls,
   netGammaByExpiry,
@@ -31,7 +31,7 @@ import {
 
 const METHODOLOGY = "https://gloom.sh/docs/options-positioning";
 const UNIT_TEXT = "$ of dealer delta per 1% move";
-const strike = (value: unknown) => typeof value === "number" ? formatStrike(value) : "--";
+const strike = (value: unknown) => typeof value === "number" ? formatStrikeLabel(value) : "--";
 const count = (value: unknown) => formatCount(typeof value === "number" ? value : null);
 const coinCount = (value: unknown) => formatContracts(typeof value === "number" ? value : null, true);
 const change = (value: unknown) => formatCountChange(typeof value === "number" ? value : null);
@@ -41,7 +41,7 @@ const time = (value: string | null) => value ? formatUtcTime(value) : "--";
 const level = (value: number | null, spot: number | null, none = "--") =>
   value == null ? none : `${formatLevel(value)}, ${formatDistance(value, spot)} vs spot`;
 const wall = (value: number | null, spot: number | null) =>
-  value == null ? "--" : `${formatStrike(value)}, ${formatDistance(value, spot)} vs spot`;
+  value == null ? "--" : `${formatStrikeLabel(value)}, ${formatDistance(value, spot)} vs spot`;
 
 /**
  * What the report opens with: spot and the quote time gamma was priced at,

@@ -115,20 +115,10 @@ export function coinWithoutOptionsRefusal(code: string) {
 }
 
 /**
- * A bare BTC or ETH typed into an options function is the coin (BTC-USD),
- * whose options are the ones asked about; the Grayscale mini trusts listed
- * as BTC and ETH stay reachable by their listing (BTC:ARCX). Anything else
- * is returned as it was.
- */
-export function coinOptionsSymbol(symbol: string): string {
-  const key = symbol.trim().toUpperCase();
-  return COIN_OPTION_UNDERLYINGS[key] ?? symbol;
-}
-
-/**
- * An options function's `symbolAlias`: a bare BTC or ETH is read as the coin,
- * with a note naming the fund's listing for its own options (`code` is the
- * function, OPX).
+ * A CLI options function's `symbolAlias` (`gloomberb fn OPX BTC`, `shot`): a
+ * bare BTC or ETH is read as the coin, with a note naming the Grayscale fund's
+ * listing (BTC:ARCA) for its own options (`code` is the function, OPX). The
+ * command bar and panes keep a bare BTC as the fund, as everywhere else.
  */
 export function coinOptionsAlias(code: string) {
   return (typed: string): { symbol: string; note: string } | null => {

@@ -44,7 +44,7 @@ test("coin open interest keeps its tenths, and the spot is the venue's index wit
   expect(formatContracts(7_986.7, true)).toBe("7,986.7");
   expect(formatContracts(7_986.7, false)).toBe("7,987");
   expect(positioningSpotDetail(81_230.13, "2026-10-22T22:48:34.592Z", "Deribit").detail).toBe("index 22:48 UTC");
-  expect(formatPositioningSpot(81_230.13, "2026-10-22T22:48:34.592Z", "Deribit")).toStartWith("81230.13 Deribit index 2026-10-22 22:48 UTC");
+  expect(formatPositioningSpot(81_230.13, "2026-10-22T22:48:34.592Z", "Deribit")).toStartWith("81,230.13 Deribit index 2026-10-22 22:48 UTC");
 });
 
 test("each expiry's walls come from the all-expiries gamma, and not from an older server's", () => {

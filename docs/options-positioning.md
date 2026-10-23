@@ -39,7 +39,7 @@ Against vendors that read the chain's own greeks, gamma without carry runs a few
 
 ## BTC and ETH options (Deribit)
 
-`OPX BTC-USD` and `OPX ETH-USD` (and `GEX`, `OVDV`, `options`, OMON) read Deribit's BTC and ETH options from Gloom Cloud. A bare `BTC` or `ETH` typed into OPX, GEX or OVDV is the coin; the US funds that trade under those tickers are `BTC:ARCA` and `ETH:ARCA`. Another coin (SOL-USD) has no listed options: the answer names BTC-USD, ETH-USD and the bitcoin-linked US listings (IBIT) instead.
+`OPX BTC-USD` and `OPX ETH-USD` (and `GEX`, `OVDV`, `options`, OMON) read Deribit's BTC and ETH options from Gloom Cloud. In the CLI only, a bare `BTC` or `ETH` given to `gloomberb fn` or `gloomberb shot` for OPX, GEX or OVDV is read as the coin, with a note; `--exchange` keeps it as typed, and the US funds that trade under those tickers are `BTC:ARCA` and `ETH:ARCA`. The command bar and panes do not alias: `BTC OPX` opens the Grayscale fund, so type `BTC-USD OPX` for the coin. Another coin (SOL-USD) has no listed options: the answer names BTC-USD, ETH-USD and the bitcoin-linked US listings (IBIT) instead.
 
 - Open interest is Deribit's own, read live (once a minute, or 15 minutes behind for delayed access) and counted in coins: one contract is 1 BTC or 1 ETH, to a tenth. The footer says `OI live 22:48 UTC` in place of a session, and there are no change columns.
 - Every expiry settles at 08:00 UTC on the date it names, against Deribit's index averaged over the 30 minutes before, and the expiry labels say so (`Oct 30 '26 08:00 UTC`). Days and time to expiry run to that instant.

@@ -5,6 +5,8 @@ import { daysToExpiryFrom } from "../plugins/builtin/shared/volatility/pricing";
 import { dvolSection } from "../plugins/builtin/vol-surface/headless";
 import { dvolStats } from "../plugins/builtin/vol-surface/pane";
 import { expiryLabel } from "../plugins/builtin/vol-surface/tables";
+import { deltaBasis, optionQuoteValuationTime } from "../plugins/builtin/vol-surface/model";
+import { optionDelta } from "../plugins/builtin/shared/volatility/options";
 import { dvolCurrency, type DvolPayload } from "../plugins/builtin/volatility/dvol";
 import { VOLATILITY_SERIES } from "../plugins/builtin/volatility/series";
 import { lookupGlossary, reportGlossary } from "../cli/glossary";
@@ -12,7 +14,7 @@ import { createTestCliContext } from "../test-support/cli-context";
 import { marketDataCliCommands } from "../cli/commands/market";
 import type { OptionContract, OptionsChain } from "../types/financials";
 import { isSettlementStamp } from "../utils/option-expiry";
-import { coinOptionsSymbol, isCoinWithoutOptions, listedCoinOptions } from "./options-alternatives";
+import { coinOptionsAlias, isCoinWithoutOptions, listedCoinOptions } from "./options-alternatives";
 
 // 30 Oct 2026 08:00 UTC, when Deribit's BTC options of that date settle.
 const SETTLES = Date.UTC(2026, 9, 30, 8) / 1000;
@@ -37,7 +39,7 @@ test("only BTC-USD and ETH-USD have coin options; a bare BTC is the coin in the 
     .toEqual(["BTC-USD", "BTC-USD", "BTC-USD", "ETH-USD", null, null, null, null]);
   expect(["SOL-USD", "DOGE-USD:CCC", "BTC-USD", "BTC", "SPY", "EUR-USD"].map(isCoinWithoutOptions))
     .toEqual([true, true, false, false, false, false]);
-  expect(["BTC", "eth", "BTC:ARCA", "SPY"].map(coinOptionsSymbol)).toEqual(["BTC-USD", "ETH-USD", "BTC:ARCA", "SPY"]);
+  expect(["BTC", "eth", "BTC:ARCA", "SPY"].map((typed) => coinOptionsAlias("OPX")(typed)?.symbol ?? null)).toEqual(["BTC-USD", "ETH-USD", null, null]);
 });
 
 test("a Deribit expiry runs to its 08:00 UTC settlement, a US one to its date's 16:00 ET close", () => {
@@ -112,3 +114,25 @@ test("the glossary explains max pain, Payout $, RR, BF and DVOL from what OPX an
   expect(reportGlossary("OVDV", "DVOL 38.14\nRR call-put (pts)  BF wings-ATM (pts)").map((entry) => entry.term))
     .toEqual(["Risk reversal", "Butterfly", "DVOL"]);
 });
+
+test("a venue's chain is valued at its snapshot and read in forward delta, a US chain at the clock and in spot delta", () => {
+  const asOf = new Date(NOW - 15 * 60_000).toISOString();
+  // A delayed Deribit book a quarter hour old runs to settlement from when it was marked.
+  expect(optionQuoteValuationTime({ asOf, venue: "Deribit" }, NOW)).toBe(NOW - 15 * 60_000);
+  expect(optionQuoteValuationTime({ asOf }, NOW)).toBe(NOW);
+  // Forward delta is N(d1) at the forward, whatever the parity carry between spot and forward.
+  const inputs = { years: 30 / 365, volatility: 0.45 };
+  const forward = deltaBasis("venue", 80_000, 81_000, 0, -0.15);
+  expect(forward).toEqual({ spot: 81_000, rate: 0, dividendYield: 0 });
+  const atForward = optionDelta({ ...forward, ...inputs }, 81_000, "call")!;
+  const d1 = 0.5 * 0.45 * Math.sqrt(30 / 365);
+  expect(atForward).toBeCloseTo(0.5 * (1 + erf(d1 / Math.SQRT2)), 6);
+  expect(deltaBasis("treasury-exact", 80_000, 81_000, 0.04, 0.01)).toEqual({ spot: 80_000, rate: 0.04, dividendYield: 0.01 });
+});
+
+/** Abramowitz and Stegun 7.1.26, to 1e-7. */
+function erf(x: number): number {
+  const t = 1 / (1 + 0.3275911 * Math.abs(x));
+  const y = 1 - ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x);
+  return Math.sign(x) * y;
+}

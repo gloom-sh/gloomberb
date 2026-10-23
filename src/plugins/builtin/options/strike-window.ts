@@ -1,6 +1,7 @@
 import type { OptionsChain } from "../../../types/financials";
 import { calculateOptionGreeks, solveChainVolatilities } from "./analytics";
-import { findNearestStrikeIndex, formatStrikeLabel } from "./table";
+import { formatStrikeLabel } from "../../../utils/options";
+import { findNearestStrikeIndex } from "./table";
 
 /**
  * Which strikes of an expiry the chain lists. Every strike by default, as

@@ -297,8 +297,11 @@ const CLOSED_QUOTE_GAP_MS = 60 * 60_000;
  * expiry by the overnight gap and inflate the front-month IVs. A delayed
  * feed's quarter hour is immaterial, so only a gap over an hour moves it.
  */
-export function optionQuoteValuationTime(chain: Pick<OptionsChain, "asOf">, now: number): number {
+export function optionQuoteValuationTime(chain: Pick<OptionsChain, "asOf" | "venue">, now: number): number {
   const observedAt = chain.asOf ? Date.parse(chain.asOf) : Number.NaN;
+  // A venue's marks (Deribit's) are struck at its snapshot: an hour before an
+  // 08:00 settlement, a delayed reader's quarter hour is a quarter of the time left.
+  if (chain.venue && Number.isFinite(observedAt)) return Math.min(observedAt, now);
   return Number.isFinite(observedAt) && observedAt < now - CLOSED_QUOTE_GAP_MS ? observedAt : now;
 }
 /**
@@ -549,17 +552,26 @@ function deltaNeutralStrike(forward: number, years: number, volatilityAt: (logMo
   return forward * Math.exp(k);
 }
 
+/**
+ * The spot and carry a delta is read at. A venue that marks at the forward
+ * at its own rate (Deribit, `venue`) quotes forward delta, N(d1), so its
+ * 25-delta strikes are the ones its own deltas name; a US chain's is spot delta.
+ */
+export function deltaBasis(rateMethod: SurfaceExpiry["rateMethod"], spot: number, forward: number, rate: number, dividendYield: number) {
+  return rateMethod === "venue" ? { spot: forward, rate, dividendYield: rate } : { spot, rate, dividendYield };
+}
+
 function deltaStrike(expiry: SurfaceExpiry, spot: number, coordinate: number): number | null {
   if (!expiry.fit || expiry.forward === null || expiry.rate === null || expiry.dividendYield === null) return null;
   const fit = expiry.fit;
+  const basis = deltaBasis(expiry.rateMethod, spot, expiry.forward, expiry.rate, expiry.dividendYield);
   if (coordinate === 0) return deltaNeutralStrike(expiry.forward, expiry.years, (k) => evaluateSmile(fit, k));
   const side = coordinate < 0 ? "put" : "call";
   const center = Math.log(expiry.forward);
   const at = (logStrike: number) => {
     const strike = Math.exp(logStrike);
     const volatility = evaluateSmile(fit, logStrike - center);
-    return volatility == null ? null : optionDelta({ spot, years: expiry.years, rate: expiry.rate!,
-      dividendYield: expiry.dividendYield!, volatility }, strike, side);
+    return volatility == null ? null : optionDelta({ ...basis, years: expiry.years, volatility }, strike, side);
   };
   // Restrict delta labels to the observed strike domain, including in a fitted smile.
   let low = Math.log(expiry.points[0]!.strike), high = Math.log(expiry.points.at(-1)!.strike);
@@ -622,8 +634,8 @@ export function buildSurfaceGrid(snapshot: SurfaceSnapshot, options: SurfaceGrid
           let high = Math.max(...available.map((expiry) => logForwardMoneyness(expiry.points.at(-1)!.strike, expiry.forward!)!));
           const delta = (k: number) => {
             const value = at(k);
-            return value == null ? null : optionDelta({ spot: snapshot.spot, years: tenor.years,
-              rate, dividendYield, volatility: value.volatility }, targetForward * Math.exp(k), coordinate < 0 ? "put" : "call");
+            return value == null ? null : optionDelta({ ...deltaBasis(left!.rateMethod, snapshot.spot, targetForward, rate, dividendYield),
+              years: tenor.years, volatility: value.volatility }, targetForward * Math.exp(k), coordinate < 0 ? "put" : "call");
           };
           const a = delta(low), b = delta(high);
           if (a == null || b == null || a < coordinate || b > coordinate) return unavailable();
