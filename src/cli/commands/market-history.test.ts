@@ -302,3 +302,20 @@ test("a past window reads its own dates' bars, in the size its span takes, with 
     setSystemTime();
   }
 });
+
+test("history reads a Bloomberg code as its listing: VOD LN Equity is Vodafone in London", async () => {
+  const asked: string[] = [];
+  const cli = createTestCliContext({
+    config: createDefaultConfig("/tmp/gloom-history-command-fixture"),
+    dataProvider: createTestDataProvider({
+      getQuote: async () => createTestQuote({ symbol: "VOD", currency: "GBP" }),
+      getPriceHistoryWithMetadata: async (symbol, exchange) => {
+        asked.push(`${symbol}@${exchange}`);
+        return { resolution: "1d", points: [{ date: new Date("2026-10-16"), open: 1.1, high: 1.2, low: 1.0, close: 1.15, volume: 1000 }] };
+      },
+    }),
+  }, { format: "json" });
+  await history.execute(["VOD LN Equity"], cli.context);
+  expect(asked).toEqual(["VOD:LSE@LSE"]);
+  expect(cli.printed[0]!.result.warnings).toContain('Read "VOD LN Equity" as VOD:LSE.');
+});

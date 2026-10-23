@@ -5,6 +5,7 @@ import { isNotATickerMessage } from "./not-a-ticker";
 import { splitSymbolWords } from "./symbol-args";
 import { isNumberCell } from "./symbol-cells";
 import { isProviderBusy } from "../sources/provider-errors";
+import { unknownBloombergMarket } from "../tickers/terminal-codes";
 
 /**
  * The entries of a list (`splitSymbolArgs`, or a file's lines) as the symbols
@@ -24,8 +25,9 @@ export async function readNameEntries(
   dataProvider: Pick<DataProvider, "search"> & Partial<Pick<DataProvider, "getQuotesBatch" | "getQuote">>,
 ): Promise<string[]> {
   const read = await Promise.all(entries.map(async (entry) => {
-    // A terminal's code for a listing ("JPM US Equity") is one entry, like a company's name.
-    if (await readTerminalCodeArg(dataProvider, entry)) return [entry];
+    // A terminal's code for a listing ("JPM US Equity", "VOD LN") is one entry, like a company's name, and so is a
+    // line written as one whose market code is unknown ("AAPL GP"): its lookup refuses it, never AAPL and GP.
+    if (unknownBloombergMarket(entry) || await readTerminalCodeArg(dataProvider, entry)) return [entry];
     if (!isCompanyNameInput(entry)) return splitSymbolWords([entry]);
     if (await findListingOfCompanyName(dataProvider, entry).catch(busyAsFound)) return [entry];
     const words = splitSymbolWords([entry]);
@@ -94,7 +96,7 @@ export async function readPhraseArgument(
   phrase: string,
   dataProvider: Pick<DataProvider, "search" | "getQuotesBatch">,
 ): Promise<PhraseReading> {
-  if (await readTerminalCodeArg(dataProvider, phrase)) return { kind: "symbols", symbols: [phrase] };
+  if (unknownBloombergMarket(phrase) || await readTerminalCodeArg(dataProvider, phrase)) return { kind: "symbols", symbols: [phrase] };
   const words = splitSymbolWords([phrase]);
   const numbered = words.some(isNumberCell);
   const asked = words.filter((word) => !word.includes(":") && !isNumberCell(word)).map((word) => word.replace(/^\$/, "").toUpperCase());

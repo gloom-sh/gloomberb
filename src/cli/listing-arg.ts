@@ -41,7 +41,14 @@ import { bareFuturesCode, futuresContractByCode } from "../market-data/futures-b
 import { classifyInstrumentType, kindFromListingSyntax } from "../tickers/instrument-kind";
 import type { InstrumentOfKind } from "../tickers/instrument-coverage";
 import { brokerIndexCode, brokerIndexReadAs } from "./index-roots";
-import { readTerminalListingCode, terminalCodeReadAs } from "../tickers/terminal-codes";
+import {
+  bloombergCodeOf,
+  readNearMissListing,
+  readTerminalListingCode,
+  terminalCodeReadAs,
+  unknownBloombergMarket,
+  type TerminalListingCode,
+} from "../tickers/terminal-codes";
 import { listingAbroadVenue } from "../utils/sec";
 import { notTheCoinNote } from "./commands/crypto-hints";
 
@@ -115,19 +122,25 @@ export function meantQuestion(listing: Pick<ListingArg, "meant">): string {
 export function parseListingArg(
   rawArg: string,
   exchangeOption?: string | null,
-  { ownExchangeWins = false, terminalCodes = true }: {
+  { ownExchangeWins = false, terminalCode }: {
     ownExchangeWins?: boolean;
-    /** False for words that read as a Bloomberg code but are a name (`readTerminalCodeArg`). */
-    terminalCodes?: boolean;
+    /**
+     * The terminal code `readTerminalCodeArg` read the text as, or null for
+     * words that read as a Bloomberg code but are a name. Read here when not given.
+     */
+    terminalCode?: TerminalListingCode | null;
   } = {},
 ): ListingArg {
   // A pasted ticker can bring the separator or quote marks that sat beside it (`UPST;`); search would ask for them.
   const stripped = stripStrayEdges(rawArg);
   const raw = stripped.text || rawArg;
-  // A terminal's code for a US listing (WFC.N, "JPM US Equity") is that listing (WFC:NYSE, JPM).
-  const terminal = terminalCodes ? readTerminalListingCode(raw) : null;
-  const listing = parseCleanListingArg(terminal?.key ?? raw, exchangeOption, { ownExchangeWins });
-  const notes = [...stripped.text ? stripped.notes : [], ...terminal ? [terminalCodeReadAs(terminal)] : []];
+  // A terminal's code (WFC.N, "VOD LN", "JPM US Equity") is that listing (WFC:NYSE, VOD:LSE, JPM), and a symbol
+  // written nearly as one is (700.HK, 6758.JP, BRK/B) its working form (0700.HK, 6758.T, BRK-B).
+  const terminal = terminalCode === undefined ? readTerminalListingCode(raw) : terminalCode;
+  const nearMiss = terminal ? null : readNearMissListing(raw);
+  const reading = terminal ?? (nearMiss ? { typed: nearMiss.typed, key: nearMiss.symbol } : null);
+  const listing = parseCleanListingArg(reading?.key ?? raw, exchangeOption, { ownExchangeWins });
+  const notes = [...stripped.text ? stripped.notes : [], ...reading ? [terminalCodeReadAs(reading)] : []];
   return notes.length > 0 ? { ...listing, readAs: notes.join(" ") } : listing;
 }
 
@@ -931,9 +944,11 @@ export async function resolveCliListing(
   // "JPM US Equity" is Bloomberg's code for JPM; "Putnam US Equity", whose root is no US ticker, is a name.
   const typed = stripStrayEdges(raw).text || raw;
   const terminal = await readTerminalCodeArg(deps.dataProvider, typed);
+  // "AAPL GP" is written as a code, with a market code no venue answers to: one entry, never AAPL and GP.
+  if (!terminal) await refuseUnknownMarketCode(typed, deps);
   // A company's name, an entry of a comma list (`WHR, Whirlpool Corporation`), is the listing search names for it.
   const named = terminal ? null : await companyNameListingArg(raw, deps);
-  let parsed = named ?? parseListingArg(raw, exchangeOption, { ...options, terminalCodes: terminal != null });
+  let parsed = named ?? parseListingArg(raw, exchangeOption, { ...options, terminalCode: terminal });
   if (!parsed.symbol) throw new ListingArgError("Ticker symbol is required.");
   // $VIX is Schwab's code for ^VIX, unless a security trades as VIX: $AAPL is a cashtag.
   const index = named || parsed.exchange ? null : await readDollarIndexCode(raw, deps);
@@ -964,6 +979,25 @@ export async function resolveCliListing(
       ? { symbol: listing.key, exchange: listing.exchange }
       : { symbol: listing.symbol, exchange: saved?.metadata.exchange ?? "" },
   };
+}
+
+/**
+ * Fails a line written as a Bloomberg code whose market code no venue answers
+ * to (`AAPL GP`), suggesting the code of the symbol's own listing (`AAPL
+ * US`), where else it trades, and, when the words could be two symbols, how
+ * to write them as two. Returns for anything else.
+ */
+async function refuseUnknownMarketCode(typed: string, deps: ListingDeps): Promise<void> {
+  const unknown = unknownBloombergMarket(typed);
+  if (!unknown) return;
+  const venues = await listingVenues(unknown.symbol, deps).catch(logFailure("cli.listing-arg", "Read listing venues failed", []));
+  const codes = [...new Set(venues.flatMap((venue) => bloombergCodeOf(unknown.symbol, venue.exchange) ?? []))];
+  const also = codes.slice(1, 1 + MAX_OTHER_LISTINGS);
+  const details = [
+    also.length > 0 ? `${unknown.symbol} also trades as ${also.join(", ")}.` : null,
+    unknown.keyed ? null : `For two symbols, separate them with a comma: ${unknown.symbol}, ${unknown.market}.`,
+  ].filter(Boolean).join("\n");
+  throw new ListingArgError(`${unknown.market} is not a market code; did you mean ${codes[0] ?? unknown.symbol}?`, details || undefined);
 }
 
 /**
