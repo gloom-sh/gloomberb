@@ -30,7 +30,8 @@ import { readBrokerIndexCode } from "../listing-arg";
 import { knownGapMessage, commandPointer } from "../known-gaps";
 import { instrumentTypeLabel } from "../../tickers/instrument-kind";
 import { canonicalExchange, isUsListingExchange } from "../../utils/exchanges";
-import { groupByCompany, sameCompany } from "../../tickers/company-name";
+import { companyNameExtraWords, groupByCompany, sameCompany } from "../../tickers/company-name";
+import { namedByService } from "../../tickers/company-name-listing";
 import { findCatalogSeries, renderSeriesMatches, type SeriesMatch } from "../series-search";
 import { centralBankAskedAbout, centralBankCiting, type CentralBank } from "../../utils/central-banks";
 import { createPaneCatalog } from "../pane-functions/discovery";
@@ -125,7 +126,8 @@ export async function searchCandidatesForCli({
     const quote = BARE_SYMBOL.test(symbol) && candidates.some((candidate) => candidate.symbol.toUpperCase() === symbol)
       ? await (quoted ?? loadSearchedQuote(symbol, savedExchange, dataProvider))
       : null;
-    return withQuotedNames(symbol, withHomeListingPrimary(symbol, withPrimaryListingFirst(symbol, candidates, quote)), quote).slice(0, totalLimit);
+    return withQuotedNames(symbol, withHomeListingPrimary(trimmedQuery, withPrimaryListingFirst(symbol, candidates, quote)), quote)
+      .slice(0, totalLimit);
   } catch (error) {
     // Not "No matches found": a script or a reader would take that for a name nothing lists.
     if (isProviderBusy(error)) failRetryable(SEARCH_BUSY_MESSAGE, SEARCH_BUSY_CODE);
@@ -264,19 +266,28 @@ function listingDistance(candidate: TickerSearchCandidate): 0 | 1 | 2 {
  * matched the query (LUFTHANSA on Budapest), gives way only to a closer line,
  * or to one searched at least twice as often, or any scored line when it has
  * no score. A listing searched by its own symbol is not moved.
+ *
+ * The line the service marks with the name as typed is the company the name
+ * means ("coca cola" is The Coca-Cola Company's KO). A company whose name
+ * only adds words to it (Coca-Cola Consolidated, Coca-Cola Europacific) is
+ * not one of its lines, and no score outweighs the mark: only a closer line
+ * of the same name takes the lead, its home line for a receipt.
  */
-function withHomeListingPrimary(symbol: string, candidates: TickerSearchCandidate[]): TickerSearchCandidate[] {
+function withHomeListingPrimary(query: string, candidates: TickerSearchCandidate[]): TickerSearchCandidate[] {
   const primary = candidates.find((candidate) => candidate.category === "Primary Listing");
-  if (!primary || primary.kind !== "search" || primary.symbol.toUpperCase() === symbol) return candidates;
+  if (!primary || primary.kind !== "search" || primary.symbol.toUpperCase() === query.toUpperCase()) return candidates;
   const company = resolveSearchName(primary);
+  const marked = !!primary.result && namedByService(query, primary.result);
   const lines = candidates.filter((candidate) => candidate.kind === "search" && candidate.category !== "Funds & Derivatives"
-    && (candidate.instrumentClass === "equity" || candidate.instrumentClass === "other") && sameCompany(resolveSearchName(candidate), company));
+    && (candidate.instrumentClass === "equity" || candidate.instrumentClass === "other") && sameCompany(resolveSearchName(candidate), company)
+    && (!marked || companyNameExtraWords(resolveSearchName(candidate), company) != null));
   const score = (candidate: TickerSearchCandidate) => candidate.result?.popularity ?? candidate.popularity ?? null;
   const [home] = [...lines].sort((a, b) => listingDistance(a) - listingDistance(b) || (score(b) ?? -1) - (score(a) ?? -1) || candidates.indexOf(a) - candidates.indexOf(b));
   if (!home || home === primary) return candidates;
   const closer = listingDistance(home) < listingDistance(primary);
   const [homeScore, primaryScore] = [score(home), score(primary)];
-  const moreSearched = listingDistance(home) === listingDistance(primary) && homeScore != null && (primaryScore == null || homeScore >= primaryScore * 2);
+  const moreSearched = !marked && listingDistance(home) === listingDistance(primary) && homeScore != null
+    && (primaryScore == null || homeScore >= primaryScore * 2);
   if (!closer && !moreSearched) return candidates;
   const rest = candidates.filter((candidate) => candidate !== home);
   const at = rest.indexOf(primary);

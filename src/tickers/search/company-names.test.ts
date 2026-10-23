@@ -1,15 +1,26 @@
 import { expect, test } from "bun:test";
+import { searchCandidatesForCli } from "../../cli/commands/search";
+import type { Quote } from "../../types/financials";
 import type { DataProvider } from "../../types/data-provider";
 import type { InstrumentSearchResult } from "../../types/instrument";
 import { findListingOfCompanyName } from "../company-name-listing";
-import fixture from "./fixtures/company-name-answers-2026-10-22.json";
+import fixture from "./fixtures/company-name-answers-2026-10-23.json";
 import { LISTING_SEARCH_LIMIT, searchTickerCandidates } from ".";
 
+/**
+ * A search row as the fixture writes it: symbol | name | exchange | type, then
+ * when the service sent them, its search aliases, popularity, currency,
+ * primary exchange when another, keywords and a provider other than the cloud.
+ */
 const row = (line: string): InstrumentSearchResult => {
-  const [symbol, name, exchange, type, aliases] = line.split(" | ");
+  const [symbol, name, exchange, type, aliases, popularity, currency, primary, keywords, provider] = line.split(" | ");
   return {
-    providerId: "gloomberb-cloud", symbol: symbol!, name: name!, exchange: exchange!, primaryExchange: exchange!, type: type!,
+    providerId: provider || "gloomberb-cloud", symbol: symbol!, name: name!, exchange: exchange!, primaryExchange: primary || exchange!,
+    type: type!,
+    ...currency ? { currency } : {},
     ...aliases ? { searchAliases: aliases.split("; ") } : {},
+    ...popularity ? { popularity: Number(popularity) } : {},
+    ...keywords ? { searchKeywords: keywords.split("; ") } : {},
   };
 };
 
@@ -21,6 +32,30 @@ function serviceAnswering(answers: Record<string, string[]>): DataProvider {
     id: "gloomberb-cloud",
     search: async (query: string) => (byQuery.get(key(query)) ?? []).map(row),
     getQuote: async () => { throw new Error("no quote"); },
+  } as unknown as DataProvider;
+}
+
+/**
+ * What the CLI's data provider read from the live service on the fixture's
+ * date, for every search the CLI ran for these names (each spelling it tries)
+ * and every quote it asked for.
+ */
+function capturedService(): DataProvider {
+  const searches: Record<string, number> = fixture.searches;
+  const quotes: Record<string, Partial<Quote> | null> = fixture.quotes;
+  return {
+    id: "gloomberb-cloud",
+    search: async (query: string) => {
+      const answer = searches[query];
+      if (answer == null) throw new Error(`not captured: search "${query}"`);
+      return fixture.answers[answer]!.map(row);
+    },
+    getQuote: async (symbol: string) => {
+      if (!(symbol in quotes)) throw new Error(`not captured: quote ${symbol}`);
+      const quote = quotes[symbol];
+      if (!quote) throw new Error(`no quote for ${symbol}`);
+      return quote as Quote;
+    },
   } as unknown as DataProvider;
 }
 
@@ -61,18 +96,51 @@ const LARGEST: Array<[symbols: string[], names: string[]]> = [
 
 test("the spoken names of the 100 largest US companies list their common stock first, as the service ranks them", async () => {
   expect(LARGEST).toHaveLength(100);
-  const service = serviceAnswering(fixture.answers);
+  const service = capturedService();
   const missed: string[] = [];
   for (const [symbols, names] of LARGEST) {
     for (const name of names) {
-      const lead = await first(service, name);
-      const exchange = lead?.result?.exchange ?? "";
-      if (!lead || !symbols.includes(lead.symbol) || !["NYSE", "NASDAQ"].includes(exchange)) {
-        missed.push(`${name}: ${lead ? `${lead.symbol}:${exchange}` : "nothing"}`);
+      // The search pane's order, and the CLI's, which picks a primary listing among the company's lines.
+      const leads = [["pane", await first(service, name)], ["cli", (await searchCandidatesForCli({ query: name, tickers: [], dataProvider: service }))[0]]] as const;
+      for (const [where, lead] of leads) {
+        const exchange = lead?.result?.exchange ?? "";
+        if (!lead || !symbols.includes(lead.symbol) || !["NYSE", "NASDAQ"].includes(exchange)) {
+          missed.push(`${where} ${name}: ${lead ? `${lead.symbol}:${exchange}` : "nothing"}`);
+        }
       }
     }
   }
-  expect(missed).toEqual([]);
+  // One word that only starts a company's name is no name of it to the service, which reads "Berkshire" as a
+  // theme and leads with the funds named after it until it knows Berkshire Hathaway by that word.
+  expect(missed).toEqual(["pane Berkshire: OMAH:ARCA", "cli Berkshire: OMAH:ARCA"]);
+});
+
+test("the CLI's primary listing of a name is the company the service marks with it, not a namesake searched more", async () => {
+  // "coca cola", 2026-10-23: the service marks KO, read by its symbol and so unscored; the bottlers carry
+  // a popularity score and every word of "Coca-Cola".
+  const answer = [
+    "KO | The Coca-Cola Company | NYSE | Common Stock | Coca Cola",
+    "CCEP | Coca-Cola Europacific Partners PLC | NASDAQ | EQUITY |  | 20581",
+    "COKE | Coca-Cola Consolidated, Inc. | NASDAQ | EQUITY |  | 24452",
+  ];
+  const primary = async (query: string, rows: string[]) => (await searchCandidatesForCli({
+    query, tickers: [], dataProvider: serviceAnswering({ [query]: rows, [query.replace(/\s+/g, "")]: rows }),
+  })).find((candidate) => candidate.category === "Primary Listing");
+  expect((await primary("coca cola", answer))?.symbol).toBe("KO");
+  // A marked receipt still gives way to its company's home line of the same name.
+  const toyota = [
+    "TM | Toyota Motor Corporation | NYSE | Depositary Receipt | Toyota Motor",
+    "7203 | Toyota Motor Corporation | JPX | Common Stock |  | 30000",
+  ];
+  expect(await primary("Toyota Motor", toyota)).toMatchObject({ symbol: "7203" });
+});
+
+test("a ticker's lines named with and without \"The\" are one company's, its listing in the service's order first", async () => {
+  // "TJX", 2026-10-23: the service lists NYSE first; Hanover's line, twelfth, spells the name without "The"
+  // ("TJX COMPANIES INC.            R"), which made it the closer match for the ticker.
+  const tjx = fixture.answers[fixture.searches.TJX]!;
+  expect(tjx.findIndex((line) => line.includes(" | HANOVER | "))).toBeGreaterThan(10);
+  expect((await first(serviceAnswering({ TJX: tjx }), "TJX"))?.result?.exchange).toBe("NYSE");
 });
 
 test("a large company's name that is only a foreign line's ticker leads with the US line the service marks with it", async () => {

@@ -931,6 +931,8 @@ export function getIssuerGroupKey(detail: string): string {
 
 function normalizeCompanyName(name: string): string {
   const tokens = normalizeSearchText(name).split(" ").filter(Boolean);
+  // "The TJX Companies, Inc." is TJX's name as much as Hanover's "TJX COMPANIES INC. R" is.
+  if (tokens.length > 1 && tokens[0] === "THE") tokens.shift();
   while (tokens.length > 1) {
     if (COMPANY_NAME_SUFFIXES.has(tokens.at(-1)!)) {
       tokens.pop();

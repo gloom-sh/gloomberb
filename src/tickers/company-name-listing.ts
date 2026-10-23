@@ -105,7 +105,7 @@ function runTogether(text: string): string {
 }
 
 /** Whether the service marked the row with the name as typed: the company it means by it. */
-function namedByService(typed: string, result: InstrumentSearchResult): boolean {
+export function namedByService(typed: string, result: InstrumentSearchResult): boolean {
   const wanted = runTogether(typed);
   return !!wanted && Array.isArray(result.searchAliases)
     && result.searchAliases.some((alias) => typeof alias === "string" && runTogether(alias) === wanted);
