@@ -3,7 +3,7 @@ import packageJson from "../package.json" with { type: "json" };
 export const VERSION = packageJson.version;
 
 /**
- * The npm package this copy came from: `@gloom/terminal`, or `gloomberb` for
- * installs from before the rename, which keeps getting the same releases.
+ * The npm package this copy came from: `gloomberb`, or `@gloom/terminal` once
+ * releases are also published under that name.
  */
 export const PACKAGE_NAME = packageJson.name;

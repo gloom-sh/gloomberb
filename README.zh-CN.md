@@ -62,7 +62,7 @@ curl -fsSL gloom.sh/install | bash
 也可在 macOS、Linux 或 Windows x64 上通过 [Bun](https://bun.sh) 安装：
 
 ```bash
-bun install -g @gloom/terminal
+bun install -g gloomberb
 ```
 
 运行 `gloom` 即可启动。0.19 之前命令名为 `gloomberb`，该名称仍可使用。要显示图形，请使用兼容 Kitty 图形协议的终端，例如 Ghostty、Kitty 或 WezTerm。直接下载、安装位置与更新方式详见[安装指南（英文）](docs/installation.md)。

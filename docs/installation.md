@@ -49,7 +49,7 @@ The installer is not code-signed yet, so Windows SmartScreen may stop it. Click 
 For a terminal-only setup on x64, install Bun and use the package:
 
 ```powershell
-bun install -g @gloom/terminal
+bun install -g gloomberb
 ```
 
 ## Terminal Package
@@ -57,10 +57,10 @@ bun install -g @gloom/terminal
 Already have Bun installed on any supported OS?
 
 ```bash
-bun install -g @gloom/terminal
+bun install -g gloomberb
 ```
 
-`npm install -g @gloom/terminal` works too. Both install the `gloom` and `gloomberb` commands. The package was published as `gloomberb` before 0.19; that name gets the same releases, so an existing install keeps updating with `bun install -g gloomberb@latest` (or `npm install -g gloomberb@latest`). To move an npm install to the new name, remove the old one first, since both install the same commands: `npm uninstall -g gloomberb && npm install -g @gloom/terminal`.
+`npm install -g gloomberb` works too. The package installs the `gloom` command, and `gloomberb`, its name before 0.19, which runs the same program. An install from before 0.19 gets `gloom` when it updates with `bun install -g gloomberb@latest` (or `npm install -g gloomberb@latest`).
 
 Then run:
 
@@ -90,7 +90,7 @@ On first start, the app clones its missing official plugins from GitHub once a l
 
 ## Uninstall
 
-Run `brew uninstall --cask gloomberb`, `bun remove -g @gloom/terminal` (or `gloomberb`, for an install from before 0.19), or remove the app from Windows Installed apps. For a script or manual install, delete `~/.local/bin/gloom` and `~/.local/bin/gloomberb` (or the path you chose) and `/Applications/Gloomberb.app` if it was installed. Your [profile data](#where-your-data-lives) stays on disk.
+Run `brew uninstall --cask gloomberb`, `bun remove -g gloomberb`, or remove the app from Windows Installed apps. For a script or manual install, delete `~/.local/bin/gloom` and `~/.local/bin/gloomberb` (or the path you chose) and `/Applications/Gloomberb.app` if it was installed. Your [profile data](#where-your-data-lives) stays on disk.
 
 ## Where your data lives
 

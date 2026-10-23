@@ -31,8 +31,8 @@ import { isPluginPackageName, pluginDirectoryNames } from "./plugin-names";
 const LINKED_PACKAGES = ["gloomberb", "react"] as const;
 
 /**
- * The names the host is published under: `@gloom/terminal`, and `gloomberb`,
- * which existing installs update from and plugins import as.
+ * The names the host is published under: `gloomberb`, which plugins import
+ * as, and `@gloom/terminal` once releases are also published under it.
  */
 const HOST_PACKAGE_NAMES: ReadonlySet<string> = new Set(["gloomberb", "@gloom/terminal"]);
 

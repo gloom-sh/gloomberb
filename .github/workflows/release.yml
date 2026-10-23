@@ -105,10 +105,6 @@ jobs:
       - name: Install npm 11 (required for trusted publishing)
         run: npm install -g npm@11
 
-      # One build under two names: @gloom/terminal, and gloomberb, the name
-      # installs from before the rename update from. Both install the gloom
-      # and gloomberb commands. A version already on npm is skipped, so a
-      # rerun publishes only what is missing.
       - name: Publish to npm
         run: |
           set -euo pipefail
@@ -117,15 +113,29 @@ jobs:
             echo "package.json is at $PACKAGE_VERSION but the tag is $GITHUB_REF_NAME; tag the commit bump-version.sh made." >&2
             exit 1
           fi
-          for PACKAGE_NAME in gloomberb @gloom/terminal; do
-            if npm view "$PACKAGE_NAME@$PACKAGE_VERSION" version >/dev/null 2>&1; then
-              echo "$PACKAGE_NAME@$PACKAGE_VERSION is already on npm."
-              continue
-            fi
-            npm pkg set "name=$PACKAGE_NAME"
-            npm publish --access public --provenance
-          done
+          npm publish --access public --provenance
+
+      # The same build under a second name, @gloom/terminal, once the
+      # repository variable PUBLISH_GLOOM_TERMINAL is "true". It installs the
+      # same gloom and gloomberb commands. A version already there is skipped,
+      # so a rerun of the release does not fail on it.
+      - name: Publish to npm as @gloom/terminal
+        if: ${{ vars.PUBLISH_GLOOM_TERMINAL == 'true' }}
+        run: |
+          set -euo pipefail
+          PACKAGE_VERSION="$(node -p 'require("./package.json").version')"
+          if npm view "@gloom/terminal@$PACKAGE_VERSION" version >/dev/null 2>&1; then
+            echo "@gloom/terminal@$PACKAGE_VERSION is already on npm."
+            exit 0
+          fi
+          npm pkg set "name=@gloom/terminal"
+          npm publish --access public --provenance
           git checkout -- package.json
+
+      - name: Note the skipped @gloom/terminal publish
+        if: ${{ vars.PUBLISH_GLOOM_TERMINAL != 'true' }}
+        run: |
+          echo "::notice title=npm::Published as gloomberb only. Set the repository variable PUBLISH_GLOOM_TERMINAL to true to publish releases as @gloom/terminal too."
 
       # The website re-captures its function screenshots against this release
       # and opens a PR there when a pane's layout changed.
