@@ -1,4 +1,4 @@
-import type { Fundamentals, Quote } from "../types/financials";
+import type { Fundamentals, Quote, SplitShareBasis } from "../types/financials";
 import { formatCompact, formatNumber } from "./format";
 
 export interface MarketCapitalization {
@@ -82,6 +82,8 @@ export interface ViewMarketCapitalization extends MarketCapitalization {
   computed?: { shares: number; price: number; providerValue: number };
   /** Set when the provider's cap, shown, sits more than 10% from `shares` x `price`: the count is not the cap's. */
   otherBasis?: { shares: number; price: number; product: number };
+  /** Set when a recent split put the share count and cap on the basis the listing trades on. */
+  split?: SplitShareBasis;
 }
 
 const positiveFinite = (value: number | null | undefined): value is number => value != null && Number.isFinite(value) && value > 0;
@@ -102,6 +104,16 @@ export function viewMarketCapitalization(
   fundamentals: Fundamentals | undefined,
   price: number | null | undefined = quote?.price,
 ): ViewMarketCapitalization | null {
+  const capitalization = viewCapitalization(quote, fundamentals, price);
+  const split = fundamentals?.splitShareBasis;
+  return capitalization && split ? { ...capitalization, split } : capitalization;
+}
+
+function viewCapitalization(
+  quote: Quote | undefined,
+  fundamentals: Fundamentals | undefined,
+  price: number | null | undefined,
+): ViewMarketCapitalization | null {
   const selected = selectMarketCapitalization(quote, fundamentals);
   const shares = fundamentals?.sharesOutstanding;
   if (!selected || !(selected.value > 0) || selected.currency !== quote?.currency) return selected;
@@ -119,15 +131,47 @@ export function viewMarketCapitalization(
   };
 }
 
+/** "1-for-15 reverse split" for a price factor of 15, "10-for-1 split" for 0.1. */
+function splitRatio(priceFactor: number): string {
+  const ratio = (value: number) => String(Number(value.toPrecision(4)));
+  return priceFactor >= 1 ? `1-for-${ratio(priceFactor)} reverse split` : `${ratio(1 / priceFactor)}-for-1 split`;
+}
+
+/**
+ * What a view says when a recent split moved the share count shown:
+ * - a filed count: "Shares outstanding are the 191.61M filed as of 2026-07-31, after the 1-for-15 reverse split on
+ *   2026-08-19; the provider's market cap was 450.72M USD."
+ * - the provider's cap: "Market cap is the provider's; its 191.61M share count predates the 1-for-15 reverse split on
+ *   2026-08-19."
+ */
+function splitShareCountNote(split: SplitShareBasis, currency: string): string {
+  const ratio = splitRatio(split.priceFactor);
+  if (split.method === "provider_cap") {
+    return `Market cap is the provider's; its ${formatCompact(split.reportedShares)} share count predates the ${ratio} on ${split.exDate}.`;
+  }
+  const filed = split.reportedAsOf ? ` filed as of ${split.reportedAsOf}` : " filed";
+  const provider = split.providerMarketCap != null && split.providerMarketCap > 0
+    ? `; the provider's market cap was ${formatCompact(split.providerMarketCap)} ${currency}` : "";
+  return `Shares outstanding are the ${formatCompact(split.reportedShares)}${filed}, after the ${ratio} on ${split.exDate}${provider}.`;
+}
+
 /**
  * What a view says when its market cap and the share count shown beside it are not the provider's cap alone:
  * - the product shown: "Market cap 23.69B AUD is the 1.99B shares shown x 11.93 AUD; the provider's is 24.40B AUD."
  * - the provider's shown, on another count: "Market cap 79.11M USD is the provider's and does not rest on the
  *   72.23M shares shown (x 0.7133 USD = 51.52M)."
- * Undefined when the provider's cap ties with the count.
+ * A recent split that moved the count is said first (splitShareCountNote).
+ * Undefined when the provider's cap ties with the count and no split moved it.
  */
 export function marketCapBasisNote(capitalization: ViewMarketCapitalization | null): string | undefined {
   if (!capitalization) return undefined;
+  const { currency, split } = capitalization;
+  const splitNote = split ? splitShareCountNote(split, currency) : undefined;
+  const basisNote = shareBasisNote(capitalization);
+  return splitNote && basisNote ? `${splitNote} ${basisNote}` : splitNote ?? basisNote;
+}
+
+function shareBasisNote(capitalization: ViewMarketCapitalization): string | undefined {
   const { currency, computed, otherBasis } = capitalization;
   const priced = (price: number) => `${formatNumber(price, price < 1 ? 4 : 2)} ${currency}`;
   if (computed) {
