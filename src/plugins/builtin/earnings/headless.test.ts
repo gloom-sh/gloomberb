@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import type { EarningsHistoryPayload } from "../../../api-client/earnings";
 import type { HeadlessPaneContext } from "../../../types/plugin";
 import { addDays, newYorkToday } from "./board-model";
+import { calendarWeekDates } from "./calendar-model";
 import { createEarningsBoardHeadless, createEarningsHeadless } from "./headless";
 
 const today = newYorkToday();
@@ -167,4 +168,35 @@ test("a press release's figures are flagged provisional on the board and in the 
     [1.16, true, 5.31e9, true],
   ]);
   expect(ern.metadata?.provisional).toContain("press release");
+});
+
+test("EVTS looks back a week or a day, the days the pane's Range shows, and ERN's history refuses a range it would not use", async () => {
+  const queries: { from: string; to: string; perDay: number; symbols: string[] }[] = [];
+  const deps = {
+    calendar: async (query: { from: string; to: string; perDay: number; symbols: string[] }) => {
+      queries.push(query);
+      return { asOf: `${today}T12:00:00.000Z`, from: query.from, to: query.to, reports: [
+        { ...report({ symbol: "NFLX", date: query.from, epsEstimate: 0.82, epsActual: 0.87, dateStatus: "reported" }), averageMove: null, averageReports: 0 },
+      ] };
+    },
+    history: async () => history,
+    upcoming: async () => [],
+  };
+  const board = createEarningsBoardHeadless(deps);
+  const [monday, , , , friday] = calendarWeekDates(today, -1);
+  const lastWeek = { from: monday!, to: friday! };
+  const week = await board.load({ rawArgument: "", argument: null, symbols: [], options: { week: "last" } }, context);
+  expect(queries.at(-1)).toEqual({ ...lastWeek, perDay: 200, symbols: [] });
+  expect(week.rows[0]).toMatchObject({ symbol: "NFLX", date: lastWeek.from, epsActual: 0.87, dateStatus: "reported" });
+  expect(board.describe instanceof Function && board.describe({ rawArgument: "", argument: null, symbols: [], options: { week: "last" } })).toBe("Earnings Calendar | Last week");
+
+  await board.load({ rawArgument: "", argument: null, symbols: [], options: { date: "2026-10-15" } }, context);
+  expect(queries.at(-1)).toMatchObject({ from: "2026-10-15", to: "2026-10-15" });
+  await expect(board.load({ rawArgument: "", argument: null, symbols: [], options: { date: "2026-10-15", week: "last" } }, context)).rejects.toThrow("--date or --week");
+
+  // ERN takes the same range for the board and a ticker list; one ticker's history already holds its past reports.
+  const ern = createEarningsHeadless(deps);
+  await ern.load({ rawArgument: "NFLX TSLA", argument: ["NFLX", "TSLA"], symbols: ["NFLX", "TSLA"], options: { week: "last" } }, context);
+  expect(queries.at(-1)).toEqual({ ...lastWeek, perDay: 0, symbols: ["NFLX", "TSLA"] });
+  await expect(ern.load({ ...args, options: { week: "last" } }, context)).rejects.toThrow("gloomberb fn EVTS CRWV --week last");
 });

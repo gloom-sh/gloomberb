@@ -404,12 +404,15 @@ function intradayHistoryFetchState(
 }
 
 /**
- * A daily or coarser series changes at every close. A copy fetched before the
- * latest settled close is outdated whatever its cache TTL. A copy fetched
- * after it but without its bar is behind only where the venue's closures are
- * published (hasPublishedSessionCalendar): elsewhere, and for a bare symbol whose venue is
- * unknown, a local holiday would read as a missing session. A copy of a 24/7
- * series goes out of date within the hour.
+ * A daily or coarser series changes at every close, and gains a bar for the
+ * day once a session opens. A copy fetched before the latest settled close is
+ * outdated whatever its cache TTL, and so is one fetched before a session that
+ * has opened since: it lacks today's bar, so a morning copy would answer for
+ * yesterday all day. A copy fetched after the latest settled close but without
+ * its bar is behind only where the venue's closures are published
+ * (hasPublishedSessionCalendar): elsewhere, and for a bare symbol whose venue
+ * is unknown, a local holiday would read as a missing session. A copy of a
+ * 24/7 series goes out of date within the hour.
  */
 export function calendarHistoryFetchState(
   points: PricePoint[],
@@ -431,6 +434,8 @@ export function calendarHistoryFetchState(
   const session = latestRegularSessionClose(exchange || "NYSE", now - SESSION_BAR_SETTLE_MS);
   if (!session) return "current";
   if (fetchedAt < session.close + SESSION_BAR_SETTLE_MS) return unsettledState(session.close + SESSION_BAR_SETTLE_MS, options.checkedAt, now);
+  const open = latestRegularSessionOpen(exchange || "NYSE", now);
+  if (open !== null && open > session.close && fetchedAt < open) return unsettledState(open, options.checkedAt, now);
   if (!exchange || !hasPublishedSessionCalendar(exchange, session.date)) return "current";
   const latest = normalized.findLast(hasFiniteClose);
   if (!latest || !isBarBeforeSession(getPricePointTimestamp(latest), session.date, intervalMs, session.timeZone)) return "current";

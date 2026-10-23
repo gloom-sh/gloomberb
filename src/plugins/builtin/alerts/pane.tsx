@@ -114,7 +114,7 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
   const showHorizontalScrollbar = ALERT_TABLE_CONTENT_WIDTH > width;
   const storeError = useMemo(() => readAlertsStoreError(alertsJson), [alertsJson]);
 
-  const { alerts, rows, quoteError } = useMemo(() => {
+  const { alerts, rows } = useMemo(() => {
     const parsed = deserializeAlerts(alertsJson);
     const activeAlerts = parsed.filter((a) => a.status === "active");
     const triggeredAlerts = parsed
@@ -124,7 +124,6 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
     return {
       alerts: parsed,
       rows: [...activeAlerts, ...triggeredAlerts],
-      quoteError: parsed.find((alert) => alert.lastCheckError)?.lastCheckError ?? null,
     };
   }, [alertsJson]);
 
@@ -246,12 +245,11 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
   // Quotes come from the plugin's single background poll, which writes into the
   // same persisted store, so the pane never fetches on its own.
 
+  // A quote one alert could not get shows on that alert's row (Current and Quote), not here.
   usePaneFooter("alerts", () => ({
     info: storeError
       ? [{ id: "store-error", parts: [{ text: storeError, tone: "warning" as const }] }]
-      : quoteError
-        ? [{ id: "quote-error", parts: [{ text: quoteError, tone: "warning" as const }] }]
-        : [],
+      : [],
     hints: [
       { id: "add", key: "a", label: "dd alert", onPress: startAddAlert },
       ...alertViewHints(selectedTarget, openTarget),
@@ -281,7 +279,6 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
     openTarget,
     rows,
     selectedIdx,
-    quoteError,
     rows.length,
     startAddAlert,
     storeError,
@@ -332,7 +329,7 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
       case "quote":
         return {
           text: formatQuoteChecked(alert),
-          color: colors.textDim,
+          color: alert.lastCheckError ? colors.negative : colors.textDim,
         };
       case "triggered":
         return {

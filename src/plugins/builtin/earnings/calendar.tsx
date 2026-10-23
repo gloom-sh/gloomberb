@@ -14,8 +14,8 @@ import type { BoardReport } from "./board-model";
 import { calendarGroupKey, type CalendarDay, type CalendarGroup } from "./calendar-model";
 import { epsText, signedPercent, TIMING_LABEL } from "./format";
 
-/** Cells a logo and its ticker take side by side; a day fits as many as its width holds. */
-const CALENDAR_SLOT_CELLS = 7;
+/** Cells a logo and its ticker take side by side: a five-letter ticker and a cell between. A day fits as many as its width holds. */
+const CALENDAR_SLOT_CELLS = 6;
 /** Rows of logos a session shows before its last slot counts the rest. */
 export const CALENDAR_GROUP_ROWS = 5;
 /** The columns between two days. */
@@ -265,8 +265,8 @@ const TILE_STYLE = {
   borderRadius: "var(--gloom-radius-sm)",
   rowGap: "var(--gloom-space-xs)",
 } as const;
-/** The logo of a calendar tile: a square a cell and a half tall. */
-const LOGO_STYLE = { width: "calc(var(--cell-h) * 1.5)", height: "calc(var(--cell-h) * 1.5)", flexShrink: 0 } as const;
+/** The logo of a calendar tile: a square near two cells tall, most of the slot's width. */
+const LOGO_STYLE = { width: "calc(var(--cell-h) * 1.75)", height: "calc(var(--cell-h) * 1.75)", flexShrink: 0 } as const;
 
 function ReportTile({ report, selected, onPress, tileRef }: {
   report: BoardReport;

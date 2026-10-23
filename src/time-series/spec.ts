@@ -32,6 +32,7 @@ import {
   isValidChartSeriesId,
 } from "../capabilities/chart-series";
 import { recordOrNull } from "../utils/guards";
+import { isLeverageFactor } from "./leverage";
 
 const RANGE_SET = new Set<TimeRange>(TIME_RANGES);
 const RESOLUTIONS = new Set<ChartResolution>(CHART_RESOLUTIONS);
@@ -58,6 +59,8 @@ const STUDIES = new Set<ChartStudyKind>([
   "spread",
   "correlation",
   "formula",
+  "leverage",
+  "leverage-decay",
 ]);
 
 /**
@@ -343,7 +346,7 @@ function issue(path: string, code: string, message: string): ChartSpecIssue {
 }
 
 function requiredInputCount(kind: ChartStudyKind): number {
-  return kind === "ratio" || kind === "spread" || kind === "correlation" ? 2 : 1;
+  return kind === "ratio" || kind === "spread" || kind === "correlation" || kind === "leverage-decay" ? 2 : 1;
 }
 
 /** Whether a study has the inputs its kind takes: two for a pair, one or more for a formula, one for the rest. */
@@ -543,6 +546,9 @@ export function validateChartSpec(spec: ChartSpec): ChartSpecValidationResult {
       const fast = study.parameters.fast ?? 12;
       const slow = study.parameters.slow ?? 26;
       if (typeof fast === "number" && typeof slow === "number" && fast >= slow) errors.push(issue(`${path}.parameters`, "invalid-macd-periods", "MACD fast period must be shorter than slow period."));
+    }
+    if ((study.kind === "leverage" || study.kind === "leverage-decay") && !isLeverageFactor(study.parameters.factor)) {
+      errors.push(issue(`${path}.parameters.factor`, "invalid-factor", "A leverage factor is a nonzero multiple of at most 5, such as 3 or -3."));
     }
   });
 

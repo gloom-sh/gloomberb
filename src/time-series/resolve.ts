@@ -61,6 +61,7 @@ import { listingTimeZone } from "../market-data/market/trading-sessions";
 import { futuresGenericListing, futuresListingPriceBasis } from "../utils/futures-generic";
 import { classifyInstrumentType, kindFromListingSyntax } from "../tickers/instrument-kind";
 import { isDatasetChart } from "./spec";
+import { seriesMessageName } from "./series-name";
 import type {
   ChartResolutionResult,
   ChartSeriesSpec,
@@ -126,6 +127,7 @@ import {
   prepareBaseSeriesForStudies,
   presentationBounds,
   applyStudyPresentationTransforms,
+  studyAnchors,
 } from "./series-presentation";
 
 function withQuoteExchange(
@@ -802,7 +804,7 @@ async function resolveChartSpecPass(
       }
       if (forwardPE && financials?.epsEstimates && !history) {
         history = await loadHistory(resolvedSource, true).catch((error: unknown) => {
-          warnings.push(`${seriesSpec.label ?? seriesSpec.id}: ${error instanceof Error ? error.message : String(error)}`);
+          warnings.push(`${seriesMessageName(seriesSpec)}: ${error instanceof Error ? error.message : String(error)}`);
           return null;
         });
       }
@@ -902,7 +904,7 @@ async function resolveChartSpecPass(
       return result;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      errors.push(`${seriesSpec.label ?? seriesSpec.id}: ${message}`);
+      errors.push(`${seriesMessageName(seriesSpec)}: ${message}`);
       return unloadableSeries(seriesSpec, index, message);
     }
   }));
@@ -936,7 +938,8 @@ async function resolveChartSpecPass(
   const commonCadence = servedCadences.size === 1 ? [...servedCadences][0] : undefined;
   const resolution = commonCadence ?? undefined;
   const comparisonResolution = resolution ?? "auto";
-  const priceComparison = resolvePriceComparison(spec, rawSeries, bounds, comparisonResolution, requestBounds ? null : spec.viewport.dateWindow);
+  const priceComparison = resolvePriceComparison(spec, rawSeries, bounds, comparisonResolution, requestBounds ? null : spec.viewport.dateWindow,
+    { preset: hasExplicitWindow ? null : spec.viewport.range, now: referenceNow.getTime() + Math.max(0, Date.now() - resolutionStartedAt) });
   const displayBounds = comparisonDisplayBounds(bounds, priceComparison);
   const comparisonBounds = priceComparison && priceComparison.start !== null
     ? priceComparison : bounds;
@@ -952,7 +955,8 @@ async function resolveChartSpecPass(
 
   // Study outputs are appended by the pure engine before the final viewport clip.
   if (spec.studies.length > 0) {
-    const studyResult = resolveStudies(calculationSeries, spec.studies, resolution, historicalPriceSeries);
+    const studyResult = resolveStudies(calculationSeries, spec.studies, resolution, historicalPriceSeries,
+      studyAnchors(calculationSeries, priceComparison, comparisonBounds));
     resolved = [
       ...resolved,
       ...applyStudyPresentationTransforms(

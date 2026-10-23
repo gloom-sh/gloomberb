@@ -5,6 +5,7 @@ import { collectPriceHistoryIntegrity } from "./market";
 import { activeStudyInputSeriesIds } from "./studies";
 import { applyResolvedSeriesTransform } from "./transforms";
 import { clipSeriesToWindow } from "./alignment";
+import type { StudyAnchor } from "./leverage";
 import {
   comparedBufferPoints,
   priceComparisonBoundsForSeries,
@@ -101,6 +102,19 @@ export function adoptPriceUnits(series: ResolvedSeries[], specs: readonly ChartS
       ? { ...entry, unit: price.unit, unitGroup: price.unitGroup }
       : entry;
   });
+}
+
+/**
+ * Where studies that read returns over the chart's period measure each series
+ * from and to: a compared leg's shared first and last session, else the
+ * window in view.
+ */
+export function studyAnchors(
+  series: readonly ResolvedSeries[],
+  comparison: PriceComparison | null,
+  bounds: DateBounds,
+): Map<string, StudyAnchor> {
+  return new Map(series.map((entry) => [entry.id, priceComparisonBoundsForSeries(entry, comparison) ?? bounds]));
 }
 
 export function prepareBaseSeriesForStudies(

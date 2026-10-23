@@ -266,6 +266,19 @@ describe("surface grids", () => {
       }
     }
   });
+
+  // `fn OVDV --tenors fixed --axis delta` printed -- in every wing column: the report rounds the forward,
+  // and the solve's bracket, read from the points' stored log-moneyness, then fell outside every smile.
+  test("fixed-tenor delta columns solve on a report's rounded forwards as on the pane's", () => {
+    const data = snapshot();
+    // Rounded down to 4 decimals: the lowest quoted strike now reads a hair below the forward's quotes.
+    const rounded = { ...data, expiries: data.expiries.map((expiry) => ({ ...expiry, forward: Math.floor(expiry.forward! * 1e4 - 0.4) / 1e4 })) };
+    const cells = (surface: SurfaceSnapshot) => buildSurfaceGrid(surface, { axis: "delta", tenors: "fixed", coordinates: [-0.25, 0, 0.25] })
+      .rows.find((value) => value.label === "6M")!.cells.map((cell) => cell.volatility);
+    const exact = cells(data);
+    expect(exact.every((value) => value != null)).toBe(true);
+    cells(rounded).forEach((value, index) => expect(value!).toBeCloseTo(exact[index]!, 4));
+  });
 });
 
 test("the 3D sheet drops interpolation-fallback expiries only when four SVI slices remain", () => {

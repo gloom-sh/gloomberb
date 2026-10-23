@@ -33,8 +33,8 @@ const pane = (templateId: string, options?: PaneTemplateCreateOptions): AlertTar
 /**
  * The one map from what an alert follows to what it opens, for every rule kind and every delivered alert:
  * a perpetual opens PERP on its market; a dated event the pane its date comes from (ERN, CPI, WIRP); catalyst,
- * Congress and 13F rules their calendar or list, on the company or fund they name; a hiring move HIRE on the
- * company; any other rule on a security
+ * Congress and 13F rules their calendar or list, on the company or fund they name; an IV level the symbol's
+ * OVDV, whose fits it reads; a hiring move HIRE on the company; any other rule on a security
  * that listing's DES. A rule on no security opens the pane it watches (SRCH for a news keyword, FLOW for flow
  * on the user's lists, FIRST for breaking news). Null when there is nothing to open.
  */
@@ -44,6 +44,7 @@ export function alertTarget(subject: AlertSubject): AlertTarget | null {
     case "perps_threshold": return subject.marketId ? pane("perps-pane", { arg: subject.marketId }) : null;
     case "earnings_date":
     case "earnings": return symbol ? pane("earnings-calendar-pane", { arg: symbol }) : null;
+    case "iv_level": return symbol ? pane("vol-surface-pane", { symbol }) : null;
     case "macro_event": return subject.event === "cpi" ? pane("cpi-pane") : subject.event === "fomc" ? pane("rate-path-pane") : null;
     case "catalyst": return pane("catalysts-pane", symbol ? { symbol } : undefined);
     case "congress_trade": return pane("congress-trades-pane");

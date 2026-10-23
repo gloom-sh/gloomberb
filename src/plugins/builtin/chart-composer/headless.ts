@@ -36,6 +36,11 @@ import type { BarPeriodToDate } from "../../../market-data/market/bar-period";
 import { closedHistoryBarDay, formingHistoryBar } from "../ticker-detail/data-panes/history-bars";
 import { inferSeriesFrequency } from "../../../series/csv";
 import { isDatasetChart } from "../../../time-series/spec";
+import { loadFundFacts } from "../sec/fund-facts";
+import { comparedFundTickers, loadDailyObjectives, mayDrawDailyObjective, withLeverageOverlay } from "./leverage-overlay";
+import { classifyInstrumentType } from "../../../tickers/instrument-kind";
+import { priceComparisonEndsIntraday, type PriceComparison } from "../../../time-series/price-comparison";
+import { LATEST_INTRADAY_TEXT } from "../../../market-data/market/period-return";
 
 export interface ChartPaneModel extends HeadlessSeriesResult {
   /** The renderer consumes the full model; generic reports project series and metadata. */
@@ -310,8 +315,11 @@ function seriesAttribution(series: readonly HeadlessSeries[]): Pick<HeadlessPane
  * capability series alone (CHOKE's vessel transits) is a dataset, dated by its
  * newest observation and how far behind that is.
  */
-function chartFreshness(series: readonly HeadlessSeries[], spec: ChartSpec): HeadlessPaneFreshness {
+function chartFreshness(allSeries: readonly HeadlessSeries[], spec: ChartSpec, comparison?: PriceComparison | null): HeadlessPaneFreshness {
   const order = ["1wk", "1mo"];
+  // A leg that failed to load has no bars to date; the ones that loaded say what the chart is.
+  const loaded = allSeries.filter((entry) => entry.points.length > 0);
+  const series = loaded.length ? loaded : allSeries;
   const resolutions = series.map((entry) => (entry as HeadlessSeries & { historyResolution?: string }).historyResolution);
   const dataset = isDatasetChart(spec);
   if (!series.length || resolutions.some((resolution) => !resolution)) {
@@ -324,7 +332,9 @@ function chartFreshness(series: readonly HeadlessSeries[], spec: ChartSpec): Hea
   // A history: its first bars are not stale data, so the line dates it by the bar still forming alone.
   if (forming) return { ...barHistoryFreshness(coarsest), periodToDate: forming, oldest: null };
   const closedDay = closedPriceBarDay(series);
-  return { ...barHistoryFreshness(coarsest), ...(closedDay ? { asOf: closedDay } : {}) };
+  // A comparison whose newest point is a session still trading is not a day's closes.
+  const basis = coarsest === "1d" && priceComparisonEndsIntraday(comparison) ? { basis: LATEST_INTRADAY_TEXT } : {};
+  return { ...barHistoryFreshness(coarsest), ...basis, ...(closedDay ? { asOf: closedDay } : {}) };
 }
 
 /** A series' venue and the day its newest bar starts, as the forming and closed bar checks read them. */
@@ -467,14 +477,42 @@ export async function bareFredSeries(
   return { ...fred, id: series.id, transform: series.transform, axis: series.axis, panelId: series.panelId };
 }
 
+/**
+ * The compared tickers whose fund facts could state a daily objective: each
+ * but those a quote already cached says are not funds (a stock, an index).
+ * The facts are read through the ETF pane's cache, so a ticker read once
+ * is not asked again for a day.
+ */
+async function possibleFundTickers(spec: ChartSpec, context: HeadlessPaneContext): Promise<string[]> {
+  const tickers = comparedFundTickers(spec);
+  const read = context.marketData.getCachedFinancialsForTargets;
+  const cached = tickers.length && read
+    ? await Promise.resolve().then(() => read.call(context.marketData, tickers.map((symbol) => ({ symbol })), { allowExpired: true, includeStaleQuotes: true }))
+      .catch(() => null)
+    : null;
+  return tickers.filter((ticker) => {
+    const financials = cached?.get(ticker);
+    const kind = classifyInstrumentType(financials?.quote?.instrumentType ?? financials?.quoteMetadata?.instrumentType);
+    return kind === null || kind === "fund";
+  });
+}
+
 export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneDefinition<"series"> {
   return {
     ...paneSchemas[template],
     shape: "series",
     async load(args, context) {
       const intradayHistories: ChartPaneModel["snapshot"]["intradayHistories"] = [];
-      const parsed = parseChartSpec(context.settings?.chartSpec);
-      if (!parsed) throw new Error("The chart specification is invalid.");
+      const saved = parseChartSpec(context.settings?.chartSpec);
+      if (!saved) throw new Error("The chart specification is invalid.");
+      // A leveraged or inverse fund compared with anything draws its daily objective beside it.
+      const parsed = template === "comparison-chart-pane" && mayDrawDailyObjective(saved)
+        ? withLeverageOverlay(saved, await loadDailyObjectives(
+          await possibleFundTickers(saved, context),
+          async (ticker, signal) => (await loadFundFacts(ticker, false, { client: context.apiClient, signal })).payload,
+          { signal: context.signal },
+        ))
+        : saved;
       // A bare symbol is the listing `quote` reads it as: BDI, which two companies list, asks which,
       // as `quote BDI` does, instead of charting whichever line a source picked.
       const reads = new Map<string, ReturnType<typeof readSeriesListing>>();
@@ -586,7 +624,7 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
         model.warnings = [...model.warnings ?? [], dropped.warning];
         model.metadata = { ...model.metadata, resolution: dropped.drop };
       }
-      model.freshness = chartFreshness(model.series, model.spec);
+      model.freshness = chartFreshness(model.series, model.spec, model.chart.priceComparison);
       const priceDomainFailures = intradayHistories.flatMap(({ symbol, exchange, priceDomainFailure }) =>
         priceDomainFailure ? [{ symbol, exchange, ...priceDomainFailure }] : []);
       if (priceDomainFailures.length) {

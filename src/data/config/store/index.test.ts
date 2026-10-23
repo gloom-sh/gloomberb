@@ -90,6 +90,18 @@ test("a failed save rejects its caller, leaves no temp file and does not block t
   expect(await readdir(dataDir)).toEqual(["config.json"]);
 });
 
+test("a config kept in memory (:memory:) is never written to disk", async () => {
+  const cwd = await createTempConfigDir();
+  const original = process.cwd();
+  process.chdir(cwd);
+  try {
+    await saveConfig({ ...await loadConfig(await createTempConfigDir()), dataDir: ":memory:" });
+  } finally {
+    process.chdir(original);
+  }
+  expect(await readdir(cwd)).toEqual([]);
+});
+
 test("recent panes survive a save and reload", async () => {
   const dataDir = await createTempConfigDir();
   const loaded = await loadConfig(dataDir);

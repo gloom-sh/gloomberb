@@ -46,6 +46,7 @@ import { deriveHeadlessFreshness, formatFreshnessLine, staleRowsText, type Repor
 import { accessGateStatus, errorsAccessGate, isProLock, reportGateText } from "./access-gate";
 import { noArgumentMessage } from "./capabilities";
 import { lockedHeadlessReport } from "./lock-note";
+import { resumeStateKey } from "../../plugins/registry/plugin-state";
 
 interface SerializableHeadlessColumn {
   key: string;
@@ -225,6 +226,8 @@ export function createHeadlessPaneContext(
         ?? (key !== parsed.symbol ? await context.store.loadTicker(parsed.symbol) : null);
       return { symbol: parsed.symbol, exchange: parsed.exchange ?? ticker?.metadata.exchange };
     },
+    readDeviceState: <T,>(pluginId: string, key: string) =>
+      context.persistence?.pluginState.get<T>(pluginId, resumeStateKey(key))?.value ?? null,
     async resolveListing(symbol, argumentWith) {
       const command = `fn ${resolved.token}`;
       const read = await readBareListing(symbol, context, {
@@ -486,7 +489,8 @@ function seriesPointExportDate(series: HeadlessSeries, date: SeriesPointDate, da
 }
 
 /**
- * A latest value as the series report prints it: percentages, multiples and
+ * A latest value as the series report prints it: percentages and percentage
+ * points, multiples and
  * ratios (P/E, EV/EBITDA, one series over another, VIX 3M / VIX) to two
  * decimals, which a ratio under 0.1 trades for three significant digits so it
  * is not flattened to 0.03, and a 0 to 100 score to a tenth of a point. The
@@ -497,7 +501,7 @@ function seriesValue(series: HeadlessSeries, value: number | null): string {
   if (value == null) return "-";
   if (!Number.isFinite(value)) return displayNumber(value);
   const unit = series.unit?.trim().toLowerCase();
-  if (unit === "%") return value.toFixed(2);
+  if (unit === "%" || unit === "pp") return value.toFixed(2);
   if (unit === "x" || unit === "ratio") return value !== 0 && Math.abs(value) < 0.1 ? value.toPrecision(3) : value.toFixed(2);
   if (unit === "score") return value.toFixed(1);
   return displayNumber(value);
@@ -527,6 +531,7 @@ function renderRows(
       minWidth: column.minWidth,
       stackPriority: column.stackPriority,
       stackRows: column.stackRows,
+      minTableWidth: column.minTableWidth,
     })),
     rows.map((row) => columns.map((column) => cell(row, column))),
     {

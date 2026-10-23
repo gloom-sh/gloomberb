@@ -312,6 +312,14 @@ export function cloudJobsPostingsPath(ticker: string, params: CloudJobsPostingsP
   return appendQuery(`/cloud/jobs/${encodeURIComponent(normalizeIssuerResearchTicker(ticker))}/postings`, search);
 }
 
+/** One posting of a company, by the database id the jobs list carries or the careers system's own id HIRE's evidence carries. */
+export function cloudJobsPostingPath(ticker: string, posting: { id: number } | { externalId: string }): string {
+  const search = new URLSearchParams();
+  if ("id" in posting) search.set("id", String(posting.id));
+  else search.set("externalId", posting.externalId);
+  return appendQuery(`/cloud/jobs/${encodeURIComponent(normalizeIssuerResearchTicker(ticker))}/posting`, search);
+}
+
 export function cloudJobsMoversPath(limit?: number, offset?: number): string {
   const search = new URLSearchParams();
   if (limit != null) search.set("limit", String(limit));

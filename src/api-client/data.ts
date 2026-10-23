@@ -76,6 +76,7 @@ import {
   cloudEarningsTranscriptPath,
   cloudJobsMoversPath,
   cloudJobsPath,
+  cloudJobsPostingPath,
   cloudJobsPostingsPath,
   type CloudJobsPostingsParams,
   type IssuerListingParams,
@@ -132,6 +133,7 @@ import type {
   CloudEarningsCallAudioPayload,
   CloudEarningsTranscriptPayload,
   CloudJobsMoversPayload,
+  CloudJobsPostingDetail,
   CloudJobsPostingsPayload,
   CloudJobsResponse,
   CloudProxyStatementListPayload,
@@ -245,8 +247,8 @@ export class CloudDataApi {
   }
 
   /** A US-listed fund's fee, NAV, premium and net assets as its sponsor publishes them. */
-  getFundFacts(ticker: string) {
-    return this.request<import("./fund-facts").FundFactsPayload>(`/cloud/fund-facts/${encodeURIComponent(ticker)}`);
+  getFundFacts(ticker: string, options: { signal?: AbortSignal } = {}) {
+    return this.request<import("./fund-facts").FundFactsPayload>(`/cloud/fund-facts/${encodeURIComponent(ticker)}`, options.signal ? { signal: options.signal } : undefined);
   }
 
   getFundChanges(fund: string) {
@@ -1011,6 +1013,10 @@ export class CloudDataApi {
     params: CloudJobsPostingsParams = {},
   ): Promise<CloudJobsPostingsPayload> {
     return this.request<CloudJobsPostingsPayload>(cloudJobsPostingsPath(ticker, params));
+  }
+
+  async getCloudJobsPosting(ticker: string, posting: { id: number } | { externalId: string }): Promise<CloudJobsPostingDetail> {
+    return this.request<CloudJobsPostingDetail>(cloudJobsPostingPath(ticker, posting));
   }
 
   async getCloudJobsMovers(limit?: number, offset?: number): Promise<CloudJobsMoversPayload> {

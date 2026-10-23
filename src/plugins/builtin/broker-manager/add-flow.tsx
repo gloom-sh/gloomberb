@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { apiClient } from "../../../api-client";
 import {
   brokerMethodLabel,
+  brokerDirectorySummary,
   brokerMethodSummary,
   buildBrokerDirectory,
   type BrokerDirectoryEntry,
@@ -384,7 +385,7 @@ export function BrokerAddFlowContent({
           label: entry.name,
           // The desktop says how it connects under the name, beside its logo.
           ...(desktop
-            ? { description: brokerMethodSummary(entry), leading: <LogoMark src={brokerDirectoryLogo(entry, getBrokerLogo)} name={entry.name} size="lead" /> }
+            ? { description: brokerDirectorySummary(entry), leading: <LogoMark src={brokerDirectoryLogo(entry, getBrokerLogo)} name={entry.name} size="lead" /> }
             : { detail: brokerMethodSummary(entry) }),
         }))}
         rowDescriptions={desktop}

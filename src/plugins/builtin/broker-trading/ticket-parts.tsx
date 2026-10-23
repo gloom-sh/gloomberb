@@ -9,6 +9,12 @@ import { orderEstimatePrice } from "./orders-data";
 
 export const ticketNumber = (value: number | undefined) => value === undefined || !Number.isFinite(value) ? "Unavailable" : value.toLocaleString("en-US", { maximumFractionDigits: 4 });
 export const ticketMoney = (value: number | undefined, currency = "USD") => value === undefined || !Number.isFinite(value) ? "Not reported" : new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: 2 }).format(value);
+/** A preview figure: "Not available" when the broker said it gives none for this order, never a zero. */
+export const ticketImpactMoney = (preview: TicketViewModel["preview"], value: number | undefined, currency = "USD") =>
+  value === undefined && preview?.impactSource === "unavailable" ? "Not available" : ticketMoney(value, currency);
+/** The figures' source for a broker that names it: "Brokerage preview" or "Not available". */
+export const ticketImpactSource = (preview: TicketViewModel["preview"]) =>
+  preview?.impactSource === "broker" ? "Brokerage preview" : preview?.impactSource === "unavailable" ? "Not available" : undefined;
 export const ticketTypeName: Record<string, string> = { MKT: "Market", LMT: "Limit", STP: "Stop", "STP LMT": "Stop limit" };
 export const ticketTifName: Record<string, string> = { DAY: "Day", GTC: "Good til cancelled", IOC: "Immediate or cancel", FOK: "Fill or kill", EXTENDED_HOURS: "Extended hours", AT_THE_OPENING: "At the opening", AT_THE_CLOSE: "At the close" };
 /** `selectable`: a review or receipt whose figures someone may copy by hand. */
@@ -62,7 +68,13 @@ export function TicketOrderSummary({ model: m, width, compact = false, receipt =
   const positionAfter = !strategy && m.position !== undefined && draft ? m.position + (draft.action === "SELL" ? -draft.quantity : draft.quantity) : undefined;
   const powerAfter = m.preview?.buyingPowerAfter;
   const sideColor = draft?.action === "SELL" ? c.negative : c.positive;
-  if (compact && receipt) return <Box flexDirection="column">
+  // A broker that names its preview's source reports cash, credited to whoever gave the figures.
+  const cash = m.preview?.impactSource ? m.preview : undefined;
+  const cashTitle = `Cash · ${cash?.impactSourceLabel ?? "broker preview"}`;
+  if (compact && receipt) return cash ? <Box flexDirection="column">
+    <Text fg={c.textDim}>{cashTitle}</Text>
+    <TicketReceiptRow label="After order" value={ticketImpactMoney(cash, cash.cashAfter, currency)} width={width} />
+  </Box> : <Box flexDirection="column">
     <Text fg={c.textDim}>Buying power · broker preview</Text>
     <TicketReceiptRow label={powerAfter === undefined ? "Impact" : "After order"} value={ticketMoney(powerAfter ?? m.preview?.buyingPowerImpact, currency)} width={width} />
   </Box>;
@@ -78,10 +90,17 @@ export function TicketOrderSummary({ model: m, width, compact = false, receipt =
       <TicketReceiptRow label="Current position" value={ticketNumber(m.position)} width={rowWidth} />
       <TicketReceiptRow label="Order quantity" value={`${draft?.action === "SELL" ? "−" : "+"}${ticketNumber(draft?.quantity)}`} color={sideColor} width={rowWidth} />
     </>}
-    <Box marginTop={1}><SectionHeading title="Buying power · broker preview" /></Box>
-    <TicketReceiptRow label="Before order" value={ticketMoney(m.preview?.buyingPowerBefore ?? account?.buyingPower, currency)} width={rowWidth} />
-    <TicketReceiptRow label="Broker impact" value={ticketMoney(m.preview?.buyingPowerImpact, currency)} width={rowWidth} />
-    <TicketReceiptRow label="After order" value={ticketMoney(m.preview?.buyingPowerAfter, currency)} width={rowWidth} />
+    {cash ? <>
+      <Box marginTop={1}><SectionHeading title={cashTitle} /></Box>
+      <TicketReceiptRow label="Before order" value={ticketMoney(cash.cashBefore, currency)} width={rowWidth} />
+      <TicketReceiptRow label="Broker impact" value={ticketImpactMoney(cash, cash.cashBefore !== undefined && cash.cashAfter !== undefined ? cash.cashAfter - cash.cashBefore : undefined, currency)} width={rowWidth} />
+      <TicketReceiptRow label="After order" value={ticketImpactMoney(cash, cash.cashAfter, currency)} width={rowWidth} />
+    </> : <>
+      <Box marginTop={1}><SectionHeading title="Buying power · broker preview" /></Box>
+      <TicketReceiptRow label="Before order" value={ticketMoney(m.preview?.buyingPowerBefore ?? account?.buyingPower, currency)} width={rowWidth} />
+      <TicketReceiptRow label="Broker impact" value={ticketMoney(m.preview?.buyingPowerImpact, currency)} width={rowWidth} />
+      <TicketReceiptRow label="After order" value={ticketMoney(m.preview?.buyingPowerAfter, currency)} width={rowWidth} />
+    </>}
   </TicketSection>;
   return <TicketSection width={width} title="Order summary" selectable>
     <TicketOrderHeadline model={m} large />

@@ -2,7 +2,8 @@ import { expect, test } from "bun:test";
 import { createTestCliContext } from "../test-support/cli-context";
 import { createTestDataProvider, createTestQuote } from "../test-support/data-provider";
 import { marketDataCliCommands } from "./commands/market";
-import { indexRootFor, indexRootTryLine } from "./index-roots";
+import { indexRootTryLine } from "./index-roots";
+import { indexRootFor } from "../tickers/index-roots";
 import {
   futuresTryLine, ListingArgError, listingChoiceNote, parseListingArg, quoteBareListing, quotedListingChoiceNotes, resolveCliListing, type ListingVenue,
 } from "./listing-arg";
@@ -108,4 +109,18 @@ test("a bare symbol several companies list is named once per report: fn by quote
   const printed = run.printed[0]!;
   expect(printed.result.warnings).toBeUndefined();
   expect(serializeCliResult(printed.result, DEFAULT_CLI_OPTIONS, printed.options).split("\n")[0]).toContain("Avis Budget Group, Inc.");
+});
+
+// `fn DES BTC`, `fn OPX BTC`: a bare coin ticker read as a fund gets quote's note naming the coin's pair.
+test("fn names the coin's pair when a bare coin ticker is a fund", async () => {
+  const provider = createTestDataProvider({
+    search: async () => [],
+    getQuote: async (symbol) => createTestQuote(symbol === "BTC"
+      ? { symbol, name: "Grayscale Bitcoin Mini Trust ETF", instrumentType: "ETF", currency: "USD", listingExchangeName: "ARCA" }
+      : { symbol, name: "Apple Inc.", instrumentType: "EQUITY", currency: "USD", listingExchangeName: "NASDAQ" }),
+  });
+  const market = { ...deps, dataProvider: provider };
+  expect(await quotedListingChoiceNotes(await resolveCliListing("BTC", undefined, market), market))
+    .toContain("BTC is Grayscale Bitcoin Mini Trust ETF, not bitcoin. For bitcoin use BTC-USD.");
+  expect(await quotedListingChoiceNotes(await resolveCliListing("AAPL", undefined, market), market)).toEqual([]);
 });

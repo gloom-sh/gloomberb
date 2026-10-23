@@ -123,12 +123,18 @@ export function canCompareFinancialRow(
 ): boolean {
   if (!previous) return false;
   const key = row.kind === "group" ? row.summaryKey : row.key;
+  // A line filled from the exchange is not compared with the statements source's: the two define revenue differently.
+  if (key && filledLine(current, key) !== filledLine(previous, key)) return false;
   const sameShareBasis = current.shareBasis === previous.shareBasis;
   if (key && SHARE_COUNT_FIELDS.has(key)) return sameShareBasis;
   if (key && PER_SHARE_EARNINGS_FIELDS.has(key) && !sameShareBasis) return false;
   const currentCurrency = (current.currency ?? financialCurrency)?.trim();
   const previousCurrency = (previous.currency ?? financialCurrency)?.trim();
   return !!currentCurrency && currentCurrency === previousCurrency;
+}
+
+function filledLine(statement: FinancialStatement, key: keyof FinancialStatement): boolean {
+  return statement.filledFrom?.fields.some((field) => field === key) === true;
 }
 
 export function semanticGrowthValue(
@@ -619,4 +625,19 @@ export function financialStatementPeriods(
 ): Array<{ date: string; lead: boolean }> {
   const lead = subTab.rows[0];
   return statements.map((statement) => ({ date: statement.date, lead: !!lead && hasFinancialRowValue(lead, [statement]) }));
+}
+
+/** The statement lines a table has a row for (filledPeriodsNote), group totals included. */
+export function financialSubTabFields(subTab: Pick<FinancialSubTab, "rows">): Set<string> {
+  const fields = new Set<string>();
+  const visit = (rows: readonly FinancialRowDef[]) => {
+    for (const row of rows) {
+      if (isFinancialGroup(row)) {
+        if (row.summaryKey) fields.add(row.summaryKey);
+        visit(row.children);
+      } else if (row.key) fields.add(row.key);
+    }
+  };
+  visit(subTab.rows);
+  return fields;
 }

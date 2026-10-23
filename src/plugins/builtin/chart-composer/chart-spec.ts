@@ -10,6 +10,12 @@ import { isRecord } from "../../../utils/guards";
 
 export const CHART_SPEC_SETTING_KEY = "chartSpec";
 export const CHART_INTERACTION_VIEWPORT_SETTING_KEY = "chartInteractionViewport";
+/**
+ * Set on a comparison CMP opens until its funds' facts have been read: the
+ * pane then draws each leveraged or inverse fund's daily objective once, and
+ * drops the flag, so a line the researcher removes stays removed.
+ */
+export const CHART_LEVERAGE_PENDING_SETTING_KEY = "leverageObjectivesPending";
 /** A shared link's pinned crosshair: the chart pins its tab there once on open, then drops it. */
 export const CHART_PINNED_MOMENT_SETTING_KEY = "chartPinnedMoment";
 /** The earliest history a chart reads (FRED series from 1900), and how far ahead one runs. */

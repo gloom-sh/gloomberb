@@ -169,8 +169,17 @@ describe("options --leaps", () => {
     const { dataProvider } = leapsProvider({ AAA: calls, BBB: calls });
     dataProvider.getTickerFinancials = async (symbol: string) => {
       if (symbol === "BBB") throw new Error("no financials");
-      return { fundamentals: { dividendYield: 0.01, exDividendDate: "2026-11-02" }, nextEarnings: { date: "2026-10-29" } } as never;
+      // The financials' own next report is not what the column reads: the calendar resolved as `earnings` resolves it is.
+      return { fundamentals: { dividendYield: 0.01, exDividendDate: "2026-11-02" }, nextEarnings: { date: "2026-10-20" } } as never;
     };
+    const event = (symbol: string, date: string) => ({ symbol, name: symbol, earningsDate: new Date(date), isDateEstimate: false,
+      epsEstimate: 1, epsActual: null, revenueEstimate: null, revenueActual: null, surprise: null, timing: "BMO" as const });
+    // BBB's calendar still names the report it made last week, which its record has out: it has no upcoming date.
+    Object.assign(dataProvider, {
+      getEarningsCalendar: async () => [event("AAA", "2026-10-29T12:30:00Z"), event("BBB", "2026-10-01T12:30:00Z")],
+      getCorporateActions: async (symbol: string) => ({ symbol, dividends: [], splits: [], earnings: symbol === "BBB"
+        ? [{ date: "2026-10-01", epsEstimate: 1, epsActual: 1.1, dateStatus: "reported" }] : [] }),
+    });
 
     const plain = createTestCliContext({ dataProvider });
     await options.execute(["AAA", "--leaps", "--delta", "0.5-0.9"], plain.context);
@@ -192,7 +201,7 @@ describe("options --leaps", () => {
     // BBB counts no dividends: on the same quotes its carry-net is AAA's less the 1% yield AAA's call forgoes.
     expect(bbb.carryNetPerYearPercent! - aaa.carryNetPerYearPercent!).toBeCloseTo(-1, 2);
     expect(result.warnings).toEqual([
-      "BBB: no earnings or dividend data, so carry-net counts no dividends",
+      "BBB: no upcoming earnings date; no dividend data, so carry-net counts no dividends",
       "IV rank unavailable (Gloom Cloud did not answer)",
     ]);
   });

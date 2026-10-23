@@ -10,6 +10,7 @@ const RESEARCH_ALERT_KINDS = [
   "short_interest_change",
   "insider_trade",
   "iv_spike",
+  "iv_level",
   "options_flow",
   "perps_threshold",
   "hiring_move",
@@ -27,7 +28,8 @@ export interface ResearchAlertConfig {
   contract?: string
   /** Options flow: which prints count (any, sweep or block). */
   marketId?: string
-  metric?: "funding8h" | "oiChange24h" | "premium" | "closedMarketPremium"
+  /** Perpetuals: the market figure. IV level: `atm`, the 30-day ATM IV, or `rr`, the 30-day 25-delta risk reversal. */
+  metric?: "funding8h" | "oiChange24h" | "premium" | "closedMarketPremium" | IvLevelMetric
   print?: string
   /** Macro event: which scheduled release (`MACRO_ALERT_EVENTS`). */
   event?: string
@@ -37,6 +39,14 @@ export interface ResearchAlertConfig {
    * server that reads only the lead alerts on the day instead.
    */
   when?: "results"
+}
+/** What an IV level rule follows on its symbol's surface: 30-day ATM IV (in %) or 30-day 25-delta risk reversal (in vol points). */
+const IV_LEVEL_METRICS = ["atm", "rr"] as const
+export type IvLevelMetric = (typeof IV_LEVEL_METRICS)[number]
+/** The levels an IV level rule takes: an ATM IV in percent, a risk reversal in vol points either side of zero. */
+export const IV_LEVEL_RANGES: Record<IvLevelMetric, { min: number; max: number }> = {
+  atm: { min: 1, max: 500 },
+  rr: { min: -50, max: 50 },
 }
 /** Days before a scheduled event (earnings, a macro release) an alert fires when none is given, and the most it takes. */
 export const DEFAULT_LEAD_DAYS = 1
@@ -240,6 +250,18 @@ export function normalizeResearchRule(
       case "iv_spike":
         numeric("threshold", 5, 0.1, 100)
         break
+      case "iv_level": {
+        const metric = input.metric ?? "atm"
+        if (typeof metric !== "string" || !IV_LEVEL_METRICS.includes(metric as IvLevelMetric))
+          throw new Error()
+        result.metric = metric as IvLevelMetric
+        direction(["above", "below"], "above")
+        const range = IV_LEVEL_RANGES[metric as IvLevelMetric]
+        // No default: a level is what the rule is about.
+        if (input.threshold == null) throw new Error()
+        numeric("threshold", 0, range.min, range.max)
+        break
+      }
       case "options_flow": {
         // Premium in dollars; Cloud records nothing under $50K.
         numeric("threshold", 1_000_000, 50_000, 1_000_000_000)

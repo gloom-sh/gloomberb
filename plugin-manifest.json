@@ -605,7 +605,7 @@
           {
             "code": "ETF",
             "name": "Fund Facts",
-            "description": "A US-listed fund's fee, NAV, premium or discount, net assets, sponsor, inception and index, then its SEC filings: prospectus updates, shareholder reports, N-CEN and N-PORT."
+            "description": "A US-listed fund's fee, NAV, premium or discount, net assets, sponsor, inception and index, a leveraged or inverse fund's daily objective, then the fund's own SEC filings: prospectus updates, shareholder reports, N-CEN and N-PORT."
           },
           {
             "code": "RISK",
@@ -1601,7 +1601,7 @@
           {
             "code": "CMP",
             "name": "Comparison Chart",
-            "description": "Compare price returns over shared observation dates for two or more tickers."
+            "description": "Compare price returns over shared observation dates for two or more tickers. A leveraged or inverse fund gets its daily objective drawn from its index fund (3× daily QQQ beside TQQQ) and its decay against it."
           },
           {
             "code": "GF",

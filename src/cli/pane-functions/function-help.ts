@@ -140,8 +140,8 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: [],
   },
   CMP: {
-    summary: "Price returns rebased to a shared start date for two or more tickers, so relative performance reads at a glance.",
-    usage: ["CMP NVDA, AMD, AVGO"],
+    summary: "Price returns rebased to a shared start date for two or more tickers, so relative performance reads at a glance. A leveraged or inverse fund gets its daily objective drawn from its index fund, and its decay in its own panel.",
+    usage: ["CMP NVDA, AMD, AVGO", "CMP TQQQ, QQQ"],
     keys: CHART_KEYS,
     data: QUOTES,
     bloomberg: ["COMP", "TRA"],
@@ -380,8 +380,8 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["CACS"],
   },
   EVTS: {
-    summary: "The market's report days with implied and past moves; a ticker picks its row.",
-    usage: ["EVTS", "EVTS NVDA"],
+    summary: "The market's report days with implied and past moves, or a past or coming week or day of them; a ticker picks its row.",
+    usage: ["EVTS", "EVTS NVDA", "gloomberb fn EVTS --week last", "gloomberb fn EVTS --date 2026-10-15"],
     keys: [key("t", "icker"), key("e", "stimates"), key("c", "alls"), key("a", "nalysts")],
     data: EARNINGS_DAYS,
     bloomberg: ["EVTS"],
@@ -1036,7 +1036,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["CF"],
   },
   ETF: {
-    summary: "A US-listed fund's SEC filings: registration statements and prospectus updates, shareholder reports, N-CEN and N-PORT reports. Open any of them inline.",
+    summary: "A US-listed fund's facts, a leveraged or inverse fund's daily objective among them, then its own SEC filings: registration statements and prospectus updates, shareholder reports, N-CEN and N-PORT reports. Open any of them inline.",
     usage: ["ETF SPY"],
     keys: [OPEN, OPEN_SOURCE],
     data: AS_FILED,

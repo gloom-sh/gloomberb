@@ -2,7 +2,18 @@ import { CATALYST_TYPES } from "../../../api-client/catalysts";
 import { isResearchAlertKind, normalizeResearchRule, type ResearchAlertKind } from "./research-rules";
 import { researchAlertDescription } from "./research-builder";
 export const EVENT_ALERTS_KEY = "eventAlerts";
+/**
+ * IV level rules, kept apart from `eventAlerts`: released versions read every
+ * rule there and refuse the whole list over a kind they do not know, so a rule
+ * synced from a newer app would stop every event alert on a device not yet
+ * updated. They never read this key.
+ */
+export const IV_LEVEL_ALERTS_KEY = "ivLevelAlerts";
 export const MAX_EVENT_ALERTS = 40;
+
+/** The config key a rule is kept under. */
+export const eventAlertStoreKey = (rule: Pick<EventAlertRule, "kind">) =>
+  rule.kind === "iv_level" ? IV_LEVEL_ALERTS_KEY : EVENT_ALERTS_KEY;
 
 export interface EventAlertRule {
   id: string;
@@ -18,6 +29,12 @@ export interface EventAlertRule {
   eventDate?: string;
   /** Scheduled events: the event date it already alerted for. The next event date arms it again. */
   firedFor?: string;
+  /**
+   * IV level: when the level was reached. The rule stays Alerted until it is
+   * re-armed. Its readings stay on the device (`ivLevelChecks`), so synced
+   * config changes only when a rule goes off or is edited.
+   */
+  triggeredAt?: number;
 }
 
 const isDateKey = (value: unknown): value is string =>
@@ -87,11 +104,28 @@ export function createEventAlert(
   };
 }
 
-export function readEventAlerts(json: string): { rules: EventAlertRule[]; error: string | null } {
+/** A saved list of event alerts: the rules this version reads, and the ones of kinds it does not know. */
+export interface EventAlertList {
+  rules: EventAlertRule[];
+  error: string | null;
+  /**
+   * Saved rules of kinds this version does not know (a newer app's), as they
+   * were saved: they are left out of every list and check, and written back
+   * unchanged with the rest.
+   */
+  kept: unknown[];
+}
+
+/** A kind this version reads: a template's, or a research rule's. */
+const isKnownEventAlertKind = (kind: string) =>
+  EVENT_ALERT_TEMPLATES.some((template) => template.kind === kind) || isResearchAlertKind(kind);
+
+export function readEventAlerts(json: string): EventAlertList {
   try {
     const parsed: unknown = JSON.parse(json);
     if (!Array.isArray(parsed)) throw new Error();
     const rules: EventAlertRule[] = [];
+    const kept: unknown[] = [];
     const ids = new Set<string>();
     for (const value of parsed) {
       if (
@@ -102,6 +136,12 @@ export function readEventAlerts(json: string): { rules: EventAlertRule[]; error:
         ids.has(value.id)
       )
         throw new Error();
+      // A newer app's kind is kept as it is, so it neither stops this list nor is lost when it is saved.
+      if (typeof value.kind === "string" && !isKnownEventAlertKind(value.kind)) {
+        kept.push(value);
+        ids.add(value.id);
+        continue;
+      }
       const template = EVENT_ALERT_TEMPLATES.find(
         (entry) => entry.kind === value.kind && entry.target === value.target,
       );
@@ -130,14 +170,62 @@ export function readEventAlerts(json: string): { rules: EventAlertRule[]; error:
         if (isDateKey(value.eventDate)) rule.eventDate = value.eventDate;
         if (isDateKey(value.firedFor)) rule.firedFor = value.firedFor;
       }
+      if (rule.kind === "iv_level" && Number.isFinite(value.triggeredAt) && value.triggeredAt > 0) rule.triggeredAt = value.triggeredAt;
       rules.push(rule);
       ids.add(value.id);
     }
-    return { rules, error: null };
+    return { rules, error: null, kept };
   } catch {
     // Intentional ignore: invalid saved rules return the error displayed by callers.
-    return { rules: [], error: "Saved event alerts could not be read." };
+    return { rules: [], error: "Saved event alerts could not be read.", kept: [] };
   }
+}
+
+/** A list as it is saved: its rules, then the ones of kinds this version does not know, unchanged. */
+export function writeEventAlerts(rules: readonly EventAlertRule[], kept: readonly unknown[] = []): string {
+  return JSON.stringify([...rules, ...kept]);
+}
+
+/** A saved list with `update` applied to its rules; a list that does not read is left as it is. */
+export function updateEventAlerts(json: string | null | undefined, update: (rules: EventAlertRule[]) => EventAlertRule[]): string {
+  const current = json ?? "[]";
+  const list = readEventAlerts(current);
+  return list.error ? current : writeEventAlerts(update(list.rules), list.kept);
+}
+
+/** Both saved lists, read through `get`: the rules of each, together, and each list as read. */
+export function readEventAlertStores(get: (key: string) => unknown): {
+  rules: EventAlertRule[];
+  error: string | null;
+  lists: Record<typeof EVENT_ALERTS_KEY | typeof IV_LEVEL_ALERTS_KEY, EventAlertList>;
+} {
+  const read = (key: string) => {
+    const raw = get(key);
+    return readEventAlerts(typeof raw === "string" && raw ? raw : "[]");
+  };
+  const lists = { [EVENT_ALERTS_KEY]: read(EVENT_ALERTS_KEY), [IV_LEVEL_ALERTS_KEY]: read(IV_LEVEL_ALERTS_KEY) };
+  const all = Object.values(lists);
+  return { rules: all.flatMap((list) => list.rules), error: all.find((list) => list.error)?.error ?? null, lists };
+}
+
+/**
+ * `rules` saved back to the lists they belong in, each keeping what it held of
+ * kinds this version does not know. Only a list that changes is returned.
+ */
+export function writeEventAlertStores(
+  lists: ReturnType<typeof readEventAlertStores>["lists"],
+  rules: readonly EventAlertRule[],
+): Record<string, string> {
+  const written: Record<string, string> = {};
+  for (const [key, list] of Object.entries(lists)) {
+    // A list that does not read is never written over.
+    if (list.error) continue;
+    const own = rules.filter((rule) => eventAlertStoreKey(rule) === key);
+    const before = list.rules;
+    const same = own.length === before.length && own.every((rule, index) => rule === before[index]);
+    if (!same) written[key] = writeEventAlerts(own, list.kept);
+  }
+  return written;
 }
 
 export function toggleEventAlert(rule: EventAlertRule, now = Date.now()): EventAlertRule {

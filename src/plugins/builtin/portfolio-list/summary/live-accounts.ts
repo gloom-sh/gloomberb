@@ -9,6 +9,7 @@ import { usePluginBrokerActions } from "../../../runtime";
 import type { OfflineBroker } from "../../shared/broker-reconnect";
 import { tf } from "../../../../i18n";
 import { isSignedInBrokerProfile, signedInBrokerId } from "../../../../brokers/signed-in/profile";
+import { accountsShownFor } from "../../../../brokers/broker-portfolio-sync";
 import { resolvePortfolioAccountState, type ResolvedPortfolioAccountState } from "./index";
 
 const EMPTY_ACCOUNTS = { instanceId: null, accounts: [] as BrokerAccount[], error: null };
@@ -141,9 +142,10 @@ export function usePortfolioAccountState(
   const { getBrokerAdapter } = usePluginBrokerActions();
   const broker = brokerInstance ? getBrokerAdapter(brokerInstance.brokerType) : null;
   const live = useLiveBrokerAccounts(broker, brokerInstance, instanceId ? state.brokerAccounts[instanceId] : undefined);
+  // An account another profile holds under its own number is that profile's, here as in sync.
   const snapshot = useMemo(
-    () => ({ status: live.status, accounts: live.accounts }),
-    [live.accounts, live.status],
+    () => ({ status: live.status, accounts: brokerInstance ? accountsShownFor(state.config, brokerInstance, live.accounts) : live.accounts }),
+    [brokerInstance, live.accounts, live.status, state.config],
   );
   const accountState = useMemo(
     () => resolvePortfolioAccountState(portfolio, state, snapshot),

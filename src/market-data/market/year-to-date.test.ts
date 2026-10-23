@@ -15,6 +15,11 @@ test("a YTD run of bars starts at the last one on or before 31 Dec, not at 2 Jan
   // Weekly bars dated by their Monday: the week of 29 Dec closes on 2 Jan, so the run starts a week earlier.
   expect(yearToDateStartIndex(["2025-12-22", "2025-12-29", "2026-01-05"], "1wk")).toBe(0);
   expect(yearToDateStartIndex(["2025-11-01", "2025-12-01", "2026-01-01"], "1mo")).toBe(1);
+  // A stock's week of Mon 27 Dec 2021 closed Fri 31 Dec; a coin's runs through Sun 2 Jan, so it is not the base.
+  expect(yearToDateStartIndex(["2021-12-20", "2021-12-27", "2022-01-03"], "1wk")).toBe(1);
+  expect(yearToDateStartIndex(["2021-12-20", "2021-12-27", "2022-01-03"], "1wk", "CCC")).toBe(0);
+  // A JPX bar stamped at 00:00 JST is the next day's: 15:00Z on 31 Dec is a 1 Jan bar, not the year's last.
+  expect(yearToDateStartIndex(["2025-12-29T15:00:00.000Z", "2025-12-31T15:00:00.000Z", "2026-01-04T15:00:00.000Z"], "1d", "JPX")).toBe(0);
   expect(yearToDateStartIndex(["2026-03-05", "2026-03-06"])).toBe(0);
   expect(yearToDateStartIndex([])).toBe(-1);
 });

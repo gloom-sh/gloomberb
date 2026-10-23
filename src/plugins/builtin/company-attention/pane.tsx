@@ -3,13 +3,16 @@ import { isAccessDenied } from "../../../api-client/errors";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import type { AppAttentionFilter, AppAttentionPayload, AppChart } from "../../../api-client/app-attention";
 import type { HiringBoard, HiringPayload } from "../../../api-client/hiring";
-import { ChartTableHeader, DataTableView, KeyValueRow, PageStackView, PaneFooterScope, QueryBar, useChartTableSelection, usePagedRows, useTableLoadMore, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type PaneHint } from "../../../components";
+import { ChartTableHeader, DataTableView, PageStackView, PaneFooterScope, PaneLinkMenu, QueryBar, useChartTableSelection, usePagedRows, useTableLoadMore, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type PaneHint } from "../../../components";
+import { DetailReader, type DetailFact } from "../../../components/reader/detail-reader";
+import type { CloudJobsPostingDetail } from "../../../api-client/types";
+import { descriptionText, postingFacts, postingTitle } from "../shared/job-posting";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, ScrollBox, Text, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
+import { Box, Text, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { withCountryFlag } from "../../../components/ui/country-flag";
 import { SignInWall } from "../cloud/auth-actions";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
@@ -19,7 +22,7 @@ import { isCloudSessionRequired, useResearchCloudSession } from "../shared/resea
 import { humanLabel, listingCell, missingCell, shareCell, signedColor, toneColor, withoutQuietColumns, type StateTone } from "../shared/research-cells";
 import { AppRankView } from "./app-rank";
 import { useAttentionEvidence } from "./evidence";
-import { cachedAttention, fetchAttention, loadAttention, validateAttention, type AttentionPayload } from "./client";
+import { cachedAttention, fetchAttention, fetchPostingDetail, loadAttention, validateAttention, type AttentionPayload } from "./client";
 import { appsModel, attentionNumber, attentionPaneTabs, attentionSeries, count, hiringModel, remoteText, SIGNED_COLUMNS, sortAttentionRows, type AttentionKind, type AttentionPaneTab, type AttentionRow, type AttentionTab } from "./model";
 import { HiringMovesView } from "./moves";
 
@@ -30,13 +33,29 @@ const SIGNAL_TONES: Record<string, StateTone> = { Surge: "positive", Freeze: "ne
 /** Columns left out while every row reads the same default: a first capture has no weekly change yet. */
 const QUIET_COLUMNS: Record<string, readonly string[]> = { net: [""], z: [""], change: [""], velocity: [""], drift: [""], growth: [""], added: [""], removed: [""], coverage: ["complete"], spread: [""] };
 const LABEL_COLUMNS = new Set(["chart"]);
-function Evidence({ row, width, height }: Size & { row: AttentionRow }) {
-  const colors = useThemeColors();
-  const desktop = !!useUiCapabilities().nativePaneChrome;
-  return <ScrollBox scrollY width={width} height={desktop ? undefined : height} flexGrow={1} flexBasis={0} contentOptions={{ paddingX: 1 }}>
-    {(row.details ?? Object.entries(row.values).map(([label, value]) => ({ label, value: String(value ?? "--") }))).map((entry) => <KeyValueRow key={entry.label} label={entry.label} value={entry.value} labelWidth={22} />)}
-    {row.url ? <Box paddingY={1}><Text fg={colors.textMuted}>{row.url}</Text></Box> : null}
-  </ScrollBox>;
+/**
+ * An evidence row read as a detail: the row's facts and, for a posting, the
+ * place, date, pay, hours and description its page gave (the title is the
+ * stack header's). A link reads as what it is, never as a bare address.
+ */
+function Evidence({ row, width, posting, source }: Size & { row: AttentionRow; posting: CloudJobsPostingDetail | null; source: string | null | undefined }) {
+  const host = useRendererHost();
+  const read = posting ? postingFacts(posting) : [];
+  const own = new Set(read.map((fact) => fact.label));
+  const link = (label: string, url: string, action: string): DetailFact => ({ label, value: linkName(url), link: { label: action, onOpen: () => void host.openExternal(url) } });
+  const facts: DetailFact[] = [
+    ...read,
+    ...(row.details ?? []).filter((fact) => !own.has(fact.label)),
+    ...(source ? [link("Source", source, row.posting ? "Open posting" : "Open source")] : []),
+    ...(row.links ?? []).map((entry) => link(entry.label, entry.url, `Open ${entry.label.toLowerCase()}`)),
+  ];
+  return <PaneLinkMenu>
+    <DetailReader resetScrollKey={row.id} width={width} facts={facts} body={descriptionText(posting?.description)} />
+  </PaneLinkMenu>;
+}
+/** A link's site, as a reader names it: "sec.gov". */
+function linkName(url: string): string {
+  try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return "Source"; }
 }
 
 export function HiringPane(props: Size) {
@@ -123,6 +142,12 @@ function AttentionView({ kind, symbol, width, height, focused, initialTab }: Siz
   const evidence = rows.find((row) => row.id === openEvidence) ?? null;
   const app = rows.find((row) => row.id === openAppId)?.app ?? null;
   const detailOpen = !!openCompany || !!evidence || !!app;
+  // The open posting's own page, read when its detail opens; a free preview or a posting gone since keeps the row's facts.
+  const postingKey = evidence?.posting ? `${evidence.posting.ticker}:${evidence.posting.externalId}` : null;
+  const postingLoader = useMemo(() => evidence?.posting && !snapshot ? (() => fetchPostingDetail(evidence.posting!.ticker, evidence.posting!.externalId)) : null,
+    [postingKey, snapshot]);
+  const postingResource = useAsyncResource(postingLoader);
+  const posting = postingKey ? postingResource.data : null;
   const tabLabels: Record<AttentionTab, string> = { table: "Table", chart: "Chart", mix: kind === "hiring" ? "Mix" : "Markets", peers: kind === "apps" && !symbol ? "Companies" : "Peers", evidence: "Evidence" };
   const tabs = attentionPaneTabs(kind, symbol).map((value) => ({ value, label: value === "moves" ? "Moves" : tabLabels[value] }));
   const signInWall = !data && isCloudSessionRequired(resource.error);
@@ -133,7 +158,7 @@ function AttentionView({ kind, symbol, width, height, focused, initialTab }: Siz
   useAutoRefresh(resource.updatedAt, resource.load);
   usePaneRefreshKey(() => { void resource.reload(); paged.reload(); }, { focused: focused && !detailOpen && !moves });
   const selectedSymbol = selected?.symbol ?? symbol;
-  const source = evidence?.url ?? selected?.url;
+  const source = (evidence ? posting?.url ?? evidence.url : null) ?? selected?.url;
   const hints: PaneHint[] = [
     ...(source ? [{ id: "source", key: "o", label: "pen source", onPress: () => void host.openExternal(source) }] : []),
     ...(selected && !evidence && selected.details ? [{ id: "evidence", key: "e", label: "vidence", onPress: () => setOpenEvidence(selected.id) }] : []),
@@ -146,7 +171,7 @@ function AttentionView({ kind, symbol, width, height, focused, initialTab }: Siz
     ] : []),
     ...(model?.preview ? [{ id: "upgrade", key: CLOUD_PLAN_KEY, label: "upgrade", title: "Upgrade to Pro", onPress: upgrade }] : []),
   ];
-  usePaneStatusFooter({ registrationId: `${kind}:status`, enabled: !openCompany && !app && !moves, loading: resource.loading || paged.loadingMore, error: data ? resource.error ?? paged.moreError?.message ?? paged.error?.message : null, stale: resource.data?.stale,
+  usePaneStatusFooter({ registrationId: `${kind}:status`, enabled: !openCompany && !app && !moves, loading: resource.loading || paged.loadingMore || (!!evidence && postingResource.loading), error: data ? resource.error ?? paged.moreError?.message ?? paged.error?.message : null, stale: resource.data?.stale,
     info: [...(model?.asOf ? [{ id: "observed", asOf: true, parts: [{ text: `as of ${model.asOf.slice(0, 10)}`, tone: "muted" as const }] }] : []), ...(model?.preview ? [{ id: "preview", parts: [{ text: "Pro preview", tone: "warning" as const }] }] : [])], hints });
   usePaneNoticeFooter({ registrationId: `${kind}:notices`, enabled: !openCompany && !app && !moves, focused, notices: [...(model?.notices ?? []), ...(resource.data?.refreshError ? [resource.data.refreshError] : [])] });
   if (signInWall) return <SignInWall placement={kind === "hiring" ? "hiring-momentum-signin" : "app-attention-signin"} action={kind === "hiring" ? "view hiring momentum" : "view app attention"} needsVerification={session.needsVerification} />;
@@ -165,8 +190,8 @@ function AttentionView({ kind, symbol, width, height, focused, initialTab }: Siz
   </Box>;
   return <Box width={width} height={height} flexDirection="column">
     {strip}
-    <PageStackView focused={focused} detailOpen={detailOpen} onBack={() => { setOpenCompany(null); setOpenEvidence(null); setOpenApp(null); }} detailTitle={openCompany ?? app?.name ?? (evidence ? String(evidence.values.title ?? evidence.values.name ?? evidence.id) : undefined)}
-        detailContent={openCompany ? <PaneFooterScope active><AttentionView key={openCompany} kind={kind} symbol={openCompany} width={width} height={bodyHeight - 1} focused={focused} /></PaneFooterScope> : app ? <PaneFooterScope active><AppRankView focus={app} accessKey={accessKey} width={width} height={bodyHeight - 1} focused={focused} /></PaneFooterScope> : evidence ? <Evidence row={evidence} width={width} height={bodyHeight - 1} focused={focused} /> : null}
+    <PageStackView focused={focused} detailOpen={detailOpen} onBack={() => { setOpenCompany(null); setOpenEvidence(null); setOpenApp(null); }} detailTitle={openCompany ?? app?.name ?? (evidence ? (posting ? postingTitle(posting.title, posting.externalId) : null) ?? String(evidence.values.title ?? evidence.values.name ?? evidence.id) : undefined)}
+        detailContent={openCompany ? <PaneFooterScope active><AttentionView key={openCompany} kind={kind} symbol={openCompany} width={width} height={bodyHeight - 1} focused={focused} /></PaneFooterScope> : app ? <PaneFooterScope active><AppRankView focus={app} accessKey={accessKey} width={width} height={bodyHeight - 1} focused={focused} /></PaneFooterScope> : evidence ? <Evidence row={evidence} posting={posting} source={source} width={width} height={bodyHeight - 1} focused={focused} /> : null}
         rootContent={<DataTableView columns={columns} items={model && section ? rows : []} rootWidth={width} rootHeight={bodyHeight} focused={focused && !detailOpen} scrollRef={scrollRef} onBodyScrollActivity={scrollMore}
           // A filter change reloads under the query bar, which stays.
           status={!data ? { loading: resource.loading, error: resource.error, subject: kind === "hiring" ? "hiring momentum" : "app attention" }

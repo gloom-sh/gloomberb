@@ -613,8 +613,10 @@ export function buildSurfaceGrid(snapshot: SurfaceSnapshot, options: SurfaceGrid
           : axis === "strike" ? coordinate : deltaNeutralStrike(targetForward, tenor.years, (k) => at(k)?.volatility ?? null);
         if (strike === null) return unavailable();
         if (axis === "delta" && coordinate !== 0) {
-          let low = Math.min(...available.map((expiry) => expiry.points[0]!.logMoneyness));
-          let high = Math.max(...available.map((expiry) => expiry.points.at(-1)!.logMoneyness));
+          // The quoted strikes against each expiry's forward as it is now, the one its smile is read on: a report's
+          // forward is rounded after the points were placed, and the stored log-moneyness would land past the quotes.
+          let low = Math.min(...available.map((expiry) => logForwardMoneyness(expiry.points[0]!.strike, expiry.forward!)!));
+          let high = Math.max(...available.map((expiry) => logForwardMoneyness(expiry.points.at(-1)!.strike, expiry.forward!)!));
           const delta = (k: number) => {
             const value = at(k);
             return value == null ? null : optionDelta({ spot: snapshot.spot, years: tenor.years,

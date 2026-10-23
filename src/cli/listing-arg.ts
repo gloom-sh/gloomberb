@@ -43,6 +43,7 @@ import type { InstrumentOfKind } from "../tickers/instrument-coverage";
 import { brokerIndexCode, brokerIndexReadAs } from "./index-roots";
 import { readTerminalListingCode, terminalCodeReadAs } from "../tickers/terminal-codes";
 import { listingAbroadVenue } from "../utils/sec";
+import { notTheCoinNote } from "./commands/crypto-hints";
 
 /** The `--exchange` option of every command that takes a ticker. */
 export const EXCHANGE_OPTION = {
@@ -388,7 +389,9 @@ export async function listingChoiceNotes(
 /**
  * `listingChoiceNotes` for a command with no quote of its own to read the
  * listing from (`fn`): it loads the listing's quote, and only for a bare
- * symbol, so a named or saved listing costs nothing.
+ * symbol, so a named or saved listing costs nothing. A bare coin ticker read
+ * as a fund (BTC, the Grayscale trust) ends with `quote`'s note naming the
+ * coin's pair.
  */
 export async function quotedListingChoiceNotes(
   listing: Pick<CliListing, "symbol" | "exchange" | "saved" | "request" | "readAs">,
@@ -396,7 +399,9 @@ export async function quotedListingChoiceNotes(
 ): Promise<string[]> {
   const venues = loadBareVenues(listing, deps);
   if (!venues) return listingReadNotes(listing);
-  return listingChoiceNotes(listing, deps, await loadListingQuote(deps.dataProvider, listing), venues);
+  const quote = await loadListingQuote(deps.dataProvider, listing);
+  const coin = notTheCoinNote(listing.symbol, quote);
+  return [...await listingChoiceNotes(listing, deps, quote, venues), ...coin ? [coin] : []];
 }
 
 /**

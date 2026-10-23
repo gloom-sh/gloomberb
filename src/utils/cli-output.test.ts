@@ -121,6 +121,14 @@ describe("renderTable", () => {
       "  Status stale",
     ]);
   });
+
+  test("minTableWidth leaves a column out of a narrower fitted table even when it would fit, never out of piped output", () => {
+    const columns = [{ header: "Filed" }, { header: "Accepted", minTableWidth: 100 }, { header: "Form" }];
+    const rows = [["2026-09-28", "2026-09-28 21:57:22 UTC", "497J"]];
+    expect(plain(() => renderTable(columns, rows, { maxWidth: 80 }))[2]).toBe("2026-09-28  497J");
+    expect(plain(() => renderTable(columns, rows, { maxWidth: 100 }))[2]).toBe("2026-09-28  2026-09-28 21:57:22 UTC  497J");
+    expect(plain(() => renderTable(columns, rows, { maxWidth: null }))[2]).toBe("2026-09-28  2026-09-28 21:57:22 UTC  497J");
+  });
 });
 
 test("--width fits tables whether or not stdout is a terminal, and clearing it restores the terminal's own width", () => {

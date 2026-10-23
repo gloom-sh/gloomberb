@@ -24,7 +24,7 @@ import { AwardDetail } from "./detail";
 import { useAwardAlerts } from "./alerts";
 import { AWARDS_UNAVAILABLE, fetchAwards, loadAward, loadAwards, validateAwards } from "./client";
 import { useAwardsEvidence } from "./evidence";
-import { AWARD_TABS, aggregateId, awardHistorySeries, awardPercent, awardPeriod, awardScope, awardsPreviewNote, awardTab, awardTypeLabel, futureAwardDatesNote, money,
+import { AWARD_TABS, aggregateId, awardHistorySeries, awardPercent, awardPeriod, awardScope, awardsCoverageNotes, awardsPreviewNote, awardTab, awardTypeLabel, futureAwardDatesNote, money,
   rankedAggregates } from "./model";
 
 type Item = { kind: "award"; row: AwardRow } | { kind: "aggregate"; row: AwardAggregate } | { kind: "leader"; row: AwardCompanyLeader } | { kind: "locked"; id: string }
@@ -187,7 +187,8 @@ function AwardsView({ width, height, focused, symbol }: PaneProps & { symbol: st
     error: data && !denied ? failed?.message ?? null : null, stale: loaded?.stale,
     info: data?.asOf ? [{ id: "asof", parts: [{ text: `as of ${data.asOf.slice(0, 10)}`, tone: "muted" }] }] : [], hints });
   usePaneNoticeFooter({ registrationId: "awards:notices", focused, notices: [
-    ...(data?.status === "partial" ? ["Procurement coverage is incomplete for the selected scope."] : []),
+    // The same coverage notes `fn AWARDS` prints: what the awards shown may be missing.
+    ...(data ? awardsCoverageNotes(data) : []),
     ...(loaded?.refreshError ? [loaded.refreshError] : []),
     ...(data?.truncated && Object.values(data.truncated).some(Boolean) ? ["Some aggregate history exceeds this response's limit. Narrow the date range or scope."] : []),
     ...(tab === "company" && currencies.length > 1 && !currency ? [`Chart in ${chartCurrency}; select a currency to inspect other obligations.`] : []),

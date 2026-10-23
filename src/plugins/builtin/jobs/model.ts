@@ -9,6 +9,9 @@ import type {
 } from "../../../api-client/types";
 import { formatCompact, formatNumber } from "../../../utils/format";
 import { compareSortValues } from "../../../utils/sort-values";
+import { formatSalaryRange, postingTitle } from "../shared/job-posting";
+
+export { formatSalaryRange };
 
 /**
  * Pure projections from the cloud payload to what the pane, the research tab
@@ -110,20 +113,6 @@ export function formatShare(share: number): string {
   return `${formatNumber(share * 100, share >= 0.1 ? 0 : 1)}%`;
 }
 
-export function formatSalaryRange(
-  min: number | null,
-  max: number | null,
-  currency: string | null,
-  period: string | null,
-): string {
-  if (min == null && max == null) return "";
-  const symbol = currency === "USD" ? "$" : currency === "EUR" ? "€" : currency === "GBP" ? "£" : currency ? `${currency} ` : "";
-  const fmt = (value: number) => (period === "hour" ? formatNumber(value, 0) : formatCompact(value));
-  const range = min != null && max != null && min !== max
-    ? `${symbol}${fmt(min)}–${fmt(max)}`
-    : `${symbol}${fmt((min ?? max)!)}`;
-  return period === "hour" ? `${range}/h` : period === "month" ? `${range}/mo` : range;
-}
 
 /** "3d", "6w", "4mo" from an ISO date, with a `+` when the date is a floor. */
 export function formatAge(posted: string | null, precision: string | null, now = new Date()): string {
@@ -162,7 +151,7 @@ export function buildPostingRows(postings: readonly CloudJobsPosting[], now = ne
   return postings.map((posting) => ({
     key: String(posting.id),
     posting,
-    title: posting.title,
+    title: postingTitle(posting.title),
     function: functionLabel(posting.function),
     seniority: seniorityLabel(posting.seniority),
     location: posting.remote && !/remote/i.test(posting.location ?? "")
