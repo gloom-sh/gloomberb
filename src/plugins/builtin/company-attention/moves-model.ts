@@ -38,7 +38,7 @@ function signalLabel(signal: HiringMove["signal"]): string {
 export const SIGNAL_TONE: Record<string, "positive" | "negative" | "muted"> = { Accelerating: "positive", Slowing: "negative", "With peers": "muted", "In line": "muted" };
 
 /** Why a move is shown but not alerted: the move's own numbers say it is not a pace. */
-const FLAG_LABELS: Record<HiringMoveFlag, string> = { one_day_batch: "One-day batch", outsized: "Over board size" };
+const FLAG_LABELS: Record<HiringMoveFlag, string> = { one_day_batch: "One-day batch", few_reads: "Few reads", outsized: "Over board size" };
 const flagText = (move: Pick<HiringMove, "flags">) => (move.flags ?? []).map((flag) => FLAG_LABELS[flag] ?? humanLabel(flag)).join(", ") || null;
 /** Whether the move's alert has gone out, waits for a later pass or is held. */
 function alertText(move: HiringMove): string | null {
@@ -93,6 +93,7 @@ export function moveFacts(move: HiringMove): Array<{ label: string; value: strin
     { label: "Against peers", value: pace(move.peerRelative) },
     ...(move.flags?.length ? [{ label: "Check", value: [
       move.flags.includes("one_day_batch") && move.peakDay ? `${count(move.peakDay.newRoles)} of the ${count(move.newRoles)} came on ${move.peakDay.day}` : "",
+      move.flags.includes("few_reads") && move.unplacedRead ? `its boards were read ${countOf(move.unplacedRead.reads, "time")} that week, too seldom to place the roles on a day` : "",
       move.flags.includes("outsized") && move.priorMaxOpen != null ? `more than the ${count(move.priorMaxOpen)} roles its boards held open at most before` : "",
     ].filter(Boolean).join("; ") || flagText(move)! }] : []),
     ...(move.drivers.length ? [{ label: "Role families", value: move.drivers.map((row) => `${row.label} ${count(row.newRoles)} (${average(row.baselineMean)} a week)`).join(", ") }] : []),

@@ -1,6 +1,6 @@
 import { apiClient } from "../../../api-client";
 import type { AppAttentionFilter, AppAttentionPayload, AppRankPayload } from "../../../api-client/app-attention";
-import type { HiringBoard, HiringCompanyMoves, HiringMove, HiringMovePosting, HiringMovesBoard, HiringMovesFilter, HiringMoveWeek, HiringPayload, HiringSummary } from "../../../api-client/hiring";
+import type { HiringBoard, HiringCompanyMoves, HiringCompanySignals, HiringMove, HiringMovePosting, HiringMovesBoard, HiringMovesFilter, HiringMoveWeek, HiringPayload, HiringSignalGroup, HiringSignalsBoard, HiringSignalsFilter, HiringSummary, HiringWeekSignal } from "../../../api-client/hiring";
 import type { CloudJobsPostingDetail } from "../../../api-client/types";
 import { createPluginCache } from "../../../data/plugin-cache";
 import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
@@ -10,6 +10,8 @@ export type AttentionPayload = HiringBoard | HiringPayload | AppAttentionPayload
 export const attentionCache = createPluginCache<AttentionPayload>({ kind: "company-attention", source: "gloom-cloud", schemaVersion: 1, policy: { staleMs: 30 * 60_000, expireMs: 7 * 86_400_000 } });
 export type MovesPayload = HiringMovesBoard | HiringCompanyMoves;
 export const movesCache = createPluginCache<MovesPayload>({ kind: "hiring-moves", source: "gloom-cloud", schemaVersion: 1, policy: { staleMs: 30 * 60_000, expireMs: 7 * 86_400_000 } });
+export type SignalsPayload = HiringSignalsBoard | HiringCompanySignals;
+export const signalsCache = createPluginCache<SignalsPayload>({ kind: "hiring-signals", source: "gloom-cloud", schemaVersion: 1, policy: { staleMs: 30 * 60_000, expireMs: 7 * 86_400_000 } });
 export const appRankCache = createPluginCache<AppRankPayload>({ kind: "app-rank-history", source: "gloom-cloud", schemaVersion: 1, policy: { staleMs: 30 * 60_000, expireMs: 7 * 86_400_000 } });
 const finite = (value: unknown) => typeof value === "number" && Number.isFinite(value);
 const positive = (value: unknown) => finite(value) && (value as number) >= 0;
@@ -90,6 +92,37 @@ export async function fetchMoves(symbol: string | undefined, query: MovesQuery =
 const movesKey = (symbol: string | undefined, access: string, filter: HiringMovesFilter) => `${symbol ?? `board:${filter}`}:${access}`;
 export const cachedMoves = (symbol: string | undefined, access: string, filter: HiringMovesFilter) => cachedCloudResource(movesCache, movesKey(symbol, access, filter), validateMoves);
 export const loadMoves = (symbol: string | undefined, access: string, filter: HiringMovesFilter, force = false) => loadCloudResource(movesCache, movesKey(symbol, access, filter), () => fetchMoves(symbol, { filter }), { force, validate: validateMoves });
+
+const KINDS = new Set(["new_country", "new_city", "location_spike", "function_spike", "new_role_type"]);
+const weekSignal = (row: HiringWeekSignal) => !!row && typeof row.symbol === "string" && typeof row.name === "string" && date(row.week) && KINDS.has(row.kind)
+  && ["expansion", "anomalies"].includes(row.group) && typeof row.key === "string" && typeof row.label === "string" && positive(row.newRoles)
+  && !!row.history && date(row.history.watchedSince) && positive(row.history.priorPostings) && (row.history.priorShare === null || fraction(row.history.priorShare))
+  && (row.baseline === null || (!!row.baseline && positive(row.baseline.mean) && Array.isArray(row.baseline.values))) && Array.isArray(row.flags)
+  && Array.isArray(row.topTitles) && Array.isArray(row.places) && Array.isArray(row.postings) && row.postings.every(movePosting)
+  && typeof row.why === "string" && Array.isArray(row.sourceTickers);
+export function validateSignals(payload: SignalsPayload): SignalsPayload {
+  const valid = !!payload && date(payload.generatedAt) && typeof payload.preview === "boolean" && numericTree(payload) && ("group" in payload
+    ? ["expansion", "anomalies"].includes(payload.group) && (payload.week === null || date(payload.week)) && Array.isArray(payload.signals) && payload.signals.every(weekSignal)
+      && positive(payload.total) && positive(payload.locked) && !!payload.coverage?.counts
+    : typeof payload.symbol === "string" && (payload.week === null || date(payload.week)) && (payload.watchedSince === null || date(payload.watchedSince))
+      && Array.isArray(payload.signals) && payload.signals.every(weekSignal) && Array.isArray(payload.history) && payload.history.every(weekSignal)
+      && Array.isArray(payload.skipped) && !!payload.locked);
+  if (!valid) throw new Error("The server returned unreadable hiring signals.");
+  return payload;
+}
+export interface SignalsQuery { filter?: HiringSignalsFilter; offset?: number; limit?: number }
+/** A group's board, or a company's signals (both groups; the view keeps its own). */
+export async function fetchSignals(group: HiringSignalGroup, symbol: string | undefined, query: SignalsQuery = {}, client: Pick<typeof apiClient, "getCloudHiringSignals" | "getCloudHiringCompanySignals"> = apiClient, signal?: AbortSignal) {
+  try {
+    const data = validateSignals(symbol ? await client.getCloudHiringCompanySignals(symbol, signal) : await client.getCloudHiringSignals(group, { limit: query.limit, offset: query.offset, kind: query.filter }, signal));
+    if (symbol && (!("symbol" in data) || data.symbol.toUpperCase() !== symbol.toUpperCase() && data.requestedSymbol?.toUpperCase() !== symbol.toUpperCase())) throw new Error("The server returned signals for a different company.");
+    if (!symbol && (!("group" in data) || data.group !== group)) throw new Error("The server returned another tab's signals.");
+    return data;
+  } catch (error) { throw unavailableOnServer(error, "Hiring signals are not available yet.", [404, 503]); }
+}
+const signalsKey = (group: HiringSignalGroup, symbol: string | undefined, access: string, filter: HiringSignalsFilter) => `${symbol ?? `${group}:${filter}`}:${access}`;
+export const cachedSignals = (group: HiringSignalGroup, symbol: string | undefined, access: string, filter: HiringSignalsFilter) => cachedCloudResource(signalsCache, signalsKey(group, symbol, access, filter), validateSignals);
+export const loadSignals = (group: HiringSignalGroup, symbol: string | undefined, access: string, filter: HiringSignalsFilter, force = false) => loadCloudResource(signalsCache, signalsKey(group, symbol, access, filter), () => fetchSignals(group, symbol, { filter }), { force, validate: validateSignals });
 
 export async function fetchAppRank(focus: AppFocus, days: number, offset = 0, signal?: AbortSignal, client: Pick<typeof apiClient, "getCloudAppRankHistory"> = apiClient, limit = 500) {
   const data = await client.getCloudAppRankHistory(focus.store, focus.appId, { country: focus.country, chart: focus.chart, days, offset, limit }, signal);

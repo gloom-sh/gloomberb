@@ -1,0 +1,1564 @@
+{
+ "generatedAt": "2026-10-19T14:00:00.000Z",
+ "proRequired": true,
+ "preview": false,
+ "group": "anomalies",
+ "filter": "all",
+ "week": "2026-10-12",
+ "total": 94,
+ "locked": 0,
+ "coverage": {
+  "measured": 1618,
+  "counts": {
+   "location_spike": 62,
+   "function_spike": 29,
+   "new_city": 26,
+   "new_country": 8,
+   "new_role_type": 3
+  },
+  "held": {
+   "unmeasured": 468,
+   "short_watch": 18,
+   "recounted": 22
+  },
+  "skipped": {
+   "thin_history": 400,
+   "unplaced_cities": 335,
+   "unplaced_history": 134,
+   "reformatted": 31,
+   "posted_before_watch": 2
+  },
+  "watchedFrom": "2026-09-17",
+  "watchedTo": "2026-09-20",
+  "computedAt": "2026-10-19T06:04:11.000Z"
+ },
+ "signals": [
+  {
+   "symbol": "RIVN",
+   "name": "Rivian Automotive, Inc. / DE",
+   "sector": "Consumer Cyclical",
+   "industry": "Auto Manufacturers",
+   "sourceTickers": [
+    "RIVN"
+   ],
+   "week": "2026-10-12",
+   "topTitles": [
+    {
+     "title": "Manager, Field Service",
+     "count": 4
+    },
+    {
+     "title": "Service Production Supervisor",
+     "count": 3
+    },
+    {
+     "title": "Field Service Technician IV",
+     "count": 2
+    }
+   ],
+   "places": [
+    {
+     "label": "Clifton Park, NY, US",
+     "count": 7
+    },
+    {
+     "label": "Malvern, PA, US",
+     "count": 7
+    },
+    {
+     "label": "West Henrietta, NY, US",
+     "count": 6
+    },
+    {
+     "label": "Woodbury, NY, US",
+     "count": 6
+    },
+    {
+     "label": "Fort Myers, FL, US",
+     "count": 5
+    }
+   ],
+   "postings": [
+    {
+     "id": "21514386",
+     "title": "Field Service Technician - Belgrade, MT",
+     "url": "https://internal-careers-rivian.icims.com/jobs/34733/field-service-technician---belgrade%2c-mt/job?in_iframe=1",
+     "location": "Bozeman, MT, US",
+     "country": "US",
+     "jobFunction": "operations",
+     "seniority": "mid",
+     "firstSeenAt": "2026-10-18T02:25:04.082Z",
+     "closedAt": null,
+     "sourceTicker": "RIVN"
+    },
+    {
+     "id": "21514383",
+     "title": "Field Service Technician, Night Shift - Belgrade, MT",
+     "url": "https://internal-careers-rivian.icims.com/jobs/34739/field-service-technician%2c-night-shift---belgrade%2c-mt/job?in_iframe=1",
+     "location": "Belgrade, MT, US",
+     "country": "US",
+     "jobFunction": "operations",
+     "seniority": "mid",
+     "firstSeenAt": "2026-10-18T02:25:04.082Z",
+     "closedAt": null,
+     "sourceTicker": "RIVN"
+    }
+   ],
+   "why": "222 new Operations roles in the week of Oct 12, 2026, 17x the average of 13 a week over the 3 measured weeks before (score 35.0). All its roles with a role family ran 3.4x their average. Most often Manager, Field Service (4), Service Production Supervisor (3).",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z",
+   "kind": "function_spike",
+   "group": "anomalies",
+   "dimension": "function",
+   "key": "operations",
+   "label": "Operations",
+   "country": null,
+   "newRoles": 222,
+   "titles": 212,
+   "history": {
+    "watchedSince": "2026-09-19",
+    "priorPostings": 1078,
+    "priorShare": 1
+   },
+   "baseline": {
+    "weeks": 3,
+    "mean": 13.333333333333334,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 18
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 14
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 8
+     }
+    ]
+   },
+   "ratio": 16.65,
+   "zScore": 34.994463847871714,
+   "companyRatio": 3.4175824175824174,
+   "flags": [],
+   "reads": 7
+  },
+  {
+   "symbol": "STT",
+   "name": "STATE STREET CORP",
+   "sector": "Financial Services",
+   "industry": "Asset Management",
+   "sourceTickers": [
+    "STT"
+   ],
+   "week": "2026-10-12",
+   "topTitles": [
+    {
+     "title": "Alternative Ops Fund Accounting, Senior Associate",
+     "count": 23
+    },
+    {
+     "title": "Alternative Ops Fund Accounting, Associate 2",
+     "count": 14
+    },
+    {
+     "title": "Alternative Ops Fund Accounting, Associate 1",
+     "count": 8
+    }
+   ],
+   "places": [],
+   "postings": [
+    {
+     "id": "20328244",
+     "title": "Implementation Reporting and Intelligence, Senior Associate",
+     "url": "https://statestreet.wd1.myworkdayjobs.com/en-US/Global/job/Hangzhou-China/Implementation-Reporting-and-Intelligence--Senior-Associate_R-799533",
+     "location": "Hangzhou, China",
+     "country": "CN",
+     "jobFunction": "customer",
+     "seniority": "senior",
+     "firstSeenAt": "2026-10-16T18:01:39.419Z",
+     "closedAt": null,
+     "sourceTicker": "STT"
+    },
+    {
+     "id": "20328243",
+     "title": "Alternative Ops Fund Accounting, Senior Associate",
+     "url": "https://statestreet.wd1.myworkdayjobs.com/en-US/Global/job/Hangzhou-China/Alternative-Ops-Fund-Accounting--Senior-Associate_R-799565",
+     "location": "Hangzhou, China",
+     "country": "CN",
+     "jobFunction": "finance",
+     "seniority": "senior",
+     "firstSeenAt": "2026-10-16T18:01:39.419Z",
+     "closedAt": null,
+     "sourceTicker": "STT"
+    }
+   ],
+   "why": "83 new roles in Hangzhou, CN in the week of Oct 12, 2026, 16x the average of 5 a week over the 3 measured weeks before (score 19.2). All its roles placed in a city ran 1.3x their average. Most often Alternative Ops Fund Accounting, Senior Associate (23), Alternative Ops Fund Accounting, Associate 2 (14).",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z",
+   "kind": "location_spike",
+   "group": "anomalies",
+   "dimension": "city",
+   "key": "hangzhou|CN",
+   "label": "Hangzhou, CN",
+   "country": "CN",
+   "newRoles": 83,
+   "titles": 22,
+   "history": {
+    "watchedSince": "2026-09-18",
+    "priorPostings": 2093,
+    "priorShare": 0.9517439082656474
+   },
+   "baseline": {
+    "weeks": 3,
+    "mean": 5.333333333333333,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 9
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 2
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 5
+     }
+    ]
+   },
+   "ratio": 15.5625,
+   "zScore": 19.152482021074125,
+   "companyRatio": 1.2556917688266198,
+   "flags": [],
+   "reads": 7
+  },
+  {
+   "symbol": "KMX",
+   "name": "CARMAX INC",
+   "sector": "Consumer Cyclical",
+   "industry": "Auto & Truck Dealerships",
+   "sourceTickers": [
+    "KMX"
+   ],
+   "week": "2026-10-12",
+   "topTitles": [
+    {
+     "title": "Sales Consultant - Full Time",
+     "count": 29
+    },
+    {
+     "title": "Sales Consultant",
+     "count": 26
+    },
+    {
+     "title": "Sales Consultant Trainee",
+     "count": 4
+    }
+   ],
+   "places": [
+    {
+     "label": "United States",
+     "count": 74
+    },
+    {
+     "label": "Chattanooga, TN",
+     "count": 1
+    },
+    {
+     "label": "Colorado Springs, CO",
+     "count": 1
+    },
+    {
+     "label": "Fresno, CA",
+     "count": 1
+    },
+    {
+     "label": "Indianapolis, IN",
+     "count": 1
+    }
+   ],
+   "postings": [
+    {
+     "id": "20855470",
+     "title": "Retail Sales Manager",
+     "url": "https://carmax.wd1.myworkdayjobs.com/External/job/MD---DC-Area---Brandywine/Retail-Sales-Manager_JR-188259",
+     "location": "MD - DC Area - Brandywine",
+     "country": "US",
+     "jobFunction": "sales",
+     "seniority": "manager",
+     "firstSeenAt": "2026-10-17T12:59:56.170Z",
+     "closedAt": null,
+     "sourceTicker": "KMX"
+    },
+    {
+     "id": "20034335",
+     "title": "Sales Consultant",
+     "url": "https://carmax.wd1.myworkdayjobs.com/External/job/TX---Dallas---Garland/Sales-Consultant_JR-164973",
+     "location": "TX - Dallas - Garland",
+     "country": "US",
+     "jobFunction": "sales",
+     "seniority": "entry",
+     "firstSeenAt": "2026-10-16T12:54:51.143Z",
+     "closedAt": null,
+     "sourceTicker": "KMX"
+    }
+   ],
+   "why": "83 new Sales roles in the week of Oct 12, 2026, 9.6x the average of 9 a week over the 3 measured weeks before (score 15.5). All its roles with a role family ran 2.0x their average. Most often Sales Consultant - Full Time (29), Sales Consultant (26).",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z",
+   "kind": "function_spike",
+   "group": "anomalies",
+   "dimension": "function",
+   "key": "sales",
+   "label": "Sales",
+   "country": null,
+   "newRoles": 83,
+   "titles": 23,
+   "history": {
+    "watchedSince": "2026-09-19",
+    "priorPostings": 1576,
+    "priorShare": 1
+   },
+   "baseline": {
+    "weeks": 3,
+    "mean": 8.666666666666666,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 10
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 7
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 9
+     }
+    ]
+   },
+   "ratio": 9.576923076923078,
+   "zScore": 15.462267969778264,
+   "companyRatio": 2.034300791556728,
+   "flags": [],
+   "reads": 7
+  },
+  {
+   "symbol": "SNY",
+   "name": "Sanofi",
+   "sector": null,
+   "industry": null,
+   "sourceTickers": [
+    "SNY"
+   ],
+   "week": "2026-10-12",
+   "topTitles": [
+    {
+     "title": "Retail Vaccines Accounts Specialist",
+     "count": 3
+    },
+    {
+     "title": "Rare Blood Disorders/Rare Hematology Thought Leader Liaison",
+     "count": 2
+    },
+    {
+     "title": "Rare Hematology Thought Leader Liaison",
+     "count": 2
+    }
+   ],
+   "places": [
+    {
+     "label": "Cambridge, MA, US",
+     "count": 7
+    },
+    {
+     "label": "Morristown, NJ, US",
+     "count": 5
+    },
+    {
+     "label": "Moosic, PA, US",
+     "count": 4
+    },
+    {
+     "label": "Beijing, CN",
+     "count": 3
+    },
+    {
+     "label": "Guangzhou, CN",
+     "count": 3
+    }
+   ],
+   "postings": [
+    {
+     "id": "20724202",
+     "title": "Haemophilia Area Commercial Lead",
+     "url": "https://sanofi.wd3.myworkdayjobs.com/SanofiCareers/job/New-Delhi/Haemophilia-Area-Commercial-Lead_R2868311",
+     "location": "New Delhi",
+     "country": "IN",
+     "jobFunction": "sales",
+     "seniority": "lead",
+     "firstSeenAt": "2026-10-17T04:19:11.193Z",
+     "closedAt": null,
+     "sourceTicker": "SNY"
+    },
+    {
+     "id": "20724180",
+     "title": "US DUPIXENT Associate - VIE Contract",
+     "url": "https://sanofi.wd3.myworkdayjobs.com/SanofiCareers/job/Cambridge-MA/US-DUPIXENT-Associate---VIE-Contract_R2873873",
+     "location": "Cambridge, MA",
+     "country": "US",
+     "jobFunction": "sales",
+     "seniority": "entry",
+     "firstSeenAt": "2026-10-17T04:19:11.193Z",
+     "closedAt": null,
+     "sourceTicker": "SNY"
+    }
+   ],
+   "why": "80 new Sales roles in the week of Oct 12, 2026, 2.5x the average of 32 a week over the 3 measured weeks before (score 5.3). All its roles with a role family ran 1.2x their average. Most often Retail Vaccines Accounts Specialist (3), Rare Blood Disorders/Rare Hematology Thought Leader Liaison (2).",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z",
+   "kind": "function_spike",
+   "group": "anomalies",
+   "dimension": "function",
+   "key": "sales",
+   "label": "Sales",
+   "country": null,
+   "newRoles": 80,
+   "titles": 76,
+   "history": {
+    "watchedSince": "2026-09-20",
+    "priorPostings": 1490,
+    "priorShare": 1
+   },
+   "baseline": {
+    "weeks": 3,
+    "mean": 31.666666666666668,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 33
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 32
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 30
+     }
+    ]
+   },
+   "ratio": 2.526315789473684,
+   "zScore": 5.259702813297584,
+   "companyRatio": 1.226646248085758,
+   "flags": [],
+   "reads": 7
+  },
+  {
+   "symbol": "BYD",
+   "name": "BOYD GAMING CORP",
+   "sector": "Consumer Cyclical",
+   "industry": "Resorts & Casinos",
+   "sourceTickers": [
+    "BYD"
+   ],
+   "week": "2026-10-12",
+   "topTitles": [
+    {
+     "title": "Bell Attendant",
+     "count": 2
+    }
+   ],
+   "places": [],
+   "postings": [
+    {
+     "id": "20579978",
+     "title": "Bell Attendant",
+     "url": "https://jobs.smartrecruiters.com/BoydGaming/3743990016180506",
+     "location": "King of Prussia, PA, us",
+     "country": "US",
+     "jobFunction": "retail",
+     "seniority": "entry",
+     "firstSeenAt": "2026-10-17T01:24:30.999Z",
+     "closedAt": "2026-10-20T01:31:39.925Z",
+     "sourceTicker": "BYD"
+    },
+    {
+     "id": "20579976",
+     "title": "Shift Supervisor Security",
+     "url": "https://jobs.smartrecruiters.com/BoydGaming/3743990016181515",
+     "location": "King of Prussia, PA, us",
+     "country": "US",
+     "jobFunction": "operations",
+     "seniority": "manager",
+     "firstSeenAt": "2026-10-17T01:24:30.999Z",
+     "closedAt": null,
+     "sourceTicker": "BYD"
+    }
+   ],
+   "why": "44 new roles in King of Prussia, PA, US in the week of Oct 12, 2026, 13x the average of 3 a week over the 3 measured weeks before (score 11.5). All its roles placed in a city ran 1.3x their average. Most often Bell Attendant (2).",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z",
+   "kind": "location_spike",
+   "group": "anomalies",
+   "dimension": "city",
+   "key": "king of prussia|US",
+   "label": "King of Prussia, PA, US",
+   "country": "US",
+   "newRoles": 44,
+   "titles": 43,
+   "history": {
+    "watchedSince": "2026-09-18",
+    "priorPostings": 1341,
+    "priorShare": 1
+   },
+   "baseline": {
+    "weeks": 3,
+    "mean": 3.3333333333333335,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 0
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 4
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 6
+     }
+    ]
+   },
+   "ratio": 13.2,
+   "zScore": 11.52791642678143,
+   "companyRatio": 1.3056234718826405,
+   "flags": [],
+   "reads": 7
+  },
+  {
+   "symbol": "ABT",
+   "name": "ABBOTT LABORATORIES",
+   "sector": "Healthcare",
+   "industry": "Medical Devices",
+   "sourceTickers": [
+    "ABT"
+   ],
+   "week": "2026-10-12",
+   "topTitles": [
+    {
+     "title": "Professional Sales Manager || GenNext || Delhi",
+     "count": 5
+    },
+    {
+     "title": "Territory Business Manager || Quantus || Coimbatore",
+     "count": 2
+    },
+    {
+     "title": "Territory Sales Manager",
+     "count": 2
+    }
+   ],
+   "places": [
+    {
+     "label": "Mumbai, IN",
+     "count": 8
+    },
+    {
+     "label": "Lucknow, IN",
+     "count": 3
+    },
+    {
+     "label": "Bangalore, IN",
+     "count": 1
+    },
+    {
+     "label": "Hyderabad, IN",
+     "count": 1
+    },
+    {
+     "label": "New Delhi, IN",
+     "count": 1
+    }
+   ],
+   "postings": [
+    {
+     "id": "21842815",
+     "title": "Therapy Business Manager - Ahmedabad - GI Prospera",
+     "url": "https://abbott.wd5.myworkdayjobs.com/abbottcareers/job/India--Ahmedabad--Indraprasth-Corporate-Park/Therapy-Business-Manager---Ahmedabad---GI-Prospera_31163885-1",
+     "location": "India > Ahmedabad : Indraprasth Corporate Park",
+     "country": "IN",
+     "jobFunction": "sales",
+     "seniority": "manager",
+     "firstSeenAt": "2026-10-18T16:38:56.524Z",
+     "closedAt": null,
+     "sourceTicker": "ABT"
+    },
+    {
+     "id": "20109025",
+     "title": "Territory Business Manager - Derma Magna - Varanasi",
+     "url": "https://abbott.wd5.myworkdayjobs.com/abbottcareers/job/INDIA---UTTAR-PRADESH---VARANASI/Territory-Business-Manager---Derma-Magna---Varanasi_31164902",
+     "location": "INDIA - UTTAR PRADESH - VARANASI",
+     "country": "IN",
+     "jobFunction": "sales",
+     "seniority": "manager",
+     "firstSeenAt": "2026-10-16T16:22:22.664Z",
+     "closedAt": null,
+     "sourceTicker": "ABT"
+    }
+   ],
+   "why": "63 new roles in India in the week of Oct 12, 2026, 2.3x the average of 28 a week over the 3 measured weeks before (score 4.1). All its placed roles ran 1.0x their average. Most often Professional Sales Manager || GenNext || Delhi (5), Territory Business Manager || Quantus || Coimbatore (2).",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z",
+   "kind": "location_spike",
+   "group": "anomalies",
+   "dimension": "country",
+   "key": "IN",
+   "label": "India",
+   "country": "IN",
+   "newRoles": 63,
+   "titles": 56,
+   "history": {
+    "watchedSince": "2026-09-18",
+    "priorPostings": 4203,
+    "priorShare": 0.9978586723768736
+   },
+   "baseline": {
+    "weeks": 3,
+    "mean": 28,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 31
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 30
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 23
+     }
+    ]
+   },
+   "ratio": 2.25,
+   "zScore": 4.050462936504913,
+   "companyRatio": 0.9619289340101523,
+   "flags": [],
+   "reads": 7
+  },
+  {
+   "symbol": "GNRC",
+   "name": "GENERAC HOLDINGS INC.",
+   "sector": "Industrials",
+   "industry": "Specialty Industrial Machinery",
+   "sourceTickers": [
+    "GNRC"
+   ],
+   "week": "2026-10-12",
+   "topTitles": [],
+   "places": [],
+   "postings": [
+    {
+     "id": "20039143",
+     "title": "Firmware Engineer III",
+     "url": "https://generac.wd5.myworkdayjobs.com/en-US/ExternalCareers/job/Pune-India/Firmware-Engineer-III_JR16038",
+     "location": "Pune, India",
+     "country": "IN",
+     "jobFunction": "engineering",
+     "seniority": "senior",
+     "firstSeenAt": "2026-10-16T13:46:32.518Z",
+     "closedAt": null,
+     "sourceTicker": "GNRC"
+    },
+    {
+     "id": "20039142",
+     "title": "Senior Mechanical Design Engineer",
+     "url": "https://generac.wd5.myworkdayjobs.com/en-US/ExternalCareers/job/Pune-India/Senior-Mechanical-Design-Engineer_JR16042-1",
+     "location": "Pune, India",
+     "country": "IN",
+     "jobFunction": "engineering",
+     "seniority": "senior",
+     "firstSeenAt": "2026-10-16T13:46:32.518Z",
+     "closedAt": null,
+     "sourceTicker": "GNRC"
+    }
+   ],
+   "why": "32 new roles in Pune, IN in the week of Oct 12, 2026, 24x the average of 1 a week over the 3 measured weeks before (score 11.5). All its roles placed in a city ran 9.0x their average.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z",
+   "kind": "location_spike",
+   "group": "anomalies",
+   "dimension": "city",
+   "key": "pune|IN",
+   "label": "Pune, IN",
+   "country": "IN",
+   "newRoles": 32,
+   "titles": 32,
+   "history": {
+    "watchedSince": "2026-09-18",
+    "priorPostings": 60,
+    "priorShare": 1
+   },
+   "baseline": {
+    "weeks": 3,
+    "mean": 1.3333333333333333,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 4
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 0
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 0
+     }
+    ]
+   },
+   "ratio": 24,
+   "zScore": 11.5,
+   "companyRatio": 9,
+   "flags": [],
+   "reads": 4
+  },
+  {
+   "symbol": "EHC",
+   "name": "Encompass Health Corp",
+   "sector": "Healthcare",
+   "industry": "Medical Care Facilities",
+   "sourceTickers": [
+    "EHC"
+   ],
+   "week": "2026-10-12",
+   "topTitles": [],
+   "places": [],
+   "postings": [
+    {
+     "id": "18446247",
+     "title": "Accounts Payable Specialist",
+     "url": "https://ibwsjb.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX/job/2533477",
+     "location": "Wesley Chapel, FL, United States",
+     "country": "US",
+     "jobFunction": "finance",
+     "seniority": "mid",
+     "firstSeenAt": "2026-10-14T05:24:23.607Z",
+     "closedAt": "2026-10-20T05:42:13.097Z",
+     "sourceTicker": "EHC"
+    },
+    {
+     "id": "18446246",
+     "title": "Purchasing Coordinator",
+     "url": "https://ibwsjb.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX/job/2533475",
+     "location": "Wesley Chapel, FL, United States",
+     "country": "US",
+     "jobFunction": "supply_chain",
+     "seniority": "entry",
+     "firstSeenAt": "2026-10-14T05:24:23.607Z",
+     "closedAt": "2026-10-20T05:42:13.097Z",
+     "sourceTicker": "EHC"
+    }
+   ],
+   "why": "32 new roles in Wesley Chapel, FL, US in the week of Oct 12, 2026, 14x the average of 2 a week over the 3 measured weeks before (score 6.4). All its roles placed in a city ran 0.9x their average.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z",
+   "kind": "location_spike",
+   "group": "anomalies",
+   "dimension": "city",
+   "key": "wesley chapel|US",
+   "label": "Wesley Chapel, FL, US",
+   "country": "US",
+   "newRoles": 32,
+   "titles": 32,
+   "history": {
+    "watchedSince": "2026-09-19",
+    "priorPostings": 2740,
+    "priorShare": 0.9996350364963503
+   },
+   "baseline": {
+    "weeks": 3,
+    "mean": 2.3333333333333335,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 0
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 0
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 7
+     }
+    ]
+   },
+   "ratio": 13.714285714285714,
+   "zScore": 6.357142857142857,
+   "companyRatio": 0.9394572025052192,
+   "flags": [],
+   "reads": 7
+  },
+  {
+   "symbol": "AMGN",
+   "name": "AMGEN INC",
+   "sector": "Healthcare",
+   "industry": "Drug Manufacturers - General",
+   "sourceTickers": [
+    "AMGN"
+   ],
+   "week": "2026-10-12",
+   "topTitles": [
+    {
+     "title": "Sr Associate Software Engineer",
+     "count": 5
+    },
+    {
+     "title": "Specialist Software Engineer",
+     "count": 2
+    }
+   ],
+   "places": [
+    {
+     "label": "Hyderabad, IN",
+     "count": 25
+    },
+    {
+     "label": "United States",
+     "count": 10
+    },
+    {
+     "label": "Dublin, IE",
+     "count": 3
+    },
+    {
+     "label": "Singapore",
+     "count": 3
+    },
+    {
+     "label": "Dun Laoghaire, IE",
+     "count": 1
+    }
+   ],
+   "postings": [
+    {
+     "id": "20917582",
+     "title": "Associate IS Analyst – Veeva Vault Quality",
+     "url": "https://amgen.wd1.myworkdayjobs.com/en-US/Careers/job/India---Hyderabad/Associate-IS-Analyst---Veeva-Vault-Quality-_R-230694",
+     "location": "India - Hyderabad",
+     "country": "IN",
+     "jobFunction": "engineering",
+     "seniority": "entry",
+     "firstSeenAt": "2026-10-17T15:26:11.308Z",
+     "closedAt": "2026-10-19T15:42:58.539Z",
+     "sourceTicker": "AMGN"
+    },
+    {
+     "id": "20102831",
+     "title": "Engineering Projects Sr. Mgr",
+     "url": "https://amgen.wd1.myworkdayjobs.com/en-US/Careers/job/US---California---Thousand-Oaks/Engineering-Projects-Sr-Mgr_R-258387",
+     "location": "US - California - Thousand Oaks",
+     "country": "US",
+     "jobFunction": "engineering",
+     "seniority": "senior",
+     "firstSeenAt": "2026-10-16T15:19:55.046Z",
+     "closedAt": null,
+     "sourceTicker": "AMGN"
+    }
+   ],
+   "why": "44 new Engineering roles in the week of Oct 12, 2026, 3.1x the average of 14 a week over the 3 measured weeks before (score 4.3). All its roles with a role family ran 1.1x their average. Most often Sr Associate Software Engineer (5), Specialist Software Engineer (2).",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z",
+   "kind": "function_spike",
+   "group": "anomalies",
+   "dimension": "function",
+   "key": "engineering",
+   "label": "Engineering",
+   "country": null,
+   "newRoles": 44,
+   "titles": 39,
+   "history": {
+    "watchedSince": "2026-09-18",
+    "priorPostings": 2314,
+    "priorShare": 1
+   },
+   "baseline": {
+    "weeks": 3,
+    "mean": 14.333333333333334,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 20
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 8
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 15
+     }
+    ]
+   },
+   "ratio": 3.069767441860465,
+   "zScore": 4.262326969234124,
+   "companyRatio": 1.1461988304093567,
+   "flags": [],
+   "reads": 7
+  },
+  {
+   "symbol": "WIT",
+   "name": "WIPRO LTD",
+   "sector": null,
+   "industry": null,
+   "sourceTickers": [
+    "WIT"
+   ],
+   "week": "2026-10-12",
+   "topTitles": [
+    {
+     "title": "SENIOR CONSULTANT TECH IMPL L1",
+     "count": 14
+    },
+    {
+     "title": "PRINCIPAL CONSULTANT TECH IMPL L1",
+     "count": 6
+    },
+    {
+     "title": "Customer Service Representative",
+     "count": 2
+    }
+   ],
+   "places": [],
+   "postings": [
+    {
+     "id": "21651614",
+     "title": "PRODUCTION SPECIALIST L2",
+     "url": "https://careers.wipro.com/job/Gurugram-PRODUCTION-SPECIALIST-L2-IND-122016/1371388255/",
+     "location": "Gurugram, IN",
+     "country": "IN",
+     "jobFunction": "manufacturing",
+     "seniority": "mid",
+     "firstSeenAt": "2026-10-18T10:06:44.905Z",
+     "closedAt": null,
+     "sourceTicker": "WIT"
+    },
+    {
+     "id": "20790567",
+     "title": "Customer Service Representative",
+     "url": "https://careers.wipro.com/job/Gurugram-Customer-Service-Representative-IND-122016/1372929855/",
+     "location": "Gurugram, IN",
+     "country": "IN",
+     "jobFunction": "customer",
+     "seniority": "entry",
+     "firstSeenAt": "2026-10-17T10:00:57.669Z",
+     "closedAt": null,
+     "sourceTicker": "WIT"
+    }
+   ],
+   "why": "36 new roles in Gurugram, IN in the week of Oct 12, 2026, 4.2x the average of 9 a week over the 3 measured weeks before (score 3.7). All its roles placed in a city ran 1.8x their average. Most often SENIOR CONSULTANT TECH IMPL L1 (14), PRINCIPAL CONSULTANT TECH IMPL L1 (6).",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z",
+   "kind": "location_spike",
+   "group": "anomalies",
+   "dimension": "city",
+   "key": "gurugram|IN",
+   "label": "Gurugram, IN",
+   "country": "IN",
+   "newRoles": 36,
+   "titles": 15,
+   "history": {
+    "watchedSince": "2026-09-20",
+    "priorPostings": 9263,
+    "priorShare": 0.46820684443484833
+   },
+   "baseline": {
+    "weeks": 3,
+    "mean": 8.666666666666666,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 4
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 6
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 16
+     }
+    ]
+   },
+   "ratio": 4.153846153846154,
+   "zScore": 3.681908691548886,
+   "companyRatio": 1.7851037851037852,
+   "flags": [],
+   "reads": 7
+  },
+  {
+   "symbol": "ORCL",
+   "name": "ORACLE CORP",
+   "sector": "Technology",
+   "industry": "Software - Infrastructure",
+   "sourceTickers": [
+    "ORCL"
+   ],
+   "week": "2026-10-12",
+   "topTitles": [
+    {
+     "title": "Collections Analyst with Spanish - evening shift",
+     "count": 16
+    },
+    {
+     "title": "Senior Collections Analyst with Spanish - evening shift",
+     "count": 6
+    },
+    {
+     "title": "Collections Analyst with Portuguese - evening shift",
+     "count": 5
+    }
+   ],
+   "places": [
+    {
+     "label": "Bucharest, RO",
+     "count": 31
+    },
+    {
+     "label": "Nashville, TN, US",
+     "count": 1
+    },
+    {
+     "label": "Rocklin, CA, US",
+     "count": 1
+    }
+   ],
+   "postings": [
+    {
+     "id": "20540478",
+     "title": "Senior Collections Analyst with Spanish - evening shift",
+     "url": "https://eeho.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/jobsearch/job/346174",
+     "location": "BUCHAREST, Romania",
+     "country": "RO",
+     "jobFunction": "finance",
+     "seniority": "senior",
+     "firstSeenAt": "2026-10-17T01:18:42.611Z",
+     "closedAt": null,
+     "sourceTicker": "ORCL"
+    },
+    {
+     "id": "20540477",
+     "title": "Senior Collections Analyst with Spanish - evening shift",
+     "url": "https://eeho.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/jobsearch/job/346173",
+     "location": "BUCHAREST, Romania",
+     "country": "RO",
+     "jobFunction": "finance",
+     "seniority": "senior",
+     "firstSeenAt": "2026-10-17T01:18:42.611Z",
+     "closedAt": null,
+     "sourceTicker": "ORCL"
+    }
+   ],
+   "why": "33 new Finance roles in the week of Oct 12, 2026, 4.7x the average of 7 a week over the 3 measured weeks before (score 5.2). All its roles with a role family ran 1.2x their average. Most often Collections Analyst with Spanish - evening shift (16), Senior Collections Analyst with Spanish - evening shift (6).",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z",
+   "kind": "function_spike",
+   "group": "anomalies",
+   "dimension": "function",
+   "key": "finance",
+   "label": "Finance",
+   "country": null,
+   "newRoles": 33,
+   "titles": 9,
+   "history": {
+    "watchedSince": "2026-09-17",
+    "priorPostings": 3446,
+    "priorShare": 1
+   },
+   "baseline": {
+    "weeks": 3,
+    "mean": 7,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 2
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 9
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 10
+     }
+    ]
+   },
+   "ratio": 4.714285714285714,
+   "zScore": 5.165676192553671,
+   "companyRatio": 1.1922365988909427,
+   "flags": [],
+   "reads": 7
+  },
+  {
+   "symbol": "ORCL",
+   "name": "ORACLE CORP",
+   "sector": "Technology",
+   "industry": "Software - Infrastructure",
+   "sourceTickers": [
+    "ORCL"
+   ],
+   "week": "2026-10-12",
+   "topTitles": [
+    {
+     "title": "Collections Analyst with Spanish - evening shift",
+     "count": 16
+    },
+    {
+     "title": "Senior Collections Analyst with Spanish - evening shift",
+     "count": 6
+    },
+    {
+     "title": "Collections Analyst with Portuguese - evening shift",
+     "count": 5
+    }
+   ],
+   "places": [],
+   "postings": [
+    {
+     "id": "20540478",
+     "title": "Senior Collections Analyst with Spanish - evening shift",
+     "url": "https://eeho.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/jobsearch/job/346174",
+     "location": "BUCHAREST, Romania",
+     "country": "RO",
+     "jobFunction": "finance",
+     "seniority": "senior",
+     "firstSeenAt": "2026-10-17T01:18:42.611Z",
+     "closedAt": null,
+     "sourceTicker": "ORCL"
+    },
+    {
+     "id": "20540477",
+     "title": "Senior Collections Analyst with Spanish - evening shift",
+     "url": "https://eeho.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/jobsearch/job/346173",
+     "location": "BUCHAREST, Romania",
+     "country": "RO",
+     "jobFunction": "finance",
+     "seniority": "senior",
+     "firstSeenAt": "2026-10-17T01:18:42.611Z",
+     "closedAt": null,
+     "sourceTicker": "ORCL"
+    }
+   ],
+   "why": "32 new roles in Bucharest, RO in the week of Oct 12, 2026, 5.3x the average of 6 a week over the 3 measured weeks before (score 3.8). All its roles placed in a city ran 1.1x their average. Most often Collections Analyst with Spanish - evening shift (16), Senior Collections Analyst with Spanish - evening shift (6).",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z",
+   "kind": "location_spike",
+   "group": "anomalies",
+   "dimension": "city",
+   "key": "bucharest|RO",
+   "label": "Bucharest, RO",
+   "country": "RO",
+   "newRoles": 32,
+   "titles": 8,
+   "history": {
+    "watchedSince": "2026-09-17",
+    "priorPostings": 3446,
+    "priorShare": 0.6604759141033082
+   },
+   "baseline": {
+    "weeks": 3,
+    "mean": 6,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 0
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 12
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 6
+     }
+    ]
+   },
+   "ratio": 5.333333333333333,
+   "zScore": 3.7527767497325675,
+   "companyRatio": 1.1415929203539823,
+   "flags": [],
+   "reads": 7
+  },
+  {
+   "symbol": "VRT",
+   "name": "Vertiv Holdings Co",
+   "sector": "Industrials",
+   "industry": "Electrical Equipment & Parts",
+   "sourceTickers": [
+    "VRT"
+   ],
+   "week": "2026-10-12",
+   "topTitles": [
+    {
+     "title": "Assembler",
+     "count": 19
+    },
+    {
+     "title": "Production Associate II",
+     "count": 5
+    }
+   ],
+   "places": [],
+   "postings": [
+    {
+     "id": "21132702",
+     "title": "Production Associate II",
+     "url": "https://egup.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX/job/20282159",
+     "location": "United Arab Emirates",
+     "country": "AE",
+     "jobFunction": "manufacturing",
+     "seniority": "entry",
+     "firstSeenAt": "2026-10-17T17:49:42.509Z",
+     "closedAt": "2026-10-18T17:51:46.749Z",
+     "sourceTicker": "VRT"
+    },
+    {
+     "id": "21132701",
+     "title": "Production Associate II",
+     "url": "https://egup.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX/job/20276996",
+     "location": "United Arab Emirates",
+     "country": "AE",
+     "jobFunction": "manufacturing",
+     "seniority": "entry",
+     "firstSeenAt": "2026-10-17T17:49:42.509Z",
+     "closedAt": "2026-10-18T17:51:46.749Z",
+     "sourceTicker": "VRT"
+    }
+   ],
+   "why": "27 new roles in United Arab Emirates in the week of Oct 12, 2026, 9.0x the average of 3 a week over the 3 measured weeks before (score 8.5). All its placed roles ran 1.0x their average. Most often Assembler (19), Production Associate II (5).",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z",
+   "kind": "location_spike",
+   "group": "anomalies",
+   "dimension": "country",
+   "key": "AE",
+   "label": "United Arab Emirates",
+   "country": "AE",
+   "newRoles": 27,
+   "titles": 5,
+   "history": {
+    "watchedSince": "2026-09-18",
+    "priorPostings": 3170,
+    "priorShare": 1
+   },
+   "baseline": {
+    "weeks": 3,
+    "mean": 3,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 3
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 4
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 2
+     }
+    ]
+   },
+   "ratio": 9,
+   "zScore": 8.485281374238571,
+   "companyRatio": 0.9844271412680756,
+   "flags": [],
+   "reads": 7
+  },
+  {
+   "symbol": "DNOW",
+   "name": "DNOW Inc.",
+   "sector": "Industrials",
+   "industry": "Industrial Distribution",
+   "sourceTickers": [
+    "DNOW"
+   ],
+   "week": "2026-10-12",
+   "topTitles": [],
+   "places": [
+    {
+     "label": "United States",
+     "count": 16
+    }
+   ],
+   "postings": [
+    {
+     "id": "17679638",
+     "title": "Sr. Fitter (1st Shift)",
+     "url": "https://distributionnow.wd5.myworkdayjobs.com/DNOW_Careers/job/US-TX-Tomball-24310-Tomball-Parkway/Sr-Fitter--1st-Shift-_R09011",
+     "location": "US TX Tomball 24310 Tomball Parkway",
+     "country": "US",
+     "jobFunction": "manufacturing",
+     "seniority": "senior",
+     "firstSeenAt": "2026-10-13T03:30:47.569Z",
+     "closedAt": null,
+     "sourceTicker": "DNOW"
+    },
+    {
+     "id": "17679637",
+     "title": "Sr. Welder (1st Shift)",
+     "url": "https://distributionnow.wd5.myworkdayjobs.com/DNOW_Careers/job/US-TX-Tomball-24310-Tomball-Parkway/Sr-Welder--1st-Shift-_R09012",
+     "location": "US TX Tomball 24310 Tomball Parkway",
+     "country": "US",
+     "jobFunction": "manufacturing",
+     "seniority": "senior",
+     "firstSeenAt": "2026-10-13T03:30:47.569Z",
+     "closedAt": null,
+     "sourceTicker": "DNOW"
+    }
+   ],
+   "why": "17 new Manufacturing roles in the week of Oct 12, 2026, 51x the average of 0 a week over the 3 measured weeks before (score 14.4). All its roles with a role family ran 3.8x their average. Its board was read 3 times that week, too seldom to keep a week's count to its week. Flagged for a second look.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z",
+   "kind": "function_spike",
+   "group": "anomalies",
+   "dimension": "function",
+   "key": "manufacturing",
+   "label": "Manufacturing",
+   "country": null,
+   "newRoles": 17,
+   "titles": 17,
+   "history": {
+    "watchedSince": "2026-09-19",
+    "priorPostings": 146,
+    "priorShare": 1
+   },
+   "baseline": {
+    "weeks": 3,
+    "mean": 0.3333333333333333,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 0
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 1
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 0
+     }
+    ]
+   },
+   "ratio": 51,
+   "zScore": 14.433756729740645,
+   "companyRatio": 3.75,
+   "flags": [
+    "few_reads"
+   ],
+   "reads": 3
+  },
+  {
+   "symbol": "PAHC",
+   "name": "PHIBRO ANIMAL HEALTH CORP",
+   "sector": "Healthcare",
+   "industry": "Drug Manufacturers - Specialty & Generic",
+   "sourceTickers": [
+    "PAHC"
+   ],
+   "week": "2026-10-12",
+   "topTitles": [
+    {
+     "title": "Operator 1",
+     "count": 4
+    }
+   ],
+   "places": [
+    {
+     "label": "Willow Island, WV, US",
+     "count": 5
+    },
+    {
+     "label": "Eagle Grove, IA, US",
+     "count": 4
+    },
+    {
+     "label": "State College, PA, US",
+     "count": 3
+    },
+    {
+     "label": "Des Moines, IA, US",
+     "count": 1
+    },
+    {
+     "label": "Omaha, NE, US",
+     "count": 1
+    }
+   ],
+   "postings": [
+    {
+     "id": "20426121",
+     "title": "Credit & Collections Administrator",
+     "url": "https://jobs.pahc.com/job/Quincy-Credit-&amp;-Collections-Administrator-Illi/1440487200/",
+     "location": "Quincy, Illinois, United States",
+     "country": "US",
+     "jobFunction": "finance",
+     "seniority": "mid",
+     "firstSeenAt": "2026-10-16T20:45:18.792Z",
+     "closedAt": null,
+     "sourceTicker": "PAHC"
+    },
+    {
+     "id": "20426120",
+     "title": "Site IT - Willow Island",
+     "url": "https://jobs.pahc.com/job/Willow-Island-Site-IT-Willow-Island-West-26134/1440648900/",
+     "location": "Willow Island, West Virginia",
+     "country": "US",
+     "jobFunction": "engineering",
+     "seniority": "mid",
+     "firstSeenAt": "2026-10-16T20:45:18.792Z",
+     "closedAt": null,
+     "sourceTicker": "PAHC"
+    }
+   ],
+   "why": "16 new roles in United States in the week of Oct 12, 2026, 16x the average of 1 a week over the 3 measured weeks before (score 9.2). All its placed roles ran 4.8x their average. Most often Operator 1 (4). Its board was read 2 times that week, too seldom to keep a week's count to its week. Flagged for a second look.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z",
+   "kind": "location_spike",
+   "group": "anomalies",
+   "dimension": "country",
+   "key": "US",
+   "label": "United States",
+   "country": "US",
+   "newRoles": 16,
+   "titles": 13,
+   "history": {
+    "watchedSince": "2026-09-19",
+    "priorPostings": 51,
+    "priorShare": 1
+   },
+   "baseline": {
+    "weeks": 3,
+    "mean": 1,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 2
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 0
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 1
+     }
+    ]
+   },
+   "ratio": 16,
+   "zScore": 9.185586535436919,
+   "companyRatio": 4.8,
+   "flags": [
+    "few_reads"
+   ],
+   "reads": 2
+  },
+  {
+   "symbol": "J",
+   "name": "JACOBS SOLUTIONS INC.",
+   "sector": "Industrials",
+   "industry": "Engineering & Construction",
+   "sourceTickers": [
+    "J"
+   ],
+   "week": "2026-10-12",
+   "topTitles": [
+    {
+     "title": "2027 Summer Internship",
+     "count": 4
+    },
+    {
+     "title": "2027 Graduate",
+     "count": 3
+    },
+    {
+     "title": "Network Strategy Architecture Consultant",
+     "count": 3
+    }
+   ],
+   "places": [],
+   "postings": [
+    {
+     "id": "20858822",
+     "title": "2027 Summer Internship",
+     "url": "https://www.paconsulting.com/jobs/2027-summer-internship-mechanical-engineer-cambridge-744000155777369",
+     "location": null,
+     "country": null,
+     "jobFunction": "engineering",
+     "seniority": "intern",
+     "firstSeenAt": "2026-10-17T14:05:18.169Z",
+     "closedAt": null,
+     "sourceTicker": "J"
+    },
+    {
+     "id": "19277229",
+     "title": "2027 Graduate",
+     "url": "https://www.paconsulting.com/jobs/2027-graduate-electronic-engineer-cambridge-744000155681297",
+     "location": null,
+     "country": null,
+     "jobFunction": "engineering",
+     "seniority": "intern",
+     "firstSeenAt": "2026-10-15T14:03:51.961Z",
+     "closedAt": null,
+     "sourceTicker": "J"
+    }
+   ],
+   "why": "14 new Engineering roles in the week of Oct 12, 2026, 5.3x the average of 3 a week over the 3 measured weeks before (score 4.3). All its roles with a role family ran 1.7x their average. Most often 2027 Summer Internship (4), 2027 Graduate (3). Its board was read 3 times that week, too seldom to keep a week's count to its week. Flagged for a second look.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z",
+   "kind": "function_spike",
+   "group": "anomalies",
+   "dimension": "function",
+   "key": "engineering",
+   "label": "Engineering",
+   "country": null,
+   "newRoles": 14,
+   "titles": 5,
+   "history": {
+    "watchedSince": "2026-09-18",
+    "priorPostings": 254,
+    "priorShare": 1
+   },
+   "baseline": {
+    "weeks": 3,
+    "mean": 2.6666666666666665,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 1
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 3
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 4
+     }
+    ]
+   },
+   "ratio": 5.25,
+   "zScore": 4.250000000000001,
+   "companyRatio": 1.690909090909091,
+   "flags": [
+    "few_reads"
+   ],
+   "reads": 3
+  }
+ ]
+}
