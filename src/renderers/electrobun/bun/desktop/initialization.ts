@@ -164,6 +164,18 @@ export function startDesktopBackend(
   return launch;
 }
 
+/**
+ * Waits for a launch in flight, and starts none: for a request that wants
+ * what the launch makes but must not start the services itself. Only `init`
+ * (and the process start) launches, so services torn down by a config import
+ * or a reset are not brought up twice. Settles either way; a failed launch
+ * is for `init` to report.
+ */
+export function joinDesktopBackendLaunch(backend: DesktopBackend): Promise<void> {
+  const running = launches.get(backend);
+  return running ? running.then(() => {}, () => {}) : Promise.resolve();
+}
+
 export async function initializeDesktopBackend(
   backend: DesktopBackend,
   rpc: DesktopRpc,

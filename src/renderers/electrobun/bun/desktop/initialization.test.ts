@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { CapabilityRegistry } from "../../../../capabilities";
 import type { AppConfig } from "../../../../types/config";
 import type { DesktopBackend } from "./backend";
-import { desktopRendererCapabilityManifests, startDesktopBackend, type DesktopLaunchSteps } from "./initialization";
+import { desktopRendererCapabilityManifests, joinDesktopBackendLaunch, startDesktopBackend, type DesktopLaunchSteps } from "./initialization";
 
 test("desktop init includes disabled renderer-safe manifests while invocation stays disabled", async () => {
   let enabled = false;
@@ -98,4 +98,24 @@ test("a failed launch, or services torn down by a data reset, start over on the 
   launch.services().resolve();
   await startDesktopBackend(launch.backend, launch.steps);
   expect(launch.calls.filter((call) => call === "readConfig")).toHaveLength(3);
+});
+
+test("the view's plugin request waits for a launch in flight but never starts one", async () => {
+  const launch = fakeLaunch();
+  // Services torn down by a config import or a reset, with no launch running.
+  let joined = false;
+  await joinDesktopBackendLaunch(launch.backend).then(() => { joined = true; });
+  expect(joined).toBe(true);
+  expect(launch.calls).toEqual([]);
+
+  const started = startDesktopBackend(launch.backend, launch.steps);
+  joined = false;
+  const joining = joinDesktopBackendLaunch(launch.backend).then(() => { joined = true; });
+  await Bun.sleep(0);
+  expect(joined).toBe(false);
+  // A failed launch is init's to report; the request goes on to collect the bundles.
+  launch.services().reject(new Error("disk full"));
+  await joining;
+  await expect(started).rejects.toThrow("disk full");
+  expect(launch.calls.filter((call) => call === "readConfig")).toHaveLength(1);
 });
