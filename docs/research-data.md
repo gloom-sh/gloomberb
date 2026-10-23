@@ -1384,3 +1384,27 @@ POWER combines public interconnection queue snapshots, completion and withdrawal
 ## Exposure engine (EXPO)
 
 EXPO is a Pro operating-exposure scenario engine with a one-holding, one-hop free preview. It combines available global company and counterparty disclosures, keeps source evidence and reporting denominators on every path, and reports signed portfolio stress and country/supplier/customer concentrations without predicting equity returns. Geography and supply-chain coverage varies by issuer; missing sensitivities and relationships remain unknown. See [Exposure analysis](exposure.md) for scenarios, signed NAV weights, methodology, source limitations and CLI examples.
+
+## Fails to deliver and weekly off-exchange volume
+
+`FTD AAPL` opens the **Fails to deliver** tab of Short Interest (`SI`).
+Each SEC row is the outstanding fail quantity on its settlement date for one
+CUSIP. It is not that day's new fails, and quantities must never be added
+across dates. A symbol may have multiple CUSIPs; the table preserves them.
+An absent record does not establish zero fails. The reported price is in USD,
+and the files are published twice monthly with a delay.
+
+`ATS AAPL` opens **Weekly ATS/OTC** in the same pane. FINRA OTC transparency
+publishes weekly shares and trades for alternative trading systems (ATS,
+including dark pools) and non-ATS venues. **ATS / OTC %** divides ATS shares
+by the published ATS plus non-ATS shares. It is not ATS share of the full
+market, and these are all trades, not short-sale volume. Missing categories
+stay blank and do not contribute a fabricated zero or percentage. Reporting
+weeks are labeled by their Monday start; publication lags depend on the
+security tier. Open a row for exact quantities or use `o` for its source.
+
+Both views use the same Gloom Cloud account access as daily short volume.
+`gloomberb fn FTD AAPL --json` and `gloomberb fn ATS AAPL --csv` export the
+same observations; `gloomberb shot FTD AAPL` and `gloomberb shot ATS AAPL`
+open the respective tabs. Report metadata includes publication coverage,
+source dates and any partial-history warnings.

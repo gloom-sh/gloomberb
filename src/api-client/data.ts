@@ -38,6 +38,7 @@ import type { MoneyMarketsPayload } from "./money-markets";
 import type { CloudCurveHistory, CloudCurveId, CloudCurveView, CloudWorldCurves } from "./yield-curves";
 import type { CdxBoardPayload, CloudCreditBoardParams, SovrBoardPayload } from "./credit-boards";
 import type { ShortVolumePayload, ShortVolumeScope } from "./short-volume";
+import type { FailsToDeliverPayload, OtcVolumePayload } from "./short-side-publications";
 import type { BeneficialOwnersPayload, CloudBeneficialOwnersParams } from "./beneficial-owners";
 import type { CloudInsiderSignalsParams, InsiderSignalsPayload } from "./insider-signals";
 import type { SocialMentionDayPosts, SocialMentionsPayload, SocialMentionsRange } from "./social-mentions";
@@ -938,6 +939,14 @@ export class CloudDataApi {
     const text = query.toString();
     const suffix = text ? `?${text}` : "";
     return this.request<IpoCalendarPayload>(`/cloud/ipo/calendar${suffix}`, { signal: signalWithTimeout(options?.signal, 30_000) });
+  }
+
+  async getCloudFailsToDeliver(symbol: string): Promise<FailsToDeliverPayload> {
+    return this.request<FailsToDeliverPayload>(`/cloud/fails-to-deliver?${new URLSearchParams({ symbol })}`, { signal: AbortSignal.timeout(20_000) });
+  }
+
+  async getCloudOtcVolume(symbol: string): Promise<OtcVolumePayload> {
+    return this.request<OtcVolumePayload>(`/cloud/otc-volume?${new URLSearchParams({ symbol })}`, { signal: AbortSignal.timeout(20_000) });
   }
 
   async getCloudShortVolume(symbol: string, scope: ShortVolumeScope = "nms"): Promise<ShortVolumePayload> {

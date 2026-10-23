@@ -1188,6 +1188,16 @@
             "description": "The short interest pane on Daily volume: FINRA daily off-exchange short-volume ratios, historical percentile and reported share quantities."
           },
           {
+            "code": "FTD",
+            "name": "Fails to Deliver",
+            "description": "The short interest pane on Fails to deliver: outstanding fail shares by settlement date and CUSIP from SEC publications."
+          },
+          {
+            "code": "ATS",
+            "name": "Weekly ATS / OTC Volume",
+            "description": "The short interest pane on Weekly ATS/OTC: FINRA weekly ATS and non-ATS shares and trades, including dark-pool volume."
+          },
+          {
             "code": "SIW",
             "name": "Short Squeeze Watch",
             "description": "Short interest as a share of float, days to cover, the change since the prior settlement and the month's price move across your names."
