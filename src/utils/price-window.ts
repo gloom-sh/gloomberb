@@ -3,6 +3,7 @@ import { fetchHistoryResult } from "../sources/history-result";
 import type { DataProvider, MarketDataRequestContext } from "../types/data-provider";
 import type { PriceHistoryResult } from "../types/price-history";
 import { getPricePointTimestamp } from "./price-history";
+import { zonedDateKey } from "./zoned-date-time";
 
 /**
  * A price-history window typed as `--from` and `--to`: a year (2007) or a date
@@ -19,13 +20,13 @@ const YEAR = /^\d{4}$/;
 const DAY_MS = 86_400_000;
 
 /**
- * Today as the window reads it: the reader's date, or UTC's when that is
- * later, so a date that has begun for the reader (east of UTC, or in UTC
- * already) is never refused as still ahead.
+ * Today as the window reads it: the reader's date (in `timeZone`, the host's
+ * when not given), or UTC's when that is later, so a date that has begun for
+ * the reader (east of UTC, or in UTC already) is never refused as still ahead.
  */
-function priceWindowToday(now = new Date()): string {
+function priceWindowToday(now: Date, timeZone?: string): string {
   const pad = (value: number) => String(value).padStart(2, "0");
-  const local = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  const local = timeZone ? zonedDateKey(now.getTime(), timeZone) : `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
   const utc = isoDateToday(now);
   return local > utc ? local : utc;
 }
@@ -51,10 +52,10 @@ function readBound(value: string, flag: "--from" | "--to", now: Date): string {
  * alone, a start after the end, or a start still ahead. An end past today
  * stops at today.
  */
-export function readPriceWindow(from: string | undefined, to: string | undefined, now = new Date()): PriceWindow | null {
+export function readPriceWindow(from: string | undefined, to: string | undefined, now = new Date(), timeZone?: string): PriceWindow | null {
   if (from == null && to == null) return null;
   if (from == null) throw new Error(`--to needs a --from: --from ${YEAR.test(to!.trim()) ? Number(to!.trim()) - 2 : 2007} --to ${to!.trim()}.`);
-  const today = priceWindowToday(now);
+  const today = priceWindowToday(now, timeZone);
   const start = readBound(from, "--from", now);
   const typedEnd = to == null ? today : readBound(to, "--to", now);
   if (start > today) throw new Error(`--from ${from.trim()} has not started yet. Use a start on or before ${today}.`);
@@ -65,9 +66,9 @@ export function readPriceWindow(from: string | undefined, to: string | undefined
 }
 
 /** The window in words: `2007 to 2009`, `2008-09-15 to 2009-03-31`, `2007 to today`. */
-export function priceWindowText(window: PriceWindow, now = new Date()): string {
+export function priceWindowText(window: PriceWindow, now = new Date(), timeZone?: string): string {
   const year = (date: string, edge: "start" | "end") => date.slice(5) === (edge === "start" ? "01-01" : "12-31") ? date.slice(0, 4) : date;
-  const end = window.to === priceWindowToday(now) ? "today" : year(window.to, "end");
+  const end = window.to === priceWindowToday(now, timeZone) ? "today" : year(window.to, "end");
   return `${year(window.from, "start")} to ${end}`;
 }
 
