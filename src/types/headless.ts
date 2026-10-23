@@ -375,6 +375,12 @@ export interface HeadlessPaneFreshness {
    * published Mon 26 Oct` for a settlement a regulator publishes days later.
    */
   schedule?: string;
+  /**
+   * Shorter forms of `schedule`, longest first, that a status line too narrow
+   * for the whole one says instead, with the not-a-feed basis left out first:
+   * when the figures were published outlasts what kind of data they are.
+   */
+  scheduleVariants?: string[];
 }
 
 interface HeadlessPaneResultBase {

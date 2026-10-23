@@ -79,6 +79,14 @@ function optionToken(value: string): string {
   return value.trim().toLowerCase().replace(/[\s_.-]+/g, "");
 }
 
+/**
+ * An option as an error names it, the way it is typed on the command line:
+ * `--as-of` for the `asOf` the parser reads `--as-of` (or `--asOf`) into.
+ */
+export function optionFlag(key: string): string {
+  return `--${key.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase()}`;
+}
+
 // Choices longer than this move from the flag into its description, where they can wrap.
 export const MAX_INLINE_CHOICES = 24;
 
@@ -90,7 +98,7 @@ export function optionChoices(option: PaneFunctionOptionDef): string[] {
 export function optionFlags(option: PaneFunctionOptionDef): string {
   const choices = optionChoices(option).join("|");
   const value = choices && choices.length <= MAX_INLINE_CHOICES ? choices : option.values?.length ? "value" : option.placeholder ?? option.type;
-  return `--${option.key} <${value}>`;
+  return `${optionFlag(option.key)} <${value}>`;
 }
 
 /** The option values a typed word is, by value or alias: `gas` is JODI's `--commodity gas`. */
@@ -99,7 +107,7 @@ function optionValueOf(options: readonly PaneFunctionOptionDef[], typed: string)
   for (const option of options) {
     const value = option.values?.find((candidate) => optionToken(candidate.value) === token
       || candidate.aliases?.some((alias) => optionToken(alias) === token));
-    if (value) return `--${option.key} ${value.value}`;
+    if (value) return `${optionFlag(option.key)} ${value.value}`;
   }
   return null;
 }
@@ -112,16 +120,16 @@ function listingOptionOf(options: readonly PaneFunctionOptionDef[], typed: strin
   const word = typed.trim();
   if (!/^[A-Za-z0-9^][A-Za-z0-9.:=^&-]{0,23}$/.test(word) || !/[A-Za-z]/.test(word)) return null;
   const option = options.find(({ key, type }) => type === "string" && LISTING_OPTION_KEYS.has(optionToken(key)));
-  return option ? `--${option.key} ${word}` : null;
+  return option ? `${optionFlag(option.key)} ${word}` : null;
 }
 
 /** An option in use, as typed after the function: its own example, else a choice that is not the default. */
 function optionExample(option: PaneFunctionOptionDef): string {
   if (option.example) return option.example;
-  if (option.type === "boolean") return `--${option.key}`;
+  if (option.type === "boolean") return optionFlag(option.key);
   const choice = option.values?.find(({ value }) => value !== option.defaultValue);
-  if (choice) return `--${option.key} ${choice.value}`;
-  return `--${option.key} <${option.placeholder ?? option.type}>`;
+  if (choice) return `${optionFlag(option.key)} ${choice.value}`;
+  return `${optionFlag(option.key)} <${option.placeholder ?? option.type}>`;
 }
 
 /** Options a no-argument error lists before it points at the catalog for the rest. */
@@ -221,7 +229,7 @@ function normalizeEnumValue(option: PaneFunctionOptionDef, rawValue: string, arg
   if (match) return match.value;
   const hint = option.invalidValueHint?.(rawValue, argument);
   throw new Error(
-    `Invalid --${option.key} value "${rawValue}".${hint ? ` ${hint}` : ""} Use one of: ${option.values?.map(({ value }) => value).join(", ") ?? ""}.`,
+    `Invalid ${optionFlag(option.key)} value "${rawValue}".${hint ? ` ${hint}` : ""} Use one of: ${option.values?.map(({ value }) => value).join(", ") ?? ""}.`,
   );
 }
 
@@ -234,19 +242,19 @@ function normalizeOptionValue(
     if (rawValue === true) return true;
     if (/^true$/i.test(rawValue)) return true;
     if (/^false$/i.test(rawValue)) return false;
-    throw new Error(`Invalid --${option.key} value "${rawValue}". Use true or false.`);
+    throw new Error(`Invalid ${optionFlag(option.key)} value "${rawValue}". Use true or false.`);
   }
-  if (rawValue === true) throw new Error(`--${option.key} requires a value.`);
+  if (rawValue === true) throw new Error(`${optionFlag(option.key)} requires a value.`);
   if (option.normalize) return option.normalize(rawValue);
   if (option.type === "enum") return normalizeEnumValue(option, rawValue, argument);
   if (option.type === "integer") {
     const value = Number(rawValue);
-    if (!Number.isInteger(value)) throw new Error(`--${option.key} must be an integer.`);
+    if (!Number.isInteger(value)) throw new Error(`${optionFlag(option.key)} must be an integer.`);
     if (option.minimum != null && value < option.minimum) {
-      throw new Error(`--${option.key} must be at least ${option.minimum}.`);
+      throw new Error(`${optionFlag(option.key)} must be at least ${option.minimum}.`);
     }
     if (option.maximum != null && value > option.maximum) {
-      throw new Error(`--${option.key} must be at most ${option.maximum}.`);
+      throw new Error(`${optionFlag(option.key)} must be at most ${option.maximum}.`);
     }
     return value;
   }
@@ -284,16 +292,16 @@ export function normalizeCapabilityOptions(
         normalized[rawKey] = rawValue;
         continue;
       }
-      const supported = capability.options.map(({ key }) => `--${key}`).join(", ");
+      const supported = capability.options.map(({ key }) => optionFlag(key)).join(", ");
       throw new Error(
-        `${settings.code ?? capability.id} does not support --${rawKey}.${supported ? ` Supported options: ${supported}.` : " It has no options."}`,
+        `${settings.code ?? capability.id} does not support ${optionFlag(rawKey)}.${supported ? ` Supported options: ${supported}.` : " It has no options."}`,
       );
     }
     normalized[option.key] = normalizeOptionValue(option, rawValue, settings.argument);
   }
   for (const [key, rawKey] of typed) {
     const replaced = findCapabilityOption(capability, key)?.replaces?.find((other) => typed.has(other));
-    if (replaced) throw new Error(`--${rawKey} replaces --${typed.get(replaced)}; give one of them.`);
+    if (replaced) throw new Error(`${optionFlag(rawKey)} replaces ${optionFlag(typed.get(replaced)!)}; give one of them.`);
   }
   return normalized;
 }

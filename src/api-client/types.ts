@@ -722,6 +722,10 @@ export interface CloudCdsLevelsResponse {
 interface CloudShortInterestPointPayload {
   settlementDate: string;
   shortPercentFloat?: number | null;
+  /** The 10-K or 10-Q cover share count known when FINRA published the settlement. Absent on servers older than the field. */
+  sharesOutstanding?: number;
+  /** YYYY-MM-DD that count was taken. */
+  sharesOutstandingAsOf?: string;
   sharesShort: number;
   previousSharesShort: number | null;
   averageDailyVolume: number | null;

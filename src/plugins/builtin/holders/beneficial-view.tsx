@@ -75,6 +75,7 @@ export function BeneficialOwnersView({
   holderRows,
   fundMatches,
   sharesOutstanding,
+  sharesOutstandingAsOf,
   onCycleView,
   onRefreshHolders,
   listing,
@@ -88,6 +89,8 @@ export function BeneficialOwnersView({
   fundMatches: ReadonlyMap<string, Holder13FMatch>;
   /** Today's shares outstanding, which a report's shares are set against when its own base is out of date. */
   sharesOutstanding?: number | null;
+  /** The day that count was taken, when it is dated. */
+  sharesOutstandingAsOf?: string | null;
   onCycleView: () => void;
   onRefreshHolders: () => void;
 }) {
@@ -162,7 +165,7 @@ export function BeneficialOwnersView({
   const renderTodayLine = useCallback((item: BeneficialItem) => (
     item.kind === "today" && item.row.today
       // Indented under its row's name; no-break spaces, which the desktop table does not collapse.
-      ? { text: `\u00a0\u00a0${formatStakeToday(item.row.today)}`, color: colors.textDim, attributes: TextAttributes.NONE }
+      ? { text: `\u00a0\u00a0${formatStakeToday(item.row.today, sharesOutstandingAsOf)}`, color: colors.textDim, attributes: TextAttributes.NONE }
       : null
   ), []);
 

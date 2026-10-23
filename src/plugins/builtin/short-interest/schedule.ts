@@ -1,3 +1,4 @@
+import type { PaneFooterSegment } from "../../../components";
 import { getPublishedUsEquityCalendarDay } from "../../../market-data/published-us-sessions";
 
 /**
@@ -100,8 +101,40 @@ export function shortInterestScheduleText(schedule: ShortInterestSchedule): stri
   return `published ${day(schedule.published)}, next settlement ${day(schedule.nextSettlement)}, published ${day(schedule.nextPublished)}`;
 }
 
+/**
+ * The schedule in fewer words, for a line too narrow for all of it: `published
+ * Fri 9 Oct, next Mon 26 Oct`, then `published Fri 9 Oct`. When the figures
+ * were published goes last.
+ */
+function shortInterestScheduleVariants(schedule: ShortInterestSchedule): string[] {
+  const day = (date: string) => dayText(date, schedule.settlement);
+  return [`published ${day(schedule.published)}, next ${day(schedule.nextPublished)}`, `published ${day(schedule.published)}`];
+}
+
+/** When FINRA published a settlement (`YYYY-MM-DD`), by the schedule rule; null for a date that is not one. */
+export function shortInterestPublished(settlement: string): string | null {
+  return shortInterestSchedule(settlement)?.published ?? null;
+}
+
 /** The report's freshness for the newest settlement it shows; nothing when no settlement is dated. */
-export function shortInterestFreshness(latestSettlement: string | null | undefined): { schedule: string; publishedAt: string } | undefined {
+export function shortInterestFreshness(
+  latestSettlement: string | null | undefined,
+): { schedule: string; scheduleVariants: string[]; publishedAt: string } | undefined {
   const schedule = latestSettlement ? shortInterestSchedule(latestSettlement) : null;
-  return schedule ? { schedule: shortInterestScheduleText(schedule), publishedAt: schedule.published } : undefined;
+  return schedule
+    ? { schedule: shortInterestScheduleText(schedule), scheduleVariants: shortInterestScheduleVariants(schedule), publishedAt: schedule.published }
+    : undefined;
+}
+
+/**
+ * The footer segment SI and SIW date their figures with: when the newest
+ * settlement shown was published and when the next is due, the line `fn` and
+ * `shot` carry after the settlement date, shortening as the footer narrows.
+ * A capture draws its own status line in its place.
+ */
+export function shortInterestPublicationSegments(latestSettlement: string | null | undefined): PaneFooterSegment[] {
+  const freshness = shortInterestFreshness(latestSettlement);
+  if (!freshness) return [];
+  const [line, ...shorter] = [freshness.schedule, ...freshness.scheduleVariants].map((text) => [{ text, tone: "muted" as const }]);
+  return [{ id: "short-interest-publication", asOf: true, parts: line!, variants: shorter }];
 }

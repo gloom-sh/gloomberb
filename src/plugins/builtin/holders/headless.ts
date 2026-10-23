@@ -50,6 +50,7 @@ interface HolderSnapshot {
   marketCap?: number;
   /** Today's shares outstanding, which a 13D/13G percent of class is set against. */
   sharesOutstanding?: number | null;
+  sharesOutstandingAsOf?: string | null;
 }
 
 export interface HoldersHeadlessDependencies {
@@ -171,7 +172,7 @@ export function createHoldersHeadless(
           sharesOutstanding,
         });
         const limited = rows.slice(0, Number(args.options.limit));
-        const legend = beneficialReportLegend(limited, sharesOutstanding);
+        const legend = beneficialReportLegend(limited, sharesOutstanding, snapshot?.sharesOutstandingAsOf);
         return {
           columns: beneficialReportColumns(limited),
           rows: limited,
@@ -187,6 +188,7 @@ export function createHoldersHeadless(
             asOf: payload.asOf,
             coverage: payload.coverage,
             sharesOutstanding,
+            ...(snapshot?.sharesOutstandingAsOf ? { sharesOutstandingAsOf: snapshot.sharesOutstandingAsOf } : {}),
             notices: [
               [payload.companyName || symbol, ...beneficialListFacts(payload, form, rows.length, history)].join(" · "),
               ...(legend ? [legend] : []),

@@ -22,11 +22,11 @@ function subMinuteListing(symbol: string): SubMinuteListing {
  * Where data finer than a minute is: nowhere as bars. GIP draws 1-minute
  * bars; for a US listing TAS lists each trade (a window of the session with
  * `--from`/`--to`) and QR each quote. `history --interval`, GIP's
- * `--chartResolution 1s` and QR on a listing abroad all say this. The tape
+ * `--chart-resolution 1s` and QR on a listing abroad all say this. The tape
  * covers US equities only, and TAS and QR answer anything else with an
  * error or an empty table, so a listing without one is told only the bars
  * that exist for it. A future's finest are G's 1-minute bars of its session
- * (`fn G GC=F --rangePreset 1D`) and `history`'s 5-minute bars of 1D, both
+ * (`fn G GC=F --range-preset 1D`) and `history`'s 5-minute bars of 1D, both
  * checked on GC=F and SI=F on 2026-10-21. GIP is not named for one: its
  * window is the UTC day, not the session, and it was reported with no points
  * for a future.
@@ -37,7 +37,7 @@ export function subMinuteDataMessage(symbol = "<ticker>", listing: SubMinuteList
     case "abroad":
       return `${none}; 1-minute bars: fn GIP ${symbol}; trades exist for US listings only.`;
     case "future":
-      return `${none}; 1-minute bars: fn G ${symbol} --rangePreset 1D (history ${symbol} --range 1D has 5-minute bars). Trades and quotes cover US equities only.`;
+      return `${none}; 1-minute bars: fn G ${symbol} --range-preset 1D (history ${symbol} --range 1D has 5-minute bars). Trades and quotes cover US equities only.`;
     case "other":
       return `${none}; 1-minute bars: fn GIP ${symbol}. Trades and quotes cover US equities only.`;
     default:

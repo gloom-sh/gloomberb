@@ -97,6 +97,8 @@ export interface ReportFreshness {
   noteVariants?: string[];
   /** When the figures reach readers and when the next are due, said right after the as-of date. */
   schedule?: string;
+  /** Shorter forms of `schedule`, in the order a status line too long for it tries them. */
+  scheduleVariants?: string[];
   /** Who published the figures, when the data names them. */
   publisher?: string;
   /** When the publisher released the data, an ISO instant in UTC or an ISO date, when the data states it. */
@@ -476,6 +478,7 @@ function resolveFreshness({ declared, signals, observations, now }: FreshnessInp
   const noteVariants = note ? (declared.noteVariants ?? []).map((variant) => variant.trim()).filter((variant) => variant && variant !== note) : [];
   const asOfLabel = asOf ? declared.asOfLabel?.trim() : undefined;
   const schedule = declared.schedule?.trim();
+  const scheduleVariants = schedule ? (declared.scheduleVariants ?? []).map((variant) => variant.trim()).filter((variant) => variant && variant !== schedule) : [];
   const publisher = declared.publisher?.trim();
   const publishedAt = parseReportTime(declared.publishedAt);
   return {
@@ -504,6 +507,7 @@ function resolveFreshness({ declared, signals, observations, now }: FreshnessInp
     ...(note ? { note } : {}),
     ...(noteVariants.length > 0 ? { noteVariants } : {}),
     ...(schedule ? { schedule } : {}),
+    ...(scheduleVariants.length > 0 ? { scheduleVariants } : {}),
     ...(publisher ? { publisher } : {}),
     ...(publishedAt ? { publishedAt: isoTime(publishedAt) } : {}),
     retrievedAt: new Date(now).toISOString(),
@@ -859,8 +863,10 @@ interface StatusLineDetail {
   date?: "none";
   /** Leave out what the figures are (`funding = current estimate`), or say the shorter form at this index of `noteVariants`. */
   note?: "none" | number;
-  /** Leave out when the figures are published and the next are due. */
-  schedule?: "none";
+  /** Leave out when the figures are published and the next are due, or say the shorter form at this index of `scheduleVariants`. */
+  schedule?: "none" | number;
+  /** Leave out what not-a-feed data is (`not a live feed` for `not a live feed (weekly report)`). */
+  basis?: "none";
 }
 
 /**
@@ -876,9 +882,11 @@ function statusLineParts(freshness: ReportFreshness, detail: StatusLineDetail = 
   return [
     ...(freshness.sources?.length ? sourcesAsOfParts(freshness, freshness.sources, undated)
       : [asOfText(freshness, detail.asOf === "short", local, undated)]),
-    ...(freshness.schedule && detail.schedule !== "none" ? [freshness.schedule] : []),
+    ...(freshness.schedule && detail.schedule !== "none"
+      ? [typeof detail.schedule === "number" ? freshness.scheduleVariants?.[detail.schedule] ?? freshness.schedule : freshness.schedule] : []),
     ...(freshness.oldestAgeMinutes != null ? [`oldest ${ageText(freshness.oldestAgeMinutes)}`] : []),
-    ...(freshness.savedAt ? [savedCopyText(freshness.savedAt, freshness.retrievedAt, local)] : [statusText(freshness, detail.status === "short")].filter(Boolean)),
+    ...(freshness.savedAt ? [savedCopyText(freshness.savedAt, freshness.retrievedAt, local)]
+      : [statusText(detail.basis === "none" ? { ...freshness, basis: undefined } : freshness, detail.status === "short")].filter(Boolean)),
     ...(freshness.market && detail.market !== "none" ? [marketText(freshness.market, now, detail.market === "short", local)] : []),
     ...(freshness.note && detail.note !== "none" ? [typeof detail.note === "number" ? freshness.noteVariants?.[detail.note] ?? freshness.note : freshness.note] : []),
   ];
@@ -938,6 +946,16 @@ function datasetLineParts(freshness: ReportFreshness, asOf: string, lagDays: num
 }
 
 /**
+ * A line too narrow for its whole schedule keeps when the figures were
+ * published longest: the not-a-feed basis goes first, then the schedule
+ * shortens through `scheduleVariants`. Nothing for a line without them.
+ */
+function shorterSchedules(freshness: ReportFreshness, detail: StatusLineDetail): StatusLineDetail[] {
+  if (!freshness.schedule || !freshness.scheduleVariants?.length) return [];
+  return [{ ...detail, basis: "none" }, ...freshness.scheduleVariants.map((_, index) => ({ ...detail, basis: "none" as const, schedule: index }))];
+}
+
+/**
  * The plain status line of a capture: the longest of `statusLineVariants`,
  * `Fri 9 Oct close · 15 min delayed · markets closed until Mon` for quotes.
  */
@@ -968,7 +986,9 @@ export function paneStatusLineVariants(freshness: ReportFreshness): string[] {
   // A dataset's line has no market or local time to leave out: it reads as its report and capture do.
   if (datesObservation(freshness)) return statusLineVariants(freshness);
   const pane: StatusLineDetail = { local: "none", date: "none" };
-  const details: StatusLineDetail[] = [pane, { ...pane, market: "short" }, { ...pane, market: "short", status: "short" }, { ...pane, market: "short", status: "short", note: "none" }, { ...pane, market: "short", status: "short", note: "none", schedule: "none" }];
+  const shortest: StatusLineDetail = { ...pane, market: "short", status: "short", note: "none" };
+  const details: StatusLineDetail[] = [pane, { ...pane, market: "short" }, { ...pane, market: "short", status: "short" }, shortest,
+    ...shorterSchedules(freshness, shortest), { ...shortest, schedule: "none" }];
   return [...new Set(details.map((detail) => capitalize(statusLineParts(freshness, detail).join(" · "))))];
 }
 
@@ -1009,7 +1029,7 @@ export function statusLineVariants(freshness: ReportFreshness, { source = false 
   const trailing: StatusLineDetail[] = [
     ...(freshness.noteVariants ?? []).map((_, index) => ({ ...shortest, note: index })),
     ...(freshness.note ? [{ ...shortest, note: "none" as const }] : []),
-    ...(freshness.schedule ? [{ ...shortest, note: "none" as const, schedule: "none" as const }] : []),
+    ...(freshness.schedule ? [...shorterSchedules(freshness, { ...shortest, note: "none" }), { ...shortest, note: "none" as const, schedule: "none" as const }] : []),
   ];
   const variants: StatusLineDetail[] = freshness.sources?.length
     ? [{}, ...details.map((detail) => ({ ...detail, date: "none" as const })), { ...shortest, date: "none", note: "none" }]

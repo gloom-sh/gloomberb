@@ -212,9 +212,15 @@ function buildStatementMetrics(statement: FinancialStatement, currency?: string,
  * A receipt's count is its ordinary shares expressed in receipts, as its
  * market cap is; the ordinary count follows when the service gives it.
  */
+/** `504.5M (as of 2026-09-03)`: a share count with the day it was counted, when that is known (a 10-K or 10-Q cover count). */
+function datedCount(count: number, asOf: string | undefined): string {
+  return asOf ? `${formatCompact(count)} (as of ${asOf})` : formatCompact(count);
+}
+
 function sharesOutstandingText(fundamentals: TickerFinancials["fundamentals"], inReceipts: boolean): string {
   const shares = fundamentals?.sharesOutstanding;
-  if (shares == null || !inReceipts) return formatCompact(shares);
+  if (shares == null) return formatCompact(shares);
+  if (!inReceipts) return datedCount(shares, fundamentals?.sharesOutstandingAsOf);
   const ordinary = fundamentals?.shareBasis === "depositary_receipt" ? fundamentals.underlyingOrdinaryShares : undefined;
   return ordinary != null && Number.isFinite(ordinary) && ordinary > 0
     ? `${formatCompact(shares)} (ADR equivalent = ${formatCompact(ordinary)} ordinary shares)`
@@ -695,6 +701,9 @@ function fundamentalsMetrics(
       value: fundamentals?.sharesOutstanding,
       ...(receipt ? { unit: "ADR equivalent" } : {}),
     },
+    ...(fundamentals?.sharesOutstanding != null && fundamentals.sharesOutstandingAsOf ? [{
+      label: "Shares Outstanding As Of", text: fundamentals.sharesOutstandingAsOf, value: fundamentals.sharesOutstandingAsOf, exportOnly: true,
+    }] : []),
   ];
 }
 
@@ -713,10 +722,12 @@ function floatAndShortInterestMetrics(
   const days = fundamentals?.shortRatio;
   const date = fundamentals?.shortInterestDate;
   const receipt = finite(float) && sharesOutstandingInReceipts(quote, fundamentals, profile?.description);
+  const floatAsOf = finite(float) && float > 0 ? fundamentals?.floatSharesAsOf : undefined;
   return [
     finite(float) && float > 0
-      ? { label: "Float", text: formatCompact(float), value: float, ...(receipt ? { unit: "ADR equivalent" } : {}) }
+      ? { label: "Float", text: datedCount(float, floatAsOf), value: float, ...(receipt ? { unit: "ADR equivalent" } : {}) }
       : { label: "Float", text: "—" },
+    ...floatAsOf ? [{ label: "Float As Of", text: floatAsOf, value: floatAsOf, exportOnly: true }] : [],
     finite(short)
       ? { label: "Short Interest", text: `${formatCompact(short)}${date ? ` (settled ${date})` : ""}`, value: short, unit: "shares" }
       : { label: "Short Interest", text: "—" },
@@ -759,7 +770,7 @@ function fundamentalsNotes(
 }
 
 // The share count is the market cap's basis: the cap is the count times the price, or a note says why not.
-const VALUATION_METRICS = new Set(["Market Cap", "Shares Outstanding", "Enterprise Value", "P/E (TTM)", "Forward P/E", "PEG", "EPS (TTM)"]);
+const VALUATION_METRICS = new Set(["Market Cap", "Shares Outstanding", "Shares Outstanding As Of", "Enterprise Value", "P/E (TTM)", "Forward P/E", "PEG", "EPS (TTM)"]);
 
 type FundamentalsReportData = TickerFinancials & {
   symbol: string;
@@ -871,8 +882,9 @@ function fundamentalsReportMetrics(snapshot: FundamentalsReportData, view: "fund
   }
   const valued = metrics.filter(({ label, text }) => (VALUATION_METRICS.has(label) || isYieldMetric(label)) && text !== "—");
   // The share count follows the market cap it is the basis of.
-  const shares = valued.filter((metric) => metric.label === "Shares Outstanding");
-  const valuation = valued.flatMap((metric) => metric.label === "Shares Outstanding" ? [] : metric.label === "Market Cap" ? [metric, ...shares] : [metric]);
+  const isShares = (label: string) => label === "Shares Outstanding" || label === "Shares Outstanding As Of";
+  const shares = valued.filter((metric) => isShares(metric.label));
+  const valuation = valued.flatMap((metric) => isShares(metric.label) ? [] : metric.label === "Market Cap" ? [metric, ...shares] : [metric]);
   // A listing with no valuation (a fund) says so rather than printing its price alone.
   return valuation.length === 0 ? [] : [...valuationPriceMetrics(financials).filter((metric) => metric.text !== "—"), ...valuation];
 }

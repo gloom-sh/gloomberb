@@ -18,6 +18,7 @@ import { Box, TextAttributes } from "../../../ui";
 import { formatShortDate } from "../../../utils/datetime-format";
 import { formatCompact, formatNumber } from "../../../utils/format";
 import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
+import { shortInterestPublicationSegments } from "./schedule";
 import { loadShortWatch } from "./watch-client";
 import {
   customUniverse,
@@ -103,11 +104,14 @@ export function ShortWatchPane({ width, height, focused }: Pick<PaneProps, "widt
       unpriced.length ? `No month of daily closes for ${unpriced.join(", ")}.` : null,
     ].filter((value): value is string => !!value),
   });
+  // When the newest settlement listed was published and the next is due, as `fn SIW` dates it.
+  const latestSettlement = useMemo(() => rows.flatMap((row) => row.settlementDate ? [row.settlementDate] : []).sort().at(-1) ?? null, [rows]);
   usePaneFooter("short-watch", () => ({
     info: [
       ...loadingErrorFooterInfo(resource.loading && !!resource.data, null),
+      ...shortInterestPublicationSegments(latestSettlement),
     ],
-  }), [resource.loading, resource.data]);
+  }), [resource.loading, resource.data, latestSettlement]);
   // Dates every row shares are the table's as-of context.
   const asOf = [settled ? `settled ${day(settled)}` : null, closed ? `closes to ${day(closed)}` : null]
     .filter(Boolean).join(" · ") || undefined;

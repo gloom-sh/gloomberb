@@ -28,8 +28,8 @@ function normalizeBarSize(value: string, auto: boolean): string {
   if (parsed) return parsed;
   const count = /^\s*(\d+)\s*M\s*$/.exec(value)?.[1];
   throw new Error(count
-    ? `Invalid --chartResolution value "${value}". Write ${count}m for ${count} minutes or ${count}mo for ${count} months.`
-    : `Invalid --chartResolution value "${value}". Use ${auto ? "auto, or " : ""}a count and a unit: 10m, 4h, 2d, 1wk, 3mo (up to a day of minutes or hours, a year of days or weeks, 12 months).`);
+    ? `Invalid --chart-resolution value "${value}". Write ${count}m for ${count} minutes or ${count}mo for ${count} months.`
+    : `Invalid --chart-resolution value "${value}". Use ${auto ? "auto, or " : ""}a count and a unit: 10m, 4h, 2d, 1wk, 3mo (up to a day of minutes or hours, a year of days or weeks, 12 months).`);
 }
 
 export const paneSchemas = {

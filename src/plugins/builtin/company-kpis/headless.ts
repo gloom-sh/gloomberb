@@ -1,5 +1,6 @@
 import type { DataTableColumn } from "../../../components";
 import { DATE_OPTION_EXAMPLES, isoDateOption } from "../../../utils/calendar-date";
+import { optionFlag } from "../../../cli/pane-functions/capabilities";
 import type { HeadlessBundleSection, HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/plugin";
 import { withoutQuietColumns } from "../shared/research-cells";
 import { resolveHeadlessIssuerListing } from "../shared/headless-market-data";
@@ -88,7 +89,7 @@ export function companyHeadless(mode: CompanyMode): HeadlessPaneDefinition<"bund
       { key: "basis", type: "enum", values: [{ value: "reported" }, { value: "adjusted" }, { value: "constant_currency" }, { value: "organic" }], description: "Accounting basis filter (Pro)." },
       { key: "from", type: "string", placeholder: "date", description: `First calendar period end, as ${DATE_OPTION_EXAMPLES} (Pro).`, normalize: (value) => isoDateOption(value, "from") },
       { key: "to", type: "string", placeholder: "date", description: `Last calendar period end, as ${DATE_OPTION_EXAMPLES} (Pro).`, normalize: (value) => isoDateOption(value, "to") },
-      { key: "asOf", type: "string", placeholder: "date", description: `Point-in-time publication cutoff, as ${DATE_OPTION_EXAMPLES} (Pro).`, normalize: (value) => isoDateOption(value, "asOf") },
+      { key: "asOf", type: "string", placeholder: "date", description: `Point-in-time publication cutoff, as ${DATE_OPTION_EXAMPLES} (Pro).`, normalize: (value) => isoDateOption(value, "as-of") },
     ],
     describe: (args) => `${mode === "kpis" ? "Company KPIs" : "Company guidance"} | ${args.symbols[0]}`,
     async load(args, ctx) {
@@ -106,7 +107,7 @@ export function companyHeadless(mode: CompanyMode): HeadlessPaneDefinition<"bund
       const latest = ("series" in data ? data.series.map((series) => series.latest) : data.guidance).filter(keep);
       const ignored = data.access === "preview" ? PRO_FILTERS.filter((key) => typeof args.options[key] === "string" && args.options[key] !== "") : [];
       const notes = [ageNote(data, latest, mode),
-        ignored.length ? `The free preview is fixed: ${ignored.map((key) => `--${key}`).join(", ")} ${ignored.length > 1 ? "need" : "needs"} Gloom Pro.` : null].filter((note): note is string => !!note);
+        ignored.length ? `The free preview is fixed: ${ignored.map(optionFlag).join(", ")} ${ignored.length > 1 ? "need" : "needs"} Gloom Pro.` : null].filter((note): note is string => !!note);
       return { complete: !data.truncated, errors: data.truncated ? [data.access === "preview" ? companyPreviewNote(data, mode === "guidance") : "Response limit reached; narrow the metric or date range"] : [],
         ...(notes.length ? { notes } : {}),
         sections: "series" in data ? [

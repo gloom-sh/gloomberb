@@ -163,9 +163,9 @@ export function stakeToday(
   return { percent, sharesOutstanding };
 }
 
-/** `about 49.4% on 35.26M sh today`. */
-export function formatStakeToday(today: StakeToday): string {
-  return `about ${formatClassPercent(today.percent)} on ${formatCompact(today.sharesOutstanding)} sh today`;
+/** `about 49.4% on 35.26M sh today`, or `as of 2026-09-03` for a count dated by its filing. */
+export function formatStakeToday(today: StakeToday, sharesOutstandingAsOf?: string | null): string {
+  return `about ${formatClassPercent(today.percent)} on ${formatCompact(today.sharesOutstanding)} sh ${sharesOutstandingAsOf ? `as of ${sharesOutstandingAsOf}` : "today"}`;
 }
 
 function beneficialFormLabel(filing: Pick<BeneficialOwnerFiling, "kind" | "amendment">): string {

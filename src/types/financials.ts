@@ -310,8 +310,12 @@ export interface Fundamentals extends DepositaryReceiptFacts {
   sharesOutstanding?: number;
   /** Set when a recent split put `sharesOutstanding` and `marketCap` on the basis the listing trades on. */
   splitShareBasis?: SplitShareBasis;
+  /** YYYY-MM-DD `sharesOutstanding` was counted, when it is a 10-K or 10-Q cover count; a source's own count is undated. */
+  sharesOutstandingAsOf?: string;
   /** Free float: shares outstanding less insider and strategic holdings, never above `sharesOutstanding`. */
   floatShares?: number;
+  /** YYYY-MM-DD of the dated share count `floatShares` is held within. */
+  floatSharesAsOf?: string;
   beta?: number;
   /** Shares short at the latest FINRA settlement, the one `SI` and `SIW` show; dated by `shortInterestDate`. */
   sharesShort?: number;

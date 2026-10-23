@@ -66,12 +66,12 @@ test("a bar size under a minute points at GIP's 1-minute bars for the ticker ask
   const pointer = "No second or tick bars; 1-minute bars: fn GIP RMS.AX; trades exist for US listings only.";
   for (const value of ["1s", "30s", "tick", "500ms"]) {
     await expect(fn(["GIP", "RMS.AX", "--chartResolution", value])).rejects
-      .toThrow(`Invalid --chartResolution value "${value}". ${pointer} Use one of: auto, 1m, 5m, 15m, 1h.`);
+      .toThrow(`Invalid --chart-resolution value "${value}". ${pointer} Use one of: auto, 1m, 5m, 15m, 1h.`);
   }
   await expect(fn(["GIP", "RMS.AX", "--resolution", "1s"])).rejects.toThrow(pointer);
   // Another interval it does not serve is only refused.
   await expect(fn(["GIP", "RMS.AX", "--chartResolution", "2m"])).rejects
-    .toThrow('Invalid --chartResolution value "2m". Use one of: auto, 1m, 5m, 15m, 1h.');
+    .toThrow('Invalid --chart-resolution value "2m". Use one of: auto, 1m, 5m, 15m, 1h.');
 });
 
 test("a name that opens nothing lists the closest functions and where to search, never an alphabetical list", async () => {

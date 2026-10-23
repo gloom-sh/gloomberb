@@ -284,13 +284,13 @@ test("asked for bars finer than a minute, a US listing is pointed at its trades,
 test("asked for bars finer than a minute, a future is told the bars that exist for it and that trades and quotes are US equities only", () => {
   // TAS and QR answer "A US equity symbol is required" for a future, so neither is named.
   const gold = subMinuteDataMessage("GC=F");
-  expect(gold).toStartWith("No second or tick bars; 1-minute bars: fn G GC=F --rangePreset 1D");
+  expect(gold).toStartWith("No second or tick bars; 1-minute bars: fn G GC=F --range-preset 1D");
   expect(gold).toContain("history GC=F --range 1D has 5-minute bars");
   expect(gold).toEndWith("Trades and quotes cover US equities only.");
   for (const symbol of ["GC=F", "SI=F:CMX", "CL=F"]) {
     const message = subMinuteDataMessage(symbol);
     expect(message, symbol).not.toMatch(/fn (TAS|QR|GIP)\b/);
-    expect(message, symbol).toContain(`fn G ${symbol} --rangePreset 1D`);
+    expect(message, symbol).toContain(`fn G ${symbol} --range-preset 1D`);
   }
 });
 

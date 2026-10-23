@@ -88,10 +88,10 @@ export async function buildFunctionReport(
   }
   if (source === "dom") {
     const view = domReportView(report.data);
-    report.text = appendDomReportFooter(report.text, elapsedMs, view, report.data.freshness);
+    report.text = appendDomReportFooter(report.text, view, report.data.freshness);
     report.tables = {
       ...report.tables,
-      footer: [...report.tables.footer, `note: ${domReportNote(elapsedMs, view)}`],
+      footer: [...report.tables.footer, `note: ${domReportNote(view)}`],
     };
   }
   return report;

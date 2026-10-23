@@ -76,10 +76,12 @@ describe("short interest headless model", () => {
     const newest = await headless.load(args({ limit: 1 }), createTestHeadlessContext());
     expect(newest.rows).toEqual([{
       settlementDate: "2026-08-31",
+      publishedDate: "2026-09-10",
       sharesShort: 15_000_000,
       daysToCover: 3,
       averageDailyVolume: 5_000_000,
       shortPercentFloat: 4.1,
+      floatAsOf: null,
     }]);
 
     const oldest = await headless.load(args({ order: "oldest", limit: 1 }), createTestHeadlessContext());
@@ -87,6 +89,30 @@ describe("short interest headless model", () => {
       settlementDate: "2026-08-15",
       sharesShort: 12_000_000,
     });
+  });
+});
+
+describe("short interest --as-of", () => {
+  // 2026-09-30 was published 2026-10-09; 2026-09-15 on 2026-09-24.
+  const settlements = [
+    { settlementDate: new Date("2026-09-15T00:00:00.000Z"), sharesShort: 39_000_000, shortRatio: 4, averageDailyVolume: null, shortPercentFloat: null },
+    { settlementDate: new Date("2026-09-30T00:00:00.000Z"), sharesShort: 42_000_000, shortRatio: 4, averageDailyVolume: null, shortPercentFloat: null },
+  ];
+
+  test("keeps only the settlements published by the date, and dates the report by the newest kept", async () => {
+    const headless = createShortInterestHeadless({ loadRecords: async () => settlements });
+    const before = await headless.load(args({ asOf: "2026-10-08" }), createTestHeadlessContext());
+    expect(before.rows.map((row) => row.settlementDate)).toEqual(["2026-09-15"]);
+    expect(before.freshness).toMatchObject({ publishedAt: "2026-09-24" });
+    const on = await headless.load(args({ asOf: "2026-10-09" }), createTestHeadlessContext());
+    expect(on.rows.map((row) => row.settlementDate)).toEqual(["2026-09-30", "2026-09-15"]);
+  });
+
+  test("a date before the history says where it starts", async () => {
+    const headless = createShortInterestHeadless({ loadRecords: async () => settlements });
+    const result = await headless.load(args({ asOf: "2026-09-01" }), createTestHeadlessContext());
+    expect(result.rows).toEqual([]);
+    expect(result.errors).toEqual(["No AMD settlement held was published by 2026-09-01: the history starts 2026-09-15, published 2026-09-24."]);
   });
 });
 

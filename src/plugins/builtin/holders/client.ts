@@ -28,11 +28,21 @@ export function classSharesToday(financials: Pick<TickerFinancials, "quote" | "f
   return count != null && Number.isFinite(count) && count > 0 ? count : null;
 }
 
+/** The day `classSharesToday` was counted (YYYY-MM-DD), when it is a dated 10-K or 10-Q cover count; null when undated. */
+export function classSharesAsOf(financials: Pick<TickerFinancials, "quote" | "fundamentals"> | null | undefined): string | null {
+  const fundamentals = financials?.fundamentals;
+  if (classSharesToday(financials) == null || !fundamentals?.sharesOutstandingAsOf) return null;
+  const receipt = fundamentals.shareBasis === "depositary_receipt"
+    || fundamentals.isDepositaryReceipt === true
+    || financials?.quote?.isDepositaryReceipt === true;
+  return receipt ? null : fundamentals.sharesOutstandingAsOf;
+}
+
 export async function loadHolderSnapshot(
   provider: DataProvider,
   symbol: string,
   exchange = "",
-): Promise<{ data: HolderData; marketCap?: number; sharesOutstanding?: number | null }> {
+): Promise<{ data: HolderData; marketCap?: number; sharesOutstanding?: number | null; sharesOutstandingAsOf?: string | null }> {
   const [data, financials] = await Promise.all([
     loadHolderData(provider, symbol, exchange),
     provider.getTickerFinancials(symbol, exchange).catch(logFailure("holders.client", "Read holder reference financials failed", null)),
@@ -42,5 +52,6 @@ export async function loadHolderSnapshot(
     data,
     marketCap: holderStakeMarketCap(quote?.marketCap, quote?.currency, holderValueCurrency(data)),
     sharesOutstanding: classSharesToday(financials),
+    sharesOutstandingAsOf: classSharesAsOf(financials),
   };
 }

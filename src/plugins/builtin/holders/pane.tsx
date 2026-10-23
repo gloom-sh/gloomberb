@@ -40,7 +40,7 @@ import {
   sortRows,
   VIEW_TABS,
 } from "./table-model";
-import { classSharesToday, loadHolderData } from "./client";
+import { classSharesAsOf, classSharesToday, loadHolderData } from "./client";
 import { HoldersTreemap } from "./treemap";
 import { BeneficialOwnersView } from "./beneficial-view";
 import { useIssuerListing } from "../shared/ticker-request";
@@ -91,6 +91,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
   const marketCap = useSampledValue(liveMarketCap, HOLDER_MARKET_CAP_SAMPLE_MS, `${symbol ?? ""}:${currency}`);
   // Today's share count, which a 13D/13G report's own base is checked against.
   const sharesOutstanding = classSharesToday(financials);
+  const sharesOutstandingAsOf = classSharesAsOf(financials);
   const rows = useMemo(() => buildRows(data), [data]);
   const periodsDiffer = useMemo(() => holderPeriodsDiffer(rows), [rows]);
   const sortedRows = useMemo(() => sortRows(rows, sortPreference, marketCap), [marketCap, rows, sortPreference]);
@@ -354,6 +355,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
           holderRows={rows}
           fundMatches={fundMatches}
           sharesOutstanding={sharesOutstanding}
+          sharesOutstandingAsOf={sharesOutstandingAsOf}
           onCycleView={toggleView}
           onRefreshHolders={refresh}
         />

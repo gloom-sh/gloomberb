@@ -196,15 +196,17 @@ export function buildOverviewStats({
       ),
     });
   }
+  // A count read off a 10-K or 10-Q cover says when it was counted; the source's own is undated.
+  const counted = (asOf: string | undefined) => (asOf ? { detail: [`as of ${asOf}`, `as of ${asOf.slice(5)}`] } : {});
   if (fundamentals?.sharesOutstanding) {
     stats.push({
       label: "Shares Out",
       value: formatCompact(fundamentals.sharesOutstanding),
-      ...(depositaryReceipt ? { detail: ["ADR equivalent", "in ADRs"] } : {}),
+      ...(depositaryReceipt ? { detail: ["ADR equivalent", "in ADRs"] } : counted(fundamentals.sharesOutstandingAsOf)),
     });
   }
   if (finite(fundamentals?.floatShares) && fundamentals.floatShares > 0) {
-    stats.push({ label: "Float", value: formatCompact(fundamentals.floatShares) });
+    stats.push({ label: "Float", value: formatCompact(fundamentals.floatShares), ...counted(fundamentals.floatSharesAsOf) });
   }
   const trailingPE = liveTrailingPE(quote, fundamentals);
   if (trailingPE != null) {

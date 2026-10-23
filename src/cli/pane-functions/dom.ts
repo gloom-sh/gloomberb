@@ -301,14 +301,13 @@ export async function buildDomPaneReportFromRender(
 /** The report's closing lines; a locked view, which read nothing, cites no source. */
 export function appendDomReportFooter(
   text: string,
-  elapsedMs: number,
   view: DomReportView,
   freshness: ReportFreshness | undefined,
 ): string {
   return [
     text,
     "",
-    domReportNote(elapsedMs, view),
+    domReportNote(view),
     ...(freshness ? [cliStyles.muted(formatFreshnessLine(freshness))] : []),
   ].join("\n");
 }
@@ -321,16 +320,19 @@ export function domReportView(data: Readonly<Record<string, unknown>>): DomRepor
   return data.truncated === true ? "clipped" : data.everyRow === true ? "every-row" : data.wholePane === true ? "whole" : "visible";
 }
 
-/** What a rendered-view report says about where its values come from. */
-export function domReportNote(elapsedMs: number, view: DomReportView): string {
-  const source = view === "locked"
+/**
+ * What a rendered-view report says about where its values come from. How long
+ * the render took is no part of it: that is the machine's, not the data's
+ * (`elapsedMs` in JSON keeps it).
+ */
+export function domReportNote(view: DomReportView): string {
+  return view === "locked"
     ? "Rendered view: the pane is locked, so no values were read."
     : view === "every-row"
     ? "Rendered view: every row of the pane's table, including rows scrolled out of view."
     : view === "whole"
     ? "Rendered view: the pane grown to fit the whole page."
     : `Rendered view: values come from the visible pane. ${view === "clipped" ? "The rendered view is clipped." : "The rendered view may be clipped."}`;
-  return `${source} Render time: ${elapsedMs} ms.`;
 }
 
 function failedDomReport(

@@ -1,5 +1,5 @@
 import { typoDistance } from "../../utils/typo-distance";
-import { findCapabilityOption } from "./capabilities";
+import { findCapabilityOption, optionFlag } from "./capabilities";
 import type { ResolvedPaneFunction } from "./resolver";
 
 /** An argument as a shell reads it back: bare when it is one word, in quotes when it is not. */
@@ -46,7 +46,7 @@ export function shotOptionRefusal(
   // The report is run with every option only it reads, so HP's `--from 2007 --to 2009` keeps its end.
   const reportFlags = given.flatMap(([key, value]) => {
     const option = findCapabilityOption(resolved.capability, key);
-    return option?.shot ? [`--${option.key}`, value === true ? "" : shellWord(value)] : [];
+    return option?.shot ? [optionFlag(option.key), value === true ? "" : shellWord(value)] : [];
   });
   for (const [key, value] of given) {
     const option = findCapabilityOption(resolved.capability, key);

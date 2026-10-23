@@ -3,10 +3,13 @@ import { spanDigits } from "../../../components/chart-table";
 import type { CompositeAxisDomain } from "../../../components/chart/composite/types";
 import { formatCompact, formatNumber } from "../../../utils/format";
 import { compareSortValues } from "../../../utils/sort-values";
+import { shortInterestPublished } from "./schedule";
 import type { ShortInterestRecord } from "./types";
 
 export type ShortInterestColumnId =
   | "settlementDate"
+  | "publishedDate"
+  | "floatAsOf"
   | "sharesShort"
   | "shortRatio"
   | "averageDailyVolume"
@@ -18,6 +21,10 @@ export interface ShortInterestRow {
   key: string;
   record: ShortInterestRecord;
   settlementDate: string;
+  /** When FINRA published the settlement, `YYYY-MM-DD`; `-` when the date is not one. */
+  publishedDate: string;
+  /** The day of the share count the percent of float is read on; `-` when it is undated or there is none. */
+  floatAsOf: string;
   sharesShort: string;
   shortRatio: string;
   averageDailyVolume: string;
@@ -91,24 +98,50 @@ export function settlementPercentFloat(
   return record.shortPercentFloat ?? percentOfFloat(record.sharesShort, floatShares);
 }
 
+/** The float a percent of float is read against today, and the share count it floats out of. */
+export interface CurrentFloat {
+  floatShares: number | null | undefined;
+  /** YYYY-MM-DD of the share count the float is held within, when it is dated. */
+  floatAsOf?: string | null;
+  /** The share count the float is held within (the statistics' shares outstanding). */
+  sharesOutstanding?: number | null;
+  statistics?: SettlementFloatStatistics | null;
+}
+
 /**
- * The newest settlement's percent of float where the source gives none, read
- * against the current float as SIW reads it (settlementPercentFloat). The
- * float is undated, so the settlements before it stay blank rather than take
- * today's float.
+ * Each settlement's percent of float where the source gives none. The newest
+ * is read against the current float, as SIW and the statistics read it
+ * (settlementPercentFloat). An earlier one is read against the float of its
+ * own day: the 10-K or 10-Q share count known when FINRA published it
+ * (`sharesOutstanding` on the record) times the part of today's count that
+ * floats. A settlement without such a count stays blank rather than take
+ * today's float. `pointInTime` reads the newest the same way, so a report
+ * cut at a date (`--as-of`) uses no count filed after its settlements.
  */
-export function withLatestPercentFloat(
+export function withPercentFloat(
   records: readonly ShortInterestRecord[],
-  floatShares: number | null | undefined,
-  statistics?: SettlementFloatStatistics | null,
+  current: CurrentFloat,
+  { pointInTime = false }: { pointInTime?: boolean } = {},
 ): ShortInterestRecord[] {
-  const latest = records.reduce<ShortInterestRecord | null>(
+  const latest = pointInTime ? null : records.reduce<ShortInterestRecord | null>(
     (best, record) => (!best || record.settlementDate.getTime() > best.settlementDate.getTime() ? record : best),
     null,
   );
-  return records.map((record) => (record === latest
-    ? { ...record, shortPercentFloat: settlementPercentFloat(record, floatShares, statistics) }
-    : record));
+  const { floatShares, sharesOutstanding } = current;
+  const floating = finiteNumber(floatShares) && finiteNumber(sharesOutstanding) && floatShares > 0 && sharesOutstanding > 0
+    ? Math.min(1, floatShares / sharesOutstanding) : null;
+  return records.map((record) => {
+    if (record === latest) {
+      const percent = settlementPercentFloat(record, floatShares, current.statistics);
+      return { ...record, shortPercentFloat: percent, floatAsOf: percent != null ? current.floatAsOf ?? null : null };
+    }
+    if (record.shortPercentFloat != null || floating == null || !finiteNumber(record.sharesOutstanding)) return record;
+    return {
+      ...record,
+      shortPercentFloat: percentOfFloat(record.sharesShort, record.sharesOutstanding * floating),
+      floatAsOf: record.sharesOutstandingAsOf ?? null,
+    };
+  });
 }
 
 export function buildRows(records: ShortInterestRecord[]): ShortInterestRow[] {
@@ -116,6 +149,8 @@ export function buildRows(records: ShortInterestRecord[]): ShortInterestRow[] {
     key: `${record.settlementDate.toISOString()}:${index}`,
     record,
     settlementDate: formatDate(record.settlementDate),
+    publishedDate: shortInterestPublished(formatDate(record.settlementDate)) ?? "-",
+    floatAsOf: record.shortPercentFloat != null && record.floatAsOf ? record.floatAsOf : "-",
     sharesShort: formatMaybeCompact(record.sharesShort),
     shortRatio: formatRatio(record.shortRatio),
     averageDailyVolume: formatMaybeCompact(record.averageDailyVolume),
@@ -127,6 +162,10 @@ function sortValue(row: ShortInterestRow, columnId: ShortInterestColumnId): stri
   switch (columnId) {
     case "settlementDate":
       return row.record.settlementDate.getTime();
+    case "publishedDate":
+      return row.publishedDate === "-" ? null : row.publishedDate;
+    case "floatAsOf":
+      return row.floatAsOf === "-" ? null : row.floatAsOf;
     case "sharesShort":
       return row.record.sharesShort;
     case "shortRatio":
@@ -146,27 +185,34 @@ export function sortRows(rows: ShortInterestRow[], preference: SortPreference): 
 
 /**
  * The columns sit together rather than spread across the pane, so the figures
- * of one settlement read as a row, and fit a 60-column pane without a
- * horizontal scrollbar. FINRA settlement history carries no float, so percent of float
- * is null for every row unless the latest one is read against the current float
- * (`withLatestPercentFloat`). Keeping the column with nothing in it drew a header over a
- * column of dashes, which reads as missing data rather than data the source never had.
+ * of one settlement read as a row: when it settled, when FINRA published it
+ * (what a trader could see that day), then its figures. FINRA settlement
+ * history carries no float, so percent of float is null for every row unless
+ * it is read against a float (`withPercentFloat`), dated by the share count
+ * that float is held within. Keeping the column with nothing in it drew a
+ * header over a column of dashes, which reads as missing data rather than
+ * data the source never had.
  */
 export function buildColumns(
   records: readonly ShortInterestRecord[] = [],
 ): ShortInterestColumn[] {
   const hasPercentFloat = records.some((record) => record.shortPercentFloat != null);
-  const dateWidth = 12;
+  const hasFloatDate = records.some((record) => record.shortPercentFloat != null && !!record.floatAsOf);
+  const dateWidth = 11;
   const sharesWidth = 12;
   const ratioWidth = 12;
-  const percentWidth = 10;
+  const percentWidth = 9;
   return [
     { id: "settlementDate", label: "DATE", width: dateWidth, align: "left" },
+    { id: "publishedDate", label: "PUBLISHED", width: dateWidth, align: "left" },
     { id: "sharesShort", label: "SHARES SHORT", width: sharesWidth, align: "right" },
     { id: "shortRatio", label: "DAYS TO COVER", width: ratioWidth, align: "right" },
     { id: "averageDailyVolume", label: "AVG VOL", width: 11, align: "right" },
     ...(hasPercentFloat
       ? [{ id: "shortPercentFloat" as const, label: "% FLOAT", width: percentWidth, align: "right" as const }]
+      : []),
+    ...(hasFloatDate
+      ? [{ id: "floatAsOf" as const, label: "FLOAT AS OF", width: dateWidth + 1, align: "right" as const }]
       : []),
   ];
 }
@@ -202,7 +248,12 @@ export function shortInterestFigures(records: readonly ShortInterestRecord[]): S
   return [
     { id: "shares", label: "Shares short", value: formatMaybeCompact(latest.sharesShort), detail: formatDate(latest.settlementDate) },
     ...(latest.shortRatio != null ? [{ id: "days", label: "Days to cover", value: formatRatio(latest.shortRatio) }] : []),
-    ...(latest.shortPercentFloat != null ? [{ id: "float", label: "% float", value: formatPercent(latest.shortPercentFloat) }] : []),
+    ...(latest.shortPercentFloat != null ? [{
+      id: "float",
+      label: "% float",
+      value: formatPercent(latest.shortPercentFloat),
+      ...(latest.floatAsOf ? { detail: `as of ${latest.floatAsOf}` } : {}),
+    }] : []),
     ...(change != null && prior ? [{
       id: "change",
       label: "Change",

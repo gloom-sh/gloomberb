@@ -140,7 +140,7 @@ test("an OMON report reads every strike of its window past the viewport, and say
     rowCount: 5, complete: true, truncated: false, truncationReasons: [], everyRow: true,
     metadata: { strikes: { window: "2", shown: 5, total: 145 }, notices: [notice] },
   });
-  expect(domReportNote(1, domReportView(report.data))).toContain("every row of the pane's table");
+  expect(domReportNote(domReportView(report.data))).toContain("every row of the pane's table");
   expect((report.data.rows as Array<{ key: string }>).map((row) => row.key)).toEqual(["700", "710", "720", "730", "740"]);
   expect(report.text).toContain(notice);
 
@@ -148,7 +148,7 @@ test("an OMON report reads every strike of its window past the viewport, and say
   const viewportOnly = { ...render, reportRows: undefined, reportTruncationReasons: undefined };
   const clipped = await buildDomPaneReportFromRender(resolved, { symbols: ["META"], render: viewportOnly } as unknown as PaneScreenshotResult);
   expect(clipped.data).toMatchObject({ rowCount: 3, complete: false, truncationReasons: ["rows above and below the rendered viewport are cut"] });
-  expect(domReportNote(1, domReportView(clipped.data))).toContain("The rendered view is clipped.");
+  expect(domReportNote(domReportView(clipped.data))).toContain("The rendered view is clipped.");
 });
 
 test("an OMON shot names the rows its image cuts and how many strikes the window lists", () => {
@@ -281,8 +281,8 @@ test("a pane walled whole cites no source, and one that says how to reach it say
   expect(signedOut.data.reason).toContain("Free, with no sign-in: gloomberb fn SEC NEM lists NEM's recent filings");
   expect(signedOut.text).not.toContain("Sign up free");
   expect(signedOut.tables.footer.some((line) => /^Source:|^Retrieval time/.test(line))).toBe(false);
-  const footer = appendDomReportFooter(signedOut.text, 10, domReportView(signedOut.data), signedOut.data.freshness);
-  expect(footer).toEndWith("Rendered view: the pane is locked, so no values were read. Render time: 10 ms.");
+  const footer = appendDomReportFooter(signedOut.text, domReportView(signedOut.data), signedOut.data.freshness);
+  expect(footer).toEndWith("Rendered view: the pane is locked, so no values were read.");
   // On a free account the Pro wall stands in the same way, with the route that is left.
   const free = await walled("pro", "EK NEM 8-K filings are part of Gloom Cloud Pro. Upgrade");
   expect(free.data.locked).toBe("pro");
@@ -317,7 +317,7 @@ test("a pane that is prose reads as the lines it draws, wrapped, without its own
     "• Ex-dividend dates", "Plan  Data and features", "Free  Delayed 15 minutes.",
   ].join("\n"));
   expect(domReportView(whole.data)).toBe("whole");
-  expect(domReportNote(5, "whole")).toBe("Rendered view: the pane grown to fit the whole page. Render time: 5 ms.");
+  expect(domReportNote("whole")).toBe("Rendered view: the pane grown to fit the whole page.");
   // A page still cut once the pane has grown is not whole.
   expect(domReportView((await report(true)).data)).toBe("clipped");
 });

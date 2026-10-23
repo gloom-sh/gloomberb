@@ -561,8 +561,9 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     term: "Float", aliases: ["free float", "public float", "float shares", "floating stock", "% float", "percent of float"],
     functions: ["SI", "SIW"], shown: ["Float"],
     definition: "The shares open to public trading: those outstanding less shares held by insiders and strategic holders, never more than the shares outstanding. "
-      + "% Float is shares short over today's float, so a settlement is measured against the float as it is now, not as it was then; "
-      + "SI gives it for the latest settlement only.",
+      + "A float held within a 10-K or 10-Q cover count is dated by that count (as of the day the cover states). "
+      + "SIW's % Float is the latest settlement's shares short over today's float; SI reads each earlier settlement over the float when FINRA published it: "
+      + "the cover count known that day, at the share of today's count that floats.",
   },
   {
     // SIW's Setup column prints these two words.

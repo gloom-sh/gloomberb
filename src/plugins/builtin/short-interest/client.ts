@@ -21,6 +21,8 @@ function normalizeCloudRecords(payload: CloudShortInterestPayload): ShortInteres
       // FINRA publishes no float, so percent of float stays unknown rather than
       // being invented from a float measured on a different date.
       shortPercentFloat: point.shortPercentFloat ?? null,
+      ...(typeof point.sharesOutstanding === "number" && point.sharesOutstanding > 0
+        ? { sharesOutstanding: point.sharesOutstanding, sharesOutstandingAsOf: point.sharesOutstandingAsOf ?? null } : {}),
     });
   }
   return records;

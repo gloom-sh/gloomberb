@@ -194,7 +194,10 @@ describe("pane function capabilities", () => {
   test("an option a function does not take is refused by the code the user typed, not its pane or capability id", () => {
     const comparison = capabilityFor("comparison-chart-pane");
     expect(() => normalizeCapabilityOptions(comparison, { tab: "cashflow" }, { code: "COMP" }))
-      .toThrow("COMP does not support --tab. Supported options: --rangePreset, --axisMode, --chartResolution.");
+      .toThrow("COMP does not support --tab. Supported options: --range-preset, --axis-mode, --chart-resolution.");
+    // A flag is named as it is typed, not as the parser keys it (`--as-of` reads as `asOf`).
+    expect(() => normalizeCapabilityOptions(comparison, { asOf: "2026-10-14" }, { code: "COMP" }))
+      .toThrow("COMP does not support --as-of.");
     // The intraday chart's capability id is not its template id, and neither is what anyone types.
     const intraday = capabilityFor("graph-intraday-price-pane");
     expect(intraday.id).toBe("intraday-price-chart");

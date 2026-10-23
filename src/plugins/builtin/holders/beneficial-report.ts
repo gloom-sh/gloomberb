@@ -94,10 +94,11 @@ export function beneficialReportColumns(rows: readonly BeneficialReportRow[]): t
 export function beneficialReportLegend(
   rows: readonly BeneficialReportRow[],
   sharesOutstanding: number | null | undefined,
+  sharesOutstandingAsOf?: string | null,
 ): string | null {
   if (rows.length === 0) return null;
   const today = sharesOutstanding != null && rows.some((row) => row.percentToday != null)
-    ? `; % Today is the same shares over ${formatCompact(sharesOutstanding)} shares outstanding today`
+    ? `; % Today is the same shares over ${formatCompact(sharesOutstanding)} shares outstanding ${sharesOutstandingAsOf ? `as of ${sharesOutstandingAsOf}` : "today"}`
     : "";
   const others = rows.some((row) => row.otherPersons > 0) ? " +N after a name: other reporting persons on the same report." : "";
   return `% Class is as filed${today}.${others}`;
