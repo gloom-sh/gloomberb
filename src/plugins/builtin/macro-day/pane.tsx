@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import { DataTableView, EmptyState, PaneStatusBody, QueryBar, StatGrid, statGridRows, usePaneFooter, usePaneNoticeFooter,
   usePaneTicker, type DataTableCell, type DataTableColumn, type StatItem } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
+import { tableColumnWidth } from "../../../components/ui/table-layout";
+import { displayWidth } from "../../../utils/format";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { usePaneSettingValue, usePluginPaneState } from "../../../public/react";
 import { useAsyncResource } from "../../../react/async-resource";
@@ -31,20 +33,23 @@ const MOVE: DataTableColumn[] = [
   { id: "move", label: "Move", width: 9, align: "right" },
   { id: "multiple", label: "vs Normal", width: 10, align: "right" },
 ];
-/** What each release came out with, shown once any listed day has it. */
-const FIGURES: DataTableColumn[] = [
-  { id: "actual", label: "Actual", width: 7, align: "right" },
-  { id: "forecast", label: "Fcst", width: 7, align: "right" },
-  { id: "prior", label: "Prior", width: 7, align: "right" },
-];
+/** What each release came out with, under the labels the economic calendar gives them. */
+const FIGURES = [["actual", "Actual"], ["forecast", "Forecast"], ["prior", "Prior"]] as const;
+
+/** The figure columns, shown once any listed day has figures, each as wide as its header and its widest value. */
+function figureColumns(rows: readonly MacroDayEvent[]): DataTableColumn[] {
+  if (!rows.some((event) => event.figures)) return [];
+  return FIGURES.map(([id, label]) => ({ id, label, align: "right", width: tableColumnWidth({ label,
+    width: Math.max(6, ...rows.map((event) => displayWidth(event.figures?.[id] ?? ""))) }) }));
+}
 
 /**
  * With every release listed, the release's name, widened to take the earnings marker where a row has one. With one
  * selected, a column only for the marker: every row would repeat the name.
  */
-function columnsFor(release: string, rows: readonly MacroDayEvent[]): DataTableColumn[] {
+export function columnsFor(release: string, rows: readonly MacroDayEvent[]): DataTableColumn[] {
   const marked = rows.some((event) => event.earnings);
-  const values = [...rows.some((event) => event.figures) ? FIGURES : [], ...MOVE];
+  const values = [...figureColumns(rows), ...MOVE];
   if (release === "all") return [DATE, { id: "release", label: "Release", width: marked ? 15 : 8, align: "left" }, ...values];
   return marked ? [DATE, { id: "release", label: "Note", width: EARNINGS_MARK.length, align: "left" }, ...values] : [DATE, ...values];
 }
