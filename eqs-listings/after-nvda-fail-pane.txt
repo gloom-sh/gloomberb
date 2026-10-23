@@ -1,0 +1,32 @@
+EQS · Equity Screener
+Results Criteria Saved
+← Back Check ticker
+ Ticker NVDA
+ Listing NVDA:NASDAQ  NVIDIA CORP                            Result  Does not match
+ CRITERION                                                 VALUE  RESULT   AS OF                  DATA         REASON
+ Currency in USD                                             USD  Pass     --                     available    --
+ Market cap >= 100,000,000,000,000,000,000 5,124,234,870,000 USD  Fail     2026-10-19 (collected) partial      Provider…
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+█████████████████████████████████████████████████████████████
+
+└snapshot 2026-10-23 10:45 UTC                                                                           [c]heck ticker┘

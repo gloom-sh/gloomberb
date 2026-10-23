@@ -1,0 +1,76 @@
+{
+  "ok": true,
+  "data": {
+    "kind": "bundle",
+    "target": "EQS",
+    "capabilityId": "equity-screener-pane",
+    "symbols": [],
+    "options": {
+      "metric": "marketCap",
+      "check": "2454:JPX",
+      "definition": "{\"version\": 1, \"currency\": null, \"criteria\": [], \"sort\": {\"field\": \"symbol\", \"direction\": \"asc\"}}"
+    },
+    "rowCount": 1,
+    "empty": false,
+    "complete": true,
+    "unavailableSymbols": [],
+    "errors": [],
+    "metadata": {
+      "definition": {
+        "version": 1,
+        "criteria": [],
+        "currency": null,
+        "sort": {
+          "field": "symbol",
+          "direction": "asc"
+        }
+      },
+      "snapshot": {
+        "id": "c96eabef-26c1-4ab6-967e-f2f91a00fb6d",
+        "assembledAt": "2026-10-23T10:30:59.510Z",
+        "expiresAt": "2026-10-23T12:30:59.510Z",
+        "sourceOldestAt": "2025-09-27T00:00:00.000Z",
+        "sourceNewestAt": "2026-10-22T00:00:00.000Z"
+      },
+      "symbol": "2454",
+      "listing": {
+        "symbol": "2454",
+        "exchange": "JPX",
+        "name": "All About, Inc.",
+        "currency": "JPY",
+        "sector": "Communication Services",
+        "industry": "Internet Content & Information"
+      },
+      "matches": true,
+      "status": "available",
+      "criteria": []
+    },
+    "sections": [
+      {
+        "title": "2454:JPX",
+        "entries": [
+          {
+            "label": "Result",
+            "value": "Passes all criteria"
+          }
+        ]
+      }
+    ],
+    "freshness": {
+      "source": "Gloom Cloud",
+      "asOf": "2026-10-23T10:30:59.510Z",
+      "status": "not-a-feed",
+      "basis": "screener snapshot",
+      "retrievedAt": "2026-10-23T10:41:15.743Z"
+    },
+    "source": "headless",
+    "elapsedMs": 159
+  },
+  "source": {
+    "name": "Gloom Cloud",
+    "publisher": null,
+    "observationDate": "2026-10-23T10:30:59.510Z",
+    "publicationTime": null,
+    "retrievalTime": "2026-10-23T10:41:15.743Z"
+  }
+}

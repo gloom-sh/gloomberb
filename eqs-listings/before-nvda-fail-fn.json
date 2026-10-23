@@ -1,0 +1,7 @@
+{
+  "ok": false,
+  "error": {
+    "code": "cli_error",
+    "message": "Several listings use NVDA; check NVDA:BMV or NVDA:NASDAQ"
+  }
+}

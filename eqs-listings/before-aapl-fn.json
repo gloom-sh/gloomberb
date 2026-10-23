@@ -1,0 +1,7 @@
+{
+  "ok": false,
+  "error": {
+    "code": "cli_error",
+    "message": "Several listings use AAPL; check AAPL:BMV or AAPL:NASDAQ"
+  }
+}

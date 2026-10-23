@@ -1,0 +1,86 @@
+[
+  {
+    "phase": "before",
+    "case": "nvda",
+    "status": 409,
+    "exit": 1,
+    "passed": true
+  },
+  {
+    "phase": "before",
+    "case": "aapl",
+    "status": 409,
+    "exit": 1,
+    "passed": true
+  },
+  {
+    "phase": "before",
+    "case": "nvda-fail",
+    "status": 409,
+    "exit": 1,
+    "passed": true
+  },
+  {
+    "phase": "before",
+    "case": "nvda-explicit",
+    "status": 200,
+    "exit": 0,
+    "passed": true
+  },
+  {
+    "phase": "before",
+    "case": "ambiguous",
+    "status": 409,
+    "exit": 1,
+    "passed": true
+  },
+  {
+    "phase": "before",
+    "case": "explicit",
+    "status": 200,
+    "exit": 0,
+    "passed": true
+  },
+  {
+    "phase": "after",
+    "case": "nvda",
+    "status": 200,
+    "exit": 0,
+    "passed": true
+  },
+  {
+    "phase": "after",
+    "case": "aapl",
+    "status": 200,
+    "exit": 0,
+    "passed": true
+  },
+  {
+    "phase": "after",
+    "case": "nvda-fail",
+    "status": 200,
+    "exit": 0,
+    "passed": true
+  },
+  {
+    "phase": "after",
+    "case": "nvda-explicit",
+    "status": 200,
+    "exit": 0,
+    "passed": true
+  },
+  {
+    "phase": "after",
+    "case": "ambiguous",
+    "status": 409,
+    "exit": 1,
+    "passed": true
+  },
+  {
+    "phase": "after",
+    "case": "explicit",
+    "status": 200,
+    "exit": 0,
+    "passed": true
+  }
+]

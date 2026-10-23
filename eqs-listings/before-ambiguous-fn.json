@@ -1,0 +1,7 @@
+{
+  "ok": false,
+  "error": {
+    "code": "cli_error",
+    "message": "Several listings use 2454; check 2454:JPX or 2454:TWSE"
+  }
+}

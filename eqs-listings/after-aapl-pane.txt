@@ -1,0 +1,32 @@
+EQS · Equity Screener
+Results Criteria Saved
+← Back Check ticker
+ Ticker AAPL
+ Listing AAPL:NASDAQ  Apple Inc.                             Result  Passes all criteria
+ CRITERION                                       VALUE  RESULT   AS OF                  DATA         REASON
+ Currency in USD                                   USD  Pass     --                     available    --
+ Market cap >= 1,000,000,000,000 5,114,431,106,320 USD  Pass     2026-10-19 (collected) partial      Provider observat…
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+██████████████████████████████████████████████████████████████
+
+└snapshot 2026-10-23 10:45 UTC                                                                           [c]heck ticker┘

@@ -1,0 +1,158 @@
+{
+  "ok": true,
+  "data": {
+    "kind": "bundle",
+    "target": "EQS",
+    "capabilityId": "equity-screener-pane",
+    "symbols": [],
+    "options": {
+      "metric": "marketCap",
+      "check": "NVDA:BMV",
+      "definition": "{\"version\": 1, \"currency\": \"USD\", \"criteria\": [{\"field\": \"marketCap\", \"op\": \"gte\", \"value\": 1000000000000}], \"sort\": {\"field\": \"marketCap\", \"direction\": \"desc\"}}"
+    },
+    "rowCount": 2,
+    "empty": false,
+    "complete": false,
+    "unavailableSymbols": [],
+    "errors": [],
+    "metadata": {
+      "definition": {
+        "version": 1,
+        "criteria": [
+          {
+            "field": "marketCap",
+            "op": "gte",
+            "value": 1000000000000
+          }
+        ],
+        "currency": "USD",
+        "sort": {
+          "field": "marketCap",
+          "direction": "desc"
+        }
+      },
+      "snapshot": {
+        "id": "c96eabef-26c1-4ab6-967e-f2f91a00fb6d",
+        "assembledAt": "2026-10-23T10:30:59.510Z",
+        "expiresAt": "2026-10-23T12:30:59.510Z",
+        "sourceOldestAt": "2025-09-27T00:00:00.000Z",
+        "sourceNewestAt": "2026-10-22T00:00:00.000Z"
+      },
+      "symbol": "NVDA",
+      "listing": {
+        "symbol": "NVDA",
+        "exchange": "BMV",
+        "name": "NVIDIA Corporation",
+        "currency": "MXN",
+        "sector": "Technology",
+        "industry": "Semiconductors"
+      },
+      "matches": false,
+      "status": "partial",
+      "criteria": [
+        {
+          "criterion": {
+            "field": "currency",
+            "op": "in",
+            "value": [
+              "USD"
+            ]
+          },
+          "implicit": true,
+          "value": "MXN",
+          "passes": false,
+          "state": "available",
+          "unit": "",
+          "asOf": null,
+          "observedAt": null,
+          "reason": null
+        },
+        {
+          "criterion": {
+            "field": "marketCap",
+            "op": "gte",
+            "value": 1000000000000
+          },
+          "implicit": false,
+          "value": 99842521038848,
+          "passes": true,
+          "state": "partial",
+          "unit": "MXN",
+          "asOf": null,
+          "observedAt": "2026-10-22T01:00:59.911Z",
+          "reason": "Provider observation date unavailable; collection time is reported separately"
+        }
+      ]
+    },
+    "sections": [
+      {
+        "title": "NVDA:BMV · Does not match",
+        "columns": [
+          {
+            "key": "criterion",
+            "header": "Criterion"
+          },
+          {
+            "key": "value",
+            "header": "Value",
+            "align": "right"
+          },
+          {
+            "key": "result",
+            "header": "Result"
+          },
+          {
+            "key": "asOf",
+            "header": "As of"
+          },
+          {
+            "key": "state",
+            "header": "State"
+          },
+          {
+            "key": "reason",
+            "header": "Reason"
+          }
+        ],
+        "rows": [
+          {
+            "id": "0",
+            "criterion": "Currency in USD",
+            "value": "MXN",
+            "result": "Fail",
+            "asOf": "--",
+            "state": "available",
+            "reason": null,
+            "passes": false
+          },
+          {
+            "id": "1",
+            "criterion": "Market cap >= 1,000,000,000,000",
+            "value": "99,842,521,038,848 MXN",
+            "result": "Pass",
+            "asOf": "2026-10-22 (collected)",
+            "state": "partial",
+            "reason": "Provider observation date unavailable; collection time is reported separately",
+            "passes": true
+          }
+        ]
+      }
+    ],
+    "freshness": {
+      "source": "Gloom Cloud",
+      "asOf": "2026-10-23T10:30:59.510Z",
+      "status": "not-a-feed",
+      "basis": "screener snapshot",
+      "retrievedAt": "2026-10-23T10:39:39.065Z"
+    },
+    "source": "headless",
+    "elapsedMs": 401
+  },
+  "source": {
+    "name": "Gloom Cloud",
+    "publisher": null,
+    "observationDate": "2026-10-23T10:30:59.510Z",
+    "publicationTime": null,
+    "retrievalTime": "2026-10-23T10:39:39.065Z"
+  }
+}

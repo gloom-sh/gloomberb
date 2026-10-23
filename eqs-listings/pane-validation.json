@@ -1,0 +1,62 @@
+[
+  {
+    "phase": "before",
+    "case": "nvda",
+    "passed": true
+  },
+  {
+    "phase": "before",
+    "case": "aapl",
+    "passed": true
+  },
+  {
+    "phase": "before",
+    "case": "nvda-fail",
+    "passed": true
+  },
+  {
+    "phase": "before",
+    "case": "nvda-explicit",
+    "passed": true
+  },
+  {
+    "phase": "before",
+    "case": "ambiguous",
+    "passed": true
+  },
+  {
+    "phase": "before",
+    "case": "explicit",
+    "passed": true
+  },
+  {
+    "phase": "after",
+    "case": "nvda",
+    "passed": true
+  },
+  {
+    "phase": "after",
+    "case": "aapl",
+    "passed": true
+  },
+  {
+    "phase": "after",
+    "case": "nvda-fail",
+    "passed": true
+  },
+  {
+    "phase": "after",
+    "case": "nvda-explicit",
+    "passed": true
+  },
+  {
+    "phase": "after",
+    "case": "ambiguous",
+    "passed": true
+  },
+  {
+    "phase": "after",
+    "case": "explicit",
+    "passed": true
+  }
+]
