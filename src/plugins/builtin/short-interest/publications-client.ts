@@ -6,7 +6,7 @@ import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../
 export type PublicationKind = "ftd" | "ats";
 export type PublicationPayload = FailsToDeliverPayload | OtcVolumePayload;
 export const publicationCache = createPluginCache<PublicationPayload>({
-  kind: "short-side-publications", source: "gloom-cloud", schemaVersion: 1,
+  kind: "short-side-publications", source: "gloom-cloud", schemaVersion: 2,
   policy: { staleMs: 60 * 60_000, expireMs: 30 * 24 * 60 * 60_000 },
 });
 const date = (value: unknown): value is string => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)
@@ -21,6 +21,7 @@ const url = (value: unknown): value is string => typeof value === "string" && /^
 function validateEnvelope(payload: ShortSidePublication<unknown>, symbol: string): boolean {
   return !!payload && payload.symbol === symbol && ["available", "partial", "unavailable"].includes(payload.status)
     && dateOrNull(payload.asOf) && dateOrNull(payload.sourceAsOf)
+    && (payload.loadedAt === null || typeof payload.loadedAt === "string" && Number.isFinite(Date.parse(payload.loadedAt)))
     && typeof payload.fetchedAt === "string" && Number.isFinite(Date.parse(payload.fetchedAt))
     && !!payload.source && typeof payload.source.name === "string" && url(payload.source.url) && typeof payload.source.cadence === "string"
     && Array.isArray(payload.warnings) && payload.warnings.every((warning) => typeof warning === "string")
@@ -40,7 +41,7 @@ export function validatePublication(payload: PublicationPayload, symbol: string,
     let observed: string;
     let identity: string;
     if (kind === "ftd") {
-      if (!("date" in row) || !date(row.date) || !/^[A-Z0-9*@#]{9}$/.test(row.cusip) || !count(row.quantity)
+      if (!("date" in row) || !date(row.date) || (typeof row.cusip !== "string" || !row.cusip.trim()) || !count(row.quantity)
         || !numberOrNull(row.price) || typeof row.description !== "string") return invalid();
       observed = row.date;
       identity = `${row.date}:${row.cusip}`;

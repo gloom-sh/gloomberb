@@ -26,6 +26,7 @@ export interface ShortSidePublication<T> {
   asOf: string | null;
   sourceAsOf: string | null;
   fetchedAt: string;
+  loadedAt: string | null;
   source: { name: string; url: string; cadence: string };
   warnings: string[];
   history: T[];

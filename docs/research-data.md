@@ -1403,7 +1403,7 @@ stay blank and do not contribute a fabricated zero or percentage. Reporting
 weeks are labeled by their Monday start; publication lags depend on the
 security tier. Open a row for exact quantities or use `o` for its source.
 
-Both views use the same Gloom Cloud account access as daily short volume.
+Both views are available without signing in, like daily short volume.
 `gloomberb fn FTD AAPL --json` and `gloomberb fn ATS AAPL --csv` export the
 same observations; `gloomberb shot FTD AAPL` and `gloomberb shot ATS AAPL`
 open the respective tabs. Report metadata includes publication coverage,

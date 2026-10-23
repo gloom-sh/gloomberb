@@ -3,13 +3,10 @@ import { DataTableStackView, EmptyState, PaneStatusBody, usePaneNoticeFooter, us
 import { DetailReader } from "../../../components/reader/detail-reader";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource, useAutoRefresh, usePluginPaneState, useUpdatedAgo } from "../../../public/react";
-import { isAccessDenied } from "../../../api-client/errors";
 import { colors } from "../../../theme/colors";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 import type { PaneProps } from "../../../types/plugin";
 import { isKnownNonUsEquityTicker } from "../../../utils/sec";
-import { SignInWall } from "../cloud/auth-actions";
-import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { listingIdentity } from "../shared/ticker-request";
 import { cachedPublication, loadPublication, type PublicationKind } from "./publications-client";
 import { publicationCell, publicationColumns, publicationRows, type PublicationColumn, type PublicationRow } from "./publications-model";
@@ -22,11 +19,10 @@ export function ShortSidePublicationPane({ kind, width, height, focused }: Pick<
   const { ticker } = usePaneTickerIdentity();
   const symbol = listingIdentity(ticker?.metadata.ticker)?.symbol ?? null;
   const foreign = !!ticker && isKnownNonUsEquityTicker(ticker);
-  const session = useResearchCloudSession();
   const subject = kind === "ftd" ? "fails to deliver" : "weekly off-exchange volume";
-  const loader = useCallback((force: boolean) => loadPublication(symbol!, kind, force), [symbol, kind, session.requestKey]);
+  const loader = useCallback((force: boolean) => loadPublication(symbol!, kind, force), [symbol, kind]);
   const resource = useAsyncResource(symbol && !foreign ? loader : null, {
-    initialData: () => symbol && !foreign ? cachedPublication(symbol, kind) : null, clearOnError: isAccessDenied,
+    initialData: () => symbol && !foreign ? cachedPublication(symbol, kind) : null,
   });
   const data = resource.data?.payload;
   const rows = useMemo(() => data ? publicationRows(data) : [], [data]);
@@ -49,7 +45,6 @@ export function ShortSidePublicationPane({ kind, width, height, focused }: Pick<
   });
   if (!symbol) return <EmptyState title="No ticker selected." message={`Select a US stock to view ${subject}.`} />;
   if (foreign) return <EmptyState title="US listings only." message={`Select a US stock to view ${subject}.`} />;
-  if (!data && isCloudSessionRequired(resource.error)) return <SignInWall placement={`${kind}-signin`} action={`view ${subject}`} needsVerification={session.needsVerification} />;
   return <PaneStatusBody loading={resource.loading && !data} error={!data ? resource.error : null} subject={subject}
     empty={!resource.loading && !resource.error && !!data && !rows.length} emptyTitle={`No published ${subject} for this stock.`}>
     {data ? <DataTableStackView<PublicationRow, PublicationColumn>
@@ -64,7 +59,7 @@ export function ShortSidePublicationPane({ kind, width, height, focused }: Pick<
           value: openRow[column.id] == null ? "Not published" : typeof openRow[column.id] === "number" && column.id !== "atsSharePercent" && column.id !== "price"
             ? Number(openRow[column.id]).toLocaleString("en-US", { maximumFractionDigits: 6 }) : publicationCell(column, openRow[column.id] ?? null) })),
         { label: "Published through", value: data.sourceAsOf ?? "--" },
-        { label: "Retrieved", value: data.fetchedAt.replace("T", " ").replace(/\.\d+Z$/, " UTC") },
+        { label: "Retrieved", value: data.loadedAt?.replace("T", " ").replace(/\.\d+Z$/, " UTC") ?? "--" },
       ]} /> : null}
     /> : null}
   </PaneStatusBody>;

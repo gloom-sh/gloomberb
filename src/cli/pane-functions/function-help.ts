@@ -438,14 +438,14 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     summary: "The short interest pane on Fails to deliver: outstanding fail shares for each settlement date and CUSIP. These snapshots are never added across dates.",
     usage: ["FTD AAPL"],
     keys: [key("v", "iew"), OPEN, OPEN_SOURCE],
-    data: same("Twice a month, as the SEC publishes; verified email"),
+    data: same("Twice a month, as the SEC publishes"),
     bloomberg: [],
   },
   ATS: {
     summary: "The short interest pane on Weekly ATS/OTC: ATS and non-ATS off-exchange shares and trades. ATS / OTC % is ATS shares divided by published off-exchange shares, not total market volume or short volume.",
     usage: ["ATS AAPL"],
     keys: [key("v", "iew"), OPEN, OPEN_SOURCE],
-    data: same("Weekly with FINRA's publication delay; verified email"),
+    data: same("Weekly with FINRA's publication delay"),
     bloomberg: [],
   },
   DIAG: {

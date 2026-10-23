@@ -13,7 +13,7 @@ export function publicationHeadless(kind: PublicationKind): HeadlessPaneDefiniti
       schedule: fails ? "published twice monthly" : "published weekly with a delay", observedKey: "date", oldest: null },
     discovery: {
       aliases: fails ? ["FTD", "fails to deliver", "fails-to-deliver"] : ["ATS", "dark pool", "dark pools", "non-ATS", "OTC transparency"],
-      dataRequirements: ["Gloom Cloud verified account"],
+      dataRequirements: [fails ? "SEC settlement fails" : "FINRA weekly off-exchange volume"],
       limitations: fails ? ["Outstanding fails on each settlement date; never add them across dates.", "Multiple CUSIPs remain separate. An absent record does not establish zero fails."]
         : ["ATS share divides ATS shares by published ATS plus non-ATS shares, not total market volume.", "Missing categories stay blank; published off-exchange volume is not short volume.", "FINRA publishes weeks with a delay, which varies by security tier."],
     },
@@ -22,7 +22,7 @@ export function publicationHeadless(kind: PublicationKind): HeadlessPaneDefiniti
       const data = await fetchPublication(args.symbols[0]!, kind, ctx.apiClient);
       return { complete: data.status === "available", errors: data.warnings,
         sections: [{ title: subject, columns: publicationReportColumns(kind), rows: publicationRows(data) }],
-        metadata: { ...data },
+        metadata: { symbol: data.symbol, asOf: data.asOf, sourceAsOf: data.sourceAsOf, loadedAt: data.loadedAt, source: data.source, coverage: data.coverage },
       };
     },
   };

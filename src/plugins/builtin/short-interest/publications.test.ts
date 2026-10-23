@@ -7,7 +7,7 @@ import { publicationHeadless } from "./publications-headless";
 import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/plugin";
 
 function ftd(): FailsToDeliverPayload {
-  return { symbol: "AAPL", status: "available", asOf: "2026-09-21", sourceAsOf: "2026-09-30", fetchedAt: "2026-10-15T12:00:00Z",
+  return { symbol: "AAPL", status: "available", asOf: "2026-09-21", sourceAsOf: "2026-09-30", fetchedAt: "2026-10-15T12:00:00Z", loadedAt: "2026-10-14T12:00:00Z",
     source: { name: "SEC", url: "https://www.sec.gov/data-research/sec-markets-data/fails-deliver-data", cadence: "twice monthly" }, warnings: [],
     coverage: { from: "2026-09-01", to: "2026-09-30", publications: 2 }, history: [
       { date: "2026-09-21", cusip: "037833100", quantity: 123456, price: 234.56, description: "APPLE INC", sourceUrl: "https://www.sec.gov/files/ftd.zip" },
@@ -21,9 +21,13 @@ function ats(): OtcVolumePayload {
 test("settlement identity preserves multiple CUSIPs without summing and rejects duplicate or invalid observations", () => {
   const data = ftd();
   expect(publicationRows(validatePublication(data, "AAPL", "ftd")).map((row) => row.quantity)).toEqual([321, 123456]);
+  for (const cusip of ["A1", "037833100*", "issue/id"]) {
+    const unusual = ftd(); unusual.history[0]!.cusip = cusip;
+    expect(validatePublication(unusual, "AAPL", "ftd").history[0]).toEqual(unusual.history[0]);
+  }
   data.history.push({ ...data.history[0]! });
   expect(() => validatePublication(data, "AAPL", "ftd")).toThrow("invalid");
-  for (const patch of [{ date: "2026-09-31" }, { quantity: -1 }, { quantity: Number.MAX_SAFE_INTEGER + 1 }, { price: NaN }]) {
+  for (const patch of [{ cusip: "" }, { date: "2026-09-31" }, { quantity: -1 }, { quantity: Number.MAX_SAFE_INTEGER + 1 }, { price: NaN }]) {
     const invalid = ftd(); Object.assign(invalid.history[0]!, patch);
     expect(() => validatePublication(invalid, "AAPL", "ftd")).toThrow("invalid");
   }
@@ -40,7 +44,7 @@ test("weekly shares use both published categories; missing, zero and inconsisten
     expect(() => validatePublication(invalid, "AAPL", "ats")).toThrow("invalid");
   }
 });
-test("missing endpoints and unavailable migrations are recoverable while denied access remains an account gate", async () => {
+test("temporary service failures remain recoverable without masking other request errors", async () => {
   for (const status of [404, 503]) {
     const client = { getCloudFailsToDeliver: async () => { throw new ApiRequestError("Unavailable", status); }, getCloudOtcVolume: async () => ats() };
     await expect(fetchPublication("AAPL", "ftd", client)).rejects.toThrow("not available yet");
@@ -58,6 +62,8 @@ test("headless reports retain exact fail quantities and partial weekly source me
   expect(weekly.complete).toBe(false);
   expect(weekly.errors).toEqual(data.warnings);
   expect(weekly.metadata?.coverage).toEqual(data.coverage);
+  expect(weekly.metadata?.loadedAt).toBe(data.loadedAt);
+  expect(weekly.metadata).not.toHaveProperty("history");
   expect(weekly.sections[0]!.rows![0]!.atsSharePercent).toBe(25);
 });
 
