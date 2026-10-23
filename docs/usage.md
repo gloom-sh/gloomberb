@@ -991,6 +991,8 @@ The FUT board's codes work wherever a symbol is typed (`quote`, `history`, `tick
 - A national release in the euro area is its member's: the calendar shows the German Ifo as `DE`. The ECB's and the euro area's own releases stay `EU`, and `EU` still lists the members' releases.
 - A country with nothing in the window says `No scheduled releases for MX in this window.` A code that is no country (`TUR`, `XQ`) fails with `Unknown country`.
 
+**Publishers.** A row names who publishes it in the Publisher column (Freddie Mac for the 30-year mortgage rate, the Census Bureau for building permits), and `--json` carries `publisher`, `referencePeriod` (the period it covers: `Sep 2026`, or the week of a weekly figure, `22 Oct 2026`), `source` and `sourceUrl` (the publisher's page); `--csv` has the Publisher column. A row whose listing names no publisher leaves them empty.
+
 **Central banks and CPI dates.** The calendar also lists the rate decisions of the central banks `fn CBR` follows (Banxico, Copom, SARB, CBRT, RBI, BoK and the rest), each with the policy rate before it as Prior, and the CPI release dates INEGI (Mexico) and IBGE (Brazil) publish.
 
 Those rows add a Local column with the publisher's own clock (`06:00 Mexico City` for INEGI's 12:00 UTC release). `--json` carries `localTime`, `timeZone`, `timeNote`, `priorAsOf`, `referencePeriod`, `source` and `sourceUrl` on them.
@@ -1124,7 +1126,7 @@ By rating, AAA to BBB: `BAMLC0A1CAAAEY`, `BAMLC0A2CAAEY`, `BAMLC0A3CAEY`, `BAMLC
 **What the table prints**
 
 - Every value to the series' own precision (FRED's `5.1` prints as `5.10` beside `5.09`). Exports keep the value as FRED gives it. Spreads (`T10Y2Y`, `T10Y3M`, the ICE BofA option-adjusted spreads) print in basis points.
-- A monthly or quarterly series is dated by its period in the closing line (`Aug 2026 (monthly)`). A flow at a seasonally adjusted annual rate says so in its value header (`Value (Billions of Dollars, annual rate)`). A series FRED publishes late (`UMCSENT`) carries a note saying where the newer reading is.
+- A monthly or quarterly series is dated by its period in the closing line (`Aug 2026 (monthly)`), and by the day its newest figure was released when Gloom Cloud sends it (`Sep 2026, released Tue 20 Oct`). A flow at a seasonally adjusted annual rate says so in its value header (`Value (Billions of Dollars, annual rate)`). A series FRED publishes late (`UMCSENT`) carries a note saying where the newer reading is.
 - A Treasury yield whose newest session Gloom Cloud read from the Treasury before FRED listed it says `Source: U.S. Treasury via FRED, published 2026-10-09`, and the row carries `publisher` and `publishedAt` in every export. Values FRED lists stay `Source: FRED`.
 
 **Türkiye's CPI.** FRED does not carry it, so it is served as `TURCPIYOY` (percent change from a year earlier) and `TURCPIMOM` (from the month before), under Inflation, with TurkStat's figures as the Central Bank of the Republic of Türkiye publishes them (`Source: TurkStat via the CBRT`). The data catalog charts them as `FRED:TURCPIYOY` and `FRED:TURCPIMOM`.
@@ -1558,6 +1560,8 @@ The line has up to three parts after the source:
 
 - **When.** The newest observation, in UTC with the zone named (`Sat 10 Oct 2026 00:15 UTC`), or a date for daily data (`Fri 9 Oct 2026`). With `config set timezone` the time is followed by yours.
   - Quotes whose markets have closed read as that session's close and say whose trading day it was (`US trading day Fri 9 Oct 2026 close`, `ASX trading day Fri 9 Oct 2026 close`). Currency pairs trade from Sunday 17:00 to Friday 17:00 New York time, so over a weekend they read as Friday's close (`FX trading day Fri 9 Oct 2026 close`).
+  - A statistic dated by the period it covers names the period and, when the source says, the day it was released: `Sep 2026, released Tue 20 Oct` (`ECST`, `fred`, a chart of FRED series). The report is as of that release; `--json` keeps the period as `referencePeriod` and the release as `asOf`. Without a release the period stands alone (`Sep 2026 (monthly)`), never its first day.
+  - Daily bars (`CMP`, `G`, `HP`, `history`) are dated by the session's day once it has closed (`Fri 23 Oct 2026`), and by the latest quote while it trades (`Fri 23 Oct 2026 15:42 UTC`).
   - The oldest is named when it is more than a day older (`(oldest Thu 8 Oct 2026)`). When nothing in the data is dated the line says when it was retrieved (`events`, `earnings` and `EE` are dated that way).
   - `fundamentals` names the newest statement period (`not a live feed (reported through 2026-06-30)`), and `valuation` adds it after the quote's date (`... markets closed until 13:30 UTC · reported through 2026-06-30`).
 - **How current.** One of the four states below, with a delay in minutes or hours. A delayed quote says how far its venue's feed runs behind (15 min, 20 min for ASX, KRX, KOSDAQ, TWSE, TPEX, SGX and NZX). News says its 12-hour hold-back after the newest story's time (`newest story Tue 29 Sep 2026 20:17 UTC · 12 h delayed`).
