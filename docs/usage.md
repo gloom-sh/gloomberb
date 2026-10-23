@@ -1319,6 +1319,14 @@ by their quote currency and does not convert values. Open a saved screen first t
 check against it; unsaved edits apply immediately. A check uses the displayed
 screen's snapshot when available. Refresh an expired screen before checking again.
 
+Plain tickers prefer listings in the screen's currency, then use the primary or
+home listing. A foreign secondary listing does not make `NVDA` or `AAPL`
+ambiguous. When the remaining listings belong to different companies, the check
+asks for an exchange; enter a qualified ticker such as `2454:JPX` to choose one.
+An explicit exchange is always respected, including when its currency fails the
+screen's currency criterion. If no listing uses the screen's currency, the check
+still evaluates the resolved listing and shows the failed currency criterion.
+
 The decision uses the stored screening values, even when Results overlays a more
 recent quote. Missing values are not zero: ordinary comparisons fail on them,
 while an explicit `missing` condition passes. A ticker outside the covered universe
