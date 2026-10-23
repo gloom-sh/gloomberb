@@ -21,11 +21,10 @@ import {
   BOOT_FRAME_BUILD_GLOBAL,
   BOOT_FRAME_ELEMENT_ID,
   BOOT_FRAME_SCROLL_ATTRIBUTE,
+  MAX_BOOT_FRAME_CHARS,
+  scrubBootFrame,
   type BootFrame,
 } from "./boot-frame-page";
-
-/** A frame larger than this is not kept; a layout's chrome is a few dozen kilobytes. */
-const MAX_FRAME_CHARS = 600_000;
 
 /** What a frame keeps: these elements, and the elements on the way to them. */
 const FRAME_ROLES = ["app-header", "pane-window", "dock-divider", "status-bar"];
@@ -33,43 +32,22 @@ const FRAME_SELECTOR = FRAME_ROLES.map((role) => `[data-gloom-role="${role}"]`).
 /**
  * Kept empty: pane bodies and footers are most of the page and are the data
  * the app fills from its cache as it starts. The market state and SPY quote in
- * the header, and an update status said last session ("Restart to update"),
- * are not true at the next launch.
+ * the header, an update status said last session ("Restart to update") and
+ * the status bar's widgets (an unread count, the account) are not true at the
+ * next launch.
  */
 const EMPTIED_SELECTOR = [
   "pane-body",
   "pane-footer",
   "header-market",
   "header-update-status",
+  "status-widgets",
 ].map((role) => `[data-gloom-role="${role}"]`).join(", ");
-/** Nothing that loads, plays or runs is redrawn. */
-const DROPPED_SELECTOR = "script, style, link, iframe, object, embed, img, video, audio, canvas";
 
 /** The build this page says it is, or null where no frame script ran (tests, other pages). */
 function currentBootFrameBuild(win: Window = window): string | null {
   const build = (win as unknown as Record<string, unknown>)[BOOT_FRAME_BUILD_GLOBAL];
   return typeof build === "string" && build ? build : null;
-}
-
-function scrubAttributes(element: Element): void {
-  for (const attribute of [...element.attributes]) {
-    const name = attribute.name.toLowerCase();
-    if (
-      name.startsWith("on")
-      || name === "id"
-      || name === "tabindex"
-      || name === "contenteditable"
-      || name === "href"
-      || name === "src"
-      || name === "srcset"
-      || name === "value"
-      || name === "autofocus"
-      || name === "data-gloom-pane-id"
-      || name === "data-gloom-remote-node-id"
-    ) {
-      element.removeAttribute(attribute.name);
-    }
-  }
 }
 
 const ELEMENT_NODE = 1;
@@ -84,11 +62,9 @@ function copyFrame(node: Node, insideFrame: boolean): Node | null {
   if (node.nodeType === TEXT_NODE) return insideFrame ? node.cloneNode(false) : null;
   if (node.nodeType !== ELEMENT_NODE) return null;
   const element = node as Element;
-  if (element.matches(DROPPED_SELECTOR)) return null;
   const isFrame = insideFrame || element.matches(FRAME_SELECTOR);
   if (!isFrame && element.querySelector(FRAME_SELECTOR) === null) return null;
   const copy = element.cloneNode(false) as Element;
-  scrubAttributes(copy);
   if (isFrame && element.matches(EMPTIED_SELECTOR)) return copy;
   // A box scrolled by a pixel of overflow (the shell is) is drawn scrolled too.
   if (element.scrollTop || element.scrollLeft) {
@@ -103,14 +79,17 @@ function copyFrame(node: Node, insideFrame: boolean): Node | null {
 
 /**
  * The app's frame as it is drawn now, or null when there is none to keep: no
- * pane drawn, or a frame too large to store.
+ * layout drawn yet, or a frame too large to store. A layout with every pane
+ * closed is kept as it is, so the next launch does not draw panes the user
+ * closed.
  */
 export function captureBootFrame(doc: Document, root: Element, build: string): BootFrame | null {
   const view = doc.defaultView;
-  if (!view || !root.querySelector('[data-gloom-role="pane-window"]')) return null;
+  if (!view || !root.querySelector('[data-gloom-role="pane-window"], [data-gloom-role="status-bar"]')) return null;
   const copy = copyFrame(root, false) as Element | null;
+  if (copy) scrubBootFrame(copy);
   const html = copy?.innerHTML ?? "";
-  if (!html || html.length > MAX_FRAME_CHARS) return null;
+  if (!html || html.length > MAX_BOOT_FRAME_CHARS) return null;
   return {
     build,
     width: view.innerWidth,
@@ -119,6 +98,14 @@ export function captureBootFrame(doc: Document, root: Element, build: string): B
     bodyStyle: doc.body.getAttribute("style") ?? "",
     html,
   };
+}
+
+/** The status bar's text but its widgets', which the frame leaves empty: a new unread count is not a new layout. */
+function statusBarLabels(statusBar: Element): string {
+  return Array.from(statusBar.children)
+    .filter((child) => child.getAttribute("data-gloom-role") !== "status-widgets")
+    .map((child) => child.textContent ?? "")
+    .join("");
 }
 
 /**
@@ -137,15 +124,26 @@ export function bootFrameSignature(doc: Document, root: Element): string {
     '[data-gloom-role="pane-window"], [data-gloom-role="dock-divider"], [data-gloom-role="status-bar"]',
   )) {
     const rect = element.getBoundingClientRect();
-    const header = element.querySelector('[data-gloom-role="pane-header"]');
+    const role = element.getAttribute("data-gloom-role");
     parts.push([
-      element.getAttribute("data-gloom-role"),
+      role,
       Math.round(rect.x), Math.round(rect.y), Math.round(rect.width), Math.round(rect.height),
       element.getAttribute("data-focused") ?? "",
-      (header ?? (element.getAttribute("data-gloom-role") === "status-bar" ? element : null))?.textContent ?? "",
+      role === "status-bar" ? statusBarLabels(element) : element.querySelector('[data-gloom-role="pane-header"]')?.textContent ?? "",
     ].join(":"));
   }
   return parts.join("|");
+}
+
+const runningRecorders = new Set<() => void>();
+
+/**
+ * Stops every recorder on the page for good, before the data is reset: a
+ * frame saved after the reset, as the page closes, would draw the old layout
+ * at the next launch.
+ */
+export function stopBootFrameRecorders(): void {
+  for (const stop of [...runningRecorders]) stop();
 }
 
 interface BootFrameRecorderOptions {
@@ -172,7 +170,9 @@ export function startBootFrameRecorder({
   const build = view ? currentBootFrameBuild(view) : null;
   if (!view || !build) return () => {};
   let lastSignature = "";
+  let stopped = false;
   const record = () => {
+    if (stopped) return;
     const signature = bootFrameSignature(doc, root);
     if (signature === lastSignature) return;
     const frame = captureBootFrame(doc, root, build);
@@ -193,12 +193,16 @@ export function startBootFrameRecorder({
   const interval = view.setInterval(recordWhenIdle, intervalMs);
   doc.addEventListener("visibilitychange", onHidden);
   view.addEventListener("pagehide", record);
-  return () => {
+  const stop = () => {
+    stopped = true;
+    runningRecorders.delete(stop);
     view.clearTimeout(first);
     view.clearInterval(interval);
     doc.removeEventListener("visibilitychange", onHidden);
     view.removeEventListener("pagehide", record);
   };
+  runningRecorders.add(stop);
+  return stop;
 }
 
 /**

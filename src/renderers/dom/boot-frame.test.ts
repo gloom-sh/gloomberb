@@ -1,7 +1,19 @@
 import { afterEach, expect, test } from "bun:test";
 import { Window } from "happy-dom";
-import { bootFrameSignature, captureBootFrame, releaseBootFrameWhenDrawn, startBootFrameRecorder } from "./boot-frame";
-import { BOOT_FRAME_BUILD_GLOBAL, BOOT_FRAME_ELEMENT_ID, bootFrameScript, type BootFrame } from "./boot-frame-page";
+import {
+  bootFrameSignature,
+  captureBootFrame,
+  releaseBootFrameWhenDrawn,
+  startBootFrameRecorder,
+  stopBootFrameRecorders,
+} from "./boot-frame";
+import {
+  BOOT_FRAME_BUILD_GLOBAL,
+  BOOT_FRAME_ELEMENT_ID,
+  MAX_BOOT_FRAME_CHARS,
+  bootFrameScript,
+  type BootFrame,
+} from "./boot-frame-page";
 
 const windows: Window[] = [];
 afterEach(async () => {
@@ -31,7 +43,7 @@ const APP_LAYOUT = `
     </div>
     <div data-gloom-role="dock-divider" data-axis="horizontal"></div>
     <div class="gloom-popover">An open menu</div>
-    <div data-gloom-role="status-bar"><span>Home</span></div>
+    <div data-gloom-role="status-bar"><span>Home</span><div data-gloom-role="status-widgets"><span>[3]</span><span>bob@example.com</span></div></div>
   </div>`;
 
 test("a launch frame keeps the layout's chrome and none of its data", () => {
@@ -46,6 +58,9 @@ test("a launch frame keeps the layout's chrome and none of its data", () => {
   copy.innerHTML = frame.html;
   expect(copy.querySelector('[data-gloom-role="pane-title"]')?.textContent).toBe("Main Portfolio");
   expect(copy.querySelector('[data-gloom-role="status-bar"]')?.textContent).toBe("Home");
+  // Unread counts and the account in the status bar's widgets are as stale as the quote.
+  expect(frame.html).not.toContain("[3]");
+  expect(frame.html).not.toContain("bob@example.com");
   expect(copy.querySelector('[data-gloom-role="dock-divider"]')).not.toBeNull();
   // Pane data and a stale update notice are left out; so is anything that is not layout chrome.
   expect(copy.querySelector('[data-gloom-role="pane-body"]')?.childNodes.length).toBe(0);
@@ -63,15 +78,23 @@ test("a launch frame keeps the layout's chrome and none of its data", () => {
   expect(frame.html).not.toContain('id="pane-1"');
 });
 
-test("there is no frame to keep before a pane is drawn", () => {
+test("a layout with every pane closed is kept, so the next launch does not draw them", () => {
   const { document, root } = page();
-  root.innerHTML = '<div data-gloom-role="status-bar">Home</div>';
+  root.innerHTML = '<div data-gloom-role="app-header">Search</div>';
+  // Still mounting: no layout yet, and the last frame stays.
   expect(captureBootFrame(document, root, "build-1")).toBeNull();
+
+  root.innerHTML = '<div data-gloom-role="app-header">Search</div><div></div><div data-gloom-role="status-bar">Home</div>';
+  const frame = captureBootFrame(document, root, "build-1")!;
+  expect(frame.html).toContain("status-bar");
+  expect(frame.html).not.toContain("pane-window");
 });
 
 test("the page redraws a frame only from its own build, in a window of the same size", () => {
   const { document, root } = page();
   root.innerHTML = APP_LAYOUT;
+  document.documentElement.setAttribute("style", "--gloom-bg: #fafafa;");
+  document.body.setAttribute("style", "--cell-h: 22px; font-size: 15px;");
   const frame = captureBootFrame(document, root, "build-1")!;
   const script = bootFrameScript({ build: "build-1", source: "window.storedFrame", shellStyle: "--gloom-bg: #111;" });
   const drawn = (stored: BootFrame | null, size?: [number, number]) => {
@@ -82,15 +105,68 @@ test("the page redraws a frame only from its own build, in a window of the same 
       kind: overlay?.getAttribute("data-gloom-boot-frame"),
       html: overlay?.innerHTML,
       rootStyle: next.document.documentElement.getAttribute("style"),
+      bodyStyle: next.document.body.getAttribute("style"),
       build: (next.window as unknown as Record<string, unknown>)[BOOT_FRAME_BUILD_GLOBAL],
     };
   };
 
-  expect(drawn(frame)).toEqual({ kind: "layout", html: frame.html, rootStyle: frame.rootStyle || null, build: "build-1" });
+  expect(drawn(frame)).toEqual({
+    kind: "layout",
+    html: frame.html,
+    rootStyle: "--gloom-bg: #fafafa;",
+    bodyStyle: "--cell-h: 22px; font-size: 15px;",
+    build: "build-1",
+  });
   // Another build's markup may not fit this stylesheet, and another size puts panes elsewhere.
-  expect(drawn({ ...frame, build: "build-0" }).kind).toBe("shell");
-  expect(drawn(frame, [1000, 800]).kind).toBe("shell");
+  // The shell still takes the stored theme and text size, so a light theme gets no dark flash.
+  for (const shell of [drawn({ ...frame, build: "build-0" }), drawn(frame, [1000, 800])]) {
+    expect(shell).toMatchObject({ kind: "shell", rootStyle: "--gloom-bg: #111; --gloom-bg: #fafafa;", bodyStyle: frame.bodyStyle });
+  }
   expect(drawn(null)).toMatchObject({ kind: "shell", rootStyle: "--gloom-bg: #111;" });
+  expect(drawn({ ...frame, html: "x".repeat(MAX_BOOT_FRAME_CHARS + 1) }).kind).toBe("shell");
+});
+
+test("the page scrubs a stored frame again before drawing it", () => {
+  const hostile: BootFrame = {
+    build: "b",
+    width: 1200,
+    height: 800,
+    rootStyle: "--gloom-bg: #000; background: url(https://x.test/root.png)",
+    bodyStyle: "font-size: 12px; background-image: u\\72l(https://x.test/body.png)",
+    html: `
+      <div data-gloom-role="pane-window" onclick="steal()" style="background: url(https://x.test/a.png)">
+        <div style="background-image: image-set('https://x.test/b.png' 1x)">set</div>
+        <div style="color: red">kept</div>
+        <a href="javascript:steal()">link</a>
+        <svg viewBox="0 0 10 10">
+          <a xlink:href="javascript:steal()"><text>svg</text></a>
+          <use href="https://x.test/sprite.svg#a"></use>
+          <path d="M0 0" fill="url(https://x.test/f.svg#g)"></path>
+          <animate attributeName="href" values="javascript:steal()"></animate>
+          <foreignObject><div>inside</div></foreignObject>
+        </svg>
+        <form action="https://x.test/collect"><button formaction="https://x.test/send" name="go">Go</button></form>
+        <iframe srcdoc="&lt;script&gt;steal()&lt;/script&gt;"></iframe>
+        <img src="https://x.test/i.png" onerror="steal()">
+        <script>steal()</script>
+        <style>body { background: url(https://x.test/s.png) }</style>
+      </div>`,
+  };
+  const { window, document } = page();
+  runFrameScript(window, bootFrameScript({ build: "b", source: "window.storedFrame" }), { storedFrame: hostile });
+  const overlay = document.getElementById(BOOT_FRAME_ELEMENT_ID)!;
+  expect(overlay.getAttribute("data-gloom-boot-frame")).toBe("layout");
+  const html = overlay.innerHTML;
+  for (const gone of ["url(", "image-set", "steal", "x.test", "foreignobject", "inside", "<use", "<animate", "<iframe", "<img", "<script", "<style", "action", "srcdoc", "href", "name="]) {
+    expect(html.toLowerCase()).not.toContain(gone.toLowerCase());
+  }
+  expect(html).toContain('style="color: red"');
+  expect(html).toContain('<path d="M0 0">');
+  expect(overlay.textContent).toContain("Go");
+  expect(overlay.textContent).toContain("link");
+  // A style that could fetch is not applied to the page either.
+  expect(document.documentElement.getAttribute("style")).toBeNull();
+  expect(document.body.getAttribute("style")).toBeNull();
 });
 
 test("a window that draws no frame, and a broken stored frame, leave the page as it was", () => {
@@ -143,9 +219,24 @@ test("the recorder saves a new frame only when the layout changed", async () => 
   hide();
   expect(saved).toHaveLength(2);
   expect(saved[1]!.html).toContain("Watchlist");
+  // A new unread count is not a new layout.
+  root.querySelector('[data-gloom-role="status-widgets"]')!.textContent = "[4]";
+  hide();
+  expect(saved).toHaveLength(2);
   stop();
   hide();
   expect(saved).toHaveLength(2);
+});
+
+test("a reset stops the recorder, so the closing page does not save the old layout again", () => {
+  const { window, document, root } = page();
+  (window as unknown as Record<string, unknown>)[BOOT_FRAME_BUILD_GLOBAL] = "b";
+  root.innerHTML = APP_LAYOUT;
+  const saved: BootFrame[] = [];
+  startBootFrameRecorder({ doc: document, root, save: (frame) => saved.push(frame) });
+  stopBootFrameRecorders();
+  window.dispatchEvent(new window.Event("pagehide"));
+  expect(saved).toHaveLength(0);
 });
 
 test("a page with no frame script records nothing", () => {
