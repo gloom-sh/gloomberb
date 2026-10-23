@@ -102,7 +102,7 @@ export function enterpriseValueReconciliationNote(fundamentals: Parameters<typeo
 /**
  * What `valuation` says of an insurer's or a holding company's EV, which Gloom Cloud computes rather than takes from
  * the provider: "EV 1.23T USD is market cap + total debt - 40.61B of cash and equivalents (balance sheet 2026-06-30);
- * investments stay in." Undefined for any other EV. Not shown in panes: the figure is the EV, and needs no label there.
+ * investments stay in." Undefined for any other EV. The overview stat says it in two words ("investments in").
  */
 export function computedEnterpriseValueNote(fundamentals: Parameters<typeof enterpriseValueCheck>[0]): string | undefined {
   const check = enterpriseValueCheck(fundamentals);

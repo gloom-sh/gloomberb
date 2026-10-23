@@ -40,7 +40,7 @@ test("status segments name an older mix's period and never claim fresh stale dat
 
   // The Buy/Hold/Sell split is a figure above the chart, not a footer segment.
   expect(text(research)).toBe(
-    "low $225.00 med $482.50 high $625.00 · rating 8.8/10 · upside vs $467.50 · fetched 2h ago",
+    "low $225.00 med $482.50 high $625.00 · rating 8.8/10 · upside vs $467.50 provider ref · fetched 2h ago",
   );
   expect(ratingSplit(research)).toEqual({ buy: 5, hold: 4, sell: 0, period: null });
   expect(ratingSplit({ ...research, recommendations: [{ ...complete, period: "previous month" }] })?.period)
@@ -145,14 +145,23 @@ test("the upside is measured from Last and says which price and when, for analys
   };
   const { upside, reference } = analystUpside(research, quote);
   expect(upside).toBeCloseTo(135.4 / 141.39 - 1, 6);
-  expect(formatAnalystReference(reference, "USD")).toBe("$141.39, close 2026-10-22 20:00 UTC");
+  const now = Date.parse("2026-10-23T12:05:00Z");
+  expect(formatAnalystReference(reference, "USD", now)).toBe("$141.39, Thu 22 Oct close");
+  // The ANR pane's status bar names the same price and close.
+  const footer = buildAnalystStatusSegments(research, reference, now)
+    .find((segment) => segment.id === "analyst-reference-price")!.parts.map((part) => part.text).join(" ");
+  expect(footer).toBe("upside vs $141.39 Thu 22 Oct close");
   expect(analystReferenceMetadata(reference)).toEqual({
     price: 141.39, asOf: "2026-10-22T20:00:00.000Z", basis: "regular session close", freshness: "15m delayed",
   });
   // Without a quote it is the provider's reference, and says so.
   const fallback = analystUpside(research, null);
   expect(fallback.upside).toBeCloseTo(135.4 / 137.32 - 1, 6);
-  expect(formatAnalystReference(fallback.reference, "USD")).toBe("$137.32, provider reference at retrieval 2026-10-21 21:30 UTC");
+  expect(formatAnalystReference(fallback.reference, "USD", now)).toBe("$137.32, provider reference at retrieval Wed 21 Oct 21:30 UTC");
+  // While the session trades, the print's time and feed.
+  const open = analystUpside(research, { ...quote, marketState: "REGULAR", price: 142.1, lastUpdated: Date.parse("2026-10-23T14:05:00Z"),
+    regularClose: undefined, regularCloseSessionDate: undefined, preMarketPrice: undefined, previousClose: 141.39 });
+  expect(formatAnalystReference(open.reference, "USD", now)).toBe("$142.10, Fri 23 Oct 14:05 UTC (15m delayed)");
 });
 
 test("the mean-target line starts once five firms, or every covering firm, are in it", () => {

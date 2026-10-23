@@ -8,7 +8,7 @@ import { loadingErrorFooterInfo } from "../../../components/data-table/table-pan
 import { delayedFooterSegment } from "../../../components/layout/pane/footer/model";
 import { regularSessionValuationPrice, regularSessionValuationTime } from "../../../market-data/quotes/regular-session-valuation";
 import { getCompletedRegularSessionDisplay } from "../../../market-data/market/status";
-import { formatUtcTime, parseReportTime, type ReportTime } from "../../../utils/utc-time";
+import { formatUtcDayTime, parseReportTime, type ReportTime } from "../../../utils/utc-time";
 
 function compactPeriod(period: string): string {
   return period
@@ -41,6 +41,8 @@ export interface AnalystReferencePrice {
   time?: ReportTime | null;
   /** The live price is a completed session's close. */
   close?: boolean;
+  /** The exchange-local date of that session, when the quote names it. */
+  sessionDate?: string;
 }
 
 function quoteFreshness(quote: Quote): string | null {
@@ -68,6 +70,7 @@ export function analystReferencePrice(
   return {
     price, freshness: quoteFreshness(quote), live: true,
     time: regularSessionValuationTime(quote), close: getCompletedRegularSessionDisplay(quote) != null,
+    ...(quote.regularCloseSessionDate ? { sessionDate: quote.regularCloseSessionDate } : {}),
   };
 }
 
@@ -93,18 +96,28 @@ export function analystReferenceMetadata(reference: AnalystReferencePrice) {
   };
 }
 
+/** When a reference price is from, in the words a change line uses: "Thu 22 Oct close" or a print's time. */
+function analystReferenceWhen(reference: AnalystReferencePrice, now: number): string {
+  const at = (time: ReportTime) => formatUtcDayTime(time, now) + (time.dateOnly ? "" : " UTC");
+  if (reference.live && reference.close) {
+    const day = reference.sessionDate ? { time: Date.parse(`${reference.sessionDate}T00:00:00Z`), dateOnly: true }
+      : reference.time ? { ...reference.time, dateOnly: true } : null;
+    return day ? `${at(day)} close` : "close";
+  }
+  return reference.time ? at(reference.time) : "";
+}
+
 /**
- * "$141.39, close 2026-10-22 20:00 UTC", "$141.39, 2026-10-23 14:05 UTC (15m delayed)" or, for the provider's
- * reference, "$137.32, provider reference at retrieval 2026-10-21 21:30 UTC": the price an upside is measured from
- * and when it is from.
+ * The price an upside is measured from and when it is from: "$141.39, Thu 22 Oct close", "$141.39, Fri 23 Oct
+ * 14:05 UTC (15m delayed)" while the session trades, or the provider's reference, "$137.32, provider reference at
+ * retrieval Wed 21 Oct 21:30 UTC".
  */
-export function formatAnalystReference(reference: AnalystReferencePrice, currency: string | undefined): string {
+export function formatAnalystReference(reference: AnalystReferencePrice, currency: string | undefined, now = Date.now()): string {
   if (reference.price == null || !Number.isFinite(reference.price)) return "-";
   const price = formatAnalystPrice(reference.price, currency);
-  const time = reference.time ? formatUtcTime(reference.time) : "";
-  if (!reference.live) return `${price}, provider reference${time ? ` at retrieval ${time}` : ""}`;
-  if (reference.close) return `${price}, close${time ? ` ${time}` : ""}`;
-  return `${price}${time ? `, ${time}` : ""}${reference.freshness ? ` (${reference.freshness})` : ""}`;
+  const when = analystReferenceWhen(reference, now);
+  if (!reference.live) return `${price}, provider reference${when ? ` at retrieval ${when}` : ""}`;
+  return `${price}${when ? `, ${when}` : ""}${reference.freshness && !reference.close ? ` (${reference.freshness})` : ""}`;
 }
 
 function isCurrentMonthPeriod(period: string | undefined): boolean {
@@ -388,6 +401,7 @@ export function buildAnalystFooterInfo(
 export function buildAnalystStatusSegments(
   data: AnalystResearchData | null,
   reference: AnalystReferencePrice = analystReferencePrice(data, null),
+  now = Date.now(),
 ): PaneFooterSegment[] {
   if (!data) return [];
 
@@ -420,11 +434,14 @@ export function buildAnalystStatusSegments(
   if (reference.price != null) {
     // A delayed price is the footer's clock beside it; a real-time one says so in words.
     const delay = reference.freshness?.endsWith(" delayed") ? reference.freshness.slice(0, -" delayed".length) : null;
+    const when = !reference.live ? "provider ref" : reference.close ? analystReferenceWhen(reference, now) : null;
     segments.push({
       id: "analyst-reference-price",
       parts: [
         { text: "upside vs", tone: "label" },
         { text: price(reference.price) },
+        // When it is from, as `analyst` and `fn ANR` print it: "Thu 22 Oct close" or the provider's reference.
+        ...(when ? [{ text: when, tone: "muted" as const }] : []),
         ...(reference.freshness && !delay ? [{ text: reference.freshness, tone: "muted" as const }] : []),
       ],
     });

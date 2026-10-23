@@ -289,9 +289,9 @@ export function buildOverviewStats({
   // At the regular session price, as the market cap above it is, with the check moved beside it.
   const priced = atRegularSessionPrice({ quote, fundamentals }).fundamentals;
   const enterpriseValue = reportedEnterpriseValue(priced);
-  // At or below zero, as a P/E over a loss reads: N/M, the notice under the pane saying why.
+  // At or below zero, N/M as a P/E over a loss reads, with why in the space a stat has; valuation gives the full reason.
   if (enterpriseValueNotMeaningful(priced)) {
-    stats.push({ label: "EV", value: formatPriceEarnings(NOT_MEANINGFUL) });
+    stats.push({ label: "EV", value: formatPriceEarnings(NOT_MEANINGFUL), detail: ["cash > cap + debt", "cash > cap"] });
   } else if (fundamentals?.unavailableFields?.includes("enterpriseValue")) {
     stats.push({ label: "EV", value: "—" });
   } else if (enterpriseValue != null) {
@@ -301,7 +301,8 @@ export function buildOverviewStats({
     stats.push({
       label: "EV",
       value: formatCompactCurrency(enterpriseValue, quoteCurrency),
-      detail: computed ? [`provider vs ${computed}`, "provider"] : undefined,
+      // An insurer's: its investment book is not netted as cash.
+      detail: computed ? [`provider vs ${computed}`, "provider"] : check?.investmentsKept ? ["investments in", "inv. in"] : undefined,
     });
   }
   if (finite(fundamentals?.beta)) {

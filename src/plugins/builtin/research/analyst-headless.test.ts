@@ -70,7 +70,7 @@ describe("analyst research headless model", () => {
     const result = await headless.load(args(), createTestHeadlessContext());
     expect(result.sections[0]?.entries?.slice(1, 3)).toMatchObject([
       { label: "Target upside", value: 180 / 160 - 1 },
-      { label: "Upside reference price", value: 160, formatted: "$160.00, close 2026-10-22 20:00 UTC" },
+      { label: "Upside reference price", value: 160, formatted: expect.stringMatching(/^\$160\.00, Thu 22 Oct( 2026)? close$/) },
     ]);
     expect(result.metadata).toMatchObject({ upside: 180 / 160 - 1, upsideReference: { price: 160, basis: "regular session close" } });
   });
