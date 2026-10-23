@@ -45,7 +45,7 @@ export function enterpriseValueCheck(
 }
 
 /** Why a source EV below zero that nothing checked is not meaningful: its cash and investments exceed the rest. */
-export const SOURCE_ENTERPRISE_VALUE_NOT_POSITIVE = "Cash and investments exceed market cap + debt in the source's EV";
+const SOURCE_ENTERPRISE_VALUE_NOT_POSITIVE = "Cash and investments exceed market cap + debt in the source's EV";
 
 /**
  * Why the enterprise value is not meaningful, if it is: Gloom Cloud's reason for an EV that comes out at or below
