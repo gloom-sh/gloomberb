@@ -114,7 +114,7 @@ gloomberb fn DOCS        # the index, cut at the first screen (it says so)
 
 A name with no entry fails with `No docs entry for zzzz.` and points at `gloomberb fn DOCS`.
 
-Wide tables keep their columns in narrow panes. Use the horizontal scrollbar or wheel, or `Ctrl+Left` / `Ctrl+Right`.
+Wide tables keep their columns in narrow panes. Use the horizontal scrollbar or wheel, or `Ctrl+Left` / `Ctrl+Right`. In the terminal, a header that ends in `more →` has columns past its right edge, and a click on it moves right. With no room for the words it reads `more` or `→`; it never hides a column.
 
 ### Custom keybindings
 
@@ -891,7 +891,13 @@ Running `gloomberb` with no arguments launches the terminal UI. Normal commands 
 Human-readable output is the default: tables fit the terminal width, and a single result prints as aligned label and value lines. Piped text keeps every cell whole.
 
 - `--json`, `--csv` and `--ndjson` give structured output, which is how to export anything (`gloomberb history LMT --csv > lmt.csv`). JSON uses the richest model and includes display-column metadata. CSV and NDJSON use the tabular rows.
-- Common global flags: `--limit`, `--tail`, `--width`, `--refresh`, `--quiet`, `--no-color`, `--dry-run`, `--yes`.
+- Common global flags: `--limit`, `--tail`, `--width`, `--refresh`, `--quiet`, `--no-color`, `--plain`, `--dry-run`, `--yes`.
+
+**Plain output.** `--plain` prints text for a screen reader or very large text. It is on without the flag when `NO_COLOR` is set (to any value) or the output is not a terminal (piped or redirected).
+
+- Tables have no rule under their header and keep the same columns from one query to the next: an empty cell reads `—` (`econ` prints Actual and Forecast before they are out).
+- Arrows are words: a sort mark after a header reads `(sorted descending)` instead of `▼`, and `→` reads `to`.
+- Colour is off unless `--color` asks for it. `--json`, `--csv` and `--ndjson` are the same with or without it.
 
 Cboe's Treasury yield indices (`^IRX`, `^FVX`, `^TNX`, `^TYX`) print their level in percent (`5.24%`) and their change in basis points (`+1.3bp`) under a `Chg` header. `--json` adds `unit` and `changeBasisPoints` to their rows and keeps the percent change.
 
@@ -899,7 +905,7 @@ Cboe's Treasury yield indices (`^IRX`, `^FVX`, `^TNX`, `^TYX`) print their level
 
 `--width <n>` fits text tables, help and notes to n columns, in a terminal or piped (`gloomberb quote AAPL TSLA NVDA MSFT --width 80`). Without it a terminal's own width applies and piped output is not fitted.
 
-- A table gives up its least useful columns first (`quote` drops Updated, Feed and Cur, in that order, and `compare` drops Cur, Volume and Day Range). No cell is cut short: text wraps, and columns that still do not fit move onto indented lines under each row.
+- A table gives up its least useful columns first (`compare` drops Cur, Volume and Day Range). `quote` drops none: at 80 or 100 columns it moves Updated, Feed, Cur and Chg Basis onto a labelled line under each row (`Feed delayed  Updated 2026-10-23 15:40 UTC`). No cell is cut short: text wraps, and columns that still do not fit move onto indented lines under each row.
 - The function list of `catalog` is the one table that cuts (a description ends in `…`, and `catalog <function>` prints it whole).
 
 `shot` has its own `--width`, in pixels. The layout is 720 to 2400 wide and 360 to 1800 tall (`--height`), and the PNG is drawn at twice that size, so the default 1280 by 720 writes 2560 by 1440.
@@ -909,7 +915,10 @@ Cboe's Treasury yield indices (`^IRX`, `^FVX`, `^TNX`, `^TYX`) print their level
 
 ### Typed symbols
 
-**Not a ticker.** A symbol that no listing carries (a company name or a typo) ends in ``Not a ticker: APPLE. Try `gloomberb search Apple`.`` on `quote`, `compare`, `history`, `ticker` and the `fn` reports (an `fn` report of one symbol that finds nothing, such as `fn RDCF Palantir`, fails with that line too).
+**Not a ticker.** A symbol that no listing carries (a typo, or a word that names no company) ends in ``Not a ticker: APPLEX. Try `gloomberb search Applex`.`` on `quote`, `compare`, `history`, `ticker` and the `fn` reports (an `fn` report of one symbol that finds nothing, such as `fn RDCF Palantir`, fails with that line too).
+
+- A one-word company name is read the way a longer one is: `quote Apple` is AAPL, with `Read "Apple" as AAPL:NASDAQ (Apple Inc.).` A real ticker always wins over a name (`quote GOLD` is GOLD).
+- `notes set` reads its symbol the same way: `notes set Petrobras "…"` saves the note for PBR, and a word that is no ticker fails with the same line instead of saving a note under it. `notes show` and `notes delete` take a note saved under the word as typed first.
 
 - A FRED series id points to the command that prints it: ``Not a ticker: DFEDTARU. Try `gloomberb fred DFEDTARU`.``
 - A US Treasury yield typed as a ticker (`US10Y`, `UST10Y`, `US10YR`, `US2Y`, `US30Y`, `10Y`, `TNX`) names the commands that have it: ``Not a ticker: US10Y. Try `gloomberb quote ^TNX`, `gloomberb fred DGS10` or `gloomberb yield-curve` for the US 10-year Treasury yield.`` `search` and `catalog` answer those spellings, or `"10 year yield"`, the same way.

@@ -7,7 +7,8 @@ import { createStaticAppStore } from "../../test-support/app-store";
 import { createDefaultConfig } from "../../types/config";
 import { DataTableView } from "./view";
 
-// 47 cells wide with its one-cell inset and gaps: NAME at 1-10, LAST at 12-23, CHG at 25-44.
+// 47 cells wide with its one-cell inset and gaps: NAME at 1-10, LAST at 12-23, CHG at 25-44. While CHG is past
+// the right edge, the header ends in "more →" and the rows leave its cells blank.
 const COLUMNS = [
   { id: "name", label: "NAME", width: 10 },
   { id: "last", label: "LAST", width: 12, align: "right" as const },
@@ -75,9 +76,9 @@ function bgAt(line: number, x: number): number[] {
 
 test("a number cut on either side stays blank, one whose digits all show stays, and so does its label", async () => {
   await mount();
-  // CHG is cut on the right after five cells: neither +12.40 nor its label shows a part.
-  expect(lines()[0]).toContain("LAST");
-  expect(lines()[0]).not.toContain("CH");
+  // CHG is cut on the right after five cells: neither +12.40 nor its label shows a part, and the header says
+  // there is more after LAST's own trailing blank.
+  expect(lines()[0]).toMatch(/LAST more →$/);
   expect(lines()[1]).toContain("1,098.53");
   expect(lines()[1]).not.toMatch(/\+1|12\.4/);
 
@@ -89,12 +90,23 @@ test("a number cut on either side stays blank, one whose digits all show stays, 
   expect(lines()[2]).toContain("62.10");
   expect(lines()[1]).not.toContain("+12");
 
-  // Seventeen over, the left edge falls inside 1,098.53 but not inside 62.10, and CHG shows whole.
+  // Seventeen over, the left edge falls inside 1,098.53 but not inside 62.10, and CHG shows whole: nothing more to say.
   await scrollTo(17);
   expect(lines()[0]).toMatch(/LAST\s+CHG/);
+  expect(lines()[0]).not.toContain("more");
   expect(lines()[1]).not.toMatch(/098|,0|\b1,/);
   expect(lines()[1]).toContain("+12.40");
   expect(lines()[2]).toMatch(/62\.10\s+-0\.85/);
+});
+
+test("a press on \"more →\" scrolls to the columns past the edge, as Shift+Right does", async () => {
+  await mount();
+  await act(async () => { await tui.clickFrameText("more →"); });
+  await settle();
+  const body = tui.setup().renderer.root.findDescendantById("cut-body") as ScrollBoxRenderable;
+  expect(body.scrollLeft).toBe(15);
+  expect(lines()[0]).toMatch(/LAST\s+CHG\s*$/);
+  expect(lines()[1]).toContain("+12.40");
 });
 
 test("a blanked cell keeps its row's selection and its own press", async () => {
