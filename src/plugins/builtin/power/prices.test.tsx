@@ -275,6 +275,10 @@ test("a prepared partial power capture retains its carbon warning in the pane an
     expect(failure).not.toHaveBeenCalled();
     await tui.emitKeypress({ name: "!", sequence: "!" });
     await tui.waitForFrameToContain(message);
+    // An empty error response still carries the same fallback notice as the live resource.
+    failure.mockRejectedValue(new ApiRequestError("", 500));
+    const blank = await powerScreenshotEvidence.prepare!({ resolved, settings: {} } as Parameters<NonNullable<typeof powerScreenshotEvidence.prepare>>[0]);
+    expect(blank.settings.powerPricesSnapshot).toMatchObject({ carbon: null, carbonError: "Request failed" });
   } finally {
     failure.mockRestore();
   }

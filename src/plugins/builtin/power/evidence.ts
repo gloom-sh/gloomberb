@@ -79,7 +79,8 @@ export const powerScreenshotEvidence: PaneScreenshotEvidenceHook<PowerEvidence> 
       let carbonError: string | undefined;
       const carbon = await fetchCarbonPrice().catch((error: unknown) => {
         logFailure("power.evidence", "Load carbon price for capture failed")(error);
-        carbonError = error instanceof Error ? error.message : String(error);
+        const message = error instanceof Error ? error.message : String(error);
+        carbonError = message.trim() ? message : "Request failed";
         return null;
       });
       const arg = resolved.createOptions?.arg;
