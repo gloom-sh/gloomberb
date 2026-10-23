@@ -1,0 +1,5 @@
+The VIX history view was excluded as unsteady after an additional baseline repeat with the same replay and viewport settings. The rebuilt baseline assets matched all 223 files of the original baseline manifest byte-for-byte, at source d1ddd7b26993e5385fb4aada0a112f5147e115b5.
+
+Using the benchmark's existing pixelChange function, 2% pixel fuzz and 42px top/bottom crop, two captures of that same baseline differed by 0.3997905% at 640px and 0.1998953% at 1280px. Both exceed the benchmark's 0.05% movement threshold. At 640px, the fresh baseline capture matched the original head capture exactly. The changed pixels are the unavailable-history warning's symbol.
+
+The original head also received an additional same-build repeat and matched its original picture at both widths. The original report and original exclusion list are preserved locally. VIX history was then added to shard 3's unsteady list and the standard report command rerun. Original captures and measured results remain unchanged; no application or benchmark source changed.

@@ -1,0 +1,1 @@
+UI tokens passed for 487 views of 170 functions and shell views at 640 and 1280px. Every measured value is on the shared tokens or covered by the existing allowlist (2 allowed measurements). No registry-plugin token warnings.
