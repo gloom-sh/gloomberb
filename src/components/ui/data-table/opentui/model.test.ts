@@ -64,8 +64,8 @@ describe("OpenTUI data table model", () => {
       { width: 12, align: "right", label: "LAST" },
       { width: 10, align: "right", label: "CHG" },
     ];
-    const hint = (viewportWidth: number, { scrollLeft = 0, headerExtra = 0, columns = figures } = {}) => resolveMoreColumnsHint({
-      columns, columnGap: 1, columnStarts: tableColumnStarts(columns, 1), headerExtra, horizontalPadding: 1, scrollLeft, viewportWidth,
+    const hint = (viewportWidth: number, { scrollLeft = 0, besideHeader = 0, columns = figures } = {}) => resolveMoreColumnsHint({
+      columns, columnGap: 1, columnStarts: tableColumnStarts(columns, 1), besideHeader, horizontalPadding: 1, scrollLeft, viewportWidth,
     });
     // CHG is cut, so blank: "more →" follows LAST after a blank, and the rows are blank from that blank on.
     expect(hint(31)).toEqual({ text: " more →", left: 24, reserve: 7 });
@@ -77,7 +77,7 @@ describe("OpenTUI data table model", () => {
     expect(hint(27)).toEqual({ text: " →", left: 25, reserve: 2 });
     expect(hint(25)).toEqual({ text: " →", left: 23, reserve: 1 });
     // The header's cell over the body's vertical scrollbar is room for it too.
-    expect(hint(27, { headerExtra: 1 })).toEqual({ text: " more", left: 23, reserve: 3 });
+    expect(hint(27, { besideHeader: 1 })).toEqual({ text: " more", left: 23, reserve: 3 });
     // LAST against the edge: the arrow takes its label's trailing blank and the rows keep every figure.
     expect(hint(24)).toEqual({ text: "→", left: 23, reserve: 0 });
     // A label that fills its column against the edge has no blank to give: no hint rather than a hidden column.

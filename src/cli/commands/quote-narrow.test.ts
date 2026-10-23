@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, setSystemTime, test } from "bun:test";
 import { createTestCliContext } from "../../test-support/cli-context";
 import { createTestQuote } from "../../test-support/data-provider";
 import { setCliColorEnabledOverride, setCliPlainOverride, setCliWidthOverride, visibleLength } from "../../utils/cli-output";
@@ -7,12 +7,15 @@ import { serializeCliResult } from "../result";
 import { marketDataCliCommands } from "./market";
 
 afterEach(() => {
+  setSystemTime();
   setCliWidthOverride(null);
   setCliPlainOverride(null);
   setCliColorEnabledOverride(null);
 });
 
 test("quote at 80 and 100 columns drops no column: Chg Basis, Cur, Feed and Updated move to labelled lines under their row", async () => {
+  // Midday in New York: after the close the feed reads stale.
+  setSystemTime(new Date("2026-10-22T16:00:00Z"));
   const listed = { marketState: "REGULAR", listingExchangeName: "NYSE", exchangeName: "NYSE", dataSource: "delayed", previousClose: 25.62 } as const;
   const quotes = [
     createTestQuote({ ...listed, symbol: "PBR", name: "Petroleo Brasileiro S.A. Petrobras ADR", price: 26.03, change: 0.41, changePercent: 1.58 }),

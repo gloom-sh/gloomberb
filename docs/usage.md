@@ -891,12 +891,12 @@ Running `gloomberb` with no arguments launches the terminal UI. Normal commands 
 Human-readable output is the default: tables fit the terminal width, and a single result prints as aligned label and value lines. Piped text keeps every cell whole.
 
 - `--json`, `--csv` and `--ndjson` give structured output, which is how to export anything (`gloomberb history LMT --csv > lmt.csv`). JSON uses the richest model and includes display-column metadata. CSV and NDJSON use the tabular rows.
-- Common global flags: `--limit`, `--tail`, `--width`, `--refresh`, `--quiet`, `--no-color`, `--plain`, `--dry-run`, `--yes`.
+- Common global flags: `--limit`, `--tail`, `--width`, `--refresh`, `--quiet`, `--no-color`, `--plain`, `--no-plain`, `--dry-run`, `--yes`.
 
-**Plain output.** `--plain` prints text for a screen reader or very large text. It is on without the flag when `NO_COLOR` is set (to any value) or the output is not a terminal (piped or redirected).
+**Plain output.** `--plain` prints text for a screen reader or very large text. It is on without the flag when `NO_COLOR` is set to a non-empty value (an empty `NO_COLOR` is the same as unset) or the output is not a terminal (piped or redirected). `--no-plain` turns it off, piped or not.
 
 - Tables have no rule under their header and keep the same columns from one query to the next: an empty cell reads `—` (`econ` prints Actual and Forecast before they are out).
-- Arrows are words: a sort mark after a header reads `(sorted descending)` instead of `▼`, and `→` reads `to`.
+- Arrows are words in tables and in the lines the CLI writes itself: a sort mark after a header reads `(sorted descending)` instead of `▼`, and `→` reads `to`. Free text outside a table, such as a note or an answer, prints as it is.
 - Colour is off unless `--color` asks for it. `--json`, `--csv` and `--ndjson` are the same with or without it.
 
 Cboe's Treasury yield indices (`^IRX`, `^FVX`, `^TNX`, `^TYX`) print their level in percent (`5.24%`) and their change in basis points (`+1.3bp`) under a `Chg` header. `--json` adds `unit` and `changeBasisPoints` to their rows and keeps the percent change.
@@ -917,8 +917,8 @@ Cboe's Treasury yield indices (`^IRX`, `^FVX`, `^TNX`, `^TYX`) print their level
 
 **Not a ticker.** A symbol that no listing carries (a typo, or a word that names no company) ends in ``Not a ticker: APPLEX. Try `gloomberb search Applex`.`` on `quote`, `compare`, `history`, `ticker` and the `fn` reports (an `fn` report of one symbol that finds nothing, such as `fn RDCF Palantir`, fails with that line too).
 
-- A one-word company name is read the way a longer one is: `quote Apple` is AAPL, with `Read "Apple" as AAPL:NASDAQ (Apple Inc.).` A real ticker always wins over a name (`quote GOLD` is GOLD).
-- `notes set` reads its symbol the same way: `notes set Petrobras "…"` saves the note for PBR, and a word that is no ticker fails with the same line instead of saving a note under it. `notes show` and `notes delete` take a note saved under the word as typed first.
+- A one-word company name is read the way a longer one is: `quote Apple` is AAPL, with `Read "Apple" as AAPL:NASDAQ (Apple Inc.).` A real ticker always wins over a name (`quote GOLD` is GOLD). A word many names share is read only as search's top result or a listing named exactly that word, never as any listing that merely has the word in its name. A coin's name (`bitcoin`) keeps its coin hint (`BTC-USD`), and a subject such as `carbon` or `freight` keeps its search hint.
+- `notes show`, `notes set` and `notes delete` pick the same note. A note already saved under the word as typed comes first. Otherwise the symbol is read as `quote` reads it: `notes set Petrobras "…"` saves the note for PBR. `notes set` fails only when the word is definitely not a ticker. Offline, with the data service down, for a symbol with no quote, or with `--dry-run`, the note goes under the symbol as typed.
 
 - A FRED series id points to the command that prints it: ``Not a ticker: DFEDTARU. Try `gloomberb fred DFEDTARU`.``
 - A US Treasury yield typed as a ticker (`US10Y`, `UST10Y`, `US10YR`, `US2Y`, `US30Y`, `10Y`, `TNX`) names the commands that have it: ``Not a ticker: US10Y. Try `gloomberb quote ^TNX`, `gloomberb fred DGS10` or `gloomberb yield-curve` for the US 10-year Treasury yield.`` `search` and `catalog` answer those spellings, or `"10 year yield"`, the same way.

@@ -104,19 +104,20 @@ function hasColumnsPastRightEdge(columns: readonly HintColumn[], starts: readonl
 
 /**
  * The "more →" hint at the header's right edge while columns are out of view
- * past it, or null. The header reaches `headerExtra` cells past the body (the
- * cell over its vertical scrollbar). The hint sits after a blank: a gap, cells
- * past the last column shown whole, or that column's own trailing blank (a
- * label shorter than its column keeps one, `fitTableHeaderText`), and only
- * cut columns give it room. Never in a viewport too narrow to show a column
- * beside it, or before it is measured.
+ * past it, or null. The header's scroll box is as wide as the viewport, and
+ * `besideHeader` blank cells follow it on the header row (the cell over the
+ * body's vertical scrollbar); the hint, laid over the row, can reach them.
+ * The hint sits after a blank: a gap, cells past the last column shown whole,
+ * or that column's own trailing blank (a label shorter than its column keeps
+ * one, `fitTableHeaderText`), and only cut columns give it room. Never in a
+ * viewport too narrow to show a column beside it, or before it is measured.
  */
 export function resolveMoreColumnsHint({
   columns,
   columnGap,
   columnStarts,
+  besideHeader = 0,
   frozenFirstColumn = false,
-  headerExtra = 0,
   horizontalPadding,
   scrollLeft,
   viewportWidth,
@@ -125,8 +126,9 @@ export function resolveMoreColumnsHint({
   columnGap: number;
   /** Where each column's content starts, from the first column (tableColumnStarts). */
   columnStarts: readonly number[];
+  /** Blank cells right of the header's scroll box on the header row. */
+  besideHeader?: number;
   frozenFirstColumn?: boolean;
-  headerExtra?: number;
   horizontalPadding: number;
   scrollLeft: number;
   viewportWidth: number;
@@ -148,7 +150,7 @@ export function resolveMoreColumnsHint({
     const next = columns[index + 1];
     lastPadded = !!next && tableColumnLeadGap(columns, index + 1, columnGap) === 0 && displayWidth(column.label) < column.width;
   });
-  const headerRight = right + Math.max(0, headerExtra);
+  const headerRight = right + Math.max(0, besideHeader);
   const place = (label: string) => {
     const labelStart = headerRight - displayWidth(label);
     // The rows stop where the blank before the label starts, unless that blank is the last column's own.

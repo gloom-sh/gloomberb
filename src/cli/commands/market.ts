@@ -38,7 +38,7 @@ import {
   formatPriceRange,
   quoteChangeText,
 } from "../helpers";
-import { cliStyles, colorBySign, renderSection, renderStats } from "../../utils/cli-output";
+import { cliArrow, cliStyles, colorBySign, renderSection, renderStats } from "../../utils/cli-output";
 import { filledPeriodsNote, stalePeriodNote, statementHistoryNotes } from "../../utils/financial-statements";
 import { formatPerShareNumber } from "../../utils/reported-money";
 import {
@@ -1614,7 +1614,7 @@ async function printMetalNews(route: MetalNewsRoute, limit: number, ctx: Paramet
     rows: newsRows,
     columns: NEWS_COLUMNS,
     empty: failure === undefined ? noMetalStoriesMessage(route) : "No stories to show.",
-    ...(ticker ? { footnote: `${word} → ${route.metal}'s market news. For ${ticker.name ?? ticker.symbol} (ticker ${ticker.symbol}), try: ${companyNews}` } : {}),
+    ...(ticker ? { footnote: `${word} ${cliArrow("→")} ${route.metal}'s market news. For ${ticker.name ?? ticker.symbol} (ticker ${ticker.symbol}), try: ${companyNews}` } : {}),
   });
 }
 
@@ -1702,7 +1702,7 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
     const typed = args[0]?.trim() ?? "";
     const wordHint = listing && resolved && !listing.exchange && !feed && !exchangeOption && commonWordCandidate(typed, identity?.name)
       && wordMeansMore(await searchNewsStories(typed, 20).catch(logFailure("cli.commands-market", "Search news stories for a ticker word failed", [])), listing.symbol)
-      ? `${typed} → ${identity?.name ?? listing.symbol} (ticker ${listing.symbol}). For stories that mention ${typed.toLowerCase()}, try: ${quotedSearchCommand(typed.toLowerCase())}`
+      ? `${typed} ${cliArrow("→")} ${identity?.name ?? listing.symbol} (ticker ${listing.symbol}). For stories that mention ${typed.toLowerCase()}, try: ${quotedSearchCommand(typed.toLowerCase())}`
       : null;
     ctx.printResult({
       data: articles,

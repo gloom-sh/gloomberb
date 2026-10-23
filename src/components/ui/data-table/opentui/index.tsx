@@ -380,10 +380,12 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
     () => tableColumnStarts(displayColumns, columnGap),
     [columnGap, displayColumns],
   );
-  // Columns out of view past the right edge: the header ends in "more →" there, a press on it scrolls to
-  // them, and the rows leave its cells blank, so a narrow pane says it has more than it shows. The header
-  // reaches over the body's vertical scrollbar, whose cell the hint takes first.
-  const headerExtra = Math.max(0, Math.min(1, (scrollRef.current?.width ?? 0) - measuredViewportWidth));
+  // Columns out of view past the right edge: the header row ends in "more →" there, a press on it scrolls to
+  // them, and the rows leave its cells blank, so a narrow pane says it has more than it shows. The header's
+  // scroll box is as wide as the body's viewport (measuredViewportWidth), so the header row has a blank cell
+  // past it, over the body's vertical scrollbar; the hint is laid over the row, not inside the scroll box,
+  // and takes that cell first.
+  const besideHeader = Math.max(0, Math.min(1, (scrollRef.current?.width ?? 0) - measuredViewportWidth));
   const moreColumns = horizontalScrollbarVisible ? resolveMoreColumnsHint({
     columns: displayColumns.map((column) => ({
       width: column.width,
@@ -393,7 +395,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
     columnGap,
     columnStarts,
     frozenFirstColumn: freezeFirstColumn,
-    headerExtra,
+    besideHeader,
     horizontalPadding,
     scrollLeft,
     viewportWidth: measuredViewportWidth,

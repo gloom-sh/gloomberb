@@ -88,9 +88,11 @@ export function setCliColorEnabledOverride(value: boolean | null): void {
 /**
  * Plain output, for a screen reader, very large text or a pipe: tables have
  * no rule under their header, keep every column they have with "—" in an
- * empty cell, and arrows are written as words (`plainWords`). Colour is off
- * unless `--color` asks for it. The CLI turns it on for `--plain`, NO_COLOR
- * and output that is not a terminal (`plainByDefault`); unset, it is off.
+ * empty cell, and say their arrows in words (`plainWords`), as do the
+ * markers the CLI writes itself (`cliArrow`); a user's own text is never
+ * rewritten. Colour is off unless `--color` asks for it. The CLI turns it on
+ * for NO_COLOR and output that is not a terminal (`plainByDefault`), and
+ * `--plain` / `--no-plain` decide it either way; unset, it is off.
  */
 export function setCliPlainOverride(value: boolean | null): void {
   plainOverride = value;
@@ -100,7 +102,11 @@ export function cliPlainEnabled(): boolean {
   return plainOverride === true;
 }
 
-/** Whether output is plain without `--plain`: NO_COLOR is set, or stdout is not a terminal. */
+/**
+ * Whether output is plain without `--plain` or `--no-plain`: NO_COLOR is set
+ * to a value (an empty one is unset, as the convention says), or stdout is
+ * not a terminal.
+ */
 export function plainByDefault(env: Record<string, string | undefined> = process.env, stdout: { isTTY?: boolean } = process.stdout): boolean {
   return !!env.NO_COLOR || !stdout.isTTY;
 }
@@ -109,9 +115,19 @@ const ARROW_WORDS: Record<string, string> = { "→": "to", "←": "from", "↑":
 const ARROW = /[←→↑↓▲▼]/;
 
 /**
+ * An arrow the CLI writes itself, beside text it did not (`gold → gold's
+ * market news`), in words when output is plain: "to" for `→`. Table cells
+ * and headers are worded by `renderTable`; nothing else is rewritten.
+ */
+export function cliArrow(arrow: "→" | "←" | "↑" | "↓"): string {
+  return cliPlainEnabled() ? ARROW_WORDS[arrow]! : arrow;
+}
+
+/**
  * Arrows as the words they stand for, so a screen reader says them: a range
  * `2026-04-03 → 04-06` reads "2026-04-03 to 04-06", `+25bp ↑` "+25bp up",
  * the keys `←/→` "left/right". Text without an arrow is returned as it is.
+ * For a plain table's cells and headers, never a whole output.
  */
 export function plainWords(text: string): string {
   if (!ARROW.test(text)) return text;

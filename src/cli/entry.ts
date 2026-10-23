@@ -68,7 +68,7 @@ export async function runCliEntrypoint(rawArgs = process.argv.slice(2)): Promise
   // their modules are a noticeable part of what it would load before drawing.
   const { dispatchCli, failUnknownCliCommand } = await import("./index");
   // For a screen reader, a pipe or NO_COLOR: no rule lines, arrows in words, fixed table columns. Set
-  // for this process only; `--plain` turns it on in dispatchCli, and commands run in-process keep theirs.
+  // for this process only; `--plain` / `--no-plain` decide it in dispatchCli, and commands run in-process keep theirs.
   setCliPlainOverride(plainByDefault());
   const externalPlugins = await loadExternalPlugins();
   const dispatchResult = await dispatchCli(rawArgs, { externalPlugins });

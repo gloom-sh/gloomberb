@@ -5,6 +5,7 @@ import { CLI_COMMAND_GROUPS } from "../../../cli/help";
 import { dryRunNote } from "../../../cli/helpers";
 import { requireArg, takeOption } from "../../../cli/commands/command-utils";
 import { EXCHANGE_OPTION, listingReadNotes, requireListingArg } from "../../../cli/listing-arg";
+import { isNotATickerMessage } from "../../../cli/not-a-ticker";
 import { requireQuotedListing } from "../../../cli/quote-answer";
 import { createPluginPersistence } from "../../plugin-persistence";
 import type { CliCommandDef } from "../../../types/plugin";
@@ -35,33 +36,36 @@ export const notesCliCommand: CliCommandDef = {
       if (warnings.length > 0) read = { warnings };
     };
     /**
-     * The listing a note is written for, read as `quote` reads it
-     * (`requireQuotedListing`): a company's name is its listing (`notes set
-     * Apple` writes AAPL's note, under the bare symbol as the app keeps a
-     * ticker it was not given a venue for), and a word no listing trades as
-     * fails with `quote`'s search hint, so no note is kept for a symbol that
-     * does not exist.
+     * The file a note of the symbol typed is kept in, the same for show, set
+     * and delete. A note already kept under what was typed is the one, so a
+     * note written before names were read (APPLE.md) or for a symbol that
+     * stopped trading stays reachable. Otherwise the symbol is read as
+     * `quote` reads it (`requireQuotedListing`): a company's name is its
+     * listing (`Apple` is AAPL, under the bare symbol as the app keeps a
+     * ticker it was not given a venue for), and a pair its listing
+     * (USDNGN=X). With `refuse`, a definite "Not a ticker" fails the command
+     * with `quote`'s search hint, so no note is written for a symbol that
+     * does not exist. Any other failure (offline, the data service down, a
+     * symbol with no quote) keeps what was typed, as does `lookUp: false`,
+     * which opens no data source.
      */
-    const quotedSymbol = async (raw: string, action: string) => {
-      const typed = await requireListingArg(raw, exchange, ctx);
-      const quoted = await withMarketData(ctx, (market) => requireQuotedListing(raw, exchange, market, ctx, `notes ${action}`));
-      said(quoted.notes);
-      return typed.exchange ? quoted.listing.key : quoted.listing.symbol;
-    };
-    const noteSymbol = async (usage: string, notes: NotesFiles) => {
+    const noteSymbol = async (usage: string, notes: NotesFiles, options: { refuse?: boolean; lookUp?: boolean } = {}) => {
       const raw = requireArg(args[1], usage, ctx);
       const typed = await requireListingArg(raw, exchange, ctx);
-      // A note kept under what was typed is the one: a symbol that stopped trading still has its note to read or delete.
-      if ((await notes.load(typed.key).catch(logFailure("notes.cli", "Read the note kept under a typed symbol failed", ""))).trim()) {
+      const asTyped = () => {
         said(listingReadNotes(typed));
         return typed.key;
-      }
+      };
+      if ((await notes.load(typed.key).catch(logFailure("notes.cli", "Read the note kept under a typed symbol failed", ""))).trim()) return asTyped();
+      if (options.lookUp === false) return asTyped();
       try {
-        return await quotedSymbol(raw, args[0] ?? "show");
-      } catch {
-        // Intentional ignore: a word no listing trades as, or no answer, has no note under any other key either.
-        said(listingReadNotes(typed));
-        return typed.key;
+        const quoted = await withMarketData(ctx, (market) => requireQuotedListing(raw, exchange, market, ctx, `notes ${args[0] ?? "show"}`));
+        said(quoted.notes);
+        return typed.exchange ? quoted.listing.key : quoted.listing.symbol;
+      } catch (error) {
+        if (!isNotATickerMessage(errorMessage(error))) logFailure("notes.cli", "Read a note's symbol as quote does failed")(error);
+        else if (options.refuse) throw error;
+        return asTyped();
       }
     };
     await withConfigData(ctx, async (config) => {
@@ -137,7 +141,8 @@ export const notesCliCommand: CliCommandDef = {
         return;
       }
       if (action === "set") {
-        const symbol = await quotedSymbol(requireArg(args[1], "Usage: gloomberb notes set <symbol> <text...>", ctx), "set");
+        // A dry run looks nothing up: it says the note it would write under the symbol as typed.
+        const symbol = await noteSymbol("Usage: gloomberb notes set <symbol> <text...>", notes, { refuse: true, lookUp: !ctx.cliOptions.dryRun });
         const text = args.slice(2).join(" ");
         if (!ctx.cliOptions.dryRun) await notes.save(symbol, text);
         ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, symbol, bytes: text.length }, ...read }, {

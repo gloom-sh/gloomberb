@@ -1,8 +1,9 @@
-import { afterEach, expect, test } from "bun:test";
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from "fs";
+import { afterEach, beforeEach, expect, test } from "bun:test";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { apiClient, setCloudApiFetchTransport } from "../../../api-client";
+import { resetBoardCoins } from "../../../cli/board-coins";
 import { AppPersistence } from "../../../data/app-persistence";
 import { createTestCliContext } from "../../../test-support/cli-context";
 import { createTestDataProvider, createTestQuote } from "../../../test-support/data-provider";
@@ -34,9 +35,13 @@ function stubCloud() {
   });
 }
 
+// A one-word name is checked against the crypto board, which these tests read empty.
+beforeEach(() => resetBoardCoins([]));
+
 afterEach(() => {
   apiClient.setSessionToken(null);
   setCloudApiFetchTransport(null);
+  resetBoardCoins();
 });
 
 test("a signed-in export writes the Cloud notes beside the local ones, with nothing to warn about", async () => {
@@ -85,6 +90,55 @@ test("notes set reads its symbol as quote does: a company's name is its listing,
 
     await expect(notesCliCommand.execute(["set", "zzzqq", "y"], cli.context)).rejects.toThrow("Not a ticker: ZZZQQ.");
     expect(readdirSync(dir).filter((file) => file.endsWith(".md"))).toEqual(["PBR.md"]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("show, set and delete pick one file: a note kept under the word comes first, and set keeps the symbol as typed unless it is surely not a ticker", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "gloomberb-notes-cli-"));
+  const files = () => readdirSync(dir).filter((file) => file.endsWith(".md")).sort();
+  try {
+    const looked: string[] = [];
+    const listed = createTestDataProvider({
+      search: async (query) => {
+        looked.push(`search ${query}`);
+        return /^apple$/i.test(query) ? [{ providerId: "test", symbol: "AAPL", name: "Apple Inc.", exchange: "NASDAQ", type: "Common Stock", currency: "USD" }] : [];
+      },
+      getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => targets.map((target) => {
+        looked.push(`quote ${target.symbol}`);
+        return target.symbol === "APPLE"
+          ? { target, quote: null, error: new Error("Not a ticker: APPLE.") }
+          : { target, quote: createTestQuote({ symbol: target.symbol, name: "Apple Inc.", listingExchangeName: "NASDAQ" }) };
+      }),
+    });
+    // A note kept under the word before names were read is the one all three pick.
+    writeFileSync(join(dir, "APPLE.md"), "old");
+    const cli = createTestCliContext({ config: { dataDir: dir }, dataDir: dir, dataProvider: listed });
+    await notesCliCommand.execute(["set", "Apple", "new"], cli.context);
+    await notesCliCommand.execute(["show", "Apple"], cli.context);
+    expect(cli.printed.map((printed) => (printed.result.data as { symbol: string }).symbol)).toEqual(["APPLE", "APPLE"]);
+    expect((cli.printed[1]!.result.data as { text: string }).text).toBe("new");
+    expect(files()).toEqual(["APPLE.md"]);
+    expect(looked).toEqual([]);
+    await notesCliCommand.execute(["delete", "Apple"], cli.context);
+    expect(files()).toEqual([]);
+
+    // A dry run opens no data source: it names the note under the symbol as typed.
+    const dry = createTestCliContext({ config: { dataDir: dir }, dataDir: dir, dataProvider: listed }, { dryRun: true });
+    await notesCliCommand.execute(["set", "Apple", "x"], dry.context);
+    expect(dry.printed[0]!.result.data).toMatchObject({ symbol: "APPLE", dryRun: true });
+    expect(looked).toEqual([]);
+
+    // Offline, or with the data service down, a note is still written, under the symbol as typed.
+    const offline = createTestDataProvider({
+      search: async () => { throw new Error("fetch failed"); },
+      getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => targets.map((target) => ({ target, quote: null, error: new Error("fetch failed") })),
+    });
+    const away = createTestCliContext({ config: { dataDir: dir }, dataDir: dir, dataProvider: offline });
+    await notesCliCommand.execute(["set", "AAPL", "a"], away.context);
+    await notesCliCommand.execute(["set", "Apple", "b"], away.context);
+    expect(files()).toEqual(["AAPL.md", "APPLE.md"]);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

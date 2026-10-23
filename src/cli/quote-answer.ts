@@ -16,6 +16,7 @@ import {
   isNoProviderError,
   listingChoiceNotes,
   listingReadNotes,
+  ListingArgError,
   loadBareVenues,
   notTradedMessage,
   oneWordCompanyName,
@@ -139,7 +140,13 @@ async function answerCompanyName(
   if (!listing.typed || listing.exchange || !notATickerSymbol(errorMessage(result.error) ?? "")) return null;
   const named = await oneWordCompanyName(listing.typed, market);
   if (!named) return null;
-  const found = { ...await resolveCliListing(named.key, null, market), readAs: named.readAs, ...named.meant ? { meant: named.meant } : {} };
+  // A listing on a venue the app cannot read is no answer: the word keeps its own "Not a ticker".
+  const resolved = await resolveCliListing(named.key, null, market).catch((error: unknown) => {
+    if (error instanceof ListingArgError) return null;
+    throw error;
+  });
+  if (!resolved) return null;
+  const found = { ...resolved, readAs: named.readAs, ...named.meant ? { meant: named.meant } : {} };
   const [quoted] = await market.dataProvider.getQuotesBatch([found.request], { forceRefresh: refresh, revalidate: true });
   return quoted?.quote ? answerQuote(quoted, found, market, request, refresh, null) : null;
 }

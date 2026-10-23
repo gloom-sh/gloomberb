@@ -2,7 +2,7 @@ import type { AppPersistence } from "../data/app-persistence";
 import { ApiRequestError } from "../api-client/errors";
 import { DEFAULT_CLI_OPTIONS, type CliGlobalOptions } from "./options";
 import { serializeCliError, type CliErrorObject } from "./result";
-import { cliPlainEnabled, cliStyles, cliTerminalWidth, plainWords, wrapText } from "../utils/cli-output";
+import { cliStyles, cliTerminalWidth, wrapText } from "../utils/cli-output";
 import { withSearchHints, type FredSeriesCheck } from "./not-a-ticker";
 import { isProviderBusy, SEARCH_BUSY_CODE, SEARCH_BUSY_MESSAGE } from "../sources/provider-errors";
 import { DATA_SERVICE_UNREACHABLE_MESSAGE, isNetworkFailure } from "../utils/network-failure";
@@ -119,6 +119,7 @@ export function inferCliErrorOptions(rawArgs: string[]): CliGlobalOptions {
     if (arg === "--no-color") options.color = false;
     if (arg === "--color") options.color = true;
     if (arg === "--plain") options.plain = true;
+    if (arg === "--no-plain") options.plain = false;
   }
   return options;
 }
@@ -155,10 +156,7 @@ function hintedError(error: CliErrorObject, args: readonly string[], isFredSerie
 export function printCliError(error: unknown, options: CliGlobalOptions, context: CliErrorContext = {}): void {
   if (options.quiet && options.format === "text") return;
   const errorObject = cliErrorObject(error);
-  if (options.format !== "text") {
-    console.error(serializeCliError(errorObject, options));
-    return;
-  }
-  const text = formatCliErrorText(hintedError(errorObject, context.args ?? [], context.isFredSeries), context);
-  console.error(cliPlainEnabled() ? plainWords(text) : text);
+  console.error(options.format === "text"
+    ? formatCliErrorText(hintedError(errorObject, context.args ?? [], context.isFredSeries), context)
+    : serializeCliError(errorObject, options));
 }

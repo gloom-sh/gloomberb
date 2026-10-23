@@ -6,8 +6,9 @@ export interface CliGlobalOptions {
   color: boolean | null;
   /**
    * `--plain`: tables without rules, arrows in words, every column kept with
-   * "—" for an empty cell (`setCliPlainOverride`). Null leaves it to the
-   * environment: on with NO_COLOR, or when stdout is not a terminal.
+   * "—" for an empty cell (`setCliPlainOverride`); `--no-plain` turns it
+   * off. Null leaves it to the environment: on with NO_COLOR set to a value,
+   * or when stdout is not a terminal (`plainByDefault`).
    */
   plain: boolean | null;
   limit?: number;
@@ -117,8 +118,8 @@ export function parseCliGlobalArgs(rawArgs: string[]): ParsedCliArgs {
       options.color = true;
       continue;
     }
-    if (arg === "--plain") {
-      options.plain = true;
+    if (arg === "--plain" || arg === "--no-plain") {
+      options.plain = arg === "--plain";
       continue;
     }
     if (arg === "--refresh") {

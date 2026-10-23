@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { serializeCliError, serializeCliResult, type CliResultRenderOptions } from "./result";
+import { printCliResult, serializeCliError, serializeCliResult, type CliResultRenderOptions } from "./result";
+import { printCliError } from "./errors";
+import { captureConsole } from "../test-support/console";
 import { setCliColorEnabledOverride, setCliPlainOverride } from "../utils/cli-output";
 import type { CliGlobalOptions } from "./options";
 import type { ReportFreshness } from "./pane-functions/freshness";
@@ -188,6 +190,24 @@ test("plain text keeps every column with a dash in the empty cells, and JSON, CS
     "Banxico Interest Rate Decision  —         6.50%",
   ]);
   for (const format of ["json", "csv", "ndjson"] as const) expect(print(true, format)).toBe(print(false, format));
+});
+
+test("plain output words the arrows of its tables and nothing else: a note, an answer or an error prints as written", async () => {
+  setCliPlainOverride(true);
+  setCliColorEnabledOverride(false);
+  try {
+    const note = "margin ↑ → buy\n→ keep ←/→ in mind";
+    const { stdout, stderr } = await captureConsole(() => {
+      printCliResult({ data: { text: note }, warnings: ["Read as typed: a ↓ b"] }, baseOptions, { text: (data) => data.text });
+      printCliResult({ data: [{ move: "+25bp ↑", text: "a → b" }] }, baseOptions);
+      printCliError(new Error("Not found: x → y"), baseOptions);
+    });
+    expect(stdout.split("\n")).toEqual(["margin ↑ → buy", "→ keep ←/→ in mind", "Move      Text", "+25bp up  a to b"]);
+    expect(stderr).toBe("warning: Read as typed: a ↓ b\nerror: Not found: x → y");
+  } finally {
+    setCliPlainOverride(null);
+    setCliColorEnabledOverride(null);
+  }
 });
 
 describe("serializeCliError", () => {

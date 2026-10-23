@@ -35,7 +35,9 @@ import { withMarketData } from "./scoped-context";
 import { failWithFields } from "./errors";
 import { stripStrayEdges } from "./symbol-args";
 import { isNoProviderMessage, isProviderBusy } from "../sources/provider-errors";
-import { dashedCoinPair } from "../utils/crypto-pair";
+import { dashedCoinPair, MAJOR_COIN_NAMES } from "../utils/crypto-pair";
+import { boardCoinFor, primeBoardCoins } from "./board-coins";
+import { knownGapMessage } from "./known-gaps";
 import { currencyPairSpelling } from "../utils/currency-pair";
 import { bareFuturesCode, futuresContractByCode } from "../market-data/futures-board";
 import { classifyInstrumentType, kindFromListingSyntax } from "../tickers/instrument-kind";
@@ -1019,21 +1021,34 @@ const ONE_WORD_NAME = /^\p{L}[\p{L}\p{N}&'’.-]*$/u;
  * sources said no listing trades as it, read as the listing search names for
  * it the way a name of several words is (`companyNameListingArg`): "Read
  * "Apple" as AAPL:NASDAQ (Apple Inc.).". A real ticker never gets here, so it
- * always wins over a name. Only whole words of a listing's name count, never
- * a short form (`grp` is no company's "Group"). Null for anything else, and
- * when search names no company or is too busy to say.
+ * always wins over a name. A word many names share (`oil`) is a name only
+ * when search puts it first, the service marks it, or a listing's name is
+ * the word alone (`findListingOfCompanyName` with `oneWord`). A coin's name
+ * (`bitcoin`, or any the crypto board lists) and a subject the app knows of
+ * (`carbon`, `freight`) are never read as a company: they keep their own
+ * hint, the coin's pair (BTC-USD) or the search that says where it is. Null
+ * for anything else, and when search names no company or is too busy to say.
  */
 export async function oneWordCompanyName(typed: string, deps: Pick<ListingDeps, "dataProvider">): Promise<ListingArg | null> {
   const word = typed.trim();
-  if (!ONE_WORD_NAME.test(word)) return null;
-  return readCompanyName(word, deps, { wholeWords: true }).catch((error: unknown) => {
+  if (!ONE_WORD_NAME.test(word) || knownGapMessage(word) || isMajorCoinName(word)) return null;
+  const named = await readCompanyName(word, deps, { oneWord: true }).catch((error: unknown) => {
     if (!isProviderBusy(error)) throw error;
     // Intentional ignore: a busy search says nothing about the name, so the word keeps its own "Not a ticker".
     return null;
   });
+  if (!named) return null;
+  // The board is read only for a word that names a company, and once for the run (`primeBoardCoins`).
+  if (/^[A-Za-z0-9]+$/.test(word)) await primeBoardCoins([`Not a ticker: ${word.toUpperCase()}.`]);
+  return boardCoinFor(word) ? null : named;
 }
 
-async function readCompanyName(typed: string, deps: Pick<ListingDeps, "dataProvider">, options: { wholeWords?: boolean } = {}): Promise<ListingArg | null> {
+function isMajorCoinName(word: string): boolean {
+  const wanted = word.toLowerCase();
+  return [...MAJOR_COIN_NAMES.values()].some((name) => name.toLowerCase() === wanted);
+}
+
+async function readCompanyName(typed: string, deps: Pick<ListingDeps, "dataProvider">, options: { oneWord?: boolean } = {}): Promise<ListingArg | null> {
   const found = await findListingOfCompanyName(deps.dataProvider, typed, { meant: true, ...options });
   if (!found) return null;
   const key = `${found.symbol}:${found.exchange}`;

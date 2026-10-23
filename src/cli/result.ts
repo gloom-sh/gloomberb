@@ -3,7 +3,6 @@ import {
   cliPlainEnabled,
   cliStyles,
   cliTerminalWidth,
-  plainWords,
   renderStats,
   renderTable,
   statValueWidth,
@@ -515,9 +514,7 @@ export function printCliResult<T, Row extends Record<string, unknown> = Record<s
   if (options.quiet && options.format === "text") return;
   // JSON keeps the router's own words; everything else is for a person, so a "Not a ticker" gets its hint.
   const hinted = (text: string) => options.format === "json" ? text : withSearchHints(text, args, isFredSeries);
-  // Plain text says its arrows in words; exports keep the data as it is.
-  const worded = (text: string) => options.format === "text" && cliPlainEnabled() ? plainWords(text) : text;
-  const output = worded(hinted(serializeCliResult(result, options, renderOptions)));
+  const output = hinted(serializeCliResult(result, options, renderOptions));
   // Bun's console writer can truncate a large pipe write after stdout has been
   // initialized. The stream queues the remaining bytes until the reader drains.
   if (output && !process.stdout.write(`${output}\n`)) {
@@ -527,7 +524,7 @@ export function printCliResult<T, Row extends Record<string, unknown> = Record<s
   // rows, so a warning goes to stderr, out of a file the rows are piped into.
   if (options.format !== "json" && !options.quiet) {
     for (const warning of result.warnings ?? []) {
-      console.error(`${cliStyles.warning("warning:")} ${worded(hinted(warning))}`);
+      console.error(`${cliStyles.warning("warning:")} ${hinted(warning)}`);
     }
   }
 }

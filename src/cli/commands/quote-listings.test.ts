@@ -452,6 +452,43 @@ test("a company's name typed as one word no listing trades as is quoted as its l
   expect(result.warnings).toContain("Not a ticker: GRP.");
 });
 
+test("a word many names share is a name only as search's top result or an exact name; a coin's or a subject's name keeps its hint", async () => {
+  const row = (symbol: string, name: string, exchange: string, type = "Common Stock") => ({ providerId: "test", symbol, name, exchange, type, currency: "USD" });
+  const dataProvider = createTestDataProvider({
+    search: async (query) => {
+      switch (query.toLowerCase()) {
+        // Search puts a REIT first, but Apple Inc. is the name and nothing more.
+        case "apple": return [row("APLE", "Apple Hospitality REIT, Inc.", "NYSE"), row("AAPL", "Apple Inc.", "NASDAQ")];
+        // The top result is a future; the stocks only have the word in their names.
+        case "oil": return [row("CL=F", "WTI Crude Oil", "NYM", "FUTURE"), row("OILX", "Onyx Spot Return Crude Oil", "ARCA"), row("OINL", "Oil India Limited", "NSE")];
+        case "bitcoin": return [row("BCH-USD", "Bitcoin Cash", "CCC", "CRYPTOCURRENCY"), row("BSTY/BTC", " Bitcoin", "YOBIT", "Digital Currency"), row("BTCS", "Bitcoin Shop Inc.", "NASDAQ")];
+        case "hyperliquid": return [row("PURR", "Hyperliquid Strategies Inc", "NASDAQ")];
+        // A venue the app cannot read is no answer, never a failed command.
+        case "zorblax": return [row("ZBX", "Zorblax", "MOONX")];
+        default: return [row("CRBN", "Carbon Inc.", "NASDAQ")];
+      }
+    },
+    getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => targets.map((target) => target.exchange
+      ? { target, quote: createTestQuote({ symbol: target.symbol }) }
+      : { target, quote: null, error: new Error(`Not a ticker: ${target.symbol}.`) }),
+  });
+  // The crypto board lists Hyperliquid, which no list of major coins names.
+  resetBoardCoins([{ symbol: "BTC-USD", code: "BTC", name: "Bitcoin", marketCap: 2 }, { symbol: "HYPE-USD", code: "HYPE", name: "Hyperliquid", marketCap: 1 }]);
+  const words = ["Apple", "oil", "bitcoin", "hyperliquid", "carbon", "zorblax"];
+  const cli = createTestCliContext({ dataProvider });
+  await quoteCommand.execute(words, cli.context);
+  const { result } = cli.printed[0] as PrintedCliResult;
+  expect((result.data as Array<{ target: QuoteSubscriptionTarget }>).map((row) => row.target.symbol)).toEqual(["AAPL:NASDAQ", "OIL", "BITCOIN", "HYPERLIQUID", "CARBON", "ZORBLAX"]);
+  expect(result.warnings!.map((warning) => withSearchHints(warning, words))).toEqual([
+    'Read "Apple" as AAPL:NASDAQ (Apple Inc.).',
+    "Not a ticker: OIL. Try `gloomberb search oil`.",
+    "Not a ticker: BITCOIN. Did you mean BTC-USD (Bitcoin)?",
+    "Not a ticker: HYPERLIQUID. Did you mean HYPE-USD (Hyperliquid)?",
+    "Not a ticker: CARBON. Try `gloomberb search carbon`.",
+    "Not a ticker: ZORBLAX. Try `gloomberb search zorblax`.",
+  ]);
+});
+
 test("a company's name read as an index asks about the company's stock; marked by the service, it is that stock", async () => {
   const row = (symbol: string, name: string, exchange: string, type: string, searchAliases?: string[]) =>
     ({ providerId: "test", symbol, name, exchange, type, currency: "USD", ...searchAliases ? { searchAliases } : {} });
