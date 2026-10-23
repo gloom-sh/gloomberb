@@ -20,7 +20,8 @@ import {
   type CliHelpEntry,
 } from "./help";
 import { parsePaneFunctionArgs, SHOT_SIZE_LIMITS } from "./pane-functions/options";
-import { checkCliCommandOptions } from "./command-options";
+import { checkCliCommandOptions, foldCommandArgs } from "./command-options";
+import { foldTypedText } from "../utils/typed-text";
 import { CLI_EXIT_CODES } from "./exit-codes";
 import { asUsageError, fail, inferCliErrorOptions, printCliError } from "./errors";
 import { cliStyles, setCliColorEnabledOverride, setCliWidthOverride } from "../utils/cli-output";
@@ -451,7 +452,7 @@ export async function dispatchCli(args: string[], options: DispatchCliOptions = 
   }
 
   const registry = await createRegistry(options);
-  const resolved = registry.lookup.get(normalizeCliCommandToken(command));
+  const resolved = registry.lookup.get(normalizeCliCommandToken(foldTypedText(command)));
   if (!resolved) {
     return { kind: "unhandled" };
   }
@@ -461,9 +462,10 @@ export async function dispatchCli(args: string[], options: DispatchCliOptions = 
   const helpOnly = parsed.help && resolved.command.name !== "help";
   const target = helpOnly ? registry.lookup.get("help")! : resolved;
   // The words after a command that runs a function name the function whose help it is (`fn BT --help`).
+  // Full-width letters and digits (ＧＭＥ, １０) are read as the ASCII they stand for, once, here.
   const commandArgs = helpOnly
-    ? [resolved.command.name, ...FUNCTION_COMMANDS.has(resolved.command.name) ? parsed.args.slice(1) : []]
-    : parsed.args.slice(1);
+    ? [resolved.command.name, ...FUNCTION_COMMANDS.has(resolved.command.name) ? foldCommandArgs(resolved.command, parsed.args.slice(1)) : []]
+    : foldCommandArgs(resolved.command, parsed.args.slice(1), parsed.literalStart - 1);
   try {
     if (!helpOnly && resolved.builtin) checkCliCommandOptions(resolved.command, commandArgs, parsed.literalStart - 1);
     // What it answers from a saved copy, its refresh having failed, its closing line says.

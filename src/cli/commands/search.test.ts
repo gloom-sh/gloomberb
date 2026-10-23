@@ -34,3 +34,25 @@ test("a search the data service was too busy to answer fails as retryable, unlik
   expect(partial.failure).toBeNull();
   expect((partial.printed[0]!.data as Array<{ symbol: string }>).map((row) => row.symbol)).toEqual(["EGLE"]);
 });
+
+test("a name typed in kana or kanji is searched as typed, matches no saved ticker, and says what to type when nothing lists it", async () => {
+  const saved = ["AAPL", "AMC", "AMZN", "BRK.B", "BTC-USD"].map((symbol) => createTestTicker(symbol, symbol));
+  const run = async (query: string, answer: (query: string) => Promise<never[]>) => {
+    const asked: string[] = [];
+    const dataProvider = createTestDataProvider({ search: async (query: string) => { asked.push(query); return answer(query); } });
+    const initMarketData = async () => ({ store: { loadAllTickers: async () => saved }, dataProvider, persistence: { close() {} } }) as never;
+    const printed: PrintedCliResult["result"][] = [];
+    const failure = await search(query, { initMarketData, printResult: (result) => { printed.push(result); } }).then(() => null, (error: unknown) => error);
+    return { asked, failure, printed: printed[0] };
+  };
+  // The service fails on every name in another script; that is no busy search, and the saved list is no match.
+  for (const query of ["ゲームストップ", "任天堂"]) {
+    const { asked, failure, printed } = await run(query, async () => { throw new ProviderBusyError(); });
+    expect(asked).toContain(query);
+    expect(failure).toBeNull();
+    expect(printed!.data).toEqual([]);
+    expect(printed!.warnings).toEqual(["No matches. Try the ticker or the English name."]);
+  }
+  // A Latin name the service is too busy for is still busy.
+  expect((await run("gamestop", async () => { throw new ProviderBusyError(); })).failure).toMatchObject({ code: "search_busy" });
+});

@@ -6,7 +6,7 @@ import { dryRunNote } from "../../../cli/helpers";
 import { requireArg, takeOption } from "../../../cli/commands/command-utils";
 import { EXCHANGE_OPTION, listingReadNotes, requireListingArg } from "../../../cli/listing-arg";
 import { createPluginPersistence } from "../../plugin-persistence";
-import type { CliCommandDef } from "../../../types/plugin";
+import type { BuiltinCliCommandDef } from "../../../cli/command-options";
 import { cliStyles } from "../../../utils/cli-output";
 import { errorMessage } from "../../../utils/errors";
 import { logFailure } from "../../../utils/log-failure";
@@ -15,9 +15,11 @@ import { describeExportSkip, exportNotesToDirectory, type NotesExportSource } fr
 import { NotesFiles } from "./files";
 import { CloudNotesStore } from "./store";
 
-export const notesCliCommand: CliCommandDef = {
+export const notesCliCommand: BuiltinCliCommandDef = {
   name: "notes",
   description: "Read, write, or export ticker notes",
+  // A note's text is saved as typed, and an export's folder is a path; the symbol is read as any other.
+  keepsArgAsTyped: ([action], index) => (action === "set" && index >= 2) || (action === "export" && index >= 1),
   help: {
     group: CLI_COMMAND_GROUPS.portfolios,
     usage: ["notes show <symbol>", "notes set <symbol> <text...>", "notes delete <symbol>", "notes quick list", "notes export [dir]"],

@@ -7,6 +7,7 @@ import { LISTING_SEARCH_LIMIT } from "./search";
 import { classifyInstrumentKind } from "./search/ranking";
 import { isProviderBusy, type ProviderBusyError } from "../sources/provider-errors";
 import { readTerminalListingCode, type TerminalListing, type TerminalListingCode } from "./terminal-codes";
+import { hasNonLatinLetters } from "../utils/typed-text";
 
 export interface CompanyNameListing {
   symbol: string;
@@ -75,7 +76,8 @@ export async function findListingOfCompanyName(
     return at < 0 ? 0 : left.rank[at]! - right.rank[at]!;
   });
   const best = ranked[0];
-  if (!best && busy) throw busy;
+  // Listings are named in Latin letters: a name in another script ("任天堂 ソニー") names none, answered or not.
+  if (!best && busy && !hasNonLatinLetters(name)) throw busy;
   if (!best) return null;
   const found = { symbol: best.result.symbol.toUpperCase(), exchange: best.exchange, name: best.result.name };
   const meant = best.stock && options.meant ? await stockNamedRunTogether(dataProvider, name, results) : null;
