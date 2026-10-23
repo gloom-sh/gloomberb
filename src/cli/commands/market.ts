@@ -407,7 +407,11 @@ const QUOTE_LEAD_COLUMNS = [
     key: "changePercent",
     header: "Chg%",
     align: "right" as const,
-    format: (value: unknown, row: QuoteRow) => row.yieldIndex ? yieldChangeCell(row) : formatChangePercentCell(value),
+    format: (value: unknown, row: QuoteRow) => {
+      const move = row.yieldIndex ? yieldChangeCell(row) : formatChangePercentCell(value);
+      // Keep a rolling move's short label with the value when narrow tables drop Chg Basis.
+      return move && row.changeBasis === "24h" ? `${move} ${cliStyles.muted("24h")}` : move;
+    },
   },
   // Text drops a column no row fills, so a table without an extended print stays as narrow as before.
   extendedColumn("PRE"),
@@ -426,7 +430,8 @@ type QuoteRow = ReturnType<typeof quoteRows>[number];
  * its existing columns, so a column read by position stays where it was.
  */
 const CHANGE_BASIS_COLUMN = {
-  key: "changeBasis", header: "Chg Basis", shrink: false, optional: true, format: (value: unknown) => cliStyles.muted(String(value ?? "")),
+  key: "changeBasis", header: "Chg Basis", shrink: false, optional: true,
+  format: (value: unknown) => value === "24h" ? "" : cliStyles.muted(String(value ?? "")),
 };
 const CHANGE_BASIS_EXPORT_COLUMNS = [
   { key: "changeBasis", header: "Chg Basis" },
@@ -563,12 +568,18 @@ function withPreviousCloseDate(quote: Quote | null | undefined): (Quote & { prev
   return Object.fromEntries(entries) as Quote & { previousCloseDate?: string | null };
 }
 
+/** An explicit missing comparison wins over any leftover numeric move in a CLI quote. */
+function quoteSessionFields(quote: Quote | null | undefined) {
+  const fields = getQuoteSessionFields(quote);
+  return quote?.changeBasis === "none" ? { ...fields, change: null, changePercent: null } : fields;
+}
+
 function quoteRows(results: QuoteCliRecord[], now = Date.now()) {
   return results.map((result) => {
     const quote = result.quote;
     // Last and Chg% are the regular session, as `ticker` and the quote monitor read it; a
     // pre-market or after-hours print is its own column, measured from that session's close.
-    const display = getRegularSessionDisplay(quote);
+    const display = quoteSessionFields(quote);
     const extended = getExtendedSessionDisplay(quote);
     const yieldIndex = isYieldIndexSymbol(result.target.symbol);
     // An index level is in points, not in the currency its members trade in.
@@ -580,25 +591,25 @@ function quoteRows(results: QuoteCliRecord[], now = Date.now()) {
       minimumFractionDigits: indexPoints ? 2 : currencyPriceMinDigits(quote?.currency),
       ...nearParCoin(quote) ? { fixedFractionDigits: STABLECOIN_PRICE_DIGITS } : {},
     };
-    const price = (value: number | undefined) => (
+    const price = (value: number | null | undefined) => (
       quote && value != null
         ? indexPoints ? formatMarketPrice(value, options) : formatMarketPriceWithCurrency(value, quote.currency, options)
         : ""
     );
     // A price in cents says what it is per, as the contract terms word it: 314.95¢/lb.
-    const per = display?.price != null ? futuresPricePer(result.futuresContract, quote?.currency) : "";
+    const per = display.price != null ? futuresPricePer(result.futuresContract, quote?.currency) : "";
     return {
       symbol: result.target.symbol,
       name: quote?.name || result.listing?.name || "",
-      price: `${price(display?.price)}${per}`,
-      rawPrice: display?.price ?? null,
+      price: `${price(display.price)}${per}`,
+      rawPrice: display.price,
       priceBasis: quote?.priceBasis ?? null,
       instrumentType: quote?.instrumentType ?? null,
-      change: display?.change ?? null,
-      changePercent: roundedPercent(display?.changePercent),
+      change: display.change,
+      changePercent: roundedPercent(display.changePercent ?? undefined),
       // A Cboe yield index is read as a yield in percent and moves in basis points.
       yieldIndex,
-      changeBasisPoints: yieldIndex && display?.change != null ? toBasisPoints(display.change, 1) : null,
+      changeBasisPoints: yieldIndex && display.change != null ? toBasisPoints(display.change, 1) : null,
       extendedSession: extended?.session ?? null,
       extendedPrice: price(extended?.price),
       rawExtendedPrice: extended?.price ?? null,
@@ -609,7 +620,7 @@ function quoteRows(results: QuoteCliRecord[], now = Date.now()) {
       session: quoteSessionStateLabel(quote, now) ?? "",
       sessionLabel: quoteSessionLabel(quote, now) ?? "",
       // The close the shown move is measured from: the one before the session Last is.
-      previousClose: price(display?.change != null ? display.price - display.change : quote?.previousClose),
+      previousClose: price(display.price != null && display.change != null ? display.price - display.change : quote?.previousClose),
       dayRange: quote?.low != null && quote.high != null
         ? indexPoints ? `${price(quote.low)}-${price(quote.high)}` : formatPriceRange(quote.low, quote.high, quote.currency, options, "-")
         : "",
@@ -898,7 +909,7 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       target: result.target,
       listing: listingMetadata(listingIdentity(listing, result.quote)),
       // The figures the table shows, beside the quote as the source sent it.
-      ...getQuoteSessionFields(result.quote),
+      ...quoteSessionFields(result.quote),
       // What `change` is measured from, with the label and holiday note the table shows.
       changeBasis: changeBasisJson(quoteChangeBasis(result.quote, { terms: contracts[index] }), now),
       quote: withPreviousCloseDate(result.quote),
