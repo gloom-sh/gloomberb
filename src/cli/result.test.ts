@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { serializeCliError, serializeCliResult, type CliResultRenderOptions } from "./result";
 import { setCliColorEnabledOverride, setCliPlainOverride } from "../utils/cli-output";
 import type { CliGlobalOptions } from "./options";
@@ -13,9 +13,6 @@ const baseOptions: CliGlobalOptions = {
   dryRun: false,
   yes: false,
 };
-
-// A command run earlier in this process (dispatchCli) may have left plain output on for a pipe.
-beforeEach(() => setCliPlainOverride(null));
 
 describe("serializeCliResult", () => {
   test("--limit keeps the first rows and says when they are a series' oldest; --tail keeps the newest in printed order", () => {
