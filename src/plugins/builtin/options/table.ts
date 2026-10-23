@@ -4,6 +4,7 @@ import type { OptionContract, OptionsChain } from "../../../types/financials";
 import { blendHex, colors } from "../../../theme/colors";
 import { blendForContrast, blendForSeparation, contrastRatio } from "../../../theme/color-utils";
 import { formatCompact } from "../../../utils/format";
+import { formatStrikeLabel } from "../../../utils/options";
 import { formatOptionPrice, optionQuoteSide, optionSpread } from "./market-reference";
 import { formatCarryPercent, formatCostOfSpot } from "./carry";
 import type {
@@ -160,13 +161,6 @@ export function findNearestStrikeIndex(strikes: number[], targetStrike: number):
     }
   }
   return bestIndex;
-}
-
-export function formatStrikeLabel(strike: number): string {
-  // 15 significant digits keep every listed decimal but drop binary noise from
-  // computed strikes such as spot * 0.9.
-  return Number.isFinite(strike)
-    ? strike.toLocaleString("en-US", { maximumSignificantDigits: 15 }) : "—";
 }
 
 export function formatIv(value: number | undefined): string {

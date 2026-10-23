@@ -6,7 +6,7 @@ import { isPlainKey } from "../../../utils/keyboard";
 import { formatCompact, formatPercentRaw } from "../../../utils/format";
 import { formatMarketPrice, formatSignedMarketPrice, liveQuoteFormatOptions } from "../../../market-data/market/format";
 import { getRegularSessionDisplay } from "../../../market-data/market/status";
-import { chainOptionContract, formatExpDate, optionContractName, resolveOptionsTarget } from "../../../utils/options";
+import { chainOptionContract, formatExpDate, formatStrikeLabel, optionContractName, resolveOptionsTarget } from "../../../utils/options";
 import {
   expiryIsoDate, findListedExpiry, formatDaysToExpiry, daysToExpiry, isLiveOptionExpiry, missingExpiryMessage, missingExpiryText, readOptionExpiration,
 } from "../../../utils/option-expiry";
@@ -50,7 +50,6 @@ import {
   createOptionColumns,
   findNearestStrikeIndex,
   formatIv,
-  formatStrikeLabel,
   optionColumnColor,
   renderOptionCell,
   resolveDefaultStrikeTarget,

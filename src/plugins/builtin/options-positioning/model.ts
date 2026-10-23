@@ -1,7 +1,7 @@
 import { formatCompact, formatCompactAmount } from "../../../utils/format";
-import { formatExpDate } from "../../../utils/options";
+import { formatExpDate, formatStrikeLabel } from "../../../utils/options";
 import { formatUtcTime } from "../../../utils/utc-time";
-import { modelSpotLabel, modelSpotStamp, modelSpotStampVariants, observedModelSpot } from "../options/model-spot";
+import { formatModelSpotPrice, modelSpotLabel, modelSpotStamp, modelSpotStampVariants, observedModelSpot } from "../options/model-spot";
 
 export type PositioningTab = "strikes" | "expiries" | "gex";
 export const POSITIONING_TABS: { value: PositioningTab; label: string }[] = [
@@ -85,9 +85,6 @@ export function formatContracts(value: number | null | undefined, coin: boolean)
   return value == null || !Number.isFinite(value) ? "--" : value.toLocaleString("en-US", { maximumFractionDigits: 1 });
 }
 
-export function formatStrike(value: number): string {
-  return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(3)));
-}
 export function formatCount(value: number | null | undefined): string {
   return value == null || !Number.isFinite(value) ? "--" : Math.round(value).toLocaleString("en-US");
 }
@@ -99,8 +96,9 @@ export function formatCountChange(value: number | null | undefined): string {
 export function formatRatio(value: number | null | undefined): string {
   return value == null || !Number.isFinite(value) ? "--" : value.toFixed(2);
 }
+/** A price level (spot, the gamma flip) written as OMON and OVDV write spot. */
 export function formatLevel(value: number | null | undefined): string {
-  return value == null || !Number.isFinite(value) ? "--" : value.toFixed(2);
+  return value == null || !Number.isFinite(value) ? "--" : formatModelSpotPrice(value);
 }
 /**
  * The spot Gloom Cloud read the distances and dealer gamma at, stamped as
@@ -241,7 +239,7 @@ export function strikeAxis(strikes: readonly number[]): NumericAxis {
       const step = niceStep(span, Math.floor(plotWidth / 8));
       const ticks: Array<{ label: string; ratio: number }> = [];
       for (let value = Math.ceil(min / step) * step; value <= max + 1e-9; value += step) {
-        ticks.push({ label: formatStrike(Number(value.toFixed(6))), ratio: ratio(value) });
+        ticks.push({ label: formatStrikeLabel(Number(value.toFixed(6))), ratio: ratio(value) });
       }
       return ticks;
     },

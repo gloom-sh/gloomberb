@@ -12,6 +12,16 @@ export function formatExpDate(ts: number): string {
 }
 
 /**
+ * A strike as every options pane writes it: grouped, with every listed
+ * decimal (`82,000`, `82.5`). 15 significant digits keep every listed decimal
+ * but drop binary noise from computed strikes such as spot * 0.9.
+ */
+export function formatStrikeLabel(strike: number): string {
+  return Number.isFinite(strike)
+    ? strike.toLocaleString("en-US", { maximumSignificantDigits: 15 }) : "\u2014";
+}
+
+/**
  * Parse IBKR option symbol like "UBER 260821C00090000" into components.
  * Returns null if not a recognized option symbol.
  */

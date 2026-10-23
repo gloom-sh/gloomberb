@@ -7,20 +7,23 @@ import type { SeriesAxisTag } from "./panel-labels";
  * ties. A forward pass separates neighbours; a backward pass fits the bottom
  * edge. Panels shorter than the readout use parallel lanes, not dropped tags
  * or smaller type. The gutter reserves those lanes before the cursor moves.
+ * Only a tag pushed off its value's height gets a leader: a tick beside a tag
+ * still on its value reads as a minus sign (`-8k` for a positive 8k).
  */
 export function placeSeriesAxisTags(tags: readonly SeriesAxisTag[], pixelHeight: number, labelHeight: number) {
   const height = Math.max(pixelHeight, labelHeight);
   const capacity = Math.max(1, Math.floor(height / labelHeight));
   const sorted = tags.map((tag, order) => ({ ...tag, order, anchorY: clamp(tag.yRatio, 0, 1) * Math.max(pixelHeight - 1, 0) }))
     .sort((a, b) => a.anchorY - b.anchorY || a.order - b.order);
-  const placed: Array<SeriesAxisTag & { anchorY: number; centerY: number; lane: number }> = [];
+  const placed: Array<SeriesAxisTag & { anchorY: number; centerY: number; lane: number; leader: boolean }> = [];
   for (let start = 0; start < sorted.length; start += capacity) {
     const lane = sorted.slice(start, start + capacity);
     const centers = lane.map((tag) => clamp(tag.anchorY, labelHeight / 2, height - labelHeight / 2));
     for (let i = 1; i < centers.length; i++) centers[i] = Math.max(centers[i]!, centers[i - 1]! + labelHeight);
     if (centers.length) centers[centers.length - 1] = Math.min(centers.at(-1)!, height - labelHeight / 2);
     for (let i = centers.length - 2; i >= 0; i--) centers[i] = Math.min(centers[i]!, centers[i + 1]! - labelHeight);
-    lane.forEach((tag, index) => placed.push({ ...tag, centerY: centers[index]!, lane: Math.floor(start / capacity) }));
+    lane.forEach((tag, index) => placed.push({ ...tag, centerY: centers[index]!, lane: Math.floor(start / capacity),
+      leader: Math.abs(centers[index]! - tag.anchorY) > labelHeight / 2 }));
   }
   return placed;
 }
@@ -37,13 +40,14 @@ export function SeriesAxisTags({ placed, pixelHeight, lanes, background }: {
     const edge = left ? "right" : "left";
     const inset = `${tag.lane * 100 / lanes}%`;
     return <Box key={tag.seriesId} style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
-      {/* The tick stays at the observation, even when the badge must move. */}
+      {/* The anchor stays at the observation; it draws a tick when the badge had to move off it. */}
       <Box
         data-gloom-role="chart-series-axis-anchor"
         data-series-id={tag.seriesId}
-        style={{ position: "absolute", [edge]: 0, top: percent(tag.anchorY), width: `calc(${inset} + .5em)`, height: 0, borderTop: `1px ${tag.carried ? "dashed" : "solid"} ${tag.color}` }}
+        data-leader={tag.leader ? "true" : undefined}
+        style={{ position: "absolute", [edge]: 0, top: percent(tag.anchorY), width: `calc(${inset} + .5em)`, height: 0, borderTop: tag.leader ? `1px ${tag.carried ? "dashed" : "solid"} ${tag.color}` : undefined }}
       />
-      <Box style={{ position: "absolute", [edge]: `calc(${inset} + .25em)`, top: percent(Math.min(tag.anchorY, tag.centerY)), height: percent(Math.abs(tag.centerY - tag.anchorY)), width: 0, borderLeft: `1px solid ${tag.color}` }} />
+      {tag.leader ? <Box style={{ position: "absolute", [edge]: `calc(${inset} + .25em)`, top: percent(Math.min(tag.anchorY, tag.centerY)), height: percent(Math.abs(tag.centerY - tag.anchorY)), width: 0, borderLeft: `1px solid ${tag.color}` }} /> : null}
       <Box
         data-gloom-role="chart-series-axis-tag"
         data-series-id={tag.seriesId}

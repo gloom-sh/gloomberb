@@ -15,9 +15,10 @@ import type { PaneProps } from "../../../types/plugin";
 import { Box, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { FILL_REST } from "../../../components/ui/fill";
 import { chromeBarRows } from "../../../components/layout/pane/sizing";
-import { resolveOptionsTarget } from "../../../utils/options";
+import { formatStrikeLabel, resolveOptionsTarget } from "../../../utils/options";
 import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { buildOptionCalcParams, OPTIONS_CALCULATOR_TEMPLATE_ID } from "../options-calculator/model";
+import { formatModelSpotPrice } from "../options/model-spot";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { CLOUD_QUOTE_DELAY_MINUTES } from "../../../api-client/plan-access";
@@ -405,7 +406,7 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
     : selectedCell?.point
       ? `nearest ${selectedCell.point.contract.contractSymbol} · mid ${formatPrice(selectedCell.point.mid)} · spread ${formatPrice(selectedCell.point.spread)} · OI ${selectedCell.point.openInterest ?? "--"} · residual ${formatIv(selectedCell.fitResidual)}`
       : selectedCell?.volatility != null
-        ? `${selectedRow?.label} · K ${selectedCell.strike == null ? "--" : formatPrice(selectedCell.strike)} · fitted IV ${formatIv(selectedCell.volatility)}`
+        ? `${selectedRow?.label} · K ${selectedCell.strike == null ? "--" : formatStrikeLabel(selectedCell.strike)} · fitted IV ${formatIv(selectedCell.volatility)}`
         : "no clean quote at this cell";
   usePaneNoticeFooter({ registrationId: "ovdv-notices", notices: [...new Set(notices)], focused });
   usePaneFooter("ovdv", () => ({
@@ -510,8 +511,8 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
             onChange: (value: string) => setHistoryDate(value || null) }] : []),
         ]}
         meta={!snapshot ? undefined : snapshot.stored
-          ? `Stored close · spot ${formatPrice(snapshot.spot)} · captured ${formatCaptureTime(snapshot.stored.capturedAt)} New York`
-          : [`Spot ${formatPrice(snapshot.spot)}${quote?.currency ? ` ${quote.currency}` : ""}`,
+          ? `Stored close · spot ${formatModelSpotPrice(snapshot.spot)} · captured ${formatCaptureTime(snapshot.stored.capturedAt)} New York`
+          : [`Spot ${formatModelSpotPrice(snapshot.spot)}${quote?.currency ? ` ${quote.currency}` : ""}`,
             // The close a closed session's chain is priced at dates the chain too.
             spotBasis, snapshot.spotBasis?.basis === "close" ? null : selectedExpiry?.asOf?.slice(0, 10)].filter(Boolean).join(" · ")} /> : null}
       <PaneStatusBody loading={active.loading && !snapshot && !fateNote}
@@ -575,5 +576,5 @@ function ExpiryTable({ snapshot, selected, onSelect, forwards, width, height, fo
     sortColumnId={sort.columnId} sortDirection={sort.direction} onHeaderClick={(id) => setSort((current) => nextHeaderSort(current, id))}
     renderCell={(entry, column) => { const raw = value(entry, column.id); return { text: column.id === "expiry" ? expiryLabel(entry.expiration)
       : raw == null ? missing(entry, column.id) : typeof raw === "string" ? raw : column.id === integerColumn ? String(raw)
-        : forwards ? (column.id === "1" && raw > 0 ? `+${formatPrice(raw)}` : formatPrice(raw)) : formatVolPoints(raw) }; }} emptyStateTitle="No expiry observations." />;
+        : forwards ? (column.id === "0" ? formatModelSpotPrice(raw) : column.id === "1" && raw > 0 ? `+${formatPrice(raw)}` : formatPrice(raw)) : formatVolPoints(raw) }; }} emptyStateTitle="No expiry observations." />;
 }

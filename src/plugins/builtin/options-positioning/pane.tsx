@@ -34,6 +34,7 @@ import type { ResolvedSeries } from "../../../time-series/types";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, Text } from "../../../ui";
 import { formatCompact } from "../../../utils/format";
+import { formatStrikeLabel } from "../../../utils/options";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { isPlainKey } from "../../../utils/keyboard";
 import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
@@ -65,7 +66,6 @@ import {
   positioningSpotDetail,
   formatPayout,
   formatRatio,
-  formatStrike,
   gammaWalls,
   netGammaByExpiry,
   openInterestTotal,
@@ -352,7 +352,7 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
   ] : [], [colors.negative, colors.positive, strikeChart, strikeWindow]);
   const callTotal = expiries.find((row) => row.date === shownExpiry);
   const strikeFigures = useMemo<StatItem[]>(() => !callTotal ? [] : [
-    { id: "max-pain", label: "Max pain", value: maxPain == null ? "--" : formatStrike(maxPain), color: colors.warning,
+    { id: "max-pain", label: "Max pain", value: maxPain == null ? "--" : formatStrikeLabel(maxPain), color: colors.warning,
       detail: maxPain == null ? undefined : `${formatDistance(maxPain, spot)} vs spot` },
     { id: "spot", label: "Spot", value: formatLevel(spot), ...spotStamp },
     { id: "pc", label: "P/C OI", value: formatRatio(callTotal.putCallRatio) },
@@ -370,13 +370,13 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
       const value = openInterestTotal(row);
       return value == null ? [] : [value];
     }),
-    value: selectedStrikeRow ? `${formatStrike(selectedStrikeRow.strike)} ${formatCompact(openInterestTotal(selectedStrikeRow) ?? undefined)}` : "",
+    value: selectedStrikeRow ? `${formatStrikeLabel(selectedStrikeRow.strike)} ${formatCompact(openInterestTotal(selectedStrikeRow) ?? undefined)}` : "",
     color: colors.textMuted,
   }, [colors.textMuted, selectedStrikeRow, strikeWindow]);
   const renderStrike = useCallback((row: StrikeOpenInterest, column: DataTableColumn): DataTableCell => {
     switch (column.id) {
       case "strike": return {
-        text: formatStrike(row.strike), value: row.strike,
+        text: formatStrikeLabel(row.strike), value: row.strike,
         color: row.strike === maxPain ? colors.warning : colors.textBright,
       };
       case "callOI": return { text: count(row.callOI), value: row.callOI, color: colors.positive };
@@ -446,7 +446,7 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
       case "callWall":
       case "putWall": {
         const strike = expiryWalls?.get(row.date)?.[column.id] ?? null;
-        return { text: strike == null ? "--" : formatStrike(strike), value: strike, color: colors.textMuted };
+        return { text: strike == null ? "--" : formatStrikeLabel(strike), value: strike, color: colors.textMuted };
       }
       case "putCallRatio": return { text: formatRatio(row.putCallRatio), value: row.putCallRatio };
       case "change": {
@@ -454,7 +454,7 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
         return { text: formatCountChange(change), value: change,
           color: change == null || change === 0 ? colors.textMuted : change > 0 ? colors.positive : colors.negative };
       }
-      case "maxPain": return { text: row.maxPain == null ? "--" : formatStrike(row.maxPain), value: row.maxPain, color: colors.warning };
+      case "maxPain": return { text: row.maxPain == null ? "--" : formatStrikeLabel(row.maxPain), value: row.maxPain, color: colors.warning };
       case "distance": return {
         text: formatDistance(row.maxPain, spot),
         value: row.maxPain == null || spot == null ? null : Number(((row.maxPain / spot - 1) * 100).toFixed(4)),
@@ -502,7 +502,7 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
     { id: "flip", label: "Flip", value: formatLevel(gammaData.flip),
       detail: gammaData.flip == null ? "none within 15%" : `${formatDistance(gammaData.flip, gammaSpot)} vs spot` },
     ...([["call-wall", "Call wall", walls.callWall], ["put-wall", "Put wall", walls.putWall]] as const).map(([id, label, strike]) => ({
-      id, label, value: strike == null ? "--" : formatStrike(strike),
+      id, label, value: strike == null ? "--" : formatStrikeLabel(strike),
       detail: strike == null ? undefined : `${formatDistance(strike, gammaSpot)} vs spot`,
     })),
     ...(band ? [{ id: "band", label: "Dealer range", value: `${formatGamma(band.low)} to ${formatGamma(band.high)}`,
@@ -516,12 +516,12 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
   const gammaStrip = useMemo<ChartStripSpec | null>(() => gammaWindow.length < 3 ? null : {
     label: "Net GEX by strike",
     values: gammaWindow.map((row) => row.net),
-    value: selectedGammaRow ? `${formatStrike(selectedGammaRow.strike)} ${formatGamma(selectedGammaRow.net)}` : "",
+    value: selectedGammaRow ? `${formatStrikeLabel(selectedGammaRow.strike)} ${formatGamma(selectedGammaRow.net)}` : "",
     color: colors.textMuted,
   }, [colors.textMuted, gammaWindow, selectedGammaRow]);
   const renderGamma = useCallback((row: GammaStrike, column: DataTableColumn): DataTableCell => {
     switch (column.id) {
-      case "strike": return { text: formatStrike(row.strike), value: row.strike, color: colors.textBright };
+      case "strike": return { text: formatStrikeLabel(row.strike), value: row.strike, color: colors.textBright };
       case "calls": return { text: formatGamma(row.calls), value: row.calls, color: colors.positive };
       case "puts": return { text: formatGamma(-row.puts), value: -row.puts, color: colors.negative };
       case "net": return { text: formatGamma(row.net), value: row.net, color: row.net >= 0 ? colors.positive : colors.negative };
@@ -562,7 +562,7 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
               { id: "spot", ratio: spot == null ? null : strikeChart.ratio(spot), label: "spot", color: markerColor },
               { id: "max-pain", ratio: maxPain == null ? null : strikeChart.ratio(maxPain), label: "max pain", color: colors.warning },
             ]}
-            formatCursor={(ratio) => formatStrike(nearestStrike(strikeWindow, strikeChart.at(ratio)))}
+            formatCursor={(ratio) => formatStrikeLabel(nearestStrike(strikeWindow, strikeChart.at(ratio)))}
             formatValue={(value) => count(Math.abs(value))}
             formatAxisValue={(value, domain) => formatCompactAxis(Math.abs(value), domain)}
             selection={strikeSelection} remoteKind="opx-strikes" />,
@@ -629,7 +629,7 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
                     { id: "spot", ratio: gammaSpot == null ? null : gammaChart.ratio(gammaSpot), label: "spot", color: markerColor },
                     { id: "flip", ratio: gammaData.flip == null ? null : gammaChart.ratio(gammaData.flip), label: "flip", color: colors.warning },
                   ]}
-                  formatCursor={(ratio) => formatStrike(nearestStrike(gammaWindow, gammaChart.at(ratio)))}
+                  formatCursor={(ratio) => formatStrikeLabel(nearestStrike(gammaWindow, gammaChart.at(ratio)))}
                   formatValue={formatGamma} formatAxisValue={formatCompactAxis}
                   legendAccessory={assumption ? <Text fg={colors.textMuted}>{assumption}</Text> : undefined}
                   legendAccessoryWidth={assumption?.length}
