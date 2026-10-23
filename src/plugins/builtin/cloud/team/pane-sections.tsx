@@ -45,6 +45,14 @@ const LABEL_WIDTH = 12;
 /** What the pane's work on one row shows, by the row's key (`member:<id>`, `invitation:<id>`, `link:<token>`, `channel:<id>`). */
 export type TeamRowStates = (row: string) => TeamRowState | undefined;
 
+/** The columns the widest status among `rows` takes with its gap, so the fixed columns give it room and the buttons stay in view. */
+function statusRoom(rowState: TeamRowStates, rows: readonly string[]): number {
+  return rows.reduce((room, row) => {
+    const text = rowState(row)?.status?.text;
+    return text ? Math.max(room, text.length + 1) : room;
+  }, 0);
+}
+
 /** What stopped a form (invite, a new link or channel) from going through, right under its field or button. */
 function FormError({ text, width, indent = LABEL_WIDTH + 1 }: { text: string | null | undefined; width: number; indent?: number }) {
   if (!text) return null;
@@ -84,7 +92,9 @@ export function MembersSection({
   const accent = teamAccentHex(team.accentColor);
   const compact = width < 64;
   const handleWidth = compact ? 16 : 18;
-  const nameWidth = compact ? 0 : Math.max(0, Math.min(22, width - handleWidth - 40));
+  // The display name gives up its columns to a row's status first, for every row alike.
+  const room = statusRoom(rowState, members.map((member) => `member:${member.id}`));
+  const nameWidth = compact ? 0 : Math.max(0, Math.min(22, width - handleWidth - 40 - room));
   return (
     <Box flexDirection="column" gap={1} width={width}>
       <SectionTitle detail={`${members.length} of ${team.memberLimit ?? 25}`}>Members</SectionTitle>
@@ -176,6 +186,8 @@ export function InvitesSection({
 }) {
   const manage = canManageTeam(team.role);
   const canLink = canInviteToTeam(team);
+  // The link gives up its columns to a row's status first, for every link alike.
+  const linkStatusRoom = statusRoom(rowState, links.map((link) => `link:${link.token}`));
   return (
     <Box flexDirection="column" gap={1} width={width}>
       {manage ? (
@@ -211,7 +223,7 @@ export function InvitesSection({
                 <Text width={18} fg={colors.text}>
                   {truncate(invitation.invitee ? userHandle(invitation.invitee) : "someone by email", 18)}
                 </Text>
-                <Text fg={colors.textDim}>{`from ${userHandle(invitation.inviter)} · expires ${describeExpiry(invitation.expiresAt)}`}</Text>
+                <Text fg={colors.textDim} truncate wrapMode="none" flexShrink={1} minWidth={0}>{`from ${userHandle(invitation.inviter)} · expires ${describeExpiry(invitation.expiresAt)}`}</Text>
                 <Box flexGrow={1} />
                 <RowStatus state={state} />
                 <PaneButton
@@ -237,8 +249,8 @@ export function InvitesSection({
               const state = rowState(`link:${link.token}`);
               return (
                 <AccentRow key={link.token} accent={colors.textMuted} width={width} state={state}>
-                  <Text fg={colors.text} flexShrink={0}>{truncate(shortenInviteUrl(link.url), Math.max(12, width - 44))}</Text>
-                  <Text fg={colors.textDim}>{`· ${uses} · ${describeExpiry(link.expiresAt)}`}</Text>
+                  <Text fg={colors.text} flexShrink={0}>{truncate(shortenInviteUrl(link.url), Math.max(12, width - 44 - linkStatusRoom))}</Text>
+                  <Text fg={colors.textDim} truncate wrapMode="none" flexShrink={1} minWidth={0}>{`· ${uses} · ${describeExpiry(link.expiresAt)}`}</Text>
                   <Box flexGrow={1} />
                   <RowStatus state={state} />
                   <PaneButton id={`copy-link:${link.token}`} label="Copy" variant="ghost" onPress={() => onCopyLink(link)} />
