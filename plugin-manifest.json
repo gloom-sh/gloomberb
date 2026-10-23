@@ -1065,7 +1065,7 @@
           {
             "code": "OPX",
             "name": "Options Positioning",
-            "description": "Open interest by strike and expiry, max pain, and dealer gamma (GEX)."
+            "description": "Open interest by strike and expiry, max pain, walls and dealer gamma (GEX); BTC-USD and ETH-USD from Deribit."
           },
           {
             "code": "GEX",
@@ -1085,7 +1085,7 @@
           {
             "code": "OVDV",
             "name": "Volatility Surface",
-            "description": "Implied volatility surface, smiles, term structure, skew and forwards."
+            "description": "Implied volatility surface, smiles, term structure, skew (25-delta risk reversal and butterfly) and forwards; DVOL beside BTC-USD and ETH-USD."
           },
           {
             "code": "HVG",
