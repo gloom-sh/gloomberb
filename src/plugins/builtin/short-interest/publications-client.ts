@@ -14,6 +14,7 @@ const date = (value: unknown): value is string => typeof value === "string" && /
 const dateOrNull = (value: unknown) => value === null || date(value);
 const count = (value: unknown): value is number => typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 const countOrNull = (value: unknown) => value === null || count(value);
+const sharesOrNull = (value: unknown) => value === null || typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= Number.MAX_SAFE_INTEGER;
 const numberOrNull = (value: unknown) => value === null || typeof value === "number" && Number.isFinite(value) && value >= 0;
 const url = (value: unknown): value is string => typeof value === "string" && /^https?:\/\//.test(value);
 
@@ -45,7 +46,8 @@ export function validatePublication(payload: PublicationPayload, symbol: string,
       identity = `${row.date}:${row.cusip}`;
     } else {
       if (!("weekStart" in row) || !date(row.weekStart) || new Date(row.weekStart).getUTCDay() !== 1
-        || ![row.atsShares, row.nonAtsShares, row.totalShares, row.atsTrades, row.nonAtsTrades].every(countOrNull)
+        || ![row.atsShares, row.nonAtsShares, row.totalShares].every(sharesOrNull)
+        || ![row.atsTrades, row.nonAtsTrades].every(countOrNull)
         || !numberOrNull(row.atsSharePercent) || row.atsSharePercent !== null && row.atsSharePercent > 100) return invalid();
       const complete = row.atsShares !== null && row.nonAtsShares !== null;
       const total = complete ? row.atsShares! + row.nonAtsShares! : null;

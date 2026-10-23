@@ -60,3 +60,16 @@ test("headless reports retain exact fail quantities and partial weekly source me
   expect(weekly.metadata?.coverage).toEqual(data.coverage);
   expect(weekly.sections[0]!.rows![0]!.atsSharePercent).toBe(25);
 });
+
+
+test("weekly off-exchange history preserves fractional shares while trade counts remain integers", () => {
+  const payload = ats();
+  const row = payload.history[0]!;
+  row.atsShares = 34953477;
+  row.nonAtsShares = 72759593.931842;
+  row.totalShares = row.atsShares + row.nonAtsShares;
+  row.atsSharePercent = row.atsShares / row.totalShares * 100;
+  expect(validatePublication(payload, "AAPL", "ats").history[0]).toEqual(row);
+  row.atsTrades = 1.5;
+  expect(() => validatePublication(payload, "AAPL", "ats")).toThrow("invalid");
+});
