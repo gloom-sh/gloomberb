@@ -15,6 +15,7 @@ import {
 } from "./normalize";
 
 const configLog = debugLog.createLogger("config");
+const IN_MEMORY_DATA_DIR = ":memory:";
 
 /**
  * The config.json for a data directory: the file inside it, except that the
@@ -130,6 +131,9 @@ async function writeConfigFile(configPath: string, contents: string): Promise<vo
  * and the next one still runs.
  */
 export async function saveConfig(config: AppConfig): Promise<void> {
+  // `:memory:` is the data directory of a config kept in memory (tests, as for
+  // SQLite): there is no file, and writing one would land under the working directory.
+  if (config.dataDir === IN_MEMORY_DATA_DIR) return;
   const configPath = configFileFor(config.dataDir);
   // Written as it was when called, however the caller's object changes while
   // earlier saves are still running.
