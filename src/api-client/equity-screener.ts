@@ -156,6 +156,29 @@ export interface ScreenPayload {
   nextCursor: string | null;
   warnings: string[];
 }
+export interface ScreenCriterionCheck {
+  criterion: ScreenCriterion;
+  /** The screen's currency restriction, which also controls membership. */
+  implicit: boolean;
+  value: number | string | null;
+  passes: boolean | null;
+  state: "available" | "partial" | "stale" | "unavailable" | "missing" | "not-covered";
+  unit: string;
+  asOf: string | null;
+  observedAt: string | null;
+  reason: string | null;
+}
+export interface ScreenCheckPayload {
+  version: 1;
+  status: "available" | "partial" | "not-covered";
+  symbol: string;
+  definition: ScreenDefinition;
+  snapshot: ScreenSnapshot;
+  matches: boolean | null;
+  row: Pick<ScreenRow, "symbol" | "exchange" | "name" | "currency" | "sector" | "industry"> | null;
+  criteria: ScreenCriterionCheck[];
+  warnings: string[];
+}
 export interface SavedScreen {
   id: string;
   name: string;

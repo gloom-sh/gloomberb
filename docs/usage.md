@@ -1311,6 +1311,35 @@ edits from another device are reported. `x` exports all matches from the display
 snapshot, up to 5,000 rows. The normal pane CSV menu exports currently loaded rows.
 Expired snapshots ask for a refresh before continuing or exporting.
 
+To find out why a ticker is absent, choose **Check ticker** (`t`) in Results or
+Criteria, enter a ticker such as `NVDA`, then press Enter or click **Check**. The
+check lists every criterion, its stored value, Pass or Fail, and the observation's
+date and state. The currency restriction is a criterion too: it filters listings
+by their quote currency and does not convert values. Open a saved screen first to
+check against it; unsaved edits apply immediately. A check uses the displayed
+screen's snapshot when available. Refresh an expired screen before checking again.
+
+The decision uses the stored screening values, even when Results overlays a more
+recent quote. Missing values are not zero: ordinary comparisons fail on them,
+while an explicit `missing` condition passes. A ticker outside the covered universe
+reads **Not covered**, with its criteria **Not evaluated**. Stale and partial values
+retain their state beside the decision. Passing every criterion means the ticker
+qualifies; sort order and pagination can still put it beyond the rows loaded.
+
+The same check is available without opening a pane:
+
+```sh
+gloomberb fn EQS --check NVDA
+gloomberb fn EQS --check NVDA --saved "Growth" --json
+gloomberb fn EQS --check NVDA --definition '{"version":1,"currency":"USD","criteria":[{"field":"trailingPE","op":"lte","value":25}],"sort":{"field":"marketCap","direction":"desc"}}'
+```
+
+`--saved` accepts a saved screen's ID or exact name and cannot be combined with
+`--definition`. With neither, the check uses the default screen. JSON includes the
+raw criterion values and verdicts, overall match status, definition and snapshot.
+Saving and opening screens keeps the same account requirements; checking Pro
+criteria requires Gloom Pro.
+
 `gloomberb fn EQS --metric trailingPE --json` returns the first 100 matches with the
 snapshot, match and coverage counts, and the chosen metric's date and state per row.
 Company KPIs and guidance (`kpiBacklog`, `kpiNimPercent`, ...) and hiring and app

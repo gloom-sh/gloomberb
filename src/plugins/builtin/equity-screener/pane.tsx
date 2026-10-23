@@ -54,6 +54,7 @@ import { useSampledValue } from "../../../state/hooks/live-ticker-financials";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import { SignInWall } from "../cloud/auth-actions";
 import { CriterionEditor } from "./criterion-editor";
+import { ScreenTickerCheck } from "./ticker-check";
 import {
   fetchSavedScreens,
   fetchScreenFields,
@@ -72,6 +73,7 @@ import {
   SIGN_COLORED,
   screenColumnLabel,
   screenCurrencyEmpty,
+  screenDefinitionKey,
   screenLabel,
   screenRowId,
   screenYtdBase,
@@ -278,6 +280,10 @@ function EquityScreenView({
   const [saveForm, setSaveForm] = useState(false),
     [name, setName] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
+  const [check, setCheck] = useState<{
+    definition: ScreenDefinition;
+    snapshotId?: string;
+  } | null>(null);
   const fields = useAsyncResource(loadFields);
   const savedLoader = useCallback(
     () => fetchSavedScreens(),
@@ -365,6 +371,7 @@ function EquityScreenView({
     try {
       setDefinition(parseScreenDefinition(next));
       setOpenId(null);
+      setCheck(null);
       setActionError(null);
     } catch (error) {
       setActionError(errorText(error));
@@ -374,11 +381,22 @@ function EquityScreenView({
     setMode(next);
     setEditing(null);
     setSaveForm(false);
+    setCheck(null);
     setActionError(null);
   };
   const research = () => {
     if (selected) openDescription(selected.symbol, selected.exchange);
   };
+  const startCheck = () => {
+    setCheck({
+      definition,
+      snapshotId: data?.snapshot && screenDefinitionKey(data.definition) === screenDefinitionKey(definition)
+        ? data.snapshot.id
+        : undefined,
+    });
+    setActionError(null);
+  };
+  const checkHint = { id: "check", key: "t", label: "check ticker", title: "Check ticker", onPress: startCheck };
   const startSave = () => {
     if (!access.emailVerified) { switchMode("saved"); return; }
     setName(currentSaved?.name ?? "");
@@ -475,7 +493,7 @@ function EquityScreenView({
   useAutoRefresh(results.updatedAt, results.load);
   const openQueryControl = () => queryControl.current?.open();
   const hints =
-    saveForm || editing !== null
+    saveForm || editing !== null || check
       ? []
       : mode === "criteria"
         ? [
@@ -502,6 +520,7 @@ function EquityScreenView({
                 }),
               disabled: !definition.criteria.length,
             },
+            checkHint,
           ]
         : mode === "saved"
           ? [
@@ -521,6 +540,7 @@ function EquityScreenView({
                 ? [{ id: "metric", key: "m", label: "etric", onPress: openQueryControl }]
                 : []),
               { id: "save", key: "s", label: "ave screen", onPress: startSave },
+              checkHint,
               {
                 id: "export",
                 key: "x",
@@ -541,7 +561,7 @@ function EquityScreenView({
             ];
   usePaneFooter(
     "equity-screener",
-    () => ({
+    () => check ? null : ({
       info: [
         ...(results.loading || results.loadingMore
           ? [
@@ -597,11 +617,13 @@ function EquityScreenView({
       saving,
       exporting,
       hints,
+      check,
     ],
   );
   usePaneNoticeFooter({
     registrationId: "equity-screener:notices",
     focused,
+    enabled: !check,
     notices: [
       ...(data?.warnings ?? []),
       ...(opened?.warnings ?? []),
@@ -653,6 +675,7 @@ function EquityScreenView({
       event.targetEditable ||
       event.ctrl ||
       event.meta ||
+      check ||
       editing !== null
     )
       return;
@@ -682,7 +705,7 @@ function EquityScreenView({
     tabs: TABS,
     activeValue: mode,
     onSelect: switchMode,
-    focused: focused && !saveForm && editing === null,
+    focused: focused && !saveForm && editing === null && !check,
     dense: true,
   });
   const bodyHeight = Math.max(5, height - 1 - tabRows);
@@ -1029,11 +1052,19 @@ function EquityScreenView({
       {tabStrip}
       <PageStackView
         focused={focused}
-        detailOpen={saveForm}
-        onBack={() => setSaveForm(false)}
-        detailTitle="Save screen"
+        detailOpen={saveForm || !!check}
+        onBack={() => { setSaveForm(false); setCheck(null); }}
+        detailTitle={check ? "Check ticker" : "Save screen"}
         rootContent={body}
-        detailContent={saveForm ? saveContent : null}
+        detailContent={check ? (
+          <ScreenTickerCheck
+            definition={check.definition}
+            snapshotId={check.snapshotId}
+            width={width}
+            height={bodyHeight - 1}
+            focused={focused}
+          />
+        ) : saveForm ? saveContent : null}
       />
     </Box>
   );

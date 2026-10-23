@@ -228,7 +228,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     summary: "Screen covered stocks on valuation, growth, margins, liquidity, volatility, short interest, insider activity and 13F holders, then rank the matches by any metric. "
       + "ATR% is the 14-session average true range as a percent of the last close. IV rank is a rank, not an IV percentile: 0 is the lowest 30-day implied volatility of the past 52 weeks and 100 the highest.",
     usage: ["EQS"],
-    keys: [key("a", "dd criterion"), key("m", "etric"), key("s", "ave screen"), key("o", "pen research")],
+    keys: [key("a", "dd criterion"), key("m", "etric"), key("t", "check ticker"), key("s", "ave screen"), key("o", "pen research")],
     data: same("Daily snapshot, statements as filed"),
     bloomberg: ["EQS"],
   },

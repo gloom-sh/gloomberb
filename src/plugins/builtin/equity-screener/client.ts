@@ -6,7 +6,9 @@ import type {
   ScreenPayload,
   ScreenQuery,
   SavedScreen,
+  ScreenCheckPayload,
 } from "../../../api-client/equity-screener";
+import { screenCheckTicker, validateScreenCheck } from "./screen-check";
 
 type ScreenerClient = Pick<typeof apiClient, "equityScreener">;
 const json = (method: string, body: unknown, init: RequestInit = {}): RequestInit => ({
@@ -22,7 +24,8 @@ export const screenerApi = {
   fields: (signal?: AbortSignal) => apiClient.equityScreener<ScreenFieldsResponse>("fields?include=social,research,attention,hiring-apps,kpis,volatility,dividends", { signal }),
   export: (definition: ScreenDefinition, snapshotId: string) =>
     apiClient.equityScreener<ScreenExportResponse>("export", json("POST", { ...definition, snapshotId }, { headers: { Accept: "application/json" } })),
-  saved: async () => (await apiClient.equityScreener<{ screens: SavedScreen[] }>("saved")).screens,
+  saved: async (signal?: AbortSignal, client: ScreenerClient = apiClient) =>
+    (await client.equityScreener<{ screens: SavedScreen[] }>("saved", { signal })).screens,
   create: async (name: string, definition: ScreenDefinition) =>
     (await apiClient.equityScreener<{ screen: SavedScreen }>("saved", json("POST", { name, definition }))).screen,
   update: async (id: string, revision: number, name: string, definition: ScreenDefinition) =>
@@ -75,9 +78,24 @@ export function validateSavedScreen(screen: SavedScreen): SavedScreen {
   parseScreenDefinition(screen.definition);
   return screen;
 }
-export async function fetchSavedScreens() {
-  const rows = await screenerApi.saved();
+export async function fetchSavedScreens(signal?: AbortSignal, client: ScreenerClient = apiClient) {
+  const rows = await screenerApi.saved(signal, client);
   if (!Array.isArray(rows) || rows.length > 50)
     throw new Error("Invalid saved screen collection.");
   return rows.map(validateSavedScreen);
+}
+
+export async function fetchScreenCheck(
+  definition: ScreenDefinition,
+  tickerText: string,
+  snapshotId?: string,
+  signal?: AbortSignal,
+  client: ScreenerClient = apiClient,
+): Promise<ScreenCheckPayload> {
+  const ticker = screenCheckTicker(tickerText);
+  const parsed = parseScreenDefinition(definition);
+  const payload = await client.equityScreener<ScreenCheckPayload>("check", json("POST", {
+    ...parsed, ...ticker, ...(snapshotId ? { snapshotId } : {}),
+  }, { signal }));
+  return validateScreenCheck(payload, parsed, ticker, snapshotId);
 }
