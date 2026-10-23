@@ -245,12 +245,12 @@ test("a prepared partial power capture retains its carbon warning in the pane an
   serve();
   const failure = spyOn(apiClient, "getCloudEuropeCarbon").mockRejectedValue(new ApiRequestError("Fixture unavailable", 503));
   try {
-    const resolved = { options: { tab: "prices" }, createOptions: {} } as ResolvedPaneFunction;
+    const resolved = { options: { tab: "prices" }, createOptions: {} } as unknown as ResolvedPaneFunction;
     const prepared = await powerScreenshotEvidence.prepare!({ resolved, settings: {} } as Parameters<NonNullable<typeof powerScreenshotEvidence.prepare>>[0]);
     const snapshot = prepared.settings.powerPricesSnapshot as PowerPricesSnapshot;
     const message = "The EU carbon auction price is not available yet.";
     expect(snapshot).toMatchObject({ board, carbon: null, carbonError: message });
-    expect(snapshot.history).toEqual(history("DE"));
+    expect<unknown>(snapshot.history).toEqual(history("DE"));
     const id = "power:captured";
     const settings = { tab: "prices", ...prepared.settings };
     const config = createTestPaneConfig("/unused/carbon-capture-test", { paneId: "power", instanceId: id, settings });
