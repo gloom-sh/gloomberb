@@ -1,6 +1,6 @@
 import type { GloomPluginContext } from "../../../types/plugin";
 import { newYorkToday } from "../earnings/board-model";
-import { EVENT_ALERTS_KEY, eventAlertTarget, isScheduledEventRule, readEventAlerts, type EventAlertRule } from "./events";
+import { EVENT_ALERTS_KEY, eventAlertTarget, isScheduledEventRule, readEventAlerts, writeEventAlerts, type EventAlertRule } from "./events";
 import type { FiredAlertInput } from "./fired-log";
 import {
   lookupScheduledDates,
@@ -87,6 +87,8 @@ export function startScheduledEventAlerts(
     const current = read();
     if (current.error) return;
     let changed = false;
+    // Sent once the rules are saved: a save that fails tells no one, so the next check cannot tell twice.
+    const due: { body: string; entry: FiredAlertInput }[] = [];
     const next = current.rules.map((rule): EventAlertRule => {
       const scheduled = rule.status === "active" ? readScheduledRule(rule) : null;
       if (!scheduled) return rule;
@@ -106,24 +108,33 @@ export function startScheduledEventAlerts(
         const body = result && scheduled.target.kind === "earnings"
           ? scheduledResultsMessage(scheduled.target.symbol, result)
           : scheduledAlertMessage(scheduled.target, updated.eventDate, today);
-        record?.({
+        due.push({ body, entry: {
           kind: rule.kind, ruleId: rule.id, rule: eventAlertTarget(rule), firedAt: now(),
           value: result?.epsActual ?? null, ...(result ? { unit: "EPS" } : {}), detail: body, quoteAt: null, source: null,
           ...(scheduled.target.kind === "earnings" ? { symbol: scheduled.target.symbol, ...(scheduled.target.exchange ? { exchange: scheduled.target.exchange } : {}) } : {}),
-        });
-        ctx.notify({
-          body,
-          type: "info",
-          desktop: "always",
-          persistent: true,
-          action: { label: "Open", onClick: () => ctx.showPane("alerts") },
-        });
+        } });
         updated = { ...updated, firedFor: updated.eventDate };
         changed = true;
       }
       return updated;
     });
-    if (changed && !stopped) await ctx.configState.set(EVENT_ALERTS_KEY, JSON.stringify(next));
+    if (!changed || stopped) return;
+    try {
+      await ctx.configState.set(EVENT_ALERTS_KEY, writeEventAlerts(next, current.kept));
+    } catch (error) {
+      ctx.log.warn(due.length ? "Event alerts not saved, so not sent" : "Event dates not saved", { error: String(error) });
+      return;
+    }
+    for (const { body, entry } of due) {
+      ctx.notify({
+        body,
+        type: "info",
+        desktop: "always",
+        persistent: true,
+        action: { label: "Open", onClick: () => ctx.showPane("alerts") },
+      });
+      record?.(entry);
+    }
   };
 
   const run = async () => {

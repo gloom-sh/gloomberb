@@ -70,7 +70,10 @@ export function quoteErrorAlertFields(
 /** How many times the last price a target may be, either way, before it reads as a typo or another instrument's price. */
 const MAX_TARGET_RATIO = 10;
 
-const priceText = (value: number) => String(Math.abs(value) >= 1 ? Number(value.toFixed(2)) : Number(value.toPrecision(4)));
+/** A price as typed or quoted, never in exponent form: 85,000, 37.35, 0.0000001234. */
+const priceText = (value: number) => value.toLocaleString("en-US", Math.abs(value) >= 1
+  ? { maximumFractionDigits: 2 }
+  : { maximumSignificantDigits: 4 });
 
 /**
  * Why a price target is refused: more than ten times the last price, or under

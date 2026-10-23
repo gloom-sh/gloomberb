@@ -1,35 +1,77 @@
 import type { DataProvider } from "../../../types/data-provider";
 import type { GloomPluginContext } from "../../../types/plugin";
-import { resolveEntryValue } from "../../../market-data/coordinator";
+import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator";
+import { withDeadline } from "../../../utils/async-deadline";
 import { errorMessage } from "../../../utils/errors";
-import { daysToExpiryFrom, interpolateTotalVariance, type VolatilityTenorPoint } from "../shared/volatility";
-import { createSurfaceDependencies, loadVolatilitySurface, type SurfaceLoaderDependencies } from "../vol-surface/client";
-import type { SurfaceExpiry } from "../vol-surface/model";
-import { TERM_SLOPE_MIN_DAYS } from "../vol-surface/tables";
-import { EVENT_ALERTS_KEY, readEventAlerts, type EventAlertRule, type IvLevelCheck } from "./events";
+import { createSurfaceDependencies, loadVolatilitySurface, withReusedYieldCurve, type SurfaceLoaderDependencies } from "../vol-surface/client";
+import { buildSurfaceGrid, DEFAULT_SURFACE_SETTINGS, type SurfaceExpiry, type SurfaceSnapshot } from "../vol-surface/model";
+import { IV_LEVEL_ALERTS_KEY, readEventAlerts, updateEventAlerts, type EventAlertRule } from "./events";
 import { type FiredAlertInput } from "./fired-log";
 import { formatIvLevel, IV_LEVEL_NAMES, researchAlertDescription } from "./research-builder";
 import { readResearchRule, type IvLevelMetric, type ResearchAlertConfig } from "./research-rules";
 
-/** The constant maturity an IV level rule reads, in calendar days. */
-const IV_LEVEL_DAYS = 30;
+/** OVDV's 1M fixed tenor: the constant maturity an IV level rule reads. */
+const IV_LEVEL_TENOR = { label: "1M", years: 30 / 365 };
+/** OVDV's delta axis at that tenor: the 25-delta put, ATM (the delta-neutral strike) and the 25-delta call. */
+const IV_LEVEL_DELTAS = [-0.25, 0, 0.25] as const;
 /**
- * A front expiry this close is left out of the reading, as OVDV leaves it out
- * of its term slope: a few days of IV are mostly noise.
+ * A tenor with listed expiries on one side only is carried flat from the
+ * nearest (OVDV marks it E); an IV level takes that only from an expiry this
+ * close to 30 days.
  */
-const MIN_EXPIRY_DAYS = TERM_SLOPE_MIN_DAYS;
-/** A reading carried flat from the nearest expiry when none is listed on one side of 30 days, if it is this close. */
 const MAX_EXTRAPOLATION_DAYS = 10;
 /** Option quotes move through the session; readings are taken this often while the app runs. */
 const CHECK_INTERVAL_MS = 15 * 60_000;
 const FIRST_CHECK_DELAY_MS = 8_000;
+/** A symbol's option chains that have not all arrived by then are given up on until the next check. */
+const LOAD_TIMEOUT_MS = 60_000;
+
+/**
+ * The device's last reading of each IV level rule, by rule id, in plugin
+ * resume state: never synced, so a reading every 15 minutes writes nothing
+ * another device pulls, and a pull never takes one away.
+ */
+export const IV_LEVEL_CHECKS_KEY = "ivLevelChecks";
+
+/** One check of an IV level rule: the level in the rule's unit, and the option quotes it was read from. */
+export interface IvLevelCheck {
+  checkedAt: number;
+  /** % IV for an ATM rule, vol points for a risk reversal; null when the check found none. */
+  value: number | null;
+  /** When the option quotes behind the reading were observed. */
+  quoteAt?: string;
+  /** How current those quotes are: `real-time`, `15 min delayed`. */
+  source?: string;
+  /** Why there was no reading. */
+  error?: string;
+}
+
+const isText = (value: unknown): value is string => typeof value === "string" && value.length > 0 && value.length <= 300;
+
+/** The saved readings that read; anything else is dropped, and the next check writes it again. */
+export function readIvLevelChecks(value: unknown): Record<string, IvLevelCheck> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const checks: Record<string, IvLevelCheck> = {};
+  for (const [id, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (!raw || typeof raw !== "object") continue;
+    const check = raw as Record<string, unknown>;
+    if (!Number.isFinite(check.checkedAt) || (check.value !== null && !Number.isFinite(check.value))) continue;
+    checks[id] = {
+      checkedAt: check.checkedAt as number,
+      value: check.value as number | null,
+      ...(isText(check.quoteAt) ? { quoteAt: check.quoteAt } : {}),
+      ...(isText(check.source) ? { source: check.source } : {}),
+      ...(isText(check.error) ? { error: check.error } : {}),
+    };
+  }
+  return checks;
+}
 
 /**
  * An IV level rule's symbol's 30-day ATM IV and 25-delta risk reversal, in
- * decimals, read from the listed expiries OVDV fits: its Term view's ATM IV and
- * 25D put and call IVs for the expiries either side of 30 days, interpolated
- * in total variance as OVDV's fixed tenors are. Null with `error` when the
- * chain gives none.
+ * decimals: the 1M row of OVDV's Table on the delta axis with fixed tenors
+ * (ATM, 25dP and 25dC), solved at 30 days on the same fits. Null with `error`
+ * when the chain gives none.
  */
 export interface IvLevelReading {
   atm: number | null;
@@ -41,20 +83,6 @@ export interface IvLevelReading {
   error?: string;
 }
 
-/**
- * The listed expiries a 30-day reading needs: the two nearest on each side of
- * 30 days, a week out or more, so one with no clean smile still leaves one.
- */
-export function ivLevelExpiries(catalogue: readonly number[], now: number): number[] {
-  const listed = [...new Set(catalogue)]
-    .map((expiration) => ({ expiration, days: daysToExpiryFrom(expiration, now) }))
-    .filter((entry) => entry.days >= MIN_EXPIRY_DAYS)
-    .sort((a, b) => a.days - b.days);
-  const before = listed.filter((entry) => entry.days <= IV_LEVEL_DAYS).slice(-2);
-  const after = listed.filter((entry) => entry.days > IV_LEVEL_DAYS).slice(0, 2);
-  return [...before, ...after].map((entry) => entry.expiration);
-}
-
 /** How current option quotes are, worded as reports word a feed. */
 function feedWords(expiries: readonly Pick<SurfaceExpiry, "dataSource" | "delayMinutes">[]): string | null {
   if (expiries.length === 0) return null;
@@ -64,29 +92,31 @@ function feedWords(expiries: readonly Pick<SurfaceExpiry, "dataSource" | "delayM
   return null;
 }
 
-/** One measure at 30 days: total-variance interpolation between the expiries either side, flat from a near one. */
-function at30Days(points: readonly VolatilityTenorPoint[]): number | null {
-  const reading = interpolateTotalVariance(points, IV_LEVEL_DAYS / 365);
-  if (!reading) return null;
-  if (reading.extrapolated && Math.abs(reading.sourceYears[0] * 365 - IV_LEVEL_DAYS) > MAX_EXTRAPOLATION_DAYS) return null;
-  return reading.volatility;
-}
-
-/** The 30-day reading from fitted expiries (`ivLevelExpiries` of a chain), with the quotes it came from. */
-export function ivLevelReading(expiries: readonly SurfaceExpiry[]): IvLevelReading {
-  const fitted = expiries.filter((expiry) => expiry.fit && !expiry.error);
-  const atmPoints = fitted.flatMap((expiry) => expiry.atmIV == null ? [] : [{ years: expiry.years, volatility: expiry.atmIV }]);
-  const winged = fitted.filter((expiry) => expiry.skew.put25 != null && expiry.skew.call25 != null);
-  const put = at30Days(winged.map((expiry) => ({ years: expiry.years, volatility: expiry.skew.put25! })));
-  const call = at30Days(winged.map((expiry) => ({ years: expiry.years, volatility: expiry.skew.call25! })));
-  const atm = at30Days(atmPoints);
+/**
+ * The 30-day reading of a surface as OVDV loads it: its own fixed-tenor solve
+ * (`buildSurfaceGrid`), so the figure is the one OVDV shows, with the time and
+ * feed of the expiries either side of 30 days that it comes from.
+ */
+export function ivLevelReading(snapshot: Pick<SurfaceSnapshot, "spot" | "expiries" | "failures">): IvLevelReading {
+  const grid = buildSurfaceGrid(snapshot as SurfaceSnapshot, {
+    axis: "delta", tenors: "fixed", fixedTenors: [IV_LEVEL_TENOR], coordinates: IV_LEVEL_DELTAS,
+  });
+  const row = grid.rows[0];
+  // The expiries the solve stands on: the ones either side of 30 days, or the nearest when there is one side only.
+  const available = snapshot.expiries
+    .filter((expiry) => expiry.fit && expiry.forward != null && expiry.rate != null && expiry.dividendYield != null)
+    .sort((a, b) => a.years - b.years);
+  const right = available.findIndex((expiry) => expiry.years >= IV_LEVEL_TENOR.years);
+  const used = right < 0 ? available.slice(-1) : right === 0 ? available.slice(0, 1) : available.slice(right - 1, right + 1);
+  const tooFar = !!row?.extrapolated && used.every((expiry) => Math.abs(expiry.years - IV_LEVEL_TENOR.years) * 365 > MAX_EXTRAPOLATION_DAYS);
+  const [put, atm, call] = tooFar || !row ? [null, null, null] : row.cells.map((cell) => cell.volatility);
   const rr = put != null && call != null ? call - put : null;
-  const used = fitted.filter((expiry) => expiry.atmIV != null);
   const quoteAt = used.map((expiry) => expiry.asOf).filter((value): value is string => !!value).sort().at(-1) ?? null;
   const error = atm == null && rr == null
-    ? expiries.find((expiry) => expiry.error)?.error ?? `No clean option quotes near ${IV_LEVEL_DAYS} days`
+    ? snapshot.failures.find((failure) => failure.message)?.message ?? snapshot.expiries.find((expiry) => expiry.error)?.error
+      ?? "No clean option quotes near 30 days"
     : undefined;
-  return { atm, rr, quoteAt, source: feedWords(used), ...(error ? { error } : {}) };
+  return { atm: atm ?? null, rr, quoteAt, source: feedWords(used), ...(error ? { error } : {}) };
 }
 
 /** The symbol's listing as an option chain is requested: a research rule's `US` names no venue. */
@@ -95,23 +125,20 @@ const instrumentOf = (config: Pick<ResearchAlertConfig, "symbol" | "exchange">) 
   ...(config.exchange && config.exchange !== "US" ? { exchange: config.exchange } : {}),
 });
 
-/** Loads the expiries around 30 days, fits them as OVDV does at the current price, and reads the levels. */
+/** The symbol's surface as OVDV loads it by default: the same expiries, settings and spot. */
 async function loadIvLevelReading(
   config: Pick<ResearchAlertConfig, "symbol" | "exchange">,
   marketData: Pick<DataProvider, "getQuote">,
   dependencies: SurfaceLoaderDependencies,
-  now = Date.now(),
+  signal: AbortSignal,
 ): Promise<IvLevelReading> {
   const instrument = instrumentOf(config);
   const quote = await marketData.getQuote(instrument.symbol, instrument.exchange);
-  if (!quote || !(quote.price > 0) || !Number.isFinite(quote.price)) throw new Error(`No current price for ${instrument.symbol}`);
-  const catalogue = await dependencies.loadOptions({ instrument });
-  const chain = resolveEntryValue(catalogue);
-  if (!chain) throw new Error(catalogue.error?.message ?? `No option chain for ${instrument.symbol}`);
-  const expiries = ivLevelExpiries(chain.expirationDates, now);
-  if (expiries.length === 0) throw new Error(`No listed expiry near ${IV_LEVEL_DAYS} days`);
-  const snapshot = await loadVolatilitySurface({ instrument, spot: quote.price, spotAsOf: quote.lastUpdated, quote, expiries }, dependencies);
-  return ivLevelReading(snapshot.expiries);
+  if (!quote || !(quote.price > 0) || !Number.isFinite(quote.price) || quote.stale) throw new Error(`No current price for ${instrument.symbol}`);
+  const snapshot = await loadVolatilitySurface({
+    instrument, spot: quote.price, spotAsOf: quote.lastUpdated, quote, settings: DEFAULT_SURFACE_SETTINGS, signal,
+  }, dependencies);
+  return ivLevelReading(snapshot);
 }
 
 /** The reading an IV level rule follows, in its unit: % IV for ATM, vol points for a risk reversal. */
@@ -120,7 +147,7 @@ function ivLevelValue(reading: IvLevelReading, metric: IvLevelMetric): number | 
   return value == null ? null : Number((value * 100).toFixed(2));
 }
 
-/** Whether a reading has reached the rule's level: above it, or below it. */
+/** Whether a reading is past the rule's level, above it or below it, as a price alert's `above` and `below` are. */
 function ivLevelReached(config: Pick<ResearchAlertConfig, "direction" | "threshold">, value: number | null): boolean {
   if (value == null || config.threshold == null) return false;
   return config.direction === "below" ? value < config.threshold : value > config.threshold;
@@ -135,7 +162,7 @@ function ivLevelCheck(reading: IvLevelReading | Error, metric: IvLevelMetric, ch
     value,
     ...(reading.quoteAt ? { quoteAt: reading.quoteAt } : {}),
     ...(reading.source ? { source: reading.source } : {}),
-    ...(value == null ? { error: reading.error ?? (metric === "rr" ? `No 25-delta quotes near ${IV_LEVEL_DAYS} days` : `No ATM quotes near ${IV_LEVEL_DAYS} days`) } : {}),
+    ...(value == null ? { error: reading.error ?? (metric === "rr" ? "No 25-delta quotes near 30 days" : "No ATM quotes near 30 days") } : {}),
   };
 }
 
@@ -146,11 +173,10 @@ function ivLevelMessage(config: ResearchAlertConfig, value: number): string {
 }
 
 /**
- * An IV level rule's last check, for its row: "52.31% · quotes 20:14 UTC, 15 min delayed", the reason
+ * An IV level rule's last check, for its row: "52.31% · quotes 10-22 20:14 UTC, 15 min delayed", the reason
  * there was no reading, or that the running app has not checked it yet.
  */
-export function ivLevelCheckText(rule: Pick<EventAlertRule, "value" | "check">): string {
-  const check = rule.check;
+export function ivLevelCheckText(rule: Pick<EventAlertRule, "value">, check: IvLevelCheck | undefined): string {
   if (!check) return "Not checked yet";
   const metric = readResearchRule("iv_level", rule.value)?.metric as IvLevelMetric | undefined;
   if (check.value == null || !metric) return check.error ?? "No reading";
@@ -173,29 +199,57 @@ export function checkIvLevelAlertsNow(): void {
   checkNow?.();
 }
 
+export interface IvLevelAlertOptions {
+  /** One symbol's reading; it is given up on when `signal` aborts. */
+  load?: (config: ResearchAlertConfig, signal: AbortSignal) => Promise<IvLevelReading>;
+  now?: () => number;
+  /** How long one symbol's reading may take; about a minute. */
+  timeoutMs?: number;
+}
+
 /**
  * Takes a reading for every active IV level rule while the app runs, one per
- * symbol, keeps it on the rule so the Events tab can show it, and notifies
- * once when the level is reached. The rule then reads Alerted until it is
- * re-armed. With no such rules it requests nothing.
+ * symbol, and keeps it on the device for the Events tab. A rule whose reading
+ * is past its level, above or below it as a price alert's is (so one added or
+ * re-armed already past it goes off at that check), is saved as Alerted first
+ * and then notified, once: a save that fails tells no one, so the next check
+ * cannot tell twice. The rule then reads Alerted until it is re-armed. Synced
+ * config changes only then. With no such rules it requests nothing.
  */
 export function startIvLevelAlerts(
-  ctx: Pick<GloomPluginContext, "configState" | "notify" | "showPane" | "log" | "marketData">,
+  ctx: Pick<GloomPluginContext, "configState" | "resume" | "notify" | "showPane" | "log" | "marketData">,
   record: (entry: FiredAlertInput) => void,
-  load: (config: ResearchAlertConfig) => Promise<IvLevelReading> = (() => {
-    const dependencies = createSurfaceDependencies(ctx.marketData);
-    return (config) => loadIvLevelReading(config, ctx.marketData, dependencies);
-  })(),
-  now: () => number = Date.now,
+  options: IvLevelAlertOptions = {},
 ): () => void {
+  const now = options.now ?? Date.now;
+  const timeoutMs = options.timeoutMs ?? LOAD_TIMEOUT_MS;
+  let dependencies: SurfaceLoaderDependencies | null = null;
+  // OVDV's chains, through the coordinator the panes share, so a symbol open in OVDV is read once.
+  const load = options.load ?? ((config: ResearchAlertConfig, signal: AbortSignal) => {
+    dependencies ??= withReusedYieldCurve(createSurfaceDependencies(getSharedMarketDataCoordinator() ? undefined : ctx.marketData));
+    return loadIvLevelReading(config, ctx.marketData, dependencies, signal);
+  });
   let stopped = false;
   let running = false;
   let rerun = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
-  const read = () => readEventAlerts(ctx.configState.get<string>(EVENT_ALERTS_KEY) ?? "[]");
+  const read = () => readEventAlerts(ctx.configState.get<string>(IV_LEVEL_ALERTS_KEY) ?? "[]");
   const watched = (rule: EventAlertRule) => rule.kind === "iv_level" && rule.status === "active" && !rule.triggeredAt;
   const configOf = (rule: EventAlertRule) => readResearchRule("iv_level", rule.value);
   const keyOf = (config: ResearchAlertConfig) => `${config.symbol}:${config.exchange ?? ""}`;
+
+  /** One symbol's reading, or why there was none: a failure, or no answer within `timeoutMs`. */
+  const readingFor = async (config: ResearchAlertConfig): Promise<IvLevelReading | Error> => {
+    const abort = new AbortController();
+    try {
+      return await withDeadline(load(config, abort.signal), timeoutMs,
+        `Option quotes for ${config.symbol} did not arrive within ${timeoutMs >= 1000 ? `${Math.round(timeoutMs / 1000)} s` : `${timeoutMs} ms`}`,
+        () => abort.abort());
+    } catch (failure) {
+      ctx.log.warn("IV level unavailable", { symbol: config.symbol, error: errorMessage(failure) });
+      return new Error(errorMessage(failure));
+    }
+  };
 
   const check = async () => {
     const { rules, error } = read();
@@ -207,31 +261,57 @@ export function startIvLevelAlerts(
     }
     if (symbols.size === 0) return;
     const readings = new Map<string, IvLevelReading | Error>();
-    // One symbol at a time: each reads a few option chains.
+    // One symbol at a time: each reads OVDV's option chains.
     for (const [key, config] of symbols) {
       if (stopped) return;
-      try {
-        readings.set(key, await load(config));
-      } catch (failure) {
-        readings.set(key, new Error(errorMessage(failure)));
-        ctx.log.warn("IV level unavailable", { symbol: config.symbol, error: errorMessage(failure) });
-      }
+      readings.set(key, await readingFor(config));
     }
     if (stopped) return;
     // Read again: the pane or a sync may have changed the rules while the chains loaded.
     const current = read();
     if (current.error) return;
     const checkedAt = now();
-    const next = current.rules.map((rule): EventAlertRule => {
+    const saved = readIvLevelChecks(ctx.resume.getState(IV_LEVEL_CHECKS_KEY));
+    const checks: Record<string, IvLevelCheck> = {};
+    const reached = new Map<string, { config: ResearchAlertConfig; check: IvLevelCheck }>();
+    for (const rule of current.rules) {
       const config = watched(rule) ? configOf(rule) : null;
       const reading = config ? readings.get(keyOf(config)) : undefined;
-      if (!config || !reading) return rule;
+      if (!config || !reading) {
+        // A rule not read this time keeps its last reading; a deleted one's goes.
+        if (saved[rule.id]) checks[rule.id] = saved[rule.id]!;
+        continue;
+      }
+      const result = ivLevelCheck(reading, config.metric as IvLevelMetric, checkedAt);
+      checks[rule.id] = result;
+      if (ivLevelReached(config, result.value)) reached.set(rule.id, { config, check: result });
+    }
+    try {
+      ctx.resume.setState(IV_LEVEL_CHECKS_KEY, checks);
+    } catch (failure) {
+      ctx.log.warn("IV level readings not kept", { error: errorMessage(failure) });
+    }
+    if (reached.size === 0 || stopped) return;
+
+    // Alerted on every device before anyone is told; only rules still watching when it is saved go off.
+    const fired: EventAlertRule[] = [];
+    const next = updateEventAlerts(ctx.configState.get<string>(IV_LEVEL_ALERTS_KEY), (latest) => latest.map((rule) => {
+      if (!reached.has(rule.id) || !watched(rule)) return rule;
+      fired.push(rule);
+      return { ...rule, triggeredAt: checkedAt };
+    }));
+    if (fired.length === 0) return;
+    try {
+      await ctx.configState.set(IV_LEVEL_ALERTS_KEY, next);
+    } catch (failure) {
+      ctx.log.warn("IV level alert not saved, so not sent", { error: errorMessage(failure) });
+      return;
+    }
+    for (const rule of fired) {
+      const { config, check: result } = reached.get(rule.id)!;
       const metric = config.metric as IvLevelMetric;
-      const result = ivLevelCheck(reading, metric, checkedAt);
-      if (!ivLevelReached(config, result.value)) return { ...rule, check: result };
-      const message = ivLevelMessage(config, result.value!);
       ctx.notify({
-        body: message,
+        body: ivLevelMessage(config, result.value!),
         type: "success",
         desktop: "always",
         persistent: true,
@@ -244,9 +324,7 @@ export function startIvLevelAlerts(
         quoteAt: result.quoteAt ?? null, source: result.source ?? null,
         symbol: config.symbol, ...(config.exchange && config.exchange !== "US" ? { exchange: config.exchange } : {}),
       });
-      return { ...rule, check: result, triggeredAt: checkedAt };
-    });
-    if (!stopped) await ctx.configState.set(EVENT_ALERTS_KEY, JSON.stringify(next));
+    }
   };
 
   const run = async () => {

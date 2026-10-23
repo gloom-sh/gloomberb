@@ -331,7 +331,7 @@ describe("alertsPlugin command", () => {
       });
       expect(notifications[0]?.body).toContain("AAPL");
       // A target ten times the price is refused, as `alerts add` refuses it, and nothing is stored.
-      await expect(command.execute({ shortcut: "AAPL above 2500" })).rejects.toThrow("A target of 2500 is more than 10 times AAPL's last price of 201.5.");
+      await expect(command.execute({ shortcut: "AAPL above 2500" })).rejects.toThrow("A target of 2,500 is more than 10 times AAPL's last price of 201.5.");
       expect(deserializeAlerts(String(store.get("alerts")))).toHaveLength(1);
 
       // An alert link's 7203:TSE is Tokyo, where 7203 trades, as `alerts add` reads it.

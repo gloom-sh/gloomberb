@@ -16,7 +16,7 @@ import {
   scheduledTargetKey,
 } from "./scheduled";
 import { isResearchAlertKind, MAX_LEAD_DAYS } from "./research-rules";
-import { EVENT_ALERTS_KEY, EVENT_ALERT_TEMPLATES, MAX_EVENT_ALERTS, createEventAlert, readEventAlerts } from "./events";
+import { EVENT_ALERT_TEMPLATES, MAX_EVENT_ALERTS, createEventAlert, eventAlertStoreKey, readEventAlertStores, updateEventAlerts } from "./events";
 import { formatMarketPrice } from "../../../market-data/market/format";
 import { settleTypedListingKey } from "../../../tickers/listing-venues";
 import type { Quote } from "../../../types/financials";
@@ -236,7 +236,8 @@ export const alertsPlugin: GloomPlugin = {
       ],
       async execute(values = {}) {
         const event = values?.event || "congress-watched";
-        const initial = readEventAlerts(ctx.configState.get<string>(EVENT_ALERTS_KEY) || "[]");
+        const readAll = () => readEventAlertStores((key) => ctx.configState.get<string>(key));
+        const initial = readAll();
         if (initial.error) throw new Error(initial.error);
         if (initial.rules.length >= MAX_EVENT_ALERTS)
           throw new Error("Keep at most 40 event alerts.");
@@ -255,7 +256,7 @@ export const alertsPlugin: GloomPlugin = {
           rule = { ...rule, eventDate: lookup.date };
         }
         // Read again: the lookup took a while and the rules may have changed meanwhile.
-        const result = scheduled ? readEventAlerts(ctx.configState.get<string>(EVENT_ALERTS_KEY) || "[]") : initial;
+        const result = scheduled ? readAll() : initial;
         if (result.error) throw new Error(result.error);
         if (
           result.rules.some(
@@ -266,7 +267,9 @@ export const alertsPlugin: GloomPlugin = {
           )
         )
           throw new Error("This event is already followed.");
-        await ctx.configState.set(EVENT_ALERTS_KEY, JSON.stringify([...result.rules, rule]));
+        // An IV level goes in its own list, which released versions never read.
+        const key = eventAlertStoreKey(rule);
+        await ctx.configState.set(key, updateEventAlerts(ctx.configState.get<string>(key), (rules) => [...rules, rule]));
         ctx.notify({ body: "Event alert saved.", type: "success" });
         if (scheduled) checkScheduledEventAlertsNow();
         if (rule.kind === "iv_level") checkIvLevelAlertsNow();

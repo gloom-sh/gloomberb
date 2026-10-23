@@ -504,24 +504,29 @@ notification settings have one switch for these market and research alerts.
 
 An **IV level** alert follows a symbol's 30-day at-the-money IV (in %) or its
 30-day 25-delta risk reversal (25D call IV minus 25D put IV, in vol points),
-above or below a level. It reads the same fits as `OVDV`: the ATM IV and 25D
-put and call IVs of the two listed expiries either side of 30 days (as
-`OVDV`'s Term view prints them for those expiries; `--expiration` adds one to
-the view), interpolated in total variance to 30 days, as `OVDV`'s fixed tenors
-are. Expiries under a week out are left out; with expiries on one side of 30
-days only, the reading is the nearest one's when it is within 10 days of 30,
-and there is none otherwise. The
-running app checks it every 15 minutes, signed in or not, and notifies once
-when the level is crossed; the rule then reads **Alerted** until you re-arm
-it (`m`, or `gloomberb alerts rearm <id>`). The **Events** tab shows its last
-reading with the time and feed of the option quotes behind it, or why there
-was none on its row. Gloom Cloud does not check these, so they reach no phone.
+above or below a level. Its figure is the one `OVDV` shows: the **1M** row of
+its Table with fixed tenors on the delta axis (ATM, 25dP and 25dC), solved at
+30 days on the same fits of the same expiries. When the listed expiries are
+all on one side of 30 days, `OVDV` carries the nearest flat (marked `E`); an
+IV level takes that only from an expiry within 10 days of 30, and has no
+reading otherwise. The running app checks it every 15 minutes, signed in or
+not, and notifies once when the level is passed; the rule then reads
+**Alerted** until you re-arm it (`m`, or `gloomberb alerts rearm <id>`). Like
+a price alert above or below a price, a rule added or re-armed while the
+reading is already past its level goes off at its first check, which comes
+right away. The **Events** tab shows its last reading with the time and feed
+of the option quotes behind it, or why there was none, on its row; readings
+stay on the device, and only a rule going off or changing is synced. Gloom
+Cloud does not check these, so they reach no phone. They are kept apart from
+the other event alerts, so a version of the app from before IV levels does not
+see them and keeps the rest working; a rule of a kind an app does not know is
+left out of its lists and kept as it is when it saves them.
 
 From the shell, `gloomberb alerts add` takes the same rules:
 
 ```bash
-gloomberb alerts add IBIT iv above 50          # 30-day ATM IV above 50%
-gloomberb alerts add SPY rr below -6           # 30-day 25D risk reversal below -6 vol pts
+gloomberb alerts add IBIT iv above 50%         # 30-day ATM IV above 50%; the unit is optional
+gloomberb alerts add SPY rr below -5.5 pts     # 30-day 25D risk reversal below -5.5 vol pts
 gloomberb alerts add AAPL271217C00300000 iv spike 5
 gloomberb alerts add AAPL news buyback         # alerts add news "rate cut": any company
 gloomberb alerts add NVDA flow 5m calls sweeps # flow alone: your portfolio and watchlists, $1M and up
@@ -609,8 +614,11 @@ Every alert the app fires (price, IV level, earnings, CPI and FOMC) is kept on
 this device, the last 1,000 of them, with when it went off, the rule, the figure
 and the quote time and feed behind it. **History** and `fn ALRT --tab history`
 list that log with no sign-in; signed in, they merge in the alerts Gloom Cloud
-delivered to your phone or email over the last 90 days, and the export's Via
-column says which sent each. The log is not synced: each device keeps its own.
+delivered to your phone or email over the last 90 days. An alert both sent
+(the same price alert, or the same kind of alert on the same symbol within a
+day) is one line with the app's figure and quote, and the Via column (in a
+wide pane, and in the export) says which sent each: this app, Gloom Cloud or
+both. The log is not synced: each device keeps its own.
 
 ## Live prices and refresh cadence
 

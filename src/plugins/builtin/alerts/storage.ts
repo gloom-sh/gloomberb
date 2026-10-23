@@ -6,7 +6,7 @@ import {
   serializeAlerts,
 } from "./alert-engine";
 import { ALERTS_KEY, ALERTS_PLUGIN_ID } from "./constants";
-import { EVENT_ALERTS_KEY, readEventAlerts } from "./events";
+import { readEventAlertStores } from "./events";
 import type { AlertRule } from "./types";
 
 export function loadAlerts(ctx: GloomPluginContext): AlertRule[] {
@@ -29,11 +29,11 @@ export async function saveAlerts(
 export function readAlertStores(config: AppConfig) {
   const pluginState = config.pluginConfig[ALERTS_PLUGIN_ID] ?? {};
   const rawPrice = pluginState[ALERTS_KEY];
-  const rawEvents = pluginState[EVENT_ALERTS_KEY];
   return {
     pluginState,
     alerts: deserializeAlerts(rawPrice),
     alertsError: readAlertsStoreError(rawPrice),
-    events: readEventAlerts(typeof rawEvents === "string" ? rawEvents : "[]"),
+    // The event alerts, and the IV levels kept apart from them.
+    events: readEventAlertStores((key) => pluginState[key]),
   };
 }

@@ -6,6 +6,7 @@ import { requireQuotedListing } from "../../../cli/quote-answer";
 import { EXCHANGE_OPTION, listingReadNotes, requireListingArg, usListingsOnlyMessage } from "../../../cli/listing-arg";
 import { notTheCoinNote } from "../../../cli/commands/crypto-hints";
 import { saveConfig } from "../../../data/config/store";
+import { resumeStateKey } from "../../registry/plugin-state";
 import type { CliCommandDef } from "../../../types/plugin";
 import type { Quote } from "../../../types/financials";
 import { getActiveQuoteDisplay } from "../../../market-data/market/status";
@@ -15,11 +16,11 @@ import { ambiguousNumberMessage, meantThousandsDot, parsePastedNumber, thousands
 import { newYorkToday } from "../earnings/board-model";
 import { createAlert, rearmAlert, serializeAlerts } from "./alert-engine";
 import { ALERTS_KEY, ALERTS_PLUGIN_ID } from "./constants";
-import { EVENT_ALERTS_KEY, MAX_EVENT_ALERTS, eventAlertTarget, toggleEventAlert, type EventAlertRule } from "./events";
+import { MAX_EVENT_ALERTS, eventAlertTarget, toggleEventAlert, writeEventAlertStores, type EventAlertRule } from "./events";
 import { alertKindLabel } from "./history";
-import { rearmIvLevelAlert } from "./iv-level";
+import { IV_LEVEL_CHECKS_KEY, readIvLevelChecks, rearmIvLevelAlert, type IvLevelCheck } from "./iv-level";
 import { farTargetMessage } from "./quotes";
-import { createResearchAlert, formatPremium, parseAmount, parseIvLevel, researchAlertDescription } from "./research-builder";
+import { createResearchAlert, formatPremium, ivLevelUnitError, parseAmount, parseIvLevel, researchAlertDescription } from "./research-builder";
 import { IV_LEVEL_RANGES, MAX_LEAD_DAYS, type IvLevelMetric, type MacroAlertEvent } from "./research-rules";
 import {
   MACRO_EVENT_CLI_NAMES,
@@ -147,11 +148,13 @@ export function parseAlertAddArgs(args: readonly string[], days: string | null |
 const OCC_CONTRACT = /^(?:O:)?[A-Z.]{1,6}\d{6}[CP]\d{8}$/i;
 const LEVEL_DIRECTIONS = ["above", "below"] as const;
 
-/** A level typed for an IV level rule, refused with its unit and range when it does not read. */
+/** A level typed for an IV level rule, with its unit or without (`50`, `50%`, `-5.5 pts`), refused with its unit and range when it does not read. */
 function readLevel(metric: IvLevelMetric, typed: string | undefined, symbol: string): number {
   const word = metric === "atm" ? "iv" : "rr";
   const example = metric === "atm" ? `alerts add ${symbol} iv above 50` : `alerts add ${symbol} rr below -5`;
-  if (typed === undefined) throw new Error(`Name the level: gloomberb ${example}.`);
+  if (!typed) throw new Error(`Name the level: gloomberb ${example}.`);
+  const unitError = ivLevelUnitError(metric, typed);
+  if (unitError) throw new Error(`${unitError}: gloomberb ${example}.`);
   const level = parseIvLevel(typed);
   const { min, max } = IV_LEVEL_RANGES[metric];
   if (!Number.isFinite(level) || level < min || level > max) {
@@ -202,9 +205,10 @@ function parseResearchAddArgs(args: readonly string[]): ResearchAddRequest | nul
     if (kind !== "iv" || word(third) !== "spike") {
       throw new Error(`An option contract takes an IV spike in vol points: gloomberb alerts add ${symbol.toUpperCase()} iv spike 5. For a level, name the underlying: alerts add ${symbol.replace(/^O:/i, "").match(/^[A-Z.]+/i)![0]!.toUpperCase()} iv above 50.`);
     }
-    const [points, ...extra] = rest;
-    const value = points === undefined ? Number.NaN : parseIvLevel(points);
-    if (!Number.isFinite(value) || value < 0.1 || value > 100 || extra.length > 0) {
+    // Vol points, with the unit or without it: `5`, `5 pts`.
+    const typed = rest.join(" ");
+    const value = typed && !/%/.test(typed) ? parseIvLevel(typed) : Number.NaN;
+    if (!Number.isFinite(value) || value < 0.1 || value > 100) {
       throw new Error(`An IV spike is a rise of 0.1 to 100 vol points: gloomberb alerts add ${symbol.toUpperCase()} iv spike 5.`);
     }
     return { kind: "iv_spike", contract: symbol.toUpperCase(), points: value };
@@ -214,9 +218,8 @@ function parseResearchAddArgs(args: readonly string[]): ResearchAddRequest | nul
   if (!(LEVEL_DIRECTIONS as readonly string[]).includes(direction)) {
     throw new Error(`${kind === "iv" ? "An iv" : "An rr"} alert takes above or below and a level: gloomberb alerts add ${symbol} ${kind} ${kind === "iv" ? "above 50" : "below -5"}${kind === "iv" ? ", or iv spike on one OCC contract" : ""}.`);
   }
-  const [typed, ...extra] = rest;
-  if (extra.length > 0) throw new Error(`An ${kind} alert takes one level, not "${rest.join(" ")}".`);
-  return { kind: "iv_level", symbol, metric, direction: direction as "above" | "below", level: readLevel(metric, typed, symbol) };
+  // The level, with its unit or without it: `50`, `50%`, `-5.5 pts`.
+  return { kind: "iv_level", symbol, metric, direction: direction as "above" | "below", level: readLevel(metric, rest.join(" "), symbol) };
 }
 
 /** The Add Event Alert form's values for a research request, so the CLI makes the rule the dialog makes. */
@@ -291,12 +294,12 @@ function priceRow(alert: AlertRule): AlertListRow {
   return { ...alert, kind: "price", target: alert.exchange ? `${alert.symbol}:${alert.exchange}` : alert.symbol };
 }
 
-function eventRow(rule: EventAlertRule, today: string, eventDate: string | null | undefined): AlertListRow {
+function eventRow(rule: EventAlertRule, today: string, eventDate: string | null | undefined, check?: IvLevelCheck): AlertListRow {
   const scheduled = readScheduledRule(rule);
   if (!scheduled) {
     const status = rule.status === "active" && rule.triggeredAt ? "triggered" : rule.status;
     return { id: rule.id, kind: rule.kind, target: eventAlertTarget(rule), status, createdAt: rule.createdAt,
-      ...rule.check ? { lastCheck: rule.check } : {}, ...rule.triggeredAt ? { triggeredAt: rule.triggeredAt } : {} };
+      ...check ? { lastCheck: check } : {}, ...rule.triggeredAt ? { triggeredAt: rule.triggeredAt } : {} };
   }
   const date = eventDate ?? null;
   return {
@@ -448,7 +451,8 @@ export const alertsCliCommand: CliCommandDef = {
     const coinNote = priced && !priced.listing.exchange ? notTheCoinNote(priced.listing.symbol, priced.quote) : null;
     if (request?.kind === "price" && priced) {
       // A target ten times away is a slip or another instrument's price, such as bitcoin's on the BTC fund.
-      const far = farTargetMessage(priced.listing.key, request.price, lastPrice(priced.quote), coinNote);
+      // Against the price the alert is checked on, as Add Alert measures it.
+      const far = farTargetMessage(priced.listing.key, request.price, priced.quote.price, coinNote);
       if (far) ctx.fail(far);
     }
     // What a typed listing was read as (7203:TSE as 7203:JPX, MXN as MXN:FWB2), said beside what was added.
@@ -489,7 +493,11 @@ export const alertsCliCommand: CliCommandDef = {
     }
 
     if (action === "list") {
-      const { alerts, alertsError, events } = await withConfigData(ctx, (config) => readAlertStores(config.config));
+      // An IV level's last reading is this device's, beside the rules.
+      const { alerts, alertsError, events, checks } = await withConfigData(ctx, (config) => ({
+        ...readAlertStores(config.config),
+        checks: readIvLevelChecks(config.persistence?.pluginState?.get(ALERTS_PLUGIN_ID, resumeStateKey(IV_LEVEL_CHECKS_KEY))?.value),
+      }));
       // Earnings dates come through market data; CPI and FOMC dates do not need it.
       const lookup = (targets: ScheduledEventTarget[]) => targets.some((target) => target.kind === "earnings")
         ? withMarketData(ctx, (market) => lookupScheduledDates(targets, scheduledEventSources(market.dataProvider), today))
@@ -497,7 +505,7 @@ export const alertsCliCommand: CliCommandDef = {
       const { dates, warnings } = await listEventDates(events.rules, today, lookup);
       const rows = [
         ...alerts.map(priceRow),
-        ...events.rules.map((rule) => eventRow(rule, today, dates.has(rule.id) ? dates.get(rule.id) : rule.eventDate)),
+        ...events.rules.map((rule) => eventRow(rule, today, dates.has(rule.id) ? dates.get(rule.id) : rule.eventDate, checks[rule.id])),
       ];
       const allWarnings = [...(alertsError ? [alertsError] : []), ...(events.error ? [events.error] : []), ...warnings];
       ctx.printResult({ data: rows, ...(allWarnings.length ? { warnings: allWarnings } : {}) }, {
@@ -528,7 +536,8 @@ export const alertsCliCommand: CliCommandDef = {
             [ALERTS_PLUGIN_ID]: {
               ...pluginState,
               ...(next.alerts ? { [ALERTS_KEY]: serializeAlerts(next.alerts) } : {}),
-              ...(next.events ? { [EVENT_ALERTS_KEY]: JSON.stringify(next.events) } : {}),
+              // Each list keeps what it holds of kinds this version does not know; IV levels go in their own.
+              ...(next.events ? writeEventAlertStores(events.lists, next.events) : {}),
             },
           },
         };

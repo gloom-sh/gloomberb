@@ -15,15 +15,18 @@ import type { ScrollBoxRenderable } from "../../../ui";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import { usePluginState } from "../../runtime";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
-import { FIRED_LOG_KEY, readFiredAlerts, type FiredAlert } from "./fired-log";
+import { FIRED_LOG_KEY, readFiredAlerts } from "./fired-log";
 import { alertKindLabel, fetchAlertHistory, type AlertHistoryItem } from "./history";
+import { mergeAlertHistory, type AlertHistoryRow, type AlertHistoryVia } from "./history-rows";
 import { relativeTime } from "./format";
 import { alertTarget, alertViewHints, deliveredAlertSubject, useOpenAlertTarget, type AlertSubject } from "./targets";
 
 const stamp = (value: string) => value.slice(0, 16).replace("T", " ");
 const itemId = (item: AlertHistoryItem) => item.id;
+/** Where a line comes from, in the Via column's few cells. */
+const VIA_TEXT: Record<AlertHistoryVia, string> = { app: "App", cloud: "Cloud", both: "App, Cloud" };
 
-/** One line of History: an alert this app fired, or one Gloom Cloud delivered. */
+/** One line of History: an alert this app fired, one Gloom Cloud delivered, or both for the one alert. */
 interface HistoryRow {
   id: string;
   time: string;
@@ -33,23 +36,19 @@ interface HistoryRow {
   value: string;
   quoteAt: string | null;
   source: string;
+  via: AlertHistoryVia;
   subject: AlertSubject;
 }
 
-function firedRow(entry: FiredAlert): HistoryRow {
-  const figure = entry.value == null ? null
-    : `${Number(entry.value.toFixed(4))}${entry.unit === "%" ? "%" : entry.unit ? ` ${entry.unit}` : ""}`;
+function historyRow(row: AlertHistoryRow): HistoryRow {
+  const figure = row.value == null ? null
+    : `${Number(row.value.toFixed(4))}${row.unit === "%" ? "%" : row.unit ? ` ${row.unit}` : ""}`;
   return {
-    id: `app:${entry.id}`, time: entry.firedAt, kind: entry.kind, alert: entry.rule, value: figure ?? entry.detail ?? "",
-    quoteAt: entry.quoteAt, source: entry.source ?? "",
-    subject: { kind: entry.kind, symbol: entry.symbol, exchange: entry.exchange },
-  };
-}
-
-function deliveredRow(item: AlertHistoryItem): HistoryRow {
-  return {
-    id: `cloud:${item.id}`, time: item.deliveredAt, kind: item.kind, alert: item.title, value: item.body,
-    quoteAt: null, source: "Gloom Cloud", subject: deliveredAlertSubject(item),
+    id: row.id, time: row.time, kind: row.kind, alert: row.alert, value: figure ?? row.detail,
+    quoteAt: row.quoteAt, source: row.source ?? "", via: row.via,
+    subject: row.fired
+      ? { kind: row.fired.kind, symbol: row.fired.symbol, exchange: row.fired.exchange }
+      : deliveredAlertSubject(row.delivered!),
   };
 }
 
@@ -74,10 +73,11 @@ export function AlertHistoryPane({ focused, width, height }: PaneProps) {
   const cloudError = access.signedIn
     ? data?.status === "unavailable" ? data.warning ?? "Delivered alerts are unavailable." : !data ? history.error?.message ?? null : null
     : null;
-  const items = useMemo(() => [
-    ...fired.map(firedRow),
-    ...(data?.status === "unavailable" ? [] : history.rows.map(deliveredRow)),
-  ].sort((a, b) => Date.parse(b.time) - Date.parse(a.time)), [fired, data, history.rows]);
+  // One line per alert: a delivery of one this app fired too joins its line.
+  const items = useMemo(
+    () => mergeAlertHistory(fired, data?.status === "unavailable" ? [] : history.rows).map(historyRow),
+    [fired, data, history.rows],
+  );
   const loadingMore = history.loadingMore;
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
   const loadMoreOnScroll = useTableLoadMore(scrollRef, history.hasMore && !loadingMore, history.loadMore);
@@ -91,10 +91,11 @@ export function AlertHistoryPane({ focused, width, height }: PaneProps) {
     { id: "kind", label: "Event", width: 15, align: "left" },
     { id: "alert", label: "Alert", width: 20, flexGrow: 1, align: "left" },
     ...(width >= 70 ? [{ id: "value", label: "Value", width: 16, align: "left" as const }] : []),
-    ...(width >= 110
+    ...(width >= 115
       ? [
           { id: "quote", label: "Quote (UTC)", width: 16, align: "left" as const },
           { id: "source", label: "Source", width: 14, align: "left" as const },
+          { id: "via", label: "Via", width: 10, align: "left" as const },
         ]
       : []),
   ];
@@ -145,9 +146,10 @@ export function AlertHistoryPane({ focused, width, height }: PaneProps) {
               : column.id === "alert" ? item.alert
               : column.id === "value" ? item.value
               : column.id === "quote" ? (item.quoteAt ? stamp(item.quoteAt) : "")
+              : column.id === "via" ? VIA_TEXT[item.via]
               : item.source,
           color: row.selected ? colors.selectedText
-            : column.id === "time" || column.id === "quote" || column.id === "source" ? colors.textMuted : colors.text,
+            : column.id === "time" || column.id === "quote" || column.id === "source" || column.id === "via" ? colors.textMuted : colors.text,
         })}
         emptyStateTitle={access.signedIn ? "No alerts in the last 90 days" : "No alerts fired yet"}
         emptyStateHint={access.signedIn

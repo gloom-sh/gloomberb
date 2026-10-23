@@ -20,9 +20,10 @@ import {
   formatQuoteChecked,
   relativeTime,
 } from "./format";
-import { FIRED_LOG_KEY, firedAlertTime, quoteSourceWords, readFiredAlerts, type FiredAlert } from "./fired-log";
+import { FIRED_LOG_KEY, firedAlertTime, quoteSourceWords, readFiredAlerts } from "./fired-log";
 import { alertKindLabel, validateAlertHistory, type AlertHistory, type AlertHistoryItem } from "./history";
-import { ivLevelCheckText } from "./iv-level";
+import { ALERT_HISTORY_VIA, mergeAlertHistory, type AlertHistoryRow } from "./history-rows";
+import { IV_LEVEL_CHECKS_KEY, ivLevelCheckText, readIvLevelChecks, type IvLevelCheck } from "./iv-level";
 import { readScheduledRule, scheduledEventName } from "./scheduled";
 import { readAlertStores } from "./storage";
 import type { AlertRule } from "./types";
@@ -118,7 +119,7 @@ function pricesResult(alerts: readonly AlertRule[], error: string | null, events
 }
 
 /** An event alert as the Events table lists it: a scheduled one with its event date and lead time apart. */
-function eventRow(rule: EventAlertRule, today: string): HeadlessPaneRow {
+function eventRow(rule: EventAlertRule, today: string, checks: Record<string, IvLevelCheck>): HeadlessPaneRow {
   const scheduled = readScheduledRule(rule);
   return {
     id: rule.id,
@@ -131,36 +132,28 @@ function eventRow(rule: EventAlertRule, today: string): HeadlessPaneRow {
     state: ruleState(rule, today),
     since: new Date(rule.createdAt).toISOString().slice(0, 10),
     // An IV level's last reading, or why there was none, on its own row.
-    ...rule.kind === "iv_level" ? { lastCheck: ivLevelCheckText(rule) } : {},
+    ...rule.kind === "iv_level" ? { lastCheck: ivLevelCheckText(rule, checks[rule.id]) } : {},
   };
 }
 
-function eventsResult(rules: readonly EventAlertRule[], error: string | null): HeadlessRowsResult {
+function eventsResult(rules: readonly EventAlertRule[], error: string | null, checks: Record<string, IvLevelCheck>): HeadlessRowsResult {
   const today = newYorkToday();
   const checked = rules.some((rule) => rule.kind === "iv_level");
   return {
     // A Last check column only when an IV level rule has a reading to show.
     columns: checked ? [...EVENT_COLUMNS.slice(0, -2), { key: "lastCheck", header: "Last check" }, ...EVENT_COLUMNS.slice(-2)] : EVENT_COLUMNS,
-    rows: [...rules].sort((a, b) => b.createdAt - a.createdAt).map((rule) => eventRow(rule, today)),
+    rows: [...rules].sort((a, b) => b.createdAt - a.createdAt).map((rule) => eventRow(rule, today, checks)),
     empty: "No event alerts. Add one with gloomberb alerts add CRWV earnings --days 3 or gloomberb alerts add CPI --days 1.",
     ...(error ? { errors: [error], complete: false } : {}),
   };
 }
 
-/** A delivery Gloom Cloud sent the account (phone or email). */
-function cloudHistoryRow(item: AlertHistoryItem): HeadlessPaneRow {
+/** One alert that went off: fired by this app, delivered by Gloom Cloud, or both, on one line. */
+function historyRow(row: AlertHistoryRow): HeadlessPaneRow {
   return {
-    id: item.id, time: item.deliveredAt, via: "Gloom Cloud", kind: item.kind, event: alertKindLabel(item.kind),
-    alert: item.title, value: null, unit: null, quoteAt: null, quoteSource: null, detail: item.body,
-  };
-}
-
-/** An alert this device's app fired, from its local log. */
-function firedHistoryRow(entry: FiredAlert): HeadlessPaneRow {
-  return {
-    id: entry.id, time: entry.firedAt, via: "This app", kind: entry.kind, event: alertKindLabel(entry.kind),
-    alert: entry.rule, value: entry.value, unit: entry.unit ?? null, quoteAt: entry.quoteAt, quoteSource: entry.source,
-    detail: entry.detail ?? "",
+    id: row.fired?.id ?? row.delivered?.id ?? row.id, time: row.time, via: ALERT_HISTORY_VIA[row.via], kind: row.kind,
+    event: alertKindLabel(row.kind), alert: row.alert, value: row.value, unit: row.unit, quoteAt: row.quoteAt,
+    quoteSource: row.source, detail: row.detail,
   };
 }
 
@@ -202,8 +195,7 @@ async function historyResult(ctx: HeadlessPaneContext): Promise<HeadlessRowsResu
     else failed = error instanceof Error ? error.message : String(error);
   }
   const unavailable = first?.status === "unavailable";
-  const rows = [...fired.map(firedHistoryRow), ...items.map(cloudHistoryRow)]
-    .sort((a, b) => Date.parse(text(b.time)) - Date.parse(text(a.time)));
+  const rows = mergeAlertHistory(fired, items).map(historyRow);
   const errors = [...unavailable ? [first?.warning ?? "Delivered alerts are unavailable."] : [], ...failed ? [`Delivered alerts: ${failed}`] : []];
   const notes = [
     ...refused ? [refused] : [],
@@ -245,6 +237,8 @@ export const alertsHeadless: HeadlessPaneDefinition<"rows"> = {
     const tab = (args.options.tab ?? "prices") as AlertsTab;
     if (tab === "history") return historyResult(ctx);
     const { alerts, alertsError, events } = readAlertStores(ctx.config);
-    return tab === "events" ? eventsResult(events.rules, events.error) : pricesResult(alerts, alertsError, events.rules.length);
+    return tab === "events"
+      ? eventsResult(events.rules, events.error, readIvLevelChecks(ctx.readDeviceState?.(ALERTS_PLUGIN_ID, IV_LEVEL_CHECKS_KEY)))
+      : pricesResult(alerts, alertsError, events.rules.length);
   },
 };

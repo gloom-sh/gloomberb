@@ -72,7 +72,11 @@ export function createResearchAlert(kind: string, values: Record<string,string>,
     const field = key.slice(kind.length+1);
     if (kind === "perps_threshold" && field === "threshold" && value.trim()) input[field] = Number(value) / 100;
     // A level reads as typed, signed (a risk reversal is often below zero) and with or without its unit.
-    else if (kind === "iv_level" && field === "threshold" && value.trim()) input[field] = parseIvLevel(value);
+    else if (kind === "iv_level" && field === "threshold" && value.trim()) {
+      const unitError = ivLevelUnitError(values["iv_level:metric"] === "rr" ? "rr" : "atm", value);
+      if (unitError) throw new Error(`${unitError}.`);
+      input[field] = parseIvLevel(value);
+    }
     else if (value.trim()) input[field] = field === "threshold" || field === "leadDays" ? parseAmount(value) : value;
   }
   const value = normalizeResearchRule(kind,input);
@@ -92,16 +96,27 @@ export function parseAmount(value: string): number {
   const scale = { k: 1e3, m: 1e6, b: 1e9 }[match[2]?.toLowerCase() as "k" | "m" | "b"] ?? 1;
   return Number(match[1]!.replace(/[,_]/g, "")) * scale;
 }
-/** "35", "35%", "-4.5" and "+2 pts" read as numbers; anything else is NaN. */
+const IV_LEVEL_PATTERN = /^([+-]?\d+(?:\.\d+)?)\s*(%|pts?|points?|vol pts?|vol points?)?$/i;
+/** "35", "35%", "-4.5", "+2 pts" and "-5.5 vol points" read as numbers; anything else is NaN. */
 export function parseIvLevel(value: string): number {
-  const match = /^([+-]?\d+(?:\.\d+)?)\s*(?:%|pts?|vol pts?)?$/i.exec(value.trim());
+  const match = IV_LEVEL_PATTERN.exec(value.trim());
   return match ? Number(match[1]) : Number.NaN;
 }
-/** $1M, $250K, $1.5B. */
+/** Why a level typed with a unit does not suit its measure (`5 pts` for an ATM IV, `-5%` for a risk reversal); null when it does or has none. */
+export function ivLevelUnitError(metric: IvLevelMetric, value: string): string | null {
+  const unit = IV_LEVEL_PATTERN.exec(value.trim())?.[2];
+  if (!unit) return null;
+  const percent = unit === "%";
+  if (metric === "atm" && !percent) return `An ATM IV level is in %, not vol points ("${value.trim()}")`;
+  if (metric === "rr" && percent) return `A risk reversal is in vol points, not % ("${value.trim()}")`;
+  return null;
+}
+/** $1M, $250K, $1.5B, and $500 under a thousand. */
 export function formatPremium(value: number): string {
   if (value >= 1e9) return `$${Number((value / 1e9).toFixed(1))}B`;
   if (value >= 1e6) return `$${Number((value / 1e6).toFixed(1))}M`;
-  return `$${Math.round(value / 1e3)}K`;
+  if (value >= 1e3) return `$${Number((value / 1e3).toFixed(1))}K`;
+  return `$${Number(Math.max(0, value).toFixed(2))}`;
 }
 export function researchAlertDescription(rule: EventAlertRule): string {
   if (!isResearchAlertKind(rule.kind)) return rule.value;

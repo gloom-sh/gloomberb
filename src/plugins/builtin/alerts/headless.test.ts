@@ -8,9 +8,11 @@ import type { HeadlessPaneApiClient } from "../../../types/headless";
 import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
 import { createAlert } from "./alert-engine";
 import { ALERTS_KEY, ALERTS_PLUGIN_ID } from "./constants";
-import { EVENT_ALERTS_KEY } from "./events";
+import { EVENT_ALERTS_KEY, IV_LEVEL_ALERTS_KEY } from "./events";
 import { appendFiredAlert, FIRED_LOG_KEY } from "./fired-log";
 import { alertsHeadless } from "./headless";
+import { IV_LEVEL_CHECKS_KEY } from "./iv-level";
+import { createResearchAlert } from "./research-builder";
 import { createScheduledAlert } from "./scheduled";
 
 const pane = { id: "alerts", name: "Alerts", component: () => null, defaultPosition: "right" as const };
@@ -103,17 +105,33 @@ test("History lists this app's fired alerts with no sign-in, and merges Gloom Cl
   expect(signedOut.notes?.[0]).toContain("Only the alerts this app fired are listed");
 
   const offsets: number[] = [];
+  // Gloom Cloud also delivered the price alert the app fired, three minutes later.
+  const delivered = { id: "p1", kind: "price", title: "IBIT 50.12", body: "Above your 50 alert", deliveredAt: "2026-10-16T14:03:00Z",
+    data: { kind: "price", symbol: "IBIT", alertId: "alert-1" } };
   const page = (offset: number) => ({
     status: "ready", warning: null, asOf: "2026-10-17T12:00:00Z", states: [], deviceEnabled: true, syncAsOf: null,
-    items: [{ id: `a${offset}`, kind: "earnings", title: `CRWV ${offset}`, body: "Reports soon", deliveredAt: `2026-10-1${offset + 5}T09:30:00Z` }],
+    items: [{ id: `a${offset}`, kind: "earnings", title: `CRWV ${offset}`, body: "Reports soon", deliveredAt: `2026-10-1${offset + 5}T09:30:00Z` },
+      ...offset === 1 ? [delivered] : []],
     hasMore: true, nextOffset: offset + 1,
   });
   const signedIn = await alertsHeadless.load(args, context({ getMobileAlertHistory: async (offset: number) => { offsets.push(offset); return page(offset); } }));
   // Five pages at most, the rest left to the pane's scrolling.
   expect(offsets).toEqual([0, 1, 2, 3, 4]);
+  // The one alert both sent is one line, with the app's figure and quote and what the phone was told.
   expect(signedIn.rows.map((row) => [row.via, row.alert])).toEqual([
     ["Gloom Cloud", "CRWV 4"], ["Gloom Cloud", "CRWV 3"], ["Gloom Cloud", "CRWV 2"],
-    ["This app", "IBIT above 50"], ["Gloom Cloud", "CRWV 1"], ["Gloom Cloud", "CRWV 0"],
+    ["This app and Gloom Cloud", "IBIT above 50"], ["Gloom Cloud", "CRWV 1"], ["Gloom Cloud", "CRWV 0"],
   ]);
-  expect(signedIn.notes).toEqual(["Showing the latest 5 delivered alerts; the pane loads older ones as you scroll."]);
+  expect(signedIn.rows[3]).toMatchObject({ value: 50.12, quoteSource: "delayed", detail: "Above your 50 alert" });
+  expect(signedIn.notes).toEqual(["Showing the latest 6 delivered alerts; the pane loads older ones as you scroll."]);
+});
+
+test("an IV level rule is listed from its own store, with this device's last reading", async () => {
+  const level = createResearchAlert("iv_level", { "iv_level:symbol": "IBIT", "iv_level:exchange": "US", "iv_level:metric": "atm", "iv_level:direction": "above", "iv_level:threshold": "50" }, Date.UTC(2026, 9, 20));
+  const ctx = contextWith([], []);
+  ctx.config.pluginConfig[ALERTS_PLUGIN_ID]![IV_LEVEL_ALERTS_KEY] = JSON.stringify([level]);
+  const check = { checkedAt: Date.UTC(2026, 9, 22, 20, 30), value: 37.46, quoteAt: "2026-10-22T20:14:59.999Z", source: "15 min delayed" };
+  ctx.readDeviceState = <T,>(pluginId: string, key: string) => (pluginId === ALERTS_PLUGIN_ID && key === IV_LEVEL_CHECKS_KEY ? { [level.id]: check } as T : null);
+  const result = await alertsHeadless.load(createTestHeadlessArgs({ options: { tab: "events" } }), ctx);
+  expect(result.rows).toEqual([expect.objectContaining({ event: "IV level", following: "IBIT · 30d ATM IV above 50%", lastCheck: "37.46% · quotes 10-22 20:14 UTC, 15 min delayed", state: "Active" })]);
 });
