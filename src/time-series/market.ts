@@ -58,7 +58,8 @@ function aggregatePriceHistory(
   const sorted = points
     .flatMap((point) => {
       const date = pricePointDate(point.date);
-      const integrity = pricePointIntegrity(point);
+      // A bar built from shorter ones carries the integrity of any of them that contradict themselves.
+      const integrity = (point as { integrity?: PriceHistoryIntegrity }).integrity ?? pricePointIntegrity(point);
       return date ? [{ ...point, date, integrity }] : [];
     })
     .sort((left, right) => left.date.getTime() - right.date.getTime());

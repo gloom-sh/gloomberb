@@ -1045,6 +1045,7 @@
       ],
       "contributes": {
         "panes": [
+          "csp-screen",
           "iv-history",
           "iv-screen",
           "options",
@@ -1076,6 +1077,11 @@
             "code": "OVME",
             "name": "Options Calculator",
             "description": "European Black-Scholes or American CRR value, Greeks, implied volatility and cash dividends."
+          },
+          {
+            "code": "CSP",
+            "name": "Cash-Secured Put Screen",
+            "description": "Cash-secured puts across a list, ranked by annualised yield at the bid, with % OTM, delta, IV rank, spread and an earnings flag."
           },
           {
             "code": "OSA",

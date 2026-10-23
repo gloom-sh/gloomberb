@@ -183,8 +183,10 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
       }, createSurfaceDependencies(ctx.marketData, ctx.apiClient)));
     }
     const available = snapshot.expiries.some((expiry) => expiry.fit);
-    const loadErrors = snapshot.failures.map((failure) => failure.expiration == null ? failure.message
-      : `${expiryLabel(failure.expiration)}: ${failure.message}`);
+    // An expiry that failed as the whole surface did (no connection) is not listed again under its own date.
+    const surfaceWide = new Set(snapshot.failures.filter((failure) => failure.expiration == null).map((failure) => failure.message));
+    const loadErrors = snapshot.failures.filter((failure) => failure.expiration == null || !surfaceWide.has(failure.message))
+      .map((failure) => failure.expiration == null ? failure.message : `${expiryLabel(failure.expiration)}: ${failure.message}`);
     // A symbol with no option chain at all says what became of it when something did (FB is a fund now,
     // Meta trades as META) in place of the chain's own error; a chain without clean quotes is the symbol's own.
     const fate = !snapshot.stored && !available && snapshot.catalogue.length === 0

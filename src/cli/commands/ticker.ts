@@ -36,7 +36,9 @@ import {
 } from "../../market-data/market/status";
 import type { FuturesContractTermsPayload } from "../../api-client/futures-curve";
 import { changeBasisJson, quoteChangeBasis, quotePreviousCloseDate, quoteSettleText } from "../../market-data/market/change-basis";
-import { futuresContractLines, isFuturesInstrument, loadFuturesContractTerms, minorUnitPricePer } from "../../market-data/futures-contract";
+import {
+  futuresContractLines, futuresPricePer, isFuturesInstrument, loadFuturesContractTerms, loadUsdPerMmbtu, usdPerMmbtuText, type UsdPerMmbtu,
+} from "../../market-data/futures-contract";
 import { currencyCodeLabel, heldCurrencyUnit } from "../../utils/currency-units";
 import { quotedFxPair } from "../../utils/currency-pair";
 import type { AppConfig } from "../../types/config";
@@ -1008,6 +1010,7 @@ export async function buildTickerReport({
   recentSecFilings = [],
   hiddenSecFilings = NOTHING_HIDDEN,
   futuresContract = null,
+  usdPerMmbtu = null,
   distributions = null,
   statementFilings = null,
   bondFund = null,
@@ -1029,6 +1032,8 @@ export async function buildTickerReport({
   listingExchange?: string;
   /** A futures symbol's contract terms and latest confirmed settlement. */
   futuresContract?: FuturesContractTermsPayload | null;
+  /** A per-MWh gas price (Dutch TTF) in dollars per MMBtu, at the day's rate. */
+  usdPerMmbtu?: UsdPerMmbtu | null;
   tickerFile: TickerRecord | null;
   financials: TickerFinancials;
   config: AppConfig;
@@ -1143,12 +1148,14 @@ export async function buildTickerReport({
     // A futures price is its latest trade; the exchange settlement is its own row, dated by its session.
     appendMetricSection(lines, "Quote", [
       // A price in cents says what it is per: 314.95¢/lb.
-      ["Last", colorBySign(`${formatMarketPriceWithCurrency(session.price, quote.currency, quoteOptions)}${minorUnitPricePer(futuresContract, quote.currency)}`, session.change)],
+      ["Last", colorBySign(`${formatMarketPriceWithCurrency(session.price, quote.currency, quoteOptions)}${futuresPricePer(futuresContract, quote.currency)}`, session.change)],
       ...futuresContract
         ? [["Settle", quoteSettleText(quote, futuresContract)] as [string, string]]
         : [],
       // The move says what it is measured from: "vs Fri 16 Oct close", a future's "vs Fri 16 Oct settle".
       ["Change", quoteChangeText(quote, session, quoteOptions, futuresContract)],
+      // European gas beside Henry Hub: "≈ $30.832/MMBtu at EUR/USD 1.1650", a conversion that says so.
+      ...usdPerMmbtu ? [["In USD", usdPerMmbtuText(usdPerMmbtu)] as [string, string]] : [],
       ["Open", quote.open != null ? formatMarketPriceWithCurrency(quote.open, quote.currency, quoteOptions) : "—"],
       // A listing that no longer trades: its last session's range, never today's.
       [quote.delisting ? "Last Session" : "Day Range", quote.low != null || quote.high != null
@@ -1257,6 +1264,7 @@ function buildTickerStructuredData({
   recentSecFilings,
   hiddenSecFilings,
   futuresContract,
+  usdPerMmbtu = null,
   distributions,
   statementFilings,
   bondFund = null,
@@ -1270,6 +1278,8 @@ function buildTickerStructuredData({
   offerings?: readonly OfferingFiling[];
   bondFund?: FundBondFacts | null;
   futuresContract: FuturesContractTermsPayload | null;
+  /** A per-MWh gas price in dollars per MMBtu, and the rate it was converted at. */
+  usdPerMmbtu?: UsdPerMmbtu | null;
   distributions: DividendDistributions | null;
   tickerFile: TickerRecord | null;
   financials: TickerFinancials;
@@ -1312,6 +1322,7 @@ function buildTickerStructuredData({
     quoteMetadata: financials.quoteMetadata,
     // Only for futures: the contract the symbol prices, its terms and its latest confirmed settlement.
     ...futuresContract ? { futuresContract } : {},
+    ...usdPerMmbtu ? { usdPerMmbtu } : {},
     ticker: tickerFile ? {
       ticker: tickerFile.metadata.ticker,
       name: tickerFile.metadata.name ?? "",
@@ -1496,6 +1507,9 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
     ]);
 
     const futuresContract = await cliFuturesContract(quote?.symbol ?? requestSymbol, quote?.instrumentType, dependencies.futuresContract);
+    // A per-MWh gas price (TTF) adds its dollars per MMBtu at the day's rate, to read beside Henry Hub.
+    const usdPerMmbtu = await loadUsdPerMmbtu(getRegularSessionDisplay(quote)?.price, futuresContract, quote?.currency,
+      (currency) => dataProvider.getExchangeRate(currency));
     const notes = notesResult.status === "fulfilled" ? notesResult.value : "";
     const recentNews = newsResult.status === "fulfilled" ? newsResult.value : [];
     const { filings: recentSecFilings, hidden: hiddenSecFilings } = secFilingsResult.status === "fulfilled"
@@ -1527,6 +1541,7 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
           recentSecFilings,
           hiddenSecFilings,
           futuresContract,
+          usdPerMmbtu,
           distributions: await distributions,
           statementFilings: await statementFilings,
           bondFund: await bondFund,
@@ -1551,12 +1566,13 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
         recentSecFilings,
         hiddenSecFilings,
         futuresContract,
+        usdPerMmbtu,
         distributions: await distributions,
         statementFilings: await statementFilings,
         bondFund: await bondFund,
         memberships,
         offerings: await offerings,
     }));
-    if (freshness) console.log(`\n${cliFreshnessFooter(freshness)}`);
+    if (freshness) console.log(`\n${cliFreshnessFooter(freshness, quote ?? resolvedFinancials)}`);
   });
 }

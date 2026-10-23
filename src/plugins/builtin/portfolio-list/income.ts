@@ -2,6 +2,7 @@ import type { DividendData } from "../dividend-yield/client";
 import { fetchProviderDividendData } from "../dividend-yield/provider-client";
 import { refusedLock } from "../shared/cloud-denied";
 import { ApiRequestError } from "../../../api-client/errors";
+import { isNetworkFailure } from "../../../utils/network-failure";
 import { regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
 import { resolveTickerInstrumentKind } from "../../../tickers/instrument-kind";
 import { mapWithConcurrency } from "../../../utils/concurrency";
@@ -65,7 +66,7 @@ function unreadWhy(error: unknown): "sign-in" | "offline" | "failed" {
     current = current instanceof Error ? current.cause : undefined;
   }
   // A request that never got an answer: no connection, DNS, a refused socket.
-  return /fetch failed|network|ECONN|ENOTFOUND|EAI_AGAIN|Unable to connect|socket|offline/i.test(String(error instanceof Error ? error.message : error))
+  return isNetworkFailure(error) || /fetch failed|network|ECONN|ENOTFOUND|EAI_AGAIN|Unable to connect|socket|offline/i.test(String(error instanceof Error ? error.message : error))
     ? "offline" : "failed";
 }
 

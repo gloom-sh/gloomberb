@@ -6,7 +6,7 @@
  * either loads its own history (`load`) or points at something the composer
  * already draws (`expression`), such as a FRED series or a ticker field.
  */
-import type { ManualChartResolution } from "../time-series/resolution";
+import type { ChartBarSize, ManualChartResolution } from "../time-series/resolution";
 
 /** How often a series gets a new observation. */
 export type SeriesFrequency =
@@ -72,6 +72,13 @@ export interface SeriesLoadRequest {
    * bars uses it to compute on the same bars.
    */
   resolution?: ManualChartResolution;
+  /**
+   * Set when the chart builds its bars from `resolution` bars rather than
+   * drawing those (`4h` from `1h`, `2d` from `1d`): the bar size it draws. A
+   * series computed from a ticker's bars builds them the same way with
+   * `aggregatePriceBars`, so its points fall on the chart's bars.
+   */
+  barSize?: ChartBarSize;
   signal?: AbortSignal;
 }
 

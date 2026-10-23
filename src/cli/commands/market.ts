@@ -61,7 +61,9 @@ import { loadBankFigures } from "../bank-section";
 import { latestFinancialPeriod } from "../../utils/latest-financial-period";
 import type { FuturesContractTermsPayload } from "../../api-client/futures-curve";
 import { currencyCodeLabel } from "../../utils/currency-units";
-import { futuresContractLines, futuresRollLines, isFuturesInstrument, minorUnitPricePer } from "../../market-data/futures-contract";
+import {
+  futuresContractLines, futuresPricePer, futuresRollLines, isFuturesInstrument, loadUsdPerMmbtu, usdPerMmbtuText, type UsdPerMmbtu,
+} from "../../market-data/futures-contract";
 import {
   chainHasExpiry,
   formatExpiryList,
@@ -187,6 +189,7 @@ import {
   loadForListing,
   loadListingQuote,
   listingFateLoader,
+  meantQuestion,
   movedSymbolLine,
   requireCliListing,
   resolveCliListing,
@@ -202,6 +205,8 @@ import { CBOE_YIELD_INDEX_CLOSE } from "../../plugins/builtin/shared/treasury-cu
 import { earningsCalendarFailure, earningsChoiceNote, earningsDateLabel, isListingAbroad, noListingCalendarNote } from "../earnings-calendar";
 import { formatBasisPoints, toBasisPoints } from "../../utils/basis-points";
 import { providerMissReason } from "../../sources/provider-errors";
+import { isNetworkFailure } from "../../utils/network-failure";
+import { withSavedCopy } from "../pane-functions/freshness";
 import { isNotATickerMessage } from "../not-a-ticker";
 import { primeBoardCoins } from "../board-coins";
 import { suggestUsTicker, type ListingSuggestion } from "../listing-suggestion";
@@ -292,6 +297,11 @@ type QuoteCliRecord = Omit<QuoteBatchResult, "error"> & {
   futuresContract?: FuturesContractTermsPayload;
   /** The quote of the root's front contract, for a futures row that prices another one (NGF27, NG2). */
   futuresFront?: Quote;
+  /**
+   * A per-MWh gas price (Dutch TTF) in dollars per MMBtu, the unit Henry Hub
+   * trades in, converted at the day's rate: one unit of the quote's currency in dollars.
+   */
+  usdPerMmbtu?: UsdPerMmbtu;
   /** A perpetual row's market, funding per eight hours and open interest. */
   perpetualContract?: PerpetualContractPayload;
   /** The symbol changed: its issuer moved to another symbol, or its holder had another before. */
@@ -576,7 +586,7 @@ function quoteRows(results: QuoteCliRecord[], now = Date.now()) {
         : ""
     );
     // A price in cents says what it is per, as the contract terms word it: 314.95¢/lb.
-    const per = display?.price != null ? minorUnitPricePer(result.futuresContract, quote?.currency) : "";
+    const per = display?.price != null ? futuresPricePer(result.futuresContract, quote?.currency) : "";
     return {
       symbol: result.target.symbol,
       name: quote?.name || result.listing?.name || "",
@@ -871,6 +881,9 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       : null));
     // A contract that is not its root's front (NGF27, NG2) prints the front's own price beside it, read in one batch.
     const fronts = await loadFuturesFrontQuotes(contracts, market.dataProvider);
+    // A per-MWh gas price (TTF) adds its dollars per MMBtu at the day's rate, to read beside Henry Hub.
+    const gasInUsd = await Promise.all(answers.map(({ result }, index) => loadUsdPerMmbtu(
+      getRegularSessionDisplay(result.quote)?.price, contracts[index], result.quote?.currency, (currency) => market.dataProvider.getExchangeRate(currency))));
     // A perpetual adds its funding per eight hours and open interest, the figures PERP lists beside its mark.
     const perpetualContracts = await Promise.all(answers.map(({ result }) => commandName === "quote" && result.quote
       ? cliPerpetualContract(result.quote)
@@ -891,6 +904,7 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       quote: withPreviousCloseDate(result.quote),
       ...contracts[index] ? { futuresContract: contracts[index] } : {},
       ...fronts[index] ? { futuresFront: fronts[index] } : {},
+      ...gasInUsd[index] ? { usdPerMmbtu: gasInUsd[index] } : {},
       ...perpetualContracts[index] ? { perpetualContract: perpetualContracts[index] } : {},
       ...usSuggestions[index] ? { usSuggestion: usSuggestions[index] } : {},
       error: failure?.oneLine ?? errorMessage(result.error),
@@ -923,7 +937,11 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       warnings: notes.length > 0 ? notes : undefined,
       // A Cboe yield index stops at its 15:00 ET close, before the Treasury's curve is taken: the line says so, so its
       // close does not read as a contradiction of DGS10 or GC for the same day.
-      freshness: quotesFreshness(data.map((row) => row.quote), yieldsOnly ? { schedule: `Cboe close ${CBOE_YIELD_INDEX_CLOSE}` } : undefined),
+      // Dated by the quotes as served, which say whether one is the saved copy.
+      freshness: withSavedCopy(
+        quotesFreshness(data.map((row) => row.quote), yieldsOnly ? { schedule: `Cboe close ${CBOE_YIELD_INDEX_CLOSE}` } : undefined),
+        answers.map(({ result }) => result.quote),
+      ),
     }, {
       rows: quoteRows,
       // An index row's Cur is blank, its level having no currency; the export names what it is in instead.
@@ -1013,6 +1031,9 @@ function quoteFuturesContractText(data: QuoteCliRecord[]): string {
     const change: Array<[string, string]> = session?.change != null && Number.isFinite(session.change)
       ? [["Change", quoteChangeText(row.quote, session, withCurrencyMinorDigits(quoteFormatOptions(row.quote, "FUTURE"), row.quote.currency), terms)]]
       : [];
+    // European gas beside Henry Hub: "≈ $30.832/MMBtu at EUR/USD 1.1650", a conversion that says so.
+    const inUsd = row.usdPerMmbtu;
+    if (inUsd) change.push(["In USD", usdPerMmbtuText(inUsd)]);
     const metrics = futuresContractMetrics(terms, row.quote.symbol || row.target.symbol);
     const rolls = futuresRollLines(terms, row.futuresFront).map((line): [string, string] => [line.label, line.value]);
     const at = futuresContractLines(terms, row.quote.symbol || row.target.symbol)[0]?.key === "contract" ? 1 : 0;
@@ -1033,9 +1054,13 @@ function yieldIndexFields(result: QuoteBatchResult): { unit?: "percent"; changeB
   return { unit: "percent", ...(change == null ? {} : { changeBasisPoints: toBasisPoints(change, 1) }) };
 }
 
-/** A crypto pair that will not load points at the crypto board. Structured formats keep the error as thrown. */
+/**
+ * A crypto pair that will not load points at the crypto board. Structured
+ * formats keep the error as thrown, and so does no connection at all, which
+ * the board cannot get past either.
+ */
 function failHistory(error: unknown, symbol: string, ctx: Parameters<CliCommandDef["execute"]>[1]): never {
-  if (ctx.cliOptions.format !== "text" || !isCryptoPairSymbol(symbol)) throw error;
+  if (ctx.cliOptions.format !== "text" || !isCryptoPairSymbol(symbol) || isNetworkFailure(error)) throw error;
   return ctx.fail(errorMessage(error) ?? `No history available for ${symbol}`, CRYPTO_BOARD_HINT);
 }
 
@@ -1144,7 +1169,7 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     // A bar history: dated by its last bar, stale once bars of its size stop arriving.
     // The day's own bar, while its session trades, is not a close: dated by the quote it was read from.
     const dayToDate = fromQuote && interval === "1d" && data.at(-1)?.partial === true;
-    const freshness = rowsFreshness(data, {
+    const freshness = withSavedCopy(rowsFreshness(data, {
       ...barHistoryFreshness(intraday ? null : barResolutionFromDates(data.map((row) => row.date))),
       observedKey: "date",
       oldest: null,
@@ -1152,7 +1177,8 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       ...(forming ? { periodToDate: forming.periodToDate } : closedDay ? { asOf: closedDay } : {}),
       ...(dayToDate ? { basis: "daily bars", ...(quote && Number.isFinite(quote.lastUpdated) ? { asOf: new Date(quote.lastUpdated).toISOString() } : {}) } : {}),
       ...(volume || dayToDate ? { note: [volume ? historyVolumeText(volume, interval) : null, dayToDate ? `the newest bar is ${DAY_SO_FAR_TEXT}` : null].filter(Boolean).join("; ") } : {}),
-    });
+    // The rows are drawn from the bars served, which say whether they are the saved copy.
+    }), loaded);
     const gaps = historyGapNote(data, traded);
     const coverage = range === "YTD" ? null : historyCoverageWarning(range, loaded);
     const notes = [
@@ -2170,7 +2196,9 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       if (!isOptionsUnavailableError(error)) throw error;
       // A future or commodity with no chain of its own: name the listed fund whose options stand in.
       const alternative = listedOptionsAlternative(listing.key);
-      return ctx.fail(optionsUnavailableTitle(listing.key), alternative
+      // A name read as a fund or an index asks about the company's stock it means, whose options are listed.
+      const meant = meantQuestion(listing);
+      return ctx.fail(meant ? `${optionsUnavailableTitle(listing.key)} ${meant}` : optionsUnavailableTitle(listing.key), alternative
         ? `Nearest listed alternative: ${alternative.symbol} (${alternative.name}), gloomberb options ${alternative.symbol}.`
           + ` Strategy payoffs: gloomberb fn OSA ${alternative.symbol}`
         : "Strategy payoffs on a listed underlying: gloomberb fn OSA <ticker>");

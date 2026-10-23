@@ -15,7 +15,10 @@ import {
   parseCountryFilter,
   pendingHighImpactPrints,
   resetEconCalendarPersistence,
+  actualColor,
+  valueColumnWidth,
 } from "./calendar-model";
+import { colors } from "../../../theme/colors";
 
 function makeEvent(id: string): EconEvent {
   return {
@@ -211,5 +214,26 @@ describe("country filters", () => {
     expect(matchesCountry(ifo, "FR")).toBe(false);
     expect(matchesCountry(eu("ECB Interest Rate Decision"), "DE")).toBe(false);
     expect(countriesWithoutEvents("DE,FR,EU", [ifo])).toEqual(["FR"]);
+  });
+});
+
+describe("econ calendar energy units", () => {
+  const energy = (actual: string | null, forecast: string | null, prior: string | null): EconEvent => ({
+    ...makeEvent("eia"), event: "Crude Oil Inventories", actual, forecast, prior,
+  });
+
+  test("a value column widens to keep a unit whole, and keeps its usual width otherwise", () => {
+    expect(valueColumnWidth([makeEvent("pce")], "actual", 9)).toBe(9);
+    expect(valueColumnWidth([makeEvent("pce"), energy("-3.061M bbl", "-1.2M bbl", "0.034M b/d")], "actual", 9)).toBe(11);
+    expect(valueColumnWidth([energy(null, null, "0.034M b/d")], "prior", 9)).toBe(10);
+    expect(valueColumnWidth([energy("77 Bcf", "80 Bcf", "67 Bcf")], "forecast", 10)).toBe(10);
+    // A long text value does not take the table.
+    expect(valueColumnWidth([energy("not published this week", null, null)], "actual", 9)).toBe(12);
+  });
+
+  test("a figure with its unit still compares with its forecast", () => {
+    expect(actualColor("77 Bcf", "80 Bcf")).toBe(colors.negative);
+    expect(actualColor("-3.061M bbl", "-4.000M bbl")).toBe(colors.positive);
+    expect(actualColor("0.034M b/d", "0.034M b/d")).toBe(colors.text);
   });
 });

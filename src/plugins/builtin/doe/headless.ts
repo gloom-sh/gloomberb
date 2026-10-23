@@ -4,6 +4,7 @@ import { fetchDoeBoard } from "./client";
 import {
   DOE_TABS,
   DOE_UNIT_LABEL,
+  doeComparisonBasis,
   doeHeaderLine,
   doeReport,
   doeRows,
@@ -62,10 +63,12 @@ export function doeHeadless(defaultTab: DoeTab | "all"): HeadlessPaneDefinition<
     async load(args) {
       const data = await fetchDoeBoard();
       // Each tab is dated by its own EIA report (petroleum Wednesday, gas Thursday);
-      // once the next one is a day overdue the tables have missed it.
-      const freshness = (tabs: readonly DoeTab[]) => {
+      // once the next one is a day overdue the tables have missed it. The basis
+      // names what Vs 1Y and Vs 5Y avg are measured against.
+      const freshness = (tabs: readonly DoeTab[], rows: readonly DoeSeriesRow[]) => {
         const reports = [...new Set(tabs.flatMap((tab) => doeReport(data, tab) ?? []))];
-        return { source: "EIA", status: "not-a-feed" as const, basis: "weekly release",
+        const comparison = doeComparisonBasis(rows);
+        return { source: "EIA", status: "not-a-feed" as const, basis: comparison ? `weekly release; ${comparison}` : "weekly release",
           asOf: newestReportTime(reports.map((report) => report.releasedAt)),
           nextExpectedAt: oldestReportTime(reports.map((report) => report.nextReleaseAt)) };
       };
@@ -84,7 +87,7 @@ export function doeHeadless(defaultTab: DoeTab | "all"): HeadlessPaneDefinition<
               rows: seasonalRows(row) },
           ],
           errors: data.gaps,
-          freshness: freshness([row.tab]),
+          freshness: freshness([row.tab], [row]),
           metadata: { ...data, series: [row], complete: data.status === "available" },
         };
       }
@@ -96,7 +99,7 @@ export function doeHeadless(defaultTab: DoeTab | "all"): HeadlessPaneDefinition<
           rows: doeRows(data, tab).map(reportRow),
         })),
         errors: data.gaps,
-        freshness: freshness(tabs),
+        freshness: freshness(tabs, tabs.flatMap((tab) => doeRows(data, tab))),
         metadata: { ...data, complete: data.status === "available" },
       };
     },

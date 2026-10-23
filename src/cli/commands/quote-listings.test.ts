@@ -407,6 +407,28 @@ test("a company's name in a pasted list is quoted as its listing, never as its w
   expect((cli.printed[0] as PrintedCliResult).result.warnings).toContain('Read "Whirlpool Corporation" as WHR:NYSE (Whirlpool Corp).');
 });
 
+test("a company's name read as an index asks about the company's stock; marked by the service, it is that stock", async () => {
+  const row = (symbol: string, name: string, exchange: string, type: string, searchAliases?: string[]) =>
+    ({ providerId: "test", symbol, name, exchange, type, currency: "USD", ...searchAliases ? { searchAliases } : {} });
+  const index = row("^JTEK", "JP MORGAN ETF TRUS", "NASDAQ", "INDEX");
+  const warningsFor = async (answers: Record<string, ReturnType<typeof row>[]>) => {
+    const dataProvider = createTestDataProvider({
+      search: async (query) => answers[query] ?? [],
+      getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> =>
+        targets.map((target) => ({ target, quote: createTestQuote({ symbol: target.symbol }) })),
+    });
+    const cli = createTestCliContext({ dataProvider });
+    await quoteCommand.execute(["JP Morgan"], cli.context);
+    return (cli.printed[0] as PrintedCliResult).result.warnings;
+  };
+  // An older service: the index for "JP Morgan", the company for "JPMorgan".
+  expect(await warningsFor({ "JP Morgan": [index], JPMorgan: [row("JPM", "JPMorgan Chase & Co.", "NYSE", "EQUITY")] }))
+    .toContain('Read "JP Morgan" as ^JTEK:NASDAQ (JP MORGAN ETF TRUS). Did you mean JPM (JPMorgan Chase & Co.)?');
+  // The service marks the company the name means.
+  expect(await warningsFor({ "JP Morgan": [row("JPM", "JPMorgan Chase & Co.", "NYSE", "Common Stock", ["JPMorgan", "JPMorgan Chase"]), index] }))
+    .toContain('Read "JP Morgan" as JPM:NYSE (JPMorgan Chase & Co.).');
+});
+
 test("quote and compare exit 1 when none of the symbols has a quote, 0 when some do, and print the same table either way", async () => {
   const dataProvider = createTestDataProvider({
     getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => targets.map((target) => target.symbol === "AAPL"

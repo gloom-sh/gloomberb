@@ -84,6 +84,19 @@ export interface ListingArg {
   sharedCode?: string;
   /** What a shared code was read as, when not its first venue: "Read 7203:TSE as 7203:JPX: ...". */
   readAs?: string;
+  /**
+   * The company's common stock a name read as a fund or an index means
+   * (`CompanyNameListing.meant`): JPM for "JP Morgan" read as ^JTEK:NIM.
+   * `readAs` asks about it, and a command the listing fails asks too.
+   */
+  meant?: { symbol: string; name: string };
+}
+
+/** "Did you mean JPM (JPMorgan Chase & Co.)?", for a name read as a fund or an index; empty for any other listing. */
+export function meantQuestion(listing: Pick<ListingArg, "meant">): string {
+  const meant = listing.meant;
+  if (!meant) return "";
+  return `Did you mean ${meant.name && meant.name.toUpperCase() !== meant.symbol ? `${meant.symbol} (${meant.name})` : meant.symbol}?`;
 }
 
 /**
@@ -993,10 +1006,13 @@ function readDollarIndexCode(raw: string, deps: Pick<ListingDeps, "dataProvider"
 async function companyNameListingArg(raw: string, deps: ListingDeps): Promise<ListingArg | null> {
   const typed = stripStrayEdges(raw).text || raw;
   if (!isCompanyNameInput(typed)) return null;
-  const found = await findListingOfCompanyName(deps.dataProvider, typed);
+  const found = await findListingOfCompanyName(deps.dataProvider, typed, { meant: true });
   if (!found) return null;
   const key = `${found.symbol}:${found.exchange}`;
-  return { ...parseListingArg(key), readAs: `Read "${typed.trim()}" as ${key} (${found.name}).` };
+  // A fund or an index carrying the name asks about the company's stock: "Did you mean JPM (JPMorgan Chase & Co.)?".
+  const meant = found.meant ? { symbol: found.meant.symbol, name: found.meant.name } : null;
+  const question = meant ? ` ${meantQuestion({ meant })}` : "";
+  return { ...parseListingArg(key), readAs: `Read "${typed.trim()}" as ${key} (${found.name}).${question}`, ...meant ? { meant } : {} };
 }
 
 /** `resolveCliListing` for a command: a bad exchange fails the command with its message. */

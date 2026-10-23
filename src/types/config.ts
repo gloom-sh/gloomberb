@@ -272,6 +272,13 @@ export interface RecentCommand {
   arg?: string;
 }
 
+/** What a launch's plugin seed could not install. */
+export interface PluginSeedFailure {
+  /** Extracted plugin ids, sorted. */
+  plugins: string[];
+  gitMissing: boolean;
+}
+
 export interface AppConfig {
   dataDir: string;
   configVersion: number;
@@ -291,6 +298,13 @@ export interface AppConfig {
    * not fought with.
    */
   seededPlugins?: string[];
+  /**
+   * The extracted plugins the last launch's seed could not install, and
+   * whether git was missing then. Absent until a seed fails, and again once
+   * one installs everything. `doctor` fails on it, and the launch notice that
+   * Gloom tries again is said once per failure.
+   */
+  pluginSeedFailure?: PluginSeedFailure;
   /**
    * Manual portfolios have taken the one currency their positions share. Runs
    * once per install, so later holdings never move a portfolio's currency.

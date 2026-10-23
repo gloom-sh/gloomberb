@@ -1,7 +1,7 @@
 import type { StatItem } from "../../../components";
 import type { HeadlessPaneEntry } from "../../../types/headless";
 import { formatHedgePrice } from "./hedge";
-import { UNKNOWN_CURRENCY, type ScenarioPosition } from "./model";
+import { amountUnit, UNKNOWN_CURRENCY, type ScenarioPosition } from "./model";
 
 /**
  * A collar (docs/research-data.md#collar): one long put and one short call on
@@ -104,17 +104,19 @@ function boundText(collar: Collar, value: number | null, side: "put" | "call"): 
 export function collarReportEntries(collar: Collar): HeadlessPaneEntry[] {
   const unit = unitOf(collar);
   const premium = Math.abs(collar.netPremium);
+  // Every figure is per share, so an export writes the number with that unit.
+  const perShare = { unit: `${amountUnit(collar.currency)} per share` };
   return [
-    { key: "putBought", label: "Put bought", value: collar.put.price,
+    { key: "putBought", label: "Put bought", value: collar.put.price, ...perShare,
       formatted: `${strikeText(collar.put.strike)} put at ${formatHedgePrice(collar.put.price)} per share (${priceWord(collar.put)})` },
-    { key: "callSold", label: "Call sold", value: collar.call.price,
+    { key: "callSold", label: "Call sold", value: collar.call.price, ...perShare,
       formatted: `${strikeText(collar.call.strike)} call at ${formatHedgePrice(collar.call.price)} per share (${priceWord(collar.call)})` },
-    { key: "netPremium", label: "Net premium", value: collar.netPremium,
+    { key: "netPremium", label: "Net premium", value: collar.netPremium, ...perShare,
       formatted: collar.netPremium === 0 ? `0.00 per share (zero cost)`
         : `${formatHedgePrice(premium)} per share ${premiumWord(collar)} (${money(Math.abs(collar.netPremiumTotal))}${unit} `
           + `for ${collar.contracts.toLocaleString("en-US")} ${collar.contracts === 1 ? "contract" : "contracts"} each)` },
-    { key: "floor", label: "Floor", value: collar.floor, formatted: boundText(collar, collar.floor, "put") },
-    { key: "cap", label: "Cap", value: collar.cap, formatted: boundText(collar, collar.cap, "call") },
+    { key: "floor", label: "Floor", value: collar.floor, ...perShare, formatted: boundText(collar, collar.floor, "put") },
+    { key: "cap", label: "Cap", value: collar.cap, ...perShare, formatted: boundText(collar, collar.cap, "call") },
   ];
 }
 

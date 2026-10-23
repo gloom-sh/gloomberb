@@ -73,6 +73,19 @@ export function latestTradingSessionOpen(symbol: string | undefined, exchange: s
 }
 
 /**
+ * When a futures listing's sessions open, in minutes after local midnight:
+ * its source's minute and hour bars start on the clock, not at the open, so a
+ * bar built from them must not straddle it. Null for other listings, whose
+ * bars start at the open.
+ */
+export function futuresSessionOpenMinute(symbol: string | undefined, exchange: string | undefined): number | null {
+  const session = symbol || exchange ? futuresSessionOpen(symbol ?? "", exchange) : null;
+  if (!session) return null;
+  const gcd = (left: number, right: number): number => (right === 0 ? left : gcd(right, left % right));
+  return session.sundayOpen === undefined ? session.open : gcd(session.open, session.sundayOpen);
+}
+
+/**
  * The zone a listing's intraday times read in: a futures venue's own clock
  * (Chicago for CME Group, New York for ICE U.S.), otherwise the venue's. Null
  * for crypto, FX and venues without a known clock, which read in UTC.

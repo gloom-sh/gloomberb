@@ -25,6 +25,7 @@ import { CLI_EXIT_CODES } from "./exit-codes";
 import { asUsageError, fail, inferCliErrorOptions, printCliError } from "./errors";
 import { cliStyles, setCliColorEnabledOverride, setCliWidthOverride } from "../utils/cli-output";
 import { setDisplayTimeZone } from "../utils/utc-time";
+import { collectSavedCopies } from "../data/saved-copies";
 import { search, searchCandidatesForCli, buildSearchReport } from "./commands/search";
 import { ticker } from "./commands/ticker";
 import { requireOneArg, takeFlag, takeOption } from "./commands/command-utils";
@@ -465,10 +466,11 @@ export async function dispatchCli(args: string[], options: DispatchCliOptions = 
     : parsed.args.slice(1);
   try {
     if (!helpOnly && resolved.builtin) checkCliCommandOptions(resolved.command, commandArgs, parsed.literalStart - 1);
-    const result = await target.command.execute(
+    // What it answers from a saved copy, its refresh having failed, its closing line says.
+    const result = await collectSavedCopies(() => Promise.resolve(target.command.execute(
       commandArgs,
       createCliCommandContext(target.ownerId, registry, parsed.options, commandArgs),
-    );
+    )));
     return normalizeCliDispatchResult(result);
   } catch (error) {
     // A coin typed without its quote currency (USDT) is named by its one symbol (USDT-USD) in the hint.

@@ -1,6 +1,6 @@
-import { CHART_RESOLUTIONS, TIME_RANGES, type ChartResolution, type TimeRange } from "./range";
+import { TIME_RANGES, type ChartResolution, type TimeRange } from "./range";
 import { isRealizedVolatilityEstimator } from "../market-data/realized-volatility";
-import { getChartResolutionLabel } from "./resolution";
+import { getChartResolutionLabel, isChartResolution } from "./resolution";
 import {
   canonicalTimeSeriesFieldId,
   getTimeSeriesField,
@@ -35,7 +35,6 @@ import { recordOrNull } from "../utils/guards";
 import { isLeverageFactor } from "./leverage";
 
 const RANGE_SET = new Set<TimeRange>(TIME_RANGES);
-const RESOLUTIONS = new Set<ChartResolution>(CHART_RESOLUTIONS);
 const PERIODS = new Set<SeriesPeriod>(["auto", "daily", "weekly", "monthly", "quarterly", "annual", "ttm"]);
 // `band` only stays on a capability series: a field's styles and an economic series' leave it out.
 const STYLES = new Set<SeriesStyle>(["line", "area", "step", "columns", "points", "candles", "ohlc", "hlc", "band"]);
@@ -324,7 +323,7 @@ export function normalizeChartSpec(value: unknown, fallback: ChartSpec = DEFAULT
       range: RANGE_SET.has(viewport?.range as TimeRange)
         ? viewport!.range as TimeRange
         : fallbackCopy.viewport.range,
-      resolution: RESOLUTIONS.has(viewport?.resolution as ChartResolution)
+      resolution: isChartResolution(viewport?.resolution)
         ? viewport!.resolution as ChartResolution
         : fallbackCopy.viewport.resolution,
       dateWindow: normalizedDateWindow(viewport?.dateWindow),
@@ -364,7 +363,7 @@ export function validateChartSpec(spec: ChartSpec): ChartSpecValidationResult {
     errors.push(issue("version", "unsupported-version", `Unsupported chart spec version ${String(spec.version)}.`));
   }
   if (!RANGE_SET.has(spec.viewport.range)) errors.push(issue("viewport.range", "invalid-range", "Invalid date range."));
-  if (!RESOLUTIONS.has(spec.viewport.resolution)) {
+  if (!isChartResolution(spec.viewport.resolution)) {
     errors.push(issue("viewport.resolution", "invalid-resolution", "Invalid chart resolution."));
   }
   if (spec.viewport.dateWindow) {

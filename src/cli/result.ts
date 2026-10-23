@@ -13,7 +13,7 @@ import {
 } from "../utils/cli-output";
 import { serializeCsv } from "../utils/csv";
 import { formatUtcTime, isEpochMilliseconds, isZonedIsoDateTime } from "../utils/utc-time";
-import { formatFreshnessLine, type ReportFreshness } from "./pane-functions/freshness";
+import { formatFreshnessLine, withSavedCopy, type ReportFreshness } from "./pane-functions/freshness";
 import { withSearchHints, type FredSeriesCheck } from "./not-a-ticker";
 import { renderReportCsv, renderReportNdjson, withCsvFooter, type CliReportTables } from "./report-tables";
 import {
@@ -395,9 +395,13 @@ function overflowsTerminal<Row extends Record<string, unknown>>(rows: Row[]): bo
   return width > terminalWidth;
 }
 
-/** The closing source, as-of and status line of a text result, for output printed without `printResult`. */
-export function cliFreshnessFooter(freshness: ReportFreshness): string {
-  return cliStyles.muted(wrapToTerminal(formatFreshnessLine(freshness)));
+/**
+ * The closing source, as-of and status line of a text result, for output
+ * printed without `printResult`; `shown` is the data the line is drawn from,
+ * which says whether it came from a saved copy.
+ */
+export function cliFreshnessFooter(freshness: ReportFreshness, shown?: unknown): string {
+  return cliStyles.muted(wrapToTerminal(formatFreshnessLine(withSavedCopy(freshness, shown))));
 }
 
 export function serializeCliResult<T, Row extends Record<string, unknown> = Record<string, unknown>>(
@@ -405,8 +409,10 @@ export function serializeCliResult<T, Row extends Record<string, unknown> = Reco
   options: CliGlobalOptions,
   renderOptions: CliResultRenderOptions<T, Row> = {},
 ): string {
-  const { freshness, exportFreshness, failure, ...rest } = result;
-  const cited = freshness ?? exportFreshness;
+  const { freshness: reported, exportFreshness, failure, ...rest } = result;
+  // Rows shown from a saved copy, its refresh having failed, say so in place of live or delayed.
+  const freshness = reported && withSavedCopy(reported, result.data);
+  const cited = freshness ?? (exportFreshness && withSavedCopy(exportFreshness, result.data));
   if (options.format === "json") {
     const columns = serializeColumns(renderOptions.columns);
     const window = Array.isArray(result.data) ? windowed(result.data as unknown[], options, renderOptions) : null;

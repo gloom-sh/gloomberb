@@ -1,10 +1,10 @@
 import type { HeadlessPaneOptionValues } from "../../../types/headless";
 import {
-  CHART_RESOLUTIONS,
   TIME_RANGES,
   type ChartResolution,
   type TimeRange,
 } from "../../../time-series/range";
+import { parseChartResolution } from "../../../time-series/resolution";
 import {
   coerceSeriesTransformForStyle,
   normalizeChartSpec,
@@ -36,10 +36,7 @@ export function yearToDateWindow(spec: ChartSpec, now = Date.now()): { start: st
 }
 
 function chartResolution(options: HeadlessPaneOptionValues): ChartResolution | null {
-  const value = options.chartResolution ?? options.resolution;
-  return typeof value === "string" && (CHART_RESOLUTIONS as readonly string[]).includes(value)
-    ? value as ChartResolution
-    : null;
+  return parseChartResolution(options.chartResolution ?? options.resolution);
 }
 
 function financialPeriod(value: unknown): SeriesPeriod | null {

@@ -11,19 +11,22 @@ export {
   CHART_RESOLUTIONS, TIME_RANGES,
 } from "../time-series/range";
 export type {
-  ChartDateWindow, ChartResolution, TimeRange,
+  ChartBarSizeUnit, ChartDateWindow, ChartResolution, CustomChartResolution, TimeRange,
 } from "../time-series/range";
 export {
-  CHART_RESOLUTION_STEP_MS, clampTimeRangeToMaxRange, DEFAULT_CHART_RESOLUTION_SUPPORT,
-  getBestSupportedResolutionForVisibleWindow, getChartResolutionLabel, getExpandedBufferRange,
-  getNextBufferRange, getPresetResolution, getSupportedChartResolutionsForViewport,
-  getSupportedPresetResolution, getSupportMaxRange, intersectChartResolutionSupport,
-  isIntradayResolution, isRangePresetSupported, normalizeChartResolution,
-  normalizeChartResolutionSupport, sortChartResolutions, TIME_RANGE_ORDER,
+  CHART_RESOLUTION_STEP_MS, chartBarSizeSource, chartBarSizeStepMs, clampTimeRangeToMaxRange,
+  DEFAULT_CHART_RESOLUTION_SUPPORT, getBestSupportedResolutionForVisibleWindow, getChartResolutionLabel,
+  getExpandedBufferRange, getNextBufferRange, getPresetResolution, getSupportedChartResolutionsForViewport,
+  getSupportedPresetResolution, getSupportMaxRange, intersectChartResolutionSupport, isChartResolution,
+  isIntradayResolution, isManualChartResolution, isRangePresetSupported, normalizeChartResolution,
+  normalizeChartResolutionSupport, parseChartBarSize, sortChartResolutions, TIME_RANGE_ORDER,
 } from "../time-series/resolution";
 export type {
-  ChartResolutionSupport, ManualChartResolution,
+  ChartBarSize, ChartResolutionSupport, ManualChartResolution,
 } from "../time-series/resolution";
+// Bars of a size the source does not serve, built from its shorter ones the way the chart builds them.
+export { aggregatePriceBars } from "../time-series/bar-aggregation";
+export type { AggregatedPricePoint, BarAggregationListing } from "../time-series/bar-aggregation";
 
 // The resolved shape itself: what a chart-series capability returns and what
 // the composite chart draws. A plugin that answers `chartSeriesProvider`

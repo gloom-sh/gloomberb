@@ -1,8 +1,11 @@
-import type { ChartResolution, TimeRange } from "./range";
+import type { ChartBarSizeUnit, ChartResolution, CustomChartResolution, TimeRange } from "./range";
 import { CHART_RESOLUTIONS, TIME_RANGES } from "./range";
 import { isDateWindowWithinTimeRange } from "./date-window";
 
-export type ManualChartResolution = Exclude<ChartResolution, "auto">;
+/** The bar sizes sources and brokers serve, and the only ones they are asked for. */
+export type ManualChartResolution = "1m" | "5m" | "15m" | "30m" | "45m" | "1h" | "1d" | "1wk" | "1mo";
+/** Any bar size a chart draws: one a source serves, or one built from them. */
+export type ChartBarSize = Exclude<ChartResolution, "auto">;
 
 export interface ChartResolutionSupport {
   resolution: ManualChartResolution;
@@ -13,7 +16,7 @@ export interface ChartResolutionSupport {
 export const TIME_RANGE_ORDER = TIME_RANGES;
 const CHART_RESOLUTION_ORDER = CHART_RESOLUTIONS;
 
-const CHART_RESOLUTION_LABELS: Record<ChartResolution, string> = {
+const CHART_RESOLUTION_LABELS: Record<ManualChartResolution | "auto", string> = {
   auto: "AUTO",
   "1m": "1M",
   "5m": "5M",
@@ -137,21 +140,153 @@ function compareTimeRange(left: TimeRange, right: TimeRange): number {
   return getTimeRangeIndex(left) - getTimeRangeIndex(right);
 }
 
-function isChartResolution(value: unknown): value is ChartResolution {
-  return CHART_RESOLUTION_ORDER.includes(value as ChartResolution);
-}
-
-function isManualChartResolution(value: unknown): value is ManualChartResolution {
+export function isManualChartResolution(value: unknown): value is ManualChartResolution {
   return value !== "auto" && CHART_RESOLUTION_ORDER.includes(value as ChartResolution);
 }
 
-/** @deprecated Slated for removal. Check the value against `CHART_RESOLUTIONS` instead. */
+const BAR_SIZE_UNIT_MS: Readonly<Record<ChartBarSizeUnit, number>> = {
+  m: 60_000,
+  h: 60 * 60_000,
+  d: 24 * 60 * 60_000,
+  wk: 7 * 24 * 60 * 60_000,
+  mo: 30 * 24 * 60 * 60_000,
+};
+
+/** The longest bar of each unit: a day of minutes or hours, a year of days, weeks or months. */
+const BAR_SIZE_MAX_COUNT: Readonly<Record<ChartBarSizeUnit, number>> = { m: 1440, h: 24, d: 365, wk: 52, mo: 12 };
+
+const BAR_SIZE_UNITS: Readonly<Record<string, ChartBarSizeUnit>> = {
+  m: "m", min: "m", mins: "m", minute: "m", minutes: "m",
+  h: "h", hr: "h", hrs: "h", hour: "h", hours: "h",
+  d: "d", day: "d", days: "d",
+  w: "wk", wk: "wk", week: "wk", weeks: "wk",
+  mo: "mo", mon: "mo", month: "mo", months: "mo",
+};
+
+/** A bar size in its one stored form: `90m`, `4h` (not `240m`), `2d`, `1wk`, `3mo`. */
+function canonicalBarSize(count: number, unit: ChartBarSizeUnit): ChartBarSize | null {
+  if (!Number.isSafeInteger(count) || count <= 0) return null;
+  if (unit === "m" && count % 60 === 0) return canonicalBarSize(count / 60, "h");
+  if (count > BAR_SIZE_MAX_COUNT[unit]) return null;
+  return `${count}${unit}` as ChartBarSize;
+}
+
+/** A stored bar size's count and unit; null for anything that is not one. */
+export function chartBarSizeParts(size: unknown): { count: number; unit: ChartBarSizeUnit } | null {
+  if (typeof size !== "string") return null;
+  const match = /^([1-9]\d{0,3})(m|h|d|wk|mo)$/.exec(size);
+  if (!match) return null;
+  const count = Number(match[1]);
+  const unit = match[2] as ChartBarSizeUnit;
+  return canonicalBarSize(count, unit) === size ? { count, unit } : null;
+}
+
+/** A stored bar size (`4h`, `2d`, `1wk`); `auto` is not one. */
+function isChartBarSize(value: unknown): value is ChartBarSize {
+  return chartBarSizeParts(value) !== null;
+}
+
+/** Any value a chart's resolution may hold: `auto` or a stored bar size. */
+export function isChartResolution(value: unknown): value is ChartResolution {
+  return value === "auto" || isChartBarSize(value);
+}
+
+/** A bar size the source does not serve, which the chart builds from one it does. */
+export function isCustomChartResolution(value: unknown): value is CustomChartResolution {
+  return isChartBarSize(value) && !isManualChartResolution(value);
+}
+
+/**
+ * Reads a bar size as typed: `10m`, `10 min`, `4h`, `240` (minutes), `2D`,
+ * `3 days`, `2W`, `3mo`, `1Y`. A capital `M` alone is read as nothing: the
+ * chart labels months `M` and the command line minutes `1M`, so `3M` could be
+ * either. Null for anything else, and for bars longer than a day of minutes
+ * or hours, a year of days or weeks, or twelve months.
+ */
+export function parseChartBarSize(value: unknown): ChartBarSize | null {
+  if (typeof value !== "string") return null;
+  const match = /^(\d{1,4})\s*([A-Za-z]*)$/.exec(value.trim());
+  if (!match) return null;
+  const count = Number(match[1]);
+  const written = match[2]!;
+  if (written === "") return canonicalBarSize(count, "m");
+  if (written === "M") return null;
+  const lower = written.toLowerCase();
+  if (lower === "y" || lower === "yr" || lower === "year" || lower === "years") return canonicalBarSize(count * 12, "mo");
+  const unit = BAR_SIZE_UNITS[lower];
+  return unit ? canonicalBarSize(count, unit) : null;
+}
+
+/** A chart resolution as typed or stored: `auto`, or any bar size `parseChartBarSize` reads. */
+export function parseChartResolution(value: unknown): ChartResolution | null {
+  if (typeof value === "string" && value.trim().toLowerCase() === "auto") return "auto";
+  return parseChartBarSize(value);
+}
+
+/** How long one bar is; a month counts as 30 days. */
+export function chartBarSizeStepMs(size: ChartBarSize): number {
+  const parts = chartBarSizeParts(size);
+  return parts ? parts.count * BAR_SIZE_UNIT_MS[parts.unit] : Number.NaN;
+}
+
+/** Source bar sizes that can make up minute and hour bars, longest first. */
+const INTRADAY_SOURCE_RESOLUTIONS: readonly ManualChartResolution[] = ["1h", "45m", "30m", "15m", "5m", "1m"];
+
+/**
+ * The bars a source serves that a bar size is built from: the longest that
+ * divide it (1h for 4h, 5m for 10m, 30m for 90m), among those the source
+ * serves when `support` says. Day, week and month multiples come from 1d, 1wk
+ * and 1mo bars. `openMinute`, minutes after local midnight, is when sessions
+ * open on a listing whose source bars start on the clock rather than at the
+ * open (futures): its source bars must also divide it, or a bar would straddle
+ * the open. A bar size the source serves is its own.
+ */
+export function chartBarSizeSource(
+  size: ChartBarSize,
+  support: readonly ChartResolutionSupport[] = [],
+  openMinute: number | null = null,
+): ManualChartResolution {
+  if (isManualChartResolution(size)) return size;
+  const parts = chartBarSizeParts(size);
+  if (!parts) return "1d";
+  if (parts.unit === "d") return "1d";
+  if (parts.unit === "wk") return "1wk";
+  if (parts.unit === "mo") return "1mo";
+  const minutes = parts.unit === "h" ? parts.count * 60 : parts.count;
+  const candidates = INTRADAY_SOURCE_RESOLUTIONS.filter((resolution) => {
+    const step = CHART_RESOLUTION_STEP_MS[resolution] / 60_000;
+    return minutes % step === 0 && (openMinute === null || openMinute % step === 0);
+  });
+  const served = support.length > 0
+    ? candidates.find((resolution) => getSupportMaxRange(support, resolution) !== null)
+    : undefined;
+  return served ?? candidates[0] ?? "1m";
+}
+
+/**
+ * Every bar size the chart lists, shortest first: the ones sources serve and
+ * the ones most asked for that it builds from them. Any other is typed in.
+ */
+export const CHART_BAR_SIZE_PRESETS: readonly ChartBarSize[] = [
+  "1m", "5m", "10m", "15m", "30m", "45m", "1h", "2h", "4h", "1d", "2d", "3d", "1wk", "1mo",
+];
+
+/** Orders bar sizes from the shortest bar to the longest. */
+export function sortChartBarSizes<T extends ChartBarSize>(sizes: readonly T[]): T[] {
+  return [...sizes].sort((left, right) => chartBarSizeStepMs(left) - chartBarSizeStepMs(right));
+}
+
+/** @deprecated Slated for removal. Check the value with `isChartResolution` instead. */
 export function normalizeChartResolution(value: unknown, fallback: ChartResolution = "auto"): ChartResolution {
   return isChartResolution(value) ? value : fallback;
 }
 
+const CUSTOM_BAR_UNIT_LABELS: Readonly<Record<ChartBarSizeUnit, string>> = { m: "M", h: "H", d: "D", wk: "W", mo: "MO" };
+
 export function getChartResolutionLabel(resolution: ChartResolution): string {
-  return CHART_RESOLUTION_LABELS[resolution];
+  if (isManualChartResolution(resolution) || resolution === "auto") return CHART_RESOLUTION_LABELS[resolution];
+  const parts = chartBarSizeParts(resolution);
+  return parts ? `${parts.count}${CUSTOM_BAR_UNIT_LABELS[parts.unit]}` : String(resolution).toUpperCase();
 }
 
 export function getPresetResolution(range: TimeRange): ManualChartResolution {
@@ -199,11 +334,11 @@ export function getExpandedBufferRange(
   const nextCandidate = getNextBufferRange(bufferRange);
   const nextBufferRange = resolution === "auto"
     ? nextCandidate
-    : clampTimeRangeToMaxRange(nextCandidate, supportMap.get(resolution) ?? bufferRange);
+    : clampTimeRangeToMaxRange(nextCandidate, supportMap.get(chartBarSizeSource(resolution)) ?? bufferRange);
   return isTimeRangeAtOrBelow(nextBufferRange, bufferRange) ? null : nextBufferRange;
 }
 
-export function sortChartResolutions<T extends ChartResolution>(resolutions: readonly T[]): T[] {
+export function sortChartResolutions<T extends "auto" | ManualChartResolution>(resolutions: readonly T[]): T[] {
   return [...resolutions].sort((left, right) => (
     CHART_RESOLUTION_ORDER.indexOf(left) - CHART_RESOLUTION_ORDER.indexOf(right)
   ));
@@ -267,6 +402,31 @@ export function getSupportMaxRange(
   return normalizeChartResolutionSupport(support).find((entry) => entry.resolution === resolution)?.maxRange ?? null;
 }
 
+function viewportSpanMs(range: TimeRange, dateWindow?: { start: string | Date; end: string | Date }): number {
+  const start = dateWindow ? new Date(dateWindow.start).getTime() : Number.NaN;
+  const end = dateWindow ? new Date(dateWindow.end).getTime() : Number.NaN;
+  return Number.isFinite(start) && Number.isFinite(end) && start <= end
+    ? end - start
+    : TIME_RANGE_APPROXIMATE_DAYS[range] * CHART_RESOLUTION_STEP_MS["1d"];
+}
+
+/**
+ * The bar sizes of `sizes` a chart of this range or window can draw: each
+ * one's source bars reach back over it, and it holds at least two bars.
+ */
+export function getSupportedChartBarSizesForViewport<T extends ChartBarSize>(
+  range: TimeRange,
+  support: readonly ChartResolutionSupport[],
+  sizes: readonly T[],
+  dateWindow?: { start: string | Date; end: string | Date },
+  openMinute: number | null = null,
+): T[] {
+  const served = new Set<ManualChartResolution>(getSupportedChartResolutionsForViewport(range, support, dateWindow));
+  const span = viewportSpanMs(range, dateWindow);
+  return sizes.filter((size) => served.has(chartBarSizeSource(size, support, openMinute))
+    && span / chartBarSizeStepMs(size) >= MINIMUM_USEFUL_CHART_POINTS);
+}
+
 export function getSupportedChartResolutionsForViewport(
   range: TimeRange,
   support: readonly ChartResolutionSupport[],
@@ -279,9 +439,7 @@ export function getSupportedChartResolutionsForViewport(
     && !!end
     && Number.isFinite(end.getTime())
     && start.getTime() <= end.getTime();
-  const viewportSpanMs = hasValidDateWindow
-    ? Math.max(end.getTime() - start.getTime(), 0)
-    : TIME_RANGE_APPROXIMATE_DAYS[range] * CHART_RESOLUTION_STEP_MS["1d"];
+  const spanMs = viewportSpanMs(range, dateWindow);
   return normalizeChartResolutionSupport(support)
     .filter((entry) => (
       hasValidDateWindow
@@ -289,7 +447,7 @@ export function getSupportedChartResolutionsForViewport(
         : isTimeRangeAtOrBelow(range, entry.maxRange)
     ))
     .filter((entry) => (
-      viewportSpanMs / CHART_RESOLUTION_STEP_MS[entry.resolution]
+      spanMs / CHART_RESOLUTION_STEP_MS[entry.resolution]
         >= MINIMUM_USEFUL_CHART_POINTS
     ))
     .map((entry) => entry.resolution);

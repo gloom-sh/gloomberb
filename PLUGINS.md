@@ -59,6 +59,17 @@ installed from a repository the registry does not list, update only when you
 ask. Turn this off with **Update official plugins automatically** in the
 Plugins pane's settings.
 
+### Official plugins that need Git
+
+These official plugins live in their own repositories and install from GitHub
+with `git` when the app starts: TV, Substack, Interactive Brokers, IBKR
+Gateway, Public, Robinhood, SimpleFIN, Polls, Prediction Markets and BYOK AI.
+Windows does not ship `git`: install
+[Git for Windows](https://git-scm.com/download/win), then restart Gloom.
+Without it the app starts without them and says so at each launch, and
+`gloomberb doctor` names them; offline, it says once that it tries again at
+the next launch. Git runs quietly: a failure reports git's last line.
+
 ## Developing a plugin
 
 Work on a plugin from its own checkout rather than editing under
@@ -849,7 +860,7 @@ export default {
 | `publisher`, `url` | The official body publishing public data (a statistics agency, a central bank, a regulator) and its page for the series. |
 | `input` | `ticker`, `option` or `crypto`: the series is one per symbol. The catalog asks for the symbol, typing a ticker in the catalog fills it in, and `load` receives it as `ticker`. |
 | `placement` | Where a chart draws the series when it is added: `price` over its ticker's price, on the price's axis (a moving average, a band; needs `input: "ticker"` and is in the ticker's currency, unit `currency`), or `panel` in a panel of its own under the price (an oscillator). CAT then opens the ticker's price with the series placed. Without it, the series joins the main panel when it fits. |
-| `load(request)` | Returns the points from `request.start` to `request.end` (either may be absent), as an array of `{ date, value }` or `{ points, warning, attribution }`. `request.resolution` is the bar size the chart draws prices in (`1d`, `1wk`, `5m`), so a series computed from a ticker's bars can use the same bars. `request.signal` aborts when the chart no longer needs the load; for a series with `lines`, once none of its lines does. `attribution: { source, publisher? }` names the dataset a report of the series alone cites (`FRED series ECBDFR`, published by the European Central Bank) in place of Gloom Cloud. Dates may be `Date`s, `YYYY-MM-DD` strings or epoch milliseconds; a `null` value is a gap. More history than asked for is fine. |
+| `load(request)` | Returns the points from `request.start` to `request.end` (either may be absent), as an array of `{ date, value }` or `{ points, warning, attribution }`. `request.resolution` is the bar size the chart draws prices in (`1d`, `1wk`, `5m`), so a series computed from a ticker's bars can use the same bars. When the chart builds its bars from shorter ones (`4h` from `1h`, `2d` from `1d`), `request.resolution` is the size it loads and `request.barSize` the size it draws; `aggregatePriceBars` from `gloomberb/time-series` builds them the same way, from the session's open, and a series that ignores `barSize` still gets bars it knows. `request.signal` aborts when the chart no longer needs the load; for a series with `lines`, once none of its lines does. `attribution: { source, publisher? }` names the dataset a report of the series alone cites (`FRED series ECBDFR`, published by the European Central Bank) in place of Gloom Cloud. Dates may be `Date`s, `YYYY-MM-DD` strings or epoch milliseconds; a `null` value is a gap. More history than asked for is fine. |
 | `lines` | Several lines drawn together, such as a band's middle and edges: up to sixteen `{ id, name, style?, color?, fill? }`, all added to a chart at once. `color` is `#rrggbb`. `fill` names another line: the area between the two is shaded in this line's colour, under the lines. `load` then returns `{ lines: { [id]: points } }` (`SeriesLinesLoadResult`) and runs once for all of them. A chart names one line as `CAP:namespace:name~id`. |
 | `refreshMs` | For a series that moves during the day: how often a chart showing it loads it again, at least 60000. |
 | `style` | `line` (the default), `area`, `step`, `columns` or `points`. |

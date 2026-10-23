@@ -42,7 +42,7 @@ import type { ResolvedPaneFunction } from "./resolver";
 import { isRecord } from "../../utils/guards";
 import { splitSymbolWords } from "../symbol-args";
 import { formatUtcTime, localTimeSuffix } from "../../utils/utc-time";
-import { deriveHeadlessFreshness, formatFreshnessLine, staleRowsText, type ReportFreshness } from "./freshness";
+import { deriveHeadlessFreshness, formatFreshnessLine, staleRowsText, withSavedCopy, type ReportFreshness } from "./freshness";
 import { accessGateStatus, errorsAccessGate, isProLock, reportGateText } from "./access-gate";
 import { noArgumentMessage } from "./capabilities";
 import { lockedHeadlessReport } from "./lock-note";
@@ -782,7 +782,10 @@ export function headlessReportTables(
         };
         if (!("rows" in section && section.rows)) {
           const entries = exportEntriesTable(section.title, section.entries);
-          return Object.keys(named).length > 0 ? { ...entries, identity: named } : entries;
+          // A figure that declares its unit names it in the unit column of its own line too.
+          const rowIdentities = section.entries.some((entry) => entry.unit?.trim())
+            ? section.entries.map((entry) => entry.unit?.trim() ? { currencyOrUnit: entry.unit.trim() } : undefined) : undefined;
+          return { ...entries, ...(Object.keys(named).length > 0 ? { identity: named } : {}), ...(rowIdentities ? { rowIdentities } : {}) };
         }
         const table = exportRowsTable(section.title, displayedColumns(columnsFor(section.rows, section.columns, definition.columns)), section.rows, { status: true });
         const identity = {
@@ -974,7 +977,8 @@ export async function buildHeadlessFunctionReport(
   }
   const { complete, unavailableSymbols, rowCount, symbols } = reportCoverage(loaded);
   const serialized = serializeHeadlessPaneResult(loaded.definition, loaded.result);
-  const freshness = deriveHeadlessFreshness(loaded.definition, loaded.result);
+  // What the report shows from a saved copy, its refresh having failed, says so.
+  const freshness = withSavedCopy(deriveHeadlessFreshness(loaded.definition, loaded.result), loaded.result);
   return {
     data: {
       kind: loaded.definition.shape,

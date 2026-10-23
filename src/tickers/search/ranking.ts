@@ -276,6 +276,17 @@ export function rankTickerSearchItems<T extends Pick<TickerSearchRankableItem, "
       };
     });
 
+  // A large company's name that is only a foreign line's ticker ("Visa" in Vienna, "Pfizer" for Pfizer Ltd. on
+  // NSE, "BofA" for a Canadian receipt) asks for the company, which the server marks with the name as typed: its
+  // US line leads, and those tickers rank by their names. A US line's ticker (SAP, GOLD) keeps every exact lead.
+  if (namesUsCompany(ranked, query)) {
+    for (const entry of ranked) {
+      if (entry.symbolMatchRank !== 3 && entry.symbolMatchRank !== 4) continue;
+      entry.symbolMatchRank = 0;
+      entry.nameOnly = entry.companyMatchRank > 0;
+    }
+  }
+
   // A company named exactly as the word is what was asked for ("tesla"), whatever else a theme tags.
   const namedCompany = ranked.some((entry) => entry.companyMatchRank === 3 && entry.item.instrumentClass === "equity");
   // The first few funds in the server's order lead; the others list as funds always have.
@@ -824,6 +835,30 @@ function scoreExchangePreference(
   return matchesHint ? 2_000 : -800;
 }
 
+/** The venue a row lists on: a broker's SMART routing names none, its primary exchange does. */
+function listingVenue(item: Partial<TickerSearchRankableItem>): string {
+  return canonicalExchange(item.exchangeLabel === "SMART" ? item.primaryExchangeLabel : item.exchangeLabel || item.primaryExchangeLabel);
+}
+
+/**
+ * Whether the server answered a company's name with the company's US line,
+ * marked with the name as typed (`searchAliases`), while the rows whose ticker
+ * is the query all list abroad and none is saved. A ticker typed with its
+ * venue (VISA:VIE), or a US line that is the ticker, names that ticker instead.
+ */
+function namesUsCompany(
+  entries: ReadonlyArray<{ item: Partial<TickerSearchRankableItem>; symbolMatchRank: number }>,
+  query: string,
+): boolean {
+  if (isQualifiedTickerQuery(query) || !/\p{L}/u.test(query)) return false;
+  const exact = entries.filter((entry) => entry.symbolMatchRank === 3 || entry.symbolMatchRank === 4);
+  if (exact.length === 0 || exact.some(({ item }) => isUsListingExchange(listingVenue(item)) || item.saved || item.kind === "ticker")) return false;
+  const typed = compactSearchText(query);
+  return entries.some(({ item, symbolMatchRank }) => symbolMatchRank === 2 && item.kind === "search"
+    && item.instrumentClass === "equity" && isUsListingExchange(listingVenue(item))
+    && !!item.searchAliases?.some((alias) => compactSearchText(alias) === typed));
+}
+
 function isDepositaryReceiptType(type?: string): boolean {
   const normalized = normalizeSearchText(type || "");
   return normalized.includes("DEPOSITARY") || ["ADR", "ADS", "GDR", "CDR", "BDR"].includes(normalized);
@@ -896,6 +931,8 @@ export function getIssuerGroupKey(detail: string): string {
 
 function normalizeCompanyName(name: string): string {
   const tokens = normalizeSearchText(name).split(" ").filter(Boolean);
+  // "The TJX Companies, Inc." is TJX's name as much as Hanover's "TJX COMPANIES INC. R" is.
+  if (tokens.length > 1 && tokens[0] === "THE") tokens.shift();
   while (tokens.length > 1) {
     if (COMPANY_NAME_SUFFIXES.has(tokens.at(-1)!)) {
       tokens.pop();
