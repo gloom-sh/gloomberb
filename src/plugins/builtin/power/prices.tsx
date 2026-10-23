@@ -167,7 +167,7 @@ function PowerPriceBoard({ width, height, focused }: { width: number; height: nu
   const loaded = useAsyncResource<{ payload: { code: string; points: ReadonlyArray<{ date: string; value: number }> } }>(
     code && !snapshot ? historyLoader : null, { keepPreviousData: true });
   const history = snapshot ? { ...loaded, data: snapshot.history ? { payload: snapshot.history } : null, loading: false, error: null } : loaded;
-  usePowerPricesEvidence(board, carbon, useMemo(() => rows.map((row) => row.id), [rows]), resource.loading || history.loading || carbonResource.loading, carbonError);
+  usePowerPricesEvidence(board, carbon, useMemo(() => rows.map((row) => row.id), [rows]), resource.loading || history.loading || carbonResource.loading, snapshot?.carbonError);
   useAutoRefresh(resource.updatedAt, resource.load);
   useAutoRefresh(carbonResource.updatedAt, carbonResource.load);
   usePaneRefreshKey(() => { void resource.reload(); void history.reload(); void carbonResource.reload(); }, { focused });
