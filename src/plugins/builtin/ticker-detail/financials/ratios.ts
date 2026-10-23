@@ -690,7 +690,7 @@ function trailingYear(
     Math.abs(Date.parse(candidate.date) - end) <= SAME_PERIOD_END_DAYS * 86_400_000
     && (!candidate.currency || !statement.currency || candidate.currency === statement.currency)
   ));
-  return year ?? trailingFourQuarters(quarterlyStatements, statement.date);
+  return year ?? trailingFourQuarters(quarterlyStatements, statement.date, annualStatements);
 }
 
 export function ratioPeriods(

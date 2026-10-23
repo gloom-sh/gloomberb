@@ -1,6 +1,6 @@
 import { INDEX_POINTS_EXPORT_UNIT, INDEX_POINTS_LABEL, isIndexLevel } from "../market-data/market/index-level";
 import type { PricePoint } from "../types/financials";
-import { marketPriceFractionDigitCeiling, resolveAssetDisplayKind } from "../market-data/market/format";
+import { formatPriceObservation, marketPriceFractionDigitCeiling, resolveAssetDisplayKind } from "../market-data/market/format";
 import { TIME_RANGES, type TimeRange } from "../time-series/range";
 import { subtractTimeRange } from "../time-series/date-window";
 import {
@@ -74,6 +74,9 @@ export interface HistoryRow {
   volumeUnit?: string;
   /** Why a coin's bar has no volume: `day in progress`, `rebuilt from hourly bars`, `latest trade` (not a bar), `not reported`. */
   volumeNote?: string;
+  /** A bar without the market's volume: the trades of one venue alone (`volumeVenue`), never its volume. */
+  venueVolume?: number;
+  volumeVenue?: string;
 }
 
 /** A coin's volume: traded value in its quote currency, per UTC day on daily bars. */
@@ -251,6 +254,9 @@ export function historyRows(
       ...(point.filled ? { filled: true as const } : {}),
       ...(point.unsettled ? { unsettled: true as const } : {}),
       ...(volume ? { volumeUnit: volume.unit } : {}),
+      ...(values.volume == null && point.venueVolume
+        ? { venueVolume: point.venueVolume.volume, volumeVenue: point.venueVolume.venue }
+        : {}),
       // A coin trades every day, so a bar without volume says why.
       ...(volume && values.volume == null
         ? {
@@ -376,13 +382,26 @@ export function historyReportsVolume(rows: readonly Pick<HistoryRow, "volume">[]
  * are said by their own notes and not counted.
  */
 export function historyMissingVolumeNote(
-  rows: readonly Pick<HistoryRow, "date" | "volume" | "partial" | "filled" | "flag">[],
+  rows: readonly Pick<HistoryRow, "date" | "volume" | "venueVolume" | "partial" | "filled" | "flag">[],
 ): string | null {
   if (!historyReportsVolume(rows)) return null;
   const latestTrade = latestTradeIndex(rows.map((row) => Date.parse(row.date)));
-  const missing = rows.filter((row, index) => row.volume == null && !row.partial && !row.filled
+  const missing = rows.filter((row, index) => row.volume == null && row.venueVolume == null && !row.partial && !row.filled
     && !flagCodes(row).some((code) => !BREAK_FLAGS.has(code)) && index !== latestTrade).length;
   return missingVolumeNotice(missing, rows.length) ?? null;
+}
+
+/**
+ * "9 of 9 bars count IEX trades only, not the market's volume" when bars carry one venue's count in place of the
+ * market's (`venueVolume`), or null.
+ */
+export function historyVenueVolumeNote(rows: readonly Pick<HistoryRow, "venueVolume" | "volumeVenue">[]): string | null {
+  const counted = rows.filter((row) => row.venueVolume != null);
+  if (!counted.length) return null;
+  const venues = [...new Set(counted.map((row) => row.volumeVenue).filter(Boolean))].join(", ") || "one venue";
+  const one = counted.length === 1;
+  return `${counted.length} of ${rows.length} ${one && rows.length === 1 ? "bar" : "bars"} ${one ? "counts" : "count"} ${venues} trades only, `
+    + "not the market's volume";
 }
 
 function neededDecimals(value: number, cap: number): number {
@@ -414,6 +433,32 @@ export function historyPriceDecimals(rows: readonly Pick<HistoryRow, typeof PRIC
   const needed = values.map((value) => neededDecimals(value, cap)).sort((left, right) => left - right);
   const decimals = needed[Math.floor(0.9 * (needed.length - 1))]!;
   return largest >= 1 ? Math.max(2, decimals) : decimals;
+}
+
+/** A bar's prices as a table lists them; a bar without a close adds nothing to the decimals. */
+interface BarPrices {
+  open?: number | null;
+  high?: number | null;
+  low?: number | null;
+  close?: number | null;
+}
+
+/**
+ * The decimals one table of bars prints its prices with (`history`, HP's pane
+ * and `fn HP`): historyPriceDecimals over the float32-cleaned prices, so a
+ * feed's 4013.39990234 reads as the 4013.4 it is and the count follows the
+ * asset's display rules (two for gold, three for silver, cents for a US equity).
+ */
+export function barPriceDecimals(bars: readonly BarPrices[], assetCategory?: string): number {
+  const clean = (value: number | null | undefined) => value == null ? null : cleanFloat32Price(value);
+  return historyPriceDecimals(bars.flatMap((bar) => bar.close == null ? [] : [{
+    date: "", open: clean(bar.open), high: clean(bar.high), low: clean(bar.low), close: clean(bar.close)!, volume: null,
+  }]), assetCategory);
+}
+
+/** A price at the table's decimal count (barPriceDecimals), within `maxWidth` when the pane gives one. */
+export function formatBarPrice(value: number, decimals: number, maxWidth?: number): string {
+  return formatPriceObservation(Number(value.toFixed(Math.min(20, decimals))), { minimumFractionDigits: decimals, maxWidth });
 }
 
 /** How far back ALL reaches, in whole years, from the window a history request for it asks for. */

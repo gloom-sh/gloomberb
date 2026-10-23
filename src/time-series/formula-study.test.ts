@@ -51,7 +51,7 @@ describe("formula studies", () => {
   test("any other multiplier keeps a leg's unit, so gallons and barrels still do not mix", () => {
     const result = resolveStudies([HO, CL], [formula(["HO=F", "CL=F"], { weight1: 84, weight2: -1, divisor: 1 })]);
     expect(result.series).toEqual([]);
-    expect(result.errors).toEqual(["formula: HO=F is USD / gallon and CL=F is USD / barrel: write 42*HO=F to compare per barrel."]);
+    expect(result.errors).toEqual(["Formula: HO=F is USD / gallon and CL=F is USD / barrel: write 42*HO=F to compare per barrel."]);
     // Two per-gallon legs need no conversion.
     expect(resolveStudies([HO, RB], [formula(["HO=F", "RB=F"], { weight1: 1, weight2: -1, divisor: 1 })]).series[0]?.unit)
       .toBe("USD / gallon");
@@ -59,9 +59,9 @@ describe("formula studies", () => {
 
   test("a spread names both legs' units and the fix, whichever side the gallons are on", () => {
     expect(resolveStudies([HO, BZ], [{ ...formula(["HO=F", "BZ=F"], {}), id: "spread", kind: "spread" }]).errors)
-      .toEqual(["spread: HO=F is USD / gallon and BZ=F is USD / barrel: write 42*HO=F to compare per barrel."]);
+      .toEqual(["Spread: HO=F is USD / gallon and BZ=F is USD / barrel: write 42*HO=F to compare per barrel."]);
     expect(resolveStudies([BZ, HO], [{ ...formula(["BZ=F", "HO=F"], {}), id: "spread", kind: "spread" }]).errors)
-      .toEqual(["spread: BZ=F is USD / barrel and HO=F is USD / gallon: write 42*HO=F to compare per barrel."]);
+      .toEqual(["Spread: BZ=F is USD / barrel and HO=F is USD / gallon: write 42*HO=F to compare per barrel."]);
     // Two barrels, spaced or not, subtract.
     const brent = { ...BZ, unit: "USD/barrel", statedUnit: undefined };
     const spread = resolveStudies([CL, brent], [{ ...formula(["CL=F", "BZ=F"], {}), id: "spread", kind: "spread" }]);
@@ -76,22 +76,22 @@ describe("formula studies", () => {
     const error = (left: ResolvedSeries, right: ResolvedSeries) => resolveStudies([left, right], [
       formula([left.id, right.id], { weight1: 1, weight2: -1, divisor: 1 }),
     ]).errors;
-    expect(error(ttf, CL)).toEqual(["formula: TTF=F is EUR / MWh and CL=F is USD / barrel: a formula does not convert currencies."]);
-    expect(error(corn, CL)).toEqual(["formula: ZC=F is US cents / bushel and CL=F is USD / barrel: a formula does not convert currencies."]);
-    expect(error(bare, CL)).toEqual(["formula: XX=F is in USD per an unknown quantity and CL=F is USD / barrel: a formula needs every leg in one known unit."]);
+    expect(error(ttf, CL)).toEqual(["Formula: TTF=F is EUR / MWh and CL=F is USD / barrel: a formula does not convert currencies."]);
+    expect(error(corn, CL)).toEqual(["Formula: ZC=F is US cents / bushel and CL=F is USD / barrel: a formula does not convert currencies."]);
+    expect(error(bare, CL)).toEqual(["Formula: XX=F is in USD per an unknown quantity and CL=F is USD / barrel: a formula needs every leg in one known unit."]);
   });
 
   test("a saved formula with a multiplier or divisor no formula was written with is an error, not a silent 1", () => {
     const error = (parameters: Record<string, number>) => resolveStudies([HO, CL], [formula(["HO=F", "CL=F"], parameters)]);
     // A value that is not a number is dropped when a spec loads, so it arrives missing.
     expect(error({ weight1: 42, perBarrel1: 1, divisor: 1 })).toMatchObject({
-      series: [], errors: ["formula: The multiplier of CL=F is missing or not a number; write the formula again."],
+      series: [], errors: ["Formula: The multiplier of CL=F is missing or not a number; write the formula again."],
     });
-    expect(error({ weight1: Number.NaN, weight2: -1 }).errors).toEqual(["formula: The multiplier of HO=F is missing or not a number; write the formula again."]);
-    expect(error({ weight1: 0, weight2: -1 }).errors).toEqual(["formula: HO=F has a multiplier of 0, which removes it; leave it out of the formula instead."]);
-    expect(error({ weight1: 42, perBarrel1: 1, weight2: -1, divisor: 0 }).errors).toEqual(["formula: A formula cannot be divided by 0."]);
+    expect(error({ weight1: Number.NaN, weight2: -1 }).errors).toEqual(["Formula: The multiplier of HO=F is missing or not a number; write the formula again."]);
+    expect(error({ weight1: 0, weight2: -1 }).errors).toEqual(["Formula: HO=F has a multiplier of 0, which removes it; leave it out of the formula instead."]);
+    expect(error({ weight1: 42, perBarrel1: 1, weight2: -1, divisor: 0 }).errors).toEqual(["Formula: A formula cannot be divided by 0."]);
     expect(error({ weight1: 42, perBarrel1: 1, weight2: -1, divisor: Number.POSITIVE_INFINITY }).errors)
-      .toEqual(["formula: The formula's divisor is not a number; write the formula again."]);
+      .toEqual(["Formula: The formula's divisor is not a number; write the formula again."]);
     // No divisor is a divisor of 1.
     expect(error({ weight1: 42, perBarrel1: 1, weight2: -1 }).series[0]?.points[0]?.value).toBeCloseTo(42 * 2.5 - 70, 9);
   });

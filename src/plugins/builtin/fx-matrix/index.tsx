@@ -24,7 +24,7 @@ import { fxRateObservations } from "../shared/fx-rate-freshness";
 import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
 import { useAutoRefresh, useUpdatedAgo } from "../../../react/auto-refresh";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
-import { fxLegQuoteKey, fxLegReferenceRate, fxLegTargets, fxLegs, fxLegsBehind, liveFxLegEntry } from "./live-legs";
+import { fxLegMoveReference, fxLegQuoteKey, fxLegReferenceRate, fxLegTargets, fxLegs, fxLegsBehind, liveFxLegEntry } from "./live-legs";
 import { CURRENCY_FLAG_REGIONS, FX_CURRENCIES, formatRate, resolveCurrencies, type FxCurrency } from "./pairs";
 import { crossMovePercent, directionTint, nextTintLevel } from "./direction";
 import { fxMatrixSettings } from "./settings";
@@ -91,20 +91,21 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
     }
     return references;
   }, [legEntries, legs, rates]);
-  // A cell's direction is its cross against the pair's previous close. Only a
-  // leg whose rate is the live quote's and whose quote carries a previous close
-  // counts, USD (the base) as 1: the first rate this pane drew is no daily
-  // reference, and a snapshot rate or a stale quote has no previous close to
-  // read against.
+  // A cell's direction is its cross against the pairs' previous daily closes,
+  // USD (the base) as 1: each leg's pair quote's close, whether the rate drawn
+  // is that quote's or a snapshot rate of the same FX trading day
+  // (fxLegMoveReference). The first rate this pane drew is no daily reference,
+  // and a stale quote has no close to read against.
   const directionReferences = useMemo(() => {
+    const coordinator = getSharedMarketDataCoordinator();
     const references = new Map<string, number>([["USD", 1]]);
     for (const leg of legs) {
-      if (!liveEntries.has(leg.currency)) continue;
-      const reference = fxLegReferenceRate(leg, legEntries.get(fxLegQuoteKey(leg)));
-      if (reference != null) references.set(leg.currency, reference);
+      const drawn = liveEntries.get(leg.currency) ?? coordinator?.getFxEntry(leg.currency);
+      const reference = fxLegMoveReference(leg, legEntries.get(fxLegQuoteKey(leg)), drawn);
+      if (reference) references.set(leg.currency, reference.rate);
     }
     return references;
-  }, [legEntries, legs, liveEntries]);
+  }, [legEntries, legs, liveEntries, snapshotRates]);
   // The step each cell showed last, which a tick near a boundary keeps.
   const tintLevels = useRef(new Map<string, number>());
   // Export the provenance of this render's rates, even if a provider response

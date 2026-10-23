@@ -27,6 +27,8 @@ export interface ElectrobunBackendInit {
   hostName?: string;
   windowKind: "main" | "detached";
   paneId?: string;
+  /** What the launch's plugin seed could not install, for the main window to say once. */
+  pluginSeedNotice?: { body: string; type: "error" | "info" };
   /** What the view needs to send crash reports and usage counts the same way the Bun process would. */
   telemetry: ElectrobunTelemetryInit;
 }
@@ -203,7 +205,7 @@ interface DesktopBackendRequestMap {
   "host.exit": { request: null; response: null };
   "host.windowControl": { request: { action: DesktopWindowControlAction }; response: null };
   "host.windowFullscreen": { request: null; response: boolean };
-  "host.openExternal": { request: { url: string }; response: null };
+  "host.openExternal": { request: { url: string }; response: boolean };
   "host.copyText": { request: { text: string }; response: null };
   "host.focusWindow": { request: null; response: null };
   "host.copyPngImage": { request: { pngBase64: string }; response: null };

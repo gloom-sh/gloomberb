@@ -373,9 +373,13 @@ class GloomApiClient {
   requestPasswordReset = this.auth.requestPasswordReset.bind(this.auth);
   createBrowserHandoff = this.auth.createBrowserHandoff.bind(this.auth);
 
-  /** Creates a Stripe checkout session for Cloud Pro; the URL opens in a browser. */
-  async createCloudCheckout(returnTo?: string, interval: "month" | "year" = "month"): Promise<{ url: string }> {
-    return this.request<{ url: string }>("/stripe/checkout", { method: "POST", body: JSON.stringify({ returnTo, interval }) });
+  /**
+   * Creates a Stripe checkout session for Cloud Pro; the URL opens in a browser.
+   * `link` is a short link to the same checkout, to read or scan on another
+   * device. Older servers send none.
+   */
+  async createCloudCheckout(returnTo?: string, interval: "month" | "year" = "month"): Promise<{ url: string; link?: string }> {
+    return this.request<{ url: string; link?: string }>("/stripe/checkout", { method: "POST", body: JSON.stringify({ returnTo, interval }) });
   }
 
   async recordResearchActivity(payload: {
@@ -404,7 +408,7 @@ class GloomApiClient {
   async brokerRequest<T>(
     broker: string,
     path: string,
-    options: { method?: "GET" | "POST" | "DELETE"; body?: unknown; signal?: AbortSignal } = {},
+    options: { method?: "GET" | "POST" | "PUT" | "DELETE"; body?: unknown; signal?: AbortSignal } = {},
   ): Promise<T> {
     if (!/^[a-z][a-z0-9-]{0,31}$/.test(broker)) throw new Error(`Invalid broker id "${broker}".`);
     if (path !== "" && (!/^\/[A-Za-z0-9/_.~%?=&-]*$/.test(path) || path.includes(".."))) {
@@ -791,6 +795,7 @@ class GloomApiClient {
   getCloudCryptoMarkets = this.data.getCloudCryptoMarkets.bind(this.data);
   getCloudStablecoinSupply = this.data.getCloudStablecoinSupply.bind(this.data);
   getCloudStablecoinSupplyHistory = this.data.getCloudStablecoinSupplyHistory.bind(this.data);
+  getCloudDefiTvl = this.data.getCloudDefiTvl.bind(this.data);
   getCloudCentralBankRates = this.data.getCloudCentralBankRates.bind(this.data);
   getMobileAlertHistory = this.data.getMobileAlertHistory.bind(this.data);
   getScannerFlowHistory = this.data.getScannerFlowHistory.bind(this.data);
@@ -801,6 +806,7 @@ class GloomApiClient {
   getFundMembers = this.data.getFundMembers.bind(this.data);
   getFundChanges = this.data.getFundChanges.bind(this.data);
   getFundFacts = this.data.getFundFacts.bind(this.data);
+  getCloudExchangeAnnouncements = this.data.getCloudExchangeAnnouncements.bind(this.data);
   getCloudThemes = this.data.getCloudThemes.bind(this.data);
   getCloudThemeMembers = this.data.getCloudThemeMembers.bind(this.data);
   impliedVolatility = this.data.impliedVolatility.bind(this.data);
@@ -830,6 +836,7 @@ class GloomApiClient {
   creditDocuments = this.data.creditDocuments.bind(this.data);
   geo = this.data.geo.bind(this.data);
   getCloudHiring = this.data.getCloudHiring.bind(this.data);
+  getCloudHiringMoves = this.data.getCloudHiringMoves.bind(this.data);
   getCloudAppRankHistory = this.data.getCloudAppRankHistory.bind(this.data);
   getCloudAppAttention = this.data.getCloudAppAttention.bind(this.data);
   getCloudCatalystChanges = this.data.getCloudCatalystChanges.bind(this.data);
@@ -884,6 +891,7 @@ class GloomApiClient {
   getCloudCongressHouse = this.data.getCloudCongressHouse.bind(this.data);
   getCloudJobs = this.data.getCloudJobs.bind(this.data);
   getCloudJobsPostings = this.data.getCloudJobsPostings.bind(this.data);
+  getCloudJobsPosting = this.data.getCloudJobsPosting.bind(this.data);
   getCloudJobsMovers = this.data.getCloudJobsMovers.bind(this.data);
   getCloudEarningsCalls = this.data.getCloudEarningsCalls.bind(this.data);
   getCloudEarningsTranscript = this.data.getCloudEarningsTranscript.bind(this.data);

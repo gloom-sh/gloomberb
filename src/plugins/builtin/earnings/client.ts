@@ -59,7 +59,8 @@ function validateEarningsHistory(payload: EarningsHistoryPayload, symbol: string
 type CalendarClient = Pick<typeof apiClient, "getCloudEarningsCalendar">;
 type HistoryClient = Pick<typeof apiClient, "getCloudEarningsHistory">;
 
-const calendarKey = (query: EarningsCalendarQuery) =>
+/** Names a calendar query: the cache's key, and how the board tells one week's reports from another's. */
+export const earningsCalendarKey = (query: EarningsCalendarQuery) =>
   `${query.from}:${query.to}:${query.perDay ?? ""}:${[...(query.symbols ?? [])].sort().join(",")}`;
 
 export async function fetchEarningsCalendar(query: EarningsCalendarQuery, client: CalendarClient = apiClient) {
@@ -79,11 +80,11 @@ export async function fetchEarningsHistory(symbol: string, client: HistoryClient
 }
 
 export function cachedEarningsCalendar(query: EarningsCalendarQuery) {
-  return cachedCloudResource(calendarCache, calendarKey(query), validateEarningsCalendar);
+  return cachedCloudResource(calendarCache, earningsCalendarKey(query), validateEarningsCalendar);
 }
 
 export function loadEarningsBoard(query: EarningsCalendarQuery, force = false) {
-  return loadCloudResource(calendarCache, calendarKey(query), () => fetchEarningsCalendar(query),
+  return loadCloudResource(calendarCache, earningsCalendarKey(query), () => fetchEarningsCalendar(query),
     { force, validate: validateEarningsCalendar });
 }
 

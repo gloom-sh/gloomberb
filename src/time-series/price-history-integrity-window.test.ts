@@ -5,7 +5,9 @@ import { createTestDataProvider } from "../test-support/data-provider";
 import { loadChartPaneModel } from "../plugins/builtin/chart-composer/headless";
 import { CHART_SPEC_VERSION, type ChartSpec } from "./types";
 import { chartQuoteOverrideKeyForSource } from "./live-quotes";
-import { ChartResolveCache, resolveChartSpecData, seedChartResolutionResult } from "./resolve";
+import { resolveChartSpecData } from "./resolve";
+import { ChartResolveCache } from "./resolve-context";
+import { seedChartResolutionResult } from "./chart-seed";
 
 const row = (date: string, close = 10, bad = false): PricePoint => ({
   date: new Date(date), close, ...(bad ? { open: 30, high: 20, low: 5 } : {}),

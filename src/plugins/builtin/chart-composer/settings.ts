@@ -1,6 +1,9 @@
 import type { ChartResolution, TimeRange } from "../../../components/chart/core/types";
 import { CHART_RESOLUTIONS, TIME_RANGES as CHART_RANGES } from "../../../time-series/range";
 import { formatChartResolution } from "./viewport-labels";
+import { CHART_BAR_SIZE_PRESETS, parseChartResolution, sortChartBarSizes, type ChartBarSize } from "../../../time-series/resolution";
+
+export { CHART_BAR_SIZE_PRESETS };
 import type {
   PaneSettingField,
   PaneSettingOption,
@@ -32,6 +35,7 @@ import {
   type BuiltinStudySelection,
   type PairStudySelection,
 } from "./studies";
+import { dateOptionError, readCalendarDate } from "../../../utils/calendar-date";
 import { buildCustomChartPreset, buildEmptyChartPreset, buildPriceChartPreset } from "./presets";
 import {
   CHART_SPEC_SETTING_KEY,
@@ -39,6 +43,11 @@ import {
 } from "./chart-spec";
 
 export { CHART_RANGES, CHART_RESOLUTIONS };
+
+/** `sizes` with `current` among them in order of length, when the chart is set to one they lack. */
+export function withChartBarSize<T extends ChartBarSize>(sizes: readonly T[], current: ChartResolution): Array<T | ChartBarSize> {
+  return current === "auto" || sizes.includes(current as T) ? [...sizes] : sortChartBarSizes([...sizes, current]);
+}
 
 /** Full name and short form for each builtin indicator; the label adds its period. */
 const CHART_STUDY_NAMES: Record<BuiltinStudySelection, { name: string; short?: string; description: string }> = {
@@ -220,27 +229,30 @@ function formatDateWindow(spec: ChartSpec): string {
 }
 
 function parseDate(value: string): string {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    throw new Error("Use YYYY-MM-DD dates.");
-  }
-  const date = new Date(`${value}T00:00:00.000Z`);
-  if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== value) {
-    throw new Error(`"${value}" is not a valid date.`);
-  }
-  return value;
+  const date = readCalendarDate(value);
+  if (!date) throw new Error(dateOptionError(value.trim(), "", { subject: "a date" }));
+  return date;
+}
+
+const WINDOW_SEPARATOR = /\s+(?:to|through)\s+|\s*(?:\.\.|–|—)\s*/i;
+
+/** The two dates of a window: around "to", "through", ".." or a dash, or around a comma between dates that have none of their own (2026-10-01, 2026-10-20). */
+function splitDateWindow(text: string): string[] | null {
+  const words = text.split(WINDOW_SEPARATOR);
+  if (words.length === 2 && words.every(Boolean)) return words;
+  const commas = text.split(/\s*,\s*/);
+  return commas.length === 2 && commas.every((part) => readCalendarDate(part) != null) ? commas : null;
 }
 
 function parseDateWindow(value: string): { start: string; end: string } | undefined {
   const trimmed = value.trim();
   if (!trimmed) return undefined;
-  const match = trimmed.match(
-    /^(\d{4}-\d{2}-\d{2})\s*(?:to|through|\.\.|,|–|—)\s*(\d{4}-\d{2}-\d{2})$/i,
-  );
-  if (!match) {
-    throw new Error("Use YYYY-MM-DD to YYYY-MM-DD, or leave blank for the preset range.");
+  const parts = splitDateWindow(trimmed);
+  if (!parts) {
+    throw new Error("Use two dates as YYYY-MM-DD to YYYY-MM-DD, or leave blank for the preset range.");
   }
-  const start = parseDate(match[1]!);
-  const end = parseDate(match[2]!);
+  const start = parseDate(parts[0]!);
+  const end = parseDate(parts[1]!);
   if (start > end) throw new Error("The start date must be before the end date.");
   return { start, end };
 }
@@ -355,8 +367,8 @@ export function applyChartComposerPaneSetting(
       break;
     }
     case CHART_SETTING_KEYS.resolution: {
-      const resolution = requireString(value, "Resolution") as ChartResolution;
-      if (!CHART_RESOLUTIONS.includes(resolution)) throw new Error("Choose a valid chart resolution.");
+      const resolution = parseChartResolution(requireString(value, "Resolution"));
+      if (!resolution) throw new Error("Choose a valid chart resolution.");
       nextSpec = { ...spec, viewport: { ...spec.viewport, resolution } };
       break;
     }
@@ -452,7 +464,7 @@ export function buildChartComposerPaneSettingsDef(
       {
         key: CHART_SETTING_KEYS.dateWindow,
         label: "Date Window",
-        description: "Enter YYYY-MM-DD to YYYY-MM-DD. Leave blank to use the preset range.",
+        description: "Enter two dates, such as 2026-10-01 to 2026-10-20. Leave blank to use the preset range.",
         type: "text",
         placeholder: "2025-01-01 to 2026-01-01",
       },
@@ -468,7 +480,7 @@ export function buildChartComposerPaneSettingsDef(
         label: "Resolution",
         description: "Choose the observation interval, or let the chart select it automatically.",
         type: "select",
-        options: CHART_RESOLUTIONS.map((resolution) => ({
+        options: ["auto" as const, ...withChartBarSize(CHART_BAR_SIZE_PRESETS, spec.viewport.resolution)].map((resolution) => ({
           value: resolution,
           label: formatChartResolution(resolution),
         })),

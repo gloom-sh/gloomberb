@@ -140,8 +140,8 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: [],
   },
   CMP: {
-    summary: "Price returns rebased to a shared start date for two or more tickers, so relative performance reads at a glance.",
-    usage: ["CMP NVDA, AMD, AVGO"],
+    summary: "Price returns rebased to a shared start date for two or more tickers, so relative performance reads at a glance. A leveraged or inverse fund gets its daily objective drawn from its index fund, and its decay in its own panel.",
+    usage: ["CMP NVDA, AMD, AVGO", "CMP TQQQ, QQQ"],
     keys: CHART_KEYS,
     data: QUOTES,
     bloomberg: ["COMP", "TRA"],
@@ -265,13 +265,22 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
   OSA: {
     summary: "Build a multi-leg options position and value it at any spot, date and vol shift: payoff, P&L grid, breakevens and Greeks. European pricing, so no early exercise. "
       + "With a NAV and a budget in bps it sizes the position as a hedge: contracts, premium, notional protected and coverage of an equity sleeve. "
-      + "--strategy csp sells a cash-secured put: cash secured, premium, yield on cash and annualised, distance out of the money, break-even, days to expiry and an earnings flag.",
+      + "--strategy csp sells a cash-secured put: cash secured, premium, yield on cash and annualised, the bid, ask and spread with the yield at the bid, "
+      + "distance out of the money, break-even, days to expiry and an earnings flag. CSP ranks the same put across several names.",
     usage: ["OSA AAPL", "gloomberb fn OSA AAPL --strategy vertical --expiration 2027-01-15",
       "gloomberb fn OSA KO --strategy csp --strike 85 --expiration 2026-11-20",
       "gloomberb fn OSA SPY --strategy put --strike 700 --expiration 2027-01-15 --nav 100m --budget-bps 50 --sleeve 100m"],
     keys: [key("a", "dd leg"), key("c", "hain"), key("d", "ate"), key("v", "ol shift")],
     data: OPTIONS,
     bloomberg: ["OSA"],
+  },
+  CSP: {
+    summary: "Which names pay most to sell a put? For each, the put nearest a delta (0.30) on the expiry nearest a date or a number of days out (30), "
+      + "ranked by annualised yield on cash at the bid, with % out of the money, delta, IV rank, the spread (marked wide, never left out) and an earnings flag.",
+    usage: ["CSP JPM, GS, KO", "gloomberb fn CSP JPM GS KO AAPL --delta 0.20 --days 45"],
+    keys: [key("Enter", " open in OSA")],
+    data: OPTIONS,
+    bloomberg: [],
   },
   OVDV: {
     summary: "The implied volatility surface fitted from option quotes: 3D sheet, table, smiles, ATM term structure, 25-delta skew and forwards, live or on stored daily closes.",
@@ -380,8 +389,8 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["CACS"],
   },
   EVTS: {
-    summary: "The market's report days with implied and past moves; a ticker picks its row.",
-    usage: ["EVTS", "EVTS NVDA"],
+    summary: "The market's report days with implied and past moves, or a past or coming week or day of them; a ticker picks its row.",
+    usage: ["EVTS", "EVTS NVDA", "gloomberb fn EVTS --week last", "gloomberb fn EVTS --date 2026-10-15"],
     keys: [key("t", "icker"), key("e", "stimates"), key("c", "alls"), key("a", "nalysts")],
     data: EARNINGS_DAYS,
     bloomberg: ["EVTS"],
@@ -506,9 +515,9 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: [],
   },
   HIRE: {
-    summary: "Pro hiring momentum: weekly observed open roles, additions and removals, role families, seniority, remote and location mix, peers and primary posting evidence. Observed requisitions are not headcount. No argument opens the covered-company board.",
-    usage: ["HIRE", "HIRE NET", "HIRE 0700:HKEX"],
-    keys: [TABS, OPEN, key("e", "vidence"), key("o", "pen source"), key("d", "es"), key("g", "raph")],
+    summary: "Pro hiring momentum: weekly observed open roles, additions and removals, role families, seniority, remote and location mix, peers and primary posting evidence. Moves ranks the companies whose new roles accelerated or slowed against their own weeks and their peers, with why and the postings behind it. Observed requisitions are not headcount. No argument opens the covered-company board.",
+    usage: ["HIRE", "HIRE NET", "HIRE 0700:HKEX", "gloomberb fn HIRE RIVN --tab moves"],
+    keys: [TABS, OPEN, key("e", "vidence"), key("o", "pen source"), key("d", "es"), key("g", "raph"), key("n", "otify")],
     data: { free: "Latest values and three rows per section", pro: "Weekly history, all stored observations and evidence" },
     access: "preview",
     bloomberg: [],
@@ -658,7 +667,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["CN"],
   },
   NI: {
-    summary: "Market news by topic code (MNA, CB, ENERGY, REG, CRYPTO, EARN, IPO) or sector.",
+    summary: "Market news by topic code (MNA, CB, ENERGY, METALS, REG, CRYPTO, EARN, IPO) or sector.",
     usage: ["NI ENERGY"],
     keys: [OPEN, SEARCH, POP_OUT, key("t", "icker")],
     data: NEWS,
@@ -1036,7 +1045,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["CF"],
   },
   ETF: {
-    summary: "A US-listed fund's SEC filings: registration statements and prospectus updates, shareholder reports, N-CEN and N-PORT reports. Open any of them inline.",
+    summary: "A US-listed fund's facts, a leveraged or inverse fund's daily objective among them, then its own SEC filings: registration statements and prospectus updates, shareholder reports, N-CEN and N-PORT reports. Open any of them inline.",
     usage: ["ETF SPY"],
     keys: [OPEN, OPEN_SOURCE],
     data: AS_FILED,

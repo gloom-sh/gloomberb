@@ -99,7 +99,7 @@
           {
             "code": "HIRE",
             "name": "Hiring Momentum",
-            "description": "Pro hiring momentum: observed weekly open roles, additions, removals, role and location mix, peer comparisons and primary posting evidence.",
+            "description": "Pro hiring momentum: observed weekly open roles, additions, removals, role and location mix, peer comparisons, hiring moves against each company's own weeks and peers, and primary posting evidence.",
             "access": "preview"
           },
           {
@@ -427,7 +427,7 @@
           {
             "code": "CRYP",
             "name": "Crypto",
-            "description": "Top crypto assets by market cap with live prices, 7D, 30D and 1Y returns, volume and market cap, and stablecoin supply."
+            "description": "Top crypto assets by market cap with live prices, 7D, 30D and 1Y returns, volume and market cap, stablecoin supply, and DeFi TVL by protocol and chain."
           },
           {
             "code": "ETFF",
@@ -605,7 +605,7 @@
           {
             "code": "ETF",
             "name": "Fund Facts",
-            "description": "A US-listed fund's fee, NAV, premium or discount, net assets, sponsor, inception and index, then its SEC filings: prospectus updates, shareholder reports, N-CEN and N-PORT."
+            "description": "A US-listed fund's fee, NAV, premium or discount, net assets, sponsor, inception and index, a leveraged or inverse fund's daily objective, then the fund's own SEC filings: prospectus updates, shareholder reports, N-CEN and N-PORT."
           },
           {
             "code": "RISK",
@@ -959,7 +959,7 @@
           {
             "code": "NI",
             "name": "Topic News",
-            "description": "Market news by topic code (MNA, CB, ENERGY, REG, CRYPTO, EARN, IPO) or sector, and public fund letters (LTR)"
+            "description": "Market news by topic code (MNA, CB, ENERGY, METALS, REG, CRYPTO, EARN, IPO) or sector, and public fund letters (LTR)"
           },
           {
             "code": "FIRST",
@@ -1045,6 +1045,7 @@
       ],
       "contributes": {
         "panes": [
+          "csp-screen",
           "iv-history",
           "iv-screen",
           "options",
@@ -1076,6 +1077,11 @@
             "code": "OVME",
             "name": "Options Calculator",
             "description": "European Black-Scholes or American CRR value, Greeks, implied volatility and cash dividends."
+          },
+          {
+            "code": "CSP",
+            "name": "Cash-Secured Put Screen",
+            "description": "Cash-secured puts across a list, ranked by annualised yield at the bid, with % OTM, delta, IV rank, spread and an earnings flag."
           },
           {
             "code": "OSA",
@@ -1601,7 +1607,7 @@
           {
             "code": "CMP",
             "name": "Comparison Chart",
-            "description": "Compare price returns over shared observation dates for two or more tickers."
+            "description": "Compare price returns over shared observation dates for two or more tickers. A leveraged or inverse fund gets its daily objective drawn from its index fund (3× daily QQQ beside TQQQ) and its decay against it."
           },
           {
             "code": "GF",

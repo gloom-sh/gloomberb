@@ -13,12 +13,14 @@ import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import { useDialog } from "../../../ui/dialog";
 import { useCloudSyncStatus } from "../../../sync/react";
-import { usePluginAppActions, usePluginConfigState } from "../../runtime";
+import { usePluginAppActions, usePluginConfigState, usePluginState } from "../../runtime";
 import {
   EVENT_ALERTS_KEY,
+  IV_LEVEL_ALERTS_KEY,
   eventAlertTarget,
-  readEventAlerts,
+  readEventAlertStores,
   toggleEventAlert,
+  updateEventAlerts,
   type EventAlertRule,
 } from "./events";
 import { ruleState, ruleTarget } from "./event-rows";
@@ -31,6 +33,7 @@ import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { newYorkToday } from "../earnings/board-model";
 import { rearmScheduledAlert } from "./scheduled";
 import { checkScheduledEventAlertsNow } from "./scheduled-check";
+import { checkIvLevelAlertsNow, IV_LEVEL_CHECKS_KEY, ivLevelCheckText, readIvLevelChecks, rearmIvLevelAlert } from "./iv-level";
 import { alertTarget, alertViewHints, eventRuleSubject, useOpenAlertTarget } from "./targets";
 
 const columnsFor = (width: number, lastCheck: boolean): DataTableColumn[] => [
@@ -46,7 +49,21 @@ const columnsFor = (width: number, lastCheck: boolean): DataTableColumn[] => [
 export function EventAlertsPane({ focused, width, height }: PaneProps) {
   const [catalystStatus] = usePluginConfigState<string>(CATALYST_POLL_STATUS, "Catalyst alerts check every five minutes while the app is open");
   const [json, setJson] = usePluginConfigState<string>(EVENT_ALERTS_KEY, "[]");
-  const { rules, error } = useMemo(() => readEventAlerts(json), [json]);
+  // IV levels are kept in their own list, which released versions never read.
+  const [ivJson, setIvJson] = usePluginConfigState<string>(IV_LEVEL_ALERTS_KEY, "[]");
+  const { rules, error } = useMemo(
+    () => readEventAlertStores((key) => key === IV_LEVEL_ALERTS_KEY ? ivJson : json),
+    [json, ivJson],
+  );
+  // Their readings stay on this device.
+  const [savedChecks] = usePluginState<unknown>(IV_LEVEL_CHECKS_KEY, {});
+  const checks = useMemo(() => readIvLevelChecks(savedChecks), [savedChecks]);
+  /** Changes one rule in the list it is kept in, leaving what that list holds of kinds this version does not know. */
+  const updateRules = useCallback(
+    (rule: EventAlertRule, update: (rules: EventAlertRule[]) => EventAlertRule[]) =>
+      (rule.kind === "iv_level" ? setIvJson : setJson)((current) => updateEventAlerts(current, update)),
+    [setJson, setIvJson],
+  );
   const [selected, setSelected] = useState(0);
   const [sort, setSort] = useState<{ columnId: string; direction: SortDirection }>({ columnId: "created", direction: "desc" });
   const sync = useCloudSyncStatus();
@@ -77,14 +94,15 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
   // Research rules keep a dated observation in the Cloud; show its value and percentile.
   const access = usePlanAccess();
   const session = useResearchCloudSession();
-  const hasResearch = rules.some((rule) => isResearchAlertKind(rule.kind));
+  const hasResearch = rules.some((rule) => isResearchAlertKind(rule.kind) && rule.kind !== "iv_level");
   const stateLoader = useCallback(() => fetchAlertHistory(0), [session.requestKey]);
   const history = useAsyncResource(access.signedIn && hasResearch ? stateLoader : null);
   const states = useMemo(
     () => new Map((history.data?.states ?? []).map((state) => [state.ruleId, state])),
     [history.data],
   );
-  const columns = columnsFor(width, hasResearch && !!history.data);
+  // An IV level is read by this app, so its last reading needs no session.
+  const columns = columnsFor(width, (hasResearch && !!history.data) || rules.some((rule) => rule.kind === "iv_level"));
   const add = useCallback(
     () => openPluginCommandWorkflow("set-event-alert"),
     [openPluginCommandWorkflow],
@@ -92,48 +110,31 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
   const toggle = useCallback(
     (rule: EventAlertRule | undefined) => {
       if (!rule) return;
-      setJson((current) => {
-        const result = readEventAlerts(current);
-        return result.error
-          ? current
-          : JSON.stringify(
-              result.rules.map((entry) => (entry.id === rule.id ? toggleEventAlert(entry) : entry)),
-            );
-      });
+      updateRules(rule, (rules) => rules.map((entry) => (entry.id === rule.id ? toggleEventAlert(entry) : entry)));
     },
-    [setJson],
+    [updateRules],
   );
-  // An earnings or macro alert that went off alerts again for the same event.
+  // An earnings or macro alert that went off alerts again for the same event; an IV level watches its level again.
   const rearm = useCallback(
     (rule: EventAlertRule | undefined) => {
       if (!rule) return;
-      setJson((current) => {
-        const result = readEventAlerts(current);
-        return result.error
-          ? current
-          : JSON.stringify(result.rules.map((entry) => (entry.id === rule.id ? rearmScheduledAlert(entry) : entry)));
-      });
+      const ivLevel = rule.kind === "iv_level";
+      updateRules(rule, (rules) => rules.map((entry) => (entry.id === rule.id ? ivLevel ? rearmIvLevelAlert(entry) : rearmScheduledAlert(entry) : entry)));
       // Once the write has landed, so it alerts now rather than at the next 15-minute check.
-      setTimeout(checkScheduledEventAlertsNow, 1_000);
+      setTimeout(ivLevel ? checkIvLevelAlertsNow : checkScheduledEventAlertsNow, 1_000);
     },
-    [setJson],
+    [updateRules],
   );
   const remove = useCallback(async () => {
     if (!selectedRule) return;
-    const id = selectedRule.id;
+    const rule = selectedRule;
     const confirmed = await confirmDialog(dialog, {
       title: "Delete event alert?",
-      body: [eventAlertTarget(selectedRule)],
+      body: [eventAlertTarget(rule)],
       confirmLabel: "Delete",
     });
-    if (confirmed)
-      setJson((current) => {
-        const result = readEventAlerts(current);
-        return result.error
-          ? current
-          : JSON.stringify(result.rules.filter((rule) => rule.id !== id));
-      });
-  }, [dialog, selectedRule, setJson]);
+    if (confirmed) updateRules(rule, (rules) => rules.filter((entry) => entry.id !== rule.id));
+  }, [dialog, selectedRule, updateRules]);
   const status =
     error ??
     (selectedRule?.kind === "catalyst" ? catalystStatus : null) ??
@@ -192,31 +193,41 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
       sortColumnId={sort.columnId}
       sortDirection={sort.direction}
       onHeaderClick={(id) => setSort((current) => nextHeaderSort(current, id))}
-      renderCell={(rule, column, _index, row) => ({
-        text:
-          column.id === "kind"
-            ? alertKindLabel(rule.kind)
-            : column.id === "last"
-              ? isResearchAlertKind(rule.kind)
-                ? ruleStateText(states.get(rule.id))
-                : ""
-              : column.id === "target"
-              ? ruleTarget(rule)
-              : column.id === "status"
-                ? ruleState(rule, today)
-                : new Date(rule.createdAt).toISOString().slice(0, 10),
-        color: row.selected
-          ? colors.selectedText
-          : rule.status === "paused"
-            ? colors.textMuted
-            : colors.text,
-      })}
+      renderCell={(rule, column, _index, row) => {
+        // An IV level that could not be read says so on its own row: No data in State, the reason in Last check.
+        const check = rule.kind === "iv_level" ? checks[rule.id] : undefined;
+        const unread = rule.kind === "iv_level" && rule.status === "active" && !rule.triggeredAt && check?.value === null;
+        const state = ruleState(rule, today);
+        return {
+          text:
+            column.id === "kind"
+              ? alertKindLabel(rule.kind)
+              : column.id === "last"
+                ? rule.kind === "iv_level"
+                  ? ivLevelCheckText(rule, check)
+                  : isResearchAlertKind(rule.kind)
+                    ? ruleStateText(states.get(rule.id))
+                    : ""
+                : column.id === "target"
+                ? ruleTarget(rule)
+                : column.id === "status"
+                  ? unread ? "No data" : state
+                  : new Date(rule.createdAt).toISOString().slice(0, 10),
+          color: row.selected
+            ? colors.selectedText
+            : unread && (column.id === "status" || column.id === "last")
+              ? colors.negative
+              : rule.status === "paused"
+                ? colors.textMuted
+                : colors.text,
+        };
+      }}
       emptyStateTitle={error ?? "No event alerts"}
       emptyContent={error ? undefined : (
         <PaneStatusBody
           empty
           emptyTitle="No event alerts"
-          emptyMessage="Follow earnings and CPI or FOMC dates, filings, news, members, funds or market moves."
+          emptyMessage="Follow earnings and CPI or FOMC dates, filings, news, IV levels, members, funds or market moves."
           actions={<Button label="Add event alert" compact onPress={add} />}
         />
       )}

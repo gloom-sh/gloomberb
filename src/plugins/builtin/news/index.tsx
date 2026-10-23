@@ -5,7 +5,8 @@ import { useArticleSummary, useResolvedEntryValue } from "../../../market-data/h
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { useCallback } from "react";
 import { useDebouncedPluginPaneState, usePluginPaneState } from "../../runtime";
-import { EmptyState, PaneStatusBody, QueryBar } from "../../../components";
+import { EmptyState, PaneStatusBody, QueryBar, usePaneNoticeFooter } from "../../../components";
+import { coinNewsFallbackNotice } from "../../../sources/gloomberb-cloud/news";
 import { newsMuteSettingsDef, newsMutesApplyToFeed, useNewsMuteFilter } from "./wire/mutes";
 import { newsListEmptyCopy } from "./wire/filter-articles";
 import { NEWS_LIST_SEARCH_PLACEHOLDER, useNewsListSearch, useNewsListSearchHint } from "./wire/news/list-search";
@@ -45,6 +46,7 @@ function TickerNewsView({ width, height, focused }: { width: number; height: num
     exchange: instrument.exchange,
     tickerTier: "primary" as const,
     limit: NEWS_ITEM_LIMIT,
+    ...(ticker?.metadata.name ? { listingName: ticker.metadata.name } : {}),
   } : null;
   const newsState = useNewsArticles(newsQuery);
   const loaded = usePersistedNewsArticles(
@@ -91,6 +93,13 @@ function TickerNewsView({ width, height, focused }: { width: number; height: num
   }, [markArticleRead, popOutArticle, readableArticle]);
 
   useNewsListSearchHint("ticker-news", focused && !detailOpen, search.focusSearch);
+  // A coin pair no story is filed under lists the stories that mention the coin; the footer says so.
+  const searchedFor = loaded[0]?.searchedFor;
+  usePaneNoticeFooter({
+    registrationId: "ticker-news-notices",
+    notices: searchedFor && instrument ? [coinNewsFallbackNotice(instrument.symbol, searchedFor)] : [],
+    focused,
+  });
   useNewsArticleFooter({
     registrationId: "news",
     focused: listFocused,

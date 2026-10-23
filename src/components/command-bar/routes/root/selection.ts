@@ -26,6 +26,7 @@ interface PaneTemplateItemOptions {
 
 interface RootSelectionCommandOptions {
   activeTickerSymbol: string | null;
+  promptTickerSymbol?: string | null;
   availableCommands: Command[];
   createPaneTemplateItem: (template: PaneTemplateDef, options?: PaneTemplateItemOptions) => ResultItem;
   createPluginCommandItem: (command: CommandDef, options?: { shortcutArg?: string }) => ResultItem;
@@ -54,6 +55,7 @@ export function acceptRootShortcutTabAction(options: RootSelectionCommandOptions
     pluginCommands: options.getAvailablePluginCommands(),
     paneTemplates: options.getAvailablePaneShortcutTemplates(options.query),
     activeTicker: options.activeTickerSymbol,
+    promptTicker: options.promptTickerSymbol,
   });
   if (intent.kind === "none") return false;
   if (intent.kind === "inferred-complete" && intent.completionQuery) {
@@ -103,6 +105,7 @@ export function buildImmediateRootSelection(options: RootSelectionCommandOptions
     pluginCommands: options.getAvailablePluginCommands(),
     paneTemplates: options.getAvailablePaneShortcutTemplates(options.query),
     activeTicker: options.activeTickerSymbol,
+    promptTicker: options.promptTickerSymbol,
   });
   if (intent.kind !== "none" && intent.source === "pane-template") {
     return options.createPaneTemplateItem(intent.template, {

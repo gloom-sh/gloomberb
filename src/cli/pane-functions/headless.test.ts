@@ -502,6 +502,18 @@ test("series text distinguishes explicit percent, basis-point, multiple and inde
   expect(renderHeadlessPaneText(definition, { series: [result.series.find(({ id }) => id === "missing")!] }, args, "Unknown")).not.toContain("Unit");
 });
 
+test("a series that asks for decimals prints them in text, while JSON and CSV keep every digit", () => {
+  const definition: HeadlessPaneDefinition<"series"> = { shape: "series", argument: { kind: "none" }, options: [], load: () => ({ series: [] }) };
+  const result: HeadlessSeriesResult = { series: [
+    { id: "correlation", label: "Rolling correlation (120)", textDecimals: 3, points: [{ date: "2026-10-21", value: 0.418953387895 }] },
+  ] };
+  expect(renderHeadlessPaneText(definition, result, args, "Relationship").split("\n").find((line) => line.includes("Rolling correlation"))).toMatch(/0\.419\s+1$/);
+  expect(jsonData(definition, result)).toMatchObject({ data: { series: [{ id: "correlation", points: [{ value: 0.418953387895 }] }] } });
+  expect(JSON.stringify(jsonData(definition, result))).not.toContain("textDecimals");
+  const freshness = deriveHeadlessFreshness(definition, result);
+  expect(renderReportCsv(headlessReportTables(definition, result, args, "Relationship", freshness, { complete: true, unavailableSymbols: [] }), freshness)).toContain("2026-10-21,0.418953387895,");
+});
+
 test("a series observed by the day is dated without a time in text and CSV, one read at a time of day keeps it, and ratios and scores print rounded", () => {
   const definition: HeadlessPaneDefinition<"series"> = { shape: "series", argument: { kind: "none" }, options: [], load: () => ({ series: [] }) };
   const result: HeadlessSeriesResult = { series: [

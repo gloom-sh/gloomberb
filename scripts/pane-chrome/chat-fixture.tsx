@@ -465,6 +465,16 @@ function ChatListFixturePane({ focused, width, height }: PaneProps) {
 /** The chat pane beside a plain one, which the pointer can leave to, or floating over it (`float=1`). */
 export function chatLayout(): LayoutConfig {
   const instance = (instanceId: string) => ({ instanceId, paneId: instanceId.split(":")[0]!, binding: { kind: "none" as const } });
+  if (params.get("paneReturn") === "1") {
+    const ids = ["chat:a", "table:a", "reader:a"];
+    return {
+      dockRoot: null, instances: ids.map(instance),
+      // Each cover leaves the chat header exposed for a real click to raise it.
+      floating: ids.map((instanceId, index) => ({ instanceId, x: 4, y: 2 + index * 2,
+        width: 140, height: 42 - index * 8, zIndex: index ? 10 - index : 20 })),
+      detached: [],
+    };
+  }
   if (params.get("multiple") === "1") {
     return {
       dockRoot: { kind: "split", axis: "vertical", ratio: 0.5,

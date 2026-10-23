@@ -59,6 +59,17 @@ installed from a repository the registry does not list, update only when you
 ask. Turn this off with **Update official plugins automatically** in the
 Plugins pane's settings.
 
+### Official plugins that need Git
+
+These official plugins live in their own repositories and install from GitHub
+with `git` when the app starts: TV, Substack, Interactive Brokers, IBKR
+Gateway, Public, Robinhood, SimpleFIN, Polls, Prediction Markets and BYOK AI.
+Windows does not ship `git`: install
+[Git for Windows](https://git-scm.com/download/win), then restart Gloom.
+Without it the app starts without them and says so at each launch, and
+`gloomberb doctor` names them; offline, it says once that it tries again at
+the next launch. Git runs quietly: a failure reports git's last line.
+
 ## Developing a plugin
 
 Work on a plugin from its own checkout rather than editing under
@@ -849,7 +860,7 @@ export default {
 | `publisher`, `url` | The official body publishing public data (a statistics agency, a central bank, a regulator) and its page for the series. |
 | `input` | `ticker`, `option` or `crypto`: the series is one per symbol. The catalog asks for the symbol, typing a ticker in the catalog fills it in, and `load` receives it as `ticker`. |
 | `placement` | Where a chart draws the series when it is added: `price` over its ticker's price, on the price's axis (a moving average, a band; needs `input: "ticker"` and is in the ticker's currency, unit `currency`), or `panel` in a panel of its own under the price (an oscillator). CAT then opens the ticker's price with the series placed. Without it, the series joins the main panel when it fits. |
-| `load(request)` | Returns the points from `request.start` to `request.end` (either may be absent), as an array of `{ date, value }` or `{ points, warning, attribution }`. `request.resolution` is the bar size the chart draws prices in (`1d`, `1wk`, `5m`), so a series computed from a ticker's bars can use the same bars. `request.signal` aborts when the chart no longer needs the load; for a series with `lines`, once none of its lines does. `attribution: { source, publisher? }` names the dataset a report of the series alone cites (`FRED series ECBDFR`, published by the European Central Bank) in place of Gloom Cloud. Dates may be `Date`s, `YYYY-MM-DD` strings or epoch milliseconds; a `null` value is a gap. More history than asked for is fine. |
+| `load(request)` | Returns the points from `request.start` to `request.end` (either may be absent), as an array of `{ date, value }` or `{ points, warning, attribution }`. `request.resolution` is the bar size the chart draws prices in (`1d`, `1wk`, `5m`), so a series computed from a ticker's bars can use the same bars. When the chart builds its bars from shorter ones (`4h` from `1h`, `2d` from `1d`), `request.resolution` is the size it loads and `request.barSize` the size it draws; `aggregatePriceBars` from `gloomberb/time-series` builds them the same way, from the session's open, and a series that ignores `barSize` still gets bars it knows. `request.signal` aborts when the chart no longer needs the load; for a series with `lines`, once none of its lines does. `attribution: { source, publisher? }` names the dataset a report of the series alone cites (`FRED series ECBDFR`, published by the European Central Bank) in place of Gloom Cloud. Dates may be `Date`s, `YYYY-MM-DD` strings or epoch milliseconds; a `null` value is a gap. More history than asked for is fine. |
 | `lines` | Several lines drawn together, such as a band's middle and edges: up to sixteen `{ id, name, style?, color?, fill? }`, all added to a chart at once. `color` is `#rrggbb`. `fill` names another line: the area between the two is shaded in this line's colour, under the lines. `load` then returns `{ lines: { [id]: points } }` (`SeriesLinesLoadResult`) and runs once for all of them. A chart names one line as `CAP:namespace:name~id`. |
 | `refreshMs` | For a series that moves during the day: how often a chart showing it loads it again, at least 60000. |
 | `style` | `line` (the default), `area`, `step`, `columns` or `points`. |
@@ -1032,7 +1043,7 @@ Set optional `BrokerAccount.accountType` to the broker-reported classification, 
 
 Optional `getOrderStatus(instance, orderId)` resolves an acknowledged numeric handle to its current broker order, including explicit terminal records from order history. Return `null` when the outcome is unconfirmed. The ticket uses this method when available; disappearance from open orders alone never proves cancellation or a fill.
 
-Optional `subscribeOrders(instance, listener)` pushes order changes as the broker reports them, for every account the profile includes: call `listener.order(order)` with the whole `BrokerOrder` on placement, each fill, replacement, cancellation, rejection and expiry, under the same `orderId` throughout, and `listener.live(true | false)` when pushes start and stop. Keep `brokerOrderId` the order's own native ID: a cancel request that the broker files under a new ID still reports the order it ends. Return a disposer. The host keeps one app-wide order feed per trading profile: it reads `listOpenOrders` when the profile connects, applies pushes as they come and reconciles with open orders once a minute. Without a stream, or while `live` is false, it polls open orders every 5 seconds while an order works and every 30 seconds otherwise. An order that leaves the open list is asked for with `getOrderStatus`. The order drawer, the Orders pane, Overview and the ticket's result read this feed, and it raises the app's fill, partial fill, cancellation, rejection and expiry notifications whether or not a ticket is open.
+Optional `subscribeOrders(instance, listener)` pushes order changes as the broker reports them, for every account the profile includes: call `listener.order(order)` with the whole `BrokerOrder` on placement, each fill, replacement, cancellation, rejection and expiry, under the same `orderId` throughout, and `listener.live(true | false)` when pushes start and stop. Keep `brokerOrderId` the order's own native ID: a cancel request that the broker files under a new ID still reports the order it ends. Return a disposer. The host keeps one app-wide order feed per trading profile: it reads `listOpenOrders` when the profile connects, applies pushes as they come and reconciles with open orders once a minute. Without a stream, or while `live` is false, it polls open orders every 5 seconds while an order works and every 30 seconds otherwise. An order that leaves the open list is asked for with `getOrderStatus`. The order drawer, the Orders pane, Overview and the ticket's result read this feed, and it raises the app's fill, partial fill, cancellation, rejection and expiry notifications whether or not a ticket is open. A fill or partial fill also syncs the profile's positions (`importPositions`) into its portfolio, debounced to once for a burst of fills, so an adapter should report a position as soon as it reports the fill.
 
 `ctx.getBrokerAdapter?(brokerType)` looks up a registered adapter. Built-in React code uses `usePluginBrokerActions().getBrokerAdapter`; external plugins can use the context method and tolerate its absence on older hosts. Headless code receives optional `HeadlessPaneContext.resolveBroker` for the same lookup during `fn` and `shot` execution. The Orders report performs account, open-order and execution reads only; headless reporting never submits, modifies or cancels orders. These lookups expose adapters, not serialized credentials, and do not replace explicit profile and account selection.
 
@@ -1385,7 +1396,8 @@ Choose the existing control that owns the interaction you need:
 | Selectable lists | `ListView` |
 | Dialog content | `DialogFrame`, `ChoiceDialog`, `ConfirmDialog` (`confirmDialog` asks and resolves a boolean; `status` and `busy` show work the confirm started), `TextPromptDialog`, `PriceSelectorDialog` |
 | Section and document headings | `Section`, `SectionHeading` (`wrap` for long headings) |
-| Labeled values and badges | `KeyValueRow`, `Badge` |
+| Labeled values and badges | `KeyValueRow` (`country` leads the value with its flag), `Badge` |
+| Countries | `withCountryFlag` (a table cell led by the country's flag; widen the column with `withFlagRoom`), `CountryFlagLead` (the flag before any other label), `CountryFlag`. The desktop and the web draw the flag; the terminal is unchanged |
 | A few rows of figures under their headers, or label and value pairs in columns, inside a section | `ColumnGrid` (`ColumnGridColumn`: cells, `growFrom`, `align`, `gapBefore`), `ColumnGridPair` |
 | Inline bars | `RatioBar` (a value against a scale: a count against the largest row, a move against a full-scale move), `RangeTrack` (where a value sits between a low and a high; `fill` on the desktop takes the width of the box it is in, so it follows a resize) |
 | Paragraphs, bullets and separators | `Prose`, `BulletList`, `FigureList` (value-first figure lines), `READING_WIDTH`, `Divider` |
@@ -1758,7 +1770,7 @@ ctx.registerCommand({
 });
 ```
 
-Wizard step types: `text`, `password`, `number`, `select`, `textarea`, `info`. A step is required unless it sets `required: false`, and `info` steps show their `body` above the fields. Steps can use `dependsOn` to conditionally appear based on a previous step's value. A pane template's `wizard` opens the same form, from the command bar or from `ctx.createPaneFromTemplate`, and creates the pane when it is sent. A form asked for while another is open, for example from a command's `execute`, opens once that one closes. `wizardLayout` is ignored.
+Wizard step types: `text`, `password`, `number`, `select`, `textarea`, `info`. A step is required unless it sets `required: false`, and `info` steps show their `body` above the fields. Steps can use `dependsOn` to conditionally appear based on a previous step's value (`{ key, value }`), or on several at once (an array of them, all of which must hold). A pane template's `wizard` opens the same form, from the command bar or from `ctx.createPaneFromTemplate`, and creates the pane when it is sent. A form asked for while another is open, for example from a command's `execute`, opens once that one closes. `wizardLayout` is ignored.
 
 Commands can require confirmation before executing. The confirm opens as a centered dialog:
 

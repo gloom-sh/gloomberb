@@ -5,6 +5,8 @@ import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
 import { convertMarketCapitalization } from "../../../utils/market-capitalization";
 import { relativeValuationValues } from "./relative-valuation-model";
 import { relativeValuationHeadless } from "./relative-valuation-headless";
+import { exportRowsTable } from "../../../cli/report-tables";
+import { renderFundamentalsReport } from "../../../cli/commands/ticker";
 
 test("fresh quotes do not hide stale fundamentals in a peer research report", async () => {
   const symbols = ["BAC", "JPM"];
@@ -200,7 +202,7 @@ test("stale quotes cannot rank as current prices or seed quote-based cash-flow y
     marketCap: observed.quote.marketCap, quoteStale: false });
   expect(Number(result.rows[1]!.fcfYield)).toBeCloseTo(observed.fundamentals.freeCashFlow / observed.quote.marketCap, 12);
   const priceColumn = relativeValuationHeadless.columns!.find((column) => column.key === "price")!;
-  expect(priceColumn.format!(result.rows[0]!.price, result.rows[0]!)).toBe("-");
+  expect(priceColumn.format!(result.rows[0]!.price, result.rows[0]!)).toBe("quote stale");
   expect(relativeValuationHeadless.columns!.find((column) => column.key === "trailingPE")!.format!(values.trailingPE, values)).toBe("30.2");
 });
 
@@ -217,4 +219,37 @@ test("a stale quote may use an independent fundamental cap with its own source a
   const unknown = relativeValuationValues({ ...financials, quote: { ...financials.quote, stale: undefined } });
   expect(unknown.quoteStale).toBeNull();
   expect(unknown.reportedQuote?.stale).toBeNull();
+});
+
+test("every blank RV cell says why in the export's status, and the cap is the one valuation shows", async () => {
+  // EVN:ASX on 2026-10-22: the quote's 24.4B cap rests on another count than the 1.99B shares served beside it,
+  // and the TTM block names no currency and has no free cash flow. RMS:ASX has no quarter's revenue growth either.
+  const evn = {
+    annualStatements: [], quarterlyStatements: [], priceHistory: [], financialCurrency: "AUD",
+    quote: { symbol: "EVN", price: 11.93, change: -0.2, changePercent: -1.65, currency: "AUD", lastUpdated: 1, marketCap: 24.4e9 },
+    fundamentals: { marketCap: 24.4e9, marketCapCurrency: "AUD", sharesOutstanding: 1_985_877_758, enterpriseValue: 24.39e9,
+      enterpriseToRevenue: 4.39, revenue: 5.56e9, trailingPE: 16.8, forwardPE: 11.38, operatingMargin: 0.276, lastQuarterGrowth: 0.192 },
+  };
+  const rms = { ...evn, quote: { ...evn.quote, symbol: "RMS", marketCap: undefined },
+    fundamentals: { ...evn.fundamentals, lastQuarterGrowth: undefined, marketCap: undefined, sharesOutstanding: undefined } };
+  const ctx = { signal: new AbortController().signal, marketData: createTestDataProvider({
+    async getTickerFinancials(symbol) { return symbol === "EVN" ? evn : rms; },
+  }) } as HeadlessPaneContext;
+  const result = await relativeValuationHeadless.load({ symbols: ["EVN", "RMS"], argument: ["EVN", "RMS"], rawArgument: "EVN RMS", options: {} }, ctx);
+  const table = exportRowsTable("RV", relativeValuationHeadless.columns!, result.rows, { status: true });
+  const status = table.columns.indexOf("status");
+  expect(table.rows.map((row) => row[status])).toEqual([
+    "EV/S: revenue ccy unstated; FCF Yield: no TTM FCF",
+    "Mkt Cap, Quarter Revenue YoY: not reported; EV/S: revenue ccy unstated; FCF Yield: no TTM FCF",
+  ]);
+  // No blank cell without its reason.
+  table.rows.forEach((row) => row.forEach((cell, index) => {
+    if (cell === "" && index !== status) expect(String(row[status])).toContain(table.columns[index]!.replace(/ \(.*\)$| unit$/, ""));
+  }));
+  // The share count times the price, as `valuation` shows it, with the provider's figure in the notices.
+  expect(result.rows[0]!.marketCap).toBeCloseTo(1_985_877_758 * 11.93, 0);
+  const valuation = renderFundamentalsReport({ ...evn, symbol: "EVN:ASX" }, "valuation").replace(/ {2,}/g, " ");
+  expect(valuation).toContain("Market Cap 23.69B AUD\nShares Outstanding 1.99B\n");
+  expect(valuation).toContain("Market cap 23.69B AUD is the 1.99B shares shown x 11.93 AUD; the provider's is 24.4B AUD.");
+  expect(result.metadata?.notices).toContain("EVN: Market cap 23.69B AUD is the 1.99B shares shown x 11.93 AUD; the provider's is 24.4B AUD.");
 });

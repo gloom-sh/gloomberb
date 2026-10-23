@@ -11,6 +11,8 @@ import { TestPaneProvider, createTestPaneConfig, createTestTicker } from "../../
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
 import type { Quote, TickerFinancials } from "../../../types/financials";
+import { attentionCache } from "../attention/client";
+import { attentionFixture } from "../attention/test-fixture";
 import { TickerResearchPane } from "./pane";
 
 const paneId = "research:status";
@@ -22,6 +24,7 @@ let footer: CombinedPaneFooter;
 
 afterEach(() => {
   mock.restore();
+  attentionCache.reset();
   setSharedMarketDataCoordinator(null);
 });
 
@@ -40,9 +43,15 @@ async function frame() {
 }
 
 async function render(plan: "free" | "pro", width: number) {
+  attentionCache.reset();
   spyOn(Date, "now").mockReturnValue(now);
   spyOn(apiClient, "getCurrentUser").mockReturnValue({ id: "local-status-test", emailVerified: true, plan } as any);
   spyOn(apiClient, "recordResearchActivity").mockResolvedValue(undefined as any);
+  spyOn(apiClient, "getCloudAttention").mockResolvedValue(attentionFixture({
+    window: "today", entitlement: plan === "pro" ? "pro" : "preview", status: "collecting",
+    rows: [], sectors: [], countries: [], counts: { rows: 0, sectors: 0, countries: 0 },
+    coverage: { publishedHours: 0, publishedTickers: 0, baselineDays: 0 },
+  }));
   setSharedMarketDataCoordinator(null);
   const config = createTestPaneConfig("/unused/status-test", {
     instanceId: paneId, paneId: TICKER_RESEARCH_PANE_ID, binding: { kind: "fixed", symbol: "9988" },

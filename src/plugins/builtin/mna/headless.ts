@@ -90,6 +90,7 @@ export const mnaHeadless: HeadlessPaneDefinition<"rows"> = {
         cashPerShare: deal.terms.cashPerShare,
         exchangeRatio: deal.terms.exchangeRatio,
         ratioSymbol: deal.terms.ratioSymbol,
+        election: deal.terms.election === true,
         currency: deal.terms.currency,
         value: formatDealValue(deal.value, deal.valueCurrency),
         valueUsd: deal.valueUsd,

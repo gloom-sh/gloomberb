@@ -19,7 +19,8 @@ import { priceColor, type ThemeColors } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, TextAttributes } from "../../../ui";
+import { Box, TextAttributes, useUiCapabilities } from "../../../ui";
+import { COUNTRY_FLAG_CELLS, withCountryFlag } from "../../../components/ui/country-flag";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import { usePluginTickerActions } from "../../runtime";
@@ -95,7 +96,9 @@ export function IpoCalendarPane({ focused, width, height }: PaneProps) {
   // The cursor starts on the first deal, and moves there when its deal leaves the list.
   const selected = rows.find((deal) => deal.id === selectedId) ?? rows[0] ?? null;
   // Sized on the whole board, so switching tabs does not move the columns.
-  const marketWidth = useMemo(() => marketColumnWidth(deals), [deals]);
+  // The desktop and the web lead each venue with its country's flag.
+  const flagged = useUiCapabilities().nativePaneChrome === true;
+  const marketWidth = useMemo(() => marketColumnWidth(deals) + (flagged ? COUNTRY_FLAG_CELLS : 0), [deals, flagged]);
   const columns = useMemo(() => buildIpoColumns(width, marketWidth), [marketWidth, width]);
 
   const openDeal = useCallback((deal: IpoDeal) => {
@@ -155,7 +158,7 @@ export function IpoCalendarPane({ focused, width, height }: PaneProps) {
       case "company":
         return { text: deal.company, color: colors.text };
       case "market":
-        return { text: deal.venue || deal.mic, color: colors.textDim };
+        return withCountryFlag({ text: deal.venue || deal.mic, color: colors.textDim }, deal.country, flagged);
       case "date": {
         // A target date the venue has not set yet reads quieter than a set
         // one, and so does a book's closing day standing in for a listing
@@ -186,7 +189,7 @@ export function IpoCalendarPane({ focused, width, height }: PaneProps) {
         };
       }
     }
-  }, [colors, now]);
+  }, [colors, flagged, now]);
 
   if (!payload) {
     return (

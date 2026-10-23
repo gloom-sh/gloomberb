@@ -442,4 +442,11 @@ describe("past curves", () => {
     expect(() => curveAsOfDate("2020-02-30", now)).toThrow("YYYY-MM-DD");
     expect(() => curveAsOfDate("2020-13-01", now)).toThrow("YYYY-MM-DD");
   });
+
+  test("a date written day first gets the date to type, as every date option gives", () => {
+    const now = new Date("2026-10-23T12:00:00Z");
+    expect(() => curveAsOfDate("22/10/2026", now, "--date")).toThrow("type --date 2026-10-22 for 22/10/2026");
+    expect(() => curveAsOfDate("22/10/2026", now)).toThrow("type 2026-10-22 for 22/10/2026");
+    expect(curveAsOfDate("22.10.2026", now, "--date")).toBe("2026-10-22");
+  });
 });

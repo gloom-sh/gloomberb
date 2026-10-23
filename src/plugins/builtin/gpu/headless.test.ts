@@ -39,5 +39,8 @@ test("a GPU the free board leaves out reads from its own free preview, printed t
   const cell = (key: string) => section.columns!.find((column) => column.key === key)!.format!(row[key], row);
   expect([cell("price"), cell("change7d"), cell("observedAt")]).toEqual(["4.00", "Pro", "2026-10-03 19:00 UTC"]);
   expect(report.complete).toBe(false);
+  // What the free view leaves to Pro prints on the report's Pro line, not as a note.
+  expect(report.errors).toEqual(["Free shows the latest rows of H100, which the free board leaves out. Gloom Pro adds every provider and the 1D, 7D and 30D moves."]);
+  expect(report.notes).toBeUndefined();
   await expect(gpuHeadless.load(createTestHeadlessArgs({ argument: "X100" }), ctx)).rejects.toThrow(/No GPU matches "X100"\. GPUs: H100, .*A10\./);
 });

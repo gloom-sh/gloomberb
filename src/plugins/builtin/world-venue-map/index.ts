@@ -1,18 +1,14 @@
 import { peekGeoCatalog } from "../../../api-client/geo";
-import { SERIES_COLORS } from "../../../theme/series-colors";
 import { CHART_COMPOSER_PANE_ID } from "../../../types/config";
 import type { PaneTemplateDef } from "../../../types/plugin";
 import { chartHeadless } from "../chart-composer/headless";
-import { buildCustomChartPreset } from "../chart-composer/presets";
-import { formatGeoSeriesExpression } from "../chart-composer/series-expression";
 import type { PluginModule } from "../plugin-module";
+import { createChokepointInstance } from "./chokepoint-chart";
 import { cloudGeoRequest } from "./client";
-import { chokepointSeriesFor, chokepointSeriesIds, CHOKEPOINT_SERIES, createGeoChartSeriesCapability, KEY_CHOKEPOINTS } from "./geo-series";
+import { CHOKEPOINT_SERIES, createGeoChartSeriesCapability } from "./geo-series";
 import { mapHeadless } from "./headless";
 import { buildMapSettingsDef, groupTitle, MAP_PRESET_OPTIONS, parseMapPreset } from "./layers";
 import { WORLD_VENUE_MAP_PANE_ID, WorldVenueMapPane } from "./pane";
-
-const CHOKE_SERIES_LIMIT = 6;
 
 const chartComposerHeadless = chartHeadless("chart-composer-pane");
 
@@ -37,26 +33,7 @@ const chokepointTemplate: PaneTemplateDef = {
   keywords: ["chokepoint", "chokepoints", "transits", "suez", "panama", "hormuz", "malacca", "shipping", "strait", "canal"],
   shortcut: { prefix: "CHOKE", argPlaceholder: "chokepoint", argKind: "text", argOptional: true },
   canCreate: () => true,
-  createInstance: async (_context, options) => {
-    const typed = options?.arg?.trim();
-    const named = typed ? await chokepointSeriesFor(cloudGeoRequest, typed) : null;
-    const ids = named
-      ? [named]
-      // Without the series index, CHOKE still asks for the key straits by name.
-      : await chokepointSeriesIds(cloudGeoRequest).then((found) => (found.length ? found : KEY_CHOKEPOINTS)).catch(() => KEY_CHOKEPOINTS);
-    const base = buildCustomChartPreset(ids.slice(0, CHOKE_SERIES_LIMIT).map(formatGeoSeriesExpression).join(", "));
-    // Daily transits read best over a year, each strait in its own colour.
-    const spec = {
-      ...base,
-      viewport: { ...base.viewport, range: "1Y" as const },
-      series: base.series.map((series, index) => ({ ...series, color: series.color ?? SERIES_COLORS[index % SERIES_COLORS.length]! })),
-    };
-    return {
-      title: named ? `G ${named} transits` : "G Chokepoint transits",
-      placement: "floating",
-      settings: { chartSpec: spec },
-    };
-  },
+  createInstance: (_context, options) => createChokepointInstance(cloudGeoRequest, options?.arg),
 };
 
 export const worldVenueMapModule: PluginModule = {

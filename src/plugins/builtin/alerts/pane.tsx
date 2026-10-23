@@ -156,16 +156,6 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
     const quote = streamedAlertQuote(resolveEntryData(liveEntries.get(buildQuoteKey(alertInstrument(alert)))));
     return quote ? { ...alert, ...quoteAlertFields(quote, quote.receivedAt) } : alert;
   }), [liveEntries, rows]);
-  // A quote one alert could not get is said on its row ("No quote"), and in
-  // full under the table while the row is selected. Only when no active alert
-  // got one is it the whole pane's, in its footer.
-  const quoteError = useMemo(() => {
-    const active = displayRows.filter((alert) => alert.status === "active");
-    const failed = active.flatMap((alert) => alert.lastCheckError ? [alert.lastCheckError] : []);
-    if (active.length === 0 || failed.length < active.length) return null;
-    const reasons = [...new Set(failed)];
-    return reasons.length === 1 ? reasons[0]! : "quotes unavailable";
-  }, [displayRows]);
 
   const savePaneAlerts = useCallback((next: (current: AlertRule[]) => AlertRule[]): string | null => {
     let error: string | null = null;
@@ -213,8 +203,10 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
   }, [deleteAlert, rows, selectedIdx]);
 
   const selectedRule = rows[selectedIdx];
+  // A quote one alert could not get is said on its row (Current and Quote),
+  // and in full under the table while the row is selected: the table has no detail.
   const selectedShown = displayRows[selectedIdx];
-  const selectedQuoteError = !quoteError && selectedShown?.lastCheckError
+  const selectedQuoteError = selectedShown?.lastCheckError
     ? selectedShown.lastCheckError.includes(selectedShown.symbol)
       ? selectedShown.lastCheckError
       : `${selectedShown.symbol}: ${selectedShown.lastCheckError}`
@@ -261,12 +253,11 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
   // Quotes come from the plugin's single background poll, which writes into the
   // same persisted store, so the pane never fetches on its own.
 
+  // A quote one alert could not get shows on that alert's row (Current and Quote), not here.
   usePaneFooter("alerts", () => ({
     info: storeError
       ? [{ id: "store-error", parts: [{ text: storeError, tone: "warning" as const }] }]
-      : quoteError
-        ? [{ id: "quote-error", parts: [{ text: quoteError, tone: "warning" as const }] }]
-        : [],
+      : [],
     hints: [
       { id: "add", key: "a", label: "dd alert", onPress: startAddAlert },
       ...alertViewHints(selectedTarget, openTarget),
@@ -296,7 +287,6 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
     openTarget,
     rows,
     selectedIdx,
-    quoteError,
     rows.length,
     startAddAlert,
     storeError,
@@ -347,7 +337,7 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
       case "quote":
         return {
           text: formatQuoteChecked(alert),
-          color: colors.textDim,
+          color: alert.lastCheckError ? colors.negative : colors.textDim,
         };
       case "triggered":
         return {

@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, test } from "bun:test";
 import { createDefaultConfig } from "../../types/config";
 import type { Quote } from "../../types/financials";
 import type { CliCommandContext } from "../../types/plugin";
@@ -7,9 +7,11 @@ import { coinElsewhereNote, quoteNotes } from "./crypto-hints";
 import { marketDataCliCommands } from "./market";
 import { serializeCliResult } from "../result";
 import { setCliColorEnabledOverride } from "../../utils/cli-output";
+import { resetBoardCoins } from "../board-coins";
 
+beforeEach(() => resetBoardCoins([]));
 // A quote that finds nothing sets the exit status; it must not become the test run's.
-afterEach(() => { process.exitCode = 0; });
+afterEach(() => { process.exitCode = 0; resetBoardCoins(); });
 
 const config = createDefaultConfig("/tmp/gloom-crypto-hints-test");
 const HINT = "Crypto prices may be briefly unavailable; the CRYP function (gloomberb fn CRYP) shows the crypto board.";

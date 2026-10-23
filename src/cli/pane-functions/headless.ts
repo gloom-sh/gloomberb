@@ -42,10 +42,11 @@ import type { ResolvedPaneFunction } from "./resolver";
 import { isRecord } from "../../utils/guards";
 import { splitSymbolWords } from "../symbol-args";
 import { formatUtcTime, localTimeSuffix } from "../../utils/utc-time";
-import { deriveHeadlessFreshness, formatFreshnessLine, staleRowsText, type ReportFreshness } from "./freshness";
+import { deriveHeadlessFreshness, formatFreshnessLine, staleRowsText, withSavedCopy, type ReportFreshness } from "./freshness";
 import { accessGateStatus, errorsAccessGate, isProLock, reportGateText } from "./access-gate";
 import { noArgumentMessage } from "./capabilities";
 import { lockedHeadlessReport } from "./lock-note";
+import { resumeStateKey } from "../../plugins/registry/plugin-state";
 
 interface SerializableHeadlessColumn {
   key: string;
@@ -187,7 +188,7 @@ async function loadHeadlessPaneModel(
   return result;
 }
 
-type HeadlessMarketContext = Pick<MarketContext, "config" | "store" | "refresh" | "resolveBroker"> & Partial<Pick<MarketContext, "persistence" | "seriesCapabilities">> & {
+type HeadlessMarketContext = Pick<MarketContext, "config" | "store" | "refresh" | "resolveBroker"> & Partial<Pick<MarketContext, "persistence" | "seriesCapabilities" | "findCatalogSeries">> & {
   dataProvider: HeadlessPaneContext["marketData"];
 };
 
@@ -205,6 +206,8 @@ export function createHeadlessPaneContext(
     ...(context.refresh ? { refresh: true } : {}),
     settings: resolved.instance.settings,
     capabilities: getSharedRegistry() ?? context.seriesCapabilities,
+    catalogSeriesName: (expression) => (getSharedRegistry()?.series.findByExpression(expression)?.definition
+      ?? context.findCatalogSeries?.(expression))?.name,
     resolveBroker: context.resolveBroker,
     async resolvePortfolio(id) {
       const portfolio = findNamedCollection(context.config.portfolios, id);
@@ -223,6 +226,8 @@ export function createHeadlessPaneContext(
         ?? (key !== parsed.symbol ? await context.store.loadTicker(parsed.symbol) : null);
       return { symbol: parsed.symbol, exchange: parsed.exchange ?? ticker?.metadata.exchange };
     },
+    readDeviceState: <T,>(pluginId: string, key: string) =>
+      context.persistence?.pluginState.get<T>(pluginId, resumeStateKey(key))?.value ?? null,
     async resolveListing(symbol, argumentWith) {
       const command = `fn ${resolved.token}`;
       const read = await readBareListing(symbol, context, {
@@ -363,7 +368,8 @@ export function serializeHeadlessPaneResult(
     }
     case "series": {
       const series = result as HeadlessSeriesResult;
-      return { ...common, series: series.series, ...(series.stats ? { stats: series.stats } : {}) };
+      // `textDecimals` only shapes the text report; JSON keeps every digit and does not carry it.
+      return { ...common, series: series.series.map(({ textDecimals: _text, ...kept }) => kept), ...(series.stats ? { stats: series.stats } : {}) };
     }
     case "snapshot": {
       const snapshot = result as HeadlessSnapshotResult;
@@ -484,7 +490,8 @@ function seriesPointExportDate(series: HeadlessSeries, date: SeriesPointDate, da
 }
 
 /**
- * A latest value as the series report prints it: percentages, multiples and
+ * A latest value as the series report prints it: percentages and percentage
+ * points, multiples and
  * ratios (P/E, EV/EBITDA, one series over another, VIX 3M / VIX) to two
  * decimals, which a ratio under 0.1 trades for three significant digits so it
  * is not flattened to 0.03, and a 0 to 100 score to a tenth of a point. The
@@ -494,8 +501,9 @@ function seriesPointExportDate(series: HeadlessSeries, date: SeriesPointDate, da
 function seriesValue(series: HeadlessSeries, value: number | null): string {
   if (value == null) return "-";
   if (!Number.isFinite(value)) return displayNumber(value);
+  if (series.textDecimals != null) return value.toFixed(series.textDecimals);
   const unit = series.unit?.trim().toLowerCase();
-  if (unit === "%") return value.toFixed(2);
+  if (unit === "%" || unit === "pp") return value.toFixed(2);
   if (unit === "x" || unit === "ratio") return value !== 0 && Math.abs(value) < 0.1 ? value.toPrecision(3) : value.toFixed(2);
   if (unit === "score") return value.toFixed(1);
   return displayNumber(value);
@@ -525,6 +533,7 @@ function renderRows(
       minWidth: column.minWidth,
       stackPriority: column.stackPriority,
       stackRows: column.stackRows,
+      minTableWidth: column.minTableWidth,
     })),
     rows.map((row) => columns.map((column) => cell(row, column))),
     {
@@ -775,7 +784,10 @@ export function headlessReportTables(
         };
         if (!("rows" in section && section.rows)) {
           const entries = exportEntriesTable(section.title, section.entries);
-          return Object.keys(named).length > 0 ? { ...entries, identity: named } : entries;
+          // A figure that declares its unit names it in the unit column of its own line too.
+          const rowIdentities = section.entries.some((entry) => entry.unit?.trim())
+            ? section.entries.map((entry) => entry.unit?.trim() ? { currencyOrUnit: entry.unit.trim() } : undefined) : undefined;
+          return { ...entries, ...(Object.keys(named).length > 0 ? { identity: named } : {}), ...(rowIdentities ? { rowIdentities } : {}) };
         }
         const table = exportRowsTable(section.title, displayedColumns(columnsFor(section.rows, section.columns, definition.columns)), section.rows, { status: true });
         const identity = {
@@ -967,7 +979,8 @@ export async function buildHeadlessFunctionReport(
   }
   const { complete, unavailableSymbols, rowCount, symbols } = reportCoverage(loaded);
   const serialized = serializeHeadlessPaneResult(loaded.definition, loaded.result);
-  const freshness = deriveHeadlessFreshness(loaded.definition, loaded.result);
+  // What the report shows from a saved copy, its refresh having failed, says so.
+  const freshness = withSavedCopy(deriveHeadlessFreshness(loaded.definition, loaded.result), loaded.result);
   return {
     data: {
       kind: loaded.definition.shape,

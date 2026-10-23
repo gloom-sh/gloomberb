@@ -7,6 +7,7 @@ import {
   gpuLabel, gpuNoMatch, gpuPrice, gpuProvenanceLabel, gpuRows, gpuSource, gpuTab,
 } from "./model";
 import { quoteFreshnessFields } from "../shared/report-freshness";
+import { countOf, freePreviewNote } from "../shared/free-preview";
 import { getRegularSessionDisplay } from "../../../market-data/market/status";
 
 const observationRow = (row: GpuObservation) => ({ gpu: gpuLabel(row), source: gpuSource(row), basis: gpuBasisLabel(row.basis),
@@ -73,8 +74,12 @@ export const gpuHeadless: HeadlessPaneDefinition<"bundle"> = {
     const previews = await fetchGpuModelPreviews(gpuPreviewModels(board, tab === "equities" ? gpuEquityModels(selected) : [selected]), ctx.apiClient);
     const rows = [...board.rows, ...previews];
     const previewed = [...new Set(previews.map((row) => row.gpuModel))];
-    const notes = previewed.length ? [`${previewed.join(" and ")} ${previewed.length > 1 ? "are" : "is"} not on the free board: ${previewed.length > 1 ? "their" : "its"} latest free rows stand in. Pro adds every provider and the 1D, 7D and 30D moves.`]
-      : board.access?.locked && !model && tab === "board" ? ["The free board shows three rows; name a GPU (GPU H100) for its latest free rows, or upgrade to Pro for every GPU."] : [];
+    // What the free view leaves to Pro is the report's Pro line, never a note or an error.
+    const locks = previewed.length
+      ? [freePreviewNote({ shows: `the latest rows of ${previewed.join(" and ")}, which the free board leaves out`, adds: "every provider and the 1D, 7D and 30D moves" })]
+      : board.access?.locked && !model && tab === "board"
+        ? [freePreviewNote({ shows: `${countOf(board.rows.length, "board row")}, or the latest rows of a GPU you name (GPU H100)`, adds: "every GPU and provider, with the 1D, 7D and 30D moves" })]
+        : [];
     if (tab === "equities") {
       const related = gpuEquityRows(rows, selected, !!board.access?.locked);
       const histories = await loadGpuEquityHistory(ctx.marketData);
@@ -97,12 +102,12 @@ export const gpuHeadless: HeadlessPaneDefinition<"bundle"> = {
         { key: "gpu", header: "GPU" }, { key: "gpuSource", header: "GPU list series", format: (value: unknown, row: HeadlessPaneRow) => typeof value === "string" ? value : String(row.gpuGap ?? "-") },
         { key: "gpuPrice", header: "$/GPU-hr", align: "right" as const, format: (value: unknown, row: HeadlessPaneRow) => locked(value, row, price) },
         { key: "gpuChange7d", header: "GPU 7D", align: "right" as const, format: (value: unknown, row: HeadlessPaneRow) => locked(value, row, percent) },
-      ], rows: equities }], complete: !board.access?.locked, metadata, notes, errors: [...board.gaps, ...histories.flatMap((entry) => entry.error ? [entry.error] : [])],
+      ], rows: equities }], complete: !board.access?.locked, metadata, errors: [...locks, ...board.gaps, ...histories.flatMap((entry) => entry.error ? [entry.error] : [])],
       unavailableSymbols: equities.filter((row) => row.price == null || row.change5d == null).map((row) => row.symbol) };
     }
     const boardRows = gpuRows(rows, model).map((row) => ({ ...observationRow(row), change1d: row.change1d, change7d: row.change7d,
       change30d: row.change30d, stale: row.stale, sample: row.stats ?? null, ...(gpuChangesLocked(row) ? { changesLocked: true } : {}) }));
     return { sections: [{ title: "GPU rental prices", columns, rows: boardRows, empty: `No ${model ? `${model} ` : ""}rental prices have been observed yet.` }],
-      freshness, complete: !board.access?.locked, metadata, notes, errors: board.gaps };
+      freshness, complete: !board.access?.locked, metadata, errors: [...locks, ...board.gaps] };
   },
 };

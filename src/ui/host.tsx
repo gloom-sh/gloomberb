@@ -708,7 +708,12 @@ export interface RendererHost {
   requestExit(): void;
   startWindowDrag?(): Promise<void> | void;
   controlWindow?(action: "minimize" | "toggle-maximize" | "close"): Promise<void> | void;
-  openExternal(url: string): Promise<void>;
+  /**
+   * Opens a link in the person's browser. Resolves false when no browser could
+   * be shown from here (a terminal over SSH, or no opener installed), so the
+   * caller can show the link instead; void when the host cannot tell.
+   */
+  openExternal(url: string): Promise<boolean | void>;
   copyText(text: string): Promise<void>;
   copyPngImage?(pngBase64: string): Promise<void>;
   readText(): Promise<string>;

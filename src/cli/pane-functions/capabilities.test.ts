@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { apiClient } from "../../api-client";
 import { paneSchemas as chartSchemas } from "../../plugins/builtin/chart-composer/headless-schema";
 import { buildFundamentalChartPreset, buildValuationChartPreset } from "../../plugins/builtin/chart-composer/presets";
 import { paneSchemas as correlationSchemas } from "../../plugins/builtin/correlation/headless-schema";
@@ -38,6 +39,13 @@ import {
 import { createPaneCatalog } from "./discovery";
 import { findCatalogSeries } from "../series-search";
 import { parsePaneFunctionArgs } from "./options";
+
+beforeEach(() => {
+  // Catalog discovery starts chat and instantiates the map's chart templates.
+  spyOn(apiClient, "getChannels").mockResolvedValue([]);
+  spyOn(apiClient, "geo").mockResolvedValue({ series: [] });
+});
+afterEach(() => mock.restore());
 
 const dummyPane = {
   id: "test-pane",
@@ -197,6 +205,14 @@ describe("pane function capabilities", () => {
       .toThrow("CDX does not support --range. It has no options.");
   });
 
+  test("HP and RETURN take --from in place of --range: typed together they are refused, while the default range gives way", () => {
+    const returns = capabilityFor("returns-pane");
+    expect(normalizeCapabilityOptions(returns, { from: "2007", to: "2009" }, { code: "RETURN" })).toMatchObject({ range: "5D", from: "2007", to: "2009" });
+    expect(() => normalizeCapabilityOptions(returns, { window: "1M", from: "2007" }, { code: "RETURN" })).toThrow("--from replaces --window; give one of them.");
+    expect(() => normalizeCapabilityOptions(capabilityFor("historical-prices-pane"), { range: "5Y", from: "2007" }, { code: "HP" }))
+      .toThrow("--from replaces --range; give one of them.");
+  });
+
   test("a word after a function that takes none is answered with its options, and runs as the option whose value it is", () => {
     expect(noArgumentMessage(jodiHeadless.options, "JODI", "Gas"))
       .toBe("JODI does not accept an argument. Options: --commodity <oil|gas>. Run: gloomberb fn JODI --commodity gas");
@@ -204,6 +220,13 @@ describe("pane function capabilities", () => {
     expect(noArgumentMessage(jodiHeadless.options, "JODI", "europe", "shot"))
       .toBe("JODI does not accept an argument. Options: --commodity <oil|gas>. Example: gloomberb shot JODI --commodity gas");
     expect(noArgumentMessage([], "CDX", "IG")).toBe("CDX does not accept an argument. Run: gloomberb fn CDX");
+    // A ticker after a function that takes its underlying as an option runs as that option.
+    const ovme = [{ key: "model", type: "enum" as const, values: [{ value: "european" }, { value: "american" }] },
+      { key: "symbol", type: "string" as const }];
+    expect(noArgumentMessage(ovme, "OVME", "NEM")).toBe(
+      "OVME does not accept an argument. Options: --model <european|american>, --symbol <string>. Run: gloomberb fn OVME --symbol NEM");
+    expect(noArgumentMessage(ovme, "OVME", "american")).toEndWith("Run: gloomberb fn OVME --model american");
+    expect(noArgumentMessage(ovme, "OVME", "two words")).toEndWith("Example: gloomberb fn OVME --model european");
   });
 });
 
@@ -320,11 +343,11 @@ describe("pane catalog search", () => {
       for (const query of ["collar", "hedge", "hedging", "protective put", "put spread"]) {
         expect(filterPaneCatalogEntries(entries, query)[0]?.token, query).toBe("OSA");
       }
-      // Selling puts: OSA runs the trade, OMON picks the strike, VCA finds the rich premium.
+      // Selling puts: CSP ranks the names, OSA runs the trade, OMON picks the strike, VCA finds the rich premium.
       for (const query of ["cash secured put", "csp", "put selling", "sell put", "short put", "wheel"]) {
         const tokens = filterPaneCatalogEntries(entries, query).map(({ token }) => token);
-        expect(tokens[0], query).toBe("OSA");
-        expect(tokens.slice(0, 3).sort(), query).toEqual(["OMON", "OSA", "VCA"]);
+        expect(tokens.slice(0, 2), query).toEqual(["CSP", "OSA"]);
+        expect(tokens.slice(0, 4).sort(), query).toEqual(["CSP", "OMON", "OSA", "VCA"]);
       }
     } finally {
       registry.destroy();
@@ -357,6 +380,23 @@ describe("pane catalog search", () => {
       expect(page).toContain("gloomberb fn PORT <portfolio-id>");
       expect(page).toMatch(/Also matches "port"[\s\S]*\nMAP\s/);
       for (const query of ["ais", "AIS", "shipping"]) expect(filterPaneCatalogEntries(entries, query).map(({ token }) => token), query).toContain("MAP");
+    } finally {
+      registry.destroy();
+    }
+  });
+
+  test("a metals desk's plain words for the gold/silver ratio list GR first, and search lists it", async () => {
+    const context = { config: createDefaultConfig("/tmp/capabilities-test") } as MarketContext;
+    const registry = await createPaneCatalog(context, getLoadablePlugins());
+    try {
+      const entries = await buildPaneCatalogEntries(registry, context);
+      for (const query of ["ratio", "gold silver", "gold silver ratio", "gold/silver ratio"]) {
+        const ranked = filterPaneCatalogEntries(entries, query);
+        const { shown, loose } = selectPaneCatalogMatches(ranked, query, 10);
+        expect(shown[0]?.token, query).toBe("GR");
+        // `search` lists functions only from a match that is not loose.
+        expect(loose, query).toBe(false);
+      }
     } finally {
       registry.destroy();
     }

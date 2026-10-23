@@ -29,6 +29,8 @@ interface CotMarket {
   marketName: string
   exchangeCode: string
   commodityCode: string
+  /** What one contract is, in the CFTC's words: "CONTRACTS OF 100 TROY OUNCES". Null where the report states none. */
+  contractUnits?: string | null
 }
 export interface CotPayloadBase {
   source: "CFTC"

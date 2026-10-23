@@ -45,8 +45,9 @@ export function formatAlertDistance(alert: AlertRule): string {
   return `${/[1-9]/.test(fixed) ? (percent > 0 ? "+" : "-") : ""}${fixed}%`;
 }
 
+/** The Quote cell: the quote's age and feed, or, on the row of an alert that got none, why (a stale quote, or none). */
 export function formatQuoteChecked(alert: AlertRule): string {
-  if (alert.lastCheckError) return "No quote";
+  if (alert.lastCheckError) return /\bstale\b/i.test(alert.lastCheckError) ? "Stale" : "No quote";
   if (alert.lastQuoteUpdatedAt) {
     return formatQuoteAgeWithSource({
       lastUpdated: alert.lastQuoteUpdatedAt,

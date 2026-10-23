@@ -21,6 +21,8 @@ const dateOrNull = (value: unknown) => value === null || date(value);
 const instantOrNull = (value: unknown) => value === null || typeof value === "string" && Number.isFinite(Date.parse(value));
 const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 const finiteOrNull = (value: unknown) => value === null || finite(value);
+/** A field older servers leave out: absent, null or a number. */
+const optionalFinite = (value: unknown) => value === undefined || finiteOrNull(value);
 const pairs = (value: unknown) => Array.isArray(value)
   && value.every((pair) => Array.isArray(pair) && Number.isInteger(pair[0]) && finite(pair[1]));
 
@@ -29,6 +31,7 @@ function validRow(row: DoeSeriesRow): boolean {
   return typeof row.id === "string" && typeof row.label === "string" && UNITS.has(row.unit) && TABS.has(row.tab)
     && dateOrNull(row.weekEnding) && finiteOrNull(row.value) && finiteOrNull(row.weekChange) && (row.value == null) === (row.weekEnding == null)
     && (row.read === null || typeof row.read === "string")
+    && (row.basis === undefined || row.basis === "published" || row.basis === "computed")
     && (ago === null || date(ago.weekEnding) && finite(ago.value) && finite(ago.change) && finiteOrNull(ago.changePercent))
     && (five === null || Array.isArray(five.years) && five.years.length > 0 && [five.min, five.max, five.average, five.vsAverage].every(finite)
       && five.min <= five.max && finiteOrNull(five.averageChange) && finiteOrNull(five.vsAveragePercent) && finiteOrNull(five.position))
@@ -44,7 +47,8 @@ function validateDoeBoard(payload: DoeBoardPayload): DoeBoardPayload {
     || !Array.isArray(payload.gaps) || !payload.gaps.every((gap) => typeof gap === "string")
     || !Array.isArray(payload.reports) || !payload.reports.every((report) => (report.id === "petroleum" || report.id === "gas")
       && dateOrNull(report.weekEnding) && dateOrNull(report.nextWeekEnding)
-      && instantOrNull(report.releasedAt) && instantOrNull(report.nextReleaseAt))
+      && instantOrNull(report.releasedAt) && instantOrNull(report.nextReleaseAt)
+      && optionalFinite(report.nextConsensus) && optionalFinite(report.nextPrior))
     || !Array.isArray(payload.series) || new Set(payload.series.map((row) => row.id)).size !== payload.series.length
     || !payload.series.every(validRow)) {
     throw new Error("The server returned an invalid EIA weekly board");

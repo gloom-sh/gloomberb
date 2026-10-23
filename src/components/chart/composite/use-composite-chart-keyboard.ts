@@ -59,6 +59,31 @@ export interface KeyboardToolDrag {
   end: ChartDrawingPoint;
 }
 
+/** The chart's own layout: its tool bar, its legend and its panels' heights. */
+export interface CompositeChartLayoutControls {
+  /** The bar is saved hidden; it still opens while a tool is in hand. */
+  toolbarHidden: boolean;
+  toggleToolbar: () => void;
+  /** The legend has more than one series, so it can fold to its first. */
+  legendCollapsible: boolean;
+  legendCollapsed: boolean;
+  toggleLegend: () => void;
+  /** Two or more panels share the plot, so the keys can move the line between them. */
+  panelsResizable: boolean;
+  stepTopPanel: (direction: 1 | -1) => void;
+  /** Heights were set by hand. */
+  panelHeightsSet: boolean;
+  resetPanelHeights: () => void;
+  /** A panel has the whole plot. */
+  panelMaximized: boolean;
+  restorePanels: () => void;
+}
+
+/** Shift with one of the arrows, and no other modifier. */
+function isShiftedArrow(event: { name?: string; shift?: boolean; ctrl?: boolean; meta?: boolean; alt?: boolean }, ...names: string[]): boolean {
+  return event.shift === true && !event.ctrl && !event.meta && !event.alt && names.includes(event.name ?? "");
+}
+
 /** Shift and a letter, whether or not the terminal reports the shift itself. */
 function isShiftedLetter(event: { name?: string; shift?: boolean; ctrl?: boolean; meta?: boolean; alt?: boolean }, letter: string): boolean {
   if (event.ctrl || event.meta || event.alt) return false;
@@ -95,6 +120,7 @@ export function useCompositeChartKeyboard({
   addDrawing,
   removeDrawing,
   pickDrawColor,
+  layout,
 }: {
   focused: boolean;
   interactive: boolean;
@@ -127,6 +153,7 @@ export function useCompositeChartKeyboard({
   addDrawing: (drawing: ChartDrawing) => void;
   removeDrawing: () => void;
   pickDrawColor: (color: string) => void;
+  layout: CompositeChartLayoutControls;
 }) {
   const [legendKeyboardIndex, setLegendKeyboardIndex] = useState<number | null>(null);
   const [armedTool, setArmedTool] = useState<ChartToolKind | null>(null);
@@ -290,6 +317,8 @@ export function useCompositeChartKeyboard({
   };
   const stepLegend = (direction: -1 | 1) => {
     onActivate?.();
+    // The series stepped to must be on screen.
+    if (layout.legendCollapsed) layout.toggleLegend();
     setLegendKeyboardIndex((current) => (
       current === null
         ? direction > 0 ? 0 : visibleLegendSeries.length - 1
@@ -456,6 +485,21 @@ export function useCompositeChartKeyboard({
       setKeyboardPlacement((current) => current && moveKeyboardPlacement(current, { level }));
       return;
     }
+    if (toolsActive && isShiftedLetter(event, "t")) {
+      consume();
+      layout.toggleToolbar();
+      return;
+    }
+    if (legendKeysActive && layout.legendCollapsible && isShiftedLetter(event, "l")) {
+      consume();
+      layout.toggleLegend();
+      return;
+    }
+    if (toolsActive && layout.panelsResizable && isShiftedArrow(event, "up", "down")) {
+      consume();
+      layout.stepTopPanel(event.name === "up" ? 1 : -1);
+      return;
+    }
     if (isPlainKey(event, "[", "]") && (drawingKeysActive || legendKeysActive)) {
       consume();
       const direction = event.name === "[" ? -1 : 1;
@@ -599,6 +643,7 @@ export function useCompositeChartKeyboard({
     },
     leave: leaveChart,
     togglePin: () => pin?.toggle(),
+    layout,
   };
   const chartActionsRef = useRef(chartActions);
   chartActionsRef.current = chartActions;
@@ -617,6 +662,15 @@ export function useCompositeChartKeyboard({
   const levelToolKeys = toolsActive && armedTool === "level" && levelsEditable;
   const canDeleteLevel = toolsActive && levelsEditable && !!selectedLevel?.editable;
   const pinState = pin ? pin.pinned : null;
+  // Hidden as it shows: a saved hidden bar is open while a tool is in hand.
+  const toolbarHidden = layout.toolbarHidden && armedTool === null;
+  const {
+    legendCollapsible,
+    legendCollapsed,
+    panelsResizable,
+    panelHeightsSet,
+    panelMaximized,
+  } = layout;
   usePaneFooter(keyboardId, () => {
     if (!keyboardActive || !scene) return null;
     const hints: PaneHint[] = [];
@@ -689,6 +743,29 @@ export function useCompositeChartKeyboard({
         });
       }
       if (resettable) menu.push({ id: "chart-reset", label: "Reset Zoom", accelerator: "0", onSelect: () => chartActionsRef.current.reset() });
+      menu.push({
+        id: "chart-toolbar",
+        label: toolbarHidden ? "Show Drawing Tools" : "Hide Drawing Tools",
+        accelerator: "Shift+T",
+        onSelect: () => chartActionsRef.current.layout.toggleToolbar(),
+      });
+      if (panelsResizable) {
+        menu.push({ id: "chart-panel-taller", label: "Taller Top Panel", accelerator: "Shift+Up", onSelect: () => chartActionsRef.current.layout.stepTopPanel(1) });
+        menu.push({ id: "chart-panel-shorter", label: "Shorter Top Panel", accelerator: "Shift+Down", onSelect: () => chartActionsRef.current.layout.stepTopPanel(-1) });
+      }
+      if (panelMaximized) {
+        menu.push({ id: "chart-panels-restore", label: "Show All Panels", onSelect: () => chartActionsRef.current.layout.restorePanels() });
+      } else if (panelHeightsSet) {
+        menu.push({ id: "chart-panels-reset", label: "Reset Panel Heights", onSelect: () => chartActionsRef.current.layout.resetPanelHeights() });
+      }
+    }
+    if (legendKeysActive && legendCollapsible) {
+      menu.push({
+        id: "chart-legend",
+        label: legendCollapsed ? "Expand Legend" : "Collapse Legend",
+        accelerator: "Shift+L",
+        onSelect: () => chartActionsRef.current.layout.toggleLegend(),
+      });
     }
     if (legendKeysActive && anyLegendToggleable && !drawingKeysActive) {
       menu.push({ id: "chart-series-next", label: "Next Series", accelerator: "]", onSelect: () => chartActionsRef.current.stepLegend(1) });
@@ -716,6 +793,12 @@ export function useCompositeChartKeyboard({
     levelsEditable,
     toolsActive,
     pinState,
+    toolbarHidden,
+    legendCollapsible,
+    legendCollapsed,
+    panelsResizable,
+    panelHeightsSet,
+    panelMaximized,
   ]);
 
   return {

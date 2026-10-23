@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { coalesceFinancialPeriodAliases, mergeFinancialStatementRows, statementHistoryNotes } from "./financial-statements";
+import { coalesceFinancialPeriodAliases, filledPeriodsNote, mergeFinancialStatementRows, stalePeriodNote, statementHistoryNotes } from "./financial-statements";
 import { computeTTM } from "../plugins/builtin/ticker-detail/financials/aggregation";
 import type { FinancialStatement } from "../types/financials";
 
@@ -226,5 +226,39 @@ describe("statementHistoryNotes", () => {
     // A report with no dated period has nothing to say about its history.
     expect(statementHistoryNotes("annual", [], "KO")).toEqual([]);
     expect(statementHistoryNotes("annual", ["TTM"], "KO")).toEqual([]);
+  });
+});
+
+describe("stalePeriodNote", () => {
+  test("says how old a latest period over 15 months old is, from the newest period with the lead figure", () => {
+    const now = Date.parse("2026-10-22T02:00:00Z");
+    // EVN:ASX's balance sheet stopped at 2024-06-30.
+    expect(stalePeriodNote([{ date: "2024-06-30", lead: true }, { date: "2023-06-30", lead: true }], now))
+      .toBe("Latest period 2024-06-30 is 27 months old.");
+    // Its income statement has a FY2025 column with EPS alone: the latest full period is FY2024's.
+    expect(stalePeriodNote([{ date: "TTM", lead: true }, { date: "2025-06-30", lead: false }, { date: "2024-06-30", lead: true }], now))
+      .toBe("Latest period 2024-06-30 is 27 months old; 2025-06-30 has only some figures.");
+    // 15 months to the day is not over 15 months; a day more is.
+    expect(stalePeriodNote([{ date: "2025-07-22", lead: true }], now)).toBeNull();
+    expect(stalePeriodNote([{ date: "2025-07-21", lead: true }], now)).toBe("Latest period 2025-07-21 is 15 months old.");
+    expect(stalePeriodNote([{ date: "2026-06-30", lead: true }], now)).toBeNull();
+    // No dated column, or none with the lead figure: the newest period stands.
+    expect(stalePeriodNote([{ date: "TTM", lead: true }], now)).toBeNull();
+    expect(stalePeriodNote([{ date: "2024-12-31", lead: false }], now)).toBe("Latest period 2024-12-31 is 21 months old.");
+  });
+});
+
+describe("filled years", () => {
+  const filledFrom = { source: "asx" as const, page: "https://www.asx.com.au/markets/company/EVN", retrievedAt: "2026-10-22T01:00:00.000Z", fields: ["totalRevenue" as const, "netIncome" as const] };
+  test("a merged row names only the filled lines it still holds as filled", () => {
+    const filled: FinancialStatement = { date: "2025-06-30", currency: "AUD", totalRevenue: 4.351e9, netIncome: 9.26e8, filledFrom };
+    // Another source's own revenue for the year wins and is its own; the filled net income stays filled.
+    const [merged] = mergeFinancialStatementRows([{ date: "2025-06-30", currency: "AUD", totalRevenue: 4.4e9, eps: 0.46 }], [filled]);
+    expect(merged).toMatchObject({ totalRevenue: 4.4e9, netIncome: 9.26e8, eps: 0.46, filledFrom: { ...filledFrom, fields: ["netIncome"] } });
+    const [replaced] = mergeFinancialStatementRows([{ date: "2025-06-30", currency: "AUD", totalRevenue: 4.4e9, netIncome: 9.3e8 }], [filled]);
+    expect(replaced).not.toHaveProperty("filledFrom");
+    expect(filledPeriodsNote([replaced!])).toBeNull();
+    expect(filledPeriodsNote([merged!], new Set(["totalAssets"]))).toBeNull();
+    expect(filledPeriodsNote([merged!])).toBe("From ASX key statistics (read 2026-10-22): 2025-06-30 net income.");
   });
 });

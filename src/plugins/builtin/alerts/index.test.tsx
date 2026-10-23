@@ -132,7 +132,7 @@ describe("AlertsPane", () => {
     expect(frame).toContain("[a]dd alert");
   });
 
-  test("a quote one alert could not get is said on its row and, selected, in full under the table; the footer only when none came", async () => {
+  test("a quote one alert could not get is said on its row and, selected, in full under the table, never in the footer", async () => {
     const checkedAt = Date.now() - 60_000;
     const quoted = (alert: AlertRule, price: number): AlertRule => ({ ...alert, lastCheckedPrice: price, lastCheckedAt: checkedAt });
     const missed = (alert: AlertRule, error: string): AlertRule => ({ ...alert, lastCheckedAt: checkedAt, lastCheckError: error });
@@ -163,17 +163,19 @@ describe("AlertsPane", () => {
     // A reason that does not name the symbol is given it.
     await tui.waitForFrameToContain("MSFT: Rate limited.");
 
-    // No alert got a quote: that is the pane's, in its footer, and said once.
+    expect(footerLine()).not.toContain("Rate limited");
+
+    // With no quote for any alert, the selected one still says why, once.
     await tui.render(
       <AlertsHarness height={14} alerts={[
-        missed(makeAlert("alert-bad", "ZZQXW", "above", 10), "Quotes are unavailable."),
-        missed(makeAlert("alert-msft", "MSFT", "below", 200), "Quotes are unavailable."),
+        missed(makeAlert("alert-bad", "ZZQXW", "above", 10), "ZZQXW: quotes are unavailable."),
+        missed(makeAlert("alert-msft", "MSFT", "below", 200), "MSFT: quotes are unavailable."),
       ]} />,
       { width: 110, height: 14 },
     );
-    await renderSettled();
-    expect(footerLine()).toContain("Quotes are unavailable.");
-    expect(tui.frame().split("Quotes are unavailable.").length).toBe(2);
+    await tui.waitForFrameToContain("ZZQXW: quotes are unavailable.");
+    expect(tui.frame()).not.toContain("MSFT: quotes are unavailable.");
+    expect(footerLine()).not.toContain("unavailable");
   });
 
   test("edits the selected alert through the prefilled edit dialog", async () => {
@@ -374,10 +376,13 @@ describe("alertsPlugin command", () => {
         status: "active",
       });
       expect(notifications[0]?.body).toContain("AAPL");
+      // A target ten times the price is refused, as `alerts add` refuses it, and nothing is stored.
+      await expect(command.execute({ shortcut: "AAPL above 2500" })).rejects.toThrow("A target of 2,500 is more than 10 times AAPL's last price of 201.5.");
+      expect(deserializeAlerts(String(store.get("alerts")))).toHaveLength(1);
 
       // An alert link's 7203:TSE is Tokyo, where 7203 trades, as `alerts add` reads it.
-      await command.execute({ symbol: "7203:TSE", condition: "above", price: "3000" });
-      expect(deserializeAlerts(String(store.get("alerts")))[1]).toMatchObject({ symbol: "7203:JPX", targetPrice: 3000 });
+      await command.execute({ symbol: "7203:TSE", condition: "above", price: "210" });
+      expect(deserializeAlerts(String(store.get("alerts")))[1]).toMatchObject({ symbol: "7203:JPX", targetPrice: 210 });
     } finally {
       alertsPlugin.dispose?.();
     }
@@ -429,9 +434,11 @@ test("a streamed tick triggers a price alert once, and the poll leaves streaming
   ])]]);
   let polled = 0;
   const notifications: string[] = [];
+  const device = new Map<string, unknown>();
   const ctx = {
     registerCommand() {}, registerPane() {}, registerPaneTemplate() {},
     configState: { get: (key: string) => store.get(key) ?? null, set: (key: string, value: string) => { store.set(key, value); } },
+    resume: { getState: (key: string) => device.get(key) ?? null, setState: (key: string, value: unknown) => { device.set(key, value); } },
     marketData: { getQuote: async () => { polled += 1; throw new Error("no poll expected"); } },
     paneSettings: { get: () => "15" },
     notify: (notification: { body: string }) => { notifications.push(notification.body); },
@@ -458,6 +465,11 @@ test("a streamed tick triggers a price alert once, and the poll leaves streaming
     await act(async () => { tick(203); clock.advance(1_000); await Bun.sleep(0); });
     expect(notifications).toHaveLength(1);
     expect(deserializeAlerts(store.get("alerts")!)[0]).toMatchObject({ status: "triggered", lastCheckedPrice: 202 });
+    // The device's log keeps it with the quote it went off on, for History with no sign-in.
+    expect(device.get("firedLog")).toEqual([expect.objectContaining({
+      kind: "price", ruleId: "above", rule: "AAPL above 200", value: 202, unit: "USD", source: "real-time", symbol: "AAPL",
+      quoteAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+    })]);
     // The first poll ran before any tick; nothing streaming is re-quoted after it.
     const before = polled;
     await Bun.sleep(5);

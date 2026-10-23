@@ -92,6 +92,8 @@ function refusal(error: unknown): string | undefined {
   return error.message.trim().replace(/\.$/, "") || "The broker refused this action";
 }
 
+/** Terms the broker sets with its figures, or for having none, that the user accepts on the review: never skipped. */
+function asksForConsent(preview: BrokerOrderPreview): boolean { return !!preview.disclosure || preview.impactSource === "unavailable"; }
 function copy<T>(value: T): T { return structuredClone(value); }
 function freeze<T>(value: T): T {
   if (value && typeof value === "object") {
@@ -437,9 +439,9 @@ export class BrokerTradingController {
     this.entryPending = true;
     try {
       await this.prepareReview(fast);
-      // New risk information cannot be waived by a session preference.
+      // New risk information cannot be waived by a session preference, nor can the broker's terms.
       const review = this.snapshot.review;
-      if (fast && review && !review.requiresTypedConfirmation && !review.warnings.length && !review.preview.errors?.length) await this.submitReviewed(undefined, true);
+      if (fast && review && !review.requiresTypedConfirmation && !review.warnings.length && !review.preview.errors?.length && !asksForConsent(review.preview)) await this.submitReviewed(undefined, true);
     } finally { this.entryPending = false; }
   }
 
@@ -482,7 +484,7 @@ export class BrokerTradingController {
       const result: BrokerOrderReview = { request, preview: copy(preview), warnings: [...new Set(warnings)], account: copy(account), brokerName: context.adapter.name,
         createdAt: this.now(), mode: this.modifyOrder ? "modify" : "place", requiresTypedConfirmation: account.tradingMode !== "simulation", confirmationText: request.contract.symbol.toUpperCase() };
       this.gate = { context: fingerprint, request: canonical(request), version, quoteRisk: this.quoteRisk(quote), order: this.modifyOrder ? copy(this.modifyOrder) : undefined };
-      this.publish({ phase: skipConfirmation && !result.warnings.length && !preview.errors?.length ? "previewing" : "review", review: result, quote, error: preview.errors?.length ? "The broker preview has blocking errors." : undefined });
+      this.publish({ phase: skipConfirmation && !result.warnings.length && !preview.errors?.length && !asksForConsent(preview) ? "previewing" : "review", review: result, quote, error: preview.errors?.length ? "The broker preview has blocking errors." : undefined });
     } catch (error) {
       if (!this.disposed && version === this.version) this.publish({ phase: "editing", review: undefined, error: errorMessage(error, "The broker could not preview this order.") });
       throw error;

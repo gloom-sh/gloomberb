@@ -267,6 +267,21 @@ describe("report CSV and NDJSON", () => {
     expect(selectReportTables(report(), undefined).tables).toHaveLength(2);
   });
 
+  test("--section takes the start of a title that carries its date, and refuses one several titles start with", () => {
+    const dated: CliReportTables = {
+      tables: ["Summary · all expiries", "Strikes · Oct 30 '26", "Strike ladder", "Strikes"].map((title) => ({ title, columns: ["A"], rows: [] })),
+      footer: [],
+    };
+    const titled = (selector: string) => selectReportTables({ ...dated, tables: dated.tables.slice(0, 2) }, selector).tables.map((table) => table.title);
+    expect(titled("strikes")).toEqual(["Strikes · Oct 30 '26"]);
+    expect(titled("SUMMARY")).toEqual(["Summary · all expiries"]);
+    // A title typed in full wins over the longer ones it starts.
+    expect(selectReportTables(dated, "Strikes").tables.map((table) => table.title)).toEqual(["Strikes"]);
+    expect(() => selectReportTables(dated, "strike")).toThrow(
+      "\"strike\" starts more than one section: Strikes · Oct 30 '26, Strike ladder, Strikes. Give more of the title, or its number.",
+    );
+  });
+
   test("NDJSON writes one object per row, naming the section when there are several", () => {
     expect(renderReportNdjson(report()).split("\n").map((line) => JSON.parse(line))).toEqual([
       { section: "Americas", Index: "SPX", Name: "S&P 500, Inc.", Last: 7812.71 },

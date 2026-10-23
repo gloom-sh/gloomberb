@@ -21,14 +21,12 @@ import {
 } from "../../../../portfolio/mutations";
 import { showCollection } from "./render";
 import { listingFields, misplacedSymbolList, refuseDryRun, takeCollectionName } from "./shared";
-import { addOneSymbol, addSymbols, FILE_OPTION, printSymbolRows, removeSymbols, requireSymbolList, retryNotice, SYMBOL_LIST_HELP } from "./bulk-symbols";
+import { addOneSymbol, addSymbols, FILE_OPTION, printSymbolRows, removeSymbols, requireSymbolList, retryNotice, shellWord, SYMBOL_LIST_HELP } from "./bulk-symbols";
 import { readNameEntries } from "../../../../cli/name-entries";
 import { CLI_COMMAND_GROUPS } from "../../../../cli/help";
 
 const ADD_USAGE = "Usage: gloomberb watchlist add <watchlist> <symbols...> [--file <path>]";
 const REMOVE_USAGE = "Usage: gloomberb watchlist remove <watchlist> <symbols...> [--file <path>]";
-/** A collection's name as a command argument: quoted when it has spaces. */
-const quotedName = (name: string) => /\s/.test(name) ? `"${name}"` : name;
 
 /** Actions that change a watchlist without a preview, so --dry-run would change it anyway. add previews. */
 const MUTATING_ACTIONS = new Set(["create", "delete", "rm", "remove"]);
@@ -93,13 +91,16 @@ async function deleteWatchlist(name: string, ctx: CliCommandContext) {
   });
 }
 
-async function addTickerToWatchlistCommand(watchlist: Watchlist, symbol: string, exchange: string | undefined, ctx: CliCommandContext, market: MarketContext) {
+async function addTickerToWatchlistCommand(
+  watchlist: Watchlist, symbol: string, notes: readonly string[], exchange: string | undefined, ctx: CliCommandContext, market: MarketContext,
+) {
   // A bare symbol is stored on the listing `quote` reads it as, and the notes say which; a match a list would leave for a choice fails.
   await addOneSymbol(ctx, market, {
     symbol,
     exchange,
     collection: { kind: "watchlist", name: watchlist.name },
-    retry: (key) => `gloomberb watchlist add ${quotedName(watchlist.name)} ${key}`,
+    notes,
+    retry: (key) => `gloomberb watchlist add ${shellWord(watchlist.name)} ${key}`,
     add: (ticker) => addTickerToWatchlist(ticker, watchlist.id),
   });
 }
@@ -109,10 +110,10 @@ async function addToWatchlistCommand(args: string[], file: string | undefined, e
     const { watchlist, rest } = requireWatchlistArgs(market.config, args, file, "add", ADD_USAGE, ctx);
     const list = await requireSymbolList(ctx, rest, file, ADD_USAGE, (entries) => readNameEntries(entries, market.dataProvider));
     if (list.single) {
-      await addTickerToWatchlistCommand(watchlist, list.single, exchange, ctx, market);
+      await addTickerToWatchlistCommand(watchlist, list.single, list.notes, exchange, ctx, market);
       return;
     }
-    const retry = (key: string) => `gloomberb watchlist add ${quotedName(watchlist.name)} ${key}`;
+    const retry = (key: string) => `gloomberb watchlist add ${shellWord(watchlist.name)} ${key}`;
     const dryRun = ctx.cliOptions.dryRun;
     const rows = await addSymbols({
       symbols: list.symbols,
@@ -129,7 +130,9 @@ async function addToWatchlistCommand(args: string[], file: string | undefined, e
   });
 }
 
-async function removeTickerFromWatchlist(watchlist: Watchlist, symbol: string, exchange: string | undefined, ctx: CliCommandContext, { store }: ConfigContext) {
+async function removeTickerFromWatchlist(
+  watchlist: Watchlist, symbol: string, notes: readonly string[], exchange: string | undefined, ctx: CliCommandContext, { store }: ConfigContext,
+) {
   // SAN:EPA and SAN --exchange EPA name the stored listing, which a bare SAN may hold under another venue.
   const listing = await requireListingArg(symbol, exchange, ctx);
   const ticker = await loadSavedListing(store, listing);
@@ -139,7 +142,7 @@ async function removeTickerFromWatchlist(watchlist: Watchlist, symbol: string, e
   if (!result.changed) ctx.fail(`${saved.key} is not in "${watchlist.name}".`);
 
   await store.saveTicker(result.ticker);
-  ctx.printResult({ data: { changed: true, ...listingFields(saved), watchlist: watchlist.name } }, {
+  ctx.printResult({ data: { changed: true, ...listingFields(saved), watchlist: watchlist.name }, ...notes.length > 0 ? { warnings: [...notes] } : {} }, {
     text: () => cliStyles.success(`Removed ${saved.label} from "${watchlist.name}".`),
   });
 }
@@ -149,7 +152,7 @@ async function removeFromWatchlistCommand(args: string[], file: string | undefin
     const { watchlist, rest } = requireWatchlistArgs(context.config, args, file, "remove", REMOVE_USAGE, ctx);
     const list = await requireSymbolList(ctx, rest, file, REMOVE_USAGE);
     if (list.single) {
-      await removeTickerFromWatchlist(watchlist, list.single, exchange, ctx, context);
+      await removeTickerFromWatchlist(watchlist, list.single, list.notes, exchange, ctx, context);
       return;
     }
     const rows = await removeSymbols({

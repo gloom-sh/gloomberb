@@ -1,6 +1,8 @@
-import { expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
+import { apiClient } from "../api-client";
 import { getLoadablePlugins } from "../plugins/catalog";
 import { createDefaultConfig } from "../types/config";
+import { paneSchemas } from "../plugins/builtin/chart-composer/headless-schema";
 import { commandPointer, commandPointerLeads, exportCommandPointer, knownGapForTicker, knownGapMessage, MUNI_LINE, subMinuteDataMessage, topicPointer } from "./known-gaps";
 import type { MarketContext } from "./types";
 import { buildSearchReport, searchFunctionsForCli } from "./commands/search";
@@ -8,6 +10,13 @@ import { buildPaneCatalogEntries, filterPaneCatalogEntries, renderPaneCatalogRep
 import { createPaneCatalog } from "./pane-functions/discovery";
 import { parsePaneCatalogArgs } from "./pane-functions/options";
 import { lookupGlossary } from "./glossary";
+
+beforeEach(() => {
+  // Catalog discovery starts chat and instantiates the map's chart templates.
+  spyOn(apiClient, "getChannels").mockResolvedValue([]);
+  spyOn(apiClient, "geo").mockResolvedValue({ series: [] });
+});
+afterEach(() => mock.restore());
 
 test("data a name search cannot find is pointed to, with its proxies, by search and catalog, instead of each pointing at the other", () => {
   const gap = "EU carbon (EUA): the auction price is in EPWR, chart CAP:carbon:eua. Traded proxies: CO2:LSE, KRBN.";
@@ -157,6 +166,39 @@ test("a stablecoin word names CRYP's stablecoin list, ahead of the FX series its
   expect(catalog).toContain("Taiwan dollar");
 });
 
+test("DeFi words find CRYP and name its DeFi list; exchange reserves are said plainly to be uncovered", async () => {
+  const line = "DeFi TVL, top protocols and chains with 7D and 30D change: gloomberb fn CRYP --list defi (by chain: --by chain)";
+  for (const query of ["defi", "TVL", "on-chain", "onchain", "on chain", "aave", "Aave TVL", "total value locked", "defi tvl by chain"]) {
+    expect(commandPointer(query), query).toBe(line);
+  }
+  // A chain alone is an option chain's, a supply chain is not on one.
+  for (const query of ["chain", "supply chain", "options chain"]) expect(commandPointer(query), query).toBeNull();
+
+  const context = { config: createDefaultConfig("/tmp/known-gaps-test") } as MarketContext;
+  const registry = await createPaneCatalog(context, getLoadablePlugins());
+  try {
+    const entries = await buildPaneCatalogEntries(registry, context);
+    for (const query of ["defi", "tvl", "on-chain", "aave"]) {
+      expect(filterPaneCatalogEntries(entries, query).map((entry) => entry.token)[0], query).toBe("CRYP");
+    }
+  } finally {
+    registry.destroy();
+  }
+
+  const gap = topicPointer("exchange reserves")!;
+  expect(gap.message).toBe("Crypto exchange reserves and exchange flows: not covered (no source for coins held on exchanges); "
+    + "closest: CRYP (DeFi TVL by protocol and chain: gloomberb fn CRYP --list defi; stablecoin supply: --list stablecoin)");
+  for (const query of ["Exchange Reserves", "BTC exchange reserves", "bitcoin exchange reserves", "exchange inflows", "exchange netflows"]) {
+    expect(knownGapMessage(query), query).toBe(gap.message);
+  }
+  // A central bank's reserves and an exchange on its own are other things.
+  for (const query of ["foreign exchange reserves", "exchange", "reserves"]) expect(topicPointer(query), query).toBeNull();
+  expect(buildSearchReport({ query: "exchange reserves", candidates: [] })).toContain(gap.message);
+  const catalog = renderPaneCatalogReport([], parsePaneCatalogArgs(["exchange reserves"]), lookupGlossary("exchange reserves"), gap.message);
+  expect(catalog).toContain("not covered");
+  expect(catalog).not.toContain("Matches for");
+});
+
 test("export, csv and json name the --csv and --json flags with one example, ahead of what the words find; trade exports do not", async () => {
   const line = "Export: add --csv or --json to any command to print its result as CSV or JSON, e.g. gloomberb history LMT --csv > lmt.csv";
   for (const query of ["export", "csv", "JSON", "export data", "export to excel", "save as csv"]) {
@@ -237,4 +279,32 @@ test("asked for bars finer than a minute, a US listing is pointed at its trades,
     expect(subMinuteDataMessage(symbol), symbol).toBe(`No second or tick bars; 1-minute bars: fn GIP ${symbol}; trades exist for US listings only.`);
   }
   expect(subMinuteDataMessage()).toContain("fn TAS <ticker>");
+});
+
+test("asked for bars finer than a minute, a future is told the bars that exist for it and that trades and quotes are US equities only", () => {
+  // TAS and QR answer "A US equity symbol is required" for a future, so neither is named.
+  const gold = subMinuteDataMessage("GC=F");
+  expect(gold).toStartWith("No second or tick bars; 1-minute bars: fn G GC=F --rangePreset 1D");
+  expect(gold).toContain("history GC=F --range 1D has 5-minute bars");
+  expect(gold).toEndWith("Trades and quotes cover US equities only.");
+  for (const symbol of ["GC=F", "SI=F:CMX", "CL=F"]) {
+    const message = subMinuteDataMessage(symbol);
+    expect(message, symbol).not.toMatch(/fn (TAS|QR|GIP)\b/);
+    expect(message, symbol).toContain(`fn G ${symbol} --rangePreset 1D`);
+  }
+});
+
+test("GIP's --chartResolution says the same of a sub-minute ask as history does, for the symbol it was given", () => {
+  const hint = paneSchemas["graph-intraday-price-pane"].options.find((option) => option.key === "chartResolution")!.invalidValueHint!;
+  for (const symbol of ["GC=F", "^GSPC", "HYG", "RMS.AX"]) expect(hint("1s", symbol), symbol).toBe(subMinuteDataMessage(symbol));
+  expect(hint("2m", "GC=F")).toBeNull();
+});
+
+test("asked for bars finer than a minute, an index, a currency pair or a coin is pointed at its 1-minute bars and no tape", () => {
+  for (const symbol of ["^GSPC", "EURUSD=X", "BTC-USD:CCC"]) {
+    expect(subMinuteDataMessage(symbol), symbol).toBe(`No second or tick bars; 1-minute bars: fn GIP ${symbol}. Trades and quotes cover US equities only.`);
+  }
+  // A US listing keeps its trades and quotes, and the explicit kind wins over what the symbol says.
+  expect(subMinuteDataMessage("SPY")).toContain("fn TAS SPY");
+  expect(subMinuteDataMessage("GC=F", "unknown")).toContain("fn TAS GC=F");
 });

@@ -228,3 +228,25 @@ test("a profile reconnecting keeps its account and says so instead of disconnect
   expect(tui.frame()).toContain(account);
   expect(tui.frame()).not.toContain("Broker disconnected");
 });
+
+test("an account another profile holds under its own number is not offered in the ticket", async () => {
+  const demo = createDemoBroker({ seedOrders: false, mode: "both" });
+  // The live account is IBKR U1234567, linked here through an aggregator and synced on this device too.
+  const listAccounts = demo.adapter.listAccounts!;
+  demo.adapter.listAccounts = async (instance) => (await listAccounts(instance)).map((account) =>
+    account.tradingMode === "live" ? { ...account, brokerageAccountId: "U1234567" } : account);
+  const paneId = "broker-ticket:held-elsewhere-test";
+  const config = createTestPaneConfig("/synthetic/ticket-held-elsewhere", { instanceId: paneId, paneId: "ticker-detail", binding: { kind: "fixed", symbol: "AAPL" }, settings: {} });
+  config.brokerInstances = [demo.instance, { id: "gateway", brokerType: "ibkr", label: "IBKR Gateway", connectionMode: "gateway", config: {}, enabled: true }];
+  config.portfolios = [...config.portfolios, { id: "broker:gateway:U1234567", name: "IBKR", currency: "USD", brokerId: "ibkr", brokerInstanceId: "gateway", brokerAccountId: "U1234567" }];
+  const state = createInitialState(config);
+  state.focusedPaneId = paneId;
+  state.tickers.set("AAPL", createTestTicker("AAPL", "Example company"));
+  const runtime = createTestPluginRuntime({ getBrokerAdapter: (type) => type === demo.instance.brokerType ? demo.adapter : null });
+  await act(async () => {
+    await tui.render(<TestPaneFrame state={state} paneId={paneId} pluginId="broker" runtime={runtime} width={90} height={30}>{() => <BrokerTradeTab width={90} height={29} focused onCapture={() => {}} />}</TestPaneFrame>);
+  });
+  await tui.waitForFrameToContain("Buy 1 AAPL");
+  await tui.waitForFrameToContain("Demo Broker (simulation)");
+  expect(tui.frame()).not.toContain("Demo Broker (LIVE)");
+});

@@ -67,6 +67,12 @@ export interface HeadlessPaneOptionDef {
    * own key, or `shotState`.
    */
   shot?: { reportOnly: string };
+  /**
+   * Options this one stands in for (`--from` for `--range`): typed together
+   * they are refused, since only one is read. The other's default does not
+   * count.
+   */
+  replaces?: readonly string[];
   /** The value's name in the catalog's flag, `--expiration <date|unix>`; the type when absent. */
   placeholder?: string;
   /** The option in use as typed after the function, such as `--expiration 2028-01-21`; the catalog shows it as an example. */
@@ -103,6 +109,8 @@ export interface HeadlessPaneContext {
   /** Effective instance settings, after template creation and option normalization. */
   settings?: Record<string, unknown>;
   capabilities?: CapabilityInvoker;
+  /** The catalog's name for the series charted as an expression (`FRED:DFII10`); undefined for one it does not list. */
+  catalogSeriesName?: (expression: string) => string | undefined;
   /** Locally registered broker adapters. Reports may read account data; they never submit orders. */
   resolveBroker?: (brokerType: string) => import("./broker").BrokerAdapter | null;
   /** Read one local portfolio without passing holdings through a remote endpoint. */
@@ -124,6 +132,11 @@ export interface HeadlessPaneContext {
    * that listing instead (`BDI:TSX`), for the retry each listing offers.
    */
   resolveListing?: (symbol: string, argumentWith: (key: string) => string) => Promise<{ symbol: string; exchange?: string; name?: string } | null>;
+  /**
+   * What a plugin keeps on this device only (its `ctx.resume` state, never
+   * synced), such as ALRT's log of the alerts the app fired; null when none.
+   */
+  readDeviceState?: <T = unknown>(pluginId: string, key: string) => T | null;
 }
 
 export type HeadlessPaneRow = Record<string, unknown>;
@@ -158,6 +171,8 @@ export interface HeadlessPaneColumn {
   stackPriority?: number;
   /** Once moved under the rows, only the first `stackRows` rows print the column; 0 leaves it out of a narrow table. */
   stackRows?: number;
+  /** The text table leaves the column out when fitted to fewer terminal columns than this; exports and piped output keep it. */
+  minTableWidth?: number;
   description?: string;
   format?: (value: unknown, row: HeadlessPaneRow) => string;
   /** What the text report prints when it can say more than an export should (a unit word beside a number); CSV and NDJSON keep `format`. */
@@ -521,6 +536,8 @@ export interface HeadlessSeries {
   symbol?: string;
   /** The bar interval or observation frequency the points are at (`1d`, `1mo`, `daily`), as served, not as asked. */
   interval?: string;
+  /** Decimal places the text report prints the latest value to (a correlation to 3); JSON and CSV keep every digit. */
+  textDecimals?: number;
   points: HeadlessSeriesPoint[];
 }
 

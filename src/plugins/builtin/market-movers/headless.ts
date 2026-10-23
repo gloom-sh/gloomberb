@@ -98,7 +98,7 @@ export function createMarketMoversHeadless(
 ): HeadlessPaneDefinition<"rows"> {
   return {
     shape: "rows",
-    // A screener snapshot, not a real-time feed; rows keep the time of their own last price.
+    // The delayed lists unless the list says it is real-time; rows keep the time of their own last price.
     freshness: { status: "delayed" },
     argument: { kind: "none" },
     options: [{
@@ -145,6 +145,8 @@ export function createMarketMoversHeadless(
             events: item.catalysts.map((catalyst) => CATALYST_LABEL[catalyst] ?? catalyst).join(" "),
           })),
           metadata: { list: tab, side, session: payload.session, phase: payload.phase, asOf: payload.asOf, stale: payload.stale === true },
+          // A Pro account's list is the live board; the free one says it is delayed.
+          ...(payload.access === "delayed" ? {} : { freshness: { status: "live" as const } }),
         };
       }
       const result = await dependencies.load(args, tab, ctx.marketData);
@@ -176,6 +178,8 @@ export function createMarketMoversHeadless(
           ? { notes: [`Ranked by ${MOVER_RANKING_LABELS[rankedBy]}.`] }
           : {}),
         metadata: { list: tab, source: result.source, stale: result.stale, rankedBy },
+        // A Pro account's Gainers, Losers and Most Active are the real-time lists.
+        ...(result.source === "cloud" ? { freshness: { status: "live" as const } } : {}),
       };
     },
   };

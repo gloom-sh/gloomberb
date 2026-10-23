@@ -5,7 +5,7 @@ import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pa
 import type { ScrollBoxRenderable } from "@opentui/core";
 import { createOpenTuiTestHarness, takeSavedTextFile } from "../../../renderers/opentui/test-utils";
 import { exportPaneTable, hasPaneTableExporter } from "../../../state/pane-table-export-registry";
-import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
+import { getSharedMarketDataCoordinator, MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { appReducer, createInitialState } from "../../../state/app/context";
 import { createTestDataProvider, createTestFinancials, createTestQuote } from "../../../test-support/data-provider";
 import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
@@ -22,11 +22,13 @@ import { TestPaneProvider, createTestTicker, createTestPaneConfig } from "../../
 import { RemoteUiRegistryProvider, createRemoteUiRegistry } from "../../../remote/semantic-tree";
 import { renderedReportFailure, renderedReportFreshness, renderedReportNotices } from "../../../cli/pane-functions/report-notices";
 import { missingExpiryMessage } from "../../../utils/option-expiry";
+import { installOptionsReferenceFixtures } from "./test-fixture";
 
 const TEST_PANE_ID = "ticker-detail:options-test";
 
 const tui = createOpenTuiTestHarness();
 let setOptionsQuotePrice: ((price: number) => void) | null = null;
+let restoreReferenceData: (() => void) | undefined;
 
 function makeTicker(symbol: string): TickerRecord {
   return createTestTicker(symbol, symbol, {
@@ -143,12 +145,19 @@ async function renderSettled() {
 }
 
 // Chain IVs are solved from the fixture's quotes against the clock, so pin it before the Jun 2026 expiry.
-beforeEach(() => { setSystemTime(new Date("2026-05-26T16:00:00Z")); });
+beforeEach(() => {
+  setSystemTime(new Date("2026-05-26T16:00:00Z"));
+  setSharedMarketDataCoordinator(null);
+  restoreReferenceData = installOptionsReferenceFixtures();
+});
 
 afterEach(() => {
   setSystemTime();
   setOptionsQuotePrice = null;
+  getSharedMarketDataCoordinator()?.destroy();
   setSharedMarketDataCoordinator(null);
+  restoreReferenceData?.();
+  restoreReferenceData = undefined;
 });
 
 test("exposes exactly one exportable table so CSV export stays wired up", async () => {

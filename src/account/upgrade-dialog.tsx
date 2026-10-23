@@ -74,7 +74,7 @@ export function upgradeDialogCopy(
     const firstCharge = formatTrialEnd(new Date(now.getTime() + days * MS_PER_DAY));
     return {
       title: tf("Try Pro free for {days} days", { days }),
-      subtitle: tf("$0 today, then {price} from {date}. Cancel before and you pay nothing.", {
+      subtitle: tf("$0 today, then {price} from {date}. Card required. Cancel before and you pay nothing.", {
         price,
         date: firstCharge ?? "",
       }),

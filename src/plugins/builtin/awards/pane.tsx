@@ -12,6 +12,7 @@ import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, Text, TextAttributes, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
+import { withCountryFlag } from "../../../components/ui/country-flag";
 import { publicTickerKey } from "../../../utils/exchanges";
 import { truncateToDisplayWidth } from "../../../utils/format";
 import { SignInWall } from "../cloud/auth-actions";
@@ -23,7 +24,7 @@ import { AwardDetail } from "./detail";
 import { useAwardAlerts } from "./alerts";
 import { AWARDS_UNAVAILABLE, fetchAwards, loadAward, loadAwards, validateAwards } from "./client";
 import { useAwardsEvidence } from "./evidence";
-import { AWARD_TABS, aggregateId, awardHistorySeries, awardPercent, awardPeriod, awardScope, awardsPreviewNote, awardTab, awardTypeLabel, futureAwardDatesNote, money,
+import { AWARD_TABS, aggregateId, awardHistorySeries, awardPercent, awardPeriod, awardScope, awardsCoverageNotes, awardsPreviewNote, awardTab, awardTypeLabel, futureAwardDatesNote, money,
   rankedAggregates } from "./model";
 
 type Item = { kind: "award"; row: AwardRow } | { kind: "aggregate"; row: AwardAggregate } | { kind: "leader"; row: AwardCompanyLeader } | { kind: "locked"; id: string }
@@ -186,7 +187,8 @@ function AwardsView({ width, height, focused, symbol }: PaneProps & { symbol: st
     error: data && !denied ? failed?.message ?? null : null, stale: loaded?.stale,
     info: data?.asOf ? [{ id: "asof", parts: [{ text: `as of ${data.asOf.slice(0, 10)}`, tone: "muted" }] }] : [], hints });
   usePaneNoticeFooter({ registrationId: "awards:notices", focused, notices: [
-    ...(data?.status === "partial" ? ["Procurement coverage is incomplete for the selected scope."] : []),
+    // The same coverage notes `fn AWARDS` prints: what the awards shown may be missing.
+    ...(data ? awardsCoverageNotes(data) : []),
     ...(loaded?.refreshError ? [loaded.refreshError] : []),
     ...(data?.truncated && Object.values(data.truncated).some(Boolean) ? ["Some aggregate history exceeds this response's limit. Narrow the date range or scope."] : []),
     ...(tab === "company" && currencies.length > 1 && !currency ? [`Chart in ${chartCurrency}; select a currency to inspect other obligations.`] : []),
@@ -269,7 +271,8 @@ function AwardsView({ width, height, focused, symbol }: PaneProps & { symbol: st
             if (column.id === "recipient") return { text: award.recipient.name, color: colors.textBright };
             if (column.id === "ticker") return award.entity ? { text: award.entity.ticker, content: <Badge label={award.entity.ticker} /> } : missingCell(colors);
             if (column.id === "agency") return { text: award.agency.name, color: colors.text };
-            if (column.id === "country") return { text: award.jurisdiction, color: colors.textDim };
+            // The column has room for the flag beside a code.
+            if (column.id === "country") return withCountryFlag({ text: award.jurisdiction, color: colors.textDim }, award.jurisdiction, desktop);
             if (column.id === "period") return { text: awardPeriod(award), color: colors.textDim };
             if (column.id === "title") return { text: award.title, color: colors.text };
             if (column.id === "ratio") return { text: awardPercent(award), value: award.revenueComparison?.percent ?? null, color: colors.warning, attributes: TextAttributes.BOLD, keepColorWhenSelected: true };

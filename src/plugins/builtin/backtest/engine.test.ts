@@ -15,7 +15,8 @@ const bars = (closes: number[], open = (close: number) => close, date = day): Ba
 const operandText = (operand: Operand): string =>
   operand.kind === "number" ? String(operand.value)
     : operand.kind === "field" ? operand.field
-      : `${operand.name}(${operand.args.join(",")})`;
+      : operand.kind === "calendar" ? operand.name
+        : `${operand.name}(${operand.args.join(",")})`;
 const ruleText = (rule: Rule) =>
   rule.map((condition) => `${operandText(condition.left)} ${condition.comparator} ${operandText(condition.right)}`).join(" and ");
 
@@ -30,6 +31,21 @@ test("rules parse with defaults, bounds and AND, and every preset parses", () =>
   for (const preset of BACKTEST_PRESETS) {
     expect(() => parseRule(preset.entry)).not.toThrow();
     expect(() => parseRule(preset.exit)).not.toThrow();
+  }
+});
+
+test("calendar rules read each session's UTC weekday and day of month, and an unreadable rule lists every operand", () => {
+  // day(0) is Wednesday 1 January 2020.
+  const series = bars([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  const hits = (rule: string) => evaluateRule(parseRule(rule), series).flatMap((met, index) => met ? [day(index)] : []);
+  expect(hits("weekday == 3")).toEqual(["2020-01-01", "2020-01-08"]);
+  expect(hits("weekday = 7")).toEqual(["2020-01-05"]);
+  expect(hits("day_of_month >= 9 and weekday != 4")).toEqual(["2020-01-10"]);
+  expect(ruleText(parseRule("weekday == 3 and day_of_month < 15"))).toBe("weekday == 3 and day_of_month < 15");
+  expect(() => parseRule("weekday == 8")).toThrow("weekday is 1 Monday to 7 Sunday, not 8");
+  expect(() => parseRule("day_of_month == 2.5")).toThrow("day_of_month is 1 to 31");
+  for (const rule of ["weekday 3", "price > 3"]) {
+    expect(() => parseRule(rule)).toThrow("close, open, high, low, a number, weekday (1 Monday to 7 Sunday), day_of_month (1 to 31), sma(n), ema(n), rsi(n), macd(fast,slow,signal), macd_signal(fast,slow,signal), bb_upper(n,k), bb_lower(n,k), highest(n), lowest(n)");
   }
 });
 

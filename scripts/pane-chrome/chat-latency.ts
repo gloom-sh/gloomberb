@@ -4,6 +4,7 @@ import { cacheDir, evaluate, frames, launchBrowser, mouse, waitFor, type PageCom
 import { serveFixturePage } from "./page";
 import { launchChatWebKit } from "./chat-webkit";
 import { transcriptPaint, transcriptView } from "./chat-paint";
+import { checkChatReturn } from "./chat-return";
 
 /**
  * Real keyboard and pointer input, local-only Cloud sync, and the desktop's
@@ -12,7 +13,8 @@ import { transcriptPaint, transcriptView } from "./chat-paint";
  * is gated: opening mounts a bounded window, and unchanged message rows must
  * not render for draft/upload updates.
  * --lifecycle checks geometry and pixels after mount, channel and asynchronous transitions.
- * --webkit runs those same checks (or --open-only) in Playwright WebKit.
+ * --layout-return clicks saved layout tabs; --pane-return cycles overlapping windows.
+ * --webkit runs those checks, --lifecycle or --open-only in Playwright WebKit.
  * --detached uses the real detached shell with its native bridge stubbed.
  * --arrival-on-mount delivers a message during the initial history request.
  * --multiple adds two more panes; --large-workspace adds saved layouts and drafts.
@@ -23,10 +25,11 @@ import { transcriptPaint, transcriptView } from "./chat-paint";
  */
 const args = process.argv.slice(2);
 const webkit = args.includes("--webkit");
+const returnChecks = args.includes("--layout-return") || args.includes("--pane-return");
 const repeats = Number(args.includes("--repeat") ? args[args.indexOf("--repeat") + 1] : 1);
 if (!Number.isSafeInteger(repeats) || repeats < 1) throw new Error("--repeat must be a positive integer");
-if (webkit && !args.includes("--lifecycle") && !args.includes("--open-only")) {
-  throw new Error("--webkit requires --lifecycle or --open-only; CPU profiles and uploads use Chromium.");
+if (webkit && !args.includes("--lifecycle") && !args.includes("--open-only") && !returnChecks) {
+  throw new Error("--webkit requires --lifecycle, --open-only, --layout-return or --pane-return; CPU profiles and uploads use Chromium.");
 }
 const label = args.includes("--label") ? args[args.indexOf("--label") + 1]! : "chat-latency";
 const out = cacheDir(label);
@@ -114,7 +117,7 @@ let failures = 0;
 try {
   await cdp.send("Page.addScriptToEvaluateOnNewDocument", { source: PROBES });
   for (let run = 1; run <= repeats; run++) for (const host of ["desktop", "browser"]) for (const count of (args.includes("--quick") ? [500] : [40, 200, 500])) {
-    await cdp.send("Page.navigate", { url: `${page.url}?scenario=chat&latencyCheck=1&count=${count}&loaded=${count}&latency=0&host=${host}&recent=${args.includes("--recent") ? "1" : "0"}&workspace=${workspace}&lifecycle=${args.includes("--lifecycle") ? "1" : "0"}&multiple=${args.includes("--multiple") ? "1" : "0"}&mount=${args.includes("--lifecycle") ? "inactive" : "chat"}&detached=${args.includes("--detached") ? "1" : "0"}&arrival=${args.includes("--arrival-on-mount") ? "mount" : "none"}` });
+    await cdp.send("Page.navigate", { url: `${page.url}?scenario=chat&latencyCheck=1&count=${count}&loaded=${count}&latency=0&host=${host}&recent=${args.includes("--recent") ? "1" : "0"}&workspace=${workspace}&lifecycle=${args.includes("--lifecycle") ? "1" : "0"}&multiple=${args.includes("--multiple") ? "1" : "0"}&mount=${args.includes("--lifecycle") ? "inactive" : "chat"}&detached=${args.includes("--detached") ? "1" : "0"}&arrival=${args.includes("--arrival-on-mount") ? "mount" : "none"}&layoutReturn=${returnChecks ? "1" : "0"}&paneReturn=${args.includes("--pane-return") ? "1" : "0"}` });
     // Readiness must not require mounting the whole history: a bounded list may
     // already show the latest message while keeping earlier rows unmounted.
     if (!await waitFor(cdp, `window.__chatLatency?.snapshot('everyone').messages.length>=${count} && document.querySelector('[data-gloom-pane-id="chat:a"] [data-gloom-chat-message-id="m${count - 1}"]') && __chatLatency.stats.pulls>0`, 15000)) throw new Error(`Chat fixture did not start: ${await evaluate(cdp, 'document.body.innerText.slice(0,1000)')}`);
@@ -122,6 +125,14 @@ try {
     if (await evaluate<number>(cdp, "window.__peakMountedRows") > 80) {
       failures++;
       console.error(`${host}/${count}: initial open exceeded the 80-row mounting budget`);
+    }
+    if (returnChecks) {
+      const states = await checkChatReturn(cdp, out, `${host}-${count}-${run}`, args.includes("--pane-return"));
+      const failed = states.filter(state => !state.passed).map(state => state.step);
+      failures += failed.length;
+      samples.push({ run, host, count, webkit, states });
+      console.log(JSON.stringify({ run, host, count, states: states.length, failed }));
+      continue;
     }
     if (args.includes("--lifecycle")) {
       const states: Record<string, unknown>[] = [];

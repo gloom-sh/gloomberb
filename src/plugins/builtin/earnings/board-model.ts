@@ -4,8 +4,9 @@ import { getPublishedUsEquityCalendarDay } from "../../../market-data/published-
 import type { EarningsEvent } from "../../../types/data-provider";
 import type { EarningsDateStatus, EarningsEpsBasis, Quote } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
-import { dateStatusFromEstimateFlag, earningsDateStatus, earningsEpsBasis, isProvisionalActual } from "../shared/earnings-report";
-import { coherentEarningsValue } from "./estimate-basis";
+import { earningsDateStatus, earningsEpsBasis, isProvisionalActual } from "../shared/earnings-report";
+import { calendarStatus } from "../shared/earnings-calendar";
+import { coherentEarningsValue } from "../shared/earnings-estimate-basis";
 import { shortDate, surprise, weekday } from "./format";
 
 /** A held name is in a portfolio; a watched one only in watchlists. */
@@ -59,7 +60,7 @@ export function addDays(date: string, days: number): string {
 }
 
 /** NYSE sessions from the published calendar; weekdays for years it does not cover. */
-function isSession(date: string): boolean {
+export function isSession(date: string): boolean {
   const known = getPublishedUsEquityCalendarDay("NYSE", date);
   if (known) return known === "session";
   const day = new Date(`${date}T00:00:00Z`).getUTCDay();
@@ -149,7 +150,7 @@ export function boardReport(report: EarningsCalendarReport, owned: ReadonlyMap<s
 }
 
 /** A company the stored calendar does not carry (a listing abroad, a date past its horizon) from the per-ticker calendar. */
-export function fallbackReport(event: EarningsEvent, owned: ReadonlyMap<string, Ownership>): BoardReport {
+export function fallbackReport(event: EarningsEvent, owned: ReadonlyMap<string, Ownership>, today: string): BoardReport {
   const date = event.earningsDate.toISOString().slice(0, 10);
   const timing = event.timing === "BMO" ? "bmo" : event.timing === "AMC" ? "amc" : null;
   // Estimates in another currency would read as dollars beside the rest.
@@ -165,7 +166,8 @@ export function fallbackReport(event: EarningsEvent, owned: ReadonlyMap<string, 
     date,
     timing,
     expectedTiming: false,
-    dateStatus: dateStatusFromEstimateFlag(event.isDateEstimate),
+    // A date gone by is reported, as every earnings surface reads it (shared/earnings-calendar).
+    dateStatus: calendarStatus(event, today),
     marketCap: null,
     epsEstimate,
     // The count belongs to the estimate beside it.
@@ -218,6 +220,11 @@ function compare(left: BoardReport, right: BoardReport, sort: BoardSort): number
   return sort.direction === "asc" ? a - b : b - a;
 }
 
+/** Held names, then watched, then the rest, when the board puts mine first; one rank for all otherwise. */
+export function ownershipRank(report: Pick<BoardReport, "owned">, mineFirst: boolean): number {
+  return !mineFirst ? 0 : report.owned === "held" ? 0 : report.owned === "watched" ? 1 : 2;
+}
+
 /**
  * Sections in date order, each ranked by the sort (largest company first by
  * default). With `mineFirst`, held names lead, then watched, then the rest.
@@ -228,7 +235,7 @@ export function boardRows(
   sort: BoardSort,
   mineFirst: boolean,
 ): BoardRow[] {
-  const rank = (report: BoardReport) => (!mineFirst ? 0 : report.owned === "held" ? 0 : report.owned === "watched" ? 1 : 2);
+  const rank = (report: BoardReport) => ownershipRank(report, mineFirst);
   const rows: BoardRow[] = [];
   for (const day of days) {
     const inDay = reports

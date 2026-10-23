@@ -26,10 +26,13 @@ import type { PaneProps, TickerResearchTabProps } from "../../../types/plugin";
 import type { ChartResolution, TimeRange } from "../../../components/chart/core/types";
 import type { ChartSpec, ResolvedSeries } from "../../../time-series/types";
 import {
-  getSupportedChartResolutionsForViewport,
+  getSupportedChartBarSizesForViewport,
   isIntradayResolution,
+  parseChartBarSize,
+  type ChartBarSize,
   type ManualChartResolution,
 } from "../../../time-series/resolution";
+import { futuresSessionOpenMinute } from "../../../market-data/market/trading-sessions";
 import { useResolvedChartSpec } from "../../../time-series/hooks";
 import { shortCompanyName } from "../../../tickers/company-name";
 import { useSeriesListings } from "./series-listings";
@@ -52,13 +55,17 @@ import { colors } from "../../../theme/colors";
 import { isUsListingExchange, parsePublicTickerKey, publicTickerKey } from "../../../utils/exchanges";
 import { isMarketFieldId } from "../../../time-series/field-catalog";
 import { isDatasetChart } from "../../../time-series/spec";
+import { seriesMessageName, studyMessageName } from "../../../time-series/series-name";
 import { CHART_COMPOSER_PANE_ID } from "../../../types/config";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { SeriesEditorDialog } from "./editor";
 import { chartComposerSemanticMetadata } from "./semantic";
+import { comparedFundTickers, LEVERAGE_FACTS_PANE_TIMEOUT_MS, loadDailyObjectives, withLeverageOverlay } from "./leverage-overlay";
+import { loadFundFacts } from "../sec/fund-facts";
 import {
   canToggleChartSeries,
   CHART_INTERACTION_VIEWPORT_SETTING_KEY,
+  CHART_LEVERAGE_PENDING_SETTING_KEY,
   CHART_PINNED_MOMENT_SETTING_KEY,
   CHART_SPEC_SETTING_KEY,
   parseChartInteractionViewport,
@@ -106,11 +113,13 @@ import { buildEmptyChartPreset, buildPriceChartPreset } from "./presets";
 import type { ChartInteractionViewport } from "./chart-spec";
 import {
   CHART_FORMULA_OPTIONS,
+  CHART_BAR_SIZE_PRESETS,
   CHART_RANGES as RANGES,
-  CHART_RESOLUTIONS as RESOLUTIONS,
+  CHART_RESOLUTIONS,
   chartStudyOptionsFor,
   chartStudyPeriodTitle,
   chartStudySettingLabel,
+  withChartBarSize,
 } from "./settings";
 import { resolveChartComposerShortcut } from "./shortcuts";
 import { describeChartResolution, formatChartDateWindow, formatChartResolution } from "./viewport-labels";
@@ -134,6 +143,9 @@ import { CHART_FOLLOW_SERIES_SETTING_KEY, rebindFollowChartSpec, resolveFollowSe
 import type { InstrumentRef } from "../../../market-data/request-types";
 
 const RANGE_OPTIONS = RANGES.map((range, index) => ({ label: range, value: range, hint: String(index + 1) }));
+const SOURCE_BAR_SIZES = CHART_RESOLUTIONS.filter((value): value is ManualChartResolution => value !== "auto");
+/** The bar size dialog's last choice, which asks for a size to type. */
+const CUSTOM_BAR_SIZE_CHOICE = "custom";
 const AUTO_VIEWPORT_DEBOUNCE_MS = 350;
 /** A load for a moving view that has not answered in this long no longer holds the next one back. */
 const LOAD_AHEAD_TIMEOUT_MS = 4_000;
@@ -379,28 +391,46 @@ function ChartComposerSurface({
   const hasMarketSeries = spec.series.some((entry) => (
     entry.source.kind === "security" && isMarketFieldId(entry.source.fieldId)
   ));
-  const availableResolutions = useMemo<ChartResolution[]>(() => {
+  // Bars built from a future's clock-aligned bars must not straddle its session's open.
+  const openMinute = useMemo(() => {
+    const listing = spec.series.find((entry) => entry.source.kind === "security" && isMarketFieldId(entry.source.fieldId));
+    return listing?.source.kind === "security" ? futuresSessionOpenMinute(listing.source.instrument.symbol, listing.source.instrument.exchange) : null;
+  }, [spec.series]);
+  // The sizes of `sizes` this chart can draw now, after Auto.
+  const availableOf = useCallback((sizes: readonly ChartBarSize[]): ChartResolution[] => {
     if (!resolution.resolutionSupport) {
       if (!hasMarketSeries) return ["auto"];
-      if (!resolution.loading) return RESOLUTIONS;
+      if (!resolution.loading) return ["auto", ...sizes];
       return spec.viewport.resolution === "auto"
         ? ["auto"]
         : ["auto", spec.viewport.resolution];
     }
-    const supported = new Set(getSupportedChartResolutionsForViewport(
+    return ["auto", ...getSupportedChartBarSizesForViewport(
       spec.viewport.range,
       resolution.resolutionSupport,
+      sizes,
       spec.viewport.dateWindow,
-    ));
-    return RESOLUTIONS.filter((value) => value === "auto" || supported.has(value));
+      openMinute,
+    )];
   }, [
     hasMarketSeries,
+    openMinute,
     resolution.loading,
     resolution.resolutionSupport,
     spec.viewport.dateWindow,
     spec.viewport.range,
     spec.viewport.resolution,
   ]);
+  // The bar lists the sizes sources serve, and a built one (4h) while the chart is set to it;
+  // the bar size dialog (b) lists the built ones too, and takes any other typed in.
+  const availableResolutions = useMemo(
+    () => availableOf(withChartBarSize(SOURCE_BAR_SIZES, spec.viewport.resolution)),
+    [availableOf, spec.viewport.resolution],
+  );
+  const dialogResolutions = useMemo(
+    () => availableOf(withChartBarSize(CHART_BAR_SIZE_PRESETS, spec.viewport.resolution)),
+    [availableOf, spec.viewport.resolution],
+  );
   // Auto names the bars it is on, which change as the view moves: a pan back
   // past where a source keeps 30-minute bars charts days instead.
   const autoBars = spec.viewport.resolution === "auto" ? resolution.resolution ?? null : null;
@@ -871,23 +901,57 @@ function ChartComposerSurface({
         content: (context: PromptContext<string>) => (
           <ChoiceDialog
             {...context}
-            title="Chart Resolution"
+            title="Bar Size"
             selectedChoiceId={spec.viewport.resolution}
-            choices={availableResolutions.map((value) => ({
-              id: value,
-              label: formatChartResolution(value),
-              description: describeChartResolution(value),
-            }))}
+            choices={[
+              ...dialogResolutions.map((value) => ({
+                id: value,
+                label: formatChartResolution(value),
+                description: describeChartResolution(value),
+              })),
+              ...(hasMarketSeries ? [{ id: CUSTOM_BAR_SIZE_CHOICE, label: "Custom…", description: "Type any number of minutes, hours, days, weeks or months." }] : []),
+            ]}
           />
         ),
       }).catch(() => "");
-      if (availableResolutions.includes(next as ChartResolution)) setResolution(next as ChartResolution);
+      if (next === CUSTOM_BAR_SIZE_CHOICE) {
+        // A row picked with the mouse closes on mousedown; the field opens after the
+        // click has placed the focus, or the desktop leaves it on the dialog.
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        const typed = await dialog.prompt<string>({
+          content: (ctx: PromptContext<string>) => (
+            <TextPromptDialog {...ctx} title="Custom Bar Size" placeholder="10m, 90m, 4h, 2D, 3W, 6mo" confirmLabel="Chart" width={44} />
+          ),
+        }).catch(() => undefined);
+        if (!typed) return;
+        const size = parseChartBarSize(typed);
+        const count = /^\s*(\d+)\s*M\s*$/.exec(typed)?.[1];
+        if (!size) {
+          notify({
+            body: count
+              ? `Write ${count}m for ${count} minutes or ${count}mo for ${count} months.`
+              : `${typed} is not a bar size. Use a number and a unit: 10m, 4h, 2D, 3W, 6mo; up to a day of minutes or hours, a year of days or weeks, or 12 months.`,
+            type: "error",
+          });
+          return;
+        }
+        if (!availableOf(withChartBarSize([], size)).includes(size)) {
+          notify({ body: `${formatChartResolution(size)} bars are unavailable for this range.`, type: "error" });
+          return;
+        }
+        setResolution(size);
+        return;
+      }
+      if (dialogResolutions.includes(next as ChartResolution)) setResolution(next as ChartResolution);
     } finally {
       setInteractionCaptured("prompt", false);
     }
   }, [
-    availableResolutions,
+    availableOf,
     dialog,
+    dialogResolutions,
+    hasMarketSeries,
+    notify,
     setInteractionCaptured,
     setResolution,
     spec.viewport.resolution,
@@ -923,7 +987,7 @@ function ChartComposerSurface({
         void openSeriesEditor();
         return;
       case "resolution":
-        if (availableResolutions.length > 1) void openResolutionPicker();
+        if (dialogResolutions.length > 1) void openResolutionPicker();
     }
   }, { enabled: focused && !dialogOpen });
 
@@ -936,13 +1000,13 @@ function ChartComposerSurface({
   const loading = resolution.loading || listings.pending;
   // A bare code several companies list asks which, as `quote` does, before anything else is said.
   const statusError = listings.errors[0] ?? resolution.errors[0];
-  // A spread or formula error names its legs and their units; the study's id adds nothing to it.
+  // A spread or formula error names its legs and their units; the study's name adds nothing to it.
   const formulaStudy = spec.studies.find((study) => (study.kind === "spread" || study.kind === "formula")
-    && statusError?.startsWith(`${study.id}: `));
-  const statusErrorNotice = formulaStudy ? statusError?.slice(`${formulaStudy.id}: `.length) : statusError;
-  // Failed series use their authored id in errors and their display label in warnings.
-  const errorSeries = spec.series.find((entry) => statusError?.startsWith(`${entry.label ?? entry.id}: `));
-  const errorMessage = errorSeries ? statusError?.slice(`${errorSeries.label ?? errorSeries.id}: `.length) : undefined;
+    && statusError?.startsWith(`${studyMessageName(study)}: `));
+  const statusErrorNotice = formulaStudy ? statusError?.slice(`${studyMessageName(formulaStudy)}: `.length) : statusError;
+  // Failed series name what was asked for in errors and their display label in warnings.
+  const errorSeries = spec.series.find((entry) => statusError?.startsWith(`${seriesMessageName(entry)}: `));
+  const errorMessage = errorSeries ? statusError?.slice(`${seriesMessageName(errorSeries)}: `.length) : undefined;
   // The label the resolver wrote its warnings with, before the legend named the company.
   const errorSeriesLabel = (resolution.legendSeries?.find((entry) => entry.id === errorSeries?.id)
     ?? legendSeries?.find((entry) => entry.id === errorSeries?.id))?.label;
@@ -965,9 +1029,9 @@ function ChartComposerSurface({
     && !FORWARD_VALUATION_BASIS_NOTICES.has(warning)
     && !duplicateErrorNotices.has(warning) && !comparisonEmptyNotices.has(warning)
     && !spec.studies.some((study) => (
-      (study.kind === "ratio" && warning.startsWith(`${study.id}: ratio inputs use different currencies (`)
+      (study.kind === "ratio" && warning.startsWith(`${studyMessageName(study)}: ratio inputs use different currencies (`)
         && warning.endsWith("); raw values are not FX-converted."))
-      || (study.kind === "correlation" && warning.startsWith(`${study.id}: correlation mixes `)
+      || (study.kind === "correlation" && warning.startsWith(`${studyMessageName(study)}: correlation mixes `)
         && warning.endsWith("; only matching observation times contribute."))
     ))
   ));
@@ -1287,6 +1351,26 @@ export function ChartComposerPane({ paneId, focused, width, height }: PaneProps)
       savedForTarget.current = targetKey;
     }
   }, [follows, ownedIds, savedIds, setSpec, spec, stored, target, unlinkedFrom, updateSettings]);
+  // A comparison CMP opened draws each leveraged or inverse fund's daily objective once its facts are read.
+  const leveragePending = instance?.settings?.[CHART_LEVERAGE_PENDING_SETTING_KEY] === true;
+  const storedRef = useRef(stored);
+  storedRef.current = stored;
+  useEffect(() => {
+    if (!leveragePending) return;
+    const mounted = new AbortController();
+    // The chart draws meanwhile, so it can wait longer for them than a report does.
+    void loadDailyObjectives(comparedFundTickers(storedRef.current),
+      async (ticker, signal) => (await loadFundFacts(ticker, false, { signal })).payload,
+      { timeoutMs: LEVERAGE_FACTS_PANE_TIMEOUT_MS, signal: mounted.signal })
+      .then((objectives) => {
+        if (mounted.signal.aborted) return;
+        updateSettings({
+          [CHART_SPEC_SETTING_KEY]: withLeverageOverlay(storedRef.current, objectives),
+          [CHART_LEVERAGE_PENDING_SETTING_KEY]: undefined,
+        });
+      });
+    return () => mounted.abort();
+  }, [leveragePending, updateSettings]);
   if (follows && !target && ownedIds.length > 0) {
     return <EmptyState title={error ?? "Select a ticker."} />;
   }

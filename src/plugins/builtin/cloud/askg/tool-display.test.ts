@@ -72,11 +72,11 @@ describe("describeToolRow", () => {
       name: "port",
       status: "partial",
       rowCount: 8,
-      note: "Treasury yield: Internal server error; Volatility: HTTP 503",
+      note: "Treasury yield: Internal server error; Volatility: HTTP 503; Dividends: Gloom couldn't reach its data service",
     }), context);
 
     expect(view.line).toBeNull();
-    expect(view.details).toEqual(["Treasury yield unavailable", "Volatility unavailable"]);
+    expect(view.details).toEqual(["Treasury yield unavailable", "Volatility unavailable", "Dividends unavailable"]);
   });
 
   test("a failure is one human line: no payloads, codes or ids", () => {

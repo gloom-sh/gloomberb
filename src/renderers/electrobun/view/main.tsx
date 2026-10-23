@@ -45,6 +45,7 @@ import { getMarketplaceHost, setPluginManager, type PluginManager } from "../../
 import { remoteNotesFilesIO, setNotesFilesIO } from "../../../plugins/builtin/notes/files";
 import { NOTES_FILES_CAPABILITY_ID } from "../../../capabilities";
 import { loadOfficialPluginIds } from "../../../plugins/marketplace/feed";
+import { setPluginSeedNotice } from "../../../plugins/seed-notice";
 import { crashReportsEnabled, installCrashReporter, reportCrash } from "../../../telemetry/crash-reports";
 import { browserDoNotTrack, installWindowCrashListeners } from "../../../telemetry/crash-reports-dom";
 import { currentTelemetryConfig } from "../../../telemetry/live-config";
@@ -156,6 +157,8 @@ async function boot() {
     : init.desktopSnapshot;
   const config = desktopSnapshot?.config ?? init.config;
   applyLanguageFromConfig(config);
+  // Said by the app once it is up, as the terminal says it.
+  setPluginSeedNotice(init.pluginSeedNotice ?? null);
   const desktopWindowBridge = createDesktopWindowBridge(init.windowKind, init.paneId);
   const desktopApplicationMenuBridge: DesktopApplicationMenuBridge = {
     subscribe: (listener) => onBackendMessage("application-menu.select", ({ command }) => listener(command)),

@@ -93,6 +93,7 @@ export function normalizeLoadedConfig(
     brokerInstances: sanitizeBrokerInstances(candidate.brokerInstances),
     disabledPlugins,
     seededPlugins: sanitizeUniqueStringList(candidate.seededPlugins),
+    ...sanitizePluginSeedFailure(candidate.pluginSeedFailure),
     ...(candidate.portfolioCurrenciesAdopted === true ? { portfolioCurrenciesAdopted: true } : {}),
     ...(candidate.presentationMode === true ? { presentationMode: true } : {}),
     ...(typeof candidate.timezone === "string" && candidate.timezone.trim() ? { timezone: candidate.timezone.trim() } : {}),
@@ -160,6 +161,7 @@ export function normalizeConfigForSave(config: AppConfig): AppConfig {
     // Older apps read the retired group ids, so a group that is all off is saved as one.
     disabledPlugins: encodeBuiltinDisabledPluginIds(sanitizeUniqueStringList(config.disabledPlugins)),
     seededPlugins: sanitizeUniqueStringList(config.seededPlugins),
+    ...sanitizePluginSeedFailure(config.pluginSeedFailure),
     disabledSources: sanitizeUniqueStringList(config.disabledSources),
     pluginConfig: sanitizePluginConfig(config.pluginConfig),
     chartPreferences: sanitizeChartPreferences(config.chartPreferences, defaults.chartPreferences),
@@ -315,6 +317,13 @@ function sanitizeRecentCommands(value: unknown, fallback: RecentCommand[]): Rece
 
 function sanitizeUniqueStringList(value: unknown): string[] {
   return [...new Set(sanitizeStringArray(value, []))];
+}
+
+/** The last failed plugin seed as saved, or nothing when it is absent or unreadable. */
+function sanitizePluginSeedFailure(value: unknown): Pick<AppConfig, "pluginSeedFailure"> {
+  if (!isRecord(value)) return {};
+  const plugins = sanitizeUniqueStringList(value.plugins).sort();
+  return plugins.length > 0 ? { pluginSeedFailure: { plugins, gitMissing: value.gitMissing === true } } : {};
 }
 
 function isPluginConfigMap(value: unknown): value is Record<string, Record<string, unknown>> {

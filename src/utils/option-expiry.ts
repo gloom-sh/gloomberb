@@ -4,7 +4,7 @@
  * convert both ways, and two stamps on the same UTC date are the same expiry.
  */
 
-import { readCalendarDate } from "./calendar-date";
+import { dateOptionHint, readCalendarDate } from "./calendar-date";
 
 // 9999-12-31 in Unix seconds; a longer number is milliseconds or a typo.
 const MAX_UNIX_SECONDS = 253_402_300_799;
@@ -41,12 +41,22 @@ export function parseOptionExpiration(raw: string): number | null {
 }
 
 /**
+ * The sentence that follows an unreadable expiry: the date to type for one
+ * written another way that plainly names it (`Type --expiration 2026-10-22 for
+ * 22/10/2026.`), led by a space, or nothing for anything else.
+ */
+export function expirationHint(value: string, flag = "expiration"): string {
+  const hint = dateOptionHint(value, `--${flag}`);
+  return hint ? ` ${hint[0]!.toUpperCase()}${hint.slice(1)}.` : "";
+}
+
+/**
  * A pane function's typed expiry flag as the Unix seconds `parseOptionExpiration`
  * reads; throws an Error naming both accepted forms.
  */
 export function expirationOptionSeconds(value: string, flag = "expiration"): number {
   const expiration = parseOptionExpiration(value);
-  if (expiration == null) throw new Error(`Invalid --${flag} "${value}". Use ${OPTION_EXPIRATION_FORMAT}.`);
+  if (expiration == null) throw new Error(`Invalid --${flag} "${value}". Use ${OPTION_EXPIRATION_FORMAT}.${expirationHint(value, flag)}`);
   return expiration;
 }
 

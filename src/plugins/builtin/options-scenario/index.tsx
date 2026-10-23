@@ -2,8 +2,10 @@ import type { PluginModule } from "../plugin-module";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
 import { OptionsScenarioPane } from "./pane";
 import { optionsScenarioHeadless } from "./headless";
+import { CspScreenPane } from "./csp-screen-pane";
+import { cspScreenHeadless } from "./csp-screen-headless";
 
-const scenarioSettingKeys = ["legs", "strategy", "strike", "putStrike", "callStrike", "shares", "expiration", "spot", "rate", "dividendYield", "currency", "asOf", "date", "volShift",
+const scenarioSettingKeys = ["legs", "strategy", "strike", "delta", "putStrike", "callStrike", "shares", "expiration", "spot", "rate", "dividendYield", "currency", "asOf", "date", "volShift",
   "spotRange", "seedLeg", "nav", "budgetBps", "sleeve"];
 
 export const optionsScenarioModule: PluginModule = {
@@ -23,11 +25,34 @@ export const optionsScenarioModule: PluginModule = {
           description: "The equity the hedge protects, for coverage: notional protected over the sleeve." },
       ],
     },
+  }, {
+    id: "csp-screen", name: "Cash-Secured Put Screen", icon: "V", component: CspScreenPane,
+    defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 144, height: 24 },
+    tableExport: true, headless: cspScreenHeadless,
+    settings: {
+      title: "Cash-Secured Put Screen",
+      fields: [
+        { key: "symbols", label: "Symbols", type: "text", placeholder: "JPM, GS, KO" },
+        { key: "maxSpread", label: "Wide spread over (%)", type: "text", placeholder: "10",
+          description: "A put whose bid/ask spread is over this percent of its mid is marked wide. It is still ranked." },
+      ],
+    },
   }],
-  paneTemplates: [createTickerSurfacePaneTemplate({
+  paneTemplates: [{
+    id: "csp-screen-pane", paneId: "csp-screen", label: "Cash-Secured Put Screen",
+    description: "Cash-secured puts across a list, ranked by annualised yield at the bid, with % OTM, delta, IV rank, spread and an earnings flag.",
+    // The put-selling phrases lead here first, then to OSA for one name.
+    keywords: ["csp", "cash secured put", "cash-secured puts", "put selling", "selling puts", "sell put", "sell puts", "short put", "wheel",
+      "put screen", "premium yield"],
+    shortcut: { prefix: "CSP", argKind: "ticker-list" as const }, headless: cspScreenHeadless,
+    createInstance: (_context, options) => ({
+      title: "CSP", placement: "floating" as const,
+      settings: options?.symbols?.length ? { symbols: options.symbols.join(",") } : {},
+    }),
+  }, createTickerSurfacePaneTemplate({
     id: "options-scenario-pane", paneId: "options-scenario", label: "Options Scenario",
     description: "Build multi-leg positions and compare scenario P&L, payoff and aggregate Greeks.",
-    // OSA owns the phrases; OMON and VCA carry the same words without them, so a put-selling search finds all three, OSA first.
+    // OSA carries the put-selling phrases after CSP, which ranks names on them; OMON and VCA carry the same words, so a search finds all four.
     keywords: ["osa", "options", "scenario", "payoff", "strategy", "greeks", "hedge", "hedging", "collar", "protective put", "put spread",
       "cash secured put", "csp", "put selling", "sell put", "short put", "wheel"],
     shortcut: "OSA", publicShare: true,

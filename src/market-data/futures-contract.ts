@@ -4,7 +4,7 @@ import { classifyInstrumentType } from "../tickers/instrument-kind";
 import type { Quote } from "../types/financials";
 import { parsePublicTickerKey } from "../utils/exchanges";
 import { logFailure } from "../utils/log-failure";
-import { futuresBoardContract, type FuturesContract } from "./futures-board";
+import { futuresBoardContract, futuresContractByCode, type FuturesContract } from "./futures-board";
 import { formatMarketPrice, formatMarketPriceWithCurrency, quoteFormatOptions, withCurrencyMinorDigits } from "./market/format";
 import { previousPublishedSession } from "./market/freshness";
 import { minorUnitSign } from "../utils/currency-units";
@@ -86,6 +86,11 @@ export function futuresContractLines(terms: FuturesContractTermsPayload, symbol:
   const lines: FuturesContractLine[] = [];
   if (terms.contract && terms.contract !== contractCode(symbol)) lines.push({ key: "contract", label: "Contract", value: terms.contract });
   if (terms.spec) lines.push(...futuresSpecLines(terms.spec));
+  else {
+    // A root the server sends no terms for still says what its price counts: Dutch TTF gas is EUR / MWh.
+    const unit = futuresContractByCode(terms.root)?.unit;
+    if (unit) lines.push({ key: "unit", label: "Unit", value: unit });
+  }
   if (terms.firstNotice) {
     lines.push(terms.inDelivery
       ? { key: "firstNotice", label: "First Notice", value: `${terms.firstNotice} (passed)`, warning: true }
@@ -109,12 +114,22 @@ export function fitFuturesContractLines(lines: readonly FuturesContractLine[], m
  * Without a quote currency the price is a bare number, never a guessed `$`: a
  * grain settles in cents. A contract without a confirmed settlement reads
  * `--`: never an older settlement, and never the last trade.
+ *
+ * `movesFrom` is the session the Change line beside it is measured from
+ * (futuresChangeBasis). The settlement is confirmed overnight, after the
+ * quote has moved on to the next session, so for those hours the terms carry
+ * the session before the one the move is from: that settlement would sit
+ * beside a move from another session's close. It reads `--` and says which
+ * session is not confirmed yet. A settlement of that session or a later one
+ * is shown: the same session, or the one the move itself belongs to.
  */
 export function futuresSettleText(
   terms: Pick<FuturesContractTermsPayload, "settlement">,
   quote: Pick<Quote, "currency" | "instrumentType" | "priceBasis" | "providerPriceDivisor"> | null | undefined,
+  movesFrom?: string | null,
 ): string {
   if (!terms.settlement) return FUTURES_MISSING;
+  if (movesFrom && terms.settlement.date < movesFrom) return `${FUTURES_MISSING} (${movesFrom} not confirmed yet)`;
   const currency = quote?.currency;
   const options = withCurrencyMinorDigits(quoteFormatOptions(quote, "FUTURE"), currency);
   const price = currency ? formatMarketPriceWithCurrency(terms.settlement.price, currency, options) : formatMarketPrice(terms.settlement.price, options);
@@ -123,22 +138,89 @@ export function futuresSettleText(
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-/** The quantities a cents price is per, as traders abbreviate them: 467.25¢/bu for corn. */
-const PER_ABBREVIATIONS: Readonly<Record<string, string>> = { bushel: "bu", bushels: "bu", pound: "lb", pounds: "lb" };
+/** The quantities a price is per, as traders abbreviate them: 467.25¢/bu for corn, $99.20/bbl for crude. */
+const PER_ABBREVIATIONS: Readonly<Record<string, string>> = {
+  bushel: "bu", bushels: "bu", pound: "lb", pounds: "lb", barrel: "bbl", barrels: "bbl", gallon: "gal", gallons: "gal",
+};
+
+type PricedTerms = Pick<FuturesContractTermsPayload, "spec"> & Partial<Pick<FuturesContractTermsPayload, "root">>;
+
+/** What a root's price counts: the exchange's unit from the terms, else the catalog's (Dutch TTF gas has none from the server). */
+function termsPriceUnit(terms: PricedTerms | null | undefined): string | null {
+  return futuresPriceUnit(futuresContractByCode(terms?.root), terms);
+}
 
 /**
- * What a price in a minor unit is per, to follow its sign: "/lb" for coffee at
- * 314.95¢/lb, "/bu" for corn, from the contract's unit ("US cents / lb").
- * Empty for a price in a major currency, which reads as it always has, and
- * when the terms name no unit in the quote's own currency.
+ * What a futures price is per, to follow it: "/lb" for coffee at 314.95¢/lb
+ * and "/bu" for corn, where a cents sign alone says nothing of the quantity;
+ * and for every energy contract, "/MWh" for Dutch TTF gas at €90.30/MWh,
+ * "/MMBtu" for natural gas, "/bbl" for crude and "/gal" for gasoline and
+ * heating oil, whose price means little without it. Read from the contract's
+ * unit, the catalog's where the server sends none. Empty for any other price
+ * in a major currency, which reads as it always has, and when the unit is not
+ * in the quote's own currency.
  */
-export function minorUnitPricePer(
-  terms: Pick<FuturesContractTermsPayload, "spec"> | null | undefined,
-  currency: string | null | undefined,
-): string {
-  if (!minorUnitSign(currency)) return "";
-  const per = contractPriceUnit(terms?.spec?.unit, currency)?.split("/")[1]?.trim();
+export function futuresPricePer(terms: PricedTerms | null | undefined, currency: string | null | undefined): string {
+  if (!minorUnitSign(currency) && futuresContractByCode(terms?.root)?.sector !== "energy") return "";
+  const per = contractPriceUnit(termsPriceUnit(terms), currency)?.split("/")[1]?.trim();
   return per ? `/${PER_ABBREVIATIONS[per.toLowerCase()] ?? per}` : "";
+}
+
+/** MMBtu in a megawatt hour: 3.412 (3,412,142 Btu). */
+const MMBTU_PER_MWH = 3.412;
+
+/**
+ * A gas price per MWh as dollars per MMBtu, the unit Henry Hub gas (NG)
+ * trades in, so European gas can be set against it: TTF at €90.30/MWh is
+ * $30.832/MMBtu at EUR/USD 1.1650. `usdPerUnit` is one unit of the price's
+ * currency in dollars. Null where the contract is not priced per MWh in that
+ * currency, or the rate is unknown.
+ */
+export function usdPerMmbtu(
+  price: number,
+  terms: PricedTerms | null | undefined,
+  currency: string | null | undefined,
+  usdPerUnit: number | null | undefined,
+): number | null {
+  const unit = contractPriceUnit(termsPriceUnit(terms), currency);
+  if (!unit || unit.split("/")[1]?.trim().toLowerCase() !== "mwh") return null;
+  if (!Number.isFinite(price) || usdPerUnit == null || !Number.isFinite(usdPerUnit) || usdPerUnit <= 0) return null;
+  return (price * usdPerUnit) / MMBTU_PER_MWH;
+}
+
+/** A per-MWh gas price in dollars per MMBtu, and the rate it was converted at: one unit of its currency in dollars. */
+export interface UsdPerMmbtu {
+  value: number;
+  currency: string;
+  usdPerUnit: number;
+}
+
+/**
+ * A per-MWh gas price (Dutch TTF) in dollars per MMBtu at the rate `rate`
+ * reads for its currency (USD per unit); null for any other contract, or
+ * when the rate does not load.
+ */
+export async function loadUsdPerMmbtu(
+  price: number | null | undefined,
+  terms: PricedTerms | null | undefined,
+  currency: string | null | undefined,
+  rate: (currency: string) => Promise<number | null | undefined>,
+): Promise<UsdPerMmbtu | null> {
+  const code = currency?.trim().toUpperCase();
+  if (price == null || !code || usdPerMmbtu(price, terms, code, 1) == null) return null;
+  const usdPerUnit = code === "USD" ? 1 : await rate(code)
+    .catch(logFailure("futures-contract", "Read the rate for a gas price in USD failed", null));
+  const value = usdPerMmbtu(price, terms, code, usdPerUnit);
+  return value == null ? null : { value, currency: code, usdPerUnit: usdPerUnit! };
+}
+
+/**
+ * The dollar equivalent beside a per-MWh price, marked as a conversion and
+ * with the rate it used, the way converted market caps name theirs:
+ * "≈ $30.832/MMBtu at EUR/USD 1.1650".
+ */
+export function usdPerMmbtuText({ value, currency, usdPerUnit }: UsdPerMmbtu): string {
+  return `≈ $${value.toFixed(3)}/MMBtu at ${currency}/USD ${usdPerUnit.toFixed(4)}`;
 }
 
 const DAY_MS = 86_400_000;

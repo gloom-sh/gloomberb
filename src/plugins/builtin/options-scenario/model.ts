@@ -160,6 +160,19 @@ export function validateScenarioInputs(position: ScenarioPosition): string | nul
 /** The stored stand-in for a currency nothing names; shown as `currency unknown`. */
 export const UNKNOWN_CURRENCY = "UNKNOWN";
 export const currencyLabel = (currency: string) => currency === UNKNOWN_CURRENCY ? "currency unknown" : currency;
+/** The unit an export names beside an amount: the currency code, or `currency unknown`. */
+export const amountUnit = (currency: string) => currency && currency !== UNKNOWN_CURRENCY ? currency : "currency unknown";
+
+/**
+ * A fraction as the percent an export carries: a rate of 0.041 is 4.1, not
+ * the 4.1000000000000005 the product leaves. Twelve significant digits keep
+ * every digit a figure has; null stays null.
+ */
+export function exportPercent(fraction: number): number;
+export function exportPercent(fraction: number | null | undefined): number | null;
+export function exportPercent(fraction: number | null | undefined): number | null {
+  return fraction == null ? null : Number((fraction * 100).toPrecision(12));
+}
 
 /**
  * The position's currency: the one typed, else the underlying's quote

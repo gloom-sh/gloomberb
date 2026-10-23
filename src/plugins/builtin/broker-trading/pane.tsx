@@ -13,6 +13,7 @@ import type { BrokerContractRef } from "../../../types/instrument";
 import type { PaneProps, TickerResearchTabProps } from "../../../types/plugin";
 import type { BrokerAccount, BrokerOrder } from "../../../types/trading";
 import { Box, useUiCapabilities } from "../../../ui";
+import { accountsShownFor } from "../../../brokers/broker-portfolio-sync";
 import { usePluginAppActions, usePluginBrokerActions } from "../../runtime";
 import { BrokerTradingController, type BrokerOrderOutcome } from "./controller";
 import { takeTradeIntent } from "./command";
@@ -157,7 +158,7 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
       void Promise.allSettled([broker.listAccounts?.(instance) ?? Promise.resolve([]), broker.importPositions(instance)]).then(([accountResult, positionResult]) => {
       if (!active) return;
       if (accountResult.status === "fulfilled") {
-        const nextAccounts = accountResult.value;
+        const nextAccounts = accountsShownFor(getState().config, instance, accountResult.value);
         current.current.accounts = nextAccounts;
         setAccounts(nextAccounts);
         const previous = current.current.accountId;
@@ -173,7 +174,7 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
     refresh();
     const timer = setInterval(refresh, 30_000);
     return () => { active = false; clearInterval(timer); if (refreshResources.current === refresh) refreshResources.current = () => {}; };
-  }, [broker, instance, connected, visible, selectAccount, allowAutoAccount, statusVersion]);
+  }, [broker, instance, connected, visible, selectAccount, allowAutoAccount, statusVersion, getState]);
   // A new ticket's limit defaults to its side of the quote, from the first current quote that has a price,
   // asked for or streamed, until the trader sets one. A stop is the trader's: at the touch it would trigger at
   // once. A stale quote (before the open, the last session's book) is no price to trade at: the ticket shows
@@ -224,6 +225,13 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
   }, [broker, instance, controller, visible, streamsQuotes, page, contractKey]);
   // The app's order feed: the drawer, chart levels and this ticket's result follow it.
   const orderFeed = useBrokerOrderFeed(broker, instance, connected);
+  // A fill changes the position a sell is sized against: the ticket reads it again then, not at its next 30 seconds.
+  const fillsSeen = useRef(orderFeed.fills);
+  useEffect(() => {
+    if (orderFeed.fills === fillsSeen.current) return;
+    fillsSeen.current = orderFeed.fills;
+    refreshResources.current();
+  }, [orderFeed.fills]);
   useFeedOrderResult(orderFeed, instance.id, state.result, controller.applyOrderUpdate);
   // Without pushed order changes, or while a change's outcome is unknown, the result is asked for every 10 seconds until it ends.
   const unknownResult = state.result?.status.toUpperCase() === "UNKNOWN" && state.result.orderId !== 0;
@@ -391,7 +399,8 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
     <Box visible={docked || page !== "orders"} height={docked && native ? undefined : ticketHeight} maxHeight={ticketHeight} flexShrink={0}>
     <PaneFooterScope active={page !== "orders"}>
     <BrokerTicketView onContentHeight={setTicketContentHeight} blocked={ordersBusy} asking={drawerConfirming} width={width} height={ticketHeight} focused={focused && page !== "orders"} onCapture={onCapture} docked={docked} onClose={onClose} model={{
-    brokerName: broker.name, symbol: orderInstrumentLabel(receipt?.request ?? draft ?? { contract: ticketContract }), accounts, accountId,
+    // An adapter that fronts several brokers (signed in) names the one this profile connects.
+    brokerName: broker.describeInstance?.(instance).brokerName ?? broker.name, symbol: orderInstrumentLabel(receipt?.request ?? draft ?? { contract: ticketContract }), accounts, accountId,
     accountChoices, accountChoiceValue: accountChoices && accountId ? ticketAccountChoiceKey(instance.id, accountId) : undefined,
     accountType: accounts.find((account) => account.accountId === accountId)?.accountType,
     quote: state.quote?.quote, quoteStale: state.quote?.stale, legQuotes: state.quote?.legs, quoteData: connection?.quoteData,
@@ -416,6 +425,7 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
 export function BrokerTradeTab({ width, height, focused, onCapture, docked, onClose }: TickerResearchTabProps & { docked?: boolean; onClose?: () => void }) {
   const identity = usePaneTickerIdentity();
   const config = usePaneAppConfig();
+  const getState = useAppGetState();
   const visible = usePaneVisible();
   const { getBrokerAdapter } = usePluginBrokerActions();
   const { showPane } = usePluginAppActions();
@@ -452,7 +462,7 @@ export function BrokerTradeTab({ width, height, focused, onCapture, docked, onCl
         const adapter = getBrokerAdapter(profile.brokerType);
         const state = adapter?.getStatus?.(profile).state;
         // A profile reconnecting keeps its accounts, so the ticket does not ask to choose one again.
-        const accounts = state === "connected" ? await adapter!.listAccounts?.(profile) ?? [] : state === "connecting" ? lastAccounts.current.get(profile.id) ?? [] : [];
+        const accounts = state === "connected" ? accountsShownFor(getState().config, profile, await adapter!.listAccounts?.(profile) ?? []) : state === "connecting" ? lastAccounts.current.get(profile.id) ?? [] : [];
         lastAccounts.current.set(profile.id, accounts);
         return { profile, accounts };
       })).then((results) => {
@@ -462,7 +472,7 @@ export function BrokerTradeTab({ width, height, focused, onCapture, docked, onCl
     refresh();
     const timer = setInterval(refresh, 30_000);
     return () => { active = false; clearInterval(timer); };
-  }, [groupProfiles, getBrokerAdapter, visible, statusVersion]);
+  }, [groupProfiles, getBrokerAdapter, visible, statusVersion, getState]);
   const resolution = useMemo(() => broker && instance ? resolveTicketContract(identity, broker, instance) : {}, [identity, instance?.id, broker]);
   // A refreshed ticker record resolves the same contract again; only another contract starts a new draft.
   const contractValue = JSON.stringify(resolution.contract ?? null);

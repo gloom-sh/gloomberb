@@ -1,4 +1,4 @@
-import { Box } from "../../../ui";
+import { Box, useUiCapabilities } from "../../../ui";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DataTableView, EmptyState, usePaneFooter, usePaneTabs, type DataTableKeyEvent } from "../../../components";
@@ -266,6 +266,8 @@ function ScreenerMoversBody({ activeTab, focused, width, summaryQuotes, liveStre
     }));
   }, []);
 
+  const logos = useUiCapabilities().nativePaneChrome === true;
+  const renderCell = useCallback((row: MarketMoverRow, column: MarketMoverColumn) => renderMarketMoverCell(row, column, logos), [logos]);
   const handleTableKeyDown = useCallback((event: DataTableKeyEvent) => (
     handleRefreshKey(event, () => loadTab(activeTab, { forceRefresh: true }), { stopPropagation: true })
   ), [activeTab, loadTab]);
@@ -305,7 +307,7 @@ function ScreenerMoversBody({ activeTab, focused, width, summaryQuotes, liveStre
       onHeaderClick={handleHeaderClick}
       getItemKey={moverKey}
       onActivate={openSymbol}
-      renderCell={renderMarketMoverCell}
+      renderCell={renderCell}
       selectedTextOverridesCellColor
       emptyStateTitle={loading ? "Loading movers..." : loadError ?? "No movers returned."}
       emptyContent={loadError ? (

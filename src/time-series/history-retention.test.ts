@@ -4,7 +4,8 @@ import { HistoryRetentionError, historyRetentionNotice, type HistoryRetention } 
 import { AssetDataRouter } from "../sources/provider-router";
 import type { PricePoint, TickerFinancials } from "../types/financials";
 import type { DataProvider, MarketDataRequestContext } from "../types/data-provider";
-import { ChartResolveCache, resolveChartSpecData } from "./resolve";
+import { resolveChartSpecData } from "./resolve";
+import { ChartResolveCache } from "./resolve-context";
 import { parsedPriceHistoryKey, readParsedHistoryResult } from "./parsed-history-cache";
 import { subtractTimeRange } from "./date-window";
 import type { TimeRange } from "./range";
@@ -22,7 +23,7 @@ const history = (start = NOW - 40 * DAY, end = NOW): PricePoint[] => Array.from(
     date: new Date(start + index * STEP), close: 100 + index, volume: index + 1,
   }),
 );
-const chart = (symbol = "RETENTION", resolution: "auto" | "15m" = "auto", range: TimeRange = "1M", exchange = "CCC"): ChartSpec => ({
+const chart = (symbol = "RETENTION", resolution: "auto" | "15m" | "2h" = "auto", range: TimeRange = "1M", exchange = "CCC"): ChartSpec => ({
   version: 2, viewport: { range, resolution }, panels: [{ id: "main" }], studies: [],
   series: ["close", "volume"].map(field => ({ id: field, source: { kind: "security", instrument: { symbol, exchange }, fieldId: `market.${field}` },
     style: "line", transform: "raw", axis: "left", panelId: "main", interpolation: "none" })),
@@ -141,6 +142,24 @@ test("an explicit interval on a range longer than the source keeps charts the re
   const refused = await resolveChartSpecData(chart("RETENTION", "15m", "3M"), sources(wrong.provider), undefined, { awaitResolutionSupport: true });
   expect(refused.errors).toHaveLength(2);
   expect(wrong.calls.some(call => call.kind === "recovery")).toBe(false);
+});
+
+test("bars built from retained bars start where the source's bars do and keep the notice, in their own size", async () => {
+  setSystemTime(NOW);
+  const firstBar = proof().availableStart + STEP;
+  const { provider, calls, data } = limited({ data: history(firstBar) });
+  const result = await resolveChartSpecData(chart("RETENTION", "2h", "3M"), sources(provider), undefined, { awaitResolutionSupport: true });
+  expect(calls.map(call => call.kind)).toEqual(["15m", "recovery"]);
+  expect(result.errors).toEqual([]);
+  expect(retentionNotices(result.warnings)).toEqual(["2h history starts Jul 24; the source keeps the last 60 days."]);
+  const closes = result.series.find(series => series.id === "close")!;
+  expect(closes.barSize).toBe("2h");
+  // Eight 15-minute bars to a bar, from midnight for a coin: the first retained bar (12:15) joins the 12:00 bar.
+  expect(closes.points[0]!.date).toEqual(new Date(firstBar - STEP));
+  expect(closes.points.slice(1, 4).map(point => +point.date - +closes.points[0]!.date)).toEqual([1, 2, 3].map(index => index * 8 * STEP));
+  expect(closes.points.at(-1)!.value).toBe(data.at(-1)!.close);
+  const volume = result.series.find(series => series.id === "volume")!.points[1]!.value;
+  expect(volume).toBe(data.slice(7, 15).reduce((sum, point) => sum + point.volume!, 0));
 });
 
 const HOUR = 3_600_000;

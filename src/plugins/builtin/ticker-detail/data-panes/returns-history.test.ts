@@ -44,3 +44,24 @@ test("a coin on a weekend stays anchored to now and asks for no quote", async ()
   expect(new Date(series.visibleFrom).toISOString()).toBe("2026-10-06T15:00:00.000Z");
   expect(quoted).toBe(false);
 });
+
+test("a dated window keeps the week its first date falls in, and a source with no hourly bars that far back answers in daily ones", async () => {
+  const asked: string[] = [];
+  const monday = (date: string, close: number) => ({ date: new Date(`${date}T00:00:00Z`), close });
+  const provider = createTestDataProvider({
+    getDetailedPriceHistoryWithMetadata: async (_symbol, _exchange, _start, _end, interval) => {
+      asked.push(interval);
+      if (interval === "1h") return { points: [], resolution: "1h" };
+      return { points: [monday("2008-09-08", 40), monday("2008-09-15", 44), monday("2008-09-22", 48)], resolution: interval === "1wk" ? "1wk" : "1d" };
+    },
+  });
+  const now = Date.parse("2026-10-22T15:00:00Z");
+  const request = { symbol: "JPM", exchange: "NYSE", range: "5D" as const, support: [], now };
+  // Wednesday 17 Sep 2008 is in the week of Monday the 15th, whose bar is the window's first; the 8th's is its base.
+  const weekly = await loadReturnSeries(provider, { ...request, resolution: "1wk", window: { from: "2008-09-17", to: "2010-09-30" } });
+  expect(buildReturnRows(weekly.points, weekly.visibleFrom, weekly.visibleTo).map((row) => [new Date(row.timestamp).toISOString().slice(0, 10), row.cumulativePercent]))
+    .toEqual([["2008-09-22", 0.2], ["2008-09-15", 0.1]]);
+  const hourly = await loadReturnSeries(provider, { ...request, resolution: "1h", window: { from: "2008-09-15", to: "2008-09-22" } });
+  expect(hourly.resolution).toBe("1d");
+  expect(asked).toEqual(["1wk", "1h", "1d"]);
+});

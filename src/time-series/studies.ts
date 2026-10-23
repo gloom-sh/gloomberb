@@ -17,6 +17,8 @@ import type {
   TimeSeriesPoint,
 } from "./types";
 import { isFiniteNumber } from "../utils/guards";
+import { studyMessageName } from "./series-name";
+import { dailyLeverageGrowth, isLeverageFactor, leverageDecayPoints, leverageFactorLabel, leverageSymbol, sessionCloses, type StudyAnchor } from "./leverage";
 import { GALLONS_PER_BARREL, isPerBarrelUnit, isPerGallonUnit, perBarrelUnit, quantityIdentity, unitCurrencyToken } from "./price-units";
 
 export interface StudyResolutionResult {
@@ -45,7 +47,10 @@ const KIND_COLORS: Partial<Record<ChartStudyKind, string>> = {
   "anchored-vwap": "#b197fc",
   "volume-profile": "#adb5bd",
   atr: "#63e6be",
+  leverage: "#e599f7",
 };
+/** The decay study's two lines: the fund against the daily line, the daily line against the period multiple. */
+const DECAY_COLORS = ["#ffa94d", "#66d9e8"] as const;
 /**
  * One per anchor, so eight lines never repeat a colour. None is red or pink
  * (falling candles take the theme's negative), orange (VWAP), yellow (the
@@ -117,6 +122,7 @@ function outputSeries(
     nativeFrequency: options.nativeFrequency ?? input.nativeFrequency,
     ...(historyResolution !== undefined ? { historyResolution } : {}),
     ...(input.historyStart && historyResolution === input.historyResolution ? { historyStart: input.historyStart } : {}),
+    ...(input.barSize && historyResolution === input.historyResolution ? { barSize: input.barSize } : {}),
     dataShape: "scalar",
     style: options.style ?? "line",
     transform: "raw",
@@ -1084,7 +1090,70 @@ function resolveFormula(
 }
 
 function requiredInputs(kind: ChartStudyKind): number {
-  return kind === "ratio" || kind === "spread" || kind === "correlation" ? 2 : 1;
+  return kind === "ratio" || kind === "spread" || kind === "correlation" || kind === "leverage-decay" ? 2 : 1;
+}
+
+/** The objective's line and its decay compound session returns: they need daily bars, whatever the chart's range. */
+function dailyBarsIssue(spec: ChartStudySpec, input: ResolvedSeries, marketResolution: ManualChartResolution | undefined): string | null {
+  const resolution = input.historyResolution === undefined ? marketResolution : input.historyResolution;
+  if (input.nativeFrequency === "daily" && (resolution === undefined || resolution === "1d")) return null;
+  return `${studyMessageName(spec)}: ${leverageFactorLabel(Number(spec.parameters.factor))} daily needs daily bars. Choose D bars.`;
+}
+
+/**
+ * The line a leveraged or inverse fund's daily objective draws from its index
+ * fund, in percent from where the chart compares (3× daily QQQ beside TQQQ),
+ * on the percent axis the compared legs share.
+ */
+function resolveLeverageLine(spec: ChartStudySpec, index: ResolvedSeries, color: string, anchor: StudyAnchor | undefined): ResolvedSeries[] {
+  const factor = spec.parameters.factor as number;
+  const closes = sessionCloses(index, anchor);
+  const growth = dailyLeverageGrowth(closes.map((entry) => entry.close), factor);
+  return [outputSeries(spec, index, {
+    label: `${leverageFactorLabel(factor)} daily ${leverageSymbol(index)}`,
+    points: closes.map((entry, position) => derivedPoint({ point: entry.point, value: entry.close }, (growth[position]! - 1) * 100)),
+    color,
+    unit: "%",
+    unitGroup: "percent",
+    statedUnit: null,
+    priceAssetCategory: null,
+    axis: "left",
+  })];
+}
+
+/**
+ * How far the fund falls short of its daily objective, in percentage points
+ * from where the chart compares: the fund against the daily line (fees,
+ * financing, tracking), and the daily line against the factor times the index
+ * fund's return over the period (compounding, which daily resets cost in a
+ * market that swings).
+ */
+function resolveLeverageDecay(
+  spec: ChartStudySpec,
+  fund: ResolvedSeries,
+  index: ResolvedSeries,
+  anchors: ReadonlyMap<string, StudyAnchor> | undefined,
+): ResolvedSeries[] {
+  const factor = spec.parameters.factor as number;
+  const decay = leverageDecayPoints(sessionCloses(fund, anchors?.get(fund.id)), sessionCloses(index, anchors?.get(index.id)), factor);
+  const daily = `${leverageFactorLabel(factor)} daily`;
+  const line = (id: string, label: string, color: string, value: (point: (typeof decay)[number]) => number) => outputSeries(spec, fund, {
+    id: `${spec.id}:${id}`,
+    label,
+    points: decay.map((entry) => derivedPoint({ point: entry.point, value: entry.fund }, value(entry))),
+    color: spec.color ?? color,
+    unit: "pp",
+    // Not a percent group: a difference of returns reads in points (-0.96 pp), not as a return.
+    unitGroup: "pp",
+    statedUnit: null,
+    priceAssetCategory: null,
+    axis: "left",
+  });
+  return [
+    line("fund", `${leverageSymbol(fund)} decay vs ${daily} ${leverageSymbol(index)}`, DECAY_COLORS[0], (entry) => entry.fund - entry.daily),
+    // `3× QQQ`: three times QQQ's return over the period, the multiple a daily reset does not deliver.
+    line("compounding", `${daily} ${leverageSymbol(index)} decay vs ${leverageFactorLabel(factor)} ${leverageSymbol(index)}`, DECAY_COLORS[1], (entry) => entry.daily - entry.period),
+  ];
 }
 
 /**
@@ -1188,16 +1257,23 @@ export function activeStudyInputSeriesIds(
     .flatMap((spec) => spec.inputSeriesIds));
 }
 
+/**
+ * `anchors`: where each input series is measured from and to, for studies
+ * that read returns over the chart's period (a leveraged fund's daily line and
+ * its decay start where a comparison starts its legs). Without one, a series'
+ * own first and last observations.
+ */
 export function resolveStudies(
   baseSeries: readonly ResolvedSeries[],
   studySpecs: readonly ChartStudySpec[],
   marketResolution?: ManualChartResolution,
   historicalPriceSeries?: ReadonlyMap<string, ResolvedSeries>,
+  anchors?: ReadonlyMap<string, StudyAnchor>,
 ): StudyResolutionResult {
   // With one security on the chart its volume is just "Volume"; beside a
   // comparison the legend names whose volume it is.
   const nameVolumeInput = baseSeries.filter((series) => series.observationKind === "market").length > 1;
-  return resolveStudySpecs(baseSeries, studySpecs, nameVolumeInput, marketResolution, historicalPriceSeries);
+  return resolveStudySpecs(baseSeries, studySpecs, nameVolumeInput, marketResolution, historicalPriceSeries, anchors);
 }
 
 function resolveStudySpecs(
@@ -1206,6 +1282,7 @@ function resolveStudySpecs(
   nameVolumeInput: boolean,
   marketResolution?: ManualChartResolution,
   historicalPriceSeries?: ReadonlyMap<string, ResolvedSeries>,
+  anchors?: ReadonlyMap<string, StudyAnchor>,
 ): StudyResolutionResult {
   const byId = new Map(baseSeries.map((series) => [series.id, series]));
   const resolved: ResolvedSeries[] = [];
@@ -1218,7 +1295,7 @@ function resolveStudySpecs(
     const inputs = spec.inputSeriesIds.map((id) => spec.kind === "realized-vol"
       ? historicalPriceSeries?.get(id) ?? byId.get(id) : byId.get(id));
     if (inputs.length !== required || inputs.some((input) => !input)) {
-      errors.push(`${spec.id}: ${spec.kind} requires ${required} valid input series.`);
+      errors.push(`${studyMessageName(spec)}: ${spec.kind} requires ${required} valid input series.`);
       return;
     }
     const input = inputs[0]!;
@@ -1226,7 +1303,7 @@ function resolveStudySpecs(
       const pairedInput = inputs[1]!;
       const inputUnit = knownUnitSignature(input);
       if (inputUnit === null || inputUnit !== knownUnitSignature(pairedInput)) {
-        errors.push(`${spec.id}: ${unitMismatchMessage("spread", { series: input, unit: input.unit }, { series: pairedInput, unit: pairedInput.unit })}`);
+        errors.push(`${studyMessageName(spec)}: ${unitMismatchMessage("spread", { series: input, unit: input.unit }, { series: pairedInput, unit: pairedInput.unit })}`);
         return;
       }
     }
@@ -1235,17 +1312,37 @@ function resolveStudySpecs(
       const read = formulaTerms(spec, inputs as ResolvedSeries[]);
       const mismatch = "error" in read ? read.error : formulaUnitMismatch(read, inputs as ResolvedSeries[]);
       if (mismatch) {
-        errors.push(`${spec.id}: ${mismatch}`);
+        errors.push(`${studyMessageName(spec)}: ${mismatch}`);
         return;
       }
       terms = read as FormulaTerms;
     }
     const color = spec.color ?? KIND_COLORS[spec.kind] ?? STUDY_COLORS[index % STUDY_COLORS.length]!;
+    if (spec.kind === "leverage" || spec.kind === "leverage-decay") {
+      const index = inputs.at(-1)!;
+      if (!isLeverageFactor(spec.parameters.factor)) {
+        errors.push(`${studyMessageName(spec)}: choose a nonzero leverage factor of at most 5.`);
+        return;
+      }
+      const issue = inputs.map((entry) => dailyBarsIssue(spec, entry!, marketResolution)).find(Boolean);
+      if (issue) {
+        warnings.push(issue);
+        return;
+      }
+      const outputs = spec.kind === "leverage"
+        ? resolveLeverageLine(spec, index, color, anchors?.get(index.id))
+        : resolveLeverageDecay(spec, input, index, anchors);
+      if (outputs.every((output) => output.points.length < 2)) {
+        warnings.push(`${studyMessageName(spec)}: not enough shared daily closes to measure ${leverageFactorLabel(spec.parameters.factor as number)} daily ${leverageSymbol(index)}.`);
+      }
+      resolved.push(...outputs);
+      return;
+    }
     if (spec.kind === "realized-vol") {
       const window = spec.parameters.window ?? 30;
       if (typeof window !== "number" || !Number.isInteger(window) || window < 2
         || (spec.parameters.estimator !== undefined && !isRealizedVolatilityEstimator(spec.parameters.estimator))) {
-        errors.push(`${spec.id}: choose a supported volatility estimator and a whole window of at least two sessions.`);
+        errors.push(`${studyMessageName(spec)}: choose a supported volatility estimator and a whole window of at least two sessions.`);
         return;
       }
       const inputResolution = input.historyResolution === undefined ? marketResolution : input.historyResolution;
@@ -1253,17 +1350,17 @@ function resolveStudySpecs(
         || (inputResolution !== undefined && inputResolution !== "1d")
         || (input.timeBasis?.cadenceMs !== undefined && input.timeBasis.cadenceMs !== 86_400_000)
         || !(input.unitGroup === "price" || input.unitGroup.startsWith("price:"))) {
-        errors.push(`${spec.id}: realized volatility requires daily prices. Choose Auto or 1D resolution and a daily price source.`);
+        errors.push(`${studyMessageName(spec)}: realized volatility requires daily prices. Choose Auto or 1D resolution and a daily price source.`);
         return;
       }
       const cadenceIssue = realizedVolatilityCadenceIssue(input.points);
       if (cadenceIssue) {
-        errors.push(`${spec.id}: ${cadenceIssue}`);
+        errors.push(`${studyMessageName(spec)}: ${cadenceIssue}`);
         return;
       }
       const outputs = resolveRealizedVolatility(spec, input, color);
       if (outputs.every((output) => output.points.every((point) => point.value === null))) {
-        warnings.push(`${spec.id}: not enough valid daily history to calculate ${spec.parameters.estimator ?? "close-to-close"} realized volatility.`);
+        warnings.push(`${studyMessageName(spec)}: not enough valid daily history to calculate ${spec.parameters.estimator ?? "close-to-close"} realized volatility.`);
       }
       resolved.push(...outputs);
       return;
@@ -1307,11 +1404,11 @@ function resolveStudySpecs(
         && inputCurrency !== pairedCurrency;
       if (spec.kind === "ratio" && differentCurrencies) {
         warnings.push(
-          `${spec.id}: ${spec.kind} inputs use different currencies (${inputCurrency} and ${pairedCurrency}); raw values are not FX-converted.`,
+          `${studyMessageName(spec)}: ${spec.kind} inputs use different currencies (${inputCurrency} and ${pairedCurrency}); raw values are not FX-converted.`,
         );
       }
       if (spec.kind === "correlation" && input.nativeFrequency !== pairedInput.nativeFrequency) {
-        warnings.push(`${spec.id}: correlation mixes ${input.nativeFrequency} and ${pairedInput.nativeFrequency} observations; only matching observation times contribute.`);
+        warnings.push(`${studyMessageName(spec)}: correlation mixes ${input.nativeFrequency} and ${pairedInput.nativeFrequency} observations; only matching observation times contribute.`);
       }
       outputs = resolvePairStudy(spec, input, pairedInput, color);
     }
@@ -1319,7 +1416,7 @@ function resolveStudySpecs(
       spec.kind !== "volume"
       && (outputs.length === 0 || outputs.every((output) => output.points.length === 0))
     ) {
-      warnings.push(`${spec.id}: not enough valid history to calculate ${spec.kind}.`);
+      warnings.push(`${studyMessageName(spec)}: not enough valid history to calculate ${spec.kind}.`);
     }
     resolved.push(...outputs);
   });

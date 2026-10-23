@@ -535,6 +535,18 @@ export interface IncomeStatementSource {
  */
 export type StatementGapField = IncomeStatementField | "totalRevenue" | "operatingRevenue" | "pretaxIncome" | "taxProvision";
 
+/** Lines Gloom Cloud fills from a listing's exchange for a year the statements source does not have yet. */
+export type StatementFillField = "totalRevenue" | "netIncome" | "totalAssets" | "totalLiabilities";
+
+/** Where a row's filled lines came from: the exchange's figures, its page, and when they were read. */
+export interface StatementFill {
+  source: "asx";
+  page: string;
+  retrievedAt: string;
+  /** The lines taken from the exchange; the row's other figures are the statements source's. */
+  fields: StatementFillField[];
+}
+
 /** Per-share earnings lines that can be declared unavailable. */
 export type EarningsField = "basicEps" | "eps";
 
@@ -659,6 +671,8 @@ export interface FinancialStatement {
   fieldSources?: Partial<Record<IncomeStatementField, IncomeStatementSource>>;
   /** Lines unavailable for this period; another source or income basis must not fill them. */
   unavailableFields?: StatementGapField[];
+  /** Lines filled from the listing's exchange for a year the statements source lacks. */
+  filledFrom?: StatementFill;
   // Income Statement
   totalRevenue?: number;
   costOfRevenue?: number;
@@ -825,6 +839,11 @@ export interface PricePoint {
   low?: number;
   close: number;
   volume?: number;
+  /**
+   * The trades of one venue alone, when the market's volume for the bar is unavailable: never its volume, so no sum
+   * or comparison with a day's count takes it.
+   */
+  venueVolume?: { venue: string; volume: number };
   /** The bar's period had not ended when it was served: its close is the latest price, and it may have no volume yet. */
   partial?: boolean;
   /** The bar's prices were rebuilt from shorter bars where the source left it empty or too coarse. */

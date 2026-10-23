@@ -1,6 +1,7 @@
-import { Box } from "../../../ui";
+import { Box, useUiCapabilities } from "../../../ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TextAttributes, type ScrollBoxRenderable } from "../../../ui";
+import { COUNTRY_FLAG_CELLS, withCountryFlag } from "../../../components/ui/country-flag";
 import {
   Button,
   DataTableStackView,
@@ -44,6 +45,7 @@ import {
   subscribeCalendar,
   impactIndicator,
   loadCalendar,
+  eventCountry,
   matchesCountry,
   matchesImpact,
   noScheduledReleasesMessage,
@@ -52,6 +54,7 @@ import {
   shortCalendarEnd,
   shortDayLabel,
   timeLabel,
+  valueColumnWidth,
   type CountryFilter,
   type DisplayRow,
   type EconCalendarColumn,
@@ -242,13 +245,15 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     handleRefreshKey(event, () => void calendar.reload(), { stopPropagation: true })
   ), [calendar.reload]);
 
+  // The desktop and the web lead each country's code with its flag.
+  const flagged = useUiCapabilities().nativePaneChrome === true;
   const columns = useMemo<EconCalendarColumn[]>(() => {
     // The header names the zone, so the column is as wide as the header needs.
     const timeLabelText = `TIME (${CALENDAR_TIME_ZONE_LABEL})`;
     const timeWidth = tableColumnWidth({ width: 6, label: timeLabelText });
-    const actualWidth = 9;
-    const forecastWidth = 10;
-    const priorWidth = 9;
+    const actualWidth = valueColumnWidth(filtered, "actual", 9);
+    const forecastWidth = valueColumnWidth(filtered, "forecast", 10);
+    const priorWidth = valueColumnWidth(filtered, "prior", 9);
     const minEventWidth = 12;
     // Padding, one gap per column boundary, and the vertical scrollbar lane;
     // one column short of that clipped the PRIOR values at the right edge.
@@ -259,14 +264,15 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     // IMPACT and COUNTRY in words while event names keep room to read; the
     // short labels otherwise, with the word on hover where there is one.
     const spelledImpactWidth = tableColumnWidth({ width: 1, label: SPELLED_IMPACT });
-    const spelledCountryWidth = tableColumnWidth({ width: 1, label: SPELLED_COUNTRY });
+    const codeWidth = 2 + (flagged ? COUNTRY_FLAG_CELLS : 0);
+    const spelledCountryWidth = Math.max(codeWidth, tableColumnWidth({ width: 1, label: SPELLED_COUNTRY }));
     const spelled = eventRoom(spelledImpactWidth, spelledCountryWidth) >= SPELLED_HEADER_MIN_EVENT_WIDTH;
     const impactColumn = spelled
       ? { label: SPELLED_IMPACT, width: spelledImpactWidth }
       : { label: "IMP", width: 4, title: "Impact" };
     const countryColumn = spelled
       ? { label: SPELLED_COUNTRY, width: spelledCountryWidth }
-      : { label: "CTY", width: 3, title: "Country" };
+      : { label: "CTY", width: Math.max(3, codeWidth), title: "Country" };
     const eventWidth = Math.max(minEventWidth, eventRoom(impactColumn.width, countryColumn.width));
 
     return [
@@ -278,7 +284,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
       { id: "forecast", label: "FORECAST", width: forecastWidth, align: "right" },
       { id: "prior", label: "PRIOR", width: priorWidth, align: "right" },
     ];
-  }, [width]);
+  }, [filtered, flagged, width]);
   const separatorBg = blendHex(colors.bg, colors.border, 0.3);
   const staleness = fetchedAt ? formatStaleness(fetchedAt, now) : "";
   // The calendar has events and the filters hid them all: say which, with the way back.
@@ -383,10 +389,14 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
           color: indicator.color,
         };
       }
-      case "country":
-        // The ISO code, not a flag emoji: emoji widths do not match a fixed
-        // column and pushed the right-hand columns off the pane.
-        return { text: ev.country, color: colors.textMuted };
+      case "country": {
+        // The ISO code, led on the desktop by the flag drawn as art, never a
+        // flag emoji: emoji widths do not match a fixed column and pushed the
+        // right-hand columns off the pane. A national euro-area release is
+        // its member's (DE for German Ifo), the ECB's the euro area's.
+        const country = eventCountry(ev);
+        return withCountryFlag({ text: country, color: colors.textMuted }, country, flagged);
+      }
       case "event":
         return { text: ev.event, color: colors.text };
       case "actual":
@@ -399,7 +409,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
       case "prior":
         return { text: ev.prior ?? "—", color: colors.textDim };
     }
-  }, []);
+  }, [flagged]);
 
   const selectedEvent = filtered[selectedIdx];
   const filterControls = (

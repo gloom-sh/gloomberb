@@ -9,12 +9,10 @@ import { buildCustomChartPreset } from "../plugins/builtin/chart-composer/preset
 import { createTestDataProvider, createTestFinancials } from "../test-support/data-provider";
 import type { TickerFinancials } from "../types/financials";
 import { chartQuoteOverrideKeyForSource } from "./live-quotes";
-import {
-  ChartResolveCache,
-  mergePriceHistoryWindows,
-  resolveChartSpecData,
-  seedChartResolutionResult,
-} from "./resolve";
+import { resolveChartSpecData } from "./resolve";
+import { ChartResolveCache } from "./resolve-context";
+import { seedChartResolutionResult } from "./chart-seed";
+import { mergePriceHistoryWindows } from "./history-acquisition";
 import { CHART_SPEC_VERSION, type ChartSeriesSpec, type ChartSpec } from "./types";
 
 function chartSeries(input: Pick<ChartSeriesSpec, "source"> & Partial<ChartSeriesSpec>): ChartSeriesSpec {
@@ -426,6 +424,25 @@ describe("resolveChartSpecData", () => {
     expect(resolved.series[0]?.points[0]?.value).toBe(42);
   });
 
+  test("a log scale that hides values names the series, never the panel's id", async () => {
+    const spec: ChartSpec = chartSpec({
+      viewport: { range: "1M", resolution: "auto" },
+      panels: [{ id: "main", scale: "log" }],
+      series: [chartSeries({ id: "plugin-series", source: { kind: "capability", capabilityId: "charts.test", seriesId: "one" } })],
+    });
+    const result = await resolveChartSpecData(spec, {
+      dataProvider: null,
+      loadFredSeries: async () => fredLoad(),
+      now: new Date("2026-02-01"),
+      resolveCapabilitySeries: async () => ({
+        id: "provider-id", label: "Provider Label", color: "#fff", unit: "value", unitGroup: "value", nativeFrequency: "daily",
+        dataShape: "scalar", style: "line", transform: "raw", axis: "left", panelId: "main", interpolation: "none",
+        points: [0, 5].map((value, day) => ({ date: new Date(Date.UTC(2026, 0, 10 + day)), observedAt: new Date(Date.UTC(2026, 0, 10 + day)), value })),
+      }),
+    });
+    expect(result.warnings).toContain("Provider Label: 1 non-positive observation is hidden on the logarithmic scale.");
+  });
+
   test("keeps a panned dataset loaded to its newest observation, so the view can go back to it", async () => {
     // A daily series published days late, served only for the dates asked, as the map's series route does.
     const newest = Date.parse("2026-02-26T00:00:00.000Z");
@@ -607,7 +624,7 @@ describe("resolveChartSpecData", () => {
     // series editor agree on what the user added.
     expect(result.series.map((entry) => [entry.id, entry.points.length])).toEqual([["price", 0]]);
     expect(result.errors).toEqual([
-      "price: Requested 5m price history is unavailable for TEST. Choose Auto or a supported interval.",
+      "TEST: Requested 5m price history is unavailable for TEST.",
     ]);
   });
 
@@ -650,6 +667,48 @@ describe("resolveChartSpecData", () => {
       { resolution: "15m", maxRange: "1M" },
       { resolution: "1h", maxRange: "3M" },
     ]);
+  });
+
+  test("a 4h chart asks its source for hourly bars and draws them four at a time from the open", async () => {
+    const requestedResolutions: string[] = [];
+    const session = (day: string) => Array.from({ length: 7 }, (_, index) => ({
+      date: new Date(Date.parse(`${day}T13:30:00Z`) + index * 3_600_000),
+      open: 100 + index, high: 101 + index, low: 99 + index, close: 100.5 + index, volume: 10,
+    }));
+    const provider = createTestDataProvider({
+      getTickerFinancials: async () => emptyFinancials(),
+      getChartResolutionSupport: () => [{ resolution: "1h", maxRange: "1Y" }, { resolution: "1d", maxRange: "5Y" }],
+      getPriceHistoryForResolution: async (_symbol, _exchange, _range, resolution) => {
+        requestedResolutions.push(resolution);
+        return [...session("2026-10-15"), ...session("2026-10-16")];
+      },
+    });
+    const spec = (resolution: ChartSpec["viewport"]["resolution"]): ChartSpec => chartSpec({
+      viewport: { range: "1W", resolution },
+      series: [chartSeries({ source: { kind: "security", instrument: { symbol: "AAPL", exchange: "NASDAQ" }, fieldId: "market.close" } })],
+    });
+    const sources = { dataProvider: provider, now: new Date("2026-10-16T21:00:00Z"), loadFredSeries: async () => fredLoad() };
+
+    const result = await resolveChartSpecData(spec("4h"), sources);
+    expect(requestedResolutions).toEqual(["1h"]);
+    expect(result.barSize).toBe("4h");
+    const [price] = result.series;
+    expect(price?.barSize).toBe("4h");
+    expect(price?.timeBasis?.cadenceMs).toBe(4 * 3_600_000);
+    expect(price?.points.map((point) => [point.date.toISOString(), point.value])).toEqual([
+      ["2026-10-15T13:30:00.000Z", 103.5], ["2026-10-15T17:30:00.000Z", 106.5],
+      ["2026-10-16T13:30:00.000Z", 103.5], ["2026-10-16T17:30:00.000Z", 106.5],
+    ]);
+
+    // A source without hourly bars cannot build them: the chart says so and draws Auto.
+    const daily = createTestDataProvider({
+      getTickerFinancials: async () => emptyFinancials(),
+      getChartResolutionSupport: () => [{ resolution: "1d", maxRange: "5Y" }],
+      getPriceHistoryForResolution: async () => session("2026-10-16").slice(0, 1),
+    });
+    const fallback = await resolveChartSpecData(spec("4h"), { ...sources, dataProvider: daily });
+    expect(fallback.barSize).toBeUndefined();
+    expect(fallback.warnings).toContain("4H data is unavailable for this range. Auto resolution was used instead.");
   });
 
   test("picks a supported interval when the range preset is unsupported", async () => {
@@ -812,7 +871,7 @@ describe("resolveChartSpecData", () => {
       cache,
     );
     expect(manual.errors).toEqual([
-      "price: Requested 1m price history is unavailable for TEST:XNAS. Choose Auto or a supported interval.",
+      "TEST:XNAS: Requested 1m price history is unavailable for TEST:XNAS.",
     ]);
 
     const auto = await resolveChartSpecData(

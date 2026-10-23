@@ -1,9 +1,10 @@
 import type { AttentionPayload, AttentionWindow } from "./attention";
-import type { HiringBoard, HiringPayload } from "./hiring";
+import type { HiringBoard, HiringCompanyMoves, HiringMovesBoard, HiringMovesFilter, HiringPayload } from "./hiring";
 import type { AppAttentionFilter, AppAttentionPayload, AppRankPayload } from "./app-attention";
 import type { CatalystResponse, CatalystDetail, CatalystFilters, CatalystStatus, CatalystChanges } from "./catalysts";
 import type { KpisPayload, GuidancePayload, KpiQueryOptions } from "./company-kpis";
 import { companyDisclosurePath } from "./company-kpis";
+import { cloudExchangeAnnouncementsPath } from "./exchange-announcements";
 import type { PowerBoard, PowerDetail, PowerFilter, PowerHistory } from "./power";
 import type { PerpBoardPayload, PerpEquitiesPayload, PerpEquityListing, PerpHistoryPayload, PerpRankingsPayload, PerpBoardQuery, PerpHistoryQuery,
   PerpMarketPayload } from "./perps";
@@ -29,7 +30,7 @@ import type { IpoCalendarParams, IpoCalendarPayload } from "./ipo";
 import type { TickerChanges } from "../types/ticker-changes";
 import type { IssuerListings } from "../types/issuer-listings";
 import type { OrganizationTickersResponse } from "./organization-tickers";
-import type { CryptoMarketsPayload, StablecoinSupplyHistoryPayload, StablecoinSupplyPayload } from "./crypto-markets";
+import type { CryptoMarketsPayload, DefiTvlPayload, StablecoinSupplyHistoryPayload, StablecoinSupplyPayload } from "./crypto-markets";
 import type { CryptoEtfFlowAsset, CryptoEtfFlowsPayload } from "./crypto-etf-flows";
 import type { CentralBankRatesPayload } from "./central-bank-rates";
 import type { EstimateRevisionsPayload } from "./estimate-revisions";
@@ -75,6 +76,7 @@ import {
   cloudEarningsTranscriptPath,
   cloudJobsMoversPath,
   cloudJobsPath,
+  cloudJobsPostingPath,
   cloudJobsPostingsPath,
   type CloudJobsPostingsParams,
   type IssuerListingParams,
@@ -131,6 +133,7 @@ import type {
   CloudEarningsCallAudioPayload,
   CloudEarningsTranscriptPayload,
   CloudJobsMoversPayload,
+  CloudJobsPostingDetail,
   CloudJobsPostingsPayload,
   CloudJobsResponse,
   CloudProxyStatementListPayload,
@@ -236,9 +239,16 @@ export class CloudDataApi {
     return this.request<import("./members").FundMembersPayload>(`/cloud/members/${encodeURIComponent(fund)}`);
   }
 
+  /** A company's recent announcements on its exchange (ASX only); another exchange answers 404. */
+  getCloudExchangeAnnouncements(params: { symbol: string; exchange: string; limit?: number }) {
+    return this.request<import("./exchange-announcements").ExchangeAnnouncementsPayload>(
+      cloudExchangeAnnouncementsPath(params),
+    );
+  }
+
   /** A US-listed fund's fee, NAV, premium and net assets as its sponsor publishes them. */
-  getFundFacts(ticker: string) {
-    return this.request<import("./fund-facts").FundFactsPayload>(`/cloud/fund-facts/${encodeURIComponent(ticker)}`);
+  getFundFacts(ticker: string, options: { signal?: AbortSignal } = {}) {
+    return this.request<import("./fund-facts").FundFactsPayload>(`/cloud/fund-facts/${encodeURIComponent(ticker)}`, options.signal ? { signal: options.signal } : undefined);
   }
 
   getFundChanges(fund: string) {
@@ -600,6 +610,12 @@ export class CloudDataApi {
     return this.request<HiringBoard | HiringPayload>(symbol ? `/cloud/hiring/${encodeURIComponent(symbol)}` : `/cloud/hiring?${params}`, { signal });
   }
 
+  /** HIRE's moves: the board of the latest computed week, or one company's weeks. */
+  async getCloudHiringMoves(symbol?: string, query: { limit?: number; offset?: number; signal?: HiringMovesFilter } = {}, signal?: AbortSignal): Promise<HiringMovesBoard | HiringCompanyMoves> {
+    const params = new URLSearchParams({ limit: String(query.limit ?? 100), offset: String(query.offset ?? 0), signal: query.signal ?? "moves" });
+    return this.request<HiringMovesBoard | HiringCompanyMoves>(symbol ? `/cloud/hiring/moves/${encodeURIComponent(symbol)}` : `/cloud/hiring/moves?${params}`, { signal });
+  }
+
   async getCloudAppRankHistory(store: "app-store" | "google-play", appId: string, query: AppAttentionFilter = {}, signal?: AbortSignal): Promise<AppRankPayload> {
     const params = new URLSearchParams(Object.entries(query).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]));
     return this.request<AppRankPayload>(`/cloud/app-attention/app/${store}/${encodeURIComponent(appId)}?${params}`, { signal });
@@ -834,6 +850,11 @@ export class CloudDataApi {
     );
   }
 
+  /** Total DeFi TVL, the largest protocols and chains with 7D and 30D changes, and the total's daily history. */
+  async getCloudDefiTvl(): Promise<DefiTvlPayload> {
+    return this.request<DefiTvlPayload>("/cloud/crypto/defi/tvl", { signal: AbortSignal.timeout(30_000) });
+  }
+
   /** Daily net flows of the US spot bitcoin or ether ETFs, per fund, in US$ millions. */
   async getCloudCryptoEtfFlows(asset: CryptoEtfFlowAsset): Promise<CryptoEtfFlowsPayload> {
     return this.request<CryptoEtfFlowsPayload>(
@@ -992,6 +1013,10 @@ export class CloudDataApi {
     params: CloudJobsPostingsParams = {},
   ): Promise<CloudJobsPostingsPayload> {
     return this.request<CloudJobsPostingsPayload>(cloudJobsPostingsPath(ticker, params));
+  }
+
+  async getCloudJobsPosting(ticker: string, posting: { id: number } | { externalId: string }): Promise<CloudJobsPostingDetail> {
+    return this.request<CloudJobsPostingDetail>(cloudJobsPostingPath(ticker, posting));
   }
 
   async getCloudJobsMovers(limit?: number, offset?: number): Promise<CloudJobsMoversPayload> {
@@ -1195,8 +1220,9 @@ export class CloudDataApi {
   async searchCloudNews(
     query: string,
     limit?: number,
+    topics?: readonly string[],
   ): Promise<CloudNewsListResponse> {
-    return this.request<CloudNewsListResponse>(cloudNewsSearchPath(query, limit));
+    return this.request<CloudNewsListResponse>(cloudNewsSearchPath(query, limit, topics));
   }
 
   async getCloudNewsStory(storyId: string): Promise<CloudNewsPayload> {

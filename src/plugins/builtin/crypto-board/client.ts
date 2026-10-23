@@ -3,6 +3,7 @@ import { ApiRequestError } from "../../../api-client/errors";
 import type {
   CryptoMarketAsset,
   CryptoMarketsPayload,
+  DefiTvlPayload,
   StablecoinSupplyHistoryPayload,
   StablecoinSupplyPayload,
 } from "../../../api-client/crypto-markets";
@@ -280,4 +281,89 @@ export function loadStablecoinSupplyHistory(symbol: string) {
       throw supplyError(error, `${key} supply history`);
     }
   }, { validate: validateStablecoinSupplyHistory });
+}
+
+// DeFi TVL ---------------------------------------------------------------------
+
+const defiTvlCache = createPluginCache<DefiTvlPayload>({
+  kind: "defi-tvl",
+  source: "gloom-cloud",
+  schemaVersion: 1,
+  // The server reads the source once a UTC day; a month-old copy still dates itself.
+  policy: { staleMs: 30 * 60_000, expireMs: 30 * 86_400_000 },
+});
+
+export const DEFI_TVL_CACHES = [defiTvlCache] as const;
+
+const MAX_TVL_DAYS = 20_000;
+const tvlValue = (value: unknown) => value === null || (isFiniteNumber(value) && value >= 0);
+const changes = (entry: { change7d: unknown; change7dPercent: unknown; change30d: unknown; change30dPercent: unknown }) =>
+  [entry.change7d, entry.change7dPercent, entry.change30d, entry.change30dPercent].every(nullableNumber);
+
+export function validateDefiTvl(data: DefiTvlPayload): DefiTvlPayload {
+  const history = data?.history;
+  if (
+    !data
+    || data.version !== 1
+    || !instant(data.generatedAt)
+    || !nullableInstant(data.fetchedAt)
+    || !(data.asOf === null || date(data.asOf))
+    || !supplyStatus(data.status)
+    || !data.source
+    || typeof data.source.name !== "string"
+    || typeof data.source.url !== "string"
+    || (data.total !== null && (!data.total || !isFiniteNumber(data.total.tvl) || !changes(data.total)))
+    || !Array.isArray(data.protocols)
+    || data.protocols.length > 500
+    || !data.protocols.every((protocol) => !!protocol
+      && typeof protocol.name === "string"
+      && protocol.name.length > 0
+      && nullableString(protocol.category)
+      && Number.isInteger(protocol.chains)
+      && isFiniteNumber(protocol.tvl)
+      && protocol.tvl >= 0
+      && nullableNumber(protocol.change1dPercent)
+      && changes(protocol))
+    || !nullableInstant(data.protocolsAsOf)
+    || !Array.isArray(data.chains)
+    || data.chains.length > 500
+    || !data.chains.every((chain) => !!chain
+      && typeof chain.name === "string"
+      && chain.name.length > 0
+      && nullableString(chain.tokenSymbol)
+      && isFiniteNumber(chain.tvl)
+      && chain.tvl >= 0
+      && nullableNumber(chain.share)
+      && changes(chain))
+    || (history !== null && (
+      !history
+      || !date(history.start)
+      || !Array.isArray(history.total)
+      || history.total.length > MAX_TVL_DAYS
+      || !history.total.every(tvlValue)
+    ))
+    || !Array.isArray(data.warnings)
+    || data.warnings.some((warning) => typeof warning !== "string")
+  ) {
+    throw new Error("The server returned invalid DeFi TVL");
+  }
+  return data;
+}
+
+export async function fetchDefiTvl(
+  client: Pick<typeof apiClient, "getCloudDefiTvl"> = apiClient,
+): Promise<DefiTvlPayload> {
+  try {
+    return validateDefiTvl(await client.getCloudDefiTvl());
+  } catch (error) {
+    throw supplyError(error, "DeFi TVL");
+  }
+}
+
+export function cachedDefiTvl() {
+  return cachedCloudResource(defiTvlCache, "all", validateDefiTvl);
+}
+
+export function loadDefiTvl(force = false) {
+  return loadCloudResource(defiTvlCache, "all", () => fetchDefiTvl(), { force, validate: validateDefiTvl });
 }

@@ -24,9 +24,9 @@ import {
   quoteSessionLabel,
 } from "../../../market-data/market/status";
 import { appendQuoteToPriceReturnHistory, buildPriceReturnFields } from "../../../market-data/performance";
-import { changeBasisLabel, changeBasisNote, quoteChangeBasis } from "../../../market-data/market/change-basis";
+import { changeBasisLabel, changeBasisNote, quoteChangeBasis, quoteSettleText } from "../../../market-data/market/change-basis";
 import {
-  fitFuturesContractLines, futuresContractLines, futuresSettleText, isFuturesInstrument, minorUnitPricePer,
+  fitFuturesContractLines, futuresContractLines, isFuturesInstrument, futuresPricePer, usdPerMmbtu, usdPerMmbtuText,
   type FuturesContractLine,
 } from "../../../market-data/futures-contract";
 import { useViewport } from "../../../react/input";
@@ -221,7 +221,7 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
   const extendedQuote = getExtendedSessionDisplay(quote);
   // A price in cents says what it is per (314.95¢/lb), and the move what it is measured from (vs Fri 16 Oct close).
   const quotePriceText = sessionQuote
-    ? `${formatMarketPriceWithCurrency(sessionQuote.price, quote?.currency, moneyOptions)}${minorUnitPricePer(contractTerms, quote?.currency)}` : "";
+    ? `${formatMarketPriceWithCurrency(sessionQuote.price, quote?.currency, moneyOptions)}${futuresPricePer(contractTerms, quote?.currency)}` : "";
   // Nor a move: the close it ended on is where it stays.
   const quoteChangeText = sessionQuote && !delisted ? formatSignedMarketPrice(sessionQuote.change, moneyOptions) : "";
   const quotePercentText = sessionQuote && !delisted ? `(${formatPercentRaw(sessionQuote.changePercent)})` : "";
@@ -252,8 +252,17 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
   // The exchange settlement, dated by its session: a futures price is its latest trade.
   const settleLabel = t("Settle");
   const settleText = contractTerms
-    ? truncateToDisplayWidth(futuresSettleText(contractTerms, quote),
+    ? truncateToDisplayWidth(quoteSettleText(quote, contractTerms),
       Math.max(1, quoteTextWidth - displayWidth(settleLabel) - 1))
+    : "";
+  // European gas beside Henry Hub: "≈ $30.832/MMBtu at EUR/USD 1.1650", at the app's rate, a conversion that says so.
+  const inUsdLabel = t("In USD");
+  const gasCurrency = quote?.currency?.trim().toUpperCase() ?? "";
+  const gasUsdPerUnit = gasCurrency ? convertCurrency(1, gasCurrency, "USD", exchangeRates) : Number.NaN;
+  const gasInUsd = sessionQuote && gasCurrency ? usdPerMmbtu(sessionQuote.price, contractTerms, gasCurrency, gasUsdPerUnit) : null;
+  const inUsdText = gasInUsd != null
+    ? truncateToDisplayWidth(usdPerMmbtuText({ value: gasInUsd, currency: gasCurrency, usdPerUnit: gasUsdPerUnit }),
+      Math.max(1, quoteTextWidth - displayWidth(inUsdLabel) - 1))
     : "";
   const quoteChangeCells = delisted ? 0 : figureCells(quoteChangeText, "sub") + 1 + figureCells(quotePercentText, "sub");
   const stackQuoteChange = quoteChangeCells > quoteTextWidth;
@@ -321,8 +330,10 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
     profile,
     isin: ticker.metadata.isin,
   });
+  // Bars and the quote are dated on the listing's clock.
   const performanceFields = buildPriceReturnFields(
     appendQuoteToPriceReturnHistory(financials?.priceHistory ?? [], historyQuote),
+    ticker.metadata.exchange || quote?.listingExchangeName || quote?.exchangeName || undefined,
   );
   const hasPerformance = performanceFields.some((field) => field.value != null || field.unavailableReason);
   const positionRows = buildPositionRows({
@@ -425,6 +436,12 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
               <Box flexDirection="row" gap={1} minWidth={0} overflow="hidden">
                 <Text flexShrink={0} fg={colors.textDim}>{settleLabel}</Text>
                 <Text fg={colors.text}>{settleText}</Text>
+              </Box>
+            )}
+            {inUsdText && (
+              <Box flexDirection="row" gap={1} minWidth={0} overflow="hidden">
+                <Text flexShrink={0} fg={colors.textDim}>{inUsdLabel}</Text>
+                <Text fg={colors.textDim}>{inUsdText}</Text>
               </Box>
             )}
             {metadataParts.length > 0 && (

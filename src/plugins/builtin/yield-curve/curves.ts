@@ -5,7 +5,7 @@ import type { MoveHorizon } from "../shared/move-rank";
 import type { CurveBasis } from "./forward";
 import { yieldSpreads, type YieldLookbackCurves } from "./chart";
 import { completeYieldCurve, loadHistoricalYieldCurve, yieldCurveDate } from "./history";
-import { DATE_OPTION_FORMATS, readCalendarDate } from "../../../utils/calendar-date";
+import { DATE_OPTION_FORMATS, dateOptionHint, readCalendarDate } from "../../../utils/calendar-date";
 import { isYieldObservationDate, loadYieldCurve, type YieldPoint } from "./treasury-data";
 
 export type CurveId = CloudCurveId;
@@ -178,7 +178,7 @@ export async function loadComparePoints(curve: CurveId, date: string, client: Cu
 }
 
 const RELATIVE = /^(\d{1,2})([DWMY])$/i;
-const COMPARE_HELP = `Compare with a date as ${DATE_OPTION_FORMATS}, or a span such as 1D, 1W, 3M or 1Y.`;
+const COMPARE_FORMS = `Compare with a date as ${DATE_OPTION_FORMATS}, or a span such as 1D, 1W, 3M or 1Y`;
 
 /** A span back from the session (1D, 1W, 3M, 1Y): what the compare field takes besides a date. */
 export function isCompareSpan(value: string): boolean {
@@ -191,12 +191,15 @@ export function isCompareSpan(value: string): boolean {
  * session (1D, 1W, 3M, 1Y). Empty turns comparing off. Anything else gets the
  * help for both forms, not the as-of field's date-only message.
  */
-export function parseCompareInput(value: string, now = new Date()): string {
+export function parseCompareInput(value: string, now = new Date(), option = ""): string {
   const text = value.trim();
   if (!text) return "";
   if (isCompareSpan(text)) return text.toUpperCase();
   const date = readCalendarDate(text);
-  if (!date) throw new Error(COMPARE_HELP);
+  if (!date) {
+    const hint = dateOptionHint(text, option);
+    throw new Error(hint ? `${COMPARE_FORMS}: ${hint}.` : `${COMPARE_FORMS}.`);
+  }
   return yieldCurveDate(date, now);
 }
 

@@ -5,7 +5,7 @@ import { createTestDataProvider } from "../../../test-support/data-provider";
 import { createSnapshotDataProvider } from "../../../market-data/snapshot-provider";
 import { chartHeadless, loadChartPaneModel, type ChartPaneModel } from "./headless";
 import { buildIntradayPriceChartPreset } from "./presets";
-import { loadIntradayWindow, resolveIntradaySessionWindow } from "./session-history";
+import { loadIntradayWindow, resolveIntradayRequest, resolveIntradaySessionWindow } from "./session-history";
 
 // Synthetic domain boundary, not a replay of a published exchange tape. CME
 // permits negative CL prices: cmegroup.com/notices/clearing/2020/04/Chadv20-160.html
@@ -215,5 +215,14 @@ describe("intraday sessions on the exchange clock", () => {
     expect(requested!.map((bound) => bound.toISOString())).toEqual(["2026-10-12T13:00:00.000Z", "2026-10-13T13:00:00.000Z"]);
     expect(loaded.start?.toISOString()).toBe("2026-10-12T23:00:00.000Z");
     expect(loaded.points).toHaveLength(12);
+  });
+});
+
+describe("--session", () => {
+  test("reads a day as any date option does, and says what to type for one written day first", () => {
+    expect(resolveIntradayRequest({ session: " 20.04.2020 " }).session).toBe("2020-04-20");
+    expect(resolveIntradayRequest({ session: "Apr 20 2020" }).session).toBe("2020-04-20");
+    expect(() => resolveIntradayRequest({ session: "20/04/2020" })).toThrow('Invalid --session value "20/04/2020". Use a session date as');
+    expect(() => resolveIntradayRequest({ session: "20/04/2020" })).toThrow("type --session 2020-04-20 for 20/04/2020");
   });
 });

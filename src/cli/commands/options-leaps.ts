@@ -8,15 +8,15 @@ import { formatCountCell } from "../helpers";
 import { cliStyles, renderTable, type CliTableColumn } from "../../utils/cli-output";
 import { errorMessage } from "../../utils/errors";
 import { numberErrorMessage, rangeErrorMessage } from "../../utils/decimal-comma";
-import { expiryIsoDate, OPTION_EXPIRATION_FORMAT, parseOptionExpiration } from "../../utils/option-expiry";
+import { expirationHint, expiryIsoDate, OPTION_EXPIRATION_FORMAT, parseOptionExpiration } from "../../utils/option-expiry";
 import { dateOptionError, readCalendarDate } from "../../utils/calendar-date";
 import { isFundType } from "../../utils/sec";
-import { zonedDateKey } from "../../utils/zoned-date-time";
 import { daysToExpiryFrom, optionMid, type OptionSide } from "../../plugins/builtin/shared/volatility";
 import { optionQuoteValuationTime } from "../../plugins/builtin/vol-surface/model";
 import { optionBreakeven, optionCarry, optionCarryNet, optionSpreadPercent } from "../../plugins/builtin/options/carry";
 import { parseDeltaBand } from "../../plugins/builtin/options/strike-window";
 import { ivSymbol, loadIvScreen, type IvScreenRow } from "../../plugins/builtin/iv-history/client";
+import { newYorkDay, resolveListingEvents, upcomingReportDate } from "../../plugins/builtin/shared/earnings-calendar";
 import {
   chainWithModelFigures, loadOptionModelInputs, loadUnderlyingFinancials, OPTION_MODEL_RATE, type OptionModelInputs,
 } from "./options-chain";
@@ -26,8 +26,9 @@ import { takeFlag, takeOption } from "./command-utils";
  * `gloomberb options <symbol...> --leaps`: long-dated contracts ranked across
  * symbols for a stock replacement, by what the time value costs per year.
  * Delta, IV and carry come from the same solver and formulas as the options
- * pane (`carry.ts`, `analytics.ts`); IV rank, the next report and the
- * ex-dividend date from the same sources as OMON, OVDV and DES.
+ * pane (`carry.ts`, `analytics.ts`); IV rank and the ex-dividend date from
+ * the same sources as OVDV and DES, and the next report as `earnings`, EE and
+ * ERN resolve it.
  */
 export const LEAPS_USAGE = "options <symbol...> --leaps [--side calls|puts] [--delta <low-high>] [--max-spread <percent>] "
   + "[--min-oi <contracts>] [--min-days <days>] [--max-days <days>] [--expiry-from <date>] [--expiry-to <date>] "
@@ -163,7 +164,7 @@ function parseLeapsWindow(raw: Record<string, string | undefined>, now: number):
       return { error: "--expiration reads one expiry; give it alone, or a range with --expiry-from and --expiry-to." };
     }
     const seconds = parseOptionExpiration(expiration);
-    if (seconds == null) return { error: `Invalid --expiration "${expiration}". Use ${OPTION_EXPIRATION_FORMAT}.` };
+    if (seconds == null) return { error: `Invalid --expiration "${expiration}". Use ${OPTION_EXPIRATION_FORMAT}.${expirationHint(expiration)}` };
     window.expiryFrom = window.expiryTo = expiryIsoDate(seconds);
   }
   const fromFlag = expiration != null ? "--expiration" : "--expiry-from";
@@ -518,9 +519,26 @@ async function loadLeapsIvRanks(listings: readonly CliListing[]): Promise<LeapsI
   }
 }
 
+/** Each symbol's next report date for every symbol in one calendar read, as `earnings` resolves it; a failed read is one reason for all. */
+type LeapsNextReports = { dates: Map<string, string | null>; error: string | null };
+
+async function loadLeapsNextReports(market: MarketContext, listings: readonly CliListing[], now: number): Promise<LeapsNextReports> {
+  const keys = listings.map((listing) => listing.key);
+  try {
+    const events = await market.dataProvider.getEarningsCalendar?.(keys) ?? [];
+    const resolved = await resolveListingEvents(market.dataProvider, listings.map((listing) => ({
+      key: listing.key, symbol: listing.request.symbol, exchange: listing.request.exchange,
+    })), events, newYorkDay(now));
+    return { dates: new Map(keys.map((key) => [key.toUpperCase(), upcomingReportDate(resolved.get(key.toUpperCase()))])), error: null };
+  } catch (error) {
+    return { dates: new Map(), error: errorMessage(error) ?? "no response" };
+  }
+}
+
 /**
  * The underlying's `--columns` figures and, in one phrase, what of them it
- * lacks: IV rank from Cloud IV history; the next report and the latest
+ * lacks: IV rank from Cloud IV history; the next report from the earnings
+ * calendar, resolved as every earnings surface resolves it; the latest
  * ex-dividend date from the financials DES reads, which also give the dividend
  * yield delta is valued at. A fund reports no earnings, and a stock paying no
  * dividend has no ex-date, so neither is named as missing.
@@ -532,7 +550,7 @@ function underlyingFigures(
   instrumentType: string | undefined,
   dividendYield: number | undefined,
   ivRanks: LeapsIvRanks | null,
-  now: number,
+  nextReports: LeapsNextReports | null,
 ): { figures: LeapsUnderlying; missing: string[] } {
   const figures: LeapsUnderlying = {};
   const missing: string[] = [];
@@ -549,21 +567,20 @@ function underlyingFigures(
       missing.push(`no IV rank${reason ? ` (${reason})` : ""}`);
     }
   }
-  const today = zonedDateKey(now, "America/New_York");
   if (columns.has("next-earnings")) {
-    const next = financials?.nextEarnings?.date;
-    figures.nextEarnings = next && ISO_DATE.test(next) && next >= today ? next : null;
+    figures.nextEarnings = nextReports?.dates.get(listing.key.toUpperCase()) ?? null;
+    // A failed calendar read is said once for every symbol.
+    if (figures.nextEarnings == null && !nextReports?.error && !isFundType(instrumentType)) missing.push("no upcoming earnings date");
   }
   if (columns.has("ex-dividend")) {
     const exDate = financials?.fundamentals?.exDividendDate;
     figures.exDividend = exDate && ISO_DATE.test(exDate) ? exDate : null;
   }
   if (columns.has("carry-net")) figures.dividendYield = dividendYield ?? null;
-  if (financials == null && (columns.has("next-earnings") || columns.has("ex-dividend") || columns.has("carry-net"))) {
-    missing.push(columns.has("carry-net") ? "no earnings or dividend data, so carry-net counts no dividends" : "no earnings or dividend data");
+  if (financials == null && (columns.has("ex-dividend") || columns.has("carry-net"))) {
+    missing.push(columns.has("carry-net") ? "no dividend data, so carry-net counts no dividends" : "no dividend data");
     return { figures, missing };
   }
-  if (columns.has("next-earnings") && figures.nextEarnings == null && !isFundType(instrumentType)) missing.push("no upcoming earnings date");
   if (columns.has("ex-dividend") && figures.exDividend == null && dividendYield !== 0) missing.push("no ex-dividend date");
   if (columns.has("carry-net") && dividendYield == null) missing.push("dividend yield unknown, so carry-net counts no dividends");
   return { figures, missing };
@@ -576,11 +593,12 @@ async function screenSymbol(
   refresh: boolean,
   limit: ReturnType<typeof concurrencyLimit>,
   ivRanks: Promise<LeapsIvRanks> | null,
+  nextReports: Promise<LeapsNextReports> | null,
   now: number,
 ): Promise<{ result: LeapsSymbolResult; rows: LeapsRow[]; warning: string | null }> {
   const symbol = listing.key;
   const quote = loadListingQuote(market.dataProvider, listing);
-  // One read of the financials gives delta its dividend yield and --columns the report and ex-dividend dates.
+  // One read of the financials gives delta its dividend yield and --columns the ex-dividend date.
   const financials = loadUnderlyingFinancials(market.dataProvider, listing, refresh);
   const inputsPromise = loadOptionModelInputs(market.dataProvider, listing, quote, refresh, financials);
   const fail = (error: string, spot: number | null = null) => ({
@@ -628,7 +646,7 @@ async function screenSymbol(
   const underlying: { figures: LeapsUnderlying; missing: string[] } = columns.size === 0
     ? { figures: {}, missing: [] }
     : underlyingFigures(listing, columns, await financials, inputs.quote?.instrumentType ?? (await quote)?.instrumentType,
-      inputs.dividendYield, ivRanks ? await ivRanks : null, now);
+      inputs.dividendYield, ivRanks ? await ivRanks : null, nextReports ? await nextReports : null);
   // Each row carries the underlying's figures; the dividend yield behind carry-net is in `symbols`.
   const rowFigures: LeapsUnderlying = { ...underlying.figures };
   delete rowFigures.dividendYield;
@@ -775,7 +793,9 @@ export async function runLeapsScreen(
   const limit = concurrencyLimit(LEAPS_CHAIN_CONCURRENCY);
   // IV rank is one request for every symbol, read beside the chains and only when asked for.
   const ivRanks = criteria.columns.includes("ivr") ? loadLeapsIvRanks(listings) : null;
-  const screened = await Promise.all(listings.map((listing) => screenSymbol(market, listing, criteria, refresh, limit, ivRanks, now)));
+  // The next reports are one calendar read for every symbol, likewise.
+  const nextReports = criteria.columns.includes("next-earnings") ? loadLeapsNextReports(market, listings, now) : null;
+  const screened = await Promise.all(listings.map((listing) => screenSymbol(market, listing, criteria, refresh, limit, ivRanks, nextReports, now)));
   const symbols = screened.map((entry) => entry.result);
   // Nothing to rank only when no symbol's chain loaded at all; a symbol without LEAPS is an answer.
   if (symbols.every((entry) => entry.error?.startsWith("options chain unavailable"))) {
@@ -783,10 +803,12 @@ export async function runLeapsScreen(
   }
   const rows = sortLeapsRows(screened.flatMap((entry) => entry.rows), criteria.sort);
   const ivRankError = ivRanks ? (await ivRanks).error : null;
+  const nextReportsError = nextReports ? (await nextReports).error : null;
   const warnings = [
     ...listings.flatMap(listingReadNotes),
     ...screened.map((entry) => entry.warning).filter((warning): warning is string => warning != null),
     ...ivRankError ? [`IV rank unavailable (${ivRankError})`] : [],
+    ...nextReportsError ? [`Next earnings unavailable (${nextReportsError})`] : [],
   ];
   const { format, limit: rowLimit, tail } = ctx.cliOptions;
   const capped = format === "text" && rowLimit == null && tail == null && rows.length > LEAPS_TEXT_ROWS;

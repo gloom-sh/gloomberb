@@ -1,6 +1,7 @@
 import type { EarningsField, FinancialStatement } from "../../../../types/financials";
 import { completeAvailability, statementFieldAvailability } from "../../../../utils/financial-statements";
 import { hasStatementGap } from "../../../../utils/statement-gaps";
+import { trailingEpsAcrossFiscalYearEnd } from "../../../../utils/trailing-eps";
 
 export type FinancialPeriod = "annual" | "quarterly";
 
@@ -159,6 +160,8 @@ const BALANCE_KEYS = new Set<string>([
 function aggregateQuarterlyStatements(
   statements: FinancialStatement[],
   date: string,
+  /** Every quarter and fiscal year on file, for EPS across a fiscal Q4 that reports none. */
+  onFile: { quarterly: readonly FinancialStatement[]; annual: readonly FinancialStatement[] } = { quarterly: [], annual: [] },
 ): FinancialTableStatement | null {
   if (statements.length !== 4) return null;
   // A provider may return semiannual reports or skip a quarter. Four rows do
@@ -215,6 +218,11 @@ function aggregateQuarterlyStatements(
     if (values.length === 4) {
       (aggregate as unknown as Record<string, unknown>)[key] = values.reduce((left, right) => left + right, 0);
       retainAvailability(key, statements);
+    } else if (key === "eps" || key === "basicEps") {
+      const acrossYearEnd = trailingEpsAcrossFiscalYearEnd(statements, onFile.quarterly, onFile.annual, key);
+      if (!acrossYearEnd) continue;
+      aggregate[key] = acrossYearEnd.value;
+      retainAvailability(key, acrossYearEnd.inputs);
     }
   }
 
@@ -252,18 +260,24 @@ function aggregateQuarterlyStatements(
  * reads a flow over a year from. Null when fewer than four consecutive
  * quarters end there.
  */
-export function trailingFourQuarters(quarterlyStatements: readonly FinancialStatement[], end: string) {
+export function trailingFourQuarters(
+  quarterlyStatements: readonly FinancialStatement[],
+  end: string,
+  annualStatements: readonly FinancialStatement[] = [],
+) {
   const sorted = [...quarterlyStatements].sort((a, b) => a.date.localeCompare(b.date));
   const index = sorted.findIndex((statement) => statement.date === end);
-  return index < 3 ? null : aggregateQuarterlyStatements(sorted.slice(index - 3, index + 1), "TTM");
+  return index < 3 ? null : aggregateQuarterlyStatements(sorted.slice(index - 3, index + 1), "TTM", { quarterly: sorted, annual: annualStatements });
 }
 
-export function computeTTM(quarterlyStatements: FinancialStatement[]) {
-  return aggregateQuarterlyStatements([...quarterlyStatements].sort((a, b) => a.date.localeCompare(b.date)).slice(-4), "TTM");
+export function computeTTM(quarterlyStatements: FinancialStatement[], annualStatements: readonly FinancialStatement[] = []) {
+  const sorted = [...quarterlyStatements].sort((a, b) => a.date.localeCompare(b.date));
+  return aggregateQuarterlyStatements(sorted.slice(-4), "TTM", { quarterly: sorted, annual: annualStatements });
 }
 
-function computePreviousTtm(quarterlyStatements: FinancialStatement[]) {
-  return aggregateQuarterlyStatements([...quarterlyStatements].sort((a, b) => a.date.localeCompare(b.date)).slice(-8, -4), "prevTTM");
+function computePreviousTtm(quarterlyStatements: FinancialStatement[], annualStatements: readonly FinancialStatement[]) {
+  const sorted = [...quarterlyStatements].sort((a, b) => a.date.localeCompare(b.date));
+  return aggregateQuarterlyStatements(sorted.slice(-8, -4), "prevTTM", { quarterly: sorted, annual: annualStatements });
 }
 
 export function buildPreviousStatementMap(
@@ -295,7 +309,7 @@ export function buildPreviousStatementMap(
   }
 
   if (ttm) {
-    const previousTtm = computePreviousTtm(quarterlyStatements);
+    const previousTtm = computePreviousTtm(quarterlyStatements, annualStatements);
     const latest = quarterlyStatements.at(-1);
     const prior = quarterlyStatements.at(-5);
     const days = latest && prior ? (Date.parse(latest.date) - Date.parse(prior.date)) / 86_400_000 : NaN;

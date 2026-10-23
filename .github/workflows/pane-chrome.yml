@@ -29,6 +29,13 @@ on:
       - "src/components/chart/composite/**"
       - "src/components/chart/native/raster/**"
       - "src/time-series/resolve.ts"
+      - "src/time-series/resolve-context.ts"
+      - "src/time-series/chart-bounds.ts"
+      - "src/time-series/history-acquisition.ts"
+      - "src/time-series/base-series.ts"
+      - "src/time-series/series-presentation.ts"
+      - "src/time-series/chart-seed.ts"
+      - "src/time-series/tail-reconcile.ts"
       - "src/time-series/use-chart-resolution.ts"
       - "src/time-series/parsed-history-cache.ts"
       - "src/components/metric-treemap/**"
@@ -129,6 +136,11 @@ jobs:
       - name: Show chat after mount and asynchronous channel transitions
         run: bun scripts/pane-chrome/chat-latency.ts --lifecycle --multiple --quick --check --label chat-lifecycle
 
+      - name: Keep chat and other scrollports visible after window cycling
+        run: |
+          flock ~/.cache/gloom-announce-render.lock nice -n19 bun scripts/pane-chrome/chat-latency.ts --pane-return --quick --check --label chat-pane-return
+          flock ~/.cache/gloom-announce-render.lock nice -n19 bun scripts/pane-chrome/chat-latency.ts --layout-return --quick --check --label chat-layout-return
+
       - name: Keep chat input profiles
         if: failure()
         uses: actions/upload-artifact@v4
@@ -137,6 +149,8 @@ jobs:
           path: |
             ~/.cache/gloomberb-pane-chrome/chat-latency
             ~/.cache/gloomberb-pane-chrome/chat-lifecycle
+            ~/.cache/gloomberb-pane-chrome/chat-pane-return
+            ~/.cache/gloomberb-pane-chrome/chat-layout-return
           if-no-files-found: ignore
 
       - name: Keep screenshots of failed steps
@@ -169,6 +183,11 @@ jobs:
       - name: Paint cold and warm channel opens
         run: flock ~/.cache/gloom-announce-render.lock nice -n19 bun scripts/pane-chrome/chat-latency.ts --webkit --open-only --quick --check --label chat-webkit-open
 
+      - name: Keep chat and other scrollports visible after window cycling
+        run: |
+          flock ~/.cache/gloom-announce-render.lock nice -n19 bun scripts/pane-chrome/chat-latency.ts --webkit --pane-return --quick --check --label chat-webkit-return
+          flock ~/.cache/gloom-announce-render.lock nice -n19 bun scripts/pane-chrome/chat-latency.ts --webkit --layout-return --quick --check --label chat-webkit-layout-return
+
       - name: Keep chat paint evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -181,6 +200,10 @@ jobs:
             ~/.cache/gloomberb-pane-chrome/chat-webkit-detached/*.png
             ~/.cache/gloomberb-pane-chrome/chat-webkit-open/samples.json
             ~/.cache/gloomberb-pane-chrome/chat-webkit-open/*.png
+            ~/.cache/gloomberb-pane-chrome/chat-webkit-return/samples.json
+            ~/.cache/gloomberb-pane-chrome/chat-webkit-return/*.png
+            ~/.cache/gloomberb-pane-chrome/chat-webkit-layout-return/samples.json
+            ~/.cache/gloomberb-pane-chrome/chat-webkit-layout-return/*.png
           if-no-files-found: ignore
 
   copy-screenshot:

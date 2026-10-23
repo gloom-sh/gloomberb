@@ -59,3 +59,50 @@ const CRYPTO_PAIR = /^[A-Z0-9]{1,15}-(?:USD|EUR|GBP|USDT|USDC|BTC)$/;
 export function isCryptoPairSymbol(symbol: string): boolean {
   return CRYPTO_PAIR.test(symbol);
 }
+
+/**
+ * The coins whose bare ticker is most often typed for the coin itself, with
+ * how stories and notes name each: the name a listing's own may not say
+ * plainly ("Bitcoin USD").
+ */
+export const MAJOR_COIN_NAMES: ReadonlyMap<string, string> = new Map([
+  ["BTC", "bitcoin"],
+  ["ETH", "ethereum"],
+  ["SOL", "solana"],
+  ["XRP", "XRP"],
+  ["DOGE", "dogecoin"],
+  ["ADA", "cardano"],
+  ["LTC", "litecoin"],
+  ["BCH", "bitcoin cash"],
+  ["AVAX", "avalanche"],
+  ["DOT", "polkadot"],
+  ["LINK", "chainlink"],
+  ["BNB", "BNB"],
+]);
+
+const COIN_PAIR = /^([A-Z0-9]{1,15})[-/](?:USD|EUR|GBP|USDT|USDC|BTC)$/;
+// What a pair's listing name adds after the coin's: its quote currency, an id in brackets.
+const PAIR_NAME_SUFFIX = /(?:\s*\([^)]*\))+$|\s+(?:USD|EUR|GBP|USDT|USDC|BTC|US Dollars?)$/i;
+
+/**
+ * The coin a crypto pair trades, as stories name it: "bitcoin" for BTC-USD
+ * (or BTC-USD on CCC), from the major coins' names, else the listing's name
+ * without its quote currency ("Hyperliquid USD" is "hyperliquid"). Null for a
+ * symbol that is not a coin pair, and for a coin with no name to search for:
+ * its code alone (TON, UNI) is too often a word.
+ */
+export function coinSearchName(symbol: string | undefined, exchange?: string, listingName?: string | null): string | null {
+  if (!symbol || !isRoundTheClockCoin(symbol, exchange)) return null;
+  const parsed = parsePublicTickerKey(symbol).symbol.trim().toUpperCase();
+  const code = COIN_PAIR.exec(parsed)?.[1] ?? parsed;
+  if (isIsoCurrencyCode(code)) return null;
+  const major = MAJOR_COIN_NAMES.get(code);
+  if (major) return major;
+  let name = listingName?.trim() ?? "";
+  for (let previous = ""; previous !== name;) {
+    previous = name;
+    name = name.replace(PAIR_NAME_SUFFIX, "").trim();
+  }
+  if (name.length < 3 || name.toUpperCase() === code || !/\p{L}/u.test(name)) return null;
+  return name === name.toUpperCase() ? name : name.toLowerCase();
+}

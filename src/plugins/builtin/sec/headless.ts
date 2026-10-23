@@ -4,6 +4,7 @@ import type {
   HeadlessPaneContext,
   HeadlessPaneDefinition,
   HeadlessPaneLoadArgs,
+  HeadlessPaneRow,
 } from "../../../types/plugin";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { US_FUND_FACTS_ONLY } from "../../../utils/sec";
@@ -11,13 +12,14 @@ import type { SecFilingItem } from "../../../types/data-provider";
 import type { FundFactsPayload } from "../../../api-client/fund-facts";
 import { errorMessage } from "../../../utils/errors";
 import { loadSecFilings } from "./client";
-import { ETF_FILING_FORMS, filingFormMatches, filterFilingsByForms, SEC_FILING_FETCH_LIMIT } from "./forms";
+import { ETF_FILING_FORMS, filingFormMatches, filterFilingsByForms, fundSeriesFilings, SEC_FILING_FETCH_LIMIT } from "./forms";
 import { hiddenFilingsNote, loadLatestFilings } from "../../../utils/sec-filings";
 import { buildSecFilingRows, secFilingIssuers, SEC_ACCEPTANCE_NOTE } from "./model";
 import { SEC_FILINGS } from "../shared/report-freshness";
 import { fetchFundFacts, fundFactEntries, fundFactPublishers, fundFactsEmpty, fundFactsErrorText, fundFactsStaleNote, listNames } from "./fund-facts";
 import { REPORT_ROWS } from "../shared/headless-options";
 import { fundAbroadProfile, venueAbroad, type FundAbroadProfile } from "./fund-abroad";
+import { listingAnnouncementsPage } from "../../../utils/exchange-announcements";
 
 const SEC_COLUMNS: HeadlessPaneColumn[] = [
   {
@@ -32,6 +34,27 @@ const SEC_COLUMNS: HeadlessPaneColumn[] = [
   { key: "items", header: "Items" },
   { key: "accessionNumber", header: "Accession" },
 ];
+
+/** Some row has 8-K item codes; a column every row leaves `-` takes no room in the text table (exports keep it). */
+const hasItems = (rows: readonly HeadlessPaneRow[]) => rows.some((row) => typeof row.items === "string" && row.items !== "");
+
+function secTextColumns(rows: readonly HeadlessPaneRow[]): HeadlessPaneColumn[] {
+  return hasItems(rows) ? SEC_COLUMNS : SEC_COLUMNS.filter((column) => column.key !== "items");
+}
+
+/**
+ * A fund's filings as the text report prints them. Filed, Form and what the
+ * filing is stay in a narrow table: below 100 columns the acceptance time is
+ * left out. Every row is the fund's registrant's (its trust), so no Issuer
+ * column repeats it, as the pane's list names a filer only when there are
+ * several; exports keep it.
+ */
+function fundFilingTextColumns(rows: readonly HeadlessPaneRow[]): HeadlessPaneColumn[] {
+  const issuers = new Set(rows.map((row) => row.cik));
+  return secTextColumns(rows)
+    .filter((column) => column.key !== "companyName" || issuers.size > 1)
+    .map((column) => column.key === "acceptanceReported" ? { ...column, minTableWidth: 100 } : column);
+}
 
 export interface SecHeadlessDependencies {
   loadFilings(
@@ -111,10 +134,15 @@ export function createSecHeadless(dependencies: SecHeadlessDependencies = defaul
           ? { filings: (await load(limit)).slice(0, limit), hidden: null }
           : await loadLatestFilings(load, limit);
       const note = hidden && hiddenFilingsNote(hidden);
+      const rows = buildSecFilingRows(filings);
+      // A listing abroad whose company files nothing with the SEC says where its exchange publishes its announcements.
+      const page = !form && filings.length === 0 ? listingAnnouncementsPage(symbol) : null;
       return {
-        rows: buildSecFilingRows(filings),
+        rows,
+        textColumns: secTextColumns(rows),
         ...(note ? { notes: [note] } : {}),
-        ...(form ? { empty: `No ${form} filings found for ${symbol}.` } : {}),
+        ...(form ? { empty: `No ${form} filings found for ${symbol}.` }
+          : page ? { empty: `${symbol} files no SEC reports. ${page.name}: ${page.url}` } : {}),
         metadata: {
           acceptanceNote: SEC_ACCEPTANCE_NOTE,
           symbol,
@@ -215,7 +243,8 @@ export function createFundHeadless(dependencies: FundHeadlessDependencies = defa
       if (factsResult.status === "rejected" && filingsResult.status === "rejected") throw filingsResult.reason;
       const facts = factsResult.status === "fulfilled" ? factsResult.value : null;
       const issuerFilings = filingsResult.status === "fulfilled" ? filingsResult.value : [];
-      const filings = filterFilingsByForms(issuerFilings, ETF_FILING_FORMS).slice(0, limit);
+      // A trust's list holds every fund it runs; the fund's own series is the view.
+      const filings = filterFilingsByForms(fundSeriesFilings(issuerFilings), ETF_FILING_FORMS).slice(0, limit);
       const searchedAll = issuerFilings.length < SEC_FILING_FETCH_LIMIT;
       const filingsEmpty = filingsResult.status === "rejected"
         ? `Fund filings unavailable: ${errorMessage(filingsResult.reason)}`
@@ -228,10 +257,11 @@ export function createFundHeadless(dependencies: FundHeadlessDependencies = defa
           ? fundFactsErrorText(factsResult.reason)
           : fundFactsEmpty(symbol, facts, !filingsPointToSec) };
       const publishers = facts?.covered ? fundFactPublishers(facts) : [];
+      const filingRows = buildSecFilingRows(filings);
       return {
         sections: [
           factsSection,
-          { title: "Fund filings", columns: SEC_COLUMNS, rows: buildSecFilingRows(filings), ...(filings.length === 0 ? { empty: filingsEmpty } : {}) },
+          { title: "Fund filings", columns: SEC_COLUMNS, textColumns: fundFilingTextColumns(filingRows), rows: filingRows, ...(filings.length === 0 ? { empty: filingsEmpty } : {}) },
         ],
         complete: !!facts?.covered && filingsResult.status === "fulfilled" && searchedAll,
         errors: [

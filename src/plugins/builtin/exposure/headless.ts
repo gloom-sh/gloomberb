@@ -4,6 +4,7 @@ import { cliTerminalWidth } from "../../../utils/cli-output";
 import { clipToDisplayWidth, displayWidth } from "../../../utils/format";
 import { fiscalLabel } from "../company-kpis/model";
 import { humanLabel } from "../shared/research-cells";
+import { freePreviewNote } from "../shared/free-preview";
 import { fetchExposure, fetchScenarios } from "./client";
 import { DEFAULT_SCENARIO, exposureCellText, parseCustomScenario, parseHoldings, pathRows, portfolioRows, scenarioTitle, tableRows, TABS, type ExposureRow } from "./model";
 import { portfolioHoldings, watchlistHoldings } from "./holdings";
@@ -183,6 +184,25 @@ function portfolioColumns(data: ExposurePayload, concentration: boolean, items: 
 
 const CONCENTRATION_VIEWS = ["country", "supplier", "customer"] as const;
 
+/** The server's own line about a preview ("Free preview covers the first holding at depth 1. ..."): what the view is, not what failed. */
+const PREVIEW_NOTE = /^Free preview\b/i;
+
+/**
+ * A free preview's Pro line in the words every report uses, and what the
+ * server says about the preview as a note: its first sentence is the Pro
+ * line's, the rest (how the totals are weighted) stays. The other unknowns
+ * are the report's errors.
+ */
+function previewLines(data: Pick<ExposurePayload, "access" | "lockedHoldings" | "unknowns">): { lock: string[]; notes: string[]; unknowns: string[] } {
+  const preview = data.access === "preview";
+  const notes = preview ? data.unknowns.filter(line => PREVIEW_NOTE.test(line))
+    .map(line => line.replace(/^Free preview[^.]*\.\s*/i, "").trim()).filter(Boolean) : [];
+  const others = preview ? data.unknowns.filter(line => !PREVIEW_NOTE.test(line)) : data.unknowns;
+  const lock = preview ? [freePreviewNote({ shows: "the first holding, one relationship hop deep",
+    adds: `${data.lockedHoldings === 1 ? "the other holding and " : data.lockedHoldings > 1 ? `the other ${data.lockedHoldings} holdings and ` : ""}paths up to four hops` })] : [];
+  return { lock, notes, unknowns: others };
+}
+
 export const exposureHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle",
   freshness: { status: "not-a-feed", basis: "company disclosures" },
@@ -227,8 +247,9 @@ export const exposureHeadless: HeadlessPaneDefinition<"bundle"> = {
     const stress = withNotes(portfolioRows(data, "stress"), row => row.incomplete ? row.unknowns : []);
     const concentrations = CONCENTRATION_VIEWS.flatMap(kind => portfolioRows(data, kind).map(row => ({ ...row, kind })));
     const holdingRows = tableRows(data), paths = pathRows(data);
+    const preview = previewLines(data);
     return { complete: data.lockedHoldings === 0 && data.holdings.every(h => h.status === "quantified") && data.unknowns.length === 0,
-      errors: [...data.unknowns, ...(data.access === "preview" ? ["Free preview: one holding, depth one. Full analysis requires Pro."] : [])],
+      errors: [...preview.lock, ...preview.unknowns], ...(preview.notes.length ? { notes: preview.notes } : {}),
       sections: [
         { title: "Holdings", rows: data.holdings.map(h => ({ symbol: h.symbol, weight: h.weight, status: h.status, measures: h.measures, coverage: h.coverage, unknowns: h.unknowns })),
           textColumns: fitted(holdingColumns(data), holdingRows), textRows: textRows(holdingRows) },

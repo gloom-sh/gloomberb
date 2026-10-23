@@ -61,6 +61,7 @@ function fixture(reverse = false, missingQuote?: string) {
     }));
   }
   const coordinator = new MarketDataCoordinator(createTestDataProvider());
+  restore.push(() => coordinator.destroy());
   for (const id of ["a", "b"]) {
     if (id === missingQuote) continue;
     coordinator.primeCachedFinancials([{ instrument: instrumentFromTicker(tickers.get("ACME"), "ACME", { portfolioId: id })!,
@@ -180,6 +181,7 @@ test("actual shared-portfolio preview uses its selected quote and history contra
   stub(apiClient, "getCurrentUser", () => null);
   stub(apiClient, "getAccountProfile", async () => ({ sharedPortfolioId: "b", profilePublic: false } as AccountProfile));
   stub(apiClient, "getCloudPricing", async () => null);
+  stub(apiClient, "getCloudAccountPlan", async () => ({ trialAvailable: false }));
   stub(chatController, "refreshSession", async () => {});
   stub(cloudSyncController, "schedulePush", () => {});
   const f = fixture();

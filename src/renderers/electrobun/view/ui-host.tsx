@@ -33,7 +33,7 @@ export const webRendererHost: RendererHost = {
     await backendRequest("host.windowControl", { action });
   },
   async openExternal(url) {
-    await backendRequest("host.openExternal", { url });
+    return await backendRequest("host.openExternal", { url });
   },
   async copyText(text) {
     try {

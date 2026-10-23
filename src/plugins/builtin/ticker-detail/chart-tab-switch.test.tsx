@@ -160,6 +160,7 @@ function hasVisibleCompositeSurface(
 }
 
 afterEach(() => {
+  tickerDetailModule.dispose?.();
   harnessDispatch = null;
   setSharedRegistryForTests(undefined);
 });

@@ -16,6 +16,7 @@ import {
 import { colors, priceColor } from "../../../../theme/colors";
 import { fiscalYearEndMonth } from "../../../../utils/fiscal-period";
 import { padTo } from "../../../../utils/format";
+import { filledPeriodsNote, stalePeriodNote } from "../../../../utils/financial-statements";
 import {
   FINANCIAL_COL_W,
   FINANCIAL_LABEL_W,
@@ -29,6 +30,8 @@ import {
   formatFinancialCell,
   financialStatementCurrency,
   financialStatementLimitations,
+  financialStatementPeriods,
+  financialSubTabFields,
   formatFinancialValue,
   latestFinancialPeriodEnd,
   resolveFinancialPeriod,
@@ -446,9 +449,21 @@ export function ResolvedFinancialsTab({
   const offeringNote = useOfferingNote(boundSymbol, boundExchange, latestBalanceSheetDate(financials),
     !!financials && (section.key === "balance" || section.key === "liquidity"));
 
+  // A latest period over 15 months old says how old it is, beside the data's other limits.
+  const stalePeriod = useMemo(
+    () => stalePeriodNote(financialStatementPeriods(displayStatements, subTab)),
+    [displayStatements, subTab],
+  );
+  // Years filled from the listing's exchange, with the lines this table shows.
+  const filledPeriods = useMemo(
+    () => filledPeriodsNote(displayStatements, ratioTab ? undefined : financialSubTabFields(subTab)),
+    [displayStatements, ratioTab, subTab],
+  );
   usePaneNoticeFooter({
     registrationId: "financials-notices",
     notices: [
+      ...(stalePeriod ? [stalePeriod] : []),
+      ...(filledPeriods ? [filledPeriods] : []),
       ...financialStatementLimitations(financials),
       ...(offeringNote ? [offeringNote] : []),
       ...(isValuation && history.error && !history.data ? ["Period-end prices are unavailable, so valuation ratios are too."] : []),

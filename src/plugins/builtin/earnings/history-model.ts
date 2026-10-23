@@ -4,9 +4,9 @@ import { scalarPoint } from "../../../components/chart/static/series";
 import type { TimeSeriesPoint } from "../../../time-series/types";
 import type { EarningsEvent } from "../../../types/data-provider";
 import type { EarningsDateStatus, EarningsEpsBasis } from "../../../types/financials";
-import { dateStatusFromEstimateFlag, earningsDateStatus, earningsEpsBasis, isProvisionalActual } from "../shared/earnings-report";
+import { earningsDateStatus, earningsEpsBasis, isProvisionalActual } from "../shared/earnings-report";
+import { resolveReportRows, type ReportRowAdapter } from "../shared/earnings-calendar";
 import { addDays, MIN_AVERAGE_REPORTS } from "./board-model";
-import { coherentEarningsValue } from "./estimate-basis";
 import { datedYear, impliedText, moveSize, shortDate, surprise, TIMING_LABEL } from "./format";
 
 export interface HistoryRow {
@@ -45,12 +45,57 @@ export interface HistoryRow {
 const HISTORY_QUARTERS = 12;
 const AVERAGE_OVER = 8;
 
+/** A report today stays upcoming until its first close after the report prices a move. */
+const isUpcoming = (date: string, move: number | null, today: string) => date >= today && move == null;
+
+/** ERN's rows as the shared calendar resolver reads and rebuilds them. */
+const historyAdapter = (today: string): ReportRowAdapter<HistoryRow> => ({
+  slot: (row) => ({ date: row.date, dateStatus: row.dateStatus, epsActual: row.epsActual }),
+  reported: (row, epsActual) => {
+    const actual = row.epsActual ?? epsActual;
+    return { ...row, dateStatus: "reported", epsActual: actual, epsSurprise: surprise(actual, row.epsEstimate) };
+  },
+  fromCalendar(report, row) {
+    // The calendar's consensus goes with its date; without one, the record's stays.
+    const estimate = report.epsEstimate != null;
+    const epsEstimate = estimate ? report.epsEstimate : row?.epsEstimate ?? null;
+    const epsActual = report.epsActual ?? row?.epsActual ?? null;
+    const move = row?.move ?? null;
+    return {
+      key: report.date,
+      date: report.date,
+      timing: report.timing ?? row?.timing ?? null,
+      expectedTiming: report.timing == null && !!row?.expectedTiming,
+      fiscalPeriod: row?.fiscalPeriod ?? report.fiscalPeriod,
+      upcoming: isUpcoming(report.date, move, today),
+      dateStatus: report.dateStatus,
+      epsEstimate,
+      epsAnalysts: estimate ? report.epsAnalysts : row?.epsAnalysts ?? null,
+      epsActual,
+      provisional: row?.provisional ?? false,
+      epsBasis: estimate ? report.epsBasis : row?.epsBasis ?? null,
+      epsSurprise: surprise(epsActual, epsEstimate),
+      revenueEstimate: report.revenueEstimate ?? row?.revenueEstimate ?? null,
+      revenueActual: row?.revenueActual ?? null,
+      revenueProvisional: row?.revenueProvisional ?? false,
+      revenueSurprise: row?.revenueSurprise ?? null,
+      implied: row?.implied ?? null,
+      impliedMethod: row?.impliedMethod ?? null,
+      impliedExpiry: row?.impliedExpiry ?? null,
+      move,
+      moveRatio: row?.moveRatio ?? null,
+    };
+  },
+});
+
 /**
- * Newest first, the upcoming report leading. A report today stays upcoming
- * until its first close after the report prices a move.
+ * Newest first, the upcoming report leading. The calendar's next report is
+ * resolved against the history as every earnings surface resolves it
+ * (shared/earnings-calendar): a confirmed date beats a projected one, a date
+ * gone by is reported, and a date past the stored calendar's horizon is added.
  */
 export function historyRows(payload: EarningsHistoryPayload | null, today: string, upcoming: EarningsEvent | null): HistoryRow[] {
-  const rows: HistoryRow[] = (payload?.reports ?? []).map((report) => {
+  const recorded: HistoryRow[] = (payload?.reports ?? []).map((report) => {
     const move = report.realized?.move ?? null;
     const implied = report.implied?.move ?? null;
     return {
@@ -59,7 +104,7 @@ export function historyRows(payload: EarningsHistoryPayload | null, today: strin
       timing: report.timing,
       expectedTiming: report.timingSource === "history",
       fiscalPeriod: report.fiscalPeriod,
-      upcoming: report.date >= today && move == null,
+      upcoming: isUpcoming(report.date, move, today),
       dateStatus: earningsDateStatus(report.dateStatus),
       epsEstimate: report.epsEstimate,
       epsAnalysts: report.epsAnalysts,
@@ -78,36 +123,8 @@ export function historyRows(payload: EarningsHistoryPayload | null, today: strin
       moveRatio: move != null && implied ? Math.abs(move) / implied : null,
     };
   });
-  // Past the stored calendar's horizon the per-ticker calendar still knows the next date.
-  if (upcoming && !rows.some((row) => row.upcoming)) {
-    const date = upcoming.earningsDate.toISOString().slice(0, 10);
-    if (date >= today) {
-      rows.unshift({
-        key: date,
-        date,
-        timing: upcoming.timing === "BMO" ? "bmo" : upcoming.timing === "AMC" ? "amc" : null,
-        expectedTiming: false,
-        fiscalPeriod: null,
-        upcoming: true,
-        dateStatus: dateStatusFromEstimateFlag(upcoming.isDateEstimate),
-        epsEstimate: coherentEarningsValue(upcoming, "epsEstimate"),
-        epsAnalysts: coherentEarningsValue(upcoming, "epsAnalysts"),
-        epsActual: null,
-        provisional: false,
-        epsBasis: earningsEpsBasis(upcoming.epsBasis),
-        epsSurprise: null,
-        revenueEstimate: coherentEarningsValue(upcoming, "revenueEstimate"),
-        revenueActual: null,
-        revenueProvisional: false,
-        revenueSurprise: null,
-        implied: null,
-        impliedMethod: null,
-        impliedExpiry: null,
-        move: null,
-        moveRatio: null,
-      });
-    }
-  }
+  const rows = resolveReportRows(recorded, upcoming, today, historyAdapter(today))
+    .sort((left, right) => right.date.localeCompare(left.date));
   const upcomingRows = rows.filter((row) => row.upcoming).slice(-1);
   return [...upcomingRows, ...rows.filter((row) => !row.upcoming).slice(0, HISTORY_QUARTERS)];
 }

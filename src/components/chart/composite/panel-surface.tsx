@@ -65,6 +65,7 @@ import { useCompositePanelBitmap } from "./panel-bitmap";
 import { nextDrawingId, nextLevelId } from "./drawing-store";
 import {
   AXIS_DOUBLE_PRESS_MS,
+  PLOT_DOUBLE_CLICK_MS,
   COMPOSITE_PANEL_ROLE,
   isVerticalWheelDirection,
   manualValueAxes,
@@ -141,9 +142,28 @@ interface CompositePanelSurfaceProps {
   valueScalable: boolean;
   onSetValueScale: (panelId: string, side: CompositeAxisSide, key: string, range: CompositeValueRange) => void;
   onResetValueScale: (panelId: string) => void;
+  /** The line above this panel, which a drag moves (desktop and web): null for the top panel. */
+  dividerAbove?: { active: boolean; gestures: PanelDividerGestures } | null;
+  /** A double click on bare plot gives this panel the whole chart, or gives the others back. */
+  onToggleMaximized?: () => void;
+}
+
+interface PanelDividerGestures {
+  onMouseDown: (event: ChartMouseEvent) => void;
+  onMouseDrag: (event: ChartMouseEvent) => void;
+  onMouseUp: (event: ChartMouseEvent) => void;
+  onMouseDragEnd: (event: ChartMouseEvent) => void;
 }
 
 const DESKTOP_PLOT_STYLE = { flex: "1 1 0px", width: "auto", minWidth: 0, height: "auto", alignSelf: "stretch" } as const;
+/** The grab strip over the line between two panels: the line and a few pixels either side of it. */
+const PANEL_DIVIDER_STYLE = {
+  left: 0,
+  right: 0,
+  width: "auto",
+  top: "calc(-1 * var(--gloom-space-xs))",
+  height: "calc(2 * var(--gloom-space-xs) + 1px)",
+} as const;
 
 export function CompositePanelSurface({
   panel,
@@ -184,6 +204,8 @@ export function CompositePanelSurface({
   valueScalable,
   onSetValueScale,
   onResetValueScale,
+  dividerAbove = null,
+  onToggleMaximized,
 }: CompositePanelSurfaceProps) {
   const isDesktopWeb = useUiCapabilities().nativePaneChrome === true;
   const { cellHeightPx = 18, cellWidthPx = 8, fractionalViewport = false } = useUiCapabilities();
@@ -205,6 +227,8 @@ export function CompositePanelSurface({
   const activeCursorYRatio = scene.cursorXRatio === null
     ? null
     : heldCursorYRatio ?? seriesCursorYRatio;
+  // The last press on bare plot, for a double press where the host does not count clicks.
+  const lastPlotPressRef = useRef<{ at: number; x: number; y: number } | null>(null);
   const dragRef = useRef<
     | PanGesture
     | {
@@ -645,6 +669,7 @@ export function CompositePanelSurface({
     // With no tool in hand, a press on a drawing or a level picks it so Backspace
     // or Delete can remove it; the press still pans, and one on bare plot lets go.
     const ratios = pointerRatios(event);
+    let bare = true;
     if (ratios) {
       const drawingHit = drawings.length > 0 ? hitTestDrawings(drawings, scene, panel, ratios, plotAspect) : null;
       const levelHit = !drawingHit && levels?.onEdit && levelDomain
@@ -652,6 +677,25 @@ export function CompositePanelSurface({
         : null;
       onSelectDrawing(drawingHit ? drawingHit.drawing.id : null);
       onSelectLevel(levelHit?.editable ? levelHit.id : null);
+      bare = !drawingHit && !levelHit;
+    }
+    // A double click on bare plot gives the panel the whole chart, or the
+    // others back (the terminal counts two presses on one spot). Its first
+    // press must have landed here too: a double click on a button that goes
+    // away under it (All panels) ends on this plot, and is not one of its.
+    if (!bare) lastPlotPressRef.current = null;
+    if (onToggleMaximized && bare) {
+      const now = Date.now();
+      const last = lastPlotPressRef.current;
+      const double = typeof event.detail === "number"
+        ? event.detail >= 2 && !!last && now - last.at < PLOT_DOUBLE_CLICK_MS
+        : !!last && now - last.at < AXIS_DOUBLE_PRESS_MS && Math.abs(last.x - event.x) <= 1 && Math.abs(last.y - event.y) <= 1;
+      lastPlotPressRef.current = double ? null : { at: now, x: event.x, y: event.y };
+      if (double) {
+        dragRef.current = null;
+        onToggleMaximized();
+        return;
+      }
     }
     if (!updateCursor(event)) return;
     const values = manualValueAxes(panel);
@@ -689,6 +733,7 @@ export function CompositePanelSurface({
     scene,
     updateCursor,
     viewport,
+    onToggleMaximized,
   ]);
   const pressCursor = useCallback((event: ChartMouseEvent) => {
     onActivate?.();
@@ -1022,6 +1067,23 @@ export function CompositePanelSurface({
       // follows it by CSS. At rest, the size the cells give it.
       style={isDesktopWeb ? { width: "100%", flex: `${panel.height} 1 calc(${panel.height} * var(--cell-h))`, height: "auto", minHeight: 0 } : undefined}
     >
+      {dividerAbove && isDesktopWeb ? (
+        // A line too thin to grab, so the handle straddles it, as a pane
+        // sidebar's does; it draws only while the pointer is on it.
+        <Box
+          position="absolute"
+          left={0}
+          top={0}
+          height={1}
+          zIndex={29}
+          style={PANEL_DIVIDER_STYLE}
+          {...dividerAbove.gestures}
+          title="Drag to resize the panels, double-click for the default split"
+          data-gloom-interactive="true"
+          data-gloom-role="composite-chart-panel-divider"
+          data-active={dividerAbove.active ? "true" : undefined}
+        />
+      ) : null}
       {measureReadout ? (
         <Box
           position="absolute"

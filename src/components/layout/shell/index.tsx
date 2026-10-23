@@ -881,6 +881,7 @@ export function Shell({
         dockDividerLayouts={dockDividerLayouts}
         dockLeafLayouts={dockLeafLayouts}
         focusedPaneId={focusedPaneId}
+        floatingOrder={activeLayout.floating}
         getPaneTitle={getPaneTitle}
         getPaneQuickSettings={getPaneQuickSettings}
         handleFloatingClose={handleFloatingClose}

@@ -1,6 +1,6 @@
 import { apiClient } from "../../../api-client";
 import { newsProvider, type NewsCapability } from "../../../capabilities";
-import { cloudNewsParams, mapCloudNewsArticle } from "../../../sources/gloomberb-cloud/news";
+import { cloudNewsReadArticles, mapCloudNewsArticle, readCloudNews } from "../../../sources/gloomberb-cloud/news";
 import type { NewsArticle, NewsPage, NewsQuery } from "../../../news/types";
 
 interface BackendNews {
@@ -10,7 +10,7 @@ interface BackendNews {
   getNewsPage(query: NewsQuery): Promise<NewsPage>;
 }
 
-type CloudNewsClient = Pick<typeof apiClient, "getCloudNews" | "getCloudNewsStory">;
+type CloudNewsClient = Pick<typeof apiClient, "getCloudNews" | "getCloudNewsStory" | "searchCloudNews">;
 
 /**
  * The view's only news source: the desktop view runs without capability
@@ -28,10 +28,10 @@ export function createDesktopNewsSource(backend: BackendNews, client: CloudNewsC
       fetchNews: (query) => backend.getNews(query),
       fetchNewsPage: async (query) => {
         try {
-          const response = await client.getCloudNews(cloudNewsParams(query));
+          const read = await readCloudNews(client, query);
           return {
-            articles: response.items.map((item) => mapCloudNewsArticle(item, query.ticker)),
-            nextCursor: response.nextCursor ?? null,
+            articles: cloudNewsReadArticles(read, query.ticker),
+            nextCursor: read.nextCursor ?? null,
           };
         } catch {
           // The aggregate page keeps RSS failures beside any usable stories.

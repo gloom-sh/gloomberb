@@ -578,7 +578,7 @@ export function ChatContent({
   }, [createPaneFromTemplate, notify, rendererHost]);
 
   const handleDiscordCommand = useCallback((command: DiscordComposerCommand) => {
-    void runDiscordCommand(command, { openUrl: (url) => rendererHost.openExternal(url) }).then(notify);
+    void runDiscordCommand(command, { openUrl: async (url) => { await rendererHost.openExternal(url); } }).then(notify);
   }, [notify, rendererHost]);
 
   // The terminal: a pasted or dropped path to an image file attaches the file

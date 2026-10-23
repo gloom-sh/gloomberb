@@ -19,6 +19,7 @@ import {
   normalizePaneId,
   removeUnreachablePaneInstances,
 } from "../../types/config";
+import { compactFloatingZ } from "../../layout/pane-manager/floating";
 import {
   migrateChartPaneSettings,
   type LegacyChartMigrationContext,
@@ -237,7 +238,7 @@ function getDefaultFollowSourceInstanceId(layout: LayoutConfig): string | null {
 
 function sanitizeFloatingEntries(value: unknown, validInstanceIds: Set<string>): LayoutConfig["floating"] {
   if (!Array.isArray(value)) return [];
-  return value
+  const entries = value
     .filter((entry): entry is LayoutConfig["floating"][number] =>
       !!entry
       && typeof entry === "object"
@@ -256,6 +257,8 @@ function sanitizeFloatingEntries(value: unknown, validInstanceIds: Set<string>):
       height: Math.max(1, Math.round(entry.height)),
       zIndex: typeof entry.zIndex === "number" ? Math.round(entry.zIndex) : entry.zIndex,
     }));
+  // A stack raised past the shell's menus and previews in an older session is renumbered in the same order.
+  return compactFloatingZ(entries);
 }
 
 function sanitizeDetachedEntries(value: unknown, validInstanceIds: Set<string>): LayoutConfig["detached"] {

@@ -1,13 +1,20 @@
 import type { GloomPluginContext } from "../../../types/plugin";
 import { newYorkToday } from "../earnings/board-model";
-import { EVENT_ALERTS_KEY, isScheduledEventRule, readEventAlerts, type EventAlertRule } from "./events";
+import { EVENT_ALERTS_KEY, eventAlertTarget, isScheduledEventRule, readEventAlerts, writeEventAlerts, type EventAlertRule } from "./events";
+import type { FiredAlertInput } from "./fired-log";
 import {
   lookupScheduledDates,
   readScheduledRule,
+  reportedResult,
+  resultsLookupRange,
   scheduledAlertMessage,
   scheduledPhase,
+  scheduledResultsMessage,
   scheduledTargetKey,
+  type EarningsResultRow,
+  type ScheduledDateLookup,
   type ScheduledEventSources,
+  type ScheduledRule,
 } from "./scheduled";
 
 /** Event dates move rarely and the sources cache for longer than this. */
@@ -25,14 +32,18 @@ export function checkScheduledEventAlertsNow(): void {
 /**
  * Looks up the next date of every active earnings and macro event rule, keeps
  * it on the rule so lists can show it, and notifies once per event when its
- * lead time is reached. The date the rule alerted for is saved on it, so a
- * restart or another device does not alert again; the next event's date arms
- * it again. Runs while the app is open; with no such rules it requests nothing.
+ * lead time is reached. An earnings rule set for results keeps the report
+ * day it waits for until the actual EPS is out, then alerts with it. The date
+ * the rule alerted for is saved on it, so a restart or another device does not
+ * alert again; the next event's date arms it again. Runs while the app is
+ * open; with no such rules it requests nothing.
  */
 export function startScheduledEventAlerts(
   ctx: Pick<GloomPluginContext, "configState" | "notify" | "showPane" | "log">,
   sources: ScheduledEventSources,
   now: () => number = Date.now,
+  /** Keeps each alert sent in the device's log of fired alerts. */
+  record?: (entry: FiredAlertInput) => void,
 ): () => void {
   let stopped = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -52,36 +63,78 @@ export function startScheduledEventAlerts(
     for (const [key, lookup] of dates) {
       if ("error" in lookup) ctx.log.warn("Event dates unavailable", { target: key, error: lookup.error });
     }
+    // One read of the reports every results alert due waits for.
+    const waiting = watched.flatMap((rule) => {
+      const scheduled = readScheduledRule(rule);
+      const date = scheduled ? followedDate(rule, scheduled, dates, today) : null;
+      return scheduled?.trigger === "results" && scheduled.target.kind === "earnings" && date
+        && scheduledPhase(date, scheduled.leadDays, rule.firedFor, today, "results") === "due"
+        ? [{ symbol: scheduled.target.symbol, date }]
+        : [];
+    });
+    let results: readonly EarningsResultRow[] = [];
+    const range = resultsLookupRange(waiting.map((entry) => entry.date));
+    if (range && sources.results) {
+      try {
+        results = await sources.results([...new Set(waiting.map((entry) => entry.symbol))], range.from, range.to);
+      } catch (error) {
+        ctx.log.warn("Earnings results unavailable", { error: String(error) });
+      }
+      if (stopped) return;
+    }
 
     // Read again: the pane or a sync may have changed the rules while the dates loaded.
     const current = read();
     if (current.error) return;
     let changed = false;
+    // Sent once the rules are saved: a save that fails tells no one, so the next check cannot tell twice.
+    const due: { body: string; entry: FiredAlertInput }[] = [];
     const next = current.rules.map((rule): EventAlertRule => {
       const scheduled = rule.status === "active" ? readScheduledRule(rule) : null;
       if (!scheduled) return rule;
       let updated = rule;
-      const lookup = dates.get(scheduledTargetKey(scheduled.target));
-      // A failed lookup keeps the date already known.
-      if (lookup && "date" in lookup && lookup.date !== (rule.eventDate ?? null)) {
+      const date = followedDate(rule, scheduled, dates, today);
+      if (date !== (rule.eventDate ?? null)) {
         const { eventDate: _previous, ...rest } = rule;
-        updated = lookup.date ? { ...rest, eventDate: lookup.date } : rest;
+        updated = date ? { ...rest, eventDate: date } : rest;
         changed = true;
       }
-      if (updated.eventDate && scheduledPhase(updated.eventDate, scheduled.leadDays, updated.firedFor, today) === "due") {
-        ctx.notify({
-          body: scheduledAlertMessage(scheduled.target, updated.eventDate, today),
-          type: "info",
-          desktop: "always",
-          persistent: true,
-          action: { label: "Open", onClick: () => ctx.showPane("alerts") },
-        });
+      if (updated.eventDate && scheduledPhase(updated.eventDate, scheduled.leadDays, updated.firedFor, today, scheduled.trigger) === "due") {
+        // A results alert goes off once the report it waits for has its actual EPS.
+        const result = scheduled.trigger === "results" && scheduled.target.kind === "earnings"
+          ? reportedResult(results, scheduled.target.symbol, updated.eventDate)
+          : null;
+        if (scheduled.trigger === "results" && !result) return updated;
+        const body = result && scheduled.target.kind === "earnings"
+          ? scheduledResultsMessage(scheduled.target.symbol, result)
+          : scheduledAlertMessage(scheduled.target, updated.eventDate, today);
+        due.push({ body, entry: {
+          kind: rule.kind, ruleId: rule.id, rule: eventAlertTarget(rule), firedAt: now(),
+          value: result?.epsActual ?? null, ...(result ? { unit: "EPS" } : {}), detail: body, quoteAt: null, source: null,
+          ...(scheduled.target.kind === "earnings" ? { symbol: scheduled.target.symbol, ...(scheduled.target.exchange ? { exchange: scheduled.target.exchange } : {}) } : {}),
+        } });
         updated = { ...updated, firedFor: updated.eventDate };
         changed = true;
       }
       return updated;
     });
-    if (changed && !stopped) await ctx.configState.set(EVENT_ALERTS_KEY, JSON.stringify(next));
+    if (!changed || stopped) return;
+    try {
+      await ctx.configState.set(EVENT_ALERTS_KEY, writeEventAlerts(next, current.kept));
+    } catch (error) {
+      ctx.log.warn(due.length ? "Event alerts not saved, so not sent" : "Event dates not saved", { error: String(error) });
+      return;
+    }
+    for (const { body, entry } of due) {
+      ctx.notify({
+        body,
+        type: "info",
+        desktop: "always",
+        persistent: true,
+        action: { label: "Open", onClick: () => ctx.showPane("alerts") },
+      });
+      record?.(entry);
+    }
   };
 
   const run = async () => {
@@ -119,4 +172,23 @@ export function startScheduledEventAlerts(
     timer = null;
     if (checkNow === trigger) checkNow = null;
   };
+}
+
+/**
+ * The event date a rule follows after a lookup: the next one found, none when
+ * the lookup found none, and the one already known when it failed. A results
+ * alert keeps the report day it is still waiting on, as the lookup moves to
+ * the next report once that day has passed.
+ */
+function followedDate(
+  rule: EventAlertRule,
+  scheduled: ScheduledRule,
+  dates: ReadonlyMap<string, ScheduledDateLookup>,
+  today: string,
+): string | null {
+  const known = rule.eventDate ?? null;
+  if (scheduled.trigger === "results" && known && known <= today
+    && scheduledPhase(known, scheduled.leadDays, rule.firedFor, today, "results") === "due") return known;
+  const lookup = dates.get(scheduledTargetKey(scheduled.target));
+  return lookup && "date" in lookup ? lookup.date : known;
 }

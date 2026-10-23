@@ -10,6 +10,7 @@ import {
 import { parsePublicTickerKey, resolveExchangeTimeZone } from "../../../utils/exchanges";
 import { listingSuffixExchange } from "../../../sources/listing-symbols";
 import { getPricePointTimestamp } from "../../../utils/price-history";
+import { dateOptionError, readCalendarDate } from "../../../utils/calendar-date";
 import { pricePointIntegrity } from "../../../utils/price-history-integrity";
 import { zonedDateKey, zonedWallClockToUtcMs } from "../../../utils/zoned-date-time";
 import { fetchHistoryResult } from "../../../sources/history-result";
@@ -46,28 +47,22 @@ export interface LoadedIntradayWindow extends IntradayWindow {
   sourceKey?: string;
 }
 
-const DATE_ONLY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 const HISTORICAL_RETRY_DELAY_MS = 61 * 60_000;
 const DAY_MS = 24 * 60 * 60_000;
+
+/** `--session` as YYYY-MM-DD: any date a date option reads, or an error that lists the formats. */
+function readSessionDate(value: string): string {
+  const date = readCalendarDate(value);
+  if (!date) throw new Error(`Invalid --session value "${value}". ${dateOptionError(value, "--session", { subject: "a session date" })}`);
+  return date;
+}
 
 function parseSessionDate(value: string): {
   year: number;
   month: number;
   day: number;
 } {
-  const match = DATE_ONLY_PATTERN.exec(value.trim());
-  if (!match) throw new Error(`Invalid --session value "${value}". Use YYYY-MM-DD.`);
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  const candidate = new Date(Date.UTC(year, month - 1, day));
-  if (
-    candidate.getUTCFullYear() !== year
-    || candidate.getUTCMonth() !== month - 1
-    || candidate.getUTCDate() !== day
-  ) {
-    throw new Error(`Invalid --session value "${value}". Use a real calendar date.`);
-  }
+  const [year, month, day] = value.split("-").map(Number) as [number, number, number];
   return { year, month, day };
 }
 
@@ -152,8 +147,7 @@ export function resolveIntradaySessionWindow(
     bySession.set(date, sessionPoints);
   }
 
-  const requestedSession = options.session?.trim() || null;
-  if (requestedSession) parseSessionDate(requestedSession);
+  const requestedSession = options.session?.trim() ? readSessionDate(options.session.trim()) : null;
   const availableSessions = [...bySession.keys()].sort();
   const selectedSessions = requestedSession
     ? availableSessions.filter((date) => date === requestedSession)
@@ -195,9 +189,8 @@ export function resolveIntradayRequest(options: {
   support?: readonly ChartResolutionSupport[];
 }): IntradayRequest {
   const session = typeof options.session === "string" && options.session.trim()
-    ? options.session.trim()
+    ? readSessionDate(options.session.trim())
     : null;
-  if (session) parseSessionDate(session);
   const rangePreset = session
     ? "1D"
     : options.rangePreset === "1W" ? "1W" : "1D";

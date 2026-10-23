@@ -14,6 +14,8 @@ describe("the compare input", () => {
     for (const input of ["latest", "nope", "1X", "0D", "1996", "2026-13-40", "10/02/2026"]) {
       expect(() => parseCompareInput(input, now)).toThrow("Compare with a date as YYYY-MM-DD, DD.MM.YYYY, Oct 14 2026 or 14 October 2026, or a span such as 1D, 1W, 3M or 1Y.");
     }
+    // A date written day first says what to type, as the as-of field does.
+    expect(() => parseCompareInput("22/09/2026", now, "--compare")).toThrow("or 1Y: type --compare 2026-09-22 for 22/09/2026.");
     // A real date still cannot be in the future.
     expect(() => parseCompareInput("2026-10-11", now)).toThrow("future date");
     expect(isCompareSpan("0W")).toBe(false);

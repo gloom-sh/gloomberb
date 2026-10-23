@@ -1,21 +1,48 @@
 import { listingSuffixExchange } from "../sources/listing-symbols";
+import { kindFromListingSyntax } from "../tickers/instrument-kind";
 import { parsePublicTickerKey } from "../utils/exchanges";
 import { listingAbroadVenue } from "../utils/sec";
 import { nimCommand } from "./bank-section";
 import { treasuryYieldLine, treasuryYieldTenor } from "./treasury-yields";
 
 /**
+ * What a listing is to a sub-minute ask: a US listing, which has a tape; one
+ * known to trade abroad, a future, or another class a symbol's own syntax names
+ * (an index, a currency pair, a coin), none of which has trades or quotes.
+ */
+type SubMinuteListing = "unknown" | "abroad" | "future" | "other";
+
+function subMinuteListing(symbol: string): SubMinuteListing {
+  if (listedAbroad(symbol)) return "abroad";
+  const kind = kindFromListingSyntax(symbol, parsePublicTickerKey(symbol).exchange);
+  return kind === "future" ? "future" : kind ? "other" : "unknown";
+}
+
+/**
  * Where data finer than a minute is: nowhere as bars. GIP draws 1-minute
  * bars; for a US listing TAS lists each trade (a window of the session with
  * `--from`/`--to`) and QR each quote. `history --interval`, GIP's
- * `--chartResolution 1s` and QR on a listing abroad all say this; a listing
- * known to trade abroad, which has no trades on the tape, is told only the bars.
+ * `--chartResolution 1s` and QR on a listing abroad all say this. The tape
+ * covers US equities only, and TAS and QR answer anything else with an
+ * error or an empty table, so a listing without one is told only the bars
+ * that exist for it. A future's finest are G's 1-minute bars of its session
+ * (`fn G GC=F --rangePreset 1D`) and `history`'s 5-minute bars of 1D, both
+ * checked on GC=F and SI=F on 2026-10-21. GIP is not named for one: its
+ * window is the UTC day, not the session, and it was reported with no points
+ * for a future.
  */
-export function subMinuteDataMessage(symbol = "<ticker>", listing: "abroad" | "unknown" = listedAbroad(symbol) ? "abroad" : "unknown"): string {
-  const bars = `No second or tick bars; 1-minute bars: fn GIP ${symbol}`;
-  return listing === "abroad"
-    ? `${bars}; trades exist for US listings only.`
-    : `${bars}; for a US listing, each trade: fn TAS ${symbol} (a window: --from 10:30 --to 10:35), each quote: fn QR ${symbol}.`;
+export function subMinuteDataMessage(symbol = "<ticker>", listing: SubMinuteListing = subMinuteListing(symbol)): string {
+  const none = "No second or tick bars";
+  switch (listing) {
+    case "abroad":
+      return `${none}; 1-minute bars: fn GIP ${symbol}; trades exist for US listings only.`;
+    case "future":
+      return `${none}; 1-minute bars: fn G ${symbol} --rangePreset 1D (history ${symbol} --range 1D has 5-minute bars). Trades and quotes cover US equities only.`;
+    case "other":
+      return `${none}; 1-minute bars: fn GIP ${symbol}. Trades and quotes cover US equities only.`;
+    default:
+      return `${none}; 1-minute bars: fn GIP ${symbol}; for a US listing, each trade: fn TAS ${symbol} (a window: --from 10:30 --to 10:35), each quote: fn QR ${symbol}.`;
+  }
 }
 
 /**
@@ -170,6 +197,16 @@ const TOPIC_POINTERS: ReadonlyArray<{
     whole: ["borrow", "borrowing", "utilization", "utilisation", "locate", "locates", "htb", "lendable shares"],
     closest: [["SI", "FINRA short interest and days to cover"], ["SIW", "crowded shorts across your names"], ["SIV", "daily short volume"]],
   },
+  {
+    // "exchange reserves" alone reads as crypto's; "foreign exchange reserves" is a central bank's, so only whole.
+    topic: "Crypto exchange reserves and exchange flows",
+    availability: "not covered (no source for coins held on exchanges)",
+    phrases: ["crypto exchange reserves", "bitcoin exchange reserves", "btc exchange reserves", "eth exchange reserves",
+      "ethereum exchange reserves", "exchange inflows", "exchange outflows", "exchange netflow", "exchange netflows", "exchange net flows",
+      "coins on exchanges", "bitcoin on exchanges", "btc on exchanges"],
+    whole: ["exchange reserves", "exchange reserve", "exchange balances", "exchange balance", "exchange flows"],
+    closest: [["CRYP", "DeFi TVL by protocol and chain: gloomberb fn CRYP --list defi; stablecoin supply: --list stablecoin"]],
+  },
 ];
 
 /** The words of a text, lower case: `DoD-budget` and `dod budget` read alike. */
@@ -246,6 +283,12 @@ const COMMAND_POINTERS: ReadonlyArray<{
       "usd", "mxn", "eur", "gbp", "usdmxn", "eurusd", "gbpusd", "eurmxn", "peso", "dollar", "euro", "sterling"],
     line: "FX forwards implied by both currencies' short rates (covered interest parity), with forward points and the hedge cost: gloomberb fx USD/MXN --forward 30d",
   },
+  {
+    names: ["defi", "tvl", "tvls", "total value locked", "on-chain", "onchain", "aave", "lido", "eigenlayer", "morpho"],
+    words: ["protocol", "protocols", "chain", "chains", "crypto", "data", "top", "by", "history",
+      "change", "ranking", "rankings", "dashboard", "lending", "staking"],
+    line: "DeFi TVL, top protocols and chains with 7D and 30D change: gloomberb fn CRYP --list defi (by chain: --by chain)",
+  },
 ];
 
 /** The command for a query that names a setting ("light theme") or a portfolio report ("drip"), else null. */
@@ -271,12 +314,19 @@ export function exportCommandPointer(token: string, args: readonly string[]): st
   return exportLine(symbol);
 }
 
+/** A name of several words ("on-chain") names the command when its words run together in the query. */
 function findCommandPointer(query: string): (typeof COMMAND_POINTERS)[number] | null {
   const asked = words(query);
   if (asked.length === 0) return null;
-  return COMMAND_POINTERS.find(({ names, words: other, qualifiers = [] }) => asked.some((word) => names.includes(word))
-    && asked.every((word) => names.includes(word) || other.includes(word) || qualifiers.includes(word))
-    && (qualifiers.length === 0 || asked.every((word) => names.includes(word)) || asked.some((word) => qualifiers.includes(word)))) ?? null;
+  return COMMAND_POINTERS.find(({ names, words: other, qualifiers = [] }) => {
+    const named = new Set(names.flatMap((name) => {
+      const parts = words(name);
+      return containsWords(asked, parts) ? parts : [];
+    }));
+    return named.size > 0
+      && asked.every((word) => named.has(word) || other.includes(word) || qualifiers.includes(word))
+      && (qualifiers.length === 0 || asked.every((word) => named.has(word)) || asked.some((word) => qualifiers.includes(word)));
+  }) ?? null;
 }
 
 /**

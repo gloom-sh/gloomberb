@@ -5,7 +5,7 @@ import { convertedPriceEarningsNote, enterpriseValueLabel, enterpriseValueReconc
 import { latestFinancialPeriod } from "../../utils/latest-financial-period";
 import { burnsCash, cashRunway, SHORT_RUNWAY_HISTORY, formatRunwayMonths, offeringNote, offeringsAfter, runwayMethod, type CashRunway, type OfferingFiling, type RunwayEstimate } from "../../utils/cash-runway";
 import { exportedFundamentals, formatPriceEarnings, priceEarningsOnEarnings } from "../../utils/price-earnings";
-import { describeFundamentalMarketCap, marketCapShareBasisNote, selectMarketCapitalization } from "../../utils/market-capitalization";
+import { describeFundamentalMarketCap, marketCapBasisNote, selectMarketCapitalization, viewMarketCapitalization } from "../../utils/market-capitalization";
 import {
   formatCompact,
   formatCurrency,
@@ -35,8 +35,10 @@ import {
   quoteMarketStateLabel,
 } from "../../market-data/market/status";
 import type { FuturesContractTermsPayload } from "../../api-client/futures-curve";
-import { changeBasisJson, quoteChangeBasis, quotePreviousCloseDate } from "../../market-data/market/change-basis";
-import { futuresContractLines, futuresSettleText, isFuturesInstrument, loadFuturesContractTerms, minorUnitPricePer } from "../../market-data/futures-contract";
+import { changeBasisJson, quoteChangeBasis, quotePreviousCloseDate, quoteSettleText } from "../../market-data/market/change-basis";
+import {
+  futuresContractLines, futuresPricePer, isFuturesInstrument, loadFuturesContractTerms, loadUsdPerMmbtu, usdPerMmbtuText, type UsdPerMmbtu,
+} from "../../market-data/futures-contract";
 import { currencyCodeLabel, heldCurrencyUnit } from "../../utils/currency-units";
 import { quotedFxPair } from "../../utils/currency-pair";
 import type { AppConfig } from "../../types/config";
@@ -93,6 +95,8 @@ import { bankSection } from "../bank-section";
 import type { FundBondFacts } from "../../api-client/fund-facts";
 import { bondFigures, fetchFundBondFacts, NOT_SEC_YIELD } from "../../market-data/bond-funds";
 import { taxEquivalentLines, type TaxEquivalentAnalysis } from "../../market-data/tax-equivalent";
+import { isRoundTheClockCoin } from "../../utils/crypto-pair";
+import { coinNewsFallbackNotice } from "../../sources/gloomberb-cloud/news";
 
 const NEWS_ITEM_LIMIT = 5;
 const SEC_FILING_LIMIT = 5;
@@ -729,7 +733,7 @@ function metricLines(metrics: readonly FundamentalsMetric[]): Array<[string, str
 const TRAILING_MONEY_METRICS = new Set(["EPS (TTM)", "Revenue (TTM)", "Net Income (TTM)", "Operating Cash Flow (TTM)", "Free Cash Flow (TTM)"]);
 
 /**
- * The notes under shown fundamentals: a market cap that does not rest on the share count shown, how a labelled or
+ * The notes under shown fundamentals: a market cap shown as the share count times the price and the provider's, how a labelled or
  * withdrawn EV compares with market cap + debt - cash, what a converted TTM block was converted from, an EPS in
  * another currency than the amounts beside it, and what a P/E on such an EPS divides. `priced` is the snapshot at
  * the regular session price (atRegularSessionPrice), the figures the lines show, so each note reads those.
@@ -741,9 +745,9 @@ function fundamentalsNotes(
 ): string[] {
   const fundamentals = priced.fundamentals;
   const shown = (label: string) => metrics.some((metric) => metric.label === label && metric.text !== "—");
-  const shareBasis = shown("Market Cap") && shown("Shares Outstanding")
-    ? marketCapShareBasisNote(selectMarketCapitalization(priced.quote, fundamentals), fundamentals?.sharesOutstanding,
-      regularSessionValuationPrice(priced.quote), priced.quote?.currency)
+  // The cap shown is the share count times the price where the provider's sits more than 2% from it; the note names the provider's.
+  const shareBasis = shown("Market Cap")
+    ? marketCapBasisNote(viewMarketCapitalization(priced.quote, fundamentals, regularSessionValuationPrice(priced.quote)))
     : undefined;
   const conversion = [...TRAILING_MONEY_METRICS].some(shown) ? ttmConversionNote(fundamentals) : undefined;
   const eps = shown("EPS (TTM)") ? epsConversionNote(fundamentals) : undefined;
@@ -855,7 +859,7 @@ function fundamentalsReportMetrics(snapshot: FundamentalsReportData, view: "fund
   const financials = atRegularSessionPrice(snapshot);
   const quote = financials.quote;
   const fundamentals = financials.fundamentals;
-  const capitalization = selectMarketCapitalization(quote, fundamentals);
+  const capitalization = viewMarketCapitalization(quote, fundamentals, regularSessionValuationPrice(quote));
   const marketCap: MetricFigure = capitalization
     ? { text: `${formatCompact(capitalization.value)} ${capitalization.currency}`, value: capitalization.value, unit: capitalization.currency }
     : { text: "—" };
@@ -1006,6 +1010,7 @@ export async function buildTickerReport({
   recentSecFilings = [],
   hiddenSecFilings = NOTHING_HIDDEN,
   futuresContract = null,
+  usdPerMmbtu = null,
   distributions = null,
   statementFilings = null,
   bondFund = null,
@@ -1027,6 +1032,8 @@ export async function buildTickerReport({
   listingExchange?: string;
   /** A futures symbol's contract terms and latest confirmed settlement. */
   futuresContract?: FuturesContractTermsPayload | null;
+  /** A per-MWh gas price (Dutch TTF) in dollars per MMBtu, at the day's rate. */
+  usdPerMmbtu?: UsdPerMmbtu | null;
   tickerFile: TickerRecord | null;
   financials: TickerFinancials;
   config: AppConfig;
@@ -1104,7 +1111,7 @@ export async function buildTickerReport({
 
   // Market cap and the multiples are measured at the regular session price the Quote section heads with.
   const priced = atRegularSessionPrice(financials);
-  const capitalization = selectMarketCapitalization(priced.quote, priced.fundamentals);
+  const capitalization = viewMarketCapitalization(priced.quote, priced.fundamentals, regularSessionValuationPrice(priced.quote));
   // Market cap and EV read in the currency they are reported in, as the revenue and income beside them do,
   // with the base currency's figure after them when it differs: 627.2B USD (878.15B CAD).
   const convertedCurrencies = new Set<string>();
@@ -1141,12 +1148,14 @@ export async function buildTickerReport({
     // A futures price is its latest trade; the exchange settlement is its own row, dated by its session.
     appendMetricSection(lines, "Quote", [
       // A price in cents says what it is per: 314.95¢/lb.
-      ["Last", colorBySign(`${formatMarketPriceWithCurrency(session.price, quote.currency, quoteOptions)}${minorUnitPricePer(futuresContract, quote.currency)}`, session.change)],
+      ["Last", colorBySign(`${formatMarketPriceWithCurrency(session.price, quote.currency, quoteOptions)}${futuresPricePer(futuresContract, quote.currency)}`, session.change)],
       ...futuresContract
-        ? [["Settle", futuresSettleText(futuresContract, quote)] as [string, string]]
+        ? [["Settle", quoteSettleText(quote, futuresContract)] as [string, string]]
         : [],
       // The move says what it is measured from: "vs Fri 16 Oct close", a future's "vs Fri 16 Oct settle".
       ["Change", quoteChangeText(quote, session, quoteOptions, futuresContract)],
+      // European gas beside Henry Hub: "≈ $30.832/MMBtu at EUR/USD 1.1650", a conversion that says so.
+      ...usdPerMmbtu ? [["In USD", usdPerMmbtuText(usdPerMmbtu)] as [string, string]] : [],
       ["Open", quote.open != null ? formatMarketPriceWithCurrency(quote.open, quote.currency, quoteOptions) : "—"],
       // A listing that no longer trades: its last session's range, never today's.
       [quote.delisting ? "Last Session" : "Day Range", quote.low != null || quote.high != null
@@ -1223,7 +1232,7 @@ export async function buildTickerReport({
     ],
     body: item.summary,
     link: item.url,
-  })));
+  })), recentNews[0]?.searchedFor ? coinNewsFallbackNotice(symbol, recentNews[0].searchedFor) : null);
 
   appendFeedSection(lines, "Recent SEC Filings", recentSecFilings.map((filing) => ({
     title: (() => {
@@ -1255,6 +1264,7 @@ function buildTickerStructuredData({
   recentSecFilings,
   hiddenSecFilings,
   futuresContract,
+  usdPerMmbtu = null,
   distributions,
   statementFilings,
   bondFund = null,
@@ -1268,6 +1278,8 @@ function buildTickerStructuredData({
   offerings?: readonly OfferingFiling[];
   bondFund?: FundBondFacts | null;
   futuresContract: FuturesContractTermsPayload | null;
+  /** A per-MWh gas price in dollars per MMBtu, and the rate it was converted at. */
+  usdPerMmbtu?: UsdPerMmbtu | null;
   distributions: DividendDistributions | null;
   tickerFile: TickerRecord | null;
   financials: TickerFinancials;
@@ -1310,6 +1322,7 @@ function buildTickerStructuredData({
     quoteMetadata: financials.quoteMetadata,
     // Only for futures: the contract the symbol prices, its terms and its latest confirmed settlement.
     ...futuresContract ? { futuresContract } : {},
+    ...usdPerMmbtu ? { usdPerMmbtu } : {},
     ticker: tickerFile ? {
       ticker: tickerFile.metadata.ticker,
       name: tickerFile.metadata.name ?? "",
@@ -1480,6 +1493,10 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
         exchange: exchange || quote?.exchangeName || "",
         tickerTier: "primary",
         limit: NEWS_ITEM_LIMIT,
+        // A coin pair with no story filed under it searches for the coin by this name.
+        ...(isRoundTheClockCoin(requestSymbol, exchange || quote?.exchangeName) && (quote?.name || tickerFile?.metadata.name)
+          ? { listingName: quote?.name || tickerFile?.metadata.name }
+          : {}),
       }),
       // Outside the US the lookup checks the SEC registrant against the listing's company,
       // and refuses another company's filings.
@@ -1490,6 +1507,9 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
     ]);
 
     const futuresContract = await cliFuturesContract(quote?.symbol ?? requestSymbol, quote?.instrumentType, dependencies.futuresContract);
+    // A per-MWh gas price (TTF) adds its dollars per MMBtu at the day's rate, to read beside Henry Hub.
+    const usdPerMmbtu = await loadUsdPerMmbtu(getRegularSessionDisplay(quote)?.price, futuresContract, quote?.currency,
+      (currency) => dataProvider.getExchangeRate(currency));
     const notes = notesResult.status === "fulfilled" ? notesResult.value : "";
     const recentNews = newsResult.status === "fulfilled" ? newsResult.value : [];
     const { filings: recentSecFilings, hidden: hiddenSecFilings } = secFilingsResult.status === "fulfilled"
@@ -1505,7 +1525,8 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
     const listingNote = [choiceNote, coinNote].filter((note): note is string => !!note).join("\n") || undefined;
     const memberships = await membershipsLoad;
     if (dependencies.printResult) {
-      const warnings = [choiceNote, coinNote, quoteNote].filter((note): note is string => !!note);
+      const newsNote = recentNews[0]?.searchedFor ? coinNewsFallbackNotice(requestSymbol, recentNews[0].searchedFor) : null;
+      const warnings = [choiceNote, coinNote, quoteNote, newsNote].filter((note): note is string => !!note);
       dependencies.printResult({
         freshness,
         warnings: warnings.length > 0 ? warnings : undefined,
@@ -1520,6 +1541,7 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
           recentSecFilings,
           hiddenSecFilings,
           futuresContract,
+          usdPerMmbtu,
           distributions: await distributions,
           statementFilings: await statementFilings,
           bondFund: await bondFund,
@@ -1544,12 +1566,13 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
         recentSecFilings,
         hiddenSecFilings,
         futuresContract,
+        usdPerMmbtu,
         distributions: await distributions,
         statementFilings: await statementFilings,
         bondFund: await bondFund,
         memberships,
         offerings: await offerings,
     }));
-    if (freshness) console.log(`\n${cliFreshnessFooter(freshness)}`);
+    if (freshness) console.log(`\n${cliFreshnessFooter(freshness, quote ?? resolvedFinancials)}`);
   });
 }

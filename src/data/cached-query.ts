@@ -1,4 +1,5 @@
 import { nextResponseSequence } from "./response-sequence";
+import { servedFromSavedCopy } from "./saved-copies";
 
 /** A value's age belongs to its source, not to the consumer that last read it. */
 export interface CachedValue<T> {
@@ -95,7 +96,8 @@ export class CachedQuery<T> implements CachedQueryHandle<T> {
         return accepted;
       }, (error: unknown) => {
         const fallback = this.usable(cached) ?? this.usable(this.options.read(true));
-        const retained = fallback ? { ...fallback, refreshError: error } : null;
+        // A command that shows it says it is the saved copy (`servedFromSavedCopy`).
+        const retained = fallback ? { ...fallback, value: servedFromSavedCopy(fallback.value, fallback.fetchedAt), refreshError: error } : null;
         if (generation === this.generation) this.publish({ result: retained, loading: false, error });
         if (retained) return retained;
         throw error;

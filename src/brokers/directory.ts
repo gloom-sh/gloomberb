@@ -57,6 +57,17 @@ export function brokerMethodSummary(entry: BrokerDirectoryEntry): string {
   return signsIn ? t("Sign in") : t("On this device");
 }
 
+/**
+ * The method summary with what the broker says of itself, for a list that
+ * gives each broker a line under its name: "Sign in · Brokerages you link in
+ * SnapTrade" for one that is not itself a broker.
+ */
+export function brokerDirectorySummary(entry: BrokerDirectoryEntry): string {
+  const described = entry.methods.find((method) => method.kind === "signed-in")?.broker.description?.trim();
+  const summary = brokerMethodSummary(entry);
+  return described ? `${summary} · ${described}` : summary;
+}
+
 export function brokerMethodLabel(entry: BrokerDirectoryEntry, method: BrokerMethod): string {
   if (method.kind === "signed-in") {
     return entry.methods.some((candidate) => candidate.kind === "device") ? t("Sign in (recommended)") : t("Sign in");

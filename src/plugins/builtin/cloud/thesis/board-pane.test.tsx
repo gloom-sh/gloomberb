@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { installTestWebSocket } from "../../../../test-support/cloud-api";
 import { act, useReducer } from "react";
 import { apiClient, setCloudApiFetchTransport, type CloudThesis, type ThesisSignal } from "../../../../api-client";
 import { PaneFooterProvider } from "../../../../components/layout/pane/footer";
@@ -141,8 +142,17 @@ function Harness({ focused = true }: { focused?: boolean }) {
   );
 }
 
+let originalWebSocket: typeof WebSocket;
 beforeEach(() => {
+  originalWebSocket = globalThis.WebSocket;
+  installTestWebSocket(0);
   requests.length = 0;
+  // The store is a module singleton, and the cloud plugin's setup starts it.
+  // Whatever ran earlier in the process may have left it started, which would
+  // make `start()` below a no-op and the board load nothing, and may have left
+  // a refresh in flight. Stop it before the credentials change below, which a
+  // started store answers with a refresh of its own.
+  thesisStore.dispose();
   setCloudApiFetchTransport(async (url, init) => {
     const parsed = new URL(url);
     const { status, body } = respond(parsed.pathname, init?.method ?? "GET");
@@ -150,10 +160,6 @@ beforeEach(() => {
   });
   apiClient.setSessionToken("thesis-board-session");
   apiClient.restoreCachedUser({ id: "u0", username: "ada", emailVerified: true, plan: "pro" });
-  // The store is a module singleton, and the cloud plugin's setup starts it.
-  // Whatever ran earlier in the process may have left it started, which would
-  // make `start()` below a no-op and the board load nothing.
-  thesisStore.dispose();
   expect(apiClient.isVerified()).toBe(true);
 });
 
@@ -161,6 +167,8 @@ afterEach(() => {
   thesisStore.dispose();
   (thesisStore as unknown as { update: (patch: object) => void }).update({ theses: [], loaded: false, loading: false, error: null, offline: false });
   apiClient.setSessionToken(null);
+  setCloudApiFetchTransport(null);
+  globalThis.WebSocket = originalWebSocket;
 });
 
 describe("ThesisBoardPane", () => {

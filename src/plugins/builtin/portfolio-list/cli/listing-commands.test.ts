@@ -12,6 +12,11 @@ import { createDefaultConfig } from "../../../../types/config";
 import { setCliColorEnabledOverride } from "../../../../utils/cli-output";
 import type { CliCommandDef } from "../../../../types/plugin";
 import type { TickerChanges } from "../../../../types/ticker-changes";
+import { LookupUnansweredError } from "../../../../cli/ticker-resolution";
+import { connectionHealth, GLOOM_CLOUD_HTTP_CONNECTION_ID } from "../../../../core/connection-health";
+import { ProviderBusyError } from "../../../../sources/provider-errors";
+import { failedRow, listingRow } from "../../../../cli/symbol-rows";
+import { printSymbolRows, shellWord } from "./bulk-symbols";
 import { portfolioCliCommand } from "./portfolio-command";
 import { watchlistCliCommand } from "./watchlist-command";
 
@@ -313,6 +318,139 @@ test("a list file with a separator left on a symbol adds the symbol and names th
   expect((result.data as Array<Record<string, unknown>>).map((row) => [row.status, row.listing])).toEqual([["added", "UPST:NASDAQ"]]);
   expect(result.warnings).toContain('Ignored the stray ";" after UPST.');
   expect(searched.filter((query) => query.includes(";"))).toEqual([]);
+});
+
+test("a list pasted from a European sheet adds its symbols alone: prices are left out in one line, and what names nothing is never looked up", async () => {
+  const persistence = new AppPersistence(":memory:");
+  persistences.push(persistence);
+  const store = new TickerRepository(persistence.tickers);
+  const config = { ...createDefaultConfig("/unused"), watchlists: [{ id: "repro", name: "REPRO" }] };
+  const asked: string[] = [];
+  const names: Record<string, string> = { ED: "Consolidated Edison Inc.", CNX: "CNX Resources Corporation", EQT: "EQT Corporation" };
+  const dataProvider = createTestDataProvider({
+    search: async (query) => {
+      asked.push(query);
+      return names[query] ? [{ providerId: "test", symbol: query, name: names[query]!, exchange: "NYSE", type: "Common Stock", currency: "USD" }] : [];
+    },
+    getQuote: async (symbol) => {
+      asked.push(symbol);
+      if (!names[symbol]) throw new Error(`Not a ticker: ${symbol}.`);
+      return createTestQuote({ symbol, name: names[symbol], listingExchangeName: "NYSE", exchangeName: "NYSE" });
+    },
+  });
+  // Before, 2.582,52 was read as 2582:HKEX and 3.594,10 as 3594:TWSE, and $$$ and N/A were searched.
+  setCliColorEnabledOverride(false);
+  const dataDir = await mkdtemp(join(tmpdir(), "gloomberb-european-"));
+  dataDirs.push(dataDir);
+  const file = join(dataDir, "energy.txt");
+  await Bun.write(file, "ED 2.582,52\nCNX;1.899,21\nEQT\t3.594,10\n$$$\nN/A\n");
+  const cli = createTestCliContext({ config, store, dataProvider });
+  await watchlistCliCommand.execute(["add", "REPRO", "--file", file], cli.context);
+  const { result, options } = cli.printed[0]!;
+  expect((result.data as Array<Record<string, unknown>>).map((row) => [row.input, row.status, row.listing])).toEqual([
+    ["ED", "added", "ED:NYSE"], ["CNX", "added", "CNX:NYSE"], ["EQT", "added", "EQT:NYSE"], ["$$$", "not_a_symbol", null], ["N/A", "not_a_symbol", null],
+  ]);
+  expect(result.warnings).toEqual(["Read the first column as symbols; ignored the 3 number cells beside it: 2.582,52; 1.899,21; 3.594,10."]);
+  expect(result.metadata).toMatchObject({ added: 3, notASymbol: 2, summary: 'Watchlist "REPRO": 3 added; 2 not symbols: $$$, N/A.' });
+  expect(options?.text?.(result.data).split("\n").slice(3, 5)).toEqual(["Not a symbol: $$$", "Not a symbol: N/A"]);
+  expect(asked.filter((query) => !names[query.replace(/[.-]/g, "")])).toEqual([]);
+});
+
+test("one symbol typed with its price is added alone, and the price is named as a list's prices are", async () => {
+  const persistence = new AppPersistence(":memory:");
+  persistences.push(persistence);
+  const store = new TickerRepository(persistence.tickers);
+  const config = { ...createDefaultConfig("/unused"), watchlists: [{ id: "l", name: "L" }] };
+  const ed = { providerId: "test", symbol: "ED", name: "Consolidated Edison Inc.", exchange: "NYSE", type: "Common Stock", currency: "USD" };
+  const dataProvider = createTestDataProvider({
+    search: async (query) => query === "ED" ? [ed] : [],
+    getQuote: async (symbol) => {
+      if (symbol !== "ED") throw new Error(`Not a ticker: ${symbol}.`);
+      return createTestQuote({ symbol, name: ed.name, listingExchangeName: "NYSE", exchangeName: "NYSE" });
+    },
+  });
+  // The single add dropped the price without a word.
+  const cli = createTestCliContext({ config, store, dataProvider });
+  await watchlistCliCommand.execute(["add", "L", "ED 2.582,52"], cli.context);
+  const { result } = cli.printed[0]!;
+  expect(result.data).toMatchObject({ changed: true, watchlist: "L" });
+  expect(result.warnings?.[0]).toBe("Ignored 2.582,52, a number, not a symbol.");
+});
+
+test("an outage and junk in one list: the junk is refused at once, and what Gloom Cloud never answered is named once with one add for it", async () => {
+  const persistence = new AppPersistence(":memory:");
+  persistences.push(persistence);
+  const store = new TickerRepository(persistence.tickers);
+  const config = { ...createDefaultConfig("/unused"), watchlists: [{ id: "growth", name: "Growth" }] };
+  const asked: string[] = [];
+  const refused = (query: string, operation: string) => {
+    asked.push(query);
+    connectionHealth.reportRequest(GLOOM_CLOUD_HTTP_CONNECTION_ID, {
+      operation, success: false, latencyMs: asked.length, error: new Error("Anonymous market rate limit exceeded"),
+    });
+    return new ProviderBusyError();
+  };
+  const dataProvider = createTestDataProvider({
+    search: async (query) => { throw refused(query, "GET /market/search"); },
+    getQuote: async (symbol) => { throw refused(symbol, "GET /market/quote"); },
+  });
+  // The retry waits (6, 15 and 30 s) pass at once; every other timer keeps its delay.
+  const originalTimer = globalThis.setTimeout;
+  const timer = spyOn(globalThis, "setTimeout").mockImplementation(((handler: Parameters<typeof setTimeout>[0], delay?: number, ...args: unknown[]) =>
+    originalTimer(handler, delay === 6_000 || delay === 15_000 || delay === 30_000 ? 0 : delay, ...args)) as typeof setTimeout);
+  setCliColorEnabledOverride(false);
+  const dataDir = await mkdtemp(join(tmpdir(), "gloomberb-outage-"));
+  dataDirs.push(dataDir);
+  const file = join(dataDir, "list.txt");
+  await Bun.write(file, "NVDA\n$$$\nphilip morris intl\nN/A\n2.582,52\n--\nmsft\n");
+  const cli = createTestCliContext({ config, store, dataProvider }, { quiet: true });
+  try {
+    await watchlistCliCommand.execute(["add", "Growth", "--file", file], cli.context);
+  } finally {
+    timer.mockRestore();
+  }
+  const { result, options } = cli.printed[0]!;
+  expect((result.data as Array<Record<string, unknown>>).map((row) => [row.input, row.status])).toEqual([
+    ["NVDA", "not_looked_up"], ["$$$", "not_a_symbol"], ["philip morris intl", "not_looked_up"], ["N/A", "not_a_symbol"],
+    ["--", "not_a_symbol"], ["msft", "not_looked_up"],
+  ]);
+  // Junk and the price were never asked for, in the first look or the three after it.
+  expect(asked.filter((query) => /[$/]|^-+$|\d/.test(query))).toEqual([]);
+  const lines = options?.text?.(result.data).split("\n") ?? [];
+  expect(lines.filter((line) => /Gloom Cloud|Try again/.test(line))).toEqual([
+    "Gloom Cloud did not answer for 3 symbols, so they were not looked up: NVDA, philip morris intl, msft",
+    "Try again in a minute: gloomberb watchlist add Growth NVDA 'philip morris intl' msft",
+  ]);
+  expect(result.warnings).toEqual(["Ignored 2.582,52, a number, not a symbol."]);
+  expect(result.metadata).toMatchObject({ added: 0, notLookedUp: 3, notASymbol: 3 });
+});
+
+test("symbols Gloom Cloud did not answer for are listed apart as written, with one command a shell reads back entry by entry", () => {
+  setCliColorEnabledOverride(false);
+  const cli = createTestCliContext();
+  const unanswered = ["Altria Group", "philip morris intl", "NVDA", "$nvda", "AT&T", "Kellogg's"];
+  const rows = [
+    listingRow("AAPL", "added", createTestTicker("AAPL", "Apple Inc.", { exchange: "NASDAQ" })),
+    ...unanswered.map((input) => failedRow(input, new LookupUnansweredError(input))),
+  ];
+  printSymbolRows(cli.context, rows, {
+    verb: "add", collection: { kind: "watchlist", name: "My Growth" }, repeated: 0, notes: [], retry: (keys) => `gloomberb watchlist add ${shellWord("My Growth")} ${keys}`,
+  });
+  const { result, options } = cli.printed[0]!;
+  const lines = options?.text?.(result.data).split("\n") ?? [];
+  // The entries were joined in capitals and unquoted: `add Growth ALTRIA GROUP PHILIP MORRIS INTL NVDA` adds five words.
+  expect(lines).toEqual([
+    "Added AAPL:NASDAQ (Apple Inc.)",
+    "",
+    "Gloom Cloud did not answer for 6 symbols, so they were not looked up: Altria Group, philip morris intl, NVDA, $nvda, AT&T, Kellogg's",
+    "Try again in a minute: gloomberb watchlist add 'My Growth' 'Altria Group' 'philip morris intl' NVDA '$nvda' 'AT&T' 'Kellogg'\\''s'",
+    "",
+    'Watchlist "My Growth": 1 added; 6 not looked up: Altria Group, philip morris intl, NVDA, $nvda, AT&T, Kellogg\'s.',
+  ]);
+  const command = lines[3]!.replace("Try again in a minute: ", "");
+  const read = Bun.spawnSync(["sh", "-c", `printf '%s\\n' ${command.replace(/^gloomberb watchlist add /, "")}`]);
+  expect(read.stdout.toString().trim().split("\n")).toEqual(["My Growth", ...unanswered]);
+  expect(result.metadata).toMatchObject({ notLookedUp: 6 });
 });
 
 test("a list of more than ten symbols checks each one's history, and one symbol alone is decided the same: a match abroad, a dead listing or a symbol taken over lately needs a choice and saves nothing", async () => {

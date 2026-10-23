@@ -129,6 +129,11 @@ export interface BrokerAdapter {
    * profile). Hosts that honor it export `LOCAL_BROKER_MARKET_DATA` from `gloomberb/broker`.
    */
   readonly localMarketData?: boolean;
+  /**
+   * `getQuote` answers the order ticket only, so the market data router never asks this broker:
+   * for a broker whose quotes count against a small request allowance (SnapTrade, signed in).
+   */
+  readonly ticketQuotesOnly?: boolean;
   validate(instance: BrokerInstanceConfig): Promise<boolean>;
   importPositions(instance: BrokerInstanceConfig): Promise<BrokerPosition[]>;
   importPortfolioSnapshot?(instance: BrokerInstanceConfig): Promise<{ accounts: BrokerAccount[]; positions: BrokerPosition[] }>;

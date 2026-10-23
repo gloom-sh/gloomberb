@@ -7,12 +7,15 @@ import { renderedReportFreshness } from "../../../../../cli/pane-functions/repor
 import { RemoteUiRegistryProvider, createRemoteUiRegistry } from "../../../../../remote/semantic-tree";
 import { createOpenTuiTestHarness } from "../../../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState } from "../../../../../state/app/context";
+import { captureConfigSaves } from "../../../../../test-support/config-store";
 import { createTestPaneConfig, TestPaneFrame } from "../../../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../../../test-support/plugin-runtime";
 import { UiHostProvider, useNativeRenderer, useRendererHost, useUiHost } from "../../../../../ui";
 import { IndustryPane } from "../industry-pane";
 
 const tui = createOpenTuiTestHarness();
+// A filter change saves the pane's settings: kept in memory, never written under the working directory.
+captureConfigSaves();
 const PANE = "news-industry:test";
 let opened: string[] = [];
 let requests: string[] = [];

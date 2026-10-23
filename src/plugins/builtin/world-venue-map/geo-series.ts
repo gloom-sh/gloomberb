@@ -119,6 +119,25 @@ const CHOKEPOINT_NAMES: Readonly<Record<string, string>> = {
 };
 
 /**
+ * The key straits as a legend of all six can carry them: the full series
+ * names ("Strait of Hormuz transits") would be cut to a fragment each. The
+ * chart's title and unit already say these are transits.
+ */
+const CHOKEPOINT_SHORT_NAMES: Readonly<Record<string, string>> = {
+  SUEZ: "Suez",
+  PANAMA: "Panama",
+  HORMUZ: "Hormuz",
+  BABELMANDEB: "Bab el-Mandeb",
+  MALACCA: "Malacca",
+  BOSPHORUS: "Bosphorus",
+};
+
+/** A key strait's short legend name; undefined for any other series, which keeps the name the index gives it. */
+export function chokepointShortName(alias: string): string | undefined {
+  return CHOKEPOINT_SHORT_NAMES[alias.toUpperCase()];
+}
+
+/**
  * Who publishes the chokepoints' daily transits, as the server's chokepoints
  * layer names them (`publisher`); the catalog lists the key straits offline.
  */
@@ -161,16 +180,50 @@ export async function chokepointSeriesIds(request: GeoRequest, signal?: AbortSig
   });
 }
 
+/** A series' chokepoint as the index names it: "Strait of Hormuz transits" is "Strait of Hormuz". */
+function chokepointName(seriesName: string): string {
+  return seriesName.replace(/\s+transits$/i, "");
+}
+
+/** A chokepoint's name without what straits and canals share ("Strait of Hormuz" is Hormuz, "Suez Canal" Suez), as it is typed short. */
+function chokepointCore(name: string): string {
+  return compact(chokepointName(name)
+    .replace(/^strait of\s+/i, "")
+    .replace(/\s+(strait|canal|channel|passage)$/i, ""));
+}
+
+function matchIndexedChokepoint(series: readonly GeoSeriesSearchHit[], wanted: string): string | null {
+  const chokepoints = series.filter((hit) => hit.layer === CHOKEPOINTS_LAYER && hit.alias);
+  // A main transit series has the plain alias (SUEZ), its splits a suffix (SUEZ.TANKER).
+  const exact = chokepoints.find((hit) => compact(hit.alias!) === wanted);
+  if (exact) return exact.alias!;
+  const main = chokepoints.filter((hit) => !hit.alias!.includes("."));
+  const named = main.find((hit) => compact(chokepointName(hit.name)) === wanted || chokepointCore(hit.name) === wanted);
+  if (named) return named.alias!;
+  // Part of one strait's name ("mandeb") finds it; part of several ("strait") names none.
+  return main.length === 1 ? main[0]!.alias! : null;
+}
+
+function matchKeyChokepoint(wanted: string): string | null {
+  return KEY_CHOKEPOINTS.find((alias) => alias === wanted || compact(CHOKEPOINT_NAMES[alias] ?? "") === wanted
+    || chokepointCore(CHOKEPOINT_NAMES[alias] ?? "") === wanted) ?? null;
+}
+
 /**
  * The series a typed chokepoint names: "suez", "Bab el-Mandeb" and "Strait
- * of Hormuz" all find the strait's main transit series.
+ * of Hormuz" all find the strait's main transit series. Null for text that
+ * names no chokepoint (a ticker), so CHOKE can say which exist. Without the
+ * series index, the key straits are still known by name.
  */
-export async function chokepointSeriesFor(request: GeoRequest, typed: string, signal?: AbortSignal): Promise<string> {
+export async function chokepointSeriesFor(request: GeoRequest, typed: string, signal?: AbortSignal): Promise<string | null> {
   const wanted = compact(typed);
+  if (!wanted) return null;
   const { series } = await searchGeoSeries(request, typed, signal).catch(() => ({ series: [] as GeoSeriesSearchHit[] }));
-  const chokepoints = series.filter((hit) => hit.layer === CHOKEPOINTS_LAYER);
-  const exact = chokepoints.find((hit) => hit.alias && compact(hit.alias) === wanted);
-  // A main transit series has the plain alias (SUEZ), its splits a suffix (SUEZ.TANKER).
-  const named = chokepoints.find((hit) => hit.alias && !hit.alias.includes("."));
-  return exact?.alias ?? named?.alias ?? wanted;
+  return matchIndexedChokepoint(series, wanted) ?? matchKeyChokepoint(wanted);
+}
+
+/** What CHOKE tells text that names no chokepoint: the key straits, as it takes them typed. */
+export function unknownChokepointMessage(typed: string): string {
+  const names = KEY_CHOKEPOINTS.map((alias) => (CHOKEPOINT_SHORT_NAMES[alias] ?? alias).toUpperCase());
+  return `No chokepoint named ${typed.trim()}. Try CHOKE ${names.slice(0, -1).join(", ")} or ${names.at(-1)}.`;
 }

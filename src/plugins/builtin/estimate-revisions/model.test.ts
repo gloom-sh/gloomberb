@@ -186,10 +186,15 @@ test("fiscal pin preserves frequency and currency identity and rejects invalid o
   ]);
   expect(pinnedEstimatePeriods(periods, undefined)).toBe(periods);
   expect(() => pinnedEstimatePeriods(periods, "2026-02-30")).toThrow(
-    "valid YYYY-MM-DD",
+    "a fiscal end date as YYYY-MM-DD",
   );
   expect(() => pinnedEstimatePeriods(periods, "2027-09-30")).toThrow(
     "No quarterly estimates",
+  );
+  // A date written day first is read, or says what to type, as any date option does.
+  expect(pinnedEstimatePeriods(periods, "30.09.2026", "annual")).toEqual([annual]);
+  expect(() => pinnedEstimatePeriods(periods, "30/09/2026", "quarterly", "--period")).toThrow(
+    "type --period 2026-09-30 for 30/09/2026",
   );
 });
 

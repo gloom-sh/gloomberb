@@ -17,6 +17,8 @@ import { canonicalFund, changeColumns, changeLabel, changeReason, coverageText, 
 
 type ViewProps = Pick<PaneProps, "width" | "height" | "focused"> & { fund: string; active: boolean };
 const rowKey = (row: SectionedRow<FundMember>) => row.key;
+/** How often live members are worth checking again: the server renews their prices every 15 seconds. */
+const LIVE_MEMBERS_REFRESH_MS = 15_000;
 
 function Holdings({ fund, tab, width, height, focused, active }: ViewProps & { tab: MembersTab }) {
   const colors = useThemeColors();
@@ -39,10 +41,13 @@ function Holdings({ fund, tab, width, height, focused, active }: ViewProps & { t
       members: rows.flatMap((row) => isSectionedItemRow(row) && row.item.symbol ? [{ symbol: row.item.symbol, name: row.item.name }] : []) };
   }, [data, fund, query, rows, tab]);
   useMembersMenu("members:members-menu", memberList);
-  useAutoRefresh(resource.updatedAt, () => { if (active) void resource.load(); });
+  // A Pro account's members are priced from the server's live read, renewed every 15 seconds.
+  const live = data?.access === "realtime";
+  useAutoRefresh(resource.updatedAt, () => { if (active) void resource.load(live); }, { intervalMs: live ? LIVE_MEMBERS_REFRESH_MS : null });
   usePaneRefreshKey(() => void resource.reload(), { focused, enabled: active && !search.active });
   const info = useMemo<PaneFooterSegment[]>(() => {
     if (!data) return [];
+    const feed = data.access === "realtime" ? "live" : "15m delayed";
     const dates = [...new Set(data.members.flatMap((row) => row.changePercent !== null && row.dailyAsOf ? [row.dailyAsOf.slice(0, 10)] : []))].sort();
     const date = dates.length === 1 ? dates[0] : dates.length ? `${dates[0]} to ${dates.at(-1)}` : data.fundDailyAsOf?.slice(0, 10);
     const partial = data.aggregate.fresh1D < data.aggregate.total;
@@ -50,10 +55,12 @@ function Holdings({ fund, tab, width, height, focused, active }: ViewProps & { t
       { id: "coverage", parts: [{ text: coverageText(data.aggregate, width < 60), tone: partial ? "warning" : "muted" }] },
       // A capture's status line says the quotes' date and delay too; it does not say returns are unavailable.
       ...(data.quotesUnavailable
-        ? [{ id: "quote-date", title: `${date ?? "Quote date unavailable"} · 15m delayed · holdings ${data.asOf}`, parts: [{ text: "returns unavailable", tone: "muted" as const }] }]
+        ? [{ id: "quote-date", title: `${date ?? "Quote date unavailable"} · ${feed} · holdings ${data.asOf}`, parts: [{ text: "returns unavailable", tone: "muted" as const }] }]
         : [
-          delayedFooterSegment({ id: "quote-delay", detail: "15m delayed", delay: "15m", quoteStatus: true }),
-          ...(date ? [{ id: "quote-date", title: `${date} · 15m delayed · holdings ${data.asOf}`, quoteStatus: true,
+          data.access === "realtime"
+            ? { id: "quote-live", quoteStatus: true, parts: [{ text: "live", tone: "positive" as const }] }
+            : delayedFooterSegment({ id: "quote-delay", detail: "15m delayed", delay: "15m", quoteStatus: true }),
+          ...(date ? [{ id: "quote-date", title: `${date} · ${feed} · holdings ${data.asOf}`, quoteStatus: true,
             parts: [{ text: width < 60 && dates.length === 1 ? date.slice(5) : date, tone: "muted" as const }] }] : []),
         ]),
       ...(width >= 60 ? [{ id: "holdings-date", asOf: true, parts: [{ text: `holdings ${data.asOf}`, tone: "muted" as const }] }] : []),

@@ -8,13 +8,14 @@ import { canonicalExchange, parsePublicTickerKey } from "../../../utils/exchange
 import { numberErrorMessage } from "../../../utils/decimal-comma";
 import { expiryIsoDate, findListedExpiry, missingExpiryText } from "../../../utils/option-expiry";
 import { surfaceTreasuryRate } from "../vol-surface/model";
-import { daysToExpiryFrom, extractImpliedForward, optionMid, solveImpliedVolatility } from "../shared/volatility";
+import { daysToExpiryFrom, extractImpliedForward, optionDelta, optionMid, solveImpliedVolatility, valueOption } from "../shared/volatility";
 import type { YieldPoint } from "../yield-curve/treasury-data";
 import { parseLegs, scenarioCurrency, validatePosition, type ScenarioControls, type ScenarioLeg, type ScenarioPosition } from "./model";
 import { loadModelDividendYield, type ModelDividendYield } from "../../../market-data/model-dividend-yield";
 import { abortable, abortError } from "../../../utils/async-deadline";
 import { extendedSession, modelSpotStamp, modelSpotStampVariants, type OptionModelSpot } from "../options/model-spot";
 import { errorMessage } from "../../../utils/errors";
+import { dateOptionError, dateOptionFormatsOr, readCalendarDate } from "../../../utils/calendar-date";
 
 export interface ScenarioMarketSnapshot {
   symbol: string;
@@ -225,13 +226,17 @@ function numericSetting(settings: Record<string, unknown>, key: string): number 
   return Number(value);
 }
 
-/** Dates are explicit UTC ISO timestamps or UTC calendar dates. Milliseconds are accepted in persisted state. */
+/** Dates are explicit UTC ISO timestamps or UTC calendar dates, written as a date option takes them. Milliseconds are accepted in persisted state. */
 function dateSetting(settings: Record<string, unknown>, key: string): number | undefined {
   const value = settings[key];
   if (!supplied(value)) return undefined;
   if (typeof value === "number" && positive(value) && Number.isFinite(new Date(value).getTime())) return value;
+  const day = typeof value === "string" ? readCalendarDate(value) : null;
+  if (day) return Date.parse(`${day}T00:00:00Z`);
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?Z)?$/.test(value)) {
-    throw new Error(`${key} must be YYYY-MM-DD or an ISO timestamp ending in Z`);
+    throw new Error(dateOptionError(String(value), key === "asOf" ? "--as-of" : `--${key}`, {
+      subject: key === "asOf" ? "a valuation date" : "a scenario date", formats: dateOptionFormatsOr("an ISO timestamp ending in Z"),
+    }));
   }
   const date = Date.parse(value);
   if (!positive(date) || new Date(date).toISOString().slice(0, 10) !== value.slice(0, 10)) throw new Error(`${key} is not a valid date`);
@@ -266,6 +271,8 @@ export function scenarioPositionFromSettings(
   const strike = numericSetting(settings, "strike");
   if (strike != null && !(strike > 0)) throw new Error("strike must be positive");
   if (strike != null && !supplied(settings.strategy)) throw new Error("strike picks the strike of --strategy; add --strategy put, csp, vertical or straddle");
+  const delta = putDeltaSetting(settings);
+  if (delta != null && strike != null) throw new Error("delta and strike each pick the put; give one of them");
   const collarStrikes = { put: numericSetting(settings, "putStrike"), call: numericSetting(settings, "callStrike") };
   if ((collarStrikes.put != null || collarStrikes.call != null) && settings.strategy !== "collar") {
     throw new Error("put-strike and call-strike pick a collar's strikes; add --strategy collar");
@@ -288,8 +295,9 @@ export function scenarioPositionFromSettings(
     }
     if (spot == null) throw new Error("A current underlying price or explicit --spot is required");
     // Leg IVs are solved at the market's own spot and time, never at a what-if override.
-    const pricing = market.spot != null && rate != null ? { spot: market.spot, asOf: market.asOf, rate } : null;
-    const seeded = scenarioStrategyLegs(market.chain, spot, settings.strategy, pricing, strike, collarStrikes);
+    const pricing = market.spot != null && rate != null ? { spot: market.spot, asOf: market.asOf, rate, dividendYield: dividendYield ?? 0 } : null;
+    if (delta != null && !pricing) throw new Error("Choosing the put by delta needs the Treasury rate; supply --rate, or pick it with --strike");
+    const seeded = scenarioStrategyLegs(market.chain, spot, settings.strategy, pricing, strike, collarStrikes, delta);
     legs = seeded.legs;
     shareEntry = market.spot;
     // Mids priced off the parity forward are worth their cost only at the spot
@@ -326,6 +334,19 @@ export function scenarioPositionFromSettings(
   return position;
 }
 
+/**
+ * `--delta`: the put a csp or put seed sells or buys, by the absolute delta it
+ * is nearest (0.30, or -0.30 as a put's own sign reads it); undefined when not set.
+ */
+function putDeltaSetting(settings: Record<string, unknown>): number | undefined {
+  const value = numericSetting(settings, "delta");
+  if (value == null) return undefined;
+  if (settings.strategy !== "csp" && settings.strategy !== "put") throw new Error("delta picks the put of --strategy csp or put");
+  const delta = Math.abs(value);
+  if (!(delta > 0 && delta < 1)) throw new Error(`delta must be a put's delta between 0 and 1, such as 0.30; got ${String(settings.delta)}`);
+  return delta;
+}
+
 /** `--shares`: a signed whole number of shares of the underlying, or undefined when not set. */
 function sharesSetting(settings: Record<string, unknown>): number | undefined {
   const value = settings.shares;
@@ -346,7 +367,7 @@ export const SCENARIO_STRATEGIES = ["vertical", "straddle", "put", "csp", "colla
 type ScenarioStrategy = typeof SCENARIO_STRATEGIES[number];
 const isScenarioStrategy = (value: unknown): value is ScenarioStrategy => SCENARIO_STRATEGIES.includes(value as ScenarioStrategy);
 
-interface StrategyPricing { spot: number; asOf: number; rate: number }
+interface StrategyPricing { spot: number; asOf: number; rate: number; dividendYield: number }
 
 const usableVolatility = (value: unknown): value is number => positive(value) && value <= 5;
 
@@ -357,8 +378,8 @@ interface StrategyParity { forward: number; daysToExpiry: number }
  * at its quote midpoint, so each leg takes the IV that midpoint implies against
  * the expiry's put-call parity forward, with the time left at the market
  * timestamp OSA values at. This holds even when the chain carries a provider
- * IV measured at another time (a same-day IV solved when the chain was served,
- * hours after the after-hours print OSA values at). The forward comes from the
+ * IV measured at another time (a same-day IV solved at the close's quotes,
+ * hours before the after-hours print OSA values at). The forward comes from the
  * same quotes, so a spot that moved after they were taken (an after-hours or
  * pre-market print against the close's chain) does not skew the call against
  * the put. A leg whose midpoint cannot be solved (a spot too far from every
@@ -373,10 +394,12 @@ interface StrategyParity { forward: number; daysToExpiry: number }
  * to the next listed strike up, or a straddle at the anchor. A collar buys
  * the put at `collar.put` and sells the call at `collar.call` on the put's
  * expiry, each the quoted strike nearest 10% out of the money when omitted.
+ * A put or csp seed given a `delta` takes the put whose spot delta, valued at
+ * the IV its own midpoint implies, is nearest that delta's negative.
  */
 function scenarioStrategyLegs(
   chain: OptionsChain, spot: number, strategy: ScenarioStrategy, pricing: StrategyPricing | null, strike?: number,
-  collar: { put?: number; call?: number } = {},
+  collar: { put?: number; call?: number } = {}, delta?: number,
 ): { legs: ScenarioLeg[]; parity: StrategyParity | null } {
   const parity = new Map<number, StrategyParity | null>();
   const parityFor = (expiration: number) => {
@@ -414,7 +437,7 @@ function scenarioStrategyLegs(
   };
   if (strategy === "collar") return collarLegs(calls, puts, spot, collar, missing, parityFor);
   if (strategy === "put" || strategy === "csp") {
-    const put = puts.find(anchored);
+    const put = delta == null ? puts.find(anchored) : nearestDelta(puts, -delta, spot, pricing, parityFor);
     if (!put) throw missing(puts);
     return { legs: [{ id: put.contract.contractSymbol, side: "put", quantity: strategy === "csp" ? -1 : 1, strike: put.contract.strike,
       expiration: put.contract.expiration, price: put.mid, priceSource: "mid", volatility: put.volatility, multiplier: 100,
@@ -440,6 +463,41 @@ function scenarioStrategyLegs(
 }
 
 interface QuotedContract { contract: OptionsChain["calls"][number]; mid: number; volatility: number; solved: boolean }
+
+/**
+ * A put's spot delta at the IV it trades at: against the parity forward its
+ * IV was solved on when it was (forward delta, carried to spot), else at the
+ * seed's spot. Null when it cannot be valued.
+ */
+function quotedPutDelta(quoted: QuotedContract, spot: number, pricing: StrategyPricing | null, parity: StrategyParity | null): number | null {
+  const { contract, volatility, solved } = quoted;
+  if (!pricing) return null;
+  if (solved && parity) {
+    // On the forward, with the dividend yield set to the rate so it carries no drift, as the IV was solved.
+    const forwardDelta = valueOption({ side: "put", spot: parity.forward, strike: contract.strike, daysToExpiry: parity.daysToExpiry,
+      rate: pricing.rate, dividendYield: pricing.rate, volatility }).delta;
+    return Number.isFinite(forwardDelta) ? forwardDelta * Math.exp((pricing.rate - pricing.dividendYield) * parity.daysToExpiry / 365) : null;
+  }
+  const years = daysToExpiryFrom(contract.expiration, pricing.asOf) / 365;
+  return optionDelta({ spot, years, volatility, rate: pricing.rate, dividendYield: pricing.dividendYield }, contract.strike, "put");
+}
+
+/** The put whose delta is nearest `target` (negative, as a put's delta reads), the lower strike on a tie; null when none can be valued. */
+function nearestDelta(
+  puts: readonly QuotedContract[], target: number, spot: number, pricing: StrategyPricing | null,
+  parityFor: (expiration: number) => StrategyParity | null,
+): QuotedContract | null {
+  let best: { put: QuotedContract; distance: number } | null = null;
+  for (const put of puts) {
+    const delta = quotedPutDelta(put, spot, pricing, put.solved ? parityFor(put.contract.expiration) : null);
+    if (delta == null) continue;
+    const distance = Math.abs(delta - target);
+    if (!best || distance < best.distance - 1e-12 || (Math.abs(distance - best.distance) <= 1e-12 && put.contract.strike < best.put.contract.strike)) {
+      best = { put, distance };
+    }
+  }
+  return best?.put ?? null;
+}
 
 /** How far out of the money a collar's put and call sit when their strikes are not given. */
 const COLLAR_DEFAULT_DISTANCE = 0.1;

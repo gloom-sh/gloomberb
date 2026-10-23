@@ -8,9 +8,13 @@ export function ruleTarget(rule: EventAlertRule): string {
   return `${target} · ${rule.eventDate ?? "date not known yet"}`;
 }
 
-/** The state word the Events tab shows: a scheduled rule is Alerted once it has gone off for its coming event. */
+/**
+ * The state word the Events tab shows: a scheduled rule is Alerted once it has gone off for its coming
+ * event, an IV level once its level was reached, until it is re-armed.
+ */
 export function ruleState(rule: EventAlertRule, today: string): "Active" | "Paused" | "Alerted" {
   const scheduled = readScheduledRule(rule);
-  const status = scheduled ? scheduledAlertStatus(rule, scheduled.leadDays, today) : rule.status;
+  const status = scheduled ? scheduledAlertStatus(rule, scheduled.leadDays, today, scheduled.trigger)
+    : rule.status === "active" && rule.kind === "iv_level" && rule.triggeredAt ? "triggered" : rule.status;
   return status === "paused" ? "Paused" : status === "triggered" ? "Alerted" : "Active";
 }

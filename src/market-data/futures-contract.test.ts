@@ -9,7 +9,10 @@ import {
   futuresTickText,
   isFuturesInstrument,
   loadFuturesPriceUnit,
-  minorUnitPricePer,
+  futuresPricePer,
+  loadUsdPerMmbtu,
+  usdPerMmbtu,
+  usdPerMmbtuText,
   resetFuturesPriceUnits,
   validateFuturesContractTerms,
 } from "./futures-contract";
@@ -52,16 +55,52 @@ test("Settle is the confirmed settlement dated by its session, -- without one, a
   expect(futuresSettleText({ settlement: { price: 479.75, date: "2026-10-09" } }, { ...quote, currency: "USX" })).toBe("479.75¢ (2026-10-09)");
   // No quote yet: the tick's decimals survive and no currency is guessed.
   expect(futuresSettleText({ settlement: { price: 3.2952, date: "2026-10-09" } }, undefined)).toBe("3.2952 (2026-10-09)");
+  // Beside a move from a later session than the settlement's it waits for that session's, never an older one in its place.
+  expect(futuresSettleText(gold, quote, "2026-10-12")).toBe("-- (2026-10-12 not confirmed yet)");
+  expect(futuresSettleText(gold, quote, "2026-10-09")).toBe("$4,216.30 (2026-10-09)");
+  // A settlement of the move's own session, newer than the close it is from, is the latest and stays.
+  expect(futuresSettleText(gold, quote, "2026-10-08")).toBe("$4,216.30 (2026-10-09)");
+  expect(futuresSettleText({ settlement: null }, quote, "2026-10-12")).toBe("--");
 });
 
-test("a price in cents says what it is per, and a dollar price reads as before", () => {
+test("a price in cents and every energy price say what they are per; any other dollar price reads as before", () => {
   const coffee = { spec: { ...gold.spec!, unit: "US cents / lb" } };
-  expect(minorUnitPricePer(coffee, "USX")).toBe("/lb");
-  expect(minorUnitPricePer({ spec: { ...gold.spec!, unit: "US cents / bushel" } }, "USX")).toBe("/bu");
-  expect(minorUnitPricePer(gold, "USD")).toBe("");
+  expect(futuresPricePer(coffee, "USX")).toBe("/lb");
+  expect(futuresPricePer({ spec: { ...gold.spec!, unit: "US cents / bushel" } }, "USX")).toBe("/bu");
+  expect(futuresPricePer(gold, "USD")).toBe("");
   // Terms in another currency than the quote's, or none, add nothing rather than a wrong unit.
-  expect(minorUnitPricePer(gold, "USX")).toBe("");
-  expect(minorUnitPricePer(null, "USX")).toBe("");
+  expect(futuresPricePer(gold, "USX")).toBe("");
+  expect(futuresPricePer(null, "USX")).toBe("");
+  // Energy, from the exchange's unit, or the catalog's for Dutch TTF gas, which has no terms from the server.
+  const energy = (root: string, unit: string | null) => ({ root, spec: unit ? { ...gold.spec!, unit } : null });
+  expect(futuresPricePer(energy("TTF", null), "EUR")).toBe("/MWh");
+  expect(futuresPricePer(energy("NG", "USD / MMBtu"), "USD")).toBe("/MMBtu");
+  expect(futuresPricePer(energy("CL", "USD / barrel"), "USD")).toBe("/bbl");
+  expect(futuresPricePer(energy("HO", "USD / gallon"), "USD")).toBe("/gal");
+  expect(futuresPricePer(energy("TTF", null), "USD")).toBe("");
+  expect(futuresPricePer(energy("CL", null), "USD")).toBe("");
+});
+
+test("TTF without terms names its unit in the Contract block, and its dollar equivalent per MMBtu is a marked conversion", async () => {
+  const ttf: FuturesContractTermsPayload = {
+    symbol: "TTF=F", root: "TTF", name: "Dutch TTF Gas", contract: "TTFX26", contractSymbol: "TTFX26.NYM", deliveryMonth: "2026-11",
+    spec: null, lastTrade: "2026-10-29", firstNotice: null, inDelivery: false, settlement: { price: 90.043, date: "2026-10-22" },
+  };
+  expect(text(futuresContractLines(ttf, "TTF=F"))).toEqual(["Contract: TTFX26", "Unit: EUR / MWh", "Last Trade: 2026-10-29"]);
+  // €90.30/MWh at EUR/USD 1.1650: 90.30 x 1.1650 / 3.412 dollars per MMBtu.
+  expect(usdPerMmbtu(90.3, ttf, "EUR", 1.165)).toBeCloseTo(30.8318, 3);
+  const asked: string[] = [];
+  const rate = async (currency: string) => { asked.push(currency); return 1.165; };
+  const usd = await loadUsdPerMmbtu(90.3, ttf, "eur", rate);
+  expect(usd && usdPerMmbtuText(usd)).toBe("≈ $30.832/MMBtu at EUR/USD 1.1650");
+  // Natural gas is already in dollars per MMBtu, and is not converted, nor asked a rate for.
+  const ng = { root: "NG", spec: { ...gold.spec!, unit: "USD / MMBtu" } };
+  expect(usdPerMmbtu(2.769, ng, "USD", 1)).toBeNull();
+  expect(await loadUsdPerMmbtu(2.769, ng, "USD", rate)).toBeNull();
+  expect(asked).toEqual(["EUR"]);
+  // A rate that does not load converts nothing.
+  expect(usdPerMmbtu(90.3, ttf, "EUR", Number.NaN)).toBeNull();
+  expect(await loadUsdPerMmbtu(90.3, ttf, "EUR", async () => { throw new Error("offline"); })).toBeNull();
 });
 
 test("a futures move names what it is measured from, as far as the settlement in the terms shows", () => {

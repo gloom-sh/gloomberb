@@ -1,4 +1,4 @@
-import { afterEach, expect, spyOn, test } from "bun:test";
+import { afterEach, expect, mock, spyOn, test } from "bun:test";
 import { apiClient } from "../api-client";
 import { offeringNote } from "../utils/cash-runway";
 import { createDefaultConfig } from "../types/config";
@@ -97,7 +97,7 @@ test("a statement's filing is its SEC accession, else the original 10-Q or 10-K 
 });
 
 afterEach(() => {
-  (apiClient.getCloudSecFilings as unknown as { mockRestore?: () => void }).mockRestore?.();
+  mock.restore();
 });
 
 test("a server that predates the form filter sends every form: only the periodic reports, annual reports and 8-Ks are kept", async () => {

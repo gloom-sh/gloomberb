@@ -1,5 +1,6 @@
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
+import { DATE_OPTION_EXAMPLES } from "../../../utils/calendar-date";
 import {
   expirationOptionSeconds, OPTION_EXPIRATION_FORMAT, OPTION_EXPIRATION_PLACEHOLDER, readOptionExpiration,
 } from "../../../utils/option-expiry";
@@ -11,8 +12,8 @@ import {
 import { scenarioFreshness } from "./freshness";
 import { cashSecuredPut, cspReportEntries, loadNextEarningsDate } from "./csp";
 import { formatSpotTime } from "../options/model-spot";
-import { buildScenario, currencyLabel, parseLegs, scenarioValueUnit } from "./model";
-import { hedgeInputsFromSettings, hedgeReportEntries, scenarioHedgeBudget } from "./hedge";
+import { amountUnit, buildScenario, currencyLabel, exportPercent, parseLegs, scenarioValueUnit } from "./model";
+import { hedgeInputsFromSettings, hedgeReportEntries, scenarioHedgeBudget, seededLegQuotes } from "./hedge";
 import { collarReportEntries, scenarioCollar } from "./collar";
 import { modelDividendYieldNote } from "../../../market-data/model-dividend-yield";
 import { listingFateEmpty, loadListingFate } from "../../../tickers/listing-fate";
@@ -32,6 +33,12 @@ const VALUATION_LABELS: Record<string, (currency: string) => string> = {
   thetaPerDay: (currency) => `Theta (${currency} per day)`, vegaPerPoint: (currency) => `Vega (${currency} per vol point)`,
   rhoPerPoint: (currency) => `Rho (${currency} per rate point)`,
 };
+/** The unit an export names beside each Valuation figure: `per` is the currency for the position (`USD per contract`). */
+const VALUATION_UNITS: Record<string, (currency: string, per: string) => string> = {
+  price: (_currency, per) => per, pnl: (_currency, per) => per, delta: () => "shares", gamma: () => "shares per 1.00 move",
+  thetaPerDay: (currency) => `${currency} per day`, vegaPerPoint: (currency) => `${currency} per vol point`,
+  rhoPerPoint: (currency) => `${currency} per rate point`,
+};
 
 export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle", argument: { kind: "ticker", description: "Underlying ticker" },
@@ -40,7 +47,8 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
   description: "A typed or chain-seeded options position valued across spot, date and volatility: its legs, value and Greeks, expiry risk and a "
     + "scenario P&L grid. With --nav and --budget-bps, how many contracts a hedge budget buys, the premium spent, the notional protected and "
     + "coverage of an equity sleeve. --strategy csp sells a cash-secured put: cash secured, premium, yield on cash, annualised yield, "
-    + "distance out of the money, break-even, days to expiry and whether earnings fall before expiry. --strategy collar buys a put and sells "
+    + "the bid, ask and spread with the yield at the bid, distance out of the money, break-even, days to expiry and whether earnings fall "
+    + "before expiry; CSP ranks the same put across several names. --strategy collar buys a put and sells "
     + "a call against the shares they cover: net premium, floor, cap and breakevens of the hedged position.",
   discovery: { screenshotReadiness: "ready", limitations: ["European scenario values do not model early assignment or exercise."] },
   options: [
@@ -53,6 +61,8 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
         + "csp, one short put sold at its midpoint with the cash to buy the shares set aside (a cash-secured put), "
         + "or collar, one long put and one short call on the same expiry with the shares they cover" },
     { key: "strike", type: "string", description: "The --strategy strike: the put, the vertical's long call or the straddle. Nearest the money when omitted" },
+    { key: "delta", type: "string", placeholder: "0.30", example: "--strategy csp --delta 0.30 --expiration 2026-11-20",
+      description: "The --strategy csp or put put by its delta instead of --strike: the one whose delta is nearest this, as a put's delta reads without its sign" },
     { key: "putStrike", aliases: ["put-strike"], type: "string",
       description: "The --strategy collar put bought. The quoted strike nearest 10% below spot when omitted" },
     { key: "callStrike", aliases: ["call-strike"], type: "string",
@@ -67,8 +77,8 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
     { key: "rate", type: "string", description: "Continuously compounded annual risk-free rate, percent" },
     { key: "dividendYield", aliases: ["dividend-yield"], type: "string", description: "Continuous annual dividend yield, percent" },
     { key: "currency", type: "string", description: "Currency of the inputs, such as USD; the underlying's when omitted" },
-    { key: "asOf", aliases: ["as-of"], type: "string", description: "Position valuation timestamp: UTC ISO or YYYY-MM-DD" },
-    { key: "date", type: "string", description: "Scenario date: UTC ISO or YYYY-MM-DD" },
+    { key: "asOf", aliases: ["as-of"], type: "string", description: `Position valuation date, as ${DATE_OPTION_EXAMPLES}, or a UTC ISO timestamp` },
+    { key: "date", type: "string", description: `Scenario date, as ${DATE_OPTION_EXAMPLES}, or a UTC ISO timestamp` },
     { key: "volShift", aliases: ["vol-shift"], type: "string", defaultValue: "0", description: "Parallel volatility shift, percentage points" },
     { key: "spotRange", aliases: ["spot-range"], type: "string", defaultValue: "30", description: "Spot grid range above and below current spot, percent" },
     { key: "nav", type: "string", description: "Portfolio NAV for a hedge budget, such as 100m, 2.5bn, 250k, 1,000,000 or $100m. Needs --budget-bps" },
@@ -78,6 +88,11 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
   ],
   async load(args, ctx) {
     const symbol = args.symbols[0]!;
+    // Several names to sell puts on are a screen, not one scenario.
+    const names = args.rawArgument.split(/[\s,;]+/).filter(Boolean);
+    if (names.length > 1 && args.options.strategy === "csp") {
+      throw new Error(`OSA values one underlying. To rank cash-secured puts across ${names.join(", ")}: gloomberb fn CSP ${names.join(" ")}`);
+    }
     const settings: Record<string, unknown> = { ...ctx.settings, ...args.options, symbol };
     // Bad hedge inputs fail before any market request.
     hedgeInputsFromSettings(settings);
@@ -118,7 +133,8 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
     const lastPrint = midVolatility && !supplied(settings.spot) && market.spot != null && money(market.spot) !== money(position!.spot)
       ? market.spot : null;
     const spotBasis = position ? scenarioSpotBasis(settings, position, market) : null;
-    const csp = position && settings.strategy === "csp" ? cashSecuredPut(position, spotBasis!, earningsDate) : null;
+    const csp = position && settings.strategy === "csp"
+      ? cashSecuredPut(position, spotBasis!, earningsDate, seededLegQuotes(position, market.chain).get(position.legs[0]?.id ?? "")) : null;
     // A collar seeded, or one typed with the shares it hedges.
     const collar = position && (settings.strategy === "collar" || position.underlying) ? scenarioCollar(position, spotBasis!) : null;
     const lastSession = market.underlyingQuote && spotBasis === "implied by option quotes"
@@ -129,6 +145,10 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
     // Value, P&L, risk and the grid add every contract; entry prices and spot are per share.
     const valueUnit = position ? scenarioValueUnit(position) : null;
     const per = `${currency} ${valueUnit}`;
+    // What an export names beside each number: the currency (or `currency unknown`) and what it is for.
+    const exportCurrency = position ? amountUnit(position.currency) : "";
+    const exportPer = `${exportCurrency} ${valueUnit}`;
+    const perShare = `${exportCurrency} ${PRICE_UNIT}`;
     return {
       freshness: scenarioFreshness(market, suppliedInputs),
       sections: scenario ? [
@@ -141,16 +161,16 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
         ], rows: position!.legs.map((leg) => ({ ...leg, expiry: new Date(leg.expiration * 1000).toISOString().slice(0, 10),
           ...(midVolatility ? { volatilityFrom: leg.volatilitySource === "mid" ? "quote mid" : "provider" } : {}) })) },
         { title: "Inputs", entries: [
-          { key: "spot", label: lastPrint != null ? "Spot implied by option quotes" : "Spot", value: position!.spot,
+          { key: "spot", label: lastPrint != null ? "Spot implied by option quotes" : "Spot", value: position!.spot, unit: perShare,
             formatted: `${money(position!.spot)} ${PRICE_UNIT}${lastPrint == null && spotBasis !== "last price" ? ` (${scenarioSpotStamp(spotBasis!, position!.asOf)})` : ""}` },
-          ...(lastPrint != null ? [{ key: "last", label: "Last price", value: lastPrint,
+          ...(lastPrint != null ? [{ key: "last", label: "Last price", value: lastPrint, unit: perShare,
             formatted: `${money(lastPrint)} ${PRICE_UNIT}${lastSession && lastSession !== "last price" ? ` (${scenarioSpotStamp(lastSession, market.asOf)})` : ""}` }] : []),
-          ...(position!.underlying ? [{ key: "shares", label: "Shares held", value: position!.underlying.quantity,
+          ...(position!.underlying ? [{ key: "shares", label: "Shares held", value: position!.underlying.quantity, unit: "shares",
             formatted: `${position!.underlying.quantity.toLocaleString("en-US")} at ${money(position!.underlying.price)} ${PRICE_UNIT}` }] : []),
           { key: "asOf", label: "Valued at", value: new Date(position!.asOf).toISOString(), formatted: formatSpotTime(position!.asOf) },
-          { key: "rate", label: "Rate", value: position!.rate, formatted: percent(position!.rate) },
+          { key: "rate", label: "Rate", value: exportPercent(position!.rate), unit: "%", formatted: percent(position!.rate) },
           // A yield read as 0 because no dividend was paid, or the dividend stopped, says so; a stated or typed one is the figure alone.
-          { key: "dividendYield", label: "Dividend yield", value: position!.dividendYield, formatted: percent(position!.dividendYield)
+          { key: "dividendYield", label: "Dividend yield", value: exportPercent(position!.dividendYield), unit: "%", formatted: percent(position!.dividendYield)
             + (dividendNote ? ` (${dividendNote})` : "") },
           { key: "currency", label: "Currency", value: position!.currency, formatted: currency! },
         ] },
@@ -158,12 +178,13 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
         ...(csp ? [{ title: "Cash-secured put", entries: cspReportEntries(csp) }] : []),
         ...(collar ? [{ title: "Collar", entries: collarReportEntries(collar) }] : []),
         { title: `Valuation (${per})`, entries: Object.entries(scenario.valuation).map(([key, value]) => ({ key,
-          label: VALUATION_LABELS[key]?.(currency!) ?? key, value, formatted: money(value) })) },
+          label: VALUATION_LABELS[key]?.(currency!) ?? key, value, formatted: money(value),
+          ...(VALUATION_UNITS[key] ? { unit: VALUATION_UNITS[key]!(exportCurrency, exportPer) } : {}) })) },
         { title: `Expiry risk (${per})`, entries: [
-          { key: "breakevens", label: "Breakevens (spot)", value: scenario.expiryRisk.breakevens,
+          { key: "breakevens", label: "Breakevens (spot)", value: scenario.expiryRisk.breakevens, unit: perShare,
             formatted: scenario.expiryRisk.breakevens.map(money).join(", ") || "none" },
-          { key: "maxProfit", label: "Max profit", value: scenario.expiryRisk.maxProfit, formatted: scenario.expiryRisk.unlimitedProfit ? "Unlimited" : money(scenario.expiryRisk.maxProfit) },
-          { key: "maxLoss", label: "Max loss", value: scenario.expiryRisk.maxLoss, formatted: scenario.expiryRisk.unlimitedLoss ? "Unlimited" : money(scenario.expiryRisk.maxLoss) },
+          { key: "maxProfit", label: "Max profit", value: scenario.expiryRisk.maxProfit, unit: exportPer, formatted: scenario.expiryRisk.unlimitedProfit ? "Unlimited" : money(scenario.expiryRisk.maxProfit) },
+          { key: "maxLoss", label: "Max loss", value: scenario.expiryRisk.maxLoss, unit: exportPer, formatted: scenario.expiryRisk.unlimitedLoss ? "Unlimited" : money(scenario.expiryRisk.maxLoss) },
           ...(scenario.expiryRisk.reason ? [{ key: "limitation", label: "Limitation", value: scenario.expiryRisk.reason }] : []),
         ] },
         { title: `Scenario grid (P&L, ${per})`, columns: [

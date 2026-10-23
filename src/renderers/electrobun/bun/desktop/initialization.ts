@@ -3,6 +3,7 @@ import { homedir, hostname } from "os";
 import { getGloomberbDirs } from "../../../../data/config/home";
 import type { AppServices } from "../../../../core/app-services";
 import { restoreExtractedPlugins } from "../../../../cli/restore-plugins";
+import { takePluginSeedNotice } from "../../../../plugins/seed-notice";
 import {
   getDataDir,
   initDataDir,
@@ -72,6 +73,8 @@ function buildInitializationPayload(
   services: AppServices,
   windowTarget: DesktopWindowTarget,
 ): ElectrobunBackendInit {
+  // The main window says once what the launch's seed could not install.
+  const pluginSeedNotice = windowTarget.kind === "main" ? takePluginSeedNotice() : null;
   return {
     config,
     sessionSnapshot: backend.getSessionSnapshot(),
@@ -84,6 +87,7 @@ function buildInitializationPayload(
     hostName: hostname(),
     windowKind: windowTarget.kind,
     paneId: windowTarget.paneId,
+    ...(pluginSeedNotice ? { pluginSeedNotice } : {}),
     telemetry: {
       installId: readOrCreateInstallId(config.dataDir),
       os: describeNodeOs(),
@@ -125,9 +129,7 @@ export async function initializeDesktopBackend(
   // is read, the same as the terminal does at startup. Without it a
   // desktop-only user silently loses a feature the day it is extracted, since
   // nothing else installs it for them.
-  const seededPlugins = await restoreExtractedPlugins();
-  const { config, services } = await backend.startServices(
-    seededPlugins ? { ...initialConfig, seededPlugins } : initialConfig,
-  );
+  const seed = await restoreExtractedPlugins();
+  const { config, services } = await backend.startServices(seed ? { ...initialConfig, ...seed } : initialConfig);
   return buildInitializationPayload(backend, config, services, windowTarget);
 }

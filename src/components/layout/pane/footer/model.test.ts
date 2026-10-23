@@ -61,6 +61,17 @@ describe("footer hint row", () => {
     expect(row.hintsWidth + row.infoWidth).toBeLessThanOrEqual(64);
   });
 
+  test("a short status is kept whole: the hints that no longer fit go under More rather than cut it", () => {
+    const status = "Cloud sync disabled";
+    const row = layoutPaneFooterHintRow(footer([{ id: "sync", parts: [{ text: status, tone: "muted" }] }]), 46);
+    expect(row.infoWidth).toBeGreaterThanOrEqual(status.length);
+    expect(row.overflow.length).toBeGreaterThan(0);
+    expect(row.hintsWidth + row.infoWidth).toBeLessThanOrEqual(46);
+    // A longer status gives way to the hints, as before.
+    const long = layoutPaneFooterHintRow(footer([{ id: "line", parts: [{ text: "Binance 02:15 · Bybit 02:24 UTC · oldest 9 min" }] }]), 46);
+    expect(long.hintsWidth).toBeGreaterThan(row.hintsWidth);
+  });
+
   test("keeps every hint on a wide row", () => {
     const row = layoutPaneFooterHintRow(footer([{ id: "loading", parts: [{ text: "loading" }] }]), 120);
     expect(row.overflow).toEqual([]);

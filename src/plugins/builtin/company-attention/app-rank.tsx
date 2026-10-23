@@ -10,6 +10,7 @@ import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { fetchAppRank, loadAppRank } from "./client";
 import { attentionSeries, count, type AppFocus } from "./model";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
+import { formatFeedTime, formatShortDate } from "../../../utils/datetime-format";
 
 type Point = AppRankPayload["rankHistory"][number];
 const id = (point: Point) => `${point.revisionId}:${point.date}`;
@@ -20,7 +21,7 @@ const columns: DataTableColumn[] = [
   { id: "rating", label: "Rating / 5", width: 12, align: "right" },
   { id: "ratingCount", label: "Ratings", width: 14, align: "right" },
   { id: "reviewCount", label: "Written reviews", width: 17, align: "right" },
-  { id: "observedAt", label: "Observed (UTC)", width: 17, align: "left", flexGrow: 1 },
+  { id: "observedAt", label: "Seen (UTC)", width: 13, align: "left", flexGrow: 1 },
 ];
 export function AppRankView({ focus, accessKey, width, height, focused }: { focus: AppFocus; accessKey: string; width: number; height: number; focused: boolean }) {
   const colors = useThemeColors();
@@ -53,7 +54,7 @@ export function AppRankView({ focus, accessKey, width, height, focused }: { focu
   usePaneStatusFooter({ registrationId: `apps-rank:${key}`, loading: resource.loading || pages.loadingMore, error: resource.error ?? resource.data?.refreshError ?? pages.moreError?.message ?? pages.error?.message, stale: resource.data?.stale,
     info: [...(points[0] ? [{ id: "observed", asOf: true, parts: [{ text: `as of ${points[0].observedAt.slice(0, 10)}`, tone: "muted" as const }] }] : []), ...(data?.access === "preview" ? [{ id: "preview", parts: [{ text: "Pro preview", tone: "warning" as const }] }] : [])],
     hints: [...(selected ? [{ id: "source", key: "o", label: "pen source", onPress: () => void host.openExternal(selected.sourceUrl) }] : []), ...(data?.access === "preview" ? [{ id: "upgrade", key: CLOUD_PLAN_KEY, label: "upgrade", title: "Upgrade to Pro", onPress: upgrade }] : [])] });
-  const tableColumns = tab === "evidence" ? [...columns, { id: "present", label: "In chart", width: 10, align: "left" as const }, { id: "sourceUpdatedAt", label: "Published (UTC)", width: 17, align: "left" as const }, { id: "revisionId", label: "Revision", width: 30, align: "left" as const }] : columns;
+  const tableColumns = tab === "evidence" ? [...columns, { id: "present", label: "In chart", width: 10, align: "left" as const }, { id: "sourceUpdatedAt", label: "Updated in store", width: 17, align: "left" as const }] : columns;
   return <Box flexDirection="column" width={width} height={height}>
     {strip}
     {/* A window change reloads under the query bar, which stays. */}
@@ -67,11 +68,12 @@ export function AppRankView({ focus, accessKey, width, height, focused }: { focu
         renderCell={(point, column) => {
           const value = point[column.id as keyof Point];
           if (value == null) return { text: "--", value: null, color: colors.textMuted };
-          // Times read in the column's own UTC; the stamp's seconds and zone suffix add nothing.
-          if (column.id === "observedAt" || column.id === "sourceUpdatedAt") return { text: String(value).slice(0, 16).replace("T", " "), value: String(value), color: colors.textDim };
+          // A capture's time as a feed prints it, in the column's own UTC; the store's update is a day.
+          if (column.id === "observedAt") return { text: formatFeedTime(String(value), Date.now(), "--", { utc: true }), value: String(value), color: colors.textDim };
+          if (column.id === "sourceUpdatedAt") return { text: formatShortDate(String(value), { utc: true, fallback: "--" }), value: String(value), color: colors.textDim };
           if (column.id === "present") return { text: value ? "Yes" : "No", value: String(value), color: value ? colors.text : colors.textMuted };
           return { text: column.id === "rating" ? Number(value).toFixed(2) : typeof value === "number" ? count(value) : String(value), value: typeof value === "boolean" ? String(value) : value,
-            color: column.id === "rank" ? colors.textBright : column.id === "revisionId" ? colors.textDim : colors.text };
+            color: column.id === "rank" ? colors.textBright : colors.text };
         }}
         emptyStateTitle="No observations for this app and chart yet." selectedTextOverridesCellColor showHorizontalScrollbar />
   </Box>;

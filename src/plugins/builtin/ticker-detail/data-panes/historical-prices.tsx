@@ -19,9 +19,9 @@ import { colors, priceColor } from "../../../../theme/colors";
 import { formatCompact, formatPercent } from "../../../../utils/format";
 import { isPlainKeyboardEvent } from "../../../../utils/keyboard";
 import { publicTickerKey } from "../../../../utils/exchanges";
-import { formatPriceObservation, quoteFormatOptions } from "../../../../market-data/market/format";
+import { quoteFormatOptions } from "../../../../market-data/market/format";
 import {
-  cleanFloat32Price, historyAllStart, historyBarsAfterHole, historyChangeBaseNote, historyMissingPeriodsNote, historyPriceDecimals,
+  barPriceDecimals, formatBarPrice, historyAllStart, historyBarsAfterHole, historyChangeBaseNote, historyMissingPeriodsNote,
 } from "../../../../cli/history-rows";
 import {
   MISSING_VOLUME_TEXT, missingVolumeCount, missingVolumeNotice, pricePointValues, priceHistoryIntegrityNotice,
@@ -85,26 +85,12 @@ function formatDateTime(date: Date): string {
 
 /** Every price in the table at one decimal count, so the columns line up. */
 function formatMaybePrice(value: number | null | undefined, decimals: number, width: number): string {
-  if (value == null || !Number.isFinite(value)) return "-";
-  const rounded = Number(value.toFixed(Math.min(20, decimals)));
-  return formatPriceObservation(rounded, { minimumFractionDigits: decimals, maxWidth: width });
+  return value == null || !Number.isFinite(value) ? "-" : formatBarPrice(value, decimals, width);
 }
 
-/**
- * The decimals the table's prices need, by the same rule the CLI history
- * uses: capped by the asset's display rules (cents for a US equity) and read
- * from the float32-cleaned values so feed noise does not widen every row.
- */
+/** The decimals the table's prices need: the one rule `history` and `fn HP` print by (barPriceDecimals). */
 function historicalPriceDecimals(rows: readonly HistoricalPriceRow[], assetCategory?: string): number {
-  const clean = (value: number | null) => value == null ? null : cleanFloat32Price(value);
-  return historyPriceDecimals(rows.flatMap(({ point }) => point.close == null ? [] : [{
-    date: "",
-    open: clean(point.open),
-    high: clean(point.high),
-    low: clean(point.low),
-    close: clean(point.close)!,
-    volume: point.volume,
-  }]), assetCategory);
+  return barPriceDecimals(rows.map(({ point }) => point), assetCategory);
 }
 
 /** The exported price: the digits the table shows, without the width limit. */

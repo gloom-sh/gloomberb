@@ -1,15 +1,15 @@
 import { logFailure } from "../utils/log-failure";
 import type { EarningsEvent } from "../types/data-provider";
+import type { EarningsDateStatus } from "../types/financials";
 import { isUsListingExchange } from "../utils/exchanges";
 import { listingChoiceNote, loadListingQuote, usLineOfListing, type CliListing, type ListingDeps, type ListingVenue } from "./listing-arg";
 import { sameCompany } from "../tickers/company-name";
 
 const DAY_MS = 86_400_000;
 
-/** How firm a report date is: "reported" once there is an actual, else "est" or "confirmed" as the calendar flags it. */
-export function earningsDateLabel(event: Pick<EarningsEvent, "isDateEstimate" | "epsActual">): string {
-  if (event.epsActual != null) return "reported";
-  return event.isDateEstimate === true ? "est" : event.isDateEstimate === false ? "confirmed" : "";
+/** How firm a report date is, as resolved (shared/earnings-calendar): reported, confirmed, or est for a projected one. */
+export function earningsDateLabel(status: EarningsDateStatus | null): string {
+  return status === "projected" ? "est" : status ?? "";
 }
 
 /** Whether the listing trades abroad, where the calendar is the listing's own exchange's rather than the US one. */

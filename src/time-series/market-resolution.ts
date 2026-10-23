@@ -1,5 +1,7 @@
 import {
   CHART_RESOLUTION_STEP_MS,
+  chartBarSizeStepMs,
+  type ChartBarSize,
   type ManualChartResolution,
 } from "./resolution";
 import { isMarketFieldId } from "./field-catalog";
@@ -18,12 +20,12 @@ export function maximumResolutionForMarketPeriod(
 }
 
 export function isResolutionFineEnoughForMarketPeriod(
-  resolution: ManualChartResolution,
+  resolution: ChartBarSize,
   period: SeriesPeriod | undefined,
 ): boolean {
   const maximum = maximumResolutionForMarketPeriod(period);
   return maximum === null
-    || CHART_RESOLUTION_STEP_MS[resolution] <= CHART_RESOLUTION_STEP_MS[maximum];
+    || chartBarSizeStepMs(resolution) <= CHART_RESOLUTION_STEP_MS[maximum];
 }
 
 /** Returns the finest fetch cadence required by explicit market periods. */
