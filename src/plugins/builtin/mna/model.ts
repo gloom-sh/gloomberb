@@ -80,7 +80,7 @@ const PENCE = new Set(["GBp", "GBX"]);
  * London quotes arrive in pounds while UK offers are often in pence, so the
  * two compare after scaling; any other currency mismatch has no price.
  */
-function inQuoteCurrency(amount: number, from: string | null, quoteCurrency: string | undefined): number | null {
+export function inQuoteCurrency(amount: number, from: string | null, quoteCurrency: string | undefined): number | null {
   const offer = from ?? "USD";
   const quote = quoteCurrency ?? "USD";
   if (offer === quote) return amount;
@@ -102,28 +102,69 @@ function stockLeg(terms: MnaTerms, targetQuote: Quote | null, ratioQuote: Quote 
 }
 
 /**
+ * The leg an election is priced at. It pays each holder the cash or the
+ * shares, never both, so it is priced at its cash leg: the legs are set about
+ * equal at signing, proration means a holder cannot count on getting the
+ * stock, and the cash does not move. The stock leg stands in only when the
+ * cash cannot be compared with the target's quote. Without a quote, the cash.
+ */
+export function electionLeg(terms: MnaTerms, targetQuote: Quote | null): "cash" | "stock" {
+  return !targetQuote || cashLeg(terms, targetQuote) != null ? "cash" : "stock";
+}
+
+/**
  * What the terms pay per target share at the latest prices, in the target
  * quote's currency. Null when a leg cannot be priced: no terms, a ratio
- * without its listing, or cash in another currency.
- *
- * An election pays each holder the cash or the shares, never both, so it is
- * priced at its cash leg: the legs are set about equal at signing, proration
- * means a holder cannot count on getting the stock, and the cash does not
- * move. The stock leg stands in only when the cash cannot be compared with
- * the quote.
+ * without its listing, or cash in another currency. An election is one leg,
+ * the one {@link electionLeg} picks.
  */
 function offerValue(deal: MnaDeal, targetQuote: Quote | null, ratioQuote: Quote | null): number | null {
   const { terms } = deal;
   if (terms.cashPerShare == null && terms.exchangeRatio == null) return null;
   let total: number | null;
   if (isElection(terms)) {
-    total = cashLeg(terms, targetQuote) ?? stockLeg(terms, targetQuote, ratioQuote);
+    total = electionLeg(terms, targetQuote) === "cash"
+      ? cashLeg(terms, targetQuote)
+      : stockLeg(terms, targetQuote, ratioQuote);
   } else {
     const cash = terms.cashPerShare == null ? 0 : cashLeg(terms, targetQuote);
     const stock = terms.exchangeRatio == null ? 0 : stockLeg(terms, targetQuote, ratioQuote);
     total = cash == null || stock == null ? null : cash + stock;
   }
   return total != null && total > 0 ? total : null;
+}
+
+/**
+ * What the terms were worth each day since the announcement: flat for cash,
+ * the ratio times the paying listing's close for stock. An election draws
+ * the one leg its Offer is priced at (`leg`, from {@link electionLeg}), its
+ * stock leg in the target quote's currency as the Offer converts it.
+ */
+export function offerSeries(
+  deal: MnaDeal,
+  ratioCloses: readonly { date: Date; close: number }[],
+  days: readonly string[],
+  leg: "cash" | "stock" | null,
+  toQuote: (close: number) => number | null = (close) => close,
+): Array<{ day: string; value: number }> {
+  const { cashPerShare, exchangeRatio, currency } = deal.terms;
+  if (cashPerShare == null && exchangeRatio == null) return [];
+  const pence = currency === "GBp" || currency === "GBX";
+  const cash = cashPerShare == null || leg === "stock" ? 0 : pence ? cashPerShare / 100 : cashPerShare;
+  const ratioByDay = new Map(ratioCloses.map((point) => [point.date.toISOString().slice(0, 10), point.close]));
+  const out: Array<{ day: string; value: number }> = [];
+  let lastRatio: number | null = null;
+  for (const day of days) {
+    if (day < deal.announced) continue;
+    if (exchangeRatio == null || leg === "cash") {
+      out.push({ day, value: cash });
+      continue;
+    }
+    const close = ratioByDay.get(day);
+    lastRatio = close == null ? lastRatio : toQuote(close) ?? lastRatio;
+    if (lastRatio != null) out.push({ day, value: cash + exchangeRatio * lastRatio });
+  }
+  return out;
 }
 
 export interface DealSpread {
