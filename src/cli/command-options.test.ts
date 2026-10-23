@@ -2,7 +2,8 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { checkCliCommandOptions, type BuiltinCliCommandDef } from "./command-options";
+import { checkCliCommandOptions, foldCommandArgs, type BuiltinCliCommandDef } from "./command-options";
+import { notesCliCommand } from "../plugins/builtin/notes/cli";
 import { dispatchCli } from "./index";
 import { parseCliGlobalArgs } from "./options";
 import { captureConsole } from "../test-support/console";
@@ -111,4 +112,28 @@ test("dispatch rejects a built-in command's unknown option in the structured err
     }],
   }));
   expect(plugin.stdout).toContain("--whatever 1");
+});
+
+test("dispatch reads full-width letters, digits and spaces as ASCII once for every command, and leaves paths as typed", async () => {
+  const home = await mkdtemp(join(tmpdir(), "gloomberb-cli-options-"));
+  tempDirs.push(home);
+  process.env.HOME = home;
+  // A plugin's command gets what every built-in gets: `quote ＧＭＥ`, `fn SIW "ＧＭＥ　AMC"`, a full-width 10 shares.
+  const echo = await captureConsole(() => dispatchCli(["ｅｃｈｏ-args", "ＧＭＥ", "ＧＭＥ\u3000AMC", "１０", "--date", "２０２６年１０月１３日", "--file", "ポートフォリオ（１）.csv"], {
+    externalPlugins: [{
+      path: "/tmp/echo-args",
+      plugin: {
+        id: "echo-args", name: "Echo", version: "1.0.0",
+        cliCommands: [{ name: "echo-args", description: "Echo", execute: (args) => { console.log(JSON.stringify(args)); } }],
+      },
+    }],
+  }));
+  expect(JSON.parse(echo.stdout)).toEqual(["GME", "GME AMC", "10", "--date", "2026年10月13日", "--file", "ポートフォリオ（１）.csv"]);
+
+  // A note's text and an export's folder are kept as typed; the note's symbol is read as any other.
+  expect(foldCommandArgs(notesCliCommand, ["set", "ＧＭＥ", "--exchange", "ＮＹＳＥ", "ＥＰＳ（強気）"])).toEqual(["set", "GME", "--exchange", "NYSE", "ＥＰＳ（強気）"]);
+  expect(foldCommandArgs(notesCliCommand, ["export", "ノート（１）"])).toEqual(["export", "ノート（１）"]);
+  // `fn` and `shot` take any option; their output path is still a path.
+  expect(foldCommandArgs({ ...history, help: { options: [{ flags: "--<option> <value>", description: "" }] } }, ["ＳＩＷ", "--output=図（１）.png", "--out", "図（２）.png"]))
+    .toEqual(["SIW", "--output=図（１）.png", "--out", "図（２）.png"]);
 });

@@ -4,9 +4,10 @@ import type { InstrumentSearchResult } from "../types/instrument";
 import { canonicalExchange, isUsListingExchange, parsePublicTickerKey } from "../utils/exchanges";
 import { companyNameMatch, shortCompanyName } from "./company-name";
 import { LISTING_SEARCH_LIMIT } from "./search";
-import { classifyInstrumentKind } from "./search/ranking";
+import { classifyInstrumentKind, isCryptoInstrumentType } from "./search/ranking";
 import { isProviderBusy, type ProviderBusyError } from "../sources/provider-errors";
 import { readTerminalListingCode, type TerminalListing, type TerminalListingCode } from "./terminal-codes";
+import { hasNonLatinLetters } from "../utils/typed-text";
 
 export interface CompanyNameListing {
   symbol: string;
@@ -48,13 +49,17 @@ export function isCompanyNameInput(input: string): boolean {
  * listing. With `meant`, a fund or an index found for a name its company's
  * stock says run together ("JP Morgan" for JPMorgan Chase & Co.) names that
  * stock as `meant`, searched under the run-together name when the answer
- * lacks it. Null when none matches; when none does because search was too
- * busy to answer, `ProviderBusyError`.
+ * lacks it. With `oneWord`, for a name typed as one word, which many
+ * listings' names have ("oil", "steel"): only search's top result, a row the
+ * service marks with the word, or a name that is the word and nothing more
+ * (Apple Inc. for "apple") is the listing, never a short form ("grp" for any
+ * Group) or a coin, whose name is the crypto board's. Null when none matches;
+ * when none does because search was too busy to answer, `ProviderBusyError`.
  */
 export async function findListingOfCompanyName(
   dataProvider: Pick<DataProvider, "search">,
   typed: string,
-  options: { meant?: boolean } = {},
+  options: { meant?: boolean; oneWord?: boolean } = {},
 ): Promise<CompanyNameListing | null> {
   const name = typed.trim();
   if (!name) return null;
@@ -65,9 +70,11 @@ export async function findListingOfCompanyName(
   const ranked = results.flatMap((result, order) => {
     const exchange = listedExchange(result);
     const type = listedType(result);
-    const match = companyNameMatch(name, result.name) ?? (namedByService(name, result) ? { extra: 0, abbreviated: 0 } : null);
+    const named = namedByService(name, result);
+    const match = companyNameMatch(name, result.name) ?? (named ? { extra: 0, abbreviated: 0 } : null);
     if (!exchange || match == null || classifyInstrumentKind(type) === "derivative" || NOT_COMMON.test(type)
       || parsePublicTickerKey(result.symbol).exchange) return [];
+    if (options.oneWord && (match.abbreviated > 0 || isCryptoInstrumentType(type) || !(order === 0 || named || match.extra === 0))) return [];
     const stock = classifyInstrumentKind(type) === "equity" ? 0 : 1;
     return [{ result, exchange, stock, rank: [match.extra, match.abbreviated, isUsListingExchange(exchange) ? 0 : 1, RECEIPT.test(type) ? 1 : 0, stock, result.symbol.length, order] }];
   }).sort((left, right) => {
@@ -75,7 +82,8 @@ export async function findListingOfCompanyName(
     return at < 0 ? 0 : left.rank[at]! - right.rank[at]!;
   });
   const best = ranked[0];
-  if (!best && busy) throw busy;
+  // Listings are named in Latin letters: a name in another script ("任天堂 ソニー") names none, answered or not.
+  if (!best && busy && !hasNonLatinLetters(name)) throw busy;
   if (!best) return null;
   const found = { symbol: best.result.symbol.toUpperCase(), exchange: best.exchange, name: best.result.name };
   const meant = best.stock && options.meant ? await stockNamedRunTogether(dataProvider, name, results) : null;

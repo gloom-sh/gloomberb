@@ -6,8 +6,9 @@ const at = (date: string) => Date.parse(`${date}T00:00:00Z`) / 1000;
 test("--expiration reads a calendar date as UTC midnight and Unix seconds as they are", () => {
   expect(parseOptionExpiration("2028-01-21")).toBe(1832025600);
   expect(parseOptionExpiration("1832025600")).toBe(1832025600);
+  for (const date of ["2028-1-21", "2028/01/21", "2028年1月21日"]) expect(parseOptionExpiration(date)).toBe(1832025600);
   // The calendar has no 30 February; the Date constructor would roll it into March.
-  for (const bad of ["2028-02-30", "2028-1-21", "2028/01/21", "21-01-2028", "1.8e9", "-5", "0", "", "soon", "1832025600000"]) {
+  for (const bad of ["2028-02-30", "2028/02/30", "21-01-2028", "1.8e9", "-5", "0", "", "soon", "1832025600000"]) {
     expect(parseOptionExpiration(bad)).toBeNull();
   }
   // A stored setting is a number from the app, or the text the CLI took.

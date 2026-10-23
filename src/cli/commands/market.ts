@@ -38,7 +38,7 @@ import {
   formatPriceRange,
   quoteChangeText,
 } from "../helpers";
-import { cliStyles, colorBySign, renderSection, renderStats } from "../../utils/cli-output";
+import { cliArrow, cliStyles, colorBySign, renderSection, renderStats } from "../../utils/cli-output";
 import { filledPeriodsNote, stalePeriodNote, statementHistoryNotes } from "../../utils/financial-statements";
 import { formatPerShareNumber } from "../../utils/reported-money";
 import {
@@ -421,8 +421,8 @@ function listingMetadata(identity: ListingIdentity) {
   return { symbol: identity.symbol, exchange: identity.exchange || null, name: identity.name };
 }
 
-// Fitted to a narrow width, the columns marked optional go first (higher dropPriority first), then Name is cut short.
-// What a user types or reads the price by stays whole.
+// Fitted to a narrow width, quote's Updated, Feed, Cur, Chg Basis and session prints move to labelled lines under
+// their row, in that order, before Name wraps: quote never drops a column. What a user types or reads the price by stays whole.
 const QUOTE_LEAD_COLUMNS = [
   { key: "symbol", header: "Symbol", shrink: false },
   { key: "name", header: "Name" },
@@ -466,7 +466,7 @@ type QuoteRow = ReturnType<typeof quoteRows>[number];
  * its existing columns, so a column read by position stays where it was.
  */
 const CHANGE_BASIS_COLUMN = {
-  key: "changeBasis", header: "Chg Basis", shrink: false, optional: true,
+  key: "changeBasis", header: "Chg Basis", shrink: false, stackPriority: 2,
   format: (value: unknown) => value === "24h" ? "" : cliStyles.muted(String(value ?? "")),
 };
 const CHANGE_BASIS_EXPORT_COLUMNS = [
@@ -568,22 +568,23 @@ function currencyCell(value: unknown): string {
   return currencyCodeLabel(typeof value === "string" ? value : "");
 }
 
+/** The session prints of a narrow quote table move under their row after its other columns, before the name. */
+const EXTENDED_KEYS = new Set(["preMarket", "afterHours", "overnight"]);
+
 function quoteColumns() {
   return [
-    ...QUOTE_LEAD_COLUMNS,
-    { key: "currency", header: "Cur", shrink: false, optional: true, dropPriority: 1, format: currencyCell },
+    ...QUOTE_LEAD_COLUMNS.map((column) => EXTENDED_KEYS.has(column.key) ? { ...column, stackPriority: 1 } : column),
+    { key: "currency", header: "Cur", shrink: false, stackPriority: 3, format: currencyCell },
     // Whether the price is real-time, delayed or stale: a feed state, not where it came from. A stale
     // row says so here, so the closing line's "N of M stale" always points at rows the table marks.
     {
       key: "feed",
       header: "Feed",
       shrink: false,
-      optional: true,
-      dropPriority: 2,
+      stackPriority: 4,
       format: (value: unknown) => value === "stale" ? cliStyles.warning(value) : String(value ?? ""),
     },
-    // In a narrow terminal the closing line's as-of stands in for each row's.
-    { key: "updatedAt", header: "Updated", shrink: false, optional: true, dropPriority: 3 },
+    { key: "updatedAt", header: "Updated", shrink: false, stackPriority: 5 },
     ...CHANGE_BASIS_EXPORT_COLUMNS,
     ...EXTENDED_CHANGE_EXPORT_COLUMNS,
   ];
@@ -1458,20 +1459,26 @@ const HISTORY_FLAG_TEXT_COLUMN: CliResultColumn = {
 };
 
 /** The dates `--from` and `--to` (or `--start` and `--end`) name, each given once. */
-function historyWindowOption(args: string[], ctx: Parameters<CliCommandDef["execute"]>[1]): PriceWindow | null {
+function historyWindowOption(args: string[], rangeOption: string | undefined, ctx: Parameters<CliCommandDef["execute"]>[1]): PriceWindow | null {
   const bound = (flag: string, alias: string) => {
     const value = takeOption(args, flag);
     const aliased = takeOption(args, alias);
     if (value != null && aliased != null) ctx.fail(`${alias} is ${flag}; give one of them.`, `Usage: gloomberb ${HISTORY_USAGE}`);
     return { value: value ?? aliased, flag: aliased != null ? alias : flag };
   };
-  const from = bound("--from", "--start");
-  const to = bound("--to", "--end");
+  const typedFrom = bound("--from", "--start");
+  const typedTo = bound("--to", "--end");
+  // Every message names the options as typed: an --end alone asks for a --start, not a --from.
+  const from = { ...typedFrom, flag: typedFrom.value == null && typedTo.flag === "--end" ? "--start" : typedFrom.flag };
+  const to = { ...typedTo, flag: typedTo.value == null && from.flag === "--start" ? "--end" : typedTo.flag };
+  let window: PriceWindow | null;
   try {
-    return readPriceWindow(from.value, to.value, new Date(), undefined, { from: from.flag, to: to.flag });
+    window = readPriceWindow(from.value, to.value, new Date(), undefined, { from: from.flag, to: to.flag });
   } catch (error) {
     return ctx.fail(errorMessage(error) ?? `Invalid ${from.flag} or ${to.flag}.`, `Usage: gloomberb ${HISTORY_USAGE}`);
   }
+  if (window && rangeOption != null) ctx.fail(`${from.flag} replaces --range; give one of them.`, `Usage: gloomberb ${HISTORY_USAGE}`);
+  return window;
 }
 
 /** How many symbols of a list load at once: enough that a few hundred take a minute or two, not one call after another. */
@@ -1481,8 +1488,7 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
   const args = [...rawArgs];
   const rangeOption = takeOption(args, "--range");
   // --from 2007 --to 2009: those years' bars, daily up to five years, in place of a range ending now.
-  const window = historyWindowOption(args, ctx);
-  if (window && rangeOption != null) ctx.fail("--from replaces --range; give one of them.", `Usage: gloomberb ${HISTORY_USAGE}`);
+  const window = historyWindowOption(args, rangeOption, ctx);
   const ask: HistoryAsk = { range: parseRange(rangeOption, ctx), window };
   const requestedExchange = takeOption(args, "--exchange");
   // A list from a file or standard input (`-`), or several symbols typed (AAPL MSFT, AAPL,MSFT), is one long table.
@@ -1592,13 +1598,17 @@ async function runHistoryList(
     // The closing lines date the list by its newest bar; each row's as_of is its own symbol's.
     const lastBars = served.flatMap((history) => history.data.at(-1) ?? []);
     const pastWindow = ask.window && isPastPriceWindow(ask.window);
-    const freshness = served.length === 0 ? undefined : withSavedCopy(rowsFreshness(lastBars, pastWindow && ask.window ? {
+    const listFreshness = served.length === 0 ? undefined : rowsFreshness(lastBars, pastWindow && ask.window ? {
       status: "not-a-feed", basis: `price bars, ${priceWindowText(ask.window)}`, observedKey: "date", oldest: null,
     } : {
       ...barHistoryFreshness(served.some((history) => history.intraday) ? null : served[0]!.interval ?? "1d"),
       observedKey: "date",
       oldest: null,
-    }), served.flatMap((history) => history.data));
+    });
+    // A saved copy is marked on the bars a symbol loaded, not on the rows drawn from them (loadListingHistory
+    // reads it there): the list ends "couldn't refresh; saved <time>" for the oldest copy among its symbols.
+    const savedAt = served.flatMap((history) => history.freshness?.savedAt ?? []).sort()[0];
+    const freshness = listFreshness && savedAt && !listFreshness.savedAt ? { ...listFreshness, savedAt } : listFreshness;
     const decimals = (row: Record<string, unknown>) => bySymbol.get(String(row.symbol))?.decimals ?? 2;
     const intraday = served.some((history) => history.intraday);
     const textColumns = historyTextColumns(intraday, (value, row) => historyPrice(decimals(row))(value)).map((column) => column.key !== "volume" ? column
@@ -1903,7 +1913,7 @@ async function printMetalNews(route: MetalNewsRoute, limit: number, ctx: Paramet
     rows: newsRows,
     columns: NEWS_COLUMNS,
     empty: failure === undefined ? noMetalStoriesMessage(route) : "No stories to show.",
-    ...(ticker ? { footnote: `${word} → ${route.metal}'s market news. For ${ticker.name ?? ticker.symbol} (ticker ${ticker.symbol}), try: ${companyNews}` } : {}),
+    ...(ticker ? { footnote: `${word} ${cliArrow("→")} ${route.metal}'s market news. For ${ticker.name ?? ticker.symbol} (ticker ${ticker.symbol}), try: ${companyNews}` } : {}),
   });
 }
 
@@ -1991,7 +2001,7 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
     const typed = args[0]?.trim() ?? "";
     const wordHint = listing && resolved && !listing.exchange && !feed && !exchangeOption && commonWordCandidate(typed, identity?.name)
       && wordMeansMore(await searchNewsStories(typed, 20).catch(logFailure("cli.commands-market", "Search news stories for a ticker word failed", [])), listing.symbol)
-      ? `${typed} → ${identity?.name ?? listing.symbol} (ticker ${listing.symbol}). For stories that mention ${typed.toLowerCase()}, try: ${quotedSearchCommand(typed.toLowerCase())}`
+      ? `${typed} ${cliArrow("→")} ${identity?.name ?? listing.symbol} (ticker ${listing.symbol}). For stories that mention ${typed.toLowerCase()}, try: ${quotedSearchCommand(typed.toLowerCase())}`
       : null;
     ctx.printResult({
       data: articles,

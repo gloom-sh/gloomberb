@@ -505,12 +505,13 @@ function foldSearchText(text: string): string {
   return text.normalize("NFKD").replace(/\p{M}/gu, "").trim().toUpperCase();
 }
 
+// Letters of every script are kept: a name typed in kana or kanji (任天堂) is no empty query that matches every row.
 export function normalizeSearchText(text: string): string {
-  return foldSearchText(text).replace(/[^A-Z0-9]+/g, " ").trim();
+  return foldSearchText(text).replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 }
 
 export function compactSearchText(text: string): string {
-  return foldSearchText(text).replace(/[^A-Z0-9]+/g, "");
+  return foldSearchText(text).replace(/[^\p{L}\p{N}]+/gu, "");
 }
 
 export function normalizeTickerSymbol(symbol: string): string {

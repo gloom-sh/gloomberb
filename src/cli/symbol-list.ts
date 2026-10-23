@@ -1,6 +1,7 @@
 import { readFile } from "fs/promises";
 import { fstatSync } from "fs";
 import { splitSymbolArgLines, splitSymbolWords, stripStrayEdges, uniqueSymbols } from "./symbol-args";
+import { foldTypedText } from "../utils/typed-text";
 import { hasDecimalCommas, isFigure, isJunkCell, isNumberCell, protectFigureCommas, restoreFigureCommas } from "./symbol-cells";
 
 /** Header cells that name a spreadsheet's symbol column, compared without case, spaces or punctuation. */
@@ -273,7 +274,8 @@ function withoutFigures(words: readonly string[], beside: string[]): string[] {
  * spaces (`ED 2.582,52` between semicolons) loses its figures the same way.
  */
 function typedEntries(args: readonly string[], beside: string[]): string[] {
-  return args.flatMap((arg) => splitSymbolArgLines(arg).flatMap((line) => withoutFigures(line, beside)
+  // An argument of words is one entry, read as a list's line is: `"Beyond Meat"` is a company, `"GME AMC"` two symbols.
+  return args.flatMap((arg) => splitSymbolArgLines(arg, { phrases: true }).flatMap((line) => withoutFigures(line, beside)
     .map((entry) => withoutFigures(entry.split(" "), beside).join(" "))
     .filter(Boolean)));
 }
@@ -360,10 +362,10 @@ export async function readSymbolList(source: SymbolListSource): Promise<{ symbol
       const code = (error as NodeJS.ErrnoException).code;
       throw new SymbolListError(code === "ENOENT" ? `No file at ${source.file}.` : `Could not read ${source.file}: ${error instanceof Error ? error.message : String(error)}`);
     }
-    await addCells(parseSymbolText(text));
+    await addCells(parseSymbolText(foldTypedText(text)));
   }
   if (wantsStdin || (typed.length === 0 && source.file == null && (source.stdinPiped ?? stdinIsPiped()))) {
-    await addCells(parseSymbolText(await readStdin()));
+    await addCells(parseSymbolText(foldTypedText(await readStdin())));
   }
   // A number where a symbol goes (a line of prices, a typed 1.899) is left out with those typed beside a symbol.
   const numbers = [...figures, ...collected.filter(isNumberCell)];

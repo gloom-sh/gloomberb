@@ -1,4 +1,5 @@
 import type { CliCommandDef } from "../../types/plugin";
+import type { BuiltinCliCommandDef } from "../command-options";
 import { withCliServices } from "../context";
 import { parseJsonPayload, requireArg, takeOption } from "./command-utils";
 import { CLI_COMMAND_GROUPS } from "../help";
@@ -23,9 +24,11 @@ function parseOperationTarget(target: string, ctx: Parameters<CliCommandDef["exe
   }
 }
 
-export const apiCliCommand: CliCommandDef = {
+export const apiCliCommand: BuiltinCliCommandDef = {
   name: "api",
   description: "List, inspect, call, or subscribe to plugin capabilities",
+  // Capability ids and JSON payloads go to the plugin as typed.
+  keepsArgAsTyped: () => true,
   help: {
     group: CLI_COMMAND_GROUPS.app,
     usage: [

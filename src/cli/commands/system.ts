@@ -8,6 +8,7 @@ import { canonicalTimeZone } from "../../utils/utc-time";
 import { readBaseCurrency } from "../../utils/base-currency";
 import { NIGHTLY_CHANNEL_SUMMARY, parseUpdateChannel, withUpdateChannel } from "../../updater/channel";
 import type { CliCommandDef } from "../../types/plugin";
+import type { BuiltinCliCommandDef } from "../command-options";
 import { resolveCliDataDir, withCliServices, withConfigData } from "../context";
 import { CLI_COMMAND_GROUPS } from "../help";
 import { dryRunNote, formatBytes, formatStatusCell } from "../helpers";
@@ -522,9 +523,11 @@ export function createSystemCliCommands(): CliCommandDef[] {
     },
   };
 
-  const pluginCommand: CliCommandDef = {
+  const pluginCommand: BuiltinCliCommandDef = {
     name: "plugin",
     description: "Inspect, turn on or off, link, or check any plugin",
+    // `link` and `doctor` take a checkout's path.
+    keepsArgAsTyped: () => true,
     help: {
       group: CLI_COMMAND_GROUPS.plugins,
       usage: [

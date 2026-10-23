@@ -118,6 +118,8 @@ export function inferCliErrorOptions(rawArgs: string[]): CliGlobalOptions {
     if (arg === "--quiet" || arg === "-q") options.quiet = true;
     if (arg === "--no-color") options.color = false;
     if (arg === "--color") options.color = true;
+    if (arg === "--plain") options.plain = true;
+    if (arg === "--no-plain") options.plain = false;
   }
   return options;
 }

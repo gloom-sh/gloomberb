@@ -4,7 +4,7 @@ import { findListingOfCompanyName, isCompanyNameInput, readTerminalCodeArg } fro
 import { isNotATickerMessage } from "./not-a-ticker";
 import { splitSymbolWords } from "./symbol-args";
 import { isNumberCell } from "./symbol-cells";
-import { isProviderBusy } from "../sources/provider-errors";
+import { isProviderBusy, type ProviderBusyError } from "../sources/provider-errors";
 import { unknownBloombergMarket } from "../tickers/terminal-codes";
 
 /**
@@ -17,8 +17,10 @@ import { unknownBloombergMarket } from "../tickers/terminal-codes";
  * pasted line), and otherwise stays whole, a name nothing lists: its words
  * are not taken for other companies' symbols (INTL, a fund, from a misspelt
  * `phillip morris intl`). Only those entries cost a search. One search was
- * too busy to look up also stays whole, so its lookup says so instead of
- * resolving its words as symbols of other companies.
+ * too busy to look up is its words only when each has a quote (`GME AMC`),
+ * as `readPhraseArgument` reads a quoted line, and otherwise stays whole, so
+ * its lookup says so instead of resolving its words as symbols of other
+ * companies.
  */
 export async function readNameEntries(
   entries: readonly string[],
@@ -29,9 +31,11 @@ export async function readNameEntries(
     // line written as one whose market code is unknown ("AAPL GP"): its lookup refuses it, never AAPL and GP.
     if (unknownBloombergMarket(entry) || await readTerminalCodeArg(dataProvider, entry)) return [entry];
     if (!isCompanyNameInput(entry)) return splitSymbolWords([entry]);
-    if (await findListingOfCompanyName(dataProvider, entry).catch(busyAsFound)) return [entry];
+    const named = await findListingOfCompanyName(dataProvider, entry).catch(busyAsAnswer);
+    const busy = isProviderBusy(named);
+    if (named && !busy) return [entry];
     const words = splitSymbolWords([entry]);
-    return await wordsAreSymbols(words, dataProvider) ? words : [entry];
+    return await wordsAreSymbols(words, dataProvider, { quoteEvery: busy }) ? words : [entry];
   }));
   return read.flat();
 }
@@ -44,14 +48,17 @@ function writtenAsSymbol(word: string): boolean {
 /**
  * Whether the words of an entry search found no company for are symbols:
  * each written as one (2222, BRK.B) or else with a quote, the others asked in
- * one batch (`2222 amd pltr`). A batch that fails says nothing, and the
- * entry stays a name.
+ * one batch (`2222 amd pltr`). With `quoteEvery`, for an entry search was too
+ * busy to look up, each but a listing (SAN:EPA) needs a quote, as words in
+ * capitals can be a name too (BANK OF AMERICA). A batch that fails says
+ * nothing, and the entry stays a name.
  */
 async function wordsAreSymbols(
   words: readonly string[],
   dataProvider: Partial<Pick<DataProvider, "getQuotesBatch" | "getQuote">>,
+  { quoteEvery = false }: { quoteEvery?: boolean } = {},
 ): Promise<boolean> {
-  const symbols = words.filter((word) => !writtenAsSymbol(word)).map((word) => word.replace(/^\$/, "").toUpperCase());
+  const symbols = words.filter((word) => quoteEvery ? !word.includes(":") : !writtenAsSymbol(word)).map((word) => word.replace(/^\$/, "").toUpperCase());
   if (symbols.length === 0) return true;
   if (dataProvider.getQuotesBatch) {
     const results = await dataProvider.getQuotesBatch(symbols.map((symbol) => ({ symbol, exchange: "" })))
@@ -68,9 +75,9 @@ async function wordsAreSymbols(
   return quoted.every(Boolean);
 }
 
-/** `findListingOfCompanyName`'s busy answer as a name to keep whole, any other failure as it is. */
-function busyAsFound(error: unknown): true {
-  if (isProviderBusy(error)) return true;
+/** `findListingOfCompanyName`'s busy answer, returned for the words to be read without it; any other failure as it is. */
+function busyAsAnswer(error: unknown): ProviderBusyError {
+  if (isProviderBusy(error)) return error;
   throw error;
 }
 

@@ -39,6 +39,8 @@ import { findCatalogSeries, renderSeriesMatches, type SeriesMatch } from "../ser
 import { centralBankAskedAbout, centralBankCiting, type CentralBank } from "../../utils/central-banks";
 import { createPaneCatalog } from "../pane-functions/discovery";
 import { buildPaneCatalogEntries, filterPaneCatalogEntries, selectPaneCatalogMatches } from "../pane-functions/catalog";
+import { normalizeSearchText } from "../../tickers/search/ranking";
+import { hasNonLatinLetters } from "../../utils/typed-text";
 
 interface SearchCommandDependencies {
   initMarketData?: () => Promise<MarketContext>;
@@ -107,7 +109,8 @@ export async function searchCandidatesForCli({
   quote?: Promise<Quote | null>;
 }): Promise<TickerSearchCandidate[]> {
   const trimmedQuery = query.trim();
-  if (!trimmedQuery) return [];
+  // Only signs (`!!!`) name nothing: no saved ticker is a match for them.
+  if (!normalizeSearchText(trimmedQuery)) return [];
 
   const localTickerMap = new Map(
     tickers.map((ticker) => [ticker.metadata.ticker.toUpperCase(), ticker] as const),
@@ -395,6 +398,14 @@ function catalogHint(query: string): string {
   return `Search finds tickers and company names. Try: gloomberb catalog "${query.replace(/"/g, "")}"`;
 }
 
+/** What a search for a name in another script (任天堂) that found nothing says: listings are named in Latin letters. */
+const OTHER_SCRIPT_NO_MATCH = "No matches. Try the ticker or the English name.";
+
+/** The line an empty search ends with: where else to look, or for a name in another script, what to type instead. */
+function emptySearchHint(query: string): string {
+  return hasNonLatinLetters(query) ? OTHER_SCRIPT_NO_MATCH : catalogHint(query);
+}
+
 /**
  * The notes beside the results: the index a bare root names, data the query
  * asks for that no source carries yet, the central bank it names, the setting
@@ -413,7 +424,7 @@ function searchNotes(
   const empty = candidates.length === 0 && !fate.stopped;
   // A gap line that names the index (TNX's yield line names ^TNX) says it once.
   return [...fate.notes, ...formerIssuerNotes(candidates, fate), gap ? null : indexRootNote(query, candidates), gap, bank ? centralBankLine(bank) : null, setting,
-    empty && !gap && !bank && !setting && functions.length === 0 ? catalogHint(query) : null]
+    empty && !gap && !bank && !setting && functions.length === 0 ? emptySearchHint(query) : null]
     .filter((note): note is string => !!note);
 }
 
@@ -474,7 +485,10 @@ export function buildSearchReport({
   if (candidates.length === 0) {
     if (fate.stopped) return lines.join("\n");
     if (functions.length > 0) lines.push("", renderFunctionMatches(functions));
-    else if (!gap && !bank && !setting && !charted) return [...lines, cliStyles.muted("No matches found."), cliStyles.muted(catalogHint(query))].join("\n");
+    else if (!gap && !bank && !setting && !charted) {
+      return [...lines, ...hasNonLatinLetters(query) ? [cliStyles.muted(OTHER_SCRIPT_NO_MATCH)]
+        : [cliStyles.muted("No matches found."), cliStyles.muted(catalogHint(query))]].join("\n");
+    }
     if (pointToCatalog) lines.push("", cliStyles.muted(catalogHint(query)));
     return lines.join("\n");
   }
@@ -521,7 +535,8 @@ function searchedFunctions(
   plugins: GloomPlugin[] | undefined,
   context: MarketContext,
 ): Promise<SearchFunctionMatch[]> {
-  return candidates.length === 0 && !fate.stopped && !knownGapMessage(query) && !searchedCentralBank(query) && plugins
+  // Functions are named in English: a name in another script is no function's.
+  return candidates.length === 0 && !fate.stopped && !knownGapMessage(query) && !searchedCentralBank(query) && plugins && !hasNonLatinLetters(query)
     ? searchFunctionsForCli(query, plugins, context)
     : Promise.resolve([]);
 }

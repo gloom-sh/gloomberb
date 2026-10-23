@@ -1,8 +1,9 @@
 import { getDataDir } from "../../data/config/store";
-import type { CliCommandContext, CliCommandDef } from "../../types/plugin";
+import type { CliCommandContext } from "../../types/plugin";
 import { sendRemoteControlRequest } from "../../remote/client";
 import type { RemoteAppKind, RemoteControlRequest, RemoteControlResponse } from "../../remote/types";
 import { CLI_COMMAND_GROUPS } from "../help";
+import type { BuiltinCliCommandDef } from "../command-options";
 
 interface RemoteArgs {
   args: string[];
@@ -11,9 +12,11 @@ interface RemoteArgs {
   intervalMs: number;
 }
 
-export const remoteCliCommand: CliCommandDef = {
+export const remoteCliCommand: BuiltinCliCommandDef = {
   name: "remote",
   description: "Drive a running gloomberb app through its remote API",
+  // Resources, operations and JSON go to the app as typed.
+  keepsArgAsTyped: () => true,
   help: {
     group: CLI_COMMAND_GROUPS.app,
     usage: [
