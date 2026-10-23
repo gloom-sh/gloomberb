@@ -37,7 +37,7 @@ interface DoeSeasonal {
   band: Array<[number, number | null, number | null, number | null]>;
 }
 
-export type DoeComparisonBasis = "published" | "computed";
+type DoeComparisonBasis = "published" | "computed";
 
 export interface DoeSeriesRow {
   id: string;

@@ -167,7 +167,7 @@ export function futuresPricePer(terms: PricedTerms | null | undefined, currency:
 }
 
 /** MMBtu in a megawatt hour: 3.412 (3,412,142 Btu). */
-export const MMBTU_PER_MWH = 3.412;
+const MMBTU_PER_MWH = 3.412;
 
 /**
  * A gas price per MWh as dollars per MMBtu, the unit Henry Hub gas (NG)
