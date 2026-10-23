@@ -396,7 +396,7 @@ function EquityScreenView({
     });
     setActionError(null);
   };
-  const checkHint = { id: "check", key: "t", label: "check ticker", title: "Check ticker", onPress: startCheck };
+  const checkHint = { id: "check", key: "t", label: "check ticker", title: "Check ticker", onPress: startCheck, disabled: false };
   const startSave = () => {
     if (!access.emailVerified) { switchMode("saved"); return; }
     setName(currentSaved?.name ?? "");
