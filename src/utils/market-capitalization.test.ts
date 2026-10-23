@@ -63,10 +63,10 @@ test("a count a recent split moved says where it came from, and the provider's c
     providerMarketCap: 450_717_802 } };
   const view = viewMarketCapitalization(nrdyQuote, filed);
   expect(view?.value).toBe(74_216_899);
-  expect(marketCapBasisNote(view)).toBe("Shares outstanding are the 191.61M filed as of 2026-07-31, after the 1-for-15 reverse split on 2026-08-19; the provider's market cap was 450.72M USD.");
+  expect(marketCapBasisNote(view)).toBe("12.77M shares: 191.61M filed 2026-07-31, adjusted for the 1-for-15 reverse split on 2026-08-19.");
   // NVDA after its 10-for-1 split, with only the provider's cap on the new basis.
   const provider = { ...fundamentals, marketCap: 2.995e12, sharesOutstanding: 24_592_331_062, splitShareBasis: {
     exDate: "2024-06-10", priceFactor: 0.1, method: "provider_cap" as const, reportedShares: 2_460_000_000 } };
   expect(marketCapBasisNote(viewMarketCapitalization({ ...quote, price: 121.79 }, provider)))
-    .toBe("Market cap is the provider's; its 2.46B share count predates the 10-for-1 split on 2024-06-10.");
+    .toBe("Provider's market cap; its 2.46B share count predates the 10-for-1 split on 2024-06-10.");
 });

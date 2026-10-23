@@ -82,8 +82,8 @@ export interface ViewMarketCapitalization extends MarketCapitalization {
   computed?: { shares: number; price: number; providerValue: number };
   /** Set when the provider's cap, shown, sits more than 10% from `shares` x `price`: the count is not the cap's. */
   otherBasis?: { shares: number; price: number; product: number };
-  /** Set when a recent split put the share count and cap on the basis the listing trades on. */
-  split?: SplitShareBasis;
+  /** Set when a recent split put the share count and cap on the basis the listing trades on, with the count shown. */
+  split?: SplitShareBasis & { shares?: number };
 }
 
 const positiveFinite = (value: number | null | undefined): value is number => value != null && Number.isFinite(value) && value > 0;
@@ -106,7 +106,9 @@ export function viewMarketCapitalization(
 ): ViewMarketCapitalization | null {
   const capitalization = viewCapitalization(quote, fundamentals, price);
   const split = fundamentals?.splitShareBasis;
-  return capitalization && split ? { ...capitalization, split } : capitalization;
+  return capitalization && split
+    ? { ...capitalization, split: { ...split, shares: fundamentals?.sharesOutstanding } }
+    : capitalization;
 }
 
 function viewCapitalization(
@@ -139,20 +141,17 @@ function splitRatio(priceFactor: number): string {
 
 /**
  * What a view says when a recent split moved the share count shown:
- * - a filed count: "Shares outstanding are the 191.61M filed as of 2026-07-31, after the 1-for-15 reverse split on
- *   2026-08-19; the provider's market cap was 450.72M USD."
- * - the provider's cap: "Market cap is the provider's; its 191.61M share count predates the 1-for-15 reverse split on
- *   2026-08-19."
+ * - a filed count: "12.77M shares: 191.61M filed 2026-07-31, adjusted for the 1-for-15 reverse split on 2026-08-19."
+ * - the provider's cap: "Provider's market cap; its 2.46B share count predates the 10-for-1 split on 2024-06-10."
  */
-function splitShareCountNote(split: SplitShareBasis, currency: string): string {
+function splitShareCountNote(split: SplitShareBasis & { shares?: number }): string {
   const ratio = splitRatio(split.priceFactor);
   if (split.method === "provider_cap") {
-    return `Market cap is the provider's; its ${formatCompact(split.reportedShares)} share count predates the ${ratio} on ${split.exDate}.`;
+    return `Provider's market cap; its ${formatCompact(split.reportedShares)} share count predates the ${ratio} on ${split.exDate}.`;
   }
-  const filed = split.reportedAsOf ? ` filed as of ${split.reportedAsOf}` : " filed";
-  const provider = split.providerMarketCap != null && split.providerMarketCap > 0
-    ? `; the provider's market cap was ${formatCompact(split.providerMarketCap)} ${currency}` : "";
-  return `Shares outstanding are the ${formatCompact(split.reportedShares)}${filed}, after the ${ratio} on ${split.exDate}${provider}.`;
+  const shown = positiveFinite(split.shares) ? `${formatCompact(split.shares)} shares: ` : "";
+  const filed = split.reportedAsOf ? ` filed ${split.reportedAsOf}` : " filed";
+  return `${shown}${formatCompact(split.reportedShares)}${filed}, adjusted for the ${ratio} on ${split.exDate}.`;
 }
 
 /**
@@ -165,8 +164,8 @@ function splitShareCountNote(split: SplitShareBasis, currency: string): string {
  */
 export function marketCapBasisNote(capitalization: ViewMarketCapitalization | null): string | undefined {
   if (!capitalization) return undefined;
-  const { currency, split } = capitalization;
-  const splitNote = split ? splitShareCountNote(split, currency) : undefined;
+  const { split } = capitalization;
+  const splitNote = split ? splitShareCountNote(split) : undefined;
   const basisNote = shareBasisNote(capitalization);
   return splitNote && basisNote ? `${splitNote} ${basisNote}` : splitNote ?? basisNote;
 }
