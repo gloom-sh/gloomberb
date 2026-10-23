@@ -3,13 +3,12 @@ import { expirationOptionSeconds, OPTION_EXPIRATION_FORMAT, OPTION_EXPIRATION_PL
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { createScenarioDependencies } from "./client";
 import { formatHedgePrice } from "./hedge";
+import { exportPercent } from "./model";
 import {
   CSP_SCREEN_DEFAULTS, CSP_SCREEN_LIMIT, cspEarningsText, cspScreenCriteriaText, loadCspScreen, readCspScreenCriteria,
   type CspScreen, type CspScreenRow,
 } from "./csp-screen";
 
-/** A fraction as the percent a row carries, so an export writes it whole and the text view draws it. */
-const inPercent = (fraction: number | null | undefined) => fraction == null ? null : fraction * 100;
 const percentCell = (digits: number) => (value: unknown) => typeof value === "number" ? `${value.toFixed(digits)}%` : "--";
 const priceCell = (value: unknown) => typeof value === "number" ? formatHedgePrice(value) : "--";
 const strikeCell = (value: unknown) => typeof value === "number" ? String(value) : "--";
@@ -27,9 +26,9 @@ export function cspScreenReportRow(row: CspScreenRow): CspScreenReportRow {
   return {
     rank: row.rank, symbol: row.symbol,
     expiry: csp?.expiry ?? null, days: csp?.daysToExpiry ?? null, strike: csp?.strike ?? null,
-    bid: csp?.quote?.bid ?? null, ask: csp?.quote?.ask ?? null, spread: inPercent(csp?.quote?.spreadOfMid), wide: csp?.quote ? row.wideSpread : null,
-    delta: row.delta, otm: inPercent(csp?.outOfTheMoney), midYield: inPercent(csp?.annualizedYield),
-    bidYield: inPercent(csp?.quote?.bidAnnualizedYield), ivRank: row.ivRank,
+    bid: csp?.quote?.bid ?? null, ask: csp?.quote?.ask ?? null, spread: exportPercent(csp?.quote?.spreadOfMid), wide: csp?.quote ? row.wideSpread : null,
+    delta: row.delta, otm: exportPercent(csp?.outOfTheMoney), midYield: exportPercent(csp?.annualizedYield),
+    bidYield: exportPercent(csp?.quote?.bidAnnualizedYield), ivRank: row.ivRank,
     earnings: cspEarningsText(csp), earningsBeforeExpiry: csp ? csp.earnings.beforeExpiry : null, earningsDate: csp?.earnings.date ?? null,
     spot: csp?.spot ?? null, note: row.note,
   };

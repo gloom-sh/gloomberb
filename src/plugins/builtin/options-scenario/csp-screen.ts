@@ -194,11 +194,17 @@ function screenFreshness(markets: readonly ScenarioMarketSnapshot[], now: number
   };
 }
 
-/** Each name's cash-secured put, ranked: one IV rank request and one earnings calendar request for all of them. */
+/**
+ * Each name's cash-secured put, ranked: one IV rank request, one earnings
+ * calendar request and one Treasury curve for all of them.
+ */
 export async function loadCspScreen(
   instruments: readonly InstrumentRef[], criteria: CspScreenCriteria, dependencies: CspScreenDependencies, signal?: AbortSignal,
 ): Promise<CspScreen> {
   const now = dependencies.scenario.now?.() ?? Date.now();
+  // Every name reads the same curve, up to twice (the catalogue, then its expiry): asked for once, when the first name needs it.
+  let curve: ReturnType<ScenarioLoaderDependencies["loadYieldCurve"]> | null = null;
+  const scenario: ScenarioLoaderDependencies = { ...dependencies.scenario, loadYieldCurve: () => curve ??= dependencies.scenario.loadYieldCurve() };
   const symbols = instruments.map((instrument) => instrument.symbol.trim().toUpperCase());
   const [ivRanks, earnings] = await Promise.all([
     loadIvRanks(symbols, signal, dependencies.ivApi),
@@ -214,7 +220,7 @@ export async function loadCspScreen(
     const rank = ivRow?.iv30?.rank;
     const ivRank = rank != null && Number.isFinite(rank) ? rank : null;
     try {
-      const screened = await screenPut(instrument, criteria, dependencies.scenario, target, earnings.get(symbol) ?? null, signal);
+      const screened = await screenPut(instrument, criteria, scenario, target, earnings.get(symbol) ?? null, signal);
       markets.push(screened.market);
       if (ivRank == null && !ivRanks.error) {
         const reason = ivRow?.iv30?.rankNote ?? ivRow?.warnings?.[0] ?? (ivRow ? IV_COVERAGE_REASONS[ivRow.coverageStatus ?? ivRow.status] : "no IV history");

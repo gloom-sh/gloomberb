@@ -164,6 +164,17 @@ export const currencyLabel = (currency: string) => currency === UNKNOWN_CURRENCY
 export const amountUnit = (currency: string) => currency && currency !== UNKNOWN_CURRENCY ? currency : "currency unknown";
 
 /**
+ * A fraction as the percent an export carries: a rate of 0.041 is 4.1, not
+ * the 4.1000000000000005 the product leaves. Twelve significant digits keep
+ * every digit a figure has; null stays null.
+ */
+export function exportPercent(fraction: number): number;
+export function exportPercent(fraction: number | null | undefined): number | null;
+export function exportPercent(fraction: number | null | undefined): number | null {
+  return fraction == null ? null : Number((fraction * 100).toPrecision(12));
+}
+
+/**
  * The position's currency: the one typed, else the underlying's quote
  * currency, else USD for a US listing (a bare symbol is one, as Gloom Cloud
  * lists only US options). A listing abroad with no quote stays unknown.

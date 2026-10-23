@@ -11,7 +11,7 @@ import {
 import { scenarioFreshness } from "./freshness";
 import { cashSecuredPut, cspReportEntries, loadNextEarningsDate } from "./csp";
 import { formatSpotTime } from "../options/model-spot";
-import { amountUnit, buildScenario, currencyLabel, parseLegs, scenarioValueUnit } from "./model";
+import { amountUnit, buildScenario, currencyLabel, exportPercent, parseLegs, scenarioValueUnit } from "./model";
 import { hedgeInputsFromSettings, hedgeReportEntries, scenarioHedgeBudget, seededLegQuotes } from "./hedge";
 import { collarReportEntries, scenarioCollar } from "./collar";
 import { modelDividendYieldNote } from "../../../market-data/model-dividend-yield";
@@ -167,9 +167,9 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
           ...(position!.underlying ? [{ key: "shares", label: "Shares held", value: position!.underlying.quantity, unit: "shares",
             formatted: `${position!.underlying.quantity.toLocaleString("en-US")} at ${money(position!.underlying.price)} ${PRICE_UNIT}` }] : []),
           { key: "asOf", label: "Valued at", value: new Date(position!.asOf).toISOString(), formatted: formatSpotTime(position!.asOf) },
-          { key: "rate", label: "Rate", value: position!.rate * 100, unit: "%", formatted: percent(position!.rate) },
+          { key: "rate", label: "Rate", value: exportPercent(position!.rate), unit: "%", formatted: percent(position!.rate) },
           // A yield read as 0 because no dividend was paid, or the dividend stopped, says so; a stated or typed one is the figure alone.
-          { key: "dividendYield", label: "Dividend yield", value: position!.dividendYield * 100, unit: "%", formatted: percent(position!.dividendYield)
+          { key: "dividendYield", label: "Dividend yield", value: exportPercent(position!.dividendYield), unit: "%", formatted: percent(position!.dividendYield)
             + (dividendNote ? ` (${dividendNote})` : "") },
           { key: "currency", label: "Currency", value: position!.currency, formatted: currency! },
         ] },

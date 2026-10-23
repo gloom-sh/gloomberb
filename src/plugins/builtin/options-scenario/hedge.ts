@@ -3,7 +3,7 @@ import type { OptionsChain } from "../../../types/financials";
 import type { HeadlessPaneEntry } from "../../../types/headless";
 import { numberErrorMessage } from "../../../utils/decimal-comma";
 import { formatCompact } from "../../../utils/format";
-import { amountUnit, UNKNOWN_CURRENCY, type ScenarioPosition } from "./model";
+import { amountUnit, exportPercent, UNKNOWN_CURRENCY, type ScenarioPosition } from "./model";
 
 /**
  * Hedge budget sizing (docs/research-data.md#options-scenario-analysis): how
@@ -262,10 +262,10 @@ export function hedgeReportEntries(hedge: HedgeBudget): HeadlessPaneEntry[] {
       formatted: `${formatBps(hedge.premiumBps)} (${(hedge.premiumBps / 100).toFixed(2)}% of NAV)` },
     { key: "notional", label: "Notional protected", value: hedge.notional, ...amount,
       formatted: `${money(hedge.notional)}${unit} (${hedge.contracts.toLocaleString("en-US")} x ${hedge.multiplier} x ${formatHedgePrice(hedge.spot)})` },
-    { key: "notionalOfNav", label: "Notional / NAV", value: hedge.notionalOfNav * 100, unit: "%", formatted: percent(hedge.notionalOfNav) },
+    { key: "notionalOfNav", label: "Notional / NAV", value: exportPercent(hedge.notionalOfNav), unit: "%", formatted: percent(hedge.notionalOfNav) },
     hedge.coverage == null || hedge.sleeve == null
       ? { key: "coverage", label: "Coverage", value: null, formatted: "No equity sleeve given; add --sleeve <amount> to read notional against it" }
-      : { key: "coverage", label: "Coverage", value: hedge.coverage * 100, unit: "%",
+      : { key: "coverage", label: "Coverage", value: exportPercent(hedge.coverage), unit: "%",
         formatted: `${percent(hedge.coverage)} of a ${money(hedge.sleeve)}${unit} sleeve` },
   ];
 }

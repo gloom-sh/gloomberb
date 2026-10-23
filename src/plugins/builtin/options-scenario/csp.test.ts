@@ -117,12 +117,14 @@ test("--strategy csp sells the put at its midpoint and reports it, with earnings
   const financials: TickerFinancials = { quote, fundamentals: { dividendYield: 0.0234 }, annualStatements: [], quarterlyStatements: [], priceHistory: [] };
   const provider = { id: "csp-test", getQuote: async () => quote, getTickerFinancials: async () => financials,
     getOptionsChain: async () => chain, getEarningsCalendar: async () => [] } as unknown as DataProvider;
+  const curve = async () => [{ maturity: "1M", maturityYears: 1 / 12, yield: 4, asOf: "2026-10-12" },
+    { maturity: "1Y", maturityYears: 1, yield: 4, asOf: "2026-10-12" }];
+  const load = (options: Record<string, string>, getCloudYieldCurve = curve, rawArgument = "KO") => optionsScenarioHeadless.load(
+    { symbols: ["KO"], rawArgument, argument: "KO", options: { strategy: "csp", expiration: String(expiry), ...options } },
+    { marketData: provider, signal: new AbortController().signal, apiClient: { getCloudYieldCurve } } as unknown as HeadlessPaneContext);
   setSystemTime(now);
   try {
-    const result = await optionsScenarioHeadless.load({ symbols: ["KO"], rawArgument: "KO", argument: "KO",
-      options: { strategy: "csp", strike: "85", expiration: String(expiry) } }, { marketData: provider, signal: new AbortController().signal,
-      apiClient: { getCloudYieldCurve: async () => [{ maturity: "1M", maturityYears: 1 / 12, yield: 4, asOf: "2026-10-12" },
-        { maturity: "1Y", maturityYears: 1, yield: 4, asOf: "2026-10-12" }] } } as unknown as HeadlessPaneContext);
+    const result = await load({ strike: "85" });
     expect(result.errors).toEqual([]);
     const metadata = result.metadata as { position: ScenarioPosition; csp: ReturnType<typeof cashSecuredPut> };
     expect(metadata.position.legs.map((leg) => [leg.side, leg.strike, leg.quantity, leg.priceSource])).toEqual([["put", 85, -1, "mid"]]);
@@ -131,5 +133,18 @@ test("--strategy csp sells the put at its midpoint and reports it, with earnings
     expect(metadata.csp!.earnings).toEqual({ date: null, beforeExpiry: null });
     const section = result.sections.find((entry) => entry.title === "Cash-secured put");
     expect(section?.entries?.find((entry) => entry.key === "earningsBeforeExpiry")?.formatted).toBe("unknown (no upcoming date published)");
+
+    // Percents in the sections are whole and rounded (7, not 7.000000000000001); the metadata keeps the model's fractions.
+    const typed = await load({ strike: "85", rate: "4.1", dividendYield: "7" });
+    const inputs = typed.sections.find((entry) => entry.title === "Inputs")?.entries ?? [];
+    expect(["rate", "dividendYield"].map((key) => inputs.find((entry) => entry.key === key)?.value)).toEqual([4.1, 7]);
+    expect((typed.metadata as { position: ScenarioPosition }).position.dividendYield).toBe(0.07);
+
+    // The put is picked by delta or by strike, never both, and by delta only with a Treasury rate to price it.
+    await expect(load({ strike: "85", delta: "0.3" })).rejects.toThrow("delta and strike each pick the put; give one of them");
+    const noCurve = async () => { throw new Error("Treasury curve unavailable"); };
+    await expect(load({ delta: "0.3" }, noCurve)).rejects.toThrow("Choosing the put by delta needs the Treasury rate; supply --rate, or pick it with --strike");
+    expect((await load({ delta: "0.3", rate: "4" }, noCurve)).errors).toEqual([]);
+    await expect(load({}, curve, "KO JPM")).rejects.toThrow("OSA values one underlying. To rank cash-secured puts across KO, JPM: gloomberb fn CSP KO JPM");
   } finally { setSystemTime(); }
 });

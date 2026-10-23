@@ -1,10 +1,16 @@
-import { expect, test } from "bun:test";
+import { expect, setSystemTime, test } from "bun:test";
+import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
+import { headlessReportTables, validateSymbolCount } from "../../../cli/pane-functions/headless";
+import { renderReportCsv } from "../../../cli/report-tables";
+import { createTestHeadlessContext } from "../../../test-support/headless";
+import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/headless";
 import type { DataProvider, EarningsEvent } from "../../../types/data-provider";
 import type { OptionsChain, Quote, TickerFinancials } from "../../../types/financials";
 import { daysToExpiryFrom, valueOption } from "../shared/volatility";
 import type { ImpliedVolatilityApi } from "../iv-history/client";
 import { createScenarioDependencies } from "./client";
 import type { CashSecuredPut } from "./csp";
+import { cspScreenHeadless } from "./csp-screen-headless";
 import { loadCspScreen, nearestListedExpiry, rankCspScreen, readCspScreenCriteria, type CspScreenRow } from "./csp-screen";
 
 const day = (date: string) => Date.parse(`${date}T00:00:00Z`) / 1000;
@@ -41,18 +47,21 @@ test("the ranking is by yield at the bid: a wide spread is ranked and flagged, a
     row("GS", put(0.10, 0.20), true),
     row("JPM", put(0.15, 0.16)),
     row("AAA", null),
+    // A put with no bid has no yield at the bid: listed after the ranked ones, before the names with no put, whatever its mid.
+    row("NOBID", put(null, 0.5)),
   ]);
   expect(ranked.map((entry) => [entry.rank, entry.symbol, entry.wideSpread])).toEqual([
-    [1, "JPM", false], [2, "KO", false], [3, "GS", true], [null, "AAA", false], [null, "ZZZ", false],
+    [1, "JPM", false], [2, "KO", false], [3, "GS", true], [null, "NOBID", false], [null, "AAA", false], [null, "ZZZ", false],
   ]);
 });
 
-test("the screen sells each name's put nearest the delta, reads it as OSA does, and ranks the names by yield at the bid", async () => {
-  const now = Date.parse("2026-10-21T18:00:00Z");
-  const expiry = day("2026-11-20");
-  const strikes = [85, 87.5, 90, 92.5, 95, 97.5, 100, 102.5, 105];
-  const years = daysToExpiryFrom(expiry, now);
-  // Two names on one model at 30% vol; BBB's quotes are a dollar wide either side of the mid.
+const now = Date.parse("2026-10-21T18:00:00Z");
+const expiry = day("2026-11-20");
+const strikes = [85, 87.5, 90, 92.5, 95, 97.5, 100, 102.5, 105];
+const years = daysToExpiryFrom(expiry, now);
+
+/** AAA and BBB on one model at 30% vol, BBB's quotes a dollar wide either side of the mid; NOPE has no chain. */
+function screenSources() {
   const halfSpread: Record<string, number> = { AAA: 0.02, BBB: 0.5 };
   const chain = (symbol: string): OptionsChain => {
     const contract = (side: "call" | "put", strike: number) => {
@@ -76,15 +85,26 @@ test("the screen sells each name's put nearest the delta, reads it as OSA does, 
     },
     getEarningsCalendar: async () => [{ symbol: "AAA", name: "AAA", earningsDate: new Date("2026-11-05T00:00:00Z"), epsEstimate: null }] as EarningsEvent[],
   } as unknown as DataProvider;
-  const ivApi = { impliedVolatility: async () => ({ version: 1, asOf: "2026-10-20", rows: [
-    { symbol: "AAA", status: "ready", iv30: { rank: 42 }, iv90: null, latest: null, skew: null },
-    { symbol: "BBB", status: "ready", iv30: { rank: null, rankNote: "fewer than 120 sessions" }, iv90: null, latest: null, skew: null },
-  ] }) } as unknown as ImpliedVolatilityApi;
-  const scenario = { ...createScenarioDependencies(provider, { getCloudYieldCurve: async () => [
-    { maturity: "1M", maturityYears: 1 / 12, yield: 4, asOf: "2026-10-20" }, { maturity: "1Y", maturityYears: 1, yield: 4, asOf: "2026-10-20" }] }),
-  now: () => now };
+  const curveRequests: number[] = [];
+  // Gloom Cloud's IV history and Treasury curve, as the app's client serves them.
+  const cloud = {
+    impliedVolatility: async () => ({ version: 1, asOf: "2026-10-20", rows: [
+      { symbol: "AAA", status: "ready", iv30: { rank: 42 }, iv90: null, latest: null, skew: null },
+      { symbol: "BBB", status: "ready", iv30: { rank: null, rankNote: "fewer than 120 sessions" }, iv90: null, latest: null, skew: null },
+    ] }),
+    getCloudYieldCurve: async () => {
+      curveRequests.push(now);
+      return [{ maturity: "1M", maturityYears: 1 / 12, yield: 4, asOf: "2026-10-20" }, { maturity: "1Y", maturityYears: 1, yield: 4, asOf: "2026-10-20" }];
+    },
+  };
+  return { provider, cloud, curveRequests };
+}
+
+test("the screen sells each name's put nearest the delta, reads it as OSA does, and ranks the names by yield at the bid", async () => {
+  const { provider, cloud, curveRequests } = screenSources();
+  const scenario = { ...createScenarioDependencies(provider, cloud), now: () => now };
   const screen = await loadCspScreen(["AAA", "BBB", "NOPE"].map((symbol) => ({ symbol })), readCspScreenCriteria({}),
-    { scenario, earnings: provider, ivApi });
+    { scenario, earnings: provider, ivApi: cloud as unknown as ImpliedVolatilityApi });
 
   // The put whose delta at 30% vol is nearest -0.30, priced on its own.
   const deltaOf = (strike: number) => valueOption({ side: "put", spot: 100, strike, daysToExpiry: years, rate: 0.04, dividendYield: 0.01,
@@ -103,4 +123,35 @@ test("the screen sells each name's put nearest the delta, reads it as OSA does, 
   // A name with no chain is listed last with why, never dropped.
   expect([missing!.symbol, missing!.rank, missing!.csp, missing!.note]).toEqual(["NOPE", null, null, "Options chain: Not a ticker: NOPE."]);
   expect(screen.missingRanks).toEqual(["BBB (fewer than 120 sessions)"]);
+  // Six chain reads (each name's catalogue, then its expiry) share one Treasury curve.
+  expect(curveRequests).toHaveLength(1);
+});
+
+test("fn CSP writes each put's figures as numbers with a Wide column, takes --max-spread, and refuses a 21st name", async () => {
+  const { provider, cloud } = screenSources();
+  const ctx = createTestHeadlessContext({ marketData: provider, apiClient: cloud as unknown as HeadlessPaneContext["apiClient"] });
+  const args = (options: HeadlessPaneLoadArgs["options"]): HeadlessPaneLoadArgs =>
+    ({ symbols: ["AAA", "BBB"], rawArgument: "AAA BBB", argument: ["AAA", "BBB"], options });
+  setSystemTime(now);
+  try {
+    const input = args({});
+    const result = await cspScreenHeadless.load(input, ctx);
+    const freshness = deriveHeadlessFreshness(cspScreenHeadless, result);
+    const csv = renderReportCsv(headlessReportTables(cspScreenHeadless, result, input, "CSP", freshness, { complete: true, unavailableSymbols: [] }), freshness)
+      .split("\n").map((line) => line.split(","));
+    const column = (header: string) => csv.slice(1, 3).map((line) => line[csv[0]!.indexOf(header)]);
+    expect(column("Symbol")).toEqual(["AAA", "BBB"]);
+    expect([column("Spread (%)")[1], column("Wide spread")]).toEqual(["73.5716547478", ["no", "yes"]]);
+    // The --json rows carry percents rounded clear of the float noise their product leaves (4.1, not 4.1000000000000005).
+    for (const row of result.rows) {
+      for (const key of ["spread", "otm", "midYield", "bidYield"]) expect(row[key]).toBe(Number((row[key] as number).toPrecision(12)));
+    }
+    const loose = await cspScreenHeadless.load(args({ maxSpread: "200" }), ctx);
+    expect(loose.rows.map((row) => [row.symbol, row.wide])).toEqual([["AAA", false], ["BBB", false]]);
+    expect(loose.notes?.[0]).toContain("over 200% of the mid (--max-spread)");
+  } finally {
+    setSystemTime();
+  }
+  const names = Array.from({ length: 21 }, (_, index) => `N${index}`);
+  expect(() => validateSymbolCount(cspScreenHeadless, "CSP", names)).toThrow("CSP accepts at most 20 symbols.");
 });

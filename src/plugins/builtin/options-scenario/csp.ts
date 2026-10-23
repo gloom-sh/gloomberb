@@ -6,7 +6,7 @@ import { optionSpread } from "../options/market-reference";
 import { newYorkDay, resolveListingEvents, upcomingReportDate } from "../shared/earnings-calendar";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { formatHedgePrice } from "./hedge";
-import { amountUnit, UNKNOWN_CURRENCY, type ScenarioPosition } from "./model";
+import { amountUnit, exportPercent, UNKNOWN_CURRENCY, type ScenarioPosition } from "./model";
 
 /**
  * A cash-secured put (docs/research-data.md#cash-secured-put): one short put
@@ -167,8 +167,6 @@ export async function loadNextEarningsDates(
 
 const money = (value: number) => value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const percent = (fraction: number, digits = 2) => `${(fraction * 100).toFixed(digits)}%`;
-/** A fraction as the percent an export writes, every digit. */
-const inPercent = (fraction: number | null) => fraction == null ? null : fraction * 100;
 const unitOf = (csp: CashSecuredPut) => csp.currency && csp.currency !== UNKNOWN_CURRENCY ? ` ${csp.currency}` : "";
 const strikeText = (value: number) => formatHedgePrice(value).replace(/\.00$/, "");
 
@@ -201,22 +199,22 @@ export function cspReportEntries(csp: CashSecuredPut): HeadlessPaneEntry[] {
       formatted: `${money(csp.cashSecured)}${unit} (${strikeText(csp.strike)} x ${csp.multiplier} x ${csp.contracts})` },
     { key: "premium", label: "Premium received", value: csp.premium, ...amount,
       formatted: `${money(csp.premium)}${unit} (${formatHedgePrice(csp.price)} per share, ${priceWord(csp)})` },
-    { key: "yieldOnCash", label: "Yield on cash", value: inPercent(csp.yieldOnCash), unit: "%",
+    { key: "yieldOnCash", label: "Yield on cash", value: exportPercent(csp.yieldOnCash), unit: "%",
       formatted: `${percent(csp.yieldOnCash)} (${money(csp.premium)} / ${money(csp.cashSecured)})` },
-    { key: "annualizedYield", label: "Annualised yield", value: inPercent(csp.annualizedYield), unit: "%",
+    { key: "annualizedYield", label: "Annualised yield", value: exportPercent(csp.annualizedYield), unit: "%",
       formatted: csp.annualizedYield == null ? "-- (expires today)" : `${percent(csp.annualizedYield)} (yield on cash x 365 / ${csp.daysToExpiry})` },
     ...(quote ? [
       { key: "bid", label: "Bid", value: quote.bid, unit: perShare, formatted: `${formatHedgePrice(quote.bid)} per share` },
       { key: "ask", label: "Ask", value: quote.ask, unit: perShare, formatted: `${formatHedgePrice(quote.ask)} per share` },
-      { key: "spread", label: "Spread", value: inPercent(quote.spreadOfMid), unit: "% of mid",
+      { key: "spread", label: "Spread", value: exportPercent(quote.spreadOfMid), unit: "% of mid",
         formatted: `${formatHedgePrice(quote.spread)} per share (${percent(quote.spreadOfMid, 1)} of the mid)` },
       { key: "bidPremium", label: "Premium at the bid", value: quote.bidPremium, ...amount,
         formatted: `${money(quote.bidPremium)}${unit} (${formatHedgePrice(quote.bid)} x ${csp.multiplier} x ${csp.contracts})` },
-      { key: "bidAnnualizedYield", label: "Annualised yield at the bid", value: inPercent(quote.bidAnnualizedYield), unit: "%",
+      { key: "bidAnnualizedYield", label: "Annualised yield at the bid", value: exportPercent(quote.bidAnnualizedYield), unit: "%",
         formatted: quote.bidAnnualizedYield == null ? "-- (expires today)"
           : `${percent(quote.bidAnnualizedYield)} (${percent(quote.bidYieldOnCash)} on cash x 365 / ${csp.daysToExpiry})` },
     ] : []),
-    { key: "outOfTheMoney", label: "Out of the money", value: inPercent(csp.outOfTheMoney), unit: "%", formatted: otmText(csp) },
+    { key: "outOfTheMoney", label: "Out of the money", value: exportPercent(csp.outOfTheMoney), unit: "%", formatted: otmText(csp) },
     { key: "breakEven", label: "Break-even", value: csp.breakEven, unit: perShare,
       formatted: `${formatHedgePrice(csp.breakEven)} per share (${strikeText(csp.strike)} - ${formatHedgePrice(csp.price)})` },
     { key: "daysToExpiry", label: "Days to expiry", value: csp.daysToExpiry, unit: "days",
