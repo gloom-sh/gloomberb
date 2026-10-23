@@ -10,7 +10,8 @@ import { matchPrefix, type Command } from "../../commands/registry";
 import type { ResultItem } from "../../list/model";
 import type { CommandBarCategoryPriorities } from "../../view-model";
 import type { CommandBarRoute } from "../../workflow/types";
-import { normalizeCommandTickerSearchText } from "../ticker-search/results";
+import { normalizeCommandTickerSearchText, readRootTickerQuery } from "../ticker-search/results";
+import { readNearMissListing, readTerminalListingCode } from "../../../../tickers/terminal-codes";
 import { useTickerSearchRouteResults } from "../ticker-search/route";
 import { buildRootResultModel, type RootResultModel } from "./results";
 import { useRootProviderSearch } from "./provider-search";
@@ -246,8 +247,9 @@ export function useCommandBarRootRuntime({
     tickerActionItems,
   ]);
 
+  // `DES VOD LN` searches the listing the code names, as Enter opens it.
   const rootSecurityDescriptionArg = activeMatch?.command.id === "security-description" && activeMatch.arg.length >= 1
-    ? activeMatch.arg
+    ? readTerminalListingCode(activeMatch.arg)?.key ?? readNearMissListing(activeMatch.arg)?.symbol ?? activeMatch.arg
     : null;
   // Free text that no prefix claims also goes to symbol search, so "nvidia"
   // finds NVDA without the backtick. Skipped when a local row already carries
@@ -257,10 +259,15 @@ export function useCommandBarRootRuntime({
     if (currentRoute || activeMatch || rootShortcutIntent.kind !== "none") return null;
     return listingChoiceQuery(rootQuery);
   }, [activeMatch, currentRoute, rootQuery, rootShortcutIntent.kind]);
+  // `VOD LN`, `AAPL GP` and `700.HK` search the symbol they are read as, and the rows say which listing they name.
+  const rootTickerReading = useMemo(() => (
+    currentRoute || activeMatch || rootShortcutIntent.kind !== "none" || rootListingChoice ? null : readRootTickerQuery(rootQuery)
+  ), [activeMatch, currentRoute, rootListingChoice, rootQuery, rootShortcutIntent.kind]);
   const rootPlainTickerSearchArg = useMemo(() => {
     if (currentRoute || activeMatch || rootShortcutIntent.kind !== "none") return null;
     // An explicit venue choice also searches one-letter symbols and names shared with local actions.
     if (rootListingChoice) return rootListingChoice.symbol;
+    if (rootTickerReading) return rootTickerReading.search;
     const trimmed = rootQuery.trim();
     const symbolQuery = symbolSearchQuery(trimmed);
     if (symbolQuery.length < 2) return null;
@@ -277,7 +284,7 @@ export function useCommandBarRootRuntime({
       && normalizeCommandTickerSearchText(item.label) === normalizedQuery
     ));
     return hasExactLocalRow ? null : symbolQuery;
-  }, [activeMatch, currentRoute, pluginInstallItem, rootListingChoice, rootQuery, rootResultModel.items, rootShortcutIntent.kind]);
+  }, [activeMatch, currentRoute, pluginInstallItem, rootListingChoice, rootQuery, rootResultModel.items, rootShortcutIntent.kind, rootTickerReading]);
   const rootTickerSearchArg = rootSecurityDescriptionArg ?? rootPlainTickerSearchArg;
 
   const {
@@ -297,6 +304,7 @@ export function useCommandBarRootRuntime({
     readTickerSearchCache,
     rootPlainTickerSearchArg,
     listingSuffix: rootPlainTickerSearchArg && rootListingChoice ? rootListingChoice.suffix : null,
+    reading: rootPlainTickerSearchArg ? rootTickerReading : null,
     rootResultItems: rootResultModel.items,
     rootTickerSearchArg,
     tickers: state.tickers,

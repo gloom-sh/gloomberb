@@ -117,6 +117,7 @@ export const zhTW: Record<string, string> = {
   "Current Layout": "目前版面設定",
   "Danger": "危險操作",
   "Debug": "除錯",
+  "Did you mean": "您是不是要找",
   "Exact Match": "精確符合",
   "Focused Pane": "聚焦面板",
   "Funds & Derivatives": "基金與衍生性商品",

@@ -117,6 +117,7 @@ export const ja: Record<string, string> = {
   "Current Layout": "現在のレイアウト",
   "Danger": "危険な操作",
   "Debug": "デバッグ",
+  "Did you mean": "もしかして",
   "Exact Match": "完全一致",
   "Focused Pane": "選択中のペイン",
   "Funds & Derivatives": "ファンド・デリバティブ",

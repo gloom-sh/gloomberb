@@ -116,6 +116,7 @@ export const es: Record<string, string> = {
   "Current Layout": "Diseño actual",
   "Danger": "Peligro",
   "Debug": "Depuración",
+  "Did you mean": "Quizás quisiste decir",
   "Exact Match": "Coincidencia exacta",
   "Focused Pane": "Panel activo",
   "Funds & Derivatives": "Fondos y derivados",

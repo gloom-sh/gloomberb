@@ -117,6 +117,7 @@ export const zhCN: Record<string, string> = {
   "Current Layout": "当前布局",
   "Danger": "危险操作",
   "Debug": "调试",
+  "Did you mean": "您是不是要找",
   "Exact Match": "精确匹配",
   "Focused Pane": "聚焦面板",
   "Funds & Derivatives": "基金与衍生品",

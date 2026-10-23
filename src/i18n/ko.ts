@@ -115,6 +115,7 @@ export const ko: Record<string, string> = {
   "Current Layout": "현재 레이아웃",
   "Danger": "위험",
   "Debug": "디버그",
+  "Did you mean": "이것을 찾으셨나요",
   "Exact Match": "정확한 일치",
   "Focused Pane": "포커스 패널",
   "Funds & Derivatives": "펀드 및 파생상품",
