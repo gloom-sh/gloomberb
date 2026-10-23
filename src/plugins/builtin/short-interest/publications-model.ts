@@ -27,8 +27,8 @@ const ATS_COLUMNS: PublicationColumn[] = [
   { id: "date", label: "WEEK OF", detailLabel: "Week starting", width: 12, align: "left" },
   { id: "atsShares", label: "ATS SHARES", detailLabel: "ATS shares", width: 14, align: "right", format: shares },
   { id: "nonAtsShares", label: "NON-ATS SHARES", detailLabel: "Non-ATS shares", width: 16, align: "right", format: shares },
-  { id: "atsSharePercent", label: "ATS / OTC %", title: "ATS shares / published ATS plus non-ATS shares (%)", detailLabel: "ATS / published off-exchange shares (%)", width: 14, align: "right", format: percentage },
-  { id: "totalShares", label: "TOTAL OFF-EXCHANGE SHARES", detailLabel: "Total off-exchange shares", width: 26, align: "right", format: shares },
+  { id: "atsSharePercent", label: "ATS %", title: "ATS shares / published ATS plus non-ATS shares (%)", detailLabel: "ATS %", width: 14, align: "right", format: percentage },
+  { id: "totalShares", label: "TOTAL SHARES", detailLabel: "Total off-exchange shares", width: 14, align: "right", format: shares },
   { id: "atsTrades", label: "ATS TRADES", detailLabel: "ATS trades", width: 14, align: "right", format: shares },
   { id: "nonAtsTrades", label: "NON-ATS TRADES", detailLabel: "Non-ATS trades", width: 16, align: "right", format: shares },
 ];

@@ -1396,7 +1396,7 @@ and the files are published twice monthly with a delay.
 
 `ATS AAPL` opens **Weekly ATS/OTC** in the same pane. FINRA OTC transparency
 publishes weekly shares and trades for alternative trading systems (ATS,
-including dark pools) and non-ATS venues. **ATS / OTC %** divides ATS shares
+including dark pools) and non-ATS venues. **ATS %** divides ATS shares
 by the published ATS plus non-ATS shares. It is not ATS share of the full
 market, and these are all trades, not short-sale volume. Missing categories
 stay blank and do not contribute a fabricated zero or percentage. Reporting
