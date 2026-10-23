@@ -593,3 +593,28 @@ test("700.HK, 6758.JP and BRK/B are quoted in the form that works", async () => 
     expect(rows.map((row) => row.target.symbol)).toEqual([symbol!]);
   }
 });
+
+test("a file's line that is a company's name before its legal form is the company, beside codes on the lines around it", async () => {
+  const asked: string[][] = [];
+  const company = (symbol: string, name: string, exchange: string) => ({ providerId: "test", symbol, name, exchange, type: "Common Stock", currency: "EUR" });
+  const dataProvider = createTestDataProvider({
+    search: async (query) => /^siemens/i.test(query) ? [company("SIE", "Siemens AG", "XETRA")]
+      : /^sap/i.test(query) ? [company("SAP", "SAP SE", "XETRA")]
+      : query === "BRK-B" ? [company("BRK.B", "Berkshire Hathaway Inc.", "NYSE")]
+      : [],
+    getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => {
+      asked.push(targets.map((target) => target.symbol));
+      return targets.map((target) => ({ target, quote: createTestQuote({ symbol: target.symbol }) }));
+    },
+  });
+  const dir = await mkdtemp(join(tmpdir(), "gloomberb-quote-legal-form-"));
+  try {
+    const file = join(dir, "names.txt");
+    await Bun.write(file, "SIEMENS AG\nSAP SE\nVOD LN\nBRK/B US Equity\n");
+    const cli = createTestCliContext({ dataProvider });
+    await quoteCommand.execute(["--file", file], cli.context);
+    expect(asked).toEqual([["SIE:XETRA", "SAP:XETRA", "VOD:LSE", "BRK-B"]]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

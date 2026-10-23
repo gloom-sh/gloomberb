@@ -3,12 +3,12 @@ import { applyListingArgument } from "../cli/pane-functions/resolver";
 import { parsePaneFunctionArgs } from "../cli/pane-functions/options";
 import type { PaneFunctionCatalog } from "../cli/pane-functions/catalog";
 import type { MarketContext } from "../cli/types";
-import { parseListingArg, resolveCliListing } from "../cli/listing-arg";
+import { ListingArgError, parseListingArg, resolveCliListing } from "../cli/listing-arg";
 import { createTestDataProvider } from "../test-support/data-provider";
 import type { InstrumentSearchResult } from "../types/instrument";
 import type { HeadlessPaneDefinition, PaneDef, PaneTemplateDef } from "../types/plugin";
 import { normalizeTickerInput } from "./search";
-import { BLOOMBERG_MARKETS, readNearMissListing, readTerminalListingCode, unknownBloombergMarket } from "./terminal-codes";
+import { BLOOMBERG_MARKETS, endsInLegalForm, readNearMissListing, readTerminalListingCode, unknownBloombergMarket } from "./terminal-codes";
 import { isKnownExchangeCode } from "../utils/exchanges";
 import { splitSymbolArgs, splitSymbolWords } from "../cli/symbol-args";
 import { parseSymbolText } from "../cli/symbol-list";
@@ -23,7 +23,9 @@ test.each([
   ["jpm  us  equity", "JPM"],
   ["JPM US", "JPM"],
   ["JPM UN Equity", "JPM:NYSE"],
-  ["BRK/B US Equity", "BRK.B"],
+  // A US share class reads as `BRK/B` does; abroad, as search lists it (BT.A).
+  ["BRK/B US Equity", "BRK-B"],
+  ["BRK/B UN Equity", "BRK-B:NYSE"],
   ["MC FP", "MC:EPA"],
   ["VOD LN Equity", "VOD:LSE"],
   ["vod ln equity", "VOD:LSE"],
@@ -33,6 +35,13 @@ test.each([
   ["700 HK", "0700:HKEX"],
   ["600519 CH", "600519:SSE"],
   ["000001 CH Equity", "000001:SZSE"],
+  // An SSE fund starts with 5.
+  ["510300 CH", "510300:SSE"],
+  // Venues search lists by a code the exchange table has no entry for yet.
+  ["RYA ID", "RYA:ISE"],
+  ["BBCA IJ", "BBCA:JAKARTA"],
+  ["PTT TB", "PTT:SET"],
+  ["1155 MK", "1155:BURSAMY"],
   ["BT/A LN", "BT.A:LSE"],
   ["SPX Index", "^GSPC"],
   ["ES1 Index", "ES1E"],
@@ -47,7 +56,7 @@ test.each([
   expect(normalizeTickerInput(null, typed)).toBe(key);
 });
 
-test.each(["VOD.L", "7203.T", "RY.TO", "0700.HK", "BRK.B", "BRK.A", "Wells Fargo", "AAPL MSFT", "vod ln", "Apple Co", "XYZ Index", "Gold Comdty", "USD Curncy", "CLZ6 Comdty"])(
+test.each(["VOD.L", "7203.T", "RY.TO", "0700.HK", "BRK.B", "BRK.A", "Wells Fargo", "AAPL MSFT", "vod ln", "Apple Co", "XYZ Index", "Gold Comdty", "USD Curncy", "CLZ6 Comdty", "P/E US", "N/A US Equity"])(
   "%s is not a terminal's code and parses as before",
   (typed) => {
     expect(readTerminalListingCode(typed)).toBeNull();
@@ -56,8 +65,15 @@ test.each(["VOD.L", "7203.T", "RY.TO", "0700.HK", "BRK.B", "BRK.A", "Wells Fargo
 );
 
 test("every market code reads as a venue of the shared exchange table, on its own and with the Equity key", () => {
+  // Search lists these venues by these codes; the exchange table has no entry for them yet.
+  const searchListed = new Set(["ISE", "JAKARTA", "SET", "BURSAMY"]);
   for (const [code, market] of Object.entries(BLOOMBERG_MARKETS)) {
-    for (const venue of market.venues) expect(venue === "" || isKnownExchangeCode(venue), `${code} ${venue}`).toBe(true);
+    for (const venue of market.venues) expect(venue === "" || isKnownExchangeCode(venue) || searchListed.has(venue), `${code} ${venue}`).toBe(true);
+    // A market no source quotes is a real code, refused by name.
+    if (market.venues.length === 0) {
+      expect(unknownBloombergMarket(`ABC ${code}`)?.unquoted, code).toBe(market.name);
+      continue;
+    }
     const read = readTerminalListingCode(`ABC ${code}`);
     expect(read?.market, code).toBe(code);
     expect(readTerminalListingCode(`ABC ${code} Equity`)?.key, code).toBe(read!.key);
@@ -67,6 +83,7 @@ test("every market code reads as a venue of the shared exchange table, on its ow
   }
   expect(Object.keys(BLOOMBERG_MARKETS)).toEqual(expect.arrayContaining([
     "LN", "GY", "GR", "FP", "SW", "NA", "IM", "SM", "SS", "DC", "NO", "FH", "JP", "JT", "HK", "KS", "CH", "TT", "AU", "IN", "CN",
+    "ID", "IJ", "TB", "MK", "PM",
   ]));
 });
 
@@ -81,7 +98,7 @@ test("words written as a code with a market code no venue answers to are one ref
   expect(unknownBloombergMarket("AAPL GP")).toEqual({ typed: "AAPL GP", symbol: "AAPL", market: "GP", keyed: false });
   expect(unknownBloombergMarket("KO PG")).toMatchObject({ symbol: "KO", market: "PG" });
   expect(unknownBloombergMarket("aapl zz equity")).toMatchObject({ symbol: "AAPL", market: "ZZ", keyed: true });
-  for (const typed of ["Apple Co", "aapl gp", "VOD LN", "AAPL MSFT", "AAPL GP MSFT", "SPX Index"]) expect(unknownBloombergMarket(typed), typed).toBeNull();
+  for (const typed of ["Apple Co", "aapl gp", "VOD LN", "AAPL MSFT", "AAPL GP MSFT", "SPX Index", "P/E GP"]) expect(unknownBloombergMarket(typed), typed).toBeNull();
   // A list line, typed or a file's, is one entry: never AAPL and GP.
   expect(splitSymbolArgs(["AAPL GP"])).toEqual(["AAPL GP"]);
   expect(splitSymbolArgs(["MC FP"])).toEqual(["MC FP"]);
@@ -101,8 +118,17 @@ test.each([
 });
 
 // A listing suffix already (Shanghai's .SS), a Canadian unit (.UN) and a code another country writes (.IT) stay as typed.
-test.each(["600519.SS", "REI.UN", "ENI.IT", "VOD.L", "0700.HK", "EUR/USD", "BTC/USD"])("%s is no near miss", (typed) => {
+// A slash after one letter is a ratio or an abbreviation, never a share class.
+test.each(["600519.SS", "REI.UN", "ENI.IT", "VOD.L", "0700.HK", "EUR/USD", "BTC/USD", "P/E", "N/A", "Y/Y", "q/q", "P/B"])("%s is no near miss", (typed) => {
   expect(readNearMissListing(typed)).toBeNull();
+  expect(normalizeTickerInput(null, typed)).toBe(typed.toUpperCase());
+});
+
+test("two words ending in a company's legal form are a name to look up first, though SE is also SIX Swiss's code", () => {
+  for (const typed of ["SAP SE", "SIEMENS AG", "Nestle SA", "ASML NV", "VOLVO AB", "BARCLAYS PLC"]) expect(endsInLegalForm(typed), typed).toBe(true);
+  for (const typed of ["SAP SE Equity", "VOD LN", "NESN SW", "BANK OF AMERICA CORP"]) expect(endsInLegalForm(typed), typed).toBe(false);
+  // Search sees the name, not SAP on SIX Swiss.
+  expect(normalizeTickerInput(null, "SAP SE")).toBe("SAP SE");
 });
 
 test("the shared resolver reads a code before a company name search, and fn takes one with spaces", async () => {
@@ -161,4 +187,52 @@ test("a code abroad in capitals costs no search, one naming several listings is 
   // Words in lower case whose root search does not list there are words, never a listing in Amsterdam.
   const name = await resolveCliListing("Citibank NA Equity", undefined, deps).then((listing) => listing.key, (error: Error) => error.message);
   expect(name).not.toBe("CITIBANK:AMS");
+});
+
+test("two capitalised words are a company's name before a refusal, and a name before a legal form wins over the venue SE names", async () => {
+  const stock = (symbol: string, name: string, exchange: string): InstrumentSearchResult =>
+    ({ providerId: "test", symbol, name, exchange, currency: "EUR", type: "Common Stock" });
+  const companies = [
+    stock("SIE", "Siemens AG", "XETRA"), stock("NESN", "Nestlé S.A.", "SWX"), stock("ASML", "ASML Holding N.V.", "AMS"),
+    stock("VOLV.B", "Volvo AB", "SFB"), stock("SAP", "SAP SE", "XETRA"),
+  ];
+  const searched: string[] = [];
+  const dataProvider = createTestDataProvider({
+    search: async (query) => {
+      searched.push(query);
+      const word = query.split(" ")[0]!.toUpperCase();
+      const plain = (name: string) => name.normalize("NFKD").replace(/\p{M}/gu, "").toUpperCase();
+      return companies.filter((company) => plain(company.name).startsWith(word) || company.symbol === word);
+    },
+  });
+  const deps = { store: { loadTicker: async () => null, loadAllTickers: async () => [] }, dataProvider };
+  const keyOf = (typed: string) => resolveCliListing(typed, undefined, deps).then((listing) => listing.key, (error: Error) => error.message);
+  expect(await keyOf("SIEMENS AG")).toBe("SIE:XETRA");
+  expect(await keyOf("NESTLE SA")).toBe("NESN:SWX");
+  expect(await keyOf("ASML NV")).toBe("ASML:AMS");
+  expect(await keyOf("VOLVO AB")).toBe("VOLV.B:SFB");
+  // SE is SIX Swiss's market code too: the company SAP SE, not SAP on SIX Swiss.
+  expect(await keyOf("SAP SE")).toBe("SAP:XETRA");
+  // A code whose root names no company by these words is the code: NESN on SIX Swiss, Vodafone in London.
+  expect(await keyOf("NESN SE")).toBe("NESN:SWX");
+  searched.length = 0;
+  expect(await keyOf("VOD LN")).toBe("VOD:LSE");
+  expect(await keyOf("MC FP")).toBe("MC:EPA");
+  expect(searched).toEqual([]);
+  // Words that name no company are refused, never AAPL and GP; a market no source quotes says so.
+  expect(await keyOf("AAPL GP")).toBe("GP is not a market code; did you mean AAPL?");
+  expect(await keyOf("SM PM")).toBe("PM is the Philippine Stock Exchange, which has no quotes here.");
+});
+
+test("a code on a venue only search lists, or where Bloomberg's ticker is not the venue's, is checked there and says what to type", async () => {
+  const listed: Record<string, InstrumentSearchResult[]> = {
+    BBCA: [{ providerId: "test", symbol: "BBCA", name: "Bank Central Asia Tbk", exchange: "JAKARTA", currency: "IDR", type: "Common Stock" }],
+    MAY: [{ providerId: "test", symbol: "MAY", name: "Mayfield", exchange: "ASX", currency: "AUD", type: "Common Stock" }],
+  };
+  const dataProvider = createTestDataProvider({ search: async (query) => listed[query] ?? [] });
+  const deps = { store: { loadTicker: async () => null, loadAllTickers: async () => [] }, dataProvider };
+  expect(await resolveCliListing("BBCA IJ", undefined, deps)).toMatchObject({ key: "BBCA:JAKARTA", readAs: 'Read "BBCA IJ" as BBCA:JAKARTA.' });
+  const refused = await resolveCliListing("MAY MK", undefined, deps).then(() => null, (error: ListingArgError) => error);
+  expect(refused?.message).toBe("MAY does not trade on BURSAMY. MAY trades on: ASX.");
+  expect(refused?.details).toBe("Bloomberg and Bursa Malaysia codes differ there: type the Bursa code, such as 1155 MK for Maybank.");
 });

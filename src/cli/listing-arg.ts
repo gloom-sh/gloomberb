@@ -43,6 +43,9 @@ import type { InstrumentOfKind } from "../tickers/instrument-coverage";
 import { brokerIndexCode, brokerIndexReadAs } from "./index-roots";
 import {
   bloombergCodeOf,
+  bloombergMarketHint,
+  endsInLegalForm,
+  isSearchOnlyVenue,
   readNearMissListing,
   readTerminalListingCode,
   terminalCodeReadAs,
@@ -943,11 +946,13 @@ export async function resolveCliListing(
 ): Promise<CliListing> {
   // "JPM US Equity" is Bloomberg's code for JPM; "Putnam US Equity", whose root is no US ticker, is a name.
   const typed = stripStrayEdges(raw).text || raw;
-  const terminal = await readTerminalCodeArg(deps.dataProvider, typed);
-  // "AAPL GP" is written as a code, with a market code no venue answers to: one entry, never AAPL and GP.
-  if (!terminal) await refuseUnknownMarketCode(typed, deps);
+  const read = await readTerminalCodeArg(deps.dataProvider, typed);
   // A company's name, an entry of a comma list (`WHR, Whirlpool Corporation`), is the listing search names for it.
-  const named = terminal ? null : await companyNameListingArg(raw, deps);
+  // A name before a legal form ("SAP SE", "SIEMENS AG") is looked up first: SE is also SIX Swiss's market code.
+  const named = !read || endsInLegalForm(typed) ? await companyNameListingArg(raw, deps) : null;
+  const terminal = named ? null : read;
+  // "AAPL GP" is written as a code, with a market code no venue answers to and no company's name: one entry, never AAPL and GP.
+  if (!terminal && !named) await refuseUnknownMarketCode(typed, deps);
   let parsed = named ?? parseListingArg(raw, exchangeOption, { ...options, terminalCode: terminal });
   if (!parsed.symbol) throw new ListingArgError("Ticker symbol is required.");
   // $VIX is Schwab's code for ^VIX, unless a security trades as VIX: $AAPL is a cashtag.
@@ -961,7 +966,9 @@ export async function resolveCliListing(
   const typedKey = suffixed ? parsed.symbol : null;
   if (suffixed) parsed = parsed.readAs ? { ...suffixed, readAs: `${parsed.readAs} ${suffixed.readAs}` } : suffixed;
   try {
-    await checkListingExchange(parsed, deps);
+    // A code's venue is one the app reads; where search alone knows it (`BBCA IJ`) or the codes differ (`DBS SP`), search says what trades there.
+    if (terminal?.market && parsed.exchange === terminal.exchange) await checkTerminalCodeVenue(parsed, terminal.market, deps);
+    else await checkListingExchange(parsed, deps);
   } catch (error) {
     const market = error instanceof ListingArgError ? await builderDexMarket(parsed, deps) : null;
     if (!market) throw error;
@@ -985,19 +992,36 @@ export async function resolveCliListing(
  * Fails a line written as a Bloomberg code whose market code no venue answers
  * to (`AAPL GP`), suggesting the code of the symbol's own listing (`AAPL
  * US`), where else it trades, and, when the words could be two symbols, how
- * to write them as two. Returns for anything else.
+ * to write them as two. A real market no source quotes (`SM PM`) says so.
+ * Run once no company's name was found in the words. Returns for anything else.
  */
 async function refuseUnknownMarketCode(typed: string, deps: ListingDeps): Promise<void> {
   const unknown = unknownBloombergMarket(typed);
   if (!unknown) return;
+  const twoSymbols = unknown.keyed ? null : `For two symbols, separate them with a comma: ${unknown.symbol}, ${unknown.market}.`;
+  // A real market no source quotes (PM): the symbol's listings elsewhere are as likely another company's (SM US is SM Energy).
+  if (unknown.unquoted) throw new ListingArgError(`${unknown.market} is the ${unknown.unquoted}, which has no quotes here.`, twoSymbols ?? undefined);
   const venues = await listingVenues(unknown.symbol, deps).catch(logFailure("cli.listing-arg", "Read listing venues failed", []));
   const codes = [...new Set(venues.flatMap((venue) => bloombergCodeOf(unknown.symbol, venue.exchange) ?? []))];
   const also = codes.slice(1, 1 + MAX_OTHER_LISTINGS);
-  const details = [
-    also.length > 0 ? `${unknown.symbol} also trades as ${also.join(", ")}.` : null,
-    unknown.keyed ? null : `For two symbols, separate them with a comma: ${unknown.symbol}, ${unknown.market}.`,
-  ].filter(Boolean).join("\n");
+  const details = [also.length > 0 ? `${unknown.symbol} also trades as ${also.join(", ")}.` : null, twoSymbols].filter(Boolean).join("\n");
   throw new ListingArgError(`${unknown.market} is not a market code; did you mean ${codes[0] ?? unknown.symbol}?`, details || undefined);
+}
+
+/**
+ * A code's venue where the exchange table has no entry for it (`BBCA IJ` is
+ * JAKARTA) or Bloomberg's ticker is not the venue's code (`MAY MK`, Bursa's
+ * 1155): "MAY does not trade on BURSAMY", with where it does and what to
+ * type instead, rather than an unknown exchange. Returns for a venue the table
+ * knows, which the listing's own request checks, and when search lists the
+ * symbol there or cannot say.
+ */
+async function checkTerminalCodeVenue(listing: ListingArg, market: string, deps: ListingDeps): Promise<void> {
+  const hint = bloombergMarketHint(market);
+  if (!hint && !isSearchOnlyVenue(listing.exchange)) return;
+  const venues = await listingVenues(listing.symbol, deps).catch(logFailure("cli.listing-arg", "Read listing venues failed", []));
+  if (venues.length === 0 || venues.some((venue) => venue.exchange === listing.exchange)) return;
+  throw new ListingArgError(`${listing.symbol} does not trade on ${listing.exchange}.${tradesOn(listing.symbol, venues)}`, hint ?? undefined);
 }
 
 /**

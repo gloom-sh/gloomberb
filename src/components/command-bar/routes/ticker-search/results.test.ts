@@ -248,5 +248,6 @@ test("a Bloomberg code's listing is the exact match; an unknown market code or a
   expect(merged("700.HK", [search("tencent", "0700", "HKEX")])[0]).toEqual(["tencent", DID_YOU_MEAN_CATEGORY]);
   expect(merged("6758.JP", [search("sony", "6758", "JPX")])[0]).toEqual(["sony", DID_YOU_MEAN_CATEGORY]);
   expect(merged("BRK/B", [search("brk", "BRK.B", "NYSE")])[0]).toEqual(["brk", DID_YOU_MEAN_CATEGORY]);
-  for (const query of ["AAPL", "apple", "VOD.L", "AAPL MSFT", "vod ln"]) expect(readRootTickerQuery(query), query).toBeNull();
+  // A name before a legal form is searched as typed, so search finds the company: SE is also SIX Swiss's code.
+  for (const query of ["AAPL", "apple", "VOD.L", "AAPL MSFT", "vod ln", "SAP SE", "SIEMENS AG", "P/E"]) expect(readRootTickerQuery(query), query).toBeNull();
 });

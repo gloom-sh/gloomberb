@@ -11,7 +11,7 @@ import type { ResultItem } from "../../list/model";
 import type { CommandBarCategoryPriorities } from "../../view-model";
 import type { CommandBarRoute } from "../../workflow/types";
 import { normalizeCommandTickerSearchText, readRootTickerQuery } from "../ticker-search/results";
-import { readNearMissListing, readTerminalListingCode } from "../../../../tickers/terminal-codes";
+import { endsInLegalForm, readNearMissListing, readTerminalListingCode } from "../../../../tickers/terminal-codes";
 import { useTickerSearchRouteResults } from "../ticker-search/route";
 import { buildRootResultModel, type RootResultModel } from "./results";
 import { useRootProviderSearch } from "./provider-search";
@@ -247,9 +247,9 @@ export function useCommandBarRootRuntime({
     tickerActionItems,
   ]);
 
-  // `DES VOD LN` searches the listing the code names, as Enter opens it.
+  // `DES VOD LN` searches the listing the code names, as Enter opens it; `DES SAP SE` the company.
   const rootSecurityDescriptionArg = activeMatch?.command.id === "security-description" && activeMatch.arg.length >= 1
-    ? readTerminalListingCode(activeMatch.arg)?.key ?? readNearMissListing(activeMatch.arg)?.symbol ?? activeMatch.arg
+    ? (endsInLegalForm(activeMatch.arg) ? null : readTerminalListingCode(activeMatch.arg)?.key) ?? readNearMissListing(activeMatch.arg)?.symbol ?? activeMatch.arg
     : null;
   // Free text that no prefix claims also goes to symbol search, so "nvidia"
   // finds NVDA without the backtick. Skipped when a local row already carries

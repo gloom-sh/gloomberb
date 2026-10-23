@@ -12,7 +12,7 @@ import {
 import type { ResultItem } from "../../list/model";
 import { currencyPairCode } from "../../../../utils/currency-pair";
 import { canonicalExchange, exchangeCodeVenues, isUsListingExchange, parsePublicTickerKey, publicExchange } from "../../../../utils/exchanges";
-import { readNearMissListing, readTerminalListingCode, unknownBloombergMarket } from "../../../../tickers/terminal-codes";
+import { endsInLegalForm, readNearMissListing, readTerminalListingCode, unknownBloombergMarket } from "../../../../tickers/terminal-codes";
 import { listingSuffixExchange, tickerHasListingSuffix } from "../../../../sources/listing-symbols";
 import { answersToFutureName, answersToIndexCode, compactSearchText, getIssuerGroupKey, isExplicitMarketSymbol } from "../../../../tickers/search/ranking";
 import { isProviderBusy } from "../../../../sources/provider-errors";
@@ -237,10 +237,12 @@ function rowListing(item: ResultItem): { symbol: string; exchange: string } {
  * nearly as a listing (`700.HK`, `6758.JP`, `BRK/B`), read by the one parser
  * every command reads them with. A code names its listing; the others only
  * name the symbol they were read from, offered as what was meant. Null for
- * anything else, which the bar searches as typed.
+ * anything else, which the bar searches as typed, and for a name before a
+ * legal form (`SAP SE`, `SIEMENS AG`), which search finds as the company.
  */
 export function readRootTickerQuery(query: string): RootTickerReading | null {
   const trimmed = query.trim();
+  if (endsInLegalForm(trimmed)) return null;
   const isInstrument = (item: ResultItem) => item.kind === "ticker" || item.kind === "search";
   const ofSymbol = (symbol: string) => {
     const wanted = symbol.toUpperCase().replace(/[-/]/g, ".");

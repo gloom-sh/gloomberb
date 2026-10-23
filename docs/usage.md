@@ -1142,8 +1142,9 @@ A terminal's code is the listing it names, and a line such as `Read WFC.N as WFC
 | `AAPL.O` or `AAPL.OQ` | `AAPL:NASDAQ` |
 | Bloomberg's `"JPM US Equity"` | `JPM` |
 | `"JPM UN Equity"` | `JPM:NYSE` |
-| `BRKb.N`, `"BRK/B US Equity"` | `BRK.B` |
-| `"MC FP"`, `"VOD LN Equity"`, `"7203 JP"`, one per line in a `--file` | `MC:EPA`, `VOD:LSE`, `7203:JPX` (an unknown market code such as `AAPL GP` is refused with a suggestion) |
+| `BRKb.N` | `BRK.B:NYSE` |
+| `"BRK/B US Equity"`, `BRK/B` | `BRK-B` |
+| `"MC FP"`, `"VOD LN Equity"`, `"7203 JP"`, one per line in a `--file` | `MC:EPA`, `VOD:LSE`, `7203:JPX` (`"SAP SE"` and other names before a legal form are the company; an unknown market code such as `AAPL GP` is refused with a suggestion) |
 
 - Suffixes of listings abroad (`VOD.L`, `7203.T`, `RY.TO`, `0700.HK`) work as written. `fn` reads them as the listing their quote names: `fn INS RY.TO` is `RY:TSX`, with `Read RY.TO as RY:TSX.`
 - Exchange aliases work: `SAN:XPAR` is `SAN:EPA`, `7203:TYO` and `7203:XTKS` are `7203:JPX`, `600519:SHA` is `600519:SSE`, `SAP:FRA` is `SAP:FWB2`.

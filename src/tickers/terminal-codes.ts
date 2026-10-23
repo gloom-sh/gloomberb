@@ -1,7 +1,7 @@
 import { futuresContractByCode } from "../market-data/futures-board";
 import { getListingSymbol, hongKongListingCode, tickerHasListingSuffix } from "../sources/listing-symbols";
 import { isCurrencyCode } from "../utils/currency-pair";
-import { isUsListingExchange } from "../utils/exchanges";
+import { isKnownExchangeCode, isUsListingExchange } from "../utils/exchanges";
 
 /**
  * A listing written the way a market data terminal names it, read as the
@@ -61,6 +61,10 @@ interface BloombergMarket {
    * 0700), the China composite's venue read from the code (6 is Shanghai).
    */
   local?: "nordic-class" | "pad4" | "china";
+  /** Where Bloomberg's ticker is not the venue's own code (Maybank is MAY MK, 1155 on Bursa): what to type instead. */
+  hint?: string;
+  /** A market no source here quotes, named for the refusal: the Philippine Stock Exchange. Its `venues` are empty. */
+  name?: string;
 }
 
 const at = (...venues: string[]): BloombergMarket => ({ venues });
@@ -69,8 +73,9 @@ const US_COMPOSITE = at("");
 /**
  * Bloomberg's market codes, checked against OpenFIGI (Bloomberg's open
  * symbology) with a known listing on each venue. Every venue is one the
- * exchange-notation table names (a parity test holds it), so a code reads as
- * the same venue a typed `SYM:EXCH` does.
+ * exchange-notation table names, or the code search lists a venue by where
+ * the table has none yet (ISE, JAKARTA, SET, BURSAMY); a parity test holds
+ * both, so a code reads as the same venue a typed `SYM:EXCH` does.
  */
 export const BLOOMBERG_MARKETS: Readonly<Record<string, BloombergMarket>> = {
   US: US_COMPOSITE,
@@ -90,6 +95,7 @@ export const BLOOMBERG_MARKETS: Readonly<Record<string, BloombergMarket>> = {
   NA: at("AMS"),
   BB: at("BRU"),
   PL: at("LIS"),
+  ID: at("ISE"),
   IM: at("BIT"),
   SM: at("MCE"),
   SW: at("SWX"),
@@ -113,7 +119,11 @@ export const BLOOMBERG_MARKETS: Readonly<Record<string, BloombergMarket>> = {
   IN: at("NSE"),
   IS: at("NSE"),
   IB: at("BSE"),
-  SP: at("SGX"),
+  SP: { venues: ["SGX"], hint: "Bloomberg and SGX codes differ there: type the SGX code, such as D05 SP for DBS." },
+  MK: { venues: ["BURSAMY"], hint: "Bloomberg and Bursa Malaysia codes differ there: type the Bursa code, such as 1155 MK for Maybank." },
+  IJ: at("JAKARTA"),
+  TB: at("SET"),
+  PM: { venues: [], name: "Philippine Stock Exchange" },
   AU: at("ASX"),
   NZ: at("NZX"),
   CN: at("TSX", "TSXV"),
@@ -160,6 +170,13 @@ const REUTERS_CODE = /^([A-Za-z]{1,6})\.(N|O|OQ)$/i;
 const REUTERS_CLASS = /^([A-Z]{1,5})([a-z])$/;
 /** A Bloomberg ticker: letters and digits, a share class after a slash (BRK/B, BT/A), or BP/ as BP trades. */
 const BLOOMBERG_ROOT = /^([A-Za-z0-9]{1,12})(?:\/([A-Za-z]{1,2})?)?$/;
+
+/** A Bloomberg ticker's root and share class; a slash after one letter is a ratio or an abbreviation (P/E, N/A, Y/Y), never a class. */
+function bloombergRoot(word: string): { ticker: string; shareClass: string | undefined } | null {
+  const root = BLOOMBERG_ROOT.exec(word);
+  if (!root || (word.includes("/") && root[1]!.length < 2)) return null;
+  return { ticker: root[1]!, shareClass: root[2] };
+}
 /** A market code: two letters. */
 const MARKET_CODE = /^[A-Za-z]{2}$/;
 
@@ -195,10 +212,11 @@ function writtenAsCode(typed: string): boolean {
 /** The local spellings of a Bloomberg equity ticker on its market, in the order tried. */
 function equityListings(root: string, shareClass: string | undefined, market: BloombergMarket): TerminalListing[] {
   const ticker = root.toUpperCase();
-  const venues = market.local === "china" ? [/^[69]/.test(ticker) ? "SSE" : "SZSE"] : market.venues;
+  // Shanghai's codes start with 6 (shares), 5 (funds) or 9 (B shares); Shenzhen's with 0, 1, 2 or 3.
+  const venues = market.local === "china" ? [/^[569]/.test(ticker) ? "SSE" : "SZSE"] : market.venues;
   return venues.flatMap((venue) => {
-    // A share class reads as the app and search write it, after a dot: BRK.B, BT.A.
-    if (shareClass) return [keyOf(`${ticker}.${shareClass.toUpperCase()}`, venue)];
+    // A share class reads as a broker writes it in the US (BRK-B, as `BRK/B` does) and after a dot abroad (BT.A), as search lists those.
+    if (shareClass) return [keyOf(`${ticker}${!venue || isUsListingExchange(venue) ? "-" : "."}${shareClass.toUpperCase()}`, venue)];
     if (market.local === "pad4") return [keyOf(hongKongListingCode(ticker, venue), venue)];
     const spellings = [keyOf(ticker, venue)];
     // VOLVB is VOLV.B there; ABB, SAND and NOKIA end in a letter too, so the code as written goes first.
@@ -211,13 +229,13 @@ function equityListings(root: string, shareClass: string | undefined, market: Bl
 function readBloombergEquity({ typed, parts, yellowKey }: BloombergParts): TerminalListingCode | null {
   if (parts.length !== 2) return null;
   const [rootWord, marketWord] = parts as [string, string];
-  const root = BLOOMBERG_ROOT.exec(rootWord);
+  const root = bloombergRoot(rootWord);
   const code = marketWord.toUpperCase();
   const market = BLOOMBERG_MARKETS[code];
   if (!root || !market || !MARKET_CODE.test(marketWord)) return null;
   // Without its yellow key a code is read only as written in capitals.
   if (!yellowKey && !writtenAsCode(typed)) return null;
-  const [first, ...alternatives] = equityListings(root[1]!, root[2], market);
+  const [first, ...alternatives] = equityListings(root.ticker, root.shareClass, market);
   if (!first) return null;
   return {
     typed, ...first, terminal: "bloomberg", market: code, yellowKey: "Equity",
@@ -320,23 +338,55 @@ export interface UnknownBloombergMarket {
   market: string;
   /** Whether the code carried its yellow key, so its words cannot be two symbols. */
   keyed: boolean;
+  /** The market's name when the code is a real one no source here quotes (PM, the Philippine Stock Exchange). */
+  unquoted?: string;
 }
 
 /**
  * A line written as a Bloomberg equity code whose market code no venue here
- * answers to (`AAPL GP`, `KO PG`, `AAPL ZZ Equity`): one entry, refused with a
- * suggestion, never two symbols. Without the yellow key only capitals count,
- * so `Apple Co` stays a name. Null for anything else.
+ * answers to (`AAPL GP`, `KO PG`, `AAPL ZZ Equity`, `SM PM`): one entry,
+ * refused with a suggestion unless it is a company's name, never two
+ * symbols. Without the yellow key only capitals count, so `Apple Co` stays a
+ * name. Null for anything else.
  */
 export function unknownBloombergMarket(raw: string): UnknownBloombergMarket | null {
   const typed = normalizeTyped(raw);
   const code = bloombergParts(typed);
   if (!code || code.parts.length !== 2 || (code.yellowKey && code.yellowKey !== "Equity")) return null;
   const [rootWord, marketWord] = code.parts as [string, string];
-  const root = BLOOMBERG_ROOT.exec(rootWord);
-  if (!root || !MARKET_CODE.test(marketWord) || BLOOMBERG_MARKETS[marketWord.toUpperCase()]) return null;
+  const market = BLOOMBERG_MARKETS[marketWord.toUpperCase()];
+  if (!bloombergRoot(rootWord) || !MARKET_CODE.test(marketWord) || (market && market.venues.length > 0)) return null;
   if (!code.yellowKey && !writtenAsCode(typed)) return null;
-  return { typed, symbol: rootWord.toUpperCase(), market: marketWord.toUpperCase(), keyed: !!code.yellowKey };
+  return {
+    typed, symbol: rootWord.toUpperCase(), market: marketWord.toUpperCase(), keyed: !!code.yellowKey,
+    ...market?.name ? { unquoted: market.name } : {},
+  };
+}
+
+/** What to type instead where Bloomberg's ticker is not the venue's own code (MK, SP); null elsewhere. */
+export function bloombergMarketHint(market: string | undefined): string | null {
+  return (market && BLOOMBERG_MARKETS[market]?.hint) || null;
+}
+
+/** Whether the venue a code names is one the exchange table has no entry for yet (JAKARTA), so search alone can say what is listed there. */
+export function isSearchOnlyVenue(exchange: string): boolean {
+  return !!exchange && !isKnownExchangeCode(exchange);
+}
+
+/**
+ * Company legal forms written after a name. Two words ending in one (`SAP SE`,
+ * `SIEMENS AG`, `NESTLE SA`) look like a Bloomberg code, and SE is also
+ * SIX Swiss's market code, so the name is looked up first.
+ */
+const LEGAL_FORMS: ReadonlySet<string> = new Set([
+  "AG", "SE", "SA", "NV", "AB", "AS", "BV", "KK", "OY", "CO", "PLC", "ASA", "OYJ", "SPA", "LTD", "INC", "CORP", "LLC",
+  "GMBH", "KGAA", "BHD", "TBK", "PCL",
+]);
+
+/** Two words, the second a company's legal form (`SAP SE`, `VOLVO AB`): a name to look up before reading it as a code. */
+export function endsInLegalForm(raw: string): boolean {
+  const words = normalizeTyped(raw).split(" ");
+  return words.length === 2 && LEGAL_FORMS.has(words[1]!.toUpperCase());
 }
 
 /** Bloomberg's code for each venue, the first the table lists for it: US for every US exchange, LN for LSE. */
@@ -362,8 +412,8 @@ export interface NearMissListing {
   symbol: string;
 }
 
-/** `BRK/B`: a US share class after a slash, as a broker writes it. */
-const SLASH_CLASS = /^([A-Z]{1,5})\/([A-Z])$/;
+/** `BRK/B`: a US share class after a slash, as a broker writes it. One letter before the slash is a ratio or an abbreviation (P/E, N/A). */
+const SLASH_CLASS = /^([A-Z]{2,5})\/([A-Z])$/;
 /** `700.HK`: a Hong Kong code without its leading zeros. */
 const SHORT_HONG_KONG = /^(\d{1,3})\.HK$/;
 /** `6758.JP`, `MC.FP`: a symbol with a Bloomberg market code where a listing suffix goes. */
