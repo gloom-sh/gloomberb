@@ -99,6 +99,7 @@ const REGION_ALIASES: Readonly<Record<string, string>> = {
   RUS: "RU", "RUSSIAN FEDERATION": "RU", BHR: "BH", CIV: "CI", "IVORY COAST": "CI", "COTE D'IVOIRE": "CI", "CÔTE D'IVOIRE": "CI",
   "HONG KONG": "HK", "HONG KONG SAR": "HK", DOM: "DO", PAN: "PA", KWT: "KW", IRN: "IR", IRAN: "IR", "IRAN, ISLAMIC REPUBLIC OF": "IR", IRQ: "IQ", VEN: "VE", VENEZUELA: "VE",
   BEN: "BJ", BOL: "BO", BOLIVIA: "BO", ETH: "ET", HND: "HN", PRY: "PY", UGA: "UG", UZB: "UZ",
+  TUN: "TN", MAR: "MA", CRI: "CR",
 };
 
 let regionCodes: Map<string, string> | null = null;
