@@ -107,7 +107,8 @@ export function moveFacts(move: HiringMove): Array<{ label: string; value: strin
 
 export interface MovesRow extends AttentionRow {
   move?: HiringMove;
-  posting?: HiringMovePosting;
+  /** A posting first seen or closed that week, as the moves read gives it (HIRE's posting page needs its source id). */
+  jobPosting?: HiringMovePosting;
 }
 export interface MovesSection {
   columns: DataTableColumn[];
@@ -160,7 +161,7 @@ export function movesBoardModel(board: HiringMovesBoard, filter: HiringMovesFilt
 const POSTING_COLUMNS = (date: string) => [column("title", "Role", 32, false, true), column("location", "Location", 24), column("function", "Role family", 16), column("seniority", "Seniority", 12), column("date", date, 12)];
 const roleFamily = (value: string | null) => value === "data_ai" ? "Data / AI" : value ? humanLabel(value) : null;
 const postingRow = (closed: boolean) => (posting: HiringMovePosting): MovesRow => ({
-  id: `${closed ? "closed" : "added"}:${posting.id}`, url: posting.url, posting,
+  id: `${closed ? "closed" : "added"}:${posting.id}`, url: posting.url, jobPosting: posting,
   values: { title: posting.title.trim(), location: posting.location ?? posting.country, country: posting.country, function: roleFamily(posting.jobFunction), seniority: posting.seniority ? humanLabel(posting.seniority) : null,
     date: (closed ? posting.closedAt ?? posting.firstSeenAt : posting.firstSeenAt).slice(0, 10) },
   details: [{ label: "Posting title", value: posting.title.trim() }, { label: "Location", value: posting.location ?? "--" }, { label: "Country", value: posting.country ?? "Unknown" },

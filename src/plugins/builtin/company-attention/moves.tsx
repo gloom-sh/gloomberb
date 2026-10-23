@@ -91,7 +91,7 @@ export function HiringMovesView({ symbol, width, height, focused, accessKey, com
   const openCompany = company?.open ?? null;
   const [openRowId, setOpenRow] = usePluginPaneState<string | null>(`${scope}:open`, null);
   const selected = rows.find((row) => row.id === selectedId) ?? rows[0] ?? null;
-  const opened = dataRows.find((row) => row.id === openRowId && (row.move || row.posting)) ?? null;
+  const opened = dataRows.find((row) => row.id === openRowId && (row.move || row.jobPosting)) ?? null;
   const detailOpen = !!openCompany || !!opened;
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
   const scrollMore = useTableLoadMore(scrollRef, paged.hasMore && !detailOpen, paged.loadMore);
@@ -99,7 +99,7 @@ export function HiringMovesView({ symbol, width, height, focused, accessKey, com
   usePaneRefreshKey(() => { void resource.reload(); paged.reload(); }, { focused: focused && !detailOpen });
 
   const subject = selected?.symbol ?? symbol;
-  const source = opened?.posting?.url ?? (opened ? null : selected?.posting?.url);
+  const source = opened?.jobPosting?.url ?? (opened ? null : selected?.jobPosting?.url);
   // ALRT's hiring move alert on the company, as ERN's `n` opens an earnings one.
   const alerts = desktop && getSharedRegistry()?.commands.has("set-event-alert") === true;
   const hints: PaneHint[] = [
@@ -123,17 +123,17 @@ export function HiringMovesView({ symbol, width, height, focused, accessKey, com
   const query = <QueryBar width={width} filters={symbol
     ? [{ id: "view", label: "View", value: view, options: MOVES_VIEWS.map((entry) => ({ ...entry })), onChange: (value: string) => { setView(value); setOpenRow(null); } }]
     : [{ id: "signal", label: "Show", value: filter, defaultValue: "moves", options: MOVES_FILTERS.map((entry) => ({ ...entry })), onChange: (value: string) => { setFilter(value); setOpenRow(null); } }]} />;
-  const detailTitle = openCompany ?? (opened?.move ? `${opened.move.symbol} · week of ${opened.move.week}` : opened?.posting?.title.trim());
+  const detailTitle = openCompany ?? (opened?.move ? `${opened.move.symbol} · week of ${opened.move.week}` : opened?.jobPosting?.title.trim());
   const detail = openCompany && company ? <PaneFooterScope active>{company.render(openCompany, width, height - 1)}</PaneFooterScope>
     : opened ? <PaneLinkMenu><DetailReader resetScrollKey={opened.id} width={width}
-      facts={opened.move ? moveFacts(opened.move) : opened.details ?? []} body={opened.move?.why ?? null} note={opened.posting?.url ?? null} /></PaneLinkMenu> : null;
+      facts={opened.move ? moveFacts(opened.move) : opened.details ?? []} body={opened.move?.why ?? null} note={opened.jobPosting?.url ?? null} /></PaneLinkMenu> : null;
   return <PageStackView focused={focused} detailOpen={detailOpen} onBack={() => { company?.onOpen(null); setOpenRow(null); }} detailTitle={detailTitle} detailContent={detail}
     rootContent={<DataTableView columns={columns} items={model && section ? rows : []} rootWidth={width} rootHeight={height} focused={focused && !detailOpen} scrollRef={scrollRef} onBodyScrollActivity={scrollMore}
       status={!data ? { loading: resource.loading, error: resource.error, subject: "hiring moves" } : undefined}
       rootBefore={<ChartTableHeader width={width} height={height} tableRows={rows.length} tableColumns={columns} query={query} figures={model?.figures} />}
       selection={{ kind: "id", selectedId: selected?.id ?? null, getId: rowId, onChange: setSelected }} getItemKey={rowId}
       sortColumnId={sort?.column ?? null} sortDirection={sort?.direction ?? "desc"} onHeaderClick={(column) => setSort((old) => ({ column, direction: old?.column === column && old.direction === "desc" ? "asc" : "desc" }))}
-      onActivate={(row) => locked(row) ? void upgrade() : !symbol && row.symbol && company ? company.onOpen(row.symbol) : row.move || row.posting ? setOpenRow(row.id) : undefined}
+      onActivate={(row) => locked(row) ? void upgrade() : !symbol && row.symbol && company ? company.onOpen(row.symbol) : row.move || row.jobPosting ? setOpenRow(row.id) : undefined}
       renderCell={(row, column, _index, state) => {
         if (locked(row)) {
           if (!desktop && column.id === columns[0]?.id && row.id === "locked:0") return { text: upgradeText, content: <UpgradeLabel text={upgradeText} onPress={upgrade} role="attention-upgrade" /> };
