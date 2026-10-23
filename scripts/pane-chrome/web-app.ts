@@ -231,7 +231,9 @@ export async function discover(cdp: Cdp, url: string, replay: Replay, entry: Cat
   await sleep(300);
   const config = JSON.parse(await evaluate<string>(cdp, `localStorage.getItem("gloomberb.web.config.v1")`) ?? "{}");
   const instances = (config.layouts?.[config.activeLayoutIndex ?? 0]?.layout?.instances ?? []) as Array<Record<string, unknown>>;
-  const instance = instances.find((item) => item.paneId === entry.paneId) ?? instances[0];
+  // A function unavailable in this build may resolve as a namesake ticker.
+  // Only its own pane is evidence that the function opened.
+  const instance = instances.find((item) => item.paneId === entry.paneId);
   if (!instance) return null;
   const { placementMemory: _memory, ...rest } = instance;
   return rest;

@@ -1,8 +1,10 @@
 import { expect, test } from "bun:test";
+import { act } from "react";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { createTestDataProvider, createTestQuote } from "../../../test-support/data-provider";
+import { createTestTicker } from "../../../test-support/ticker";
 import type { InstrumentSearchResult } from "../../../types/instrument";
-import type { PinTickerOptions } from "../../../types/plugin";
+import type { PaneTemplateDef, PinTickerOptions } from "../../../types/plugin";
 import type { TickerRecord } from "../../../types/ticker";
 import { LISTING_SEARCH_LIMIT } from "../../../tickers/search";
 import { CommandBarHarness } from "./test-harness";
@@ -152,4 +154,29 @@ test.each([
   await tui.waitForFrameToContain("bar:closed");
   expect(opened).toEqual(["HFC"]);
   expect(saved.at(-1)?.metadata).toMatchObject({ exchange, name });
+});
+
+test("a typed BR function opens Brokers even when BR is a saved ticker", async () => {
+  const panes: string[] = [];
+  const tickers: string[] = [];
+  await tui.render(<CommandBarHarness
+    query=""
+    live
+    extraTickers={[createTestTicker("BR", "Broadridge Financial Solutions")]}
+    configurePluginRegistry={(registry) => {
+      (registry.paneTemplates as Map<string, PaneTemplateDef>).set("brokers-pane", {
+        id: "brokers-pane", paneId: "brokers", label: "Brokers",
+        description: "Open broker profiles and connection status",
+        shortcut: { prefix: "BR" },
+      });
+      registry.createPaneFromTemplateAsync = async (id) => { panes.push(id); };
+      registry.pinTicker = (symbol) => { tickers.push(symbol); };
+    }}
+  />, { width: 110, height: 28 });
+  await act(async () => { await tui.setup().mockInput.typeText("BR"); });
+  await tui.waitForFrameToContain("Shortcut: Brokers");
+  await tui.emitKeypress({ name: "return", sequence: "\r" });
+  await tui.waitForFrameToContain("bar:closed");
+  expect(panes).toEqual(["brokers-pane"]);
+  expect(tickers).toEqual([]);
 });
