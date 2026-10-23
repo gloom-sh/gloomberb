@@ -158,10 +158,10 @@ test("a rate that is its pair's bar says which bar, and a stale one why it stand
   } });
   await fx.execute(["USD/BRL"], bar.context);
   const json = JSON.parse(bar.output("json")[0]!);
-  expect(json.warnings).toEqual(["BRL/USD: the rate is the close of the 06:30–06:35 UTC 5-min bar, as the pair's quotes had stopped behind it."]);
+  expect(json.warnings).toEqual(["BRL/USD: 06:30–06:35 UTC bar close, quotes paused"]);
   expect(json.metadata.freshness).toMatchObject({ asOf: "2026-10-23T06:35:00.000Z", status: "delayed", delayMinutes: 15 });
 
-  const reason = "No newer price is available, as the pair's 5-minute bars have nothing after this one.";
+  const reason = "no newer bar yet";
   const stale = harness("USD", { BRL: {
     rate: 1 / 5.0523, asOf: Date.parse("2026-10-23T03:20:00Z"), staleAt: now - 1, delayMinutes: 15, staleReason: reason,
   } });

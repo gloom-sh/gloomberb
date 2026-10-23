@@ -18,10 +18,10 @@ export function readStaleReason(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
-/** `the close of the 06:30–06:35 UTC 5-min bar, ...`: what a price taken from a bar is, and why it was. */
+/** `06:30–06:35 UTC bar close, quotes paused`: what a price taken from a bar is, and why. */
 export function intradayBarText(bar: QuoteIntradayBar): string {
   const clock = (time: number) => new Date(time).toISOString().slice(11, 16);
-  return `the close of the ${clock(bar.start)}–${clock(bar.start + bar.minutes * 60_000)} UTC ${bar.minutes}-min bar, as the pair's quotes had stopped behind it`;
+  return `${clock(bar.start)}–${clock(bar.start + bar.minutes * 60_000)} UTC bar close, quotes paused`;
 }
 
 /**
@@ -31,7 +31,7 @@ export function intradayBarText(bar: QuoteIntradayBar): string {
  */
 export function quoteBarNotes(label: string, quote: Quote, now = Date.now()): string[] {
   return [
-    ...quote.intradayBar ? [`${label}: the price is ${intradayBarText(quote.intradayBar)}.`] : [],
+    ...quote.intradayBar ? [`${label}: ${intradayBarText(quote.intradayBar)}`] : [],
     ...quote.staleReason && isQuoteStaleForCurrentSession(quote, now) ? [`${label}: ${quote.staleReason}`] : [],
   ];
 }

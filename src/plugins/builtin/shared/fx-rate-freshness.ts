@@ -50,7 +50,7 @@ export function fxRateNotes(legs: ReadonlyMap<string, FxRateTiming>, now = Date.
     if (currency === "USD") return [];
     const stale = timing.staleAt != null && timing.staleAt <= now;
     return [
-      ...timing.intradayBar ? [`${currency}/USD: the rate is ${intradayBarText(timing.intradayBar)}.`] : [],
+      ...timing.intradayBar ? [`${currency}/USD: ${intradayBarText(timing.intradayBar)}`] : [],
       ...stale && timing.error == null && timing.staleReason ? [`${currency}/USD: ${timing.staleReason}`] : [],
     ];
   });

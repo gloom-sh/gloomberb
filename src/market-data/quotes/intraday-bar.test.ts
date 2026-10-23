@@ -5,12 +5,12 @@ import type { Quote } from "../../types/financials";
 import { exchangeRateMetadata } from "../../utils/exchange-rate-snapshot";
 import { fxRateNotes } from "../../plugins/builtin/shared/fx-rate-freshness";
 import { mergeQuoteContribution, normalizeQuoteContribution } from "./contributions";
-import { intradayBarText, quoteBarNotes } from "./intraday-bar";
+import { quoteBarNotes } from "./intraday-bar";
 
 // Fri 23 Oct 2026: BRLUSD=X printed nothing from 03:20 UTC while USD/BRL's five-minute bars ran on.
 const now = Date.parse("2026-10-23T06:53:00Z");
 const bar = { start: Date.parse("2026-10-23T06:30:00Z"), minutes: 5 };
-const noNewer = "No newer price is available, as the pair's 5-minute bars have nothing after this one.";
+const noNewer = "no newer bar yet";
 const served: CloudQuotePayload = {
   symbol: "USDBRL=X", currency: "BRL", price: 5.05139, previousClose: 5.04, lastUpdated: Date.parse("2026-10-23T06:35:00Z"),
   exchangeName: "CCY", providerId: "gloomberb-cloud", dataSource: "delayed", stale: false, intradayBar: bar,
@@ -20,7 +20,7 @@ test("a pair's price from its bar says which bar, with no last trade carried ove
   const quote = mapQuote(served);
   expect(quote.intradayBar).toEqual(bar);
   expect(quoteBarNotes("USDBRL=X", quote, now)).toEqual([
-    "USDBRL=X: the price is the close of the 06:30–06:35 UTC 5-min bar, as the pair's quotes had stopped behind it.",
+    "USDBRL=X: 06:30–06:35 UTC bar close, quotes paused",
   ]);
   // A field that is not a bar's, or a blank reason, is dropped rather than shown.
   for (const intradayBar of [{ start: "06:30", minutes: 5 }, { start: bar.start, minutes: 0 }, null, 5]) {
@@ -49,7 +49,7 @@ test("an exchange rate carries its bar and its reason to the fx lines, and a fai
   expect(exchangeRateMetadata(rate, "BRL", now)).toMatchObject({ intradayBar: bar, delayMinutes: 15 });
   expect(exchangeRateMetadata({ ...rate, intradayBar: { start: bar.start } }, "BRL", now).intradayBar).toBeUndefined();
   expect(fxRateNotes(new Map([["USD", {}], ["BRL", exchangeRateMetadata(rate, "BRL", now)]]), now)).toEqual([
-    `BRL/USD: the rate is ${intradayBarText(bar)}.`,
+    "BRL/USD: 06:30–06:35 UTC bar close, quotes paused",
   ]);
   const stale = exchangeRateMetadata({ ...rate, intradayBar: undefined, asOf: "2026-10-23T03:20:00.000Z", stale: true, staleReason: noNewer }, "BRL", now);
   expect(fxRateNotes(new Map([["BRL", stale]]), now)).toEqual([`BRL/USD: ${noNewer}`]);
