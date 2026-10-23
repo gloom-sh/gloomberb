@@ -1,16 +1,16 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, test } from "bun:test";
 import { act, useReducer } from "react";
 import { CachedQuery } from "../../../data/cached-query";
 import type { DataProvider } from "../../../types/data-provider";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
-import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
+import { getSharedMarketDataCoordinator, MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { appReducer, createInitialState, type AppState } from "../../../state/app/context";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { TestPaneFrame, createTestTicker, createTestPaneConfig } from "../../../test-support/pane";
 import type { OptionContract, OptionsChain, TickerFinancials } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
-import { createOptionsControls } from "./test-fixture";
+import { createOptionsControls, installOptionsReferenceFixtures } from "./test-fixture";
 import { OptionsView } from "./view";
 import { optionsModule } from "./index";
 import { draftFromParams } from "../options-calculator/model";
@@ -22,10 +22,18 @@ const tui = createOpenTuiTestHarness();
 /** The body names a selected expiry the chain cannot serve, with the dates nearest it. */
 const UNAVAILABLE = /No (?:option contracts returned for )?expiry \d{4}-\d{2}-\d{2}/;
 const realNow = Date.now;
+let restoreReferenceData: (() => void) | undefined;
 
+beforeEach(() => {
+  setSharedMarketDataCoordinator(null);
+  restoreReferenceData = installOptionsReferenceFixtures();
+});
 afterEach(() => {
+  getSharedMarketDataCoordinator()?.destroy();
   setSharedMarketDataCoordinator(null);
   Date.now = realNow;
+  restoreReferenceData?.();
+  restoreReferenceData = undefined;
 });
 
 const { settle, key, capture: captureLaunch } = createOptionsControls(() => tui.setup());

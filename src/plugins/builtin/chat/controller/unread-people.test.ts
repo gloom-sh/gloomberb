@@ -6,6 +6,7 @@ import {
   type ChatMessage,
 } from "../../../../api-client";
 import { MemoryPluginPersistence } from "../../../../test-support/plugin-persistence";
+import { installTestWebSocket } from "../../../../test-support/cloud-api";
 import { ChatController } from "./index";
 
 const ann = { id: "u-ann", username: "ann", displayName: "Ann" };
@@ -25,6 +26,7 @@ let serverMessages: ChatMessage[];
 let serverStates: ChatChannelState[];
 let stopTracking: (() => void) | undefined;
 let pushChannelState: ((state: ChatChannelState) => void) | undefined;
+let originalWebSocket: typeof WebSocket;
 
 const original = {
   getSession: apiClient.getSession.bind(apiClient),
@@ -74,6 +76,8 @@ async function signIn({ tracking = true } = {}) {
 }
 
 beforeEach(() => {
+  originalWebSocket = globalThis.WebSocket;
+  installTestWebSocket(0);
   controller = new ChatController();
   reads = [];
   everyRead = [];
@@ -121,6 +125,7 @@ afterEach(() => {
   apiClient.dispose();
   apiClient.setSessionToken(null);
   Object.assign(apiClient, original);
+  globalThis.WebSocket = originalWebSocket;
 });
 
 describe("unread people", () => {

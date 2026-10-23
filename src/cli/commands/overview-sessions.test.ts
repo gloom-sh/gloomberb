@@ -1,4 +1,4 @@
-import { afterEach, expect, spyOn, test } from "bun:test";
+import { afterEach, expect, mock, spyOn, test } from "bun:test";
 import { apiClient } from "../../api-client";
 import type { Quote } from "../../types/financials";
 import { getExtendedSessionDisplay, getRegularSessionDisplay } from "../../market-data/market/status";
@@ -10,6 +10,7 @@ import { serializeCliResult } from "../result";
 import { overviewCliCommands } from "./overview";
 
 afterEach(() => {
+  mock.restore();
   setCliColorEnabledOverride(null);
   setCliWidthOverride(null);
 });

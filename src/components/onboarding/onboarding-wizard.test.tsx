@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -82,10 +82,6 @@ function createPluginRegistry(options: {
 }
 
 const startedPlugins: GloomPlugin[] = [];
-afterAll(() => {
-  for (const plugin of startedPlugins.splice(0).reverse()) plugin.dispose?.();
-});
-
 let builtInFunctions: Promise<Pick<PluginRegistry, "panes" | "paneTemplates">> | null = null;
 
 /** A registry that also has the app's own functions, so desks build from the real ones. */
@@ -297,17 +293,28 @@ async function skipDesks(): Promise<void> {
 const originalRecordResearchActivity = apiClient.recordResearchActivity;
 const originalGetCloudPricing = apiClient.getCloudPricing;
 const originalGetCloudAccountPlan = apiClient.getCloudAccountPlan;
+const originalGetChannels = apiClient.getChannels;
+const originalGetSession = apiClient.getSession;
 beforeEach(() => {
   expectedPositionCount = 0;
   apiClient.recordResearchActivity = (async () => {}) as typeof apiClient.recordResearchActivity;
   apiClient.getCloudPricing = (async () => { throw new Error("offline"); }) as typeof apiClient.getCloudPricing;
   apiClient.getCloudAccountPlan = (async () => ({ trialAvailable: true })) as typeof apiClient.getCloudAccountPlan;
+  apiClient.getChannels = async () => [];
+  apiClient.getSession = async () => apiClient.getCurrentUser();
 });
 
 afterEach(async () => {
+  // The desk registry starts cloud listeners; later sign-in tests must not inherit them.
+  for (const plugin of startedPlugins.splice(0).reverse()) plugin.dispose?.();
+  builtInFunctions = null;
+  // Checkout refreshes chat directly, even without a registry, and can start verification polling.
+  chatController.dispose();
   apiClient.recordResearchActivity = originalRecordResearchActivity;
   apiClient.getCloudPricing = originalGetCloudPricing;
   apiClient.getCloudAccountPlan = originalGetCloudAccountPlan;
+  apiClient.getChannels = originalGetChannels;
+  apiClient.getSession = originalGetSession;
   apiClient.setSessionToken(null);
   apiClient.restoreCachedUser(null);
   resetCloudUpgradeGuardForTests();

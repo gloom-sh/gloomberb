@@ -138,6 +138,7 @@ function createProvider(hasOptions: boolean): DataProvider {
 }
 
 function setOptionsProvider(provider: DataProvider | undefined): void {
+  sharedCoordinator?.destroy();
   sharedCoordinator = provider ? new MarketDataCoordinator(provider) : null;
   setSharedMarketDataCoordinator(sharedCoordinator);
 }
@@ -272,6 +273,7 @@ function lineBackgroundKeys(line: { spans: Array<{ text: string; bg: { toInts():
 }
 
 afterEach(() => {
+  tickerDetailModule.dispose?.();
   harnessDispatch = null;
   financialsHarnessState = null;
   detailHarnessState = null;
@@ -721,7 +723,7 @@ describe("TickerResearchPane on a symbol whose company moved", () => {
         };
       },
     });
-    setSharedMarketDataCoordinator(new MarketDataCoordinator(provider));
+    setOptionsProvider(provider);
     return requested;
   }
 
@@ -753,8 +755,6 @@ describe("TickerResearchPane on a symbol whose company moved", () => {
     await tui.render(<GatedDetailHarness symbol={symbol} />, { width: 90, height: 24 });
     return settleFrames(waitMs);
   }
-
-  afterEach(() => { setSharedMarketDataCoordinator(null); });
 
   test("HFC and RDS-A show where the company went, and with their stopped quote in hand ask for nothing of theirs", async () => {
     setSharedRegistryForTests(makeRegistry());

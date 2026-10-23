@@ -1,5 +1,6 @@
-import { expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
 import { act, useEffect, useReducer } from "react";
+import { apiClient } from "../../../api-client";
 import { PaneFooterBar, PaneFooterKeys, PaneFooterProvider } from "../../../components/layout/pane/footer";
 import { createRemoteUiRegistry, RemoteUiRegistryProvider, type RemoteUiRegistry } from "../../../remote/semantic-tree";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
@@ -36,6 +37,15 @@ const POSITION: ScenarioPosition = { symbol: "AAPL", spot: 100, rate: 0.04, divi
   asOf: Date.UTC(2026, 8, 22), legs: parseLegs(SETTINGS.legs) };
 
 const tui = createOpenTuiTestHarness();
+let restoreYieldCurve: (() => void) | undefined;
+beforeEach(() => {
+  const curve = spyOn(apiClient, "getCloudYieldCurve").mockResolvedValue([]);
+  restoreYieldCurve = () => curve.mockRestore();
+});
+afterEach(() => {
+  restoreYieldCurve?.();
+  restoreYieldCurve = undefined;
+});
 let registry: RemoteUiRegistry;
 let latestState: ReturnType<typeof createInitialState>;
 let runtime: PluginRuntimeAccess;

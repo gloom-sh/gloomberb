@@ -1,8 +1,9 @@
-import { afterEach, beforeEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import { act, useReducer } from "react";
+import { apiClient } from "../../../api-client";
 import { requestKeybindingCapture } from "../../../app/keybindings";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { flushPendingPersistence } from "../../../state/persist-scheduler";
@@ -51,10 +52,12 @@ async function openShortcutsTab() {
 
 // Rebinding saves the config for real, so each test gets a directory of its own.
 beforeEach(async () => {
+  spyOn(apiClient, "getCloudPricing").mockRejectedValue(new Error("Fixture has no pricing"));
   dataDir = await mkdtemp(join(tmpdir(), "gloom-help-keybindings-"));
 });
 
 afterEach(async () => {
+  mock.restore();
   latestState = null;
   // Let the saves a rebind started land before their directory goes.
   await flushPendingPersistence();

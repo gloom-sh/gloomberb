@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { installTestWebSocket } from "../../../../test-support/cloud-api";
 import { act, useReducer } from "react";
 import { apiClient, setCloudApiFetchTransport, type CloudThesis, type ThesisSignal } from "../../../../api-client";
 import { PaneFooterProvider } from "../../../../components/layout/pane/footer";
@@ -141,7 +142,10 @@ function Harness({ focused = true }: { focused?: boolean }) {
   );
 }
 
+let originalWebSocket: typeof WebSocket;
 beforeEach(() => {
+  originalWebSocket = globalThis.WebSocket;
+  installTestWebSocket(0);
   requests.length = 0;
   // The store is a module singleton, and the cloud plugin's setup starts it.
   // Whatever ran earlier in the process may have left it started, which would
@@ -163,6 +167,8 @@ afterEach(() => {
   thesisStore.dispose();
   (thesisStore as unknown as { update: (patch: object) => void }).update({ theses: [], loaded: false, loading: false, error: null, offline: false });
   apiClient.setSessionToken(null);
+  setCloudApiFetchTransport(null);
+  globalThis.WebSocket = originalWebSocket;
 });
 
 describe("ThesisBoardPane", () => {

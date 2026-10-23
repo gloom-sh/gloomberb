@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
 import { useReducer } from "react";
 import { act } from "react";
 import { useShortcut } from "../../../react/input";
@@ -19,11 +19,12 @@ import { OptionsCalculatorPane } from "./pane";
 import { valueBinomialOption } from "./binomial";
 import { draftFromParams, type OptionCalcDraft } from "./model";
 import { daysToExpiryFrom, valueOption } from "../shared/volatility";
-import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
+import { getSharedMarketDataCoordinator, MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
 import type { Quote } from "../../../types/financials";
 import { createTestPaneConfig } from "../../../test-support/pane";
+import { apiClient } from "../../../api-client";
 
 const TEST_PANE_ID = "options-calculator:test";
 
@@ -86,9 +87,15 @@ async function render(params?: Record<string, string>, width = 90, height = 18, 
   }
 }
 
+beforeEach(() => {
+  setSharedMarketDataCoordinator(null);
+  spyOn(apiClient, "getCloudHistory").mockResolvedValue({ status: "success", data: [] });
+});
 afterEach(() => {
   harnessState = undefined;
+  getSharedMarketDataCoordinator()?.destroy();
   setSharedMarketDataCoordinator(null);
+  mock.restore();
 });
 
 function savedDraft(): OptionCalcDraft {

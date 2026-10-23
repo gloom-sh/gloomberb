@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { mkdtemp, mkdir, rm, writeFile } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
@@ -15,11 +15,13 @@ import type { TickerRecord } from "./types/ticker";
 import { createTestDataProvider } from "./test-support/data-provider";
 import { createTestTicker } from "./test-support/ticker";
 import { captureConsole } from "./test-support/console";
+import { apiClient } from "./api-client";
 
 const tempDirs: string[] = [];
 const originalHome = process.env.HOME;
 
 afterEach(async () => {
+  mock.restore();
   process.env.HOME = originalHome;
   process.exitCode = 0;
   await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
@@ -86,6 +88,7 @@ describe("CLI watchlist commands", () => {
 
   test("a help flag after a function prints that function's options, not fn's", async () => {
     await createCliFixture({ watchlists: [] });
+    spyOn(apiClient, "geo").mockResolvedValue({ series: [] });
 
     const own = await captureConsole(() => runCli(["fn", "BT", "--preset", "trend-200", "--help"]));
     expect(own.stdout).toContain("--include-partial <boolean>");

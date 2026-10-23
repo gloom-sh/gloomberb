@@ -68,9 +68,11 @@ afterAll(() => {
   resetEarningsCloudCaches();
   fundMembersCache.reset();
 });
-// The board reads through the shared calendar cache; each test starts from the server.
+// Calendar and sector holdings are shared caches; each test starts from its own responses.
 beforeEach(() => {
   resetEarningsCloudCaches();
+  fundMembersCache.reset();
+  holdingsRequests.mockClear();
   serve();
 });
 

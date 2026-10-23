@@ -1,8 +1,17 @@
 import { act } from "react";
+import { spyOn } from "bun:test";
+import { apiClient } from "../../../api-client";
 import { takeSavedTextFile, type testRender } from "../../../renderers/opentui/test-utils";
 import { exportPaneTable } from "../../../state/pane-table-export-registry";
 
 type Setup = Awaited<ReturnType<typeof testRender>>;
+
+/** Chain-view fixtures have no separate listed OI history or Treasury curve. */
+export function installOptionsReferenceFixtures(): () => void {
+  const interest = spyOn(apiClient, "optionsPositioning").mockRejectedValue(new Error("Fixture has no listed open interest"));
+  const curve = spyOn(apiClient, "getCloudYieldCurve").mockResolvedValue([]);
+  return () => { interest.mockRestore(); curve.mockRestore(); };
+}
 
 /**
  * Settle, key and capture helpers for an OptionsView render. `keyHoldMs` waits

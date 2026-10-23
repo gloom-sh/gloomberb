@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { apiClient } from "../../api-client";
 import { paneSchemas as chartSchemas } from "../../plugins/builtin/chart-composer/headless-schema";
 import { buildFundamentalChartPreset, buildValuationChartPreset } from "../../plugins/builtin/chart-composer/presets";
 import { paneSchemas as correlationSchemas } from "../../plugins/builtin/correlation/headless-schema";
@@ -38,6 +39,13 @@ import {
 import { createPaneCatalog } from "./discovery";
 import { findCatalogSeries } from "../series-search";
 import { parsePaneFunctionArgs } from "./options";
+
+beforeEach(() => {
+  // Catalog discovery starts chat and instantiates the map's chart templates.
+  spyOn(apiClient, "getChannels").mockResolvedValue([]);
+  spyOn(apiClient, "geo").mockResolvedValue({ series: [] });
+});
+afterEach(() => mock.restore());
 
 const dummyPane = {
   id: "test-pane",

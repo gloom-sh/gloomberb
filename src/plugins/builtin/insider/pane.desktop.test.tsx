@@ -1,5 +1,5 @@
 /** @jsxImportSource react */
-import { afterEach, expect, spyOn, test } from "bun:test";
+import { afterEach, expect, mock, spyOn, test } from "bun:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { act, useMemo, useReducer } from "react";
@@ -29,6 +29,7 @@ const dom = createDomTestHarness({ withUi: false });
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 afterEach(() => {
+  mock.restore();
   setSharedMarketDataCoordinator(null);
   insiderSignalsCache.reset();
 });

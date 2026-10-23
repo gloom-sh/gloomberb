@@ -1,20 +1,34 @@
-import { afterEach, expect, spyOn, test } from "bun:test";
+import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
+import { apiClient } from "../../api-client";
+import { resetFuturesPriceUnits } from "../../market-data/futures-contract";
 import type { DataProvider, QuoteBatchResult, QuoteSubscriptionTarget } from "../../types/data-provider";
 import type { TickerChanges } from "../../types/ticker-changes";
 import { createTestCliContext, type PrintedCliResult } from "../../test-support/cli-context";
 import { createTestDataProvider, createTestQuote } from "../../test-support/data-provider";
 import { captureConsole } from "../../test-support/console";
 import { createTestTicker } from "../../test-support/ticker";
+import { resetBoardCoins } from "../board-coins";
 import { buildSearchReport, search } from "./search";
 import { marketDataCliCommands } from "./market";
 
 const quoteCommand = marketDataCliCommands.find((command) => command.name === "quote")!;
 
+beforeEach(() => {
+  resetFuturesPriceUnits();
+  resetBoardCoins([]);
+  spyOn(apiClient, "getCloudFuturesContract").mockRejectedValue(new Error("Fixture has no contract terms"));
+});
+
 // A quote that finds nothing sets the exit status; it must not become the test run's.
-afterEach(() => { process.exitCode = 0; });
+afterEach(() => {
+  process.exitCode = 0;
+  resetFuturesPriceUnits();
+  resetBoardCoins();
+  mock.restore();
+});
 
 /**
  * A quote source that answers only the listing keys in `quoted`, and records what each batch asked for.
