@@ -54,7 +54,7 @@ test("an unavailable currency spread reaches headless errors even with normalize
     const result = await chartHeadless("chart-composer-pane").load({
       argument: "TARGET:NASDAQ,ACQUIRER:NASDAQ", rawArgument: "TARGET:NASDAQ,ACQUIRER:NASDAQ", symbols: ["TARGET:NASDAQ", "ACQUIRER:NASDAQ"], options: {},
     }, { ...fixture().context, marketData: provider, settings: { chartSpec: spec } });
-    expect(result.errors).toEqual(["pair:spread: TARGET has no known unit and ACQUIRER has no known unit: a spread needs both in one known unit."]);
+    expect(result.errors).toEqual(["Spread: TARGET has no known unit and ACQUIRER has no known unit: a spread needs both in one known unit."]);
     expect(result.unavailableSymbols).toEqual([]);
     expect(result.series.map(({ id }) => id)).toEqual([...spec.series.map(({ id }) => id), "pair:ratio"]);
     expect(result.series.every(({ points }) => points.length > 0)).toBe(true);

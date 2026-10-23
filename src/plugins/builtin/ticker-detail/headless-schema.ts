@@ -3,6 +3,16 @@ import { FINANCIAL_PERIOD_OPTION, HISTORY_RANGE_VALUES } from "../shared/headles
 import { historyIntervalsByRange } from "../../../cli/history-rows";
 import { HISTORY_DEFAULT_RANGE } from "./data-panes/history-bars";
 import { RETURN_INTERVAL_VALUES, RETURN_RANGES } from "./data-panes/returns-model";
+import { PRICE_WINDOW_FROM_HELP, PRICE_WINDOW_TO_HELP } from "../../../utils/price-window";
+import type { HeadlessPaneOptionDef } from "../../../types/headless";
+
+/** `--from 2007 --to 2009`: the report's bars for those dates. The pane keeps its range, so a capture refuses them. */
+const WINDOW_OPTIONS: HeadlessPaneOptionDef[] = [
+  { key: "from", type: "string", placeholder: "year|date", description: PRICE_WINDOW_FROM_HELP, example: "--from 2007 --to 2009",
+    shot: { reportOnly: "reads the report's bars for those dates" }, replaces: ["range"] },
+  { key: "to", type: "string", placeholder: "year|date", description: PRICE_WINDOW_TO_HELP,
+    shot: { reportOnly: "reads the report's bars for those dates" } },
+];
 
 type PaneSchema = Pick<HeadlessPaneDefinition, "argument" | "options" | "discovery">;
 
@@ -60,10 +70,11 @@ export const paneSchemas = {
         defaultValue: HISTORY_DEFAULT_RANGE,
         pluginState: { pluginId: "ticker-research" },
       },
+      ...WINDOW_OPTIONS,
     ],
     discovery: {
       id: "historical-prices",
-      aliases: ["historical prices", "price history", "ohlcv", "daily prices"],
+      aliases: ["historical prices", "price history", "ohlcv", "daily prices", "max drawdown"],
       screenshotReadiness: "partial",
     },
   },
@@ -88,10 +99,11 @@ export const paneSchemas = {
         defaultValue: "1h",
         pluginState: { pluginId: "ticker-research" },
       },
+      ...WINDOW_OPTIONS,
     ],
     discovery: {
       id: "returns",
-      aliases: ["returns", "interval returns", "cumulative return", "performance"],
+      aliases: ["returns", "interval returns", "cumulative return", "performance", "max drawdown"],
       // A capture is read from the rendered table, as before the report existed.
       screenshotReadiness: "live-dom",
     },

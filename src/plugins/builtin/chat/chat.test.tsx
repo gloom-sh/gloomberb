@@ -708,10 +708,9 @@ describe("ChatContent", () => {
     const hovered = hexToRgbaInts(hoverBg());
 
     async function hoverMessage(controller: ReturnType<typeof createController>, text: string) {
+      installServerChannels(controller);
       await mountChat(controller, { width: 72, height: 12 });
-      // The channel list draws once it has loaded, and moves the messages right.
-      // A busy CI machine takes longer than the default 600 ms to load it.
-      await tui.waitForFrameToContain("#everyone", 60);
+      await tui.waitForFrameToContain("#everyone");
       const rows = tui.frame().split("\n");
       const row = rows.findIndex((line) => line.includes(text));
       expect(row).toBeGreaterThanOrEqual(0);

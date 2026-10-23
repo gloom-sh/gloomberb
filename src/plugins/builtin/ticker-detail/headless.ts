@@ -1,7 +1,7 @@
 import { FINANCIAL_VINTAGE_NOTICE, filledPeriodsNote, stalePeriodNote, statementHistoryNotes } from "../../../utils/financial-statements";
 import { hasValidQuoteObservationTime } from "../../../market-data/quotes/freshness";
 import { EXTENDED_SESSION_LABELS, getQuoteSessionFields, quoteHeadlineTime, type ExtendedSession } from "../../../market-data/market/status";
-import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/headless";
+import type { HeadlessPaneColumn, HeadlessPaneDefinition, HeadlessPaneFreshness, HeadlessPaneOptionValues } from "../../../types/headless";
 import type { TimeRange } from "../../../time-series/range";
 import { formatNumber, formatPercentRaw } from "../../../utils/format";
 import { formatMarketPrice, formatMarketPriceWithCurrency, formatPriceObservation, quoteFormatOptions, withCurrencyMinorDigits, type MarketFormatOptions } from "../../../market-data/market/format";
@@ -36,8 +36,11 @@ import {
 } from "../shared/headless-market-data";
 import { barHistoryFreshness, quoteFreshnessFields, REPORTED_DATA } from "../shared/report-freshness";
 import {
-  barPriceDecimals, cleanFloat32Price, formatBarPrice, historyAllStart, historyAllStartNote, historyMissingPeriodsNote, historyPriceDecimals,
+  BAR_INTERVAL_LABELS, barPriceDecimals, cleanFloat32Price, formatBarPrice, historyAllStart, historyAllStartNote, historyMissingPeriodsNote, historyPriceDecimals,
 } from "../../../cli/history-rows";
+import { formatUtcTime } from "../../../utils/utc-time";
+import { maxDrawdown, maxDrawdownText } from "../../../utils/max-drawdown";
+import { isPastPriceWindow, loadPriceWindowHistory, priceWindowText, readPriceWindow, type PriceWindow } from "../../../utils/price-window";
 import { historyCoverageNotice } from "../../../sources/history-coverage";
 import { getChartResolutionLabel, isIntradayResolution, RANGE_HISTORY_RESOLUTION, type ManualChartResolution } from "../../../time-series/resolution";
 import { DAY_SO_FAR_TEXT, withSessionBar } from "../../../time-series/session-bar";
@@ -45,8 +48,32 @@ import { buildReturnRows, closedMarketNote, isTodayReturnRow, returnBaseCloseDay
 import { periodBaseText } from "../../../market-data/market/period-return";
 import { loadReturnSeries } from "./data-panes/returns-history";
 import {
-  closedHistoryBarDay, formingHistoryBar, HISTORY_DEFAULT_RANGE, historyBarDate, historyBarSize, historyDateHeader, isDailyOrLongerBar, type HistoryBarSize,
+  closedHistoryBarDay, formingHistoryBar, HISTORY_DEFAULT_RANGE, historyBarDate, historyBarSize, historyBarSizeWord, historyDateHeader, isDailyOrLongerBar,
+  type HistoryBarSize,
 } from "./data-panes/history-bars";
+
+const optionText = (value: unknown) => typeof value === "string" && value.trim() ? value : undefined;
+
+/** The `--from`/`--to` window HP and RETURN read in place of their range; null when neither was given. */
+function readReportWindow(options: HeadlessPaneOptionValues): PriceWindow | null {
+  return readPriceWindow(optionText(options.from), optionText(options.to));
+}
+
+/** `2007 to 2009` for a report's title, when it reads a window. */
+function reportWindowText(options: HeadlessPaneOptionValues): string | null {
+  try {
+    const window = readReportWindow(options);
+    return window ? priceWindowText(window) : null;
+  } catch {
+    // Intentional ignore: the load reports a window it cannot read; the title keeps the range.
+    return null;
+  }
+}
+
+/** Bars of a window that closed before today: the history asked for, which no later bar makes stale. */
+function pastWindowFreshness(window: PriceWindow, size: HistoryBarSize, observedKey: string): HeadlessPaneFreshness {
+  return { status: "not-a-feed", basis: `${historyBarSizeWord(size)} bars, ${priceWindowText(window)}`, observedKey, oldest: null };
+}
 
 export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
   ...paneSchemas["financial-analysis-pane"],
@@ -345,16 +372,21 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
   ...paneSchemas["historical-prices-pane"],
   shape: "rows",
   description: "OHLCV bars (date, open, high, low, close, volume) for one ticker over a range: daily to start, weekly for 5Y and monthly for ALL. The newest bar is marked partial while its day, week or month runs on; a day's bar then comes from the live quote.",
-  describe: ({ symbols, options }) => `Historical Prices | ${symbols[0]} | ${options.range ?? HISTORY_DEFAULT_RANGE}`,
+  describe: ({ symbols, options }) => `Historical Prices | ${symbols[0]} | ${reportWindowText(options) ?? options.range ?? HISTORY_DEFAULT_RANGE}`,
   columns: historyColumns("1d", false, false),
   async load({ symbols, options }, ctx) {
     const symbol = symbols[0]!;
     const range = (options.range ?? HISTORY_DEFAULT_RANGE) as TimeRange;
+    // --from 2007 --to 2009 reads those dates' bars in place of the range.
+    const window = readReportWindow(options);
+    const pastWindow = !!window && isPastPriceWindow(window);
     // A range of daily or longer bars reaches into the session now trading, whose bar is the quote's (withSessionBar).
     const { symbol: listing, exchange } = await resolveHeadlessInstrument(ctx, symbol);
     const [loaded, quote] = await Promise.all([
-      loadHeadlessPriceHistory(ctx, symbol, range),
-      isIntradayResolution(RANGE_HISTORY_RESOLUTION[range]) ? null : ctx.marketData.getQuote(listing, exchange ?? "").catch(() => null),
+      window ? loadPriceWindowHistory(ctx.marketData, listing, exchange ?? "", window).then((result) => result.points)
+        : loadHeadlessPriceHistory(ctx, symbol, range),
+      pastWindow || (!window && isIntradayResolution(RANGE_HISTORY_RESOLUTION[range])) ? null
+        : ctx.marketData.getQuote(listing, exchange ?? "").catch(() => null),
     ]);
     // The venue whose sessions say whether a day, week or month is still running: the key's, or for a bare symbol its quote's.
     const venue = exchange || quote?.listingExchangeName || quote?.exchangeName || undefined;
@@ -389,17 +421,22 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
     // Every month or week without a bar is named, and ALL says where the source's bars start (BTC-USD's in 2014-09).
     const interval = size === "intraday" ? null : size;
     const gapNote = historyMissingPeriodsNote(rows.map((row) => Date.parse(row.date)), interval);
-    const allStart = historyAllStart(range, interval, rows[0]?.date, now);
+    const allStart = window ? null : historyAllStart(range, interval, rows[0]?.date, now);
     const notes = [allStart ? historyAllStartNote(allStart) : null, gapNote, volumeNote].filter((note): note is string => note != null);
     // The day's bar built from the quote is not a close; a coin's day in progress, as its source flags it, keeps its line.
     const dayToDate = points !== loaded && size === "1d" && shown.at(-1)?.partial === true;
     // A bar history: dated by its last bar, stale once bars of its size stop arriving.
-    const freshness = {
+    const freshness = pastWindow ? pastWindowFreshness(window, size, "date") : {
       ...barHistoryFreshness(isDailyOrLongerBar(size) ? size : null),
       observedKey: "date", oldest: null,
       ...(forming ? { periodToDate: forming } : closedDay ? { asOf: closedDay } : {}),
       ...(dayToDate ? { basis: "daily bars", note: `the newest bar is ${DAY_SO_FAR_TEXT}`, ...(quote ? { asOf: new Date(quote.lastUpdated).toISOString() } : {}) } : {}),
     };
+    // The largest fall from a close to a later one in the bars shown, said under the title.
+    const drawdown = maxDrawdown(shown);
+    const drawdownLine = drawdown ? maxDrawdownText(drawdown, { basis: `${historyBarSizeWord(size)} closes`, price: (value) => formatBarPrice(value, decimals),
+      date: (value) => isDailyOrLongerBar(size) ? value.slice(0, 10) : formatUtcTime(value) }) : null;
+    const reportNotices = [drawdownLine, notice].filter((line): line is string => line != null);
     return {
       rows: shown,
       columns: historyColumns(size, marked, false, false, decimals),
@@ -408,8 +445,9 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
       ...(notes.length > 0 ? { notes } : {}),
       ...(notice ? { complete: false } : {}),
       unavailableSymbols: rows.some((row) => row.close !== null) ? [] : [symbol],
-      metadata: { symbol, range, ...(size === "intraday" ? {} : { interval: size }), ...(allStart ? { sourceStart: allStart } : {}),
-        ...(notice ? { notices: [notice] } : {}) },
+      metadata: { symbol, range: window ? null : range, ...(window ? { requestedWindow: window } : {}), ...(size === "intraday" ? {} : { interval: size }),
+        ...(allStart ? { sourceStart: allStart } : {}), maxDrawdown: drawdown,
+        ...(reportNotices.length ? { notices: reportNotices } : {}) },
     };
   },
 };
@@ -424,16 +462,19 @@ export const returnsHeadless: HeadlessPaneDefinition<"rows"> = {
   ...paneSchemas["returns-pane"],
   shape: "rows",
   description: "Interval and cumulative price returns of one ticker's bars over a range: each bar's close, its move from the bar before, and its move from the bar before the window.",
-  describe: ({ symbols, options }) => `Returns | ${symbols[0]} | ${options.range ?? "5D"} | ${options.interval ?? "1h"}`,
+  describe: ({ symbols, options }) => `Returns | ${symbols[0]} | ${reportWindowText(options) ?? options.range ?? "5D"} | ${options.interval ?? "1h"}`,
   async load({ symbols, options }, ctx) {
     const key = symbols[0]!;
     const { symbol, exchange } = await resolveHeadlessInstrument(ctx, key);
     const range = (options.range ?? "5D") as ReturnRange;
     const requested = (options.interval ?? "1h") as ManualChartResolution;
+    // --from 2007 --to 2009 measures those dates' returns in place of the range.
+    const window = readReportWindow(options);
+    const pastWindow = !!window && isPastPriceWindow(window);
     const support = await Promise.resolve(ctx.marketData.getChartResolutionSupport?.(symbol, exchange ?? "") ?? []).catch(() => []);
     const now = Date.now();
     const series = await loadReturnSeries(ctx.marketData, {
-      symbol, exchange: exchange ?? "", range, resolution: requested, support, now, forceRefresh: ctx.refresh,
+      symbol, exchange: exchange ?? "", range, resolution: requested, support, now, forceRefresh: ctx.refresh, window,
     });
     const returns = buildReturnRows(series.points, series.visibleFrom, series.visibleTo).reverse();
     const venue = series.venue || undefined;
@@ -462,6 +503,10 @@ export const returnsHeadless: HeadlessPaneDefinition<"rows"> = {
     const dayToDate = isTodayReturnRow(returns.at(-1), series.resolution, venue, now);
     const rows = forming || dayToDate ? [...unmarked.slice(0, -1), { ...unmarked.at(-1)!, partial: true }] : unmarked;
     const price = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value.toFixed(decimals) : "-";
+    // The largest fall from a close to a later one in the window, said under the title.
+    const drawdown = maxDrawdown(unmarked.map((row) => ({ date: row.time, close: row.close })));
+    const maxDrawdownLine = drawdown ? maxDrawdownText(drawdown, { basis: `${BAR_INTERVAL_LABELS[series.resolution]} closes`, price,
+      date: (value) => intraday ? formatUtcTime(value) : value.slice(0, 10) }) : null;
     const figures: HeadlessPaneColumn[] = [
       { key: "close", header: "Price", align: "right", format: price },
       { key: "intervalChange", header: "Int $", align: "right", format: price },
@@ -485,9 +530,10 @@ export const returnsHeadless: HeadlessPaneDefinition<"rows"> = {
     const textColumns: HeadlessPaneColumn[] = [timeColumn(true), ...figures];
     // An interval the range is too long for is served in the nearest longer bar; say so rather than switch silently.
     const notices = [
+      maxDrawdownLine,
       baseDay ? `Totals ${periodBaseText(baseDay, now)}.` : null,
       series.resolution !== requested
-        ? `${getChartResolutionLabel(requested)} bars do not reach back ${range}; these are ${getChartResolutionLabel(series.resolution)} bars.`
+        ? `${getChartResolutionLabel(requested)} bars do not ${window ? `cover ${priceWindowText(window)}` : `reach back ${range}`}; these are ${getChartResolutionLabel(series.resolution)} bars.`
         : null,
       historyCoverageNotice(series.coverageStart, series.visibleFrom),
       priceHistoryIntegrityNotice(rows.filter((row) => row.inconsistent).length) ?? null,
@@ -498,7 +544,7 @@ export const returnsHeadless: HeadlessPaneDefinition<"rows"> = {
       textColumns,
       unavailableSymbols: rows.length ? [] : [key],
       ...(rows.length ? {} : { errors: [`${key}: No bars in this window.`] }),
-      freshness: {
+      freshness: pastWindow ? pastWindowFreshness(window, series.resolution, "time") : {
         ...barHistoryFreshness(intraday ? null : series.resolution),
         observedKey: "time",
         oldest: null,
@@ -510,13 +556,16 @@ export const returnsHeadless: HeadlessPaneDefinition<"rows"> = {
       },
       metadata: {
         symbol: key,
-        range,
+        range: window ? null : range,
+        // The dates asked for, as history and HP carry them; `window` below is the span of the bars served.
+        ...(window ? { requestedWindow: window } : {}),
         interval: series.resolution,
         requestedInterval: requested,
         window: { after: new Date(series.visibleFrom).toISOString(), through: new Date(series.visibleTo).toISOString() },
         ...(baseDay ? { baseDay } : {}),
         ...(series.lastSession ? { marketClosed: true, lastSession: series.lastSession } : {}),
         basis: "Price returns of bar closes; dividends are not included",
+        maxDrawdown: drawdown,
         ...(notices.length ? { notices } : {}),
       },
     };

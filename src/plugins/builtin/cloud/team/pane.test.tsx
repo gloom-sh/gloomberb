@@ -96,6 +96,7 @@ beforeEach(() => {
 afterEach(() => {
   (teamStore as any).update({ teams: [], invitations: [], loaded: false });
   apiClient.setSessionToken(null);
+  setCloudApiFetchTransport(null);
 });
 
 describe("TeamPane", () => {

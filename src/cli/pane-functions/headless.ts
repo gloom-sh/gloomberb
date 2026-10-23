@@ -368,7 +368,8 @@ export function serializeHeadlessPaneResult(
     }
     case "series": {
       const series = result as HeadlessSeriesResult;
-      return { ...common, series: series.series, ...(series.stats ? { stats: series.stats } : {}) };
+      // `textDecimals` only shapes the text report; JSON keeps every digit and does not carry it.
+      return { ...common, series: series.series.map(({ textDecimals: _text, ...kept }) => kept), ...(series.stats ? { stats: series.stats } : {}) };
     }
     case "snapshot": {
       const snapshot = result as HeadlessSnapshotResult;
@@ -500,6 +501,7 @@ function seriesPointExportDate(series: HeadlessSeries, date: SeriesPointDate, da
 function seriesValue(series: HeadlessSeries, value: number | null): string {
   if (value == null) return "-";
   if (!Number.isFinite(value)) return displayNumber(value);
+  if (series.textDecimals != null) return value.toFixed(series.textDecimals);
   const unit = series.unit?.trim().toLowerCase();
   if (unit === "%" || unit === "pp") return value.toFixed(2);
   if (unit === "x" || unit === "ratio") return value !== 0 && Math.abs(value) < 0.1 ? value.toPrecision(3) : value.toFixed(2);

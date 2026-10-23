@@ -35,6 +35,7 @@ import {
   type BuiltinStudySelection,
   type PairStudySelection,
 } from "./studies";
+import { dateOptionError, readCalendarDate } from "../../../utils/calendar-date";
 import { buildCustomChartPreset, buildEmptyChartPreset, buildPriceChartPreset } from "./presets";
 import {
   CHART_SPEC_SETTING_KEY,
@@ -228,27 +229,30 @@ function formatDateWindow(spec: ChartSpec): string {
 }
 
 function parseDate(value: string): string {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    throw new Error("Use YYYY-MM-DD dates.");
-  }
-  const date = new Date(`${value}T00:00:00.000Z`);
-  if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== value) {
-    throw new Error(`"${value}" is not a valid date.`);
-  }
-  return value;
+  const date = readCalendarDate(value);
+  if (!date) throw new Error(dateOptionError(value.trim(), "", { subject: "a date" }));
+  return date;
+}
+
+const WINDOW_SEPARATOR = /\s+(?:to|through)\s+|\s*(?:\.\.|–|—)\s*/i;
+
+/** The two dates of a window: around "to", "through", ".." or a dash, or around a comma between dates that have none of their own (2026-10-01, 2026-10-20). */
+function splitDateWindow(text: string): string[] | null {
+  const words = text.split(WINDOW_SEPARATOR);
+  if (words.length === 2 && words.every(Boolean)) return words;
+  const commas = text.split(/\s*,\s*/);
+  return commas.length === 2 && commas.every((part) => readCalendarDate(part) != null) ? commas : null;
 }
 
 function parseDateWindow(value: string): { start: string; end: string } | undefined {
   const trimmed = value.trim();
   if (!trimmed) return undefined;
-  const match = trimmed.match(
-    /^(\d{4}-\d{2}-\d{2})\s*(?:to|through|\.\.|,|–|—)\s*(\d{4}-\d{2}-\d{2})$/i,
-  );
-  if (!match) {
-    throw new Error("Use YYYY-MM-DD to YYYY-MM-DD, or leave blank for the preset range.");
+  const parts = splitDateWindow(trimmed);
+  if (!parts) {
+    throw new Error("Use two dates as YYYY-MM-DD to YYYY-MM-DD, or leave blank for the preset range.");
   }
-  const start = parseDate(match[1]!);
-  const end = parseDate(match[2]!);
+  const start = parseDate(parts[0]!);
+  const end = parseDate(parts[1]!);
   if (start > end) throw new Error("The start date must be before the end date.");
   return { start, end };
 }
@@ -460,7 +464,7 @@ export function buildChartComposerPaneSettingsDef(
       {
         key: CHART_SETTING_KEYS.dateWindow,
         label: "Date Window",
-        description: "Enter YYYY-MM-DD to YYYY-MM-DD. Leave blank to use the preset range.",
+        description: "Enter two dates, such as 2026-10-01 to 2026-10-20. Leave blank to use the preset range.",
         type: "text",
         placeholder: "2025-01-01 to 2026-01-01",
       },

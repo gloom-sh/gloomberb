@@ -45,6 +45,8 @@ test("one quoted argument with spaces is a company, a line of tickers, or a phra
   expect(quotedPhrase([` "AAPL  MSFT" `])).toBe("AAPL MSFT");
   // Several arguments, one word, or a list with commas split as they always did.
   expect([["AAPL", "MSFT"], ["AAPL"], ["AAPL,MSFT"], ["AAPL, Apple Inc"]].map(quotedPhrase)).toEqual([null, null, null, null]);
+  // A figure is part of a phrase; a pasted row of symbols, each with its prices, is a list.
+  expect([["10.5 year yield"], ["ED 2.582,52"], ["AAPL 150.00 MSFT 300.00"]].map(quotedPhrase)).toEqual(["10.5 year yield", null, null]);
 
   const batches: string[][] = [];
   const tickers = new Set(["AAPL", "MSFT", "YEAR", "YIELD", "BRK.B"]);

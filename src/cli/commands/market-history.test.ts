@@ -257,3 +257,48 @@ test("a break in the series is flagged on the bar after it in every export, and 
     setSystemTime();
   }
 });
+
+test("a past window reads its own dates' bars, in the size its span takes, with no bar from today's quote and no feed to go stale", async () => {
+  // Thursday 22 Oct 2026 while New York trades: a range would end with the session's bar.
+  setSystemTime(new Date("2026-10-22T15:00:00Z"));
+  try {
+    const asked: string[] = [];
+    const bar = (date: string, close: number) => ({ date: new Date(`${date}T00:00:00Z`), open: close, high: close, low: close, close, volume: 1000 });
+    const run = async (args: string[]) => {
+      const cli = createTestCliContext({
+        config: createDefaultConfig("/tmp/gloom-history-command-fixture"),
+        dataProvider: createTestDataProvider({
+          getQuote: async () => createTestQuote({ symbol: "JPM", currency: "USD", listingExchangeName: "NYSE", price: 300 }),
+          getDetailedPriceHistoryWithMetadata: async (_symbol, _exchange, start, end, interval) => {
+            asked.push(`${start.toISOString().slice(0, 10)} to ${end.toISOString().slice(0, 10)} in ${interval}`);
+            return interval === "1mo"
+              ? { resolution: "1mo", points: [bar("1990-08-01", 5), bar("1990-09-01", 5.2), bar("1990-10-01", 3.4), bar("2020-12-01", 117.8)] }
+              : { resolution: "1d", points: [bar("2006-12-29", 48), bar("2007-05-09", 53.2), bar("2009-03-09", 15.9), bar("2009-12-31", 41.67)] };
+          },
+        }),
+      }, { format: "json" });
+      await history.execute(args, cli.context);
+      return cli.printed[0]!.result;
+    };
+
+    const crisis = await run(["JPM", "--from", "2007", "--to", "2009"]);
+    expect((crisis.data as Array<{ date: string }>).map((row) => row.date)).toEqual(["2007-05-09", "2009-03-09", "2009-12-31"]);
+    expect(crisis.metadata).toMatchObject({
+      requestedWindow: { from: "2007-01-01", to: "2009-12-31" }, requestedRange: null, interval: "1d",
+      maxDrawdown: { peak: { date: "2007-05-09", close: 53.2 }, trough: { date: "2009-03-09", close: 15.9 }, recovered: null },
+    });
+    expect(crisis.freshness).toMatchObject({ status: "not-a-feed", basis: "daily bars, 2007 to 2009" });
+
+    // Thirty years come in monthly bars, from the month --from falls in, with no word of data starting late.
+    const long = await run(["JPM", "--from", "1990-09-15", "--to", "2020"]);
+    expect((long.data as Array<{ date: string }>).map((row) => row.date)).toEqual(["1990-09-01", "1990-10-01", "2020-12-01"]);
+    expect(long.warnings?.filter((warning) => warning.startsWith("Asked")) ?? []).toEqual([]);
+    expect(asked).toEqual(["2007-01-01 to 2009-12-31 in 1d", "1990-09-01 to 2020-12-31 in 1mo"]);
+
+    await expect(run(["JPM", "--range", "5Y", "--from", "2007"])).rejects.toThrow("--from replaces --range; give one of them.");
+    await expect(run(["JPM", "--to", "2009"])).rejects.toThrow("--to needs a --from: --from 2007 --to 2009.");
+    expect(asked).toHaveLength(2);
+  } finally {
+    setSystemTime();
+  }
+});

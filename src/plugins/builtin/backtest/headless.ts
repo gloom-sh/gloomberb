@@ -5,7 +5,7 @@ import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { createBacktestDependencies, loadBacktestHistory } from "./client";
 import { BACKTEST_PRESETS, DEFAULT_PRESET, lookbackYears, resolveRules } from "./presets";
 import { BACKTEST_FRESHNESS, backtestPriceUnit, backtestReport } from "./report";
-import { parseRule } from "./rules";
+import { parseRule, RULE_SYNTAX } from "./rules";
 import { runHistoryBacktest } from "./window";
 
 /** The listing's price unit, as `history` reads it from the quote; null when no quote says. */
@@ -39,8 +39,8 @@ export const backtestHeadless: HeadlessPaneDefinition<"bundle"> = {
   options: [
     { key: "preset", type: "enum", defaultValue: DEFAULT_PRESET.id, description: "Strategy preset, or custom to use --entry and --exit",
       values: [...BACKTEST_PRESETS.map(({ id }) => ({ value: id })), { value: "custom" }] },
-    { key: "entry", type: "string", defaultValue: "", description: "Custom entry rule, for example 'close > sma(200)'" },
-    { key: "exit", type: "string", defaultValue: "", description: "Custom exit rule, for example 'close < sma(200)'" },
+    { key: "entry", type: "string", defaultValue: "", description: `Custom entry rule, for example 'close > sma(200)' or 'weekday == 3'. ${RULE_SYNTAX}` },
+    { key: "exit", type: "string", defaultValue: "", description: "Custom exit rule, for example 'close < sma(200)' or 'weekday == 4'. Same operands and comparisons as --entry" },
     { key: "lookback", type: "enum", defaultValue: "10", values: [{ value: "5" }, { value: "10" }, { value: "max" }], description: "Evaluation years after indicator warmup" },
     { key: "cost", type: "integer", defaultValue: 5, minimum: 0, maximum: 100, description: "Cost per side in basis points" },
     { key: "end", type: "string", defaultValue: "", placeholder: "date", example: "--end 2026-10-16 --json",

@@ -166,7 +166,7 @@ describe("GIP session windows", () => {
       session: "2026-09-02",
     })).toEqual({ rangePreset: "1D", resolution: "15m", session: "2026-09-02" });
     expect(() => resolveIntradayRequest({ session: "2026-02-30" }))
-      .toThrow("real calendar date");
+      .toThrow('Invalid --session value "2026-02-30". Use a session date as YYYY-MM-DD');
   });
 
   test("Auto steps down to the finest interval the source serves", () => {

@@ -4,7 +4,7 @@ import type { HeadlessPaneFreshness } from "../../../types/plugin";
 import { mapWithConcurrency } from "../../../utils/concurrency";
 import { numberErrorMessage } from "../../../utils/decimal-comma";
 import { errorMessage } from "../../../utils/errors";
-import { expiryIsoDate, readOptionExpiration } from "../../../utils/option-expiry";
+import { expirationHint, expiryIsoDate, readOptionExpiration } from "../../../utils/option-expiry";
 import { zonedDateKey } from "../../../utils/zoned-date-time";
 import { loadIvScreen, type ImpliedVolatilityApi, type IvScreenRow } from "../iv-history/client";
 import { quoteObservation } from "../shared/report-freshness";
@@ -82,7 +82,7 @@ export function readCspScreenCriteria(options: Record<string, unknown>): CspScre
     ? readNumber(options.maxSpread, "max-spread", "a percent of the midpoint above 0, such as 10") : CSP_SCREEN_DEFAULTS.maxSpreadPercent;
   if (!(maxSpreadPercent > 0)) throw new Error(`Invalid --max-spread "${String(options.maxSpread)}". Use a percent of the midpoint above 0, such as 10.`);
   const expiration = supplied(options.expiration) ? readOptionExpiration(options.expiration) : null;
-  if (supplied(options.expiration) && expiration == null) throw new Error(`Invalid --expiration "${String(options.expiration)}". Use a date such as 2026-11-20.`);
+  if (supplied(options.expiration) && expiration == null) throw new Error(`Invalid --expiration "${String(options.expiration)}". Use a date such as 2026-11-20.${expirationHint(String(options.expiration))}`);
   if (expiration != null && supplied(options.days)) throw new Error("--days and --expiration each pick the expiry; give one of them");
   return { delta, days, expiration, maxSpreadPercent };
 }
@@ -194,11 +194,17 @@ function screenFreshness(markets: readonly ScenarioMarketSnapshot[], now: number
   };
 }
 
-/** Each name's cash-secured put, ranked: one IV rank request and one earnings calendar request for all of them. */
+/**
+ * Each name's cash-secured put, ranked: one IV rank request, one earnings
+ * calendar request and one Treasury curve for all of them.
+ */
 export async function loadCspScreen(
   instruments: readonly InstrumentRef[], criteria: CspScreenCriteria, dependencies: CspScreenDependencies, signal?: AbortSignal,
 ): Promise<CspScreen> {
   const now = dependencies.scenario.now?.() ?? Date.now();
+  // Every name reads the same curve, up to twice (the catalogue, then its expiry): asked for once, when the first name needs it.
+  let curve: ReturnType<ScenarioLoaderDependencies["loadYieldCurve"]> | null = null;
+  const scenario: ScenarioLoaderDependencies = { ...dependencies.scenario, loadYieldCurve: () => curve ??= dependencies.scenario.loadYieldCurve() };
   const symbols = instruments.map((instrument) => instrument.symbol.trim().toUpperCase());
   const [ivRanks, earnings] = await Promise.all([
     loadIvRanks(symbols, signal, dependencies.ivApi),
@@ -214,7 +220,7 @@ export async function loadCspScreen(
     const rank = ivRow?.iv30?.rank;
     const ivRank = rank != null && Number.isFinite(rank) ? rank : null;
     try {
-      const screened = await screenPut(instrument, criteria, dependencies.scenario, target, earnings.get(symbol) ?? null, signal);
+      const screened = await screenPut(instrument, criteria, scenario, target, earnings.get(symbol) ?? null, signal);
       markets.push(screened.market);
       if (ivRank == null && !ivRanks.error) {
         const reason = ivRow?.iv30?.rankNote ?? ivRow?.warnings?.[0] ?? (ivRow ? IV_COVERAGE_REASONS[ivRow.coverageStatus ?? ivRow.status] : "no IV history");

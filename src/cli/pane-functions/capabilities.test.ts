@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { apiClient } from "../../api-client";
 import { paneSchemas as chartSchemas } from "../../plugins/builtin/chart-composer/headless-schema";
 import { buildFundamentalChartPreset, buildValuationChartPreset } from "../../plugins/builtin/chart-composer/presets";
 import { paneSchemas as correlationSchemas } from "../../plugins/builtin/correlation/headless-schema";
@@ -38,6 +39,13 @@ import {
 import { createPaneCatalog } from "./discovery";
 import { findCatalogSeries } from "../series-search";
 import { parsePaneFunctionArgs } from "./options";
+
+beforeEach(() => {
+  // Catalog discovery starts chat and instantiates the map's chart templates.
+  spyOn(apiClient, "getChannels").mockResolvedValue([]);
+  spyOn(apiClient, "geo").mockResolvedValue({ series: [] });
+});
+afterEach(() => mock.restore());
 
 const dummyPane = {
   id: "test-pane",
@@ -195,6 +203,14 @@ describe("pane function capabilities", () => {
     // A function with no options says so.
     expect(() => normalizeCapabilityOptions({ ...intraday, options: [] }, { range: "1Y" }, { code: "CDX" }))
       .toThrow("CDX does not support --range. It has no options.");
+  });
+
+  test("HP and RETURN take --from in place of --range: typed together they are refused, while the default range gives way", () => {
+    const returns = capabilityFor("returns-pane");
+    expect(normalizeCapabilityOptions(returns, { from: "2007", to: "2009" }, { code: "RETURN" })).toMatchObject({ range: "5D", from: "2007", to: "2009" });
+    expect(() => normalizeCapabilityOptions(returns, { window: "1M", from: "2007" }, { code: "RETURN" })).toThrow("--from replaces --window; give one of them.");
+    expect(() => normalizeCapabilityOptions(capabilityFor("historical-prices-pane"), { range: "5Y", from: "2007" }, { code: "HP" }))
+      .toThrow("--from replaces --range; give one of them.");
   });
 
   test("a word after a function that takes none is answered with its options, and runs as the option whose value it is", () => {

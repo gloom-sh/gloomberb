@@ -1,17 +1,34 @@
-import { afterEach, expect, spyOn, test } from "bun:test";
+import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
+import { mkdtemp, rm } from "fs/promises";
+import { tmpdir } from "os";
+import { join } from "path";
+import { apiClient } from "../../api-client";
+import { resetFuturesPriceUnits } from "../../market-data/futures-contract";
 import type { DataProvider, QuoteBatchResult, QuoteSubscriptionTarget } from "../../types/data-provider";
 import type { TickerChanges } from "../../types/ticker-changes";
 import { createTestCliContext, type PrintedCliResult } from "../../test-support/cli-context";
 import { createTestDataProvider, createTestQuote } from "../../test-support/data-provider";
 import { captureConsole } from "../../test-support/console";
 import { createTestTicker } from "../../test-support/ticker";
+import { resetBoardCoins } from "../board-coins";
 import { buildSearchReport, search } from "./search";
 import { marketDataCliCommands } from "./market";
 
 const quoteCommand = marketDataCliCommands.find((command) => command.name === "quote")!;
 
+beforeEach(() => {
+  resetFuturesPriceUnits();
+  resetBoardCoins([]);
+  spyOn(apiClient, "getCloudFuturesContract").mockRejectedValue(new Error("Fixture has no contract terms"));
+});
+
 // A quote that finds nothing sets the exit status; it must not become the test run's.
-afterEach(() => { process.exitCode = 0; });
+afterEach(() => {
+  process.exitCode = 0;
+  resetFuturesPriceUnits();
+  resetBoardCoins();
+  mock.restore();
+});
 
 /**
  * A quote source that answers only the listing keys in `quoted`, and records what each batch asked for.
@@ -450,5 +467,78 @@ test("quote and compare exit 1 when none of the symbols has a quote, 0 when some
     expect(mixed.exitCode).toBe(0);
     expect(mixed.rows.map((row) => row.target.symbol)).toEqual(["GMEE", "AAPL"]);
     expect((await run(name, "AAPL")).exitCode).toBe(0);
+  }
+});
+
+test("one symbol that names no listing, or nothing at all, never sinks the batch: the others are quoted and it gets one line", async () => {
+  const asked: string[][] = [];
+  const dataProvider = createTestDataProvider({
+    getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => {
+      asked.push(targets.map((target) => target.symbol));
+      return targets.map((target) => ({ target, quote: createTestQuote({ symbol: target.symbol }) }));
+    },
+  });
+  const run = async (args: string[]) => {
+    const cli = createTestCliContext({ dataProvider });
+    process.exitCode = 0;
+    asked.length = 0;
+    const { exitCode } = await captureConsole(() => quoteCommand.execute(args, cli.context));
+    const { result } = cli.printed[0]!;
+    return { exitCode: exitCode ?? 0, symbols: (result.data as Array<{ target: QuoteSubscriptionTarget }>).map((row) => row.target.symbol), warnings: result.warnings ?? [] };
+  };
+  // `Unknown exchange US for EQT:NYSE.` failed the command, with no quote for EQT or UNG. Quotes for some of what
+  // was asked are a result, as they are for `fn`: exit 0, the misses named in the warnings (and in --json).
+  const venue = await run(["EQT", "EQT:NYSE:US", "UNG"]);
+  expect(venue).toMatchObject({ exitCode: 0, symbols: ["EQT", "UNG"] });
+  expect(venue.warnings).toEqual(["Not quoted: EQT:NYSE:US (Unknown exchange US for EQT:NYSE)."]);
+
+  const junk = await run(["EQT", "$$$", "N/A", "UNG"]);
+  expect(junk).toMatchObject({ exitCode: 0, symbols: ["EQT", "UNG"], warnings: ["Not symbols, not quoted: $$$, N/A."] });
+  expect(asked).toEqual([["EQT", "UNG"]]);
+});
+
+test("a quoted phrase with a figure in it gets the phrase answer, never quotes for its words", async () => {
+  const asked: string[] = [];
+  const tickers = new Set(["YEAR", "YIELD", "FED", "FUNDS", "RATE"]);
+  const dataProvider = createTestDataProvider({
+    search: async () => [],
+    getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => {
+      asked.push(...targets.map((target) => target.symbol));
+      return targets.map((target) => tickers.has(target.symbol)
+        ? { target, quote: createTestQuote({ symbol: target.symbol }) }
+        : { target, quote: null, error: new Error(`Not a ticker: ${target.symbol}.`) });
+    },
+  });
+  const answer = async (phrase: string) => {
+    const cli = createTestCliContext({ dataProvider }, { format: "json" });
+    return quoteCommand.execute([phrase], cli.context).then(() => cli.printed, (error: Error) => error.message);
+  };
+  // A figure made the phrase a list, so YEAR and YIELD, or FED, FUNDS and RATE, were quoted.
+  for (const phrase of ["10 year yield", "10.5 year yield", "fed funds rate 5.25%"]) {
+    expect(await answer(phrase)).toBe(`"${phrase}" is not a ticker or a company's name.`);
+  }
+  // A number is never asked for as a ticker; a whole one (10) is a code and still is.
+  expect(asked.filter((symbol) => /\d/.test(symbol))).toEqual(["10"]);
+});
+
+test("quote --file of a European sheet asks only for its symbols and names its prices in one line", async () => {
+  const asked: string[][] = [];
+  const dataProvider = createTestDataProvider({
+    getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => {
+      asked.push(targets.map((target) => target.symbol));
+      return targets.map((target) => ({ target, quote: createTestQuote({ symbol: target.symbol }) }));
+    },
+  });
+  const dir = await mkdtemp(join(tmpdir(), "gloomberb-quote-file-"));
+  try {
+    const file = join(dir, "energy.csv");
+    await Bun.write(file, "ED 2.582,52\nCNX;1.899,21\nEQT\t3.594,10\n");
+    const cli = createTestCliContext({ dataProvider });
+    await quoteCommand.execute(["--file", file], cli.context);
+    // Each price was a "Not a ticker" warning of its own, asked for as 2.582, 1.899 and 3.594.
+    expect(asked).toEqual([["ED", "CNX", "EQT"]]);
+    expect(cli.printed[0]!.result.warnings).toEqual(["Read the first column as symbols; ignored the 3 number cells beside it: 2.582,52; 1.899,21; 3.594,10."]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
   }
 });

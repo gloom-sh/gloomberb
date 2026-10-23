@@ -43,10 +43,15 @@ export function shotOptionRefusal(
   const report = (...flags: string[]) => ["gloom fn", resolved.token, rawArgument.trim() && shellWord(rawArgument.trim()), ...flags]
     .filter(Boolean).join(" ");
   const given: Array<[string, string | true]> = [...explain ? [["explain", true] as [string, true]] : [], ...Object.entries(options)];
+  // The report is run with every option only it reads, so HP's `--from 2007 --to 2009` keeps its end.
+  const reportFlags = given.flatMap(([key, value]) => {
+    const option = findCapabilityOption(resolved.capability, key);
+    return option?.shot ? [`--${option.key}`, value === true ? "" : shellWord(value)] : [];
+  });
   for (const [key, value] of given) {
     const option = findCapabilityOption(resolved.capability, key);
     if (option?.shot) {
-      return `${resolved.token}'s pane does not draw --${option.key}: it ${option.shot.reportOnly}. Drop it from shot, or run the report: ${report(`--${option.key}`, value === true ? "" : shellWord(value))}`;
+      return `${resolved.token}'s pane does not draw --${option.key}: it ${option.shot.reportOnly}. Drop it from shot, or run the report: ${report(...reportFlags)}`;
     }
     if (option) continue;
     const row = GLOBAL_ROW_OPTIONS[key];

@@ -72,7 +72,7 @@ import {
   requirePortfolio,
   takeCollectionName,
 } from "./shared";
-import { addOneSymbol, addSymbols, FILE_OPTION, printSymbolRows, removeSymbols, requireSymbolList, retryNotice, SYMBOL_LIST_HELP } from "./bulk-symbols";
+import { addOneSymbol, addSymbols, FILE_OPTION, printSymbolRows, removeSymbols, requireSymbolList, retryNotice, shellWord, SYMBOL_LIST_HELP } from "./bulk-symbols";
 import { readNameEntries } from "../../../../cli/name-entries";
 import { DRIP_DEFAULT_YEARS, DRIP_MAX_YEARS, parseDripYears, parseWithholding } from "../income";
 
@@ -185,13 +185,16 @@ function cashRefusal(portfolio: Portfolio, exchange: string | undefined) {
   };
 }
 
-async function addTickerToPortfolioCommand(portfolio: Portfolio, symbol: string, exchange: string | undefined, ctx: CliCommandContext, market: MarketContext) {
+async function addTickerToPortfolioCommand(
+  portfolio: Portfolio, symbol: string, notes: readonly string[], exchange: string | undefined, ctx: CliCommandContext, market: MarketContext,
+) {
   // A bare symbol is stored on the listing `quote` reads it as, as `watchlist add` does; bare CASH is the cash line.
   await addOneSymbol(ctx, market, {
     symbol,
     exchange,
     collection: { kind: "portfolio", name: portfolio.name },
-    retry: (key) => `gloom portfolio add ${portfolio.name} ${key}`,
+    notes,
+    retry: (key) => `gloom portfolio add ${shellWord(portfolio.name)} ${key}`,
     reject: cashRefusal(portfolio, exchange),
     add: (ticker) => addTickerToPortfolio(ticker, portfolio.id),
   });
@@ -202,10 +205,10 @@ async function addToPortfolioCommand(args: string[], file: string | undefined, e
     const { portfolio, rest } = requirePortfolioArgs(market.config, args, file, "add", ADD_USAGE, ctx);
     const list = await requireSymbolList(ctx, rest, file, ADD_USAGE, (entries) => readNameEntries(entries, market.dataProvider));
     if (list.single) {
-      await addTickerToPortfolioCommand(portfolio, list.single, exchange, ctx, market);
+      await addTickerToPortfolioCommand(portfolio, list.single, list.notes, exchange, ctx, market);
       return;
     }
-    const retry = (key: string) => `gloom portfolio add ${/\s/.test(portfolio.name) ? `"${portfolio.name}"` : portfolio.name} ${key}`;
+    const retry = (key: string) => `gloom portfolio add ${shellWord(portfolio.name)} ${key}`;
     const dryRun = ctx.cliOptions.dryRun;
     const rows = await addSymbols({
       symbols: list.symbols,
@@ -229,7 +232,9 @@ function withoutTarget(config: AppConfig, portfolio: Portfolio, symbol: string):
   return removed.length > 0 ? next : null;
 }
 
-async function removeTickerFromPortfolioCommand(portfolio: Portfolio, symbol: string, exchange: string | undefined, ctx: CliCommandContext, { config, store }: ConfigContext) {
+async function removeTickerFromPortfolioCommand(
+  portfolio: Portfolio, symbol: string, notes: readonly string[], exchange: string | undefined, ctx: CliCommandContext, { config, store }: ConfigContext,
+) {
   // SAN:EPA and SAN --exchange EPA name the stored listing, which a bare SAN may hold under another venue.
   const listing = await requireListingArg(symbol, exchange, ctx);
   try {
@@ -249,6 +254,7 @@ async function removeTickerFromPortfolioCommand(portfolio: Portfolio, symbol: st
         removedPositions: result.removedPositionCount,
         removedTarget: nextConfig != null,
       },
+      ...notes.length > 0 ? { warnings: [...notes] } : {},
     }, {
       text: () => [
         cliStyles.success(`Removed ${saved.label} from "${portfolio.name}".`),
@@ -268,7 +274,7 @@ async function removeFromPortfolioCommand(args: string[], file: string | undefin
     const { portfolio, rest } = requirePortfolioArgs(context.config, args, file, "remove", REMOVE_USAGE, ctx);
     const list = await requireSymbolList(ctx, rest, file, REMOVE_USAGE);
     if (list.single) {
-      await removeTickerFromPortfolioCommand(portfolio, list.single, exchange, ctx, context);
+      await removeTickerFromPortfolioCommand(portfolio, list.single, list.notes, exchange, ctx, context);
       return;
     }
     // Targets go with their holdings, all in one config write.

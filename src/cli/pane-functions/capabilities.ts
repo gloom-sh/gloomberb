@@ -274,8 +274,11 @@ export function normalizeCapabilityOptions(
   for (const option of capability.options) {
     if (option.defaultValue !== undefined) normalized[option.key] = option.defaultValue;
   }
+  // Each option typed, by its key, as the user wrote it (`--window` for RETURN's --range).
+  const typed = new Map<string, string>();
   for (const [rawKey, rawValue] of Object.entries(options)) {
     const option = findCapabilityOption(capability, rawKey);
+    if (option) typed.set(option.key, rawKey);
     if (!option) {
       if (settings.strict === false) {
         normalized[rawKey] = rawValue;
@@ -287,6 +290,10 @@ export function normalizeCapabilityOptions(
       );
     }
     normalized[option.key] = normalizeOptionValue(option, rawValue, settings.argument);
+  }
+  for (const [key, rawKey] of typed) {
+    const replaced = findCapabilityOption(capability, key)?.replaces?.find((other) => typed.has(other));
+    if (replaced) throw new Error(`--${rawKey} replaces --${typed.get(replaced)}; give one of them.`);
   }
   return normalized;
 }

@@ -67,6 +67,12 @@ export interface HeadlessPaneOptionDef {
    * own key, or `shotState`.
    */
   shot?: { reportOnly: string };
+  /**
+   * Options this one stands in for (`--from` for `--range`): typed together
+   * they are refused, since only one is read. The other's default does not
+   * count.
+   */
+  replaces?: readonly string[];
   /** The value's name in the catalog's flag, `--expiration <date|unix>`; the type when absent. */
   placeholder?: string;
   /** The option in use as typed after the function, such as `--expiration 2028-01-21`; the catalog shows it as an example. */
@@ -530,6 +536,8 @@ export interface HeadlessSeries {
   symbol?: string;
   /** The bar interval or observation frequency the points are at (`1d`, `1mo`, `daily`), as served, not as asked. */
   interval?: string;
+  /** Decimal places the text report prints the latest value to (a correlation to 3); JSON and CSV keep every digit. */
+  textDecimals?: number;
   points: HeadlessSeriesPoint[];
 }
 

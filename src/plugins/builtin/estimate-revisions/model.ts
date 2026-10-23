@@ -4,6 +4,7 @@ import type {
   EstimateRevisionsPayload,
 } from "../../../api-client/estimate-revisions";
 import type { DataTableColumn } from "../../../components";
+import { dateOptionError, readCalendarDate } from "../../../utils/calendar-date";
 export const estimateNumber = (value: number | null | undefined) =>
   value == null
     ? "--"
@@ -84,20 +85,17 @@ export function sortPeriods(
   });
 }
 
+/** The periods ending on a fiscal end date, as a date option reads one; `option` is how a command line types it (`--period`). */
 export function pinnedEstimatePeriods(
   periods: EstimatePeriod[],
-  periodEnd: unknown,
+  requestedEnd: unknown,
   frequency: unknown = "quarterly",
+  option = "",
 ): EstimatePeriod[] {
-  if (periodEnd == null || periodEnd === "") return periods;
-  if (
-    typeof periodEnd !== "string" ||
-    !/^\d{4}-\d{2}-\d{2}$/.test(periodEnd) ||
-    !Number.isFinite(Date.parse(periodEnd)) ||
-    new Date(periodEnd).toISOString().slice(0, 10) !== periodEnd
-  ) {
-    throw new Error("Fiscal end must be a valid YYYY-MM-DD date.");
-  }
+  if (requestedEnd == null || requestedEnd === "") return periods;
+  const text = typeof requestedEnd === "string" ? requestedEnd.trim() : String(requestedEnd);
+  const periodEnd = readCalendarDate(text);
+  if (!periodEnd) throw new Error(dateOptionError(text, option, { subject: "a fiscal end date" }));
   if (frequency !== "quarterly" && frequency !== "annual")
     throw new Error("Frequency must be quarterly or annual.");
   const matches = periods.filter(

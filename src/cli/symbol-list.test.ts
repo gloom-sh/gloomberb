@@ -80,3 +80,55 @@ test("a separator stuck to a symbol in a list is dropped before any lookup and n
   // Typed, only the ends of the list can be stray: in the middle a separator is what splits it.
   expect(await readSymbolList({ args: ["GME,", "UPST;"] })).toEqual({ symbols: ["GME", "UPST"], repeated: 0, notes: ['Ignored the stray ";" after UPST.'] });
 });
+
+test("a European sheet's prices are number cells, never symbols, whatever splits each line", async () => {
+  // Before, the comma of `2.582,52` split the line, and `2.582` was added as 2582:HKEX.
+  const pasted = "ED 2.582,52\nCNX;1.899,21\nEQT\t3.594,10\n$$$\nN/A\n";
+  expect(await readSymbolList({ args: ["-"], readStdin: async () => pasted })).toEqual({
+    symbols: ["ED", "CNX", "EQT", "$$$", "N/A"],
+    repeated: 0,
+    notes: ["Read the first column as symbols; ignored the 3 number cells beside it: 2.582,52; 1.899,21; 3.594,10."],
+  });
+  // US and European forms, signs, percents and currency marks, beside a symbol or on a line of their own.
+  const figures = ["2.582,52", "1,899.21", "1.899", "-2,5%", "+4", "12%", "$12.50", "€1.234,56", "(1,234.56)"];
+  for (const separator of [" ", "\t", ";", ","]) {
+    const read = await readSymbolList({ args: ["-"], readStdin: async () => `${figures.map((figure) => `XOM${separator}${figure}`).join("\n")}\n1.899,21\n` });
+    expect(read.symbols).toEqual(["XOM"]);
+    expect(read.notes.at(-1)).toBe("Ignored 1.899,21, a number, not a symbol.");
+  }
+  // Typed, a number is never a symbol either: beside one (a pasted line) or on its own.
+  expect(await readSymbolList({ args: ["ED 2.582,52\nCNX;1.899,21", "1.899", "EQT"] })).toEqual({
+    symbols: ["ED", "CNX", "EQT"],
+    repeated: 0,
+    notes: ["Ignored 3 numbers, not symbols: 2.582,52; 1.899,21; 1.899."],
+  });
+});
+
+test("a numeric ticker is a symbol alone or in the symbol column, and a bare number beside a symbol is its value", async () => {
+  const read = (text: string) => readSymbolList({ args: ["-"], readStdin: async () => text });
+  const codes = ["7203", "0700.HK", "2330:TWSE", "2582:HKEX"];
+  expect((await read(`${codes.join("\n")}\n`)).symbols).toEqual(codes);
+  expect((await readSymbolList({ args: codes })).symbols).toEqual(codes);
+  expect((await read("7203;1.899,21\n2582:HKEX\t3.594,10\nED 2582\n")).symbols).toEqual(["7203", "2582:HKEX", "ED"]);
+  expect((await readSymbolList({ args: ["ED 2582"] })).symbols).toEqual(["ED"]);
+  // Codes among symbols, or side by side, stay codes: `7203,6758` holds no decimal comma.
+  for (const args of [["7203 6758"], ["7203,6758"]]) expect((await readSymbolList({ args })).symbols).toEqual(["7203", "6758"]);
+  expect((await readSymbolList({ args: ["amd 2222 pltr"] })).symbols).toEqual(["amd", "2222", "pltr"]);
+});
+
+test("a comma between plain digits splits codes, unless the line or the sheet's header has another separator", async () => {
+  const read = (text: string) => readSymbolList({ args: ["-"], readStdin: async () => text });
+  // Read as 0700.25 and 9988.15, a sheet of codes and weights added nothing.
+  expect(await read("Symbol,Weight\n0700,25\n9988,15\n")).toEqual({ symbols: ["0700", "9988"], repeated: 0, notes: [] });
+  expect((await read("Code,Shares\n7203,10\n6758,5\n")).symbols).toEqual(["7203", "6758"]);
+  expect(await read("7203,10\n")).toEqual({ symbols: ["7203"], repeated: 0, notes: ["Read the first column as symbols; ignored the number cell beside it: 10."] });
+  for (const arg of ["9988,5", "5,700", "700,388"]) expect((await readSymbolList({ args: [arg] })).symbols).toEqual(arg.split(","));
+  // Beside a tab, a semicolon or spaces between cells, or under a header split by tabs, the comma is a decimal one.
+  expect((await read("ED 116,26\nCNX;35,73\nEQT\t54,67\n")).symbols).toEqual(["ED", "CNX", "EQT"]);
+  expect(await readSymbolList({ args: ["ED 2,5"] })).toEqual({ symbols: ["ED"], repeated: 0, notes: ["Ignored 2,5, a number, not a symbol."] });
+  expect(await read("Symbol\tWeight\n7203\t2,5\n6758,5\n")).toEqual({ symbols: ["7203"], repeated: 0, notes: ["Ignored 6758,5, a number, not a symbol."] });
+  // A number only a number can be stays one where commas split the line.
+  expect(await read("ED,2.582,52\nCNX,1,899.21\n")).toEqual({
+    symbols: ["ED", "CNX"], repeated: 0, notes: ["Read the first column as symbols; ignored the 2 number cells beside it: 2.582,52; 1,899.21."],
+  });
+});

@@ -2,6 +2,7 @@ import type { HeadlessPaneDefinition, HeadlessPaneOptionDef } from "../../../typ
 import { isSubMinuteInterval, subMinuteDataMessage } from "../../../cli/known-gaps";
 import { CHART_BAR_SIZE_PRESETS, parseChartBarSize } from "../../../time-series/resolution";
 import { FINANCIAL_PERIOD_OPTION, FINANCIAL_PERIOD_COUNT_OPTION, HISTORY_RANGE_VALUES, RETURN_RANGE_VALUES } from "../shared/headless-options";
+import { DATE_OPTION_EXAMPLES } from "../../../utils/calendar-date";
 
 type PaneSchema = Pick<HeadlessPaneDefinition, "argument" | "options" | "discovery">;
 
@@ -105,7 +106,7 @@ export const paneSchemas = {
       },
       {
         key: "session",
-        description: "Specific exchange-local session in YYYY-MM-DD form. Overrides the session window.",
+        description: `Specific exchange-local session, as ${DATE_OPTION_EXAMPLES}. Overrides the session window.`,
         type: "string",
       },
     ],

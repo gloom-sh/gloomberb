@@ -1,6 +1,6 @@
 import { apiClient, type CloudFredSeriesPayload } from "../../../api-client";
 import { isYieldObservationDate, TREASURY_MATURITIES, type YieldPoint } from "./treasury-data";
-import { DATE_OPTION_FORMATS, readCalendarDate } from "../../../utils/calendar-date";
+import { dateOptionError, dateOptionFormatsOr, readCalendarDate } from "../../../utils/calendar-date";
 
 const DAY_MS = 86_400_000;
 export type TreasurySeriesLoader = (seriesId: string, options: {
@@ -10,12 +10,13 @@ export type TreasurySeriesLoader = (seriesId: string, options: {
   sortOrder: "desc";
 }) => Promise<CloudFredSeriesPayload>;
 
-export function yieldCurveDate(value: unknown, now = new Date()): string {
+/** An as-of date, or "latest" (empty) for the newest session; `option` is how a command line types it (`--date`), empty for the pane's field. */
+export function yieldCurveDate(value: unknown, now = new Date(), option = ""): string {
   if (value == null) return "";
   const text = typeof value === "string" ? value.trim() : "";
   if (typeof value === "string" && (text === "" || text.toLowerCase() === "latest")) return "";
   const date = readCalendarDate(text);
-  if (!date) throw new Error(`Use an as-of date as ${DATE_OPTION_FORMATS}, or latest.`);
+  if (!date) throw new Error(dateOptionError(text, option, { now, subject: "an as-of date", formats: dateOptionFormatsOr("latest") }));
   if (date > now.toISOString().slice(0, 10)) throw new Error("A Treasury curve cannot use a future date.");
   return date;
 }

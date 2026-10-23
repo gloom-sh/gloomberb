@@ -8,7 +8,7 @@ import { formatCountCell } from "../helpers";
 import { cliStyles, renderTable, type CliTableColumn } from "../../utils/cli-output";
 import { errorMessage } from "../../utils/errors";
 import { numberErrorMessage, rangeErrorMessage } from "../../utils/decimal-comma";
-import { expiryIsoDate, OPTION_EXPIRATION_FORMAT, parseOptionExpiration } from "../../utils/option-expiry";
+import { expirationHint, expiryIsoDate, OPTION_EXPIRATION_FORMAT, parseOptionExpiration } from "../../utils/option-expiry";
 import { dateOptionError, readCalendarDate } from "../../utils/calendar-date";
 import { isFundType } from "../../utils/sec";
 import { daysToExpiryFrom, optionMid, type OptionSide } from "../../plugins/builtin/shared/volatility";
@@ -164,7 +164,7 @@ function parseLeapsWindow(raw: Record<string, string | undefined>, now: number):
       return { error: "--expiration reads one expiry; give it alone, or a range with --expiry-from and --expiry-to." };
     }
     const seconds = parseOptionExpiration(expiration);
-    if (seconds == null) return { error: `Invalid --expiration "${expiration}". Use ${OPTION_EXPIRATION_FORMAT}.` };
+    if (seconds == null) return { error: `Invalid --expiration "${expiration}". Use ${OPTION_EXPIRATION_FORMAT}.${expirationHint(expiration)}` };
     window.expiryFrom = window.expiryTo = expiryIsoDate(seconds);
   }
   const fromFlag = expiration != null ? "--expiration" : "--expiry-from";

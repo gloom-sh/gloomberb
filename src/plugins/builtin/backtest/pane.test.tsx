@@ -14,6 +14,7 @@ const PANE_ID = "backtest:layout-test";
 const SYMBOL = "BTTEST";
 const tui = createOpenTuiTestHarness();
 let previousCoordinator: ReturnType<typeof getSharedMarketDataCoordinator>;
+let coordinator: MarketDataCoordinator | undefined;
 
 /** Three years of sessions that trend up with a dip, so both rules fire. */
 function history(): PricePoint[] {
@@ -31,12 +32,14 @@ function installCoordinator() {
     phase: "ready", data: points, lastGoodData: points, source: "test", fetchedAt: Date.now(),
     staleAt: null, error: null, attempts: [],
   };
-  const coordinator = new MarketDataCoordinator(createTestDataProvider({ id: "backtest-pane-fixture" }));
+  coordinator = new MarketDataCoordinator(createTestDataProvider({ id: "backtest-pane-fixture" }));
   coordinator.loadChart = async () => entry;
   setSharedMarketDataCoordinator(coordinator);
 }
 
 afterEach(() => {
+  coordinator?.destroy();
+  coordinator = undefined;
   setSharedMarketDataCoordinator(previousCoordinator ?? null);
 });
 

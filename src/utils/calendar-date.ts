@@ -58,6 +58,11 @@ export const DATE_OPTION_EXAMPLES = '2026-10-01, 1.10.2026 or "Oct 1 2026"';
 /** The same for a form's date field, typed without quotes. */
 export const DATE_FIELD_EXAMPLES = "2026-10-01, 1.10.2026 or Oct 1 2026";
 
+/** The formats a date option takes, with one more word it reads besides (`latest`): a date, or that word. */
+export function dateOptionFormatsOr(word: string): string {
+  return `${DATE_OPTION_FORMATS.replace(" or ", ", ")} or ${word}`;
+}
+
 /** 1 to 12 for a month's name or its first three letters (Sept too); null for any other word. */
 function monthNumber(name: string): number | null {
   const word = name.toLowerCase();
@@ -110,6 +115,16 @@ function isoDateReading(value: string): string | null {
 }
 
 /**
+ * What to type instead of a date written another way that plainly names one:
+ * `type --from 2026-10-14 for 14/10/2026`. Null for anything else. `option` is
+ * how the option is typed (`--from`), or empty for a form's field.
+ */
+export function dateOptionHint(value: string, option: string): string | null {
+  const reading = isoDateReading(value);
+  return reading ? `type ${option ? `${option} ` : ""}${reading} for ${value.trim()}` : null;
+}
+
+/**
  * Why a date option's value is no date, naming the formats it takes: with
  * the date to type for one written another way that plainly names it
  * (`--from 2026-10-14` for 14/10/2026), else an example, today unless the
@@ -125,11 +140,8 @@ export function dateOptionError(
   } = {},
 ): string {
   const format = `Use ${subject} as ${formats}`;
-  const typed = option ? `${option} ` : "";
-  const reading = isoDateReading(value);
-  return reading
-    ? `${format}: type ${typed}${reading} for ${value.trim()}.`
-    : `${format}, such as ${typed}${example ?? isoDateToday(now)}.`;
+  const hint = dateOptionHint(value, option);
+  return hint ? `${format}: ${hint}.` : `${format}, such as ${option ? `${option} ` : ""}${example ?? isoDateToday(now)}.`;
 }
 
 /**

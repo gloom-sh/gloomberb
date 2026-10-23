@@ -93,6 +93,23 @@ test("a pasted list adds every symbol it can, and names each it could not with t
   expect(h.routes).toEqual([]);
 });
 
+test("a list pasted from a European sheet adds its symbols alone, and names its prices and what names nothing", async () => {
+  const h = await harness();
+  // Before, the decimal comma split each price, and its first half was added as a ticker.
+  await h.add("AMD 2.582,52\nPLTR;1.899,21\n$$$\nN/A");
+  expect(await h.watchlistOf("AMD")).toEqual(["watchlist"]);
+  expect(await h.watchlistOf("PLTR")).toEqual(["watchlist"]);
+  expect(h.added.sort()).toEqual(["AMD", "PLTR"]);
+  expect(h.notices).toEqual([{
+    body: [
+      'Watchlist "Watchlist": 2 added; 2 not symbols: $$$, N/A.',
+      "Ignored 2 numbers, not symbols: 2.582,52; 1.899,21.",
+    ].join("\n"),
+    type: "info",
+    duration: 12_000,
+  }]);
+});
+
 test("a list that finds nothing says so, and one that all went in is a quiet success", async () => {
   const h = await harness();
   await h.add("ZZZZ,YYYY");

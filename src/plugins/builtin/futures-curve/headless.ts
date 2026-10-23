@@ -106,7 +106,7 @@ export const futuresCurveHeadless: HeadlessPaneDefinition<"bundle"> = {
     const input = args.argument || DEFAULT_ROOT;
     const root = normalizeCurveRoot(input);
     if (!root) throw new Error(unsupportedCurveRootMessage(input));
-    const date = curveAsOfDate(args.options.date);
+    const date = curveAsOfDate(args.options.date, new Date(), "--date");
     // The archive keeps no spot history, so a past curve has no basis.
     const spotSymbol = date ? null : basisSpotSymbol(root);
     const now = Date.now();

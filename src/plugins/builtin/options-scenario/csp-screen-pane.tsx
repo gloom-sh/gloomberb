@@ -39,7 +39,7 @@ const SYMBOLS_FIELD_WIDTH = 24;
 /** Symbols apply once typing pauses, so a half-typed ticker does not start a screen. */
 const SYMBOLS_DEBOUNCE_MS = 700;
 
-const symbolList = (text: string) => [...new Set(text.split(/[\s,;]+/).map((symbol) => symbol.trim().toUpperCase()).filter(Boolean))].slice(0, CSP_SCREEN_LIMIT);
+const symbolList = (text: string) => [...new Set(text.split(/[\s,;]+/).map((symbol) => symbol.trim().toUpperCase()).filter(Boolean))];
 const percentText = (value: unknown, digits: number) => typeof value === "number" ? `${value.toFixed(digits)}%` : "--";
 const priceText = (value: unknown) => typeof value === "number" ? formatHedgePrice(value) : "--";
 /** A column's value to sort on: earnings by date, a flag as a number. */
@@ -62,7 +62,10 @@ export function CspScreenPane({ width, height, focused }: PaneProps) {
   const [symbolsActive, setSymbolsActive] = useState(false);
   const { createPaneFromTemplate } = usePluginAppActions();
   const assetData = useAssetData();
-  const symbols = useMemo(() => symbolList(String(symbolsText ?? "")), [symbolsText]);
+  const typed = useMemo(() => symbolList(String(symbolsText ?? "")), [symbolsText]);
+  // The screen reads the first names it can rank; the footer names the rest.
+  const symbols = useMemo(() => typed.slice(0, CSP_SCREEN_LIMIT), [typed]);
+  const leftOut = typed.slice(CSP_SCREEN_LIMIT);
   const criteria = useMemo(() => {
     try { return { value: readCspScreenCriteria({ delta, days, expiration, maxSpread }), error: null }; }
     catch (error) { return { value: null, error: error instanceof Error ? error.message : String(error) }; }
@@ -90,6 +93,7 @@ export function CspScreenPane({ width, height, focused }: PaneProps) {
   const [selected, setSelected] = useState<string | null>(null);
   const screen = resource.data;
   const notices = [criteria.error, resource.data ? null : resource.error,
+    leftOut.length ? `Ranks the first ${CSP_SCREEN_LIMIT} symbols; ${leftOut.length} left out: ${leftOut.join(", ")}` : null,
     ...(screen?.ivRankError ? [`IV rank unavailable: ${screen.ivRankError}`] : []),
     ...(screen?.rows ?? []).flatMap((row) => row.note ? [`${row.symbol}: ${row.note}`] : []),
     ...(screen ? cspScreenNotes(screen).slice(1) : [])].filter((value): value is string => !!value);

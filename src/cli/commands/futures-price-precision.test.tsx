@@ -1,4 +1,6 @@
-import { expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
+import { apiClient } from "../../api-client";
+import { futuresContractCache } from "../../plugins/builtin/ticker-detail/overview/futures-contract";
 import { act } from "react";
 import { createOpenTuiTestHarness, settleFrame } from "../../renderers/opentui/test-utils";
 import { AppContext, createInitialState } from "../../state/app/context";
@@ -14,6 +16,14 @@ import { renderHeadlessPaneText } from "../pane-functions/headless";
 import { buildTickerReport } from "./ticker";
 
 const tui = createOpenTuiTestHarness();
+beforeEach(() => {
+  futuresContractCache.reset();
+  spyOn(apiClient, "getCloudFuturesContract").mockRejectedValue(new Error("Fixture has no contract terms"));
+});
+afterEach(() => {
+  futuresContractCache.reset();
+  mock.restore();
+});
 
 for (const [symbol, price, change, priorPrice] of [
   ["NG=F", 3.125, 0.001, 3.124],

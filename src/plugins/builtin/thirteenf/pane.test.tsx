@@ -17,6 +17,7 @@ import { ThirteenFTickerPane } from "./signals-pane";
 import { TestPaneProvider, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
 import { TestShellPaneKeys } from "../../../test-support/shell-pane-keys";
 import { ONE_SHOT_COOLDOWN_MS } from "../../../utils/one-shot";
+import { fundListCache, fundMembersCache } from "../members/client";
 
 const PANE_ID = "thirteenf-pane-test";
 
@@ -25,6 +26,8 @@ let latestState: AppState | null = null;
 
 afterEach(() => {
   latestState = null;
+  fundListCache.reset();
+  fundMembersCache.reset();
   setHttpFetchTransport(null);
   setSystemTime();
 });

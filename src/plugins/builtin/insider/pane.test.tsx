@@ -1,4 +1,4 @@
-import { afterEach, expect, spyOn, test } from "bun:test";
+import { afterEach, expect, mock, spyOn, test } from "bun:test";
 import { apiClient } from "../../../api-client";
 import type { CloudInsiderSignalsParams, InsiderSignalRow } from "../../../api-client/insider-signals";
 import { insiderSignalsCache } from "./signals-client";
@@ -57,6 +57,7 @@ async function mountWindow(inWindow: number) {
   for (let i = 0; i < 40 && (i < 8 || tui.frame().includes("loading")); i++) await settle();
 }
 afterEach(() => {
+  mock.restore();
   setSharedMarketDataCoordinator(null);
   insiderSignalsCache.reset();
 });

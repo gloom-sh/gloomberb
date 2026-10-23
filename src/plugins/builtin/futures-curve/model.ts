@@ -7,7 +7,7 @@ import { FUTURES_CONTRACTS, futuresBoardContractForTicker, futuresContractByCode
 import { formatPercentileRank } from "../../../utils/format";
 import { cryptoPairCoin, isFuturesSymbol } from "../shared/crypto-pair";
 import { parseReportTime } from "../../../utils/utc-time";
-import { DATE_OPTION_FORMATS, readCalendarDate } from "../../../utils/calendar-date";
+import { dateOptionError, dateOptionFormatsOr, readCalendarDate } from "../../../utils/calendar-date";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
 
 /**
@@ -474,12 +474,16 @@ export function shortDatedBasisNote(rows: readonly Pick<FuturesContract, "symbol
   return near.length ? `Ann Basis is noisy under ${SHORT_DATED_DAYS} days to expiry: 10 bp of spot noise moves ${near.join(", ")}.` : null;
 }
 
-/** A past date for the as-of view: empty (or "latest") for the live curve, else YYYY-MM-DD no later than today. */
-export function curveAsOfDate(value: unknown, now = new Date()): string {
+/**
+ * A past date for the as-of view: empty (or "latest") for the live curve, else
+ * YYYY-MM-DD no later than today. `option` is how a command line types it
+ * (`--date`), empty for the pane's field.
+ */
+export function curveAsOfDate(value: unknown, now = new Date(), option = ""): string {
   const text = typeof value === "string" ? value.trim() : "";
   if (!text || text.toLowerCase() === "latest") return "";
   const date = readCalendarDate(text);
-  if (!date) throw new Error(`Use an as-of date as ${DATE_OPTION_FORMATS}, or latest.`);
+  if (!date) throw new Error(dateOptionError(text, option, { now, subject: "an as-of date", formats: dateOptionFormatsOr("latest") }));
   if (date > now.toISOString().slice(0, 10)) throw new Error("A futures curve cannot use a future date.");
   return date;
 }

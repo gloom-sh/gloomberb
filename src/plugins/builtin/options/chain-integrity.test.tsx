@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, test } from "bun:test";
 import { act } from "react";
 import { marketDataCliCommands } from "../../../cli/commands/market";
 import { DEFAULT_CLI_OPTIONS } from "../../../cli/options";
@@ -14,7 +14,7 @@ import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import type { OptionsChain } from "../../../types/financials";
 import type { PaneTemplateCreateOptions } from "../../../types/plugin";
 import { draftFromParams, type OptionCalcDraft } from "../options-calculator/model";
-import { createOptionsControls } from "./test-fixture";
+import { createOptionsControls, installOptionsReferenceFixtures } from "./test-fixture";
 import { OptionsView } from "./view";
 
 const EXPIRY = Date.UTC(2028, 0, 21) / 1000;
@@ -23,12 +23,16 @@ const PANE = "options:chain-followup";
 const tui = createOpenTuiTestHarness();
 let coordinator: MarketDataCoordinator | undefined;
 const realNow = Date.now;
+let restoreReferenceData: (() => void) | undefined;
 
+beforeEach(() => { restoreReferenceData = installOptionsReferenceFixtures(); });
 afterEach(() => {
   coordinator?.destroy();
   coordinator = undefined;
   setSharedMarketDataCoordinator(null);
   Date.now = realNow;
+  restoreReferenceData?.();
+  restoreReferenceData = undefined;
 });
 
 function strikeRowY(strike: number): number {
