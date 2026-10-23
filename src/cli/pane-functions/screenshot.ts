@@ -620,6 +620,12 @@ export async function buildDesktopShotPayload(
   } else if (resolved.pane.id === CHART_COMPOSER_PANE_ID) {
     const loaded = await loadModel();
     chartModel = loaded.result as ChartPaneModel;
+    // Charts keep failed series as rows in their model. A lone name with no
+    // listing must fail the command before that empty chart is rendered.
+    if (collectShotSymbols(resolved, rawArg).length === 1 && chartModel.series.every((series) => series.points.length === 0)) {
+      const unknown = chartModel.chart.series.find((series) => isNotATickerMessage(series.warning))?.warning;
+      if (unknown) throw new Error(unknown);
+    }
     shotInstance = { ...shotInstance, settings: { ...shotInstance.settings, chartSpec: chartModel.spec } };
     const authored = parseChartSpec(resolved.instance.settings?.chartSpec);
     const captured = new Map(chartModel.snapshot.financials);

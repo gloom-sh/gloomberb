@@ -34,10 +34,11 @@ import {
 } from "./result";
 
 import { typedPerpetualListing } from "../perpetual-listing";
-import { readTerminalListingCode } from "../terminal-codes";
+import { endsInLegalForm, readNearMissListing, readTerminalListingCode } from "../terminal-codes";
 import { isProviderBusy, ProviderBusyError, SEARCH_BUSY_MESSAGE } from "../../sources/provider-errors";
 import { settleWithin } from "../../utils/async-deadline";
 import { companyNameExtraWords } from "../company-name";
+import { withHomeListingLead } from "./home-listing";
 import { delistingLabel } from "../../market-data/quotes/delisting";
 export type {
   ResolvedTickerSearch,
@@ -49,6 +50,7 @@ export {
   rankTickerSearchItems,
 } from "./ranking";
 export { upsertTickerFromSearchResult } from "./upsert";
+export { candidateExchange, listingDistance } from "./home-listing";
 
 const MAX_NAMED_LISTINGS = 6;
 
@@ -120,10 +122,15 @@ interface TickerSearchCandidateOptions {
 
 /**
  * The ticker typed, upper case; a perpetual's market id (`binance:BZUSDT`) as its listing (`BZUSDT:BINANCE`),
- * and a terminal's code for a US listing (`WFC.N`, `JPM US Equity`) as that listing (`WFC:NYSE`, `JPM`).
+ * a terminal's code (`WFC.N`, `VOD LN`, `JPM US Equity`) as that listing (`WFC:NYSE`, `VOD:LSE`, `JPM`), and a
+ * symbol written nearly as one is (`700.HK`, `6758.JP`, `BRK/B`) as its working form (`0700.HK`, `6758.T`, `BRK-B`). A name
+ * before a legal form (`SAP SE`) stays the name, though SE is also a market code.
  */
 export function normalizeTickerInput(activeTicker: string | null, arg?: string): string | null {
-  const explicitTicker = arg ? (typedPerpetualListing(arg)?.key ?? readTerminalListingCode(arg)?.key ?? arg).trim().toUpperCase() : "";
+  const explicitTicker = arg
+    ? (typedPerpetualListing(arg)?.key ?? (endsInLegalForm(arg) ? null : readTerminalListingCode(arg)?.key) ?? readNearMissListing(arg)?.symbol ?? arg)
+      .trim().toUpperCase()
+    : "";
   if (explicitTicker) return explicitTicker;
   return activeTicker;
 }
@@ -294,7 +301,7 @@ export function buildTickerSearchCandidates({
     query,
   );
   const providerItems = createProviderTickerSearchCandidates(filteredProviderResults, tickers, candidateOptions);
-  const ranked = withSuccessorFirst(rankTickerSearchItems([...localItems, ...providerItems], query), query);
+  const ranked = withHomeListingLead(withSuccessorFirst(rankTickerSearchItems([...localItems, ...providerItems], query), query), query);
   return limitTickerSearchCandidates(assignTickerSearchCategories(ranked, query), totalLimit, localLimit);
 }
 

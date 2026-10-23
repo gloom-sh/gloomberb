@@ -189,6 +189,7 @@ export function useSeriesEditorController({
   const {
     suggestions: quickAddSuggestions,
     loading: quickAddLoading,
+    error: quickAddError,
   } = useSeriesCatalogSuggestions({
     query: quickAddQuery,
     defaultInstrument,
@@ -636,6 +637,7 @@ export function useSeriesEditorController({
     quickAddActive,
     quickAddItems,
     quickAddLoading,
+    quickAddError,
     quickAddQuery,
     quickAddRef,
     quickAddSelection,

@@ -24,3 +24,11 @@ export function latestFinancialPeriod<T>(
   }
   return latest;
 }
+
+/** The newest reported period end across the annual and quarterly statements: the period the trailing figures run through. */
+export function latestReportedPeriod(financials: {
+  annualStatements?: readonly { date: string }[];
+  quarterlyStatements?: readonly { date: string }[];
+}): string | null {
+  return latestFinancialPeriod([...financials.annualStatements ?? [], ...financials.quarterlyStatements ?? []], (row) => row.date)?.date ?? null;
+}

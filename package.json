@@ -83,6 +83,7 @@
     "benchmark:tui:navigation": "bun run scripts/benchmark-tui-navigation.ts",
     "benchmark:tui:compare": "bun run scripts/benchmark-tui-compare.ts",
     "benchmark:tui:memory": "bun run scripts/benchmark-tui-memory.ts",
+    "benchmark:startup": "bun run scripts/benchmark-startup.ts",
     "check:pane-chrome": "bun run scripts/pane-chrome/checks.ts",
     "check:chat-mentions": "bun scripts/pane-chrome/chat-mentions.ts",
     "check:pane-screenshot": "bun run scripts/pane-chrome/screenshot.ts",

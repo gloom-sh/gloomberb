@@ -126,8 +126,8 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["GIP"],
   },
   G: {
-    summary: "Chart any series together: prices, statement lines, valuation multiples, FRED series, map series such as chokepoint transits, indicators and formulas. Series read SYMBOL:field, FRED:series or GEO:series.",
-    usage: ["G", "G NVDA:revenue, NVDA:net_income", "G XOM, GEO:HORMUZ"],
+    summary: "Chart any series together: prices, statement lines, valuation multiples, FRED series, map series such as chokepoint transits, indicators and formulas. Series read SYMBOL:field, FRED:series or GEO:series, separated by commas; tickers with spaces between them are a list too.",
+    usage: ["G", "G NVDA:revenue, NVDA:net_income", "G XOM, GEO:HORMUZ", "G AAPL MSFT"],
     keys: CHART_KEYS,
     data: { free: "Prices 15 minutes delayed, other series as published", pro: "Prices real-time for US listings, other series as published" },
     bloomberg: ["G"],
@@ -228,7 +228,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     summary: "Screen covered stocks on valuation, growth, margins, liquidity, volatility, short interest, insider activity and 13F holders, then rank the matches by any metric. "
       + "ATR% is the 14-session average true range as a percent of the last close. IV rank is a rank, not an IV percentile: 0 is the lowest 30-day implied volatility of the past 52 weeks and 100 the highest.",
     usage: ["EQS"],
-    keys: [key("a", "dd criterion"), key("m", "etric"), key("s", "ave screen"), key("o", "pen research")],
+    keys: [key("a", "dd criterion"), key("m", "etric"), key("t", "check ticker"), key("s", "ave screen"), key("o", "pen research")],
     data: same("Daily snapshot, statements as filed"),
     bloomberg: ["EQS"],
   },
@@ -414,7 +414,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["DVD"],
   },
   SI: {
-    summary: "FINRA short interest settlements with shares short, days to cover and average daily volume over time. Daily volume is the other tab.",
+    summary: "FINRA short interest settlements with shares short, days to cover and average daily volume over time. Daily volume, fails to deliver and weekly ATS/OTC volume are the other tabs.",
     usage: ["SI AAPL"],
     keys: [key("v", "iew"), STEP],
     data: same("Twice a month, as FINRA publishes"),
@@ -432,6 +432,20 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["SIV TSLA"],
     keys: [key("v", "iew"), STEP, OPEN_SOURCE],
     data: same("Daily, the evening after each session"),
+    bloomberg: [],
+  },
+  FTD: {
+    summary: "The short interest pane on Fails to deliver: outstanding fail shares for each settlement date and CUSIP. These snapshots are never added across dates.",
+    usage: ["FTD AAPL"],
+    keys: [key("v", "iew"), OPEN, OPEN_SOURCE],
+    data: same("Twice a month, as the SEC publishes"),
+    bloomberg: [],
+  },
+  ATS: {
+    summary: "The short interest pane on Weekly ATS/OTC: ATS and non-ATS off-exchange shares and trades. ATS % is ATS shares divided by published off-exchange shares, not total market volume or short volume.",
+    usage: ["ATS AAPL"],
+    keys: [key("v", "iew"), OPEN, OPEN_SOURCE],
+    data: same("Weekly with FINRA's publication delay"),
     bloomberg: [],
   },
   DIAG: {

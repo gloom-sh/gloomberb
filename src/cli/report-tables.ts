@@ -57,6 +57,12 @@ export interface CliReportColumn<Row = Record<string, unknown>> {
   format?: (value: unknown, row: Row) => string;
   /** The row field naming the unit of a number in this column; the number then exports as it is, with that unit. */
   unitKey?: string;
+  /**
+   * With `unitKey`: the unit always goes to a `<header> unit` column beside
+   * the figures, never into the header, so the header is the same whichever
+   * rows loaded (a market cap in one currency for some peers, in another for others).
+   */
+  unitColumn?: boolean;
 }
 
 /** A label/value line of a report. `unit` names the unit of a numeric `value` when `formatted` cannot say it. */
@@ -83,6 +89,8 @@ interface ResolvedColumn {
   cells: ResolvedCell[];
   /** The unit the column draws its numbers in, for a table with no rows to say it. */
   unit?: string;
+  /** The unit always has a column of its own (`unitColumn`). */
+  unitColumn?: boolean;
 }
 
 const BLANK = { kind: "blank" } as const;
@@ -318,7 +326,7 @@ function rowUnits(columns: readonly ResolvedColumn[], mixed: readonly boolean[],
  */
 function assembleTable(title: string, columns: readonly ResolvedColumn[], rowCount: number, status?: StatusColumn): CliReportTable {
   const units = columns.map((column) => rowCount === 0 && column.unit != null ? new Set([column.unit]) : numberUnits(column.cells));
-  const mixed = units.map((columnUnits) => columnUnits.size > 1);
+  const mixed = units.map((columnUnits, index) => columnUnits.size > 1 || columns[index]!.unitColumn === true);
   const byRow = mixed.some(Boolean) ? rowUnits(columns, mixed, rowCount) : null;
   const layout = columns.flatMap((column, index) => {
     const columnUnits = units[index]!;
@@ -381,7 +389,9 @@ const EMPTY_ROW: unknown = (() => {
  * plain figure), read from what its format draws for one; null when it draws
  * no figure for one, passes the value through as it is, or throws.
  */
-function drawnUnit<Row>(column: CliReportColumn<Row>, row: Row): string | null {
+function drawnUnit<Row>(column: CliReportColumn<Row>, row: Row, rowUnitKey?: string): string | null {
+  // A figure in the row's own unit is bare: the row's `currency_or_unit` names it.
+  if (rowUnitKey && column.unitKey === rowUnitKey) return "";
   const unit = column.unitKey ? (row as Record<string, unknown> | undefined)?.[column.unitKey] : undefined;
   if (typeof unit === "string" && unit) return unit;
   if (!column.format) return null;
@@ -438,29 +448,36 @@ const IDENTIFIER_KEY = /^(?:id|cik|code|cusip|figi|isin|symbol|ticker)$|(?:Id|Ci
  * when one of its columns draws figures through a format, read from the
  * columns alone so it is there with or without rows, and a table of text has
  * none; beside a column of its own named Status it is `value_status`.
+ * `rowUnitKey` is the row field its `currency_or_unit` cell is read from: a
+ * column whose `unitKey` is that field exports its figures bare under its own
+ * header (`Last`, never `Last ($)` beside a franc), each row's unit named there.
  */
 export function exportRowsTable<Row extends Record<string, unknown>>(
   title: string,
   columns: readonly CliReportColumn<Row>[],
   rows: readonly Row[],
-  { status = false }: { status?: boolean } = {},
+  { status = false, rowUnitKey }: { status?: boolean; rowUnitKey?: string } = {},
 ): CliReportTable {
   const reasons = rows.map((): Array<{ header: string; text: string }> => []);
   const units = columns.map(columnUnit);
   // Decided by the columns alone, so a table has the column, or not, whatever rows it has.
   const withStatus = status && units.some((unit) => unit != null);
   const resolved = columns.map((column, columnIndex): ResolvedColumn => {
-    const rowUnits = rows.map((row) => drawnUnit(column, row));
+    const rowUnits = rows.map((row) => drawnUnit(column, row, rowUnitKey));
     const values = rows.map((row) => (row as Record<string, unknown> | undefined)?.[column.key]);
+    const inRowUnit = !!rowUnitKey && column.unitKey === rowUnitKey;
     const { header, cells } = resolveColumn(
       column.header,
       rows.map((row, index): Cell => {
         const value = values[index];
         const unit = column.unitKey ? (row as Record<string, unknown> | undefined)?.[column.unitKey] : undefined;
-        if (typeof unit === "string" && unit && typeof value === "number" && Number.isFinite(value)) {
-          return { kind: "number", value: exportNumber(value), unit };
+        const drawn = column.format ? column.format(value, row) : null;
+        // A figure the text leaves out of this row (another session's print) is not one of its figures.
+        const left = drawn != null && readDisplay(drawn) === BLANK_DISPLAY;
+        if (!left && typeof value === "number" && Number.isFinite(value) && (inRowUnit || (typeof unit === "string" && unit))) {
+          return { kind: "number", value: exportNumber(value), unit: inRowUnit ? "" : unit as string };
         }
-        return exportCell(value, column.format ? column.format(value, row) : null, column.key);
+        return exportCell(value, drawn, column.key);
       }),
       !IDENTIFIER_KEY.test(column.key),
     );
@@ -478,7 +495,8 @@ export function exportRowsTable<Row extends Record<string, unknown>>(
       }),
     };
     const unit = units[columnIndex];
-    return unit == null ? table : { ...table, unit };
+    const withUnit = unit == null ? table : { ...table, unit };
+    return column.unitColumn && column.unitKey && !inRowUnit ? { ...withUnit, unitColumn: true } : withUnit;
   });
   const statusColumn = withStatus ? {
     header: columns.some((column) => column.header.trim().toLowerCase() === "status") ? "value_status" : "status",

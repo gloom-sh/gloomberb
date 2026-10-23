@@ -1,3 +1,4 @@
+import { logFailure } from "../../../utils/log-failure";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { PowerBoard, PowerFilter, PowerHistory } from "../../../api-client/power";
 import { isAccessDenied } from "../../../api-client/errors";
@@ -87,7 +88,10 @@ function PowerView({ width, height, focused, scope, needsVerification }: PanePro
   const searchFocus = useQueryBarSearch();
   const [snapshotSetting] = usePaneSettingValue<{ board: PowerBoard; history?: PowerHistory; tickerScopes?: PowerTickerScope[] } | null>("powerSnapshot", null);
   const snapshot = useMemo(() => { try { return snapshotSetting ? { board: validatePowerBoard(snapshotSetting.board), history: snapshotSetting.history ? validatePowerHistory(snapshotSetting.history) : undefined,
-    tickerScopes: Array.isArray(snapshotSetting.tickerScopes) ? snapshotSetting.tickerScopes : null } : null; } catch { return null; } }, [snapshotSetting]);
+    tickerScopes: Array.isArray(snapshotSetting.tickerScopes) ? snapshotSetting.tickerScopes : null } : null; } catch (error) {
+      logFailure("power.pane", "Validate power snapshot failed")(error);
+      return null;
+    } }, [snapshotSetting]);
   const projectTab = ["queue", "loads", "capacity"].includes(tab);
   const filter = useMemo(() => powerQuery({ tab, country, region, fuel, status, search, historical, context, loadClass, sourceId, from, to,
     sort: sort.column, direction: sort.direction }, symbol), [tab, country, region, fuel, status, search, historical, context, loadClass, sourceId, from, to, sort.column, sort.direction, symbol]);

@@ -50,12 +50,12 @@ describe("map series in G", () => {
     expect(await chokepointSeriesFor(request, " - ")).toBeNull();
   });
 
-  test("without the series index, the key straits are still known by name and nothing else is", async () => {
+  test("without the series index, key straits still work and other lookups fail", async () => {
     const request = createGeoFixtureRequest({ absent: true });
     expect(await chokepointSeriesFor(request, "Strait of Hormuz")).toBe("HORMUZ");
     expect(await chokepointSeriesFor(request, "bab el-mandeb")).toBe("BABELMANDEB");
     expect(await chokepointSeriesFor(request, "bosphorus")).toBe("BOSPHORUS");
-    expect(await chokepointSeriesFor(request, "NVDA")).toBeNull();
+    await expect(chokepointSeriesFor(request, "NVDA")).rejects.toThrow("Chokepoint search unavailable.");
   });
 
 });

@@ -12,6 +12,7 @@ import { MAIN_WINDOW_RPC_KEY } from "../window/focus";
 import { applyDesktopWindowControl } from "../window/controls";
 import { saveTextFileToDownloads } from "../../../../utils/save-text-file";
 import { setAppBadge } from "./app-badge";
+import { desktopBootFramePath, saveDesktopBootFrame } from "../window/boot-frame";
 import type { DesktopBackend, DesktopRpc } from "./backend";
 
 function normalizeText(value: unknown): string | undefined {
@@ -114,8 +115,7 @@ export async function handleDesktopHostRequest(
         throw new Error("host.openExternal requires a URL.");
       }
       const externalUrl = safeExternalUrl(request.payload.url);
-      if (externalUrl) Utils.openExternal(externalUrl);
-      return null;
+      return externalUrl ? Utils.openExternal(externalUrl) !== false : false;
     }
     case "host.copyText":
       Utils.clipboardWriteText(normalizeText(request.payload.text) ?? "");
@@ -156,6 +156,12 @@ export async function handleDesktopHostRequest(
       ContextMenu.showContextMenu(menu as never);
       return true;
     }
+    case "host.saveBootFrame":
+      saveDesktopBootFrame(desktopBootFramePath(), request.payload.frame, {
+        mainWindow: backend.rpcs.getRpcWindowKey(rpc) === MAIN_WINDOW_RPC_KEY,
+        session: backend.config !== null,
+      });
+      return null;
     case "host.setAppBadge":
       // One badge for the app, from the main window; a popped-out pane's view
       // has its own chat state and must not overwrite it.

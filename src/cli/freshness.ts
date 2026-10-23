@@ -1,9 +1,9 @@
-import type { FinancialStatement, Quote, TickerFinancials } from "../types/financials";
+import type { Quote, TickerFinancials } from "../types/financials";
 import type { HeadlessPaneFreshness, HeadlessPaneRow } from "../types/headless";
 import { deriveHeadlessFreshness, type ReportFreshness } from "./pane-functions/freshness";
 import { fxPairObservation, fxRateObservations, type FxRateTiming } from "../plugins/builtin/shared/fx-rate-freshness";
 import { quoteObservation, REPORTED_DATA } from "../plugins/builtin/shared/report-freshness";
-import { latestFinancialPeriod } from "../utils/latest-financial-period";
+import { latestReportedPeriod } from "../utils/latest-financial-period";
 
 /**
  * The source, as-of and status line of a plain CLI command, derived exactly as
@@ -51,12 +51,6 @@ export function fxPairFreshness(
   const rates = new Map([...legs].map(([currency, leg]) => [currency, leg.rate] as const));
   const observation = fxPairObservation(fxRateObservations([...legs.keys()], rates, (currency) => ({ entry: legs.get(currency)?.timing }), now));
   return observation ? rowsFreshness([observation], undefined, undefined, now) : undefined;
-}
-
-/** The newest reported period end in the statements, the period the trailing figures run through. */
-function latestReportedPeriod(financials: Pick<TickerFinancials, "annualStatements" | "quarterlyStatements">): string | null {
-  const rows: FinancialStatement[] = [...financials.annualStatements, ...financials.quarterlyStatements];
-  return latestFinancialPeriod(rows, (row) => row.date)?.date ?? null;
 }
 
 /**

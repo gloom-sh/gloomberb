@@ -32,6 +32,8 @@ curl -fsSL gloom.sh/install | bash
 
 This installs `gloom` to `~/.local/bin` by default. A Linux desktop package is not published yet.
 
+On Alpine and other musl distributions the script installs the musl build, which needs `libstdc++` (`apk add libstdc++`). `bun install -g gloomberb` works there too.
+
 ## Windows
 
 Install the desktop app:
@@ -84,7 +86,7 @@ The [install script](../scripts/install.sh) downloads a binary or app archive fr
 
 On Apple Silicon Macs it installs the desktop app in `/Applications` and links the `gloom` command into `~/.local/bin`. On Intel Macs and Linux it installs the standalone terminal binary, a single Bun-compiled executable that needs no separate Bun installation, in `~/.local/bin`. `GLOOM_INSTALL_DIR` (or `GLOOMBERB_INSTALL_DIR`) changes the command's destination and `GLOOM_APP_DIR` (or `GLOOMBERB_APP_DIR`) the Mac app's. It also links `gloomberb`, the command's name before 0.19, to the same program. A `gloom` that belongs to another program is left as it is, and Gloom is installed as `gloomberb` only. It uses `sudo` only when a destination directory is not writable.
 
-To install by hand on Linux, download the [x64](https://github.com/gloom-sh/gloomberb/releases/latest/download/gloomberb-linux-x64.gz) or [ARM64](https://github.com/gloom-sh/gloomberb/releases/latest/download/gloomberb-linux-arm64.gz) binary, unpack it with `gzip`, mark it executable and put it on your `PATH` as `gloom`.
+To install by hand on Linux, download the [x64](https://github.com/gloom-sh/gloomberb/releases/latest/download/gloomberb-linux-x64.gz) or [ARM64](https://github.com/gloom-sh/gloomberb/releases/latest/download/gloomberb-linux-arm64.gz) binary (on musl, [x64](https://github.com/gloom-sh/gloomberb/releases/latest/download/gloomberb-linux-x64-musl.gz) or [ARM64](https://github.com/gloom-sh/gloomberb/releases/latest/download/gloomberb-linux-arm64-musl.gz)), unpack it with `gzip`, mark it executable and put it on your `PATH` as `gloom`.
 
 On first start, the app clones its missing official plugins from GitHub once a local profile exists. That needs Git and network access ([which plugins](../PLUGINS.md#official-plugins-that-need-git)). Packaged apps use their bundled Bun runtime to install plugin dependencies. See [plugin installation](../PLUGINS.md).
 

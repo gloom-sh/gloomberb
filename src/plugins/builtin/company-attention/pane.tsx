@@ -25,6 +25,7 @@ import { useAttentionEvidence } from "./evidence";
 import { cachedAttention, fetchAttention, fetchPostingDetail, loadAttention, validateAttention, type AttentionPayload } from "./client";
 import { appsModel, attentionNumber, attentionPaneTabs, attentionSeries, count, hiringModel, remoteText, SIGNED_COLUMNS, sortAttentionRows, type AttentionKind, type AttentionPaneTab, type AttentionRow, type AttentionTab } from "./model";
 import { HiringMovesView } from "./moves";
+import { HiringSignalsView } from "./signals";
 
 type Size = Pick<PaneProps, "width" | "height" | "focused">;
 const rowId = (row: AttentionRow) => row.id;
@@ -76,7 +77,7 @@ export function AppsPane(props: Size) {
   return <AttentionView key={symbol ?? "board"} {...props} kind="apps" symbol={symbol ?? undefined} />;
 }
 
-/** `initialTab`: the tab a company opened from a board starts on, as HIRE's moves open a company on its Moves. */
+/** `initialTab`: the tab a company opened from a board starts on, as HIRE's moves open a company on its Moves (and Expansion and Anomalies on theirs). */
 function AttentionView({ kind, symbol, width, height, focused, initialTab }: Size & { kind: AttentionKind; symbol?: string; initialTab?: AttentionPaneTab }) {
   const colors = useThemeColors();
   const desktop = !!useUiCapabilities().nativePaneChrome;
@@ -90,9 +91,10 @@ function AttentionView({ kind, symbol, width, height, focused, initialTab }: Siz
   const [openingTab] = usePaneSettingValue<string>("tab", "table");
   const [savedTab, setTab] = usePluginPaneState<string>(`${kind}:${symbol ?? "board"}:tab`, initialTab ?? openingTab);
   const paneTab: AttentionPaneTab = (attentionPaneTabs(kind, symbol) as string[]).includes(savedTab) ? savedTab as AttentionPaneTab : "table";
-  const moves = paneTab === "moves";
-  // The report views read under the Moves tab are the table's; the Moves tab draws its own.
-  const tab: AttentionTab = moves ? "table" : paneTab;
+  const signalGroup = paneTab === "expansion" || paneTab === "anomalies" ? paneTab : null;
+  // Moves, Expansion and Anomalies draw their own reads; the report views behind them are the table's.
+  const moves = paneTab === "moves" || !!signalGroup;
+  const tab: AttentionTab = paneTab === "moves" || paneTab === "expansion" || paneTab === "anomalies" ? "table" : paneTab;
   const [openingCountry] = usePaneSettingValue<string>("country", "");
   const [country, setCountry] = usePluginPaneState<string>(`${kind}:country`, openingCountry);
   const [openingChart] = usePaneSettingValue<string>("chart", "");
@@ -149,7 +151,7 @@ function AttentionView({ kind, symbol, width, height, focused, initialTab }: Siz
   const postingResource = useAsyncResource(postingLoader);
   const posting = postingKey ? postingResource.data : null;
   const tabLabels: Record<AttentionTab, string> = { table: "Table", chart: "Chart", mix: kind === "hiring" ? "Mix" : "Markets", peers: kind === "apps" && !symbol ? "Companies" : "Peers", evidence: "Evidence" };
-  const tabs = attentionPaneTabs(kind, symbol).map((value) => ({ value, label: value === "moves" ? "Moves" : tabLabels[value] }));
+  const tabs = attentionPaneTabs(kind, symbol).map((value) => ({ value, label: value === "moves" ? "Moves" : value === "expansion" ? "Expansion" : value === "anomalies" ? "Anomalies" : tabLabels[value] }));
   const signInWall = !data && isCloudSessionRequired(resource.error);
   const { strip, rows: tabRows } = usePaneTabs(!signInWall && !openCompany && !app ? { tabs, activeValue: paneTab, onSelect: (value) => { setTab(value); setOpenEvidence(null); }, focused, dense: true } : null);
   const bodyHeight = Math.max(3, height - tabRows);
@@ -182,6 +184,12 @@ function AttentionView({ kind, symbol, width, height, focused, initialTab }: Siz
     ...(tab === "chart" ? [{ id: "days", label: "Window", value: days, options: ["30", "90", "365", "730"].map((value) => ({ value, label: `${value}D` })), onChange: setDays }] : []),
     ...(tab === "mix" ? [{ id: "mix", label: "View", value: mix, options: [{ value: "countries", label: "Countries" }, { value: "spreads", label: "Rank spreads" }], onChange: setMix }] : []),
   ] : tab === "mix" ? [{ id: "mix", label: "Group", value: mix, options: [{ value: "functions", label: "Role family" }, { value: "seniority", label: "Seniority" }, { value: "countries", label: "Countries" }, { value: "locations", label: "Locations" }, { value: "signals", label: "Signals" }], onChange: setMix }] : []} />;
+  if (signalGroup) return <Box width={width} height={height} flexDirection="column">
+    {strip}
+    <HiringSignalsView key={signalGroup} group={signalGroup} symbol={symbol} width={width} height={bodyHeight} focused={focused} accessKey={accessKey}
+      company={symbol ? undefined : { open: openCompany, onOpen: setOpenCompany,
+        render: (company, detailWidth, detailHeight) => <AttentionView key={company} kind={kind} symbol={company} width={detailWidth} height={detailHeight} focused={focused} initialTab={signalGroup} /> }} />
+  </Box>;
   if (moves) return <Box width={width} height={height} flexDirection="column">
     {strip}
     <HiringMovesView symbol={symbol} width={width} height={bodyHeight} focused={focused} accessKey={accessKey}

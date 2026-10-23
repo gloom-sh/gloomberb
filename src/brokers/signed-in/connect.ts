@@ -31,6 +31,8 @@ export function signedInBrokerForProfile(instance: BrokerInstanceConfig, fallbac
 export interface ConnectSignedInBrokerDeps<T> {
   getConfig(): AppConfig;
   createBrokerInstance(brokerType: string, label: string, values: Record<string, unknown>): Promise<BrokerInstanceConfig>;
+  /** Turns a profile that was turned off back on. */
+  enableBrokerInstance(instanceId: string): Promise<void>;
   syncBrokerInstance(instanceId: string): Promise<T>;
   /** Asks the user to connect: a form's own connect step, or the connect dialog when missing. */
   requestSignIn?: (broker: SignedInBroker) => Promise<boolean>;
@@ -39,6 +41,9 @@ export interface ConnectSignedInBrokerDeps<T> {
 /**
  * Asks the user to connect `broker`, then syncs its profile, creating it the
  * first time. Resolves null when the broker was not connected.
+ *
+ * Connecting a broker whose profile is turned off turns it back on first:
+ * nothing syncs a disabled profile, and connecting it again is asking for it.
  */
 export async function connectSignedInBrokerProfile<T>(
   broker: SignedInBroker,
@@ -46,8 +51,11 @@ export async function connectSignedInBrokerProfile<T>(
 ): Promise<{ instance: BrokerInstanceConfig; synced: T } | null> {
   const connected = await (deps.requestSignIn ?? requestBrokerSignIn)(broker);
   if (!connected) return null;
-  const instance = findSignedInBrokerProfile(deps.getConfig().brokerInstances, broker.id)
-    ?? await deps.createBrokerInstance(SIGNED_IN_BROKER_TYPE, broker.name, { connectionMode: broker.id, broker: broker.id });
+  const existing = findSignedInBrokerProfile(deps.getConfig().brokerInstances, broker.id);
+  if (existing?.enabled === false) await deps.enableBrokerInstance(existing.id);
+  const instance = existing
+    ? { ...existing, enabled: true }
+    : await deps.createBrokerInstance(SIGNED_IN_BROKER_TYPE, broker.name, { connectionMode: broker.id, broker: broker.id });
   return { instance, synced: await deps.syncBrokerInstance(instance.id) };
 }
 

@@ -1,6 +1,7 @@
-import { afterEach, expect, spyOn, test } from "bun:test";
+import { afterEach, expect, setSystemTime, spyOn, test } from "bun:test";
 import { act, useReducer } from "react";
 import { apiClient } from "../../../api-client";
+import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pane/footer";
 import { createOpenTuiTestHarness, settleFrame, takeSavedTextFile } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState } from "../../../state/app/context";
 import { exportPaneTable } from "../../../state/pane-table-export-registry";
@@ -10,14 +11,16 @@ import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { AssetDataRouter } from "../../../sources/provider-router";
 import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
+import { Box } from "../../../ui";
 import { cryptoMarketsCache, DEFI_TVL_CACHES, STABLECOIN_SUPPLY_CACHES } from "./client";
 import { CryptoBoardPane } from "./pane";
-import { cryptoFixture, defiTvlFixture, stablecoinSupplyFixture } from "./test-fixture";
+import { CRYPTO_FIXTURE_NOW, cryptoFixture, defiTvlFixture, stablecoinSupplyFixture } from "./test-fixture";
 
 const tui = createOpenTuiTestHarness();
 let restore: (() => void) | undefined;
 let coordinator: MarketDataCoordinator | undefined;
 afterEach(() => {
+  setSystemTime();
   setSharedMarketDataCoordinator(null);
   coordinator?.destroy();
   coordinator = undefined;
@@ -27,7 +30,7 @@ afterEach(() => {
   for (const cache of [...STABLECOIN_SUPPLY_CACHES, ...DEFI_TVL_CACHES]) cache.reset();
 });
 
-async function mountPane(width = 130, height = 20) {
+async function mountPane(width = 130, height = 20, withFooter = false) {
   const config = createTestPaneConfig("/tmp/crypto-pane-test-unused", {
     instanceId: "cryp",
     paneId: "crypto-board",
@@ -38,12 +41,19 @@ async function mountPane(width = 130, height = 20) {
     const [current, dispatch] = useReducer(appReducer, state);
     return (
       <TestPaneProvider state={current} dispatch={dispatch} paneId="cryp" pluginId="market-overview" runtime={createTestPluginRuntime()}>
-        <CryptoBoardPane paneId="cryp" paneType="crypto-board" width={width} height={height} focused />
+        {withFooter ? (
+          <PaneFooterProvider>{(footer) => (
+            <Box width={width} height={height + 1} flexDirection="column">
+              <Box height={height}><CryptoBoardPane paneId="cryp" paneType="crypto-board" width={width} height={height} focused /></Box>
+              <PaneFooterBar footer={footer} width={width} focused />
+            </Box>
+          )}</PaneFooterProvider>
+        ) : <CryptoBoardPane paneId="cryp" paneType="crypto-board" width={width} height={height} focused />}
       </TestPaneProvider>
     );
   }
   await act(async () => {
-    await tui.render(<Harness />, { width, height });
+    await tui.render(<Harness />, { width, height: withFooter ? height + 1 : height });
   });
   await settleFrame(tui.setup(), 10);
 }
@@ -86,6 +96,17 @@ test("streamed quotes move the visible rows' price, change, returns and market c
   expect(frame).toContain("110");
   expect(frame).toContain("+12.24%");
   expect(frame).toContain("1.10T");
+});
+
+test("the footer dates a board without a live feed by its time and age, never as live or delayed", async () => {
+  // A free board: nothing streams, so every coin is priced from the board the server renews every 15 seconds.
+  setSystemTime(new Date(CRYPTO_FIXTURE_NOW));
+  const query = spyOn(apiClient, "getCloudCryptoMarkets").mockImplementation(async () => cryptoFixture());
+  restore = () => query.mockRestore();
+  await mountPane(130, 20, true);
+  const frame = tui.frame();
+  expect(frame).toContain("11:59 UTC · oldest 1 min");
+  expect(frame).not.toMatch(/delayed|live|status not reported/i);
 });
 
 test("crypto board lists coins by market cap, switches to stablecoins and keeps rows through a failed refresh", async () => {

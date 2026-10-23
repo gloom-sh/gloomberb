@@ -14,6 +14,8 @@ interface FakeMachine {
   procTranslated?: string;
   /** `sysctl -n hw.optional.arm64`, unset when the key does not exist. */
   hardwareArm64?: string;
+  /** What `ldd --version` prints; the host's own ldd when unset. */
+  lddVersion?: string;
 }
 
 interface InstallRun {
@@ -93,6 +95,8 @@ async function runInstall(machine: FakeMachine, options: {
   ].join("\n"));
 
   const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
+  // musl's ldd prints its version to stderr and exits 1.
+  if (machine.lddVersion !== undefined) writeStub(binDir, "ldd", `printf '%s\\n' ${quote(machine.lddVersion)} >&2\nexit 1`);
   const downloads = Object.entries(options.downloads ?? {}).map(([url, contents], index) => {
     const file = join(workDir, `download-${index}`);
     writeFileSync(file, contents);
@@ -225,7 +229,24 @@ describe("install.sh architecture detection", () => {
     expect(run.downloadLog).toContain("gloomberb-linux-arm64.gz");
   });
 
+  // The glibc binary crashed at startup on Alpine: "Error relocating
+  // libopentui.so: getcontext: symbol not found".
+  test.each([
+    ["x86_64", "gloomberb-linux-x64-musl.gz"],
+    ["aarch64", "gloomberb-linux-arm64-musl.gz"],
+  ])("installs the musl binary on Alpine (%s)", async (unameMachine, asset) => {
+    const run = await runInstall({
+      unameSystem: "Linux",
+      unameMachine,
+      lddVersion: "musl libc (x86_64)\nVersion 1.2.5\nDynamic Program Loader",
+    });
 
+    expect(run.downloadLog).toContain(asset);
+    expect(run.downloadLog).not.toMatch(/gloomberb-linux-(x64|arm64)\.gz/);
+    // Downloads fail here, as they would against a release without musl builds.
+    expect(run.exitCode).not.toBe(0);
+    expect(run.stderr).toContain("bun install -g gloomberb");
+  });
 });
 
 const linuxMachine = { unameSystem: "Linux", unameMachine: "x86_64" };

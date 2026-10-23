@@ -234,7 +234,7 @@ export const cryptoBoardHeadless: HeadlessPaneDefinition<"rows"> = {
   },
   // The board as the server read it, at most 15 seconds before; the pane streams, the report does not.
   // Each row keeps the time of its own last trade, so a coin that has not traded lately reads its age.
-  freshness: { status: "live", ...CRYPTO_BOARD_FRESHNESS },
+  freshness: CRYPTO_BOARD_FRESHNESS,
   async load(args, ctx) {
     if (args.options.list === "defi") return loadDefi(args.options.by === "chain" ? "chain" : "protocol", ctx);
     const kind = args.options.list === "stablecoin" ? "stablecoin" : "coin" satisfies CryptoAssetKind;

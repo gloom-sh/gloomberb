@@ -504,7 +504,15 @@ function ChartComposerSurface({
     () => listingRef.current,
     [freshListing?.seriesId, freshListing?.key, freshListing?.target.symbol, freshListing?.target.exchange],
   );
+  // The ticket's levels (its draft and working orders) move through the ticket, which reviews any change.
+  const tradeRef = useRef(trade);
+  tradeRef.current = trade;
   const editLevels = useCallback((edit: CompositeLevelEdit) => {
+    const ticket = tradeRef.current;
+    if (ticket?.levels.some((level) => level.id === edit.id)) {
+      if (edit.kind === "move") ticket.moveLevel?.(edit.id, edit.value);
+      return;
+    }
     const key = listingRef.current?.key;
     if (!key) return;
     setLevelStore((current: unknown) => {
@@ -691,6 +699,11 @@ function ChartComposerSurface({
     },
     onCancel: () => setPickingAnchor(false),
   } : null, [pickingAnchor, updateSpec]);
+  // The ticket beside the chart asks for a price: a press on the plot, or Enter at the cursor, sets it.
+  const tradeOnChart = !!trade && !!listing && researchTradeMatches(trade, { ...listing.instrument, exchange: listing.target.exchange });
+  const pricePick = useMemo(() => tradeOnChart && trade?.picking && trade.finishPick && trade.cancelPick ? {
+    label: `set ${trade.picking.label}`, onPick: trade.finishPick, onCancel: trade.cancelPick,
+  } : null, [tradeOnChart, trade?.picking, trade?.finishPick, trade?.cancelPick]);
   const formulasDialogRef = useRef<MultiSelectDialogButtonHandle | null>(null);
   const indicatorsDisabled = !isPriceStudyTarget(spec);
   const formulasDisabled = spec.series.filter((series) => series.visible !== false).length < 2;
@@ -1256,6 +1269,7 @@ function ChartComposerSurface({
           onToggleSeries={toggleSeries}
           isSeriesToggleable={isSeriesToggleable}
           timePick={timePick}
+          pricePick={pricePick}
           levels={chartLevels}
           emptyMessage={emptyMessage}
           emptyDetail={emptyDetail}

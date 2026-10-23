@@ -9,6 +9,7 @@ import {
   QUICK_LOOK_TICKER_SEARCH_OPTIONS,
   tickerSearchFailureItems,
   venueDropdownResults,
+  type RootTickerReading,
 } from "../ticker-search/results";
 import { orderListResults, type ResultItem } from "../../list/model";
 import type { CommandBarCategoryPriorities, CommandBarSectionOrder } from "../../view-model";
@@ -30,6 +31,8 @@ export function useRootProviderSearch(options: {
   rootPlainTickerSearchArg: string | null;
   /** Set when the query is `NET:` or `NET:N`. Empty string lists every venue. */
   listingSuffix: string | null;
+  /** What a plain query written as a terminal's code or a near miss reads as (`VOD LN`, `700.HK`). */
+  reading?: RootTickerReading | null;
   rootResultItems: ResultItem[];
   rootTickerSearchArg: string | null;
   tickers: AppState["tickers"];
@@ -58,6 +61,7 @@ export function useRootProviderSearch(options: {
     readTickerSearchCache,
     rootPlainTickerSearchArg,
     listingSuffix,
+    reading = null,
     rootResultItems,
     rootTickerSearchArg,
     tickers,
@@ -191,13 +195,14 @@ export function useRootProviderSearch(options: {
     }
     if (rootTickerSearchArg && rootProviderResultsQuery === rootTickerSearchArg && rootProviderResults) {
       if (rootPlainTickerSearchArg) {
-        return mergePlainRootTickerResults(rootPlainTickerSearchArg, rootProviderResults, rootResultItems);
+        return mergePlainRootTickerResults(rootPlainTickerSearchArg, rootProviderResults, rootResultItems, reading);
       }
       return rootProviderResults;
     }
     return rootResultItems;
   }, [
     listingSuffix,
+    reading,
     rootPlainTickerSearchArg,
     rootProviderResults,
     rootProviderResultsQuery,

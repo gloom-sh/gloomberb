@@ -370,6 +370,23 @@ describe("pane catalog search", () => {
     }
   });
 
+  test("an analyst's words for a comp table list RV first, and its words do not lift it over the functions other words name", async () => {
+    const context = { config: createDefaultConfig("/tmp/capabilities-test") } as MarketContext;
+    const registry = await createPaneCatalog(context, getLoadablePlugins());
+    try {
+      const entries = await buildPaneCatalogEntries(registry, context);
+      // "comp table" put RV 31st behind APPS, GUIDE and HIRE, and "competitor" matched nothing.
+      for (const query of ["comp table", "comps", "peers", "competitor", "competitors", "comparable companies", "peer comparison"]) {
+        expect(selectPaneCatalogMatches(filterPaneCatalogEntries(entries, query), query, 10).shown[0]?.token, query).toBe("RV");
+      }
+      for (const query of ["table", "companies", "comparable", "comparison", "company comparison", "price table"]) {
+        expect(filterPaneCatalogEntries(entries, query)[0]?.token, query).not.toBe("RV");
+      }
+    } finally {
+      registry.destroy();
+    }
+  });
+
   test("a function's code page names the other functions that list the same word, and AIS finds the map in any case", async () => {
     const context = { config: createDefaultConfig("/tmp/capabilities-test") } as MarketContext;
     const registry = await createPaneCatalog(context, getLoadablePlugins());

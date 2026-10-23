@@ -516,6 +516,8 @@ export function CommandBar({
     rootModeKindRef,
     rootQuery,
     rootQueryRef,
+    rootSelectionNavigatedRef,
+    rootShortcutIntent,
     rootThemeBaseIdRef,
     runDirectCommand,
     runRootRow,

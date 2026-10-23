@@ -72,6 +72,16 @@ describe("chart composer expressions", () => {
       .toThrow('Invalid chart series "MSFT:revenu"');
   });
 
+  // `fn G AAPL MSFT` passes "AAPL MSFT": two series, as `fn G AAPL,MSFT` charts them. (GLO-1263)
+  test("tickers typed with spaces between them are a list, and words that are not all series are told to use commas", () => {
+    const symbols = (value: string) => parseChartExpression(value).map((leg) => leg.kind === "security" ? leg.symbol : leg.kind);
+    expect(symbols("AAPL MSFT")).toEqual(["AAPL", "MSFT"]);
+    expect(symbols("AAPL MSFT, FRED:DGS10")).toEqual(["AAPL", "MSFT", "economic"]);
+    expect(() => parseChartExpression("AAPL MSFT:revenu")).toThrow('Invalid chart series "AAPL MSFT:revenu". Separate series with commas: AAPL,MSFT:revenu.');
+    // A formula keeps its spaces and is no list.
+    expect(buildCustomChartPreset("42*HO=F - CL=F").series.length).toBeGreaterThan(0);
+  });
+
   test("a stray separator in a pasted list adds no series: trailing, leading and doubled commas", () => {
     const symbols = (value: string) => parseChartExpression(value).map((leg) => leg.kind === "security" ? leg.symbol : leg.kind);
     for (const value of ["BRK.B,SPY,", ",BRK.B,SPY", "BRK.B,,SPY", " BRK.B , ; SPY ,\n"]) expect(symbols(value), value).toEqual(["BRK.B", "SPY"]);

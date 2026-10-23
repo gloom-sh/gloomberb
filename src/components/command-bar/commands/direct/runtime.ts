@@ -81,12 +81,12 @@ export function useCommandBarDirectCommandRuntime({
   // A confirm it opens (Reset All Data) runs after the bar closed.
   const getState = useAppGetState();
   const rendererHost = useRendererHost();
-  const runSecurityDescriptionShortcut = useCallback(async (query?: string) => {
+  const runSecurityDescriptionShortcut = useCallback(async (query?: string, options?: { forceNewPane?: boolean }) => {
     const trimmed = query?.trim() || "";
     if (!trimmed) {
       const inferred = normalizeTickerInput(activeTickerSymbol, query);
       if (inferred) {
-        focusTicker(inferred);
+        focusTicker(inferred, options);
         closeAll({ revertThemePreview: false });
         return;
       }
@@ -103,6 +103,7 @@ export function useCommandBarDirectCommandRuntime({
     );
     if (resolvedTicker) {
       focusTicker(resolvedTicker.symbol, {
+        ...options,
         instrument: resolvedTicker.instrument,
         listing: resolvedTicker.listing,
       });

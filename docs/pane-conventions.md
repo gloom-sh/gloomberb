@@ -244,6 +244,7 @@ never goes there.
 |---|---|---|
 | A pane action (add, edit, open source, sync, save search) | Footer hint | `usePaneFooter({ hints })` |
 | Changing status (loading, error, live/delayed, stale, updated 2m ago, saving) | Footer info | `usePaneStatusFooter`, `loadingErrorFooterInfo` |
+| A message about one row of a list (a broker profile, an account, an alert, a plugin, an order): its state, an action running on it, what that action came to | On that row: a short state in its status cell, the full reason in its detail. Never the footer, never a toast | [Row messages](#row-messages) |
 | Summary figures for the whole pane or an open detail (VWAP, spread, percentile, range) | Header zone, under the query bar | `StatGrid` |
 | A control that changes what the pane shows (range, window, scope, level) | Query bar, never a cycling footer hint | `QueryBar` |
 | Non-blocking data limitation (missing period, fallback dates, partial source) | One amber `⚠` in the footer, `!` or click opens details | `usePaneNoticeFooter` |
@@ -256,7 +257,7 @@ never goes there.
 | Plan gating that only degrades the pane (delayed data, upgrade hint) | Footer, shared wording | `useCloudAccessFooter` (`shared/cloud-upgrade.ts`) |
 | Retry (or look again) from an empty or failed state | Inside that state, first, so it answers Enter | `PaneStatusBody`/`EmptyState` `retry` |
 | Upgrade or start button on an empty or failed state | Inside that state | `PaneStatusBody`/`EmptyState` `actions` |
-| An operation finished (saved, exported, failed) | Toast | `notify` |
+| An operation finished (saved, exported, failed), with no row to say it on | Toast | `notify` |
 | Destructive or irreversible decision | Dialog | `ConfirmDialog`, `tone: "danger"` |
 | Per-instance configuration | Pane settings via the `...` menu | `settings` on the pane def, `usePaneSettingValue` |
 | Methodology, assumptions, how to use the pane | `docs/*.md` | never body text or an info button |
@@ -336,6 +337,36 @@ the origin of a number. The one count the kit draws is the
 - Empty states are one line plus an optional `hint`.
 
 ## 5. Lists and tables
+
+### Row messages
+
+What concerns one row of a list is said on that row, not in the pane's
+footer and not as a toast: the footer is for the whole pane, and a toast
+for the app. A broker profile that is turned off, needs a new sign-in or
+failed to sync, a plugin that failed to install, an alert that got no quote:
+each is that row's.
+
+- The status cell gets a short state in a warning or error tone: `Disabled`,
+  `Sign-in needed`, `Sync failed`, `install failed`. While an action runs on
+  the row, the cell says so (`Syncing…`, `removing`).
+- The full reason goes in the row's own detail, where the app already shows
+  the row (the stack detail Enter opens, the inspector): the broker's words,
+  the step that failed. A table with no detail says it under the table while
+  the row is selected (`rootAfter`, a `Notice`), as Alerts does. Name the
+  step that failed, not the action the user asked for: enabling a profile
+  that then fails to sync says it was enabled and that the sync failed.
+- The state stands until the next action on the row, or until the row's own
+  status really changes (its state, its message, a sync), never on a
+  timestamp a poll can bump. A success the row's cells already show
+  (Connected, synced now) needs no message.
+- What stops a form from saving is the form's, not the row's: it goes beside
+  the form's Save, where it is in view, and goes with the form.
+- Only when the row is gone (removed, left the list) is what became of it a
+  toast. A failure of the whole pane (its feed is down, it is signed out)
+  goes in its footer.
+
+Reference: Brokers (`broker-manager/pane-actions.tsx`, `table.ts`
+`brokerRowStatus`) and Plugins (`plugin-marketplace/pane.tsx` `rowStatus`).
 
 Table header labels are uppercased by the kit; write them in any case.
 Section headings read in title case, bright and bold: the kit capitalises
@@ -810,7 +841,7 @@ template, or add it with its reason.
 5. Lists use the kit tables; details open in the stack, keyed by a stable id, persisted with `usePluginPaneState`.
 6. Paged sources load more on scroll, abort stale pages, reset on a new query.
 7. Tabs use `Tabs`, persist the active tab, scope their footers, mount lazily.
-8. Forms use kit fields, one Save per form at its bottom, Enter/Esc, busy and result in the footer, destructive actions confirmed.
+8. Forms use kit fields, one Save per form at its bottom, Enter/Esc, busy and result in the footer, destructive actions confirmed. What concerns one row of a list is said on that row ([Row messages](#row-messages)).
 9. Per-instance configuration is a pane setting; important toggles are `quickSettings`.
 10. Methodology and usage text is in `docs/`.
 11. Data panes have a `headless` definition; fetching is in `client.ts`. It declares `freshness` (source, status, schedule) wherever "Gloom Cloud" and the status read from the rows would be wrong, so the report's source, as-of and status line is true.

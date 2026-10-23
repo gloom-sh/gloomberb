@@ -161,6 +161,7 @@ function useOnboardingWizard({ pluginRegistry, importBrokerPositions, onComplete
     importBrokerPositions,
     getConfig: () => stateRef.current.config,
     createBrokerInstance: (brokerType, label, values) => pluginRegistry.createBrokerInstance(brokerType, label, values),
+    enableBrokerInstance: (instanceId) => pluginRegistry.updateBrokerInstance(instanceId, {}, { enabled: true }),
     onSynced: handleBrokerSynced,
     setEditingField,
     setPortfolioSub,

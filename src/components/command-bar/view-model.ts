@@ -187,6 +187,12 @@ const PLUGIN_INSTALL_SECTION_PRIORITY = -200;
  */
 const EXACT_MATCH_SECTION_PRIORITY = -150;
 /**
+ * The listing a near miss or a terminal's code was read as (`700.HK` as 0700
+ * on HKEX), when no row is the exact match: a fact the typed text points at,
+ * so it sits under an exact symbol and above the AI's guess.
+ */
+const DID_YOU_MEAN_SECTION_PRIORITY = -120;
+/**
  * The AI leads the rest even though it is the slowest source (~600ms+): it
  * translates the sentence the user typed into commands, which is the answer to
  * what they asked when no symbol matched outright. Its Thinking placeholder
@@ -211,6 +217,7 @@ function getCategoryPriority(category: string, options?: CommandBarSectionOption
   if (sectionOrder === "ranked") return 0;
   if (normalized === "ask ai") return ASSIST_SECTION_PRIORITY;
   if (normalized === "exact match") return EXACT_MATCH_SECTION_PRIORITY;
+  if (normalized === "did you mean") return DID_YOU_MEAN_SECTION_PRIORITY;
   if (category === PLUGIN_INSTALL_CATEGORY) return PLUGIN_INSTALL_SECTION_PRIORITY;
   if (normalized === "instruments") return INSTRUMENTS_SECTION_PRIORITY;
   if (normalized === "suggested") return SUGGESTED_SECTION_PRIORITY;

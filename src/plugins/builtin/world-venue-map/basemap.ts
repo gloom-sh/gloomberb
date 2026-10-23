@@ -221,7 +221,9 @@ export function loadDetailTile(tile: DetailTile): Promise<BasemapPaths> {
   const pending = tile.load()
     .then((chunk) => {
       const decoded = decodeQueue.then(nextTask).then(() => basemapPaths(chunk, tile.box));
-      decodeQueue = decoded.catch(() => {});
+      decodeQueue = decoded.catch(() => {
+        // Intentional ignore: keep the decode queue usable; the returned decoded promise still rejects to the tile caller.
+      });
       return decoded;
     })
     .catch((error: unknown) => {

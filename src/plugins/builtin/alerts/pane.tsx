@@ -1,5 +1,5 @@
 import { Box } from "../../../ui";
-import { Button, PaneStatusBody, PaneFooterScope, usePaneTabs } from "../../../components";
+import { Button, Notice, PaneStatusBody, PaneFooterScope, usePaneTabs } from "../../../components";
 import { usePluginPaneState } from "../../runtime";
 import { EventAlertsPane } from "./events-pane";
 import { AlertHistoryPane } from "./history-pane";
@@ -203,6 +203,14 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
   }, [deleteAlert, rows, selectedIdx]);
 
   const selectedRule = rows[selectedIdx];
+  // A quote one alert could not get is said on its row (Current and Quote),
+  // and in full under the table while the row is selected: the table has no detail.
+  const selectedShown = displayRows[selectedIdx];
+  const selectedQuoteError = selectedShown?.lastCheckError
+    ? selectedShown.lastCheckError.includes(selectedShown.symbol)
+      ? selectedShown.lastCheckError
+      : `${selectedShown.symbol}: ${selectedShown.lastCheckError}`
+    : null;
   const selectedTarget = useMemo(() => selectedRule ? alertTarget(priceRuleSubject(selectedRule)) : null, [selectedRule]);
   const openTarget = useOpenAlertTarget();
 
@@ -362,6 +370,11 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
       renderCell={renderCell}
       selectedTextOverridesCellColor
       status={displayRows.length === 0 && storeError ? { error: storeError, subject: "price alerts" } : undefined}
+      rootAfter={selectedQuoteError ? (
+        <Box paddingX={1} flexShrink={0}>
+          <Notice tone="warning">{selectedQuoteError}</Notice>
+        </Box>
+      ) : undefined}
       emptyStateTitle="No alerts"
       emptyContent={
         <PaneStatusBody empty emptyTitle="No alerts" actions={<Button label="Add alert" compact onPress={startAddAlert} />} />

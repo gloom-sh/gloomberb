@@ -202,6 +202,7 @@ function ThemedCompositeChart({
   onToggleSeries,
   isSeriesToggleable,
   timePick,
+  pricePick,
   levels,
   chartLayout,
   onChartLayoutChange,
@@ -687,6 +688,7 @@ function ThemedCompositeChart({
     pin: pinnable ? { pinned: pinnedCursor, toggle: togglePin } : null,
     onActivate,
     timePick,
+    pricePick,
     levels,
     visibleLegendSeries,
     visibleSeriesIds,
@@ -1133,6 +1135,7 @@ function ThemedCompositeChart({
           onPointerPress={pressPlot}
           showTextFallback={showTextFallback}
           onPickTime={timePick?.onPick}
+          onPickPrice={pricePick?.onPick}
           levels={levelHost?.panel.id === panel.id ? levels ?? null : null}
           selectedLevelId={selectedLevelId}
           onSelectLevel={setSelectedLevelId}

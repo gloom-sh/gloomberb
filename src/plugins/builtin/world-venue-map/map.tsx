@@ -1,3 +1,4 @@
+import { logFailure } from "../../../utils/log-failure";
 import { createElement, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import type { CloudWorldVenuePayload } from "../../../api-client";
 import { Box, ChartSurface, Text, useNativeRenderer, useUiCapabilities, useUiHost } from "../../../ui";
@@ -399,7 +400,7 @@ function useCountryLabels(): readonly CountryLabel[] | null {
     let current = true;
     loadCountryLabels().then((loaded) => {
       if (current) setLabels(loaded);
-    }, () => {});
+    }, logFailure("world-venue-map.map", "Load country labels failed"));
     return () => {
       current = false;
     };

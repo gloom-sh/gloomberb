@@ -31,18 +31,18 @@ function adapterAnswering(answer: (path: string) => unknown, brokers: SignedInBr
 
 describe("signedInBrokerAdapter", () => {
   test("says what to do for each failure and keeps the last result as the profile's status", async () => {
-    const cases: Array<[number, string]> = [
-      [401, "Sign in to Gloom first, then connect Interactive Brokers."],
-      [404, "Interactive Brokers needs you to sign in again. Press Connect in Brokers."],
-      [502, "Interactive Brokers is not responding. Try again shortly."],
+    const cases: Array<[number, string, { needsSignIn?: true }]> = [
+      [401, "Sign in to Gloom first, then connect Interactive Brokers.", { needsSignIn: true }],
+      [404, "Interactive Brokers needs you to sign in again. Press Connect in Brokers.", { needsSignIn: true }],
+      [502, "Interactive Brokers is not responding. Try again shortly.", {}],
     ];
-    for (const [status, message] of cases) {
+    for (const [status, message, signIn] of cases) {
       const { adapter, requests } = adapterAnswering(() => new ApiRequestError("upstream", status));
       let notified = 0;
       adapter.subscribeStatus!(instance, () => { notified += 1; });
       await expect(adapter.importPortfolioSnapshot!(instance)).rejects.toThrow(message);
       expect(requests).toEqual(["ibkr/snapshot"]);
-      expect(adapter.getStatus!(instance)).toEqual({ state: "error", message, mode: "Sign in", updatedAt: 1_000 });
+      expect(adapter.getStatus!(instance)).toEqual({ state: "error", message, mode: "Sign in", ...signIn, updatedAt: 1_000 });
       expect(notified).toBe(1);
     }
   });
@@ -57,7 +57,7 @@ describe("signedInBrokerAdapter", () => {
     for (const error of shapes) {
       const { adapter } = adapterAnswering(() => error);
       await expect(adapter.importPortfolioSnapshot!(instance)).rejects.toThrow(message);
-      expect(adapter.getStatus!(instance)).toMatchObject({ state: "error", message });
+      expect(adapter.getStatus!(instance)).toMatchObject({ state: "error", message, needsSignIn: true });
     }
 
     // A 409 that says nothing keeps the app's own guidance.
@@ -76,7 +76,7 @@ describe("signedInBrokerAdapter", () => {
     for (const [answer, message] of reasons) {
       const { adapter } = adapterAnswering(() => answer);
       await expect(adapter.connect!(instance)).rejects.toThrow(message);
-      expect(adapter.getStatus!(instance)).toMatchObject({ state: "error", message });
+      expect(adapter.getStatus!(instance)).toMatchObject({ state: "error", message, needsSignIn: true });
     }
   });
 
@@ -187,6 +187,33 @@ describe("signedInBrokerAdapter, direct orders (SnapTrade)", () => {
     expect(result).toMatchObject({ orderId: 7, brokerOrderId: "66844501", brokerInstanceId: "snap-main", contract: { brokerId: "signed-in", brokerInstanceId: "snap-main" } });
     // The preview is spent.
     await expect(adapter.placeOrder!(profile, order)).rejects.toMatchObject({ refused: true });
+  });
+
+  test("a bracket, OCO pair or trailing stop goes only to a server that names it, which would otherwise place a bare order", async () => {
+    const { adapter, calls } = snaptrade((_method, path) => (path === "" ? connection(true) : { status: "preview", previewId: "p", expiresAt: new Date(240_000).toISOString(), impact: { source: "broker" } }));
+    await adapter.connect!(profile);
+    const linked = [
+      { ...order, orderClass: "bracket" as const, takeProfitPrice: 240, stopLossPrice: 220 },
+      { ...order, action: "SELL" as const, orderClass: "oco" as const, limitPrice: 240, stopLossPrice: 220 },
+      { ...order, orderType: "TRAIL" as const, limitPrice: undefined, trailingPercent: 2 },
+    ];
+    for (const request of linked) await expect(adapter.previewOrder!(profile, request)).rejects.toMatchObject({ refused: true });
+    expect(calls.filter((call) => call.path === "/orders")).toHaveLength(0);
+    SNAPTRADE.capabilities = { ...SNAPTRADE.capabilities, orders: { mode: "direct", types: ["MKT", "LMT", "TRAIL"], tif: ["DAY"], orderClasses: ["bracket", "oco"], trailing: ["percent"] } };
+    try {
+      expect(adapter.getTradingCapabilities!(profile)).toMatchObject({ orderClasses: ["bracket", "oco"], trailing: ["percent"] });
+      for (const request of linked) await adapter.previewOrder!(profile, request);
+      expect(calls.filter((call) => call.path === "/orders").map((call) => call.body)).toMatchObject([
+        { orderClass: "bracket", takeProfitPrice: 240, stopLossPrice: 220 }, { orderClass: "oco", stopLossPrice: 220 }, { orderType: "TRAIL", trailingPercent: 2 }]);
+      await expect(adapter.previewOrder!(profile, { ...linked[2]!, trailingPercent: undefined, trailingAmount: 1 })).rejects.toMatchObject({ refused: true });
+      // Exits without a class would reach the broker as a bare entry, even from a server that takes brackets.
+      for (const exits of [{ takeProfitPrice: 240 }, { stopLossPrice: 220 }]) {
+        await expect(adapter.previewOrder!(profile, { ...order, ...exits })).rejects.toMatchObject({ refused: true, message: "A take profit or stop loss needs a bracket or OCO order." });
+      }
+      expect(calls.filter((call) => call.path === "/orders")).toHaveLength(3);
+    } finally {
+      SNAPTRADE.capabilities = { ...SNAPTRADE.capabilities, orders: { mode: "direct", types: ["MKT", "LMT"], tif: ["DAY", "GTC"] } };
+    }
   });
 
   test("a refused order leaves the profile connected; a lost answer is not a refusal", async () => {

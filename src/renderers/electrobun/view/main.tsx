@@ -26,6 +26,7 @@ import { installElectrobunUpdateHost } from "./update-host";
 import { installScreenshotWatermark } from "./screenshot-watermark";
 import { installElectrobunWindowFullscreenTracking } from "./window-fullscreen";
 import { installDomMarketDataFrames } from "../../dom/data-frames";
+import { releaseBootFrameWhenDrawn, startBootFrameRecorder } from "../../dom/boot-frame";
 import { DomErrorBoundary, DomHostProviders } from "../../dom/dom-host-providers";
 import { DesktopFatalScreen } from "./fatal-screen";
 import { resolveRendererWindowError } from "./renderer-window-error";
@@ -73,9 +74,14 @@ const bootLog = debugLog.createLogger("electrobun-web-boot");
 let appMounted = false;
 
 appRootElement.tabIndex = -1;
-root.render(<div className="gloom-loading">Starting Gloom...</div>);
+// The page drew the layout this window last drew, or the bare shell, before
+// this script loaded (dom/boot-frame.ts); it stays until the app has drawn its own.
+const releaseBootFrame = releaseBootFrameWhenDrawn(document, appRootElement);
+/** How long after the app mounts the launch frame stays at most. */
+const BOOT_FRAME_RELEASE_FALLBACK_MS = 4_000;
 
 function renderFatalError(error: unknown, details?: string, title = "Gloom failed to start"): void {
+  releaseBootFrame();
   root.render(
     <DesktopFatalScreen
       title={title}
@@ -114,9 +120,13 @@ function requestStartupFocus(): void {
 
 async function boot() {
   bootLog.info("boot started");
+  // Both asked for at once: the Bun process compiles the plugins while it
+  // answers `init`, rather than after this view asks a second time.
   const backendInitPromise = initElectrobunBackend();
+  const externalBundlesPromise = backendRequest("plugins.listExternal");
   // Avoid a premature global unhandled-rejection render while UI chunks load.
   void backendInitPromise.catch(() => {});
+  void externalBundlesPromise.catch(() => {});
 
   installElectrobunConfigStoreHost();
   installElectrobunBrokerRemoteClient();
@@ -175,7 +185,11 @@ async function boot() {
     "startup.electrobun.load-external-plugins",
     async () => {
       try {
-        return await loadDesktopExternalPlugins(await backendRequest("plugins.listExternal"));
+        // Asked once more if the early request failed: it waits for the
+        // whole launch, which a first run's plugin downloads can stretch past
+        // the request's time limit.
+        const bundles = await externalBundlesPromise.catch(() => backendRequest("plugins.listExternal"));
+        return await loadDesktopExternalPlugins(bundles);
       } catch (error) {
         debugLog.createLogger("desktop-plugins").error(`External plugin load failed: ${error}`);
         return [];
@@ -248,6 +262,15 @@ async function boot() {
     );
     appMounted = true;
   });
+  // A layout with neither panes nor a status bar has nothing to wait for.
+  window.setTimeout(releaseBootFrame, BOOT_FRAME_RELEASE_FALLBACK_MS);
+  if (init.windowKind === "main") {
+    startBootFrameRecorder({
+      doc: document,
+      root: appRootElement,
+      save: (frame) => { void backendRequest("host.saveBootFrame", { frame }).catch(() => {}); },
+    });
+  }
   requestStartupFocus();
   bootLog.info("root render scheduled", {
     layoutPanes: config.layout.instances.length,

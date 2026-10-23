@@ -87,10 +87,14 @@ export interface ReportFreshness {
    * oldest observation) to when this report was built: `oldest 9 min`.
    */
   oldestAgeMinutes?: number;
+  /** The data states no feed (`status` is `unreported`) and its line says only its time and age (`ageOnly`). */
+  ageOnly?: true;
   /** What the newest observation is, said before its time: `newest story Tue 29 Sep 2026 20:17 UTC`. */
   asOfLabel?: string;
   /** What the figures are, said after the status: `funding = current estimate, pays 08:00 UTC`. */
   note?: string;
+  /** Shorter forms of `note`, in the order a capture's line too long for it tries them. */
+  noteVariants?: string[];
   /** When the figures reach readers and when the next are due, said right after the as-of date. */
   schedule?: string;
   /** Who published the figures, when the data names them. */
@@ -394,7 +398,7 @@ function resolveFreshness({ declared, signals, observations, now }: FreshnessInp
   const asOf = declaredAsOf ?? periodToDate?.through ?? newest([...observations.units, ...observations.extra]);
   // The oldest source, not the newest, says how far behind the view can be.
   const agedFrom = sources.length ? oldest(sources.map(({ time }) => time))
-    : declared.oldestAge ? oldest(observations.units) ?? asOf : null;
+    : declared.oldestAge || declared.ageOnly ? oldest(observations.units) ?? asOf : null;
   const oldestAgeMinutes = agedFrom && !agedFrom.dateOnly ? Math.max(0, Math.floor((now - agedFrom.time) / 60_000)) : null;
   // A loader that dates its data itself also says how old the oldest part is, or nothing;
   // `oldest: null` says the rows are a history, whose first entry is not stale data.
@@ -469,6 +473,7 @@ function resolveFreshness({ declared, signals, observations, now }: FreshnessInp
   const observation = lagDays != null ? declared.observation?.trim() : undefined;
 
   const note = declared.note?.trim();
+  const noteVariants = note ? (declared.noteVariants ?? []).map((variant) => variant.trim()).filter((variant) => variant && variant !== note) : [];
   const asOfLabel = asOf ? declared.asOfLabel?.trim() : undefined;
   const schedule = declared.schedule?.trim();
   const publisher = declared.publisher?.trim();
@@ -494,8 +499,10 @@ function resolveFreshness({ declared, signals, observations, now }: FreshnessInp
     ...(observation ? { observation } : {}),
     ...(sources.length ? { sources: sources.map(({ source, time }) => ({ source, asOf: isoTime(time) })) } : {}),
     ...(oldestAgeMinutes != null ? { oldestAgeMinutes } : {}),
+    ...(status === "unreported" && declared.ageOnly ? { ageOnly: true as const } : {}),
     ...(asOfLabel ? { asOfLabel } : {}),
     ...(note ? { note } : {}),
+    ...(noteVariants.length > 0 ? { noteVariants } : {}),
     ...(schedule ? { schedule } : {}),
     ...(publisher ? { publisher } : {}),
     ...(publishedAt ? { publishedAt: isoTime(publishedAt) } : {}),
@@ -708,7 +715,8 @@ function statusText(freshness: ReportFreshness, short = false): string {
     case "not-a-feed":
       return freshness.basis ? `not a live feed (${freshness.basis})` : "not a live feed";
     case "unreported":
-      return "status not reported";
+      // Keep any date or age, without inventing a feed status or announcing its absence.
+      return "";
     default: {
       const _exhaustive: never = freshness.status;
       return _exhaustive;
@@ -849,8 +857,8 @@ interface StatusLineDetail {
   local?: "none";
   /** Leave the day off a time of the day the report was built. */
   date?: "none";
-  /** Leave out what the figures are (`funding = current estimate`). */
-  note?: "none";
+  /** Leave out what the figures are (`funding = current estimate`), or say the shorter form at this index of `noteVariants`. */
+  note?: "none" | number;
   /** Leave out when the figures are published and the next are due. */
   schedule?: "none";
 }
@@ -870,9 +878,9 @@ function statusLineParts(freshness: ReportFreshness, detail: StatusLineDetail = 
       : [asOfText(freshness, detail.asOf === "short", local, undated)]),
     ...(freshness.schedule && detail.schedule !== "none" ? [freshness.schedule] : []),
     ...(freshness.oldestAgeMinutes != null ? [`oldest ${ageText(freshness.oldestAgeMinutes)}`] : []),
-    freshness.savedAt ? savedCopyText(freshness.savedAt, freshness.retrievedAt, local) : statusText(freshness, detail.status === "short"),
+    ...(freshness.savedAt ? [savedCopyText(freshness.savedAt, freshness.retrievedAt, local)] : [statusText(freshness, detail.status === "short")].filter(Boolean)),
     ...(freshness.market && detail.market !== "none" ? [marketText(freshness.market, now, detail.market === "short", local)] : []),
-    ...(freshness.note && detail.note !== "none" ? [freshness.note] : []),
+    ...(freshness.note && detail.note !== "none" ? [typeof detail.note === "number" ? freshness.noteVariants?.[detail.note] ?? freshness.note : freshness.note] : []),
   ];
 }
 
@@ -997,8 +1005,9 @@ export function statusLineVariants(freshness: ReportFreshness, { source = false 
   // A line that dates each source keeps every source's time and their age to
   // the last: its day goes first, then what the figures are.
   const shortest = details.at(-1)!;
-  // What the figures are goes before when they are published.
+  // What the figures are goes before when they are published, in its shorter forms first.
   const trailing: StatusLineDetail[] = [
+    ...(freshness.noteVariants ?? []).map((_, index) => ({ ...shortest, note: index })),
     ...(freshness.note ? [{ ...shortest, note: "none" as const }] : []),
     ...(freshness.schedule ? [{ ...shortest, note: "none" as const, schedule: "none" as const }] : []),
   ];
@@ -1056,7 +1065,7 @@ export function captureStatusLine({ report: loaded, selfDated, quoted, rendered 
   }
   if (report && loaded?.declaresData) return sourced(report);
   if (quoted) return plain(quoted, "quotes");
-  if (report && report.status !== "unreported") return sourced(report);
+  if (report && (report.status !== "unreported" || report.ageOnly)) return sourced(report);
   return plain(rendered(), null);
 }
 

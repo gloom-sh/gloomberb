@@ -776,8 +776,8 @@ export interface GlossaryLookup {
   /** The entries the query names: by the term, its abbreviation or an alias. */
   exact: GlossaryEntry[];
   /**
-   * The others whose names start a word with each word of the query: `stop-out` finds stop-out vs average.
-   * Those that hold the words whole come first.
+   * The others whose names hold each word of the query: `stop-out` finds stop-out vs average. Beside a term the
+   * query names they hold the words whole; otherwise a word start is enough, and the whole ones come first.
    */
   partial: GlossaryEntry[];
 }
@@ -785,22 +785,26 @@ export interface GlossaryLookup {
 // Shorter words (the `b` and `c` of `B/C`) would find half the glossary.
 const MIN_PARTIAL_WORD = 3;
 
+/** A name's word holds a query word whole, or as its plural: `assets` holds `asset`, `floating` does not hold `float`. */
+const wholeWord = (have: string, word: string) => have === word || have === `${word}s` || have === `${word}es`;
+
 export function lookupGlossary(query: string): GlossaryLookup {
   const key = lookupKey(query);
   if (!key) return { exact: [], partial: [] };
   const exact = GLOSSARY.filter((entry) => names(entry).some((name) => lookupKey(name) === key));
   const wanted = words(query).filter((word) => word.length >= MIN_PARTIAL_WORD);
-  const partial = wanted.length === 0 ? [] : GLOSSARY.filter((entry) => {
-    if (exact.includes(entry)) return false;
+  if (wanted.length === 0) return { exact, partial: [] };
+  const others = GLOSSARY.filter((entry) => !exact.includes(entry));
+  const holding = (match: (have: string, word: string) => boolean) => others.filter((entry) => {
     const have = names(entry).flatMap(words);
-    return wanted.every((word) => have.some((name) => name.startsWith(word)));
+    return wanted.every((word) => have.some((name) => match(name, word)));
   });
-  // The entries that hold the words whole come before those that only start with them: `float` is the float, not the floating rate note.
-  const whole = (entry: GlossaryEntry) => {
-    const have = names(entry).flatMap(words);
-    return wanted.every((word) => have.includes(word));
-  };
-  return { exact, partial: partial.sort((left, right) => Number(whole(right)) - Number(whole(left))) };
+  // Related to a term the query names are only the terms that hold its words whole: `float` is the float of a
+  // stock, and the floating rate note only starts with the same letters. A query that names no term is a search,
+  // where a word start (`vol` for volume) still finds a term, after those that hold it whole.
+  const whole = holding(wholeWord);
+  if (exact.length > 0) return { exact, partial: whole };
+  return { exact, partial: [...whole, ...holding((name, word) => name.startsWith(word)).filter((entry) => !whole.includes(entry))] };
 }
 
 function escapeRegExp(text: string): string {

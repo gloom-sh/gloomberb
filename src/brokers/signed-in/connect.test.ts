@@ -31,7 +31,13 @@ function harness(existing: BrokerInstanceConfig[], connected: boolean) {
       config = { ...config, brokerInstances: [...config.brokerInstances, instance] };
       return instance;
     },
+    enableBrokerInstance: async (instanceId) => {
+      calls.push(`enable:${instanceId}`);
+      config = { ...config, brokerInstances: config.brokerInstances.map((instance) => instance.id === instanceId ? { ...instance, enabled: true } : instance) };
+    },
     syncBrokerInstance: async (instanceId) => {
+      // As the app does: a profile turned off is never synced.
+      if (config.brokerInstances.find((instance) => instance.id === instanceId)?.enabled === false) throw new Error("is disabled");
       calls.push(`sync:${instanceId}`);
       return instanceId;
     },
@@ -65,5 +71,18 @@ describe("connectSignedInBrokerProfile", () => {
     expect((await connect())?.instance.id).toBe("ibkr-main");
     expect(calls).toEqual(["dialog:ibkr", "sync:ibkr-main"]);
     expect(getConfig().brokerInstances).toHaveLength(1);
+  });
+
+  test("connecting a broker whose profile is turned off turns it back on before syncing it", async () => {
+    const off: BrokerInstanceConfig = { id: "ibkr-main", brokerType: "signed-in", label: "Interactive Brokers", connectionMode: "ibkr", config: {}, enabled: false };
+    const { calls, connect, getConfig } = harness([off], true);
+    expect((await connect())?.instance).toMatchObject({ id: "ibkr-main", enabled: true });
+    expect(calls).toEqual(["dialog:ibkr", "enable:ibkr-main", "sync:ibkr-main"]);
+    expect(getConfig().brokerInstances).toMatchObject([{ id: "ibkr-main", enabled: true }]);
+
+    // Not connected: it stays off.
+    const dismissed = harness([off], false);
+    expect(await dismissed.connect()).toBeNull();
+    expect(dismissed.calls).toEqual(["dialog:ibkr"]);
   });
 });

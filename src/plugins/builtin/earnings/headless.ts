@@ -1,3 +1,4 @@
+import { logFailure } from "../../../utils/log-failure";
 import type { EarningsCalendarPayload, EarningsHistoryPayload } from "../../../api-client/earnings";
 import type {
   HeadlessPaneColumn,
@@ -189,7 +190,7 @@ async function historyReport(symbol: string, context: HeadlessPaneContext, deps:
   const payload = history.status === "fulfilled" ? history.value : null;
   const next = upcoming.status === "fulfilled" ? upcoming.value[0] ?? null : null;
   const notice = abroad
-    ? await abroadHistoryNotice(symbol, next?.name ?? await context.marketData.getQuote(symbol, "").then((quote) => quote.name ?? null, () => null), context)
+    ? await abroadHistoryNotice(symbol, next?.name ?? await context.marketData.getQuote(symbol, "").then((quote) => quote.name ?? null, logFailure("earnings.headless", "Load earnings company name failed", null)), context)
     : null;
   const rows = historyRows(payload, newYorkToday(), next).map((row) => ({
     date: row.date,

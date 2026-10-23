@@ -236,6 +236,23 @@ export interface TrailingPEConversion {
   rate: number;
 }
 
+/** How a share count and market cap were put on the basis after a split. */
+export interface SplitShareBasis {
+  /** The split's ex-date, YYYY-MM-DD. */
+  exDate: string;
+  /** What a price from before the split is multiplied by: 15 for a 1-for-15 reverse split, 0.1 for a 10-for-1 split. */
+  priceFactor: number;
+  /**
+   * `filing`: the count a filing reported as of `reportedAsOf`, moved by the split, the cap that count times the price.
+   * `provider_cap`: the provider's cap, its share count (`reportedShares`) being from before the split.
+   */
+  method: "filing" | "provider_cap";
+  reportedShares: number;
+  reportedAsOf?: string;
+  /** The provider's market cap the shown one replaced. */
+  providerMarketCap?: number;
+}
+
 export interface Fundamentals extends DepositaryReceiptFacts {
   /** Every share count here is on this basis, the basis of the listing's price and market cap; absent when unproven. */
   shareBasis?: ShareBasis;
@@ -291,6 +308,8 @@ export interface Fundamentals extends DepositaryReceiptFacts {
   return3Y?: number;
   lastQuarterGrowth?: number;
   sharesOutstanding?: number;
+  /** Set when a recent split put `sharesOutstanding` and `marketCap` on the basis the listing trades on. */
+  splitShareBasis?: SplitShareBasis;
   /** Free float: shares outstanding less insider and strategic holdings, never above `sharesOutstanding`. */
   floatShares?: number;
   beta?: number;
@@ -318,8 +337,10 @@ export interface HolderRecord {
   reportDate?: string;
   shares?: number;
   value?: number;
+  /** The stake as a fraction of the shares outstanding: 0.0519 is 5.19%. */
   percentHeld?: number;
   changeShares?: number;
+  /** The quarter's change as a fraction of the prior position: 1.086 is +108.6%, -0.6 is -60%. */
   changePercent?: number;
   /** Set when the position's filing ties it to the receipts or to the ordinary shares. */
   shareBasis?: ShareBasis;

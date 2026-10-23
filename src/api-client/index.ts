@@ -373,9 +373,13 @@ class GloomApiClient {
   requestPasswordReset = this.auth.requestPasswordReset.bind(this.auth);
   createBrowserHandoff = this.auth.createBrowserHandoff.bind(this.auth);
 
-  /** Creates a Stripe checkout session for Cloud Pro; the URL opens in a browser. */
-  async createCloudCheckout(returnTo?: string, interval: "month" | "year" = "month"): Promise<{ url: string }> {
-    return this.request<{ url: string }>("/stripe/checkout", { method: "POST", body: JSON.stringify({ returnTo, interval }) });
+  /**
+   * Creates a Stripe checkout session for Cloud Pro; the URL opens in a browser.
+   * `link` is a short link to the same checkout, to read or scan on another
+   * device. Older servers send none.
+   */
+  async createCloudCheckout(returnTo?: string, interval: "month" | "year" = "month"): Promise<{ url: string; link?: string }> {
+    return this.request<{ url: string; link?: string }>("/stripe/checkout", { method: "POST", body: JSON.stringify({ returnTo, interval }) });
   }
 
   async recordResearchActivity(payload: {
@@ -818,6 +822,8 @@ class GloomApiClient {
   getPublicInsolvencyNotices = this.data.getPublicInsolvencyNotices.bind(this.data);
   getPublicLetters = this.data.getPublicLetters.bind(this.data);
   getCloudIpoCalendar = this.data.getCloudIpoCalendar.bind(this.data);
+  getCloudFailsToDeliver = this.data.getCloudFailsToDeliver.bind(this.data);
+  getCloudOtcVolume = this.data.getCloudOtcVolume.bind(this.data);
   getCloudShortVolume = this.data.getCloudShortVolume.bind(this.data);
   getCloudCryptoEtfFlows = this.data.getCloudCryptoEtfFlows.bind(this.data);
   getCloudSocialMentions = this.data.getCloudSocialMentions.bind(this.data);
@@ -833,6 +839,8 @@ class GloomApiClient {
   geo = this.data.geo.bind(this.data);
   getCloudHiring = this.data.getCloudHiring.bind(this.data);
   getCloudHiringMoves = this.data.getCloudHiringMoves.bind(this.data);
+  getCloudHiringSignals = this.data.getCloudHiringSignals.bind(this.data);
+  getCloudHiringCompanySignals = this.data.getCloudHiringCompanySignals.bind(this.data);
   getCloudAppRankHistory = this.data.getCloudAppRankHistory.bind(this.data);
   getCloudAppAttention = this.data.getCloudAppAttention.bind(this.data);
   getCloudCatalystChanges = this.data.getCloudCatalystChanges.bind(this.data);

@@ -16,6 +16,16 @@ A spread of two to four option legs on one underlying trades as one order, fille
 
 The ticket lists each leg with its side, ratio times the spread quantity, contract and mid. Quantity counts spreads. Buy pays a net debit and Sell receives a net credit; the price is always the positive net per spread, and switching side turns every leg over. The spread's bid and ask come from its legs' broker quotes: buying it pays the long legs' asks and receives the short legs' bids, and the bid is the reverse. Review names the strategy, such as `AAPL call vertical`, lists the legs and warns when the quotes net the other way from the side chosen. Spread orders appear in Open orders and on Overview for the underlying, with the strategy's name, and change and cancel like any other order; a change keeps the legs and their ratios. Spreads take market or limit orders, DAY or GTC, with no extended hours. Whether each leg opens or closes a position is the broker's to decide from the account's holdings.
 
+## Brackets, OCO and trailing stops
+
+Where the broker places them itself, the ticket offers three kinds of orders that work without the app open. A broker that takes none of a kind does not show it. Each is one order to review and confirm, and the broker holds and runs its parts.
+
+- **Take profit / stop loss** (a bracket): tick it under the price, then enter a take profit, a stop loss or both. They are placed with the entry, on the other side for the same quantity: a limit at the take profit and a stop at the stop loss. They work once the entry fills, and one filling cancels the other. A buy's take profit is above its limit or stop and its stop loss below; a sell's the other way round.
+- **OCO**, in Type: a limit and a stop on the same side for the same quantity, where one filling cancels the other, such as selling a holding at a target above the market or a stop below it.
+- **Trailing stop**, in Type: a stop that follows the market by a price distance or a percent, as the broker allows. Switching between price and percent clears the distance.
+
+Brackets, OCO pairs and trailing stops are only ever the broker's own: the ticket never imitates one with separate orders, which would protect a position only while the app is open. Review lists the take profit and stop loss. An exit on the wrong side of the entry's price is refused. For an entry that trades now, review also warns when an exit is already through the market. An entry resting away from the market fills at its own price, so its exits are measured from that price alone. Open orders list a bracket's orders together, the entry first and its exits under it, and an OCO pair together; when one of them fills or is cancelled, the others update as the broker reports them. Each order of a bracket or pair changes and cancels on its own.
+
 ## Review and confirmation
 
 1. Choose the account and check its SIM or LIVE mode.
@@ -63,9 +73,13 @@ The footer shows at most three ticket actions relevant to the current screen. Th
 | Trade with multiple brokers, or standalone Orders | `d` | Choose broker or broker profile |
 | Ticket editing | `t` | Choose time in force |
 | Ticket editing | `x` | Toggle extended hours, where supported |
-| Ticket editing | `1`, `2`, `3`, `4` | Market, Limit, Stop, Stop limit, where supported |
+| Ticket editing | `1`, `2`, `3`, `4` | Market, Limit, Stop, Stop limit, where supported; Trailing stop and OCO from Type |
+| Take profit / stop loss checkbox | Tab/Shift+Tab, then Space or Enter | Add or remove a bracket's exits, where the broker takes brackets |
 | Ticket editing | `5`, `6`, `7` | 25%, 50%, Max quantity |
 | Ticket editing | `8`, `9`, `0`, `p` | Broker bid, mid, ask, last price |
+| Docked ticket editing | `c` | Pick the price being edited, or the entry's, on the chart beside the ticket |
+| Chart picking a ticket price | Enter, Escape | Set the price at the cursor, or keep the ticket's |
+| Chart with the level tool (`Shift+H`) beside the ticket | `[`/`]`, then Up/Down | Choose an order or draft line and move it; a working order's move opens its change for review |
 | Trading off | `e` | Open the trading consent screen |
 | Trading consent | Enter, Escape | Enable trading with consent, or return to read-only |
 | Ticket or result | `o` | Open Orders |
@@ -92,7 +106,16 @@ The footer shows at most three ticket actions relevant to the current screen. Th
 
 ## Price context
 
-Average position cost, working/partially filled orders and the edited limit/stop prices appear as labelled horizontal chart levels for the ticket's ticker. Buy is green and Sell is red in the default theme; draft levels are dashed. Compact labels sit at the right end of their lines without reserving a gutter. Desktop tags are text-sized, centred on the line, with a one-pixel line-colour border and chart-background fill. Exact price tags use the instrument precision, independent of the grid formatter, and yield to grid labels when crowded. A label repeats the exact price only when its axis tag cannot be shown. Levels outside the visible price range are clipped. These are read-only overlays in Stage 1: use Open orders (`o`), select a row, change its price and review. Drag-to-modify is not implemented.
+Average position cost, working/partially filled orders and the edited limit/stop prices appear as labelled horizontal chart levels for the ticket's ticker. Buy is green and Sell is red in the default theme; draft levels are dashed. Compact labels sit at the right end of their lines without reserving a gutter. Desktop tags are text-sized, centred on the line, with a one-pixel line-colour border and chart-background fill. Exact price tags use the instrument precision, independent of the grid formatter, and yield to grid labels when crowded. A label repeats the exact price only when its axis tag cannot be shown. Levels outside the visible price range are clipped.
+
+### Trade from the chart
+
+With the ticket docked beside the Chart tab, the chart sets and changes its prices. Nothing reaches the broker from the chart: every change goes through the ticket's review and confirm.
+
+- **Pick a price.** Choose **Chart** beside the price presets, or press `c` in the ticket, and the chart takes the pointer and the keys. A click on the plot sets the ticket's price to the price under the pointer. Enter sets it to the price at the chart's cursor, which Left and Right move from bar to bar. Escape keeps the price as it was, and so does leaving the pane. `c` in a price field, such as take profit or stop loss, picks that price. The price is rounded to the broker's tick, never below one tick, and the ticket takes the keys back, on Review.
+- **Drag a draft line.** The dashed limit, stop, take profit and stop loss lines move with a plain drag and change the draft.
+- **Drag a working order.** The line of a working limit or stop order, or of one order of a bracket or OCO pair, opens that order's change in the ticket at the new price. The change shows as a dashed line, and the order's own line stays where the broker holds it until the change is reviewed and confirmed. If the ticket holds an order or change you have not sent, the ticket asks before replacing it. Lines that stay where they are: an order the broker cannot change, one it is still acknowledging or replacing, a trailing stop and a spread.
+- **From the keyboard.** In the chart, `Shift+H` puts the level tool in hand. `[` and `]` step through the lines, top to bottom, and Up and Down move the chosen one half a row at a time. F6 goes to the ticket, where Enter on Review opens the review. Backspace never cancels an order from the chart: cancel it from Open orders.
 
 Results retain the exact submitted preview as a receipt. The “Estimates from order preview” section shows saved cost, fees, commission and buying power after, not settled charges or a current account balance. Missing preview figures say Not reported. After a lost placement acknowledgement, Filled and Remaining say Not confirmed. After an uncertain replacement or cancellation, retained quantities are labelled Last known until a matching broker response confirms them. Closing or resizing the panel does not discard a pending submission or an unknown-outcome lock.
 

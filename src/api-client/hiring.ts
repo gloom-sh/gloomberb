@@ -129,9 +129,10 @@ export interface HiringMoveWeek {
 
 /**
  * Why a move is held from alerts and ranked after the others: one day carried
- * most of its new roles, or it is more roles than the boards ever held open.
+ * most of its new roles, its boards were read too seldom to tell a steady
+ * rise from a batch, or it is more roles than the boards ever held open.
  */
-export type HiringMoveFlag = "one_day_batch" | "outsized"
+export type HiringMoveFlag = "one_day_batch" | "few_reads" | "outsized"
 
 /** A company's new roles in one UTC week against its own measured weeks before and its peers'. */
 export interface HiringMove {
@@ -160,6 +161,8 @@ export interface HiringMove {
   flags?: HiringMoveFlag[]
   /** The day with the most new roles that week, and how many. */
   peakDay?: { day: string; newRoles: number } | null
+  /** A board that cannot place its new roles on a day: its reads that week and the days they counted. */
+  unplacedRead?: { reads: number; days: number | null } | null
   /** The most roles the company's boards held open in a week before. */
   priorMaxOpen?: number | null
   why: string
@@ -221,4 +224,95 @@ export interface HiringCompanyMoves {
   evidenceTotals: { added: number; closed: number }
   /** `move`: a free read of a company off the free board keeps its week, not its move. */
   locked: { history: number; added: number; closed: number; move?: number }
+}
+
+/**
+ * HIRE's Expansion and Anomalies tabs: a company's first roles in a country
+ * or city, one place or role family far above its own weeks, and role
+ * families it never posted, in the latest complete week.
+ */
+export type HiringSignalGroup = "expansion" | "anomalies"
+export type HiringSignalKind = "new_country" | "new_city" | "location_spike" | "function_spike" | "new_role_type"
+export type HiringSignalsFilter = "all" | HiringSignalKind
+/** Why a company's week gives no signal at all. */
+export type HiringSignalHold = "unmeasured" | "short_watch" | "recounted"
+/** Why a kind was not looked for at a company, or a first or a spike was dropped. */
+export type HiringSignalSkip = "thin_history" | "unplaced_history" | "unplaced_cities" | "unclassified_history" | "reformatted" | "posted_before_watch" | "similar_city" | "one_day"
+/** A spike shown last: a seldom-read board, or a week Moves flagged. */
+export type HiringSignalFlag = "few_reads" | "one_day_batch"
+
+export interface HiringWeekSignal {
+  symbol: string
+  name: string
+  sector: string | null
+  industry: string | null
+  sourceTickers: string[]
+  week: string
+  kind: HiringSignalKind
+  group: HiringSignalGroup
+  dimension: "country" | "city" | "function"
+  /** `MX`, `austin|US`, `data_ai`. */
+  key: string
+  /** `Mexico`, `Austin, TX, US`, `Data & AI`. */
+  label: string
+  country: string | null
+  newRoles: number
+  titles: number
+  /** How far back "never" goes: every board read since `watchedSince`, and the postings seen before the week. */
+  history: { watchedSince: string; priorPostings: number; priorShare: number | null }
+  /** A spike's weeks before; `values` is empty in a free read. */
+  baseline: { weeks: number; mean: number; values: Array<{ week: string; newRoles: number }> } | null
+  ratio: number | null
+  zScore: number | null
+  /** The company's own pace in the same terms, for a spike. */
+  companyRatio: number | null
+  flags: HiringSignalFlag[]
+  reads: number | null
+  topTitles: Array<{ title: string; count: number }>
+  places: Array<{ label: string; count: number }>
+  postings: HiringMovePosting[]
+  why: string
+  firstComputedAt: string
+  computedAt: string
+}
+
+export interface HiringSignalsBoard {
+  generatedAt: string
+  proRequired: true
+  preview: boolean
+  group: HiringSignalGroup
+  /** A free read is always the group's first three, whatever was asked. */
+  filter: HiringSignalsFilter
+  week: string | null
+  total: number
+  locked: number
+  coverage: {
+    measured: number
+    counts: Partial<Record<HiringSignalKind, number>>
+    held: Partial<Record<HiringSignalHold, number>>
+    skipped: Partial<Record<HiringSignalSkip, number>>
+    /** The earliest and latest first read of a measured company: how far back "never" goes. */
+    watchedFrom: string | null
+    watchedTo: string | null
+    computedAt: string | null
+  }
+  signals: HiringWeekSignal[]
+}
+
+export interface HiringCompanySignals {
+  generatedAt: string
+  proRequired: true
+  preview: boolean
+  symbol: string
+  requestedSymbol?: string
+  name: string | null
+  week: string | null
+  watchedSince: string | null
+  held: HiringSignalHold | null
+  skipped: HiringSignalSkip[]
+  /** The latest week's signals, both groups. */
+  signals: HiringWeekSignal[]
+  history: HiringWeekSignal[]
+  /** What a free read holds back: this week's, earlier weeks', and both by tab. Absent by tab from a server before it. */
+  locked: { signals: number; history: number } & Partial<Record<HiringSignalGroup, number>>
 }

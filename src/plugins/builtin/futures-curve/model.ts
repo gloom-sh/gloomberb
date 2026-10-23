@@ -536,6 +536,61 @@ export function withTradedExpirations(data: FuturesCurvePayload): FuturesCurvePa
 }
 
 /**
+ * The trading date a print belongs to, as the server dates sessions: CME's
+ * session for a date opens at 18:00 New York the evening before (22:00 or
+ * 23:00 UTC), so a two-hour shift puts those evening trades on the next date
+ * and leaves day-only venues as they are. A settlement's date is its session.
+ */
+function curveSessionDate(asOf: string): string {
+  return asOf.length === 10 ? asOf : new Date(Date.parse(asOf) + 2 * 3_600_000).toISOString().slice(0, 10);
+}
+
+/**
+ * The settlement session a live contract has not traded since: its Settle
+ * column shows that session's settlement and its latest price is from that
+ * session or before. Null when it has traded since, or shows no settlement. A
+ * Cboe price is the settlement itself, so it has no trade to wait for.
+ */
+export function curveNoTradeSince(row: Pick<FuturesContract, "price" | "settlement" | "asOf">,
+  data: Pick<FuturesCurvePayload, "source" | "settlementDate">): string | null {
+  const session = data.settlementDate;
+  if (data.source === "cboe" || !session || row.price == null || row.settlement == null || !row.asOf) return null;
+  return curveSessionDate(row.asOf) <= session ? session : null;
+}
+
+/**
+ * The live curve with every Change on the basis its table states: the last
+ * trade less the settlement in the Settle column. The source's session change
+ * is from the settlement before the contract's own last trade, so a back month
+ * that last traded on the settlement's session read against the session
+ * before it, beside front months read against the one shown. A contract with
+ * no trade since the settlement (curveNoTradeSince), or no settlement shown,
+ * has no change. A Cboe price is a settlement, and its change, from the
+ * settlement before, is kept.
+ */
+export function withSettleChanges(data: FuturesCurvePayload): FuturesCurvePayload {
+  if (data.source === "cboe") return data;
+  return { ...data, contracts: data.contracts.map((row) => {
+    const change = row.price != null && row.settlement != null && data.settlementDate && row.asOf && !curveNoTradeSince(row, data)
+      ? row.price - row.settlement : null;
+    return change === (row.change ?? null) ? row : { ...row, change };
+  }) };
+}
+
+/**
+ * The contracts whose Change is blank because they have not traded since the
+ * settlement shown, named, in the words the basis notes use; a pane with no
+ * room for the names counts them.
+ */
+export function noTradeChangeNote(rows: readonly Pick<FuturesContract, "symbol" | "price" | "settlement" | "asOf">[],
+  data: Pick<FuturesCurvePayload, "source" | "settlementDate">, options: { count?: boolean } = {}): string | null {
+  const untraded = rows.filter((row) => curveNoTradeSince(row, data) != null).map((row) => curveContractCode(row.symbol));
+  if (!untraded.length) return null;
+  const named = options.count ? `on ${untraded.length} contract${untraded.length === 1 ? "" : "s"}` : `for ${untraded.join(", ")}`;
+  return `Change blank ${named} (no trade since ${data.settlementDate})${options.count ? "" : "."}`;
+}
+
+/**
  * The archived curve on a past date in the live curve's shape, so the pane
  * draws it the same way. Its week- and month-back ghosts are the curves as
  * they stood then, contracts that have since expired included. A row is dated

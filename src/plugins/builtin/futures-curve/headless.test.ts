@@ -44,7 +44,8 @@ async function run(root: string, ctxOptions: Parameters<typeof context>[0] = {},
 
 describe("CTM report units", () => {
   test("Dutch TTF gas reports euros per MWh on every row, in the metadata and as its one contract term", async () => {
-    const eur = { ...curve("TTF", [{ ...contract("TTF", "X26", 30, 81.434), currency: "EUR", quoteUnit: "EUR", change: 2.5849999 }]), currency: "EUR", quoteUnit: "EUR" };
+    const eur = { ...curve("TTF", [{ ...contract("TTF", "X26", 30, 81.434), currency: "EUR", quoteUnit: "EUR", settlement: 78.8490001 }]),
+      currency: "EUR", quoteUnit: "EUR", settlementDate: expiry(-1) };
     const ctx = createTestHeadlessContext({ marketData: createTestDataProvider({}), apiClient: { getCloudFuturesCurve: async () => eur } as never });
     const result = await futuresCurveHeadless.load(createTestHeadlessArgs({ rawArgument: "TTF", argument: "TTF", symbols: [], options: {} }), ctx) as HeadlessBundleResult;
     expect(result.sections[0]!.rows![0]).toMatchObject({ price: 81.434, change: 2.585, currency: "EUR", quoteUnit: "EUR / MWh" });
@@ -108,7 +109,8 @@ describe("CTM report basis", () => {
     expect(Object.keys(es.rows[0]!)).toEqual(Object.keys(btc.rows[0]!).filter((key) => key !== "vsSpotPct" && key !== "annualisedBasisPct"));
     // A float-noise change reads at the tick: ES ticks in quarters.
     const { ctx } = context();
-    const noisy = { ...ctx, apiClient: { getCloudFuturesCurve: async () => curve("ES", [{ ...contract("ES", "Z26", 30, 6600.000001), change: 12.249999 }]) } as never };
+    const noisy = { ...ctx, apiClient: { getCloudFuturesCurve: async () => ({ ...curve("ES", [{ ...contract("ES", "Z26", 30, 6600.000001), settlement: 6587.750002 }]),
+      settlementDate: expiry(-1) }) } as never };
     const result = await futuresCurveHeadless.load(createTestHeadlessArgs({ rawArgument: "ES", argument: "ES", symbols: [], options: {} }), noisy) as HeadlessBundleResult;
     expect(result.sections[0]!.rows![0]).toMatchObject({ price: 6600, change: 12.25 });
   });
@@ -126,6 +128,38 @@ describe("CTM report basis", () => {
     expect(past.rows[0]).not.toHaveProperty("vsSpotPct");
     expect(past.metadata).not.toHaveProperty("spot");
     expect(past.metadata).not.toHaveProperty("basisBlankedThin");
+  });
+});
+
+describe("CTM change", () => {
+  test("Change is the last trade less the settlement shown; a contract with no trade since that settlement has none and says so", async () => {
+    // ES on 23 Oct 2026, Settle 2026-10-22. The source measured each move from the settlement before the contract's own last
+    // trade, so ESM27, last traded in the 22 Oct session, read -103.50 against the 21 Oct settle beside ESZ26's -22.00 against the 22nd.
+    const es = (code: string, days: number, price: number, settlement: number, change: number, asOf: string): FuturesContract =>
+      ({ ...contract("ES", code, days, price, false, asOf), settlement, change });
+    const payload: FuturesCurvePayload = { ...curve("ES", [
+      es("Z26", 56, 7682.5, 7704.5, -22, "2026-10-23T18:09:23.000Z"),
+      es("M27", 237, 7857.25, 7858.75, -103.5, "2026-10-22T19:26:48.000Z"),
+      // An evening trade opens the next session's.
+      es("U27", 329, 7950, 7944, -98.5, "2026-10-22T22:30:00.000Z"),
+      // The settlement itself stands in for an older trade.
+      es("Z27", 420, 8028, 8028, -109.5, "2026-10-22"),
+      // Without a settlement shown there is nothing to measure from, and nothing more to say.
+      { ...es("H28", 511, 8100, 0, 5, "2026-10-23T15:00:00.000Z"), settlement: null },
+    ]), settlementDate: "2026-10-22" };
+    const ctx = createTestHeadlessContext({ marketData: createTestDataProvider({}), apiClient: { getCloudFuturesCurve: async () => payload } as never });
+    const result = await futuresCurveHeadless.load(createTestHeadlessArgs({ rawArgument: "ES", argument: "ES", symbols: [], options: {} }), ctx) as HeadlessBundleResult;
+    expect(result.sections[0]!.rows!.map((row) => [row.change, row.noTradeSince])).toEqual([
+      [-22, null], [null, "2026-10-22"], [6, null], [null, "2026-10-22"], [null, null]]);
+    expect(result.notes).toEqual(["Change blank for ESM27, ESZ27 (no trade since 2026-10-22)."]);
+    const text = renderHeadlessPaneText(futuresCurveHeadless, result, createTestHeadlessArgs(), "CTM").replace(/\x1b\[[0-9;]*m/g, "");
+    expect(text).toMatch(/ESM27 .* 7858\.75 +7857\.25 +-- /);
+    // A Cboe price is the settlement itself: its move from the settlement before stays.
+    const vix = { ...payload, root: "VX", source: "cboe" as const, contracts: [{ ...contract("VX", "X26", 30, 19.379, false, "2026-10-22"), symbol: "VX/X6", settlement: 19.379, change: 1.1408 }] };
+    const cboe = await futuresCurveHeadless.load(createTestHeadlessArgs({ rawArgument: "VX", argument: "VX", symbols: [], options: {} }),
+      createTestHeadlessContext({ marketData: createTestDataProvider({}), apiClient: { getCloudFuturesCurve: async () => vix } as never })) as HeadlessBundleResult;
+    expect(cboe.sections[0]!.rows![0]).toMatchObject({ change: 1.1408, noTradeSince: null });
+    expect(cboe.notes).toBeUndefined();
   });
 });
 

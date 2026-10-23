@@ -466,7 +466,7 @@ function NativeStatusBar({
       <Box flexGrow={1} minWidth={0} />
       <StatusBarSummary nativePaneChrome {...props} />
       {/* Widgets keep their width; the layout tabs give way instead. */}
-      <Box flexShrink={0} flexDirection="row" alignItems="center">
+      <Box flexShrink={0} flexDirection="row" alignItems="center" data-gloom-role="status-widgets">
         <PluginSlot name="status:widget" />
       </Box>
       <StatusBarFeedback nativePaneChrome {...props} />

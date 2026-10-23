@@ -56,10 +56,14 @@ export function attentionTabs(kind: AttentionKind, symbol: string | null | undef
   return kind === "apps" || symbol ? ["table", "chart", "mix", "peers", "evidence"] : ["table"];
 }
 
-/** A pane tab: a report view, or HIRE's moves, which has its own read (moves-model.ts). */
-export type AttentionPaneTab = AttentionTab | "moves";
+/**
+ * A pane tab: a report view, or HIRE's moves, expansion and anomalies, which
+ * have their own reads (moves-model.ts, signals-model.ts).
+ */
+export type AttentionPaneTab = AttentionTab | "moves" | "expansion" | "anomalies";
+const HIRING_READ_TABS = ["moves", "expansion", "anomalies"] as const;
 export function attentionPaneTabs(kind: AttentionKind, symbol: string | null | undefined): AttentionPaneTab[] {
-  return kind === "hiring" ? [...attentionTabs(kind, symbol), "moves"] : attentionTabs(kind, symbol);
+  return kind === "hiring" ? [...attentionTabs(kind, symbol), ...HIRING_READ_TABS] : attentionTabs(kind, symbol);
 }
 
 /**

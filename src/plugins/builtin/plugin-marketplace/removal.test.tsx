@@ -18,7 +18,11 @@ afterEach(() => {
   setHttpFetchTransport(null);
 });
 
-async function mount(failure: "view" | "native" | "remove" | null, native = true) {
+/**
+ * `refuse`: the folder removal answers that it failed. `stoppedStaysListed`:
+ * a host that lists a stopped plugin while its files remain.
+ */
+async function mount(failure: "view" | "native" | "remove" | "refuse" | null, native = true, { stoppedStaysListed = false } = {}) {
   setHttpFetchTransport(async () => Response.json({ version: 1, generatedAt: "", plugins: [] }));
   const id = PLUGIN_MARKETPLACE_PANE_ID;
   const initial = createInitialState(createTestPaneConfig(":memory:", { instanceId: id, paneId: id }));
@@ -27,6 +31,7 @@ async function mount(failure: "view" | "native" | "remove" | null, native = true
   const calls: string[] = [];
   const notes: AppNotificationRequest[] = [];
   const active = { view: true, native, files: true };
+  let enabled = true;
   let reads = 0;
   const dispatch = (action: AppAction) => {
     stateRef.current = appReducer(stateRef.current, action);
@@ -35,10 +40,10 @@ async function mount(failure: "view" | "native" | "remove" | null, native = true
   setMarketplaceHost({
     listInstalled: () => {
       reads++;
-      return active.view ? [{ id: "fixture-plugin", name: "Fixture Plugin", version: "1.0.0", toggleable: true,
-        enabled: true, source: "external", directory: "fixture-plugin", path: "/fixture/plugins/fixture-plugin" }] : [];
+      return active.view || (stoppedStaysListed && active.files) ? [{ id: "fixture-plugin", name: "Fixture Plugin", version: "1.0.0", toggleable: true,
+        enabled, source: "external", directory: "fixture-plugin", path: "/fixture/plugins/fixture-plugin" }] : [];
     },
-    setPluginEnabled() {}, setPluginsEnabled() {},
+    setPluginEnabled(_id, value) { enabled = value; }, setPluginsEnabled() {},
     contributions: () => ({ panes: [], templates: [], commands: [], capabilities: 0, broker: false }),
     activate: async () => {},
     deactivate: async () => {
@@ -60,6 +65,7 @@ async function mount(failure: "view" | "native" | "remove" | null, native = true
     remove: async (directory) => {
       calls.push("files.remove");
       if (failure === "remove") throw new Error("Removal request unavailable");
+      if (failure === "refuse") return { ok: false, error: "Folder is in use" };
       active.files = false;
       return { ok: true, directory };
     },
@@ -83,7 +89,7 @@ async function mount(failure: "view" | "native" | "remove" | null, native = true
     await tui.waitForFrameToContain("Remove Fixture Plugin?");
     await press("return", "\r");
   };
-  return { active, calls, notes, remove, reads: () => reads, recover: () => { failure = null; } };
+  return { active, calls, notes, press, remove, reads: () => reads, recover: () => { failure = null; } };
 }
 
 for (const failure of ["view", "native"] as const) {
@@ -91,13 +97,23 @@ for (const failure of ["view", "native"] as const) {
     const run = await mount(failure);
     const initialReads = run.reads();
     await run.remove();
-    const frame = await tui.waitForFrameToContain("stop failed, restart to remove");
-    expect(frame).not.toContain("removing Fixture Plugin");
+    // Said on the plugin's row, and in full in its detail, not as a toast.
+    const frame = await tui.waitForFrameToContain("stop failed");
+    expect(frame).not.toContain("removing");
     expect(frame).toContain("[x] remove");
     expect(run.calls).toEqual(failure === "native" ? ["native.stop"] : ["native.stop", "view.stop"]);
     expect(run.active).toEqual({ view: true, native: failure === "native", files: true });
     expect(run.reads()).toBeGreaterThan(initialReads);
-    expect(run.notes.map((note) => note.type)).toEqual(["error"]);
+    expect(run.notes).toEqual([]);
+    await run.press("return", "\r");
+    await tui.waitForFrameToContain("Plugin could not be stopped. Files kept.");
+    await run.press("escape", "\u001b");
+
+    // The failure follows the row: turning the plugin off moves its status on.
+    await run.press("e");
+    await tui.waitForFrameToExclude("stop failed");
+    expect(tui.frame()).toMatch(/Fixture Plugin[^\n]* off/);
+    await run.press("e");
 
     run.recover();
     await run.remove();
@@ -105,18 +121,28 @@ for (const failure of ["view", "native"] as const) {
     expect(run.calls.slice(-3)).toEqual(["native.stop", "view.stop", "files.remove"]);
     expect(run.active).toEqual({ view: false, native: false, files: false });
     expect(run.notes.at(-1)).toMatchObject({ body: "Removed Fixture Plugin.", type: "success" });
-    expect(tui.frame()).not.toContain("stop failed, restart to remove");
+    expect(tui.frame()).not.toContain("stop failed");
   });
 }
 
 test("a thrown file-removal request clears the busy state and reports failure", async () => {
   const run = await mount("remove");
   await run.remove();
-  const frame = await tui.waitForFrameToContain("removal failed, restart to retry");
-  expect(frame).not.toContain("removing Fixture Plugin");
-  expect(frame).not.toContain("stop failed, restart to remove");
+  // Stopped, the plugin has left the list, so the failure is a toast.
+  await tui.waitForFrameToExclude("removing");
+  expect(tui.frame()).not.toContain("stop failed");
   expect(run.active.files).toBe(true);
-  expect(run.notes.map((note) => note.type)).toEqual(["error"]);
+  expect(run.notes).toMatchObject([{ type: "error", body: "Could not remove Fixture Plugin. Removal failed. Restart and try again." }]);
+});
+
+test("a removal that fails while the plugin stays listed is said on its row, not as a toast", async () => {
+  const run = await mount("refuse", true, { stoppedStaysListed: true });
+  await run.remove();
+  const frame = await tui.waitForFrameToContain("remove failed");
+  expect(frame).not.toContain("removing");
+  expect(run.notes).toEqual([]);
+  await run.press("return", "\r");
+  await tui.waitForFrameToContain("Could not remove Fixture Plugin: Folder is in use");
 });
 
 test("terminal removal works without a separate native host", async () => {

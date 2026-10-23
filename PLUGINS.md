@@ -1047,7 +1047,7 @@ Optional `subscribeOrders(instance, listener)` pushes order changes as the broke
 
 `ctx.getBrokerAdapter?(brokerType)` looks up a registered adapter. Built-in React code uses `usePluginBrokerActions().getBrokerAdapter`; external plugins can use the context method and tolerate its absence on older hosts. Headless code receives optional `HeadlessPaneContext.resolveBroker` for the same lookup during `fn` and `shot` execution. The Orders report performs account, open-order and execution reads only; headless reporting never submits, modifies or cancels orders. These lookups expose adapters, not serialized credentials, and do not replace explicit profile and account selection.
 
-The shared ticket handles one instrument per order where the adapter declares support, and option spreads where it declares `maxLegs`. It does not infer unreported broker constraints or guarantee that a vanished open order was filled or cancelled. The order feed keeps open orders and a pending result current, from the broker's order stream where it has one and by polling where it does not. Brokers must supply trustworthy account modes, quote timestamps and `BrokerConnectionStatus.quoteData`; unknown quote entitlement is treated as delayed.
+The shared ticket handles one instrument per order where the adapter declares support, option spreads where it declares `maxLegs`, and brackets, OCO pairs and trailing stops where it declares them. It does not infer unreported broker constraints or guarantee that a vanished open order was filled or cancelled. The order feed keeps open orders and a pending result current, from the broker's order stream where it has one and by polling where it does not. Brokers must supply trustworthy account modes, quote timestamps and `BrokerConnectionStatus.quoteData`; unknown quote entitlement is treated as delayed.
 
 #### Option spreads
 
@@ -1056,6 +1056,18 @@ A spread is one `BrokerOrderRequest` whose `contract` has `secType: "BAG"` with 
 Declare support from `getTradingCapabilities(instance, contract)` for a `BAG` contract, with `maxLegs` (2 to 4 in the ticket) and the order types and time in force the broker takes for spreads. Without `maxLegs`, OSA does not offer Trade and the ticket refuses a spread before preview. The host checks that the legs share the profile and underlying, differ, and have whole ratios; it skips the held-quantity check for spreads, because a short leg is the point of most spreads, and leaves opening or closing each leg to the adapter. The spread's quote is computed from each leg's `getQuote(localSymbol)`, so an adapter must quote its option contracts by OCC symbol.
 
 An adapter maps the request to its native combination order. An IBKR mapping, for example, would resolve each leg's `conId` with `reqContractDetails`, then send a `BAG` contract with `comboLegs` of `{ conId, ratio, action, exchange: "SMART" }` and the order's action and net limit price as given.
+
+#### Brackets, OCO pairs and trailing stops
+
+These are orders the broker holds together and runs itself. The ticket never builds one from separate orders, which would protect a position only while the app is open: an adapter declares what its broker takes, and receives only that.
+
+- A **bracket** is an entry (`MKT`, `LMT`, `STP` or `STP LMT`) with `orderClass: "bracket"` and `takeProfitPrice`, `stopLossPrice` or both. The exits are a limit and a stop on the other side for the same quantity, which work once the entry fills; one filling cancels the other. For a buy the take profit is above the entry's limit or stop and the stop loss below it, and the mirror for a sell; a market entry's exits are checked against each other only.
+- An **OCO** pair is `orderType: "LMT"` with `orderClass: "oco"` and `stopLossPrice`: a limit and a stop on the order's own side for the same quantity, one filling cancels the other. A sell pair's limit is above its stop (it exits a long); a buy pair's below.
+- A **trailing stop** is `orderType: "TRAIL"` with one of `trailingAmount` (price) or `trailingPercent` (2 for 2%), and no limit or stop price.
+
+Declare them in `getTradingCapabilities`: `orderClasses: ["bracket", "oco"]` for the classes the broker places natively, `"TRAIL"` in `orderTypes` with `trailing: ["amount", "percent"]` for the trailing units it takes. Anything not declared is not offered in the ticket: no Take profit / stop loss checkbox, no OCO or Trailing stop in Type, and no unit switch for a single trailing unit. The host still refuses an undeclared one before preview ("<broker> does not take brackets."), for a draft that holds one from elsewhere. An adapter that never declares a class never receives one, so it cannot place a bare entry by ignoring fields it does not know. A change goes to one order at a time (`modifyOrder` never carries `orderClass`), and a trailing stop's change keeps its unit.
+
+Report the orders the broker made from one request with the same `BrokerOrder.linkGroup` and each one's `linkRole` (`entry`, `takeProfit`, `stopLoss`; an OCO pair is `takeProfit` and `stopLoss`), and a trailing stop's `trailingAmount` or `trailingPercent` with its current trigger in `stopPrice` when the broker reports it. The Orders view lists a group together, the entry first; when one of them ends, the order feed reads the open orders again so the others show as the broker reports them (cancelled, or working once an entry filled).
 
 #### Bond position price conventions
 

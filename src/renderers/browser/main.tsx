@@ -9,6 +9,8 @@ import { getBrowserPlugins } from "../../plugins/catalog-browser";
 import { DomErrorBoundary, DomHostProviders } from "../dom/dom-host-providers";
 import { installFocusScopeRelease } from "../dom/host/focus-scope";
 import { installDomMarketDataFrames } from "../dom/data-frames";
+import { releaseBootFrameWhenDrawn, startBootFrameRecorder } from "../dom/boot-frame";
+import { BROWSER_STORAGE_KEYS } from "../../data/json-storage";
 import { createBrowserAppServices } from "./app-services";
 import {
   installBrowserFetchTransports,
@@ -69,7 +71,11 @@ if (!rootElement) throw new Error("Missing root element");
 const appRootElement = rootElement;
 appRootElement.tabIndex = -1;
 const root = createRoot(appRootElement);
-root.render(<div className="gloom-loading">Starting Gloom...</div>);
+// The page drew the last session's layout, or the bare shell, before this
+// script loaded (dom/boot-frame.ts); it stays until the app has drawn its own.
+const releaseBootFrame = releaseBootFrameWhenDrawn(document, appRootElement);
+/** How long after the app mounts the launch frame stays at most. */
+const BOOT_FRAME_RELEASE_FALLBACK_MS = 4_000;
 
 async function boot(): Promise<void> {
   // Read before anything can save a workspace or tidy the address.
@@ -163,10 +169,24 @@ async function boot(): Promise<void> {
     </DomErrorBoundary>,
   );
   appRootElement.focus({ preventScroll: true });
+  // A layout with neither panes nor a status bar has nothing to wait for.
+  window.setTimeout(releaseBootFrame, BOOT_FRAME_RELEASE_FALLBACK_MS);
+  startBootFrameRecorder({
+    doc: document,
+    root: appRootElement,
+    save: (frame) => {
+      try {
+        localStorage.setItem(BROWSER_STORAGE_KEYS.bootFrame, JSON.stringify(frame));
+      } catch {
+        // Intentional ignore: storage full or blocked; the next launch draws the bare shell.
+      }
+    },
+  });
 }
 
 void boot().catch((error) => {
   reportCrash(error, { kind: "uncaught" });
   const message = error instanceof Error ? error.message : String(error);
+  releaseBootFrame();
   root.render(<div className="gloom-fatal"><h1>Gloom failed to start</h1><pre>{message}</pre></div>);
 });

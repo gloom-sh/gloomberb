@@ -23,14 +23,14 @@ const asmlResults: InstrumentSearchResult[] = [
   primaryExchange: exchange!, type: type!, currency,
 }));
 
-test("ASML registered shares retain provider relevance within the five exact-symbol results", () => {
+test("ASML's home line leads the receipts its ticker matches, the rest in provider order within the five exact-symbol results", () => {
   const original = JSON.stringify(asmlResults);
   const candidates = buildTickerSearchCandidates({ query: "ASML", tickers: new Map(), providerResults: asmlResults });
   const items = candidates.map(row => ({ ...row, action() {} }));
   const visible = mergePlainRootTickerResults("ASML", mergeTickerSearchResultItems("ASML", items, []), []);
-  expect(visible.map(row => row.right)).toEqual(["NASDAQ", "BYMA", "AMS", "TSX", "NEO"]);
-  expect(candidates[0]?.result).toBe(asmlResults[0]);
-  expect(candidates[0]?.detail).toContain("ASML Holding N.V. NY Registered Shares");
+  expect(visible.map(row => row.right)).toEqual(["AMS", "NASDAQ", "BYMA", "TSX", "NEO"]);
+  expect(candidates[0]?.result).toBe(asmlResults[2]);
+  expect(candidates[1]?.detail).toContain("ASML Holding N.V. NY Registered Shares");
   expect(candidates.every(row => row.label === row.symbol)).toBe(true);
   expect(JSON.stringify(asmlResults)).toBe(original);
 });

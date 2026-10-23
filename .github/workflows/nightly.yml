@@ -109,6 +109,7 @@ jobs:
           set -euo pipefail
           for asset in \
             gloomberb-darwin-arm64.gz gloomberb-darwin-x64.gz gloomberb-linux-x64.gz gloomberb-linux-arm64.gz gloomberb-windows-x64.exe.gz \
+            gloomberb-linux-x64-musl.gz gloomberb-linux-arm64-musl.gz \
             nightly-macos-arm64-update.json nightly-macos-arm64-Gloomberb.app.tar.zst nightly-macos-arm64-Gloomberb.dmg \
             nightly-win-x64-update.json nightly-win-x64-Gloomberb.tar.zst nightly-win-x64-GloomberbSetup.exe; do
             test -f "dist/$asset" || { echo "Missing $asset" >&2; exit 1; }

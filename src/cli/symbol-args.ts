@@ -1,4 +1,5 @@
 import { isFigure, isNumberCell, protectFigureCommas, restoreFigureCommas } from "./symbol-cells";
+import { readTerminalListingCode, unknownBloombergMarket } from "../tickers/terminal-codes";
 
 /** The quote marks a pasted list wraps its entries in: "AAPL", 'MSFT', “NVDA”. */
 const QUOTE_MARKS = "\"'`\u2018\u2019\u201C\u201D";
@@ -32,9 +33,15 @@ export function splitSymbolArgs(args: readonly string[]): string[] {
 export function splitSymbolArgLines(arg: string): string[][] {
   const lines = arg.replace(/^\uFEFF/, "").split(/\r\n?|\n/).map((line) => protectFigureCommas(line));
   const separated = lines.length > 1 || lines.some((line) => LIST_SEPARATOR.test(line));
-  return lines.map((line) => (separated ? line.split(/[,;\t]/) : line.split(/\s+/))
+  // A terminal's code (`VOD LN`, `JPM US Equity`), or words written as one (`AAPL GP`), is one entry.
+  return lines.map((line) => (separated ? line.split(/[,;\t]/) : isTerminalCodeLine(line) ? [line] : line.split(/\s+/))
     .map((entry) => restoreFigureCommas(entry).trim().replace(QUOTE_EDGES, "").trim().replace(/\s+/g, " "))
     .filter(Boolean));
+}
+
+function isTerminalCodeLine(line: string): boolean {
+  const text = line.trim().replace(QUOTE_EDGES, "").trim();
+  return /\s/.test(text) && (readTerminalListingCode(text) != null || unknownBloombergMarket(text) != null);
 }
 
 /**
@@ -74,7 +81,7 @@ function isPricedRow(words: readonly string[]): boolean {
  */
 export function splitSymbolWords(args: readonly string[]): string[] {
   return splitSymbolArgs(args)
-    .flatMap((entry) => entry.split(" "))
+    .flatMap((entry) => isTerminalCodeLine(entry) ? [entry] : entry.split(" "))
     .map((word) => word.replace(QUOTE_EDGES, ""))
     .filter(Boolean);
 }

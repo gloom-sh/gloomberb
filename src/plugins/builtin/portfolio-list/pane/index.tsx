@@ -102,7 +102,9 @@ import { useColumnClock } from "../use-column-clock";
 import { liveMarketCapitalization } from "../../../../market-data/quotes/live-valuation";
 import { hasUnknownOptionMultiplier } from "../../../../portfolio/position-metrics";
 import { withFuturesContractSizes } from "../../../../portfolio/futures-positions";
+import { withPurchaseDateCostFx } from "../../../../portfolio/cost-fx";
 import { usePortfolioFuturesTerms } from "./futures-terms";
+import { usePurchaseDateCostFx } from "./purchase-date-fx";
 import {
   allocationWeightBase,
   buildPortfolioAllocation,
@@ -177,11 +179,18 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     () => getCollectionTickersFromConfig(config, tickersBySymbol, activeCollectionId),
     [activeCollectionId, config, tickersBySymbol],
   );
+  // Totals, money columns and account values are in the portfolio's currency.
+  const totalsCurrency = useMemo(
+    () => resolvePortfolioTotalsCurrency(currentPortfolio, config.baseCurrency),
+    [config.baseCurrency, currentPortfolio],
+  );
   // A future counts contracts of the size its terms give, and at the close is valued at its settlement.
   const futuresTerms = usePortfolioFuturesTerms(collectionTickers, { enabled: isPortfolioTab, settlement: valuationBasis === "regular-close" });
+  // A dated lot in another currency costs what its purchase date's FX close says in that currency, as portfolio show values it.
+  const purchaseDateFx = usePurchaseDateCostFx(collectionTickers, { enabled: isPortfolioTab, portfolioId: activeCollectionId, into: totalsCurrency });
   const tickers = useMemo(
-    () => withFuturesContractSizes(collectionTickers, futuresTerms.terms),
-    [collectionTickers, futuresTerms.terms],
+    () => withPurchaseDateCostFx(withFuturesContractSizes(collectionTickers, futuresTerms.terms), purchaseDateFx, totalsCurrency, activeCollectionId),
+    [activeCollectionId, collectionTickers, futuresTerms.terms, purchaseDateFx, totalsCurrency],
   );
   const financialsInstrumentOptions = useMemo(() => ({
     portfolioId: isPortfolioTab ? activeCollectionId : undefined,
@@ -200,11 +209,6 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
   // The positions stay as last synced while the broker is away, dated, with one key to bring it back.
   const offlineBrokerFooter = useOfflineBrokerFooter(brokerPortfolio ? offline : null);
   const portfolioTargets = currentPortfolio?.targetWeights;
-  // Totals, money columns and account values are in the portfolio's currency.
-  const totalsCurrency = useMemo(
-    () => resolvePortfolioTotalsCurrency(currentPortfolio, config.baseCurrency),
-    [config.baseCurrency, currentPortfolio],
-  );
   // A boolean, so a quote tick does not rebuild the columns.
   const otherCurrencies = holdsOtherCurrencies(tickers, financialsMap, totalsCurrency);
   const columns = useMemo(

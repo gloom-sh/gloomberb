@@ -6,6 +6,7 @@ import type { KeyEventLike } from "../../react/input";
 import type { NativeRendererHost, PixelResolution, RendererHost } from "../../ui/host";
 import { colors } from "../../theme/colors";
 import { safeExternalUrl } from "../../utils/external-url";
+import { browserOpenCommands, runBrowserOpener } from "./browser-open";
 import { buildTerminalMediaArgs, createTerminalMediaReaper, terminalMediaStateFile } from "./terminal-media";
 import { saveTextFileToDownloads } from "../../utils/save-text-file";
 import { installInteractionPerformanceRecorder } from "./interaction-performance";
@@ -129,23 +130,13 @@ export async function createOpenTuiHost(): Promise<OpenTuiHost> {
     requestExit: () => renderer.destroy(),
     async openExternal(rawUrl) {
       const url = safeExternalUrl(rawUrl);
-      if (!url) return;
-      const command = process.platform === "darwin"
-        ? ["open", url]
-        : process.platform === "win32"
-          ? ["cmd", "/c", "start", "", url]
-          : ["xdg-open", url];
-      try {
-        const proc = Bun.spawn(command, {
-          stdout: "ignore",
-          stderr: "ignore",
-        });
-        if (await proc.exited === 0) return;
-      } catch {
-        // No opener installed (xdg-open is missing on minimal Linux and WSL).
+      if (!url) return false;
+      for (const command of browserOpenCommands(url, process.env, process.platform)) {
+        if (await runBrowserOpener(command)) return true;
       }
       // Leave the link on the clipboard, so it can at least be pasted.
       renderer.copyToClipboardOSC52(url);
+      return false;
     },
     async copyText(text) {
       if (!text) return;

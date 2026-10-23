@@ -1,5 +1,6 @@
 import type { UpdateChannel } from "../types/config";
 import { reportUpdateFailure, type UpdateInstallKind } from "../telemetry/update-failures";
+import { detectLinuxLibc, type LinuxLibc } from "../utils/linux-libc";
 import { compareSemver, isPrereleaseVersion } from "../utils/semver";
 import { PACKAGE_NAME } from "../version";
 import {
@@ -112,6 +113,7 @@ export function setUpdateHost(host: UpdateHost | null): void {
 
 export function getAssetBaseNameForRuntime(
   runtimeProcess: Pick<NodeJS.Process, "platform" | "arch"> | null = getRuntimeProcess(),
+  libc: LinuxLibc | null = detectLinuxLibc(),
 ): string {
   const os = runtimeProcess?.platform === "darwin"
     ? "darwin"
@@ -122,8 +124,10 @@ export function getAssetBaseNameForRuntime(
   // only publishes arm64 today, so an x64 macOS runtime resolves no asset and
   // reports that instead of overwriting itself with an unrunnable binary.
   const arch = runtimeProcess?.arch === "arm64" ? "arm64" : "x64";
+  // A musl system keeps the musl build: the glibc one cannot start there.
+  const variant = os === "linux" && libc === "musl" ? "-musl" : "";
   const extension = os === "windows" ? ".exe" : "";
-  return `gloomberb-${os}-${arch}${extension}`;
+  return `gloomberb-${os}-${arch}${variant}${extension}`;
 }
 
 function getAssetBaseName(): string {

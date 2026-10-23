@@ -159,7 +159,8 @@ export const researchModule: PluginModule = {
       paneId: "relative-valuation",
       label: "Relative Valuation",
       description: "Compare valuation and operating metrics across peers.",
-      keywords: ["relative", "valuation", "comps", "peers", "rv"],
+      // The words an analyst asks for a comp table by.
+      keywords: ["relative", "valuation", "comps", "peers", "rv", "comp table", "comparable companies", "peer comparison", "competitors"],
       shortcut: { prefix: "RV", argPlaceholder: "tickers", argKind: "ticker-list" },
       canCreate: (context, options) => !!(options?.symbols?.length || options?.arg || context.activeTicker),
       createInstance: (context, options) => {

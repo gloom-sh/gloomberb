@@ -57,6 +57,13 @@ describe("getAssetBaseNameForRuntime", () => {
       arch: "x64",
     })).toBe("gloomberb-darwin-x64");
   });
+
+  // The glibc build cannot start on musl, so a musl binary must never update to it.
+  test("keeps a musl system on the musl asset", () => {
+    expect(getAssetBaseNameForRuntime({ platform: "linux", arch: "x64" }, "musl")).toBe("gloomberb-linux-x64-musl");
+    expect(getAssetBaseNameForRuntime({ platform: "linux", arch: "arm64" }, "musl")).toBe("gloomberb-linux-arm64-musl");
+    expect(getAssetBaseNameForRuntime({ platform: "linux", arch: "x64" }, "glibc")).toBe("gloomberb-linux-x64");
+  });
 });
 
 describe("detectUpdateAction", () => {

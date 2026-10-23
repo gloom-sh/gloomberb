@@ -58,6 +58,7 @@ function validDeal(deal: MnaDeal): boolean {
     && !!terms && CONSIDERATIONS.has(terms.consideration)
     && numberOrNull(terms.cashPerShare) && numberOrNull(terms.exchangeRatio)
     && textOrNull(terms.ratioSymbol) && textOrNull(terms.currency)
+    && (terms.election === undefined || typeof terms.election === "boolean")
     && typeof terms.cvr === "boolean" && typeof terms.partial === "boolean"
     && numberOrNull(deal.value) && textOrNull(deal.valueCurrency) && numberOrNull(deal.valueUsd)
     && day(deal.announced)

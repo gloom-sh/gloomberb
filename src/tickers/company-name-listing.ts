@@ -6,7 +6,7 @@ import { companyNameMatch, shortCompanyName } from "./company-name";
 import { LISTING_SEARCH_LIMIT } from "./search";
 import { classifyInstrumentKind } from "./search/ranking";
 import { isProviderBusy, type ProviderBusyError } from "../sources/provider-errors";
-import { readTerminalListingCode, type TerminalListingCode } from "./terminal-codes";
+import { readTerminalListingCode, type TerminalListing, type TerminalListingCode } from "./terminal-codes";
 
 export interface CompanyNameListing {
   symbol: string;
@@ -142,24 +142,44 @@ async function stockNamedRunTogether(
 const shareClassSymbol = (symbol: string) => symbol.trim().toUpperCase().replace(/[-/]/g, ".");
 
 /**
- * A terminal's code for a US listing typed where a symbol goes, when it is
- * one. A Reuters code (WFC.N) always is. A Bloomberg code is words, which a
- * fund's name can be too ("Putnam US Equity", "Global US Equity"), so it is
- * one only when search lists its root as a US ticker (JPM, in any case);
- * otherwise it is the name it reads as, and is searched as one. A search that
- * fails says nothing either way, and the code stands. Null for anything else.
+ * A terminal's code typed where a symbol goes, when it is one, on the listing
+ * search knows it by. A Reuters code (WFC.N), an index, a currency and a
+ * future always are. A Bloomberg equity code is words, which a fund's name can
+ * be too ("Putnam US Equity", "Global US Equity"), so one for the US, or typed
+ * in lower case, is one only when search lists its root there (JPM on a US
+ * exchange, VOD on LSE); otherwise it is the name it reads as, and is searched
+ * as one. One in capitals naming a venue abroad (`MC FP`) is one as typed: the
+ * venue's own check speaks when the symbol is not there. A code that can name
+ * several listings (`VOLVB SS` is VOLVB or VOLV.B in Stockholm, `RY CN`
+ * Toronto or the Venture exchange) is the first of them search lists. A
+ * search that fails says nothing either way, and the code stands. Null for
+ * anything else.
  */
 export async function readTerminalCodeArg(
   dataProvider: Pick<DataProvider, "search">,
   typed: string,
 ): Promise<TerminalListingCode | null> {
   const code = readTerminalListingCode(typed);
-  if (!code || code.terminal !== "bloomberg") return code;
+  if (!code?.market) return code;
+  const us = !code.exchange || isUsListingExchange(code.exchange);
+  const verify = us || /\p{Ll}/u.test(code.typed.split(" ")[0]!);
+  if (!verify && !code.alternatives) return code;
+  const listings: TerminalListing[] = [code, ...code.alternatives ?? []];
   try {
-    const results = await dataProvider.search(code.symbol, { limit: LISTING_SEARCH_LIMIT });
-    return results.some((result) => shareClassSymbol(result.symbol) === code.symbol
-      && isUsListingExchange(result.exchange === "SMART" ? result.primaryExchange : result.exchange || result.primaryExchange))
-      ? code : null;
+    const searched = new Set<string>();
+    for (const { symbol } of listings) {
+      if (searched.has(shareClassSymbol(symbol))) continue;
+      searched.add(shareClassSymbol(symbol));
+      const results = await dataProvider.search(symbol, { limit: LISTING_SEARCH_LIMIT });
+      for (const listing of listings) {
+        const listed = results.find((result) => shareClassSymbol(result.symbol) === shareClassSymbol(listing.symbol)
+          && (us ? isUsListingExchange(listedExchange(result)) : listedExchange(result) === listing.exchange));
+        // Abroad, the listing goes by search's own spelling of it, as the venue lists it.
+        const symbol = listed && !us ? listed.symbol.toUpperCase() : listing.symbol;
+        if (listed) return { ...code, symbol, exchange: listing.exchange, key: listing.exchange ? `${symbol}:${listing.exchange}` : symbol };
+      }
+    }
+    return verify ? null : code;
   } catch (error) {
     if (!isProviderBusy(error)) logFailure("tickers-company-name-listing", "Could not search a terminal code's root")(error);
     return code;

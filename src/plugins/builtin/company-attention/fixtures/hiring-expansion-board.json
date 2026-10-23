@@ -1,0 +1,1037 @@
+{
+ "generatedAt": "2026-10-19T14:00:00.000Z",
+ "proRequired": true,
+ "preview": false,
+ "group": "expansion",
+ "filter": "all",
+ "week": "2026-10-12",
+ "total": 34,
+ "locked": 0,
+ "coverage": {
+  "measured": 1618,
+  "counts": {
+   "location_spike": 62,
+   "function_spike": 29,
+   "new_city": 26,
+   "new_country": 8,
+   "new_role_type": 3
+  },
+  "held": {
+   "unmeasured": 468,
+   "short_watch": 18,
+   "recounted": 22
+  },
+  "skipped": {
+   "thin_history": 400,
+   "unplaced_cities": 335,
+   "unplaced_history": 134,
+   "reformatted": 31,
+   "posted_before_watch": 2
+  },
+  "watchedFrom": "2026-09-17",
+  "watchedTo": "2026-09-20",
+  "computedAt": "2026-10-19T06:04:11.000Z"
+ },
+ "signals": [
+  {
+   "symbol": "JBHT",
+   "name": "HUNT J B TRANSPORT SERVICES INC",
+   "sector": "Industrials",
+   "industry": "Integrated Freight & Logistics",
+   "sourceTickers": [
+    "JBHT"
+   ],
+   "week": "2026-10-12",
+   "topTitles": [
+    {
+     "title": "Customer Experience Representative - MXO",
+     "count": 2
+    }
+   ],
+   "places": [
+    {
+     "label": "Querétaro, MX",
+     "count": 7
+    }
+   ],
+   "postings": [
+    {
+     "id": "20147312",
+     "title": "Carrier Payable / Invoicing Representative I - MXO",
+     "url": "https://jbhunt.wd501.myworkdayjobs.com/Careers/job/Quertaro-QE---Avenida-Anillo-Vial-Fray-Junpero-Serra-21260/Carrier-Payable---Invoicing-Representative-I---MXO_00648311",
+     "location": "Querétaro, QE - Avenida Anillo Vial Fray Junípero Serra 21260",
+     "country": "MX",
+     "jobFunction": "finance",
+     "seniority": "entry",
+     "firstSeenAt": "2026-10-16T16:30:18.808Z",
+     "closedAt": "2026-10-18T16:43:45.197Z",
+     "sourceTicker": "JBHT"
+    },
+    {
+     "id": "19380811",
+     "title": "Customer Experience Representative - MXO",
+     "url": "https://jbhunt.wd501.myworkdayjobs.com/Careers/job/Quertaro-QE---Avenida-Anillo-Vial-Fray-Junpero-Serra-21260/Customer-Experience-Representative---MXO_00648328-1",
+     "location": "Querétaro, QE - Avenida Anillo Vial Fray Junípero Serra 21260",
+     "country": "MX",
+     "jobFunction": "customer",
+     "seniority": "entry",
+     "firstSeenAt": "2026-10-15T16:25:18.984Z",
+     "closedAt": "2026-10-19T16:53:10.391Z",
+     "sourceTicker": "JBHT"
+    }
+   ],
+   "why": "7 new roles in Mexico in the week of Oct 12, 2026, the first seen there since Sep 18, 2026: none of the 703 postings seen on its boards since then (98% of them placed) was in Mexico. In Querétaro, MX (7). Most often Customer Experience Representative - MXO (2).",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z",
+   "kind": "new_country",
+   "group": "expansion",
+   "dimension": "country",
+   "key": "MX",
+   "label": "Mexico",
+   "country": "MX",
+   "newRoles": 7,
+   "titles": 6,
+   "history": {
+    "watchedSince": "2026-09-18",
+    "priorPostings": 703,
+    "priorShare": 0.9829302987197724
+   },
+   "baseline": null,
+   "ratio": null,
+   "zScore": null,
+   "companyRatio": null,
+   "flags": [],
+   "reads": 7
+  },
+  {
+   "symbol": "DAR",
+   "name": "DARLING INGREDIENTS INC.",
+   "sector": "Consumer Defensive",
+   "industry": "Packaged Foods",
+   "sourceTickers": [
+    "DAR"
+   ],
+   "week": "2026-10-12",
+   "topTitles": [
+    {
+     "title": "Auxiliar de Producción",
+     "count": 4
+    }
+   ],
+   "places": [],
+   "postings": [
+    {
+     "id": "20713570",
+     "title": "Auxiliar de Proyecto",
+     "url": "https://ekgz.fa.us6.oraclecloud.com/hcmUI/CandidateExperience/en/sites/DarlingII/job/1523",
+     "location": "Paraguay",
+     "country": "PY",
+     "jobFunction": "operations",
+     "seniority": "entry",
+     "firstSeenAt": "2026-10-17T03:49:19.251Z",
+     "closedAt": "2026-10-18T03:50:49.249Z",
+     "sourceTicker": "DAR"
+    },
+    {
+     "id": "20713567",
+     "title": "Auxiliar de Producción",
+     "url": "https://ekgz.fa.us6.oraclecloud.com/hcmUI/CandidateExperience/en/sites/DarlingII/job/1497",
+     "location": "Paraguay",
+     "country": "PY",
+     "jobFunction": "manufacturing",
+     "seniority": "entry",
+     "firstSeenAt": "2026-10-17T03:49:19.251Z",
+     "closedAt": "2026-10-18T03:50:49.249Z",
+     "sourceTicker": "DAR"
+    }
+   ],
+   "why": "6 new roles in Paraguay in the week of Oct 12, 2026, the first seen there since Sep 19, 2026: none of the 485 postings seen on its boards since then (100% of them placed) was in Paraguay. Most often Auxiliar de Producción (4).",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z",
+   "kind": "new_country",
+   "group": "expansion",
+   "dimension": "country",
+   "key": "PY",
+   "label": "Paraguay",
+   "country": "PY",
+   "newRoles": 6,
+   "titles": 3,
+   "history": {
+    "watchedSince": "2026-09-19",
+    "priorPostings": 485,
+    "priorShare": 1
+   },
+   "baseline": null,
+   "ratio": null,
+   "zScore": null,
+   "companyRatio": null,
+   "flags": [],
+   "reads": 7
+  },
+  {
+   "symbol": "SCHW",
+   "name": "SCHWAB CHARLES CORP",
+   "sector": "Financial Services",
+   "industry": "Capital Markets",
+   "sourceTickers": [
+    "SCHW"
+   ],
+   "week": "2026-10-12",
+   "topTitles": [],
+   "places": [
+    {
+     "label": "Hyderabad, IN",
+     "count": 6
+    }
+   ],
+   "postings": [
+    {
+     "id": "18032569",
+     "title": "Manager, .Net Fullstack Developer",
+     "url": "https://career-schwab.icims.com/jobs/124076/manager%2c-.net-fullstack-developer/job?in_iframe=1",
+     "location": "Hyderabad, UNAVAILABLE, IN",
+     "country": "IN",
+     "jobFunction": "engineering",
+     "seniority": "manager",
+     "firstSeenAt": "2026-10-13T16:45:35.799Z",
+     "closedAt": "2026-10-14T16:47:57.340Z",
+     "sourceTicker": "SCHW"
+    },
+    {
+     "id": "18032568",
+     "title": "Sr Specialist - Data Engineering",
+     "url": "https://career-schwab.icims.com/jobs/124084/sr-specialist---data-engineering/job?in_iframe=1",
+     "location": "Hyderabad, UNAVAILABLE, IN",
+     "country": "IN",
+     "jobFunction": "data_ai",
+     "seniority": "senior",
+     "firstSeenAt": "2026-10-13T16:45:35.799Z",
+     "closedAt": "2026-10-14T16:47:57.340Z",
+     "sourceTicker": "SCHW"
+    }
+   ],
+   "why": "6 new roles in India in the week of Oct 12, 2026, the first seen there since Sep 18, 2026: none of the 740 postings seen on its boards since then (99% of them placed) was in India. In Hyderabad, IN (6).",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z",
+   "kind": "new_country",
+   "group": "expansion",
+   "dimension": "country",
+   "key": "IN",
+   "label": "India",
+   "country": "IN",
+   "newRoles": 6,
+   "titles": 6,
+   "history": {
+    "watchedSince": "2026-09-18",
+    "priorPostings": 740,
+    "priorShare": 0.9945945945945946
+   },
+   "baseline": null,
+   "ratio": null,
+   "zScore": null,
+   "companyRatio": null,
+   "flags": [],
+   "reads": 7
+  },
+  {
+   "symbol": "EMR",
+   "name": "EMERSON ELECTRIC CO",
+   "sector": "Industrials",
+   "industry": "Specialty Industrial Machinery",
+   "sourceTickers": [
+    "EMR"
+   ],
+   "week": "2026-10-12",
+   "topTitles": [],
+   "places": [
+    {
+     "label": "Sderot, IL",
+     "count": 5
+    }
+   ],
+   "postings": [
+    {
+     "id": "19369601",
+     "title": "Assembler",
+     "url": "https://hdjq.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/job/26011392",
+     "location": "Sderot, Southern, Israel",
+     "country": "IL",
+     "jobFunction": "manufacturing",
+     "seniority": "mid",
+     "firstSeenAt": "2026-10-15T16:24:15.252Z",
+     "closedAt": "2026-10-18T16:42:58.725Z",
+     "sourceTicker": "EMR"
+    },
+    {
+     "id": "19369600",
+     "title": "Circuit Card Tester",
+     "url": "https://hdjq.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/job/26011390",
+     "location": "Sderot, Southern, Israel",
+     "country": "IL",
+     "jobFunction": "manufacturing",
+     "seniority": "mid",
+     "firstSeenAt": "2026-10-15T16:24:15.252Z",
+     "closedAt": "2026-10-18T16:42:58.725Z",
+     "sourceTicker": "EMR"
+    }
+   ],
+   "why": "5 new roles in Israel in the week of Oct 12, 2026, the first seen there since Sep 18, 2026: none of the 1,654 postings seen on its boards since then (100% of them placed) was in Israel. In Sderot, IL (5).",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z",
+   "kind": "new_country",
+   "group": "expansion",
+   "dimension": "country",
+   "key": "IL",
+   "label": "Israel",
+   "country": "IL",
+   "newRoles": 5,
+   "titles": 5,
+   "history": {
+    "watchedSince": "2026-09-18",
+    "priorPostings": 1654,
+    "priorShare": 1
+   },
+   "baseline": null,
+   "ratio": null,
+   "zScore": null,
+   "companyRatio": null,
+   "flags": [],
+   "reads": 7
+  },
+  {
+   "symbol": "ARW",
+   "name": "ARROW ELECTRONICS, INC.",
+   "sector": "Technology",
+   "industry": "Electronics & Computer Distribution",
+   "sourceTickers": [
+    "ARW"
+   ],
+   "week": "2026-10-12",
+   "topTitles": [],
+   "places": [],
+   "postings": [
+    {
+     "id": "18138986",
+     "title": "Business Development Manager IBM SW Technical",
+     "url": "https://arrow.wd1.myworkdayjobs.com/en-US/AC/job/HR-Croatia/Business-Development-Manager-IBM-SW-Technical_R246028",
+     "location": "HR-Croatia",
+     "country": "HR",
+     "jobFunction": "sales",
+     "seniority": "manager",
+     "firstSeenAt": "2026-10-13T17:57:42.073Z",
+     "closedAt": null,
+     "sourceTicker": "ARW"
+    },
+    {
+     "id": "18138985",
+     "title": "Business Development Manager, IBM SW",
+     "url": "https://arrow.wd1.myworkdayjobs.com/en-US/AC/job/HR-Croatia/Business-Development-Manager--IBM-SW_R246027-1",
+     "location": "HR-Croatia",
+     "country": "HR",
+     "jobFunction": "sales",
+     "seniority": "manager",
+     "firstSeenAt": "2026-10-13T17:57:42.073Z",
+     "closedAt": null,
+     "sourceTicker": "ARW"
+    }
+   ],
+   "why": "3 new roles in Croatia in the week of Oct 12, 2026, the first seen there since Sep 18, 2026: none of the 707 postings seen on its boards since then (100% of them placed) was in Croatia.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z",
+   "kind": "new_country",
+   "group": "expansion",
+   "dimension": "country",
+   "key": "HR",
+   "label": "Croatia",
+   "country": "HR",
+   "newRoles": 3,
+   "titles": 3,
+   "history": {
+    "watchedSince": "2026-09-18",
+    "priorPostings": 707,
+    "priorShare": 0.9985855728429985
+   },
+   "baseline": null,
+   "ratio": null,
+   "zScore": null,
+   "companyRatio": null,
+   "flags": [],
+   "reads": 7
+  },
+  {
+   "symbol": "SEZL",
+   "name": "Sezzle Inc.",
+   "sector": "Financial Services",
+   "industry": "Credit Services",
+   "sourceTickers": [
+    "SEZL"
+   ],
+   "week": "2026-10-12",
+   "topTitles": [],
+   "places": [],
+   "postings": [
+    {
+     "id": "19127342",
+     "title": "Senior Security Engineer, Network & Zero Trust",
+     "url": "https://job-boards.greenhouse.io/sezzle/jobs/8032216003",
+     "location": "Serbia",
+     "country": "CO",
+     "jobFunction": "engineering",
+     "seniority": "senior",
+     "firstSeenAt": "2026-10-15T03:41:17.961Z",
+     "closedAt": null,
+     "sourceTicker": "SEZL"
+    },
+    {
+     "id": "18410207",
+     "title": "Senior Software Engineer, Security Platform",
+     "url": "https://job-boards.greenhouse.io/sezzle/jobs/8031671003",
+     "location": "Serbia",
+     "country": "CO",
+     "jobFunction": "engineering",
+     "seniority": "senior",
+     "firstSeenAt": "2026-10-14T03:36:59.762Z",
+     "closedAt": null,
+     "sourceTicker": "SEZL"
+    }
+   ],
+   "why": "3 new roles in Serbia in the week of Oct 12, 2026, the first seen there since Sep 20, 2026: none of the 258 postings seen on its boards since then (99% of them placed) was in Serbia.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z",
+   "kind": "new_country",
+   "group": "expansion",
+   "dimension": "country",
+   "key": "RS",
+   "label": "Serbia",
+   "country": "RS",
+   "newRoles": 3,
+   "titles": 3,
+   "history": {
+    "watchedSince": "2026-09-20",
+    "priorPostings": 258,
+    "priorShare": 0.9922480620155039
+   },
+   "baseline": null,
+   "ratio": null,
+   "zScore": null,
+   "companyRatio": null,
+   "flags": [],
+   "reads": 7
+  },
+  {
+   "symbol": "UL",
+   "name": "UNILEVER PLC",
+   "sector": "Consumer Defensive",
+   "industry": "Household & Personal Products",
+   "sourceTickers": [
+    "UL"
+   ],
+   "week": "2026-10-12",
+   "topTitles": [],
+   "places": [
+    {
+     "label": "Lima, PE",
+     "count": 3
+    }
+   ],
+   "postings": [
+    {
+     "id": "21616852",
+     "title": "Ejecutivo de Ventas Tradicional Provincias",
+     "url": "https://unilever.wd3.myworkdayjobs.com/Unilever_Experienced_Professionals/job/Lima-Peru/Ejecutivo-de-Ventas-Tradicional-Provincias_R-1189094",
+     "location": "Lima, Peru",
+     "country": "PE",
+     "jobFunction": "sales",
+     "seniority": "mid",
+     "firstSeenAt": "2026-10-18T06:53:53.566Z",
+     "closedAt": null,
+     "sourceTicker": "UL"
+    },
+    {
+     "id": "21616849",
+     "title": "Representante de Ventas Tradicional Provinicas",
+     "url": "https://unilever.wd3.myworkdayjobs.com/Unilever_Experienced_Professionals/job/Lima-Peru/Representante-de-Ventas-Tradicional-Provinicas_R-1189097",
+     "location": "Lima, Peru",
+     "country": "PE",
+     "jobFunction": "sales",
+     "seniority": "mid",
+     "firstSeenAt": "2026-10-18T06:53:53.566Z",
+     "closedAt": null,
+     "sourceTicker": "UL"
+    }
+   ],
+   "why": "3 new roles in Peru in the week of Oct 12, 2026, the first seen there since Sep 20, 2026: none of the 589 postings seen on its boards since then (97% of them placed) was in Peru. In Lima, PE (3).",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z",
+   "kind": "new_country",
+   "group": "expansion",
+   "dimension": "country",
+   "key": "PE",
+   "label": "Peru",
+   "country": "PE",
+   "newRoles": 3,
+   "titles": 3,
+   "history": {
+    "watchedSince": "2026-09-20",
+    "priorPostings": 589,
+    "priorShare": 0.9711375212224108
+   },
+   "baseline": null,
+   "ratio": null,
+   "zScore": null,
+   "companyRatio": null,
+   "flags": [],
+   "reads": 5
+  },
+  {
+   "symbol": "XPEL",
+   "name": "XPEL, Inc.",
+   "sector": "Consumer Cyclical",
+   "industry": "Auto Parts",
+   "sourceTickers": [
+    "XPEL"
+   ],
+   "week": "2026-10-12",
+   "topTitles": [],
+   "places": [
+    {
+     "label": "Tianjin, CN",
+     "count": 3
+    }
+   ],
+   "postings": [
+    {
+     "id": "19976706",
+     "title": "Territory Manager - North Region",
+     "url": "https://xpel.wd5.myworkdayjobs.com/XPEL_Careers/job/Tianjin-CN/Territory-Manager---North-Region_R-102398",
+     "location": "Tianjin, CN",
+     "country": "CN",
+     "jobFunction": "sales",
+     "seniority": "manager",
+     "firstSeenAt": "2026-10-16T09:04:42.454Z",
+     "closedAt": null,
+     "sourceTicker": "XPEL"
+    },
+    {
+     "id": "19976705",
+     "title": "Territory Manager - Henan",
+     "url": "https://xpel.wd5.myworkdayjobs.com/XPEL_Careers/job/Tianjin-CN/Territory-Manager---Henan_R-102396",
+     "location": "Tianjin, CN",
+     "country": "CN",
+     "jobFunction": "sales",
+     "seniority": "manager",
+     "firstSeenAt": "2026-10-16T09:04:42.454Z",
+     "closedAt": null,
+     "sourceTicker": "XPEL"
+    }
+   ],
+   "why": "3 new roles in China in the week of Oct 12, 2026, the first seen there since Sep 20, 2026: none of the 136 postings seen on its boards since then (100% of them placed) was in China. In Tianjin, CN (3).",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z",
+   "kind": "new_country",
+   "group": "expansion",
+   "dimension": "country",
+   "key": "CN",
+   "label": "China",
+   "country": "CN",
+   "newRoles": 3,
+   "titles": 3,
+   "history": {
+    "watchedSince": "2026-09-20",
+    "priorPostings": 136,
+    "priorShare": 1
+   },
+   "baseline": null,
+   "ratio": null,
+   "zScore": null,
+   "companyRatio": null,
+   "flags": [],
+   "reads": 4
+  },
+  {
+   "symbol": "LUCK",
+   "name": "Lucky Strike Entertainment Corp",
+   "sector": "Consumer Cyclical",
+   "industry": "Leisure",
+   "sourceTickers": [
+    "LUCK"
+   ],
+   "week": "2026-10-12",
+   "topTitles": [],
+   "places": [],
+   "postings": [
+    {
+     "id": "18714647",
+     "title": "Greeter / Counter Desk Attendant",
+     "url": "https://careers.luckystrikeent.com/jobs/61137?lang=en-us",
+     "location": "Murrieta, California, United States",
+     "country": "US",
+     "jobFunction": "retail",
+     "seniority": "entry",
+     "firstSeenAt": "2026-10-14T16:28:12.376Z",
+     "closedAt": null,
+     "sourceTicker": "LUCK"
+    },
+    {
+     "id": "18714646",
+     "title": "Amusement Attendant",
+     "url": "https://careers.luckystrikeent.com/jobs/61138?lang=en-us",
+     "location": "Murrieta, California, United States",
+     "country": "US",
+     "jobFunction": "retail",
+     "seniority": "entry",
+     "firstSeenAt": "2026-10-14T16:28:12.376Z",
+     "closedAt": null,
+     "sourceTicker": "LUCK"
+    }
+   ],
+   "why": "10 new roles in Murrieta, CA, US in the week of Oct 12, 2026, the first seen in that city since Sep 19, 2026: none of the 2,575 postings seen on its boards since then (99% of them naming a city) was there.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z",
+   "kind": "new_city",
+   "group": "expansion",
+   "dimension": "city",
+   "key": "murrieta|US",
+   "label": "Murrieta, CA, US",
+   "country": "US",
+   "newRoles": 10,
+   "titles": 10,
+   "history": {
+    "watchedSince": "2026-09-19",
+    "priorPostings": 2575,
+    "priorShare": 0.9941747572815534
+   },
+   "baseline": null,
+   "ratio": null,
+   "zScore": null,
+   "companyRatio": null,
+   "flags": [],
+   "reads": 7
+  },
+  {
+   "symbol": "NOW",
+   "name": "ServiceNow, Inc.",
+   "sector": "Technology",
+   "industry": "Software - Application",
+   "sourceTickers": [
+    "NOW"
+   ],
+   "week": "2026-10-12",
+   "topTitles": [
+    {
+     "title": "Sr Enterprise Account Executive",
+     "count": 4
+    }
+   ],
+   "places": [],
+   "postings": [
+    {
+     "id": "21967924",
+     "title": "Client Director",
+     "url": "https://jobs.smartrecruiters.com/servicenow/744000156190299",
+     "location": "Søborg, dk",
+     "country": "DK",
+     "jobFunction": "sales",
+     "seniority": "director",
+     "firstSeenAt": "2026-10-18T16:56:03.921Z",
+     "closedAt": null,
+     "sourceTicker": "NOW"
+    },
+    {
+     "id": "21967923",
+     "title": "Sr Enterprise Account Executive",
+     "url": "https://jobs.smartrecruiters.com/servicenow/744000156190250",
+     "location": "Søborg, dk",
+     "country": "DK",
+     "jobFunction": "sales",
+     "seniority": "senior",
+     "firstSeenAt": "2026-10-18T16:56:03.921Z",
+     "closedAt": null,
+     "sourceTicker": "NOW"
+    }
+   ],
+   "why": "6 new roles in Søborg, DK in the week of Oct 12, 2026, the first seen in that city since Sep 18, 2026: none of the 1,233 postings seen on its boards since then (97% of them naming a city) was there. Most often Sr Enterprise Account Executive (4).",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z",
+   "kind": "new_city",
+   "group": "expansion",
+   "dimension": "city",
+   "key": "søborg|DK",
+   "label": "Søborg, DK",
+   "country": "DK",
+   "newRoles": 6,
+   "titles": 3,
+   "history": {
+    "watchedSince": "2026-09-18",
+    "priorPostings": 1233,
+    "priorShare": 0.9724249797242498
+   },
+   "baseline": null,
+   "ratio": null,
+   "zScore": null,
+   "companyRatio": null,
+   "flags": [],
+   "reads": 7
+  },
+  {
+   "symbol": "THRM",
+   "name": "Gentherm Inc",
+   "sector": "Consumer Cyclical",
+   "industry": "Auto Parts",
+   "sourceTickers": [
+    "THRM"
+   ],
+   "week": "2026-10-12",
+   "topTitles": [],
+   "places": [],
+   "postings": [
+    {
+     "id": "19922909",
+     "title": "Shipping Coordinator 1st Shift",
+     "url": "https://careers.gentherm.com/job/Trenton-Shipping-Coordinator-1st-Shift-MO-64683/607028117/",
+     "location": "Trenton, MO, US, 64683",
+     "country": "US",
+     "jobFunction": "supply_chain",
+     "seniority": "entry",
+     "firstSeenAt": "2026-10-16T05:05:42.775Z",
+     "closedAt": null,
+     "sourceTicker": "THRM"
+    },
+    {
+     "id": "19922907",
+     "title": "Welder 1st Shift",
+     "url": "https://careers.gentherm.com/job/Trenton-Welder-1st-Shift-MO-64683/607012817/",
+     "location": "Trenton, MO, US, 64683",
+     "country": "US",
+     "jobFunction": "manufacturing",
+     "seniority": "entry",
+     "firstSeenAt": "2026-10-16T05:05:42.775Z",
+     "closedAt": null,
+     "sourceTicker": "THRM"
+    }
+   ],
+   "why": "6 new roles in Trenton, MO, US in the week of Oct 12, 2026, the first seen in that city since Sep 20, 2026: none of the 73 postings seen on its boards since then (100% of them naming a city) was there.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z",
+   "kind": "new_city",
+   "group": "expansion",
+   "dimension": "city",
+   "key": "trenton|US",
+   "label": "Trenton, MO, US",
+   "country": "US",
+   "newRoles": 6,
+   "titles": 6,
+   "history": {
+    "watchedSince": "2026-09-20",
+    "priorPostings": 73,
+    "priorShare": 1
+   },
+   "baseline": null,
+   "ratio": null,
+   "zScore": null,
+   "companyRatio": null,
+   "flags": [],
+   "reads": 4
+  },
+  {
+   "symbol": "VRT",
+   "name": "Vertiv Holdings Co",
+   "sector": "Industrials",
+   "industry": "Electrical Equipment & Parts",
+   "sourceTickers": [
+    "VRT"
+   ],
+   "week": "2026-10-12",
+   "topTitles": [],
+   "places": [],
+   "postings": [
+    {
+     "id": "17365364",
+     "title": "Industrial Engineering Specialist",
+     "url": "https://egup.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX/job/20282935",
+     "location": "Rivarotta Udine, Italy",
+     "country": "IT",
+     "jobFunction": "engineering",
+     "seniority": "mid",
+     "firstSeenAt": "2026-10-12T17:33:48.752Z",
+     "closedAt": null,
+     "sourceTicker": "VRT"
+    },
+    {
+     "id": "17365363",
+     "title": "Shift Leader",
+     "url": "https://egup.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX/job/20282933",
+     "location": "Rivarotta Udine, Italy",
+     "country": "IT",
+     "jobFunction": "manufacturing",
+     "seniority": "lead",
+     "firstSeenAt": "2026-10-12T17:33:48.752Z",
+     "closedAt": null,
+     "sourceTicker": "VRT"
+    }
+   ],
+   "why": "5 new roles in Rivarotta Udine, IT in the week of Oct 12, 2026, the first seen in that city since Sep 18, 2026: none of the 3,170 postings seen on its boards since then (88% of them naming a city) was there.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z",
+   "kind": "new_city",
+   "group": "expansion",
+   "dimension": "city",
+   "key": "rivarotta udine|IT",
+   "label": "Rivarotta Udine, IT",
+   "country": "IT",
+   "newRoles": 5,
+   "titles": 5,
+   "history": {
+    "watchedSince": "2026-09-18",
+    "priorPostings": 3170,
+    "priorShare": 0.8842271293375394
+   },
+   "baseline": null,
+   "ratio": null,
+   "zScore": null,
+   "companyRatio": null,
+   "flags": [],
+   "reads": 7
+  },
+  {
+   "symbol": "ABM",
+   "name": "ABM INDUSTRIES INC /DE/",
+   "sector": "Industrials",
+   "industry": "Specialty Business Services",
+   "sourceTickers": [
+    "ABM"
+   ],
+   "week": "2026-10-12",
+   "topTitles": [],
+   "places": [],
+   "postings": [
+    {
+     "id": "20355793",
+     "title": "JANITORIAL CLEANER Sat/Sun Only",
+     "url": "https://eiqg.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1001/job/170417",
+     "location": "Plantation, FL, United States",
+     "country": "US",
+     "jobFunction": "operations",
+     "seniority": "mid",
+     "firstSeenAt": "2026-10-16T18:16:09.551Z",
+     "closedAt": null,
+     "sourceTicker": "ABM"
+    },
+    {
+     "id": "20355791",
+     "title": "FLOOR TECHNICIAN (H)",
+     "url": "https://eiqg.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1001/job/170416",
+     "location": "Plantation, FL, United States",
+     "country": "US",
+     "jobFunction": "operations",
+     "seniority": "mid",
+     "firstSeenAt": "2026-10-16T18:16:09.551Z",
+     "closedAt": null,
+     "sourceTicker": "ABM"
+    }
+   ],
+   "why": "4 new roles in Plantation, FL, US in the week of Oct 12, 2026, the first seen in that city since Sep 18, 2026: none of the 4,286 postings seen on its boards since then (99% of them naming a city) was there.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z",
+   "kind": "new_city",
+   "group": "expansion",
+   "dimension": "city",
+   "key": "plantation|US",
+   "label": "Plantation, FL, US",
+   "country": "US",
+   "newRoles": 4,
+   "titles": 4,
+   "history": {
+    "watchedSince": "2026-09-18",
+    "priorPostings": 4286,
+    "priorShare": 0.988100793280448
+   },
+   "baseline": null,
+   "ratio": null,
+   "zScore": null,
+   "companyRatio": null,
+   "flags": [],
+   "reads": 7
+  },
+  {
+   "symbol": "AVAH",
+   "name": "Aveanna Healthcare Holdings, Inc.",
+   "sector": "Healthcare",
+   "industry": "Medical Care Facilities",
+   "sourceTickers": [
+    "AVAH"
+   ],
+   "week": "2026-10-12",
+   "topTitles": [],
+   "places": [],
+   "postings": [
+    {
+     "id": "20406852",
+     "title": "Aveanna Healthcare Private Duty Registered Nurse (RN) - G Tube, Teen",
+     "url": "https://jobs.aveanna.com/job/168179/aveanna-healthcare-private-duty-registered-nurse-rn-g-tube-teen-nursing-us-fl-edgewater/",
+     "location": "Edgewater, FL, US",
+     "country": "US",
+     "jobFunction": "clinical",
+     "seniority": "mid",
+     "firstSeenAt": "2026-10-16T19:29:06.998Z",
+     "closedAt": null,
+     "sourceTicker": "AVAH"
+    },
+    {
+     "id": "20406851",
+     "title": "Aveanna Healthcare Private Duty Registered Nurse (RN) - G Tube, child",
+     "url": "https://jobs.aveanna.com/job/168177/aveanna-healthcare-private-duty-registered-nurse-rn-g-tube-child-nursing-us-fl-edgewater/",
+     "location": "Edgewater, FL, US",
+     "country": "US",
+     "jobFunction": "clinical",
+     "seniority": "mid",
+     "firstSeenAt": "2026-10-16T19:29:06.998Z",
+     "closedAt": null,
+     "sourceTicker": "AVAH"
+    }
+   ],
+   "why": "4 new roles in Edgewater, FL, US in the week of Oct 12, 2026, the first seen in that city since Sep 18, 2026: none of the 3,776 postings seen on its boards since then (99% of them naming a city) was there.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z",
+   "kind": "new_city",
+   "group": "expansion",
+   "dimension": "city",
+   "key": "edgewater|US",
+   "label": "Edgewater, FL, US",
+   "country": "US",
+   "newRoles": 4,
+   "titles": 4,
+   "history": {
+    "watchedSince": "2026-09-18",
+    "priorPostings": 3776,
+    "priorShare": 0.993114406779661
+   },
+   "baseline": null,
+   "ratio": null,
+   "zScore": null,
+   "companyRatio": null,
+   "flags": [],
+   "reads": 7
+  },
+  {
+   "symbol": "EHC",
+   "name": "Encompass Health Corp",
+   "sector": "Healthcare",
+   "industry": "Medical Care Facilities",
+   "sourceTickers": [
+    "EHC"
+   ],
+   "week": "2026-10-12",
+   "topTitles": [],
+   "places": [],
+   "postings": [
+    {
+     "id": "18446259",
+     "title": "Human Resources Director",
+     "url": "https://ibwsjb.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX/job/2533607",
+     "location": "Apollo Beach, FL, United States",
+     "country": "US",
+     "jobFunction": "people",
+     "seniority": "director",
+     "firstSeenAt": "2026-10-14T05:24:23.607Z",
+     "closedAt": null,
+     "sourceTicker": "EHC"
+    },
+    {
+     "id": "18446258",
+     "title": "Facilities Management Director",
+     "url": "https://ibwsjb.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX/job/2533606",
+     "location": "Apollo Beach, FL, United States",
+     "country": "US",
+     "jobFunction": "operations",
+     "seniority": "director",
+     "firstSeenAt": "2026-10-14T05:24:23.607Z",
+     "closedAt": null,
+     "sourceTicker": "EHC"
+    }
+   ],
+   "why": "4 new roles in Apollo Beach, FL, US in the week of Oct 12, 2026, the first seen in that city since Sep 19, 2026: none of the 2,740 postings seen on its boards since then (100% of them naming a city) was there.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z",
+   "kind": "new_city",
+   "group": "expansion",
+   "dimension": "city",
+   "key": "apollo beach|US",
+   "label": "Apollo Beach, FL, US",
+   "country": "US",
+   "newRoles": 4,
+   "titles": 4,
+   "history": {
+    "watchedSince": "2026-09-19",
+    "priorPostings": 2740,
+    "priorShare": 0.9996350364963503
+   },
+   "baseline": null,
+   "ratio": null,
+   "zScore": null,
+   "companyRatio": null,
+   "flags": [],
+   "reads": 7
+  },
+  {
+   "symbol": "EHC",
+   "name": "Encompass Health Corp",
+   "sector": "Healthcare",
+   "industry": "Medical Care Facilities",
+   "sourceTickers": [
+    "EHC"
+   ],
+   "week": "2026-10-12",
+   "topTitles": [],
+   "places": [],
+   "postings": [
+    {
+     "id": "18446263",
+     "title": "Human Resources Director",
+     "url": "https://ibwsjb.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX/job/2533614",
+     "location": "Saint George, UT, United States",
+     "country": "US",
+     "jobFunction": "people",
+     "seniority": "director",
+     "firstSeenAt": "2026-10-14T05:24:23.607Z",
+     "closedAt": null,
+     "sourceTicker": "EHC"
+    },
+    {
+     "id": "18446262",
+     "title": "Facilities Management Director",
+     "url": "https://ibwsjb.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX/job/2533613",
+     "location": "Saint George, UT, United States",
+     "country": "US",
+     "jobFunction": "operations",
+     "seniority": "director",
+     "firstSeenAt": "2026-10-14T05:24:23.607Z",
+     "closedAt": null,
+     "sourceTicker": "EHC"
+    }
+   ],
+   "why": "4 new roles in Saint George, UT, US in the week of Oct 12, 2026, the first seen in that city since Sep 19, 2026: none of the 2,740 postings seen on its boards since then (100% of them naming a city) was there.",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z",
+   "kind": "new_city",
+   "group": "expansion",
+   "dimension": "city",
+   "key": "saint george|US",
+   "label": "Saint George, UT, US",
+   "country": "US",
+   "newRoles": 4,
+   "titles": 4,
+   "history": {
+    "watchedSince": "2026-09-19",
+    "priorPostings": 2740,
+    "priorShare": 0.9996350364963503
+   },
+   "baseline": null,
+   "ratio": null,
+   "zScore": null,
+   "companyRatio": null,
+   "flags": [],
+   "reads": 7
+  }
+ ]
+}

@@ -1,10 +1,13 @@
 import { expect, test } from "bun:test";
+import { deriveHeadlessFreshness, paneStatusLine } from "../../../cli/pane-functions/freshness";
 import type { QueryEntry } from "../../../market-data/result-types";
 import type { Quote } from "../../../types/financials";
 import {
   buildCryptoColumns,
   buildCryptoRows,
+  CRYPTO_BOARD_FRESHNESS,
   cryptoQuoteKey,
+  cryptoRowObservations,
   DEFAULT_CRYPTO_SORT,
   formatCryptoPercent,
   formatCryptoPrice,
@@ -175,4 +178,50 @@ test("the 24h low and high take a newer live price, and off peg sorts by size ei
   expect(buildCryptoRows(data.assets, "coin", new Map(), CRYPTO_FIXTURE_NOW)[0]).toMatchObject({ peg: null, offPegBp: null, low24h: null });
   const rows = [{ ...board!, code: "UP", offPegBp: 12 }, { ...board!, code: "DOWN", offPegBp: -30 }, { ...board!, code: "YIELD", offPegBp: null }];
   expect(sortCryptoRows(rows, { columnId: "offPegBp", direction: "desc" }).map((row) => row.code)).toEqual(["DOWN", "UP", "YIELD"]);
+});
+
+// The pane footer's line for the rows as `buildCryptoRows` prices them, as the pane builds it.
+function footerLine(assets: ReturnType<typeof cryptoFixture>["assets"], quotes: Array<[string, QueryEntry<Quote>]> = []) {
+  const rows = buildCryptoRows(assets, "coin", new Map(quotes), CRYPTO_FIXTURE_NOW);
+  const rowsFreshness = { rows: cryptoRowObservations(rows), freshness: CRYPTO_BOARD_FRESHNESS };
+  return paneStatusLine(deriveHeadlessFreshness({ shape: "rows" }, rowsFreshness, CRYPTO_FIXTURE_NOW));
+}
+
+/** Bitcoin, plus coins the live feed does not carry whose last trades are 4 to 9 minutes before CRYPTO_FIXTURE_NOW. */
+function boardWithQuietCoins() {
+  const [btc, hype] = cryptoFixture().assets;
+  const quiet = (symbol: string, minutesAgo: number) => ({
+    ...hype!, symbol, code: symbol.split("-")[0]!, quoteTime: new Date(CRYPTO_FIXTURE_NOW - minutesAgo * 60_000).toISOString(),
+  });
+  return { btc: btc!, assets: [btc!, quiet("TON-USD", 4), quiet("RAIN-USD", 7), quiet("BTW-USD", 9)] };
+}
+
+test("the footer dates a coin priced from the board by its time and age, with no feed label", () => {
+  const { btc, assets } = boardWithQuietCoins();
+  // Pro: bitcoin streams, the other coins come from the board the server renews every 15 seconds.
+  const streamed = entry({ price: 101, lastUpdated: CRYPTO_FIXTURE_NOW - 5_000, delivery: "stream", dataSource: "live", stale: false });
+  expect(footerLine(assets, [[cryptoQuoteKey(btc), streamed]])).toBe("11:59 UTC · oldest 9 min");
+  // Free: nothing streams, so every coin is priced from the board.
+  expect(footerLine(assets)).toBe("11:59 UTC · oldest 9 min");
+  // Fetched once, not streamed (a poll without a delayed feed) is the board's price all the same.
+  expect(footerLine(assets, [[cryptoQuoteKey(btc), { ...streamed, data: { ...streamed.data!, delivery: "poll" } }]])).toBe("11:59 UTC · oldest 9 min");
+});
+
+test("only a view whose every price is streamed says live", () => {
+  const { btc, assets } = boardWithQuietCoins();
+  const streams = assets.map((asset, index) => [cryptoQuoteKey(asset), entry({
+    price: 100 + index, lastUpdated: CRYPTO_FIXTURE_NOW - 5_000, delivery: "stream", dataSource: "live", stale: false,
+  })] as [string, QueryEntry<Quote>]);
+  expect(footerLine(assets, streams)).toBe("11:59 UTC · oldest 0 min · live");
+  expect(footerLine([btc], streams.slice(0, 1))).toBe("11:59 UTC · oldest 0 min · live");
+});
+
+test("a quote from a delayed feed, streamed or polled, still says how far it is held back", () => {
+  const { btc, assets } = boardWithQuietCoins();
+  // The delayed quote is 15 minutes behind, newer than the board's read of the coin.
+  const old = { ...btc, quoteTime: new Date(CRYPTO_FIXTURE_NOW - 20 * 60_000).toISOString() };
+  for (const delivery of ["stream", "poll"] as const) {
+    const delayed = entry({ price: 101, lastUpdated: CRYPTO_FIXTURE_NOW - 15 * 60_000, delivery, dataSource: "delayed", stale: false });
+    expect(footerLine([old, ...assets.slice(1)], [[cryptoQuoteKey(btc), delayed]])).toBe("11:56 UTC · oldest 15 min · 15 min delayed");
+  }
 });

@@ -50,20 +50,29 @@ function brokerReason(lastError: string | null | undefined): string | null {
   return described.replace(/[\s.]+$/, "").slice(0, 200) || null;
 }
 
-/** What to tell the user when Gloom answers a broker call with an error. */
-function describeSignedInBrokerError(error: unknown, brokerName: string): string {
+/** Gloom holds no live sign-in for the broker: only connecting again helps. */
+class SignInNeededError extends Error {}
+
+/**
+ * What to tell the user when Gloom answers a broker call with an error, and
+ * whether only a new sign-in, to Gloom or the broker, gets the profile going.
+ */
+function describeSignedInBrokerError(error: unknown, brokerName: string): { message: string; needsSignIn: boolean } {
   const status = error instanceof ApiRequestError ? error.status : undefined;
-  if (status === 401) return `Sign in to Gloom first, then connect ${brokerName}.`;
+  if (status === 401) return { message: `Sign in to Gloom first, then connect ${brokerName}.`, needsSignIn: true };
   const signInAgain = `${brokerName} needs you to sign in again. Press Connect in Brokers.`;
   // A sign-in the broker ended says why, in Gloom's words.
-  if (status === 409) return (error instanceof ApiRequestError && writtenMessage(error)) || signInAgain;
-  if (status === 404) return signInAgain;
-  if (status === 502) return `${brokerName} is not responding. Try again shortly.`;
+  if (status === 409) return { message: (error instanceof ApiRequestError && writtenMessage(error)) || signInAgain, needsSignIn: true };
+  if (status === 404) return { message: signInAgain, needsSignIn: true };
+  if (status === 502) return { message: `${brokerName} is not responding. Try again shortly.`, needsSignIn: false };
   // A refused order or a busy broker says why without its error code.
   if (error instanceof ApiRequestError && (status === 403 || status === 422 || status === 503)) {
-    return writtenMessage(error) ?? error.message;
+    return { message: writtenMessage(error) ?? error.message, needsSignIn: false };
   }
-  return error instanceof Error && error.message ? error.message : String(error);
+  return {
+    message: error instanceof Error && error.message ? error.message : String(error),
+    needsSignIn: error instanceof SignInNeededError,
+  };
 }
 
 /**
@@ -193,9 +202,10 @@ export function createSignedInBrokerAdapter(overrides: Partial<SignedInBrokerAda
     return orders && orders.mode === "direct" ? orders : null;
   };
 
-  const setStatus = (instance: BrokerInstanceConfig, state: "connected" | "error", message?: string) => {
+  const setStatus = (instance: BrokerInstanceConfig, state: "connected" | "error", message?: string, needsSignIn = false) => {
     statuses.set(instance.id, {
       state, message, mode: METHOD, updatedAt: deps.now(),
+      ...(needsSignIn ? { needsSignIn } : {}),
       // A direct-mode broker says per quote whether it is real-time.
       ...(directOrders(instance) ? { quoteData: "realtime" as const } : {}),
     });
@@ -209,8 +219,8 @@ export function createSignedInBrokerAdapter(overrides: Partial<SignedInBrokerAda
       setStatus(instance, "connected");
       return result;
     } catch (error) {
-      const message = describeSignedInBrokerError(error, brokerName(instance));
-      setStatus(instance, "error", message);
+      const { message, needsSignIn } = describeSignedInBrokerError(error, brokerName(instance));
+      setStatus(instance, "error", message, needsSignIn);
       throw new Error(message);
     }
   };
@@ -252,8 +262,8 @@ export function createSignedInBrokerAdapter(overrides: Partial<SignedInBrokerAda
       setStatus(instance, "connected");
       return result;
     } catch (error) {
-      const message = describeSignedInBrokerError(error, brokerName(instance));
-      if (signInLost(error)) setStatus(instance, "error", message);
+      const { message, needsSignIn } = describeSignedInBrokerError(error, brokerName(instance));
+      if (signInLost(error)) setStatus(instance, "error", message, needsSignIn);
       throw refusedOrderAction(error) ? refused(message) : new Error(message);
     }
   };
@@ -265,7 +275,7 @@ export function createSignedInBrokerAdapter(overrides: Partial<SignedInBrokerAda
     try {
       for (const order of await get<BrokerOrder[]>(instance, "/orders")) ownOrder(instance, order);
     } catch (error) {
-      throw refused(describeSignedInBrokerError(error, brokerName(instance)));
+      throw refused(describeSignedInBrokerError(error, brokerName(instance)).message);
     }
     const found = handles.get(instance.id)?.get(orderId);
     if (!found) throw refused("This order is no longer listed. Refresh your orders.");
@@ -285,6 +295,17 @@ export function createSignedInBrokerAdapter(overrides: Partial<SignedInBrokerAda
     if (!orders) throw refused(`${name} does not take orders from Gloom.`);
     if (!orders.types.includes(request.orderType)) {
       throw refused(`${name} does not take ${request.orderType} orders from Gloom.`);
+    }
+    // A server that does not say it takes a bracket, an OCO pair or a trailing stop would drop its fields and place a bare
+    // order: never send one it has not named.
+    if (!request.orderClass && (request.takeProfitPrice !== undefined || request.stopLossPrice !== undefined)) {
+      throw refused("A take profit or stop loss needs a bracket or OCO order.");
+    }
+    if (request.orderClass && !orders.orderClasses?.includes(request.orderClass)) {
+      throw refused(`${name} does not take ${request.orderClass === "oco" ? "OCO" : "bracket"} orders from Gloom.`);
+    }
+    if (request.orderType === "TRAIL" && !orders.trailing?.includes(request.trailingPercent !== undefined ? "percent" : "amount")) {
+      throw refused(`${name} does not take this trailing stop from Gloom.`);
     }
     if (!(request.quantity > 0)) throw refused("Quantity must be positive.");
     const needsLimit = request.orderType === "LMT" || request.orderType === "STP LMT";
@@ -446,6 +467,8 @@ export function createSignedInBrokerAdapter(overrides: Partial<SignedInBrokerAda
         enabled: granted && switchedOn,
         orderTypes: [...orders.types],
         tif: orders.tif?.length ? [...orders.tif] : DIRECT_TIF,
+        ...(orders.orderClasses?.length ? { orderClasses: [...orders.orderClasses] } : {}),
+        ...(orders.trailing?.length ? { trailing: [...orders.trailing] } : {}),
         minQuantity: 1,
         quantityStep: 1,
         modify: true,
@@ -499,7 +522,7 @@ export function createSignedInBrokerAdapter(overrides: Partial<SignedInBrokerAda
         if (connection.status !== "connected") {
           const name = brokerName(instance);
           const reason = brokerReason(connection.lastError);
-          throw new Error(reason
+          throw new SignInNeededError(reason
             ? `${name} needs you to sign in again: ${reason}. Press Connect in Brokers.`
             : `Press Connect in Brokers to sign in to ${name}.`);
         }

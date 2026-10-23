@@ -251,8 +251,8 @@ test("every report shape ends with its source, as-of and status line, and JSON c
     [{ shape: "rows", argument: { kind: "none" }, options: [], load: () => ({ rows: [{ name: "AAPL", dataSource: "delayed", updatedAt: Date.parse("2026-10-08T19:59:00Z") }] }) }, "delayed"],
     [{ shape: "bundle", argument: { kind: "none" }, options: [], freshness: { source: "SEC EDGAR", status: "not-a-feed", basis: "filed data" },
       load: () => ({ sections: [{ title: "Filings", rows: [{ form: "10-K", asOf: "2026-09-30" }] }] }) }, "not a live feed (filed data)"],
-    [{ shape: "series", argument: { kind: "none" }, options: [], load: () => ({ series: [{ id: "x", label: "X", points: [{ date: "2026-10-08", value: 1 }] }] }) }, "status not reported"],
-    [{ shape: "snapshot", argument: { kind: "none" }, options: [], load: () => ({ asOf: "2026-10-08T19:59:00Z", items: [{ headline: "Open" }] }) }, "status not reported"],
+    [{ shape: "series", argument: { kind: "none" }, options: [], load: () => ({ series: [{ id: "x", label: "X", points: [{ date: "2026-10-08", value: 1 }] }] }) }, ""],
+    [{ shape: "snapshot", argument: { kind: "none" }, options: [], load: () => ({ asOf: "2026-10-08T19:59:00Z", items: [{ headline: "Open" }] }) }, ""],
   ];
   for (const [definition, status] of results) {
     const report = await buildHeadlessFunctionReport({
@@ -261,7 +261,8 @@ test("every report shape ends with its source, as-of and status line, and JSON c
     const last = report.text.split("\n").at(-1)!.replace(/\x1b\[[0-9;]*m/g, "");
     expect(last).toStartWith(`Source: ${definition.freshness?.source ?? "Gloom Cloud"} · `);
     expect(last).toMatch(/ · (?:Mon|Tue|Wed|Thu|Fri|Sat|Sun) \d{1,2} [A-Z][a-z]{2}\b/);
-    expect(last).toEndWith(` · ${status}`);
+    if (status) expect(last).toEndWith(` · ${status}`);
+    else expect(last).toMatch(/2026(?: 19:59 UTC)?$/);
     expect(report.data.freshness).toMatchObject({ source: definition.freshness?.source ?? "Gloom Cloud", asOf: expect.stringMatching(/^2026-/), retrievedAt: expect.any(String) });
   }
 });

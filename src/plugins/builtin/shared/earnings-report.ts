@@ -54,8 +54,8 @@ export function epsBasisShort(basis: EarningsEpsBasis | null): string {
   return basis === "gaap" ? "GAAP" : basis === "adjusted" ? "adj" : "?";
 }
 
-/** The basis as every earnings table names it: GAAP, adj, basis unknown. */
-const BASIS_TEXT: Record<EpsBasisName, string> = { GAAP: "GAAP", adjusted: "adj", unknown: "basis unknown" };
+/** Known bases are named in row details; unknown stays in the structured data and drilldown. */
+const BASIS_TEXT: Record<EpsBasisName, string> = { GAAP: "GAAP", adjusted: "adj", unknown: "" };
 
 type EarningsRecord = CorporateActionsData["earnings"][number];
 
@@ -80,7 +80,7 @@ export function earningsDetailParts(earning: EarningsRecord): string[] {
 export function earningsDetail(earning: EarningsRecord): string {
   const detail = earningsDetailParts(earning).join(", ");
   if (earning.epsActual == null) return detail || "Pending";
-  return earning.dateType === "fiscal-period-end" ? `Period end; ${detail}` : detail;
+  return earning.dateType === "fiscal-period-end" ? ["Period end", detail].filter(Boolean).join("; ") : detail;
 }
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];

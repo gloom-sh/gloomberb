@@ -181,9 +181,13 @@ export interface HeadlessPaneColumn {
    * The row field naming the unit of this column's number, for a column whose
    * rows are quoted in different units (CDX spreads in `bp`, prices in
    * `price`). Exports write the bare number and that unit: in the header when
-   * every row shares it, otherwise in a `<header> unit` column.
+   * every row shares it, otherwise in a `<header> unit` column. A column whose
+   * unit is the row's own (`rowUnitKey`) exports the bare number under its own
+   * header, the row's `currency_or_unit` naming the unit.
    */
   unitKey?: string;
+  /** With `unitKey`: always a `<header> unit` column, so the header is the same whichever rows loaded. */
+  unitColumn?: boolean;
   /**
    * The text report prints the value on its own lines under the row instead
    * of in a column, for a footnote that belongs to that row; an empty value
@@ -334,6 +338,14 @@ export interface HeadlessPaneFreshness {
   /** Say how old the oldest observation is (`oldest 4 min`): rows polled apart from one source. */
   oldestAge?: boolean;
   /**
+   * Say how old the data is, the newest observation's time and `oldest 4 min`, and no more: no status word.
+   * For rows priced apart from a snapshot refreshed on a schedule (CRYP's board), where `live` would call prices
+   * that are minutes old real-time and `delayed` would call a snapshot renewed every few seconds held back. A row
+   * that states its own feed (`dataSource`, `delayMinutes`) still says it, and so does a declared `status`.
+   * Says how old the oldest observation is, as `oldestAge` does.
+   */
+  ageOnly?: boolean;
+  /**
    * Rows quoted on several markets (a US line beside Xetra and Paris ones)
    * date each market's session in the status line, `US, XETRA and EPA Tue 13
    * Oct 2026 close`, instead of only the newest row's.
@@ -352,6 +364,11 @@ export interface HeadlessPaneFreshness {
   asOfLabel?: string;
   /** What the figures are, said after the status: `funding = current estimate, pays 08:00 UTC`. */
   note?: string;
+  /**
+   * Shorter forms of `note`, longest first, that a capture's status line too
+   * narrow for the whole note says instead before it leaves the note out.
+   */
+  noteVariants?: string[];
   /**
    * When the figures reach readers and when the next ones are due, said right
    * after the as-of date: `published Fri 9 Oct, next settlement Thu 15 Oct,
@@ -415,6 +432,8 @@ export interface HeadlessRowsResult extends HeadlessPaneResultBase {
    * (an ISO date or instant), for rows of several series dated apart: each
    * exported row names them in `currency_or_unit`, `symbol_or_series` and
    * `as_of`, as a bundle section's `rowUnitKey`, `rowSymbolKey` and `rowAsOfKey` do.
+   * In a report of several symbols, rows with their own `symbol` and
+   * `currency` fields name them without these.
    */
   rowUnitKey?: string;
   rowSymbolKey?: string;

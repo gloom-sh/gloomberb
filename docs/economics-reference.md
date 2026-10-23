@@ -18,7 +18,7 @@ The latest observation date identifies the source period, not necessarily its re
 
 Ordinary loads and automatic checks reuse series retrieved within six hours. Pressing `r` requests current observations, including revisions to earlier periods. If a request fails, available cached observations remain visible with the existing error and stale status; independently available statistics still update. This is current-series research, not reconstruction of publication-time vintages.
 
-STALE marks a statistic whose newest print is overdue. FRED dates a print at the start of its period, so each limit allows two periods, the group's slowest normal release lag and about two weeks: 90 days for CPI, PPI, jobs, output, retail sales and housing starts; 105 days for PCE, income, spending, new home sales, sentiment and M2; 115 days for JOLTS, durable goods, factory orders and trade; 235 days for GDP and productivity; 6 days for daily and 21 days for weekly series.
+STALE marks a statistic whose newest print is overdue. FRED dates a print at the start of its period, so each limit allows two periods, the group's slowest normal release lag and about two weeks: 90 days for CPI, PPI, jobs, output, retail sales and housing starts; 105 days for PCE, income, spending, new home sales, sentiment and M2; 115 days for JOLTS, durable goods, factory orders and trade; 235 days for GDP and productivity; 135 days for GDPNow, which is dated at quarter start and updated until the next advance GDP release; 6 days for daily and 21 days for weekly series.
 
 Exports retain each statistic's retrieval time separately from its observation-period date. Aggregate `fetchedAt` is the oldest known retrieval among included statistics, or `null` when none is known. `fetchedAtComplete` is false if any included statistic lacks retrieval provenance, so the aggregate does not establish freshness for that statistic. Hydrated or injected observations without retrieval metadata keep a null retrieval time and unknown cache freshness. Reading or projecting cached observations does not advance their retrieval time.
 
@@ -57,3 +57,14 @@ Exports retain each statistic's retrieval time separately from its observation-p
 | Trade Balance | [BOPGSTB](https://fred.stlouisfed.org/series/BOPGSTB) | level | Goods and services exported less imported. |
 | Nonfarm Productivity | [OPHNFB](https://fred.stlouisfed.org/series/OPHNFB) | qoq-annualized | Output per hour worked. |
 | Unit Labor Costs | [ULCNFB](https://fred.stlouisfed.org/series/ULCNFB) | qoq-annualized | Labour cost per unit of output; pay growth relative to productivity. |
+
+## Nowcasts & conditions
+
+| Statistic | FRED series | Transform | Interpretation |
+| --- | --- | --- | --- |
+| Atlanta Fed GDPNow | [GDPNOW](https://fred.stlouisfed.org/series/GDPNOW) | level | Real GDP growth estimate, q/q at a seasonally adjusted annual rate. Higher implies stronger growth. |
+| Chicago Fed financial conditions | [NFCI](https://fred.stlouisfed.org/series/NFCI) | level | Weekly index, not seasonally adjusted. Above zero means tighter-than-average conditions; below zero means looser. |
+| St. Louis Fed financial stress | [STLFSI4](https://fred.stlouisfed.org/series/STLFSI4) | level | Current fourth version of the weekly index, not seasonally adjusted. Above zero means above-average stress. |
+| Cleveland Fed median CPI | [MEDCPIM158SFRBCLE](https://fred.stlouisfed.org/series/MEDCPIM158SFRBCLE) | level | Seasonally adjusted monthly price change at an annual rate. Higher implies more inflation. |
+
+GDPNow and median CPI are already percentage changes; ECST does not transform them again. GDPNow's FRED observations are quarterly, with the latest estimate replacing the current quarter's value, so its chart is not a history of intraperiod forecast revisions. Zero on either conditions index is its source's average, not a recession threshold. Percentiles rank each indicator against its own observations in the selected window; the indexes are never pooled or compared as the same scale.

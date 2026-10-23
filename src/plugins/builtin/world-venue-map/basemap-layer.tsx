@@ -1,3 +1,4 @@
+import { logFailure } from "../../../utils/log-failure";
 /**
  * The land under the desktop and web map: a quiet fill, 1 px coastlines and
  * fainter borders, at 1:50m for the world and 1:10m for the tiles in view once
@@ -67,7 +68,7 @@ function useWorldPaths(): BasemapPaths | null {
     let current = true;
     loadWorldBasemap().then((loaded) => {
       if (current) setPaths(loaded);
-    }, () => {});
+    }, logFailure("world-venue-map.basemap", "Load world basemap failed"));
     return () => {
       current = false;
     };
@@ -83,7 +84,7 @@ function useDetailTiles(active: boolean, view: GeoBox): { tiles: DetailTile[]; l
     let current = true;
     loadDetailIndex().then((tiles) => {
       if (current) setIndex(tiles);
-    }, () => {});
+    }, logFailure("world-venue-map.basemap", "Load detail tile index failed"));
     return () => {
       current = false;
     };
@@ -105,7 +106,7 @@ function useDetailTiles(active: boolean, view: GeoBox): { tiles: DetailTile[]; l
           while (next.size > TILE_CACHE_SIZE) next.delete(next.keys().next().value!);
           return next;
         });
-      }, () => {});
+      }, logFailure("world-venue-map.basemap", "Load detail tile failed"));
     }
     return () => {
       current = false;

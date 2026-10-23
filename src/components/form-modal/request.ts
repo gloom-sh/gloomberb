@@ -24,6 +24,11 @@ export interface ConfirmModalOptions {
    * when the confirm was closed before the work finished.
    */
   onSuccess?: () => void;
+  /**
+   * Says what `onConfirm` threw once the confirm was closed and cannot say it
+   * inline: on the row it concerns, say. A toast when missing.
+   */
+  onFailureAfterClose?: (failure: unknown) => void;
 }
 
 /**

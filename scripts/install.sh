@@ -31,6 +31,20 @@ main() {
       ;;
   esac
 
+  # Alpine and other musl systems get the musl build. The glibc one cannot load
+  # its render library there. ldd names its C library; without ldd, musl's
+  # dynamic loader being there decides.
+  variant=""
+  if [ "$os" = "linux" ]; then
+    case "$(ldd --version 2>&1 || true)" in
+      *musl*) variant="-musl" ;;
+      *GNU*|*GLIBC*|*glibc*) ;;
+      *) for loader in /lib/ld-musl-*.so.1; do
+           if [ -e "$loader" ]; then variant="-musl"; fi
+         done ;;
+    esac
+  fi
+
   # Apple Silicon shells under Rosetta report x86_64, and they still want the
   # arm64 build. Genuine Intel Macs keep x64 and get the terminal app, because
   # the desktop app bundle is published for Apple Silicon only.
@@ -259,7 +273,7 @@ main() {
   }
 
   install_standalone_cli() {
-    select_asset "gloomberb-${os}-${arch}.gz"
+    select_asset "gloomberb-${os}-${arch}${variant}.gz"
     TMP="${TMP_DIR}/gloom"
     echo "Downloading ${ASSET} from ${DOWNLOAD_URL}"
     echo "Will install ${INSTALL_DIR}/gloom."
@@ -270,6 +284,10 @@ main() {
         echo "Intel Macs need a release that ships ${ASSET}." >&2
         echo "Run Gloom in the browser meanwhile: https://term.gloom.sh" >&2
         echo "Intel support: https://github.com/gloom-sh/gloomberb/issues/539" >&2
+      fi
+      if [ "$variant" = "-musl" ]; then
+        echo "musl systems such as Alpine need a release that ships ${ASSET}." >&2
+        echo "Install with Bun meanwhile: bun install -g gloomberb" >&2
       fi
       exit 1
     fi
@@ -309,6 +327,17 @@ main() {
       echo "the terminal app instead."
     fi
     install_standalone_cli
+  fi
+
+  # Every musl Bun binary links libstdc++, which minimal Alpine images lack.
+  if [ "$variant" = "-musl" ]; then
+    libstdcxx=""
+    for lib in /lib/libstdc++.so.6 /usr/lib/libstdc++.so.6 /usr/local/lib/libstdc++.so.6; do
+      if [ -e "$lib" ]; then libstdcxx="$lib"; fi
+    done
+    if [ -z "$libstdcxx" ]; then
+      echo "Warning: gloom needs libstdc++. On Alpine: apk add libstdc++"
+    fi
   fi
 
   case ":$PATH:" in

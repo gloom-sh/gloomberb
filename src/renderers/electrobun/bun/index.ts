@@ -6,6 +6,7 @@ import { ELECTROBUN_CONTEXT_MENU_ACTION } from "../shared/protocol";
 import { contextMenuSelectionMessage } from "./context-menu/click";
 import { applicationMenuCommand, createApplicationMenuGate } from "./application-menu/click";
 import { DesktopBackend } from "./desktop/backend";
+import { startDesktopBackend } from "./desktop/initialization";
 import {
   MAIN_WINDOW_MIN_SIZE,
   defaultMainWindowFrame,
@@ -13,6 +14,7 @@ import {
 } from "./window/frame";
 import { MAIN_WINDOW_RPC_KEY } from "./window/focus";
 import { createAppWindow } from "./window/create";
+import { desktopBootFramePath, desktopBootFramePreload, readDesktopBootFrame } from "./window/boot-frame";
 import { getWindowFrame } from "./window/events";
 import {
   fitWindowFrameToDisplays,
@@ -140,8 +142,16 @@ const mainWindow = createAppWindow({
   rpc: mainRpc,
   minSize: MAIN_WINDOW_MIN_SIZE,
   onFrameChange: scheduleRememberedWindow,
+  // The layout the window last drew, which its page draws before its script
+  // has loaded (dom/boot-frame.ts).
+  preload: desktopBootFramePreload(readDesktopBootFrame(desktopBootFramePath())),
 });
 backend.mainWindow = mainWindow;
+// The window is loading its view; the services it will ask for start now
+// rather than when it asks. Its `init` reports a failure, and retries.
+startDesktopBackend(backend).catch((error) => {
+  console.error("[desktop] startup failed", error instanceof Error ? error.stack ?? error.message : String(error));
+});
 if (rememberedWindow?.fullscreen) {
   try { mainWindow.setFullScreen(true); } catch { /* the framed window is still the one they sized */ }
 } else if (rememberedWindow?.maximized) {

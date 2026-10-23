@@ -790,14 +790,14 @@ function HeaderMarketSummary({ nativePaneChrome, width }: { nativePaneChrome: bo
   return (
     <>
       {fit.showState && marketLabel ? (
-        <Box paddingRight={1} flexShrink={0}>
+        <Box paddingRight={1} flexShrink={0} data-gloom-role="header-market">
           <Text fg={summary.marketColor} {...(nativePaneChrome ? { attributes: TextAttributes.BOLD } : {})}>
             {marketLabel}
           </Text>
         </Box>
       ) : null}
       {fit.showSpy ? (
-        <Box paddingRight={1} flexShrink={0}>
+        <Box paddingRight={1} flexShrink={0} data-gloom-role="header-market">
           <Text fg={summary.spyColor}>{summary.spyText}</Text>
         </Box>
       ) : null}
@@ -845,15 +845,16 @@ export function Header({
   const { nativePaneChrome = false, titleBarOverlay, nativeWindowChrome = titleBarOverlay, windowControls } = useUiCapabilities();
   const showWindowControls = nativeWindowChrome && windowControls === "windows";
   const windowFullscreen = useWindowFullscreen();
+  const updateStatus = useUpdateStatus(!!onRestartForUpdate);
   const prompt = resolveHeaderPromptGeometry({
     nativePaneChrome,
     nativeWindowChrome,
     termWidth,
     titleBarOverlay,
     windowFullscreen,
+    allowMarketExpansion: !updateStatus.view,
   });
   const shortcutLabel = useCommandBarShortcut();
-  const updateStatus = useUpdateStatus(!!onRestartForUpdate);
   // The terminal lays the header out by cell counts, so it works out what is left
   // for the update status once the Help pill and the slot's padding are paid for.
   let updateStatusColumns = Math.max(

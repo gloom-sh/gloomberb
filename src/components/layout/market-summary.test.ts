@@ -7,10 +7,10 @@ import type { Quote } from "../../types/financials";
 import { sessionQuotes } from "../../test-support/test-fixture-session-quotes";
 import { formatPercentRaw } from "../../utils/format";
 
-/** "PRE-MKT · 1h 17m  SPY 762.43 -0.60%  USD", each part with its trailing gap. */
+/** "PRE-MKT · 1h 17m to regular open  SPY 762.43 -0.60%  USD", each part with its trailing gap. */
 const CLUSTER = {
   baseCurrencyWidth: 4,
-  countdownWidth: 9,
+  countdownWidth: 25,
   spyWidth: 18,
   stateWidth: 8,
 };
@@ -23,13 +23,13 @@ describe("header market cluster", () => {
    * it is the value that moves.
    */
   test("sheds the countdown, then the currency, then the state, keeping SPY longest", () => {
-    expect(resolveMarketSummaryFit({ available: 39, ...CLUSTER })).toEqual({
+    expect(resolveMarketSummaryFit({ available: 55, ...CLUSTER })).toEqual({
       showSpy: true,
       showState: true,
       showBaseCurrency: true,
       showCountdown: true,
     });
-    expect(resolveMarketSummaryFit({ available: 38, ...CLUSTER })).toMatchObject({
+    expect(resolveMarketSummaryFit({ available: 54, ...CLUSTER })).toMatchObject({
       showSpy: true,
       showState: true,
       showBaseCurrency: true,
@@ -62,11 +62,19 @@ describe("header market cluster", () => {
 
   /**
    * The reserve lives with the prompt geometry and the widths live here, so
-   * this is the seam where the two can drift: a reserve a column short would
-   * silently drop the countdown on a window wide enough to show it.
+   * this is the seam where the two can drift: a longer countdown must use
+   * spare columns without shortening the command prompt.
    */
-  test("fits the whole cluster in the columns the header reserves for it", () => {
-    for (const termWidth of [120, 200]) {
+  test("fits the whole cluster only when spare room preserves the prompt", () => {
+    for (const termWidth of [120, 140, 160]) {
+      const { marketColumns } = resolveHeaderPromptGeometry({ termWidth });
+      expect(resolveMarketSummaryFit({ available: marketColumns, ...CLUSTER })).toMatchObject({
+        showSpy: true,
+        showState: true,
+        showCountdown: false,
+      });
+    }
+    for (const termWidth of [180, 200]) {
       const { marketColumns } = resolveHeaderPromptGeometry({ termWidth });
       expect(resolveMarketSummaryFit({ available: marketColumns, ...CLUSTER })).toEqual({
         showSpy: true,
@@ -74,6 +82,11 @@ describe("header market cluster", () => {
         showBaseCurrency: true,
         showCountdown: true,
       });
+      const updating = resolveHeaderPromptGeometry({ termWidth, allowMarketExpansion: false });
+      const quiet = resolveHeaderPromptGeometry({ termWidth });
+      expect(updating.width).toBe(quiet.width);
+      expect(updating.marketColumns).toBe(42);
+      expect(updating.updateColumns - quiet.updateColumns).toBe(16);
     }
 
     // 80 columns keeps only SPY, and reserves nothing it cannot spend.

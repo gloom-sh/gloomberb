@@ -5,6 +5,9 @@ import type { StatDef } from "./defs";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DAILY = 6 * DAY_MS;
 const WEEKLY = 21 * DAY_MS;
+// GDPNow is dated at quarter start but updated through the following month's
+// advance GDP release; allow that ~120-day span plus two weeks.
+const NOWCAST_QUARTERLY = 135 * DAY_MS;
 // FRED dates a print at the start of its period, so an on-time print is two
 // periods plus the release lag old just before the next one lands. Each limit
 // adds about two weeks to the slowest normal lag of its group.
@@ -16,6 +19,7 @@ const QUARTERLY = 235 * DAY_MS; // GDP, productivity: two quarters plus a lag up
 const pct = (value: number) => `${formatNumber(value, 1)}%`;
 const pct2 = (value: number) => `${formatNumber(value, 2)}%`;
 const plain = (value: number) => formatNumber(value, 1);
+const index2 = (value: number) => formatNumber(value, 2);
 /** FRED reports payrolls and claims in thousands already. */
 const thousands = (value: number) => `${formatNumber(value / 1000, value >= 10_000 ? 1 : 2)}M`;
 const signedThousands = (value: number) =>
@@ -247,6 +251,68 @@ export const STATS: readonly StatDef[] = [
     staleAfterMs: MONTHLY_LAGGED,
     note: "New orders across manufacturing, durable and not.",
     limit: 500,
+  }),
+
+  // ---- Nowcasts & conditions --------------------------------------------
+  stat({
+    id: "gdpnow",
+    measurementBasis: "Estimate · q/q annualized",
+    label: "Atlanta Fed GDPNow",
+    shortLabel: "GDPNow",
+    category: "nowcasts",
+    seriesId: "GDPNOW",
+    transform: "level",
+    direction: "higher-is-good",
+    axisUnit: "%",
+    formatValue: pct,
+    reference: { value: 0, label: "flat" },
+    staleAfterMs: NOWCAST_QUARTERLY,
+    note: "Atlanta Fed model estimate of real GDP growth, updated within the quarter. Already an annualized percentage change, not a GDP level.",
+  }),
+  stat({
+    id: "nfci",
+    measurementBasis: "Weekly · index",
+    label: "Chicago Fed Financial Conditions",
+    shortLabel: "Chicago NFCI",
+    category: "nowcasts",
+    seriesId: "NFCI",
+    transform: "level",
+    direction: "higher-is-bad",
+    axisUnit: "",
+    formatValue: index2,
+    reference: { value: 0, label: "average" },
+    staleAfterMs: WEEKLY,
+    note: "Chicago Fed National Financial Conditions Index. Positive values mean tighter-than-average conditions; negative values mean looser conditions.",
+  }),
+  stat({
+    id: "financial-stress",
+    measurementBasis: "Weekly · index",
+    label: "St. Louis Fed Financial Stress",
+    shortLabel: "St. Louis FSI",
+    category: "nowcasts",
+    seriesId: "STLFSI4",
+    transform: "level",
+    direction: "higher-is-bad",
+    axisUnit: "",
+    formatValue: index2,
+    reference: { value: 0, label: "average" },
+    staleAfterMs: WEEKLY,
+    note: "St. Louis Fed Financial Stress Index, current fourth version. Positive values mean above-average stress; negative values mean below-average stress.",
+  }),
+  stat({
+    id: "median-cpi",
+    measurementBasis: "m/m annualized · seasonally adjusted",
+    label: "Cleveland Fed Median CPI",
+    shortLabel: "Median CPI",
+    category: "nowcasts",
+    seriesId: "MEDCPIM158SFRBCLE",
+    transform: "level",
+    direction: "higher-is-bad",
+    axisUnit: "%",
+    formatValue: pct,
+    reference: null,
+    staleAfterMs: MONTHLY_EARLY,
+    note: "Cleveland Fed weighted median consumer price change. Published as an annualized monthly percentage change, not a year-over-year inflation rate.",
   }),
 
   // ---- Consumer --------------------------------------------------------

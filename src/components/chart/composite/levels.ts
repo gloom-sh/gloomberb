@@ -14,6 +14,11 @@ export interface CompositeChartLevel {
   editable: boolean;
   /** Whether the chart's level action applies to it. */
   actionable: boolean;
+  /**
+   * An editable level that a plain press and drag moves, with no tool in
+   * hand, as an order's line does; the level tool still moves it by keyboard.
+   */
+  draggable?: boolean;
   /** Optional read-only annotation, independent of drawing-tool selection. */
   label?: string;
   /** Exact instrument price, independent of the grid's compact tick formatter. */

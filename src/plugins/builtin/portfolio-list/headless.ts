@@ -24,13 +24,14 @@ import {
   valuationTimeText,
   valuePortfolioAllocation,
   valuePortfolioPositions,
-  costAtTodaysRateNote,
+  costAtTodaysRateNotes,
   type CollectionMatch,
   type PortfolioValuation,
 } from "./cli/render";
 import { valuationBasisLabel, type PortfolioValuationBasis } from "../../../portfolio/valuation-basis";
 import { futuresQuantityText, isFuturesTicker } from "../../../portfolio/futures-positions";
 import { dailyFuturesHistory, loadPortfolioFuturesTerms } from "../../../portfolio/futures-terms";
+import { loadPurchaseDateCostFx } from "../../../portfolio/cost-fx";
 import { EXTENDED_SESSION_LABELS, quoteHeadlineTime, type ExtendedSession } from "../../../market-data/market/status";
 import {
   BROKER_ACCOUNT_MISSING_NOTE,
@@ -289,12 +290,13 @@ async function portfolioHoldings(
   const currency = resolvePortfolioTotalsCurrency(target.portfolio, ctx.config.baseCurrency);
   const futuresHeld = tickers.filter((ticker) => isFuturesTicker(ticker)
     && ticker.metadata.positions.some((position) => position.portfolio === target.id && position.shares !== 0));
-  const [quotes, futures] = await Promise.all([
+  const [quotes, futures, purchaseDateFx] = await Promise.all([
     loadCollectionQuotes(tickers, target, ctx.marketData),
     loadPortfolioFuturesTerms(futuresHeld, {
       settlement: basis === "regular-close",
       sources: { history: dailyFuturesHistory(ctx.marketData) },
     }),
+    loadPurchaseDateCostFx(tickers, { into: currency, history: ctx.apiClient, portfolioId: target.id }),
   ]);
   ctx.signal.throwIfAborted();
   const toBase = createBaseConverter(ctx.marketData, currency);
@@ -307,6 +309,7 @@ async function portfolioHoldings(
     toBase,
     basis,
     futures,
+    purchaseDateFx,
   });
   const { allocation, cash } = await valuePortfolioAllocation({ valuation, portfolio: resolved.portfolio, account: resolved.account, toBase });
   ctx.signal.throwIfAborted();
@@ -402,7 +405,7 @@ async function portfolioHoldings(
       : []),
     ...(targetNote ? [targetNote] : []),
     ...(target.portfolio.brokerInstanceId && !resolved.account ? [BROKER_ACCOUNT_MISSING_NOTE] : []),
-    ...(valuation.costAtTodaysRate.size > 0 ? [costAtTodaysRateNote([...valuation.costAtTodaysRate].join(", "))] : []),
+    ...costAtTodaysRateNotes(valuation, (symbols) => [...symbols].join(", ")),
   ];
 
   const positionColumns = allocation.weightBasis === "gross"

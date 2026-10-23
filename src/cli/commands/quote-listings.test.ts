@@ -542,3 +542,79 @@ test("quote --file of a European sheet asks only for its symbols and names its p
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("Bloomberg codes are each one listing: a file's lines, a quoted code, and a market code no venue answers to is refused, never split", async () => {
+  const asked: string[][] = [];
+  const dataProvider = createTestDataProvider({
+    search: async (query) => query === "AAPL"
+      ? [{ providerId: "test", symbol: "AAPL", name: "Apple Inc.", exchange: "NASDAQ", type: "Common Stock", currency: "USD" },
+        { providerId: "test", symbol: "AAPL", name: "Apple Inc.", exchange: "SWX", type: "Common Stock", currency: "CHF" }]
+      : [],
+    getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => {
+      asked.push(targets.map((target) => target.symbol));
+      return targets.map((target) => ({ target, quote: createTestQuote({ symbol: target.symbol }) }));
+    },
+  });
+  const dir = await mkdtemp(join(tmpdir(), "gloomberb-quote-bloomberg-"));
+  try {
+    const file = join(dir, "codes.txt");
+    await Bun.write(file, "MC FP\nAIR FP\nALV GY\nTSCO LN\nCSL AU\nAAPL GP\n");
+    const cli = createTestCliContext({ dataProvider });
+    await quoteCommand.execute(["--file", file], cli.context);
+    // Each line was two symbols: Moelis and FP, AAR, Autoliv, Tractor Supply and LN, Carlisle and AU, Apple and GP.
+    expect(asked).toEqual([["MC:EPA", "AIR:EPA", "ALV:XETRA", "TSCO:LSE", "CSL:ASX"]]);
+    expect(cli.printed[0]!.result.warnings).toContain("Not quoted: AAPL GP (GP is not a market code; did you mean AAPL US?).");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+
+  asked.length = 0;
+  const quoted = createTestCliContext({ dataProvider });
+  await quoteCommand.execute(["VOD LN"], quoted.context);
+  expect(asked).toEqual([["VOD:LSE"]]);
+  expect(quoted.printed[0]!.result.warnings).toContain('Read "VOD LN" as VOD:LSE.');
+
+  const refused = await runQuote(["AAPL GP"], { dataProvider, batches: [], searches: () => 0 });
+  expect(refused.failure).toEqual({
+    message: "GP is not a market code; did you mean AAPL US?",
+    details: "AAPL also trades as AAPL SW.\nFor two symbols, separate them with a comma: AAPL, GP.",
+  });
+});
+
+test("700.HK, 6758.JP and BRK/B are quoted in the form that works", async () => {
+  const source = venueSource("X", [], {
+    "0700.HK": createTestQuote({ symbol: "0700.HK" }),
+    "6758.T": createTestQuote({ symbol: "6758.T" }),
+    "BRK-B": createTestQuote({ symbol: "BRK-B" }),
+  });
+  for (const [typed, symbol] of [["700.HK", "0700.HK"], ["6758.JP", "6758.T"], ["BRK/B", "BRK-B"]]) {
+    const { failure, rows } = await runQuote([typed!], source);
+    expect(failure).toBeNull();
+    expect(rows.map((row) => row.target.symbol)).toEqual([symbol!]);
+  }
+});
+
+test("a file's line that is a company's name before its legal form is the company, beside codes on the lines around it", async () => {
+  const asked: string[][] = [];
+  const company = (symbol: string, name: string, exchange: string) => ({ providerId: "test", symbol, name, exchange, type: "Common Stock", currency: "EUR" });
+  const dataProvider = createTestDataProvider({
+    search: async (query) => /^siemens/i.test(query) ? [company("SIE", "Siemens AG", "XETRA")]
+      : /^sap/i.test(query) ? [company("SAP", "SAP SE", "XETRA")]
+      : query === "BRK-B" ? [company("BRK.B", "Berkshire Hathaway Inc.", "NYSE")]
+      : [],
+    getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => {
+      asked.push(targets.map((target) => target.symbol));
+      return targets.map((target) => ({ target, quote: createTestQuote({ symbol: target.symbol }) }));
+    },
+  });
+  const dir = await mkdtemp(join(tmpdir(), "gloomberb-quote-legal-form-"));
+  try {
+    const file = join(dir, "names.txt");
+    await Bun.write(file, "SIEMENS AG\nSAP SE\nVOD LN\nBRK/B US Equity\n");
+    const cli = createTestCliContext({ dataProvider });
+    await quoteCommand.execute(["--file", file], cli.context);
+    expect(asked).toEqual([["SIE:XETRA", "SAP:XETRA", "VOD:LSE", "BRK-B"]]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

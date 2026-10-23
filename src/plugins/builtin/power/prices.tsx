@@ -1,3 +1,4 @@
+import { logFailure } from "../../../utils/log-failure";
 import { useCallback, useMemo } from "react";
 import type { CarbonBoard, PowerPriceRow } from "../../../api-client/europe-energy";
 import {
@@ -140,15 +141,21 @@ function PowerPriceBoard({ width, height, focused }: { width: number; height: nu
   const [snapshotSetting] = usePaneSettingValue<PowerPricesSnapshot | null>("powerPricesSnapshot", null);
   const snapshot = useMemo(() => {
     try {
+      if (snapshotSetting?.carbonError !== undefined && (typeof snapshotSetting.carbonError !== "string"
+        || !snapshotSetting.carbonError.trim() || snapshotSetting.carbon != null)) throw new Error("Invalid carbon price failure state.");
       return snapshotSetting ? { ...snapshotSetting, board: validatePowerPrices(snapshotSetting.board),
         carbon: snapshotSetting.carbon ? validateCarbonPrice(snapshotSetting.carbon) : null } : null;
-    } catch { return null; }
+    } catch (error) {
+      logFailure("power.prices", "Validate power prices snapshot failed")(error);
+      return null;
+    }
   }, [snapshotSetting]);
   const resource = useAsyncResource(snapshot ? null : loadPowerPrices, { initialData: getCachedPowerPrices });
   const board = snapshot?.board ?? resource.data?.payload ?? null;
   // The carbon allowance loads beside the board; its failure is a notice, never the board's.
   const carbonResource = useAsyncResource(snapshot ? null : loadCarbonPrice, { initialData: getCachedCarbonPrice });
   const carbon = snapshot ? snapshot.carbon : carbonResource.data?.payload ?? null;
+  const carbonError = snapshot ? snapshot.carbonError : carbonResource.error;
   const figures = useMemo(() => carbon ? carbonFigures(carbon) : [], [carbon]);
   const rows = useMemo(() => board?.rows.map(boardRow) ?? [], [board]);
   // The band charts the selected market, or the carbon allowance from `c` or EPWR EUA until a market is chosen.
@@ -160,7 +167,7 @@ function PowerPriceBoard({ width, height, focused }: { width: number; height: nu
   const loaded = useAsyncResource<{ payload: { code: string; points: ReadonlyArray<{ date: string; value: number }> } }>(
     code && !snapshot ? historyLoader : null, { keepPreviousData: true });
   const history = snapshot ? { ...loaded, data: snapshot.history ? { payload: snapshot.history } : null, loading: false, error: null } : loaded;
-  usePowerPricesEvidence(board, carbon, useMemo(() => rows.map((row) => row.id), [rows]), resource.loading || history.loading || carbonResource.loading);
+  usePowerPricesEvidence(board, carbon, useMemo(() => rows.map((row) => row.id), [rows]), resource.loading || history.loading || carbonResource.loading, snapshot?.carbonError);
   useAutoRefresh(resource.updatedAt, resource.load);
   useAutoRefresh(carbonResource.updatedAt, carbonResource.load);
   usePaneRefreshKey(() => { void resource.reload(); void history.reload(); void carbonResource.reload(); }, { focused });
@@ -185,7 +192,7 @@ function PowerPriceBoard({ width, height, focused }: { width: number; height: nu
     error: board ? resource.error ?? (open ? null : history.error) : null, stale: !!resource.data?.stale, hints });
   usePaneNoticeFooter({ registrationId: "power-prices:notices", focused,
     notices: [...(board?.gaps ?? []), ...(resource.data?.refreshError ? [resource.data.refreshError] : []),
-      ...(carbon?.gaps ?? []), ...(board && !carbon && carbonResource.error ? [carbonResource.error] : [])] });
+      ...(carbon?.gaps ?? []), ...(board && !carbon && carbonError ? [carbonError] : [])] });
   return <Box width={width} height={height} flexDirection="column">
     <PaneStatusBody loading={resource.loading && !board} error={!board && !notAvailable ? resource.error : null}
       empty={notAvailable} emptyTitle={POWER_PRICES_NOT_AVAILABLE} subject="power prices" width={width} height={height}>

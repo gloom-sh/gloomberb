@@ -308,3 +308,14 @@ test("asked for bars finer than a minute, an index, a currency pair or a coin is
   expect(subMinuteDataMessage("SPY")).toContain("fn TAS SPY");
   expect(subMinuteDataMessage("GC=F", "unknown")).toContain("fn TAS GC=F");
 });
+
+test("BDH, BDP, Excel and Sheets lead with the Google Sheets page; an export to Excel is still the export line", () => {
+  const sheets = "Spreadsheets: =GLOOM and =GLOOMH in Google Sheets take the tickers and fields of Bloomberg's BDP and BDH (Pro): "
+    + "gloom.sh/docs/google-sheets. For Excel, add --csv to any command.";
+  for (const query of ["BDH", "bdp", "BDS", "excel", "Excel", "sheets", "google sheets", "bdh formula", "bloomberg excel add-in", "BDP in Google Sheets"]) {
+    expect(commandPointer(query), query).toBe(sheets);
+    expect(commandPointerLeads(query), query).toBe(true);
+  }
+  expect(commandPointer("export to excel")).toContain("Export: add --csv or --json");
+  for (const query of ["balance sheets", "sheet music"]) expect(commandPointer(query), query).not.toBe(sheets);
+});

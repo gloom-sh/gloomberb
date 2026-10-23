@@ -40,7 +40,7 @@ import { isPlainKey } from "../../../utils/keyboard";
 import { usePluginAppActions, usePluginBrokerActions } from "../../runtime";
 import { BrokerProfileForm, profileFieldWidth, type BrokerEditKey } from "./detail";
 import { useBrokerManagerKeyboard } from "./keyboard";
-import type { BrokerManagerMessage } from "./pane-actions";
+import type { BrokerManagerMessage, BrokerRowNoteInput } from "./pane-actions";
 
 /**
  * Adding a profile, one step at a time in the pane's detail: the broker, how
@@ -85,10 +85,13 @@ let attemptSequence = 0;
 export function useBrokerAddFlow({
   setBusy,
   setMessage,
+  setRowNote,
   onProfileAdded,
 }: {
   setBusy: (busy: string | null) => void;
   setMessage: (message: BrokerManagerMessage | null) => void;
+  /** Says on the new profile's row why its first sync failed. */
+  setRowNote: (profileId: string, note: BrokerRowNoteInput | null) => void;
   /** Lands the pane on the profile the flow made, with the flow closed. */
   onProfileAdded: (instanceId: string) => void;
 }) {
@@ -96,7 +99,7 @@ export function useBrokerAddFlow({
   const dispatch = useAppDispatch();
   const getState = useAppGetState();
   const { notify } = usePluginAppActions();
-  const { listBrokerAdapters, createBrokerInstance, syncBrokerInstance } = usePluginBrokerActions();
+  const { listBrokerAdapters, createBrokerInstance, updateBrokerInstance, syncBrokerInstance } = usePluginBrokerActions();
   const [flow, setFlowState] = useState<BrokerAddFlowState | null>(null);
   // Async work reads the flow as it is now, not as it was when it started.
   const flowRef = useRef<BrokerAddFlowState | null>(null);
@@ -166,13 +169,13 @@ export function useBrokerAddFlow({
       if (portfolio) showCollectionInPortfolioPane(state, dispatch, portfolio.id);
       notify({ body: t("Connected! Positions will sync automatically."), type: "success" });
     } catch (error) {
-      // The profile stays: its detail and the footer say why it did not sync.
+      // The profile stays: its row says why it did not sync.
       land();
-      setMessage({ tone: "error", text: errorText(error, tf("Failed to sync {label}.", { label })) });
+      setRowNote(instanceId, { tone: "error", status: t("Sync failed"), text: errorText(error, tf("Failed to sync {label}.", { label })) });
     } finally {
       setBusy(null);
     }
-  }, [dispatch, getState, notify, onProfileAdded, setBusy, setFlow, setMessage, syncBrokerInstance]);
+  }, [dispatch, getState, notify, onProfileAdded, setBusy, setFlow, setRowNote, syncBrokerInstance]);
 
   const connectDevice = useCallback(async () => {
     const current = flowRef.current;
@@ -241,6 +244,7 @@ export function useBrokerAddFlow({
         connected = await connectSignedInBrokerProfile(broker, {
           getConfig: () => getState().config,
           createBrokerInstance,
+          enableBrokerInstance: (instanceId) => updateBrokerInstance(instanceId, {}, { enabled: true }),
           // The first sync runs below, with its progress in the pane.
           syncBrokerInstance: async () => {},
           // Gloom's sign-in over the pane when needed, again after a session Gloom refused.
@@ -279,7 +283,7 @@ export function useBrokerAddFlow({
     } finally {
       if (committing) committingRef.current = false;
     }
-  }, [createBrokerInstance, dialog, getState, setMessage, setStep, showAttempt, syncNewProfile]);
+  }, [createBrokerInstance, dialog, getState, setMessage, setStep, showAttempt, syncNewProfile, updateBrokerInstance]);
 
   const chooseMethod = useCallback((entry: BrokerDirectoryEntry, method: BrokerMethod) => {
     const current = flowRef.current;
