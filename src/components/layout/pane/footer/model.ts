@@ -165,7 +165,12 @@ export interface CombinedPaneFooter {
 
 export const EMPTY_FOOTER: CombinedPaneFooter = { info: [], hints: [], menu: [], keys: [] };
 
-/** Status the hints leave room for, more when it is a warning: a failure must stay readable. */
+/**
+ * Status the hints leave room for, more when it is a warning: a failure must
+ * stay readable. A status no longer than the warning's room is kept whole,
+ * with the hints that no longer fit under More, so a status word is never cut
+ * against them ("Cloud sync d [a]dd event"); a longer one gives way to the hints.
+ */
 const INFO_FLOOR_CHARS = 10;
 const WARNING_FLOOR_CHARS = 24;
 const HINT_GAP = 1;
@@ -264,9 +269,10 @@ export function layoutPaneFooterHintRow(
   const width = Math.max(0, Math.floor(contentWidth));
   const hints = footer.hints.filter((hint) => !hint.disabled);
   const warning = footer.info.some((segment) => segment.parts.some((part) => part.tone === "warning" || part.tone === "negative"));
-  const textFloor = footer.info.length > 0
-    ? Math.min(warning ? WARNING_FLOOR_CHARS : INFO_FLOOR_CHARS, infoTextWidth(footer.info))
-    : 0;
+  const infoChars = infoTextWidth(footer.info);
+  const textFloor = footer.info.length === 0 ? 0
+    : warning || infoChars <= WARNING_FLOOR_CHARS ? Math.min(WARNING_FLOOR_CHARS, infoChars)
+    : INFO_FLOOR_CHARS;
   const infoFloor = Math.min(width, Math.max(iconReserve, textFloor));
   const hintBudget = Math.max(0, width - infoFloor - (infoFloor > 0 && hints.length > 0 ? 1 : 0));
   const more = moreControl(hintBudget);
