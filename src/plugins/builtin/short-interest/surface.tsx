@@ -7,7 +7,8 @@ import { ShortVolumePane } from "../short-volume/pane";
 import { ShortInterestView } from "./pane";
 import { ShortSidePublicationPane } from "./publications-pane";
 
-const TABS = [{ value: "interest", label: "Interest" }, { value: "volume", label: "Daily volume" },
+type ShortSideTab = "interest" | "volume" | "ftd" | "ats";
+const TABS: { value: ShortSideTab; label: string }[] = [{ value: "interest", label: "Interest" }, { value: "volume", label: "Daily volume" },
   { value: "ftd", label: "Fails to deliver" }, { value: "ats", label: "Weekly ATS/OTC" }];
 export function ShortInterestSurface({ nested = false, ...props }: Pick<PaneProps, "width" | "height" | "focused"> & {
   /** Inside Ticker Research, whose own tab strip keeps h/l and the arrows. */
@@ -20,7 +21,10 @@ export function ShortInterestSurface({ nested = false, ...props }: Pick<PaneProp
   // the desktop switches views from the query bar and the terminal strip
   // leaves h/l to the research tabs.
   const { strip: tabStrip, rows: tabRows } = usePaneTabs({
-    tabs: TABS, activeValue: tab, onSelect: setTab, focused: props.focused, keyboardNavigation: !nested, dense: true, queryBarWidth: props.width,
+    tabs: TABS, activeValue: tab, onSelect: (value) => {
+      const next = TABS.find((item) => item.value === value);
+      if (next) setTab(next.value);
+    }, focused: props.focused, keyboardNavigation: !nested, dense: true, queryBarWidth: props.width,
   });
   // The strip answers h/l only where it is the pane's own strip; `v` switches
   // views everywhere, including under Ticker Research's strip.

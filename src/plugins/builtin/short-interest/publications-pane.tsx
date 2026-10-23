@@ -54,6 +54,7 @@ export function ShortSidePublicationPane({ kind, width, height, focused }: Pick<
     empty={!resource.loading && !resource.error && !!data && !rows.length} emptyTitle={`No published ${subject} for this stock.`}>
     {data ? <DataTableStackView<PublicationRow, PublicationColumn>
       focused={focused} rootWidth={width} rootHeight={height} columns={columns} items={rows} freezeFirstColumn
+      sortColumnId={null} sortDirection="desc" emptyStateTitle={`No published ${subject} for this stock.`}
       getItemKey={rowKey} renderCell={renderCell} resetScrollKey={`${kind}:${symbol}`}
       selection={{ kind: "index", selectedIndex: rows.length ? selectedIndex : -1, onChange: (index) => setSelectedId(rows[index] ? rowKey(rows[index]!) : null) }}
       onActivate={(row) => setOpenId(rowKey(row))} detailOpen={!!openRow} onBack={() => setOpenId(null)}
