@@ -386,7 +386,7 @@ export interface HiringBuildingBoard {
     held: Partial<Record<HiringBuildingHold, number>>
     skipped: Partial<Record<HiringBuildingSkip, number>>
     /** Theme titles in the weeks compared, and how many the model has read. */
-    themeTitles: { titles: number; read: number; usd: number }
+    themeTitles: { titles: number; read: number }
     computedAt: string | null
   }
   shifts: HiringBuildingShift[]
