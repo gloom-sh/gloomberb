@@ -28,6 +28,7 @@ function readText(path: string): string | null {
   try {
     return process.getBuiltinModule("fs").readFileSync(path, "utf8");
   } catch {
+    // Intentional ignore: a missing or unreadable file only means this source cannot tell.
     return null;
   }
 }
