@@ -5,6 +5,8 @@ import { join } from "path";
 import { apiClient, setCloudApiFetchTransport } from "../../../api-client";
 import { AppPersistence } from "../../../data/app-persistence";
 import { createTestCliContext } from "../../../test-support/cli-context";
+import { createTestDataProvider, createTestQuote } from "../../../test-support/data-provider";
+import type { QuoteBatchResult, QuoteSubscriptionTarget } from "../../../types/data-provider";
 import { notesCliCommand } from "./cli";
 import { NotesFiles } from "./files";
 
@@ -55,6 +57,34 @@ test("a signed-in export writes the Cloud notes beside the local ones, with noth
     expect(readFileSync(join(dir, "out", "mine", "NVDA.md"), "utf-8")).toBe("Cloud note\n");
     expect(readFileSync(join(dir, "out", "Desk", "quick", "Desk_ideas.md"), "utf-8")).toBe("Team note\n");
     expect(readdirSync(join(dir, "out", "local"))).toEqual(["AAPL.md"]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("notes set reads its symbol as quote does: a company's name is its listing, and a word no listing trades as saves nothing", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "gloomberb-notes-cli-"));
+  try {
+    const dataProvider = createTestDataProvider({
+      search: async (query) => /^petrobras$/i.test(query)
+        ? [{ providerId: "test", symbol: "PBR", name: "Petroleo Brasileiro S.A. Petrobras ADR", exchange: "NYSE", type: "Common Stock", currency: "USD" }]
+        : [],
+      getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => targets.map((target) => ["PETROBRAS", "ZZZQQ"].includes(target.symbol)
+        ? { target, quote: null, error: new Error(`Not a ticker: ${target.symbol}.`) }
+        : { target, quote: createTestQuote({ symbol: target.symbol, name: "Petroleo Brasileiro S.A. Petrobras ADR", listingExchangeName: "NYSE" }) }),
+    });
+    const cli = createTestCliContext({ config: { dataDir: dir }, dataDir: dir, dataProvider });
+
+    await notesCliCommand.execute(["set", "Petrobras", "x"], cli.context);
+    expect(cli.printed[0]!.result).toMatchObject({ data: { symbol: "PBR" }, warnings: ['Read "Petrobras" as PBR:NYSE (Petroleo Brasileiro S.A. Petrobras ADR).'] });
+    expect(readdirSync(dir).filter((file) => file.endsWith(".md"))).toEqual(["PBR.md"]);
+    // The name finds the note it wrote, and so does the ticker.
+    await notesCliCommand.execute(["show", "Petrobras"], cli.context);
+    await notesCliCommand.execute(["show", "PBR"], cli.context);
+    expect(cli.printed.slice(1).map((printed) => (printed.result.data as { text: string }).text)).toEqual(["x", "x"]);
+
+    await expect(notesCliCommand.execute(["set", "zzzqq", "y"], cli.context)).rejects.toThrow("Not a ticker: ZZZQQ.");
+    expect(readdirSync(dir).filter((file) => file.endsWith(".md"))).toEqual(["PBR.md"]);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

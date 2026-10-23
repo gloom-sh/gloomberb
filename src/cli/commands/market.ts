@@ -398,8 +398,8 @@ function listingMetadata(identity: ListingIdentity) {
   return { symbol: identity.symbol, exchange: identity.exchange || null, name: identity.name };
 }
 
-// Fitted to a narrow width, the columns marked optional go first (higher dropPriority first), then Name is cut short.
-// What a user types or reads the price by stays whole.
+// Fitted to a narrow width, quote's Updated, Feed, Cur, Chg Basis and session prints move to labelled lines under
+// their row, in that order, before Name wraps: quote never drops a column. What a user types or reads the price by stays whole.
 const QUOTE_LEAD_COLUMNS = [
   { key: "symbol", header: "Symbol", shrink: false },
   { key: "name", header: "Name" },
@@ -441,7 +441,7 @@ type QuoteRow = ReturnType<typeof quoteRows>[number];
  * its existing columns, so a column read by position stays where it was.
  */
 const CHANGE_BASIS_COLUMN = {
-  key: "changeBasis", header: "Chg Basis", shrink: false, optional: true,
+  key: "changeBasis", header: "Chg Basis", shrink: false, stackPriority: 2,
   format: (value: unknown) => value === "24h" ? "" : cliStyles.muted(String(value ?? "")),
 };
 const CHANGE_BASIS_EXPORT_COLUMNS = [
@@ -497,22 +497,23 @@ function currencyCell(value: unknown): string {
   return currencyCodeLabel(typeof value === "string" ? value : "");
 }
 
+/** The session prints of a narrow quote table move under their row after its other columns, before the name. */
+const EXTENDED_KEYS = new Set(["preMarket", "afterHours", "overnight"]);
+
 function quoteColumns() {
   return [
-    ...QUOTE_LEAD_COLUMNS,
-    { key: "currency", header: "Cur", shrink: false, optional: true, dropPriority: 1, format: currencyCell },
+    ...QUOTE_LEAD_COLUMNS.map((column) => EXTENDED_KEYS.has(column.key) ? { ...column, stackPriority: 1 } : column),
+    { key: "currency", header: "Cur", shrink: false, stackPriority: 3, format: currencyCell },
     // Whether the price is real-time, delayed or stale: a feed state, not where it came from. A stale
     // row says so here, so the closing line's "N of M stale" always points at rows the table marks.
     {
       key: "feed",
       header: "Feed",
       shrink: false,
-      optional: true,
-      dropPriority: 2,
+      stackPriority: 4,
       format: (value: unknown) => value === "stale" ? cliStyles.warning(value) : String(value ?? ""),
     },
-    // In a narrow terminal the closing line's as-of stands in for each row's.
-    { key: "updatedAt", header: "Updated", shrink: false, optional: true, dropPriority: 3 },
+    { key: "updatedAt", header: "Updated", shrink: false, stackPriority: 5 },
     ...CHANGE_BASIS_EXPORT_COLUMNS,
   ];
 }

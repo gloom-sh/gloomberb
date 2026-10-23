@@ -1,5 +1,16 @@
 import { describe, expect, test } from "bun:test";
-import { cliTerminalWidth, renderDefinitions, renderTable, setCliColorEnabledOverride, setCliWidthOverride, truncateDisplay, visibleLength } from "./cli-output";
+import {
+  cliTerminalWidth,
+  plainByDefault,
+  plainWords,
+  renderDefinitions,
+  renderTable,
+  setCliColorEnabledOverride,
+  setCliPlainOverride,
+  setCliWidthOverride,
+  truncateDisplay,
+  visibleLength,
+} from "./cli-output";
 
 describe("renderTable", () => {
   const plain = (render: () => string) => {
@@ -129,6 +140,32 @@ describe("renderTable", () => {
     expect(plain(() => renderTable(columns, rows, { maxWidth: 100 }))[2]).toBe("2026-09-28  2026-09-28 21:57:22 UTC  497J");
     expect(plain(() => renderTable(columns, rows, { maxWidth: null }))[2]).toBe("2026-09-28  2026-09-28 21:57:22 UTC  497J");
   });
+});
+
+test("plain output: no rule under the header, sort marks and arrows in words, a dash in each empty cell", () => {
+  setCliPlainOverride(true);
+  try {
+    const lines = renderTable(
+      [{ header: "Holder" }, { header: "MKT VAL ▼", align: "right" }, { header: "Session" }, { header: "Move" }],
+      [["Blackrock Inc.", "$404.24B", "2026-04-03 → 04-06", "+25bp ↑"], ["Vanguard", "-", "", "--"]],
+      { maxWidth: null },
+    ).split("\n");
+    expect(lines).toEqual([
+      "Holder          MKT VAL (sorted descending)  Session              Move",
+      "Blackrock Inc.                     $404.24B  2026-04-03 to 04-06  +25bp up",
+      "Vanguard                                  —  —                    —",
+    ]);
+    // Fitted to a narrow width, a range in words is still one figure: the name beside it wraps instead.
+    expect(renderTable([{ header: "Rate" }, { header: "Range" }], [["Fed funds target range", "3.75 → 4.00"]], { maxWidth: 30 }).split("\n"))
+      .toEqual(["Rate              Range", "Fed funds target  3.75 to 4.00", "range"]);
+  } finally {
+    setCliPlainOverride(null);
+  }
+  expect(plainWords("←/→ step · ↑/↓ row · gold → metals")).toBe("left/right step · up/down row · gold to metals");
+  expect(plainWords("→ next\nlast →")).toBe("to next\nlast to");
+  expect(plainByDefault({}, { isTTY: true })).toBe(false);
+  expect(plainByDefault({ NO_COLOR: "true" }, { isTTY: true })).toBe(true);
+  expect(plainByDefault({}, { isTTY: false })).toBe(true);
 });
 
 test("--width fits tables whether or not stdout is a terminal, and clearing it restores the terminal's own width", () => {

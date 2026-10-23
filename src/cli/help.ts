@@ -52,7 +52,8 @@ const GLOBAL_OPTIONS: Array<[string, string]> = [
   ["--refresh", "Fetch fresh data instead of reading the cache"],
   ["--dry-run", "Preview config, cache, notes, alerts, plugin on/off, and remote changes without saving"],
   ["-q, --quiet", "Print no results or errors in text mode, for commands that print results"],
-  ["--color, --no-color", "Force or turn off colors (NO_COLOR=1 also turns them off)"],
+  ["--color, --no-color", "Force or turn off colors (NO_COLOR also turns them off)"],
+  ["--plain", "Plain text for a screen reader or large text: no rule lines, arrows as words, every table column kept with a dash in empty cells. On by default when NO_COLOR is set or output is piped"],
   ["--width <n>", "Fit tables to n columns (default: the terminal width; piped output is not fitted). shot takes its own --width in pixels"],
 ];
 

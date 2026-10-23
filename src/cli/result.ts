@@ -1,7 +1,9 @@
 import type { CliGlobalOptions } from "./options";
 import {
+  cliPlainEnabled,
   cliStyles,
   cliTerminalWidth,
+  plainWords,
   renderStats,
   renderTable,
   statValueWidth,
@@ -206,7 +208,7 @@ function formatTextValue(
   depth = 0,
   width: number | null = null,
 ): string {
-  const missing = context === "record" ? cliStyles.muted("-") : "";
+  const missing = context === "record" ? cliPlainEnabled() ? "—" : cliStyles.muted("-") : "";
   if (value == null || value === "") return missing;
   // Times print in UTC with the zone named, never in the host's zone; JSON and CSV keep the raw value.
   if (value instanceof Date) return formatUtcTime(value);
@@ -348,10 +350,11 @@ function renderTextTable<Row extends Record<string, unknown>>(
 ): string {
   const resolvedColumns = textColumns(rows, columns);
   const cells = rows.map((row) => resolvedColumns.map((column) => formatTextCell(column, row, "table")));
-  // A column no row fills is noise in a table; exports keep it.
+  // A column no row fills is noise in a table; exports keep it, and so does plain output, whose
+  // tables keep one shape from query to query with "—" in the empty cells.
   const filled = resolvedColumns
     .map((column, index) => ({ column, index }))
-    .filter(({ column, index }) => column.width != null || cells.some((row) => row[index] !== ""));
+    .filter(({ column, index }) => cliPlainEnabled() || column.width != null || cells.some((row) => row[index] !== ""));
   const shown = filled.length > 0 ? filled : resolvedColumns.map((column, index) => ({ column, index }));
   return renderTable(
     shown.map(({ column }) => ({
@@ -512,7 +515,9 @@ export function printCliResult<T, Row extends Record<string, unknown> = Record<s
   if (options.quiet && options.format === "text") return;
   // JSON keeps the router's own words; everything else is for a person, so a "Not a ticker" gets its hint.
   const hinted = (text: string) => options.format === "json" ? text : withSearchHints(text, args, isFredSeries);
-  const output = hinted(serializeCliResult(result, options, renderOptions));
+  // Plain text says its arrows in words; exports keep the data as it is.
+  const worded = (text: string) => options.format === "text" && cliPlainEnabled() ? plainWords(text) : text;
+  const output = worded(hinted(serializeCliResult(result, options, renderOptions)));
   // Bun's console writer can truncate a large pipe write after stdout has been
   // initialized. The stream queues the remaining bytes until the reader drains.
   if (output && !process.stdout.write(`${output}\n`)) {
@@ -522,7 +527,7 @@ export function printCliResult<T, Row extends Record<string, unknown> = Record<s
   // rows, so a warning goes to stderr, out of a file the rows are piped into.
   if (options.format !== "json" && !options.quiet) {
     for (const warning of result.warnings ?? []) {
-      console.error(`${cliStyles.warning("warning:")} ${hinted(warning)}`);
+      console.error(`${cliStyles.warning("warning:")} ${worded(hinted(warning))}`);
     }
   }
 }

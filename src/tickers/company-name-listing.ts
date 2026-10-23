@@ -48,13 +48,15 @@ export function isCompanyNameInput(input: string): boolean {
  * listing. With `meant`, a fund or an index found for a name its company's
  * stock says run together ("JP Morgan" for JPMorgan Chase & Co.) names that
  * stock as `meant`, searched under the run-together name when the answer
- * lacks it. Null when none matches; when none does because search was too
- * busy to answer, `ProviderBusyError`.
+ * lacks it. With `wholeWords`, only names with every typed word whole match,
+ * as for a name typed as one word, which a short form would make any
+ * company's ("grp" for a Group). Null when none matches; when none does
+ * because search was too busy to answer, `ProviderBusyError`.
  */
 export async function findListingOfCompanyName(
   dataProvider: Pick<DataProvider, "search">,
   typed: string,
-  options: { meant?: boolean } = {},
+  options: { meant?: boolean; wholeWords?: boolean } = {},
 ): Promise<CompanyNameListing | null> {
   const name = typed.trim();
   if (!name) return null;
@@ -66,7 +68,7 @@ export async function findListingOfCompanyName(
     const exchange = listedExchange(result);
     const type = listedType(result);
     const match = companyNameMatch(name, result.name) ?? (namedByService(name, result) ? { extra: 0, abbreviated: 0 } : null);
-    if (!exchange || match == null || classifyInstrumentKind(type) === "derivative" || NOT_COMMON.test(type)
+    if (!exchange || match == null || (options.wholeWords && match.abbreviated > 0) || classifyInstrumentKind(type) === "derivative" || NOT_COMMON.test(type)
       || parsePublicTickerKey(result.symbol).exchange) return [];
     const stock = classifyInstrumentKind(type) === "equity" ? 0 : 1;
     return [{ result, exchange, stock, rank: [match.extra, match.abbreviated, isUsListingExchange(exchange) ? 0 : 1, RECEIPT.test(type) ? 1 : 0, stock, result.symbol.length, order] }];

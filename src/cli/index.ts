@@ -23,7 +23,7 @@ import { parsePaneFunctionArgs, SHOT_SIZE_LIMITS } from "./pane-functions/option
 import { checkCliCommandOptions } from "./command-options";
 import { CLI_EXIT_CODES } from "./exit-codes";
 import { asUsageError, fail, inferCliErrorOptions, printCliError } from "./errors";
-import { cliStyles, setCliColorEnabledOverride, setCliWidthOverride } from "../utils/cli-output";
+import { cliStyles, plainByDefault, setCliColorEnabledOverride, setCliPlainOverride, setCliWidthOverride } from "../utils/cli-output";
 import { setDisplayTimeZone } from "../utils/utc-time";
 import { collectSavedCopies } from "../data/saved-copies";
 import { search, searchCandidatesForCli, buildSearchReport } from "./commands/search";
@@ -445,6 +445,8 @@ export async function dispatchCli(args: string[], options: DispatchCliOptions = 
   }
   setCliColorEnabledOverride(parsed.options.color);
   setCliWidthOverride(parsed.options.width ?? null);
+  // For a screen reader, a pipe or NO_COLOR: no rule lines, arrows in words, fixed table columns.
+  setCliPlainOverride(parsed.options.plain ?? plainByDefault());
   const command = parsed.args[0] ?? (parsed.help ? "help" : undefined);
   if (!command) {
     return { kind: "unhandled" };

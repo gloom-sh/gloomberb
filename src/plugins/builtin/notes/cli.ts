@@ -1,10 +1,11 @@
 import { apiClient } from "../../../api-client";
-import { withCliServices, withConfigData } from "../../../cli/scoped-context";
+import { withCliServices, withConfigData, withMarketData } from "../../../cli/scoped-context";
 import type { CliServicesContext } from "../../../cli/types";
 import { CLI_COMMAND_GROUPS } from "../../../cli/help";
 import { dryRunNote } from "../../../cli/helpers";
 import { requireArg, takeOption } from "../../../cli/commands/command-utils";
 import { EXCHANGE_OPTION, listingReadNotes, requireListingArg } from "../../../cli/listing-arg";
+import { requireQuotedListing } from "../../../cli/quote-answer";
 import { createPluginPersistence } from "../../plugin-persistence";
 import type { CliCommandDef } from "../../../types/plugin";
 import { cliStyles } from "../../../utils/cli-output";
@@ -28,13 +29,40 @@ export const notesCliCommand: CliCommandDef = {
     const args = [...rawArgs];
     const exchange = takeOption(args, "--exchange");
     // A note belongs to one listing: SAN:EPA, or SAN with --exchange EPA.
-    // What a typed listing was read as (7203:TSE as 7203:JPX) is said beside the note.
+    // What a typed listing was read as (7203:TSE as 7203:JPX, Apple as AAPL) is said beside the note.
     let read: { warnings?: string[] } = {};
-    const noteSymbol = async (usage: string) => {
-      const listing = await requireListingArg(requireArg(args[1], usage, ctx), exchange, ctx);
-      const notes = listingReadNotes(listing);
-      if (notes.length > 0) read = { warnings: notes };
-      return listing.key;
+    const said = (warnings: string[]) => {
+      if (warnings.length > 0) read = { warnings };
+    };
+    /**
+     * The listing a note is written for, read as `quote` reads it
+     * (`requireQuotedListing`): a company's name is its listing (`notes set
+     * Apple` writes AAPL's note, under the bare symbol as the app keeps a
+     * ticker it was not given a venue for), and a word no listing trades as
+     * fails with `quote`'s search hint, so no note is kept for a symbol that
+     * does not exist.
+     */
+    const quotedSymbol = async (raw: string, action: string) => {
+      const typed = await requireListingArg(raw, exchange, ctx);
+      const quoted = await withMarketData(ctx, (market) => requireQuotedListing(raw, exchange, market, ctx, `notes ${action}`));
+      said(quoted.notes);
+      return typed.exchange ? quoted.listing.key : quoted.listing.symbol;
+    };
+    const noteSymbol = async (usage: string, notes: NotesFiles) => {
+      const raw = requireArg(args[1], usage, ctx);
+      const typed = await requireListingArg(raw, exchange, ctx);
+      // A note kept under what was typed is the one: a symbol that stopped trading still has its note to read or delete.
+      if ((await notes.load(typed.key).catch(logFailure("notes.cli", "Read the note kept under a typed symbol failed", ""))).trim()) {
+        said(listingReadNotes(typed));
+        return typed.key;
+      }
+      try {
+        return await quotedSymbol(raw, args[0] ?? "show");
+      } catch {
+        // Intentional ignore: a word no listing trades as, or no answer, has no note under any other key either.
+        said(listingReadNotes(typed));
+        return typed.key;
+      }
     };
     await withConfigData(ctx, async (config) => {
       const notes = new NotesFiles(config.dataDir);
@@ -102,14 +130,14 @@ export const notesCliCommand: CliCommandDef = {
         return;
       }
       if (action === "show") {
-        const symbol = await noteSymbol("Usage: gloomberb notes show <symbol>");
+        const symbol = await noteSymbol("Usage: gloomberb notes show <symbol>", notes);
         ctx.printResult({ data: { symbol, text: await notes.load(symbol) }, ...read }, {
           text: (data) => data.text?.trim() ? data.text.trimEnd() : cliStyles.muted(`No note for ${symbol}.`),
         });
         return;
       }
       if (action === "set") {
-        const symbol = await noteSymbol("Usage: gloomberb notes set <symbol> <text...>");
+        const symbol = await quotedSymbol(requireArg(args[1], "Usage: gloomberb notes set <symbol> <text...>", ctx), "set");
         const text = args.slice(2).join(" ");
         if (!ctx.cliOptions.dryRun) await notes.save(symbol, text);
         ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, symbol, bytes: text.length }, ...read }, {
@@ -118,7 +146,7 @@ export const notesCliCommand: CliCommandDef = {
         return;
       }
       if (action === "delete" || action === "rm") {
-        const symbol = await noteSymbol("Usage: gloomberb notes delete <symbol>");
+        const symbol = await noteSymbol("Usage: gloomberb notes delete <symbol>", notes);
         const existed = await notes.load(symbol).then((text) => !!text?.trim(), () => {
           // Intentional ignore: an unreadable note is still deleted, so the message says it existed.
           return true;
