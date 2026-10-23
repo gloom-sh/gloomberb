@@ -101,6 +101,7 @@ export function useCompositeChartKeyboard({
   pin,
   onActivate,
   timePick,
+  pricePick,
   levels,
   visibleLegendSeries,
   visibleSeriesIds,
@@ -133,6 +134,7 @@ export function useCompositeChartKeyboard({
   pin: { pinned: boolean; toggle: () => void } | null;
   onActivate: CompositeChartProps["onActivate"];
   timePick: CompositeChartProps["timePick"];
+  pricePick: CompositeChartProps["pricePick"];
   levels: CompositeChartProps["levels"];
   visibleLegendSeries: ResolvedSeries[];
   visibleSeriesIds: ReadonlySet<string>;
@@ -217,8 +219,8 @@ export function useCompositeChartKeyboard({
     if (wasFocusedRef.current && !focused) setEntered(false);
     wasFocusedRef.current = focused;
   }, [focused]);
-  // A time is picked with the arrows and Enter.
-  const picking = !!timePick;
+  // A time or a price is picked with the arrows and Enter.
+  const picking = !!timePick || !!pricePick;
   useEffect(() => {
     if (picking) setEntered(true);
   }, [picking]);
@@ -330,9 +332,9 @@ export function useCompositeChartKeyboard({
     onActivate?.();
     onToggleSeries?.(legendEntry.id);
   };
-  /** A level at the keyboard cursor's price, or the last price without a cursor. */
-  const addLevelAtCursor = () => {
-    if (!levels?.onEdit || !levelHost || !scene) return;
+  /** The levels' series price at the keyboard cursor, or the last price without a cursor. */
+  const priceAtCursor = (): number | null => {
+    if (!levels || !levelHost || !scene) return null;
     const { panel, domain } = levelHost;
     const date = keyboardCursorDateRef.current ?? scene.dates.at(-1) ?? null;
     // The levels' own series, not whichever one the panel lists first.
@@ -340,8 +342,13 @@ export function useCompositeChartKeyboard({
     const value = (date ? resolveMeasureValueAt(pricePanel, date.getTime()) : null)
       ?? (panel.lastPrice?.seriesId === levels.seriesId ? panel.lastPrice.value : null)
       ?? unprojectCompositeValue(0.5, domain);
-    if (value === null) return;
-    const rounded = roundLevelValue(value, domain);
+    return value === null ? null : roundLevelValue(value, domain);
+  };
+  /** A level at the keyboard cursor's price, or the last price without a cursor. */
+  const addLevelAtCursor = () => {
+    if (!levels?.onEdit) return;
+    const rounded = priceAtCursor();
+    if (rounded === null) return;
     onActivate?.();
     // Enter again at the same cursor picks the level already there.
     const existing = levelItems.find((level) => level.editable && level.value === rounded);
@@ -374,7 +381,8 @@ export function useCompositeChartKeyboard({
     setSelectedLevelId(ordered[next]!.id);
   };
   const removeSelectedLevel = () => {
-    if (!selectedLevel?.editable) return;
+    // An order's line moves here; it is cancelled where the order is.
+    if (!selectedLevel?.editable || selectedLevel.draggable) return;
     levels?.onEdit?.({ kind: "remove", id: selectedLevel.id });
     setSelectedLevelId(null);
   };
@@ -435,6 +443,13 @@ export function useCompositeChartKeyboard({
       else chartActionsRef.current.pick();
       return;
     }
+    // Esc ends a price pick even with nothing drawn yet; Enter needs a price at the cursor.
+    if (pricePick && (scene || isPlainKey(event, "escape")) && isPlainKey(event, "return", "enter", "escape")) {
+      consume();
+      if (event.name === "escape") pricePick.onCancel();
+      else chartActionsRef.current.pickPrice();
+      return;
+    }
     if (zoned && !entered && isPlainKey(event, "down", "return", "enter")) {
       consume();
       enterChart();
@@ -456,7 +471,7 @@ export function useCompositeChartKeyboard({
       stepLevel(event.name === "[" ? -1 : 1);
       return;
     }
-    if (toolsActive && selectedLevel?.editable && levelsEditable && isPlainKey(event, "backspace", "delete")) {
+    if (toolsActive && selectedLevel?.editable && !selectedLevel.draggable && levelsEditable && isPlainKey(event, "backspace", "delete")) {
       consume();
       removeSelectedLevel();
       return;
@@ -626,6 +641,10 @@ export function useCompositeChartKeyboard({
       const date = keyboardCursorDateRef.current ?? scene?.dates.at(-1) ?? null;
       if (date) timePick?.onPick(date);
     },
+    pickPrice: () => {
+      const value = priceAtCursor();
+      if (value !== null) pricePick?.onPick(value);
+    },
     start: armedTool === "level" ? addLevelAtCursor : startKeyboardPlacement,
     finish: finishKeyboardPlacement,
     stepLevel,
@@ -657,10 +676,11 @@ export function useCompositeChartKeyboard({
   const placing = !!keyboardPlacement;
   const legendEntryVisible = !!legendEntry && visibleSeriesIds.has(legendEntry.id);
   const resettable = !!activeUserViewport || scaledByHand;
-  const timePickLabel = timePick?.label ?? null;
+  const timePickLabel = timePick?.label ?? (levelHost ? pricePick?.label : null) ?? null;
+  const pickingPrice = !timePick && !!pricePick;
   const levelActionHint = selectedLevel?.actionable && levels?.action ? levels.action : null;
   const levelToolKeys = toolsActive && armedTool === "level" && levelsEditable;
-  const canDeleteLevel = toolsActive && levelsEditable && !!selectedLevel?.editable;
+  const canDeleteLevel = toolsActive && levelsEditable && !!selectedLevel?.editable && !selectedLevel.draggable;
   const pinState = pin ? pin.pinned : null;
   // Hidden as it shows: a saved hidden bar is open while a tool is in hand.
   const toolbarHidden = layout.toolbarHidden && armedTool === null;
@@ -675,7 +695,7 @@ export function useCompositeChartKeyboard({
     if (!keyboardActive || !scene) return null;
     const hints: PaneHint[] = [];
     if (timePickLabel) {
-      hints.push({ id: "chart-pick", key: "Enter", label: timePickLabel, onPress: () => chartActionsRef.current.pick() });
+      hints.push({ id: "chart-pick", key: "Enter", label: timePickLabel, onPress: () => pickingPrice ? chartActionsRef.current.pickPrice() : chartActionsRef.current.pick() });
     } else if (toolsActive && armedHints) {
       hints.push(placing
         ? { id: "chart-tool", key: "Enter", label: armedHints.finish, title: armedHints.finishTitle, onPress: () => chartActionsRef.current.finish() }
@@ -786,6 +806,7 @@ export function useCompositeChartKeyboard({
     !!scene,
     selectedDrawingId,
     timePickLabel,
+    pickingPrice,
     levelActionHint,
     levelToolKeys,
     levelItems.length,

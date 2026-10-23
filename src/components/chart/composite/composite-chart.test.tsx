@@ -1717,6 +1717,47 @@ describe("CompositeChart", () => {
     expect(edits).toHaveLength(4);
   });
 
+  test("an order's line drags with no tool in hand, even let go within one frame, and is never deleted here; a price pick takes a press or Enter", async () => {
+    const edits: CompositeLevelEdit[] = [];
+    const picks: Array<number | "cancel"> = [];
+    let picking!: (on: boolean) => void;
+    function LevelChart() {
+      const [pick, setPick] = useState(false); picking = setPick;
+      const levels = useMemo<CompositeChartLevels>(() => ({
+        seriesId: "price", onEdit: (edit) => { edits.push(edit); },
+        items: [{ id: "order", value: 106, color: "#00cc66", editable: true, draggable: true, actionable: false }],
+      }), []);
+      return <CompositeChart width={60} height={12} focused interactive levels={levels}
+        series={[series("price", "main", "left", "USD", [100, 101, 102, 103, 104, 105, 106, 107, 108])]} panels={[{ id: "main" }]}
+        pricePick={pick ? { label: "set limit", onPick: (value) => picks.push(value), onCancel: () => picks.push("cancel") } : null} />;
+    }
+    await tui.render(<InputHostProvider host={chartInputHost}><CaptureChartSurfaceProvider><LevelChart /></CaptureChartSurfaceProvider></InputHostProvider>, { width: 62, height: 14 });
+    await act(async () => tui.setup().renderOnce());
+    const row = tui.frame().split("\n").findIndex((line) => line.includes("106"));
+    await act(async () => {
+      capturedSurfaceProps!.onMouseDown(pointerEvent(30, row - 1));
+      capturedSurfaceProps!.onMouseDrag(pointerEvent(30, row + 3));
+      capturedSurfaceProps!.onMouseUp(pointerEvent(30, row + 3));
+    });
+    expect(edits).toHaveLength(1);
+    expect(edits[0]).toMatchObject({ kind: "move", id: "order" });
+    expect((edits[0] as Extract<CompositeLevelEdit, { kind: "move" }>).value).toBeLessThan(106);
+    await act(async () => chartShortcut?.(keyEvent("backspace")));
+    expect(edits).toHaveLength(1);
+
+    await act(async () => picking(true));
+    await act(async () => tui.setup().renderOnce());
+    await act(async () => capturedSurfaceProps!.onMouseDown(pointerEvent(10, 2)));
+    expect(picks).toHaveLength(1);
+    expect(picks[0]).toBeGreaterThan(106);
+    // Enter takes the close at the cursor, where the press left it.
+    await act(async () => chartShortcut?.(keyEvent("return")));
+    expect(picks[1]).toBe(105);
+    await act(async () => chartShortcut?.(keyEvent("escape")));
+    expect(picks[2]).toBe("cancel");
+    expect(edits).toHaveLength(1);
+  });
+
   test("external level labels remain outside the bitmap surface and follow price updates", async () => {
     let move!: (price: number) => void;
     function Chart() {

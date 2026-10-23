@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { isPlainKey } from "../../../utils/keyboard";
-import { Button, EmptyState, Notice, PaneFooterScope, SelectButton, usePaneFooter, usePaneMenuItems, type SelectControl } from "../../../components";
+import { Button, EmptyState, Notice, PaneFooterScope, SelectButton, confirmDialog, usePaneFooter, usePaneMenuItems, type SelectControl } from "../../../components";
 import { useShortcut } from "../../../react/input";
-import { useDialogState } from "../../../ui/dialog";
+import { useDialog, useDialogState } from "../../../ui/dialog";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { usePaneVisible } from "../../../state/app/activity";
 import { useAppGetState, usePaneAppConfig, usePaneStateValue } from "../../../state/app/context";
@@ -11,7 +11,7 @@ import type { BrokerAdapter } from "../../../types/broker";
 import type { BrokerInstanceConfig } from "../../../types/config";
 import type { BrokerContractRef } from "../../../types/instrument";
 import type { PaneProps, TickerResearchTabProps } from "../../../types/plugin";
-import type { BrokerAccount, BrokerOrder } from "../../../types/trading";
+import type { BrokerAccount, BrokerOrder, BrokerOrderRequest } from "../../../types/trading";
 import { Box, useUiCapabilities } from "../../../ui";
 import { accountsShownFor } from "../../../brokers/broker-portfolio-sync";
 import { usePluginAppActions, usePluginBrokerActions } from "../../runtime";
@@ -19,7 +19,7 @@ import { BrokerTradingController, type BrokerOrderOutcome } from "./controller";
 import { takeTradeIntent } from "./command";
 import { BrokerAccountPicker } from "./account-picker";
 import { BrokerOrdersView } from "./orders";
-import { brokerOrderDone, brokerOrderStatus } from "./orders-data";
+import { brokerOrderDone, brokerOrderKey, brokerOrderStatus } from "./orders-data";
 import { brokerOrderFeed, orderToastBody, useBrokerOrderFeed, useFeedOrderResult } from "./order-feed";
 import { isStrategyOrder, orderInstrumentLabel } from "./strategy";
 import {
@@ -27,7 +27,7 @@ import {
   resolveTicketContract, subscribeTradingStatus, ticketAccountChoiceKey, ticketPositionContext, type ProfileAccountChoice, type TicketPositionSnapshot,
 } from "./pane-model";
 import { BrokerTicketView, type TicketAction, type TicketField } from "./ticket";
-import { ticketChartLevels, ticketOrderMatches } from "./chart-levels";
+import { chartPriceOnTick, orderLevelTarget, orderLineMoves, TICKET_LEVEL_FIELDS, ticketChartLevels, ticketLineOrders, ticketOrderMatches } from "./chart-levels";
 import { useResearchTrading } from "../shared/research-trading";
 import { useThemeColors } from "../../../theme/theme-context";
 
@@ -63,6 +63,12 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
   const [defaultPriceLabel, setDefaultPriceLabel] = useState<string>();
   const [tradeIntent, setTradeIntent] = usePaneStateValue<string | null>("brokerTradeIntent", null);
   const [focusRevision, setFocusRevision] = useState(0);
+  // A change made on the chart leaves the ticket on Review: its next step. Its own counter, so a chart nudge moves
+  // the focus without asking for the quote again, as a new order does.
+  const [focusReview, setFocusReview] = useState(false);
+  const [chartFocusRevision, setChartFocusRevision] = useState(0);
+  // Whether the person changed the ticket's order since it began: work a drag on another order must not drop unasked.
+  const touched = useRef(false);
   const [pendingModify, setPendingModify] = useState<BrokerOrder>();
   const refreshResources = useRef<() => void>(() => {});
   const current = useRef({ broker, instance, accounts, accountId, positions });
@@ -98,6 +104,7 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
   useEffect(() => () => controller.dispose(), [controller]);
   useEffect(() => {
     controller.setDraft(newTicketDraft(broker, instance, contract, current.current.accountId));
+    touched.current = false;
   }, [controller, instance.id, contract]);
   useEffect(() => {
     if (!tradeIntent || ordersFirst) return;
@@ -118,6 +125,7 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
       }
       controller.reset();
       controller.setDraft(next);
+      touched.current = false;
       setTyped(""); setError(undefined); setDefaultPriceLabel(undefined); setPage("ticket");
       setFocusRevision((revision) => revision + 1);
     } catch (failure) { reportError(failure); }
@@ -269,6 +277,7 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
       // Controlled inputs can echo a programmatic value before React commits the next render.
       if (Object.entries(next).every(([key, nextValue]) => Object.is(nextValue, latestDraft[key as keyof typeof latestDraft]))) return;
       controller.setDraft(next);
+      touched.current = true;
       setTyped(""); setError(undefined);
       if (field === "limitPrice" || field === "orderType") setDefaultPriceLabel(undefined);
       if (field === "limitPrice" || field === "stopPrice") pricePending.current = false;
@@ -301,6 +310,7 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
           const account = current.current.accounts.find((value) => value.accountId === current.current.accountId);
           const quantity = quickTicketQuantity(latestDraft, capabilities, controller.getSnapshot().quote?.quote, account, held, action === "quantity25" ? 0.25 : action === "quantity50" ? 0.5 : 1);
           controller.setDraft({ ...latestDraft, quantity });
+          touched.current = true;
           setTyped("");
         }
         else if (action === "priceBid" || action === "priceMid" || action === "priceAsk" || action === "priceLast") {
@@ -308,6 +318,7 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
           if (!latestDraft || latestDraft.orderType === "MKT") throw new Error("Choose a limit or stop order before setting a price.");
           const source = ({ priceBid: "bid", priceMid: "mid", priceAsk: "ask", priceLast: "last" } as const)[action];
           controller.applyPriceDefault(source, latestDraft.orderType === "STP" ? "stopPrice" : "limitPrice");
+          touched.current = true;
           setDefaultPriceLabel(`Broker ${source}. Editable.`); setTyped("");
         }
         else if (action === "orders") setPage("orders");
@@ -315,6 +326,7 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
           controller.reset();
           // After a spread, a new order is for the ticket's own instrument again.
           controller.setDraft(newTicketDraft(broker, instance, isStrategyOrder({ contract: ticketContract }) ? contract : ticketContract, accountId));
+          touched.current = false;
           setTyped(""); setDefaultPriceLabel(undefined); setPage("ticket");
         }
       } catch (failure) { reportError(failure); }
@@ -328,19 +340,59 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
     if (choice.profileId === instance.id) onAccountChange(choice.accountId);
     onChooseProfileAccount?.(choice);
   };
-  const onModify = (order: BrokerOrder, edit?: { price: number; review: boolean }) => {
+  const onModify = (order: BrokerOrder, edit?: { price: number; review: boolean; field?: "limitPrice" | "stopPrice" }) => {
     try {
       if (!order.accountId) throw new Error("This order has no account. Refresh it in your broker.");
       selectAccount(order.accountId);
       controller.beginModify(order);
+      touched.current = false;
       if (edit) {
         const next = controller.getSnapshot().draft!;
-        controller.setDraft({ ...next, ...(next.orderType === "STP" ? { stopPrice: edit.price } : { limitPrice: edit.price }) });
+        controller.setDraft({ ...next, [edit.field ?? (next.orderType === "STP" ? "stopPrice" : "limitPrice")]: edit.price });
+        touched.current = true;
         if (edit.review) void controller.review().catch(reportError);
       }
-      setTyped(""); setError(undefined); setPage("ticket");
+      setTyped(""); setError(undefined); setPage("ticket"); setFocusReview(false);
       setFocusRevision((revision) => revision + 1);
     } catch (failure) { reportError(failure); }
+  };
+  // The chart beside the ticket moves its levels and picks its prices through these, with the latest state. A
+  // draft price changes in the draft; a working order's line opens its change here. Review and confirm still decide.
+  const chartEdits = useRef({ setPrice: (_field: string, _value: number) => {}, moveLevel: (_id: string, _value: number) => {} });
+  const chartOrders = useRef<readonly BrokerOrder[]>([]);
+  const dialog = useDialog();
+  chartEdits.current.setPrice = (field, value) => {
+    const snapshot = controller.getSnapshot();
+    if (busy || snapshot.phase !== "editing" || !snapshot.draft) return;
+    onEdit(field as TicketField, String(chartPriceOnTick(value, caps?.priceStep, caps?.priceDecimals)));
+    setFocusReview(true); setChartFocusRevision((revision) => revision + 1);
+  };
+  chartEdits.current.moveLevel = (id, value) => {
+    if (busy) return;
+    const draftField = TICKET_LEVEL_FIELDS[id as keyof typeof TICKET_LEVEL_FIELDS];
+    if (draftField) { chartEdits.current.setPrice(draftField, value); return; }
+    // The orders the lines were drawn from: a confirmed change's latest terms, under the ID the broker gave it.
+    const target = orderLevelTarget(id, chartOrders.current);
+    if (!target) return;
+    const snapshot = controller.getSnapshot();
+    const changing = controller.modifyingOrder();
+    if (changing && brokerOrderKey(changing) === brokerOrderKey(target.order) && snapshot.phase === "editing") {
+      chartEdits.current.setPrice(target.field, value);
+      return;
+    }
+    const price = chartPriceOnTick(value, caps?.priceStep, caps?.priceDecimals);
+    const start = () => {
+      if (trade && !trade.visible) trade.open();
+      onModify(target.order, { price, review: false, field: target.field });
+      setFocusReview(true);
+    };
+    // An order or change the person is still writing is theirs: another order's change replaces it only when asked.
+    if (snapshot.phase !== "editing" || !touched.current) { start(); return; }
+    void confirmDialog(dialog, {
+      title: "Replace the ticket's order?",
+      body: [changing ? "The ticket holds a change you have not sent." : "The ticket holds an order you have not sent.", `Change ${orderToastBody(target.order)} instead?`],
+      confirmLabel: "Replace", cancelLabel: "Keep editing", width: 52, footer: "Enter replace · Esc keep editing",
+    }).then((replace) => { if (replace) start(); });
   };
   useEffect(() => {
     if (!pendingModify) return;
@@ -356,15 +408,31 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
   const mode = accounts.find((account) => account.accountId === accountId)?.tradingMode;
   useEffect(() => {
     // A spread's net premium is not a price on the underlying's chart.
-    const orders = openOrders.filter((order) => !isStrategyOrder(order) && ticketOrderMatches(order, ticketContract, instance.id, accountId));
+    const listed = openOrders.filter((order) => !isStrategyOrder(order) && ticketOrderMatches(order, ticketContract, instance.id, accountId));
     const latestOrder = state.result && !isStrategyOrder(state.result) && ticketOrderMatches(state.result, ticketContract, instance.id, accountId) ? state.result : undefined;
+    const orders = ticketLineOrders(listed, latestOrder);
+    chartOrders.current = orders;
+    const editing = state.phase === "editing" && trade?.visible !== false;
+    // A working order's line moves where the broker changes it and the ticket is free to open its change.
+    const free = !busy && (state.phase === "editing" || state.phase === "result") && page !== "enable" && !!broker.modifyOrder;
+    const movable = (order: BrokerOrder) => free && orderLineMoves(order, broker.getTradingCapabilities?.(instance, order.contract, order.orderType as BrokerOrderRequest["orderType"]));
     const levels = ticketChartLevels({
-      draft: strategy ? undefined : draft, editing: state.phase === "editing" && trade?.visible !== false, orders, latestOrder,
+      draft: strategy ? undefined : draft, editing, orders, modifying: state.modifying ? controller.modifyingOrder() : undefined, movable,
       avgCost: position?.avgCost, position: position?.quantity, colors, priceStep: caps?.priceStep, priceDecimals: caps?.priceDecimals,
     });
-    publish?.({ mode, busy, contract: ticketContract, levels });
-  }, [publish, mode, busy, draft, strategy, trade?.visible, state.phase, state.result, openOrders, ticketContract, instance.id, accountId, position?.avgCost, position?.quantity, colors, caps?.priceStep, caps?.priceDecimals]);
+    // The prices a pick on the chart sets: the entry's first, then a bracket's exits.
+    const priceFields = editing && draft && !strategy ? [
+      ...(["LMT", "STP LMT"].includes(draft.orderType) ? [{ field: "limitPrice", label: "limit" }] : []),
+      ...(["STP", "STP LMT"].includes(draft.orderType) ? [{ field: "stopPrice", label: "stop" }] : []),
+      ...(draft.orderClass === "oco" ? [{ field: "stopLossPrice", label: "stop" }] : []),
+      ...(draft.orderClass === "bracket" ? [{ field: "takeProfitPrice", label: "take profit" }, { field: "stopLossPrice", label: "stop loss" }] : []),
+    ] : [];
+    publish?.({ mode, busy, contract: ticketContract, levels, priceFields,
+      setPrice: (field, value) => chartEdits.current.setPrice(field, value), moveLevel: (id, value) => chartEdits.current.moveLevel(id, value) });
+  }, [publish, mode, busy, draft, strategy, trade?.visible, state.phase, state.result, state.modifying, page, openOrders, ticketContract, instance, broker, accountId, position?.avgCost, position?.quantity, colors, caps?.priceStep, caps?.priceDecimals, controller]);
   useEffect(() => () => publish?.({ levels: [] }), [publish]);
+  // Review takes the focus for the step after a chart edit only: back from review ("Edit order"), a change's price does.
+  useEffect(() => { if (state.phase !== "editing") setFocusReview(false); }, [state.phase]);
   // Docked, the open orders show only while this ticker has some, or when asked
   // for: o from the ticket shows and focuses them, o again (or Hide/Show orders) hides them.
   const tickerOrderCount = openOrders.filter((order) => ticketOrderMatches(order, ticketContract, instance.id, accountId) && !brokerOrderDone(order.status)).length;
@@ -409,8 +477,10 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
     error: connection?.state === "error" && connection.message ? connection.message : error ?? state.error, reconnecting,
     position: position?.quantity, avgCost: position?.avgCost, positionPnl: position?.pnl, tradingEnabled: caps?.enabled === true,
     typedConfirmation: typed, connected, capabilities: caps, modifying: state.modifying, original: state.modifying ? controller.modifyingOrder() : undefined, defaultPriceLabel, confirmOrders: state.confirmOrders,
-    initialFocus: state.modifying ? draft?.orderType === "STP" ? "stopPrice" : draft?.orderType === "TRAIL" ? "trailing" : "limitPrice" : focusRevision ? "review" : undefined, focusRevision,
-  }} onEdit={onEdit} onAction={onAction} onAccountChange={onTicketAccountChange} />
+    initialFocus: focusReview ? "review" : state.modifying ? draft?.orderType === "STP" ? "stopPrice" : draft?.orderType === "TRAIL" ? "trailing" : "limitPrice" : focusRevision ? "review" : undefined,
+    focusRevision: focusRevision + chartFocusRevision,
+  }} onEdit={onEdit} onAction={onAction} onAccountChange={onTicketAccountChange}
+    onPickPrice={trade?.docked && trade.visible && trade.pickPrice ? (field) => trade.pickPrice!(field) : undefined} />
     </PaneFooterScope>
     </Box>
     <Box visible={ordersShown || !docked && page === "orders"} onMouseDown={() => setPage("orders")} marginTop={ordersShown && !native ? 1 : 0}

@@ -13,6 +13,20 @@ export interface ResearchTradeProjection {
   contract?: BrokerContractRef;
   mode?: "simulation" | "live" | "unknown";
   busy?: boolean;
+  /**
+   * Moves one of `levels` to a price: a draft's price changes in the ticket, and a working order's change
+   * opens there for review. Nothing reaches the broker before the ticket's review and confirm.
+   */
+  moveLevel?(id: string, value: number): void;
+  /** The ticket prices a price picked on the chart can set now; the first is the one picked without a choice. */
+  priceFields?: readonly ResearchTradePriceField[];
+  /** Sets a ticket price to one picked on the chart. */
+  setPrice?(field: string, value: number): void;
+}
+interface ResearchTradePriceField {
+  field: string;
+  /** As the pick's hint says it: "limit", "stop", "take profit", "stop loss". */
+  label: string;
 }
 export interface ResearchTrading extends ResearchTradeProjection {
   symbol: string;
@@ -27,6 +41,13 @@ export interface ResearchTrading extends ResearchTradeProjection {
   close(): void;
   /** A press on the chart takes the keyboard back from the ticket, even a field typing in it. */
   focusChart?(): void;
+  /** The ticket price the chart beside it is picking, while it is. */
+  picking?: ResearchTradePriceField;
+  /** Picks a ticket price on the chart beside it, the first of `priceFields` without a field. */
+  pickPrice?(field?: string): void;
+  /** Hands the picked price to the ticket, which takes the keyboard back. */
+  finishPick?(value: number): void;
+  cancelPick?(): void;
   /** This ticker's working orders and latest fills, for Overview; absent without a trading profile. */
   orders?(width: number): ReactNode;
   publish(projection: ResearchTradeProjection): void;

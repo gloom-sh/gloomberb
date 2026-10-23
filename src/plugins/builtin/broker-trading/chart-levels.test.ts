@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test";
 import { getThemeColors } from "../../../theme/colors";
-import { ticketChartLevels, ticketOrderMatches } from "./chart-levels";
+import { chartPriceOnTick, orderLevelTarget, orderLineMoves, ticketChartLevels, ticketLineOrders, ticketOrderMatches } from "./chart-levels";
 import { createDemoBroker } from "./test-fixture";
 import { researchTradeMatches } from "../shared/research-trading";
-import { orderEstimatePrice } from "./orders-data";
+import { brokerOrderKey, orderEstimatePrice } from "./orders-data";
 
 const colors = getThemeColors("white");
 test("chart overlays require the same listing or exact broker instrument", () => {
@@ -74,7 +74,7 @@ test("an older submission receipt cannot revive a line after a newer cancellatio
   expect(ticketChartLevels({ editing: false, orders: [], latestOrder: submitted, colors })).toHaveLength(1);
 });
 
-test("live draft levels are read-only, follow both prices, and terminal orders disappear", () => {
+test("draft levels follow both prices and move, working orders move only where they can change, and terminal orders disappear", () => {
   const f = createDemoBroker();
   const orders = [f.order(f.draft, "WORKING", 1), f.order({ ...f.draft, action: "SELL" }, "PARTIALLY_FILLED", 2), f.order(f.draft, "FILLED", 3)];
   const draft = { ...f.draft, orderType: "STP LMT" as const, limitPrice: 10.25, stopPrice: 10.1 };
@@ -84,7 +84,17 @@ test("live draft levels are read-only, follow both prices, and terminal orders d
   expect(ticketChartLevels({ draft, editing: true, orders: [], colors, priceStep: 0.005 })[0]?.axisLabel).toBe("10.250");
   // Five accepted decimals are a limit, not a tick: the labels keep to cents.
   expect(ticketChartLevels({ draft, editing: true, orders: [], colors, priceDecimals: 5, avgCost: 719.60745, position: 21 }).map((level) => level.axisLabel)).toEqual(["10.25", "10.10", "719.61"]);
-  expect(levels.every((level) => !level.editable && !level.actionable)).toBe(true);
+  // The draft's lines drag; an order's only where it can change, and never the average or a trailing stop's trigger.
+  expect(levels.map((level) => [level.id.split(":")[0], !!level.editable && !!level.draggable])).toEqual([["ticket", true], ["ticket", true], ["order", false], ["order", false], ["position", false]]);
+  expect(levels.every((level) => !level.actionable)).toBe(true);
+  const trail = f.order({ ...f.draft, orderType: "TRAIL", limitPrice: undefined, stopPrice: 9.5, trailingAmount: 0.5 }, "WORKING", 4);
+  const movable = ticketChartLevels({ editing: false, orders: [...orders, trail], colors, movable: (order) => order.action === "BUY" });
+  expect(movable.map((level) => [level.label, !!level.draggable])).toEqual([["Buy 10 working", true], ["Sell 6 partial", false], ["Buy 10 trailing", false]]);
+  // An order the broker is still acknowledging or already replacing keeps its line until it works again.
+  const changes = { enabled: true, modify: true };
+  const statuses = ["WORKING", "PARTIALLY_FILLED", "PENDING_NEW", "PENDING_REPLACE"].map((status) => orderLineMoves(f.order(f.draft, status, 5), changes));
+  expect(statuses).toEqual([true, true, false, false]);
+  expect(orderLineMoves(orders[0]!, { enabled: true, modify: false })).toBe(false);
   expect(levels.find((level) => level.label?.includes("Sell"))?.color).toBe(colors.negative);
   expect(levels.filter((level) => level.id.startsWith("order:"))).toHaveLength(2);
   expect(levels.at(-1)).toMatchObject({ label: "Average cost", axisLabel: "10.00" });
@@ -101,6 +111,11 @@ test("a replacement in flight stands for the listed original, which takes over a
   const replacement = { ...original, brokerOrderId: "replacement", status: "NEW", limitPrice: 701, updatedAt: 1 };
   const prices = (orders: typeof original[]) => ticketChartLevels({ editing: false, orders, latestOrder: replacement, colors }).map((level) => level.value);
   expect(prices([original])).toEqual([701]);
+  // A drag on that line finds the order it was drawn from, under its new ID and at its new terms: only in the
+  // merged list, never the broker's list from before the change.
+  const line = ticketChartLevels({ editing: false, orders: [original], latestOrder: replacement, colors })[0]!;
+  expect(orderLevelTarget(line.id, [original])).toBeUndefined();
+  expect(orderLevelTarget(line.id, ticketLineOrders([original], replacement))?.order).toMatchObject({ brokerOrderId: "replacement", limitPrice: 701 });
   // Refused, the original is listed working again.
   expect(prices([{ ...original, status: "NEW", updatedAt: 3 }])).toEqual([700]);
 });
@@ -112,4 +127,22 @@ test("a market order is estimated at the side of the book it takes, a limit or s
   expect(orderEstimatePrice({ orderType: "MKT", action: "BUY" }, { price: 100, bid: 99.5, ask: 0 })).toBe(100);
   expect(orderEstimatePrice({ orderType: "LMT", action: "BUY", limitPrice: 98 }, quote)).toBe(98);
   expect(orderEstimatePrice({ orderType: "STP", action: "SELL", stopPrice: 95, limitPrice: 90 }, quote)).toBe(95);
+});
+
+test("an order being changed keeps the line the broker holds and moves a dashed change line, with no second draft line", () => {
+  const f = createDemoBroker();
+  const order = f.order({ ...f.draft, orderType: "STP LMT", limitPrice: 10.25, stopPrice: 10.1 }, "WORKING", 1);
+  const draft = { ...f.draft, orderType: "STP LMT" as const, limitPrice: 10.4, stopPrice: 10.3 };
+  const levels = ticketChartLevels({ draft, editing: true, orders: [order], modifying: order, colors });
+  const key = brokerOrderKey(order);
+  expect(levels.map((level) => [level.id, level.value, level.label, level.dashed, level.draggable])).toEqual([
+    [`held:${key}`, 10.25, "Buy 10 working", false, false], [`held-stop:${key}`, 10.1, "Buy 10 working stop", false, false],
+    [`order:${key}`, 10.4, "Buy 10 change", true, true], [`stop:${key}`, 10.3, "Buy 10 change stop", true, true]]);
+  expect(orderLevelTarget(levels[0]!.id, [order])).toBeUndefined();
+  expect(orderLevelTarget(levels[2]!.id, [order])).toMatchObject({ field: "limitPrice" });
+  expect(orderLevelTarget(levels[3]!.id, [order])).toMatchObject({ field: "stopPrice" });
+  expect(orderLevelTarget("ticket:limit", [order])).toBeUndefined();
+  // A price from the chart lands on the tick the ticket reviews, and never under one tick, however low the line went.
+  expect([chartPriceOnTick(336.437), chartPriceOnTick(0.123456), chartPriceOnTick(10.12, 0.05)]).toEqual([336.44, 0.1235, 10.1]);
+  expect([chartPriceOnTick(0.01, 0.05), chartPriceOnTick(-3, 0.05), chartPriceOnTick(0), chartPriceOnTick(-0.5)]).toEqual([0.05, 0.05, 0.01, 0.01]);
 });

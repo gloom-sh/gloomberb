@@ -829,6 +829,7 @@ The level tool (`Shift+H`, or `═` in the chart toolbar) draws horizontal price
 - `Shift+A` on a level sets an ALRT price alert there: above when the level is over the current quote, below when it is under, crosses when it is on it.
 - Levels with an alert, and active alerts on the ticker set elsewhere, draw in red. An alert's own line is changed in ALRT.
 - Levels draw on the first price series while it shows its own values, not a percent or index display.
+- With the order ticket beside the chart, its order and draft lines also move with a plain drag, and the level keys move them too. A working order's move opens its change in the ticket for review ([trading](trading.md#trade-from-the-chart)).
 
 #### Session low and high
 

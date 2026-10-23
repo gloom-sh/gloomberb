@@ -337,6 +337,12 @@ export interface CompositeChartProps {
    */
   timePick?: { label: string; onPick: (date: Date) => void; onCancel: () => void } | null;
   /**
+   * Picks a price on the levels' series instead of panning: a press on its
+   * plot hands back the price under the pointer, Enter the price at the
+   * keyboard cursor; Esc cancels. `label` is the Enter hint, such as "set limit".
+   */
+  pricePick?: { label: string; onPick: (value: number) => void; onCancel: () => void } | null;
+  /**
    * Horizontal price levels on one series' panel. With `onEdit` the level
    * tool (Shift+H) adds, moves and deletes them by mouse and keyboard.
    */

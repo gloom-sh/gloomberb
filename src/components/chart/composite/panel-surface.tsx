@@ -134,6 +134,8 @@ interface CompositePanelSurfaceProps {
   showTextFallback: boolean;
   /** Set while the owner is picking a bar: a press picks instead of panning. */
   onPickTime?: (date: Date) => void;
+  /** Set while the owner is picking a price on the levels' series: a press picks the one under it. */
+  onPickPrice?: (value: number) => void;
   /** The chart's levels when they draw on this panel. */
   levels: CompositeChartLevels | null;
   selectedLevelId: string | null;
@@ -156,6 +158,9 @@ interface PanelDividerGestures {
 }
 
 const DESKTOP_PLOT_STYLE = { flex: "1 1 0px", width: "auto", minWidth: 0, height: "auto", alignSelf: "stretch" } as const;
+/** Over a level that drags, or while one does: it moves up and down only. */
+const DESKTOP_PLOT_LEVEL_STYLE = { ...DESKTOP_PLOT_STYLE, cursor: "ns-resize" } as const;
+const DESKTOP_PLOT_PICK_STYLE = { ...DESKTOP_PLOT_STYLE, cursor: "crosshair" } as const;
 /** The grab strip over the line between two panels: the line and a few pixels either side of it. */
 const PANEL_DIVIDER_STYLE = {
   left: 0,
@@ -198,6 +203,7 @@ export function CompositePanelSurface({
   onPointerPress,
   showTextFallback,
   onPickTime,
+  onPickPrice,
   levels,
   selectedLevelId,
   onSelectLevel,
@@ -345,6 +351,13 @@ export function CompositePanelSurface({
     () => levels && levelDomain ? projectLevels(levels.items, levelDomain, levelDraft) : NO_LEVELS,
     [levelDomain, levelDraft, levels],
   );
+  // Over a line a plain drag moves, and while one moves, the pointer says it goes up and down.
+  const levelGrab = useMemo(() => {
+    if (levelDraft) return true;
+    if (!levels?.onEdit || cursorYRatio === null || onPickTime || onPickPrice || (armedTool && armedTool !== "level")) return false;
+    const hit = hitTestLevel(projectedLevels, cursorYRatio, levelGrabRatio(panel.height));
+    return !!hit?.editable && !!hit.draggable;
+  }, [armedTool, cursorYRatio, levelDraft, levels?.onEdit, onPickPrice, onPickTime, panel.height, projectedLevels]);
   // Drawings project through the time scale alone: the crosshair moving,
   // here or on a linked chart, must not repaint the plot, which the terminal's
   // kitty surface would upload whole again.
@@ -612,6 +625,13 @@ export function CompositePanelSurface({
       if (date) onPickTime(date);
       return;
     }
+    if (onPickPrice) {
+      // Only the levels' own panel has their prices; a press elsewhere picks nothing.
+      const ratios = pointerRatios(event);
+      const value = ratios && levelDomain ? unprojectCompositeValue(ratios.yRatio, levelDomain) : null;
+      if (value !== null && levelDomain) onPickPrice(roundLevelValue(value, levelDomain));
+      return;
+    }
     // A keyboard-armed tool covers terminals that never forward modifier drags.
     const tool = resolveChartToolKind(event.modifiers) ?? armedTool;
     if (tool === "level" && levels?.onEdit && levelDomain) {
@@ -678,6 +698,13 @@ export function CompositePanelSurface({
       onSelectDrawing(drawingHit ? drawingHit.drawing.id : null);
       onSelectLevel(levelHit?.editable ? levelHit.id : null);
       bare = !drawingHit && !levelHit;
+      // An order's line drags without the level tool; other levels keep the press for panning.
+      if (levelHit?.editable && levelHit.draggable) {
+        dragRef.current = { kind: "level-move", id: levelHit.id };
+        lastPlotPressRef.current = null;
+        updateCursor(event);
+        return;
+      }
     }
     // A double click on bare plot gives the panel the whole chart, or the
     // others back (the terminal counts two presses on one spot). Its first
@@ -718,6 +745,7 @@ export function CompositePanelSurface({
     levels,
     onActivate,
     onPickTime,
+    onPickPrice,
     onPointerPress,
     onSelectDrawing,
     onSelectLevel,
@@ -747,7 +775,11 @@ export function CompositePanelSurface({
     if (drag.kind === "level-move") {
       const ratios = pointerRatios(event);
       const value = ratios && levelDomain ? unprojectCompositeValue(ratios.yRatio, levelDomain) : null;
-      if (value !== null && levelDomain) setLevelDraft({ id: drag.id, value: roundLevelValue(value, levelDomain) });
+      if (value === null || !levelDomain) return;
+      const draft = { id: drag.id, value: roundLevelValue(value, levelDomain) };
+      // The release reads the ref, and a quick drag lets go before the next render.
+      levelDraftRef.current = draft;
+      setLevelDraft(draft);
       return;
     }
     if (drag.kind === "edit") {
@@ -1136,7 +1168,7 @@ export function CompositePanelSurface({
         width={plotSize.width}
         height={plotSize.height}
         // Desktop: the width the axes leave, and the row's height.
-        style={isDesktopWeb ? DESKTOP_PLOT_STYLE : undefined}
+        style={isDesktopWeb ? levelGrab ? DESKTOP_PLOT_LEVEL_STYLE : onPickPrice ? DESKTOP_PLOT_PICK_STYLE : DESKTOP_PLOT_STYLE : undefined}
         flexDirection="column"
         bitmaps={bitmapLayers}
         crosshair={crosshair}
@@ -1148,7 +1180,7 @@ export function CompositePanelSurface({
         onMouseDragEnd={interactive && navigable ? releasePlot : undefined}
         onMouseScroll={interactive && navigable ? panFromWheel : undefined}
         onMouseOut={interactive ? clearCursor : undefined}
-        cursor={interactive ? toolDrag || !navigable || onPickTime ? "crosshair" : "grab" : undefined}
+        cursor={interactive ? levelGrab ? "ns-resize" : toolDrag || !navigable || onPickTime || onPickPrice ? "crosshair" : "grab" : undefined}
         data-gloom-interactive={interactive ? "true" : undefined}
         data-gloom-role={COMPOSITE_PANEL_ROLE}
         data-gloom-remote-kind={remoteKind}

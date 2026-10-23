@@ -15,7 +15,7 @@ import { TicketExits, TicketLegs, TicketSection, TicketOrderHeadline, TicketOrde
 import { brokerOrderDone, orderEstimatePrice, ticketEditingPriceStep } from "./orders-data";
 import { linkedFeature, trailingText, trailingUnit, type LinkedFeature } from "./linked-orders";
 
-export type TicketAction = "enable" | "review" | "submit" | "back" | "confirm" | "refresh" | "orders" | "new" | "cancel" | "all" | "quantity25" | "quantity50" | "priceBid" | "priceMid" | "priceAsk" | "priceLast";
+export type TicketAction = "enable" | "review" | "submit" | "back" | "confirm" | "refresh" | "orders" | "new" | "cancel" | "all" | "quantity25" | "quantity50" | "priceBid" | "priceMid" | "priceAsk" | "priceLast" | "priceChart";
 export type TicketField = "action" | "orderType" | "quantity" | "limitPrice" | "stopPrice" | "tif" | "outsideRth" | "typedConfirmation" | "confirmOrders"
   | "bracket" | "takeProfitPrice" | "stopLossPrice" | "trailing" | "trailingUnit";
 export interface TicketViewModel {
@@ -53,6 +53,8 @@ export interface BrokerTicketViewProps {
   onClose?(): void;
   /** Terminal content measurement; the DOM uses intrinsic flex layout. */
   onContentHeight?(height: number): void;
+  /** With a chart beside the ticket: pick a price on it for this field, or for the entry's without one. */
+  onPickPrice?(field?: TicketField): void;
 }
 /**
  * "Limit at $759.50 · Day", "Stop $750.00 · Day", "Trailing $1.50 · Day", "Limit $790.00 · stop $740.00, one cancels
@@ -161,8 +163,11 @@ function DockedQuote({ quote, delayed, stale, source, updated, price, change, wi
   </Box>;
 }
 
+/** The ticket prices a pick on the chart can set. */
+const PRICE_FIELDS: readonly string[] = ["limitPrice", "stopPrice", "takeProfitPrice", "stopLossPrice"];
+
 /** One ticket presentation, with the same review and focus gates on every renderer. */
-export function BrokerTicketView({ model: m, width, height, focused, onEdit, onAction, onAccountChange, onCapture, docked = false, blocked = false, asking = false, onClose, onContentHeight }: BrokerTicketViewProps) {
+export function BrokerTicketView({ model: m, width, height, focused, onEdit, onAction, onAccountChange, onCapture, docked = false, blocked = false, asking = false, onClose, onContentHeight, onPickPrice }: BrokerTicketViewProps) {
   const c = useThemeColors();
   const native = useUiCapabilities().nativePaneChrome;
   const dialogOpen = useDialogState((state) => state.isOpen);
@@ -194,6 +199,8 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
   const oco = draft?.orderClass === "oco";
   const bracket = draft?.orderClass === "bracket";
   const trailing = draft?.orderType === "TRAIL";
+  // A price can come from the chart beside the ticket; a spread's net premium is not on it.
+  const chartPick = !!onPickPrice && !strategy && (showLimit || showStop);
   const trailUnit = draft ? trailingUnit(draft) : "amount";
   const trailValue = trailUnit === "percent" ? draft?.trailingPercent : draft?.trailingAmount;
   // What the broker cannot take is not offered. A draft that already holds one still shows it, to be taken off;
@@ -231,8 +238,8 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
     if (m.phase === "enable") return ["enable", "back"];
     if (editing) return [
       "account", "action", "orderType", "quantity", "quantity25", "quantity50", "all",
-      ...(showLimit ? ["limitPrice", "priceBid", "priceMid", "priceAsk", "priceLast"] : []),
-      ...(showStop ? ["stopPrice"] : []),
+      ...(showLimit ? ["limitPrice", "priceBid", "priceMid", "priceAsk", "priceLast", ...(chartPick ? ["priceChart"] : [])] : []),
+      ...(showStop ? ["stopPrice", ...(chartPick && !showLimit ? ["priceChart"] : [])] : []),
       ...(oco ? ["stopLossPrice"] : []),
       ...(trailing ? ["trailing", ...(showTrailUnit ? ["trailingUnit"] : [])] : []),
       ...(showBracket ? ["bracket"] : []),
@@ -248,7 +255,7 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
     if (finished) return ["new", "orders"];
     if (resultStatus === "UNKNOWN") return ["refresh", "orders"];
     return ["refresh", "orders", "new"];
-  }, [m.phase, editing, review, live, showLimit, showStop, oco, trailing, showTrailUnit, showBracket, bracket, extendedHours, resultStatus, finished, m.tradingEnabled, mode, m.modifying]);
+  }, [m.phase, editing, review, live, showLimit, showStop, oco, trailing, showTrailUnit, showBracket, bracket, extendedHours, resultStatus, finished, m.tradingEnabled, mode, m.modifying, chartPick]);
   const previousFocus = useRef<{ phase: TicketViewModel["phase"]; revision?: number } | undefined>(undefined);
   useEffect(() => {
     if (previousFocus.current?.phase !== m.phase || previousFocus.current?.revision !== m.focusRevision) {
@@ -303,6 +310,7 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
     }
     if (active === "review") { if (canReview) onAction("submit"); return; }
     if (active === "confirm") { if (canConfirm) onAction("confirm"); return; }
+    if (active === "priceChart") { onPickPrice?.(showLimit ? "limitPrice" : "stopPrice"); return; }
     if (quickActions.includes(active as TicketAction)) { if (!quickDisabled(active as TicketAction)) onAction(active as TicketAction); return; }
     if (active === "enable" && !m.connected) return;
     if (["back", "refresh", "orders", "new", "enable", "cancel"].includes(active)) onAction(active as TicketAction);
@@ -321,6 +329,8 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
     ...(showLimit || showStop ? ([["8", "Bid", "priceBid"], ["9", "Mid", "priceMid"], ["0", "Ask", "priceAsk"], ...(strategy ? [] : [["p", "Last", "priceLast"]] as const)] as const)
       .map(([key, label, action]) => actionShortcut(key, label, action, quickDisabled(action))) : []),
     ...(extendedHours ? [editShortcut("x", "Extended", "outsideRth", !draft?.outsideRth, !!m.modifying)] : []),
+    // The price being typed, or the entry's, from the chart beside the ticket.
+    ...(chartPick ? [keyAction("c", "hart price", () => onPickPrice!(PRICE_FIELDS.includes(active) ? active as TicketField : undefined))] : []),
   ] : review ? [actionShortcut("e", "dit", "back"), actionShortcut("o", "rders", "orders")]
     : m.phase === "enable" ? [actionShortcut("e", "nable", "enable", !m.connected)]
     : m.phase === "cancel-review" ? [actionShortcut("e", "dit", "back")]
@@ -341,6 +351,12 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
     if (["return", "enter"].includes(event.name ?? "") || event.name === "space" && !textActive && !event.targetEditable) {
       event.preventDefault(); event.stopPropagation();
       if (!event.repeat) activate();
+      return;
+    }
+    // A price holds no letters: c in a price field picks that price on the chart beside the ticket.
+    if (chartPick && editing && !busy && event.name === "c" && !event.shift && PRICE_FIELDS.includes(active)) {
+      event.preventDefault(); event.stopPropagation();
+      if (!event.repeat) onPickPrice!(active as TicketField);
       return;
     }
     if (event.shift || event.targetEditable || textActive) return;
@@ -386,7 +402,7 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
   };
   const quick = (key: TicketAction, label: string, disabled = false) => <Box ref={nodeRef(key)} key={key}>
     <Button label={label} displayLabel={!native && marker(key) ? `> ${label}` : undefined} variant="quiet" compact active={active === key && focused}
-      disabled={disabled || busy} onPress={() => { setActive(key); onAction(key); }} />
+      disabled={disabled || busy} onPress={() => { setActive(key); if (key === "priceChart") onPickPrice?.(showLimit ? "limitPrice" : "stopPrice"); else onAction(key); }} />
   </Box>;
   const numericLabels: Partial<Record<TicketField, string>> = { limitPrice: "Limit price", stopPrice: "Stop price", takeProfitPrice: "Take profit price", stopLossPrice: oco ? "Stop price" : "Stop loss price", trailing: trailUnit === "percent" ? "Trailing percent" : "Trailing amount" };
   const numeric = (key: TicketField, label: string, value: number | undefined, suffix: string, picks?: ReactNode) => {
@@ -521,8 +537,9 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
                 {quick("priceMid", "Mid", !(m.quote?.bid! > 0) || !(m.quote?.ask! > 0))}
                 {quick("priceAsk", "Ask", !(m.quote?.ask! > 0))}
                 {strategy ? null : quick("priceLast", "Last", !m.quote?.price)}
+                {chartPick ? quick("priceChart", "Chart") : null}
               </>) : null}
-              {showStop ? numeric("stopPrice", docked ? "Stop" : "Stop price", draft.stopPrice, currency) : null}
+              {showStop ? numeric("stopPrice", docked ? "Stop" : "Stop price", draft.stopPrice, currency, chartPick && !showLimit ? quick("priceChart", "Chart") : undefined) : null}
               {oco ? numeric("stopLossPrice", docked ? "Stop" : "Stop price", draft.stopLossPrice, currency) : null}
               {trailing ? numeric("trailing", "Trail", trailValue, trailUnit === "percent" ? "%" : currency, showTrailUnit ? <Box ref={nodeRef("trailingUnit")} onMouseDown={() => { if (!busy) setActive("trailingUnit"); }}>
                 <SegmentedControl accessibleLabel="Trailing unit" value={trailUnit} focused={focused && active === "trailingUnit"} shortcutScope={scope}

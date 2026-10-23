@@ -77,6 +77,9 @@ The footer shows at most three ticket actions relevant to the current screen. Th
 | Take profit / stop loss checkbox | Tab/Shift+Tab, then Space or Enter | Add or remove a bracket's exits, where the broker takes brackets |
 | Ticket editing | `5`, `6`, `7` | 25%, 50%, Max quantity |
 | Ticket editing | `8`, `9`, `0`, `p` | Broker bid, mid, ask, last price |
+| Docked ticket editing | `c` | Pick the price being edited, or the entry's, on the chart beside the ticket |
+| Chart picking a ticket price | Enter, Escape | Set the price at the cursor, or keep the ticket's |
+| Chart with the level tool (`Shift+H`) beside the ticket | `[`/`]`, then Up/Down | Choose an order or draft line and move it; a working order's move opens its change for review |
 | Trading off | `e` | Open the trading consent screen |
 | Trading consent | Enter, Escape | Enable trading with consent, or return to read-only |
 | Ticket or result | `o` | Open Orders |
@@ -103,7 +106,16 @@ The footer shows at most three ticket actions relevant to the current screen. Th
 
 ## Price context
 
-Average position cost, working/partially filled orders and the edited limit/stop prices appear as labelled horizontal chart levels for the ticket's ticker. Buy is green and Sell is red in the default theme; draft levels are dashed. Compact labels sit at the right end of their lines without reserving a gutter. Desktop tags are text-sized, centred on the line, with a one-pixel line-colour border and chart-background fill. Exact price tags use the instrument precision, independent of the grid formatter, and yield to grid labels when crowded. A label repeats the exact price only when its axis tag cannot be shown. Levels outside the visible price range are clipped. These are read-only overlays in Stage 1: use Open orders (`o`), select a row, change its price and review. Drag-to-modify is not implemented.
+Average position cost, working/partially filled orders and the edited limit/stop prices appear as labelled horizontal chart levels for the ticket's ticker. Buy is green and Sell is red in the default theme; draft levels are dashed. Compact labels sit at the right end of their lines without reserving a gutter. Desktop tags are text-sized, centred on the line, with a one-pixel line-colour border and chart-background fill. Exact price tags use the instrument precision, independent of the grid formatter, and yield to grid labels when crowded. A label repeats the exact price only when its axis tag cannot be shown. Levels outside the visible price range are clipped.
+
+### Trade from the chart
+
+With the ticket docked beside the Chart tab, the chart sets and changes its prices. Nothing reaches the broker from the chart: every change goes through the ticket's review and confirm.
+
+- **Pick a price.** Choose **Chart** beside the price presets, or press `c` in the ticket, and the chart takes the pointer and the keys. A click on the plot sets the ticket's price to the price under the pointer. Enter sets it to the price at the chart's cursor, which Left and Right move from bar to bar. Escape keeps the price as it was, and so does leaving the pane. `c` in a price field, such as take profit or stop loss, picks that price. The price is rounded to the broker's tick, never below one tick, and the ticket takes the keys back, on Review.
+- **Drag a draft line.** The dashed limit, stop, take profit and stop loss lines move with a plain drag and change the draft.
+- **Drag a working order.** The line of a working limit or stop order, or of one order of a bracket or OCO pair, opens that order's change in the ticket at the new price. The change shows as a dashed line, and the order's own line stays where the broker holds it until the change is reviewed and confirmed. If the ticket holds an order or change you have not sent, the ticket asks before replacing it. Lines that stay where they are: an order the broker cannot change, one it is still acknowledging or replacing, a trailing stop and a spread.
+- **From the keyboard.** In the chart, `Shift+H` puts the level tool in hand. `[` and `]` step through the lines, top to bottom, and Up and Down move the chosen one half a row at a time. F6 goes to the ticket, where Enter on Review opens the review. Backspace never cancels an order from the chart: cancel it from Open orders.
 
 Results retain the exact submitted preview as a receipt. The “Estimates from order preview” section shows saved cost, fees, commission and buying power after, not settled charges or a current account balance. Missing preview figures say Not reported. After a lost placement acknowledgement, Filled and Remaining say Not confirmed. After an uncertain replacement or cancellation, retained quantities are labelled Last known until a matching broker response confirms them. Closing or resizing the panel does not discard a pending submission or an unknown-outcome lock.
 

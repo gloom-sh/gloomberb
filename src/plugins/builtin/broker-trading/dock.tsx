@@ -1,4 +1,4 @@
-import { startTransition, useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { PaneFooterScope, usePaneMenuItems } from "../../../components";
 import { usePaneAppConfig, usePaneStateValue } from "../../../state/app/context";
 import { usePluginBrokerActions } from "../../runtime";
@@ -91,15 +91,33 @@ export function ResearchTradeWorkspace({ width, height, focused, symbol, tabId, 
   const ticketFocused = split && panelFocused;
   // The chart consumes its own presses, so the box below never hears them: it says so itself.
   const focusChart = useCallback(() => setPanelFocused(false), []);
-  const context = useMemo(() => ({ ...projection, symbol, available, docked, visible, ticketFocused, open: openTicket, close, focusChart, publish, ...(available ? { orders } : {}) }),
-    [projection, symbol, available, docked, visible, ticketFocused, openTicket, close, focusChart, orders]);
+  // A price picked on the chart beside the ticket: the chart takes the keys until it is picked or cancelled.
+  const [pickingField, setPickingField] = useState<string>();
+  const picking = split ? projection.priceFields?.find((entry) => entry.field === pickingField) : undefined;
+  const pickPrice = useCallback((field?: string) => {
+    const choice = field ? projection.priceFields?.find((entry) => entry.field === field) : projection.priceFields?.[0];
+    if (!split || !choice) return;
+    captureTicket(false); setPickingField(choice.field); setPanelFocused(false);
+  }, [split, projection.priceFields, captureTicket]);
+  const cancelPick = useCallback(() => { setPickingField(undefined); setPanelFocused(true); }, []);
+  const finishPick = useCallback((value: number) => {
+    if (picking) projection.setPrice?.(picking.field, value);
+    cancelPick();
+  }, [picking, projection, cancelPick]);
+  // Back in the ticket, away from the pane, or a ticket that no longer has that price: the pick is over.
+  useEffect(() => { if (pickingField && (!focused || ticketFocused || !picking)) setPickingField(undefined); }, [pickingField, focused, ticketFocused, picking]);
+  const context = useMemo(() => ({ ...projection, symbol, available, docked, visible, ticketFocused, open: openTicket, close, focusChart, publish,
+    picking, pickPrice, finishPick, cancelPick, ...(available ? { orders } : {}) }),
+  [projection, symbol, available, docked, visible, ticketFocused, openTicket, close, focusChart, orders, picking, pickPrice, finishPick, cancelPick]);
   useShortcut((event) => {
     if (event.name !== "f6" || event.repeat) return;
     event.preventDefault(); event.stopPropagation(); captureTicket(false); setPanelFocused((value) => !value);
   }, { enabled: focused && split && !dialogOpen, allowEditable: true, phase: "before", scope: "research:trade-focus" });
   useShortcut((event) => {
     if (event.name !== "escape" || event.defaultPrevented || event.targetEditable) return;
-    event.preventDefault(); event.stopPropagation(); close();
+    event.preventDefault(); event.stopPropagation();
+    // While the chart picks a price, Esc only ends the pick, here too when the chart has nothing drawn to take it.
+    if (pickingField) cancelPick(); else close();
   }, { enabled: focused && split && !panelFocused && !dialogOpen, phase: "after", scope: "research:trade-close" });
 
   // The divider between chart and ticket drags, and < > move it from the keyboard.
