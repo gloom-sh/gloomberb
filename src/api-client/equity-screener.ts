@@ -156,7 +156,7 @@ export interface ScreenPayload {
   nextCursor: string | null;
   warnings: string[];
 }
-export interface ScreenCriterionCheck {
+interface ScreenCriterionCheck {
   criterion: ScreenCriterion;
   /** The screen's currency restriction, which also controls membership. */
   implicit: boolean;
