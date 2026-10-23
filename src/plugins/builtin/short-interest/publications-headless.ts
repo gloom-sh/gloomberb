@@ -6,11 +6,11 @@ export function publicationHeadless(kind: PublicationKind): HeadlessPaneDefiniti
   const fails = kind === "ftd";
   const subject = fails ? "Fails to deliver" : "Weekly ATS / non-ATS volume";
   return {
-    shape: "bundle",
+    shape: "bundle", options: [],
     argument: { kind: "ticker", description: "US equity ticker.", placeholder: "ticker" },
     usListingsOnly: fails ? "SEC fails to deliver" : "FINRA weekly off-exchange volume",
     freshness: { source: fails ? "SEC" : "FINRA", status: "not-a-feed", basis: fails ? "settlement-date outstanding fails" : "published off-exchange volume",
-      cadence: fails ? "twice monthly" : "weekly, published with a delay", observedKey: "date", oldest: null },
+      schedule: fails ? "published twice monthly" : "published weekly with a delay", observedKey: "date", oldest: null },
     discovery: {
       aliases: fails ? ["FTD", "fails to deliver", "fails-to-deliver"] : ["ATS", "dark pool", "dark pools", "non-ATS", "OTC transparency"],
       dataRequirements: ["Gloom Cloud verified account"],

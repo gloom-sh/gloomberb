@@ -88,7 +88,7 @@ export const shortInterestModule: PluginModule = {
         paneId: "short-interest",
         label: "Short Interest",
         // The current snapshot only carries the current and prior settlement dates.
-        description: "Bi-monthly short interest settlements from FINRA with days to cover and average daily volume. Daily volume is the other tab.",
+        description: "Bi-monthly short interest settlements from FINRA with days to cover and average daily volume. Daily volume, fails to deliver and weekly ATS/OTC volume share the pane.",
         keywords: ["short", "interest", "si", "shorts", "days", "cover"],
         shortcut: "SI",
       }), "interest"),
