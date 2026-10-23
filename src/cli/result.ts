@@ -366,11 +366,23 @@ function renderCsv<Row extends Record<string, unknown>>(
   ]);
 }
 
+/**
+ * The key an NDJSON row says why its figures are empty under: `status`, or
+ * `value_status` beside a field of the row's own that the export writes under
+ * that name (an order's status), as CSV's header does.
+ */
+function ndjsonStatusKey(rows: readonly unknown[], columns?: readonly CliResultColumn<never>[]): string {
+  const own = columns && columns.length > 0
+    ? columns.some((column) => column.key === "status")
+    : rows.some((row) => isPlainObject(row) && "status" in row);
+  return own ? "value_status" : "status";
+}
+
 /** An NDJSON row: a figure that is no number is null, and the row says why its figures are empty when the command does. */
-function ndjsonRow<Row extends Record<string, unknown>>(row: Row, status?: (row: Row) => string | null | undefined): Record<string, unknown> {
+function ndjsonRow<Row extends Record<string, unknown>>(row: Row, status: ((row: Row) => string | null | undefined) | undefined, statusKey: string): Record<string, unknown> {
   const blanked = Object.entries(row).flatMap(([key, value]) => isNonFiniteNumber(value) ? [key] : []);
   const own = blanked.length > 0 ? { ...row, ...Object.fromEntries(blanked.map((key) => [key, null])) } : row;
-  return status ? { ...own, status: exportStatusText(status(row), blanked) || null } : own;
+  return status ? { ...own, [statusKey]: exportStatusText(status(row), blanked) || null } : own;
 }
 
 function stringField(row: Record<string, unknown>, key: string): string | null {
@@ -516,9 +528,10 @@ function serializeCliRows<T, Row extends Record<string, unknown>>(
   const rows = window.rows;
   const status = renderOptions.exportStatus;
   if (options.format === "ndjson") {
+    const statusKey = ndjsonStatusKey(rows, renderOptions.columns as readonly CliResultColumn<never>[] | undefined);
     return rows.map((row) => {
       if (!isPlainObject(row)) return JSON.stringify(row);
-      const fields = ndjsonRow(row as Row, status);
+      const fields = ndjsonRow(row as Row, status, statusKey);
       return JSON.stringify(cited ? { ...fields, ...exportIdentityFields(cited, rowIdentity(row as Row, renderOptions.exportIdentity)) } : fields);
     }).join("\n");
   }

@@ -419,7 +419,7 @@ G GAA/VOO
 G MSFT:revenue / AAPL:revenue
 ```
 
-Series are separated by commas, and tickers separated by spaces are a list too: `fn G AAPL MSFT` charts both, as `fn G AAPL,MSFT` does. `A/B` charts the ratio of two series and `A - B` the spread. A slash that is part of the symbol stays one series (`EUR/USD`, `BTC/USD`).
+Series are separated by commas, and tickers separated by spaces are a list too: `fn G AAPL MSFT` charts both, as `fn G AAPL,MSFT` does. Words that are one thing, not tickers side by side, are refused with what to write: a Bloomberg code (`AAPL US Equity` reads as `AAPL`), a currency pair (`EUR USD` is `EUR/USD`) and a series whose field has spaces (`MSFT:net income`, one series among commas). `A/B` charts the ratio of two series and `A - B` the spread. A slash that is part of the symbol stays one series (`EUR/USD`, `BTC/USD`).
 
 A formula adds and subtracts series, each times a number, and charts the result in the Formula panel. The number goes on either side of its series (`HO=F*42`), and only the whole formula, in brackets, is divided by a number:
 
@@ -1046,7 +1046,7 @@ A command fails on an option it does not take instead of ignoring it. `gloomberb
 
 `gloomberb history`, `fn HP` and `fn RETURN` also take a window of dates in place of a range: `--from` and `--to`, each a year or a date. `history JPM --from 2007 --to 2009` is every bar from 1 Jan 2007 to 31 Dec 2009. `history` also takes them as `--start` and `--end`.
 
-- `--to` defaults to today and needs a `--from`. A `--range` typed with `--from` is refused (`--from replaces --range; give one of them.`). `shot HP` and `shot RETURN` refuse `--from` and `--to`.
+- `--to` defaults to today and needs a `--from`. A `--range` typed with `--from` (or `--start`) is refused (`--from replaces --range; give one of them.`, naming the option as typed). `--end` alone asks for a `--start`. `shot HP` and `shot RETURN` refuse `--from` and `--to`.
 - A window of up to five years comes in daily bars, up to twenty in weekly bars and a longer one in monthly bars. Where the source keeps no bars of the interval so far back it reads daily bars and says so: `1H bars do not cover 2015-03-01 to 2015-03-31; these are 1D bars.`
 - `--json` carries the dates asked for as `metadata.requestedWindow` (`from`, `to`). A window that ended before today is not stale: its closing line reads `not a live feed (daily bars, 2007 to 2009)`.
 
@@ -1061,7 +1061,7 @@ A command fails on an option it does not take instead of ignoring it. `gloomberb
 
 - Symbols load eight at a time. A list of more than ten skips the lookups of a bare symbol's other venues, as `quote` does.
 - The `--csv` header is a single symbol's. Each row names its symbol, its currency and its own symbol's as-of in `symbol_or_series`, `currency_or_unit` and `as_of`.
-- A symbol with no bars is one row with its reason in `status` (`Not a ticker: ZZZZQQ.`) and a warning on stderr. The command exits 1 only when no symbol has any. Warnings shared by several symbols are said once, naming them.
+- A symbol with no bars is one row with its reason in `status` (`Not a ticker: ZZZZQQ.`) and a warning on stderr. A list answered from a saved copy ends `couldn't refresh; saved <time>` with the oldest copy's time, as one symbol does. The command exits 1 only when no symbol has any. Warnings shared by several symbols are said once, naming them.
 - `--tail` and `--limit` apply per symbol. `--json` has the bars as one list, each with its `symbol`, and `metadata.symbols` describes each symbol or gives its `error`.
 
 ### `fx`
@@ -1250,7 +1250,7 @@ A command exits 0 when it worked and 1 when it failed (bad input, no data found,
 
 **`quote` and `compare`** exit 1 when none of the symbols given has a quote and 0 when at least one does. The others are named in the table, on standard error and in `--json`'s `warnings`: a symbol with no quote, one that names no listing (`EQT:NYSE:US`), and an entry that is not a symbol (`N/A`, `$$$`).
 
-- Their `--csv` writes Last, Chg%, Prev Close and each extended print as plain numbers (`55.06`, `209500`), the currency in `Cur` and `currency_or_unit`. An extended print's move is in `Pre-Market Chg%`, `After Hours Chg%` or `Overnight Chg%`, and `compare` adds `Day Low` and `Day High`, all after the columns the export already had. A cell is never `NaN`: a row with no figure says why in its `status` column (`Not a ticker: ZZZZQQ.`, `Chg%: no previous close`), and the failures are on stderr with `--csv` and `--ndjson` too.
+- Their `--csv` writes Last, Chg%, Prev Close and each extended print as plain numbers (`55.06`, `209500`), the currency in `Cur` and `currency_or_unit`. An extended print's move is in `Pre-Market Chg%`, `After Hours Chg%` or `Overnight Chg%`, and `compare` adds `Day Low` and `Day High`, all after the columns the export already had. A cell is never `NaN`: a row with no figure says why in its `status` column (`Not a ticker: ZZZZQQ.`, `Chg%: no previous close`), and the failures are on stderr with `--csv` and `--ndjson` too. `--ndjson` rows carry the reason as `status` too (`value_status` beside a field of that name), with a figure that is no number as `null`.
 
 **`shot`** saves its PNG, prints the Reason line and exits 0 even when the pane drew an error, was empty, was still loading or was behind an access gate. `shot --strict` exits 2 in those cases, with the PNG still saved (`--json` carries `usable` and `unusableReason`). `fn` fails on `--strict`.
 
@@ -1521,7 +1521,7 @@ Exports end each row with five fixed columns, so a row still says what it is aft
 | `source` | The source the `# Source:` line names: `Gloom Cloud`, `FRED` |
 | `as_of` | The `# Observation date:` of the export in ISO 8601, the same on every row; blank when it reads `not published`. Rows dated apart carry their own (a `fn DVD` ranking dates each ticker's row by the price its yields are over) |
 
-A row's own `symbol` and `currency` fill the first two when a command does not state them, in a `fn` report of several symbols too (`fn RV NESN:SWX AAPL`). `--ndjson` writes one JSON object per table row, keyed by the same column names, with a `section` field when the report has several tables. `--json` is the full report with every field, plus the export `source` object.
+A row's own `symbol` and `currency` fill the first two when a command does not state them. A `fn` report whose rows are of different symbols says which fields name them, as `fn RV NESN:SWX AAPL` does for each peer's ticker and currency. `--ndjson` writes one JSON object per table row, keyed by the same column names, with a `section` field when the report has several tables. `--json` is the full report with every field, plus the export `source` object.
 
 `fundamentals` and `valuation` follow the same rules: `Metric,Value` rows with the unit in each label (`Market Cap (ZAR)`, `Dividend Yield (forward) (%)`), and for `fundamentals` a second `Profile` table. `financials --csv` writes the statement table with plain amounts under its displayed columns. All three end with the source line.
 

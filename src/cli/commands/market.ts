@@ -1458,20 +1458,26 @@ const HISTORY_FLAG_TEXT_COLUMN: CliResultColumn = {
 };
 
 /** The dates `--from` and `--to` (or `--start` and `--end`) name, each given once. */
-function historyWindowOption(args: string[], ctx: Parameters<CliCommandDef["execute"]>[1]): PriceWindow | null {
+function historyWindowOption(args: string[], rangeOption: string | undefined, ctx: Parameters<CliCommandDef["execute"]>[1]): PriceWindow | null {
   const bound = (flag: string, alias: string) => {
     const value = takeOption(args, flag);
     const aliased = takeOption(args, alias);
     if (value != null && aliased != null) ctx.fail(`${alias} is ${flag}; give one of them.`, `Usage: gloomberb ${HISTORY_USAGE}`);
     return { value: value ?? aliased, flag: aliased != null ? alias : flag };
   };
-  const from = bound("--from", "--start");
-  const to = bound("--to", "--end");
+  const typedFrom = bound("--from", "--start");
+  const typedTo = bound("--to", "--end");
+  // Every message names the options as typed: an --end alone asks for a --start, not a --from.
+  const from = { ...typedFrom, flag: typedFrom.value == null && typedTo.flag === "--end" ? "--start" : typedFrom.flag };
+  const to = { ...typedTo, flag: typedTo.value == null && from.flag === "--start" ? "--end" : typedTo.flag };
+  let window: PriceWindow | null;
   try {
-    return readPriceWindow(from.value, to.value, new Date(), undefined, { from: from.flag, to: to.flag });
+    window = readPriceWindow(from.value, to.value, new Date(), undefined, { from: from.flag, to: to.flag });
   } catch (error) {
     return ctx.fail(errorMessage(error) ?? `Invalid ${from.flag} or ${to.flag}.`, `Usage: gloomberb ${HISTORY_USAGE}`);
   }
+  if (window && rangeOption != null) ctx.fail(`${from.flag} replaces --range; give one of them.`, `Usage: gloomberb ${HISTORY_USAGE}`);
+  return window;
 }
 
 /** How many symbols of a list load at once: enough that a few hundred take a minute or two, not one call after another. */
@@ -1481,8 +1487,7 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
   const args = [...rawArgs];
   const rangeOption = takeOption(args, "--range");
   // --from 2007 --to 2009: those years' bars, daily up to five years, in place of a range ending now.
-  const window = historyWindowOption(args, ctx);
-  if (window && rangeOption != null) ctx.fail("--from replaces --range; give one of them.", `Usage: gloomberb ${HISTORY_USAGE}`);
+  const window = historyWindowOption(args, rangeOption, ctx);
   const ask: HistoryAsk = { range: parseRange(rangeOption, ctx), window };
   const requestedExchange = takeOption(args, "--exchange");
   // A list from a file or standard input (`-`), or several symbols typed (AAPL MSFT, AAPL,MSFT), is one long table.
@@ -1592,13 +1597,17 @@ async function runHistoryList(
     // The closing lines date the list by its newest bar; each row's as_of is its own symbol's.
     const lastBars = served.flatMap((history) => history.data.at(-1) ?? []);
     const pastWindow = ask.window && isPastPriceWindow(ask.window);
-    const freshness = served.length === 0 ? undefined : withSavedCopy(rowsFreshness(lastBars, pastWindow && ask.window ? {
+    const listFreshness = served.length === 0 ? undefined : rowsFreshness(lastBars, pastWindow && ask.window ? {
       status: "not-a-feed", basis: `price bars, ${priceWindowText(ask.window)}`, observedKey: "date", oldest: null,
     } : {
       ...barHistoryFreshness(served.some((history) => history.intraday) ? null : served[0]!.interval ?? "1d"),
       observedKey: "date",
       oldest: null,
-    }), served.flatMap((history) => history.data));
+    });
+    // A saved copy is marked on the bars a symbol loaded, not on the rows drawn from them (loadListingHistory
+    // reads it there): the list ends "couldn't refresh; saved <time>" for the oldest copy among its symbols.
+    const savedAt = served.flatMap((history) => history.freshness?.savedAt ?? []).sort()[0];
+    const freshness = listFreshness && savedAt && !listFreshness.savedAt ? { ...listFreshness, savedAt } : listFreshness;
     const decimals = (row: Record<string, unknown>) => bySymbol.get(String(row.symbol))?.decimals ?? 2;
     const intraday = served.some((history) => history.intraday);
     const textColumns = historyTextColumns(intraday, (value, row) => historyPrice(decimals(row))(value)).map((column) => column.key !== "volume" ? column

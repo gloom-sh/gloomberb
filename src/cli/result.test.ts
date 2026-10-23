@@ -107,7 +107,7 @@ describe("serializeCliResult", () => {
     expect(serializeCliResult({ data: [] }, baseOptions, { empty: "No alerts." })).toBe("No alerts.");
   });
 
-  // A spreadsheet reads every cell of a figure column as a number, and every row says why it has none. (GLO-1263)
+  // A spreadsheet reads every cell of a figure column as a number, and every row says why it has none.
   test("exports write a figure that is no number empty, with the reason in a status column that is there with rows or without", () => {
     const columns = [{ key: "symbol", header: "Symbol" }, { key: "last", header: "Last" }, { key: "move", header: "Chg%" }];
     const render: CliResultRenderOptions = { columns, exportStatus: (row) => typeof row.error === "string" ? row.error : null };
@@ -121,6 +121,19 @@ describe("serializeCliResult", () => {
     expect(serializeCliResult({ data: [] }, { ...baseOptions, format: "csv" }, render)).toBe("Symbol,Last,Chg%,status");
     const ndjson = serializeCliResult({ data: rows }, { ...baseOptions, format: "ndjson" }, render).split("\n").map((line) => JSON.parse(line));
     expect(ndjson.map((row) => [row.move, row.status])).toEqual([[0.45, null], [null, "move: not available"], [null, "Not a ticker: ZZZZQQ."]]);
+  });
+
+  test("an infinity is written empty like NaN, and a table with a Status column of its own gets value_status", () => {
+    const render: CliResultRenderOptions = {
+      columns: [{ key: "symbol", header: "Symbol" }, { key: "status", header: "Status" }, { key: "ratio", header: "Ratio" }],
+      exportStatus: () => null,
+    };
+    const rows = [{ symbol: "A", status: "open", ratio: 1.5 }, { symbol: "B", status: "closed", ratio: Infinity }, { symbol: "C", status: "open", ratio: -Infinity }];
+    expect(serializeCliResult({ data: rows }, { ...baseOptions, format: "csv" }, render))
+      .toBe("Symbol,Status,Ratio,value_status\nA,open,1.5,\nB,closed,,Ratio: not available\nC,open,,Ratio: not available");
+    const ndjson = serializeCliResult({ data: rows }, { ...baseOptions, format: "ndjson" }, render).split("\n").map((line) => JSON.parse(line));
+    // The row's own status stays beside the reason, which is under the other name.
+    expect(ndjson.map((row) => [row.status, row.ratio, row.value_status])).toEqual([["open", 1.5, null], ["closed", null, "ratio: not available"], ["open", null, "ratio: not available"]]);
   });
 
   test("--tail and --limit keep each series' own rows when rows of several symbols share one table", () => {
