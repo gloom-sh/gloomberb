@@ -220,8 +220,10 @@ export interface EnterpriseValueCheck {
   status: "matches" | "differs" | "withdrawn" | "unchecked" | "computed" | "not-meaningful";
   /** The provider's enterprise value, served as `enterpriseValue` unless withdrawn, computed or not meaningful; absent when it served none. */
   source?: number;
-  currency: string;
-  marketCap: number;
+  /** The currency of the EV and the market cap. Absent, with `marketCap`, only on a not-meaningful source EV the block names no currency for. */
+  currency?: string;
+  /** The market cap the EV is measured on; absent only on a not-meaningful source EV served without one. */
+  marketCap?: number;
   totalDebt?: number;
   cash?: number;
   /** YYYY-MM-DD of the balance sheet the debt and cash come from. */

@@ -111,6 +111,13 @@ test("an insurer's EV keeps its investments and says so, and one at or below zer
   expect(arvn).toMatch(/^Enterprise Value N\/M$/m);
   expect(arvn).toContain("EV N/M: cash and short-term investments exceed market cap + total debt (balance sheet 2026-06-30).");
   expect(arvn).not.toContain("unavailable");
+  // A source EV below zero served with no market cap or currency to check it against is N/M all the same.
+  const capless = valuation({
+    unavailableFields: ["enterpriseValue", "enterpriseToRevenue"],
+    enterpriseValueCheck: { status: "not-meaningful", source: -513.8e6, reason: "Cash and investments exceed market cap + debt in the source's EV" },
+  });
+  expect(capless).toMatch(/^Enterprise Value N\/M$/m);
+  expect(capless).toContain("EV N/M: cash and investments exceed market cap + debt in the source's EV.");
 });
 
 test("an EV off market cap + debt - cash is labelled as the provider's with the reconciliation, a withdrawn one is unavailable", async () => {

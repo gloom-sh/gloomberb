@@ -83,7 +83,7 @@ function movedEnterpriseValueCheck(
   enterpriseValue: number | undefined,
   movedCap: number | undefined,
 ): EnterpriseValueCheck | undefined {
-  if (!check || movedCap == null || !Number.isFinite(movedCap) || !Number.isFinite(check.marketCap)) return check;
+  if (!check || movedCap == null || !Number.isFinite(movedCap) || check.marketCap == null || !Number.isFinite(check.marketCap)) return check;
   const shift = movedCap - check.marketCap;
   if (shift === 0 && served === enterpriseValue) return check;
   const finiteComputed = check.computed != null && Number.isFinite(check.computed);

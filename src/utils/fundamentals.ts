@@ -33,11 +33,12 @@ export function enterpriseValueCheck(
   fundamentals: Pick<Fundamentals, "enterpriseValue" | "enterpriseValueCheck" | "unavailableFields"> | undefined,
 ): EnterpriseValueCheck | undefined {
   const check = fundamentals?.enterpriseValueCheck;
-  if (!check || !check.currency) return undefined;
-  if (check.status === "withdrawn" || check.status === "not-meaningful") {
-    return fundamentals?.enterpriseValue === undefined && fundamentals.unavailableFields?.includes("enterpriseValue")
-      && (check.status === "not-meaningful" || (finiteNumber(check.computed) && finiteNumber(check.source))) ? check : undefined;
-  }
+  if (!check) return undefined;
+  const withdrawn = fundamentals?.enterpriseValue === undefined && !!fundamentals?.unavailableFields?.includes("enterpriseValue");
+  // Not meaningful needs no figure of its own: a source EV below zero may come with no cap or currency.
+  if (check.status === "not-meaningful") return withdrawn ? check : undefined;
+  if (!check.currency) return undefined;
+  if (check.status === "withdrawn") return withdrawn && finiteNumber(check.computed) && finiteNumber(check.source) ? check : undefined;
   if (check.status === "computed") {
     return finiteNumber(check.computed) && fundamentals?.enterpriseValue === check.computed ? check : undefined;
   }
