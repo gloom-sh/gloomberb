@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import type { MnaDealsParams, MnaDealsPayload } from "../../../api-client/mna";
 import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
-import type { HeadlessPaneContext } from "../../../types/headless";
+import type { HeadlessPaneContext, HeadlessPaneOptionValues } from "../../../types/headless";
 import { mnaHeadless } from "./headless";
 
 const payload: MnaDealsPayload = {
@@ -32,7 +32,7 @@ const payload: MnaDealsPayload = {
   asOf: "2026-09-27T12:00:00Z",
 };
 
-async function load(symbol: string | null, options: Record<string, unknown> = {}) {
+async function load(symbol: string | null, options: HeadlessPaneOptionValues = {}) {
   const requests: MnaDealsParams[] = [];
   const ctx = createTestHeadlessContext({
     apiClient: { getCloudMnaDeals: async (params: MnaDealsParams) => { requests.push(params); return payload; } } as unknown as HeadlessPaneContext["apiClient"],

@@ -92,7 +92,7 @@ async function mount(width = 130, height = 10, listing?: Listing, as: "pane" | "
           <Box width={width} height={height} flexDirection="column">
             <Box height={height - 1}>
               {as === "tab"
-                ? <MnaTickerTab focused width={width} height={height - 1} />
+                ? <MnaTickerTab focused width={width} height={height - 1} onCapture={() => {}} />
                 : <MnaPane focused width={width} height={height - 1} paneId={paneId} paneType="mna" />}
             </Box>
             <PaneFooterBar footer={footer} focused width={width} />
