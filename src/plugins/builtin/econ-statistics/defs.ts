@@ -5,6 +5,7 @@ export type StatCategoryId =
   | "inflation"
   | "labor"
   | "growth"
+  | "nowcasts"
   | "consumer"
   | "housing"
   | "rates"
@@ -14,6 +15,7 @@ export const STAT_CATEGORIES: ReadonlyArray<{ id: StatCategoryId; label: string 
   { id: "inflation", label: "Inflation" },
   { id: "labor", label: "Labor" },
   { id: "growth", label: "Growth" },
+  { id: "nowcasts", label: "Nowcasts & conditions" },
   { id: "consumer", label: "Consumer" },
   { id: "housing", label: "Housing" },
   { id: "rates", label: "Rates & Money" },
