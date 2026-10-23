@@ -153,6 +153,19 @@ const EXPORT_POINTER = {
   leads: true,
 } as const;
 
+/**
+ * Bloomberg's spreadsheet formulas (BDP, BDH, BDS), Excel and Sheets: the Google Sheets functions take the same
+ * tickers and fields. Listed before the export line, so "excel" alone is this one and "export to excel" that one.
+ */
+const SHEETS_POINTER = {
+  names: ["bdh", "bdp", "bds", "excel", "sheets", "gsheets", "google sheets"],
+  words: ["formula", "formulas", "function", "functions", "add", "in", "addin", "plugin", "bloomberg", "google", "for", "with",
+    "data", "how", "to", "use", "can", "i", "a", "an", "the", "my", "spreadsheet", "spreadsheets", "workbook", "workbooks"],
+  line: "Spreadsheets: =GLOOM and =GLOOMH in Google Sheets take the tickers and fields of Bloomberg's BDP and BDH (Pro): "
+    + "gloom.sh/docs/google-sheets. For Excel, add --csv to any command.",
+  leads: true,
+} as const;
+
 /** "bank", "bank figures": beside the functions a bank's name finds (CBR), where its figures are. */
 const BANK_FIGURES_POINTER = {
   names: ["bank", "banks", "banking"],
@@ -256,6 +269,7 @@ const COMMAND_POINTERS: ReadonlyArray<{
   leads?: true;
 }> = [
   BANK_FIGURES_POINTER,
+  SHEETS_POINTER,
   EXPORT_POINTER,
   {
     names: ["theme", "themes", "light", "dark", "colorblind", "colourblind", "blind"],
