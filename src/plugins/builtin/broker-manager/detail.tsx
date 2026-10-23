@@ -88,9 +88,10 @@ function BrokerConfigFieldEditor({
   );
 }
 
+/** An account by the name its broker gives it, as its portfolio is named; its id when it has none. */
 function accountDetail(account: BrokerAccount): string {
   const parts = [
-    account.accountId,
+    account.name?.trim() || account.accountId,
     account.netLiquidation != null ? tf("{value} net liq", { value: formatCurrency(account.netLiquidation, account.currency || "") }) : null,
     account.buyingPower != null ? tf("{value} buying power", { value: formatCurrency(account.buyingPower, account.currency || "") }) : null,
   ];
