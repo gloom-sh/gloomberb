@@ -61,7 +61,9 @@ import { loadBankFigures } from "../bank-section";
 import { latestFinancialPeriod } from "../../utils/latest-financial-period";
 import type { FuturesContractTermsPayload } from "../../api-client/futures-curve";
 import { currencyCodeLabel } from "../../utils/currency-units";
-import { futuresContractLines, futuresRollLines, isFuturesInstrument, minorUnitPricePer } from "../../market-data/futures-contract";
+import {
+  futuresContractLines, futuresPricePer, futuresRollLines, isFuturesInstrument, loadUsdPerMmbtu, usdPerMmbtuText, type UsdPerMmbtu,
+} from "../../market-data/futures-contract";
 import {
   chainHasExpiry,
   formatExpiryList,
@@ -292,6 +294,11 @@ type QuoteCliRecord = Omit<QuoteBatchResult, "error"> & {
   futuresContract?: FuturesContractTermsPayload;
   /** The quote of the root's front contract, for a futures row that prices another one (NGF27, NG2). */
   futuresFront?: Quote;
+  /**
+   * A per-MWh gas price (Dutch TTF) in dollars per MMBtu, the unit Henry Hub
+   * trades in, converted at the day's rate: one unit of the quote's currency in dollars.
+   */
+  usdPerMmbtu?: UsdPerMmbtu;
   /** A perpetual row's market, funding per eight hours and open interest. */
   perpetualContract?: PerpetualContractPayload;
   /** The symbol changed: its issuer moved to another symbol, or its holder had another before. */
@@ -576,7 +583,7 @@ function quoteRows(results: QuoteCliRecord[], now = Date.now()) {
         : ""
     );
     // A price in cents says what it is per, as the contract terms word it: 314.95¢/lb.
-    const per = display?.price != null ? minorUnitPricePer(result.futuresContract, quote?.currency) : "";
+    const per = display?.price != null ? futuresPricePer(result.futuresContract, quote?.currency) : "";
     return {
       symbol: result.target.symbol,
       name: quote?.name || result.listing?.name || "",
@@ -871,6 +878,9 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       : null));
     // A contract that is not its root's front (NGF27, NG2) prints the front's own price beside it, read in one batch.
     const fronts = await loadFuturesFrontQuotes(contracts, market.dataProvider);
+    // A per-MWh gas price (TTF) adds its dollars per MMBtu at the day's rate, to read beside Henry Hub.
+    const gasInUsd = await Promise.all(answers.map(({ result }, index) => loadUsdPerMmbtu(
+      getRegularSessionDisplay(result.quote)?.price, contracts[index], result.quote?.currency, (currency) => market.dataProvider.getExchangeRate(currency))));
     // A perpetual adds its funding per eight hours and open interest, the figures PERP lists beside its mark.
     const perpetualContracts = await Promise.all(answers.map(({ result }) => commandName === "quote" && result.quote
       ? cliPerpetualContract(result.quote)
@@ -891,6 +901,7 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       quote: withPreviousCloseDate(result.quote),
       ...contracts[index] ? { futuresContract: contracts[index] } : {},
       ...fronts[index] ? { futuresFront: fronts[index] } : {},
+      ...gasInUsd[index] ? { usdPerMmbtu: gasInUsd[index] } : {},
       ...perpetualContracts[index] ? { perpetualContract: perpetualContracts[index] } : {},
       ...usSuggestions[index] ? { usSuggestion: usSuggestions[index] } : {},
       error: failure?.oneLine ?? errorMessage(result.error),
@@ -1013,6 +1024,9 @@ function quoteFuturesContractText(data: QuoteCliRecord[]): string {
     const change: Array<[string, string]> = session?.change != null && Number.isFinite(session.change)
       ? [["Change", quoteChangeText(row.quote, session, withCurrencyMinorDigits(quoteFormatOptions(row.quote, "FUTURE"), row.quote.currency), terms)]]
       : [];
+    // European gas beside Henry Hub: "≈ $30.832/MMBtu at EUR/USD 1.1650", a conversion that says so.
+    const inUsd = row.usdPerMmbtu;
+    if (inUsd) change.push(["In USD", usdPerMmbtuText(inUsd)]);
     const metrics = futuresContractMetrics(terms, row.quote.symbol || row.target.symbol);
     const rolls = futuresRollLines(terms, row.futuresFront).map((line): [string, string] => [line.label, line.value]);
     const at = futuresContractLines(terms, row.quote.symbol || row.target.symbol)[0]?.key === "contract" ? 1 : 0;

@@ -37,6 +37,8 @@ interface DoeSeasonal {
   band: Array<[number, number | null, number | null, number | null]>;
 }
 
+export type DoeComparisonBasis = "published" | "computed";
+
 export interface DoeSeriesRow {
   id: string;
   key: string;
@@ -50,6 +52,12 @@ export interface DoeSeriesRow {
   weekChange: number | null;
   yearAgo: DoeYearAgo | null;
   fiveYear: DoeFiveYear | null;
+  /**
+   * Where the year-ago and five-year average comparisons come from: the
+   * EIA's own published figures for the week (gas storage), or worked out
+   * from the stored weekly history. Absent from older servers.
+   */
+  basis?: DoeComparisonBasis;
   /** One plain read worked out from the numbers. */
   read: string | null;
   seasonal: DoeSeasonal | null;
@@ -63,6 +71,13 @@ export interface DoeReportStatus {
   nextWeekEnding: string | null;
   nextReleaseAt: string | null;
   nextReleaseHoliday: string | null;
+  /**
+   * The economic calendar's consensus and prior for the next release, in the
+   * report's unit (Bcf of net change for gas storage); null when the calendar
+   * has none. Absent from older servers.
+   */
+  nextConsensus?: number | null;
+  nextPrior?: number | null;
 }
 
 export interface DoeBoardPayload {

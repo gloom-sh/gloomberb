@@ -25,6 +25,7 @@ import {
   DOE_TABS,
   DOE_UNIT_LABEL,
   doeAxisFormatter,
+  doeComparisonBasis,
   doeHeaderLine,
   doeReport,
   doeRows,
@@ -93,7 +94,8 @@ function DoeBoard({ payload, tab, initialSeries, width, height, focused }: {
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("selected", initialSeries);
   const selected = rows.find((row) => row.id === selectedId) ?? rows[0] ?? null;
   const series = useMemo(() => selected ? doeSeasonalSeries(selected, colors) : [], [selected, colors]);
-  const meta = doeHeaderLine(doeReport(payload, tab));
+  // The query bar's padding aside, the line keeps the next release whole on a narrow pane.
+  const meta = doeHeaderLine(doeReport(payload, tab), Date.now(), width - 2);
   const chart: ChartTableChart | null = selected && series.length ? {
     render: (size) => <SeasonalChart row={selected} series={series} width={size.width} height={size.height} />,
     minRows: CHART_MIN_ROWS,
@@ -134,8 +136,11 @@ export function DoePane({ width, height, focused }: PaneProps) {
   usePaneRefreshKey(() => void resource.reload(), { focused });
   usePaneNoticeFooter({ registrationId: "doe:notices", focused,
     notices: [...(data?.gaps ?? []), ...(resource.data?.refreshError ? [resource.data.refreshError] : [])] });
+  // What Vs 1Y and Vs 5Y are measured against on this tab: the EIA's published figures for gas storage.
+  const basis = useMemo(() => data ? doeComparisonBasis(doeRows(data, tab)) : null, [data, tab]);
+  const info = useMemo(() => basis ? [{ id: "basis", parts: [{ text: basis, tone: "muted" as const }] }] : undefined, [basis]);
   usePaneStatusFooter({ registrationId: "doe", loading: resource.loading, error: notAvailable ? null : resource.error,
-    stale: !!data && resource.data?.stale });
+    stale: !!data && resource.data?.stale, info });
   return (
     <Box width={width} height={height} flexDirection="column">
       {strip}

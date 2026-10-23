@@ -1,6 +1,7 @@
 import { createPluginCache } from "../../../data/plugin-cache";
 import type { DataTableColumn } from "../../../components";
 import { colors } from "../../../theme/colors";
+import { displayWidth } from "../../../utils/format";
 import { fetchEconCalendar } from "./calendar-source";
 import type { EconEvent, EconImpact } from "./types";
 
@@ -369,6 +370,19 @@ export function loadCalendar(
   loader: () => Promise<EconEvent[]> = fetchEconCalendar,
 ): Promise<EconCalendarLoadResult> {
   return cache.load(CACHE_KEY, loader, { force });
+}
+
+/** The widest a value column grows: "-3.061M bbl" and "0.034M b/d" whole. */
+const MAX_VALUE_WIDTH = 12;
+
+/**
+ * A value column as wide as the widest figure shown, from its usual width up
+ * to MAX_VALUE_WIDTH, so an energy row keeps its unit (77 Bcf, -3.061M bbl).
+ */
+export function valueColumnWidth(events: readonly EconEvent[], key: "actual" | "forecast" | "prior", base: number): number {
+  let width = base;
+  for (const event of events) width = Math.max(width, Math.min(MAX_VALUE_WIDTH, displayWidth(event[key] ?? "")));
+  return width;
 }
 
 function parseNumeric(value: string | null): number | null {

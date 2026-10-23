@@ -54,6 +54,7 @@ import {
   shortCalendarEnd,
   shortDayLabel,
   timeLabel,
+  valueColumnWidth,
   type CountryFilter,
   type DisplayRow,
   type EconCalendarColumn,
@@ -250,9 +251,9 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     // The header names the zone, so the column is as wide as the header needs.
     const timeLabelText = `TIME (${CALENDAR_TIME_ZONE_LABEL})`;
     const timeWidth = tableColumnWidth({ width: 6, label: timeLabelText });
-    const actualWidth = 9;
-    const forecastWidth = 10;
-    const priorWidth = 9;
+    const actualWidth = valueColumnWidth(filtered, "actual", 9);
+    const forecastWidth = valueColumnWidth(filtered, "forecast", 10);
+    const priorWidth = valueColumnWidth(filtered, "prior", 9);
     const minEventWidth = 12;
     // Padding, one gap per column boundary, and the vertical scrollbar lane;
     // one column short of that clipped the PRIOR values at the right edge.
@@ -283,7 +284,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
       { id: "forecast", label: "FORECAST", width: forecastWidth, align: "right" },
       { id: "prior", label: "PRIOR", width: priorWidth, align: "right" },
     ];
-  }, [flagged, width]);
+  }, [filtered, flagged, width]);
   const separatorBg = blendHex(colors.bg, colors.border, 0.3);
   const staleness = fetchedAt ? formatStaleness(fetchedAt, now) : "";
   // The calendar has events and the filters hid them all: say which, with the way back.
