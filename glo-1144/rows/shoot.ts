@@ -1,5 +1,5 @@
 // GLO-1144 before/after shots: the real web build of base and head, seeded workspaces, headless Chrome.
-//   bun shoot.ts <side: base|head> <scenario: br-disabled|br-error|alerts>
+//   bun shoot.ts <side: base|head> <scenario: br-disabled|br-error|br-edit|alerts|alerts-row>
 import { mkdir } from "fs/promises";
 import { join } from "path";
 
@@ -7,7 +7,7 @@ const REPO = "/home/vince/.paseo/worktrees/0a293nnp/gloom-fda81df87272";
 const { launchBrowser, evaluate, sleep } = await import(join(REPO, "scripts/pane-chrome/browser.ts"));
 const { createReplay, serveWebApp, key, settle } = await import(join(REPO, "scripts/pane-chrome/web-app.ts"));
 
-const HERE = "/home/vince/.cache/gloom-smoke/glo-1144";
+const HERE = "/home/vince/.cache/gloom-smoke/glo-1144b";
 const [side, scenario] = process.argv.slice(2) as [string, string];
 const dist = join(HERE, `web-${side}`);
 const out = join(HERE, "shots", scenario);
@@ -21,7 +21,7 @@ const NOW = await replay.clock();
 const SYNCED = NOW - 26 * 60 * 60 * 1000;
 
 function workspace(): { config: Record<string, unknown>; tickers?: Record<string, unknown>; focus: string } {
-  if (scenario === "br-disabled" || scenario === "br-error") {
+  if (scenario === "br-disabled" || scenario === "br-error" || scenario === "br-edit") {
     const portfolioId = "broker:ibkr-gloom:U7700123";
     const layout = {
       dockRoot: { kind: "split", axis: "vertical", ratio: 0.5, first: leaf("portfolio-list:shot"), second: leaf("brokers:shot") },
@@ -42,7 +42,7 @@ function workspace(): { config: Record<string, unknown>; tickers?: Record<string
         layout,
         brokerInstances: [{
           id: "ibkr-gloom", brokerType: "signed-in", label: "Interactive Brokers", connectionMode: "ibkr",
-          config: { connectionMode: "ibkr", broker: "ibkr" }, enabled: scenario === "br-error", lastSyncedAt: SYNCED,
+          config: { connectionMode: "ibkr", broker: "ibkr" }, enabled: scenario !== "br-disabled", lastSyncedAt: SYNCED,
         }],
         portfolios: [{ id: portfolioId, name: "IBKR U7700123", currency: "USD", brokerId: "signed-in", brokerInstanceId: "ibkr-gloom", brokerAccountId: "U7700123", lastSyncedAt: SYNCED }],
       },
@@ -159,6 +159,29 @@ for (const theme of ["white", "paper"]) {
         await enter(cdp);
         await sleep(1200);
         await shot(cdp, join(out, `2-detail-${tag}.png`));
+      } else if (scenario === "br-edit") {
+        await waitText(cdp, "Interactive Brokers");
+        await clickPane(cdp, "brokers:shot");
+        await sleep(600);
+        await letter(cdp, "e");
+        await sleep(1200);
+        // Empty the label, then try to save.
+        for (let i = 0; i < 24; i++) await key(cdp, "Backspace", "Backspace", 8, 0, "");
+        await sleep(400);
+        await enter(cdp);
+        await sleep(1200);
+        await shot(cdp, join(out, `1-edit-${tag}.png`));
+      } else if (scenario === "alerts-row") {
+        await waitText(cdp, "ZZQXW");
+        await sleep(6000);
+        await clickPane(cdp, "alerts:shot");
+        await sleep(400);
+        // ZZQXW, the one alert no source quotes, is the third row.
+        await key(cdp, "ArrowDown", "ArrowDown", 40, 0, "");
+        await sleep(300);
+        await key(cdp, "ArrowDown", "ArrowDown", 40, 0, "");
+        await sleep(1500);
+        await shot(cdp, join(out, `1-alerts-${tag}.png`));
       } else {
         await waitText(cdp, "ZZQXW");
         await sleep(6000);
