@@ -69,21 +69,22 @@ function publishedSources(value: unknown): NonNullable<HeadlessPaneFreshness["so
 /**
  * How current a rendered pane says its data is, from the `report-freshness`
  * node it publishes: `{ asOf?, status?, delayMinutes?, source?, sources?,
- * maxAgeMinutes?, oldestAge?, note?, basis?, asOfLabel? }`; `basis` names what a pane
+ * maxAgeMinutes?, oldestAge?, note?, basis?, asOfLabel?, datesEachVenue? }`; `basis` names what a pane
  * that is not a feed lists, when one pane lists different things (NI's
  * stories, and its LTR code's letters). A capture keeps no footer status and
  * few cells carry a time, so a pane that knows its feed (OMON's chain) dates
  * the report here, as the plain command over the same data does, and a pane
- * over several venues (PERP) dates each one as its report does. A pane whose
+ * over several venues (PERP) dates each one as its report does, as does one
+ * whose quotes trade on several markets (RV's `datesEachVenue`). A pane whose
  * figures come from several dated quotes (FXC's pair rates) publishes them
  * instead, see `renderedReportObservations`.
  */
 export function renderedReportFreshness(
   semanticUi: readonly RemoteUiNodeSnapshot[],
-): Pick<HeadlessPaneFreshness, "asOf" | "status" | "delayMinutes" | "source" | "sources" | "maxAgeMinutes" | "oldestAge" | "note" | "basis" | "asOfLabel"> {
+): Pick<HeadlessPaneFreshness, "asOf" | "status" | "delayMinutes" | "source" | "sources" | "maxAgeMinutes" | "oldestAge" | "note" | "basis" | "asOfLabel" | "datesEachVenue"> {
   const metadata = semanticUi.find((node) => node.role === "report-freshness")?.metadata;
   if (!metadata) return {};
-  const { asOf, status, delayMinutes, source, maxAgeMinutes, oldestAge, note, basis, asOfLabel } = metadata as Record<string, unknown>;
+  const { asOf, status, delayMinutes, source, maxAgeMinutes, oldestAge, note, basis, asOfLabel, datesEachVenue } = metadata as Record<string, unknown>;
   const sources = publishedSources(metadata.sources);
   return {
     ...(typeof asOf === "string" || isFiniteNumber(asOf) ? { asOf } : {}),
@@ -96,6 +97,7 @@ export function renderedReportFreshness(
     ...(typeof note === "string" && note.trim() ? { note } : {}),
     ...(typeof basis === "string" && basis.trim() ? { basis } : {}),
     ...(typeof asOfLabel === "string" && asOfLabel.trim() ? { asOfLabel } : {}),
+    ...(datesEachVenue === true ? { datesEachVenue } : {}),
   };
 }
 
