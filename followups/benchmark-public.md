@@ -1,6 +1,6 @@
 UI blast radius: 3 of 492 views changed
 
-All 4 shards completed. Built-in and registry plugin panes plus shell views, 640 and 1280px, white theme, offline replay. The body comparison excludes the top and bottom 42px. 47 unsteady views were excluded from the changed count after repeat capture. No views failed to open; none were pictured on only one side.
+All 4 shards completed. Built-in and registry plugin panes plus shell views, 640 and 1280px, white theme, offline replay. The body comparison excludes the top and bottom 42px. 47 unsteady views were excluded from the changed count after repeat capture. No views failed to open; no stable view was pictured on only one side.
 
 The sweep opens root/detail views and tabs one press deep. It skipped 59 deeper alternatives on the base and 58 on the head (two presses deep); those were not visually verified.
 
