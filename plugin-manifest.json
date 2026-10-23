@@ -1321,7 +1321,7 @@
           {
             "code": "MDAY",
             "name": "Macro-Day Reaction",
-            "description": "How a name moves on CPI, jobs and FOMC days against a normal day: average move, direction, hit rate and every release day."
+            "description": "How a name moves on CPI, jobs, FOMC and Brazil IPCA days against a normal day: average move, direction, hit rate, and every release day with its actual, forecast and prior."
           }
         ]
       },
