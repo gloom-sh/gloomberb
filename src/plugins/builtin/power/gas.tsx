@@ -1,3 +1,4 @@
+import { logFailure } from "../../../utils/log-failure";
 import { useCallback, useMemo } from "react";
 import type { GasStorageRow } from "../../../api-client/europe-energy";
 import {
@@ -99,7 +100,10 @@ export function GasStorageView({ width, height, focused, snapshot }: {
   const frozen = useMemo(() => {
     try {
       return snapshot ? { board: validateGasStorage(snapshot.board), seasonal: snapshot.seasonal ? validateGasSeasonal(snapshot.seasonal) : null } : null;
-    } catch { return null; }
+    } catch (error) {
+      logFailure("power.gas", "Validate gas storage snapshot failed")(error);
+      return null;
+    }
   }, [snapshot]);
   const resource = useAsyncResource(frozen ? null : loadGasStorage, { initialData: getCachedGasStorage });
   const board = frozen?.board ?? resource.data?.payload ?? null;

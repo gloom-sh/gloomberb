@@ -1,3 +1,4 @@
+import { logFailure } from "../../../utils/log-failure";
 import { useCompanyDisclosureLinks } from "../company-kpis/related";
 import { useCallback, useMemo } from "react";
 import { usePaneFooter } from "../../../components";
@@ -58,7 +59,8 @@ function earningsScopeSymbols(options: PaneTemplateCreateOptions | undefined): s
   if (!raw) return [];
   try {
     return parseTickerListInput(raw);
-  } catch {
+  } catch (error) {
+    logFailure("earnings.scope", "Read earnings template scope failed")(error);
     return [];
   }
 }

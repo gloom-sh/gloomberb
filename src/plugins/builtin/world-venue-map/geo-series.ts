@@ -1,3 +1,4 @@
+import { logFailure } from "../../../utils/log-failure";
 /**
  * Map series in G: numbers over time for things with a place (chokepoint
  * transits, port calls). `GEO:<id or alias>` resolves through the server's
@@ -54,7 +55,7 @@ export async function resolveGeoChartSeries(
   viewport: ChartViewportSpec,
   signal?: AbortSignal,
 ): Promise<ResolvedSeries> {
-  const hit = await resolveGeoSeries(request, token, signal).catch(() => null);
+  const hit = await resolveGeoSeries(request, token, signal).catch(logFailure("world-venue-map.geo-series", "Resolve map series failed", null));
   const payload = await getGeoSeries(request, hit?.id ?? token, geoSeriesRange(viewport), signal).catch((error: unknown) => {
     throw hit ? error : new Error(`No map series named ${token}.`);
   });
@@ -83,7 +84,7 @@ export async function resolveGeoChartSeries(
 
 export function createGeoChartSeriesCapability(request: GeoRequest = cloudGeoRequest): ChartSeriesCapability {
   const search = async (query: string, limit: number, signal?: AbortSignal) => {
-    const { series } = await searchGeoSeries(request, query, signal).catch(() => ({ series: [] as GeoSeriesSearchHit[] }));
+    const { series } = await searchGeoSeries(request, query, signal).catch(logFailure("world-venue-map.geo-series", "Search map series failed", { series: [] as GeoSeriesSearchHit[] }));
     return series.slice(0, limit).map(catalogItem);
   };
   return chartSeriesProvider({
@@ -218,7 +219,7 @@ function matchKeyChokepoint(wanted: string): string | null {
 export async function chokepointSeriesFor(request: GeoRequest, typed: string, signal?: AbortSignal): Promise<string | null> {
   const wanted = compact(typed);
   if (!wanted) return null;
-  const { series } = await searchGeoSeries(request, typed, signal).catch(() => ({ series: [] as GeoSeriesSearchHit[] }));
+  const { series } = await searchGeoSeries(request, typed, signal).catch(logFailure("world-venue-map.geo-series", "Find chokepoint series failed", { series: [] as GeoSeriesSearchHit[] }));
   return matchIndexedChokepoint(series, wanted) ?? matchKeyChokepoint(wanted);
 }
 

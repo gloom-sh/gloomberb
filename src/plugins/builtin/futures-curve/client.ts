@@ -1,3 +1,4 @@
+import { logFailure } from "../../../utils/log-failure";
 import { apiClient } from "../../../api-client";
 import type { FuturesCurvePayload } from "../../../api-client/futures-curve";
 import { createPluginCache } from "../../../data/plugin-cache";
@@ -83,8 +84,8 @@ export async function loadFuturesCurveAsOf(root: string, date: string,
   try {
     const [curve, week, month] = await Promise.all([
       client.getCloudFuturesCurveAsOf(normalized, date),
-      client.getCloudFuturesCurveAsOf(normalized, curveLookbackDate(date, 7)).catch(() => null),
-      client.getCloudFuturesCurveAsOf(normalized, curveLookbackDate(date, 30)).catch(() => null),
+      client.getCloudFuturesCurveAsOf(normalized, curveLookbackDate(date, 7)).catch(logFailure("futures-curve.client", "Load week comparison curve failed", null)),
+      client.getCloudFuturesCurveAsOf(normalized, curveLookbackDate(date, 30)).catch(logFailure("futures-curve.client", "Load month comparison curve failed", null)),
     ]);
     if (!curve || curve.root !== normalized || !Array.isArray(curve.contracts) || !Array.isArray(curve.gaps)
       || curve.contracts.some((row) => !row || typeof row.symbol !== "string" || !Number.isFinite(row.price)
@@ -101,5 +102,5 @@ export async function loadFuturesCurveAsOf(root: string, date: string,
  * A failed read is a missing spot, never a failed report: the curve stands without its basis.
  */
 export async function loadCurveSpot(symbol: string, provider: Pick<DataProvider, "getQuote">, now = Date.now()): Promise<CurveSpot> {
-  return curveSpot(symbol, await provider.getQuote(symbol, "").catch(() => null), now);
+  return curveSpot(symbol, await provider.getQuote(symbol, "").catch(logFailure("futures-curve.client", "Load curve spot quote failed", null)), now);
 }
