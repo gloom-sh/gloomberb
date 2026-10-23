@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 
-import { EXTRACTED_PLUGINS, officialPluginsCheck, pluginSeedNotice, seedExtractedPlugins } from "./extracted-plugins";
+import { EXTRACTED_PLUGINS, officialPluginsCheck, pluginSeedFailure, pluginSeedNotice, seedExtractedPlugins } from "./extracted-plugins";
 import type { AppConfig } from "../types/config";
 
 /**
@@ -139,30 +139,51 @@ describe("seedExtractedPlugins", () => {
 /**
  * Without git every seed install fails, and the launch used to say nothing:
  * the plugins were just absent. The notice and `doctor` have to name the cause
- * and the fix, and stop once the plugins are there.
+ * and the fix, without nagging about a failure the next launch retries on its
+ * own, and without failing `doctor` where no launch ever tried.
  */
 describe("a seed that left official plugins out", () => {
-  test("the launch notice names git, as Git for Windows on Windows, or says it retries", () => {
-    expect(pluginSeedNotice(["polls"], true, "win32")).toBe("Polls needs Git and is not installed. Install Git for Windows, then restart Gloom.");
-    expect(pluginSeedNotice(EXTRACTED_PLUGINS.map((entry) => entry.id), true, "linux"))
+  const all = EXTRACTED_PLUGINS.map((entry) => entry.id);
+
+  test("a missing git is an error at every launch, Git for Windows on Windows", () => {
+    const noGit = pluginSeedFailure(["polls"], true);
+    expect(pluginSeedNotice(noGit, undefined, "win32")).toEqual({ type: "error", body: "Polls needs Git and is not installed. Install Git for Windows, then restart Gloom." });
+    expect(pluginSeedNotice(noGit, noGit, "win32")?.type).toBe("error");
+    expect(pluginSeedNotice(pluginSeedFailure(all, true), undefined, "linux")?.body)
       .toBe(`${EXTRACTED_PLUGINS.length} official plugins need Git and are not installed. Install git, then restart Gloom.`);
-    expect(pluginSeedNotice(["tv", "polls"], false, "linux")).toBe("TV and Polls could not be installed. Gloom tries again at the next launch.");
-    expect(pluginSeedNotice([], true, "win32")).toBeNull();
+    expect(pluginSeedNotice(undefined, noGit, "win32")).toBeNull();
   });
 
-  test("doctor fails naming the missing plugins while git is missing, and passes once they are installed", async () => {
+  test("a failure the next launch retries is information, said once while the same plugins keep failing", () => {
+    const offline = pluginSeedFailure(["polls", "tv"], false);
+    expect(pluginSeedNotice(offline, undefined, "linux")).toEqual({ type: "info", body: "TV and Polls could not be installed. Gloom tries again at the next launch." });
+    expect(pluginSeedNotice(offline, pluginSeedFailure(["tv", "polls"], false), "linux")).toBeNull();
+    // Something else failing, or git now there, is news.
+    expect(pluginSeedNotice(offline, pluginSeedFailure(["tv"], false), "linux")?.type).toBe("info");
+    expect(pluginSeedNotice(offline, pluginSeedFailure(["polls", "tv"], true), "linux")?.type).toBe("info");
+  });
+
+  test("doctor fails only once a launch tried, names the plugins, and passes once they are installed", async () => {
     await withPluginsDir((dir) => {
-      const seeded = EXTRACTED_PLUGINS.map((entry) => entry.id).filter((id) => id !== "polls" && id !== "tv");
-      expect(officialPluginsCheck(config({ seededPlugins: seeded }), { gitMissing: () => true, pluginsDir: dir, platform: "win32" })).toEqual({
+      const seeded = all.filter((id) => id !== "polls" && id !== "tv");
+      const tried = config({ seededPlugins: seeded, pluginSeedFailure: pluginSeedFailure(["polls", "tv"], true) });
+      expect(officialPluginsCheck(tried, { gitMissing: () => true, pluginsDir: dir, platform: "win32" })).toEqual({
         check: "official plugins",
         status: "error",
         detail: "Not installed: TV and Polls. They need Git: install Git for Windows (https://git-scm.com/download/win), then restart Gloom.",
       });
-      expect(officialPluginsCheck(config({ seededPlugins: seeded }), { gitMissing: () => false, pluginsDir: dir })?.status).toBe("warn");
+
+      // No launch has tried: a terminal-only setup or a container without git.
+      const untried = officialPluginsCheck(config({ seededPlugins: seeded }), { gitMissing: () => true, pluginsDir: dir, platform: "linux" });
+      expect(untried).toEqual({
+        check: "official plugins",
+        status: "warn",
+        detail: "Not installed yet: TV and Polls. Gloom installs them when the app starts, which needs Git: install git.",
+      });
 
       mkdirSync(join(dir, "gloom-polls"));
       mkdirSync(join(dir, "gloom-tv"));
-      expect(officialPluginsCheck(config({ seededPlugins: seeded }), { gitMissing: () => true, pluginsDir: dir })).toBeNull();
+      expect(officialPluginsCheck(tried, { gitMissing: () => true, pluginsDir: dir })).toBeNull();
     });
   });
 });

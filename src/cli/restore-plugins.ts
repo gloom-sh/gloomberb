@@ -1,9 +1,10 @@
 import { saveConfig } from "../data/config/store";
 import { loadCliConfigIfAvailable } from "./context";
 import { getPluginsDir } from "../plugins/loader";
-import { pluginSeedNotice, seedExtractedPlugins } from "../plugins/extracted-plugins";
+import { pluginSeedFailure, pluginSeedNotice, samePluginSeedFailure, seedExtractedPlugins } from "../plugins/extracted-plugins";
 import { setPluginSeedNotice } from "../plugins/seed-notice";
 import { debugLog } from "../utils/debug-log";
+import type { AppConfig } from "../types/config";
 
 const log = debugLog.createLogger("plugin-seed");
 
@@ -16,12 +17,12 @@ const log = debugLog.createLogger("plugin-seed");
  * one notice the app shows once it is up (`setPluginSeedNotice`), saying why
  * when git is missing, and `doctor` names the plugins.
  *
- * Returns the seeded ids so a caller that already holds the config in memory
- * can adopt them. The desktop loads its config before restoring, and without
- * this it would keep an object whose `seededPlugins` is one launch stale and
- * overwrite the record on the next save.
+ * Returns what it recorded (the seeded ids, and what failed) so a caller that
+ * already holds the config in memory can adopt it. The desktop loads its
+ * config before restoring, and without this it would keep an object one
+ * launch stale and overwrite the record on the next save.
  */
-export async function restoreExtractedPlugins(): Promise<string[] | null> {
+export async function restoreExtractedPlugins(): Promise<Pick<AppConfig, "seededPlugins" | "pluginSeedFailure"> | null> {
   try {
     const config = await loadCliConfigIfAvailable();
     // No data directory yet means a first run: there is nothing to restore.
@@ -42,17 +43,21 @@ export async function restoreExtractedPlugins(): Promise<string[] | null> {
       listings ??= loadRegistryListings();
       return installListedPlugin(repo, { quiet: true }, await listings);
     });
-    setPluginSeedNotice(pluginSeedNotice(result.failed, gitMissing === true));
+    // Recorded, so doctor knows a launch tried, and a failure the next launch
+    // retries is not announced again while it lasts.
+    const failure = pluginSeedFailure(result.failed, gitMissing === true);
+    setPluginSeedNotice(pluginSeedNotice(failure, config.pluginSeedFailure));
 
     const seeded = [...new Set(result.seeded)].sort();
     const existing = [...new Set(config.seededPlugins ?? [])].sort();
-    if (seeded.join() === existing.join()) return seeded;
+    const record = { seededPlugins: seeded, pluginSeedFailure: failure };
+    if (seeded.join() === existing.join() && samePluginSeedFailure(failure, config.pluginSeedFailure)) return record;
 
-    await saveConfig({ ...config, seededPlugins: seeded });
+    await saveConfig({ ...config, ...record });
     if (result.installed.length > 0) {
       log.info(`Restored ${result.installed.join(", ")} into ${getPluginsDir()}`);
     }
-    return seeded;
+    return record;
   } catch (error) {
     log.error(`Plugin restore skipped: ${error}`);
     return null;

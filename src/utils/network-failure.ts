@@ -18,14 +18,15 @@ export class DataServiceUnreachableError extends Error {
   }
 }
 
-/** Codes a fetch fails with when it got no connection: Bun's, then Node's and the system's. */
+/**
+ * Codes a fetch fails with when it never connected: Bun's, then Node's and
+ * the system's. A reset or a closed socket is not one: the request may have
+ * reached the server.
+ */
 const NO_CONNECTION_CODES = new Set([
   "ConnectionRefused",
-  "ConnectionClosed",
   "FailedToOpenSocket",
-  "UnableToConnect",
   "ECONNREFUSED",
-  "ECONNRESET",
   "ENOTFOUND",
   "EAI_AGAIN",
   "ENETUNREACH",
@@ -34,29 +35,44 @@ const NO_CONNECTION_CODES = new Set([
 ]);
 
 /**
- * The same failure in the words of each fetch: Bun's ("Unable to connect. Is
- * the computer able to access the url?", which the desktop relays from its Bun
- * process as a plain message), a browser's ("Failed to fetch", Safari's "Load
- * failed", Firefox's "NetworkError when attempting to fetch resource") and
- * Node's ("fetch failed").
+ * The same failure in each fetch's exact words, so a server's or a broker's
+ * sentence that merely starts the same way ("Failed to fetch quote from
+ * upstream", "Unable to connect to IB Gateway") is not one: Bun's, which the
+ * desktop relays from its Bun process as a plain message, then a browser's
+ * (Chrome, Safari, Firefox).
  */
-const NO_CONNECTION_MESSAGE = /unable to connect|failed to fetch|^load failed$|networkerror when attempting|network connection was lost|appears to be offline|^fetch failed$|typo in the url or port|socket connection was closed unexpectedly/i;
+const NO_CONNECTION_MESSAGES = new Set([
+  "Unable to connect. Is the computer able to access the url?",
+  "Failed to fetch",
+  "Load failed",
+  "NetworkError when attempting to fetch resource.",
+]);
+
+/** An answer came back: an HTTP status, or an error the server wrote. Its code is the server's, not a socket's. */
+function cameFromServer(error: object): boolean {
+  const { name, status, statusCode } = error as { name?: unknown; status?: unknown; statusCode?: unknown };
+  return typeof status === "number" || typeof statusCode === "number" || name === "ApiRequestError";
+}
 
 /**
  * Whether a request failed before any answer came back. A caller's abort and
  * a timeout are not: the first is on purpose, and the second reached a server
- * that did not answer in time.
+ * that did not answer in time. Nor is anything the server answered, whatever
+ * its text or code says.
  */
 export function isNetworkFailure(error: unknown): boolean {
+  if (typeof error === "string") return NO_CONNECTION_MESSAGES.has(error.trim());
   for (let current = error, depth = 0; current && typeof current === "object" && depth < 4; depth += 1) {
     if (current instanceof DataServiceUnreachableError) return true;
+    if (cameFromServer(current)) return false;
     const { name, code, message } = current as { name?: unknown; code?: unknown; message?: unknown };
     if (name === "AbortError" || name === "TimeoutError") return false;
     if (typeof code === "string" && NO_CONNECTION_CODES.has(code)) return true;
-    if (typeof message === "string" && NO_CONNECTION_MESSAGE.test(message.trim())) return true;
+    if (typeof message === "string" && NO_CONNECTION_MESSAGES.has(message.trim())) return true;
+    // Node's fetch says only "fetch failed" and puts the socket's error in `cause`.
     current = (current as { cause?: unknown }).cause;
   }
-  return typeof error === "string" && NO_CONNECTION_MESSAGE.test(error.trim());
+  return false;
 }
 
 /** A network failure as `DataServiceUnreachableError`; anything else as it was. */

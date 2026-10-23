@@ -969,8 +969,8 @@ export async function buildHeadlessFunctionReport(
   }
   const { complete, unavailableSymbols, rowCount, symbols } = reportCoverage(loaded);
   const serialized = serializeHeadlessPaneResult(loaded.definition, loaded.result);
-  // Read once the report is loaded: a saved copy it answered from, its refresh having failed, says so.
-  const freshness = withSavedCopy(deriveHeadlessFreshness(loaded.definition, loaded.result));
+  // What the report shows from a saved copy, its refresh having failed, says so.
+  const freshness = withSavedCopy(deriveHeadlessFreshness(loaded.definition, loaded.result), loaded.result);
   return {
     data: {
       kind: loaded.definition.shape,

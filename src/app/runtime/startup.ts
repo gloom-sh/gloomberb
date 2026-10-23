@@ -212,8 +212,8 @@ export function useAppStartupRuntime({
     if (!state.initialized || isDetachedWindow) return;
     const notice = takePluginSeedNotice();
     if (!notice) return;
-    appLog.warn("official plugins not installed at launch", { notice });
-    pluginRegistry.notify({ body: notice, type: "error", duration: PLUGIN_SEED_NOTICE_MS });
+    appLog.warn("official plugins not installed at launch", { notice: notice.body });
+    pluginRegistry.notify({ ...notice, duration: PLUGIN_SEED_NOTICE_MS });
   }, [isDetachedWindow, pluginRegistry, state.initialized]);
 
   // What people keep on screen: the functions open in the workspace restored

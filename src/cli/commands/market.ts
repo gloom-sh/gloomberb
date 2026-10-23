@@ -195,6 +195,7 @@ import { earningsCalendarFailure, earningsChoiceNote, earningsDateLabel, isListi
 import { formatBasisPoints, toBasisPoints } from "../../utils/basis-points";
 import { providerMissReason } from "../../sources/provider-errors";
 import { isNetworkFailure } from "../../utils/network-failure";
+import { withSavedCopy } from "../pane-functions/freshness";
 import { isNotATickerMessage } from "../not-a-ticker";
 import { primeBoardCoins } from "../board-coins";
 import { suggestUsTicker, type ListingSuggestion } from "../listing-suggestion";
@@ -916,7 +917,11 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       warnings: notes.length > 0 ? notes : undefined,
       // A Cboe yield index stops at its 15:00 ET close, before the Treasury's curve is taken: the line says so, so its
       // close does not read as a contradiction of DGS10 or GC for the same day.
-      freshness: quotesFreshness(data.map((row) => row.quote), yieldsOnly ? { schedule: `Cboe close ${CBOE_YIELD_INDEX_CLOSE}` } : undefined),
+      // Dated by the quotes as served, which say whether one is the saved copy.
+      freshness: withSavedCopy(
+        quotesFreshness(data.map((row) => row.quote), yieldsOnly ? { schedule: `Cboe close ${CBOE_YIELD_INDEX_CLOSE}` } : undefined),
+        answers.map(({ result }) => result.quote),
+      ),
     }, {
       rows: quoteRows,
       // An index row's Cur is blank, its level having no currency; the export names what it is in instead.
@@ -1141,7 +1146,7 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     // A bar history: dated by its last bar, stale once bars of its size stop arriving.
     // The day's own bar, while its session trades, is not a close: dated by the quote it was read from.
     const dayToDate = fromQuote && interval === "1d" && data.at(-1)?.partial === true;
-    const freshness = rowsFreshness(data, {
+    const freshness = withSavedCopy(rowsFreshness(data, {
       ...barHistoryFreshness(intraday ? null : barResolutionFromDates(data.map((row) => row.date))),
       observedKey: "date",
       oldest: null,
@@ -1149,7 +1154,8 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       ...(forming ? { periodToDate: forming.periodToDate } : closedDay ? { asOf: closedDay } : {}),
       ...(dayToDate ? { basis: "daily bars", ...(quote && Number.isFinite(quote.lastUpdated) ? { asOf: new Date(quote.lastUpdated).toISOString() } : {}) } : {}),
       ...(volume || dayToDate ? { note: [volume ? historyVolumeText(volume, interval) : null, dayToDate ? `the newest bar is ${DAY_SO_FAR_TEXT}` : null].filter(Boolean).join("; ") } : {}),
-    });
+    // The rows are drawn from the bars served, which say whether they are the saved copy.
+    }), loaded);
     const gaps = historyGapNote(data, traded);
     const coverage = range === "YTD" ? null : historyCoverageWarning(range, loaded);
     const notes = [

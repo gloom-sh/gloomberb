@@ -1,5 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
+import { ApiRequestError } from "../api-client/errors";
 import { CloudApiRequestTransport, setCloudApiFetchTransport } from "../api-client/request";
+import { describeChatImageError } from "../plugins/builtin/chat/attachments/model";
 import { inferCliErrorOptions, printCliError } from "../cli/errors";
 import { overviewCliCommands } from "../cli/commands/overview";
 import { noProviderError } from "../sources/provider-errors";
@@ -53,6 +55,30 @@ test("every fetch's failure to connect reaches callers as the data service being
   }).request("/market/quote?symbol=SPY", { signal: controller.signal }).catch((caught: unknown) => caught);
   expect(aborted).not.toBeInstanceOf(DataServiceUnreachableError);
   expect(isNetworkFailure(Object.assign(new Error("The operation timed out."), { name: "TimeoutError" }))).toBe(false);
+});
+
+test("an answer from the server or a local service is never \"couldn't reach\", whatever its words or code", async () => {
+  for (const answered of [
+    new ApiRequestError("fetch failed", 500),
+    new ApiRequestError("Failed to fetch quote from upstream", 502),
+    new ApiRequestError("Upstream connection reset", 503, undefined, "ECONNRESET"),
+    Object.assign(new Error("Unable to connect. Is the computer able to access the url?"), { status: 502 }),
+    new Error("Failed to fetch quote from upstream"),
+    new Error("Unable to connect to IB Gateway at 127.0.0.1:4001. Is it running?"),
+    Object.assign(new Error("read ECONNRESET"), { code: "ECONNRESET" }),
+  ]) {
+    expect(isNetworkFailure(answered)).toBe(false);
+    const failing = new CloudApiRequestTransport({ fetchTransport: async () => { throw answered; } });
+    expect(await failing.request("/market/quote?symbol=SPY").catch((caught: unknown) => caught)).toBe(answered);
+    const json = await captureConsole(() => printCliError(answered, inferCliErrorOptions(["--json"])));
+    expect(JSON.parse(json.stderr).error.code).not.toBe("service_unreachable");
+  }
+});
+
+test("surfaces that point at the connection still do", () => {
+  const unreachableUpload = new DataServiceUnreachableError(new TypeError("Failed to fetch"));
+  expect(describeChatImageError(unreachableUpload)).toBe("The image could not be uploaded. Check your connection and try again.");
+  expect(describeChatImageError(new ApiRequestError("fetch failed", 500))).toBe("fetch failed");
 });
 
 test("a router miss caused by no connection says so instead of that no provider has the symbol", () => {

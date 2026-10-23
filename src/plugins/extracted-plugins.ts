@@ -1,7 +1,7 @@
 import { existsSync } from "fs";
 import { join } from "path";
 
-import type { AppConfig } from "../types/config";
+import type { AppConfig, PluginSeedFailure } from "../types/config";
 import { debugLog } from "../utils/debug-log";
 import { getPluginsDir } from "./loader";
 import { encodeBuiltinDisabledPluginIds } from "./ownership";
@@ -129,26 +129,50 @@ function capitalize(text: string): string {
   return `${text[0]?.toUpperCase() ?? ""}${text.slice(1)}`;
 }
 
+/** What a seed's result leaves to record: the plugins it could not install, sorted, or nothing. */
+export function pluginSeedFailure(failedIds: readonly string[], gitMissing: boolean): PluginSeedFailure | undefined {
+  return failedIds.length > 0 ? { plugins: [...new Set(failedIds)].sort(), gitMissing } : undefined;
+}
+
+/** Whether two recorded seed failures are the same: the same plugins, for the same reason. */
+export function samePluginSeedFailure(a: PluginSeedFailure | undefined, b: PluginSeedFailure | undefined): boolean {
+  return a?.gitMissing === b?.gitMissing && (a?.plugins ?? []).join() === (b?.plugins ?? []).join();
+}
+
+export interface PluginSeedNotice {
+  body: string;
+  type: "error" | "info";
+}
+
 /**
  * The one notice a launch shows when its seed left official plugins
- * uninstalled: the cause when it is a missing git, which is the usual one on
- * Windows, and otherwise that it tries again at the next launch.
+ * uninstalled. A missing git, the usual cause on Windows, is an error said at
+ * every launch until git is there, since nothing else installs them. Anything
+ * else (offline, the registry unreadable) the next launch retries on its own,
+ * so it is information, said once and not again while the same plugins keep
+ * failing (`previous` is the failure the last launch recorded).
  */
-export function pluginSeedNotice(failedIds: readonly string[], gitMissing: boolean, platform: string = process.platform): string | null {
-  const names = EXTRACTED_PLUGINS.filter((entry) => failedIds.includes(entry.id)).map((entry) => entry.name);
-  if (names.length === 0) return null;
+export function pluginSeedNotice(
+  failure: PluginSeedFailure | undefined,
+  previous: PluginSeedFailure | undefined,
+  platform: string = process.platform,
+): PluginSeedNotice | null {
+  const names = EXTRACTED_PLUGINS.filter((entry) => failure?.plugins.includes(entry.id)).map((entry) => entry.name);
+  if (!failure || names.length === 0) return null;
   const what = names.length <= 2 ? nameList(names) : `${names.length} official plugins`;
   const one = names.length === 1;
-  return gitMissing
-    ? `${what} ${one ? "needs" : "need"} Git and ${one ? "is" : "are"} not installed. ${capitalize(gitInstallAdvice(platform))}, then restart Gloom.`
-    : `${what} could not be installed. Gloom tries again at the next launch.`;
+  if (failure.gitMissing) {
+    return { type: "error", body: `${what} ${one ? "needs" : "need"} Git and ${one ? "is" : "are"} not installed. ${capitalize(gitInstallAdvice(platform))}, then restart Gloom.` };
+  }
+  if (samePluginSeedFailure(failure, previous)) return null;
+  return { type: "info", body: `${what} could not be installed. Gloom tries again at the next launch.` };
 }
 
 /**
  * `doctor`'s check of the official plugins the seed has not installed: which,
- * and what to do. A failure when git is missing, since no launch can install
- * them then; a warning otherwise, since the next launch tries again. Null when
- * none is missing.
+ * and what to do. A failure only once a launch tried and could not install
+ * them; before any launch has (a terminal-only setup, a container, CI) a
+ * warning, git missing or not. Null when none is missing.
  */
 export function officialPluginsCheck(
   config: AppConfig,
@@ -157,7 +181,22 @@ export function officialPluginsCheck(
   const { pending } = classifyExtractedPlugins(config, pluginsDir);
   if (pending.length === 0) return null;
   const names = nameList(pending.map((entry) => entry.name));
-  return gitMissing()
-    ? { check: "official plugins", status: "error", detail: `Not installed: ${names}. They need Git: ${gitInstallAdvice(platform, true)}, then restart Gloom.` }
-    : { check: "official plugins", status: "warn", detail: `Not installed yet: ${names}. Gloom installs them at the next launch.` };
+  const git = gitMissing() ? gitInstallAdvice(platform, true) : null;
+  const attempted = pending.some((entry) => config.pluginSeedFailure?.plugins.includes(entry.id));
+  if (attempted) {
+    return {
+      check: "official plugins",
+      status: "error",
+      detail: git
+        ? `Not installed: ${names}. They need Git: ${git}, then restart Gloom.`
+        : `Not installed: ${names}. The last launch could not install them; the next one tries again.`,
+    };
+  }
+  return {
+    check: "official plugins",
+    status: "warn",
+    detail: git
+      ? `Not installed yet: ${names}. Gloom installs them when the app starts, which needs Git: ${git}.`
+      : `Not installed yet: ${names}. Gloom installs them when the app next starts.`,
+  };
 }

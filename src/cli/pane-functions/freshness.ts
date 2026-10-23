@@ -12,7 +12,7 @@ import { localTimeSuffix, parseReportTime, type ReportTime } from "../../utils/u
 import { isRecord } from "../../utils/guards";
 import { latestRegularSessionClose, readIndexSession } from "../../market-data/market/freshness";
 import { reportMarketSession, reportVenueSessionDates, type ReportMarket, type SessionObservation, type VenueSessionDate } from "./market-session";
-import { savedCopyServedAt } from "../../data/saved-copies";
+import { savedCopyShownAt } from "../../data/saved-copies";
 
 /**
  * The four states of docs/usage.md#how-current-a-report-is, plus `unreported`
@@ -108,12 +108,14 @@ export interface ReportFreshness {
 }
 
 /**
- * The freshness a command prints, saying when anything it shows came from a
- * copy saved earlier because refreshing it failed (`collectSavedCopies`): its
- * status line then reads `couldn't refresh; saved 21:49 UTC` instead of live
- * or delayed.
+ * The freshness a command prints, saying when what it shows (`shown`: its
+ * rows, or the data its line is drawn from) came from a copy saved earlier
+ * because refreshing it failed (`collectSavedCopies`): its status line then
+ * reads `couldn't refresh; saved 21:49 UTC` instead of live or delayed.
  */
-export function withSavedCopy(freshness: ReportFreshness, savedAt = savedCopyServedAt()): ReportFreshness {
+export function withSavedCopy<F extends ReportFreshness | undefined>(freshness: F, shown: unknown): F {
+  if (!freshness || freshness.savedAt) return freshness;
+  const savedAt = savedCopyShownAt(shown);
   return savedAt == null ? freshness : { ...freshness, savedAt: new Date(savedAt).toISOString() };
 }
 

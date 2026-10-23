@@ -1557,6 +1557,6 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
         memberships,
         offerings: await offerings,
     }));
-    if (freshness) console.log(`\n${cliFreshnessFooter(freshness)}`);
+    if (freshness) console.log(`\n${cliFreshnessFooter(freshness, quote ?? resolvedFinancials)}`);
   });
 }

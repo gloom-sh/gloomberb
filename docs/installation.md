@@ -41,7 +41,7 @@ The installer is not code-signed yet, so Windows SmartScreen may stop it. Click 
 - **Terminal:** the installer adds `gloomberb` to your PATH, so open a new terminal window. PowerShell works.
 - **Charts:** Windows Terminal does not support Kitty graphics, so terminal charts draw as text. The desktop app draws them in full.
 - **Data:** `%USERPROFILE%\.gloomberb`, which `gloomberb version` prints. `GLOOMBERB_HOME` moves it.
-- **Git:** Bun ships with the app; Git does not. These official plugins install from GitHub on first start and need [Git for Windows](https://git-scm.com/download/win): TV, Substack, Interactive Brokers, IBKR Gateway, Public, Robinhood, SimpleFIN, Polls, Prediction Markets and BYOK AI. Without Git the app starts without them and says so once, and `gloomberb doctor` names them. Install Git, then restart Gloom.
+- **Git:** Bun ships with the app; Git does not. [Some official plugins](../PLUGINS.md#official-plugins-that-need-git) install from GitHub and need [Git for Windows](https://git-scm.com/download/win). Without it the app starts without them and says so, and `gloomberb doctor` names them.
 - **Versions:** Windows 11 on x64 is the tested setup. Windows 10, and ARM PCs running the x64 build through Windows' built-in emulation, are untested.
 
 For a terminal-only setup on x64, install Bun and use the package:
@@ -82,7 +82,7 @@ On Apple Silicon Macs it installs the desktop app in `/Applications` and links t
 
 To install by hand on Linux, download the [x64](https://github.com/gloom-sh/gloomberb/releases/latest/download/gloomberb-linux-x64.gz) or [ARM64](https://github.com/gloom-sh/gloomberb/releases/latest/download/gloomberb-linux-arm64.gz) binary, unpack it with `gzip`, mark it executable and put it on your `PATH` as `gloomberb`.
 
-On first start, the app clones its missing official plugins from GitHub once a local profile exists. That needs Git and network access; the plugins that need it are listed under [plugin installation](../PLUGINS.md#official-plugins-that-need-git). Without Git, the app starts without them, shows one notice, and `gloomberb doctor` fails naming them. Offline, it tries again at the next launch. Packaged apps use their bundled Bun runtime to install plugin dependencies. See [plugin installation](../PLUGINS.md).
+On first start, the app clones its missing official plugins from GitHub once a local profile exists. That needs Git and network access ([which plugins](../PLUGINS.md#official-plugins-that-need-git)). Packaged apps use their bundled Bun runtime to install plugin dependencies. See [plugin installation](../PLUGINS.md).
 
 ## Uninstall
 

@@ -27,7 +27,7 @@ import { resolvePriceHistoryCurrencyUnit } from "../../utils/currency-units";
 import { calendarHistoryFetchState, calendarHistoryLastBarDate, dropLeadingPlaceholderBars, getPricePointTimestamp, hasUsablePriceHistory, preservePriceHistoryGaps, isPriceHistoryStaleForCurrentWindow, normalizePriceHistory, priceHistoryIntervalMs, type CalendarHistoryFetchState } from "../../utils/price-history";
 import { noProviderError, noteProviderAnswer, noteProviderMiss, shouldLogProviderError, type ProviderMissNote } from "../provider-errors";
 import { HistoryCoverageError } from "../history-coverage";
-import { noteSavedCopyServed } from "../../data/saved-copies";
+import { servedFromSavedCopy } from "../../data/saved-copies";
 import {
   buildVariantKey,
   compactDate,
@@ -714,15 +714,13 @@ export class ProviderRouterHistoryRoutes {
     const fallbackRecord = fallbackRecords.find((record) => !request.isCachedValueStale(record.value, record.fetchedAt))
       ?? (coin ? undefined : fallbackRecords[0]);
     if (fallbackRecord) {
-      // A refetch that failed, rather than one that found nothing newer, leaves the saved copy answering.
-      if (attempts.misses.failure !== undefined) noteSavedCopyServed(fallbackRecord.fetchedAt);
       // A copy short of the latest session says so, so the chart can tell it
       // from a current one: a thin listing's complete copy is not behind.
       const fallbackValue = request.isCachedValueStale(fallbackRecord.value, fallbackRecord.fetchedAt)
         ? { ...fallbackRecord.value, savedCopyBehind: true as const } : fallbackRecord.value;
-      return request.requestedRange
-        ? clip(withReportedGaps(fallbackValue))
-        : withReportedGaps(fallbackValue);
+      const answer = request.requestedRange ? clip(withReportedGaps(fallbackValue)) : withReportedGaps(fallbackValue);
+      // A refetch that failed, rather than one that found nothing newer, leaves the saved copy answering.
+      return attempts.misses.failure !== undefined ? servedFromSavedCopy(answer, fallbackRecord.fetchedAt) : answer;
     }
     if (coverageError) throw coverageError;
     if (attempts.coverageError) throw attempts.coverageError;

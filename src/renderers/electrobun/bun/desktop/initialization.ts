@@ -129,9 +129,7 @@ export async function initializeDesktopBackend(
   // is read, the same as the terminal does at startup. Without it a
   // desktop-only user silently loses a feature the day it is extracted, since
   // nothing else installs it for them.
-  const seededPlugins = await restoreExtractedPlugins();
-  const { config, services } = await backend.startServices(
-    seededPlugins ? { ...initialConfig, seededPlugins } : initialConfig,
-  );
+  const seed = await restoreExtractedPlugins();
+  const { config, services } = await backend.startServices(seed ? { ...initialConfig, ...seed } : initialConfig);
   return buildInitializationPayload(backend, config, services, windowTarget);
 }
