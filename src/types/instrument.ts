@@ -81,4 +81,7 @@ export interface InstrumentSearchResult {
   formerIssuer?: { symbol: string; name: string; until: string; successor?: { symbol: string; name: string | null } };
   /** A US listing that no longer trades, found by its exact symbol (TWTR). Untrusted until parsed. */
   delisting?: ListingDelisting;
+  /** The company's home line, its common stock on its home exchange (7203 on JPX for Toyota), sent by newer
+   * cloud servers. Search lists it before the company's depositary receipts and other lines. Only `true` counts. */
+  homeListing?: boolean;
 }

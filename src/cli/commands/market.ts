@@ -50,7 +50,7 @@ import {
   targetUpside,
 } from "../../plugins/builtin/research/analyst-model";
 import { getPublishedUsEquityCalendarYears, getPublishedUsEquitySession } from "../../market-data/published-us-sessions";
-import { isQuoteStaleForCurrentSession } from "../../market-data/quotes/freshness";
+import { isQuoteStaleForCurrentSession, noPrintsTodayText } from "../../market-data/quotes/freshness";
 import { isOptionsUnavailableError, listedOptionsAlternative, optionsUnavailableTitle } from "../../market-data/options-alternatives";
 import {
   cliFuturesContract, futuresContractMetrics, exportedDividendFundamentals, fundamentalsReportTables, loadDividendDistributions, loadReportBondFacts,
@@ -961,10 +961,15 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       ...tickerChanges.flatMap((change, index) => quoteChangeLine(change, formerIssuers[index]) ?? []),
       // Which listing a bare symbol was read as, and the index a bare root is not, are in no row.
       ...answers.flatMap((answer) => answer.notes),
-      // A row that stopped trading long ago reads as a quote that is merely stale.
-      ...data.flatMap((row) => row.quote
-        ? noLongerTradingNote(`${row.target.symbol}${row.listing.name ? ` (${row.listing.name})` : ""}`, row.quote, now) ?? []
-        : []),
+      // A row that stopped trading long ago reads as a quote that is merely stale, and one with
+      // nothing printed in a session the calendar has open (a feed that stalled, a typhoon day) says since when.
+      ...data.flatMap((row) => {
+        if (!row.quote) return [];
+        const label = `${row.target.symbol}${row.listing.name ? ` (${row.listing.name})` : ""}`;
+        const ended = noLongerTradingNote(label, row.quote, now);
+        const quiet = ended ? null : noPrintsTodayText(row.quote, now);
+        return ended ?? (quiet ? `${label}: ${quiet}` : []);
+      }),
       // Text mode shows only "unavailable" in the cell; the JSON rows already carry each reason.
       ...ctx.cliOptions.format === "text" ? quoteNotes(data, { exchange }) : [],
     ];

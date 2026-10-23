@@ -1,6 +1,6 @@
 import type { PaneFooterSegment } from "../../../components/layout/pane/footer";
 import { t } from "../../../i18n";
-import { isQuoteStaleForCurrentSession } from "../../../market-data/quotes/freshness";
+import { isQuoteStaleForCurrentSession, noPrintsTodaySince } from "../../../market-data/quotes/freshness";
 import { formatQuoteNavAsOf } from "../../../market-data/quotes/time";
 import { delistingLabel } from "../../../market-data/quotes/delisting";
 import type { Quote } from "../../../types/financials";
@@ -17,12 +17,17 @@ export function tickerQuoteFooterInfo(
     // A listing that no longer trades: its quote is its last trade, said once with its date.
     info.push({ id: "ticker-research-stale", parts: [{ text: delistingLabel(quote.delisting), tone: "warning" }] });
   } else if (isQuoteStaleForCurrentSession(quote)) {
-    const status: PaneFooterSegment = { id: "ticker-research-stale", parts: [{ text: t("Stale quote"), tone: "warning" }] };
+    // In a session the calendar has open with nothing printed in it, the warning says since when.
+    const quiet = noPrintsTodaySince(quote) != null;
+    const status: PaneFooterSegment = {
+      id: "ticker-research-stale",
+      parts: [{ text: quiet ? t("No prints today") : t("Stale quote"), tone: "warning" }],
+    };
     const timestamp = new Date(quote!.lastUpdated);
     if (navAsOf) {
       status.parts.push({ text: navAsOf, tone: "muted" });
     } else if (width != null && quote!.lastUpdated > 0 && Number.isFinite(timestamp.getTime())) {
-      const sourceTime = `${timestamp.toISOString().slice(0, 16).replace("T", " ")}Z`;
+      const sourceTime = `${quiet ? "since " : ""}${timestamp.toISOString().slice(0, 16).replace("T", " ")}Z`;
       const accessWidth = access ? displayWidth(access.parts.map((part) => part.text).join(" ")) + 1 : 0;
       // Keep the warning and the existing entitlement action intact in narrow panes.
       if (displayWidth(status.parts[0]!.text) + 1 + sourceTime.length + accessWidth <= width - 2) {

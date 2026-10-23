@@ -1229,8 +1229,39 @@ describe("ticker-search utilities", () => {
       const typed = toyota.map((result) => result.symbol === "TM" ? { ...result, type: "Depositary Receipt" } : result);
       expect(symbols("Toyota", typed)).toEqual(["7203", "TOYOF", "TOM", "TM", "8015"]);
       expect(primary("Toyota", typed)).toBe("7203");
-      // A ticker search keeps the provider's order among that ticker's lines.
-      expect(symbols("TM", typed)[0]).toBe("TM");
+      // The receipt's own ticker lists the company's own shares first when the answer holds them, the receipt under them.
+      expect(symbols("TM", typed).slice(0, 2)).toEqual(["7203", "TM"]);
+      expect(symbols("TM", typed.filter((result) => result.exchange !== "JPX"))[0]).toBe("TM");
+    });
+
+    test("the line the service marks as the company's home leads its receipts, whatever matched the query", () => {
+      const home = (result: InstrumentSearchResult) => ({ ...result, homeListing: true });
+      // An untyped receipt the provider ranks first.
+      const toyota = [
+        listing("TM", "Toyota Motor Corporation", "NYSE", 25280),
+        home(listing("7203", "Toyota Motor Corporation", "JPX", 20489)),
+        listing("8015", "Toyota Tsusho Corporation", "JPX", 20033),
+      ];
+      expect(symbols("Toyota", toyota)).toEqual(["7203", "TM", "8015"]);
+      expect(symbols("Taiwan Semiconductor", taiwan.map((result) => result.symbol === "2330" ? home(result) : result))[0]).toBe("2330");
+      // "Sony" is the receipts' ticker; the home line of the same company, not Sony Financial's, takes the lead.
+      const sony = [
+        listing("SONY", "Sony Group Corporation ADR", "NYSE", 13830500, "American Depositary Receipt"),
+        listing("SONY", "Sony Group Corporation", "NEO", undefined, "Depositary Receipt"),
+        home(listing("8729", "Sony Financial Group Inc.", "JPX", 20053)),
+        home(listing("6758", "Sony Group Corp.", "JPX", 20772)),
+      ];
+      expect(symbols("Sony", sony).slice(0, 3)).toEqual(["6758", "SONY", "SONY"]);
+      // A venue named asks for that line.
+      expect(symbols("SONY:NYSE", sony)[0]).toBe("SONY");
+      // Without the mark (older servers), a receipt in the lead gives way to the company's own shares.
+      const lvmh = [
+        listing("LVMH", "LVMH Moët Hennessy Louis Vuitton, Société Européenne – Depositary Receipt (underlying: LVMH Moët Hennessy Louis Vuitton SE, Euronext Paris)", "TSX", undefined, "Depositary Receipt"),
+        listing("MC", "LVMH Moët Hennessy Louis Vuitton SE", "EPA", 23408, "Common Stock"),
+        listing("4MC", "LVMH", "BIT", undefined, "Common Stock"),
+      ];
+      expect(primary("LVMH", lvmh)).toBe("MC");
+      expect(symbols("LVMH", lvmh).slice(0, 2)).toEqual(["MC", "LVMH"]);
     });
   });
 

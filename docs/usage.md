@@ -363,6 +363,7 @@ A quote whose last print is older than its venue's latest completed regular sess
 - It shows in `gloomberb quote` and `compare`, the `ticker` header, the Ticker Research overview and the boards' session column.
 - A session dot shows no session for it. The closing line of a report on it alone leaves out where the market stands (`markets open`), which says nothing about that price.
 - The last session's close or after-hours print keeps its label until the next session completes.
+- In a session its venue's calendar has open with nothing printed in it yet, a feed that stalled and a closure the calendar does not list (TWSE's typhoon days) read alike. `gloomberb quote` adds `2330.TW (Taiwan Semiconductor Manufacturing Company Limited): no prints today since Thu 22 Oct 05:30 UTC (20h 50m old)` under the table, and the Ticker Research footer reads `No prints today since 2026-10-22 05:30Z`.
 - Currency pairs and coins keep their own session. A quote that names no venue reads `STALE` once its source marks it stale and it is over two weeks old.
 
 **Pre-market with nothing traded yet.** A quote that carries the last session's close reads as that close:
@@ -1823,6 +1824,8 @@ A terminal's code for a US listing is that listing. A line such as `Read WFC.N a
 - The commands that read it (`quote`, `compare`, `ticker`, `history`, `financials`, `holders`, `insider`, `analyst`, `events`, `earnings`, `filings`, `options`, and `fn` for a function that takes one ticker) say which company that is in one line: `CAR = Avis Budget Group, NASDAQ (also XETRA, ASX, JSE, LSE, WSE)`. Each other company is named once, by the exchange search lists it on first. `news` names the listing in the line above its stories instead.
 - `search CAR` lists that listing first as the primary listing, then each other company's first listing, then their other exchanges.
 - A search by name (`search lufthansa`) makes the company's own line the primary listing: lines that are not a receipt or a German regional or OTC line come first, then the one the service's search score puts first. So it is Deutsche Lufthansa on XETRA and not `LUFTHANSA` on Budapest.
+- A company's primary listing is its common stock on its home exchange, whatever matched the query: `search Toyota` leads with 7203 on JPX, `search LVMH` with MC on EPA and `search Sony` with 6758 on JPX. Its depositary receipts follow, typed as receipts (`American Depositary Receipt`, `Depositary Receipt`), so TM on NYSE and the LVMH receipt on TSX are under Other. Gloom Cloud says which line is the home one; a receipt the service does not mark gives way to the company's line on a home exchange. A named venue (`SONY:NYSE`) is still read as written.
+- Each result is named by its own listing: `028050` on KRX is Samsung E&A even when a data source files it under Samsung Electronics.
 
 **A code several different companies list,** such as `2222` (Kotobuki Spirits in Tokyo, Saudi Arabian Oil in Riyadh), is not guessed. Every command asks which one, as `2222:` does, with `Choose an exchange for 2222.` and each listing with its retry command (`2222:TADAWUL Saudi Arabian Oil Co. (try: gloomberb history 2222:TADAWUL)`). `quote` and `compare` fail only that symbol's row and print the others.
 

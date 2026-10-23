@@ -132,7 +132,8 @@ export function isCryptoInstrumentType(type?: string): boolean {
   return ["CRYPTO", "CRYPTOCURRENCY", "DIGITALCURRENCY"].includes((type ?? "").toUpperCase().replace(/[\s_-]/g, ""));
 }
 
-function isQualifiedTickerQuery(query: string): boolean {
+/** A query that names its venue or market: SYM:EXCH, a listing suffix (7203.T), a future or a pair. */
+export function isQualifiedTickerQuery(query: string): boolean {
   const symbol = normalizeTickerSymbol(query);
   return isExplicitMarketSymbol(symbol) || !!parsePublicTickerKey(symbol).exchange || tickerHasListingSuffix(symbol);
 }
