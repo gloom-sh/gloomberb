@@ -9,7 +9,7 @@ import {
   type ChartResolutionSupport,
   type ManualChartResolution,
 } from "../../../../time-series/resolution";
-import type { PriceWindow } from "../../../../utils/price-window";
+import { priceWindowBarStart, type PriceWindow } from "../../../../utils/price-window";
 import type { DataProvider } from "../../../../types/data-provider";
 import type { PricePoint } from "../../../../types/financials";
 import { isRoundTheClockCoin } from "../../../../utils/crypto-pair";
@@ -128,7 +128,9 @@ export async function loadReturnSeries(provider: DataProvider, request: ReturnSe
  * The bars of a dated window and the one before it, in the chosen interval
  * when the window is short enough for it and else the nearest coarser one, as
  * a chart of those dates picks. A source that keeps no intraday bars that far
- * back answers in daily bars.
+ * back (it serves none, or says how far back it keeps them) answers in daily
+ * bars. A weekly or monthly window starts with the week or month its first
+ * date falls in, as `history` does.
  */
 async function loadReturnWindow(provider: DataProvider, request: ReturnSeriesRequest, window: PriceWindow): Promise<ReturnSeries> {
   const { symbol, exchange, support, now } = request;
@@ -142,22 +144,28 @@ async function loadReturnWindow(provider: DataProvider, request: ReturnSeriesReq
   const venue = await sessionVenue(provider, symbol, exchange);
   const context = request.forceRefresh ? { cacheMode: "refresh" as const } : undefined;
   const load = async (resolution: ManualChartResolution) => {
-    // A daily or longer bar is stamped at midnight UTC, so the window takes every bar from its first date on.
-    const visibleFrom = isIntradayResolution(resolution) ? first : first - 1;
-    try {
-      const result = await fetchHistoryResult(provider, symbol, exchange,
-        { kind: "detail", start: new Date(visibleFrom - returnWindowLookbackMs(resolution)), end: new Date(Math.min(last, now)), interval: resolution }, context);
-      return { result, visibleFrom };
-    } catch (error) {
-      throw historyErrorMessage(error, resolution);
-    }
+    // A daily or longer bar is stamped at midnight UTC, so the window takes every bar from its first date's day, week or month on.
+    const visibleFrom = isIntradayResolution(resolution) ? first : priceWindowBarStart(window.from, resolution) - 1;
+    const result = await fetchHistoryResult(provider, symbol, exchange,
+      { kind: "detail", start: new Date(visibleFrom - returnWindowLookbackMs(resolution)), end: new Date(Math.min(last, now)), interval: resolution }, context);
+    return { result, visibleFrom };
   };
-  let loaded = await load(interval);
-  if (!loaded.result?.points.length && isIntradayResolution(interval)) {
-    interval = "1d";
+  let loaded: Awaited<ReturnType<typeof load>> | null = null;
+  try {
     loaded = await load(interval);
+  } catch (error) {
+    // `1H history starts Oct 23, 2024`: a window before that is read in daily bars, which the report says it got.
+    if (!isIntradayResolution(interval) || !isHistoryRetentionError(error)) throw historyErrorMessage(error, interval);
   }
-  if (!loaded.result) throw new Error("Price history unavailable");
+  if (!loaded?.result?.points.length && isIntradayResolution(interval)) {
+    interval = "1d";
+    try {
+      loaded = await load(interval);
+    } catch (error) {
+      throw historyErrorMessage(error, interval);
+    }
+  }
+  if (!loaded?.result) throw new Error("Price history unavailable");
   return {
     points: loaded.result.points,
     visibleFrom: loaded.visibleFrom,

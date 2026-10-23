@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { priceWindowInterval, priceWindowText, readPriceWindow } from "./price-window";
+import { priceWindowBarStart, priceWindowInterval, priceWindowText, readPriceWindow } from "./price-window";
 
 const now = new Date("2026-10-22T12:00:00Z");
 
@@ -18,6 +18,28 @@ test("a window that cannot be read names the option and what to type", () => {
   expect(() => readPriceWindow("2009", "2007", now)).toThrow("--from 2009 is after --to 2007. The window runs from the earlier to the later, such as --from 2007 --to 2009.");
   expect(() => readPriceWindow("2027", undefined, now)).toThrow("--from 2027 has not started yet");
   expect(() => readPriceWindow("2007x", undefined, now)).toThrow('Invalid --from "2007x"');
+});
+
+test("a date that has begun where the reader is, east of UTC, is no start still ahead", () => {
+  const zone = process.env.TZ;
+  process.env.TZ = "Asia/Tokyo";
+  try {
+    // 05:00 on 23 Oct in Tokyo, still 22 Oct in UTC.
+    const tokyo = new Date("2026-10-22T20:00:00Z");
+    expect(readPriceWindow("2026-10-23", undefined, tokyo)).toEqual({ from: "2026-10-23", to: "2026-10-23" });
+    expect(priceWindowText({ from: "2026-10-23", to: "2026-10-23" }, tokyo)).toBe("2026-10-23 to today");
+  } finally {
+    if (zone === undefined) delete process.env.TZ;
+    else process.env.TZ = zone;
+  }
+});
+
+test("a weekly or monthly window starts with the week or month its first date falls in", () => {
+  const day = (time: number) => new Date(time).toISOString().slice(0, 10);
+  expect(day(priceWindowBarStart("2008-09-17", "1wk"))).toBe("2008-09-15");
+  expect(day(priceWindowBarStart("2008-09-21", "1wk"))).toBe("2008-09-15");
+  expect(day(priceWindowBarStart("1990-09-15", "1mo"))).toBe("1990-09-01");
+  expect(day(priceWindowBarStart("2008-09-17", "1d"))).toBe("2008-09-17");
 });
 
 test("bars get coarser as the window grows: daily to five years, weekly to twenty, then monthly", () => {

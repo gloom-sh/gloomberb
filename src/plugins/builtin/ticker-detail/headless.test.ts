@@ -1,7 +1,8 @@
 import { resolveCanonicalQuote } from "../../../market-data/quotes/resolution";
 import { expect, setSystemTime, test } from "bun:test";
 import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/headless";
-import { createTestFinancials, createTestDataProvider } from "../../../test-support/data-provider";
+import { createTestFinancials, createTestDataProvider, createTestQuote } from "../../../test-support/data-provider";
+import { HistoryRetentionError } from "../../../sources/history-retention";
 import { createTestHeadlessContext } from "../../../test-support/headless";
 import type { QuoteContribution } from "../../../types/financials";
 import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
@@ -412,6 +413,55 @@ test("returns mark a monthly bar whose month runs on, as historical prices do", 
     expect(complete.freshness).toMatchObject({ asOf: "2026-09-30" });
     expect(complete.freshness).not.toHaveProperty("periodToDate");
     expect(renderHeadlessPaneText(returnsHeadless, complete, input, "RETURN CSCO")).toContain("Wed 30 Sep 2026");
+  } finally {
+    setSystemTime();
+  }
+});
+
+test("HP and RETURN read a past window's bars: HP's with no quote and its drawdown, RETURN's in daily bars where hourly ones are not kept", async () => {
+  // Thursday 22 Oct 2026 while New York trades.
+  setSystemTime(new Date("2026-10-22T15:00:00Z"));
+  try {
+    const asked: string[] = [];
+    let quoted = false;
+    const now = Date.now();
+    // Each session from Fri 27 Feb to Tue 31 Mar 2015: 61 on 2 Mar, 58 on 10 Mar, 60 otherwise.
+    const sessions = Array.from({ length: 33 }, (_, day) => new Date(Date.UTC(2015, 1, 27 + day)))
+      .filter((date) => date.getUTCDay() !== 0 && date.getUTCDay() !== 6);
+    const close: Record<string, number> = { "2015-03-02": 61, "2015-03-10": 58 };
+    const march = sessions.map((date) => ({ date, close: close[date.toISOString().slice(0, 10)] ?? 60 }));
+    const ctx = createTestHeadlessContext({
+      resolveInstrument: async () => ({ symbol: "JPM", exchange: "NYSE" }),
+      marketData: createTestDataProvider({
+        getQuote: async () => { quoted = true; return createTestQuote({ symbol: "JPM" }); },
+        getDetailedPriceHistoryWithMetadata: async (_symbol, _exchange, start, end, interval) => {
+          asked.push(interval);
+          // Gloom Cloud keeps two years of hourly bars, and says so.
+          if (interval === "1h") {
+            throw new HistoryRetentionError({ version: 1, source: "gloom", symbol: "JPM", exchange: "NYSE", interval: "1h",
+              requestedStart: Math.floor(start.getTime() / 1000) * 1000, requestedEnd: Math.floor(end.getTime() / 1000) * 1000,
+              observedAt: now, availableStart: now - 730 * 86_400_000 });
+          }
+          return { points: march, resolution: "1d" };
+        },
+      }),
+    });
+    // The pane functions fill in the default range, which the window replaces.
+    const hp = await historicalPricesHeadless.load(args(["JPM"], { range: "3M", from: "2015-03-01", to: "2015-03-31" }), ctx);
+    expect([hp.rows.length, String(hp.rows[0]!.date).slice(0, 10), String(hp.rows.at(-1)!.date).slice(0, 10)]).toEqual([22, "2015-03-02", "2015-03-31"]);
+    expect(hp.metadata).toMatchObject({ range: null, requestedWindow: { from: "2015-03-01", to: "2015-03-31" },
+      notices: ["Max drawdown -4.9% (daily closes): peak 61.00 on 2015-03-02, trough 58.00 on 2015-03-10, not back to the peak by 2015-03-31"] });
+    expect(hp.freshness).toMatchObject({ status: "not-a-feed", basis: "daily bars, 2015-03-01 to 2015-03-31" });
+    expect(quoted).toBe(false);
+
+    const input = args(["JPM"], { range: "5D", interval: "1h", from: "2015-03-01", to: "2015-03-31" });
+    const returns = await returnsHeadless.load(input, ctx);
+    expect(asked).toEqual(["1d", "1h", "1d"]);
+    // Measured from Friday 27 Feb's close, the session before the window.
+    expect([returns.rows.length, returns.rows[0]!.time, returns.rows.at(-1)!.time]).toEqual([22, "2015-03-02", "2015-03-31"]);
+    expect(returns.rows[0]!.totalReturnPct).toBeCloseTo(100 / 60, 9);
+    expect(returns.metadata).toMatchObject({ interval: "1d", requestedInterval: "1h", requestedWindow: { from: "2015-03-01", to: "2015-03-31" } });
+    expect(returns.metadata!.notices).toContain("1H bars do not cover 2015-03-01 to 2015-03-31; these are 1D bars.");
   } finally {
     setSystemTime();
   }

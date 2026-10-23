@@ -55,7 +55,9 @@ export function maxDrawdownText(
   value: MaxDrawdown,
   { basis, price, date = (text) => text.slice(0, 10) }: { basis: string; price: (value: number) => string; date?: (text: string) => string },
 ): string {
-  const head = `Max drawdown ${(value.drawdown * 100).toFixed(1)}% (${basis})`;
+  const percent = (value.drawdown * 100).toFixed(1);
+  // A fall that rounds to nothing is still a fall, which -0.0% would hide.
+  const head = `Max drawdown ${percent === "-0.0" ? "under 0.1%" : `${percent}%`} (${basis})`;
   if (value.drawdown === 0) return `${head}: no close fell below an earlier one`;
   const back = value.recovered ? `back to the peak on ${date(value.recovered)}` : `not back to the peak by ${date(value.through)}`;
   return `${head}: peak ${price(value.peak.close)} on ${date(value.peak.date)}, trough ${price(value.trough.close)} on ${date(value.trough.date)}, ${back}`;

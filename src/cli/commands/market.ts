@@ -100,7 +100,7 @@ import {
 } from "../report-tables";
 import { historyCoverageNotice } from "../../sources/history-coverage";
 import { maxDrawdown, maxDrawdownText } from "../../utils/max-drawdown";
-import { loadPriceWindowHistory, PRICE_WINDOW_FROM_HELP, PRICE_WINDOW_TO_HELP, priceWindowText, readPriceWindow, type PriceWindow } from "../../utils/price-window";
+import { isPastPriceWindow, loadPriceWindowHistory, PRICE_WINDOW_FROM_HELP, PRICE_WINDOW_TO_HELP, priceWindowText, readPriceWindow, type PriceWindow } from "../../utils/price-window";
 import {
   BAR_INTERVAL_LABELS,
   closedPeriodBarDay,
@@ -1115,7 +1115,7 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
   } catch (error) {
     ctx.fail(errorMessage(error) ?? "Invalid --from or --to.", `Usage: gloomberb ${HISTORY_USAGE}`);
   }
-  if (window && rangeOption != null) ctx.fail("--range and --from/--to each pick the window; give one of them.", `Usage: gloomberb ${HISTORY_USAGE}`);
+  if (window && rangeOption != null) ctx.fail("--from replaces --range; give one of them.", `Usage: gloomberb ${HISTORY_USAGE}`);
   const range = parseRange(rangeOption, ctx);
   // YTD reads the year's daily bars and starts at the last one on or before 31 Dec.
   const loadRange: TimeRange = range === "YTD" ? "1Y" : range;
@@ -1142,7 +1142,7 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     const { resolution } = loaded;
     // While the session trades the day's bar is the quote's, whatever range the history was cut for (withSessionBar).
     // A window that ended before today has no session in progress.
-    const points = window && window.to < isoDateToday() ? loaded.points
+    const points = window && isPastPriceWindow(window) ? loaded.points
       : withSessionBar(loaded.points, quote, { now: Date.now(), venue: quote?.listingExchangeName || exchange || undefined });
     const fromQuote = points !== loaded.points;
     const identity = listingIdentity(listing, quote);
@@ -1172,7 +1172,7 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     // The day's own bar, while its session trades, is not a close: dated by the quote it was read from.
     const dayToDate = fromQuote && interval === "1d" && data.at(-1)?.partial === true;
     // A window that closed before today is the history asked for: no later bar makes it stale.
-    const freshness = window && window.to < isoDateToday() ? rowsFreshness(data, {
+    const freshness = window && isPastPriceWindow(window) ? rowsFreshness(data, {
       status: "not-a-feed", basis: `${interval ? BAR_INTERVAL_LABELS[interval] : "price"} bars, ${priceWindowText(window)}`, observedKey: "date", oldest: null,
     }) : rowsFreshness(data, {
       ...barHistoryFreshness(intraday ? null : barResolutionFromDates(data.map((row) => row.date))),
@@ -1245,7 +1245,7 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         range: window ? null : range,
         resolution,
         requestedRange: window ? null : range,
-        ...(window ? { window } : {}),
+        ...(window ? { requestedWindow: window } : {}),
         currency: unit.currency,
         unit: unit.unit,
         interval,

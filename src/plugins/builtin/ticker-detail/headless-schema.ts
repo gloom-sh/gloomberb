@@ -9,7 +9,7 @@ import type { HeadlessPaneOptionDef } from "../../../types/headless";
 /** `--from 2007 --to 2009`: the report's bars for those dates. The pane keeps its range, so a capture refuses them. */
 const WINDOW_OPTIONS: HeadlessPaneOptionDef[] = [
   { key: "from", type: "string", placeholder: "year|date", description: PRICE_WINDOW_FROM_HELP, example: "--from 2007 --to 2009",
-    shot: { reportOnly: "reads the report's bars for those dates" } },
+    shot: { reportOnly: "reads the report's bars for those dates" }, replaces: ["range"] },
   { key: "to", type: "string", placeholder: "year|date", description: PRICE_WINDOW_TO_HELP,
     shot: { reportOnly: "reads the report's bars for those dates" } },
 ];

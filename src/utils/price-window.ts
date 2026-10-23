@@ -16,6 +16,25 @@ export interface PriceWindow {
 }
 
 const YEAR = /^\d{4}$/;
+const DAY_MS = 86_400_000;
+
+/**
+ * Today as the window reads it: the reader's date, or UTC's when that is
+ * later, so a date that has begun for the reader (east of UTC, or in UTC
+ * already) is never refused as still ahead.
+ */
+function priceWindowToday(now = new Date()): string {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  const local = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  const utc = isoDateToday(now);
+  return local > utc ? local : utc;
+}
+
+/** Whether the window closed before today in UTC: its bars are history, with no session still trading in them. */
+export function isPastPriceWindow(window: PriceWindow, now = new Date()): boolean {
+  return window.to < isoDateToday(now);
+}
+
 const FORMATS = "a year (2007) or a date (2008-09-15)";
 
 function readBound(value: string, flag: "--from" | "--to", now: Date): string {
@@ -35,7 +54,7 @@ function readBound(value: string, flag: "--from" | "--to", now: Date): string {
 export function readPriceWindow(from: string | undefined, to: string | undefined, now = new Date()): PriceWindow | null {
   if (from == null && to == null) return null;
   if (from == null) throw new Error(`--to needs a --from: --from ${YEAR.test(to!.trim()) ? Number(to!.trim()) - 2 : 2007} --to ${to!.trim()}.`);
-  const today = isoDateToday(now);
+  const today = priceWindowToday(now);
   const start = readBound(from, "--from", now);
   const typedEnd = to == null ? today : readBound(to, "--to", now);
   if (start > today) throw new Error(`--from ${from.trim()} has not started yet. Use a start on or before ${today}.`);
@@ -48,7 +67,7 @@ export function readPriceWindow(from: string | undefined, to: string | undefined
 /** The window in words: `2007 to 2009`, `2008-09-15 to 2009-03-31`, `2007 to today`. */
 export function priceWindowText(window: PriceWindow, now = new Date()): string {
   const year = (date: string, edge: "start" | "end") => date.slice(5) === (edge === "start" ? "01-01" : "12-31") ? date.slice(0, 4) : date;
-  const end = window.to === isoDateToday(now) ? "today" : year(window.to, "end");
+  const end = window.to === priceWindowToday(now) ? "today" : year(window.to, "end");
   return `${year(window.from, "start")} to ${end}`;
 }
 
@@ -64,16 +83,29 @@ export function priceWindowInterval(window: PriceWindow): "1d" | "1wk" | "1mo" {
 }
 
 /**
+ * Where the bar of this size that holds `date` starts, at midnight UTC: the
+ * day itself, its week's Monday (weekly bars are dated by the Monday) or its
+ * month's 1st. A window keeps the week or month its first date falls in.
+ */
+export function priceWindowBarStart(date: string, interval: string): number {
+  const day = Date.parse(`${date}T00:00:00Z`);
+  if (interval === "1wk") return day - ((new Date(day).getUTCDay() + 6) % 7) * DAY_MS;
+  if (interval === "1mo") return Date.parse(`${date.slice(0, 7)}-01T00:00:00Z`);
+  return day;
+}
+
+/**
  * The bars of a window, in the size `priceWindowInterval` picks: the source's
  * bars for those dates, else, from a source that serves no dated request, its
- * whole history in that size. Either way only bars dated inside the window
- * are kept.
+ * whole history in that size. Either way only bars inside the window are
+ * kept, with the week or month its first date falls in (`--from 2008-09-15`
+ * in monthly bars starts with September 2008's).
  */
 export async function loadPriceWindowHistory(
   provider: DataProvider, symbol: string, exchange: string, window: PriceWindow, context?: MarketDataRequestContext,
 ): Promise<PriceHistoryResult> {
   const interval = priceWindowInterval(window);
-  const start = new Date(`${window.from}T00:00:00Z`);
+  const start = new Date(priceWindowBarStart(window.from, interval));
   const end = new Date(`${window.to}T23:59:59Z`);
   const result = await fetchHistoryResult(provider, symbol, exchange, { kind: "detail", start, end, interval }, context)
     ?? await fetchHistoryResult(provider, symbol, exchange, { kind: "resolution", range: "ALL", resolution: interval }, context)

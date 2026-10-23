@@ -197,6 +197,14 @@ describe("pane function capabilities", () => {
       .toThrow("CDX does not support --range. It has no options.");
   });
 
+  test("HP and RETURN take --from in place of --range: typed together they are refused, while the default range gives way", () => {
+    const returns = capabilityFor("returns-pane");
+    expect(normalizeCapabilityOptions(returns, { from: "2007", to: "2009" }, { code: "RETURN" })).toMatchObject({ range: "5D", from: "2007", to: "2009" });
+    expect(() => normalizeCapabilityOptions(returns, { window: "1M", from: "2007" }, { code: "RETURN" })).toThrow("--from replaces --window; give one of them.");
+    expect(() => normalizeCapabilityOptions(capabilityFor("historical-prices-pane"), { range: "5Y", from: "2007" }, { code: "HP" }))
+      .toThrow("--from replaces --range; give one of them.");
+  });
+
   test("a word after a function that takes none is answered with its options, and runs as the option whose value it is", () => {
     expect(noArgumentMessage(jodiHeadless.options, "JODI", "Gas"))
       .toBe("JODI does not accept an argument. Options: --commodity <oil|gas>. Run: gloomberb fn JODI --commodity gas");

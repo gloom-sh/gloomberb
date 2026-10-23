@@ -26,4 +26,7 @@ test("a later, smaller fall does not replace the larger one, the recovery is the
   expect(maxDrawdownText(maxDrawdown([bar("2020-01-01", 1), bar("2020-01-02", 2)])!, { basis: "daily closes", price: String }))
     .toBe("Max drawdown 0.0% (daily closes): no close fell below an earlier one");
   expect(maxDrawdown([bar("2020-01-01", 1), bar("2020-01-02", null)])).toBeNull();
+  // A fall that rounds to nothing is not printed as -0.0%.
+  expect(maxDrawdownText(maxDrawdown([bar("2020-01-01", 100), bar("2020-01-02", 99.96)])!, { basis: "daily closes", price: String }))
+    .toBe("Max drawdown under 0.1% (daily closes): peak 100 on 2020-01-01, trough 99.96 on 2020-01-02, not back to the peak by 2020-01-02");
 });

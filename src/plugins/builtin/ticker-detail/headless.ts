@@ -38,10 +38,9 @@ import { barHistoryFreshness, quoteFreshnessFields, REPORTED_DATA } from "../sha
 import {
   BAR_INTERVAL_LABELS, barPriceDecimals, cleanFloat32Price, formatBarPrice, historyAllStart, historyAllStartNote, historyMissingPeriodsNote, historyPriceDecimals,
 } from "../../../cli/history-rows";
-import { isoDateToday } from "../../../utils/calendar-date";
 import { formatUtcTime } from "../../../utils/utc-time";
 import { maxDrawdown, maxDrawdownText } from "../../../utils/max-drawdown";
-import { loadPriceWindowHistory, priceWindowText, readPriceWindow, type PriceWindow } from "../../../utils/price-window";
+import { isPastPriceWindow, loadPriceWindowHistory, priceWindowText, readPriceWindow, type PriceWindow } from "../../../utils/price-window";
 import { historyCoverageNotice } from "../../../sources/history-coverage";
 import { getChartResolutionLabel, isIntradayResolution, RANGE_HISTORY_RESOLUTION, type ManualChartResolution } from "../../../time-series/resolution";
 import { DAY_SO_FAR_TEXT, withSessionBar } from "../../../time-series/session-bar";
@@ -380,7 +379,7 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
     const range = (options.range ?? HISTORY_DEFAULT_RANGE) as TimeRange;
     // --from 2007 --to 2009 reads those dates' bars in place of the range.
     const window = readReportWindow(options);
-    const pastWindow = !!window && window.to < isoDateToday();
+    const pastWindow = !!window && isPastPriceWindow(window);
     // A range of daily or longer bars reaches into the session now trading, whose bar is the quote's (withSessionBar).
     const { symbol: listing, exchange } = await resolveHeadlessInstrument(ctx, symbol);
     const [loaded, quote] = await Promise.all([
@@ -446,7 +445,7 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
       ...(notes.length > 0 ? { notes } : {}),
       ...(notice ? { complete: false } : {}),
       unavailableSymbols: rows.some((row) => row.close !== null) ? [] : [symbol],
-      metadata: { symbol, range: window ? null : range, ...(window ? { window } : {}), ...(size === "intraday" ? {} : { interval: size }),
+      metadata: { symbol, range: window ? null : range, ...(window ? { requestedWindow: window } : {}), ...(size === "intraday" ? {} : { interval: size }),
         ...(allStart ? { sourceStart: allStart } : {}), maxDrawdown: drawdown,
         ...(reportNotices.length ? { notices: reportNotices } : {}) },
     };
@@ -471,7 +470,7 @@ export const returnsHeadless: HeadlessPaneDefinition<"rows"> = {
     const requested = (options.interval ?? "1h") as ManualChartResolution;
     // --from 2007 --to 2009 measures those dates' returns in place of the range.
     const window = readReportWindow(options);
-    const pastWindow = !!window && window.to < isoDateToday();
+    const pastWindow = !!window && isPastPriceWindow(window);
     const support = await Promise.resolve(ctx.marketData.getChartResolutionSupport?.(symbol, exchange ?? "") ?? []).catch(() => []);
     const now = Date.now();
     const series = await loadReturnSeries(ctx.marketData, {
@@ -558,7 +557,7 @@ export const returnsHeadless: HeadlessPaneDefinition<"rows"> = {
       metadata: {
         symbol: key,
         range: window ? null : range,
-        // The years asked for; `window` below is the span of the bars served.
+        // The dates asked for, as history and HP carry them; `window` below is the span of the bars served.
         ...(window ? { requestedWindow: window } : {}),
         interval: series.resolution,
         requestedInterval: requested,
