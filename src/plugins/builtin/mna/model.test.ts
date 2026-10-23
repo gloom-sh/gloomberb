@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import type { MnaDeal } from "../../../api-client/mna";
 import type { Quote } from "../../../types/financials";
-import { dealSpread, electionLeg, expectedCloseDate, formatDealValue, formatPercentShort, inQuoteCurrency, offerSeries, stageLabel, termsLabel } from "./model";
+import { dealSpread, dealsSymbol, electionLeg, expectedCloseDate, formatDealValue, formatPercentShort, inQuoteCurrency, offerSeries, stageLabel, termsLabel } from "./model";
 
 const NOW = Date.parse("2026-09-27T12:00:00Z");
 
@@ -144,4 +144,34 @@ test("terms read as what one share gets", () => {
   expect(termsLabel(athabasca(true).terms)).toBe("CAD 12.00 or 0.264 CVE.TO");
   expect(termsLabel(deal({}, { cvr: true, partial: true }).terms)).toBe("$10.50 cash + CVR, partial");
   expect(termsLabel(deal({}, { cashPerShare: null, currency: null, consideration: "undisclosed" }).terms)).toBe("--");
+});
+
+test("deals are asked for by the symbol they are filed under: the quote symbol abroad, the bare symbol in the US", () => {
+  // A listing abroad goes by its venue's suffix, whichever way the key spells the venue.
+  expect(dealsSymbol("ATH:TSX")).toBe("ATH.TO");
+  expect(dealsSymbol("ATH:XTSE")).toBe("ATH.TO");
+  expect(dealsSymbol("ath:tsx")).toBe("ATH.TO");
+  expect(dealsSymbol("SHEL:LSE")).toBe("SHEL.L");
+  expect(dealsSymbol("AIR:EPA")).toBe("AIR.PA");
+  expect(dealsSymbol("9984:JPX")).toBe("9984.T");
+  expect(dealsSymbol("CYBE:VENTURE")).toBe("CYBE.V");
+  expect(dealsSymbol("BHP:ASX")).toBe("BHP.AX");
+  // The saved venue stands in for a key with none.
+  expect(dealsSymbol("ATH", "TSX")).toBe("ATH.TO");
+  expect(dealsSymbol("ATH:TSX", "NASDAQ")).toBe("ATH.TO");
+  // Already a quote symbol: left as it is.
+  expect(dealsSymbol("ATH.TO")).toBe("ATH.TO");
+  expect(dealsSymbol("ATH.TO", "TSX")).toBe("ATH.TO");
+  expect(dealsSymbol("0700.HK")).toBe("0700.HK");
+  // A US listing, with or without its venue, is the bare symbol, as before.
+  expect(dealsSymbol("ATH")).toBe("ATH");
+  expect(dealsSymbol("ATH:NYSE")).toBe("ATH");
+  expect(dealsSymbol("AMD:XNAS", "NASDAQ")).toBe("AMD");
+  expect(dealsSymbol("BRK.B", "NYSE")).toBe("BRK.B");
+  expect(dealsSymbol("ACVA", "")).toBe("ACVA");
+  // Order routing is not a listing.
+  expect(dealsSymbol("ACVA", "SMART")).toBe("ACVA");
+  // No ticker, no symbol.
+  expect(dealsSymbol(null)).toBe("");
+  expect(dealsSymbol("  ")).toBe("");
 });

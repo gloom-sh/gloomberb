@@ -26,7 +26,6 @@ import { usePlanAccess } from "../../../api-client/plan-access";
 import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginPaneState, useShortcut } from "../../../public/react";
 import { usePaneInstance } from "../../../state/app/context";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
-import { listingIdentity } from "../shared/ticker-request";
 import { blendHex } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps, TickerResearchTabProps } from "../../../types/plugin";
@@ -42,6 +41,7 @@ import { MnaDealDetail, mnaDealTitle } from "./detail";
 import { DistressBoard } from "./distress/pane";
 import {
   dealSpread,
+  dealsSymbol,
   expectedCloseDate,
   formatDealValue,
   formatExpectedClose,
@@ -133,10 +133,11 @@ const MNA_TABS: { label: string; value: MnaTab }[] = [
 
 /** `MA`, or `MA ACVA`. A link supplies the ticker; an older pane still has it in settings. */
 export function MnaPane(props: PaneProps) {
-  const { symbol: bound } = usePaneTickerIdentity();
+  const { symbol: bound, ticker: boundTicker } = usePaneTickerIdentity();
   const [ticker] = usePaneSettingValue("ticker", "");
   const fromSettings = typeof ticker === "string" ? ticker.trim().toUpperCase() : "";
-  const symbol = listingIdentity(bound)?.symbol || fromSettings;
+  // Deals are filed under a listing's quote symbol (ATH.TO), not its bare symbol (ATH:TSX is not ATH).
+  const symbol = dealsSymbol(bound, boundTicker?.metadata.exchange) || fromSettings;
   // One company's deals have no market-wide distress tab beside them.
   if (symbol) return <MnaDealsView key={symbol} focused={props.focused} width={props.width} height={props.height} symbol={symbol} />;
   return <MnaBoard focused={props.focused} width={props.width} height={props.height} />;
@@ -172,7 +173,7 @@ function MnaBoard({ focused, width, height }: { focused: boolean; width: number;
 
 export function MnaTickerTab({ focused, width, height }: TickerResearchTabProps) {
   const { ticker } = usePaneTickerIdentity();
-  const symbol = ticker?.metadata.ticker;
+  const symbol = dealsSymbol(ticker?.metadata.ticker, ticker?.metadata.exchange);
   if (!symbol) return <EmptyState title="Select a ticker." />;
   return <MnaDealsView key={symbol} focused={focused} width={width} height={height} symbol={symbol} />;
 }

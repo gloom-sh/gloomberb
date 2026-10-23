@@ -1,6 +1,9 @@
 import type { MnaDeal, MnaStatus, MnaTerms } from "../../../api-client/mna";
 import type { Quote } from "../../../types/financials";
+import { getListingSymbol } from "../../../sources/listing-symbols";
+import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { formatCompact } from "../../../utils/format";
+import { nonUsSecListingVenue } from "../../../utils/sec";
 
 export const MNA_PANE_ID = "mna";
 export const MISSING = "--";
@@ -31,6 +34,23 @@ export function formatDealValue(value: number | null, currency: string | null): 
 function ratioLabel(ratio: number, symbol: string | null): string {
   const shares = ratio.toLocaleString("en-US", { maximumFractionDigits: 4 });
   return symbol ? `${shares} ${symbol}` : `${shares} sh`;
+}
+
+/**
+ * The symbol a company's deals are filed under, from the ticker a pane is
+ * linked to. A deal carries its companies' quote symbols: plain for a US
+ * listing, suffixed by the venue elsewhere (ATH.TO, SHEL.L, 9984.T). A
+ * listing abroad therefore asks by that quote symbol: its bare symbol is
+ * another company's US ticker (ATH is Athene in New York, Athabasca in
+ * Toronto). A US listing, a symbol with no venue and a symbol already
+ * suffixed go as they are, so a US ticker is asked for exactly as before.
+ * `savedExchange` is the venue the saved ticker names, for a key with none.
+ */
+export function dealsSymbol(key: string | null | undefined, savedExchange = ""): string {
+  const value = key?.trim();
+  if (!value) return "";
+  if (nonUsSecListingVenue(value, savedExchange)) return getListingSymbol(value, savedExchange).toUpperCase();
+  return parsePublicTickerKey(value).symbol;
 }
 
 /** Each holder gets the cash or the shares, not both. Older servers never say so. */
