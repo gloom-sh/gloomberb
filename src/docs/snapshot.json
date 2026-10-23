@@ -463,6 +463,24 @@
    "lesson": "/academy/compare-screen-follow-money/who-owns-it/short-interest"
   },
   {
+   "code": "FTD",
+   "name": "Fails to deliver",
+   "description": "Outstanding settlement fails",
+   "detail": "The Short Interest pane on Fails to deliver: SEC outstanding fail shares by settlement date and CUSIP, with reported prices. Each date is a separate snapshot; never add fails across dates. Published twice monthly with a delay. Missing records do not establish zero fails.",
+   "category": "research",
+   "arg": "AAPL",
+   "access": "cloud"
+  },
+  {
+   "code": "ATS",
+   "name": "Weekly ATS / OTC volume",
+   "description": "Weekly off-exchange shares and trades",
+   "detail": "The Short Interest pane on Weekly ATS/OTC: FINRA ATS and non-ATS shares and trades, including dark-pool activity. ATS / OTC % divides ATS shares by published off-exchange shares, not total market volume or short volume. Missing categories stay blank. Published weekly with a two- or four-week delay depending on the security tier.",
+   "category": "research",
+   "arg": "AAPL",
+   "access": "cloud"
+  },
+  {
    "code": "DIAG",
    "name": "Equity diagnostic",
    "description": "Red and green flags",

@@ -25,6 +25,7 @@ import { orderInstrumentLabel, strategyShape } from "./strategy";
 import { stepNumber } from "../../../components/ui/number-step";
 import { ticketTypeName } from "./ticket-parts";
 import { wrapTextLines } from "../../../utils/text-wrap";
+import { linkedOrderRows, linkRoleName, linkRoleShort, trailingText } from "./linked-orders";
 
 export interface BrokerOrdersViewProps {
   broker: BrokerAdapter;
@@ -64,10 +65,23 @@ const activityColumns: DataTableColumn[] = [
   { id: "quantity", label: "Quantity", width: 12, align: "right" }, { id: "price", label: "Price", width: 12, align: "right" },
   { id: "fees", label: "Fees", width: 12, align: "right" }, { id: "age", label: "Age", width: 5, align: "right" },
 ];
-/** An order's type, prices and time in force, as a cancellation names them: "Limit 336.50 · DAY". */
+/** An order's type, prices and time in force, as a cancellation names them: "Limit 336.50 · DAY", "Take profit, limit 345.00 · GTC". */
 function orderTerms(order: BrokerOrder): string {
+  if (order.orderType === "TRAIL") return `${trailingText(order, price)} · ${order.tif ?? "DAY"}`;
   const prices = order.orderType === "MKT" ? "" : order.orderType === "STP LMT" ? ` ${price(order.stopPrice)}, limit ${price(order.limitPrice)}` : ` ${price(order.limitPrice ?? order.stopPrice)}`;
-  return `${ticketTypeName[order.orderType] ?? order.orderType}${prices} · ${order.tif ?? "DAY"}`;
+  const role = order.linkRole && order.linkRole !== "entry" ? `${linkRoleName[order.linkRole]}, ` : "";
+  return `${role}${role ? (ticketTypeName[order.orderType] ?? order.orderType).toLowerCase() : ticketTypeName[order.orderType] ?? order.orderType}${prices} · ${order.tif ?? "DAY"}`;
+}
+
+/** "TP", "SL", "Trail": what a one-line row says an order is beside its price. */
+const rowTag = (order: BrokerOrder) => order.linkRole && order.linkRole !== "entry" ? linkRoleShort[order.linkRole] : order.orderType === "TRAIL" ? "Trail" : "";
+
+/** A price as a row shows it: market, the limit or stop, or a trailing stop's trigger and distance. */
+function orderPriceText(order: BrokerOrder): string {
+  if (order.orderType === "MKT") return "Market";
+  // Its trigger where the broker reports one, else its distance: the type column says it trails.
+  if (order.orderType === "TRAIL") return order.stopPrice !== undefined ? price(order.stopPrice) : order.trailingPercent !== undefined ? `${quantity(order.trailingPercent)}%` : price(order.trailingAmount);
+  return price(order.limitPrice ?? order.stopPrice);
 }
 
 function age(timestamp: number, now: number): string {
@@ -79,10 +93,12 @@ function age(timestamp: number, now: number): string {
   return `${Math.floor(seconds / 86400)}d`;
 }
 
-function renderOrderCell(order: BrokerOrder, column: DataTableColumn, now: number): DataTableCell {
+function renderOrderCell(order: BrokerOrder, column: DataTableColumn, now: number, child = false): DataTableCell {
   const status = brokerOrderStatus(order.status);
   switch (column.id) {
-    case "symbol": return { text: orderInstrumentLabel(order), attributes: TextAttributes.BOLD };
+    // A bracket's exits sit indented under their entry, named by what they do.
+    case "symbol": return child && order.linkRole ? { text: linkRoleShort[order.linkRole], content: <Box paddingLeft={2}><Text fg={colors.textDim} wrapMode="none">{linkRoleShort[order.linkRole]}</Text></Box> }
+      : { text: `${orderInstrumentLabel(order)}${order.linkRole && order.linkRole !== "entry" ? ` ${linkRoleShort[order.linkRole]}` : ""}`, attributes: TextAttributes.BOLD };
     case "status": {
       const tone = status === "Rejected" ? "negative" : status === "Filled" ? "positive" : ["UNKNOWN", "Pending cancel", "Partially filled"].includes(status) ? "warning" : "accent";
       return { text: status, content: <Badge label={status === "Partially filled" ? "Partial fill" : status} variant={status === "Working" ? "solid" : "subtle"} tone={tone} /> };
@@ -92,8 +108,8 @@ function renderOrderCell(order: BrokerOrder, column: DataTableColumn, now: numbe
       <RatioBar ratio={order.quantity > 0 ? order.filled / order.quantity : 0} width={4} color={order.filled > 0 ? colors.positive : colors.textMuted} track thickness={5} />
       <Text fg={colors.text} truncate wrapMode="none">{`${quantity(order.filled)} / ${quantity(order.quantity)}`}</Text>
     </Box> };
-    case "type": return { text: order.orderType };
-    case "price": return { text: order.orderType === "MKT" ? "Market" : price(order.limitPrice ?? order.stopPrice) };
+    case "type": return { text: order.orderType === "TRAIL" ? "TRL" : order.orderType };
+    case "price": return { text: orderPriceText(order) };
     default: return { text: age(order.updatedAt, now), color: colors.textDim };
   }
 }
@@ -218,8 +234,11 @@ export function BrokerOrdersView({
   }, [snapshot, trading.result, accountId, instance.id, contract, latestOrder]);
   // Keep terminal acknowledgements in the projection even after hiding their rows.
   // The full list shows an order that ended only when it is the one this view just acted on.
-  const rows = useMemo(() => reconciledRows.filter((order) => !brokerOrderDone(order.status)
-    || (!compact && !!trading.result && brokerOrderKey(order) === brokerOrderKey(trading.result))), [compact, reconciledRows, trading.result]);
+  // A bracket's or OCO pair's orders list together, the entry first.
+  const linkedRows = useMemo(() => linkedOrderRows(reconciledRows.filter((order) => !brokerOrderDone(order.status)
+    || (!compact && !!trading.result && brokerOrderKey(order) === brokerOrderKey(trading.result)))), [compact, reconciledRows, trading.result]);
+  const rows = useMemo(() => linkedRows.map((row) => row.order), [linkedRows]);
+  const childKeys = useMemo(() => new Set(linkedRows.filter((row) => row.child).map((row) => brokerOrderKey(row.order))), [linkedRows]);
   useEffect(() => { onOrders?.(reconciledRows); }, [reconciledRows, onOrders]);
   // Only an order the trader chose is selected: c, m and Enter never fall back to another row.
   const selected = rows.find((order) => brokerOrderKey(order) === selectedKey);
@@ -295,7 +314,7 @@ export function BrokerOrdersView({
         selectedKeyRef.current = brokerOrderKey(next); setSelectedKey(selectedKeyRef.current); setPriceEdit(undefined);
       } else if (!order) {
         // The arrows and Enter act on a chosen order only.
-      } else if ((event.name === "up" || event.name === "down") && canModify && order.orderType !== "MKT") {
+      } else if ((event.name === "up" || event.name === "down") && canModify && order.orderType !== "MKT" && order.orderType !== "TRAIL") {
         const key = brokerOrderKey(order);
         const current = priceEditRef.current?.key === key ? priceEditRef.current.value : String(order.limitPrice ?? order.stopPrice ?? "");
         const caps = broker.getTradingCapabilities?.(instance, order.contract, order.orderType as BrokerOrderType);
@@ -387,7 +406,9 @@ export function BrokerOrdersView({
                 <Text fg={order.action === "BUY" ? colors.positive : colors.negative} attributes={TextAttributes.BOLD} flexShrink={0}>{`${order.action === "BUY" ? "Buy" : "Sell"} ${quantity(order.quantity)}`}</Text>
                 {/* The drawer is the ticker's: a spread names its shape, the stock needs no name. */}
                 {order.legs?.length ? <Text fg={colors.text} truncate wrapMode="none" flexShrink={1} minWidth={0}>{strategyShape(order.legs)}</Text> : null}
-                <Text fg={colors.text} selectable flexShrink={0}>{priceEdit?.key === key ? `→ ${priceEdit.value}` : order.orderType === "MKT" ? "Mkt" : price(order.limitPrice ?? order.stopPrice)}</Text>
+                {/* A bracket's exit or an OCO order says which it is; a trailing stop that it trails. */}
+                {rowTag(order) ? <Text fg={colors.textDim} flexShrink={0}>{rowTag(order)}</Text> : null}
+                <Text fg={colors.text} selectable flexShrink={0}>{priceEdit?.key === key ? `→ ${priceEdit.value}` : order.orderType === "MKT" ? "Mkt" : order.orderType === "TRAIL" ? orderPriceText(order) : price(order.limitPrice ?? order.stopPrice)}</Text>
                 <Text fg={colors.warning} truncate wrapMode="none" flexShrink={1} minWidth={0}>{compactOrderState(order)}</Text>
               </Box>
             </Button>
@@ -416,7 +437,7 @@ export function BrokerOrdersView({
       empty={!account || !canRead} emptyTitle={!account ? "Choose an account to see its orders." : "Connect this broker in Brokers to read orders."}>
       {view === "open" ? <DataTableView<BrokerOrder> rootWidth={width} rootHeight={Math.max(2, height - 2)} focused={focused && !busy && !dialogOpen}
         columns={orderColumns} items={rows} sortColumnId={null} sortDirection="desc" getItemKey={brokerOrderKey} renderCell={(order, column) => {
-          if (column.id !== "actions") return renderOrderCell(order, column, now);
+          if (column.id !== "actions") return renderOrderCell(order, column, now, childKeys.has(brokerOrderKey(order)));
           if (brokerOrderDone(order.status)) return { text: "" };
           const allowed = broker.getTradingCapabilities?.(instance, order.contract);
           const disabled = !canRead || busy || !allowed?.enabled || !canChangeBrokerOrder(order);

@@ -183,7 +183,8 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
   const prefillPrice = useCallback(() => {
     const latest = controller.getSnapshot();
     const currentDraft = latest.draft, q = latest.quote?.quote;
-    if (!pricePending.current || !currentDraft || !q || latest.quote?.stale !== false || latest.phase !== "editing" || latest.modifying) return;
+    // An OCO's limit is a target away from the market, never the touch.
+    if (!pricePending.current || !currentDraft || !q || latest.quote?.stale !== false || latest.phase !== "editing" || latest.modifying || currentDraft.orderClass === "oco") return;
     const source = currentDraft.action === "BUY" && q.ask !== undefined ? "ask" : currentDraft.action === "SELL" && q.bid !== undefined ? "bid" : "last";
     try {
       if ((currentDraft.orderType === "LMT" || currentDraft.orderType === "STP LMT") && currentDraft.limitPrice === undefined) {
@@ -408,7 +409,7 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
     error: connection?.state === "error" && connection.message ? connection.message : error ?? state.error, reconnecting,
     position: position?.quantity, avgCost: position?.avgCost, positionPnl: position?.pnl, tradingEnabled: caps?.enabled === true,
     typedConfirmation: typed, connected, capabilities: caps, modifying: state.modifying, original: state.modifying ? controller.modifyingOrder() : undefined, defaultPriceLabel, confirmOrders: state.confirmOrders,
-    initialFocus: state.modifying ? draft?.orderType === "STP" ? "stopPrice" : "limitPrice" : focusRevision ? "review" : undefined, focusRevision,
+    initialFocus: state.modifying ? draft?.orderType === "STP" ? "stopPrice" : draft?.orderType === "TRAIL" ? "trailing" : "limitPrice" : focusRevision ? "review" : undefined, focusRevision,
   }} onEdit={onEdit} onAction={onAction} onAccountChange={onTicketAccountChange} />
     </PaneFooterScope>
     </Box>

@@ -9,9 +9,12 @@ import {
 } from "./relative-valuation-model";
 import { paneSchemas } from "./headless-schema";
 import { isRecord } from "../../../utils/guards";
+import { errorMessage } from "../../../utils/errors";
+import { notATickerSymbol } from "../../../sources/provider-errors";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import { pickPeers, peerMethodTitle, type PeerSelection } from "./relative-valuation-peers";
-import { extraColumns, loadExtraColumns, parseExtraColumns } from "./relative-valuation-columns";
+import { extraColumns, extraColumnsBasis, loadExtraColumns, parseExtraColumns } from "./relative-valuation-columns";
+import { fundamentalsBasisParts } from "./relative-valuation-basis";
 import { conversionNote, convertMarketCaps, loadFxLegs } from "./relative-valuation-currency";
 
 const price = (value: unknown, row: Record<string, unknown>) => (
@@ -46,6 +49,9 @@ const QUOTE_COLUMNS: HeadlessPaneColumn[] = [
   { key: "changePercent", header: "Chg%", align: "right", format: (value, row) => value == null ? gapText(row, "changePercent") : percent(value) },
 ];
 
+/** The latest quarter's revenue against the same quarter a year earlier; the footer names the quarter. */
+const REVENUE_GROWTH_HEADER = "Quarter Revenue YoY";
+
 const VALUATION_COLUMNS: HeadlessPaneColumn[] = [
   // In the currency each peer's cap is in, which exports write in the header or beside the figure.
   { key: "marketCap", header: "Mkt Cap", align: "right", unitKey: "marketCapCurrency",
@@ -63,7 +69,7 @@ const VALUATION_COLUMNS: HeadlessPaneColumn[] = [
     // A withdrawn EV says so rather than leaving a bare dash; the note under the table says why.
     format: (value: unknown, row: Record<string, unknown>) => value != null ? formatNumber(Number(value), 1) : gapText(row, key),
   })),
-  ...([["fcfYield", "FCF Yield"], ["revenueGrowth", "Quarter Revenue YoY"], ["operatingMargin", "TTM Op Margin"]] as const).map(([key, header]) => ({
+  ...([["fcfYield", "FCF Yield"], ["revenueGrowth", REVENUE_GROWTH_HEADER], ["operatingMargin", "TTM Op Margin"]] as const).map(([key, header]) => ({
     key, header, align: "right" as const,
     format: (value: unknown, row: Record<string, unknown>) => value == null ? gapText(row, key)
       : key === "revenueGrowth" ? formatPercent(Number(value)) : formatLevelPercent(Number(value)),
@@ -85,7 +91,14 @@ async function choosePeers(symbols: readonly string[], ctx: HeadlessPaneContext)
     throw new Error(`--peers picks the peers of one symbol, such as RV ${symbols[0] ?? "DUOL"} --peers; with several symbols, leave it out.`);
   }
   const subject = symbols[0]!;
-  return pickPeers(subject, await loadHeadlessFinancials(ctx, subject).catch(() => null), ctx);
+  const financials = await loadHeadlessFinancials(ctx, subject).catch((error: unknown) => {
+    ctx.signal.throwIfAborted();
+    // A word that is no ticker is said as `fn RV duolingo lrn` says it, which the CLI follows with the search to run.
+    if (notATickerSymbol(errorMessage(error))) throw error;
+    // Any other failure leaves the peers to what the symbol alone places (a curated core's member).
+    return null;
+  });
+  return pickPeers(subject, financials, ctx);
 }
 
 const PEER_SELECTION_SETTING = "peerSelection";
@@ -146,7 +159,13 @@ export const relativeValuationHeadless: HeadlessPaneDefinition<"rows"> = {
       const reason = fx?.failed.find((failure) => failure.currency === resolveCurrencyUnit(currency).currency)?.reason;
       return `No ${currency} rate${reason ? ` (${reason})` : ""}: ${left.join(", ")} ${left.length === 1 ? "keeps its" : "keep their"} market cap in ${currency}.`;
     }) ?? [];
-    const conversionText = capCurrency && converted ? conversionNote(capCurrency, converted.conversions) : null;
+    // The footer: the rates the caps were converted at, the statement period the figures run through, and the
+    // basis of each column that is not trailing twelve months.
+    const footnote = [
+      ...capCurrency && converted ? [conversionNote(capCurrency, converted.conversions)] : [],
+      ...fundamentalsBasisParts(rows, REVENUE_GROWTH_HEADER),
+      ...extraColumnsBasis(extraIds, rows),
+    ].filter(Boolean).join(" · ");
     const notes = [
       ...selection ? [`Peers chosen automatically: ${selection.basis}. To choose your own: gloomberb fn RV ${selection.subject} <tickers>.`] : [],
       ...extra.notes,
@@ -162,7 +181,7 @@ export const relativeValuationHeadless: HeadlessPaneDefinition<"rows"> = {
         : extendedSessions.length > 0 ? { columns } : {}),
       ...(notes.length > 0 ? { notes } : {}),
       ...(warnings.length > 0 ? { warnings } : {}),
-      ...(conversionText ? { freshness: { note: conversionText } } : {}),
+      ...(footnote ? { freshness: { note: footnote } } : {}),
       metadata: {
         staleSymbols,
         staleFundamentalsSymbols,

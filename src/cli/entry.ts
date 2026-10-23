@@ -1,3 +1,4 @@
+import "./opentui-libc";
 import { inferCliErrorOptions, printCliError } from "./errors";
 import { isCliHelpFlag } from "./options";
 import { loadExternalPlugins } from "../plugins/loader";

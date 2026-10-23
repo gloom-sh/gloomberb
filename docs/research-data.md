@@ -214,6 +214,10 @@ Relative Valuation excludes explicitly stale quote prices, changes, and quote ma
 
 `--currency <ISO>` converts every market cap into that currency at the US dollar rate of each currency the app's converted totals use (a pence cap is made pounds first). The status line names each rate as a dealer quotes it and its observation time (`market caps in USD at EUR/USD 1.1210 (2026-10-14 06:30 UTC)`), and JSON keeps the cap as served in `marketCapNative` and `marketCapNativeCurrency`. A currency with no usable rate keeps its rows in their own currency, with a warning. Without the flag every cap stays in its own currency. A table whose peers trade on more than one market dates each market's session in the status line (`US, XETRA and EPA Tue 13 Oct 2026 close`) instead of only the newest row's.
 
+The pane converts every cap into the app's base currency (MCAP USD) and its footer names the rates the same way (`MCAP USD at EUR/USD 1.1197 (2026-10-23 11:47 UTC)`); `shot RV` ends with each market's session, the delay and that footer. The report, the pane and a capture also say what the figures run through: `fundamentals through 2026-06-30` is the newest statement period behind the trailing-twelve-month figures (P/E, EV/S, FCF yield, operating margin), with each peer dated otherwise named beside it (`(AAPL 2026-06-27)`). Quarter Revenue YoY (`Q REV%`) is the latest quarter against the same quarter a year earlier: `for that quarter` when that is the quarter the fundamentals run through, else `quarter to 2026-03-31`. An added column dated by its figures says its basis too: `Gross Margin: fiscal year to 2025-12-31`, `EV/EBITDA: statements to 2026-06-30`, `Short % Float: settlement 2026-09-30`. JSON rows carry the dates as `fundamentalsThrough` and `revenueGrowthQuarter`.
+
+`--peers` on a word that is no ticker (`fn RV duolingo --peers`) says so and names the search to run, as a list with that word does.
+
 Financial statements do not include bank regulatory capital (CET1, risk-weighted assets) or REIT FFO/AFFO. Operating cash flow is not a substitute for FFO/AFFO.
 
 Each view shows one market cap, the same in `RV`, `valuation`, `fundamentals`, `ticker` and `financials`. Where the provider's is more than 2% and at most 10% off the shares outstanding shown times the price (an older price, a recent issuance), the views show the product, and the note names the provider's: `Market cap 23.82B AUD is the 1.99B shares shown x 12.00 AUD; the provider's is 24.53B AUD.` (`EVN:ASX`, October 2026). Further off, the count shown is not the cap's (one class's beside an all-class cap), so the provider's stands and the note says so: `Market cap 79.11M USD is the provider's and does not rest on the 72.23M shares shown (x 0.7133 USD = 51.52M).` A blank `RV` cell says why in the table and in the export's `status` column: `not reported`, `quote stale`, `no TTM FCF`, `FCF ccy unstated`, `revenue ccy unstated` (the TTM block names no currency, so a revenue figure is not divided into a cap that may be in another), `EV unavailable`, or the other currency a figure is in (`revenue in USD`).
@@ -1384,3 +1388,27 @@ POWER combines public interconnection queue snapshots, completion and withdrawal
 ## Exposure engine (EXPO)
 
 EXPO is a Pro operating-exposure scenario engine with a one-holding, one-hop free preview. It combines available global company and counterparty disclosures, keeps source evidence and reporting denominators on every path, and reports signed portfolio stress and country/supplier/customer concentrations without predicting equity returns. Geography and supply-chain coverage varies by issuer; missing sensitivities and relationships remain unknown. See [Exposure analysis](exposure.md) for scenarios, signed NAV weights, methodology, source limitations and CLI examples.
+
+## Fails to deliver and weekly off-exchange volume
+
+`FTD AAPL` opens the **Fails to deliver** tab of Short Interest (`SI`).
+Each SEC row is the outstanding fail quantity on its settlement date for one
+CUSIP. It is not that day's new fails, and quantities must never be added
+across dates. A symbol may have multiple CUSIPs; the table preserves them.
+An absent record does not establish zero fails. The reported price is in USD,
+and the files are published twice monthly with a delay.
+
+`ATS AAPL` opens **Weekly ATS/OTC** in the same pane. FINRA OTC transparency
+publishes weekly shares and trades for alternative trading systems (ATS,
+including dark pools) and non-ATS venues. **ATS / OTC %** divides ATS shares
+by the published ATS plus non-ATS shares. It is not ATS share of the full
+market, and these are all trades, not short-sale volume. Missing categories
+stay blank and do not contribute a fabricated zero or percentage. Reporting
+weeks are labeled by their Monday start; publication lags depend on the
+security tier. Open a row for exact quantities or use `o` for its source.
+
+Both views are available without signing in, like daily short volume.
+`gloomberb fn FTD AAPL --json` and `gloomberb fn ATS AAPL --csv` export the
+same observations; `gloomberb shot FTD AAPL` and `gloomberb shot ATS AAPL`
+open the respective tabs. Report metadata includes publication coverage,
+source dates and any partial-history warnings.

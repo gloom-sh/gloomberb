@@ -1,3 +1,4 @@
+import { logFailure } from "../../../utils/log-failure";
 import { useCallback, useMemo } from "react";
 import type { CarbonBoard, PowerPriceRow } from "../../../api-client/europe-energy";
 import {
@@ -142,7 +143,10 @@ function PowerPriceBoard({ width, height, focused }: { width: number; height: nu
     try {
       return snapshotSetting ? { ...snapshotSetting, board: validatePowerPrices(snapshotSetting.board),
         carbon: snapshotSetting.carbon ? validateCarbonPrice(snapshotSetting.carbon) : null } : null;
-    } catch { return null; }
+    } catch (error) {
+      logFailure("power.prices", "Validate power prices snapshot failed")(error);
+      return null;
+    }
   }, [snapshotSetting]);
   const resource = useAsyncResource(snapshot ? null : loadPowerPrices, { initialData: getCachedPowerPrices });
   const board = snapshot?.board ?? resource.data?.payload ?? null;

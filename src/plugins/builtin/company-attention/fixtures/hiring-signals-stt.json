@@ -1,0 +1,180 @@
+{
+ "generatedAt": "2026-10-19T14:00:00.000Z",
+ "proRequired": true,
+ "preview": false,
+ "symbol": "STT",
+ "name": "STATE STREET CORP",
+ "week": "2026-10-12",
+ "watchedSince": "2026-09-18",
+ "held": null,
+ "skipped": [],
+ "signals": [
+  {
+   "symbol": "STT",
+   "name": "STATE STREET CORP",
+   "sector": "Financial Services",
+   "industry": "Asset Management",
+   "sourceTickers": [
+    "STT"
+   ],
+   "week": "2026-10-12",
+   "topTitles": [
+    {
+     "title": "Alternative Ops Fund Accounting, Senior Associate",
+     "count": 23
+    },
+    {
+     "title": "Alternative Ops Fund Accounting, Associate 2",
+     "count": 14
+    },
+    {
+     "title": "Alternative Ops Fund Accounting, Associate 1",
+     "count": 8
+    }
+   ],
+   "places": [],
+   "postings": [
+    {
+     "id": "20328244",
+     "title": "Implementation Reporting and Intelligence, Senior Associate",
+     "url": "https://statestreet.wd1.myworkdayjobs.com/en-US/Global/job/Hangzhou-China/Implementation-Reporting-and-Intelligence--Senior-Associate_R-799533",
+     "location": "Hangzhou, China",
+     "country": "CN",
+     "jobFunction": "customer",
+     "seniority": "senior",
+     "firstSeenAt": "2026-10-16T18:01:39.419Z",
+     "closedAt": null,
+     "sourceTicker": "STT"
+    },
+    {
+     "id": "20328243",
+     "title": "Alternative Ops Fund Accounting, Senior Associate",
+     "url": "https://statestreet.wd1.myworkdayjobs.com/en-US/Global/job/Hangzhou-China/Alternative-Ops-Fund-Accounting--Senior-Associate_R-799565",
+     "location": "Hangzhou, China",
+     "country": "CN",
+     "jobFunction": "finance",
+     "seniority": "senior",
+     "firstSeenAt": "2026-10-16T18:01:39.419Z",
+     "closedAt": null,
+     "sourceTicker": "STT"
+    },
+    {
+     "id": "20328241",
+     "title": "Alternative Ops Fund Accounting, Associate 2",
+     "url": "https://statestreet.wd1.myworkdayjobs.com/en-US/Global/job/Hangzhou-China/Alternative-Ops-Fund-Accounting--Associate-2_R-799379",
+     "location": "Hangzhou, China",
+     "country": "CN",
+     "jobFunction": "finance",
+     "seniority": "entry",
+     "firstSeenAt": "2026-10-16T18:01:39.419Z",
+     "closedAt": null,
+     "sourceTicker": "STT"
+    },
+    {
+     "id": "20328240",
+     "title": "Alternative Ops Fund Accounting, Officer",
+     "url": "https://statestreet.wd1.myworkdayjobs.com/en-US/Global/job/Hangzhou-China/Alternative-Ops-Fund-Accounting--Officer_R-799527",
+     "location": "Hangzhou, China",
+     "country": "CN",
+     "jobFunction": "finance",
+     "seniority": "mid",
+     "firstSeenAt": "2026-10-16T18:01:39.419Z",
+     "closedAt": null,
+     "sourceTicker": "STT"
+    },
+    {
+     "id": "20328238",
+     "title": "Transaction Services Software Engineer, SrAssc",
+     "url": "https://statestreet.wd1.myworkdayjobs.com/en-US/Global/job/Hangzhou-China/Transaction-Services-Software-Engineer--SrAssc_R-799240",
+     "location": "Hangzhou, China",
+     "country": "CN",
+     "jobFunction": "engineering",
+     "seniority": "senior",
+     "firstSeenAt": "2026-10-16T18:01:39.419Z",
+     "closedAt": null,
+     "sourceTicker": "STT"
+    },
+    {
+     "id": "19570969",
+     "title": "Alternative Ops Fund Accounting, Senior Associate",
+     "url": "https://statestreet.wd1.myworkdayjobs.com/en-US/Global/job/Hangzhou-China/Alternative-Ops-Fund-Accounting--Senior-Associate_R-799408",
+     "location": "Hangzhou, China",
+     "country": "CN",
+     "jobFunction": "finance",
+     "seniority": "senior",
+     "firstSeenAt": "2026-10-15T17:54:22.696Z",
+     "closedAt": null,
+     "sourceTicker": "STT"
+    },
+    {
+     "id": "19570968",
+     "title": "Business Analysis, Senior Associate",
+     "url": "https://statestreet.wd1.myworkdayjobs.com/en-US/Global/job/Hangzhou-China/Business-Analysis--Senior-Associate_R-799384",
+     "location": "Hangzhou, China",
+     "country": "CN",
+     "jobFunction": "corporate",
+     "seniority": "senior",
+     "firstSeenAt": "2026-10-15T17:54:22.696Z",
+     "closedAt": null,
+     "sourceTicker": "STT"
+    },
+    {
+     "id": "19570967",
+     "title": "Alternative Ops Fund Accounting, Senior Associate",
+     "url": "https://statestreet.wd1.myworkdayjobs.com/en-US/Global/job/Hangzhou-China/Alternative-Ops--Fund-Accounting--Senior-Associate_R-799398-1",
+     "location": "Hangzhou, China",
+     "country": "CN",
+     "jobFunction": "finance",
+     "seniority": "senior",
+     "firstSeenAt": "2026-10-15T17:54:22.696Z",
+     "closedAt": null,
+     "sourceTicker": "STT"
+    }
+   ],
+   "why": "83 new roles in Hangzhou, CN in the week of Oct 12, 2026, 16x the average of 5 a week over the 3 measured weeks before (score 19.2). All its roles placed in a city ran 1.3x their average. Most often Alternative Ops Fund Accounting, Senior Associate (23), Alternative Ops Fund Accounting, Associate 2 (14).",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z",
+   "kind": "location_spike",
+   "group": "anomalies",
+   "dimension": "city",
+   "key": "hangzhou|CN",
+   "label": "Hangzhou, CN",
+   "country": "CN",
+   "newRoles": 83,
+   "titles": 22,
+   "history": {
+    "watchedSince": "2026-09-18",
+    "priorPostings": 2093,
+    "priorShare": 0.9517439082656474
+   },
+   "baseline": {
+    "weeks": 3,
+    "mean": 5.333333333333333,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "newRoles": 9
+     },
+     {
+      "week": "2026-09-28",
+      "newRoles": 2
+     },
+     {
+      "week": "2026-10-05",
+      "newRoles": 5
+     }
+    ]
+   },
+   "ratio": 15.5625,
+   "zScore": 19.152482021074125,
+   "companyRatio": 1.2556917688266198,
+   "flags": [],
+   "reads": 7
+  }
+ ],
+ "history": [],
+ "locked": {
+  "signals": 0,
+  "history": 0
+ }
+}

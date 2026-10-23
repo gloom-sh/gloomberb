@@ -845,15 +845,16 @@ export function Header({
   const { nativePaneChrome = false, titleBarOverlay, nativeWindowChrome = titleBarOverlay, windowControls } = useUiCapabilities();
   const showWindowControls = nativeWindowChrome && windowControls === "windows";
   const windowFullscreen = useWindowFullscreen();
+  const updateStatus = useUpdateStatus(!!onRestartForUpdate);
   const prompt = resolveHeaderPromptGeometry({
     nativePaneChrome,
     nativeWindowChrome,
     termWidth,
     titleBarOverlay,
     windowFullscreen,
+    allowMarketExpansion: !updateStatus.view,
   });
   const shortcutLabel = useCommandBarShortcut();
-  const updateStatus = useUpdateStatus(!!onRestartForUpdate);
   // The terminal lays the header out by cell counts, so it works out what is left
   // for the update status once the Help pill and the slot's padding are paid for.
   let updateStatusColumns = Math.max(

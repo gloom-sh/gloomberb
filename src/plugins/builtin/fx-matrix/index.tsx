@@ -1,3 +1,4 @@
+import { logFailure } from "../../../utils/log-failure";
 import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   DataTableView,
@@ -157,7 +158,7 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
     if (!coordinator) return;
     for (const currency of codes) {
       if (currency === "USD") continue;
-      void coordinator.loadFxRate(currency, { forceRefresh: true }).catch(() => {});
+      void coordinator.loadFxRate(currency, { forceRefresh: true }).catch(logFailure("fx-matrix", "Refresh FX rate failed"));
     }
   }, []);
   const refresh = useCallback(() => reload(currencies), [currencies, reload]);

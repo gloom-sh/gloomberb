@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { normalizeExtraColumns, parseExtraColumns } from "./relative-valuation-columns";
+import { extraColumnsBasis, normalizeExtraColumns, parseExtraColumns } from "./relative-valuation-columns";
 
 describe("RV --columns", () => {
   test("takes the report's own columns by their usual names and adds nothing for them", () => {
@@ -16,5 +16,19 @@ describe("RV --columns", () => {
       'Unknown --columns field "pegRatio". Use any of: shortInterest, nextEarnings, target, grossMargin, evEbitda. '
         + "Last, Chg%, Mkt Cap, P/E, Fwd P/E, EV/S, FCF Yield, Quarter Revenue YoY and TTM Op Margin are always in the report.",
     );
+  });
+
+  test("the footer dates each added column by its cells: a June fiscal year beside December ones, never a retrieval time", () => {
+    // The screener's gross margin is the fiscal year's: FY2025 for DUOL beside TTM margins, which the header alone hid.
+    const rows = [
+      { symbol: "DUOL", grossMarginPercent: 72.2, grossMarginAsOf: "2025-12-31", targetMean: 210, targetAsOf: "2026-10-23T11:00:00.000Z" },
+      { symbol: "MSFT", grossMarginPercent: 68.8, grossMarginAsOf: "2026-06-30", shortInterestPercentFloat: 0.8, shortInterestAsOf: "2026-09-30" },
+      { symbol: "LRN", grossMarginPercent: 39.1, grossMarginAsOf: "2026-06-30" },
+      { symbol: "LHA:XETRA", grossMarginPercent: null, grossMarginAsOf: null },
+    ];
+    expect(extraColumnsBasis(["grossMargin", "target", "shortInterest"], rows)).toEqual([
+      "Gross Margin: fiscal year to 2026-06-30 (DUOL 2025-12-31)",
+      "Short % Float: settlement 2026-09-30",
+    ]);
   });
 });

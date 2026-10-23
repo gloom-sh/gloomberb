@@ -16,6 +16,7 @@ function currencyName(code: string): string | null {
     const name = currencyNames.of(code);
     return name && name !== code ? name : null;
   } catch {
+    // Intentional ignore: runtimes without currency display names keep the currency code as the picker label.
     currencyNames = null;
     return null;
   }

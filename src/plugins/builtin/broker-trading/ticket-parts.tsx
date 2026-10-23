@@ -15,7 +15,7 @@ export const ticketImpactMoney = (preview: TicketViewModel["preview"], value: nu
 /** The figures' source for a broker that names it: "Brokerage preview" or "Not available". */
 export const ticketImpactSource = (preview: TicketViewModel["preview"]) =>
   preview?.impactSource === "broker" ? "Brokerage preview" : preview?.impactSource === "unavailable" ? "Not available" : undefined;
-export const ticketTypeName: Record<string, string> = { MKT: "Market", LMT: "Limit", STP: "Stop", "STP LMT": "Stop limit" };
+export const ticketTypeName: Record<string, string> = { MKT: "Market", LMT: "Limit", STP: "Stop", "STP LMT": "Stop limit", TRAIL: "Trailing stop" };
 export const ticketTifName: Record<string, string> = { DAY: "Day", GTC: "Good til cancelled", IOC: "Immediate or cancel", FOK: "Fill or kill", EXTENDED_HOURS: "Extended hours", AT_THE_OPENING: "At the opening", AT_THE_CLOSE: "At the close" };
 /** `selectable`: a review or receipt whose figures someone may copy by hand. */
 export function TicketSection({ children, width, title, selectable = false }: { children: ReactNode; width?: number; title?: string; selectable?: boolean }) {
@@ -32,6 +32,16 @@ export function TicketOrderHeadline({ model: m, large = false }: { model: Ticket
   return <Box flexDirection="row" alignItems="center" gap={1} flexWrap="wrap">
     <FigureText part={large ? "value" : "sub"} fg={side === "Buy" ? c.positive : c.negative} style={large ? undefined : { fontSize: "var(--gloom-type-heading)", fontWeight: "var(--gloom-weight-bold)" }}>{side}</FigureText>
     <FigureText part={large ? "value" : "sub"} style={large ? undefined : { fontSize: "var(--gloom-type-heading)", fontWeight: "var(--gloom-weight-bold)" }}>{`${ticketNumber(draft?.quantity)} ${m.symbol}`}</FigureText>
+  </Box>;
+}
+/** A bracket's exits as review and the receipt name them. They trade the other way, for the same quantity. */
+export function TicketExits({ model: m, width, currency }: { model: TicketViewModel; width: number; currency: string }) {
+  const draft = m.draft;
+  if (draft?.orderClass !== "bracket") return null;
+  const exit = (value: number | undefined) => value === undefined ? "None" : ticketMoney(value, currency);
+  return <Box flexDirection="column">
+    <TicketReceiptRow label="Take profit" value={exit(draft.takeProfitPrice)} width={width} />
+    <TicketReceiptRow label="Stop loss" value={exit(draft.stopLossPrice)} width={width} />
   </Box>;
 }
 /** A spread's legs as they fill: side, contracts across all spreads, contract, and each leg's mid at this broker. */
@@ -104,7 +114,7 @@ export function TicketOrderSummary({ model: m, width, compact = false, receipt =
   </TicketSection>;
   return <TicketSection width={width} title="Order summary" selectable>
     <TicketOrderHeadline model={m} large />
-    <Text fg={c.textDim}>{`${ticketTypeName[draft?.orderType ?? "LMT"]} · ${ticketTifName[draft?.tif ?? "DAY"] ?? draft?.tif}${draft?.outsideRth ? " · Outside RTH" : ""}`}</Text>
+    <Text fg={c.textDim}>{`${draft?.orderClass === "oco" ? "OCO" : ticketTypeName[draft?.orderType ?? "LMT"]}${draft?.orderClass === "bracket" ? " with take profit / stop loss" : ""} · ${ticketTifName[draft?.tif ?? "DAY"] ?? draft?.tif}${draft?.outsideRth ? " · Outside RTH" : ""}`}</Text>
     <Box flexDirection="column" paddingY={1}><Text fg={c.textDim}>Estimated order value</Text><FigureText>{ticketMoney(total, currency)}</FigureText></Box>
     {strategy ? <TicketLegs model={m} width={rowWidth} /> : null}
     <TicketReceiptRow label="Quantity" value={`${ticketNumber(draft?.quantity)} ${unit}`} width={rowWidth} />

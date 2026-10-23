@@ -1,3 +1,4 @@
+import { logFailure } from "../../../utils/log-failure";
 import type { CarbonBoard, CarbonHistory, EuropePowerBoard, EuropePowerHistory, GasStorageBoard, GasStorageSeasonal } from "../../../api-client/europe-energy";
 import type { PowerBoard, PowerHistory } from "../../../api-client/power";
 import type { PaneScreenshotEvidenceHook } from "../../../cli/pane-functions/screenshot-evidence";
@@ -72,7 +73,7 @@ export const powerScreenshotEvidence: PaneScreenshotEvidenceHook<PowerEvidence> 
     if (tab === "prices") {
       const board = await fetchPowerPrices();
       // The carbon figures are captured when the server has them, and left out when it does not.
-      const carbon = await fetchCarbonPrice().catch(() => null);
+      const carbon = await fetchCarbonPrice().catch(logFailure("power.evidence", "Load carbon price for capture failed", null));
       const arg = resolved.createOptions?.arg;
       const market = powerPriceMarket(arg)?.code ?? DEFAULT_PRICE_MARKET;
       const history = isCarbonQuery(arg) && carbon?.row.date ? await fetchCarbonHistory()
@@ -112,7 +113,10 @@ export const powerScreenshotEvidence: PaneScreenshotEvidenceHook<PowerEvidence> 
       const rows = ["queue", "loads", "capacity"].includes(tab) ? projectRows(board.projects) : otherRows(tab, board, history?.points ?? []);
       if (value.rowIds.some((id) => !rows.some((r) => r.id === id))) return null;
       return value as unknown as PowerEvidence;
-    } catch { return null; }
+    } catch {
+      // Intentional ignore: invalid captured observations are rejected as evidence by returning null.
+      return null;
+    }
   },
   mismatches(evidence, { resolved, payload }) {
     const settings = instanceSettings(payload);

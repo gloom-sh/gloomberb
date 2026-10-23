@@ -4,7 +4,8 @@ import { cloudNewsFreshness, quoteObservation } from "../../plugins/builtin/shar
 import { createTestQuote } from "../../test-support/data-provider";
 import { quotesFreshness } from "../freshness";
 import { formatUtcTime, setDisplayTimeZone } from "../../utils/utc-time";
-import { captureStatusLine, delayLength, deriveCaptureReport, deriveHeadlessFreshness, formatFreshnessLine, formatStatusLine, paneStatusLine, periodicityOf, statusLineVariants } from "./freshness";
+import { captureStatusLine, delayLength, deriveCaptureReport, deriveHeadlessFreshness, deriveRenderedFreshness, formatFreshnessLine, formatStatusLine, paneStatusLine, periodicityOf, statusLineVariants } from "./freshness";
+import { renderedReportFreshness, renderedReportObservations } from "./report-notices";
 
 const NOW = Date.parse("2026-10-09T05:00:00Z"); // Friday, before the US open
 const rows = (freshness?: HeadlessPaneDefinition["freshness"]) => ({ shape: "rows" as const, ...(freshness ? { freshness } : {}) });
@@ -144,6 +145,27 @@ describe("report freshness", () => {
     expect(formatFreshnessLine(deriveHeadlessFreshness(rows(), airlines, WED))).toContain("· US trading day Tue 13 Oct 2026 close ·");
     expect(deriveHeadlessFreshness(rows({ datesEachVenue: true }), { rows: [quote("NYSE", "2026-10-13T23:45:00Z")] }, WED).venueSessions)
       .toBeUndefined();
+  });
+
+  test("a capture of a pane whose quotes trade on several markets dates each, and says its note's shorter forms before leaving it out", () => {
+    const WED = Date.parse("2026-10-14T03:00:00Z");
+    const quote = (sessionExchange: string, quoteAsOf: string) => ({
+      dataSource: "delayed", delayMinutes: 15, sessionExchange, marketState: "CLOSED", quoteAsOf: Date.parse(quoteAsOf),
+    });
+    // RV's pane: euro and dollar caps under MCAP USD, so the line names the rate as `fn RV --currency USD` does.
+    const note = "MCAP USD at EUR/USD 1.1612 (2026-10-13 21:00 UTC) · fundamentals through 2026-06-30, Q REV% for that quarter";
+    const noteVariants = ["MCAP USD at EUR/USD 1.1612 · fundamentals through 2026-06-30, Q REV% for that quarter"];
+    const semanticUi = [{ id: "ui:1", role: "report-freshness", actions: [], metadata: {
+      datesEachVenue: true, note, noteVariants, observations: [quote("NYSE", "2026-10-13T20:00:00Z"), quote("XETRA", "2026-10-13T15:35:00Z")],
+    } }];
+    const published = renderedReportFreshness(semanticUi);
+    expect(published).toEqual({ datesEachVenue: true, note, noteVariants });
+    const freshness = deriveRenderedFreshness(published, { footerText: "", cellTimes: [], observed: renderedReportObservations(semanticUi) }, WED);
+    expect(statusLineVariants(freshness).slice(-3)).toEqual([
+      `US and XETRA Tue 13 Oct 2026 close · 15 min delayed · ${note}`,
+      `US and XETRA Tue 13 Oct 2026 close · 15 min delayed · ${noteVariants[0]}`,
+      "US and XETRA Tue 13 Oct 2026 close · 15 min delayed",
+    ]);
   });
 
   test("an index quote's own sessions date its last close and name the open its pre-market waits for", () => {

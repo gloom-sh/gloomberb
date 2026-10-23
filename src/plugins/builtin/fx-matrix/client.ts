@@ -1,3 +1,4 @@
+import { logFailure } from "../../../utils/log-failure";
 import { MarketDataCoordinator } from "../../../market-data/coordinator";
 import type { QueryEntry } from "../../../market-data/result-types";
 import { resolveEntryData } from "../../../market-data/selectors";
@@ -46,7 +47,7 @@ export async function loadFxBoard(
       Promise.all(legs.map((leg) => coordinator.loadFxRate(leg.currency, { forceRefresh }))),
       // A pair quote only refines a loaded rate, so a failed batch leaves the loaded rates.
       coordinator.loadQuotesBatch(legs.map((leg) => ({ symbol: leg.symbol, exchange: "" })), { forceRefresh })
-        .catch((): QueryEntry<Quote>[] => []),
+        .catch(logFailure("fx-matrix.client", "Load FX pair quotes failed", [] as QueryEntry<Quote>[])),
     ]);
     return new Map(legs.map((leg, index) => {
       const rate = rates[index]!;

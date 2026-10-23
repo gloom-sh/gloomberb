@@ -80,6 +80,8 @@ export function createDemoBroker(options: DemoBrokerOptions = {}) {
     remaining: status === "PARTIALLY_FILLED" ? request.quantity - 4 : status === "FILLED" ? 0 : request.quantity,
     avgFillPrice: ["PARTIALLY_FILLED", "FILLED"].includes(status) ? 336.45 : undefined,
     limitPrice: request.limitPrice, stopPrice: request.stopPrice, tif: request.tif,
+    ...(request.trailingAmount !== undefined ? { trailingAmount: request.trailingAmount } : {}),
+    ...(request.trailingPercent !== undefined ? { trailingPercent: request.trailingPercent } : {}),
     updatedAt: now(), contract: request.contract,
     warningText: status === "REJECTED" ? "Insufficient buying power. Reduce the quantity and review again." : undefined,
   });
@@ -128,9 +130,10 @@ export function createDemoBroker(options: DemoBrokerOptions = {}) {
       return {
         enabled: profile.config.tradingEnabled === true,
         disabledReason: profile.config.tradingEnabled ? undefined : "Trading is off for this profile.",
-        orderTypes: ["MKT", "LMT", "STP", "STP LMT"], tif: ["DAY", "GTC"],
+        orderTypes: ["MKT", "LMT", "STP", "STP LMT", "TRAIL"], tif: ["DAY", "GTC"],
         extendedHours: true, fractionalQuantity: true, minQuantity: 0.001, quantityStep: 0.001,
         priceDecimals: 2, priceStep: 0.01, modify: true, cancel: true, executionKind: "fills",
+        orderClasses: ["bracket", "oco"], trailing: ["amount", "percent"],
       };
     },
     getTradingConfigUpdate(_profile, enabled) { return { tradingEnabled: enabled }; },
@@ -141,7 +144,21 @@ export function createDemoBroker(options: DemoBrokerOptions = {}) {
       guard(profile, request); calls.push({ method: "placeOrder", request: structuredClone(request) });
       if (outcome === "unknown") throw new Error("The connection ended before the broker confirmed the order. Refresh to reconcile its status.");
       const status = ({ working: "WORKING", partial: "PARTIALLY_FILLED", filled: "FILLED", rejected: "REJECTED" } as const)[outcome];
-      const result = order(request, status);
+      const { orderClass, takeProfitPrice, stopLossPrice, ...single } = request;
+      const result = order(single, status);
+      // A bracket's exits wait on the other side for the entry; an OCO's stop sits beside its limit.
+      if (orderClass && status !== "REJECTED") {
+        const group = `demo-group-${result.orderId}`;
+        const exitAction = orderClass === "oco" ? request.action : request.action === "BUY" ? "SELL" : "BUY";
+        Object.assign(result, { linkGroup: group, linkRole: orderClass === "oco" ? "takeProfit" : "entry" });
+        const exits: Array<[BrokerOrderRequest, "takeProfit" | "stopLoss"]> = [];
+        if (orderClass === "bracket" && takeProfitPrice !== undefined) exits.push([{ ...single, action: exitAction, orderType: "LMT", limitPrice: takeProfitPrice, stopPrice: undefined }, "takeProfit"]);
+        if (stopLossPrice !== undefined) exits.push([{ ...single, action: exitAction, orderType: "STP", stopPrice: stopLossPrice, limitPrice: undefined }, "stopLoss"]);
+        for (const [exit, role] of exits) {
+          const child = order(exit, orderClass === "oco" ? status : "SUBMITTED");
+          orderBook.set(child.orderId, { ...child, linkGroup: group, linkRole: role });
+        }
+      }
       orderBook.set(result.orderId, result);
       return structuredClone(result);
     },

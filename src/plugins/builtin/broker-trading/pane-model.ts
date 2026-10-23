@@ -8,6 +8,7 @@ import type { Quote } from "../../../types/financials";
 import type { BrokerAccount, BrokerOrderRequest, BrokerTradingCapabilities } from "../../../types/trading";
 import type { BrokerAccountChoice } from "./account-picker";
 import { reverseStrategy, strategyContract, strategyOrderLegs, type StrategyIntent } from "./strategy";
+import { trailingUnit } from "./linked-orders";
 
 /** Successful broker reads may publish status heartbeats. They must not schedule another read. */
 export function subscribeTradingStatus(broker: BrokerAdapter, profile: BrokerInstanceConfig, onChange: () => void): () => void {
@@ -194,11 +195,38 @@ export function editTicketDraft(broker: BrokerAdapter, instance: BrokerInstanceC
     const { limitPrice: _debit, ...reversed } = reverseStrategy(draft);
     return reversed;
   }
-  const numeric = ["quantity", "limitPrice", "stopPrice"].includes(field);
-  const next = { ...draft, [field]: numeric ? value === "" ? field === "quantity" ? NaN : undefined : Number(value) : value };
+  // A bracket's exits come and go with it.
+  if (field === "bracket") {
+    const next = { ...draft };
+    if (value === true) next.orderClass = "bracket";
+    else { delete next.orderClass; delete next.takeProfitPrice; delete next.stopLossPrice; }
+    return next;
+  }
+  // A trailing distance is in one unit at a time. A number in one unit means nothing in the other: $1.50 is not 1.5%,
+  // so switching the unit clears it.
+  if (field === "trailingUnit" || field === "trailing") {
+    const current = trailingUnit(draft);
+    const unit = field === "trailingUnit" ? value === "percent" ? "percent" : "amount" : current;
+    const typed = field === "trailing" ? value === "" ? NaN : Number(value)
+      : unit !== current ? NaN : current === "percent" ? draft.trailingPercent : draft.trailingAmount;
+    const { trailingAmount: _amount, trailingPercent: _percent, ...rest } = draft;
+    return { ...rest, [unit === "percent" ? "trailingPercent" : "trailingAmount"]: typed ?? NaN };
+  }
+  const numeric = ["quantity", "limitPrice", "stopPrice", "takeProfitPrice", "stopLossPrice"].includes(field);
+  // OCO is a limit with a stop that cancels it: the ticket lists it as a type of its own.
+  const oco = field === "orderType" && value === "OCO";
+  const next = { ...draft, [field]: oco ? "LMT" : numeric ? value === "" ? field === "quantity" ? NaN : undefined : Number(value) : value };
   if (field === "orderType") {
     if (next.orderType !== "LMT" && next.orderType !== "STP LMT") delete next.limitPrice;
     if (next.orderType !== "STP" && next.orderType !== "STP LMT") delete next.stopPrice;
+    // An OCO's stop is on its own side, a bracket's stop loss on the other: neither carries over.
+    if (oco !== (draft.orderClass === "oco") || next.orderType === "TRAIL") { delete next.orderClass; delete next.takeProfitPrice; delete next.stopLossPrice; }
+    if (oco) next.orderClass = "oco";
+    if (next.orderType === "TRAIL" && draft.orderType !== "TRAIL") {
+      const units = broker.getTradingCapabilities?.(instance, next.contract, "TRAIL")?.trailing;
+      Object.assign(next, units?.[0] === "percent" ? { trailingPercent: NaN } : { trailingAmount: NaN });
+    }
+    if (next.orderType !== "TRAIL") { delete next.trailingAmount; delete next.trailingPercent; }
   }
   const capabilities = broker.getTradingCapabilities?.(instance, next.contract, next.orderType);
   if (capabilities && !capabilities.tif.includes(next.tif ?? "DAY")) next.tif = capabilities.tif[0];

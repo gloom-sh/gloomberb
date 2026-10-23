@@ -99,7 +99,7 @@
           {
             "code": "HIRE",
             "name": "Hiring Momentum",
-            "description": "Pro hiring momentum: observed weekly open roles, additions, removals, role and location mix, peer comparisons, hiring moves against each company's own weeks and peers, and primary posting evidence.",
+            "description": "Pro hiring momentum: observed weekly open roles, additions, removals, role and location mix, peer comparisons, hiring moves against each company's own weeks and peers, first roles in a new country or city, place and role-family spikes, and primary posting evidence.",
             "access": "preview"
           },
           {
@@ -1180,12 +1180,22 @@
           {
             "code": "SI",
             "name": "Short Interest",
-            "description": "Bi-monthly short interest settlements from FINRA with days to cover and average daily volume. Daily volume is the other tab."
+            "description": "Bi-monthly short interest settlements from FINRA with days to cover and average daily volume. Daily volume, fails to deliver and weekly ATS/OTC volume share the pane."
           },
           {
             "code": "SIV",
             "name": "Daily Short Volume",
             "description": "The short interest pane on Daily volume: FINRA daily off-exchange short-volume ratios, historical percentile and reported share quantities."
+          },
+          {
+            "code": "FTD",
+            "name": "Fails to Deliver",
+            "description": "The short interest pane on Fails to deliver: outstanding fail shares by settlement date and CUSIP from SEC publications."
+          },
+          {
+            "code": "ATS",
+            "name": "Weekly ATS / OTC Volume",
+            "description": "The short interest pane on Weekly ATS/OTC: FINRA weekly ATS and non-ATS shares and trades, including dark-pool volume."
           },
           {
             "code": "SIW",

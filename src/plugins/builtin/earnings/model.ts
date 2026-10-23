@@ -1,3 +1,4 @@
+import { logFailure } from "../../../utils/log-failure";
 import { parseTickerListInput } from "../../../tickers/list";
 
 export function scopedSymbolsFromSettings(settings: Record<string, unknown> | undefined): string[] {
@@ -11,7 +12,8 @@ export function scopedSymbolsFromSettings(settings: Record<string, unknown> | un
   if (typeof symbolsText !== "string" || !symbolsText.trim()) return [];
   try {
     return parseTickerListInput(symbolsText);
-  } catch {
+  } catch (error) {
+    logFailure("earnings.scope", "Read saved earnings scope failed")(error);
     return [];
   }
 }

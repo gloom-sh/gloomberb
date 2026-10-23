@@ -4,6 +4,7 @@ import { statsCache } from "./cache";
 import { loadStatsBundle } from "./client";
 import { econStatisticsHeadless, projectStatsHeadlessBundle } from "./headless";
 import { resolveStatArg } from "./stats";
+import { projectStat } from "./view";
 import { createTestHeadlessContext } from "../../../test-support/headless";
 
 beforeEach(() => statsCache.reset());
@@ -81,4 +82,36 @@ describe("economic statistics headless model", () => {
     expect((projectStatsHeadlessBundle(inverted, "ALL", spread.id).sections[0] as { rows: Array<Record<string, unknown>> }).rows[0])
       .toMatchObject({ formattedLatest: "-28bp" });
   });
+});
+
+test("nowcasts retain published rates and signed indexes, ranked against their own history", async () => {
+  const cases = [
+    { id: "gdpnow", dates: ["2025-10-01", "2026-01-01", "2026-04-01"], values: [-1, 4, 2], formatted: "2.0%", reading: "Q2 2026", staleOn: "2026-08-15" },
+    { id: "nfci", dates: ["2026-06-05", "2026-06-12", "2026-06-19"], values: [-0.7, 0.4, -0.2], formatted: "-0.20", reading: "week ending 2026-06-19", staleOn: "2026-07-11" },
+    { id: "financial-stress", dates: ["2026-06-05", "2026-06-12", "2026-06-19"], values: [-1.5, 1, -0.5], formatted: "-0.50", reading: "week ending 2026-06-19", staleOn: "2026-07-11" },
+    { id: "median-cpi", dates: ["2026-04-01", "2026-05-01", "2026-06-01"], values: [3, 6, 4], formatted: "4.0%", reading: "Jun 2026", staleOn: "2026-08-31" },
+  ];
+  const bundle = await loadStatsBundle({
+    stats: cases.map(({ id }) => resolveStatArg(id)!),
+    loader: async (def) => {
+      const item = cases.find(({ id }) => id === def.id)!;
+      return item.dates.map((date, index) => ({ date, value: item.values[index]! }));
+    },
+  });
+  const report = projectStatsHeadlessBundle(bundle, "ALL", "gdpnow");
+  const table = report.sections[0]!;
+  expect(table.title).toBe("Nowcasts & conditions");
+  for (const item of cases) {
+    const build = bundle.builds.find(({ stat }) => stat.id === item.id)!;
+    const view = projectStat(build, "ALL", { nowMs: Date.parse(item.dates[2]!) + 20 * 86_400_000 });
+    // The negative readings and annualized rates must not be treated as index
+    // levels for a second percentage-change transform or pooled across series.
+    expect(view.latest.value).toBe(item.values[2]!);
+    expect(view.percentile).toBeCloseTo(200 / 3);
+    expect(view.observationStale).toBe(false);
+    expect(projectStat(build, "ALL", { nowMs: Date.parse(item.staleOn) }).observationStale).toBe(true);
+    expect(table.rows!.find((row) => row.id === item.id)).toMatchObject({
+      latest: item.values[2], formattedLatest: item.formatted, reading: item.reading,
+    });
+  }
 });

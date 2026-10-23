@@ -4,7 +4,7 @@
  * appears here without an app release.
  */
 import { apiClient } from "../../api-client";
-import type { BrokerOrderType } from "../../types/trading";
+import type { BrokerOrderClass, BrokerOrderType, BrokerTrailingUnit } from "../../types/trading";
 
 interface SignedInBrokerCapabilities {
   history: boolean;
@@ -13,7 +13,13 @@ interface SignedInBrokerCapabilities {
    * Review: the broker keeps each order for the user to submit there. Direct: Gloom checks the
    * order with the broker, the user confirms that check in the ticket, and Gloom places it.
    */
-  orders: false | { mode: "review" | "direct"; types: BrokerOrderType[]; tif?: string[] };
+  orders: false | {
+    mode: "review" | "direct"; types: BrokerOrderType[]; tif?: string[];
+    /** Brackets and OCO pairs the broker places and runs itself; absent from a server that sends none. */
+    orderClasses?: BrokerOrderClass[];
+    /** How a trailing stop (`TRAIL` in `types`) is set. */
+    trailing?: BrokerTrailingUnit[];
+  };
   /** Connecting Gloom replaces this broker's link to other AI apps. */
   singleConnection: boolean;
   /** Shown before connecting, e.g. an account the user must create first. */

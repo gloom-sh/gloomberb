@@ -25,13 +25,17 @@ import { useQuoteBoard } from "../shared/use-quote-board";
 import { cachedMnaDeal, loadMnaDeal } from "./client";
 import {
   dealSpread,
+  electionLeg,
   formatDealValue,
   formatExpectedClose,
   formatListDate,
   formatPercentShort,
   formatPerShare,
   formatPrice,
+  inQuoteCurrency,
+  isElection,
   MISSING,
+  offerSeries,
   stageLabel,
   termsLabel,
 } from "./model";
@@ -70,11 +74,15 @@ async function dailyCloses(provider: AssetDataProvider, symbol: string, from: st
   return points.filter((point) => Number.isFinite(point.close) && dayOf(point) >= from);
 }
 
-/** The target's daily closes since before the announcement, and the listing a ratio pays in. */
-function useDealHistory(deal: MnaDeal | null) {
+/**
+ * The target's daily closes since before the announcement, and the listing a
+ * ratio pays in when the offer line needs it (an election priced at its cash
+ * leg does not).
+ */
+function useDealHistory(deal: MnaDeal | null, leg: "cash" | "stock" | null) {
   const provider = useAssetData();
   const target = deal?.target.symbol ?? null;
-  const ratio = deal?.terms.exchangeRatio != null ? deal.terms.ratioSymbol : null;
+  const ratio = deal?.terms.exchangeRatio != null && leg !== "cash" ? deal.terms.ratioSymbol : null;
   const from = deal ? shiftDay(deal.announced, -LEAD_DAYS) : null;
   const [history, setHistory] = useState<{ key: string; target: PricePoint[]; ratio: PricePoint[] } | null>(null);
   const key = `${target}:${ratio}:${from}`;
@@ -92,30 +100,6 @@ function useDealHistory(deal: MnaDeal | null) {
     return () => { cancelled = true; };
   }, [from, key, provider, ratio, target]);
   return history?.key === key ? history : null;
-}
-
-/**
- * What the terms were worth each day since the announcement: flat for cash,
- * the ratio times the paying listing's close for stock.
- */
-function offerSeries(deal: MnaDeal, ratioCloses: readonly PricePoint[], days: readonly string[]): Array<{ day: string; value: number }> {
-  const { cashPerShare, exchangeRatio, currency } = deal.terms;
-  if (cashPerShare == null && exchangeRatio == null) return [];
-  const pence = currency === "GBp" || currency === "GBX";
-  const cash = cashPerShare == null ? 0 : pence ? cashPerShare / 100 : cashPerShare;
-  const ratioByDay = new Map(ratioCloses.map((point) => [dayOf(point), point.close]));
-  const out: Array<{ day: string; value: number }> = [];
-  let lastRatio: number | null = null;
-  for (const day of days) {
-    if (day < deal.announced) continue;
-    if (exchangeRatio == null) {
-      out.push({ day, value: cash });
-      continue;
-    }
-    lastRatio = ratioByDay.get(day) ?? lastRatio;
-    if (lastRatio != null) out.push({ day, value: cash + exchangeRatio * lastRatio });
-  }
-  return out;
 }
 
 export function MnaDealDetail({ id, seed, focused, width, height }: {
@@ -151,7 +135,9 @@ export function MnaDealDetail({ id, seed, focused, width, height }: {
   const targetQuote = deal?.target.symbol ? quotes.get(deal.target.symbol)?.quote ?? null : null;
   const ratioQuote = deal?.terms.ratioSymbol ? quotes.get(deal.terms.ratioSymbol)?.quote ?? null : null;
   const spread = deal ? dealSpread(deal, targetQuote, ratioQuote) : null;
-  const history = useDealHistory(deal);
+  // The leg an election's Offer, premium and offer line are priced at; null for other terms.
+  const leg = deal && isElection(deal.terms) ? electionLeg(deal.terms, targetQuote) : null;
+  const history = useDealHistory(deal, leg);
 
   const unaffected = useMemo(() => {
     if (!deal || !history) return null;
@@ -175,7 +161,7 @@ export function MnaDealDetail({ id, seed, focused, width, height }: {
         tone: spread.spread < 0 ? "warning" : undefined,
       });
       if (spread.annualized != null) items.push({ id: "ann", label: "Ann.", value: formatPercentShort(spread.annualized) });
-      if (unaffected && unaffected.close > 0 && deal.terms.exchangeRatio == null) {
+      if (unaffected && unaffected.close > 0 && (deal.terms.exchangeRatio == null || leg === "cash")) {
         items.push({
           id: "premium",
           label: "Premium",
@@ -199,12 +185,14 @@ export function MnaDealDetail({ id, seed, focused, width, height }: {
       if (spread) items.push({ id: "stage", label: "Stage", value: stageLabel(deal) });
     }
     return items;
-  }, [deal, spread, targetQuote?.currency, unaffected]);
+  }, [deal, leg, spread, targetQuote?.currency, unaffected]);
 
   const series = useMemo(() => {
     if (!deal?.target.symbol || !history || history.target.length < 3) return [];
     const days = history.target.map(dayOf);
-    const offer = offerSeries(deal, history.ratio, days);
+    const offer = leg === "stock"
+      ? offerSeries(deal, history.ratio, days, leg, (close) => inQuoteCurrency(close, ratioQuote?.currency ?? null, targetQuote?.currency))
+      : offerSeries(deal, history.ratio, days, leg);
     const priced = [
       staticSeries(
         history.target.map((point) => ({ date: point.date, observedAt: point.date, value: point.close })),
@@ -221,7 +209,7 @@ export function MnaDealDetail({ id, seed, focused, width, height }: {
       ));
     }
     return priced;
-  }, [colors.positive, colors.text, deal, history]);
+  }, [colors.positive, colors.text, deal, history, leg, ratioQuote?.currency, targetQuote?.currency]);
 
   const selected = events.find((event) => event.id === selectedEvent) ?? events[0] ?? null;
   const openSource = useCallback((event: MnaDealEvent | null) => {

@@ -111,3 +111,30 @@ test("a strategy opens as a spread on the ticket's underlying and profile, and s
   expect([sold.action, sold.limitPrice, sold.legs?.map((leg) => leg.action)]).toEqual(["SELL", undefined, ["SELL", "BUY"]]);
   expect(() => newStrategyDraft(demo.adapter, demo.instance, demo.draft.contract, { ...intent, legs: [{ ...intent.legs[0]!, contractSymbol: "MSFT261026C00345000" }, intent.legs[1]!] })).toThrow("listed AAPL option");
 });
+
+describe("linked order drafts", () => {
+  test("OCO, a bracket and a trailing stop each carry only their own fields through type changes", () => {
+    const demo = createDemoBroker();
+    const edit = (draft: Parameters<typeof editTicketDraft>[2], field: string, value: string | boolean) => editTicketDraft(demo.adapter, demo.instance, draft, field, value);
+    const bracket = edit(edit(demo.draft, "bracket", true), "stopLossPrice", "330");
+    expect(bracket).toMatchObject({ orderClass: "bracket", stopLossPrice: 330 });
+    // A stop entry keeps its exits; an OCO's stop is on the other side, so the bracket's does not carry over.
+    expect(edit(bracket, "orderType", "STP")).toMatchObject({ orderClass: "bracket", stopLossPrice: 330 });
+    const oco = edit(bracket, "orderType", "OCO");
+    expect(oco).toMatchObject({ orderType: "LMT", orderClass: "oco", limitPrice: 336.5 });
+    expect(oco.stopLossPrice).toBeUndefined();
+    const withStop = edit(oco, "stopLossPrice", "320");
+    expect(edit(withStop, "orderType", "OCO")).toEqual(withStop);
+    expect(edit(withStop, "orderType", "LMT").orderClass).toBeUndefined();
+    expect(edit(bracket, "bracket", false)).not.toHaveProperty("stopLossPrice");
+    // A trailing stop's number is cleared when its unit changes ($1.50 is not 1.5%), and goes when the type does.
+    const trail = edit(edit(bracket, "orderType", "TRAIL"), "trailing", "1.5");
+    expect(trail).toMatchObject({ orderType: "TRAIL", trailingAmount: 1.5 });
+    expect(trail).not.toHaveProperty("orderClass");
+    const percent = edit(trail, "trailingUnit", "percent");
+    expect(percent.trailingPercent).toBeNaN();
+    expect(percent).not.toHaveProperty("trailingAmount");
+    expect(edit(trail, "trailingUnit", "amount")).toMatchObject({ trailingAmount: 1.5 });
+    expect(edit(edit(percent, "trailing", "2"), "orderType", "LMT")).not.toHaveProperty("trailingPercent");
+  });
+});

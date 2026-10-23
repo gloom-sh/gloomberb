@@ -137,7 +137,7 @@ export function useMarketSummary(): MarketSummary {
   const mktCountdown = mktState ? marketStateCountdown(mktState, now) : null;
   const marketLabelShort = mktState ? t(marketStateLabel(mktState)) : "";
   const marketLabel = marketLabelShort && mktCountdown
-    ? `${marketLabelShort} · ${mktCountdown}`
+    ? `${marketLabelShort} · ${mktCountdown}${mktState === "PRE" ? ` ${t("to regular open")}` : ""}`
     : marketLabelShort;
 
   return {

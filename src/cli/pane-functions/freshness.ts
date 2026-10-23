@@ -91,6 +91,8 @@ export interface ReportFreshness {
   asOfLabel?: string;
   /** What the figures are, said after the status: `funding = current estimate, pays 08:00 UTC`. */
   note?: string;
+  /** Shorter forms of `note`, in the order a capture's line too long for it tries them. */
+  noteVariants?: string[];
   /** When the figures reach readers and when the next are due, said right after the as-of date. */
   schedule?: string;
   /** Who published the figures, when the data names them. */
@@ -469,6 +471,7 @@ function resolveFreshness({ declared, signals, observations, now }: FreshnessInp
   const observation = lagDays != null ? declared.observation?.trim() : undefined;
 
   const note = declared.note?.trim();
+  const noteVariants = note ? (declared.noteVariants ?? []).map((variant) => variant.trim()).filter((variant) => variant && variant !== note) : [];
   const asOfLabel = asOf ? declared.asOfLabel?.trim() : undefined;
   const schedule = declared.schedule?.trim();
   const publisher = declared.publisher?.trim();
@@ -496,6 +499,7 @@ function resolveFreshness({ declared, signals, observations, now }: FreshnessInp
     ...(oldestAgeMinutes != null ? { oldestAgeMinutes } : {}),
     ...(asOfLabel ? { asOfLabel } : {}),
     ...(note ? { note } : {}),
+    ...(noteVariants.length > 0 ? { noteVariants } : {}),
     ...(schedule ? { schedule } : {}),
     ...(publisher ? { publisher } : {}),
     ...(publishedAt ? { publishedAt: isoTime(publishedAt) } : {}),
@@ -849,8 +853,8 @@ interface StatusLineDetail {
   local?: "none";
   /** Leave the day off a time of the day the report was built. */
   date?: "none";
-  /** Leave out what the figures are (`funding = current estimate`). */
-  note?: "none";
+  /** Leave out what the figures are (`funding = current estimate`), or say the shorter form at this index of `noteVariants`. */
+  note?: "none" | number;
   /** Leave out when the figures are published and the next are due. */
   schedule?: "none";
 }
@@ -872,7 +876,7 @@ function statusLineParts(freshness: ReportFreshness, detail: StatusLineDetail = 
     ...(freshness.oldestAgeMinutes != null ? [`oldest ${ageText(freshness.oldestAgeMinutes)}`] : []),
     freshness.savedAt ? savedCopyText(freshness.savedAt, freshness.retrievedAt, local) : statusText(freshness, detail.status === "short"),
     ...(freshness.market && detail.market !== "none" ? [marketText(freshness.market, now, detail.market === "short", local)] : []),
-    ...(freshness.note && detail.note !== "none" ? [freshness.note] : []),
+    ...(freshness.note && detail.note !== "none" ? [typeof detail.note === "number" ? freshness.noteVariants?.[detail.note] ?? freshness.note : freshness.note] : []),
   ];
 }
 
@@ -997,8 +1001,9 @@ export function statusLineVariants(freshness: ReportFreshness, { source = false 
   // A line that dates each source keeps every source's time and their age to
   // the last: its day goes first, then what the figures are.
   const shortest = details.at(-1)!;
-  // What the figures are goes before when they are published.
+  // What the figures are goes before when they are published, in its shorter forms first.
   const trailing: StatusLineDetail[] = [
+    ...(freshness.noteVariants ?? []).map((_, index) => ({ ...shortest, note: index })),
     ...(freshness.note ? [{ ...shortest, note: "none" as const }] : []),
     ...(freshness.schedule ? [{ ...shortest, note: "none" as const, schedule: "none" as const }] : []),
   ];

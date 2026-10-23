@@ -9,21 +9,22 @@ import { TestPaneProvider, createTestPaneConfig } from "../../../test-support/pa
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { exportPaneTable } from "../../../state/pane-table-export-registry";
+import { createRemoteUiRegistry, RemoteUiRegistryProvider, type RemoteUiRegistry } from "../../../remote/semantic-tree";
 import { RelativeValuationPane } from "./relative-valuation-pane";
 
 const tui = createOpenTuiTestHarness();
 const paneId = "relative-valuation:test";
-function Harness({ width }: { width: number }) {
+function Harness({ width, symbols = ["PLD", "FRESH", "MISSING"], registry = createRemoteUiRegistry() }: { width: number; symbols?: string[]; registry?: RemoteUiRegistry }) {
   const config = createTestPaneConfig("/tmp/gloom-relative-valuation-test", {
-    instanceId: paneId, paneId: "relative-valuation-pane", settings: { symbols: ["PLD", "FRESH", "MISSING"] },
+    instanceId: paneId, paneId: "relative-valuation-pane", settings: { symbols },
   });
   const state = createInitialState(config);
-  return <TestPaneProvider state={state} paneId={paneId} pluginId="ticker-research" runtime={createTestPluginRuntime()}>
+  return <RemoteUiRegistryProvider registry={registry}><TestPaneProvider state={state} paneId={paneId} pluginId="ticker-research" runtime={createTestPluginRuntime()}>
     <PaneFooterProvider>{(footer) => <Box width={width} height={16} flexDirection="column">
       <Box width={width} height={15}><RelativeValuationPane paneId={paneId} paneType="relative-valuation-pane" focused width={width} height={15} /></Box>
       <PaneFooterBar footer={footer} focused width={width} />
     </Box>}</PaneFooterProvider>
-  </TestPaneProvider>;
+  </TestPaneProvider></RemoteUiRegistryProvider>;
 }
 async function settle() {
   for (let i = 0; i < 5; i++) await act(async () => { await new Promise((r) => setTimeout(r, 0)); await tui.setup().renderOnce(); });
@@ -90,4 +91,34 @@ test("stale fundamentals retain their disclosure and export provenance with a fr
   expect(tui.frame()).not.toContain("Fundamentals stale");
   await exportPaneTable(paneId, "rv-fresh-fundamentals.csv");
   expect(takeSavedTextFile()!.text).toContain("PLD,Fundamentals retrieved,2026-09-11T23:52:16.139Z,Stale,false");
+});
+
+test("euro and dollar caps under MCAP USD name the rate in the footer, beside the period the figures run through, and a capture reads both", async () => {
+  const quarters = [{ date: "2026-03-31" }, { date: "2026-06-30" }];
+  const rateAsOf = new Date(Math.floor(Date.now() / 60_000) * 60_000 - 3_600_000).toISOString();
+  setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({
+    getExchangeRateSnapshot: async (currency) => ({ fromCurrency: currency, toCurrency: "USD", rate: 1.1612, source: "test",
+      asOf: rateAsOf, fetchedAt: new Date().toISOString(), stale: false }),
+    getTickerFinancials: async (symbol) => {
+      const euro = symbol === "LHA:XETRA";
+      return { annualStatements: [{ date: "2025-12-31" }], quarterlyStatements: quarters, priceHistory: [],
+        quote: { symbol, price: euro ? 7.05 : 546.97, change: 0, changePercent: 0, currency: euro ? "EUR" : "USD", lastUpdated: Date.now() - 60_000,
+          exchangeName: euro ? "XETRA" : "NYSE", dataSource: "delayed" as const, providerId: "gloomberb-cloud", marketCap: euro ? 8.5e9 : 1.14e12 },
+        fundamentals: { financialCurrency: euro ? "EUR" : "USD", revenueGrowth: 0.079, operatingMargin: 0.04 } };
+    },
+  })));
+  const registry = createRemoteUiRegistry();
+  await act(async () => { await tui.render(<Harness width={160} symbols={["LHA:XETRA", "BRK-B"]} registry={registry} />, { width: 160, height: 16 }); });
+  await settle();
+  const footer = `MCAP USD at EUR/USD 1.1612 (${rateAsOf.slice(0, 16).replace("T", " ")} UTC) · fundamentals through 2026-06-30, Q REV% for that quarter`;
+  expect(tui.frame()).toContain(footer);
+  // A capture's status line ends with the same words, after each market's session, from what the pane publishes.
+  const published = registry.snapshot().find((node) => node.role === "report-freshness")?.metadata;
+  const shorter = "MCAP USD at EUR/USD 1.1612 · fundamentals through 2026-06-30, Q REV% for that quarter";
+  expect(published).toMatchObject({ datesEachVenue: true, note: footer, noteVariants: [shorter, "MCAP USD at EUR/USD 1.1612 · fundamentals through 2026-06-30", "MCAP USD at EUR/USD 1.1612"] });
+  expect((published?.observations as Array<Record<string, unknown>>).map((row) => row.delayMinutes)).toEqual([15, 15]);
+  // A narrow pane keeps the rate and the period, without the rate's time.
+  await act(async () => { await tui.render(<Harness width={80} symbols={["LHA:XETRA", "BRK-B"]} />, { width: 80, height: 16 }); });
+  await settle();
+  expect(tui.frame()).toContain("MCAP USD at EUR/USD 1.1612 · fundamentals through 2026-06-30 ");
 });

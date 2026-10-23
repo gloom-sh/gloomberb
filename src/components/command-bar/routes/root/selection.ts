@@ -41,7 +41,7 @@ interface RootSelectionCommandOptions {
   openPaneTemplateWorkflow: (template: PaneTemplateDef, options?: { arg?: string }) => void;
   pluginCommandResultItems: (command: CommandDef, shortcutArg: string) => ResultItem[];
   runDirectCommand: (command: Command, arg: string) => void;
-  runSecurityDescriptionShortcut: (query?: string) => void | Promise<void>;
+  runSecurityDescriptionShortcut: (query?: string, options?: { forceNewPane?: boolean }) => void | Promise<void>;
   setRootQuery: (query: string) => void;
   startThemePicker: (arg: string) => void;
 }
@@ -142,6 +142,7 @@ export function buildImmediateRootSelection(options: RootSelectionCommandOptions
           right: match.command.prefix,
           shortcutQuery: match.command.prefix,
           action: () => { void options.runSecurityDescriptionShortcut(inferredTicker); },
+          secondaryAction: () => { void options.runSecurityDescriptionShortcut(inferredTicker, { forceNewPane: true }); },
         };
       }
       return {
@@ -162,6 +163,7 @@ export function buildImmediateRootSelection(options: RootSelectionCommandOptions
       right: match.command.prefix,
       shortcutQuery: match.command.prefix,
       action: () => { void options.runSecurityDescriptionShortcut(match.arg); },
+      secondaryAction: () => { void options.runSecurityDescriptionShortcut(match.arg, { forceNewPane: true }); },
     };
   }
 

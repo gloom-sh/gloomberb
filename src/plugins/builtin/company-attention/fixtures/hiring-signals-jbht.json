@@ -1,0 +1,148 @@
+{
+ "generatedAt": "2026-10-19T14:00:00.000Z",
+ "proRequired": true,
+ "preview": false,
+ "symbol": "JBHT",
+ "name": "HUNT J B TRANSPORT SERVICES INC",
+ "week": "2026-10-12",
+ "watchedSince": "2026-09-18",
+ "held": null,
+ "skipped": [],
+ "signals": [
+  {
+   "symbol": "JBHT",
+   "name": "HUNT J B TRANSPORT SERVICES INC",
+   "sector": "Industrials",
+   "industry": "Integrated Freight & Logistics",
+   "sourceTickers": [
+    "JBHT"
+   ],
+   "week": "2026-10-12",
+   "topTitles": [
+    {
+     "title": "Customer Experience Representative - MXO",
+     "count": 2
+    }
+   ],
+   "places": [
+    {
+     "label": "Querétaro, MX",
+     "count": 7
+    }
+   ],
+   "postings": [
+    {
+     "id": "20147312",
+     "title": "Carrier Payable / Invoicing Representative I - MXO",
+     "url": "https://jbhunt.wd501.myworkdayjobs.com/Careers/job/Quertaro-QE---Avenida-Anillo-Vial-Fray-Junpero-Serra-21260/Carrier-Payable---Invoicing-Representative-I---MXO_00648311",
+     "location": "Querétaro, QE - Avenida Anillo Vial Fray Junípero Serra 21260",
+     "country": "MX",
+     "jobFunction": "finance",
+     "seniority": "entry",
+     "firstSeenAt": "2026-10-16T16:30:18.808Z",
+     "closedAt": "2026-10-18T16:43:45.197Z",
+     "sourceTicker": "JBHT"
+    },
+    {
+     "id": "19380811",
+     "title": "Customer Experience Representative - MXO",
+     "url": "https://jbhunt.wd501.myworkdayjobs.com/Careers/job/Quertaro-QE---Avenida-Anillo-Vial-Fray-Junpero-Serra-21260/Customer-Experience-Representative---MXO_00648328-1",
+     "location": "Querétaro, QE - Avenida Anillo Vial Fray Junípero Serra 21260",
+     "country": "MX",
+     "jobFunction": "customer",
+     "seniority": "entry",
+     "firstSeenAt": "2026-10-15T16:25:18.984Z",
+     "closedAt": "2026-10-19T16:53:10.391Z",
+     "sourceTicker": "JBHT"
+    },
+    {
+     "id": "19380806",
+     "title": "Customer Experience Appointment Representative - MXO",
+     "url": "https://jbhunt.wd501.myworkdayjobs.com/Careers/job/Quertaro-QE---Avenida-Anillo-Vial-Fray-Junpero-Serra-21260/Customer-Experience-Appointment-Representative---MXO_00648310",
+     "location": "Querétaro, QE - Avenida Anillo Vial Fray Junípero Serra 21260",
+     "country": "MX",
+     "jobFunction": "customer",
+     "seniority": "entry",
+     "firstSeenAt": "2026-10-15T16:25:18.984Z",
+     "closedAt": "2026-10-18T16:43:45.197Z",
+     "sourceTicker": "JBHT"
+    },
+    {
+     "id": "19380805",
+     "title": "Sales Executive - MXO",
+     "url": "https://jbhunt.wd501.myworkdayjobs.com/Careers/job/Quertaro-QE---Avenida-Anillo-Vial-Fray-Junpero-Serra-21260/Sales-Executive---MXO_00648335-1",
+     "location": "Querétaro, QE - Avenida Anillo Vial Fray Junípero Serra 21260",
+     "country": "MX",
+     "jobFunction": "sales",
+     "seniority": "executive",
+     "firstSeenAt": "2026-10-15T16:25:18.984Z",
+     "closedAt": "2026-10-17T16:37:50.068Z",
+     "sourceTicker": "JBHT"
+    },
+    {
+     "id": "19380800",
+     "title": "Road Maintenance Coordinator -MXO",
+     "url": "https://jbhunt.wd501.myworkdayjobs.com/Careers/job/Quertaro-QE---Avenida-Anillo-Vial-Fray-Junpero-Serra-21260/Road-Maintenance-Coordinator--MXO_00648302",
+     "location": "Querétaro, QE - Avenida Anillo Vial Fray Junípero Serra 21260",
+     "country": "MX",
+     "jobFunction": "operations",
+     "seniority": "entry",
+     "firstSeenAt": "2026-10-15T16:25:18.984Z",
+     "closedAt": "2026-10-18T16:43:45.197Z",
+     "sourceTicker": "JBHT"
+    },
+    {
+     "id": "19380799",
+     "title": "Customer Experience Representative - MXO",
+     "url": "https://jbhunt.wd501.myworkdayjobs.com/Careers/job/Quertaro-QE---Avenida-Anillo-Vial-Fray-Junpero-Serra-21260/Customer-Experience-Representative---MXO_00648314",
+     "location": "Querétaro, QE - Avenida Anillo Vial Fray Junípero Serra 21260",
+     "country": "MX",
+     "jobFunction": "customer",
+     "seniority": "entry",
+     "firstSeenAt": "2026-10-15T16:25:18.984Z",
+     "closedAt": "2026-10-17T16:37:50.068Z",
+     "sourceTicker": "JBHT"
+    },
+    {
+     "id": "19380786",
+     "title": "Customer Experience Support - MXO",
+     "url": "https://jbhunt.wd501.myworkdayjobs.com/Careers/job/Quertaro-QE---Avenida-Anillo-Vial-Fray-Junpero-Serra-21260/Customer-Experience-Support---MXO_00648312",
+     "location": "Querétaro, QE - Avenida Anillo Vial Fray Junípero Serra 21260",
+     "country": "MX",
+     "jobFunction": "customer",
+     "seniority": "mid",
+     "firstSeenAt": "2026-10-15T16:25:18.984Z",
+     "closedAt": "2026-10-17T16:37:50.068Z",
+     "sourceTicker": "JBHT"
+    }
+   ],
+   "why": "7 new roles in Mexico in the week of Oct 12, 2026, the first seen there since Sep 18, 2026: none of the 703 postings seen on its boards since then (98% of them placed) was in Mexico. In Querétaro, MX (7). Most often Customer Experience Representative - MXO (2).",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z",
+   "kind": "new_country",
+   "group": "expansion",
+   "dimension": "country",
+   "key": "MX",
+   "label": "Mexico",
+   "country": "MX",
+   "newRoles": 7,
+   "titles": 6,
+   "history": {
+    "watchedSince": "2026-09-18",
+    "priorPostings": 703,
+    "priorShare": 0.9829302987197724
+   },
+   "baseline": null,
+   "ratio": null,
+   "zScore": null,
+   "companyRatio": null,
+   "flags": [],
+   "reads": 7
+  }
+ ],
+ "history": [],
+ "locked": {
+  "signals": 0,
+  "history": 0
+ }
+}

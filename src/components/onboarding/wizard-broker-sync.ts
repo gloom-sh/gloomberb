@@ -59,6 +59,7 @@ export function useOnboardingBrokerSync({
   importBrokerPositions,
   getConfig,
   createBrokerInstance,
+  enableBrokerInstance,
   onSynced,
   setEditingField,
   setPortfolioSub,
@@ -71,6 +72,7 @@ export function useOnboardingBrokerSync({
   /** The live config and profile creation, for the signed-in path that Add Broker shares. */
   getConfig: () => AppConfig;
   createBrokerInstance: (brokerType: string, label: string, values: Record<string, unknown>) => Promise<BrokerInstanceConfig>;
+  enableBrokerInstance: (instanceId: string) => Promise<void>;
   onSynced: (result: SyncBrokerInstanceResult, config: AppConfig) => void | Promise<void>;
   setEditingField: (editing: boolean) => void;
   setPortfolioSub: Dispatch<SetStateAction<PortfolioSub>>;
@@ -227,6 +229,7 @@ export function useOnboardingBrokerSync({
       const connected = await connectSignedInBrokerProfile(broker, {
         getConfig,
         createBrokerInstance,
+        enableBrokerInstance,
         syncBrokerInstance: (instanceId) => {
           if (brokerSyncAttemptRef.current === attemptId) showSyncing();
           return importInto(instanceId, attemptId, abortController.signal);
@@ -237,7 +240,7 @@ export function useOnboardingBrokerSync({
     } catch (error) {
       failSync(attemptId, error);
     }
-  }, [beginAttempt, createBrokerInstance, failSync, finishSync, getConfig, importInto, setEditingField, showSyncing]);
+  }, [beginAttempt, createBrokerInstance, enableBrokerInstance, failSync, finishSync, getConfig, importInto, setEditingField, showSyncing]);
 
   const syncSelectedBroker = useCallback(async (brokerValueOverrides?: Record<string, string>) => {
     const signedIn = brokerOptions.find((option) => option.id === selectedBrokerId)?.signedIn;

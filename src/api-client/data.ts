@@ -1,5 +1,5 @@
 import type { AttentionPayload, AttentionWindow } from "./attention";
-import type { HiringBoard, HiringCompanyMoves, HiringMovesBoard, HiringMovesFilter, HiringPayload } from "./hiring";
+import type { HiringBoard, HiringCompanyMoves, HiringCompanySignals, HiringMovesBoard, HiringMovesFilter, HiringPayload, HiringSignalGroup, HiringSignalsBoard, HiringSignalsFilter } from "./hiring";
 import type { AppAttentionFilter, AppAttentionPayload, AppRankPayload } from "./app-attention";
 import type { CatalystResponse, CatalystDetail, CatalystFilters, CatalystStatus, CatalystChanges } from "./catalysts";
 import type { KpisPayload, GuidancePayload, KpiQueryOptions } from "./company-kpis";
@@ -38,6 +38,7 @@ import type { MoneyMarketsPayload } from "./money-markets";
 import type { CloudCurveHistory, CloudCurveId, CloudCurveView, CloudWorldCurves } from "./yield-curves";
 import type { CdxBoardPayload, CloudCreditBoardParams, SovrBoardPayload } from "./credit-boards";
 import type { ShortVolumePayload, ShortVolumeScope } from "./short-volume";
+import type { FailsToDeliverPayload, OtcVolumePayload } from "./short-side-publications";
 import type { BeneficialOwnersPayload, CloudBeneficialOwnersParams } from "./beneficial-owners";
 import type { CloudInsiderSignalsParams, InsiderSignalsPayload } from "./insider-signals";
 import type { SocialMentionDayPosts, SocialMentionsPayload, SocialMentionsRange } from "./social-mentions";
@@ -616,6 +617,17 @@ export class CloudDataApi {
     return this.request<HiringMovesBoard | HiringCompanyMoves>(symbol ? `/cloud/hiring/moves/${encodeURIComponent(symbol)}` : `/cloud/hiring/moves?${params}`, { signal });
   }
 
+  /** HIRE's Expansion or Anomalies board of the latest computed week. */
+  async getCloudHiringSignals(group: HiringSignalGroup, query: { limit?: number; offset?: number; kind?: HiringSignalsFilter } = {}, signal?: AbortSignal): Promise<HiringSignalsBoard> {
+    const params = new URLSearchParams({ limit: String(query.limit ?? 100), offset: String(query.offset ?? 0), kind: query.kind ?? "all" });
+    return this.request<HiringSignalsBoard>(`/cloud/hiring/signals/${group}?${params}`, { signal });
+  }
+
+  /** One company's expansion and anomaly signals, both groups. */
+  async getCloudHiringCompanySignals(symbol: string, signal?: AbortSignal): Promise<HiringCompanySignals> {
+    return this.request<HiringCompanySignals>(`/cloud/hiring/signals/company/${encodeURIComponent(symbol)}`, { signal });
+  }
+
   async getCloudAppRankHistory(store: "app-store" | "google-play", appId: string, query: AppAttentionFilter = {}, signal?: AbortSignal): Promise<AppRankPayload> {
     const params = new URLSearchParams(Object.entries(query).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]));
     return this.request<AppRankPayload>(`/cloud/app-attention/app/${store}/${encodeURIComponent(appId)}?${params}`, { signal });
@@ -938,6 +950,14 @@ export class CloudDataApi {
     const text = query.toString();
     const suffix = text ? `?${text}` : "";
     return this.request<IpoCalendarPayload>(`/cloud/ipo/calendar${suffix}`, { signal: signalWithTimeout(options?.signal, 30_000) });
+  }
+
+  async getCloudFailsToDeliver(symbol: string): Promise<FailsToDeliverPayload> {
+    return this.request<FailsToDeliverPayload>(`/cloud/fails-to-deliver?${new URLSearchParams({ symbol })}`, { signal: AbortSignal.timeout(20_000) });
+  }
+
+  async getCloudOtcVolume(symbol: string): Promise<OtcVolumePayload> {
+    return this.request<OtcVolumePayload>(`/cloud/otc-volume?${new URLSearchParams({ symbol })}`, { signal: AbortSignal.timeout(20_000) });
   }
 
   async getCloudShortVolume(symbol: string, scope: ShortVolumeScope = "nms"): Promise<ShortVolumePayload> {
