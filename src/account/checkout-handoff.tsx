@@ -7,6 +7,7 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { apiClient } from "../api-client";
+import { ApiRequestError } from "../api-client/errors";
 import { hasProAccess, usePlanAccess, type PlanAccessUser } from "../api-client/plan-access";
 import { Button } from "../components/ui/button";
 import { DialogActions } from "../components/ui/dialog-actions";
@@ -21,14 +22,14 @@ import { type DialogApi, type PromptContext, useDialogKeyboard } from "../ui/dia
 import { logFailure } from "../utils/log-failure";
 import { accountSession } from "./session";
 
-/** The checkout once it exists and the browser was asked to open it. */
+/** The checkout once it exists; the browser may still be opening it. */
 export interface CheckoutHandoffTarget {
   /** The checkout page itself, which the browser button opens again. */
   url: string;
   /** A short link to the same checkout, to read or scan; null when the server sent none. */
   link: string | null;
-  /** False when no browser could be opened from here. */
-  opened: boolean;
+  /** Settles false when no browser could be opened from here. */
+  opened: Promise<boolean>;
 }
 
 /** Where the account stands while checkout is open in the browser. */
@@ -46,6 +47,17 @@ function checkoutHandoffPlan(user: PlanAccessUser | null | undefined): CheckoutH
 
 /** How often the account is asked again while checkout is open. */
 const POLL_MS = 5_000;
+let pollMs = POLL_MS;
+
+/** A shorter poll, so a test sees Pro arrive without waiting seconds; no argument restores it. */
+export function setCheckoutHandoffPollForTests(ms: number = POLL_MS): void {
+  pollMs = ms;
+}
+
+/** Signed out, or a session the server no longer takes: asking again cannot help. */
+function isAuthFailure(error: unknown): boolean {
+  return error instanceof ApiRequestError && (error.status === 401 || error.status === 403);
+}
 /** Polling stops after this; coming back to the app still refreshes the account. */
 const POLL_FOR_MS = 15 * 60_000;
 /** How long "Pro is on" stays before the dialog closes itself. */
@@ -55,7 +67,7 @@ const PRO_HOLD_MS = 1_500;
 const TERMINAL_DIALOG_ROWS = 12;
 const DESKTOP_DIALOG_ROWS = 10;
 
-function handoffStatus(target: CheckoutHandoffTarget | null, plan: CheckoutHandoffPlan): { text: string; color: string } {
+function handoffStatus(target: { url: string } | null, plan: CheckoutHandoffPlan): { text: string; color: string } {
   if (plan === "pro") return { text: t("Pro is on."), color: colors.positive };
   if (plan === "verify") return { text: t("Checkout done. Confirm your email to turn Pro on."), color: colors.warning };
   if (!target) return { text: t("Opening checkout..."), color: colors.textDim };
@@ -71,6 +83,8 @@ function CheckoutHandoffDialog({
   const { nativePaneChrome } = useUiCapabilities();
   const { height: termHeight } = useViewport();
   const [target, setTarget] = useState<CheckoutHandoffTarget | null>(null);
+  // Null while the browser is still opening it; the button, link and QR show already.
+  const [opened, setOpened] = useState<boolean | null>(null);
   // Re-renders when the account changes; the plan is read from the account itself.
   usePlanAccess();
   const plan = checkoutHandoffPlan(apiClient.getCurrentUser());
@@ -79,7 +93,11 @@ function CheckoutHandoffDialog({
     let live = true;
     // A checkout that could not be created closes this; the caller opens the Cloud page.
     void pending.then(
-      (value) => { if (live) setTarget(value); },
+      (value) => {
+        if (!live) return;
+        setTarget(value);
+        void value.opened.then((result) => { if (live) setOpened(result); });
+      },
       () => { if (live) dismiss(); },
     );
     return () => {
@@ -90,20 +108,29 @@ function CheckoutHandoffDialog({
   useEffect(() => {
     if (!target || plan !== "waiting") return;
     let live = true;
+    let inFlight = false;
     const stopAt = Date.now() + POLL_FOR_MS;
     const timer = setInterval(() => {
-      if (Date.now() > stopAt) {
+      if (!live || inFlight) return;
+      if (Date.now() > stopAt || !apiClient.isSignedIn()) {
         clearInterval(timer);
         return;
       }
+      inFlight = true;
       // A plain read; the session (and with it every footer and tab) is
       // refreshed only once the account has changed.
       void apiClient.getAccountProfile()
         .then((profile) => {
           if (live && checkoutHandoffPlan(profile) !== "waiting") return accountSession.refreshSession();
         })
-        .catch(logFailure("account-upgrade", "Checking for Pro after checkout failed"));
-    }, POLL_MS);
+        .catch((error: unknown) => {
+          if (isAuthFailure(error)) clearInterval(timer);
+          else logFailure("account-upgrade", "Checking for Pro after checkout failed")(error);
+        })
+        .finally(() => {
+          inFlight = false;
+        });
+    }, pollMs);
     return () => {
       live = false;
       clearInterval(timer);
@@ -129,7 +156,7 @@ function CheckoutHandoffDialog({
 
   const title = t("Finish checkout in your browser");
   // Where nothing opened, the terminal host left Stripe's own link on the clipboard.
-  const subtitle = !target || target.opened
+  const subtitle = !target || opened !== false
     ? t("Pro turns on here as soon as it's done.")
     : target.link
       ? t("No browser opens from here. Open the link on any device.")
@@ -179,8 +206,9 @@ function CheckoutHandoffDialog({
 }
 
 /**
- * Shows the hand-off while `target` creates and opens the checkout, and keeps
- * it up until Pro arrives or the person closes it. Resolves true once the
+ * Shows the hand-off while `target` creates the checkout, with the way back
+ * to it as soon as it exists, and keeps it up until Pro arrives or the person
+ * closes it. Resolves true once the
  * account has Pro, otherwise when it is closed.
  */
 export async function promptCheckoutHandoff(

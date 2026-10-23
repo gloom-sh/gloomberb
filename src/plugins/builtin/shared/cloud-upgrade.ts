@@ -147,20 +147,22 @@ async function openCloudUpgrade(
  * Opens checkout with the hand-off over the app: it says checkout is in the
  * browser, reopens that same checkout, shows the short link where no browser
  * opened, and waits for Pro. Settles once the browser was asked to open it;
- * the dialog stays until Pro arrives or it is closed.
+ * the dialog stays until Pro arrives or it is closed. Only a checkout that
+ * cannot be created rejects: a browser that fails to open leaves the link.
  */
 async function openCheckoutWithHandoff(
   dialog: DialogApi,
   rendererHost: Pick<RendererHost, "openExternal">,
   options: CloudUpgradeOptions,
 ): Promise<void> {
-  const target = (async (): Promise<CheckoutHandoffTarget> => {
-    const { url, link } = await apiClient.createCloudCheckout(cloudUpgradeReturnTo(), options.interval ?? "month");
-    const opened = await rendererHost.openExternal(url);
-    return { url, link: link ?? null, opened: opened !== false };
-  })();
+  const target = apiClient.createCloudCheckout(cloudUpgradeReturnTo(), options.interval ?? "month")
+    .then(({ url, link }): CheckoutHandoffTarget => ({
+      url,
+      link: link ?? null,
+      opened: rendererHost.openExternal(url).then((result) => result !== false, () => false),
+    }));
   void promptCheckoutHandoff(dialog, target);
-  await target;
+  await (await target).opened;
 }
 
 /**
