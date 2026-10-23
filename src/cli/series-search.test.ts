@@ -1,8 +1,13 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
+import { apiClient } from "../api-client";
+import { getLoadablePlugins } from "../plugins/catalog";
 import type { SeriesDefinition } from "../series/types";
+import { createDefaultConfig } from "../types/config";
+import type { MarketContext } from "./types";
 import { buildSearchReport } from "./commands/search";
 import { parsePaneCatalogArgs } from "./pane-functions/options";
-import { renderPaneCatalogReport } from "./pane-functions/catalog";
+import { buildPaneCatalogEntries, filterPaneCatalogEntries, renderPaneCatalogReport } from "./pane-functions/catalog";
+import { createPaneCatalog } from "./pane-functions/discovery";
 import { findCatalogSeries } from "./series-search";
 
 const load = () => [];
@@ -93,5 +98,31 @@ test("a search naming a central bank says CBR has its rate, instead of finding n
     ["Federal Reserve rate", "Federal Reserve (United States): policy rate on the CBR board"],
   ] as const) {
     expect(strip(buildSearchReport({ query, candidates: [], series: findCatalogSeries(rates, query, "names") }))).toContain(line);
+  }
+});
+
+test("mortgage, PMMS, NAHB, homebuilder and housing lead to ECST's housing rows and the housing series", async () => {
+  // Catalog discovery starts chat and instantiates the map's chart templates.
+  const restore = [spyOn(apiClient, "getChannels").mockResolvedValue([]), spyOn(apiClient, "geo").mockResolvedValue({ series: [] })];
+  const loadable = getLoadablePlugins();
+  const context = { config: createDefaultConfig("/tmp/series-search-test") } as MarketContext;
+  const registry = await createPaneCatalog(context, loadable);
+  try {
+    const entries = await buildPaneCatalogEntries(registry, context);
+    const charted = (query: string) => findCatalogSeries(loadable, query).map((match) => match.expression);
+    for (const query of ["mortgage", "PMMS", "homebuilder", "housing"]) {
+      expect(filterPaneCatalogEntries(entries, query).map((entry) => entry.token), query).toContain("ECST");
+    }
+    expect(charted("PMMS")).toEqual(["FRED:MORTGAGE30US", "FRED:MORTGAGE15US", "FRED:MORTGAGE30US10Y"]);
+    expect(charted("NAHB")).toEqual(["FRED:NAHBHMI"]);
+    expect(charted("mortgage")).toEqual(expect.arrayContaining(["FRED:MORTGAGE30US", "FRED:MORTGAGE15US", "FRED:MORTGAGE30US10Y"]));
+    for (const query of ["homebuilder", "housing"]) {
+      expect(charted(query), query).toEqual(expect.arrayContaining([
+        "FRED:EXHOSLUSM495S", "FRED:MORTGAGE30US", "FRED:MORTGAGE15US", "FRED:MORTGAGE30US10Y", "FRED:NAHBHMI",
+      ]));
+    }
+  } finally {
+    registry.destroy();
+    for (const spy of restore) spy.mockRestore();
   }
 });

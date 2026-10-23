@@ -58,6 +58,8 @@ export interface StatDef {
   staleAfterMs: number;
   /** Searchable description; the long-form reference lives in docs/economics-reference.md. */
   note: string;
+  /** Other words the catalog and the pane's filter find it by: `PMMS` for the mortgage rate. */
+  keywords?: readonly string[];
   /** Concise measurement identity that must remain beside the values. */
   measurementBasis?: string;
   /**

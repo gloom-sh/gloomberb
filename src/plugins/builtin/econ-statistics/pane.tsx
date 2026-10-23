@@ -63,6 +63,7 @@ function matchesQuery(view: StatViewModel, query: string): boolean {
     view.stat.seriesId,
     categoryLabel(view.stat.category),
     view.stat.note,
+    ...view.stat.keywords ?? [],
   ].join(" ").toLowerCase();
   return query.split(/\s+/).every((token) => haystack.includes(token));
 }

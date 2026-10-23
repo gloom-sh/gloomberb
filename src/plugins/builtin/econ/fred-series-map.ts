@@ -35,6 +35,10 @@ const SERIES_MAP: Record<string, FredMapping> = {
   "building permits": { seriesId: "PERMIT", displayMode: "level", relatedTickers: ["XHB", "ITB"] },
   "existing home sales": { seriesId: "EXHOSLUSM495S", displayMode: "level", relatedTickers: ["XHB"] },
   "new home sales": { seriesId: "HSN1F", displayMode: "level", relatedTickers: ["XHB", "ITB"] },
+  // Freddie Mac's PMMS, not the MBA's contract rate ("mba 30-year mortgage rate"), which is another survey.
+  "30-year mortgage rate": { seriesId: "MORTGAGE30US", displayMode: "level", relatedTickers: ["XHB", "ITB"] },
+  "15-year mortgage rate": { seriesId: "MORTGAGE15US", displayMode: "level", relatedTickers: ["XHB", "ITB"] },
+  "nahb housing market index": { seriesId: "NAHBHMI", displayMode: "level", relatedTickers: ["XHB", "ITB"] },
   "durable goods orders m/m": { seriesId: "DGORDER", displayMode: "mom", relatedTickers: ["XLI", "SPY"] },
   "core durable goods orders m/m": { seriesId: "ADXTNO", displayMode: "mom", relatedTickers: ["XLI"] },
   "factory orders m/m": { seriesId: "AMTMNO", displayMode: "mom", relatedTickers: ["XLI"] },

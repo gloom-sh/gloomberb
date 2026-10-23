@@ -25,6 +25,8 @@ const thousands = (value: number) => `${formatNumber(value / 1000, value >= 10_0
 const signedThousands = (value: number) =>
   `${value > 0 ? "+" : ""}${formatNumber(value, 0)}k`;
 const billions = (value: number) => `${formatNumber(value, 0)}B`;
+/** A spread already scaled to basis points; the label says the unit. */
+const basisPoints = (value: number) => formatNumber(value, 0);
 
 function stat(def: StatDef): StatDef {
   return def;
@@ -443,6 +445,41 @@ export const STATS: readonly StatDef[] = [
     staleAfterMs: MONTHLY_LATE,
     note: "Newly built homes sold, at an annual rate.",
     limit: 900,
+  }),
+  stat({
+    id: "mortgage-30y",
+    measurementBasis: "Weekly · Freddie Mac PMMS",
+    label: "30-Year Mortgage Rate",
+    shortLabel: "30Y mortgage rate",
+    category: "housing",
+    seriesId: "MORTGAGE30US",
+    transform: "level",
+    direction: "neutral",
+    axisUnit: "%",
+    formatValue: pct2,
+    reference: null,
+    staleAfterMs: WEEKLY,
+    note: "Freddie Mac's weekly average 30-year fixed mortgage rate, what a home purchase is financed at.",
+    keywords: ["mortgage rates", "PMMS", "Freddie Mac", "homebuilders"],
+  }),
+  stat({
+    id: "mortgage-spread",
+    measurementBasis: "30Y mortgage minus 10Y Treasury on the PMMS date",
+    label: "Mortgage–10Y Spread (bp)",
+    shortLabel: "Mortgage–10Y (bp)",
+    category: "housing",
+    seriesId: "MORTGAGE30US10Y",
+    derivedFrom: ["mortgage-30y", "ten-year"],
+    transform: "level",
+    // Gloom Cloud serves it in percentage points, as FRED does its spreads.
+    scale: 100,
+    direction: "neutral",
+    axisUnit: "",
+    formatValue: basisPoints,
+    reference: null,
+    staleAfterMs: WEEKLY,
+    note: "The 30-year mortgage rate less the 10-year Treasury yield on each survey date, how much mortgages pay over Treasuries.",
+    keywords: ["mortgage spread", "PMMS", "homebuilders"],
   }),
   // ---- Rates & money ---------------------------------------------------
   stat({

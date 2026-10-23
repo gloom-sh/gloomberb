@@ -1130,11 +1130,13 @@ By rating, AAA to BBB: `BAMLC0A1CAAAEY`, `BAMLC0A2CAAEY`, `BAMLC0A3CAEY`, `BAMLC
 
 **What the table prints**
 
-- Every value to the series' own precision (FRED's `5.1` prints as `5.10` beside `5.09`). Exports keep the value as FRED gives it. Spreads (`T10Y2Y`, `T10Y3M`, the ICE BofA option-adjusted spreads) print in basis points.
+- Every value to the series' own precision (FRED's `5.1` prints as `5.10` beside `5.09`). Exports keep the value as FRED gives it. Spreads (`T10Y2Y`, `T10Y3M`, `MORTGAGE30US10Y`, the ICE BofA option-adjusted spreads) print in basis points.
 - A monthly or quarterly series is dated by its period in the closing line (`Aug 2026 (monthly)`). A flow at a seasonally adjusted annual rate says so in its value header (`Value (Billions of Dollars, annual rate)`). A series FRED publishes late (`UMCSENT`) carries a note saying where the newer reading is.
 - A Treasury yield whose newest session Gloom Cloud read from the Treasury before FRED listed it says `Source: U.S. Treasury via FRED, published 2026-10-09`, and the row carries `publisher` and `publishedAt` in every export. Values FRED lists stay `Source: FRED`.
 
 **Türkiye's CPI.** FRED does not carry it, so it is served as `TURCPIYOY` (percent change from a year earlier) and `TURCPIMOM` (from the month before), under Inflation, with TurkStat's figures as the Central Bank of the Republic of Türkiye publishes them (`Source: TurkStat via the CBRT`). The data catalog charts them as `FRED:TURCPIYOY` and `FRED:TURCPIMOM`.
+
+**Housing.** Under Housing beside starts, permits and home sales: Freddie Mac's weekly mortgage rates (`MORTGAGE30US`, `MORTGAGE15US`, the PMMS survey, dated its Thursday release) and two series FRED does not have. `MORTGAGE30US10Y` is the 30-year rate less the 10-year Treasury yield (`DGS10`) on each survey date, the session before when the Treasury market is closed that day; it prints in basis points and says how it is computed under the table. `NAHBHMI` is NAHB's builder sentiment index (the Housing Market Index), each month as first released, read from the economic calendar's actuals: a month is dated its first day, every value carries its release time (`Source: NAHB via the economic calendar, published 2026-10-19`), and its history starts with the calendar's in January 2026. `fn ECST` lists the 30-year rate and the spread under Housing; `catalog mortgage`, `catalog PMMS`, `catalog NAHB` and `catalog homebuilder` find them, and the data catalog charts each as `FRED:<id>`.
 
 **Exports.** Every export calls the observation `value`. Its unit is the row's `currency_or_unit` (`metadata.unit` in `--json`): `bp` for a spread (`315` for 3.15 percentage points), `pct` for a percent series, FRED's own units for any other (`Index 1982-1984=100`, `Billions of Dollars, annual rate`). `interval` is FRED's frequency (`daily`, `monthly`). `metadata.notes` and `metadata.latestObservation` carry the notes and the latest observation.
 
