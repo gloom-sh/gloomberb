@@ -13,7 +13,10 @@ afterEach(() => setSystemTime());
 
 const fx = marketDataCliCommands.find((command) => command.name === "fx")!;
 
-type Leg = number | { rate: number; asOf: number; staleAt: number; delayMinutes?: number };
+type Leg = number | {
+  rate: number; asOf: number; staleAt: number; delayMinutes?: number;
+  intradayBar?: { start: number; minutes: number }; staleReason?: string;
+};
 
 function harness(baseCurrency: string, rates: Record<string, Leg>) {
   const config = createDefaultConfig("/tmp/gloom-fx-command-fixture");
@@ -29,7 +32,8 @@ function harness(baseCurrency: string, rates: Record<string, Leg>) {
       if (leg == null) throw new Error(`Missing ${currency}/USD`);
       return typeof leg === "number"
         ? { value: leg, fetchedAt: Date.now(), staleAt: Infinity, expiresAt: Infinity, source: "fx" }
-        : { value: leg.rate, asOf: leg.asOf, delayMinutes: leg.delayMinutes, fetchedAt: Date.now(), staleAt: leg.staleAt, expiresAt: Infinity, source: "fx" };
+        : { value: leg.rate, asOf: leg.asOf, delayMinutes: leg.delayMinutes, intradayBar: leg.intradayBar, staleReason: leg.staleReason,
+          fetchedAt: Date.now(), staleAt: leg.staleAt, expiresAt: Infinity, source: "fx" };
     } }) },
   });
   /** What a text and a JSON run print, closing line included. */
@@ -142,6 +146,31 @@ test("a pair ends with the source line a quote does, dated and held back as its 
   await fx.execute(["EUR"], identity.context);
   expect(identity.output("text")[0]).toBe("1 EUR = 1 EUR  (EUR/EUR 1)");
   expect(JSON.parse(identity.output("json")[0]!).metadata).toBeUndefined();
+});
+
+test("a rate that is its pair's bar says which bar, and a stale one why it stands", async () => {
+  // Fri 23 Oct 2026: BRLUSD=X printed nothing from 03:20 UTC while USD/BRL's five-minute bars ran on.
+  setSystemTime(new Date("2026-10-23T06:53:00Z"));
+  const now = Date.now();
+  const bar = harness("USD", { BRL: {
+    rate: 1 / 5.05139, asOf: Date.parse("2026-10-23T06:35:00Z"), staleAt: now + 3_600_000, delayMinutes: 15,
+    intradayBar: { start: Date.parse("2026-10-23T06:30:00Z"), minutes: 5 },
+  } });
+  await fx.execute(["USD/BRL"], bar.context);
+  const json = JSON.parse(bar.output("json")[0]!);
+  expect(json.warnings).toEqual(["BRL/USD: the rate is the close of the 06:30–06:35 UTC 5-min bar, as the pair's quotes had stopped behind it."]);
+  expect(json.metadata.freshness).toMatchObject({ asOf: "2026-10-23T06:35:00.000Z", status: "delayed", delayMinutes: 15 });
+
+  const reason = "No newer price is available, as the pair's 5-minute bars have nothing after this one.";
+  const stale = harness("USD", { BRL: {
+    rate: 1 / 5.0523, asOf: Date.parse("2026-10-23T03:20:00Z"), staleAt: now - 1, delayMinutes: 15, staleReason: reason,
+  } });
+  await fx.execute(["USD/BRL"], stale.context);
+  expect(JSON.parse(stale.output("json")[0]!).warnings).toEqual([`BRL/USD: ${reason}`]);
+  // A rate that is current says nothing of why it would stand.
+  const current = harness("USD", { BRL: { rate: 1 / 5.0523, asOf: now - 60_000, staleAt: now + 60_000, staleReason: reason } });
+  await fx.execute(["USD/BRL"], current.context);
+  expect(JSON.parse(current.output("json")[0]!).warnings).toBeUndefined();
 });
 
 test("the text line states both directions in figures that survive tiny and large rates", () => {
