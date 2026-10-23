@@ -51,7 +51,7 @@ import { savedListingCoinNote } from "../../../../cli/commands/crypto-hints";
 import { findNamedCollection } from "../../../../portfolio/collection-name";
 import { wholeUnitQuantityProblem } from "../../../../portfolio/position-quantity";
 import {
-  CLI_COST_FX_WORDING, readCostFxRate, readPurchaseDate, resolvePositionCostFx, type CostFxHistoryClient,
+  CLI_COST_FX_WORDING, loadPurchaseDateCostFx, readCostFxRate, readPurchaseDate, resolvePositionCostFx, type CostFxHistoryClient,
 } from "../../../../portfolio/cost-fx";
 import { lotCostFxRate, sameCurrency } from "../../../../portfolio/position-metrics";
 import { formatFxRate } from "../../../../cli/fx-pair";
@@ -358,9 +358,16 @@ async function setPositionCommand(
       if (adopted) await saveConfig(adopted);
       const saved = savedListingName(result.ticker);
       const quantity = formatMarketQuantity(shares, { assetCategory: result.ticker.metadata.assetCategory });
-      // A cost in another currency converts at the rate it was bought at when the lot has one, else at today's, and says so.
+      // A cost in another currency converts at the rate it was bought at when the lot has one, else at the close of the
+      // purchase date it kept, as portfolio show reads it, else at today's, and says so.
       const foreign = !sameCurrency(currency, portfolioCurrency);
-      const boughtRate = lot ? lotCostFxRate(lot, currency, portfolioCurrency) : null;
+      const storedRate = lot ? lotCostFxRate(lot, currency, portfolioCurrency) : null;
+      const dated = foreign && storedRate === null && lot?.dateAcquired
+        ? (await loadPurchaseDateCostFx([result.ticker], { into: portfolioCurrency, history: cost.history ?? apiClient, portfolioId: portfolio.id }))
+          .values().next().value ?? null
+        : null;
+      const boughtRate = storedRate ?? dated?.rate ?? null;
+      const rateDate = costFx?.date ?? dated?.date ?? null;
       // The purchase date shows where it was given or sets the rate; a lot in the portfolio's currency otherwise prints as it did.
       const purchaseDate = lot?.dateAcquired && (cost.date || foreign) ? lot.dateAcquired : null;
       ctx.printResult({
@@ -368,7 +375,7 @@ async function setPositionCommand(
           changed: true, ...listingFields(saved), portfolio: portfolio.name, shares, avgCost, currency,
           ...(future ? { contractMultiplier: multiplier ?? null, contractSize: size?.size ?? null } : {}),
           ...(purchaseDate ? { dateAcquired: purchaseDate } : {}),
-          ...(foreign ? { costFxRate: boughtRate, costFxCurrency: portfolioCurrency, costFxDate: costFx?.date ?? null } : {}),
+          ...(foreign ? { costFxRate: boughtRate, costFxCurrency: portfolioCurrency, costFxDate: rateDate } : {}),
         },
         warnings: notes.length > 0 ? notes : undefined,
       }, {
@@ -382,11 +389,13 @@ async function setPositionCommand(
             ["Currency", currency],
             ...(purchaseDate ? [["Purchase Date", purchaseDate] as [string, string]] : []),
             ...(boughtRate !== null
-              ? [["Cost FX", `${formatFxRate(boughtRate)} ${portfolioCurrency} per ${currency}${costFx?.date ? ` (${costFx.date} close)` : ""}`] as [string, string]]
+              ? [["Cost FX", `${formatFxRate(boughtRate)} ${portfolioCurrency} per ${currency}${rateDate ? ` (${rateDate} close)` : ""}`] as [string, string]]
               : []),
           ]),
           ...(foreign && boughtRate === null
-            ? [cliStyles.muted(`Cost converted at today's rate into ${portfolioCurrency}; add --date or --cost-fx to use the rate when bought.`)]
+            ? [cliStyles.muted(lot?.dateAcquired
+              ? `Cost converted at today's rate into ${portfolioCurrency}: the FX close of the purchase date could not be read.`
+              : `Cost converted at today's rate into ${portfolioCurrency}; add --date or --cost-fx to use the rate when bought.`)]
             : []),
         ].join("\n"),
       });

@@ -1435,7 +1435,7 @@ A company's listings are the ones Gloom Cloud groups under one issuer (share cla
 
 **Searching the catalog**
 
-- A plain `gloomberb catalog <query>` names the terms it matches under the functions. A multi-word query lists the functions that carry every word in their name or description, or the few closest when none does (`--all` lists every match).
+- A plain `gloomberb catalog <query>` names the terms it matches under the functions. Beside a term the query names, the related ones hold its words whole: `catalog float` relates no floating rate note. A multi-word query lists the functions that carry every word in their name or description, or the few closest when none does (`--all` lists every match).
 - A topic no function covers, such as `catalog "defense budget"`, says so and names the nearest functions. `catalog "borrow fee"`, `catalog utilization` and `catalog locate` say that borrow data is not available and name `SI`, `SIW` and `SIV`.
 - A `search` that finds no ticker lists the functions that carry every word of the query instead (`search "target weights rebalance"` names `PF`).
 
@@ -1674,7 +1674,7 @@ A portfolio's header totals and its COST, MKT VAL, DAY, P&L and MCAP columns are
 A holding in another currency than the portfolio's (a US stock in a TRY portfolio) can be entered at its cost in either currency.
 
 - **In the portfolio's currency:** `portfolio position set Lira BRK-B 10 20310 TRY`. The value converts at today's rate, so P&L carries the currency's move.
-- **In its own currency:** `portfolio position set Lira BRK-B 10 410 USD`. The cost converts at today's rate like its value, which leaves the lira's fall since purchase out of the P&L. The command says so (`Cost converted at today's rate into TRY; add --date or --cost-fx to use the rate when bought.`), and so does a line under `portfolio show`.
+- **In its own currency:** `portfolio position set Lira BRK-B 10 410 USD`. Without a purchase date or rate the cost converts at today's rate, leaving the lira's fall since purchase out of the P&L, and the command and `portfolio show` say so.
 
 **Fixing the rate**
 
@@ -1684,8 +1684,8 @@ A holding in another currency than the portfolio's (a US stock in a TRY portfoli
 | `--cost-fx 31.37` | The rate paid, in the portfolio's currency per unit of the holding's. With both options, `--cost-fx` is the rate |
 
 - A typed rate is checked against today's. A rate that looks inverted (0.0319 when today's is 41.37 TRY per USD), a rate per pound for a holding in pence (`GBX`), or one more than 100 times off today's is refused, and the purchase date is the way around it. If the daily closes cannot be read (offline or signed out), the command suggests `--cost-fx`.
-- The command prints `Cost FX  31.3694 TRY per USD (2024-03-01 close)`. Cost, P&L and the COST column convert at that rate whenever the portfolio is valued in TRY, and at today's rate in any other currency.
-- The `--json` and `--csv` rows of `portfolio show` add `costFxRate` and `costFxCurrency` on a holding entered by hand in another currency (null when its cost converts at today's rate).
+- The command prints `Cost FX  31.3694 TRY per USD (2024-03-01 close)`; cost, P&L and the COST column use that rate. Valued in another currency (`config set baseCurrency JPY`), a dated holding uses that date's close in it.
+- The `--json` and `--csv` rows of `portfolio show` add `costFxRate` and `costFxCurrency` on a holding entered by hand in another currency (null at today's rate).
 - A position set again in the same currency keeps its purchase date and rate unless new ones are given.
 
 ### In the forms
