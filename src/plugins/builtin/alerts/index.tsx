@@ -1,4 +1,7 @@
 import { startCatalystAlerts } from "./catalysts";
+import { notTheCoinNote } from "../../../cli/commands/crypto-hints";
+import { createFiredAlertRecorder, firedAlertTime, quoteSourceWords } from "./fired-log";
+import { checkIvLevelAlertsNow, startIvLevelAlerts } from "./iv-level";
 import { logFailure } from "../../../utils/log-failure";
 import { RESEARCH_LABELS, researchWizardFields, createResearchAlert } from "./research-builder";
 import { newYorkToday } from "../earnings/board-model";
@@ -13,7 +16,7 @@ import {
   scheduledTargetKey,
 } from "./scheduled";
 import { isResearchAlertKind, MAX_LEAD_DAYS } from "./research-rules";
-import { EVENT_ALERTS_KEY, EVENT_ALERT_TEMPLATES, MAX_EVENT_ALERTS, createEventAlert, readEventAlerts } from "./events";
+import { EVENT_ALERT_TEMPLATES, MAX_EVENT_ALERTS, createEventAlert, eventAlertStoreKey, readEventAlertStores, updateEventAlerts } from "./events";
 import { formatMarketPrice } from "../../../market-data/market/format";
 import { settleTypedListingKey } from "../../../tickers/listing-venues";
 import type { Quote } from "../../../types/financials";
@@ -33,6 +36,7 @@ import { AlertsPane } from "./pane";
 import { alertsCliCommand } from "./cli";
 import {
   createQuoteErrorMessage,
+  farTargetMessage,
   quoteAlertFields,
   quoteErrorAlertFields,
   resolveAlertQuote,
@@ -46,6 +50,7 @@ import type { AlertRule } from "./types";
 
 let catalystAlertsStop: (() => void) | null = null;
 let scheduledAlertsStop: (() => void) | null = null;
+let ivLevelAlertsStop: (() => void) | null = null;
 let pollGeneration = 0;
 let pollTimer: ReturnType<typeof setTimeout> | null = null;
 let alertStream: AlertQuoteStream | null = null;
@@ -67,11 +72,22 @@ export const alertsPlugin: GloomPlugin = {
 
   setup(ctx) {
     const generation = ++pollGeneration;
+    // Every alert the app fires is kept on this device, for History and `fn ALRT --tab history`.
+    const recordFired = createFiredAlertRecorder(ctx.resume, logFailure("alerts.fired-log", "Record fired alert failed"));
     catalystAlertsStop?.();
     catalystAlertsStop = startCatalystAlerts(ctx);
     scheduledAlertsStop?.();
-    scheduledAlertsStop = startScheduledEventAlerts(ctx, scheduledEventSources(ctx.marketData));
-    const notifyTriggered = (alert: AlertRule, price: number) => {
+    scheduledAlertsStop = startScheduledEventAlerts(ctx, scheduledEventSources(ctx.marketData), Date.now, recordFired);
+    ivLevelAlertsStop?.();
+    ivLevelAlertsStop = startIvLevelAlerts(ctx, recordFired);
+    const notifyTriggered = (alert: AlertRule, quote: Quote, firedAt: number) => {
+      const price = quote.price;
+      recordFired({
+        kind: "price", ruleId: alert.id, rule: `${alert.exchange ? `${alert.symbol}:${alert.exchange}` : alert.symbol} ${alert.condition} ${alert.targetPrice}`,
+        firedAt, value: price, ...(quote.currency ? { unit: quote.currency } : {}),
+        quoteAt: firedAlertTime(quote.lastUpdated), source: quoteSourceWords(quote.dataSource),
+        symbol: alert.symbol, ...(alert.exchange ? { exchange: alert.exchange } : {}),
+      });
       ctx.notify({
         body: `${formatAlertDescription(alert)} triggered at ${price}`,
         type: "success",
@@ -111,7 +127,7 @@ export const alertsPlugin: GloomPlugin = {
           alert.status = "triggered";
           alert.triggeredAt = now;
           ctx.log.info("stream: TRIGGERED", { symbol: alert.symbol, price: quote.price });
-          notifyTriggered(alert, quote.price);
+          notifyTriggered(alert, quote, now);
           persist = true;
         }
         streamedBaselines.set(alert.id, quote.price);
@@ -169,6 +185,9 @@ export const alertsPlugin: GloomPlugin = {
         const symbol = (await settleTypedListingKey(input.symbol, { store: ctx.tickerRepository, dataProvider: ctx.marketData })).toUpperCase();
 
         const quote = await resolveAlertQuote(ctx.marketData, symbol);
+        // A target ten times away is a slip or another instrument's price, such as bitcoin's on the BTC fund.
+        const far = farTargetMessage(symbol, input.price, quote.price, symbol.includes(":") ? null : notTheCoinNote(symbol, quote));
+        if (far) throw new Error(far);
 
         const alert = {
           ...createAlert(quote.symbol || symbol, input.condition, input.price),
@@ -189,11 +208,11 @@ export const alertsPlugin: GloomPlugin = {
     ctx.registerCommand({
       id: "set-event-alert",
       label: "Add Event Alert",
-      description: "Create an alert before earnings, CPI or FOMC, when earnings results are out, or for filings, news and market moves",
+      description: "Create an alert before earnings, CPI or FOMC, when earnings results are out, or for filings, news, IV levels and market moves",
       keywords: [
         "alert", "event", "congress", "13f", "fund", "member", "follow", "earnings", "cpi", "fomc", "days before",
         "filing", "filings", "sec", "8-k", "news", "keyword", "analyst", "52-week", "unusual volume", "volume",
-        "short interest", "insider", "catalyst", "implied volatility", "iv spike", "options flow", "perps", "funding",
+        "short interest", "insider", "catalyst", "implied volatility", "iv spike", "iv level", "risk reversal", "skew", "options flow", "perps", "funding",
       ],
       category: "data",
       wizardLayout: "form",
@@ -217,7 +236,8 @@ export const alertsPlugin: GloomPlugin = {
       ],
       async execute(values = {}) {
         const event = values?.event || "congress-watched";
-        const initial = readEventAlerts(ctx.configState.get<string>(EVENT_ALERTS_KEY) || "[]");
+        const readAll = () => readEventAlertStores((key) => ctx.configState.get<string>(key));
+        const initial = readAll();
         if (initial.error) throw new Error(initial.error);
         if (initial.rules.length >= MAX_EVENT_ALERTS)
           throw new Error("Keep at most 40 event alerts.");
@@ -236,7 +256,7 @@ export const alertsPlugin: GloomPlugin = {
           rule = { ...rule, eventDate: lookup.date };
         }
         // Read again: the lookup took a while and the rules may have changed meanwhile.
-        const result = scheduled ? readEventAlerts(ctx.configState.get<string>(EVENT_ALERTS_KEY) || "[]") : initial;
+        const result = scheduled ? readAll() : initial;
         if (result.error) throw new Error(result.error);
         if (
           result.rules.some(
@@ -247,9 +267,12 @@ export const alertsPlugin: GloomPlugin = {
           )
         )
           throw new Error("This event is already followed.");
-        await ctx.configState.set(EVENT_ALERTS_KEY, JSON.stringify([...result.rules, rule]));
+        // An IV level goes in its own list, which released versions never read.
+        const key = eventAlertStoreKey(rule);
+        await ctx.configState.set(key, updateEventAlerts(ctx.configState.get<string>(key), (rules) => [...rules, rule]));
         ctx.notify({ body: "Event alert saved.", type: "success" });
         if (scheduled) checkScheduledEventAlertsNow();
+        if (rule.kind === "iv_level") checkIvLevelAlertsNow();
       },
     });
 
@@ -296,7 +319,7 @@ export const alertsPlugin: GloomPlugin = {
           alert.status = "triggered";
           alert.triggeredAt = Date.now();
           ctx.log.info("poll: TRIGGERED", { symbol: alert.symbol, price: quote.price });
-          notifyTriggered(alert, quote.price);
+          notifyTriggered(alert, quote, alert.triggeredAt);
         }
         streamedBaselines.delete(alert.id);
         Object.assign(alert, quoteAlertFields(quote));
@@ -371,6 +394,8 @@ export const alertsPlugin: GloomPlugin = {
     catalystAlertsStop = null;
     scheduledAlertsStop?.();
     scheduledAlertsStop = null;
+    ivLevelAlertsStop?.();
+    ivLevelAlertsStop = null;
     pollGeneration += 1;
     alertStream?.dispose();
     alertStream = null;

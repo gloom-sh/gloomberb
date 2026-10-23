@@ -35,6 +35,7 @@ import {
   prepareBaseSeriesForStudies,
   presentationBounds,
   applyStudyPresentationTransforms,
+  studyAnchors,
 } from "./series-presentation";
 
 /** Select the provisional seed cadence before provider resolution support arrives. */
@@ -93,7 +94,7 @@ export function seedChartResolutionResult(
   const baseSeries = series.map((entry) => prepareBaseSeriesForStudies(entry, priceComparisonBoundsForSeries(entry, priceComparison) ?? comparisonBounds));
   // Calculate studies from raw buffered inputs, then use the same presentation
   // and visible-window rules as the network result.
-  const studies = resolveStudies(series, spec.studies, resolution);
+  const studies = resolveStudies(series, spec.studies, resolution, undefined, studyAnchors(series, priceComparison, comparisonBounds));
   const axisWarnings: string[] = [];
   const bufferedSeries = assignAxes([
     ...baseSeries,

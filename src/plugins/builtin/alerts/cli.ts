@@ -3,19 +3,25 @@ import { CLI_COMMAND_GROUPS } from "../../../cli/help";
 import { dryRunNote } from "../../../cli/helpers";
 import { requireArg, takeOption } from "../../../cli/commands/command-utils";
 import { requireQuotedListing } from "../../../cli/quote-answer";
-import { EXCHANGE_OPTION, listingReadNotes, requireListingArg } from "../../../cli/listing-arg";
+import { EXCHANGE_OPTION, listingReadNotes, requireListingArg, usListingsOnlyMessage } from "../../../cli/listing-arg";
+import { notTheCoinNote } from "../../../cli/commands/crypto-hints";
 import { saveConfig } from "../../../data/config/store";
+import { resumeStateKey } from "../../registry/plugin-state";
 import type { CliCommandDef } from "../../../types/plugin";
 import type { Quote } from "../../../types/financials";
 import { getActiveQuoteDisplay } from "../../../market-data/market/status";
 import { cliStyles } from "../../../utils/cli-output";
+import { canonicalExchange, isUsListingExchange } from "../../../utils/exchanges";
 import { ambiguousNumberMessage, meantThousandsDot, parsePastedNumber, thousandsDotReadings, type ThousandsDotReadings } from "../../../utils/decimal-comma";
 import { newYorkToday } from "../earnings/board-model";
 import { createAlert, rearmAlert, serializeAlerts } from "./alert-engine";
 import { ALERTS_KEY, ALERTS_PLUGIN_ID } from "./constants";
-import { EVENT_ALERTS_KEY, MAX_EVENT_ALERTS, eventAlertTarget, toggleEventAlert, type EventAlertRule } from "./events";
+import { MAX_EVENT_ALERTS, eventAlertTarget, toggleEventAlert, writeEventAlertStores, type EventAlertRule } from "./events";
 import { alertKindLabel } from "./history";
-import { MAX_LEAD_DAYS, type MacroAlertEvent } from "./research-rules";
+import { IV_LEVEL_CHECKS_KEY, readIvLevelChecks, rearmIvLevelAlert, type IvLevelCheck } from "./iv-level";
+import { farTargetMessage } from "./quotes";
+import { createResearchAlert, formatPremium, ivLevelUnitError, parseAmount, parseIvLevel, researchAlertDescription } from "./research-builder";
+import { IV_LEVEL_RANGES, MAX_LEAD_DAYS, type IvLevelMetric, type MacroAlertEvent } from "./research-rules";
 import {
   MACRO_EVENT_CLI_NAMES,
   createScheduledAlert,
@@ -49,7 +55,7 @@ import type { AlertCondition, AlertRule } from "./types";
  */
 const PRICE_DELIVERY = "the app alerts while it is running; sign in with Cloud sync for email or phone alerts when it is closed";
 
-const ADD_USAGE = "Usage: gloomberb alerts add <symbol> <above|below|crosses> <price>, alerts add <symbol> earnings [--days <n> | results], or alerts add <CPI|FOMC> [--days <n>]";
+const ADD_USAGE = "Usage: gloomberb alerts add <symbol> <above|below|crosses> <price>, alerts add <symbol> earnings [--days <n> | results], alerts add <CPI|FOMC> [--days <n>], alerts add [symbol] news <keyword>, alerts add [symbol] flow [premium] [calls|puts] [sweeps|blocks], alerts add <symbol> <iv|rr> <above|below> <level>, or alerts add <OCC contract> iv spike <points>";
 const DAYS_RULE = `--days takes a whole number of days from 1 to ${MAX_LEAD_DAYS}; without it the alert goes off 1 day before.`;
 
 /** What `alerts add` was asked for, before any listing or date is looked up. */
@@ -61,7 +67,17 @@ export type AlertAddRequest =
   }
   /** `results`: once the report's actual EPS is out, rather than `leadDays` before the date. */
   | { kind: "earnings"; symbol: string; leadDays: number; results?: true }
-  | { kind: "macro"; event: MacroAlertEvent; leadDays: number };
+  | { kind: "macro"; event: MacroAlertEvent; leadDays: number }
+  /** Gloom Cloud's research rules, as Add Event Alert makes them; a news or flow rule without a symbol follows every name (news) or your lists (flow). */
+  | { kind: "news"; symbol: string | null; keyword: string }
+  | { kind: "flow"; symbol: string | null; premium: number; side: "any" | "calls" | "puts"; print: "any" | "sweep" | "block" }
+  /** The symbol's 30-day ATM IV (`atm`, in %) or 25-delta risk reversal (`rr`, in vol points) above or below a level, checked by the running app. */
+  | { kind: "iv_level"; symbol: string; metric: IvLevelMetric; direction: "above" | "below"; level: number }
+  /** One OCC contract's IV rising by `points`. */
+  | { kind: "iv_spike"; contract: string; points: number };
+
+/** The `alerts add` forms Gloom Cloud's research rules take: they follow US listings. */
+type ResearchAddRequest = Extract<AlertAddRequest, { kind: "news" | "flow" | "iv_level" | "iv_spike" }>;
 
 const CONDITIONS: readonly AlertCondition[] = ["above", "below", "crosses"];
 
@@ -79,6 +95,11 @@ const LEADING_GROUP = /^[+-]?\d{1,3}$/;
 export function parseAlertAddArgs(args: readonly string[], days: string | null | undefined, exchange?: string | null): AlertAddRequest {
   const [first, second, third, ...rest] = args;
   if (!first) throw new Error(ADD_USAGE);
+  const research = parseResearchAddArgs(args);
+  if (research) {
+    if (days !== undefined) throw new Error("--days is for earnings and CPI or FOMC alerts, not news, flow or IV alerts.");
+    return research;
+  }
   const leadDays = () => {
     const parsed = days === null ? null : parseLeadDays(days);
     if (parsed == null) throw new Error(DAYS_RULE);
@@ -104,7 +125,7 @@ export function parseAlertAddArgs(args: readonly string[], days: string | null |
   }
   const condition = second.toLowerCase() as AlertCondition;
   if (!CONDITIONS.includes(condition)) {
-    throw new Error(`Unknown alert "${second}". Use above, below or crosses with a price, or earnings with --days.`);
+    throw new Error(`Unknown alert "${second}". Use above, below or crosses with a price, earnings with --days, news with a keyword, flow, iv or rr with above or below and a level, or iv spike on an OCC contract.`);
   }
   if (days !== undefined) throw new Error("--days is for earnings and CPI or FOMC alerts, not price alerts.");
   if (third === undefined) throw new Error(ADD_USAGE);
@@ -123,6 +144,113 @@ export function parseAlertAddArgs(args: readonly string[], days: string | null |
   const thousandsDot = thousandsDotReadings(third);
   return { kind: "price", symbol: first, condition, price: pasted.value, ...(thousandsDot ? { thousandsDot: { ...thousandsDot, text: third.trim() } } : {}) };
 }
+
+const OCC_CONTRACT = /^(?:O:)?[A-Z.]{1,6}\d{6}[CP]\d{8}$/i;
+const LEVEL_DIRECTIONS = ["above", "below"] as const;
+
+/** A level typed for an IV level rule, with its unit or without (`50`, `50%`, `-5.5 pts`), refused with its unit and range when it does not read. */
+function readLevel(metric: IvLevelMetric, typed: string | undefined, symbol: string): number {
+  const word = metric === "atm" ? "iv" : "rr";
+  const example = metric === "atm" ? `alerts add ${symbol} iv above 50` : `alerts add ${symbol} rr below -5`;
+  if (!typed) throw new Error(`Name the level: gloomberb ${example}.`);
+  const unitError = ivLevelUnitError(metric, typed);
+  if (unitError) throw new Error(`${unitError}: gloomberb ${example}.`);
+  const level = parseIvLevel(typed);
+  const { min, max } = IV_LEVEL_RANGES[metric];
+  if (!Number.isFinite(level) || level < min || level > max) {
+    throw new Error(metric === "atm"
+      ? `An ${word} level is the 30-day ATM IV in percent, ${min} to ${max}, not "${typed}": gloomberb ${example}.`
+      : `An ${word} level is the 30-day 25-delta risk reversal in vol points, ${min} to ${max}, not "${typed}": gloomberb ${example}.`);
+  }
+  return level;
+}
+
+/**
+ * The research forms of `alerts add`, the ones Add Event Alert makes: `[symbol] news <keyword>`,
+ * `[symbol] flow [premium] [calls|puts] [sweeps|blocks]`, `<symbol> iv|rr <above|below> <level>` and
+ * `<OCC contract> iv spike <points>`. Null for any other form. A bare `news` or `flow` with no symbol
+ * follows every name or your lists; `NEWS above 10` is still a price alert on a symbol.
+ */
+function parseResearchAddArgs(args: readonly string[]): ResearchAddRequest | null {
+  const [first = "", second, third, ...rest] = args;
+  const word = (value: string | undefined) => value?.toLowerCase() ?? "";
+  const isCondition = (value: string | undefined) => (CONDITIONS as readonly string[]).includes(word(value)) || word(value) === "earnings";
+  const lead = word(first);
+  const [symbol, kind, tail] = (lead === "news" || lead === "flow") && !isCondition(second)
+    ? [null, lead, args.slice(1)] as const
+    : [first, word(second), args.slice(2)] as const;
+  if (kind === "news") {
+    const keyword = tail.join(" ").trim();
+    if (!keyword) throw new Error(`Name a keyword or phrase: gloomberb alerts add ${symbol ?? "AAPL"} news buyback, or alerts add news "rate cut" for any company.`);
+    return { kind: "news", symbol, keyword };
+  }
+  if (kind === "flow") {
+    let premium = 1_000_000;
+    let side: "any" | "calls" | "puts" = "any";
+    let print: "any" | "sweep" | "block" = "any";
+    for (const token of tail) {
+      const lower = token.toLowerCase();
+      if (lower === "calls" || lower === "call") side = "calls";
+      else if (lower === "puts" || lower === "put") side = "puts";
+      else if (lower === "sweeps" || lower === "sweep") print = "sweep";
+      else if (lower === "blocks" || lower === "block") print = "block";
+      else if (Number.isFinite(parseAmount(token))) premium = parseAmount(token);
+      else throw new Error(`A flow alert takes a minimum premium (1m, $250k), calls or puts, and sweeps or blocks, not "${token}".`);
+    }
+    if (premium < 50_000) throw new Error(`The minimum premium is $50,000, not ${formatPremium(premium)}: Gloom Cloud records no smaller print.`);
+    return { kind: "flow", symbol, premium, side, print };
+  }
+  if (!symbol || (kind !== "iv" && kind !== "rr")) return null;
+  if (OCC_CONTRACT.test(symbol)) {
+    if (kind !== "iv" || word(third) !== "spike") {
+      throw new Error(`An option contract takes an IV spike in vol points: gloomberb alerts add ${symbol.toUpperCase()} iv spike 5. For a level, name the underlying: alerts add ${symbol.replace(/^O:/i, "").match(/^[A-Z.]+/i)![0]!.toUpperCase()} iv above 50.`);
+    }
+    // Vol points, with the unit or without it: `5`, `5 pts`.
+    const typed = rest.join(" ");
+    const value = typed && !/%/.test(typed) ? parseIvLevel(typed) : Number.NaN;
+    if (!Number.isFinite(value) || value < 0.1 || value > 100) {
+      throw new Error(`An IV spike is a rise of 0.1 to 100 vol points: gloomberb alerts add ${symbol.toUpperCase()} iv spike 5.`);
+    }
+    return { kind: "iv_spike", contract: symbol.toUpperCase(), points: value };
+  }
+  const metric: IvLevelMetric = kind === "iv" ? "atm" : "rr";
+  const direction = word(third);
+  if (!(LEVEL_DIRECTIONS as readonly string[]).includes(direction)) {
+    throw new Error(`${kind === "iv" ? "An iv" : "An rr"} alert takes above or below and a level: gloomberb alerts add ${symbol} ${kind} ${kind === "iv" ? "above 50" : "below -5"}${kind === "iv" ? ", or iv spike on one OCC contract" : ""}.`);
+  }
+  // The level, with its unit or without it: `50`, `50%`, `-5.5 pts`.
+  return { kind: "iv_level", symbol, metric, direction: direction as "above" | "below", level: readLevel(metric, rest.join(" "), symbol) };
+}
+
+/** The Add Event Alert form's values for a research request, so the CLI makes the rule the dialog makes. */
+function researchFormValues(request: ResearchAddRequest, exchange: string): { kind: string; values: Record<string, string> } {
+  switch (request.kind) {
+    case "news": return { kind: "news_keyword", values: { "news_keyword:keyword": request.keyword,
+      ...request.symbol ? { "news_keyword:symbol": request.symbol, "news_keyword:exchange": exchange } : {} } };
+    case "flow": return { kind: "options_flow", values: { "options_flow:threshold": String(request.premium),
+      "options_flow:direction": request.side, "options_flow:print": request.print,
+      ...request.symbol ? { "options_flow:symbol": request.symbol, "options_flow:exchange": exchange } : {} } };
+    case "iv_level": return { kind: "iv_level", values: { "iv_level:symbol": request.symbol, "iv_level:exchange": exchange,
+      "iv_level:metric": request.metric, "iv_level:direction": request.direction, "iv_level:threshold": String(request.level) } };
+    case "iv_spike": return { kind: "iv_spike", values: { "iv_spike:contract": request.contract, "iv_spike:threshold": String(request.points) } };
+  }
+}
+
+/**
+ * Who checks a research rule and how it reaches you, as docs/usage.md states it: an IV level is read by the
+ * running app; the rest by Gloom Cloud for a signed-in account with Cloud sync, IV spikes and flow on Pro.
+ */
+function researchDelivery(kind: ResearchAddRequest["kind"]): string {
+  if (kind === "iv_level") return "the app checks it every 15 minutes while it is running, on the same option fits as OVDV";
+  const plan = kind === "news" ? "" : " on Gloom Pro";
+  return `Gloom Cloud checks it for a signed-in account with Cloud sync${plan} and sends it to your phone`;
+}
+
+const isResearchRequest = (request: AlertAddRequest): request is ResearchAddRequest =>
+  request.kind === "news" || request.kind === "flow" || request.kind === "iv_level" || request.kind === "iv_spike";
+
+/** The US venue a research rule keeps: one typed and known to it, else any US venue. */
+const RESEARCH_EXCHANGES = new Set(["NASDAQ", "NYSE", "AMEX", "ARCA", "BATS", "OTC"]);
 
 /** `alerts add` as typed, with another price: what an error tells someone to type. */
 function retypeCommand(symbol: string, condition: AlertCondition, price: number, exchange: string | null | undefined): string {
@@ -166,10 +294,12 @@ function priceRow(alert: AlertRule): AlertListRow {
   return { ...alert, kind: "price", target: alert.exchange ? `${alert.symbol}:${alert.exchange}` : alert.symbol };
 }
 
-function eventRow(rule: EventAlertRule, today: string, eventDate: string | null | undefined): AlertListRow {
+function eventRow(rule: EventAlertRule, today: string, eventDate: string | null | undefined, check?: IvLevelCheck): AlertListRow {
   const scheduled = readScheduledRule(rule);
   if (!scheduled) {
-    return { id: rule.id, kind: rule.kind, target: eventAlertTarget(rule), status: rule.status, createdAt: rule.createdAt };
+    const status = rule.status === "active" && rule.triggeredAt ? "triggered" : rule.status;
+    return { id: rule.id, kind: rule.kind, target: eventAlertTarget(rule), status, createdAt: rule.createdAt,
+      ...check ? { lastCheck: check } : {}, ...rule.triggeredAt ? { triggeredAt: rule.triggeredAt } : {} };
   }
   const date = eventDate ?? null;
   return {
@@ -243,7 +373,7 @@ async function requireEventDate(
 export const alertsCliCommand: CliCommandDef = {
   name: "alerts",
   aliases: ["alert"],
-  description: "List, add, and remove price alerts and alerts before earnings, CPI and FOMC",
+  description: "List, add, and remove price alerts, alerts before earnings, CPI and FOMC, and news, options flow and IV alerts",
   help: {
     group: CLI_COMMAND_GROUPS.portfolios,
     usage: [
@@ -251,6 +381,10 @@ export const alertsCliCommand: CliCommandDef = {
       "alerts add <symbol> <above|below|crosses> <price>",
       "alerts add <symbol> earnings [--days <n> | results]",
       "alerts add <CPI|FOMC> [--days <n>]",
+      "alerts add [symbol] news <keyword>",
+      "alerts add [symbol] flow [premium] [calls|puts] [sweeps|blocks]",
+      "alerts add <symbol> <iv|rr> <above|below> <level>",
+      "alerts add <OCC contract> iv spike <points>",
       "alerts delete <id>",
       "alerts rearm <id>",
     ],
@@ -265,6 +399,10 @@ export const alertsCliCommand: CliCommandDef = {
       "alerts add CRWV earnings --days 3",
       "alerts add CRWV earnings results",
       "alerts add CPI --days 1",
+      "alerts add AAPL news buyback",
+      "alerts add NVDA flow 5m calls sweeps",
+      "alerts add IBIT iv above 50",
+      "alerts add SPY rr below -6",
     ],
   },
   execute: async (rawArgs, ctx) => {
@@ -284,19 +422,56 @@ export const alertsCliCommand: CliCommandDef = {
       }
     };
     const request = action === "add" ? parseAdd() : null;
-    // A price alert is kept for the listing `quote` prints for the symbol, and for no symbol that quotes nothing.
-    const priced = request?.kind === "price"
-      ? await withMarketData(ctx, (market) => requireQuotedListing(request.symbol, exchangeOption, market, ctx, "alerts add"))
+    const research = request && isResearchRequest(request) ? request : null;
+    const listedSymbol = request?.kind === "price" ? request.symbol
+      : research && research.kind !== "iv_spike" ? research.symbol : null;
+    // A price alert is kept for the listing `quote` prints for the symbol, and for no symbol that quotes nothing;
+    // a news, flow or IV rule on a symbol follows that listing too, and only in the US, where their data is.
+    const priced = listedSymbol
+      ? await withMarketData(ctx, async (market) => {
+        const quoted = await requireQuotedListing(listedSymbol, exchangeOption, market, ctx, "alerts add");
+        if (research) {
+          const venue = quoted.listing.exchange || canonicalExchange(quoted.quote.listingExchangeName || quoted.quote.exchangeName);
+          if (!isUsListingExchange(venue)) {
+            const what = research.kind === "news" ? "News alerting" : research.kind === "flow" ? "Options flow" : "Options data";
+            const { message, details } = await usListingsOnlyMessage(what, quoted.listing, market,
+              (key) => `gloomberb alerts add ${key} ${args.slice(2).join(" ")}`);
+            ctx.fail(message, details);
+          }
+        }
+        return quoted;
+      })
       : null;
     const priceListing = priced?.listing ?? null;
     if (request?.kind === "price" && request.thousandsDot && priced) {
       const question = thousandsDotMessage(request, priced.listing.key, lastPrice(priced.quote), exchangeOption);
       if (question) ctx.fail(question);
     }
+    // A bare coin ticker read as a fund (BTC, the Grayscale trust) gets `quote`'s note naming the coin's pair.
+    const coinNote = priced && !priced.listing.exchange ? notTheCoinNote(priced.listing.symbol, priced.quote) : null;
+    if (request?.kind === "price" && priced) {
+      // A target ten times away is a slip or another instrument's price, such as bitcoin's on the BTC fund.
+      // Against the price the alert is checked on, as Add Alert measures it.
+      const far = farTargetMessage(priced.listing.key, request.price, priced.quote.price, coinNote);
+      if (far) ctx.fail(far);
+    }
     // What a typed listing was read as (7203:TSE as 7203:JPX, MXN as MXN:FWB2), said beside what was added.
-    let read = priced?.notes ?? [];
+    let read = [...priced?.notes ?? [], ...coinNote ? [coinNote] : []];
     let newEventRule: EventAlertRule | null = null;
-    if (request && request.kind !== "price") {
+    let newResearchRule: EventAlertRule | null = null;
+    if (research) {
+      const typed = priceListing?.exchange ? canonicalExchange(priceListing.exchange) : "";
+      const { kind, values } = researchFormValues(
+        research.kind === "iv_spike" ? research : { ...research, symbol: priceListing?.symbol ?? null } as ResearchAddRequest,
+        RESEARCH_EXCHANGES.has(typed) ? typed : "US",
+      );
+      try {
+        newResearchRule = createResearchAlert(kind, values);
+      } catch (error) {
+        ctx.fail(error instanceof Error ? error.message : String(error));
+      }
+    }
+    if (request && (request.kind === "earnings" || request.kind === "macro")) {
       const target: ScheduledEventTarget = request.kind === "macro"
         ? { kind: "macro", event: request.event }
         : await requireListingArg(request.symbol, exchangeOption, ctx)
@@ -318,7 +493,11 @@ export const alertsCliCommand: CliCommandDef = {
     }
 
     if (action === "list") {
-      const { alerts, alertsError, events } = await withConfigData(ctx, (config) => readAlertStores(config.config));
+      // An IV level's last reading is this device's, beside the rules.
+      const { alerts, alertsError, events, checks } = await withConfigData(ctx, (config) => ({
+        ...readAlertStores(config.config),
+        checks: readIvLevelChecks(config.persistence?.pluginState?.get(ALERTS_PLUGIN_ID, resumeStateKey(IV_LEVEL_CHECKS_KEY))?.value),
+      }));
       // Earnings dates come through market data; CPI and FOMC dates do not need it.
       const lookup = (targets: ScheduledEventTarget[]) => targets.some((target) => target.kind === "earnings")
         ? withMarketData(ctx, (market) => lookupScheduledDates(targets, scheduledEventSources(market.dataProvider), today))
@@ -326,7 +505,7 @@ export const alertsCliCommand: CliCommandDef = {
       const { dates, warnings } = await listEventDates(events.rules, today, lookup);
       const rows = [
         ...alerts.map(priceRow),
-        ...events.rules.map((rule) => eventRow(rule, today, dates.has(rule.id) ? dates.get(rule.id) : rule.eventDate)),
+        ...events.rules.map((rule) => eventRow(rule, today, dates.has(rule.id) ? dates.get(rule.id) : rule.eventDate, checks[rule.id])),
       ];
       const allWarnings = [...(alertsError ? [alertsError] : []), ...(events.error ? [events.error] : []), ...warnings];
       ctx.printResult({ data: rows, ...(allWarnings.length ? { warnings: allWarnings } : {}) }, {
@@ -357,7 +536,8 @@ export const alertsCliCommand: CliCommandDef = {
             [ALERTS_PLUGIN_ID]: {
               ...pluginState,
               ...(next.alerts ? { [ALERTS_KEY]: serializeAlerts(next.alerts) } : {}),
-              ...(next.events ? { [EVENT_ALERTS_KEY]: JSON.stringify(next.events) } : {}),
+              // Each list keeps what it holds of kinds this version does not know; IV levels go in their own.
+              ...(next.events ? writeEventAlertStores(events.lists, next.events) : {}),
             },
           },
         };
@@ -377,6 +557,19 @@ export const alertsCliCommand: CliCommandDef = {
         ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, alert }, ...(read.length > 0 ? { warnings: read } : {}) }, {
           // The delivery, as docs/usage.md states it, before any full stop, which after the price would read as part of it (below 81.).
           text: (data) => `Added alert ${data.alert.id}: ${symbol} ${condition} ${price} (${PRICE_DELIVERY}).${dryRunNote(data.dryRun)}`,
+        });
+        return;
+      }
+      if (newResearchRule) {
+        const rule = newResearchRule;
+        const rules = requireEvents();
+        const existing = rules.find((entry) => entry.kind === rule.kind && entry.target === rule.target && entry.value.toLowerCase() === rule.value.toLowerCase());
+        if (existing) ctx.fail(`This alert already exists (ID ${existing.id}).`);
+        if (rules.length >= MAX_EVENT_ALERTS) ctx.fail(`Keep at most ${MAX_EVENT_ALERTS} event alerts. Delete one with gloomberb alerts delete <id>.`);
+        await save({ events: [...rules, rule] });
+        const kind = research!.kind;
+        ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, alert: rule }, ...(read.length > 0 ? { warnings: read } : {}) }, {
+          text: (data) => `Added alert ${data.alert.id}: ${alertKindLabel(rule.kind)} ${researchAlertDescription(rule)} (${researchDelivery(kind)}).${dryRunNote(data.dryRun)}`,
         });
         return;
       }
@@ -428,7 +621,9 @@ export const alertsCliCommand: CliCommandDef = {
         if (isPrice) await save({ alerts: alerts.map((alert) => alert.id === id ? rearmAlert(alert) : alert) });
         if (rule) {
           // A scheduled alert alerts again for its coming event; any other event alert resumes.
-          const next = readScheduledRule(rule) ? rearmScheduledAlert(rule) : rule.status === "paused" ? toggleEventAlert(rule) : rule;
+          const next = readScheduledRule(rule) ? rearmScheduledAlert(rule)
+            : rule.kind === "iv_level" && rule.triggeredAt ? rearmIvLevelAlert(rule)
+            : rule.status === "paused" ? toggleEventAlert(rule) : rule;
           await save({ events: requireEvents().map((entry) => entry.id === id ? next : entry) });
         }
         const found = isPrice || !!rule;

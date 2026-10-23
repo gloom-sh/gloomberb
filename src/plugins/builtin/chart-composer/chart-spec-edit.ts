@@ -416,6 +416,7 @@ export function panelsForSeries(series: readonly ChartSeriesSpec[], studies: rea
     ...(id === "rsi" || id === "macd" || id === "atr" ? { label: id.toUpperCase(), height: 0.28 } : {}),
     ...(id === "formula" ? { label: "Formula", height: 0.3 } : {}),
     ...(id === "correlation" ? { label: "Correlation", height: 0.3 } : {}),
+    ...(id === "decay" ? { label: "Decay", height: 0.3 } : {}),
     ...(id === "realized-vol" ? { label: "Realized Volatility", height: 0.3 } : {}),
     ...(/^panel-\d+$/.test(id) ? { label: `Panel ${id.slice("panel-".length)}`, height: 0.35 } : {}),
   }));
@@ -495,7 +496,7 @@ export function reconcilePanels(
 ): ChartPanelSpec[] {
   const defaults = panelsForSeries(series, studies);
   const requiredIds = new Set(defaults.map((panel) => panel.id));
-  const managedStudyPanelIds = new Set(["volume", "rsi", "macd", "atr", "formula", "correlation", "realized-vol"]);
+  const managedStudyPanelIds = new Set(["volume", "rsi", "macd", "atr", "formula", "correlation", "realized-vol", "decay"]);
   const retained = existing.filter((panel) => (
     requiredIds.has(panel.id) || !managedStudyPanelIds.has(panel.id)
   ));

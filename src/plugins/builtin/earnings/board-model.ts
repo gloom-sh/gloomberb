@@ -4,8 +4,9 @@ import { getPublishedUsEquityCalendarDay } from "../../../market-data/published-
 import type { EarningsEvent } from "../../../types/data-provider";
 import type { EarningsDateStatus, EarningsEpsBasis, Quote } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
-import { dateStatusFromEstimateFlag, earningsDateStatus, earningsEpsBasis, isProvisionalActual } from "../shared/earnings-report";
-import { coherentEarningsValue } from "./estimate-basis";
+import { earningsDateStatus, earningsEpsBasis, isProvisionalActual } from "../shared/earnings-report";
+import { calendarStatus } from "../shared/earnings-calendar";
+import { coherentEarningsValue } from "../shared/earnings-estimate-basis";
 import { shortDate, surprise, weekday } from "./format";
 
 /** A held name is in a portfolio; a watched one only in watchlists. */
@@ -149,7 +150,7 @@ export function boardReport(report: EarningsCalendarReport, owned: ReadonlyMap<s
 }
 
 /** A company the stored calendar does not carry (a listing abroad, a date past its horizon) from the per-ticker calendar. */
-export function fallbackReport(event: EarningsEvent, owned: ReadonlyMap<string, Ownership>): BoardReport {
+export function fallbackReport(event: EarningsEvent, owned: ReadonlyMap<string, Ownership>, today: string): BoardReport {
   const date = event.earningsDate.toISOString().slice(0, 10);
   const timing = event.timing === "BMO" ? "bmo" : event.timing === "AMC" ? "amc" : null;
   // Estimates in another currency would read as dollars beside the rest.
@@ -165,7 +166,8 @@ export function fallbackReport(event: EarningsEvent, owned: ReadonlyMap<string, 
     date,
     timing,
     expectedTiming: false,
-    dateStatus: dateStatusFromEstimateFlag(event.isDateEstimate),
+    // A date gone by is reported, as every earnings surface reads it (shared/earnings-calendar).
+    dateStatus: calendarStatus(event, today),
     marketCap: null,
     epsEstimate,
     // The count belongs to the estimate beside it.

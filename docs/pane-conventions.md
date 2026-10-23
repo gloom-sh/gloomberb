@@ -289,6 +289,10 @@ the origin of a number. The one count the kit draws is the
   `o` hint opening the current item's URL), `usePaneNoticeFooter` (warnings).
 - Info is what changes. If a segment reads the same on every render of every
   instance, delete it.
+- A short status (up to 24 cells, as much as a warning keeps) is never cut
+  against the hints: the hints that no longer fit go under More first. A
+  longer one gives way to the hints. This is the footer's own layout
+  (`layoutPaneFooterHintRow`); a pane does not shorten its status for it.
 - Hints are actions with keys. `{ key: "a", label: "dd" }` renders `[a]dd`,
   `{ key: "Ctrl+S", label: "save" }` renders `[Ctrl+S]save`. Every hint is
   clickable. Hints follow the selection: a different array when a row is

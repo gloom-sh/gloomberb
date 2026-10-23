@@ -127,6 +127,7 @@ import {
   prepareBaseSeriesForStudies,
   presentationBounds,
   applyStudyPresentationTransforms,
+  studyAnchors,
 } from "./series-presentation";
 
 function withQuoteExchange(
@@ -954,7 +955,8 @@ async function resolveChartSpecPass(
 
   // Study outputs are appended by the pure engine before the final viewport clip.
   if (spec.studies.length > 0) {
-    const studyResult = resolveStudies(calculationSeries, spec.studies, resolution, historicalPriceSeries);
+    const studyResult = resolveStudies(calculationSeries, spec.studies, resolution, historicalPriceSeries,
+      studyAnchors(calculationSeries, priceComparison, comparisonBounds));
     resolved = [
       ...resolved,
       ...applyStudyPresentationTransforms(

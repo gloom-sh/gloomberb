@@ -163,7 +163,7 @@ export class ProviderRouterPrimaryRoutes {
     const entityKey = this.options.getEntityKey(ticker, context?.instrument);
     const variantKey = this.options.getTickerVariantCandidates(exchange)[0] ?? "";
     for (const candidate of this.options.getBrokerCandidatesForContext(context, false)) {
-      if (!candidate.broker.getQuote) continue;
+      if (!candidate.broker.getQuote || candidate.broker.ticketQuotesOnly) continue;
       try {
         const result = await candidate.broker.getQuote(
           ticker,

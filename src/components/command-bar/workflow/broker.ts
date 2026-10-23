@@ -1,6 +1,6 @@
 import {
+  brokerDirectorySummary,
   brokerMethodLabel,
-  brokerMethodSummary,
   type BrokerDirectoryEntry,
   type BrokerMethod,
 } from "../../../brokers/directory";
@@ -51,7 +51,7 @@ export function buildBrokerWorkflowRoute({
   options.push(...directory.map((entry) => ({
     label: entry.name,
     value: entry.key,
-    description: brokerMethodSummary(entry),
+    description: brokerDirectorySummary(entry),
   })));
 
   const fields: CommandBarWorkflowField[] = [{

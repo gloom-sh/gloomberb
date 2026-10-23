@@ -4,6 +4,9 @@ import type { LayoutConfig } from "../../types/config";
 import type { GloomPluginContext, PluginPaneSettingsState, PluginResumeState } from "../../types/plugin";
 import { deletePluginPaneStateValue, setPluginPaneStateValue } from "../../layout/pane-state";
 
+/** Where a plugin's resume state (`ctx.resume`) is kept in the device's plugin state store. */
+export const resumeStateKey = (key: string) => `resume:${key}`;
+
 export class RegistryResumeStateListeners {
   private listeners = new Map<string, Set<() => void>>();
 

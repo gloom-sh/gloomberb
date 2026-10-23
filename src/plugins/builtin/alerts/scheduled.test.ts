@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { getVisibleWorkflowFields, normalizeWizardFields } from "../../../components/command-bar/workflow/fields";
 import { parseAlertAddArgs, thousandsDotMessage } from "./cli";
 import { EVENT_ALERTS_KEY, readEventAlerts } from "./events";
+import type { FiredAlertInput } from "./fired-log";
 import { createResearchAlert, earningsResultsAlertValues, researchAlertDescription, researchWizardFields } from "./research-builder";
 import { checkScheduledEventAlertsNow, startScheduledEventAlerts } from "./scheduled-check";
 import {
@@ -129,15 +130,26 @@ test("alerts add asks about 81.000 near a price of 81,600, an unquoted 81 000, a
   expect(() => add("81", "00")).toThrow('not "00" after 81');
 });
 
-test("the app alerts once when the lead time is reached and saves the event it alerted for", async () => {
+test("the app alerts once when the lead time is reached, logs it, and saves the event it alerted for, before it tells anyone", async () => {
   const rule = createScheduledAlert({ kind: "macro", event: "cpi" }, 1, null, 1_000);
-  const store = new Map<string, string>([[EVENT_ALERTS_KEY, JSON.stringify([rule])]]);
+  // A newer app's rule kind is written back as it was.
+  const future = { id: "future-1", kind: "gamma_wall", target: "rule", value: "{\"symbol\":\"SPY\"}", status: "active", createdAt: 1_000, extra: [1] };
+  const store = new Map<string, string>([[EVENT_ALERTS_KEY, JSON.stringify([rule, future])]]);
   const notifications: string[] = [];
+  const logged: FiredAlertInput[] = [];
   let saved = Promise.withResolvers<void>();
+  let failNext = true;
   const ctx = {
     configState: {
       get: (key: string) => store.get(key) ?? null,
-      set: async (key: string, value: unknown) => { store.set(key, String(value)); saved.resolve(); },
+      set: async (key: string, value: unknown) => {
+        saved.resolve();
+        if (failNext) {
+          failNext = false;
+          throw new Error("disk full");
+        }
+        store.set(key, String(value));
+      },
     },
     notify: (notification: { body?: string }) => { notifications.push(notification.body ?? ""); },
     showPane() {},
@@ -149,12 +161,25 @@ test("the app alerts once when the lead time is reached and saves the event it a
     fomc: async () => [],
   };
   // Tue Oct 13, 10:00 in New York: one day before the release.
-  const stop = startScheduledEventAlerts(ctx as never, sources, () => Date.parse("2026-10-13T14:00:00Z"));
+  const stop = startScheduledEventAlerts(ctx as never, sources, () => Date.parse("2026-10-13T14:00:00Z"), (entry) => logged.push(entry));
   try {
+    // The save fails: no one is told and nothing is logged, so the next check alerts once.
     checkScheduledEventAlertsNow();
     await saved.promise;
+    await Bun.sleep(5);
+    expect(notifications).toEqual([]);
+    expect(logged).toEqual([]);
+
+    saved = Promise.withResolvers<void>();
+    checkScheduledEventAlertsNow();
+    await saved.promise;
+    await Bun.sleep(5);
     expect(notifications).toEqual(["CPI release tomorrow, Wed, Oct 14"]);
-    expect(readEventAlerts(store.get(EVENT_ALERTS_KEY)!).rules[0]).toMatchObject({ eventDate: "2026-10-14", firedFor: "2026-10-14" });
+    const saved1 = readEventAlerts(store.get(EVENT_ALERTS_KEY)!);
+    expect(saved1.rules[0]).toMatchObject({ eventDate: "2026-10-14", firedFor: "2026-10-14" });
+    expect(saved1.kept).toEqual([future]);
+    expect(logged).toEqual([{ kind: "macro_event", ruleId: rule.id, rule: "CPI release · 1d before", firedAt: Date.parse("2026-10-13T14:00:00Z"),
+      value: null, detail: "CPI release tomorrow, Wed, Oct 14", quoteAt: null, source: null }]);
 
     saved = Promise.withResolvers<void>();
     checkScheduledEventAlertsNow();

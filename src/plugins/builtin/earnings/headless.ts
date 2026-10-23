@@ -124,7 +124,7 @@ async function boardRows(args: HeadlessPaneLoadArgs, context: HeadlessPaneContex
   const reports = (payload?.reports ?? []).map((report) => boardReport(report, NO_OWNERSHIP));
   const covered = new Set(reports.map((report) => report.symbol));
   const extra = fallback.status === "fulfilled"
-    ? fallback.value.filter((event) => !covered.has(event.symbol)).map((event) => fallbackReport(event, NO_OWNERSHIP))
+    ? fallback.value.filter((event) => !covered.has(event.symbol)).map((event) => fallbackReport(event, NO_OWNERSHIP, today))
     : [];
   const limit = Number(args.options.limit ?? 200);
   const all = [...reports, ...extra].sort((left, right) => left.date.localeCompare(right.date) || (right.marketCap ?? 0) - (left.marketCap ?? 0));

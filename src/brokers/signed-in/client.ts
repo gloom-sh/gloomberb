@@ -9,7 +9,11 @@ import type { BrokerOrderType } from "../../types/trading";
 interface SignedInBrokerCapabilities {
   history: boolean;
   executions: boolean;
-  orders: false | { mode: "review" | "direct"; types: BrokerOrderType[] };
+  /**
+   * Review: the broker keeps each order for the user to submit there. Direct: Gloom checks the
+   * order with the broker, the user confirms that check in the ticket, and Gloom places it.
+   */
+  orders: false | { mode: "review" | "direct"; types: BrokerOrderType[]; tif?: string[] };
   /** Connecting Gloom replaces this broker's link to other AI apps. */
   singleConnection: boolean;
   /** Shown before connecting, e.g. an account the user must create first. */
@@ -19,6 +23,8 @@ interface SignedInBrokerCapabilities {
 export interface SignedInBroker {
   id: string;
   name: string;
+  /** Under the name where brokers are listed, for one that is not itself a broker (SnapTrade). */
+  description?: string;
   capabilities: SignedInBrokerCapabilities;
 }
 

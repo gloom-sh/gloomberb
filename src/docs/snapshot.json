@@ -287,11 +287,19 @@
    "code": "OSA",
    "name": "Options scenario",
    "description": "Multi-leg payoff and P&L",
-   "detail": "Build a multi-leg options position from the chain, from OMON, or by hand, and value it at any spot, date, and vol shift: payoff, P&L grid, breakevens, and Greeks. European pricing, so no early exercise.",
+   "detail": "Build a multi-leg options position from the chain, from OMON, or by hand, and value it at any spot, date, and vol shift: payoff, P&L grid, breakevens, and Greeks. It also sells a cash-secured put, with the yield on cash at the mid and at the bid, sizes a protective put to a hedge budget, and collars shares. European pricing, so no early exercise.",
    "category": "research",
    "arg": "AAPL",
    "shot": "https://gloom.sh/screenshots/fn/OSA.png",
    "lesson": "/academy/options-and-volatility/chain-and-strategies/strategy-analyzer"
+  },
+  {
+   "code": "CSP",
+   "name": "Cash-secured put screen",
+   "description": "Put-selling yield across a list",
+   "detail": "For each ticker, the put nearest a delta (0.30) on the expiry about 30 days out, ranked by annualised yield on cash at the bid, with distance out of the money, delta, IV rank, the bid/ask spread (wide ones flagged, never dropped), and whether earnings fall before expiry. Enter opens the put in OSA.",
+   "category": "research",
+   "arg": "JPM, GS, KO"
   },
   {
    "code": "OVDV",
@@ -407,7 +415,7 @@
    "code": "GUID",
    "name": "Company guidance",
    "description": "Outlook from the latest call",
-   "detail": "The outlook the company gave on its latest earnings call, pulled from the transcript, above consensus for the coming periods. US listings. The Guidance tab of EM.",
+   "detail": "The outlook the company gave on its latest earnings call, above consensus for the coming periods. US listings. The Guidance tab of EM.",
    "category": "research",
    "arg": "NVDA",
    "access": "cloud",
@@ -480,7 +488,7 @@
    "code": "EXEC",
    "name": "Executives",
    "description": "Officers and pay from the proxy",
-   "detail": "Named executive officers and their compensation, read from the proxy statement and checked against the filing. Free shows each executive's total pay; Pro adds the breakdown and earlier years.",
+   "detail": "Named executive officers and their compensation. Free shows each executive's total pay; Pro adds the breakdown and earlier years.",
    "category": "research",
    "arg": "NVDA",
    "access": "pro",
@@ -502,7 +510,7 @@
    "code": "CALLS",
    "name": "Earnings calls",
    "description": "Transcripts and guidance",
-   "detail": "Earnings call transcripts with speaker attribution, the analyst Q&A, and extracted guidance and notable quotes. Without a ticker it lists every transcribed call as they land.",
+   "detail": "Earnings call transcripts with speaker attribution, the analyst Q&A, and guidance and notable quotes. Without a ticker it lists new calls as they land.",
    "category": "research",
    "arg": "NVDA",
    "access": "pro",
@@ -618,7 +626,7 @@
    "code": "NI",
    "name": "Topic news",
    "description": "News by topic code or sector",
-   "detail": "Market news by topic code (MNA, CB, ENERGY, REG, CRYPTO, EARN, IPO) or by sector. LTR lists public fund and investor letters as links to the publisher's page.",
+   "detail": "Market news by topic code (MNA, CB, ENERGY, METALS, REG, CRYPTO, EARN, IPO) or by sector. LTR lists public fund and investor letters as links to the publisher's page.",
    "category": "news",
    "arg": "ENERGY",
    "shot": "https://gloom.sh/screenshots/fn/NI.png",
@@ -843,7 +851,7 @@
    "code": "GPU",
    "name": "GPU Rental Prices",
    "description": "GPU rental rates and asks",
-   "detail": "What it costs to rent a GPU by the hour: published prices, spot rates and marketplace asks in USD per GPU-hour, with history and related equities. Pro shows the full board; Free shows the three latest rows.",
+   "detail": "What it costs to rent a GPU by the hour: published prices, spot rates and marketplace asks in USD per GPU-hour, with history and related equities. Pro shows the full board; Free shows a three-row sample led by H100, B200 and H200.",
    "category": "markets",
    "arg": "H100",
    "access": "pro",
@@ -1691,8 +1699,8 @@
  "pages": [
   {
    "slug": "getting-started",
-   "title": "Install Gloomberb: Mac, Windows, Linux, TUI",
-   "lead": "Install the Gloomberb desktop app on Mac or Windows, or run it in a terminal with one command. Then update it and confirm it runs.",
+   "title": "Install Gloom: Mac, Windows, Linux, TUI",
+   "lead": "Install the Gloom desktop app on Mac or Windows, or run it in a terminal with one command. Then update it and confirm it runs.",
    "category": "Start here",
    "tags": [
     "install",
@@ -1860,7 +1868,7 @@
   },
   {
    "slug": "first-session",
-   "title": "Your first Gloomberb session",
+   "title": "Your first Gloom session",
    "lead": "Build a market workspace in the desktop app or terminal UI in ten minutes.",
    "category": "Start here",
    "tags": [
@@ -1901,7 +1909,7 @@
     {
      "type": "image",
      "src": "https://gloom.sh/screenshots/beginner-ticker-search.png",
-     "alt": "Ticker search showing Apple listings inside Gloomberb",
+     "alt": "Ticker search showing Apple listings inside Gloom",
      "caption": "Ticker search lists each match with its type and exchange."
     },
     {
@@ -1920,7 +1928,7 @@
     {
      "type": "image",
      "src": "https://gloom.sh/screenshots/beginner-command-bar.png",
-     "alt": "Gloomberb command bar showing the GP AAPL Graph Price command",
+     "alt": "Gloom command bar showing the GP AAPL Graph Price command",
      "caption": "The command bar accepts prefixes and searchable names."
     },
     {
@@ -1977,7 +1985,7 @@
     {
      "type": "image",
      "src": "https://gloom.sh/screenshots/beginner-workspace.png",
-     "alt": "Completed beginner Gloomberb workspace",
+     "alt": "Completed beginner Gloom workspace",
      "caption": "Company research, a price chart, and market movers."
     },
     {
@@ -2223,7 +2231,7 @@
     {
      "type": "image",
      "src": "https://gloom.sh/screenshots/MOST.png",
-     "alt": "Market movers pane in Gloomberb",
+     "alt": "Market movers pane in Gloom",
      "caption": "MOST groups gainers, losers, active names, and trending tickers."
     },
     {
@@ -2291,7 +2299,7 @@
     {
      "type": "image",
      "src": "https://gloom.sh/screenshots/RV.png",
-     "alt": "Relative valuation comparison in Gloomberb",
+     "alt": "Relative valuation comparison in Gloom",
      "caption": "RV compares valuation and operating metrics across a peer group."
     },
     {
@@ -4323,7 +4331,7 @@
     },
     {
      "type": "paragraph",
-     "text": "Pro unlocks the full board, history and Changes. Free, signed in or not, shows the three latest rows. Asks and AWS spot update hourly, other rates every 6 to 24 hours."
+     "text": "Pro unlocks the full board, history and Changes. Free, signed in or not, shows a three-row sample led by H100, B200 and H200. Asks and AWS spot update hourly, other rates every 6 to 24 hours."
     },
     {
      "type": "paragraph",
@@ -5228,7 +5236,7 @@
   {
    "slug": "cli-functions",
    "title": "CLI and pane functions",
-   "lead": "Gloomberb from the shell: market data, local state, plugin capabilities, reports and screenshots of any function.",
+   "lead": "Gloom from the shell: market data, local state, plugin capabilities, reports and screenshots of any function.",
    "category": "Advanced",
    "tags": [
     "cli",
@@ -5531,7 +5539,7 @@
   {
    "slug": "agents",
    "title": "Agents and remote control",
-   "lead": "Use the semantic remote API to inspect and control a running Gloomberb desktop or TUI session.",
+   "lead": "Use the semantic remote API to inspect and control a running Gloom desktop or TUI session.",
    "category": "Advanced",
    "tags": [
     "agents",
@@ -5548,7 +5556,7 @@
     },
     {
      "type": "paragraph",
-     "text": "The remote API drives a running Gloomberb app. Agents and scripts read semantic state, open panes, navigate tickers, arrange layouts, and call plugin capabilities, with no screen coordinates."
+     "text": "The remote API drives a running Gloom app. Agents and scripts read semantic state, open panes, navigate tickers, arrange layouts, and call plugin capabilities, with no screen coordinates."
     },
     {
      "type": "paragraph",
@@ -6474,7 +6482,7 @@
   {
    "slug": "plugins",
    "title": "Plugins",
-   "lead": "Install, build, and publish Gloomberb plugins: panes, commands, CLI commands, data capabilities, and UI.",
+   "lead": "Install, build, and publish Gloom plugins: panes, commands, CLI commands, data capabilities, and UI.",
    "category": "Advanced",
    "tags": [
     "plugins",
@@ -6494,7 +6502,7 @@
     },
     {
      "type": "paragraph",
-     "text": "Import only from the `gloomberb/*` exports, never OpenTUI, Electrobun, DOM, or private Gloomberb source paths. Full API: [PLUGINS.md](https://github.com/gloom-sh/gloomberb/blob/main/PLUGINS.md)."
+     "text": "Import only from the `gloomberb/*` exports, never OpenTUI, Electrobun, DOM, or private Gloom source paths. Full API: [PLUGINS.md](https://github.com/gloom-sh/gloomberb/blob/main/PLUGINS.md)."
     },
     {
      "type": "heading",
@@ -6520,7 +6528,7 @@
     {
      "type": "image",
      "src": "https://gloom.sh/screenshots/plugins-manager.png",
-     "alt": "Gloomberb plugin manager",
+     "alt": "Gloom plugin manager",
      "caption": "PL toggles first-party and installed plugins from the command bar."
     },
     {
@@ -6534,7 +6542,7 @@
     },
     {
      "type": "code",
-     "code": "const plugin = {\n  id: \"hello-gloom\",\n  name: \"Hello Gloom\",\n  version: \"0.1.0\",\n  description: \"A minimal Gloomberb plugin.\",\n  toggleable: true,\n\n  cliCommands: [\n    {\n      name: \"hello\",\n      description: \"Print a plugin-owned greeting\",\n      help: {\n        usage: [\"hello [name]\"],\n        examples: [\"hello Vince --json\"],\n      },\n      execute(args, ctx) {\n        ctx.printResult({ data: { greeting: `hello ${args[0] ?? \"gloom\"}` } });\n      },\n    },\n  ],\n\n  setup(ctx) {\n    ctx.registerCommand({\n      id: \"hello-gloom-command\",\n      label: \"Hello Gloom\",\n      description: \"Show a hello notification\",\n      keywords: [\"hello\", \"demo\"],\n      category: \"navigation\",\n      shortcut: \"HELLO\",\n      execute: () => {\n        ctx.notify({\n          body: \"Hello from your plugin.\",\n          type: \"success\",\n        });\n      },\n    });\n  },\n};\n\nexport default plugin;"
+     "code": "const plugin = {\n  id: \"hello-gloom\",\n  name: \"Hello Gloom\",\n  version: \"0.1.0\",\n  description: \"A minimal Gloom plugin.\",\n  toggleable: true,\n\n  cliCommands: [\n    {\n      name: \"hello\",\n      description: \"Print a plugin-owned greeting\",\n      help: {\n        usage: [\"hello [name]\"],\n        examples: [\"hello Vince --json\"],\n      },\n      execute(args, ctx) {\n        ctx.printResult({ data: { greeting: `hello ${args[0] ?? \"gloom\"}` } });\n      },\n    },\n  ],\n\n  setup(ctx) {\n    ctx.registerCommand({\n      id: \"hello-gloom-command\",\n      label: \"Hello Gloom\",\n      description: \"Show a hello notification\",\n      keywords: [\"hello\", \"demo\"],\n      category: \"navigation\",\n      shortcut: \"HELLO\",\n      execute: () => {\n        ctx.notify({\n          body: \"Hello from your plugin.\",\n          type: \"success\",\n        });\n      },\n    });\n  },\n};\n\nexport default plugin;"
     },
     {
      "type": "paragraph",
@@ -6546,7 +6554,7 @@
     },
     {
      "type": "paragraph",
-     "text": "Restart Gloomberb, then type `HELLO` in the command bar. For an interactive pane, copy [gloom-hackernews](https://github.com/gloom-sh/gloom-hackernews)."
+     "text": "Restart Gloom, then type `HELLO` in the command bar. For an interactive pane, copy [gloom-hackernews](https://github.com/gloom-sh/gloom-hackernews)."
     },
     {
      "type": "heading",
@@ -6603,7 +6611,7 @@
   {
    "slug": "news-api",
    "title": "News API",
-   "lead": "Use Gloomberb's standalone market-news API in your own financial product.",
+   "lead": "Use Gloom's standalone market-news API in your own financial product.",
    "category": "Advanced",
    "tags": [
     "news api",
@@ -6619,7 +6627,7 @@
     },
     {
      "type": "paragraph",
-     "text": "The News API is Gloomberb's market news for your own product, backend, model pipeline, or dashboard. It is not needed to use the app and is billed separately from [Gloom Cloud](/docs/cloud-and-data)."
+     "text": "The News API is Gloom's market news for your own product, backend, model pipeline, or dashboard. It is not needed to use the app and is billed separately from [Gloom Cloud](/docs/cloud-and-data)."
     },
     {
      "type": "paragraph",
@@ -6889,7 +6897,7 @@
     },
     {
      "type": "paragraph",
-     "text": "Gloom Datasets serves the data Gloom stores to your own systems over REST. It is a separate product with its own site at [datasets.gloom.sh](https://datasets.gloom.sh) and its own keys and plans, billed separately from [Gloom Cloud](/docs/cloud-and-data). The app does not need it."
+     "text": "Gloom Datasets serves the data Gloom stores to your own systems over REST. It is a separate product with its own [site](/datasets), keys and plans, billed separately from [Gloom Cloud](/docs/cloud-and-data). The app does not need it."
     },
     {
      "type": "paragraph",
@@ -6912,7 +6920,7 @@
     },
     {
      "type": "paragraph",
-     "text": "See the [full dataset reference](https://datasets.gloom.sh/docs) for routes, parameters, examples and credits."
+     "text": "See the [full dataset reference](/datasets/docs) for routes, parameters, examples and credits."
     },
     {
      "type": "paragraph",
@@ -6925,7 +6933,7 @@
     },
     {
      "type": "paragraph",
-     "text": "Gloom Datasets keys start with `gds_`. They come with a plan and are created in the [console](https://datasets.gloom.sh/console). Send one as `Authorization: Bearer gds_...` or `x-api-key`."
+     "text": "Gloom Datasets keys start with `gds_`. They come with a plan and are created in the [console](/datasets/console). Send one as `Authorization: Bearer gds_...` or `x-api-key`."
     },
     {
      "type": "paragraph",
@@ -6971,7 +6979,7 @@
     },
     {
      "type": "paragraph",
-     "text": "Credits, rate limits, usage rights and the founding offer (40% off Basic and Desk for 12 months, for the first 100 paid accounts until December 4, 2026) are on [Pricing](https://datasets.gloom.sh/pricing)."
+     "text": "Credits, rate limits, usage rights and the founding offer (40% off Basic and Desk for 12 months, for the first 100 paid accounts until December 4, 2026) are on [Pricing](/datasets/pricing)."
     },
     {
      "type": "heading",
@@ -6981,9 +6989,9 @@
     {
      "type": "list",
      "items": [
-      "[Quickstart](https://datasets.gloom.sh/docs/quickstart): a plan, a key, one call, then the same call from Python and TypeScript.",
-      "[API reference](https://datasets.gloom.sh/docs): datasets, routes, credits, errors and the OpenAPI document.",
-      "[Console](https://datasets.gloom.sh/console): account, billing, keys and usage."
+      "[Quickstart](/datasets/docs/quickstart): a plan, a key, one call, then the same call from Python and TypeScript.",
+      "[API reference](/datasets/docs): datasets, routes, credits, errors and the OpenAPI document.",
+      "[Console](/datasets/console): account, billing, keys and usage."
      ]
     }
    ]

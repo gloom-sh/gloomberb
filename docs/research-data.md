@@ -22,6 +22,8 @@ Earnings estimates, corporate actions, analyst research and historical prices re
 
 The TTM row of `EE` and `fn events` shows the trailing diluted EPS that `ticker` prints as EPS (TTM), labelled GAAP diluted, so the two agree for a symbol. It is never the sum of the reported quarter rows above it, which can mix GAAP and adjusted figures: only when all four quarters are adjusted does its detail add their sum (`adj sum`). When no trailing figure is served, the row is the four statement quarters' diluted EPS summed, labelled as statements. That sum can sit a cent from the served figure, because a quarter's EPS is over that quarter's weighted share count and the quarters need not add up to the year (PLTR's four quarters add to 1.17, the trailing figure is 1.16). `gloomberb events <symbol>` names each earnings row's EPS basis and fiscal quarter with the words `EE` uses, and shows an upcoming estimate to the cent with its date status and analyst count.
 
+A company's next report is read the same way by `earnings`, `events`, `EE`, `ERN`, `OSA` and the `next-earnings` column of `options --leaps`: the earnings calendar's date, resolved against the quarters the company has on record. A confirmed date beats an estimated one, whichever source has it, and a next date only the calendar knows is added. A date that has passed reads `reported`, as does a report out today once Gloom Cloud has it out, with the actual EPS once it is known and the estimate it was measured against, never the next quarter's consensus. Once the calendar's date has passed, the next date on record, if any, is the next report; `OSA` and the LEAPS column then show it, or none.
+
 ## Charts, comparisons, and correlations
 
 See [chart history, retention and cadence](data-quality/chart-history.md) for source limits, calculation lookback, interval fallbacks and snapshot replay.
@@ -990,7 +992,7 @@ The floor and cap are shown with how far each is from the scenario's spot, and o
 
 #### Cash-secured put
 
-`--strategy csp` sells one put at `--strike` (nearest the money when omitted) of the `--expiration` chain, entered at its quote midpoint with the IV that midpoint implies, as the other seeds are. The report's **Cash-secured put** section and the pane's third row of figures read the position as entered:
+`--strategy csp` sells one put at `--strike` (nearest the money when omitted) of the `--expiration` chain, entered at its quote midpoint with the IV that midpoint implies, as the other seeds are. `--delta` picks the put by delta instead: the one whose spot delta, at the IV its own midpoint implies against that expiry's parity forward, is nearest the delta's negative (0.30 picks the put nearest -0.30), the lower strike on a tie. The report's **Cash-secured put** section and the pane's third row of figures read the position as entered:
 
 | Figure | Definition |
 |---|---|
@@ -998,12 +1000,32 @@ The floor and cap are shown with how far each is from the scenario's spot, and o
 | Premium received | entry price x multiplier x contracts; the seed's entry price is the quote midpoint, a typed leg's is as typed |
 | Yield on cash | premium / cash secured |
 | Annualised yield | yield on cash x 365 / days to expiry (simple, not compounded); none on the expiry day |
+| Bid, ask | the put's two-sided quote: the chain's, or its streamed quote while the pane follows the market; a typed leg has none |
+| Spread | ask - bid per share, and as a percent of the midpoint (ask + bid) / 2 |
+| Premium at the bid | bid x multiplier x contracts: what a sell order fills at without crossing the spread |
+| Annualised yield at the bid | premium at the bid / cash secured x 365 / days to expiry, the same calculation as the yield at the entry price |
 | Out of the money | (spot - strike) / spot, against the scenario's spot, which the report names (`implied by option quotes`, `typed`, the last price) |
 | Break-even | strike - entry price, per share |
 | Days to expiry | calendar days from the valuation date in New York to the expiry date |
 | Earnings before expiry | `yes` when the earnings calendar's next report is on or before the expiry date, `no` when after, `unknown` when it has no date on or after the valuation date |
 
-KO's November 20, 2026 85 put at 0.67/0.72, valued on 2026-10-13: cash secured 85 x 100 = 8,500.00, premium 0.695 x 100 = 69.50, yield on cash 69.50 / 8,500 = 0.82%, annualised 0.8176% x 365 / 38 = 7.85%, break-even 85 - 0.695 = 84.305, and the October 27 report falls before expiry. Assignment, margin and the interest the cash earns are not modelled.
+KO's November 20, 2026 85 put at 0.67/0.72, valued on 2026-10-13: cash secured 85 x 100 = 8,500.00, premium 0.695 x 100 = 69.50, yield on cash 69.50 / 8,500 = 0.82%, annualised 0.8176% x 365 / 38 = 7.85%, at the bid 67.00 / 8,500 x 365 / 38 = 7.57%, spread 0.05 (7.2% of the mid), break-even 85 - 0.695 = 84.305, and the October 27 report falls before expiry. GS's November 820 put at 5.40/6.75, valued on 2026-10-21, 30 days out: 607.50 / 82,000 x 365 / 30 = 9.01% at the mid, 540.00 / 82,000 x 365 / 30 = 8.01% at the bid, with a spread of 1.35 (22.2% of the mid). Assignment, margin and the interest the cash earns are not modelled.
+
+#### Cash-secured put screen
+
+`CSP` (`fn CSP JPM GS KO`) runs the `--strategy csp --delta` seed on each name and reads its put with the same Cash-secured put figures, so a name's row and `fn OSA <name> --strategy csp --strike <its strike> --expiration <its expiry>` agree:
+
+| Figure | Definition |
+|---|---|
+| Expiry | each name's listed expiry whose date is nearest the target, the earlier on a tie: `--expiration`, else `--days` calendar days (30) after today in New York |
+| Strike, delta | the put whose spot delta is nearest -`--delta` (0.30), as above; the delta shown is the put's, per share, valued at the scenario's spot with that IV |
+| OTM | (spot - strike) / spot, against the spot the option quotes imply |
+| Mid yield/yr, Bid yield/yr | the annualised yield at the quote midpoint and at the bid |
+| Spread | (ask - bid) / mid; over `--max-spread` (10%) it is marked `wide` |
+| IVR | the 30-day IV rank against the prior 52 weeks of stored closes, as VCA and HIVG read it; `--` with the reason in the notes when IV history has none |
+| Earnings | `before` or `after` with the date of the calendar's next report, `unknown` without one |
+
+Names are ranked by annualised yield at the bid, highest first: a wide spread costs a seller the difference between the mid and the bid, so a name priced rich only at the mid does not rank first. A wide put is ranked with the rest and flagged; a name with no chain, no quoted put or no rate to value it by is listed after the ranked ones with the reason. Up to 20 names; `--csv` writes the percents as numbers with `wide spread` and `earnings before expiry` as yes/no columns. The screen reads the chains, quotes and rates OSA reads, and its closing line dates it by the underlying quotes.
 
 ### Greeks spot and time
 

@@ -1,6 +1,7 @@
 import { apiClient } from "../../../api-client";
-import type { FundFactsPayload, FundMetalHoldings } from "../../../api-client/fund-facts";
+import type { FundFactsPayload, FundLeverage, FundMetalHoldings } from "../../../api-client/fund-facts";
 import type { StatItem } from "../../../components/ui/stat-grid";
+import { leverageFactorLabel } from "../../../time-series/leverage";
 import { t, tf } from "../../../i18n";
 import { createPluginCache } from "../../../data/plugin-cache";
 import type { HeadlessPaneEntry } from "../../../types/plugin";
@@ -25,10 +26,14 @@ function isMetalHoldingsShape(value: FundFactsPayload["metalHoldings"]): boolean
     && (value.change === null || (typeof value.change?.since === "string" && finite(value.change.ounces))));
 }
 
+/** Absent from servers before it; otherwise a dated factor with its reset period. */
+const leverageShape = (value: FundFactsPayload["leverage"]) => value === undefined || value === null
+  || (fact(value) && typeof value.value === "number" && Number.isFinite(value.value) && (value.reset === "daily" || value.reset === "monthly"));
+
 function validateFundFacts(data: FundFactsPayload): FundFactsPayload {
   if (!data || typeof data.ticker !== "string" || typeof data.covered !== "boolean"
     || ![data.expenseRatio, data.nav, data.premiumDiscount, data.netAssets, data.sponsor, data.inception, data.index].every(fact)
-    || !isBondFactsShape(data.bond) || !isMetalHoldingsShape(data.metalHoldings)) {
+    || !isBondFactsShape(data.bond) || !leverageShape(data.leverage) || !isMetalHoldingsShape(data.metalHoldings)) {
     throw new Error("Unreadable fund facts response");
   }
   return data;
@@ -48,13 +53,14 @@ export function fundFactsErrorLine(error: unknown): string {
   return message === FUND_FACTS_UNAVAILABLE ? t(FUND_FACTS_UNAVAILABLE) : tf("Fund facts unavailable: {message}", { message });
 }
 
-export async function fetchFundFacts(ticker: string, client: Client = apiClient): Promise<FundFactsPayload> {
-  try { return validateFundFacts(await client.getFundFacts(ticker)); } catch (error) { throw unavailableOnServer(error, FUND_FACTS_UNAVAILABLE); }
+export async function fetchFundFacts(ticker: string, client: Client = apiClient, signal?: AbortSignal): Promise<FundFactsPayload> {
+  try { return validateFundFacts(await (signal ? client.getFundFacts(ticker, { signal }) : client.getFundFacts(ticker))); } catch (error) { throw unavailableOnServer(error, FUND_FACTS_UNAVAILABLE); }
 }
 const cacheKey = (ticker: string) => ticker.trim().toUpperCase();
 export const cachedFundFacts = (ticker: string) => cachedCloudResource(fundFactsCache, cacheKey(ticker), validateFundFacts);
-export const loadFundFacts = (ticker: string, force = false) =>
-  loadCloudResource(fundFactsCache, cacheKey(ticker), () => fetchFundFacts(ticker), { force, validate: validateFundFacts });
+/** Through the cache the ETF pane keeps; `client` is a report's own, `signal` ends a read it no longer waits for. */
+export const loadFundFacts = (ticker: string, force = false, { client = apiClient, signal }: { client?: Client; signal?: AbortSignal } = {}) =>
+  loadCloudResource(fundFactsCache, cacheKey(ticker), () => fetchFundFacts(ticker, client, signal), { force, validate: validateFundFacts, signal });
 
 /** A fee as the prospectus states it: two decimals at least, four when it has them (0.0945%). */
 function formatFeePercent(value: number): string {
@@ -111,6 +117,17 @@ function wholeFund(facts: FundFactsPayload): boolean {
  * an index fund tracks, an active fund's benchmark, a trust's reference price.
  */
 const BENCHMARK_LABEL = "Benchmark";
+
+/**
+ * A leveraged or inverse fund's objective, as the ETF pane and report label
+ * it: the times and direction of its benchmark's return it seeks.
+ */
+const OBJECTIVE_LABEL = "Objective";
+
+/** The objective in a few words: `3× daily, long`, `-3× daily, inverse`, `1.75× monthly, long`. */
+function leverageObjectiveText(leverage: Pick<FundLeverage, "value" | "reset">): string {
+  return `${leverageFactorLabel(leverage.value)} ${leverage.reset}, ${leverage.value < 0 ? "inverse" : "long"}`;
+}
 
 /**
  * How each dated figure reads beside the NAV, the date the sheet is about.
@@ -197,6 +214,10 @@ export function fundFactItems(facts: FundFactsPayload): StatItem[] {
   }
   if (facts.sponsor) items.push({ id: "sponsor", label: "Sponsor", value: facts.sponsor.value });
   if (facts.inception) items.push({ id: "inception", label: "Inception", value: facts.inception.value });
+  // A leveraged or inverse fund's objective, dated by the sponsor page it was read from, beside its benchmark.
+  if (facts.leverage) {
+    items.push(cell("objective", OBJECTIVE_LABEL, leverageObjectiveText(facts.leverage), { detail: facts.leverage.asOf ?? undefined, marked: false }));
+  }
   if (facts.index) items.push({ id: "index", label: BENCHMARK_LABEL, value: facts.index.value, wide: true });
   return items;
 }
@@ -296,6 +317,10 @@ export function fundFactEntries(facts: FundFactsPayload): HeadlessPaneEntry[] {
   }
   if (facts.sponsor) add("sponsor", "Sponsor", facts.sponsor.value, facts.sponsor.value);
   if (facts.inception) add("inception", "Inception", facts.inception.value, facts.inception.value);
+  if (facts.leverage) {
+    add("leverageFactor", OBJECTIVE_LABEL, facts.leverage.value,
+      provenance(leverageObjectiveText(facts.leverage), facts.leverage.asOf, facts.leverage.source), "x");
+  }
   if (facts.index) add("index", BENCHMARK_LABEL, facts.index.value, provenance(facts.index.value, facts.index.source));
   const url = facts.nav?.url ?? facts.expenseRatio?.url ?? facts.netAssets?.url;
   if (url) add("url", "Sponsor page", url, url);
@@ -313,7 +338,7 @@ export function listNames(names: readonly string[]): string {
  * the consolidated close cites Gloom Cloud on its own line, not here.
  */
 export function fundFactPublishers(facts: FundFactsPayload): string[] {
-  return [...new Set([...[facts.nav, facts.expenseRatio, facts.netAssets, facts.index, facts.bond?.secYield, facts.bond?.yieldToWorst, facts.bond?.duration]
+  return [...new Set([...[facts.nav, facts.expenseRatio, facts.netAssets, facts.leverage, facts.index, facts.bond?.secYield, facts.bond?.yieldToWorst, facts.bond?.duration]
     .flatMap((value) => value ? [value.source] : []), ...facts.metalHoldings ? [facts.metalHoldings.source.publisher] : []])];
 }
 

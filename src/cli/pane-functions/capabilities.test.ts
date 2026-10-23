@@ -327,11 +327,11 @@ describe("pane catalog search", () => {
       for (const query of ["collar", "hedge", "hedging", "protective put", "put spread"]) {
         expect(filterPaneCatalogEntries(entries, query)[0]?.token, query).toBe("OSA");
       }
-      // Selling puts: OSA runs the trade, OMON picks the strike, VCA finds the rich premium.
+      // Selling puts: CSP ranks the names, OSA runs the trade, OMON picks the strike, VCA finds the rich premium.
       for (const query of ["cash secured put", "csp", "put selling", "sell put", "short put", "wheel"]) {
         const tokens = filterPaneCatalogEntries(entries, query).map(({ token }) => token);
-        expect(tokens[0], query).toBe("OSA");
-        expect(tokens.slice(0, 3).sort(), query).toEqual(["OMON", "OSA", "VCA"]);
+        expect(tokens.slice(0, 2), query).toEqual(["CSP", "OSA"]);
+        expect(tokens.slice(0, 4).sort(), query).toEqual(["CSP", "OMON", "OSA", "VCA"]);
       }
     } finally {
       registry.destroy();

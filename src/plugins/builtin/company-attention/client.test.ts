@@ -56,7 +56,11 @@ test("real app captures preserve missing velocity, rating provenance and ordinal
   expect(attentionSeries(model, "#fff")).toEqual([]);
   expect(model.sections.table.rows.every((row) => row.values.change === null)).toBe(true);
   expect(new Set(model.sections.table.rows.map((row) => row.id)).size).toBe(model.sections.table.rows.length);
-  expect(model.sections.evidence.rows[0]!.details!.find((entry) => entry.label === "Revision")?.value).toBe(payload.evidence[0]!.revisionId);
+  // A detail reads in words: no revision, confidence, dash, raw timestamp or bare address.
+  const evidence = model.sections.evidence.rows[0]!;
+  expect(evidence.details!.map((entry) => entry.label)).not.toContain("Revision");
+  expect(evidence.details!.every((entry) => entry.value !== "--" && !/\d{4}-\d{2}-\d{2}T|^https?:/.test(entry.value))).toBe(true);
+  expect(evidence.links?.every((link) => /^https?:/.test(link.url))).toBe(true);
   payload.apps[0]!.rating = 8;
   expect(() => validateAttention("apps", payload)).toThrow("unreadable");
 });

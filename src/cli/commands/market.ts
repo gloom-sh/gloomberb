@@ -39,7 +39,7 @@ import {
   quoteChangeText,
 } from "../helpers";
 import { cliStyles, colorBySign, renderSection, renderStats } from "../../utils/cli-output";
-import { stalePeriodNote, statementHistoryNotes } from "../../utils/financial-statements";
+import { filledPeriodsNote, stalePeriodNote, statementHistoryNotes } from "../../utils/financial-statements";
 import { formatPerShareNumber } from "../../utils/reported-money";
 import {
   analystTargetCurrency,
@@ -172,6 +172,14 @@ import {
   showsEpsBasis,
 } from "../../plugins/builtin/shared/earnings-report";
 import {
+  calendarEventOf,
+  calendarStatus,
+  newYorkDay,
+  resolveListingEvents,
+  withResolvedEarnings,
+  type ResolvedEarningsEvent,
+} from "../../plugins/builtin/shared/earnings-calendar";
+import {
   EXCHANGE_OPTION,
   listingHeading,
   listingIdentity,
@@ -183,6 +191,7 @@ import {
   loadForListing,
   loadListingQuote,
   listingFateLoader,
+  meantQuestion,
   movedSymbolLine,
   requireCliListing,
   resolveCliListing,
@@ -773,13 +782,13 @@ function formatEpsCell(value: unknown): string {
   return typeof value === "number" && Number.isFinite(value) ? value.toFixed(2) : "";
 }
 
-function earningsRows(events: EarningsEvent[]) {
+function earningsRows(events: ResolvedEarningsEvent[]) {
   return events.map((event) => ({
     symbol: event.symbol,
     name: event.name,
     date: isoDate(event.earningsDate).slice(0, 10),
-    // Whether the company announced the date or it is projected from past reports.
-    status: earningsDateLabel(event),
+    // Out, announced by the company, or projected from its past reports.
+    status: earningsDateLabel(event.dateStatus),
     timing: event.timing,
     epsEstimate: event.epsEstimate,
     epsActual: event.epsActual,
@@ -1395,7 +1404,10 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
     // The rows are the annual years served; older ones are not, and the closing lines say so, after how old
     // the latest year is when it ended over 15 months ago.
     const stale = stalePeriodNote(rows.map((row) => ({ date: row.date, lead: row.revenue != null })));
-    const historyNotes = [...stale ? [stale] : [], ...statementHistoryNotes("annual", rows.map((row) => row.date), listing.key)];
+    // Years filled from the listing's exchange, for the revenue and net income columns.
+    const filled = filledPeriodsNote(financials.annualStatements.filter((statement) => rows.some((row) => row.date === statement.date)),
+      new Set(["totalRevenue", "netIncome"]));
+    const historyNotes = [...stale ? [stale] : [], ...filled ? [filled] : [], ...statementHistoryNotes("annual", rows.map((row) => row.date), listing.key)];
     // NDJSON keeps the raw statement rows it always wrote; CSV gets the table and its closing lines.
     const tables = tabular
       ? selectTables({
@@ -2112,13 +2124,18 @@ async function runEvents(rawArgs: string[], ctx: Parameters<CliCommandDef["execu
   await withMarketData(ctx, async (market) => {
     const listing = await requireCliListing(raw, exchangeOption, market, ctx);
     const venues = loadBareVenues(listing, market);
-    const [data, quote] = await Promise.all([
+    // The earnings rows are resolved against the calendar `earnings` reads, so the next report is the same in both.
+    const calendar = market.dataProvider.getEarningsCalendar?.([listing.key])
+      .catch(logFailure("cli.commands-market", "Read the earnings calendar for events failed", [] as EarningsEvent[]));
+    const [recorded, quote, events] = await Promise.all([
       loadForListing(
         listing, market, ctx, () => market.dataProvider.getCorporateActions(listing.request.symbol, listing.request.exchange),
         undefined, { command: "events", noun: "corporate events" },
       ),
       loadListingQuote(market.dataProvider, listing),
+      calendar,
     ]);
+    const data = withResolvedEarnings(recorded, calendarEventOf(events, listing.key), newYorkDay());
     const identity = listingIdentity(listing, quote);
     const choice = await listingChoiceNotes(listing, market, quote, venues);
     ctx.printResult({
@@ -2191,7 +2208,9 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       if (!isOptionsUnavailableError(error)) throw error;
       // A future or commodity with no chain of its own: name the listed fund whose options stand in.
       const alternative = listedOptionsAlternative(listing.key);
-      return ctx.fail(optionsUnavailableTitle(listing.key), alternative
+      // A name read as a fund or an index asks about the company's stock it means, whose options are listed.
+      const meant = meantQuestion(listing);
+      return ctx.fail(meant ? `${optionsUnavailableTitle(listing.key)} ${meant}` : optionsUnavailableTitle(listing.key), alternative
         ? `Nearest listed alternative: ${alternative.symbol} (${alternative.name}), gloomberb options ${alternative.symbol}.`
           + ` Strategy payoffs: gloomberb fn OSA ${alternative.symbol}`
         : "Strategy payoffs on a listed underlying: gloomberb fn OSA <ticker>");
@@ -2559,9 +2578,9 @@ async function runEarnings(rawArgs: string[], ctx: Parameters<CliCommandDef["exe
     // Each bare symbol's venues cost a search, so a long list (a portfolio check, not a lookup) names none.
     const venues = new Map(listings.length > MAX_CHOICE_LOOKUPS ? []
       : listings.map((listing) => [listing, loadBareVenues(listing, services)] as const));
-    let events: EarningsEvent[];
+    let calendar: EarningsEvent[];
     try {
-      events = await loadForListing(
+      calendar = await loadForListing(
         listings, services, ctx,
         () => services.dataProvider.getEarningsCalendar(keys),
         (found) => found.length === 0,
@@ -2571,6 +2590,15 @@ async function runEarnings(rawArgs: string[], ctx: Parameters<CliCommandDef["exe
       if (failure) ctx.fail(failure);
       throw error;
     }
+    // Each date is resolved as events, EE, ERN and OSA resolve it: one that has come is read against the
+    // company's quarters on record, for its actual and the next report on record (shared/earnings-calendar).
+    const today = newYorkDay();
+    const resolved = await resolveListingEvents(services.dataProvider, listings.map((listing) => ({
+      key: listing.key, symbol: listing.request.symbol, exchange: listing.request.exchange,
+    })), calendar, today);
+    const events: ResolvedEarningsEvent[] = calendar
+      .map((event) => resolved.get(event.symbol.toUpperCase()) ?? { ...event, dateStatus: calendarStatus(event, today) })
+      .sort((left, right) => left.earningsDate.getTime() - right.earningsDate.getTime());
     const eventOf = (listing: CliListing) => events.find((event) => event.symbol.toUpperCase() === listing.key.toUpperCase());
     const [abroadNotes, choiceNotes] = await Promise.all([
       // A listing abroad with no date of its own says so, with its US line's date when that line is the same company.
@@ -2590,7 +2618,8 @@ async function runEarnings(rawArgs: string[], ctx: Parameters<CliCommandDef["exe
     ];
     ctx.printResult({
       data: events,
-      freshness: rowsFreshness(earningsRows(events), { status: "not-a-feed", basis: "calendar", observedKey: "date", oldest: null }),
+      // Dated by when it was read: a row's date is when the report is, not how old the calendar is.
+      freshness: rowsFreshness([], { status: "not-a-feed", basis: "calendar", oldest: null }),
       ...(warnings.length > 0 ? { warnings } : {}),
     }, {
       rows: earningsRows,
