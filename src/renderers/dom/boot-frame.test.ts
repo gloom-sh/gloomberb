@@ -106,18 +106,20 @@ test("a window that draws no frame, and a broken stored frame, leave the page as
 test("the frame stays over the app until the app has drawn its layout", async () => {
   const { window, document, root } = page();
   runFrameScript(window, bootFrameScript({ build: "b", source: "null" }));
-  releaseBootFrameWhenDrawn(document, root);
   const frameShown = () => document.getElementById(BOOT_FRAME_ELEMENT_ID) !== null;
+  // Mutation records arrive in a microtask. Only microtasks are awaited, because happy-dom
+  // holds an observer weakly and a collection between timers can drop it.
+  const flush = async () => {
+    for (let turn = 0; turn < 5; turn += 1) await Promise.resolve();
+  };
 
+  releaseBootFrameWhenDrawn(document, root);
   root.innerHTML = "<div>mounting</div>";
-  await new Promise((resolve) => window.requestAnimationFrame(resolve));
-  await new Promise((resolve) => window.requestAnimationFrame(resolve));
+  await flush();
   expect(frameShown()).toBe(true);
 
   root.innerHTML = APP_LAYOUT;
-  for (let frames = 0; frames < 5 && frameShown(); frames += 1) {
-    await new Promise((resolve) => window.requestAnimationFrame(resolve));
-  }
+  await flush();
   expect(frameShown()).toBe(false);
 });
 

@@ -94,7 +94,6 @@ async function buildPage(
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="apple-touch-icon" href="/app-icon-256.png">
   <link rel="stylesheet" href="${href(stylesheet)}">
-  <link rel="modulepreload" href="${href(script)}">
 </head>
 <body>
   <div id="root">${loading}</div>${frameScript}

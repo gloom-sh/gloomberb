@@ -76,6 +76,8 @@ export function bootFrameScript({ build, source, skip = "false", shellStyle = ""
   try { frame = ${source}; } catch (error) { frame = null; }
   var overlay = document.createElement("div");
   overlay.id = ${scriptJson(BOOT_FRAME_ELEMENT_ID)};
+  // A picture of the app: nothing in it takes focus, a click or a screen reader.
+  overlay.setAttribute("inert", "");
   overlay.setAttribute("aria-hidden", "true");
   if (frame && frame.build === ${scriptJson(build)} && typeof frame.html === "string"
     && Math.abs(frame.width - window.innerWidth) <= 1 && Math.abs(frame.height - window.innerHeight) <= 1) {

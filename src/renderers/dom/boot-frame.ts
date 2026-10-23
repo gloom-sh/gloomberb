@@ -195,17 +195,18 @@ export function startBootFrameRecorder({
 }
 
 /**
- * Takes the launch frame down the first frame the app has drawn its own
- * layout, or a failure screen, in `root`. Until then the frame covers the
- * app, so the user never sees it half built. Returns a function that takes
- * the frame down now, for a page that gives up on starting.
+ * Takes the launch frame down as the app draws its own layout, or a failure
+ * screen, in `root`. Until then the frame covers the app, so the user never
+ * sees it half built. Mutation observers run before the page paints, so the
+ * frame goes in the paint that shows the layout, not a frame after it.
+ * Returns a function that takes the frame down now, for a page that gives
+ * up on starting.
  */
 export function releaseBootFrameWhenDrawn(doc: Document, root: Element): () => void {
   const view = doc.defaultView;
   const frame = doc.getElementById(BOOT_FRAME_ELEMENT_ID);
   if (!view || !frame) return () => {};
   let released = false;
-  let scheduled = false;
   const release = () => {
     if (released) return;
     released = true;
@@ -215,15 +216,8 @@ export function releaseBootFrameWhenDrawn(doc: Document, root: Element): () => v
   const drawn = () => root.querySelector(
     '[data-gloom-role="pane-window"], [data-gloom-role="status-bar"], .gloom-fatal',
   ) !== null;
-  const check = () => {
-    scheduled = false;
-    if (drawn()) release();
-  };
   const observer = new view.MutationObserver(() => {
-    if (scheduled || released) return;
-    scheduled = true;
-    // At the next frame, so the frame goes in the same paint as the layout.
-    view.requestAnimationFrame(check);
+    if (drawn()) release();
   });
   observer.observe(root, { childList: true, subtree: true });
   if (drawn()) release();
