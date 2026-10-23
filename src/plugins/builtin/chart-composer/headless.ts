@@ -30,7 +30,10 @@ import type { TickerFinancials, PricePoint, Quote } from "../../../types/financi
 import { chartQuoteOverrideKeyForTarget, getLiveChartQuoteTargets } from "../../../time-series/live-quotes";
 import { createChartSeriesResolver } from "../../../capabilities";
 import { loadFuturesContractTerms, loadFuturesPriceUnit } from "../../../market-data/futures-contract";
-import { parsePublicTickerKey, publicTickerKey } from "../../../utils/exchanges";
+import { isUsListingExchange, parsePublicTickerKey, publicTickerKey } from "../../../utils/exchanges";
+import { zonedDateTimeParts } from "../../../utils/zoned-date-time";
+import { futuresSessionOpenMinute } from "../../../market-data/market/trading-sessions";
+import { cleanFloat32Price } from "../../../cli/history-rows";
 import { parseChartSpec } from "./chart-spec";
 import { paneSchemas } from "./headless-schema";
 import { barHistoryFreshness, REPORTED_DATA } from "../shared/report-freshness";
@@ -376,6 +379,48 @@ function formingPriceBar(series: readonly HeadlessSeries[]): BarPeriodToDate | n
   return null;
 }
 
+const REGULAR_OPEN_MINUTE = 9 * 60 + 30;
+const REGULAR_CLOSE_MINUTE = 16 * 60;
+
+/**
+ * GIP asks for a US listing's regular session only, so an 08:30 New York
+ * release is not in its bars. Said when every bar of a US stock venue's
+ * window starts from the 09:30 open to the 16:00 close; null for another
+ * venue, a future, or bars outside those hours.
+ */
+function regularSessionNotice(windows: ReadonlyArray<{ symbol: string; exchange: string; points: ReadonlyArray<Pick<PricePoint, "date">> }>): string | null {
+  const us = windows.filter(({ symbol, exchange, points }) => points.length > 0 && isUsListingExchange(exchange) && futuresSessionOpenMinute(symbol, exchange) == null);
+  if (!us.length) return null;
+  const regular = us.every(({ points }) => points.every(({ date }) => {
+    const { hour, minute } = zonedDateTimeParts(new Date(date).getTime(), "America/New_York");
+    const at = hour * 60 + minute;
+    return at >= REGULAR_OPEN_MINUTE && at <= REGULAR_CLOSE_MINUTE;
+  }));
+  return regular ? "Regular session only, from the 09:30 New York open: pre-market and after-hours bars are not included." : null;
+}
+
+/**
+ * Intraday bars as traded: each price the decimal the feed's float stands
+ * for (85.1, not 85.099998; a sub-penny print such as 86.3775 stays), as
+ * `history` writes them. A `value` that only repeats each bar's close is
+ * marked so, and `--csv` writes Close alone.
+ */
+function tradedBars(series: HeadlessSeries): HeadlessSeries {
+  if (!series.points.some((point) => point.close != null)) return series;
+  const valueIsClose = series.points.every((point) => point.value == null || point.value === point.close);
+  const traded = (price: number | null | undefined) => price == null || !Number.isFinite(price) ? price : cleanFloat32Price(price);
+  return {
+    ...series,
+    ...(valueIsClose ? { valueIsClose } : {}),
+    points: series.points.map((point) => {
+      const bar = { ...point };
+      for (const field of ["open", "high", "low", "close"] as const) if (point[field] !== undefined) bar[field] = traded(point[field]);
+      if (point.value != null && valueIsClose) bar.value = bar.close;
+      return bar;
+    }),
+  };
+}
+
 /** What a chart series was asked as: a listing as typed (`USDZAR=X`, `SAN:EPA`), a FRED series by its ID. */
 function askedSymbol(source: ChartSeriesSource): string {
   switch (source.kind) {
@@ -619,6 +664,11 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
         const interval = servedInterval(series as HeadlessSeries & Pick<ResolvedSeries, "historyResolution" | "barSize" | "nativeFrequency">);
         return { ...series, ...(symbol ? { symbol } : {}), ...(interval ? { interval } : {}) };
       });
+      if (template === "graph-intraday-price-pane") {
+        model.series = model.series.map(tradedBars);
+        const regular = regularSessionNotice(intradayHistories.map((window) => ({ ...window, exchange: listingExchange(window.symbol, window.exchange) })));
+        if (regular) model.metadata = { ...model.metadata, notices: [...(Array.isArray(model.metadata?.notices) ? model.metadata.notices : []), regular] };
+      }
       const dropped = chartResolutionDrop(
         parsed.viewport.resolution,
         model.spec.viewport,

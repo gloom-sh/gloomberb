@@ -557,6 +557,8 @@ export interface HeadlessSeries {
   interval?: string;
   /** Decimal places the text report prints the latest value to (a correlation to 3); JSON and CSV keep every digit. */
   textDecimals?: number;
+  /** Each point's `value` is its bar's close: `--csv` and `--ndjson` write Close alone, JSON keeps both. */
+  valueIsClose?: boolean;
   points: HeadlessSeriesPoint[];
 }
 

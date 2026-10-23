@@ -92,6 +92,7 @@ const newsWirePanes: PluginModule["panes"] = [
     {
       id: NEWS_STORY_PANE_ID,
       reportFreshness: NEWS_REPORT_FRESHNESS,
+      reportArgument: { kind: "free-text", placeholder: "story id", description: "The id of the story to open." },
       name: "Story",
       icon: "A",
       component: NewsStoryPane,

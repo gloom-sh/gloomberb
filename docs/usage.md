@@ -559,6 +559,8 @@ The level tool (`Shift+H`, or `═` in the chart toolbar) draws horizontal price
 
 `gloom fn GIP <ticker>` ends with the session's low and high and the UTC time each traded (`USDT-USD:CCC session low  0.99833 at 2026-10-17 11:30 UTC`; over several sessions they read low and high). `GIP` dates sessions on the listing's exchange clock, read from its exchange or its suffix (`RMS.AX` is the ASX). A bare symbol with no known exchange is dated in UTC.
 
+A US listing's bars are the regular session only, from the 09:30 New York open, and the report says so (in `--csv`, as a `# note:` line): an 08:30 release falls before its first bar. `--csv` writes each price as the decimal it traded at (`85.1`, not the feed's `85.099998`; a sub-penny print such as `86.3775` stays), under `Open,High,Low,Close,Volume` with no `Value` column repeating Close; `--json` keeps `value` beside `close`.
+
 A zero or negative price is kept for a futures instrument. For any other instrument a nonpositive close in the window makes the result unavailable, and JSON metadata keeps the rejected values and dates in `intradayPriceDomainFailures`.
 
 ### Markets, News, and Macro
@@ -1244,7 +1246,7 @@ A list leaves such a ticker out and says so. `LITI` takes funds too, and `FA` sh
 - `fn PERP`, `fn COT` and `fn CTM` fail on a name nothing matches and suggest ones that work.
 - `fn EVTS SAN` opens with a line saying whether SAN reports on the board and when, and that `gloom fn ERN SAN` has SAN's own dates (`data.metadata.highlight` in `--json`).
 - A function with no data report, such as `fn CAT santander`, fails pointing to `gloom shot CAT santander`.
-- A function that takes no argument and is given one fails with its options and a command to run. A word that is one of an option's values runs as that option: `fn JODI gas` answers `JODI does not accept an argument. Options: --commodity <oil|gas>. Run: gloom fn JODI --commodity gas`.
+- A function that takes no argument and is given one fails with its options and a command to run. A word that is one of an option's values runs as that option: `fn JODI gas` answers `JODI does not accept an argument. Options: --commodity <oil|gas>. Run: gloom fn JODI --commodity gas`. That holds for every function `catalog` lists with no argument, a rendered pane such as `HALT` as much as a report such as `CBR`.
 - With `--require-bot-safe`, a report or screenshot that is incomplete because part of it needs Gloom Cloud Pro, or a sign-in, says so.
 
 **Unknown functions**

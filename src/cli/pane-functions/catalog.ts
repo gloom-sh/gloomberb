@@ -13,6 +13,7 @@ import {
   MAX_INLINE_CHOICES,
   optionChoices,
   optionFlags,
+  paneFunctionArgument,
   type PaneFunctionCapability,
   type PaneFunctionOptionDef,
   type PaneFunctionReadiness,
@@ -153,12 +154,8 @@ export function findFunctionCode(registry: PaneFunctionCatalog, token: string): 
     ...(headless?.discovery?.aliases ?? []),
   ];
   if (!codes.some((code) => code && normalizeLookupToken(code) === wanted)) return null;
-  return {
-    argument: argumentHint({
-      argKind: headless?.argument.kind ?? found.shortcut?.argKind,
-      argPlaceholder: headless?.argument.placeholder ?? found.shortcut?.argPlaceholder,
-    }),
-  };
+  const argument = pane ? paneFunctionArgument(found, pane) : { kind: found.shortcut?.argKind, placeholder: found.shortcut?.argPlaceholder };
+  return { argument: argumentHint({ argKind: argument.kind, argPlaceholder: argument.placeholder }) };
 }
 
 /** A function code a typed one is a slip away from: what to type, and the function's name. */
@@ -259,6 +256,7 @@ async function buildTemplateCatalogEntry(
   }
 
   const headless = getHeadlessPaneDefinition(template, pane);
+  const argument = paneFunctionArgument(template, pane);
   return {
     token: template.shortcut?.prefix ?? template.id,
     label: template.label,
@@ -268,8 +266,8 @@ async function buildTemplateCatalogEntry(
     templateId: template.id,
     shortcut: template.shortcut?.prefix,
     aliases: [...(template.shortcut?.aliases ?? [])],
-    argKind: headless?.argument.kind ?? template.shortcut?.argKind,
-    argPlaceholder: headless?.argument.placeholder ?? template.shortcut?.argPlaceholder,
+    argKind: argument.kind,
+    argPlaceholder: argument.placeholder,
     ...(headless?.argument.examples?.length ? { argExamples: headless.argument.examples } : {}),
     ...(headless?.argument.kind === "tickers" && template.shortcut?.argKind === "ticker"
       ? { shotArgument: argumentHint({ argKind: "ticker", argPlaceholder: template.shortcut.argPlaceholder }) } : {}),
@@ -296,6 +294,7 @@ export async function buildPaneCatalogEntries(
   for (const pane of registry.panes.values()) {
     if (templatedPaneIds.has(pane.id)) continue;
     const [shortcut, ...aliases] = builtInPanePrefixes(pane.id);
+    const argument = paneFunctionArgument(undefined, pane);
     entries.push({
       token: shortcut ?? pane.id,
       label: pane.name,
@@ -304,8 +303,8 @@ export async function buildPaneCatalogEntries(
       paneName: pane.name,
       shortcut,
       aliases,
-      argKind: pane.headless?.argument.kind,
-      argPlaceholder: pane.headless?.argument.placeholder,
+      argKind: argument.kind,
+      argPlaceholder: argument.placeholder,
       ...(pane.headless?.argument.examples?.length ? { argExamples: pane.headless.argument.examples } : {}),
       keywords: [],
       defaultSettings: {},

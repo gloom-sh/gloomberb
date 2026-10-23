@@ -174,6 +174,30 @@ export function getHeadlessPaneDefinition(
   return template?.headless ?? pane.headless;
 }
 
+/** What a function takes after its code: its kind and the name the catalog gives it. */
+export interface PaneFunctionArgument {
+  kind?: string;
+  placeholder?: string;
+}
+
+/**
+ * The argument a function takes, as the catalog writes it and `fn` checks it:
+ * the `headless` model's, else the template shortcut's, else the one a
+ * rendered view declares (`reportArgument`).
+ */
+export function paneFunctionArgument(template: PaneTemplateDef | undefined, pane: PaneDef): PaneFunctionArgument {
+  const headless = getHeadlessPaneDefinition(template, pane);
+  return {
+    kind: headless?.argument.kind ?? template?.shortcut?.argKind ?? pane.reportArgument?.kind,
+    placeholder: headless?.argument.placeholder ?? template?.shortcut?.argPlaceholder ?? pane.reportArgument?.placeholder,
+  };
+}
+
+/** A function the catalog lists with no argument, which refuses one as CBR does. */
+export function takesNoArgument({ kind, placeholder }: PaneFunctionArgument): boolean {
+  return !placeholder && (!kind || kind === "none");
+}
+
 export function getPaneFunctionCapability(
   template: PaneTemplateDef | undefined,
   pane: PaneDef,

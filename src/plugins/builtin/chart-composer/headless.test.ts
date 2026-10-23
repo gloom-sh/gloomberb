@@ -6,6 +6,9 @@ import { buildCustomChartPreset, buildIntradayPriceChartPreset } from "./presets
 import { createTestHeadlessContext } from "../../../test-support/headless";
 import { resetFuturesPriceUnits } from "../../../market-data/futures-contract";
 import type { FuturesContractTermsPayload } from "../../../api-client/futures-curve";
+import { headlessReportTables } from "../../../cli/pane-functions/headless";
+import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
+import { renderReportCsv } from "../../../cli/report-tables";
 
 const history = ["2026-08-27", "2026-08-28", "2026-08-31", "2026-09-01", "2026-09-02", "2026-09-03"]
   .flatMap((date, day) => [0, 1].map((bar) => ({
@@ -13,7 +16,7 @@ const history = ["2026-08-27", "2026-08-28", "2026-08-31", "2026-09-01", "2026-0
     open: 100 + day, high: 102 + day, low: 99 + day, close: 101 + day, volume: 100,
   })));
 
-function fixture() {
+function fixture(bars = history) {
   const calls: Array<{ kind: string; start?: Date; end?: Date; range?: string; resolution?: string }> = [];
   const spec = buildIntradayPriceChartPreset("AAPL:NASDAQ");
   const context = createTestHeadlessContext({
@@ -22,11 +25,11 @@ function fixture() {
       getQuote: async () => ({ symbol: "AAPL", price: 106, change: 0, changePercent: 0, currency: "USD", lastUpdated: Date.now() }),
       getPriceHistoryForResolution: async (_symbol, _exchange, range, resolution) => {
         calls.push({ kind: "trailing", range, resolution });
-        return history;
+        return bars;
       },
       getDetailedPriceHistory: async (_symbol, _exchange, start, end, resolution) => {
         calls.push({ kind: "detailed", start, end, resolution });
-        return history.filter((point) => point.date >= start && point.date < end);
+        return bars.filter((point) => point.date >= start && point.date < end);
       },
     }),
     settings: { chartSpec: spec },
@@ -209,6 +212,33 @@ describe("GIP headless sessions", () => {
     expect(missing.chart.series[0]?.points ?? []).toEqual([]);
     expect(missing.errors?.some((error) => error.includes("No intraday price history is available for AAPL for session 2020-01-02."))).toBe(true);
     expect(missing.unavailableSymbols).toEqual(["AAPL:XNAS"]);
+  });
+
+  test("a US listing's bars export as traded and say they are the regular session only, with no Value column repeating Close", async () => {
+    // The feed's floats: 85.1 arrives as 85.099998; 86.3775 is a sub-penny print, not noise.
+    const noisy = [
+      { date: new Date("2026-10-20T13:30:00Z"), open: 85.5, high: 85.900002, low: 85.099998, close: 85.675003, volume: 9120 },
+      { date: new Date("2026-10-20T19:59:00Z"), open: 86.019997, high: 86.377502, low: 86, close: 86.339996, volume: 79340 },
+    ];
+    const csv = async (bars: typeof noisy) => {
+      const { load } = fixture(bars);
+      const result = await load({ session: "2026-10-20" });
+      const args = { argument: "AAPL:NASDAQ", rawArgument: "AAPL:NASDAQ", symbols: ["AAPL:NASDAQ"], options: { session: "2026-10-20" } };
+      const definition = chartHeadless("graph-intraday-price-pane");
+      return { result, csv: renderReportCsv(headlessReportTables(definition, result, args, "GIP", deriveHeadlessFreshness(definition, result), { complete: true, unavailableSymbols: [] })) };
+    };
+    const { result, csv: regular } = await csv(noisy);
+    // JSON keeps the value, the close it repeats.
+    expect(result.series[0]!.points.map(({ value, open, high, low, close }) => ({ value, open, high, low, close }))).toEqual([
+      { value: 85.675, open: 85.5, high: 85.9, low: 85.1, close: 85.675 },
+      { value: 86.34, open: 86.02, high: 86.3775, low: 86, close: 86.34 },
+    ]);
+    expect(regular).toMatch(/^Time,Open,High,Low,Close,Volume\n2026-10-20T13:30:00Z,85\.5,85\.9,85\.1,85\.675,9120$/m);
+    expect(regular).toContain("\nAAPL:XNAS session low,85.1 at 2026-10-20 13:30 UTC\n");
+    expect(regular).toContain("\n# note: Regular session only, from the 09:30 New York open: pre-market and after-hours bars are not included.");
+    // Bars from 08:30 New York, when a housing release lands, are not the regular session.
+    const early = await csv([{ ...noisy[0]!, date: new Date("2026-10-20T12:30:00Z") }, ...noisy]);
+    expect(early.csv).not.toContain("Regular session only");
   });
 });
 

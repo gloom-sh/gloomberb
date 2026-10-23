@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { AppTickerRepositoryPort } from "../core/app-service-ports";
-import type { HeadlessPaneContext, HeadlessPaneDefinition, HeadlessPaneFreshness, HeadlessPaneOptionDef } from "./headless";
+import type { HeadlessPaneArgumentDef, HeadlessPaneContext, HeadlessPaneDefinition, HeadlessPaneFreshness, HeadlessPaneOptionDef } from "./headless";
 
 export type {
   HeadlessArgumentExpansion,
@@ -189,6 +189,13 @@ export interface PaneDef {
    * is listed with its example by `gloom catalog`.
    */
   reportOptions?: readonly PaneReportOptionDef[];
+  /**
+   * What a rendered-view report takes after the function, for a pane whose
+   * template reads it with no shortcut to say so (X Feed's query): the
+   * catalog lists it, and `fn` refuses an argument from a function that
+   * declares none here, in its shortcut or in a `headless` model.
+   */
+  reportArgument?: Pick<HeadlessPaneArgumentDef, "kind" | "placeholder" | "description" | "optional">;
   /**
    * Lines a rendered-view report prints above its table, from the settings it
    * ran with: what the default view leaves out and how to see more. `--json`

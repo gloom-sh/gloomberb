@@ -46,6 +46,8 @@ import {
   getPaneFunctionCapability,
   noArgumentMessage,
   normalizeCapabilityOptions,
+  paneFunctionArgument,
+  takesNoArgument,
   type NormalizedPaneFunctionOptions,
   type PaneFunctionCapability,
 } from "./capabilities";
@@ -312,7 +314,11 @@ export async function resolvePaneFunction(
   // What the user types for the function, which every error about it names.
   const token = template?.shortcut?.prefix ?? template?.id ?? pane.id;
   // A word after a function that takes none is most often one of its option values (`fn JODI gas`).
-  if (headless?.argument.kind === "none" && args.arg?.trim()) {
+  // Every function the catalog lists with no argument refuses one, a rendered view (HALT) as a report (CBR).
+  // The catalog lists templates and the panes no template opens (HELP); a pane opened by its id stands for its templates.
+  const listed = template !== undefined || ![...registry.paneTemplates.values()].some((entry) => entry.paneId === pane.id);
+  const refusesArgument = listed ? takesNoArgument(paneFunctionArgument(template, pane)) : headless?.argument.kind === "none";
+  if (refusesArgument && args.arg?.trim()) {
     throw new Error(noArgumentMessage(capability.options, token, args.arg, resolutionSettings.command ?? "fn"));
   }
   const normalizedOptions = normalizeCapabilityOptions(capability, args.options, {

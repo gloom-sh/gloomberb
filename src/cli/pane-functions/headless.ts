@@ -621,7 +621,7 @@ const SERIES_FIELDS = ["value", "open", "high", "low", "close", "volume"] as con
  * column names beside the bare `Value`, `Open`... headers.
  */
 function seriesTable(series: HeadlessSeries): CliReportTable {
-  const fields = SERIES_FIELDS.filter((field) => series.points.some((point) => point[field] != null));
+  const fields = SERIES_FIELDS.filter((field) => !(field === "value" && series.valueIsClose) && series.points.some((point) => point[field] != null));
   const days = observesDays(series);
   const dates = series.points.map((point) => seriesPointExportDate(series, point.date, days));
   const header = (field: (typeof SERIES_FIELDS)[number]) => `${field[0]!.toUpperCase()}${field.slice(1)}`;

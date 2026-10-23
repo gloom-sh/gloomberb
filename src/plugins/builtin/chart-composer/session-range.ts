@@ -1,5 +1,6 @@
 import type { HeadlessPaneEntry } from "../../../types/headless";
 import type { PricePoint } from "../../../types/financials";
+import { cleanFloat32Price } from "../../../cli/history-rows";
 import { exportNumber } from "../../../cli/report-tables";
 import { publicTickerKey } from "../../../utils/exchanges";
 import { formatUtcTime } from "../../../utils/utc-time";
@@ -64,8 +65,9 @@ export function sessionRangeReport(windows: readonly SessionRangeWindow[]): Sess
     const listing = publicTickerKey(window.symbol, window.exchange);
     const span = (window.sessionDates?.length ?? 1) > 1 ? "" : "session ";
     const currency = window.quote?.currency?.trim();
-    const low = exportNumber(range.low.price);
-    const high = exportNumber(range.high.price);
+    // As the bars export them: the decimal the feed's float stands for (85.1, not 85.099998).
+    const low = cleanFloat32Price(exportNumber(range.low.price));
+    const high = cleanFloat32Price(exportNumber(range.high.price));
     const entry = (side: "low" | "high", price: number, at: Date): HeadlessPaneEntry => ({
       key: side === "low" ? "sessionLow" : "sessionHigh",
       label: `${listing} ${span}${side}`,

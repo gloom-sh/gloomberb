@@ -34,6 +34,8 @@ gloom fn EXPO 'WATCH:watchlist-id' --scenario china-demand --json
 gloom shot EXPO 'AAPL NVDA' --tab paths --width 1280 --height 540 --output exposure-paths.png
 ```
 
+`--scenario` takes a library id: `taiwan-disruption` (the default), `china-demand`, `europe-demand`, `china-semiconductor-ban`, `china-tariff`, `oil-up`, `rates-up`, `usd-up`, `tsmc-outage` or `microsoft-capex`; `gloom catalog EXPO` lists them. A report run without `--scenario` says in its notes that it used the default and names the others. An id the library does not have fails with the ids it has (`Unknown scenario: rates. Did you mean rates-up?`).
+
 An explicit transmission assumption is user evidence, never a filing disclosure. For example, this assumes 20–40% of the interest-expense denominator is rate-sensitive, with a factor between 0.5 and 1 per percentage-point rate change:
 
 ```sh

@@ -3,6 +3,13 @@ import { humanLabel } from "../shared/research-cells";
 
 export const TABS = [{ value: "table", label: "Table" }, { value: "drivers", label: "Drivers" }, { value: "paths", label: "Paths" }, { value: "portfolio", label: "Portfolio" }];
 export const DEFAULT_SCENARIO: ExposureScenario = { id: "taiwan-disruption", label: "Taiwan disruption", shocks: [{ id: "taiwan", kind: "country", target: "TW", changePct: -100 }] };
+/**
+ * The ids of Gloom Cloud's scenario library, which the catalog lists for
+ * `--scenario`. A report reads the library itself, so an id added there runs
+ * before it is listed here.
+ */
+export const LIBRARY_SCENARIO_IDS = ["taiwan-disruption", "china-demand", "europe-demand", "china-semiconductor-ban", "china-tariff",
+  "oil-up", "rates-up", "usd-up", "tsmc-outage", "microsoft-capex"] as const;
 export const basisLabel = (basis: string | null) => basis?.replaceAll("_", " ") ?? "Unknown basis";
 const pct = (value: number) => `${value.toFixed(1)}%`;
 export const rangeText = (range: ExposureRange | null) => !range ? "Unknown" : range.low === range.high ? pct(range.low) : `${range.low.toFixed(1)} to ${range.high.toFixed(1)}%`;

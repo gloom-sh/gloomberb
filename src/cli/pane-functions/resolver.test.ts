@@ -1,4 +1,6 @@
-import { expect, test } from "bun:test";
+import { expect, mock, spyOn, test } from "bun:test";
+import { apiClient } from "../../api-client";
+import { getLoadablePlugins } from "../../plugins/catalog";
 import { centralBankRatesModule } from "../../plugins/builtin/central-bank-rates";
 import { chartComposerModule } from "../../plugins/builtin/chart-composer";
 import { creditBoardsModule } from "../../plugins/builtin/credit-boards";
@@ -12,7 +14,8 @@ import { createDefaultConfig } from "../../types/config";
 import { createTestDataProvider, createTestQuote } from "../../test-support/data-provider";
 import type { HeadlessPaneDefinition, PaneDef, PaneTemplateDef } from "../../types/plugin";
 import type { MarketContext } from "../types";
-import type { PaneFunctionCatalog } from "./catalog";
+import { buildPaneCatalogEntries, type PaneFunctionCatalog } from "./catalog";
+import { createPaneCatalog } from "./discovery";
 import { parsePaneFunctionArgs } from "./options";
 import { applyListingArgument, resolvePaneFunction, UnknownPaneFunctionError } from "./resolver";
 
@@ -227,4 +230,33 @@ test("a list typed as words is a company search names, the tickers it holds, or 
   const partial = await read("任天堂 ソニー, Foo Barbazqux, AMC");
   expect(partial.arg).toBe("AMC");
   expect(partial.listingNotes).toContain('No company found for "任天堂 ソニー", "Foo Barbazqux"; type tickers, such as GME,AMC.');
+});
+
+test("every function the catalog lists with no argument refuses one, a rendered view (HALT) as a report (CBR) does", async () => {
+  // Catalog discovery starts chat and instantiates the map's chart templates.
+  spyOn(apiClient, "getChannels").mockResolvedValue([]);
+  spyOn(apiClient, "geo").mockResolvedValue({ series: [] });
+  const catalog = await createPaneCatalog(context, getLoadablePlugins());
+  try {
+    const entries = await buildPaneCatalogEntries(catalog, context);
+    const none = entries.filter((entry) => !entry.argPlaceholder && (!entry.argKind || entry.argKind === "none"));
+    expect(none.map((entry) => entry.token)).toEqual(expect.arrayContaining(["CBR", "HALT", "HELP", "FI"]));
+    for (const entry of none) {
+      const refusal = await resolvePaneFunction(catalog, context, parsePaneFunctionArgs([entry.token, "DHI"]))
+        .then(() => null, (error: Error) => error.message);
+      expect(refusal, entry.token).toContain("does not accept an argument.");
+    }
+    expect(await resolvePaneFunction(catalog, context, parsePaneFunctionArgs(["HALT", "DHI"])).catch((error: Error) => error.message))
+      .toBe("HALT does not accept an argument. Run: gloom fn HALT");
+    // A rendered view that reads its argument with no shortcut declares it, so the catalog lists it and fn passes it on.
+    const feed = entries.find((entry) => entry.templateId === "twitter-feed-pane");
+    expect(feed?.argPlaceholder).toBe("query");
+    expect((await resolvePaneFunction(catalog, context, parsePaneFunctionArgs(["twitter-feed-pane", "nvda"]))).instance.params?.query).toBe("nvda");
+    // A pane opened by its id stands for its templates, which take a ticker: it is not one of the catalog's functions.
+    const byPaneId = await resolvePaneFunction(catalog, context, parsePaneFunctionArgs(["realized-vol", "DHI"]));
+    expect(byPaneId.instance.binding).toEqual({ kind: "fixed", symbol: "DHI" });
+  } finally {
+    catalog.destroy();
+    mock.restore();
+  }
 });
