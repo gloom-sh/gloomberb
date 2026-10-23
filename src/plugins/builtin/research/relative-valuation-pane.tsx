@@ -216,6 +216,7 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
       ...rows.filter((row) => row.fundamentalsProvenance?.stale)
         .map((row) => `${row.symbol}: ${RELATIVE_VALUATION_STALE_FUNDAMENTALS_NOTICE}.`),
       ...rows.flatMap((row) => row.evSalesUnavailable ? [`${row.symbol}: ${row.evSalesUnavailable}`] : []),
+      ...rows.flatMap((row) => row.evSalesNote ? [`${row.symbol}: ${row.evSalesNote}`] : []),
     ],
     focused,
   });
@@ -243,7 +244,8 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
       case "forwardPE":
         return { text: formatPriceEarnings(row.notMeaningful.forwardPE ? NOT_MEANINGFUL : row.reportedMultiples.forwardPE), color: colors.text };
       case "evSales":
-        // A withdrawn EV says so; the footer says why.
+        // A withdrawn EV says so, one at or below zero reads N/M as a P/E over a loss does; the footer says why.
+        if (row.evSales == null && row.notMeaningful.evSales) return { text: formatPriceEarnings(NOT_MEANINGFUL), color: colors.text };
         return row.evSales == null && row.evSalesUnavailable
           ? { text: "EV n/a", color: colors.textDim }
           : { text: formatNumber(row.evSales ?? undefined, 1), color: colors.text };

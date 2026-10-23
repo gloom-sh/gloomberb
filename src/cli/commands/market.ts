@@ -47,7 +47,9 @@ import {
   formatRatingLabel,
   formatRecommendationMix,
   recommendationTotal,
-  targetUpside,
+  analystReferenceMetadata,
+  analystUpside,
+  formatAnalystReference,
 } from "../../plugins/builtin/research/analyst-model";
 import { getPublishedUsEquityCalendarYears, getPublishedUsEquitySession } from "../../market-data/published-us-sessions";
 import { isQuoteStaleForCurrentSession } from "../../market-data/quotes/freshness";
@@ -700,15 +702,17 @@ function filingsWithItemLabels(filings: SecFilingItem[]) {
   });
 }
 
-function analystSummary(data: AnalystResearchData): string {
+/** The summary over the ratings: the upside from Last, and the price and time it is measured from, as `fn ANR` gives them. */
+function analystSummary(data: AnalystResearchData, quote: Quote | null): string {
   const target = data.priceTarget;
   const currency = analystTargetCurrency(data);
-  const upside = targetUpside(target);
+  const { upside, reference } = analystUpside(data, quote);
   const analysts = recommendationTotal(data);
   const mix = formatRecommendationMix(data);
   const entries: Array<[string, string]> = [
     ["Average Target", formatAnalystPrice(target?.average, currency)],
     ["Upside", upside == null ? "-" : formatPercent(upside)],
+    ["Upside vs", upside == null ? "-" : formatAnalystReference(reference, currency)],
     ["Low / Median / High", target && [target.low, target.median, target.high].some((value) => value != null)
       ? [target.low, target.median, target.high].map((value) => formatAnalystPrice(value, currency)).join(" / ")
       : "-"],
@@ -2165,6 +2169,7 @@ async function runAnalyst(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     ]);
     const identity = listingIdentity(listing, quote);
     const choice = await listingChoiceNotes(listing, market, quote, venues);
+    const { upside, reference } = analystUpside(data, quote);
     ctx.printResult({
       data,
       metadata: {
@@ -2172,6 +2177,8 @@ async function runAnalyst(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         recommendationRating: data.recommendationRating,
         priceTarget: data.priceTarget,
         recommendations: data.recommendations,
+        upside: upside ?? null,
+        upsideReference: analystReferenceMetadata(reference),
       },
       freshness: rowsFreshness(analystRows(data), {
         ...REPORTED_DATA, basis: "analyst ratings", observedKey: "date", oldest: null,
@@ -2180,7 +2187,7 @@ async function runAnalyst(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     }, {
       heading: listingHeading(identity),
       rows: analystRows,
-      summary: analystSummary,
+      summary: (research) => analystSummary(research, quote),
       columns: [
         { key: "date", header: "Date" },
         { key: "firm", header: "Firm" },

@@ -17,7 +17,7 @@ import { overlayScreenQuotes, screenExtendedSessions, sortLiveScreenRows } from 
 import {
   DEFAULT_SCREEN,
   EXAMPLE_SCREEN_DEFINITION,
-  formatScreenValue,
+  formatScreenMetric,
   metricDate,
   parseScreenDefinition,
   screenColumnLabel,
@@ -252,7 +252,7 @@ export const equityScreenerHeadless: HeadlessPaneDefinition<"bundle"> = {
               extendedPrice: row.extended?.price ?? null,
               extendedChangePercent: row.extended?.changePercent ?? null,
               ...(row.extended?.mark ? { extendedMark: true } : {}),
-              value: formatScreenValue(metric, observation.value),
+              value: formatScreenMetric(metric, observation),
               unit: observation.unit,
               percentile:
                 observation.percentile.value == null

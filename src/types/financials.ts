@@ -212,12 +212,14 @@ export interface TtmConversion {
  * How a served enterprise value ties to market cap + total debt - cash from the latest balance sheet served beside it.
  * `matches` within 5%; `differs` beyond it (or beyond 2% on the other side of the market cap from net debt), within
  * 0.7x to 1.5x, shown labelled as the provider's; `withdrawn` outside that band, with no EV or EV/revenue; `unchecked`
- * without a recent balance sheet carrying both lines.
+ * without a recent balance sheet carrying both lines. `computed`: an insurer's or a holding company's EV, which is
+ * `computed` itself, its investment book kept in (`investmentsKept`). `not-meaningful`: the EV comes out at or below
+ * zero, served as no EV or EV/revenue, with `reason`; shown N/M.
  */
 export interface EnterpriseValueCheck {
-  status: "matches" | "differs" | "withdrawn" | "unchecked";
-  /** The provider's enterprise value, served as `enterpriseValue` unless withdrawn. */
-  source: number;
+  status: "matches" | "differs" | "withdrawn" | "unchecked" | "computed" | "not-meaningful";
+  /** The provider's enterprise value, served as `enterpriseValue` unless withdrawn, computed or not meaningful; absent when it served none. */
+  source?: number;
   currency: string;
   marketCap: number;
   totalDebt?: number;
@@ -226,6 +228,10 @@ export interface EnterpriseValueCheck {
   balanceSheetDate?: string;
   /** marketCap + totalDebt - cash. */
   computed?: number;
+  /** `cash` is cash and equivalents alone: an insurer's or a holding company's investments stay in its EV. */
+  investmentsKept?: true;
+  /** Why the EV is not meaningful (`not-meaningful`). */
+  reason?: string;
 }
 
 /** How a trailing P/E converts the EPS it divides by, when that EPS is in another currency than the price. */

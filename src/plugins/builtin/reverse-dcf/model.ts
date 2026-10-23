@@ -1,8 +1,8 @@
 import { unavailableText } from "../../../components/ui/status";
 import { atRegularSessionPrice } from "../../../market-data/quotes/regular-session-valuation";
 import type { Fundamentals, TickerFinancials } from "../../../types/financials";
-import { enterpriseValueCheck, enterpriseValueLabel, enterpriseValueReconciliationNote, enterpriseValueWithdrawn,
-  reportedEnterpriseValue } from "../../../utils/fundamentals";
+import { enterpriseValueCheck, enterpriseValueLabel, enterpriseValueNotMeaningful, enterpriseValueReconciliationNote,
+  enterpriseValueWithdrawn, reportedEnterpriseValue } from "../../../utils/fundamentals";
 
 /** Years of explicit growth before the terminal value. */
 export const FORECAST_YEARS = 10;
@@ -150,6 +150,10 @@ export function projectReverseDcf(
   // ADRs and cross-listings can report cash flows in one currency and trade in another.
   if (currency && valueCurrency && currency !== valueCurrency) {
     return { ...empty, error: `Cash flows are in ${currency} and the market value in ${valueCurrency}.` };
+  }
+  // An EV at or below zero is N/M here as in `valuation` and RV, with the same reason: no growth rate prices it.
+  if (enterpriseValueNotMeaningful(fundamentals)) {
+    return { ...empty, enterpriseValue: null, error: enterpriseValueReconciliationNote(fundamentals)! };
   }
   // A withdrawn EV is unavailable here as in `valuation`, which says why.
   if (enterpriseValueWithdrawn(fundamentals)) {

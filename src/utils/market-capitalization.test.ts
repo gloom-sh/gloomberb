@@ -37,12 +37,13 @@ test("stale and undated fundamental provenance remains explicit", () => {
   expect(selected.provenance.retrievedAt).toBeUndefined();
 });
 
-// Shares x price replaces a provider's cap only while the two can be the same count (price timing, a recent
-// issuance); past 10% the count shown is another one (one class's) and the provider's stands.
-test("a view's cap is the share count times the price from more than 2% to 10% off the provider's, and the provider's past it", () => {
+// One basis for valuation, RV and EQS: shares x price while the provider's cap can be on the same count
+// (price timing, a recent issuance), named when more than 2% off; past 10% the count shown is another one (one
+// class's) and the provider's stands.
+test("a view's cap is the share count times the price within 10% of the provider's, and the provider's past it", () => {
   // 1B shares at 10 USD: 10B.
   const view = (marketCap: number) => viewMarketCapitalization({ ...quote, marketCap, price: 10 }, { ...fundamentals, sharesOutstanding: 1e9 });
-  expect(view(10.2e9)).toEqual({ value: 10.2e9, currency: "USD", provenance: { kind: "quote", source: "gloom" } });
+  expect(view(10.2e9)).toEqual({ value: 10e9, currency: "USD", provenance: { kind: "quote", source: "gloom" } });
   expect(marketCapBasisNote(view(10.2e9))).toBeUndefined();
   // Exactly 10% either way is still the product.
   for (const providerValue of [11e9, 9e9]) {

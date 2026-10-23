@@ -66,7 +66,7 @@ export function listedMarketCapitalization(value: number | null): number | null 
   return value != null && Number.isFinite(value) && value > 0 ? value : null;
 }
 
-/** How far a market cap may sit from the share count times the price and still rest on that count. */
+/** Within this a provider's cap is the share count times the price at another moment, and is not worth a note. */
 const SHARE_COUNT_TOLERANCE = 0.02;
 /**
  * How far a provider's cap may sit from the share count times the price and
@@ -78,7 +78,7 @@ const SHARE_BASIS_LIMIT = 0.1;
 
 /** A market cap a view shows, and how it stands against the share count shown beside it. */
 export interface ViewMarketCapitalization extends MarketCapitalization {
-  /** Set when the cap shown is `shares` x `price` because the provider's sat more than 2% and at most 10% from it. */
+  /** Set when the cap shown is `shares` x `price` and the provider's sat more than 2% (and at most 10%) from it. */
   computed?: { shares: number; price: number; providerValue: number };
   /** Set when the provider's cap, shown, sits more than 10% from `shares` x `price`: the count is not the cap's. */
   otherBasis?: { shares: number; price: number; product: number };
@@ -87,15 +87,16 @@ export interface ViewMarketCapitalization extends MarketCapitalization {
 const positiveFinite = (value: number | null | undefined): value is number => value != null && Number.isFinite(value) && value > 0;
 
 /**
- * The one market cap a view shows, so RV and `valuation` agree:
- * the provider's (selectMarketCapitalization) while it is within 2% of the
- * share count beside it times the price; that product when the provider's
- * sits more than 2% and at most 10% from it (price timing, a recent
- * issuance), with the provider's named in the note; and the provider's again
- * past 10%, where the count shown is not the cap's (one class's beside an
- * all-class cap), with a note saying the two do not tie. `price` is
- * the price the view measures at (the regular session's); without a count or
- * a price in the cap's currency the provider's stands.
+ * The one market cap a view shows, so RV, `valuation` and EQS agree:
+ * the share count shown times the price, the provider's figure only as a
+ * noted fallback. The product stands while the provider's sits within 10% of
+ * it, named in the note when more than 2% off (price timing, a recent
+ * issuance); past 10% the count shown is not the cap's (one class's beside
+ * an all-class cap), and the provider's is shown with a note saying the two
+ * do not tie. `price` is the price the view measures at (the regular
+ * session's); without a count or a price in the cap's currency the
+ * provider's stands. Gloom Cloud's screener and earnings board apply the
+ * same rule (sharesTimesLast in the server's market-cap-basis.ts).
  */
 export function viewMarketCapitalization(
   quote: Quote | undefined,
@@ -106,16 +107,16 @@ export function viewMarketCapitalization(
   const shares = fundamentals?.sharesOutstanding;
   if (!selected || !(selected.value > 0) || selected.currency !== quote?.currency) return selected;
   if (!positiveFinite(shares) || !positiveFinite(price)) return selected;
-  const product = shares * price;
+  // In whole units, as caps are served.
+  const product = Math.round(shares * price);
   const gap = Math.abs(selected.value - product);
-  if (gap <= SHARE_COUNT_TOLERANCE * product) return selected;
   if (gap > SHARE_BASIS_LIMIT * product) return { ...selected, otherBasis: { shares, price, product } };
   return {
     value: product,
     currency: selected.currency,
     // Priced at the quote, whichever block the provider's figure came from.
     provenance: { kind: "quote", source: quote.providerId },
-    computed: { shares, price, providerValue: selected.value },
+    ...(gap > SHARE_COUNT_TOLERANCE * product ? { computed: { shares, price, providerValue: selected.value } } : {}),
   };
 }
 

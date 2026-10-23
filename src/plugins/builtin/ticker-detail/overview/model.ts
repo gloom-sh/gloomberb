@@ -1,4 +1,4 @@
-import { formatPriceEarnings } from "../../../../utils/price-earnings";
+import { formatPriceEarnings, NOT_MEANINGFUL } from "../../../../utils/price-earnings";
 import { convertMarketCapitalization } from "../../../../utils/market-capitalization";
 import { priceColor } from "../../../../theme/colors";
 import type { CompanyProfile, NextEarnings, Quote, TickerFinancials } from "../../../../types/financials";
@@ -28,7 +28,7 @@ import { getPortfolioPositionMetrics, getPortfolioQuoteDisplay, resolvePortfolio
 import { listingDividendYield, liveForwardPE, liveMarketCapitalization, liveTrailingPE } from "../../../../market-data/quotes/live-valuation";
 import { atRegularSessionPrice } from "../../../../market-data/quotes/regular-session-valuation";
 import { formatReportedMoney } from "../../../../utils/reported-money";
-import { enterpriseValueCheck, fundamentalsCurrency, fundamentalsEpsCurrency, reportedEnterpriseValue } from "../../../../utils/fundamentals";
+import { enterpriseValueCheck, enterpriseValueNotMeaningful, fundamentalsCurrency, fundamentalsEpsCurrency, reportedEnterpriseValue } from "../../../../utils/fundamentals";
 import { formatShortDate } from "../../../../utils/datetime-format";
 import { safeExternalUrl } from "../../../../utils/external-url";
 import type { FundBondFacts } from "../../../../api-client/fund-facts";
@@ -289,7 +289,10 @@ export function buildOverviewStats({
   // At the regular session price, as the market cap above it is, with the check moved beside it.
   const priced = atRegularSessionPrice({ quote, fundamentals }).fundamentals;
   const enterpriseValue = reportedEnterpriseValue(priced);
-  if (fundamentals?.unavailableFields?.includes("enterpriseValue")) {
+  // At or below zero, as a P/E over a loss reads: N/M, the notice under the pane saying why.
+  if (enterpriseValueNotMeaningful(priced)) {
+    stats.push({ label: "EV", value: formatPriceEarnings(NOT_MEANINGFUL) });
+  } else if (fundamentals?.unavailableFields?.includes("enterpriseValue")) {
     stats.push({ label: "EV", value: "—" });
   } else if (enterpriseValue != null) {
     // More than 5% from market cap + debt - cash: the provider's, with the computed figure where it fits.

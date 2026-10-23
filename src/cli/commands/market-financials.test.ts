@@ -45,7 +45,7 @@ test("fundamentals --csv writes Metric,Value tables with each unit in its label,
     "# section: Fundamentals",
     `Metric,Value,${IDENTITY}`,
     ...[
-      "Market Cap (ZAR),474045349888",
+      "Market Cap (ZAR),472999894550",
       "P/E (TTM),9.322304",
       "EPS (TTM) (ZAR),31.43",
       "Dividend Yield (forward) (%),6.14587987599",
@@ -63,7 +63,7 @@ test("fundamentals --csv writes Metric,Value tables with each unit in its label,
   expect(await run("fundamentals", ["--section", "profile"], "csv"))
     .toEqual(expect.arrayContaining([`Metric,Value,${IDENTITY}`, `Symbol,SBK.JO${FUNDAMENTALS_ROW}`, `Sector,Financial Services${FUNDAMENTALS_ROW}`]));
   expect(JSON.parse((await run("fundamentals", [], "ndjson"))[0]!)).toEqual({
-    section: "Fundamentals", Metric: "Market Cap (ZAR)", Value: 474045349888,
+    section: "Fundamentals", Metric: "Market Cap (ZAR)", Value: 472999894550,
     symbol_or_series: "SBK.JO", currency_or_unit: null, interval: null, source: "Gloom Cloud", as_of: null,
   });
 });
@@ -76,7 +76,7 @@ test("valuation --csv is one clean table; financials --csv writes raw amounts un
     ...[
       "Last (ZAR),292.1",
       "Change (%),0.5",
-      "Market Cap (ZAR),474045349888",
+      "Market Cap (ZAR),472999894550",
       "Shares Outstanding,1619308095",
       "P/E (TTM),9.322304",
       "EPS (TTM) (ZAR),31.43",

@@ -70,7 +70,7 @@ test("enterprise value is shown in the market cap's currency, with the base curr
     .toContain("Enterprise Value 3.85T USD");
 });
 
-test("a zero enterprise value is a gap, not a value, while a negative one is kept", async () => {
+test("a zero enterprise value is a gap, not a value, while a negative one is N/M with why", async () => {
   const withEnterpriseValue = (enterpriseValue: number): TickerFinancials => ({ quote, annualStatements: [], quarterlyStatements: [], priceHistory: [],
     fundamentals: { marketCap: 100e9, marketCapCurrency: "USD", enterpriseValue, revenue: 50e9, financialCurrency: "USD" },
   });
@@ -82,8 +82,35 @@ test("a zero enterprise value is a gap, not a value, while a negative one is kep
     expect(valuation(financials)).not.toContain("Enterprise Value");
     expect(valuation(financials)).toContain("Market Cap 100B USD");
   }
-  expect(await report(withEnterpriseValue(-5e9))).toContain("Enterprise Value -5B USD");
-  expect(valuation(withEnterpriseValue(-5e9))).toContain("Enterprise Value -5B USD");
+  // A source's negative EV that no check judged: its cash and investments exceed the rest.
+  for (const text of [await report(withEnterpriseValue(-5e9)), valuation(withEnterpriseValue(-5e9))]) {
+    expect(text).toContain("Enterprise Value N/M");
+    expect(text).toContain("EV N/M: cash and investments exceed market cap + debt in the source's EV.");
+  }
+});
+
+test("an insurer's EV keeps its investments and says so, and one at or below zero is N/M with Gloom Cloud's reason", () => {
+  const valuation = (fundamentals: TickerFinancials["fundamentals"]) => renderFundamentalsReport(
+    { quote, annualStatements: [], quarterlyStatements: [], priceHistory: [], fundamentals, symbol: "UNITTEST" }, "valuation",
+  ).replace(/\u001b\[[0-9;]*m/g, "").replace(/ {2,}/g, " ");
+  // BRK-B on 2026-10-23: the provider's -233.89B netted its investments; 1,138.9B + 128.6B - 40.61B of cash.
+  const brk = valuation({
+    marketCap: 100e9, marketCapCurrency: "USD", enterpriseValue: 107.8e9, enterpriseToRevenue: 2.8, revenue: 38.5e9, financialCurrency: "USD",
+    enterpriseValueCheck: { status: "computed", source: -20.5e9, currency: "USD", marketCap: 100e9, totalDebt: 11.3e9, cash: 3.5e9,
+      balanceSheetDate: "2026-06-30", computed: 107.8e9, investmentsKept: true },
+  });
+  expect(brk).toMatch(/^Enterprise Value 107.8B USD$/m);
+  expect(brk).toContain("EV 107.8B USD is market cap + total debt - 3.5B of cash and equivalents (balance sheet 2026-06-30); investments stay in.");
+  // ARVN on 2026-10-23: more cash and short-term investments than market cap and debt.
+  const reason = "Cash and short-term investments exceed market cap + total debt (balance sheet 2026-06-30)";
+  const arvn = valuation({
+    marketCap: 100e9, marketCapCurrency: "USD", unavailableFields: ["enterpriseValue", "enterpriseToRevenue"],
+    enterpriseValueCheck: { status: "not-meaningful", source: -18e9, currency: "USD", marketCap: 100e9, totalDebt: 0.1e9, cash: 121e9,
+      balanceSheetDate: "2026-06-30", computed: -20.9e9, reason },
+  });
+  expect(arvn).toMatch(/^Enterprise Value N\/M$/m);
+  expect(arvn).toContain("EV N/M: cash and short-term investments exceed market cap + total debt (balance sheet 2026-06-30).");
+  expect(arvn).not.toContain("unavailable");
 });
 
 test("an EV off market cap + debt - cash is labelled as the provider's with the reconciliation, a withdrawn one is unavailable", async () => {

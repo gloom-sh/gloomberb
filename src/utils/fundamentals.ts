@@ -26,50 +26,89 @@ const finiteNumber = (value: unknown): value is number => typeof value === "numb
 
 /**
  * The served check of the enterprise value beside it, when it describes that value: a provider EV the check labels or
- * matches is the one shown, and a withdrawn one is no longer shown. A check merged beside another source's EV is none.
+ * matches is the one shown, a computed one is the check's own figure, and a withdrawn or not meaningful one is no
+ * longer shown. A check merged beside another source's EV is none.
  */
 export function enterpriseValueCheck(
   fundamentals: Pick<Fundamentals, "enterpriseValue" | "enterpriseValueCheck" | "unavailableFields"> | undefined,
 ): EnterpriseValueCheck | undefined {
   const check = fundamentals?.enterpriseValueCheck;
-  if (!check || !finiteNumber(check.source) || !check.currency) return undefined;
-  if (check.status === "withdrawn") {
+  if (!check || !check.currency) return undefined;
+  if (check.status === "withdrawn" || check.status === "not-meaningful") {
     return fundamentals?.enterpriseValue === undefined && fundamentals.unavailableFields?.includes("enterpriseValue")
-      && finiteNumber(check.computed) ? check : undefined;
+      && (check.status === "not-meaningful" || (finiteNumber(check.computed) && finiteNumber(check.source))) ? check : undefined;
   }
-  return fundamentals?.enterpriseValue === check.source ? check : undefined;
+  if (check.status === "computed") {
+    return finiteNumber(check.computed) && fundamentals?.enterpriseValue === check.computed ? check : undefined;
+  }
+  return finiteNumber(check.source) && fundamentals?.enterpriseValue === check.source ? check : undefined;
+}
+
+/** Why a source EV below zero that nothing checked is not meaningful: its cash and investments exceed the rest. */
+export const SOURCE_ENTERPRISE_VALUE_NOT_POSITIVE = "Cash and investments exceed market cap + debt in the source's EV";
+
+/**
+ * Why the enterprise value is not meaningful, if it is: Gloom Cloud's reason for an EV that comes out at or below
+ * zero, or for an EV below zero from any source that served no check. A bank's 0 is a gap, not N/M. EV/S, EV/EBITDA
+ * and a reverse DCF over it are N/M too.
+ */
+export function enterpriseValueNotMeaningful(fundamentals: Parameters<typeof enterpriseValueCheck>[0]): string | undefined {
+  const check = enterpriseValueCheck(fundamentals);
+  if (check?.status === "not-meaningful") return check.reason?.trim() || SOURCE_ENTERPRISE_VALUE_NOT_POSITIVE;
+  const value = fundamentals?.enterpriseValue;
+  return finiteNumber(value) && value < 0 ? SOURCE_ENTERPRISE_VALUE_NOT_POSITIVE : undefined;
 }
 
 /**
  * Whether the provider's EV was withdrawn: retracted (`unavailableFields`) and none served in its place, by the
- * served check or by Gloom Cloud's own validation of the source observation, which leaves no check.
+ * served check or by Gloom Cloud's own validation of the source observation, which leaves no check. Not one that is
+ * not meaningful (enterpriseValueNotMeaningful), which says N/M instead.
  */
 export function enterpriseValueWithdrawn(fundamentals: Parameters<typeof enterpriseValueCheck>[0]): boolean {
-  return fundamentals?.enterpriseValue === undefined && !!fundamentals?.unavailableFields?.includes("enterpriseValue");
+  return fundamentals?.enterpriseValue === undefined && !!fundamentals?.unavailableFields?.includes("enterpriseValue")
+    && enterpriseValueNotMeaningful(fundamentals) === undefined;
 }
 
-/** "(provider)" beside an EV more than 5% from market cap + debt - cash, or "unavailable" for a withdrawn one. */
-export function enterpriseValueLabel(fundamentals: Parameters<typeof enterpriseValueCheck>[0]): "provider" | "unavailable" | undefined {
+/** "(provider)" beside an EV more than 5% from market cap + debt - cash, "unavailable" for a withdrawn one, N/M for one at or below zero. */
+export function enterpriseValueLabel(fundamentals: Parameters<typeof enterpriseValueCheck>[0]): "provider" | "unavailable" | "not-meaningful" | undefined {
+  if (enterpriseValueNotMeaningful(fundamentals)) return "not-meaningful";
   const status = enterpriseValueCheck(fundamentals)?.status;
   return status === "differs" ? "provider" : status === "withdrawn" || enterpriseValueWithdrawn(fundamentals) ? "unavailable" : undefined;
 }
 
 /**
- * The reconciliation line under a labelled or withdrawn EV: "EV 61.75B USD (provider) vs 63.75B computed from market
- * cap + total debt - cash (balance sheet 2026-06-30)." For an EV withdrawn without a check, that the source failed
- * validation. Undefined when the EV matches, is unchecked, or has no check. Read it from the fundamentals the rows
- * show (atRegularSessionPrice moves the check with the EV and the market cap), so its figures are theirs.
+ * The reconciliation line under a labelled, withdrawn or not meaningful EV: "EV 61.75B USD (provider) vs 63.75B
+ * computed from market cap + total debt - cash (balance sheet 2026-06-30).", "EV N/M: cash and short-term investments
+ * exceed market cap + total debt (balance sheet 2026-06-30)." For an EV withdrawn without a check, that the source
+ * failed validation. Undefined when the EV matches, is unchecked or computed, or has no check. Read it from the
+ * fundamentals the rows show (atRegularSessionPrice moves the check with the EV and the market cap), so its figures
+ * are theirs.
  */
 export function enterpriseValueReconciliationNote(fundamentals: Parameters<typeof enterpriseValueCheck>[0]): string | undefined {
+  const notMeaningful = enterpriseValueNotMeaningful(fundamentals);
+  if (notMeaningful) return `EV N/M: ${notMeaningful.charAt(0).toLowerCase()}${notMeaningful.slice(1)}.`;
   const check = enterpriseValueCheck(fundamentals);
   if (!check && enterpriseValueWithdrawn(fundamentals)) return "EV unavailable: the provider's figure failed validation.";
-  if (!check || !finiteNumber(check.computed) || (check.status !== "differs" && check.status !== "withdrawn")) return undefined;
+  if (!check || !finiteNumber(check.computed) || !finiteNumber(check.source)
+    || (check.status !== "differs" && check.status !== "withdrawn")) return undefined;
   const source = `${formatCompact(check.source)} ${check.currency}`;
   const computed = formatCompact(check.computed);
   const basis = `market cap + total debt - cash${check.balanceSheetDate ? ` (balance sheet ${check.balanceSheetDate})` : ""}`;
   if (check.status === "differs") return `EV ${source} (provider) vs ${computed} computed from ${basis}.`;
   const ratio = check.computed > 0 ? ` is ${(check.source / check.computed).toFixed(1)}x` : " is far from";
   return `EV unavailable: the provider's ${source}${ratio} the ${computed} computed from ${basis}.`;
+}
+
+/**
+ * What `valuation` says of an insurer's or a holding company's EV, which Gloom Cloud computes rather than takes from
+ * the provider: "EV 1.23T USD is market cap + total debt - 40.61B of cash and equivalents (balance sheet 2026-06-30);
+ * investments stay in." Undefined for any other EV. Not shown in panes: the figure is the EV, and needs no label there.
+ */
+export function computedEnterpriseValueNote(fundamentals: Parameters<typeof enterpriseValueCheck>[0]): string | undefined {
+  const check = enterpriseValueCheck(fundamentals);
+  if (check?.status !== "computed" || !finiteNumber(check.computed) || !finiteNumber(check.cash)) return undefined;
+  const sheet = check.balanceSheetDate ? ` (balance sheet ${check.balanceSheetDate})` : "";
+  return `EV ${formatCompact(check.computed)} ${check.currency} is market cap + total debt - ${formatCompact(check.cash)} of cash and equivalents${sheet}; investments stay in.`;
 }
 
 /** What names the currency of the trailing figures: the fundamentals' own labels, else the statements'. */

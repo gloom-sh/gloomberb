@@ -6,11 +6,15 @@ import type {
   HeadlessPaneEntry,
   HeadlessPaneLoadArgs,
 } from "../../../types/plugin";
-import type { AnalystResearchData } from "../../../types/financials";
+import type { AnalystResearchData, Quote } from "../../../types/financials";
+import { logFailure } from "../../../utils/log-failure";
 import { formatPercent } from "../../../utils/format";
 import { loadAnalystResearch } from "./client";
 import {
+  analystReferenceMetadata,
   analystTargetCurrency,
+  analystUpside,
+  formatAnalystReference,
   formatAnalystPrice,
   formatRecommendationMix,
   recommendationMix,
@@ -18,7 +22,6 @@ import {
   formatRatingTarget,
   recommendationTotal,
   sortRatingRows,
-  targetUpside,
   type RatingColumnId,
 } from "./analyst-model";
 import { REPORTED_DATA } from "../shared/report-freshness";
@@ -48,10 +51,11 @@ const SORT_COLUMNS: Record<string, RatingColumnId> = {
   target: "target",
 };
 
-function overviewEntries(data: AnalystResearchData): HeadlessPaneEntry[] {
+/** The summary: the upside from Last (the quote's regular session price), and the price and time it is measured from, as `analyst` gives them. */
+function overviewEntries(data: AnalystResearchData, quote: Quote | null): HeadlessPaneEntry[] {
   const target = data.priceTarget;
   const currency = analystTargetCurrency(data);
-  const upside = targetUpside(target);
+  const { upside, reference } = analystUpside(data, quote);
   return [
     {
       label: "Average target",
@@ -65,8 +69,8 @@ function overviewEntries(data: AnalystResearchData): HeadlessPaneEntry[] {
     },
     {
       label: "Upside reference price",
-      value: target?.current ?? null,
-      formatted: formatAnalystPrice(target?.current, currency),
+      value: reference.price ?? null,
+      formatted: formatAnalystReference(reference, currency),
     },
     {
       label: "Target range",
@@ -97,12 +101,19 @@ export interface AnalystResearchHeadlessDependencies {
     args: HeadlessPaneLoadArgs,
     ctx: HeadlessPaneContext,
   ): Promise<AnalystResearchData>;
+  /** The listing's quote, whose regular session price the upside is measured from; null when none loads. */
+  loadQuote?(symbol: string, ctx: HeadlessPaneContext): Promise<Quote | null>;
 }
 
 const defaultDependencies: AnalystResearchHeadlessDependencies = {
   async loadData(symbol, _args, ctx) {
     const instrument = await ctx.resolveInstrument?.(symbol);
     return loadAnalystResearch(ctx.marketData, symbol, instrument?.exchange);
+  },
+  async loadQuote(symbol, ctx) {
+    const instrument = await ctx.resolveInstrument?.(symbol);
+    return ctx.marketData.getQuote(instrument?.symbol ?? symbol, instrument?.exchange ?? "")
+      .catch(logFailure("analyst", "Read the quote the upside is measured from failed", null));
   },
 };
 
@@ -148,7 +159,11 @@ export function createAnalystResearchHeadless(
     describe: (args) => `Analyst Research | ${args.symbols[0]}`,
     async load(args, ctx) {
       const symbol = args.symbols[0]!;
-      const data = await dependencies.loadData(symbol, args, ctx);
+      const [data, quote] = await Promise.all([
+        dependencies.loadData(symbol, args, ctx),
+        dependencies.loadQuote?.(symbol, ctx) ?? Promise.resolve(null),
+      ]);
+      const { upside, reference } = analystUpside(data, quote);
       const currency = analystTargetCurrency(data);
       const ratings = sortRatingRows(data.ratings, {
         columnId: SORT_COLUMNS[String(args.options.sort)] ?? "date",
@@ -161,7 +176,7 @@ export function createAnalystResearchHeadless(
           currency: currency ?? null,
         }));
       const sections: HeadlessBundleSection[] = [
-        { title: "Summary", entries: overviewEntries(data) },
+        { title: "Summary", entries: overviewEntries(data, quote) },
         { title: "Recent analyst actions", columns: RATING_COLUMNS, rows: ratings },
       ];
       return {
@@ -174,6 +189,8 @@ export function createAnalystResearchHeadless(
           currency: currency ?? null,
           fetchedAt: data.fetchedAt,
           stale: data.stale,
+          upside: upside ?? null,
+          upsideReference: analystReferenceMetadata(reference),
         },
       };
     },

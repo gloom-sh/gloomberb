@@ -253,3 +253,49 @@ test("every blank RV cell says why in the export's status, and the cap is the on
   expect(valuation).toContain("Market cap 23.69B AUD is the 1.99B shares shown x 11.93 AUD; the provider's is 24.4B AUD.");
   expect(result.metadata?.notices).toContain("EVN: Market cap 23.69B AUD is the 1.99B shares shown x 11.93 AUD; the provider's is 24.4B AUD.");
 });
+
+test("RV reads the EV valuation shows: an insurer's computed one, N/M at or below zero, and the cap on the shares shown", async () => {
+  // /market/financials on 2026-10-23 before the open, in the shapes Gloom Cloud serves them.
+  const close = { change: 0, changePercent: 0, currency: "USD", lastUpdated: Date.parse("2026-10-23T12:05:00Z"), marketState: "PRE" as const,
+    regularCloseSessionDate: "2026-10-22", changeSessionDate: "2026-10-23", exchangeName: "NYSE", listingExchangeName: "NYSE" };
+  const brk = { annualStatements: [], quarterlyStatements: [], priceHistory: [], financialCurrency: "USD",
+    quote: { ...close, symbol: "BRK-B", price: 545.03, regularClose: 546.97, regularChange: 7.98, regularChangePercent: 1.48, marketCap: 1_142_954_312_070 },
+    fundamentals: { marketCap: 1_142_954_312_070, marketCapCurrency: "USD", sharesOutstanding: 2_089_610_604, revenue: 384_687_013_888,
+      financialCurrency: "USD", enterpriseValue: 1_230_944_312_070, enterpriseToRevenue: 3.1998,
+      enterpriseValueCheck: { status: "computed" as const, source: -229_834_882_468, currency: "USD", marketCap: 1_142_954_312_070,
+        totalDebt: 128_599_000_000, cash: 40_609_000_000, balanceSheetDate: "2026-06-30", computed: 1_230_944_312_070, investmentsKept: true as const } },
+  };
+  const reason = "Cash and short-term investments exceed market cap + total debt (balance sheet 2026-06-30)";
+  const arvn = { annualStatements: [], quarterlyStatements: [], priceHistory: [], financialCurrency: "USD",
+    quote: { ...close, symbol: "ARVN", price: 7.15, regularClose: 7.17, regularChange: 0.1, regularChangePercent: 1.4, marketCap: 468_423_897 },
+    fundamentals: { marketCap: 468_423_897, marketCapCurrency: "USD", sharesOutstanding: 65_300_000, revenue: 317_000_000, financialCurrency: "USD",
+      unavailableFields: ["enterpriseValue" as const, "enterpriseToRevenue" as const],
+      enterpriseValueCheck: { status: "not-meaningful" as const, source: -85_196_256, currency: "USD", marketCap: 468_423_897,
+        totalDebt: 500_000, cash: 567_900_000, balanceSheetDate: "2026-06-30", computed: -98_976_103, reason } },
+  };
+  // The provider's 1.34B rests on 264.9M shares at the 5.06 pre-market print; the 274.5M shown x the 5.07 close is 1.39B.
+  const cour = { annualStatements: [], quarterlyStatements: [], priceHistory: [], financialCurrency: "USD",
+    quote: { ...close, symbol: "COUR", price: 5.06, regularClose: 5.07, regularChange: 0.1, regularChangePercent: 2.01, marketCap: 1_340_508_032 },
+    fundamentals: { marketCap: 1_340_508_032, marketCapCurrency: "USD", sharesOutstanding: 274_500_000, revenue: 885_400_000,
+      financialCurrency: "USD", enterpriseValue: 255_245_975, enterpriseToRevenue: 0.2885, eps: -0.71, forwardPE: 6.147, forwardEps: 0.82313 },
+  };
+  const loaded: Record<string, typeof brk | typeof arvn | typeof cour> = { "BRK-B": brk, ARVN: arvn, COUR: cour };
+  const ctx = { signal: new AbortController().signal, marketData: createTestDataProvider({
+    async getTickerFinancials(symbol) { return loaded[symbol]!; },
+  }) } as HeadlessPaneContext;
+  const symbols = ["BRK-B", "ARVN", "COUR"];
+  const result = await relativeValuationHeadless.load({ symbols, argument: symbols, rawArgument: symbols.join(" "), options: {} }, ctx);
+  const [brkRow, arvnRow, courRow] = result.rows as Array<ReturnType<typeof relativeValuationValues>>;
+  // About 1.23T over 384.69B of revenue, at the close: not the -0.6 the provider's EV gave.
+  expect(brkRow!.evSales).toBeCloseTo(3.2, 1);
+  expect(arvnRow!.evSales).toBeNull();
+  expect(arvnRow!.notMeaningful).toEqual({ evSales: reason });
+  const evSales = relativeValuationHeadless.columns!.find((column) => column.key === "evSales")!;
+  expect(evSales.format!(arvnRow!.evSales, arvnRow as unknown as Record<string, unknown>)).toBe("N/M");
+  expect(result.metadata?.notices).toContain(`ARVN: EV N/M: ${reason.charAt(0).toLowerCase()}${reason.slice(1)}.`);
+  // One cap for COUR, the one `valuation` shows.
+  expect(courRow!.marketCap).toBe(Math.round(274_500_000 * 5.07));
+  const valuation = renderFundamentalsReport({ ...cour, symbol: "COUR" }, "valuation").replace(/ {2,}/g, " ");
+  expect(valuation).toContain("Market Cap 1.39B USD\n");
+  expect(result.metadata?.notices).toContain("COUR: Market cap 1.39B USD is the 274.5M shares shown x 5.07 USD; the provider's is 1.34B USD.");
+});

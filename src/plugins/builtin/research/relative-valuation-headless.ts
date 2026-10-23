@@ -60,8 +60,10 @@ const VALUATION_COLUMNS: HeadlessPaneColumn[] = [
   })),
   ...([["evSales", "EV/S"]] as const).map(([key, header]) => ({
     key, header, align: "right" as const,
-    // A withdrawn EV says so rather than leaving a bare dash; the note under the table says why.
-    format: (value: unknown, row: Record<string, unknown>) => value != null ? formatNumber(Number(value), 1) : gapText(row, key),
+    // A withdrawn EV says so rather than leaving a bare dash, one at or below zero reads N/M; the note under the table says why.
+    format: (value: unknown, row: Record<string, unknown>) => value != null ? formatNumber(Number(value), 1)
+      : (row as Partial<ReturnType<typeof relativeValuationValues>>).notMeaningful?.evSales ? formatPriceEarnings(NOT_MEANINGFUL)
+        : gapText(row, key),
   })),
   ...([["fcfYield", "FCF Yield"], ["revenueGrowth", "Quarter Revenue YoY"], ["operatingMargin", "TTM Op Margin"]] as const).map(([key, header]) => ({
     key, header, align: "right" as const,
@@ -174,12 +176,13 @@ export const relativeValuationHeadless: HeadlessPaneDefinition<"rows"> = {
         priceBasis: "price, change and changePercent are the regular session: after the close, its close and that close's move. A pre-market, after-hours or overnight print is in extendedPrice, extendedChange and extendedChangePercent, measured from that close (extendedMark when it is a bid and ask midpoint). marketCap, the P/E multiples, evSales (through the equity part of the enterprise value) and fcfYield are measured at that regular session price.",
         fundamentalsBasis: "Provider multiples and operating metrics retain independent fundamentalsProvenance. Retrieval time does not establish the valuation date.",
         notices: [
-          ...rows.some((row) => Object.keys(row.notMeaningful).length > 0
+          ...rows.some((row) => row.notMeaningful.trailingPE || row.notMeaningful.forwardPE
             || Object.values(row.reportedMultiples).some((value) => value != null && value <= 0)) ? [PRICE_EARNINGS_NOTICE] : [],
           ...rows.flatMap((row) => row.evSalesUnavailable ? [`${row.symbol}: ${row.evSalesUnavailable}`] : []),
+          ...rows.flatMap((row) => row.evSalesNote ? [`${row.symbol}: ${row.evSalesNote}`] : []),
           ...rows.flatMap((row) => row.marketCapNote ? [`${row.symbol}: ${row.marketCapNote}`] : []),
         ],
-        multipleBasis: "Comparable P/E fields require a positive finite multiple over positive EPS; notMeaningful says why one is null, and reportedMultiples preserves the finite provider values.",
+        multipleBasis: "Comparable P/E fields require a positive finite multiple over positive EPS, and evSales an enterprise value above zero; notMeaningful says why one is null, and reportedMultiples preserves the finite provider P/E values.",
         marketCapBasis: "Market caps retain their own currency and source. Fundamentals retrieval time is not a valuation date; quote timestamps do not date fallback caps.",
       },
     };
