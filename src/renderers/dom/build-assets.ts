@@ -2,7 +2,8 @@ import { readFile, writeFile } from "fs/promises";
 import { dirname, join, relative, resolve } from "path";
 import type { BunPlugin } from "bun";
 import { TITLEBAR_OVERLAY_HEIGHT_PX } from "../../components/layout/titlebar-overlay";
-import { getThemeColors, themeCssVariables } from "../../theme/colors";
+import { getThemeColors } from "../../theme/colors";
+import { themeCssVariables } from "../../theme/ui-tokens";
 import { DEFAULT_THEME } from "../../theme/themes";
 import { bootFrameBuildId, bootFrameScript } from "./boot-frame-page";
 
