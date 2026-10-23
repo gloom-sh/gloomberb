@@ -73,8 +73,8 @@ const SWAP_COLUMNS = [
   { key: "rate", header: "Rate %", align: "right" as const, format: percent },
   { key: "changeBp", header: "1D bp", align: "right" as const, format: (value: unknown) => value == null ? "-" : formatSwapBp(Number(value)) },
   { key: "spreadBp", header: "Spread bp", align: "right" as const, format: (value: unknown) => value == null ? "-" : formatSwapBp(Number(value)) },
-  { key: "tradeCount", header: "Trades", align: "right" as const },
-  { key: "quality", header: "Sample" },
+  { key: "tradeCount", header: "Trades", align: "right" as const,
+    format: (value: unknown, row: Record<string, unknown>) => `${value}${row.quality === "thin" ? " Thin" : ""}` },
 ];
 
 export interface YieldCurveHeadlessDependencies {
@@ -144,7 +144,7 @@ export function createYieldCurveHeadless(
       { key: "forward", type: "boolean", description: "Overlay the one-year-forward curve on the chart.",
         pluginState: { pluginId: "macro", key: "yield-curve:forward" } },
       { key: "tab", type: "enum", values: [{ value: "curve" }, { value: "world" }, { value: "swaps" }],
-        description: "curve (default), world (government yields), or swaps (USD SOFR rates and Treasury swap spreads).",
+        description: "curve (default), world (government yields), or swaps (USD SOFR rates and Treasury swap spreads). Spreads use native quotes: annual ACT/360 OIS versus semiannual bond-equivalent Treasury yields.",
         pluginState: { pluginId: "macro", key: "yield-curve:tab" } },
       { key: "tenor", type: "enum", values: SWAP_TENORS.map((value) => ({ value })),
         description: "Swaps history tenor (default 10Y); the curve table always includes every tenor.",
@@ -172,11 +172,11 @@ export function createYieldCurveHeadless(
           freshness: { source: "DTCC public swap reports", status: "not-a-feed", basis: "daily trade estimates", cadence: "daily",
             tradingDayMarket: "US" },
           columns: SWAP_COLUMNS,
-          rows: data.points.map((point) => ({ ...point, asOf: data.asOf })),
+          rows: (data.asOf ? data.points : []).map((point) => ({ ...point, asOf: data.asOf })),
           metadata: { currency: data.currency, benchmark: data.benchmark, units: "Percent", changeUnit: "Basis points",
             asOf: data.asOf, fetchedAt: data.fetchedAt, stale: data.stale, previousDate: data.previousDate,
             treasuryDate: data.treasuryDate, comparisons: data.comparisons, history: data.history },
-          errors: data.stale ? ["The swap curve is stale."] : [],
+          errors: !data.asOf ? ["No swap rates yet."] : data.stale ? ["The swap curve is stale."] : [],
         };
       }
       if (args.options.tab === "world") {

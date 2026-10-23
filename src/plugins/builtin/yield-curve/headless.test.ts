@@ -35,7 +35,8 @@ describe("yield curve headless model", () => {
     expect(result.metadata).toMatchObject({ asOf: "2026-10-20", treasuryDate: "2026-10-20", history: { tenor: "2Y" } });
     const lines = renderHeadlessPaneText(headless, result, swapArgs, "GC").split("\n");
     expect(lines.find((line) => line.startsWith("1Y "))).toMatch(/3\.50%\s+\+1\.2bp\s+-20\.5bp/);
-    expect(lines.find((line) => line.startsWith("5Y "))).toMatch(/-\s+-\s+-\s+2\s+missing/);
+    expect(lines.find((line) => line.startsWith("5Y "))).toMatch(/-\s+-\s+-\s+2\s*$/);
+    expect(lines.find((line) => line.startsWith("30Y "))).toMatch(/3 Thin/);
   });
 
   test("marks a partial, mixed-date curve incomplete and does not calculate a spread", async () => {

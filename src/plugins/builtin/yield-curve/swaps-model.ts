@@ -23,7 +23,7 @@ export function validateSwapCurve(payload: SwapCurvePayload): SwapCurvePayload {
         || !finite(point.rate) || !finite(point.changeBp) || !finite(point.spreadBp) || !finite(point.treasuryRate)
         || !count(point.tradeCount) || !count(point.candidateCount) || !count(point.excludedCount)
         || !Number.isFinite(point.notionalUsd) || point.notionalUsd < 0 || !quality(point.quality)
-        || point.rate != null && (snapshot.date == null || point.tradeCount < 3 || point.quality === "missing")
+        || point.rate != null && (snapshot.date == null || point.tradeCount < 3 || point.quality === "missing" || point.quality === "ok" && point.tradeCount < 5)
         || point.rate == null && (point.changeBp != null || point.spreadBp != null)
         || point.tenor === "15Y" && point.spreadBp != null) return invalid();
     }
@@ -33,7 +33,7 @@ export function validateSwapCurve(payload: SwapCurvePayload): SwapCurvePayload {
   for (const point of payload.history.points) {
     if (point.date == null || !date(point.date) || point.date <= previous || !finite(point.rate) || !finite(point.spreadBp)
       || !count(point.tradeCount) || !quality(point.quality)
-      || point.rate != null && (point.tradeCount < 3 || point.quality === "missing")
+      || point.rate != null && (point.tradeCount < 3 || point.quality === "missing" || point.quality === "ok" && point.tradeCount < 5)
       || point.rate == null && point.spreadBp != null
       || payload.history.tenor === "15Y" && point.spreadBp != null) return invalid();
     previous = point.date;
@@ -51,8 +51,8 @@ const curvePoints = (points: readonly SwapPoint[]) => points.map((point) => ({
 
 /** Missing tenors remain null nodes, which break the line instead of bridging the gap. */
 export function swapCurveSeries(payload: SwapCurvePayload,
-  colors: { current: string; ghosts: Readonly<Record<string, string>> }): CurveSeries[] {
-  return [
+  colors: { current: string; thin: string; ghosts: Readonly<Record<string, string>> }): CurveSeries[] {
+  const series: CurveSeries[] = [
     { id: "sofr", label: "SOFR", role: "primary", color: colors.current, points: curvePoints(payload.points) },
     ...(["week", "month"] as const).flatMap((key): CurveSeries[] => {
       const snapshot = payload.comparisons[key];
@@ -61,12 +61,29 @@ export function swapCurveSeries(payload: SwapCurvePayload,
         color: colors.ghosts[id], points: curvePoints(snapshot.points) }];
     }),
   ];
+  // The shared marker layer identifies thin observations on every dated curve.
+  // Keep their values in the main series so selection/readouts still show them.
+  const snapshots = [payload.points, ...(["week", "month"] as const)
+    .filter((key) => payload.comparisons[key].date != null).map((key) => payload.comparisons[key].points)];
+  return [...series, ...series.flatMap((entry, index): CurveSeries[] => {
+    const points = curvePoints(snapshots[index]!.filter((point) => point.quality === "thin" && point.rate != null));
+    return points.length ? [{ id: `${entry.id}-thin`, label: "Thin", role: "marker", color: colors.thin, points }] : [];
+  })];
 }
 
 /** Preserve missing sessions and their null values on the calendar axis. */
-export function swapHistorySeries(history: SwapCurvePayload["history"], color: string) {
-  return [staticSeries(history.points.map((point) => ({ date: new Date(point.date), observedAt: new Date(point.date), value: point.rate })),
-    { id: `sofr-${history.tenor}`, label: `${history.tenor} SOFR`, color, calendarSpaced: true })];
+export function swapHistorySeries(history: SwapCurvePayload["history"], color: string, thinColor: string) {
+  const observation = (point: SwapCurvePayload["history"]["points"][number], thin: boolean) => ({
+    date: new Date(point.date), observedAt: new Date(point.date),
+    value: (point.quality === "thin") === thin ? point.rate : null,
+  });
+  return [
+    staticSeries(history.points.map((point) => observation(point, false)),
+      { id: `sofr-${history.tenor}`, label: `${history.tenor} SOFR`, color, calendarSpaced: true }),
+    ...(history.points.some((point) => point.quality === "thin" && point.rate != null)
+      ? [staticSeries(history.points.map((point) => observation(point, true)),
+        { id: `sofr-${history.tenor}-thin`, label: "Thin", color: thinColor, style: "points", calendarSpaced: true })] : []),
+  ];
 }
 
 /** Already in basis points: never multiply a swap change or spread by 100 again. */

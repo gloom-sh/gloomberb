@@ -46,9 +46,22 @@ test("changing a tenor retains the board while its history loads without relabel
   expect(request.mock.calls.at(-1)?.[0]).toBe("15Y");
   expect(tui.frame()).toContain("Loading history");
   expect(tui.frame()).not.toContain("10Y SOFR");
-  expect(tui.frame()).toContain("Missing");
+  expect(tui.frame()).toContain("5Y");
   await act(async () => { pending.resolve(swapFixture("15Y")); });
   await settle();
   expect(tui.frame()).toContain("15Y SOFR");
   expect(tui.frame()).not.toContain("Loading history");
 }, 15_000);
+
+// A migrated but unpopulated server returns all nine missing nodes with no date.
+test("an undated empty response shows the empty state without a table or stale warning", async () => {
+  const payload = swapFixture();
+  payload.asOf = null; payload.stale = true;
+  payload.points = payload.points.map((point) => ({ ...point, rate: null, changeBp: null, spreadBp: null,
+    tradeCount: 0, quality: "missing" }));
+  request = spyOn(apiClient, "getCloudSwapCurve").mockResolvedValue(payload);
+  await act(async () => { await tui.render(<Harness />, { width: 100, height: 32 }); });
+  await tui.waitForFrameToContain("No swap rates yet.");
+  expect(tui.frame()).not.toMatch(/stale/i);
+  expect(tui.frame()).not.toContain("10Y");
+});
