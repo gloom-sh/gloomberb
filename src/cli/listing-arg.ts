@@ -55,7 +55,7 @@ import {
   type TerminalListingCode,
 } from "../tickers/terminal-codes";
 import { listingAbroadVenue } from "../utils/sec";
-import { listingSuffixVenue } from "../sources/listing-symbols";
+import { listingSuffixCandidate, listingSuffixVenue, tickerHasListingSuffix } from "../sources/listing-symbols";
 import { notTheCoinNote } from "./commands/crypto-hints";
 
 /** The `--exchange` option of every command that takes a ticker. */
@@ -267,18 +267,10 @@ async function checkListingExchange(listing: ListingArg, deps: ListingDeps): Pro
   if (!listing.exchange || isKnownExchangeCode(listing.exchange)) return;
   // A row saved on that venue says it is real (GARAN:BIST, which the exchange table lacks), with no request.
   if (await loadSavedListing(deps.store, listing)) return;
-  let venues: ListingVenue[] = [];
-  let busy: unknown = null;
-  try {
-    venues = await listingVenues(listing.symbol, deps);
-  } catch (error) {
-    if (!isProviderBusy(error)) throw error;
-    busy = error;
-  }
+  const venues = await listingVenues(listing.symbol, deps);
   if (venues.some((venue) => venue.exchange === listing.exchange)) return;
   // Search busy, or missing the venue: the listing's own quote there settles it, as `quote` reads it.
   if (await quotedOnVenue(listing, deps)) return;
-  if (busy) throw busy;
   throw new ListingArgError(
     `Unknown exchange ${listing.exchange} for ${listing.symbol}.${tradesOn(listing.symbol, venues)}`,
     venues.length > 0 ? undefined : `No listings of ${listing.symbol} were found.`,
@@ -892,6 +884,74 @@ export async function loadSavedListing(store: ListingStore, listing: ListingArg)
   return null;
 }
 
+/**
+ * The listings a typed symbol may be saved as, most likely first. With a
+ * vendor's suffix, its venue's listing (GARAN.IS as GARAN:BIST, 7203.T as
+ * 7203:JPX), then the suffixed key as typed, for a row saved under it: a
+ * broker's, or MKC.V, a US share class the suffix only looks like. A
+ * one-letter suffix's venue is a guess that a row saved there confirms
+ * (`loadSavedListingOf`). One listing for anything else.
+ */
+export function savedListingCandidates(raw: string, exchangeOption?: string | null, options: { ownExchangeWins?: boolean } = {}): ListingArg[] {
+  const literal = parseListingArg(raw, exchangeOption, options);
+  const venue = literal.exchange ? null : listingSuffixCandidate(literal.symbol);
+  if (!venue) return [literal];
+  return [{ symbol: venue.symbol, exchange: venue.exchange, key: `${venue.symbol}:${venue.exchange}`, ...literal.readAs ? { readAs: literal.readAs } : {} }, literal];
+}
+
+/**
+ * The first of the listings that is saved, with its row; one `wanted` says is
+ * meant (held in the list a command changes) before any other. Null when none is.
+ */
+export async function loadSavedListingOf(
+  store: ListingStore,
+  listings: readonly ListingArg[],
+  wanted?: (ticker: TickerRecord) => boolean,
+): Promise<{ listing: ListingArg; ticker: TickerRecord } | null> {
+  const found: Array<{ listing: ListingArg; ticker: TickerRecord }> = [];
+  const add = (listing: ListingArg, ticker: TickerRecord | null | undefined) => {
+    if (ticker && !found.some((entry) => entry.ticker.metadata.ticker === ticker.metadata.ticker)) found.push({ listing, ticker });
+  };
+  for (const listing of listings) {
+    if (found.some((entry) => entry.listing.key === listing.key)) continue;
+    const ticker = await loadSavedListing(store, listing);
+    add(listing, ticker);
+    // A suffixed key as typed may be saved with a venue (7203.T:JPX, GARAN.IS:XNYS): any row of that symbol.
+    if (!ticker && !listing.exchange && tickerHasListingSuffix(listing.symbol)) {
+      for (const row of await store.loadAllTickers()) {
+        if (parsePublicTickerKey(row.metadata.ticker).symbol === listing.symbol) add(listing, row);
+      }
+    }
+  }
+  return (wanted && found.find((entry) => wanted(entry.ticker))) || found[0] || null;
+}
+
+/**
+ * The saved row a command that changes a list names, and the listing it was
+ * found as: one of `savedListingCandidates`, with no request when one is
+ * saved (a broker's GARAN.IS while GARAN:BIST has no row), else the typed
+ * listing as `requireListingArg` checks it, which fails the command when it
+ * is no listing. The row is null when that listing has none.
+ */
+export async function requireSavedListing(
+  raw: string,
+  exchangeOption: string | null | undefined,
+  ctx: Pick<CliCommandContext, "fail" | "initMarketData">,
+  store: ListingStore,
+  wanted?: (ticker: TickerRecord) => boolean,
+): Promise<{ listing: ListingArg; ticker: TickerRecord | null }> {
+  let candidates: ListingArg[] = [];
+  try {
+    candidates = savedListingCandidates(raw, exchangeOption);
+  } catch {
+    // Intentional ignore: requireListingArg below fails with what is wrong with the text.
+  }
+  const saved = await loadSavedListingOf(store, candidates, wanted);
+  if (saved) return saved;
+  const listing = await requireListingArg(raw, exchangeOption, ctx, { listingSuffix: true });
+  return { listing, ticker: (await loadSavedListingOf(store, [listing], wanted))?.ticker ?? null };
+}
+
 /** A row saved under a vendor's suffixed key (RY.TO) for the listing it was read as: on that venue, or on none it names. */
 async function loadSuffixedRow(store: ListingStore, key: string, exchange: string): Promise<TickerRecord | null> {
   const ticker = await store.loadTicker(key);
@@ -954,6 +1014,15 @@ async function readVenueSuffix(listing: ListingArg, deps: Pick<ListingDeps, "dat
   return { symbol: match[1]!, exchange: venue, key, readAs: `Read ${listing.symbol} as ${key}.` };
 }
 
+/** 7203.T as 7203:JPX when a row of 7203 on JPX is saved: a suffix `readListingSuffix` leaves to be confirmed. Null otherwise. */
+async function savedSuffixVenue(listing: ListingArg, store: ListingStore): Promise<ListingArg | null> {
+  const venue = listing.exchange ? null : listingSuffixCandidate(listing.symbol);
+  if (!venue) return null;
+  const candidate = { symbol: venue.symbol, exchange: venue.exchange, key: `${venue.symbol}:${venue.exchange}` };
+  if (!await loadSavedListing(store, candidate)) return null;
+  return listing.readAs ? { ...candidate, readAs: listing.readAs } : candidate;
+}
+
 /** GARAN.IS as GARAN:BIST: a vendor's venue suffix read as the venue it names (`listingSuffixVenue`), with no request. */
 function readListingSuffix(listing: ListingArg): ListingArg | null {
   const venue = listing.exchange ? null : listingSuffixVenue(listing.symbol);
@@ -993,7 +1062,10 @@ export async function resolveCliListing(
   // USD-NGN and USDNGN are the pair USDNGN=X unless a security is listed under those letters.
   const pair = parsed.exchange ? null : await readAmbiguousCurrencyPair(parsed.symbol, deps);
   if (pair) parsed = { symbol: pair, exchange: "", key: pair };
-  const suffixed = pair || named || !options.venueSuffix ? null : await readVenueSuffix(parsed, deps);
+  // A one-letter suffix (7203.T) is read as its venue only when a row saved there says so; the listing's quote may later.
+  const venueRow = options.listingSuffix && !pair && !named ? await savedSuffixVenue(parsed, deps.store) : null;
+  if (venueRow) parsed = venueRow;
+  const suffixed = pair || named || venueRow || !options.venueSuffix ? null : await readVenueSuffix(parsed, deps);
   // The row may be saved under the suffixed key itself: a link or a layout's key is kept as it came.
   const typedKey = suffixed ? parsed.symbol : null;
   if (suffixed) {

@@ -1,6 +1,6 @@
 import { join } from "path";
 import { existsSync, readFileSync } from "fs";
-import { getDataDir, initDataDir, loadConfig, saveConfig } from "../data/config/store";
+import { getDataDir, initDataDir, loadConfig } from "../data/config/store";
 import { getGloomberbDirs } from "../data/config/home";
 import { AppPersistence } from "../data/app-persistence";
 import { TickerRepository } from "../data/ticker-repository";
@@ -18,8 +18,6 @@ import { fail } from "./errors";
 import { resolvePersistedCloudSessionToken } from "./pane-functions/cloud-session";
 import { cloudStatementReportSources } from "./statement-filings";
 import type { ConfigContext, MarketContext } from "./types";
-import { mergeSavedSuffixedListings } from "../portfolio/suffixed-listings";
-import { logFailure } from "../utils/log-failure";
 
 export { withCliServices, withConfigData, withMarketData } from "./scoped-context";
 
@@ -103,28 +101,11 @@ async function openCliDataDir(): Promise<{ dataDir: string; config: AppConfig; c
   return { dataDir, config: await initDataDir(dataDir), created: true };
 }
 
-/**
- * Rows a collection holds under a vendor's suffixed key (GARAN.IS) merge into
- * their listing's row as the profile loads, as the app does at launch
- * (`mergeSuffixedListings`). A merge that fails leaves the rows as they were.
- */
-async function mergeSuffixedListingRows(store: TickerRepository, config: AppConfig): Promise<AppConfig> {
-  try {
-    const merged = await mergeSavedSuffixedListings(await store.loadAllTickers(), config, (rows) => store.saveTickers(rows));
-    if (!merged || merged.config === config) return config;
-    await saveConfig(merged.config);
-    return merged.config;
-  } catch (error) {
-    logFailure("cli.context", "Merging suffixed listing rows failed")(error);
-    return config;
-  }
-}
-
 export async function initConfigData(): Promise<ConfigContext> {
   const { dataDir, config } = await openCliDataDir();
   const persistence = new AppPersistence(join(dataDir, ".gloomberb-cache.db"));
   const store = new TickerRepository(persistence.tickers);
-  return { config: await mergeSuffixedListingRows(store, config), persistence, store, dataDir };
+  return { config, persistence, store, dataDir };
 }
 
 /**
@@ -155,13 +136,12 @@ export async function initMarketData(options: CliContextOptions = {}): Promise<M
 }
 
 export async function initCliServices(options: CliServicesOptions = {}) {
-  const { dataDir, config: opened, created } = await openCliDataDir();
+  const { dataDir, config, created } = await openCliDataDir();
   const services = createAppServices({
-    config: opened,
+    config,
     plugins: getLoadablePlugins(options.externalPlugins ?? []),
     externalPlugins: options.externalPlugins ?? [],
   });
-  const config = await mergeSuffixedListingRows(services.tickerRepository, opened);
   services.providerRouter.setConfigAccessor(() => config);
   services.providerRouter.setBackgroundRevalidation(false);
   await ensureCliServicesReady(services);

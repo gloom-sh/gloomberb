@@ -42,13 +42,22 @@ export async function upsertTickerFromSearchResult(
   const venue = options.tickerSymbol || result.brokerContract ? null : listingSuffixVenue(symbol, listingVenue(result));
   if (venue) {
     symbol = venue.symbol;
-    result = { ...result, symbol: venue.symbol, exchange: result.exchange || venue.exchange };
+    // A venue code the exchange table does not know (IST) is the one the suffix names.
+    const exchange = canonicalExchange(listingVenue(result)) === venue.exchange ? result.exchange : venue.exchange;
+    result = { ...result, symbol: venue.symbol, exchange };
   }
   let ticker = await tickerRepository.loadTicker(symbol);
   const otherListingKey = otherListingTickerKey(result, symbol, ticker);
   if (otherListingKey) {
     symbol = otherListingKey;
     ticker = await tickerRepository.loadTicker(symbol);
+  } else if (!ticker && !options.tickerSymbol) {
+    // The listing's row saved under its venue's key while the bare key was free (a merged GARAN.IS, as GARAN:BIST).
+    const keyed = await venueKeyedRow(tickerRepository, result, symbol);
+    if (keyed) {
+      symbol = keyed.metadata.ticker;
+      ticker = keyed;
+    }
   }
   const created = !ticker;
 
@@ -89,6 +98,14 @@ export async function upsertTickerFromSearchResult(
   }
 
   return { ticker, created };
+}
+
+/** The row saved under the result's venue key (GARAN:BIST) for a symbol the bare key does not hold, on that venue; null otherwise. */
+async function venueKeyedRow(tickerRepository: AppTickerRepositoryPort, result: InstrumentSearchResult, symbol: string): Promise<TickerRecord | null> {
+  const exchange = canonicalExchange(listingVenue(result));
+  if (!exchange || parsePublicTickerKey(symbol).exchange) return null;
+  const row = await tickerRepository.loadTicker(publicTickerKey(symbol, exchange));
+  return row && canonicalExchange(row.metadata.exchange) === exchange ? row : null;
 }
 
 function listingVenue(result: InstrumentSearchResult): string | undefined {

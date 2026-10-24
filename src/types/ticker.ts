@@ -48,6 +48,13 @@ export interface TickerMetadata {
   broker_contracts?: BrokerContractRef[];
   custom: Record<string, unknown>;
   tags: string[];
+  /**
+   * Lots this listing's row took from rows saved under a vendor's suffixed
+   * key (GARAN.IS:BIST into GARAN:BIST), by that key, each as the fields sync
+   * keeps: a copy an older build or sync brings back is not counted twice.
+   * Bookkeeping, never shown, and no reason on its own to keep a row.
+   */
+  mergedLots?: Record<string, string[]>;
 }
 
 export interface TickerRecord {

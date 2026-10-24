@@ -1,4 +1,4 @@
-import { scheduleConfigSave } from "../state/config-save-scheduler";
+import { saveConfigImmediately, scheduleConfigSave } from "../state/config-save-scheduler";
 import { normalizeStoredBaseCurrency } from "../utils/base-currency";
 import { debugLog } from "../utils/debug-log";
 import { fnv1aHex, stableStringify } from "../utils/hash";
@@ -35,6 +35,7 @@ import {
 import { isFiniteNumber, isRecord, recordOrNull } from "../utils/guards";
 import { getBrokerInstance } from "../utils/broker-instances";
 import { withoutMissingWatchlists } from "../portfolio/mutations";
+import { mergeSuffixedListings, moveTargetWeights } from "../portfolio/suffixed-listings";
 import { positionContractMultiplier } from "../portfolio/position-metrics";
 import {
   clearLeftoverBrokerHoldings,
@@ -380,6 +381,8 @@ function sanitizeTickerMetadata(metadata: TickerMetadata, financials?: TickerFin
     positions: metadata.positions.map(sanitizePosition),
     custom: (sanitizeUnknown(metadata.custom) as Record<string, unknown>) ?? {},
     tags: [...metadata.tags],
+    // What a listing's row took from a suffixed key's row, so a device that merges it later never counts a lot twice.
+    ...metadata.mergedLots ? { mergedLots: metadata.mergedLots } : {},
     quote: sanitizeQuote(financials),
   };
 }
@@ -1433,8 +1436,12 @@ export const coreCollectionsSyncContributor: SyncContributor = {
       nextTickers.set(next.metadata.ticker, next);
       changed.push(next);
     }
-    if (changed.length === 0) return;
-    dispatch({ type: "SET_TICKERS", tickers: nextTickers });
+    const suffixed = mergePulledSuffixedListings(nextTickers, changed, state.config);
+    if (changed.length === 0 && !suffixed.config) return;
+    if (suffixed.config) dispatch({ type: "SET_CONFIG", config: suffixed.config });
+    if (changed.length > 0) dispatch({ type: "SET_TICKERS", tickers: nextTickers });
+    // The moved targets first, so a stop before the rows strands none on an emptied key.
+    if (suffixed.config) await saveConfigImmediately(suffixed.config);
     // Written one at a time, so an edit or a broker sync can replace a row
     // before its turn. That copy is newer and its writer saves it; this one
     // written over it would come back at launch as an edit and be pushed.
@@ -1444,6 +1451,32 @@ export const coreCollectionsSyncContributor: SyncContributor = {
     }
   },
 };
+
+/**
+ * An older build still files lots under a vendor's suffixed key (GARAN.IS)
+ * and pushes them: pulled, they merge into the listing's row here as at
+ * launch (`mergeSuffixedListings`), each lot once, so they never count in
+ * both rows or go back out under the old key. The merged rows replace their
+ * entries in `tickers` and `changed`; the config comes back with targets
+ * moved, or null when none moved.
+ */
+function mergePulledSuffixedListings(
+  tickers: Map<string, TickerRecord>,
+  changed: TickerRecord[],
+  config: AppConfig,
+): { config: AppConfig | null } {
+  const merged = mergeSuffixedListings([...tickers.values()]);
+  if (!merged) return { config: null };
+  for (const row of merged.saves) {
+    tickers.set(row.metadata.ticker, row);
+    const at = changed.findIndex((record) => record.metadata.ticker === row.metadata.ticker);
+    if (at >= 0) changed[at] = row;
+    else changed.push(row);
+  }
+  for (const kept of merged.keptCustom) log.info("sync.suffixed-listing.custom-kept", kept);
+  const next = moveTargetWeights(config, merged.moved);
+  return { config: next === config ? null : next };
+}
 
 export function createCoreSyncContributors(): SyncContributor[] {
   return [coreConfigSyncContributor, coreCollectionsSyncContributor];

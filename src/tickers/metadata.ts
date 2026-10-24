@@ -60,5 +60,15 @@ export function hydrateTickerMetadata(data: Record<string, unknown>): TickerMeta
     broker_contracts: Array.isArray(data.broker_contracts) ? [...data.broker_contracts] : [],
     custom: data.custom && typeof data.custom === "object" ? { ...(data.custom as Record<string, unknown>) } : {},
     tags: Array.isArray(data.tags) ? [...data.tags] : [],
+    ...hydrateMergedLots(data.mergedLots),
   };
+}
+
+/** The merged-lots record, kept only as a map of keys to lists of strings. */
+function hydrateMergedLots(raw: unknown): Pick<TickerMetadata, "mergedLots"> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const entries = Object.entries(raw as Record<string, unknown>)
+    .filter((entry): entry is [string, string[]] => Array.isArray(entry[1]) && entry[1].every((lot) => typeof lot === "string"))
+    .map(([key, lots]): [string, string[]] => [key, [...lots]]);
+  return entries.length > 0 ? { mergedLots: Object.fromEntries(entries) } : {};
 }

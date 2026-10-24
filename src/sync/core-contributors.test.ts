@@ -5,7 +5,8 @@ import { createTestDataProvider } from "../test-support/data-provider";
 import { createDefaultConfig, createPaneInstance } from "../types/config";
 import { removePane, removeUnavailablePaneTypes, restoreHiddenPanes } from "../layout/pane-manager";
 import type { PricePoint } from "../types/financials";
-import type { TickerRecord } from "../types/ticker";
+import type { TickerPosition, TickerRecord } from "../types/ticker";
+import { mergeSuffixedListings } from "../portfolio/suffixed-listings";
 import {
   __syncContributorInternalsForTests,
   coreCollectionsSyncContributor,
@@ -17,7 +18,7 @@ import { createTestTicker } from "../test-support/ticker";
 import { createTestFinancials } from "../test-support/data-provider";
 
 describe("core sync contributors", () => {
-  captureConfigSaves();
+  const configSaves = captureConfigSaves();
 
   function priceHistoryFromReturns(returns: number[]): PricePoint[] {
     let close = 100;
@@ -1385,5 +1386,60 @@ describe("core sync contributors", () => {
       spyBeta: 1.1,
       basis: "holdings",
     });
+  });
+  test("lots an older build pushes under a suffixed key again merge into the listing's row on the pull, each once, with the target that names them", async () => {
+    const lot = (shares: number, avgCost: number, extra: Partial<TickerPosition> = {}): TickerPosition => ({
+      portfolio: "savings", shares, avgCost, currency: "TRY", broker: "manual", ...extra,
+    });
+    // A bond-like lot: sync keeps no price basis, so the copy that comes back lacks it.
+    const merged = lot(50, 98.5, { dateAcquired: "2025-03-01", priceBasis: "percent-of-par" });
+    const bist = { exchange: "BIST", currency: "TRY", portfolios: ["savings"] };
+    const config = createDefaultConfig(":memory:");
+    config.portfolios = [{ id: "savings", name: "Savings", currency: "TRY", targetWeights: { "GARAN.IS:BIST": 10 } }];
+    // This device merged GARAN.IS:BIST into GARAN at launch, and pushed GARAN.
+    const launch = mergeSuffixedListings([
+      createTestTicker("GARAN.IS:BIST", "Garanti", { ...bist, positions: [merged] }),
+      createTestTicker("GARAN", "Garanti", { ...bist, positions: [lot(100, 120)] }),
+    ])!;
+    const state = createInitialState(config);
+    state.tickers = new Map(launch.saves.map((row) => [row.metadata.ticker, row]));
+    const pushed = await coreCollectionsSyncContributor.collect({ state });
+    expect((pushed.tickers as Array<{ ticker: string; mergedLots?: unknown }>).map((row) => [row.ticker, !!row.mergedLots])).toEqual([["GARAN", true]]);
+
+    // The older build there still holds the lot under GARAN.IS:BIST, took GARAN's copy of it, and bought another.
+    const elsewhere = createInitialState(config);
+    const { priceBasis: _basis, ...synced } = merged;
+    elsewhere.tickers = new Map([
+      ["GARAN", createTestTicker("GARAN", "Garanti", { ...bist, positions: [lot(100, 120), synced] })],
+      ["GARAN.IS:BIST", createTestTicker("GARAN.IS:BIST", "Garanti", { ...bist, positions: [synced, lot(10, 130)] })],
+    ]);
+    const pulled = JSON.parse(JSON.stringify(await coreCollectionsSyncContributor.collect({ state: elsewhere })));
+
+    let current = state;
+    const saved: string[] = [];
+    let configSavedFirst = false;
+    await coreCollectionsSyncContributor.apply?.(pulled, {
+      baselinePayload: JSON.parse(JSON.stringify(pushed)),
+      baselineState: state,
+      state,
+      getState: () => current,
+      isCurrent: () => true,
+      dispatch: (action: { type: string; config?: typeof config; tickers?: typeof state.tickers }) => {
+        if (action.type === "SET_CONFIG") current = { ...current, config: action.config! };
+        if (action.type === "SET_TICKERS") current = { ...current, tickers: action.tickers! };
+      },
+      tickerRepository: {
+        saveTicker: async (record: TickerRecord) => {
+          if (saved.length === 0) configSavedFirst = configSaves.length > 0;
+          saved.push(record.metadata.ticker);
+        },
+      },
+    } as unknown as Parameters<NonNullable<typeof coreCollectionsSyncContributor.apply>>[1]);
+
+    expect(current.tickers.get("GARAN")!.metadata.positions.map((position) => position.shares)).toEqual([100, 50, 10]);
+    expect(current.tickers.get("GARAN.IS:BIST")!.metadata).toMatchObject({ portfolios: [], positions: [] });
+    expect(saved.sort()).toEqual(["GARAN", "GARAN.IS:BIST"]);
+    expect(current.config.portfolios[0]!.targetWeights).toEqual({ GARAN: 10 });
+    expect(configSavedFirst).toBe(true);
   });
 });

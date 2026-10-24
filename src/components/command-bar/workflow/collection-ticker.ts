@@ -58,11 +58,16 @@ function listingRow(
   if (!venue) return null;
   const own = equivalent.find((candidate) => !tickerHasListingSuffix(parsePublicTickerKey(candidate.metadata.ticker).symbol));
   if (own) return own;
+  const onVenue = (row: TickerRecord | undefined) => !!row && canonicalExchange(row.metadata.exchange) === venue.exchange;
   const bare = tickers.get(venue.symbol);
-  const key = !bare || canonicalExchange(bare.metadata.exchange) === venue.exchange ? venue.symbol : publicTickerKey(venue.symbol, venue.exchange);
-  return tickers.get(key) ?? {
-    metadata: { ...ticker.metadata, ticker: key, exchange: ticker.metadata.exchange || venue.exchange, portfolios: [], watchlists: [], positions: [] },
-  };
+  const venueKey = publicTickerKey(venue.symbol, venue.exchange);
+  if (onVenue(bare)) return bare!;
+  if (onVenue(tickers.get(venueKey))) return tickers.get(venueKey)!;
+  // A new row takes the key adding GARAN:BIST takes: the bare symbol while it is free.
+  const key = bare ? venueKey : venue.symbol;
+  if (tickers.has(key)) return null;
+  const { mergedLots: _lots, ...metadata } = ticker.metadata;
+  return { metadata: { ...metadata, ticker: key, exchange: venue.exchange, portfolios: [], watchlists: [], positions: [], tags: [], custom: {} } };
 }
 
 /** Research aliases must not hide or duplicate the saved record that owns a holding. */

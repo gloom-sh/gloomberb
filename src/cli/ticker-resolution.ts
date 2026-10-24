@@ -95,11 +95,13 @@ export interface CliTicker {
    */
   bareSymbol: string | null;
   /**
-   * The venues other than the stored one that search lists the symbol on, as
-   * far as the lookup saw them (none when it never asked search, or search was
-   * busy): whether a bare symbol matched abroad also names a US listing.
+   * The venues other than the stored one the symbol lists on, as far as the
+   * lookup saw them: search's, or none when the symbol's own quote named the
+   * listing and search was busy. Null when the lookup asked neither (a saved
+   * row), so whether a bare symbol matched abroad also names a US listing is
+   * still to be asked.
    */
-  otherVenues: string[];
+  otherVenues: string[] | null;
 }
 
 export interface CliTickerOptions {
@@ -283,7 +285,7 @@ export async function resolveCliTicker(
   }
   if (resolved.kind === "local") {
     const local = options.refreshName === false ? { ticker: resolved.ticker, quote: null } : await nameFromListingQuote(resolved.ticker, store, dataProvider, bareQuote);
-    return withChange({ ...withEnded(local, [...read, ...bareNote ? [bareNote] : []]), otherVenues: bareVenues }, { name: local.ticker.metadata.name });
+    return withChange({ ...withEnded(local, [...read, ...bareNote ? [bareNote] : []]), otherVenues: bareNote ? bareVenues : null }, { name: local.ticker.metadata.name });
   }
 
   const { ticker, created } = await upsertTickerFromSearchResult(store, resolved.result);
@@ -345,7 +347,7 @@ async function listingOfOwnQuote(listing: CliListing, dataProvider: DataProvider
   };
 }
 
-type ResolvedListing = Omit<CliTicker, "change" | "formerIssuer" | "coinNote" | "readAs" | "bareSymbol" | "otherVenues"> & { otherVenues?: string[] };
+type ResolvedListing = Omit<CliTicker, "change" | "formerIssuer" | "coinNote" | "readAs" | "bareSymbol" | "otherVenues"> & { otherVenues?: string[] | null };
 
 /**
  * The resolution with the symbol's change, when it has one, and the coin note
@@ -367,7 +369,7 @@ async function describeResolution(
   const line = tickerChangeLine(change) ?? formerIssuer?.note;
   const coinNote = listing.exchange ? null : savedListingCoinNote(listing.symbol, resolved.ticker);
   return { ...resolved, notes: [...line ? [line] : [], ...resolved.notes, ...coinNote ? [coinNote] : []], change, formerIssuer, coinNote,
-    readAs: listing.readAs ?? null, bareSymbol: listing.exchange ? null : listing.symbol, otherVenues: resolved.otherVenues ?? [] };
+    readAs: listing.readAs ?? null, bareSymbol: listing.exchange ? null : listing.symbol, otherVenues: resolved.otherVenues ?? null };
 }
 
 /**

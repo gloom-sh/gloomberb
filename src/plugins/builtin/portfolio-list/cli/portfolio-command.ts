@@ -1,9 +1,10 @@
 import { saveConfig } from "../../../../data/config/store";
-import { withConfigData, withMarketData } from "../../../../cli/scoped-context";
+import { withConfigData } from "../../../../cli/scoped-context";
+import { withCollectionConfigData, withCollectionMarketData } from "../../../../cli/suffixed-listing-rows";
 import { countCollectionTickers } from "../../../../cli/helpers";
 import { resolveCliTicker, resolveTickerForCli } from "../../../../cli/ticker-resolution";
 import { takeFlag, takeOption } from "../../../../cli/commands/command-utils";
-import { EXCHANGE_OPTION, listingKeys, loadSavedListing, parseListingArg, requireListingArg, savedListingName } from "../../../../cli/listing-arg";
+import { EXCHANGE_OPTION, listingKeys, loadSavedListing, parseListingArg, requireSavedListing, savedListingCandidates, savedListingName, type ListingArg } from "../../../../cli/listing-arg";
 import { cliStyles, renderStats, renderTable } from "../../../../utils/cli-output";
 import { CLI_COMMAND_GROUPS } from "../../../../cli/help";
 import { formatMarketCostWithCurrency, formatMarketQuantity } from "../../../../market-data/market/format";
@@ -130,7 +131,7 @@ async function createPortfolioCommand(name: string, ctx: CliCommandContext) {
 }
 
 async function deletePortfolioCommand(name: string, ctx: CliCommandContext) {
-  await withConfigData(ctx, async ({ config, store }) => {
+  await withCollectionConfigData(ctx, async ({ config, store }) => {
     try {
       const portfolio = requireManualPortfolio(config, name);
       const result = deleteManualPortfolio(config, await store.loadAllTickers(), portfolio.id);
@@ -201,7 +202,7 @@ async function addTickerToPortfolioCommand(
 }
 
 async function addToPortfolioCommand(args: string[], file: string | undefined, exchange: string | undefined, ctx: CliCommandContext) {
-  await withMarketData(ctx, async (market) => {
+  await withCollectionMarketData(ctx, async (market) => {
     const { portfolio, rest } = requirePortfolioArgs(market.config, args, file, "add", ADD_USAGE, ctx);
     const list = await requireSymbolList(ctx, rest, file, ADD_USAGE, (entries) => readNameEntries(entries, market.dataProvider));
     if (list.single) {
@@ -236,9 +237,9 @@ async function removeTickerFromPortfolioCommand(
   portfolio: Portfolio, symbol: string, notes: readonly string[], exchange: string | undefined, ctx: CliCommandContext, { config, store }: ConfigContext,
 ) {
   // SAN:EPA and SAN --exchange EPA name the stored listing, which a bare SAN may hold under another venue.
-  const listing = await requireListingArg(symbol, exchange, ctx, { listingSuffix: true });
+  // GARAN.IS is the row of GARAN:BIST, else a row still saved under that key (a broker's).
+  const { listing, ticker } = await requireSavedListing(symbol, exchange, ctx, store, (row) => row.metadata.portfolios.includes(portfolio.id));
   try {
-    const ticker = await loadSavedListing(store, listing);
     if (!ticker) ctx.fail(`Ticker "${listing.key}" was not found in your local data.`);
     const saved = savedListingName(ticker);
     const result = removeTickerFromPortfolio(ticker, portfolio.id);
@@ -270,7 +271,7 @@ async function removeTickerFromPortfolioCommand(
 }
 
 async function removeFromPortfolioCommand(args: string[], file: string | undefined, exchange: string | undefined, ctx: CliCommandContext) {
-  await withConfigData(ctx, async (context) => {
+  await withCollectionConfigData(ctx, async (context) => {
     const { portfolio, rest } = requirePortfolioArgs(context.config, args, file, "remove", REMOVE_USAGE, ctx);
     const list = await requireSymbolList(ctx, rest, file, REMOVE_USAGE);
     if (list.single) {
@@ -284,6 +285,7 @@ async function removeFromPortfolioCommand(args: string[], file: string | undefin
       exchange,
       store: context.store,
       reject: cashRefusal(portfolio, exchange),
+      holds: (ticker) => ticker.metadata.portfolios.includes(portfolio.id),
       remove: (ticker) => {
         const result = removeTickerFromPortfolio(ticker, portfolio.id);
         const withoutTargets = result.changed ? withoutTarget(nextConfig, portfolio, ticker.metadata.ticker) : null;
@@ -308,7 +310,7 @@ async function setPositionCommand(
   cost: { date?: string; costFx?: number; history?: CostFxHistoryClient } = {},
   futuresTerms?: (symbol: string) => Promise<FuturesContractTermsPayload | null>,
 ) {
-  await withMarketData(ctx, async ({ config, store, dataProvider }) => {
+  await withCollectionMarketData(ctx, async ({ config, store, dataProvider }) => {
     try {
       const portfolio = requireManualPortfolio(config, portfolioName);
       rejectCashSymbol(symbol, exchange, portfolio.name);
@@ -522,18 +524,25 @@ function targetSumNote(config: AppConfig, portfolioId: string, tickers: readonly
  * that key, else any row of the symbol.
  */
 async function findListedTicker(store: TickerRepository, portfolio: Portfolio, symbol: string, exchange?: string): Promise<TickerRecord | null> {
-  const listing = parseListingArg(symbol, exchange, { listingSuffix: true });
   const listed = (await store.loadAllTickers()).filter((ticker) => ticker.metadata.portfolios.includes(portfolio.id));
   const savedAs = (ticker: TickerRecord, key: string) => ticker.metadata.ticker.toUpperCase() === key;
-  if (!listing.exchange) {
-    const sameSymbol = listed.filter((ticker) => parsePublicTickerKey(ticker.metadata.ticker).symbol === listing.symbol);
-    return sameSymbol.find((ticker) => savedAs(ticker, listing.symbol)) ?? sameSymbol[0] ?? null;
+  const listedAs = (listing: ListingArg) => {
+    if (!listing.exchange) {
+      const sameSymbol = listed.filter((ticker) => parsePublicTickerKey(ticker.metadata.ticker).symbol === listing.symbol);
+      return sameSymbol.find((ticker) => savedAs(ticker, listing.symbol)) ?? sameSymbol[0] ?? null;
+    }
+    // 7203:TSE is the row on any venue TSE names.
+    const keys = listingKeys(listing);
+    const onVenue = listed.filter((ticker) => keys.includes(canonicalTickerKey(ticker.metadata.ticker, ticker.metadata.exchange)));
+    // The key as saved (VTI:XMEX), else the same listing under another spelling of its venue (VTI:BMV).
+    return onVenue.find((ticker) => keys.some((key) => savedAs(ticker, key))) ?? onVenue[0] ?? null;
+  };
+  // GARAN.IS is the row of GARAN:BIST, else a row the portfolio still holds under that key (a broker's).
+  for (const listing of [parseListingArg(symbol, exchange, { listingSuffix: true }), ...savedListingCandidates(symbol, exchange)]) {
+    const row = listedAs(listing);
+    if (row) return row;
   }
-  // 7203:TSE is the row on any venue TSE names.
-  const keys = listingKeys(listing);
-  const onVenue = listed.filter((ticker) => keys.includes(canonicalTickerKey(ticker.metadata.ticker, ticker.metadata.exchange)));
-  // The key as saved (VTI:XMEX), else the same listing under another spelling of its venue (VTI:BMV).
-  return onVenue.find((ticker) => keys.some((key) => savedAs(ticker, key))) ?? onVenue[0] ?? null;
+  return null;
 }
 
 /** What a target command reports for the cash line, in the fields a listing has. */
@@ -544,7 +553,7 @@ async function setTargetCommand(rest: string[], exchange: string | undefined, ct
   const symbol = rest.at(-2);
   const name = rest.slice(0, -2).join(" ");
   if (!name || !symbol || !rawWeight) ctx.fail(TARGET_USAGE);
-  await withMarketData(ctx, async ({ config, store, dataProvider }) => {
+  await withCollectionMarketData(ctx, async ({ config, store, dataProvider }) => {
     try {
       const portfolio = requirePortfolio(config, name);
       const weight = parseTargetWeight(rawWeight);
@@ -607,7 +616,7 @@ async function setTargetCommand(rest: string[], exchange: string | undefined, ct
 
 async function clearTargetCommand(rest: string[], exchange: string | undefined, ctx: CliCommandContext) {
   if (rest.length === 0) ctx.fail(TARGET_USAGE);
-  await withConfigData(ctx, async ({ config, store }) => {
+  await withCollectionConfigData(ctx, async ({ config, store }) => {
     try {
       // The whole argument naming a portfolio clears every target; otherwise the last word is the symbol.
       const whole = findNamedCollection(config.portfolios, rest.join(" ")) != null;
@@ -745,7 +754,7 @@ async function importThirteenFCommand(options: ThirteenFImportOptions, ctx: CliC
   // The manager's holdings as `fn 13F <manager>` reports them, through the 13F function of the plugins that are on.
   const thirteenF = ctx.plugins.flatMap((plugin) => plugin.paneTemplates ?? []).find((template) => template.shortcut?.prefix === "13F")?.headless;
   if (!thirteenF) ctx.fail("13F filings are not available: the Ownership & Insiders plugin is off.", "Turn it on with gloom plugin enable ownership.");
-  await withMarketData(ctx, async ({ config, store, dataProvider }) => {
+  await withCollectionMarketData(ctx, async ({ config, store, dataProvider }) => {
     try {
       const report = await thirteenF.load(
         { rawArgument: options.query, argument: options.query, symbols: [], options: { view: "holdings", limit: IMPORT_13F_ROWS } },

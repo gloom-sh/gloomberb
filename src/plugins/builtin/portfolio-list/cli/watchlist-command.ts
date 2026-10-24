@@ -1,9 +1,10 @@
 import { saveConfig } from "../../../../data/config/store";
-import { withConfigData, withMarketData } from "../../../../cli/scoped-context";
+import { withConfigData } from "../../../../cli/scoped-context";
+import { withCollectionConfigData, withCollectionMarketData } from "../../../../cli/suffixed-listing-rows";
 import { countCollectionTickers, findWatchlist } from "../../../../cli/helpers";
 import { slugifyName } from "../../../../utils/slugify";
 import { takeOption } from "../../../../cli/commands/command-utils";
-import { EXCHANGE_OPTION, loadSavedListing, requireListingArg, savedListingName } from "../../../../cli/listing-arg";
+import { EXCHANGE_OPTION, requireSavedListing, savedListingName } from "../../../../cli/listing-arg";
 import {
   cliStyles,
   renderSection,
@@ -76,7 +77,7 @@ async function createWatchlist(name: string, ctx: CliCommandContext) {
 }
 
 async function deleteWatchlist(name: string, ctx: CliCommandContext) {
-  await withConfigData(ctx, async ({ config, store }) => {
+  await withCollectionConfigData(ctx, async ({ config, store }) => {
     const watchlist = findWatchlist(config, name);
     if (!watchlist) ctx.fail(`Watchlist "${name}" was not found.`);
 
@@ -106,7 +107,7 @@ async function addTickerToWatchlistCommand(
 }
 
 async function addToWatchlistCommand(args: string[], file: string | undefined, exchange: string | undefined, ctx: CliCommandContext) {
-  await withMarketData(ctx, async (market) => {
+  await withCollectionMarketData(ctx, async (market) => {
     const { watchlist, rest } = requireWatchlistArgs(market.config, args, file, "add", ADD_USAGE, ctx);
     const list = await requireSymbolList(ctx, rest, file, ADD_USAGE, (entries) => readNameEntries(entries, market.dataProvider));
     if (list.single) {
@@ -134,8 +135,8 @@ async function removeTickerFromWatchlist(
   watchlist: Watchlist, symbol: string, notes: readonly string[], exchange: string | undefined, ctx: CliCommandContext, { store }: ConfigContext,
 ) {
   // SAN:EPA and SAN --exchange EPA name the stored listing, which a bare SAN may hold under another venue.
-  const listing = await requireListingArg(symbol, exchange, ctx, { listingSuffix: true });
-  const ticker = await loadSavedListing(store, listing);
+  // GARAN.IS is the row of GARAN:BIST, else a row still saved under that key (a broker's).
+  const { listing, ticker } = await requireSavedListing(symbol, exchange, ctx, store, (row) => row.metadata.watchlists.includes(watchlist.id));
   if (!ticker) ctx.fail(`Ticker "${listing.key}" was not found in your local data.`);
   const saved = savedListingName(ticker);
   const result = removeWatchlistMembership(ticker, watchlist.id);
@@ -148,7 +149,7 @@ async function removeTickerFromWatchlist(
 }
 
 async function removeFromWatchlistCommand(args: string[], file: string | undefined, exchange: string | undefined, ctx: CliCommandContext) {
-  await withConfigData(ctx, async (context) => {
+  await withCollectionConfigData(ctx, async (context) => {
     const { watchlist, rest } = requireWatchlistArgs(context.config, args, file, "remove", REMOVE_USAGE, ctx);
     const list = await requireSymbolList(ctx, rest, file, REMOVE_USAGE);
     if (list.single) {
@@ -159,6 +160,7 @@ async function removeFromWatchlistCommand(args: string[], file: string | undefin
       symbols: list.symbols,
       exchange,
       store: context.store,
+      holds: (ticker) => ticker.metadata.watchlists.includes(watchlist.id),
       remove: (ticker) => removeWatchlistMembership(ticker, watchlist.id),
     });
     printSymbolRows(ctx, rows, { verb: "remove", collection: { kind: "watchlist", name: watchlist.name }, repeated: list.repeated, notes: list.notes });

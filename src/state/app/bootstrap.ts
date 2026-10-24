@@ -15,7 +15,7 @@ import { getDockedPaneIds } from "../../layout/pane-manager";
 import { debugLog } from "../../utils/debug-log";
 import { measurePerf, measurePerfAsync } from "../../utils/perf-marks";
 import { mergeSavedSuffixedListings } from "../../portfolio/suffixed-listings";
-import { scheduleConfigSave } from "../config-save-scheduler";
+import { saveConfigImmediately } from "../config-save-scheduler";
 
 export const DEFAULT_WATCHLIST_TICKERS: Array<Pick<TickerMetadata, "ticker" | "exchange" | "currency" | "name">> = [
   { ticker: "AAPL", exchange: "NASDAQ", currency: "USD", name: "Apple Inc." },
@@ -256,17 +256,20 @@ export async function initializeAppState({
   startupLog.info("tickers loaded", { count: tickers.length });
 
   // A collection's rows under a vendor's suffixed key (GARAN.IS) merge into their listing's row (GARAN:BIST).
+  // The moved targets are written before the rows, so a stop in between strands none on an emptied key.
   try {
-    const merged = await mergeSavedSuffixedListings(tickers, config, async (rows) => {
-      for (const row of rows) await tickerRepository.saveTicker(row);
+    const merged = await mergeSavedSuffixedListings(tickers, config, {
+      config: saveConfigImmediately,
+      tickers: async (rows) => {
+        for (const row of rows) await tickerRepository.saveTicker(row);
+      },
     });
     if (merged) {
       tickers = merged.tickers;
-      startupLog.info("suffixed listing rows merged");
+      startupLog.info("suffixed listing rows merged", { keptCustom: merged.keptCustom });
       if (merged.config !== config) {
         config = merged.config;
         dispatch({ type: "SET_CONFIG", config });
-        scheduleConfigSave(config);
       }
     }
   } catch (error) {

@@ -1,6 +1,6 @@
 import type { DataProvider } from "../types/data-provider";
 import type { TickerRecord } from "../types/ticker";
-import { listingFields, savedListingName, type ListingChoice } from "./listing-arg";
+import { listingFields, listingVenues, savedListingName, type ListingChoice } from "./listing-arg";
 import { StagedTickerRepository, type TickerSource } from "./staged-tickers";
 import { symbolInputKey } from "./symbol-args";
 import { describeSuggestion, isPlainNoMatch, suggestListings, suggestUsTicker } from "./listing-suggestion";
@@ -173,46 +173,75 @@ function isListedAbroad(ticker: TickerRecord): boolean {
   return !isUsSymbolVenue(venue) && !!currency && currency !== "USD";
 }
 
-/**
- * Whether a bare symbol also names a US listing: a US company had or has it
- * (its change history: DFS was Discover Financial Services), or search lists
- * it on a US venue beside the match.
- */
-function namesUsListing(resolution: Pick<CliTicker, "change" | "formerIssuer" | "otherVenues">): boolean {
-  return !!resolution.change || !!resolution.formerIssuer || resolution.otherVenues.some((venue) => isUsSymbolVenue(venue));
-}
-
 /** A bare US-shaped symbol (JPM, BRK.B), not 7203 or RY.TO, which name a venue of their own. */
 function bareUsShapedSymbol(resolution: Pick<CliTicker, "bareSymbol">): string | null {
   const symbol = resolution.bareSymbol;
   return symbol && tickerChangeSymbol(symbol) && !tickerHasListingSuffix(symbol) ? symbol : null;
 }
 
+type SymbolDeps = { store: TickerSource; dataProvider: DataProvider };
+
+const NO_SAVED_ROWS = { loadTicker: async () => null, loadAllTickers: async () => [] };
+
 /**
- * "GARAN has no US listing; it trades on BIST, in TRY.": the line an add
- * says beside a bare symbol stored on its listing abroad, when nothing in the
- * US goes by it (`namesUsListing`). Null for anything else.
+ * Whether a bare symbol also names a US listing: a US company had or has it
+ * (its change history: DFS was Discover Financial Services), or it lists on
+ * a US venue, by the venues the lookup saw or, when it asked none (a saved
+ * row, read with no search), by search now, else by the symbol's own quote,
+ * which names its US line first. When neither answers it counts as naming
+ * one, so the match stays a choice.
  */
-function abroadOnlyNote(resolution: CliTicker): string | null {
-  const symbol = bareUsShapedSymbol(resolution);
-  if (!symbol || resolution.ended || !isListedAbroad(resolution.ticker) || namesUsListing(resolution)) return null;
-  const { exchange, currency } = resolution.ticker.metadata;
-  const unit = currency?.trim();
-  return `${symbol} has no US listing; it trades on ${exchangeLabel(exchange)}${unit ? `, in ${unit}` : ""}.`;
+async function namesUsListing(resolution: CliTicker, deps: SymbolDeps): Promise<boolean> {
+  if (resolution.change || resolution.formerIssuer) return true;
+  if (resolution.otherVenues) return resolution.otherVenues.some((venue) => isUsSymbolVenue(venue));
+  const symbol = resolution.bareSymbol!;
+  // Search's listings, not the saved row it would answer with; none found (or search failed) says nothing.
+  const venues = await listingVenues(symbol, { store: NO_SAVED_ROWS, dataProvider: deps.dataProvider })
+    .catch(logFailure("cli.symbol-rows", "Read listing venues failed", []));
+  if (venues.length > 0) return venues.some((venue) => isUsSymbolVenue(venue.exchange));
+  const quote = await deps.dataProvider.getQuote(symbol, "").catch(logFailure("cli.symbol-rows", "Quote bare symbol failed", null));
+  const venue = canonicalExchange(quote?.listingExchangeName || quote?.exchangeName);
+  return !venue || isUsSymbolVenue(venue);
 }
 
 /**
- * What a bare symbol matched only abroad was more likely typed for: a
+ * Whether a bare symbol is stored on its listing abroad, still trading, and
+ * that is all it names (`namesUsListing`): GARAN is added on BIST, saying so.
+ */
+async function listedOnlyAbroad(resolution: CliTicker, deps: SymbolDeps): Promise<boolean> {
+  if (!bareUsShapedSymbol(resolution) || resolution.ended || !isListedAbroad(resolution.ticker)) return false;
+  return !await namesUsListing(resolution, deps);
+}
+
+/** "GARAN has no US listing; it trades on BIST, in TRY.": the line an add says beside a symbol `listedOnlyAbroad`. */
+function abroadOnlyNote(resolution: CliTicker): string {
+  const { exchange, currency } = resolution.ticker.metadata;
+  const unit = currency?.trim();
+  return `${resolution.bareSymbol} has no US listing; it trades on ${exchangeLabel(exchange)}${unit ? `, in ${unit}` : ""}.`;
+}
+
+/**
+ * What a bare symbol listed only abroad was more likely typed for: a
  * currency (MXN, mixi Inc in Stuttgart) or a US ticker one slip away (APPL,
  * Aptus Pharma in Mumbai, for AAPL). "APPL is one slip from AAPL (Apple
  * Inc.)" or "MXN is also a currency"; null when the symbol is likely meant as typed.
  */
-async function meantInstead(resolution: CliTicker, deps: { store: TickerSource; dataProvider: DataProvider }): Promise<string | null> {
-  const symbol = bareUsShapedSymbol(resolution);
-  if (!symbol || !abroadOnlyNote(resolution)) return null;
+async function meantInstead(symbol: string, deps: SymbolDeps): Promise<string | null> {
   if (symbol !== "USD" && /^[A-Z]{3}$/.test(symbol) && isCurrencyCode(symbol)) return `${symbol} is also a currency`;
   const suggestion = await suggestUsTicker(symbol, deps).catch(logFailure("cli.symbol-rows", "Suggest a US ticker failed", null));
   return suggestion ? `${symbol} is one slip from ${describeSuggestion(suggestion)}` : null;
+}
+
+/**
+ * How a bare symbol matched abroad is settled: `abroad` when it is added
+ * there, with its line, or `meant` when it is left for a choice as more
+ * likely typed for something else. Both null for anything else, which
+ * `choiceNeeded` decides.
+ */
+async function settleAbroad(resolution: CliTicker, deps: SymbolDeps): Promise<{ abroad: string | null; meant: string | null; onlyAbroad: boolean }> {
+  if (!await listedOnlyAbroad(resolution, deps)) return { abroad: null, meant: null, onlyAbroad: false };
+  const meant = await meantInstead(resolution.bareSymbol!, deps);
+  return { abroad: meant ? null : abroadOnlyNote(resolution), meant, onlyAbroad: true };
 }
 
 /** Whether a YYYY-MM-DD day is within `ms` before `now`. */
@@ -237,7 +266,11 @@ function within(day: string | null, ms: number, now: number): boolean {
  * with `abroadOnlyNote`), or one whose input named its exchange; coins,
  * perpetual markets and currency pairs, which trade in no one country, too.
  */
-function choiceNeeded(resolution: CliTicker, meant: string | null, now = Date.now()): { message: string; successor: string | null } | null {
+function choiceNeeded(
+  resolution: CliTicker,
+  { onlyAbroad, meant }: { onlyAbroad: boolean; meant: string | null },
+  now = Date.now(),
+): { message: string; successor: string | null } | null {
   const symbol = bareUsShapedSymbol(resolution);
   if (!symbol) return null;
   const history = successorOf(resolution);
@@ -245,7 +278,7 @@ function choiceNeeded(resolution: CliTicker, meant: string | null, now = Date.no
   // A company that left lately: the match is another's, or that company's own line, still quoted.
   const recent = !!history?.successor && within(history.left, RECENT_REUSE_MS, now);
   const found = resolution.ended
-    ?? (isListedAbroad(resolution.ticker) && (namesUsListing(resolution) || meant)
+    ?? (isListedAbroad(resolution.ticker) && (!onlyAbroad || meant)
       ? `${symbol} matched ${label}, a listing abroad${meant ? `; ${meant}` : ""}`
       : recent ? `${symbol} matched ${label}, ${sameCompany(resolution.ticker.metadata.name, history?.company) ? "that company's old line" : "another company's listing"}`
         : null);
@@ -329,7 +362,8 @@ async function settleAdd(
       ? { row: { ...failedRow(input, error, "needs_choice"), tradesAs: error.successor }, error }
       : { row: failedRow(input, error), error };
   }
-  const choice = choiceNeeded(lookup, await meantInstead(lookup, { store: staged, dataProvider }));
+  const abroad = await settleAbroad(lookup, { store: staged, dataProvider });
+  const choice = choiceNeeded(lookup, abroad);
   if (choice) {
     // The lookup saved the listing it matched; one that is in no list of this run is not kept.
     if (!added.has(lookup.ticker.metadata.ticker)) staged.discard(lookup.ticker.metadata.ticker);
@@ -350,10 +384,9 @@ async function settleAdd(
   added.add(result.ticker.metadata.ticker);
   // Another company had the symbol: the row says which, and what it trades as now.
   const history = successorOf(lookup);
-  const abroad = abroadOnlyNote(lookup);
   return { row: listingRow(input, result.changed ? "added" : "already_listed", result.ticker, {
     notes: lookup.notes, ended: lookup.ended, hint: lookup.coinNote, readAs: lookup.readAs,
-    extra: { ...history ? { changeNote: history.note, tradesAs: history.successor } : {}, ...abroad ? { abroad } : {} },
+    extra: { ...history ? { changeNote: history.note, tradesAs: history.successor } : {}, ...abroad.abroad ? { abroad: abroad.abroad } : {} },
   }), error: null };
 }
 

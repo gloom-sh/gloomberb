@@ -1,7 +1,7 @@
 import type { CliCommandContext } from "../../../../types/plugin";
 import type { TickerRecord } from "../../../../types/ticker";
 import type { MarketContext } from "../../../../cli/types";
-import { listingFields, loadSavedListing, parseListingArg, savedListingName } from "../../../../cli/listing-arg";
+import { listingFields, loadSavedListingOf, savedListingCandidates, savedListingName } from "../../../../cli/listing-arg";
 import { withSuggestion } from "../../../../cli/listing-suggestion";
 import { StagedTickerRepository } from "../../../../cli/staged-tickers";
 import { splitSymbolArgs, splitSymbolWords, symbolInputKey } from "../../../../cli/symbol-args";
@@ -292,9 +292,12 @@ export async function removeSymbols({
   exchange,
   store,
   reject,
+  holds,
   remove,
 }: BulkSymbolsOptions & {
   reject?: (input: string) => Error | null;
+  /** Whether the list being changed holds the row: of two a symbol may be saved as (GARAN:BIST and GARAN.IS), the one it holds. */
+  holds?: (ticker: TickerRecord) => boolean;
   remove: (ticker: TickerRecord) => { changed: boolean; ticker: TickerRecord; extra?: Record<string, unknown> };
 }): Promise<SymbolRow[]> {
   const staged = new StagedTickerRepository(store);
@@ -305,16 +308,17 @@ export async function removeSymbols({
       rows.push(failedRow(input, refusal));
       continue;
     }
-    let listing;
+    let listings;
     try {
-      listing = parseListingArg(input, exchange, { ownExchangeWins: true, listingSuffix: true });
+      // GARAN.IS is the row of GARAN:BIST, else a row still saved under that key (a broker's).
+      listings = savedListingCandidates(input, exchange, { ownExchangeWins: true });
     } catch (error) {
       rows.push(failedRow(input, error instanceof Error ? error : new Error(String(error))));
       continue;
     }
-    const ticker = listing.symbol ? await loadSavedListing(staged, listing) : null;
+    const ticker = listings[0]!.symbol ? (await loadSavedListingOf(staged, listings, holds))?.ticker : null;
     if (!ticker) {
-      rows.push(failedRow(input, new Error(`Ticker "${listing.key}" was not found in your local data.`), "not_found"));
+      rows.push(failedRow(input, new Error(`Ticker "${listings[0]!.key}" was not found in your local data.`), "not_found"));
       continue;
     }
     const result = remove(ticker);
