@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { savedCopyFooterSegment, type DataTableCell, type DataTableVisibleRange, type PaneFooterSegment } from "../../../components";
+import type { DataTableCell, DataTableVisibleRange, PaneFooterSegment } from "../../../components";
+import { savedCopyFooterSegment } from "../../../components/layout/pane/footer/model";
 import { oldestSavedCopyAt } from "../../../data/saved-copies";
 import { useQuoteEntries } from "../../../market-data/hooks";
 import { getRegularSessionDisplay, quoteDotMarketState, quoteHeadlineTime, quoteSessionColor, quoteSessionLabel } from "../../../market-data/market/status";

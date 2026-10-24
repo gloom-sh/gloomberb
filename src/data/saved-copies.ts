@@ -6,13 +6,16 @@
  * refresh; saved copy from <time>" instead of reading as live or delayed, but
  * only when what it shows came from such a copy: a saved copy of something
  * else it loaded on the way (a fallback for a pane it does not print) says
- * nothing about the data on screen. The app says the same in the footer of a
- * pane showing such a copy (`savedCopyAt`), until a refresh replaces it.
+ * nothing about the data on screen. The app says the same of a quote, in the
+ * footer of a pane showing one (`savedCopyAt`), until a refresh replaces it.
  *
  * The copy served is marked, by a symbol property that object spreads carry
  * along and JSON never writes, and the command's output is searched for the
- * marks. A value built from a newer answer must not inherit a mark through a
- * spread: `withSavedCopyMarkOf` gives it the mark of what was served instead.
+ * marks. Outside a command only quotes are marked (`quoteServedFromSavedCopy`):
+ * the app keeps running for hours, and its other panes say how current their
+ * data is in their own footers. A quote built from a newer answer must not
+ * inherit a mark through a spread: `withSavedCopyMarkOf` gives it the mark of
+ * what was served instead.
  */
 const SAVED_AT = Symbol("gloomberb.savedCopyAt");
 
@@ -29,13 +32,19 @@ function mark<T>(value: T, savedAt: number): T {
 }
 
 /**
- * The value answered with when it came from a copy saved at `savedAt` (ms)
- * after its refresh failed: a marked copy. An array's items are marked one by
- * one, since a report shows its rows rather than the array that held them.
+ * The value a command answers with when it came from a copy saved at
+ * `savedAt` (ms) after its refresh failed: a marked copy while a command runs,
+ * the value itself otherwise. An array's items are marked one by one, since
+ * a report shows its rows rather than the array that held them.
  */
 export function servedFromSavedCopy<T>(value: T, savedAt: number): T {
-  if (!Number.isFinite(savedAt) || !value || typeof value !== "object") return value;
+  if (collecting === 0 || !Number.isFinite(savedAt) || !value || typeof value !== "object") return value;
   return (Array.isArray(value) ? value.map((item) => mark(item, savedAt)) : mark(value, savedAt)) as T;
+}
+
+/** A quote answered from a copy saved at `savedAt` (ms) after its refresh failed: marked, in a command and in the app. */
+export function quoteServedFromSavedCopy<T extends object>(quote: T, savedAt: number): T {
+  return Number.isFinite(savedAt) ? mark(quote, savedAt) : quote;
 }
 
 /**
