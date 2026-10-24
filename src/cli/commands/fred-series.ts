@@ -269,8 +269,8 @@ export function fredEmptyMessage(startDate: string, latest: { date: string; valu
 /** What an export of nothing on or after `--start` says to try instead: a start that reaches the latest observation. */
 export function fredEmptyAdvice(seriesId: string, latest: { date: string } | null): string {
   return latest
-    ? `Latest observation: ${latest.date}. Try: gloomberb fred ${seriesId} --start ${latest.date.slice(0, 4)}`
-    : `No observations came back for ${seriesId}. Try an earlier --start, or gloomberb fred --list for the series served.`;
+    ? `Latest observation: ${latest.date}. Try: gloom fred ${seriesId} --start ${latest.date.slice(0, 4)}`
+    : `No observations came back for ${seriesId}. Try an earlier --start, or gloom fred --list for the series served.`;
 }
 
 /** A series as `fred --list` shows it. */

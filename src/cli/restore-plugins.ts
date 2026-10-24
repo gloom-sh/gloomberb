@@ -27,7 +27,7 @@ export async function restoreExtractedPlugins(): Promise<Pick<AppConfig, "seeded
     const config = await loadCliConfigIfAvailable();
     // No data directory yet means a first run: there is nothing to restore.
     if (!config) return null;
-    // Through the registry like `gloomberb install`: the reviewed commit, and
+    // Through the registry like `gloom install`: the reviewed commit, and
     // nothing on a Gloomberb too old for it. That failure is retried at the
     // next launch, by when this Gloomberb has usually updated itself. The
     // registry is read once, and only when something is left to install.

@@ -6,7 +6,9 @@ import { displayWidth, formatCurrency, formatNumber } from "../../../utils/forma
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
 import { loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
 import { delayedFooterSegment } from "../../../components/layout/pane/footer/model";
-import { regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
+import { regularSessionValuationPrice, regularSessionValuationTime } from "../../../market-data/quotes/regular-session-valuation";
+import { getCompletedRegularSessionDisplay } from "../../../market-data/market/status";
+import { formatUtcDayTime, parseReportTime, type ReportTime } from "../../../utils/utc-time";
 
 function compactPeriod(period: string): string {
   return period
@@ -32,6 +34,15 @@ export interface AnalystReferencePrice {
   /** What the price is when it is the live quote, such as `real-time` or `15m delayed`. */
   freshness: string | null;
   live: boolean;
+  /**
+   * When the price is from: a live quote's regular session close once that session is over, else the quote's own
+   * time (regularSessionValuationTime); the provider's reference from when the research was fetched. Null unknown.
+   */
+  time?: ReportTime | null;
+  /** The live price is a completed session's close. */
+  close?: boolean;
+  /** The exchange-local date of that session, when the quote names it. */
+  sessionDate?: string;
 }
 
 function quoteFreshness(quote: Quote): string | null {
@@ -51,12 +62,62 @@ export function analystReferencePrice(
   data: AnalystResearchData | null,
   quote: Quote | null | undefined,
 ): AnalystReferencePrice {
-  const fallback = { price: data?.priceTarget?.current, freshness: null, live: false };
+  const fallback = { price: data?.priceTarget?.current, freshness: null, live: false, time: parseReportTime(data?.fetchedAt), close: false };
   const currency = analystTargetCurrency(data);
   const price = regularSessionValuationPrice(quote);
   if (!quote || quote.stale || !currency || price == null) return fallback;
   if (quote.currency?.trim() !== currency) return fallback;
-  return { price, freshness: quoteFreshness(quote), live: true };
+  return {
+    price, freshness: quoteFreshness(quote), live: true,
+    time: regularSessionValuationTime(quote), close: getCompletedRegularSessionDisplay(quote) != null,
+    ...(quote.regularCloseSessionDate ? { sessionDate: quote.regularCloseSessionDate } : {}),
+  };
+}
+
+/**
+ * The upside and what it is measured from, as `analyst`, `fn ANR` and the ANR
+ * pane read it: the average target over Last (the quote's regular session
+ * price, as `valuation` and RV show it), or the provider's reference price when
+ * no quote in the target's currency stands (analystReferencePrice).
+ */
+export function analystUpside(data: AnalystResearchData | null, quote: Quote | null | undefined) {
+  const reference = analystReferencePrice(data, quote);
+  return { upside: targetUpside(data?.priceTarget, reference.price), reference };
+}
+
+/** The reference an upside is measured from, for JSON: the price, when it is from, and whose it is. */
+export function analystReferenceMetadata(reference: AnalystReferencePrice) {
+  const time = reference.time;
+  return {
+    price: reference.price ?? null,
+    asOf: time ? (time.dateOnly ? new Date(time.time).toISOString().slice(0, 10) : new Date(time.time).toISOString()) : null,
+    basis: !reference.live ? "provider reference at retrieval" : reference.close ? "regular session close" : "regular session price",
+    ...(reference.freshness ? { freshness: reference.freshness } : {}),
+  };
+}
+
+/** When a reference price is from, in the words a change line uses: "Thu 22 Oct close" or a print's time. */
+function analystReferenceWhen(reference: AnalystReferencePrice, now: number): string {
+  const at = (time: ReportTime) => formatUtcDayTime(time, now) + (time.dateOnly ? "" : " UTC");
+  if (reference.live && reference.close) {
+    const day = reference.sessionDate ? { time: Date.parse(`${reference.sessionDate}T00:00:00Z`), dateOnly: true }
+      : reference.time ? { ...reference.time, dateOnly: true } : null;
+    return day ? `${at(day)} close` : "close";
+  }
+  return reference.time ? at(reference.time) : "";
+}
+
+/**
+ * The price an upside is measured from and when it is from: "$141.39, Thu 22 Oct close", "$141.39, Fri 23 Oct
+ * 14:05 UTC (15m delayed)" while the session trades, or the provider's reference, "$137.32, provider reference at
+ * retrieval Wed 21 Oct 21:30 UTC".
+ */
+export function formatAnalystReference(reference: AnalystReferencePrice, currency: string | undefined, now = Date.now()): string {
+  if (reference.price == null || !Number.isFinite(reference.price)) return "-";
+  const price = formatAnalystPrice(reference.price, currency);
+  const when = analystReferenceWhen(reference, now);
+  if (!reference.live) return `${price}, provider reference${when ? ` at retrieval ${when}` : ""}`;
+  return `${price}${when ? `, ${when}` : ""}${reference.freshness && !reference.close ? ` (${reference.freshness})` : ""}`;
 }
 
 function isCurrentMonthPeriod(period: string | undefined): boolean {
@@ -340,6 +401,7 @@ export function buildAnalystFooterInfo(
 export function buildAnalystStatusSegments(
   data: AnalystResearchData | null,
   reference: AnalystReferencePrice = analystReferencePrice(data, null),
+  now = Date.now(),
 ): PaneFooterSegment[] {
   if (!data) return [];
 
@@ -372,11 +434,14 @@ export function buildAnalystStatusSegments(
   if (reference.price != null) {
     // A delayed price is the footer's clock beside it; a real-time one says so in words.
     const delay = reference.freshness?.endsWith(" delayed") ? reference.freshness.slice(0, -" delayed".length) : null;
+    const when = !reference.live ? "provider ref" : reference.close ? analystReferenceWhen(reference, now) : null;
     segments.push({
       id: "analyst-reference-price",
       parts: [
         { text: "upside vs", tone: "label" },
         { text: price(reference.price) },
+        // When it is from, as `analyst` and `fn ANR` print it: "Thu 22 Oct close" or the provider's reference.
+        ...(when ? [{ text: when, tone: "muted" as const }] : []),
         ...(reference.freshness && !delay ? [{ text: reference.freshness, tone: "muted" as const }] : []),
       ],
     });

@@ -114,24 +114,24 @@ test("HELP has no report and sends a newcomer to the command guide and the funct
   const context = { config: createDefaultConfig("/tmp/gloomberb-help-report-test"), dataProvider: createTestDataProvider() } as unknown as MarketContext;
   const message = (id: string) => buildFunctionReport(resolved(id), context, "").catch((error: Error) => error.message);
   const help = await message("help");
-  expect(help).toContain("`gloomberb help`");
-  expect(help).toContain("`gloomberb catalog`");
+  expect(help).toContain("`gloom help`");
+  expect(help).toContain("`gloom catalog`");
   // Another interactive pane points to the screenshot that draws it, with its argument.
   const shot = (id: string) => buildFunctionReport({ ...resolved(id), capability: { id, screenshotReadiness: "live-dom" } } as unknown as ResolvedPaneFunction, context, "santander")
     .catch((error: Error) => error.message);
-  expect(await shot("CAT")).toContain("`gloomberb shot CAT santander`");
-  expect(await message("chat")).not.toContain("gloomberb shot");
+  expect(await shot("CAT")).toContain("`gloom shot CAT santander`");
+  expect(await message("chat")).not.toContain("gloom shot");
 });
 
 test("a series export with no rows says what was asked, and a FRED id given as a ticker gets the fred: prefix", () => {
   const fred = new Set(["DEXSFUS"]);
   expect(emptySeriesExport("G", "DEXSFUS", { unavailableSymbols: ["DEXSFUS"], errors: ["dexsfus-market-ohlcv-1: Not a ticker: DEXSFUS."] }, fred)).toEqual({
     message: "fn G DEXSFUS has no data to export: DEXSFUS is a FRED series, not a ticker.",
-    details: "Chart it with the fred: prefix: gloomberb fn G fred:DEXSFUS --csv (or gloomberb fred DEXSFUS --csv).",
+    details: "Chart it with the fred: prefix: gloom fn G fred:DEXSFUS --csv (or gloom fred DEXSFUS --csv).",
   });
   // Anything else repeats why, without the series id the error was filed under.
   expect(emptySeriesExport("G", "ZZZZQX", { unavailableSymbols: ["ZZZZQX"], errors: ["zzzzqx-market-ohlcv-1: Not a ticker: ZZZZQX."] }, fred, "--ndjson")).toEqual({
     message: "fn G ZZZZQX has no data to export for ZZZZQX.",
-    details: "Not a ticker: ZZZZQX.\nCheck the symbol with gloomberb search, or run gloomberb fn G ZZZZQX without --ndjson to see the report.",
+    details: "Not a ticker: ZZZZQX.\nCheck the symbol with gloom search, or run gloom fn G ZZZZQX without --ndjson to see the report.",
   });
 });

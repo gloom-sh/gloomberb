@@ -255,7 +255,7 @@ test("the square-root control shows on US Stocks, US ETFs and a watchlist, never
 });
 
 
-/** Renders the pane on a tab and returns the chart-data evidence it publishes for `gloomberb shot`. */
+/** Renders the pane on a tab and returns the chart-data evidence it publishes for `gloom shot`. */
 async function publishedEvidence(universe: string): Promise<Record<string, unknown> | undefined> {
   const id = "market-heatmap", Pane = marketHeatmapPlugin.panes![0]!.component;
   const registry = createRemoteUiRegistry();

@@ -331,13 +331,13 @@ export function DocsPane({ focused, width, height }: PaneProps) {
   }, [entries, query, show]);
 
   const visibleEntries = useMemo(() => rows.filter(isSectionedItemRow).map((row) => row.item), [rows]);
-  // A request that matches nothing fails a report of the pane (`gloomberb fn DOCS zzzz`) instead of listing the whole index.
+  // A request that matches nothing fails a report of the pane (`gloom fn DOCS zzzz`) instead of listing the whole index.
   const requested = requestKey ? parseDocsTopicKey(requestKey) : null;
   const requestedQuery = requested?.kind === "home" ? requested.query?.trim() ?? "" : "";
   useRemoteUiNode(feed && requestedQuery && stack.length === 0 && query.trim() === requestedQuery && visibleEntries.length === 0 ? {
     role: "report-failure",
     label: "No docs entry",
-    getMetadata: () => ({ message: `No docs entry for ${requestedQuery}.`, details: "Run gloomberb fn DOCS for the index." }),
+    getMetadata: () => ({ message: `No docs entry for ${requestedQuery}.`, details: "Run gloom fn DOCS for the index." }),
   } : null);
   const effectiveSelectedKey = visibleEntries.some((entry) => entry.key === selectedKey)
     ? selectedKey

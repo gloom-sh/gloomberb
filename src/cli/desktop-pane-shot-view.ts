@@ -24,8 +24,8 @@ export const SHOT_VIEW_SCRIPT = "cli-pane-shot-entry.js";
 export const SHOT_VIEW_STYLESHEET = "styles.css";
 export const SHOT_VIEW_ARCHIVE = "shot-view.json.gz";
 
-const MISSING_VIEW_MESSAGE = "This copy of Gloomberb cannot draw panes: it was built without the page they are drawn in. "
-  + "Reinstall or update Gloomberb. The standalone gloomberb binary "
+const MISSING_VIEW_MESSAGE = "This copy of Gloom cannot draw panes: it was built without the page they are drawn in. "
+  + "Reinstall or update Gloom. The standalone gloom binary "
   + "(https://github.com/gloom-sh/gloomberb/releases/latest) also includes it.";
 
 let prebuiltArchive: string | null = null;

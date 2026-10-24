@@ -147,6 +147,6 @@ export function missingExpiryMessage(
 ): { message: string; details: string } {
   return {
     message: missingExpiryText(requested, expirations, symbol),
-    details: `Run gloomberb options ${symbol} to list every expiry (--json carries them too).`,
+    details: `Run gloom options ${symbol} to list every expiry (--json carries them too).`,
   };
 }

@@ -49,15 +49,15 @@ Use the API coverage routes for current deployment coverage: `/cloud/hiring/cove
 ## CLI and REST
 
 ```sh
-gloomberb fn HIRE NET --json
-gloomberb fn APPS META --country US --chart free --days 90 --json
-gloomberb fn APPS --app-id 6446901002 --store app-store --country US --chart free --days 90 --json
-gloomberb shot HIRE NET --tab mix --width 1280 --height 540 --output hiring.png
-gloomberb shot HIRE --tab moves --moves slowing --width 1280 --height 540 --output moves.png
-gloomberb shot HIRE RIVN --tab moves --view drivers --width 720 --height 360 --output rivn.png
-gloomberb shot HIRE --tab expansion --kind new_country --width 1280 --height 540 --output expansion.png
-gloomberb shot HIRE STT --tab anomalies --signals-view postings --width 720 --height 360 --output stt.png
-gloomberb shot APPS META --tab evidence --width 720 --height 360 --output apps.png
+gloom fn HIRE NET --json
+gloom fn APPS META --country US --chart free --days 90 --json
+gloom fn APPS --app-id 6446901002 --store app-store --country US --chart free --days 90 --json
+gloom shot HIRE NET --tab mix --width 1280 --height 540 --output hiring.png
+gloom shot HIRE --tab moves --moves slowing --width 1280 --height 540 --output moves.png
+gloom shot HIRE RIVN --tab moves --view drivers --width 720 --height 360 --output rivn.png
+gloom shot HIRE --tab expansion --kind new_country --width 1280 --height 540 --output expansion.png
+gloom shot HIRE STT --tab anomalies --signals-view postings --width 720 --height 360 --output stt.png
+gloom shot APPS META --tab evidence --width 720 --height 360 --output apps.png
 ```
 
 Headless bundles accept `--limit` and `--offset`; `metadata.nextOffset` identifies the continuation and `complete` stays false until the final page. They include the displayed tables and full authorized provenance, revisions, coverage, units, limitations and preview state. REST uses `/cloud/hiring`, `/cloud/hiring/:symbol`, `/cloud/hiring/moves?signal=moves`, `/cloud/hiring/moves/:symbol`, `/cloud/hiring/signals/expansion?kind=all`, `/cloud/hiring/signals/anomalies?kind=all`, `/cloud/hiring/signals/company/:symbol`, `/cloud/app-attention/board` and `/cloud/app-attention/:symbol`. Individual app timelines use `/cloud/app-attention/app/:store/:appId?country=US&chart=free&days=90`, with explicit chart exits retained as null ranks. The deployment begins accumulating history from real captures; the UI never fabricates a chart to fill an empty history window.

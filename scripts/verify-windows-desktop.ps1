@@ -1387,7 +1387,7 @@ function Capture-OnboardingScreenshot {
 
     Save-WindowInventory (Join-Path $GuiArtifactDir "windows-onboarding-after-launch.txt")
     $null = Capture-WindowScreenshotByTitle `
-      -Title "Gloomberb" `
+      -Title "Gloom" `
       -Path $OutputPath `
       -Label "Onboarding window" `
       -InitialDelaySeconds 8
@@ -1446,6 +1446,7 @@ function Assert-TuiStarts {
 $RequiredPaths = @(
   (Join-Path $BundleDir "bin\launcher.exe"),
   (Join-Path $BundleDir "bin\bun.exe"),
+  (Join-Path $BundleDir "bin\gloom.cmd"),
   (Join-Path $BundleDir "bin\gloomberb.cmd"),
   $BundleAppIconPath,
   $BundleLogoIconPath,
@@ -1496,7 +1497,7 @@ $PreviousGloomberbHome = $env:GLOOMBERB_HOME
 
 try {
   $env:GLOOMBERB_HOME = Join-Path $SmokeRoot "main-profile"
-  Assert-TuiStarts (Join-Path $BundleDir "bin\gloomberb.cmd")
+  Assert-TuiStarts (Join-Path $BundleDir "bin\gloom.cmd")
   if (Test-Path $InstallDir) {
     Remove-Item -Recurse -Force $InstallDir
   }
@@ -1518,15 +1519,23 @@ try {
     exit $InstallProcess.ExitCode
   }
 
-  $InstalledCli = Join-Path $InstallDir "bin\gloomberb.cmd"
-  if (-not (Test-Path $InstalledCli)) {
-    Get-Content $InstallLog -ErrorAction SilentlyContinue
-    Get-ChildItem -Path $InstallDir -Recurse -Depth 3 -ErrorAction SilentlyContinue |
-      Select-Object -ExpandProperty FullName
-    throw "Installed TUI command was not found: $InstalledCli"
+  $InstalledCli = Join-Path $InstallDir "bin\gloom.cmd"
+  # The command's name before 0.19, which existing scripts still call.
+  $InstalledLegacyCli = Join-Path $InstallDir "bin\gloomberb.cmd"
+  foreach ($Cli in @($InstalledCli, $InstalledLegacyCli)) {
+    if (-not (Test-Path $Cli)) {
+      Get-Content $InstallLog -ErrorAction SilentlyContinue
+      Get-ChildItem -Path $InstallDir -Recurse -Depth 3 -ErrorAction SilentlyContinue |
+        Select-Object -ExpandProperty FullName
+      throw "Installed TUI command was not found: $Cli"
+    }
   }
 
   Assert-TuiStarts $InstalledCli -Capture
+  & $InstalledLegacyCli help | Out-Null
+  if ($LASTEXITCODE -ne 0) {
+    exit $LASTEXITCODE
+  }
 
   Disable-InstalledDesktopUpdates -InstallDir $InstallDir
 
@@ -1566,10 +1575,10 @@ try {
   $LaunchedWindowProcessIds += $GuiProcess.Id
   $LaunchedWindowProcessIds += @($LaunchedWindows | Select-Object -ExpandProperty Id)
 
-  $MainWindow = $LaunchedWindows | Where-Object { $_.MainWindowTitle -eq "Gloomberb" } | Select-Object -First 1
+  $MainWindow = $LaunchedWindows | Where-Object { $_.MainWindowTitle -eq "Gloom" } | Select-Object -First 1
   $DetachedWindow = $LaunchedWindows | Where-Object { $_.MainWindowTitle -eq "Detached Watchlist" } | Select-Object -First 1
   if (-not $MainWindow) {
-    throw "Could not find the Gloomberb main window in the Windows GUI smoke test."
+    throw "Could not find the Gloom main window in the Windows GUI smoke test."
   }
   if (-not $DetachedWindow) {
     throw "Could not find the detached watchlist window in the Windows GUI smoke test."
@@ -1586,7 +1595,7 @@ try {
 
   $MainScreenshot = Join-Path $GuiArtifactDir "windows-gui-main.png"
   $MainWindow = Capture-WindowScreenshotByTitle `
-    -Title "Gloomberb" `
+    -Title "Gloom" `
     -Path $MainScreenshot `
     -Label "Main window" `
     -InitialDelaySeconds 8
@@ -1654,7 +1663,7 @@ try {
   Capture-DesktopScreenshot $DesktopScreenshot
   Assert-ScreenshotHasContent $DesktopScreenshot "Windows desktop"
 
-  Resolve-VisibleWindowByTitle -Title "Gloomberb" -Label "Main window liveness" | Out-Null
+  Resolve-VisibleWindowByTitle -Title "Gloom" -Label "Main window liveness" | Out-Null
   Resolve-VisibleWindowByTitle -Title "Detached Watchlist" -Label "Detached pop-out liveness" | Out-Null
 
   $GuiProcess.Refresh()

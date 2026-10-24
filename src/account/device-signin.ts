@@ -54,7 +54,7 @@ const POLL_BACKOFF_FACTOR = 2;
 
 function defaultClientName(): string {
   const name = typeof process !== "undefined" ? process.env.HOSTNAME?.trim() : "";
-  return name && name !== "localhost" ? name : "Gloomberb";
+  return name && name !== "localhost" ? name : "Gloom";
 }
 
 function defaultClientPlatform(): string | undefined {
@@ -63,7 +63,7 @@ function defaultClientPlatform(): string | undefined {
 
 function errorMessage(error: unknown): string {
   if (error instanceof Error && error.message.trim()) return error.message.trim();
-  return "Could not reach Gloomberb Cloud.";
+  return "Could not reach Gloom Cloud.";
 }
 
 export function parseDeviceCodeExpiryMs(expiresAt: unknown, now: number): number {

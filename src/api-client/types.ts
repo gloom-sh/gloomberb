@@ -551,8 +551,17 @@ export interface CloudMacroReleaseDaysPayload {
   /** The last New York day the lists are complete for. */
   coveredThrough: string;
   sources: string[];
-  /** New York dates, oldest first. */
-  releases: Record<"cpi" | "jobs" | "fomc", string[]>;
+  /** New York dates, oldest first. Brazil's IPCA days when the server can vouch for them. */
+  releases: Record<"cpi" | "jobs" | "fomc", string[]> & { ipca?: string[] };
+  /** Each kind's figures by New York release day, for the days they are known. */
+  figures?: Partial<Record<"cpi" | "jobs" | "fomc" | "ipca", Record<string, {
+    event: string;
+    actual: string | null;
+    forecast: string | null;
+    prior: string | null;
+    /** Above the consensus (hot), below it (cool), at it (in-line); null without both. */
+    surprise: "hot" | "cool" | "in-line" | null;
+  }>>>;
 }
 
 export interface CloudFredObservationPayload {

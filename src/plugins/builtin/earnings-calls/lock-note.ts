@@ -3,7 +3,7 @@ import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { proLockNote, type FreeRoute } from "../shared/pro-lock-note";
 
 const EVENTS_ROUTE: FreeRoute = {
-  text: (ticker, company) => `gloomberb events ${ticker} lists ${company}'s earnings dates, with the EPS reported at each and the next estimate.`,
+  text: (ticker, company) => `gloom events ${ticker} lists ${company}'s earnings dates, with the EPS reported at each and the next estimate.`,
   answers: async (symbol, context) => {
     const { symbol: ticker, exchange } = await resolveHeadlessInstrument(context, symbol);
     return ((await context.marketData.getCorporateActions?.(ticker, exchange))?.earnings.length ?? 0) > 0;

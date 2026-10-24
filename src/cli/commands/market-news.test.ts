@@ -131,9 +131,9 @@ test("a search no story matches says so, never a near miss, and offers the commo
   await news.execute(["sugar", "beet", "pulp"], cli.context);
   await news.execute(["european gas"], cli.context);
   await news.execute(["palm oil"], cli.context);
-  expect(render(cli.printed[0]!)).toContain('No stories match "sugar prices". For the Sugar #11 future, try: gloomberb news SB=F');
-  expect(cli.printed[0]!.result.metadata).toMatchObject({ futuresNews: "gloomberb news SB=F" });
-  expect(render(cli.printed[1]!)).toContain('No stories match "arabica". For the Coffee future, try: gloomberb news KC=F');
+  expect(render(cli.printed[0]!)).toContain('No stories match "sugar prices". For the Sugar #11 future, try: gloom news SB=F');
+  expect(cli.printed[0]!.result.metadata).toMatchObject({ futuresNews: "gloom news SB=F" });
+  expect(render(cli.printed[1]!)).toContain('No stories match "arabica". For the Coffee future, try: gloom news KC=F');
   expect(render(cli.printed[2]!)).toContain('No stories match "sugar beet pulp". For the Sugar #11 future');
   expect(render(cli.printed[3]!)).toContain('No stories match "european gas".');
   expect(render(cli.printed[3]!)).not.toContain("try:");
@@ -211,8 +211,8 @@ test("a metal's future, name or bare board code is the metal's market news (NI M
     'Metals news matching "silver"',
     'Metals news matching "gold"  ·  GC is the futures board\'s code for Gold',
   ]);
-  expect(cli.printed[4]!.result.metadata).toMatchObject({ ticker: null, search: "gold", topics: ["metals"], companyNews: "gloomberb news GOLD" });
-  expect(render(cli.printed[4]!)).toContain("gold → gold's market news. For Gold.com Inc. (ticker GOLD), try: gloomberb news GOLD");
+  expect(cli.printed[4]!.result.metadata).toMatchObject({ ticker: null, search: "gold", topics: ["metals"], companyNews: "gloom news GOLD" });
+  expect(render(cli.printed[4]!)).toContain("gold → gold's market news. For Gold.com Inc. (ticker GOLD), try: gloom news GOLD");
   // No ticker is SILVER here, so none is offered.
   expect(cli.printed[5]!.result.metadata).not.toHaveProperty("companyNews");
 
@@ -225,7 +225,7 @@ test("a metal's future, name or bare board code is the metal's market news (NI M
   // No story tagged METALS: every story that names the metal is one search away.
   serveSearch([]);
   await news.execute(["PL=F"], cli.context);
-  expect(render(cli.printed[8]!)).toContain(`No metals stories match "platinum". For every story that mentions it, try: gloomberb news '"platinum"'`);
+  expect(render(cli.printed[8]!)).toContain(`No metals stories match "platinum". For every story that mentions it, try: gloom news '"platinum"'`);
 });
 
 test("a real listing, with or without stories, never falls back to a text search", async () => {

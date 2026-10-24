@@ -48,7 +48,7 @@ test("catalog lists the series it finds with what fn G charts, after the functio
   expect(report).toContain('Series for "day-ahead" (2)');
   expect(report).toContain("Germany day-ahead power price");
   expect(report).toContain("CAP:day-ahead:gb");
-  expect(report).toContain("Chart one with gloomberb fn G <chart>.");
+  expect(report).toContain("Chart one with gloom fn G <chart>.");
   expect(report).not.toContain("No functions match");
   // A formula is quoted so the shell passes it to fn G whole; a plain expression is not.
   const crack = [{ series: [{ id: "fut:crack", name: "Heating oil crack", unit: "USD/barrel", frequency: "daily" as const,
@@ -76,15 +76,15 @@ test("a series id, its chart expression or a FRED id finds the series, and a FRE
   // Part of an id is no id.
   expect(findCatalogSeries(rates, "DFEDTAR", "names")).toEqual([]);
   const report = strip(buildSearchReport({ query: "DFEDTARU", candidates: [], series: findCatalogSeries(rates, "DFEDTARU", "names") }));
-  expect(report).toContain("Federal Reserve (United States): policy rate on the CBR board, gloomberb fn CBR.");
-  expect(report).toContain("Print it with gloomberb fred DFEDTARU; chart it with gloomberb fn G FRED:DFEDTARU.");
+  expect(report).toContain("Federal Reserve (United States): policy rate on the CBR board, gloom fn CBR.");
+  expect(report).toContain("Print it with gloom fred DFEDTARU; chart it with gloom fn G FRED:DFEDTARU.");
   expect(report).not.toContain("No matches found");
 });
 
 test("a search naming a central bank says CBR has its rate, instead of finding nothing", () => {
   const report = strip(buildSearchReport({ query: "Swiss National Bank", candidates: [],
     series: findCatalogSeries(rates, "Swiss National Bank", "names") }));
-  expect(report).toContain("Swiss National Bank (Switzerland): policy rate on the CBR board, gloomberb fn CBR.");
+  expect(report).toContain("Swiss National Bank (Switzerland): policy rate on the CBR board, gloom fn CBR.");
   expect(report).toContain("CAP:policy-rate:ch");
   expect(report).not.toContain("No matches found");
   // A bank named with the rate asked for is the same bank.

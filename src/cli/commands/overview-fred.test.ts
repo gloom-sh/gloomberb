@@ -36,7 +36,7 @@ test("an unsupported series is a usage error that points at the list, whichever 
     serve({ "/cloud/econ/series/DEXSFUS": { status: 400, body } });
     const cli = createTestCliContext();
     await expect(fred.execute(["dexsfus"], cli.context)).rejects.toThrow(
-      "Unsupported FRED series DEXSFUS. List supported series with: gloomberb fred --list",
+      "Unsupported FRED series DEXSFUS. List supported series with: gloom fred --list",
     );
   }
 });

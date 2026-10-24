@@ -299,7 +299,7 @@ function CallsListView({
     status?: number;
   } | null>(null);
   const [readerTab, setReaderTab] = usePluginPaneState<ReaderTab>(`${stateKey}readerTab`, "summary");
-  // A layout or `gloomberb shot CALLS NVDA --quarter latest --reader summary`
+  // A layout or `gloom shot CALLS NVDA --quarter latest --reader summary`
   // can land straight on a transcript instead of the shelf. `quarter` takes
   // the same tokens as the headless option; only transcribed calls qualify,
   // since opening a call without one asks the server to produce it.

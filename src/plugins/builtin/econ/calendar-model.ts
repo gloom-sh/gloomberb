@@ -43,6 +43,7 @@ export type DisplayRow =
 
 type EconCalendarColumnId =
   | "time"
+  | "readerTime"
   | "impact"
   | "country"
   | "event"
@@ -80,7 +81,7 @@ export function dateKey(d: Date): string {
 
 /**
  * The release's UTC clock time. Rows group by UTC day and the column header
- * names the zone, as `gloomberb econ` prints it; local time would move a 23:00
+ * names the zone, as `gloom econ` prints it; local time would move a 23:00
  * UTC release under another day and read differently on every machine.
  */
 export function timeLabel(d: Date): string {

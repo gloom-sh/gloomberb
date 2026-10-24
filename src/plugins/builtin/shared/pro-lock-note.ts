@@ -127,10 +127,10 @@ export async function proLockNote(
     ? "verify your email (Ctrl+P, Resend Verification Email)"
     : `log in or sign up${pro ? "" : " free"} from the command bar (Ctrl+P, Log In or Sign Up)`;
   const unlock = gate === "pro"
-    ? `To read ${pane.shows} in ${token}, upgrade in the app (gloomberb, then Ctrl+P, UPGRADE)`
-    : `To read ${pane.shows} in ${token}, open the app (gloomberb), ${account}${pro ? ", then upgrade (Ctrl+P, UPGRADE)" : ""}`;
+    ? `To read ${pane.shows} in ${token}, upgrade in the app (gloom, then Ctrl+P, UPGRADE)`
+    : `To read ${pane.shows} in ${token}, open the app (gloom), ${account}${pro ? ", then upgrade (Ctrl+P, UPGRADE)" : ""}`;
   const bare = pane.argument === "none" || (pane.argument === "optional" && !symbol);
-  const command = bare ? `gloomberb fn ${token}` : `gloomberb fn ${token} ${ticker}`;
+  const command = bare ? `gloom fn ${token}` : `gloom fn ${token} ${ticker}`;
   const free = pane.free ? await answeringFreeRoute(lock, pane.free) : null;
   return [
     `${token} ${what}: ${pane.does}. ${without} it shows none of ${pane.shows}.`,

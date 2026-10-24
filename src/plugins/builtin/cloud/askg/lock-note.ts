@@ -11,6 +11,6 @@ export function askgLockNote({ verifyEmail }: PaneLock): string {
     : "log in or sign up free in the app (Ctrl+P, Log In or Sign Up)";
   return [
     `Ask Gloom (ASKG in the app) needs only a free, verified Gloom account: ${account}.`,
-    "Without AI: `gloomberb catalog <topic>` finds the function for a question, e.g. `gloomberb catalog dividends`.",
+    "Without AI: `gloom catalog <topic>` finds the function for a question, e.g. `gloom catalog dividends`.",
   ].join("\n");
 }

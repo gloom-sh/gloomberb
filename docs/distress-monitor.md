@@ -98,12 +98,12 @@ source publishes under:
 - United Kingdom: The Gazette, under the Open Government Licence v3.0, Crown
   copyright. Personal data is excluded.
 
-No source endorses Gloomberb.
+No source endorses Gloom.
 
 ## Command line
 
-`gloomberb fn DIST` prints the same lists. `--view` picks the source
+`gloom fn DIST` prints the same lists. `--view` picks the source
 (`filings`, `going-concern`, `listings`, `insolvency`); `--items`,
 `--verdict`, `--status`, `--exchange`, `--country`, `--procedure` and `--name`
-narrow them as the tab's filters do. `gloomberb shot DIST --view listings`
+narrow them as the tab's filters do. `gloom shot DIST --view listings`
 saves a screenshot of one source.

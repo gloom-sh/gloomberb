@@ -77,7 +77,7 @@ test("a bank's fundamentals show its dated deposits, their change, its lead bank
     "Uninsured Deposits  60.9% of domestic deposits (1.39T uninsured of 2.29T USD estimated insured plus uninsured; call report 2026-06-30, FDIC data of 2026-08-19)",
     "CRE / Capital       50.7%: CRE 165.48B USD over total risk-based capital 326.43B USD (call report 2026-06-30, FDIC data of 2026-08-19)",
     "The uninsured share covers domestic offices; another 593.49B USD of deposits sits in foreign offices, which FDIC insurance does not cover.",
-    "NIM is a Pro figure in EQS: gloomberb fn EQS --metric kpiNimPercent --definition "
+    "NIM is a Pro figure in EQS: gloom fn EQS --metric kpiNimPercent --definition "
       + `'{"version":1,"currency":null,"criteria":[{"field":"symbol","op":"in","value":["JPM"]}],"sort":{"field":"symbol","direction":"asc"}}'`,
   ]);
   expect(data.bank.callReport.creToCapital).toBeCloseTo(0.507, 3);

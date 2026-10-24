@@ -5,7 +5,7 @@ import { treasuryYieldHint, treasuryYieldTenor } from "./treasury-yields";
 
 // "Not a ticker: APPLE." as the router words it; the symbol ends at the sentence's own period.
 // One that already names what to try (a search, a FRED series, a yield, the pair search offered) is left alone.
-const NOT_A_TICKER_SENTENCE = /Not a ticker: ((?:(?!\.\s)[^\n`\x1b])+?)\.(?=\s|\x1b|$)(?! Try `gloomberb (?:search|fred|quote) | Did you mean )/g;
+const NOT_A_TICKER_SENTENCE = /Not a ticker: ((?:(?!\.\s)[^\n`\x1b])+?)\.(?=\s|\x1b|$)(?! Try `gloom (?:search|fred|quote) | Did you mean )/g;
 
 /**
  * The symbol as the user typed it on the command line (`Apple`), not as the router saw it (`APPLE`).
@@ -25,13 +25,13 @@ function typedSymbol(symbol: string, args: readonly string[]): string {
   return symbol;
 }
 
-/** "Try `gloomberb search Apple`." naming what the user typed; a venue (`Apple:NYSE`) is not part of a search. */
+/** "Try `gloom search Apple`." naming what the user typed; a venue (`Apple:NYSE`) is not part of a search. */
 function searchHint(typed: string): string {
   const query = typed.split(":")[0]!.trim() || typed;
-  return `Try \`gloomberb search ${/\s/.test(query) ? JSON.stringify(query) : query}\`.`;
+  return `Try \`gloom search ${/\s/.test(query) ? JSON.stringify(query) : query}\`.`;
 }
 
-/** Whether an id is a FRED series the catalog charts (DFEDTARU), which `gloomberb fred` prints. */
+/** Whether an id is a FRED series the catalog charts (DFEDTARU), which `gloom fred` prints. */
 export type FredSeriesCheck = (seriesId: string) => boolean;
 
 /**
@@ -49,7 +49,7 @@ export function withSearchHints(text: string, args: readonly string[], isFredSer
     ? named.replace(NOT_A_TICKER_SENTENCE, (sentence, symbol: string) => {
       const typed = typedSymbol(symbol, args);
       const id = typed.toUpperCase();
-      if (/^[A-Z0-9]+$/.test(id) && isFredSeries(id)) return `${sentence} Try \`gloomberb fred ${id}\`.`;
+      if (/^[A-Z0-9]+$/.test(id) && isFredSeries(id)) return `${sentence} Try \`gloom fred ${id}\`.`;
       const coin = boardCoinFor(id);
       if (coin) return `${sentence} Did you mean ${coin.symbol}${coin.name && coin.name.toUpperCase() !== coin.symbol ? ` (${coin.name})` : ""}?`;
       const tenor = treasuryYieldTenor(typed);

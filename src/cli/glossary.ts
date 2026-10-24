@@ -474,7 +474,7 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     functions: ["DVD"], shown: ["Tax-equivalent yield", "Tax-Equivalent Yield"],
     definition: "The yield a taxable bond needs to match a tax-exempt muni fund after tax: yield / (1 - (federal rate + state rate)), on the SEC yield, "
       + "else the distribution yield. At 40.8% (37% plus the 3.8% net investment income tax), MUB's 4.04% is 6.83%. A state rate counts only for a "
-      + "single-state fund of that state (CMF, VTEC for California). gloomberb fn DVD and fundamentals take --tax-rate, --state-rate and --state.",
+      + "single-state fund of that state (CMF, VTEC for California). gloom fn DVD and fundamentals take --tax-rate, --state-rate and --state.",
   },
   {
     term: "Muni/Treasury ratio", aliases: ["muni treasury ratio", "muni-to-treasury ratio", "muni/ust ratio", "muni ratio", "municipal treasury ratio"],
@@ -843,7 +843,7 @@ export function renderGlossaryEntries(entries: readonly GlossaryEntry[]): string
 /** What `--explain` adds under a report: the terms it shows, or a note that it shows none. */
 export function renderReportGlossary(token: string, entries: readonly GlossaryEntry[]): string {
   if (entries.length === 0) {
-    return wrapText(`${token} shows no glossary terms. gloomberb catalog glossary lists every term.`, textWidth())
+    return wrapText(`${token} shows no glossary terms. gloom catalog glossary lists every term.`, textWidth())
       .map((line) => cliStyles.muted(line)).join("\n");
   }
   return [renderSection("Terms"), ...renderGlossaryEntries(entries)].join("\n");
@@ -880,7 +880,7 @@ export function renderGlossaryIndex(): string {
       index === 0 ? `  ${cliStyles.command(owner)}${" ".repeat(labelWidth - 2 - owner.length)}${line}` : `${" ".repeat(labelWidth)}${line}`
     ))),
     "",
-    ...wrapText("gloomberb catalog glossary <term> explains one; fn <function> --explain and portfolio show --explain add the terms a report shows.", width)
+    ...wrapText("gloom catalog glossary <term> explains one; fn <function> --explain and portfolio show --explain add the terms a report shows.", width)
       .map((line) => cliStyles.muted(line)),
   ].join("\n");
 }

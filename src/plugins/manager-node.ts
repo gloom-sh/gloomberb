@@ -6,7 +6,7 @@ import type { PluginTarget } from "../types/plugin";
 /**
  * The plugin manager for a process that can run git and bun: the terminal,
  * and the desktop's Bun side on behalf of its view. Wraps the installer so
- * the marketplace and `gloomberb install` do exactly the same thing, and
+ * the marketplace and `gloom install` do exactly the same thing, and
  * turns its failures into results the pane can show next to the row.
  */
 
@@ -41,7 +41,7 @@ export function createNodePluginManager(target: PluginTarget, hooks: NodePluginM
   }
 
   return {
-    // Through the registry, like `gloomberb install`: a plugin that builds on
+    // Through the registry, like `gloom install`: a plugin that builds on
     // another brings it along instead of failing to load without it.
     install: (repo, pin) => attempt(async () => (await installer()).installListedPlugin(repo, { quiet: true, ...(pin ? { pin } : {}) })),
     update: (directory, pin) => attempt(async () => (await installer()).updatePlugin(directory, { quiet: true, pin })),

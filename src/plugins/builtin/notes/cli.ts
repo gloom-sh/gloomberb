@@ -130,13 +130,13 @@ export const notesCliCommand: BuiltinCliCommandDef = {
       }
       if (action === "quick") {
         const subaction = args[1] ?? "list";
-        if (subaction !== "list") ctx.fail("Usage: gloomberb notes quick list");
+        if (subaction !== "list") ctx.fail("Usage: gloom notes quick list");
         const entries = await notes.loadQuickNotesIndex();
         ctx.printResult({ data: entries }, { empty: "No quick notes." });
         return;
       }
       if (action === "show") {
-        const symbol = await noteSymbol("Usage: gloomberb notes show <symbol>", notes);
+        const symbol = await noteSymbol("Usage: gloom notes show <symbol>", notes);
         ctx.printResult({ data: { symbol, text: await notes.load(symbol) }, ...read }, {
           text: (data) => data.text?.trim() ? data.text.trimEnd() : cliStyles.muted(`No note for ${symbol}.`),
         });
@@ -144,7 +144,7 @@ export const notesCliCommand: BuiltinCliCommandDef = {
       }
       if (action === "set") {
         // A dry run looks nothing up: it says the note it would write under the symbol as typed.
-        const symbol = await noteSymbol("Usage: gloomberb notes set <symbol> <text...>", notes, { refuse: true, lookUp: !ctx.cliOptions.dryRun });
+        const symbol = await noteSymbol("Usage: gloom notes set <symbol> <text...>", notes, { refuse: true, lookUp: !ctx.cliOptions.dryRun });
         const text = args.slice(2).join(" ");
         if (!ctx.cliOptions.dryRun) await notes.save(symbol, text);
         ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, symbol, bytes: text.length }, ...read }, {
@@ -153,7 +153,7 @@ export const notesCliCommand: BuiltinCliCommandDef = {
         return;
       }
       if (action === "delete" || action === "rm") {
-        const symbol = await noteSymbol("Usage: gloomberb notes delete <symbol>", notes);
+        const symbol = await noteSymbol("Usage: gloom notes delete <symbol>", notes);
         const existed = await notes.load(symbol).then((text) => !!text?.trim(), () => {
           // Intentional ignore: an unreadable note is still deleted, so the message says it existed.
           return true;
@@ -166,7 +166,7 @@ export const notesCliCommand: BuiltinCliCommandDef = {
         });
         return;
       }
-      ctx.fail("Usage: gloomberb notes show|set|delete|quick|export");
+      ctx.fail("Usage: gloom notes show|set|delete|quick|export");
     });
   },
 };

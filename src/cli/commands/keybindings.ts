@@ -49,12 +49,12 @@ export function applyKeybindingCliSet(config: AppConfig, key: string, rawValue: 
   const target = rest.join(".");
   const value = rawValue.trim();
   if (!target) {
-    return { ok: false, message: `Usage: gloomberb config set ${KEYBINDINGS_CONFIG_KEY}.actions.<action> <chord> or ${KEYBINDINGS_CONFIG_KEY}.commands.<chord> <query>` };
+    return { ok: false, message: `Usage: gloom config set ${KEYBINDINGS_CONFIG_KEY}.actions.<action> <chord> or ${KEYBINDINGS_CONFIG_KEY}.commands.<chord> <query>` };
   }
 
   if (section === "actions") {
     if (!isCoreKeybindingActionId(target) && !target.startsWith(PLUGIN_ACTION_PREFIX)) {
-      return { ok: false, message: `"${target}" is not a keybinding action. Run "gloomberb config get keybindings" for the list.` };
+      return { ok: false, message: `"${target}" is not a keybinding action. Run "gloom config get keybindings" for the list.` };
     }
     const lowered = value.toLowerCase();
     if (DEFAULT_WORDS.has(lowered)) {

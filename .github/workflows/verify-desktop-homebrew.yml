@@ -44,13 +44,15 @@ jobs:
           zstd -d -o "$tmp_dir/Gloomberb.app.tar" artifacts/stable-macos-arm64-Gloomberb.app.tar.zst
           tar -xf "$tmp_dir/Gloomberb.app.tar" -C "$tmp_dir"
 
+          test -x "$tmp_dir/Gloomberb.app/Contents/Resources/gloom"
           test -x "$tmp_dir/Gloomberb.app/Contents/Resources/gloomberb"
           test -f "$tmp_dir/Gloomberb.app/Contents/Resources/gloomberb-tui/tui-entry.js"
           test -f "$tmp_dir/Gloomberb.app/Contents/Resources/gloomberb-tui/node_modules/@opentui/core-darwin-arm64/index.js"
           test -f "$tmp_dir/Gloomberb.app/Contents/Resources/gloomberb-tui/node_modules/@opentui/core-darwin-arm64/libopentui.dylib"
           bun scripts/verify-desktop-cli.ts \
-            "$tmp_dir/Gloomberb.app/Contents/Resources/gloomberb" \
+            "$tmp_dir/Gloomberb.app/Contents/Resources/gloom" \
             artifacts/macos-cli-verification
+          "$tmp_dir/Gloomberb.app/Contents/Resources/gloomberb" help >/dev/null
 
           codesign --verify --verbose=4 "$tmp_dir/Gloomberb.app"
           ditto -c -k --keepParent "$tmp_dir/Gloomberb.app" artifacts/stable-macos-arm64-Gloomberb.app.zip
@@ -90,6 +92,7 @@ jobs:
           ruby -c "$tap_dir/Casks/gloomberb.rb"
           grep -q 'stable-macos-arm64-Gloomberb.app.zip' "$tap_dir/Casks/gloomberb.rb"
           grep -q 'depends_on arch: :arm64' "$tap_dir/Casks/gloomberb.rb"
+          grep -q 'binary "#{appdir}/Gloomberb.app/Contents/Resources/gloom", target: "gloom"' "$tap_dir/Casks/gloomberb.rb"
           grep -q 'binary "#{appdir}/Gloomberb.app/Contents/Resources/gloomberb", target: "gloomberb"' "$tap_dir/Casks/gloomberb.rb"
 
           cd "$tap_dir"

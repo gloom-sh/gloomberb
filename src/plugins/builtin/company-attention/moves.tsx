@@ -58,7 +58,7 @@ export function HiringMovesView({ symbol, width, height, focused, accessKey, com
   const [storedView, setView] = usePluginPaneState<string>(`${scope}:view`, openingView);
   const view = isMovesView(storedView) ? storedView : "weeks";
   const [snapshotSetting] = usePaneSettingValue<MovesPayload | null>("movesSnapshot", null);
-  // A `gloomberb shot` hands the payload in; a company opened from a board snapshot still loads its own.
+  // A `gloom shot` hands the payload in; a company opened from a board snapshot still loads its own.
   const snapshot = useMemo(() => {
     try {
       const payload = snapshotSetting ? validateMoves(snapshotSetting) : null;

@@ -198,5 +198,5 @@ test("EVTS looks back a week or a day, the days the pane's Range shows, and ERN'
   const ern = createEarningsHeadless(deps);
   await ern.load({ rawArgument: "NFLX TSLA", argument: ["NFLX", "TSLA"], symbols: ["NFLX", "TSLA"], options: { week: "last" } }, context);
   expect(queries.at(-1)).toEqual({ ...lastWeek, perDay: 0, symbols: ["NFLX", "TSLA"] });
-  await expect(ern.load({ ...args, options: { week: "last" } }, context)).rejects.toThrow("gloomberb fn EVTS CRWV --week last");
+  await expect(ern.load({ ...args, options: { week: "last" } }, context)).rejects.toThrow("gloom fn EVTS CRWV --week last");
 });

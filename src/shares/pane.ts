@@ -53,7 +53,7 @@ export async function openPaneShare(
     return;
   }
   const template = pluginRegistry.paneTemplates.get(share.templateId);
-  if (!template?.publicShare) throw new Error("This shared pane is unavailable in this version of Gloomberb.");
+  if (!template?.publicShare) throw new Error("This shared pane is unavailable in this version of Gloom.");
   const options = template.publicShare.restore(share.data);
   if (!options) throw new Error("This shared pane contains invalid settings.");
   await pluginRegistry.createPaneFromTemplateAsync(template.id, options);

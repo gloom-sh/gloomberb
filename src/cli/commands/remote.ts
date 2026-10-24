@@ -14,7 +14,7 @@ interface RemoteArgs {
 
 export const remoteCliCommand: BuiltinCliCommandDef = {
   name: "remote",
-  description: "Drive a running gloomberb app through its remote API",
+  description: "Drive a running Gloom app through its remote API",
   // Resources, operations and JSON go to the app as typed.
   keepsArgAsTyped: () => true,
   help: {
@@ -40,21 +40,21 @@ export const remoteCliCommand: BuiltinCliCommandDef = {
     const parsed = parseRemoteArgs(rawArgs);
     const action = parsed.args[0];
     if (!action) {
-      ctx.fail("Usage: gloomberb remote <schema|help|get|call|patch|batch|watch>");
+      ctx.fail("Usage: gloom remote <schema|help|get|call|patch|batch|watch>");
       return;
     }
 
     // No data folder means this profile never opened the app, so none is running to drive.
     const dataDir = await getDataDir();
     if (!dataDir) {
-      ctx.fail("No running Gloomberb app found.", "Open the desktop app or run gloomberb, then try again.");
+      ctx.fail("No running Gloom app found.", "Open the desktop app or run gloom, then try again.");
       return;
     }
 
     if (action === "watch") {
       const resource = parsed.args[1];
       if (!resource) {
-        ctx.fail("Usage: gloomberb remote watch <resource>");
+        ctx.fail("Usage: gloom remote watch <resource>");
         return;
       }
       const limit = ctx.cliOptions.limit ?? Number.POSITIVE_INFINITY;
@@ -128,12 +128,12 @@ function buildRemoteRequest(action: string, parsed: RemoteArgs, dryRun: boolean)
       return { type: "help" };
     case "get": {
       const resource = parsed.args[1];
-      if (!resource) throw new Error("Usage: gloomberb remote get <resource>");
+      if (!resource) throw new Error("Usage: gloom remote get <resource>");
       return { type: "get", resource };
     }
     case "call": {
       const operation = parsed.args[1];
-      if (!operation) throw new Error("Usage: gloomberb remote call <operation> [json]");
+      if (!operation) throw new Error("Usage: gloom remote call <operation> [json]");
       return {
         type: "call",
         operation,
@@ -144,7 +144,7 @@ function buildRemoteRequest(action: string, parsed: RemoteArgs, dryRun: boolean)
     case "patch": {
       const resource = parsed.args[1];
       const patchRaw = parsed.args[2];
-      if (!resource || !patchRaw) throw new Error("Usage: gloomberb remote patch <resource> <json-patch>");
+      if (!resource || !patchRaw) throw new Error("Usage: gloom remote patch <resource> <json-patch>");
       const patch = parseJsonValue(patchRaw, []);
       if (!Array.isArray(patch)) throw new Error("Remote patch payload must be a JSON array.");
       return {
@@ -157,7 +157,7 @@ function buildRemoteRequest(action: string, parsed: RemoteArgs, dryRun: boolean)
     }
     case "batch": {
       const payload = parseJsonValue(parsed.args[1], null);
-      if (!payload) throw new Error("Usage: gloomberb remote batch <json>");
+      if (!payload) throw new Error("Usage: gloom remote batch <json>");
       if (Array.isArray(payload)) return { type: "batch", requests: payload as RemoteControlRequest[], dryRun };
       return withCliDryRun(payload as RemoteControlRequest, dryRun);
     }

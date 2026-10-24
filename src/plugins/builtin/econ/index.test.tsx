@@ -62,11 +62,15 @@ afterEach(() => {
   resetEconCalendarPersistence();
 });
 
-/** `impactFilter` is the filter saved with the pane; without one it opens on its default. `params` are a command's (`ECO MX,BR`). */
-async function renderPane(width: number, impactFilter: string | null = "all", inView = true, params?: Record<string, string>) {
-  const state = createInitialState(params
+/**
+ * `impactFilter` is the filter saved with the pane; without one it opens on its default. `params` are a command's
+ * (`ECO MX,BR`), `timezone` the reader's `config set timezone`.
+ */
+async function renderPane(width: number, impactFilter: string | null = "all", inView = true, params?: Record<string, string>, timezone?: string) {
+  const config = params
     ? createTestPaneConfig("/tmp/gloomberb-econ-test", { instanceId: "econ-calendar", paneId: "econ-calendar", params })
-    : createDefaultConfig("/tmp/gloomberb-econ-test"));
+    : createDefaultConfig("/tmp/gloomberb-econ-test");
+  const state = createInitialState(timezone ? { ...config, timezone } : config);
   if (impactFilter) state.paneState["econ-calendar"] = { pluginState: { econ: { impactFilter } } };
   await tui.render(
     <TestPaneProvider state={state} paneId="econ-calendar" runtime={{} as unknown as PluginRuntimeAccess} pluginId="econ">
@@ -182,7 +186,7 @@ describe("EconCalendarPane", () => {
     expect(frame).not.toContain("No events listed after");
   });
 
-  // Rows group by UTC day and print the UTC clock, as `gloomberb econ` does,
+  // Rows group by UTC day and print the UTC clock, as `gloom econ` does,
   // whatever zone the process runs in. The release sits at 23:30 UTC, which is
   // after local midnight east of UTC; the test cannot change process.env.TZ
   // without leaking into later files, so it checks the zone it has.
@@ -214,6 +218,26 @@ describe("EconCalendarPane", () => {
     expect(frame).toContain("23:30");
     if (localClock !== "23:30") expect(frame).not.toContain(localClock);
     expect(frame).toContain(separator);
+  });
+
+  test("adds the reader's clock beside UTC when they set a time zone, where the event names keep room", async () => {
+    const persistence = new MemoryPluginPersistence();
+    persistence.seedResource("calendar", "global", [
+      { id: "ipca", date: "2026-08-21T12:00:00.000Z", time: "12:00", country: "BR", event: "IPCA-15 Mid-Month CPI m/m",
+        impact: "high", actual: "0.32%", forecast: "0.43%", prior: "0.70%" },
+      // 01:30 UTC on the 22nd is still the 21st in New York.
+      { id: "night", date: "2026-08-22T01:30:00.000Z", time: "01:30", country: "BR", event: "Night release",
+        impact: "high", actual: null, forecast: null, prior: null },
+    ], { sourceKey: "gloomberb-cloud", schemaVersion: 1 });
+    attachEconCalendarPersistence(persistence);
+    const frame = await renderPane(110, "all", true, undefined, "America/New_York");
+    expect(frame).toMatch(/TIME \(UTC\)\s+NEW YORK/);
+    expect(frame).toMatch(/12:00\s+08:00\s+.*IPCA-15 Mid-Month CPI m\/m\s+0\.32%\s+0\.43%\s+0\.70%/);
+    expect(frame).toMatch(/01:30\s+Fri 21:30\s+/);
+
+    // A pane too narrow for it keeps the UTC time alone; a zone that is UTC all year adds nothing.
+    expect(await renderPane(58, "all", true, undefined, "America/New_York")).not.toContain("NEW YORK");
+    expect(await renderPane(110, "all", true, undefined, "Etc/UTC")).not.toMatch(/TIME \(UTC\)\s+UTC/);
   });
 
   // ECO MX,TR: the countries a command names, a bank that states no time left blank, and a country with nothing said plainly.

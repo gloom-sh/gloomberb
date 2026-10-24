@@ -22,13 +22,13 @@ function shellWord(arg: string): string {
 
 /**
  * The command that runs `hit` with what the reader typed after the unknown
- * word: their tickers (`gloomberb fn RV DUOL --peers`, the switch added when
+ * word: their tickers (`gloom fn RV DUOL --peers`, the switch added when
  * one symbol meets a function that picks its peers), or the function's
  * placeholder and a search when they typed a company's name.
  */
 function catalogHitCommand(hit: CatalogCommandHit, args: readonly string[]): { command: string; search: string | null } {
   const typed = args.filter((arg) => arg.trim() && !arg.startsWith("-"));
-  const base = `gloomberb fn ${hit.code}`;
+  const base = `gloom fn ${hit.code}`;
   if (hit.argKind === "none") return { command: base, search: null };
   const placeholder = hit.argPlaceholder ?? hit.argKind;
   if (!hit.argKind || !TICKER_ARGUMENTS.has(hit.argKind)) {
@@ -39,7 +39,7 @@ function catalogHitCommand(hit: CatalogCommandHit, args: readonly string[]): { c
   const single = typed.length === 1;
   const peers = hit.peers && single ? " --peers" : "";
   if (names.length > 0) {
-    return { command: `${base} <${single ? "ticker" : placeholder ?? "tickers"}>${peers}`, search: `gloomberb search ${names.map(shellWord).join(" ")}` };
+    return { command: `${base} <${single ? "ticker" : placeholder ?? "tickers"}>${peers}`, search: `gloom search ${names.map(shellWord).join(" ")}` };
   }
   return { command: `${base} ${typed.length > 0 ? typed.map(shellWord).join(" ") : `<${placeholder ?? "ticker"}>`}${peers}`, search: null };
 }
@@ -52,14 +52,14 @@ function catalogHitCommand(hit: CatalogCommandHit, args: readonly string[]): { c
 const TICKER_SHAPED = /^\^?[A-Z0-9][A-Z0-9.=-]{0,11}(?::[A-Z0-9]{1,8})?$/;
 
 /**
- * What a ticker typed as a command (`gloomberb PLTR`) is answered with: the
+ * What a ticker typed as a command (`gloom PLTR`) is answered with: the
  * command that quotes it and the search that finds it. Null for a word not
  * written as a ticker.
  */
 export function tickerPointer(token: string): string | null {
   const word = token.trim();
   if (!TICKER_SHAPED.test(word) || !/[A-Z]/.test(word)) return null;
-  return [`To quote it: gloomberb quote ${word}`, `Find the ticker: gloomberb search ${word}`].join("\n");
+  return [`To quote it: gloom quote ${word}`, `Find the ticker: gloom search ${word}`].join("\n");
 }
 
 /**
@@ -71,7 +71,7 @@ export function tickerPointer(token: string): string | null {
 export function catalogPointer(token: string, hits: readonly CatalogCommandHit[], args: readonly string[]): string | null {
   if (hits.length === 0) return null;
   const word = /^[\w.:-]+$/.test(token) ? token : JSON.stringify(token);
-  const more = `gloomberb catalog ${word}`;
+  const more = `gloom catalog ${word}`;
   if (hits.length === 1) {
     const { command, search } = catalogHitCommand(hits[0]!, args);
     return `Try \`${command}\` (${hits[0]!.label})${search ? `; \`${search}\` finds the ticker` : ""}. \`${more}\` lists more.`;

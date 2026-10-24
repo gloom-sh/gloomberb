@@ -18,7 +18,7 @@ export const brokerCliCommand: CliCommandDef = {
     const type = takeOption(args, "--type");
     const action = args[0] ?? "list";
     if (action !== "list" && action !== "status") {
-      ctx.fail("Usage: gloomberb broker list|status [--type <broker>]");
+      ctx.fail("Usage: gloom broker list|status [--type <broker>]");
     }
     await withCliServices(ctx, async (services) => {
       ctx.printResult({
@@ -41,7 +41,7 @@ export const brokerCliCommand: CliCommandDef = {
   },
 };
 
-/** `gloomberb ibkr` predates `broker list --type`; old scripts still run it, but help leaves it out. */
+/** `gloom ibkr` predates `broker list --type`; old scripts still run it, but help leaves it out. */
 export const ibkrCliCommand: CliCommandDef = {
   name: "ibkr",
   description: "List Interactive Brokers profiles, like broker list --type ibkr",

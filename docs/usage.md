@@ -30,7 +30,7 @@
 - [Equity criteria screener](#equity-criteria-screener)
 - [Backtest](#backtest)
 
-The desktop app and TUI share the command language and plugin system. The [browser app](browser.md) offers a smaller feature set. Use `HELP` in the app or `gloomberb help` in your shell for the commands available in your installation.
+The desktop app and TUI share the command language and plugin system. The [browser app](browser.md) offers a smaller feature set. Use `HELP` in the app or `gloom help` in your shell for the commands available in your installation.
 
 ## Keyboard
 
@@ -108,11 +108,11 @@ The `?` beside a pane's `...` opens that pane's entry in `DOCS`: the gloom.sh do
 - `Esc` goes back, `o` opens the page on gloom.sh, `F1` opens the focused pane's help card and `Enter` reads its docs. In a popped-out desktop window the `?` shows the help card.
 
 ```bash
-gloomberb fn DOCS OMON   # the whole page, wrapped to the terminal
-gloomberb fn DOCS        # the index, cut at the first screen (it says so)
+gloom fn DOCS OMON   # the whole page, wrapped to the terminal
+gloom fn DOCS        # the index, cut at the first screen (it says so)
 ```
 
-A name with no entry fails with `No docs entry for zzzz.` and points at `gloomberb fn DOCS`.
+A name with no entry fails with `No docs entry for zzzz.` and points at `gloom fn DOCS`.
 
 Wide tables keep their columns in narrow panes. Use the horizontal scrollbar or wheel, or `Ctrl+Left` / `Ctrl+Right`. In the terminal, a header that ends in `more →` has columns past its right edge, and a click on it moves right. With no room for the words it reads `more` or `→`; it never hides a column.
 
@@ -126,11 +126,11 @@ Every global and pane management key can be moved, and any command bar text can 
 The table lives in `config.json` and the CLI:
 
 ```bash
-gloomberb config get keybindings
-gloomberb config set keybindings.actions.ticker-search "Ctrl+T"
-gloomberb config set keybindings.actions.help null
-gloomberb config set keybindings.actions.ticker-search default
-gloomberb config set keybindings.commands.Alt+1 "DES AAPL"
+gloom config get keybindings
+gloom config set keybindings.actions.ticker-search "Ctrl+T"
+gloom config set keybindings.actions.help null
+gloom config set keybindings.actions.ticker-search default
+gloom config set keybindings.commands.Alt+1 "DES AAPL"
 ```
 
 ```json
@@ -149,13 +149,13 @@ gloomberb config set keybindings.commands.Alt+1 "DES AAPL"
 
 Chords use `Ctrl`, `Cmd`, `Alt`, `Shift` and `CmdOrCtrl` (Control in the terminal, Command on a Mac desktop), then a key (`K`, `,`, `` ` ``, `Tab`, `F5`).
 
-- Action ids are listed by `gloomberb config get keybindings`. Plugin shortcuts use `plugin:<shortcut id>`.
+- Action ids are listed by `gloom config get keybindings`. Plugin shortcuts use `plugin:<shortcut id>`.
 - A command binding runs its text as typed and needs a modifier or a function key. Control chords yield to a focused text field.
 - Bindings are per machine and not synced. A binding that does not parse or lands on a taken key is reported at launch and in Help > Shortcuts.
 
 ## Command Reference
 
-Use `HELP` inside Gloomberb for the live shortcut list. The common command-bar prefixes are listed here. The command bar leads with **Start Here** (common first tasks in plain words, each with its code) for its first ten opens, and Help's Basics tab starts with **Try These** (`DES AAPL`, `GP NVDA`, `CMP AAPL MSFT`).
+Use `HELP` inside Gloom for the live shortcut list. The common command-bar prefixes are listed here. The command bar leads with **Start Here** (common first tasks in plain words, each with its code) for its first ten opens, and Help's Basics tab starts with **Try These** (`DES AAPL`, `GP NVDA`, `CMP AAPL MSFT`).
 
 ### Searching by asset class
 
@@ -183,7 +183,7 @@ A symbol that trades in several places lists its exchanges after a colon. `NET:`
 
 Enter on a typed symbol or ticker command uses the standard listing resolution (`DES HFC` opens the former US listing and shows its move to DINO, as `quote HFC` does). To choose another listing, use the arrow keys or click a search row. A saved symbol keeps its saved listing.
 
-When Gloom Cloud is too busy to search, the list says `Search is busy` rather than `No matches`, and saved tickers that match still show. `gloomberb search` and any command that looks a symbol up through search (`quote "Eagle Bulk"`, `watchlist add`) fails with `Search is busy, try again in a moment.` and exits 1 (`--json`: `code` `search_busy`, `retryable` `true`).
+When Gloom Cloud is too busy to search, the list says `Search is busy` rather than `No matches`, and saved tickers that match still show. `gloom search` and any command that looks a symbol up through search (`quote "Eagle Bulk"`, `watchlist add`) fails with `Search is busy, try again in a moment.` and exits 1 (`--json`: `code` `search_busy`, `retryable` `true`).
 
 ### Company Research
 
@@ -221,7 +221,7 @@ When Gloom Cloud is too busy to search, the list says `Search is busy` rather th
 | `RIPL [tickers]` | Earnings Ripple: customers and suppliers of your holdings (or the named tickers) reporting in the next 30 days, with the disclosed revenue share. Pro adds companies two hops away |
 | `RDCF <ticker>` | Reverse DCF: the ten-year free cash flow growth the enterprise value prices in, against past growth, by discount rate |
 | `PEB <ticker>` | P/E band: weekly price against round multiples of trailing EPS, today's P/E and its percentile |
-| `MDAY <ticker>` | Macro-day reaction: average absolute and signed move and up share on CPI, jobs and FOMC days against a normal day |
+| `MDAY <ticker>` | Macro-day reaction: average absolute and signed move and up share on CPI, jobs, FOMC and Brazil IPCA days against a normal day, with each day's actual, forecast and prior |
 | `HIVG <ticker>` | Implied volatility history against realized, with IV rank and percentile |
 | `VCA [tickers]` | Rich/cheap implied volatility across a list: IV rank, percentile, term slope, skew, IV/HV |
 | `OSA <ticker>` | Multi-leg option positions, scenario P&L, payoff charts and aggregate Greeks, with a hedge budget, a collar or a cash-secured put |
@@ -242,9 +242,9 @@ When Gloom Cloud is too busy to search, the list says `Search is busy` rather th
 
 - **`GR`:** beta and alpha regress the first ticker's daily returns on the second's and say so (`EQT on UNG: beta`). Text prints the rolling correlation to three decimals, `--json` and `--csv` keep every digit.
 - **`ERN`:** the bar's Range looks back or ahead, as in `EVTS`. With Mine the market's report days narrow to the names in your portfolios and watchlists.
-- **`EVTS`:** a ticker selects its row and its report says whether it is on the board (`ERN <ticker>` has its own dates). The bar's Range gives a week (`gloomberb fn EVTS --week last`, `this` or `next`), or one day (`--date 2026-10-15`) whose reports carry their actuals and surprises. The default is today, the next session and the rest of its week.
+- **`EVTS`:** a ticker selects its row and its report says whether it is on the board (`ERN <ticker>` has its own dates). The bar's Range gives a week (`gloom fn EVTS --week last`, `this` or `next`), or one day (`--date 2026-10-15`) whose reports carry their actuals and surprises. The default is today, the next session and the rest of its week.
 - **`CALLS`:** with a ticker, the company's calls, the next one on its own line with its start here and in New York. Alone, the calendar of every company's calls today, the next session and the rest of the week. `--view transcripts` lists the latest transcribed calls instead.
-- **`DVD`:** `gloomberb fn DVD KO PEP JNJ` ranks several tickers by yield, with payout, growth, last ex-date and pay date. A bond fund's SEC yield sits beside its distribution yield, and `gloomberb fn DVD MUB --tax-rate 40.8` adds a muni fund's tax-equivalent yield and muni/Treasury ratio ([research data](research-data.md#bond-funds-sec-yield-tax-equivalent-yield-and-the-munitreasury-ratio)).
+- **`DVD`:** `gloom fn DVD KO PEP JNJ` ranks several tickers by yield, with payout, growth, last ex-date and pay date. A bond fund's SEC yield sits beside its distribution yield, and `gloom fn DVD MUB --tax-rate 40.8` adds a muni fund's tax-equivalent yield and muni/Treasury ratio ([research data](research-data.md#bond-funds-sec-yield-tax-equivalent-yield-and-the-munitreasury-ratio)).
 
 **The `ERN` calendar** (desktop and web):
 
@@ -269,7 +269,7 @@ Ticker Research shows the tabs that can have data for the instrument.
 
 The Overview headline is the regular session, with one extra line for the extended-hours price. After the close the headline stays at the official close and the After-Hours line under it gives the latest extended-hours price and its move from that close. In pre-market the headline is the last session's close, and only the Pre-Market line changes.
 
-`gloomberb ticker` and the `QQ` cards (`AH` or `PM` where narrow) report it the same way, and `quote`, `compare` and `fn QQ` add an After Hours or Pre-Market column when a row has one. In `--json`, `price`, `change` and `changePercent` are the headline, and `extendedSession` (`PRE` or `POST`), `extendedPrice`, `extendedChange` and `extendedChangePercent` are the extended print, null without one.
+`gloom ticker` and the `QQ` cards (`AH` or `PM` where narrow) report it the same way, and `quote`, `compare` and `fn QQ` add an After Hours or Pre-Market column when a row has one. In `--json`, `price`, `change` and `changePercent` are the headline, and `extendedSession` (`PRE` or `POST`), `extendedPrice`, `extendedChange` and `extendedChangePercent` are the extended print, null without one.
 
 #### Overnight session
 
@@ -282,7 +282,7 @@ The session reads `OVERNIGHT` (`ON` on a narrow `QQ` card or a heat map tile). `
 A quote whose last print is older than its venue's latest completed regular session reads `STALE` in the warning color, in `quote`, `compare`, the `ticker` header, the Ticker Research overview and the boards' session column.
 
 - **Pre-market with nothing traded yet:** a quote that carries the last session's close reads as that close (`Thu close`), with `Updated` and the report's as-of at that close's time and no Pre-Market figure. The first pre-market trade makes it `PRE-MKT`. A pre-market price of 0 is never shown.
-- **No prints in an open session:** when the venue's calendar says a session is open and nothing has printed in it yet, a stalled feed and a closure the calendar does not list (TWSE's typhoon days) read alike. `gloomberb quote` adds `2330.TW (Taiwan Semiconductor Manufacturing Company Limited): no prints today since Thu 22 Oct 05:30 UTC (20h 50m old)` under the table, and the Ticker Research footer reads `No prints today since 2026-10-22 05:30Z`.
+- **No prints in an open session:** when the venue's calendar says a session is open and nothing has printed in it yet, a stalled feed and a closure the calendar does not list (TWSE's typhoon days) read alike. `gloom quote` adds `2330.TW (Taiwan Semiconductor Manufacturing Company Limited): no prints today since Thu 22 Oct 05:30 UTC (20h 50m old)` under the table, and the Ticker Research footer reads `No prints today since 2026-10-22 05:30Z`.
 - Exports keep the state: `session` stays `PRE-MKT`, `sessionLabel` is what the Session column shows (`Thu close`), and `updatedAt` is when the price Last shows was observed.
 
 #### What a change is measured from
@@ -298,10 +298,10 @@ In exports, `--csv` and `--ndjson` rows add `Chg Basis` and `Chg Basis Note` (`c
 
 #### Market boards
 
-After the close and through a weekend, the boards' Last and change agree with `gloomberb ticker`.
+After the close and through a weekend, the boards' Last and change agree with `gloom ticker`.
 
 - `sectors`, `indices` and `movers` (every list), and `fn BI`, `fn WEI` and `fn MOST`, give an extended print an After Hours or Pre-Market column when a row has one, and the four `extended` fields in `--json`. `WEI`, `FUT` and the `GPU` equities board show the regular session and no extended column.
-- After the close, Gainers and Losers rank by the regular session's move. `gloomberb movers gainers --session extended` (or `losers`) ranks by the pre-market or after-hours move from that close instead. The line above the table names the ranking (`Ranked by the regular-session move`, `Ranked by the after-hours move`, `Ranked by volume`), as `metadata.rankedBy` does in `--json`.
+- After the close, Gainers and Losers rank by the regular session's move. `gloom movers gainers --session extended` (or `losers`) ranks by the pre-market or after-hours move from that close instead. The line above the table names the ranking (`Ranked by the regular-session move`, `Ranked by the after-hours move`, `Ranked by volume`), as `metadata.rankedBy` does in `--json`.
 - In the `MOST` pane, click the `AFTER-HRS` or `PRE-MKT` header to sort by the extended move. A narrow `BI` pane gives up the move bar and then the extended column before cutting a sector's name, and a narrow `MOST` gives up MCAP and then 52W%.
 - The header's SPY is the regular close once the market is closed. While the pre-market or after-hours session is open it is that session's price and move beside the `PRE-MKT` or `AFTER-HRS` label. The pre-market countdown says `to regular open` and counts to 09:30 New York time (a narrow header hides it when its full label does not fit).
 
@@ -319,7 +319,7 @@ With Pro, `THEM` prices members and themes from real-time quotes: the footer rea
 
 From the close until the next open (overnight, weekend, pre-market), every figure measured at the price uses the regular close, so a P/E times its EPS is the close, never an extended print. That covers `RV`, `valuation`, `fundamentals`, `ticker`, `DES`, the `PF` and watchlist MCAP, P/E and yield columns, `ANR`'s upside, `DVD`'s yield, `PEB`, `RDCF` and `GE`. While the session trades, they follow the live price.
 
-- The `RV` pane has a `PRE-MKT`, `AFTER-HRS` or `OVERNIGHT` column after CHG% while a peer has one, and `gloomberb fn RV` a Pre-Market, After Hours or Overnight column. Its `--json` and `--csv` carry `changePercent` and `marketCap`, in each peer's own currency (`marketCapCurrency`) or the one `--currency` asks for ([research data](research-data.md#relative-valuation-peers-columns-and-currency)).
+- The `RV` pane has a `PRE-MKT`, `AFTER-HRS` or `OVERNIGHT` column after CHG% while a peer has one, and `gloom fn RV` a Pre-Market, After Hours or Overnight column. Its `--json` and `--csv` carry `changePercent` and `marketCap`, in each peer's own currency (`marketCapCurrency`) or the one `--currency` asks for ([research data](research-data.md#relative-valuation-peers-columns-and-currency)).
 - `valuation` starts with Last, Change and, when there is one, the extended print. Its `--json` adds `price`, `change`, `changePercent`, the four `extended` fields, `marketCap` and `marketCapCurrency`.
 - `fn RV --csv` has one header in every market state: Last as a plain number in each peer's own currency (named per row in `currency_or_unit`, its ticker in `symbol_or_series`), then each session's print and move (`Pre-Market`, `Pre-Market Chg%`, `After Hours`, `After Hours Chg%`, `Overnight`, `Overnight Chg%`), empty for a peer with none, and `Mkt Cap` followed by `Mkt Cap unit`.
 
@@ -340,10 +340,10 @@ Earnings-call exports and fiscal-quarter lookup inspect at most the latest 200 c
 The ticker research `13F` tab shows fund positions for the ticker: reported value, shares, weight and quarter action. Open a row for its fund detail, and scroll to page more funds. `m` or the Mine filter limits positions to portfolio and watchlist tickers. The `13F` pane's Crowding tab ranks new positions, exits, and weight increases or decreases across the top 25 ranked funds.
 
 ```bash
-gloomberb fn 13F AAPL --view=ticker-holdings --offset=0 --json   # a ticker argument defaults to this view
-gloomberb fn 13F AAPL --view=by-ticker                           # the holders' whole 13F books
-gloomberb fn 13F --view=crowding --json
-gloomberb fn 13F MU --view=crowding                              # that ticker's rank in the crowding sample, or says it is not in it
+gloom fn 13F AAPL --view=ticker-holdings --offset=0 --json   # a ticker argument defaults to this view
+gloom fn 13F AAPL --view=by-ticker                           # the holders' whole 13F books
+gloom fn 13F --view=crowding --json
+gloom fn 13F MU --view=crowding                              # that ticker's rank in the crowding sample, or says it is not in it
 ```
 
 The text report opens with the quarters compared, the holder, new and exited counts, and, when the list is longer than `--limit`, which funds are shown and the `--offset` that continues it. `--json` carries `shown`, `total`, `truncated` and `nextOffset`. Headless crowding accepts `--rank=new`, `--rank=exits`, `--rank=increases` or `--rank=decreases`.
@@ -360,9 +360,9 @@ A ticker reads as one in any case (`fn 13F aapl`, `brk.b` and `BRK-B` list the h
 The latest report is the filer's latest disclosure, not its position today. A stake reported under 5% keeps its percentage, marked `<5%` where there is room, and sorts after the 5% holders. Reports of zero are marked `EXIT`. Enter opens the filing in the SEC pane and `o` opens it on EDGAR.
 
 ```bash
-gloomberb holders CAR --form all      # `13d` or `13g` for one kind; `--history` for every report instead of the latest per filer
-gloomberb fn HDS CAR --form all --json
-gloomberb filings CAR --form 13G      # the filings themselves
+gloom holders CAR --form all      # `13d` or `13g` for one kind; `--history` for every report instead of the latest per filer
+gloom fn HDS CAR --form all --json
+gloom filings CAR --form 13G      # the filings themselves
 ```
 
 #### 13F fund detail: Overlap and Performance
@@ -370,8 +370,8 @@ gloomberb filings CAR --form 13G      # the filings themselves
 **Overlap.** In a 13F fund detail, open Overlap, search a second fund by name or CIK (or an ETF MEMB covers, by ticker, such as `SPY`), and select it to compare shared positions and weights. Against an ETF it shows the overlap and active share.
 
 ```bash
-gloomberb fn 13F 0001067983 --compare=0001037389 --json   # --compare implies --view=overlap
-gloomberb fn 13F 0001067983 --compare SPY                 # a fund against an ETF's holdings file
+gloom fn 13F 0001067983 --compare=0001037389 --json   # --compare implies --view=overlap
+gloom fn 13F 0001067983 --compare SPY                 # a fund against an ETF's holdings file
 ```
 
 - `--compare SPY` compares the manager's latest 13F with the ETF's holdings file (the one `fn MEMB SPY` shows). It prints the overlap and the active share, the quarter compared with its filing date and the holdings file's date, and the manager's positions the ETF does not hold, largest first.
@@ -379,7 +379,7 @@ gloomberb fn 13F 0001067983 --compare SPY                 # a fund against an ET
 - MEMB covers IVV (also read for SPY and SPX), IJH, IJR, IWM and IWB. Any other ticker, such as `VTV`, fails with that list.
 - `--view=overlap` without `--compare` asks for it. `--compare` with another view fails.
 
-**Performance.** `gloomberb fn 13F 0001067983 --view performance` prints that fund's own row, with the `portfolio import --13f` command that copies its basket.
+**Performance.** `gloom fn 13F 0001067983 --view performance` prints that fund's own row, with the `portfolio import --13f` command that copies its basket.
 
 - The return is the ranking's when the ranking gives one, otherwise an estimate from the fund's last two filings (Est P&L of the positions held through the quarter over their value at its start), and the estimate's note says why.
 - The ranking holds at most 100 funds (a larger `--limit` is read as 100 and says so).
@@ -449,7 +449,7 @@ Returns are from closing prices, so they leave out distributions. The line needs
 
 #### Your own series
 
-Put a CSV file in the `series` folder of your data folder (`~/.gloomberb/series`, or the directory `gloomberb version` names). It appears in the catalog's **Your series** tab the next time the catalog opens, chartable against anything else, and each chart rereads the file. The web app has no file access.
+Put a CSV file in the `series` folder of your data folder (`~/.gloomberb/series`, or the directory `gloom version` names). It appears in the catalog's **Your series** tab the next time the catalog opens, chartable against anything else, and each chart rereads the file. The web app has no file access.
 
 - The first column is the date (`2024-03-01`, `2024-03`, `2024` or an ISO date and time). Each further column is a series, and an optional header row names them. Commas, semicolons and tabs all work as separators, and an empty or `.` cell is a missing value.
 - Lines starting with `#` above the data set what the catalog shows. Without them the file name names the series, the unit is a plain number and the frequency is read off the dates.
@@ -557,7 +557,7 @@ The level tool (`Shift+H`, or `═` in the chart toolbar) draws horizontal price
 
 #### Session low and high
 
-`gloomberb fn GIP <ticker>` ends with the session's low and high and the UTC time each traded (`USDT-USD:CCC session low  0.99833 at 2026-10-17 11:30 UTC`; over several sessions they read low and high). `GIP` dates sessions on the listing's exchange clock, read from its exchange or its suffix (`RMS.AX` is the ASX). A bare symbol with no known exchange is dated in UTC.
+`gloom fn GIP <ticker>` ends with the session's low and high and the UTC time each traded (`USDT-USD:CCC session low  0.99833 at 2026-10-17 11:30 UTC`; over several sessions they read low and high). `GIP` dates sessions on the listing's exchange clock, read from its exchange or its suffix (`RMS.AX` is the ASX). A bare symbol with no known exchange is dated in UTC.
 
 A zero or negative price is kept for a futures instrument. For any other instrument a nonpositive close in the window makes the result unavailable, and JSON metadata keeps the rejected values and dates in `intradayPriceDomainFailures`.
 
@@ -617,7 +617,7 @@ A zero or negative price is kept for a futures instrument. For any other instrum
 | `BI` | S&P 500 sector performance |
 | `THEM [theme]` | Thematic baskets with equal-weight returns and breadth, and each theme's members (the Themes tab of `BI`) |
 | `MEMB <fund>` | ETF holdings with weights, member returns, daily contributions and index changes |
-| `FXC` | FX cross rates: the majors, or up to 45 currencies (`gloomberb fn FXC --currencies USD,ZAR,NGN`; `gloomberb catalog FXC` lists the codes) |
+| `FXC` | FX cross rates: the majors, or up to 45 currencies (`gloom fn FXC --currencies USD,ZAR,NGN`; `gloom catalog FXC` lists the codes) |
 | `FNG` | Fear and greed market gauge |
 
 #### Market function notes
@@ -652,7 +652,7 @@ A zero or negative price is kept for a futures instrument. For any other instrum
 
 #### HM in the CLI and the portfolio tab
 
-`gloomberb fn HM` reports the map by sector from the same snapshot the pane starts from: each sector's names, total market cap and share of the board, its market-cap-weighted day move, how many names rose and fell, and its best and worst name.
+`gloom fn HM` reports the map by sector from the same snapshot the pane starts from: each sector's names, total market cap and share of the board, its market-cap-weighted day move, how many names rose and fell, and its best and worst name.
 
 - `--group industry` breaks it down by industry, and `--universe us-etf` summarizes the ETF board as one group.
 - `--json` adds the board's figures in `data.metadata.board`. A name with no move yet counts toward size but not move or breadth (`data.metadata.noMove`).
@@ -681,18 +681,18 @@ Space and Shift+Space page, `]` and `[` jump between sections, `n` and `p` open 
 - Congress Trades includes returns since the transaction and filing close. Members includes party, median stock return and buy hit rate, and opens to current committee assignments. Missing prices stay blank.
 
 ```bash
-gloomberb fn CG AAPL --year 2026 --json      # use --filingOffset and --offset with the returned pagination metadata for more
-gloomberb fn CG --tab tickers --side BUY --minAmount 50001 --json
-gloomberb fn CG AAPL --owner spouse --assetType option --json
+gloom fn CG AAPL --year 2026 --json      # use --filingOffset and --offset with the returned pagination metadata for more
+gloom fn CG --tab tickers --side BUY --minAmount 50001 --json
+gloom fn CG AAPL --owner spouse --assetType option --json
 ```
 
 **`YAS`** opens a bond form: settlement, maturity, annual coupon and either yield percent or clean price per 100 face. `e` starts editing at Settlement, Tab and Shift+Tab move through the fields, Escape stops editing, and `m`, `f`, `d` and `n` switch the mode, frequency, day count and end-of-month schedule. The Cash flows and Sensitivity tabs keep the same terms.
 
 ```bash
-gloomberb fn YAS --settlement 2026-09-22 --maturity 2031-09-15 --coupon 5 --yield 4.25 --json
+gloom fn YAS --settlement 2026-09-22 --maturity 2031-09-15 --coupon 5 --yield 4.25 --json
 ```
 
-That returns valuation, cash flows and yield shocks. Use `--price 103.333937` instead of `--yield` to solve yield, and add `--frequency 1|2|4`, `--day-count act-act-icma|30-360-us` and `--end-of-month` as needed. `gloomberb shot YAS --tab valuation|cashflows|sensitivity` takes the same inputs. Local calculations work without Treasury data.
+That returns valuation, cash flows and yield shocks. Use `--price 103.333937` instead of `--yield` to solve yield, and add `--frequency 1|2|4`, `--day-count act-act-icma|30-360-us` and `--end-of-month` as needed. `gloom shot YAS --tab valuation|cashflows|sensitivity` takes the same inputs. Local calculations work without Treasury data.
 
 #### Futures board (FUT)
 
@@ -701,29 +701,29 @@ That returns valuation, cash flows and yield shocks. Use `--price 103.333937` in
 - From then until the old month stops trading the row names it: "WTI Crude Oil Dec 26, rolled (Nov expires 20 Oct)". The most active month is named when it is another month: "WTI Crude Oil Nov 26, Dec most active".
 - `quote` on a deferred contract or a later generic (NGF27.NYM, NG2) prints the front contract and its price, and the quote, chart and `history` follow the same month.
 - Generic tickers take OI for the open interest switch (CL1OI). UNIT says what a price counts, as `quote` does ("USD / barrel", "US cents / bushel").
-- Search matches the root's name and code. `FUT TTF` (`gloomberb fn FUT TTF`, `shot FUT TTF`) opens the board searched for that contract.
+- Search matches the root's name and code. `FUT TTF` (`gloom fn FUT TTF`, `shot FUT TTF`) opens the board searched for that contract.
 
 FUT's 1W, 1M and YTD columns are returns on the contract the row names (LEZ26 for "Live Cattle Dec 26"), not on the alias, whose continuous series jumps at every roll.
 
 - A contract listed after the baseline date shows no return for it (Treasury futures list three quarters ahead, so their YTD is blank in the second half of the year).
 - Dutch TTF gas names no month, so its front contract is the one, among the next three months, whose last close is nearest the quoted price.
 
-**`BTMM`** opens Rates, Bills and Liquidity views. Select a row (Enter or click) for its dated history, one-year range and source. `h` and `l` switch views, `o` opens the selected FRED series, `r` refreshes. Reports take `gloomberb fn BTMM --tab rates|bills|liquidity` and `--json`.
+**`BTMM`** opens Rates, Bills and Liquidity views. Select a row (Enter or click) for its dated history, one-year range and source. `h` and `l` switch views, `o` opens the selected FRED series, `r` refreshes. Reports take `gloom fn BTMM --tab rates|bills|liquidity` and `--json`.
 
 **`CBR`, `ECFC` and `CBRT`** open the Central Bank Rates board: each row's policy rate or target range, last observed move and date, one-year percentile and history.
 
 - Select a row (Enter or click) for the source instrument, reporting lag, one-year range and each bank's next decision from its published calendar. `o` opens the official source, `r` refreshes.
-- `gloomberb fn CBR --json` carries each row's central bank, source series, link, next meeting and a citation line (`--history` adds the one-year history).
+- `gloom fn CBR --json` carries each row's central bank, source series, link, next meeting and a citation line (`--history` adds the one-year history).
 
 **`IPO`** lists deals on the main US, Asia-Pacific and European exchanges from the last three months and the next six (the All, US, APAC and Europe tabs pick the region). The list runs in this order: deals in their offer now (`offering`), upcoming deals, `overdue` ones (listing day passed with no pricing or first session reported), priced and listed deals, then postponed deals.
 
-- `/` searches company names in either script, tickers, markets, countries, status and the region's name. The word `pending` lists deals not priced yet. `IPO japan` opens the pane on that search, as `gloomberb fn IPO japan` reads it.
+- `/` searches company names in either script, tickers, markets, countries, status and the region's name. The word `pending` lists deals not priced yet. `IPO japan` opens the pane on that search, as `gloom fn IPO japan` reads it.
 - DATE is the listing date in the venue's calendar, dimmed while expected. PRICE is the offer price once set, else the range, in the deal's currency (London in pence). SIZE is the money raised in US dollars. RETURN is the first session's close against the offer price. Enter or click opens a deal's ticker once it has one.
-- `gloomberb fn IPO --region apac --status upcoming --json` returns the same deals. `--status filed` or `--status withdrawn` returns the filings and withdrawn deals the pane leaves out.
+- `gloom fn IPO --region apac --status upcoming --json` returns the same deals. `--status filed` or `--status withdrawn` returns the filings and withdrawn deals the pane leaves out.
 
 `PERP` opens the [perpetuals board](perpetuals.md), and `PERP [market]` that market's History.
 
-**`CRYP`** opens the top 100 coins by market cap, with stablecoins on the second tab. Prices refresh every 15 seconds and stream in real time where the plan allows. Enter or click opens the coin in the ticker pane, column headers sort and `r` refreshes. `gloomberb fn CRYP --json` returns the board, and `--list stablecoin` the stablecoins with their supply ([stablecoin supply](research-data.md#stablecoin-supply)).
+**`CRYP`** opens the top 100 coins by market cap, with stablecoins on the second tab. Prices refresh every 15 seconds and stream in real time where the plan allows. Enter or click opens the coin in the ticker pane, column headers sort and `r` refreshes. `gloom fn CRYP --json` returns the board, and `--list stablecoin` the stablecoins with their supply ([stablecoin supply](research-data.md#stablecoin-supply)).
 
 ### Workspace and App Controls
 
@@ -754,7 +754,7 @@ FUT's 1W, 1M and YTD columns are returns on the contract the row names (LEZ26 fo
 | `GL` | Tidy all windows |
 | `SB` | Toggle the status bar |
 | `VF` | Toggle quote value flashing |
-| `TH <theme>` | Change color theme. The list shows each theme's id, the one `gloomberb config set theme <id>` takes. `gloomberb config themes` lists them, `colorblind`, `colorblind-light` and `high-contrast` included |
+| `TH <theme>` | Change color theme. The list shows each theme's id, the one `gloom config set theme <id>` takes. `gloom config themes` lists them, `colorblind`, `colorblind-light` and `high-contrast` included |
 | `FONT+` / `FONT-` | Increase or decrease desktop font size |
 | `CONN` | Connection health |
 | `POLL` | Political polls from VoteHub ([Polls plugin](https://github.com/gloom-sh/gloom-polls)) |
@@ -774,7 +774,7 @@ In `PF`, `a` adds a ticker to the open manual portfolio or watchlist and `d` rem
 
 When the `PF` table comes back into sight after two minutes away, LAST is tinted for six seconds on each row whose price moved since you left (green above what LAST showed then, red below). A key or a click clears the tint. **Moves Since Last Seen** in the pane's settings sets the time away (30 seconds, 2 minutes, 10 minutes) or turns it off.
 
-`gloomberb fn PF <portfolio-or-watchlist> --json` returns a portfolio's positions, broker or manual, valued as `portfolio show` values them.
+`gloom fn PF <portfolio-or-watchlist> --json` returns a portfolio's positions, broker or manual, valued as `portfolio show` values them.
 
 - Each row has shares, average cost, last price, market value and unrealized P&L in the portfolio's currency, its weight of the total with cash (see [Cash, target weights and rebalancing](#cash-target-weights-and-rebalancing)), and when its price is from. Rows run largest first, then the cash line. With target weights set, each row adds its target, drift and the trade that reaches it.
 - `--close` values them at the regular close (see [What a portfolio is priced at](#what-a-portfolio-is-priced-at)).
@@ -802,20 +802,20 @@ The **Events** tab shows each rule's last checked value with its one-year percen
 
 An **IV level** alert follows a symbol's 30-day at-the-money IV (in %) or 30-day 25-delta risk reversal (25D call IV minus 25D put IV, in vol points), above or below a level. Its figure is the **1M** row of `OVDV`'s Table.
 
-- The running app checks it every 15 minutes, signed in or not, and notifies once when the level is passed. The rule then reads **Alerted** until you re-arm it (`m`, or `gloomberb alerts rearm <id>`). A rule added or re-armed while the reading is already past its level goes off at its first check.
+- The running app checks it every 15 minutes, signed in or not, and notifies once when the level is passed. The rule then reads **Alerted** until you re-arm it (`m`, or `gloom alerts rearm <id>`). A rule added or re-armed while the reading is already past its level goes off at its first check.
 - Readings stay on the device and only a rule going off or changing is synced. Gloom Cloud does not check these, so they reach no phone.
 
-From the shell, `gloomberb alerts add` takes the same rules:
+From the shell, `gloom alerts add` takes the same rules:
 
 ```bash
-gloomberb alerts add IBIT iv above 50%         # 30-day ATM IV above 50%; the unit is optional
-gloomberb alerts add SPY rr below -5.5 pts     # 30-day 25D risk reversal below -5.5 vol pts
-gloomberb alerts add AAPL271217C00300000 iv spike 5
-gloomberb alerts add AAPL news buyback         # alerts add news "rate cut": any company
-gloomberb alerts add NVDA flow 5m calls sweeps # flow alone: your portfolios and watchlists, $1M and up
+gloom alerts add IBIT iv above 50%         # 30-day ATM IV above 50%; the unit is optional
+gloom alerts add SPY rr below -5.5 pts     # 30-day 25D risk reversal below -5.5 vol pts
+gloom alerts add AAPL271217C00300000 iv spike 5
+gloom alerts add AAPL news buyback         # alerts add news "rate cut": any company
+gloom alerts add NVDA flow 5m calls sweeps # flow alone: your portfolios and watchlists, $1M and up
 ```
 
-A symbol is read as `gloomberb quote` reads it and must be a US listing, as in the dialog.
+A symbol is read as `gloom quote` reads it and must be a US listing, as in the dialog.
 
 `v` (view, also in the footer and the pane menu) opens what the selected row follows, on **Prices**, **Events** and **History**:
 
@@ -841,7 +841,7 @@ A symbol is read as `gloomberb quote` reads it and must be a US listing, as in t
 - The symbol is read as `quote` reads it, so `USDMXN` and `USD/MXN` are the one pair `USDMXN=X`. A symbol that quotes nothing is refused with the nearest listing (`did you mean AAPL`), and a bare code kept on a listing abroad names it.
 - A bare coin ticker whose listing is a fund says so as `quote` does (`BTC is Grayscale Bitcoin Mini Trust ETF, not bitcoin. For bitcoin use BTC-USD.`), and so do `fn` reports such as `fn OPX BTC`.
 - A target more than 10 times the last price, or under a tenth of it, is refused, in **Add Alert** too (`alerts add btc above 85000` is bitcoin's price typed on the fund).
-- If saved price alerts cannot be read, the app and CLI leave the data unchanged and price checks pause until it is repaired. The pane and `gloomberb alerts list` show the read error, and event alerts stay usable.
+- If saved price alerts cannot be read, the app and CLI leave the data unchanged and price checks pause until it is repaired. The pane and `gloom alerts list` show the read error, and event alerts stay usable.
 
 ### Alerts before earnings, CPI and FOMC
 
@@ -850,20 +850,20 @@ To watch a position through a scheduled event, alert a number of days before it.
 An earnings alert can instead wait for the report: pick **When results are out** under **Alert**, which is what `n` in `ERN` sets. From the shell:
 
 ```bash
-gloomberb alerts add CRWV earnings --days 3
-gloomberb alerts add CRWV earnings results
-gloomberb alerts add CPI --days 1
-gloomberb alerts add FOMC
+gloom alerts add CRWV earnings --days 3
+gloom alerts add CRWV earnings results
+gloom alerts add CPI --days 1
+gloom alerts add FOMC
 ```
 
 The next date comes from `ERN`, the BLS release calendar behind `CPI` and the Fed meeting calendar behind `WIRP`. A symbol with no upcoming earnings date, or an event with no known next date, gets no alert. The **Events** tab and `alerts list` show each alert's next event date and state.
 
 - While the app runs it checks the dates every 15 minutes and notifies once when the lead time is reached ("CRWV earnings in 3 days, Mon, Nov 9", counted in New York calendar days). An app that was closed that day notifies when it next runs, up to the event day.
 - An alert for results goes off once the report's actual EPS is in `ERN`, on the report day or usually that evening for a report after the close ("CRWV reported EPS 0.12 vs 0.10 expected (+20.0%)"). It waits up to 3 days past the date for a late figure, then follows the next report.
-- The alert then reads **Alerted** until the event passes and arms itself for the next date. Re-arm (`m`, or `gloomberb alerts rearm <id>`) sends it again for the same event, and `gloomberb alerts delete <id>` removes it.
+- The alert then reads **Alerted** until the event passes and arms itself for the next date. Re-arm (`m`, or `gloom alerts rearm <id>`) sends it again for the same event, and `gloom alerts delete <id>` removes it.
 - Earnings alerts also reach the phone app like the other market alerts, once per report and never on the day itself. CPI and FOMC alerts notify in the running app only.
 
-`gloomberb fn ALRT` lists your price alerts, `--tab events` your event alerts with their event date, lead time and state, and `--tab history` the alerts that went off. `gloomberb shot ALRT --tab events` draws that tab.
+`gloom fn ALRT` lists your price alerts, `--tab events` your event alerts with their event date, lead time and state, and `--tab history` the alerts that went off. `gloom shot ALRT --tab events` draws that tab.
 
 **Alert history.** Every alert the app fires (price, IV level, earnings, CPI and FOMC) is kept on this device, the last 1,000, with when it went off, the rule, the figure and the quote time and feed. **History** and `fn ALRT --tab history` list that log with no sign-in.
 
@@ -878,20 +878,20 @@ What moves while you watch:
 - **Portfolios and watchlists:** price, change, volume, market value, P&L and weight. MCAP, P/E, FWD P/E and DIV% are repriced from the live price when the per-share figure behind each is on the quote's currency basis. 52W% counts today's range, and TARGET% uses the live price when the target is in the listing's currency. Broker account totals, Net Liq and P&L move with the positions' quotes.
   - After the regular close, LAST, CHG and CHG% hold the official close and its move, while EXT% follows the extended-hours print from that close (market value, DAY and P&L keep the live price). In the pre-market the row holds the last session the same way when the quote carries its close and move, otherwise LAST and EXT% are the pre-market print. `DES` uses the same rules.
 - `WEI`, `FUT`, `BI`/`SP`, `FXC`, `EQS` rows, `CRYP`, the header SPY chip and market state, and price alerts (which trigger on the tick that crosses). After the close `BI`, `MOST`'s lists and `EQS` hold the regular close and only their extended-hours column moves (see [Company Research](#company-research)).
-- **Charts**, including the research Chart tab: the forming bar takes each quote's high, low, close and volume. A daily, weekly or monthly bar is the regular session's: after the close it holds at the official close, the close `gloomberb history` and `portfolio show --close` give. Intraday bars and the extended-hours view of a US listing keep the extended prints.
+- **Charts**, including the research Chart tab: the forming bar takes each quote's high, low, close and volume. A daily, weekly or monthly bar is the regular session's: after the close it holds at the official close, the close `gloom history` and `portfolio show --close` give. Intraday bars and the extended-hours view of a US listing keep the extended prints.
 - `OMON`: Last, volume, IV and Greeks stream during the regular session, and a real-time chain reloads every 15 seconds. `OVDV` reloads a real-time surface every 15 seconds in session, `HVG` re-reads its ATM IV every minute, `VOLS` and the `VIX` curve stream index levels, and `CTM` and `WIRP` refresh delayed contract quotes every minute while Globex trades.
 
 News panes refresh every two minutes while the app is visible (a hidden browser tab falls back to the configured interval, which still feeds breaking-news notifications). `VF` toggles value flashing: a changed price dims for 300 ms.
 
 ## CLI
 
-Running `gloomberb` with no arguments launches the terminal UI. Normal commands run headless. Use `gloomberb launch-ui` when a script should explicitly open the UI.
+Running `gloom` with no arguments launches the terminal UI. Normal commands run headless. Use `gloom launch-ui` when a script should explicitly open the UI.
 
 ### Output and flags
 
 Human-readable output is the default: tables fit the terminal width, and a single result prints as aligned label and value lines. Piped text keeps every cell whole.
 
-- `--json`, `--csv` and `--ndjson` give structured output, which is how to export anything (`gloomberb history LMT --csv > lmt.csv`). JSON uses the richest model and includes display-column metadata. CSV and NDJSON use the tabular rows.
+- `--json`, `--csv` and `--ndjson` give structured output, which is how to export anything (`gloom history LMT --csv > lmt.csv`). JSON uses the richest model and includes display-column metadata. CSV and NDJSON use the tabular rows.
 - Common global flags: `--limit`, `--tail`, `--width`, `--refresh`, `--quiet`, `--no-color`, `--plain`, `--no-plain`, `--dry-run`, `--yes`.
 
 **Plain output.** `--plain` prints text for a screen reader or very large text. It is on without the flag when `NO_COLOR` is set to a non-empty value (an empty `NO_COLOR` is the same as unset) or the output is not a terminal (piped or redirected). `--no-plain` turns it off, piped or not.
@@ -904,7 +904,7 @@ Cboe's Treasury yield indices (`^IRX`, `^FVX`, `^TNX`, `^TYX`) print their level
 
 ### Fitting tables to a width
 
-`--width <n>` fits text tables, help and notes to n columns, in a terminal or piped (`gloomberb quote AAPL TSLA NVDA MSFT --width 80`). Without it a terminal's own width applies and piped output is not fitted.
+`--width <n>` fits text tables, help and notes to n columns, in a terminal or piped (`gloom quote AAPL TSLA NVDA MSFT --width 80`). Without it a terminal's own width applies and piped output is not fitted.
 
 - A table gives up its least useful columns first (`compare` drops Cur, Volume and Day Range). `quote` drops none: at 80 or 100 columns it moves Updated, Feed, Cur and Chg Basis onto a labelled line under each row (`Feed delayed  Updated 2026-10-23 15:40 UTC`). No cell is cut short: text wraps, and columns that still do not fit move onto indented lines under each row.
 - The function list of `catalog` is the one table that cuts (a description ends in `…`, and `catalog <function>` prints it whole).
@@ -916,13 +916,13 @@ Cboe's Treasury yield indices (`^IRX`, `^FVX`, `^TNX`, `^TYX`) print their level
 
 ### Typed symbols
 
-**Not a ticker.** A symbol that no listing carries (a typo, or a word that names no company) ends in ``Not a ticker: APPLEX. Try `gloomberb search Applex`.`` on `quote`, `compare`, `history`, `ticker` and the `fn` reports (an `fn` report of one symbol that finds nothing, such as `fn RDCF Palantir`, fails with that line too).
+**Not a ticker.** A symbol that no listing carries (a typo, or a word that names no company) ends in ``Not a ticker: APPLEX. Try `gloom search Applex`.`` on `quote`, `compare`, `history`, `ticker` and the `fn` reports (an `fn` report of one symbol that finds nothing, such as `fn RDCF Palantir`, fails with that line too).
 
 - A one-word company name is read the way a longer one is: `quote Apple` is AAPL, with `Read "Apple" as AAPL:NASDAQ (Apple Inc.).` A real ticker always wins over a name (`quote GOLD` is GOLD). A word many names share is read only as search's top result or a listing named exactly that word, never as any listing that merely has the word in its name. A coin's name (`bitcoin`) keeps its coin hint (`BTC-USD`), and a subject such as `carbon` or `freight` keeps its search hint.
 - `notes show`, `notes set` and `notes delete` pick the same note. A note already saved under the word as typed comes first. Otherwise the symbol is read as `quote` reads it: `notes set Petrobras "…"` saves the note for PBR. `notes set` fails only when the word is definitely not a ticker. Offline, with the data service down, for a symbol with no quote, or with `--dry-run`, the note goes under the symbol as typed.
 
-- A FRED series id points to the command that prints it: ``Not a ticker: DFEDTARU. Try `gloomberb fred DFEDTARU`.``
-- A US Treasury yield typed as a ticker (`US10Y`, `UST10Y`, `US10YR`, `US2Y`, `US30Y`, `10Y`, `TNX`) names the commands that have it: ``Not a ticker: US10Y. Try `gloomberb quote ^TNX`, `gloomberb fred DGS10` or `gloomberb yield-curve` for the US 10-year Treasury yield.`` `search` and `catalog` answer those spellings, or `"10 year yield"`, the same way.
+- A FRED series id points to the command that prints it: ``Not a ticker: DFEDTARU. Try `gloom fred DFEDTARU`.``
+- A US Treasury yield typed as a ticker (`US10Y`, `UST10Y`, `US10YR`, `US2Y`, `US30Y`, `10Y`, `TNX`) names the commands that have it: ``Not a ticker: US10Y. Try `gloom quote ^TNX`, `gloom fred DGS10` or `gloom yield-curve` for the US 10-year Treasury yield.`` `search` and `catalog` answer those spellings, or `"10 year yield"`, the same way.
 
 **Pairs and share classes**
 
@@ -949,8 +949,8 @@ A US symbol that changed says so in one line.
 
 - **Something else lists there now.** `quote`, `compare`, `history`, `options`, `search`, `fn HIVG`, `fn VCA`, `watchlist add` and `portfolio add` print `FB now lists ProShares S&P 500 Dynamic Daily Buffer ETF; Meta Platforms trades as META (changed 2022-06-09)`. The options functions say that line for a fund with no options, or a listing that stopped (`TWTR: Delisted Oct 27, 2022`), instead of a chain error.
 - **Nothing lists there any more.** The line reads `HFC became DINO on 2022-03-15`, and an add that finds no listing ends with it. A company that moved more than once is followed to where it trades now (`TRCH became MMAT on 2021-07-06, then MMATQ on 2024-08-21`).
-- **No data of its own.** The old symbol has none: `history`, `options`, `ticker` and one-ticker `fn` functions (`fn HIVG HFC`) end in that line with the command for the new symbol: ``HFC became DINO on 2022-03-15: `gloomberb history DINO` ``.
-  - `quote` and `compare` keep the old line's last price and print ``RDS-A became SHEL on 2022-01-31: `gloomberb quote SHEL` `` above it.
+- **No data of its own.** The old symbol has none: `history`, `options`, `ticker` and one-ticker `fn` functions (`fn HIVG HFC`) end in that line with the command for the new symbol: ``HFC became DINO on 2022-03-15: `gloom history DINO` ``.
+  - `quote` and `compare` keep the old line's last price and print ``RDS-A became SHEL on 2022-01-31: `gloom quote SHEL` `` above it.
   - The `--json` error has `code` `ticker_moved`, `tickerChange` and `retry`.
 - **The new symbol.** The symbol a company renamed into (`META`, `XYZ`, `METV`) prints nothing extra, but its `history` from before the change says so: `Includes FB-era bars: META was FB until 2022-06-09`.
 
@@ -985,9 +985,16 @@ The FUT board's codes work wherever a symbol is typed (`quote`, `history`, `tick
 - `--tail <n>` without `--from` keeps the last n events of the whole calendar, the past week's too.
 - When the calendar stops less than a week past its first day, text ends with `No events listed after <date>` (`--json` carries the last day as `metadata.listedThrough`, and the ECO pane says it in its footer).
 
+**Times**
+
+- Rows are listed by their UTC day and time; a release its publisher times also shows its own clock (`09:00 Sao Paulo`).
+- `--tz <zone>` adds a column on another clock, named by its city: `econ --country BR --tz America/New_York` shows the IPCA at `08:00` under `New York`, with the weekday first when that clock is on another day (`Tue 21:30`). `--json` has `viewerDate`, `viewerTime` and `metadata.timeZone`; an unknown zone fails with `Unknown time zone`.
+- With `config set timezone`, the ECO pane shows the same column for your zone beside `TIME (UTC)` when it is wide enough.
+
 **Countries**
 
 - `--country` takes the ECO pane's regions (`US`, `G7`, `EU`, `all`) or any country by its ISO two-letter code, several comma separated. `UK` reads as `GB`, and `G7,MX` adds Mexico to the G7. `econ --country TR` lists Türkiye's CPI releases, and `ECO MX,BR` and `fn ECO --country MX,BR` open the pane on the same countries.
+- `econ --country BR` lists IBGE's IPCA and IPCA-15 as `IPCA CPI m/m` and `IPCA-15 Mid-Month CPI m/m`: the actual and prior from the central bank's SGS series 433 and 7478 once the release time has passed, the forecast where the calendar has a consensus. The series chart as `FRED:BRAIPCAMOM` and `FRED:BRAIPCA15MOM`; `catalog IPCA` finds them.
 - A national release in the euro area is its member's: the calendar shows the German Ifo as `DE`. The ECB's and the euro area's own releases stay `EU`, and `EU` still lists the members' releases.
 - A country with nothing in the window says `No scheduled releases for MX in this window.` A code that is no country (`TUR`, `XQ`) fails with `Unknown country`.
 
@@ -1009,25 +1016,25 @@ A slashed date is refused with the formats it takes and the date to type: `type 
 
 **Units.** Headless chart text includes a Unit column when a series supplies one, and values keep that unit's scale (`2.7 %` versus `270 bp`). DVD text labels cash growth, CAGR and earnings payout as percentages, while their structured `value` fields stay fractional ratios (`0.03` means 3%), as are its yields (`0.045527`, `4.5527` in a CSV percent column).
 
-**Time zones.** CLI text prints every time in UTC with the zone named (`2026-10-09 00:08 UTC`), and a date alone stays a date. JSON and CSV keep the raw ISO or epoch values. `gloomberb config set timezone Asia/Tokyo` (any IANA zone name) adds your own clock beside every UTC time (`2026-10-09 23:59 UTC (Sat 10 Oct 08:59 Asia/Tokyo)`), and `config set timezone none` goes back to UTC alone.
+**Time zones.** CLI text prints every time in UTC with the zone named (`2026-10-09 00:08 UTC`), and a date alone stays a date. JSON and CSV keep the raw ISO or epoch values. `gloom config set timezone Asia/Tokyo` (any IANA zone name) adds your own clock beside every UTC time (`2026-10-09 23:59 UTC (Sat 10 Oct 08:59 Asia/Tokyo)`), and `config set timezone none` goes back to UTC alone.
 
 ### Unknown options
 
-A command fails on an option it does not take instead of ignoring it. `gloomberb history AAPL --since 2020-01-01` ends in `Unknown option --since for history.` with the options `history` does take (`--from` and `--to`), and a close match when you mistyped one.
+A command fails on an option it does not take instead of ignoring it. `gloom history AAPL --since 2020-01-01` ends in `Unknown option --since for history.` with the options `history` does take (`--from` and `--to`), and a close match when you mistyped one.
 
-- `financials` lists fiscal years, so `gloomberb financials WFC --quarterly` (or `--period`, `--freq`) points at `fn GF WFC --period quarterly --periods 40` (one metric over time) and `fn FA WFC --period quarterly` (the statements).
-- A command that takes one symbol or currency fails on a second (`gloomberb fx NGN ZAR`; write a pair as `fx ZAR/NGN`), and `econ` fails on a country or impact it does not filter by.
+- `financials` lists fiscal years, so `gloom financials WFC --quarterly` (or `--period`, `--freq`) points at `fn GF WFC --period quarterly --periods 40` (one metric over time) and `fn FA WFC --period quarterly` (the statements).
+- A command that takes one symbol or currency fails on a second (`gloom fx NGN ZAR`; write a pair as `fx ZAR/NGN`), and `econ` fails on a country or impact it does not filter by.
 - Everything after a bare `--` is an argument, never an option.
 
 ### `history`
 
-`gloomberb history` serves each range in one bar size, listed by `gloomberb help history`.
+`gloom history` serves each range in one bar size, listed by `gloom help history`.
 
 **Ranges**
 
 - `--range YTD` (any case) is the year's daily bars from the prior year's last close, the one year-to-date returns are measured from (`history LMT --range YTD` starts at 31 Dec 2025).
 - `--range ALL` reaches back up to 50 years. When the source's first bar is well inside that, a warning says where it starts (`ALL starts 2014-09; the source has no earlier bar` for BTC-USD), or why nothing older is served (`Price history starts 1992-12-01; old-shekel quotes before 1992 are not served.`).
-- `gloomberb help history` ends with where long history is. ZAR has daily FRED data from 1980 (`fred DEXSFUS`). NGN, SAR and ILS have no FRED series, daily bars for the last five years (`fn G USDNGN=X --rangePreset 5Y --chartResolution 1d`) and monthly bars only before that (`history USDNGN=X --range ALL`).
+- `gloom help history` ends with where long history is. ZAR has daily FRED data from 1980 (`fred DEXSFUS`). NGN, SAR and ILS have no FRED series, daily bars for the last five years (`fn G USDNGN=X --rangePreset 5Y --chartResolution 1d`) and monthly bars only before that (`history USDNGN=X --range ALL`).
 - `--interval 1s` says `No second or tick bars; 1-minute bars: fn GIP HYG; for a US listing, each trade: fn TAS HYG (a window: --from 10:30 --to 10:35), each quote: fn QR HYG.` (`fn GIP <ticker> --chartResolution 1s`, `30s` or `tick` and `catalog tick` say the same).
 
 **What the output says**
@@ -1055,7 +1062,7 @@ A command fails on an option it does not take instead of ignoring it. `gloomberb
 
 ### A window of dates
 
-`gloomberb history`, `fn HP` and `fn RETURN` also take a window of dates in place of a range: `--from` and `--to`, each a year or a date. `history JPM --from 2007 --to 2009` is every bar from 1 Jan 2007 to 31 Dec 2009. `history` also takes them as `--start` and `--end`.
+`gloom history`, `fn HP` and `fn RETURN` also take a window of dates in place of a range: `--from` and `--to`, each a year or a date. `history JPM --from 2007 --to 2009` is every bar from 1 Jan 2007 to 31 Dec 2009. `history` also takes them as `--start` and `--end`.
 
 - `--to` defaults to today and needs a `--from`. A `--range` typed with `--from` (or `--start`) is refused (`--from replaces --range; give one of them.`, naming the option as typed). `--end` alone asks for a `--start`. `shot HP` and `shot RETURN` refuse `--from` and `--to`.
 - A window of up to five years comes in daily bars, up to twenty in weekly bars and a longer one in monthly bars. Where the source keeps no bars of the interval so far back it reads daily bars and says so: `1H bars do not cover 2015-03-01 to 2015-03-31; these are 1D bars.`
@@ -1068,7 +1075,7 @@ A command fails on an option it does not take instead of ignoring it. `gloomberb
 
 ### Several symbols
 
-`gloomberb history AAPL MSFT 000660.KS`, or `history --file holdings.txt` with one symbol a line (`-` reads standard input), writes every symbol's bars in one long table: `history --file holdings.txt --start 2024-01-01 --end 2024-12-31 --csv > bars.csv`.
+`gloom history AAPL MSFT 000660.KS`, or `history --file holdings.txt` with one symbol a line (`-` reads standard input), writes every symbol's bars in one long table: `history --file holdings.txt --start 2024-01-01 --end 2024-12-31 --csv > bars.csv`.
 
 - Symbols load eight at a time. A list of more than ten skips the lookups of a bare symbol's other venues, as `quote` does.
 - The `--csv` header is a single symbol's. Each row names its symbol, its currency and its own symbol's as-of in `symbol_or_series`, `currency_or_unit` and `as_of`.
@@ -1077,33 +1084,33 @@ A command fails on an option it does not take instead of ignoring it. `gloomberb
 
 ### `fx`
 
-`gloomberb fx NGN` prints one unit of a currency in your base currency. A pair reads as markets quote it: `gloomberb fx USD/NGN` is how many naira one dollar buys, and `gloomberb fx ZAR/NGN` crosses the two through their dollar rates.
+`gloom fx NGN` prints one unit of a currency in your base currency. A pair reads as markets quote it: `gloom fx USD/NGN` is how many naira one dollar buys, and `gloom fx ZAR/NGN` crosses the two through their dollar rates.
 
 - The line states both directions, such as `1 NGN = 0.000752791 USD  (USD/NGN 1328.39)`. A rate keeps six significant figures, or cents from 1000 up.
-- A pair typed without its slash (`gloomberb fx eurusd`) says to write it as `EUR/USD`.
-- A currency's name stands for its code (`gloomberb fx yen` is JPY, `rand` ZAR, `Swiss franc` CHF) and the answer says which it read. A name several currencies share lists them (`peso`: MXN, ARS, COP, CLP, PHP, UYU, DOP) and you type the code. A code with no rate fails naming that code.
+- A pair typed without its slash (`gloom fx eurusd`) says to write it as `EUR/USD`.
+- A currency's name stands for its code (`gloom fx yen` is JPY, `rand` ZAR, `Swiss franc` CHF) and the answer says which it read. A name several currencies share lists them (`peso`: MXN, ARS, COP, CLP, PHP, UYU, DOP) and you type the code. A code with no rate fails naming that code.
 - The answer ends with the source line of [How current a report is](#how-current-a-report-is), dated by the older of the two USD rates: `Source: Gloom Cloud · FX trading day Fri 9 Oct 2026 close · 15 min delayed · markets closed` (`live` with real-time access, `stale` when a rate has not updated in time).
 
 **Exports.** `--json`, `--csv` and `--ndjson` carry `currency`, `baseCurrency`, `rate` (base currency per one currency), `asOf`, `stale`, `pair` and `inverse`. `--csv` and `--ndjson` end with the five fixed columns: the pair (`ZAR/USD`), the base currency (`USD`), `spot`, the source and the rate's time. `--json` adds `metadata.freshness`.
 
 **A past day.** `--date 2026-09-02` gives the rate at that day's daily FX close, the one a position's purchase-date cost is converted at. The source line dates it: `Source: Gloom Cloud · Wed 2 Sep 2026 · not a live feed (daily FX close)`. A weekend or holiday reads the trading day before and warns, and today has no close yet.
 
-**Forwards.** `gloomberb fx USD/MXN --forward 30d` gives the forward implied by covered interest parity, labelled `implied by rates, not a dealer quote`: spot × (1 + quote rate × days/basis) / (1 + base rate × days/basis).
+**Forwards.** `gloom fx USD/MXN --forward 30d` gives the forward implied by covered interest parity, labelled `implied by rates, not a dealer quote`: spot × (1 + quote rate × days/basis) / (1 + base rate × days/basis).
 
 - The answer shows the forward points (pips of 0.0001, 0.01 against JPY), the premium or discount over spot for the period and a year, and both rates with their day and publisher.
 - The rates are SOFR (USD), €STR (EUR), SONIA (GBP) and Banxico's TIIE 28d (MXN), so any pair of those works (`fx EUR/USD --forward 3m`). A missing rate says which one.
 - Tenors count calendar days from today (`30d`, `2w`, `3m`, `1y`, up to a year). `--forward` with `--date` fails and names the command for that day's close.
 - `--json` carries `forward`, `points`, `premiumPercent`, `annualizedPercent`, `baseRate` and `quoteRate`. `catalog forward` points here.
 
-**Amounts.** An amount in front converts it: `gloomberb fx 1234.5 EUR/USD` and `gloomberb fx 1234,5 EUR USD` print `1,234.50 EUR = 1,385.06 USD`, then the rate line and the source line. The amount is in the first currency and the answer in the second (`fx 1234.5 EUR` converts to USD).
+**Amounts.** An amount in front converts it: `gloom fx 1234.5 EUR/USD` and `gloom fx 1234,5 EUR USD` print `1,234.50 EUR = 1,385.06 USD`, then the rate line and the source line. The amount is in the first currency and the answer in the second (`fx 1234.5 EUR` converts to USD).
 
 The amount reads as cash does (below): `fx 1.234 EUR/USD` converts 1234 euros, while `fx 1,234 KWD/USD` asks which was meant. `--json`, `--csv` and `--ndjson` add `amount` and `converted`.
 
 ### `fred`
 
-`gloomberb fred <series>` reads the FRED series Gloom Cloud serves, signed in or not. Any other series fails with `Unsupported FRED series DEXSFUS. List supported series with: gloomberb fred --list` (under `--json`, the `cli_error` code every input error has).
+`gloom fred <series>` reads the FRED series Gloom Cloud serves, signed in or not. Any other series fails with `Unsupported FRED series DEXSFUS. List supported series with: gloom fred --list` (under `--json`, the `cli_error` code every input error has).
 
-**Listing series.** `gloomberb fred` alone, like `fred --list`, prints the series with their titles, grouped by topic (Credit, Defense & fiscal, Energy, FX and the rest). Words after `--list` filter it: `fred --list credit`, `fred --list fx`, `fred --list defense`.
+**Listing series.** `gloom fred` alone, like `fred --list`, prints the series with their titles, grouped by topic (Credit, Defense & fiscal, Energy, FX and the rest). Words after `--list` filter it: `fred --list credit`, `fred --list fx`, `fred --list defense`.
 
 Credit has the ICE BofA US corporate (investment grade) index's effective yield in percent, by maturity and rating, beside the option-adjusted spreads, so a corporate bond can be read against the Treasury of its tenor (`fred BAMLC4A0C710YEY` beside `fred DGS7` and `fred DGS10`).
 
@@ -1139,16 +1146,16 @@ By rating, AAA to BBB: `BAMLC0A1CAAAEY`, `BAMLC0A2CAAEY`, `BAMLC0A3CAEY`, `BAMLC
 - Every export adds `change` and `changeFrom` (the date it is measured from), and `metadata.change` names the horizon.
 - It takes a daily series, or a weekly one with `1W` (`fred UNRATE --change 1W` fails and says why). How big a move was against the series' history is in `fn ECST` and `fn GC` ([move ranks](research-data.md#was-it-a-big-day-move-ranks)).
 
-`gloomberb yield-curve` adds each tenor's move since the previous observation in basis points. Its yields export as `value` and `previousValue` in percent, with `pct` in `currency_or_unit`.
+`gloom yield-curve` adds each tenor's move since the previous observation in basis points. Its yields export as `value` and `previousValue` in percent, with `pct` in `currency_or_unit`.
 
 ### Listings and exchanges
 
 A symbol that trades in several places takes its exchange after a colon or with `--exchange`, in every command that takes a ticker:
 
 ```bash
-gloomberb ticker SAN:EPA
-gloomberb ticker SAN --exchange EPA   # both are Sanofi in Paris
-gloomberb ticker SAN                  # the listing you saved, or Banco Santander in New York
+gloom ticker SAN:EPA
+gloom ticker SAN --exchange EPA   # both are Sanofi in Paris
+gloom ticker SAN                  # the listing you saved, or Banco Santander in New York
 ```
 
 Ticker, news and alert links (`gloomberb://ticker/7203:TSE`, `term.gloom.sh/?ticker=7203&exchange=TSE`) and a cashtag naming a listing in chat or a story (`$7203:TSE`, `$SAN:EPA`) read the same way.
@@ -1189,19 +1196,19 @@ A terminal's code is the listing it names, and a line such as `Read WFC.N as WFC
 #### A bare symbol
 
 - **With no US listing,** whose listings all belong to one company or fund, a bare symbol is its home listing: the first one `search` shows on an exchange of its own rather than a German regional or OTC line. `SXR8` is `SXR8:XETRA` and `CSPX` is `CSPX:LSE`, and `quote` and `compare` add a line such as `SXR8 -> XETRA`.
-- **That no source serves** ends naming the listing it went to and the symbol's others, each with the command to retry: `gloomberb history SXR8` reads `SXR8 resolved to iShares Core S&P 500 UCITS ETF USD (Acc) (XETRA), which has no history.` and lists `SXR8:BUD ... (try: gloomberb history SXR8:BUD)`. `quote` and `compare` instead ask again on the symbol's other listings, and the first with a quote prints.
+- **That no source serves** ends naming the listing it went to and the symbol's others, each with the command to retry: `gloom history SXR8` reads `SXR8 resolved to iShares Core S&P 500 UCITS ETF USD (Acc) (XETRA), which has no history.` and lists `SXR8:BUD ... (try: gloom history SXR8:BUD)`. `quote` and `compare` instead ask again on the symbol's other listings, and the first with a quote prints.
 - `watchlist add` and `portfolio add` store a bare symbol on the listing `quote` reads it as (any US exchange is the symbol's one US listing, else the first listing with a quote). With several listings they say so: `IEO -> BATS (other listings: IEX, BMV)`.
 - **One slip from a US ticker.** A bare symbol read abroad that is one slip from a US ticker you are likely to mean says so under the table: `quote APPL` (Aptus Pharma on BSE) adds `APPL is not a US ticker: it is Aptus Pharma Limited on BSE (INR). Did you mean AAPL (Apple Inc.)?` (`usSuggestion` in `--json`). A named venue (`APPL:BSE`), a code with its suffix (`7203.T`) and a symbol you saved say nothing.
 - **A currency code.** A three-letter currency code read on a listing abroad (`quote MXN` is mixi Inc on a German exchange) still prints that listing and adds `MXN is also a currency: fx MXN, quote USD/MXN`.
 - **That several companies list** and that has a quote of its own goes where it always did, and the commands that read it say which company: `CAR = Avis Budget Group, NASDAQ (also XETRA, ASX, JSE, LSE, WSE)`. A search by name (`search lufthansa`) makes the company's own line the primary listing.
   - A company's primary listing is its common stock on its home exchange, whatever matched the query: `search Toyota` leads with 7203 on JPX, `search LVMH` with MC on EPA and `search Sony` with 6758 on JPX. Its depositary receipts follow, typed as receipts, so TM on NYSE and the LVMH receipt on TSX are under Other. A named venue (`SONY:NYSE`) is still read as written.
   - Each result is named by its own listing: `028050` on KRX is Samsung E&A even when a data source files it under Samsung Electronics.
-- **A code several different companies list,** such as `2222` (Kotobuki Spirits in Tokyo, Saudi Arabian Oil in Riyadh), is not guessed. Every command asks which one, with `Choose an exchange for 2222.` and each listing with its retry command (`2222:TADAWUL Saudi Arabian Oil Co. (try: gloomberb history 2222:TADAWUL)`). `quote` and `compare` fail only that symbol's row.
+- **A code several different companies list,** such as `2222` (Kotobuki Spirits in Tokyo, Saudi Arabian Oil in Riyadh), is not guessed. Every command asks which one, with `Choose an exchange for 2222.` and each listing with its retry command (`2222:TADAWUL Saudi Arabian Oil Co. (try: gloom history 2222:TADAWUL)`). `quote` and `compare` fail only that symbol's row.
 - **What counts as one company.** Listings count as one company when, ignoring case, punctuation, legal forms (`Co.`, `Ltd.`, `S.A.`, `plc`), share wording (`Common Stock`) and depositary-receipt wording (`ADR`, `CEDEAR`, `CDR`), one name's words are all in the other's.
 
 #### Index roots
 
-An index typed with the venue search files it under (`^VIX:CXI`) is the index itself, as the bare `^VIX` is. A bare index root such as `VIX`, `SPX` or `MOVE` points at the index: `quote VIX` fails with `^VIX  Cboe Volatility Index (try: gloomberb quote ^VIX)`, and `quote MOVE` (Corvex) adds `also ^MOVE ICE BofA MOVE Index`.
+An index typed with the venue search files it under (`^VIX:CXI`) is the index itself, as the bare `^VIX` is. A bare index root such as `VIX`, `SPX` or `MOVE` points at the index: `quote VIX` fails with `^VIX  Cboe Volatility Index (try: gloom quote ^VIX)`, and `quote MOVE` (Corvex) adds `also ^MOVE ICE BofA MOVE Index`.
 
 A broker's code for an index is the index: `VIX.X` and `$VIX.X` (thinkorswim) and `$VIX` (Schwab) are `^VIX` in `quote`, `ticker`, `fn` and `search`, which says `Read VIX.X as ^VIX (Cboe Volatility Index).` Only the index roots the app knows are read this way. A `$` is otherwise a cashtag: `$AAPL` is AAPL, and `$MOVE` is Corvex.
 
@@ -1221,7 +1228,7 @@ Data that covers US listings only says so for a listing elsewhere and names the 
 - options (`GEX`, `OPX`, `OVDV`, `OSA`, `HIVG`, `VCA` and the current IV in `HVG` and `HVT`)
 - time and sales (`TAS`, `QR`), FINRA short interest and volume (`SI`, `SIV`, `SIW`), macro release days (`MDAY`)
 
-`fn TAS SAN:EPA` answers `Time and sales covers US listings only, and SAN:EPA is Sanofi on Euronext Paris (EPA).` with `Sanofi's US listing: SNY (try: gloomberb fn TAS SNY)`. A list such as `fn SIW SAN:EPA AAPL` leaves the listing out with the same line.
+`fn TAS SAN:EPA` answers `Time and sales covers US listings only, and SAN:EPA is Sanofi on Euronext Paris (EPA).` with `Sanofi's US listing: SNY (try: gloom fn TAS SNY)`. A list such as `fn SIW SAN:EPA AAPL` leaves the listing out with the same line.
 
 #### Functions with a symbol of their own
 
@@ -1229,29 +1236,29 @@ Data that covers US listings only says so for a listing elsewhere and names the 
 
 ### `fn` reports: arguments and errors
 
-**Company functions asked about a non-company.** A function that reads company data (`INS`, `HIRE`, `APPS`, `CALLS`, `EXEC`, `RISK`, `CATL`, `KPIS` and the other filings and research functions) answers an index, fund or currency pair with what it is and a command that reads it: `gloomberb fn INS ^VIX` fails with `INS covers companies only, and ^VIX is an index.` and `Try: gloomberb fn VIX`.
+**Company functions asked about a non-company.** A function that reads company data (`INS`, `HIRE`, `APPS`, `CALLS`, `EXEC`, `RISK`, `CATL`, `KPIS` and the other filings and research functions) answers an index, fund or currency pair with what it is and a command that reads it: `gloom fn INS ^VIX` fails with `INS covers companies only, and ^VIX is an index.` and `Try: gloom fn VIX`.
 
 A list leaves such a ticker out and says so. `LITI` takes funds too, and `FA` shows whatever statements a listing has.
 
 **Defaults and arguments**
 
-- `gloomberb fn PERP --tab history` and `fn CTM` without an argument start with a line saying which market they show (`Showing BTC. Try fn PERP ETH.`). `--json` carries it in `data.metadata.notices` and `data.metadata.defaultArgument`.
+- `gloom fn PERP --tab history` and `fn CTM` without an argument start with a line saying which market they show (`Showing BTC. Try fn PERP ETH.`). `--json` carries it in `data.metadata.notices` and `data.metadata.defaultArgument`.
 - `fn PERP`, `fn COT` and `fn CTM` fail on a name nothing matches and suggest ones that work.
-- `fn EVTS SAN` opens with a line saying whether SAN reports on the board and when, and that `gloomberb fn ERN SAN` has SAN's own dates (`data.metadata.highlight` in `--json`).
-- A function with no data report, such as `fn CAT santander`, fails pointing to `gloomberb shot CAT santander`.
-- A function that takes no argument and is given one fails with its options and a command to run. A word that is one of an option's values runs as that option: `fn JODI gas` answers `JODI does not accept an argument. Options: --commodity <oil|gas>. Run: gloomberb fn JODI --commodity gas`.
+- `fn EVTS SAN` opens with a line saying whether SAN reports on the board and when, and that `gloom fn ERN SAN` has SAN's own dates (`data.metadata.highlight` in `--json`).
+- A function with no data report, such as `fn CAT santander`, fails pointing to `gloom shot CAT santander`.
+- A function that takes no argument and is given one fails with its options and a command to run. A word that is one of an option's values runs as that option: `fn JODI gas` answers `JODI does not accept an argument. Options: --commodity <oil|gas>. Run: gloom fn JODI --commodity gas`.
 - With `--require-bot-safe`, a report or screenshot that is incomplete because part of it needs Gloom Cloud Pro, or a sign-in, says so.
 
 **Unknown functions**
 
-- A name nothing opens (`fn volsurf SPY`) fails with the five closest functions and `Search the catalog: gloomberb catalog volsurf`.
-- A code one slip from a function's code names it and the command that runs it: `fn RCDF PLTR` says `Unknown function or pane "RCDF". Did you mean RDCF (Reverse DCF)?` and `Run: gloomberb fn RDCF PLTR`. A name near no code says `No function code is close to ZZQX. List every function: gloomberb catalog`.
-- A function code typed as a command (`gloomberb OVDV KO`, `gloomberb help OVDV`) answers `OVDV is a function: gloomberb fn OVDV KO`. Any other unknown command says `Unknown command` and the closest command.
-- A word written as a ticker (`gloomberb PLTR`, `gloomberb BRK.B`) adds `To quote it: gloomberb quote PLTR` and `Find the ticker: gloomberb search PLTR`.
+- A name nothing opens (`fn volsurf SPY`) fails with the five closest functions and `Search the catalog: gloom catalog volsurf`.
+- A code one slip from a function's code names it and the command that runs it: `fn RCDF PLTR` says `Unknown function or pane "RCDF". Did you mean RDCF (Reverse DCF)?` and `Run: gloom fn RDCF PLTR`. A name near no code says `No function code is close to ZZQX. List every function: gloom catalog`.
+- A function code typed as a command (`gloom OVDV KO`, `gloom help OVDV`) answers `OVDV is a function: gloom fn OVDV KO`. Any other unknown command says `Unknown command` and the closest command.
+- A word written as a ticker (`gloom PLTR`, `gloom BRK.B`) adds `To quote it: gloom quote PLTR` and `Find the ticker: gloom search PLTR`.
 
 ### Exit codes
 
-A command exits 0 when it worked and 1 when it failed (bad input, no data found, a failed check). `gloomberb help` ends with the list.
+A command exits 0 when it worked and 1 when it failed (bad input, no data found, a failed check). `gloom help` ends with the list.
 
 **`fn` reports** fail when they have no data for what was asked: an empty report (`fn OVDV TWTR`: `A current underlying price is required`), rows with no value in them, or a list function (`fn SIW`) that finds nothing for any name. `--json` then says `ok: false` with an `error` (`code` `no_data`), so `ok` and the exit status always agree.
 
@@ -1267,43 +1274,43 @@ A command exits 0 when it worked and 1 when it failed (bad input, no data found,
 
 - `shot` takes a function's options as `fn` reads them: `shot 13F 0001067983 --compare SPY` opens the fund's Overlap against SPY's holdings, and a filter the pane keeps opens it filtered (`shot MA --status completed`, `shot INS AAPL --name "COOK TIMOTHY D"`, `shot CG --chamber senate --side BUY`, `shot HDS AAPL --sort change`, `shot RISK AAPL --year 2024`).
 - An option only the report reads (`--limit`, `--offset`, `--explain`, `--section`, or a report filter like `--availability` on `CALLS`) fails with exit 1 and names the `fn` command that reads it. So do `--limit` or `--tail` on a function with no such option (`shot HP AAPL --tail 5`) and a slip of an option's name (`--veiw`).
-- `gloomberb shot G palantir` stops with `Not a ticker: PALANTIR` and suggests `gloomberb search palantir`, before rendering or saving a pane. Resolve a company name to its ticker first.
+- `gloom shot G palantir` stops with `Not a ticker: PALANTIR` and suggests `gloom search palantir`, before rendering or saving a pane. Resolve a company name to its ticker first.
 
 In short DVD panes, Page Up/Down scroll the summary, arrows or j/k navigate history, and the mouse wheel scrolls the region under the pointer.
 
 | Command | Use |
 |---------|-----|
-| `gloomberb` | Launch the terminal UI |
-| `gloomberb launch-ui` | Explicitly launch the terminal UI |
-| `gloomberb help` | Show all CLI commands, grouped, under a short Start here list |
-| `gloomberb help <command>` / `<command> --help` | Show a command's usage, options, and examples |
-| `gloomberb api list\|get\|invoke\|subscribe` | Inspect and call plugin capabilities directly |
-| `gloomberb quote <symbols>` | Fetch current quotes |
-| `gloomberb search <query>` / `provider-search <query>` | Search tickers and provider symbols. A sector word such as `defense` lists the large US-listed funds that track it first, then the companies named for it. `defense etf` or `gold miners etf` lists the funds alone, largest first |
-| `gloomberb ticker <symbol>` | Show quote, ownership, and financials. Out of the regular session, Bid / Ask says whose book it is: `(pre-market book)`, `(after-hours book)`, or `(last quote, Fri 9 Oct)` |
-| `gloomberb history\|financials\|fundamentals\|options <symbol>` | Fetch research data |
-| `gloomberb news\|filings\|holders\|insider\|13f\|analyst\|events\|valuation <symbol>` | Fetch company research feeds |
-| `gloomberb movers\|indices\|sectors\|fx\|fear-greed\|earnings` | Fetch market-wide data |
-| `gloomberb econ\|fred\|yield-curve` | Fetch macro data |
-| `gloomberb compare\|correlation <symbols>` | Compare securities (`relationship` is an alias of `correlation`) |
-| `gloomberb portfolio [action]` | Show a portfolio's value, weights, targets and P&L. Manage manual portfolios, cash and target weights |
-| `gloomberb watchlist [action]` | Manage watchlists |
-| `gloomberb notes\|alerts [action]` | Manage local notes and alerts: price alerts, alerts days before earnings, CPI or FOMC (`alerts add CRWV earnings --days 3`), and news, options flow and IV alerts (`alerts add IBIT iv above 50`) |
-| `gloomberb broker list [--type <broker>]` | List connected broker accounts, optionally one kind such as `ibkr` |
-| `gloomberb ai providers\|ask` | Use configured AI providers ([BYOK AI plugin](https://github.com/gloom-sh/gloom-byok-ai)) |
-| `gloomberb rss fetch <url>` | Fetch an RSS feed |
-| `gloomberb provider status` | Inspect enabled data providers |
-| `gloomberb config\|cache\|plugin\|layout\|pane\|doctor\|version` | Inspect and manage local app state |
-| `gloomberb fn [...]` | Run a pane-backed report command |
-| `gloomberb shot [...]` | Capture a pane-backed screenshot |
-| `gloomberb predictions [...]` | Launch Prediction Markets ([Prediction Markets plugin](https://github.com/gloom-sh/gloom-prediction-markets)) |
-| `gloomberb plugins` | List installed plugins |
-| `gloomberb install <user/repo>` | Install a plugin from GitHub, at the commit the registry reviewed when it is listed |
-| `gloomberb remove <name>` | Remove an installed plugin |
-| `gloomberb update [name]` | Update plugins to the next reviewed commit |
-| `gloomberb plugin enable\|disable <id>` | Turn a plugin on or off without removing it |
-| `gloomberb plugin link <path>` | Load a plugin from a local checkout while developing it |
-| `gloomberb plugin doctor [name]` | Check that a plugin loads, declares its hosts, and compiles for the desktop |
+| `gloom` | Launch the terminal UI |
+| `gloom launch-ui` | Explicitly launch the terminal UI |
+| `gloom help` | Show all CLI commands, grouped, under a short Start here list |
+| `gloom help <command>` / `<command> --help` | Show a command's usage, options, and examples |
+| `gloom api list\|get\|invoke\|subscribe` | Inspect and call plugin capabilities directly |
+| `gloom quote <symbols>` | Fetch current quotes |
+| `gloom search <query>` / `provider-search <query>` | Search tickers and provider symbols. A sector word such as `defense` lists the large US-listed funds that track it first, then the companies named for it. `defense etf` or `gold miners etf` lists the funds alone, largest first |
+| `gloom ticker <symbol>` | Show quote, ownership, and financials. Out of the regular session, Bid / Ask says whose book it is: `(pre-market book)`, `(after-hours book)`, or `(last quote, Fri 9 Oct)` |
+| `gloom history\|financials\|fundamentals\|options <symbol>` | Fetch research data |
+| `gloom news\|filings\|holders\|insider\|13f\|analyst\|events\|valuation <symbol>` | Fetch company research feeds |
+| `gloom movers\|indices\|sectors\|fx\|fear-greed\|earnings` | Fetch market-wide data |
+| `gloom econ\|fred\|yield-curve` | Fetch macro data |
+| `gloom compare\|correlation <symbols>` | Compare securities (`relationship` is an alias of `correlation`) |
+| `gloom portfolio [action]` | Show a portfolio's value, weights, targets and P&L. Manage manual portfolios, cash and target weights |
+| `gloom watchlist [action]` | Manage watchlists |
+| `gloom notes\|alerts [action]` | Manage local notes and alerts: price alerts, alerts days before earnings, CPI or FOMC (`alerts add CRWV earnings --days 3`), and news, options flow and IV alerts (`alerts add IBIT iv above 50`) |
+| `gloom broker list [--type <broker>]` | List connected broker accounts, optionally one kind such as `ibkr` |
+| `gloom ai providers\|ask` | Use configured AI providers ([BYOK AI plugin](https://github.com/gloom-sh/gloom-byok-ai)) |
+| `gloom rss fetch <url>` | Fetch an RSS feed |
+| `gloom provider status` | Inspect enabled data providers |
+| `gloom config\|cache\|plugin\|layout\|pane\|doctor\|version` | Inspect and manage local app state |
+| `gloom fn [...]` | Run a pane-backed report command |
+| `gloom shot [...]` | Capture a pane-backed screenshot |
+| `gloom predictions [...]` | Launch Prediction Markets ([Prediction Markets plugin](https://github.com/gloom-sh/gloom-prediction-markets)) |
+| `gloom plugins` | List installed plugins |
+| `gloom install <user/repo>` | Install a plugin from GitHub, at the commit the registry reviewed when it is listed |
+| `gloom remove <name>` | Remove an installed plugin |
+| `gloom update [name]` | Update plugins to the next reviewed commit |
+| `gloom plugin enable\|disable <id>` | Turn a plugin on or off without removing it |
+| `gloom plugin link <path>` | Load a plugin from a local checkout while developing it |
+| `gloom plugin doctor [name]` | Check that a plugin loads, declares its hosts, and compiles for the desktop |
 
 ### `news`, `13f`, `holders` and `filings`
 
@@ -1312,13 +1319,13 @@ In short DVD panes, Page Up/Down scroll the summary, arrows or j/k navigate hist
 - A real ticker such as `news AAPL` lists its own news. In capitals it keeps its company news: `news GOLD` is Gold.com Inc., while `news gold` names the metal under the stories.
 - Text (`news "european gas"`), a single word no listing answers to, or a futures board code such as `news TTF` lists the stories that have every word of it as a whole word (`price` and `prices` alike, never Arabia for arabica), those with every word in the headline first.
 - A commodity name (`coffee`, `arabica`, `sugar`, `wheat`, `crude oil`, `natural gas`) also lists the stories filed under its future, and a commodity's future (`news KC=F`) lists the stories of its commodity. A metal's future, name or board code (`news GC=F`, `news SI=F`, `news gold`, `news GC`) lists that metal's market news (stories tagged `METALS`).
-- Text that matches no story says `No stories match "<text>"`, with the commodity's future (`gloomberb news SB=F`) when the text names one whose news has stories.
+- Text that matches no story says `No stories match "<text>"`, with the commodity's future (`gloom news SB=F`) when the text names one whose news has stories.
 
 **The others.** `13f` is the holders list without insiders (`fn 13F` has 13F filings). `holders --form 13d|13g|all` lists 13D/13G beneficial owners. `filings --form <form>` keeps one form, with an Items column naming each 8-K's items (`2.02 Results of operations`). `--json` and `--csv` keep the codes in `items` (`Items`) and add the names as `itemsLabel` (`Item names`).
 
 ### `options`
 
-`gloomberb options AAPL` prints the nearest expiry's contracts and lists every expiry above them (the nearest 40 when a chain has more). `--expiration` takes a date (`2028-01-21`) or Unix seconds, and a date the chain does not list fails with the nearest listed dates.
+`gloom options AAPL` prints the nearest expiry's contracts and lists every expiry above them (the nearest 40 when a chain has more). `--expiration` takes a date (`2028-01-21`) or Unix seconds, and a date the chain does not list fails with the nearest listed dates.
 
 IV is solved from quote midpoints (not the provider's own implied volatility), and delta from that IV, the underlying's current price, its dividend yield and a 4% risk-free rate. A contract with no two-sided quote, no current underlying price or no time left shows a dash. A chain still quoting the last close is valued at that close.
 
@@ -1330,7 +1337,7 @@ The line under the table names the spot and time they are valued at and the open
 
 #### Long-dated contracts (`--leaps`)
 
-`gloomberb options AAPL MSFT NVDA GOOGL AMZN META --leaps` ranks long-dated contracts across the symbols, for a stock replacement: those more than a year out unless a window says otherwise.
+`gloom options AAPL MSFT NVDA GOOGL AMZN META --leaps` ranks long-dated contracts across the symbols, for a stock replacement: those more than a year out unless a window says otherwise.
 
 - It keeps calls (`--side puts` for puts) whose absolute delta is in `--delta` (default `0.70-0.90`), with a two-sided quote at most `--max-spread` percent of the midpoint wide (default 5) and open interest of at least `--min-oi` (default 100).
 - It sorts by extrinsic per year, lowest first. `--sort` takes `carry`, `spread`, `oi`, `delta`, `expiry` or `symbol`.
@@ -1360,22 +1367,22 @@ The line under the table names the spot and time they are valued at and the open
 
 #### `fn OMON`
 
-`gloomberb fn OMON META --expiration 2028-01-21` reports every strike the chain lists for that expiry and says how many those are (`data.metadata.strikes` in `--json`). Without `--expiration` the chain opens at the nearest expiry.
+`gloom fn OMON META --expiration 2028-01-21` reports every strike the chain lists for that expiry and says how many those are (`data.metadata.strikes` in `--json`). Without `--expiration` the chain opens at the nearest expiry.
 
 - `--strikes 10` keeps 10 either side of the money. `--strikes 0.70-0.90` (or `--delta 0.70-0.90`) keeps the strikes whose call or put delta is in the band. `--strikes all`, the default, keeps every strike.
 - `--columns bid,ask,spread,delta,openInterest,extrinsicPerYear` picks the fields mirrored around the strike. `costOfSpot` adds the put's midpoint as a percent of spot on the put side ([method](research-data.md#omon-strike-window-and-carry)).
-- `gloomberb shot OMON` takes the same options, and its result names the rows cut above or below the view.
+- `gloom shot OMON` takes the same options, and its result names the rows cut above or below the view.
 - The report and the image name the expiry with its days left (`Expiry 2028-01-21 (469d)`, `data.metadata.expiry` in `--json`), and the report ends with the chain's as-of and delay in the same words as `options`.
 
 ### Adding and removing symbols
 
-`gloomberb watchlist add <list> <symbols...>` and `portfolio add`, and `remove` for both, take any number of symbols split by spaces, commas or newlines:
+`gloom watchlist add <list> <symbols...>` and `portfolio add`, and `remove` for both, take any number of symbols split by spaces, commas or newlines:
 
 ```bash
-gloomberb watchlist add Growth "AAPL, msft" NVDA
-pbpaste | gloomberb watchlist add Growth      # or `-` for standard input
-gloomberb watchlist add Growth --file holdings.csv
-gloomberb watchlist add Growth NVDA 'philip morris intl' --dry-run
+gloom watchlist add Growth "AAPL, msft" NVDA
+pbpaste | gloom watchlist add Growth      # or `-` for standard input
+gloom watchlist add Growth --file holdings.csv
+gloom watchlist add Growth NVDA 'philip morris intl' --dry-run
 ```
 
 The first argument names the list (quote a name with spaces). A list nothing names fails with the lists there are, and a pasted list of symbols with no name in front says so (`did you mean watchlist add <name> <list>`).
@@ -1391,7 +1398,7 @@ In an argument with commas, semicolons, tabs or newlines, an entry with spaces i
 
 `remove` splits every entry on its spaces.
 
-**Files and standard input.** `--file holdings.csv` or piped input (`pbpaste | gloomberb watchlist add Growth`, or `-`) supplies symbols. `quote` and `compare` read a list the same way (`pbpaste | gloomberb quote -`), and only when asked.
+**Files and standard input.** `--file holdings.csv` or piped input (`pbpaste | gloom watchlist add Growth`, or `-`) supplies symbols. `quote` and `compare` read a list the same way (`pbpaste | gloom quote -`), and only when asked.
 
 - Each line is an entry of a typed list: `Altria Group`, `philip morris intl` and `Lockheed Martin` on three lines are MO, PM and LMT, and `AAPL MSFT NVDA` on one line is three symbols.
 - A byte order mark, Windows line ends, blank lines, lines starting with `#` and repeated symbols are skipped. A separator stuck to a symbol (`UPST;`) is dropped with a warning (`Ignored the stray ";" after UPST.`), and quote marks around a symbol are dropped silently.
@@ -1428,7 +1435,7 @@ Each symbol gets a line (`Added AAPL:NASDAQ (Apple Inc.)`, `Already in the list:
 - A symbol taken over longer ago is added, with a line saying who had it. Coins, perpetual markets and currency pairs are added.
 - The summary counts them (`3 need a choice: DFS, NYCB, BRKL`), and `--json` puts the company's symbol now in each row's `tradesAs` and the count in `metadata.needsChoice`.
 
-**Batches and retries.** Symbols are looked up in batches. If Gloom Cloud refuses requests meanwhile (signed out, it limits how many a minute), the symbols that may have failed for that are listed together, not as "not found", with one command that adds them again: `Try again in a minute: gloomberb watchlist add Growth NVDA 'philip morris intl'`.
+**Batches and retries.** Symbols are looked up in batches. If Gloom Cloud refuses requests meanwhile (signed out, it limits how many a minute), the symbols that may have failed for that are listed together, not as "not found", with one command that adds them again: `Try again in a minute: gloom watchlist add Growth NVDA 'philip morris intl'`.
 
 #### In the app
 
@@ -1436,46 +1443,46 @@ Each symbol gets a line (`Added AAPL:NASDAQ (Apple Inc.)`, `Already in the list:
 
 ### Which lists hold a company
 
-`gloomberb ticker` names the portfolios and watchlists that hold the company by any of its listings, and which listing when it is another: on a watchlist `R` that holds `RCI.B:TSX`, `ticker RCI` reads `Watchlists R (as RCI.B:TSX)`.
+`gloom ticker` names the portfolios and watchlists that hold the company by any of its listings, and which listing when it is another: on a watchlist `R` that holds `RCI.B:TSX`, `ticker RCI` reads `Watchlists R (as RCI.B:TSX)`.
 
 A company's listings are the ones Gloom Cloud groups under one issuer (share classes, a US receipt and its home line, dual listings). `--json` carries them as `memberships` (`portfolios` and `watchlists`, each `name` and `via`).
 
-`portfolio` and `watchlist` come with the Portfolio plugin, `notes` with Notes, `alerts` with Alerts, and `rss` with News. Turning one of those plugins off with `gloomberb plugin disable` also removes its commands.
+`portfolio` and `watchlist` come with the Portfolio plugin, `notes` with Notes, `alerts` with Alerts, and `rss` with News. Turning one of those plugins off with `gloom plugin disable` also removes its commands.
 
-`gloomberb notes export [dir]` writes readable notes as Markdown and warns about each note or source it could not read (quick-note bodies are still exported under `quick/<id>.md`). Export Notes in the app reports the same warnings.
+`gloom notes export [dir]` writes readable notes as Markdown and warns about each note or source it could not read (quick-note bodies are still exported under `quick/<id>.md`). Export Notes in the app reports the same warnings.
 
-`gloomberb shot TAS AAPL --output tape.png` and `gloomberb shot QR AAPL --output quotes.png` capture a dated trade or NBBO snapshot with the current Cloud session's access delay.
+`gloom shot TAS AAPL --output tape.png` and `gloom shot QR AAPL --output quotes.png` capture a dated trade or NBBO snapshot with the current Cloud session's access delay.
 
 ### Time and sales windows
 
-`gloomberb fn TAS HYG --from 10:30 --to 10:35` lists the trades and quotes of a window of the session the tape serves, oldest first. Times are New York's clock (`14:30Z` for UTC), and either bound alone runs the window to that end of the session. A bound outside what is served is refused with the window that is. See [Time and sales](research-data.md#time-and-sales-tas-qr) for the limits.
+`gloom fn TAS HYG --from 10:30 --to 10:35` lists the trades and quotes of a window of the session the tape serves, oldest first. Times are New York's clock (`14:30Z` for UTC), and either bound alone runs the window to that end of the session. A bound outside what is served is refused with the window that is. See [Time and sales](research-data.md#time-and-sales-tas-qr) for the limits.
 
-`gloomberb fn CDX` dates each index by its own trade date. While today's New York date still trades, it marks the index `so far` with its prints and last print. HY and EM add a spread equivalent of their price. `fn CDX --explain` defines the columns, and [Index and sovereign CDS](credit-reference.md) explains points, upfront, the roll and the conversion.
+`gloom fn CDX` dates each index by its own trade date. While today's New York date still trades, it marks the index `so far` with its prints and last print. HY and EM add a spread equivalent of their price. `fn CDX --explain` defines the columns, and [Index and sovereign CDS](credit-reference.md) explains points, upfront, the roll and the conversion.
 
 ### Glossary
 
-`gloomberb catalog glossary` lists the terms the functions show, under the function that shows each (rates, auction, credit and bond yield, energy, perpetual-futures, portfolio, fund, short interest, quote-board, futures and economic-calendar terms, for AUCT, GC, BTMM, WIRP, CBR, CRD, CAT, TRACE, DVD, FUT, CTM, EPWR, PERP, PF, ETF, SI, SIW, SIV, QQ and ECO).
+`gloom catalog glossary` lists the terms the functions show, under the function that shows each (rates, auction, credit and bond yield, energy, perpetual-futures, portfolio, fund, short interest, quote-board, futures and economic-calendar terms, for AUCT, GC, BTMM, WIRP, CBR, CRD, CAT, TRACE, DVD, FUT, CTM, EPWR, PERP, PF, ETF, SI, SIW, SIV, QQ and ECO).
 
-`gloomberb catalog glossary stop-out` or `gloomberb catalog explain B/C` prints what one term means in a sentence or two, found by its name, abbreviation or another name for it. `catalog explain premium` prints both meanings: a perpetual's premium over the price it tracks, and an ETF's premium or discount to its NAV.
+`gloom catalog glossary stop-out` or `gloom catalog explain B/C` prints what one term means in a sentence or two, found by its name, abbreviation or another name for it. `catalog explain premium` prints both meanings: a perpetual's premium over the price it tracks, and an ETF's premium or discount to its NAV.
 
 **Searching the catalog**
 
-- A plain `gloomberb catalog <query>` names the terms it matches under the functions. Beside a term the query names, the related ones hold its words whole: `catalog float` relates no floating rate note. A multi-word query lists the functions that carry every word in their name or description, or the few closest when none does (`--all` lists every match).
+- A plain `gloom catalog <query>` names the terms it matches under the functions. Beside a term the query names, the related ones hold its words whole: `catalog float` relates no floating rate note. A multi-word query lists the functions that carry every word in their name or description, or the few closest when none does (`--all` lists every match).
 - A topic no function covers, such as `catalog "defense budget"`, says so and names the nearest functions. `catalog "borrow fee"`, `catalog utilization` and `catalog locate` say that borrow data is not available and name `SI`, `SIW` and `SIV`.
 - A `search` that finds no ticker lists the functions that carry every word of the query instead (`search "target weights rebalance"` names `PF`).
 
-**Explaining a report.** `gloomberb fn AUCT --explain` follows the report with the meaning of each term it shows (`data.glossary` with `term`, `short`, `definition` in `--json`; `--csv` and `--ndjson` keep the rows only). `gloomberb portfolio show <name> --explain` does the same for the rebalance table (`metadata.glossary`). Another command given `--explain` points at the glossary.
+**Explaining a report.** `gloom fn AUCT --explain` follows the report with the meaning of each term it shows (`data.glossary` with `term`, `short`, `definition` in `--json`; `--csv` and `--ndjson` keep the rows only). `gloom portfolio show <name> --explain` does the same for the rebalance table (`metadata.glossary`). Another command given `--explain` points at the glossary.
 
 **Central banks.** A search naming a central bank on the CBR board (`search "Swiss National Bank"`, `search SNB`) lists the bank's policy-rate series to chart. A FRED series id (`search DFEDTARU`) or a chart id (`search CAP:policy-rate:ch`) finds its series.
 
-`events ECB` (or another bank's name or acronym, with no exchange) answers `ECB meetings are not listed; CBR shows the rate and the next decision (gloomberb fn CBR).` The listing that shares the acronym is `events ECB:WSE`.
+`events ECB` (or another bank's name or acronym, with no exchange) answers `ECB meetings are not listed; CBR shows the rate and the next decision (gloom fn CBR).` The listing that shares the acronym is `events ECB:WSE`.
 
 **Funds.** A US-listed fund's facts (fee, NAV, premium, net assets) are in `fn ETF <symbol>`, which `ticker` and `fundamentals` point to for a fund. A fund listed elsewhere has none yet.
 
 - A fund's filings are its own: a trust that files for many funds (ProShares Trust, iShares Trust) lists only those filed under the fund's series, as EDGAR does, and `fn SEC <symbol>` keeps the trust's whole list.
 - `fn ETF` for a fund that files none of the fund forms it lists (a grantor trust such as `IBIT` or `GLD` files 10-Qs) says so and points at `fn SEC <symbol>`.
 
-**Functions behind the sign-in wall.** A pane behind the wall, such as `fn DIAG MSTR` signed out, says `Requires a free Gloom sign-in`, and `catalog DIAG` lists it under Requires (`gloomberb catalog` lists each with what it Requires).
+**Functions behind the sign-in wall.** A pane behind the wall, such as `fn DIAG MSTR` signed out, says `Requires a free Gloom sign-in`, and `catalog DIAG` lists it under Requires (`gloom catalog` lists each with what it Requires).
 
 - A report that read nothing because a wall covered the whole pane cites no source and says `the pane is locked, so no values were read` (`--json` marks it `locked`).
 - A function a wall covers whole says what a free account can still read instead and names the app's Log In and UPGRADE commands, in the same three lines as text, as the `reason` of `--json` and as the `# incomplete` line of `--csv`. An account whose email is not verified yet is told to resend the verification email.
@@ -1491,13 +1498,13 @@ The free routes the wall names, only when they have data for the ticker:
 | `fn JOBS NEM` | `fn HIRE NEM`, the free preview of the same hiring data |
 | `fn FLOW` | `options <ticker>`, a chain with each contract's volume and open interest |
 
-`gloomberb config set telemetry.crashReports false` turns off automatic crash reports, and `gloomberb config set telemetry.usage false` turns off anonymous usage counts and the command bar search log; see [Crash reports and usage counts](telemetry.md) for what each contains.
+`gloom config set telemetry.crashReports false` turns off automatic crash reports, and `gloom config set telemetry.usage false` turns off anonymous usage counts and the command bar search log; see [Crash reports and usage counts](telemetry.md) for what each contains.
 
-On the third day you open the terminal app, after a minute on screen, the status bar asks once to star Gloomberb on GitHub. `Alt+Enter` opens the repository, `Alt+Backspace` or the × hides the line, and it never comes back either way. `gloomberb config set starPrompt.enabled false` turns it off before it ever shows.
+On the third day you open the terminal app, after a minute on screen, the status bar asks once to star Gloom on GitHub. `Alt+Enter` opens the repository, `Alt+Backspace` or the × hides the line, and it never comes back either way. `gloom config set starPrompt.enabled false` turns it off before it ever shows.
 
 ### CSV and NDJSON from reports
 
-`gloomberb fn <function> --csv` writes the report's table as flat rows a spreadsheet can open. The header is the columns the text report shows (`Index,Name,Last,Change,Change %`), and every cell is a plain value.
+`gloom fn <function> --csv` writes the report's table as flat rows a spreadsheet can open. The header is the columns the text report shows (`Index,Name,Last,Change,Change %`), and every cell is a plain value.
 
 **Values**
 
@@ -1509,7 +1516,7 @@ On the third day you open the terminal app, after a minute on screen, the status
 
 **Several tables.** A report with several tables, such as `WEI` by region, writes each as its own block: a `# section: <title>` line, the header, the rows, and a blank line.
 
-- `--section <title or number>` (any case, numbered from 1) writes only that table (`gloomberb fn WEI --csv --section europe`). The start of a title is enough when no other starts the same way (`fn OPX IBIT --csv --section strikes`), and an unknown section fails and lists the report's.
+- `--section <title or number>` (any case, numbered from 1) writes only that table (`gloom fn WEI --csv --section europe`). The start of a title is enough when no other starts the same way (`fn OPX IBIT --csv --section strikes`), and an unknown section fails and lists the report's.
 - `CALLS` keeps `--section` as the transcript part it reads.
 
 **Empty reports.** A series report with no rows fails `--csv` and `--ndjson` (exit 1) instead of writing a header alone, saying what was asked and what to try. Other reports, such as a list a filter leaves empty, still write their header.
@@ -1536,7 +1543,7 @@ A row's own `symbol` and `currency` fill the first two when a command does not s
 
 `fundamentals` and `valuation` follow the same rules: `Metric,Value` rows with the unit in each label (`Market Cap (ZAR)`, `Dividend Yield (forward) (%)`), and for `fundamentals` a second `Profile` table. `financials --csv` writes the statement table with plain amounts under its displayed columns. All three end with the source line.
 
-**How far back.** `financials` and `fn FA` close with how far back their periods go (`annual history from 2021; older years not served`, and for `--period quarterly` the oldest quarter), and the route to more: `gloomberb fn GF KO --period annual --periods 40` reads one metric over every period it holds.
+**How far back.** `financials` and `fn FA` close with how far back their periods go (`annual history from 2021; older years not served`, and for `--period quarterly` the oldest quarter), and the route to more: `gloom fn GF KO --period annual --periods 40` reads one metric over every period it holds.
 
 **An old latest period.** A latest period over 15 months old is said first (`Latest period 2024-06-30 is 27 months old.`), and a newer column with only some figures (an EPS alone) is named instead of read as current. FA's ratio tabs say it too, and it is a `# note:` in `--csv` and `notes` in `--json`.
 
@@ -1544,7 +1551,7 @@ A row's own `symbol` and `currency` fill the first two when a command does not s
 
 ### How current a report is
 
-Every `gloomberb fn` text report ends with one line naming its source and saying how current its data is: when it is from, how far it is held back, and where its markets stand, such as `Source: Gloom Cloud · US trading day Fri 9 Oct 2026 close · 15 min delayed · markets closed until Mon`.
+Every `gloom fn` text report ends with one line naming its source and saying how current its data is: when it is from, how far it is held back, and where its markets stand, such as `Source: Gloom Cloud · US trading day Fri 9 Oct 2026 close · 15 min delayed · markets closed until Mon`.
 
 The plain commands that print market data end the same way: `quote`, `compare`, `ticker`, `history`, `financials`, `fundamentals`, `valuation`, `options`, `news`, `filings`, `holders`, `insider`, `13f`, `analyst`, `events`, `earnings`, `movers`, `indices`, `sectors`, `econ`, `fx`, `fred`, `yield-curve`, `correlation`, and `portfolio show` / `watchlist show`.
 
@@ -1595,7 +1602,7 @@ A command that shows a copy saved earlier because it could not refresh says `cou
 - What Gloom Pro would unlock is not a failure: the report says it once, on one `Pro:` line ending with where to get it (`· gloom.sh/cloud`), and leaves out the tables the free view held back.
 - `--json` carries `data.notes` and `data.errors` (the Pro lines among the errors), and a note never marks a report incomplete.
 
-**In `shot` images.** `gloomberb shot` draws the same line in the pane footer. A pane whose report says what its data is ends as its `fn` report does, source first (`shot COT BTC` reads `Source: CFTC · Tue 6 Oct 2026 · not a live feed (weekly report)`).
+**In `shot` images.** `gloom shot` draws the same line in the pane footer. A pane whose report says what its data is ends as its `fn` report does, source first (`shot COT BTC` reads `Source: CFTC · Tue 6 Oct 2026 · not a live feed (weekly report)`).
 
 A pane of quotes (`QQ`, a price chart, `HP`, `DES`) shows the market line without the source. In a narrow image the line keeps the date and the delay and shortens the rest first.
 
@@ -1635,7 +1642,7 @@ A plugin installed or updated from the pane loads into the running session at on
 
 You do not need the pane to get an official plugin. Type its code, such as `TV`, `POLL`, `PM`, `HN` or `SUB`, and the command bar offers to install it after the same confirmation, then opens it with whatever you typed after the code.
 
-**Updates.** Official plugins, the ones published under [github.com/gloom-sh](https://github.com/gloom-sh), update in the background once after Gloomberb itself updates, then at most once a day. A plugin you linked or edited locally is left alone. Third-party plugins update only when you press `g` or run `gloomberb update`. **Update official plugins automatically** in this pane's settings turns it off.
+**Updates.** Official plugins, the ones published under [github.com/gloom-sh](https://github.com/gloom-sh), update in the background once after Gloom itself updates, then at most once a day. A plugin you linked or edited locally is left alone. Third-party plugins update only when you press `g` or run `gloom update`. **Update official plugins automatically** in this pane's settings turns it off.
 
 ## What a portfolio is priced at
 
@@ -1643,7 +1650,7 @@ Value, P&L, weights and the total are priced at each holding's latest print, pre
 
 ### Pricing at the regular close
 
-`gloomberb portfolio show <name> --close` prices the book at the regular close instead: Value is Last times the shares, and P&L, weights, trades and the total follow.
+`gloom portfolio show <name> --close` prices the book at the regular close instead: Value is Last times the shares, and P&L, weights, trades and the total follow.
 
 - `As of` is the venue's close (`Fri 9 Oct 20:00` for a US listing). `Day's move: +$1,165.49 (+0.51%)` under the table is the holdings' move from the close before.
 - `fn PF <portfolio> --close` does the same, with the day's move above its table. Both end their source line with the basis (`priced at the regular close`).
@@ -1664,7 +1671,7 @@ The `--json` and `--csv` rows of `portfolio show` and `fn PF` end with `valuatio
 
 ### Shorts
 
-A position's size is signed: a negative size is a short. `gloomberb portfolio position set Hedge GC=F -10 4216.30` holds ten gold contracts short (`position set` with `0` is refused, `portfolio remove` drops a holding). A short's value, cost and P&L are negative wherever they show.
+A position's size is signed: a negative size is a short. `gloom portfolio position set Hedge GC=F -10 4216.30` holds ten gold contracts short (`position set` with `0` is refused, `portfolio remove` drops a holding). A short's value, cost and P&L are negative wherever they show.
 
 ### Futures held in contracts
 
@@ -1740,15 +1747,15 @@ The broker's last account snapshot is kept across restarts, and the footer gives
 
 ## Dividend income and DRIP
 
-`gloomberb portfolio show <name>` adds Income and Yield for a portfolio of shares or funds. **Income** is a year of trailing dividends on the shares held, in the portfolio's currency, and **Yield** is that over the holding's value (on TOTAL, over the whole portfolio, cash included). A short owes the dividend, so its income is negative.
+`gloom portfolio show <name>` adds Income and Yield for a portfolio of shares or funds. **Income** is a year of trailing dividends on the shares held, in the portfolio's currency, and **Yield** is that over the holding's value (on TOTAL, over the whole portfolio, cash included). A short owes the dividend, so its income is negative.
 
 A holding whose income is unknown shows `—`, and so does the total, never $0. One line under the table names the cause (no dividend history, no exchange rate, or not read: signed out, offline or past the four-second deadline).
 
 ```bash
-gloomberb portfolio show Income                                  # Income and Yield columns
-gloomberb portfolio show Income --drip --years 3 --withholding 20 # reinvested shares and income per year
-gloomberb fn DVD KO PEP JNJ SBK.JO                              # rank payers by yield
-gloomberb fundamentals MUB --tax-rate 40.8                      # a muni fund's tax-equivalent yield
+gloom portfolio show Income                                  # Income and Yield columns
+gloom portfolio show Income --drip --years 3 --withholding 20 # reinvested shares and income per year
+gloom fn DVD KO PEP JNJ SBK.JO                              # rank payers by yield
+gloom fundamentals MUB --tax-rate 40.8                      # a muni fund's tax-equivalent yield
 ```
 
 `--drip` projects what reinvesting the dividends adds, year by year for `--years` (1 to 5, default 5), net of `--withholding` percent (default 0): each holding's shares after the last year and its net income each year. Today's dividends, prices and exchange rates are held flat and reinvested once a year.
@@ -1757,12 +1764,12 @@ gloomberb fundamentals MUB --tax-rate 40.8                      # a muni fund's 
 
 ## Importing a manager's 13F as a portfolio
 
-`gloomberb portfolio import --13f <CIK|fund name>` makes a manual portfolio from a manager's latest 13F, to follow it in `PF` and `PORT`:
+`gloom portfolio import --13f <CIK|fund name>` makes a manual portfolio from a manager's latest 13F, to follow it in `PF` and `PORT`:
 
 ```bash
-gloomberb portfolio import --13f 0001067983 --top 10                 # "BERKSHIRE HATHAWAY INC 13F"
-gloomberb portfolio import --13f 0001067983 --name "Buffett 25" --top 25 --notional 250000
-gloomberb portfolio import --13f 0001067983 --top 10 --replace       # refill the portfolio of that name
+gloom portfolio import --13f 0001067983 --top 10                 # "BERKSHIRE HATHAWAY INC 13F"
+gloom portfolio import --13f 0001067983 --name "Buffett 25" --top 25 --notional 250000
+gloom portfolio import --13f 0001067983 --top 10 --replace       # refill the portfolio of that name
 ```
 
 - It takes the `--top` largest common-stock lines by reported value (10 by default, at most 100) whose ticker resolves to a listing. Options, principal amounts, preferred stock, warrants, rights, debt and CUSIPs without a ticker are skipped, each listed with the reason.
@@ -1772,14 +1779,14 @@ gloomberb portfolio import --13f 0001067983 --top 10 --replace       # refill th
 
 ## Cash, target weights and rebalancing
 
-A portfolio can hold cash beside its positions and a target weight for each holding. `PF` and `gloomberb portfolio show` then show how far each holding is from its target and the trade that would bring it back.
+A portfolio can hold cash beside its positions and a target weight for each holding. `PF` and `gloom portfolio show` then show how far each holding is from its target and the trade that would bring it back.
 
 ```bash
-gloomberb portfolio cash set Retirement 500000 USD     # or: cash clear Retirement
-gloomberb portfolio target set Retirement VTI 30%      # 30 and 30% are the same
-gloomberb portfolio target set Retirement CASH 25
-gloomberb portfolio target show Retirement             # or: target clear Retirement [VTI]
-gloomberb portfolio show Retirement                    # --csv and --json keep raw numbers
+gloom portfolio cash set Retirement 500000 USD     # or: cash clear Retirement
+gloom portfolio target set Retirement VTI 30%      # 30 and 30% are the same
+gloom portfolio target set Retirement CASH 25
+gloom portfolio target show Retirement             # or: target clear Retirement [VTI]
+gloom portfolio show Retirement                    # --csv and --json keep raw numbers
 ```
 
 **Amounts** (cash, `position set` shares and cost, `target set`, `--notional`) read with either decimal mark: `1.234,5`, `1234,5` and `1,234.5` are 1234.5, `18,50` is 18.5, and a space (in quotes) or `_` may group thousands. A comma or a dot before exactly three digits goes by what the number counts:
@@ -1803,7 +1810,7 @@ In `PF`, a portfolio with targets shows `WEIGHT`, `TGT WT`, `DRIFT` and `TRADE` 
 
 ## Broker position sync
 
-Press `a` in the **Brokers** pane (`BR`), or run **Add Broker Account**, to connect a broker (**New Portfolio** can start from one too). Gloomberb imports positions from Interactive Brokers, Public, Robinhood and SimpleFIN. Each broker is a plugin with its own repository, installed on first launch and updatable on its own, from the plugin directory or `gloomberb install gloom-sh/gloom-public` and friends.
+Press `a` in the **Brokers** pane (`BR`), or run **Add Broker Account**, to connect a broker (**New Portfolio** can start from one too). Gloom imports positions from Interactive Brokers, Public, Robinhood and SimpleFIN. Each broker is a plugin with its own repository, installed on first launch and updatable on its own, from the plugin directory or `gloom install gloom-sh/gloom-public` and friends.
 
 - **Interactive Brokers** opens a browser sign-in page through Gloom and ends that sign-in seven days after you approve it, however often it syncs. A day before, the profile's status in `BR` shows when it ends. `c` signs in again and the seven days start over.
 - **Robinhood** opens a browser sign-in page and uses only the read-only account and equity-position tools of the Robinhood Trading MCP server.
@@ -1833,7 +1840,7 @@ A broker can declare bond cost and mark prices as `percent-of-par`: quantity is 
 
 ## Gloom Cloud sign-in
 
-Sign in with email and password, or pick `Log In with QR Code` from the command bar and scan the code with the Gloomberb mobile companion app (the onboarding wizard recommends it).
+Sign in with email and password, or pick `Log In with QR Code` from the command bar and scan the code with the Gloom mobile companion app (the onboarding wizard recommends it).
 
 Signed in, your layouts, settings, portfolios and watchlists sync between your devices. What each pane is showing (cursor, open detail, scroll position) and which floating pane is on top stay on each device. If two devices change the layouts before either has synced, the later change wins.
 
@@ -1853,7 +1860,7 @@ An assistant connected to the Gloom Cloud MCP with Terminal control (Cloud setti
 - While an assistant works, its name shows in the status bar. A click opens Account Management on the Agents tab, where `r` revokes it so its next call asks again. The `MCP` dialog says how many assistants are allowed, and `m` opens the same tab.
 - Credentials in the configuration never leave the app.
 
-`gloomberb remote` drives the open app the same way from this machine. A watchlist change through it, such as `gloomberb remote call watchlist.add '{"symbol":"MSFT","watchlist":"Tech"}'`, opens a confirmation in the app. Enter or `y` makes the change, `n` or Esc leaves the list alone, and the call answers with what happened.
+`gloom remote` drives the open app the same way from this machine. A watchlist change through it, such as `gloom remote call watchlist.add '{"symbol":"MSFT","watchlist":"Tech"}'`, opens a confirmation in the app. Enter or `y` makes the change, `n` or Esc leaves the list alone, and the call answers with what happened.
 
 ## Chat
 
@@ -2026,7 +2033,7 @@ Rate an answer with the thumbs under it (`+1` and `-1` in the terminal), or `g` 
 - **History** shows the last ten years of annual filing cohorts. Select an observation to inspect its filing.
 - **Filing** shows currency, source concepts, interest expense, the borrowing-cost proxy when supported, and percentile coverage. `o` opens the selected filing.
 
-`gloomberb fn DDIS MSFT --json` gives the source amounts, complete filing history, ranks and provenance. `gloomberb shot DDIS MSFT --tab history` (or `--tab filing`) captures a tab. Missing facts stay unavailable, and unsupported issuers do not appear to have zero debt.
+`gloom fn DDIS MSFT --json` gives the source amounts, complete filing history, ranks and provenance. `gloom shot DDIS MSFT --tab history` (or `--tab filing`) captures a tab. Missing facts stay unavailable, and unsupported issuers do not appear to have zero debt.
 
 ## Statement filings and bank figures
 
@@ -2052,7 +2059,7 @@ For a US bank holding company, `fundamentals` adds a Bank section:
 
 Each line names its quarter and the date its filing was filed or the FDIC data was built. The FDIC figures are the lead bank's, not the holding company's consolidated ones. A part that cannot be read becomes one line saying so, never an error. A company outside banking has no Bank section.
 
-- Net interest margin is a Pro figure in EQS: the section's last line gives the `gloomberb fn EQS --metric kpiNimPercent` command for the ticker.
+- Net interest margin is a Pro figure in EQS: the section's last line gives the `gloom fn EQS --metric kpiNimPercent` command for the ticker.
 - `--json` carries the figures as `bank`, with each one's SEC filing or FDIC source URL, retrieval time and hash. `--csv` adds a `Bank` table.
 - `catalog NIM`, `catalog deposits`, `catalog CRE` and `catalog bank`, and `fn NIM <ticker>`, point here.
 
@@ -2067,7 +2074,7 @@ A thesis is why you hold something, written so it can be checked: the instrument
 
 ## Localized interface
 
-Gloomberb includes English, Spanish, Simplified Chinese, Traditional Chinese, Japanese and Korean, with English as the fallback.
+Gloom includes English, Spanish, Simplified Chinese, Traditional Chinese, Japanese and Korean, with English as the fallback.
 
 - Supported `LANG` / `LC_ALL` and desktop system locales select the matching interface automatically.
 - `LANG` in the command bar (Ctrl+P) cycles languages, or use `LANG auto`, `LANG en`, `LANG es`, `LANG zh-CN`, `LANG zh-TW`, `LANG ja`, `LANG ko`. The choice is saved in `config.json`.
@@ -2095,15 +2102,15 @@ Each built-in plugin can be switched on or off in `PL`. The Commodities & Energy
 
 A research tab belongs to the plugin of its function: switching off Ownership & Insiders removes the Holders, 13F, Insider, Short Interest and Congress tabs. Switching a plugin off hides its panes without closing them, and they come back with their state when it is switched on. Typing one of its codes in the command bar offers **Turn on**.
 
-The old ids `ticker-research`, `macro` and `market-overview` still switch a whole group (`gloomberb plugin disable macro` turns off every successor). Credit & Bonds and Earnings belong to both Ticker Research and Macro, and Supply Chain & Alt Data and Quant to both Ticker Research and Market Overview.
+The old ids `ticker-research`, `macro` and `market-overview` still switch a whole group (`gloom plugin disable macro` turns off every successor). Credit & Bonds and Earnings belong to both Ticker Research and Macro, and Supply Chain & Alt Data and Quant to both Ticker Research and Market Overview.
 
-Polls lives in its own repository, so it can ship a fix the day the third-party site it reads changes. Existing installations restore it once after upgrading with their saved panes, and a deliberate removal is respected. To install it by hand: `gloomberb install gloom-sh/gloom-polls`.
+Polls lives in its own repository, so it can ship a fix the day the third-party site it reads changes. Existing installations restore it once after upgrading with their saved panes, and a deliberate removal is respected. To install it by hand: `gloom install gloom-sh/gloom-polls`.
 
-Fear & Greed, Market Heatmap, Market Halts and the IPO Calendar are built in, with the same panes, shortcuts and settings. A copy installed earlier as a plugin is no longer loaded: `gloomberb plugins` lists it, and `gloomberb remove gloom-fear-greed` (or `gloom-market-heatmap`, `gloom-market-halts`, `gloom-ipo-calendar`) deletes it.
+Fear & Greed, Market Heatmap, Market Halts and the IPO Calendar are built in, with the same panes, shortcuts and settings. A copy installed earlier as a plugin is no longer loaded: `gloom plugins` lists it, and `gloom remove gloom-fear-greed` (or `gloom-market-heatmap`, `gloom-market-halts`, `gloom-ipo-calendar`) deletes it.
 
 ## Live TV
 
-Install [TV](https://github.com/gloom-sh/gloom-tv) with `gloomberb install gloom-sh/gloom-tv`. Live TV in the terminal also requires `mpv` with Kitty video output. Gloomberb resolves the stream in JavaScript and runs `mpv` with its `yt-dlp` integration disabled, so `yt-dlp` is not required.
+Install [TV](https://github.com/gloom-sh/gloom-tv) with `gloom install gloom-sh/gloom-tv`. Live TV in the terminal also requires `mpv` with Kitty video output. Gloom resolves the stream in JavaScript and runs `mpv` with its `yt-dlp` integration disabled, so `yt-dlp` is not required.
 
 ## Options scenarios
 
@@ -2130,8 +2137,8 @@ The current draft, selected date, vol shift and selected leg resume with the lay
 Both `fn` and `shot` accept explicit inputs for reproducible analysis:
 
 ```sh
-gloomberb fn OSA AAPL --legs 'call,100,2026-12-18,1,5,25;call,110,2026-12-18,-1,2,25' --spot 100 --rate 4 --dividend-yield 1 --currency USD --as-of 2026-09-22 --date 2026-10-22 --vol-shift 3 --json
-gloomberb shot OSA AAPL --legs 'call,100,2026-12-18,1,5,25;call,110,2026-12-18,-1,2,25' --spot 100 --rate 4 --dividend-yield 1 --currency USD --as-of 2026-09-22 --date 2026-10-22 --vol-shift 3 --tab payoff --output osa-payoff.png
+gloom fn OSA AAPL --legs 'call,100,2026-12-18,1,5,25;call,110,2026-12-18,-1,2,25' --spot 100 --rate 4 --dividend-yield 1 --currency USD --as-of 2026-09-22 --date 2026-10-22 --vol-shift 3 --json
+gloom shot OSA AAPL --legs 'call,100,2026-12-18,1,5,25;call,110,2026-12-18,-1,2,25' --spot 100 --rate 4 --dividend-yield 1 --currency USD --as-of 2026-09-22 --date 2026-10-22 --vol-shift 3 --tab payoff --output osa-payoff.png
 ```
 
 The leg format is `call|put,strike,YYYY-MM-DD,signed contracts,entry price,IV percent[,multiplier]`, separated by semicolons. `--tab` accepts `payoff`, `grid` and `legs`, and `--spot-range` is the percentage range either side of spot.
@@ -2145,7 +2152,7 @@ Omit market overrides to use current sources. Without `--currency` the position 
 To size a protective put against a budget, add `--nav` and `--budget-bps`, and `--sleeve` for coverage:
 
 ```sh
-gloomberb fn OSA SPY --strategy put --strike 700 --expiration 2027-01-15 --nav 100m --budget-bps 50 --sleeve 100m
+gloom fn OSA SPY --strategy put --strike 700 --expiration 2027-01-15 --nav 100m --budget-bps 50 --sleeve 100m
 ```
 
 The **Hedge budget** block gives how many contracts the budget buys (whole contracts, rounded down), the price it sized at, the premium spent and its bps of NAV, the notional protected and its share of NAV, and the coverage of the sleeve. A seeded put is bought at the ask, a typed leg at its entry price. The sizing is defined under [Options scenario analysis](research-data.md#hedge-budget).
@@ -2153,7 +2160,7 @@ The **Hedge budget** block gives how many contracts the budget buys (whole contr
 To sell a cash-secured put, `--strategy csp` seeds one short put at its quote midpoint, at `--strike` or, with `--delta 0.30`, the put whose delta is nearest -0.30:
 
 ```sh
-gloomberb fn OSA KO --strategy csp --strike 85 --expiration 2026-11-20
+gloom fn OSA KO --strategy csp --strike 85 --expiration 2026-11-20
 ```
 
 The **Cash-secured put** block gives the cash secured, the premium received, yield on cash and annualised, the put's bid, ask and spread with the premium and annualised yield at the bid (what a sell order fills at), how far the strike is below spot, the break-even, days to expiry, and whether the next earnings report falls before expiry.
@@ -2163,8 +2170,8 @@ GS's November 820 put at 5.40/6.75 yields 9.01% a year at the 6.075 mid and 8.01
 To rank puts across several names, `CSP` sells the same put on each: the one nearest `--delta` (0.30) on the listed expiry nearest `--days` out (30) or `--expiration`, highest annualised yield at the bid first:
 
 ```sh
-gloomberb fn CSP JPM GS KO AAPL XOM
-gloomberb fn CSP JPM GS KO --delta 0.20 --days 45 --max-spread 15
+gloom fn CSP JPM GS KO AAPL XOM
+gloom fn CSP JPM GS KO --delta 0.20 --days 45 --max-spread 15
 ```
 
 Each row has the expiry, days to it, strike, bid, ask, spread as a percent of the mid, delta, how far out of the money, annualised yield at the mid and at the bid, the 30-day IV rank and the earnings flag. A spread over `--max-spread` (10% of the mid by default) is marked `wide` and still ranked, and a name with no chain is listed last with why.
@@ -2176,7 +2183,7 @@ Each row has the expiry, days to it, strike, bid, ask, spread as a percent of th
 To collar shares, `--strategy collar` buys the put at `--put-strike` and sells the call at `--call-strike` on the `--expiration` chain, each at its quote midpoint (the strikes nearest 10% below and above spot when omitted), and holds the 100 shares per contract they cover:
 
 ```sh
-gloomberb fn OSA GLD --strategy collar --put-strike 345 --call-strike 420 --expiration 2027-09-30
+gloom fn OSA GLD --strategy collar --put-strike 345 --call-strike 420 --expiration 2027-09-30
 ```
 
 The **Collar** block gives the put bought, the call sold, the net premium (a credit or a debit), and the floor and the cap per share and how far each is from spot, and expiry risk gives the hedged position's breakevens, maximum profit and maximum loss. `--shares 0` values the options alone. Each figure is defined under [Collar](research-data.md#collar).
@@ -2192,9 +2199,9 @@ The **Collar** block gives the put bought, the call sold, the net premium (a cre
 - Switching back to European BS deactivates the American cash schedule but keeps it for later. The model, tree settings and schedule resume with the pane.
 
 ```sh
-gloomberb fn OVME --model american --side put --spot 100 --strike 100 --days 365 --volatility 20 --rate 5 --dividend-yield 0 --dividends '30:1;120:1' --steps 800 --json
-gloomberb fn OVME --model american --symbol AAPL --spot 340 --strike 340 --days 90 --rate 4 --dividend-yield 0 --vol-source surface --json
-gloomberb shot OVME --model american --side put --spot 100 --strike 100 --days 30 --volatility 25 --rate 4 --dividends '10:1;20:1' --width 1080 --height 360 --output ovme-american.png
+gloom fn OVME --model american --side put --spot 100 --strike 100 --days 365 --volatility 20 --rate 5 --dividend-yield 0 --dividends '30:1;120:1' --steps 800 --json
+gloom fn OVME --model american --symbol AAPL --spot 340 --strike 340 --days 90 --rate 4 --dividend-yield 0 --vol-source surface --json
+gloom shot OVME --model american --side put --spot 100 --strike 100 --days 30 --volatility 25 --rate 4 --dividends '10:1;20:1' --width 1080 --height 360 --output ovme-american.png
 ```
 
 - CLI rates and IV are percentages. `--market-price` is a per-unit premium and uses the selected model's IV solver. Explicit input-volatility calculations run without market access.
@@ -2206,7 +2213,7 @@ gloomberb shot OVME --model american --side put --spot 100 --strike 100 --days 3
 
 `RRG` or `GRR` opens US sector ETFs versus SPY. `RRG AAPL:NASDAQ,MSFT:NASDAQ` uses an explicit universe. Pane settings choose the benchmark, a linked watchlist or portfolio, custom symbols and a 2-12-week trail (six by default). The maximum is 24 instruments.
 
-Select a coloured table row to locate its trail, and open it for dated strength and momentum history. Click column headers to sort. CSV export is in the pane menu. `gloomberb fn RRG --benchmark SPY:NYSEARCA --trail 6 --json` returns metrics, dated trails, rank sample counts and data limitations.
+Select a coloured table row to locate its trail, and open it for dated strength and momentum history. Click column headers to sort. CSV export is in the pane menu. `gloom fn RRG --benchmark SPY:NYSEARCA --trail 6 --json` returns metrics, dated trails, rank sample counts and data limitations.
 
 ## Position sizing: KELLY
 
@@ -2215,7 +2222,7 @@ Select a coloured table row to locate its trail, and open it for dated strength 
 - **Binary, Scenario, Risk, Market and Asym** take your own probabilities and payoffs.
 - **History** reads them off the ticker's own daily closes: the share of up months, the mean gain of the up months and the mean loss of the down months, over non-overlapping 21-session returns for the last five years (`Years` sets one to five). It is sized as a binary bet, so full Kelly maximizes expected log growth. Past months are not a forecast, and fewer than six of them give no inputs.
 
-`gloomberb fn KELLY LIT` prints History's inputs (window, win rate, average gain and loss, payoff ratio, edge a month) and full, half and quarter Kelly as a share of bankroll. `--bankroll 250000` (or `250k`, `1.5m`) sizes each in your base currency, and `--years 1` shortens the window. `gloomberb shot KELLY LIT --bankroll 250000` opens the pane on History with that bankroll.
+`gloom fn KELLY LIT` prints History's inputs (window, win rate, average gain and loss, payoff ratio, edge a month) and full, half and quarter Kelly as a share of bankroll. `--bankroll 250000` (or `250k`, `1.5m`) sizes each in your base currency, and `--years 1` shortens the window. `gloom shot KELLY LIT --bankroll 250000` opens the pane on History with that bankroll.
 
 ## Portfolio risk depth: PORT and MARS
 
@@ -2237,11 +2244,11 @@ The return rows and tracking error are measured against SPY (`60D benchmark retu
 Performance, Brinson attribution and imported option Greeks use the versioned local JSON schema in [research data](research-data.md#local-account-evidence). The pane does not derive account cashflows from current holdings. Evidence stays private and must match the portfolio ID and currency.
 
 ```sh
-gloomberb fn PORT main --json
-gloomberb fn MARS main --view factors --json
-gloomberb fn PORT main --view stress --equity-shift -15 --rate-shift 100 --vol-shift 10
-gloomberb fn PORT berkshire-hathaway-inc-13f --view risk --since filed
-gloomberb shot PORT main --width 1100 --height 620 --output portfolio-risk.png
+gloom fn PORT main --json
+gloom fn MARS main --view factors --json
+gloom fn PORT main --view stress --equity-shift -15 --rate-shift 100 --vol-shift 10
+gloom fn PORT berkshire-hathaway-inc-13f --view risk --since filed
+gloom shot PORT main --width 1100 --height 620 --output portfolio-risk.png
 ```
 
 Risk, Factors, Correlation and Stress model the equity holdings with daily history, up to the 150 largest by value. A listing quoted in another currency is converted to USD at daily FX closes. In a portfolio whose currency is not USD, money returns, values and tail losses are in that currency (`Returns in TRY at daily USD/TRY closes.`).
@@ -2293,19 +2300,19 @@ Choose **Check ticker** (`t`) in Results or Criteria, enter a ticker such as `NV
 The same check runs without a pane:
 
 ```sh
-gloomberb fn EQS --check NVDA
-gloomberb fn EQS --check NVDA --saved "Growth" --json
-gloomberb fn EQS --check NVDA --definition '{"version":1,"currency":"USD","criteria":[{"field":"trailingPE","op":"lte","value":25}],"sort":{"field":"marketCap","direction":"desc"}}'
+gloom fn EQS --check NVDA
+gloom fn EQS --check NVDA --saved "Growth" --json
+gloom fn EQS --check NVDA --definition '{"version":1,"currency":"USD","criteria":[{"field":"trailingPE","op":"lte","value":25}],"sort":{"field":"marketCap","direction":"desc"}}'
 ```
 
 `--saved` takes a saved screen's ID or exact name and cannot be combined with `--definition`. With neither, the check uses the default screen. JSON includes the raw criterion values and verdicts, overall match status, definition and snapshot. Saving and opening screens need an account, and checking Pro criteria needs Gloom Pro.
 
 ### Screening from the command line
 
-`gloomberb fn EQS --metric trailingPE --json` returns the first 100 matches with the snapshot, match and coverage counts, and the chosen metric's date and state per row. A notice says when more rows match (narrow the criteria to reach them). An extended-hours print has its own column (`extendedPrice`, `extendedChangePercent` in JSON). `--definition` accepts versioned JSON with `criteria`, `currency` and `sort`:
+`gloom fn EQS --metric trailingPE --json` returns the first 100 matches with the snapshot, match and coverage counts, and the chosen metric's date and state per row. A notice says when more rows match (narrow the criteria to reach them). An extended-hours print has its own column (`extendedPrice`, `extendedChangePercent` in JSON). `--definition` accepts versioned JSON with `criteria`, `currency` and `sort`:
 
 ```sh
-gloomberb fn EQS --definition '{"version":1,"currency":"USD","criteria":[{"field":"trailingPE","op":"between","value":[0,25]},{"field":"revenueGrowthPercent","op":"gte","value":10}],"sort":{"field":"marketCap","direction":"desc"}}' --json
+gloom fn EQS --definition '{"version":1,"currency":"USD","criteria":[{"field":"trailingPE","op":"between","value":[0,25]},{"field":"revenueGrowthPercent","op":"gte","value":10}],"sort":{"field":"marketCap","direction":"desc"}}' --json
 ```
 
 Company KPIs and guidance (`kpiBacklog`, `kpiNimPercent`, ...) and hiring and app attention are Pro. On Free their rows read `locked` and the report says so once (`The free screener shows no KPI values; Gloom Pro shows each company's Backlog`). With Pro, a KPI column with gaps says how many rows have none, and missing data is not zero.
@@ -2323,7 +2330,7 @@ close > highest(55)
 - **Operands:** `close`, `open`, `high`, `low`, a number, `weekday` (1 Monday to 7 Sunday), `day_of_month` (1 to 31), `sma(n)`, `ema(n)`, `rsi(n)`, `macd(fast,slow,signal)`, `macd_signal(fast,slow,signal)`, `bb_upper(n,k)`, `bb_lower(n,k)`, `highest(n)` and `lowest(n)`.
 - **Comparisons:** `>`, `<`, `>=`, `<=`, `==`, `!=`, `crosses above` and `crosses below`.
 - `weekday` and `day_of_month` are the session's UTC calendar date. Like any rule, it fills at the next session's open, so `--entry 'weekday == 3' --exit 'weekday == 4'` holds from Thursday's open to Friday's.
-- A rule that cannot be read lists every operand and comparison, and `gloomberb fn BT --help` does too.
+- A rule that cannot be read lists every operand and comparison, and `gloom fn BT --help` does too.
 
 Settings also choose the lookback (5 years, 10 years or all history) and the cost per side in basis points.
 
@@ -2341,13 +2348,13 @@ Settings also choose the lookback (5 years, 10 years or all history) and the cos
 - `--include-partial` keeps a session still forming, whose close moves until the day ends.
 - `--equity` reports the daily curve instead of the summary: each session's close in the listing's currency, the position (1 long, 0 flat), the strategy's and buy-and-hold's growth of 1 on the price alone (the CSV headers say `price return, distributions not included`) and the drawdown in percent, every digit in `--csv` and `--json`.
 - In `--csv` each summary row names its own unit (`%`, `ratio`, `trades`, `sessions`), trade prices are in the listing's currency, and the file closes with the run's warnings and notes.
-- `gloomberb fn BT --help` lists every option.
+- `gloom fn BT --help` lists every option.
 
 ```sh
-gloomberb fn BT AAPL --json
-gloomberb fn BT SPY --preset custom --entry 'close > sma(200)' --exit 'close < sma(200)' --lookback max --cost 2
-gloomberb fn BT BTC-USD --preset trend-200 --end 2026-10-16 --csv --equity > btc-trend.csv
-gloomberb shot BT NVDA --preset breakout-55-20 --output nvda-breakout.png
+gloom fn BT AAPL --json
+gloom fn BT SPY --preset custom --entry 'close > sma(200)' --exit 'close < sma(200)' --lookback max --cost 2
+gloom fn BT BTC-USD --preset trend-200 --end 2026-10-16 --csv --equity > btc-trend.csv
+gloom shot BT NVDA --preset breakout-55-20 --output nvda-breakout.png
 ```
 
 ### Credit documents (CRDOC / COVN)

@@ -77,8 +77,31 @@ export function canonicalTimeZone(value: string): string | null {
  * an unknown name or a zone that is UTC all year prints UTC alone.
  */
 export function setDisplayTimeZone(zone: string | null | undefined): void {
+  displayZone = readerTimeZone(zone);
+}
+
+/** The zone a configured name shows a second clock in: null when unset, unknown or UTC all year. */
+export function readerTimeZone(zone: string | null | undefined): string | null {
   const canonical = zone ? canonicalTimeZone(zone) : null;
-  displayZone = canonical && !UTC_ZONES.has(canonical.toUpperCase()) ? canonical : null;
+  return canonical && !UTC_ZONES.has(canonical.toUpperCase()) ? canonical : null;
+}
+
+/** A zone's city, to head a column of its clock: `New York` for America/New_York. */
+export function timeZoneCity(zone: string): string {
+  return zone.split("/").at(-1)!.replaceAll("_", " ");
+}
+
+/**
+ * An instant on a zone's clock: its date, `08:00`, and the label a column
+ * prints, which leads with the weekday (`Tue 21:30`) when that clock is on
+ * another day than the instant's UTC date.
+ */
+export function zonedClock(time: number, zone: string): { date: string; time: string; label: string } {
+  const local = zonedDateTimeParts(time, zone);
+  const date = `${local.year}-${String(local.month).padStart(2, "0")}-${String(local.day).padStart(2, "0")}`;
+  const clock = `${String(local.hour).padStart(2, "0")}:${String(local.minute).padStart(2, "0")}`;
+  const otherDay = date !== new Date(time).toISOString().slice(0, 10);
+  return { date, time: clock, label: otherDay ? `${WEEKDAYS[new Date(`${date}T00:00:00Z`).getUTCDay()]} ${clock}` : clock };
 }
 
 /**

@@ -118,8 +118,8 @@ test("securities-lending data is said to be unavailable, with short interest as 
 });
 
 test("NIM, deposits, CRE and bank are pointed at the Bank section of fundamentals and EQS; bank still lists CBR", async () => {
-  const topic = "Bank deposits, uninsured share and CRE / capital: in the Bank section of gloomberb fundamentals <ticker>; "
-    + "net interest margin: EQS (NIM%, Pro: gloomberb fn EQS --metric kpiNimPercent)";
+  const topic = "Bank deposits, uninsured share and CRE / capital: in the Bank section of gloom fundamentals <ticker>; "
+    + "net interest margin: EQS (NIM%, Pro: gloom fn EQS --metric kpiNimPercent)";
   for (const query of ["NIM", "deposits", "CRE", "net interest margin", "JPM NIM", "commercial real estate", "uninsured deposits"]) {
     expect(knownGapMessage(query), query).toBe(topic);
     expect(topicPointer(query)?.codes, query).toEqual(["EQS"]);
@@ -130,8 +130,8 @@ test("NIM, deposits, CRE and bank are pointed at the Bank section of fundamental
   expect(catalog).toStartWith("Bank deposits, uninsured share and CRE / capital");
   expect(catalog).not.toContain("No functions match");
 
-  const line = "Bank figures (deposits, uninsured share, CRE / capital, lead bank): gloomberb fundamentals <ticker>, Bank section. "
-    + "Net interest margin (Pro): gloomberb fn EQS --metric kpiNimPercent";
+  const line = "Bank figures (deposits, uninsured share, CRE / capital, lead bank): gloom fundamentals <ticker>, Bank section. "
+    + "Net interest margin (Pro): gloom fn EQS --metric kpiNimPercent";
   for (const query of ["bank", "banks", "bank figures", "bank holding company"]) expect(commandPointer(query), query).toBe(line);
   for (const query of ["central bank", "bank rate", "world bank"]) expect(commandPointer(query), query).toBeNull();
   const context = { config: createDefaultConfig("/tmp/known-gaps-test") } as MarketContext;
@@ -148,16 +148,16 @@ test("NIM, deposits, CRE and bank are pointed at the Bank section of fundamental
 });
 
 test("an income or reinvestment query names portfolio show --drip; a statement or margin query does not", () => {
-  const line = "Portfolio income, yield and DRIP projection: gloomberb portfolio show <name> --drip";
+  const line = "Portfolio income, yield and DRIP projection: gloom portfolio show <name> --drip";
   for (const query of ["drip", "DRIP projection", "reinvest", "dividend reinvestment", "dividend income", "my portfolio income"]) {
     expect(commandPointer(query), query).toBe(line);
   }
   for (const query of ["income statement", "net income", "fixed income", "dark pool"]) expect(commandPointer(query), query).toBeNull();
-  expect(commandPointer("light theme")).toBe("Themes: gloomberb config themes");
+  expect(commandPointer("light theme")).toBe("Themes: gloom config themes");
 });
 
 test("a stablecoin word names CRYP's stablecoin list, ahead of the FX series its letters start; a PEG ratio does not", () => {
-  const line = "Stablecoins against their peg, off peg in bp, 24h low and high: gloomberb fn CRYP --list stablecoin";
+  const line = "Stablecoins against their peg, off peg in bp, 24h low and high: gloom fn CRYP --list stablecoin";
   for (const query of ["tether", "USDT", "usdc", "depeg", "peg", "USDC peg", "stablecoin depeg check"]) expect(commandPointer(query), query).toBe(line);
   expect(commandPointer("peg ratio")).toBeNull();
   const series = [{ id: "fx:twd", name: "Taiwan dollar (TWD per USD)", unit: "TWD", frequency: "daily", publisher: "FRED", expression: "FRED:DEXTAUS", exact: false }];
@@ -167,7 +167,7 @@ test("a stablecoin word names CRYP's stablecoin list, ahead of the FX series its
 });
 
 test("DeFi words find CRYP and name its DeFi list; exchange reserves are said plainly to be uncovered", async () => {
-  const line = "DeFi TVL, top protocols and chains with 7D and 30D change: gloomberb fn CRYP --list defi (by chain: --by chain)";
+  const line = "DeFi TVL, top protocols and chains with 7D and 30D change: gloom fn CRYP --list defi (by chain: --by chain)";
   for (const query of ["defi", "TVL", "on-chain", "onchain", "on chain", "aave", "Aave TVL", "total value locked", "defi tvl by chain"]) {
     expect(commandPointer(query), query).toBe(line);
   }
@@ -187,7 +187,7 @@ test("DeFi words find CRYP and name its DeFi list; exchange reserves are said pl
 
   const gap = topicPointer("exchange reserves")!;
   expect(gap.message).toBe("Crypto exchange reserves and exchange flows: not covered (no source for coins held on exchanges); "
-    + "closest: CRYP (DeFi TVL by protocol and chain: gloomberb fn CRYP --list defi; stablecoin supply: --list stablecoin)");
+    + "closest: CRYP (DeFi TVL by protocol and chain: gloom fn CRYP --list defi; stablecoin supply: --list stablecoin)");
   for (const query of ["Exchange Reserves", "BTC exchange reserves", "bitcoin exchange reserves", "exchange inflows", "exchange netflows"]) {
     expect(knownGapMessage(query), query).toBe(gap.message);
   }
@@ -200,16 +200,16 @@ test("DeFi words find CRYP and name its DeFi list; exchange reserves are said pl
 });
 
 test("export, csv and json name the --csv and --json flags with one example, ahead of what the words find; trade exports do not", async () => {
-  const line = "Export: add --csv or --json to any command to print its result as CSV or JSON, e.g. gloomberb history LMT --csv > lmt.csv";
+  const line = "Export: add --csv or --json to any command to print its result as CSV or JSON, e.g. gloom history LMT --csv > lmt.csv";
   for (const query of ["export", "csv", "JSON", "export data", "export to excel", "save as csv"]) {
     expect(commandPointer(query), query).toBe(line);
     expect(commandPointerLeads(query), query).toBe(true);
   }
   for (const query of ["exports", "crude exports", "export prices", "light theme"]) expect(commandPointerLeads(query), query).toBe(false);
   expect(commandPointer("crude exports")).toBeNull();
-  // `gloomberb export LMT` runs the example on the symbol typed; another unknown word gets no export line.
+  // `gloom export LMT` runs the example on the symbol typed; another unknown word gets no export line.
   expect(exportCommandPointer("export", ["LMT"])).toBe(line);
-  expect(exportCommandPointer("export", ["BRK.B", "--json"])).toContain("gloomberb history BRK.B --csv > brk-b.csv");
+  expect(exportCommandPointer("export", ["BRK.B", "--json"])).toContain("gloom history BRK.B --csv > brk-b.csv");
   expect(exportCommandPointer("comps", ["LMT"])).toBeNull();
   const context = { config: createDefaultConfig("/tmp/known-gaps-test") } as MarketContext;
   const registry = await createPaneCatalog(context, getLoadablePlugins());
@@ -224,7 +224,7 @@ test("export, csv and json name the --csv and --json flags with one example, ahe
 });
 
 test("an FX forward query names fx --forward; a forward rate, forward guidance, a forward P/E or a forward curve does not", () => {
-  const line = "FX forwards implied by both currencies' short rates (covered interest parity), with forward points and the hedge cost: gloomberb fx USD/MXN --forward 30d";
+  const line = "FX forwards implied by both currencies' short rates (covered interest parity), with forward points and the hedge cost: gloom fx USD/MXN --forward 30d";
   for (const query of ["forward", "forwards", "fwd", "fx forward", "fx forward rate", "currency forward rates", "USD/MXN forward",
     "forward points", "currency hedge cost forward", "1m fx fwd", "peso forward", "covered interest parity forward"]) {
     expect(commandPointer(query), query).toBe(line);
@@ -240,7 +240,7 @@ test("munis point to the muni funds, DVD, fundamentals and --tax-rate, and say p
   const line = knownGapMessage("muni")!;
   expect(line).toBe(MUNI_LINE);
   expect(line).toStartWith("Municipal bonds: no AAA muni curve (MMD and BVAL are licensed).");
-  for (const pointer of ["MUB", "VTEB", "TFI", "SUB", "CMF", "NYF", "gloomberb fn DVD <fund>", "gloomberb fundamentals <fund>", "--tax-rate 40.8", "--state-rate"]) {
+  for (const pointer of ["MUB", "VTEB", "TFI", "SUB", "CMF", "NYF", "gloom fn DVD <fund>", "gloom fundamentals <fund>", "--tax-rate 40.8", "--state-rate"]) {
     expect(line, pointer).toContain(pointer);
   }
   for (const query of ["muni", "Munis", "municipal", "municipal bonds", "tax-exempt", "Tax Exempt", "tax equivalent", "tax-equivalent yield", "TEY",
@@ -259,7 +259,7 @@ test("munis point to the muni funds, DVD, fundamentals and --tax-rate, and say p
       expect(report, query).toStartWith("Municipal bonds: no AAA muni curve");
       // DVD is the function, with --tax-rate among its options and examples.
       expect(report, query).toMatch(/^DVD\s+Dividend Yield/m);
-      expect(report, query).toContain("gloomberb fn DVD MUB --tax-rate 40.8");
+      expect(report, query).toContain("gloom fn DVD MUB --tax-rate 40.8");
       expect(report, query).not.toContain("No functions match");
     }
     const tey = renderPaneCatalogReport(filterPaneCatalogEntries(entries, "tax equivalent"), parsePaneCatalogArgs(["tax equivalent"]),

@@ -91,10 +91,10 @@ test("a chart reads a bare code several companies list as quote does: it asks wh
   expect(charted.printed).toBeUndefined();
   expect(charted.failure.message).toBe("Choose an exchange for 2222.");
   expect(charted.failure.message).toBe(quoted.failure.message!);
-  expect(charted.failure.details).toBe(quoted.failure.details!.replaceAll("gloomberb quote", "gloomberb fn G"));
-  expect(charted.failure.details).toContain("2222:TADAWUL Saudi Arabian Oil Co. (try: gloomberb fn G 2222:TADAWUL)");
+  expect(charted.failure.details).toBe(quoted.failure.details!.replaceAll("gloom quote", "gloom fn G"));
+  expect(charted.failure.details).toContain("2222:TADAWUL Saudi Arabian Oil Co. (try: gloom fn G 2222:TADAWUL)");
   // Each retry keeps the rest of the argument.
-  expect((await run(["G", "2222:volume, AAPL"], "fn")).failure.details).toContain("(try: gloomberb fn G 2222:JPX:volume, AAPL)");
+  expect((await run(["G", "2222:volume, AAPL"], "fn")).failure.details).toContain("(try: gloom fn G 2222:JPX:volume, AAPL)");
 });
 
 test("a charted listing names its company and its currency", async () => {

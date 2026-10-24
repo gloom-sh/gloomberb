@@ -6,7 +6,7 @@ import type {
 import { debugLog } from "../utils/debug-log";
 import { appendNotificationLog, markNotificationLogRead } from "./notification-log";
 
-const DEFAULT_NOTIFICATION_TITLE = "Gloomberb";
+const DEFAULT_NOTIFICATION_TITLE = "Gloom";
 const notificationLog = debugLog.createLogger("notifications");
 
 function getRuntimePlatform(): NodeJS.Platform {

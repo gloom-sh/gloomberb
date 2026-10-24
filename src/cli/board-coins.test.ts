@@ -12,7 +12,7 @@ const BOARD = [
 ];
 
 test("a coin typed bare is named by its one board symbol, by code or name, once the board is read", async () => {
-  expect(withSearchHints("Not a ticker: USDS.", ["USDS"])).toBe("Not a ticker: USDS. Try `gloomberb search USDS`.");
+  expect(withSearchHints("Not a ticker: USDS.", ["USDS"])).toBe("Not a ticker: USDS. Try `gloom search USDS`.");
   let reads = 0;
   const load = async () => { reads += 1; return { assets: BOARD }; };
   // Nothing says a bare word is no ticker: no read.
@@ -28,10 +28,10 @@ test("a coin typed bare is named by its one board symbol, by code or name, once 
   expect(boardCoinFor("ETHENAUSDE")).toEqual({ symbol: "USDE-USD", name: "Ethena USDe" });
   // A short first word is no name, and a word nothing on the board answers keeps the search hint.
   expect(boardCoinFor("USD")).toBeNull();
-  expect(withSearchHints("Not a ticker: APPLE.", ["Apple"])).toBe("Not a ticker: APPLE. Try `gloomberb search Apple`.");
+  expect(withSearchHints("Not a ticker: APPLE.", ["Apple"])).toBe("Not a ticker: APPLE. Try `gloom search Apple`.");
 });
 
 test("a board that fails leaves the search hint", async () => {
   await primeBoardCoins(["Not a ticker: USDT."], async () => { throw new Error("down"); });
-  expect(withSearchHints("Not a ticker: USDT.", ["USDT"])).toBe("Not a ticker: USDT. Try `gloomberb search USDT`.");
+  expect(withSearchHints("Not a ticker: USDT.", ["USDT"])).toBe("Not a ticker: USDT. Try `gloom search USDT`.");
 });

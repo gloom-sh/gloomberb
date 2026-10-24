@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, lstatSync, mkdtempSync, mkdirSync, realpathSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { dirname, join } from "path";
-import { describePeerLink, linkHostPackages, missingPeerPlugins } from "./host-link";
+import { describePeerLink, findHostPackageRoot, linkHostPackages, missingPeerPlugins } from "./host-link";
 
 const scratch: string[] = [];
 
@@ -15,6 +15,18 @@ function scratchDir(prefix: string): string {
   scratch.push(dir);
   return dir;
 }
+
+// npm installs the host as gloomberb, and as @gloom/terminal once releases are
+// published under that name too. Missing either one leaves every external
+// plugin without `gloomberb/*` imports.
+test("finds the host package under either published name", () => {
+  for (const name of ["@gloom/terminal", "gloomberb"]) {
+    const hostRoot = join(scratchDir("gloom-host-root-"), "node_modules", ...name.split("/"));
+    mkdirSync(join(hostRoot, "src", "plugins"), { recursive: true });
+    writeFileSync(join(hostRoot, "package.json"), JSON.stringify({ name }));
+    expect(findHostPackageRoot(join(hostRoot, "src", "plugins"))).toBe(hostRoot);
+  }
+});
 
 /**
  * A plugin is installed into a directory named after its repository, but
@@ -135,7 +147,7 @@ describe("linkPeerPlugins", () => {
 });
 
 /**
- * The compiled terminal binary and the packaged desktop app have no Gloomberb
+ * The compiled terminal binary and the packaged desktop app have no Gloom
  * package on disk. Before the in-process resolver, this branch returned an
  * error, the install printed a warning, and every external plugin failed to
  * load with "Cannot find module 'gloomberb/utils'". The resolver itself is
@@ -183,7 +195,7 @@ describe("linkHostPackages without a package root", () => {
 
     const result = linkHostPackages(pluginDir, null, pluginsDir, { installResolver: () => false });
 
-    expect(result.error).toBe("Could not locate the Gloomberb install.");
+    expect(result.error).toBe("Could not locate the Gloom install.");
   });
 });
 

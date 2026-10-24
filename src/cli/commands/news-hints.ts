@@ -44,11 +44,11 @@ export function newsEmptyMessage(
     if (searched) {
       return contract
         ? `No stories match ${typed}, the futures board's code for ${contract.name}. It is not a ticker: ${contractSuggestion(contract)}.`
-        : `No listing answers to ${typed} and no stories match it. Try \`gloomberb search ${typed}\`.`;
+        : `No listing answers to ${typed} and no stories match it. Try \`gloom search ${typed}\`.`;
     }
     return contract
       ? `${typed} is the futures board's code for ${contract.name}, not a ticker. news takes a company ticker: ${contractSuggestion(contract)}.`
-      : `No listing answers to ${typed}. news takes a company ticker, such as news AAPL. Try \`gloomberb search ${typed}\`.`;
+      : `No listing answers to ${typed}. news takes a company ticker, such as news AAPL. Try \`gloom search ${typed}\`.`;
   }
   if (isFuturesInstrument(symbol, quote?.instrumentType)) {
     if (searched) {

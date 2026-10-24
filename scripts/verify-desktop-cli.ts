@@ -61,13 +61,14 @@ async function run(name: string, args: string[], expectedCode = 0, envOverrides:
 }
 
 try {
-  // Homebrew links to Resources/gloomberb. Exercise both an absolute symlink
-  // and a relative hop, including spaces, rather than only invoking the file.
+  // Homebrew links to Resources/gloom and Resources/gloomberb. Exercise both an
+  // absolute symlink and a relative hop, including spaces, rather than only
+  // invoking the file.
   if (process.platform !== "win32") {
     const links = join(work, "linked bin");
     await mkdir(links);
     await symlink(launcher, join(links, "desktop cli"));
-    command = join(links, "gloomberb");
+    command = join(links, "gloom");
     await symlink("desktop cli", command);
   }
   // Bun must start in the app's runtime folder, then the entry restores cwd.

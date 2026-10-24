@@ -9,7 +9,7 @@ import type { SeriesDefinition } from "./types";
 
 /**
  * Charts the catalog's loaded series where no plugin runtime runs, such as a
- * `gloomberb fn G` report: the series plugins declare, and the files in the
+ * `gloom fn G` report: the series plugins declare, and the files in the
  * data directory's series folder. Series a plugin registers from its setup
  * need the app.
  */

@@ -101,9 +101,12 @@ try {
     throw new Error(`Current package still depends on incompatible OpenTUI add-ons: ${retained.join(", ")}`);
   }
 
-  const executable = join(installDir, "bin", process.platform === "win32" ? "gloomberb.exe" : "gloomberb");
-  await run([executable, OPEN_TUI_RUNTIME_SMOKE_COMMAND], smokeDir);
-  console.log("Global upgrade smoke passed: gloomberb 0.5.0 to the current package loaded the OpenTUI runtime graph.");
+  // 0.5.0 installed only `gloomberb`; the upgrade adds `gloom` and keeps it.
+  for (const command of ["gloom", "gloomberb"]) {
+    const executable = join(installDir, "bin", process.platform === "win32" ? `${command}.exe` : command);
+    await run([executable, OPEN_TUI_RUNTIME_SMOKE_COMMAND], smokeDir);
+  }
+  console.log("Global upgrade smoke passed: gloomberb 0.5.0 to the current package loaded the OpenTUI runtime graph as gloom and gloomberb.");
 } finally {
   rmSync(smokeDir, { recursive: true, force: true });
 }

@@ -1,5 +1,6 @@
 import type { Fundamentals } from "../types/financials";
 import { formatNumber } from "./format";
+import { enterpriseValueNotMeaningful } from "./fundamentals";
 
 export const PRICE_EARNINGS_NOTICE = "N/M = not meaningful. Non-positive P/E values are excluded from ranking.";
 
@@ -61,16 +62,19 @@ export function notMeaningfulMultiples(
 
 /**
  * The fundamentals block as JSON exports it: a multiple that is not meaningful
- * reads null, with the reason under `notMeaningful`, never as a number.
+ * reads null, with the reason under `notMeaningful`, never as a number. An
+ * enterprise value at or below zero does too, with EV/revenue over it.
  */
 export function exportedFundamentals<T extends Fundamentals>(
   fundamentals: T | undefined,
-): (Omit<T, PriceEarningsField> & Partial<Record<PriceEarningsField, number | null>> & {
-  notMeaningful?: Partial<Record<PriceEarningsField, string>>;
+): (Omit<T, PriceEarningsField | EnterpriseValueField> & Partial<Record<PriceEarningsField | EnterpriseValueField, number | null>> & {
+  notMeaningful?: Partial<Record<PriceEarningsField | EnterpriseValueField, string>>;
 }) | undefined {
   if (!fundamentals) return fundamentals;
-  const reasons = notMeaningfulMultiples(fundamentals);
-  const fields = Object.keys(reasons) as PriceEarningsField[];
+  const reasons: Partial<Record<PriceEarningsField | EnterpriseValueField, string>> = notMeaningfulMultiples(fundamentals);
+  const enterpriseValue = enterpriseValueNotMeaningful(fundamentals);
+  if (enterpriseValue) reasons.enterpriseValue = reasons.enterpriseToRevenue = enterpriseValue;
+  const fields = Object.keys(reasons) as Array<PriceEarningsField | EnterpriseValueField>;
   if (fields.length === 0) return fundamentals;
   return {
     ...fundamentals,
@@ -78,3 +82,5 @@ export function exportedFundamentals<T extends Fundamentals>(
     notMeaningful: reasons,
   };
 }
+
+type EnterpriseValueField = "enterpriseValue" | "enterpriseToRevenue";

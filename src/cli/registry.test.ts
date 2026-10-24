@@ -86,7 +86,7 @@ describe("CLI registry", () => {
     expect(overview).not.toContain("Hello from the synthetic plugin.");
 
     const help = renderCommandHelp(registry.lookup.get("example")!.command);
-    expect(help).toContain("gloomberb example [value]");
+    expect(help).toContain("gloom example [value]");
     expect(help).toContain("alias-example");
     expect(help).toContain("Synthetic Help");
     expect(help).toContain("Hello from the synthetic plugin.");
@@ -186,7 +186,7 @@ describe("CLI dispatch", () => {
     expect(start).toBeLessThan(lines.indexOf("Usage"));
     expect(stdout).toContain("--width <n>");
     // Every example names a command that help knows, so none is a dead end.
-    const examples = lines.slice(start + 1, lines.indexOf("Usage")).filter((line) => line.trim().startsWith("gloomberb "));
+    const examples = lines.slice(start + 1, lines.indexOf("Usage")).filter((line) => line.trim().startsWith("gloom "));
     expect(examples).toHaveLength(4);
     for (const example of examples) {
       const command = example.trim().split(/\s+/)[1]!;

@@ -68,18 +68,18 @@ export function treasuryYieldTenor(text: string): TreasuryYieldTenor | null {
 /** The commands with the yield: its Cboe index when there is one, its FRED series, the curve. */
 function yieldCommands(tenor: TreasuryYieldTenor): Array<readonly [command: string, gives: string]> {
   return [
-    ...tenor.index ? [[`gloomberb quote ${tenor.index}`, "Cboe index"] as const] : [],
-    [`gloomberb fred ${tenor.fred}`, "daily"],
-    ["gloomberb yield-curve", "every tenor"],
+    ...tenor.index ? [[`gloom quote ${tenor.index}`, "Cboe index"] as const] : [],
+    [`gloom fred ${tenor.fred}`, "daily"],
+    ["gloom yield-curve", "every tenor"],
   ];
 }
 
-/** "US 10-year Treasury yield: gloomberb quote ^TNX (Cboe index), ...", for `search`, `catalog` and a bare root. */
+/** "US 10-year Treasury yield: gloom quote ^TNX (Cboe index), ...", for `search`, `catalog` and a bare root. */
 export function treasuryYieldLine(tenor: TreasuryYieldTenor): string {
   return `US ${tenor.label} Treasury yield: ${yieldCommands(tenor).map(([command, gives]) => `${command} (${gives})`).join(", ")}.`;
 }
 
-/** "Try `gloomberb quote ^TNX`, ... for the US 10-year Treasury yield.", after "Not a ticker: US10Y." */
+/** "Try `gloom quote ^TNX`, ... for the US 10-year Treasury yield.", after "Not a ticker: US10Y." */
 export function treasuryYieldHint(tenor: TreasuryYieldTenor): string {
   const commands = yieldCommands(tenor).map(([command]) => `\`${command}\``);
   return `Try ${commands.slice(0, -1).join(", ")} or ${commands.at(-1)} for the US ${tenor.label} Treasury yield.`;

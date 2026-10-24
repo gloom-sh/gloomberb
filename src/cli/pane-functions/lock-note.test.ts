@@ -37,15 +37,15 @@ interface LockedFunction {
 }
 
 const LOCKED_FUNCTIONS: LockedFunction[] = [
-  { module: scannerModule, template: "scanner-flow-pane", token: "FLOW", argument: "", needs: "Gloom Cloud Pro", free: "gloomberb options <ticker> lists the company's option chain", command: "gloomberb fn FLOW then reads" },
-  { module: estimateRevisionsModule, template: "estimate-revisions-em", token: "EM", argument: "ACME:NASDAQ", needs: "a free Gloom sign-in", free: "gloomberb earnings ACME:NASDAQ lists", command: "gloomberb fn EM ACME:NASDAQ then reads" },
+  { module: scannerModule, template: "scanner-flow-pane", token: "FLOW", argument: "", needs: "Gloom Cloud Pro", free: "gloom options <ticker> lists the company's option chain", command: "gloom fn FLOW then reads" },
+  { module: estimateRevisionsModule, template: "estimate-revisions-em", token: "EM", argument: "ACME:NASDAQ", needs: "a free Gloom sign-in", free: "gloom earnings ACME:NASDAQ lists", command: "gloom fn EM ACME:NASDAQ then reads" },
   // GUIDE has nothing for ACME (its read is refused like every other here), so the note names its 8-Ks.
-  { module: estimateRevisionsModule, template: "estimate-revisions-guid", token: "GUID", argument: "ACME:NASDAQ", settings: { tab: "guidance" }, needs: "a free Gloom sign-in", free: "gloomberb filings ACME:NASDAQ --form 8-K lists", command: "gloomberb fn GUID ACME:NASDAQ then reads" },
-  { module: earningsCallsModule, template: "earnings-calls-pane", token: "CALLS", argument: "ACME", needs: "Gloom Cloud Pro", free: "gloomberb events ACME lists ACME's earnings dates", command: "gloomberb fn CALLS ACME then reads" },
+  { module: estimateRevisionsModule, template: "estimate-revisions-guid", token: "GUID", argument: "ACME:NASDAQ", settings: { tab: "guidance" }, needs: "a free Gloom sign-in", free: "gloom filings ACME:NASDAQ --form 8-K lists", command: "gloom fn GUID ACME:NASDAQ then reads" },
+  { module: earningsCallsModule, template: "earnings-calls-pane", token: "CALLS", argument: "ACME", needs: "Gloom Cloud Pro", free: "gloom events ACME lists ACME's earnings dates", command: "gloom fn CALLS ACME then reads" },
   // No earnings dates on file for QUIET: events would answer with none, so no route is named.
-  { module: earningsCallsModule, template: "earnings-calls-pane", token: "CALLS", argument: "QUIET", needs: "Gloom Cloud Pro", free: null, command: "gloomberb fn CALLS QUIET then reads" },
-  { module: jobsModule, template: "jobs-pane", token: "JOBS", argument: "", needs: "Gloom Cloud Pro", free: "gloomberb fn HIRE <ticker> previews", command: "gloomberb fn JOBS then reads" },
-  { module: socialMentionsModule, template: "social-mentions-pane", token: "BUZZ", argument: "ACME", needs: "a free Gloom sign-in", free: null, command: "gloomberb fn BUZZ ACME then reads" },
+  { module: earningsCallsModule, template: "earnings-calls-pane", token: "CALLS", argument: "QUIET", needs: "Gloom Cloud Pro", free: null, command: "gloom fn CALLS QUIET then reads" },
+  { module: jobsModule, template: "jobs-pane", token: "JOBS", argument: "", needs: "Gloom Cloud Pro", free: "gloom fn HIRE <ticker> previews", command: "gloom fn JOBS then reads" },
+  { module: socialMentionsModule, template: "social-mentions-pane", token: "BUZZ", argument: "ACME", needs: "a free Gloom sign-in", free: null, command: "gloom fn BUZZ ACME then reads" },
 ];
 
 /** The refusal the server gives, as each function's read meets it. */
@@ -110,7 +110,7 @@ test("every function a wall covers whole answers a refused read with the one loc
       expect(report.text.replace(/\s+/g, " "), label).toContain(fn.free ? `Free, with no sign-in: ${fn.free}` : "To read it in");
       if (!fn.free) expect(report.text, label).not.toContain("Free, with no sign-in");
       const unlock = status === 403 ? "verify your email (Ctrl+P, Resend Verification Email)"
-        : gate === "pro" ? "upgrade in the app (gloomberb, then Ctrl+P, UPGRADE)" : "log in or sign up";
+        : gate === "pro" ? "upgrade in the app (gloom, then Ctrl+P, UPGRADE)" : "log in or sign up";
       expect(report.text.replace(/\s+/g, " "), label).toContain(unlock);
       expect(report.text.replace(/\s+/g, " "), label).toContain(`${fn.command} with that session.`);
       expect(report.text, label).toEndWith("The pane is locked, so no values were read.");

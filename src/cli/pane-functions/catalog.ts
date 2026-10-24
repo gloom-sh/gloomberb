@@ -184,7 +184,7 @@ const NEAR_CODE_LIMIT = 3;
  * among the mnemonics the command bar takes, each named by the code it is
  * near (`DES` for Ticker Research, whose code is T). Empty when none is that
  * close, the name is too short to tell, or so many are that none stands out.
- * A word typed as a command (`commandWord`, `gloomberb RCDF PLTR`) is held to
+ * A word typed as a command (`commandWord`, `gloom RCDF PLTR`) is held to
  * MIN_COMMAND_WORD_TYPO_LENGTH and the code's first letter, so a ticker typed
  * there is not taken for a code.
  */
@@ -623,14 +623,14 @@ function renderCatalogEntry(entry: PaneCatalogEntry): string {
 
   lines.push("", renderSection("Examples"));
   if (capability.reportReadiness !== "unsupported") {
-    lines.push(...wrapCommandLine(`gloomberb fn ${invocation}`, width));
-    for (const example of entry.argExamples ?? []) lines.push(...wrapCommandLine(`gloomberb fn ${entry.token} ${example}`, width));
+    lines.push(...wrapCommandLine(`gloom fn ${invocation}`, width));
+    for (const example of entry.argExamples ?? []) lines.push(...wrapCommandLine(`gloom fn ${entry.token} ${example}`, width));
     for (const option of capability.options) {
-      if (option.example) lines.push(...wrapCommandLine(`gloomberb fn ${option.exampleWithoutArgument ? entry.token : invocation} ${option.example}`, width));
+      if (option.example) lines.push(...wrapCommandLine(`gloom fn ${option.exampleWithoutArgument ? entry.token : invocation} ${option.example}`, width));
     }
   }
   const shotInvocation = entry.shotArgument ? `${entry.token} ${entry.shotArgument}` : invocation;
-  lines.push(...wrapCommandLine(`gloomberb shot ${shotInvocation} --output ${entry.token.toLowerCase()}.png`, width));
+  lines.push(...wrapCommandLine(`gloom shot ${shotInvocation} --output ${entry.token.toLowerCase()}.png`, width));
   return lines.join("\n");
 }
 
@@ -677,7 +677,7 @@ function renderAlsoMatches(exact: PaneCatalogEntry, entries: readonly PaneCatalo
  */
 export function renderFunctionHelp(entry: PaneCatalogEntry, command: string): string {
   const width = Math.min(cliTerminalWidth() ?? CATALOG_TEXT_WIDTH, CATALOG_TEXT_WIDTH);
-  const note = `The options every function takes, and the output formats, are in gloomberb help ${command}.`;
+  const note = `The options every function takes, and the output formats, are in gloom help ${command}.`;
   return [renderCatalogEntry(entry), "", ...wrapText(note, width).map((line) => cliStyles.muted(line))].join("\n");
 }
 
@@ -689,7 +689,7 @@ function renderCatalogGlossary(glossary: GlossaryLookup, width: number): string 
   const defined = glossary.exact.length > 0 ? [renderSection("Glossary"), ...renderGlossaryEntries(glossary.exact)] : [];
   const others = glossary.partial.map((entry) => entry.term).join(", ");
   const related = others
-    ? wrapText(`${defined.length > 0 ? "Related" : "Glossary"}: ${others}. gloomberb catalog glossary <term> explains one.`, width)
+    ? wrapText(`${defined.length > 0 ? "Related" : "Glossary"}: ${others}. gloom catalog glossary <term> explains one.`, width)
       .map((line) => cliStyles.muted(line))
     : [];
   return [...defined, ...related].join("\n");
@@ -738,7 +738,7 @@ export function renderPaneCatalogReport(
     if (charted) return withGap([charted, terms].filter(Boolean).join("\n\n"));
     if (glossary.exact.length > 0 || gap || setting) return withGap(terms);
     return withTerms(note(args.query
-      ? `No functions match "${args.query}". Run gloomberb catalog to browse them all.`
+      ? `No functions match "${args.query}". Run gloom catalog to browse them all.`
       : "No functions are available."));
   }
 
@@ -754,7 +754,7 @@ export function renderPaneCatalogReport(
     "",
     note([
       loose ? "No function carries every word of the query; these are the closest." : "",
-      "gloomberb catalog <function> shows its options and examples.",
+      "gloom catalog <function> shows its options and examples.",
       hidden > 0 ? more : "",
     ].filter(Boolean).join(" ")),
   ];
