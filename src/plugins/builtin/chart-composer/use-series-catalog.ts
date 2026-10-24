@@ -1,5 +1,6 @@
+import { useAsyncResource } from "../../../react/async-resource";
 import { logFailure } from "../../../utils/log-failure";
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import {
   buildTickerSearchCandidates,
   searchTickerCandidates,
@@ -84,7 +85,7 @@ function candidateToInstrument(candidate: {
  * folder) are asked for once and listed after the rest; elsewhere, sources
  * that change while the app runs catch up when the catalog opens.
  */
-export function useRegisteredSeries(): readonly SeriesCatalogEntry[] {
+export function useRegisteredSeries() {
   const registry = getSharedRegistry();
   const series = registry?.series;
   const version = useSyncExternalStore(
@@ -93,29 +94,32 @@ export function useRegisteredSeries(): readonly SeriesCatalogEntry[] {
     () => 0,
   );
   const disabledPlugins = useOptionalAppSelector((state) => state.config.disabledPlugins, EMPTY_PLUGINS);
-  const [remote, setRemote] = useState<readonly SeriesCatalogEntry[] | null>(null);
+  const remoteLoader = useMemo(() => registry?.usesRemoteCapabilities && series ? async () => {
+    try {
+      const result = await registry.invokeCapability<{ entries: SeriesCatalogEntry[] }>(SERIES_CATALOG_CAPABILITY_ID, "list", {});
+      if (!Array.isArray(result?.entries)) throw new Error("Invalid series catalog response");
+      return result.entries;
+    } catch (error) {
+      logFailure("chart-composer.use-series-catalog", "Load remote chart series catalog failed")(error);
+      throw new Error("Series catalog unavailable.");
+    }
+  } : null, [registry, series]);
+  const remote = useAsyncResource(remoteLoader);
 
   useEffect(() => {
-    if (!registry || !series) return;
-    if (!registry.usesRemoteCapabilities) {
-      void series.refresh();
-      return;
-    }
-    let cancelled = false;
-    void registry.invokeCapability<{ entries: SeriesCatalogEntry[] }>(SERIES_CATALOG_CAPABILITY_ID, "list", {})
-      .then((result) => {
-        if (!cancelled && Array.isArray(result?.entries)) setRemote(result.entries);
-      })
-      .catch(logFailure("chart-composer.use-series-catalog", "Load remote chart series catalog failed"));
-    return () => { cancelled = true; };
+    if (registry && series && !registry.usesRemoteCapabilities) void series.refresh();
   }, [registry, series]);
+  const retry = useCallback(async () => {
+    if (remoteLoader) await remote.reload();
+    else await series?.refresh();
+  }, [remoteLoader, remote.reload, series]);
 
-  return useMemo(() => {
+  const entries = useMemo(() => {
     const local = series?.catalog() ?? EMPTY_ENTRIES;
     let entries = local;
-    if (remote?.length) {
+    if (remote.data?.length) {
       const known = new Set(local.map((entry) => entry.id));
-      const extra = remote.filter((entry) => !known.has(entry.id));
+      const extra = remote.data.filter((entry) => !known.has(entry.id));
       if (extra.length) entries = [...local, ...extra];
     }
     if (disabledPlugins.length === 0) return entries;
@@ -123,7 +127,8 @@ export function useRegisteredSeries(): readonly SeriesCatalogEntry[] {
     return entries.some((entry) => disabled.has(entry.pluginId))
       ? entries.filter((entry) => !disabled.has(entry.pluginId))
       : entries;
-  }, [disabledPlugins, remote, series, version]);
+  }, [disabledPlugins, remote.data, series, version]);
+  return { entries, loading: remote.loading, error: remote.error, retry };
 }
 
 export function useCatalogUniverse(query: string): {
@@ -230,6 +235,7 @@ export interface SeriesCatalogSearchResult {
   loading: boolean;
   /** Set when a lookup failed, so an outage is never reported as zero matches. */
   error: string | null;
+  retry: () => Promise<void>;
 }
 
 function searchFailureMessage(error: unknown): string {
@@ -248,6 +254,11 @@ export function useSeriesCatalogSuggestions({
 }): SeriesCatalogSearchResult {
   const tickers = useOptionalAppSelector((state) => state.tickers, EMPTY_TICKERS);
   const registered = useRegisteredSeries();
+  const [attempt, setAttempt] = useState(0);
+  const retry = useCallback(async () => {
+    setAttempt((value) => value + 1);
+    await registered.retry();
+  }, [registered.retry]);
   const analysis = useMemo(() => analyzeSeriesSearchQuery(query), [query]);
   const [providerSearch, setProviderSearch] = useState<{
     query: string;
@@ -295,7 +306,7 @@ export function useSeriesCatalogSuggestions({
       controller.abort();
       clearTimeout(timer);
     };
-  }, [enabled, query]);
+  }, [attempt, enabled, query]);
 
   useEffect(() => {
     const instrumentQuery = analysis.instrumentQuery.trim();
@@ -344,7 +355,7 @@ export function useSeriesCatalogSuggestions({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [analysis.directInstrument, analysis.instrumentQuery, enabled, tickers]);
+  }, [analysis.directInstrument, analysis.instrumentQuery, attempt, enabled, tickers]);
 
   const instruments = search.query === analysis.instrumentQuery
     ? search.instruments
@@ -353,18 +364,21 @@ export function useSeriesCatalogSuggestions({
   // and they arrive well before plugin catalogs (which can take seconds), so
   // late plugin results append below instead of pushing the list around.
   const suggestions = useMemo(() => {
-    const builtIn = buildSeriesCatalogSuggestions(query, defaultInstrument, instruments, MAX_SERIES_SUGGESTIONS, registered);
+    const builtIn = buildSeriesCatalogSuggestions(query, defaultInstrument, instruments, MAX_SERIES_SUGGESTIONS, registered.entries);
     const provider = providerSearch.query === query.trim() ? providerSearch.suggestions : [];
     return [...builtIn, ...provider.filter((entry) => !builtIn.some((candidate) => candidate.id === entry.id))]
       .slice(0, MAX_SERIES_SUGGESTIONS);
-  }, [defaultInstrument, instruments, providerSearch, query, registered]);
+  }, [defaultInstrument, instruments, providerSearch, query, registered.entries]);
 
   return {
     suggestions,
     instruments,
-    loading: (search.loading && search.query === analysis.instrumentQuery)
+    retry,
+    loading: registered.loading || (search.loading && search.query === analysis.instrumentQuery)
       || (providerSearch.loading && providerSearch.query === query.trim()),
-    error: (search.query === analysis.instrumentQuery ? search.error : null)
-      ?? (providerSearch.query === query.trim() ? providerSearch.error : null),
+    error: [registered.error,
+      search.query === analysis.instrumentQuery ? search.error : null,
+      providerSearch.query === query.trim() ? providerSearch.error : null,
+    ].filter(Boolean).join(" ") || null,
   };
 }

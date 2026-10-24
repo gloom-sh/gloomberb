@@ -190,6 +190,7 @@ export function useSeriesEditorController({
     suggestions: quickAddSuggestions,
     loading: quickAddLoading,
     error: quickAddError,
+    retry: retryQuickAdd,
   } = useSeriesCatalogSuggestions({
     query: quickAddQuery,
     defaultInstrument,
@@ -638,6 +639,7 @@ export function useSeriesEditorController({
     quickAddItems,
     quickAddLoading,
     quickAddError,
+    retryQuickAdd,
     quickAddQuery,
     quickAddRef,
     quickAddSelection,
