@@ -176,8 +176,7 @@ function FuturesCurveView({ width, height, focused, root, ownsTitle }: PaneProps
     // A thin spread reads as a thin price does, in the warning colour, with no contango or backwardation call.
     { id: "spread", label: curveSpreadLabel(data.slope), value: data.slope.value == null ? "--" : curvePrice(data.slope.value, root),
       ...data.slope.state === "thin" ? { tone: "warning" as const } : {},
-      detail: [data.slope.state, spreadBasis, spreadRank, slopeDate].filter(Boolean).join(" · "),
-      detailVariants: [[data.slope.state, spreadBasis].filter(Boolean).join(" · "), data.slope.state] },
+      detail: [data.slope.state, spreadBasis, spreadRank, slopeDate].filter(Boolean).join(" · ") },
     ...data.spec ? [{ id: "contract", label: "Contract", value: data.spec.size, detail: `tick ${futuresTickText(data.spec)}` }] : [],
   ] : [];
   const { strip: tabStrip, rows: tabRows } = usePaneTabs({ tabs: TABS, activeValue: tab, onSelect: setTab, focused, dense: true, queryBarWidth: width });
