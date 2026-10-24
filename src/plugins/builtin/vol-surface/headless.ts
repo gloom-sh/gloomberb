@@ -1,7 +1,8 @@
 import type { Quote } from "../../../types/financials";
 import type { HeadlessBundleSection, HeadlessPaneDefinition, HeadlessPaneFreshness, HeadlessPaneLoadArgs, HeadlessPaneRow } from "../../../types/plugin";
 import {
-  expirationOptionSeconds, findListedExpiry, OPTION_EXPIRATION_FORMAT, OPTION_EXPIRATION_PLACEHOLDER, readOptionExpiration, unlistedExpiryText,
+  expirationOptionSeconds, expiredExpiryText, findListedExpiry, isLiveOptionExpiry, OPTION_EXPIRATION_FORMAT, OPTION_EXPIRATION_PLACEHOLDER,
+  readOptionExpiration, unlistedExpiryText,
 } from "../../../utils/option-expiry";
 import { DATE_OPTION_EXAMPLES } from "../../../utils/calendar-date";
 import { IMPLIED_VOL_WORDS, skewHeader } from "../iv-history/format";
@@ -181,6 +182,12 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
         limit: Number(args.options.limit), signal: ctx.signal,
         requiredExpiries: requested == null ? [] : [requested],
       }, createSurfaceDependencies(ctx.marketData, ctx.apiClient)));
+      // An expired --expiration names the flag that asks for the nearest live one.
+      const now = Date.now();
+      if (requested != null && !isLiveOptionExpiry(requested, now, instrument.exchange)) {
+        const message = expiredExpiryText(requested, snapshot.catalogue, now, { exchange: instrument.exchange, flag: "expiration" });
+        snapshot = { ...snapshot, failures: snapshot.failures.map((failure) => failure.expiration === requested ? { ...failure, message } : failure) };
+      }
     }
     const available = snapshot.expiries.some((expiry) => expiry.fit);
     // An expiry that failed as the whole surface did (no connection) is not listed again under its own date.

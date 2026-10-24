@@ -8,7 +8,7 @@ import { formatMarketPrice, formatSignedMarketPrice, liveQuoteFormatOptions } fr
 import { getRegularSessionDisplay } from "../../../market-data/market/status";
 import { chainOptionContract, formatExpDate, optionContractName, resolveOptionsTarget } from "../../../utils/options";
 import {
-  expiryIsoDate, findListedExpiry, formatDaysToExpiry, daysToExpiry, missingExpiryMessage, missingExpiryText, readOptionExpiration,
+  expiryIsoDate, findListedExpiry, formatDaysToExpiry, daysToExpiry, isLiveOptionExpiry, missingExpiryMessage, missingExpiryText, readOptionExpiration,
 } from "../../../utils/option-expiry";
 import { canonicalTickerKey } from "../../../utils/exchanges";
 import { isOptionsUnavailableError, listedOptionsAlternative, optionsUnavailableTitle } from "../../../market-data/options-alternatives";
@@ -69,7 +69,7 @@ import { signedPositionDirection } from "../../../portfolio/position-metrics";
 import { optionMarketReference } from "./market-reference";
 import { useOptionsEnrichment } from "./enrichment";
 import type { OptionsEnrichmentSnapshot } from "./enrichment-model";
-import { daysToExpiryFrom, optionMid, type OptionSide } from "../shared/volatility";
+import { optionMid, type OptionSide } from "../shared/volatility";
 import type { TickerRecord } from "../../../types/ticker";
 import type { TickerFinancials } from "../../../types/financials";
 import type { IvStats } from "../iv-history/client";
@@ -269,10 +269,10 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
   const strikeWindowText = strikeWindowValue(strikeWindow);
   const initialChainEntry = useOptionsQuery(baseRequest);
   const initialChain = useResolvedEntryValue(initialChainEntry);
-  // A listing can still carry a date whose 16:00 ET close has passed. The chain
+  // A listing can still carry a date whose last session has closed. The chain
   // never opens there, nor on a saved date that has since passed: it takes the nearest live one.
   const now = Date.now();
-  const liveExpiration = (expiration: number) => daysToExpiryFrom(expiration, now) > 0;
+  const liveExpiration = (expiration: number) => isLiveOptionExpiry(expiration, now, effectiveExchange);
   const listedExpirations = initialChain?.expirationDates ?? [];
   const openingExpirations = listedExpirations.some(liveExpiration) ? listedExpirations.filter(liveExpiration) : listedExpirations;
   const initialExpiration = openingExpirations.length === 0 ? undefined : openingExpirations.reduce((best, expiration) => (
@@ -321,10 +321,10 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
   const expirationDates = useMemo(() => {
     const listed = selectedExpirationMissing
       ? [...availableExpirations, selectedExpiration!].sort((left, right) => left - right) : availableExpirations;
-    // A date that has ended has no contracts left to show; the strip leaves it out, unless every date has.
-    const current = (expiration: number) => daysToExpiry(expiration, Date.now()) >= 0;
+    // A date whose last session has closed has no contracts left to show; the strip leaves it out, unless every date has.
+    const current = (expiration: number) => isLiveOptionExpiry(expiration, Date.now(), effectiveExchange);
     return listed.some(current) ? listed.filter((expiration) => expiration === selectedExpiration || current(expiration)) : listed;
-  }, [availableExpirations, selectedExpiration, selectedExpirationMissing]);
+  }, [availableExpirations, effectiveExchange, selectedExpiration, selectedExpirationMissing]);
   // Keep the date strip stable while a mouse press focuses this pane. A new
   // tab list asks the web host to reveal the active tab and can move the date
   // being clicked before mouse-up, cancelling selection of an offscreen expiry.
@@ -444,7 +444,7 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
   const chainAsOfMs = asOfChain?.asOf ? Date.parse(asOfChain.asOf) : Number.NaN;
   const expiryAsOfMs = Number.isFinite(chainAsOfMs) ? chainAsOfMs : Date.now();
   const expiryDate = selectedExpiration == null ? "" : expiryIsoDate(selectedExpiration);
-  const expiryDays = selectedExpiration == null ? "" : formatDaysToExpiry(selectedExpiration, expiryAsOfMs);
+  const expiryDays = selectedExpiration == null ? "" : formatDaysToExpiry(selectedExpiration, expiryAsOfMs, effectiveExchange);
   useRemoteUiNode(expiryDate && chain && !expirationUnavailable ? {
     role: "report-notice",
     label: "Expiry",

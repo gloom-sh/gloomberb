@@ -4,7 +4,7 @@ import type { HeadlessPaneFreshness } from "../../../types/plugin";
 import { mapWithConcurrency } from "../../../utils/concurrency";
 import { numberErrorMessage, wholeNumberOptionMessage } from "../../../utils/decimal-comma";
 import { errorMessage } from "../../../utils/errors";
-import { expirationHint, expiryIsoDate, readOptionExpiration } from "../../../utils/option-expiry";
+import { expirationHint, expiredExpiryText, expiryIsoDate, isLiveOptionExpiry, readOptionExpiration } from "../../../utils/option-expiry";
 import { zonedDateKey } from "../../../utils/zoned-date-time";
 import { ivRankReason, loadIvScreen, type ImpliedVolatilityApi, type IvScreenRow } from "../iv-history/client";
 import { quoteObservation } from "../shared/report-freshness";
@@ -149,6 +149,12 @@ async function screenPut(
   earningsDate: string | null, signal: AbortSignal | undefined,
 ): Promise<ScreenedPut> {
   const first = await loadScenarioMarket({ instrument, signal }, dependencies);
+  // A typed date whose last session has closed is not stood in for by the next one: it says so, and names it.
+  const now = dependencies.now?.() ?? Date.now();
+  if (criteria.expiration != null && !isLiveOptionExpiry(criteria.expiration, now, instrument.exchange)) {
+    throw new Error(`Expiry ${expiryIsoDate(criteria.expiration)} `
+      + expiredExpiryText(criteria.expiration, first.expirationDates, now, { exchange: instrument.exchange, flag: "expiration" }));
+  }
   const expiration = nearestListedExpiry(first.expirationDates, target);
   if (expiration == null) {
     throw new Error(first.warnings.find((warning) => warning.startsWith("Options chain")) ?? "No listed option expiries");

@@ -330,6 +330,11 @@ function regularCloseMinutes(exchange: string, date: string): number | undefined
   return (weekday == null ? undefined : WEEKDAY_CLOSE_MINUTES[exchange]?.[weekday]) ?? REGULAR_CLOSE_MINUTES[exchange];
 }
 
+/** Whether the venue's regular close hour is known, so its sessions end on its own clock rather than at local midnight. */
+export function hasRegularCloseHour(exchange: string | undefined): boolean {
+  return REGULAR_CLOSE_MINUTES[canonicalExchange(exchange)] !== undefined;
+}
+
 /** The zone a venue's session dates are read in, or null when unknown. */
 export function sessionCalendarTimeZone(exchange: string | undefined): string | null {
   const canonical = canonicalExchange(exchange);

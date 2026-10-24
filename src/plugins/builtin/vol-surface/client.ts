@@ -12,7 +12,7 @@ import {
 } from "./model";
 import { abortable, abortError } from "../../../utils/async-deadline";
 import { errorMessage } from "../../../utils/errors";
-import { findListedExpiry, unlistedExpiryText } from "../../../utils/option-expiry";
+import { expiredExpiryText, findListedExpiry, isLiveOptionExpiry, liveOptionExpiries, unlistedExpiryText } from "../../../utils/option-expiry";
 import { optionModelSpot } from "../options/model-spot";
 
 const DEFAULT_SURFACE_EXPIRY_LIMIT = 18;
@@ -217,8 +217,7 @@ export async function loadVolatilitySurface(
     catalogueError = initial.error?.message ?? null;
     catalogueReason = initial.error?.reasonCode;
     if (!chain) catalogueError ??= "Options expiry catalogue unavailable";
-    catalogue = [...new Set((chain?.expirationDates ?? []).filter((expiration) =>
-      Number.isFinite(expiration) && expiration > 0 && daysToExpiryFrom(expiration, now) > 0))].sort((a, b) => a - b);
+    catalogue = liveOptionExpiries(chain?.expirationDates ?? [], now, request.instrument.exchange);
     // A typed date is that day's UTC midnight; the catalogue's stamp for the
     // same expiry is matched by calendar date, as OMON matches it.
     const required = [...new Set([...(request.requiredExpiries ?? []), ...(request.expiries ?? [])]
@@ -227,8 +226,10 @@ export async function loadVolatilitySurface(
     const listed = new Set(catalogue);
     selected = [...new Set([...request.expiries ? [] : selectSurfaceExpiries(catalogue, limit, now),
       ...required.filter((expiration) => listed.has(expiration))])].sort((a, b) => a - b);
+    // An expiry whose last session has closed is named as expired, with the nearest live one to pick.
     requiredFailures = required.filter((expiration) => !listed.has(expiration)).map((expiration) => ({
-      expiration, message: unlistedExpiryText(expiration, catalogue),
+      expiration, message: isLiveOptionExpiry(expiration, now, request.instrument.exchange) ? unlistedExpiryText(expiration, catalogue)
+        : expiredExpiryText(expiration, catalogue, now, { exchange: request.instrument.exchange }),
     }));
     if (chain && catalogue.length === 0) catalogueError ??= "No unexpired option expiries available";
   } catch (error) {

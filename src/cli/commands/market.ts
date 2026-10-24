@@ -84,7 +84,10 @@ import {
   valueChainAtModelSpot,
   type OptionsChainBasis,
 } from "./options-chain";
-import { expirationHint, missingExpiryMessage, OPTION_EXPIRATION_FORMAT, OPTION_EXPIRATION_PLACEHOLDER } from "../../utils/option-expiry";
+import {
+  expirationHint, expiredExpiryText, expiryIsoDate, isLiveOptionExpiry, liveDefaultExpiry, liveOptionExpiries, missingExpiryMessage,
+  OPTION_EXPIRATION_FORMAT, OPTION_EXPIRATION_PLACEHOLDER, withLiveExpiryList,
+} from "../../utils/option-expiry";
 import { DATE_OPTION_EXAMPLES, isoDateOption, isoDateToday } from "../../utils/calendar-date";
 import { apiClient } from "../../api-client";
 import type { ExchangeAnnouncementsPayload } from "../../api-client/exchange-announcements";
@@ -2599,15 +2602,35 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     const quotePromise = loadListingQuote(market.dataProvider, listing);
     const fate = listingFateLoader(listing, market, quotePromise);
     const inputsPromise = loadOptionModelInputs(market.dataProvider, listing, quotePromise, refresh);
-    const { result, chain: loaded } = await loadForListing(listing, market, ctx, async () => {
-      const cached = await market.dataProvider.getCachedQuery?.("getOptionsChain", [symbol, exchange, expirationDate, undefined])
+    const now = Date.now();
+    const readChain = async (expiry: number | undefined) => {
+      const cached = await market.dataProvider.getCachedQuery?.("getOptionsChain", [symbol, exchange, expiry, undefined])
         .load({ force: refresh });
       return {
         result: cached,
-        chain: cached?.value ?? await market.dataProvider.getOptionsChain(symbol, exchange, expirationDate, {
+        chain: cached?.value ?? await market.dataProvider.getOptionsChain(symbol, exchange, expiry, {
           cacheMode: refresh ? "refresh" : "default",
         }),
       };
+    };
+    // An expiry whose last session has closed has no chain to show: it says so, and names the nearest live one.
+    if (expirationDate != null && !isLiveOptionExpiry(expirationDate, now, exchange)) {
+      const listed = await readChain(undefined).then(({ chain }) => chain.expirationDates,
+        logFailure("cli-market", "Read available option expirations failed", []));
+      ctx.fail(`expiry ${expiryIsoDate(expirationDate)} for ${listing.key} `
+        + expiredExpiryText(expirationDate, listed, now, { exchange, flag: "expiration" }),
+      `Run gloom options ${listing.key} to list the live expiries.`);
+    }
+    const { result, chain: read } = await loadForListing(listing, market, ctx, async () => {
+      const first = await readChain(expirationDate);
+      // A source can still default to the expiry that lapsed at Friday's close; the nearest live one is shown instead.
+      const live = expirationDate == null ? liveDefaultExpiry(first.chain, now, exchange) : undefined;
+      if (live === null) return { ...first, chain: { ...first.chain, calls: [], puts: [] } };
+      if (live == null) return first;
+      // The default's list stays the catalogue: a dated chain can list fewer expiries.
+      const shown = await readChain(live);
+      return { ...shown, chain: { ...shown.chain,
+        expirationDates: [...new Set([...first.chain.expirationDates, ...shown.chain.expirationDates])].sort((a, b) => a - b) } };
     }, undefined, { command: "options", noun: "options chain", fate }).catch((error: unknown) => {
       if (!isOptionsUnavailableError(error)) throw error;
       // A future or commodity with no chain of its own: name the listed fund whose options stand in.
@@ -2619,12 +2642,14 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
           + ` Strategy payoffs: gloom fn OSA ${alternative.symbol}`
         : "Strategy payoffs on a listed underlying: gloom fn OSA <ticker>");
     });
+    const loaded = withLiveExpiryList(read, now, exchange);
     const inputs = await inputsPromise;
     if (expirationDate != null && !chainHasExpiry(loaded, expirationDate)) {
       // An unlisted date comes back as an empty chain; its own list of expiries, else the default chain's, says what to pick.
       const listed = loaded.expirationDates.length > 0 ? loaded.expirationDates : await market.dataProvider
         .getOptionsChain(symbol, exchange, undefined, { cacheMode: "default" })
-        .then((fallback) => fallback.expirationDates, logFailure("cli-market", "Read available option expirations failed", []));
+        .then((fallback) => liveOptionExpiries(fallback.expirationDates, now, exchange),
+          logFailure("cli-market", "Read available option expirations failed", []));
       const miss = missingExpiryMessage(listing.key, expirationDate, listed);
       ctx.fail(miss.message, miss.details);
     }

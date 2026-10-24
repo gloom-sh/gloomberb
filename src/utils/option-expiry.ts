@@ -4,7 +4,11 @@
  * convert both ways, and two stamps on the same UTC date are the same expiry.
  */
 
+import type { OptionsChain } from "../types/financials";
+import { hasRegularCloseHour, latestRegularSessionClose, sessionCalendarTimeZone } from "../market-data/market/freshness";
 import { dateOptionHint, readCalendarDate } from "./calendar-date";
+import { canonicalExchange, isUsListingExchange } from "./exchanges";
+import { zonedWallClockToUtcMs } from "./zoned-date-time";
 
 // 9999-12-31 in Unix seconds; a longer number is milliseconds or a typo.
 const MAX_UNIX_SECONDS = 253_402_300_799;
@@ -80,10 +84,128 @@ export function daysToExpiry(expiration: number, asOfMs: number): number {
   return Math.round((expiry - asOf) / DAY_MS);
 }
 
-/** `469d` to expiry from the as-of date; `expired` once it has passed. */
-export function formatDaysToExpiry(expiration: number, asOfMs: number): string {
-  const days = daysToExpiry(expiration, asOfMs);
-  return days < 0 ? "expired" : `${days}d`;
+/** `469d` to expiry from the as-of date; `expired` once its last session has closed (`isLiveOptionExpiry`). */
+export function formatDaysToExpiry(expiration: number, asOfMs: number, exchange?: string): string {
+  return isLiveOptionExpiry(expiration, asOfMs, exchange) ? `${Math.max(0, daysToExpiry(expiration, asOfMs))}d` : "expired";
+}
+
+/** Listed US options trade on the US equity calendar, NYSE's published one. */
+const US_OPTIONS_CALENDAR = "NYSE";
+const lastSessions = new Map<string, { date: string; close: number } | null>();
+
+/**
+ * The venue whose calendar an expiry's last session is read on: a listing's
+ * own venue abroad when its zone and close hour are known (XETRA, JPX), else
+ * the US one listed options trade on, which also stands for a chain read
+ * without a venue.
+ */
+function expiryCalendarVenue(exchange: string | undefined): string {
+  const venue = canonicalExchange(exchange);
+  return venue && !isUsListingExchange(venue) && hasRegularCloseHour(venue) && sessionCalendarTimeZone(venue)
+    ? venue : US_OPTIONS_CALENDAR;
+}
+
+/** The expiry's last trading session, on or before its date, on its venue's calendar: the date and when it closed. */
+function expiryLastSession(expiration: number, exchange: string | undefined): { date: string; close: number } | null {
+  const date = expiryIsoDate(expiration);
+  if (!date) return null;
+  const venue = expiryCalendarVenue(exchange);
+  const key = `${venue}:${date}`;
+  const known = lastSessions.get(key);
+  if (known !== undefined) return known;
+  const timeZone = sessionCalendarTimeZone(venue)!;
+  // Midnight ending the expiry's date on the venue's clock: its session that day, else the latest before it.
+  const dayEnd = zonedWallClockToUtcMs(timeZone, Number(date.slice(0, 4)), Number(date.slice(5, 7)), Number(date.slice(8, 10)) + 1, 0, 0, 0);
+  const session = latestRegularSessionClose(venue, dayEnd);
+  const last = session ? { date: session.date, close: session.close } : null;
+  // The calendar is static, and every list and picker asks about the same few dates.
+  if (lastSessions.size < 4096) lastSessions.set(key, last);
+  return last;
+}
+
+/**
+ * When an expiry stops trading: the regular close of its last session, the
+ * listing venue's last trading day on or before the expiry's date, on that
+ * venue's clock and calendar. A US expiry closes at 16:00 New York, at 13:00
+ * on a published early close, and one dated on a holiday or a weekend closed
+ * with the session before it. Null for a stamp that is not a date.
+ */
+export function optionExpiryCloseMs(expiration: number, exchange?: string): number | null {
+  return expiryLastSession(expiration, exchange)?.close ?? null;
+}
+
+/**
+ * The rule every expiry list, picker and default chain follows: an expiry is
+ * live until its last session has closed (`optionExpiryCloseMs`). After
+ * Friday's close Friday's expiry is gone, over the weekend and on Monday
+ * before the open too, while on its own day it stays until the close.
+ */
+export function isLiveOptionExpiry(expiration: number, now: number, exchange?: string): boolean {
+  if (!Number.isFinite(expiration) || expiration <= 0) return false;
+  const close = optionExpiryCloseMs(expiration, exchange);
+  return close != null && now < close;
+}
+
+/** The listed expiries still live (`isLiveOptionExpiry`), once each, in date order. */
+export function liveOptionExpiries(expirations: readonly number[], now: number, exchange?: string): number[] {
+  return [...new Set(expirations)].filter((expiration) => isLiveOptionExpiry(expiration, now, exchange)).sort((a, b) => a - b);
+}
+
+/** The chain with only its live expiries listed; the contracts are left as they are. */
+export function withLiveExpiryList<T extends Pick<OptionsChain, "expirationDates">>(chain: T, now: number, exchange?: string): T {
+  const live = liveOptionExpiries(chain.expirationDates, now, exchange);
+  return live.length === chain.expirationDates.length && live.every((expiration, index) => expiration === chain.expirationDates[index])
+    ? chain : { ...chain, expirationDates: live };
+}
+
+/**
+ * The expiry a chain asked for without a date shows instead of the one its
+ * source sent, by the same rule: undefined when the source's default is live
+ * or has no contracts, else the nearest live expiry it lists, to ask for by
+ * date, or null when none of them is live. A source can still answer with
+ * Friday's chain after Friday's close, all weekend.
+ */
+export function liveDefaultExpiry(
+  chain: Pick<OptionsChain, "calls" | "puts" | "expirationDates">, now: number, exchange?: string,
+): number | null | undefined {
+  const contracts = [...chain.calls, ...chain.puts];
+  if (contracts.length === 0 || contracts.some((contract) => isLiveOptionExpiry(contract.expiration, now, exchange))) return undefined;
+  return liveOptionExpiries(chain.expirationDates, now, exchange)[0] ?? null;
+}
+
+/** The first live listed expiry dated after `expiration`, for a chain that had nothing to offer. */
+export function nextLiveExpiry(expiration: number, expirations: readonly number[], now: number, exchange?: string): number | undefined {
+  const date = expiryIsoDate(expiration);
+  return liveOptionExpiries(expirations, now, exchange).find((listed) => expiryIsoDate(listed) > date);
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** An expiry's date as a sentence names it: `23 Oct`, with the year when it is not the current one (`21 Jan 2028`). */
+export function expiryDayLabel(expiration: number | string, now: number): string {
+  const date = typeof expiration === "string" ? expiration : expiryIsoDate(expiration);
+  if (!date) return "";
+  const label = `${Number(date.slice(8, 10))} ${MONTHS[Number(date.slice(5, 7)) - 1]}`;
+  return date.slice(0, 4) === new Date(now).toISOString().slice(0, 4) ? label : `${label} ${date.slice(0, 4)}`;
+}
+
+/** An expiry to pick, and with a flag how to ask for it: `30 Oct (--expiration 2026-10-30)`. */
+export function expiryChoiceText(expiration: number, now: number, flag?: string): string {
+  return `${expiryDayLabel(expiration, now)}${flag ? ` (--${flag} ${expiryIsoDate(expiration)})` : ""}`;
+}
+
+/**
+ * Why an expired date shows no chain, naming the day its last session closed
+ * and the nearest live expiry, with the flag that asks for it when given:
+ * `expired on 23 Oct; nearest live: 30 Oct (--expiration 2026-10-30)`.
+ */
+export function expiredExpiryText(
+  requested: number, expirations: readonly number[], now: number, { exchange, flag }: { exchange?: string; flag?: string } = {},
+): string {
+  const last = expiryLastSession(requested, exchange);
+  const nearest = liveOptionExpiries(expirations, now, exchange)[0];
+  return `expired on ${expiryDayLabel(last?.date ?? requested, now)}; `
+    + (nearest == null ? "the chain lists no live expiry" : `nearest live: ${expiryChoiceText(nearest, now, flag)}`);
 }
 
 const NEAREST_EXPIRIES = 4;

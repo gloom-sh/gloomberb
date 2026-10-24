@@ -91,6 +91,35 @@ test("options fails on an expiry the chain does not list, in dates, and on one t
     .rejects.toThrow("no expiry 2028-01-21 for AAPL");
 });
 
+test("after Friday's close options shows the nearest live expiry, not the one the source still defaults to, and names it for a lapsed date", async () => {
+  // Saturday morning: the source still answers a chain without a date with Friday's, and lists it.
+  setSystemTime(new Date("2026-10-24T05:24:00Z"));
+  try {
+    const day = (date: string) => Date.parse(`${date}T00:00:00Z`) / 1000;
+    const friday = day("2026-10-23"), next = day("2026-10-30"), later = day("2026-11-06");
+    const requests: unknown[] = [];
+    const dataProvider = {
+      getOptionsChain: async (_symbol: string, _exchange: string, expiration?: number) => {
+        requests.push(expiration);
+        return { underlyingSymbol: "COPX", expirationDates: [friday, next, later], puts: [], calls: [{ contractSymbol: "COPX", strike: 45,
+          currency: "USD", lastPrice: 1, change: 0, percentChange: 0, bid: 1, ask: 2, impliedVolatility: 0, inTheMoney: false,
+          expiration: expiration ?? friday, lastTradeDate: 0 }] };
+      },
+    };
+    const shown = createTestCliContext({ dataProvider });
+    await options.execute(["COPX"], shown.context);
+    expect(requests).toEqual([undefined, next]);
+    const printed = shown.cli ? undefined : shown.printed[0]!;
+    expect(printed!.options!.rows!(printed!.result.data).map((row) => row.expiration)).toEqual(["2026-10-30"]);
+    expect(printed!.result.metadata!.expirations).toEqual([next, later]);
+
+    await expect(options.execute(["COPX", "--expiration", "2026-10-23"], createTestCliContext({ dataProvider }).context))
+      .rejects.toThrow("expiry 2026-10-23 for COPX expired on 23 Oct; nearest live: 30 Oct (--expiration 2026-10-30)");
+  } finally {
+    setSystemTime();
+  }
+});
+
 test("an options export says on every row what it is, the spot and time behind IV and delta, and the open interest's date", async () => {
   const expiration = EXPIRIES[1]!;
   const closeAt = Date.parse("2026-10-12T19:59:59Z");

@@ -39,7 +39,7 @@ import { buildScenario, currencyLabel, scenarioCurrency, scenarioValueUnit, UNKN
 import { EMPTY_SAVED_STRATEGIES, restoreSavedStrategies, type SavedScenarioStrategy } from "./state";
 import { useScenarioEvidence } from "./evidence";
 import { hedgeStatItems, scenarioHedgeBudget, seededLegQuotes, type HedgeQuote } from "./hedge";
-import { readOptionExpiration } from "../../../utils/option-expiry";
+import { isLiveOptionExpiry, readOptionExpiration } from "../../../utils/option-expiry";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
 
 const EMPTY_ERRORS: string[] = [];
@@ -65,7 +65,9 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
   const underlying = listed.symbol;
   const exchange = listed.exchange || target?.effectiveExchange || undefined;
   // A strategy seeded for an expiry (`OSA SPY --strategy put --expiration 2027-01-15`) opens that expiry's chain.
-  const [expiration, setExpiration] = usePluginPaneState<number | null>("chainExpiration", readOptionExpiration(settings.expiration));
+  const [pickedExpiration, setExpiration] = usePluginPaneState<number | null>("chainExpiration", readOptionExpiration(settings.expiration));
+  // A picked expiry that has since lapsed gives way to the nearest live one, as OMON's does.
+  const expiration = pickedExpiration != null && isLiveOptionExpiry(pickedExpiration, Date.now(), exchange) ? pickedExpiration : null;
   const [tab, setTab] = usePluginPaneState("activeTabId", "payoff");
   const [detail, setDetail] = useState<"chain" | "leg" | "save" | "inputs" | null>(null);
   const [editingLeg, setEditingLeg] = useState<ScenarioLeg | null>(null);
