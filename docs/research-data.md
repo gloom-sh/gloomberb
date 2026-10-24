@@ -375,7 +375,7 @@ The estimates use DTCC's public rates trade reports. Only clean USD fixed-versus
 
 Historical coverage depends on the files DTCC still serves publicly. The displayed as-of date is the trade date; fetch time is separate. Refresh failures keep the last usable curve with a footer error, and stale data is marked there.
 
-`gloomberb fn GC --tab swaps --tenor 10Y` prints the tenor table; `--json` includes comparison curves and the selected tenor's history. `gloomberb shot GC --tab swaps --tenor 10Y --swap-view history` selects that history chart for a screenshot. The default Swaps chart view is **Curve**.
+`gloom fn GC --tab swaps --tenor 10Y` prints the tenor table; `--json` includes comparison curves and the selected tenor's history. `gloom shot GC --tab swaps --tenor 10Y --swap-view history` selects that history chart for a screenshot. The default Swaps chart view is **Curve**.
 
 ### Was it a big day? Move ranks
 
