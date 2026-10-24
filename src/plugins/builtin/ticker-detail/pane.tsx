@@ -227,6 +227,17 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
   );
 
   const visibleTabIdKey = allTabs.map((tab) => tab.id).join("\0");
+  // A function that opens DES on one of its tabs (ADR) stamps the tab on the instance (command-tab.ts):
+  // it is shown once it is there to show, and once per stamp, so a later choice in the pane stands.
+  const requestedTabId = paneInstance?.params?.tab ?? null;
+  const requestedTabAt = paneInstance?.params?.tabAt ?? "";
+  const [consumedTabAt, setConsumedTabAt] = usePaneStateValue<string>("commandTabAt", "");
+  useEffect(() => {
+    if (!requestedTabId || !requestedTabAt || requestedTabAt === consumedTabAt) return;
+    if (!allTabs.some((tab) => tab.id === requestedTabId)) return;
+    setConsumedTabAt(requestedTabAt);
+    setActiveTabId(requestedTabId);
+  }, [consumedTabAt, requestedTabAt, requestedTabId, setActiveTabId, setConsumedTabAt, visibleTabIdKey]);
   // A quote tick re-renders this pane; the tab strip only has to re-render
   // when a tab appears, disappears, or is renamed.
   const tabItemsKey = allTabs.map((tab) => `${tab.id}:${tab.name}`).join("\0");

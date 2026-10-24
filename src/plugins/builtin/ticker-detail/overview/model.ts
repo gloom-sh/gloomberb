@@ -1,7 +1,10 @@
 import { formatPriceEarnings, NOT_MEANINGFUL } from "../../../../utils/price-earnings";
 import { convertMarketCapitalization } from "../../../../utils/market-capitalization";
 import { priceColor } from "../../../../theme/colors";
-import type { CompanyProfile, NextEarnings, Quote, TickerFinancials } from "../../../../types/financials";
+import type { CompanyProfile, DepositaryPair, NextEarnings, Quote, TickerFinancials } from "../../../../types/financials";
+import { adrRatioText } from "../../../../utils/depositary-receipt";
+import { ratioCount } from "../../../../market-data/depositary-pair";
+import { ADR_PAIR_TAB_ID, ADR_PAIR_TEMPLATE_ID } from "../adr-pair/model";
 import type { Portfolio, TickerPosition, TickerRecord } from "../../../../types/ticker";
 import type { BrokerInstanceConfig } from "../../../../types/config";
 import type { BrokerAccount } from "../../../../types/trading";
@@ -44,6 +47,7 @@ const EARNINGS: OverviewFunctionLink = { name: "Earnings", templateId: "earnings
 const DIVIDENDS: OverviewFunctionLink = { name: "Dividends", tabId: "dividend-yield", templateId: "dividend-yield-pane" };
 const FUND_FACTS: OverviewFunctionLink = { name: "Fund Facts", templateId: "sec-etf-pane" };
 const FINANCIALS: OverviewFunctionLink = { name: "Financials", tabId: "financials", templateId: "financial-analysis-pane" };
+const ADR_PAIR: OverviewFunctionLink = { name: "ADR vs Home", tabId: ADR_PAIR_TAB_ID, templateId: ADR_PAIR_TEMPLATE_ID };
 
 /** A bond fund's sponsor figures in a narrow grid: `SEC Yield 4.04% 2026-10-15`. */
 const BOND_STAT_LABELS = { secYield: "SEC Yield", yieldToWorst: "Yld to Worst" } as const;
@@ -146,6 +150,7 @@ export function buildOverviewStats({
   marketCapExchangeRates = new Map(),
   nextEarnings,
   depositaryReceipt = false,
+  depositaryPair = null,
   today,
   dividend,
   bond = null,
@@ -162,6 +167,8 @@ export function buildOverviewStats({
   nextEarnings?: NextEarnings;
   /** The share count is in depositary receipts, not ordinary shares. */
   depositaryReceipt?: boolean;
+  /** The receipt pair the listing is a side of, as Gloom Cloud serves it; `receiptSide` when the listing is the receipt. */
+  depositaryPair?: { pair: DepositaryPair; receiptSide: boolean } | null;
   /** The listing's calendar day, YYYY-MM-DD; dates before it are left out. */
   today?: string;
   /** The history the dividend yield reads (useOverviewDividend): a trailing one is measured from its cash, a forward one stops with it; without it the yield stands. */
@@ -207,6 +214,14 @@ export function buildOverviewStats({
   }
   if (finite(fundamentals?.floatShares) && fundamentals.floatShares > 0) {
     stats.push({ label: "Float", value: formatCompact(fundamentals.floatShares), ...counted(fundamentals.floatSharesAsOf) });
+  }
+  // A receipt says how many shares it holds and a home line which receipt holds it, both opening ADR vs Home.
+  if (depositaryPair) {
+    const { pair, receiptSide } = depositaryPair;
+    const count = ratioCount(pair.ratio);
+    stats.push(receiptSide
+      ? { label: "ADR Ratio", value: `1:${count}`, detail: [adrRatioText(pair.ratio)!, `${count} sh per ADR`], link: ADR_PAIR }
+      : { label: "ADR", value: pair.receipt, detail: [`1 ADR = ${count} of these share${pair.ratio === 1 ? "" : "s"}`, `1:${count}`], link: ADR_PAIR });
   }
   const trailingPE = liveTrailingPE(quote, fundamentals);
   if (trailingPE != null) {

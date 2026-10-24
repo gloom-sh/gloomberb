@@ -176,6 +176,8 @@ import { exportedFundamentals } from "../../utils/price-earnings";
 import { fundamentalsFreshness, fxPairFreshness, quotesFreshness, rowsFreshness, valuationFreshness } from "../freshness";
 import { fxRateNotes } from "../../plugins/builtin/shared/fx-rate-freshness";
 import { quoteBarNotes } from "../../market-data/quotes/intraday-bar";
+import { depositaryPairText, isReceiptSide, listingDepositaryPair } from "../../market-data/depositary-pair";
+import { isPesoDollarPair, loadPesoDollarRates, pesoDollarRateLines, pesoDollarRatesJson } from "../peso-dollar-rates";
 import { atRegularSessionPrice, regularSessionValuationPrice } from "../../market-data/quotes/regular-session-valuation";
 import { viewMarketCapitalization } from "../../utils/market-capitalization";
 import {
@@ -1083,6 +1085,11 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
         const ended = noLongerTradingNote(label, row.quote, now);
         const quiet = ended ? null : noPrintsTodayText(row.quote, now);
         return [ended ?? (quiet ? `${label}: ${quiet}` : []), quoteBarNotes(label, row.quote, now)].flat();
+      }),
+      // A receipt and its home line each say the ratio, as `ticker` does.
+      ...data.flatMap((row) => {
+        const pair = listingDepositaryPair({ quote: row.quote });
+        return pair ? [`${row.target.symbol}: ${depositaryPairText(pair, isReceiptSide({ quote: row.quote }))}.`] : [];
       }),
       // A cell shows only "unavailable", and an exported row only its status, so stderr names each failure; the JSON rows carry each reason.
       ...ctx.cliOptions.format !== "json" ? quoteNotes(data, { exchange }) : [],
@@ -3010,9 +3017,19 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
         : [],
       ...rateNotes,
     ];
-    ctx.printResult({ data: [row], freshness, warnings: warnings.length > 0 ? warnings : undefined }, {
+    // The peso's dollar rate is the official one; the market rates Buenos Aires prices imply follow it, each with its inputs.
+    const peso = isPesoDollarPair(currency, baseCurrency)
+      ? await loadPesoDollarRates((targets) => market.dataProvider.getQuotesBatch(targets, { forceRefresh: ctx.cliOptions.refresh }))
+      : null;
+    if (peso && peso.missing.length > 0) warnings.push(`No price for ${peso.missing.join(", ")}, so the rates from ${peso.missing.length === 1 ? "it are" : "them are"} left out.`);
+    const rateText = peso ? `${describeFxRate(request, rate)}  ·  ${peso.spotKind} rate` : describeFxRate(request, rate);
+    ctx.printResult({ data: [peso ? { ...row, ...pesoDollarRatesJson(peso) } : row], freshness, warnings: warnings.length > 0 ? warnings : undefined }, {
       // The conversion, then the rate it used; the source line under it dates that rate.
-      text: () => amount == null ? describeFxRate(request, rate) : `${describeFxConversion(request, amount, rate)}\n${describeFxRate(request, rate)}`,
+      text: () => [
+        ...amount == null ? [] : [describeFxConversion(request, amount, rate)],
+        rateText,
+        ...peso ? pesoDollarRateLines(peso) : [],
+      ].join("\n"),
       // The rate is the base currency's price of one unit of the other, at the latest quote of each leg.
       exportIdentity: { symbolOrSeries: pair, currencyOrUnit: baseCurrency, interval: "spot" },
       columns: [

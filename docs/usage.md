@@ -219,6 +219,7 @@ When Gloom Cloud is too busy to search, the list says `Search is busy` rather th
 | `HVT <ticker>` | Volatility cone, current estimates and historical percentiles |
 | `SEAS <ticker>` | Seasonality: monthly returns by year, average and hit rate, year overlays, weekday and turn-of-month returns |
 | `RIPL [tickers]` | Earnings Ripple: customers and suppliers of your holdings (or the named tickers) reporting in the next 30 days, with the disclosed revenue share. Pro adds companies two hops away |
+| `ADR <ticker>` | A depositary receipt beside its home listing (GGAL and GGAL.BA, TSM and 2330.TW): the ratio, both prices with their times, the implied dollar rate (home × ratio / ADR, the CCL rate for an Argentine pair), spot and the premium or discount. Opens DES on its ADR vs Home tab, which shows for listings with a known pair |
 | `RDCF <ticker>` | Reverse DCF: the ten-year free cash flow growth the enterprise value prices in, against past growth, by discount rate |
 | `PEB <ticker>` | P/E band: weekly price against round multiples of trailing EPS, today's P/E and its percentile |
 | `MDAY <ticker>` | Macro-day reaction: average absolute and signed move and up share on CPI, jobs, FOMC and Brazil IPCA days against a normal day, with each day's actual, forecast and prior |
@@ -1111,6 +1112,8 @@ A command fails on an option it does not take instead of ignoring it. `gloom his
 - A pair typed without its slash (`gloom fx eurusd`) says to write it as `EUR/USD`.
 - A currency's name stands for its code (`gloom fx yen` is JPY, `rand` ZAR, `Swiss franc` CHF) and the answer says which it read. A name several currencies share lists them (`peso`: MXN, ARS, COP, CLP, PHP, UYU, DOP) and you type the code. A code with no rate fails naming that code.
 - The answer ends with the source line of [How current a report is](#how-current-a-report-is), dated by the older of the two USD rates: `Source: Gloom Cloud · FX trading day Fri 9 Oct 2026 close · 15 min delayed · markets closed` (`live` with real-time access, `stale` when a rate has not updated in time).
+
+**The peso.** `gloom fx USD/ARS` (or `ARS/USD`) labels its rate the official wholesale one, then lists the market dollar rates Buenos Aires prices imply, pesos per dollar, each with its formula and the time of every price in it: CCL via the GGAL ADR (GGAL.BA × 10 / GGAL), CCL via the BYMA C line (GGAL.BA / GGALC.BA) and MEP via the D line (GGAL.BA / GGALD.BA). A price that did not come back leaves its rate out and says so. `--json` adds `spotKind` and `impliedRates` (`kind`, `rate`, `formula` and each input's `price`, `currency`, `observedAt` and `sessionOpen`). `gloom fn ADR <ticker>` compares any other receipt with its home listing the same way.
 
 **Exports.** `--json`, `--csv` and `--ndjson` carry `currency`, `baseCurrency`, `rate` (base currency per one currency), `asOf`, `stale`, `pair` and `inverse`. `--csv` and `--ndjson` end with the five fixed columns: the pair (`ZAR/USD`), the base currency (`USD`), `spot`, the source and the rate's time. `--json` adds `metadata.freshness`.
 

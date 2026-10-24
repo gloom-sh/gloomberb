@@ -1575,6 +1575,11 @@
             "description": "Open another research pane for the selected ticker or current collection"
           },
           {
+            "code": "ADR",
+            "name": "ADR vs Home",
+            "description": "A depositary receipt beside its home listing: the ratio, both prices, the dollar rate they imply (the CCL rate for an Argentine pair), spot, and the receipt's premium or discount."
+          },
+          {
             "code": "QQ",
             "name": "Quote Monitor",
             "description": "Open a compact quote monitor for one or more tickers"

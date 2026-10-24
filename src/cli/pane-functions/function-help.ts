@@ -104,6 +104,15 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     data: QUOTES,
     bloomberg: ["DES"],
   },
+  ADR: {
+    summary: "What exchange rate does a receipt's price imply? A depositary receipt beside its home listing: the ratio, both prices with when each was set, the dollar rate they imply (the CCL rate for an Argentine pair) against spot, and the receipt's premium or discount. Opens DES on its ADR vs Home tab.",
+    usage: ["ADR GGAL", "ADR TSM", "ADR GGAL.BA"],
+    keys: [key("Enter", " open the listing")],
+    data: QUOTES,
+    bloomberg: [],
+    // A tab of DES, filed under it.
+    docs: "DES",
+  },
   QQ: {
     summary: "A compact board of live quotes for any list of tickers, each with change, range and a sparkline. Good as the always-open strip in a layout.",
     usage: ["QQ NVDA, AAPL, MSFT"],

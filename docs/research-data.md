@@ -101,6 +101,17 @@ The Weekdays tab reads daily bars instead: every session of the last five years,
 - **Sensitivity.** The table solves the same growth for each discount rate and for terminal growth of 2%, 2.5% and 3%. Selecting a row sets the discount rate.
 - **Not computed.** Negative trailing free cash flow has no growth rate that prices it. A listing whose cash flows are reported in another currency than its market value (many ADRs) is not converted, and shows why instead.
 
+## ADR vs home
+
+`ADR <ticker>` opens DES on its **ADR vs Home** tab, which a listing has only when Gloom Cloud pairs it with a depositary receipt (GGAL and GGAL.BA, TSM and 2330.TW, BHP and BHP.AX). Either side works: the receipt compares with its first home line, a home line with its receipt.
+
+- **Ratio.** How many ordinary shares one receipt holds, from Gloom Cloud's depositary reference, which checks each ratio against the depositary's notice and both lines' prices. `ticker`, `quote` and DES's Overview state it on both sides: `1 ADR = 10 ordinary shares of GGAL.BA` on the receipt, `1 GGAL ADR = 10 of these shares` on the home line.
+- **Prices.** Each line's regular-session price through the same quote path as `quote` (an after-hours print never moves it), dated by its last trade, or by the close once the session is over. A price in a minor unit (pence) is read in its currency.
+- **Implied rate.** home price × ratio / ADR price, home currency per dollar: GGAL.BA at ARS 6,260, 10 shares a receipt and GGAL at $37.91 imply 1,651 pesos a dollar, the CCL rate, against an official wholesale 1,529.
+- **Premium.** spot / implied rate - 1: what the receipt costs over the shares it holds, converted at spot. TSM's has run above 10% for long stretches, as foreign buying of Taiwanese shares is limited; Argentina's controls put the peso pairs about 7% under the official rate.
+- **Timing.** The two prices are compared as they are. When one market is closed while the other trades, or both are closed more than 30 minutes apart (2330.TW's Thursday close against TSM's Friday one), a note above the inputs says which price is from when and how far apart.
+- `fn ADR <ticker>` gives the same figures and inputs, and `--json` the inputs' prices and times in `metadata`. For the peso's CCL and MEP rates from the Buenos Aires dollar lines, see `gloom fx USD/ARS` in the [usage guide](usage.md).
+
 ## P/E band
 
 `PEB <ticker>` draws the weekly close against lines at fixed multiples of trailing EPS, so the price can be read against the stock's own valuation history: on the 20x line it trades at twenty times what it earned over the last year.

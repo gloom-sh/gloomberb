@@ -20,6 +20,10 @@ import {
   getTickerResearchPaneSettings,
 } from "./settings";
 import { formatTickerListInput } from "../../../tickers/list";
+import { withCommandTab } from "../shared/command-tab";
+import { buildTickerSurfaceInstanceId } from "../shared/ticker-surface";
+import { adrPairHeadless, ADR_PAIR_KEYWORDS } from "./adr-pair/headless";
+import { ADR_PAIR_TAB_ID, ADR_PAIR_TEMPLATE_ID } from "./adr-pair/model";
 import {
   LIVE_STREAMING_QUICK_SETTING,
   withLiveStreamingSetting,
@@ -46,6 +50,8 @@ export const tickerDetailModule: PluginModule = {
       component: TickerResearchPane,
       defaultPosition: "right",
       tickerFollower: true,
+      // DES and ADR open this pane; ADR's window is named by its params (the tab it asked for), so settings never say whose a window is.
+      identitySettings: [],
       personalData: (context) => {
         const settings = getTickerResearchPaneSettings(context.settings);
         const tab = settings.hideTabs ? settings.lockedTabId : context.paneState.activeTabId;
@@ -138,6 +144,27 @@ export const tickerDetailModule: PluginModule = {
           ? { symbol: data.symbol.trim().toUpperCase(), instrument: null }
           : null,
       },
+    },
+    {
+      // DES on its ADR vs Home tab: no pane of its own.
+      ...withCommandTab({
+        id: ADR_PAIR_TEMPLATE_ID,
+        paneId: TICKER_RESEARCH_PANE_ID,
+        label: "ADR vs Home",
+        description: "A depositary receipt beside its home listing: the ratio, both prices, the dollar rate they imply (the CCL rate for an Argentine pair), spot, and the receipt's premium or discount.",
+        keywords: [...ADR_PAIR_KEYWORDS],
+        shortcut: { prefix: "ADR", argPlaceholder: "ticker", argKind: "ticker" },
+        canCreate: (context, options) => normalizeTickerInput(context.activeTicker, options?.arg) !== null,
+        // One window a listing: ADR again focuses it and brings its tab back.
+        createInstance: (context, options) => {
+          const symbol = options?.symbol?.trim().toUpperCase() || normalizeTickerInput(context.activeTicker, options?.arg);
+          return symbol ? {
+            instanceId: buildTickerSurfaceInstanceId(TICKER_RESEARCH_PANE_ID, symbol, "ADR"),
+            title: symbol, binding: { kind: "fixed", symbol }, placement: "floating",
+          } : null;
+        },
+      }, ADR_PAIR_TAB_ID),
+      headless: adrPairHeadless,
     },
     {
       id: "quote-monitor-pane",

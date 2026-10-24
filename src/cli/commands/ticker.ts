@@ -83,6 +83,7 @@ import { movedAwayChange } from "../../tickers/ticker-changes";
 import { companyMemberships, loadCompanyMemberships, type CompanyMemberships, type ListMembership } from "../issuer-membership";
 import { isNotATickerMessage } from "../not-a-ticker";
 import { sharesOutstandingInReceipts } from "../../utils/depositary-receipt";
+import { depositaryPairText, isReceiptSide, listingDepositaryPair } from "../../market-data/depositary-pair";
 import { cliFreshnessFooter } from "../result";
 import { providerMissReason } from "../../sources/provider-errors";
 import { exportEntriesTable, reportFooterLines, type CliReportTables } from "../report-tables";
@@ -1142,6 +1143,11 @@ export async function buildTickerReport({
   if (metadataParts.length > 0) {
     lines.push(cliStyles.muted(metadataParts.join(METADATA_SEPARATOR)));
   }
+  // A receipt and its home line each state the ratio, and where the two are compared.
+  const depositaryPair = listingDepositaryPair(financials);
+  if (depositaryPair) {
+    lines.push(cliStyles.muted(`ADR ratio ${depositaryPairText(depositaryPair, isReceiptSide(financials))}. Implied FX and premium: gloom fn ADR ${quote?.symbol ?? symbol}`));
+  }
 
   // A list that holds the company as another of its listings says which: "Watchlists R (as RCI.B:TSX)".
   const lists = memberships ?? companyMemberships(config, tickerFile, [], null);
@@ -1375,6 +1381,8 @@ function buildTickerStructuredData({
       lastUpdated: quote.lastUpdated ? new Date(quote.lastUpdated).toISOString() : "",
     } : null,
     quoteMetadata: financials.quoteMetadata,
+    // The receipt pair the listing is a side of, and which side.
+    ...depositaryPairJson(financials),
     // Only for futures: the contract the symbol prices, its terms and its latest confirmed settlement.
     ...futuresContract ? { futuresContract } : {},
     ...usdPerMmbtu ? { usdPerMmbtu } : {},
@@ -1433,6 +1441,13 @@ function buildTickerStructuredData({
     // and the 13D/13G the company filed as a holder of other companies.
     recentSecFilingsHidden: hiddenSecFilings,
   };
+}
+
+function depositaryPairJson(financials: TickerFinancials) {
+  const pair = listingDepositaryPair(financials);
+  if (!pair) return {};
+  const receipt = isReceiptSide(financials);
+  return { depositaryPair: { ...pair, side: receipt ? "receipt" : "home", text: depositaryPairText(pair, receipt) } };
 }
 
 const QUOTE_UNAVAILABLE = "Quote unavailable.";

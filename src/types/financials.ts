@@ -73,12 +73,28 @@ export interface QuoteMetadata {
  */
 export type ShareBasis = "depositary_receipt" | "ordinary";
 
+/**
+ * A depositary receipt and the listings of the ordinary shares it represents,
+ * as Gloom Cloud serves it on both sides' records: GGAL with ratio 10 and
+ * GGAL.BA, on GGAL's quote and on GGAL.BA's alike.
+ */
+export interface DepositaryPair {
+  /** The receipt's US symbol. */
+  receipt: string;
+  /** Ordinary shares one receipt represents. */
+  ratio: number;
+  /** Listings of the ordinary shares (GGAL.BA), the home line first. */
+  ordinary: string[];
+}
+
 /** How a depositary receipt relates to the ordinary shares, as Gloom Cloud states it. */
 interface DepositaryReceiptFacts {
   /** Whether the listing is a depositary receipt; absent when unknown. */
   isDepositaryReceipt?: boolean;
   /** Ordinary shares per receipt, on a receipt's own records. */
   adrRatio?: number;
+  /** The receipt and its home lines, on the receipt's records and each home line's. */
+  depositaryPair?: DepositaryPair;
 }
 
 export interface Quote extends DepositaryReceiptFacts {

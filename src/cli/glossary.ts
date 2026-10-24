@@ -2,7 +2,7 @@ import { cliStyles, cliTerminalWidth, renderDefinitions, renderSection, wrapText
 
 /**
  * Plain-words meanings of the rates, auction, credit and bond yield, energy, perpetual-futures, portfolio,
- * fund, bond fund (SEC yield, tax-equivalent yield, muni/Treasury ratio), short interest, quote-board, futures (basis, contango, roll yield), VIX curve (term structure, 3M/30D, VVIX), CFTC positioning (COT trader classes, net % of open interest) and economic-calendar terms the functions
+ * fund, bond fund (SEC yield, tax-equivalent yield, muni/Treasury ratio), short interest, quote-board, futures (basis, contango, roll yield), VIX curve (term structure, 3M/30D, VVIX), CFTC positioning (COT trader classes, net % of open interest), depositary receipt (ADR ratio, premium, implied FX, the peso's CCL and MEP rates) and economic-calendar terms the functions
  * show in their rows, headers and footers.
  * `catalog glossary` lists them, `catalog explain <term>` prints one, and
  * `fn <function> --explain` and `portfolio show --explain` follow a report with
@@ -429,6 +429,37 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     term: "Tracking error", aliases: ["index tracking error"], functions: ["ETF"], shown: ["Tracking error", "tracking error"],
     definition: "How loosely a fund follows its index: how much the gap between the fund's return and the index's swings, usually over a year. "
       + "Fees, cash and holdings that differ from the index widen it.",
+  },
+  // A depositary receipt beside its home listing (ADR, DES), and the peso's market dollar rates `fx USD/ARS` lists.
+  {
+    term: "ADR ratio", aliases: ["adr", "adrs", "depositary receipt", "american depositary receipt", "depositary ratio", "ads ratio"],
+    functions: ["ADR", "DES"], shown: ["Ratio", "ADR Ratio", "ADR ratio"],
+    definition: "How many ordinary shares one depositary receipt holds: 1 ADR = 10 ordinary shares means one GGAL in New York is ten GGAL.BA shares in Buenos Aires. "
+      + "A receipt's price compares with its home price only once the home price is multiplied by the ratio.",
+  },
+  {
+    term: "ADR premium", aliases: ["adr discount", "adr vs home", "receipt premium", "adr premium/discount"],
+    functions: ["ADR"], shown: ["ADR vs home", "premium", "discount"],
+    definition: "How far a receipt trades above (a premium) or below (a discount) the home shares it holds, at the spot rate: spot / implied rate - 1. "
+      + "Arbitrage keeps it small where money moves freely; where it cannot (Argentina's controls, Taiwan's limits on foreign buying) it runs to several percent.",
+  },
+  {
+    term: "Implied FX", aliases: ["implied exchange rate", "implied dollar rate", "implied fx rate", "adr implied rate"],
+    functions: ["ADR"], shown: ["Implied"],
+    definition: "The exchange rate at which a receipt and its home shares cost the same: home price × ratio / ADR price. "
+      + "GGAL.BA at ARS 6,260, 10 shares a receipt and GGAL at $37.91 imply 6,260 × 10 / 37.91 = 1,651 pesos a dollar.",
+  },
+  {
+    term: "Contado con liquidación", short: "CCL", aliases: ["contado con liquidacion", "contado con liqui", "dolar ccl", "ccl rate", "blue chip swap"],
+    functions: ["ADR"],
+    definition: "The peso's dollar rate for moving money abroad through securities: buy shares in pesos in Buenos Aires, sell them (or their ADR) for dollars abroad. "
+      + "Read from an ADR pair (home × ratio / ADR) or a BYMA C line (peso price / C-line dollar price); it runs above the official wholesale rate.",
+  },
+  {
+    term: "Mercado electrónico de pagos", short: "MEP", aliases: ["mercado electronico de pagos", "dolar mep", "dolar bolsa", "mep rate"],
+    functions: ["ADR"],
+    definition: "The peso's dollar rate inside Argentina through securities: buy shares in pesos and sell their BYMA D line for dollars paid in Argentina. "
+      + "Read as the peso price over the D line's dollar price; it sits near the CCL rate, usually a little under it.",
   },
   // Bond spreads and yields (CRD, the data catalog's ICE BofA yields, TRACE), a fund's SEC yield, which DVD's cash yield is not,
   // and the bond fund figures and tax-equivalent maths DVD and fundamentals give with --tax-rate.
