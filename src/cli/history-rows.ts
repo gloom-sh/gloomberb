@@ -19,6 +19,8 @@ import { formatUtcTime } from "../utils/utc-time";
 import { historyCoverageNotice } from "../sources/history-coverage";
 import { barLastSession, barPeriodToDate, type BarPeriodToDate } from "../market-data/market/bar-period";
 import { barSizeFromGap, medianBarGap } from "../time-series/bar-spacing";
+import { isRegularSessionTime, sessionCalendarTimeZone } from "../market-data/market/freshness";
+import { zonedDateKey } from "../utils/zoned-date-time";
 
 const PRICE_KEYS = ["open", "high", "low", "close"] as const;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -332,18 +334,35 @@ function listDates(dates: readonly string[]): string {
   return items.length > 1 ? `${items.slice(0, -1).join(", ")} and ${items.at(-1)}` : items[0] ?? "";
 }
 
+/** The venue's day in session at `now`: null when it is not trading, undefined when its hours are not known. */
+export function venueTradingDay(venue: string | undefined, now: number): string | null | undefined {
+  const zone = venue ? sessionCalendarTimeZone(venue) : null;
+  const trading = zone ? isRegularSessionTime(venue, now) : null;
+  if (!zone || trading === null) return undefined;
+  return trading ? zonedDateKey(now, zone) : null;
+}
+
 /**
  * What the partial, filled and unsettled bars are: "2026-10-12 is still
- * forming (partial), with no volume until the day closes", the bars rebuilt
- * from hourly bars, a future's closed session that "closes on its last trade
- * until its settlement is confirmed (unsettled)", and the latest trade an
- * intraday history ends with when it has no volume (latestTradeIndex). Null
- * when no bar is any of them.
+ * forming (partial), with no volume until the day closes", a day whose
+ * session has closed that "closes on the session's last price until the
+ * day's bar is final (partial)", the bars rebuilt from hourly bars, a
+ * future's closed session that "closes on its last trade until its
+ * settlement is confirmed (unsettled)", and the latest trade an intraday
+ * history ends with when it has no volume (latestTradeIndex). Null when no
+ * bar is any of them. `tradingDay`: the venue's day in session now, null
+ * when none is; left out when the venue's hours are not known, every
+ * partial bar is then still forming.
  */
 export function historyBarStatusNote(
-  rows: readonly Pick<HistoryRow, "date" | "partial" | "filled" | "unsettled" | "volume">[],
+  rows: readonly Pick<HistoryRow, "date" | "partial" | "filled" | "unsettled" | "volume" | "interval">[],
+  options: { tradingDay?: string | null } = {},
 ): string | null {
-  const partial = rows.filter((row) => row.partial);
+  // A day's bar the data service still marks partial once its session has closed: its own daily bar is not in yet.
+  const closed = (row: (typeof rows)[number]) =>
+    options.tradingDay !== undefined && row.interval === "1d" && row.date.slice(0, 10) !== options.tradingDay;
+  const partial = rows.filter((row) => row.partial && !closed(row));
+  const settling = rows.filter((row) => row.partial && closed(row));
   const latest = rows[latestTradeIndex(rows.map((row) => Date.parse(row.date)))];
   const filled = rows.filter((row) => row.filled);
   const unsettled = rows.filter((row) => row.unsettled);
@@ -351,6 +370,10 @@ export function historyBarStatusNote(
     partial.length > 0
       ? `${listDates(partial.map((row) => row.date))} ${partial.length === 1 ? "is" : "are"} still forming (partial)`
         + (partial.every((row) => row.volume == null) ? ", with no volume until the day closes" : "")
+      : null,
+    settling.length > 0
+      ? `${listDates(settling.map((row) => row.date))} ${settling.length === 1 ? "closes" : "close"} on the session's last price`
+        + ` until the day's bar is final (partial)` + (settling.every((row) => row.volume == null) ? ", with no volume until then" : "")
       : null,
     filled.length > 0
       ? `${listDates(filled.map((row) => row.date))} ${filled.length === 1 ? "was" : "were"} rebuilt from hourly bars (filled)`
