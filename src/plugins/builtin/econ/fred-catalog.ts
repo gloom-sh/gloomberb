@@ -186,8 +186,8 @@ const GROUPS: ReadonlyArray<{ group: string; rows: readonly FredRow[] }> = [
     // The IMF's monthly world prices: the closest public series to LME copper and aluminium, which FUT does not list.
     group: "Commodities",
     rows: [
-      ["PCOPPUSDM", "Global price of copper", "USD/metric ton", "monthly", ["copper", "metals", "LME"]],
-      ["PALUMUSDM", "Global price of aluminum", "USD/metric ton", "monthly", ["aluminum", "aluminium", "metals", "LME"]],
+      ["PCOPPUSDM", "Global price of copper", "USD/ton", "monthly", ["copper", "metals", "LME"]],
+      ["PALUMUSDM", "Global price of aluminum", "USD/ton", "monthly", ["aluminum", "aluminium", "metals", "LME"]],
     ],
   },
   {
