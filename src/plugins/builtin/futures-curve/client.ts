@@ -4,8 +4,9 @@ import type { FuturesCurvePayload } from "../../../api-client/futures-curve";
 import { createPluginCache } from "../../../data/plugin-cache";
 import { isFuturesContractSpec } from "../../../market-data/futures-contract";
 import { loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
-import type { DataProvider } from "../../../types/data-provider";
-import { archivedFuturesCurve, curveLookbackDate, curveSpot, normalizeCurveRoot, unsupportedCurveRootMessage, withSettleChanges, withTradedExpirations, type CurveSpot } from "./model";
+import type { AssetDataProvider, DataProvider } from "../../../types/data-provider";
+import type { TimeRange } from "../../../time-series/range";
+import { archivedFuturesCurve, curveLookbackDate, curveSpot, normalizeCurveRoot, spotBarsFromHistory, unsupportedCurveRootMessage, withSettleChanges, withTradedExpirations, type CurveSpot, type SpotBar } from "./model";
 
 export const futuresCurveCache = createPluginCache<FuturesCurvePayload>({
   kind: "futures-curve", source: "gloom-cloud", schemaVersion: 1,
@@ -106,4 +107,28 @@ export async function loadFuturesCurveAsOf(root: string, date: string,
  */
 export async function loadCurveSpot(symbol: string, provider: Pick<DataProvider, "getQuote">, now = Date.now()): Promise<CurveSpot> {
   return curveSpot(symbol, await provider.getQuote(symbol, "").catch(logFailure("futures-curve.client", "Load curve spot quote failed", null)), now);
+}
+
+/** The last day of one-minute bars: the reach of a curve's trades a basis is read for, the far months' older ones aside. */
+const SPOT_BAR_RANGE: TimeRange = "1D";
+
+/**
+ * The spot pair's one-minute bars over the last day, read through the same
+ * history path the charts use, which the basis pairs each trade with by
+ * minute. Bars of any other size pair nothing, and a failed read has none:
+ * the curve stands without its basis, each blank saying why.
+ */
+export async function loadCurveSpotBars(symbol: string,
+  provider: Pick<AssetDataProvider, "getPriceHistoryForResolutionWithMetadata" | "getPriceHistoryForResolution">, force = false): Promise<SpotBar[]> {
+  const context = force ? { cacheMode: "refresh" as const } : undefined;
+  try {
+    if (provider.getPriceHistoryForResolutionWithMetadata) {
+      const history = await provider.getPriceHistoryForResolutionWithMetadata(symbol, "", SPOT_BAR_RANGE, "1m", context);
+      return history.resolution && history.resolution !== "1m" ? [] : spotBarsFromHistory(history.points);
+    }
+    return provider.getPriceHistoryForResolution
+      ? spotBarsFromHistory(await provider.getPriceHistoryForResolution(symbol, "", SPOT_BAR_RANGE, "1m", context)) : [];
+  } catch (error) {
+    return logFailure("futures-curve.client", "Load curve spot bars failed", [] as SpotBar[])(error);
+  }
 }

@@ -143,6 +143,10 @@ test("the futures basis, curve shape and funding words are found by plain names 
   const curve = "Contract  Last  Vs Spot  Ann Basis\nBTCV26  81830.00  +0.25%  +4.3%\n\nFront spread\nLabel  State  Annualized Roll Yield\nBTCX26-BTCV26  contango  -5.71";
   expect(terms(reportGlossary("CTM", curve))).toEqual(["Futures contract", "Futures basis", "Annualised basis", "Contango", "Roll yield"]);
   expect(terms(reportGlossary("PERP", "Market  Funding %/int  Premium %  APR %\nBTC  -0.00056% /8h  -0.039%  -0.62%"))).toEqual(["Funding rate", "Premium"]);
+  // The listing code quotes give a coin's composite price answers, though CTM names it in plain words.
+  expect(terms(lookupGlossary("CCC").exact)).toEqual(["Crypto composite price"]);
+  expect(terms(reportGlossary("CTM", "Basis against BTC-USD spot in each last trade's own minute (crypto composite price, delayed)"))).toEqual(["Crypto composite price"]);
+  expect(lookupGlossary("CCC").exact[0]!.definition).not.toMatch(/CryptoCompare|Yahoo|Gloom/);
   // Another function's report shows none of them.
   expect(reportGlossary("HP", curve)).toEqual([]);
 });

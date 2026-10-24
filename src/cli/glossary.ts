@@ -695,8 +695,16 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
   {
     term: "Annualised basis", aliases: ["annualized basis", "ann basis", "ann. basis", "basis annualised"], functions: ["CTM", "PERP"], shown: ["Ann Basis", "ANN BASIS"],
     definition: "The basis restated as a yearly rate, so contracts of different length compare with each other and with a perpetual's funding APR: "
-      + "(Last / spot - 1) × 365 / days to expiry, simple rather than compounded, on the latest trade against the spot quote. "
-      + "Inside 30 days a few basis points of spot noise move it by whole points: 10 bp is about ±2 points at 18 days to expiry.",
+      + "(Last / spot - 1) × 365 / days to expiry, simple rather than compounded. CTM reads each last trade against spot in the same minute "
+      + "and counts days to final settlement to the hour. Inside a week a few basis points of spot noise move it by whole points "
+      + "(10 bp is about ±5 points at 7 days), so CTM greys it there and Vs Spot is the figure to read.",
+  },
+  {
+    term: "Crypto composite price", aliases: ["CCC", "crypto composite", "composite price", "composite crypto price"], functions: ["CTM"],
+    shown: ["crypto composite price"],
+    definition: "A coin's dollar price blended from trading on several crypto exchanges rather than taken from one, quoted around the clock; "
+      + "quotes list it under the code CCC. CTM reads CME crypto futures against it, while the futures settle to CME's own reference rate, "
+      + "so a small gap at expiry is expected.",
   },
   {
     term: "Contango", aliases: ["contango curve", "upward curve"], functions: ["CTM", "FUT"], shown: ["contango", "Contango"],
