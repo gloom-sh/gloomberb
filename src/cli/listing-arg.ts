@@ -1107,7 +1107,7 @@ function isMajorCoinName(word: string): boolean {
 }
 
 async function readCompanyName(typed: string, deps: Pick<ListingDeps, "dataProvider">, options: { oneWord?: boolean } = {}): Promise<ListingArg | null> {
-  const found = await findListingOfCompanyName(deps.dataProvider, typed, { meant: true, ...options });
+  const found = await findListingOfCompanyName(deps.dataProvider, typed, { meant: true, quoted: true, ...options });
   if (!found) return null;
   const key = `${found.symbol}:${found.exchange}`;
   // A fund or an index carrying the name asks about the company's stock: "Did you mean JPM (JPMorgan Chase & Co.)?".

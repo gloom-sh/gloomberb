@@ -20,8 +20,13 @@ export function candidateExchange(candidate: TickerSearchCandidate): string {
  * Milan 4MSFT or London 0XXX code), 2 a depositary receipt.
  */
 export function listingDistance(candidate: TickerSearchCandidate): 0 | 1 | 2 {
-  if (RECEIPT_TYPE.test(candidate.instrumentType ?? "")) return 2;
-  return SECONDARY_VENUES.has(candidateExchange(candidate)) || /\d/.test(candidate.symbol) && /[A-Za-z]/.test(candidate.symbol) ? 1 : 0;
+  return lineDistance(candidate.instrumentType ?? "", candidateExchange(candidate), candidate.symbol);
+}
+
+/** `listingDistance` of a line by its type, its canonical venue and its symbol. */
+export function lineDistance(type: string, exchange: string, symbol: string): 0 | 1 | 2 {
+  if (RECEIPT_TYPE.test(type)) return 2;
+  return SECONDARY_VENUES.has(exchange) || /\d/.test(symbol) && /[A-Za-z]/.test(symbol) ? 1 : 0;
 }
 
 function candidateName(candidate: TickerSearchCandidate): string {
