@@ -60,7 +60,7 @@ function insiderSignalsParams(query: InsiderSignalsQuery, limit: number): CloudI
 export const insiderSignalsCache = createPluginCache<InsiderSignalsPayload>({
   kind: "insider-signals",
   source: "gloom-cloud",
-  // 2: sides, filters and structured signals (Linear: GLO-921).
+  // 2: sides, filters and structured signals.
   schemaVersion: 2,
   // Filings arrive through the day; the ranking moves with them, not with the market.
   policy: { staleMs: 5 * 60_000, expireMs: 2 * 86_400_000 },

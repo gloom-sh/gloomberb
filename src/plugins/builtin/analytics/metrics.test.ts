@@ -80,7 +80,7 @@ describe("computeBeta", () => {
     expect(computeDatedBeta(portfolio, market)).toBeCloseTo(1.6, 5);
   });
 
-  // The holdings are lined up once per list of series (GLO-925): new weights,
+  // The holdings are lined up once per list of series: new weights,
   // another list or a series extended in place must still count.
   test("weighs the holdings it is given now, not the ones it lined up before", () => {
     const market = datedReturns([-0.010, 0.015, 0.004, -0.006, 0.011, 0.008, -0.012, 0.009, 0.013, -0.007]);

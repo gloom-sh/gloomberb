@@ -203,7 +203,7 @@ const CALL_TRANSCRIPT: CloudEarningsTranscriptPayload = {
 
 /**
  * Every company's calls on three New York days, as production listed them on
- * Wednesday Oct 21, 2026 (GLO-1139), for `calls=calendar` and `calls=META`:
+ * Wednesday Oct 21, 2026, for `calls=calendar` and `calls=META`:
  * the day from today in New York, the start on New York's clock (null for a
  * call known by its day alone), ticker, company, fiscal year and quarter,
  * status, then length, words and tone for a transcribed one. Each start is

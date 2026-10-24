@@ -218,7 +218,7 @@ function datedHarness(baseCurrency: string, closes: Record<string, Record<string
 // USD/CAD as dealers quote it (CAD per USD), and EUR/USD (USD per EUR).
 const CAD_CLOSES = { "CAD=X": { "2026-08-31": 1.38554, "2026-09-01": 1.3897, "2026-09-02": 1.3845, "2026-09-03": 1.3819, "2026-09-04": 1.38376 } };
 
-// GLO-1106: `fx USD/CAD --date 2026-09-02` answered "fx takes no options".
+// `fx USD/CAD --date 2026-09-02` answered "fx takes no options".
 test("fx --date gives the rate at that day's daily closes, dated by the source line, and says when it read the trading day before", async () => {
   setSystemTime(new Date("2026-10-20T15:00:00Z"));
   const run = datedHarness("CAD", { ...CAD_CLOSES, "EURUSD=X": { "2026-09-01": 1.1593, "2026-09-02": 1.15884 } });

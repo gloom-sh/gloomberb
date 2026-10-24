@@ -21,7 +21,7 @@ import { checkFirstPaint, checkThemePreview } from "./paint";
  * checking where each pane ends up rather than which handler ran. The pane
  * header has broken this way before: v0.16.1 shipped panes that only moved
  * from the grip and the title (#1478). Held keys are real too: the key goes
- * down and then repeats with `autoRepeat`, as a keyboard sends it (GLO-591).
+ * down and then repeats with `autoRepeat`, as a keyboard sends it.
  *
  *   bun run check:pane-chrome [--only <text>] [--repeat <n>] [--root <checkout>]
  *

@@ -9,7 +9,7 @@ $UpdateManifestPath = Join-Path $Root "artifacts\stable-win-x64-update.json"
 $GuiArtifactDir = Join-Path $Root "artifacts\windows-gui-verification"
 $BundleAppIconPath = Join-Path $BundleDir "Resources\app.ico"
 $BundleLogoIconPath = Join-Path $BundleDir "Resources\gloomberb-logo.ico"
-$SmokeRoot = Join-Path ([Environment]::GetFolderPath("UserProfile")) ".cache\gloom-smoke\glo-645\windows-$PID"
+$SmokeRoot = Join-Path ([Environment]::GetFolderPath("UserProfile")) ".cache\gloom-smoke\desktop-verify\windows-$PID"
 New-Item -ItemType Directory -Force -Path $SmokeRoot | Out-Null
 
 New-Item -ItemType Directory -Force -Path $GuiArtifactDir | Out-Null

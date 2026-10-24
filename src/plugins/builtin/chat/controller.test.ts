@@ -70,8 +70,8 @@ async function flushMicrotasks() {
 }
 
 /**
- * A banner in the background waits a moment and asks the server first
- * (GLO-788); tests run that wait at zero and let it finish.
+ * A banner in the background waits a moment and asks the server first;
+ * tests run that wait at zero and let it finish.
  */
 function withoutBackgroundDelay(controller: ChatController): ChatController {
   (controller as any).alerts.backgroundDelayMs = 0;

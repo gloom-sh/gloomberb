@@ -11,7 +11,7 @@ import {
 } from "./change-basis";
 import { previousPublishedSession } from "./freshness";
 
-// Linear: GLO-1089. Wed 21 Oct 2026, 01:30 UTC.
+// Wed 21 Oct 2026, 01:30 UTC.
 const NOW = Date.parse("2026-10-21T01:30:00Z");
 
 // 3042.HK as `quote` served it on Tue 20 Oct: HKEX was closed Mon 19 Oct for

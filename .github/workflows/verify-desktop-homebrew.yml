@@ -37,7 +37,7 @@ jobs:
           set -euo pipefail
           brew install zstd
           test "$(uname -m)" = arm64
-          smoke_root="$HOME/.cache/gloom-smoke/glo-645"
+          smoke_root="$HOME/.cache/gloom-smoke/desktop-verify"
           mkdir -p "$smoke_root"
           tmp_dir="$(mktemp -d "$smoke_root/macos package.XXXXXX")"
           trap 'rm -rf "${tmp_dir:?}"' EXIT

@@ -93,7 +93,7 @@ describe("insider columns", () => {
     expect(ids(48)).toEqual(["date", "insider", "type", "value"]);
     for (const width of [120, 90, 76, 66, 56, 48, 40]) expect(total(width)).toBeLessThanOrEqual(width);
   });
-  // GLO-1106 review: with a CAD base the pane still wrote $48.56 and $199.1k, which a Canadian reads as their own dollars.
+  // Review: with a CAD base the pane still wrote $48.56 and $199.1k, which a Canadian reads as their own dollars.
   test("for a base currency other than USD, CCY follows Value and stays with it, and the amounts drop their $", () => {
     const columns = buildInsiderColumns(120, rows, "USD");
     expect(columns.map((column) => column.id)).toEqual(["date", "insider", "role", "type", "security", "shares", "price", "value", "ccy"]);

@@ -114,7 +114,7 @@ test("--section names the sections a report has, and is only for --csv and --ndj
 });
 
 test("fundamentals prints the float and the short interest of one dated settlement, as its JSON gives them", async () => {
-  // GLO-760, GME as Gloom Cloud serves it: the share count of its 10-Q cover with the day it was counted, the source's
+  // GME as Gloom Cloud serves it: the share count of its 10-Q cover with the day it was counted, the source's
   // undated float held within it, the 30 September settlement's shares short and days to cover. The text view used to leave these
   // out, so scripts read the JSON alone; an undated 449.1M read as current when the 10-Q stated 504.5M.
   const gme: TickerFinancials = {
@@ -140,7 +140,7 @@ test("fundamentals prints the float and the short interest of one dated settleme
 })
 
 test("a fund's trailing yield in fundamentals, the overview and DIV% is the one DVD measures from the same cash history and price", async () => {
-  // GLO-1029: fundamentals and the overview's TTM Div Yld showed the trailing yield Gloom Cloud serves (HYD 4.62%) beside
+  // Fundamentals and the overview's TTM Div Yld showed the trailing yield Gloom Cloud serves (HYD 4.62%) beside
   // DVD's 4.55%. Each now reads the history through trailingDividendYield (listingDividendYield). A quarterly payer whose latest ex-date came a week earlier in the year than
   // last year's: DVD counts four quarters, where a plain twelve-month window would count five.
   const day = (daysAgo: number) => new Date(Date.now() - daysAgo * 86_400_000).toISOString().slice(0, 10);

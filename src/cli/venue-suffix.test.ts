@@ -20,7 +20,7 @@ function insRegistry(): PaneFunctionCatalog {
   return { panes: new Map([["insider", pane]]), paneTemplates: new Map([["insider-pane", template]]), destroy: () => {} };
 }
 
-// GLO-1106: `fn INS RY.TO` answered "Unknown ticker RY.TO" while `quote RY.TO` worked: the SEC data is read by venue.
+// `fn INS RY.TO` answered "Unknown ticker RY.TO" while `quote RY.TO` worked: the SEC data is read by venue.
 test("fn reads a venue suffix as the listing its quote names, as quote does, through the shared listing resolver", async () => {
   const quoted: string[] = [];
   const dataProvider = createTestDataProvider({
@@ -48,7 +48,7 @@ test("fn reads a venue suffix as the listing its quote names, as quote does, thr
   expect(quoted).toHaveLength(4);
 });
 
-// GLO-1106 review: a row a link or a layout saved under RY.TO itself was not found once RY.TO read as RY:TSX.
+// Review: a row a link or a layout saved under RY.TO itself was not found once RY.TO read as RY:TSX.
 test("a row saved under the suffixed key is the listing's saved row, when it is on that venue or names none", async () => {
   const dataProvider = createTestDataProvider({
     getQuote: async (symbol) => createTestQuote({ symbol, listingExchangeName: VENUES[symbol] }),

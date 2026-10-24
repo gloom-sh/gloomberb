@@ -1,7 +1,5 @@
 # Chat input workload
 
-Linear: GLO-789, GLO-790
-
 Run `bun scripts/pane-chrome/chat-latency.ts --check --label chat-latency`.
 `--quick` uses 500 messages; `--recent` dates them within the last day instead
 of exercising the older-date labels. Set `PANE_CHROME_CACHE` for the output.
@@ -237,7 +235,7 @@ application renderer, stylesheet, component or sync source changed, but that
 source-level fact is not a substitute for those acceptance checks when a
 product fix is made.
 
-## Viewport-bounded transcripts (Linear: GLO-790)
+## Viewport-bounded transcripts
 
 The DOM transcript now uses the shared `WindowedList`, backed by the same
 windowing engine as the data table. The table's row component itself does
@@ -363,7 +361,7 @@ GPU presentation, production uploads and long-session leak behavior were not
 measured. The desktop persistence bridge remains a fixture stub. Evidence
 and raw profiles are local artifacts, not public market-data attachments.
 
-## Review follow-up (Linear: GLO-790)
+## Review follow-up
 
 Compared `8bb2ac742` with runtime `7e562fb21`, using the existing fixtures and
 checks. No stylesheet, token, layout, new visible text or terminal branch
@@ -458,7 +456,7 @@ content and long-session behavior were not exercised. Browser-default copy
 still only copies the browser's surviving selection, not unmounted history.
 No release, merge, deployment or production mutation was performed.
 
-## Covered floating windows (Linear: GLO-789)
+## Covered floating windows
 
 ### Reproduction and cause
 

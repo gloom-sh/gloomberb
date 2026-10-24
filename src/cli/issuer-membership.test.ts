@@ -25,7 +25,7 @@ const rogers: IssuerListings = {
 const keys = rogers.listings.map((listing) => issuerListingKey(listing.symbol, listing.exchange));
 
 test("a list holding any listing of the company holds it, whichever listing is asked about, and says which listing it holds", () => {
-  // GLO-1105: watchlist R held RCI.B:TSX, and `ticker RCI` said nothing of it.
+  // Watchlist R held RCI.B:TSX, and `ticker RCI` said nothing of it.
   expect(companyMemberships(config, null, [rogersTsx, bell], keys)).toEqual({
     portfolios: [],
     watchlists: [{ name: "R", via: "RCI.B:TSX" }],

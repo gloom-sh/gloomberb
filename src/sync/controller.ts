@@ -94,7 +94,7 @@ export class CloudSyncController {
    * The content signature of the cloud's copy, with the revision and the
    * write it belongs to. Each 15 s poll pulls the same copy again until a
    * device writes; working its signature out every time was a third of an
-   * idle sync on a large workspace (GLO-925).
+   * idle sync on a large workspace.
    */
   private cloudSignature: { transportId: string; revision: number; clientId: string; createdAt: string; signature: string } | null = null;
   private baseline: Record<string, unknown> | null = null;

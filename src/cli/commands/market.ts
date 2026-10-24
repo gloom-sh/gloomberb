@@ -207,9 +207,11 @@ import {
   listingVenues,
   listingChoiceNotes,
   listingReadNotes,
+  failUnchosenListing,
   loadBareVenues,
   loadForListing,
   loadListingQuote,
+  loadListingQuoteAnswer,
   listingFateLoader,
   meantQuestion,
   movedSymbolLine,
@@ -990,7 +992,7 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     const changes = new Map(listings.length > MAX_CHOICE_LOOKUPS ? []
       : listings.map((listing) => [listing, startTickerChangeLookup(market.dataProvider, listing.symbol, listing.exchange)] as const));
     // The service's quote of the moment, not each form's local copy from whenever it was last asked for:
-    // BRK.B saved on NYSE, BRK-B and BRK.B:NYSE print one quote (GLO-735). A local copy answers only offline.
+    // BRK.B saved on NYSE, BRK-B and BRK.B:NYSE print one quote. A local copy answers only offline.
     const results = await market.dataProvider.getQuotesBatch(targets, { forceRefresh: ctx.cliOptions.refresh, revalidate: true });
     const listingOf = (result: QuoteBatchResult, index: number) => listings[targets.indexOf(result.target)] ?? listings[index]!;
     const asked = results.map(listingOf);
@@ -1315,7 +1317,8 @@ interface ListingHistory {
 
 /** The command a listing that cannot be served is pointed back at: `history`, `history --range 5Y`. */
 function historyCommand({ range, window }: HistoryAsk): string {
-  return window ? `history --from ${window.from} --to ${window.to}` : range === "1Y" ? "history" : `history --range ${range}`;
+  // A window that runs to today retries to the day it is run on, not the one it was first run on.
+  return window ? `history --from ${window.from}${isPastPriceWindow(window) ? ` --to ${window.to}` : ""}` : range === "1Y" ? "history" : `history --range ${range}`;
 }
 
 /**
@@ -1340,15 +1343,18 @@ async function loadListingHistory(
     : market.dataProvider.getPriceHistoryWithMetadata
       ? market.dataProvider.getPriceHistoryWithMetadata(symbol, exchange, loadRange, context)
       : market.dataProvider.getPriceHistory(symbol, exchange, loadRange, context).then((points): PriceHistoryResult => ({ points, resolution: null }));
-  const quoted = loadListingQuote(market.dataProvider, listing);
+  const quoteAnswer = loadListingQuoteAnswer(market.dataProvider, listing);
+  const quoted = quoteAnswer.then((answer) => answer.quote);
   const fate = lookups ? listingFateLoader(listing, market, quoted) : null;
+  const request = { command: historyCommand(ask), noun: "history", ...(fate ? { fate } : {}) };
   const [loaded, quote] = await Promise.all([
-    loadForListing(listing, market, ctx, load, (loaded) => loaded.points.length === 0, {
-      command: historyCommand(ask), noun: "history", ...(fate ? { fate } : {}),
-    })
+    loadForListing(listing, market, ctx, load, (loaded) => loaded.points.length === 0, request)
       .catch((error) => failHistory(error, listing.key, ctx)),
     quoted,
   ]);
+  // A bare symbol several companies list is never served from the one the data service picked, in a range or a window:
+  // it asks for an exchange as `quote` does, and in a list that is the symbol's row alone.
+  await failUnchosenListing(listing, market, ctx, request, (await quoteAnswer).error);
   const { resolution } = loaded;
   // While the session trades the day's bar is the quote's, whatever range the history was cut for (withSessionBar).
   // A window that ended before today has no session in progress.
@@ -1893,7 +1899,7 @@ async function tickerOfWord(word: string, market: MarketContext): Promise<{ symb
 }
 
 /**
- * A metal's market news (GLO-1158): the stories tagged METALS that mention
+ * A metal's market news: the stories tagged METALS that mention
  * it, for its future, its board code or its name. Under them, the ticker its
  * name is in capitals, whose company news `news GOLD` keeps.
  */

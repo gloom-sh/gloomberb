@@ -74,7 +74,7 @@ test("the columns fill the pane at 80 and 160 cells without scrolling sideways",
     // Each column, the gap after it, and the table's padding.
     expect(columns.reduce((sum, column) => sum + column.width + 1, 0) + 2).toBeLessThanOrEqual(width);
     expect(columns.map((column) => column.id)).toEqual(["updated", "phase", "status", "title", "sponsor", "ticker"]);
-    // GLO-1130: "Updated", an ISO day wide, not a "Time" column of US dates.
+    // "Updated", an ISO day wide, not a "Time" column of US dates.
     expect(columns[0]).toMatchObject({ label: "Updated", width: 10 });
   }
   expect(trialLayout(78).columns.find((column) => column.id === "title")!.width).toBeGreaterThanOrEqual(20);

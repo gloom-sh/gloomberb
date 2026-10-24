@@ -6,7 +6,7 @@ import { cacheDir } from "./browser";
 import { serveFixturePage } from "./page";
 
 /**
- * The Calls pane's player in Chromium and WebKit (GLO-922): the layout
+ * The Calls pane's player in Chromium and WebKit: the layout
  * fixture's invented call (`scenario=layout&pane=calls`) plays a recording
  * made here with ffmpeg, served from its own origin with byte ranges as the
  * signed storage address is. In each browser it clicks a paragraph and checks

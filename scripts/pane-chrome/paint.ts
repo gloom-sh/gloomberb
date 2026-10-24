@@ -181,7 +181,7 @@ export async function checkThemePreview(cdp: Cdp): Promise<void> {
  * Every plot that shows is drawn for the box it shows in. A bitmap drawn for
  * another size is stretched over the plot: a chart tab that comes back with
  * the 1 by 1 bitmap it drew while hidden shows that pixel across the whole
- * plot until its resize redraw lands (GLO-590).
+ * plot until its resize redraw lands.
  */
 function checkDrawnForItsBox(samples: Frame[], label: string): void {
   for (const sample of samples) {

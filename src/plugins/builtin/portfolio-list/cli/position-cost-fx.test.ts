@@ -45,7 +45,7 @@ async function positionSet(config: AppConfig, record: TickerRecord, args: string
 const aapl = createTestTicker("AAPL", "Apple", { portfolios: ["lira"] });
 
 test("position set converts a cost into the currency portfolio show values the book in, which follows a base currency set later", async () => {
-  // GLO-1044 review: the book's own currency is USD, but with base TRY it is valued in TRY, so a USD lot is foreign.
+  // Review: the book's own currency is USD, but with base TRY it is valued in TRY, so a USD lot is foreign.
   const typed = await positionSet(liraConfig(), aapl, ["Lira", "AAPL", "10", "410", "USD", "--cost-fx", "32,15"]);
   expect(typed.lot).toMatchObject({ currency: "USD", costFxRate: 32.15, costFxCurrency: "TRY" });
   expect(typed.text).toMatch(/Cost FX\s+32\.15 TRY per USD/);
@@ -187,7 +187,7 @@ test("the ticker report's cost basis converts at the rate a lot was bought at, a
 });
 
 test("GBp round trip: a cost typed in pence is saved in pence, so portfolio show divides it by 100", async () => {
-  // GLO-1085: GBp was upper-cased to GBP, and 1,000 VOD at 70p cost £70,000 instead of £700.
+  // GBp was upper-cased to GBP, and 1,000 VOD at 70p cost £70,000 instead of £700.
   const config = createDefaultConfig("/unused-cost-fx");
   config.baseCurrency = "GBP";
   config.portfolios = [{ id: "uk", name: "UK", currency: "GBP" }];

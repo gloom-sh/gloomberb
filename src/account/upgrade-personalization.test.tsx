@@ -49,7 +49,7 @@ function Probe({ shown }: { shown: boolean }) {
 }
 
 async function render({ shown = true, held = true } = {}) {
-  const state = createInitialState(createDefaultConfig(`${process.env.HOME}/.cache/gloom-smoke/glo357/unit`));
+  const state = createInitialState(createDefaultConfig(`${process.env.HOME}/.cache/gloom-smoke/upgrade-personalization/unit`));
   state.tickers.set("NVDA", createTestTicker("NVDA", "Nvidia", {
     watchlists: [state.config.watchlists[0]!.id],
     positions: held ? [{ portfolio: "main", shares: 10, marketValue: 1000, broker: "manual" }] : [],

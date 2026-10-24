@@ -225,7 +225,7 @@ export function mergeQuoteContribution(
   };
 
   // What this observation's move is from, when not its previous close (a coin's
-  // 24 hours, Linear: GLO-1089), is said with each one: a quote back on its
+  // 24 hours), is said with each one: a quote back on its
   // previous close drops an earlier "24h", and one on 24 hours drops the
   // earlier close its move no longer runs from.
   if (next.changeBasis == null) {

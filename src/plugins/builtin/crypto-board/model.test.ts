@@ -58,7 +58,7 @@ test("a live quote without a change percent is restated from the previous close"
   expect(row!.changePercent).toBeCloseTo(10, 6);
 });
 
-// Linear: GLO-1089. The column is since 00:00 UTC, as `quote` gives a coin;
+// The column is since 00:00 UTC, as `quote` gives a coin;
 // a coin measured over 24 hours (a close weeks old) is blank, never mixed in.
 test("a coin whose quote or board moves over 24 hours has no since-00:00 change", () => {
   const data = cryptoFixture();

@@ -22,7 +22,7 @@ test("an entry with spaces is a company's name when search finds one, else the s
 });
 
 test("a pasted line search finds no company for is its words only when they are written as symbols or each has a quote", async () => {
-  // GLO-1105: a misspelt "phillip morris intl" added INTL, a fund, and its other words came back not found.
+  // A misspelt "phillip morris intl" added INTL, a fund, and its other words came back not found.
   const quoted = new Set(["AAPL", "MSFT", "INTL"]);
   const batches: string[][] = [];
   const provider = {
@@ -90,7 +90,7 @@ test("a Bloomberg code is one entry when search lists its root as a US ticker; w
 });
 
 test("a name search too busy to answer is no answer: its words are not other companies' symbols, unless each has a quote", async () => {
-  // Busy, "Eagle Bulk" was quoted as EAGLE, Eagle Filters in Helsinki, and BULK (GLO-994).
+  // Busy, "Eagle Bulk" was quoted as EAGLE, Eagle Filters in Helsinki, and BULK.
   const quoted = new Set(["EAGLE", "AAPL", "MSFT"]);
   const busy = {
     search: async (): Promise<InstrumentSearchResult[]> => { throw new ProviderBusyError(); },

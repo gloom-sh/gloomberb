@@ -469,8 +469,8 @@ function recentPriceHistory(history: PricePoint[], days: number): PricePoint[] {
  * Work derived from a bar history, kept with the history. Every sync values
  * every portfolio and quotes every filed ticker (each 15 s poll, and after
  * each workspace change), and redoing that work from each holding's bars
- * blocked the view for a quarter of a second on a few hundred holdings
- * (GLO-925). Bars change when a history loads again, which replaces the
+ * blocked the view for a quarter of a second on a few hundred holdings.
+ * Bars change when a history loads again, which replaces the
  * array; a last bar extended or revised in place, or one appended, is caught
  * by its length, time and close.
  */

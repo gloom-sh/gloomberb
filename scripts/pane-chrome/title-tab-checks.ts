@@ -1,7 +1,7 @@
 import { click, evaluate, frames, mouse, type Cdp } from "./browser";
 
 /**
- * Title-bar tabs (GLO-1138): a pane's primary strip, drawn in its title bar on
+ * Title-bar tabs: a pane's primary strip, drawn in its title bar on
  * the desktop and the web, is a row of raised boxes. The active tab is a box
  * with rounded top corners from just under the bar's top edge down over its
  * bottom rule, its top and sides in the rule's colour and its inside the

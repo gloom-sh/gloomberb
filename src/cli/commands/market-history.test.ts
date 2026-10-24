@@ -7,6 +7,7 @@ import { createDefaultConfig } from "../../types/config";
 import { createTestDataProvider, createTestQuote } from "../../test-support/data-provider";
 import { createTestCliContext } from "../../test-support/cli-context";
 import { DEFAULT_CLI_OPTIONS } from "../options";
+import { fail, isCliFailure } from "../errors";
 import { serializeCliResult } from "../result";
 import { marketDataCliCommands } from "./market";
 import type { PriceHistoryResult } from "../../types/price-history";
@@ -511,4 +512,82 @@ test("a list with a symbol served from a saved copy ends with when the copy was 
   }, { format: "csv" });
   await collectSavedCopies(() => history.execute(["AAPL", "MSFT"], live.context));
   expect(live.printed[0]!.result.freshness?.savedAt).toBeUndefined();
+});
+
+/**
+ * A source with no quote for the bare symbol `FP` that still serves its bars, from one listing and with no currency
+ * to say (as Gloom Cloud does), where search lists `FP` under `companies` by exchange. Every other symbol is an ordinary one.
+ */
+async function runBareSymbol(args: string[], companies: Record<string, string>) {
+  const bars2025 = [{ date: new Date("2025-06-02"), open: 0.8, high: 0.8, low: 0.8, close: 0.8, volume: 1000 }];
+  const cli = createTestCliContext({
+    config: createDefaultConfig("/tmp/gloom-history-command-fixture"),
+    dataProvider: createTestDataProvider({
+      search: async (query) => query.startsWith("FP")
+        ? Object.entries(companies).map(([exchange, name]) => ({ providerId: "test", symbol: "FP", name, exchange, type: "Common Stock", currency: "CAD" }))
+        : [],
+      getQuote: async (symbol, exchange) => {
+        if (symbol === "FP" && !exchange) throw new Error("No quote provider available for FP");
+        return createTestQuote({ symbol, currency: symbol === "AAPL" ? "USD" : "CAD", marketState: "CLOSED" });
+      },
+      getPriceHistoryWithMetadata: async () => ({ resolution: "1d", points: bars2025 }),
+      getDetailedPriceHistoryWithMetadata: async () => ({ resolution: "1d", points: bars2025 }),
+    }),
+  }, { format: "csv" });
+  // The real failure keeps the listings it offers in its details, which a list's status row says in one line.
+  cli.context.fail = fail;
+  const error = await history.execute(args, cli.context).then(() => null, (thrown: unknown) => thrown);
+  return { error, result: cli.printed[0]?.result };
+}
+
+const FP_COMPANIES = { TSXV: "FP Newspapers Inc.", BVB: "S.C. Fondul Proprietatea S.A." };
+
+test("a bare symbol several companies list is never served from the listing the source picked: a date window asks for an exchange as a range does", async () => {
+  const window = ["--start", "2024", "--end", "2025"];
+  for (const [args, retry] of [
+    [["FP", ...window], "--from 2024-01-01 --to 2025-12-31"],
+    [["FP", "--range", "1M"], "--range 1M"],
+  ] as const) {
+    const { error, result } = await runBareSymbol([...args], FP_COMPANIES);
+    expect(result).toBeUndefined();
+    expect(isCliFailure(error) && error.message).toBe("Choose an exchange for FP.");
+    expect(isCliFailure(error) && error.details).toBe([
+      "Listings:",
+      `  FP:TSXV FP Newspapers Inc. (try: gloom history FP:TSXV ${retry})`,
+      `  FP:BVB S.C. Fondul Proprietatea S.A. (try: gloom history FP:BVB ${retry})`,
+    ].join("\n"));
+  }
+
+  // A window to today retries to the day it is run on.
+  expect((await runBareSymbol(["FP", "--start", "2024"], FP_COMPANIES)).error).toMatchObject({
+    details: expect.stringContaining("(try: gloom history FP:TSXV --from 2024-01-01)"),
+  });
+
+  // A listing named is its own answer, with its own currency.
+  const named = await runBareSymbol(["FP:TSXV", ...window], FP_COMPANIES);
+  expect(named.error).toBeNull();
+  expect(named.result?.metadata).toMatchObject({ currency: "CAD", bars: 1 });
+});
+
+test("in a list a bare symbol several companies list is one status row while the others are served with their currency", async () => {
+  for (const timing of [["--start", "2024", "--end", "2025"], ["--range", "1M"]]) {
+    const { error, result } = await runBareSymbol(["FP", "AAPL", "FP:BVB", ...timing], FP_COMPANIES);
+    expect(error).toBeNull();
+    expect(result?.failure).toBeUndefined();
+    expect((result?.data as Array<{ symbol: string; status?: string; currency: string | null }>).map((row) => [row.symbol, row.status ?? "", row.currency])).toEqual([
+      ["FP", "Choose an exchange for FP. Listings: FP:TSXV, FP:BVB.", null],
+      ["AAPL", "", "USD"],
+      ["FP:BVB", "", "CAD"],
+    ]);
+    expect(result?.warnings).toContain("Choose an exchange for FP. Listings: FP:TSXV, FP:BVB.");
+  }
+});
+
+test("a bare symbol one company lists, with no quote of its own, is still served as before", async () => {
+  const same = { TSXV: "FP Newspapers Inc.", NEO: "FP Newspapers Inc." };
+  for (const args of [["FP", "--start", "2024", "--end", "2025"], ["FP", "--range", "1M"]]) {
+    const { error, result } = await runBareSymbol(args, same);
+    expect(error).toBeNull();
+    expect(result?.metadata).toMatchObject({ bars: 1 });
+  }
 });

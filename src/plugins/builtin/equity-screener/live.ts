@@ -119,7 +119,7 @@ const LIVE_SORT_FIELDS: ReadonlySet<string> = new Set(["price", "changePercent",
  * Rows in the screen's order by the figures they show. A sort on a field the
  * quotes move (price, change, volume, market cap) is redone on the overlaid
  * values, so the column reads monotone: GRAB's snapshot cap, two closes old,
- * kept it above MANH after its quote moved it below (GLO-754). Rows without a
+ * kept it above MANH after its quote moved it below. Rows without a
  * value stay last, and ties keep the snapshot's order. Any other sort is the
  * snapshot's, which the overlay does not touch.
  */

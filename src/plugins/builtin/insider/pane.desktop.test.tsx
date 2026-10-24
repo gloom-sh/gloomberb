@@ -57,7 +57,7 @@ function Pane() {
   );
 }
 
-// GLO-326: a pane opened on Form 4s whose content was already loaded (another
+// A pane opened on Form 4s whose content was already loaded (another
 // pane or an earlier visit read them) took them in one render each. On the web
 // each of those renders is a nested update, and React stops the pane past 50.
 test("opens on 60 already-read Form 4 filings without a render per filing", async () => {

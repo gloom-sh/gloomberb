@@ -8,7 +8,7 @@ import { serveFixturePage } from "./page";
 import { pixelChange } from "./ui-audit-compare";
 
 /**
- * The composite chart's own layout in Chromium and WebKit (GLO-1215), with the
+ * The composite chart's own layout in Chromium and WebKit, with the
  * real pointer on the chart composer fixture (`scenario=cmp&chart=readout`: a
  * price panel, a volume panel and an RSI panel), at 640 and 1280 px. In each
  * browser and width it checks that at rest the chart draws as the base does

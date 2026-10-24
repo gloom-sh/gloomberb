@@ -55,7 +55,7 @@ function OriginalWall({ needsVerification = false }: { needsVerification?: boole
 function Harness({ original = false, placement = "risk-signin", height = 20, needsVerification = false }: {
   original?: boolean; placement?: string; height?: number; needsVerification?: boolean;
 }) {
-  const state = createInitialState(createTestPaneConfig(join(homedir(), ".cache/gloom-smoke/glo239/sign-in-wall-test"), {
+  const state = createInitialState(createTestPaneConfig(join(homedir(), ".cache/gloom-smoke/sign-in-wall-test"), {
     instanceId: "wall", paneId: "risk-factors",
   }));
   state.focusedPaneId = "wall";

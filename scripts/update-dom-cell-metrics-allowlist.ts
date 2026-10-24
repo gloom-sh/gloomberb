@@ -6,7 +6,7 @@ import { join, relative, sep } from "node:path";
  *
  * The DOM renderer draws in pixels the browser lays out: a pane body, a text
  * column, a scroll range or a list window sized as a count of 8 by 18 pixel
- * cells stops short of the pane by the remainder (GLO-669). Cells stay the
+ * cells stops short of the pane by the remainder. Cells stay the
  * terminal renderer's unit. This lists every use of a cell metric in DOM-only
  * code, so `src/architecture/dom-cell-metrics.test.ts` can hold the count to
  * what is already there and let it only go down.

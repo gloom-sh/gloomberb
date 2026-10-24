@@ -3,8 +3,8 @@ import { isRecord } from "../../../utils/guards";
 const PORTFOLIO_PANE_ID = "portfolio-list";
 
 /**
- * The portfolio pane's default columns before AS OF UTC took AGE's place
- * (GLO-575). Frozen here: the current default may change again, and only a
+ * The portfolio pane's default columns before AS OF UTC took AGE's place.
+ * Frozen here: the current default may change again, and only a
  * list still equal to this one was never chosen by the user.
  */
 const PREVIOUS_DEFAULT_COLUMN_IDS: readonly string[] = [

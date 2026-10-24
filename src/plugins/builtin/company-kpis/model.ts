@@ -45,8 +45,8 @@ export function scopeWords(dimensions: Record<string, string>, which: "parts" | 
 /** The labels that tell a row's series apart: the server's `seriesLabels`, else (a server before them) its stored labels. */
 export const seriesLabels = (row: Pick<CompanyRow, "dimensions" | "seriesLabels">) => row.seriesLabels ?? row.dimensions;
 /**
- * What tells a series apart from the metric's other series, in plain words
- * (GLO-1046): its parts, a basis other than reported, then its qualifiers.
+ * What tells a series apart from the metric's other series, in plain words:
+ * its parts, a basis other than reported, then its qualifiers.
  * "Data Center", "Adjusted · diluted", "International · Constant currency".
  */
 export function seriesDetail(row: Pick<CompanyRow, "basis" | "dimensions" | "seriesLabels">): string {

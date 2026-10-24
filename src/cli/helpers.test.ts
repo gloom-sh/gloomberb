@@ -31,7 +31,7 @@ test("the Change line of quote and ticker says what a future's move is from, in 
   expect(change(coffee, { settlement: null, spec: { tick: 0.05 } })).toBe("+1.05¢ (+0.33%) vs Fri 16 Oct close");
 });
 
-// Linear: GLO-1089. 3042.HK read -0.60% on Tue 20 Oct with no date: HKEX had been shut Mon 19 Oct.
+// 3042.HK read -0.60% on Tue 20 Oct with no date: HKEX had been shut Mon 19 Oct.
 test("every move says the close it is from, with the venue's holidays since on the line under it", () => {
   const stock = createTestQuote({ symbol: "AAPL", currency: "USD", price: 251.5, change: -1.5, changePercent: -0.593, changeSessionDate: "2026-10-19",
     listingExchangeName: "NASDAQ", lastUpdated: Date.parse("2026-10-19T20:00:00Z") });

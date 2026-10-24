@@ -103,7 +103,7 @@ test("unknown calendar ends use fiscal categories with source dates left null", 
   expect(observationChange(rows[2]!, rows).value).toBe(0);
 });
 
-test("the desktop names a series in plain words: its parts, a basis other than reported, then its qualifiers (GLO-1046)", () => {
+test("the desktop names a series in plain words: its parts, a basis other than reported, then its qualifiers", () => {
   expect(seriesDetail(observation())).toBe("");
   expect(seriesName(observation({ dimensions: { platform: "Data Center" } }))).toBe("Annual recurring revenue · Data Center");
   expect(seriesDetail(observation({ dimensions: { segment: "Walmart U.S.", fuel: "excluded", comparison: "year_over_year" } }))).toBe("Walmart U.S. · excl. fuel · year over year");

@@ -32,7 +32,7 @@ async function failure(args: string[], dataDir: string): Promise<{ message: stri
   return { message: (error as Error).message, details: String((error as { details?: unknown }).details) };
 }
 
-// GLO-1106: `config set baseCurrency "Canadian dollar"` saved the name, and every conversion then fell back to USD.
+// `config set baseCurrency "Canadian dollar"` saved the name, and every conversion then fell back to USD.
 test("config set baseCurrency takes an ISO code in any case and refuses a name or sign, naming the code it stands for", async () => {
   const dataDir = await tempDataDir();
   for (const typed of [["Canadian dollar"], ["Canadian", "dollar"], ["CA$"], ["C$"]]) {
