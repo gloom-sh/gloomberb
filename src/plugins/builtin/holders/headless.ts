@@ -220,7 +220,8 @@ export function createHoldersHeadless(
       const limit = Number(args.options.limit);
       // Asked beside the source's list; a listing abroad (named in the key or saved with the ticker),
       // or an index that cannot be read, keeps that list.
-      const exchange = (await resolveHeadlessInstrument(ctx, symbol).catch(() => null))?.exchange ?? "";
+      const exchange = (await resolveHeadlessInstrument(ctx, symbol)
+        .catch(logFailure("holders.headless", "Resolve the listing's venue for the 13F holder index failed", null)))?.exchange ?? "";
       const indexTicker = indexHolderTicker(symbol, exchange);
       const [snapshot, index] = await Promise.all([
         dependencies.loadSnapshot(symbol, args, ctx),
