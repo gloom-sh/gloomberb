@@ -12,7 +12,7 @@ import {
   HOLDINGS_SUMMARY_ROW_IDS,
 } from "./risk-model";
 import { FX_NO_PAIR } from "./risk-fx";
-import { repriceBook, riskCashLines, type RiskAssetShift, type RiskFxShift } from "./risk-book";
+import { parseFxShifts, repriceBook, riskCashLines, type RiskAssetShift, type RiskFxShift } from "./risk-book";
 import { rollingBeta, subtractReturns } from "./risk-math";
 import {
   BEYOND_SIZE_REASON,
@@ -321,9 +321,11 @@ test("cash counts in the book the coverage is a share of, by currency, but never
   // Cash is never a holding the basket left out, so a book of covered holdings and cash is complete.
   expect(buildPortfolioRisk(portfolio, [holding("SPY", 3)], snapshot, null, undefined, {}, cash).complete).toBe(true);
   // A broker's balances by currency stand in for a manual entry, its summary row left out.
-  expect(riskCashLines({ cash: { amount: 5, currency: "EUR" } }, {
+  expect(riskCashLines({ currency: "USD", cash: { amount: 5, currency: "EUR" } }, {
     cashBalances: [{ currency: "BASE", quantity: 9_000 }, { currency: "USD", quantity: 220 }, { currency: "try", quantity: 4_400 }],
   })).toEqual([{ currency: "USD", amount: 220 }, { currency: "TRY", amount: 4_400 }]);
+  // A broker's total cash that names no currency is in the account's.
+  expect(riskCashLines({ currency: "TRY" }, { totalCashValue: 1_000, currency: "" })).toEqual([{ currency: "TRY", amount: 1_000 }]);
 });
 test("currency and price shocks reprice each line of the book, cash included, and total it", () => {
   const snapshot = { ...market(), fxRates: { TRY: 0.025 } };
@@ -343,11 +345,14 @@ test("currency and price shocks reprice each line of the book, cash included, an
   expect(rows[1]!.detail).toBe("TRY -20% vs USD; 110 USD to 88 USD");
   // The basket regressions stay, as shares of the basket.
   expect(model.rows.stress[0]!.detail).toStartWith("% of basket; ");
-  // A shock nothing in the book moves with changes nothing, and says so.
-  expect(shocked([{ currency: "EUR", percent: 5 }], [{ symbol: "ETH-USD", percent: -30 }]).notes).toEqual(expect.arrayContaining([
+  // A shock nothing in the book moves with changes nothing, and says so: a three-letter symbol is still a holding.
+  expect(shocked([{ currency: "EUR", percent: 5 }], [{ symbol: "ETH-USD", percent: -30 }, { symbol: "GLD", percent: 10 }]).notes).toEqual(expect.arrayContaining([
     'Nothing in "Test basket" moves with EUR against USD, so the EUR shift changes nothing.',
     '"Test basket" holds no ETH-USD, so its shift changes nothing; it holds SPY.',
+    '"Test basket" holds no GLD, so its shift changes nothing; it holds SPY.',
   ]));
+  // A decimal comma is a decimal, not another shock.
+  expect(parseFxShifts("TRY -2,5, EUR 5")).toEqual([{ currency: "TRY", percent: -2.5 }, { currency: "EUR", percent: 5 }]);
 
   // In a lira account the lira's fall is every other currency's rise: USD lines gain a quarter, lira cash stays, a euro line takes both moves.
   const lira = repriceBook([

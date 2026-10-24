@@ -21,11 +21,11 @@ const ISO_CURRENCY = /^[A-Z]{3}$/;
 
 /**
  * The portfolio's cash by currency: the broker account's own balances when it
- * reports them per currency, else its total cash, else the amount entered
- * with `portfolio cash set`.
+ * reports them per currency, else its total cash (in the portfolio's currency
+ * when the account names none), else the amount entered with `portfolio cash set`.
  */
 export function riskCashLines(
-  portfolio: Pick<Portfolio, "cash">,
+  portfolio: Pick<Portfolio, "cash" | "currency">,
   account: Pick<BrokerAccount, "cashBalances" | "totalCashValue" | "currency"> | null | undefined,
 ): RiskCashLine[] {
   const byCurrency = new Map<string, number>();
@@ -37,7 +37,7 @@ export function riskCashLines(
   }
   if (byCurrency.size) return [...byCurrency].map(([currency, amount]) => ({ currency, amount }));
   const line = resolvePortfolioCash(portfolio, account);
-  const currency = line?.currency.trim().toUpperCase() ?? "";
+  const currency = (line?.currency.trim() || portfolio.currency || "").toUpperCase();
   return line && ISO_CURRENCY.test(currency) && Number.isFinite(line.amount) && line.amount !== 0
     ? [{ currency, amount: line.amount }]
     : [];
@@ -61,14 +61,17 @@ export const RISK_SHOCK_LIMITS = { minimum: -99, maximum: 500 } as const;
 /** `-20%` and `+10%` as a shock names its move. */
 const signedPercent = (percent: number) => `${percent > 0 ? "+" : ""}${percent}%`;
 
+/** The commas that separate shocks: not a decimal comma between two digits (`TRY -2,5`). */
+const SHOCK_SEPARATOR = /(?<!\d),|,(?!\d)/;
+
 /** `TRY -20, EUR 5`: each item a name and a percent, or why one is not. */
 function shockItems(text: string, flag: string, what: string, example: string): Array<{ name: string; percent: number }> {
-  const items = text.split(",").map((item) => item.trim()).filter(Boolean);
+  const items = text.split(SHOCK_SEPARATOR).map((item) => item.trim()).filter(Boolean);
   if (!items.length) throw new Error(`${flag} takes ${what} and a percent, such as ${example}.`);
   return items.map((item) => {
-    const match = /^(\S+)\s+([-+]?\d+(?:\.\d+)?)\s*%?$/.exec(item);
+    const match = /^(\S+)\s+([-+]?\d+(?:[.,]\d+)?)\s*%?$/.exec(item);
     if (!match) throw new Error(`${flag} takes ${what} and a percent, such as ${example}; got "${item}".`);
-    const percent = Number(match[2]);
+    const percent = Number(match[2]!.replace(",", "."));
     if (percent < RISK_SHOCK_LIMITS.minimum || percent > RISK_SHOCK_LIMITS.maximum)
       throw new Error(`${flag} moves by ${RISK_SHOCK_LIMITS.minimum}% to +${RISK_SHOCK_LIMITS.maximum}%; got ${match[2]} for ${match[1]}.`);
     return { name: match[1]!, percent };
@@ -146,8 +149,8 @@ export interface RiskRepricing {
   percent: number | null;
   /** Lines a shock moves that have no value, so are not in the change. */
   unvalued: string[];
-  /** Shocks nothing in the book moves with: "EUR", "ETH-USD". */
-  unmatched: string[];
+  /** Shocks nothing in the book moves with: a currency it holds nothing in, a holding it does not hold. */
+  unmatched: Array<{ kind: "currency" | "holding"; name: string }>;
 }
 
 const fxName = (shift: RiskFxShift) => `${shift.currency} ${signedPercent(shift.percent)} vs USD`;
@@ -204,8 +207,9 @@ export function repriceBook(
     percent: bookValue > 0 ? (change / bookValue) * 100 : null,
     unvalued: repriced.filter((line) => line.change == null).map((line) => line.label),
     unmatched: [
-      ...fx.filter((shift) => !moved.has(shift.currency)).map((shift) => shift.currency),
-      ...assets.filter((shift) => !moved.has(assetName(shift))).map((shift) => `${shift.symbol}${shift.exchange ? `:${shift.exchange}` : ""}`),
+      ...fx.filter((shift) => !moved.has(shift.currency)).map((shift) => ({ kind: "currency" as const, name: shift.currency })),
+      ...assets.filter((shift) => !moved.has(assetName(shift)))
+        .map((shift) => ({ kind: "holding" as const, name: `${shift.symbol}${shift.exchange ? `:${shift.exchange}` : ""}` })),
     ],
   };
 }

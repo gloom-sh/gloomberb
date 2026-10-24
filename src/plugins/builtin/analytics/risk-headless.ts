@@ -6,6 +6,7 @@ import { describeCollections } from "../../../portfolio/collection-name";
 import { formatShocks, parseAssetShifts, parseFxShifts, riskCashLines } from "./risk-book";
 import {
   BASKET_VIEWS,
+  BOOK_TOTAL_ROW_ID,
   buildPortfolioRisk,
   portfolioRiskRequests,
   portfolioRiskTickers,
@@ -124,9 +125,12 @@ function compactRiskRows(model: PortfolioRiskModel, view: RiskView): { rows: Ris
     };
   }
   if (all.length <= COMPACT_ROW_LIMIT) return { rows: all, notices: [] };
+  // The book's total of the shocks is what they come to: the lines go before it does.
+  const total = all.filter((row) => row.id === BOOK_TOTAL_ROW_ID);
+  const rows = [...all.filter((row) => row.id !== BOOK_TOTAL_ROW_ID).slice(0, COMPACT_ROW_LIMIT - total.length), ...total];
   return {
-    rows: all.slice(0, COMPACT_ROW_LIMIT),
-    notices: [`${all.length - COMPACT_ROW_LIMIT} more ${view} rows not shown.`],
+    rows,
+    notices: [`${all.length - rows.length} more ${view} rows not shown.`],
   };
 }
 

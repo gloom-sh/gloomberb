@@ -49,7 +49,8 @@ test("the compact result is the requested view, without the model, with the stro
       factors: [],
       holdings: holdings.map((holding) => riskRow(holding.symbol, holding.value / 1_000)),
       correlation: pairs,
-      stress: [],
+      // A shock that moves every holding: a line each, then the book's total.
+      stress: [...holdings.map((holding) => riskRow(`shock:${holding.id}`, -20, "%")), riskRow("shock:book", -20, "%")],
       performance: [],
       attribution: [],
       greeks: [],
@@ -76,6 +77,9 @@ test("the compact result is the requested view, without the model, with the stro
   const book = portfolioRiskHeadless.compact!(full as never, args("holdings"));
   expect(book.sections[0]!.rows).toHaveLength(100);
   expect(book.metadata?.notices).toEqual(["20 more holdings rows not shown."]);
+  // The cap takes lines, never what they total.
+  const stress = portfolioRiskHeadless.compact!(full as never, args("stress")).sections[0]!.rows!;
+  expect([stress.length, stress.at(-1)!.label, stress.at(-2)!.label]).toEqual([100, "shock:book", "shock:NASDAQ:H98"]);
 
   // The report keeps every view and the model.
   expect(full.sections).toHaveLength(8);

@@ -64,6 +64,9 @@ test("a pair option reads the words after its flag, and a refused option is name
   expect(parsed.arg).toBe("book");
   const resolved = await resolvePaneFunction(registry, context, parsed, { strictHeadlessOptions: true });
   expect(resolved.options).toMatchObject({ view: "stress", "fx-shift": "TRY -20, EUR 5", "asset-shift": "BTC-USD -30" });
+  // A decimal comma ends the value like any number: the next word is the argument.
+  const decimal = parsePaneFunctionArgsFor(registry, ["MARS", "--fx-shift", "TRY", "-2,5", "book"]);
+  expect([decimal.arg, decimal.options.fxShift]).toEqual(["book", "TRY -2,5"]);
   // A function without pair options reads the word after the value as its argument, as before.
   expect(parsePaneFunctionArgsFor(registry, ["WEI", "--fx-shift", "TRY", "-20"]).arg).toBe("-20");
   // A refused flag reads as typed, not as the parser keys it (--fxShift), and the supported ones read as people type them.

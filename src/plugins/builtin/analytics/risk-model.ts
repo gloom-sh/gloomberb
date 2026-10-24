@@ -509,6 +509,12 @@ export function riskCoverageShortfall(
  * percent of its own value and in money, then the book's total, in percent of
  * its net value with the cash.
  */
+/** The Stress row that totals the currency and price shocks over the whole book. */
+export const BOOK_TOTAL_ROW_ID = "shock:book";
+/** A Stress row of the currency and price shocks, which reprice the book without the basket. */
+export function isShockRow(row: Pick<RiskDisplayRow, "id">): boolean {
+  return row.id.startsWith("shock:");
+}
 function repricingRows(repricing: RiskRepricing, currency: string, asOf: string): RiskDisplayRow[] {
   const money = (value: number) => `${formatNumber(value, 0)} ${currency}`;
   return [
@@ -523,7 +529,7 @@ function repricingRows(repricing: RiskRepricing, currency: string, asOf: string)
       ...(line.change != null ? { amount: line.change, amountCurrency: currency } : {}),
     })),
     {
-      id: "shock:book",
+      id: BOOK_TOTAL_ROW_ID,
       label: "Book total",
       value: repricing.percent,
       unit: "%",
@@ -923,8 +929,8 @@ export function buildPortfolioRisk(
   const repricing = repriceBook(bookLines, portfolio.currency, shifts.fx, shifts.assets);
   if (repricing?.unmatched.length) {
     const held = holdings.map((row) => row.symbol);
-    for (const name of repricing.unmatched)
-      notes.push(/^[A-Z]{3}$/.test(name) && !held.includes(name)
+    for (const { kind, name } of repricing.unmatched)
+      notes.push(kind === "currency"
         ? `Nothing in "${portfolio.name}" moves with ${name} against USD, so the ${name} shift changes nothing.`
         : `"${portfolio.name}" holds no ${name}, so its shift changes nothing${held.length ? `; it holds ${held.slice(0, 8).join(", ")}${held.length > 8 ? ` and ${held.length - 8} more` : ""}` : ""}.`);
   }

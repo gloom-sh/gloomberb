@@ -53,6 +53,7 @@ import {
   buildPortfolioRisk,
   HOLDINGS_SHARE_UNIT,
   HOLDINGS_SUMMARY_ROW_IDS,
+  isShockRow,
   portfolioRiskRequests,
   portfolioRiskTickers,
   riskCoverageLine,
@@ -406,8 +407,16 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
     if (!model || !BASKET_VIEWS.has(view)) return null;
     if (!frozen && !resource.data)
       return marketLoading ? { loading: true } : resource.error ? { error: resource.error } : null;
-    return view === "holdings" ? null : riskCoverageShortfall(model.coverage);
+    if (view === "holdings") return null;
+    const shortfall = riskCoverageShortfall(model.coverage);
+    // The currency and price shocks reprice the book without the basket, so they stay; the footer says why the basket scenarios do not.
+    return shortfall && view === "stress" && model.rows.stress.some(isShockRow) ? null : shortfall;
   }, [frozen, marketLoading, model, resource.data, resource.error, view]);
+  // Stress with too little covered for the basket scenarios, its shocks shown alone.
+  const stressShortfall = useMemo(
+    () => (!basketBody && model && view === "stress" ? riskCoverageShortfall(model.coverage) : null),
+    [basketBody, model, view],
+  );
   const holdingsSummary = useMemo(
     () => view === "holdings" ? holdingsSummaryItems((model?.rows.holdings ?? []).filter((row) => HOLDINGS_SUMMARY_ROW_IDS.has(row.id))) : [],
     [model, view],
@@ -416,6 +425,7 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
     () =>
       (basketBody ? [] : model?.rows[view] ?? [])
         .filter((row) => view !== "holdings" || !HOLDINGS_SUMMARY_ROW_IDS.has(row.id))
+        .filter((row) => !stressShortfall || isShockRow(row))
         .sort((a, b) => {
         if (!sort.column) return 0;
         const left = a[sort.column as keyof RiskDisplayRow],
@@ -429,7 +439,7 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
           (sort.direction === "asc" ? 1 : -1)
         );
       }),
-    [basketBody, model, view, sort],
+    [basketBody, stressShortfall, model, view, sort],
   );
   const openRow = rows.find((row) => row.id === open);
   const detailScrollRef = useRef<ScrollBoxRenderable | null>(null);
@@ -509,10 +519,15 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
     ...(resource.error ? [resource.error] : []),
   ];
   // What the basket views cover of the book and leave out, unless the body already says why they show nothing.
-  const coverageText = model && BASKET_VIEWS.has(view) && !basketBody ? riskCoverageLine(model.coverage) : null;
-  const asOfDate = model?.rows[view].find((row) => row.asOf)?.asOf?.slice(0, 10) ?? null;
+  // Stress showing its shocks alone says instead why the basket scenarios are not there.
+  const coverageText = !model || !BASKET_VIEWS.has(view) || basketBody
+    ? null
+    : stressShortfall
+      ? `Index, 10Y and VIX scenarios: ${stressShortfall.title.replace(/\.$/, "").replace(/^[A-Z](?=[a-z])/, (letter) => letter.toLowerCase())}`
+      : riskCoverageLine(model.coverage);
+  const asOfDate = (stressShortfall ? rows : model?.rows[view])?.find((row) => row.asOf)?.asOf?.slice(0, 10) ?? null;
   // The views estimated from returns name the currency a non-USD account's returns were converted into.
-  const returnsCurrency = BASKET_VIEWS.has(view) && view !== "holdings" ? riskReturnsCurrency(model) : null;
+  const returnsCurrency = BASKET_VIEWS.has(view) && view !== "holdings" && !stressShortfall ? riskReturnsCurrency(model) : null;
   // Dated evidence only when a row has a date; a missing date is not a claim about history.
   const asOfText = !model
     ? null
@@ -526,7 +541,10 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
         ]),
       ].join(" · ") || null;
   // What the figures are read from and to when: the basket's daily closes, or the marks and evidence of that day.
-  const sourceText = basketBody || !asOfDate ? null : DAILY_CLOSE_VIEWS.has(view) ? `daily closes to ${asOfDate}` : `as of ${asOfDate}`;
+  // The shocks alone are repriced at the current marks.
+  const sourceText = basketBody || !asOfDate
+    ? null
+    : DAILY_CLOSE_VIEWS.has(view) && !stressShortfall ? `daily closes to ${asOfDate}` : `as of ${asOfDate}`;
   usePaneNoticeFooter({
     registrationId: "portfolio-risk-notices",
     notices,

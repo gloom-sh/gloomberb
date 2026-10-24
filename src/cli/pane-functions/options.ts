@@ -109,8 +109,8 @@ export function parseArgumentsOption(value: string): Record<string, string> {
 /** How many words one value of an option takes, by its key as parsed (`fxShift`); one when it is not a pair. */
 export type OptionValueWords = (key: string) => number;
 
-/** Words in the last value of a list (`TRY -20, EUR 5` ends with two). */
-const lastValueWords = (value: string) => value.slice(value.lastIndexOf(",") + 1).trim().split(/\s+/).filter(Boolean).length;
+/** Words in the last value of a list (`TRY -20, EUR 5` ends with two); a decimal comma (`TRY -2,5`) separates nothing. */
+const lastValueWords = (value: string) => value.split(/(?<!\d),|,(?!\d)/).at(-1)!.trim().split(/\s+/).filter(Boolean).length;
 
 export function parsePaneFunctionArgs(
   args: string[],
