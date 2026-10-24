@@ -1,3 +1,4 @@
+import { logFailure } from "../../../utils/log-failure";
 import { financialPeriodCoverage } from "../../../time-series/financial-period-coverage";
 import { FINANCIAL_VINTAGE_NOTICE, SEC_EPS_BASIS_NOTICE } from "../../../utils/financial-statements";
 import { graphRowsForFinancials, summarizeResolvedSeries } from "../../../time-series/reporting";
@@ -101,7 +102,7 @@ export async function loadChartPaneModel(
   if (getQuote && !spec.viewport.dateWindow) {
     await Promise.all(getLiveChartQuoteTargets(spec).map(async (target) => {
       const quote = await getQuote(target.symbol, target.exchange ?? "",
-        context.refresh ? { ...target.context, cacheMode: "refresh" } : target.context).catch(() => null);
+        context.refresh ? { ...target.context, cacheMode: "refresh" } : target.context).catch(logFailure("chart-composer.headless", "Load chart live quote failed", null));
       if (quote) quoteOverrides.set(chartQuoteOverrideKeyForTarget(target), quote);
     }));
   }
@@ -623,7 +624,7 @@ async function possibleFundTickers(spec: ChartSpec, context: HeadlessPaneContext
   const read = context.marketData.getCachedFinancialsForTargets;
   const cached = tickers.length && read
     ? await Promise.resolve().then(() => read.call(context.marketData, tickers.map((symbol) => ({ symbol })), { allowExpired: true, includeStaleQuotes: true }))
-      .catch(() => null)
+      .catch(logFailure("chart-composer.headless", "Read cached chart fund types failed", null))
     : null;
   return tickers.filter((ticker) => {
     const financials = cached?.get(ticker);
@@ -681,7 +682,7 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
           ? intersectChartResolutionSupport(await Promise.all([...instruments.values()].map(async (target) => (
             normalizeChartResolutionSupport(await Promise.resolve(context.marketData.getChartResolutionSupport!(
               target.symbol, target.exchange ?? "", { brokerId: target.brokerId, brokerInstanceId: target.brokerInstanceId, instrument: target.instrument },
-            )).catch(() => []))
+            )).catch(logFailure("chart-composer.headless", "Read intraday resolution support failed", [])))
           ))))
           : [];
         const request = resolveIntradayRequest({

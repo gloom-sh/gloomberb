@@ -81,6 +81,7 @@ export function formatChartDateWindow(
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: zone });
   } catch {
+    // Intentional ignore: unsupported exchange time zones use UTC so the date label remains readable.
     zone = "UTC";
   }
   const first = calendarParts(start, zone);

@@ -1,3 +1,4 @@
+import { logFailure } from "../../../utils/log-failure";
 import { useCallback, useEffect, useId, useMemo, useReducer, useRef, useState, useSyncExternalStore } from "react";
 import {
   Badge, Button, DataTableView, IconButton, PaneStatusBody, RatioBar, SegmentedControl, Notice, SectionHeading, confirmDialog, usePaneFooter, usePaneNoticeFooter,
@@ -210,11 +211,11 @@ export function BrokerOrdersView({
   const unknown = trading.result?.status.toUpperCase() === "UNKNOWN";
   useEffect(() => {
     if (!canRead || !visible || (feed.live && !unknown) || !trading.result || brokerOrderDone(trading.result.status)) return;
-    const timer = setInterval(() => { void controller.refreshResult().catch(() => {}); }, 15_000);
+    const timer = setInterval(() => { void controller.refreshResult().catch(logFailure("broker-trading.orders", "Poll cancelled broker order failed")); }, 15_000);
     return () => clearInterval(timer);
   }, [canRead, visible, feed.live, unknown, trading.result, controller]);
   const refresh = useCallback(() => {
-    void controller.refreshResult().catch(() => {});
+    void controller.refreshResult().catch(logFailure("broker-trading.orders", "Refresh broker order result failed"));
     brokerOrderFeed.refresh(instance.id);
     void reload();
   }, [controller, reload, instance.id]);
@@ -320,7 +321,7 @@ export function BrokerOrdersView({
       });
       await controller.confirmCancel(confirmed);
       if (confirmed) {
-        if (controller.getSnapshot().result?.status === "PENDING_CANCEL") await controller.refreshResult().catch(() => {});
+        if (controller.getSnapshot().result?.status === "PENDING_CANCEL") await controller.refreshResult().catch(logFailure("broker-trading.orders", "Read pending broker cancellation failed"));
         brokerOrderFeed.refresh(instance.id);
       }
     } catch (error) {

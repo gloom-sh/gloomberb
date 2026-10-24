@@ -1,3 +1,4 @@
+import { logFailure } from "../../../utils/log-failure";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Button,
@@ -471,7 +472,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
       setHasSession(apiClient.isSignedIn() || snapshot.hasSavedSession);
       setSessionMarker(buildAccountSessionMarker());
     });
-    void chatController.refreshSession().catch(() => {});
+    void chatController.refreshSession().catch(logFailure("account-management.pane", "Refresh account session failed"));
     return unsubscribe;
   }, []);
 
@@ -523,10 +524,10 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
     refreshedSyncRevisionRef.current = syncStatus.revision;
     let cancelled = false;
     void (async () => {
-      const nextProfile = await apiClient.getAccountProfile().catch(() => null);
+      const nextProfile = await apiClient.getAccountProfile().catch(logFailure("account-management.pane", "Refresh synced account profile failed", null));
       if (cancelled || !nextProfile) return;
       setProfile(nextProfile);
-      await chatController.refreshSession().catch(() => {});
+      await chatController.refreshSession().catch(logFailure("account-management.pane", "Refresh synced account session failed"));
     })();
     return () => {
       cancelled = true;
@@ -588,7 +589,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
           }}
         />
       ),
-    }).catch(() => {});
+    }).catch(logFailure("account-management.pane", "Open password dialog failed"));
   }, [busy, dialog]);
 
   const viewport = useViewport();
@@ -648,7 +649,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
       });
       setProfile(nextProfile);
       setDraft(profileToDraft(nextProfile));
-      await chatController.refreshSession().catch(() => {});
+      await chatController.refreshSession().catch(logFailure("account-management.pane", "Refresh saved account session failed"));
       setMessage({ tone: "success", text: t("Account profile saved.") });
     } catch (error) {
       setMessage({
@@ -732,7 +733,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
       setProfile(null);
       setDraft(profileToDraft(null));
       setHasSession(false);
-      await chatController.refreshSession().catch(() => {});
+      await chatController.refreshSession().catch(logFailure("account-management.pane", "Refresh deleted account session failed"));
       setMessage({ tone: "success", text: t("Account deleted.") });
     } catch (error) {
       setMessage({
@@ -761,8 +762,8 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
       );
       if (!result) return;
       // The plan changed on the server: the session, the status bar and the tab follow it.
-      await chatController.refreshSession().catch(() => {});
-      const nextProfile = await apiClient.getAccountProfile().catch(() => null);
+      await chatController.refreshSession().catch(logFailure("account-management.pane", "Refresh trial account session failed"));
+      const nextProfile = await apiClient.getAccountProfile().catch(logFailure("account-management.pane", "Refresh trial account profile failed", null));
       if (nextProfile) setProfile(nextProfile);
       setMessage({
         tone: "success",

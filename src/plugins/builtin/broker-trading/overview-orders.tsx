@@ -1,3 +1,4 @@
+import { logFailure } from "../../../utils/log-failure";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActionRow, SectionHeading } from "../../../components";
 import { useAsyncResource } from "../../../react/async-resource";
@@ -44,7 +45,11 @@ async function loadTickerActivity(sources: readonly TickerOrderSource[]): Promis
     try {
       const recent = await Promise.resolve().then(() => broker.listExecutions?.(instance) ?? []);
       return recent.filter((row) => ticketOrderMatches(row, contract, instance.id, row.accountId));
-    } catch { failed = true; return []; }
+    } catch (error) {
+      logFailure("broker-trading.overview-orders", "Read broker executions failed")(error);
+      failed = true;
+      return [];
+    }
   }));
   return { recent: results.flat().sort((a, b) => b.time - a.time).slice(0, RECENT_LIMIT), failed };
 }

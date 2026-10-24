@@ -1,3 +1,4 @@
+import { logFailure } from "../../../utils/log-failure";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { isPlainKey } from "../../../utils/keyboard";
 import { Button, EmptyState, Notice, PaneFooterScope, SelectButton, confirmDialog, usePaneFooter, usePaneMenuItems, type SelectControl } from "../../../components";
@@ -200,7 +201,9 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
         setDefaultPriceLabel(`Broker ${source}. Editable.`);
       }
       pricePending.current = false;
-    } catch { /* No usable price in this quote yet: the next one may have it. */ }
+    } catch {
+      // Intentional ignore: an unusable quote cannot supply a default price; wait for the next quote.
+    }
   }, [controller]);
   useEffect(() => { prefillPrice(); }, [state.quote, prefillPrice]);
   const quote = useCallback(async (prefill = false) => {
@@ -208,7 +211,10 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
     try {
       await controller.loadQuote();
       prefillPrice();
-    } catch { /* The controller owns safe error state. */ }
+    } catch (error) {
+      logFailure("broker-trading.pane", "Load broker ticket quote failed")(error);
+      /* The controller owns safe error state. */
+    }
   }, [controller, prefillPrice]);
   usePaneRefreshKey(() => { refreshResources.current(); if (accountId && ticketContract.symbol) void quote(); }, { focused, enabled: page === "ticket" && !busy });
   // The broker's own quote stream, where it has one, keeps the ticket's bid, ask and last current;
@@ -246,7 +252,7 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
   const unknownResult = state.result?.status.toUpperCase() === "UNKNOWN" && state.result.orderId !== 0;
   useEffect(() => {
     if (!visible || !connected || (orderFeed.live && !unknownResult) || state.phase !== "result" || !state.result || ["FILLED", "CANCELLED", "CANCELED", "REJECTED", "EXPIRED", "SUPERSEDED"].includes(state.result.status.toUpperCase())) return;
-    const timer = setInterval(() => { void controller.refreshResult().catch(() => {}); }, 10_000);
+    const timer = setInterval(() => { void controller.refreshResult().catch(logFailure("broker-trading.pane", "Poll broker ticket result failed")); }, 10_000);
     return () => clearInterval(timer);
   }, [visible, connected, orderFeed.live, unknownResult, state.phase, state.result?.orderId, state.result?.status, controller]);
   // A placed order says so in a toast here; its later fills and its end toast from the order feed, app-wide.

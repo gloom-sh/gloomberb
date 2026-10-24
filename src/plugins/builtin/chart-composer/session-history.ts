@@ -1,3 +1,4 @@
+import { logFailure } from "../../../utils/log-failure";
 import type { DataProvider, MarketDataRequestContext } from "../../../types/data-provider";
 import type { PricePoint, Quote } from "../../../types/financials";
 import type { TimeRange } from "../../../time-series/range";
@@ -247,13 +248,13 @@ async function loadHistoricalFallback(
   if (request.session) {
     const bounds = sessionUtcBounds(request.session, timeZone);
     return await fetchHistoryResult(provider, symbol, exchange,
-      { kind: "detail", start: bounds.start, end: bounds.end, interval: request.resolution }, context).catch(() => null) ?? empty;
+      { kind: "detail", start: bounds.start, end: bounds.end, interval: request.resolution }, context).catch(logFailure("chart-composer.session-history", "Load requested intraday session failed", null)) ?? empty;
   }
   const end = new Date(now.getTime() - HISTORICAL_RETRY_DELAY_MS);
   const lookbackDays = request.rangePreset === "1W" ? 35 : 8;
   const start = new Date(end.getTime() - lookbackDays * DAY_MS);
   return await fetchHistoryResult(provider, symbol, exchange,
-    { kind: "detail", start, end, interval: request.resolution }, context).catch(() => null) ?? empty;
+    { kind: "detail", start, end, interval: request.resolution }, context).catch(logFailure("chart-composer.session-history", "Load historical intraday fallback failed", null)) ?? empty;
 }
 
 export async function loadIntradayWindow(options: {
@@ -347,7 +348,7 @@ export async function loadIntradayWindow(options: {
   if (nonpositive.length) {
     // Metadata is needed only at this boundary. Do not infer a futures domain
     // from a ticker suffix, a contract multiplier, or an option security type.
-    const reportedQuote = await options.provider.getQuote(options.symbol, options.exchange, options.context).catch(() => undefined);
+    const reportedQuote = await options.provider.getQuote(options.symbol, options.exchange, options.context).catch(logFailure("chart-composer.session-history", "Read intraday instrument metadata failed"));
     const quote = reportedQuote?.symbol.trim().toUpperCase() === options.symbol.trim().toUpperCase()
       ? reportedQuote : undefined;
     const instrumentType = quote?.instrumentType?.trim().toUpperCase() || null;

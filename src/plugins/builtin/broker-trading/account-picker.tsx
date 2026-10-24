@@ -1,3 +1,4 @@
+import { logFailure } from "../../../utils/log-failure";
 import { useCallback, useImperativeHandle, useMemo, useRef, useState, type Ref } from "react";
 import { Badge, Button, DialogFrame, DisclosureMarker, ListView, type SelectControl } from "../../../components";
 import { listCursorMove } from "../../../components/ui/list-view";
@@ -78,7 +79,7 @@ export function BrokerAccountPicker({ accounts, value, onChange, disabled = fals
     if (disabled || opened.current || !choices.length) return;
     opened.current = true;
     void dialog.prompt<string>({ closeOnClickOutside: true, style: { width: 72 }, content: (context) => <BrokerAccountChoiceDialog {...context} accounts={choices} value={value} /> })
-      .then((next) => choose.current(next)).catch(() => {}).finally(() => { opened.current = false; });
+      .then((next) => choose.current(next)).catch(logFailure("broker-trading.account-picker", "Choose broker account failed")).finally(() => { opened.current = false; });
   }, [choices, dialog, disabled, value]);
   useImperativeHandle(controlRef, () => ({ open }), [open]);
   return <Button label="Choose account" variant="quiet" flush active={active} disabled={disabled || !choices.length} width={width} onPress={open} stopPropagation>
