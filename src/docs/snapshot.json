@@ -1035,6 +1035,13 @@
    "lesson": "/academy/macro-markets-and-news/markets/movers-highs-halts"
   },
   {
+   "code": "SCAN",
+   "name": "Live scanner",
+   "description": "Your own intraday stock scan",
+   "detail": "Scan all US stocks, an index, a sector or a watchlist for your own conditions: a move over the last minutes, volume against its usual pace, a new session high or low, a VWAP cross or a gap, above price, market cap and volume floors. Matches refresh through the session and new ones can alert. Real-time on Pro, 15-minute delayed on Free.",
+   "category": "markets"
+  },
+  {
    "code": "FLOW",
    "name": "Options flow",
    "description": "Unusual options activity",

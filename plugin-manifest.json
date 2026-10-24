@@ -1484,7 +1484,8 @@
           "equity-screener",
           "market-movers",
           "scanner-flow",
-          "scanner-hilo"
+          "scanner-hilo",
+          "scanner-live"
         ],
         "capabilities": [],
         "broker": false,
@@ -1514,6 +1515,11 @@
             "name": "Options Flow",
             "description": "Unusual options activity: sweeps, blocks, and large premium prints.",
             "access": "pro"
+          },
+          {
+            "code": "SCAN",
+            "name": "Live Scanner",
+            "description": "Your own intraday scan of US stocks: moves, volume spikes, new highs and lows, VWAP crosses and gaps, with alerts."
           }
         ]
       },

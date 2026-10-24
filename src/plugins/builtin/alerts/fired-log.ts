@@ -1,5 +1,6 @@
 import type { PluginResumeState } from "../../../types/plugin";
 import type { QuoteDataSource } from "../../../types/financials";
+import { ALERTS_PLUGIN_ID } from "./constants";
 
 /**
  * The alerts this device's app fired, kept on the device (plugin resume
@@ -14,7 +15,7 @@ export interface FiredAlert {
   id: string;
   /** When the app fired it, ISO. */
   firedAt: string;
-  /** The rule's kind: `price`, `iv_level`, `earnings_date`, `macro_event`. */
+  /** The rule's kind: `price`, `iv_level`, `earnings_date`, `macro_event`, `live_scan`. */
   kind: string;
   ruleId: string;
   /** The rule as it read when it went off: `BTC above 85000`, `IBIT · 30d ATM IV above 50%`. */
@@ -64,6 +65,25 @@ export function appendFiredAlert(entries: readonly FiredAlert[], input: FiredAle
   const { firedAt, ...rest } = input;
   const entry: FiredAlert = { id, firedAt: firedAlertTime(firedAt) ?? new Date().toISOString(), ...rest };
   return [...entries, entry].slice(-MAX_FIRED_ALERTS);
+}
+
+/**
+ * Records an alert another plugin fired (a live scan's new matches) in this
+ * log, through the runtime's access to the alerts plugin's resume state.
+ */
+export function recordFiredAlertFor(
+  runtime: { getResumeState(pluginId: string, key: string): unknown; setResumeState(pluginId: string, key: string, value: unknown): void },
+  inputs: readonly FiredAlertInput[],
+  onError: (error: unknown) => void,
+): void {
+  if (!inputs.length) return;
+  try {
+    let entries = readFiredAlerts(runtime.getResumeState(ALERTS_PLUGIN_ID, FIRED_LOG_KEY));
+    for (const input of inputs) entries = appendFiredAlert(entries, input);
+    runtime.setResumeState(ALERTS_PLUGIN_ID, FIRED_LOG_KEY, entries);
+  } catch (error) {
+    onError(error);
+  }
 }
 
 /** Records a fired alert in the device's log. A log that cannot be written never stops the alert itself. */

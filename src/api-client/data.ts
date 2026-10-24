@@ -51,6 +51,7 @@ import type { CarbonBoard, CarbonHistory, EuropePowerBoard, EuropePowerHistory, 
 import type { GpuBoardPayload, GpuEventsPayload, GpuHistoryPayload, GpuHistoryQuery } from "./gpu";
 import type { CpiBoardPayload } from "./cpi";
 import type { TapeRange, TapeSnapshot } from "./tape";
+import { liveScanPath, type LiveScanPayload, type LiveScanWireDefinition } from "./live-scan";
 import { signalWithTimeout } from "../utils/async-deadline";
 import { ApiRequestError } from "./errors";
 import type { ExchangeRateSnapshot } from "../types/exchange-rate";
@@ -895,6 +896,11 @@ export class CloudDataApi {
 
   async getCloudCentralBankRates(): Promise<CentralBankRatesPayload> {
     return this.request<CentralBankRatesPayload>("/cloud/econ/central-bank-rates", { signal: AbortSignal.timeout(45_000) });
+  }
+
+  /** A live scan's matches against Gloom Cloud's newest market-wide snapshot for this account's tier. */
+  getLiveScan(definition: LiveScanWireDefinition, signal?: AbortSignal) {
+    return this.request<LiveScanPayload>(liveScanPath(definition), { signal: signalWithTimeout(signal, 20_000) });
   }
 
   /** Recorded FLOW prints older than the live tape (Pro); the plugin builds `search`. */

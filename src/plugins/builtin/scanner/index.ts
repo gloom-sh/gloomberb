@@ -3,9 +3,11 @@ import type { PluginModule } from "../plugin-module";
 import { DEFAULT_FLOW_FILTERS, FLOW_FILTER_OPTIONS } from "./flow-model";
 import FlowPane from "./flow-pane";
 import HiloPane from "./hilo-pane";
+import LiveScanPane from "./live-pane";
 import { flowHeadless, hiloHeadless } from "./headless";
+import { liveScanHeadless } from "./live-headless";
 import { flowLockNote } from "./lock-note";
-import { FLOW_PANE_ID, HILO_PANE_ID } from "../shared/scanner-capture";
+import { FLOW_PANE_ID, HILO_PANE_ID, LIVE_SCAN_PANE_ID, LIVE_SCAN_TEMPLATE_ID } from "../shared/scanner-capture";
 
 
 
@@ -92,6 +94,18 @@ export const scannerModule: PluginModule = {
       tableExport: true,
       settings: flowSettings(),
     },
+    {
+      id: LIVE_SCAN_PANE_ID,
+      name: "Live Scanner",
+      icon: "S",
+      component: LiveScanPane,
+      defaultPosition: "right",
+      defaultMode: "floating",
+      defaultFloatingSize: { width: 100, height: 28 },
+      tickerSource: true,
+      tableExport: true,
+      headless: liveScanHeadless,
+    },
   ],
 
   paneTemplates: [
@@ -114,6 +128,15 @@ export const scannerModule: PluginModule = {
       shortcut: { prefix: "FLOW" },
       headless: flowHeadless,
       createInstance: () => ({ settings: { ...DEFAULT_FLOW_FILTERS } }),
+    },
+    {
+      id: LIVE_SCAN_TEMPLATE_ID,
+      paneId: LIVE_SCAN_PANE_ID,
+      label: "Live Scanner",
+      description: "Your own intraday scan of US stocks: moves, volume spikes, new highs and lows, VWAP crosses and gaps, with alerts.",
+      keywords: ["scan", "scanner", "intraday", "momentum", "volume", "vwap", "gap", "breakout", "alert", "screener"],
+      shortcut: { prefix: "SCAN" },
+      headless: liveScanHeadless,
     },
   ],
 };

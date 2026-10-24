@@ -14,7 +14,7 @@ import { useAppVisible } from "../../../state/app/activity";
 import { ScannerClientContext } from "../shared/scanner-capture";
 import { delayedFooterSegment } from "../../../components/layout/pane/footer/model";
 
-export interface ScannerFeedState<T extends ScannerPayload> {
+export interface ScannerFeedState<T extends Pick<ScannerPayload, "status" | "access" | "delayMinutes">> {
   payload: T | null;
   /** True once the server refused the subscription (not signed in, or not Pro). */
   denied: boolean;
@@ -63,7 +63,7 @@ export function useFlowFeed(): ScannerFeedState<ScannerFlowPayload> {
  */
 export function useScannerStatusFooter(
   registrationId: string,
-  state: ScannerFeedState<ScannerPayload>,
+  state: ScannerFeedState<Pick<ScannerPayload, "status" | "access" | "delayMinutes">>,
   focused: boolean,
   extra: PaneFooterSegment | null = null,
 ): void {

@@ -7,6 +7,9 @@ import type { apiClient, ScannerFeedEvent, ScannerKind } from "../../../api-clie
 
 export const HILO_PANE_ID = "scanner-hilo";
 export const FLOW_PANE_ID = "scanner-flow";
+/** SCAN, the user's own live scan; it polls Gloom Cloud rather than reading a shared feed. */
+export const LIVE_SCAN_PANE_ID = "scanner-live";
+export const LIVE_SCAN_TEMPLATE_ID = "scanner-live-pane";
 /** The panes that read a scanner feed, by the scanner each one reads. */
 export const SCANNER_PANE_KINDS: Readonly<Record<string, ScannerKind>> = { [HILO_PANE_ID]: "hilo", [FLOW_PANE_ID]: "flow" };
 

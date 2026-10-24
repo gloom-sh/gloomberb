@@ -799,6 +799,7 @@ class GloomApiClient {
   getCloudCentralBankRates = this.data.getCloudCentralBankRates.bind(this.data);
   getMobileAlertHistory = this.data.getMobileAlertHistory.bind(this.data);
   getScannerFlowHistory = this.data.getScannerFlowHistory.bind(this.data);
+  getLiveScan = this.data.getLiveScan.bind(this.data);
   getCloudEstimateRevisions = this.data.getCloudEstimateRevisions.bind(this.data);
   getCloudMoneyMarkets = this.data.getCloudMoneyMarkets.bind(this.data);
   equityScreener = this.data.equityScreener.bind(this.data);
