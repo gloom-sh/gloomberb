@@ -725,10 +725,10 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["IMAP"],
   },
   MEMB: {
-    summary: "ETF holdings with weights, shares, member returns, daily contributions and index changes. SPX and SPY use IVV holdings.",
-    usage: ["MEMB", "MEMB SPY", "MEMB IWM"],
+    summary: "ETF holdings with weights, shares, member returns, daily contributions, breadth and index changes. SPX and ^SPX use IVV holdings.",
+    usage: ["MEMB", "MEMB SPX", "MEMB ^RUT", "gloom fn MEMB SPX --tab breadth"],
     keys: [TABS, OPEN, MEMBERS_MENU],
-    data: same("Dated fund holdings and partial delayed member returns. Nasdaq-100 is not covered."),
+    data: same("Dated holdings and member returns. Breadth history uses current members (survivorship bias). Nasdaq-100 is not covered."),
     bloomberg: ["MEMB", "MRR", "IMOV"],
   },
   THEM: {
