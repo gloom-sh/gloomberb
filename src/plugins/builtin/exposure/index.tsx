@@ -1,15 +1,29 @@
 import type { PaneTemplateContext, ShortcutArgError } from "../../../types/plugin";
-import { unknownCollectionArgError } from "../../../portfolio/collection-name";
+import { findNamedCollection, unknownCollectionArgError } from "../../../portfolio/collection-name";
 import type { PluginModule } from "../plugin-module";
 import { exposureHeadless } from "./headless";
 import { ExposurePane } from "./pane";
 
+const SOURCE = /^(PORT|WATCH):(.+)$/i;
+
+/**
+ * `EXPO PORT:Book` names a portfolio, and `WATCH:Watchlist` a watchlist, by
+ * name or id in any case, as `fn EXPO` reads them. The pane keeps its source
+ * by id (`PORT:book`), so the name is rewritten to the id it names.
+ */
+function sourceInput(arg: string, context: PaneTemplateContext): string {
+  const source = SOURCE.exec(arg.trim());
+  if (!source) return arg;
+  const prefix = source[1]!.toUpperCase();
+  const match = findNamedCollection(prefix === "PORT" ? context.config.portfolios : context.config.watchlists, source[2]);
+  return match ? `${prefix}:${match.id}` : arg;
+}
+
 /** `EXPO PORT:Nope` or `EXPO WATCH:Nope` names a portfolio or watchlist nothing has; tickers and weights are read by the pane. */
 function unknownSourceArg(arg: string, context: PaneTemplateContext): ShortcutArgError | null {
-  const source = /^(PORT|WATCH):(.+)$/i.exec(arg.trim());
+  const source = SOURCE.exec(arg.trim());
   if (!source) return null;
-  const prefix = source[1]!.toUpperCase();
-  return prefix === "PORT"
+  return source[1]!.toUpperCase() === "PORT"
     ? unknownCollectionArgError(source[2]!, context.config.portfolios, "portfolio", (name) => `PORT:${name}`)
     : unknownCollectionArgError(source[2]!, context.config.watchlists, "watchlist", (name) => `WATCH:${name}`);
 }
@@ -21,6 +35,6 @@ export const exposureModule: PluginModule = {
   paneTemplates: [{ id: "exposure-pane", paneId: "exposure", label: "Exposure", description: "Pro scenario exposures across holdings, geographic revenue and supply chains, with source evidence and portfolio concentrations.",
     keywords: ["exposure", "scenario", "stress", "portfolio", "supply", "country", "tariff", "pro"],
     shortcut: { prefix: "EXPO", argKind: "text", argOptional: true, argPlaceholder: "AAPL=60% NVDA=40%", argError: unknownSourceArg }, headless: exposureHeadless,
-    createInstance: (_context, options) => ({ params: { input: options?.arg ?? "" } }),
+    createInstance: (context, options) => ({ params: { input: sourceInput(options?.arg ?? "", context) } }),
   }],
 };

@@ -37,8 +37,12 @@ const SAMPLES_BY_KIND: Record<string, readonly string[]> = {
 };
 
 interface CollectionArgument {
-  /** Arguments that name a portfolio or watchlist there is, or that name none at all (EXPO's tickers). */
-  known: readonly string[];
+  /**
+   * Arguments that name a portfolio or watchlist there is, or none at all
+   * (EXPO's tickers), with the params the pane opens with: the one named, by
+   * its id, never the first portfolio.
+   */
+  known: Record<string, Record<string, unknown>>;
   /** Arguments naming one nothing has, with the row the bar shows for each. */
   unknown: ReadonlyArray<{ arg: string; message: string; detail: string }>;
 }
@@ -50,19 +54,24 @@ interface CollectionArgument {
  */
 const COLLECTION_ARGUMENTS: Record<string, CollectionArgument> = {
   PF: {
-    known: ["Book", "book", "MAIN", "Watchlist"],
+    known: { Book: { collectionId: "book" }, MAIN: { collectionId: "main" }, Watchlist: { collectionId: "watchlist" } },
     unknown: [{ arg: "Nope", message: 'No portfolio or watchlist named "Nope"', detail: "Try Main Portfolio, Book or Watchlist" }],
   },
   PORT: {
-    known: ["Book", "main"],
+    known: { Book: { portfolioId: "book" }, main: { portfolioId: "main" } },
     unknown: [{ arg: "Watchlist", message: 'No portfolio named "Watchlist"', detail: "Try Main Portfolio or Book" }],
   },
   MARS: {
-    known: ["Book", "main"],
+    known: { book: { portfolioId: "book" } },
     unknown: [{ arg: "Nope", message: 'No portfolio named "Nope"', detail: "Try Main Portfolio or Book" }],
   },
   EXPO: {
-    known: ["PORT:Book", "port:main portfolio", "WATCH:watchlist", "AAPL=60% NVDA=40%"],
+    known: {
+      "PORT:Book": { input: "PORT:book" },
+      "port:main portfolio": { input: "PORT:main" },
+      "WATCH:WATCHLIST": { input: "WATCH:watchlist" },
+      "AAPL=60% NVDA=40%": { input: "AAPL=60% NVDA=40%" },
+    },
     unknown: [
       { arg: "PORT:Nope", message: 'No portfolio named "Nope"', detail: "Try PORT:Main Portfolio or PORT:Book" },
       { arg: "WATCH:Book", message: 'No watchlist named "Book"', detail: "Try WATCH:Watchlist" },
@@ -192,7 +201,7 @@ describe("the catalog's functions in the command bar", () => {
     expect(misread).toEqual([]);
   });
 
-  test("a function that takes a portfolio or watchlist opens one there is, and names them for one nothing has", () => {
+  test("a function that takes a portfolio or watchlist opens one there is, and names them for one nothing has", async () => {
     const takesCollection = entries.filter((entry) => {
       const template = entry.templateId ? catalog.paneTemplates.get(entry.templateId) : undefined;
       const argument = (template?.headless ?? catalog.panes.get(entry.paneId)?.headless)?.argument;
@@ -202,11 +211,15 @@ describe("the catalog's functions in the command bar", () => {
     expect(takesCollection).toEqual(Object.keys(COLLECTION_ARGUMENTS).sort());
 
     for (const [code, { known, unknown }] of Object.entries(COLLECTION_ARGUMENTS)) {
-      for (const arg of known) {
-        const rows = rootRows(`${code} ${arg}`);
-        expect({ query: `${code} ${arg}`, opens: rows[0]?.disabled !== true }).toEqual({ query: `${code} ${arg}`, opens: true });
+      for (const [arg, params] of Object.entries(known)) {
+        const query = `${code} ${arg}`;
+        const { intent } = readQuery(query);
+        if (intent.kind === "none" || intent.source !== "pane-template") throw new Error(`${query} is not ${code}`);
+        expect({ query, opens: rootRows(query)[0]?.disabled !== true }).toEqual({ query, opens: true });
+        const instance = await intent.template.createInstance?.(context, { arg: intent.argText });
+        expect({ query, params: instance?.params }).toMatchObject({ query, params });
       }
-      const runnable = rootRows(`${code} ${known[0]}`)[0]!;
+      const runnable = rootRows(`${code} ${Object.keys(known)[0]}`)[0]!;
       for (const { arg, message, detail } of unknown) {
         const rows = rootRows(`${code} ${arg}`);
         const [errorRow] = rows;
