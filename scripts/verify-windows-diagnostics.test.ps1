@@ -217,7 +217,9 @@ function Test-MainLaunchDiagnostics {
     param($FilePath, $WorkingDirectory, $ArgumentList, $RedirectStandardOutput, $RedirectStandardError, [switch]$Wait, [switch]$PassThru)
     if ($Wait) {
       New-Item -ItemType Directory -Force (Join-Path $InstallDir "bin") | Out-Null
-      "test CLI" | Set-Content (Join-Path $InstallDir "bin\gloomberb.cmd")
+      foreach ($CliName in @("gloom.cmd", "gloomberb.cmd")) {
+        "@exit /b 0" | Set-Content (Join-Path $InstallDir "bin\$CliName")
+      }
       return [pscustomobject]@{ ExitCode = 0 }
     }
     Assert-Condition ($RedirectStandardOutput -eq (Join-Path $script:GuiArtifactDir "windows-main-stdout.log")) "Main launch stdout was not retained"
