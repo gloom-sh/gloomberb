@@ -25,7 +25,7 @@ import { isRoundTheClockCoin } from "../../utils/crypto-pair";
 import { zonedDateKey } from "../../utils/zoned-date-time";
 import { resolvePriceHistoryCurrencyUnit } from "../../utils/currency-units";
 import { calendarHistoryFetchState, calendarHistoryLastBarDate, dropLeadingPlaceholderBars, getPricePointTimestamp, hasUsablePriceHistory, preservePriceHistoryGaps, isPriceHistoryStaleForCurrentWindow, normalizePriceHistory, priceHistoryIntervalMs, type CalendarHistoryFetchState } from "../../utils/price-history";
-import { noProviderError, noteProviderAnswer, noteProviderMiss, shouldLogProviderError, type ProviderMissNote } from "../provider-errors";
+import { noProviderError, noteProviderAnswer, noteProviderMiss, shouldLogProviderError, StaleHistoryError, type ProviderMissNote } from "../provider-errors";
 import { HistoryCoverageError } from "../history-coverage";
 import { servedFromSavedCopy } from "../../data/saved-copies";
 import {
@@ -114,7 +114,10 @@ function candidateForRequest(request: HistoryRequestDescriptor, sourceKey: strin
 function recordHistoryError(attempts: HistoryAttempts | undefined, request: HistoryRequestDescriptor, sourceKey: string, error: unknown): void {
   if (!attempts) return;
   noteProviderMiss(attempts.misses, error);
-  if (error instanceof InvalidHistoryResultError) {
+  if (error instanceof StaleHistoryError) {
+    // It has the bars, only not up to the present: behind, as a stale copy it served would be.
+    recordHistoryOutcome(attempts, sourceKey, "stale");
+  } else if (error instanceof InvalidHistoryResultError) {
     recordHistoryOutcome(attempts, sourceKey, "malformed");
   } else if (isHistoryRetentionError(error)) {
     recordHistoryOutcome(attempts, sourceKey, "retention");
@@ -582,7 +585,21 @@ export class ProviderRouterHistoryRoutes {
     });
   }
 
+  /** The answer, named by the source that served it, so a caller can say which one did. */
   private async executeHistoryRequest(request: HistoryRequestDescriptor): Promise<PriceHistoryResult> {
+    const answer = await this.answerHistoryRequest(request);
+    const sourceName = answer.sourceKey ? this.sourceName(answer.sourceKey, request.context) : undefined;
+    return sourceName ? { ...answer, sourceName } : answer;
+  }
+
+  private sourceName(sourceKey: string, context?: MarketDataRequestContext): string | undefined {
+    const provider = this.deps.providersInPriorityOrder().find((candidate) => this.deps.providerSourceKey(candidate) === sourceKey);
+    if (provider) return provider.name;
+    return this.deps.getBrokerCandidatesForContext(context, false)
+      .find((candidate) => this.deps.brokerSourceKey(candidate) === sourceKey)?.broker.name;
+  }
+
+  private async answerHistoryRequest(request: HistoryRequestDescriptor): Promise<PriceHistoryResult> {
     const recovery = this.validateRecovery(request);
     const { first: brokerCandidates, last: regularSessionBrokers } = brokersForSession(
       recovery ? [] : this.deps.getBrokerCandidatesForContext(request.context, false), request.context);
@@ -738,8 +755,10 @@ export class ProviderRouterHistoryRoutes {
       const behind = coin && [...attempts.outcomes.values()].some((outcome) => outcome.outcome === "stale");
       if (behind) throw new Error(`Latest history for ${target.symbol} is behind`);
       // A reason the service gave ("ADX listings have daily bars only.") says why; one that has no
-      // listing for the symbol says it is not a ticker; otherwise no source answered.
-      throw noProviderError(request.missingProviderError, attempts.misses, request.target.symbol);
+      // listing for the symbol says it is not a ticker; otherwise no source answered. A coin trades
+      // around the clock and its sources are there: they could not answer just now.
+      throw noProviderError(coin ? `No source could load history for ${request.target.symbol} just now` : request.missingProviderError,
+        attempts.misses, request.target.symbol);
     }
     return withReportedGaps(providerResult?.value ?? { points: [], resolution: historyResolutionForInterval(request.interval) });
   }

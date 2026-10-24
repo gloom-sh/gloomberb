@@ -9,6 +9,8 @@ const FIAT_CURRENCY_CODES = new Set([
 ]);
 
 const USD_COIN_PAIR = /^([A-Z0-9]+)[-/]USD$/;
+// The other currencies and coins the crypto venue quotes a coin in (BTC-EUR, ETH-BTC).
+const QUOTED_COIN_PAIR = /^([A-Z0-9]+)[-/](?:USDT|USDC|EUR|GBP|BTC|ETH)$/;
 
 /** A coin quoted in dollars (BTC-USD, ETH/USD). EUR-USD is spot FX, not a coin. */
 function isUsdCoinPair(symbol: string): boolean {
@@ -16,15 +18,24 @@ function isUsdCoinPair(symbol: string): boolean {
   return base !== undefined && !FIAT_CURRENCY_CODES.has(base);
 }
 
+/** A coin quoted in another currency or coin (BTC-EUR, ETH-BTC). EUR-GBP is spot FX, not a coin. */
+function isQuotedCoinPair(symbol: string): boolean {
+  const base = QUOTED_COIN_PAIR.exec(symbol.trim().toUpperCase())?.[1];
+  return base !== undefined && !isIsoCurrencyCode(base);
+}
+
 /**
  * A series that trades around the clock: anything on the crypto venue (CCC), or
  * a coin quoted in dollars whether or not the caller named that venue. A bare
- * BTC-USD is the coin, not a US listing; a bare BTC (no quote) is a US fund.
+ * BTC-USD is the coin, not a US listing; a bare BTC (no quote) is a US fund. A
+ * bare coin quoted in euros or in another coin (BTC-EUR) is the coin too, never
+ * a US listing whose session closed at 16:00 New York.
  */
 export function isRoundTheClockCoin(symbol?: string, exchange?: string): boolean {
   const parsed = symbol ? parsePublicTickerKey(symbol) : null;
-  if (canonicalExchange(parsed?.exchange ?? exchange) === "CCC" || canonicalExchange(exchange) === "CCC") return true;
-  return !!parsed && isUsdCoinPair(parsed.symbol);
+  const venue = canonicalExchange(parsed?.exchange ?? exchange) || canonicalExchange(exchange);
+  if (venue === "CCC" || canonicalExchange(exchange) === "CCC") return true;
+  return !!parsed && (isUsdCoinPair(parsed.symbol) || (!venue && isQuotedCoinPair(parsed.symbol)));
 }
 
 const SLASH_COIN_PAIR = /^([A-Z0-9]{1,15})\/(USD|EUR|GBP|USDT|USDC|BTC)$/;

@@ -1385,10 +1385,14 @@ async function loadListingHistory(
   // A bar history: dated by its last bar, stale once bars of its size stop arriving.
   // The day's own bar, while its session trades, is not a close: dated by the quote it was read from.
   const dayToDate = fromQuote && interval === "1d" && data.at(-1)?.partial === true;
+  // The source that served the bars, a broker or another source when Gloom Cloud could not.
+  const source = loaded.sourceName ? { source: loaded.sourceName } : {};
   // A window that closed before today is the history asked for: no later bar makes it stale.
   const freshness = withSavedCopy(window && isPastPriceWindow(window) ? rowsFreshness(data, {
+    ...source,
     status: "not-a-feed", basis: `${interval ? BAR_INTERVAL_LABELS[interval] : "price"} bars, ${priceWindowText(window)}`, observedKey: "date", oldest: null,
   }) : rowsFreshness(data, {
+    ...source,
     ...barHistoryFreshness(intraday ? null : barResolutionFromDates(data.map((row) => row.date))),
     observedKey: "date",
     oldest: null,

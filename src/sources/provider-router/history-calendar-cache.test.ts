@@ -5,6 +5,7 @@ import type { PricePoint } from "../../types/financials";
 import { AssetDataRouter } from "./index";
 import { fallbackProvider } from "../../test-support/data-provider";
 import { createTempDbPath, removeTempDbFiles } from "../../test-support/temp-db";
+import { createProviderMiss, StaleHistoryError } from "../provider-errors";
 
 const daily = (last: string, close: number): PricePoint[] => ["2026-09-17", "2026-09-18", "2026-09-21", last]
   .map((date, index) => ({ date: new Date(`${date}T00:00:00Z`), close: index === 3 ? close : 200 + index }));
@@ -69,6 +70,57 @@ test("a cached intraday copy of a bare coin pair that has fallen behind is refet
     setSystemTime(new Date("2026-10-09T11:30:00Z"));
     await expect(lastBar()).rejects.toThrow("Latest history for BTC-USD is behind");
     expect(calls).toHaveLength(3);
+  } finally { store.close(); }
+});
+
+test("on a Saturday a coin's hourly bars that stopped at Friday's US close are behind, and the next source serves", async () => {
+  // Sat 24 Oct 2026 at 00:51Z, BTC-EUR's and BTC-USD's hourly bars from the service ended at 20:00 on Friday.
+  const hourly = (last: string): PricePoint[] => Array.from({ length: 48 }, (_, index) => ({
+    date: new Date(Date.parse(last) - (47 - index) * 3_600_000), close: 72_000 + index }));
+  let cloud: () => PricePoint[] = () => hourly("2026-10-23T20:00:00Z");
+  let next: (() => PricePoint[]) | null = null;
+  const store = new AppPersistence(createTempDbPath("coin-saturday"));
+  const nextSource: DataProvider = { ...fallbackProvider, id: "next-source", name: "Next Source", priority: 2_000,
+    async getPriceHistory() { if (!next) throw createProviderMiss("No bars"); return next(); } };
+  const router = new AssetDataRouter(source(() => cloud(), []), [nextSource], store.resources);
+  try {
+    setSystemTime(new Date("2026-10-24T00:51:00Z"));
+    for (const symbol of ["BTC-EUR", "BTC-USD"]) {
+      // Never the Friday bars as the latest, and never "No history provider available".
+      await expect(router.getPriceHistory(symbol, "", "1W")).rejects.toThrow(`Latest history for ${symbol} is behind`);
+    }
+    // The service answering that its bars are stale is behind too.
+    cloud = () => { throw new StaleHistoryError("Cloud chart data is stale for ETH-USD"); };
+    await expect(router.getPriceHistory("ETH-USD", "", "1W")).rejects.toThrow("Latest history for ETH-USD is behind");
+    // Every source failing outright says the coin's bars could not be loaded, not that it has no source.
+    cloud = () => { throw new Error("HTTP 502"); };
+    await expect(router.getPriceHistory("ETH-USD", "", "1W")).rejects.toThrow("No source could load history for ETH-USD just now");
+    // The next source with current bars serves, and the answer says it was that one.
+    next = () => hourly("2026-10-24T00:00:00Z");
+    const served = await router.getPriceHistoryWithMetadata("BTC-EUR", "", "1W");
+    expect(served.points.at(-1)!.date).toEqual(new Date("2026-10-24T00:00:00Z"));
+    expect(served).toMatchObject({ sourceKey: "provider:next-source", sourceName: "Next Source" });
+  } finally { store.close(); }
+});
+
+test("a coin's daily copy from before UTC midnight is read again by 00:15, so the day that closed is whole", async () => {
+  // Friday forming at 23:50, then whole once Saturday has begun.
+  const days = (last: string, close: number): PricePoint[] => ["2026-10-21", "2026-10-22", last]
+    .map((date, index) => ({ date: new Date(`${date}T00:00:00Z`), close: index === 2 ? close : 80_000 + index }));
+  let load = () => days("2026-10-23", 81_300);
+  const store = new AppPersistence(createTempDbPath("coin-day-roll"));
+  const router = new AssetDataRouter(source(() => load(), []), [], store.resources);
+  const friday = async () => (await router.getPriceHistory("BTC-USD", "", "1M"))
+    .find((point) => new Date(point.date).toISOString().startsWith("2026-10-23"))?.close;
+  try {
+    setSystemTime(new Date("2026-10-23T23:50:00Z"));
+    expect(await friday()).toBe(81_300);
+    // Within the delay after midnight the copy still answers.
+    setSystemTime(new Date("2026-10-24T00:05:00Z"));
+    expect(await friday()).toBe(81_300);
+    load = () => [...days("2026-10-23", 81_074), { date: new Date("2026-10-24T00:00:00Z"), close: 80_850 }];
+    setSystemTime(new Date("2026-10-24T00:15:00Z"));
+    expect(await friday()).toBe(81_074);
   } finally { store.close(); }
 });
 

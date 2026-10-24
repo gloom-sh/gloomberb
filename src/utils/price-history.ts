@@ -313,6 +313,8 @@ function zonedWeekday(time: number, timeZone: string): number {
 }
 
 const CRYPTO_BAR_MAX_AGE_MS = 60 * 60 * 1000;
+// A coin's UTC day is served whole this long after midnight: the delay on bars that are not live.
+const CRYPTO_DAY_ROLL_MS = 15 * 60 * 1000;
 // A copy missing a settled session is asked again at most this often, and less
 // often as that close recedes, so a halted, delisted or late listing costs a
 // handful of requests per session rather than one per request.
@@ -427,8 +429,11 @@ export function calendarHistoryFetchState(
   if (intervalMs < DAY_MS) return intradayHistoryFetchState(normalized, fetchedAt, now, intervalMs, options);
   const exchange = canonicalExchange(options.exchange);
   if (isRoundTheClockCoin(options.symbol, options.exchange)) {
-    return now - fetchedAt > CRYPTO_BAR_MAX_AGE_MS
-      ? unsettledState(fetchedAt + CRYPTO_BAR_MAX_AGE_MS, options.checkedAt, now) : "current";
+    // A coin's day closes at UTC midnight, and the service has it by the delay after:
+    // a copy from before then holds that day as still forming.
+    const roll = Math.floor((now - CRYPTO_DAY_ROLL_MS) / DAY_MS) * DAY_MS + CRYPTO_DAY_ROLL_MS;
+    const settledAt = Math.min(fetchedAt + CRYPTO_BAR_MAX_AGE_MS, fetchedAt < roll ? roll : Number.POSITIVE_INFINITY);
+    return now >= settledAt ? unsettledState(settledAt, options.checkedAt, now) : "current";
   }
   // Bare symbols resolve to their US listing at the sources.
   const session = latestRegularSessionClose(exchange || "NYSE", now - SESSION_BAR_SETTLE_MS);
