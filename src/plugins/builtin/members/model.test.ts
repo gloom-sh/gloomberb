@@ -38,3 +38,8 @@ test("parsed actions shorten repeated release headlines while unknown changes re
   expect(changeReason({ ...row, added: null })).toBe(headline);
   expect(changeReason({ ...row, reason: "Market capitalization changes." })).toBe("Market capitalization changes.");
 });
+test("a move that rounds to zero prints unsigned, as every other change cell does", () => {
+  expect([1.234, -0.27, 0.004, -0.004, 0, null].map((value) => percent(value))).toEqual(["+1.23%", "-0.27%", "0.00%", "0.00%", "0.00%", "--"]);
+  expect(percent(-0.0004, "", 3)).toBe("0.000");
+  expect(percent(0.0004, " pp", 3)).toBe("0.000 pp");
+});
