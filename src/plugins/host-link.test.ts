@@ -16,11 +16,11 @@ function scratchDir(prefix: string): string {
   return dir;
 }
 
-// npm installs the host as gloomberb, and as @gloom/terminal once releases are
-// published under that name too. Missing either one leaves every external
+// npm installs the host as gloomberb, and as @gloom-sh/terminal once releases
+// are published under that name too. Missing either one leaves every external
 // plugin without `gloomberb/*` imports.
 test("finds the host package under either published name", () => {
-  for (const name of ["@gloom/terminal", "gloomberb"]) {
+  for (const name of ["@gloom-sh/terminal", "gloomberb"]) {
     const hostRoot = join(scratchDir("gloom-host-root-"), "node_modules", ...name.split("/"));
     mkdirSync(join(hostRoot, "src", "plugins"), { recursive: true });
     writeFileSync(join(hostRoot, "package.json"), JSON.stringify({ name }));
