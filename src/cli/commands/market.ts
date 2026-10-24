@@ -1634,7 +1634,7 @@ async function runHistoryList(
       oldest: null,
     });
     // A saved copy is marked on the bars a symbol loaded, not on the rows drawn from them (loadListingHistory
-    // reads it there): the list ends "couldn't refresh; saved <time>" for the oldest copy among its symbols.
+    // reads it there): the list ends "couldn't refresh; saved copy from <time>" for the oldest copy among its symbols.
     const savedAt = served.flatMap((history) => history.freshness?.savedAt ?? []).sort()[0];
     const freshness = listFreshness && savedAt && !listFreshness.savedAt ? { ...listFreshness, savedAt } : listFreshness;
     const decimals = (row: Record<string, unknown>) => bySymbol.get(String(row.symbol))?.decimals ?? 2;

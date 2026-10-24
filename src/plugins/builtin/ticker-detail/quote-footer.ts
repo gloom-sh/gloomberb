@@ -1,4 +1,5 @@
-import type { PaneFooterSegment } from "../../../components/layout/pane/footer";
+import { savedCopyFooterSegment, type PaneFooterSegment } from "../../../components/layout/pane/footer";
+import { savedCopyAt } from "../../../data/saved-copies";
 import { t } from "../../../i18n";
 import { isQuoteStaleForCurrentSession, noPrintsTodaySince } from "../../../market-data/quotes/freshness";
 import { formatQuoteNavAsOf } from "../../../market-data/quotes/time";
@@ -13,9 +14,13 @@ export function tickerQuoteFooterInfo(
 ): PaneFooterSegment[] {
   const info: PaneFooterSegment[] = [];
   const navAsOf = formatQuoteNavAsOf(quote);
+  const savedAt = savedCopyAt(quote);
   if (quote?.delisting) {
     // A listing that no longer trades: its quote is its last trade, said once with its date.
     info.push({ id: "ticker-research-stale", parts: [{ text: delistingLabel(quote.delisting), tone: "warning" }] });
+  } else if (savedAt != null) {
+    // Offline: the quote is the copy saved when it last refreshed, and the footer says when that was.
+    info.push(savedCopyFooterSegment("ticker-research-saved", savedAt));
   } else if (isQuoteStaleForCurrentSession(quote)) {
     // In a session the calendar has open with nothing printed in it, the warning says since when.
     const quiet = noPrintsTodaySince(quote) != null;

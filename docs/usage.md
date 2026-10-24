@@ -1100,7 +1100,7 @@ A command fails on an option it does not take instead of ignoring it. `gloom his
 
 - Symbols load eight at a time. A list of more than ten skips the lookups of a bare symbol's other venues, as `quote` does.
 - The `--csv` header is a single symbol's. Each row names its symbol, its currency and its own symbol's as-of in `symbol_or_series`, `currency_or_unit` and `as_of`.
-- A symbol with no bars is one row with its reason in `status` (`Not a ticker: ZZZZQQ.`) and a warning on stderr. A list answered from a saved copy ends `couldn't refresh; saved <time>` with the oldest copy's time, as one symbol does. The command exits 1 only when no symbol has any. Warnings shared by several symbols are said once, naming them.
+- A symbol with no bars is one row with its reason in `status` (`Not a ticker: ZZZZQQ.`) and a warning on stderr. A list answered from a saved copy ends `couldn't refresh; saved copy from <time>` with the oldest copy's time, as one symbol does. The command exits 1 only when no symbol has any. Warnings shared by several symbols are said once, naming them.
 - `--tail` and `--limit` apply per symbol. `--json` has the bars as one list, each with its `symbol`, and `metadata.symbols` describes each symbol or gives its `error`.
 
 ### `fx`
@@ -1611,7 +1611,7 @@ The status is one of four:
 | Stale (`stale`) | The newest observation is older than its kind allows: a quote from an earlier session, a daily series more than a session behind, a release that missed its schedule. The line says how old, or how many rows are stale when only some are |
 | Not a live feed (`not-a-feed`) | Data that is not a feed: filings, fundamentals, calendars, published statistics, calculators, your own portfolio. Old data of this kind is not stale unless it missed a scheduled release |
 
-A command that shows a copy saved earlier because it could not refresh says `couldn't refresh; saved 21:49 UTC` in place of the status (`freshness.savedAt`). A request that reaches nothing fails with `Gloom couldn't reach its data service` (`service_unreachable` in `--json`).
+A command that shows a copy saved earlier because it could not refresh says `couldn't refresh; saved copy from 21:49 UTC` in place of the status (`freshness.savedAt`). A request that reaches nothing, refused or with no answer within about 10 seconds (4 for a search), fails with `Gloom couldn't reach its data service` (`service_unreachable` in `--json`), and the command exits 1; a search says so rather than `No matches`. In the app, a pane whose quotes are such copies says `saved copy from 15:31` in its footer until a refresh answers.
 
 **Venues polled apart.** A report over such venues dates each by its own newest observation and says how old the oldest is: `fn PERP` ends `Sun 11 Oct 2026 · Binance 02:15 · Bybit 02:24 UTC · oldest 9 min · delayed · funding = current estimate, pays 08:00 UTC`.
 

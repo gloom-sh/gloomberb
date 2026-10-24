@@ -41,6 +41,7 @@ import { companyNameExtraWords } from "../company-name";
 import { withHomeListingLead } from "./home-listing";
 import { delistingLabel } from "../../market-data/quotes/delisting";
 import { hasNonLatinLetters } from "../../utils/typed-text";
+import { isNetworkFailure } from "../../utils/network-failure";
 export type {
   ResolvedTickerSearch,
   TickerSearchCandidate,
@@ -260,7 +261,7 @@ export async function searchTickerCandidates({
     // A search that hides contracts still shows them when asked: "AAPL OPT".
     includeOptionContracts: includeOptionContracts || parseAssetClassQuery(query)?.code === "OPT",
   });
-  const { results, busy } = await searchProviderResults(
+  const { results, busy, unreachable } = await searchProviderResults(
     dataProvider,
     query,
     searchContext,
@@ -268,7 +269,9 @@ export async function searchTickerCandidates({
     true,
   );
   const candidates = assemble(results);
-  // Saved tickers or another source's rows still answer. Nothing at all, because a source was busy, is no answer.
+  // Saved tickers or another source's rows still answer. Nothing at all, because the data service
+  // could not be reached or a source was busy, is no answer: not a name nothing lists.
+  if (unreachable && candidates.length === 0) throw unreachable;
   if (busy && candidates.length === 0) throw new ProviderBusyError(SEARCH_BUSY_MESSAGE);
   return candidates;
 }
@@ -599,6 +602,8 @@ interface ProviderSearch {
   results: InstrumentSearchResult[];
   /** A spelling went unanswered because a source was busy, so an empty list may not mean nothing matches. */
   busy: boolean;
+  /** Why a spelling went unanswered when the data service could not be reached (offline, a hung connection). */
+  unreachable: unknown;
 }
 
 async function searchProviderResults(
@@ -651,6 +656,7 @@ async function searchProviderResults(
     for (const [key, result] of named) byKey.set(key, result);
   };
   let busy = false;
+  let unreachable: unknown = null;
   await Promise.all(searchQueries.map(async (searchQuery, index) => {
     try {
       const results = await dataProvider.search(searchQuery, {
@@ -669,7 +675,8 @@ async function searchProviderResults(
       answers[index] = results;
       merge();
     } catch (error) {
-      if (isProviderBusy(error)) busy = true;
+      if (isNetworkFailure(error)) unreachable ??= error;
+      else if (isProviderBusy(error)) busy = true;
       else logFailure("tickers-search", "Could not search ticker spelling")(error);
     }
   }));
@@ -736,7 +743,7 @@ async function searchProviderResults(
 
   // Listings are named in Latin letters, and a source can fail on a name typed in another script (任天堂)
   // every time it is asked: nothing found for it is no answer to wait for and ask again.
-  return { results: [...byKey.values()], busy: busy && !hasNonLatinLetters(query) };
+  return { results: [...byKey.values()], busy: busy && !hasNonLatinLetters(query), unreachable };
 }
 
 /** Two search texts the server answers alike: its search ignores case and runs of spaces. */

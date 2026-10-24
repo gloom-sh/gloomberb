@@ -43,6 +43,7 @@ import { isRecord } from "../../utils/guards";
 import { splitSymbolWords } from "../symbol-args";
 import { formatUtcTime, localTimeSuffix } from "../../utils/utc-time";
 import { deriveHeadlessFreshness, formatFreshnessLine, staleRowsText, withSavedCopy, type ReportFreshness } from "./freshness";
+import { DATA_SERVICE_UNREACHABLE_MESSAGE } from "../../utils/network-failure";
 import { accessGateStatus, errorsAccessGate, isProLock, reportGateText } from "./access-gate";
 import { noArgumentMessage } from "./capabilities";
 import { lockedHeadlessReport } from "./lock-note";
@@ -961,6 +962,22 @@ export function reportGaps(loaded: LoadedHeadlessPaneModel, freshness: ReportFre
     .filter(Boolean).join(", ") || null;
 }
 
+/**
+ * The freshness of a report that served nothing because the data service
+ * could not be reached (offline, a hung connection) and no saved copy
+ * answered: its line names no retrieval time, as nothing was retrieved.
+ */
+function withUnreached(
+  freshness: ReportFreshness,
+  result: HeadlessPaneResult,
+  { rowCount, unavailableSymbols, symbols }: { rowCount: number; unavailableSymbols: readonly string[]; symbols: readonly string[] },
+): ReportFreshness {
+  if (freshness.savedAt || freshness.asOf) return freshness;
+  const nothingServed = rowCount === 0 || (symbols.length > 0 && symbols.every((symbol) => unavailableSymbols.includes(symbol)));
+  const unreached = (result.errors ?? []).some((error) => error.includes(DATA_SERVICE_UNREACHABLE_MESSAGE));
+  return nothingServed && unreached ? { ...freshness, unreached: true } : freshness;
+}
+
 export async function buildHeadlessFunctionReport(
   resolved: ResolvedPaneFunction,
   context: MarketContext,
@@ -979,8 +996,13 @@ export async function buildHeadlessFunctionReport(
   }
   const { complete, unavailableSymbols, rowCount, symbols } = reportCoverage(loaded);
   const serialized = serializeHeadlessPaneResult(loaded.definition, loaded.result);
-  // What the report shows from a saved copy, its refresh having failed, says so.
-  const freshness = withSavedCopy(deriveHeadlessFreshness(loaded.definition, loaded.result), loaded.result);
+  // What the report shows from a saved copy, its refresh having failed, says so; one that could not
+  // reach the data service for anything names no time it was retrieved.
+  const freshness = withUnreached(
+    withSavedCopy(deriveHeadlessFreshness(loaded.definition, loaded.result), loaded.result),
+    loaded.result,
+    { rowCount, unavailableSymbols, symbols },
+  );
   return {
     data: {
       kind: loaded.definition.shape,

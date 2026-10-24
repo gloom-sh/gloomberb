@@ -6,6 +6,7 @@ import type { DataProvider } from "../../../types/data-provider";
 import type { Quote } from "../../../types/financials";
 import { quoteChangeBasis, type QuoteChangeBasis } from "../../../market-data/market/change-basis";
 import { fxLegMoveReference, fxLegs, liveFxLegEntry, type FxLeg } from "./live-legs";
+import { savedCopyShownAt } from "../../../data/saved-copies";
 
 /** One USD leg as the board reads it: the rate it draws and where that rate came from. */
 export interface FxLegReading {
@@ -24,6 +25,8 @@ export interface FxLegReading {
   changeBasis?: QuoteChangeBasis | null;
   /** Why the leg has no rate, when it has none. */
   error: string | null;
+  /** When the copy the rate came from was saved, when refreshing it failed and that copy answered. */
+  savedAt?: number;
 }
 
 /**
@@ -55,6 +58,9 @@ export async function loadFxBoard(
       const live = liveFxLegEntry(leg, quote, rate);
       const entry = live ?? (resolveEntryData(rate) != null ? rate : null);
       const close = fxLegMoveReference(leg, quote, entry);
+      // A pair quote or a loaded rate whose refresh failed is the copy saved before, not a current answer.
+      const savedAt = live ? savedCopyShownAt(resolveEntryData(quote))
+        : entry && rate.error && rate.fetchedAt != null ? rate.fetchedAt : null;
       return [leg.currency, {
         leg,
         entry,
@@ -62,6 +68,7 @@ export async function loadFxBoard(
         reference: close?.rate ?? null,
         changeBasis: close ? quoteChangeBasis(close.quote) : null,
         error: entry ? null : rate.error?.message ?? "No rate came back.",
+        ...(savedAt != null ? { savedAt } : {}),
       }] as const;
     }));
   } finally {

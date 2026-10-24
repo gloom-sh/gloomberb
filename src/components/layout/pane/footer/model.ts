@@ -1,6 +1,7 @@
 import type { ContextMenuItem } from "../../../../types/context-menu";
 import { t } from "../../../../i18n";
 import { clipToDisplayWidth, displayWidth } from "../../../../utils/format";
+import { formatShortDate } from "../../../../utils/datetime-format";
 import { getShortcutHintWidth } from "../../../ui/shortcut-hint";
 
 export interface PaneFooterRegistration {
@@ -87,6 +88,26 @@ export function delayedFooterSegment({
     parts: [{ text: `${DELAYED_FOOTER_GLYPH}${delay ?? ""}`, tone: "warning" }],
     ...(onPress ? { onPress } : {}),
     ...(quoteStatus ? { quoteStatus } : {}),
+  };
+}
+
+/**
+ * The footer's one form for data shown from a copy saved earlier because
+ * refreshing it failed (offline, a hung or refused proxy): `saved copy from
+ * 14:37`, or with its day when saved on another. It says how current the
+ * pane's quotes are, so it is a quote status.
+ */
+export function savedCopyFooterSegment(id: string, savedAt: number, now = Date.now()): PaneFooterSegment {
+  const saved = new Date(savedAt);
+  const time = saved.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+  const when = saved.toDateString() === new Date(now).toDateString() ? time : `${formatShortDate(saved, { year: false })} ${time}`;
+  const text = `${t("saved copy from")} ${when}`;
+  return {
+    id,
+    quoteStatus: true,
+    title: `${t("Couldn't refresh")}: ${text}`,
+    parts: [{ text, tone: "warning" }],
+    variants: [[{ text: t("saved copy"), tone: "warning" }]],
   };
 }
 
