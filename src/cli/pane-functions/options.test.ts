@@ -6,7 +6,7 @@ import {
   parseArgumentsOption,
   parsePaneFunctionArgs,
 } from "./options";
-import { shotSizeWarnings } from "./screenshot";
+import { shotSizeWarnings } from "./screenshot-payload";
 
 describe("pane function CLI args", () => {
   test("inline options do not consume the next positional instrument", () => {

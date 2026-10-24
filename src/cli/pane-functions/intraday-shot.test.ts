@@ -12,11 +12,9 @@ import { applyChartComposerCapabilityOptions } from "../../plugins/builtin/chart
 import { createTestDataProvider } from "../../test-support/data-provider";
 import { createSnapshotDataProvider } from "../../market-data/snapshot-provider";
 import { resolveChartSpecData } from "../../time-series/resolve";
-import {
-  buildDesktopShotPayload,
-  intradayChartEvidenceMismatchesFor,
-  shotUnusableReasonFor,
-} from "./screenshot";
+import { buildDesktopShotPayload } from "./screenshot-payload";
+import { intradayChartEvidenceMismatchesFor } from "./screenshot-chart-evidence";
+import { shotUnusableReasonFor } from "./screenshot-assessment";
 import type { ResolvedPaneFunction } from "./resolver";
 import {
   resolveIntradaySessionWindow,

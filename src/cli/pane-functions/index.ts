@@ -24,7 +24,9 @@ import {
 import { applyListingArgument, findPaneFunction, parsePaneFunctionArgsFor, resolvePaneFunction, UnknownPaneFunctionError, type ResolvedPaneFunction } from "./resolver";
 import { buildFunctionReport } from "./report";
 import { expandResolvedArgument } from "./headless";
-import { defaultScreenshotPath, renderDesktopShot, shotSizeWarnings, shotStatusIssues } from "./screenshot";
+import { defaultScreenshotPath, shotSizeWarnings } from "./screenshot-payload";
+import { renderDesktopShot } from "./screenshot-render";
+import { shotStatusIssues } from "./screenshot-assessment";
 import {
   buildPaneCatalogEntries,
 } from "./catalog";

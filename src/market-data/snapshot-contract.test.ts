@@ -5,7 +5,8 @@ import { loadChartPaneModel, chartHeadless } from "../plugins/builtin/chart-comp
 import { buildPriceChartPreset } from "../plugins/builtin/chart-composer/presets";
 import { createDefaultConfig } from "../types/config";
 import { quoteMetadataFromQuote } from "./quotes/metadata";
-import { buildDesktopShotPayload, createDesktopShotBridge } from "../cli/pane-functions/screenshot";
+import { buildDesktopShotPayload } from "../cli/pane-functions/screenshot-payload";
+import { createDesktopShotBridge } from "../cli/pane-functions/screenshot-bridge";
 import { decodeRpcValue, encodeRpcValue } from "../renderers/electrobun/shared/rpc-codec";
 import type { InstrumentRef } from "./request-types";
 import type { Quote } from "../types/financials";

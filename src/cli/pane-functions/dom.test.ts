@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, expect, setSystemTime, test } from "bun:test";
 import type { ResolvedPaneFunction } from "./resolver";
 import type { HeadlessPaneContext } from "../../types/headless";
-import { assessPaneScreenshot, type PaneScreenshotResult } from "./screenshot";
+import { assessPaneScreenshot } from "./screenshot-assessment";
+import type { PaneScreenshotResult } from "./screenshot-types";
 import type { DesktopPaneShotPayload, DesktopPaneShotRenderResult } from "../desktop-pane-shot";
 import { appendDomReportFooter, buildDomPaneReportFromRender, domReportNote, domReportView } from "./dom";
 import { getPaneFunctionCapability } from "./capabilities";

@@ -7,7 +7,9 @@ import { headlessReportTables, renderHeadlessPaneText } from "../../../cli/pane-
 import { exportSourceLines } from "../../../cli/export-source";
 import { renderReportCsv } from "../../../cli/report-tables";
 import { reportGlossary } from "../../../cli/glossary";
-import { reportShotCoverage, shotStatusIssues, withReportCoverage, type PaneScreenshotResult } from "../../../cli/pane-functions/screenshot";
+import { reportShotCoverage, withReportCoverage } from "../../../cli/pane-functions/screenshot-render";
+import { shotStatusIssues } from "../../../cli/pane-functions/screenshot-assessment";
+import type { PaneScreenshotResult } from "../../../cli/pane-functions/screenshot-types";
 import { createTestHeadlessArgs } from "../../../test-support/headless";
 import { fetchCentralBankRates, validateCentralBankRates } from "./client";
 import { centralBankRatesHeadless } from "./headless";

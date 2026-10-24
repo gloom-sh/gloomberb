@@ -1,26 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import type { RemoteUiNodeSnapshot } from "../../remote/types";
-import {
-  assessPaneScreenshot,
-  buildDesktopShotPayload,
-  chartSeriesEvidenceWithinRange,
-  chartEvidenceMismatchesFor,
-  createDesktopShotBridge,
-  filledKeyValueCount,
-  isPaneScreenshotUsable,
-  missingActiveTabSelections,
-  resolveDesktopShotApiProxy,
-  shotDataEvidenceFor,
-  shotExpectedText,
-  shotSemanticRowCount,
-  shotTableRows,
-  shotUnavailableSymbols,
-  shotFreshness,
-  shownReportTab,
-  stripDesktopShotCredentials,
-  type PaneScreenshotExpectedChartEvidence,
-  type PaneScreenshotExpectedSelection,
-} from "./screenshot";
+import { assessPaneScreenshot, filledKeyValueCount, isPaneScreenshotUsable, missingActiveTabSelections, shotTableRows } from "./screenshot-assessment";
+import { buildDesktopShotPayload } from "./screenshot-payload";
+import { chartSeriesEvidenceWithinRange, chartEvidenceMismatchesFor } from "./screenshot-chart-evidence";
+import { createDesktopShotBridge, resolveDesktopShotApiProxy, stripDesktopShotCredentials } from "./screenshot-bridge";
+import { shotDataEvidenceFor, shotExpectedText, shotSemanticRowCount, shotUnavailableSymbols } from "./screenshot-data-evidence";
+import { shotFreshness, shownReportTab } from "./screenshot-render";
+import type { PaneScreenshotExpectedChartEvidence, PaneScreenshotExpectedSelection } from "./screenshot-types";
 import { paneEvidenceMismatches } from "./screenshot-evidence";
 import { shotRowsText } from "./index";
 import { commoditiesEnergyModule } from "../../plugins/builtin/commodities-energy";
