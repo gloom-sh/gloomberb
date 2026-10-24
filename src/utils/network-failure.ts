@@ -3,9 +3,10 @@ export const DATA_SERVICE_UNREACHABLE_MESSAGE = "Gloom couldn't reach its data s
 
 /**
  * A request that never reached the data service: no connection, a proxy that
- * refused it, a name that did not resolve. The fetch's own error is the
- * `cause`, and its `code` (Bun's `ConnectionRefused`, Node's `ENOTFOUND`) is
- * kept for code that classifies failures by it.
+ * refused it, a name that did not resolve, or a connection that hung with
+ * nothing coming back before the request's deadline. The fetch's own error (or
+ * the deadline's) is the `cause`, and its `code` (Bun's `ConnectionRefused`,
+ * Node's `ENOTFOUND`) is kept for code that classifies failures by it.
  */
 export class DataServiceUnreachableError extends Error {
   readonly code?: string;
@@ -56,9 +57,11 @@ function cameFromServer(error: object): boolean {
 
 /**
  * Whether a request failed before any answer came back. A caller's abort and
- * a timeout are not: the first is on purpose, and the second reached a server
- * that did not answer in time. Nor is anything the server answered, whatever
- * its text or code says.
+ * a bare timeout are not: the first is on purpose, and the second may have
+ * reached a server that did not answer in time. A Cloud request whose deadline
+ * passed with nothing back from the service is one: the client throws it as
+ * `DataServiceUnreachableError`, as it does a refused connection. Nor is
+ * anything the server answered, whatever its text or code says.
  */
 export function isNetworkFailure(error: unknown): boolean {
   if (typeof error === "string") return NO_CONNECTION_MESSAGES.has(error.trim());

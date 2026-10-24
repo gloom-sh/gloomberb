@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
 import { AppPersistence } from "../data/app-persistence";
 import { CachedQuery } from "../data/cached-query";
-import { collectSavedCopies, savedCopyShownAt, servedFromSavedCopy } from "../data/saved-copies";
+import { savedCopyFooterSegment } from "../components/layout/pane/footer/model";
+import { collectSavedCopies, savedCopyAt, savedCopyShownAt, servedFromSavedCopy } from "../data/saved-copies";
+import { MarketDataCoordinator } from "../market-data/coordinator";
 import { AssetDataRouter } from "../sources/provider-router";
 import { createTestCliContext } from "../test-support/cli-context";
 import { createTestDataProvider, createTestQuote } from "../test-support/data-provider";
@@ -13,7 +15,7 @@ import { serializeCliResult } from "./result";
 /**
  * Offline, a command answers from the copy it saved earlier, and used to end
  * with the live or delayed line as if it had just read it. Whatever it shows
- * from a saved copy after a failed refresh now ends `couldn't refresh; saved
+ * from a saved copy after a failed refresh now ends `couldn't refresh; saved copy from
  * <time>`, in text, `--json` and `--csv`, only for that command, and only
  * when what it shows came from one.
  */
@@ -77,7 +79,7 @@ test("a quote served from the saved copy because the refresh failed ends with wh
   clock.mockReturnValue(at("2026-10-22T22:20:00Z"));
   const offline = await runQuote(router);
   expect(offline.text).toContain("$81,339.03");
-  expect(offline.text).toContain("Source: Gloom Cloud · Thu 22 Oct 2026 21:52 UTC · couldn't refresh; saved 22:08 UTC");
+  expect(offline.text).toContain("Source: Gloom Cloud · Thu 22 Oct 2026 21:52 UTC · couldn't refresh; saved copy from 22:08 UTC");
   expect(offline.text).not.toContain("15 min delayed");
   expect(offline.json.metadata.freshness.savedAt).toBe("2026-10-22T22:08:00.000Z");
   expect(offline.csv).toContain("# Saved time: 2026-10-22T22:08:00.000Z");
@@ -98,9 +100,9 @@ test("a saved copy of something the command does not show leaves a fresh answer 
   expect(answer.json.metadata.freshness.savedAt).toBeUndefined();
 });
 
-test("what is shown dates itself by its oldest saved copy, and nothing is marked outside a command", async () => {
+test("what is shown dates itself by its oldest saved copy, and output is searched for marks only in a command", async () => {
   const quote = { symbol: "SPY", price: 1 };
-  expect(servedFromSavedCopy(quote, at("2026-10-22T21:40:00Z"))).toBe(quote);
+  expect(savedCopyShownAt([servedFromSavedCopy(quote, at("2026-10-22T21:40:00Z"))])).toBeNull();
 
   const shownAt = await collectSavedCopies(async () => {
     const rows = [
@@ -122,5 +124,40 @@ test("a copy saved on another day than the report names that day", () => {
     source: "Gloom Cloud", asOf: "2026-10-22T21:52:00.000Z", status: "delayed", delayMinutes: 15,
     retrievedAt: "2026-10-23T08:00:00.000Z", savedAt: "2026-10-22T22:08:00.000Z",
   };
-  expect(formatFreshnessLine(freshness)).toBe("Source: Gloom Cloud · Thu 22 Oct 2026 21:52 UTC · couldn't refresh; saved Thu 22 Oct 2026 22:08 UTC");
+  expect(formatFreshnessLine(freshness)).toBe("Source: Gloom Cloud · Thu 22 Oct 2026 21:52 UTC · couldn't refresh; saved copy from Thu 22 Oct 2026 22:08 UTC");
+});
+
+// The app showed a saved quote offline as if it had just loaded it; once it did say so, the snapshot read from the
+// cache a moment later replaced the quote with the same copy unmarked.
+test("in the app, a quote whose refresh failed says when it was saved until a refresh answers", async () => {
+  const { router, state } = service();
+  const coordinator = new MarketDataCoordinator(router);
+  const btc = { symbol: "BTC-USD", exchange: "" };
+  const footer = () => {
+    const savedAt = savedCopyAt(coordinator.getTickerFinancialsSync(btc)?.quote);
+    return savedAt == null ? null : savedCopyFooterSegment("saved", savedAt, at("2026-10-22T22:20:00Z")).parts[0]!.text;
+  };
+  clock.mockReturnValue(at("2026-10-22T22:08:00Z"));
+  await coordinator.loadQuote(btc);
+  await coordinator.loadSnapshot(btc);
+  expect(footer()).toBeNull();
+
+  state.offline = true;
+  clock.mockReturnValue(at("2026-10-22T22:20:00Z"));
+  await coordinator.loadQuote(btc, { forceRefresh: true });
+  expect(footer()).toMatch(/^saved copy from \d\d:\d\d$/);
+  await coordinator.loadSnapshot(btc, { forceRefresh: true });
+  expect(footer()).not.toBeNull();
+
+  state.offline = false;
+  await coordinator.loadQuote(btc, { forceRefresh: true });
+  expect(footer()).toBeNull();
+});
+
+// `fn SIW` offline stamped "retrieved 09:40 UTC" on a report it retrieved nothing for.
+test("a report that reached nothing and had no saved copy names no time it was retrieved", () => {
+  const freshness: ReportFreshness = {
+    source: "FINRA", status: "not-a-feed", basis: "twice-monthly settlement", retrievedAt: "2026-10-24T09:40:00.000Z", unreached: true,
+  };
+  expect(formatFreshnessLine(freshness)).toBe("Source: FINRA · not a live feed (twice-monthly settlement)");
 });

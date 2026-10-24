@@ -25,6 +25,7 @@ import { formatMarketPriceWithCurrency, quoteFormatOptions } from "../../market-
 import { formerIssuerLine, startTickerChangeLookup, type TickerChangeLookup } from "../../tickers/ticker-changes";
 import { fail, failRetryable } from "../errors";
 import { isProviderBusy, SEARCH_BUSY_CODE, SEARCH_BUSY_MESSAGE } from "../../sources/provider-errors";
+import { isNetworkFailure } from "../../utils/network-failure";
 import type { MarketContext } from "../types";
 import type { CliCommandContext, GloomPlugin } from "../../types/plugin";
 import { indexRootTryLine } from "../index-roots";
@@ -137,6 +138,8 @@ export async function searchCandidatesForCli({
   } catch (error) {
     // Not "No matches found": a script or a reader would take that for a name nothing lists.
     if (isProviderBusy(error)) failRetryable(SEARCH_BUSY_MESSAGE, SEARCH_BUSY_CODE);
+    // Nor is no answer at all: the command fails as "couldn't reach", as any command offline does.
+    if (isNetworkFailure(error)) throw error;
     logFailure("cli.commands-search", "Search ticker candidates failed")(error);
     return [];
   }

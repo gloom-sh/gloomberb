@@ -8,6 +8,7 @@ import { createTestCliContext } from "../../test-support/cli-context";
 import { createTestDataProvider } from "../../test-support/data-provider";
 import { createDefaultConfig } from "../../types/config";
 import { reportFailure, runPaneFunction } from ".";
+import { DATA_SERVICE_UNREACHABLE_MESSAGE } from "../../utils/network-failure";
 import { serializeCliResult } from "../result";
 import { DEFAULT_CLI_OPTIONS } from "../options";
 
@@ -89,6 +90,15 @@ test("partial data exits 0: a symbol without its headline figure whose tables ha
   expect(reportFailure({ empty: false, rowCount: 2, symbols: ["SCHD"], unavailableSymbols: ["SCHD"] }, "fn HIVG SCHD", { tables: hv })).toBeNull();
   expect(reportFailure({ empty: false, rowCount: 2, symbols: ["SPY", "QQQ"], unavailableSymbols: ["QQQ"], errors: ["QQQ: timed out"] }, "fn G SPY,QQQ",
     { tables: tables(["Date"]) })).toBeNull();
+});
+
+// Offline, `fn FXC` printed a board with PEN "unavailable" beside saved ARS rates and exited 0, as if PEN had no rate.
+test("a part missing because the data service could not be reached fails as retryable, whatever else the report shows", () => {
+  const unreached = `PEN: ${DATA_SERVICE_UNREACHABLE_MESSAGE}`;
+  expect(reportFailure({ empty: false, rowCount: 6, symbols: ["USD", "ARS", "PEN"], unavailableSymbols: ["PEN"], errors: [unreached] }, "fn FXC"))
+    .toEqual({ code: "service_unreachable", message: `fn FXC: ${unreached}.`, retryable: true });
+  expect(reportFailure({ empty: false, rowCount: 1, symbols: ["GGAL"], unavailableSymbols: ["GGAL"], errors: [`GGAL: ${DATA_SERVICE_UNREACHABLE_MESSAGE}`] },
+    "fn SIW GGAL", { failsWithoutData: true })?.code).toBe("service_unreachable");
 });
 
 test("a listing unavailable is that listing: another listing of the symbol, or another series, keeps its data", () => {

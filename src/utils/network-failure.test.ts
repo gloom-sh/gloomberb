@@ -57,6 +57,14 @@ test("every fetch's failure to connect reaches callers as the data service being
   expect(isNetworkFailure(Object.assign(new Error("The operation timed out."), { name: "TimeoutError" }))).toBe(false);
 });
 
+test("a request nothing answers before its deadline fails as unreachable, in the words and code of a refused one", async () => {
+  const hung = await new CloudApiRequestTransport({ marketRequestTimeoutMs: 10, fetchTransport: () => new Promise<Response>(() => {}) })
+    .request("/market/quote?symbol=SPY").catch((caught: unknown) => caught);
+  expect(hung).toBeInstanceOf(DataServiceUnreachableError);
+  const json = await captureConsole(() => printCliError(hung, inferCliErrorOptions(["--json"])));
+  expect(JSON.parse(json.stderr).error).toMatchObject({ code: "service_unreachable", message: DATA_SERVICE_UNREACHABLE_MESSAGE, retryable: true });
+});
+
 test("an answer from the server or a local service is never \"couldn't reach\", whatever its words or code", async () => {
   for (const answered of [
     new ApiRequestError("fetch failed", 500),

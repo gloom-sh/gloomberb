@@ -29,6 +29,7 @@ import {
   type ListingVenue,
 } from "./listing-arg";
 import { withListingSuggestion } from "./not-a-ticker";
+import { isNetworkFailure } from "../utils/network-failure";
 import type { MarketContext } from "./types";
 
 /** The text of an error, or null for none. */
@@ -89,6 +90,8 @@ export async function answerQuote(
     const board = tradingBoardNote(listing, result.quote);
     return { result, listing, notes: [...choice, venue ?? [], board ?? [], also(result.quote), currencyCodeNote(listing, result.quote) ?? []].flat() };
   }
+  // No answer from the data service: no venue lookup or other listing would get one either.
+  if (isNetworkFailure(result.error)) return { result, listing, notes: [] };
   const notTraded = await notTradedMessage(listing, market);
   if (notTraded) return { result, listing, failure: { message: notTraded, oneLine: notTraded }, notes: [] };
   if (!isNoProviderError(result.error)) return { result, listing, notes: [] };
