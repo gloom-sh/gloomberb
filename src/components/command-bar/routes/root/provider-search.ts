@@ -22,7 +22,7 @@ import type { CommandBarRoute } from "../../workflow/types";
  * seconds, so a search still going at this point is stuck on something else (a
  * broker that never answers) and the bar stops searching for it.
  */
-export const ROOT_SEARCH_TIMEOUT_MS = 15_000;
+const ROOT_SEARCH_TIMEOUT_MS = 15_000;
 
 /**
  * The search's answer, or a busy service once `timeoutMs` passes: the same row a
