@@ -15,6 +15,8 @@ const dom = createDomTestHarness();
 test("a rejected account session refresh keeps the sign-in wall and logs no credentials", async () => {
   const now = spyOn(Date, "now").mockReturnValue(1_900_000_000_000);
   const signedIn = spyOn(apiClient, "isSignedIn").mockReturnValue(false);
+  // A previous test may leave a saved session in the shared controller.
+  const subscription = spyOn(chatController, "subscribe").mockReturnValue(() => {});
   const refresh = spyOn(chatController, "refreshSession").mockRejectedValue(new Error("token=private account=private"));
   const logged: unknown[][] = [];
   const stop = debugLog.subscribe((entry) => {
@@ -37,6 +39,7 @@ test("a rejected account session refresh keeps the sign-in wall and logs no cred
   } finally {
     stop();
     refresh.mockRestore();
+    subscription.mockRestore();
     signedIn.mockRestore();
     now.mockRestore();
   }
