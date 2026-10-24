@@ -25,7 +25,7 @@ test("a company's name is its own common stock on its US line, never a subsidiar
 });
 
 test("a word of the name may be its short form, and the listing whose name says no more than the one typed still wins", async () => {
-  // GLO-1105: "philip morris intl" is Philip Morris International, never INTL or a longer name.
+  // "philip morris intl" is Philip Morris International, never INTL or a longer name.
   const philip = [
     listing("INTL", "Main International ETF", "BATS", "ETF"),
     listing("PMI", "Philip Morris International Holdings Ltd", "LSE"),

@@ -10,7 +10,7 @@ import { OverviewTab } from "./overview-tab";
 
 const config = createDefaultConfig("/tmp/gloom-overview-change-basis-unused");
 const tui = createOpenTuiTestHarness();
-// Linear: GLO-1089. 3042.HK's Tue 20 Oct move ran from Fri 16 Oct's close: HKEX was shut Mon 19 Oct.
+// 3042.HK's Tue 20 Oct move ran from Fri 16 Oct's close: HKEX was shut Mon 19 Oct.
 const hk = createTestQuote({
   symbol: "3042.HK", name: "ChinaAMC Bitcoin ETF", currency: "HKD", instrumentType: "ETF", listingExchangeName: "HKEX", exchangeName: "HKEX",
   price: 9.88, change: -0.06, changePercent: -0.6, previousClose: 9.94, changeSessionDate: "2026-10-20", marketState: "CLOSED",

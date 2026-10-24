@@ -13,7 +13,7 @@ import { isLiveResizing } from "../../../ui/live-resize";
  * A box that is not displayed has no size to report: a research tab kept
  * mounted while another one shows sits under `display: none`, and the 0 by 0
  * the browser reports there would have its chart redraw for one pixel and
- * show that pixel stretched over the plot when the tab comes back (GLO-590).
+ * show that pixel stretched over the plot when the tab comes back.
  * It keeps the size it was last laid out at instead, so the tab comes back
  * with the bitmap it left with.
  */

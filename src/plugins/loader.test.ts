@@ -167,7 +167,7 @@ describe("a plugin updated in a running session to files its cached modules cann
  * fails, and Bun keeps that failure for the rest of the process: its resolver
  * remembers the folder without the link, and the failed module stays failed
  * under its path. Desktop users on Windows saw the gateway fail on the first
- * launch after an update and work after a restart (GLO-301). The loader links
+ * launch after an update and work after a restart. The loader links
  * the sibling and imports the plugin again in a way that looks again, and the
  * report carries the link state. A sibling that really lacks the module is
  * still a failure.

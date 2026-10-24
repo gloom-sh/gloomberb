@@ -308,7 +308,7 @@ describe("ticker-search utilities", () => {
   });
 
   describe("an index, rate, volatility or crypto market typed with futures", () => {
-    // /market/search with the server change (GLO-953): the full-size future leads and carries the names it answers to.
+    // /market/search with the server change: the full-size future leads and carries the names it answers to.
     const future = (symbol: string, name: string, exchange: string, searchAliases?: string[]) =>
       makeSearchResult(symbol, name, { exchange, type: "FUTURE", currency: "USD", searchAliases });
     const row = (symbol: string, name: string, exchange: string, type: string) => makeSearchResult(symbol, name, { exchange, type });

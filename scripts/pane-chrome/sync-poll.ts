@@ -35,7 +35,7 @@ const sizes = Object.fromEntries(["positions", "tickers", "days", "layouts", "pa
 
 /**
  * Longest block per kind of sync, median over the repeats. With 300
- * holdings, before their returns were kept with their bars (GLO-925), an
+ * holdings, before their returns were kept with their bars, an
  * idle sync blocked for 115 to 160 ms, a repriced one 110 to 175 ms and an
  * edited one 120 to 155 ms; after, 20 to 35 ms each. The budgets sit
  * between, with room for a slower runner.

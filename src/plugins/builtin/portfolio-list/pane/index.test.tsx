@@ -1061,7 +1061,7 @@ describe("PortfolioListPane cash and margin UI", () => {
 
     // The EUR rate arrives from the market data coordinator a frame later.
     const frame = await tui.waitForFrameToContain("1.4k");
-    // GLO-1106: a row in another currency than the totals puts CCY after LAST, so 125.00 reads as euros.
+    // A row in another currency than the totals puts CCY after LAST, so 125.00 reads as euros.
     expect(frame).toMatch(/LAST\s+CCY\s+CHG%/);
     expect(frame).toMatch(/AAPL\s+125\.00\s+EUR\s+\+4\.17%/);
     expect(frame).toContain("100");

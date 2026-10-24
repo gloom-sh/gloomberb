@@ -158,7 +158,7 @@ test("the EQS pane, its report and `quote` agree on Last and Chg% in every sessi
 });
 
 test("a sort on a figure the quotes move is redone on the figures shown; other sorts keep the snapshot's order", () => {
-  // GLO-754: GRAB was ranked at a cap two closes old (13.05B) and shown at its close (12.19B), above MANH's 12.98B.
+  // GRAB was ranked at a cap two closes old (13.05B) and shown at its close (12.19B), above MANH's 12.98B.
   const row = (symbol: string, cap: number | null, volume: number) => {
     const base = snapshotRow();
     return { ...base, symbol, metrics: { ...base.metrics,

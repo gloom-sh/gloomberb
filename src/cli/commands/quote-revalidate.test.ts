@@ -7,7 +7,7 @@ import { createTestTicker } from "../../test-support/ticker";
 import type { Quote } from "../../types/financials";
 import { marketDataCliCommands } from "./market";
 
-// GLO-735, Tue 13 Oct 2026, after hours, BRK.B saved on NYSE. At 21:27:11
+// Tue 13 Oct 2026, after hours, BRK.B saved on NYSE. At 21:27:11
 // `quote BRK.B BRK-B` read the service's 488.97 printed 21:11; at 21:28:44
 // `quote BRK.B:NYSE` read 520.88 printed 21:13, the delayed feed having moved
 // on. Each form's copy was then fresh in the local cache for five minutes, so

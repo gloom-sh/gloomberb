@@ -667,7 +667,7 @@ test("canonical quote preserves unavailable day changes while retaining zero and
   expect(resolveCanonicalQuote({ quote: { ...base, previousClose: 10 } }).quote).toMatchObject({ change: 2, changePercent: 20 });
 });
 
-// Linear: GLO-1089. Toncoin as Gloom Cloud served it on 18 Oct 2026: its
+// Toncoin as Gloom Cloud served it on 18 Oct 2026: its
 // reported close was weeks old, so the move ran over the board's 24 hours.
 test("a coin's 24-hour move keeps its basis through merging and resolution, and loses it with its next close", () => {
   const now = Date.parse("2026-10-18T13:50:00Z");

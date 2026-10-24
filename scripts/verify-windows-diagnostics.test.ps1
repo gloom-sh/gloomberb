@@ -311,7 +311,7 @@ function Test-MainLaunchDiagnostics {
   }
 }
 
-$TestDir = Join-Path ([Environment]::GetFolderPath("UserProfile")) ".cache\gloom-smoke\glo-645\diagnostics-$([Guid]::NewGuid())"
+$TestDir = Join-Path ([Environment]::GetFolderPath("UserProfile")) ".cache\gloom-smoke\desktop-verify\diagnostics-$([Guid]::NewGuid())"
 $SmokeRoot = $TestDir
 $InitialGloomberbHome = $env:GLOOMBERB_HOME
 $InitialHome = $env:HOME

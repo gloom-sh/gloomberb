@@ -22,7 +22,7 @@ test("a plain list gives every symbol, whether on its own line, split by spaces 
 });
 
 test("a pasted list of company names keeps each line or semicolon cell one name, and a line of tickers stays tickers", async () => {
-  // GLO-1105: "Altria Group" was the symbols ALTRIA and GROUP, and "philip morris intl" added INTL, a fund.
+  // "Altria Group" was the symbols ALTRIA and GROUP, and "philip morris intl" added INTL, a fund.
   const names = { "altria group": "MO", "philip morris intl": "PM", "lockheed martin": "LMT" } as Record<string, string>;
   const readEntries = async (entries: string[]) => entries.flatMap((entry) => names[entry.toLowerCase()] ?? entry.split(/\s+/));
   const read = (text: string) => readSymbolList({ args: ["-"], readStdin: async () => text, readEntries });
@@ -48,7 +48,7 @@ test("names beside other text are a table read by its first column, or by the co
 });
 
 test("one ragged line, or a symbol with a stray separator in its quotes, does not turn a pasted list into a table", async () => {
-  // GLO-1044: the quoted "BIMAS ," made the whole paste a table read by its first column, dropping KCHOL.IS, FROTO, JNJ and MSFT unsaid.
+  // The quoted "BIMAS ," made the whole paste a table read by its first column, dropping KCHOL.IS, FROTO, JNJ and MSFT unsaid.
   const pasted = "thyao, THYAO.IS\n\"BIMAS ,\"\nasels , KCHOL.IS\nTupRS,froto\nko, JNJ\nbrk-b, MSFT\n";
   expect(await readSymbolList({ args: ["-"], readStdin: async () => pasted })).toEqual({
     symbols: ["thyao", "THYAO.IS", "BIMAS", "asels", "KCHOL.IS", "TupRS", "froto", "ko", "JNJ", "brk-b", "MSFT"],

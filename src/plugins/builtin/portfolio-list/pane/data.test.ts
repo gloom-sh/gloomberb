@@ -154,7 +154,7 @@ describe("visible quote refresh predicates", () => {
   });
 });
 
-// GLO-1106: RY at 278.08 CAD and JNJ at 259.36 USD sat in one PF column with nothing to tell them apart.
+// RY at 278.08 CAD and JNJ at 259.36 USD sat in one PF column with nothing to tell them apart.
 test("CCY shows after LAST once a row is priced in another currency than the totals, and only then", () => {
   const row = (symbol: string, currency: string, overrides: Partial<Quote> = {}) => ({
     ticker: createTestTicker(symbol, symbol, { currency }),

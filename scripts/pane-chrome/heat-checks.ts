@@ -9,7 +9,7 @@ import { evaluate, frames, mouse, sleep, type Cdp, type Point } from "./browser"
  * still, and no tile glides, fades or pulses while the size is changing. A
  * board laid out again on every catch-up of a drag, or on every frame of a
  * window resize, restyles all of its tiles each time and moves them under
- * the pointer (GLO-787).
+ * the pointer.
  */
 
 interface HeatStep {

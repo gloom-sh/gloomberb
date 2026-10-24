@@ -213,8 +213,8 @@ function assignDailyChangeFields(
   const referenceProvider = buildDailyReferenceCandidates(candidates, priceProvider)[0];
   if (!referenceProvider) {
     pickField(target, provenance, "previousClose", candidates);
-    // A move not from a previous close says what it is from (a coin's 24 hours,
-    // Linear: GLO-1089), and that is said by the source whose move it is.
+    // A move not from a previous close says what it is from (a coin's 24 hours),
+    // and that is said by the source whose move it is.
     assignField(target, provenance, "changeBasis", pickField(target, provenance, "change", candidates));
     pickField(target, provenance, "changePercent", candidates);
     return;

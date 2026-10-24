@@ -239,7 +239,7 @@ test("opening a ticker while its pane's plugin is off offers to turn it on inste
   expect(layouts.at(-1)).toContain("ticker-detail:opened");
 });
 
-// GLO-822: Zcash on the crypto board did not open while the signed-in quote for ZEC-USD:CCC failed,
+// Zcash on the crypto board did not open while the signed-in quote for ZEC-USD:CCC failed,
 // though search listed it. The open goes through the router the app uses, as a board row asks for it.
 test.each([
   ["fails", true], ["prices another venue", true], ["fails", false],

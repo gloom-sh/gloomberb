@@ -7,7 +7,7 @@ import type { ChartSpec } from "../../time-series/types";
 import { AssetDataRouter } from "../provider-router";
 import { GloomberbCloudProvider } from "./index";
 
-// Linear: GLO-1062. TWTR last traded 2022-10-27 and NYSE removed it the next
+// TWTR last traded 2022-10-27 and NYSE removed it the next
 // day. Gloom Cloud serves its daily bars as asked, up to that session, and says
 // so on every answer, an empty one included. A window ending today holds none.
 const originalHistory = apiClient.getCloudHistory;

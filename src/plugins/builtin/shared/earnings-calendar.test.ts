@@ -5,7 +5,7 @@ import type { EarningsAction } from "../../../types/financials";
 import { historyRows } from "../earnings/history-model";
 import { resolveCalendarEvent, resolveEarningsActions, resolveListingEvents, upcomingReportDate, withResolvedEarnings } from "./earnings-calendar";
 
-// The four companies of GLO-1206 as Gloom Cloud served them on 2026-10-21 and 22.
+// The four companies as Gloom Cloud served them on 2026-10-21 and 22.
 const TODAY = "2026-10-22";
 const CONSENSUS = { source: "calendarEvents", sourceValue: 0, period: null, periodEndDate: null } as const;
 

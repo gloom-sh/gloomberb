@@ -19,7 +19,7 @@ const launcher = await realpath(resolve(launcherArg));
 const evidence = resolve(evidenceArg);
 const resources = process.platform === "darwin" ? dirname(launcher) : resolve(dirname(launcher), "../Resources");
 assert(await Bun.file(join(resources, "gloomberb-tui", SHOT_VIEW_ARCHIVE)).exists(), "Desktop pane archive is missing");
-const cache = join(homedir(), ".cache/gloom-smoke/glo-645");
+const cache = join(homedir(), ".cache/gloom-smoke/desktop-verify");
 await mkdir(cache, { recursive: true });
 await mkdir(evidence, { recursive: true });
 // Chrome puts a Unix socket below TMPDIR; keep the path within its byte limit.

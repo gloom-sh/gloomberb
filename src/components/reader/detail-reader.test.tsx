@@ -5,7 +5,7 @@ import { DetailReader } from "./detail-reader";
 
 const tui = createOpenTuiTestHarness();
 
-// GLO-740: the terminal drew the Changelog's last line, [Full diff](url), as written.
+// The terminal drew the Changelog's last line, [Full diff](url), as written.
 test("the terminal reads a markdown link in a detail body as its label, not the markup", async () => {
   const body = "- Open interest shows the date the chain states. (#1786)\n\n[Full diff](https://github.com/gloom-sh/gloomberb/compare/v0.17.1...v0.17.2)";
   await act(async () => {

@@ -4,7 +4,7 @@ import { cryptoEtfFlowsHeadless } from "./headless";
 import { CRYPTO_ETF_FLOWS_PANE_ID } from "./model";
 import { CryptoEtfFlowsPane } from "./pane";
 
-/** ETFF: the daily net flows of the US spot bitcoin and ether ETFs, per fund (GLO-1090). */
+/** ETFF: the daily net flows of the US spot bitcoin and ether ETFs, per fund. */
 export const cryptoEtfFlowsModule: PluginModule = {
   panes: [
     {

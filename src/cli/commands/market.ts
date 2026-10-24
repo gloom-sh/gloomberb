@@ -990,7 +990,7 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     const changes = new Map(listings.length > MAX_CHOICE_LOOKUPS ? []
       : listings.map((listing) => [listing, startTickerChangeLookup(market.dataProvider, listing.symbol, listing.exchange)] as const));
     // The service's quote of the moment, not each form's local copy from whenever it was last asked for:
-    // BRK.B saved on NYSE, BRK-B and BRK.B:NYSE print one quote (GLO-735). A local copy answers only offline.
+    // BRK.B saved on NYSE, BRK-B and BRK.B:NYSE print one quote. A local copy answers only offline.
     const results = await market.dataProvider.getQuotesBatch(targets, { forceRefresh: ctx.cliOptions.refresh, revalidate: true });
     const listingOf = (result: QuoteBatchResult, index: number) => listings[targets.indexOf(result.target)] ?? listings[index]!;
     const asked = results.map(listingOf);
@@ -1893,7 +1893,7 @@ async function tickerOfWord(word: string, market: MarketContext): Promise<{ symb
 }
 
 /**
- * A metal's market news (GLO-1158): the stories tagged METALS that mention
+ * A metal's market news: the stories tagged METALS that mention
  * it, for its future, its board code or its name. Under them, the ticker its
  * name is in capitals, whose company news `news GOLD` keeps.
  */

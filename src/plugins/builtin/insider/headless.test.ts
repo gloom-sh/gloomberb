@@ -198,7 +198,7 @@ describe("insider headless model", () => {
   });
 });
 
-// GLO-1106: `fn INS JNJ` with a CAD base printed $6.19M and $61.99M with no currency in text or JSON.
+// `fn INS JNJ` with a CAD base printed $6.19M and $61.99M with no currency in text or JSON.
 test("every value carries its currency, and a CAD base adds each value in CAD at its transaction day's USD/CAD close", async () => {
   const headless = createInsiderHeadless({
     loadParsed: async () => ({ parsed, foreignPrivateIssuer: false, noFilings: false }),

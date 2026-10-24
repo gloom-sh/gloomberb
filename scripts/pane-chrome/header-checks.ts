@@ -9,9 +9,9 @@ import { HEADER_MEASURE, headerControl, headerFailures, type HeaderMeasure } fro
  * Windows one with its caption buttons, Linux and the web app draw it. No two
  * of its items may paint over each other, and nothing may be cut by its slot
  * or the window edge instead of ending in an ellipsis of its own: the update
- * status gives way, Help and the market summary keep their room (GLO-767,
- * where Restart ran under Help and Help over the market summary). At the
- * narrowest width a real click on Restart restarts and one on Help opens Help.
+ * status gives way, Help and the market summary keep their room (where Restart
+ * ran under Help and Help over the market summary). At the narrowest width a
+ * real click on Restart restarts and one on Help opens Help.
  */
 
 interface HeaderStep {

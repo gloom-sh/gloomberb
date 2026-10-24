@@ -6,7 +6,7 @@ import { LAYOUT_MEASURE, layoutFailures, type LayoutMeasure } from "./layout-mea
  * three window sizes, docked and floating, every pane body runs to the footer
  * and every wrapped text uses the width it sits in. A box sized in cells, or
  * text wrapped at a count of columns, leaves a band above the footer or a gap
- * at the right edge that grows and shrinks with the pane (GLO-669). The open
+ * at the right edge that grows and shrinks with the pane. The open
  * Trials study and Changelog release are opened as a person does, by double
  * clicking a row.
  *
@@ -100,7 +100,7 @@ export const layoutSteps: LayoutStep[] = PANES.flatMap(({ id, label, opens }) =>
         const measure = await measureOpen(cdp, id, opens);
         if (measure.missing) fail(`no ${id} pane at ${size.width}x${size.height}`);
         for (const failure of layoutFailures(measure)) problems.push(`${size.width}x${size.height}: ${failure}`);
-        // The release's last line is a link, not the markdown it was written as (GLO-740).
+        // The release's last line is a link, not the markdown it was written as.
         if (id === "changelog") {
           const read = await evaluate<{ links: string[]; raw: boolean }>(cdp, `(() => {
             const detail = document.querySelector('[data-gloom-pane-id="changelog:layout"] [data-gloom-role=page-stack-detail]');

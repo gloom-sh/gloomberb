@@ -62,7 +62,7 @@ export type {
 /** Server-side caps for `/assist/command`; enforced here so a 422 is never sent. */
 const ASSIST_QUERY_MAX_LENGTH = 200;
 const ASSIST_COMMAND_LIMIT = 150;
-/** The futures curve's root list is the longest a command sends: 76 since GLO-783. */
+/** The futures curve's root list is the longest a command sends: 76. */
 export const ASSIST_ARG_OPTION_LIMIT = 128;
 const ASSIST_ARG_OPTION_VALUE_MAX_LENGTH = 40;
 const ASSIST_ARG_OPTION_LABEL_MAX_LENGTH = 60;

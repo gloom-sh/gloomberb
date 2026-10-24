@@ -23,7 +23,7 @@ async function mount(width: number, height: number, tab = "table", view = "says"
   commits = 0;
   supplyChainCache.attach(new MemoryPluginPersistence());
   const id = "supply-chain:test";
-  const state = createInitialState(createTestPaneConfig("/home/vince/.cache/gloom-smoke/glo-224/focused-tests", {
+  const state = createInitialState(createTestPaneConfig("/home/vince/.cache/gloom-smoke/supply-chain/focused-tests", {
     paneId: "supply-chain", instanceId: id, binding: { kind: "fixed", symbol: "FOCUS" }, settings: { tab, view, ...(typeof settings === "string" ? { tiers: settings } : settings) },
   }));
   state.tickers.set("FOCUS", createTestTicker("FOCUS", "Focus Company"));

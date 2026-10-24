@@ -89,7 +89,7 @@ test("every command a hint suggests runs on the listing it names", async () => {
   expect((await resolveCliListing(forms[2]!, forms[3], deps)).key).toBe("SAN:LSE");
 });
 
-// Decided per command (GLO-549): `fn` reports are titled by function and symbol, so a bare
+// Decided per command: `fn` reports are titled by function and symbol, so a bare
 // symbol several companies list gets quote's line; `news` heads its table with the listing.
 test("a bare symbol several companies list is named once per report: fn by quote's line, news by its heading", async () => {
   const provider = createTestDataProvider({
