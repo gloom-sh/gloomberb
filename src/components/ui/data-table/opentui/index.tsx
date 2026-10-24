@@ -3,6 +3,7 @@ import { Box, ScrollBox, Text, TextAttributes, useNativeRenderer } from "../../.
 import { hoverBg } from "../../../../theme/colors";
 import { useThemeColors } from "../../../../theme/theme-context";
 import { usePaneInstance } from "../../../../state/app/context";
+import { usePaneSurface } from "../../../layout/pane/surface";
 import { useViewport } from "../../../../react/input";
 import { measurePerf } from "../../../../utils/perf-marks";
 import { displayWidth } from "../../../../utils/format";
@@ -312,6 +313,9 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
 }: DataTableProps<T, C>) {
   const columns = useStableColumns(columnsProp);
   const colors = useThemeColors();
+  // Rows paint the table's own background; the room under the last one is the pane's, as the rest of the pane is.
+  const paneSurface = usePaneSurface();
+  const emptyBackground = fillAvailableWidth && paneSurface ? paneSurface : colors.bg;
   const focusPane = useFocusOwningPane();
   const paneInstanceId = usePaneInstance()?.instanceId ?? null;
   const appViewport = useViewport();
@@ -614,7 +618,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
       flexGrow={1}
       flexBasis={0}
       width="100%"
-      backgroundColor={colors.bg}
+      backgroundColor={emptyBackground}
       overflow="hidden"
     >
       <ScrollBox
@@ -716,7 +720,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
         width="100%"
         flexGrow={1}
         flexBasis={0}
-        backgroundColor={colors.bg}
+        backgroundColor={emptyBackground}
         scrollX={showHorizontalScrollbar}
         scrollY
         focusable={false}
@@ -734,7 +738,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
           )
         ) : (
           <>
-            {virtualize && startIndex > 0 && <Box height={startIndex} />}
+            {virtualize && startIndex > 0 && <Box height={startIndex} backgroundColor={colors.bg} />}
             {measurePerf(
               "data-table.render-visible-rows",
               () => visibleItems.map((item, visibleIndex) => {
@@ -783,7 +787,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
               },
             )}
             {virtualize && endIndex < items.length && (
-              <Box height={Math.max(items.length - endIndex, 0)} />
+              <Box height={Math.max(items.length - endIndex, 0)} backgroundColor={colors.bg} />
             )}
             {bodyAfter}
           </>

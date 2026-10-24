@@ -12,6 +12,9 @@ import { PaneKeyboardScrollController } from "../../state/pane-scroll-registry";
 import { createStaticAppStore } from "../../test-support/app-store";
 import { createDefaultConfig } from "../../types/config";
 import { Box, Text } from "../../ui";
+import { PaneSurfaceContext } from "../layout/pane/surface";
+import { getThemeColors } from "../../theme/colors";
+import { DEFAULT_THEME } from "../../theme/themes";
 import type { DataTableCell, DataTableColumn } from "../ui";
 import { DataTableView } from "./view";
 
@@ -460,4 +463,37 @@ test("an external selection and scroll request cannot be reversed by the previou
   const body = tui.setup().renderer.root.findDescendantById("deferred-scroll-body") as ScrollBoxRenderable;
   expect(body.scrollTop).toBe(500 - Math.floor(body.viewport.height / 2));
   expect(tui.frame()).toContain("Row 500");
+});
+
+test("the room under the last row is the pane's surface while the rows keep the table's own background", async () => {
+  const surface = "#202020";
+  const state = createInitialState(createDefaultConfig("/tmp/gloomberb-data-table-surface-test"));
+  await tui.render(
+    <AppContext value={createStaticAppStore(state)}>
+      <PaneInstanceProvider paneId="data-table-surface-test">
+        <PaneSurfaceContext.Provider value={surface}>
+          <DataTableView<Row, Column>
+            focused
+            selection={{ kind: "index", selectedIndex: 99, onChange: () => {} }}
+            columns={columns}
+            items={rows.slice(1)}
+            sortColumnId={null}
+            sortDirection="asc"
+            onHeaderClick={() => {}}
+            getItemKey={(row) => row.id}
+            renderCell={(row): DataTableCell => ({ text: row.title })}
+            emptyStateTitle="No rows"
+          />
+        </PaneSurfaceContext.Provider>
+      </PaneInstanceProvider>
+    </AppContext>,
+    { width: 40, height: 10 },
+  );
+  await renderSettled();
+  const hex = ([r, g, b]: number[]) => `#${[r, g, b].map((channel) => channel!.toString(16).padStart(2, "0")).join("")}`;
+  const lines = tui.setup().captureSpans().lines;
+  const backgroundOf = (text: string) => hex(lines.flatMap((line) => line.spans).find((span) => span.text.includes(text))!.bg.toInts());
+  const last = lines.at(-1)!.spans;
+  expect(backgroundOf("Second row")).toBe(getThemeColors(DEFAULT_THEME).bg);
+  expect(hex(last[0]!.bg.toInts())).toBe(surface);
 });

@@ -11,6 +11,7 @@ import { createDefaultConfig } from "../../../types/config";
 import type { DataTableVisibleRange } from "../../../components/ui/data-table";
 import { useTableBodyScrollActivity } from "../../../components/table-view-shared";
 import { createDomTestHarness } from "../test-utils";
+import { PaneSurfaceContext } from "../../../components/layout/pane/surface";
 import { WEB_CELL_HEIGHT } from "../../../theme/font-scale";
 import { WebDataTable } from ".";
 
@@ -312,4 +313,44 @@ test("a section header's action is its own control: a click presses it, not the 
     action.dispatchEvent(new testWindow.MouseEvent("click", { bubbles: true, cancelable: true }) as unknown as Event);
   });
   expect(pressed).toEqual(["action"]);
+});
+
+test("the room under the last row is the pane's surface, behind rows that keep the table's own background", async () => {
+  const state = createInitialState(createDefaultConfig("/tmp/gloom-table-test"));
+  function Harness({ fill }: { fill?: boolean }) {
+    const headerScrollRef = useRef<ScrollBoxRenderable | null>(null);
+    const scrollRef = useRef<ScrollBoxRenderable | null>(null);
+    return (
+      <AppContext value={createStaticAppStore(state)}>
+        <PaneSurfaceContext.Provider value="#202020">
+          <WebDataTable
+            items={["a"]}
+            columns={[{ id: "name", label: "Name", width: 6 }]}
+            sortColumnId={null}
+            sortDirection="asc"
+            headerScrollRef={headerScrollRef}
+            scrollRef={scrollRef}
+            syncHeaderScroll={() => {}}
+            onBodyScrollActivity={() => {}}
+            getItemKey={String}
+            isSelected={() => false}
+            onSelect={() => {}}
+            renderCell={(item) => ({ text: item })}
+            emptyStateTitle="No rows"
+            virtualize={false}
+            fillAvailableWidth={fill}
+          />
+        </PaneSurfaceContext.Provider>
+      </AppContext>
+    );
+  }
+  const background = (container: HTMLElement, role: string) => (container.querySelector(`[data-gloom-role="${role}"]`) as HTMLElement).style.backgroundColor;
+
+  const container = await render(<Harness />);
+  expect(background(container, "data-table")).toBe("#202020");
+  expect(background(container, "data-table-body-scroll")).toBe("#202020");
+  expect(background(container, "data-table-row")).toBe("var(--gloom-bg)");
+  expect(background(container, "data-table-scroll-content")).toBe("var(--gloom-bg)");
+  // Columns that stop short of the pane's width leave a strip beside the rows, which stays the table's.
+  expect(background(await render(<Harness fill={false} />), "data-table-body-scroll")).toBe("var(--gloom-bg)");
 });
