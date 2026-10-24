@@ -55,7 +55,9 @@ export function validateFuturesCurve(data: FuturesCurvePayload, root: string): F
   const slope = data.slope;
   if (![slope.value, slope.annualizedRollYield].every(finiteOrNull)
     || ![slope.percentile, slope.rollPercentile].every(rank) || !Number.isInteger(slope.samples) || slope.samples < 0
-    || slope.asOf !== null && !timestamp(slope.asOf)) throw new Error("The server returned an invalid futures spread");
+    || slope.asOf !== null && !timestamp(slope.asOf)
+    || slope.basis != null && slope.basis !== "last" && slope.basis !== "settle"
+    || slope.thinSymbol != null && typeof slope.thinSymbol !== "string") throw new Error("The server returned an invalid futures spread");
   return data;
 }
 

@@ -19,6 +19,7 @@ import { createPaneCatalog } from "./discovery";
 import { parsePaneFunctionArgs } from "./options";
 import { applyListingArgument, parsePaneFunctionArgsFor, resolvePaneFunction, UnknownPaneFunctionError } from "./resolver";
 import { portfolioRiskHeadless } from "../../plugins/builtin/analytics/risk-headless";
+import { capabilityPluginState } from "./capabilities";
 
 const pane = (id: string): PaneDef => ({ id, name: id, component: () => null, defaultPosition: "right" });
 const template = (prefix: string, paneId: string, headless: HeadlessPaneDefinition): PaneTemplateDef => ({
@@ -88,6 +89,23 @@ test("an option or argument a function refuses names the function code, never it
     registry, context, { ...parsePaneFunctionArgs(["CALLS"]), requireBotSafe: true }, { strictHeadlessOptions: true },
   ).catch((error: Error) => error.message);
   expect(strict).toBe("CALLS requires exactly one ticker.");
+});
+
+test("a rendered view that takes only its declared options refuses any other, and opens on the tab asked for", async () => {
+  // FUT's shape: --tab is read from pane state, which the workspace opens on, and from a setting that sizes a shot.
+  const board: PaneDef = { ...pane("board"), reportOptionsOnly: true, reportOptions: [{ key: "tab", type: "enum", description: "Board",
+    values: [{ value: "markets" }, { value: "inventories" }], settingKey: "workspaceTab", pluginState: { pluginId: "board-state", key: "board:tab" } }] };
+  const catalog: PaneFunctionCatalog = {
+    panes: new Map([["board", board]]),
+    paneTemplates: new Map([["board-pane", { id: "board-pane", paneId: "board", label: "FUT", description: "FUT", shortcut: { prefix: "FUT", argPlaceholder: "" } }]]),
+    destroy: () => {},
+  };
+  const open = (args: string[]) => resolvePaneFunction(catalog, context, parsePaneFunctionArgs(args));
+  await expect(open(["FUT", "--bogus", "1"])).rejects.toThrow("FUT does not support --bogus. Supported options: --tab.");
+  await expect(open(["FUT", "--tab", "curve"])).rejects.toThrow('Invalid --tab value "curve"');
+  const inventories = await open(["FUT", "--tab", "inventories"]);
+  expect(inventories.instance.settings).toEqual({ workspaceTab: "inventories" });
+  expect(capabilityPluginState(inventories.capability, inventories.options)).toEqual({ "board-state": { "board:tab": "inventories" } });
 });
 
 test("a bar size under a minute points at GIP's 1-minute bars for the ticker asked about", async () => {

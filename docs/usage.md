@@ -701,12 +701,14 @@ That returns valuation, cash flows and yield shocks. Use `--price 103.333937` in
 
 `FUT` keeps each rolling quote alias as its symbol and names the contract it quotes, the root's front month. Gloom Cloud rolls an alias (CL=F), like the first generic (CL1), on a stated roll date, which `quote CL=F` prints under Rolls.
 
-- From then until the old month stops trading the row names it: "WTI Crude Oil Dec 26, rolled (Nov expires 20 Oct)". The most active month is named when it is another month: "WTI Crude Oil Nov 26, Dec most active".
+- From then until the old month stops trading the row names it: "WTI Crude Oil Dec 2026, rolled (Nov expires 20 Oct)". The most active month is named when it is another month: "WTI Crude Oil Nov 2026, Dec most active".
 - `quote` on a deferred contract or a later generic (NGF27.NYM, NG2) prints the front contract and its price, and the quote, chart and `history` follow the same month.
 - Generic tickers take OI for the open interest switch (CL1OI). UNIT says what a price counts, as `quote` does ("USD / barrel", "US cents / bushel").
 - Search matches the root's name and code. `FUT TTF` (`gloom fn FUT TTF`, `shot FUT TTF`) opens the board searched for that contract.
+- `--tab markets|inventories|positioning|crops` opens the workspace on that board (`gloom fn FUT --tab inventories`). FUT takes no other option and refuses one it does not know.
+- FUT and CTM list COMEX metals (HG copper, ALI aluminium), not LME or Shanghai (SHFE) contracts. The IMF's monthly world prices are the nearest public series: `gloom fred PCOPPUSDM` and `gloom fred PALUMUSDM`, in USD per metric ton.
 
-FUT's 1W, 1M and YTD columns are returns on the contract the row names (LEZ26 for "Live Cattle Dec 26"), not on the alias, whose continuous series jumps at every roll.
+FUT's 1W, 1M and YTD columns are returns on the contract the row names (LEZ26 for "Live Cattle Dec 2026"), not on the alias, whose continuous series jumps at every roll.
 
 - A contract listed after the baseline date shows no return for it (Treasury futures list three quarters ahead, so their YTD is blank in the second half of the year).
 - Dutch TTF gas names no month, so its front contract is the one, among the next three months, whose last close is nearest the quoted price.

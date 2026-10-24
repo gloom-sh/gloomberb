@@ -241,7 +241,7 @@ describe("FuturesPane", () => {
     });
     await renderSettled();
     const crude = tui.frame().split("\n").find((line) => line.includes("WTI Crude Oil"));
-    expect(crude).toContain("WTI Crude Oil Dec 26, rolled (Nov expires 20 Oct)");
+    expect(crude).toContain("WTI Crude Oil Dec 2026, rolled (Nov expires 20 Oct)");
     expect(crude).toContain("USD / barrel");
     // A root the server has no terms for keeps its catalog name, and its catalog unit where there is one.
     const ttf = tui.frame().split("\n").find((line) => line.includes("Dutch TTF Gas"));
@@ -251,7 +251,7 @@ describe("FuturesPane", () => {
     await tui.render(<Harness height={64} />, { width: 80, height: 64 });
     await renderSettled();
     const narrow = tui.frame().split("\n").find((line) => line.includes("WTI Crude Oil"));
-    expect(narrow).toContain("WTI Crude Oil Dec 26");
+    expect(narrow).toContain("WTI Crude Oil Dec 2026");
     expect(narrow).toContain("USD / barrel");
   });
 

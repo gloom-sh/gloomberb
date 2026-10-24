@@ -9,6 +9,7 @@ import { formatMarketPrice, formatMarketPriceWithCurrency, quoteFormatOptions, w
 import { previousPublishedSession } from "./market/freshness";
 import { minorUnitSign } from "../utils/currency-units";
 import { contractPriceUnit } from "../time-series/price-units";
+import { deliveryMonthLabel } from "../utils/contract-month";
 
 /**
  * What a futures symbol trades, as `ticker`, `quote` and the Overview tab read
@@ -135,8 +136,6 @@ export function futuresSettleText(
   const price = currency ? formatMarketPriceWithCurrency(terms.settlement.price, currency, options) : formatMarketPrice(terms.settlement.price, options);
   return `${price} (${terms.settlement.date})`;
 }
-
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /** The quantities a price is per, as traders abbreviate them: 467.25¢/bu for corn, $99.20/bbl for crude. */
 const PER_ABBREVIATIONS: Readonly<Record<string, string>> = {
@@ -297,11 +296,10 @@ export function futuresChangeBasis(
   return previous ? { kind: "close", session: previous } : null;
 }
 
-/** A listed contract as code and month: "NGX26 (Nov 26)". */
+/** A listed contract as code and month: "NGX26 (Nov 2026)". */
 function contractWithMonth(contract: { contract: string; deliveryMonth: string }): string {
-  const [year, month] = contract.deliveryMonth.split("-");
-  const name = MONTHS[Number(month) - 1];
-  return name && year ? `${contract.contract} (${name} ${year.slice(2)})` : contract.contract;
+  const month = deliveryMonthLabel(contract.deliveryMonth);
+  return month ? `${contract.contract} (${month})` : contract.contract;
 }
 
 /**

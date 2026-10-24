@@ -27,6 +27,8 @@ export interface PaneFunctionCapability {
   dataRequirements: string[];
   limitations: string[];
   options: PaneFunctionOptionDef[];
+  /** A rendered view that refuses any option it does not declare (PaneDef.reportOptionsOnly), as a headless report does. */
+  strictOptions?: boolean;
 }
 
 const NON_DATA_PANE_IDS = new Set([
@@ -68,6 +70,7 @@ function fallbackCapability(
       ? RENDERED_VIEW_LIMITATION
       : "This pane is an interactive surface and does not expose a data report."],
     options: [...(pane.reportOptions ?? [])],
+    ...pane.reportOptionsOnly ? { strictOptions: true } : {},
   };
 }
 
@@ -294,7 +297,7 @@ export function normalizeCapabilityOptions(
    */
   settings: { strict?: boolean; code?: string; argument?: string | null } = {},
 ): NormalizedPaneFunctionOptions {
-  if (!capability.botSafe) {
+  if (!capability.botSafe && !capability.strictOptions) {
     // A rendered view takes any pane setting; the options it declares are checked.
     return Object.fromEntries(Object.entries(options).map(([key, value]) => {
       const option = findCapabilityOption(capability, key);
@@ -336,7 +339,8 @@ export function capabilityPaneSettings(
 ): Record<string, unknown> {
   const settings: Record<string, unknown> = {};
   for (const option of capability.options) {
-    if (option.pluginState) continue;
+    // An option read from pane state sets no setting, unless it also names one.
+    if (option.pluginState && !option.settingKey) continue;
     const value = options[option.key];
     if (value !== undefined) settings[option.settingKey ?? option.key] = value;
   }

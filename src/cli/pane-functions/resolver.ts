@@ -342,12 +342,13 @@ export async function resolvePaneFunction(
     throw new Error(noArgumentMessage(capability.options, token, args.arg, resolutionSettings.command ?? "fn"));
   }
   const normalizedOptions = normalizeCapabilityOptions(capability, args.options, {
-    strict: args.requireBotSafe || (!!headless && resolutionSettings.strictHeadlessOptions === true),
+    strict: args.requireBotSafe || capability.strictOptions === true || (!!headless && resolutionSettings.strictHeadlessOptions === true),
     code: token,
     argument: args.arg || null,
   });
   const settings = {
-    ...optionSettings(args.options),
+    // A view that takes only its declared options gets only their settings.
+    ...capability.strictOptions ? {} : optionSettings(args.options),
     ...capabilityPaneSettings(capability, normalizedOptions),
   };
   if (args.requireBotSafe) {

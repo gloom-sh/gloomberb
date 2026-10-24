@@ -211,6 +211,17 @@ const TOPIC_POINTERS: ReadonlyArray<{
     closest: [["SI", "FINRA short interest and days to cover"], ["SIW", "crowded shorts across your names"], ["SIV", "daily short volume"]],
   },
   {
+    // FUT and CTM list COMEX metals (HG copper, ALI aluminium), never the London or Shanghai contracts: a query naming those
+    // venues is told so, not pointed at FUT. The IMF's monthly world prices stand in for LME's (`fred PCOPPUSDM`).
+    topic: "LME and Shanghai (SHFE) metals futures",
+    availability: "not covered (FUT and CTM list COMEX contracts only). Monthly world prices in USD/t: gloom fred PCOPPUSDM, gloom fred PALUMUSDM",
+    phrases: ["lme", "london metal exchange", "london metals exchange", "shfe", "shanghai futures exchange", "shanghai futures",
+      "shanghai copper", "shanghai aluminium", "shanghai aluminum", "shanghai zinc", "shanghai nickel", "shanghai tin", "shanghai lead",
+      "shanghai rebar", "shanghai steel", "shanghai metals"],
+    closestLabel: "COMEX curves",
+    closest: [["CTM", "gloom fn CTM HG for copper, gloom fn CTM ALI for aluminium"]],
+  },
+  {
     // "exchange reserves" alone reads as crypto's; "foreign exchange reserves" is a central bank's, so only whole.
     topic: "Crypto exchange reserves and exchange flows",
     availability: "not covered (no source for coins held on exchanges)",

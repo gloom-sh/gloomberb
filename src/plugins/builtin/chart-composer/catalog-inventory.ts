@@ -59,6 +59,7 @@ const GROUP_ORDER = [
   "Inflation",
   "FX",
   "Energy",
+  "Commodities",
   "Volatility",
   "Sentiment",
   "Positioning",

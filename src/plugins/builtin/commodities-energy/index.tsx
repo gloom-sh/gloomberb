@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState, type ComponentType } from "react";
 import { NestedPaneTabs, PaneFooterScope, usePaneTabs } from "../../../components";
 import { usePaneInstance, usePaneSettingValue, usePaneTitle } from "../../../state/app/context";
 import { Box } from "../../../ui";
-import type { PaneProps, PaneSettingsContext, PaneTemplateContext, PaneTemplateCreateOptions, PaneTemplateDef, PaneTemplateInstanceConfig } from "../../../types/plugin";
+import type { PaneProps, PaneReportOptionDef, PaneSettingsContext, PaneTemplateContext, PaneTemplateCreateOptions, PaneTemplateDef, PaneTemplateInstanceConfig } from "../../../types/plugin";
 import { withPluginStateNamespace } from "../../runtime/context";
 import { useCommandTab, withCommandTab } from "../shared/command-tab";
 import { commodityBalancesModule } from "../commodity-balances";
@@ -22,6 +22,7 @@ import { COMMODITIES_VIEW_STATE } from "./view-state";
 
 const COMMODITIES_ENERGY_PANE_ID = "commodities-energy";
 const COMMODITIES_ENERGY_TITLE = "Commodities & Energy";
+const TAB_STATE_KEY = "commodities-energy:tab";
 
 /**
  * The window's title: the curve it shows, by its root ("Curve \u00b7 BZ"), as a
@@ -42,6 +43,30 @@ const TABS = [
   { value: "balances", label: "Oil & Gas" },
 ] as const;
 type WorkspaceTab = typeof TABS[number]["value"];
+
+/** Where a tab FUT's --tab does not take lives: the curve and the oil and gas balances are functions of their own. */
+const TAB_ELSEWHERE: Readonly<Record<string, string>> = {
+  curve: "The curve is its own function: gloom fn CTM <root>.",
+  balances: "Oil and gas balances: gloom fn JODI.",
+  oilgas: "Oil and gas balances: gloom fn JODI.",
+};
+
+/**
+ * FUT's report and shot open the workspace on one of its boards (`fn FUT --tab
+ * inventories`): written to the tab's pane state, which the workspace opens
+ * on, and to its setting, which sizes a shot and titles the window.
+ */
+const TAB_REPORT_OPTION: PaneReportOptionDef = {
+  key: "tab",
+  type: "enum",
+  description: "The board to open on: futures markets, EIA inventories, CFTC positioning or USDA crop balances.",
+  values: [{ value: "markets" }, { value: "inventories" }, { value: "positioning" }, { value: "crops" }],
+  example: "--tab inventories",
+  exampleWithoutArgument: true,
+  settingKey: "workspaceTab",
+  pluginState: { pluginId: COMMODITIES_VIEW_STATE.workspace, key: TAB_STATE_KEY },
+  invalidValueHint: (value) => TAB_ELSEWHERE[value.trim().toLowerCase().replace(/[^a-z]/g, "")] ?? null,
+};
 
 const CURVE_SURFACE = withPluginStateNamespace(COMMODITIES_VIEW_STATE.curve, FuturesCurvePane);
 const COT_SURFACE = withPluginStateNamespace(COMMODITIES_VIEW_STATE.cot, CotPane);
@@ -141,7 +166,7 @@ function activeSettings(context: PaneSettingsContext) {
 function CommoditiesEnergyPane(props: PaneProps) {
   const [tab, setTab] = useCommandTab(
     COMMODITIES_ENERGY_PANE_ID,
-    "commodities-energy:tab",
+    TAB_STATE_KEY,
     TABS.map(({ value }) => value),
     "markets",
   );
@@ -192,6 +217,8 @@ export const commoditiesEnergyModule: PluginModule = {
     defaultMode: "floating",
     defaultFloatingSize: { width: 110, height: 32 },
     tableExport: true,
+    reportOptions: [TAB_REPORT_OPTION],
+    reportOptionsOnly: true,
     // The Markets tab is FUT's fixed board, every row of which a shot shows; the other tabs keep their height.
     shotFitsRows: (pane) => savedTab(pane) === "markets",
     settings: activeSettings,

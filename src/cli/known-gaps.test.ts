@@ -32,6 +32,15 @@ test("data a name search cannot find is pointed to, with its proxies, by search 
   expect(catalog).not.toContain("No functions match");
 });
 
+test("LME and Shanghai metals are said to be uncovered, pointing at COMEX curves and the monthly world prices, not FUT", () => {
+  const gap = knownGapMessage("LME copper")!;
+  expect(gap).toStartWith("LME and Shanghai (SHFE) metals futures: not covered");
+  for (const pointer of ["fred PCOPPUSDM", "fred PALUMUSDM", "fn CTM HG", "fn CTM ALI"]) expect(gap).toContain(pointer);
+  expect(gap).not.toContain("FUT (");
+  for (const query of ["London Metal Exchange aluminium", "Shanghai copper", "SHFE", "shanghai futures exchange nickel"]) expect(knownGapMessage(query), query).toBe(gap);
+  expect(knownGapMessage("copper")).toBeNull();
+});
+
 test("freight rates and the Baltic indices are said to be uncovered, naming what is; BDI alone is also a ticker", () => {
   const gap = knownGapMessage("freight")!;
   expect(gap).toStartWith("Baltic indices (BDI, Capesize, Panamax, Supramax) and freight forwards (FFA) are not covered.");

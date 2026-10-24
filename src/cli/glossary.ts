@@ -623,7 +623,7 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
   {
     term: "Futures contract", aliases: ["futures", "future", "futures contracts", "contract", "contract month", "expiry", "expiration"],
     functions: ["FUT", "CTM"], shown: ["CONTRACT", "Contract"],
-    definition: "An agreement to buy or sell something, such as oil, gold or the S&P 500, at a set price on a set date. Each contract has a month (Dec 26) and expires, "
+    definition: "An agreement to buy or sell something, such as oil, gold or the S&P 500, at a set price on a set date. Each contract has a month (Dec 2026) and expires, "
       + "and most traders close out before then. A contract's own Settlement line says how it ends: in cash or by physical delivery.",
   },
   {

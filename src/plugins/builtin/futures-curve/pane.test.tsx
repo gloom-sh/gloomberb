@@ -101,7 +101,7 @@ test("the curve names what it plots, and its rows add the moves the chart only s
   expect(lines.slice(0, header).some((line) => line.includes("Index points by contract month") && line.includes("● Latest")
     && line.includes("● 1W ago"))).toBe(true);
   // The readout names the selected contract by month, with its moves in the table's units.
-  expect(frame).toContain("Dec 26 6600.00  1W ago +50.00  1M ago -25.00");
+  expect(frame).toContain("Dec 2026 6600.00  1W ago +50.00  1M ago -25.00");
   // Change columns replace the quote time every row repeated.
   expect(lines[header]).toContain("VS 1W");
   expect(lines[header]).toContain("VS 1M");
@@ -121,12 +121,12 @@ test("the curve names what it plots, and its rows add the moves the chart only s
 test("the selected contract is the curve's point", async () => {
   spy = spyOn(apiClient, "getCloudFuturesCurve").mockImplementation(async () => payload());
   await render(98, 30);
-  expect(tui.frame()).toContain("Dec 26 6600.00");
+  expect(tui.frame()).toContain("Dec 2026 6600.00");
   await act(async () => { tui.setup().mockInput.pressArrow("down"); await tui.setup().renderOnce(); });
   await settle();
   const frame = tui.frame();
-  expect(frame).toContain("Mar 27 6640.00  1W ago +50.00");
-  expect(frame).not.toContain("Dec 26 6600.00");
+  expect(frame).toContain("Mar 2027 6640.00  1W ago +50.00");
+  expect(frame).not.toContain("Dec 2026 6600.00");
 });
 
 test("a short pane keeps the contracts and shrinks the curve to a strip, then drops it", async () => {
@@ -142,7 +142,7 @@ test("a short pane keeps the contracts and shrinks the curve to a strip, then dr
   lines = await render(40, 11);
   header = lines.findIndex((line) => line.includes("CONTRACT"));
   expect(lines[header - 1]).toContain("● Price");
-  expect(lines[header - 1]).toContain("Dec 26 6600.00");
+  expect(lines[header - 1]).toContain("Dec 2026 6600.00");
   expect(lines.slice(header + 1).filter((line) => /ES[HMUZ]\d\d\.CME/.test(line)).length).toBeGreaterThanOrEqual(4);
   // Too narrow for a chart: no band at all.
   lines = await render(22, 11);

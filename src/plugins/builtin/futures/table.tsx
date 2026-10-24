@@ -43,7 +43,7 @@ const DEFAULT_FUTURES_COLUMN_IDS = FUTURES_COLUMN_DEFS.map((column) => column.id
  * which the change in percent still gives. The previous close (the last price
  * less the change) goes first, then each row's quote time (the status line
  * dates the newest), which leaves a 1280-pixel shot room for "WTI Crude Oil
- * Dec 26, rolled (Nov expires 20 Oct)".
+ * Dec 2026, rolled (Nov expires 20 Oct)".
  */
 const COLUMN_MIN_PANE_WIDTH: Partial<Record<FuturesColumnId, number>> = {
   change: 100,

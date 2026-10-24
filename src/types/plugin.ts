@@ -190,6 +190,13 @@ export interface PaneDef {
    */
   reportOptions?: readonly PaneReportOptionDef[];
   /**
+   * A rendered-view report that takes its `reportOptions` and nothing else:
+   * any other option is refused with the ones it takes (`fn FUT --bogus 1`),
+   * as a `headless` report refuses one, instead of being set as a pane
+   * setting of that name.
+   */
+  reportOptionsOnly?: boolean;
+  /**
    * What a rendered-view report takes after the function, for a pane whose
    * template reads it with no shortcut to say so (X Feed's query): the
    * catalog lists it, and `fn` refuses an argument from a function that
@@ -267,9 +274,11 @@ export type PanePersonalData = "holdings" | "account" | "messages" | "personal";
 /**
  * An option of a rendered-view report, which sets the pane setting of its key,
  * or of `settingKey` when the flag reads better than the setting's name
- * (`--columns` for `optionColumnIds`).
+ * (`--columns` for `optionColumnIds`); with `pluginState`, the pane state the
+ * view reads it from (a workspace's tab), and the setting too when it also
+ * names a `settingKey`.
  */
-export interface PaneReportOptionDef extends Omit<HeadlessPaneOptionDef, "pluginState"> {
+export interface PaneReportOptionDef extends HeadlessPaneOptionDef {
   /** The value's name in the catalog's flag, `--currencies <codes>`; the type when absent. */
   placeholder?: string;
   /** The option in use as typed after the function, such as `--currencies USD,ZAR,NGN`; the catalog shows it as an example. */

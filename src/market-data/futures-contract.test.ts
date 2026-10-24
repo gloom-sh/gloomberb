@@ -158,16 +158,16 @@ test("quote's roll lines: the roll date, the front with its own price, the month
   const alias = { roll: { label: "1 day before last trade", date: "2026-10-27" }, front: null, nearest: null,
     mostActive: { ...nov, volume: 215_260, date: "2026-10-16" } };
   expect(text(futuresRollLines(alias))).toEqual(["Rolls: 2026-10-27, 1 day before last trade",
-    "Most Active: NGX26 (Nov 26), 215,260 contracts on 2026-10-16"]);
+    "Most Active: NGX26 (Nov 2026), 215,260 contracts on 2026-10-16"]);
   // A deferred month (NGF27) names the front it is not, priced from the front's own quote.
   const deferred = { roll: null, front: { ...nov, lastTrade: "2026-10-28" }, mostActive: alias.mostActive };
   const front = { price: 3.116, lastUpdated: Date.parse("2026-10-16T20:59:57Z"), currency: "USD", instrumentType: "FUTURE" };
-  expect(text(futuresRollLines(deferred, front))[0]).toBe("Front: NGX26 (Nov 26) $3.116, 2026-10-16 20:59 UTC");
-  expect(text(futuresRollLines(deferred, null))[0]).toBe("Front: NGX26 (Nov 26), last trade 2026-10-28");
+  expect(text(futuresRollLines(deferred, front))[0]).toBe("Front: NGX26 (Nov 2026) $3.116, 2026-10-16 20:59 UTC");
+  expect(text(futuresRollLines(deferred, null))[0]).toBe("Front: NGX26 (Nov 2026), last trade 2026-10-28");
   // CL=F the day it rolled: December now, November still trading.
   expect(text(futuresRollLines({ roll: { label: "open interest switch", date: null },
     nearest: { contract: "CLX26", contractSymbol: "CLX26.NYM", deliveryMonth: "2026-11", lastTrade: "2026-10-20" } })))
-    .toEqual(["Rolls: open interest switch", "Nearest: CLX26 (Nov 26), last trade 2026-10-20"]);
+    .toEqual(["Rolls: open interest switch", "Nearest: CLX26 (Nov 2026), last trade 2026-10-20"]);
   // Servers that send none of them add no lines; a malformed one is dropped and the terms stand.
   expect(futuresRollLines(gold)).toEqual([]);
   const odd = validateFuturesContractTerms({ ...gold, roll: { label: "", date: "2026-10-27" }, front: { contract: "GCZ26" } as never,

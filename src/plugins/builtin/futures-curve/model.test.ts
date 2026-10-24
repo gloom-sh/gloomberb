@@ -4,7 +4,7 @@ import type { FuturesContract, FuturesCurveAsOfPayload, FuturesCurvePayload } fr
 import { fetchFuturesCurve, validateFuturesCurve } from "./client";
 import { FUTURES_CONTRACTS } from "../../../market-data/futures-board";
 import type { CompositeAxisDomain } from "../../../components/chart/composite/types";
-import { annualisedBasisPct, archivedFuturesCurve, basisSpotSymbol, blankBasisNote, contractBasis, CURVE_ROOTS, curveAsOfDate, curveAxisPrice, curveBasisPercent, curveBasisRows, curveChangeText, curveContractChanges, curveContractMonth, curvePrice, curveRank, curveRootForTicker, curveSpot, curveSpotLabel, curveSpotSource, curveSpreadLabel, curveUnitLabel, daysToExpiry, futuresCurveSeries, newestQuote, normalizeCurveRoot, shortDatedBasis, shortDatedBasisNote, sortCurveContracts, spotBarsFromHistory, unpairedContractCount, vsSpotPct } from "./model";
+import { annualisedBasisPct, archivedFuturesCurve, basisSpotSymbol, blankBasisNote, contractBasis, CURVE_ROOTS, curveAsOfDate, curveAxisPrice, curveBasisPercent, curveBasisRows, curveChangeText, curveContractChanges, curveContractMonth, curvePrice, curveRank, curveRootForTicker, curveSpot, curveSpotLabel, curveSpotSource, curveSpreadBasis, curveSpreadLabel, curveUnitLabel, daysToExpiry, futuresCurveSeries, newestQuote, normalizeCurveRoot, shortDatedBasis, shortDatedBasisNote, sortCurveContracts, spotBarsFromHistory, thinSpreadNotice, unpairedContractCount, vsSpotPct } from "./model";
 import { futuresCurveModule } from "./index";
 
 const first: FuturesContract = { symbol: "CLX26.NYM", label: "Nov 2026", expiration: "2026-10-20",
@@ -91,10 +91,10 @@ test("Treasury prices keep one decimal count per root on their 32nd tick grid an
   expect(curvePrice(-0.001, "CL")).toBe("0.00");
   expect(curvePrice(0.00635, "6J")).toBe("0.0063500");
   // Crude's November contract expires in October.
-  expect(curveContractMonth("CLX26.NYM", "2026-10-20")).toBe("Nov 26");
-  expect(curveContractMonth("ZFZ26.CBT", "2026-12-31")).toBe("Dec 26");
-  expect(curveContractMonth("RTYH27.CME", "2027-03-19")).toBe("Mar 27");
-  expect(curveContractMonth("VX/V6", "2026-10-21")).toBe("Oct 26");
+  expect(curveContractMonth("CLX26.NYM", "2026-10-20")).toBe("Nov 2026");
+  expect(curveContractMonth("ZFZ26.CBT", "2026-12-31")).toBe("Dec 2026");
+  expect(curveContractMonth("RTYH27.CME", "2027-03-19")).toBe("Mar 2027");
+  expect(curveContractMonth("VX/V6", "2026-10-21")).toBe("Oct 2026");
 });
 
 test("CME crypto roots are listed with prices at their tick, and FUT's board keeps its own list", () => {
@@ -363,7 +363,7 @@ test("axis labels take their decimals from the plotted range, never the contract
 describe("past curves", () => {
   const row = (symbol: string, expiration: string, price: number, extra: Partial<FuturesCurveAsOfPayload["contracts"][number]> = {}) => ({
     contract: symbol.replace("/", ""), symbol, label: symbol, deliveryMonth: expiration.slice(0, 7), expiration, tradeDate: "2020-03-16",
-    price, volume: 10, openInterest: 100, asOf: "2020-03-16T00:00:00.000Z", stale: false, ...extra,
+    price, volume: 500, openInterest: 1000, asOf: "2020-03-16T00:00:00.000Z", stale: false, ...extra,
   });
   const payload = (date: string, contracts: FuturesCurveAsOfPayload["contracts"]): FuturesCurveAsOfPayload => ({
     root: "VX", name: "VIX Futures", date, asOf: date, currency: "USD", quoteUnit: "volatility points", archiveStart: "2013-05-20", contracts, gaps: [],
@@ -415,6 +415,24 @@ describe("past curves", () => {
     const mixed = archivedFuturesCurve("GC", gold([["GCZ26.CMX", "2026-12-29", 4216.3, true], ["GCM27.CMX", "2027-06-28", 4327, false],
       ["GCN27.CMX", "2027-07-28", 4324, false]]), { "1W": null, "1M": null }, "2026-10-10T16:00:00.000Z");
     expect(mixed.slope).toMatchObject({ frontSymbol: null, nextSymbol: null, value: null, state: "unavailable" });
+  });
+
+  test("a past curve's spread is thin when a leg traded under 20 lots, and says it subtracts settlements", () => {
+    // ALI on Fri 23 Oct 2026: the front, ALIX26, traded 4 lots against ALIZ26's 51.
+    const aluminium = archivedFuturesCurve("ALI", payload("2026-10-23", [
+      row("ALIX26.CMX", "2026-11-25", 3277.5, { tradeDate: "2026-10-23", volume: 4, settled: true }),
+      row("ALIZ26.CMX", "2026-12-29", 3228.75, { tradeDate: "2026-10-23", volume: 51, settled: true })]), { "1W": null, "1M": null }, "2026-10-24T12:00:00.000Z");
+    expect(aluminium.slope).toMatchObject({ state: "thin", thinSymbol: "ALIX26.CMX", basis: "settle", asOf: "2026-10-23" });
+    expect(thinSpreadNotice(aluminium)).toBe("ALIZ26-ALIX26 is thin (ALIX26 traded 4 lots): no contango or backwardation call");
+    expect(curveSpreadBasis(aluminium.slope, aluminium.asOf)).toBe("settle 10-23");
+  });
+
+  test("a live spread says which prices it subtracts, timed when they are last trades", () => {
+    expect(curveSpreadBasis({ basis: "last", asOf: "2026-10-23T20:58:00.000Z" }, "2026-10-23T20:59:35.000Z")).toBe("last 20:58");
+    expect(curveSpreadBasis({ basis: "last", asOf: "2026-10-22T20:58:00.000Z" }, "2026-10-23T20:59:35.000Z")).toBe("last 10-22 20:58");
+    expect(curveSpreadBasis({ basis: "settle", asOf: "2026-10-22" }, "2026-10-23T20:59:35.000Z")).toBe("settle 10-22");
+    // A server that does not say leaves the figure as it was.
+    expect(curveSpreadBasis({ asOf: "2026-10-22" }, null)).toBeNull();
   });
 
   test("the front spread is named by the contracts it subtracts, next less front", () => {

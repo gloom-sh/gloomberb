@@ -4,6 +4,7 @@ import { spanDigits } from "../../../components/chart-table";
 import { compositeAxisTicks } from "../../../components/chart/composite/format";
 import type { CompositeAxisDomain } from "../../../components/chart/composite/types";
 import { FUTURES_CONTRACTS, futuresBoardContractForTicker, futuresContractByCode, tickDecimals } from "../../../market-data/futures-board";
+import { contractMonthLabel } from "../../../utils/contract-month";
 import { formatPercentileRank } from "../../../utils/format";
 import { cryptoPairCoin, isFuturesSymbol } from "../shared/crypto-pair";
 import { parseReportTime } from "../../../utils/utc-time";
@@ -148,6 +149,41 @@ export function curveSpreadLabel(slope: Pick<FuturesCurvePayload["slope"], "fron
   return slope.frontSymbol && slope.nextSymbol ? `${curveContractCode(slope.nextSymbol)}-${curveContractCode(slope.frontSymbol)}` : "M2-M1";
 }
 
+/** A leg that traded fewer lots than this in its session is too thin to call a curve's slope from. */
+export const THIN_SPREAD_LOTS = 20;
+
+/**
+ * What the front spread subtracts, as its figure says it: "settle 10-22" for
+ * two settlements of a session (the Settle column's date), "last 20:59" for
+ * two last trades made together, dated when not the newest quote's day. Null
+ * when the server does not say.
+ */
+export function curveSpreadBasis(slope: Pick<FuturesCurvePayload["slope"], "basis" | "asOf">, newest: string | null): string | null {
+  if (!slope.basis || !slope.asOf) return null;
+  if (slope.basis === "settle" || !slope.asOf.includes("T")) return `${slope.basis} ${slope.asOf.slice(5, 10)}`;
+  const stamp = curveTimestamp(slope.asOf);
+  return `last ${newest?.includes("T") && curveTimestamp(newest).slice(0, 10) === stamp.slice(0, 10) ? stamp.slice(11) : stamp.slice(5)}`;
+}
+
+/**
+ * Why the front spread is thin, from its thin leg's row: "ALIX26 traded 4 lots"
+ * or "ALIX26 last traded 2026-10-22". Null when it is not thin.
+ */
+export function thinSpreadReason(data: Pick<FuturesCurvePayload, "slope" | "contracts">): string | null {
+  if (data.slope.state !== "thin") return null;
+  const leg = data.contracts.find((row) => row.symbol === data.slope.thinSymbol);
+  if (!leg) return null;
+  const code = curveContractCode(leg.symbol);
+  if (leg.volume != null && leg.volume < THIN_SPREAD_LOTS) return `${code} traded ${leg.volume} lot${leg.volume === 1 ? "" : "s"}`;
+  return leg.asOf ? `${code} last traded ${leg.asOf.slice(0, 10)}` : `${code} has not traded`;
+}
+
+/** The warning a thin front spread carries: why, and that its sign is no slope call. */
+export function thinSpreadNotice(data: Pick<FuturesCurvePayload, "slope" | "contracts">): string | null {
+  const reason = thinSpreadReason(data);
+  return reason ? `${curveSpreadLabel(data.slope)} is thin (${reason}): no contango or backwardation call` : null;
+}
+
 /**
  * Axis gridlines sit on round values, so they need no tick precision: one
  * decimal count across the gutter, as many as the plotted range asks for and
@@ -167,17 +203,16 @@ export function curveAxisPrice(value: number, domain: CompositeAxisDomain, root:
 }
 
 const MONTH_CODES = "FGHJKMNQUVXZ";
-const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /**
- * The delivery month a trader names a contract by ("Nov 26" for CLX26), not
+ * The delivery month a trader names a contract by ("Nov 2026" for CLX26), not
  * its last trading day: crude's November contract expires in October, and a
  * "26-10-20" label also reads as a day-first date.
  */
 export function curveContractMonth(symbol: string, expiration: string): string {
   const coded = /^[A-Z0-9]+?([FGHJKMNQUVXZ])(\d{2})\.[A-Z]+$/.exec(symbol);
-  if (coded) return `${MONTH_NAMES[MONTH_CODES.indexOf(coded[1]!)]} ${coded[2]}`;
-  return `${MONTH_NAMES[Number(expiration.slice(5, 7)) - 1] ?? expiration.slice(5, 7)} ${expiration.slice(2, 4)}`;
+  if (coded) return contractMonthLabel(Number(coded[2]), MONTH_CODES.indexOf(coded[1]!));
+  return contractMonthLabel(Number(expiration.slice(0, 4)), Number(expiration.slice(5, 7)) - 1);
 }
 
 export function curveTimestamp(value: string | null): string {
@@ -717,6 +752,8 @@ export function archivedFuturesCurve(root: string, curve: FuturesCurveAsOfPayloa
   const settled = contracts.filter((row) => row.settlement != null);
   const [front, next] = settled.length >= 2 ? settled : settled.length ? [] : contracts.filter((row) => !row.stale);
   const value = front && next ? next.price! - front.price! : null;
+  // A leg that traded under THIN_SPREAD_LOTS lots that session gets no slope call, as on the live curve.
+  const thin = [front, next].find((row) => row?.volume != null && row.volume < THIN_SPREAD_LOTS)?.symbol ?? null;
   const days = front && next ? (Date.parse(next.expiration) - Date.parse(front.expiration)) / DAY_MS : 0;
   const roll = front && next && front.price! > 0 && next.price! > 0 && days > 0 ? (front.price! / next.price! - 1) * 365 / days * 100 : null;
   return {
@@ -725,7 +762,8 @@ export function archivedFuturesCurve(root: string, curve: FuturesCurveAsOfPayloa
     catalogue: { method: "provider", complete: true, horizonEnd: null }, contracts, ghosts,
     slope: { frontSymbol: front?.symbol ?? null, nextSymbol: next?.symbol ?? null, value, annualizedRollYield: roll, percentile: null,
       rollPercentile: null, samples: 0, historyStart: null, historyEnd: null, asOf: front && next ? curve.asOf : null,
-      state: value == null ? "unavailable" : Math.abs(value) < 1e-10 ? "flat" : value > 0 ? "contango" : "backwardation" },
+      basis: front && next ? settled.length >= 2 ? "settle" : "last" : null, thinSymbol: value == null ? null : thin,
+      state: value == null ? "unavailable" : thin ? "thin" : Math.abs(value) < 1e-10 ? "flat" : value > 0 ? "contango" : "backwardation" },
     gaps: curve.gaps, spec: curve.spec ?? null, settlementDate: settled.length ? curve.asOf : null,
   };
 }

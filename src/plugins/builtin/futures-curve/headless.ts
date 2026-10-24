@@ -5,7 +5,7 @@ import { formatPercentRaw } from "../../../utils/format";
 import { DATE_OPTION_EXAMPLES } from "../../../utils/calendar-date";
 import { newestReportTime, oldestReportTime } from "../../../utils/utc-time";
 import { fetchFuturesCurve, loadCurveSpot, loadCurveSpotBars, loadFuturesCurveAsOf } from "./client";
-import { basisSpotSymbol, BASIS_CONVENTION, blankBasisNote, catalogueCurveUnit, curveAsOfDate, curveBasisPercent, curveBasisRows, curveChangeText, curveContractCode, curvePrice, curveRoundedPrice, curveSpotSource, curveSpreadLabel, curveTimestamp, curveNoTradeSince, curveUnitLabel, noTradeChangeNote, normalizeCurveRoot, shortDatedBasisNote, unpairedContractCount, unsupportedCurveRootMessage, type ContractBasis } from "./model";
+import { basisSpotSymbol, BASIS_CONVENTION, blankBasisNote, catalogueCurveUnit, curveAsOfDate, curveBasisPercent, curveBasisRows, curveChangeText, curveContractCode, curvePrice, curveRoundedPrice, curveSpotSource, curveSpreadLabel, curveTimestamp, curveNoTradeSince, curveUnitLabel, noTradeChangeNote, normalizeCurveRoot, shortDatedBasisNote, thinSpreadNotice, unpairedContractCount, unsupportedCurveRootMessage, type ContractBasis } from "./model";
 import { COMMODITIES_VIEW_STATE } from "../commodities-energy/view-state";
 
 /** The root a report shows when none is given. */
@@ -84,8 +84,9 @@ function fieldColumns(order: readonly string[], fields: object, formats: Record<
     .map((key) => ({ key, header: key, ...formats[key] ? { textFormat: formats[key] } : {} }));
 }
 
+// `basis` says which prices the value subtracts: two last trades made together, or the settlements of the session in `asOf`.
 const FRONT_SPREAD_FIELDS = ["label", "frontSymbol", "nextSymbol", "value", "annualizedRollYield", "percentile", "rollPercentile",
-  "samples", "historyStart", "historyEnd", "asOf", "state"];
+  "samples", "historyStart", "historyEnd", "asOf", "basis", "state", "thinSymbol"];
 const GHOST_FIELDS = ["symbol", "expiration", "price", "asOf"];
 /** The annualized roll yield reads as the percent it is (+32.36%); an export keeps the number. */
 const ROLL_YIELD_FORMAT = { annualizedRollYield: (value: unknown) => typeof value === "number" ? formatPercentRaw(value) : "--" };
@@ -141,7 +142,8 @@ export const futuresCurveHeadless: HeadlessPaneDefinition<"bundle"> = {
       .filter((note): note is string => !!note) : [];
     // A blank Change says why, as a blank basis does; a past curve has no session change to blank.
     const changeNote = date ? null : noTradeChangeNote(data.contracts, data);
-    const notes = [...changeNote ? [changeNote] : [], ...basisNotes];
+    const thinSpread = thinSpreadNotice(data);
+    const notes = [...thinSpread ? [`${thinSpread}.`] : [], ...changeNote ? [changeNote] : [], ...basisNotes];
     const columnOptions = { basis: !!bases, last: data.source !== "cboe", notice: data.contracts.some((row) => row.firstNotice) };
     // Dated by the contracts' own quotes; the same-contract history rows are a year of context, not observations.
     const quoted = data.contracts.map((row) => row.asOf);
