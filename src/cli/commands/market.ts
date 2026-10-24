@@ -292,6 +292,7 @@ import { centralBankEventsMessage } from "../central-bank-events";
 import { classSharesAsOf, classSharesToday } from "../../plugins/builtin/holders/client";
 import {
   HOLDER_ROWS_MAX,
+  indexedHoldersPartialNote,
   indexedHolderUnits,
   indexHolderTicker,
   loadIndexedHolders,
@@ -2369,7 +2370,9 @@ async function runHolders(
     // A US line's institutions are every 13F filer, from the SEC holder index as fn 13F lists them,
     // as many as the limit asks (HDS's 25 by default); elsewhere, or when the index cannot be read, the source's few.
     const indexTicker = institutional ? indexHolderTicker(listing.request.symbol, listing.request.exchange) : null;
-    const indexLimit = Math.min(ctx.cliOptions.limit ?? HOLDERS_DEFAULT_ROWS, HOLDER_ROWS_MAX);
+    // --tail counts back from the end of the rows loaded, so it loads at least as many as it asks for.
+    const tail = ctx.cliOptions.tail;
+    const indexLimit = Math.min(ctx.cliOptions.limit ?? Math.max(tail ?? 0, HOLDERS_DEFAULT_ROWS), HOLDER_ROWS_MAX);
     const [source, quote, form4, index] = await Promise.all([
       loadForListing(
         listing, market, ctx,
@@ -2424,6 +2427,12 @@ async function runHolders(
     // Named as fn HDS takes it, so the closing notes point to the same listing.
     const requested = exchangeOption && !raw.includes(":") ? `${raw}:${exchangeOption.toUpperCase()}` : raw;
     const { notices } = holderReportNotices({ data, requested, shown: shownRows, reported: rows.length, total, indexed });
+    // The index's smallest filers are pages past what was loaded: --tail is the end of the loaded rows, not of every filer.
+    const tailNote = indexed && tail != null && total != null && rows.length < total
+      ? `--tail ${tail} is the last ${shown} of the largest ${rows.length} loaded, not the smallest of all ${total.toLocaleString("en-US")} holders.`
+      : null;
+    const partialNote = indexed ? indexedHoldersPartialNote(index, indexLimit) : null;
+    const warnings = [...choice, ...(partialNote ? [partialNote] : []), ...(tailNote ? [tailNote] : [])];
     ctx.printResult({
       data: rows,
       ...(freshness ? { freshness } : {}),
@@ -2448,7 +2457,7 @@ async function runHolders(
           form4: form4 ? { summary: form4.summary, lines: form4.lines, filings: form4.filings, newestFiled: form4.newestFiled, notCovered: form4.home } : null,
         } : {}),
       },
-      ...(choice.length > 0 ? { warnings: choice } : {}),
+      ...(warnings.length > 0 ? { warnings } : {}),
     }, {
       heading: `${listingHeading(identity)}${cliStyles.muted(facts.map((fact) => `  ·  ${fact}`).join(""))}`,
       columns,
@@ -3308,7 +3317,7 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
         title: "Output",
         lines: [
           "Holders run largest value first, as in fn HDS. --csv and --json carry the HDS report's columns: values in the currency the header names, shares, and the quarter's change and the stake in percent (0.59 is 0.59%).",
-          "A US listing lists every 13F filer, as fn 13F does: the largest 25, or as many as --limit asks up to 200. A listing abroad has only the source's largest few.",
+          "A US listing lists every 13F filer, as fn 13F does: the largest 25, or as many as --limit asks up to 200; --tail counts back from the end of those, not from the smallest filer. A listing abroad has only the source's largest few.",
         ],
       }],
       examples: ["holders AAPL", "holders SAN:EPA", "holders SAN --csv", "holders CAR --form all", "holders CAR --form 13g --history --json"],

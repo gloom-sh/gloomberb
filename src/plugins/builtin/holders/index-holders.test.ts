@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { TickerHolderRow, TickerHoldings } from "../thirteenf/signals";
-import { indexedHolderPage, indexHolderTicker, loadIndexedHolders, type IndexedHolderClient } from "./index-holders";
+import { indexedHolderPage, indexedHoldersPartialNote, indexHolderTicker, loadIndexedHolders, type IndexedHolderClient } from "./index-holders";
 
 function row(cik: string, overrides: Partial<TickerHolderRow> = {}): TickerHolderRow {
   return {
@@ -60,6 +60,34 @@ describe("13F holder index pages", () => {
     expect(offsets).toEqual([0, 25, 50]);
     expect(all.rows.map((holder) => holder.cik).slice(-1)).toEqual(["75"]);
     expect(all.hasMore).toBe(false);
+  });
+
+  test("a page that does not move on ends the list, and a later page that fails keeps the holders loaded", async () => {
+    let asked = 0;
+    const stuck: IndexedHolderClient = {
+      getCloudSec13F: async () => {
+        asked += 1;
+        return holdings(Array.from({ length: 25 }, (_, index) => row(String(index + 1))), { holderCount: 600, nextOffset: 0 });
+      },
+    };
+    const once = await loadIndexedHolders("AAA", 200, undefined, stuck);
+    expect(asked).toBe(1);
+    expect(once).toMatchObject({ hasMore: false });
+    expect(once.rows).toHaveLength(25);
+
+    const failing: IndexedHolderClient = {
+      getCloudSec13F: async (_path, params = {}) => {
+        const offset = Number(params.offset);
+        if (offset >= 50) throw new Error("HTTP 502");
+        return holdings(Array.from({ length: 25 }, (_, index) => row(String(offset + index + 1))), { holderCount: 600, nextOffset: offset + 25 });
+      },
+    };
+    const partial = await loadIndexedHolders("AAA", 100, undefined, failing);
+    expect(partial.rows).toHaveLength(50);
+    expect(partial.partial).toBe(true);
+    expect(indexedHoldersPartialNote(partial, 100)).toBe("13F holders past the largest 50 could not be read this time.");
+    // A first page that fails leaves the source's list to the caller.
+    await expect(loadIndexedHolders("AAA", 100, undefined, { getCloudSec13F: async () => { throw new Error("HTTP 502"); } })).rejects.toThrow("HTTP 502");
   });
 
   test("asks only for a US line", () => {

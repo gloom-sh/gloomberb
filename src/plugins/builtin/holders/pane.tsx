@@ -105,12 +105,17 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
   const indexed = index.rows.length > 0 && (!!base || !loading) && indexHolderTicker(symbol, exchange, base) != null;
   const indexPending = !!indexTicker && index.loading && index.rows.length === 0;
   // Index rows take the source's price; the quote's only when the source gave none, sampled so ticks do not re-sort.
+  // The rows follow the units in use, so a quote that is not the price used leaves them as they are.
   const quotePrice = useSampledValue(financials?.quote?.price, HOLDER_MARKET_CAP_SAMPLE_MS, symbol ?? "");
+  const { price: unitPrice, classShares: unitClassShares } = indexedHolderUnits(base, quotePrice);
   const listData = useMemo(() => {
     const first = index.pages[0];
     if (!indexed || !first || !indexTicker) return data;
-    return withIndexedHolders(base, indexTicker, { ...first, rows: index.rows }, indexedHolderUnits(base, quotePrice));
-  }, [base, data, index.pages, index.rows, indexTicker, indexed, quotePrice]);
+    return withIndexedHolders(base, indexTicker, { ...first, rows: index.rows }, {
+      ...(unitPrice != null ? { price: unitPrice } : {}),
+      ...(unitClassShares != null ? { classShares: unitClassShares } : {}),
+    });
+  }, [base, data, index.pages, index.rows, indexTicker, indexed, unitClassShares, unitPrice]);
 
   // The values' own currency: dollars from the 13F filings on a London line, not its pence.
   const currency = holderValueCurrency(listData, ticker?.metadata.currency || "USD")!;
@@ -328,6 +333,10 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
         // The index's first page replaces the source's list, so it is loading too; a failed one leaves that list.
         ...loadingErrorFooterInfo(loading || (indexPending && !!data), listData ? error : null),
         ...(index.loadingMore ? [{ id: "loading-more", parts: [{ text: "loading more", tone: "muted" as const }] }] : []),
+        // A later page that failed keeps the rows loaded; scrolling asks for it again.
+        ...(indexed && index.moreError && !index.loadingMore
+          ? [{ id: "more-error", parts: [{ text: "more holders could not be read", tone: "warning" as const }] }]
+          : []),
         ...(fundMatching ? [{ id: "fund-matching", parts: [{ text: "13F matching", tone: "muted" as const }] }] : []),
       ],
       // The title-bar tabs (or the query bar inside Ticker Research) switch
@@ -337,7 +346,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
         ...(selectedFundMatch ? [{ id: "fund", key: "o", label: "pen 13F", onPress: () => openFundDetail(selectedRow) }] : []),
       ],
     };
-  }, [data, error, fundMatching, index.loadingMore, indexPending, listData, loading, openFundDetail, periodsDiffer, selectedFundMatch, selectedRow, viewMode]);
+  }, [data, error, fundMatching, index.loadingMore, index.moreError, indexed, indexPending, listData, loading, openFundDetail, periodsDiffer, selectedFundMatch, selectedRow, viewMode]);
 
   const selectView = useCallback((value: string) => setViewMode(value as ViewMode), [setViewMode]);
   // As a research tab, h/l move between research tabs; `s` switches the view.

@@ -196,7 +196,8 @@ describe("holders headless from the 13F holder index", () => {
   };
   // The index's first 30 filers, largest first: number 12 added to its stake and number 30 is new.
   const filers: IndexedHolder[] = [
-    { cik: "0001697233", name: "GQG Partners LLC", shares: 193_198_230, previousShares: 173_438_230 },
+    // As filed: the source's own row keeps its spelling.
+    { cik: "0001697233", name: "GQG PARTNERS LLC", shares: 193_198_230, previousShares: 173_438_230 },
     { cik: "0001088875", name: "BAILLIE GIFFORD & CO", shares: 48_618_354, previousShares: 44_438_354 },
     ...Array.from({ length: 28 }, (_, index) => ({
       cik: String(2_000_000 + index).padStart(10, "0"),
@@ -247,13 +248,29 @@ describe("holders headless from the 13F holder index", () => {
     expect(byChange.metadata?.notices).toContain("Sorted among the 30 largest. --limit lists up to 200; fn 13F PBR lists all 567.");
   });
 
-  test("a listing abroad keeps the source's list without asking the index", async () => {
+  test("a list cut short by a failed page keeps its rows and says it is incomplete", async () => {
+    const headless = createHoldersHeadless({
+      loadSnapshot: async () => ({ data: pbr, marketCap: 169.6e9, price: 26.16 }),
+      loadIndexedHolders: async () => ({ ...index(filers.slice(0, 25)), partial: true }),
+    });
+    const result = await headless.load({ ...args({ limit: 100 }), rawArgument: "PBR", argument: "PBR", symbols: ["PBR"] }, createTestHeadlessContext());
+    expect(result.rows).toHaveLength(25);
+    expect(result.complete).toBe(false);
+    expect(result.warnings).toEqual(["13F holders past the largest 25 could not be read this time."]);
+  });
+
+  test("a listing abroad keeps the source's list without asking the index, typed or saved with the ticker", async () => {
     const headless = createHoldersHeadless({
       loadSnapshot: async () => ({ data: { symbol: "SAN.PA", currency: "EUR", exchange: "PAR", holders: [{ ownerType: "institution", name: "Fund", shares: 1 }] } }),
       loadIndexedHolders: async () => { throw new Error("asked the index for a listing abroad"); },
     });
-    const result = await headless.load({ ...args(), rawArgument: "SAN:EPA", argument: "SAN:EPA", symbols: ["SAN:EPA"] }, createTestHeadlessContext());
-    expect(result.rows.map((row) => row.name)).toEqual(["Fund"]);
+    const typed = await headless.load({ ...args(), rawArgument: "SAN:EPA", argument: "SAN:EPA", symbols: ["SAN:EPA"] }, createTestHeadlessContext());
+    expect(typed.rows.map((row) => row.name)).toEqual(["Fund"]);
+    const saved = await headless.load(
+      { ...args(), rawArgument: "SAN", argument: "SAN", symbols: ["SAN"] },
+      createTestHeadlessContext({ resolveInstrument: async (symbol) => ({ symbol, exchange: "EPA" }) }),
+    );
+    expect(saved.rows.map((row) => row.name)).toEqual(["Fund"]);
   });
 });
 

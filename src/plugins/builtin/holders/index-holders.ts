@@ -1,6 +1,7 @@
 import { apiClient } from "../../../api-client";
 import type { HolderData, HolderRecord } from "../../../types/financials";
 import type { TickerHoldings } from "../thirteenf/signals";
+import { logFailure } from "../../../utils/log-failure";
 import { nonUsHolderCaveat } from "./report-header";
 
 /**
@@ -33,6 +34,8 @@ export interface IndexedHolderList {
   holderCount: number;
   hasMore: boolean;
   nextOffset: number;
+  /** A later page failed: the rows are the ones loaded before it, short of the limit asked. */
+  partial?: boolean;
 }
 
 const usTicker = /^[A-Z0-9]{1,10}(\.[A-Z]{1,2})?$/;
@@ -93,6 +96,14 @@ export function indexedHolderPage(holdings: TickerHoldings): IndexedHolderList {
   };
 }
 
+/** Rows the service gives a page, as `fn 13F` asks for them. */
+const INDEX_PAGE_ROWS = 25;
+/**
+ * Pages one list reads at most: twice what the most rows take, for pages
+ * whose options and exits leave fewer holders, and never without end.
+ */
+const INDEX_PAGES_MAX = Math.ceil(HOLDER_ROWS_MAX / INDEX_PAGE_ROWS) * 2;
+
 /** The client the pages come through; headless reports pass their own. */
 export type IndexedHolderClient = Pick<typeof apiClient, "getCloudSec13F">;
 
@@ -104,10 +115,12 @@ export async function loadIndexedHolderPage(
   client: IndexedHolderClient = apiClient,
 ): Promise<IndexedHolderList> {
   signal?.throwIfAborted();
-  const holdings = await client.getCloudSec13F("ticker-holdings", { tickers: ticker, offset, limit: 25 }, { signal }) as TickerHoldings;
+  const holdings = await client.getCloudSec13F("ticker-holdings", { tickers: ticker, offset, limit: INDEX_PAGE_ROWS }, { signal }) as TickerHoldings;
   signal?.throwIfAborted();
   if (!Array.isArray(holdings?.rows) || typeof holdings.period !== "string") throw new Error(`13F holders of ${ticker} are unreadable`);
-  return indexedHolderPage(holdings);
+  const page = indexedHolderPage(holdings);
+  // A page that does not move the offset on ends the list, or it would be asked for again and again.
+  return page.nextOffset > offset ? page : { ...page, hasMore: false };
 }
 
 /** Later pages after the first; a page of another period starts the list over. */
@@ -117,7 +130,11 @@ function appendIndexedHolders(current: IndexedHolderList, page: IndexedHolderLis
   return { ...page, rows: [...current.rows, ...page.rows.filter((row) => !seen.has(row.cik))] };
 }
 
-/** The largest `limit` holders, paging as far as that takes. */
+/**
+ * The largest `limit` holders, paging as far as that takes, never more than
+ * `INDEX_PAGES_MAX` pages. A later page that fails keeps the holders already
+ * loaded, marked partial; only a first page that fails leaves the source's list.
+ */
 export async function loadIndexedHolders(
   ticker: string,
   limit: number,
@@ -125,10 +142,25 @@ export async function loadIndexedHolders(
   client: IndexedHolderClient = apiClient,
 ): Promise<IndexedHolderList> {
   let list = await loadIndexedHolderPage(ticker, 0, signal, client);
-  while (list.hasMore && list.rows.length < limit) {
-    list = appendIndexedHolders(list, await loadIndexedHolderPage(ticker, list.nextOffset, signal, client));
+  for (let pages = 1; list.hasMore && list.rows.length < limit && pages < INDEX_PAGES_MAX; pages += 1) {
+    const offset = list.nextOffset;
+    let page: IndexedHolderList;
+    try {
+      page = await loadIndexedHolderPage(ticker, offset, signal, client);
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      logFailure("holders.index", "Read a later page of the 13F holder index failed", null)(error);
+      return { ...list, partial: true };
+    }
+    list = appendIndexedHolders(list, page);
   }
   return list;
+}
+
+/** What a list cut short by a failed page says, when it holds fewer rows than were asked for. */
+export function indexedHoldersPartialNote(list: IndexedHolderList | null | undefined, limit: number): string | null {
+  if (!list?.partial || list.rows.length >= limit) return null;
+  return `13F holders past the largest ${list.rows.length} could not be read this time.`;
 }
 
 /** How the source's own rows value and divide a position, which the index's rows take on. */
@@ -195,7 +227,8 @@ function indexedHolderRecords(
     const percentHeld = same?.percentHeld ?? (units.classShares != null ? row.shares / units.classShares : undefined);
     return {
       ownerType: "institution",
-      name: row.name,
+      // The source's spelling of the same holder, not the filer's capitals.
+      name: same?.name ?? row.name,
       cik: row.cik,
       reportDate: period,
       shares: row.shares,

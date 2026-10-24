@@ -10,7 +10,7 @@ import type { HolderData } from "../../../types/financials";
 import { SEC_FILINGS } from "../shared/report-freshness";
 import type { BeneficialOwnersPayload } from "../../../api-client/beneficial-owners";
 import { fetchBeneficialOwners, type BeneficialOwnersRequest } from "./beneficial-client";
-import { resolveHeadlessIssuerListing } from "../shared/headless-market-data";
+import { resolveHeadlessInstrument, resolveHeadlessIssuerListing } from "../shared/headless-market-data";
 import type { BeneficialColumnId } from "./beneficial-model";
 import {
   beneficialCoverageNotices,
@@ -35,6 +35,7 @@ import {
 import { REPORT_ROWS } from "../shared/headless-options";
 import {
   HOLDER_ROWS_MAX,
+  indexedHoldersPartialNote,
   indexedHolderUnits,
   indexHolderTicker,
   loadIndexedHolders,
@@ -217,8 +218,10 @@ export function createHoldersHeadless(
         };
       }
       const limit = Number(args.options.limit);
-      // Asked beside the source's list; a listing abroad, or an index that cannot be read, keeps that list.
-      const indexTicker = indexHolderTicker(symbol);
+      // Asked beside the source's list; a listing abroad (named in the key or saved with the ticker),
+      // or an index that cannot be read, keeps that list.
+      const exchange = (await resolveHeadlessInstrument(ctx, symbol).catch(() => null))?.exchange ?? "";
+      const indexTicker = indexHolderTicker(symbol, exchange);
       const [snapshot, index] = await Promise.all([
         dependencies.loadSnapshot(symbol, args, ctx),
         indexTicker
@@ -226,7 +229,8 @@ export function createHoldersHeadless(
           : null,
       ]);
       const { marketCap } = snapshot;
-      const indexed = !!index?.rows.length && indexHolderTicker(symbol, "", snapshot.data) != null;
+      const indexed = !!index?.rows.length && indexHolderTicker(symbol, exchange, snapshot.data) != null;
+      const partialNote = indexed ? indexedHoldersPartialNote(index, limit) : null;
       // Pages hold 25; another order ranks the largest `limit`, not whatever the last page held past them.
       const data = indexed
         ? withIndexedHolders(snapshot.data, indexTicker!, { ...index!, rows: index!.rows.slice(0, limit) }, indexedHolderUnits(snapshot.data, snapshot.price))
@@ -248,6 +252,7 @@ export function createHoldersHeadless(
         // A change column that is empty on every row says nothing; the notices explain it once.
         columns: holderReportColumns(rows, valueCurrency),
         rows,
+        ...(partialNote ? { complete: false, warnings: [partialNote] } : {}),
         metadata: {
           symbol: data.symbol || symbol,
           name: data.name ?? null,

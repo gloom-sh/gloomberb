@@ -140,7 +140,7 @@ test("holders on a US line lists the 13F index's filers past the source's few, a
       })),
     });
   });
-  // The source's own row for the largest filer: shares at $25.62, a stake of the common class.
+  // The source's own row for the largest filer, in its own spelling: shares at $25.62, a stake of the common class.
   const cli = createTestCliContext({
     dataProvider: {
       getHolders: async () => ({
@@ -155,9 +155,18 @@ test("holders on a US line lists the 13F index's filers past the source's few, a
   const { result } = cli.printed[0]!;
   const rows = result.data as Array<Record<string, unknown>>;
   expect(rows).toHaveLength(30);
-  expect(rows[0]).toMatchObject({ name: "Filer 1", value: 2_562_000_000, percentHeld: 2.69, changeShares: 500_000, changePercent: 0.5025 });
+  expect(rows[0]).toMatchObject({ name: "Filer One LLC", value: 2_562_000_000, percentHeld: 2.69, changeShares: 500_000, changePercent: 0.5025 });
   expect(rows[29]).toMatchObject({ name: "Filer 30", shares: 71_000_000, value: 1_819_020_000, changeShares: 500_000 });
   expect(result.metadata).toMatchObject({ shown: 30, total: 567, truncated: true });
+
+  // --tail counts back from the rows loaded, and says it is not the smallest filers.
+  offsets.length = 0;
+  const tail = createTestCliContext({ dataProvider: { getHolders: async () => ({ symbol: "PBR", currency: "USD", exchange: "NYSE", holders: [] }) } }, { tail: 3 });
+  await holders.execute(["PBR"], tail.context);
+  expect(offsets).toEqual(["0"]);
+  const tailed = tail.printed[0]!.result;
+  expect(tailed.metadata).toMatchObject({ shown: 3, reported: 25, total: 567 });
+  expect(tailed.warnings).toEqual(["--tail 3 is the last 3 of the largest 25 loaded, not the smallest of all 567 holders."]);
 });
 
 test("insider leads with INS's Form 4 summary, not a 13F list that names no insider, and dates the report by the newest filing", async () => {
