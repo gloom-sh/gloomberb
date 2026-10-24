@@ -32,7 +32,19 @@ export const brokerTradingModule: PluginModule = {
   }],
   setup(ctx) {
     brokerOrderFeed.setNotifier((notification) => { ctx.notify(notification); });
-    brokerOrderFeed.setPositionSync((instanceId) => ctx.syncBrokerInstance(instanceId));
+    brokerOrderFeed.setPositionSync(async (instanceId) => {
+      try {
+        await ctx.syncBrokerInstance(instanceId);
+      } catch (error) {
+        ctx.notify({
+          title: "Position sync failed",
+          body: "The fill was received, but positions could not be synced. Use Sync in Brokers to retry.",
+          type: "error",
+          action: { label: "Brokers", onClick: () => ctx.showPane("brokers") },
+        });
+        throw error;
+      }
+    });
     let held = new Map<string, { key: string; release(): void }>();
     // A broker registered by a later plugin, or a profile added or edited, is held from then on.
     const holdProfiles = () => {

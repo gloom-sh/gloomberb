@@ -594,6 +594,7 @@ export function withFocusedPane(
     config: syncedConfig,
     paneState: nextPaneState,
     brokerAccounts: reconcileBrokerAccounts(syncedConfig, state.brokerAccounts),
+    brokerSyncErrors: Object.fromEntries(Object.entries(state.brokerSyncErrors).filter(([id]) => syncedConfig.brokerInstances.some((instance) => instance.id === id))),
     focusedPaneId,
     previousFocusedPaneId: state.focusedPaneId && state.focusedPaneId !== focusedPaneId
       ? state.focusedPaneId
@@ -605,6 +606,7 @@ export function hydrateDesktopSnapshot(state: AppState, snapshot: DesktopSharedS
   return withFocusedPane({
     ...state,
     paneState: snapshot.paneState,
+    brokerSyncErrors: snapshot.brokerSyncErrors ?? {},
     focusedPaneId: snapshot.focusedPaneId,
     statusBarVisible: snapshot.statusBarVisible,
   }, snapshot.config);

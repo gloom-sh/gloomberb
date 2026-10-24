@@ -50,6 +50,7 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
   const config = usePaneAppConfig();
   const paneId = usePaneInstanceId();
   const brokerAccounts = useAppSelector((state) => state.brokerAccounts);
+  const brokerSyncErrors = useAppSelector((state) => state.brokerSyncErrors);
   const { getBrokerAdapter, getBrokerLogo } = usePluginBrokerActions();
   const desktop = useUiCapabilities().nativePaneChrome === true;
   // The profile is remembered by id so a reload lands on the same row.
@@ -82,8 +83,8 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
   const signedInBrokers = useSyncExternalStore(subscribeSignedInBrokers, getSignedInBrokers, getSignedInBrokers);
   const { ends: signInEnds, reload: reloadSignInEnds } = useSignInEnds(config.brokerInstances);
   const rows = useMemo(
-    () => buildBrokerProfileRows(config, adapters, brokerAccounts, signInEnds, getBrokerLogo),
-    [adapters, brokerAccounts, config, getBrokerLogo, language, signInEnds, signedInBrokers, statusVersion],
+    () => buildBrokerProfileRows(config, adapters, brokerAccounts, signInEnds, getBrokerLogo, brokerSyncErrors),
+    [adapters, brokerAccounts, brokerSyncErrors, config, getBrokerLogo, language, signInEnds, signedInBrokers, statusVersion],
   );
   const selectedIndex = Math.max(0, rows.findIndex((row) => row.id === selectedId));
   const selectedRow = rows[selectedIndex] ?? null;

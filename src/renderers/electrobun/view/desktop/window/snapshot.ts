@@ -32,6 +32,7 @@ export function detachedSnapshotKey(snapshot: DesktopSharedStateSnapshot, paneId
     portfolios: snapshot.config.portfolios,
     watchlists: snapshot.config.watchlists,
     brokerInstances: snapshot.config.brokerInstances,
+    brokerSyncErrors: snapshot.brokerSyncErrors ?? {},
     pluginConfig: snapshot.config.pluginConfig,
     disabledPlugins: snapshot.config.disabledPlugins,
     chartPreferences: snapshot.config.chartPreferences,

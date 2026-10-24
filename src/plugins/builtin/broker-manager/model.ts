@@ -125,6 +125,7 @@ export function buildBrokerProfileRows(
   brokerAccounts: Record<string, BrokerAccount[]>,
   signInEnds: SignInEnds = new Map(),
   pluginLogo: BrokerPluginLogo = () => null,
+  syncErrors: Readonly<Record<string, string>> = {},
 ): BrokerProfileRow[] {
   return config.brokerInstances.map((instance) => {
     const adapter = adapters.get(instance.brokerType) ?? null;
@@ -132,7 +133,11 @@ export function buildBrokerProfileRows(
     // An adapter that fronts several brokers names the broker and how it connects.
     const described = adapter?.describeInstance?.(instance) ?? null;
     const mode = described?.method ?? resolveMode(adapter, instance, status);
-    const state = resolveState(instance, adapter, mode, status);
+    const connection = resolveState(instance, adapter, mode, status);
+    const syncError = syncErrors[instance.id];
+    const state = syncError && !["disabled", "unavailable", "sign-in"].includes(connection.state)
+      ? { ...connection, state: "error" as const, label: t("Sync failed"), message: t(syncError) }
+      : connection;
     const accounts = brokerAccounts[instance.id] ?? [];
     const portfolioLastSyncedAt = Math.max(
       0,

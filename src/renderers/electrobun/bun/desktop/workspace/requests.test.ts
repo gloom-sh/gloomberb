@@ -78,6 +78,19 @@ function withCursor(snapshot: DesktopSharedStateSnapshot, cursorSymbol: string, 
 }
 
 describe("desktop state fan-out", () => {
+  test("position sync failures and recovery reach a detached pane without a layout or config change", async () => {
+    const { workspace, open, openPopout, syncMain } = setup();
+    const main = open("main");
+    const popout = openPopout("portfolio-list:main");
+    const snapshot = workspace.getSnapshot();
+    await syncMain(main, { ...snapshot, mainStateRevision: 1, brokerSyncErrors: { demo: "Positions could not be synced. Use Sync to retry." } });
+    await syncMain(main, { ...snapshot, mainStateRevision: 2, brokerSyncErrors: {} });
+    expect(popout.taken.map((state) => state.brokerSyncErrors)).toEqual([
+      { demo: "Positions could not be synced. Use Sync to retry." }, {},
+    ]);
+    expect(main.received).toEqual([]);
+  });
+
   test("the main window's own sync is not sent back to it; other windows get each change in order", async () => {
     const { workspace, stateBroadcaster, open, syncMain } = setup();
     const main = open("main");

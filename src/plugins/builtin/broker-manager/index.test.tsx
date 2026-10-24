@@ -120,6 +120,7 @@ function Harness({
     syncBrokerInstance: async (instanceId) => {
       calls.push(`sync:${instanceId}`);
       if (syncFails) throw new Error(syncFails);
+      dispatch({ type: "SET_BROKER_SYNC_ERROR", instanceId, error: null });
     },
     updateBrokerInstance: async (instanceId, config, options) => {
       // Turning a profile back on changes nothing else.
@@ -768,4 +769,19 @@ describe("BrokersPane", () => {
     await pressEscape();
     expect(frame()).not.toContain("Save or cancel the edit first.");
   });
+});
+
+
+test("a background sync failure reaches the Brokers row and existing mouse Sync retries it", async () => {
+  const app: { state?: AppState; dispatch?: Dispatch<AppAction> } = {};
+  const calls: string[] = [];
+  await tui.render(<Harness calls={calls} instance={createGatewayInstance()} app={app} />, { width: 92, height: 25 });
+  await act(async () => {
+    app.dispatch!({ type: "SET_BROKER_SYNC_ERROR", instanceId: "ibkr-paper", error: "Positions could not be synced. Use Sync to retry." });
+  });
+  await tui.waitForFrameToContain("Sync failed");
+  expect(frameLine("IBKR Paper")).toContain("Sync failed");
+  await tui.clickFrameText("[s]ync");
+  await tui.waitForFrameToExclude("Sync failed");
+  expect(calls).toEqual(["sync:ibkr-paper"]);
 });
