@@ -2242,7 +2242,8 @@ The return rows and tracking error are measured against SPY (`60D benchmark retu
 
 - For a portfolio made with `portfolio import --13f`, the pane's **Risk window** setting or `--since filed` measures them from the 13F's filing date instead (a portfolio without one keeps the trailing 60 and says so). The basket is then the 13F's own weights bought at the filing-date close and held, and the report's first line says so.
 - `--weights current` (the pane's **Since-filing weights** setting) holds today's weights fixed over the same sessions instead.
-- Pane settings give independent index-percent, 10Y-basis-point and VIX-point stress shifts.
+- Pane settings give independent index-percent, 10Y-basis-point and VIX-point stress shifts, each a share of the basket.
+- `--fx-shift TRY -20` (the lira 20% weaker against USD) and `--asset-shift BTC-USD -30` reprice every holding and the cash at once, through each line's currency and price; the Stress view lists each line they move and the book total, cash included. Several go in one flag, separated by commas (`--fx-shift TRY -20, EUR 5`). The pane's FX shift and Asset shift settings take the same text.
 
 ### Performance and attribution evidence
 
@@ -2252,15 +2253,16 @@ Performance, Brinson attribution and imported option Greeks use the versioned lo
 gloom fn PORT main --json
 gloom fn MARS main --view factors --json
 gloom fn PORT main --view stress --equity-shift -15 --rate-shift 100 --vol-shift 10
+gloom fn MARS main --view stress --fx-shift TRY -20 --asset-shift BTC-USD -30
 gloom fn PORT berkshire-hathaway-inc-13f --view risk --since filed
 gloom shot PORT main --width 1100 --height 620 --output portfolio-risk.png
 ```
 
 Risk, Factors, Correlation and Stress model the equity holdings with daily history, up to the 150 largest by value. A listing quoted in another currency is converted to USD at daily FX closes. In a portfolio whose currency is not USD, money returns, values and tail losses are in that currency (`Returns in TRY at daily USD/TRY closes.`).
 
-Holdings left out (foreign listings without daily FX closes, shorts, options, crypto, holdings without a quote or history) are listed under `!` with the reason (`fn PORT` prints the same under Notes), and the footer says how much of the account the estimates cover.
+Holdings left out (foreign listings without daily FX closes, shorts, options, crypto, holdings without a quote or history) and the cash, one row per currency, are listed under `!` with the reason (`fn PORT` prints the same under Notes), and the footer says what the basket is worth and how much of the book it covers, cash included (`basket 48,286 USD = 72% of book; left out: TRY cash 18%, BTC-USD 10%`). VaR and expected shortfall name their method in their evidence and the Risk view's footer (`historical, 1-day, 95%, 60 daily returns`).
 
-Below half of the account's market value the views say so instead of estimating. See [research data](research-data.md#portfolio-risk-depth-port-mars) for the method.
+Below half of the holdings' value, cash aside, the views say so instead of estimating. See [research data](research-data.md#portfolio-risk-depth-port-mars) for the method.
 
 `fn PORT` prints every view, or the one `--view` names. A stress shift given with another view, or `--since` with a view other than risk, is named as not applying. `--evidence` accepts the same JSON text as the clipboard import. A report includes raw values, source dates, percentile coverage, holdings, factor regressions and warnings.
 

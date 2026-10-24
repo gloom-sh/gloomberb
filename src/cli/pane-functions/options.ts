@@ -106,7 +106,17 @@ export function parseArgumentsOption(value: string): Record<string, string> {
   return pairs;
 }
 
-export function parsePaneFunctionArgs(args: string[], globalOptions: { limit?: number; tail?: number } = {}): ParsedPaneFunctionArgs {
+/** How many words one value of an option takes, by its key as parsed (`fxShift`); one when it is not a pair. */
+export type OptionValueWords = (key: string) => number;
+
+/** Words in the last value of a list (`TRY -20, EUR 5` ends with two). */
+const lastValueWords = (value: string) => value.slice(value.lastIndexOf(",") + 1).trim().split(/\s+/).filter(Boolean).length;
+
+export function parsePaneFunctionArgs(
+  args: string[],
+  globalOptions: { limit?: number; tail?: number } = {},
+  valueWords?: OptionValueWords,
+): ParsedPaneFunctionArgs {
   const positionals: string[] = [];
   const options: Record<string, string | true> = {};
   let outputPath: string | null = null;
@@ -153,8 +163,18 @@ export function parsePaneFunctionArgs(args: string[], globalOptions: { limit?: n
     }
     const next = args[index + 1];
     const nextValue = inlineValue === undefined && next && !next.startsWith("--") ? args[++index] : true;
-    const value: string | true = inlineValue ?? nextValue ?? true;
+    let value: string | true = inlineValue ?? nextValue ?? true;
     const normalizedKey = normalizeOptionKey(key);
+    // A value that is a pair (`--fx-shift TRY -20`) takes the words after it, and a list of them the words after a comma.
+    const words = value === true ? 1 : valueWords?.(normalizedKey) ?? 1;
+    if (words > 1 && value !== true) {
+      while (index + 1 < args.length && !args[index + 1]!.startsWith("--")
+        && (lastValueWords(value) < words || value.trimEnd().endsWith(","))) {
+        value = `${value} ${args[++index]!}`;
+      }
+      const earlier = options[normalizedKey];
+      if (typeof earlier === "string") value = `${earlier}, ${value}`;
+    }
     if (normalizedKey === "requireBotSafe" || normalizedKey === "botSafe") {
       requireBotSafe = value === true || String(value).toLowerCase() === "true";
     } else if (normalizedKey === "output" || normalizedKey === "out" || normalizedKey === "o") {

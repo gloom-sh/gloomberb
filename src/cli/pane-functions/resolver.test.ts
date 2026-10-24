@@ -17,7 +17,8 @@ import type { MarketContext } from "../types";
 import { buildPaneCatalogEntries, type PaneFunctionCatalog } from "./catalog";
 import { createPaneCatalog } from "./discovery";
 import { parsePaneFunctionArgs } from "./options";
-import { applyListingArgument, resolvePaneFunction, UnknownPaneFunctionError } from "./resolver";
+import { applyListingArgument, parsePaneFunctionArgsFor, resolvePaneFunction, UnknownPaneFunctionError } from "./resolver";
+import { portfolioRiskHeadless } from "../../plugins/builtin/analytics/risk-headless";
 
 const pane = (id: string): PaneDef => ({ id, name: id, component: () => null, defaultPosition: "right" });
 const template = (prefix: string, paneId: string, headless: HeadlessPaneDefinition): PaneTemplateDef => ({
@@ -30,11 +31,12 @@ const intraday: HeadlessPaneDefinition<"series"> = {
   shape: "series", ...paneSchemas["graph-intraday-price-pane"], load: () => ({ series: [] }),
 };
 const registry: PaneFunctionCatalog = {
-  panes: new Map([["world-indices", pane("world-indices")], ["earnings-calls", pane("earnings-calls")], ["chart", pane("chart")]]),
+  panes: new Map([["world-indices", pane("world-indices")], ["earnings-calls", pane("earnings-calls")], ["chart", pane("chart")], ["analytics", pane("analytics")]]),
   paneTemplates: new Map([
     ["world-indices-pane", template("WEI", "world-indices", indices)],
     ["earnings-calls-pane", template("CALLS", "earnings-calls", earningsCallsHeadless)],
     ["chart-pane", template("GIP", "chart", intraday)],
+    ["analytics-pane", template("MARS", "analytics", portfolioRiskHeadless)],
   ]),
   destroy: () => {},
 };
@@ -54,6 +56,25 @@ test("--section picks a report table, unless the function has a section option o
   await expect(fn(["CALLS", "NVDA", "--section", "bogus"])).rejects.toThrow("Invalid --section value");
   // Screenshots have no tables to pick from.
   await expect(fn(["WEI", "--section", "Europe"], false)).rejects.toThrow("WEI does not support --section");
+});
+
+test("a pair option reads the words after its flag, and a refused option is named as it was typed", async () => {
+  const args = ["MARS", "book", "--view", "stress", "--fx-shift", "TRY", "-20,", "EUR", "5", "--asset-shift", "BTC-USD", "-30"];
+  const parsed = parsePaneFunctionArgsFor(registry, args);
+  expect(parsed.arg).toBe("book");
+  const resolved = await resolvePaneFunction(registry, context, parsed, { strictHeadlessOptions: true });
+  expect(resolved.options).toMatchObject({ view: "stress", "fx-shift": "TRY -20, EUR 5", "asset-shift": "BTC-USD -30" });
+  // A function without pair options reads the word after the value as its argument, as before.
+  expect(parsePaneFunctionArgsFor(registry, ["WEI", "--fx-shift", "TRY", "-20"]).arg).toBe("-20");
+  // A refused flag reads as typed, not as the parser keys it (--fxShift), and the supported ones read as people type them.
+  const refused = await resolvePaneFunction(registry, context, parsePaneFunctionArgsFor(registry, ["WEI", "--fx-shift", "TRY"]), { strictHeadlessOptions: true })
+    .catch((error: Error) => error.message);
+  expect(refused).toBe("WEI does not support --fx-shift. It has no options.");
+  await expect(fn(["MARS", "book", "--fx-shfit", "TRY"])).rejects.toThrow(
+    "MARS does not support --fx-shfit. Supported options: --view, --since, --weights, --evidence, --equity-shift, --rate-shift, --vol-shift, --fx-shift, --asset-shift.",
+  );
+  await expect(resolvePaneFunction(registry, context, parsePaneFunctionArgsFor(registry, ["MARS", "--fx-shift", "USD", "10"]), { strictHeadlessOptions: true }))
+    .rejects.toThrow("--fx-shift moves a currency against USD");
 });
 
 test("an option or argument a function refuses names the function code, never its template or pane id", async () => {

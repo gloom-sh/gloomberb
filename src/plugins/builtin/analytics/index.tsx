@@ -465,6 +465,8 @@ export const portfolioAnalyticsModule: PluginModule = {
         { key: "equityShift", label: "Index shift (%)", type: "text" },
         { key: "rateShift", label: "10Y shift (bp)", type: "text" },
         { key: "volShift", label: "VIX shift (points)", type: "text" },
+        { key: "fxShift", label: "FX shift vs USD (TRY -20)", type: "text" },
+        { key: "assetShift", label: "Asset shift (GLD 10)", type: "text" },
       ] }),
       defaultPosition: "right",
       defaultMode: "floating",

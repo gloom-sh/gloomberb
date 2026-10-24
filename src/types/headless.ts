@@ -75,6 +75,14 @@ export interface HeadlessPaneOptionDef {
   replaces?: readonly string[];
   /** The value's name in the catalog's flag, `--expiration <date|unix>`; the type when absent. */
   placeholder?: string;
+  /**
+   * How many words one value is, for a value typed as a pair on the command
+   * line (`--fx-shift TRY -20`): `fn` and `shot` read the words after the flag
+   * into it. A word that ends with a comma starts another value of the list
+   * (`--fx-shift TRY -20, EUR 5`), and so does the flag typed again. One when
+   * absent.
+   */
+  valueWords?: number;
   /** The option in use as typed after the function, such as `--expiration 2028-01-21`; the catalog shows it as an example. */
   example?: string;
   /** The example runs without the function's optional argument, as an option that works only then does (`fn INS --side sell`). */

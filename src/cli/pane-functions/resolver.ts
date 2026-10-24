@@ -36,12 +36,14 @@ import {
   cleanTickerInput,
   normalizeLookupToken,
   optionSettings,
+  parsePaneFunctionArgs,
   type ParsedPaneFunctionArgs,
 } from "./options";
 import { argumentSymbols, validateSymbolCount } from "./headless";
 import {
   capabilityHasOption,
   capabilityPaneSettings,
+  findCapabilityOption,
   getHeadlessPaneDefinition,
   getPaneFunctionCapability,
   noArgumentMessage,
@@ -124,6 +126,24 @@ export function findPaneFunction(registry: PaneFunctionCatalog, target: string):
   if (!entry) return null;
   const template = "paneId" in entry && "description" in entry ? entry as PaneTemplateDef : undefined;
   return { template, pane: template ? registry.panes.get(template.paneId) : entry as PaneDef };
+}
+
+/**
+ * `fn` and `shot` arguments read with the function's own options: one whose
+ * value is a pair (MARS's `--fx-shift TRY -20`) takes the words after its
+ * flag, which a function that has none would read as its argument.
+ */
+export function parsePaneFunctionArgsFor(
+  registry: PaneFunctionCatalog,
+  args: string[],
+  globalOptions: { limit?: number; tail?: number } = {},
+): ParsedPaneFunctionArgs {
+  const parsed = parsePaneFunctionArgs(args, globalOptions);
+  const found = parsed.target ? findPaneFunction(registry, parsed.target) : null;
+  if (!found?.pane) return parsed;
+  const capability = getPaneFunctionCapability(found.template, found.pane);
+  if (!capability.options.some((option) => (option.valueWords ?? 1) > 1)) return parsed;
+  return parsePaneFunctionArgs(args, globalOptions, (key) => findCapabilityOption(capability, key)?.valueWords ?? 1);
 }
 
 /**

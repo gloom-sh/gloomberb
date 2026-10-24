@@ -46,17 +46,19 @@ import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { loadPortfolioRiskMarket } from "./risk-client";
 import { brokerPerformanceEvidence, parsePortfolioRiskEvidence } from "./risk-evidence";
 import { useBrokerPortfolioPerformance } from "./broker-performance";
+import { parseAssetShifts, parseFxShifts, riskCashLines } from "./risk-book";
+import { resolvePortfolioAccountState } from "../portfolio-list/summary";
 import {
   BASKET_VIEWS,
   buildPortfolioRisk,
+  HOLDINGS_SHARE_UNIT,
   HOLDINGS_SUMMARY_ROW_IDS,
   portfolioRiskRequests,
   portfolioRiskTickers,
-  riskCoverageHeadline,
+  riskCoverageLine,
   riskCoverageNotices,
   riskCoverageShortfall,
   riskPercentile,
-  riskAmountBase,
   riskEvidence,
   riskReturnsCurrency,
   riskValue,
@@ -98,6 +100,10 @@ const LABEL_HEADERS: Record<RiskView, string> = {
   greeks: "Metric",
 };
 const EVIDENCE_VIEWS: ReadonlySet<RiskView> = new Set(["performance", "attribution", "greeks"]);
+/** The risk view's tail rows, whose method the footer names. */
+const TAIL_ROW_IDS: ReadonlySet<string> = new Set(["var", "es"]);
+/** The views that read the basket's daily closes, and say to when; Holdings reads current marks. */
+const DAILY_CLOSE_VIEWS: ReadonlySet<RiskView> = new Set(["risk", "factors", "correlation", "stress"]);
 const ATTRIBUTION_PARTS = [
   { id: "allocation", label: "Allocation" },
   { id: "selection", label: "Selection" },
@@ -113,13 +119,17 @@ const bareValue = (row: RiskDisplayRow) => row.value == null ? "--" : row.value.
 const HOLDINGS_SUMMARY_LABELS: Record<string, string> = { top: "Largest", "top-five": "Top five" };
 /** The book concentration figures that lead the holdings view, as a summary band. */
 function holdingsSummaryItems(rows: RiskDisplayRow[]): StatItem[] {
-  return rows.map((row) => ({
-    id: row.id,
-    label: HOLDINGS_SUMMARY_LABELS[row.id] ?? row.label,
-    value: row.value == null ? "--" : row.unit === "% value" ? `${row.value.toFixed(2)}%` : row.value.toFixed(2),
-    // The same note sits on both shares.
-    detail: row.unit === "% value" ? "of market value" : row.detail,
-  }));
+  return rows.map((row) => {
+    // A snapshot saved before the shares named their base reads "% value".
+    const share = row.unit === HOLDINGS_SHARE_UNIT || row.unit === "% value";
+    return {
+      id: row.id,
+      label: HOLDINGS_SUMMARY_LABELS[row.id] ?? row.label,
+      value: row.value == null ? "--" : share ? `${row.value.toFixed(2)}%` : row.value.toFixed(2),
+      // The same note sits on both shares: what they divide.
+      detail: share ? (row.unit === HOLDINGS_SHARE_UNIT ? "of holdings, cash aside" : "of market value") : row.detail,
+    };
+  });
 }
 /**
  * Cumulative return of the basket and of its benchmark across the window of
@@ -224,7 +234,8 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
   const instance = usePaneInstance(),
     renderer = useRendererHost();
   const portfolios = useAppSelector((state) => state.config.portfolios),
-    tickers = useAppSelector((state) => state.tickers);
+    tickers = useAppSelector((state) => state.tickers),
+    brokerAccounts = useAppSelector((state) => state.brokerAccounts);
   const focusedCollection = useAppSelector((state) =>
     getFocusedCollectionId(state),
   );
@@ -271,8 +282,33 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
   const [equity] = usePaneSettingValue("equityShift", -10),
     [rates] = usePaneSettingValue("rateShift", 100),
     [volatility] = usePaneSettingValue("volShift", 10),
+    [fxShift] = usePaneSettingValue("fxShift", ""),
+    [assetShift] = usePaneSettingValue("assetShift", ""),
     [since] = usePaneSettingValue("riskSince", "trailing"),
     [weights] = usePaneSettingValue("riskWeights", "13f");
+  // Currency and price shocks as the settings give them; one that does not read is named in the footer, not applied.
+  const shocks = useMemo(() => {
+    const errors: string[] = [];
+    function read<T>(text: unknown, parse: (text: string, flag: string) => T[], label: string): T[] {
+      if (!String(text ?? "").trim()) return [];
+      try {
+        return parse(String(text), label);
+      } catch (error) {
+        errors.push(error instanceof Error ? error.message : `${label} unreadable`);
+        return [];
+      }
+    }
+    return { fx: read(fxShift, parseFxShifts, "FX shift"), assets: read(assetShift, parseAssetShifts, "Asset shift"), errors };
+  }, [fxShift, assetShift]);
+  // The cash beside the holdings: the broker account's last saved balances by currency, else the portfolio's own.
+  const cash = useMemo(() => {
+    if (!portfolio) return [];
+    const account = resolvePortfolioAccountState(portfolio, { config, brokerAccounts }, { status: null, accounts: [] })?.account;
+    return riskCashLines(portfolio, account);
+  }, [brokerAccounts, config, portfolio]);
+  // The currencies the load prices, kept by value so a resynced account with the same ones reloads nothing.
+  const cashKey = cash.map((line) => line.currency).join(",");
+  const cashCurrencies = useMemo(() => (cashKey ? cashKey.split(",") : []), [cashKey]);
   const riskWindow = useMemo(
     () => (since === "filed" ? { since: "filed" as const, weights: weights === "current" ? "current" as const : "13f" as const } : {}),
     [since, weights],
@@ -302,12 +338,12 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
   const loader = useCallback(
     async (force: boolean) => {
       const [market, brokerOptions] = await Promise.all([
-        loadPortfolioRiskMarket(requests, force, portfolio!.currency),
+        loadPortfolioRiskMarket(requests, force, portfolio!.currency, cashCurrencies),
         loadPortfolioOptionBook(localTickers, portfolio!),
       ]);
       return { ...market, brokerOptions };
     },
-    [requests, localTickers, portfolio, session.requestKey],
+    [requests, localTickers, portfolio, cashCurrencies, session.requestKey],
   );
   const resource = useAsyncResource(!frozen && portfolio ? loader : null, {
     clearOnError: isAccessDenied,
@@ -335,14 +371,17 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
             equity: Number(equity),
             rates: Number(rates),
             volatility: Number(volatility),
+            fx: shocks.fx,
+            assets: shocks.assets,
           },
           riskWindow,
+          cash,
         ),
         error: null,
       };
     } catch (error) {
       return {
-        model: buildPortfolioRisk(portfolio, localTickers, market, null, undefined, riskWindow),
+        model: buildPortfolioRisk(portfolio, localTickers, market, null, undefined, riskWindow, cash),
         error: error instanceof Error ? error.message : "Evidence invalid",
       };
     }
@@ -356,7 +395,9 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
     equity,
     rates,
     volatility,
+    shocks,
     riskWindow,
+    cash,
   ]);
   const model = derived.model;
   const marketLoading = resource.loading && !resource.data;
@@ -401,6 +442,8 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
     rows.length > 1 && rows.every((row) => row.detail === rows[0]!.detail)
       ? rows[0]!.detail
       : null;
+  // The risk rows read their window in their labels, so the footer names how the tail rows are estimated instead of a column.
+  const footerEvidence = (view === "risk" ? rows.find((row) => TAIL_ROW_IDS.has(row.id))?.detail : null) ?? sharedEvidence;
   const importEvidence = useCallback(async () => {
     try {
       const text = await renderer.readText(),
@@ -461,30 +504,29 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
     ...riskCoverageNotices(model?.coverage),
     ...(model?.notes ?? []),
     ...(model?.warnings ?? []),
+    ...shocks.errors,
     ...(derived.error ? [derived.error] : []),
     ...(resource.error ? [resource.error] : []),
   ];
-  // What the basket views leave out, unless the body already says why they show nothing.
-  const coverageText = model && BASKET_VIEWS.has(view) && !basketBody ? riskCoverageHeadline(model.coverage) : null;
+  // What the basket views cover of the book and leave out, unless the body already says why they show nothing.
+  const coverageText = model && BASKET_VIEWS.has(view) && !basketBody ? riskCoverageLine(model.coverage) : null;
   const asOfDate = model?.rows[view].find((row) => row.asOf)?.asOf?.slice(0, 10) ?? null;
   // The views estimated from returns name the currency a non-USD account's returns were converted into.
   const returnsCurrency = BASKET_VIEWS.has(view) && view !== "holdings" ? riskReturnsCurrency(model) : null;
-  const amountBase = rows.map(riskAmountBase).find(Boolean);
   // Dated evidence only when a row has a date; a missing date is not a claim about history.
   const asOfText = !model
     ? null
     : [
         ...(basketBody ? [] : [
-          ...(asOfDate && sharedEvidence ? [sharedEvidence] : []),
-          // The value the tail losses in money are taken on names the currency too.
-          ...(amountBase
-            ? [amountBase, ...(returnsCurrency ? [returnsCurrency] : [])]
-            : [returnsCurrency ?? model.portfolio.currency]),
-          ...(asOfDate ? [asOfDate] : []),
+          ...(coverageText ? [coverageText] : []),
+          ...(asOfDate && footerEvidence ? [footerEvidence] : []),
+          // The coverage names the currency of its basket value; a non-USD account's returns say what they converted into.
+          ...(returnsCurrency ? [returnsCurrency] : coverageText ? [] : [model.portfolio.currency]),
           ...(EVIDENCE_VIEWS.has(view) && model.evidence ? [model.evidence.source] : []),
         ]),
-        ...(frozen ? ["snapshot"] : []),
       ].join(" · ") || null;
+  // What the figures are read from and to when: the basket's daily closes, or the marks and evidence of that day.
+  const sourceText = basketBody || !asOfDate ? null : DAILY_CLOSE_VIEWS.has(view) ? `daily closes to ${asOfDate}` : `as of ${asOfDate}`;
   usePaneNoticeFooter({
     registrationId: "portfolio-risk-notices",
     notices,
@@ -505,12 +547,13 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
               },
             ]
           : []),
-        // One segment, coverage first: a narrow footer cuts the date before what the numbers cover.
-        ...(coverageText || asOfText
-          ? [{
-              id: "asof",
-              parts: [{ text: [coverageText, asOfText].filter(Boolean).join(" · "), tone: "muted" as const }],
-            }]
+        // Coverage first: a narrow footer cuts the method and the date before what the numbers cover.
+        ...(asOfText
+          ? [{ id: "asof", parts: [{ text: asOfText, tone: "muted" as const }] }]
+          : []),
+        // The source and its date, which a capture's own dated status line stands in for.
+        ...(sourceText
+          ? [{ id: "source", asOf: true, parts: [{ text: sourceText, tone: "muted" as const }] }]
           : []),
         ...(actionStatus
           ? [
@@ -523,7 +566,7 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
       ],
       hints,
     }),
-    [resource.loading, coverageText, asOfText, actionStatus, hints],
+    [resource.loading, asOfText, sourceText, actionStatus, hints],
   );
   useShortcut(
     (event) => {
@@ -611,7 +654,7 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
         ? []
         : [{ id: "asOf", label: "As of", width: 11, align: "left" as const }]),
       // Attribution's evidence is the three effects, now columns of their own.
-      ...(width >= 95 && !sharedEvidence && !attributionParts
+      ...(width >= 95 && !footerEvidence && !attributionParts
         ? [
             {
               id: "detail",
@@ -623,7 +666,7 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
           ]
         : []),
     ],
-    [width, view, valueHeader, sharedUnit, attributionParts, sharedEvidence, showPercentile, sharedDate, rows],
+    [width, view, valueHeader, sharedUnit, attributionParts, footerEvidence, showPercentile, sharedDate, rows],
   );
   const selectView = (value: string) => {
     setView(value);

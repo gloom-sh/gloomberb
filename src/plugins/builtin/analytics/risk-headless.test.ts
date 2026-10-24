@@ -86,43 +86,47 @@ test("the report and its compact form state what the basket covers and why each 
   setSystemTime(now);
   try {
     const tickers = brokerFixtureTickers();
+    // The account's cash is in lira, by the broker's own balances: 1,000,000 TRY at 0.0202 is $20,200.
+    const account = { accountId: "U1", name: "Broker account", cashBalances: [{ currency: "TRY", quantity: 1_000_000 }] };
     const context = {
       config: { ...createDefaultConfig("/unused/risk-headless"), portfolios: [BROKER_PORTFOLIO] },
       signal: new AbortController().signal,
       apiClient: brokerRiskClient(now),
-      resolvePortfolio: async () => ({ portfolio: BROKER_PORTFOLIO, tickers }),
+      resolvePortfolio: async () => ({ portfolio: BROKER_PORTFOLIO, tickers, account }),
     } as unknown as HeadlessPaneContext;
     const args = { rawArgument: BROKER_PORTFOLIO.id, argument: BROKER_PORTFOLIO.id, symbols: [], options: { view: "risk" } };
     const full = await portfolioRiskHeadless.load(args, context);
     expect(full.complete).toBe(false);
-    expect(full.metadata?.coverage).toMatchObject({ holdings: 94, covered: 85, estimated: true, shareIsUpperBound: false });
+    expect(full.metadata?.coverage).toMatchObject({ holdings: 94, covered: 85, estimated: true, shareIsUpperBound: false, marketValue: 488_760, cashValue: 20_200 });
     // What the estimate leaves out is a note; the report itself did not fail.
     expect(full.errors).toEqual([]);
-    expect(full.notes).toContain("TWD1 (4.0% of market value) is excluded from the risk estimate: foreign holdings: daily FX closes unavailable.");
+    expect(full.notes).toContain("TWD1 (3.8% of the book) is excluded from the risk estimate: foreign holdings: daily FX closes unavailable.");
+    expect(full.notes?.[0]).toBe("TRY cash (4.1% of the book) is excluded from the risk estimate: cash is outside the equity basket; its USD value moves with TRY.");
     // Every risk row is a number, not a dash.
     expect(full.sections.find((section) => section.title === "risk")!.rows!.every((row) => row.value !== "--")).toBe(true);
-    // The tail losses in money say what the basket they are taken on leaves out; the other rows do not.
+    // The tail losses in money name their method and what the basket they are taken on is of the book; the other rows do not.
     const riskRows = full.sections.find((section) => section.title === "risk")!.rows!;
-    expect(riskRows.filter((row) => String(row.detail).includes("excludes")).map((row) => [row.label, row.detail])).toEqual([
-      ["1D VaR 95% (60D)", expect.stringMatching(/; of 365,500 USD basket; excludes EUR2, TWD1 \+7 more, 22% of value$/)],
-      ["1D expected shortfall (60D)", expect.stringMatching(/; of 365,500 USD basket; excludes EUR2, TWD1 \+7 more, 22% of value$/)],
+    const line = "basket 365,500 USD = 75% of book; left out: TRY cash 4%, EUR2 4%, 8 more 17%";
+    expect(riskRows.filter((row) => String(row.detail).includes("of book")).map((row) => [row.label, row.detail])).toEqual([
+      ["1D VaR 95% (60D)", `historical, 1-day, 95%, 60 daily returns; ${line}`],
+      ["1D expected shortfall (60D)", `historical, 1-day, 95%, 60 daily returns; ${line}`],
     ]);
 
     const compact = portfolioRiskHeadless.compact!(full, args);
-    expect(compact.notes).toEqual(["Basket covers 78% of market value \u00b7 9 holdings left out; metadata.coverage lists each with its reason."]);
+    expect(compact.notes).toEqual([`B${line.slice(1)}; metadata.coverage lists each with its reason.`]);
     expect(compact.errors).toBeUndefined();
-    expect(compact.sections[0]!.rows!.find((row) => String(row.label).startsWith("1D VaR"))?.detail).toContain("; excludes EUR2, TWD1 +7 more, 22% of value");
-    const coverage = compact.metadata?.coverage as { share: number; leftOut: Array<{ symbol: string; reason: string; share: number }> };
-    expect(coverage.share).toBeCloseTo(365_500 / 468_560, 10);
-    expect(coverage.leftOut[0]).toMatchObject({ symbol: "EUR2", reason: "Foreign holdings: daily FX closes unavailable" });
-    expect(coverage.leftOut[0]!.share).toBeCloseTo(20_020 / 468_560, 10);
+    const coverage = compact.metadata?.coverage as { share: number; leftOut: Array<{ symbol: string; reason: string; share: number; cash?: true }> };
+    expect(coverage.share).toBeCloseTo(365_500 / 488_760, 10);
+    expect(coverage.leftOut[0]).toMatchObject({ symbol: "TRY cash", cash: true });
+    expect(coverage.leftOut[1]).toMatchObject({ symbol: "EUR2", reason: "Foreign holdings: daily FX closes unavailable" });
+    expect(coverage.leftOut[1]!.share).toBeCloseTo(20_020 / 488_760, 10);
     expect(coverage.leftOut.at(-1)).toMatchObject({ symbol: "UNQ3", reason: "Daily history unavailable" });
 
     // With nothing but crypto the basket views have no estimate: a failure the report states, beside the note naming the holding.
     const crypto = brokerFixtureTickers([{ symbol: "ETH-USD", exchange: "CCC", currency: "USD", quantity: 2, price: 2_500, brokerValue: 5_000 }]);
     const cryptoOnly = await portfolioRiskHeadless.load(args, { ...context, resolvePortfolio: async () => ({ portfolio: BROKER_PORTFOLIO, tickers: crypto }) } as unknown as HeadlessPaneContext);
     expect(cryptoOnly.errors).toEqual([expect.stringContaining("Basket estimates unavailable: No holding qualifies")]);
-    expect(cryptoOnly.notes).toEqual(["ETH-USD (100.0% of market value) is excluded from the risk estimate: crypto is not covered by the equity basket."]);
+    expect(cryptoOnly.notes).toEqual(["ETH-USD (100.0% of the book) is excluded from the risk estimate: crypto is not covered by the equity basket."]);
   } finally {
     setSystemTime();
   }
