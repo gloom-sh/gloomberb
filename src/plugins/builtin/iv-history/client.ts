@@ -87,6 +87,26 @@ export interface IvScreenRow {
   latest: IvReading | null;
   skew: { date: string; put25: number; call25: number; skew: number } | null;
 }
+/** Why a name IV history covers has no rank yet, by where its history stands. */
+const IV_COVERAGE_REASONS: Partial<Record<IvCoverageStatus, string>> = {
+  queued: "IV history queued, try again in a few minutes",
+  backfilling: "IV history still loading",
+  unavailable: "no options history",
+};
+
+/**
+ * Why a screened name has no IV rank, in words for the reader: the server's
+ * note for a history too short to rank, or where its history stands. Null when
+ * there is nothing true to add, as for a name demand coverage could not take
+ * (the row carries the server's queue wording as a warning): none of its
+ * history is being collected, so no reason and no promise of one later.
+ */
+export function ivRankReason(row: IvScreenRow | undefined): string | null {
+  if (!row) return "no IV history";
+  if (row.iv30?.rankNote) return row.iv30.rankNote;
+  if (row.warnings?.length) return null;
+  return IV_COVERAGE_REASONS[row.coverageStatus ?? row.status] ?? null;
+}
 export interface IvScreenPayload { version: 1; asOf: string; rows: IvScreenRow[] }
 export interface StoredSurfacePayload {
   version: 1;

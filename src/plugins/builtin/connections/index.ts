@@ -36,6 +36,7 @@ export const connectionsModule: PluginModule = {
     personalData: "account",
     icon: "C",
     component: ConnectionsPane,
+    reportFreshness: { status: "not-a-feed", basis: "connection health" },
     defaultPosition: "right",
     defaultMode: "floating",
     defaultFloatingSize: { width: 80, height: 24 },

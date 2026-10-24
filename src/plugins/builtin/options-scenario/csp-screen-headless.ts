@@ -60,11 +60,22 @@ const EXPORT_ONLY: HeadlessPaneColumn[] = [
   { key: "spot", header: "Spot", format: priceCell },
 ];
 
-/** The ranking basis and the wide flag's limit, then the names IV history has no rank for. */
+/** `A`, `A and B`, `A, B and C`. */
+const listText = (items: readonly string[]) => items.length <= 1 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
+
+/**
+ * The ranking basis and the wide flag's limit, then the names IV history has no
+ * rank for: those with a reason say it (`No IV rank: BBB (fewer than 120
+ * sessions).`), and a bare symbol, which has none to give, is just not ranked
+ * yet (`No IV rank for DAL yet.`).
+ */
 export function cspScreenNotes(screen: Pick<CspScreen, "criteria" | "missingRanks">): string[] {
+  const reasoned = screen.missingRanks.filter((entry) => entry.includes(" "));
+  const bare = screen.missingRanks.filter((entry) => !entry.includes(" "));
   return [
     `Ranked by annualised yield at the bid. Wide is a spread over ${screen.criteria.maxSpreadPercent}% of the mid (--max-spread).`,
-    ...(screen.missingRanks.length ? [`No IV rank: ${screen.missingRanks.join(", ")}.`] : []),
+    ...(reasoned.length ? [`No IV rank: ${reasoned.join(", ")}.`] : []),
+    ...(bare.length ? [`No IV rank for ${listText(bare)} yet.`] : []),
   ];
 }
 

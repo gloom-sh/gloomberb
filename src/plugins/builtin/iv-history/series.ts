@@ -1,5 +1,6 @@
 import type { SeriesDefinition } from "../../../series/types";
 import { loadIvHistory, type IvPoint } from "./client";
+import { ivHistoryWarnings } from "./model";
 
 const TENORS: ReadonlyArray<readonly [key: "iv30" | "iv90" | "iv365", label: string]> = [
   ["iv30", "30-day"],
@@ -18,12 +19,13 @@ export const IV_SERIES: readonly SeriesDefinition[] = TENORS.map(([key, label]):
   input: "ticker",
   load: async ({ ticker, signal }) => {
     const payload = await loadIvHistory(ticker!, { ...(signal ? { signal } : {}) });
+    const warnings = ivHistoryWarnings(payload);
     return {
       points: payload.series.map((point: IvPoint) => ({
         date: point.sessionDate,
         value: point[key] == null ? null : point[key]! * 100,
       })),
-      ...(payload.warnings.length ? { warning: payload.warnings.join("; ") } : {}),
+      ...(warnings.length ? { warning: warnings.join("; ") } : {}),
     };
   },
 }));

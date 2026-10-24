@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { ambiguousNumberMessage, dottedDecimal, meantThousandsDot, numberErrorMessage, parseCurrencyAmount, parsePastedNumber, parseTypedNumber, readCurrencyAmount, readTypedNumber, thousandsDotReadings } from "./decimal-comma";
+import { ambiguousNumberMessage, dottedDecimal, meantThousandsDot, numberErrorMessage, parseCurrencyAmount, parsePastedNumber, parseTypedNumber, readConvertedAmount, readCurrencyAmount, readTypedNumber, thousandsDotReadings, wholeNumberOptionMessage } from "./decimal-comma";
 
 test("a digits-comma-digits value reads as the dotted number, and nothing else does", () => {
   expect(dottedDecimal("4,5")).toBe("4.5");
@@ -116,4 +116,31 @@ test("an amount of a currency reads a mark before three digits as thousands unle
   expect(amount("1.234", "KWD")).toEqual({ kind: "ambiguous", thousands: 1234, decimal: 1.234 });
   expect(() => readCurrencyAmount("1,234", "Cash amount", "kwd"))
     .toThrow("Cash amount 1,234 could be 1234 (thousands) or 1.234 (decimal comma), and KWD has 3 decimals; type 1234 or 1.2340.");
+});
+
+test("an amount to convert asks about a comma and three digits in every currency, as an alert price does", () => {
+  // Cash reads 81,000 euros as thousands; a sum to convert asks, in the words an alert price is refused in.
+  expect(readCurrencyAmount("81,000", "The amount", "EUR")).toBe(81000);
+  expect(() => readConvertedAmount("81,000", "The amount", "EUR"))
+    .toThrow("The amount 81,000 could be 81000 (thousands) or 81 (decimal comma); type 81000 or 81.");
+  expect(() => readConvertedAmount("1,234", "The amount", "JPY"))
+    .toThrow("The amount 1,234 could be 1234 (thousands) or 1.234 (decimal comma); type 1234 or 1.2340.");
+  // A three-decimal currency still says why both are amounts.
+  expect(() => readConvertedAmount("1,234", "The amount", "kwd")).toThrow("and KWD has 3 decimals; type 1234 or 1.2340.");
+  // Everything else reads as cash reads it.
+  expect(["81000", "81,000.5", "1.234,5", "1234,5", "12,5", "1.234"].map((text) => readConvertedAmount(text, "The amount", "EUR")))
+    .toEqual([81000, 81000.5, 1234.5, 1234.5, 12.5, 1234]);
+  expect(readConvertedAmount("abc", "The amount", "EUR")).toBeNaN();
+});
+
+test("a decimal typed for a whole-number option is told the whole numbers beside it, never a decimal", () => {
+  expect(wholeNumberOptionMessage("--days", "days", "30,5")).toBe('--days takes whole days: 30 or 31, not "30,5".');
+  expect(wholeNumberOptionMessage("--days", "days", "30.5")).toBe('--days takes whole days: 30 or 31, not "30.5".');
+  expect(wholeNumberOptionMessage("--days", "days", 45.25)).toBe('--days takes whole days: 45 or 46, not "45.25".');
+  // Only whole numbers at or above the minimum are offered; a decimal that is whole offers itself.
+  expect(wholeNumberOptionMessage("--days", "days", "0,4")).toBe('--days takes whole days: 1, not "0,4".');
+  expect(wholeNumberOptionMessage("--days", "days", "30,0")).toBe('--days takes whole days: 30, not "30,0".');
+  expect(wholeNumberOptionMessage("--days", "days", "-2,5")).toBeNull();
+  // Not a decimal: a whole number, a thousands comma, text.
+  for (const value of ["30", "1,000", "abc", "", null]) expect(wholeNumberOptionMessage("--days", "days", value)).toBeNull();
 });

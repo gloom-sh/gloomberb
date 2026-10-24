@@ -22,6 +22,10 @@ test("criteria default to the 0.30 delta put 30 days out, flagged wide over 10%,
   expect(readCspScreenCriteria({ expiration: day("2026-11-20") }).expiration).toBe(day("2026-11-20"));
   expect(() => readCspScreenCriteria({ delta: "30" })).toThrow("between 0 and 1");
   expect(() => readCspScreenCriteria({ days: "0" })).toThrow("whole calendar days");
+  // A decimal days is told the whole days beside it, never a decimal to type (which is refused in turn).
+  for (const days of ["30,5", "30.5"]) expect(() => readCspScreenCriteria({ days })).toThrow(`--days takes whole days: 30 or 31, not "${days}".`);
+  expect(() => readCspScreenCriteria({ days: "0.4" })).toThrow('--days takes whole days: 1, not "0.4".');
+  expect(() => readCspScreenCriteria({ days: "abc" })).toThrow('Invalid --days "abc". Use whole calendar days, such as 30.');
   expect(() => readCspScreenCriteria({ maxSpread: "0" })).toThrow("above 0");
   expect(() => readCspScreenCriteria({ days: "30", expiration: day("2026-11-20") })).toThrow("give one of them");
 });
@@ -125,6 +129,22 @@ test("the screen sells each name's put nearest the delta, reads it as OSA does, 
   expect(screen.missingRanks).toEqual(["BBB (fewer than 120 sessions)"]);
   // Six chain reads (each name's catalogue, then its expiry) share one Treasury curve.
   expect(curveRequests).toHaveLength(1);
+});
+
+test("a name demand coverage could not take is just not ranked yet: the server's queue wording is not shown", async () => {
+  const { provider, cloud } = screenSources();
+  const full = { symbol: "AAA", status: "queued", coverageStatus: "unavailable", coverage: null, iv30: null, iv90: null, latest: null, skew: null,
+    warnings: ["Coverage for new underlyings is full; try again later."] };
+  const rows = { version: 1, asOf: "2026-10-20", rows: [full, ...((await cloud.impliedVolatility()).rows.slice(1))] };
+  const ctx = createTestHeadlessContext({ marketData: provider, apiClient: { ...cloud, impliedVolatility: async () => rows } as unknown as HeadlessPaneContext["apiClient"] });
+  setSystemTime(now);
+  try {
+    const result = await cspScreenHeadless.load({ symbols: ["AAA", "BBB"], rawArgument: "AAA BBB", argument: ["AAA", "BBB"], options: {} }, ctx);
+    // A name whose history is still short says why; one that is not collected promises nothing.
+    expect(result.notes?.slice(1)).toEqual(["No IV rank: BBB (fewer than 120 sessions).", "No IV rank for AAA yet."]);
+  } finally {
+    setSystemTime();
+  }
 });
 
 test("fn CSP writes each put's figures as numbers with a Wide column, takes --max-spread, and refuses a 21st name", async () => {

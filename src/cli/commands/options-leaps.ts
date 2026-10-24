@@ -15,7 +15,7 @@ import { daysToExpiryFrom, optionMid, type OptionSide } from "../../plugins/buil
 import { optionQuoteValuationTime } from "../../plugins/builtin/vol-surface/model";
 import { optionBreakeven, optionCarry, optionCarryNet, optionSpreadPercent } from "../../plugins/builtin/options/carry";
 import { parseDeltaBand } from "../../plugins/builtin/options/strike-window";
-import { ivSymbol, loadIvScreen, type IvScreenRow } from "../../plugins/builtin/iv-history/client";
+import { ivRankReason, ivSymbol, loadIvScreen, type IvScreenRow } from "../../plugins/builtin/iv-history/client";
 import { newYorkDay, resolveListingEvents, upcomingReportDate } from "../../plugins/builtin/shared/earnings-calendar";
 import {
   chainWithModelFigures, loadOptionModelInputs, loadUnderlyingFinancials, OPTION_MODEL_RATE, type OptionModelInputs,
@@ -501,13 +501,6 @@ function ivKey(listing: CliListing): string | null {
   }
 }
 
-/** Why a symbol IV history covers has no rank yet, by where its history stands. */
-const IV_COVERAGE_REASONS: Partial<Record<string, string>> = {
-  queued: "IV history queued, try again in a few minutes",
-  backfilling: "IV history still loading",
-  unavailable: "no options history",
-};
-
 async function loadLeapsIvRanks(listings: readonly CliListing[]): Promise<LeapsIvRanks> {
   const symbols = listings.flatMap((listing) => ivKey(listing) ?? []);
   if (symbols.length === 0) return { rows: new Map(), error: null };
@@ -563,7 +556,7 @@ function underlyingFigures(
     // A failed request is said once for every symbol.
     if (figures.ivRank == null && !ivRanks?.error) {
       const reason = key == null ? "US listings only"
-        : row?.iv30?.rankNote ?? row?.warnings?.[0] ?? (row ? IV_COVERAGE_REASONS[row.coverageStatus ?? row.status] ?? null : "no IV history");
+        : ivRankReason(row);
       missing.push(`no IV rank${reason ? ` (${reason})` : ""}`);
     }
   }

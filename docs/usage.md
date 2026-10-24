@@ -843,6 +843,7 @@ A symbol is read as `gloom quote` reads it and must be a US listing, as in the d
 - The symbol is read as `quote` reads it, so `USDMXN` and `USD/MXN` are the one pair `USDMXN=X`. A symbol that quotes nothing is refused with the nearest listing (`did you mean AAPL`), and a bare code kept on a listing abroad names it.
 - A bare coin ticker whose listing is a fund says so as `quote` does (`BTC is Grayscale Bitcoin Mini Trust ETF, not bitcoin. For bitcoin use BTC-USD.`), and so do `fn` reports such as `fn OPX BTC`.
 - A target more than 10 times the last price, or under a tenth of it, is refused, in **Add Alert** too (`alerts add btc above 85000` is bitcoin's price typed on the fund).
+- A price reads as typed in `alerts add`: `81000`, `81,000.50`, `1.350,5` and `81k` or `1.5m` (a thousand and a million). A comma before exactly three digits (`81,000`) could be thousands or a decimal comma, so the command names both readings and adds nothing; text that is no number is refused with the format to type (`type 81000 or 81k`).
 - If saved price alerts cannot be read, the app and CLI leave the data unchanged and price checks pause until it is repaired. The pane and `gloom alerts list` show the read error, and event alerts stay usable.
 - On **Prices**, Enter opens an alert in full: its state, the price and how far it is from the level, and when its quote was checked. An alert that could not get a quote shows that in red on its row, and its detail says why. `m` re-arms an alert that went off.
 
@@ -1107,7 +1108,7 @@ A command fails on an option it does not take instead of ignoring it. `gloom his
 
 **Amounts.** An amount in front converts it: `gloom fx 1234.5 EUR/USD` and `gloom fx 1234,5 EUR USD` print `1,234.50 EUR = 1,385.06 USD`, then the rate line and the source line. The amount is in the first currency and the answer in the second (`fx 1234.5 EUR` converts to USD).
 
-The amount reads as cash does (below): `fx 1.234 EUR/USD` converts 1234 euros, while `fx 1,234 KWD/USD` asks which was meant. `--json`, `--csv` and `--ndjson` add `amount` and `converted`.
+The amount reads as cash does (below), except that a comma before exactly three digits asks which was meant in every currency, as `alerts add` does: `fx 1.234 EUR/USD` converts 1234 euros, while `fx 1,234 EUR/USD` and `fx 1,234 KWD/USD` name both readings and convert nothing (`type 1234 or 1.234`). `--json`, `--csv` and `--ndjson` add `amount` and `converted`.
 
 ### `fred`
 
@@ -2179,7 +2180,7 @@ gloom fn CSP JPM GS KO AAPL XOM
 gloom fn CSP JPM GS KO --delta 0.20 --days 45 --max-spread 15
 ```
 
-Each row has the expiry, days to it, strike, bid, ask, spread as a percent of the mid, delta, how far out of the money, annualised yield at the mid and at the bid, the 30-day IV rank and the earnings flag. A spread over `--max-spread` (10% of the mid by default) is marked `wide` and still ranked, and a name with no chain is listed last with why.
+Each row has the expiry, days to it, strike, bid, ask, spread as a percent of the mid, delta, how far out of the money, annualised yield at the mid and at the bid, the 30-day IV rank and the earnings flag. A spread over `--max-spread` (10% of the mid by default) is marked `wide` and still ranked, and a name with no chain is listed last with why. A name with no IV rank is listed under the table with the reason when there is one, or as `No IV rank for DAL yet.` when none of its IV history is being collected. `--days` takes whole days: `--days 30,5` is told `30 or 31`.
 
 - In the pane, type the names in Symbols and pick the delta and the expiry from the bar. Enter opens the selected name's put in OSA.
 - The pane ranks the first 20 names typed, and `fn CSP` refuses more than 20.

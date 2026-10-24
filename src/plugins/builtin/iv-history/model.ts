@@ -2,6 +2,16 @@ import type { PricePoint } from "../../../types/financials";
 import { rollingRealizedVolatility } from "../shared/volatility";
 import type { IvCoverageStatus, IvHistoryPayload, IvMethod, IvPoint, IvScreenRow, IvStats } from "./client";
 
+/**
+ * A history's warnings in words for the reader. A symbol demand coverage could
+ * not take (unavailable, with the server's queue wording as its warning) is
+ * said plainly instead: none of its history is being collected, so nothing is
+ * promised.
+ */
+export function ivHistoryWarnings(payload: Pick<IvHistoryPayload, "status" | "symbol" | "warnings">): string[] {
+  return payload.status === "unavailable" && payload.warnings.length ? [`No IV history for ${payload.symbol} yet.`] : [...payload.warnings];
+}
+
 export const HV_WINDOWS = [20, 30] as const;
 export type HvWindow = (typeof HV_WINDOWS)[number];
 export type IvLookback = "1Y" | "2Y" | "ALL";
@@ -159,7 +169,7 @@ export function projectIvHistory(
 ): IvHistoryModel {
   const lookback = options.lookback ?? "1Y";
   const window = options.hvWindow ?? 20;
-  const warnings = [...payload.warnings];
+  const warnings = ivHistoryWarnings(payload);
   const tradeIv30 = byMethod(payload.series, "trade-close", "iv30");
   const latestDate = [payload.latest?.date, tradeIv30.at(-1) && day(tradeIv30.at(-1)!.date)].filter((value): value is string => !!value).sort().at(-1) ?? null;
   const start = latestDate ? lookbackStart(latestDate, lookback) : null;
@@ -358,9 +368,8 @@ export function screenCoverage(
     notes.push(`Backfilling: ${backfilling.map((row) => row.backfilledThrough ? `${row.symbol} through ${row.backfilledThrough}` : row.symbol).join(", ")}.`);
   }
   if (final.length) notes.push(`No options history: ${final.map((row) => row.symbol).join(", ")}.`);
-  const reasons = new Map<string, string[]>();
-  for (const row of uncovered) reasons.set(row.warning!, [...(reasons.get(row.warning!) ?? []), row.symbol]);
-  for (const [reason, symbols] of reasons) notes.push(`Not queued: ${symbols.join(", ")}. ${reason}`);
+  // The server's queue wording (why demand coverage could not take them) is not repeated: none of their history is being collected, so nothing is promised.
+  if (uncovered.length) notes.push(`No IV history yet: ${uncovered.map((row) => row.symbol).join(", ")}.`);
   const pending = [...queued, ...backfilling, ...uncovered];
   return { notes, pending: pending.map((row) => row.symbol),
     missing: pending.filter((row) => row.iv30 == null && row.date == null).map((row) => row.symbol) };

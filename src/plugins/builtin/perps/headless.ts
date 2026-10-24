@@ -89,8 +89,10 @@ const aprNote = (rows: readonly PerpBoardRow[]) => {
 const requestedOf = (args: HeadlessPaneLoadArgs) => String(Array.isArray(args.argument) ? args.argument.join(" ") : args.argument ?? "").trim();
 // No tab named: a market opens its history, nothing opens the board, as the pane does.
 const tabOf = (args: HeadlessPaneLoadArgs) => PERP_TABS.find((tab) => tab === args.options.tab) ?? openingTab(requestedOf(args));
+// A free account's market opens its latest values under the title, so the title names the function, not the Pro history: a table the free view
+// locks is left out and named on the report's one Pro line (`lockedTable`), never marked on the title over the free ones.
 const TITLES: Record<typeof PERP_TABS[number], string> = { board: "Perpetual markets", rankings: "Perpetual rankings", compare: "Perpetual contracts across venues",
-  history: "Perpetual history (Pro)", evidence: "Perpetual evidence (Pro)" };
+  history: "Perpetuals", evidence: "Perpetual evidence" };
 const copy = (rows: readonly PerpBoardRow[]) => rows.map((row) => ({ ...row }));
 const more = (count: number, noun: string) => `${count.toLocaleString("en-US")} more ${noun} need Gloom Pro`;
 // A table the free view leaves empty is locked: the report leaves it out and its one Pro line says what Pro adds.

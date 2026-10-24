@@ -71,6 +71,9 @@ describe("IV history against realized", () => {
       coverage: { source: "demand", addedAt: "", backfilledThrough: "2025-03-14", since: null } }), prices(dates)).warnings[0])
       .toBe("SPY backfilling through 2025-03-14.");
     expect(projectIvHistory(payload([], { status: "unavailable" }), prices(dates)).warnings[0]).toBe("No options history for SPY.");
+    // Demand coverage full: the server's queue wording gives way to a plain line, and a finished backfill with no options is not the same thing.
+    expect(projectIvHistory(payload([], { status: "unavailable", warnings: ["Coverage for new underlyings is full; try again later."] }), prices(dates)).warnings[0])
+      .toBe("No IV history for SPY yet.");
   });
 });
 
@@ -178,7 +181,8 @@ describe("VCA backfill states", () => {
         "Queued for backfill: ZZZZ since 07:58 UTC, YYYY since 2026-10-10 23:40 UTC; a first backfill usually takes under 10 minutes, try again after 08:08 UTC.",
         "Backfilling: ABCD through 2025-03-14.",
         "No options history: PFAI, NEXE.",
-        "Not queued: FULL. Coverage for new underlyings is full; try again later.",
+        // The server's queue wording is not repeated, and nothing is promised for a name whose history is not being collected.
+        "No IV history yet: FULL.",
       ],
       pending: ["ZZZZ", "YYYY", "ABCD", "FULL"],
       missing: ["ZZZZ", "YYYY", "ABCD", "FULL"],
