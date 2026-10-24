@@ -100,9 +100,9 @@ test("a saved copy of something the command does not show leaves a fresh answer 
   expect(answer.json.metadata.freshness.savedAt).toBeUndefined();
 });
 
-test("what is shown dates itself by its oldest saved copy, and output is searched for marks only in a command", async () => {
+test("what is shown dates itself by its oldest saved copy, and nothing but a quote is marked outside a command", async () => {
   const quote = { symbol: "SPY", price: 1 };
-  expect(savedCopyShownAt([servedFromSavedCopy(quote, at("2026-10-22T21:40:00Z"))])).toBeNull();
+  expect(servedFromSavedCopy(quote, at("2026-10-22T21:40:00Z"))).toBe(quote);
 
   const shownAt = await collectSavedCopies(async () => {
     const rows = [
