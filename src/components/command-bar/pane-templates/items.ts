@@ -3,6 +3,7 @@ import type {
   PaneTemplateContext,
   PaneTemplateCreateOptions,
   PaneTemplateDef,
+  ShortcutArgError,
 } from "../../../types/plugin";
 import { fuzzyFilter } from "../../../utils/fuzzy-search";
 import { summarizeError } from "../helpers";
@@ -36,6 +37,16 @@ export function recentPaneTemplateArg(template: PaneTemplateDef, arg: string | u
   const argKind = getPaneTemplateArgKind(template);
   if (argKind !== "ticker" && argKind !== "ticker-list" && argKind !== "tickers") return undefined;
   return arg?.trim().toUpperCase() || undefined;
+}
+
+/** Why a typed argument opens nothing for the template (`PF Nope`), or null. */
+export function paneTemplateArgError(
+  template: PaneTemplateDef,
+  arg: string | undefined,
+  context: PaneTemplateContext,
+): ShortcutArgError | null {
+  const trimmed = arg?.trim();
+  return trimmed ? template.shortcut?.argError?.(trimmed, context) ?? null : null;
 }
 
 export function canPromptForPaneTemplateArg(template: PaneTemplateDef): boolean {
@@ -138,10 +149,11 @@ export function getAvailablePaneShortcutTemplatesForQuery(options: {
     try {
       const canCreate = template.canCreate(options.context, arg ? { arg } : undefined);
       if (canCreate) return true;
-      if (!arg && !options.context.activeTicker && canPromptForPaneTemplateArg(template)) {
-        return true;
-      }
-      return false;
+      // A code typed with an argument it cannot open (`CMP AAPL` compares two
+      // or more) is still that function: its row opens the form or says why,
+      // where dropping it would leave the text to search and Ask AI.
+      if (arg) return canPromptForPaneTemplateArg(template);
+      return !options.context.activeTicker && canPromptForPaneTemplateArg(template);
     } catch (error) {
       options.logError?.("Pane shortcut canCreate failed", {
         templateId: template.id,
@@ -160,6 +172,8 @@ export function buildPaneTemplateItem(options: {
   createOptions?: PaneTemplateCreateOptions;
   showShortcut?: boolean;
   shortcutExecution?: boolean;
+  /** Why `createOptions.arg` opens nothing; the row then says so instead of opening the pane. */
+  argError?: ShortcutArgError | null;
   runPaneTemplateShortcut: (template: PaneTemplateDef, rawArg?: string) => void;
   shouldOpenTemplateConfig: (template: PaneTemplateDef, arg?: string) => boolean;
   openPaneTemplateWorkflow: (template: PaneTemplateDef, options?: { arg?: string }) => void;
@@ -187,6 +201,24 @@ export function buildPaneTemplateItem(options: {
     ...aliases,
     pluginName || "",
   ].filter(Boolean).join(" ");
+
+  if (options.argError) {
+    return {
+      id: `pane-template-arg-error:${options.template.id}:${arg || ""}`,
+      label: options.argError.message,
+      detail: options.argError.detail ?? "",
+      // Under the label, where the bar shows a row's second line: what to type instead.
+      ...(options.argError.detail ? { lines: [{ segments: [{ text: options.argError.detail }] }] } : {}),
+      category: options.category ?? (pluginName ? `${pluginName} Panes` : "Panes"),
+      kind: "info",
+      right: options.showShortcut ? options.template.shortcut?.prefix : undefined,
+      shortcutQuery: options.template.shortcut?.prefix,
+      searchText,
+      defaultSelectable: false,
+      disabled: true,
+      action: () => {},
+    };
+  }
 
   const action = () => {
     if (

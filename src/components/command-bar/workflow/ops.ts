@@ -21,7 +21,7 @@ import {
   buildRelationshipGraphPaneTitle,
 } from "../../../plugins/builtin/correlation/relationship/model";
 import { buildQuoteMonitorPaneTitle } from "../../../plugins/builtin/ticker-detail/settings";
-import { getPaneTemplateDisplayLabel } from "../pane-templates/items";
+import { getPaneTemplateDisplayLabel, paneTemplateArgError } from "../pane-templates/items";
 import { automationActive, describeUsageFunction, recordFunctionOpen } from "../../../telemetry/usage-counts";
 import { attentionActionForPane, captureAttentionAction } from "../../../telemetry/attention-counts";
 import { publicTickerKey } from "../../../utils/exchanges";
@@ -233,6 +233,12 @@ export async function createPaneTemplateOrThrow(
   if (disabledOwner) throw new PluginOffError(disabledOwner, getPaneTemplateDisplayLabel(template));
 
   const { context, resolvedOptions } = await resolvePaneTemplateOptions(template, options, deps);
+
+  // A name the function knows nothing of opens nothing, rather than its default view.
+  const argError = paneTemplateArgError(template, resolvedOptions?.arg, context);
+  if (argError) {
+    throw new Error(argError.detail ? `${argError.message}. ${argError.detail}.` : `${argError.message}.`);
+  }
 
   if (template.canCreate && !template.canCreate(context, resolvedOptions)) {
     throw new Error(uncoveredTemplateMessage(template, deps.pluginRegistry, resolvedOptions)

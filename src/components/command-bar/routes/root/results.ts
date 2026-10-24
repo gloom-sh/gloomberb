@@ -8,6 +8,7 @@ import type { TickerRecord } from "../../../../types/ticker";
 import { fuzzyFilter } from "../../../../utils/fuzzy-search";
 import {
   buildAssistResultItems,
+  isQuestionLike,
   shouldShowAssistRow,
   type AssistRowHandlers,
 } from "../../assist/model";
@@ -66,6 +67,8 @@ export interface RootResultModelOptions {
     rawInput?: string,
   ) => void | Promise<void>;
   getAvailablePaneShortcutTemplates: (query: string) => PaneTemplateDef[];
+  /** The function code the query starts with, claimed by the parser or not (`leadingShortcutCode`). */
+  leadingShortcutCode?: string | null;
   /** Looks a recorded `pane-template:<id>` entry back up among the templates the bar offers now. */
   getRecentPaneTemplate?: (id: string, arg?: string) => PaneTemplateDef | undefined;
   hasPaneSettings: (paneId: string) => boolean;
@@ -106,15 +109,21 @@ function isAssistSectionVisible(
   query: string,
   resultCount: number,
   hasShortcutIntent: boolean,
+  leadingCode: string | null,
 ): boolean {
   if (!query.trim()) return false;
   if (assist.state.status !== "idle" && assist.state.query === query.trim()) return true;
   // A resolved shortcut is the user speaking the command language, so nothing is
   // asked of the AI, and a sign-up offer must not outrank that exact match.
   if (hasShortcutIntent) return false;
-  // Signed out there is nothing to wait for, so the older heuristic still picks
-  // the queries worth offering a sign-up row for.
-  if (!assist.enabled) return shouldShowAssistRow({ query, resultCount });
+  if (!assist.enabled) {
+    // Text led by a function code (`MOST foo`) is a command gone wrong, not a
+    // question, so the sign-up offer would be the only row and take Enter.
+    if (leadingCode && !isQuestionLike(query)) return false;
+    // Signed out there is nothing to wait for, so the older heuristic still picks
+    // the queries worth offering a sign-up row for.
+    return shouldShowAssistRow({ query, resultCount });
+  }
   return assist.auto;
 }
 
@@ -235,6 +244,7 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
     getAvailablePaneShortcutTemplates,
     getRecentPaneTemplate,
     hasPaneSettings,
+    leadingShortcutCode = null,
     localTickerSearchResultItems,
     nonShortcutPaneTemplateItems,
     openModeRoute,
@@ -268,6 +278,8 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
   const items: ResultItem[] = [];
   const match = matchPrefix(rootQuery, availableCommands);
   let initialIdx = 0;
+  // Off when the code's own rows only say why the argument opens nothing (`PF Nope`).
+  let shortcutRuns = true;
   const shortcutItem = buildRootShortcutItem({
     activeCollectionId,
     activeTickerSymbol,
@@ -289,6 +301,7 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
         shortcutExecution: true,
       }))
       : [shortcutItem];
+    shortcutRuns = templateItems.some((item) => !item.disabled);
     const relatedTemplateItems = rootQuery.trim().toUpperCase() === rootShortcutIntent.prefix
       ? paneShortcutItems({
         filterQuery: rootQuery,
@@ -393,7 +406,7 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
   // Text the parser can run is text a key can run, so the offer sits under the
   // match it would replay. Never the default selection: Enter still runs the
   // command itself.
-  if (bindKey && shortcutClaimedQuery && rootShortcutIntent.kind !== "ambiguous") {
+  if (bindKey && shortcutClaimedQuery && shortcutRuns && rootShortcutIntent.kind !== "ambiguous") {
     items.push(buildBindKeyItem(rootShortcutIntent, bindKey));
   }
   // A resolved prefix means the user is speaking the command language, so
@@ -414,6 +427,7 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
       rootQuery,
       matchCount,
       shortcutClaimedQuery,
+      leadingShortcutCode,
     )
     ? buildAssistResultItems({ ...assist, query: rootQuery })
     : [];

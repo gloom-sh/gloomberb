@@ -731,7 +731,7 @@ FUT's 1W, 1M and YTD columns are returns on the contract the row names (LEZ26 fo
 
 | Shortcut | Function |
 |----------|----------|
-| `PF` | Portfolio and watchlist workspace |
+| `PF [portfolio or watchlist]` | Portfolio and watchlist workspace. With a name or id, in any case, it opens that portfolio or watchlist |
 | `PORT` | Portfolio risk and sector exposure |
 | `ALRT` | Price, filing, news, earnings and market event alerts, with delivery history |
 | `SA <symbol condition price>` | Create a price alert |

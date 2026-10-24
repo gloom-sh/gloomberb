@@ -429,12 +429,22 @@ export interface ShortcutArgOption {
   label: string;
 }
 
+/** Why a typed argument opens nothing: the row's text, and the line under it saying what to type instead. */
+export interface ShortcutArgError {
+  message: string;
+  detail?: string;
+}
+
 interface PaneTemplateShortcut {
   prefix: string;
   /** Other mnemonics for the same view (FFIP for WIRP). They open it when typed but are not listed as separate rows. */
   aliases?: readonly string[];
   /** Keep this shortcut executable when typed, but omit its pane from command-bar browse rows. Defaults to true. */
   showInBrowse?: boolean;
+  /**
+   * What the shortcut takes after the prefix. Left out, it takes the argument
+   * the template's `headless` definition declares, as `gloom catalog` lists it.
+   */
   argPlaceholder?: string;
   argKind?: "text" | "ticker" | "ticker-list";
   /**
@@ -455,6 +465,12 @@ interface PaneTemplateShortcut {
    * from it instead of guessing the text; the command may accept others too.
    */
   argOptions?: () => readonly ShortcutArgOption[];
+  /**
+   * Why a typed argument opens nothing, or null when it opens the view:
+   * `PF Nope` names no portfolio or watchlist. The command bar shows it in
+   * place of the function's row, and the pane does not open for it.
+   */
+  argError?: (arg: string, context: PaneTemplateContext) => ShortcutArgError | null;
 }
 
 export interface PaneTemplateCreateOptions {

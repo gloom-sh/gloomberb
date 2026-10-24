@@ -11,6 +11,7 @@ import type {
   TickerAction,
   TickerResearchTabDef,
 } from "../../types/plugin";
+import { withFunctionShortcutArgument } from "../shortcut-argument";
 
 export interface ContextMenuProviderEntry {
   pluginId: string;
@@ -89,7 +90,8 @@ export class RegistryContributions {
   }
 
   registerPaneTemplate(pluginId: string, template: PaneTemplateDef, replace = false): () => void {
-    return this.paneTemplatesMap.register(pluginId, template.id, template, replace);
+    const registered = withFunctionShortcutArgument(template, this.panesMap.get(template.paneId));
+    return this.paneTemplatesMap.register(pluginId, template.id, registered, replace);
   }
 
   registerCommand(pluginId: string, command: CommandDef): void {
