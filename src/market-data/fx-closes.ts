@@ -108,11 +108,26 @@ const isoDay = (time: number) => new Date(time).toISOString().slice(0, 10);
  * in that week. A cost bought on a date and `fx --date` both read it.
  */
 export async function fxCloseOnDate(leg: FxLeg, date: string, client: FxHistoryClient, now = new Date()): Promise<FxCloseReading | null> {
+  return (await readFxCloseOnDate(leg, date, client, now)).reading;
+}
+
+/**
+ * `fxCloseOnDate`'s reading, and whether the service answered with any daily
+ * bars of the pair at all: an `empty` or `unsupported` answer is a pair it
+ * keeps no daily closes of, not a week without one.
+ */
+export async function readFxCloseOnDate(
+  leg: FxLeg,
+  date: string,
+  client: FxHistoryClient,
+  now = new Date(),
+): Promise<{ reading: FxCloseReading | null; served: boolean }> {
   const day = Date.parse(`${date}T00:00:00Z`);
   const response = await client.getCloudHistory(leg.instrument.symbol, leg.instrument.exchange ?? "", {
     interval: "1day", startDate: isoDay(day - FX_MAX_AGE_DAYS * DAY_MS), endDate: isoDay(day + DAY_MS), outputsize: FX_MAX_AGE_DAYS + 4,
   });
-  if (response.status !== "success" && response.status !== "partial") return null;
+  const served = response.status !== "empty" && response.status !== "unsupported";
+  if (response.status !== "success" && response.status !== "partial") return { reading: null, served };
   const today = isoDay(now.getTime());
   let best: FxCloseReading | null = null;
   for (const row of Array.isArray(response.data) ? response.data : []) {
@@ -122,7 +137,7 @@ export async function fxCloseOnDate(leg: FxLeg, date: string, client: FxHistoryC
     if (rowDay > date || rowDay >= today || Date.parse(`${rowDay}T00:00:00Z`) < day - FX_MAX_AGE_DAYS * DAY_MS) continue;
     if (!best || rowDay > best.date) best = { rate: leg.invert ? 1 / row.close : row.close, date: rowDay };
   }
-  return best;
+  return { reading: best, served };
 }
 
 /**

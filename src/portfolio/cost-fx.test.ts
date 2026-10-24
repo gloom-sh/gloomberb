@@ -2,13 +2,18 @@ import { expect, test } from "bun:test";
 import type { CloudPricePointPayload } from "../api-client/types";
 import { CostFxError, loadCostFxRate, type CostFxHistoryClient } from "./cost-fx";
 
-/** Daily closes by pair symbol, served for whatever window is asked; the asked windows are kept. */
+/**
+ * Daily closes by pair symbol, served for whatever window is asked; a pair
+ * with none answers empty, as the service answers one it keeps no closes of.
+ * The asked windows are kept.
+ */
 function historyClient(closes: Record<string, Record<string, number>>) {
   const asked: { symbol: string; startDate?: string; endDate?: string }[] = [];
   const client: CostFxHistoryClient = {
     getCloudHistory: async (symbol, _exchange, params) => {
       asked.push({ symbol, startDate: params.startDate, endDate: params.endDate });
-      const data: CloudPricePointPayload[] = Object.entries(closes[symbol] ?? {})
+      if (!closes[symbol]) return { status: "empty", data: null, reasonCode: "NO_DATA" };
+      const data: CloudPricePointPayload[] = Object.entries(closes[symbol])
         .filter(([day]) => (!params.startDate || day >= params.startDate) && (!params.endDate || day <= params.endDate))
         .map(([day, close]) => ({ date: `${day}T00:00:00.000Z`, close }));
       return { status: "success", data } as Awaited<ReturnType<CostFxHistoryClient["getCloudHistory"]>>;
@@ -34,6 +39,27 @@ test("a purchase date reads each pair's last close on or before it, crossed thro
   expect((await loadCostFxRate("TRY", "USD", "2024-02-29", client, now)).rate).toBeCloseTo(1 / 31.2337, 12);
   // A corn lot's cost in US cents converts per cent, with no USX pair to read.
   expect((await loadCostFxRate("USX", "TRY", "2024-03-01", client, now)).rate).toBeCloseTo(0.313694, 9);
+});
+
+test("any currency history serves converts, by its dollar pair either way round or by its own pair, never by a list", async () => {
+  // THB is on no streamed list: USD/THB is read as history reads it, THB per USD.
+  const { client, asked } = historyClient({ "THB=X": { "2026-09-14": 33.21, "2026-09-15": 33.2797 }, "EURUSD=X": { "2026-09-15": 1.1542 } });
+  expect(await loadCostFxRate("USD", "THB", "2026-09-15", client, now)).toEqual({ rate: expect.closeTo(33.2797, 9), date: "2026-09-15" });
+  expect(asked.map((ask) => ask.symbol)).toEqual(["THB=X"]);
+  expect((await loadCostFxRate("EUR", "THB", "2026-09-15", client, now)).rate).toBeCloseTo(1.1542 * 33.2797, 9);
+
+  // Only THB/USD served: its inverse is the same rate.
+  const inverse = historyClient({ "THBUSD=X": { "2026-09-15": 0.030048 } });
+  expect((await loadCostFxRate("USD", "THB", "2026-09-15", inverse.client, now)).rate).toBeCloseTo(1 / 0.030048, 9);
+  expect(inverse.asked.map((ask) => ask.symbol)).toEqual(["THB=X", "THBUSD=X"]);
+  // EUR/USD served the other way round too, as USD/EUR.
+  const dollarEuro = historyClient({ "USDEUR=X": { "2026-09-15": 0.86645 }, "THBUSD=X": { "2026-09-15": 0.030048 } });
+  expect((await loadCostFxRate("EUR", "THB", "2026-09-15", dollarEuro.client, now)).rate).toBeCloseTo((1 / 0.86645) / 0.030048, 9);
+
+  // No dollar pair for one side: the two currencies' own pair, either way round, pence a hundredth of it.
+  const crossed = historyClient({ "EURUSD=X": { "2026-09-15": 1.1542 }, "GBPTHB=X": { "2026-09-11": 44.1 } });
+  expect(await loadCostFxRate("GBp", "THB", "2026-09-15", crossed.client, now)).toEqual({ rate: expect.closeTo(0.441, 9), date: "2026-09-11" });
+  expect((await loadCostFxRate("THB", "GBP", "2026-09-15", crossed.client, now)).rate).toBeCloseTo(1 / 44.1, 12);
 });
 
 test("a gap longer than a week, a pair that is not served, and today's unfinished bar never give a rate", async () => {

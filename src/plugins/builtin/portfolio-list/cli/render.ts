@@ -87,7 +87,7 @@ import { importedFromText } from "../imported-from";
 import { findNamedCollection } from "../../../../portfolio/collection-name";
 import { isoDateToday } from "../../../../utils/calendar-date";
 import { lastTradeDate } from "../../../../tickers/listing-fate";
-import { DIVIDEND_READ_DEADLINE_MS, incomeGapNote, loadHoldingDividends, portfolioIncome, projectDrip, type DripYear, type HoldingDividend } from "../income";
+import { DIVIDEND_READ_DEADLINE_MS, incomeGapNote, loadHoldingDividends, portfolioIncome, projectDrip, showsIncomeColumns, type DripYear, type HoldingDividend } from "../income";
 
 /** Money prices pad to the currency's minor unit ($337.90, not $337.9), as the ticker view does. */
 function priceFormatOptions(quote: Parameters<typeof quoteFormatOptions>[0] & { currency?: string }, assetCategory?: string) {
@@ -802,7 +802,8 @@ async function showCollectionWithMarketData(
     const { allocation, cash } = await valuePortfolioAllocation({ valuation, portfolio: matchedPortfolio, account, toBase });
     const allocationBySymbol = new Map(allocation.rows.map((row) => [row.symbol, row]));
     // What each holding pays a year: trailing dividends per share times its shares, in the portfolio's currency.
-    const held = filtered.filter((ticker) => valued.some((entry) => entry.ticker === ticker && entry.position));
+    // By symbol: a lot whose cost converts at its purchase date's FX close is valued on a copy of its record.
+    const held = filtered.filter((ticker) => valued.some((entry) => entry.ticker.metadata.ticker === ticker.metadata.ticker && entry.position));
     const { dividends } = await loadHoldingDividends(held, quotes, dataProvider, { deadlineMs: dividendDeadlineMs });
     // Lots without a position or shares are no lot of income; a row of their own keeps its place with none.
     const income = await portfolioIncome(valued.map((entry) => ({
@@ -881,7 +882,7 @@ async function showCollectionWithMarketData(
         const symbol = ticker.metadata.ticker;
         const dividend = dividends.get(symbol);
         if (!dividend) continue;
-        const shares = valued.filter((entry) => entry.ticker === ticker && entry.position && entry.metrics)
+        const shares = valued.filter((entry) => entry.ticker.metadata.ticker === symbol && entry.position && entry.metrics)
           .reduce((sum, entry) => sum + entry.metrics!.totalShares, 0);
         if (shares === 0) continue;
         // Income the table could not show is not projected either; the note under it says why.
@@ -987,8 +988,8 @@ async function showCollectionWithMarketData(
       return [weight, target, drift, trade, tradeValue];
     };
 
-    // Income and its yield, once any share or fund has one; with none known, the note under the table says why.
-    const showIncome = income.knownHoldings > 0;
+    // Income and its yield, once any share or fund has one or only lacks a rate into the portfolio's currency; otherwise the note under the table says why.
+    const showIncome = showsIncomeColumns(income);
     const incomeCells = (income: number | null | undefined, yieldPercent: number | null | undefined): string[] =>
       showIncome ? [money(income), formatIncomeYield(yieldPercent)] : [];
     const extendedSessions = extendedSessionsOf(valued.map(({ extended }) => extended?.session));

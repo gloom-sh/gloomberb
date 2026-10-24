@@ -57,6 +57,7 @@ import { lotCostFxRate, sameCurrency } from "../../../../portfolio/position-metr
 import { formatFxRate } from "../../../../cli/fx-pair";
 import { createBaseConverter } from "../../../../cli/base-converter";
 import { heldCurrencyUnit } from "../../../../utils/currency-units";
+import { isCurrencyCode } from "../../../../utils/currency-pair";
 import { parseTypedNumber, readCurrencyAmount } from "../../../../utils/decimal-comma";
 import { DATE_OPTION_EXAMPLES } from "../../../../utils/calendar-date";
 import {
@@ -77,6 +78,7 @@ import { readNameEntries } from "../../../../cli/name-entries";
 import { DRIP_DEFAULT_YEARS, DRIP_MAX_YEARS, parseDripYears, parseWithholding } from "../income";
 
 const ADD_USAGE = "Usage: gloom portfolio add <portfolio> <symbols...> [--file <path>]";
+const CREATE_USAGE = "Usage: gloom portfolio create <name> [--currency <code>]";
 const POSITION_USAGE = "Usage: gloom portfolio position set <portfolio> <ticker> <shares|contracts> <avg-cost> [currency] [--date <purchase date> | --cost-fx <rate>]";
 const REMOVE_USAGE = "Usage: gloom portfolio remove <portfolio> <symbols...> [--file <path>]";
 const CASH_USAGE = "Usage: gloom portfolio cash set <portfolio> <amount> [currency] | portfolio cash clear <portfolio>";
@@ -116,12 +118,53 @@ async function listCollections(ctx: CliCommandContext) {
   });
 }
 
-async function createPortfolioCommand(name: string, ctx: CliCommandContext) {
+/** What `portfolio create` makes: a name, and the currency it totals in when one was given. */
+interface PortfolioCreateArgs {
+  name: string;
+  currency?: string;
+  /** The currency was the name's last word as typed (`Baht2 THB`), not --currency. */
+  currencyFromName?: boolean;
+}
+
+/**
+ * `portfolio create` arguments: the name, and the currency `--currency`
+ * gives. Without --currency, an ISO code typed in capitals as the name's
+ * last word (`Baht2 THB`) is the currency, not part of the name; a name
+ * quoted as one argument (`"Baht2 THB"`), or given with --currency, keeps
+ * every word. A portfolio totals in a whole currency, so pence (GBp, GBX)
+ * and cents are refused. The error sentence otherwise.
+ */
+function parsePortfolioCreateArgs(words: readonly string[], currencyOption?: string): PortfolioCreateArgs | { error: string } {
+  if (currencyOption != null) {
+    const typed = currencyOption.trim();
+    const code = typed.toUpperCase();
+    if (!typed) return { error: "--currency takes the currency the portfolio totals in, such as --currency THB." };
+    const unit = heldCurrencyUnit(typed);
+    if (unit.divisor !== 1) {
+      return { error: `--currency ${typed} is a minor unit; a portfolio totals in ${unit.currency}, so give --currency ${unit.currency}.` };
+    }
+    if (!/^[A-Z]{3}$/.test(code) || !isCurrencyCode(code)) {
+      return { error: `--currency ${typed} is not a currency code; use three letters such as THB or EUR.` };
+    }
+    const name = words.join(" ").trim();
+    return name ? { name, currency: code } : { error: CREATE_USAGE };
+  }
+  const last = words.at(-1)?.trim() ?? "";
+  const named = words.length > 1 && /^[A-Z]{3}$/.test(last) && isCurrencyCode(last) ? words.slice(0, -1).join(" ").trim() : "";
+  if (named) return { name: named, currency: last, currencyFromName: true };
+  const name = words.join(" ").trim();
+  return name ? { name } : { error: CREATE_USAGE };
+}
+
+async function createPortfolioCommand(args: PortfolioCreateArgs, words: readonly string[], ctx: CliCommandContext) {
+  const { name, currency, currencyFromName } = args;
   await withConfigData(ctx, async ({ config }) => {
     try {
-      const result = createManualPortfolio(config, name, config.baseCurrency);
+      const result = createManualPortfolio(config, name, config.baseCurrency, currency ? { fixedCurrency: currency } : {});
       await saveConfig(result.config);
-      console.log(cliStyles.success(`Created portfolio "${result.portfolio.name}".`));
+      const typed = words.join(" ").trim();
+      const readAs = currencyFromName ? ` (read ${currency} as its currency; quote "${typed}" to keep it in the name)` : "";
+      console.log(cliStyles.success(`Created portfolio "${result.portfolio.name}"${currency ? ` in ${result.portfolio.currency}` : ""}${readAs}.`));
       console.log(renderStats([["ID", result.portfolio.id]]));
     } catch (error) {
       failPortfolioCommand(ctx, error, `Failed to create portfolio "${name}".`);
@@ -905,7 +948,7 @@ export const portfolioCliCommand: CliCommandDef = {
     usage: [
       "portfolio [list]",
       "portfolio show <name> [--close] [--explain] [--drip [--years 1-5] [--withholding <pct>]]",
-      "portfolio create <name>",
+      "portfolio create <name> [--currency <code>]",
       "portfolio delete <name>",
       "portfolio add <portfolio> <symbols...> [--file <path>]",
       "portfolio remove <portfolio> <symbols...> [--file <path>]",
@@ -929,12 +972,14 @@ export const portfolioCliCommand: CliCommandDef = {
       { flags: "--name <portfolio>", description: "portfolio import: the portfolio to create or fill (default: the manager's name and 13F)" },
       { flags: "--notional <amount>", description: "portfolio import: the USD total the shares add up to at the filing's prices (default 100,000)" },
       { flags: "--replace", description: "portfolio import: replace the positions of an existing portfolio of that name" },
+      { flags: "--currency <code>", description: "portfolio create: the currency the portfolio totals in, whatever the base currency (a name's last word in capitals, such as THB, is read as one too)" },
       { flags: "--date <purchase date>", description: `position set: the day it was bought, as ${DATE_OPTION_EXAMPLES}; a holding in another currency converts its cost at that day's FX close` },
       { flags: "--cost-fx <rate>", description: "position set: the rate a holding in another currency was bought at, in the portfolio's currency per unit of the holding's (32.15 TRY per USD)" },
       { flags: "--explain", description: "portfolio show: follow the report with what its terms mean (Weight, Target, Drift, Trade); gloom catalog glossary lists every term" },
     ],
     examples: [
       "portfolio show Research",
+      "portfolio create Baht --currency THB",
       "portfolio add Research ASML",
       "portfolio add Research ASML:AMS",
       "portfolio add Research --file holdings.csv",
@@ -1000,6 +1045,11 @@ export const portfolioCliCommand: CliCommandDef = {
     if ((hasDate || hasCostFx) && action !== "position") {
       ctx.fail(`${hasDate ? "--date" : "--cost-fx"} is an option of portfolio position set, not portfolio ${action ?? "list"}.`, POSITION_USAGE);
     }
+    const hasCurrency = args.some((arg) => arg === "--currency" || arg.startsWith("--currency="));
+    const currencyText = hasCurrency ? takeOption(args, "--currency") ?? "" : undefined;
+    if (hasCurrency && action !== "create") {
+      ctx.fail(`--currency is an option of portfolio create, not portfolio ${action ?? "list"}.`, CREATE_USAGE);
+    }
     const purchaseDate = dateText != null ? parsePurchaseDate(dateText, ctx) : undefined;
     const costFx = costFxText != null ? parseCostFx(costFxText, ctx) : undefined;
     const hasFile = args.some((arg) => arg === "--file" || arg.startsWith("--file="));
@@ -1024,9 +1074,9 @@ export const portfolioCliCommand: CliCommandDef = {
     }
 
     if (action === "create") {
-      const name = args.slice(1).join(" ");
-      if (!name) ctx.fail("Usage: gloom portfolio create <name>");
-      await createPortfolioCommand(name, ctx);
+      const created = parsePortfolioCreateArgs(args.slice(1), currencyText);
+      if ("error" in created) return ctx.fail(created.error, created.error === CREATE_USAGE ? undefined : CREATE_USAGE);
+      await createPortfolioCommand(created, args.slice(1), ctx);
       return;
     }
 

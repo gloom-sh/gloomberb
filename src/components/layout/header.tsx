@@ -780,7 +780,7 @@ function HeaderMarketSummary({ nativePaneChrome, width }: { nativePaneChrome: bo
   const summary = useMarketSummary();
   const fit = resolveMarketSummaryFit({
     available: width,
-    baseCurrencyWidth: summary.baseCurrency.length + 1,
+    baseCurrencyWidth: displayWidth(summary.baseCurrencyLabel) + 1,
     countdownWidth: summary.marketLabel.length - summary.marketLabelShort.length,
     spyWidth: summary.spyText.length + 1,
     stateWidth: summary.marketLabelShort ? summary.marketLabelShort.length + 1 : 0,
@@ -803,7 +803,7 @@ function HeaderMarketSummary({ nativePaneChrome, width }: { nativePaneChrome: bo
       ) : null}
       {fit.showBaseCurrency ? (
         <Box paddingRight={1} flexShrink={0}>
-          <Text fg={nativePaneChrome ? colors.textDim : blendHex(colors.headerText, colors.header, 0.42)}>{summary.baseCurrency}</Text>
+          <Text fg={nativePaneChrome ? colors.textDim : blendHex(colors.headerText, colors.header, 0.42)}>{summary.baseCurrencyLabel}</Text>
         </Box>
       ) : null}
     </>

@@ -162,7 +162,7 @@ test("gives a failed update room at common terminal widths and keeps it clear of
     expect(slot.trim()).toMatch(/^(?:\S+\s+)?Update failed/);
     expect(frame.slice(helpX)).not.toMatch(/Update|retry|\.\.\./);
     // The market summary is right of the pill, whole, and not pushed off the row.
-    if (width >= 80) expect(frame.slice(helpX)).toMatch(/Help \? +SPY — USD/);
+    if (width >= 80) expect(frame.slice(helpX)).toMatch(/Help \? +SPY — base USD/);
     // The raw error, with its URL, stays out of the header.
     expect(frame).not.toContain("example.test");
   }

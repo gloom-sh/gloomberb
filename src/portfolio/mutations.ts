@@ -170,10 +170,11 @@ export function hasOpenPortfolioPositions(portfolioId: string, tickers: Iterable
 /**
  * Whether a manual portfolio's currency follows its holdings. Only with the
  * default USD base: a base currency the user chose is what manual portfolios
- * total in. Team portfolios keep the currency the team gave them.
+ * total in. Team portfolios keep the currency the team gave them, and one
+ * created in a currency keeps that.
  */
 function takesHoldingsCurrency(config: AppConfig, portfolio: Portfolio): boolean {
-  return isManualPortfolio(portfolio) && !portfolio.teamId && config.baseCurrency.trim().toUpperCase() === "USD";
+  return isManualPortfolio(portfolio) && !portfolio.teamId && !portfolio.fixedCurrency && config.baseCurrency.trim().toUpperCase() === "USD";
 }
 
 function withPortfolioCurrency(config: AppConfig, portfolioId: string, currency: string): AppConfig {
@@ -269,10 +270,15 @@ export function clearPortfolioTargetWeights(
   };
 }
 
+/**
+ * A new manual portfolio in `baseCurrency`, or, with `fixedCurrency`, in
+ * `currency` for good (Portfolio.fixedCurrency).
+ */
 export function createManualPortfolio(
   config: AppConfig,
   name: string,
   baseCurrency: string,
+  { fixedCurrency }: { fixedCurrency?: string } = {},
 ): { config: AppConfig; portfolio: Portfolio } {
   const trimmedName = name.trim();
   if (!trimmedName) {
@@ -288,11 +294,9 @@ export function createManualPortfolio(
     throw new Error(`Portfolio "${trimmedName}" already exists.`);
   }
 
-  const portfolio: Portfolio = {
-    id,
-    name: trimmedName,
-    currency: (baseCurrency || config.baseCurrency || "USD").toUpperCase(),
-  };
+  const portfolio: Portfolio = fixedCurrency
+    ? { id, name: trimmedName, currency: fixedCurrency.toUpperCase(), fixedCurrency: true }
+    : { id, name: trimmedName, currency: (baseCurrency || config.baseCurrency || "USD").toUpperCase() };
 
   return {
     config: {

@@ -226,6 +226,26 @@ describe("CLI portfolio commands", () => {
     ]);
     expect(stdout).toContain('Created portfolio "Research".');
     expect(stdout).toContain("research");
+
+    // A capital ISO code ending the name is its currency, said so; quoted as one argument it stays in the name.
+    const baht = await captureConsole(() => runCli(["portfolio", "create", "Baht", "Book", "THB"]));
+    expect(baht.stdout).toContain('Created portfolio "Baht Book" in THB (read THB as its currency; quote "Baht Book THB" to keep it in the name).');
+    await captureConsole(() => runCli(["portfolio", "create", "Fund THB"]));
+    await captureConsole(() => runCli(["portfolio", "create", "Growth", "top"]));
+    const euro = await captureConsole(() => runCli(["portfolio", "create", "Euro", "--currency", "eur"]));
+    expect(euro.stdout).toContain('Created portfolio "Euro" in EUR.');
+    expect((await loadConfig(dataDir)).portfolios.slice(2)).toEqual([
+      { id: "baht-book", name: "Baht Book", currency: "THB", fixedCurrency: true },
+      { id: "fund-thb", name: "Fund THB", currency: "USD" },
+      { id: "growth-top", name: "Growth top", currency: "USD" },
+      { id: "euro", name: "Euro", currency: "EUR", fixedCurrency: true },
+    ]);
+
+    const pence = await captureConsole(() => runCli(["portfolio", "create", "Pence", "--currency", "GBp"]));
+    expect(pence.exitCode).toBe(1);
+    expect(pence.stderr).toContain("--currency GBp is a minor unit; a portfolio totals in GBP, so give --currency GBP.");
+    const elsewhere = await captureConsole(() => runCli(["portfolio", "cash", "set", "Euro", "100", "--currency", "EUR"]));
+    expect(elsewhere.stderr).toContain("--currency is an option of portfolio create, not portfolio cash.");
   });
 
   test("rejects duplicate manual portfolio names", async () => {

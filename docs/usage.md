@@ -303,6 +303,7 @@ After the close and through a weekend, the boards' Last and change agree with `g
 - `sectors`, `indices` and `movers` (every list), and `fn BI`, `fn WEI` and `fn MOST`, give an extended print an After Hours or Pre-Market column when a row has one, and the four `extended` fields in `--json`. `WEI`, `FUT` and the `GPU` equities board show the regular session and no extended column.
 - After the close, Gainers and Losers rank by the regular session's move. `gloom movers gainers --session extended` (or `losers`) ranks by the pre-market or after-hours move from that close instead. The line above the table names the ranking (`Ranked by the regular-session move`, `Ranked by the after-hours move`, `Ranked by volume`), as `metadata.rankedBy` does in `--json`.
 - In the `MOST` pane, click the `AFTER-HRS` or `PRE-MKT` header to sort by the extended move. A narrow `BI` pane gives up the move bar and then the extended column before cutting a sector's name, and a narrow `MOST` gives up MCAP and then 52W%.
+- The header's SPY is in dollars (`SPY $759.97 -0.52%`), and your base currency follows it under its own label (`base THB`), which a narrow header drops before the market state.
 - The header's SPY is the regular close once the market is closed. While the pre-market or after-hours session is open it is that session's price and move beside the `PRE-MKT` or `AFTER-HRS` label. The pre-market countdown says `to regular open` and counts to 09:30 New York time (a narrow header hides it when its full label does not fit).
 
 **Trending quotes that fail to load.** The `MOST` Trending list and `fn MOST --list trending` name symbols whose quotes could not be loaded. If none load, the pane keeps its previous rows marked stale, and JSON reports set `complete: false` and list `unavailableSymbols` and `errors`.
@@ -1706,6 +1707,7 @@ A portfolio's header totals and its COST, MKT VAL, DAY, P&L and MCAP columns are
 
 - A broker portfolio uses its account currency.
 - A manual portfolio uses your base currency (`config set baseCurrency CAD`, an ISO 4217 code in any case). With the default USD base it takes the currency of its first position instead: a portfolio of ASX shares bought in AUD totals in AUD, and later holdings in other currencies convert into it.
+- `portfolio create Baht --currency THB` makes a manual portfolio that totals in THB whatever the base currency, and its first position does not change that. An ISO code in capitals ending the name is read the same way: `portfolio create Baht THB` creates "Baht" in THB and says so. Quote the name as one argument (`portfolio create "Baht THB"`) to keep the code in it.
 - Totals lead with the currency symbol (A$108.6k) unless both they and the base currency are USD.
 
 ### A holding in another currency
@@ -1719,7 +1721,7 @@ A holding in another currency than the portfolio's (a US stock in a TRY portfoli
 
 | Option | What it is |
 |--------|------------|
-| `--date 2024-03-01` | The purchase date, stored on the lot. Its daily USD/TRY close is used (the last one on or before it, at most a week back) |
+| `--date 2024-03-01` | The purchase date, stored on the lot. Its daily USD/TRY close is used (the last one on or before it, at most a week back), from any pair `history` serves: the dollar pair either way round (USD/THB or THB/USD), and for two currencies neither of which is the dollar, crossed through it or their own pair |
 | `--cost-fx 31.37` | The rate paid, in the portfolio's currency per unit of the holding's. With both options, `--cost-fx` is the rate |
 
 - A typed rate is checked against today's. A rate that looks inverted (0.0319 when today's is 41.37 TRY per USD), a rate per pound for a holding in pence (`GBX`), or one more than 100 times off today's is refused, and the purchase date is the way around it. If the daily closes cannot be read (offline or signed out), the command suggests `--cost-fx`.
@@ -1755,6 +1757,8 @@ The broker's last account snapshot is kept across restarts, and the footer gives
 `gloom portfolio show <name>` adds Income and Yield for a portfolio of shares or funds. **Income** is a year of trailing dividends on the shares held, in the portfolio's currency, and **Yield** is that over the holding's value (on TOTAL, over the whole portfolio, cash included). A short owes the dividend, so its income is negative.
 
 A holding whose income is unknown shows `—`, and so does the total, never $0. One line under the table names the cause (no dividend history, no exchange rate, or not read: signed out, offline or past the four-second deadline).
+
+Income paid in another currency converts into the portfolio's at the latest rate, as its value does. A holding with no rate into it keeps the Income and Yield columns, with `—` and the note under the table.
 
 ```bash
 gloom portfolio show Income                                  # Income and Yield columns

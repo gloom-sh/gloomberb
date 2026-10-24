@@ -1,5 +1,5 @@
-import { fxLegForCurrency } from "../market-data/coordinator/fx-legs";
-import { fxCloseOnDate, type FxHistoryClient } from "../market-data/fx-closes";
+import type { FxLeg } from "../market-data/coordinator/fx-legs";
+import { dailyFxLeg, readFxCloseOnDate, type FxHistoryClient } from "../market-data/fx-closes";
 import { formatFxRate } from "../cli/fx-pair";
 import { dateOptionError, readCalendarDate } from "../utils/calendar-date";
 import { currencyUnitLabel, heldCurrencyUnit } from "../utils/currency-units";
@@ -27,24 +27,54 @@ export class CostFxError extends Error {
   }
 }
 
+/** A dated close, and whether the service keeps daily bars of any pair it was looked for in. */
+interface PairCloseRead {
+  reading: CostFxReading | null;
+  served: boolean;
+}
+
+/** The daily pair BASE/QUOTE as `history` asks for it (USD/THB is USDTHB=X), read as QUOTE per BASE, or inverted. */
+const fxPair = (base: string, quote: string, invert: boolean): FxLeg =>
+  ({ currency: base, instrument: { symbol: `${base}${quote}=X`, exchange: "" }, invert });
+
+/**
+ * The close in the week up to `date` of the first of the pairs, tried in
+ * order, that the service keeps daily bars of; the next is asked only when
+ * one is not served at all, as a served pair with no close that week is a
+ * gap the same pair the other way round has too.
+ */
+async function firstPairClose(pairs: readonly FxLeg[], date: string, client: CostFxHistoryClient, now: Date): Promise<PairCloseRead> {
+  for (const pair of pairs) {
+    const read = await readFxCloseOnDate(pair, date, client, now);
+    if (read.reading || read.served) return read;
+  }
+  return { reading: null, served: false };
+}
+
 /**
  * USD per unit of an ISO currency at its last completed daily close on or
- * before `date`, looking back a week at most (`fxCloseOnDate`, as `fx --date`
- * reads it). Null when the pair has no close in that week.
+ * before `date`, looking back a week at most, as `fx --date` reads it: its
+ * dollar pair as markets quote it (`dailyFxLeg`: EUR/USD, USD/THB), else the
+ * same pair the other way round, as `history` serves either.
  */
-async function usdPerUnitOn(code: string, date: string, client: CostFxHistoryClient, now: Date): Promise<CostFxReading | null> {
-  if (code === "USD") return { rate: 1, date };
-  const leg = fxLegForCurrency(code);
-  if (!leg) throw new CostFxError(`No daily FX history is served for ${code}`);
-  return fxCloseOnDate(leg, date, client, now);
+async function usdPerUnitOn(code: string, date: string, client: CostFxHistoryClient, now: Date): Promise<PairCloseRead> {
+  if (code === "USD") return { reading: { rate: 1, date }, served: true };
+  const quoted = dailyFxLeg(code);
+  if (!quoted) return { reading: null, served: false };
+  const other = quoted.invert ? fxPair(code, "USD", false) : fxPair("USD", code, true);
+  return firstPairClose([quoted, other], date, client, now);
 }
 
 /**
  * What one unit of `from` (a lot's currency, GBp counting pence and USX cents) cost in
  * `into` (the portfolio's) at the daily FX closes of `date`, each pair's last
- * close on or before it, crossed through USD as every converted value is.
- * Throws `CostFxError` when a pair is not served or has no close in the week
- * before the date.
+ * close on or before it: crossed through USD as every converted value is,
+ * each dollar pair read either way round, and for two currencies neither of
+ * which is the dollar, their own pair (either way round) when a dollar pair
+ * is not served. No currency is left out for not being on a list: any pair
+ * `history` serves is read. Throws `CostFxError` when none of them has a
+ * close in the week before the date, saying when a currency has no daily
+ * history served at all.
  */
 export async function loadCostFxRate(
   from: string,
@@ -55,16 +85,40 @@ export async function loadCostFxRate(
 ): Promise<CostFxReading> {
   const fromUnit = heldCurrencyUnit(from);
   const intoUnit = heldCurrencyUnit(into);
+  // A minor unit (GBp, USX) is that fraction of its major currency's rate.
+  const units = intoUnit.divisor / fromUnit.divisor;
+  if (fromUnit.currency === intoUnit.currency) return { rate: units, date };
   const [fromUsd, intoUsd] = await Promise.all([
     usdPerUnitOn(fromUnit.currency, date, client, now),
     usdPerUnitOn(intoUnit.currency, date, client, now),
   ]);
-  const missing = [fromUsd ? null : fromUnit.currency, intoUsd ? null : intoUnit.currency].filter(Boolean);
-  if (!fromUsd || !intoUsd) throw new CostFxError(`No ${missing.join(" or ")} FX close in the week up to ${date}`);
-  const rate = (fromUsd.rate / fromUnit.divisor) / (intoUsd.rate / intoUnit.divisor);
-  if (!Number.isFinite(rate) || rate <= 0) throw new CostFxError(`No usable ${fromUnit.currency}/${intoUnit.currency} rate for ${date}`);
-  // A pair that did not trade that day (its holiday) dates the cross by its own last close.
-  return { rate, date: fromUsd.date < intoUsd.date ? fromUsd.date : intoUsd.date };
+  let reading: CostFxReading | null = null;
+  let crossServed = false;
+  if (fromUsd.reading && intoUsd.reading) {
+    // A pair that did not trade that day (its holiday) dates the cross by its own last close.
+    reading = {
+      rate: (fromUsd.reading.rate / intoUsd.reading.rate) * units,
+      date: fromUsd.reading.date < intoUsd.reading.date ? fromUsd.reading.date : intoUsd.reading.date,
+    };
+  } else if (fromUnit.currency !== "USD" && intoUnit.currency !== "USD" && (!fromUsd.served || !intoUsd.served)) {
+    const direct = await firstPairClose([
+      fxPair(fromUnit.currency, intoUnit.currency, false),
+      fxPair(intoUnit.currency, fromUnit.currency, true),
+    ], date, client, now);
+    if (direct.reading) reading = { rate: direct.reading.rate * units, date: direct.reading.date };
+    crossServed = direct.served;
+  }
+  if (!reading) {
+    const missing = [[fromUnit.currency, fromUsd], [intoUnit.currency, intoUsd]] as const;
+    const unserved = missing.filter(([, read]) => !read.reading && !read.served).map(([code]) => code);
+    if (unserved.length > 0 && !crossServed) throw new CostFxError(`No daily FX history is served for ${unserved.join(" or ")}`);
+    const late = missing.filter(([, read]) => !read.reading).map(([code]) => code);
+    throw new CostFxError(`No ${late.join(" or ")} FX close in the week up to ${date}`);
+  }
+  if (!Number.isFinite(reading.rate) || reading.rate <= 0) {
+    throw new CostFxError(`No usable ${fromUnit.currency}/${intoUnit.currency} rate for ${date}`);
+  }
+  return reading;
 }
 
 /** A lot's currency as a portfolio values it: its own, else its listing's. */

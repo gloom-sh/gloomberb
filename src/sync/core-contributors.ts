@@ -125,6 +125,7 @@ function sanitizePortfolio(portfolio: Portfolio): Portfolio {
     name: portfolio.name,
     description: portfolio.description,
     currency: portfolio.currency,
+    ...(portfolio.fixedCurrency ? { fixedCurrency: true } : {}),
     brokerId: portfolio.brokerId,
     lastSyncedAt: portfolio.lastSyncedAt,
     // Cash and targets are the user's own entries: a pulled portfolio without

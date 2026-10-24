@@ -185,6 +185,16 @@ export async function portfolioIncome(
   };
 }
 
+/**
+ * Whether `portfolio show` keeps its Income and Yield columns: once any
+ * holding's income is known, or a holding's is unknown only for want of a
+ * rate into the portfolio's currency, whose rows then show no figure. Income
+ * that could not be read at all gives the columns up to the note alone.
+ */
+export function showsIncomeColumns(income: PortfolioIncome): boolean {
+  return income.knownHoldings > 0 || [...income.gaps.values()].some((gap) => gap.cause === "fx");
+}
+
 const UNREAD_WORDS: Record<"timed-out" | "sign-in" | "offline" | "failed", (seconds: number) => string> = {
   "timed-out": (seconds) => `dividends not read within ${seconds}s`,
   "sign-in": () => "dividends not read without a Gloom sign-in",
@@ -210,7 +220,7 @@ export function incomeGapNote(
     groups.set(key, [...(groups.get(key) ?? []), symbol]);
   }
   const causes = [...groups].map(([cause, symbols]) => `${cause} for ${name(symbols)}`).join("; ");
-  if (income.knownHoldings === 0) return `Income not shown: ${causes}.`;
+  if (income.knownHoldings === 0) return `Income ${showsIncomeColumns(income) ? "unavailable" : "not shown"}: ${causes}.`;
   const others = income.knownHoldings;
   return `Income unavailable: ${causes}. The other ${others === 1 ? "holding pays" : `${others} holdings pay`} ${money(income.knownIncome)} a year.`;
 }

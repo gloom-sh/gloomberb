@@ -59,6 +59,12 @@ export interface Portfolio {
   name: string;
   description?: string;
   currency: string;
+  /**
+   * Set on a manual portfolio created in a currency (`portfolio create
+   * --currency`): it totals in `currency` whatever the base currency, and its
+   * first holding does not change it.
+   */
+  fixedCurrency?: boolean;
   brokerId?: string;
   brokerInstanceId?: string;
   brokerAccountId?: string;

@@ -29,8 +29,11 @@ const COMMAND_SURFACE_MIN_WIDTH = { native: 46, terminal: 42 };
  * columns to add the base currency, the one value here that barely moves.
  */
 const HEADER_MARKET_TIERS = [42, 31, 21] as const;
-/** Full pre-market label, including "to regular open", when spare room allows. */
-const HEADER_MARKET_FULL_COLUMNS = 58;
+/**
+ * Full pre-market label, including "to regular open", when spare room allows:
+ * "PRE-MKT · 1h 17m to regular open  SPY $762.43 -0.60%  base USD" with room to spare.
+ */
+const HEADER_MARKET_FULL_COLUMNS = 64;
 
 /**
  * Update status is transient, so on a narrow header it gives most of its

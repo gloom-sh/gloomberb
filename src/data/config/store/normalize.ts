@@ -372,10 +372,11 @@ function sanitizePortfolios(value: unknown, fallback: Portfolio[]): Portfolio[] 
     .map(sanitizePortfolioAllocation);
 }
 
-/** Cash, target weights and the import source the portfolio commands write; a malformed one is dropped. */
+/** Cash, target weights, the import source and a fixed currency the portfolio commands write; a malformed one is dropped. */
 function sanitizePortfolioAllocation(entry: Portfolio): Portfolio {
-  const { cash, targetWeights, importedFrom, ...portfolio } = entry;
+  const { cash, targetWeights, importedFrom, fixedCurrency, ...portfolio } = entry;
   const next: Portfolio = { ...portfolio };
+  if (fixedCurrency === true) next.fixedCurrency = true;
   if (isRecord(importedFrom) && importedFrom.kind === "13f"
     && [importedFrom.cik, importedFrom.name, importedFrom.period, importedFrom.filed].every((value) => typeof value === "string" && value)) {
     next.importedFrom = { kind: "13f", cik: importedFrom.cik, name: importedFrom.name, period: importedFrom.period, filed: importedFrom.filed };

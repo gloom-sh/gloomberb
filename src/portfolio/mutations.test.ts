@@ -14,6 +14,7 @@ import {
   type SetManualPortfolioPositionInput,
 } from "./mutations";
 import { createTestTicker } from "../test-support/ticker";
+import { resolvePortfolioTotalsCurrency } from "./totals-currency";
 
 const makeTicker = (overrides: Partial<TickerRecord["metadata"]> = {}) => createTestTicker("AAPL", "Apple Inc.", overrides);
 
@@ -275,5 +276,14 @@ describe("portfolio-list mutations", () => {
     expect(adoptFirstPositionCurrency(config, "broker:ibkr", "AUD")).toBeNull();
     // A base currency the user chose is what manual portfolios total in.
     expect(adoptFirstPositionCurrency({ ...config, baseCurrency: "EUR" }, "asx", "AUD")).toBeNull();
+  });
+
+  test("a portfolio created in a currency totals in it whatever the base currency, and its first holding does not change it", () => {
+    const { config, portfolio } = createManualPortfolio(createDefaultConfig("/tmp/gloomberb-mutations"), "Baht", "USD", { fixedCurrency: "thb" });
+    expect(portfolio).toEqual({ id: "baht", name: "Baht", currency: "THB", fixedCurrency: true });
+    expect(adoptFirstPositionCurrency(config, "baht", "USD")).toBeNull();
+    expect(resolvePortfolioTotalsCurrency(portfolio, "EUR")).toBe("THB");
+    // Without one, a manual portfolio still totals in the base currency the user chose.
+    expect(resolvePortfolioTotalsCurrency(createManualPortfolio(config, "Plain", "USD").portfolio, "EUR")).toBe("EUR");
   });
 });

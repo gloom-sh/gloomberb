@@ -7,11 +7,11 @@ import type { Quote } from "../../types/financials";
 import { sessionQuotes } from "../../test-support/test-fixture-session-quotes";
 import { formatPercentRaw } from "../../utils/format";
 
-/** "PRE-MKT · 1h 17m to regular open  SPY 762.43 -0.60%  USD", each part with its trailing gap. */
+/** "PRE-MKT · 1h 17m to regular open  SPY $762.43 -0.60%  base USD", each part with its trailing gap. */
 const CLUSTER = {
-  baseCurrencyWidth: 4,
+  baseCurrencyWidth: 9,
   countdownWidth: 25,
-  spyWidth: 18,
+  spyWidth: 19,
   stateWidth: 8,
 };
 
@@ -23,30 +23,31 @@ describe("header market cluster", () => {
    * it is the value that moves.
    */
   test("sheds the countdown, then the currency, then the state, keeping SPY longest", () => {
-    expect(resolveMarketSummaryFit({ available: 55, ...CLUSTER })).toEqual({
+    expect(resolveMarketSummaryFit({ available: 61, ...CLUSTER })).toEqual({
       showSpy: true,
       showState: true,
       showBaseCurrency: true,
       showCountdown: true,
     });
-    expect(resolveMarketSummaryFit({ available: 54, ...CLUSTER })).toMatchObject({
+    expect(resolveMarketSummaryFit({ available: 60, ...CLUSTER })).toMatchObject({
       showSpy: true,
       showState: true,
       showBaseCurrency: true,
       showCountdown: false,
     });
-    expect(resolveMarketSummaryFit({ available: 29, ...CLUSTER })).toMatchObject({
+    expect(resolveMarketSummaryFit({ available: 35, ...CLUSTER })).toMatchObject({
       showSpy: true,
       showState: true,
       showBaseCurrency: false,
       showCountdown: false,
     });
-    expect(resolveMarketSummaryFit({ available: 25, ...CLUSTER })).toMatchObject({
+    // AFTER-HRS, wider than the base currency label.
+    expect(resolveMarketSummaryFit({ available: 28, ...CLUSTER, stateWidth: 10 })).toMatchObject({
       showSpy: true,
       showState: false,
       showBaseCurrency: true,
     });
-    expect(resolveMarketSummaryFit({ available: 17, ...CLUSTER })).toMatchObject({
+    expect(resolveMarketSummaryFit({ available: 18, ...CLUSTER })).toMatchObject({
       showSpy: false,
       showState: true,
       showBaseCurrency: true,
@@ -86,7 +87,7 @@ describe("header market cluster", () => {
       const quiet = resolveHeaderPromptGeometry({ termWidth });
       expect(updating.width).toBe(quiet.width);
       expect(updating.marketColumns).toBe(42);
-      expect(updating.updateColumns - quiet.updateColumns).toBe(16);
+      expect(updating.updateColumns - quiet.updateColumns).toBe(22);
     }
 
     // 80 columns keeps only SPY, and reserves nothing it cannot spend.
@@ -104,16 +105,16 @@ describe("header SPY", () => {
 
   test("holds the regular close and its move once the market is closed, as `ticker SPY` headlines them", () => {
     const close = getRegularSessionDisplay(spy.weekend)!;
-    expect(text(spy.weekend)).toBe(`SPY 198.78 ${formatPercentRaw(close.changePercent)}`);
-    expect(text(spy.regular)).toBe("SPY 199.10 +0.67%");
+    expect(text(spy.weekend)).toBe(`SPY $198.78 ${formatPercentRaw(close.changePercent)}`);
+    expect(text(spy.regular)).toBe("SPY $199.10 +0.67%");
   });
 
   test("shows the open extended session's print and its move from the close beside AFTER-HRS or PRE-MKT", () => {
     for (const quote of [spy.afterHours, spy.preMarket]) {
       const extended = getExtendedSessionDisplay(quote)!;
-      expect(text(quote)).toBe(`SPY ${extended.price.toFixed(2)} ${formatPercentRaw(extended.changePercent).padStart(6)}`);
+      expect(text(quote)).toBe(`SPY $${extended.price.toFixed(2)} ${formatPercentRaw(extended.changePercent).padStart(6)}`);
     }
-    expect(text(spy.afterHours)).toBe("SPY 198.80 +0.01%");
-    expect(text(spy.preMarket)).toBe("SPY 199.50 +0.36%");
+    expect(text(spy.afterHours)).toBe("SPY $198.80 +0.01%");
+    expect(text(spy.preMarket)).toBe("SPY $199.50 +0.36%");
   });
 });
