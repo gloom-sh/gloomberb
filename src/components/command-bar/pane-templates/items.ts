@@ -210,7 +210,9 @@ export function buildPaneTemplateItem(options: {
       // Under the label, where the bar shows a row's second line: what to type instead.
       ...(options.argError.detail ? { lines: [{ segments: [{ text: options.argError.detail }] }] } : {}),
       category: options.category ?? (pluginName ? `${pluginName} Panes` : "Panes"),
-      kind: "info",
+      // The function's own row, disabled: its code sits in the code column as on
+      // the row that opens it, where an info row would carry it on the right.
+      kind: "action",
       right: options.showShortcut ? options.template.shortcut?.prefix : undefined,
       shortcutQuery: options.template.shortcut?.prefix,
       searchText,

@@ -66,7 +66,7 @@ import {
   type SectorTableColumn,
 } from "./sector-model";
 import { describePortfolioTab, resolvePortfolioId, resolveTemplatePortfolioId } from "./portfolio-selection";
-import { findNamedCollection } from "../../../portfolio/collection-name";
+import { findNamedCollection, unknownCollectionArgError } from "../../../portfolio/collection-name";
 import {
   analyticsFigures,
   riskFigureNotices,
@@ -483,7 +483,11 @@ export const portfolioAnalyticsModule: PluginModule = {
       label: prefix === "PORT" ? "Portfolio Analytics" : "Portfolio Market Risk",
       description: "Benchmark-relative risk, factor betas, stress shifts and local account evidence.",
       keywords: ["risk", "analytics", "sharpe", "beta", "sector", "allocation", "portfolio", "style", "quality", "factor tilt"],
-      shortcut: { prefix, argKind: "text", argOptional: true, argPlaceholder: "portfolio-id" },
+      shortcut: {
+        prefix, argKind: "text", argOptional: true, argPlaceholder: "portfolio-id",
+        // `PORT Nope` names no portfolio: the bar says so, not the first portfolio's risk.
+        argError: (arg, context) => unknownCollectionArgError(arg, context.config.portfolios, "portfolio"),
+      },
       headless: portfolioRiskHeadless,
       canCreate: (context) => context.config.portfolios.length > 0,
       createInstance: (context, options) => {

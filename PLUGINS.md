@@ -1370,7 +1370,7 @@ ctx.registerPaneTemplate({
 });
 ```
 
-A shortcut that sets neither `argKind` nor `argPlaceholder` takes the argument the template's `headless` definition declares, so the command bar reads `PF Family` as `gloom fn PF Family` does. `shortcut.argError(arg, context)` says why a typed argument opens nothing, or returns null: for `PF Nope` it returns `{ message: 'No portfolio or watchlist named "Nope"', detail: "Try Main Portfolio or Family" }`. The bar shows the message in place of the function's row, with the detail on the line under it, and the pane does not open for that argument.
+A shortcut that sets neither `argKind` nor `argPlaceholder` takes the argument the template's `headless` definition declares, so the command bar reads `PF Family` as `gloom fn PF Family` does. `shortcut.argError(arg, context)` says why a typed argument opens nothing, or returns null: for `PF Nope` it returns `{ message: 'No portfolio or watchlist named "Nope"', detail: "Try Main Portfolio or Family" }`. The bar shows the message in place of the function's row, disabled, with the function's code where its row has it and the detail on the line under it, and the pane does not open for that argument.
 
 Create pane instances programmatically:
 

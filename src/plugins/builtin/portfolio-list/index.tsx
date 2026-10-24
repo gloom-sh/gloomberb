@@ -1,5 +1,6 @@
 import type { PaneTemplateContext, PaneTemplateInstanceConfig, ShortcutArgError } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
+import { unknownCollectionArgError } from "../../../portfolio/collection-name";
 import { PortfolioListPane } from "./pane";
 import {
   buildPortfolioPaneSettingsDef,
@@ -28,23 +29,9 @@ function resolveCollectionIdForKind(context: PaneTemplateContext, kind: "portfol
     : (context.config.watchlists[0]?.id ?? null);
 }
 
-/** Names the bar lists under an unknown one; the line is one row of the bar. */
-const LISTED_COLLECTION_NAMES = 6;
-
 /** `PF Nope`: no portfolio or watchlist has that name or id, so the bar names those that do. */
 function unknownCollectionArg(arg: string, context: PaneTemplateContext): ShortcutArgError | null {
-  if (findCollection(context.config, arg)) return null;
-  const names = [...context.config.portfolios, ...context.config.watchlists]
-    .map((collection) => collection.name.trim() || collection.id);
-  const listed = names.slice(0, LISTED_COLLECTION_NAMES);
-  const more = names.length - listed.length;
-  return {
-    message: `No portfolio or watchlist named "${arg}"`,
-    detail: listed.length === 0 ? "No portfolios or watchlists are set up"
-      : more > 0 ? `Try ${listed.join(", ")} or ${more} more`
-      : listed.length === 1 ? `Try ${listed[0]}`
-      : `Try ${listed.slice(0, -1).join(", ")} or ${listed.at(-1)}`,
-  };
+  return unknownCollectionArgError(arg, [...context.config.portfolios, ...context.config.watchlists], "portfolio or watchlist");
 }
 
 function createCollectionPaneInstance(

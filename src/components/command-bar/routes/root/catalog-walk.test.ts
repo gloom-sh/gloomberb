@@ -9,9 +9,11 @@ import { createDefaultConfig, type AppConfig } from "../../../../types/config";
 import type { CommandDef } from "../../../../types/plugin";
 import type { AssistRowHandlers } from "../../assist/model";
 import { commands } from "../../commands/registry";
+import { resolveRowBadge } from "../../list/badge";
 import type { ResultItem } from "../../list/model";
 import {
   buildPaneTemplateContext,
+  buildPaneTemplateItem,
   getAvailablePaneShortcutTemplatesForQuery,
   paneTemplateArgError,
 } from "../../pane-templates/items";
@@ -32,6 +34,40 @@ const SAMPLES_BY_KIND: Record<string, readonly string[]> = {
   tickers: ["AAPL,MSFT", "AAPL"],
   "ticker-list": ["AAPL,MSFT", "AAPL"],
   "symbol-list": ["AAPL,MSFT", "AAPL"],
+};
+
+interface CollectionArgument {
+  /** Arguments that name a portfolio or watchlist there is, or that name none at all (EXPO's tickers). */
+  known: readonly string[];
+  /** Arguments naming one nothing has, with the row the bar shows for each. */
+  unknown: ReadonlyArray<{ arg: string; message: string; detail: string }>;
+}
+
+/**
+ * Every function whose argument is a portfolio or watchlist, by name or id in
+ * any case. The walk finds them in the catalog from what their argument says
+ * it takes, so a new one fails until it is listed here, with its own row.
+ */
+const COLLECTION_ARGUMENTS: Record<string, CollectionArgument> = {
+  PF: {
+    known: ["Book", "book", "MAIN", "Watchlist"],
+    unknown: [{ arg: "Nope", message: 'No portfolio or watchlist named "Nope"', detail: "Try Main Portfolio, Book or Watchlist" }],
+  },
+  PORT: {
+    known: ["Book", "main"],
+    unknown: [{ arg: "Watchlist", message: 'No portfolio named "Watchlist"', detail: "Try Main Portfolio or Book" }],
+  },
+  MARS: {
+    known: ["Book", "main"],
+    unknown: [{ arg: "Nope", message: 'No portfolio named "Nope"', detail: "Try Main Portfolio or Book" }],
+  },
+  EXPO: {
+    known: ["PORT:Book", "port:main portfolio", "WATCH:watchlist", "AAPL=60% NVDA=40%"],
+    unknown: [
+      { arg: "PORT:Nope", message: 'No portfolio named "Nope"', detail: "Try PORT:Main Portfolio or PORT:Book" },
+      { arg: "WATCH:Book", message: 'No watchlist named "Book"', detail: "Try WATCH:Watchlist" },
+    ],
+  },
 };
 
 const config: AppConfig = (() => {
@@ -95,10 +131,21 @@ function rootRows(query: string): ResultItem[] {
     activeTickerSymbol: null,
     assist: signedOut,
     availableCommands: commands,
+    bindKey: () => {},
     buildLayoutItems: empty,
     buildPaneSettingItems: empty,
     buildWindowModeItems: empty,
-    createPaneTemplateItem: (template) => row(`pane-template:${template.id}`),
+    // The bar's own row for a function, as the surface builds it.
+    createPaneTemplateItem: (template, itemOptions) => buildPaneTemplateItem({
+      ...itemOptions,
+      template,
+      argError: paneTemplateArgError(template, itemOptions?.createOptions?.arg, context),
+      pluginRegistry: { getPaneTemplatePluginId: () => undefined, allPlugins: new Map() } as never,
+      runPaneTemplateShortcut: () => {},
+      shouldOpenTemplateConfig: () => false,
+      openPaneTemplateWorkflow: () => {},
+      openPaneTemplateDirect: () => {},
+    }),
     createPluginCommandItem: (command) => row(`plugin-command:${command.id}`),
     currentRoute: null,
     executeCollectionCommand: () => {},
@@ -145,18 +192,36 @@ describe("the catalog's functions in the command bar", () => {
     expect(misread).toEqual([]);
   });
 
-  test("PF takes a portfolio or watchlist by name or id in any case, and names them for one it does not know", () => {
-    const argError = (query: string) => {
-      const { intent } = readQuery(query);
-      if (intent.kind === "none" || intent.source !== "pane-template") return "not PF";
-      expect(intent.template.id).toBe("new-collection-pane");
-      return paneTemplateArgError(intent.template, intent.argText, context);
-    };
-    for (const query of ["PF Book", "PF book", "pf BOOK", "PF main", "PF Watchlist"]) expect(argError(query)).toBeNull();
-    expect(argError("PF nope")).toEqual({
-      message: 'No portfolio or watchlist named "nope"',
-      detail: "Try Main Portfolio, Book or Watchlist",
-    });
+  test("a function that takes a portfolio or watchlist opens one there is, and names them for one nothing has", () => {
+    const takesCollection = entries.filter((entry) => {
+      const template = entry.templateId ? catalog.paneTemplates.get(entry.templateId) : undefined;
+      const argument = (template?.headless ?? catalog.panes.get(entry.paneId)?.headless)?.argument;
+      return entry.shortcut && argument?.kind === "free-text"
+        && /\b(portfolio|watchlist)s?\b/i.test(`${argument.placeholder ?? ""} ${argument.description ?? ""}`);
+    }).map((entry) => entry.token).sort();
+    expect(takesCollection).toEqual(Object.keys(COLLECTION_ARGUMENTS).sort());
+
+    for (const [code, { known, unknown }] of Object.entries(COLLECTION_ARGUMENTS)) {
+      for (const arg of known) {
+        const rows = rootRows(`${code} ${arg}`);
+        expect({ query: `${code} ${arg}`, opens: rows[0]?.disabled !== true }).toEqual({ query: `${code} ${arg}`, opens: true });
+      }
+      const runnable = rootRows(`${code} ${known[0]}`)[0]!;
+      for (const { arg, message, detail } of unknown) {
+        const rows = rootRows(`${code} ${arg}`);
+        const [errorRow] = rows;
+        expect({ label: errorRow?.label, lines: errorRow?.lines, disabled: errorRow?.disabled }).toEqual({
+          label: message,
+          lines: [{ segments: [{ text: detail }] }],
+          disabled: true,
+        });
+        // The function's own row, saying why: its code sits where the row that opens it has it.
+        expect(resolveRowBadge(errorRow!)).toEqual(resolveRowBadge(runnable));
+        expect(resolveRowBadge(errorRow!)?.text).toBe(code);
+        // Nothing else answers: no sign-up offer, and no key to bind to text that opens nothing.
+        expect(rows.map((item) => item.id)).toEqual([errorRow!.id]);
+      }
+    }
   });
 
   test("words after a code that takes none never leave the sign-up offer to take Enter", () => {

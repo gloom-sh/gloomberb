@@ -2231,7 +2231,7 @@ Select a coloured table row to locate its trail, and open it for dated strength 
 
 ## Portfolio risk depth: PORT and MARS
 
-`PORT` opens portfolio market risk. `MARS` is its alias. Add a local portfolio's ID or name, in any case, to select it (`PORT main`, `PORT Family`). Every command and function that takes a portfolio or watchlist reads it that way.
+`PORT` opens portfolio market risk. `MARS` is its alias. Add a local portfolio's ID or name, in any case, to select it (`PORT main`, `PORT Family`). Every command and function that takes a portfolio or watchlist reads it that way, and in the command bar a name no portfolio has (`PORT Nope`, `PF Nope`, `EXPO PORT:Nope`) shows a row listing the ones there are instead of opening the first.
 
 - Views: Risk, Factors, Holdings, Correlation, Stress, Performance, Attribution and Greeks. Enter opens a metric's evidence and history, Escape returns.
 - Click portfolio tabs or press `p` to switch portfolios. `i` imports local account evidence from the clipboard and `r` refreshes Cloud observations. Tables support sorting and CSV export.
