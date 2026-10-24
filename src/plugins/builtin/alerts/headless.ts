@@ -1,13 +1,12 @@
 /**
  * `gloom fn ALRT`: the Alerts pane's three tabs as reports. Prices lists
  * the price alerts as the pane's table does, Events the event alerts (earnings,
- * CPI and FOMC with their dates, filings, news, IV levels, market moves),
+ * CPI, FOMC and other calendar releases with their dates, filings, news, IV levels, market moves),
  * History the alerts this device's app fired, with the ones Gloom Cloud
  * delivered to the account over the last 90 days when signed in.
  */
 import type { HeadlessPaneColumn, HeadlessPaneContext, HeadlessPaneDefinition, HeadlessPaneRow, HeadlessRowsResult } from "../../../types/headless";
 import type { PaneLock } from "../../../types/plugin";
-import { newYorkToday } from "../earnings/board-model";
 import { refusedLock } from "../shared/cloud-denied";
 import { ALERT_TABS, ALERTS_PLUGIN_ID } from "./constants";
 import { ruleState } from "./event-rows";
@@ -119,7 +118,7 @@ function pricesResult(alerts: readonly AlertRule[], error: string | null, events
 }
 
 /** An event alert as the Events table lists it: a scheduled one with its event date and lead time apart. */
-function eventRow(rule: EventAlertRule, today: string, checks: Record<string, IvLevelCheck>): HeadlessPaneRow {
+function eventRow(rule: EventAlertRule, now: number, checks: Record<string, IvLevelCheck>): HeadlessPaneRow {
   const scheduled = readScheduledRule(rule);
   return {
     id: rule.id,
@@ -129,7 +128,7 @@ function eventRow(rule: EventAlertRule, today: string, checks: Record<string, Iv
     eventDate: scheduled ? rule.eventDate ?? null : null,
     leadDays: scheduled?.leadDays ?? null,
     ...(scheduled?.trigger === "results" ? { when: "results" } : {}),
-    state: ruleState(rule, today),
+    state: ruleState(rule, now),
     since: new Date(rule.createdAt).toISOString().slice(0, 10),
     // An IV level's last reading, or why there was none, on its own row.
     ...rule.kind === "iv_level" ? { lastCheck: ivLevelCheckText(rule, checks[rule.id]) } : {},
@@ -137,13 +136,13 @@ function eventRow(rule: EventAlertRule, today: string, checks: Record<string, Iv
 }
 
 function eventsResult(rules: readonly EventAlertRule[], error: string | null, checks: Record<string, IvLevelCheck>): HeadlessRowsResult {
-  const today = newYorkToday();
+  const now = Date.now();
   const checked = rules.some((rule) => rule.kind === "iv_level");
   return {
     // A Last check column only when an IV level rule has a reading to show.
     columns: checked ? [...EVENT_COLUMNS.slice(0, -2), { key: "lastCheck", header: "Last check" }, ...EVENT_COLUMNS.slice(-2)] : EVENT_COLUMNS,
-    rows: [...rules].sort((a, b) => b.createdAt - a.createdAt).map((rule) => eventRow(rule, today, checks)),
-    empty: "No event alerts. Add one with gloom alerts add CRWV earnings --days 3 or gloom alerts add CPI --days 1.",
+    rows: [...rules].sort((a, b) => b.createdAt - a.createdAt).map((rule) => eventRow(rule, now, checks)),
+    empty: "No event alerts. Add one with gloom alerts add CRWV earnings --days 3, gloom alerts add CPI --days 1 or gloom alerts add CN PMI.",
     ...(error ? { errors: [error], complete: false } : {}),
   };
 }
@@ -215,7 +214,7 @@ async function historyResult(ctx: HeadlessPaneContext): Promise<HeadlessRowsResu
 
 export const alertsHeadless: HeadlessPaneDefinition<"rows"> = {
   shape: "rows",
-  description: "Your alerts: price alerts with current price and distance to target, event alerts (earnings, CPI and FOMC dates, filings, news, IV levels, market moves) or the alerts that went off, from this app and, signed in, Gloom Cloud.",
+  description: "Your alerts: price alerts with current price and distance to target, event alerts (earnings, CPI, FOMC and other economic calendar releases, filings, news, IV levels, market moves) or the alerts that went off, from this app and, signed in, Gloom Cloud.",
   freshness: { source: "Your alerts", status: "not-a-feed", basis: "your alert rules" },
   argument: { kind: "none" },
   options: [{

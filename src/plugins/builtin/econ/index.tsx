@@ -24,7 +24,7 @@ import { formatCountdown } from "../../../utils/datetime-format";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { colors, blendHex } from "../../../theme/colors";
-import { hasNoStatedTime, type EconEvent } from "./types";
+import { hasNoReleaseTime, hasNoStatedTime, isAllDayEvent, type EconEvent } from "./types";
 import { FRED_CATALOG_SERIES } from "./fred-catalog";
 import { ECON_PRINT_NOTIFICATIONS_ENABLED_KEY, retainVisiblePrintRefresh, setupHighImpactPrintNotifications } from "./print-watch";
 import { EconDetailView } from "./detail-view";
@@ -261,7 +261,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     // The reader's clock, with the weekday on rows where it is another day than the UTC one they are listed under.
     const readerLabel = readerZone ? timeZoneCity(readerZone).toUpperCase() : null;
     const readerWidth = !readerZone || !readerLabel ? 0 : tableColumnWidth({ label: readerLabel,
-      width: filtered.some((ev) => !hasNoStatedTime(ev) && zonedClock(ev.date.getTime(), readerZone).label.length > 5) ? 9 : 5 });
+      width: filtered.some((ev) => !hasNoReleaseTime(ev) && zonedClock(ev.date.getTime(), readerZone).label.length > 5) ? 9 : 5 });
     // Padding, one gap per column boundary, and the vertical scrollbar lane;
     // one column short of that clipped the PRIOR values at the right edge.
     const roomBeside = (count: number, timesWidth: number) => (impactWidth: number, countryWidth: number) => (
@@ -312,9 +312,9 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
 
   // Next upcoming event for countdown
   const nextEvent = nextUpcomingEventIdx >= 0 ? filtered[nextUpcomingEventIdx] : undefined;
-  // A bank that states no time has a day to count to, not an hour.
+  // A bank that states no time, or an all-day event, has a day to count to, not an hour.
   const nextCountdown = !nextEvent ? null
-    : hasNoStatedTime(nextEvent) ? shortDayLabel(nextEvent.date)
+    : hasNoReleaseTime(nextEvent) ? shortDayLabel(nextEvent.date)
     : formatCountdown(nextEvent.date.getTime() - now);
   // The countdown changes every tick, so it is footer status, not query bar
   // context; the footer ellipsizes a long event name.
@@ -390,10 +390,10 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     const ev = row.event;
     switch (column.id) {
       case "time":
-        // A bank that states no time has none here; its detail says why.
-        return { text: hasNoStatedTime(ev) ? "" : timeLabel(ev.date), color: colors.textMuted };
+        // A bank that states no time has none here, and its detail says why; an all-day event (a plenum, an election) says so.
+        return { text: hasNoStatedTime(ev) ? "" : isAllDayEvent(ev) ? "All day" : timeLabel(ev.date), color: colors.textMuted };
       case "readerTime":
-        return { text: hasNoStatedTime(ev) || !readerZone ? "" : zonedClock(ev.date.getTime(), readerZone).label, color: colors.textMuted };
+        return { text: hasNoReleaseTime(ev) || !readerZone ? "" : zonedClock(ev.date.getTime(), readerZone).label, color: colors.textMuted };
       case "impact": {
         const indicator = impactIndicator(ev.impact);
         return {

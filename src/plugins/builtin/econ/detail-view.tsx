@@ -32,7 +32,7 @@ import { displayWidth, truncateToDisplayWidth } from "../../../utils/format";
 import { useOpenTickerChoice } from "../shared/ticker-choice";
 import { resolveFredMapping, projectFredHistory, fredHistoryUnits } from "./fred-series-map";
 import { actualColor, CALENDAR_TIME_ZONE_LABEL, timeLabel } from "./calendar-model";
-import { hasNoStatedTime, type EconEvent } from "./types";
+import { hasNoStatedTime, isAllDayEvent, type EconEvent } from "./types";
 
 interface EconDetailViewProps {
   event: EconEvent;
@@ -222,6 +222,8 @@ export function EconDetailView({ event, width, height, focused }: EconDetailView
     // A bank that states no time has none here, and says so; a publisher's own clock sits under the time.
     hasNoStatedTime(event)
       ? { id: "time", label: "Release", value: "No time stated", detail: event.timeNote! }
+      : isAllDayEvent(event)
+      ? { id: "time", label: "Release", value: "All day" }
       : { id: "time", label: "Release", value: `${timeLabel(event.date)} ${CALENDAR_TIME_ZONE_LABEL}`,
         ...(event.localTime && event.timeZone ? { detail: `${event.localTime} ${event.timeZone.split("/").at(-1)!.replaceAll("_", " ")}` } : {}) },
   ];

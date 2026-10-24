@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test";
 import { getVisibleWorkflowFields, normalizeWizardFields } from "../../../components/command-bar/workflow/fields";
 import { parseAlertAddArgs, thousandsDotMessage } from "./cli";
-import { EVENT_ALERTS_KEY, readEventAlerts } from "./events";
+import type { EconEvent } from "../econ/types";
+import { CALENDAR_ALERTS_KEY, EVENT_ALERTS_KEY, readEventAlerts } from "./events";
 import type { FiredAlertInput } from "./fired-log";
 import { createResearchAlert, earningsResultsAlertValues, researchAlertDescription, researchWizardFields } from "./research-builder";
 import { checkScheduledEventAlertsNow, startScheduledEventAlerts } from "./scheduled-check";
@@ -87,7 +88,7 @@ test("event rules keep their dates through storage and take only US listings and
   expect([parseLeadDays(undefined), parseLeadDays("14"), parseLeadDays("0"), parseLeadDays("15"), parseLeadDays("2.5")]).toEqual([1, 14, null, null, null]);
 });
 
-test("alerts add reads price, earnings and macro forms and names what it takes", () => {
+test("alerts add reads price, earnings and calendar event forms and names what it takes", () => {
   expect(parseAlertAddArgs(["AAPL", "above", "250"], undefined)).toEqual({ kind: "price", symbol: "AAPL", condition: "above", price: 250 });
   expect(parseAlertAddArgs(["CRWV", "earnings"], "3")).toEqual({ kind: "earnings", symbol: "CRWV", leadDays: 3 });
   expect(parseAlertAddArgs(["CRWV", "earnings", "results"], undefined)).toEqual({ kind: "earnings", symbol: "CRWV", leadDays: 0, results: true });
@@ -95,11 +96,23 @@ test("alerts add reads price, earnings and macro forms and names what it takes",
   expect(parseAlertAddArgs(["cpi"], undefined)).toEqual({ kind: "macro", event: "cpi", leadDays: 1 });
   // A ticker named like an event still takes a price alert.
   expect(parseAlertAddArgs(["CPI", "below", "3"], undefined)).toMatchObject({ kind: "price", symbol: "CPI" });
-  expect(() => parseAlertAddArgs(["NFP"], undefined)).toThrow("CPI or FOMC");
+  // Any other name is a release in the economic calendar; a country code before it, or --country, narrows it.
+  expect(parseAlertAddArgs(["NBS", "PMI"], "2")).toEqual({ kind: "release", query: "NBS PMI", country: null, leadDays: 2 });
+  expect(parseAlertAddArgs(["CN", "PMI"], undefined)).toEqual({ kind: "release", query: "PMI", country: "CN", leadDays: 1 });
+  expect(parseAlertAddArgs(["Industrial Profits"], undefined, undefined, "cn")).toEqual({ kind: "release", query: "Industrial Profits", country: "CN", leadDays: 1 });
+  // CPI and FOMC stay the alerts they were, in the US or anywhere; elsewhere CPI is that country's release.
+  expect(parseAlertAddArgs(["US", "CPI"], undefined)).toEqual({ kind: "macro", event: "cpi", leadDays: 1 });
+  expect(parseAlertAddArgs(["FOMC"], undefined, undefined, "US")).toEqual({ kind: "macro", event: "fomc", leadDays: 1 });
+  expect(parseAlertAddArgs(["CPI"], undefined, undefined, "CN")).toEqual({ kind: "release", query: "CPI", country: "CN", leadDays: 1 });
+  // A mistyped condition with a price is a price alert gone wrong, and the refusal names the event form too.
+  expect(() => parseAlertAddArgs(["AAPL", "abve", "250"], undefined)).toThrow('alerts add "NBS Manufacturing PMI" --country CN');
+  expect(() => parseAlertAddArgs(["AAPL", "above", "250"], undefined, undefined, "CN")).toThrow("--country is for an alert on a calendar event");
+  expect(() => parseAlertAddArgs(["PMI"], undefined, undefined, "XQ")).toThrow('Unknown country "XQ"');
   expect(() => parseAlertAddArgs(["CRWV", "earnings"], "0")).toThrow("1 to 14");
   expect(() => parseAlertAddArgs(["CPI"], null)).toThrow("1 to 14");
   expect(() => parseAlertAddArgs(["AAPL", "above", "250"], "2")).toThrow("not price alerts");
-  expect(() => parseAlertAddArgs(["CRWV", "dividends"], undefined)).toThrow("earnings");
+  // Words with no price are looked up in the calendar, whose refusal names every form (see cli-add.test.ts).
+  expect(parseAlertAddArgs(["CRWV", "dividends"], undefined)).toMatchObject({ kind: "release", query: "CRWV dividends" });
 });
 
 test("alerts add reads a price pasted from a sheet, and asks when a comma and three digits could be either reading", () => {
@@ -390,6 +403,78 @@ test("a results alert follows a report moved before its day, and keeps waiting t
     expect(notifications).toEqual(["CRWV reported EPS 0.12 vs 0.10 expected (+20.0%)"]);
     expect(saved()).toMatchObject({ eventDate: "2026-10-22", firedFor: "2026-10-22" });
     expect(reads).toEqual(["CRWV 2026-10-19 2026-10-25", "CRWV 2026-10-19 2026-10-25"]);
+  } finally {
+    stop();
+  }
+});
+
+test("a calendar event alerts before its release and once with its figures; CPI does the same, and a rule set after a release stays quiet", async () => {
+  const nbs = { name: "National Bureau of Statistics" };
+  const pmi = createScheduledAlert({ kind: "release", event: "NBS Manufacturing PMI", country: "CN", publisher: nbs.name }, 1, "2026-10-31", 1_000);
+  // Set half an hour after its figures were out.
+  const late = createScheduledAlert({ kind: "release", event: "Industrial Profits (YTD) YoY", country: "CN" }, 1, "2026-10-27", Date.parse("2026-10-27T02:00:00Z"));
+  const cpi = createScheduledAlert({ kind: "macro", event: "cpi" }, 1, "2026-11-10", 1_000);
+  // Saved CPI rules stay in eventAlerts, where released versions read them; calendar events have their own list.
+  const store = new Map<string, string>([[CALENDAR_ALERTS_KEY, JSON.stringify([pmi, late])], [EVENT_ALERTS_KEY, JSON.stringify([cpi])]]);
+  const notifications: string[] = [];
+  const panes: string[] = [];
+  const ctx = {
+    configState: {
+      get: (key: string) => store.get(key) ?? null,
+      set: async (key: string, value: unknown) => { store.set(key, String(value)); },
+    },
+    notify: (notification: { body?: string; action?: { onClick: () => void } }) => {
+      notifications.push(notification.body ?? "");
+      notification.action?.onClick();
+    },
+    showPane(pane: string) { panes.push(pane); },
+    log: { info() {}, warn() {}, error() {}, debug() {} },
+  };
+  const figures: Record<string, string | null> = { pmi: null, cpi: null };
+  const row = (date: string, country: string, event: string, extra: Partial<EconEvent>): EconEvent => ({
+    id: event, date: new Date(date), time: date.slice(11, 16), country, event, impact: "high", actual: null, forecast: null, prior: null, ...extra,
+  });
+  const sources: ScheduledEventSources = {
+    earnings: async () => [],
+    cpi: async () => ({ release: { nextReleaseAt: "2026-11-10T13:30:00.000Z" } }),
+    fomc: async () => [],
+    calendar: async () => [
+      row("2026-10-27T01:30:00.000Z", "CN", "Industrial Profits (YTD) YoY", { actual: "3.2%", prior: "15.7%" }),
+      row("2026-10-31T01:30:00.000Z", "CN", "NBS Manufacturing PMI", { actual: figures.pmi, forecast: "50.0", prior: "50.1", source: nbs }),
+      row("2026-11-10T13:30:00.000Z", "US", "CPI y/y", { actual: figures.cpi, forecast: "3.0%", prior: "2.9%" }),
+    ],
+  };
+  let now = Date.parse("2026-10-27T02:00:00Z");
+  const stop = startScheduledEventAlerts(ctx as never, sources, () => now);
+  const check = async () => {
+    checkScheduledEventAlertsNow();
+    await Bun.sleep(20);
+  };
+  try {
+    await check();
+    expect(notifications).toEqual([]);
+
+    // The day before, its time to the minute; then, once out, its figures, opening the calendar.
+    now = Date.parse("2026-10-30T04:30:00Z");
+    await check();
+    now = Date.parse("2026-10-31T01:31:00Z");
+    await check();
+    expect(notifications).toEqual(["NBS Manufacturing PMI (CN) in 21 hours, Sat, Oct 31, 01:30 UTC"]);
+    figures.pmi = "50.3";
+    now = Date.parse("2026-10-31T01:32:00Z");
+    await check();
+    await check();
+    expect(notifications.slice(1)).toEqual(["NBS Manufacturing PMI (CN) 50.3 vs 50.0 expected, prior 50.1"]);
+    expect(panes.at(-1)).toBe("econ-calendar");
+    expect(readEventAlerts(store.get(CALENDAR_ALERTS_KEY)!).rules[0]).toMatchObject({ eventDate: "2026-10-31", firedFor: "2026-10-31", printedFor: "2026-10-31" });
+
+    now = Date.parse("2026-11-09T15:00:00Z");
+    await check();
+    figures.cpi = "3.1%";
+    now = Date.parse("2026-11-10T13:31:00Z");
+    await check();
+    expect(notifications.slice(2)).toEqual(["CPI release tomorrow, Tue, Nov 10", "CPI release: CPI y/y 3.1% vs 3.0% expected, prior 2.9%"]);
+    expect(readEventAlerts(store.get(EVENT_ALERTS_KEY)!).rules[0]).toMatchObject({ kind: "macro_event", firedFor: "2026-11-10", printedFor: "2026-11-10" });
   } finally {
     stop();
   }

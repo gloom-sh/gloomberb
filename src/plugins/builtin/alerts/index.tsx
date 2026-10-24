@@ -3,7 +3,7 @@ import { notTheCoinNote } from "../../../cli/commands/crypto-hints";
 import { createFiredAlertRecorder, firedAlertTime, quoteSourceWords } from "./fired-log";
 import { checkIvLevelAlertsNow, startIvLevelAlerts } from "./iv-level";
 import { logFailure } from "../../../utils/log-failure";
-import { RESEARCH_LABELS, researchWizardFields, createResearchAlert } from "./research-builder";
+import { RESEARCH_FORM_KINDS, RESEARCH_LABELS, researchWizardFields, createResearchAlert } from "./research-builder";
 import { newYorkToday } from "../earnings/board-model";
 import { checkScheduledEventAlertsNow, startScheduledEventAlerts } from "./scheduled-check";
 import { scheduledEventSources } from "./scheduled-sources";
@@ -222,7 +222,7 @@ export const alertsPlugin: GloomPlugin = {
           label: "Event",
           type: "select",
           defaultValue: "congress-watched",
-          options: [...Object.entries(RESEARCH_LABELS).map(([value,label]) => ({value,label})), ...EVENT_ALERT_TEMPLATES.map((entry) => ({ label: entry.label, value: entry.id }))],
+          options: [...RESEARCH_FORM_KINDS.map((value) => ({ value, label: RESEARCH_LABELS[value] })), ...EVENT_ALERT_TEMPLATES.map((entry) => ({ label: entry.label, value: entry.id }))],
         },
         ...EVENT_ALERT_TEMPLATES.filter((entry) => entry.field != null).map((entry) => ({
           key: entry.id,

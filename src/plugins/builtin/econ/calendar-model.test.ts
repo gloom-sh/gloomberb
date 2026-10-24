@@ -118,6 +118,9 @@ describe("high-impact prints", () => {
     // A feed's own row at the same time still is.
     const feed = { ...makeEvent("cpi"), date: new Date(release) };
     expect(pendingHighImpactPrints([decision, release12, feed], release + 60_000).map((event) => event.id)).toEqual(["cpi"]);
+    // Nor is a feed's all-day event (the US midterms), which prints nothing.
+    const election = { ...makeEvent("midterms"), date: new Date(midnight), time: "All Day", event: "Midterm Elections" };
+    expect(pendingHighImpactPrints([election], midnight + 60_000)).toEqual([]);
   });
 
   test("a print lands when a blank high-impact actual gets a number", () => {

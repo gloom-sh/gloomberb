@@ -1,4 +1,5 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, setSystemTime, test } from "bun:test";
+import { setCloudApiFetchTransport } from "../../../api-client/request";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -16,6 +17,8 @@ import { readAlertStores } from "./storage";
 const dataDirs: string[] = [];
 
 afterEach(async () => {
+  setSystemTime();
+  setCloudApiFetchTransport(null);
   await Promise.all(dataDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
@@ -159,4 +162,59 @@ test("the far-target refusal is exactly past ten times either way, and writes pr
   expect(farTargetMessage("XYZ", 0.00000001, 1, null)).toBe("A target of 0.00000001 is under 1/10 of XYZ's last price of 1. Check the price and the symbol.");
   // No price to measure against: nothing is refused.
   expect(farTargetMessage("XYZ", 85_000, 0, null)).toBeNull();
+});
+
+/** China's week as Gloom Cloud lists it on Sat 24 Oct 2026, with a US PMI beside it, from the stored calendar. */
+function serveCalendar() {
+  const nbs = { name: "National Bureau of Statistics" };
+  const row = (date: string, country: string, impact: string, event: string, extra: Record<string, unknown> = {}) => ({
+    id: `${country}-${event}-${date}`, date, time: date.slice(11, 16), country, event, impact, actual: null, forecast: null, prior: null, ...extra,
+  });
+  const events = [
+    row("2026-10-26T00:00:00.000Z", "CN", "medium", "Communist Party Fifth Plenum", { time: "All Day" }),
+    row("2026-10-27T01:30:00.000Z", "CN", "low", "Industrial Profits (YTD) YoY", { prior: "15.7%", source: nbs }),
+    row("2026-10-31T01:30:00.000Z", "CN", "medium", "NBS Non Manufacturing PMI", { prior: "50.2", source: nbs }),
+    row("2026-10-31T01:30:00.000Z", "CN", "high", "NBS Manufacturing PMI", { prior: "50.1", source: nbs }),
+    row("2026-11-02T14:00:00.000Z", "US", "high", "ISM Manufacturing PMI", { prior: "49.1" }),
+  ];
+  setSystemTime(new Date("2026-10-24T06:00:00Z"));
+  setCloudApiFetchTransport(async (url) => ({
+    ok: true, status: 200, headers: new Headers(),
+    text: async () => JSON.stringify(new URL(url).pathname.endsWith("/calendar/history") ? { events, storedFrom: "2026-01-01" } : events),
+  }) as Response);
+}
+
+test("an economic calendar event from the shell is matched by name, kept in its own list, and says what it was read as", async () => {
+  serveCalendar();
+  for (const args of [["NBS PMI"], ["CN", "PMI"], ["pmi", "--country", "cn"]]) {
+    const { events, error, printed, pluginState } = await addAlert(args);
+    expect(error).toBeNull();
+    // Released versions read eventAlerts whole, so a kind they do not know goes in a list of its own.
+    expect(Object.keys(pluginState)).toEqual(["calendarAlerts"]);
+    expect(events[0]).toMatchObject({ kind: "calendar_event", eventDate: "2026-10-31" });
+    expect(JSON.parse(events[0]!.value)).toEqual({ version: 1, event: "NBS Manufacturing PMI", country: "CN", publisher: "National Bureau of Statistics", leadDays: 1 });
+    expect(printed!.options!.text!(printed!.result.data)).toContain(
+      "NBS Manufacturing PMI (CN) on Sat 2026-10-31 01:30 UTC, 1 day before and when it prints (the app alerts on 2026-10-30, and with the actual, forecast and prior once out, only while it is running).");
+    expect(printed!.result.warnings).toContain("Also matching: NBS Non Manufacturing PMI (CN). To follow one of them instead: alerts add \"NBS Non Manufacturing PMI\" --country CN.");
+  }
+  const profits = await addAlert(["Industrial", "Profits", "--country", "CN", "--days", "2"]);
+  expect(profits.printed!.result.warnings).toEqual(['Read "Industrial Profits" as Industrial Profits (YTD) YoY (CN), low impact.']);
+  expect(JSON.parse(profits.events[0]!.value)).toMatchObject({ event: "Industrial Profits (YTD) YoY", leadDays: 2 });
+  // An all-day event prints no figures, so it alerts only before.
+  const plenum = await addAlert(["Fifth Plenum"]);
+  expect(plenum.printed!.options!.text!(plenum.printed!.result.data)).toContain(
+    "Communist Party Fifth Plenum (CN) on Mon 2026-10-26, all day, 1 day before (the app alerts on 2026-10-25, only while it is running).");
+});
+
+test("a calendar name that is ambiguous or matches nothing is refused with the way to name it, and nothing is stored", async () => {
+  serveCalendar();
+  const several = await addAlert(["PMI"]);
+  expect(several.error).toBe('"PMI" is listed for several countries: NBS Manufacturing PMI (CN), ISM Manufacturing PMI (US). Name the country: alerts add PMI --country CN.');
+  const slip = await addAlert(["NBP", "PMI"]);
+  expect(slip.error).toContain('No release in the economic calendar matches "NBP PMI". Did you mean NBS Manufacturing PMI (CN), NBS Non Manufacturing PMI (CN)?');
+  // Every refusal names the event form beside the others.
+  for (const { error } of [slip, await addAlert(["AAPL", "abve", "250"])]) {
+    expect(error).toContain('a release in the economic calendar by name (alerts add "NBS Manufacturing PMI" --country CN, alerts add CN PMI, alerts add CPI --days 1)');
+  }
+  expect([several, slip].map((attempt) => attempt.events)).toEqual([[], []]);
 });

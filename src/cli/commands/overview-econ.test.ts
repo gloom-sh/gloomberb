@@ -139,8 +139,8 @@ test("rows a bank or a statistics office times itself show its clock; a bank tha
       localTime: null, timeZone: "Europe/Istanbul", timeNote: "The bank's calendar gives the day, not the time", prior: "39.50%", priorAsOf: "2026-10-16" },
   ];
   const text = await econText(added, ["--country", "MX,TR"]);
-  expect(text).toMatch(/2026-10-22\s+12:00 UTC\s+06:00 Mexico City\s+MX\s+high\s+Mid-Month CPI/);
-  expect(text).toMatch(/2026-10-22\s+TR\s+high\s+CBRT Interest Rate Decision\s+39\.50%/);
+  expect(text).toMatch(/2026-10-22\s+Thu\s+12:00 UTC\s+06:00 Mexico City\s+MX\s+high\s+Mid-Month CPI/);
+  expect(text).toMatch(/2026-10-22\s+Thu\s+TR\s+high\s+CBRT Interest Rate Decision\s+39\.50%/);
   expect(text).toContain("No time for CBRT Interest Rate Decision (TR): the bank's calendar gives the day, not the time.");
   const [row] = (await econPrinted(added, ["--country", "TR"])).result.data as Record<string, unknown>[];
   expect(row).toMatchObject({ time: "", localTime: null, timeZone: "Europe/Istanbul", priorAsOf: "2026-10-16", prior: "39.50%" });
@@ -173,7 +173,7 @@ test("a row names who publishes it, the period it covers and its page, in the ta
   expect(await econText(twoWeeks, ["--country", "US"])).not.toContain("Publisher");
 });
 
-test("--tz adds the viewer's clock, with the weekday when it falls on another day than the UTC date", async () => {
+test("--tz adds the viewer's clock, with the weekday there in Day", async () => {
   const brazil = [
     ...twoWeeks,
     { ...event("2026-10-23T12:00:00.000Z", "BR", "high", "IPCA-15 Mid-Month CPI m/m"), kind: "statistics-release", localTime: "09:00",
@@ -182,15 +182,38 @@ test("--tz adds the viewer's clock, with the weekday when it falls on another da
     { ...event("2026-10-14T01:30:00.000Z", "BR", "medium", "Night release") },
   ];
   const text = await econText(brazil, ["--country", "BR", "--tz", "america/new_york"]);
-  expect(text).toMatch(/Date\s+Time\s+New York\s+Local/);
-  expect(text).toMatch(/2026-10-14\s+01:30 UTC\s+Tue 21:30\s+BR\s+medium\s+Night release/);
-  expect(text).toMatch(/2026-10-23\s+12:00 UTC\s+08:00\s+09:00 Sao Paulo\s+BR\s+high\s+IPCA-15 Mid-Month CPI m\/m\s+0\.32%\s+0\.43%\s+0\.70%/);
+  expect(text).toMatch(/Date\s+Time\s+Day\s+New York\s+Local/);
+  // Wednesday the 14th in UTC is still Tuesday evening in New York.
+  expect(text).toMatch(/2026-10-14\s+01:30 UTC\s+Tue\s+21:30\s+BR\s+medium\s+Night release/);
+  expect(text).toMatch(/2026-10-23\s+12:00 UTC\s+Fri\s+08:00\s+09:00 Sao Paulo\s+BR\s+high\s+IPCA-15 Mid-Month CPI m\/m\s+0\.32%\s+0\.43%\s+0\.70%/);
   const printed = await econPrinted(brazil, ["--country", "BR", "--tz", "America/New_York"]);
   expect(printed.result.metadata).toMatchObject({ timeZone: "America/New_York" });
   expect((printed.result.data as Record<string, unknown>[]).at(-1)).toMatchObject({ viewerDate: "2026-10-23", viewerTime: "08:00" });
-  // Without --tz the rows carry no viewer clock.
+  // Without --tz the rows carry no viewer clock, and Day is the UTC date's.
   const plain = await econText(brazil, ["--country", "BR"]);
   expect(plain).not.toContain("New York");
   expect(plain).not.toContain("Viewer");
+  expect(plain).toMatch(/2026-10-14\s+Wed\s+01:30 UTC\s+BR\s+medium\s+Night release/);
   await expect(econText(brazil, ["--tz", "EST5"])).rejects.toThrow('Unknown time zone "EST5"');
+});
+
+test("a day-long event prints All day under its own weekday, never a midnight clock", async () => {
+  // A plenum the calendar lists for the day, beside a release timed at midnight UTC.
+  const china = [
+    ...twoWeeks,
+    { ...event("2026-10-12T00:00:00.000Z", "CN", "medium", "Communist Party Fifth Plenum"), time: "All Day" },
+    { ...event("2026-10-12T00:00:00.000Z", "CN", "low", "Midnight release"), prior: "1.2" },
+  ];
+  const text = await econText(china, ["--country", "CN"]);
+  expect(text).toMatch(/2026-10-12\s+Mon\s+All day\s+CN\s+medium\s+Communist Party Fifth Plenum/);
+  expect(text).toMatch(/2026-10-12\s+Mon\s+00:00 UTC\s+CN\s+low\s+Midnight release/);
+  // Its day stays its own on another clock, which has no time to show for it.
+  const newYork = await econText(china, ["--country", "CN", "--tz", "America/New_York"]);
+  expect(newYork).toMatch(/2026-10-12\s+All day\s+Mon\s+CN\s+medium\s+Communist Party Fifth Plenum/);
+  expect(newYork).toMatch(/2026-10-12\s+00:00 UTC\s+Sun\s+20:00\s+CN\s+low\s+Midnight release/);
+  const rows = (await econPrinted(china, ["--country", "CN", "--tz", "America/New_York"])).result.data as Record<string, unknown>[];
+  expect(rows.map((row) => [row.event, row.time, row.day, row.viewerTime])).toEqual([
+    ["Communist Party Fifth Plenum", "All Day", "Mon", null],
+    ["Midnight release", "00:00", "Sun", "20:00"],
+  ]);
 });

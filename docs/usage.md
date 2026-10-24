@@ -828,6 +828,7 @@ A symbol is read as `gloom quote` reads it and must be a US listing, as in the d
 | a perpetual | `PERP` on its market |
 | an earnings date | `ERN` for the company |
 | a CPI or FOMC alert | `CPI` or `WIRP` |
+| an economic calendar event | `ECO` on its country |
 | a catalyst rule | `CATL` (on its company when it names one) |
 | a Congress rule | `CG` |
 | a 13F rule | `13F` on the fund |
@@ -848,9 +849,9 @@ A symbol is read as `gloom quote` reads it and must be a US listing, as in the d
 - If saved price alerts cannot be read, the app and CLI leave the data unchanged and price checks pause until it is repaired. The pane and `gloom alerts list` show the read error, and event alerts stay usable.
 - On **Prices**, Enter opens an alert in full: its state, the price and how far it is from the level, and when its quote was checked. An alert that could not get a quote shows that in red on its row, and its detail says why. `m` re-arms an alert that went off.
 
-### Alerts before earnings, CPI and FOMC
+### Alerts before earnings and economic releases
 
-To watch a position through a scheduled event, alert a number of days before it. In `ALRT`, open **Events**, click **add event** (or run **Add Event Alert**) and pick **Earnings date** with a US-listed symbol, or **Macro event** with the CPI release or the FOMC decision, then the days before (1 to 14, 1 by default).
+To watch a position through a scheduled event, alert a number of days before it. In `ALRT`, open **Events**, click **add event** (or run **Add Event Alert**) and pick **Earnings date** with a US-listed symbol, or **Macro event** with the CPI release or the FOMC decision, then the days before (1 to 14, 1 by default). Any other release in the economic calendar is added from the shell, by name.
 
 An earnings alert can instead wait for the report: pick **When results are out** under **Alert**, which is what `n` in `ERN` sets. From the shell:
 
@@ -859,18 +860,30 @@ gloom alerts add CRWV earnings --days 3
 gloom alerts add CRWV earnings results
 gloom alerts add CPI --days 1
 gloom alerts add FOMC
+gloom alerts add "NBS PMI"
+gloom alerts add CN PMI
+gloom alerts add "Industrial Profits" --country CN --days 2
 ```
 
-The next date comes from `ERN`, the BLS release calendar behind `CPI` and the Fed meeting calendar behind `WIRP`. A symbol with no upcoming earnings date, or an event with no known next date, gets no alert. The **Events** tab and `alerts list` show each alert's next event date and state.
+The next date comes from `ERN`, the BLS release calendar behind `CPI`, the Fed meeting calendar behind `WIRP` and, for any other release, the economic calendar `ECO` and `econ` list. A symbol with no upcoming earnings date, or an event with no known next date, gets no alert. The **Events** tab and `alerts list` show each alert's next event date and state.
+
+**A release by name.** `alerts add <event> [--country <code>] [--days <n>]` takes any release in the economic calendar, as `econ` names it:
+
+- Some of its words are enough: `NBS PMI` is `NBS Manufacturing PMI`, a word's start (`manuf`) or a name's initials (`NFP`) read too, and `CPI` reads as a country's `Inflation Rate YoY`. Of several releases the words name, the highest impact wins, then the shortest name; the reply says what it read the words as and lists the others.
+- A country code first (`CN PMI`) or `--country` (`CN`, `UK`, a region such as `G7`) narrows it. A name listed in several countries without one is refused with the best of each, and a name nothing matches with the nearest names (`Did you mean NBS Manufacturing PMI (CN)?`).
+- `CPI` and `FOMC`, alone or in the US, stay the CPI and FOMC alerts above.
+- A release the calendar lists only in the past is followed once its next date is listed, about two weeks ahead.
 
 - While the app runs it checks the dates every 15 minutes and notifies once when the lead time is reached ("CRWV earnings in 3 days, Mon, Nov 9", counted in New York calendar days). An app that was closed that day notifies when it next runs, up to the event day.
+- A release from the economic calendar counts in UTC days, as the calendar lists it, and gives its time ("NBS Manufacturing PMI (CN) in 21 hours, Sat, Oct 31, 01:30 UTC"); an all-day event (a plenum, an election) gives its day.
+- A release, CPI and FOMC included, then notifies once more with its figures when they print ("NBS Manufacturing PMI (CN) 50.3 vs 50.0 expected, prior 50.1"), asking every minute for half an hour after the release time. Figures printed before the alert was set, or more than 12 hours before the app next runs, are not sent. An event with no figures (a plenum) alerts only before it.
 - An alert for results goes off once the report's actual EPS is in `ERN`, on the report day or usually that evening for a report after the close ("CRWV reported EPS 0.12 vs 0.10 expected (+20.0%)"). It waits up to 3 days past the date for a late figure, then follows the next report.
 - The alert then reads **Alerted** until the event passes and arms itself for the next date. Re-arm (`m`, or `gloom alerts rearm <id>`) sends it again for the same event, and `gloom alerts delete <id>` removes it.
-- Earnings alerts also reach the phone app like the other market alerts, once per report and never on the day itself. CPI and FOMC alerts notify in the running app only.
+- Earnings alerts also reach the phone app like the other market alerts, once per report and never on the day itself. CPI, FOMC and other economic release alerts notify in the running app only.
 
 `gloom fn ALRT` lists your price alerts, `--tab events` your event alerts with their event date, lead time and state, and `--tab history` the alerts that went off. `gloom shot ALRT --tab events` draws that tab.
 
-**Alert history.** Every alert the app fires (price, IV level, earnings, CPI and FOMC) is kept on this device, the last 1,000, with when it went off, the rule, the figure and the quote time and feed. **History** and `fn ALRT --tab history` list that log with no sign-in.
+**Alert history.** Every alert the app fires (price, IV level, earnings, CPI, FOMC and other economic releases) is kept on this device, the last 1,000, with when it went off, the rule, the figure and the quote time and feed. **History** and `fn ALRT --tab history` list that log with no sign-in.
 
 Signed in, they also merge in the alerts Gloom Cloud delivered to your phone or email over the last 90 days, and the Via column says which sent each: this app, Gloom Cloud or both.
 
@@ -992,8 +1005,9 @@ The FUT board's codes work wherever a symbol is typed (`quote`, `history`, `tick
 
 **Times**
 
-- Rows are listed by their UTC day and time; a release its publisher times also shows its own clock (`09:00 Sao Paulo`).
-- `--tz <zone>` adds a column on another clock, named by its city: `econ --country BR --tz America/New_York` shows the IPCA at `08:00` under `New York`, with the weekday first when that clock is on another day (`Tue 21:30`). `--json` has `viewerDate`, `viewerTime` and `metadata.timeZone`; an unknown zone fails with `Unknown time zone`.
+- Rows are listed by their UTC day and time, with the weekday in `Day`; a release its publisher times also shows its own clock (`09:00 Sao Paulo`).
+- An event that takes the whole day (a plenum, an election) reads `All day` in the time column, as does the ECO pane.
+- `--tz <zone>` adds a column on another clock, named by its city, and `Day` moves beside it to give the weekday on that clock: `econ --country BR --tz America/New_York` shows the IPCA at `08:00` under `New York`, and a release at 01:30 UTC on a Wednesday as `Tue` `21:30`. An all-day event keeps its own day. `--json` has `day`, `viewerDate`, `viewerTime` and `metadata.timeZone`; an unknown zone fails with `Unknown time zone`.
 - With `config set timezone`, the ECO pane shows the same column for your zone beside `TIME (UTC)` when it is wide enough.
 
 **Countries**
@@ -1302,7 +1316,7 @@ In short DVD panes, Page Up/Down scroll the summary, arrows or j/k navigate hist
 | `gloom compare\|correlation <symbols>` | Compare securities (`relationship` is an alias of `correlation`) |
 | `gloom portfolio [action]` | Show a portfolio's value, weights, targets and P&L. Manage manual portfolios, cash and target weights |
 | `gloom watchlist [action]` | Manage watchlists |
-| `gloom notes\|alerts [action]` | Manage local notes and alerts: price alerts, alerts days before earnings, CPI or FOMC (`alerts add CRWV earnings --days 3`), and news, options flow and IV alerts (`alerts add IBIT iv above 50`) |
+| `gloom notes\|alerts [action]` | Manage local notes and alerts: price alerts, alerts days before earnings or any economic calendar release, CPI and FOMC included (`alerts add CRWV earnings --days 3`, `alerts add CN PMI`), and news, options flow and IV alerts (`alerts add IBIT iv above 50`) |
 | `gloom broker list [--type <broker>]` | List connected broker accounts, optionally one kind such as `ibkr` |
 | `gloom ai providers\|ask` | Use configured AI providers ([BYOK AI plugin](https://github.com/gloom-sh/gloom-byok-ai)) |
 | `gloom rss fetch <url>` | Fetch an RSS feed |

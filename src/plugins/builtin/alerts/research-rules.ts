@@ -2,6 +2,7 @@
 const RESEARCH_ALERT_KINDS = [
   "earnings_date",
   "macro_event",
+  "calendar_event",
   "filing_type",
   "news_keyword",
   "analyst_change",
@@ -31,8 +32,15 @@ export interface ResearchAlertConfig {
   /** Perpetuals: the market figure. IV level: `atm`, the 30-day ATM IV, or `rr`, the 30-day 25-delta risk reversal. */
   metric?: "funding8h" | "oiChange24h" | "premium" | "closedMarketPremium" | IvLevelMetric
   print?: string
-  /** Macro event: which scheduled release (`MACRO_ALERT_EVENTS`). */
+  /**
+   * Macro event: which scheduled release (`MACRO_ALERT_EVENTS`). Calendar
+   * event: the release's name as the economic calendar lists it.
+   */
   event?: string
+  /** Calendar event: the country the calendar lists the release for (CN, US, DE for a German release). */
+  country?: string
+  /** Calendar event: who publishes it, when the calendar names them, which tells apart releases of one name. */
+  publisher?: string
   /**
    * Earnings: `results` goes off when the report's actual EPS is out, rather
    * than `leadDays` before the date. Such a rule keeps a lead of 0, so a
@@ -56,6 +64,14 @@ export const MACRO_ALERT_EVENTS = ["cpi", "fomc"] as const
 export type MacroAlertEvent = (typeof MACRO_ALERT_EVENTS)[number]
 export const isMacroAlertEvent = (value: unknown): value is MacroAlertEvent =>
   MACRO_ALERT_EVENTS.includes(value as MacroAlertEvent)
+/** The longest calendar event name or publisher a rule keeps. */
+const MAX_CALENDAR_TEXT = 120
+/** A calendar event's name or publisher as a rule keeps it: trimmed, single-spaced, printable; empty when it is none. */
+const calendarText = (value: unknown): string => {
+  if (typeof value !== "string") return ""
+  const text = value.trim().replace(/\s+/g, " ")
+  return text.length <= MAX_CALENDAR_TEXT && !/[\u0000-\u001f]/.test(text) ? text : ""
+}
 export const RESEARCH_ALERT_FORMS = [
   "8-K",
   "10-K",
@@ -115,6 +131,14 @@ export function normalizeResearchRule(
       const event = typeof input.event === "string" ? input.event.trim().toLowerCase() : ""
       if (!isMacroAlertEvent(event)) return null
       result.event = event
+    } else if (kind === "calendar_event") {
+      const event = calendarText(input.event)
+      const country = typeof input.country === "string" ? input.country.trim().toUpperCase() : ""
+      if (!event || !/^[A-Z]{2}$/.test(country)) return null
+      result.event = event
+      result.country = country
+      const publisher = calendarText(input.publisher)
+      if (publisher) result.publisher = publisher
     } else if (kind === "perps_threshold") {
       const marketId = typeof input.marketId === "string" ? input.marketId.trim() : "";
       const metric = input.metric;
@@ -197,6 +221,7 @@ export function normalizeResearchRule(
         break
       }
       case "macro_event":
+      case "calendar_event":
         numeric("leadDays", DEFAULT_LEAD_DAYS, 0, MAX_LEAD_DAYS, true)
         break
       case "filing_type": {

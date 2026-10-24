@@ -14,19 +14,23 @@ import { cliStyles } from "../../../utils/cli-output";
 import { canonicalExchange, isUsListingExchange } from "../../../utils/exchanges";
 import { meantThousandsDot, parsePastedNumber, thousandsDotReadings, type ThousandsDotReadings } from "../../../utils/decimal-comma";
 import { newYorkToday } from "../earnings/board-model";
+import { fetchEconCalendarFrom } from "../econ/calendar-source";
+import { COUNTRY_FILTER_HINT, dateKey, loadCalendar, parseCountryFilter, type CountryFilter } from "../econ/calendar-model";
+import { isAllDayEvent, type EconEvent } from "../econ/types";
+import { calendarEventLabel, calendarNameWords, expectsFigures, matchCalendarEvent, type CalendarEventChoice } from "./calendar-events";
 import { createAlert, rearmAlert, serializeAlerts } from "./alert-engine";
 import { ALERTS_KEY, ALERTS_PLUGIN_ID } from "./constants";
 import { MAX_EVENT_ALERTS, eventAlertTarget, toggleEventAlert, writeEventAlertStores, type EventAlertRule } from "./events";
 import { alertKindLabel } from "./history";
 import { IV_LEVEL_CHECKS_KEY, readIvLevelChecks, rearmIvLevelAlert, type IvLevelCheck } from "./iv-level";
-import { readAlertPrice } from "./price";
+import { parseAlertPrice, readAlertPrice } from "./price";
 import { farTargetMessage } from "./quotes";
 import { createResearchAlert, formatPremium, ivLevelUnitError, parseAmount, parseIvLevel, researchAlertDescription } from "./research-builder";
 import { IV_LEVEL_RANGES, MAX_LEAD_DAYS, type IvLevelMetric, type MacroAlertEvent } from "./research-rules";
 import {
-  MACRO_EVENT_CLI_NAMES,
   createScheduledAlert,
   eventDateUnavailableMessage,
+  followsRelease,
   leadStartDate,
   lookupScheduledDates,
   noUpcomingEventMessage,
@@ -38,6 +42,7 @@ import {
   scheduledEventName,
   scheduledPhase,
   scheduledTargetKey,
+  scheduledToday,
   scheduledTriggerText,
   type ScheduledDateLookup,
   type ScheduledEventSources,
@@ -56,8 +61,11 @@ import type { AlertCondition, AlertRule } from "./types";
  */
 const PRICE_DELIVERY = "the app alerts while it is running; sign in with Cloud sync for email or phone alerts when it is closed";
 
-const ADD_USAGE = "Usage: gloom alerts add <symbol> <above|below|crosses> <price>, alerts add <symbol> earnings [--days <n> | results], alerts add <CPI|FOMC> [--days <n>], alerts add [symbol] news <keyword>, alerts add [symbol] flow [premium] [calls|puts] [sweeps|blocks], alerts add <symbol> <iv|rr> <above|below> <level>, or alerts add <OCC contract> iv spike <points>";
+const ADD_USAGE = "Usage: gloom alerts add <symbol> <above|below|crosses> <price>, alerts add <symbol> earnings [--days <n> | results], alerts add <calendar event> [--country <code>] [--days <n>], alerts add [symbol] news <keyword>, alerts add [symbol] flow [premium] [calls|puts] [sweeps|blocks], alerts add <symbol> <iv|rr> <above|below> <level>, or alerts add <OCC contract> iv spike <points>";
 const DAYS_RULE = `--days takes a whole number of days from 1 to ${MAX_LEAD_DAYS}; without it the alert goes off 1 day before.`;
+/** The event form every refusal of `alerts add` names: any release in the economic calendar, CPI and FOMC among them. */
+const EVENT_FORM = `a release in the economic calendar by name (alerts add "NBS Manufacturing PMI" --country CN, alerts add CN PMI, alerts add CPI --days 1)`;
+const COUNTRY_RULE = "--country is for an alert on a calendar event, such as alerts add PMI --country CN.";
 
 /** What `alerts add` was asked for, before any listing or date is looked up. */
 export type AlertAddRequest =
@@ -69,6 +77,8 @@ export type AlertAddRequest =
   /** `results`: once the report's actual EPS is out, rather than `leadDays` before the date. */
   | { kind: "earnings"; symbol: string; leadDays: number; results?: true }
   | { kind: "macro"; event: MacroAlertEvent; leadDays: number }
+  /** A release in the economic calendar by name, matched against the calendar once it is read; `country` narrows it. */
+  | { kind: "release"; query: string; country: CountryFilter | null; leadDays: number }
   /** Gloom Cloud's research rules, as Add Event Alert makes them; a news or flow rule without a symbol follows every name (news) or your lists (flow). */
   | { kind: "news"; symbol: string | null; keyword: string }
   | { kind: "flow"; symbol: string | null; premium: number; side: "any" | "calls" | "puts"; print: "any" | "sweep" | "block" }
@@ -85,20 +95,57 @@ const CONDITIONS: readonly AlertCondition[] = ["above", "below", "crosses"];
 /** The first word of a price typed with a space between thousands and no quotes (`81 000`): one to three digits. */
 const LEADING_GROUP = /^[+-]?\d{1,3}$/;
 
+/** `--country` as typed: a country code or the calendar's regions (`CN`, `uk`, `EU`); null when not given. Throws when it names none. */
+function readCountryOption(country: string | null | undefined): CountryFilter | null {
+  if (country === undefined) return null;
+  if (country === null) throw new Error(`--country takes a two-letter country code, such as --country CN. ${COUNTRY_FILTER_HINT}`);
+  const parsed = parseCountryFilter(country);
+  if ("error" in parsed) throw new Error(`${parsed.error} ${COUNTRY_FILTER_HINT}`);
+  return parsed.filter === "all" ? null : parsed.filter;
+}
+
+/**
+ * A release named by its words (`NBS PMI`, `Industrial Profits`), a country
+ * code first standing for `--country` (`CN PMI`). CPI and FOMC, in the US or
+ * with no country, are the macro alerts whose dates come from their own
+ * calendars.
+ */
+function releaseRequest(args: readonly string[], country: CountryFilter | null, leadDays: number): AlertAddRequest {
+  const words = args.join(" ").trim().split(/\s+/);
+  let query = words.join(" ");
+  if (!country && words.length >= 2 && /^[a-z]{2}$/i.test(words[0]!)) {
+    const parsed = parseCountryFilter(words[0]!);
+    if (!("error" in parsed) && parsed.filter !== "all") {
+      country = parsed.filter;
+      query = words.slice(1).join(" ");
+    }
+  }
+  const event = parseMacroEventName(query);
+  if (event && (!country || country === "US")) return { kind: "macro", event, leadDays };
+  return { kind: "release", query, country, leadDays };
+}
+
 /**
  * Reads `alerts add` arguments: `<symbol> above 250`, `<symbol> earnings`,
- * `<symbol> earnings results`, or `CPI` / `FOMC`, with `--days` (already
- * taken out of `args`, `null` when the
- * flag came without a value) for the event forms only, and `--exchange`, which
- * a command to type again keeps. Throws a message that names what the command
- * takes.
+ * `<symbol> earnings results`, or a release in the economic calendar by name
+ * (`CPI`, `FOMC`, `NBS PMI`, `CN PMI`), with `--days` (already taken out of
+ * `args`, `null` when the flag came without a value) and `--country` for the
+ * event forms only, and `--exchange`, which a command to type again keeps.
+ * Throws a message that names what the command takes.
  */
-export function parseAlertAddArgs(args: readonly string[], days: string | null | undefined, exchange?: string | null): AlertAddRequest {
+export function parseAlertAddArgs(
+  args: readonly string[],
+  days: string | null | undefined,
+  exchange?: string | null,
+  country?: string | null,
+): AlertAddRequest {
   const [first, second, third, ...rest] = args;
   if (!first) throw new Error(ADD_USAGE);
+  const countryFilter = readCountryOption(country);
   const research = parseResearchAddArgs(args);
   if (research) {
-    if (days !== undefined) throw new Error("--days is for earnings and CPI or FOMC alerts, not news, flow or IV alerts.");
+    if (days !== undefined) throw new Error("--days is for earnings and calendar event alerts, not news, flow or IV alerts.");
+    if (country !== undefined) throw new Error(COUNTRY_RULE);
     return research;
   }
   const leadDays = () => {
@@ -107,15 +154,12 @@ export function parseAlertAddArgs(args: readonly string[], days: string | null |
     return parsed;
   };
   if (second === undefined) {
-    const event = parseMacroEventName(first);
-    if (event) return { kind: "macro", event, leadDays: leadDays() };
     if (first.toLowerCase() === "earnings") {
       throw new Error("Name the company: gloom alerts add <symbol> earnings, such as alerts add CRWV earnings --days 3.");
     }
-    throw new Error(
-      `Unknown event "${first}". Event alerts take ${MACRO_EVENT_CLI_NAMES} (alerts add CPI --days 1) or a symbol with earnings (alerts add CRWV earnings --days 3); price alerts take a condition and a price (alerts add AAPL above 250).`,
-    );
+    return releaseRequest(args, countryFilter, leadDays());
   }
+  if (second.toLowerCase() === "earnings" && country !== undefined) throw new Error(COUNTRY_RULE);
   if (second.toLowerCase() === "earnings") {
     if (third?.toLowerCase() === "results" && rest.length === 0) {
       if (days !== undefined) throw new Error("An alert for results goes off once they are out and takes no --days.");
@@ -126,9 +170,12 @@ export function parseAlertAddArgs(args: readonly string[], days: string | null |
   }
   const condition = second.toLowerCase() as AlertCondition;
   if (!CONDITIONS.includes(condition)) {
-    throw new Error(`Unknown alert "${second}". Use above, below or crosses with a price, earnings with --days, news with a keyword, flow, iv or rr with above or below and a level, or iv spike on an OCC contract.`);
+    // Words with no price after them name a release (CN PMI, Industrial Profits); a price ends a mistyped price alert.
+    if (parseAlertPrice(args.at(-1)!).kind === "invalid") return releaseRequest(args, countryFilter, leadDays());
+    throw new Error(`Unknown alert "${second}". Use above, below or crosses with a price, earnings with --days, news with a keyword, flow, iv or rr with above or below and a level, iv spike on an OCC contract, or ${EVENT_FORM}.`);
   }
-  if (days !== undefined) throw new Error("--days is for earnings and CPI or FOMC alerts, not price alerts.");
+  if (country !== undefined) throw new Error(COUNTRY_RULE);
+  if (days !== undefined) throw new Error("--days is for earnings and calendar event alerts, not price alerts.");
   if (third === undefined) throw new Error(ADD_USAGE);
   const retype = (price: number) => retypeCommand(first, condition, price, exchange);
   // `81 000` without quotes arrives as 81 and a stray 000; neither reading is taken for granted.
@@ -293,7 +340,7 @@ function priceRow(alert: AlertRule): AlertListRow {
   return { ...alert, kind: "price", target: alert.exchange ? `${alert.symbol}:${alert.exchange}` : alert.symbol };
 }
 
-function eventRow(rule: EventAlertRule, today: string, eventDate: string | null | undefined, check?: IvLevelCheck): AlertListRow {
+function eventRow(rule: EventAlertRule, now: number, eventDate: string | null | undefined, check?: IvLevelCheck): AlertListRow {
   const scheduled = readScheduledRule(rule);
   if (!scheduled) {
     const status = rule.status === "active" && rule.triggeredAt ? "triggered" : rule.status;
@@ -304,11 +351,14 @@ function eventRow(rule: EventAlertRule, today: string, eventDate: string | null 
   return {
     id: rule.id,
     kind: rule.kind,
-    target: scheduled.target.kind === "earnings" ? scheduled.target.symbol : scheduled.target.event.toUpperCase(),
+    target: scheduled.target.kind === "earnings" ? scheduled.target.symbol
+      : scheduled.target.kind === "release" ? calendarEventLabel(scheduled.target) : scheduled.target.event.toUpperCase(),
     leadDays: scheduled.leadDays,
     when: scheduled.trigger === "results" ? "results" : "before",
+    // CPI, FOMC and calendar releases also alert with their figures once they print.
+    ...followsRelease(scheduled.target) ? { onRelease: true } : {},
     eventDate: date,
-    status: scheduledAlertStatus({ ...rule, eventDate: date ?? undefined }, scheduled.leadDays, today, scheduled.trigger),
+    status: scheduledAlertStatus({ ...rule, eventDate: date ?? undefined }, scheduled.leadDays, scheduledToday(scheduled.target, now), scheduled.trigger),
     createdAt: rule.createdAt,
   };
 }
@@ -323,7 +373,9 @@ function textRow(row: AlertListRow): Record<string, unknown> {
     target: row.target,
     trigger: price
       ? `${row.condition} ${row.targetPrice}`
-      : typeof row.leadDays === "number" ? scheduledTriggerText({ leadDays: row.leadDays, trigger: row.when === "results" ? "results" : "date" }) : "",
+      : typeof row.leadDays === "number"
+        ? scheduledTriggerText({ leadDays: row.leadDays, trigger: row.when === "results" ? "results" : "date", prints: row.onRelease === true })
+        : "",
     eventDate: typeof row.leadDays === "number" ? row.eventDate ?? "not known" : "",
     status: row.status,
     lastCheckedPrice: row.lastCheckedPrice,
@@ -334,7 +386,7 @@ function textRow(row: AlertListRow): Record<string, unknown> {
 /** The next event date of each scheduled rule: the saved one while it is still ahead, otherwise looked up. */
 async function listEventDates(
   rules: readonly EventAlertRule[],
-  today: string,
+  now: number,
   lookup: (targets: ScheduledEventTarget[]) => Promise<Map<string, ScheduledDateLookup>>,
 ): Promise<{ dates: Map<string, string | null>; warnings: string[] }> {
   const dates = new Map<string, string | null>();
@@ -342,7 +394,7 @@ async function listEventDates(
   for (const rule of rules) {
     const scheduled = readScheduledRule(rule);
     if (!scheduled) continue;
-    if (rule.eventDate && rule.eventDate >= today) dates.set(rule.id, rule.eventDate);
+    if (rule.eventDate && rule.eventDate >= scheduledToday(scheduled.target, now)) dates.set(rule.id, rule.eventDate);
     else stale.push({ rule, target: scheduled.target });
   }
   if (stale.length === 0) return { dates, warnings: [] };
@@ -354,6 +406,72 @@ async function listEventDates(
     else if (lookup) warnings.add(`Next ${scheduledEventName(target)} date unavailable: ${lookup.error}`);
   }
   return { dates, warnings: [...warnings] };
+}
+
+/** How far back a release is looked for: a monthly one is named in the calendar a month back before its next date is listed. */
+const CALENDAR_LOOKBACK_DAYS = 40;
+
+/**
+ * The calendar a release is named from: the stored past five weeks and the
+ * listing ahead, or the listing alone from a server that keeps no past.
+ */
+async function loadAlertCalendar(now: number): Promise<readonly EconEvent[]> {
+  const from = new Date(now - CALENDAR_LOOKBACK_DAYS * 86_400_000).toISOString().slice(0, 10);
+  const stored = await fetchEconCalendarFrom(from);
+  if (stored.events) return stored.events;
+  return (await loadCalendar()).data;
+}
+
+const quoted = (text: string) => (/\s/.test(text) ? `"${text}"` : text);
+const weekday = new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: "UTC" });
+
+/** "on Sat 2026-10-31 01:30 UTC", "on Mon 2026-10-26, all day": when a release is next listed. */
+function releaseWhen(event: EconEvent): string {
+  const day = `on ${weekday.format(event.date)} ${dateKey(event.date)}`;
+  if (isAllDayEvent(event)) return `${day}, all day`;
+  return event.timeNote ? day : `${day} ${event.date.toISOString().slice(11, 16)} UTC`;
+}
+
+/** The release an alert was added for, as `--json` gives it. */
+function releaseData(choice: CalendarEventChoice) {
+  return {
+    name: choice.name,
+    country: choice.country,
+    publisher: choice.publisher,
+    impact: choice.impact,
+    next: choice.next ? { at: choice.next.date.toISOString(), allDay: isAllDayEvent(choice.next) } : null,
+  };
+}
+
+const choiceList = (choices: readonly CalendarEventChoice[]) => choices.map((choice) => calendarEventLabel({ event: choice.name, country: choice.country }));
+
+/** What a name read as, and what else it names in that country: said beside the alert added. */
+function releaseReadNotes(query: string, choice: CalendarEventChoice, others: readonly CalendarEventChoice[]): string[] {
+  const notes: string[] = [];
+  if (calendarNameWords(query).join(" ") !== calendarNameWords(choice.name).join(" ")) {
+    notes.push(`Read "${query}" as ${calendarEventLabel({ event: choice.name, country: choice.country })}, ${choice.impact} impact.`);
+  }
+  if (others.length > 0) {
+    const shown = choiceList(others.slice(0, 4));
+    const more = others.length > 4 ? ` and ${others.length - 4} more` : "";
+    notes.push(`Also matching: ${shown.join(", ")}${more}. To follow one of them instead: alerts add ${quoted(others[0]!.name)} --country ${others[0]!.country}.`);
+  }
+  return notes;
+}
+
+/** The refusal of a name nothing in the calendar matches: the nearest names, and every form `alerts add` takes. */
+function noReleaseMessage(query: string, country: CountryFilter | null, suggestions: readonly CalendarEventChoice[]): string {
+  const near = suggestions.length > 0 ? ` Did you mean ${choiceList(suggestions).join(", ")}?` : "";
+  return `No release in the economic calendar matches "${query}"${country ? ` in ${country.split(",").join(", ")}` : ""}.${near} `
+    + `Event alerts take ${EVENT_FORM} or a symbol with earnings (alerts add CRWV earnings --days 3); price alerts take a condition and a price (alerts add AAPL above 250). `
+    + "gloom econ --country <code> lists the calendar.";
+}
+
+/** The refusal of a name listed in several countries, with the best of each. */
+function severalCountriesMessage(query: string, choices: readonly CalendarEventChoice[]): string {
+  const shown = choiceList(choices.slice(0, 6));
+  const more = choices.length > 6 ? ` and ${choices.length - 6} more` : "";
+  return `"${query}" is listed for several countries: ${shown.join(", ")}${more}. Name the country: alerts add ${quoted(query)} --country ${choices[0]!.country}.`;
 }
 
 /** Looks up the next date for a new event alert, or fails saying why there is none. */
@@ -372,14 +490,14 @@ async function requireEventDate(
 export const alertsCliCommand: CliCommandDef = {
   name: "alerts",
   aliases: ["alert"],
-  description: "List, add, and remove price alerts, alerts before earnings, CPI and FOMC, and news, options flow and IV alerts",
+  description: "List, add, and remove price alerts, alerts before earnings and any economic calendar release (CPI, FOMC, NBS PMI), and news, options flow and IV alerts",
   help: {
     group: CLI_COMMAND_GROUPS.portfolios,
     usage: [
       "alerts list",
       "alerts add <symbol> <above|below|crosses> <price>",
       "alerts add <symbol> earnings [--days <n> | results]",
-      "alerts add <CPI|FOMC> [--days <n>]",
+      "alerts add <calendar event> [--country <code>] [--days <n>]",
       "alerts add [symbol] news <keyword>",
       "alerts add [symbol] flow [premium] [calls|puts] [sweeps|blocks]",
       "alerts add <symbol> <iv|rr> <above|below> <level>",
@@ -389,7 +507,8 @@ export const alertsCliCommand: CliCommandDef = {
     ],
     options: [
       EXCHANGE_OPTION,
-      { flags: "--days <n>", description: `Days before the event the alert goes off, 1 to ${MAX_LEAD_DAYS} (default 1); earnings, CPI and FOMC alerts` },
+      { flags: "--days <n>", description: `Days before the event the alert goes off, 1 to ${MAX_LEAD_DAYS} (default 1); earnings and calendar event alerts` },
+      { flags: "--country <code>", description: "The country of a calendar event, as econ --country takes it (CN, US, DE); a code before the name does the same (alerts add CN PMI)" },
     ],
     examples: [
       "alerts",
@@ -398,6 +517,8 @@ export const alertsCliCommand: CliCommandDef = {
       "alerts add CRWV earnings --days 3",
       "alerts add CRWV earnings results",
       "alerts add CPI --days 1",
+      "alerts add \"NBS PMI\"",
+      "alerts add \"Industrial Profits\" --country CN --days 2",
       "alerts add AAPL news buyback",
       "alerts add NVDA flow 5m calls sweeps",
       "alerts add IBIT iv above 50",
@@ -410,12 +531,16 @@ export const alertsCliCommand: CliCommandDef = {
     const daysValue = takeOption(args, "--days");
     const days = daysFlag && daysValue === undefined ? null : daysValue;
     const exchangeOption = takeOption(args, "--exchange");
+    const countryFlag = rawArgs.some((arg) => arg === "--country" || arg.startsWith("--country="));
+    const countryValue = takeOption(args, "--country");
+    const country = countryFlag && countryValue === undefined ? null : countryValue;
     const action = args[0] ?? "list";
-    const today = newYorkToday();
+    const now = Date.now();
+    const today = newYorkToday(new Date(now));
 
     const parseAdd = (): AlertAddRequest => {
       try {
-        return parseAlertAddArgs(args.slice(1), days, exchangeOption);
+        return parseAlertAddArgs(args.slice(1), days, exchangeOption, country);
       } catch (error) {
         return ctx.fail(error instanceof Error ? error.message : String(error));
       }
@@ -470,6 +595,27 @@ export const alertsCliCommand: CliCommandDef = {
         ctx.fail(error instanceof Error ? error.message : String(error));
       }
     }
+    // A release named from the calendar, with what the words were read as and what else they name.
+    let newRelease: CalendarEventChoice | null = null;
+    if (request?.kind === "release") {
+      const events = await loadAlertCalendar(now).catch((error: unknown) =>
+        ctx.fail(eventDateUnavailableMessage({ kind: "release", event: request.query, country: request.country ?? "" }, error instanceof Error ? error.message : String(error))));
+      const match = matchCalendarEvent(request.query, request.country, events, now);
+      if (match.kind !== "match") {
+        return ctx.fail(match.kind === "none"
+          ? noReleaseMessage(request.query, request.country, match.suggestions)
+          : severalCountriesMessage(request.query, match.choices));
+      }
+      const { choice, others } = match;
+      newRelease = choice;
+      read = releaseReadNotes(request.query, choice, others);
+      const target: ScheduledEventTarget = { kind: "release", event: choice.name, country: choice.country, ...(choice.publisher ? { publisher: choice.publisher } : {}) };
+      try {
+        newEventRule = createScheduledAlert(target, request.leadDays, choice.next ? dateKey(choice.next.date) : null);
+      } catch (error) {
+        ctx.fail(error instanceof Error ? error.message : String(error));
+      }
+    }
     if (request && (request.kind === "earnings" || request.kind === "macro")) {
       const target: ScheduledEventTarget = request.kind === "macro"
         ? { kind: "macro", event: request.event }
@@ -497,14 +643,14 @@ export const alertsCliCommand: CliCommandDef = {
         ...readAlertStores(config.config),
         checks: readIvLevelChecks(config.persistence?.pluginState?.get(ALERTS_PLUGIN_ID, resumeStateKey(IV_LEVEL_CHECKS_KEY))?.value),
       }));
-      // Earnings dates come through market data; CPI and FOMC dates do not need it.
+      // Earnings dates come through market data; CPI, FOMC and calendar dates do not need it.
       const lookup = (targets: ScheduledEventTarget[]) => targets.some((target) => target.kind === "earnings")
-        ? withMarketData(ctx, (market) => lookupScheduledDates(targets, scheduledEventSources(market.dataProvider), today))
-        : lookupScheduledDates(targets, scheduledEventSources(null), today);
-      const { dates, warnings } = await listEventDates(events.rules, today, lookup);
+        ? withMarketData(ctx, (market) => lookupScheduledDates(targets, scheduledEventSources(market.dataProvider), today, now))
+        : lookupScheduledDates(targets, scheduledEventSources(null), today, now);
+      const { dates, warnings } = await listEventDates(events.rules, now, lookup);
       const rows = [
         ...alerts.map(priceRow),
-        ...events.rules.map((rule) => eventRow(rule, today, dates.has(rule.id) ? dates.get(rule.id) : rule.eventDate, checks[rule.id])),
+        ...events.rules.map((rule) => eventRow(rule, now, dates.has(rule.id) ? dates.get(rule.id) : rule.eventDate, checks[rule.id])),
       ];
       const allWarnings = [...(alertsError ? [alertsError] : []), ...(events.error ? [events.error] : []), ...warnings];
       ctx.printResult({ data: rows, ...(allWarnings.length ? { warnings: allWarnings } : {}) }, {
@@ -519,7 +665,7 @@ export const alertsCliCommand: CliCommandDef = {
           { key: "lastCheckedPrice", header: "Last Price", align: "right", optional: true },
           { key: "triggeredAt", header: "Triggered", optional: true },
         ],
-        empty: "No alerts. Add one with gloom alerts add AAPL above 250, alerts add CRWV earnings --days 3, or alerts add CPI --days 1.",
+        empty: "No alerts. Add one with gloom alerts add AAPL above 250, alerts add CRWV earnings --days 3, alerts add CPI --days 1, or alerts add CN PMI.",
       });
       return;
     }
@@ -583,17 +729,24 @@ export const alertsCliCommand: CliCommandDef = {
           : `An alert ${plural(scheduled.leadDays, "day")} before ${name} already exists (ID ${existing.id}).`);
         if (rules.length >= MAX_EVENT_ALERTS) ctx.fail(`Keep at most ${MAX_EVENT_ALERTS} event alerts. Delete one with gloom alerts delete <id>.`);
         await save({ events: [...rules, rule] });
-        const eventDate = rule.eventDate!;
-        const due = scheduledPhase(eventDate, scheduled.leadDays, undefined, today) === "due";
-        const delivery = scheduled.target.kind === "macro" ? ", only while it is running" : " while it is running, or on your phone with Cloud sync";
-        ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, alert: rule }, ...(read.length > 0 ? { warnings: read } : {}) }, {
-          // Delivery, as docs/usage.md states it: CPI and FOMC notify in the running app only; earnings also reach the phone,
+        const eventDate = rule.eventDate ?? null;
+        const due = !!eventDate && scheduledPhase(eventDate, scheduled.leadDays, undefined, scheduledToday(scheduled.target, now)) === "due";
+        const release = followsRelease(scheduled.target);
+        // A release that prints no figures (a plenum, a speech) alerts only before it.
+        const prints = release && (!newRelease?.next || expectsFigures(newRelease.next));
+        const delivery = release ? ", only while it is running" : " while it is running, or on your phone with Cloud sync";
+        const when = !eventDate ? null : newRelease?.next ? releaseWhen(newRelease.next) : `on ${eventDate}`;
+        const reminder = !eventDate
+          ? "the app alerts once the calendar lists its next date, about two weeks ahead"
+          : due ? "already reached, so the app alerts at its next check" : `the app alerts on ${leadStartDate(eventDate, scheduled.leadDays)}`;
+        ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, alert: rule,
+          ...newRelease ? { release: releaseData(newRelease) } : {} }, ...(read.length > 0 ? { warnings: read } : {}) }, {
+          // Delivery, as docs/usage.md states it: CPI, FOMC and calendar releases notify in the running app only; earnings also reach the phone,
           // which Gloom Cloud alerts with the same results once the actual EPS is stored for a results alert.
           text: (data) => scheduled.trigger === "results"
             ? `Added alert ${data.alert.id}: ${name} on ${eventDate}, when results are out (the app alerts once the actual EPS is in while it is running, and with Cloud sync your phone gets the same alert).${dryRunNote(data.dryRun)}`
-            : `Added alert ${data.alert.id}: ${name} on ${eventDate}, ${plural(scheduled.leadDays, "day")} before (${due
-              ? "already reached, so the app alerts at its next check"
-              : `the app alerts on ${leadStartDate(eventDate, scheduled.leadDays)}`}${delivery}).${dryRunNote(data.dryRun)}`,
+            : `Added alert ${data.alert.id}: ${name}${when ? ` ${when}` : ""}, ${plural(scheduled.leadDays, "day")} before${prints ? " and when it prints" : ""} (${reminder}${
+              prints ? ", and with the actual, forecast and prior once out" : ""}${delivery}).${dryRunNote(data.dryRun)}`,
         });
         return;
       }

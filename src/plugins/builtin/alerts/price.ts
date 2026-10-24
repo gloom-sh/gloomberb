@@ -10,7 +10,7 @@ const PRICE_FORMAT = "type 81000 or 81k";
 const scaled = (value: number, scale: number) => Number((value * scale).toPrecision(15));
 
 /** A price as `parsePastedNumber` reads it, and `81k` is 81000: the scale applies to either reading of a comma and three digits. */
-function parseAlertPrice(text: string): PastedNumber {
+export function parseAlertPrice(text: string): PastedNumber {
   const match = SCALED_PRICE.exec(text.trim());
   if (!match) return parsePastedNumber(text);
   const scale = PRICE_SCALES[match[2]!.toLowerCase() as keyof typeof PRICE_SCALES];

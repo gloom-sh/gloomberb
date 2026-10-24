@@ -3,7 +3,7 @@ import type { DataTableColumn } from "../../../components";
 import { colors } from "../../../theme/colors";
 import { displayWidth } from "../../../utils/format";
 import { fetchEconCalendar } from "./calendar-source";
-import type { EconEvent, EconImpact } from "./types";
+import { isAllDayEvent, type EconEvent, type EconImpact } from "./types";
 
 const CACHE_KIND = "calendar";
 const CACHE_KEY = "global";
@@ -304,11 +304,12 @@ export const PRINT_PENDING_MS = 20 * 60 * 1000;
  * High-impact releases whose time has come in the last {@link PRINT_PENDING_MS}
  * and that have no actual yet. Rows Gloom Cloud adds from a bank's or a
  * statistics office's calendar (`kind`) never get an actual, and a bank's
- * untimed decision would fall due at midnight UTC, so they are never waited on.
+ * untimed decision would fall due at midnight UTC, so they are never waited
+ * on; nor is an all-day event (an election), which prints nothing.
  */
 export function pendingHighImpactPrints(events: readonly EconEvent[], now: number): EconEvent[] {
   return events.filter((event) => {
-    if (event.impact !== "high" || event.actual || event.kind) return false;
+    if (event.impact !== "high" || event.actual || event.kind || isAllDayEvent(event)) return false;
     const releasedFor = now - event.date.getTime();
     return releasedFor >= 0 && releasedFor <= PRINT_PENDING_MS;
   });

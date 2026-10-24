@@ -1,10 +1,15 @@
 // Alerts a number of days before a dated event: a company's next earnings, or
-// the next CPI release or FOMC decision. An earnings rule can instead go off
-// once the report's actual EPS is out. The rules are event alert rules
-// (`earnings_date`, `macro_event`) with the lead time in their config; this
-// module is the date arithmetic and the lookup of the next event date.
+// a release in the economic calendar, CPI and FOMC among them. An earnings
+// rule can instead go off once the report's actual EPS is out; a release also
+// alerts with its figures once they print (calendar-events.ts). The rules are
+// event alert rules (`earnings_date`, `macro_event`, `calendar_event`) with
+// the lead time in their config; this module is the date arithmetic and the
+// lookup of the next event date.
 import { formatNumber } from "../../../utils/format";
+import type { EconEvent } from "../econ/types";
+import { newYorkToday } from "../earnings/board-model";
 import { epsSurprise } from "../shared/earnings-report";
+import { calendarEventLabel, nextReleaseDate, type CalendarReleaseTarget } from "./calendar-events";
 import type { EventAlertRule } from "./events";
 import { MACRO_EVENT_NAMES } from "./research-builder";
 import {
@@ -18,10 +23,27 @@ import {
 
 const DAY_MS = 86_400_000;
 
-/** What a scheduled alert follows: one US-listed company's earnings, or a US macro release. */
+/**
+ * What a scheduled alert follows: one US-listed company's earnings, CPI or
+ * FOMC, or any release in the economic calendar by its name and country.
+ */
 export type ScheduledEventTarget =
   | { kind: "earnings"; symbol: string; exchange: string }
-  | { kind: "macro"; event: MacroAlertEvent };
+  | { kind: "macro"; event: MacroAlertEvent }
+  | CalendarReleaseTarget;
+
+/** CPI, FOMC and calendar releases alert again with their figures once they print; earnings do not. */
+export const followsRelease = (target: ScheduledEventTarget): target is Exclude<ScheduledEventTarget, { kind: "earnings" }> =>
+  target.kind !== "earnings";
+
+/**
+ * The day a rule's dates count from: New York's for earnings, CPI and FOMC,
+ * whose calendars give New York days; the UTC day for a calendar release,
+ * which the economic calendar lists by its UTC day.
+ */
+export function scheduledToday(target: ScheduledEventTarget, now: number = Date.now()): string {
+  return target.kind === "release" ? new Date(now).toISOString().slice(0, 10) : newYorkToday(new Date(now));
+}
 
 /** When a scheduled rule goes off: its lead time before the date, or (earnings only) once the results are out. */
 export type ScheduledTrigger = "date" | "results";
@@ -65,9 +87,6 @@ export function parseMacroEventName(raw: string | null | undefined): MacroAlertE
   return isMacroAlertEvent(name) ? name : null;
 }
 
-/** The names a macro event alert takes, as the CLI spells them. */
-export const MACRO_EVENT_CLI_NAMES = "CPI or FOMC";
-
 function shiftDate(date: string, days: number): string {
   return new Date(Date.parse(`${date}T00:00:00Z`) + days * DAY_MS).toISOString().slice(0, 10);
 }
@@ -98,11 +117,20 @@ export function scheduledPhase(
 
 /** The rule's target and lead time; null for a rule that is not a scheduled event or does not read. */
 export function readScheduledRule(rule: EventAlertRule): ScheduledRule | null {
-  if (rule.kind !== "earnings_date" && rule.kind !== "macro_event") return null;
+  if (rule.kind !== "earnings_date" && rule.kind !== "macro_event" && rule.kind !== "calendar_event") return null;
   const config = readResearchRule(rule.kind, rule.value);
   if (!config || typeof config.leadDays !== "number") return null;
   if (rule.kind === "macro_event") {
     return isMacroAlertEvent(config.event) ? { target: { kind: "macro", event: config.event }, leadDays: config.leadDays, trigger: "date" } : null;
+  }
+  if (rule.kind === "calendar_event") {
+    return config.event && config.country
+      ? {
+          target: { kind: "release", event: config.event, country: config.country, ...(config.publisher ? { publisher: config.publisher } : {}) },
+          leadDays: config.leadDays,
+          trigger: "date",
+        }
+      : null;
   }
   return config.symbol
     ? {
@@ -115,17 +143,24 @@ export function readScheduledRule(rule: EventAlertRule): ScheduledRule | null {
 
 /** One key per thing to look up, shared by every rule on the same event. */
 export function scheduledTargetKey(target: ScheduledEventTarget): string {
+  if (target.kind === "release") return `release:${target.country}:${target.event.toLowerCase()}:${target.publisher ?? ""}`;
   return target.kind === "earnings" ? `earnings:${target.symbol}` : `macro:${target.event}`;
 }
 
-/** "CRWV earnings", "CPI release", "FOMC decision". */
+/** "CRWV earnings", "CPI release", "FOMC decision", "NBS Manufacturing PMI (CN)". */
 export function scheduledEventName(target: ScheduledEventTarget): string {
+  if (target.kind === "release") return calendarEventLabel(target);
   return target.kind === "earnings" ? `${target.symbol} earnings` : MACRO_EVENT_NAMES[target.event];
 }
 
-/** "1 day before", "3 days before", "when results are out": when a rule goes off, as lists say it. */
-export function scheduledTriggerText(rule: Pick<ScheduledRule, "leadDays" | "trigger">): string {
-  return rule.trigger === "results" ? "when results are out" : `${rule.leadDays} day${rule.leadDays === 1 ? "" : "s"} before`;
+/**
+ * "1 day before", "3 days before", "when results are out": when a rule goes
+ * off, as lists say it; a release's ("1 day before and when it prints")
+ * also once its figures are out.
+ */
+export function scheduledTriggerText(rule: Pick<ScheduledRule, "leadDays" | "trigger"> & { prints?: boolean }): string {
+  if (rule.trigger === "results") return "when results are out";
+  return `${rule.leadDays} day${rule.leadDays === 1 ? "" : "s"} before${rule.prints ? " and when it prints" : ""}`;
 }
 
 /**
@@ -139,16 +174,20 @@ export function createScheduledAlert(
   eventDate: string | null,
   now = Date.now(),
 ): EventAlertRule {
-  if (target.kind === "macro" && lead === "results") throw new Error("Only earnings alerts can wait for results.");
-  const kind = target.kind === "earnings" ? "earnings_date" : "macro_event";
+  if (target.kind !== "earnings" && lead === "results") throw new Error("Only earnings alerts can wait for results.");
+  const kind = target.kind === "earnings" ? "earnings_date" : target.kind === "release" ? "calendar_event" : "macro_event";
   const timing = lead === "results" ? { when: "results" } : { leadDays: lead };
   const value = normalizeResearchRule(kind, target.kind === "earnings"
     ? { version: 1, symbol: target.symbol, exchange: target.exchange, ...timing }
-    : { version: 1, event: target.event, ...timing });
+    : target.kind === "release"
+      ? { version: 1, event: target.event, country: target.country, ...(target.publisher ? { publisher: target.publisher } : {}), ...timing }
+      : { version: 1, event: target.event, ...timing });
   if (!value) {
     throw new Error(target.kind === "earnings"
       ? `Earnings alerts follow US listings, such as CRWV or AAPL:NASDAQ. ${target.exchange ? `${target.symbol}:${target.exchange}` : target.symbol} is not one.`
-      : `Days before must be a whole number from 1 to ${MAX_LEAD_DAYS}.`);
+      : target.kind === "release"
+        ? `A calendar event alert takes the event's name, a two-letter country and 1 to ${MAX_LEAD_DAYS} days before.`
+        : `Days before must be a whole number from 1 to ${MAX_LEAD_DAYS}.`);
   }
   return {
     id: crypto.randomUUID(),
@@ -304,6 +343,12 @@ export interface ScheduledEventSources {
   earnings(symbols: string[]): Promise<readonly EarningsDateRow[]>;
   cpi(): Promise<CpiReleaseCalendar>;
   fomc(): Promise<ReadonlyArray<{ date: string }>>;
+  /**
+   * The economic calendar ECO lists: the dates of calendar releases, and the
+   * figures every release alert sends once they print. `force` asks past a
+   * fresh cache, while a print is due.
+   */
+  calendar?(force?: boolean): Promise<readonly EconEvent[]>;
   /** The reports of `symbols` from `from` to `to`, actual EPS included once out; results alerts read it. */
   results?(symbols: string[], from: string, to: string): Promise<readonly EarningsResultRow[]>;
 }
@@ -314,18 +359,27 @@ const errorText = (error: unknown) => (error instanceof Error ? error.message : 
 
 /**
  * The next date of every target, keyed by `scheduledTargetKey`: one earnings
- * request for all the symbols, one CPI and one FOMC read. A source that fails
- * gives its targets an error and leaves the others alone.
+ * request for all the symbols, one CPI, one FOMC and one calendar read. A
+ * source that fails gives its targets an error and leaves the others alone.
+ * `today` is New York's day; a calendar release counts from the UTC day of
+ * `now`.
  */
 export async function lookupScheduledDates(
   targets: readonly ScheduledEventTarget[],
   sources: ScheduledEventSources,
   today: string,
+  now: number = Date.now(),
 ): Promise<Map<string, ScheduledDateLookup>> {
   const result = new Map<string, ScheduledDateLookup>();
   const symbols = [...new Set(targets.flatMap((target) => (target.kind === "earnings" ? [target.symbol] : [])))];
   const macros = new Set(targets.flatMap((target) => (target.kind === "macro" ? [target.event] : [])));
+  const releases = targets.filter((target): target is CalendarReleaseTarget => target.kind === "release");
+  const readCalendar = sources.calendar?.bind(sources) ?? (() => Promise.reject(new Error("The economic calendar is not available.")));
   await Promise.all([
+    releases.length === 0 ? null : readCalendar().then(
+      (events) => { for (const target of releases) result.set(scheduledTargetKey(target), { date: nextReleaseDate(events, target, scheduledToday(target, now)) }); },
+      (error) => { for (const target of releases) result.set(scheduledTargetKey(target), { error: errorText(error) }); },
+    ),
     symbols.length === 0 ? null : sources.earnings(symbols).then(
       (events) => { for (const symbol of symbols) result.set(`earnings:${symbol}`, { date: nextEarningsDate(events, symbol, today) }); },
       (error) => { for (const symbol of symbols) result.set(`earnings:${symbol}`, { error: errorText(error) }); },
@@ -344,6 +398,7 @@ export async function lookupScheduledDates(
 
 /** Why no alert was added when the next date could not be looked up. */
 export function eventDateUnavailableMessage(target: ScheduledEventTarget, error: string): string {
+  if (target.kind === "release") return `The economic calendar could not be loaded (${error}), so no alert was added.`;
   return target.kind === "earnings"
     ? `Earnings dates for ${target.symbol} could not be loaded (${error}), so no alert was added. Check the symbol, or try again later.`
     : `The next ${MACRO_EVENT_NAMES[target.event]} date could not be loaded (${error}), so no alert was added.`;
@@ -351,6 +406,7 @@ export function eventDateUnavailableMessage(target: ScheduledEventTarget, error:
 
 /** Why no alert was added for an event with no known next date. */
 export function noUpcomingEventMessage(target: ScheduledEventTarget): string {
+  if (target.kind === "release") return `The economic calendar lists no upcoming ${calendarEventLabel(target)}, so no alert was added.`;
   return target.kind === "earnings"
     ? `No upcoming earnings date is known for ${target.symbol}, so no alert was added.`
     : `No upcoming ${MACRO_EVENT_NAMES[target.event]} date is known, so no alert was added.`;

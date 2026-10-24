@@ -4,8 +4,9 @@ import type { EventAlertRule } from "./events";
 
 /** What a macro event is called in a rule, a list and a notification. */
 export const MACRO_EVENT_NAMES: Record<MacroAlertEvent, string> = { cpi: "CPI release", fomc: "FOMC decision" };
+/** CPI and FOMC and any other calendar release are one kind of alert to the reader, whichever list keeps the rule. */
 export const RESEARCH_LABELS: Record<ResearchAlertKind, string> = {
-  perps_threshold: "Perpetual threshold", earnings_date: "Earnings date", macro_event: "Macro event", filing_type: "SEC filing", news_keyword: "News keyword", analyst_change: "Analyst change", fifty_two_week: "52-week range", unusual_volume: "Unusual volume", short_interest_change: "Short interest", insider_trade: "Insider trade", iv_spike: "IV spike", iv_level: "IV level", options_flow: "Options flow", hiring_move: "Hiring move",
+  perps_threshold: "Perpetual threshold", earnings_date: "Earnings date", macro_event: "Macro event", calendar_event: "Macro event", filing_type: "SEC filing", news_keyword: "News keyword", analyst_change: "Analyst change", fifty_two_week: "52-week range", unusual_volume: "Unusual volume", short_interest_change: "Short interest", insider_trade: "Insider trade", iv_spike: "IV spike", iv_level: "IV level", options_flow: "Options flow", hiring_move: "Hiring move",
 };
 /** What an IV level rule follows, as the form, a list and a notification name it. */
 export const IV_LEVEL_NAMES: Record<IvLevelMetric, string> = { atm: "30d ATM IV", rr: "30d 25D RR" };
@@ -29,7 +30,13 @@ type Field = NonNullable<Command["wizard"]>[number];
 /** An earnings alert goes off days before the report, or once its results are out. */
 const EARNINGS_ALERT_WHEN = [{ value: "before", label: "Days before the date" }, { value: "results", label: "When results are out" }];
 const choices = (values: string[]) => values.map(value => ({label: value.replaceAll("_", " "), value}));
-export const researchWizardFields: Field[] = Object.keys(RESEARCH_LABELS).flatMap(kind => {
+/**
+ * The kinds Add Event Alert offers. A calendar event is added by name from the
+ * shell (`alerts add "NBS PMI"`), which matches it against the calendar; the
+ * form keeps its CPI and FOMC choice under Macro event.
+ */
+export const RESEARCH_FORM_KINDS = (Object.keys(RESEARCH_LABELS) as ResearchAlertKind[]).filter((kind) => kind !== "calendar_event");
+export const researchWizardFields: Field[] = RESEARCH_FORM_KINDS.flatMap(kind => {
   const fields: Field[] = kind === "perps_threshold" ? [
     { key: "marketId", label: "Market", type: "text", placeholder: "hyperliquid:default:BTC", required: true },
     { key: "metric", label: "Metric", type: "select", defaultValue: "funding8h", options: [{ value: "funding8h", label: "Funding / 8h" }, { value: "oiChange24h", label: "OI change / 24h" }, { value: "premium", label: "Premium vs oracle" }, { value: "closedMarketPremium", label: "Closed-market premium" }] },
@@ -130,6 +137,7 @@ export function researchAlertDescription(rule: EventAlertRule): string {
     case "perps_threshold": return `${config.marketId} · ${config.metric} ${config.direction} ${((config.threshold ?? 0) * 100).toFixed(3)}%`;
     case "earnings_date": return `${symbol} · ${config.when === "results" ? "results" : `${config.leadDays}d before`}`;
     case "macro_event": return `${MACRO_EVENT_NAMES[config.event as MacroAlertEvent] ?? config.event} · ${config.leadDays}d before`;
+    case "calendar_event": return `${config.event} (${config.country}) · ${config.leadDays}d before`;
     case "filing_type": return `${symbol} · ${config.form}`;
     case "news_keyword": return `${symbol} · ${config.keyword}`;
     case "analyst_change": case "insider_trade": return `${symbol} · ${config.direction}`;

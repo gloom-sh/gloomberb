@@ -18,6 +18,8 @@ export interface AlertSubject {
   marketId?: string;
   /** A macro event rule's release: `cpi` or `fomc`. */
   event?: string;
+  /** A calendar event rule's country, which ECO opens on. */
+  country?: string;
   keyword?: string;
   cik?: string;
 }
@@ -32,7 +34,7 @@ const pane = (templateId: string, options?: PaneTemplateCreateOptions): AlertTar
 
 /**
  * The one map from what an alert follows to what it opens, for every rule kind and every delivered alert:
- * a perpetual opens PERP on its market; a dated event the pane its date comes from (ERN, CPI, WIRP); catalyst,
+ * a perpetual opens PERP on its market; a dated event the pane its date comes from (ERN, CPI, WIRP, ECO); catalyst,
  * Congress and 13F rules their calendar or list, on the company or fund they name; an IV level the symbol's
  * OVDV, whose fits it reads; a hiring move HIRE on the company; any other rule on a security
  * that listing's DES. A rule on no security opens the pane it watches (SRCH for a news keyword, FLOW for flow
@@ -46,6 +48,8 @@ export function alertTarget(subject: AlertSubject): AlertTarget | null {
     case "earnings": return symbol ? pane("earnings-calendar-pane", { arg: symbol }) : null;
     case "iv_level": return symbol ? pane("vol-surface-pane", { symbol }) : null;
     case "macro_event": return subject.event === "cpi" ? pane("cpi-pane") : subject.event === "fomc" ? pane("rate-path-pane") : null;
+    // Any other release opens the economic calendar on its country.
+    case "calendar_event": return pane("econ-calendar-pane", subject.country ? { arg: subject.country } : undefined);
     case "catalyst": return pane("catalysts-pane", symbol ? { symbol } : undefined);
     case "congress_trade": return pane("congress-trades-pane");
     case "thirteenf_filing": return pane(THIRTEENF_TEMPLATE_ID, subject.cik ? { arg: subject.cik } : undefined);
@@ -65,7 +69,8 @@ const venue = (exchange: string | undefined) => exchange && exchange !== "US" ? 
 export function eventRuleSubject(rule: EventAlertRule): AlertSubject {
   if (isResearchAlertKind(rule.kind)) {
     const config = readResearchRule(rule.kind, rule.value);
-    return { kind: rule.kind, symbol: config?.symbol, exchange: venue(config?.exchange), marketId: config?.marketId, event: config?.event, keyword: config?.keyword };
+    return { kind: rule.kind, symbol: config?.symbol, exchange: venue(config?.exchange), marketId: config?.marketId, event: config?.event, keyword: config?.keyword,
+      ...config?.country ? { country: config.country } : {} };
   }
   return { kind: rule.kind, ...(rule.target === "ticker" ? { symbol: rule.value } : rule.target === "fund" ? { cik: rule.value } : {}) };
 }

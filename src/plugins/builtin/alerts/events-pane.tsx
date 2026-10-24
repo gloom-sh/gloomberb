@@ -15,8 +15,10 @@ import { useDialog } from "../../../ui/dialog";
 import { useCloudSyncStatus } from "../../../sync/react";
 import { usePluginAppActions, usePluginConfigState, usePluginState } from "../../runtime";
 import {
+  CALENDAR_ALERTS_KEY,
   EVENT_ALERTS_KEY,
   IV_LEVEL_ALERTS_KEY,
+  eventAlertStoreKey,
   eventAlertTarget,
   readEventAlertStores,
   toggleEventAlert,
@@ -30,7 +32,6 @@ import { isResearchAlertKind } from "./research-rules";
 import { useAsyncResource } from "../../../public/react";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
-import { newYorkToday } from "../earnings/board-model";
 import { rearmScheduledAlert } from "./scheduled";
 import { checkScheduledEventAlertsNow } from "./scheduled-check";
 import { checkIvLevelAlertsNow, IV_LEVEL_CHECKS_KEY, ivLevelCheckText, readIvLevelChecks, rearmIvLevelAlert } from "./iv-level";
@@ -49,20 +50,23 @@ const columnsFor = (width: number, lastCheck: boolean): DataTableColumn[] => [
 export function EventAlertsPane({ focused, width, height }: PaneProps) {
   const [catalystStatus] = usePluginConfigState<string>(CATALYST_POLL_STATUS, "Catalyst alerts check every five minutes while the app is open");
   const [json, setJson] = usePluginConfigState<string>(EVENT_ALERTS_KEY, "[]");
-  // IV levels are kept in their own list, which released versions never read.
+  // IV levels and calendar events are kept in their own lists, which released versions never read.
   const [ivJson, setIvJson] = usePluginConfigState<string>(IV_LEVEL_ALERTS_KEY, "[]");
+  const [calendarJson, setCalendarJson] = usePluginConfigState<string>(CALENDAR_ALERTS_KEY, "[]");
   const { rules, error } = useMemo(
-    () => readEventAlertStores((key) => key === IV_LEVEL_ALERTS_KEY ? ivJson : json),
-    [json, ivJson],
+    () => readEventAlertStores((key) => key === IV_LEVEL_ALERTS_KEY ? ivJson : key === CALENDAR_ALERTS_KEY ? calendarJson : json),
+    [json, ivJson, calendarJson],
   );
   // Their readings stay on this device.
   const [savedChecks] = usePluginState<unknown>(IV_LEVEL_CHECKS_KEY, {});
   const checks = useMemo(() => readIvLevelChecks(savedChecks), [savedChecks]);
   /** Changes one rule in the list it is kept in, leaving what that list holds of kinds this version does not know. */
   const updateRules = useCallback(
-    (rule: EventAlertRule, update: (rules: EventAlertRule[]) => EventAlertRule[]) =>
-      (rule.kind === "iv_level" ? setIvJson : setJson)((current) => updateEventAlerts(current, update)),
-    [setJson, setIvJson],
+    (rule: EventAlertRule, update: (rules: EventAlertRule[]) => EventAlertRule[]) => {
+      const key = eventAlertStoreKey(rule);
+      (key === IV_LEVEL_ALERTS_KEY ? setIvJson : key === CALENDAR_ALERTS_KEY ? setCalendarJson : setJson)((current) => updateEventAlerts(current, update));
+    },
+    [setJson, setIvJson, setCalendarJson],
   );
   const [selected, setSelected] = useState(0);
   const [sort, setSort] = useState<{ columnId: string; direction: SortDirection }>({ columnId: "created", direction: "desc" });
@@ -87,8 +91,8 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
     [rules, sort],
   );
   const selectedRule = items[Math.min(selected, Math.max(0, items.length - 1))];
-  const today = newYorkToday();
-  const selectedFired = !!selectedRule && ruleState(selectedRule, today) === "Alerted";
+  const now = Date.now();
+  const selectedFired = !!selectedRule && ruleState(selectedRule, now) === "Alerted";
   const openTarget = useOpenAlertTarget();
   const selectedTarget = useMemo(() => selectedRule ? alertTarget(eventRuleSubject(selectedRule)) : null, [selectedRule]);
   // Research rules keep a dated observation in the Cloud; show its value and percentile.
@@ -197,7 +201,7 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
         // An IV level that could not be read says so on its own row: No data in State, the reason in Last check.
         const check = rule.kind === "iv_level" ? checks[rule.id] : undefined;
         const unread = rule.kind === "iv_level" && rule.status === "active" && !rule.triggeredAt && check?.value === null;
-        const state = ruleState(rule, today);
+        const state = ruleState(rule, now);
         return {
           text:
             column.id === "kind"

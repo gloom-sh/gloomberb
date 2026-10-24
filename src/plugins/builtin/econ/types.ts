@@ -33,3 +33,13 @@ export interface EconEvent {
 export function hasNoStatedTime(event: Pick<EconEvent, "timeNote">): boolean {
   return typeof event.timeNote === "string" && event.timeNote.length > 0;
 }
+
+/** A row that takes its whole day (a plenum, an election, a summit): it has a day and no release time. */
+export function isAllDayEvent(event: Pick<EconEvent, "time" | "timeNote">): boolean {
+  return event.time === "All Day" && !hasNoStatedTime(event);
+}
+
+/** A row with a day and no clock time to count to: an all-day event, or a bank that states no time. */
+export function hasNoReleaseTime(event: Pick<EconEvent, "time" | "timeNote">): boolean {
+  return hasNoStatedTime(event) || isAllDayEvent(event);
+}

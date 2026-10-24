@@ -9,11 +9,22 @@ export const EVENT_ALERTS_KEY = "eventAlerts";
  * updated. They never read this key.
  */
 export const IV_LEVEL_ALERTS_KEY = "ivLevelAlerts";
+/**
+ * Calendar event rules (any release in the economic calendar), kept apart for
+ * the same reason: a released version refuses the whole `eventAlerts` list
+ * over one. CPI and FOMC stay `macro_event` rules in `eventAlerts`, which
+ * every version reads.
+ */
+export const CALENDAR_ALERTS_KEY = "calendarAlerts";
 export const MAX_EVENT_ALERTS = 40;
 
 /** The config key a rule is kept under. */
 export const eventAlertStoreKey = (rule: Pick<EventAlertRule, "kind">) =>
-  rule.kind === "iv_level" ? IV_LEVEL_ALERTS_KEY : EVENT_ALERTS_KEY;
+  rule.kind === "iv_level" ? IV_LEVEL_ALERTS_KEY : rule.kind === "calendar_event" ? CALENDAR_ALERTS_KEY : EVENT_ALERTS_KEY;
+
+/** Every config key event alerts are kept under. */
+export const EVENT_ALERT_STORE_KEYS = [EVENT_ALERTS_KEY, IV_LEVEL_ALERTS_KEY, CALENDAR_ALERTS_KEY] as const;
+type EventAlertStoreKey = (typeof EVENT_ALERT_STORE_KEYS)[number];
 
 export interface EventAlertRule {
   id: string;
@@ -29,6 +40,8 @@ export interface EventAlertRule {
   eventDate?: string;
   /** Scheduled events: the event date it already alerted for. The next event date arms it again. */
   firedFor?: string;
+  /** Macro and calendar events: the event date whose figures (actual, forecast, prior) it already sent. */
+  printedFor?: string;
   /**
    * IV level: when the level was reached. The rule stays Alerted until it is
    * re-armed. Its readings stay on the device (`ivLevelChecks`), so synced
@@ -40,9 +53,9 @@ export interface EventAlertRule {
 const isDateKey = (value: unknown): value is string =>
   typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(`${value}T00:00:00Z`));
 
-/** Earnings and macro event rules: they follow a dated event and alert a number of days before it. */
+/** Earnings, macro and calendar event rules: they follow a dated event and alert a number of days before it. */
 export function isScheduledEventRule(rule: Pick<EventAlertRule, "kind">): boolean {
-  return rule.kind === "earnings_date" || rule.kind === "macro_event";
+  return rule.kind === "earnings_date" || rule.kind === "macro_event" || rule.kind === "calendar_event";
 }
 
 export const EVENT_ALERT_TEMPLATES = [
@@ -169,6 +182,7 @@ export function readEventAlerts(json: string): EventAlertList {
       if (isScheduledEventRule(rule)) {
         if (isDateKey(value.eventDate)) rule.eventDate = value.eventDate;
         if (isDateKey(value.firedFor)) rule.firedFor = value.firedFor;
+        if (isDateKey(value.printedFor)) rule.printedFor = value.printedFor;
       }
       if (rule.kind === "iv_level" && Number.isFinite(value.triggeredAt) && value.triggeredAt > 0) rule.triggeredAt = value.triggeredAt;
       rules.push(rule);
@@ -182,7 +196,7 @@ export function readEventAlerts(json: string): EventAlertList {
 }
 
 /** A list as it is saved: its rules, then the ones of kinds this version does not know, unchanged. */
-export function writeEventAlerts(rules: readonly EventAlertRule[], kept: readonly unknown[] = []): string {
+function writeEventAlerts(rules: readonly EventAlertRule[], kept: readonly unknown[] = []): string {
   return JSON.stringify([...rules, ...kept]);
 }
 
@@ -193,17 +207,17 @@ export function updateEventAlerts(json: string | null | undefined, update: (rule
   return list.error ? current : writeEventAlerts(update(list.rules), list.kept);
 }
 
-/** Both saved lists, read through `get`: the rules of each, together, and each list as read. */
+/** Every saved list, read through `get`: the rules of each, together, and each list as read. */
 export function readEventAlertStores(get: (key: string) => unknown): {
   rules: EventAlertRule[];
   error: string | null;
-  lists: Record<typeof EVENT_ALERTS_KEY | typeof IV_LEVEL_ALERTS_KEY, EventAlertList>;
+  lists: Record<EventAlertStoreKey, EventAlertList>;
 } {
   const read = (key: string) => {
     const raw = get(key);
     return readEventAlerts(typeof raw === "string" && raw ? raw : "[]");
   };
-  const lists = { [EVENT_ALERTS_KEY]: read(EVENT_ALERTS_KEY), [IV_LEVEL_ALERTS_KEY]: read(IV_LEVEL_ALERTS_KEY) };
+  const lists = Object.fromEntries(EVENT_ALERT_STORE_KEYS.map((key) => [key, read(key)])) as Record<EventAlertStoreKey, EventAlertList>;
   const all = Object.values(lists);
   return { rules: all.flatMap((list) => list.rules), error: all.find((list) => list.error)?.error ?? null, lists };
 }

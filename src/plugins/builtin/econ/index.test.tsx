@@ -269,6 +269,24 @@ describe("EconCalendarPane", () => {
     expect(quiet).toContain("No scheduled releases for ZA in this window");
   });
 
+  // A plenum or an election takes its day: "All day", never 00:00 UTC or the evening before on the reader's clock.
+  test("an all-day event says All day and counts to its day", async () => {
+    const persistence = new MemoryPluginPersistence();
+    persistence.seedResource("calendar", "global", [
+      { id: "plenum", date: "2026-08-24T00:00:00.000Z", time: "All Day", country: "CN", event: "Communist Party Fifth Plenum",
+        impact: "high", actual: null, forecast: null, prior: null },
+      { id: "pmi", date: "2026-08-31T01:30:00.000Z", time: "01:30", country: "CN", event: "NBS Manufacturing PMI",
+        impact: "high", actual: null, forecast: null, prior: "50.1" },
+    ], { sourceKey: "gloomberb-cloud", schemaVersion: 1 });
+    attachEconCalendarPersistence(persistence);
+    const frame = await renderPane(110, "all", true, undefined, "America/New_York");
+    const plenum = frame.split("\n").find((line) => line.includes("Communist Party Fifth Plenum"))!;
+    expect(plenum).toContain("All day");
+    expect(plenum).not.toMatch(/\d\d:\d\d/);
+    expect(frame).toMatch(/01:30\s+Sun 21:30\s+.*NBS Manufacturing PMI/);
+    expect(frame).toContain("next Communist Party Fifth Plenum Mon");
+  });
+
   // The pane's own refresh follows the global cadence; a print due now cannot wait for it.
   test("asks for a due high-impact print while in view with the setting off, and nothing while covered", async () => {
     const cpi: CloudEconEventPayload = {

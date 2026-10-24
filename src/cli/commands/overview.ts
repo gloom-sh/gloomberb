@@ -39,7 +39,7 @@ import {
   type CountryFilter,
   type ImpactFilter,
 } from "../../plugins/builtin/econ/calendar-model";
-import { hasNoStatedTime } from "../../plugins/builtin/econ/types";
+import { hasNoReleaseTime, hasNoStatedTime } from "../../plugins/builtin/econ/types";
 import { isoDate, rejectExtraArgs, requireArg, requireOneArg, takeFlag, takeOption } from "./command-utils";
 import { buildCorrelationSeries } from "../../plugins/builtin/correlation/matrix/model";
 import { alignDailyCloses, correlateDailyCloses } from "../../plugins/builtin/correlation/compute";
@@ -285,6 +285,12 @@ function utcDateTimePart(value: unknown, part: "date" | "time", readerClock = tr
 }
 
 const ECON_USAGE = "econ [--country <regions or countries>] [--impact <level>] [--from <date>] [--tz <zone>]";
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+/** "Sat" for 2026-10-31. */
+const weekdayOf = (date: string) => WEEKDAYS[new Date(`${date}T00:00:00Z`).getUTCDay()]!;
+
+/** Mon to Sun, so a release on a weekend (China's PMI on a Saturday) reads as one. */
+const ECON_DAY_COLUMN = { key: "day", header: "Day", shrink: false };
 
 /** A publisher's clock for a row it times itself: `13:00 Mexico City` from 13:00 in America/Mexico_City. */
 function publisherClock(localTime: unknown, timeZone: unknown): string {
@@ -391,31 +397,33 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
     const rows = inWindow
       .filter((event) => matchesCountry(event, country) && matchesImpact(event, impact))
       .sort((left, right) => left.date.getTime() - right.date.getTime())
-      .map((event) => ({
-        date: isoDate(event.date),
-        time: hasNoStatedTime(event) ? "" : event.time,
+      .map((event) => {
         // The viewer's clock (--tz) for a row with a time: its date and time there.
-        ...(viewerZone ? (() => {
-          const clock = hasNoStatedTime(event) || event.time === "All Day" ? null : zonedClock(event.date.getTime(), viewerZone);
-          return { viewerDate: clock?.date ?? null, viewerTime: clock?.time ?? null };
-        })() : {}),
-        country: eventCountry(event),
-        impact: event.impact,
-        event: event.event,
-        actual: event.actual ?? "",
-        forecast: event.forecast ?? "",
-        prior: event.prior ?? "",
-        // The publisher's own clock, for rows Gloom Cloud adds from a bank's or a statistics office's calendar.
-        localTime: event.localTime ?? null,
-        timeZone: event.timeZone ?? null,
-        timeNote: event.timeNote ?? null,
-        priorAsOf: event.priorAsOf ?? null,
-        // Who publishes the figure (Freddie Mac for the 30-year mortgage rate), the period it covers and its page.
-        publisher: event.source?.name ?? null,
-        referencePeriod: event.referencePeriod ?? null,
-        source: event.source?.name ?? null,
-        sourceUrl: event.source?.url ?? null,
-      }));
+        const clock = viewerZone && !hasNoReleaseTime(event) ? zonedClock(event.date.getTime(), viewerZone) : null;
+        return {
+          date: isoDate(event.date),
+          // The weekday on the viewer's clock (--tz), else the UTC day's; a row with no time is its day's.
+          day: weekdayOf(clock?.date ?? isoDate(event.date).slice(0, 10)),
+          time: hasNoStatedTime(event) ? "" : event.time,
+          ...(viewerZone ? { viewerDate: clock?.date ?? null, viewerTime: clock?.time ?? null } : {}),
+          country: eventCountry(event),
+          impact: event.impact,
+          event: event.event,
+          actual: event.actual ?? "",
+          forecast: event.forecast ?? "",
+          prior: event.prior ?? "",
+          // The publisher's own clock, for rows Gloom Cloud adds from a bank's or a statistics office's calendar.
+          localTime: event.localTime ?? null,
+          timeZone: event.timeZone ?? null,
+          timeNote: event.timeNote ?? null,
+          priorAsOf: event.priorAsOf ?? null,
+          // Who publishes the figure (Freddie Mac for the 30-year mortgage rate), the period it covers and its page.
+          publisher: event.source?.name ?? null,
+          referencePeriod: event.referencePeriod ?? null,
+          source: event.source?.name ?? null,
+          sourceUrl: event.source?.url ?? null,
+        };
+      });
     // A filter of countries only, none of which has anything in the window, says so as its empty list.
     const allUnscheduled = unscheduled.length > 0 && unscheduled.length === country.split(",").length;
     const footnote = [listedBefore, listedAfter, ...(rows.length > 0 ? blankTimeNotes(rows) : []),
@@ -435,12 +443,15 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
       columns: [
         // Text shows both halves of the event timestamp in UTC, never the host's zone; exports keep the source values.
         { key: "date", header: "Date", format: (value) => utcDateTimePart(value, "date") },
+        // The weekday sits before the clock it is on: the UTC time's, or with --tz the viewer's.
+        ...viewerZone ? [] : [ECON_DAY_COLUMN],
         // With --tz the viewer's clock has its own column, so the UTC time does not repeat it.
         { key: "time", header: "Time", format: (value, row) => value === "All Day" ? "All day" : value === ""
           ? "" : utcDateTimePart(row.date, "time", !viewerZone) },
-        // Only --tz fills it: the viewer's clock, with the weekday when it is another day there.
+        ...viewerZone ? [ECON_DAY_COLUMN] : [],
+        // Only --tz fills it: the viewer's clock, its weekday in Day before it.
         { key: "viewerTime", header: viewerZone ? timeZoneCity(viewerZone) : "Viewer", shrink: false,
-          format: (value, row) => value == null || !viewerZone ? "" : zonedClock(Date.parse(String(row.date)), viewerZone).label },
+          format: (value) => typeof value === "string" && viewerZone ? value : "" },
         // Only rows a publisher times itself fill it, so the feeds' calendar prints as before.
         { key: "localTime", header: "Local", optional: true, dropPriority: 1, format: (value, row) => publisherClock(value, row.timeZone) },
         { key: "country", header: "Country" },
