@@ -267,6 +267,12 @@ export interface HeadlessPaneFreshness {
    */
   periodicity?: "monthly" | "quarterly" | "semiannual" | "annual";
   /**
+   * How often the oldest observation publishes, when it is dated by its period
+   * and the newest is not (a monthly statistic charted beside daily closes):
+   * the report names its period, `Fri 23 Oct 2026 (oldest Sep 2026)`.
+   */
+  oldestPeriodicity?: "monthly" | "quarterly" | "semiannual" | "annual" | null;
+  /**
    * When the newest observation was released, for figures dated by the period
    * they cover (a monthly statistic's 1 Sep): a date, or the time when the
    * publisher states it. The report is then as of that release and names both,

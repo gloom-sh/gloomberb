@@ -272,7 +272,7 @@ function seriesPeriodicity(dates: readonly Date[]): Periodicity | null {
  * is dated by the day of its newest observation, with the oldest series'
  * newest when they end apart, and by the period when every series publishes
  * in the same one: `Aug 2026 (monthly)`, not `Sat 1 Aug 2026 00:00 UTC`;
- * with the newest figure's release when its points say it (`availableAt`):
+ * with the newest figure's release when its points say it (`releasedOn`):
  * `Sep 2026, released Tue 20 Oct`. Nothing for a chart with a price series
  * or a series observed at a time of day.
  */
@@ -287,7 +287,7 @@ export function periodChartDates(series: readonly HeadlessSeries[], spec: Pick<C
     // A date at midnight UTC is a day; anything else is an observation time and keeps it.
     if (dates.some((date) => !Number.isFinite(date.getTime()) || date.getTime() % DAY_MS !== 0)) return {};
     const newest = dates.reduce((latest, date, index) => (date > dates[latest]! ? index : latest), 0);
-    ends.push({ day: dates[newest]!.toISOString().slice(0, 10), releasedOn: releaseDay(points[newest]!.availableAt) });
+    ends.push({ day: dates[newest]!.toISOString().slice(0, 10), releasedOn: releaseDay(points[newest]!.releasedOn) });
     periods.add(seriesPeriodicity(dates));
   }
   if (!ends.length) return {};
@@ -305,7 +305,7 @@ export function periodChartDates(series: readonly HeadlessSeries[], spec: Pick<C
   };
 }
 
-/** A point's release (`availableAt`) as a day, when it is one. */
+/** A point's release (`releasedOn`) as a day, when it is one. */
 function releaseDay(value: unknown): string | null {
   const time = value instanceof Date ? value.getTime() : typeof value === "string" || typeof value === "number" ? new Date(value).getTime() : Number.NaN;
   return Number.isFinite(time) ? new Date(time).toISOString().slice(0, 10) : null;
@@ -345,7 +345,8 @@ function chartFreshness(
   const resolutions = series.map((entry) => (entry as HeadlessSeries & { historyResolution?: string }).historyResolution);
   const dataset = isDatasetChart(spec);
   if (!series.length || resolutions.some((resolution) => !resolution)) {
-    return { ...REPORTED_DATA, basis: "reported and published data", ...(dataset ? { dataset } : {}), ...periodChartDates(series, spec), ...seriesAttribution(series) };
+    const dates = resolutions.some(Boolean) ? mixedChartDates(series, spec, quoteTimes) : periodChartDates(series, spec);
+    return { ...REPORTED_DATA, basis: "reported and published data", ...(dataset ? { dataset } : {}), ...dates, ...seriesAttribution(series) };
   }
   const coarsest = resolutions.reduce((worst, resolution) => (
     order.indexOf(resolution!) > order.indexOf(worst!) ? resolution : worst
@@ -359,6 +360,31 @@ function chartFreshness(
   // Daily bars are dated by the time of the newest point: a closed session's day, or when a session still trading was last quoted.
   const asOf = coarsest === "1d" ? newestDailyPoint(series, closedDay, quoteTimes) : closedDay;
   return { ...barHistoryFreshness(coarsest), ...basis, ...(asOf ? { asOf } : {}) };
+}
+
+/**
+ * The dates of a chart of price bars beside reported series (`G DHI,
+ * FRED:PERMIT`): as of its newest daily point, as a chart of the prices alone
+ * is, and when the reported series end before it, the oldest is their newest
+ * period: `Fri 23 Oct 2026 (oldest Sep 2026)`. Bars of a time of day keep the
+ * line's own dating; only the oldest is named.
+ */
+function mixedChartDates(series: readonly HeadlessSeries[], spec: ChartSpec, quoteTimes: ReadonlyMap<string, number>): Pick<HeadlessPaneFreshness, "asOf" | "oldest" | "oldestPeriodicity"> {
+  const withResolution = series as ReadonlyArray<HeadlessSeries & Partial<Pick<ResolvedSeries, "historyResolution">>>;
+  const priced = withResolution.filter((entry) => entry.historyResolution);
+  const reported = withResolution.filter((entry) => !entry.historyResolution);
+  const reportedIds = new Set(reported.map((entry) => entry.id));
+  const ends = periodChartDates(reported, { series: spec.series.filter((entry) => reportedIds.has(entry.id)) });
+  const daily = priced.every((entry) => ["1d", "1wk", "1mo"].includes(entry.historyResolution!));
+  const asOf = !daily ? null
+    : priced.every((entry) => entry.historyResolution === "1d") ? newestDailyPoint(priced, closedPriceBarDay(priced), quoteTimes)
+    : closedPriceBarDay(priced);
+  const newestPrice = asOf ?? priced.flatMap((entry) => entry.points.at(-1)?.date ?? []).map((date) => new Date(date).toISOString()).sort().at(-1);
+  const oldest = typeof ends.asOf === "string" && newestPrice && ends.asOf < newestPrice.slice(0, 10) ? ends.asOf : null;
+  return {
+    ...(asOf ? { asOf } : {}),
+    ...(oldest ? { oldest, oldestPeriodicity: ends.periodicity ?? null } : {}),
+  };
 }
 
 /**

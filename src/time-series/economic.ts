@@ -72,11 +72,14 @@ export function extractFredSeries(
         ? Number(observation.value)
         : Number.NaN;
     if (!observedAt || !Number.isFinite(numericValue)) continue;
-    const availableAt = parsedDate(observation.realtime_start ?? observation.realtimeStart ?? observation.releasedOn);
+    const availableAt = parsedDate(observation.realtime_start ?? observation.realtimeStart);
+    // One observation's release is not a vintage: the series stays drawn by period, and the line says when it was released.
+    const releasedOn = parsedDate(observation.releasedOn)?.toISOString().slice(0, 10);
     points.push({
       date: options.timestampMode !== "period-end" && availableAt ? availableAt : observedAt,
       observedAt,
       availableAt: availableAt ?? undefined,
+      ...(releasedOn ? { releasedOn } : {}),
       value: numericValue,
       periodLabel: observation.date,
       provenance: {

@@ -552,7 +552,8 @@ function resolveFreshness({ declared, signals, observations, now }: FreshnessInp
     ? releaseTime(declared.releasedOn, asOf, now) ?? unitRelease?.released ?? null : null;
   // The oldest row's own period, when the rows name theirs (a quarterly figure among daily ones).
   const oldestRelease = !declared.periodicity && oldestTime ? observations.releases?.get(oldestTime) : undefined;
-  const oldestPeriodicity = oldestRelease ? oldestRelease.periodicity ?? null : unitRelease?.periodicity ? null : undefined;
+  const oldestPeriodicity = declared.oldestPeriodicity !== undefined ? declared.oldestPeriodicity
+    : oldestRelease ? oldestRelease.periodicity ?? null : unitRelease?.periodicity ? null : undefined;
   return {
     source: declared.source?.trim() || (sources.length ? [...new Set(sources.map(({ source }) => source))].join(", ") : DEFAULT_REPORT_SOURCE),
     asOf: released ? isoTime(released) : asOf ? isoTime(asOf) : null,

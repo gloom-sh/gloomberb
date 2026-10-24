@@ -43,11 +43,14 @@ test("usable observations outside declared coverage invalidate dates without inv
   ])).toContain("2023-09-12 to 2026-09-10");
 });
 
-test("the newest observation's release becomes its availability, and a chart by period keeps its period date", () => {
-  const points = extractFredSeries([
-    { date: "2026-08-01", value: 1330 },
-    { date: "2026-09-01", value: 1412, releasedOn: "2026-10-20" },
-  ], { providerId: "fred", timestampMode: "period-end" });
-  expect(points.map((point) => [point.date.toISOString().slice(0, 10), point.availableAt?.toISOString().slice(0, 10) ?? null]))
-    .toEqual([["2026-08-01", null], ["2026-09-01", "2026-10-20"]]);
+test("the newest observation's release is carried for the report line, never as its availability", () => {
+  for (const timestampMode of ["period-end", "available-at"] as const) {
+    const points = extractFredSeries([
+      { date: "2026-08-01", value: 1330 },
+      { date: "2026-09-01", value: 1412, releasedOn: "2026-10-20" },
+    ], { providerId: "fred", timestampMode });
+    // Drawn at its period like the others, on a calendar or a market's time scale.
+    expect(points.map((point) => [point.date.toISOString().slice(0, 10), point.availableAt ?? null, point.releasedOn ?? null]))
+      .toEqual([["2026-08-01", null, null], ["2026-09-01", null, "2026-10-20"]]);
+  }
 });

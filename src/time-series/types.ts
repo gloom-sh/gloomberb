@@ -126,6 +126,13 @@ export interface TimeSeriesPoint {
   date: Date;
   observedAt: Date;
   availableAt?: Date;
+  /**
+   * The day the figure was released (`2026-10-20`), when its source says so for
+   * this point alone: FRED's newest observation from Gloom Cloud. The report
+   * line reads it; unlike `availableAt`, it never moves where the point is
+   * drawn or aligned, so the newest figure stays at its period like the rest.
+   */
+  releasedOn?: string;
   value: number | null;
   /** Original primary scalar before any presentation transform, including missing values. */
   rawValue?: number | null;

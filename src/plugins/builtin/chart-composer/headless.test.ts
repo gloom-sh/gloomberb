@@ -214,6 +214,45 @@ test("a chart of daily bars is as of its newest point: the closed session's day,
   }
 });
 
+test("a chart of daily bars beside a monthly FRED series draws the newest figure at its period and is as of the closed day, the series' period the oldest", async () => {
+  const { applyChartComposerCapabilityOptions } = await import("./cli-options");
+  const { renderHeadlessPaneText } = await import("../../../cli/pane-functions/headless");
+  const daily = ["2026-10-21", "2026-10-22", "2026-10-23"].map((date, index) => ({ date: new Date(`${date}T00:00:00Z`), open: 150, high: 152, low: 149, close: 150 + index }));
+  const months = ["2026-07-01", "2026-08-01", "2026-09-01"];
+  const spec = applyChartComposerCapabilityOptions(buildCustomChartPreset("DHI:NYSE, FRED:PERMIT"), "chart-composer", { rangePreset: "6M", chartResolution: "1d" });
+  const definition = chartHeadless("chart-composer-pane");
+  const args = { argument: "DHI:NYSE, FRED:PERMIT", rawArgument: "DHI:NYSE, FRED:PERMIT", symbols: [], options: {} };
+  const context = createTestHeadlessContext({
+    marketData: createTestDataProvider({
+      getTickerFinancials: async () => ({ annualStatements: [], quarterlyStatements: [], priceHistory: [] }),
+      getQuote: async () => ({ symbol: "DHI", price: 152, change: 1, changePercent: 0.66, currency: "USD", lastUpdated: Date.parse("2026-10-23T20:00:00Z") }),
+      getChartResolutionSupport: () => [{ resolution: "1d", maxRange: "5Y" }],
+      getPriceHistoryForResolution: async () => daily,
+    }),
+    // Gloom Cloud sets the newest observation's release day on it.
+    apiClient: { getCloudFredSeries: async () => ({
+      info: null,
+      observations: months.map((date, index) => ({ date, value: 1400 + index, ...(index === months.length - 1 ? { releasedOn: "2026-10-20" } : {}) })),
+    }) } as never,
+    settings: { chartSpec: spec },
+  });
+  try {
+    setSystemTime(new Date("2026-10-23T22:50:00Z"));
+    const result = await definition.load(args, context) as ChartPaneModel;
+    const fredId = spec.series.find((entry) => entry.source.kind === "economic")!.id;
+    const permit = result.series.find((entry) => entry.id === fredId)!;
+    // September's figure stays at September, as a market's time scale places it, with its release beside it.
+    expect(permit.points.map((point) => [new Date(point.date).toISOString().slice(0, 10), point.availableAt ?? null, point.releasedOn ?? null]))
+      .toEqual([["2026-07-01", null, null], ["2026-08-01", null, null], ["2026-09-01", null, "2026-10-20"]]);
+    expect(result.freshness).toMatchObject({ asOf: "2026-10-23", oldest: "2026-09-01", oldestPeriodicity: "monthly" });
+    const text = renderHeadlessPaneText(definition, result, args, "Custom Chart");
+    expect(text).toContain("Fri 23 Oct 2026 (oldest Sep 2026)");
+    expect(text).not.toContain("00:00 UTC");
+  } finally {
+    setSystemTime();
+  }
+});
+
 describe("GIP headless sessions", () => {
   test("selects the latest one/five sessions or a historical session, retaining its last bar without another history fetch", async () => {
     for (const [range, session, days] of [["1D", undefined, 1], ["1W", undefined, 5], ["1W", "2026-09-01", 1]] as const) {
@@ -352,10 +391,10 @@ test("an economic chart is dated by its observations' day, and by their period w
   expect(periodChartDates([{ id: "ratio", label: "VIX 3M / VIX", points: days }], { series: [catalog("ratio")] } as never)).toEqual({ asOf: "2026-10-09" });
   expect(periodChartDates([cpi], { series: [catalog("s"), { source: { kind: "security" } }] } as never)).toEqual({});
   // The newest figure's release, which Gloom Cloud sets on it, dates the chart beside its period.
-  const permits = { id: "permit", label: "PERMIT", points: [...months(23, "2026-08-01"), { date: "2026-09-01T00:00:00.000Z", value: 1400, availableAt: new Date("2026-10-20T00:00:00Z") }] };
+  const permits = { id: "permit", label: "PERMIT", points: [...months(23, "2026-08-01"), { date: "2026-09-01T00:00:00.000Z", value: 1400, releasedOn: "2026-10-20" }] };
   expect(periodChartDates([permits], fred("PERMIT"))).toEqual({ asOf: "2026-09-01", periodicity: "monthly", releasedOn: "2026-10-20" });
   // Two series ending the same period with different releases name neither.
-  const other = { ...permits, id: "starts", points: [...permits.points.slice(0, -1), { ...permits.points.at(-1)!, availableAt: new Date("2026-10-21T00:00:00Z") }] };
+  const other = { ...permits, id: "starts", points: [...permits.points.slice(0, -1), { ...permits.points.at(-1)!, releasedOn: "2026-10-21" }] };
   expect(periodChartDates([permits, other], fred("PERMIT", "HOUST"))).toEqual({ asOf: "2026-09-01", periodicity: "monthly" });
 });
 
