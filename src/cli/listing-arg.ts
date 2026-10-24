@@ -55,6 +55,7 @@ import {
   type TerminalListingCode,
 } from "../tickers/terminal-codes";
 import { listingAbroadVenue } from "../utils/sec";
+import { listingSuffixVenue } from "../sources/listing-symbols";
 import { notTheCoinNote } from "./commands/crypto-hints";
 
 /** The `--exchange` option of every command that takes a ticker. */
@@ -127,13 +128,19 @@ export function meantQuestion(listing: Pick<ListingArg, "meant">): string {
 export function parseListingArg(
   rawArg: string,
   exchangeOption?: string | null,
-  { ownExchangeWins = false, terminalCode }: {
+  { ownExchangeWins = false, terminalCode, listingSuffix = false }: {
     ownExchangeWins?: boolean;
     /**
      * The terminal code `readTerminalCodeArg` read the text as, or null for
      * words that read as a Bloomberg code but are a name. Read here when not given.
      */
     terminalCode?: TerminalListingCode | null;
+    /**
+     * Read a vendor's venue suffix as the venue it names (GARAN.IS as
+     * GARAN:BIST, `listingSuffixVenue`), so what is saved, found or removed is
+     * the listing's one row. Commands that store a listing ask for it.
+     */
+    listingSuffix?: boolean;
   } = {},
 ): ListingArg {
   // A pasted ticker can bring the separator or quote marks that sat beside it (`UPST;`); search would ask for them.
@@ -144,7 +151,8 @@ export function parseListingArg(
   const terminal = terminalCode === undefined ? readTerminalListingCode(raw) : terminalCode;
   const nearMiss = terminal ? null : readNearMissListing(raw);
   const reading = terminal ?? (nearMiss ? { typed: nearMiss.typed, key: nearMiss.symbol } : null);
-  const listing = parseCleanListingArg(reading?.key ?? raw, exchangeOption, { ownExchangeWins });
+  const parsed = parseCleanListingArg(reading?.key ?? raw, exchangeOption, { ownExchangeWins });
+  const listing = listingSuffix ? readListingSuffix(parsed) ?? parsed : parsed;
   const notes = [...stripped.text ? stripped.notes : [], ...reading ? [terminalCodeReadAs(reading)] : []];
   return notes.length > 0 ? { ...listing, readAs: notes.join(" ") } : listing;
 }
@@ -257,8 +265,20 @@ async function checkListingExchange(listing: ListingArg, deps: ListingDeps): Pro
     throw new ListingArgError(`Choose an exchange for ${symbol}.${tradesOn(symbol, await listingVenues(symbol, deps))}`);
   }
   if (!listing.exchange || isKnownExchangeCode(listing.exchange)) return;
-  const venues = await listingVenues(listing.symbol, deps);
+  // A row saved on that venue says it is real (GARAN:BIST, which the exchange table lacks), with no request.
+  if (await loadSavedListing(deps.store, listing)) return;
+  let venues: ListingVenue[] = [];
+  let busy: unknown = null;
+  try {
+    venues = await listingVenues(listing.symbol, deps);
+  } catch (error) {
+    if (!isProviderBusy(error)) throw error;
+    busy = error;
+  }
   if (venues.some((venue) => venue.exchange === listing.exchange)) return;
+  // Search busy, or missing the venue: the listing's own quote there settles it, as `quote` reads it.
+  if (await quotedOnVenue(listing, deps)) return;
+  if (busy) throw busy;
   throw new ListingArgError(
     `Unknown exchange ${listing.exchange} for ${listing.symbol}.${tradesOn(listing.symbol, venues)}`,
     venues.length > 0 ? undefined : `No listings of ${listing.symbol} were found.`,
@@ -934,6 +954,12 @@ async function readVenueSuffix(listing: ListingArg, deps: Pick<ListingDeps, "dat
   return { symbol: match[1]!, exchange: venue, key, readAs: `Read ${listing.symbol} as ${key}.` };
 }
 
+/** GARAN.IS as GARAN:BIST: a vendor's venue suffix read as the venue it names (`listingSuffixVenue`), with no request. */
+function readListingSuffix(listing: ListingArg): ListingArg | null {
+  const venue = listing.exchange ? null : listingSuffixVenue(listing.symbol);
+  return venue ? { symbol: venue.symbol, exchange: venue.exchange, key: `${venue.symbol}:${venue.exchange}` } : null;
+}
+
 export async function resolveCliListing(
   raw: string,
   exchangeOption: string | null | undefined,
@@ -946,6 +972,8 @@ export async function resolveCliListing(
      * `shot` run through), as their data is read by venue.
      */
     venueSuffix?: boolean;
+    /** Read a venue suffix as the venue it names, with no request (`parseListingArg`). */
+    listingSuffix?: boolean;
   } = {},
 ): Promise<CliListing> {
   // "JPM US Equity" is Bloomberg's code for JPM; "Putnam US Equity", whose root is no US ticker, is a name.
@@ -968,7 +996,10 @@ export async function resolveCliListing(
   const suffixed = pair || named || !options.venueSuffix ? null : await readVenueSuffix(parsed, deps);
   // The row may be saved under the suffixed key itself: a link or a layout's key is kept as it came.
   const typedKey = suffixed ? parsed.symbol : null;
-  if (suffixed) parsed = parsed.readAs ? { ...suffixed, readAs: `${parsed.readAs} ${suffixed.readAs}` } : suffixed;
+  if (suffixed) {
+    const readAs = [parsed.readAs, suffixed.readAs].filter(Boolean).join(" ");
+    parsed = { ...suffixed, ...readAs ? { readAs } : {} };
+  }
   try {
     // A code's venue is one the app reads; where search alone knows it (`BBCA IJ`) or the codes differ (`DBS SP`), search says what trades there.
     if (terminal?.market && parsed.exchange === terminal.exchange) await checkTerminalCodeVenue(parsed, terminal.market, deps);
@@ -1140,9 +1171,10 @@ export async function requireListingArg(
   raw: string,
   exchangeOption: string | null | undefined,
   ctx: Pick<CliCommandContext, "fail" | "initMarketData">,
+  options: { listingSuffix?: boolean } = {},
 ): Promise<ListingArg> {
   try {
-    const listing = parseListingArg(raw, exchangeOption);
+    const listing = parseListingArg(raw, exchangeOption, options);
     if (listing.symbol.endsWith(":") || (listing.exchange && !isKnownExchangeCode(listing.exchange)) || listing.sharedCode) {
       return await withMarketData(ctx, async (market) => {
         await checkListingExchange(listing, market);

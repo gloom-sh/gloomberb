@@ -17,8 +17,10 @@ const LISTINGS: Record<string, Array<{ name: string; exchange: string }>> = {
   PLTR: [{ name: "Palantir Technologies Inc.", exchange: "NASDAQ" }],
   PALO: [{ name: "Palo Alto Networks, Inc.", exchange: "NASDAQ" }],
   ALTO: [{ name: "Alto Ingredients, Inc.", exchange: "NASDAQ" }],
-  // Only DFS Furniture, in London, lists as DFS now.
+  // Only DFS Furniture, in London, lists as DFS now; Discover had it in New York.
   DFS: [{ name: "DFS Furniture plc", exchange: "LSE" }],
+  // Garanti lists in Istanbul only, and no US company ever had GARAN.
+  GARAN: [{ name: "Turkiye Garanti Bankasi A.S.", exchange: "BIST" }],
   // Two companies, and no quote of the bare code settles which.
   "2222": [{ name: "Kotobuki Spirits Co., Ltd.", exchange: "JPX" }, { name: "Saudi Arabian Oil Co.", exchange: "TADAWUL" }],
 };
@@ -28,13 +30,22 @@ const dataProvider = createTestDataProvider({
     // Searching the words of a name finds that company.
     const symbol = query.toUpperCase();
     if (symbol === "PALO ALTO") return [{ providerId: "test", symbol: "PANW", name: "Palo Alto Networks, Inc.", exchange: "NASDAQ", currency: "USD", type: "Common Stock" }] satisfies InstrumentSearchResult[];
+    // A vendor's suffix finds the listing on its venue, under the vendor's symbol: GARAN.IS.
+    if (symbol.endsWith(".IS")) {
+      return (LISTINGS[symbol.slice(0, -3)] ?? []).filter((listing) => listing.exchange === "BIST")
+        .map((listing) => ({ providerId: "test", symbol, currency: "TRY", type: "Common Stock", ...listing }));
+    }
     return (LISTINGS[symbol] ?? []).map((listing) => ({ providerId: "test", symbol, currency: "USD", type: "Common Stock", ...listing }));
   },
   getQuote: async (symbol, exchange) => {
     const listing = LISTINGS[symbol]?.length === 1 ? LISTINGS[symbol]![0] : LISTINGS[symbol]?.find((entry) => entry.exchange === exchange);
     if (!listing) throw new Error(`Not a ticker: ${symbol}.`);
-    return createTestQuote({ symbol, name: listing.name, listingExchangeName: listing.exchange });
+    return createTestQuote({ symbol, name: listing.name, listingExchangeName: listing.exchange, currency: listing.exchange === "BIST" ? "TRY" : "USD" });
   },
+  getTickerChanges: async (symbol) => symbol === "DFS" ? {
+    symbol, moved: null, formerly: null, listedName: null, changes: [],
+    formerIssuer: { symbol, name: "Discover Financial Services", until: "2025-05-18", successor: { symbol: "COF", name: "Capital One Financial" }, source: null },
+  } : null,
 });
 
 async function harness(options: { watchlists?: Array<{ id: string; name: string }>; active?: string | null } = {}) {
@@ -150,13 +161,35 @@ test("one symbol is not a list, and the text says whether its separators are pla
   expect(pastedSymbolList("NVDA\nAMD\r\nNVDA")).toEqual({ symbols: ["NVDA", "AMD"], repeated: 1, separated: true });
 });
 
-test("one typed symbol is decided as a symbol of a pasted list is: a match abroad is not added, alone or in a list", async () => {
+test("one typed symbol is decided as a symbol of a pasted list is: a match abroad of a US symbol is not added, one listed only abroad is, alone or in a list", async () => {
   const h = await harness();
   const stored = () => [...h.state.tickers.values()].filter((ticker) => ticker.metadata.ticker.startsWith("DFS"));
+  const refusal = "DFS was Discover Financial Services until 2025, now Capital One Financial: COF; DFS matched DFS:LSE (DFS Furniture plc), a listing abroad";
   await h.add("DFS");
-  expect(h.notices.at(-1)).toMatchObject({ type: "error", body: "DFS matched DFS:LSE (DFS Furniture plc), a listing abroad.\nAdd DFS:LSE to keep the match." });
+  expect(h.notices.at(-1)).toMatchObject({ type: "error", body: `${refusal}.\nAdd COF for what it trades as now, or DFS:LSE to keep the match.` });
   expect(h.routes).toEqual([]);
   await h.add("DFS, AMD");
-  expect(h.notices.at(-1)?.body).toContain("DFS matched DFS:LSE (DFS Furniture plc), a listing abroad");
+  expect(h.notices.at(-1)?.body).toContain(refusal);
   expect(stored()).toEqual([]);
+
+  // Nothing in the US goes by GARAN: it is added on its listing, saying where, alone and in a list.
+  const abroad = "GARAN has no US listing; it trades on BIST, in TRY.";
+  await h.add("GARAN");
+  expect(h.notices.slice(-2)).toEqual([{ body: 'Added GARAN to "Watchlist".', type: "success" }, { body: abroad, type: "info" }]);
+  expect(await h.watchlistOf("GARAN")).toEqual(["watchlist"]);
+  const list = await harness();
+  await list.add("GARAN, AMD");
+  expect(list.notices.at(-1)?.body).toBe(`Watchlist "Watchlist": 2 added.\n${abroad}`);
+});
+
+test("a symbol typed or pasted with its vendor's suffix is its venue's listing, one row with the bare symbol's", async () => {
+  const h = await harness();
+  await h.add("GARAN.IS");
+  expect(h.notices.at(-1)).toEqual({ body: 'Added GARAN to "Watchlist".', type: "success" });
+  await h.add("GARAN:BIST");
+  await h.add("GARAN.IS, AMD");
+  expect(h.notices.at(-1)?.body).toBe('Watchlist "Watchlist": 1 added, 1 already in the list.');
+  expect([...h.state.tickers.keys()].filter((key) => key.startsWith("GARAN"))).toEqual(["GARAN"]);
+  expect(await h.watchlistOf("GARAN")).toEqual(["watchlist"]);
+  expect(await h.watchlistOf("GARAN.IS")).toBeNull();
 });

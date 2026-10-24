@@ -14,6 +14,8 @@ import { hasAmbiguousTickerContracts, resolveInstrumentForPane } from "../../cor
 import { getDockedPaneIds } from "../../layout/pane-manager";
 import { debugLog } from "../../utils/debug-log";
 import { measurePerf, measurePerfAsync } from "../../utils/perf-marks";
+import { mergeSavedSuffixedListings } from "../../portfolio/suffixed-listings";
+import { scheduleConfigSave } from "../config-save-scheduler";
 
 export const DEFAULT_WATCHLIST_TICKERS: Array<Pick<TickerMetadata, "ticker" | "exchange" | "currency" | "name">> = [
   { ticker: "AAPL", exchange: "NASDAQ", currency: "USD", name: "Apple Inc." },
@@ -252,6 +254,24 @@ export async function initializeAppState({
 
   let tickers = await measurePerfAsync("startup.load-tickers", () => tickerRepository.loadAllTickers());
   startupLog.info("tickers loaded", { count: tickers.length });
+
+  // A collection's rows under a vendor's suffixed key (GARAN.IS) merge into their listing's row (GARAN:BIST).
+  try {
+    const merged = await mergeSavedSuffixedListings(tickers, config, async (rows) => {
+      for (const row of rows) await tickerRepository.saveTicker(row);
+    });
+    if (merged) {
+      tickers = merged.tickers;
+      startupLog.info("suffixed listing rows merged");
+      if (merged.config !== config) {
+        config = merged.config;
+        dispatch({ type: "SET_CONFIG", config });
+        scheduleConfigSave(config);
+      }
+    }
+  } catch (error) {
+    startupLog.warn("suffixed listing merge failed", { message: error instanceof Error ? error.message : String(error) });
+  }
 
   // Seed default watchlist tickers on first run
   if (tickers.length === 0) {

@@ -236,7 +236,7 @@ async function removeTickerFromPortfolioCommand(
   portfolio: Portfolio, symbol: string, notes: readonly string[], exchange: string | undefined, ctx: CliCommandContext, { config, store }: ConfigContext,
 ) {
   // SAN:EPA and SAN --exchange EPA name the stored listing, which a bare SAN may hold under another venue.
-  const listing = await requireListingArg(symbol, exchange, ctx);
+  const listing = await requireListingArg(symbol, exchange, ctx, { listingSuffix: true });
   try {
     const ticker = await loadSavedListing(store, listing);
     if (!ticker) ctx.fail(`Ticker "${listing.key}" was not found in your local data.`);
@@ -522,7 +522,7 @@ function targetSumNote(config: AppConfig, portfolioId: string, tickers: readonly
  * that key, else any row of the symbol.
  */
 async function findListedTicker(store: TickerRepository, portfolio: Portfolio, symbol: string, exchange?: string): Promise<TickerRecord | null> {
-  const listing = parseListingArg(symbol, exchange);
+  const listing = parseListingArg(symbol, exchange, { listingSuffix: true });
   const listed = (await store.loadAllTickers()).filter((ticker) => ticker.metadata.portfolios.includes(portfolio.id));
   const savedAs = (ticker: TickerRecord, key: string) => ticker.metadata.ticker.toUpperCase() === key;
   if (!listing.exchange) {
@@ -614,7 +614,7 @@ async function clearTargetCommand(rest: string[], exchange: string | undefined, 
       const portfolio = requirePortfolio(config, whole ? rest.join(" ") : rest.slice(0, -1).join(" "));
       const rawSymbol = whole ? undefined : rest.at(-1);
       const cash = rawSymbol != null && isCashArgument(rawSymbol, exchange);
-      const listing = rawSymbol == null || cash ? null : parseListingArg(rawSymbol, exchange);
+      const listing = rawSymbol == null || cash ? null : parseListingArg(rawSymbol, exchange, { listingSuffix: true });
       // The row the listing is: the portfolio's own, else any saved one; a target is kept under that row's key.
       const ticker = listing ? await findListedTicker(store, portfolio, rawSymbol!, exchange) ?? await loadSavedListing(store, listing) : null;
       const saved = ticker ? savedListingName(ticker) : null;

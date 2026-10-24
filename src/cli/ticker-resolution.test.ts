@@ -236,7 +236,10 @@ test("a symbol whose company moved says where it trades now, as watchlist and po
   };
   const provider = (getTickerChanges: DataProvider["getTickerChanges"]) => createTestDataProvider({
     search: async (query) => query === "FB" ? [fund] : [],
-    getQuote: async (symbol) => createTestQuote({ symbol, name: fund.name, listingExchangeName: "BATS", lastUpdated: Date.now() }),
+    getQuote: async (symbol) => {
+      if (symbol !== "FB") throw new Error(`Not a ticker: ${symbol}.`);
+      return createTestQuote({ symbol, name: fund.name, listingExchangeName: "BATS", lastUpdated: Date.now() });
+    },
     getTickerChanges,
   });
   const online = provider(async (symbol) => changes[symbol] ?? null);

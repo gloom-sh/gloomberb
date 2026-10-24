@@ -174,3 +174,14 @@ test("stale search selections use the current stored membership without overwrit
   const current = holding("ASML:XNAS");
   expect(resolveCollectionTicker(selected, new Map([["ASML:XNAS", current]]), "portfolio", "main")).toBe(current);
 });
+
+test("a research row under a vendor's suffixed key joins a collection as its listing's own row, made under the key GARAN:BIST is saved as", () => {
+  const empty = { portfolios: [], watchlists: [], positions: [] };
+  const alias = createTestTicker("GARAN.IS", "Turkiye Garanti Bankasi A.S.", { ...empty, exchange: "BIST", currency: "TRY" });
+  const own = createTestTicker("GARAN", "Turkiye Garanti Bankasi A.S.", { ...empty, exchange: "BIST", currency: "TRY", watchlists: ["watchlist"] });
+  expect(resolveCollectionTicker(alias, new Map([["GARAN", own], ["GARAN.IS", alias]]), "watchlist", "watchlist")).toBe(own);
+  expect(resolveCollectionTicker(alias, new Map([["GARAN.IS", alias]]), "watchlist", "watchlist").metadata).toMatchObject({ ticker: "GARAN", exchange: "BIST" });
+  // The bare key is another venue's line.
+  const elsewhere = createTestTicker("GARAN", "Garan Inc", { exchange: "NYSE" });
+  expect(resolveCollectionTicker(alias, new Map([["GARAN", elsewhere], ["GARAN.IS", alias]]), "watchlist", "watchlist").metadata.ticker).toBe("GARAN:BIST");
+});

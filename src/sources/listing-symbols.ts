@@ -139,6 +139,31 @@ export function listingSuffixConflictsWithExchange(ticker: string, exchange: str
   return suffixes.length > 0 && !suffixes.includes(ticker.slice(ticker.indexOf(".")));
 }
 
+/**
+ * The listing a vendor's suffixed symbol stands for: GARAN.IS is GARAN on
+ * BIST, VOD.L is VOD on LSE. The venue is the one given when the suffix agrees
+ * with it (or the venue is one the table has no suffix for), else the one venue
+ * the suffix names. Null for a symbol without a venue suffix (BRK.B), a venue
+ * the suffix contradicts, and a suffix several venues share with none given.
+ */
+export function listingSuffixVenue(ticker: string, exchange?: string): { symbol: string; exchange: string } | null {
+  if (!tickerHasListingSuffix(ticker)) return null;
+  const dot = ticker.indexOf(".");
+  const suffix = ticker.slice(dot);
+  const symbol = ticker.slice(0, dot);
+  const given = canonicalExchange(exchange);
+  // SMART routes for a broker; it names no venue.
+  if (given && given !== "SMART") {
+    const suffixes = HOST_SUFFIX_ENTRIES.filter(([venue]) => venue === given).map(([, entry]) => entry);
+    if (suffixes.length === 0 || suffixes.includes(suffix)) return { symbol, exchange: given };
+    return null;
+  }
+  // The one host venue the suffix names, else the one venue the table names for it (BIST, which the host table lacks).
+  const venues = new Set(HOST_SUFFIX_ENTRIES.filter(([, entry]) => entry === suffix).map(([venue]) => venue));
+  const venue = listingSuffixExchange(ticker) ?? (venues.size === 1 ? [...venues][0] : undefined);
+  return venue ? { symbol, exchange: venue } : null;
+}
+
 /** Infer a venue only when the suffix names one recognized host exchange. */
 export function listingSuffixExchange(ticker: string): string | undefined {
   if (!tickerHasListingSuffix(ticker)) return undefined;

@@ -134,7 +134,7 @@ async function removeTickerFromWatchlist(
   watchlist: Watchlist, symbol: string, notes: readonly string[], exchange: string | undefined, ctx: CliCommandContext, { store }: ConfigContext,
 ) {
   // SAN:EPA and SAN --exchange EPA name the stored listing, which a bare SAN may hold under another venue.
-  const listing = await requireListingArg(symbol, exchange, ctx);
+  const listing = await requireListingArg(symbol, exchange, ctx, { listingSuffix: true });
   const ticker = await loadSavedListing(store, listing);
   if (!ticker) ctx.fail(`Ticker "${listing.key}" was not found in your local data.`);
   const saved = savedListingName(ticker);

@@ -40,7 +40,8 @@ export const SYMBOL_LIST_HELP = {
   lines: [
     "add and remove take any number of symbols split by spaces, commas or newlines, a --file, or piped input (or -). An entry of a list with commas, semicolons or newlines that has spaces in it is a company's name when search finds one (philip morris intl is PM), read as its US listing first with a line under it saying which, else the symbols it holds when each is written as a symbol or has a quote (AAPL MSFT), and otherwise a name not found. A file or piped list reads each line as such an entry. A CSV is read from its Symbol, Ticker or Code column, else its Name or Company column as names. Without that header every cell is a symbol, unless names, prices or weights sit beside them: then the first column is read and the cells left out are named. Each line is split by its own tab, semicolon, comma or spaces, and a price is never a symbol, written either way (2.582,52 or 1,899.21). A comma between plain digits (0700,25) splits them unless the line also has a tab, a semicolon or spaces between cells. Quote a list name with spaces.",
     "Each symbol gets a line, then a summary. An entry that cannot be a symbol (N/A, $$$, --, a price alone) is named as not a symbol without a lookup. Symbols Gloom Cloud did not answer for are listed together with one command that adds them again. Exit status 0 when at least one symbol was added (or removed) or already was, 1 when none resolved or the usage is wrong.",
-    "A bare US-style symbol is not added when the listing it matched stopped trading, is abroad (DFS as DFS:LSE) or was taken by another company in the last two years (BRKL), or when nothing lists under it now and its company trades as another. Those are listed under Needs a choice, with the add for what their company trades as now and the listing that matched, which naming keeps; one symbol alone fails with the same. A symbol another company took longer ago says so under its line.",
+    "A bare US-style symbol is not added when the listing it matched stopped trading, is abroad while the symbol also names a US listing (DFS as DFS:LSE, Discover's old symbol) or was taken by another company in the last two years (BRKL), or when nothing lists under it now and its company trades as another. Those are listed under Needs a choice, with the add for what their company trades as now and the listing that matched, which naming keeps; one symbol alone fails with the same. A symbol another company took longer ago says so under its line, and one listed only abroad (GARAN) is added with a line naming its venue and currency.",
+    "A vendor's suffix is the venue it names: GARAN.IS is stored as GARAN:BIST, the same row GARAN:BIST and GARAN add to.",
     "add --dry-run looks every symbol up and prints the same lines without saving.",
   ],
 };
@@ -56,14 +57,16 @@ export function shellWord(word: string): string {
 
 /**
  * A row's line, and under it the listing a company's name was read as, the
- * company that had the symbol before the listing added, and the coin hint
- * when a bare coin ticker was read as something else.
+ * company that had the symbol before the listing added, the venue and
+ * currency of a bare symbol added on its only listing, abroad, and the coin
+ * hint when a bare coin ticker was read as something else.
  */
 function rowLines(row: SymbolRow, verb: Verb): string {
   return [
     rowLine(row, verb),
     ...row.readAs ? [`  ${cliStyles.muted(row.readAs)}`] : [],
     ...row.changeNote ? [`  ${cliStyles.warning(row.changeNote)}`] : [],
+    ...row.abroad ? [`  ${cliStyles.warning(row.abroad)}`] : [],
     ...row.hint ? [`  ${cliStyles.warning(row.hint)}`] : [],
   ].join("\n");
 }
@@ -223,7 +226,8 @@ export async function addOneSymbol(
   const { change, formerIssuer, notes } = lookup;
   const data = { changed, ...listingFields(saved), [collection.kind]: collection.name,
     ...change ? { tickerChange: change } : {}, ...formerIssuer ? { formerIssuer } : {}, ...dryRun ? { dryRun } : {} };
-  const warnings = inputNotes.length + notes.length > 0 ? [...inputNotes, ...notes] : undefined;
+  const said = [...inputNotes, ...notes, ...row.abroad ? [row.abroad] : []];
+  const warnings = said.length > 0 ? said : undefined;
   ctx.printResult({ data, warnings }, {
     text: () => changed
       ? `${cliStyles.success(`Added ${saved.label} to "${collection.name}".`)}${dryRunNote(dryRun)}`
@@ -303,7 +307,7 @@ export async function removeSymbols({
     }
     let listing;
     try {
-      listing = parseListingArg(input, exchange, { ownExchangeWins: true });
+      listing = parseListingArg(input, exchange, { ownExchangeWins: true, listingSuffix: true });
     } catch (error) {
       rows.push(failedRow(input, error instanceof Error ? error : new Error(String(error))));
       continue;

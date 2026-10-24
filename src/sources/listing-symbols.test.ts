@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { getListingSymbol, getListingSymbolsToTry, listingSuffixExchange } from "./listing-symbols";
+import { getListingSymbol, getListingSymbolsToTry, listingSuffixExchange, listingSuffixVenue } from "./listing-symbols";
 
 describe("Listing symbol aliases", () => {
   test("canonicalizes MIC aliases before applying exchange suffixes", () => {
@@ -32,5 +32,16 @@ describe("Listing symbol aliases", () => {
     expect(getListingSymbol("TTS:XTSX", "TSXV")).toBe("TTS.V");
     expect(getListingSymbolsToTry("FISH", "TSXV", { exactExchange: true })).toEqual(["FISH.V"]);
     expect(listingSuffixExchange("FISH.V")).toBe("TSXV");
+  });
+
+  test("a vendor's suffixed symbol reads as its venue's listing, unless the venue given contradicts it or nothing names the venue", () => {
+    expect(listingSuffixVenue("GARAN.IS")).toEqual({ symbol: "GARAN", exchange: "BIST" });
+    expect(listingSuffixVenue("GARAN.IS", "BIST")).toEqual({ symbol: "GARAN", exchange: "BIST" });
+    expect(listingSuffixVenue("7203.T")).toEqual({ symbol: "7203", exchange: "JPX" });
+    // A broker's SMART routing names no venue; the suffix does.
+    expect(listingSuffixVenue("RY.TO", "SMART")).toEqual({ symbol: "RY", exchange: "TSX" });
+    expect(listingSuffixVenue("GARAN.IS", "NYSE")).toBeNull();
+    // A share class is part of the symbol.
+    expect(listingSuffixVenue("BRK.B")).toBeNull();
   });
 });

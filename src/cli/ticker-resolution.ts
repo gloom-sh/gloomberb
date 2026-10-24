@@ -1,6 +1,7 @@
 import { logFailure } from "../utils/log-failure";
 import type { DataProvider } from "../types/data-provider";
 import type { Quote } from "../types/financials";
+import type { InstrumentSearchResult } from "../types/instrument";
 import type { TickerRecord } from "../types/ticker";
 import type { AppTickerRepositoryPort } from "../core/app-service-ports";
 import { connectionHealth, GLOOM_CLOUD_HTTP_CONNECTION_ID } from "../core/connection-health";
@@ -15,6 +16,7 @@ import {
 import { canonicalExchange, parsePublicTickerKey } from "../utils/exchanges";
 import {
   chosenListingNote,
+  isNoProviderError,
   ListingArgError,
   listingChoiceNote,
   listingReadNotes,
@@ -25,6 +27,7 @@ import {
   quoteBareListing,
   resolveCliListing,
   savedListingName,
+  UNLISTED_TYPES,
   type CliListing,
   type ListingChoice,
   type ListingDeps,
@@ -33,6 +36,7 @@ import { listingChangeLine, loadListingFate, noLongerTradingNote, tradingListing
 import {
   describeFormerIssuer,
   describeTickerChange,
+  isUsSymbolVenue,
   movedAwayChange,
   LOOKUP_TIMEOUT_MS,
   startTickerChangeLookup,
@@ -47,6 +51,8 @@ import { batchedListLookups, type ListLookupPlan } from "../tickers/batched-look
 import { providerSearchQueries } from "../tickers/search";
 import { coinElsewhereNote, savedListingCoinNote } from "./commands/crypto-hints";
 import { NotASymbolError, notASymbolError } from "./symbol-cells";
+import { kindFromListingSyntax } from "../tickers/instrument-kind";
+import { normalizeTickerSymbol } from "../tickers/search/ranking";
 
 /** The saved ticker for a symbol (`SAN:EPA`, or `SAN` with `--exchange EPA`), saving it from search first if needed. */
 export async function resolveTickerForCli(
@@ -88,6 +94,12 @@ export interface CliTicker {
    * the input named its listing, or a company's name was read as one.
    */
   bareSymbol: string | null;
+  /**
+   * The venues other than the stored one that search lists the symbol on, as
+   * far as the lookup saw them (none when it never asked search, or search was
+   * busy): whether a bare symbol matched abroad also names a US listing.
+   */
+  otherVenues: string[];
 }
 
 export interface CliTickerOptions {
@@ -195,7 +207,8 @@ export async function resolveCliTicker(
   const notSymbol = notASymbolError(symbol);
   if (notSymbol) throw notSymbol;
   const deps: ListingDeps = { store, dataProvider };
-  const listing = await resolveCliListing(symbol, exchange, deps, { ownExchangeWins: options.ownExchangeWins });
+  // A vendor's suffix is the venue it names (GARAN.IS is GARAN:BIST), so the listing is saved under one key.
+  const listing = await resolveCliListing(symbol, exchange, deps, { ownExchangeWins: options.ownExchangeWins, listingSuffix: true });
   const read = listingReadNotes(listing);
   // Looked up beside the search, so saying FB is now META costs no wait.
   const changes = options.changes === false ? null : startTickerChangeLookup(dataProvider, listing.symbol, listing.exchange);
@@ -211,6 +224,20 @@ export async function resolveCliTicker(
     const saved = options.refreshName === false ? { ticker: listing.saved, quote: null } : await nameFromListingQuote(listing.saved, store, dataProvider, null);
     return withChange(withEnded(saved, read), { name: saved.ticker.metadata.name });
   }
+  // A listing its own quote names is found as `quote` finds it, the quote cache first, so a busy search never
+  // blocks a listing the quote knows. Search is asked after, for the venues a note names, and may fail.
+  const known = await listingOfOwnQuote(listing, dataProvider);
+  if (known) {
+    const { ticker, created } = await upsertTickerFromSearchResult(store, known.result);
+    const named = created ? await nameFromListingQuote(ticker, store, dataProvider, known.quote) : { ticker, quote: known.quote };
+    const saved = savedListingName(named.ticker);
+    const venues = listing.exchange ? [] : await listingVenues(listing.symbol, deps).catch(logFailure("cli.ticker-resolution", "Read quoted listing venues failed", []));
+    const others = venues.map((venue) => venue.exchange).filter((venue) => venue !== saved.exchange);
+    const venueNote = others.length > 0 && saved.exchange
+      ? listingChoiceNote(listing.symbol, saved, venues) ?? chosenListingNote(listing.symbol, saved.exchange, others)
+      : null;
+    return withChange({ ticker: named.ticker, notes: [...read, ...venueNote ? [venueNote] : []], ended: null, otherVenues: others }, tradingListing(known.quote));
+  }
 
   const localTickers = new Map(
     (await store.loadAllTickers()).map((ticker) => [ticker.metadata.ticker.toUpperCase(), ticker] as const),
@@ -219,6 +246,7 @@ export async function resolveCliTicker(
   let resolved: ResolvedTickerSearch | null;
   let bareNote: string | null = null;
   let bareQuote: Quote | null = null;
+  let bareVenues: string[] = [];
   try {
     resolved = await search(listing.key);
   } catch (error) {
@@ -240,6 +268,7 @@ export async function resolveCliTicker(
     resolved = await search(bare.listing.key);
     bareNote = bare.note;
     bareQuote = bare.quote;
+    bareVenues = error.listings.flatMap((key) => parsePublicTickerKey(key).exchange ?? []).filter((venue) => venue !== bare.listing.exchange);
   }
 
   if (!resolved) {
@@ -254,7 +283,7 @@ export async function resolveCliTicker(
   }
   if (resolved.kind === "local") {
     const local = options.refreshName === false ? { ticker: resolved.ticker, quote: null } : await nameFromListingQuote(resolved.ticker, store, dataProvider, bareQuote);
-    return withChange(withEnded(local, [...read, ...bareNote ? [bareNote] : []]), { name: local.ticker.metadata.name });
+    return withChange({ ...withEnded(local, [...read, ...bareNote ? [bareNote] : []]), otherVenues: bareVenues }, { name: local.ticker.metadata.name });
   }
 
   const { ticker, created } = await upsertTickerFromSearchResult(store, resolved.result);
@@ -273,10 +302,50 @@ export async function resolveCliTicker(
     ticker: named.ticker,
     notes: [...read, venueNote, ended].filter((note): note is string => !!note),
     ended,
+    otherVenues: bareNote ? bareVenues : others,
   }, current);
 }
 
-type ResolvedListing = Omit<CliTicker, "change" | "formerIssuer" | "coinNote" | "readAs" | "bareSymbol">;
+/**
+ * The listing a symbol's own quote names, asked as `quote` asks it (the quote
+ * cache first): a priced quote answering for that symbol, on the venue named
+ * when one was, that still trades. Null when there is none, and for a pair, a
+ * future, an index or a coin, which search types; search then looks it up. So
+ * is a named US venue: the US exchanges share one symbol, and a quote asked
+ * for on any of them answers as that venue (AAPL:NYSE), where search says
+ * AAPL trades on NASDAQ.
+ */
+async function listingOfOwnQuote(listing: CliListing, dataProvider: DataProvider): Promise<{ result: InstrumentSearchResult; quote: Quote } | null> {
+  if (listing.sharedCode || kindFromListingSyntax(listing.key, listing.exchange) || (listing.exchange && isUsSymbolVenue(listing.exchange))) return null;
+  let quote: Quote;
+  try {
+    quote = await dataProvider.getQuote(listing.request.symbol, listing.request.exchange);
+  } catch (error) {
+    // Search then says what is wrong with the symbol.
+    if (!isNoProviderError(error)) logFailure("cli.ticker-resolution", "Quote listing before search failed")(error);
+    return null;
+  }
+  const exchange = canonicalExchange(quote.listingExchangeName || quote.exchangeName);
+  const answered = normalizeTickerSymbol(quote.symbol ?? "");
+  if (!exchange || (answered !== listing.symbol && answered !== listing.key)) return null;
+  if (listing.exchange && exchange !== listing.exchange) return null;
+  if (!Number.isFinite(quote.price) || quote.price === 0 || !(quote.lastUpdated > 0)) return null;
+  if (quote.delisting || noLongerTradingNote(listing.key, quote)) return null;
+  if (UNLISTED_TYPES.has(quote.instrumentType?.trim().toUpperCase() ?? "")) return null;
+  return {
+    quote,
+    result: {
+      providerId: dataProvider.id,
+      symbol: listing.symbol,
+      name: quote.name?.trim() || listing.symbol,
+      exchange,
+      ...quote.currency ? { currency: quote.currency } : {},
+      type: quote.instrumentType || "",
+    },
+  };
+}
+
+type ResolvedListing = Omit<CliTicker, "change" | "formerIssuer" | "coinNote" | "readAs" | "bareSymbol" | "otherVenues"> & { otherVenues?: string[] };
 
 /**
  * The resolution with the symbol's change, when it has one, and the coin note
@@ -298,7 +367,7 @@ async function describeResolution(
   const line = tickerChangeLine(change) ?? formerIssuer?.note;
   const coinNote = listing.exchange ? null : savedListingCoinNote(listing.symbol, resolved.ticker);
   return { ...resolved, notes: [...line ? [line] : [], ...resolved.notes, ...coinNote ? [coinNote] : []], change, formerIssuer, coinNote,
-    readAs: listing.readAs ?? null, bareSymbol: listing.exchange ? null : listing.symbol };
+    readAs: listing.readAs ?? null, bareSymbol: listing.exchange ? null : listing.symbol, otherVenues: resolved.otherVenues ?? [] };
 }
 
 /**
@@ -413,7 +482,8 @@ function listLookupPlan(input: string, exchange: string | undefined): ListLookup
   // What cannot be a symbol is refused without a request.
   if (notASymbolError(input)) return { searches: [], changes: null };
   try {
-    const listing = parseListingArg(input, exchange, { ownExchangeWins: true });
+    // GARAN.IS names its venue, as GARAN:BIST does: it is looked up as a named listing is.
+    const listing = parseListingArg(input, exchange, { ownExchangeWins: true, listingSuffix: true });
     const searchable = !listing.exchange && /^[A-Z0-9][A-Z0-9.-]{0,11}$/.test(listing.symbol);
     return {
       searches: searchable ? providerSearchQueries(listing.symbol) : [],

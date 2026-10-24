@@ -62,8 +62,10 @@ export async function executeCollectionCommandAction(options: {
   });
   if (list?.separated && await addList(list)) return;
   // One typed symbol is decided as a symbol of a pasted list is: a match the list would leave for a choice is not added.
-  if (action === "add" && !options.selectedTicker && !list && options.rawInput?.trim()
-    && await refuseTypedChoice(options.rawInput, deps, options.notify)) {
+  const typed = action === "add" && !options.selectedTicker && !list && options.rawInput?.trim()
+    ? await refuseTypedChoice(options.rawInput, deps, options.notify)
+    : null;
+  if (typed?.refused) {
     options.closeAll({ revertThemePreview: false });
     return;
   }
@@ -246,7 +248,11 @@ export async function executeCollectionCommandAction(options: {
       `${action === "add" ? "Added" : "Removed"} ${resolvedTicker.symbol} ${action === "add" ? "to" : "from"} "${targetName}".`,
       { type: "success" },
     );
-    if (action === "add") notifyTickerChange(deps.dataProvider, resolvedTicker.ticker, options.notify);
+    if (action === "add") {
+      // Listed only abroad: the venue and currency it went to, as `watchlist add` says it.
+      if (typed?.abroad) options.notify(typed.abroad, { type: "info" });
+      notifyTickerChange(deps.dataProvider, resolvedTicker.ticker, options.notify);
+    }
   } else {
     options.notify(
       action === "add"

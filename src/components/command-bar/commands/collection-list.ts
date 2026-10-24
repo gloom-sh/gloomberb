@@ -88,6 +88,8 @@ function reasonLine(row: SymbolRow): string | null {
   if (row.hint && row.status === "added") return row.hint;
   // Another company had the symbol: say which, beside the listing added.
   if (row.changeNote && row.status === "added") return row.changeNote;
+  // Listed only abroad: the venue and currency it was added on.
+  if (row.abroad && row.status === "added") return row.abroad;
   if (row.readAs && (row.status === "added" || row.status === "already_listed")) return row.readAs;
   // Why the match was left out, and the symbol it trades as now when there is one.
   if (row.status === "needs_choice") return row.message ?? typed;
@@ -133,12 +135,14 @@ function describeListAdd(
 /**
  * A symbol typed to add on its own that a pasted list would leave for a
  * choice (`typedSymbolChoice`: its company moved or merged away, the match is
- * abroad or stopped trading) is not added either. The notice says why, and
- * what to add instead or to keep the match. Resolves true when it said so.
+ * abroad while the symbol names a US listing, or it stopped trading) is not
+ * added either. The notice says why, and what to add instead or to keep the
+ * match; `refused` says it did. One listed only abroad is added, and `abroad`
+ * is the line naming its venue and currency, for the add to say.
  */
-export async function refuseTypedChoice(rawInput: string, deps: SharedWorkflowDeps, notify: Notify): Promise<boolean> {
+export async function refuseTypedChoice(rawInput: string, deps: SharedWorkflowDeps, notify: Notify): Promise<{ refused: boolean; abroad: string | null }> {
   const row = await typedSymbolChoice(rawInput, deps.tickerRepository, deps.dataProvider);
-  if (!row) return false;
+  if (row?.status !== "needs_choice") return { refused: false, abroad: row?.abroad ?? null };
   const message = row.message ?? symbolInputKey(row.input);
   const offers = [
     ...row.tradesAs ? [`${row.tradesAs} for what it trades as now`] : [],
@@ -146,7 +150,7 @@ export async function refuseTypedChoice(rawInput: string, deps: SharedWorkflowDe
   ];
   notify([/[.!?]$/.test(message) ? message : `${message}.`, ...offers.length > 0 ? [`Add ${offers.join(", or ")}.`] : []].join("\n"),
     { type: "error", duration: SKIPPED_REPORT_MS });
-  return true;
+  return { refused: true, abroad: null };
 }
 
 /**

@@ -10,6 +10,7 @@ import {
 } from "./result";
 import { canonicalExchange, parsePublicTickerKey, publicTickerKey } from "../../utils/exchanges";
 import { scopedBrokerContractIdentityKey } from "../../utils/instrument-identity";
+import { listingSuffixVenue } from "../../sources/listing-symbols";
 
 /**
  * The key a result is saved under when its symbol is already saved for
@@ -36,6 +37,13 @@ export async function upsertTickerFromSearchResult(
   options: { tickerSymbol?: string } = {},
 ): Promise<{ ticker: TickerRecord; created: boolean }> {
   let symbol = options.tickerSymbol ?? getSearchResultSymbol(result);
+  // A vendor's suffixed symbol (GARAN.IS) is saved as the listing it is (GARAN on BIST), under the key
+  // GARAN:BIST is saved under, so one listing is one row. A key the caller names is kept as given.
+  const venue = options.tickerSymbol || result.brokerContract ? null : listingSuffixVenue(symbol, listingVenue(result));
+  if (venue) {
+    symbol = venue.symbol;
+    result = { ...result, symbol: venue.symbol, exchange: result.exchange || venue.exchange };
+  }
   let ticker = await tickerRepository.loadTicker(symbol);
   const otherListingKey = otherListingTickerKey(result, symbol, ticker);
   if (otherListingKey) {
@@ -81,6 +89,10 @@ export async function upsertTickerFromSearchResult(
   }
 
   return { ticker, created };
+}
+
+function listingVenue(result: InstrumentSearchResult): string | undefined {
+  return result.exchange === "SMART" ? result.primaryExchange : result.exchange || result.primaryExchange;
 }
 
 function mergeTickerMetadataFromSearchResult(metadata: TickerMetadata, result: InstrumentSearchResult): boolean {
