@@ -238,7 +238,7 @@ function Test-MainLaunchDiagnostics {
       throw "Original main window timeout"
     }
     $Rows = @(
-      [pscustomobject]@{ Id = 102; ProcessName = "bun"; Handle = 10; MainWindowTitle = "Gloomberb" },
+      [pscustomobject]@{ Id = 102; ProcessName = "bun"; Handle = 10; MainWindowTitle = "Gloom" },
       [pscustomobject]@{ Id = 102; ProcessName = "bun"; Handle = 11; MainWindowTitle = "Detached Watchlist" }
     )
     & $OnDiscovered $Rows
