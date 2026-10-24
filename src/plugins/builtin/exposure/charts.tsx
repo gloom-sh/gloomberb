@@ -4,7 +4,7 @@ import { Box, ChartSurface, Text, useUiCapabilities } from "../../../ui";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { ChartVectorShape } from "../../../ui/host";
 import type { ExposureComponent } from "../../../api-client/exposure";
-import { basisLabel, rangeText, type ExposureRow } from "./model";
+import { basisLabel, hopsText, rangeText, type ExposureRow } from "./model";
 import { truncateToDisplayWidth } from "../../../utils/format";
 
 /** A disclosure-bound interval, not a probability band. Same numerical domain on both renderers. */
@@ -53,7 +53,7 @@ export function ExposurePathDiagram({ component, width, height }: { component: E
   const nodeWidth = Math.max(8, Math.floor((width - 2) / nodes.length));
   const vectors: ChartVectorShape[] = hops.map((hop, i) => ({ id: `${i}`, points: [{ x: (i + .5) / nodes.length, y: .5 }, { x: (i + 1.5) / nodes.length, y: .5 }], color: hop.pct === null ? colors.textDim : colors.warning, strokeWidth: 2, handles: true }));
   return <Box flexDirection="column" height={height} overflow="hidden">
-    <Box paddingX={1} height={1} flexShrink={0}><Text fg={colors.textDim}>{hops.length} hop{hops.length === 1 ? "" : "s"} · {component.classification}{component.exposurePct ? ` · ${rangeText(component.exposurePct)}` : ""}</Text></Box>
+    <Box paddingX={1} height={1} flexShrink={0}><Text fg={colors.textDim}>{hopsText(hops.length)} · {component.classification}{component.exposurePct ? ` · ${rangeText(component.exposurePct)}` : ""}</Text></Box>
     <Box flexDirection="row" height={1} flexShrink={0} paddingX={1}>{nodes.map((node, i) => <Box key={`${node.id}:${i}`} width={nodeWidth} alignItems="center"><ClippedText fg={colors.textBright} text={node.symbol ?? node.name} width={nodeWidth - 2} /></Box>)}</Box>
     <Box height={1} flexShrink={0} paddingX={1}>
       {desktop ? <ChartSurface width={width - 2} height={1} vectors={vectors} /> : <Text fg={colors.textDim}>{nodes.map((_, i) => i < hops.length ? "─".repeat(Math.max(1, nodeWidth - 2)) + "→ " : "").join("")}</Text>}

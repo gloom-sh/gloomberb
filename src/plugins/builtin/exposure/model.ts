@@ -1,4 +1,5 @@
 import type { ExposureBasis, ExposureComponent, ExposureExtensionObservation, ExposureHolding, ExposurePayload, ExposureRange, ExposureScenario } from "../../../api-client/exposure";
+import { quarterLabel } from "../shared/earnings-report";
 import { humanLabel } from "../shared/research-cells";
 
 export const TABS = [{ value: "table", label: "Table" }, { value: "drivers", label: "Drivers" }, { value: "paths", label: "Paths" }, { value: "portfolio", label: "Portfolio" }];
@@ -14,6 +15,17 @@ export const basisLabel = (basis: string | null) => basis?.replaceAll("_", " ") 
 const pct = (value: number) => `${value.toFixed(1)}%`;
 export const rangeText = (range: ExposureRange | null) => !range ? "Unknown" : range.low === range.high ? pct(range.low) : `${range.low.toFixed(1)} to ${range.high.toFixed(1)}%`;
 export const fraction = (value: number) => pct(value * 100);
+/** "1 hop", "2 hops". */
+export const hopsText = (count: number) => `${count} hop${count === 1 ? "" : "s"}`;
+/**
+ * A reporting period as the tables word it. The server keys a quarter by its end date (`quarter:2026-07-31`), which
+ * reads as the month it ends in, Jul 2026, as the earnings events label a quarter; a date or a source's own words
+ * stay as they are.
+ */
+export function periodText(period: string): string {
+  const quarter = /^quarter:(\d{4}-\d{2}(?:-\d{2})?)$/.exec(period);
+  return quarter ? quarterLabel(quarter[1]) : period;
+}
 
 /** A weighted list is entirely explicit. Never silently fill missing weights or normalize shorts. */
 export function parseHoldings(text: string): ExposureHolding[] {
@@ -78,7 +90,7 @@ export function exposureCellText(row: ExposureRow, column: "label" | "basis" | "
     // What the number rests on, in words: disclosed by the company, estimated by a chain, or not visible.
     case "classification": return `${humanLabel(row.classification)}${row.incomplete && row.classification !== "unknown" ? " · partial" : ""}`;
     case "impact": return row.impact ? rangeText(row.impact) : "--";
-    case "period": return row.period ?? "--";
+    case "period": return row.period ? periodText(row.period) : "--";
     case "weight": return fraction(row.weight ?? 0);
   }
 }
