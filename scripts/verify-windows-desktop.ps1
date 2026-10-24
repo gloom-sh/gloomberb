@@ -1532,10 +1532,7 @@ try {
   }
 
   Assert-TuiStarts $InstalledCli -Capture
-  & $InstalledLegacyCli help | Out-Null
-  if ($LASTEXITCODE -ne 0) {
-    exit $LASTEXITCODE
-  }
+  Assert-TuiStarts $InstalledLegacyCli
 
   Disable-InstalledDesktopUpdates -InstallDir $InstallDir
 
@@ -1570,7 +1567,7 @@ try {
   $LaunchedWindows = @(Wait-ForNewWindows `
     -KnownHandles $InitialWindowHandles `
     -MinimumCount 2 `
-    -Label "Gloomberb main and detached windows" `
+    -Label "Gloom main and detached windows" `
     -OnDiscovered { param($Windows) Add-TrackedWindowProcesses $TrackedGuiProcesses $Windows })
   $LaunchedWindowProcessIds += $GuiProcess.Id
   $LaunchedWindowProcessIds += @($LaunchedWindows | Select-Object -ExpandProperty Id)
