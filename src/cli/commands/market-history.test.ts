@@ -182,6 +182,36 @@ test("history shows today's session from the quote in every range, partial, whet
   }
 });
 
+test("a day the data service still marks partial after its session closed is exported partial and said to wait for its bar", async () => {
+  // GGAL on BYMA, Sat 24 Oct 2026: Friday closed at 6,260 on the quote while its daily bar was not final yet.
+  setSystemTime(new Date("2026-10-24T14:00:00Z"));
+  try {
+    const cli = createTestCliContext({
+      config: createDefaultConfig("/tmp/gloom-history-command-fixture"),
+      dataProvider: createTestDataProvider({
+        getQuote: async () => createTestQuote({ symbol: "GGAL", currency: "ARS", price: 6260, listingExchangeName: "BYMA",
+          marketState: "CLOSED", changeSessionDate: "2026-10-23", instrumentType: "EQUITY" }),
+        getPriceHistoryWithMetadata: async () => ({
+          resolution: "1d",
+          points: [
+            { date: new Date("2026-10-22"), open: 5960, high: 5970, low: 5825, close: 5900, volume: 2_745_809 },
+            { date: new Date("2026-10-23"), open: 5965, high: 6280, low: 5910, close: 6260, volume: 2_472_150, partial: true },
+          ],
+        }),
+      }),
+    }, { format: "csv" });
+    await history.execute(["GGAL:BYMA"], cli.context);
+    const [{ result, options }] = cli.printed;
+    expect(result.warnings).toContain("2026-10-23 closes on the session's last price until the day's bar is final (partial)");
+    const [header, , friday] = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options).split("\n");
+    const partial = header!.split(",").indexOf("Partial");
+    expect(partial).toBeGreaterThan(0);
+    expect(friday!.split(",")[partial]).toBe("true");
+  } finally {
+    setSystemTime();
+  }
+});
+
 test("a stock's history keeps its export columns, with no volume unit it cannot vouch for", async () => {
   const cli = createTestCliContext({
     config: createDefaultConfig("/tmp/gloom-history-command-fixture"),
