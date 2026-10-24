@@ -216,7 +216,7 @@ export interface TtmConversion {
   from: string;
   /** Units of `financialCurrency` per unit of `from` for revenue, income and cash flow; absent when not measured. */
   rate?: number;
-  /** YYYY-MM-DD the converted figures were fetched. */
+  /** YYYY-MM-DD the converted figures were fetched; once the app converts them again at its own rate (ttmAtAppRate), the ISO time of that rate. */
   asOf?: string;
   /** EPS is converted at the rate of each report date, so a P/E on it divides a spot price by EPS at older rates. */
   eps?: "report_date";

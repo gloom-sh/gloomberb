@@ -153,7 +153,7 @@ export function buildOverviewStats({
 }: {
   quote: Quote | undefined;
   fundamentals: TickerFinancials["fundamentals"] | undefined;
-  /** The currency the statements report in, for fundamentals that declare none. */
+  /** The currency the statements report in, for fundamentals that declare none on a listing that trades in it. */
   financialCurrency?: TickerFinancials["financialCurrency"];
   quoteCurrency: string;
   baseCurrency: string;
@@ -175,7 +175,7 @@ export function buildOverviewStats({
   runway?: CashRunway | null;
 }): StatField[] {
   const stats: StatField[] = [];
-  const money = (value: number, perShare = false) => formatReportedMoney(value, fundamentalsCurrency({ fundamentals, financialCurrency }), perShare);
+  const money = (value: number, perShare = false) => formatReportedMoney(value, fundamentalsCurrency({ fundamentals, financialCurrency, quote }), perShare);
 
   // An index's 0 is volume nobody counts, not a quiet session: no Volume row.
   const volume = reportedQuoteVolume(quote);
@@ -217,7 +217,7 @@ export function buildOverviewStats({
     stats.push({ label: "Fwd P/E", value: formatPriceEarnings(forwardPE) });
   }
   if (fundamentals?.eps != null) {
-    stats.push({ label: "EPS", value: formatReportedMoney(fundamentals.eps, fundamentalsEpsCurrency({ fundamentals, financialCurrency }), true) });
+    stats.push({ label: "EPS", value: formatReportedMoney(fundamentals.eps, fundamentalsEpsCurrency({ fundamentals, financialCurrency, quote }), true) });
   }
   if (fundamentals?.pegRatio != null) {
     stats.push({ label: "PEG", value: formatPriceEarnings(fundamentals.pegRatio, 2) });

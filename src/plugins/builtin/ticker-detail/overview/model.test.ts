@@ -38,6 +38,14 @@ test("summary money falls back to the statements' reporting currency, and a zero
   expect(overview({ ...figures, financialCurrency: "USD" }, "ZAR")).toMatchObject({ Revenue: "202.08B USD" });
   expect(overview(figures, " ")).toMatchObject({ EPS: "31.43 (ccy?)", Revenue: "202.08B (ccy?)" });
   expect(overview({ ...figures, enterpriseValue: 5e9 }, "ZAR")).toMatchObject({ EV: "5B HKD" });
+  // A listing quoted in another currency than the statements: an unlabelled block's currency is unknown.
+  const listed = (currency: string, fundamentals: Fundamentals) => Object.fromEntries(buildOverviewStats({
+    quote: { symbol: "YPFD", price: 8350, currency, change: 0, changePercent: 0, lastUpdated: 0 }, fundamentals, financialCurrency: "USD",
+    quoteCurrency: currency, baseCurrency: "USD", toBase: (value) => value,
+  }).map(({ label, value }) => [label, value]));
+  expect(listed("ARS", figures)).toMatchObject({ EPS: "31.43 (ccy?)", Revenue: "202.08B (ccy?)" });
+  expect(listed("ARS", { ...figures, financialCurrency: "ARS" })).toMatchObject({ EPS: "ARS\u00a031.43", Revenue: "202.08B ARS" });
+  expect(listed("USD", figures)).toMatchObject({ EPS: "$31.43", Revenue: "202.08B USD" });
 });
 
 test("an EV at or below zero reads N/M with why, and an insurer's says its investments stay in", () => {

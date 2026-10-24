@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { createDefaultConfig } from "../../types/config";
 import type { TickerFinancials } from "../../types/financials";
-import { buildTickerReport, fundamentalsReportTables, loadReportBondFacts, renderFundamentalsReport } from "./ticker";
+import { atReportTtmRate, buildTickerReport, fundamentalsReportTables, loadReportBondFacts, renderFundamentalsReport } from "./ticker";
 import { createBaseConverter } from "../base-converter";
 import type { FundBondFacts } from "../../api-client/fund-facts";
 import { analyzeTaxEquivalent } from "../../market-data/tax-equivalent";
@@ -9,6 +9,7 @@ import { createTestTicker } from "../../test-support/ticker";
 
 const config = createDefaultConfig("/tmp/gloom-ticker-units-unused");
 const quote = { symbol: "UNITTEST", price: 100, currency: "USD", change: 0, changePercent: 0, lastUpdated: Date.parse("2026-09-11") };
+const plainText = (text: string) => text.replace(/\u001b\[[0-9;]*m/g, "").replace(/\u00a0/g, " ").replace(/ {2,}/g, " ");
 async function report(financials: TickerFinancials): Promise<string> {
   return (await buildTickerReport({ symbol: "UNITTEST", tickerFile: null, financials, config, toBase: async value => value }))
     .replace(/\u001b\[[0-9;]*m/g, "").replace(/ {2,}/g, " ");
@@ -183,10 +184,10 @@ test("after the close the EV row and its note read one close, the cap rests on t
   expect(nerdy).toContain("EV unavailable: the provider's figure failed validation.");
 });
 
-test("trailing figures use the fundamentals' currency, then the statements' reporting currency, never the quote's", async () => {
+test("trailing figures use the fundamentals' currency, then the statements' on a listing that trades in theirs, never the quote's", async () => {
   const fundamentals = { eps: 31.43, revenue: 202.08e9, netIncome: 46.98e9, operatingCashFlow: 42.43e9, freeCashFlow: 36.96e9 };
-  const reportedIn = (financialCurrency: string | undefined, fundamentalsCurrency?: string): TickerFinancials => ({
-    quote: { ...quote, currency: "GBP" }, annualStatements: [], quarterlyStatements: [], priceHistory: [],
+  const reportedIn = (financialCurrency: string | undefined, fundamentalsCurrency?: string, listed = "ZAR"): TickerFinancials => ({
+    quote: { ...quote, currency: listed }, annualStatements: [], quarterlyStatements: [], priceHistory: [],
     fundamentals: { ...fundamentals, financialCurrency: fundamentalsCurrency }, financialCurrency,
   });
   // Intl joins a currency code to its amount with a no-break space.
@@ -200,8 +201,67 @@ test("trailing figures use the fundamentals' currency, then the statements' repo
   expect(fromStatements).not.toContain("(ccy?)");
   expect(plain(renderFundamentalsReport({ ...reportedIn("ZAR"), symbol: "UNITTEST" }, "valuation"))).toContain("EPS (TTM) ZAR 31.43");
   expect(plain(await report(reportedIn("ZAR", "USD")))).toContain("Revenue (TTM) 202.08B USD");
-  // Nothing declares a currency: the GBP quote must not stand in for it.
-  expect(plain(await report(reportedIn(undefined)))).toContain("Revenue (TTM) 202.08B (ccy?)");
+  // Nothing declares a currency: the GBP quote must not stand in for it, nor the ZAR statements of a GBP listing.
+  expect(plain(await report(reportedIn(undefined, undefined, "GBP")))).toContain("Revenue (TTM) 202.08B (ccy?)");
+  const london = plain(await report(reportedIn("ZAR", undefined, "GBP")));
+  expect(london).toContain("EPS (TTM) 31.43 (ccy?)");
+  expect(london).toContain("Revenue (TTM) 202.08B (ccy?)");
+});
+
+// Signed out on 2026-10-24: YPFD on BYMA printed `Revenue (TTM) 29.23T USD` and `EPS (TTM) $265.69`, ARS figures
+// under the USD label of its statements, beside a Latest Annual that was in USD.
+test("a listing's TTM block and its statements each carry their own currency, and say so when they differ", async () => {
+  const usdStatement = (date: string, totalRevenue: number, netIncome: number, eps: number) => ({ date, currency: "USD", totalRevenue, netIncome, eps });
+  const ypfd = (fundamentals: NonNullable<TickerFinancials["fundamentals"]>): TickerFinancials => ({
+    quote: { ...quote, symbol: "YPFD:BYMA", price: 8350, currency: "ARS", marketCap: 32.74e12 }, financialCurrency: "USD", priceHistory: [],
+    annualStatements: [usdStatement("2025-12-31", 18.284e9, -826e6, -0.211)],
+    quarterlyStatements: [usdStatement("2026-06-30", 6.574e9, 1.201e9, 0.31)],
+    fundamentals: { marketCap: 32.74e12, marketCapCurrency: "ARS", trailingPE: 31.4276, eps: 265.69, revenue: 29.2348e12, netIncome: 1.1702e12,
+      operatingCashFlow: 10.9782e12, ...fundamentals },
+  });
+  const asOf = Date.parse("2026-10-23T21:29:00Z");
+  const toBase = datedConverter("USD", { USD: 1, ARS: 1 / 1529 }, asOf);
+  // Gloom Cloud labels the block with the ARS the source states it in.
+  const labelled = plainText(await buildTickerReport({ symbol: "YPFD:BYMA", tickerFile: null, financials: ypfd({ financialCurrency: "ARS" }), config, toBase }));
+  for (const line of ["EPS (TTM) ARS 265.69", "Revenue (TTM) 29.23T ARS", "Net Income (TTM) 1.17T ARS", "Operating Cash Flow (TTM) 10.98T ARS",
+    "TTM figures in ARS; the statements in USD.", "Market Cap 32.74T ARS (21.41B USD)", "USD figures at USD/ARS 1529, as of 2026-10-23 21:29 UTC.",
+    "Revenue 18.28B USD", "Diluted EPS -$0.211", "Revenue 6.57B USD"]) expect(labelled).toContain(line);
+  expect(labelled).not.toContain("converted from");
+  // Served unlabelled, the block is in no known currency: never the statements' USD.
+  const unlabelled = plainText(await buildTickerReport({ symbol: "YPFD:BYMA", tickerFile: null, financials: ypfd({}), config, toBase }));
+  expect(unlabelled).toContain("Revenue (TTM) 29.23T (ccy?)");
+  expect(unlabelled).toContain("EPS (TTM) 265.69 (ccy?)");
+  expect(unlabelled).not.toMatch(/\(TTM\) [^\n]*USD|\$265/);
+  expect(unlabelled).not.toContain("TTM figures in");
+});
+
+// Signed out on 2026-10-24: the GGAL receipt's TTM block was converted at 1527.53 ARS per USD (2026-10-24) while `fx`
+// and the rest of the screen used 1529 (the 23 Oct close), and the rate never read as `fx` writes it.
+test("a home-currency reporter's receipt shows its converted TTM block at the rate `fx` reports, and says so", async () => {
+  const ggal: TickerFinancials = {
+    quote: { ...quote, symbol: "GGAL", price: 37.91, marketCap: 6.33e9 }, financialCurrency: "ARS", priceHistory: [], quarterlyStatements: [],
+    annualStatements: [{ date: "2025-12-31", currency: "ARS", totalRevenue: 8.5377e12, netIncome: 212.52e9, eps: 1324.8 }],
+    fundamentals: {
+      marketCap: 6.33e9, marketCapCurrency: "USD", trailingPE: 42.6, eps: 0.89, revenue: 3_856_278_593, netIncome: 57_694_140,
+      operatingCashFlow: -5_973_205_445, financialCurrency: "USD",
+      ttmConversion: { from: "ARS", rate: 0.00065465, asOf: "2026-10-24", eps: "report_date" },
+    },
+  };
+  const asOf = Date.parse("2026-10-23T21:29:00Z");
+  const toBase = datedConverter("USD", { USD: 1, ARS: 1 / 1529 }, asOf);
+  const shown = await atReportTtmRate(ggal, toBase);
+  // The source's ARS figures (5.89T revenue) at 1529, not at its own 1527.53; EPS stays at report-date rates.
+  expect(shown.fundamentals?.revenue).toBeCloseTo(3_856_278_593 / 0.00065465 / 1529, 0);
+  expect(shown.fundamentals?.eps).toBe(0.89);
+  expect(shown.fundamentals?.ttmConversion).toEqual({ from: "ARS", rate: 1 / 1529, asOf: "2026-10-23T21:29:00.000Z", eps: "report_date" });
+  const text = plainText(await buildTickerReport({ symbol: "GGAL", tickerFile: null, financials: shown, config, toBase }));
+  for (const line of ["Revenue (TTM) 3.85B USD", "Net Income (TTM) 57.64M USD", "Operating Cash Flow (TTM) -5.97B USD", "EPS (TTM) $0.89",
+    "TTM converted from ARS at USD/ARS 1529, as of 2026-10-23 21:29 UTC; EPS at report-date rates.", "Revenue 8.54T ARS"]) expect(text).toContain(line);
+  expect(text).not.toContain("TTM figures in");
+  // Without a rate of its own the report states the one the block was served at.
+  const served = plainText(await report(ggal));
+  expect(served).toContain("Revenue (TTM) 3.86B USD");
+  expect(served).toContain("TTM converted from ARS at USD/ARS 1527.53, as of 2026-10-24; EPS at report-date rates.");
 });
 
 test("a converted TTM block prints in its own currency with what it was converted from, beside statements in theirs", async () => {
@@ -212,7 +272,7 @@ test("a converted TTM block prints in its own currency with what it was converte
     fundamentals: { trailingPE: 13.097, eps: 1.03, revenue: 54.63e9, netIncome: 14.52e9, operatingCashFlow: -41.31e9, ...fundamentals },
   });
   const converted = { financialCurrency: "USD", ttmConversion: { from: "EUR", rate: 1.12571, asOf: "2026-10-09", eps: "report_date" as const } };
-  const conversionNote = "TTM converted from EUR (1 EUR = 1.1257 USD, 2026-10-09); EPS at report-date rates.";
+  const conversionNote = "TTM converted from EUR at EUR/USD 1.12571, as of 2026-10-09; EPS at report-date rates.";
   const priceEarningsNote = "P/E (TTM): spot price over EPS at report-date rates.";
   const text = await report(santander(converted));
   for (const line of ["EPS (TTM) $1.03", "Revenue (TTM) 54.63B USD", "Net Income (TTM) 14.52B USD", "Operating Cash Flow (TTM) -41.31B USD",

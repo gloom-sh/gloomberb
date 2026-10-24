@@ -565,7 +565,19 @@ export function useArticleSummary(url: string | null | undefined): QueryEntry<st
   return entry;
 }
 
+/** A currency's US dollar rate as the app holds it, and when its source observed it (epoch ms; null when undated, and for USD). */
+export interface FxRateObservation {
+  rate: number;
+  asOf: number | null;
+}
+
 export function useFxRatesMap(currencies: Array<string | null | undefined>): Map<string, number> {
+  const observations = useFxRateObservations(currencies);
+  return useMemo(() => new Map([...observations].map(([currency, observation]) => [currency, observation.rate])), [observations]);
+}
+
+/** useFxRatesMap with each rate's observation time, for a figure that states the rate it was converted at. */
+export function useFxRateObservations(currencies: Array<string | null | undefined>): Map<string, FxRateObservation> {
   const coordinator = getSharedMarketDataCoordinator();
   // A minor unit's major currency is loaded too: GBX and ILA have no rate of their own.
   const normalizedCurrencyKey = fxRateCurrencies(currencies).join("|");
@@ -601,12 +613,12 @@ export function useFxRatesMap(currencies: Array<string | null | undefined>): Map
   }, [appVisible, normalizedCurrencyKey]);
 
   return useMemo(() => {
-    const rates = new Map<string, number>();
-    rates.set("USD", 1);
+    const rates = new Map<string, FxRateObservation>();
+    rates.set("USD", { rate: 1, asOf: null });
     for (const [currency, entry] of entries) {
       const rate = resolveEntryValue(entry);
       if (rate != null) {
-        rates.set(currency, rate);
+        rates.set(currency, { rate, asOf: entry?.asOf ?? null });
       }
     }
     return rates;

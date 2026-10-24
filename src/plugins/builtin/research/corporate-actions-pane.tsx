@@ -447,13 +447,16 @@ export function CorporateActionsView({
   const trailingEps = tickerFinancials?.fundamentals?.eps;
   const trailingEpsCurrency = tickerFinancials?.fundamentals?.epsCurrency;
   const fundamentalsCurrency = tickerFinancials?.fundamentals?.financialCurrency;
+  const marketCapCurrency = tickerFinancials?.fundamentals?.marketCapCurrency;
+  const quoteCurrency = tickerFinancials?.quote?.currency;
   const financialsData = useMemo<EventFinancials | null>(
     () => (quarterlyStatements || financialCurrency || trailingEps != null ? {
       quarterlyStatements: quarterlyStatements ?? [],
       financialCurrency,
-      fundamentals: { eps: trailingEps, epsCurrency: trailingEpsCurrency, financialCurrency: fundamentalsCurrency },
+      fundamentals: { eps: trailingEps, epsCurrency: trailingEpsCurrency, financialCurrency: fundamentalsCurrency, marketCapCurrency },
+      quote: quoteCurrency ? { currency: quoteCurrency } : null,
     } : null),
-    [financialCurrency, fundamentalsCurrency, quarterlyStatements, trailingEps, trailingEpsCurrency],
+    [financialCurrency, fundamentalsCurrency, marketCapCurrency, quarterlyStatements, quoteCurrency, trailingEps, trailingEpsCurrency],
   );
   const actionsLoader = useCallback((nextSymbol: string, nextExchange: string, forceRefresh: boolean) => {
     if (!dataProvider?.getCorporateActions) throw new Error("Corporate actions source unavailable");

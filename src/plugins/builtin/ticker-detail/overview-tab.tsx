@@ -12,7 +12,7 @@ import { CompanyLogo, resolveCompanyLogoSrc } from "../../../components/company-
 import { bodyLineInk, FigureText, figureLineInk, useFigureCells } from "../../../components/ui/figure";
 import { PriceReturnStrip } from "../../../components/price-performance";
 import { t } from "../../../i18n";
-import { useFxRatesMap } from "../../../market-data/hooks";
+import { useFxRateObservations } from "../../../market-data/hooks";
 import { formatMarketPriceWithCurrency, formatSignedMarketPrice, liveQuoteFormatOptions } from "../../../market-data/market/format";
 import { priceSeriesUnit } from "../../../market-data/market/index-level";
 import {
@@ -38,7 +38,7 @@ import type { TickerRecord } from "../../../types/ticker";
 import { Box, ScrollBox, Text, useUiCapabilities } from "../../../ui";
 import { publicTickerKey, resolveExchangeTimeZone } from "../../../utils/exchanges";
 import { convertCurrency, displayWidth, formatPercentRaw, truncateToDisplayWidth } from "../../../utils/format";
-import { enterpriseValueReconciliationNote } from "../../../utils/fundamentals";
+import { appTtmRate, enterpriseValueReconciliationNote, ttmAtAppRate, ttmConversionNote } from "../../../utils/fundamentals";
 import { atRegularSessionPrice } from "../../../market-data/quotes/regular-session-valuation";
 import { zonedDateKey } from "../../../utils/zoned-date-time";
 import { sharesOutstandingInReceipts } from "../../../utils/depositary-receipt";
@@ -135,13 +135,25 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
   const futuresSymbol = quote?.symbol || ticker.metadata.ticker;
   const contractTerms = useFuturesContractTerms(isFuturesInstrument(futuresSymbol, instrumentType) ? futuresSymbol : null);
   const optionRow = useOptionContractRow(ticker);
-  const exchangeRates = useFxRatesMap([
+  const fxObservations = useFxRateObservations([
     baseCurrency,
     ticker.metadata.currency,
     quote?.currency,
     capitalization?.currency,
+    // A converted TTM block is shown at the pane's own rate, the one `fx` reports.
+    fundamentals?.ttmConversion?.from,
+    fundamentals?.financialCurrency,
     ...ticker.metadata.positions.map((position) => position.currency),
   ]);
+  const exchangeRates = useMemo(
+    () => new Map([...fxObservations].map(([currency, observation]) => [currency, observation.rate])),
+    [fxObservations],
+  );
+  const ttmRate = appTtmRate(fundamentals, (currency) => fxObservations.get(currency));
+  const shownFundamentals = useMemo(
+    () => (fundamentals ? ttmAtAppRate(fundamentals, ttmRate) : fundamentals),
+    [fundamentals, ttmRate?.rate, ttmRate?.asOf],
+  );
   const quoteCurrency = quote?.currency || ticker.metadata.currency || baseCurrency;
   const toBase = (value: number, fromCurrency: string) =>
     convertCurrency(value, fromCurrency, baseCurrency, exchangeRates);
@@ -195,6 +207,9 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
   // Months of cash, for a company that burns it, and an offering since its balance sheet that the cash is not in yet.
   const runway = useMemo(() => financials ? cashRunway(financials) : null, [financials]);
   const runwayOfferingNote = useOfferingNote(ticker.metadata.ticker, ticker.metadata.exchange, runway?.periodEnd ?? null, runway?.trailing?.kind === "months");
+  // A converted TTM block names what it was converted from, at the pane's rate and its time.
+  const ttmNote = [shownFundamentals?.revenue, shownFundamentals?.netIncome, shownFundamentals?.freeCashFlow].some((value) => value != null)
+    ? ttmConversionNote(shownFundamentals) : undefined;
   usePaneNoticeFooter({
     registrationId: "overview-notices",
     notices: [
@@ -203,6 +218,7 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
       ...(runway?.trailingGap === "short-history" ? [`Runway TTM: ${SHORT_RUNWAY_HISTORY}.`] : []),
       ...(priceSeries.warning ? [priceSeries.warning] : []),
       ...(enterpriseValueNote ? [enterpriseValueNote] : []),
+      ...(ttmNote ? [ttmNote] : []),
       ...(capitalization?.provenance.kind === "fundamentals" && !capitalization.live
         ? [`Market cap: ${describeFundamentalMarketCap(capitalization.provenance)}.`] : []),
     ],
@@ -308,7 +324,7 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
   const contractGridColumns = futuresFields.length > 0 ? contractColumns : textGridColumns(optionFields, contentWidth);
   const stats = buildOverviewStats({
     quote,
-    fundamentals,
+    fundamentals: shownFundamentals,
     financialCurrency: financials?.financialCurrency,
     quoteCurrency,
     baseCurrency,

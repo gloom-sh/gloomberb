@@ -3,7 +3,7 @@ import { fixedUsdRate, heldCurrencyUnit } from "../utils/currency-units";
 import { logFailure } from "../utils/log-failure";
 
 /** One rate a converter used: units of `baseCurrency` per unit of `currency`, and when it was observed. */
-export interface BaseConversion {
+interface BaseConversion {
   currency: string;
   baseCurrency: string;
   rate: number;
@@ -14,6 +14,8 @@ export interface BaseConversion {
 /** Converts an amount into the base currency, and lists the rates it used so a report can state them. */
 export type BaseConverter = ((value: number, fromCurrency: string) => Promise<number>) & {
   conversions(): BaseConversion[];
+  /** A currency's US dollar rate as the converter reads it, so another conversion on the report uses the same rate; null when unusable. */
+  usdRate(currency: string): Promise<UsdRate | null>;
 };
 
 interface UsdRate {
@@ -75,5 +77,10 @@ export function createBaseConverter(
     return (value / from.divisor * fromRate.rate) / baseRate.rate * base.divisor;
   };
 
-  return Object.assign(convert, { conversions: () => [...used.values()] });
+  const usdRate = async (currency: string): Promise<UsdRate | null> => {
+    const leg = await getRate(heldCurrencyUnit(currency).currency);
+    return Number.isFinite(leg.rate) && leg.rate > 0 ? leg : null;
+  };
+
+  return Object.assign(convert, { conversions: () => [...used.values()], usdRate });
 }

@@ -1,6 +1,9 @@
-import type { EnterpriseValueCheck, Fundamentals, TickerFinancials } from "../types/financials";
+import { formatFxRate } from "../cli/fx-pair";
+import type { EnterpriseValueCheck, Fundamentals, Quote, TickerFinancials } from "../types/financials";
+import { quotedFxPair } from "./currency-pair";
 import { resolveCurrencyUnit } from "./currency-units";
 import { formatCompact } from "./format";
+import { formatUtcTime } from "./utc-time";
 
 export const RETRACTABLE_VALUATION_FIELDS = ["enterpriseValue", "enterpriseToRevenue"] as const;
 
@@ -112,19 +115,27 @@ export function computedEnterpriseValueNote(fundamentals: Parameters<typeof ente
   return `EV ${formatCompact(check.computed)} ${check.currency} is market cap + total debt - ${formatCompact(check.cash)} of cash and equivalents${sheet}; investments stay in.`;
 }
 
-/** What names the currency of the trailing figures: the fundamentals' own labels, else the statements'. */
+/** What names the currency of the trailing figures: the fundamentals' own labels, else the statements' on a listing that trades in theirs. */
 type FundamentalsCurrencies = Pick<TickerFinancials, "financialCurrency"> & {
-  fundamentals?: Pick<Fundamentals, "financialCurrency" | "epsCurrency"> | null;
+  fundamentals?: Pick<Fundamentals, "financialCurrency" | "epsCurrency" | "marketCapCurrency"> | null;
+  quote?: Pick<Quote, "currency"> | null;
 };
 
 /**
- * The currency of the trailing EPS, revenue, income and cash flows: the one the fundamentals declare, else the
- * one the statements report in. Never the quote's, which a depositary receipt can differ from (USD quote, TWD books).
+ * The currency of the trailing EPS, revenue, income and cash flows: the one the fundamentals declare for themselves.
+ * A block that declares none is in the statements' currency only when the listing trades in it; on a listing quoted
+ * in another (a receipt in USD beside TWD books, YPFD in ARS beside USD statements) its currency is unknown, since
+ * Gloom Cloud labels every block whose currency it can tell. Never the quote's.
  */
 export function fundamentalsCurrency(
   financials: FundamentalsCurrencies | null | undefined,
 ): string | undefined {
-  return financials?.fundamentals?.financialCurrency?.trim() || financials?.financialCurrency?.trim() || undefined;
+  const declared = financials?.fundamentals?.financialCurrency?.trim();
+  if (declared) return declared;
+  const statements = financials?.financialCurrency?.trim();
+  if (!statements) return undefined;
+  const listed = financials?.fundamentals?.marketCapCurrency?.trim() || financials?.quote?.currency?.trim();
+  return !listed || resolveCurrencyUnit(listed).currency === resolveCurrencyUnit(statements).currency ? statements : undefined;
 }
 
 /**
@@ -139,22 +150,87 @@ export function fundamentalsEpsCurrency(
 
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 
+const usableRate = (rate: number | null | undefined): rate is number => typeof rate === "number" && Number.isFinite(rate) && rate > 0;
+
+/** The currency a trailing block was converted from into another it is labelled with; undefined for a block in the reporting currency. */
+function ttmConvertedFrom(fundamentals: Pick<Fundamentals, "financialCurrency" | "ttmConversion"> | undefined): string | undefined {
+  const from = fundamentals?.ttmConversion?.from?.trim();
+  const to = fundamentals?.financialCurrency?.trim();
+  return from && to && from !== to ? from : undefined;
+}
+
+/** A rate the app converts at, the one `fx` reports: units of the target currency per unit of the source one, and when it was observed. */
+export interface AppFxRate {
+  rate: number;
+  /** Epoch ms of the older leg's observation; null when the source did not date it. */
+  asOf: number | null;
+}
+
+/** One currency's US dollar rate as the app holds it, a minor unit's by its major currency. */
+type UsdLeg = (currency: string) => AppFxRate | null | undefined;
+
 /**
- * "TTM converted from EUR (1 EUR = 1.1257 USD, 2026-10-09); EPS at report-date rates.": what a converted trailing
- * block was converted from, at which rate and when. Undefined for a block in the currency the company reports in.
+ * The app's rate for a converted trailing block: units of its currency per unit of the one it was converted from,
+ * through the two US dollar legs `fx` reads, dated by the older. Null for an unconverted block or a missing leg.
+ */
+export function appTtmRate(fundamentals: Pick<Fundamentals, "financialCurrency" | "ttmConversion"> | undefined, usd: UsdLeg): AppFxRate | null {
+  const from = ttmConvertedFrom(fundamentals);
+  if (!from || !usableRate(fundamentals?.ttmConversion?.rate)) return null;
+  const leg = (currency: string) => {
+    const major = resolveCurrencyUnit(currency).currency;
+    return major === "USD" ? { rate: 1, asOf: null } : usd(major);
+  };
+  const source = leg(from), target = leg(fundamentals!.financialCurrency!.trim());
+  if (!usableRate(source?.rate) || !usableRate(target?.rate)) return null;
+  const dates = [source!.asOf, target!.asOf].filter((time): time is number => time != null && Number.isFinite(time));
+  return { rate: source!.rate / target!.rate, asOf: dates.length > 0 ? Math.min(...dates) : null };
+}
+
+const TTM_AMOUNTS = ["revenue", "netIncome", "operatingCashFlow", "freeCashFlow"] as const;
+
+/**
+ * A converted trailing block at the app's own rate, so a screen converts at one rate, the one `fx` reports: revenue,
+ * income and cash flows the source converted at `ttmConversion.rate` go back to the reporting currency and are
+ * converted again at `rate`, which the conversion then names with its time. EPS stays at report-date rates. The block
+ * as served when it is not converted, states no rate, or the app has none.
+ */
+export function ttmAtAppRate<T extends Fundamentals>(fundamentals: T, rate: AppFxRate | null | undefined): T {
+  const conversion = fundamentals.ttmConversion;
+  if (!rate || !usableRate(rate.rate) || !conversion || !ttmConvertedFrom(fundamentals) || !usableRate(conversion.rate)) return fundamentals;
+  const factor = rate.rate / conversion.rate;
+  const shown: T = { ...fundamentals };
+  for (const key of TTM_AMOUNTS) {
+    const value = fundamentals[key];
+    if (finiteNumber(value)) (shown as Fundamentals)[key] = Math.round(value * factor);
+  }
+  const { asOf: _served, ...kept } = conversion;
+  shown.ttmConversion = { ...kept, rate: rate.rate, ...(rate.asOf != null ? { asOf: new Date(rate.asOf).toISOString() } : {}) };
+  return shown;
+}
+
+/** `2026-10-09`, or `2026-10-23 21:29 UTC` for the time of a rate. */
+function conversionTime(asOf: string | undefined): string | undefined {
+  if (!asOf) return undefined;
+  if (ISO_DAY.test(asOf)) return asOf;
+  const time = Date.parse(asOf);
+  return Number.isFinite(time) ? formatUtcTime(new Date(time)) || undefined : undefined;
+}
+
+/**
+ * "TTM converted from ARS at USD/ARS 1529, as of 2026-10-23 21:29 UTC; EPS at report-date rates.": what a converted
+ * trailing block was converted from, at which rate, as markets quote the pair and `fx` reads it, and when. Undefined
+ * for a block in the currency the company reports in.
  */
 export function ttmConversionNote(fundamentals: Pick<Fundamentals, "financialCurrency" | "ttmConversion"> | undefined): string | undefined {
-  const conversion = fundamentals?.ttmConversion;
-  const from = conversion?.from?.trim();
-  const to = fundamentals?.financialCurrency?.trim();
-  if (!conversion || !from || !to || from === to) return undefined;
-  const rate = typeof conversion.rate === "number" && Number.isFinite(conversion.rate) && conversion.rate > 0
-    ? `1 ${from} = ${Number(conversion.rate.toPrecision(5))} ${to}`
-    : undefined;
-  const asOf = conversion.asOf && ISO_DAY.test(conversion.asOf) ? conversion.asOf : undefined;
-  const basis = [rate, asOf].filter(Boolean).join(", ");
+  const from = ttmConvertedFrom(fundamentals);
+  if (!from) return undefined;
+  const conversion = fundamentals!.ttmConversion!;
+  const quoted = usableRate(conversion.rate) ? quotedFxPair(from, fundamentals!.financialCurrency!, conversion.rate) : undefined;
+  const rate = quoted ? ` at ${quoted.pair} ${formatFxRate(quoted.rate)}` : "";
+  const time = conversionTime(conversion.asOf);
+  const when = time ? `${rate ? "," : ""} as of ${time}` : "";
   const eps = conversion.eps === "report_date" ? "; EPS at report-date rates" : "";
-  return `TTM converted from ${from}${basis ? ` (${basis})` : ""}${eps}.`;
+  return `TTM converted from ${from}${rate}${when}${eps}.`;
 }
 
 /**
@@ -187,7 +263,7 @@ export function convertedPriceEarningsNote(fundamentals: PriceEarningsBasis | un
   if (from && to && from !== to && typeof conversion?.rate === "number" && Number.isFinite(conversion.rate) && conversion.rate > 0) {
     return `P/E (TTM): price over EPS converted at 1 ${from} = ${Number(conversion.rate.toPrecision(5))} ${to}.`;
   }
-  return (ttmConversionNote(fundamentals) && fundamentals?.ttmConversion?.eps === "report_date") || epsConversionNote(fundamentals)
+  return (ttmConvertedFrom(fundamentals) && fundamentals?.ttmConversion?.eps === "report_date") || epsConversionNote(fundamentals)
     ? "P/E (TTM): spot price over EPS at report-date rates."
     : undefined;
 }

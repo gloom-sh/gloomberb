@@ -55,9 +55,10 @@ import { getPublishedUsEquityCalendarYears, getPublishedUsEquitySession } from "
 import { isQuoteStaleForCurrentSession, noPrintsTodayText } from "../../market-data/quotes/freshness";
 import { isOptionsUnavailableError, listedOptionsAlternative, optionsUnavailableTitle } from "../../market-data/options-alternatives";
 import {
-  cliFuturesContract, futuresContractMetrics, exportedDividendFundamentals, fundamentalsReportTables, loadDividendDistributions, loadReportBondFacts,
-  renderFundamentalsReport, writesCurrencyCodes,
+  atReportTtmRate, cliFuturesContract, futuresContractMetrics, exportedDividendFundamentals, fundamentalsReportTables, loadDividendDistributions,
+  loadReportBondFacts, renderFundamentalsReport, writesCurrencyCodes,
 } from "./ticker";
+import { createBaseConverter } from "../base-converter";
 import { loadStatementFilings } from "../statement-filings";
 import { loadBankFigures } from "../bank-section";
 import { latestFinancialPeriod } from "../../utils/latest-financial-period";
@@ -1737,9 +1738,12 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
   await withMarketData(ctx, async (market) => {
     const listing = await requireCliListing(raw, exchangeOption, market, ctx);
     const venues = loadBareVenues(listing, market);
-    const financials = await loadForListing(listing, market, ctx, () => market.dataProvider.getTickerFinancials(
+    const loaded = await loadForListing(listing, market, ctx, () => market.dataProvider.getTickerFinancials(
       listing.request.symbol, listing.request.exchange, { cacheMode: ctx.cliOptions.refresh ? "refresh" : "default" },
     ), undefined, { command: commandName, noun: commandName === "valuation" ? "valuation data" : commandName });
+    // A converted TTM block at the rate `fx` reports, as `ticker` shows it; only the US dollar legs are read.
+    const financials = view === "statements" ? loaded
+      : await atReportTtmRate(loaded, createBaseConverter(market.dataProvider, "USD"));
     // A trailing yield is measured from the cash history as DVD measures it, a forward yield dated ahead names the
     // declared distribution it annualizes (not in JSON), and one whose dividend stopped says so; read beside the listing notes.
     const distributions = view === "statements" ? null : loadDividendDistributions(

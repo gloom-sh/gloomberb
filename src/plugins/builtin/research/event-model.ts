@@ -179,7 +179,9 @@ function estimateValue(pair: EstimatePair): string {
  * with the fundamentals, the figure `ticker` prints as EPS (TTM).
  */
 export type EventFinancials = Pick<TickerFinancials, "quarterlyStatements" | "financialCurrency"> & {
-  fundamentals?: Pick<NonNullable<TickerFinancials["fundamentals"]>, "eps" | "epsCurrency" | "financialCurrency"> | null;
+  fundamentals?: Pick<NonNullable<TickerFinancials["fundamentals"]>, "eps" | "epsCurrency" | "financialCurrency" | "marketCapCurrency"> | null;
+  /** The listing's currency, which says whether an unlabelled EPS can be in the statements' (fundamentalsCurrency). */
+  quote?: Pick<NonNullable<TickerFinancials["quote"]>, "currency"> | null;
 };
 
 /**

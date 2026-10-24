@@ -1,7 +1,10 @@
 import { logFailure } from "../../utils/log-failure";
 import { formatShortDate, parseDisplayDate } from "../../utils/datetime-format";
 import { formatReportedMoney } from "../../utils/reported-money";
-import { computedEnterpriseValueNote, convertedPriceEarningsNote, enterpriseValueLabel, enterpriseValueReconciliationNote, epsConversionNote, fundamentalsCurrency, reportedEnterpriseValue, ttmConversionNote } from "../../utils/fundamentals";
+import {
+  appTtmRate, computedEnterpriseValueNote, convertedPriceEarningsNote, enterpriseValueLabel, enterpriseValueReconciliationNote, epsConversionNote,
+  fundamentalsCurrency, reportedEnterpriseValue, ttmAtAppRate, ttmConversionNote,
+} from "../../utils/fundamentals";
 import { latestFinancialPeriod } from "../../utils/latest-financial-period";
 import { burnsCash, cashRunway, SHORT_RUNWAY_HISTORY, formatRunwayMonths, offeringNote, offeringsAfter, runwayMethod, type CashRunway, type OfferingFiling, type RunwayEstimate } from "../../utils/cash-runway";
 import { exportedFundamentals, formatPriceEarnings, NOT_MEANINGFUL, priceEarningsOnEarnings } from "../../utils/price-earnings";
@@ -53,7 +56,7 @@ import type { TickerRecord } from "../../types/ticker";
 import type { CliCommandContext } from "../../types/plugin";
 import { getPortfolioPositionMetrics, getPortfolioQuoteDisplay, lotCostFxRate, resolvePortfolioMarketValue, resolvePortfolioPositionPnl } from "../../portfolio/position-metrics";
 import { isFuturesTicker } from "../../portfolio/futures-positions";
-import { createBaseConverter, type BaseConversion } from "../base-converter";
+import { createBaseConverter, type BaseConverter } from "../base-converter";
 import { formatFxRate } from "../fx-pair";
 import { initMarketData, withMarketData } from "../context";
 import { fail } from "../errors";
@@ -400,7 +403,34 @@ async function appendTickerPositions(lines: string[], tickerFile: TickerRecord |
 }
 
 /** The ticker report's converter: what `createBaseConverter` makes, whose rates a report states; a plain function in tests. */
-type ReportBaseConverter = ((value: number, fromCurrency: string) => Promise<number>) & { conversions?(): BaseConversion[] };
+type ReportBaseConverter = ((value: number, fromCurrency: string) => Promise<number>) & Partial<Pick<BaseConverter, "conversions" | "usdRate">>;
+
+/**
+ * The financials with a converted TTM block at the rate the report converts everything else at, the one `fx`
+ * reports (ttmAtAppRate), for the text and the JSON alike; as served when the converter has no rate for it.
+ */
+export async function atReportTtmRate(financials: TickerFinancials, toBase: Partial<Pick<BaseConverter, "usdRate">>): Promise<TickerFinancials> {
+  const fundamentals = financials.fundamentals;
+  const from = fundamentals?.ttmConversion?.from?.trim();
+  const to = fundamentals?.financialCurrency?.trim();
+  if (!fundamentals || !from || !to || from === to || !toBase.usdRate) return financials;
+  const legs = new Map(await Promise.all([from, to].map(async (currency) =>
+    [heldCurrencyUnit(currency).currency, await toBase.usdRate!(currency)] as const)));
+  const shown = ttmAtAppRate(fundamentals, appTtmRate(fundamentals, (currency) => legs.get(currency)));
+  return shown === fundamentals ? financials : { ...financials, fundamentals: shown };
+}
+
+/**
+ * "TTM figures in ARS; the statements in USD.": a trailing block the source states in another currency than the
+ * statements shown below it, which no conversion explains (YPFD on BYMA: ARS figures beside USD statements).
+ */
+function ttmCurrencySplitNote(fundamentals: TickerFinancials["fundamentals"], statementCurrencies: ReadonlyArray<string | undefined>): string | undefined {
+  const ttm = fundamentals?.financialCurrency?.trim();
+  const shown = new Set(statementCurrencies.map((currency) => currency?.trim()).filter((currency): currency is string => !!currency));
+  if (!ttm || fundamentals?.ttmConversion || shown.size !== 1) return undefined;
+  const [statements] = shown;
+  return heldCurrencyUnit(statements).currency === heldCurrencyUnit(ttm).currency ? undefined : `TTM figures in ${ttm}; the statements in ${statements}.`;
+}
 
 /**
  * A base currency other than USD reads every amount with its code (259.36
@@ -1199,9 +1229,22 @@ export async function buildTickerReport({
 
   const metrics = fundamentalsMetrics(quote, priced.fundamentals, profile, { text: marketCapText }, priceReturns, fundamentalsCurrency(financials),
     { text: enterpriseValueText }, distributions, bondFund, codes);
+  const reportedCurrency = financials.financialCurrency?.trim();
+  const statements = [...financials.annualStatements, ...financials.quarterlyStatements];
+  const fallbackCurrency = reportedCurrency && statements.every((row) => !row.currency?.trim() || row.currency.trim() === reportedCurrency)
+    ? reportedCurrency : undefined;
+  const statementCurrency = (row: FinancialStatement) => row.currency?.trim() || fallbackCurrency;
+  const latestAnnual = latestFinancialPeriod(financials.annualStatements, row => row.date);
+  const latestQuarter = latestFinancialPeriod(financials.quarterlyStatements, row => row.date);
+
   const beforeFundamentals = lines.length;
   appendMetricSection(lines, "Fundamentals", metricLines(metrics));
   for (const note of fundamentalsNotes(priced, metrics, quote?.currency)) lines.push(cliStyles.muted(note));
+  // The trailing block beside statements in another currency, when no conversion says why.
+  const split = metrics.some((metric) => TRAILING_MONEY_METRICS.has(metric.label) && metric.text !== "—")
+    ? ttmCurrencySplitNote(priced.fundamentals, [latestAnnual, latestQuarter].flatMap((row) => row ? [statementCurrency(row)] : []))
+    : undefined;
+  if (split) lines.push(cliStyles.muted(split));
   if (lines.length > beforeFundamentals) for (const note of conversionNotes(toBase, convertedCurrencies, rates)) lines.push(cliStyles.muted(note));
   // Where a fund's facts would go: under its fundamentals, or in their place.
   const fund = fundFactsNote(quote?.symbol ?? symbol,
@@ -1212,18 +1255,11 @@ export async function buildTickerReport({
     lines.push(cliStyles.muted(`Market cap: ${describeFundamentalMarketCap(capitalization.provenance)}.`));
   }
 
-  const reportedCurrency = financials.financialCurrency?.trim();
-  const statements = [...financials.annualStatements, ...financials.quarterlyStatements];
-  const fallbackCurrency = reportedCurrency && statements.every((row) => !row.currency?.trim() || row.currency.trim() === reportedCurrency)
-    ? reportedCurrency : undefined;
-  const statementCurrency = (row: FinancialStatement) => row.currency?.trim() || fallbackCurrency;
-  const latestAnnual = latestFinancialPeriod(financials.annualStatements, row => row.date);
   if (latestAnnual) {
     appendMetricSection(lines, `Latest Annual (${statementPeriodText(latestAnnual.date, statementFilings?.latestAnnual ?? null)})`,
       buildStatementMetrics(latestAnnual, statementCurrency(latestAnnual), codes));
   }
 
-  const latestQuarter = latestFinancialPeriod(financials.quarterlyStatements, row => row.date);
   if (latestQuarter) {
     const runway = cashRunway(financials);
     appendMetricSection(lines, `Latest Quarter (${statementPeriodText(latestQuarter.date, statementFilings?.latestQuarter ?? null)})`,
@@ -1543,6 +1579,8 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
       : notTheCoinNote(listing.symbol, quote ?? (tickerFile ? { name: tickerFile.metadata.name, instrumentType: tickerFile.metadata.assetCategory } : null));
     const listingNote = [choiceNote, coinNote].filter((note): note is string => !!note).join("\n") || undefined;
     const memberships = await membershipsLoad;
+    // A converted TTM block at the rate the rest of the report converts at, the one `fx` reports.
+    const shownFinancials = await atReportTtmRate(resolvedFinancials, toBase);
     if (dependencies.printResult) {
       const newsNote = recentNews[0]?.searchedFor ? coinNewsFallbackNotice(requestSymbol, recentNews[0].searchedFor) : null;
       const warnings = [choiceNote, coinNote, quoteNote, newsNote].filter((note): note is string => !!note);
@@ -1553,7 +1591,7 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
           symbol: normalized,
           listing,
           tickerFile,
-          financials: resolvedFinancials,
+          financials: shownFinancials,
           config,
           notes,
           recentNews,
@@ -1575,7 +1613,7 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
         symbol: normalized,
         listingExchange: listing.exchange,
         tickerFile,
-        financials: resolvedFinancials,
+        financials: shownFinancials,
         config,
         toBase,
         notes,
