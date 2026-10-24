@@ -35,7 +35,8 @@
     "./broker": "./src/public/broker.ts"
   },
   "bin": {
-    "gloomberb": "bin/gloomberb"
+    "gloom": "bin/gloom",
+    "gloomberb": "bin/gloom"
   },
   "files": [
     "bin",

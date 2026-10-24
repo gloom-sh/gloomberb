@@ -5,7 +5,7 @@ import { proLockNote, type FreeRoute } from "../shared/pro-lock-note";
 
 /** HIRE's preview, for a company whose careers system it reads: Coffee Holding (JVA) is mapped but uncovered. */
 const HIRE_ROUTE: FreeRoute = {
-  text: (ticker, company) => `gloomberb fn HIRE ${ticker} previews ${company}'s hiring with its latest roles, without the full history.`,
+  text: (ticker, company) => `gloom fn HIRE ${ticker} previews ${company}'s hiring with its latest roles, without the full history.`,
   answers: async (symbol, context) => {
     const data = await fetchAttention("hiring", symbol, { limit: 1 }, context.apiClient, context.signal) as HiringPayload;
     return data.evidence.length + data.series.length + data.functions.length > 0;

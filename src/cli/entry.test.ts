@@ -34,7 +34,7 @@ test("packaged UI launches restore once before loading the TUI catalog; headless
       process.on("beforeExit", () => console.log(JSON.stringify(calls)));
     `);
     for (const args of [[], ["ui"], ["launch-ui", "TV"], ["handoff"], ["help"]]) {
-      const child = Bun.spawn([process.execPath, "--preload", preload, join(root, "bin/gloomberb"), ...args], {
+      const child = Bun.spawn([process.execPath, "--preload", preload, join(root, "bin/gloom"), ...args], {
         cwd: root, stdout: "pipe", stderr: "pipe",
       });
       const [stdout, stderr, status] = await Promise.all([

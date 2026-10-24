@@ -76,7 +76,7 @@ function parseBaseCurrencySetting(value: string): string {
   if ("code" in reading) return reading.code;
   const [first] = reading.suggestions;
   return fail(reading.error, first
-    ? `baseCurrency takes an ISO 4217 code: gloomberb config set baseCurrency ${first}`
+    ? `baseCurrency takes an ISO 4217 code: gloom config set baseCurrency ${first}`
     : "baseCurrency takes an ISO 4217 code such as USD, EUR or CAD.");
 }
 
@@ -85,7 +85,7 @@ function baseCurrencyProblem(value: unknown): string | null {
   const reading = readBaseCurrency(typeof value === "string" ? value : "");
   if ("code" in reading) return null;
   const [first] = reading.suggestions;
-  return `${reading.error} Set one: gloomberb config set baseCurrency ${first ?? "<code>"}`;
+  return `${reading.error} Set one: gloom config set baseCurrency ${first ?? "<code>"}`;
 }
 
 function describeBaseCurrency(value: unknown): string {
@@ -116,7 +116,7 @@ function summarizeKeybindings(value: unknown): string {
     `${Object.keys(described.commands ?? {}).length} command bindings`,
     ...(described.issues?.length ? [cliStyles.warning(`${described.issues.length} issues`)] : []),
   ];
-  return `${parts.join(", ")} ${cliStyles.muted("(gloomberb config get keybindings)")}`;
+  return `${parts.join(", ")} ${cliStyles.muted("(gloom config get keybindings)")}`;
 }
 
 function renderKeybindings(value: unknown): string {
@@ -142,7 +142,7 @@ function renderKeybindings(value: unknown): string {
         [{ header: "Keys" }, { header: "Runs" }],
         Object.entries(described.commands).map(([chord, query]) => [chord, query]),
       )
-      : wrapText("None. Bind one with gloomberb config set keybindings.commands.<keys> <command>.", cliTerminalWidth() ?? 80)
+      : wrapText("None. Bind one with gloom config set keybindings.commands.<keys> <command>.", cliTerminalWidth() ?? 80)
         .map((line) => cliStyles.muted(line)).join("\n"),
   ];
   if (described.issues.length > 0) {
@@ -229,7 +229,7 @@ export function createSystemCliCommands(): CliCommandDef[] {
           checks.push({
             check: "theme",
             status: themeName(theme) ? "ok" : "warn",
-            detail: themeName(theme) ? describeThemeId(theme) : `${describeThemeId(theme)}. Pick one with gloomberb config set theme <id>.`,
+            detail: themeName(theme) ? describeThemeId(theme) : `${describeThemeId(theme)}. Pick one with gloom config set theme <id>.`,
           });
         });
       } catch (error) {
@@ -353,7 +353,7 @@ export function createSystemCliCommands(): CliCommandDef[] {
           return;
         }
         if (action === "get") {
-          const key = requireArg(args[1], "Usage: gloomberb config get <key>", ctx);
+          const key = requireArg(args[1], "Usage: gloom config get <key>", ctx);
           if (!Object.prototype.hasOwnProperty.call(safeConfig, key)) {
             ctx.fail(`Unknown config key "${key}".`, `Keys: ${Object.keys(safeConfig).join(", ")}`);
           }
@@ -372,8 +372,8 @@ export function createSystemCliCommands(): CliCommandDef[] {
           return;
         }
         if (action === "set") {
-          const key = requireArg(args[1], "Usage: gloomberb config set <key> <value>", ctx);
-          const value = requireArg(args[2], "Usage: gloomberb config set <key> <value>", ctx);
+          const key = requireArg(args[1], "Usage: gloom config set <key> <value>", ctx);
+          const value = requireArg(args[2], "Usage: gloom config set <key> <value>", ctx);
           if (key.startsWith(`${KEYBINDINGS_CONFIG_KEY}.`)) {
             // The value may carry several chords or a multi-word command, so
             // everything after the key is the value.
@@ -397,10 +397,10 @@ export function createSystemCliCommands(): CliCommandDef[] {
             ctx.fail(`Config key "${key}" is not editable from the CLI.`, `Editable keys: ${EDITABLE_CONFIG_KEYS.join(", ")}, keybindings.*`);
           }
           if ((isTelemetryConfigKey(key) || key === STAR_PROMPT_CONFIG_KEY) && value !== "true" && value !== "false") {
-            ctx.fail(`Usage: gloomberb config set ${key} true|false`);
+            ctx.fail(`Usage: gloom config set ${key} true|false`);
           }
           if (key === UPDATE_CHANNEL_CONFIG_KEY && !parseUpdateChannel(value)) {
-            ctx.fail(`Usage: gloomberb config set ${key} stable|nightly`);
+            ctx.fail(`Usage: gloom config set ${key} stable|nightly`);
           }
           // A display name may come unquoted: config set theme White Phosphor.
           const parsedValue = key === "theme"
@@ -441,7 +441,7 @@ export function createSystemCliCommands(): CliCommandDef[] {
           });
           return;
         }
-        ctx.fail("Usage: gloomberb config list|get|set|themes");
+        ctx.fail("Usage: gloom config list|get|set|themes");
       });
     },
   };
@@ -484,7 +484,7 @@ export function createSystemCliCommands(): CliCommandDef[] {
           });
           return;
         }
-        ctx.fail("Usage: gloomberb cache status|clear");
+        ctx.fail("Usage: gloom cache status|clear");
       });
     },
   };
@@ -542,7 +542,7 @@ export function createSystemCliCommands(): CliCommandDef[] {
         title: "Developing a plugin",
         lines: [
           "link puts a symlink to a local checkout in the plugins folder, so edits are live on the next start.",
-          "doctor checks an installed or linked plugin the way the app and the desktop build will: entry, the Gloomberb it declares, removed or deprecated imports, export, id, targets, declared hosts, and the browser bundle. Run it before publishing.",
+          "doctor checks an installed or linked plugin the way the app and the desktop build will: entry, the Gloom it declares, removed or deprecated imports, export, id, targets, declared hosts, and the browser bundle. Run it before publishing.",
         ],
       }],
       examples: ["plugin list", "plugin info news", "plugin disable hackernews", "plugin link ../my-plugin", "plugin doctor ../my-plugin"],
@@ -572,7 +572,7 @@ export function createSystemCliCommands(): CliCommandDef[] {
         return;
       }
       if (action === "link") {
-        const path = requireArg(args[1], "Usage: gloomberb plugin link <path>", ctx);
+        const path = requireArg(args[1], "Usage: gloom plugin link <path>", ctx);
         const { linkPlugin } = await import("../../plugins/installer");
         const info = await linkPlugin(path, { quiet: ctx.cliOptions.format !== "text" });
         if (ctx.cliOptions.format !== "text") ctx.printResult({ data: info });
@@ -596,14 +596,14 @@ export function createSystemCliCommands(): CliCommandDef[] {
           return;
         }
         if (action === "info") {
-          const id = requireArg(args[1], "Usage: gloomberb plugin info <id>", ctx);
+          const id = requireArg(args[1], "Usage: gloom plugin info <id>", ctx);
           const row = pluginRows().find((plugin) => plugin.id === id);
           if (!row) ctx.fail(`Plugin "${id}" is not available.`);
           ctx.printResult({ data: row });
           return;
         }
         if (action === "enable" || action === "disable") {
-          const id = requireArg(args[1], `Usage: gloomberb plugin ${action} <id>`, ctx);
+          const id = requireArg(args[1], `Usage: gloom plugin ${action} <id>`, ctx);
           // A retired id that now names a group of built-ins switches all of them.
           const targetIds = builtinPluginGroupMembers(id) ?? [id];
           for (const targetId of targetIds) {
@@ -630,7 +630,7 @@ export function createSystemCliCommands(): CliCommandDef[] {
           });
           return;
         }
-        ctx.fail("Usage: gloomberb plugin list|info|enable|disable|doctor|link");
+        ctx.fail("Usage: gloom plugin list|info|enable|disable|doctor|link");
       });
     },
   };

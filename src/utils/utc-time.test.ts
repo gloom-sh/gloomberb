@@ -31,3 +31,13 @@ for (const zone of ["Asia/Tokyo", "America/Los_Angeles"]) {
     ]);
   });
 }
+
+test("a viewer's clock names its zone's day and time, with the weekday when it is another day than UTC's", async () => {
+  const { readerTimeZone, timeZoneCity, zonedClock } = await import("./utc-time");
+  expect(zonedClock(Date.parse("2026-10-23T12:00:00Z"), "America/New_York")).toEqual({ date: "2026-10-23", time: "08:00", label: "08:00" });
+  expect(zonedClock(Date.parse("2026-10-14T01:30:00Z"), "America/New_York")).toEqual({ date: "2026-10-13", time: "21:30", label: "Tue 21:30" });
+  expect(zonedClock(Date.parse("2026-10-23T22:00:00Z"), "Asia/Tokyo").label).toBe("Sat 07:00");
+  expect(timeZoneCity("America/Sao_Paulo")).toBe("Sao Paulo");
+  expect([readerTimeZone("america/new_york"), readerTimeZone("Etc/UTC"), readerTimeZone("EST5"), readerTimeZone(undefined)])
+    .toEqual(["America/New_York", null, null, null]);
+});

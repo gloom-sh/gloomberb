@@ -83,7 +83,7 @@ describe("CLI watchlist commands", () => {
 
     expect(result).toBe(true);
     expect(config.watchlists).toEqual([]);
-    expect(stdout).toContain("gloomberb watchlist create <name>");
+    expect(stdout).toContain("gloom watchlist create <name>");
   });
 
   test("a help flag after a function prints that function's options, not fn's", async () => {
@@ -92,7 +92,7 @@ describe("CLI watchlist commands", () => {
 
     const own = await captureConsole(() => runCli(["fn", "BT", "--preset", "trend-200", "--help"]));
     expect(own.stdout).toContain("--include-partial <boolean>");
-    expect(own.stdout).toContain("gloomberb fn BT <ticker> --csv --equity");
+    expect(own.stdout).toContain("gloom fn BT <ticker> --csv --equity");
     expect(own.stdout).not.toContain("Run a market function");
     // A pane id runs the function, so it is helped like one.
     expect((await captureConsole(() => runCli(["fn", "backtest", "--help"]))).stdout).toContain("--include-partial <boolean>");
@@ -525,6 +525,6 @@ describe("CLI search helpers", () => {
   test("an empty search points at the catalog, which holds functions and terms rather than tickers", () => {
     const report = buildSearchReport({ query: "bitcoin perpetual", candidates: [] });
 
-    expect(report).toContain('Try: gloomberb catalog "bitcoin perpetual"');
+    expect(report).toContain('Try: gloom catalog "bitcoin perpetual"');
   });
 });

@@ -27,6 +27,30 @@ describe("macro release list", () => {
     }
   });
 
+  test("takes the served IPCA days through the list's end, and every day's figures the server has", () => {
+    const hot = { event: "Inflation Rate YoY", actual: "3.7%", forecast: "3.6%", prior: "3.4%", surprise: "hot" as const };
+    const merged = mergeMacroReleases(floor, {
+      ...served("2026-10-23", { cpi: ["2026-10-14"], ipca: ["2026-09-11", "2026-10-09", "2026-11-10"] }),
+      figures: {
+        cpi: { "2026-10-14": hot },
+        // A floor day takes the server's figures too; one that breaks the contract is left without.
+        fomc: { "2026-09-16": { event: "Fed Interest Rate Decision", actual: "4%", forecast: "4%", prior: "3.75%", surprise: "in-line" } },
+        jobs: { "2026-09-04": { actual: "162K" } },
+        ipca: { "2026-10-09": { event: "IPCA m/m", actual: "0.82%", forecast: null, prior: "-0.32%", surprise: "sideways" } },
+      },
+    });
+    expect(merged.releases).toEqual([
+      { kind: "jobs", date: "2026-09-04" },
+      { kind: "ipca", date: "2026-09-11" },
+      { kind: "fomc", date: "2026-09-16", figures: { event: "Fed Interest Rate Decision", actual: "4%", forecast: "4%", prior: "3.75%", surprise: "in-line" } },
+      { kind: "ipca", date: "2026-10-09", figures: { event: "IPCA m/m", actual: "0.82%", forecast: null, prior: "-0.32%", surprise: null } },
+      { kind: "cpi", date: "2026-10-14", figures: hot },
+    ]);
+    // A server without IPCA, or with a broken list of it, still extends the US days.
+    expect(mergeMacroReleases(floor, served("2026-10-23", { cpi: ["2026-10-14"], ipca: ["9 Oct"] } as never)).releases)
+      .toEqual([...floor.releases, { kind: "cpi", date: "2026-10-14" }]);
+  });
+
   test("a failed read keeps the last list read, and the bundled one without any", async () => {
     macroReleaseCache.attach(new MemoryPluginPersistence());
     const down = () => Promise.reject(new Error("offline"));

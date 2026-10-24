@@ -199,7 +199,7 @@ export async function requireQuotedListing(
 
 /**
  * A symbol written like a currency pair that is not a ticker (USD_NGN, as some
- * FX feeds write a pair) names the listing `gloomberb search` finds nearest to
+ * FX feeds write a pair) names the listing `gloom search` finds nearest to
  * it, as `watchlist add` does: "Did you mean USDNGN=X (US Dollar/Nigerian
  * Naira)?". When search finds nothing near, the row keeps its own error and its
  * search hint.

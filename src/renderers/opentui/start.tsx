@@ -60,7 +60,7 @@ export async function startOpenTuiApp({ externalPlugins, cliLaunchRequest }: Sta
   debugLog.interceptConsole();
 
   const appLog = debugLog.createLogger("app");
-  appLog.info("Gloomberb starting");
+  appLog.info("Gloom starting");
   const remoteControlAdapter: RemoteControlAdapter = {
     terminalDevice: { kind: "tui", name: hostname() },
     startServer: ({ dataDir, handle }) => {

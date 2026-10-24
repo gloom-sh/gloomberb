@@ -14,7 +14,7 @@ beforeEach(() => resetBoardCoins([]));
 afterEach(() => { process.exitCode = 0; resetBoardCoins(); });
 
 const config = createDefaultConfig("/tmp/gloom-crypto-hints-test");
-const HINT = "Crypto prices may be briefly unavailable; the CRYP function (gloomberb fn CRYP) shows the crypto board.";
+const HINT = "Crypto prices may be briefly unavailable; the CRYP function (gloom fn CRYP) shows the crypto board.";
 
 function quote(symbol: string, name: string, instrumentType?: string): Quote {
   return { symbol, name, price: 36.11, change: 0, changePercent: 0, currency: "USD", lastUpdated: 1_789_200_000_000, instrumentType };

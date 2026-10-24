@@ -69,13 +69,13 @@ function deviceSignInStatus(snapshot: DeviceSignInSnapshot): { text: string; col
     case "denied":
       return { text: t("Denied. Press enter to request a new code."), color: colors.negative };
     case "error":
-      return { text: t("Can't reach Gloomberb Cloud. Retrying..."), color: colors.warning };
+      return { text: t("Can't reach Gloom Cloud. Retrying..."), color: colors.warning };
     case "waiting":
       return snapshot.error
         ? { text: t("Connection problem, retrying..."), color: colors.warning }
         : { text: t("Waiting for approval..."), color: colors.textDim };
     default:
-      return { text: t("Contacting Gloomberb Cloud..."), color: colors.textDim };
+      return { text: t("Contacting Gloom Cloud..."), color: colors.textDim };
   }
 }
 

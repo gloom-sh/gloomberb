@@ -25,11 +25,11 @@ Preview calculations contain only evidence visible in that preview. Preview tota
 ## CLI
 
 ```sh
-gloomberb fn CRDOC FICO --json
-gloomberb fn COVN FICO --tab covenants --json
-gloomberb fn CRDOC FICO --tab screen --headroom 20 --months 12 --json
-gloomberb fn CRDOC FICO --instrument '<instrument-id>' --view history --json
-gloomberb shot CRDOC FICO --tab maturities --width 1280 --height 540 --output credit-maturities.png
+gloom fn CRDOC FICO --json
+gloom fn COVN FICO --tab covenants --json
+gloom fn CRDOC FICO --tab screen --headroom 20 --months 12 --json
+gloom fn CRDOC FICO --instrument '<instrument-id>' --view history --json
+gloom shot CRDOC FICO --tab maturities --width 1280 --height 540 --output credit-maturities.png
 ```
 
-An issuer with nothing on file reports one line instead of empty sections, saying why from the payload: no issuer on file for the symbol, or an issuer with no debt instrument read from its filings yet; it points to `gloomberb fn CRDOC FICO`, and `--json` carries the line as `data.metadata.reason`. JSON preserves fact identifiers, source links, quotes, offsets, confidence, currencies, calculation reasons and every derived row's supporting evidence identifiers. `complete` is false for a partial dataset, truncated screen or locked remainder. Screenshot capture freezes the payload before rendering and verifies it against the pane's semantic evidence.
+An issuer with nothing on file reports one line instead of empty sections, saying why from the payload: no issuer on file for the symbol, or an issuer with no debt instrument read from its filings yet; it points to `gloom fn CRDOC FICO`, and `--json` carries the line as `data.metadata.reason`. JSON preserves fact identifiers, source links, quotes, offsets, confidence, currencies, calculation reasons and every derived row's supporting evidence identifiers. `complete` is false for a partial dataset, truncated screen or locked remainder. Screenshot capture freezes the payload before rendering and verifies it against the pane's semantic evidence.

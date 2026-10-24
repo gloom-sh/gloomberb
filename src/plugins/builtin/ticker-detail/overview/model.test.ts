@@ -40,6 +40,22 @@ test("summary money falls back to the statements' reporting currency, and a zero
   expect(overview({ ...figures, enterpriseValue: 5e9 }, "ZAR")).toMatchObject({ EV: "5B HKD" });
 });
 
+test("an EV at or below zero reads N/M with why, and an insurer's says its investments stay in", () => {
+  const ev = (fundamentals: Fundamentals) => buildOverviewStats({
+    quote: undefined, fundamentals, quoteCurrency: "USD", baseCurrency: "USD", toBase: (value) => value,
+  }).find((stat) => stat.label === "EV");
+  const check = { currency: "USD", marketCap: 100e9, totalDebt: 1e9, balanceSheetDate: "2026-06-30" };
+  // ARVN on 2026-10-23, and a source's negative EV no check judged.
+  expect(ev({ marketCap: 100e9, unavailableFields: ["enterpriseValue"], enterpriseValueCheck: { ...check, status: "not-meaningful",
+    cash: 121e9, computed: -20e9, reason: "Cash and short-term investments exceed market cap + total debt (balance sheet 2026-06-30)" } }))
+    .toEqual({ label: "EV", value: "N/M", detail: ["cash > cap + debt", "cash > cap"] });
+  expect(ev({ marketCap: 100e9, enterpriseValue: -5e9 })?.value).toBe("N/M");
+  // BRK-B's: market cap + debt - cash and equivalents.
+  expect(ev({ marketCap: 100e9, enterpriseValue: 107.8e9, enterpriseValueCheck: { ...check, status: "computed", source: -20e9,
+    cash: 3.5e9, computed: 107.8e9, investmentsKept: true } }))
+    .toEqual({ label: "EV", value: "107.8B USD", detail: ["investments in", "inv. in"] });
+});
+
 test("holdings and short interest read as fractions; blank, zero and past figures are left out", () => {
   const figures = (fundamentals: Fundamentals, nextEarnings?: NextEarnings) => Object.fromEntries(buildOverviewStats({
     quote: undefined, fundamentals, quoteCurrency: "USD", baseCurrency: "USD", toBase: (value) => value,

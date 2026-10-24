@@ -178,7 +178,7 @@ export interface DataTableProps<
    */
   exportCsv?: () => string;
   /**
-   * A rendered-view report (`gloomberb fn`) reads every row, not only those
+   * A rendered-view report (`gloom fn`) reads every row, not only those
    * the viewport shows. For a bounded table a reader needs whole, such as an
    * option chain's strike window; leave it off for long or paged lists.
    */

@@ -267,7 +267,7 @@ test("a refused account reads as CALLS's lock note on one line, for the list and
     ...dependencies(),
     ...(transcriptOnly ? { loadTranscript: () => refused(status) } : { loadCalls: () => refused(status), loadUpcoming: () => refused(status) }),
   }).load(args, context);
-  await expect(load(401, callArgs({}))).rejects.toThrow(/^CALLS is part of Gloom Cloud Pro: .* Signed out it shows none of it\. Free, with no sign-in: gloomberb events <ticker> .*log in or sign up .*then upgrade.*; gloomberb fn CALLS then reads/);
+  await expect(load(401, callArgs({}))).rejects.toThrow(/^CALLS is part of Gloom Cloud Pro: .* Signed out it shows none of it\. Free, with no sign-in: gloom events <ticker> .*log in or sign up .*then upgrade.*; gloom fn CALLS then reads/);
   await expect(load(403, transcriptArgs({}))).rejects.toThrow(/Until the email is verified it shows none of it\..*verify your email \(Ctrl\+P, Resend Verification Email\)/);
   await expect(load(402, callArgs({}))).rejects.toThrow(/On a free account it shows none of it\..*upgrade in the app/);
   await expect(load(402, transcriptArgs({ section: "qa" }), true)).rejects.toThrow(/^CALLS is part of Gloom Cloud Pro: /);

@@ -6,7 +6,7 @@ import { proLockNote, type FreeRoute } from "../shared/pro-lock-note";
 
 /** GUIDE's free preview, where it holds guidance for the company: Apple issues none, so GUIDE has no AAPL rows. */
 const GUIDE_ROUTE: FreeRoute = {
-  text: (ticker, company) => `gloomberb fn GUIDE ${ticker} lists ${company}'s latest guidance ranges, with the date each was issued.`,
+  text: (ticker, company) => `gloom fn GUIDE ${ticker} lists ${company}'s latest guidance ranges, with the date each was issued.`,
   answers: async (symbol, context) => {
     const data = await fetchCompanyData("guidance", symbol, {}, context.apiClient, await resolveHeadlessIssuerListing(context, symbol), context.signal);
     return "guidance" in data && data.guidance.length + data.history.length > 0;
@@ -15,12 +15,12 @@ const GUIDE_ROUTE: FreeRoute = {
 
 /** The company's 8-Ks, where results and any guidance it gives are filed, for a company that files them. */
 const EIGHT_K_ROUTE: FreeRoute = {
-  text: (ticker, company) => `gloomberb filings ${ticker} --form 8-K lists ${company}'s 8-Ks, where it files its results and any guidance, each with its items and a link to the filing.`,
+  text: (ticker, company) => `gloom filings ${ticker} --form 8-K lists ${company}'s 8-Ks, where it files its results and any guidance, each with its items and a link to the filing.`,
   answers: (symbol, context) => filesForm(symbol, "8-K", context),
 };
 
 const EARNINGS_ROUTE: FreeRoute = {
-  text: (ticker, company) => `gloomberb earnings ${ticker} lists ${company}'s next report date with its consensus EPS estimate.`,
+  text: (ticker, company) => `gloom earnings ${ticker} lists ${company}'s next report date with its consensus EPS estimate.`,
   answers: async (symbol, context) => (await context.marketData.getEarningsCalendar?.([symbol]) ?? []).length > 0,
 };
 

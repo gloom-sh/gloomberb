@@ -17,7 +17,7 @@ import { overlayScreenQuotes, screenExtendedSessions, sortLiveScreenRows } from 
 import {
   DEFAULT_SCREEN,
   EXAMPLE_SCREEN_DEFINITION,
-  formatScreenValue,
+  formatScreenMetric,
   metricDate,
   parseScreenDefinition,
   screenColumnLabel,
@@ -73,7 +73,7 @@ function extendedColumn(session: ExtendedSession): HeadlessPaneColumn {
 
 /** A typed `--definition`, checked; every error points at the worked example. */
 function readDefinition(text: string): ScreenDefinition {
-  const pointer = "The example in gloomberb catalog EQS is a valid definition to start from.";
+  const pointer = "The example in gloom catalog EQS is a valid definition to start from.";
   let value: unknown;
   try {
     value = JSON.parse(text);
@@ -209,7 +209,7 @@ export const equityScreenerHeadless: HeadlessPaneDefinition<"bundle"> = {
     const empty = currencyEmpty
       ? [
         `${currencyEmpty.title} ${currencyEmpty.detail}`,
-        `In the base currency, ${currencyEmpty.base.currency}: gloomberb fn EQS --definition '${spacedJson(currencyEmpty.base)}'${metric === "marketCap" ? "" : ` --metric ${metric}`}`,
+        `In the base currency, ${currencyEmpty.base.currency}: gloom fn EQS --definition '${spacedJson(currencyEmpty.base)}'${metric === "marketCap" ? "" : ` --metric ${metric}`}`,
       ].join("\n")
       : null;
     // Payload status also counts ordinary per-field sparsity; only generation
@@ -252,7 +252,7 @@ export const equityScreenerHeadless: HeadlessPaneDefinition<"bundle"> = {
               extendedPrice: row.extended?.price ?? null,
               extendedChangePercent: row.extended?.changePercent ?? null,
               ...(row.extended?.mark ? { extendedMark: true } : {}),
-              value: formatScreenValue(metric, observation.value),
+              value: formatScreenMetric(metric, observation),
               unit: observation.unit,
               percentile:
                 observation.percentile.value == null

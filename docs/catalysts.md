@@ -25,12 +25,12 @@ Ticker linking follows explicit identifiers and audited aliases to corporate par
 ## Headless usage
 
 ```sh
-gloomberb fn CATL --json
-gloomberb fn CATL PFE --type clinical --upcoming --json
-gloomberb fn CATL --country EU --from 2026-10-01 --to 2026-12-31 --dateField deadline --json
-gloomberb fn CATL --tab changes --limit 100 --offset 0 --json
-gloomberb fn LITI MSFT --json
-gloomberb fn CATL --event EVENT_ID --json
+gloom fn CATL --json
+gloom fn CATL PFE --type clinical --upcoming --json
+gloom fn CATL --country EU --from 2026-10-01 --to 2026-12-31 --dateField deadline --json
+gloom fn CATL --tab changes --limit 100 --offset 0 --json
+gloom fn LITI MSFT --json
+gloom fn CATL --event EVENT_ID --json
 ```
 
 Structured output preserves event IDs, revision IDs, primary URLs, evidence, all three source dates, observed timestamps, parties, confidence, coverage and preview access metadata. `limit` and `offset` page through the server dataset; `complete` is false for previews and partial pages.

@@ -8,7 +8,7 @@ import { DATA_SERVICE_UNREACHABLE_MESSAGE } from "../../utils/network-failure";
 import type { TickerRecord } from "../../types/ticker";
 
 /** Where a crypto pair that will not load can still be read. `fn CRYP` takes no argument. */
-export const CRYPTO_BOARD_HINT = "Crypto prices may be briefly unavailable; the CRYP function (gloomberb fn CRYP) shows the crypto board.";
+export const CRYPTO_BOARD_HINT = "Crypto prices may be briefly unavailable; the CRYP function (gloom fn CRYP) shows the crypto board.";
 
 // How the note names the coin, and what a listing's name has to say before the note applies.
 const MAJOR_COINS = MAJOR_COIN_NAMES;

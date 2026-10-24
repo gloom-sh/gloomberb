@@ -15,7 +15,7 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { MACRO_RELEASE_TABLE } from "../src/plugins/builtin/macro-day/release-table";
 import {
-  MACRO_EVENT_KINDS, MACRO_RELEASE_SOURCES, MACRO_RELEASES_STALE_DAYS, macroReleasesBehind, type MacroEventKind,
+  US_MACRO_EVENT_KINDS, MACRO_RELEASE_SOURCES, MACRO_RELEASES_STALE_DAYS, macroReleasesBehind, type UsMacroEventKind,
 } from "../src/plugins/builtin/macro-day/releases";
 import { zonedDateTimeParts } from "../src/utils/zoned-date-time";
 
@@ -34,7 +34,7 @@ const BLS_CURRENT_EDITIONS = {
 } as const;
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-const COMMENTS: Record<MacroEventKind, string> = {
+const COMMENTS: Record<UsMacroEventKind, string> = {
   cpi: "BLS Consumer Price Index, 8:30 ET.",
   jobs: "BLS Employment Situation (nonfarm payrolls), 8:30 ET.",
   fomc: "FOMC statement days (the meeting's last day), 14:00 ET. The August 2025 notation vote is not a meeting.",
@@ -84,12 +84,12 @@ async function download(url: string): Promise<string> {
   return response.text();
 }
 
-function tableDates(kind: MacroEventKind): string[] {
+function tableDates(kind: UsMacroEventKind): string[] {
   return Object.entries(MACRO_RELEASE_TABLE.days[kind]).flatMap(([year, days]) => days.map((day) => `${year}-${day}`));
 }
 
-function render(checkedAt: string, coveredThrough: string, days: Record<MacroEventKind, string[]>): string {
-  const kinds = MACRO_EVENT_KINDS.map((kind) => {
+function render(checkedAt: string, coveredThrough: string, days: Record<UsMacroEventKind, string[]>): string {
+  const kinds = US_MACRO_EVENT_KINDS.map((kind) => {
     const years = new Map<string, string[]>();
     for (const date of days[kind]) years.set(date.slice(0, 4), [...years.get(date.slice(0, 4)) ?? [], date.slice(5)]);
     const lines = [...years].map(([year, list]) => `      ${year}: [${list.map((day) => `"${day}"`).join(", ")}],`);
@@ -134,8 +134,8 @@ async function update(): Promise<void> {
   const clock = zonedDateTimeParts(now, "America/New_York");
   const checkedAt = `${clock.year}-${String(clock.month).padStart(2, "0")}-${String(clock.day).padStart(2, "0")}`;
   let coveredThrough = clock.hour >= DAY_COMPLETE_HOUR ? checkedAt : addDays(checkedAt, -1);
-  const [cpi, jobs, fomc] = await Promise.all(MACRO_EVENT_KINDS.map((kind) => download(MACRO_RELEASE_SOURCES[kind])));
-  const read: Record<MacroEventKind, string[]> = {
+  const [cpi, jobs, fomc] = await Promise.all(US_MACRO_EVENT_KINDS.map((kind) => download(MACRO_RELEASE_SOURCES[kind])));
+  const read: Record<UsMacroEventKind, string[]> = {
     cpi: parseBlsArchive(cpi!, "cpi"), jobs: parseBlsArchive(jobs!, "empsit"), fomc: parseFomcStatements(fomc!),
   };
   const problems: string[] = [];
@@ -155,8 +155,8 @@ async function update(): Promise<void> {
   if (coveredThrough < MACRO_RELEASE_TABLE.coveredThrough) {
     problems.push(`the table covers through ${MACRO_RELEASE_TABLE.coveredThrough}, the readable pages only through ${coveredThrough}`);
   }
-  const days = {} as Record<MacroEventKind, string[]>;
-  for (const kind of MACRO_EVENT_KINDS) {
+  const days = {} as Record<UsMacroEventKind, string[]>;
+  for (const kind of US_MACRO_EVENT_KINDS) {
     const published = read[kind].filter((date) => date >= `${FIRST_YEAR}-01-01` && date <= coveredThrough);
     const known = tableDates(kind);
     // An archive never takes a release back. The Fed's calendar keeps five years, so days before

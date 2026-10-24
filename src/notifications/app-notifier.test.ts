@@ -30,7 +30,7 @@ describe("desktop notification commands", () => {
 
     expect(command).toEqual({
       command: "notify-send",
-      args: ["--app-name", "Gloomberb", "--urgency", "critical", "Chat mention", "#everyone\n@bob mentioned you"],
+      args: ["--app-name", "Gloom", "--urgency", "critical", "Chat mention", "#everyone\n@bob mentioned you"],
     });
   });
 

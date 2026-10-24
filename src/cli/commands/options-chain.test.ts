@@ -20,7 +20,7 @@ test("a missing expiry names the listed dates nearest the one asked for, in date
   const listed = ["2026-10-16", "2027-01-15", "2027-12-17", "2028-03-17", "2028-06-16", "2028-12-15", "2029-01-19"].map(at);
   const miss = missingExpiryMessage("AAPL", at("2028-01-21"), listed);
   expect(miss.message).toBe("no expiry 2028-01-21 for AAPL; available: 2027-12-17, 2028-03-17, 2028-06-16, 2028-12-15 (+3 more)");
-  expect(miss.details).toContain("gloomberb options AAPL");
+  expect(miss.details).toContain("gloom options AAPL");
 });
 
 test("a missing expiry says so when the chain lists none, and when the date is listed but empty", () => {

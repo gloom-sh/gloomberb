@@ -195,7 +195,7 @@ function buildPluginInstallItem(
   const actionLine = !installable
     ? `Get it in ${whereItRuns(plugin)}: ${pageUrl.replace(/^https:\/\//, "")}`
     : required
-      ? `Needs Gloomberb ${required}. Update Gloomberb first.`
+      ? `Needs Gloom ${required}. Update Gloom first.`
       : `Install ${plugin.name}`;
 
   const install = () => {

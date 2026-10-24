@@ -11,7 +11,7 @@ import { addPaneFloating, bringToFront, getDockedPaneIds, isPaneInLayout } from 
 /**
  * Opening a pane from a CLI command that launches the UI.
  *
- * `gloomberb <something> <args>` has to leave the app in the state the
+ * `gloom <something> <args>` has to leave the app in the state the
  * arguments describe before the first frame: the pane present, focused, and
  * already holding the query rather than whatever the last session left. That is
  * two writes with different lifetimes — the layout in the config, the pane's

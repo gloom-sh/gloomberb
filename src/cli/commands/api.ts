@@ -70,11 +70,11 @@ export const apiCliCommand: BuiltinCliCommandDef = {
       }
 
       if (action === "get") {
-        const capabilityId = requireArg(args[0], "Usage: gloomberb api get <capability-id>", ctx);
+        const capabilityId = requireArg(args[0], "Usage: gloom api get <capability-id>", ctx);
         const manifest = services.services.pluginRegistry.capabilities
           .manifests()
           .find((entry) => entry.id === capabilityId);
-        if (!manifest) ctx.fail(`Capability "${capabilityId}" is not available.`, "Run gloomberb api list to see them.");
+        if (!manifest) ctx.fail(`Capability "${capabilityId}" is not available.`, "Run gloom api list to see them.");
         ctx.printResult({ data: manifest }, {
           text: (data) => [
             renderStats([
@@ -95,7 +95,7 @@ export const apiCliCommand: BuiltinCliCommandDef = {
       }
 
       if (action === "invoke") {
-        const target = requireArg(args[0], "Usage: gloomberb api invoke <capability.operation> [json-payload]", ctx);
+        const target = requireArg(args[0], "Usage: gloom api invoke <capability.operation> [json-payload]", ctx);
         const operationTarget = parseOperationTarget(target, ctx);
         const payload = parseJsonPayload(args[1], ctx);
         const data = await services.services.pluginRegistry.capabilities.invoke(
@@ -108,7 +108,7 @@ export const apiCliCommand: BuiltinCliCommandDef = {
       }
 
       if (action === "subscribe") {
-        const target = requireArg(args[0], "Usage: gloomberb api subscribe <capability.operation> [json-payload] [--limit n]", ctx);
+        const target = requireArg(args[0], "Usage: gloom api subscribe <capability.operation> [json-payload] [--limit n]", ctx);
         const operationTarget = parseOperationTarget(target, ctx);
         const limit = ctx.cliOptions.limit ?? 10;
         const payload = parseJsonPayload(args[1], ctx);
@@ -136,7 +136,7 @@ export const apiCliCommand: BuiltinCliCommandDef = {
         return;
       }
 
-      ctx.fail("Usage: gloomberb api list|get|invoke|subscribe");
+      ctx.fail("Usage: gloom api list|get|invoke|subscribe");
     });
   },
 };

@@ -4,6 +4,7 @@ import type { TickerFinancials } from "../../../types/financials";
 import { isUsListingExchange, parsePublicTickerKey } from "../../../utils/exchanges";
 import { errorMessage } from "../../../utils/errors";
 import { formatNumber } from "../../../utils/format";
+import { formatPriceEarnings, NOT_MEANINGFUL } from "../../../utils/price-earnings";
 import { fetchScreen } from "../equity-screener/client";
 import { refusedLock } from "../shared/cloud-denied";
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
@@ -118,7 +119,9 @@ const COLUMN_SPECS: Record<ExtraColumnId, ColumnSpec> = {
   },
   evEbitda: {
     label: "EV/EBITDA",
-    columns: [{ key: "evEbitda", header: "EV/EBITDA", align: "right", format: (value) => (typeof value === "number" ? formatNumber(value, 1) : "-") }],
+    // N/M over an EV or EBITDA at or below zero, as EQS shows it.
+    columns: [{ key: "evEbitda", header: "EV/EBITDA", align: "right", format: (value, row) => (typeof value === "number" ? formatNumber(value, 1)
+      : row.evEbitdaNotMeaningful ? formatPriceEarnings(NOT_MEANINGFUL) : "-") }],
     sourceKey: "evEbitdaSource",
     asOfKey: "evEbitdaAsOf",
     basis: (dates) => `statements to ${dates}`,
@@ -298,6 +301,7 @@ async function loadScreenerFields(ids: readonly ExtraColumnId[], symbols: readon
     if (wanted.includes("evEbitda")) {
       const multiple = metricFields(row.metrics.evToEbitda);
       if (multiple) Object.assign(fields, { evEbitda: multiple.value, evEbitdaSource: multiple.source, evEbitdaAsOf: multiple.asOf });
+      else if (row.metrics.evToEbitda?.notMeaningful) Object.assign(fields, { evEbitda: null, evEbitdaNotMeaningful: row.metrics.evToEbitda.reason ?? true });
     }
   }
 }

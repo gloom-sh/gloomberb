@@ -160,7 +160,7 @@ export function TrialsPane({ width, height, focused }: PaneProps) {
 
   const [selectedId, setSelectedId] = useDebouncedPluginPaneState<string | null>("selectedId", null);
   // The open study is what the pane shows, so a reload or a shared layout opens it again.
-  // `open` (a share, `gloomberb shot TRIAL obesity --open NCT07868939`) opens one study first.
+  // `open` (a share, `gloom shot TRIAL obesity --open NCT07868939`) opens one study first.
   const [initialOpen] = usePaneSettingValue("open", "");
   const [openItemId, setOpenItemId] = usePluginPaneState<string | null>("openItemId", String(initialOpen ?? "").trim() || null);
   const { active: searchFocused, focus: focusSearch, searchProps } = useQueryBarSearch();

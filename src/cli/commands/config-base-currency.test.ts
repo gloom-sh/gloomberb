@@ -38,7 +38,7 @@ test("config set baseCurrency takes an ISO code in any case and refuses a name o
   for (const typed of [["Canadian dollar"], ["Canadian", "dollar"], ["CA$"], ["C$"]]) {
     const refused = await failure(["set", "baseCurrency", ...typed], dataDir);
     expect(refused.message).toBe(`"${typed.join(" ")}" is not a currency code. Did you mean CAD?`);
-    expect(refused.details).toBe("baseCurrency takes an ISO 4217 code: gloomberb config set baseCurrency CAD");
+    expect(refused.details).toBe("baseCurrency takes an ISO 4217 code: gloom config set baseCurrency CAD");
   }
   // A sign several currencies write names them, the most traded first; a code that is no currency names none.
   expect((await failure(["set", "baseCurrency", "$"], dataDir)).message).toBe("\"$\" is not a currency code; it can be USD, CAD, AUD, HKD, SGD, NZD.");
@@ -63,5 +63,5 @@ test("a name or sign an older version saved loads as its code; one that names no
   const shown = await runConfig(["get", "baseCurrency"], ambiguous);
   expect(shown.result.data).toEqual({ key: "baseCurrency", value: "dollar" });
   const text = (shown.options!.text as (data: unknown) => string)(shown.result.data).replace(/\u001b\[[0-9;]*m/g, "");
-  expect(text).toBe("dollar (\"dollar\" is not a currency code; it can be USD, CAD, AUD, NZD, HKD, SGD. Set one: gloomberb config set baseCurrency USD)");
+  expect(text).toBe("dollar (\"dollar\" is not a currency code; it can be USD, CAD, AUD, NZD, HKD, SGD. Set one: gloom config set baseCurrency USD)");
 });

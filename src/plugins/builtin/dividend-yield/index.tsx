@@ -69,7 +69,7 @@ function createDividendYieldModule({
           id: "dividend-yield-pane",
           paneId: "dividend-yield",
           label: "Dividend Yield",
-          description: "Cash distribution history, trailing and forward yield, payout and growth; gloomberb fn DVD with several tickers ranks them by yield. "
+          description: "Cash distribution history, trailing and forward yield, payout and growth; gloom fn DVD with several tickers ranks them by yield. "
             + "A bond fund's SEC yield beside its distribution yield, and with --tax-rate a muni fund's tax-equivalent yield. Future payments are not forecast.",
           keywords: ["dividend", "dividends", "yield", "dvd", "income", "payout", "ex-date", "distribution", "dividend income", "income investing",
             "dividend growth", "payout ratio", "drip", "reinvest", "reinvestment", "dividend reinvestment", "rank dividend payers",

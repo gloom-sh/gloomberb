@@ -112,6 +112,11 @@ export interface ScreenMetric {
   sourceUrl: string | null;
   /** Set by the client on a Pro field the server left out for a caller without Gloom Pro; never sent. */
   access?: "pro";
+  /**
+   * Set on a multiple that is not meaningful (a P/E over a loss, an EV/revenue or EV/EBITDA over an EV or EBITDA at
+   * or below zero): `value` is null, `reason` says why, and it shows as N/M.
+   */
+  notMeaningful?: true;
   percentile: {
     value: number | null;
     sampleCount: number;

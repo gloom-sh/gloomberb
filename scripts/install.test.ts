@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 
@@ -24,7 +24,12 @@ interface InstallRun {
   stderr: string;
   /** Every argument passed to the stubbed downloader, one per line. */
   downloadLog: string;
+  /** What `gloom` runs, following links. */
   installed?: string;
+  /** What `gloomberb` runs, following links. */
+  legacy?: string;
+  /** Where `gloom` and `gloomberb` point, when they are links. */
+  links: { gloom?: string; gloomberb?: string };
   temporaryFiles: string[];
 }
 
@@ -51,7 +56,10 @@ function writeStub(binDir: string, name: string, body: string) {
 async function runInstall(machine: FakeMachine, options: {
   downloads?: Record<string, string | Uint8Array>;
   script?: string;
+  /** A `gloomberb` binary from before the rename, in the install folder. */
   existingInstall?: string;
+  /** Puts other files in the install folder before the run. */
+  prepare?: (installDir: string) => void;
 } = {}): Promise<InstallRun> {
   const binDir = join(workDir, "bin");
   const installDir = join(workDir, "install");
@@ -63,6 +71,7 @@ async function runInstall(machine: FakeMachine, options: {
   mkdirSync(appDir, { recursive: true });
   mkdirSync(tempDir);
   if (options.existingInstall) writeFileSync(join(installDir, "gloomberb"), options.existingInstall);
+  options.prepare?.(installDir);
 
   writeStub(binDir, "uname", [
     'case "$1" in',
@@ -147,9 +156,19 @@ async function runInstall(machine: FakeMachine, options: {
     stdout,
     stderr,
     downloadLog: existsSync(downloadLog) ? readFileSync(downloadLog, "utf8") : "",
-    installed: existsSync(join(installDir, "gloomberb")) ? readFileSync(join(installDir, "gloomberb"), "utf8") : undefined,
+    installed: existsSync(join(installDir, "gloom")) ? readFileSync(join(installDir, "gloom"), "utf8") : undefined,
+    legacy: existsSync(join(installDir, "gloomberb")) ? readFileSync(join(installDir, "gloomberb"), "utf8") : undefined,
+    links: { gloom: linkTarget(join(installDir, "gloom")), gloomberb: linkTarget(join(installDir, "gloomberb")) },
     temporaryFiles: readdirSync(tempDir),
   };
+}
+
+function linkTarget(path: string): string | undefined {
+  try {
+    return readlinkSync(path);
+  } catch {
+    return undefined;
+  }
 }
 
 describe("install.sh architecture detection", () => {
@@ -260,8 +279,70 @@ describe("install.sh verification", () => {
     expect(run.installed).toBe(binary);
     expect(run.stdout).toContain(`Verified SHA-256 for ${assetName}`);
     expect(run.stdout).toContain(assetUrl);
-    expect(run.stdout).toContain(join(workDir, "install", "gloomberb"));
+    expect(run.stdout).toContain(join(workDir, "install", "gloom"));
     expect(run.temporaryFiles).toEqual([]);
+  });
+
+  // Installs from before the rename have the binary itself at gloomberb.
+  // Reinstalling puts it at gloom and leaves gloomberb as a link that runs it.
+  test("an install from before the rename becomes gloom, with gloomberb still running it", async () => {
+    const run = await runInstall(linuxMachine, {
+      downloads: {
+        [metadataUrl]: releaseMetadata(`sha256:${digest}`),
+        [assetUrl]: compressed,
+      },
+      existingInstall: "old binary",
+    });
+
+    expect(run.exitCode).toBe(0);
+    expect(run.installed).toBe(binary);
+    expect(run.links).toEqual({ gloom: undefined, gloomberb: "gloom" });
+    expect(run.legacy).toBe(binary);
+    expect(run.stdout).toContain("Run 'gloom' to start.");
+  });
+
+  // Another program can own the name gloom. The script keeps its file and
+  // installs Gloom as gloomberb, the way the app leaves such a file alone.
+  test("keeps another program's gloom and installs gloomberb", async () => {
+    const run = await runInstall(linuxMachine, {
+      downloads: {
+        [metadataUrl]: releaseMetadata(`sha256:${digest}`),
+        [assetUrl]: compressed,
+      },
+      existingInstall: "old binary",
+      prepare: (installDir) => writeFileSync(join(installDir, "gloom"), "another program"),
+    });
+
+    expect(run.exitCode).toBe(0);
+    expect(run.installed).toBe("another program");
+    expect(run.legacy).toBe(binary);
+    expect(run.links).toEqual({ gloom: undefined, gloomberb: undefined });
+    expect(run.stdout).toContain("it belongs to another program");
+    expect(run.stdout).toContain("Run 'gloomberb' to start.");
+  });
+
+  test.each([
+    ["the binary an earlier run installed", (installDir: string) => {
+      writeFileSync(join(installDir, "gloom"), "old binary");
+      symlinkSync("gloom", join(installDir, "gloomberb"));
+    }],
+    ["the link an old binary added when it updated", (installDir: string) => {
+      writeFileSync(join(installDir, "gloomberb"), "old binary");
+      symlinkSync("gloomberb", join(installDir, "gloom"));
+    }],
+  ] as const)("replaces a gloom that is ours: %s", async (_, prepare) => {
+    const run = await runInstall(linuxMachine, {
+      downloads: {
+        [metadataUrl]: releaseMetadata(`sha256:${digest}`),
+        [assetUrl]: compressed,
+      },
+      prepare,
+    });
+
+    expect(run.exitCode).toBe(0);
+    expect(run.installed).toBe(binary);
+    expect(run.links).toEqual({ gloom: undefined, gloomberb: "gloom" });
+    expect(run.stdout).toContain("Run 'gloom' to start.");
   });
 
   test("rejects a digest mismatch without replacing an existing install", async () => {
@@ -275,7 +356,8 @@ describe("install.sh verification", () => {
 
     expect(run.exitCode).not.toBe(0);
     expect(run.stderr).toContain("SHA-256 mismatch");
-    expect(run.installed).toBe("old binary");
+    expect(run.installed).toBeUndefined();
+    expect(run.legacy).toBe("old binary");
     expect(run.temporaryFiles).toEqual([]);
   });
 
@@ -293,7 +375,8 @@ describe("install.sh verification", () => {
     expect(run.exitCode).not.toBe(0);
     expect(run.stderr).toContain("SHA-256 mismatch");
     expect(run.downloadLog).not.toContain("gloomberb-darwin-arm64.gz");
-    expect(run.installed).toBe("old binary");
+    expect(run.installed).toBeUndefined();
+    expect(run.legacy).toBe("old binary");
     expect(run.temporaryFiles).toEqual([]);
   });
 
@@ -337,7 +420,66 @@ describe("install.sh verification", () => {
 
     expect(run.exitCode).toBe(0);
     expect(run.downloadLog).toBe("");
-    expect(run.installed).toBe("old binary");
+    expect(run.installed).toBeUndefined();
+    expect(run.legacy).toBe("old binary");
     expect(run.temporaryFiles).toEqual([]);
+  });
+});
+
+describe("install.sh on an Apple Silicon Mac", () => {
+  const appAsset = "stable-macos-arm64-Gloomberb.app.zip";
+  const appUrl = `https://github.com/gloom-sh/gloomberb/releases/download/v1.2.3/${appAsset}`;
+
+  /** A zipped app bundle holding the given terminal commands. */
+  function zippedApp(commands: string[]): Uint8Array {
+    const root = mkdtempSync(join(workDir, "app-"));
+    const resources = join(root, "Gloomberb.app", "Contents", "Resources");
+    mkdirSync(resources, { recursive: true });
+    for (const command of commands) {
+      writeFileSync(join(resources, command), "#!/bin/sh\n");
+      chmodSync(join(resources, command), 0o755);
+    }
+    const zip = Bun.spawnSync(["zip", "-qr", "app.zip", "Gloomberb.app"], { cwd: root });
+    if (zip.exitCode !== 0) throw new Error(zip.stderr.toString());
+    return readFileSync(join(root, "app.zip"));
+  }
+
+  // gloom.sh/install serves this script from main, so it meets releases from
+  // before the rename, whose app has only the gloomberb command.
+  test.skipIf(!Bun.which("zip") || !Bun.which("unzip")).each([
+    ["a release that ships gloom", ["gloom", "gloomberb"], "gloom"],
+    ["a release from before the rename", ["gloomberb"], "gloomberb"],
+  ] as const)("links gloom and gloomberb for %s", async (_, commands, gloomTarget) => {
+    const archive = zippedApp([...commands]);
+    const checksum = new Bun.CryptoHasher("sha256").update(archive).digest("hex");
+    const run = await runInstall({ unameSystem: "Darwin", unameMachine: "arm64", hardwareArm64: "1" }, {
+      downloads: {
+        [metadataUrl]: JSON.stringify({ assets: [{ name: appAsset, digest: `sha256:${checksum}`, browser_download_url: appUrl }] }),
+        [appUrl]: archive,
+      },
+      existingInstall: "old binary",
+    });
+
+    const resources = join(workDir, "Applications", "Gloomberb.app", "Contents", "Resources");
+    expect(run.exitCode).toBe(0);
+    expect(run.links).toEqual({ gloom: join(resources, gloomTarget), gloomberb: join(resources, "gloomberb") });
+    expect(run.stdout).toContain("Run 'gloom' to start.");
+  });
+
+  test.skipIf(!Bun.which("zip") || !Bun.which("unzip"))("keeps another program's gloom link and links gloomberb", async () => {
+    const archive = zippedApp(["gloom", "gloomberb"]);
+    const checksum = new Bun.CryptoHasher("sha256").update(archive).digest("hex");
+    const run = await runInstall({ unameSystem: "Darwin", unameMachine: "arm64", hardwareArm64: "1" }, {
+      downloads: {
+        [metadataUrl]: JSON.stringify({ assets: [{ name: appAsset, digest: `sha256:${checksum}`, browser_download_url: appUrl }] }),
+        [appUrl]: archive,
+      },
+      prepare: (installDir) => symlinkSync("/opt/other/bin/gloom", join(installDir, "gloom")),
+    });
+
+    const resources = join(workDir, "Applications", "Gloomberb.app", "Contents", "Resources");
+    expect(run.exitCode).toBe(0);
+    expect(run.links).toEqual({ gloom: "/opt/other/bin/gloom", gloomberb: join(resources, "gloomberb") });
+    expect(run.stdout).toContain("Run 'gloomberb' to start.");
   });
 });

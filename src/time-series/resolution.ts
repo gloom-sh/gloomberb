@@ -42,7 +42,7 @@ const RANGE_PRESET_RESOLUTION: Record<TimeRange, ManualChartResolution> = {
 
 /**
  * The bar size a price history for a range is served in, unlike the chart
- * presets above: what `gloomberb history` and the historical prices pane get.
+ * presets above: what `gloom history` and the historical prices pane get.
  */
 export const RANGE_HISTORY_RESOLUTION: Readonly<Record<TimeRange, ManualChartResolution>> = {
   "1D": "5m",

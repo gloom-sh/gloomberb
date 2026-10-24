@@ -1,4 +1,5 @@
 import { ApplicationMenu, BrowserView, Utils, type BrowserWindow } from "electrobun/bun";
+import { homedir } from "os";
 import { createAppServices, type AppServices } from "../../../../core/app-services";
 import { syncConfigActiveLayoutState, type PaneRuntimeState } from "../../../../core/state/app/state";
 import {
@@ -18,6 +19,8 @@ import { createNodeCrashReporterHost } from "../../../../telemetry/crash-reports
 import { installUpdateFailureReporter, reviewLastUpdateAttempt } from "../../../../telemetry/update-failures";
 import { createNodeUpdateFailureHost } from "../../../../telemetry/update-failures-node";
 import type { AppConfig } from "../../../../types/config";
+import { linkDesktopCommands } from "../../../../updater/command-names";
+import { debugLog } from "../../../../utils/debug-log";
 import type { DesktopSharedStateSnapshot } from "../../../../types/desktop-window";
 import type {
   ContextMenuSelectMessage,
@@ -59,6 +62,8 @@ export type DesktopRpc = ReturnType<typeof BrowserView.defineRPC<ElectrobunDeskt
 
 /** How long a quit waits for the view to flush and exit on its own. */
 const QUIT_FALLBACK_MS = 2_500;
+/** How long after the main window is up the app looks for its `gloomberb` command to add `gloom` beside it. */
+const COMMAND_LINK_DELAY_MS = 10_000;
 const MAX_PENDING_DEEP_LINKS = 20;
 
 function summarizeError(error: unknown): string {
@@ -115,6 +120,7 @@ export class DesktopBackend {
   private crashReporterInstalled = false;
   private restartInProgress = false;
   private pluginAutoUpdatesStarted = false;
+  private commandLinksScheduled = false;
   private remoteControlServer: RemoteControlServer | null = null;
   private readonly pendingDeepLinks: string[] = [];
   private readonly contextMenuRequestRpcs = new Map<string, DesktopRpc>();
@@ -398,8 +404,34 @@ export class DesktopBackend {
         console.error("[remote] desktop control endpoint failed", summarizeError(error));
       });
       this.ensurePluginAutoUpdates();
+      this.scheduleCommandLinks();
     }
     return init;
+  }
+
+  /**
+   * An install from before the rename updates its bundle in place and keeps
+   * only the `gloomberb` command its installer linked, so the app adds `gloom`
+   * beside it. That looks through PATH, which can hold a slow network folder,
+   * so it runs a while after the main window is up and never in its way.
+   */
+  private scheduleCommandLinks(): void {
+    if (this.commandLinksScheduled) return;
+    this.commandLinksScheduled = true;
+    const log = debugLog.createLogger("desktop-command");
+    const timer = setTimeout(() => {
+      void linkDesktopCommands({
+        platform: process.platform,
+        homeDir: homedir(),
+        pathEnv: process.env.PATH ?? "",
+        localAppData: process.env.LOCALAPPDATA,
+      }).then((added) => {
+        if (added.length > 0) log.info(`Added the gloom command in ${added.length} folder(s)`);
+      }, (error: unknown) => {
+        log.warn("Could not add the gloom command", summarizeError(error));
+      });
+    }, COMMAND_LINK_DELAY_MS);
+    timer.unref?.();
   }
 
   private flushPendingDeepLinks(): void {

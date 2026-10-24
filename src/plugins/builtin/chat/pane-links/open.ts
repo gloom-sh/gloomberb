@@ -22,7 +22,7 @@ export function openChatPaneLink(link: ChatMessagePaneLink, actions: PaneLinkAct
   }
   const target = wirePaneTarget(link.link);
   if (!chatPaneLinkPane(target.paneId)) {
-    actions.notify({ body: "That pane is not available in this version of Gloomberb.", type: "info" });
+    actions.notify({ body: "That pane is not available in this version of Gloom.", type: "info" });
     return;
   }
   actions.createPaneFromTemplate(target.templateId, target.arg ? { arg: target.arg } : undefined);

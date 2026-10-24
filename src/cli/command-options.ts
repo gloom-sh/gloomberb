@@ -53,7 +53,7 @@ function declaredOptions(command: CliCommandDef): Map<string, DeclaredOption> | 
 
 /** `--explain` on a command that has no glossary of its own points at the commands that do, and at the glossary. */
 const EXPLAIN_HINT = "--explain follows the reports of fn <function> and portfolio show. "
-  + "gloomberb catalog explain <term> prints what one term means; gloomberb catalog glossary lists every term.";
+  + "gloom catalog explain <term> prints what one term means; gloom catalog glossary lists every term.";
 
 function failUnknownOption(
   command: BuiltinCliCommandDef,
@@ -63,7 +63,7 @@ function failUnknownOption(
 ): never {
   const flags = [...declared.keys()];
   const suggestion = suggestCliOption(flag, flags);
-  const help = `See gloomberb help ${command.name}.`;
+  const help = `See gloom help ${command.name}.`;
   fail(`Unknown option ${flag} for ${command.name}.`, [
     command.unknownOptionHint?.(flag, args) ?? (flag === "--explain" ? EXPLAIN_HINT : ""),
     suggestion ? `Did you mean ${suggestion}?` : "",
@@ -93,7 +93,7 @@ export function checkCliCommandOptions(
     const option = declared.get(flag);
     if (!option) failUnknownOption(command, flag, declared, args);
     if (!option.takesValue && equals >= 0) {
-      fail(`${flag} takes no value.`, `Write it alone, as ${flag}. See gloomberb help ${command.name}.`);
+      fail(`${flag} takes no value.`, `Write it alone, as ${flag}. See gloom help ${command.name}.`);
     }
     if (option.takesValue && equals < 0) index += 1;
   }

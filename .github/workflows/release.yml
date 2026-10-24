@@ -94,7 +94,7 @@ jobs:
             echo "Homebrew tap already up to date."
             exit 0
           fi
-          git commit -m "Update Gloomberb to $VERSION"
+          git commit -m "Update Gloom to $VERSION"
           git push
 
       - uses: actions/setup-node@v4
@@ -114,6 +114,28 @@ jobs:
             exit 1
           fi
           npm publish --access public --provenance
+
+      # The same build under a second name, @gloom/terminal, once the
+      # repository variable PUBLISH_GLOOM_TERMINAL is "true". It installs the
+      # same gloom and gloomberb commands. A version already there is skipped,
+      # so a rerun of the release does not fail on it.
+      - name: Publish to npm as @gloom/terminal
+        if: ${{ vars.PUBLISH_GLOOM_TERMINAL == 'true' }}
+        run: |
+          set -euo pipefail
+          PACKAGE_VERSION="$(node -p 'require("./package.json").version')"
+          if npm view "@gloom/terminal@$PACKAGE_VERSION" version >/dev/null 2>&1; then
+            echo "@gloom/terminal@$PACKAGE_VERSION is already on npm."
+            exit 0
+          fi
+          npm pkg set "name=@gloom/terminal"
+          npm publish --access public --provenance
+          git checkout -- package.json
+
+      - name: Note the skipped @gloom/terminal publish
+        if: ${{ vars.PUBLISH_GLOOM_TERMINAL != 'true' }}
+        run: |
+          echo "::notice title=npm::Published as gloomberb only. Set the repository variable PUBLISH_GLOOM_TERMINAL to true to publish releases as @gloom/terminal too."
 
       # The website re-captures its function screenshots against this release
       # and opens a PR there when a pane's layout changed.

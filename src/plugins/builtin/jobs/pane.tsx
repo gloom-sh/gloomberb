@@ -86,7 +86,7 @@ function HiringProWall({ symbol, exchange, width, height }: { symbol: string | n
       placement="jobs-wall"
       symbol={symbol} exchange={exchange} width={width} height={height}
       title="Hiring data is part of Gloom Cloud Pro."
-      message={`Gloomberb reads every listed company's own careers system daily: open roles over time, hiring by function and location, new roles, and pay ranges.${symbol ? ` Open ${symbol}'s hiring picture with Pro.` : ""}`}
+      message={`Gloom reads every listed company's own careers system daily: open roles over time, hiring by function and location, new roles, and pay ranges.${symbol ? ` Open ${symbol}'s hiring picture with Pro.` : ""}`}
     />
   );
 }
@@ -576,7 +576,7 @@ function CompanyPanel({
       <PaneStatusBody
         empty
         emptyTitle={`No careers system found for ${symbol}.`}
-        emptyMessage="Gloomberb reads companies' own careers systems. This one either has none we can read or lists roles only on third-party job boards."
+        emptyMessage="Gloom reads companies' own careers systems. This one either has none we can read or lists roles only on third-party job boards."
         retry={{ onRetry: reload, pending: loading, label: "Look again", pendingLabel: "Looking again...", unchanged: "Still no careers system." }}
       />
     );

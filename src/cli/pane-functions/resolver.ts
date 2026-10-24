@@ -166,7 +166,7 @@ export async function applyListingArgument(
   if (unnamed.length > 0) {
     const names = unnamed.map((listing) => typed[listings.indexOf(listing)]!.trim());
     const answer = `No company found for ${names.map((name) => `"${name}"`).join(", ")}; type tickers`;
-    const details = `Such as gloomberb ${command} ${token} GME,AMC. Find a company's ticker with gloomberb search "${names[0]!.replace(/"/g, "")}".`;
+    const details = `Such as gloom ${command} ${token} GME,AMC. Find a company's ticker with gloom search "${names[0]!.replace(/"/g, "")}".`;
     listings = listings.filter((listing) => !unnamed.includes(listing));
     if (listings.length === 0) throw new ListingArgError(`${answer}.`, details);
     notes.push(`${answer}, such as GME,AMC.`);
@@ -195,7 +195,7 @@ export async function applyListingArgument(
   const abroad = usOnly ? listings.filter((listing) => listingAbroadVenue(listing.key) != null) : [];
   if (usOnly && abroad.length > 0) {
     const answers = await Promise.all(abroad.map(async (listing) => {
-      const answer = await usListingsOnlyMessage(usOnly, listing, context, (key) => `gloomberb ${command} ${token} ${key}`);
+      const answer = await usListingsOnlyMessage(usOnly, listing, context, (key) => `gloom ${command} ${token} ${key}`);
       const hint = headless?.usListingsOnlyHint?.(listing.key);
       return hint ? { ...answer, details: `${answer.details}\n${hint}` } : answer;
     }));
@@ -274,11 +274,11 @@ async function unknownPaneFunctionError(
   const runs = suggested.length > 0 ? suggested : near.length === 1 ? near : [];
   return new UnknownPaneFunctionError(name, [
     // A function a word asks for, typed with no argument, shows the one it takes (`<ticker>`).
-    ...runs.map(({ code }, index) => [index === 0 ? "Run:" : "    ", "gloomberb", command, code,
+    ...runs.map(({ code }, index) => [index === 0 ? "Run:" : "    ", "gloom", command, code,
       argument.trim() || (suggested.length > 0 ? findFunctionCode(registry, code)?.argument : "")].filter(Boolean).join(" ")),
     ...closest.length > 0
-      ? ["Closest matches:", ...closest.map((entry) => `  ${entry.token.padEnd(tokenWidth)}  ${entry.label}`), `Search the catalog: gloomberb catalog ${word}`]
-      : near.length > 0 ? [] : [`No function code is close to ${word}. List every function: gloomberb catalog`],
+      ? ["Closest matches:", ...closest.map((entry) => `  ${entry.token.padEnd(tokenWidth)}  ${entry.label}`), `Search the catalog: gloom catalog ${word}`]
+      : near.length > 0 ? [] : [`No function code is close to ${word}. List every function: gloom catalog`],
   ].join("\n"), near.length > 0 ? nearCodesText(near) : null);
 }
 
@@ -290,7 +290,7 @@ export async function resolvePaneFunction(
 ): Promise<ResolvedPaneFunction> {
   let args = parsedArgs;
   if (!args.target) {
-    throw new Error("Usage: gloomberb fn <function-or-pane> [argument] [--key value]");
+    throw new Error("Usage: gloom fn <function-or-pane> [argument] [--key value]");
   }
 
   const found = findPaneFunction(registry, args.target);

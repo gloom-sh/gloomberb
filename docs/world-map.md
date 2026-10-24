@@ -25,9 +25,9 @@ Dense layers show counts until you zoom in. On the desktop and the web the map z
 
 ## From the shell
 
-`gloomberb fn MAP --layer vessels --json` returns a layer's table with its linked tickers; `gloomberb shot MAP ships` saves a picture of the map.
+`gloom fn MAP --layer vessels --json` returns a layer's table with its linked tickers; `gloom shot MAP ships` saves a picture of the map.
 
-The chokepoints' transits and the ports' calls and trade are published by IMF PortWatch, from ships' position reports (AIS). `fn CHOKE`, `fn MAP ports`, their screenshots and their exports cite it as the source and publisher (`Source: IMF PortWatch · observed Sun 11 Oct · lag 6d` under `shot CHOKE`, `# Publisher: IMF PortWatch` in CSV), and `gloomberb catalog transits` lists it in the Publisher column. Layers that do not name a publisher cite Gloom Cloud.
+The chokepoints' transits and the ports' calls and trade are published by IMF PortWatch, from ships' position reports (AIS). `fn CHOKE`, `fn MAP ports`, their screenshots and their exports cite it as the source and publisher (`Source: IMF PortWatch · observed Sun 11 Oct · lag 6d` under `shot CHOKE`, `# Publisher: IMF PortWatch` in CSV), and `gloom catalog transits` lists it in the Publisher column. Layers that do not name a publisher cite Gloom Cloud.
 
 ## Map data
 

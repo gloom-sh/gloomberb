@@ -70,7 +70,7 @@ function argumentName(definition: HeadlessPaneDefinition): string {
 }
 
 function requiredArgumentError(definition: HeadlessPaneDefinition, token: string): Error {
-  return new Error(`Usage: gloomberb fn ${token} <${argumentName(definition)}>`);
+  return new Error(`Usage: gloom fn ${token} <${argumentName(definition)}>`);
 }
 
 function normalizeSymbol(value: string): string {
@@ -231,7 +231,7 @@ export function createHeadlessPaneContext(
     async resolveListing(symbol, argumentWith) {
       const command = `fn ${resolved.token}`;
       const read = await readBareListing(symbol, context, {
-        command, noun: "a quote", retry: (key) => `gloomberb ${command} ${argumentWith(key)}`,
+        command, noun: "a quote", retry: (key) => `gloom ${command} ${argumentWith(key)}`,
       }, { refresh: !!context.refresh });
       if (!read) return null;
       return { symbol: read.symbol, ...read.exchange ? { exchange: read.exchange } : {}, ...read.name ? { name: read.name } : {} };

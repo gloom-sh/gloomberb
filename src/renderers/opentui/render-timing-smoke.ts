@@ -3,7 +3,7 @@ import { testRender } from "@opentui/react/test-utils";
 
 /**
  * A global install runs react-reconciler without its patch (see
- * bin/gloomberb). If the dev build's user timing turns back on, every render
+ * bin/gloom). If the dev build's user timing turns back on, every render
  * adds a performance.measure entry that Bun never frees (#452).
  */
 export async function assertRendersLeaveNoTimingEntries(): Promise<void> {

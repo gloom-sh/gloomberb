@@ -215,13 +215,13 @@ describe("statementHistoryNotes", () => {
     // A trailing-twelve-months column has no date; the oldest year is the oldest period end.
     expect(statementHistoryNotes("annual", ["TTM", "2025-12-31", "2024-12-31", "2023-12-31"], "KO")).toEqual([
       "annual history from 2023; older years not served",
-      "earlier years, one metric at a time: gloomberb fn GF KO --period annual --periods 40",
+      "earlier years, one metric at a time: gloom fn GF KO --period annual --periods 40",
     ]);
     // The year is not a constant: a company with two years served says 2024, and the order of the dates does not matter.
     expect(statementHistoryNotes("annual", ["2024-06-30", "2025-06-30"], "SAN:EPA")[0]).toBe("annual history from 2024; older years not served");
     expect(statementHistoryNotes("quarterly", ["2026-06-30", "2025-03-28"], "KO")).toEqual([
       "quarterly history from 2025-03-28; older quarters not served",
-      "earlier quarters, one metric at a time: gloomberb fn GF KO --period quarterly --periods 40",
+      "earlier quarters, one metric at a time: gloom fn GF KO --period quarterly --periods 40",
     ]);
     // A report with no dated period has nothing to say about its history.
     expect(statementHistoryNotes("annual", [], "KO")).toEqual([]);

@@ -264,7 +264,7 @@ export interface EarningsDateRow {
 
 /**
  * The next earnings day of `symbol` on or after `today`. The day is the UTC
- * date of the report time, the day ERN and `gloomberb earnings` show.
+ * date of the report time, the day ERN and `gloom earnings` show.
  */
 export function nextEarningsDate(events: readonly EarningsDateRow[], symbol: string, today: string): string | null {
   const wanted = symbol.trim().toUpperCase();

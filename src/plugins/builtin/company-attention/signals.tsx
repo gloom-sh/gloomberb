@@ -55,7 +55,7 @@ export function HiringSignalsView({ group, symbol, width, height, focused, acces
   const [storedView, setView] = usePluginPaneState<string>(`${scope}:view`, openingView);
   const view = isSignalsView(storedView) ? storedView : "signals";
   const [snapshotSetting] = usePaneSettingValue<SignalsPayload | null>(`${group}Snapshot`, null);
-  // A `gloomberb shot` hands the payload in; a company opened from a board snapshot still loads its own.
+  // A `gloom shot` hands the payload in; a company opened from a board snapshot still loads its own.
   const snapshot = useMemo(() => {
     try {
       const payload = snapshotSetting ? validateSignals(snapshotSetting) : null;

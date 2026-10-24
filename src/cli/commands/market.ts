@@ -47,7 +47,9 @@ import {
   formatRatingLabel,
   formatRecommendationMix,
   recommendationTotal,
-  targetUpside,
+  analystReferenceMetadata,
+  analystUpside,
+  formatAnalystReference,
 } from "../../plugins/builtin/research/analyst-model";
 import { getPublishedUsEquityCalendarYears, getPublishedUsEquitySession } from "../../market-data/published-us-sessions";
 import { isQuoteStaleForCurrentSession, noPrintsTodayText } from "../../market-data/quotes/freshness";
@@ -794,15 +796,17 @@ function filingsWithItemLabels(filings: SecFilingItem[]) {
   });
 }
 
-function analystSummary(data: AnalystResearchData): string {
+/** The summary over the ratings: the upside from Last, and the price and time it is measured from, as `fn ANR` gives them. */
+function analystSummary(data: AnalystResearchData, quote: Quote | null): string {
   const target = data.priceTarget;
   const currency = analystTargetCurrency(data);
-  const upside = targetUpside(target);
+  const { upside, reference } = analystUpside(data, quote);
   const analysts = recommendationTotal(data);
   const mix = formatRecommendationMix(data);
   const entries: Array<[string, string]> = [
     ["Average Target", formatAnalystPrice(target?.average, currency)],
     ["Upside", upside == null ? "-" : formatPercent(upside)],
+    ["Upside vs", upside == null ? "-" : formatAnalystReference(reference, currency)],
     ["Low / Median / High", target && [target.low, target.median, target.high].some((value) => value != null)
       ? [target.low, target.median, target.high].map((value) => formatAnalystPrice(value, currency)).join(" / ")
       : "-"],
@@ -925,17 +929,17 @@ const MAX_CHOICE_LOOKUPS = 10;
  * The line `quote` prints beside a symbol that changed, as `history` and
  * `ticker` word it: a company that moved, with nothing new listed there,
  * names the quote of its new symbol ("HFC became DINO on 2022-03-15:
- * `gloomberb quote DINO`"); its old line's last price stays in the row.
+ * `gloom quote DINO`"); its old line's last price stays in the row.
  */
 function quoteChangeLine(change: TickerChange | null | undefined, formerIssuer?: FormerIssuer | null): string | null {
   const moved = movedAwayChange(change);
   // One line per symbol: a company that left it, else the company that merged away from it (GOGL).
-  return (moved ? movedSymbolLine(moved, `gloomberb quote ${moved.tradesAs}`) : tickerChangeLine(change)) ?? formerIssuer?.note ?? null;
+  return (moved ? movedSymbolLine(moved, `gloom quote ${moved.tradesAs}`) : tickerChangeLine(change)) ?? formerIssuer?.note ?? null;
 }
 
 async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1], commandName: "quote" | "compare") {
   const args = [...rawArgs];
-  const usage = `Usage: gloomberb ${commandName} <symbol...> [--file <path>]`;
+  const usage = `Usage: gloom ${commandName} <symbol...> [--file <path>]`;
   const exchange = takeOption(args, "--exchange") ?? "";
   // A list from a file or standard input (`-`), read as `watchlist add` reads one.
   const file = args.some((arg) => arg === "--file" || arg.startsWith("--file=")) ? takeOption(args, "--file") ?? "" : undefined;
@@ -1130,7 +1134,7 @@ function unreadLine({ symbol, error }: { symbol: string; error: ListingArgError 
 async function answerPhrase(phrase: string, market: MarketContext, ctx: Parameters<CliCommandDef["execute"]>[1]): Promise<void> {
   const said = `"${phrase}" is not a ticker or a company's name.`;
   if (ctx.cliOptions.format !== "text") {
-    ctx.fail(said, [knownGapMessage(phrase), `Search for it: gloomberb search "${phrase}"`, `Functions and data: gloomberb catalog "${phrase}"`]
+    ctx.fail(said, [knownGapMessage(phrase), `Search for it: gloom search "${phrase}"`, `Functions and data: gloom catalog "${phrase}"`]
       .filter(Boolean).join("\n"));
   }
   process.exitCode = CLI_EXIT_CODES.error;
@@ -1258,8 +1262,8 @@ function financialsSymbolArg(args: readonly string[]): string | undefined {
 function financialsOptionHint(flag: string, args: readonly string[]): string | null {
   if (!QUARTERLY_OPTIONS.has(flag)) return null;
   const symbol = financialsSymbolArg(args) ?? "<symbol>";
-  return `financials lists fiscal years. For quarters: gloomberb fn GF ${symbol} --period quarterly --periods 40 (one metric at a time), `
-    + `or gloomberb fn FA ${symbol} --period quarterly (the statements).`;
+  return `financials lists fiscal years. For quarters: gloom fn GF ${symbol} --period quarterly --periods 40 (one metric at a time), `
+    + `or gloom fn FA ${symbol} --period quarterly (the statements).`;
 }
 
 function historyOptionHint(flag: string, args: readonly string[]): string | null {
@@ -1463,7 +1467,7 @@ function historyWindowOption(args: string[], rangeOption: string | undefined, ct
   const bound = (flag: string, alias: string) => {
     const value = takeOption(args, flag);
     const aliased = takeOption(args, alias);
-    if (value != null && aliased != null) ctx.fail(`${alias} is ${flag}; give one of them.`, `Usage: gloomberb ${HISTORY_USAGE}`);
+    if (value != null && aliased != null) ctx.fail(`${alias} is ${flag}; give one of them.`, `Usage: gloom ${HISTORY_USAGE}`);
     return { value: value ?? aliased, flag: aliased != null ? alias : flag };
   };
   const typedFrom = bound("--from", "--start");
@@ -1475,9 +1479,9 @@ function historyWindowOption(args: string[], rangeOption: string | undefined, ct
   try {
     window = readPriceWindow(from.value, to.value, new Date(), undefined, { from: from.flag, to: to.flag });
   } catch (error) {
-    return ctx.fail(errorMessage(error) ?? `Invalid ${from.flag} or ${to.flag}.`, `Usage: gloomberb ${HISTORY_USAGE}`);
+    return ctx.fail(errorMessage(error) ?? `Invalid ${from.flag} or ${to.flag}.`, `Usage: gloom ${HISTORY_USAGE}`);
   }
-  if (window && rangeOption != null) ctx.fail(`${from.flag} replaces --range; give one of them.`, `Usage: gloomberb ${HISTORY_USAGE}`);
+  if (window && rangeOption != null) ctx.fail(`${from.flag} replaces --range; give one of them.`, `Usage: gloom ${HISTORY_USAGE}`);
   return window;
 }
 
@@ -1562,7 +1566,7 @@ async function runHistoryList(
   ask: HistoryAsk,
   ctx: Parameters<CliCommandDef["execute"]>[1],
 ) {
-  const usage = `Usage: gloomberb ${HISTORY_USAGE}`;
+  const usage = `Usage: gloom ${HISTORY_USAGE}`;
   await withMarketData(ctx, async (market) => {
     const list = await readListedSymbols(args, file, market, ctx, usage);
     const refused = list.symbols.flatMap((symbol) => notASymbolError(symbol) ?? []);
@@ -1902,7 +1906,7 @@ async function printMetalNews(route: MetalNewsRoute, limit: number, ctx: Paramet
       .catch(logFailure("cli.commands-market", "Read the ticker a metal's name is failed", null))
     : null;
   const { found, failure } = await search;
-  const companyNews = ticker ? `gloomberb news ${ticker.symbol}` : null;
+  const companyNews = ticker ? `gloom news ${ticker.symbol}` : null;
   ctx.printResult({
     data: found,
     ...(failure === undefined ? {} : { warnings: [`Searching metals stories for "${route.metal}" failed: ${failure}`] }),
@@ -1925,7 +1929,7 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
   const limit = ctx.cliOptions.tail ?? ctx.cliOptions.limit ?? 20;
   const text = newsSearchText(args);
   if (text != null) {
-    if (exchangeOption || feed) ctx.fail(`${exchangeOption ? "--exchange" : "--feed"} goes with a symbol, not with text to search stories for.`, "Usage: gloomberb news <query>");
+    if (exchangeOption || feed) ctx.fail(`${exchangeOption ? "--exchange" : "--feed"} goes with a symbol, not with text to search stories for.`, "Usage: gloom news <query>");
     const problem = newsSearchTextProblem(text);
     if (problem) ctx.fail(problem);
     await printNewsSearch(text, await searchNewsStories(text, limit), {}, ctx);
@@ -1937,7 +1941,7 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
     await printMetalNews(metal, limit, ctx);
     return;
   }
-  if (exchangeOption && !args[0]) ctx.fail("--exchange needs a symbol: gloomberb news <symbol> --exchange <code>");
+  if (exchangeOption && !args[0]) ctx.fail("--exchange needs a symbol: gloom news <symbol> --exchange <code>");
   await withMarketData(ctx, async (market) => {
     const listing = args[0] ? await requireCliListing(args[0], exchangeOption, market, ctx) : null;
     const quoteLoad = listing ? loadListingQuote(market.dataProvider, listing) : Promise.resolve(null);
@@ -2255,7 +2259,7 @@ function insiderSummary(
   const transactions = form4?.status === "available"
     ? [
       ...form4.summary ? [form4.summary] : [],
-      `${form4.lines} Form 4 ${form4.lines === 1 ? "line" : "lines"} in the latest ${form4.filings} ${form4.filings === 1 ? "filing" : "filings"}${form4.newestFiled ? `, newest filed ${form4.newestFiled}` : ""}: gloomberb fn INS ${listing.key}`,
+      `${form4.lines} Form 4 ${form4.lines === 1 ? "line" : "lines"} in the latest ${form4.filings} ${form4.filings === 1 ? "filing" : "filings"}${form4.newestFiled ? `, newest filed ${form4.newestFiled}` : ""}: gloom fn INS ${listing.key}`,
     ].join("\n")
     : form4?.status === "no-sec-reports" ? [noSecReportsNotice(identity), form4.home].filter(Boolean).join(" ")
     : form4 ? insiderEmptyNotice(form4.status === "foreign-private-issuer", form4.home) : "";
@@ -2470,6 +2474,7 @@ async function runAnalyst(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     ]);
     const identity = listingIdentity(listing, quote);
     const choice = await listingChoiceNotes(listing, market, quote, venues);
+    const { upside, reference } = analystUpside(data, quote);
     ctx.printResult({
       data,
       metadata: {
@@ -2477,6 +2482,8 @@ async function runAnalyst(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         recommendationRating: data.recommendationRating,
         priceTarget: data.priceTarget,
         recommendations: data.recommendations,
+        upside: upside ?? null,
+        upsideReference: analystReferenceMetadata(reference),
       },
       freshness: rowsFreshness(analystRows(data), {
         ...REPORTED_DATA, basis: "analyst ratings", observedKey: "date", oldest: null,
@@ -2485,7 +2492,7 @@ async function runAnalyst(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     }, {
       heading: listingHeading(identity),
       rows: analystRows,
-      summary: analystSummary,
+      summary: (research) => analystSummary(research, quote),
       columns: [
         { key: "date", header: "Date" },
         { key: "firm", header: "Firm" },
@@ -2549,14 +2556,14 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     // With --leaps, --expiration is a window of one expiry.
     const expirationGiven = expiration != null || rawArgs.some((arg) => arg === "--expiration" || arg.startsWith("--expiration="));
     const criteria = parseLeapsCriteria({ ...leapsOptions.raw, ...expirationGiven ? { "--expiration": expiration ?? "" } : {} });
-    if ("error" in criteria) ctx.fail(criteria.error, `Usage: gloomberb ${LEAPS_USAGE}`);
+    if ("error" in criteria) ctx.fail(criteria.error, `Usage: gloom ${LEAPS_USAGE}`);
     const entries = normalizeSymbols(args);
-    if (entries.length === 0) ctx.fail("--leaps needs at least one symbol.", `Usage: gloomberb ${LEAPS_USAGE}`);
+    if (entries.length === 0) ctx.fail("--leaps needs at least one symbol.", `Usage: gloom ${LEAPS_USAGE}`);
     await withMarketData(ctx, async (market) => runLeapsScreen(await readSymbols(entries, market.dataProvider), exchangeOption, criteria, market, ctx));
     return;
   }
   if (leapsOptions.given.length > 0) {
-    ctx.fail(`${leapsOptions.given.join(", ")} only ${leapsOptions.given.length > 1 ? "apply" : "applies"} with --leaps.`, `Usage: gloomberb ${LEAPS_USAGE}`);
+    ctx.fail(`${leapsOptions.given.join(", ")} only ${leapsOptions.given.length > 1 ? "apply" : "applies"} with --leaps.`, `Usage: gloom ${LEAPS_USAGE}`);
   }
   const raw = requireOneArg(args, OPTIONS_USAGE, "symbol", ctx);
   let expirationDate: number | undefined;
@@ -2565,7 +2572,7 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     if (parsed == null) {
       ctx.fail(
         expiration == null ? "--expiration needs a date." : `Invalid --expiration "${expiration}".`,
-        `Use ${OPTION_EXPIRATION_FORMAT}.${expiration == null ? "" : expirationHint(expiration)}\nUsage: gloomberb ${OPTIONS_USAGE}`,
+        `Use ${OPTION_EXPIRATION_FORMAT}.${expiration == null ? "" : expirationHint(expiration)}\nUsage: gloom ${OPTIONS_USAGE}`,
       );
     }
     expirationDate = parsed;
@@ -2594,9 +2601,9 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       // A name read as a fund or an index asks about the company's stock it means, whose options are listed.
       const meant = meantQuestion(listing);
       return ctx.fail(meant ? `${optionsUnavailableTitle(listing.key)} ${meant}` : optionsUnavailableTitle(listing.key), alternative
-        ? `Nearest listed alternative: ${alternative.symbol} (${alternative.name}), gloomberb options ${alternative.symbol}.`
-          + ` Strategy payoffs: gloomberb fn OSA ${alternative.symbol}`
-        : "Strategy payoffs on a listed underlying: gloomberb fn OSA <ticker>");
+        ? `Nearest listed alternative: ${alternative.symbol} (${alternative.name}), gloom options ${alternative.symbol}.`
+          + ` Strategy payoffs: gloom fn OSA ${alternative.symbol}`
+        : "Strategy payoffs on a listed underlying: gloom fn OSA <ticker>");
     });
     const inputs = await inputsPromise;
     if (expirationDate != null && !chainHasExpiry(loaded, expirationDate)) {
@@ -2805,27 +2812,27 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
   const args = [...rawArgs];
   const dateOption = takeOption(args, "--date");
   const forwardOption = takeOption(args, "--forward");
-  if (args.length === 0) ctx.fail(`Usage: gloomberb ${FX_USAGE}`);
+  if (args.length === 0) ctx.fail(`Usage: gloom ${FX_USAGE}`);
   // A forward is implied from today's spot and the latest short rates, which are all Gloom Cloud serves.
   if (dateOption != null && forwardOption != null) {
     ctx.fail(
       "fx --forward does not take --date: the forward is implied from today's spot and the latest short rates, and past short rates are not served.",
-      `For that day's close: gloomberb fx ${args.join(" ")} --date ${dateOption}. For today's forward, drop --date.`,
+      `For that day's close: gloom fx ${args.join(" ")} --date ${dateOption}. For today's forward, drop --date.`,
     );
   }
   const date = dateOption == null ? null : readFxDate(dateOption, ctx);
   const tenor = forwardOption == null ? null : parseForwardTenor(forwardOption);
-  if (tenor && "error" in tenor) ctx.fail(tenor.error, `Usage: gloomberb ${FX_FORWARD_USAGE}`);
+  if (tenor && "error" in tenor) ctx.fail(tenor.error, `Usage: gloom ${FX_FORWARD_USAGE}`);
   await withMarketData(ctx, async (market) => {
     const parsed = parseFxArgs(args, market.config.baseCurrency);
-    if ("error" in parsed) return ctx.fail(parsed.error, `Usage: gloomberb ${forwardOption == null ? FX_USAGE : FX_FORWARD_USAGE}`);
+    if ("error" in parsed) return ctx.fail(parsed.error, `Usage: gloom ${forwardOption == null ? FX_USAGE : FX_FORWARD_USAGE}`);
     if (date) return runFxOnDate(parsed, date, args, market, ctx);
     const { request, amount, toUsdByDefault } = parsed;
     const { currency, baseCurrency } = request;
     const pair = `${currency}/${baseCurrency}`;
     if (tenor) {
-      if (amount != null) ctx.fail("--forward prices a pair, not an amount.", `Usage: gloomberb ${FX_FORWARD_USAGE}`);
-      if (currency === baseCurrency) ctx.fail(`${pair} has no forward: both sides are ${currency}.`, `Usage: gloomberb ${FX_FORWARD_USAGE}`);
+      if (amount != null) ctx.fail("--forward prices a pair, not an amount.", `Usage: gloom ${FX_FORWARD_USAGE}`);
+      if (currency === baseCurrency) ctx.fail(`${pair} has no forward: both sides are ${currency}.`, `Usage: gloom ${FX_FORWARD_USAGE}`);
     }
     // The short rates are read alongside spot. A failed read is held as a value, not left to reject
     // unobserved while spot loads, and is raised where the forward needs the rates.
@@ -2951,7 +2958,7 @@ async function runEarnings(rawArgs: string[], ctx: Parameters<CliCommandDef["exe
   const args = [...rawArgs];
   const exchangeOption = takeOption(args, "--exchange");
   const entries = normalizeSymbols(args);
-  if (entries.length === 0) ctx.fail("Usage: gloomberb earnings <symbol...>");
+  if (entries.length === 0) ctx.fail("Usage: gloom earnings <symbol...>");
   await withCliServices(ctx, async (services) => {
     const symbols = await readSymbols(entries, services.dataProvider);
     const listings = await Promise.all(symbols.map((symbol) => requireCliListing(
@@ -3081,8 +3088,8 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
       }, {
         title: "Long history",
         lines: [
-          "ZAR has daily FRED data from 1980: gloomberb fred DEXSFUS --start 1980 --sort asc --csv",
-          "NGN, SAR and ILS have no FRED series. Their daily bars cover the last five years (gloomberb fn G USDNGN=X --rangePreset 5Y --chartResolution 1d --csv); before that there are monthly bars only (gloomberb history USDNGN=X --range ALL).",
+          "ZAR has daily FRED data from 1980: gloom fred DEXSFUS --start 1980 --sort asc --csv",
+          "NGN, SAR and ILS have no FRED series. Their daily bars cover the last five years (gloom fn G USDNGN=X --rangePreset 5Y --chartResolution 1d --csv); before that there are monthly bars only (gloom history USDNGN=X --range ALL).",
         ],
       }],
       examples: [
@@ -3165,7 +3172,7 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
     },
     execute: async (args, ctx) => {
       const query = args.join(" ");
-      if (!query) ctx.fail("Usage: gloomberb provider-search <query>");
+      if (!query) ctx.fail("Usage: gloom provider-search <query>");
       await withMarketData(ctx, async (market) => {
         const results = await market.dataProvider.search(query);
         ctx.printResult({ data: results.slice(0, ctx.cliOptions.limit ?? results.length) }, {
@@ -3291,7 +3298,7 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
       options: [EXCHANGE_OPTION],
       sections: [{
         title: "13F filings",
-        lines: ["For each fund's reported position and its change over the quarter, run gloomberb fn 13F <symbol>."],
+        lines: ["For each fund's reported position and its change over the quarter, run gloom fn 13F <symbol>."],
       }],
       examples: ["13f AAPL", "13f BP:NYSE"],
     },

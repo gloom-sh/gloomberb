@@ -50,7 +50,7 @@ interface PaneScreenshotPrepared {
 }
 
 /**
- * How `gloomberb shot` certifies a pane that publishes a `chart-data` semantic
+ * How `gloom shot` certifies a pane that publishes a `chart-data` semantic
  * node. The pane owns its evidence format; the CLI only accepts what `read`
  * re-derives and checks it against the request here.
  */

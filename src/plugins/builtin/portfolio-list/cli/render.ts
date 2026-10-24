@@ -729,10 +729,10 @@ async function showCollectionWithMarketData(
 
   const matchedPortfolio = collection.kind === "portfolio" ? collection.portfolio : undefined;
   if (!matchedPortfolio && basis === "regular-close") {
-    ctx.fail(`--close values a portfolio; "${collection.name}" is a watchlist.`, "Usage: gloomberb portfolio show <portfolio> --close");
+    ctx.fail(`--close values a portfolio; "${collection.name}" is a watchlist.`, "Usage: gloom portfolio show <portfolio> --close");
   }
   if (!matchedPortfolio && drip) {
-    ctx.fail(`--drip projects a portfolio's dividends; "${collection.name}" is a watchlist.`, "Usage: gloomberb portfolio show <portfolio> --drip");
+    ctx.fail(`--drip projects a portfolio's dividends; "${collection.name}" is a watchlist.`, "Usage: gloom portfolio show <portfolio> --drip");
   }
   const isPortfolio = !!matchedPortfolio;
   const id = collection.id;

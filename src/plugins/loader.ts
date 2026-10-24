@@ -39,7 +39,7 @@ export interface LoadedExternalPlugin {
   commit?: string;
   /** `owner/repo` of the checkout's GitHub origin; usage counts trust only gloom-sh's. */
   repo?: string;
-  /** A symlink to a local checkout (`gloomberb plugin link`) rather than a clone. */
+  /** A symlink to a local checkout (`gloom plugin link`) rather than a clone. */
   linked?: boolean;
   /**
    * The plugin's logo as a `data:` URL (plugin-icon.ts), for the desktop and
@@ -75,8 +75,8 @@ export function getPluginCacheDir(): string {
  * Whether a directory inside the plugins folder is a plugin at all.
  *
  * Dot-directories are bookkeeping, not plugins: the desktop bundle cache used
- * to be written to `plugins/.cache`, and it showed up in `gloomberb plugins`
- * as an installed plugin and in `gloomberb update` as a repo to pull. The
+ * to be written to `plugins/.cache`, and it showed up in `gloom plugins`
+ * as an installed plugin and in `gloom update` as a repo to pull. The
  * cache has moved out, but old installs still have that directory, so this
  * stays as the single rule every reader shares.
  */
@@ -184,7 +184,7 @@ export function findAbsorbedCheckout(pluginDir: string): AbsorbedPlugin | null {
 
 function skipsAbsorbedCheckout(pluginDir: string, absorbed: AbsorbedPlugin | null = findAbsorbedCheckout(pluginDir)): boolean {
   if (!absorbed) return false;
-  loaderLog.debug(`Skipped ${basename(pluginDir)}: ${absorbed.name} is built into Gloomberb now`);
+  loaderLog.debug(`Skipped ${basename(pluginDir)}: ${absorbed.name} is built into Gloom now`);
   return true;
 }
 
@@ -567,7 +567,7 @@ function isSymlink(path: string): boolean {
   }
 }
 
-/** A linked plugin (`gloomberb plugin link`) is a symlink, which `readdir` does not report as a directory. */
+/** A linked plugin (`gloom plugin link`) is a symlink, which `readdir` does not report as a directory. */
 export function isDirectoryOrLink(entry: { isDirectory(): boolean; isSymbolicLink(): boolean }, path: string): boolean {
   if (entry.isDirectory()) return true;
   if (!entry.isSymbolicLink()) return false;

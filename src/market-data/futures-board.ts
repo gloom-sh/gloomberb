@@ -37,7 +37,7 @@ export interface FuturesContract {
    * is this future wherever a symbol is typed. Codes a security also uses (NG
    * is NovaGold, CL Colgate, ZM Zoom, GC several venues' listings) leave it
    * unset: the security keeps the code and the future is its `=F` symbol.
-   * Checked with `gloomberb quote <code>` signed out on 2026-10-11: each of
+   * Checked with `gloom quote <code>` signed out on 2026-10-11: each of
    * these was "Not a ticker", or for ZT and ZF a quote last updated in 2023 and
    * 2021 that search no longer lists. The sector, index and energy rows were
    * checked the same way on 2026-10-14: XAR is an ETF, XAU Goldmoney, SXI
