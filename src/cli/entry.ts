@@ -22,6 +22,10 @@ import {
 } from "./native-smoke";
 
 async function launchOpenTuiApp(cliLaunchRequest: CliLaunchRequest | null = null): Promise<void> {
+  // Before anything in the app can reach for the render library, so a temp
+  // folder that cannot run it is worked around (or named) first.
+  const { loadRenderLib } = await import("../renderers/opentui/render-lib");
+  await measurePerfAsync("startup.opentui.render-lib", loadRenderLib);
   const { startOpenTuiApp } = await import("../renderers/opentui/start");
   // Before the catalog is read, so a plugin that moved out of this repository is
   // available in the same session rather than only after a restart.

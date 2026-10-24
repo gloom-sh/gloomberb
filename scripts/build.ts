@@ -155,6 +155,33 @@ async function smokeRunner(target: BuildTarget, smokeDir: string): Promise<strin
   return [container, "run", "--rm", "--volume", `${smokeDir}:${smokeDir}:ro`, "--workdir", smokeDir, MUSL_SMOKE_IMAGE];
 }
 
+interface SmokeCheck {
+  /** The binary by default. */
+  command?: string;
+  args: string[];
+  /** Added to the environment for this check. */
+  env?: Record<string, string>;
+  /** Runs this check under another runner than the target's. */
+  runner?: string[];
+  failureMessage: string;
+}
+
+/**
+ * Runs a command in its own mount namespace with a noexec tmpfs over `dir`,
+ * or null where unprivileged user namespaces cannot mount one (Linux only,
+ * and some distributions restrict them).
+ */
+async function noexecTempRunner(dir: string): Promise<string[] | null> {
+  if (process.platform !== "linux" || !Bun.which("unshare")) return null;
+  mkdirSync(dir, { recursive: true });
+  const runner = [
+    "unshare", "--user", "--map-root-user", "--mount",
+    "sh", "-c", 'mount -t tmpfs -o noexec,size=64m tmpfs "$0" && exec "$@"', dir,
+  ];
+  const code = await runProcess([...runner, "true"], "", { stdout: "ignore", stderr: "ignore" }, true);
+  return code === 0 ? runner : null;
+}
+
 async function smokeTestBinary(outfile: string, target: BuildTarget) {
   const { os } = target;
   const smokeDir = mkdtempSync(join(tmpdir(), "gloomberb-smoke-"));
@@ -177,11 +204,36 @@ async function smokeTestBinary(outfile: string, target: BuildTarget) {
   copyFileSync(outfile, smokeBinary);
   if (os !== "windows") chmodSync(smokeBinary, 0o755);
 
-  const checks: Array<{ command?: string; args: string[]; failureMessage: string }> = [
+  // Bun writes the render library to its temp folder before loading it. With
+  // a folder that cannot take the file, or one mounted noexec, the binary
+  // loads a copy from the Gloom folder instead.
+  const inContainer = runner.length > 0;
+  const missingTemp = join(smokeDir, "missing-temp");
+  const noexecTemp = join(smokeDir, "noexec-temp");
+  const noexec = inContainer ? null : await noexecTempRunner(noexecTemp);
+  if (!inContainer && !noexec) console.log("Skipping the noexec temp folder check: no unprivileged mount namespace here");
+
+  const checks: SmokeCheck[] = [
     {
       args: [OPEN_TUI_NATIVE_SMOKE_COMMAND],
       failureMessage: `Packaged binary failed to load OpenTUI native package: ${outfile}`,
     },
+    {
+      args: [OPEN_TUI_NATIVE_SMOKE_COMMAND],
+      env: {
+        BUN_TMPDIR: missingTemp,
+        TMPDIR: missingTemp,
+        // The container mounts the smoke folder read-only.
+        GLOOMBERB_HOME: inContainer ? "/tmp/gloomberb-smoke-home" : join(smokeDir, "home-missing-temp"),
+      },
+      failureMessage: `Packaged binary failed to load OpenTUI when its temp folder cannot take the library: ${outfile}`,
+    },
+    ...(noexec ? [{
+      runner: noexec,
+      args: [OPEN_TUI_NATIVE_SMOKE_COMMAND],
+      env: { BUN_TMPDIR: noexecTemp, TMPDIR: noexecTemp, GLOOMBERB_HOME: join(smokeDir, "home-noexec-temp") },
+      failureMessage: `Packaged binary failed to load OpenTUI with a noexec temp folder: ${outfile}`,
+    }] : []),
     {
       args: [OPEN_TUI_RUNTIME_SMOKE_COMMAND],
       failureMessage: `Packaged binary failed to load the OpenTUI runtime graph: ${outfile}`,
@@ -210,10 +262,15 @@ async function smokeTestBinary(outfile: string, target: BuildTarget) {
 
   try {
     for (const check of checks) {
+      const checkRunner = check.runner ?? runner;
+      // A container does not see this process's environment, so it gets the check's through `env`.
+      const envInContainer = check.env && checkRunner === runner && inContainer
+        ? ["env", ...Object.entries(check.env).map(([name, value]) => `${name}=${value}`)]
+        : [];
       const code = await runProcess(
-        [...runner, check.command ?? smokeBinary, ...check.args],
+        [...checkRunner, ...envInContainer, check.command ?? smokeBinary, ...check.args],
         check.failureMessage,
-        { cwd: smokeDir, stdout: "ignore" },
+        { cwd: smokeDir, stdout: "ignore", ...(check.env && !envInContainer.length ? { env: { ...process.env, ...check.env } } : {}) },
         true,
       );
       if (code !== 0) {
@@ -231,14 +288,53 @@ async function smokeTestBinary(outfile: string, target: BuildTarget) {
   }
 }
 
-function buildCompileEntrySource(nativePackageName: string): string {
+function buildCompileEntrySource(renderLibModule: string): string {
   return [
     // Points @opentui/core at the musl library on musl before anything loads it.
     `import "../src/cli/opentui-libc.ts";`,
-    `import ${JSON.stringify(nativePackageName)};`,
+    `import "./${renderLibModule}";`,
     // Before the CLI, so the page is in place before any command runs.
     `import "./${SHOT_VIEW_MODULE}";`,
     `import "../src/cli/entry.ts";`,
+    "",
+  ].join("\n");
+}
+
+function isInstalled(packageName: string): boolean {
+  try {
+    Bun.resolveSync(packageName, rootDir);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Embeds the target's render library and tells the binary where it sits
+ * inside it, for the copy it loads from the Gloom folder when the temp folder
+ * cannot run it (src/renderers/opentui/render-lib.ts). @opentui/core picks the
+ * glibc or musl library at runtime, so a Linux binary names both when the
+ * build host has them.
+ */
+function buildRenderLibModuleSource({ os, arch, nativePackageName }: BuildTarget): string {
+  const register = `import { useEmbeddedRenderLib } from "../src/renderers/opentui/render-lib.ts";`;
+  if (os !== "linux") {
+    return [
+      `import renderLib from ${JSON.stringify(nativePackageName)};`,
+      register,
+      "useEmbeddedRenderLib({ path: renderLib });",
+      "",
+    ].join("\n");
+  }
+  const glibcPackage = `@opentui/core-linux-${arch}`;
+  const muslPackage = `${glibcPackage}-musl`;
+  const hasGlibc = glibcPackage === nativePackageName || isInstalled(glibcPackage);
+  const hasMusl = muslPackage === nativePackageName || isInstalled(muslPackage);
+  return [
+    ...(hasGlibc ? [`import glibcRenderLib from ${JSON.stringify(glibcPackage)};`] : []),
+    ...(hasMusl ? [`import muslRenderLib from ${JSON.stringify(muslPackage)};`] : []),
+    register,
+    `useEmbeddedRenderLib({ path: ${hasGlibc ? "glibcRenderLib" : "muslRenderLib"}${hasMusl ? ", musl: muslRenderLib" : ""} });`,
     "",
   ].join("\n");
 }
@@ -283,14 +379,16 @@ function compressGzip(path: string): string {
 }
 
 async function build(targetConfig: BuildTarget) {
-  const { os, arch, libc, bunOs, extension, nativePackageName } = targetConfig;
+  const { os, arch, libc, bunOs, extension } = targetConfig;
   mkdirSync(join(rootDir, "dist"), { recursive: true });
   const name = targetName(targetConfig);
   const outfile = join(rootDir, `dist/gloomberb-${name}${extension}`);
   const compileEntry = join(rootDir, "dist", `.gloomberb-compile-entry-${name}.ts`);
+  const renderLibModule = `.gloomberb-render-lib-${name}.ts`;
   const target = `bun-${bunOs}-${arch}${libc === "musl" ? "-musl" : ""}`;
   console.log(`Building ${target}...`);
-  writeFileSync(compileEntry, buildCompileEntrySource(nativePackageName));
+  writeFileSync(join(rootDir, "dist", renderLibModule), buildRenderLibModuleSource(targetConfig));
+  writeFileSync(compileEntry, buildCompileEntrySource(renderLibModule));
   // `--production` is the only switch that flips both the JSX transform and
   // React itself to production builds. Setting NODE_ENV in the environment or
   // through --define leaves jsxDEV calls behind that resolve to nothing at
@@ -311,6 +409,7 @@ async function build(targetConfig: BuildTarget) {
     true,
   );
   rmSync(compileEntry, { force: true });
+  rmSync(join(rootDir, "dist", renderLibModule), { force: true });
   if (buildExitCode !== 0) {
     console.error(`Failed to build ${target}`);
     process.exit(1);

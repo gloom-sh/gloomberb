@@ -38,6 +38,7 @@ describe("getGloomberbDirs", () => {
         data: join(home, "gloom"),
         plugins: join(home, "gloom", "plugins"),
         pluginCache: join(home, "gloom", "plugin-cache"),
+        nativeCache: join(home, "gloom", "native-cache"),
       });
     }
   });
@@ -75,6 +76,7 @@ describe("getGloomberbDirs", () => {
       data: join(home, ".local", "share", "gloomberb"),
       plugins: join(home, ".local", "share", "gloomberb", "plugins"),
       pluginCache: join(home, ".cache", "gloomberb", "plugin-cache"),
+      nativeCache: join(home, ".cache", "gloomberb", "native-cache"),
     });
   });
 

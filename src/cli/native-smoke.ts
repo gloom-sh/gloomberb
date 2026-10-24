@@ -7,6 +7,8 @@ export async function smokeOpenTuiNative(): Promise<void> {
 }
 
 export async function smokeOpenTuiRuntime(): Promise<void> {
+  const { loadRenderLib } = await import("../renderers/opentui/render-lib");
+  await loadRenderLib();
   await import("../renderers/opentui/start");
   const { assertRendersLeaveNoTimingEntries } = await import("../renderers/opentui/render-timing-smoke");
   await assertRendersLeaveNoTimingEntries();

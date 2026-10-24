@@ -88,6 +88,8 @@ On Apple Silicon Macs it installs the desktop app in `/Applications` and links t
 
 To install by hand on Linux, download the [x64](https://github.com/gloom-sh/gloomberb/releases/latest/download/gloomberb-linux-x64.gz) or [ARM64](https://github.com/gloom-sh/gloomberb/releases/latest/download/gloomberb-linux-arm64.gz) binary (on musl, [x64](https://github.com/gloom-sh/gloomberb/releases/latest/download/gloomberb-linux-x64-musl.gz) or [ARM64](https://github.com/gloom-sh/gloomberb/releases/latest/download/gloomberb-linux-arm64-musl.gz)), unpack it with `gzip`, mark it executable and put it on your `PATH` as `gloom`.
 
+The standalone binary unpacks its render library into the temp folder (`TMPDIR`, `/tmp` by default) when it starts. If that folder is full, read-only or mounted `noexec`, it copies the library once to `native-cache` beside the plugin cache (`~/.gloomberb/native-cache`, or `~/.cache/gloomberb/native-cache` on a new Linux install) and loads it from there. If that fails too, it says so and exits; start it with `TMPDIR` set to a writable folder that allows running programs.
+
 On first start, the app clones its missing official plugins from GitHub once a local profile exists. That needs Git and network access ([which plugins](../PLUGINS.md#official-plugins-that-need-git)). Packaged apps use their bundled Bun runtime to install plugin dependencies. See [plugin installation](../PLUGINS.md).
 
 ## Uninstall
