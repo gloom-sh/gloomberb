@@ -8,6 +8,7 @@ import { useAsyncResource, useAutoRefresh, usePaneVisible, usePluginPaneState } 
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { cachedBreadth, loadBreadth } from "./client";
+import { useLiveSessionRefresh } from "../shared/volatility/live-session";
 import { decimal } from "./model";
 
 const percent = (value: number | null) => value == null ? "--" : `${value.toFixed(1)}%`;
@@ -17,9 +18,9 @@ const dateOf = (row: BreadthDay) => new Date(`${row.date}T00:00:00Z`);
 const keyOf = (row: BreadthDay) => row.date;
 const valueOf = (row: BreadthDay, metric: Metric) => metric === "adLine" ? row.adLine : row[metric].percent;
 const COLUMNS: DataTableColumn[] = [
-  { id: "date", label: "Date", width: 12, flexGrow: 1, align: "left" },
+  { id: "date", label: "Date", width: 12, align: "left" },
   ...["advances", "declines", "unchanged", "ma20", "ma50", "ma200", "newHighs", "newLows", "coverage"].map((id, index) => ({
-    id, label: ["Adv", "Dec", "Unch", ">20D %", ">50D %", ">200D %", "52W high", "52W low", "A/D covered"][index]!, width: index === 8 ? 13 : 10, align: "right" as const,
+    id, label: ["Adv", "Dec", "Unch", ">20D %", ">50D %", ">200D %", "52W high", "52W low", "A/D covered"][index]!, width: index === 8 ? 13 : 10, flexGrow: 1, align: "right" as const,
   })),
 ];
 
@@ -39,16 +40,17 @@ export function Breadth({ fund, width, height, focused, active }: Pick<PaneProps
     color: colors.warning, calendarSpaced: true,
   })], [history, metric, colors.warning]);
   const link = useChartTableSelection({ rows, getId: keyOf, getDate: dateOf, selectedId: selected ?? latest?.date ?? null, onSelect: setSelected, focused });
-  useAutoRefresh(resource.updatedAt, () => { if (active && visible) void resource.load(data?.basis === "intraday"); }, { intervalMs: data?.basis === "intraday" ? data.access === "realtime" ? 15_000 : 60_000 : null });
+  const sessionOpen = useLiveSessionRefresh(() => resource.load(true), data?.access === "realtime" ? 15_000 : 60_000, active && visible, resource.updatedAt);
+  useAutoRefresh(resource.updatedAt, () => { if (active && visible && !sessionOpen) void resource.load(data?.basis === "intraday"); });
   usePaneRefreshKey(() => void resource.reload(), { focused, enabled: active });
   usePaneStatusFooter({ registrationId: "members:breadth", loading: !!data && resource.loading,
     stale: !!data && (data.stale || resource.data!.stale || !!resource.error), info: latest ? [
       { id: "as-of", asOf: true, parts: [{ text: `${data?.basis === "intraday" ? data.access === "realtime" ? "live" : "15m delayed" : "close"} ${latest.date}`, tone: "muted" }] },
-      { id: "coverage", parts: [{ text: `A/D ${latest.advanceDeclineEligible}/${latest.memberCount}`, tone: latest.advanceDeclineEligible < latest.memberCount ? "warning" : "muted" }] },
+      { id: "coverage", parts: [{ text: `A/D ${latest.advanceDeclineEligible}/${latest.memberCount}`, tone: latest.advanceDeclineEligible < latest.memberCount * 0.8 ? "warning" : "muted" }] },
     ] : [] });
   usePaneNoticeFooter({ registrationId: "members:breadth-notices", focused, notices: [
     ...(resource.error || resource.data?.refreshError ? [resource.error ?? resource.data!.refreshError!] : []),
-    ...(latest && [latest.advanceDeclineEligible, latest.ma20.eligible, latest.ma50.eligible, latest.ma200.eligible, latest.highLowEligible].some(n => n < latest.memberCount)
+    ...(latest && [latest.advanceDeclineEligible, latest.ma20.eligible, latest.ma50.eligible, latest.ma200.eligible, latest.highLowEligible].some(n => n < latest.memberCount * 0.8)
       ? [`Partial coverage: A/D ${latest.advanceDeclineEligible}, 20D ${latest.ma20.eligible}, 50D ${latest.ma50.eligible}, 200D ${latest.ma200.eligible}, 52W ${latest.highLowEligible} of ${latest.memberCount} members. Missing windows are excluded.`] : []),
   ] });
   return <PaneStatusBody subject="fund breadth" loading={!data && resource.loading} error={!data ? resource.error : null}
@@ -66,7 +68,7 @@ export function Breadth({ fund, width, height, focused, active }: Pick<PaneProps
           color: column.id === "advances" || column.id === "newHighs" ? colors.positive : column.id === "declines" || column.id === "newLows" ? colors.negative : colors.text };
       }}
       rootBefore={<ChartTableHeader width={width} height={height} tableRows={rows.length} tableColumns={columns}
-        query={<QueryBar width={width} filters={[{ kind: "select", id: "chart", label: "History", value: metric, options: CHARTS, onChange: value => setMetric(value as Metric) }]} />}
+        query={<QueryBar width={width} meta="History uses current members (survivorship bias)." filters={[{ kind: "select", id: "chart", label: "History", value: metric, options: CHARTS, onChange: value => setMetric(value as Metric) }]} />}
         figures={[
           { label: "Adv / Dec", value: latest.advanceDeclineEligible ? `${latest.advances} / ${latest.declines}` : "--", detail: `${latest.unchanged} unchanged` },
           ...([20, 50, 200] as const).map(window => ({ label: `Above ${window}D`, value: percent(latest[`ma${window}`].percent), detail: `${latest[`ma${window}`].eligible}/${latest.memberCount} covered` })),

@@ -20,4 +20,6 @@ test("MEMB index arguments reach the fund service without requiring a stock quot
     expect(resolved.options.tab).toBe("breadth");
     expect(canonicalFund(alias)).toBe(fund);
   }
+  // Bare listings must not be redirected to an unrelated tracking fund.
+  for (const ticker of ["MID", "SML"]) expect(canonicalFund(ticker)).toBe(ticker);
 });

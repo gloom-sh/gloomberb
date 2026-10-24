@@ -8,7 +8,7 @@ export const TABS = [{ value: "members", label: "Members" }, { value: "movers", 
 export const isTab = (value: unknown): value is MembersTab => TABS.some((tab) => tab.value === value);
 const COVERED = [{ ticker: "IVV", name: "S&P 500" }, { ticker: "IJH", name: "S&P 400" }, { ticker: "IJR", name: "S&P 600" }, { ticker: "IWM", name: "Russell 2000" }, { ticker: "IWB", name: "Russell 1000" }];
 /** Symbols the app reads as a covered fund before asking the server, which knows its own aliases too. */
-const LOCAL_ALIASES: Record<string, string> = { SPX: "IVV", "^SPX": "IVV", SPY: "IVV", "^GSPC": "IVV", MID: "IJH", "^MID": "IJH", SP400: "IJH", "^SP400": "IJH", SML: "IJR", "^SML": "IJR", SP600: "IJR", "^SP600": "IJR", RUT: "IWM", "^RUT": "IWM", RUI: "IWB", "^RUI": "IWB" };
+const LOCAL_ALIASES: Record<string, string> = { SPX: "IVV", "^SPX": "IVV", SPY: "IVV", "^GSPC": "IVV", "^MID": "IJH", SP400: "IJH", "^SP400": "IJH", "^SML": "IJR", SP600: "IJR", "^SP600": "IJR", RUT: "IWM", "^RUT": "IWM", RUI: "IWB", "^RUI": "IWB" };
 const requestedSymbol = (input: string) => input.split(":")[0]!.trim().toUpperCase();
 export function canonicalFund(input: string) { const symbol = requestedSymbol(input); return LOCAL_ALIASES[symbol] ?? symbol; }
 /** The covered fund the user asked for, by ticker or by an alias such as SPX, or undefined when it is not covered. */

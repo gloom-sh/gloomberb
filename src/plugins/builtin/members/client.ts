@@ -34,13 +34,13 @@ async function fetchPayload<T>(fetcher: () => Promise<T>, validate: (data: T) =>
  * same. The covered list tells them apart: a fund missing from a readable list is not covered; a list
  * that cannot be read, or that holds the fund, leaves the server-side message.
  */
-async function fetchFundPayload<T>(fund: string, fetcher: () => Promise<T>, validate: (data: T) => T, client: Client) {
+async function fetchFundPayload<T>(fund: string, fetcher: () => Promise<T>, validate: (data: T) => T, client: Client, unavailable = UNAVAILABLE) {
   try { return validate(await fetcher()); } catch (error) {
     if (error instanceof ApiRequestError && error.status === 404) {
       const funds = await fetchFunds(client).then((payload) => payload.funds, () => []);
       if (funds.length && !coveredFund(funds, fund)) throw new Error(notCoveredMessage(fund, funds));
     }
-    throw unavailableOnServer(error, UNAVAILABLE);
+    throw unavailableOnServer(error, unavailable);
   }
 }
 export const fetchFunds = (client: Client = apiClient) => fetchPayload(() => client.getMemberFunds(), validateFunds);
@@ -61,6 +61,6 @@ function validateBreadth(data: FundBreadthPayload) {
   if (!data?.fund?.ticker || !Array.isArray(data.history) || !data.history.every(row) || (data.latest !== null && !row(data.latest))) throw new Error("Unreadable fund breadth response");
   return data;
 }
-export const fetchBreadth = (fund: string, client: Client & Pick<typeof apiClient, "getFundBreadth"> = apiClient) => fetchFundPayload(fund, () => client.getFundBreadth(fund), validateBreadth, client);
+export const fetchBreadth = (fund: string, client: Client & Pick<typeof apiClient, "getFundBreadth"> = apiClient) => fetchFundPayload(fund, () => client.getFundBreadth(fund), validateBreadth, client, "Fund breadth is not available on this server yet.");
 export const cachedBreadth = (fund: string) => cachedCloudResource(fundBreadthCache, fund, validateBreadth);
 export const loadBreadth = (fund: string, force = false) => loadCloudResource(fundBreadthCache, fund, () => fetchBreadth(fund), { force, validate: validateBreadth });

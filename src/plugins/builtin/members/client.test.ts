@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { ApiRequestError } from "../../../api-client/errors";
-import { fetchChanges, fetchMembers } from "./client";
+import { fetchBreadth, fetchChanges, fetchMembers } from "./client";
 
 const funds = { funds: ["IVV", "IJH", "IJR", "IWM", "IWB"].map((ticker) => ({ ticker, name: ticker, aliases: ticker === "IVV" ? ["SPX"] : [], changes: "none" as const, asOf: "2026-10-05" })) };
 const notFound = () => Promise.reject(new ApiRequestError("NOT_FOUND", 404));
@@ -24,4 +24,8 @@ test("other failures pass through without a list lookup", async () => {
   const failing = { getMemberFunds: async () => { lookups += 1; return funds; }, getFundMembers: () => Promise.reject(new ApiRequestError("Bad gateway", 502)) } as never;
   await expect(fetchMembers("IBIT", failing)).rejects.toThrow("Bad gateway");
   expect(lookups).toBe(0);
+});
+
+test("an old server identifies breadth as the unavailable surface", async () => {
+  await expect(fetchBreadth("SPX", { ...client as object, getFundBreadth: notFound } as never)).rejects.toThrow("Fund breadth is not available on this server yet.");
 });
