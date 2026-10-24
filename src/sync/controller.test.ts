@@ -442,7 +442,7 @@ test("pulls remote changes on later syncs instead of only once per session", asy
   expect(applied).toEqual([{ value: 1 }, { value: 2 }]);
 });
 
-// The cloud copy's signature is kept between polls (GLO-925); another write
+// The cloud copy's signature is kept between polls; another write
 // that comes back under a revision number seen before must not reuse it.
 test("a cloud copy written again under a revision number seen before is compared as written", async () => {
   let local: unknown = { value: 1 };
@@ -611,7 +611,7 @@ function settleCursorAtLaunch(device: ReturnType<typeof createDevice>): () => vo
   return () => device.dispatch({ type: "UPDATE_PANE_STATE", paneId: "portfolio-list:main", patch: { cursorSymbol: "AAPL" } });
 }
 
-// GLO-692: a layout edited on the Mac was gone the next day once the Linux
+// A layout edited on the Mac was gone the next day once the Linux
 // terminal started. Its cursor settled during its first pull, the pulled
 // layout was refused as if Linux had edited its own, and its startup push
 // wrote the older layout over the Mac's everywhere.

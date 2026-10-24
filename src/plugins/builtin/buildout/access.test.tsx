@@ -50,7 +50,7 @@ afterEach(() => {
 
 async function mount() {
   const id = "buildout:access-test";
-  const initial = createInitialState(createTestPaneConfig(`${process.env.HOME}/.cache/gloom-smoke/glo-1125-test`, {
+  const initial = createInitialState(createTestPaneConfig(`${process.env.HOME}/.cache/gloom-smoke/buildout-access-test`, {
     paneId: "buildout", instanceId: id,
   }));
   const runtime = createTestPluginRuntime();

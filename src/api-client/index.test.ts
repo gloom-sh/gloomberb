@@ -152,7 +152,7 @@ describe("apiClient layout marketplace", () => {
 
 // The Cloud reads the base revision only from If-Match. Sent in the body
 // alone, a push merged with an older revision replaced another device's newer
-// one (GLO-692) instead of being refused so this device could pull it first.
+// one instead of being refused so this device could pull it first.
 test("a sync push names the revision it merged with, and a refused one is a conflict", async () => {
   const snapshot = {
     schemaVersion: 1 as const, appId: "gloomberb" as const, clientId: "client_test",

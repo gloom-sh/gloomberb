@@ -342,7 +342,7 @@ test("--peers on a word that is no ticker says so, with the search to run, befor
   expect(screened).toBe(false);
 });
 
-// NESN's last in francs beside AAPL's in dollars: the header claims no currency, each row names its own. (GLO-1263)
+// NESN's last in francs beside AAPL's in dollars: the header claims no currency, each row names its own.
 test("RV's export writes each peer's Last as a number in its own currency, named on its row with its ticker, in every market state", async () => {
   const quote = (symbol: string, currency: string, price: number, at: string, extra: Record<string, unknown> = {}) => ({
     annualStatements: [], quarterlyStatements: [], priceHistory: [], financialCurrency: currency,

@@ -1,11 +1,13 @@
 import { useMemo } from "react";
 import type { DoeBoardPayload, DoeSeriesRow, DoeTab } from "../../../api-client/doe";
 import {
+  ChartRead,
   ChartTableHeader,
   CompositeChart,
   DataTableView,
   PaneStatusBody,
   QueryBar,
+  useChartReadRows,
   usePaneNoticeFooter,
   usePaneStatusFooter,
   usePaneTabs,
@@ -19,7 +21,6 @@ import { useThemeColors } from "../../../theme/theme-context";
 import type { ResolvedSeries } from "../../../time-series/types";
 import type { PaneProps } from "../../../types/plugin";
 import { Box } from "../../../ui";
-import { ClippedText } from "../../../components/ui/display";
 import { DOE_NOT_AVAILABLE, getCachedDoeBoard, loadDoeBoard } from "./client";
 import {
   DOE_TABS,
@@ -52,8 +53,8 @@ const COLUMNS: DataTableColumn[] = [
   { id: "range", label: "5Y Range", width: 12, align: "left" },
 ];
 const PANELS = [{ id: "main" }];
-/** Legend, four plot rows, the week axis and the read under it. */
-const CHART_MIN_ROWS = 7;
+/** Legend, four plot rows and the week axis; the read under them takes its own rows. */
+const CHART_ROWS_ABOVE_READ = 6;
 
 function legendValue(row: DoeSeriesRow) {
   return (value: number) => `${value.toLocaleString("en-US", { minimumFractionDigits: row.unit === "kb" || row.unit === "pct" ? 1 : 0,
@@ -67,20 +68,19 @@ function legendValue(row: DoeSeriesRow) {
  * the years; the plain read sits under the axis.
  */
 function SeasonalChart({ row, series, width, height }: { row: DoeSeriesRow; series: ResolvedSeries[]; width: number; height: number }) {
-  const colors = useThemeColors();
   const weeks = row.seasonal?.weeks ?? 52;
   const latestWeek = row.seasonal?.current.at(-1)?.[0] ?? null;
   const viewport = useMemo(() => ({ start: doeWeekDate(1), end: doeWeekDate(weeks) }), [weeks]);
   const xAxis = useMemo(() => ({ ticks: doeWeekTicks(weeks), formatCursor: (ratio: number) => `W${Math.round(ratio * (weeks - 1)) + 1}` }), [weeks]);
-  // The plain read under the axis; the desktop cuts it where its line ends.
-  const read = row.read && width > 2 ? row.read : "";
+  // The plain read under the axis: wrapped in the terminal, cut by CSS where its line ends on the desktop.
+  const readRows = useChartReadRows([row.read], width);
   return (
     <Box width={width} height={height} flexDirection="column">
-      <CompositeChart series={series} panels={PANELS} width={width} height={Math.max(3, height - (read ? 1 : 0))}
+      <CompositeChart series={series} panels={PANELS} width={width} height={Math.max(3, height - readRows)}
         focused={false} navigable={false} showLegend showTimeAxis viewport={viewport} clipToViewport xAxis={xAxis}
         cursorDate={latestWeek ? doeWeekDate(latestWeek) : null} formatValue={legendValue(row)} formatAxisValue={doeAxisFormatter(row.unit)}
         remoteKind="doe-seasonal" />
-      {read ? <Box height={1} paddingX={1}><ClippedText fg={colors.textMuted} text={read} width={width - 2} /></Box> : null}
+      <ChartRead text={row.read} width={width} />
     </Box>
   );
 }
@@ -96,9 +96,11 @@ function DoeBoard({ payload, tab, initialSeries, width, height, focused }: {
   const series = useMemo(() => selected ? doeSeasonalSeries(selected, colors) : [], [selected, colors]);
   // The query bar's padding aside, the line keeps the next release whole on a narrow pane.
   const meta = doeHeaderLine(doeReport(payload, tab), Date.now(), width - 2);
+  // Room for the longest read at this width, so the chart does not give way to the strip as the selection moves.
+  const readRows = useChartReadRows(rows.map((row) => row.read), width);
   const chart: ChartTableChart | null = selected && series.length ? {
     render: (size) => <SeasonalChart row={selected} series={series} width={size.width} height={size.height} />,
-    minRows: CHART_MIN_ROWS,
+    minRows: CHART_ROWS_ABOVE_READ + Math.max(1, readRows),
     strip: doeSeasonalStrip(selected, colors.positive),
   } : null;
   return (

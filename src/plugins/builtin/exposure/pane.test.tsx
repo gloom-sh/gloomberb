@@ -88,7 +88,7 @@ async function mountSavedInput(settings: Record<string, unknown>) {
   const analyze = spyOn(apiClient, "analyzeCloudExposure").mockImplementation(async request => ({ ...structuredClone(audited) as ExposurePayload, scenario: request.scenario }));
   restores.push(() => library.mockRestore(), () => analyze.mockRestore());
   const id = "exposure:unreadable";
-  const state = createInitialState(createTestPaneConfig(`${process.env.HOME}/.cache/gloom-smoke/glo-1127/pane-test`, {
+  const state = createInitialState(createTestPaneConfig(`${process.env.HOME}/.cache/gloom-smoke/exposure/pane-test`, {
     paneId: "exposure", instanceId: id, params: { input: "ACME=100%" }, settings,
   }));
   let current = state;

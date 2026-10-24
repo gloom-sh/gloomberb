@@ -821,6 +821,46 @@ export function tradingBoardNote(
 }
 
 /**
+ * Ends a command with what it says for a bare symbol no source serves: a
+ * company that moved is under its new symbol, else the listing the symbol went
+ * to and the others (`other`, from `otherListingsMessage`), else what became of
+ * it. Returns when there is nothing to say.
+ */
+async function failUnservedListing(
+  ctx: Pick<CliCommandContext, "fail">,
+  request: ListingDataRequest,
+  other: Promise<OtherListingsMessage | null>,
+): Promise<void> {
+  const [listings, fate] = await Promise.all([other, request.fate?.() ?? null]);
+  // Nothing served either way: a company that moved is under its new symbol, before any other listing.
+  const moved = movedAwayChange(fate?.change);
+  if (moved) failMovedSymbol(moved, request);
+  if (listings) ctx.fail(listings.message, [fate?.note, listings.details].filter(Boolean).join("\n"));
+  if (fate?.note) ctx.fail(`${fate.note}.`);
+}
+
+/**
+ * Refuses a bare symbol several companies list (FP is a newspaper group in
+ * Toronto and Fondul Proprietatea in Bucharest) with the message `quote`
+ * gives it, whatever the command's own request served: the data service answers
+ * a history for the bare symbol from one of the listings, which is a pick the
+ * user never made. Asked once the symbol's own quote (`loadListingQuoteAnswer`)
+ * failed with no provider, so a symbol with a quote, a named or saved listing,
+ * and a symbol one company lists go on as they were. It searches, so ask only then.
+ */
+export async function failUnchosenListing(
+  listing: BareListing,
+  deps: ListingDeps,
+  ctx: Pick<CliCommandContext, "fail">,
+  request: ListingDataRequest,
+  quoteError: unknown,
+): Promise<void> {
+  if (!isNoProviderError(quoteError)) return;
+  const venues = await bareListingVenues(listing, deps);
+  if (venues?.choose) await failUnservedListing(ctx, request, Promise.resolve(describeOtherListings(listing, venues, request)));
+}
+
+/**
  * A data request for the listings a command named. When it throws, or `isMiss`
  * calls what it returned empty, and a listing's exchange is one its symbol does
  * not trade on, the command ends in that message instead of the request's own
@@ -845,14 +885,7 @@ export async function loadForListing<T>(
     value = await load();
   } catch (error) {
     await checkVenues();
-    if (request && all.length === 1 && isNoProviderError(error)) {
-      const [other, fate] = await Promise.all([otherListingsMessage(all[0]!, deps, request), request.fate?.() ?? null]);
-      // Nothing served either way: a company that moved is under its new symbol, before any other listing.
-      const moved = movedAwayChange(fate?.change);
-      if (moved) failMovedSymbol(moved, request);
-      if (other) ctx.fail(other.message, [fate?.note, other.details].filter(Boolean).join("\n"));
-      if (fate?.note) ctx.fail(`${fate.note}.`);
-    }
+    if (request && all.length === 1 && isNoProviderError(error)) await failUnservedListing(ctx, request, otherListingsMessage(all[0]!, deps, request));
     throw error;
   }
   if (isMiss?.(value)) await checkVenues();

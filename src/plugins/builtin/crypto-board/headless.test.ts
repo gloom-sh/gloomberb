@@ -27,7 +27,7 @@ test("the stablecoin list states the total, adds each coin's supply, and exports
   expect(text).toMatch(/USDT .* 180\.00B\s+-0\.33%\s+-600\.00M\s+\+0\.11%\s+\+200\.00M\s+60\.00%/);
 
   const csv = renderReportCsv(headlessReportTables(cryptoBoardHeadless, result, ARGS, "CRYP", freshness, { complete: true, unavailableSymbols: [] }), freshness);
-  // Linear: GLO-1089. The text says the change is since 00:00 UTC; the export keeps the header scripts read it by.
+  // The text says the change is since 00:00 UTC; the export keeps the header scripts read it by.
   expect(text).toMatch(/Chg % UTC\s+7D %/);
   expect(csv.split("\n").find((line) => line.startsWith('"#"'))).toContain(",Chg %,7D %,");
   const series = csv.slice(csv.indexOf("# section: Stablecoin supply")).split("\n");

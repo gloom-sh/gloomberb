@@ -46,13 +46,16 @@ function sampleVolatility(values: readonly number[]): number | null {
     ) * Math.sqrt(252)
   );
 }
+/** The confidence of the one-day VaR and expected shortfall, and the fewest daily returns they are read from. */
+export const RISK_TAIL_CONFIDENCE = 0.95;
+export const RISK_TAIL_MINIMUM = 60;
 /** Nearest-rank historical loss, without distribution or square-root horizon assumptions. */
 export function historicalTail(
   values: readonly number[],
-  confidence = 0.95,
+  confidence = RISK_TAIL_CONFIDENCE,
 ): { var: number; expectedShortfall: number } | null {
   if (
-    values.length < 60 ||
+    values.length < RISK_TAIL_MINIMUM ||
     confidence <= 0 ||
     confidence >= 1 ||
     values.some((value) => !Number.isFinite(value))
@@ -225,7 +228,7 @@ function basketRiskDefinitions(benchmark: string) {
     },
     {
       id: "var",
-      name: "1D VaR 95%",
+      name: `1D VaR ${Math.round(RISK_TAIL_CONFIDENCE * 100)}%`,
       value: (rows: RiskSamplePoint[]) => {
         const tail = historicalTail(rows.map((row) => row.value));
         return tail == null ? null : 100 * tail.var;

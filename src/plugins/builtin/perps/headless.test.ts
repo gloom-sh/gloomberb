@@ -250,6 +250,8 @@ test("a free account's locked tables are left out, and one Pro line says what fr
   const gate = "Pro: Free shows the latest funding, OI and premium (basis: fn CTM BTC). Gloom Pro adds Hyperliquid BTC history and every market on 3 venues · gloom.sh/cloud";
   expect(history.text).toContain(gate);
   expect(history.text.match(/Pro:/g)).toHaveLength(1);
+  // The title names the function over the free Latest market table; the Pro mark is the one line about the history Pro adds.
+  expect(history.text.split("\n")[0]).toBe("Perpetuals");
   expect(history.text).not.toMatch(/Locked|No data|Errors|Own observations|Paid funding/);
   // JSON keeps the sections, marked locked, and the lock stays in errors for readers that only look there.
   const json = serializeHeadlessPaneResult(perpsHeadless, history.result) as { sections: Array<{ title: string; rows: unknown[]; locked?: boolean }>; errors: string[] };
@@ -258,6 +260,7 @@ test("a free account's locked tables are left out, and one Pro line says what fr
   expect(json.sections[0]).not.toHaveProperty("locked");
   expect(json.errors).toEqual([gate.slice("Pro: ".length).replace(" · gloom.sh/cloud", ".")]);
   const evidence = await run("evidence");
+  expect(evidence.text.split("\n")[0]).toBe("Perpetual evidence");
   expect(evidence.text).not.toMatch(/Observation revisions|Locked/);
   expect(evidence.text).toContain("Pro: Free shows BTC's latest evidence and positioning. Gloom Pro adds its observation revisions · gloom.sh/cloud");
 });

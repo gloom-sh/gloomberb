@@ -21,6 +21,7 @@ import {
   getAvailablePaneShortcutTemplatesForQuery,
   getAvailablePaneTemplatesForState,
   getPaneTemplateDisplayLabel,
+  paneTemplateArgError,
   recentPaneTemplateArg,
 } from "./items";
 import type { FormModalRequest } from "../../form-modal";
@@ -291,6 +292,7 @@ export function useCommandBarPaneTemplateActions({
       shortcutExecution?: boolean;
     },
   ): ResultItem => buildPaneTemplateItem({
+    argError: paneTemplateArgError(template, options?.createOptions?.arg, getPaneTemplateContext()),
     category: options?.category,
     createOptions: options?.createOptions,
     openPaneTemplateDirect,
@@ -302,6 +304,7 @@ export function useCommandBarPaneTemplateActions({
     showShortcut: options?.showShortcut,
     template,
   }), [
+    getPaneTemplateContext,
     openPaneTemplateDirect,
     openPaneTemplateWorkflow,
     pluginRegistry,

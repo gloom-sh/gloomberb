@@ -13,7 +13,7 @@ import { TrendingSummary } from "./trending";
 const tui = createOpenTuiTestHarness();
 afterEach(() => { apiClient.setSessionToken(null); setCloudApiFetchTransport(null); attentionCache.reset(); });
 
-// GLO-1102: an Overview section with nothing but a waiting or empty line is noise; DES leaves it out.
+// An Overview section with nothing but a waiting or empty line is noise; DES leaves it out.
 test("the Overview's Gloom Trending shows only a symbol's published research hours", async () => {
   attentionCache.attach(new MemoryPluginPersistence());
   apiClient.setSessionToken("isolated-attention-test");

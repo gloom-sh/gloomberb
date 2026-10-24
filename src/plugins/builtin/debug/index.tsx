@@ -288,6 +288,7 @@ export const debugPlugin: GloomPlugin = {
       name: "Debug Log",
       icon: "D",
       component: DebugPane,
+      reportFreshness: { status: "not-a-feed", basis: "debug log" },
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 120, height: 30 },

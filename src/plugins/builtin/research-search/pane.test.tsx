@@ -131,7 +131,7 @@ function signIn(plan: "free" | "pro" = "free"): void {
 }
 
 function Harness({ mode = "results" }: { mode?: "results" | "saved" }) {
-  const initialState = createInitialState(createDefaultConfig(join(homedir(), ".cache/gloom-smoke/glo239/research-search-test")));
+  const initialState = createInitialState(createDefaultConfig(join(homedir(), ".cache/gloom-smoke/research-search-test")));
   initialState.focusedPaneId = PANE_ID;
   initialState.paneState[PANE_ID] = {
     pluginState: { "research-search": { query: "gross margin", mode } },

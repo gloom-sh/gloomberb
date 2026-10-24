@@ -1260,8 +1260,8 @@ describe("core sync contributors", () => {
     expect(short.analyticsByPortfolio.main.spyBeta).toBeNull();
   });
 
-  // Each sync reuses a holding's returns while its bars are the same array
-  // (GLO-925); a bar revised or added in place must still reach the next one.
+  // Each sync reuses a holding's returns while its bars are the same array;
+  // a bar revised or added in place must still reach the next one.
   test("a holding's bars revised or extended in place reach the next sync's beta", async () => {
     const config = createDefaultConfig("/tmp/gloomberb-sync-test");
     config.portfolios = [{ id: "main", name: "Main", currency: "USD" }];

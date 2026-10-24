@@ -360,6 +360,7 @@ export const brokerManagerModule: PluginModule = {
       personalData: "account",
       icon: "B",
       component: BrokersPane,
+      reportFreshness: { status: "not-a-feed", basis: "broker connections" },
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 92, height: 24 },

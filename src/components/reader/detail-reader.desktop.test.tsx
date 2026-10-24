@@ -23,7 +23,7 @@ afterEach(() => {
   noopRendererHost.openExternal = openExternal;
 });
 
-// GLO-740: the Changelog showed its last line, [Full diff](url), as written.
+// The Changelog showed its last line, [Full diff](url), as written.
 test("a markdown link in a detail body is a link that opens its URL, by pointer and from the pane menu", async () => {
   const opened: string[] = [];
   noopRendererHost.openExternal = async (url) => { opened.push(url); };

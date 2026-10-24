@@ -95,8 +95,8 @@ describe("history rows", () => {
   });
 
   test("one venue's count in place of the market's volume is kept apart from volume, named with its venue", () => {
-    // KGC's five-minute bars as Gloom Cloud serves the session still trading when the consolidated tape is unavailable
-    // (GLO-1175): the counts are IEX's alone, about a tenth of the market's.
+    // KGC's five-minute bars as Gloom Cloud serves the session still trading when the consolidated tape is unavailable:
+    // the counts are IEX's alone, about a tenth of the market's.
     const served = [{ date: "2026-10-21T13:30:00Z", open: 23.87, high: 23.87, low: 23.66, close: 23.67, venueVolume: { venue: "IEX", volume: 4_251 } },
       { date: "2026-10-21T13:35:00Z", open: 23.66, high: 23.93, low: 23.66, close: 23.93, venueVolume: { venue: "IEX", volume: 19_387 } }];
     const points = served.map((point) => mapPricePoint(point, 1, "NYSE"));

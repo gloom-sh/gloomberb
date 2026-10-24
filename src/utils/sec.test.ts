@@ -55,7 +55,7 @@ describe("SEC pane eligibility", () => {
 });
 
 test("a company from abroad names its home market's insider reports as not covered, by its country, else its venue", () => {
-  // GLO-1105: RY:TSX said only that foreign private issuers file no Form 4.
+  // RY:TSX said only that foreign private issuers file no Form 4.
   expect([
     homeInsiderReportsNote({ exchange: "TSX", foreignPrivateIssuer: true }),
     homeInsiderReportsNote({ country: "CA", exchange: "NYSE", foreignPrivateIssuer: true }),

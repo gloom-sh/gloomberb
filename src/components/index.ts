@@ -12,11 +12,11 @@ export { CompositeChart, pricePointsToResolvedSeries } from "./chart/composite";
 // Figures, then a chart, then a table: the header zone, its size rule at every
 // pane size, and the selection the chart and the table share.
 export {
-  ChartStrip, ChartTableHeader, chartTableChromeRows, chartTableLayout, formatBpAxis, formatPercentAxis,
-  spanAxisFormatter, spanDigits, useChartTableLayout, useChartTableSelection,
+  ChartRead, ChartStrip, ChartTableHeader, chartTableChromeRows, chartTableLayout, formatBpAxis, formatPercentAxis,
+  spanAxisFormatter, spanDigits, useChartReadRows, useChartTableLayout, useChartTableSelection,
 } from "./chart-table";
 export type {
-  ChartBandMode, ChartStripSpec, ChartTableChart, ChartTableHeaderProps, ChartTableLayout,
+  ChartBandMode, ChartReadProps, ChartStripSpec, ChartTableChart, ChartTableHeaderProps, ChartTableLayout,
   ChartTableSelection,
 } from "./chart-table";
 export { scalarPoint, stackedSeries, staticSeries, type StackedLayer } from "./chart/static/series";

@@ -196,7 +196,7 @@ describe("the position form's Purchase Date and Cost FX, as position set --date 
   });
 
   test("GBp round trip: a cost typed in pence is saved in pence, and its P&L divides it by 100", async () => {
-    // GLO-1085: GBp was upper-cased to GBP, and 1,000 VOD at 70p cost £70,000 instead of £700.
+    // GBp was upper-cased to GBP, and 1,000 VOD at 70p cost £70,000 instead of £700.
     const config = { ...createDefaultConfig(":memory:"), baseCurrency: "GBP" };
     const vod = createTestTicker("VOD", "Vodafone", { exchange: "LSE", currency: "GBp", portfolios: ["main"] });
     const { actions, saved } = createHarness(vod, { config });

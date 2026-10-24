@@ -116,7 +116,7 @@ test("holders writes HDS's rows: largest value first, percents in percent, and H
 });
 
 test("insider leads with INS's Form 4 summary, not a 13F list that names no insider, and dates the report by the newest filing", async () => {
-  // GLO-1105: `insider JNJ` read "none reported" from the 13F list while `fn INS JNJ` summed 42 Form 4 lines.
+  // `insider JNJ` read "none reported" from the 13F list while `fn INS JNJ` summed 42 Form 4 lines.
   const day = (ago: number) => new Date(Date.now() - ago * 86_400_000).toISOString().slice(0, 10);
   const form4 = (date: string, code: string, shares: number, price: number) => `<ownershipDocument><issuer><issuerCik>200406</issuerCik></issuer>`
     + `<reportingOwner><reportingOwnerId><rptOwnerName>DOE JANE</rptOwnerName></reportingOwnerId></reportingOwner><nonDerivativeTable><nonDerivativeTransaction>`

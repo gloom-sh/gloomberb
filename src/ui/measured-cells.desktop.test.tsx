@@ -77,7 +77,7 @@ describe("useMeasuredCells", () => {
   });
 
   // A hidden tab reports nothing; the size it comes back at was never painted,
-  // so its chart draws at once instead of after a resize's debounce (GLO-590).
+  // so its chart draws at once instead of after a resize's debounce.
   test("marks only the size a box takes as it shows again", async () => {
     const box = fakeBox();
     const shown: { size?: { width: number; height: number; revealed?: boolean } } = {};

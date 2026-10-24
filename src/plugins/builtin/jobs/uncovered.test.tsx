@@ -55,7 +55,7 @@ async function renderJobs(first: Error) {
 
 const pressEnter = () => tui.emitKeypress({ name: "return", sequence: "\r" }, { trackPropagation: true, frames: 2 });
 
-// GLO-785: Enter asked again, the same 404 came back, and nothing on screen
+// Enter asked again, the same 404 came back, and nothing on screen
 // moved, so the press looked like it did nothing.
 test("Look again answers Enter, says it is looking, then that the answer did not change", async () => {
   await renderJobs(uncovered());

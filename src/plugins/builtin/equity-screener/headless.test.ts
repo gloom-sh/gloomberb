@@ -69,7 +69,7 @@ test("a KPI the server holds back from Free says why once, in KPIS's words; a Pr
 });
 
 test("a screen its currency emptied says the currency keeps only listings quoted in it, and gives the screen in USD", async () => {
-  // GLO-1105: a CAD screen of tobacco companies said "No data." though the USD one lists seven.
+  // A CAD screen of tobacco companies said "No data." though the USD one lists seven.
   const tobacco = { ...screenFixture(), rows: [] };
   tobacco.definition = { ...tobacco.definition, currency: "CAD", criteria: [{ field: "industry", op: "in", value: ["Tobacco"] }] };
   tobacco.universe = { ...tobacco.universe, covered: 4287, matched: 0, currencies: ["USD", "CAD"] };

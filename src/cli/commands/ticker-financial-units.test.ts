@@ -153,7 +153,7 @@ test("an EV off market cap + debt - cash is labelled as the provider's with the 
 });
 
 test("after the close the EV row and its note read one close, the cap rests on the shares shown, and a withdrawn EV says why", () => {
-  // GLO-754, CHGG on 2026-10-13: the after-hours 0.74 quote beside the 0.7133 close. The row moved the provider's
+  // CHGG on 2026-10-13: the after-hours 0.74 quote beside the 0.7133 close. The row moved the provider's
   // 63.02M EV to the close (60.06M) while its note still read 63.02M against 43.61M computed at 0.74.
   const afterHours = {
     ...quote, price: 0.74, change: 0.0289, changePercent: 4.06, previousClose: 0.7111, marketState: "POSTPOST" as const,
@@ -360,7 +360,7 @@ test("bond facts are read for a US-listed fund only, and a failed read leaves th
   expect(await loadReportBondFacts("AGG", "NYSEArca", fund, null, async () => { throw new Error("offline"); })).toBeNull();
 });
 
-// GLO-1106: with CAD as the base, ticker JNJ printed Market Cap "877.79B CAD" beside Revenue "99.33B USD" and Last "$259.43".
+// With CAD as the base, ticker JNJ printed Market Cap "877.79B CAD" beside Revenue "99.33B USD" and Last "$259.43".
 test("a CAD base writes every amount with its code and dates the rate a converted figure used", async () => {
   const cad = { ...createDefaultConfig("/tmp/gloom-ticker-units-unused"), baseCurrency: "CAD" };
   const asOf = Date.parse("2026-10-20T20:59:00Z");
@@ -410,7 +410,7 @@ function datedConverter(baseCurrency: string, usdPer: Record<string, number>, as
 const plainReport = async (args: Parameters<typeof buildTickerReport>[0]) => (await buildTickerReport(args))
   .replace(/\u001b\[[0-9;]*m/g, "").replace(/ {2,}/g, " ");
 
-// GLO-1106 review: a market cap in pence went to the converter as pounds, 100 times too large.
+// Review: a market cap in pence went to the converter as pounds, 100 times too large.
 test("a capitalization in a minor unit converts as that hundredth of its currency, and the rate names the currency", async () => {
   const asOf = Date.parse("2026-10-20T16:35:00Z");
   const vod: TickerFinancials = {
@@ -429,7 +429,7 @@ test("a capitalization in a minor unit converts as that hundredth of its currenc
   expect(gbp).not.toContain("figures at");
 });
 
-// GLO-1106 review: a USD base read Toyota's rate as JPY/USD 0.0067; a lot bought at its own rate fell under the rate
+// Review: a USD base read Toyota's rate as JPY/USD 0.0067; a lot bought at its own rate fell under the rate
 // line, which the Positions section printed a second time.
 test("the rate line reads as markets quote the pair, is printed once, and excepts a cost basis at the rate it was bought at", async () => {
   const asOf = Date.parse("2026-10-20T06:00:00Z");

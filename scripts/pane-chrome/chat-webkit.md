@@ -1,7 +1,5 @@
 # Chat painting in WebKit
 
-Linear: GLO-789
-
 The Mac desktop report is a channel that stays black until a scroll. PR #1855
 could not reproduce it in Chromium; PR #1857 introduced a measured, windowed
 transcript. This check runs that same chat fixture and lifecycle workload in

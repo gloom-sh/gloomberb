@@ -7,9 +7,16 @@ name: PR text
 # pull request and the check runs again. A branch name or commit message that
 # matches is a warning: those cannot change without a force push. With no list
 # set, the check passes.
+#
+# The second job reads every tracked file, not only the change, and fails on a
+# private reference (scripts/check-private-references.sh), on pull requests and
+# on pushes to main.
 on:
   pull_request:
     types: [opened, edited, reopened, synchronize]
+    branches:
+      - main
+  push:
     branches:
       - main
 
@@ -18,12 +25,13 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: pr-text-${{ github.event.pull_request.number }}
+  group: pr-text-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   pr-text:
     name: PR text
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -57,3 +65,13 @@ jobs:
           check warning "A commit message" <<<"$commits"
           [ "$status" = 0 ] && echo "No private references found."
           exit "$status"
+
+  tracked-files:
+    name: Tracked files
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Look for private references in tracked files
+        run: ./scripts/check-private-references.sh

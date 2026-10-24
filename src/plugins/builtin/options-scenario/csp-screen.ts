@@ -2,11 +2,11 @@ import type { InstrumentRef } from "../../../market-data/request-types";
 import type { DataProvider } from "../../../types/data-provider";
 import type { HeadlessPaneFreshness } from "../../../types/plugin";
 import { mapWithConcurrency } from "../../../utils/concurrency";
-import { numberErrorMessage } from "../../../utils/decimal-comma";
+import { numberErrorMessage, wholeNumberOptionMessage } from "../../../utils/decimal-comma";
 import { errorMessage } from "../../../utils/errors";
 import { expirationHint, expiryIsoDate, readOptionExpiration } from "../../../utils/option-expiry";
 import { zonedDateKey } from "../../../utils/zoned-date-time";
-import { loadIvScreen, type ImpliedVolatilityApi, type IvScreenRow } from "../iv-history/client";
+import { ivRankReason, loadIvScreen, type ImpliedVolatilityApi, type IvScreenRow } from "../iv-history/client";
 import { quoteObservation } from "../shared/report-freshness";
 import { loadScenarioMarket, scenarioPositionFromSettings, scenarioSpotBasis, type ScenarioLoaderDependencies, type ScenarioMarketSnapshot } from "./client";
 import { cashSecuredPut, loadNextEarningsDates, type CashSecuredPut } from "./csp";
@@ -54,7 +54,7 @@ export interface CspScreenRow {
 export interface CspScreen {
   rows: CspScreenRow[];
   criteria: CspScreenCriteria;
-  /** Names IV history has no rank for, with why, such as `XYZ (no options history)`. */
+  /** Names IV history has no rank for, with why when it can say, such as `XYZ (no options history)`; a bare symbol has no reason to give. */
   missingRanks: string[];
   /** The IV rank request failed for every name. */
   ivRankError: string | null;
@@ -72,12 +72,20 @@ function readNumber(value: unknown, flag: string, example: string): number {
   return number;
 }
 
+/** `--days`: whole calendar days. A decimal is told the whole numbers beside it, never a decimal to type. */
+function readDays(value: unknown): number {
+  const decimal = wholeNumberOptionMessage("--days", "days", value);
+  if (decimal) throw new Error(decimal);
+  const days = readNumber(value, "days", "whole calendar days, such as 30");
+  if (!Number.isInteger(days) || days < 1) throw new Error(`Invalid --days "${String(value)}". Use whole calendar days, such as 30.`);
+  return days;
+}
+
 /** The screen's criteria from `fn CSP` options or the pane's settings, each default where not set. */
 export function readCspScreenCriteria(options: Record<string, unknown>): CspScreenCriteria {
   const delta = supplied(options.delta) ? Math.abs(readNumber(options.delta, "delta", "a put's delta between 0 and 1, such as 0.30")) : CSP_SCREEN_DEFAULTS.delta;
   if (!(delta > 0 && delta < 1)) throw new Error(`Invalid --delta "${String(options.delta)}". Use a put's delta between 0 and 1, such as 0.30.`);
-  const days = supplied(options.days) ? readNumber(options.days, "days", "whole calendar days, such as 30") : CSP_SCREEN_DEFAULTS.days;
-  if (!Number.isInteger(days) || days < 1) throw new Error(`Invalid --days "${String(options.days)}". Use whole calendar days, such as 30.`);
+  const days = supplied(options.days) ? readDays(options.days) : CSP_SCREEN_DEFAULTS.days;
   const maxSpreadPercent = supplied(options.maxSpread)
     ? readNumber(options.maxSpread, "max-spread", "a percent of the midpoint above 0, such as 10") : CSP_SCREEN_DEFAULTS.maxSpreadPercent;
   if (!(maxSpreadPercent > 0)) throw new Error(`Invalid --max-spread "${String(options.maxSpread)}". Use a percent of the midpoint above 0, such as 10.`);
@@ -124,13 +132,6 @@ export function rankCspScreen(rows: readonly Omit<CspScreenRow, "rank">[]): CspS
 function cspWideSpread(csp: CashSecuredPut | null, maxSpreadPercent: number): boolean {
   return csp?.quote != null && csp.quote.spreadOfMid * 100 > maxSpreadPercent;
 }
-
-/** Why a name IV history covers has no rank yet, by where its history stands. */
-const IV_COVERAGE_REASONS: Partial<Record<string, string>> = {
-  queued: "IV history queued, try again in a few minutes",
-  backfilling: "IV history still loading",
-  unavailable: "no options history",
-};
 
 export interface CspScreenDependencies {
   scenario: ScenarioLoaderDependencies;
@@ -223,7 +224,7 @@ export async function loadCspScreen(
       const screened = await screenPut(instrument, criteria, scenario, target, earnings.get(symbol) ?? null, signal);
       markets.push(screened.market);
       if (ivRank == null && !ivRanks.error) {
-        const reason = ivRow?.iv30?.rankNote ?? ivRow?.warnings?.[0] ?? (ivRow ? IV_COVERAGE_REASONS[ivRow.coverageStatus ?? ivRow.status] : "no IV history");
+        const reason = ivRankReason(ivRow);
         missingRanks.push(reason ? `${symbol} (${reason})` : symbol);
       }
       return { symbol, csp: screened.csp, delta: screened.delta, ivRank, wideSpread: cspWideSpread(screened.csp, criteria.maxSpreadPercent), note: null };

@@ -224,7 +224,7 @@ test("quote gives the overnight session its own column and names it, saying when
   expect(text).not.toMatch(/After Hours|Pre-Market/);
 });
 
-// Linear: GLO-1089. The table sets what Chg% is from beside it; an export adds it after the columns it had.
+// The table sets what Chg% is from beside it; an export adds it after the columns it had.
 test("quote's change basis follows Chg% in the table, with the holiday under it, and comes last in CSV and NDJSON rows", async () => {
   const hk: Quote = { symbol: "3042.HK", name: "ChinaAMC Bitcoin ETF", currency: "HKD", price: 9.88, change: -0.06, changePercent: -0.6,
     previousClose: 9.94, changeSessionDate: "2026-10-20", marketState: "CLOSED", listingExchangeName: "HKEX", exchangeName: "HKEX",

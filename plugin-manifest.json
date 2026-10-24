@@ -1384,7 +1384,7 @@
           {
             "code": "GC",
             "name": "Yield Curve",
-            "description": "Government bond curves: US Treasury, TIPS real, breakevens, euro AAA, Bund, Gilt, JGB and Canada, with a world grid."
+            "description": "Government bond curves, a world grid, and USD SOFR swap rates, swap spreads and tenor history."
           },
           {
             "code": "WIRP",

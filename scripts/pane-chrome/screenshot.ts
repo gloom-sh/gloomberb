@@ -13,16 +13,16 @@ import {
 /**
  * Copy Screenshot paints a pane into a canvas itself (src/utils/dom-screenshot.ts),
  * so anything it does not know how to paint is missing from the image while
- * the screen shows it: the speedometer gauge and SVG charts were (GLO-493).
+ * the screen shows it: the speedometer gauge and SVG charts were.
  * This renders chart panes on invented data in headless Chrome (fixture.tsx,
  * `screenshot`), takes the pane's Copy Screenshot image and Chrome's own
  * screenshot of the same pane, and checks that each chart region has about as
  * much ink in the copy as on screen: an SVG gauge, canvas charts, an SVG chart,
- * a toolbar laid over a canvas by z-index (GLO-500), and the gradients and
+ * a toolbar laid over a canvas by z-index, and the gradients and
  * masked icons charts draw with CSS. Both device pixel
  * ratios are checked, the 2x one being a Retina Mac.
  *
- * The image an assistant gets through pane.screenshot (GLO-500) is the same
+ * The image an assistant gets through pane.screenshot is the same
  * paint at its own size; the check also holds it to its bounds: twice the
  * on-screen size within the long edge, and shrunk under a byte cap that the
  * first paint overshoots, or refused when even the narrowest image would not fit.

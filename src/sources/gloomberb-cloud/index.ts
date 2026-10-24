@@ -45,7 +45,7 @@ import { resolveCurrencyUnit } from "../../utils/currency-units";
 import { isRoundTheClockCoin } from "../../utils/crypto-pair";
 import { canonicalExchange, canonicalTickerKey, parsePublicTickerKey } from "../../utils/exchanges";
 import { normalizePriceHistory, priceHistoryIntervalMs, reachesLatestSettledSession } from "../../utils/price-history";
-import { createProviderMiss, ProviderBusyError, providerMissReason } from "../provider-errors";
+import { createProviderMiss, ProviderBusyError, providerMissReason, StaleHistoryError } from "../provider-errors";
 import { parseListingDelisting } from "../../market-data/quotes/delisting";
 import { isRetryableApiError } from "../../api-client/errors";
 import { assertSecRegistrantMatches } from "../sec-registrant";
@@ -207,7 +207,7 @@ function mapCloudPriceHistory(
   // or a stale answer without bars, are a miss.
   const stale = isStaleCloudResponse(response);
   if (stale && response.status !== "success" && response.status !== "partial") {
-    throw createProviderMiss(`Cloud chart data is stale for ${ticker}`);
+    throw new StaleHistoryError(`Cloud chart data is stale for ${ticker}`);
   }
   if (response.status === "unsupported" && response.reasonCode === "HISTORY_RETENTION" && requestedEnd) {
     const retention = parseHistoryRetention(response.historyRetention);
@@ -232,7 +232,7 @@ function mapCloudPriceHistory(
     ).map((point) => mapPricePoint(point, divisor, exchange, coin)),
   );
   if (stale && !reachesLatestSettledSession(points, Date.now(), { symbol: ticker, exchange, intervalMs: priceHistoryIntervalMs(interval) })) {
-    throw createProviderMiss(`Cloud chart data is stale for ${ticker}`);
+    throw new StaleHistoryError(`Cloud chart data is stale for ${ticker}`);
   }
   const intraday = /^\d+(min|h)$/i.test(interval);
   // Daily bars answering an intraday range: the listing has no intraday bars.

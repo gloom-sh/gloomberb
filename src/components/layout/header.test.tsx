@@ -122,7 +122,7 @@ test("offers a clickable Restart for a downloaded desktop update, and only text 
 
 /**
  * The terminal header at 80 to 160 columns left the update status under a
- * dozen columns, so a failed update said nothing at all (GLO-720). The closed
+ * dozen columns, so a failed update said nothing at all. The closed
  * prompt now gives the status its empty room, down to its placeholder, and the
  * banner says the reason in a few words. It must never reach into the prompt's
  * placeholder, the Help pill or the market cluster, at any width.
@@ -177,8 +177,8 @@ test("gives a failed update room at common terminal widths and keeps it clear of
 });
 
 /**
- * Before GLO-720 every other line in the slot (a passing notice, a download's
- * progress, a ready update) was drawn whole and ran into the Help pill.
+ * Every other line in the slot (a passing notice, a download's progress, a
+ * ready update) was once drawn whole and ran into the Help pill.
  */
 test("cuts every update line to its slot, keeping a download's percent", async () => {
   const release = { version: "9.9.9", tagName: "v9.9.9", downloadUrl: "", publishedAt: "", updateAction: { kind: "desktop" as const } };

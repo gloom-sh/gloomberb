@@ -121,7 +121,7 @@ test("qualified saved ranking keeps literal crypto and share-class punctuation",
   }
 });
 
-test("a choice of listings says which one no longer trades, and when (GLO-1062)", async () => {
+test("a choice of listings says which one no longer trades, and when", async () => {
   // A bare FRC: Mexico's stale cross-listing, and First Republic's US run, which has no name on record.
   const results: InstrumentSearchResult[] = [
     { providerId: "gloomberb-cloud", symbol: "FRC", name: "First Republic Bank", exchange: "BMV", primaryExchange: "BMV",
@@ -138,7 +138,7 @@ test("a choice of listings says which one no longer trades, and when (GLO-1062)"
   expect(Object.values(names)).toContain("First Republic Bank");
 });
 
-test("a bare symbol whose own quote is a delisted US run is that run, not a choice (GLO-1062)", async () => {
+test("a bare symbol whose own quote is a delisted US run is that run, not a choice", async () => {
   const delisting = { status: "inactive" as const, lastTradeDate: "2023-04-28", historyStart: "2016-01-04" };
   const results: InstrumentSearchResult[] = [
     { providerId: "gloomberb-cloud", symbol: "FRC", name: "First Republic Bank", exchange: "BMV", primaryExchange: "BMV",

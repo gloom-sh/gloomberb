@@ -55,7 +55,7 @@ const DOCUMENT = {
 const tui = createOpenTuiTestHarness();
 
 async function renderReader(width: number, height: number) {
-  const state = createInitialState(createTestPaneConfig("/tmp/glo592-reader-unused", { instanceId: "srch", paneId: "research-search" }));
+  const state = createInitialState(createTestPaneConfig("/tmp/reader-unused", { instanceId: "srch", paneId: "research-search" }));
   state.focusedPaneId = "srch";
   await act(async () => {
     await tui.render(

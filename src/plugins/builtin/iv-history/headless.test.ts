@@ -145,7 +145,7 @@ describe("VCA backfill states", () => {
 
   test("a symbol demand coverage could not take is not final", async () => {
     expect(await report([ready, pending("FULL", "unavailable", null, null, ["Coverage for new underlyings is full; try again later."])]))
-      .toEqual({ notes: ["Not queued: FULL. Coverage for new underlyings is full; try again later."], complete: false, unavailableSymbols: ["FULL"] });
+      .toEqual({ notes: ["No IV history yet: FULL."], complete: false, unavailableSymbols: ["FULL"] });
   });
 
   test("a row with no reading says what became of its symbol, and one that stopped trading is not listed again as having no options history", async () => {

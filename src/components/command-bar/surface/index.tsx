@@ -23,7 +23,7 @@ import { useCommandSearchReport } from "../routes/root/search-report";
 import { useAppStateRef } from "../../../state/app/context";
 import { listingChoiceQuery } from "../../../tickers/search";
 import { commandPromptTicker } from "../../../layout/selected-ticker";
-import { parseRootShortcutIntent } from "../routes/root/shortcuts";
+import { leadingShortcutCode, parseRootShortcutIntent } from "../routes/root/shortcuts";
 import { useRootPluginInstallItem } from "../routes/root/plugin-install";
 import { useRootPluginTurnOnItem } from "../routes/root/plugin-turn-on";
 import { useCommandBarThemePreview } from "../theme-preview";
@@ -237,6 +237,21 @@ export function CommandBar({
     activeTicker: activeTickerSymbol,
     promptTicker: promptTickerSymbol,
   }), [activeTickerSymbol, availableCommands, getAvailablePaneShortcutTemplates, getAvailablePluginCommands, promptTickerSymbol, rootQuery]);
+  // Every code of an enabled plugin, whether or not it can open here, so text
+  // it leads is never answered with only the sign-up offer.
+  const leadingCode = useMemo(() => {
+    if (rootShortcutIntent.kind !== "none") return null;
+    const disabled = new Set(state.config.disabledPlugins ?? []);
+    return leadingShortcutCode({
+      query: rootQuery,
+      commands: availableCommands,
+      pluginCommands: getAvailablePluginCommands(),
+      paneTemplates: [...pluginRegistry.paneTemplates.values()].filter((template) => {
+        const pluginId = pluginRegistry.getPaneTemplatePluginId(template.id);
+        return !pluginId || !disabled.has(pluginId);
+      }),
+    });
+  }, [availableCommands, getAvailablePluginCommands, pluginRegistry, rootQuery, rootShortcutIntent.kind, state.config.disabledPlugins]);
   const listingChoice = !currentRoute && rootShortcutIntent.kind === "none"
     ? listingChoiceQuery(rootQuery)
     : null;
@@ -436,6 +451,7 @@ export function CommandBar({
     executeCollectionCommand,
     getAvailablePaneShortcutTemplates,
     getRecentPaneTemplate,
+    leadingShortcutCode: leadingCode,
     getTickers: getTickerSearchTickers,
     hasPaneSettings,
     localTickerSearchResultItems,

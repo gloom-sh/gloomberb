@@ -109,8 +109,18 @@ test("alerts add reads a price pasted from a sheet, and asks when a comma and th
   // A plain dotted number keeps its meaning.
   expect(price("1.350")).toBe(1.35);
   expect(() => price("1,350")).toThrow("1,350 could be 1350 (thousands) or 1.35 (decimal comma); type 1350 or 1.35");
-  expect(() => price("abc")).toThrow("Alert price must be a finite number.");
-  expect(() => price("1,23,456")).toThrow("Alert price must be a finite number.");
+  // A price that is no number names the format with an example, and what was typed.
+  expect(() => price("abc")).toThrow('Alert price must be a number, got "abc"; type 81000 or 81k.');
+  expect(() => price("1,23,456")).toThrow('Alert price must be a number, got "1,23,456"; type 81000 or 81k.');
+  expect(() => price("0,01%")).toThrow('Alert price must be a number, got "0,01%"; type 81000 or 81k.');
+});
+
+test("alerts add reads 81k as 81000, and asks about a scaled comma and three digits as it asks about the price", () => {
+  const price = (text: string) => (parseAlertAddArgs(["BTC-USD", "below", text], undefined) as { price: number }).price;
+  expect(["81k", "81K", "1.5k", "1,5k", "81.1k", "2m", "1.25B", "250"].map(price)).toEqual([81000, 81000, 1500, 1500, 81100, 2e6, 1.25e9, 250]);
+  expect(() => price("1,500k")).toThrow("1,500k could be 1500000 (thousands) or 1500 (decimal comma); type 1500000 or 1500");
+  expect(() => price("k")).toThrow('Alert price must be a number, got "k"');
+  expect(() => price("81kk")).toThrow('Alert price must be a number, got "81kk"');
 });
 
 test("alerts add asks about 81.000 near a price of 81,600, an unquoted 81 000, and refuses a word after the price", () => {

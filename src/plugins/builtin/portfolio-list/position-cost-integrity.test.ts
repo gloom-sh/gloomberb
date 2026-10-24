@@ -99,7 +99,7 @@ test("profit alone never manufactures cost or a complete market value, and overf
 });
 
 test("a lot bought in another currency costs what its entered rate says in that currency, and today's rate in any other", () => {
-  // GLO-1044: 10 BRK.B at $410 in a TRY book, bought at 31.37 TRY per USD, now at 50 with the stock at $530.
+  // 10 BRK.B at $410 in a TRY book, bought at 31.37 TRY per USD, now at 50 with the stock at $530.
   const bought = ticker(lot({ avgCost: 410, costFxRate: 31.37, costFxCurrency: "TRY" }));
   const source = { ...financials, quote: { ...financials.quote!, price: 530 } };
   const rates = new Map([["TRY", 0.02], ["EUR", 1.25]]);

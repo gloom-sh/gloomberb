@@ -3,6 +3,10 @@ import { act } from "react";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import type { AppState } from "../../../state/app/context";
 import type { AppConfig } from "../../../types/config";
+import type { PaneTemplateCreateOptions } from "../../../types/plugin";
+import type { PluginRegistry } from "../../../plugins/registry";
+import { portfolioListModule } from "../../../plugins/builtin/portfolio-list";
+import { withFunctionShortcutArgument } from "../../../plugins/shortcut-argument";
 import type { TickerRecord } from "../../../types/ticker";
 import {
   CommandBarHarness,
@@ -470,5 +474,56 @@ describe("CommandBar portfolio commands", () => {
 
     expect(saved.at(-1)?.metadata.portfolios).toEqual([]);
     expect(saved.at(-1)?.metadata.positions).toEqual([]);
+  });
+
+  /** The real PF template, registered as the app registers it, in place of the harness's stand-in. */
+  function withCollectionPane(created: Array<{ templateId: string; options?: PaneTemplateCreateOptions }>) {
+    return (registry: PluginRegistry) => {
+      const templates = registry.paneTemplates as Map<string, unknown>;
+      const template = portfolioListModule.paneTemplates!.find((entry) => entry.id === "new-collection-pane")!;
+      templates.delete("new-portfolio-pane");
+      templates.set(template.id, withFunctionShortcutArgument(template));
+      (registry as unknown as {
+        createPaneFromTemplateAsync: (templateId: string, options?: PaneTemplateCreateOptions) => Promise<void>;
+      }).createPaneFromTemplateAsync = async (templateId, options) => {
+        created.push({ templateId, options });
+      };
+    };
+  }
+
+  test("PF with a portfolio's name opens that portfolio", async () => {
+    const created: Array<{ templateId: string; options?: PaneTemplateCreateOptions }> = [];
+    await tui.render(
+      <CommandBarHarness query="PF research" configureConfig={withResearchPortfolio} configurePluginRegistry={withCollectionPane(created)} />,
+      { width: 100, height: 20 },
+    );
+
+    await waitForFrameToContain("Collection");
+    await act(async () => {
+      tui.setup().mockInput.pressEnter();
+      await Bun.sleep(0);
+      await tui.setup().renderOnce();
+    });
+
+    expect(created).toEqual([{ templateId: "new-collection-pane", options: { arg: "research" } }]);
+  });
+
+  test("PF with a name nothing has lists the portfolios and watchlists there are, and Enter opens none", async () => {
+    const created: Array<{ templateId: string; options?: PaneTemplateCreateOptions }> = [];
+    await tui.render(
+      <CommandBarHarness query="PF nope" configureConfig={withResearchPortfolio} configurePluginRegistry={withCollectionPane(created)} />,
+      { width: 120, height: 20 },
+    );
+
+    const frame = await waitForFrameToContain('No portfolio or watchlist named "nope"');
+    expect(frame).toContain("Try Research or Watchlist");
+    expect(frame).not.toContain("Ask AI");
+    await act(async () => {
+      tui.setup().mockInput.pressEnter();
+      await Bun.sleep(0);
+      await tui.setup().renderOnce();
+    });
+
+    expect(created).toEqual([]);
   });
 });

@@ -121,6 +121,27 @@ function buildShortcutCandidates(
   ].sort((a, b) => b.prefix.length - a.prefix.length);
 }
 
+/**
+ * The function code the text starts with, whatever follows it: `MOST foo`
+ * leads with MOST though MOST takes no argument. Null for any other text.
+ */
+export function leadingShortcutCode({
+  query,
+  commands,
+  pluginCommands = [],
+  paneTemplates,
+}: {
+  query: string;
+  commands: Command[];
+  pluginCommands?: CommandDef[];
+  paneTemplates: PaneTemplateDef[];
+}): string | null {
+  const first = query.trim().split(/\s+/)[0]?.toUpperCase();
+  if (!first) return null;
+  return buildShortcutCandidates(commands, pluginCommands, paneTemplates)
+    .find((candidate) => candidate.prefix === first)?.prefix ?? null;
+}
+
 export function parseRootShortcutIntent({
   query,
   commands,

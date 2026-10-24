@@ -1370,6 +1370,8 @@ ctx.registerPaneTemplate({
 });
 ```
 
+A shortcut that sets neither `argKind` nor `argPlaceholder` takes the argument the template's `headless` definition declares, so the command bar reads `PF Family` as `gloom fn PF Family` does. `shortcut.argError(arg, context)` says why a typed argument opens nothing, or returns null: for `PF Nope` it returns `{ message: 'No portfolio or watchlist named "Nope"', detail: "Try Main Portfolio or Family" }`. The bar shows the message in place of the function's row, disabled, with the function's code where its row has it and the detail on the line under it, and the pane does not open for that argument.
+
 Create pane instances programmatically:
 
 ```typescript
@@ -1397,7 +1399,7 @@ Choose the existing control that owns the interaction you need:
 | Sortable/selectable rows | `DataTableView`, `TickerListTableView` |
 | Table with a detail stack | `DataTableStackView`, `FeedDataTableStackView`, `DetailScrollBody` (the detail's scrolling body) |
 | Charts | `CompositeChart` (time series), `StaticChartSurface`, `MetricTreemapSurface`, `SpeedometerGauge` |
-| Figures, a chart and a table in one pane | `ChartTableHeader` in the table's `rootBefore`, `useChartTableSelection`, `chartTableLayout`, `CurveSurface` with `curveStrip` for curves (see `docs/pane-conventions.md` 5b) |
+| Figures, a chart and a table in one pane | `ChartTableHeader` in the table's `rootBefore`, `useChartTableSelection`, `chartTableLayout`, `ChartRead` for the plain sentence under the chart, `CurveSurface` with `curveStrip` for curves (see `docs/pane-conventions.md` 5b) |
 | Pane tab strip | `usePaneTabs` (title-bar tabs on the desktop, the body row in the terminal), `Tabs` |
 | Search, filters, sort above a list | `QueryBar` |
 | Menus and pop-ups | `MenuPopover`, `Menu`, `Popover` |

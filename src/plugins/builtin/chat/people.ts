@@ -8,7 +8,7 @@ import { isManagedBot } from "./ghost-user";
 /**
  * Who someone is in chat, at a glance: a bot's own colour, the icons their
  * account earns, their local time and what they trade. The server derives
- * each from the account (GLO-646); a field it leaves out shows nothing.
+ * each from the account; a field it leaves out shows nothing.
  */
 
 type ChatPersonIconId = "bot" | "team" | "pro";

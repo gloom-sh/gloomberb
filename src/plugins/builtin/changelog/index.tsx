@@ -286,6 +286,7 @@ export const changelogModule: PluginModule = {
       name: "Changelog",
       icon: "L",
       component: ChangelogPane,
+      reportFreshness: { status: "not-a-feed", basis: "release notes" },
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 100, height: 32 },

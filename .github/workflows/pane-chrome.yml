@@ -226,7 +226,7 @@ jobs:
 
       # Fails when a pane's Copy Screenshot image is missing what the screen
       # shows in a chart region: an SVG gauge or chart, a canvas chart, or a
-      # CSS gradient or masked icon (GLO-493). The summary has the numbers.
+      # CSS gradient or masked icon. The summary has the numbers.
       - name: Compare pane copies with the screen
         run: bun run check:pane-screenshot
 

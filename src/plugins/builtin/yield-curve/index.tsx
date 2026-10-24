@@ -35,9 +35,11 @@ import { forwardCurve, type CurveBasis } from "./forward";
 import { loadYieldCurveLookbacks, yieldCurveDate } from "./history";
 import { curveAsOf, isYieldObservationDate, type YieldPoint, yieldCurveErrors } from "./treasury-data";
 import { loadWorldRows, type WorldRow } from "./world";
+import { SwapsTab } from "./swaps";
+import { swapCurveCache } from "./client";
 
-type GcTab = "curve" | "world";
-const TABS = [{ label: "Curve", value: "curve" }, { label: "World", value: "world" }];
+type GcTab = "curve" | "world" | "swaps";
+const TABS = [{ label: "Curve", value: "curve" }, { label: "World", value: "world" }, { label: "Swaps", value: "swaps" }];
 const EMPTY_POINTS: YieldPoint[] = [];
 /** Axis word for the loaded curve's basis. */
 const BASIS_LABEL: Record<CurveBasis, string> = {
@@ -129,13 +131,15 @@ export function YieldCurvePane({ focused, width, height }: PaneProps) {
   return (
     <Box flexDirection="column" width={width} height={height}>
       {strip}
-      {(["curve", "world"] as const).map((id) => mounted.has(id) ? (
+      {(["curve", "world", "swaps"] as const).map((id) => mounted.has(id) ? (
         <Box key={id} visible={tab === id} flexDirection="column" width={width} height={bodyHeight} flexGrow={1} flexBasis={0}
           overflow="hidden">
           <PaneFooterScope active={tab === id}>
             {id === "curve"
               ? <CurveTab curve={curve} onCurveChange={setCurve} focused={focused && tab === "curve"} width={width} height={bodyHeight} />
-              : <WorldTab onOpen={openCurve} focused={focused && tab === "world"} width={width} height={bodyHeight} />}
+              : id === "world"
+                ? <WorldTab onOpen={openCurve} focused={focused && tab === "world"} width={width} height={bodyHeight} />
+                : <SwapsTab focused={focused && tab === "swaps"} width={width} height={bodyHeight} />}
           </PaneFooterScope>
         </Box>
       ) : null)}
@@ -461,6 +465,8 @@ function WorldTab({ onOpen, focused, width, height }: {
 }
 
 export const yieldCurveModule: PluginModule = {
+  setup(ctx) { swapCurveCache.attach(ctx.persistence); },
+  dispose() { swapCurveCache.reset(); },
   series: [...TREASURY_SERIES, ...GOVERNMENT_BOND_SERIES],
   panes: [{
     id: "yield-curve",
@@ -475,9 +481,9 @@ export const yieldCurveModule: PluginModule = {
     id: "yield-curve-pane",
     paneId: "yield-curve",
     label: "Yield Curve",
-    description: "Government bond curves: US Treasury, TIPS real, breakevens, euro AAA, Bund, Gilt, JGB and Canada, with a world grid.",
+    description: "Government bond curves, a world grid, and USD SOFR swap rates, swap spreads and tenor history.",
     keywords: ["yield", "curve", "treasury", "bonds", "rates", "gc", "interest", "tips", "breakeven", "bund", "gilt", "jgb",
-      "sovereign", "world", "forward"],
+      "sovereign", "world", "forward", "swaps", "sofr", "ois", "swap spread"],
     shortcut: { prefix: "GC", argPlaceholder: "[curve] [date]", argKind: "text", argOptional: true },
     headless: yieldCurveHeadless,
     createInstance: (_context, options) => {

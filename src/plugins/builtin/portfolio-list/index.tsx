@@ -1,5 +1,6 @@
-import type { PaneTemplateContext, PaneTemplateInstanceConfig } from "../../../types/plugin";
+import type { PaneTemplateContext, PaneTemplateInstanceConfig, ShortcutArgError } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
+import { unknownCollectionArgError } from "../../../portfolio/collection-name";
 import { PortfolioListPane } from "./pane";
 import {
   buildPortfolioPaneSettingsDef,
@@ -26,6 +27,11 @@ function resolveCollectionIdForKind(context: PaneTemplateContext, kind: "portfol
   return kind === "portfolio"
     ? (context.config.portfolios[0]?.id ?? null)
     : (context.config.watchlists[0]?.id ?? null);
+}
+
+/** `PF Nope`: no portfolio or watchlist has that name or id, so the bar names those that do. */
+function unknownCollectionArg(arg: string, context: PaneTemplateContext): ShortcutArgError | null {
+  return unknownCollectionArgError(arg, [...context.config.portfolios, ...context.config.watchlists], "portfolio or watchlist");
 }
 
 function createCollectionPaneInstance(
@@ -91,7 +97,8 @@ export const portfolioListModule: PluginModule = {
         "portfolio", "watchlist", "collection", "pane", "list",
         "portfolio rebalance", "allocation drift", "target weights", "asset allocation", "cash balance",
       ],
-      shortcut: { prefix: "PF" },
+      // The argument is the report's: `PF Book` opens Book, by name or id in any case.
+      shortcut: { prefix: "PF", argError: unknownCollectionArg },
       headless: collectionHoldingsHeadless,
       canCreate: (context) => resolveCollectionPaneId(context) !== null,
       createInstance: (context, options) => createCollectionPaneInstance(context, undefined, options?.arg),

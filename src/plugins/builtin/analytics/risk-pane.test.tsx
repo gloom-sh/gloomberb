@@ -152,12 +152,15 @@ test("the performance tab charts the account TWR over its metrics", async () => 
   expect(lines.findIndex((line) => line.includes("METRIC"))).toBeGreaterThan(legend + 6);
 });
 
-test("a broker account the basket only partly covers states its coverage and lists the holdings left out", async () => {
+test("a broker account the basket only partly covers states its coverage, its tail method and source, and lists what is left out", async () => {
   cloud = brokerRiskClient(now);
-  const frame = await renderPane(130, 30, {}, { portfolio: BROKER_PORTFOLIO, tickers: brokerFixtureTickers() });
+  const coverage = "basket 365,500 USD = 78% of book; left out: EUR2 4%, TWD1 4%, 7 more 14%";
+  const frame = await renderPane(180, 30, {}, { portfolio: BROKER_PORTFOLIO, tickers: brokerFixtureTickers() });
   let lines = frame();
   expect(rowValue(lines, "60D basket return")).not.toBe("");
-  expect(lines.at(-1)).toContain("excludes EUR2, TWD1 +7 more, 22% of value");
+  // Coverage first, then how VaR and expected shortfall are estimated, then what they are read from.
+  expect(lines.at(-1)).toContain(`${coverage} · historical, 1-day, 95%, 60 daily returns`);
+  expect(lines.at(-1)).toMatch(/daily closes to 2026-09-21/);
   expect(lines.join("\n")).not.toContain("history unavailable");
 
   // The holdings view marks each holding left out where it sits by value, with its reason.
@@ -168,7 +171,7 @@ test("a broker account the basket only partly covers states its coverage and lis
   const twd = lines.find((line) => line.trimStart().startsWith("TWD1"));
   expect(twd).toContain("left out");
   expect(twd).toContain("Foreign holdings: daily FX closes unavailable");
-  expect(lines.at(-1)).toContain("excludes EUR2, TWD1 +7 more, 22% of value");
+  expect(lines.at(-1)).toContain(coverage);
 });
 
 test("below the coverage minimum the risk view says why instead of a table of dashes", async () => {
@@ -176,8 +179,21 @@ test("below the coverage minimum the risk view says why instead of a table of da
   const tickers = brokerFixtureTickers(brokerFixtureHoldings().filter((row) => !/^US(?:[2-9]\d|1[1-9])$/.test(row.symbol)));
   const lines = (await renderPane(130, 20, {}, { portfolio: BROKER_PORTFOLIO, tickers }))();
   const text = lines.join("\n");
-  expect(text).toContain("Qualifying holdings cover 5% of market value; basket estimates need 50%.");
+  expect(text).toContain("Qualifying holdings cover 5% of the holdings' value; basket estimates need 50%.");
   expect(text).toContain("Most of what is left out: Foreign holdings: daily FX closes unavailable");
   expect(text).not.toContain("60D basket return");
   expect(text).not.toContain("history unavailable");
+});
+
+test("below the coverage minimum Stress keeps its currency and price shocks, which need no basket", async () => {
+  cloud = brokerRiskClient(now);
+  const tickers = brokerFixtureTickers(brokerFixtureHoldings().filter((row) => !/^US(?:[2-9]\d|1[1-9])$/.test(row.symbol)));
+  const lines = (await renderPane(150, 20, { riskView: "stress", fxShift: "TWD -20" }, { portfolio: BROKER_PORTFOLIO, tickers }))();
+  const header = lines.findIndex((line) => line.includes("SCENARIO"));
+  const labels = lines.slice(header + 1, -1).map((line) => line.trim().split(/\s{2,}/)[0]).filter(Boolean);
+  // The Taiwan dollar line and the book total, and none of the basket scenarios, which have nothing to show.
+  expect(labels).toEqual(["TWD1", "Book total"]);
+  expect(lines.find((line) => line.trimStart().startsWith("TWD1"))).toContain("-20.00%");
+  expect(lines.at(-1)).toContain("Index, 10Y and VIX scenarios: qualifying holdings cover 5% of the holdings' value; basket estimates need 50%");
+  expect(lines.at(-1)).not.toContain("daily closes");
 });

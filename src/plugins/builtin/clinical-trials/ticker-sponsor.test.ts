@@ -14,7 +14,7 @@ const provider = { getQuote: async (symbol: string) => {
   return { symbol, price: 1, currency: "USD", change: 0, changePercent: 0, lastUpdated: 0, ...quote } as Quote;
 } };
 
-// GLO-1130: `TRIAL VKTX` found nothing, since the registry files studies by sponsor name.
+// `TRIAL VKTX` found nothing, since the registry files studies by sponsor name.
 test("a ticker reads as its company's name; a fund or an unknown symbol names no sponsor", async () => {
   expect(await tickerSponsorName(provider, "vktx")).toBe("Viking Therapeutics");
   expect(await tickerSponsorName(provider, "PHAR")).toBe("Pharming Group");

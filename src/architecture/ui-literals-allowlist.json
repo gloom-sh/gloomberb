@@ -65,14 +65,14 @@
       "radius": 5,
       "spacing": 2
     },
-    "why": "Chat has its own owner and conventions; reported, not changed (GLO-768)."
+    "why": "Chat has its own owner and conventions; reported, not changed."
   },
   "src/plugins/builtin/chat/content/handle-prompt.tsx": {
     "literals": {
       "font weight": 1,
       "spacing": 2
     },
-    "why": "Chat has its own owner and conventions; reported, not changed (GLO-768)."
+    "why": "Chat has its own owner and conventions; reported, not changed."
   },
   "src/plugins/builtin/chat/message/pane-chip.tsx": {
     "literals": {
@@ -80,7 +80,7 @@
       "radius": 3,
       "spacing": 2
     },
-    "why": "Chat has its own owner and conventions; reported, not changed (GLO-768)."
+    "why": "Chat has its own owner and conventions; reported, not changed."
   },
   "src/plugins/builtin/credit-documents/gauge.tsx": {
     "literals": {

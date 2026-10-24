@@ -6,7 +6,7 @@ import { cacheDir } from "./browser";
 import { serveFixturePage } from "./page";
 
 /**
- * Axis zoom on the composite chart in Chromium and WebKit (GLO-1131), with
+ * Axis zoom on the composite chart in Chromium and WebKit, with
  * the real pointer on the chart composer fixture (`scenario=cmp&chart=readout`:
  * a price panel, a volume panel and an RSI panel). In each browser it drags
  * the price axis up and checks the price panel alone is scaled by hand and

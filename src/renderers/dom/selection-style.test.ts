@@ -6,7 +6,7 @@ import { selectionStyle, textStyle } from "./host/style";
 
 // WebKit (the macOS app's WKWebView, Safari) ignores the unprefixed
 // `user-select`, so a rule written with one spelling leaves interface text
-// selectable there while Chrome keeps it plain (GLO-668). Chrome cannot see the
+// selectable there while Chrome keeps it plain. Chrome cannot see the
 // difference, so the pane chrome checks cannot catch it: this does.
 
 test("every user-select in the stylesheet is also written with the WebKit prefix", () => {

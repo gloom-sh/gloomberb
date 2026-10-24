@@ -598,7 +598,7 @@ A zero or negative price is kept for a futures instrument. For any other instrum
 | `ETFF` | Daily net flows of the US spot bitcoin and ether ETFs, fund by fund in US$ millions, with the last 5 and 20 days and the running total since launch |
 | `ECO` | Economic events and releases, grouped by day and timed in UTC. Opens on high-impact releases until you pick another impact |
 | `ECST [statistic]` | Economic statistics: inflation, labour, growth, consumer, housing, rates |
-| `GC [curve] [date]` | Government yield curves (UST, TIPS real, breakeven, euro AAA, Bund, Gilt, JGB, Canada) with spreads and percentiles, a compare date, the one-year-forward curve and a World tab. CLI: `--curve`, `--date`, `--compare 1D` (or 1W, 1M, 3M, 1Y, or a date) and `--tab world` |
+| `GC [curve] [date]` | Government yield curves (UST, TIPS real, breakeven, euro AAA, Bund, Gilt, JGB, Canada) with spreads and percentiles, a compare date, the one-year-forward curve, a World tab and USD SOFR Swaps. CLI: `--curve`, `--date`, `--compare 1D` (or 1W, 1M, 3M, 1Y, or a date), `--tab world`, or `--tab swaps --tenor 10Y` |
 | `WIRP` / `FFIP` | Fed funds futures implied FOMC path, conditional target probabilities, SOFR contracts and Fed projections |
 | `BTMM` | Money markets: funding rates, Treasury bill curves and Federal Reserve liquidity |
 | `YAS` | Fixed-coupon bond calculator: price/yield, accrued interest, duration, convexity, DV01 and Treasury spread |
@@ -731,7 +731,7 @@ FUT's 1W, 1M and YTD columns are returns on the contract the row names (LEZ26 fo
 
 | Shortcut | Function |
 |----------|----------|
-| `PF` | Portfolio and watchlist workspace |
+| `PF [portfolio or watchlist]` | Portfolio and watchlist workspace. With a name or id, in any case, it opens that portfolio or watchlist |
 | `PORT` | Portfolio risk and sector exposure |
 | `ALRT` | Price, filing, news, earnings and market event alerts, with delivery history |
 | `SA <symbol condition price>` | Create a price alert |
@@ -843,6 +843,7 @@ A symbol is read as `gloom quote` reads it and must be a US listing, as in the d
 - The symbol is read as `quote` reads it, so `USDMXN` and `USD/MXN` are the one pair `USDMXN=X`. A symbol that quotes nothing is refused with the nearest listing (`did you mean AAPL`), and a bare code kept on a listing abroad names it.
 - A bare coin ticker whose listing is a fund says so as `quote` does (`BTC is Grayscale Bitcoin Mini Trust ETF, not bitcoin. For bitcoin use BTC-USD.`), and so do `fn` reports such as `fn OPX BTC`.
 - A target more than 10 times the last price, or under a tenth of it, is refused, in **Add Alert** too (`alerts add btc above 85000` is bitcoin's price typed on the fund).
+- A price reads as typed in `alerts add`: `81000`, `81,000.50`, `1.350,5` and `81k` or `1.5m` (a thousand and a million). A comma before exactly three digits (`81,000`) could be thousands or a decimal comma, so the command names both readings and adds nothing; text that is no number is refused with the format to type (`type 81000 or 81k`).
 - If saved price alerts cannot be read, the app and CLI leave the data unchanged and price checks pause until it is repaired. The pane and `gloom alerts list` show the read error, and event alerts stay usable.
 - On **Prices**, Enter opens an alert in full: its state, the price and how far it is from the level, and when its quote was checked. An alert that could not get a quote shows that in red on its row, and its detail says why. `m` re-arms an alert that went off.
 
@@ -1107,7 +1108,7 @@ A command fails on an option it does not take instead of ignoring it. `gloom his
 
 **Amounts.** An amount in front converts it: `gloom fx 1234.5 EUR/USD` and `gloom fx 1234,5 EUR USD` print `1,234.50 EUR = 1,385.06 USD`, then the rate line and the source line. The amount is in the first currency and the answer in the second (`fx 1234.5 EUR` converts to USD).
 
-The amount reads as cash does (below): `fx 1.234 EUR/USD` converts 1234 euros, while `fx 1,234 KWD/USD` asks which was meant. `--json`, `--csv` and `--ndjson` add `amount` and `converted`.
+The amount reads as cash does (below), except that a comma before exactly three digits asks which was meant in every currency, as `alerts add` does: `fx 1.234 EUR/USD` converts 1234 euros, while `fx 1,234 EUR/USD` and `fx 1,234 KWD/USD` name both readings and convert nothing (`type 1234 or 1.234`). `--json`, `--csv` and `--ndjson` add `amount` and `converted`.
 
 ### `fred`
 
@@ -1208,7 +1209,7 @@ A terminal's code is the listing it names, and a line such as `Read WFC.N as WFC
 - **That several companies list** and that has a quote of its own goes where it always did, and the commands that read it say which company: `CAR = Avis Budget Group, NASDAQ (also XETRA, ASX, JSE, LSE, WSE)`. A search by name (`search lufthansa`) makes the company's own line the primary listing.
   - A company's primary listing is its common stock on its home exchange, whatever matched the query: `search Toyota` leads with 7203 on JPX, `search LVMH` with MC on EPA and `search Sony` with 6758 on JPX. Its depositary receipts follow, typed as receipts, so TM on NYSE and the LVMH receipt on TSX are under Other. A named venue (`SONY:NYSE`) is still read as written.
   - Each result is named by its own listing: `028050` on KRX is Samsung E&A even when a data source files it under Samsung Electronics.
-- **A code several different companies list,** such as `2222` (Kotobuki Spirits in Tokyo, Saudi Arabian Oil in Riyadh), is not guessed. Every command asks which one, with `Choose an exchange for 2222.` and each listing with its retry command (`2222:TADAWUL Saudi Arabian Oil Co. (try: gloom history 2222:TADAWUL)`). `quote` and `compare` fail only that symbol's row.
+- **A code several different companies list,** such as `2222` (Kotobuki Spirits in Tokyo, Saudi Arabian Oil in Riyadh), is not guessed. Every command asks which one, with `Choose an exchange for 2222.` and each listing with its retry command (`2222:TADAWUL Saudi Arabian Oil Co. (try: gloom history 2222:TADAWUL)`). `quote` and `compare` fail only that symbol's row, and so does `history`, whether it was given a range or a window of dates (`history FP --start 2024`): in a list the symbol is one row with its reason in `status`, and the others are still served.
 - **What counts as one company.** Listings count as one company when, ignoring case, punctuation, legal forms (`Co.`, `Ltd.`, `S.A.`, `plc`), share wording (`Common Stock`) and depositary-receipt wording (`ADR`, `CEDEAR`, `CDR`), one name's words are all in the other's.
 
 #### Index roots
@@ -2182,7 +2183,7 @@ gloom fn CSP JPM GS KO AAPL XOM
 gloom fn CSP JPM GS KO --delta 0.20 --days 45 --max-spread 15
 ```
 
-Each row has the expiry, days to it, strike, bid, ask, spread as a percent of the mid, delta, how far out of the money, annualised yield at the mid and at the bid, the 30-day IV rank and the earnings flag. A spread over `--max-spread` (10% of the mid by default) is marked `wide` and still ranked, and a name with no chain is listed last with why.
+Each row has the expiry, days to it, strike, bid, ask, spread as a percent of the mid, delta, how far out of the money, annualised yield at the mid and at the bid, the 30-day IV rank and the earnings flag. A spread over `--max-spread` (10% of the mid by default) is marked `wide` and still ranked, and a name with no chain is listed last with why. A name with no IV rank is listed under the table with the reason when there is one, or as `No IV rank for DAL yet.` when none of its IV history is being collected. `--days` takes whole days: `--days 30,5` is told `30 or 31`.
 
 - In the pane, type the names in Symbols and pick the delta and the expiry from the bar. Enter opens the selected name's put in OSA.
 - The pane ranks the first 20 names typed, and `fn CSP` refuses more than 20.
@@ -2234,7 +2235,7 @@ Select a coloured table row to locate its trail, and open it for dated strength 
 
 ## Portfolio risk depth: PORT and MARS
 
-`PORT` opens portfolio market risk. `MARS` is its alias. Add a local portfolio's ID or name, in any case, to select it (`PORT main`, `PORT Family`). Every command and function that takes a portfolio or watchlist reads it that way.
+`PORT` opens portfolio market risk. `MARS` is its alias. Add a local portfolio's ID or name, in any case, to select it (`PORT main`, `PORT Family`). Every command and function that takes a portfolio or watchlist reads it that way, and in the command bar a name no portfolio has (`PORT Nope`, `PF Nope`, `EXPO PORT:Nope`) shows a row listing the ones there are instead of opening the first.
 
 - Views: Risk, Factors, Holdings, Correlation, Stress, Performance, Attribution and Greeks. Enter opens a metric's evidence and history, Escape returns.
 - Click portfolio tabs or press `p` to switch portfolios. `i` imports local account evidence from the clipboard and `r` refreshes Cloud observations. Tables support sorting and CSV export.
@@ -2245,7 +2246,8 @@ The return rows and tracking error are measured against SPY (`60D benchmark retu
 
 - For a portfolio made with `portfolio import --13f`, the pane's **Risk window** setting or `--since filed` measures them from the 13F's filing date instead (a portfolio without one keeps the trailing 60 and says so). The basket is then the 13F's own weights bought at the filing-date close and held, and the report's first line says so.
 - `--weights current` (the pane's **Since-filing weights** setting) holds today's weights fixed over the same sessions instead.
-- Pane settings give independent index-percent, 10Y-basis-point and VIX-point stress shifts.
+- Pane settings give independent index-percent, 10Y-basis-point and VIX-point stress shifts, each a share of the basket.
+- `--fx-shift TRY -20` (the lira 20% weaker against USD) and `--asset-shift BTC-USD -30` reprice every holding and the cash at once, through each line's currency and price; the Stress view lists each line they move and the book total, cash included. Several go in one flag, separated by commas (`--fx-shift TRY -20, EUR 5`). The pane's FX shift and Asset shift settings take the same text.
 
 ### Performance and attribution evidence
 
@@ -2255,15 +2257,16 @@ Performance, Brinson attribution and imported option Greeks use the versioned lo
 gloom fn PORT main --json
 gloom fn MARS main --view factors --json
 gloom fn PORT main --view stress --equity-shift -15 --rate-shift 100 --vol-shift 10
+gloom fn MARS main --view stress --fx-shift TRY -20 --asset-shift BTC-USD -30
 gloom fn PORT berkshire-hathaway-inc-13f --view risk --since filed
 gloom shot PORT main --width 1100 --height 620 --output portfolio-risk.png
 ```
 
 Risk, Factors, Correlation and Stress model the equity holdings with daily history, up to the 150 largest by value. A listing quoted in another currency is converted to USD at daily FX closes. In a portfolio whose currency is not USD, money returns, values and tail losses are in that currency (`Returns in TRY at daily USD/TRY closes.`).
 
-Holdings left out (foreign listings without daily FX closes, shorts, options, crypto, holdings without a quote or history) are listed under `!` with the reason (`fn PORT` prints the same under Notes), and the footer says how much of the account the estimates cover.
+Holdings left out (foreign listings without daily FX closes, shorts, options, crypto, holdings without a quote or history) and the cash, one row per currency, are listed under `!` with the reason (`fn PORT` prints the same under Notes), and the footer says what the basket is worth and how much of the book it covers, cash included (`basket 48,286 USD = 72% of book; left out: TRY cash 18%, BTC-USD 10%`). VaR and expected shortfall name their method in their evidence and the Risk view's footer (`historical, 1-day, 95%, 60 daily returns`).
 
-Below half of the account's market value the views say so instead of estimating. See [research data](research-data.md#portfolio-risk-depth-port-mars) for the method.
+Below half of the holdings' value, cash aside, the views say so instead of estimating. See [research data](research-data.md#portfolio-risk-depth-port-mars) for the method.
 
 `fn PORT` prints every view, or the one `--view` names. A stress shift given with another view, or `--since` with a view other than risk, is named as not applying. `--evidence` accepts the same JSON text as the clipboard import. A report includes raw values, source dates, percentile coverage, holdings, factor regressions and warnings.
 

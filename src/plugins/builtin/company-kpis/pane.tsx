@@ -107,7 +107,7 @@ function CompanyView({ symbol, exchange, name, mode, width, height, focused }: P
   const [selectedId, setSelected] = usePluginPaneState<string | null>(`company:selected:${tab}`, null);
   const [openId, setOpen] = usePluginPaneState<string | null>("company:open", null);
   const [sourceId, setSource] = usePluginPaneState<string | null>("company:source", null);
-  // The desktop lists KPIs by metric, each series named in plain words (GLO-1046); the terminal keeps its frames.
+  // The desktop lists KPIs by metric, each series named in plain words; the terminal keeps its frames.
   const [sort, setSort] = usePluginPaneState<{ column: string; direction: "asc" | "desc" }>("company:sort",
     desktop && mode === "kpis" ? { column: "metric", direction: "asc" } : { column: "period", direction: "desc" });
   const detailScrollRef = useRef<ScrollBoxRenderable | null>(null);

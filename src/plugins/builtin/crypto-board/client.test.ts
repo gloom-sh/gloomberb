@@ -56,7 +56,7 @@ test("a malformed peg or 24h range is dropped from its coin alone, never the boa
   expect(validateCryptoMarkets(data)).toBe(data);
 });
 
-// Linear: GLO-1089. A board from a server before the coin day basis carried
+// A board from a server before the coin day basis carried
 // the screener's 24-hour change; CRYP and `quote` must both read since 00:00 UTC.
 test("a board from before the since-00:00 UTC basis is moved from each coin's previous close, or not at all", () => {
   const legacy = cryptoFixture();

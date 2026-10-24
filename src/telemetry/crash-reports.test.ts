@@ -17,7 +17,7 @@ function fakeHost(overrides: Partial<CrashReporterHost> = {}) {
   const host: CrashReporterHost = {
     surface: "terminal",
     os: "linux 6.1 x64",
-    homeDir: "/home/vince",
+    homeDir: "/home/user",
     isEnabled: () => true,
     getInstallId: () => "0f1e2d3c-4b5a-4968-8776-655443322110",
     send: async (payload) => {
@@ -30,7 +30,7 @@ function fakeHost(overrides: Partial<CrashReporterHost> = {}) {
 
 function errorAt(message: string, frame: string): Error {
   const error = new Error(message);
-  error.stack = `Error: ${message}\n    at ${frame}\n    at run (/home/vince/app.ts:2:2)`;
+  error.stack = `Error: ${message}\n    at ${frame}\n    at run (/home/user/app.ts:2:2)`;
   return error;
 }
 
@@ -51,12 +51,12 @@ describe("crashReportsEnabled", () => {
 
 describe("stripHomeDir", () => {
   test("replaces the home directory in every form a stack can carry it", () => {
-    expect(stripHomeDir("at run (/home/vince/.gloomberb/plugins/x/index.ts:1:1)", "/home/vince"))
+    expect(stripHomeDir("at run (/home/user/.gloomberb/plugins/x/index.ts:1:1)", "/home/user"))
       .toBe("at run (~/.gloomberb/plugins/x/index.ts:1:1)");
-    expect(stripHomeDir("file:///home/vince/app.ts", "/home/vince")).toBe("file://~/app.ts");
+    expect(stripHomeDir("file:///home/user/app.ts", "/home/user")).toBe("file://~/app.ts");
     expect(stripHomeDir("C:\\Users\\John Doe\\x.js and file:///C:/Users/John%20Doe/x.js", "C:\\Users\\John Doe"))
       .toBe("~\\x.js and file:///~/x.js");
-    expect(stripHomeDir("/home/vince/x", null)).toBe("/home/vince/x");
+    expect(stripHomeDir("/home/user/x", null)).toBe("/home/user/x");
   });
 });
 
@@ -64,7 +64,7 @@ describe("reportCrash", () => {
   test("strips the home directory, clips, and sends the surface and version", async () => {
     const { host, sent } = fakeHost();
     installCrashReporter(host);
-    reportCrash(errorAt(`bad ${"x".repeat(3000)} in /home/vince/secret.json`, "boom (/home/vince/a.ts:1:1)"), { kind: "uncaught" });
+    reportCrash(errorAt(`bad ${"x".repeat(3000)} in /home/user/secret.json`, "boom (/home/user/a.ts:1:1)"), { kind: "uncaught" });
     await flushCrashReports({ timeoutMs: 500 });
 
     expect(sent).toHaveLength(1);
@@ -80,9 +80,9 @@ describe("reportCrash", () => {
     expect(error!.kind).toBe("uncaught");
     expect(error!.type).toBe("Error");
     expect(error!.message).toHaveLength(2000);
-    expect(error!.message).not.toContain("/home/vince");
+    expect(error!.message).not.toContain("/home/user");
     expect(error!.stack).toContain("boom (~/a.ts:1:1)");
-    expect(error!.stack).not.toContain("/home/vince");
+    expect(error!.stack).not.toContain("/home/user");
   });
 
   // A plugin load failure carries the state of the plugin's files in
@@ -181,7 +181,7 @@ describe("reportCrash", () => {
       takeSpooled: async () => spooled.splice(0),
     });
     installCrashReporter(host);
-    reportCrash(errorAt("fatal in /home/vince/x", "die (/home/vince/x.ts:1:1)"), { kind: "uncaught" });
+    reportCrash(errorAt("fatal in /home/user/x", "die (/home/user/x.ts:1:1)"), { kind: "uncaught" });
     spoolPendingCrashReports();
     expect(spooled).toHaveLength(1);
     expect(spooled[0]).not.toHaveProperty("installId");
@@ -191,7 +191,7 @@ describe("reportCrash", () => {
 
     // Next session: the batch survived on disk, so it is sent with the install id and scrubbed.
     resetCrashReporterForTests();
-    spooled = [{ surface: "desktop", appVersion: "0.1.0", errors: [{ kind: "uncaught", type: "Error", message: "left in /home/vince" }] }];
+    spooled = [{ surface: "desktop", appVersion: "0.1.0", errors: [{ kind: "uncaught", type: "Error", message: "left in /home/user" }] }];
     const next = fakeHost({ takeSpooled: async () => spooled.splice(0) });
     installCrashReporter(next.host);
     await flushCrashReports({ timeoutMs: 500 });

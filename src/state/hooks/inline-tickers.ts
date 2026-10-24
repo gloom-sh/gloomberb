@@ -84,6 +84,17 @@ function tickerKey(symbol: string): string {
   return listingKeys.get(symbol) ?? symbol;
 }
 
+/**
+ * Points a badge's symbol at the ticker its lookup settled on. A lookup that
+ * settles on a key other than the badge's own ($BRK-B on BRK.B, $TTF on TTF=F)
+ * must say so here: the next pass reads the badge's ticker under this key, and
+ * one that finds nothing asks again, gets the same answer and never stops.
+ */
+function pointBadgeAt(symbol: string, key: string): void {
+  if (key === symbol) listingKeys.delete(symbol);
+  else listingKeys.set(symbol, key);
+}
+
 /** The saved ticker a badge's symbol stands for: its own, or the listing its tag resolved to. */
 function badgeTicker(tickers: ReadonlyMap<string, TickerRecord>, symbol: string): TickerRecord | null {
   return tickers.get(tickerKey(symbol)) ?? null;
@@ -158,7 +169,11 @@ async function loadInlineQuotes(requests: Map<string, QuoteRequest>): Promise<vo
   // asks the provider directly.
   await Promise.all(batch.map(async ([symbol, { instrument, context }]) => {
     const provider = context.registry?.marketData;
-    if (!provider) return;
+    if (!provider) {
+      // Nobody to ask is an answer too: unrecorded, the next pass would ask again at once.
+      inlineTickerQuoteFailures.record(symbol, "error");
+      return;
+    }
     try {
       const quote = await provider.getQuote(
         instrument.symbol,
@@ -279,6 +294,8 @@ export function useInlineTickers(
   const textsKey = texts.join("\u0000");
   const symbols = useMemo(() => normalizeSymbols(texts), [textsKey]);
   const symbolsKey = symbols.join("|");
+  // A lookup can point a symbol at a saved ticker's key without changing any ticker.
+  const badgeKeys = symbols.map(tickerKey).join("|");
   const financialsEffectTarget = liveQuotes ? financials : null;
   const latestRef = useRef<InlineTickerContext>({ tickers, financials, dispatch, registry });
 
@@ -297,7 +314,7 @@ export function useInlineTickers(
       const instrument = ticker ? instrumentFromTicker(ticker, tickerKey(symbol)) : null;
       return instrument ? [instrument] : [];
     });
-  }, [liveQuotes, symbolsKey, tickers]);
+  }, [badgeKeys, liveQuotes, symbolsKey, tickers]);
   const streamingTargets = useMemo(() => {
     if (!settled) return [];
     return instruments.map((instrument) => ({
@@ -362,7 +379,9 @@ export function useInlineTickers(
       }
 
       if (!currentTicker) {
-        if (inlineTickerResolutionFailures.read(symbol, now)) continue;
+        // With no registry there is nothing to ask: a lookup would settle at
+        // once with nothing learnt, wake this effect and start again.
+        if (!registry || inlineTickerResolutionFailures.read(symbol, now)) continue;
         let resolution = resolutionInFlight.get(symbol);
         if (!resolution) {
           resolution = (async () => {
@@ -382,7 +401,7 @@ export function useInlineTickers(
                 inlineTickerResolutionFailures.record(symbol, "unknown");
                 return;
               }
-              if (target.symbol !== symbol) listingKeys.set(symbol, target.symbol);
+              pointBadgeAt(symbol, target.ticker.metadata.ticker);
               current.dispatch({ type: "UPDATE_TICKER", ticker: target.ticker });
               if (target.created) {
                 activeRegistry.events.emit("ticker:added", { symbol: target.symbol, ticker: target.ticker });
@@ -402,9 +421,15 @@ export function useInlineTickers(
               return;
             }
 
-            if (resolved.kind === "local") return;
+            if (resolved.kind === "local") {
+              // A saved ticker the symbol is another spelling of, already in state.
+              pointBadgeAt(symbol, resolved.ticker.metadata.ticker);
+              inlineTickerResolutionFailures.clear(symbol);
+              return;
+            }
 
             const { ticker, created } = await upsertTickerFromSearchResult(activeRegistry.tickerRepository, resolved.result);
+            pointBadgeAt(symbol, ticker.metadata.ticker);
             current.dispatch({ type: "UPDATE_TICKER", ticker });
             if (created) {
               activeRegistry.events.emit("ticker:added", { symbol: ticker.metadata.ticker, ticker });

@@ -58,7 +58,7 @@ describe("short watch rows", () => {
   });
 
   test("the statistics' percent of float of the same settlement is the one shown", () => {
-    // GLO-760, GME on 2026-10-13: 42.67M short. The statistics divide by the float capped at the 449.1M shares
+    // GME on 2026-10-13: 42.67M short. The statistics divide by the float capped at the 449.1M shares
     // outstanding (9.50%); the snapshot of an older app build carried the 461.24M float (9.25%).
     const records = [settlement("2026-09-15", 39_069_126, 4.29), settlement("2026-09-30", 42_673_721, 3.98)];
     const gme = (statistics: { settlementDate: string; shortPercentOfFloat: number | null }) =>
