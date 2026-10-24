@@ -23,7 +23,7 @@ import { ChatStatusWidget } from "./status-widget";
 import { UnreadInboxPane } from "./unread-inbox-pane";
 import { installPaneChatSharing } from "./share/flow";
 import { attachChatPaneLinkPanes } from "./pane-links/previews";
-import { attachChatCommands, cachedChatFunctions } from "./pane-links/commands";
+import { attachChatCommands, cachedChatFunctions, chatFunctionsChanged } from "./pane-links/commands";
 import { getSharedRegistry } from "../../registry";
 import { UNREAD_INBOX_PANE_ID, UNREAD_INBOX_TEMPLATE_ID } from "./unread-inbox";
 import { watchUnreadBadge } from "./unread-badge";
@@ -160,9 +160,21 @@ export const chatModule: PluginModule = {
     // A function written in a message is a chip for the codes this app runs, and runs in its command bar.
     detachCommands?.();
     detachCommands = attachChatCommands({
-      functions: () => cachedChatFunctions(getSharedRegistry()),
+      functions: () => {
+        const registry = getSharedRegistry();
+        if (!registry) return cachedChatFunctions(null);
+        const disabledPlugins = ctx.getConfig().disabledPlugins ?? [];
+        return cachedChatFunctions({
+          paneTemplates: registry.paneTemplates,
+          commands: registry.commands,
+          disabledPlugins,
+          isTemplateOff: (templateId) => !!registry.getDisabledPaneTemplateOwner(templateId, disabledPlugins),
+        });
+      },
       run: (query) => getSharedRegistry()?.runCommandBarQuery(query),
     });
+    // Messages drawn before a plugin came in, or with one since switched off, draw its codes again.
+    for (const event of ["plugin:registered", "plugin:unregistered", "config:changed"] as const) ctx.on(event, chatFunctionsChanged);
     chatController.attachPersistence(ctx.persistence, ctx.resume);
     chatSidebarStore.attach(ctx.persistence);
     chatHandlePromptStore.attach(ctx.persistence);

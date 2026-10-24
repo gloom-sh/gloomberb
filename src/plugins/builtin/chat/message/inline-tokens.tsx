@@ -9,7 +9,7 @@ import type { ChatUserSummary } from "../../../../api-client";
 import { parseMarkdownLines, type MarkdownLine } from "../../../../utils/markdown";
 import { chatBadgeTextWidth, type ChatBodyLine } from "../layout";
 import { chatInlineTokens, type ChatInlineToken, type ChatTextStyle } from "../markdown";
-import { chatFunctions, resolveChatCommand } from "../pane-links/commands";
+import { resolveChatCommand, useChatFunctions } from "../pane-links/commands";
 import type { ChatMessagePaneLink } from "../pane-links/model";
 import { DesktopChatPaneChip } from "./pane-chip";
 import type { ChatUserAnchor, ChatUserContextMenuEvent } from "./types";
@@ -131,7 +131,8 @@ function ChatTokens({
   setHoveredSymbol: (update: (current: string | null) => string | null) => void;
 }) {
   const { nativeContextMenu } = useUiCapabilities();
-  const functions = inline && openPaneLink ? chatFunctions() : null;
+  const allFunctions = useChatFunctions();
+  const functions = inline && openPaneLink ? allFunctions : null;
   return (
     <>
       {tokens.map((token, index) => {

@@ -1944,9 +1944,9 @@ A link opens only http or https. A marker that is never closed, such as a lone `
 
 ### Functions in messages
 
-On the desktop and the web, a function written in backticks, such as `` `NI CRYPTO` ``, `` `DES AAPL` `` or `` `CRYP` ``, is a chip in its line. A click on it, or `o` on the selected message, runs it in the command bar, so it opens as typing it there would. The code counts written in capitals, and a one-letter code only with its argument (`T AAPL`). A command that changes your settings or lists, such as `AW` or `TH`, stays code, as do other code and code blocks. The terminal shows them all as code.
+On the desktop and the web, a function written in backticks, such as `` `NI CRYPTO` ``, `` `DES AAPL` `` or `` `CRYP` ``, is a chip in its line. A click on it, or `o` on the selected message, runs it in the command bar, so it opens as typing it there would. The code counts written in capitals, and a one-letter code only with its argument (`T AAPL`). What follows the code counts only as a ticker or tickers in capitals, a function's code after `HELP`, or one of the values the function lists (the topics of `NI`): free text such as a question after `ASKG` stays code, so a click never asks or starts anything for you. A command that changes your settings or lists, such as `AW` or `TH`, stays code, as do a switched-off plugin's functions, other code and code blocks. The terminal shows them all as code.
 
-After a backtick, the message field suggests functions by code or name, as `@` suggests people. Enter or Tab writes the one chosen with its closing backtick, leaving the cursor inside for a function that takes a ticker or topic.
+After a backtick, the message field suggests functions by code or name, as `@` suggests people. Enter or Tab writes the one chosen with its closing backtick, leaving the cursor inside for a function that takes a ticker or a topic.
 
 ### Discord
 

@@ -298,7 +298,7 @@ attachChatPaneLinkPanes((paneId) => ({
 // The functions a message can name: a few invented panes beside the app's own DES and HELP.
 const FUNCTIONS = chatFunctionsFrom({
   paneTemplates: new Map([
-    { id: "topic-news", paneId: "news-industry", label: "Topic News", description: "", shortcut: { prefix: "NI", argKind: "text" as const, argOptional: true } },
+    { id: "topic-news", paneId: "news-industry", label: "Topic News", description: "", shortcut: { prefix: "NI", argKind: "text" as const, argOptional: true, argOptions: () => [{ value: "CRYPTO", label: "Crypto" }] } },
     { id: "crypto-board", paneId: "crypto-board", label: "Crypto Board", description: "", shortcut: { prefix: "CRYP" } },
     { id: "news-feed", paneId: "news-feed", label: "News Feed", description: "", shortcut: { prefix: "N", aliases: ["FH"] } },
     { id: "price-chart", paneId: "chart", label: "Price Chart", description: "", shortcut: { prefix: "GP", argKind: "ticker" as const } },

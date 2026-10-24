@@ -57,7 +57,7 @@ import type { ContextMenuItem } from "../../../../types/context-menu";
 import { usePluginAppActions } from "../../../runtime";
 import { openTeamPane } from "../../../../team/pane-request";
 import { openChatPaneLink } from "../pane-links/open";
-import { chatFunctions, runChatCommand } from "../pane-links/commands";
+import { runChatCommand, useChatFunctions } from "../pane-links/commands";
 import type { ChatMessagePaneLink } from "../pane-links/model";
 import { splitComposerDraft, type ComposerShareLink } from "../pane-links/composer";
 import { teamStore } from "../../../../team/store";
@@ -330,10 +330,11 @@ export function ChatContent({
   const commandTriggerKey = commandTrigger
     ? `${channelId}:code:${commandTrigger.start}:${commandTrigger.end}:${commandTrigger.query}`
     : null;
+  const functions = useChatFunctions();
   const commandSuggestions = useMemo(() => {
     if (!commandTrigger || commandTriggerKey === dismissedMentionKey) return [];
-    return filterCommandSuggestions(chatFunctions(), commandTrigger.query);
-  }, [commandTrigger, commandTriggerKey, dismissedMentionKey]);
+    return filterCommandSuggestions(functions, commandTrigger.query);
+  }, [commandTrigger, commandTriggerKey, dismissedMentionKey, functions]);
   // One list at a time: people after @, functions after a backtick.
   const suggestionTriggerKey = mentionTriggerKey ?? commandTriggerKey;
   const suggestionCount = mentionSuggestions.length + commandSuggestions.length;

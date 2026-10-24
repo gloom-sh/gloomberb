@@ -1,5 +1,6 @@
 /** @jsxImportSource react */
 import { afterEach, expect, test } from "bun:test";
+import { act } from "react";
 import { createDomTestHarness } from "../../../../renderers/dom/test-utils";
 import type { ChatMessage, ChatUserSummary } from "../../../../api-client";
 import { useWholeMessageCopy } from "../content/whole-message-copy";
@@ -96,7 +97,6 @@ let detachCommands: (() => void) | null = null;
 afterEach(() => detachCommands?.());
 
 test("a function in backticks is a chip that runs it in the command bar; other code and code blocks stay text", async () => {
-  detachCommands = attachChatCommands({ functions: () => TEST_FUNCTIONS, run: () => {} });
   const opened: string[] = [];
   const message: ChatMessage = {
     ...MESSAGE,
@@ -114,7 +114,14 @@ test("a function in backticks is a chip that runs it in the command bar; other c
       })}
     />,
   );
-  const chips = [...container.querySelectorAll("[data-gloom-role=chat-pane-chip]")] as HTMLElement[];
+  const drawnChips = () => [...container.querySelectorAll("[data-gloom-role=chat-pane-chip]")] as HTMLElement[];
+  // Drawn before the app's functions are in, the codes are text, and chips
+  // once they are, though the message itself did not change.
+  expect(drawnChips()).toEqual([]);
+  await act(async () => {
+    detachCommands = attachChatCommands({ functions: () => TEST_FUNCTIONS, run: () => {} });
+  });
+  const chips = drawnChips();
   expect(chips.map((chip) => [chip.textContent, chip.title])).toEqual([["NI CRYPTO", "Topic News"], ["CRYP", "Crypto Board"]]);
   // The chips sit in their line; the code that names nothing and the block are text.
   const body = container.querySelector("[data-gloom-role=chat-message-body]")!;

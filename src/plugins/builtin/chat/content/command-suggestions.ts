@@ -62,7 +62,7 @@ export function filterCommandSuggestions(
   byCode.sort((a, b) => rank(a) - rank(b) || a.code.length - b.code.length || a.code.localeCompare(b.code));
   byName.sort((a, b) => a.code.localeCompare(b.code));
   return [...byCode, ...byName].slice(0, Math.min(limit, MAX_COMMAND_SUGGESTIONS))
-    .map(({ code, name, takesArg }) => ({ code, name, takesArg }));
+    .map(({ code, name, arg }) => ({ code, name, takesArg: arg !== "none" }));
 }
 
 /**

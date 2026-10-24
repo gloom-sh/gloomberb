@@ -18,11 +18,13 @@ describe("chat function suggestions", () => {
   });
 
   test("offer codes that start with what is typed, the exact and shortest first, then names", () => {
-    expect(filterCommandSuggestions(TEST_FUNCTIONS, "n").map((suggestion) => suggestion.code)).toEqual(["N", "NI"]);
-    expect(filterCommandSuggestions(TEST_FUNCTIONS, "fh").map((suggestion) => suggestion.code)).toEqual(["N"]);
+    expect(filterCommandSuggestions(TEST_FUNCTIONS, "c").map((suggestion) => suggestion.code)).toEqual(["CMP", "CRYP", "GP"]);
+    // News Feed is offered as FH: N alone is more often the key, and would stay code.
+    expect(filterCommandSuggestions(TEST_FUNCTIONS, "n").map((suggestion) => suggestion.code)).toEqual(["NI", "FH"]);
     expect(filterCommandSuggestions(TEST_FUNCTIONS, "crypto").map((suggestion) => suggestion.code)).toEqual(["CRYP"]);
-    // A code the bar runs as a command that changes things is never offered.
+    // A code the bar runs as a command that changes things is never offered, even as another code's alias.
     expect(filterCommandSuggestions(TEST_FUNCTIONS, "aw")).toEqual([]);
+    expect(filterCommandSuggestions(TEST_FUNCTIONS, "wa").map((suggestion) => suggestion.code)).toEqual(["WTCH"]);
   });
 
   test("put the code between backticks, the cursor inside for an argument and past the span otherwise", () => {
