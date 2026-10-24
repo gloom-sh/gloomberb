@@ -290,6 +290,13 @@ import {
 import { fetchBeneficialOwners } from "../../plugins/builtin/holders/beneficial-client";
 import { centralBankEventsMessage } from "../central-bank-events";
 import { classSharesAsOf, classSharesToday } from "../../plugins/builtin/holders/client";
+import {
+  HOLDER_ROWS_MAX,
+  indexedHolderUnits,
+  indexHolderTicker,
+  loadIndexedHolders,
+  withIndexedHolders,
+} from "../../plugins/builtin/holders/index-holders";
 import { filingFormMatches, SEC_FILING_FETCH_LIMIT } from "../../plugins/builtin/sec/forms";
 import { currentReportItemsLabel } from "../../utils/sec-filings";
 import { INSIDER_REPORT_FILINGS, loadParsedInsiderFilings } from "../../plugins/builtin/insider/client";
@@ -2336,6 +2343,9 @@ async function printBeneficialOwners(
   });
 }
 
+/** Holder rows `holders` and `13f` print without `--limit`, as fn HDS does. */
+const HOLDERS_DEFAULT_ROWS = 25;
+
 async function runHolders(
   rawArgs: string[],
   ctx: Parameters<CliCommandDef["execute"]>[1],
@@ -2354,8 +2364,13 @@ async function runHolders(
     const listing = await requireCliListing(raw, exchangeOption, market, ctx);
     if (form !== "13f") return printBeneficialOwners(listing, market, form, history, ctx);
     const insiderCommand = commandName === "insider" && ownerTypes != null;
+    const institutional = !ownerTypes?.has("insider");
     const venues = loadBareVenues(listing, market);
-    const [data, quote, form4] = await Promise.all([
+    // A US line's institutions are every 13F filer, from the SEC holder index as fn 13F lists them,
+    // as many as the limit asks (HDS's 25 by default); elsewhere, or when the index cannot be read, the source's few.
+    const indexTicker = institutional ? indexHolderTicker(listing.request.symbol, listing.request.exchange) : null;
+    const indexLimit = Math.min(ctx.cliOptions.limit ?? HOLDERS_DEFAULT_ROWS, HOLDER_ROWS_MAX);
+    const [source, quote, form4, index] = await Promise.all([
       loadForListing(
         listing, market, ctx,
         () => market.dataProvider.getHolders(listing.request.symbol, listing.request.exchange),
@@ -2364,7 +2379,12 @@ async function runHolders(
       ),
       loadListingQuote(market.dataProvider, listing),
       insiderCommand ? loadForm4Report(market, listing) : null,
+      indexTicker ? loadIndexedHolders(indexTicker, indexLimit).catch(logFailure("cli.commands-market", "Read the 13F holder index failed", null)) : null,
     ]);
+    const indexed = !!index?.rows.length && indexHolderTicker(listing.request.symbol, listing.request.exchange, source) != null;
+    const data = indexed
+      ? withIndexedHolders(source, indexTicker!, { ...index!, rows: index!.rows.slice(0, indexLimit) }, indexedHolderUnits(source, quote?.price))
+      : source;
     const identity = listingIdentity(listing, quote);
     const choice = await listingChoiceNotes(listing, market, quote, venues);
     // A London line's values can be dollars from the 13F filings; the listing's currency is not their unit.
@@ -2376,7 +2396,6 @@ async function runHolders(
     });
     const shownRows = windowRows(rows, ctx.cliOptions).rows;
     const shown = shownRows.length;
-    const institutional = !ownerTypes?.has("insider");
     const total = institutional ? data.summary?.institutionsCount ?? null : null;
     const reportDate = sharedReportDate(rows);
     const valueBasis = rows.length > 0 ? holderValueBasis(reportDate, data.valueBasis, valueCurrency) : null;
@@ -2404,7 +2423,7 @@ async function runHolders(
       : rowsFreshness(shownRows, { ...SEC_FILINGS, basis: "13F filings" }, { asOf: data.asOf ?? null });
     // Named as fn HDS takes it, so the closing notes point to the same listing.
     const requested = exchangeOption && !raw.includes(":") ? `${raw}:${exchangeOption.toUpperCase()}` : raw;
-    const { notices } = holderReportNotices({ data, requested, shown: shownRows, reported: rows.length, total });
+    const { notices } = holderReportNotices({ data, requested, shown: shownRows, reported: rows.length, total, indexed });
     ctx.printResult({
       data: rows,
       ...(freshness ? { freshness } : {}),
@@ -3289,6 +3308,7 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
         title: "Output",
         lines: [
           "Holders run largest value first, as in fn HDS. --csv and --json carry the HDS report's columns: values in the currency the header names, shares, and the quarter's change and the stake in percent (0.59 is 0.59%).",
+          "A US listing lists every 13F filer, as fn 13F does: the largest 25, or as many as --limit asks up to 200. A listing abroad has only the source's largest few.",
         ],
       }],
       examples: ["holders AAPL", "holders SAN:EPA", "holders SAN --csv", "holders CAR --form all", "holders CAR --form 13g --history --json"],

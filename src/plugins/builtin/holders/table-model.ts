@@ -23,7 +23,8 @@ export function nextViewMode(current: ViewMode): ViewMode {
 export function buildRows(data: HolderData | null): HolderRow[] {
   return (data?.holders ?? []).map((holder, index) => ({
     ...holder,
-    id: `${holder.ownerType}:${holder.name}:${holder.reportDate ?? ""}:${index}`,
+    // A filer's CIK names its row across pages; the source's rows have none.
+    id: holder.cik ? `cik:${holder.cik}` : `${holder.ownerType}:${holder.name}:${holder.reportDate ?? ""}:${index}`,
   }));
 }
 

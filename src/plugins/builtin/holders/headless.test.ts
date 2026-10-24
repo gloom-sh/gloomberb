@@ -5,6 +5,7 @@ import { createHoldersHeadless } from "./headless";
 import { createTestHeadlessContext } from "../../../test-support/headless";
 import { carBeneficialOwnersPayload } from "./test-fixture";
 import { exportRowsTable } from "../../../cli/report-tables";
+import type { IndexedHolder, IndexedHolderList } from "./index-holders";
 
 function args(overrides: Partial<HeadlessPaneLoadArgs["options"]> = {}): HeadlessPaneLoadArgs {
   return {
@@ -152,8 +153,13 @@ describe("holders headless with the service's units", () => {
     ]);
   });
 
-  test("counts the shown holders against the service's total", async () => {
+  test("keeps the source's list and counts it against the service's total when the 13F index cannot be read", async () => {
+    const asked: string[] = [];
     const headless = createHoldersHeadless({
+      loadIndexedHolders: async (ticker) => {
+        asked.push(ticker);
+        throw new Error("13F holders unavailable");
+      },
       loadSnapshot: async () => ({
         marketCap: 4.4e12,
         data: {
@@ -167,11 +173,87 @@ describe("holders headless with the service's units", () => {
       }),
     });
     const result = await headless.load({ ...args(), rawArgument: "AAPL", argument: "AAPL", symbols: ["AAPL"] }, createTestHeadlessContext());
+    expect(asked).toEqual(["AAPL"]);
+    expect(result.rows.map((row) => row.name)).toEqual(["Blackrock Inc.", "Vanguard Capital Management LLC"]);
     expect(result.metadata).toMatchObject({ shown: 2, total: 6137, truncated: true });
     expect((result.metadata?.notices as string[])[0]).toBe("Apple Inc. | NASDAQ | USD | 2 of 6,137 holders");
     // A higher limit shows no more: the source names only its largest holders.
     expect(result.metadata?.notices).toContain("The source lists its 2 largest holders; fn 13F AAPL lists all 6,137.");
     expect(result.columns?.map((column) => column.key)).not.toContain("shareBasis");
+  });
+});
+
+describe("holders headless from the 13F holder index", () => {
+  // Gloom Cloud's PBR list (2026-06-30), trimmed to two of its ten rows: shares at $25.62, stakes of the common class in receipts.
+  const pbr: HolderData = {
+    symbol: "PBR", name: "Petróleo Brasileiro S.A. - Petrobras", currency: "USD", exchange: "NYSE", asOf: "2026-06-30",
+    valueCurrency: "USD", valueBasis: "latest_price", shareBasis: "depositary_receipt", adrRatio: 2,
+    summary: { institutionsCount: 567 },
+    holders: [
+      { ownerType: "institution", name: "GQG Partners LLC", reportDate: "2026-06-30", shares: 193_198_230, value: 4_949_738_653, percentHeld: 0.0519, changeShares: 19_760_000, changePercent: 0.1139 },
+      { ownerType: "institution", name: "BAILLIE GIFFORD & CO", reportDate: "2026-06-30", shares: 48_618_354, value: 1_245_602_230, percentHeld: 0.0131 },
+    ],
+  };
+  // The index's first 30 filers, largest first: number 12 added to its stake and number 30 is new.
+  const filers: IndexedHolder[] = [
+    { cik: "0001697233", name: "GQG Partners LLC", shares: 193_198_230, previousShares: 173_438_230 },
+    { cik: "0001088875", name: "BAILLIE GIFFORD & CO", shares: 48_618_354, previousShares: 44_438_354 },
+    ...Array.from({ length: 28 }, (_, index) => ({
+      cik: String(2_000_000 + index).padStart(10, "0"),
+      name: `Filer ${index + 3}`,
+      shares: 20_000_000 - index * 500_000,
+      previousShares: index === 9 ? 15_000_000 : index === 27 ? 0 : 20_000_000 - index * 500_000,
+    })),
+  ];
+  const index = (rows: IndexedHolder[]): IndexedHolderList => ({ rows, period: "2026-06-30", holderCount: 567, hasMore: true, nextOffset: rows.length });
+  const text = (result: Awaited<ReturnType<ReturnType<typeof createHoldersHeadless>["load"]>>, key: string, row: Record<string, unknown>) => {
+    const column = result.columns!.find((entry) => entry.key === key)!;
+    return (column.textFormat ?? column.format)!(row[key], row);
+  };
+
+  test("lists past the source's ten, in its units, with each filer's change, as far as the limit asks", async () => {
+    const limits: number[] = [];
+    const headless = createHoldersHeadless({
+      loadSnapshot: async () => ({ data: pbr, marketCap: 169.6e9, price: 26.16 }),
+      loadIndexedHolders: async (ticker, limit) => {
+        expect(ticker).toBe("PBR");
+        limits.push(limit);
+        return index(filers.slice(0, Math.ceil(limit / 25) * 25));
+      },
+    });
+    const result = await headless.load({ ...args({ limit: 12 }), rawArgument: "PBR", argument: "PBR", symbols: ["PBR"] }, createTestHeadlessContext());
+    expect(limits).toEqual([12]);
+    expect(result.rows).toHaveLength(12);
+    // The source's price and class: GQG reads as the source's own row does.
+    expect(result.rows.map((row) => [row.name, text(result, "value", row), text(result, "percentHeld", row)]).slice(0, 2)).toEqual([
+      ["GQG Partners LLC", "$4.95B", "5.19%"],
+      ["BAILLIE GIFFORD & CO", "$1.25B", "1.31%"],
+    ]);
+    expect(result.rows[11]).toMatchObject({
+      name: "Filer 12", shares: 15_500_000, value: 397_110_000, changeShares: 500_000, changePercent: 3.3333, reportDate: "2026-06-30",
+    });
+    expect(result.metadata).toMatchObject({ shown: 12, total: 567, truncated: true, asOf: "2026-06-30" });
+    expect(result.metadata?.notices).toEqual([
+      "Petróleo Brasileiro S.A. - Petrobras | NYSE | USD | 12 of 567 holders",
+      "Mkt value = shares reported at 2026-06-30 x latest price.",
+      "--limit lists up to 200; fn 13F PBR lists all 567.",
+      "Shares are depositary receipts (1 ADR = 2 ordinary shares).",
+    ]);
+
+    // Another order ranks the rows asked for, and says so; a new position has no percent change.
+    const byChange = await headless.load({ ...args({ limit: 30, sort: "change-percent" }), rawArgument: "PBR", argument: "PBR", symbols: ["PBR"] }, createTestHeadlessContext());
+    expect(byChange.rows).toHaveLength(30);
+    expect(byChange.rows.at(-1)).toMatchObject({ name: "Filer 30", changeShares: 6_500_000, changePercent: null });
+    expect(byChange.metadata?.notices).toContain("Sorted among the 30 largest. --limit lists up to 200; fn 13F PBR lists all 567.");
+  });
+
+  test("a listing abroad keeps the source's list without asking the index", async () => {
+    const headless = createHoldersHeadless({
+      loadSnapshot: async () => ({ data: { symbol: "SAN.PA", currency: "EUR", exchange: "PAR", holders: [{ ownerType: "institution", name: "Fund", shares: 1 }] } }),
+      loadIndexedHolders: async () => { throw new Error("asked the index for a listing abroad"); },
+    });
+    const result = await headless.load({ ...args(), rawArgument: "SAN:EPA", argument: "SAN:EPA", symbols: ["SAN:EPA"] }, createTestHeadlessContext());
+    expect(result.rows.map((row) => row.name)).toEqual(["Fund"]);
   });
 });
 

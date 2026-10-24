@@ -42,7 +42,7 @@ export async function loadHolderSnapshot(
   provider: DataProvider,
   symbol: string,
   exchange = "",
-): Promise<{ data: HolderData; marketCap?: number; sharesOutstanding?: number | null; sharesOutstandingAsOf?: string | null }> {
+): Promise<{ data: HolderData; marketCap?: number; sharesOutstanding?: number | null; sharesOutstandingAsOf?: string | null; price?: number }> {
   const [data, financials] = await Promise.all([
     loadHolderData(provider, symbol, exchange),
     provider.getTickerFinancials(symbol, exchange).catch(logFailure("holders.client", "Read holder reference financials failed", null)),
@@ -53,5 +53,6 @@ export async function loadHolderSnapshot(
     marketCap: holderStakeMarketCap(quote?.marketCap, quote?.currency, holderValueCurrency(data)),
     sharesOutstanding: classSharesToday(financials),
     sharesOutstandingAsOf: classSharesAsOf(financials),
+    ...(quote?.price != null ? { price: quote.price } : {}),
   };
 }

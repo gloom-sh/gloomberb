@@ -360,6 +360,8 @@ export interface HolderRecord {
   providerId?: string;
   ownerType: HolderOwnerType;
   name: string;
+  /** The 13F filer's CIK, on a row from the SEC 13F holder index. */
+  cik?: string;
   reportDate?: string;
   shares?: number;
   value?: number;

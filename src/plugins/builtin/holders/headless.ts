@@ -33,6 +33,14 @@ import {
   holderReportUnits,
 } from "./report-rows";
 import { REPORT_ROWS } from "../shared/headless-options";
+import {
+  HOLDER_ROWS_MAX,
+  indexedHolderUnits,
+  indexHolderTicker,
+  loadIndexedHolders,
+  withIndexedHolders,
+  type IndexedHolderList,
+} from "./index-holders";
 
 /** The same sort keys order the 13D/13G rows; `value` and `held` are the percent of class. */
 const BENEFICIAL_SORT_COLUMNS: Record<string, BeneficialColumnId> = {
@@ -51,6 +59,8 @@ interface HolderSnapshot {
   /** Today's shares outstanding, which a 13D/13G percent of class is set against. */
   sharesOutstanding?: number | null;
   sharesOutstandingAsOf?: string | null;
+  /** The latest price, which values the index's holders when the source's rows give none. */
+  price?: number;
 }
 
 export interface HoldersHeadlessDependencies {
@@ -64,6 +74,12 @@ export interface HoldersHeadlessDependencies {
     request: BeneficialOwnersRequest,
     ctx: HeadlessPaneContext,
   ): Promise<BeneficialOwnersPayload>;
+  /** A US listing's largest `limit` 13F holders from the SEC holder index, as `fn 13F` pages them. */
+  loadIndexedHolders(
+    ticker: string,
+    limit: number,
+    ctx: HeadlessPaneContext,
+  ): Promise<IndexedHolderList>;
 }
 
 const defaultDependencies: HoldersHeadlessDependencies = {
@@ -76,6 +92,7 @@ const defaultDependencies: HoldersHeadlessDependencies = {
     client: ctx.apiClient,
     signal: ctx.signal,
   }),
+  loadIndexedHolders: (ticker, limit, ctx) => loadIndexedHolders(ticker, limit, ctx.signal, ctx.apiClient),
 };
 
 export function createHoldersHeadless(
@@ -109,11 +126,11 @@ export function createHoldersHeadless(
         key: "limit",
         shot: REPORT_ROWS,
         aliases: ["count", "rows"],
-        description: "Maximum holder rows. 13F holders stop at the source's 10 largest (fn 13F lists every filer); 13D/13G owners go up to 200.",
+        description: "Maximum holder rows, largest first. A US listing's 13F holders are every filer fn 13F lists; a listing abroad has only the source's largest few.",
         type: "integer",
         defaultValue: 25,
         minimum: 1,
-        maximum: 200,
+        maximum: HOLDER_ROWS_MAX,
       },
       {
         key: "view",
@@ -199,7 +216,21 @@ export function createHoldersHeadless(
           },
         };
       }
-      const { data, marketCap } = await dependencies.loadSnapshot(symbol, args, ctx);
+      const limit = Number(args.options.limit);
+      // Asked beside the source's list; a listing abroad, or an index that cannot be read, keeps that list.
+      const indexTicker = indexHolderTicker(symbol);
+      const [snapshot, index] = await Promise.all([
+        dependencies.loadSnapshot(symbol, args, ctx),
+        indexTicker
+          ? dependencies.loadIndexedHolders(indexTicker, limit, ctx).catch(logFailure("holders.headless", "Load 13F holder index failed", null))
+          : null,
+      ]);
+      const { marketCap } = snapshot;
+      const indexed = !!index?.rows.length && indexHolderTicker(symbol, "", snapshot.data) != null;
+      // Pages hold 25; another order ranks the largest `limit`, not whatever the last page held past them.
+      const data = indexed
+        ? withIndexedHolders(snapshot.data, indexTicker!, { ...index!, rows: index!.rows.slice(0, limit) }, indexedHolderUnits(snapshot.data, snapshot.price))
+        : snapshot.data;
       const currency = data.currency ?? "USD";
       // A London line's values can be dollars from the 13F filings; they are labelled and formatted as such.
       const valueCurrency = holderValueCurrency(data, currency)!;
@@ -208,10 +239,10 @@ export function createHoldersHeadless(
         direction: args.options.order === "asc" ? "asc" as const : "desc" as const,
       };
       const sorted = holderReportRows(data, { marketCap, sort });
-      const rows = sorted.slice(0, Number(args.options.limit));
+      const rows = sorted.slice(0, limit);
       const total = data.summary?.institutionsCount ?? null;
       const { notices, valueBasis, positionsBasis, changeReported } = holderReportNotices({
-        data, requested: symbol, shown: rows, reported: sorted.length, total, sort,
+        data, requested: symbol, shown: rows, reported: sorted.length, total, sort, indexed,
       });
       return {
         // A change column that is empty on every row says nothing; the notices explain it once.
