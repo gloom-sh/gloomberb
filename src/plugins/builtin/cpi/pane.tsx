@@ -1,12 +1,14 @@
 import { useCallback, useMemo } from "react";
 import type { CpiBoardPayload, CpiRow } from "../../../api-client/cpi";
 import {
+  ChartRead,
   ChartTableHeader,
   CompositeChart,
   DataTableView,
   formatPercentAxis,
   PaneStatusBody,
   QueryBar,
+  useChartReadRows,
   usePaneNoticeFooter,
   usePaneStatusFooter,
   type ChartTableChart,
@@ -20,7 +22,6 @@ import { useThemeColors } from "../../../theme/theme-context";
 import type { ResolvedSeries } from "../../../time-series/types";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, TextAttributes } from "../../../ui";
-import { ClippedText } from "../../../components/ui/display";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import { CPI_NOT_AVAILABLE, getCachedCpiBoard, loadCpiBoard } from "./client";
 import {
@@ -52,8 +53,8 @@ const COLUMNS: DataTableColumn[] = [
   { id: "contributionYoy", label: "Y/Y Pts", width: 8, align: "right", flexGrow: 1 },
 ];
 const PANELS = [{ id: "main" }];
-/** Legend, four plot rows, the time axis and the read under it. */
-const CHART_MIN_ROWS = 7;
+/** Legend, four plot rows and the time axis; the read under them takes its own rows. */
+const CHART_ROWS_ABOVE_READ = 6;
 
 /** Legend values in the table's units: changes in percent. */
 const legendValue = (value: number) => `${value.toFixed(2)}%`;
@@ -64,18 +65,17 @@ const legendValue = (value: number) => `${value.toFixed(2)}%`;
  * the latest month so the legend reads it; the plain read sits under the axis.
  */
 function CpiChart({ row, series, width, height }: { row: CpiRow; series: ResolvedSeries[]; width: number; height: number }) {
-  const colors = useThemeColors();
   const latest = row.history.at(-1)?.[0] ?? null;
   const axis = useMemo(() => cpiTimeAxis(row.history), [row.history]);
-  // The plain read under the axis; the desktop cuts it where its line ends.
-  const read = row.read && width > 2 ? row.read : "";
+  // The plain read under the axis: wrapped in the terminal, cut by CSS where its line ends on the desktop.
+  const readRows = useChartReadRows([row.read], width);
   return (
     <Box width={width} height={height} flexDirection="column">
-      <CompositeChart series={series} panels={PANELS} width={width} height={Math.max(3, height - (read ? 1 : 0))}
+      <CompositeChart series={series} panels={PANELS} width={width} height={Math.max(3, height - readRows)}
         focused={false} navigable={false} showLegend showTimeAxis cursorDate={latest ? cpiMonthDate(latest) : null}
         viewport={axis?.viewport} xAxis={axis?.xAxis} clipToViewport={!!axis}
         formatValue={legendValue} formatAxisValue={formatPercentAxis} remoteKind="cpi-component-history" />
-      {read ? <Box height={1} paddingX={1}><ClippedText fg={colors.textMuted} text={read} width={width - 2} /></Box> : null}
+      <ChartRead text={row.read} width={width} />
     </Box>
   );
 }
@@ -92,9 +92,11 @@ function CpiBoard({ payload, initialRow, width, height, focused }: {
   const headline = payload.rows.find((row) => row.code === "SA0") ?? null;
   const series = useMemo(() => selected ? cpiChartSeries(selected, headline, colors) : [], [selected, headline, colors]);
   const meta = cpiHeaderLine(payload.release);
+  // Room for the longest read at this width, so the chart does not give way to the strip as the selection moves.
+  const readRows = useChartReadRows(rows.map((row) => row.read), width);
   const chart: ChartTableChart | null = selected ? {
     render: (size) => <CpiChart row={selected} series={series} width={size.width} height={size.height} />,
-    minRows: CHART_MIN_ROWS,
+    minRows: CHART_ROWS_ABOVE_READ + Math.max(1, readRows),
     strip: cpiChartStrip(selected, colors.warning),
     empty: series.length ? undefined : `No history for ${selected.label}`,
   } : null;
