@@ -610,6 +610,12 @@ export interface CommandBarSearchProvider {
   /** Default 300. Ignored by `match`. */
   debounceMs?: number;
   /**
+   * How long `provide` may take once it starts, in ms. Default 8000. Past it
+   * the bar aborts `signal`, drops a late answer and stops showing Searching.
+   * Ignored by `match`.
+   */
+  timeoutMs?: number;
+  /**
    * Codes (`CHAT`) after which the provider is still asked, typed alone or
    * with text after them, with the whole query. Every other provider stays
    * quiet once a code claims the text.

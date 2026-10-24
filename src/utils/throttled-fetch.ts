@@ -14,6 +14,7 @@ const DEFAULT_REQUESTS_PER_MINUTE = 30;
 const DEFAULT_MAX_RETRIES = 2;
 const DEFAULT_TIMEOUT_MS = 10_000;
 const BACKOFF_BASE_MS = 1_000;
+const DEFAULT_MAX_RETRY_WAIT_MS = 10_000;
 
 export interface ThrottledFetchOptions {
   /** Max requests per minute per host. Default: 30 */
@@ -24,6 +25,12 @@ export interface ThrottledFetchOptions {
   timeoutMs?: number;
   /** Initial retry backoff in ms. Default: 1000 */
   backoffBaseMs?: number;
+  /**
+   * Longest a retry waits, `Retry-After` included. A host that asks for more
+   * (a minute, say) gets no retry: the 429 or 5xx comes back as it is, so one
+   * rate-limited feed cannot hold its callers for that long. Default: 10000
+   */
+  maxRetryWaitMs?: number;
   /** Default headers applied to every request */
   defaultHeaders?: Record<string, string>;
   /** Share concurrent GET requests to the same URL. Default: true */
@@ -50,6 +57,7 @@ export function createThrottledFetch(
   const maxRetries = options.maxRetries ?? DEFAULT_MAX_RETRIES;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const backoffBaseMs = options.backoffBaseMs ?? BACKOFF_BASE_MS;
+  const maxRetryWaitMs = options.maxRetryWaitMs ?? DEFAULT_MAX_RETRY_WAIT_MS;
   const defaultHeaders = options.defaultHeaders ?? {};
   const dedupeGetRequests = options.dedupeGetRequests ?? true;
   const fetchTransport =
@@ -190,10 +198,9 @@ export function createThrottledFetch(
     // Retry on 429 or 5xx
     if ((resp.status === 429 || resp.status >= 500) && retriesLeft > 0) {
       throwIfAborted(callerSignal);
-      await wait(
-        getBackoffMs(retriesLeft, resp.headers.get("retry-after")),
-        callerSignal,
-      );
+      const retryWaitMs = getBackoffMs(retriesLeft, resp.headers.get("retry-after"));
+      if (retryWaitMs > maxRetryWaitMs) return resp;
+      await wait(retryWaitMs, callerSignal);
       return executeRequest(url, init, retriesLeft - 1);
     }
 

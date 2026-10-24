@@ -73,6 +73,18 @@ describe("createThrottledFetch", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2); // initial + 1 retry
   });
 
+  test("does not wait out a Retry-After longer than the client allows", async () => {
+    fetchMock = mock(() => Promise.resolve(new Response("bad gateway", { status: 502, headers: { "Retry-After": "60" } })));
+    globalThis.fetch = fetchMock as any;
+
+    const client = createThrottledFetch({ maxRetries: 1, maxRetryWaitMs: 50 });
+    const started = Date.now();
+    const resp = await client.fetch("https://api.example.com/test");
+    expect(resp.status).toBe(502);
+    expect(Date.now() - started).toBeLessThan(50);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   test("fetchJson parses response and throws on error", async () => {
     const client = createThrottledFetch();
     const data = await client.fetchJson<{ ok: boolean }>("https://api.example.com/test");

@@ -143,6 +143,59 @@ describe("command bar search providers", () => {
     expect(latestSearching).toBe(false);
   });
 
+  test("a provider that never answers is dropped at its deadline and the others still show", async () => {
+    let aborted = false;
+    const stuck: CommandBarSearchProvider = {
+      id: "stuck",
+      category: "News",
+      debounceMs: 0,
+      timeoutMs: 30,
+      // Ignores its signal and never settles, as a feed load that waits on a dead host does.
+      provide: (_query, _context, signal) => {
+        signal.addEventListener("abort", () => { aborted = true; });
+        return new Promise<CommandBarResultDef[]>(() => {});
+      },
+    };
+    const quick: CommandBarSearchProvider = {
+      id: "docs",
+      category: "Documents",
+      debounceMs: 0,
+      async provide() {
+        return [makeResult("docs-hit")];
+      },
+    };
+
+    await renderHarness([stuck, quick], "任天堂");
+    await settle(10);
+    expect(latestSearching).toBe(true);
+    expect(latestItems.map((item) => item.label)).toEqual(["docs-hit"]);
+
+    await settle(60);
+    expect(latestSearching).toBe(false);
+    expect(aborted).toBe(true);
+    expect(latestItems.map((item) => item.label)).toEqual(["docs-hit"]);
+  });
+
+  test("a late answer after the deadline changes nothing", async () => {
+    let release: (results: CommandBarResultDef[]) => void = () => {};
+    const late: CommandBarSearchProvider = {
+      id: "late",
+      category: "News",
+      debounceMs: 0,
+      timeoutMs: 20,
+      provide: () => new Promise<CommandBarResultDef[]>((resolve) => { release = resolve; }),
+    };
+
+    await renderHarness([late], "margin");
+    await settle(60);
+    expect(latestSearching).toBe(false);
+
+    release([makeResult("too-late")]);
+    await settle(10);
+    expect(latestItems).toEqual([]);
+    expect(latestSearching).toBe(false);
+  });
+
   test("stays quiet below the provider's minimum query length", async () => {
     let calls = 0;
     const provider: CommandBarSearchProvider = {

@@ -9,6 +9,8 @@ import type { ResultItem } from "../../list/model";
 
 const DEFAULT_MIN_QUERY_LENGTH = 3;
 const DEFAULT_DEBOUNCE_MS = 300;
+/** The corpus answers in well under a second; past this a provider is stuck, not slow. */
+const DEFAULT_PROVIDER_TIMEOUT_MS = 8_000;
 const PROVIDER_ROW_PREFIX = "search-provider:";
 
 /** A row a plugin search provider contributed, as opposed to one the bar resolved itself. */
@@ -135,7 +137,9 @@ function useProviderMatchItems({
  * Runs plugin search providers for the root list. Each provider debounces and
  * aborts on its own, answers are memoized for the life of the bar, and rows are
  * only ever added to the static list: a provider that fails, hangs, or answers
- * late leaves what the command bar already resolved exactly as it was.
+ * late leaves what the command bar already resolved exactly as it was. Every
+ * provider settles: one that has not answered within its `timeoutMs` is
+ * aborted and counts as empty, so the bar never keeps searching for it.
  * Providers that answer from memory skip all of that and come back as
  * `providerMatchItems`, for the bar to rank with its own matches.
  */
@@ -235,9 +239,27 @@ export function useCommandBarSearchProviders({
         const controller = new AbortController();
         abortsRef.current.set(provider.id, controller);
         void (async () => {
+          let deadline: ReturnType<typeof setTimeout> | undefined;
+          // Ends the wait on the deadline, and on an abort, so a provider that
+          // ignores its signal does not hold the request for the full deadline.
+          const timedOut = new Promise<null>((resolve) => {
+            deadline = setTimeout(() => resolve(null), provider.timeoutMs ?? DEFAULT_PROVIDER_TIMEOUT_MS);
+            controller.signal.addEventListener("abort", () => resolve(null), { once: true });
+          });
           try {
-            const results = await provider.provide(trimmed, contextRef.current, controller.signal);
+            const results = await Promise.race([
+              provider.provide(trimmed, contextRef.current, controller.signal),
+              timedOut,
+            ]);
             if (controller.signal.aborted) return;
+            if (!results) {
+              // A provider that never answers is a provider with nothing to
+              // say: the bar stops searching for it, and what it sends later is
+              // dropped. Nothing is memoized, so a later visit to the text asks again.
+              controller.abort();
+              publish(provider, trimmed, []);
+              return;
+            }
             cacheRef.current.set(`${provider.id}\n${trimmed}`, results);
             publish(provider, trimmed, results);
           } catch {
@@ -246,6 +268,7 @@ export function useCommandBarSearchProviders({
             if (controller.signal.aborted) return;
             publish(provider, trimmed, []);
           } finally {
+            clearTimeout(deadline);
             if (abortsRef.current.get(provider.id) === controller) {
               abortsRef.current.delete(provider.id);
               setLoading(provider.id, false);

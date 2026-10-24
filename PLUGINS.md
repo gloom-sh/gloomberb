@@ -600,7 +600,7 @@ setup(ctx) {
 }
 ```
 
-The command bar debounces each provider separately, aborts the request through `signal` as soon as the query moves on, and memoizes answers for as long as the bar is open. Provider rows are added below what the command bar already resolved, so a slow, failing, or empty provider never disturbs the local matches: return an empty array rather than an error row. Rows are capped at two extra lines and truncated to the panel width, and `emphasis` is styled by the theme, so never put markup in `text`. `badge` is a short tag left of the label (six characters at most) and `name` is drawn muted after it, such as a person's full name after their @username.
+The command bar debounces each provider separately, aborts the request through `signal` as soon as the query moves on, and memoizes answers for as long as the bar is open. A provider that has not answered within `timeoutMs` (8 seconds by default) is aborted and counts as empty, so it can never keep the bar on Searching. Provider rows are added below what the command bar already resolved, so a slow, failing, or empty provider never disturbs the local matches: return an empty array rather than an error row. Rows are capped at two extra lines and truncated to the panel width, and `emphasis` is styled by the theme, so never put markup in `text`. `badge` is a short tag left of the label (six characters at most) and `name` is drawn muted after it, such as a person's full name after their @username.
 
 Once a code claims the text (`CHAT gen`, `SEC AAPL`), providers stay quiet. A provider that has more to say after a code lists it in `shortcuts` and is then asked with the whole text; its rows sit below the code's own.
 

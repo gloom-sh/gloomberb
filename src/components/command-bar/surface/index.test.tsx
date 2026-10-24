@@ -3,7 +3,7 @@ import { act } from "react";
 import { takeKeybindingCaptureRequest } from "../../../app/keybindings";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { createTestDataProvider } from "../../../test-support/data-provider";
-import type { CommandDef, PaneTemplateCreateOptions, WizardStep } from "../../../types/plugin";
+import type { CommandBarResultDef, CommandBarSearchProvider, CommandDef, PaneTemplateCreateOptions, WizardStep } from "../../../types/plugin";
 import { CommandBarHarness, createCommandBarTestControls, expectSingleBackControl, makeDataProvider } from "./test-harness";
 import { createTestTicker } from "../../../test-support/ticker";
 import { cpiModule } from "../../../plugins/builtin/cpi";
@@ -12,7 +12,7 @@ import type { AppContextStoreValue } from "../../../state/app/context";
 
 const tui = createOpenTuiTestHarness();
 
-const { waitForFrameToContain, clickFrameText } = createCommandBarTestControls(() => tui.setup());
+const { waitForFrameToContain, waitForFrameToExclude, clickFrameText } = createCommandBarTestControls(() => tui.setup());
 
 type MutableCommandRegistry = {
   commands: ReadonlyMap<string, CommandDef>;
@@ -216,6 +216,27 @@ describe("CommandBar", () => {
     // pane the user had picked, not whatever now sits at its old index.
     await tui.emitKeypress({ name: "return", sequence: "\r" });
     expect(created).toEqual([{ templateId: "new-watchlist-pane", options: undefined }]);
+  });
+
+  test("stops searching for a provider that never answers, with a Japanese name nothing matches", async () => {
+    const stuck: CommandBarSearchProvider = {
+      id: "stuck:news",
+      category: "News",
+      debounceMs: 0,
+      timeoutMs: 150,
+      provide: () => new Promise<CommandBarResultDef[]>(() => {}),
+    };
+    await tui.render(<CommandBarHarness
+      query="任天堂"
+      configurePluginRegistry={(pluginRegistry) => {
+        (pluginRegistry.commandBarSearchProviders as Map<string, CommandBarSearchProvider>).set(stuck.id, stuck);
+      }}
+      dataProvider={makeDataProvider(async () => [])}
+    />, { width: 80, height: 24 });
+
+    await waitForFrameToContain("Searching");
+    const settled = await waitForFrameToExclude("Searching", 20);
+    expect(settled).toContain("Ask AI");
   });
 
   test("keeps symbol search out of a query a prefix claims", async () => {

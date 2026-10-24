@@ -68,6 +68,25 @@ describe("the loaded-story lookup provider", () => {
     expect(opened).toEqual([["news-story-pane", { arg: "hormuz", values: { title: hormuz.title } }]]);
   });
 
+  test("a feed that never finishes loading does not hold the lookup: it answers with the stories it has", async () => {
+    const hanging = {
+      listArticles: () => [hormuz, author],
+      getQueryState: () => ({ articles: [] }),
+      load: () => new Promise<never>(() => {}),
+    } as unknown as NewsService;
+    const provider = createLoadedStorySearchProvider(
+      { createPaneFromTemplate: () => {} },
+      { getService: () => hanging, isSignedIn: () => false, now: Date.now, warmTimeoutMs: 20 },
+    );
+
+    const started = Date.now();
+    const rows = await provider.provide("hormuz", context, signal);
+    expect(Date.now() - started).toBeLessThan(1_000);
+    expect(rows.map((row) => row.label)).toEqual([hormuz.title]);
+    // Nothing matches, and the lookup still ends.
+    expect(await provider.provide("任天堂", context, signal)).toEqual([]);
+  });
+
   test("signed in, leaves the News section to the corpus search", async () => {
     const { service, loads } = fakeService([hormuz], [hormuz]);
     const provider = createLoadedStorySearchProvider(
