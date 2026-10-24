@@ -12,13 +12,14 @@ import type { Quote } from "../../../types/financials";
 import { getActiveQuoteDisplay } from "../../../market-data/market/status";
 import { cliStyles } from "../../../utils/cli-output";
 import { canonicalExchange, isUsListingExchange } from "../../../utils/exchanges";
-import { ambiguousNumberMessage, meantThousandsDot, parsePastedNumber, thousandsDotReadings, type PastedNumber, type ThousandsDotReadings } from "../../../utils/decimal-comma";
+import { meantThousandsDot, parsePastedNumber, thousandsDotReadings, type ThousandsDotReadings } from "../../../utils/decimal-comma";
 import { newYorkToday } from "../earnings/board-model";
 import { createAlert, rearmAlert, serializeAlerts } from "./alert-engine";
 import { ALERTS_KEY, ALERTS_PLUGIN_ID } from "./constants";
 import { MAX_EVENT_ALERTS, eventAlertTarget, toggleEventAlert, writeEventAlertStores, type EventAlertRule } from "./events";
 import { alertKindLabel } from "./history";
 import { IV_LEVEL_CHECKS_KEY, readIvLevelChecks, rearmIvLevelAlert, type IvLevelCheck } from "./iv-level";
+import { readAlertPrice } from "./price";
 import { farTargetMessage } from "./quotes";
 import { createResearchAlert, formatPremium, ivLevelUnitError, parseAmount, parseIvLevel, researchAlertDescription } from "./research-builder";
 import { IV_LEVEL_RANGES, MAX_LEAD_DAYS, type IvLevelMetric, type MacroAlertEvent } from "./research-rules";
@@ -84,26 +85,6 @@ const CONDITIONS: readonly AlertCondition[] = ["above", "below", "crosses"];
 /** The first word of a price typed with a space between thousands and no quotes (`81 000`): one to three digits. */
 const LEADING_GROUP = /^[+-]?\d{1,3}$/;
 
-const PRICE_SCALES = { k: 1e3, m: 1e6, b: 1e9 } as const;
-/** A price typed with a scale after it: 81k, 1.5m. */
-const SCALED_PRICE = /^([+-]?\d[\d.,]*)\s*([kmb])$/i;
-
-/** What to type for an alert price, as the error for one that reads as none names it. */
-const PRICE_FORMAT = "type 81000 or 81k";
-
-const scaled = (value: number, scale: number) => Number((value * scale).toPrecision(15));
-
-/** A price as `parsePastedNumber` reads it, and `81k` is 81000: the scale applies to either reading of a comma and three digits. */
-function parseAlertPrice(text: string): PastedNumber {
-  const match = SCALED_PRICE.exec(text.trim());
-  if (!match) return parsePastedNumber(text);
-  const scale = PRICE_SCALES[match[2]!.toLowerCase() as keyof typeof PRICE_SCALES];
-  const base = parsePastedNumber(match[1]);
-  if (base.kind === "number") return { kind: "number", value: scaled(base.value, scale) };
-  if (base.kind === "ambiguous") return { kind: "ambiguous", thousands: scaled(base.thousands, scale), decimal: scaled(base.decimal, scale) };
-  return base;
-}
-
 /**
  * Reads `alerts add` arguments: `<symbol> above 250`, `<symbol> earnings`,
  * `<symbol> earnings results`, or `CPI` / `FOMC`, with `--days` (already
@@ -157,12 +138,10 @@ export function parseAlertAddArgs(args: readonly string[], days: string | null |
     throw new Error(`${[third, ...rest].join(" ")} could be ${spaced.value} (thousands) or ${typed} and a stray ${rest.join(" ")}; type ${retype(spaced.value)} or ${retype(typed)}`);
   }
   // A price pasted from a sheet (1.350,5, 1,350.5, 1 350,5) reads as it is written; `1,350` could be either, so it asks.
-  const pasted = parseAlertPrice(third);
-  if (pasted.kind === "ambiguous") throw new Error(ambiguousNumberMessage(third, pasted));
-  if (pasted.kind === "invalid") throw new Error(`Alert price must be a number, got "${third.trim()}"; ${PRICE_FORMAT}.`);
-  if (rest.length > 0) throw new Error(`A price alert takes one price, not "${rest.join(" ")}" after ${third}; type ${retype(pasted.value)}`);
+  const price = readAlertPrice(third);
+  if (rest.length > 0) throw new Error(`A price alert takes one price, not "${rest.join(" ")}" after ${third}; type ${retype(price)}`);
   const thousandsDot = thousandsDotReadings(third);
-  return { kind: "price", symbol: first, condition, price: pasted.value, ...(thousandsDot ? { thousandsDot: { ...thousandsDot, text: third.trim() } } : {}) };
+  return { kind: "price", symbol: first, condition, price, ...(thousandsDot ? { thousandsDot: { ...thousandsDot, text: third.trim() } } : {}) };
 }
 
 const OCC_CONTRACT = /^(?:O:)?[A-Z.]{1,6}\d{6}[CP]\d{8}$/i;

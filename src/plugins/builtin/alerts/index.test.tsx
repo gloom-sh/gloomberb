@@ -410,6 +410,11 @@ describe("alertsPlugin command", () => {
       // A target ten times the price is refused, as `alerts add` refuses it, and nothing is stored.
       await expect(command.execute({ shortcut: "AAPL above 2500" })).rejects.toThrow("A target of 2,500 is more than 10 times AAPL's last price of 201.5.");
       expect(deserializeAlerts(String(store.get("alerts")))).toHaveLength(1);
+      // A price that reads two ways or as no number is refused as `alerts add` refuses it, never taken as its leading digits (2,000 as 2).
+      await expect(command.execute({ shortcut: "AAPL above 2,000" })).rejects.toThrow("2,000 could be 2000 (thousands) or 2 (decimal comma)");
+      await expect(command.execute({ symbol: "AAPL", condition: "above", price: "2,000" })).rejects.toThrow("2,000 could be 2000 (thousands)");
+      await expect(command.execute({ shortcut: "AAPL above 20x" })).rejects.toThrow('Alert price must be a number, got "20x"; type 81000 or 81k.');
+      expect(deserializeAlerts(String(store.get("alerts")))).toHaveLength(1);
 
       // An alert link's 7203:TSE is Tokyo, where 7203 trades, as `alerts add` reads it.
       await command.execute({ symbol: "7203:TSE", condition: "above", price: "210" });

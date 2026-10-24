@@ -1,4 +1,5 @@
 import type { AlertCondition } from "./types";
+import { readAlertPrice } from "./price";
 import { normalizeAlertSymbol } from "./quotes";
 
 export interface AlertCommandInput {
@@ -54,17 +55,13 @@ export function parseAlertShortcutValues(
     values.condition = condition;
   }
 
-  if (parts[2]) {
-    const price = Number.parseFloat(parts[2]!.replace(/^\$/, ""));
-    if (!Number.isFinite(price)) {
-      throw new Error("Use a numeric target price.");
-    }
-    values.price = String(price);
-  }
+  // The price reads as `alerts add` reads it: 81k is 81000, 81,000 asks which was meant, and text that is no number says what to type.
+  if (parts[2]) values.price = String(readAlertPrice(parts[2].replace(/^\$/, "")));
 
   return values;
 }
 
+/** The alert a command's values name: null while one is missing, and a price that reads two ways or as no number throws (`readAlertPrice`). */
 export function parseAlertCommandValues(
   values?: Record<string, string>,
 ): AlertCommandInput | null {
@@ -80,7 +77,5 @@ export function parseAlertCommandValues(
   const condition = parseAlertCondition(values?.condition);
   const priceStr = values?.price?.trim();
   if (!symbol || !condition || !priceStr) return null;
-  const price = Number.parseFloat(priceStr);
-  if (!Number.isFinite(price)) return null;
-  return { symbol, condition, price };
+  return { symbol, condition, price: readAlertPrice(priceStr.replace(/^\$/, "")) };
 }
