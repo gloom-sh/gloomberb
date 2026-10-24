@@ -150,7 +150,7 @@ export function curveSpreadLabel(slope: Pick<FuturesCurvePayload["slope"], "fron
 }
 
 /** A leg that traded fewer lots than this in its session is too thin to call a curve's slope from. */
-export const THIN_SPREAD_LOTS = 20;
+const THIN_SPREAD_LOTS = 20;
 
 /**
  * What the front spread subtracts, as its figure says it: "settle 10-22" for
@@ -169,7 +169,7 @@ export function curveSpreadBasis(slope: Pick<FuturesCurvePayload["slope"], "basi
  * Why the front spread is thin, from its thin leg's row: "ALIX26 traded 4 lots"
  * or "ALIX26 last traded 2026-10-22". Null when it is not thin.
  */
-export function thinSpreadReason(data: Pick<FuturesCurvePayload, "slope" | "contracts">): string | null {
+function thinSpreadReason(data: Pick<FuturesCurvePayload, "slope" | "contracts">): string | null {
   if (data.slope.state !== "thin") return null;
   const leg = data.contracts.find((row) => row.symbol === data.slope.thinSymbol);
   if (!leg) return null;
