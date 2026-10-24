@@ -207,9 +207,11 @@ import {
   listingVenues,
   listingChoiceNotes,
   listingReadNotes,
+  failUnchosenListing,
   loadBareVenues,
   loadForListing,
   loadListingQuote,
+  loadListingQuoteAnswer,
   listingFateLoader,
   meantQuestion,
   movedSymbolLine,
@@ -1315,7 +1317,8 @@ interface ListingHistory {
 
 /** The command a listing that cannot be served is pointed back at: `history`, `history --range 5Y`. */
 function historyCommand({ range, window }: HistoryAsk): string {
-  return window ? `history --from ${window.from} --to ${window.to}` : range === "1Y" ? "history" : `history --range ${range}`;
+  // A window that runs to today retries to the day it is run on, not the one it was first run on.
+  return window ? `history --from ${window.from}${isPastPriceWindow(window) ? ` --to ${window.to}` : ""}` : range === "1Y" ? "history" : `history --range ${range}`;
 }
 
 /**
@@ -1340,15 +1343,18 @@ async function loadListingHistory(
     : market.dataProvider.getPriceHistoryWithMetadata
       ? market.dataProvider.getPriceHistoryWithMetadata(symbol, exchange, loadRange, context)
       : market.dataProvider.getPriceHistory(symbol, exchange, loadRange, context).then((points): PriceHistoryResult => ({ points, resolution: null }));
-  const quoted = loadListingQuote(market.dataProvider, listing);
+  const quoteAnswer = loadListingQuoteAnswer(market.dataProvider, listing);
+  const quoted = quoteAnswer.then((answer) => answer.quote);
   const fate = lookups ? listingFateLoader(listing, market, quoted) : null;
+  const request = { command: historyCommand(ask), noun: "history", ...(fate ? { fate } : {}) };
   const [loaded, quote] = await Promise.all([
-    loadForListing(listing, market, ctx, load, (loaded) => loaded.points.length === 0, {
-      command: historyCommand(ask), noun: "history", ...(fate ? { fate } : {}),
-    })
+    loadForListing(listing, market, ctx, load, (loaded) => loaded.points.length === 0, request)
       .catch((error) => failHistory(error, listing.key, ctx)),
     quoted,
   ]);
+  // A bare symbol several companies list is never served from the one the data service picked, in a range or a window:
+  // it asks for an exchange as `quote` does, and in a list that is the symbol's row alone.
+  await failUnchosenListing(listing, market, ctx, request, (await quoteAnswer).error);
   const { resolution } = loaded;
   // While the session trades the day's bar is the quote's, whatever range the history was cut for (withSessionBar).
   // A window that ended before today has no session in progress.
