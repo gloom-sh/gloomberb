@@ -1,3 +1,4 @@
+import { logFailure } from "../../../utils/log-failure";
 import type { ChartSeriesSpec, ChartSpec, ChartStudySpec } from "../../../time-series/types";
 import { isLeverageFactor } from "../../../time-series/leverage";
 import { priceComparisonSeriesIds } from "../../../time-series/price-comparison";
@@ -126,7 +127,7 @@ export async function loadDailyObjectives(
   else signal?.addEventListener("abort", cancel, { once: true });
   try {
     await Promise.all(tickers.map(async (ticker) => {
-      const facts = await Promise.race([loadFacts(ticker, deadline.signal).catch(() => null), expired]);
+      const facts = await Promise.race([loadFacts(ticker, deadline.signal).catch(logFailure("chart-composer.leverage-overlay", "Load chart fund objective failed", null)), expired]);
       const objective = dailyObjective(facts);
       // An index fund charted beside its leveraged fund is not leveraged itself.
       if (objective && objective.proxy !== ticker) objectives.set(ticker, objective);

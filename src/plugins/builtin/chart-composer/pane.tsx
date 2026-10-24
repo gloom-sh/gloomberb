@@ -1,3 +1,4 @@
+import { logFailure } from "../../../utils/log-failure";
 import { FINANCIAL_VINTAGE_NOTICE, SEC_EPS_BASIS_NOTICE } from "../../../utils/financial-statements";
 import { usePaneSharePreparation } from "../../../shares/prepare";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -616,7 +617,7 @@ function ChartComposerSurface({
           ]}
         />
       ),
-    }).catch(() => undefined);
+    }).catch(logFailure("chart-composer.pane", "Open VWAP anchor choices failed"));
     if (choice === "pick") {
       pickAnchorAfterDialogRef.current = true;
       return { close: true };
@@ -632,7 +633,7 @@ function ChartComposerSurface({
       content: (ctx: PromptContext<string>) => (
         <TextPromptDialog {...ctx} title="Anchor VWAP at" placeholder="2026-09-30 or 2026-09-30 10:00" confirmLabel="Anchor" width={44} />
       ),
-    }).catch(() => undefined);
+    }).catch(logFailure("chart-composer.pane", "Open VWAP date prompt failed"));
     if (!text) return;
     const anchor = parseVwapAnchor(text, anchorInputRef.current);
     if (anchor === null) {
@@ -873,7 +874,7 @@ function ChartComposerSurface({
         content: (context: PromptContext<ChartSpec | null>) => (
           <SeriesEditorDialog {...context} initialSpec={spec} />
         ),
-      }).catch(() => null);
+      }).catch(logFailure("chart-composer.pane", "Open chart series editor failed", null));
       if (next) setSpec(next);
     } finally {
       setInteractionCaptured("prompt", false);
@@ -926,7 +927,7 @@ function ChartComposerSurface({
             ]}
           />
         ),
-      }).catch(() => "");
+      }).catch(logFailure("chart-composer.pane", "Open chart bar size choices failed", ""));
       if (next === CUSTOM_BAR_SIZE_CHOICE) {
         // A row picked with the mouse closes on mousedown; the field opens after the
         // click has placed the focus, or the desktop leaves it on the dialog.
@@ -935,7 +936,7 @@ function ChartComposerSurface({
           content: (ctx: PromptContext<string>) => (
             <TextPromptDialog {...ctx} title="Custom Bar Size" placeholder="10m, 90m, 4h, 2D, 3W, 6mo" confirmLabel="Chart" width={44} />
           ),
-        }).catch(() => undefined);
+        }).catch(logFailure("chart-composer.pane", "Open custom chart bar size prompt failed"));
         if (!typed) return;
         const size = parseChartBarSize(typed);
         const count = /^\s*(\d+)\s*M\s*$/.exec(typed)?.[1];

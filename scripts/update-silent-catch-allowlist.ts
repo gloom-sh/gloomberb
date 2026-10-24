@@ -10,6 +10,9 @@ const EXCLUDED = [
 ];
 // Folders inside an excluded one that are already checked; bring the next one in with a line here.
 const INCLUDED = [
+  "src/plugins/builtin/chart-composer/",
+  "src/plugins/builtin/broker-trading/",
+  "src/plugins/builtin/account-management/",
   "src/plugins/builtin/cloud/",
   "src/plugins/builtin/notes/",
   "src/plugins/builtin/news/",

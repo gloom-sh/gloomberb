@@ -1,3 +1,4 @@
+import { logFailure } from "../../../utils/log-failure";
 import { matchesNumberStep } from "../../../components/ui/number-step";
 import type { BrokerAdapter, BrokerConnectionStatus } from "../../../types/broker";
 import type { BrokerInstanceConfig } from "../../../types/config";
@@ -365,7 +366,9 @@ export class BrokerTradingController {
       // The stream answered what a quote request could not.
       const answered = this.snapshot.error !== undefined && this.snapshot.error === this.quoteError;
       this.publish({ quote: value, loadingQuote: false, ...(answered ? { error: undefined } : {}) });
-    } catch { /* A quote that fails the checks leaves the last good one. */ }
+    } catch {
+      // Intentional ignore: invalid streamed quotes leave the last validated ticket quote in place.
+    }
   }
 
   /** A streamed quote for the current draft, still being pushed, stands in for asking. */
@@ -634,7 +637,10 @@ export class BrokerTradingController {
         : await context.adapter.listOpenOrders?.(context.instance) ?? [];
       return orders.find((value): value is BrokerOrder => !!value && value.accountId === order.accountId
         && value.contract.symbol === order.contract.symbol && (value.orderId === order.orderId || sameOrder(value, order)));
-    } catch { return undefined; }
+    } catch (error) {
+      logFailure("broker-trading.controller", "Look up broker order failed")(error);
+      return undefined;
+    }
   }
 
   /**

@@ -1,3 +1,4 @@
+import { logFailure } from "../../../utils/log-failure";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Box } from "../../../ui";
 import {
@@ -194,7 +195,7 @@ export function DataCatalogPane({ focused, width, height }: PaneProps) {
             }}
           />
         ),
-      }).catch(() => undefined);
+      }).catch(logFailure("chart-composer.data-catalog-pane", "Open chart ticker prompt failed"));
       if (chartPlacedSeries(row, ticker)) return;
       const expression = catalogExpressionForRow(row, ticker);
       if (!expression) return;

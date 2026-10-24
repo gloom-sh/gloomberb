@@ -1,3 +1,4 @@
+import { logFailure } from "../../../utils/log-failure";
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import type { BrokerAdapter } from "../../../types/broker";
 import type { BrokerInstanceConfig } from "../../../types/config";
@@ -152,7 +153,10 @@ class ProfileOrderFeed {
 
   private observe(): void {
     let state: string | undefined;
-    try { state = this.broker.getStatus?.(this.instance).state; } catch { state = undefined; }
+    try { state = this.broker.getStatus?.(this.instance).state; } catch (error) {
+      logFailure("broker-trading.order-feed", "Read broker connection status failed")(error);
+      state = undefined;
+    }
     const connected = state === "connected";
     if (connected === this.connected) return;
     this.connected = connected;
@@ -171,7 +175,10 @@ class ProfileOrderFeed {
             this.publish();
           },
         });
-      } catch { this.stopStream = undefined; }
+      } catch (error) {
+        logFailure("broker-trading.order-feed", "Subscribe to broker orders failed")(error);
+        this.stopStream = undefined;
+      }
     }
     void this.read();
   }
@@ -196,7 +203,10 @@ class ProfileOrderFeed {
   }
 
   private tradingOn(): boolean {
-    try { return this.broker.getTradingCapabilities?.(this.instance)?.enabled === true; } catch { return false; }
+    try { return this.broker.getTradingCapabilities?.(this.instance)?.enabled === true; } catch (error) {
+      logFailure("broker-trading.order-feed", "Read broker trading capabilities failed")(error);
+      return false;
+    }
   }
 
   private async read(): Promise<void> {
@@ -218,7 +228,7 @@ class ProfileOrderFeed {
       for (const [key, order] of missing) {
         // A broker with no status read says nothing beyond its open list.
         if (!this.broker.getOrderStatus) { this.orders.delete(key); continue; }
-        const status = await this.broker.getOrderStatus(this.instance, order.orderId).catch(() => undefined);
+        const status = await this.broker.getOrderStatus(this.instance, order.orderId).catch(logFailure("broker-trading.order-feed", "Read missing broker order status failed"));
         if (generation !== this.generation) return;
         if (status) this.apply(status, baseline ? "baseline" : "poll", false);
         // Null is the broker unable to confirm it, not an end: keep it, unconfirmed, at its last report's time,
@@ -380,7 +390,7 @@ export class BrokerOrderFeed {
     if (entry.running) { entry.again = true; return; }
     entry.running = true;
     // A failed sync leaves the portfolio as it was; the next fill, a manual sync or the next launch reads it again.
-    void Promise.resolve().then(() => sync(instanceId)).catch(() => {}).finally(() => {
+    void Promise.resolve().then(() => sync(instanceId)).catch(logFailure("broker-trading.order-feed", "Sync positions after broker fill failed")).finally(() => {
       entry.running = false;
       if (this.fillSyncs.get(instanceId) !== entry) return;
       if (entry.again) { entry.again = false; this.runFillSync(instanceId); } else if (entry.timer === undefined) this.fillSyncs.delete(instanceId);

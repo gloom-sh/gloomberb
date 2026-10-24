@@ -1,3 +1,4 @@
+import { logFailure } from "../../../utils/log-failure";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import {
   buildTickerSearchCandidates,
@@ -105,9 +106,7 @@ export function useRegisteredSeries(): readonly SeriesCatalogEntry[] {
       .then((result) => {
         if (!cancelled && Array.isArray(result?.entries)) setRemote(result.entries);
       })
-      .catch(() => {
-        // The view's own series still list; only the Bun process's extras are missing.
-      });
+      .catch(logFailure("chart-composer.use-series-catalog", "Load remote chart series catalog failed"));
     return () => { cancelled = true; };
   }, [registry, series]);
 

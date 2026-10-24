@@ -391,6 +391,7 @@ function catalogFormula(expression: string): boolean {
   try {
     return parseFormulaExpression(expression) !== null;
   } catch {
+    // Intentional ignore: invalid catalog formulas are excluded from the chartable suggestions.
     return false;
   }
 }

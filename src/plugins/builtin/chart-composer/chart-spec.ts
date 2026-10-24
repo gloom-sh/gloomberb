@@ -111,6 +111,7 @@ function decodeSpec(value: unknown): unknown {
   try {
     return JSON.parse(trimmed);
   } catch {
+    // Intentional ignore: malformed serialized specifications fail validation with null for the caller.
     return null;
   }
 }
