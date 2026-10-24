@@ -40,7 +40,7 @@ export function shotOptionRefusal(
   options: Record<string, string | true>,
   { explain = false }: { explain?: boolean } = {},
 ): string | null {
-  const report = (...flags: string[]) => ["gloomberb fn", resolved.token, rawArgument.trim() && shellWord(rawArgument.trim()), ...flags]
+  const report = (...flags: string[]) => ["gloom fn", resolved.token, rawArgument.trim() && shellWord(rawArgument.trim()), ...flags]
     .filter(Boolean).join(" ");
   const given: Array<[string, string | true]> = [...explain ? [["explain", true] as [string, true]] : [], ...Object.entries(options)];
   // The report is run with every option only it reads, so HP's `--from 2007 --to 2009` keeps its end.

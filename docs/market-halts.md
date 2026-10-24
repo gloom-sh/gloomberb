@@ -19,4 +19,4 @@ dates and clocks are Eastern Time. A quotation resumption does not mean trading
 has resumed.
 
 For a screenshot of a specific view, pass `--initialTab active` or
-`--initialTab long-term` to `gloomberb shot HALT`.
+`--initialTab long-term` to `gloom shot HALT`.

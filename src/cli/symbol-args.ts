@@ -15,26 +15,30 @@ const LIST_SEPARATOR = /[,;\t\r\n]/;
  * in it is split on those, so an entry may be a company's name (`WHR,
  * Whirlpool Corporation, BRK.B`) or several symbols with spaces between them
  * (`brk.b bf-b` on a pasted line); one without them is split on spaces (`JNK
- * EMB BRK.B`). Which an entry with a space is takes a search: a command that
+ * EMB BRK.B`), or with `phrases` kept whole (`splitSymbolArgLines`). Which an
+ * entry with a space is takes a search: a command that
  * resolves its symbols reads them with `readNameEntries`, and a parser that
  * looks nothing up takes `splitSymbolWords`. A comma inside a figure
  * (`2.582,52`, `1,899.21`) is no separator: the figure stays one entry. One
  * between plain digits is a decimal comma only on a line with another
  * separator (`ED 2,5`); alone it splits codes (`9988,5`, `700,388`).
  */
-export function splitSymbolArgs(args: readonly string[]): string[] {
-  return args.flatMap((arg) => splitSymbolArgLines(arg).flat());
+export function splitSymbolArgs(args: readonly string[], options: { phrases?: boolean } = {}): string[] {
+  return args.flatMap((arg) => splitSymbolArgLines(arg, options).flat());
 }
 
 /**
  * `splitSymbolArgs` of one argument, its entries kept by the line they are
- * on, so a figure can be told to sit beside the symbol on its line.
+ * on, so a figure can be told to sit beside the symbol on its line. With
+ * `phrases`, an argument with spaces and no list separator is one entry, as
+ * an entry between commas is: a company's name (`"Beyond Meat"`) or symbols
+ * typed on one line (`"GME AMC"`), which `readNameEntries` tells apart.
  */
-export function splitSymbolArgLines(arg: string): string[][] {
+export function splitSymbolArgLines(arg: string, { phrases = false }: { phrases?: boolean } = {}): string[][] {
   const lines = arg.replace(/^\uFEFF/, "").split(/\r\n?|\n/).map((line) => protectFigureCommas(line));
   const separated = lines.length > 1 || lines.some((line) => LIST_SEPARATOR.test(line));
   // A terminal's code (`VOD LN`, `JPM US Equity`), or words written as one (`AAPL GP`), is one entry.
-  return lines.map((line) => (separated ? line.split(/[,;\t]/) : isTerminalCodeLine(line) ? [line] : line.split(/\s+/))
+  return lines.map((line) => (separated ? line.split(/[,;\t]/) : phrases || isTerminalCodeLine(line) ? [line] : line.split(/\s+/))
     .map((entry) => restoreFigureCommas(entry).trim().replace(QUOTE_EDGES, "").trim().replace(/\s+/g, " "))
     .filter(Boolean));
 }

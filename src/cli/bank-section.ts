@@ -31,7 +31,7 @@ export function nimCommand(symbol: string): string {
   const definition = JSON.stringify({
     version: 1, currency: null, criteria: [{ field: "symbol", op: "in", value: [symbol] }], sort: { field: "symbol", direction: "asc" },
   });
-  return `gloomberb fn EQS --metric kpiNimPercent --definition '${definition}'`;
+  return `gloom fn EQS --metric kpiNimPercent --definition '${definition}'`;
 }
 
 /** Gloom Cloud's note for a company with no US GAAP deposits tag, which reads as if it filed 10-Qs; a foreign issuer files neither. */

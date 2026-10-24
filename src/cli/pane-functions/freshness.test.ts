@@ -119,8 +119,8 @@ describe("report freshness", () => {
     expect(published).toEqual({ ageOnly: true, maxAgeMinutes: 60 });
     expect(statusLineVariants(deriveRenderedFreshness(published, { footerText: "", cellTimes: [], observed: renderedReportObservations(semanticUi) }, NOW))[0])
       .toBe("Fri 9 Oct 2026 04:59 UTC · oldest 4 min");
-    // Other reports that state no feed still say so.
-    expect(line(rows(), board)).toBe("Source: Gloom Cloud · Fri 9 Oct 2026 04:59 UTC · status not reported");
+    // Other reports keep their date without a feed-status placeholder.
+    expect(line(rows(), board)).toBe("Source: Gloom Cloud · Fri 9 Oct 2026 04:59 UTC");
   });
 
   test("a dataset cites its source, observation date and lag; quote rows on its pane keep the market line", () => {
@@ -326,7 +326,7 @@ describe("report freshness", () => {
     }
     expect(pick({ report: bars }).variants[0]).toBe(formatFreshnessLine(bars.freshness));
     // A report that cannot tell falls back to the rendered view.
-    expect(pick({ report: silent, quoted: undefined })).toEqual({ freshness: rendered, dates: null, variants: ["Retrieved Sun 11 Oct 2026 06:17 UTC \u00b7 status not reported"] });
+    expect(pick({ report: silent, quoted: undefined })).toEqual({ freshness: rendered, dates: null, variants: ["Retrieved Sun 11 Oct 2026 06:17 UTC"] });
     // A dataset's report dates it whatever else the capture shows.
     const dataset = deriveCaptureReport(rows({ status: "not-a-feed", dataset: true }), { rows: [{ asOf: "2026-10-04" }] }, SUN);
     expect(pick({ report: dataset, quoted, selfDated: true }).variants[0]).toBe("Source: Gloom Cloud \u00b7 observed Sun 4 Oct \u00b7 lag 7d");
@@ -356,7 +356,7 @@ describe("report freshness", () => {
       .toBe("Source: Gloom Cloud · Fri 9 Oct 2026 04:59 UTC · 15 min delayed");
     // A dated row with no feed signal is not called live.
     expect(line(rows(), { rows: [{ price: 1, lastUpdated: NOW - 60_000 }] }))
-      .toBe("Source: Gloom Cloud · Fri 9 Oct 2026 04:59 UTC · status not reported");
+      .toBe("Source: Gloom Cloud · Fri 9 Oct 2026 04:59 UTC");
   });
 
   test("a partly stale board names the share; a wholly stale one says how old it is", () => {

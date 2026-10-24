@@ -343,7 +343,7 @@ function HelpPane({ focused, width, height }: PaneProps) {
             )}
 
             <Box flexDirection="column" gap={1}>
-              <SectionHeading title="How To Use Gloomberb" />
+              <SectionHeading title="How To Use Gloom" />
               <Box flexDirection="column">
                 <Text fg={colors.textDim} wrapText>{t("Click anything to use it; the keys shown beside actions are shortcuts.")}</Text>
                 <Text fg={colors.textDim} wrapText>

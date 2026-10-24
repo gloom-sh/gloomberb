@@ -68,9 +68,18 @@ const TURKISH_CPI: SeriesNotOnFred = {
   url: "https://www.tcmb.gov.tr/wps/wcm/connect/EN/TCMB+EN/Main+Menu/Statistics/Inflation+Data/Consumer+Prices",
 };
 
+/** IBGE's IPCA (433) and IPCA-15 (7478), as the central bank's SGS republishes them. */
+const brazilianCpi = (code: number): SeriesNotOnFred => ({
+  publisher: "IBGE",
+  via: "the Banco Central do Brasil's SGS",
+  url: `https://www3.bcb.gov.br/sgspub/consultarvalores/telaCvsSelecionarSeries.paint?codigoSerie=${code}`,
+});
+
 const NOT_ON_FRED: Readonly<Record<string, SeriesNotOnFred>> = {
   TURCPIYOY: TURKISH_CPI,
   TURCPIMOM: TURKISH_CPI,
+  BRAIPCAMOM: brazilianCpi(433),
+  BRAIPCA15MOM: brazilianCpi(7478),
 };
 
 /** The publisher of a served series FRED does not carry; null for FRED's own. */

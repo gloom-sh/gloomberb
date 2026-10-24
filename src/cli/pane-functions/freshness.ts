@@ -719,8 +719,8 @@ function statusText(freshness: ReportFreshness, short = false): string {
     case "not-a-feed":
       return freshness.basis ? `not a live feed (${freshness.basis})` : "not a live feed";
     case "unreported":
-      // A line that is dated by its age states no feed, and does not say it states none.
-      return freshness.ageOnly ? "" : "status not reported";
+      // Keep any date or age, without inventing a feed status or announcing its absence.
+      return "";
     default: {
       const _exhaustive: never = freshness.status;
       return _exhaustive;

@@ -16,10 +16,13 @@ import {
   isNoProviderError,
   listingChoiceNotes,
   listingReadNotes,
+  ListingArgError,
   loadBareVenues,
   notTradedMessage,
+  oneWordCompanyName,
   quoteBareListing,
   requireCliListing,
+  resolveCliListing,
   tradingBoardNote,
   type CliListing,
   type ListingDataRequest,
@@ -106,7 +109,10 @@ export async function answerQuote(
     // BDI asks which exchange (Black Diamond Group) and says nowhere that the Baltic Dry Index is not here.
     listing.exchange ? null : knownGapForTicker(listing.symbol),
   ].filter((line): line is string => !!line);
-  if (!other && tryLines.length === 0) return { result: await withCurrencyPairHint(result, market), listing, notes: [] };
+  if (!other && tryLines.length === 0) {
+    return await answerCompanyName(result, listing, market, request, refresh)
+      ?? { result: await withCurrencyPairHint(result, market), listing, notes: [] };
+  }
   const message = other?.message ?? `${listing.symbol} has no ${request.noun}.`;
   const details = [other?.details, ...tryLines].filter(Boolean).join("\n");
   const oneLine = [
@@ -115,6 +121,34 @@ export async function answerQuote(
     ...tryLines,
   ].filter(Boolean).join(" ");
   return { result, listing, failure: { message, details, oneLine }, notes: [] };
+}
+
+/**
+ * A company's name typed as one word (`Apple`) that the source says is not a
+ * ticker, answered as the listing search names for it with the line saying so
+ * ("Read "Apple" as AAPL:NASDAQ (Apple Inc.)."), as a name of several words
+ * is. Null when the word names no company, or that listing has no quote
+ * either: the word keeps its own "Not a ticker".
+ */
+async function answerCompanyName(
+  result: QuoteBatchResult,
+  listing: CliListing,
+  market: MarketContext,
+  request: ListingDataRequest,
+  refresh: boolean,
+): Promise<QuoteAnswer | null> {
+  if (!listing.typed || listing.exchange || !notATickerSymbol(errorMessage(result.error) ?? "")) return null;
+  const named = await oneWordCompanyName(listing.typed, market);
+  if (!named) return null;
+  // A listing on a venue the app cannot read is no answer: the word keeps its own "Not a ticker".
+  const resolved = await resolveCliListing(named.key, null, market).catch((error: unknown) => {
+    if (error instanceof ListingArgError) return null;
+    throw error;
+  });
+  if (!resolved) return null;
+  const found = { ...resolved, readAs: named.readAs, ...named.meant ? { meant: named.meant } : {} };
+  const [quoted] = await market.dataProvider.getQuotesBatch([found.request], { forceRefresh: refresh, revalidate: true });
+  return quoted?.quote ? answerQuote(quoted, found, market, request, refresh, null) : null;
 }
 
 /** A listing a command found a quote for, with what `quote` says beside it. */
@@ -165,7 +199,7 @@ export async function requireQuotedListing(
 
 /**
  * A symbol written like a currency pair that is not a ticker (USD_NGN, as some
- * FX feeds write a pair) names the listing `gloomberb search` finds nearest to
+ * FX feeds write a pair) names the listing `gloom search` finds nearest to
  * it, as `watchlist add` does: "Did you mean USDNGN=X (US Dollar/Nigerian
  * Naira)?". When search finds nothing near, the row keeps its own error and its
  * search hint.

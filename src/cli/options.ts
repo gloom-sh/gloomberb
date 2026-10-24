@@ -4,6 +4,13 @@ export interface CliGlobalOptions {
   format: CliOutputFormat;
   quiet: boolean;
   color: boolean | null;
+  /**
+   * `--plain`: tables without rules, arrows in words, every column kept with
+   * "—" for an empty cell (`setCliPlainOverride`); `--no-plain` turns it
+   * off. Null leaves it to the environment: on with NO_COLOR set to a value,
+   * or when stdout is not a terminal (`plainByDefault`).
+   */
+  plain: boolean | null;
   limit?: number;
   /** `--tail <n>`: the newest n rows of a dated series, in their printed order. Never set with `limit`. */
   tail?: number;
@@ -31,6 +38,7 @@ export const DEFAULT_CLI_OPTIONS: CliGlobalOptions = {
   format: "text",
   quiet: false,
   color: null,
+  plain: null,
   refresh: false,
   dryRun: false,
   yes: false,
@@ -108,6 +116,10 @@ export function parseCliGlobalArgs(rawArgs: string[]): ParsedCliArgs {
     }
     if (arg === "--color") {
       options.color = true;
+      continue;
+    }
+    if (arg === "--plain" || arg === "--no-plain") {
+      options.plain = arg === "--plain";
       continue;
     }
     if (arg === "--refresh") {

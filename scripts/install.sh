@@ -3,8 +3,8 @@ main() {
   set -e
 
   REPO="gloom-sh/gloomberb"
-  INSTALL_DIR="${GLOOMBERB_INSTALL_DIR:-$HOME/.local/bin}"
-  APP_DIR="${GLOOMBERB_APP_DIR:-/Applications}"
+  INSTALL_DIR="${GLOOM_INSTALL_DIR:-${GLOOMBERB_INSTALL_DIR:-$HOME/.local/bin}}"
+  APP_DIR="${GLOOM_APP_DIR:-${GLOOMBERB_APP_DIR:-/Applications}}"
   TMP_DIR="$(mktemp -d)"
   trap 'rm -rf "$TMP_DIR"' EXIT
   trap 'exit 1' HUP INT TERM
@@ -184,12 +184,35 @@ main() {
     fi
   }
 
+  # A `gloom` already in the install folder is replaced only when it is ours:
+  # a link into Gloomberb.app or to the `gloomberb` beside it, or the binary
+  # this script installed, which it pairs with a `gloomberb` link to it.
+  # Anything else is another program's command and stays as it is.
+  owns_command() {
+    command_path="$1"
+    command_dir="$(dirname "$command_path")"
+    if [ -L "$command_path" ]; then
+      case "$(readlink "$command_path")" in
+        gloomberb|./gloomberb|"${command_dir}/gloomberb") return 0 ;;
+        */Gloomberb.app/Contents/Resources/gloom|*/Gloomberb.app/Contents/Resources/gloomberb) return 0 ;;
+        *) return 1 ;;
+      esac
+    fi
+    [ -e "$command_path" ] || return 0
+    [ -L "${command_dir}/gloomberb" ] && [ "$(readlink "${command_dir}/gloomberb")" = "gloom" ]
+  }
+
+  skip_command() {
+    echo "Left $1 as it is: it belongs to another program. Use gloomberb to run Gloom."
+    RUN_COMMAND="gloomberb"
+  }
+
   install_macos_app() {
     select_asset "stable-macos-arm64-Gloomberb.app.zip"
     ZIP_PATH="${TMP_DIR}/${ASSET}"
     APP_PATH="${TMP_DIR}/Gloomberb.app"
     DEST_APP="${APP_DIR}/Gloomberb.app"
-    DEST_CLI="${INSTALL_DIR}/gloomberb"
+    DEST_CLI="${INSTALL_DIR}/gloom"
 
     echo "Downloading ${ASSET} from ${DOWNLOAD_URL}"
     echo "Will install ${DEST_APP} and link ${DEST_CLI}."
@@ -226,29 +249,40 @@ main() {
       sudo mv "$APP_PATH" "$DEST_APP"
     fi
 
-    APP_CLI="${DEST_APP}/Contents/Resources/gloomberb"
-    if [ ! -x "$APP_CLI" ]; then
-      echo "Error: installed app is missing the gloomberb terminal shim" >&2
+    APP_RESOURCES="${DEST_APP}/Contents/Resources"
+    if [ ! -x "${APP_RESOURCES}/gloomberb" ]; then
+      echo "Error: installed app is missing the gloom terminal command" >&2
       exit 1
     fi
+    # Releases from before the rename ship the command only as gloomberb.
+    APP_CLI="${APP_RESOURCES}/gloom"
+    if [ ! -x "$APP_CLI" ]; then
+      APP_CLI="${APP_RESOURCES}/gloomberb"
+    fi
 
-    install_symlink "$APP_CLI" "$DEST_CLI"
-
-    echo "Installed Gloomberb.app to ${DEST_APP}"
-    echo "Installed terminal command to ${DEST_CLI}"
+    if owns_command "$DEST_CLI"; then
+      install_symlink "$APP_CLI" "$DEST_CLI"
+      install_symlink "${APP_RESOURCES}/gloomberb" "${INSTALL_DIR}/gloomberb"
+      echo "Installed Gloomberb.app to ${DEST_APP}"
+      echo "Installed terminal command to ${DEST_CLI} (gloomberb runs it too)"
+    else
+      install_symlink "${APP_RESOURCES}/gloomberb" "${INSTALL_DIR}/gloomberb"
+      echo "Installed Gloomberb.app to ${DEST_APP}"
+      skip_command "$DEST_CLI"
+    fi
   }
 
   install_standalone_cli() {
     select_asset "gloomberb-${os}-${arch}${variant}.gz"
-    TMP="${TMP_DIR}/gloomberb"
+    TMP="${TMP_DIR}/gloom"
     echo "Downloading ${ASSET} from ${DOWNLOAD_URL}"
-    echo "Will install ${INSTALL_DIR}/gloomberb."
+    echo "Will install ${INSTALL_DIR}/gloom."
     if ! download_file "$DOWNLOAD_URL" "$TMP"; then
       rm -f "$TMP"
       echo "Error: ${ASSET} is not available in the latest release." >&2
       if [ "$os" = "darwin" ] && [ "$arch" = "x64" ]; then
         echo "Intel Macs need a release that ships ${ASSET}." >&2
-        echo "Run Gloomberb in the browser meanwhile: https://term.gloom.sh" >&2
+        echo "Run Gloom in the browser meanwhile: https://term.gloom.sh" >&2
         echo "Intel support: https://github.com/gloom-sh/gloomberb/issues/539" >&2
       fi
       if [ "$variant" = "-musl" ]; then
@@ -265,11 +299,20 @@ main() {
     mv "$TMP" "$TMP.gz"
     gunzip "$TMP.gz"
     chmod +x "$TMP"
-    install_file "$TMP" "$INSTALL_DIR/gloomberb"
+    if ! owns_command "$INSTALL_DIR/gloom"; then
+      install_file "$TMP" "$INSTALL_DIR/gloomberb"
+      skip_command "$INSTALL_DIR/gloom"
+      return
+    fi
+    install_file "$TMP" "$INSTALL_DIR/gloom"
+    # The command's previous name, kept for scripts and habits. This also
+    # turns an install from before the rename into a link to the new binary.
+    install_symlink "gloom" "$INSTALL_DIR/gloomberb"
 
-    echo "Installed gloomberb to ${INSTALL_DIR}/gloomberb"
+    echo "Installed gloom to ${INSTALL_DIR}/gloom (gloomberb runs it too)"
   }
 
+  RUN_COMMAND="gloom"
   echo "Fetching release metadata from https://api.github.com/repos/${REPO}/releases/latest"
   : > "$TMP_DIR/assets"
   if download_file "https://api.github.com/repos/${REPO}/releases/latest" "$TMP_DIR/release.json" 2>/dev/null; then
@@ -280,7 +323,7 @@ main() {
     install_macos_app
   else
     if [ "$os" = "darwin" ]; then
-      echo "Intel Mac detected. Gloomberb.app is Apple Silicon only, so this installs"
+      echo "Intel Mac detected. The desktop app is Apple Silicon only, so this installs"
       echo "the terminal app instead."
     fi
     install_standalone_cli
@@ -293,7 +336,7 @@ main() {
       if [ -e "$lib" ]; then libstdcxx="$lib"; fi
     done
     if [ -z "$libstdcxx" ]; then
-      echo "Warning: gloomberb needs libstdc++. On Alpine: apk add libstdc++"
+      echo "Warning: gloom needs libstdc++. On Alpine: apk add libstdc++"
     fi
   fi
 
@@ -303,7 +346,7 @@ main() {
        echo "  export PATH=\"$INSTALL_DIR:\$PATH\"" ;;
   esac
 
-  echo "Run 'gloomberb' to start."
+  echo "Run '${RUN_COMMAND}' to start."
 }
 
 # Keep invocation last: a truncated download must not begin installing.

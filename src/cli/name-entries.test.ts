@@ -100,6 +100,7 @@ test("a name search too busy to answer is no answer: its words are not other com
   };
   await expect(readPhraseArgument("Eagle Bulk", busy)).rejects.toBeInstanceOf(ProviderBusyError);
   expect(await readPhraseArgument("AAPL MSFT", busy)).toEqual({ kind: "symbols", symbols: ["AAPL", "MSFT"] });
-  // In a list it stays whole, for its own lookup to say search was busy.
-  expect(await readNameEntries(["AAPL", "Eagle Bulk"], busy)).toEqual(["AAPL", "Eagle Bulk"]);
+  // In a list it stays whole, for its own lookup to say search was busy, unless each word has a quote: a line of
+  // tickers typed whole (`fn SIW "GME AMC"`) still reads, but capitals alone (BANK OF AMERICA) are no proof.
+  expect(await readNameEntries(["AAPL", "Eagle Bulk", "aapl msft", "BANK OF AMERICA"], busy)).toEqual(["AAPL", "Eagle Bulk", "aapl", "msft", "BANK OF AMERICA"]);
 });

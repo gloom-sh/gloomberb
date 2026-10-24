@@ -218,23 +218,23 @@ test("one pasted list where the list name goes is a list of symbols, not a missi
     watchlists: [{ id: "growth", name: "Growth" }, { id: "watch-two", name: "Watch Two" }],
   };
   const run = (command: CliCommandDef, args: string[]) => caught(command.execute(args, hintedContext({ config, store }).context));
-  const watchlistUsage = "Usage: gloomberb watchlist add <watchlist> <symbols...> [--file <path>]";
+  const watchlistUsage = "Usage: gloom watchlist add <watchlist> <symbols...> [--file <path>]";
 
   const pasted = await run(watchlistCliCommand, ["add", "  usdngn=x , USDZAR=X;  usdsar=x\n"]);
   expect(pasted?.message).toBe(
-    '"usdngn=x , USDZAR=X; usdsar=x" reads as a list of symbols, not a watchlist name; did you mean `gloomberb watchlist add <name> <list>`; lists: Growth, Watch Two',
+    '"usdngn=x , USDZAR=X; usdsar=x" reads as a list of symbols, not a watchlist name; did you mean `gloom watchlist add <name> <list>`; lists: Growth, Watch Two',
   );
   expect(pasted?.details).toBe(watchlistUsage);
   // Whichever separator the paste has, and for remove and portfolios too.
   for (const text of ["NVDA,MSFT", "NVDA;MSFT", "NVDA MSFT", "NVDA\nMSFT", "NVDA, "]) {
     expect((await run(watchlistCliCommand, ["add", text]))?.message).toContain("reads as a list of symbols");
   }
-  expect((await run(watchlistCliCommand, ["remove", "NVDA MSFT"]))?.message).toContain("`gloomberb watchlist remove <name> <list>`");
+  expect((await run(watchlistCliCommand, ["remove", "NVDA MSFT"]))?.message).toContain("`gloom watchlist remove <name> <list>`");
   const portfolio = await run(portfolioCliCommand, ["add", "nvda, msft"]);
-  expect(portfolio?.message).toBe('"nvda, msft" reads as a list of symbols, not a portfolio name; did you mean `gloomberb portfolio add <name> <list>`; portfolios: Main');
-  expect(portfolio?.details).toBe("Usage: gloomberb portfolio add <portfolio> <symbols...> [--file <path>]");
+  expect(portfolio?.message).toBe('"nvda, msft" reads as a list of symbols, not a portfolio name; did you mean `gloom portfolio add <name> <list>`; portfolios: Main');
+  expect(portfolio?.details).toBe("Usage: gloom portfolio add <portfolio> <symbols...> [--file <path>]");
   expect((await caught(watchlistCliCommand.execute(["add", "NVDA,MSFT"], hintedContext({ config: { ...config, watchlists: [] }, store }).context)))?.message)
-    .toContain("no lists yet, create one with `gloomberb watchlist create <name>`");
+    .toContain("no lists yet, create one with `gloom watchlist create <name>`");
 
   // A name that exists keeps its behaviour, with spaces or without; one that does not, with no separators or with --file, is still not found.
   expect((await run(watchlistCliCommand, ["add", "Growth"]))?.message).toBe(watchlistUsage);
@@ -419,7 +419,7 @@ test("an outage and junk in one list: the junk is refused at once, and what Gloo
   const lines = options?.text?.(result.data).split("\n") ?? [];
   expect(lines.filter((line) => /Gloom Cloud|Try again/.test(line))).toEqual([
     "Gloom Cloud did not answer for 3 symbols, so they were not looked up: NVDA, philip morris intl, msft",
-    "Try again in a minute: gloomberb watchlist add Growth NVDA 'philip morris intl' msft",
+    "Try again in a minute: gloom watchlist add Growth NVDA 'philip morris intl' msft",
   ]);
   expect(result.warnings).toEqual(["Ignored 2.582,52, a number, not a symbol."]);
   expect(result.metadata).toMatchObject({ added: 0, notLookedUp: 3, notASymbol: 3 });
@@ -434,7 +434,7 @@ test("symbols Gloom Cloud did not answer for are listed apart as written, with o
     ...unanswered.map((input) => failedRow(input, new LookupUnansweredError(input))),
   ];
   printSymbolRows(cli.context, rows, {
-    verb: "add", collection: { kind: "watchlist", name: "My Growth" }, repeated: 0, notes: [], retry: (keys) => `gloomberb watchlist add ${shellWord("My Growth")} ${keys}`,
+    verb: "add", collection: { kind: "watchlist", name: "My Growth" }, repeated: 0, notes: [], retry: (keys) => `gloom watchlist add ${shellWord("My Growth")} ${keys}`,
   });
   const { result, options } = cli.printed[0]!;
   const lines = options?.text?.(result.data).split("\n") ?? [];
@@ -443,12 +443,12 @@ test("symbols Gloom Cloud did not answer for are listed apart as written, with o
     "Added AAPL:NASDAQ (Apple Inc.)",
     "",
     "Gloom Cloud did not answer for 6 symbols, so they were not looked up: Altria Group, philip morris intl, NVDA, $nvda, AT&T, Kellogg's",
-    "Try again in a minute: gloomberb watchlist add 'My Growth' 'Altria Group' 'philip morris intl' NVDA '$nvda' 'AT&T' 'Kellogg'\\''s'",
+    "Try again in a minute: gloom watchlist add 'My Growth' 'Altria Group' 'philip morris intl' NVDA '$nvda' 'AT&T' 'Kellogg'\\''s'",
     "",
     'Watchlist "My Growth": 1 added; 6 not looked up: Altria Group, philip morris intl, NVDA, $nvda, AT&T, Kellogg\'s.',
   ]);
   const command = lines[3]!.replace("Try again in a minute: ", "");
-  const read = Bun.spawnSync(["sh", "-c", `printf '%s\\n' ${command.replace(/^gloomberb watchlist add /, "")}`]);
+  const read = Bun.spawnSync(["sh", "-c", `printf '%s\\n' ${command.replace(/^gloom watchlist add /, "")}`]);
   expect(read.stdout.toString().trim().split("\n")).toEqual(["My Growth", ...unanswered]);
   expect(result.metadata).toMatchObject({ notLookedUp: 6 });
 });
@@ -515,8 +515,8 @@ test("a list of more than ten symbols checks each one's history, and one symbol 
     expect(text).toContain("Needs a choice, not added (3):");
     expect(text).toContain("DFS was Discover Financial Services until 2025, now Capital One Financial: COF; DFS matched DFS:LSE (DFS Furniture plc), a listing abroad");
     expect(text).toContain(`BRKL was Brookline Bancorp until ${brooklineLeft.slice(0, 4)}, now Beacon Financial: BBT; BRKL matched BRKL:BATS (Corgi Brookline ETF), another company's listing`);
-    expect(text).toContain("Add what they trade as now: gloomberb watchlist add Banks COF FLG BBT");
-    expect(text).toContain("To keep a match instead, name its listing: gloomberb watchlist add Banks DFS:LSE NYCB:NYSE BRKL:BATS");
+    expect(text).toContain("Add what they trade as now: gloom watchlist add Banks COF FLG BBT");
+    expect(text).toContain("To keep a match instead, name its listing: gloom watchlist add Banks DFS:LSE NYCB:NYSE BRKL:BATS");
     // Five Star took FSBC years ago: added, saying who had it.
     expect(text).toContain("  FSBC was First Savings Bancorp until");
     expect(text).toContain('Watchlist "Banks": 12 added; 3 need a choice: DFS, NYCB, BRKL.');
@@ -529,7 +529,7 @@ test("a list of more than ten symbols checks each one's history, and one symbol 
   for (const [symbol, successor, match] of [["DFS", "COF", "DFS:LSE"], ["BRKL", "BBT", "BRKL:BATS"]] as const) {
     const { error, saved } = await add([symbol], false);
     expect(error?.message).toStartWith(`${symbol} was `);
-    expect(error?.details).toBe(`Add what it trades as now: gloomberb watchlist add Banks ${successor}\nTo keep the match instead, name its listing: gloomberb watchlist add Banks ${match}`);
+    expect(error?.details).toBe(`Add what it trades as now: gloom watchlist add Banks ${successor}\nTo keep the match instead, name its listing: gloom watchlist add Banks ${match}`);
     expect(saved).toEqual([]);
   }
   expect((await add(["FSBC"], false)).saved).toEqual(["FSBC"]);

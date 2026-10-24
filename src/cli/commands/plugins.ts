@@ -54,8 +54,8 @@ const PLUGINS_DIR = getPluginsDir();
  * not removed for the user: an older Gloomberb sharing it may still load it.
  */
 function absorbedNotice(absorbed: AbsorbedPlugin, directory: string | null): string {
-  const built = `${absorbed.name} is built into Gloomberb now`;
-  return directory ? `${built}; remove this copy with "gloomberb remove ${directory}".` : `${built}.`;
+  const built = `${absorbed.name} is built into Gloom now`;
+  return directory ? `${built}; remove this copy with "gloom remove ${directory}".` : `${built}.`;
 }
 
 export async function updatePlugins(name?: string) {
@@ -71,7 +71,7 @@ export async function updatePlugins(name?: string) {
     const targetDir = join(PLUGINS_DIR, dir);
     const absorbed = findAbsorbedCheckout(targetDir);
     if (absorbed) {
-      console.log(cliStyles.muted(`Skipping ${dir} (${absorbed.name} is built into Gloomberb now)`));
+      console.log(cliStyles.muted(`Skipping ${dir} (${absorbed.name} is built into Gloom now)`));
       continue;
     }
     if (lstatSync(targetDir, { throwIfNoEntry: false })?.isSymbolicLink()) {
@@ -86,7 +86,7 @@ export async function updatePlugins(name?: string) {
     const listing = remote ? listings.get(remote.toLowerCase()) : undefined;
     const required = requiredGloomberb(listing?.minGloomberb);
     if (required) {
-      console.log(cliStyles.warning(`Skipping ${dir} (needs Gloomberb ${required}, this is ${VERSION})`));
+      console.log(cliStyles.warning(`Skipping ${dir} (needs Gloom ${required}, this is ${VERSION})`));
       continue;
     }
     try {
@@ -188,16 +188,16 @@ async function doctorPlugin(nameOrPath: string): Promise<PluginDoctorReport> {
   add("entry", "ok", basename(entryFile));
 
   const link = linkHostPackages(candidate);
-  if (link.error) add("host-link", "fail", `gloomberb runtime is not linked: ${link.error}`);
+  if (link.error) add("host-link", "fail", `Gloom runtime is not linked: ${link.error}`);
   else if (link.provider === "process") add("host-link", "ok", "served by the host process");
   else add("host-link", "ok", `linked ${link.linked.join(", ")}`);
 
   const incompatible = checkPluginCompatibility(candidate);
   const declaredMin = readPluginManifest(candidate).minGloomberb;
   // The loader skips this check for a linked checkout, so it only warns there.
-  if (incompatible) add("gloomberb", linked ? "warn" : "fail", incompatible.error);
-  else if (declaredMin) add("gloomberb", "ok", `${formatVersion(declaredMin)} or newer`);
-  else add("gloomberb", "warn", "Declares no minimum Gloomberb: set minGloom in gloom.json.");
+  if (incompatible) add("gloom", linked ? "warn" : "fail", incompatible.error);
+  else if (declaredMin) add("gloom", "ok", `${formatVersion(declaredMin)} or newer`);
+  else add("gloom", "warn", "Declares no minimum Gloom: set minGloom in gloom.json.");
 
   // Before the import: a removed export is exactly what makes it fail.
   const sources = pluginSourceFiles(candidate).map((file) => readFileSync(file, "utf-8"));
@@ -363,7 +363,7 @@ export async function listPlugins(ctx: CliCommandContext, options: { check?: boo
     columns,
     text: (rows) => {
       if (rows.length === 0) {
-        return cliStyles.muted("No plugins installed. Install one with gloomberb install <user/repo>.");
+        return cliStyles.muted("No plugins installed. Install one with gloom install <user/repo>.");
       }
       return [
         renderTable(

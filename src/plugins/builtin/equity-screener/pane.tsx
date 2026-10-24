@@ -66,6 +66,7 @@ import {
   criterionText,
   DEFAULT_SCREEN,
   dividendYieldBasis,
+  formatScreenMetric,
   formatScreenValue,
   metricDate,
   parseScreenDefinition,
@@ -187,7 +188,7 @@ function ScreenDetail({
               <KeyValueRow
                 label={screenLabel(field)}
                 labelWidth={24}
-                value={`${formatScreenValue(field, metric.value)} ${metric.unit}`}
+                value={metric.value == null && metric.notMeaningful ? formatScreenMetric(field, metric) : `${formatScreenValue(field, metric.value)} ${metric.unit}`}
                 detail={
                   metric.value === null
                     ? (metric.reason ?? "unavailable")
@@ -998,7 +999,7 @@ function EquityScreenView({
                   ? priceColor(Math.abs(observation.value) < 0.05 ? 0 : observation.value, colors)
                   : undefined;
                 return {
-                  text: formatScreenValue(field, observation.value),
+                  text: formatScreenMetric(field, observation),
                   color: observation.state === "stale" ? colors.warning : change,
                 };
               }

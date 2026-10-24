@@ -5,7 +5,7 @@ import { formatPercentRaw } from "../../../utils/format";
 import { DATE_OPTION_EXAMPLES } from "../../../utils/calendar-date";
 import { newestReportTime, oldestReportTime } from "../../../utils/utc-time";
 import { fetchFuturesCurve, loadCurveSpot, loadFuturesCurveAsOf } from "./client";
-import { basisSpotSymbol, BASIS_CONVENTION, blankBasisNote, catalogueCurveUnit, curveAsOfDate, curveBasisPercent, curveBasisRows, curveChangeText, curveContractCode, curvePrice, curveRoundedPrice, curveSpotLabel, curveSpotSource, curveSpreadLabel, curveTimestamp, curveUnitLabel, normalizeCurveRoot, shortDatedBasisNote, thinContractCount, unsupportedCurveRootMessage, type ContractBasis } from "./model";
+import { basisSpotSymbol, BASIS_CONVENTION, blankBasisNote, catalogueCurveUnit, curveAsOfDate, curveBasisPercent, curveBasisRows, curveChangeText, curveContractCode, curvePrice, curveRoundedPrice, curveSpotLabel, curveSpotSource, curveSpreadLabel, curveTimestamp, curveNoTradeSince, curveUnitLabel, noTradeChangeNote, normalizeCurveRoot, shortDatedBasisNote, thinContractCount, unsupportedCurveRootMessage, type ContractBasis } from "./model";
 import { COMMODITIES_VIEW_STATE } from "../commodities-energy/view-state";
 
 /** The root a report shows when none is given. */
@@ -22,6 +22,8 @@ const basisValue = (value: number | null) => value == null ? null : Number(value
  * every root. Prices and changes are at the root's tick precision. `price` is
  * the latest trade and `settlement` the exchange settlement for the curve's
  * settlement session (a past curve's settled rows have no separate trade).
+ * `change` is `price` less `settlement`; `noTradeSince` dates the settlement
+ * a contract has not traded since, whose change is therefore blank.
  */
 function contractRow(row: FuturesContract, data: FuturesCurvePayload, root: string, past: boolean, basis?: ContractBasis) {
   const price = (value: number | null | undefined) => curveRoundedPrice(value, root);
@@ -30,6 +32,7 @@ function contractRow(row: FuturesContract, data: FuturesCurvePayload, root: stri
     firstNotice: row.firstNotice ?? null, inDelivery: row.inDelivery ?? false,
     settlement: price(row.settlement), settlementDate: row.settlement != null ? data.settlementDate ?? null : null,
     price: past && row.settlement != null ? null : price(row.price), change: price(row.change),
+    noTradeSince: past ? null : curveNoTradeSince(row, data),
     asOf: row.asOf, stale: row.stale, volume: row.volume, openInterest: row.openInterest, percentile: rank(row.percentile),
     samples: row.samples, historyStart: row.historyStart, historyEnd: row.historyEnd,
     currency: row.currency, quoteUnit: curveUnitLabel(data) ?? row.quoteUnit, delayMinutes: row.delayMinutes,
@@ -122,7 +125,10 @@ export const futuresCurveHeadless: HeadlessPaneDefinition<"bundle"> = {
       ...spot ? [spot.status === "ok" ? `Basis against ${curveSpotLabel(spot, root, now)}${source ? ` (${source})` : ""}; not the CME reference rate.` : `Basis blank: ${spot.reason}.`] : []];
     // The footnotes under the table: the convention, why a cell is blank, and where a short-dated rate is not to be trusted.
     // Against a spot that is not usable every cell is blank for the spot's reason, which the notice above already gives.
-    const notes = spot && bases ? [BASIS_CONVENTION, ...spot.status === "ok" ? [blankBasisNote(data.contracts, bases), shortDatedBasisNote(data.contracts, bases, spot)].filter((note): note is string => !!note) : []] : [];
+    const basisNotes = spot && bases ? [BASIS_CONVENTION, ...spot.status === "ok" ? [blankBasisNote(data.contracts, bases), shortDatedBasisNote(data.contracts, bases, spot)].filter((note): note is string => !!note) : []] : [];
+    // A blank Change says why, as a blank basis does; a past curve has no session change to blank.
+    const changeNote = date ? null : noTradeChangeNote(data.contracts, data);
+    const notes = [...changeNote ? [changeNote] : [], ...basisNotes];
     // Dated by the contracts' own quotes; the same-contract history rows are a year of context, not observations.
     const quoted = data.contracts.map((row) => row.asOf);
     const freshness: HeadlessPaneFreshness = date

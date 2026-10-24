@@ -214,6 +214,10 @@ export function mergeQuoteContribution(
     tradingExchangeName: next.tradingExchangeName,
     // Whether the listing no longer trades is said with each observation: a symbol that trades again drops it.
     delisting: next.delisting,
+    // So is a pair's price being its bar's close, and why a stale one stands; a bar's close is no trade.
+    intradayBar: next.intradayBar,
+    staleReason: next.staleReason,
+    ...(next.intradayBar ? { lastTradePrice: next.lastTradePrice, lastTradeTime: next.lastTradeTime } : {}),
     regularClose: next.regularClose,
     regularCloseSessionDate: next.regularClose != null ? next.regularCloseSessionDate : undefined,
     regularChange: next.regularClose != null ? next.regularChange : undefined,

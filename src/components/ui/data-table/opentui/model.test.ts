@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { fitTableCellText, fitTableHeaderText, tableColumnStarts } from "../../table-layout";
-import { cutColumnText, resolveDataTableColumnClips, resolveDataTableVisibleWindow, reuseDataTableColumnClips } from "./model";
+import { cutColumnText, resolveDataTableColumnClips, resolveMoreColumnsHint, resolveDataTableVisibleWindow, reuseDataTableColumnClips } from "./model";
 
 describe("OpenTUI data table model", () => {
   test("resolves the virtualized window with overscan around the scroll top", () => {
@@ -55,6 +55,43 @@ describe("OpenTUI data table model", () => {
     // Everything fits, or nothing is measured yet: every column draws as before.
     expect(clips(0, 44)).toBeNull();
     expect(clips(0, 0)).toBeNull();
+  });
+
+  test("\"more →\" shows while a column past the right edge shows nothing, in the longest form that fits beside the columns shown", () => {
+    // NAME 10 (text), LAST 12 and CHG 10 (figures) with one-cell gaps and a one-cell inset: 1-10, 12-23, 25-34.
+    const figures = [
+      { width: 10, align: "left", label: "NAME" },
+      { width: 12, align: "right", label: "LAST" },
+      { width: 10, align: "right", label: "CHG" },
+    ];
+    const hint = (viewportWidth: number, { scrollLeft = 0, besideHeader = 0, columns = figures } = {}) => resolveMoreColumnsHint({
+      columns, columnGap: 1, columnStarts: tableColumnStarts(columns, 1), besideHeader, horizontalPadding: 1, scrollLeft, viewportWidth,
+    });
+    // CHG is cut, so blank: "more →" follows LAST after a blank, and the rows are blank from that blank on.
+    expect(hint(31)).toEqual({ text: " more →", left: 24, reserve: 7 });
+    // The blank can be LAST's own: a label shorter than its column keeps one at its end.
+    expect(hint(30)).toEqual({ text: " more →", left: 23, reserve: 6 });
+    // Narrower, the shorter forms keep LAST whole.
+    expect(hint(29)).toEqual({ text: " more", left: 24, reserve: 5 });
+    expect(hint(28)).toEqual({ text: " more", left: 23, reserve: 4 });
+    expect(hint(27)).toEqual({ text: " →", left: 25, reserve: 2 });
+    expect(hint(25)).toEqual({ text: " →", left: 23, reserve: 1 });
+    // The header's cell over the body's vertical scrollbar is room for it too.
+    expect(hint(27, { besideHeader: 1 })).toEqual({ text: " more", left: 23, reserve: 3 });
+    // LAST against the edge: the arrow takes its label's trailing blank and the rows keep every figure.
+    expect(hint(24)).toEqual({ text: "→", left: 23, reserve: 0 });
+    // A label that fills its column against the edge has no blank to give: no hint rather than a hidden column.
+    const full = [figures[0]!, { width: 4, align: "right", label: "LAST" }, figures[2]!];
+    expect(hint(16, { columns: full })).toBeNull();
+    expect(hint(22)).toEqual({ text: " more →", left: 15, reserve: 7 });
+    // Scrolled to the end, too narrow for a column beside the hint, or not measured: no hint.
+    expect(hint(31, { scrollLeft: 4 })).toBeNull();
+    expect(hint(13)).toBeNull();
+    expect(hint(0)).toBeNull();
+    // Text cut on the right counts as out of view only while it shows less than its label; then it ends in an ellipsis.
+    const text = [{ width: 10, align: "left", label: "NAME" }, { width: 16, align: "left", label: "STAGE" }];
+    expect(hint(16, { columns: text })?.text).toBe(" more");
+    expect(hint(17, { columns: text })).toBeNull();
   });
 
   test("a cut number shows only while the cells in view hold all of it; cut text is fitted to them", () => {

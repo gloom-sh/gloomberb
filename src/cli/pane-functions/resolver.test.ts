@@ -9,11 +9,12 @@ import { ipoCalendarPlugin } from "../../plugins/builtin/ipo-calendar";
 import { ratePathModule } from "../../plugins/builtin/rate-path";
 import { paneSchemas } from "../../plugins/builtin/chart-composer/headless-schema";
 import { createDefaultConfig } from "../../types/config";
+import { createTestDataProvider, createTestQuote } from "../../test-support/data-provider";
 import type { HeadlessPaneDefinition, PaneDef, PaneTemplateDef } from "../../types/plugin";
 import type { MarketContext } from "../types";
 import type { PaneFunctionCatalog } from "./catalog";
 import { parsePaneFunctionArgs } from "./options";
-import { resolvePaneFunction, UnknownPaneFunctionError } from "./resolver";
+import { applyListingArgument, resolvePaneFunction, UnknownPaneFunctionError } from "./resolver";
 
 const pane = (id: string): PaneDef => ({ id, name: id, component: () => null, defaultPosition: "right" });
 const template = (prefix: string, paneId: string, headless: HeadlessPaneDefinition): PaneTemplateDef => ({
@@ -91,9 +92,9 @@ test("a name that opens nothing lists the closest functions and where to search,
   const close = await unknown("volsurf");
   expect(close).toBeInstanceOf(UnknownPaneFunctionError);
   expect(close?.message).toBe('Unknown function or pane "volsurf".');
-  expect(close?.details).toBe("Closest matches:\n  OVDV  Volatility Surface\nSearch the catalog: gloomberb catalog volsurf");
+  expect(close?.details).toBe("Closest matches:\n  OVDV  Volatility Surface\nSearch the catalog: gloom catalog volsurf");
   // Near no code and found by no search: said plainly, with the whole catalog to look in.
-  expect((await unknown("zzqxvb"))?.details).toBe("No function code is close to zzqxvb. List every function: gloomberb catalog");
+  expect((await unknown("zzqxvb"))?.details).toBe("No function code is close to zzqxvb. List every function: gloom catalog");
 });
 
 test("a code one slip from a function's (swapped, missing or extra letter) names it and the command that runs it", async () => {
@@ -108,7 +109,7 @@ test("a code one slip from a function's (swapped, missing or extra letter) names
   for (const typed of ["RCDF", "rdc", "RDCFF"]) {
     const error = await unknown([typed, "PLTR"]);
     expect(error?.message).toBe(`Unknown function or pane "${typed}". Did you mean RDCF (Reverse DCF)?`);
-    expect(error?.details).toBe("Run: gloomberb fn RDCF PLTR");
+    expect(error?.details).toBe("Run: gloom fn RDCF PLTR");
   }
   // Two letters off, or a name too short to tell, is no suggestion.
   expect((await unknown(["RDXX", "PLTR"]))?.message).toBe('Unknown function or pane "RDXX".');
@@ -126,8 +127,8 @@ test("a bank figure typed as a function (NIM, one slip from NI) is pointed at th
     const error = await resolvePaneFunction(withNews, context, parsePaneFunctionArgs([name, "jpm"])).then(() => null, (failure: unknown) => failure as UnknownPaneFunctionError);
     expect(error?.message, name).toBe(`${name} is not a function: a bank's figures are in the Bank section of fundamentals.`);
     expect(error?.details.split("\n"), name).toEqual([
-      "Deposits, uninsured share, CRE / capital and the lead bank: gloomberb fundamentals JPM",
-      "Net interest margin (Pro): gloomberb fn EQS --metric kpiNimPercent --definition "
+      "Deposits, uninsured share, CRE / capital and the lead bank: gloom fundamentals JPM",
+      "Net interest margin (Pro): gloom fn EQS --metric kpiNimPercent --definition "
         + `'{"version":1,"currency":null,"criteria":[{"field":"symbol","op":"in","value":["JPM"]}],"sort":{"field":"symbol","direction":"asc"}}'`,
     ]);
   }
@@ -164,10 +165,10 @@ test("an implied-vol word that is no code (IVOL, OVOL, IV) names HIVG and OVDV a
   for (const word of ["IVOL", "ovol", "IV"]) {
     const error = await unknown([word, "SPY"]);
     expect(error?.message).toBe(`Unknown function or pane "${word}". Did you mean HIVG (Implied Volatility History) or OVDV (Volatility Surface)?`);
-    expect(error?.details.split("\n").slice(0, 2)).toEqual(["Run: gloomberb fn HIVG SPY", "     gloomberb fn OVDV SPY"]);
+    expect(error?.details.split("\n").slice(0, 2)).toEqual(["Run: gloom fn HIVG SPY", "     gloom fn OVDV SPY"]);
   }
   // With no argument, the one each takes.
-  expect((await unknown(["IVOL"]))?.details).toBe("Run: gloomberb fn HIVG <ticker>\n     gloomberb fn OVDV <ticker>");
+  expect((await unknown(["IVOL"]))?.details).toBe("Run: gloom fn HIVG <ticker>\n     gloom fn OVDV <ticker>");
 });
 
 test("a central bank's name or short form typed as a function points to CBR, and a function that owns the word keeps it", async () => {
@@ -181,7 +182,7 @@ test("a central bank's name or short form typed as a function points to CBR, and
   for (const word of ["ECB", "BOJ", "boe", "RBA", "BoC", "SNB", "Bank of Japan", "Federal Reserve"]) {
     const error = await resolve([word]).then(() => null, (failure: unknown) => failure as UnknownPaneFunctionError);
     expect(error?.message).toBe(`Unknown function or pane "${word}". Did you mean CBR (Central Bank Rates)?`);
-    expect(error?.details.split("\n")[0]).toBe("Run: gloomberb fn CBR");
+    expect(error?.details.split("\n")[0]).toBe("Run: gloom fn CBR");
   }
   // FOMC is one of WIRP's own words, so it opens the rate path as before.
   expect((await resolve(["FOMC"])).token).toBe("WIRP");
@@ -198,4 +199,32 @@ test("CMP of one ticker says it needs two or more and how to ask, before any cha
   expect(await refusal("fn", ["CMP", "SPY"])).toBe("CMP needs two or more tickers: fn CMP SPY,QQQ");
   expect(await refusal("shot", ["CMP", "aapl"])).toBe("CMP needs two or more tickers: shot CMP AAPL,SPY");
   expect(await refusal("fn", ["CMP", "SPY,QQQ"])).toBeNull();
+});
+
+test("a list typed as words is a company search names, the tickers it holds, or a name nothing lists, which asks for tickers", async () => {
+  const watch: HeadlessPaneDefinition<"bundle"> = { shape: "bundle", argument: { kind: "symbol-list" }, options: [], load: () => ({ sections: [] }) };
+  const lists: PaneFunctionCatalog = { panes: new Map([["watch", pane("watch")]]), paneTemplates: new Map([["watch-pane", template("SIW", "watch", watch)]]), destroy: () => {} };
+  const beyond = { providerId: "test", symbol: "BYND", name: "Beyond Meat, Inc.", exchange: "NASDAQ", currency: "USD", type: "Common Stock" };
+  const market = {
+    config: context.config,
+    store: { loadTicker: async () => null, loadAllTickers: async () => [] },
+    dataProvider: createTestDataProvider({
+      search: async (query) => /beyond meat/i.test(query) ? [beyond] : [],
+      // MEAT and BEYOND are tickers too: "Beyond Meat" read word by word was two other companies.
+      getQuote: async (symbol) => {
+        if (["GME", "AMC", "BYND", "BEYOND", "MEAT"].includes(symbol)) return createTestQuote({ symbol });
+        throw new Error(`Not a ticker: ${symbol}.`);
+      },
+    }),
+  } as unknown as MarketContext;
+  const read = (arg: string) => applyListingArgument(lists, market, parsePaneFunctionArgs(["SIW", arg]));
+  expect((await read("Beyond Meat")).arg).toBe("BYND:NASDAQ");
+  expect((await read("GME AMC")).arg).toBe("GME, AMC");
+  expect(await read("Foo Barbazqux").catch((error: Error & { details?: string }) => `${error.message}\n${error.details}`)).toBe(
+    'No company found for "Foo Barbazqux"; type tickers.\nSuch as gloom fn SIW GME,AMC. Find a company\'s ticker with gloom search "Foo Barbazqux".',
+  );
+  // In a list, a name nothing lists is left out with the same answer, in any script.
+  const partial = await read("任天堂 ソニー, Foo Barbazqux, AMC");
+  expect(partial.arg).toBe("AMC");
+  expect(partial.listingNotes).toContain('No company found for "任天堂 ソニー", "Foo Barbazqux"; type tickers, such as GME,AMC.');
 });

@@ -145,6 +145,6 @@ test("--strategy csp sells the put at its midpoint and reports it, with earnings
     const noCurve = async () => { throw new Error("Treasury curve unavailable"); };
     await expect(load({ delta: "0.3" }, noCurve)).rejects.toThrow("Choosing the put by delta needs the Treasury rate; supply --rate, or pick it with --strike");
     expect((await load({ delta: "0.3", rate: "4" }, noCurve)).errors).toEqual([]);
-    await expect(load({}, curve, "KO JPM")).rejects.toThrow("OSA values one underlying. To rank cash-secured puts across KO, JPM: gloomberb fn CSP KO JPM");
+    await expect(load({}, curve, "KO JPM")).rejects.toThrow("OSA values one underlying. To rank cash-secured puts across KO, JPM: gloom fn CSP KO JPM");
   } finally { setSystemTime(); }
 });

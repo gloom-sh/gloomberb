@@ -153,7 +153,7 @@ export function AlertHistoryPane({ focused, width, height }: PaneProps) {
         })}
         emptyStateTitle={access.signedIn ? "No alerts in the last 90 days" : "No alerts fired yet"}
         emptyStateHint={access.signedIn
-          ? data?.deviceEnabled ? undefined : "Alerts push to the Gloomberb phone app once it is signed in."
+          ? data?.deviceEnabled ? undefined : "Alerts push to the Gloom phone app once it is signed in."
           : "Sign in to list the alerts Gloom Cloud delivers too."}
       />
     </PaneStatusBody>

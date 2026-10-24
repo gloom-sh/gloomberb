@@ -474,7 +474,7 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
       ...(chainDelay > 0 ? { delayMinutes: chainDelay } : {}),
     }),
   } : null);
-  // A report of the pane (`gloomberb fn OMON`) says how many strikes it lists of how many the expiry has.
+  // A report of the pane (`gloom fn OMON`) says how many strikes it lists of how many the expiry has.
   useRemoteUiNode(strikeChain ? {
     role: "report-notice",
     label: "Strike window",
@@ -592,7 +592,7 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
   const openInterestAsOf = useMemo(() => statedOpenInterest
     ?? (strikeChain && listedOpenInterest.data ? chainOpenInterestAsOf(strikeChain, listedOpenInterest.data) : null),
   [statedOpenInterest, strikeChain, listedOpenInterest.data]);
-  // A report of the pane (`gloomberb fn OMON`) names them too.
+  // A report of the pane (`gloom fn OMON`) names them too.
   useRemoteUiNode(modelSpot ? {
     role: "report-notice",
     label: "Greeks spot",

@@ -14,7 +14,7 @@ const DOCS_INSTANCE_ID = "docs";
 
 function requestedTopic(context: PaneTemplateContext, options?: PaneTemplateCreateOptions): DocsTopic {
   const registry = getSharedRegistry();
-  // The command line (`gloomberb fn DOCS RV`) has no registry: the argument goes to the reader as a search.
+  // The command line (`gloom fn DOCS RV`) has no registry: the argument goes to the reader as a search.
   const index = registry ? buildRegistryHelpIndex(registry) : null;
   const paneId = options?.values?.pane;
   if (paneId && registry && index) {

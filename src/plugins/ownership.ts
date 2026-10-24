@@ -110,7 +110,7 @@ export function builtinPluginGroupMembers(pluginId: string): readonly string[] |
 /**
  * `disabledPlugins` after switching plugins on or off in one go, or null when
  * nothing changes. A retired group id switches every member, the way
- * `gloomberb plugin enable|disable` does. Changes apply in order, so a later
+ * `gloom plugin enable|disable` does. Changes apply in order, so a later
  * one wins for a plugin two groups share.
  */
 export function applyPluginToggles(

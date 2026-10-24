@@ -1,4 +1,8 @@
-import { expect, setSystemTime, test } from "bun:test";
+import { afterEach, expect, setSystemTime, spyOn, test } from "bun:test";
+import { mkdtemp, rm } from "fs/promises";
+import { tmpdir } from "os";
+import { join } from "path";
+import { collectSavedCopies, servedFromSavedCopy } from "../../data/saved-copies";
 import { createDefaultConfig } from "../../types/config";
 import { createTestDataProvider, createTestQuote } from "../../test-support/data-provider";
 import { createTestCliContext } from "../../test-support/cli-context";
@@ -8,6 +12,8 @@ import { marketDataCliCommands } from "./market";
 import type { PriceHistoryResult } from "../../types/price-history";
 
 const history = marketDataCliCommands.find((command) => command.name === "history")!;
+
+afterEach(() => { process.exitCode = 0; });
 
 /** Every history export's own columns, whatever the symbol or the market's state. */
 const HISTORY_CSV_HEADER = "Date,Open,High,Low,Close,Volume,Flag,Partial,Filled,Unsettled,Volume unit,Volume note,Venue volume,Volume venue,status";
@@ -384,4 +390,125 @@ test("history of several symbols is one long table with the single-symbol header
   } finally {
     setSystemTime();
   }
+});
+
+/** A history run of `args` against a source whose bars are `bars(symbol)`; a symbol it throws for is not a ticker. */
+async function runList(args: string[], bars: (symbol: string) => Promise<PriceHistoryResult["points"]>, format: "csv" | "json" = "csv") {
+  const cli = createTestCliContext({
+    config: createDefaultConfig("/tmp/gloom-history-command-fixture"),
+    dataProvider: createTestDataProvider({
+      getQuote: async (symbol) => {
+        await bars(symbol);
+        return createTestQuote({ symbol, currency: "USD", marketState: "CLOSED" });
+      },
+      getPriceHistoryWithMetadata: async (symbol) => ({ resolution: "1d", points: await bars(symbol) }),
+    }),
+  }, { format });
+  await history.execute(args, cli.context);
+  const [{ result, options }] = cli.printed;
+  const csv = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options).split("\n\n")[0]!.split("\n");
+  const column = csv[0]!.split(",").indexOf("symbol_or_series");
+  return { result, csv, symbols: csv.slice(1).map((line) => line.split(",")[column]) };
+}
+
+const dailyBar = (close: number) => [{ date: new Date("2026-10-16"), open: close, high: close, low: close, close, volume: 1000 }];
+const notATicker = (symbol: string) => Promise.reject(new Error(`Not a ticker: ${symbol}.`));
+
+test("history of a list exits 1 only when no symbol is served, with every symbol's reason as a row", async () => {
+  const { result, csv } = await runList(["ZZZZQQ", "QQQQZZ"], notATicker);
+  expect(process.exitCode).toBe(1);
+  expect(result.failure).toMatchObject({ message: "No history for ZZZZQQ, QQQQZZ." });
+  expect(csv).toEqual([
+    `${HISTORY_CSV_HEADER},symbol_or_series,currency_or_unit,interval,source,as_of`,
+    ",,,,,,,,,,,,,,Not a ticker: ZZZZQQ.,ZZZZQQ,,,Gloom Cloud,",
+    ",,,,,,,,,,,,,,Not a ticker: QQQQZZ.,QQQQZZ,,,Gloom Cloud,",
+  ]);
+  // One served symbol is a result, whatever the others did.
+  process.exitCode = 0;
+  const mixed = await runList(["AAPL", "ZZZZQQ"], (symbol) => symbol === "AAPL" ? Promise.resolve(dailyBar(348.22)) : notATicker(symbol));
+  expect(process.exitCode).toBe(0);
+  expect(mixed.result.failure).toBeUndefined();
+  expect(mixed.symbols).toEqual(["AAPL", "ZZZZQQ"]);
+});
+
+test("history reads a list from --file (a text file, or a CSV's first column) and from standard input with -", async () => {
+  const bars = async () => dailyBar(10);
+  const dir = await mkdtemp(join(tmpdir(), "gloomberb-history-file-"));
+  const stdin = spyOn(Bun.stdin, "text").mockResolvedValue("MSFT\nNVDA\n");
+  try {
+    const text = join(dir, "symbols.txt");
+    await Bun.write(text, "AAPL\n000660.KS\n");
+    expect((await runList(["--file", text, "--range", "1M"], bars)).symbols).toEqual(["AAPL", "000660.KS"]);
+    const sheet = join(dir, "holdings.csv");
+    await Bun.write(sheet, "Symbol,Shares\nAAPL,10\nMSFT,5\n");
+    expect((await runList(["--file", sheet, "--range", "1M"], bars)).symbols).toEqual(["AAPL", "MSFT"]);
+    // Standard input is read only when asked for.
+    expect((await runList(["-", "--range", "1M"], bars)).symbols).toEqual(["MSFT", "NVDA"]);
+    expect(stdin).toHaveBeenCalledTimes(1);
+    // A file with no symbol in it says so and fails, however the list was meant.
+    const empty = join(dir, "empty.txt");
+    await Bun.write(empty, "\n");
+    await expect(runList(["--file", empty], bars)).rejects.toThrow(`No symbols in ${empty}.`);
+  } finally {
+    stdin.mockRestore();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("history names the date options as typed: --start and --from together, --end alone, and either beside --range", async () => {
+  const bars = async () => dailyBar(10);
+  await expect(runList(["AAPL", "--start", "2020", "--from", "2021"], bars)).rejects.toThrow("--start is --from; give one of them.");
+  await expect(runList(["AAPL", "--end", "2024", "--to", "2025"], bars)).rejects.toThrow("--end is --to; give one of them.");
+  await expect(runList(["AAPL", "--end", "2024"], bars)).rejects.toThrow("--end needs a --start: --start 2022 --end 2024.");
+  await expect(runList(["AAPL", "--to", "2024"], bars)).rejects.toThrow("--to needs a --from: --from 2022 --to 2024.");
+  await expect(runList(["AAPL", "--start", "2024-13-01"], bars)).rejects.toThrow('Invalid --start "2024-13-01".');
+  await expect(runList(["AAPL", "--start", "2024", "--range", "1M"], bars)).rejects.toThrow("--start replaces --range; give one of them.");
+  await expect(runList(["AAPL", "--from", "2024", "--range", "1M"], bars)).rejects.toThrow("--from replaces --range; give one of them.");
+  // A list reads them the same way.
+  await expect(runList(["AAPL", "MSFT", "--start", "2024", "--range", "1M"], bars)).rejects.toThrow("--start replaces --range; give one of them.");
+});
+
+test("a list of more than 8 symbols loads 8 at a time and writes them in the order given", async () => {
+  const symbols = Array.from({ length: 21 }, (_, index) => `S${String(index).padStart(2, "0")}`);
+  // A symbol's quote and its bars are asked for together: count the symbols in flight, not the calls.
+  const asking = new Map<string, number>();
+  let peak = 0;
+  const { symbols: written } = await runList(symbols, async (symbol) => {
+    asking.set(symbol, (asking.get(symbol) ?? 0) + 1);
+    peak = Math.max(peak, [...asking.values()].filter((count) => count > 0).length);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    asking.set(symbol, asking.get(symbol)! - 1);
+    return dailyBar(10);
+  });
+  expect(written).toEqual(symbols);
+  expect(peak).toBeGreaterThan(1);
+  expect(peak).toBeLessThanOrEqual(8);
+});
+
+test("a list with a symbol served from a saved copy ends with when the copy was saved", async () => {
+  const savedAt = Date.parse("2026-10-22T21:49:00Z");
+  const cli = createTestCliContext({
+    config: createDefaultConfig("/tmp/gloom-history-command-fixture"),
+    dataProvider: createTestDataProvider({
+      getQuote: async (symbol) => createTestQuote({ symbol, currency: "USD", marketState: "CLOSED" }),
+      getPriceHistoryWithMetadata: async (symbol) => {
+        const loaded = { resolution: "1d" as const, points: dailyBar(10) };
+        return symbol === "MSFT" ? servedFromSavedCopy(loaded, savedAt) : loaded;
+      },
+    }),
+  }, { format: "csv" });
+  await collectSavedCopies(() => history.execute(["AAPL", "MSFT"], cli.context));
+  const [{ result, options }] = cli.printed;
+  expect(result.freshness?.savedAt).toBe("2026-10-22T21:49:00.000Z");
+  expect(serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options)).toContain("couldn't refresh; saved Thu 22 Oct 2026 21:49 UTC");
+  // The same list from the live source says nothing of one.
+  const live = createTestCliContext({
+    config: createDefaultConfig("/tmp/gloom-history-command-fixture"),
+    dataProvider: createTestDataProvider({
+      getQuote: async (symbol) => createTestQuote({ symbol, currency: "USD", marketState: "CLOSED" }),
+      getPriceHistoryWithMetadata: async () => ({ resolution: "1d" as const, points: dailyBar(10) }),
+    }),
+  }, { format: "csv" });
+  await collectSavedCopies(() => history.execute(["AAPL", "MSFT"], live.context));
+  expect(live.printed[0]!.result.freshness?.savedAt).toBeUndefined();
 });

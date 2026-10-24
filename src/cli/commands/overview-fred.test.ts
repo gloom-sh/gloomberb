@@ -36,7 +36,7 @@ test("an unsupported series is a usage error that points at the list, whichever 
     serve({ "/cloud/econ/series/DEXSFUS": { status: 400, body } });
     const cli = createTestCliContext();
     await expect(fred.execute(["dexsfus"], cli.context)).rejects.toThrow(
-      "Unsupported FRED series DEXSFUS. List supported series with: gloomberb fred --list",
+      "Unsupported FRED series DEXSFUS. List supported series with: gloom fred --list",
     );
   }
 });
@@ -103,8 +103,8 @@ test("--start takes a year or a month as the first day of it, and a series that 
   for (const bad of ["1960-13", "99", "abc"]) {
     await expect(fred.execute(["T10Y2Y", "--start", bad], createTestCliContext().context)).rejects.toThrow(`${formats}, such as --start `);
   }
-  await expect(fred.execute(["T10Y2Y", "--start", "1960-1-1"], createTestCliContext().context))
-    .rejects.toThrow(`${formats}: type --start 1960-01-01 for 1960-1-1.`);
+  await expect(fred.execute(["T10Y2Y", "--start", "13-1-1960"], createTestCliContext().context))
+    .rejects.toThrow(`${formats}: type --start 1960-01-13 for 13-1-1960.`);
 });
 
 test("a start before the series begins starts every format at its first observation, and the CSV says where it begins", async () => {

@@ -38,7 +38,7 @@ export interface PaneFooterSegment {
   asOf?: boolean;
   /**
    * The segment only says how current the pane's quotes are (`2026-10-09 ·
-   * 15m delayed`), which a `gloomberb shot` status line says too: a shot whose
+   * 15m delayed`), which a `gloom shot` status line says too: a shot whose
    * line states its data's date and delay leaves it out.
    */
   quoteStatus?: boolean;

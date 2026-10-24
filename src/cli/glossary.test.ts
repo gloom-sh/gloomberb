@@ -70,13 +70,16 @@ test("the rebalance table's and ETF's words are found by plain names, and premiu
   expect(terms(reportGlossary("ETF", "Fund facts (fee, NAV, premium) are not available yet; try fn SEC IBIT."))).toEqual(["NAV", "Premium/discount"]);
 });
 
-test("a word that is a term whole is found before the terms that only start with it", () => {
-  // `float` is the float of a stock, not the floating rate note that starts with the same letters.
+test("a term's related terms hold its word whole; a word no term names still finds the terms it starts", () => {
+  // `float` is the float of a stock: the floating rate note only starts with the same letters, so it is not related.
   const float = lookupGlossary("float");
-  expect([...terms(float.exact), ...terms(float.partial)]).toEqual(["Float", "FRN"]);
-  // "Monthly-weighted" came first in the glossary, but it only starts with "weight"; Target and Drift hold it whole.
-  expect(terms(lookupGlossary("weight").partial)).toEqual(["Target", "Drift", "Monthly-weighted"]);
-  expect(terms(lookupGlossary("asset").partial)).toEqual(["NAV", "Fed assets"]);
+  expect([...terms(float.exact), ...terms(float.partial)]).toEqual(["Float"]);
+  // Target and Drift hold "weight" whole; WIRP's Monthly-weighted method only starts with it.
+  expect(terms(lookupGlossary("weight").partial)).toEqual(["Target", "Drift"]);
+  expect(terms(lookupGlossary("settle").partial)).toEqual([]);
+  // A plural holds its word whole; a search that names no term keeps the word starts after the whole words.
+  expect(terms(lookupGlossary("asset").partial)).toEqual(["Fed assets", "NAV"]);
+  expect(terms(lookupGlossary("vol").partial)).toEqual(["Average daily volume", "VVIX", "Short volume", "Term structure", "Contango/backwardation (VIX)"]);
   expect(["short interest", "shares short", "short ratio", "dtc", "settlement date", "crowded rising", "short squeeze", "% float"].map((query) => terms(lookupGlossary(query).exact)))
     .toEqual([["Short interest"], ["Short interest"], ["Days to cover"], ["Days to cover"], ["Settlement"], ["Crowded"], ["Squeeze"], ["Float"]]);
   // Borrow data is not offered, so it has no entry to define.
@@ -101,7 +104,6 @@ test("a beginner's words for quotes, futures and the calendar are found by plain
   expect(exact("settlement")).toEqual(["Settlement"]);
   expect(exact("settlement date")).toEqual(["Settlement"]);
   expect(exact("settled")).toEqual(["Settlement"]);
-  expect(terms(lookupGlossary("settle").partial)).toEqual(["Settlement"]);
 });
 
 test("QQ, FUT and ECO explain the quote, futures and calendar words they print", () => {

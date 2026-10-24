@@ -161,7 +161,7 @@
           {
             "code": "PL",
             "name": "Plugins",
-            "description": "Browse and install Gloomberb plugins, and enable or disable the ones you have.",
+            "description": "Browse and install Gloom plugins, and enable or disable the ones you have.",
             "targets": [
               "cli",
               "tui",
@@ -1321,7 +1321,7 @@
           {
             "code": "MDAY",
             "name": "Macro-Day Reaction",
-            "description": "How a name moves on CPI, jobs and FOMC days against a normal day: average move, direction, hit rate and every release day."
+            "description": "How a name moves on CPI, jobs, FOMC and Brazil IPCA days against a normal day: average move, direction, hit rate, and every release day with its actual, forecast and prior."
           }
         ]
       },
@@ -1686,7 +1686,7 @@
           {
             "code": "DVD",
             "name": "Dividend Yield",
-            "description": "Cash distribution history, trailing and forward yield, payout and growth; gloomberb fn DVD with several tickers ranks them by yield. A bond fund's SEC yield beside its distribution yield, and with --tax-rate a muni fund's tax-equivalent yield. Future payments are not forecast."
+            "description": "Cash distribution history, trailing and forward yield, payout and growth; gloom fn DVD with several tickers ranks them by yield. A bond fund's SEC yield beside its distribution yield, and with --tax-rate a muni fund's tax-equivalent yield. Future payments are not forecast."
           },
           {
             "code": "RDCF",

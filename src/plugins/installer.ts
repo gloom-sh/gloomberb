@@ -284,7 +284,7 @@ async function installDependencies(targetDir: string, quiet: boolean): Promise<v
   // After `bun install`, which prunes links it does not know about.
   const link = linkHostPackages(targetDir);
   if (link.error && !quiet) {
-    console.error(cliStyles.warning(`Warning: could not link the Gloomberb runtime (${link.error}).`));
+    console.error(cliStyles.warning(`Warning: could not link the Gloom runtime (${link.error}).`));
     console.error(cliStyles.muted("The plugin's \"gloomberb/*\" imports will not resolve."));
   }
 }
@@ -309,7 +309,7 @@ async function readPluginExport(targetDir: string): Promise<Pick<GloomPlugin, "i
  * never runs.
  */
 function refuseAbsorbed(absorbed: AbsorbedPlugin | null): void {
-  if (absorbed) fail(`${absorbed.name} is built into Gloomberb now.`);
+  if (absorbed) fail(`${absorbed.name} is built into Gloom now.`);
 }
 
 function describe(targetDir: string, directory: string, plugin: PluginDirectoryInfo["plugin"]): PluginDirectoryInfo {
@@ -327,7 +327,7 @@ export async function installPlugin(ref: string, options: PluginInstallOptions =
   const targetDir = join(PLUGINS_DIR, name);
 
   if (existsSync(targetDir)) {
-    fail(`Plugin "${name}" already exists.`, `Use "gloomberb update ${name}" to refresh it.`);
+    fail(`Plugin "${name}" already exists.`, `Use "gloom update ${name}" to refresh it.`);
   }
 
   say(cliStyles.accent(`Installing ${name}`));
@@ -586,7 +586,7 @@ export async function installListedPlugin(
   const known = listings ?? await loadRegistryListings();
   const listing = known.get(repo);
   const required = requiredGloomberb(listing?.minGloomberb);
-  if (required) fail(`${ref} needs Gloomberb ${required}, this is ${VERSION}.`, "Update Gloomberb first.");
+  if (required) fail(`${ref} needs Gloom ${required}, this is ${VERSION}.`, "Update Gloom first.");
   const reviewed = pin ?? listing?.pin;
   const installed = await installPlugin(ref, { ...shared, ...(reviewed ? { pin: reviewed } : {}) });
   const missing = missingPeerPlugins(installed.path);
@@ -635,7 +635,7 @@ export async function linkPlugin(sourcePath: string, options: PluginInstallOptio
   const targetDir = join(PLUGINS_DIR, name);
   const existing = lstatSync(targetDir, { throwIfNoEntry: false });
   if (existing && !existing.isSymbolicLink()) {
-    fail(`Plugin "${name}" is already installed.`, `Remove it first with "gloomberb remove ${name}".`);
+    fail(`Plugin "${name}" is already installed.`, `Remove it first with "gloom remove ${name}".`);
   }
   if (existing) rmSync(targetDir, { force: true });
   symlinkSync(source, targetDir, "dir");
@@ -643,7 +643,7 @@ export async function linkPlugin(sourcePath: string, options: PluginInstallOptio
   const plugin = await readPluginExport(source).catch(logFailure("plugin-installer", "Linked plugin validation failed", null));
   if (!options.quiet) {
     console.log(cliStyles.success(`Linked ${plugin?.name ?? name} from ${source}`));
-    console.log(cliStyles.muted(`Check it with "gloomberb plugin doctor ${name}".`));
+    console.log(cliStyles.muted(`Check it with "gloom plugin doctor ${name}".`));
   }
   return describe(source, name, plugin);
 }

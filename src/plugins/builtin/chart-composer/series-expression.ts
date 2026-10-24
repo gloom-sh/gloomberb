@@ -1,4 +1,6 @@
 import { futuresGenericCaption, futuresGenericListing } from "../../../utils/futures-generic";
+import { isIsoCurrencyCode } from "../../../utils/crypto-pair";
+import { readTerminalListingCode } from "../../../tickers/terminal-codes";
 import type { ChartSeriesSpec, SeriesStyle, SeriesTransform } from "../../../time-series/types";
 import {
   canonicalTimeSeriesFieldId,
@@ -167,6 +169,40 @@ const SERIES_FORMS = "Use SYMBOL, SYMBOL:field, FUT:code, UST:maturity, FRED:ser
 /** A word that reads as a series, not an operator or a number of a formula. */
 const LIST_WORD = /^[A-Za-z^][\w.^=:/~-]*$/;
 
+/** The words that close a Bloomberg security (`AAPL US Equity`, `EURUSD Curncy`), and its exchange code `US`. */
+const BLOOMBERG_WORDS = new Set(["EQUITY", "INDEX", "CURNCY", "COMDTY", "GOVT", "CORP", "MTGE", "MUNI", "PFD"]);
+
+/** Why words typed with spaces between them are no list of series, when they are not: what to say, if anything. */
+interface NotAList {
+  hint?: string;
+}
+
+/**
+ * Words with spaces between them that are one thing and not tickers side by
+ * side: a Bloomberg security, a currency pair, or a series whose field has
+ * spaces in it (`MSFT:net income`). Charting each word would draw series
+ * nobody asked for, so these are errors, with a hint where one helps.
+ */
+function notAList(words: readonly string[]): NotAList | null {
+  if (words.some((word, index) => BLOOMBERG_WORDS.has(word.toUpperCase()) || (index > 0 && word.toUpperCase() === "US"))) {
+    const code = readTerminalListingCode(words.join(" "));
+    return { hint: code ? ` That is a Bloomberg code: write it ${code.key}.` : " That is a Bloomberg security: write the ticker alone (AAPL), or with its exchange (AAPL:NASDAQ)." };
+  }
+  if (words.length === 2 && words.every((word) => /^[A-Za-z]{3}$/.test(word) && isIsoCurrencyCode(word.toUpperCase()))) {
+    const [base, quote] = words.map((word) => word.toUpperCase());
+    return { hint: ` ${base} ${quote} reads as a currency pair: write it ${base}/${quote}, or separate tickers with commas.` };
+  }
+  return words.some((word, index) => word.includes(":") && spacedField(words, index)) ? {} : null;
+}
+
+/** Whether the words from `start` on, joined, are one series whose field has spaces in it (`MSFT:net income`). */
+function spacedField(words: readonly string[], start: number): boolean {
+  for (let end = start + 2; end <= words.length; end += 1) {
+    if (parseSeriesExpression(words.slice(start, end).join(" "))) return true;
+  }
+  return false;
+}
+
 /**
  * One leg of a list: a series, or series typed with spaces between them
  * (`AAPL MSFT`, as `fn G AAPL MSFT` passes them), each word a series of its
@@ -176,7 +212,7 @@ function parseLeg(leg: string): ParsedSeriesExpression[] | null {
   const parsed = parseSeriesExpression(leg);
   if (parsed) return [parsed];
   const words = leg.trim().split(/\s+/);
-  if (words.length < 2) return null;
+  if (words.length < 2 || notAList(words)) return null;
   const series = words.map(parseSeriesExpression);
   return series.every((entry): entry is ParsedSeriesExpression => entry != null) ? series : null;
 }
@@ -191,9 +227,11 @@ export function parseChartExpression(value: string): ParsedSeriesExpression[] {
   const series = legs.flatMap((leg) => {
     const parsed = parseLeg(leg);
     if (parsed) return parsed;
-    // Words with spaces between them, none of them an operator, that are not all series: a list is written with commas.
+    // Words with spaces between them that are not all series: a list is written with commas.
     const words = leg.trim().split(/\s+/);
-    const listHint = words.length > 1 && words.every((word) => LIST_WORD.test(word)) ? ` Separate series with commas: ${words.join(",")}.` : "";
+    const reason = words.length > 1 ? notAList(words) : null;
+    const listHint = reason ? reason.hint ?? ""
+      : words.length > 1 && words.every((word) => LIST_WORD.test(word)) ? ` Separate series with commas: ${words.join(",")}.` : "";
     throw new Error(`Invalid chart series "${leg.trim()}".${listHint} ${SERIES_FORMS}`);
   });
   if (series.length > MAX_CHART_COMPOSER_SERIES) {

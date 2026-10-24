@@ -122,6 +122,14 @@ export interface Quote extends DepositaryReceiptFacts {
   receivedAt?: number; // local receipt timestamp ms for streamed/display freshness
   delivery?: QuoteDelivery;
   stale?: boolean;
+  /**
+   * The price is the close of this intraday bar of a currency pair's, not a
+   * print: Gloom Cloud took the bar because the pair's print had stopped
+   * behind it. lastUpdated is the bar's end.
+   */
+  intradayBar?: QuoteIntradayBar;
+  /** Why a stale currency pair's price stands, in Gloom Cloud's words: its bars have nothing newer, or could not be read in time. */
+  staleReason?: string;
   /** The listing no longer trades: the price is its last trade (ListingDelisting). */
   delisting?: ListingDelisting;
   exchangeName?: string;
@@ -190,6 +198,12 @@ export interface Quote extends DepositaryReceiptFacts {
   perpetual?: PerpBoardRow;
 }
 
+/** A bar a quote's price is the close of: its start (epoch ms) and its length in minutes. */
+export interface QuoteIntradayBar {
+  start: number;
+  minutes: number;
+}
+
 export interface QuoteContribution extends Quote {
   providerId: string;
 }
@@ -212,20 +226,28 @@ export interface TtmConversion {
  * How a served enterprise value ties to market cap + total debt - cash from the latest balance sheet served beside it.
  * `matches` within 5%; `differs` beyond it (or beyond 2% on the other side of the market cap from net debt), within
  * 0.7x to 1.5x, shown labelled as the provider's; `withdrawn` outside that band, with no EV or EV/revenue; `unchecked`
- * without a recent balance sheet carrying both lines.
+ * without a recent balance sheet carrying both lines. `computed`: an insurer's or a holding company's EV, which is
+ * `computed` itself, its investment book kept in (`investmentsKept`). `not-meaningful`: the EV comes out at or below
+ * zero, served as no EV or EV/revenue, with `reason`; shown N/M.
  */
 export interface EnterpriseValueCheck {
-  status: "matches" | "differs" | "withdrawn" | "unchecked";
-  /** The provider's enterprise value, served as `enterpriseValue` unless withdrawn. */
-  source: number;
-  currency: string;
-  marketCap: number;
+  status: "matches" | "differs" | "withdrawn" | "unchecked" | "computed" | "not-meaningful";
+  /** The provider's enterprise value, served as `enterpriseValue` unless withdrawn, computed or not meaningful; absent when it served none. */
+  source?: number;
+  /** The currency of the EV and the market cap. Absent, with `marketCap`, only on a not-meaningful source EV the block names no currency for. */
+  currency?: string;
+  /** The market cap the EV is measured on; absent only on a not-meaningful source EV served without one. */
+  marketCap?: number;
   totalDebt?: number;
   cash?: number;
   /** YYYY-MM-DD of the balance sheet the debt and cash come from. */
   balanceSheetDate?: string;
   /** marketCap + totalDebt - cash. */
   computed?: number;
+  /** `cash` is cash and equivalents alone: an insurer's or a holding company's investments stay in its EV. */
+  investmentsKept?: true;
+  /** Why the EV is not meaningful (`not-meaningful`). */
+  reason?: string;
 }
 
 /** How a trailing P/E converts the EPS it divides by, when that EPS is in another currency than the price. */

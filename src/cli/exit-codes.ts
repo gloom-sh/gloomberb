@@ -1,4 +1,4 @@
-/** What `gloomberb <command>` exits with, as `gloomberb help` lists them. */
+/** What `gloom <command>` exits with, as `gloom help` lists them. */
 export const CLI_EXIT_CODES = {
   ok: 0,
   /** Bad input, nothing found, a failed check, or an unexpected error. */

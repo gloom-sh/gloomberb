@@ -144,7 +144,7 @@ export interface QueryBarProps {
   leading?: ReactNode;
   /**
    * The date the data is as of (`as of 2026-10-09`), shown where `meta` is
-   * when there is none. A `gloomberb shot` whose status line dates the data
+   * when there is none. A `gloom shot` whose status line dates the data
    * leaves it out, so the date is said once.
    */
   asOf?: string;

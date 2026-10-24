@@ -226,9 +226,11 @@ test("dates a rendered FXC by the observations behind its rates, in the report a
   expect(report.data.freshness).toMatchObject({ status: "delayed", asOf: "2026-10-10T04:21:11.000Z", asOfClose: "2026-10-09", market: { state: "closed" } });
   expect(renderReportCsv(report.tables)).toContain("# Source: Gloom Cloud · FX trading day Fri 9 Oct 2026 close · delayed · markets closed");
 
-  // A pane that publishes nothing is still not reported.
+  // A pane that publishes nothing keeps the unknown status in data, without filler in its line.
   const bare = { ...screenshot, render: { ...screenshot.render, semanticUi: [] } } as unknown as PaneScreenshotResult;
-  expect(formatFreshnessLine((await buildDomPaneReportFromRender(resolved, bare)).data.freshness!)).toContain("status not reported");
+  const unknown = (await buildDomPaneReportFromRender(resolved, bare)).data.freshness!;
+  expect(unknown.status).toBe("unreported");
+  expect(formatFreshnessLine(unknown)).toMatch(/^Source: Gloom Cloud · retrieved .+ UTC$/);
 });
 
 test("a pane behind the sign-in wall reports what it needs instead of the wall's buttons, as its catalog entry does", async () => {
@@ -278,7 +280,7 @@ test("a pane walled whole cites no source, and one that says how to reach it say
   const signedOut = await walled("sign-in", "EK NEM Sign in to read 8-K filings. Log in \u21B5 Sign up free");
   expect(signedOut.data).toMatchObject({ locked: "sign-in", complete: false });
   expect(signedOut.data.freshness).toBeUndefined();
-  expect(signedOut.data.reason).toContain("Free, with no sign-in: gloomberb fn SEC NEM lists NEM's recent filings");
+  expect(signedOut.data.reason).toContain("Free, with no sign-in: gloom fn SEC NEM lists NEM's recent filings");
   expect(signedOut.text).not.toContain("Sign up free");
   expect(signedOut.tables.footer.some((line) => /^Source:|^Retrieval time/.test(line))).toBe(false);
   const footer = appendDomReportFooter(signedOut.text, domReportView(signedOut.data), signedOut.data.freshness);

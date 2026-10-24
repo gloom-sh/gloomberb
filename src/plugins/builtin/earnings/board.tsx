@@ -134,7 +134,7 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
   // Keyed by symbol and date, so a reload or a shared layout keeps the row.
   const [selectedKey, setSelectedKey] = usePluginPaneState<string | null>("selectedKey", null);
   const [openKey, setOpenKey] = usePluginPaneState<string | null>("openEvent", null);
-  // A layout or `gloomberb shot ERN NVDA,AMD --open NVDA` lands on that company's history.
+  // A layout or `gloom shot ERN NVDA,AMD --open NVDA` lands on that company's history.
   const [openSymbol] = usePaneSettingValue<string>("open", "");
   // A layout's `view` setting opens on the week; a choice made in the pane wins.
   const [requestedView] = usePaneSettingValue<string>("view", "");

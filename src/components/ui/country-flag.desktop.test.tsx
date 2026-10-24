@@ -11,6 +11,7 @@ test("a country resolves to its flag by code, alpha-3 code, alias or English nam
     ["Korea", "KR"], ["South Korea", "KR"], ["Hong Kong", "HK"], ["Türkiye", "TR"],
     ["Ivory Coast", "CI"], ["Côte d’Ivoire", "CI"], ["Dominican Republic", "DO"],
     ["EU", "EU"], ["EA", "EU"], ["Euro area", "EU"], ["European Union", "EU"],
+    ["TN", "TN"], ["TUN", "TN"], ["Tunisia", "TN"], ["Morocco", "MA"], ["CRI", "CR"], ["Costa Rica", "CR"],
     // A code with no art, a region, a city, several countries and nothing at all.
     ["XK", null], ["Asia", null], ["Paris", null], ["US, CA", null], ["", null], [null, null], [undefined, null],
   ];

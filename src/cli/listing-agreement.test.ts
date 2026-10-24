@@ -235,7 +235,7 @@ test("a function whose data covers US listings only names the company's US listi
     for (const typed of [["SAN:EPA"], ["SAN", "--exchange", "EPA"]]) {
       expect(await refused(token, typed[0]!, ...typed.slice(1))).toEqual([
         "Time and sales covers US listings only, and SAN:EPA is Sanofi on Euronext Paris (EPA).",
-        `Sanofi's US listing: SNY (try: gloomberb fn ${token} SNY)\n${minuteBars("SAN:EPA")}`,
+        `Sanofi's US listing: SNY (try: gloom fn ${token} SNY)\n${minuteBars("SAN:EPA")}`,
       ]);
     }
   }
@@ -244,7 +244,7 @@ test("a function whose data covers US listings only names the company's US listi
   const list = await runFunction("SIW", "SAN:EPA,AAPL");
   expect(list.listing).toBe("AAPL");
   expect(list.warnings).toEqual([
-    "FINRA short interest covers US listings only, and SAN:EPA is Sanofi on Euronext Paris (EPA). Sanofi's US listing: SNY (try: gloomberb fn SIW SNY)",
+    "FINRA short interest covers US listings only, and SAN:EPA is Sanofi on Euronext Paris (EPA). Sanofi's US listing: SNY (try: gloom fn SIW SNY)",
   ]);
 });
 

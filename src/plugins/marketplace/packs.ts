@@ -37,7 +37,7 @@ export const STARTER_PACKS: readonly StarterPack[] = [
   {
     id: "everything",
     name: "Everything",
-    tagline: "Every research plugin on, as Gloomberb ships.",
+    tagline: "Every research plugin on, as Gloom ships.",
     plugins: PACK_PLUGIN_IDS,
   },
   {

@@ -17,7 +17,7 @@ await writeElectrobunViewPage({
   outdir,
   failureMessage: "Failed to build Electrobun view assets",
   missingEntryMessage: "Electrobun view build did not produce a JavaScript entrypoint",
-  title: "Gloomberb",
+  title: "Gloom",
   // The Bun process hands the main window its frame before the page loads; a
   // window holding a popped-out pane gets none and draws no frame.
   bootFrame: {
@@ -27,7 +27,7 @@ await writeElectrobunViewPage({
   bootstrapScript: `
       const bootstrapFatalHtml = [
         '<div class="gloom-fatal">',
-        '<h1>Gloomberb failed to start</h1>',
+        '<h1>Gloom failed to start</h1>',
         '<div class="gloom-fatal-actions">',
         '<button type="button" data-variant="primary" data-action="reload">Reload window</button>',
         '<button type="button" data-action="copy">Copy error</button>',

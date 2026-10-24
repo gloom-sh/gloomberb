@@ -25,7 +25,7 @@ export function registerCloudAuthCommands(ctx: GloomPluginContext): void {
   ctx.registerCommand({
     id: "auth-login",
     label: "Log In",
-    description: "Log in to your Gloomberb account",
+    description: "Log in to your Gloom account",
     keywords: ["login", "sign in", "auth", "account"],
     category: "config",
     hidden: () => apiClient.isSignedIn(),
@@ -43,7 +43,7 @@ export function registerCloudAuthCommands(ctx: GloomPluginContext): void {
   ctx.registerCommand({
     id: "auth-signup",
     label: "Sign Up",
-    description: "Create a Gloomberb account",
+    description: "Create a Gloom account",
     keywords: ["signup", "register", "create account"],
     category: "config",
     hidden: () => apiClient.isSignedIn(),
@@ -77,7 +77,7 @@ export function registerCloudAuthCommands(ctx: GloomPluginContext): void {
   ctx.registerCommand({
     id: "auth-logout",
     label: "Logout",
-    description: "Log out of your Gloomberb account",
+    description: "Log out of your Gloom account",
     keywords: ["logout", "sign out"],
     category: "config",
     execute: async () => {

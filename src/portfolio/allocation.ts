@@ -6,7 +6,7 @@ import { parseTypedNumber } from "../utils/decimal-comma";
 
 /**
  * Weights, targets and the trades that would rebalance a portfolio. `PF`, its
- * `fn PF` report and `gloomberb portfolio show` all read these figures from
+ * `fn PF` report and `gloom portfolio show` all read these figures from
  * here, so a weight never differs between them.
  *
  * A weight is a share of the total value, cash included: the priced holdings

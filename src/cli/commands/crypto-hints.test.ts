@@ -14,7 +14,7 @@ beforeEach(() => resetBoardCoins([]));
 afterEach(() => { process.exitCode = 0; resetBoardCoins(); });
 
 const config = createDefaultConfig("/tmp/gloom-crypto-hints-test");
-const HINT = "Crypto prices may be briefly unavailable; the CRYP function (gloomberb fn CRYP) shows the crypto board.";
+const HINT = "Crypto prices may be briefly unavailable; the CRYP function (gloom fn CRYP) shows the crypto board.";
 
 function quote(symbol: string, name: string, instrumentType?: string): Quote {
   return { symbol, name, price: 36.11, change: 0, changePercent: 0, currency: "USD", lastUpdated: 1_789_200_000_000, instrumentType };
@@ -110,6 +110,8 @@ test("a bare coin ticker several companies list, none of them the coin, points a
 
 test("a symbol no listing carries reads as not a ticker in the table and the notes, an outage as unavailable", async () => {
   const cli = createTestCliContext({ config, dataProvider: {
+    // Search names no company Apple, so the word stays not a ticker.
+    search: async () => [],
     getQuotesBatch: async (targets: Array<{ symbol: string; exchange: string }>) => targets.map((target) => ({
       target,
       quote: null,
@@ -128,7 +130,7 @@ test("a symbol no listing carries reads as not a ticker in the table and the not
     setCliColorEnabledOverride(null);
   }
   // JSON keeps the error as thrown, per row.
-  const json = createTestCliContext({ config, dataProvider: { getQuotesBatch: async (targets: Array<{ symbol: string; exchange: string }>) => targets.map((target) => ({ target, quote: null, error: new Error("Not a ticker: APPLE.") })) } }, { format: "json" });
+  const json = createTestCliContext({ config, dataProvider: { search: async () => [], getQuotesBatch: async (targets: Array<{ symbol: string; exchange: string }>) => targets.map((target) => ({ target, quote: null, error: new Error("Not a ticker: APPLE.") })) } }, { format: "json" });
   await marketDataCliCommands.find((command) => command.name === "quote")!.execute(["Apple"], json.context);
   expect(json.printed[0]!.result.warnings).toBeUndefined();
   expect((json.printed[0]!.result.data as Array<{ error: string }>)[0]!.error).toBe("Not a ticker: APPLE.");

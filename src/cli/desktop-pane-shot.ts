@@ -257,7 +257,7 @@ function shotPageHtml(view: ShotViewFiles, payload: DesktopPaneShotPayload): str
   return renderElectrobunViewHtml({
     stylesheet: view.get(SHOT_VIEW_STYLESHEET) ?? "",
     entrySrc: `./${SHOT_VIEW_SCRIPT}`,
-    title: "Gloomberb Pane Shot",
+    title: "Gloom Pane Shot",
     loadingText: "Rendering pane...",
     bootstrapScript: `
       window.__GLOOM_CLI_SHOT_PAYLOAD__ = ${payloadJson};

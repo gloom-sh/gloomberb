@@ -147,3 +147,25 @@ test("rows a bank or a statistics office times itself show its clock; a bank tha
   // The feeds' own calendar prints without the publisher's clock column.
   expect(await econText(twoWeeks, ["--country", "US"])).not.toContain("Local");
 });
+
+test("--tz adds the viewer's clock, with the weekday when it falls on another day than the UTC date", async () => {
+  const brazil = [
+    ...twoWeeks,
+    { ...event("2026-10-23T12:00:00.000Z", "BR", "high", "IPCA-15 Mid-Month CPI m/m"), kind: "statistics-release", localTime: "09:00",
+      timeZone: "America/Sao_Paulo", actual: "0.32%", forecast: "0.43%", prior: "0.70%", referencePeriod: "2026-10" },
+    // 01:30 UTC on the 14th is still the 13th in New York.
+    { ...event("2026-10-14T01:30:00.000Z", "BR", "medium", "Night release") },
+  ];
+  const text = await econText(brazil, ["--country", "BR", "--tz", "america/new_york"]);
+  expect(text).toMatch(/Date\s+Time\s+New York\s+Local/);
+  expect(text).toMatch(/2026-10-14\s+01:30 UTC\s+Tue 21:30\s+BR\s+medium\s+Night release/);
+  expect(text).toMatch(/2026-10-23\s+12:00 UTC\s+08:00\s+09:00 Sao Paulo\s+BR\s+high\s+IPCA-15 Mid-Month CPI m\/m\s+0\.32%\s+0\.43%\s+0\.70%/);
+  const printed = await econPrinted(brazil, ["--country", "BR", "--tz", "America/New_York"]);
+  expect(printed.result.metadata).toMatchObject({ timeZone: "America/New_York" });
+  expect((printed.result.data as Record<string, unknown>[]).at(-1)).toMatchObject({ viewerDate: "2026-10-23", viewerTime: "08:00" });
+  // Without --tz the rows carry no viewer clock.
+  const plain = await econText(brazil, ["--country", "BR"]);
+  expect(plain).not.toContain("New York");
+  expect(plain).not.toContain("Viewer");
+  await expect(econText(brazil, ["--tz", "EST5"])).rejects.toThrow('Unknown time zone "EST5"');
+});

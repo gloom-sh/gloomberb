@@ -60,6 +60,18 @@ test("one ragged line, or a symbol with a stray separator in its quotes, does no
   expect(table.notes).toEqual(["Read the first column as symbols; ignored the 4 cells beside it: Apple Inc., 336.64, Microsoft, 535.07."]);
 });
 
+test("an argument of words reaches the lookup whole, as a list's line does, and a file's full-width symbols read as ASCII", async () => {
+  // "Beyond Meat" was read as the tickers BEYOND and MEAT.
+  const read: string[][] = [];
+  const readEntries = async (entries: string[]) => {
+    read.push(entries);
+    return entries.flatMap((entry) => entry === "Beyond Meat" ? ["BYND"] : entry.split(" "));
+  };
+  expect((await readSymbolList({ args: ["Beyond Meat", "GME AMC 150.00", "NVDA"], readEntries })).symbols).toEqual(["BYND", "GME", "AMC", "NVDA"]);
+  expect(read[0]).toEqual(["Beyond Meat", "GME AMC", "NVDA"]);
+  expect((await readSymbolList({ args: ["-"], readStdin: async () => "ＧＭＥ\nＡＭＣ　ＢＲＫ．Ｂ\n" })).symbols).toEqual(["GME", "AMC", "BRK.B"]);
+});
+
 test("symbols come from arguments, the file and standard input together, each once", async () => {
   const list = await readSymbolList({ args: ["AAPL,aapl", "-"], readStdin: async () => "$AAPL\nMSFT\r\nmsft\r\n" });
   expect(list).toEqual({ symbols: ["AAPL", "MSFT"], repeated: 3, notes: [] });

@@ -167,6 +167,11 @@ const VE_STARS = Array.from({ length: 8 }, (_, index) => {
   return star(15 - 5.2 * Math.cos(angle), 12.4 - 5.2 * Math.sin(angle), 0.9);
 }).join("");
 const HN_STARS = [[15, 10], [10.6, 8.2], [10.6, 11.8], [19.4, 8.2], [19.4, 11.8]].map(([cx, cy]) => star(cx!, cy!, 1.25)).join("");
+/** Morocco's seal: a pentagram drawn as five interlaced lines, one point up. */
+const MA_PENTAGRAM = `M${[0, 2, 4, 1, 3].map((index) => {
+  const angle = (Math.PI * 2 * index) / 5 - Math.PI / 2;
+  return `${(15 + 4.4 * Math.cos(angle)).toFixed(2)},${(10.3 + 4.4 * Math.sin(angle)).toFixed(2)}`;
+}).join("L")}Z`;
 const UZ_STARS = [[9.6, 1.6], [11.6, 1.6], [13.6, 1.6], [11.6, 3.4], [13.6, 3.4], [13.6, 5.2]].map(([cx, cy]) => star(cx!, cy!, 0.62)).join("");
 
 /**
@@ -606,4 +611,19 @@ export const FLAG_ART: Record<string, ReactNode> = {
       <path d={UZ_STARS} fill={WHITE} />
     </>
   ),
+  TN: (
+    <>
+      <Field fill="#e70013" />
+      <circle cx="15" cy="10" r="5" fill={WHITE} />
+      <Crescent cx={14.4} cy={10} r={3.75} bite={3} shift={0.95} fill="#e70013" back={WHITE} />
+      <path d={star(16, 10, 1.9, 5, undefined, 90)} fill="#e70013" />
+    </>
+  ),
+  MA: (
+    <>
+      <Field fill="#c1272d" />
+      <path d={MA_PENTAGRAM} fill="none" stroke="#006233" strokeWidth=".75" strokeLinejoin="round" />
+    </>
+  ),
+  CR: <Bands colors={["#002b7f", WHITE, "#ce1126", WHITE, "#002b7f"]} weights={[1, 1, 2, 1, 1]} />,
 };

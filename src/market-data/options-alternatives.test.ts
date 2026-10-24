@@ -23,7 +23,7 @@ test("options on a future with no chain names the listed alternative and OSA, no
   }) as typeof cli.context.fail;
   await expect(marketDataCliCommands.find((command) => command.name === "options")!.execute(["GC=F"], cli.context))
     .rejects.toThrow("Options are not available for GC=F.");
-  expect(failure!.details).toContain("gloomberb options GLD");
-  expect(failure!.details).toContain("gloomberb fn OSA GLD");
+  expect(failure!.details).toContain("gloom options GLD");
+  expect(failure!.details).toContain("gloom fn OSA GLD");
   expect(`${failure!.message} ${failure!.details}`).not.toMatch(/provider/i);
 });

@@ -138,7 +138,7 @@ test("insider leads with INS's Form 4 summary, not a 13F list that names no insi
   const text = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "text" }, options).replace(/\u001b\[[0-9;]*m/g, "");
   expect(text).not.toContain("none reported");
   expect(text).toContain("Loaded filings, last 90 days: Common Stock: Sold 1.5k shares ($220,000.00)");
-  expect(text).toContain(`2 Form 4 lines in the latest 2 filings, newest filed ${day(3)}: gloomberb fn INS JNJ`);
+  expect(text).toContain(`2 Form 4 lines in the latest 2 filings, newest filed ${day(3)}: gloom fn INS JNJ`);
   expect(text).toContain("(Form 4 filings)");
   expect(result.metadata).toMatchObject({
     form4Insiders: "available",

@@ -95,6 +95,18 @@ function symbolList(symbols: readonly string[]): string {
 }
 
 /**
+ * Whether a warning names a symbol as a whole word, in the case symbols are
+ * written in: `F` is named in "Not a ticker: F." but not in "AAPL, FB". A
+ * one-letter symbol is also an article that opens a sentence ("A gap of ..."),
+ * so it counts only where prose would not put one.
+ */
+function namesSymbol(note: string, symbol: string): boolean {
+  const escaped = symbol.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const after = symbol.length === 1 ? "(?![A-Za-z0-9]|\\s+[a-z])" : "(?![A-Za-z0-9])";
+  return new RegExp(`(?<![A-Za-z0-9])${escaped}${after}`).test(note);
+}
+
+/**
  * The warnings of a list of symbols, each said once with the symbols it is
  * about (`AAPL, MSFT: 2026-10-23 is still forming (partial)`), in the order
  * they first came up. A warning that already names its symbol, as `Not a
@@ -109,6 +121,6 @@ export function symbolListNotes(entries: ReadonlyArray<{ symbol: string; notes: 
     }
   }
   return [...bySymbol].map(([note, symbols]) => (
-    symbols.length === 1 && note.toUpperCase().includes(symbols[0]!.toUpperCase()) ? note : `${symbolList(symbols)}: ${note}`
+    symbols.length === 1 && namesSymbol(note, symbols[0]!) ? note : `${symbolList(symbols)}: ${note}`
   ));
 }

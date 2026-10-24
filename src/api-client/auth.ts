@@ -83,7 +83,7 @@ export class CloudAuthApi {
       },
     );
     this.options.requireCapturedSession(
-      "Account created, but Gloomberb could not save the login session. Please try logging in again.",
+      "Account created, but Gloom could not save the login session. Please try logging in again.",
     );
     this.options.setCurrentUser(result.user);
     return result.user;
@@ -98,7 +98,7 @@ export class CloudAuthApi {
       },
     );
     this.options.requireCapturedSession(
-      "Logged in, but Gloomberb could not save the login session. Please try again.",
+      "Logged in, but Gloom could not save the login session. Please try again.",
     );
     this.options.setCurrentUser(result.user);
     return result.user;

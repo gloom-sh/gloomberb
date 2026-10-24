@@ -100,8 +100,8 @@ function commandWord(argument: string): string {
 }
 
 /**
- * What to run when a command name is a function's code (`gloomberb OVDV KO`,
- * `gloomberb help OVDV`): `fn` with the reader's own arguments, or the
+ * What to run when a command name is a function's code (`gloom OVDV KO`,
+ * `gloom help OVDV`): `fn` with the reader's own arguments, or the
  * function's argument hint when they gave none. Null when the word is no
  * function code or the catalog cannot be read, and the command stays unknown.
  */
@@ -123,7 +123,7 @@ export async function functionCodeCommand(
     });
     if (!found) return null;
     const code = word.replace(/^\$/, "").toUpperCase();
-    return { code, command: ["gloomberb fn", code, args.length > 0 ? args.map(commandWord).join(" ") : found.argument].filter(Boolean).join(" ") };
+    return { code, command: ["gloom fn", code, args.length > 0 ? args.map(commandWord).join(" ") : found.argument].filter(Boolean).join(" ") };
   } catch (error) {
     logFailure("cli.pane-functions-index", "Resolve function code command failed")(error);
     return null;
@@ -131,7 +131,7 @@ export async function functionCodeCommand(
 }
 
 /**
- * The one function code a command name is a slip from (`gloomberb RCDF PLTR`
+ * The one function code a command name is a slip from (`gloom RCDF PLTR`
  * for RDCF), with the command that runs it on the reader's arguments, read
  * as a command word is (nearFunctionCodes), so a ticker is not taken for one.
  * Null when no code, or more than one, is that close, or the catalog cannot
@@ -155,7 +155,7 @@ export async function nearFunctionCodeCommand(
     });
     if (near.length !== 1) return null;
     const { code, label } = near[0]!;
-    return { code, label, command: ["gloomberb fn", code, ...args.map(commandWord)].join(" ") };
+    return { code, label, command: ["gloom fn", code, ...args.map(commandWord)].join(" ") };
   } catch (error) {
     logFailure("cli.pane-functions-index", "Find nearby function code command failed")(error);
     return null;
@@ -272,7 +272,7 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
       )) {
         throw new Error(
           `${resolved.token} is not a verified bot-safe report capability. `
-          + `Use "gloomberb catalog ${resolved.token}" to inspect readiness.`,
+          + `Use "gloom catalog ${resolved.token}" to inspect readiness.`,
         );
       }
       const tabular = ctx.cliOptions.format === "csv" || ctx.cliOptions.format === "ndjson";
@@ -294,7 +294,7 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
       const fate = listing && quoteAnswer && isTickerLinkPeer(resolved.instance, registry.panes)
         ? listingFateLoader(listing, context, quoteAnswer().then((answer) => answer.quote))
         : null;
-      const moved = { command: "fn", retry: (key: string) => `gloomberb fn ${resolved.token} ${key}` };
+      const moved = { command: "fn", retry: (key: string) => `gloom fn ${resolved.token} ${key}` };
       // A report that fails or comes back empty for an exchange the symbol is not listed on says so.
       const report = await refuseMovedListing(fate, moved, () => withPersistedCloudSession(
         context,
@@ -307,7 +307,7 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
         ),
       ));
       // A company's name typed where its ticker goes (`fn RDCF Palantir`) found nothing: the answer is `quote`'s,
-      // "Not a ticker: PALANTIR. Try `gloomberb search Palantir`.", not an empty report.
+      // "Not a ticker: PALANTIR. Try `gloom search Palantir`.", not an empty report.
       if (quoteAnswer && (report.data.empty || report.data.unavailableSymbols.length > 0)) {
         const { quote, error } = await quoteAnswer();
         const message = error instanceof Error ? error.message : null;
@@ -367,8 +367,8 @@ export function emptySeriesExport(
     const ids = [...new Set(fred)];
     return {
       message: `${asked} has no data to export: ${ids.join(" and ")} ${ids.length === 1 ? "is a FRED series" : "are FRED series"}, not ${ids.length === 1 ? "a ticker" : "tickers"}.`,
-      details: `Chart it with the fred: prefix: gloomberb fn G ${ids.map((id) => `fred:${id}`).join(",")} ${formatFlag}`
-        + `${ids.length === 1 ? ` (or gloomberb fred ${ids[0]} ${formatFlag})` : ""}.`,
+      details: `Chart it with the fred: prefix: gloom fn G ${ids.map((id) => `fred:${id}`).join(",")} ${formatFlag}`
+        + `${ids.length === 1 ? ` (or gloom fred ${ids[0]} ${formatFlag})` : ""}.`,
     };
   }
   const missing = data.unavailableSymbols.length > 0 ? ` for ${data.unavailableSymbols.join(", ")}` : "";
@@ -377,7 +377,7 @@ export function emptySeriesExport(
     message: `${asked} has no data to export${missing}.`,
     details: [
       ...reasons,
-      `Check the symbol with gloomberb search, or run gloomberb ${asked} without ${formatFlag} to see the report.`,
+      `Check the symbol with gloom search, or run gloom ${asked} without ${formatFlag} to see the report.`,
     ].join("\n"),
   };
 }
@@ -405,7 +405,7 @@ async function capturePaneScreenshot(args: string[], ctx: CliCommandContext, onS
       )) {
         throw new Error(
           `${resolved.token} is not a verified bot-safe screenshot capability. `
-          + `Use "gloomberb catalog ${resolved.token}" to inspect readiness.`,
+          + `Use "gloom catalog ${resolved.token}" to inspect readiness.`,
         );
       }
       // An option the pane cannot draw fails here, before a capture of its default is saved as if it were the view asked for.
@@ -469,7 +469,7 @@ function runGlossary(term: string, ctx: CliCommandContext): void {
   const { exact, partial } = lookupGlossary(term);
   const entries = [...exact, ...partial];
   if (entries.length === 0) {
-    ctx.fail(`No glossary entry for "${term}".`, knownGapMessage(term) ?? "gloomberb catalog glossary lists every term.");
+    ctx.fail(`No glossary entry for "${term}".`, knownGapMessage(term) ?? "gloom catalog glossary lists every term.");
   }
   ctx.printResult({ data: entries.map(glossaryRecord) }, { text: () => renderGlossaryEntries(entries).join("\n") });
 }

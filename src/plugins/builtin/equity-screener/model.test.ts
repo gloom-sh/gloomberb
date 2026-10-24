@@ -9,6 +9,7 @@ import {
   criterionText,
   DEFAULT_SCREEN,
   dividendYieldBasis,
+  formatScreenMetric,
   formatScreenValue,
   metricDate,
   parseCriterion,
@@ -114,6 +115,9 @@ test("values keep sign, scale and missing distinct from zero", () => {
   expect(formatScreenValue("price", 757_398)).toBe("757,398.00");
   expect(formatScreenValue("price", 757_398).length).toBeLessThanOrEqual(columnWidth("price"));
   expect(formatScreenValue("trailingPE", -1_234.56)).toBe("-1,234.6");
+  // A multiple the server marks not meaningful reads N/M, as RV and valuation print it; one merely missing stays --.
+  expect(formatScreenMetric("enterpriseToRevenue", { value: null, notMeaningful: true })).toBe("N/M");
+  expect(formatScreenMetric("enterpriseToRevenue", { value: null })).toBe("--");
 });
 
 test("undated provider values show their collection date, never an invented source date", () => {

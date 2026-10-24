@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createTestDataProvider } from "../../../test-support/data-provider";
-import type { AnalystResearchData } from "../../../types/financials";
+import type { AnalystResearchData, Quote } from "../../../types/financials";
 import type { HeadlessPaneLoadArgs } from "../../../types/plugin";
 import { createAnalystResearchHeadless } from "./analyst-headless";
 import { createTestHeadlessContext } from "../../../test-support/headless";
@@ -58,6 +58,21 @@ describe("analyst research headless model", () => {
     const byFirm = await headless.load(args({ sort: "firm", order: "desc", limit: 2 }), createTestHeadlessContext());
     const ratings = byFirm.sections[1]!.rows ?? [];
     expect(ratings.map((row) => row.firm)).toEqual(["Beta", "Alpha"]);
+  });
+  test("measures the upside from Last, as `analyst` does, and dates the price it is from", async () => {
+    // 150 when the research was fetched; Last is the 160 close.
+    const quote: Quote = {
+      symbol: "AMD", price: 161, change: 1, changePercent: 0.6, currency: "USD", dataSource: "delayed",
+      lastUpdated: Date.parse("2026-10-23T12:05:00Z"), marketState: "PRE", exchangeName: "NASDAQ", listingExchangeName: "NASDAQ",
+      regularClose: 160, regularCloseSessionDate: "2026-10-22", regularChange: 2, regularChangePercent: 1.27, preMarketPrice: 161,
+    };
+    const headless = createAnalystResearchHeadless({ loadData: async () => data, loadQuote: async () => quote });
+    const result = await headless.load(args(), createTestHeadlessContext());
+    expect(result.sections[0]?.entries?.slice(1, 3)).toMatchObject([
+      { label: "Target upside", value: 180 / 160 - 1 },
+      { label: "Upside reference price", value: 160, formatted: expect.stringMatching(/^\$160\.00, Thu 22 Oct( 2026)? close$/) },
+    ]);
+    expect(result.metadata).toMatchObject({ upside: 180 / 160 - 1, upsideReference: { price: 160, basis: "regular session close" } });
   });
 });
 

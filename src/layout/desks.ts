@@ -48,7 +48,7 @@ interface DeskPane {
   /** The mnemonic as the command bar takes it. */
   fn: string;
   arg?: string;
-  /** The function's options, as `gloomberb fn` takes them. */
+  /** The function's options, as `gloom fn` takes them. */
   options?: Readonly<Record<string, string>>;
   /** The pane (its place in the desk, from 1) whose ticker this one follows. */
   follows?: number;

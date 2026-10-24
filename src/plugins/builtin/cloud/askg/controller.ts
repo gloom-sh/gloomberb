@@ -460,7 +460,7 @@ export class ASKGSessionController {
       this.manifest = manifest;
       const executor = this.options.getExecutor(manifest);
       if (!executor) {
-        await this.deliver(failure("This window cannot run Gloomberb tools."));
+        await this.deliver(failure("This window cannot run Gloom tools."));
         return;
       }
       const payload = await executor.execute(call, {

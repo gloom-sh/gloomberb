@@ -20,10 +20,11 @@ import {
   type CliHelpEntry,
 } from "./help";
 import { parsePaneFunctionArgs, SHOT_SIZE_LIMITS } from "./pane-functions/options";
-import { checkCliCommandOptions } from "./command-options";
+import { checkCliCommandOptions, foldCommandArgs } from "./command-options";
+import { foldTypedText } from "../utils/typed-text";
 import { CLI_EXIT_CODES } from "./exit-codes";
 import { asUsageError, fail, inferCliErrorOptions, printCliError } from "./errors";
-import { cliStyles, setCliColorEnabledOverride, setCliWidthOverride } from "../utils/cli-output";
+import { cliStyles, setCliColorEnabledOverride, setCliPlainOverride, setCliWidthOverride } from "../utils/cli-output";
 import { setDisplayTimeZone } from "../utils/utc-time";
 import { collectSavedCopies } from "../data/saved-copies";
 import { search, searchCandidatesForCli, buildSearchReport } from "./commands/search";
@@ -93,7 +94,7 @@ export function createCoreCliCommands(
     {
       name: "launch-ui",
       aliases: ["ui"],
-      description: "Open the terminal UI, like plain gloomberb",
+      description: "Open the terminal UI, like plain gloom",
       help: {
         group: CLI_COMMAND_GROUPS.app,
         usage: ["launch-ui"],
@@ -175,7 +176,7 @@ export function createCoreCliCommands(
         group: CLI_COMMAND_GROUPS.functions,
         usage: ["fn <function> [argument] [options]"],
         options: [
-          { flags: "--<option> <value>", description: "A function setting; gloomberb catalog <function> lists them" },
+          { flags: "--<option> <value>", description: "A function setting; gloom catalog <function> lists them" },
           { flags: "--require-bot-safe", description: "Fail unless the function has a verified, complete report" },
           { flags: "--explain", description: "Follow the report with what its terms mean (text and JSON; CSV keeps the rows)" },
           {
@@ -218,12 +219,12 @@ export function createCoreCliCommands(
           { flags: "--output <path>", description: "PNG to write; defaults to gloomberb-<function>-<argument>.png in this folder" },
           { flags: "--width <px>", description: `Layout width, ${SHOT_WIDTH.min} to ${SHOT_WIDTH.max} (default 1280). The PNG is drawn at twice the size: ${SHOT_WIDTH.min * 2} to ${SHOT_WIDTH.max * 2} px wide` },
           { flags: "--height <px>", description: `Layout height, ${SHOT_HEIGHT.min} to ${SHOT_HEIGHT.max} (default 720), so ${SHOT_HEIGHT.min * 2} to ${SHOT_HEIGHT.max * 2} px tall` },
-          { flags: "--theme <id>", description: "Render with another theme, such as amber or colorblind; gloomberb config themes lists them" },
+          { flags: "--theme <id>", description: "Render with another theme, such as amber or colorblind; gloom config themes lists them" },
           { flags: "--scale <n>", description: "Text scale from 0.5 to 4 (default 1)" },
           { flags: "--watermark <label>", description: "Label drawn in the pane title bar" },
           { flags: "--no-status", description: "Leave out the dated status line (as-of, delay, market hours) drawn in the pane footer" },
           { flags: "--strict", description: `Exit ${CLI_EXIT_CODES.unusableShot} when the pane is empty, shows an error, is still loading or is access-gated; the PNG and the Reason line are still written` },
-          { flags: "--<option> <value>", description: "A function setting; gloomberb catalog <function> lists them" },
+          { flags: "--<option> <value>", description: "A function setting; gloom catalog <function> lists them" },
           EXCHANGE_OPTION,
         ],
         examples: [
@@ -266,7 +267,7 @@ export function createCoreCliCommands(
       execute: async (args) => {
         const ref = args[0];
         if (!ref) {
-          fail("Usage: gloomberb install <user/repo>");
+          fail("Usage: gloom install <user/repo>");
         }
         console.error(cliStyles.warning("Runs with your full permissions. Read the source first."));
         await installListedPlugin(ref);
@@ -279,9 +280,9 @@ export function createCoreCliCommands(
         group: CLI_COMMAND_GROUPS.plugins,
         usage: ["update [name]"],
         sections: [{
-          title: "Updating Gloomberb itself",
+          title: "Updating Gloom itself",
           lines: [
-            "The app updates itself from stable releases. config set updates.channel nightly adds the nightly build of main; see gloomberb help config.",
+            "The app updates itself from stable releases. config set updates.channel nightly adds the nightly build of main; see gloom help config.",
           ],
         }],
         examples: ["update", "update gloom-tv"],
@@ -302,7 +303,7 @@ export function createCoreCliCommands(
       execute: async (args) => {
         const name = args[0];
         if (!name) {
-          fail("Usage: gloomberb remove <name>");
+          fail("Usage: gloom remove <name>");
         }
         await removePlugin(name);
       },
@@ -328,7 +329,7 @@ function requirePaneFunctionTarget(args: string[], commandName: string, ctx: Cli
     // Intentional ignore: The pane function runner reports invalid options with its error code.
     return;
   }
-  if (!target) ctx.fail(`Usage: gloomberb ${commandName} <function> [argument] [options]`);
+  if (!target) ctx.fail(`Usage: gloom ${commandName} <function> [argument] [options]`);
 }
 
 function printHelpText(text: string, ctx: CliCommandContext): void {
@@ -396,8 +397,8 @@ function failUnknownCommand(token: string, commands: CliCommandDef[], pointers: 
   const exported = suggestion ? null : exportCommandPointer(token, pointers.args);
   const catalog = suggestion ? null : exported ?? catalogPointer(token, pointers.hits, pointers.args);
   const help = suggestion
-    ? `Did you mean ${suggestion}? Run gloomberb help to see every command.`
-    : catalog ? `${catalog}\nRun gloomberb help to see every command.` : "Run gloomberb help to see every command.";
+    ? `Did you mean ${suggestion}? Run gloom help to see every command.`
+    : catalog ? `${catalog}\nRun gloom help to see every command.` : "Run gloom help to see every command.";
   fail(`Unknown command "${token}".`, ticker ? `${ticker}\n${help}` : help);
 }
 
@@ -445,13 +446,15 @@ export async function dispatchCli(args: string[], options: DispatchCliOptions = 
   }
   setCliColorEnabledOverride(parsed.options.color);
   setCliWidthOverride(parsed.options.width ?? null);
+  // The CLI entry sets plain output for a pipe or NO_COLOR (entry.ts); `--plain` and `--no-plain` decide it either way.
+  if (parsed.options.plain != null) setCliPlainOverride(parsed.options.plain);
   const command = parsed.args[0] ?? (parsed.help ? "help" : undefined);
   if (!command) {
     return { kind: "unhandled" };
   }
 
   const registry = await createRegistry(options);
-  const resolved = registry.lookup.get(normalizeCliCommandToken(command));
+  const resolved = registry.lookup.get(normalizeCliCommandToken(foldTypedText(command)));
   if (!resolved) {
     return { kind: "unhandled" };
   }
@@ -461,9 +464,10 @@ export async function dispatchCli(args: string[], options: DispatchCliOptions = 
   const helpOnly = parsed.help && resolved.command.name !== "help";
   const target = helpOnly ? registry.lookup.get("help")! : resolved;
   // The words after a command that runs a function name the function whose help it is (`fn BT --help`).
+  // Full-width letters and digits (ＧＭＥ, １０) are read as the ASCII they stand for, once, here.
   const commandArgs = helpOnly
-    ? [resolved.command.name, ...FUNCTION_COMMANDS.has(resolved.command.name) ? parsed.args.slice(1) : []]
-    : parsed.args.slice(1);
+    ? [resolved.command.name, ...FUNCTION_COMMANDS.has(resolved.command.name) ? foldCommandArgs(resolved.command, parsed.args.slice(1)) : []]
+    : foldCommandArgs(resolved.command, parsed.args.slice(1), parsed.literalStart - 1);
   try {
     if (!helpOnly && resolved.builtin) checkCliCommandOptions(resolved.command, commandArgs, parsed.literalStart - 1);
     // What it answers from a saved copy, its refresh having failed, its closing line says.

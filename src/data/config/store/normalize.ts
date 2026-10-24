@@ -44,7 +44,7 @@ function sanitizeTheme(value: unknown, fallback: string): string {
   if (typeof value !== "string") return fallback;
   if (!themes[value] && !reportedUnknownThemes.has(value)) {
     reportedUnknownThemes.add(value);
-    configLog.warn(`Unknown theme "${value}" in config; showing ${DEFAULT_THEME}. gloomberb config themes lists the ids.`);
+    configLog.warn(`Unknown theme "${value}" in config; showing ${DEFAULT_THEME}. gloom config themes lists the ids.`);
   }
   return value;
 }

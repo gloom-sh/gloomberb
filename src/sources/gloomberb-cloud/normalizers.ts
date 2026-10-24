@@ -28,6 +28,7 @@ import { reconcileQuoteDayRange } from "../../market-data/quotes/day-range";
 import { redactUnavailableFundamentals } from "../../utils/fundamentals";
 import { readWithdrawnObservations } from "../../utils/statement-gaps";
 import { parseListingDelisting } from "../../market-data/quotes/delisting";
+import { readIntradayBar, readStaleReason } from "../../market-data/quotes/intraday-bar";
 
 export const GLOOMBERB_CLOUD_PROVIDER_ID = "gloomberb-cloud" as const;
 
@@ -96,6 +97,8 @@ export function mapQuote(
   return withoutUndefinedFields(reconcileQuoteDayRange({
     ...quote,
     delisting: parseListingDelisting(quote.delisting),
+    intradayBar: readIntradayBar(quote.intradayBar),
+    staleReason: readStaleReason(quote.staleReason),
     priceBasis,
     priceObservation,
     currency: currency || quote.currency,
@@ -447,7 +450,7 @@ const HISTORY_OUTPUT_SIZE: Record<TimeRange, number> = {
   "ALL": 600,
 };
 
-/** The bar size comes from the shared range table, which `gloomberb help history` also lists. */
+/** The bar size comes from the shared range table, which `gloom help history` also lists. */
 export function toHistoryRequest(range: TimeRange): {
   interval: string;
   outputsize: number;

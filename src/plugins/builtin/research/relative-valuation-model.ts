@@ -1,7 +1,7 @@
 import { formatCurrency } from "../../../utils/format";
 import { comparablePriceEarnings, notMeaningfulMultiples } from "../../../utils/price-earnings";
 import { marketCapBasisNote, viewMarketCapitalization } from "../../../utils/market-capitalization";
-import { enterpriseValueReconciliationNote, enterpriseValueWithdrawn, reportedEnterpriseValue } from "../../../utils/fundamentals";
+import { enterpriseValueNotMeaningful, enterpriseValueReconciliationNote, enterpriseValueWithdrawn, reportedEnterpriseValue } from "../../../utils/fundamentals";
 import { getExtendedSessionDisplay, getQuoteSessionFields } from "../../../market-data/market/status";
 import { atRegularSessionPrice, movePriceDerivedFigures, regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
 import { latestFinancialPeriod, latestReportedPeriod } from "../../../utils/latest-financial-period";
@@ -80,12 +80,15 @@ export function relativeValuationValues(snapshot: TickerFinancials | null) {
   };
   // A multiple over a loss reads N/M even when the source served a positive one beside it.
   const { trailingPE: trailingNotMeaningful, forwardPE: forwardNotMeaningful } = notMeaningfulMultiples(fundamentals);
-  const notMeaningful = {
+  // An EV at or below zero makes EV/S N/M, whatever the source divided it by, as `valuation` reads the EV.
+  const evSalesNotMeaningful = enterpriseValueNotMeaningful(fundamentals);
+  const notMeaningful: Partial<Record<"trailingPE" | "forwardPE" | "evSales", string>> = {
     ...(trailingNotMeaningful ? { trailingPE: trailingNotMeaningful } : {}),
     ...(forwardNotMeaningful ? { forwardPE: forwardNotMeaningful } : {}),
+    ...(evSalesNotMeaningful ? { evSales: evSalesNotMeaningful } : {}),
   };
   const evSalesWithdrawn = enterpriseValueWithdrawn(fundamentals);
-  const evSales = !compatibleCurrency || enterpriseValueGap ? null
+  const evSales = !compatibleCurrency || enterpriseValueGap || evSalesNotMeaningful ? null
     : fundamentals?.enterpriseToRevenue != null && Number.isFinite(fundamentals.enterpriseToRevenue)
       ? fundamentals.enterpriseToRevenue
       : enterpriseValue != null && fundamentals?.revenue != null && fundamentals.revenue > 0
@@ -104,7 +107,7 @@ export function relativeValuationValues(snapshot: TickerFinancials | null) {
   if (capitalization == null) gaps.marketCap = quoteStale && !fundamentals?.marketCap ? QUOTE_STALE : NOT_REPORTED;
   if (trailingPE == null && !trailingNotMeaningful && reportedMultiples.trailingPE == null) gaps.trailingPE = NOT_REPORTED;
   if (forwardPE == null && !forwardNotMeaningful && reportedMultiples.forwardPE == null) gaps.forwardPE = NOT_REPORTED;
-  if (evSales == null) gaps.evSales = evSalesGap(fundamentals, quote?.currency, evSalesWithdrawn, enterpriseValueGap);
+  if (evSales == null && !evSalesNotMeaningful) gaps.evSales = evSalesGap(fundamentals, quote?.currency, evSalesWithdrawn, enterpriseValueGap);
   if (fcfYield == null) gaps.fcfYield = fcfYieldGap(fundamentals, capitalization?.currency ?? null);
   if (revenueGrowth == null) gaps.revenueGrowth = NOT_REPORTED;
   if (operatingMargin == null) gaps.operatingMargin = NOT_REPORTED;
@@ -136,13 +139,15 @@ export function relativeValuationValues(snapshot: TickerFinancials | null) {
     trailingPE,
     forwardPE,
     reportedMultiples,
-    /** Why a multiple is N/M: its earnings base is zero or a loss. */
+    /** Why a multiple is N/M: its earnings base is zero or a loss, or for EV/S the enterprise value is at or below zero. */
     notMeaningful,
     // Vendor ADR ratios can mix unverified valuation and reporting units too.
     evSales,
     /** Why EV/S is missing when the provider's EV was withdrawn, as `valuation` says it; null otherwise. */
     evSalesUnavailable: evSalesWithdrawn
       ? enterpriseValueReconciliationNote(fundamentals) ?? "EV unavailable." : null,
+    /** Why EV/S is N/M, as `valuation` says it: "EV N/M: cash and short-term investments exceed ..."; null otherwise. */
+    evSalesNote: evSalesNotMeaningful ? enterpriseValueReconciliationNote(fundamentals) ?? null : null,
     fcfYield,
     revenueGrowth,
     operatingMargin,

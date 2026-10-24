@@ -153,14 +153,24 @@ export async function applyListingArgument(
   }
   const exchange = typeof args.options.exchange === "string" ? args.options.exchange : undefined;
   const { exchange: _exchange, ...options } = args.options;
-  // A list entry with spaces is a company's name search finds, or the symbols it holds.
-  const typed = takesOneTicker ? [args.arg] : await readNameEntries(splitSymbolArgs([args.arg]), context.dataProvider);
+  // A list entry with spaces, or an argument of words, is a company's name search finds, or the symbols it holds.
+  const typed = takesOneTicker ? [args.arg] : await readNameEntries(splitSymbolArgs([args.arg], { phrases: true }), context.dataProvider);
   if (typed.length === 0) return args;
   // RY.TO is the listing its quote names, RY:TSX, as `quote` reads it: a function's data is read by venue.
   let listings = await Promise.all(typed.map((raw) => resolveCliListing(raw, exchange, context, { ownExchangeWins: typed.length > 1, venueSuffix: true })));
   // A separator stuck to the end of a pasted list (`UPST;`) is not part of a symbol; it is named.
   const notes: string[] = takesOneTicker ? [] : stripStrayEdges(args.arg).notes;
   const token = found.template?.shortcut?.prefix ?? args.target.toUpperCase();
+  // Words search finds no company for, and that are not symbols either, name nothing a function can read: tickers do.
+  const unnamed = takesList ? listings.filter((listing) => /\s/.test(listing.symbol)) : [];
+  if (unnamed.length > 0) {
+    const names = unnamed.map((listing) => typed[listings.indexOf(listing)]!.trim());
+    const answer = `No company found for ${names.map((name) => `"${name}"`).join(", ")}; type tickers`;
+    const details = `Such as gloom ${command} ${token} GME,AMC. Find a company's ticker with gloom search "${names[0]!.replace(/"/g, "")}".`;
+    listings = listings.filter((listing) => !unnamed.includes(listing));
+    if (listings.length === 0) throw new ListingArgError(`${answer}.`, details);
+    notes.push(`${answer}, such as GME,AMC.`);
+  }
   // A function with company data answers an index or an ETF with what it is and where its data is, before
   // any request: its source would only say "Unknown ticker" or come back empty. A list leaves it out.
   const covered = found.pane.instruments;
@@ -185,7 +195,7 @@ export async function applyListingArgument(
   const abroad = usOnly ? listings.filter((listing) => listingAbroadVenue(listing.key) != null) : [];
   if (usOnly && abroad.length > 0) {
     const answers = await Promise.all(abroad.map(async (listing) => {
-      const answer = await usListingsOnlyMessage(usOnly, listing, context, (key) => `gloomberb ${command} ${token} ${key}`);
+      const answer = await usListingsOnlyMessage(usOnly, listing, context, (key) => `gloom ${command} ${token} ${key}`);
       const hint = headless?.usListingsOnlyHint?.(listing.key);
       return hint ? { ...answer, details: `${answer.details}\n${hint}` } : answer;
     }));
@@ -264,11 +274,11 @@ async function unknownPaneFunctionError(
   const runs = suggested.length > 0 ? suggested : near.length === 1 ? near : [];
   return new UnknownPaneFunctionError(name, [
     // A function a word asks for, typed with no argument, shows the one it takes (`<ticker>`).
-    ...runs.map(({ code }, index) => [index === 0 ? "Run:" : "    ", "gloomberb", command, code,
+    ...runs.map(({ code }, index) => [index === 0 ? "Run:" : "    ", "gloom", command, code,
       argument.trim() || (suggested.length > 0 ? findFunctionCode(registry, code)?.argument : "")].filter(Boolean).join(" ")),
     ...closest.length > 0
-      ? ["Closest matches:", ...closest.map((entry) => `  ${entry.token.padEnd(tokenWidth)}  ${entry.label}`), `Search the catalog: gloomberb catalog ${word}`]
-      : near.length > 0 ? [] : [`No function code is close to ${word}. List every function: gloomberb catalog`],
+      ? ["Closest matches:", ...closest.map((entry) => `  ${entry.token.padEnd(tokenWidth)}  ${entry.label}`), `Search the catalog: gloom catalog ${word}`]
+      : near.length > 0 ? [] : [`No function code is close to ${word}. List every function: gloom catalog`],
   ].join("\n"), near.length > 0 ? nearCodesText(near) : null);
 }
 
@@ -280,7 +290,7 @@ export async function resolvePaneFunction(
 ): Promise<ResolvedPaneFunction> {
   let args = parsedArgs;
   if (!args.target) {
-    throw new Error("Usage: gloomberb fn <function-or-pane> [argument] [--key value]");
+    throw new Error("Usage: gloom fn <function-or-pane> [argument] [--key value]");
   }
 
   const found = findPaneFunction(registry, args.target);

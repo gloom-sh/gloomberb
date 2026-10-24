@@ -33,18 +33,18 @@ const refusal = (args: string[]) => applyListingArgument(registry, market, parse
   .then(() => null, (error: Error & { details?: string }) => `${error.message}\n${error.details}`);
 
 test("a company function answers an index or a fund with what it is and a command that reads it, before any request", async () => {
-  expect(await refusal(["INS", "^VIX"])).toBe("INS covers companies only, and ^VIX is an index.\nTry: gloomberb fn VIX");
-  expect(await refusal(["INS", "^MOVE"])).toBe("INS covers companies only, and ^MOVE is an index.\nTry: gloomberb fn VIX");
-  expect(await refusal(["INS", "^GSPC"])).toBe("INS covers companies only, and ^GSPC is an index.\nTry: gloomberb ticker ^GSPC");
-  expect(await refusal(["INS", "VOO"])).toBe("INS covers companies only, and VOO is an ETF.\nTry: gloomberb fundamentals VOO");
-  expect(await refusal(["INS", "VFIAX"])).toBe("INS covers companies only, and VFIAX is a mutual fund.\nTry: gloomberb fundamentals VFIAX");
+  expect(await refusal(["INS", "^VIX"])).toBe("INS covers companies only, and ^VIX is an index.\nTry: gloom fn VIX");
+  expect(await refusal(["INS", "^MOVE"])).toBe("INS covers companies only, and ^MOVE is an index.\nTry: gloom fn VIX");
+  expect(await refusal(["INS", "^GSPC"])).toBe("INS covers companies only, and ^GSPC is an index.\nTry: gloom ticker ^GSPC");
+  expect(await refusal(["INS", "VOO"])).toBe("INS covers companies only, and VOO is an ETF.\nTry: gloom fundamentals VOO");
+  expect(await refusal(["INS", "VFIAX"])).toBe("INS covers companies only, and VFIAX is a mutual fund.\nTry: gloom fundamentals VFIAX");
   // A pair is one by its symbol, with no quote asked.
-  expect(await refusal(["INS", "EURUSD=X"])).toBe("INS covers companies only, and EURUSD=X is a currency pair.\nTry: gloomberb ticker EURUSD=X");
+  expect(await refusal(["INS", "EURUSD=X"])).toBe("INS covers companies only, and EURUSD=X is a currency pair.\nTry: gloom ticker EURUSD=X");
   expect(await refusal(["INS", "AAPL"])).toBeNull();
 });
 
 test("a list leaves the index out with the same answer and keeps the companies", async () => {
   const parsed = await applyListingArgument(registry, market, parsePaneFunctionArgs(["PEERS", "AAPL,^VIX"], {}));
   expect(parsed.arg).toBe("AAPL");
-  expect(parsed.listingNotes).toContain("PEERS covers companies only, and ^VIX is an index. Try: gloomberb fn VIX");
+  expect(parsed.listingNotes).toContain("PEERS covers companies only, and ^VIX is an index. Try: gloom fn VIX");
 });

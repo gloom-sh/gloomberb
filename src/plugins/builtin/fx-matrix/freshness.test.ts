@@ -109,7 +109,7 @@ test("a currency with no pair quote in the matrix is dated by its loaded rate, i
   // A rate the matrix cannot draw is no observation, and the base currency has none.
   expect(fxRateObservations(["USD", "SAR", "NGN"], new Map([["SAR", 0.2663]]), (currency) => ({ entry: snapshot("2026-10-10T03:09:15Z"), legQuote: null }), at("2026-10-10T18:45:00Z")))
     .toHaveLength(1);
-  expect(reportLine("2026-10-10T18:45:00Z", {}).line).toContain("status not reported");
+  expect(reportLine("2026-10-10T18:45:00Z", {}).line).toBe("Source: Gloom Cloud · retrieved Sat 10 Oct 2026 18:45 UTC");
 });
 
 test("a loaded rate says how long it is held back as the data service stated it", () => {

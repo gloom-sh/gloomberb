@@ -438,8 +438,8 @@ export interface HeadlessRowsResult extends HeadlessPaneResultBase {
    * (an ISO date or instant), for rows of several series dated apart: each
    * exported row names them in `currency_or_unit`, `symbol_or_series` and
    * `as_of`, as a bundle section's `rowUnitKey`, `rowSymbolKey` and `rowAsOfKey` do.
-   * In a report of several symbols, rows with their own `symbol` and
-   * `currency` fields name them without these.
+   * A column whose `unitKey` is `rowUnitKey` exports its figures bare under its
+   * own header, the row's unit named once in `currency_or_unit`.
    */
   rowUnitKey?: string;
   rowSymbolKey?: string;

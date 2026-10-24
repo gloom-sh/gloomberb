@@ -5,7 +5,9 @@ import { dateOptionError, readCalendarDate } from "../utils/calendar-date";
 import { currencyUnitLabel, heldCurrencyUnit } from "../utils/currency-units";
 import { readTypedNumber } from "../utils/decimal-comma";
 import { logFailure } from "../utils/log-failure";
-import { sameCurrency } from "./position-metrics";
+import { mapWithConcurrency } from "../utils/concurrency";
+import type { TickerPosition, TickerRecord } from "../types/ticker";
+import { lotCostFxRate, sameCurrency } from "./position-metrics";
 
 /** Reads a pair's daily bars; `apiClient` in the app, a fake in tests. */
 export type CostFxHistoryClient = FxHistoryClient;
@@ -63,6 +65,86 @@ export async function loadCostFxRate(
   if (!Number.isFinite(rate) || rate <= 0) throw new CostFxError(`No usable ${fromUnit.currency}/${intoUnit.currency} rate for ${date}`);
   // A pair that did not trade that day (its holiday) dates the cross by its own last close.
   return { rate, date: fromUsd.date < intoUsd.date ? fromUsd.date : intoUsd.date };
+}
+
+/** A lot's currency as a portfolio values it: its own, else its listing's. */
+const lotCurrency = (ticker: TickerRecord, position: TickerPosition) => (position.currency || ticker.metadata.currency || "").trim();
+const purchaseDateKey = (currency: string, date: string) => `${currency}|${date}`;
+
+/**
+ * Whether a lot's cost converts at the FX close of its purchase date when it
+ * is valued in `into`: entered by hand, dated, held in another currency, and
+ * with no rate of its own into `into` (one given with --cost-fx, or read for
+ * its date when the portfolio was valued in `into` before). A broker's lot
+ * reads as it always has.
+ */
+function convertsAtPurchaseDate(position: TickerPosition, currency: string, into: string, portfolioId?: string): boolean {
+  return position.broker === "manual" && position.shares !== 0 && (!portfolioId || position.portfolio === portfolioId)
+    && !!currency && !sameCurrency(currency, into) && /^\d{4}-\d{2}-\d{2}$/.test(position.dateAcquired ?? "")
+    && lotCostFxRate(position, currency, into) === null;
+}
+
+/** One unit of a lot's currency in the valuation's at the close of its purchase date, by currency and date. */
+export type PurchaseDateCostFx = ReadonlyMap<string, CostFxReading>;
+
+/** Purchase dates whose FX closes are read at once. */
+const PURCHASE_DATE_READS = 4;
+
+/** The lot currencies and purchase dates whose FX closes a portfolio valued in `into` converts costs at, by key. */
+export function purchaseDatesToRead(tickers: readonly TickerRecord[], into: string, portfolioId?: string): Map<string, { currency: string; date: string }> {
+  const dates = new Map<string, { currency: string; date: string }>();
+  for (const ticker of tickers) {
+    for (const position of ticker.metadata.positions) {
+      const currency = lotCurrency(ticker, position);
+      if (!convertsAtPurchaseDate(position, currency, into, portfolioId)) continue;
+      dates.set(purchaseDateKey(currency, position.dateAcquired!), { currency, date: position.dateAcquired! });
+    }
+  }
+  return dates;
+}
+
+/**
+ * The FX closes of the purchase dates of a portfolio's lots that convert at
+ * them (convertsAtPurchaseDate) when valued in `into`, read as `position set
+ * --date` reads one: each pair's last close on or before the date, a week
+ * back at most. A date whose closes cannot be read is left out, so its lots'
+ * cost converts at today's rate.
+ */
+export async function loadPurchaseDateCostFx(
+  tickers: readonly TickerRecord[],
+  { into, history, portfolioId, now = new Date() }: { into: string; history: CostFxHistoryClient; portfolioId?: string; now?: Date },
+): Promise<Map<string, CostFxReading>> {
+  const dates = purchaseDatesToRead(tickers, into, portfolioId);
+  const readings = await mapWithConcurrency([...dates], PURCHASE_DATE_READS, async ([key, { currency, date }]) =>
+    [key, await loadCostFxRate(currency, into, date, history, now)
+      .catch(logFailure("portfolio.cost-fx", "Reading a purchase date's FX close failed", null))] as const);
+  return new Map(readings.filter((entry): entry is readonly [string, CostFxReading] => entry[1] != null));
+}
+
+/**
+ * The tickers with each lot that converts at its purchase date's FX close
+ * given that rate into `into`, so its cost and P&L carry the currency's move
+ * since it was bought. For valuing only, never saved: the same array and
+ * records where nothing changes.
+ */
+export function withPurchaseDateCostFx(tickers: readonly TickerRecord[], rates: PurchaseDateCostFx, into: string, portfolioId?: string): TickerRecord[] {
+  if (rates.size === 0) return tickers as TickerRecord[];
+  let changed = false;
+  const dated = tickers.map((ticker) => {
+    let touched = false;
+    const positions = ticker.metadata.positions.map((position) => {
+      const currency = lotCurrency(ticker, position);
+      const reading = convertsAtPurchaseDate(position, currency, into, portfolioId)
+        ? rates.get(purchaseDateKey(currency, position.dateAcquired!)) : undefined;
+      if (!reading) return position;
+      touched = true;
+      return { ...position, costFxRate: reading.rate, costFxCurrency: into.trim() };
+    });
+    if (!touched) return ticker;
+    changed = true;
+    return { ...ticker, metadata: { ...ticker.metadata, positions } };
+  });
+  return changed ? dated : tickers as TickerRecord[];
 }
 
 /** How the command line or the position form names the purchase date and the rate in what it says. */

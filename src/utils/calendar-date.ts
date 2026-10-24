@@ -43,6 +43,8 @@ const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const YEAR_LAST = /^(\d{1,2})([/.-])(\d{1,2})\2(\d{4})$/;
 /** A four-digit year first, written another way than YYYY-MM-DD: 2026/10/14, 2026.10.14, 2026-10-4. */
 const YEAR_FIRST = /^(\d{4})([/.-])(\d{1,2})\2(\d{1,2})$/;
+/** The year, month and day marked as Japanese and Chinese write them (2026年10月14日), and Korean (2026년 10월 14일). */
+const MARKED = /^(\d{4})\s*[年년]\s*(\d{1,2})\s*[月월]\s*(\d{1,2})\s*[日일]$/;
 /** The day written day first with dots, as most of Europe writes it: 14.10.2026, 1.10.2026. */
 const DOTTED = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/;
 /** The month named before the day: Oct 14 2026, October 14, 2026, Sept. 1st 2026. */
@@ -71,16 +73,22 @@ function monthNumber(name: string): number | null {
 }
 
 /**
- * A date as people type it, as YYYY-MM-DD: YYYY-MM-DD itself, DD.MM.YYYY
- * (dots are written day first), and the month named on either side of the
- * day (Oct 14 2026, 14 October 2026). Null for anything else, and for a day
- * the calendar does not have. A slash is written both ways round (10/14 in
- * the US, 14/10 in Europe), so a slashed date is never read as one.
+ * A date as people type it, as YYYY-MM-DD: YYYY-MM-DD itself, the year first
+ * with other separators (2026/10/14, 2026.10.14), the year, month and day
+ * marked (2026年10月14日), DD.MM.YYYY (dots after the day are written day
+ * first), and the month named on either side of the day (Oct 14 2026, 14
+ * October 2026). Null for anything else, and for a day the calendar does not
+ * have. A slash after the day or the month is written both ways round (10/14
+ * in the US, 14/10 in Europe), so 10/14/2026 is never read as a date.
  */
 export function readCalendarDate(value: string): string | null {
   const text = value.trim().replace(/\s+/g, " ");
   const iso = ISO_DATE.exec(text);
   if (iso) return calendarDay(Number(iso[1]), Number(iso[2]), Number(iso[3]));
+  const yearFirst = YEAR_FIRST.exec(text);
+  if (yearFirst) return calendarDay(Number(yearFirst[1]), Number(yearFirst[3]), Number(yearFirst[4]));
+  const marked = MARKED.exec(text);
+  if (marked) return calendarDay(Number(marked[1]), Number(marked[2]), Number(marked[3]));
   const dotted = DOTTED.exec(text);
   if (dotted) return calendarDay(Number(dotted[3]), Number(dotted[2]), Number(dotted[1]));
   const monthFirst = MONTH_FIRST.exec(text);
@@ -99,14 +107,11 @@ export function readCalendarDate(value: string): string | null {
 /**
  * The YYYY-MM-DD date that a date written another way plainly names, to
  * offer as the one to type: 14/10/2026 and 10/14/2026 are 2026-10-14, since a
- * part over 12 can only be the day, and 2026/10/14 is too. Null when both
- * parts could be the month (03/04/2026), and for text that is not a date of
- * the calendar.
+ * part over 12 can only be the day. Null when both parts could be the month
+ * (03/04/2026), and for text that is not a date of the calendar.
  */
 function isoDateReading(value: string): string | null {
   const text = value.trim();
-  const yearFirst = YEAR_FIRST.exec(text);
-  if (yearFirst) return calendarDay(Number(yearFirst[1]), Number(yearFirst[3]), Number(yearFirst[4]));
   const yearLast = YEAR_LAST.exec(text);
   if (!yearLast) return null;
   const [first, second, year] = [Number(yearLast[1]), Number(yearLast[3]), Number(yearLast[4])];

@@ -13,6 +13,6 @@ export function flowLockNote(lock: PaneLock): Promise<string> {
     argument: "none",
     does: "it streams real-time sweeps, blocks and large premium prints across US options exchanges",
     shows: "it",
-    free: [{ text: (ticker, company) => `gloomberb options ${ticker} lists ${company}'s option chain, each contract with its volume and open interest.` }],
+    free: [{ text: (ticker, company) => `gloom options ${ticker} lists ${company}'s option chain, each contract with its volume and open interest.` }],
   });
 }

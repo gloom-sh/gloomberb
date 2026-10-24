@@ -148,11 +148,11 @@ export function noArgumentMessage(
   command: "fn" | "shot" = "fn",
 ): string {
   const head = `${code} does not accept an argument.`;
-  if (options.length === 0) return `${head} Run: gloomberb ${command} ${code}`;
+  if (options.length === 0) return `${head} Run: gloom ${command} ${code}`;
   const asOption = optionValueOf(options, typed) ?? listingOptionOf(options, typed);
   const listed = options.slice(0, LISTED_OPTIONS).map(optionFlags).join(", ");
-  const more = options.length > LISTED_OPTIONS ? ` and ${options.length - LISTED_OPTIONS} more (gloomberb catalog ${code})` : "";
-  const run = asOption ? `Run: gloomberb ${command} ${code} ${asOption}` : `Example: gloomberb ${command} ${code} ${optionExample(options[0]!)}`;
+  const more = options.length > LISTED_OPTIONS ? ` and ${options.length - LISTED_OPTIONS} more (gloom catalog ${code})` : "";
+  const run = asOption ? `Run: gloom ${command} ${code} ${asOption}` : `Example: gloom ${command} ${code} ${optionExample(options[0]!)}`;
   return `${head} Options: ${listed}${more}. ${run}`;
 }
 

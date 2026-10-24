@@ -4,7 +4,7 @@
   // reported. Types in the public folders that no entry re-exports yet carry a
   // @public JSDoc tag instead.
   "entry": [
-    "bin/gloomberb",
+    "bin/gloom",
     "electrobun.config.ts",
     "scripts/install-electrobun-tui-shim.ts",
     // Preloaded by path in scripts/benchmark-tui-memory.ts.

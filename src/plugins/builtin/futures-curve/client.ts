@@ -5,7 +5,7 @@ import { createPluginCache } from "../../../data/plugin-cache";
 import { isFuturesContractSpec } from "../../../market-data/futures-contract";
 import { loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
 import type { DataProvider } from "../../../types/data-provider";
-import { archivedFuturesCurve, curveLookbackDate, curveSpot, normalizeCurveRoot, unsupportedCurveRootMessage, withTradedExpirations, type CurveSpot } from "./model";
+import { archivedFuturesCurve, curveLookbackDate, curveSpot, normalizeCurveRoot, unsupportedCurveRootMessage, withSettleChanges, withTradedExpirations, type CurveSpot } from "./model";
 
 export const futuresCurveCache = createPluginCache<FuturesCurvePayload>({
   kind: "futures-curve", source: "gloom-cloud", schemaVersion: 1,
@@ -58,22 +58,25 @@ export function validateFuturesCurve(data: FuturesCurvePayload, root: string): F
   return data;
 }
 
+/** A live curve as every reader takes it: expiring on last trading days, its changes against the settlement shown. */
+const liveCurve = (data: FuturesCurvePayload) => withSettleChanges(withTradedExpirations(data));
+
 export async function fetchFuturesCurve(root: string, client: Pick<typeof apiClient, "getCloudFuturesCurve"> = apiClient): Promise<FuturesCurvePayload> {
   const normalized = normalizeCurveRoot(root);
   if (!normalized) throw new Error(unsupportedCurveRootMessage(root));
-  try { return withTradedExpirations(validateFuturesCurve(await client.getCloudFuturesCurve(normalized), normalized)); }
+  try { return liveCurve(validateFuturesCurve(await client.getCloudFuturesCurve(normalized), normalized)); }
   catch (error) { throw unavailableOnServer(error, "Futures curves are not available yet."); }
 }
 
 export function getCachedFuturesCurve(root: string): FuturesCurvePayload | null {
   const cached = futuresCurveCache.get(root, { allowExpired: true });
   // The pane revalidates this copy on mount; only the source or a failed refresh makes it stale.
-  return cached?.data ? withTradedExpirations(cached.data) : null;
+  return cached?.data ? liveCurve(cached.data) : null;
 }
 
 export async function loadFuturesCurve(root: string, force = false): Promise<FuturesCurvePayload> {
   const { payload, stale, refreshError } = await loadCloudResource(futuresCurveCache, root, () => fetchFuturesCurve(root), { force });
-  return { ...withTradedExpirations(payload), stale: stale || payload.stale, gaps: [...payload.gaps, ...(refreshError ? [refreshError] : [])] };
+  return { ...liveCurve(payload), stale: stale || payload.stale, gaps: [...payload.gaps, ...(refreshError ? [refreshError] : [])] };
 }
 
 /** The archived curve on a past date with the curves a week and a month before it. */

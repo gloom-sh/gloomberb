@@ -61,7 +61,7 @@ export function creditEmptyReason(
   const why = data.issuer
     ? `No credit documents on file for ${data.issuer.name} (${symbol}): no debt instrument has been read from its filings yet.`
     : `No credit documents on file for ${symbol}: it is not an issuer the credit-document set covers.`;
-  const example = creditIssuerSymbol(symbol) === CREDIT_EXAMPLE_SYMBOL ? "" : ` Try \`gloomberb fn CRDOC ${CREDIT_EXAMPLE_SYMBOL}\` for an issuer with documents.`;
+  const example = creditIssuerSymbol(symbol) === CREDIT_EXAMPLE_SYMBOL ? "" : ` Try \`gloom fn CRDOC ${CREDIT_EXAMPLE_SYMBOL}\` for an issuer with documents.`;
   return `${why}${example}`;
 }
 
