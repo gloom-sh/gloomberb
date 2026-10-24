@@ -225,20 +225,24 @@ class ProfileOrderFeed {
       }
       // A working order missing from the list ended somehow; only the broker can say how.
       const missing = [...this.orders].filter(([key, order]) => !listed.has(key) && !brokerOrderDone(order.status));
+      let failed = false;
       for (const [key, order] of missing) {
         // A broker with no status read says nothing beyond its open list.
         if (!this.broker.getOrderStatus) { this.orders.delete(key); continue; }
-        const status = await this.broker.getOrderStatus(this.instance, order.orderId).catch(logFailure("broker-trading.order-feed", "Read missing broker order status failed"));
+        const status = await this.broker.getOrderStatus(this.instance, order.orderId).catch((error) => {
+          logFailure("broker-trading.order-feed", "Read missing broker order status failed")(error);
+          failed = true;
+        });
         if (generation !== this.generation) return;
         if (status) this.apply(status, baseline ? "baseline" : "poll", false);
         // Null is the broker unable to confirm it, not an end: keep it, unconfirmed, at its last report's time,
         // so the next read that lists it or a status that answers replaces it.
         else if (status === null && brokerOrderStatus(order.status) !== "UNKNOWN") this.apply({ ...order, status: "UNKNOWN" }, baseline ? "baseline" : "poll", false);
       }
-      this.failures = 0;
+      this.failures = failed ? this.failures + 1 : 0;
       this.baselined = true;
       this.prune();
-      this.publish({ failed: false, loaded: true });
+      this.publish({ failed, loaded: true });
     } catch {
       if (generation === this.generation) { this.failures++; this.publish({ failed: true, loaded: true }); }
     } finally {
@@ -275,7 +279,8 @@ class ProfileOrderFeed {
 
   private publish(changes: Partial<BrokerOrderFeedState> = {}): void {
     const orders = [...this.orders.values()].sort((a, b) => b.updatedAt - a.updatedAt);
-    this.state = Object.freeze({ ...this.state, ...changes, orders, live: this.live, updatedAt: Date.now(), fills: this.feed.fillCount(this.instance.id) });
+    const failed = changes.failed ?? this.state.failed;
+    this.state = Object.freeze({ ...this.state, ...changes, orders, live: this.live, updatedAt: failed ? this.state.updatedAt : Date.now(), fills: this.feed.fillCount(this.instance.id) });
     this.feed.changed();
   }
 }

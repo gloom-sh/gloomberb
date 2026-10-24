@@ -36,6 +36,50 @@ test.each(["working", "filled", "partial", "rejected", "unknown"] as const)("%s 
   }
 });
 
+test("a failed result read retains the order, reports stale quantities, and recovers without another mutation", async () => {
+  const f = setup({ realtime: true, quoteAgeMs: 0 });
+  await f.controller.review();
+  await f.controller.confirm();
+  const result = f.controller.getSnapshot().result!;
+  f.demo.adapter.getOrderStatus = async () => { throw new Error("token=secret account=private"); };
+  await expect(f.controller.refreshResult()).rejects.toThrow();
+  expect(f.controller.getSnapshot()).toMatchObject({ result, resultQuantities: "last-known", error: "Order status could not be read. Showing the last known order." });
+  // A successful request with no matching order still cannot confirm its outcome.
+  f.demo.adapter.getOrderStatus = async () => null;
+  await f.controller.refreshResult();
+  expect(f.controller.getSnapshot().result).toEqual(result);
+  expect(f.controller.getSnapshot().error).toBeDefined();
+  f.demo.adapter.getOrderStatus = async () => result;
+  await f.controller.refreshResult();
+  expect(f.controller.getSnapshot()).toMatchObject({ result, resultQuantities: "confirmed", error: undefined });
+  expect(f.count("placeOrder")).toBe(1);
+  expect(f.count("cancelOrder")).toBe(0);
+});
+
+test("a refused cancel with a failed reconciliation reports both failures and keeps the original order", async () => {
+  const f = setup();
+  const original = f.demo.order(f.demo.draft);
+  f.demo.adapter.cancelOrder = async () => { throw Object.assign(new Error("Cancel refused"), { refused: true }); };
+  f.demo.adapter.getOrderStatus = async () => { throw new Error("private response"); };
+  f.controller.requestCancel(original);
+  await f.controller.confirmCancel(true);
+  expect(f.controller.getSnapshot()).toMatchObject({ result: original, resultQuantities: "last-known", error: "Cancel refused. Order status could not be read. Showing the last known order." });
+});
+
+test("a failed result read cannot overwrite a newer streamed order", async () => {
+  const f = setup({ realtime: true, quoteAgeMs: 0 });
+  await f.controller.review();
+  await f.controller.confirm();
+  const pending = Promise.withResolvers<never>();
+  f.demo.adapter.getOrderStatus = () => pending.promise;
+  const read = f.controller.refreshResult();
+  const filled = { ...f.controller.getSnapshot().result!, status: "FILLED", filled: 10, remaining: 0 };
+  f.controller.applyOrderUpdate(filled);
+  pending.reject(new Error("late failure"));
+  await expect(read).rejects.toThrow();
+  expect(f.controller.getSnapshot()).toMatchObject({ result: filled, resultQuantities: "confirmed", error: undefined });
+});
+
 describe("entry submission", () => {
   const fresh = { realtime: true, quoteAgeMs: 0 };
   test("confirmation defaults on; SIM opt-in previews and places the identical immutable draft once", async () => {

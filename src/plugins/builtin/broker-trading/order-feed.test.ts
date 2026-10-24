@@ -103,6 +103,32 @@ test("an order the broker cannot confirm stays, unconfirmed, until its status an
   release();
 });
 
+test("a failed missing-order read keeps last-known data and freshness while other reads can succeed", async () => {
+  const f = setup();
+  const first = order(), second = order({ orderId: 8, brokerOrderId: "synthetic-8" });
+  f.setOpen([first, second]);
+  f.feed.hold(f.broker, instance);
+  await settle();
+  const updatedAt = f.feed.snapshot(instance.id).updatedAt;
+  f.setOpen([]);
+  f.broker.getOrderStatus = async (_profile, id) => {
+    if (id === first.orderId) throw new Error("private response");
+    return { ...second, status: "CANCELED" };
+  };
+  await new Promise((resolve) => setTimeout(resolve, 2));
+  f.feed.refresh(instance.id);
+  await settle();
+  expect(f.feed.snapshot(instance.id)).toMatchObject({ failed: true, loaded: true, updatedAt });
+  expect(f.feed.snapshot(instance.id).orders).toContainEqual(first);
+  expect(f.feed.snapshot(instance.id).orders).toContainEqual({ ...second, status: "CANCELED" });
+  expect(f.toasts.map((toast) => toast.title)).toEqual(["Order cancelled"]);
+  f.broker.getOrderStatus = async () => first;
+  f.feed.refresh(instance.id);
+  await settle();
+  expect(f.feed.snapshot(instance.id).failed).toBe(false);
+  expect(f.feed.snapshot(instance.id).updatedAt).toBeGreaterThan(updatedAt);
+});
+
 test("failed reads back off to a minute, and a profile with trading off is read but not polled", async () => {
   const realSetTimeout = globalThis.setTimeout, realClearTimeout = globalThis.clearTimeout;
   const timers: Array<{ delay: number; run: () => void }> = [];

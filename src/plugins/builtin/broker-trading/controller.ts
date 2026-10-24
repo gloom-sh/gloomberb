@@ -86,6 +86,7 @@ const STREAM_QUOTE_MAX_SILENCE_MS = 75_000;
 const uncertainPlacement = "Outcome unknown. Check open orders before placing it again.";
 /** A change or cancel whose answer was lost: the views ask the broker until it says. */
 const uncertainChange = "Outcome unknown. Checking with the broker.";
+const orderReadFailed = "Order status could not be read. Showing the last known order.";
 /** The broker's own words come first: they say more than "outcome unknown". */
 const uncertainAfter = (error: unknown) => error instanceof Error && error.message && !error.message.includes(uncertainPlacement) ? `${error.message.trim().replace(/\.?$/, ".")} ${uncertainPlacement}` : uncertainPlacement;
 /** The broker answered no, or nothing was sent (see BrokerAdapter.placeOrder): its one-line reason, else undefined. */
@@ -639,7 +640,7 @@ export class BrokerTradingController {
         && value.contract.symbol === order.contract.symbol && (value.orderId === order.orderId || sameOrder(value, order)));
     } catch (error) {
       logFailure("broker-trading.controller", "Look up broker order failed")(error);
-      return undefined;
+      throw new Error(orderReadFailed);
     }
   }
 
@@ -651,7 +652,10 @@ export class BrokerTradingController {
    */
   private async settleRefusal(order: BrokerOrder, reason: string, action: "modify" | "cancel"): Promise<void> {
     const brokerName = this.context(false).context.adapter.name;
-    const current = await this.lookup(order);
+    let current: BrokerOrder | undefined;
+    let readFailed = false;
+    try { current = await this.lookup(order); }
+    catch { readFailed = true; reason = `${reason}. ${orderReadFailed}`; }
     if (this.disposed) return;
     const now = current ?? order;
     const label = brokerOrderStatus(now.status);
@@ -662,7 +666,7 @@ export class BrokerTradingController {
       this.publish({ phase: "editing", review: undefined, receipt: undefined, error: reason });
       return;
     }
-    this.publish({ phase: "result", cancelOrder: undefined, review: undefined, result: copy(now), resultQuantities: current ? "confirmed" : "last-known", error: undefined });
+    this.publish({ phase: "result", cancelOrder: undefined, review: undefined, result: copy(now), resultQuantities: current ? "confirmed" : "last-known", error: readFailed ? reason : undefined });
     const title = ended ? label === "Rejected" ? reason : `Already ${label.toLowerCase()}` : changed ? `Order changed in ${brokerName}, refreshed` : reason;
     this.options.onOutcome?.({ title, type: ended || changed ? "info" : "error", order: copy(now) });
   }
@@ -677,16 +681,22 @@ export class BrokerTradingController {
   async refreshResult(): Promise<void> {
     const result = this.snapshot.result;
     if (!result) return;
-    const { context } = this.context(false);
-    if (!context.adapter.listOpenOrders && !context.adapter.getOrderStatus) throw new Error("Refresh this order in your broker.");
     const fingerprint = this.key();
-    const orders = context.adapter.getOrderStatus && result.orderId !== 0
-      ? [await context.adapter.getOrderStatus(context.instance, result.orderId)].filter((order): order is BrokerOrder => order !== null)
-      : await context.adapter.listOpenOrders?.(context.instance) ?? [];
-    if (this.disposed || fingerprint !== this.key() || this.snapshot.result !== result) return;
-    const current = orders.find((order) => order.accountId === result.accountId && order.contract.symbol === result.contract.symbol && sameOrder(order, result));
-    if (current) this.publish({ result: copy(current), resultQuantities: "confirmed", error: current.status === "UNKNOWN" ? uncertainChange : undefined });
-    // Absence from open orders does not prove a fill, rejection or cancellation.
+    const stillCurrent = () => !this.disposed && fingerprint === this.key() && this.snapshot.result === result;
+    try {
+      const { context } = this.context(false);
+      if (!context.adapter.listOpenOrders && !context.adapter.getOrderStatus) throw new Error("Refresh this order in your broker.");
+      const orders = context.adapter.getOrderStatus && result.orderId !== 0
+        ? [await context.adapter.getOrderStatus(context.instance, result.orderId)].filter((order): order is BrokerOrder => order !== null)
+        : await context.adapter.listOpenOrders?.(context.instance) ?? [];
+      if (!stillCurrent()) return;
+      const current = orders.find((order) => order.accountId === result.accountId && order.contract.symbol === result.contract.symbol && sameOrder(order, result));
+      if (current) this.publish({ result: copy(current), resultQuantities: "confirmed", error: current.status === "UNKNOWN" ? uncertainChange : undefined });
+      // Absence from open orders does not prove a fill, rejection or cancellation, or clear a read failure.
+    } catch {
+      if (stillCurrent()) this.publish({ error: orderReadFailed, resultQuantities: this.snapshot.resultQuantities === "unconfirmed" ? "unconfirmed" : "last-known" });
+      throw new Error(orderReadFailed);
+    }
   }
 
   /**

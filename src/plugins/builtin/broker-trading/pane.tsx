@@ -480,7 +480,7 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
     accountType: accounts.find((account) => account.accountId === accountId)?.accountType,
     quote: state.quote?.quote, quoteStale: state.quote?.stale, legQuotes: state.quote?.legs, quoteData: connection?.quoteData,
     phase: page === "enable" ? "enable" : state.phase, draft: receipt?.request ?? draft, preview: state.review?.preview ?? receipt?.preview, warnings: state.review?.warnings ?? [], result: state.result, resultQuantities: state.resultQuantities,
-    error: connection?.state === "error" && connection.message ? connection.message : error ?? state.error, reconnecting,
+    error: connection?.state === "error" && connection.message ? connection.message : error ?? state.error ?? (orderFeed.failed ? "Order status could not be read. Showing the last known orders." : undefined), reconnecting,
     position: position?.quantity, avgCost: position?.avgCost, positionPnl: position?.pnl, tradingEnabled: caps?.enabled === true,
     typedConfirmation: typed, connected, capabilities: caps, modifying: state.modifying, original: state.modifying ? controller.modifyingOrder() : undefined, defaultPriceLabel, confirmOrders: state.confirmOrders,
     initialFocus: focusReview ? "review" : state.modifying ? draft?.orderType === "STP" ? "stopPrice" : draft?.orderType === "TRAIL" ? "trailing" : "limitPrice" : focusRevision ? "review" : undefined,

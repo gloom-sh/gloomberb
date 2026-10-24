@@ -134,6 +134,25 @@ test("LIVE confirm stays disabled until the symbol is typed, then submits only o
   typed.controller.dispose();
 });
 
+test("a result read failure shows the last-known order and clears after a successful status refresh", async () => {
+  const f = await mount("simulation", "", "working");
+  try {
+    await tui.clickFrameText("Place simulation order");
+    await tui.waitForFrameToContain("Remaining");
+    const order = f.controller.getSnapshot().result!;
+    f.demo.adapter.getOrderStatus = async () => { throw new Error("private response"); };
+    await act(async () => { await expect(f.controller.refreshResult()).rejects.toThrow(); });
+    await tui.waitForFrameToContain("Order status could not be read");
+    expect(tui.frame()).toContain("Last known quantities");
+    expect(tui.frame()).not.toContain("private response");
+    f.demo.adapter.getOrderStatus = async () => order;
+    await tui.clickFrameText("efresh");
+    await tui.waitForFrameToExclude("Order status could not be read");
+    expect(tui.frame()).not.toContain("Last known quantities");
+    expect(f.mutations().map((call) => call.method)).toEqual(["placeOrder"]);
+  } finally { f.controller.dispose(); }
+});
+
 test("unknown result offers reconciliation and cannot offer a fresh submission", async () => {
   const f = await mount("simulation", "", "unknown");
   await tui.clickFrameText("Place simulation order");
