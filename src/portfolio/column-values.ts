@@ -6,7 +6,7 @@ import type { ColumnConfig } from "../types/config";
 import type { AnalystResearchData, CorporateActionsData, MarketState, Quote, TickerFinancials } from "../types/financials";
 import type { EarningsEvent } from "../types/data-provider";
 import type { TickerRecord } from "../types/ticker";
-import { colors, priceColor } from "../theme/colors";
+import { colors, priceColor, shownPriceColor } from "../theme/colors";
 import { formatQuoteAgeWithSource, resolveQuoteAgeTimestamp } from "../market-data/quotes/time";
 import { delistingStateLabel } from "../market-data/quotes/delisting";
 import { formatFeedTime, formatShortDate, parseDisplayDate, type ShortDateOptions } from "../utils/datetime-format";
@@ -532,7 +532,7 @@ export function getColumnValue(
     case "ext_hours": {
       const changePercent = getExtendedSessionDisplay(quote)?.changePercent;
       if (!isFiniteNumber(changePercent)) return { text: "—" };
-      return { text: formatPercentRaw(changePercent), color: priceColor(changePercent) };
+      return { text: formatPercentRaw(changePercent), color: shownPriceColor(changePercent, 2) };
     }
     case "side":
       return { text: positionSideLabel(ticker, ctx.activeTab) ?? "—" };
@@ -594,13 +594,13 @@ export function getColumnValue(
     }
     case "pnl_pct": {
       const percent = portfolioPnlPercent(positionPnl.value, baseMetrics.totalCost);
-      return percent === null ? { text: "—" } : { text: formatPercentRaw(percent), color: priceColor(percent) };
+      return percent === null ? { text: "—" } : { text: formatPercentRaw(percent), color: shownPriceColor(percent, 2) };
     }
     case "mark_delta":
       if (!liveQuote || brokerMarkPrice == null || liveQuote.price === 0 || positionMetrics.priceBasis !== (quote?.priceBasis ?? "per-unit") || positionCurrency !== quoteCurrency) return { text: "—" };
       {
         const percent = ((brokerMarkPrice - liveQuote.price) / Math.abs(liveQuote.price)) * 100;
-        return { text: formatPercentRaw(percent), color: priceColor(percent) };
+        return { text: formatPercentRaw(percent), color: shownPriceColor(percent, 2) };
       }
     case "acq_date": {
       return { text: formatShortDate(earliestDateAcquired(ticker, ctx.activeTab), MONTH_DAY) };
@@ -627,7 +627,7 @@ export function getColumnValue(
       const current = targetReferencePrice(analyst.data, quoteCurrency, displayQuote?.price);
       if (value == null || !current) return { text: "—" };
       const percent = ((value - current) / Math.abs(current)) * 100;
-      return { text: formatPercentRaw(percent), color: priceColor(percent) };
+      return { text: formatPercentRaw(percent), color: shownPriceColor(percent, 2) };
     }
     case "rating": {
       const analyst = mapData(ctx.analystResearch, ticker.metadata.ticker);

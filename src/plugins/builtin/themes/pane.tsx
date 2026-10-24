@@ -5,7 +5,7 @@ import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import type { ExtendedSession } from "../../../market-data/market/status";
 import { useAsyncResource, useAutoRefresh, usePluginPaneState, usePluginTickerActions, useUpdatedAgo } from "../../../public/react";
 import { usePaneInstance } from "../../../state/app/context";
-import { priceColor } from "../../../theme/colors";
+import { priceColor, shownPriceColor } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import { Box, Text } from "../../../ui";
 import { nextHeaderSort } from "../../../utils/sort-values";
@@ -80,10 +80,10 @@ function Members({ id, width, height, focused }: { id: string; width: number; he
     if (column.id === "preMarket" || column.id === "afterHours") {
       // The extended print's move from the close in Price.
       const move = extendedMove(row, column.id === "preMarket" ? "PRE" : "POST");
-      return { text: percent(move), value: move, color: move === null ? colors.textMuted : priceColor(move, colors) };
+      return { text: percent(move), value: move, color: move === null ? colors.textMuted : shownPriceColor(move, 2, colors) };
     }
     const value = row[column.id as ThemePeriod];
-    return { text: percent(value), value, color: value === null ? colors.textMuted : priceColor(value, colors) };
+    return { text: percent(value), value, color: value === null ? colors.textMuted : shownPriceColor(value, 2, colors) };
   }, [colors]);
   return <PaneStatusBody subject="theme members" loading={!data && resource.loading} error={!data ? resource.error : null}>
     {data ? <DataTableView<ThemeMember> columns={columns} items={rows} focused={focused} rootWidth={width} rootHeight={height}

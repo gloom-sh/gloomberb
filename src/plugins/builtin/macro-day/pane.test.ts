@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { MacroDayEvent } from "./model";
-import { columnsFor } from "./pane";
+import { columnsFor, moveTone } from "./pane";
 
 const day = (figures: MacroDayEvent["figures"]): MacroDayEvent => ({ kind: "jobs", date: "2026-10-02", session: "2026-10-02", move: 0.01,
   multiple: 1, earnings: false, figures });
@@ -16,4 +16,12 @@ test("figure columns carry the economic calendar's labels, each as wide as its h
   expect(figures.map((column) => column.width)).toEqual([8, 10, 7]);
   // Days without figures show none of the three columns.
   expect(columnsFor("all", [day(null)]).map((column) => column.id)).toEqual(["date", "release", "move", "multiple"]);
+});
+
+test("an average move that rounds to 0.00% is neither up nor down", () => {
+  expect(moveTone(0.00004)).toBeUndefined();
+  expect(moveTone(-0.00004)).toBeUndefined();
+  expect(moveTone(null)).toBeUndefined();
+  expect(moveTone(0.0001)).toBe("positive");
+  expect(moveTone(-0.0001)).toBe("negative");
 });

@@ -6,7 +6,7 @@ import { dropColumnsToFit } from "../../../components/ui/table-layout";
 import { useAsyncResource } from "../../../react/async-resource";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { usePaneSettingValue, usePluginPaneState } from "../../../public/react";
-import { priceColor } from "../../../theme/colors";
+import { shownPriceColor } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { formatPercentileRank } from "../../../utils/format";
@@ -65,7 +65,7 @@ const percentile = (value: number | null | undefined) => value == null || !Numbe
 export function VolatilityPane({ focused, width, height }: PaneProps) {
   const colors = useThemeColors();
   // By the sign the two-decimal text shows, so a move that rounds to zero stays neutral.
-  const signColor = (value: number) => priceColor(Number(value.toFixed(2)), colors);
+  const signColor = (value: number) => shownPriceColor(value, 2, colors);
   const [initialTab] = usePaneSettingValue("initialTab", "curve");
   const [tab, setTab] = usePluginPaneState("activeTabId", initialTab);
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("selectedIndexId", "vix");

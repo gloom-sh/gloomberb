@@ -5,7 +5,7 @@ import { delayedFooterSegment, DataTableStackView, DataTableView, DetailScrollBo
   type DataTableCell, type DataTableColumn, type PaneFooterSegment, type SectionedRow } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource, useAutoRefresh, usePaneInstance, usePaneTickerIdentity, usePaneTitle, usePluginPaneState, usePluginTickerActions } from "../../../public/react";
-import { priceColor } from "../../../theme/colors";
+import { shownPriceColor } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, type ScrollBoxRenderable } from "../../../ui";
@@ -82,14 +82,15 @@ function Holdings({ fund, tab, width, height, focused, active }: ViewProps & { t
     if (column.id === "shares") return { text: decimal(row.shares, 0), value: row.shares };
     if (column.id === "price") return { text: decimal(row.price), value: row.price };
     const value = row[column.id as "changePercent"];
-    return { text: percent(value, column.id === "contribution" ? "" : "%", column.id === "contribution" ? 3 : 2), value, color: value === null ? colors.textMuted : priceColor(value, colors) };
+    const digits = column.id === "contribution" ? 3 : 2;
+    return { text: percent(value, column.id === "contribution" ? "" : "%", digits), value, color: value === null ? colors.textMuted : shownPriceColor(value, digits, colors) };
   }, [colors]);
   return <PaneStatusBody subject="fund holdings" loading={!data && resource.loading} error={!data ? resource.error : null}>
     {data && <DataTableView<SectionedRow<FundMember>> items={rows} columns={columns} rootWidth={width} rootHeight={height} focused={focused && !search.active}
       rootBefore={<Box flexDirection="column"><QueryBar width={width} search={{ value: query, onChange: setQuery, placeholder: "ticker, name or sector", focused, ...search.searchProps }} />
         {movers && <StatGrid width={width} items={[
-          { label: "Covered contrib.", value: percent(data.aggregate.sum, " pp"), color: priceColor(data.aggregate.sum ?? 0, colors) },
-          { label: `${fund} 1D`, value: percent(data.aggregate.fundReturn), color: priceColor(data.aggregate.fundReturn ?? 0, colors) },
+          { label: "Covered contrib.", value: percent(data.aggregate.sum, " pp"), color: shownPriceColor(data.aggregate.sum ?? 0, 2, colors) },
+          { label: `${fund} 1D`, value: percent(data.aggregate.fundReturn), color: shownPriceColor(data.aggregate.fundReturn ?? 0, 2, colors) },
           { label: "Difference", value: percent(data.aggregate.residual, " pp"), tone: data.aggregate.withinTolerance === false ? "warning" : "muted" },
         ]} />}</Box>}
       selection={{ kind: "id", selectedId: selected, getId: rowKey, onChange: (id) => setSelected(String(id)) }} getItemKey={rowKey}
