@@ -167,15 +167,16 @@ function FuturesCurveView({ width, height, focused, root, ownsTitle }: PaneProps
   // The spread says which prices it subtracts (settlements or two last trades made together); a server that does not say is dated.
   const spreadBasis = data ? curveSpreadBasis(data.slope, newest) : null;
   const slopeDate = !spreadBasis && data?.slope.asOf && curveTimestamp(data.slope.asOf) !== curveTimestamp(newest) ? curveTimestamp(data.slope.asOf) : null;
-  const spreadRank = data ? curveRank(data.slope.percentile, data.slope.samples) : null;
+  // A thin spread makes no curve call: it and the roll yield read from it take the warning tone and give no rank.
+  const thin = data?.slope.state === "thin";
+  const spreadRank = data && !thin ? curveRank(data.slope.percentile, data.slope.samples) : null;
   const thinSpread = data ? thinSpreadNotice(data) : null;
   const statItems: StatItem[] = data ? [
     { id: "roll", label: "Ann. roll yield", value: signedPercent(data.slope.annualizedRollYield),
-      detail: curveRank(data.slope.rollPercentile, data.slope.samples) },
+      ...thin ? { tone: "warning" as const } : { detail: curveRank(data.slope.rollPercentile, data.slope.samples) } },
     // Named by the contracts it subtracts: the front is the first month the market trades, not always the first row.
-    // A thin spread reads as a thin price does, in the warning colour, with no contango or backwardation call.
     { id: "spread", label: curveSpreadLabel(data.slope), value: data.slope.value == null ? "--" : curvePrice(data.slope.value, root),
-      ...data.slope.state === "thin" ? { tone: "warning" as const } : {},
+      ...thin ? { tone: "warning" as const } : {},
       detail: [data.slope.state, spreadBasis, spreadRank, slopeDate].filter(Boolean).join(" · ") },
     ...data.spec ? [{ id: "contract", label: "Contract", value: data.spec.size, detail: `tick ${futuresTickText(data.spec)}` }] : [],
   ] : [];
