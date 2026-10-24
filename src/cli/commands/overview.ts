@@ -22,7 +22,7 @@ import {
 } from "../../plugins/builtin/market-movers/model";
 import { MOVER_CANDIDATES } from "../../plugins/builtin/market-movers/client";
 import { fetchEconCalendarFrom } from "../../plugins/builtin/econ/calendar-source";
-import { seriesNotOnFred } from "../../sources/gloomberb-cloud/fred-series";
+import { computedFredSeriesNote, seriesNotOnFred } from "../../sources/gloomberb-cloud/fred-series";
 import { EXTENDED_SESSION_LABELS, getQuoteSessionFields, type ExtendedSession } from "../../market-data/market/status";
 import {
   COUNTRY_CYCLE,
@@ -549,6 +549,7 @@ async function runFred(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
   const notes = [
     ...fredHistoryNotes({ startDate, startGiven: start != null, seriesStart: data.info?.observationStart }),
     laggingSeriesNote(seriesId),
+    computedFredSeriesNote(seriesId),
   ].filter((note): note is string => note != null);
   // Nothing on or after the start: name where the series ends, so an empty answer is not a dead end.
   const latest = rows.length > 0 ? null : await apiClient.getCloudFredSeries(seriesId, { limit: 1, sortOrder: "desc" })

@@ -316,3 +316,96 @@ export interface HiringCompanySignals {
   /** What a free read holds back: this week's, earlier weeks', and both by tab. Absent by tab from a server before it. */
   locked: { signals: number; history: number } & Partial<Record<HiringSignalGroup, number>>
 }
+
+/**
+ * HIRE's Building tab: the role families and themes whose share of a
+ * company's new roles rose against its own weeks before, and each company's
+ * whole mix, recent weeks against the weeks before.
+ */
+type HiringBuildingDimension = "function" | "theme"
+export type HiringBuildingFilter = "all" | HiringBuildingDimension
+/** Why a company has no mix to compare. */
+export type HiringBuildingHold = "shared_board" | "unmeasured" | "recounted" | "rescoped" | "short_watch" | "thin"
+/** Compared in part: no family mix, or some themes not yet read. */
+export type HiringBuildingSkip = "unclassified" | "unread_titles"
+
+export interface HiringMixRow {
+  dimension: HiringBuildingDimension
+  /** `sales`, `ai_ml`. */
+  key: string
+  /** `Sales`, `AI & machine learning`. */
+  label: string
+  recentRoles: number
+  /** Of the recent weeks' roles with a role family (a family), or of all of them (a theme). */
+  recentShare: number
+  beforeRoles: number
+  beforeShare: number
+  change: number
+  /** A theme whose titles have all been read; a family always is. */
+  read: boolean
+}
+
+interface HiringBuildingWeek { week: string; roles: number; classified: number }
+
+export interface HiringBuildingShift {
+  symbol: string
+  name: string
+  sector: string | null
+  industry: string | null
+  sourceTickers: string[]
+  week: string
+  dimension: HiringBuildingDimension
+  key: string
+  label: string
+  /** `values` is empty in a free read. */
+  recent: { weeks: number; roles: number; total: number; share: number; values: Array<{ week: string; roles: number; total: number }> }
+  before: { weeks: number; roles: number; total: number; share: number; values: Array<{ week: string; roles: number; total: number }> }
+  change: number
+  ratio: number | null
+  zScore: number
+  titles: number
+  topTitles: Array<{ title: string; count: number }>
+  postings: HiringMovePosting[]
+  why: string
+  firstComputedAt: string
+  computedAt: string
+}
+
+export interface HiringBuildingBoard {
+  generatedAt: string
+  proRequired: true
+  preview: boolean
+  /** A free read is always the first three, whatever was asked. */
+  filter: HiringBuildingFilter
+  week: string | null
+  total: number
+  locked: number
+  coverage: {
+    measured: number
+    counts: Partial<Record<HiringBuildingDimension, number>>
+    held: Partial<Record<HiringBuildingHold, number>>
+    skipped: Partial<Record<HiringBuildingSkip, number>>
+    /** Theme titles in the weeks compared, and how many the model has read. */
+    themeTitles: { titles: number; read: number }
+    computedAt: string | null
+  }
+  shifts: HiringBuildingShift[]
+}
+
+export interface HiringCompanyBuilding {
+  generatedAt: string
+  proRequired: true
+  preview: boolean
+  symbol: string
+  requestedSymbol?: string
+  name: string | null
+  week: string | null
+  held: HiringBuildingHold | null
+  skipped: HiringBuildingSkip[]
+  window: { recent: HiringBuildingWeek[]; before: HiringBuildingWeek[] } | null
+  functions: HiringMixRow[]
+  themes: HiringMixRow[]
+  shifts: HiringBuildingShift[]
+  history: HiringBuildingShift[]
+  locked: { functions: number; themes: number; shifts: number; history: number }
+}

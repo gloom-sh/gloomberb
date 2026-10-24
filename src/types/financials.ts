@@ -122,6 +122,14 @@ export interface Quote extends DepositaryReceiptFacts {
   receivedAt?: number; // local receipt timestamp ms for streamed/display freshness
   delivery?: QuoteDelivery;
   stale?: boolean;
+  /**
+   * The price is the close of this intraday bar of a currency pair's, not a
+   * print: Gloom Cloud took the bar because the pair's print had stopped
+   * behind it. lastUpdated is the bar's end.
+   */
+  intradayBar?: QuoteIntradayBar;
+  /** Why a stale currency pair's price stands, in Gloom Cloud's words: its bars have nothing newer, or could not be read in time. */
+  staleReason?: string;
   /** The listing no longer trades: the price is its last trade (ListingDelisting). */
   delisting?: ListingDelisting;
   exchangeName?: string;
@@ -188,6 +196,12 @@ export interface Quote extends DepositaryReceiptFacts {
    * came with its price, streamed or fetched.
    */
   perpetual?: PerpBoardRow;
+}
+
+/** A bar a quote's price is the close of: its start (epoch ms) and its length in minutes. */
+export interface QuoteIntradayBar {
+  start: number;
+  minutes: number;
 }
 
 export interface QuoteContribution extends Quote {

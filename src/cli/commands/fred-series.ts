@@ -13,6 +13,8 @@ export const DEFAULT_FRED_START = "2021-01-01";
  */
 const SPREAD_SERIES: ReadonlySet<string> = new Set([
   "T10Y2Y", "T10Y3M",
+  // The 30-year mortgage rate less the 10-year Treasury, which Gloom Cloud computes on each PMMS date.
+  "MORTGAGE30US10Y",
   ...ICE_SPREAD_SERIES.map((series) => series.seriesId),
 ]);
 

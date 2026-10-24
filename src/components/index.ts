@@ -87,6 +87,11 @@ export { DataTableStackView } from "./data-table/stack-view";
 // table re-render on selection or scroll does not redo all of it.
 export { createRowValueCache } from "./ui/row-value-cache";
 export type { RowValueCache } from "./ui/row-value-cache";
+// What the last action on one row came to, kept for that row until the next
+// action on it or until its own status moves on (docs/pane-conventions.md,
+// "Row messages"): its status cell says it, never the footer or a toast.
+export { useRowNotes } from "./ui/row-notes";
+export type { RowNotes } from "./ui/row-notes";
 export { FeedDataTableStackView } from "./feed-data-table/stack-view";
 export type { FeedDataTableItem } from "./feed-data-table/stack-view";
 export { activeStackIndex, sortStackItems } from "./feed-stack-controller";

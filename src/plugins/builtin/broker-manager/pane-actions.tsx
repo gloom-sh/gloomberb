@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import {
   buildBrokerProfileConfig,
   createBrokerProfileDraft,
@@ -10,6 +10,7 @@ import { signedInBrokerForProfile } from "../../../brokers/signed-in/connect";
 import { isSignedInBrokerProfile } from "../../../brokers/signed-in/profile";
 import { requestBrokerSignIn } from "../../../brokers/signed-in/sign-in-dialog";
 import { confirmDialog } from "../../../components";
+import { useRowNotes } from "../../../components/ui/row-notes";
 import { openConfirmModal } from "../../../components/form-modal";
 import { useAppGetState } from "../../../state/app/context";
 import type { BrokerProfileAction } from "../../../types/broker";
@@ -35,19 +36,11 @@ export interface BrokerManagerMessage {
  * message. It stands until the next action on the profile, or until the
  * profile's own status or sync moves on past it.
  */
-export interface BrokerRowNoteInput {
+export interface BrokerRowNote {
   tone: "info" | "error";
   text: string;
   /** A failure's short state for STATUS, "Sync failed"; none keeps the row's own state. */
   status?: string;
-}
-
-export interface BrokerRowNote extends BrokerRowNoteInput {
-  /**
-   * What the row said when the note first showed (`rowSignature`). A change
-   * to it is newer news than the note, which then goes.
-   */
-  baseline?: string;
 }
 
 /**
@@ -58,6 +51,7 @@ export interface BrokerRowNote extends BrokerRowNoteInput {
 function rowSignature(row: BrokerProfileRow): string {
   return [row.state, row.stateLabel, row.message, row.lastSyncedAt].join("\0");
 }
+const rowKey = (row: BrokerProfileRow) => row.id;
 
 /** What a row shows of the pane's own work on it. */
 export interface BrokerRowActivity {
@@ -107,43 +101,18 @@ export function useBrokerManagerActions({
   const [message, setMessage] = useState<BrokerManagerMessage | null>(null);
   // What stops the open edit form from saving, said beside its Save.
   const [editError, setEditError] = useState<string | null>(null);
-  const [rowNotes, setRowNotes] = useState<ReadonlyMap<string, BrokerRowNote>>(() => new Map());
-  const setRowNote = useCallback((profileId: string, note: BrokerRowNoteInput | null) => {
-    setRowNotes((current) => {
-      if (!note && !current.has(profileId)) return current;
-      const next = new Map(current);
-      if (note) next.set(profileId, note);
-      else next.delete(profileId);
-      return next;
-    });
-  }, []);
   // A note takes the row as it is when the note first shows, with the status
   // the failure left, and goes when that row moves on: a new state, message or sync.
-  useEffect(() => {
-    setRowNotes((current) => {
-      let next: Map<string, BrokerRowNote> | null = null;
-      for (const [id, note] of current) {
-        const row = rows.find((entry) => entry.id === id);
-        if (!row) continue;
-        const signature = rowSignature(row);
-        if (note.baseline === undefined) (next ??= new Map(current)).set(id, { ...note, baseline: signature });
-        else if (note.baseline !== signature) (next ??= new Map(current)).delete(id);
-      }
-      return next ?? current;
-    });
-  }, [rowNotes, rows]);
+  const { noteFor, setNote: setRowNote } = useRowNotes<BrokerProfileRow, BrokerRowNote>(rows, { key: rowKey, signature: rowSignature });
   /** Starts an action on a profile: its row says so, in place of the last one's result. */
   const startRowAction = useCallback((profileId: string, text: string) => {
     setRowNote(profileId, null);
     setBusy(text, profileId);
   }, [setBusy, setRowNote]);
-  const rowActivity = useCallback((row: BrokerProfileRow): BrokerRowActivity => {
-    const note = rowNotes.get(row.id);
-    return {
-      busy: busyState?.profileId === row.id ? busyState.text : null,
-      note: note && (note.baseline === undefined || note.baseline === rowSignature(row)) ? note : null,
-    };
-  }, [busyState, rowNotes]);
+  const rowActivity = useCallback((row: BrokerProfileRow): BrokerRowActivity => ({
+    busy: busyState?.profileId === row.id ? busyState.text : null,
+    note: noteFor(row),
+  }), [busyState, noteFor]);
 
   const startEdit = useCallback(() => {
     if (!selectedRow?.adapter) return;

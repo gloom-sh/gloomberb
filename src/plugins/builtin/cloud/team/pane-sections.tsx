@@ -35,10 +35,33 @@ import {
   PaneButton,
   PaneCheckbox,
   PaneField,
+  RowStatus,
   SectionTitle,
+  type TeamRowState,
 } from "./pane-ui";
 
 const LABEL_WIDTH = 12;
+
+/** What the pane's work on one row shows, by the row's key (`member:<id>`, `invitation:<id>`, `link:<token>`, `channel:<id>`). */
+export type TeamRowStates = (row: string) => TeamRowState | undefined;
+
+/** The columns the widest status among `rows` takes with its gap, so the fixed columns give it room and the buttons stay in view. */
+function statusRoom(rowState: TeamRowStates, rows: readonly string[]): number {
+  return rows.reduce((room, row) => {
+    const text = rowState(row)?.status?.text;
+    return text ? Math.max(room, text.length + 1) : room;
+  }, 0);
+}
+
+/** What stopped a form (invite, a new link or channel) from going through, right under its field or button. */
+function FormError({ text, width, indent = LABEL_WIDTH + 1 }: { text: string | null | undefined; width: number; indent?: number }) {
+  if (!text) return null;
+  return (
+    <Box paddingLeft={indent} width={width}>
+      <Text fg={colors.negative} wrapText width={Math.max(8, width - indent)}>{text}</Text>
+    </Box>
+  );
+}
 
 function truncate(value: string, width: number): string {
   if (width <= 0) return "";
@@ -52,6 +75,7 @@ export function MembersSection({
   selfUserId,
   width,
   busyId,
+  rowState,
   onChangeRole,
   onRemove,
 }: {
@@ -60,6 +84,7 @@ export function MembersSection({
   selfUserId: string | null;
   width: number;
   busyId: string | null;
+  rowState: TeamRowStates;
   onChangeRole: (member: TeamMember, role: "admin" | "member") => void;
   onRemove: (member: TeamMember) => void;
 }) {
@@ -67,7 +92,9 @@ export function MembersSection({
   const accent = teamAccentHex(team.accentColor);
   const compact = width < 64;
   const handleWidth = compact ? 16 : 18;
-  const nameWidth = compact ? 0 : Math.max(0, Math.min(22, width - handleWidth - 40));
+  // The display name gives up its columns to a row's status first, for every row alike.
+  const room = statusRoom(rowState, members.map((member) => `member:${member.id}`));
+  const nameWidth = compact ? 0 : Math.max(0, Math.min(22, width - handleWidth - 40 - room));
   return (
     <Box flexDirection="column" gap={1} width={width}>
       <SectionTitle detail={`${members.length} of ${team.memberLimit ?? 25}`}>Members</SectionTitle>
@@ -76,8 +103,9 @@ export function MembersSection({
           const self = member.user.id === selfUserId;
           const editable = manage && member.role !== "owner" && !self;
           const busy = busyId === member.id;
+          const state = rowState(`member:${member.id}`);
           return (
-            <AccentRow key={member.id} accent={member.role === "owner" ? accent : colors.textMuted} width={width}>
+            <AccentRow key={member.id} accent={member.role === "owner" ? accent : colors.textMuted} width={width} state={state}>
               <Text width={handleWidth} flexShrink={0} fg={self ? colors.textBright : colors.text} attributes={self ? TextAttributes.BOLD : 0}>
                 {truncate(userHandle(member.user), handleWidth)}
               </Text>
@@ -91,6 +119,7 @@ export function MembersSection({
               </Text>
               {self ? <Text fg={colors.textMuted}>you</Text> : null}
               <Box flexGrow={1} />
+              <RowStatus state={state} />
               {editable ? (
                 <Box flexDirection="row" gap={1}>
                   <PaneButton
@@ -127,6 +156,8 @@ export function InvitesSection({
   username,
   width,
   busy,
+  rowState,
+  formError,
   onUsernameChange,
   onInvite,
   onCancelInvitation,
@@ -143,6 +174,9 @@ export function InvitesSection({
   username: string;
   width: number;
   busy: string | null;
+  rowState: TeamRowStates;
+  /** What stopped the invite or a new link, by form. */
+  formError: (form: "invite" | "link") => string | null;
   onUsernameChange: (value: string) => void;
   onInvite: () => void;
   onCancelInvitation: (invitation: TeamSentInvitation) => void;
@@ -152,23 +186,28 @@ export function InvitesSection({
 }) {
   const manage = canManageTeam(team.role);
   const canLink = canInviteToTeam(team);
+  // The link gives up its columns to a row's status first, for every link alike.
+  const linkStatusRoom = statusRoom(rowState, links.map((link) => `link:${link.token}`));
   return (
     <Box flexDirection="column" gap={1} width={width}>
       {manage ? (
         <Box flexDirection="column" gap={1}>
           <SectionTitle>Invite by username</SectionTitle>
-          <Box flexDirection="row" gap={1} alignItems="center">
-            <PaneField
-              id="invite-username"
-              label="Username"
-              value={username}
-              placeholder="@analyst"
-              width={Math.max(30, width - 16)}
-              labelWidth={LABEL_WIDTH}
-              onChange={onUsernameChange}
-              onSubmit={onInvite}
-            />
-            <PaneButton id="invite-send" label={busy === "invite" ? "Sending…" : "Send"} variant="primary" disabled={busy === "invite" || !username.trim()} onPress={onInvite} />
+          <Box flexDirection="column">
+            <Box flexDirection="row" gap={1} alignItems="center">
+              <PaneField
+                id="invite-username"
+                label="Username"
+                value={username}
+                placeholder="@analyst"
+                width={Math.max(30, width - 16)}
+                labelWidth={LABEL_WIDTH}
+                onChange={onUsernameChange}
+                onSubmit={onInvite}
+              />
+              <PaneButton id="invite-send" label={busy === "invite" ? "Sending…" : "Send"} variant="primary" disabled={busy === "invite" || !username.trim()} onPress={onInvite} />
+            </Box>
+            <FormError text={formError("invite")} width={width} />
           </Box>
         </Box>
       ) : null}
@@ -177,22 +216,26 @@ export function InvitesSection({
         <Box flexDirection="column" gap={1}>
           <SectionTitle detail={invitations.length === 0 && !invitationsError ? "none pending" : undefined}>Pending</SectionTitle>
           {invitationsError ? <Notice tone="negative">{invitationsError}</Notice> : null}
-          {invitations.map((invitation) => (
-            <AccentRow key={invitation.id} accent={colors.textMuted} width={width}>
-              <Text width={18} fg={colors.text}>
-                {truncate(invitation.invitee ? userHandle(invitation.invitee) : "someone by email", 18)}
-              </Text>
-              <Text fg={colors.textDim}>{`from ${userHandle(invitation.inviter)} · expires ${describeExpiry(invitation.expiresAt)}`}</Text>
-              <Box flexGrow={1} />
-              <PaneButton
-                id={`cancel-invitation:${invitation.id}`}
-                label="Cancel"
-                variant="ghost"
-                disabled={busy === invitation.id}
-                onPress={() => onCancelInvitation(invitation)}
-              />
-            </AccentRow>
-          ))}
+          {invitations.map((invitation) => {
+            const state = rowState(`invitation:${invitation.id}`);
+            return (
+              <AccentRow key={invitation.id} accent={colors.textMuted} width={width} state={state}>
+                <Text width={18} fg={colors.text}>
+                  {truncate(invitation.invitee ? userHandle(invitation.invitee) : "someone by email", 18)}
+                </Text>
+                <Text fg={colors.textDim} truncate wrapMode="none" flexShrink={1} minWidth={0}>{`from ${userHandle(invitation.inviter)} · expires ${describeExpiry(invitation.expiresAt)}`}</Text>
+                <Box flexGrow={1} />
+                <RowStatus state={state} />
+                <PaneButton
+                  id={`cancel-invitation:${invitation.id}`}
+                  label="Cancel"
+                  variant="ghost"
+                  disabled={busy === invitation.id}
+                  onPress={() => onCancelInvitation(invitation)}
+                />
+              </AccentRow>
+            );
+          })}
         </Box>
       ) : null}
 
@@ -203,11 +246,13 @@ export function InvitesSection({
             {linksError ? <Notice tone="negative">{linksError}</Notice> : null}
             {links.map((link) => {
               const uses = link.maxUses === null ? `${link.uses} uses` : `${link.uses}/${link.maxUses} uses`;
+              const state = rowState(`link:${link.token}`);
               return (
-                <AccentRow key={link.token} accent={colors.textMuted} width={width}>
-                  <Text fg={colors.text} flexShrink={0}>{truncate(shortenInviteUrl(link.url), Math.max(12, width - 44))}</Text>
-                  <Text fg={colors.textDim}>{`· ${uses} · ${describeExpiry(link.expiresAt)}`}</Text>
+                <AccentRow key={link.token} accent={colors.textMuted} width={width} state={state}>
+                  <Text fg={colors.text} flexShrink={0}>{truncate(shortenInviteUrl(link.url), Math.max(12, width - 44 - linkStatusRoom))}</Text>
+                  <Text fg={colors.textDim} truncate wrapMode="none" flexShrink={1} minWidth={0}>{`· ${uses} · ${describeExpiry(link.expiresAt)}`}</Text>
                   <Box flexGrow={1} />
+                  <RowStatus state={state} />
                   <PaneButton id={`copy-link:${link.token}`} label="Copy" variant="ghost" onPress={() => onCopyLink(link)} />
                   <ConfirmAction
                     id={`revoke-link:${link.token}`}
@@ -220,7 +265,10 @@ export function InvitesSection({
                 </AccentRow>
               );
             })}
-            <PaneButton id="new-link" label={busy === "link" ? "Creating…" : "New link"} disabled={busy === "link"} onPress={onNewLink} />
+            <Box flexDirection="column">
+              <PaneButton id="new-link" label={busy === "link" ? "Creating…" : "New link"} disabled={busy === "link"} onPress={onNewLink} />
+              <FormError text={formError("link")} width={width} indent={0} />
+            </Box>
           </>
         ) : (
           <Muted width={width}>
@@ -239,6 +287,8 @@ export function ChannelsSection({
   channelName,
   width,
   busy,
+  rowState,
+  formError,
   onChannelNameChange,
   onCreate,
   onOpen,
@@ -250,6 +300,9 @@ export function ChannelsSection({
   channelName: string;
   width: number;
   busy: string | null;
+  rowState: TeamRowStates;
+  /** What stopped the new channel. */
+  formError: string | null;
   onChannelNameChange: (value: string) => void;
   onCreate: () => void;
   onOpen: (channel: ChatChannel) => void;
@@ -265,13 +318,15 @@ export function ChannelsSection({
       <Box flexDirection="column">
         {channels.map((channel) => {
           const unread = unreadByChannel.get(channel.id) ?? 0;
+          const state = rowState(`channel:${channel.id}`);
           return (
-            <AccentRow key={channel.id} accent={accent} width={width}>
+            <AccentRow key={channel.id} accent={accent} width={width} state={state}>
               <Text fg={unread > 0 ? colors.textBright : colors.text} attributes={unread > 0 ? TextAttributes.BOLD : 0} flexShrink={0}>
                 {`#${channel.name}`}
               </Text>
               {unread > 0 ? <Text fg={accent} attributes={TextAttributes.BOLD}>{`[${unread}]`}</Text> : null}
               <Box flexGrow={1} />
+              <RowStatus state={state} />
               <PaneButton id={`open-channel:${channel.id}`} label="Open" variant="ghost" onPress={() => onOpen(channel)} />
               {manage && channel.id !== general ? (
                 <ConfirmAction
@@ -289,18 +344,21 @@ export function ChannelsSection({
       </Box>
       <Box flexDirection="column" gap={1}>
         <SectionTitle>New channel</SectionTitle>
-        <Box flexDirection="row" gap={1} alignItems="center">
-          <PaneField
-            id="channel-name"
-            label="Name"
-            value={channelName}
-            placeholder="earnings-season"
-            width={Math.max(30, width - 18)}
-            labelWidth={LABEL_WIDTH}
-            onChange={onChannelNameChange}
-            onSubmit={onCreate}
-          />
-          <PaneButton id="channel-create" label={busy === "channel" ? "Creating…" : "Create"} variant="primary" disabled={busy === "channel" || !normalized} onPress={onCreate} />
+        <Box flexDirection="column">
+          <Box flexDirection="row" gap={1} alignItems="center">
+            <PaneField
+              id="channel-name"
+              label="Name"
+              value={channelName}
+              placeholder="earnings-season"
+              width={Math.max(30, width - 18)}
+              labelWidth={LABEL_WIDTH}
+              onChange={onChannelNameChange}
+              onSubmit={onCreate}
+            />
+            <PaneButton id="channel-create" label={busy === "channel" ? "Creating…" : "Create"} variant="primary" disabled={busy === "channel" || !normalized} onPress={onCreate} />
+          </Box>
+          <FormError text={formError} width={width} />
         </Box>
         <Box paddingLeft={LABEL_WIDTH + 1}>
           <Muted>

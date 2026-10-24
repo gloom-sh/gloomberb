@@ -170,6 +170,8 @@ import { DAY_SO_FAR_TEXT, withSessionBar } from "../../time-series/session-bar";
 import { isFiniteNumber } from "../../utils/guards";
 import { exportedFundamentals } from "../../utils/price-earnings";
 import { fundamentalsFreshness, fxPairFreshness, quotesFreshness, rowsFreshness, valuationFreshness } from "../freshness";
+import { fxRateNotes } from "../../plugins/builtin/shared/fx-rate-freshness";
+import { quoteBarNotes } from "../../market-data/quotes/intraday-bar";
 import { atRegularSessionPrice, regularSessionValuationPrice } from "../../market-data/quotes/regular-session-valuation";
 import { viewMarketCapitalization } from "../../utils/market-capitalization";
 import {
@@ -1066,7 +1068,7 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
         const label = `${row.target.symbol}${row.listing.name ? ` (${row.listing.name})` : ""}`;
         const ended = noLongerTradingNote(label, row.quote, now);
         const quiet = ended ? null : noPrintsTodayText(row.quote, now);
-        return ended ?? (quiet ? `${label}: ${quiet}` : []);
+        return [ended ?? (quiet ? `${label}: ${quiet}` : []), quoteBarNotes(label, row.quote, now)].flat();
       }),
       // A cell shows only "unavailable", and an exported row only its status, so stderr names each failure; the JSON rows carry each reason.
       ...ctx.cliOptions.format !== "json" ? quoteNotes(data, { exchange }) : [],
@@ -2868,13 +2870,19 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
     const converted = amount == null ? null : amount * rate;
     const row = { currency, baseCurrency, rate, asOf, stale, pair, inverse: 1 / rate, ...(amount == null ? {} : { amount, converted }) };
     // The closing line dates the rate, and says when it is stale, as `fn FXC` does.
-    const freshness = fxPairFreshness(new Map(codes.flatMap((code, index) => {
+    const loaded = new Map(codes.flatMap((code, index) => {
       const leg = legs[index];
       return leg ? [[code, {
         rate: leg.value,
-        timing: { asOf: leg.asOf, staleAt: leg.staleAt, error: leg.refreshError, delayMinutes: leg.delayMinutes },
+        timing: {
+          asOf: leg.asOf, staleAt: leg.staleAt, error: leg.refreshError, delayMinutes: leg.delayMinutes,
+          intradayBar: leg.intradayBar, staleReason: leg.staleReason,
+        },
       }] as const] : [];
-    })));
+    }));
+    const freshness = fxPairFreshness(loaded);
+    // A rate that is its pair's bar says which bar, and a stale one why it stands.
+    const rateNotes = fxRateNotes(new Map([...loaded].map(([code, leg]) => [code, leg.timing])));
     if (tenor && shortRates && !("error" in tenor)) {
       const read = await shortRates;
       if ("error" in read) throw read.error;
@@ -2901,7 +2909,7 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
       };
       const growth = (short: typeof base.rate) => `(1 + ${formatRatePercent(short.value)} × ${tenor.days}/${short.dayCountBasis})`;
       // A currency typed as its name (yen) says which code it was read as, as the spot answer does.
-      const forwardWarnings = [...request.readAs ?? [], ...staleRates];
+      const forwardWarnings = [...request.readAs ?? [], ...rateNotes, ...staleRates];
       return ctx.printResult({ data: [forwardRow], freshness, ...(forwardWarnings.length > 0 ? { warnings: forwardWarnings } : {}) }, {
         text: () => [
           `${pair} ${tenor.label} forward ${formatFxRate(implied.forward)}, ${IMPLIED_FORWARD_LABEL}`,
@@ -2931,6 +2939,7 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
       ...toUsdByDefault && amount != null
         ? [`No target currency given, so ${currency} is converted to USD; for another, write fx ${args[0]!.trim()} ${currency}/<to>.`]
         : [],
+      ...rateNotes,
     ];
     ctx.printResult({ data: [row], freshness, warnings: warnings.length > 0 ? warnings : undefined }, {
       // The conversion, then the rate it used; the source line under it dates that rate.

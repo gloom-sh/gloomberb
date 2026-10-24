@@ -110,3 +110,22 @@ test("confirmed sign-out and inactive subscriptions retain free access; active p
   expect(token).not.toHaveBeenCalled();
   expect(await getBuildoutProToken()).toBe("fixture-token");
 });
+
+test("a star that does not take is said on its row and in full in its detail, not in the footer", async () => {
+  setHttpFetchTransport(async (input, init) => {
+    const path = new URL(String(input)).pathname;
+    if (init?.method === "POST") return new Response("Starring is paused for maintenance.", { status: 503 });
+    return Response.json(path === "/companies" ? [{ id: "fixture-company", name: "Retained company" }] : []);
+  });
+  await mount();
+  await tui.waitForFrameToContain("All Companies");
+  await tui.emitKeypress({ name: "return" });
+  await tui.waitForFrameToContain("Retained company");
+  await tui.emitKeypress({ name: "s" });
+  const row = (await tui.waitForFrameToContain(" ! ")).split("\n").find((line) => line.includes("Retained company"));
+  expect(row).toContain("!");
+  expect(tui.frame()).not.toContain("favorite failed");
+  expect(tui.frame()).not.toContain("Starring is paused");
+  await tui.emitKeypress({ name: "return" });
+  await tui.waitForFrameToContain("Could not star Retained company: Starring is paused for maintenance.");
+});

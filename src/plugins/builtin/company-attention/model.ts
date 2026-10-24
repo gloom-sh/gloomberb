@@ -57,11 +57,12 @@ export function attentionTabs(kind: AttentionKind, symbol: string | null | undef
 }
 
 /**
- * A pane tab: a report view, or HIRE's moves, expansion and anomalies, which
- * have their own reads (moves-model.ts, signals-model.ts).
+ * A pane tab: a report view, or HIRE's moves, expansion, anomalies and
+ * building, which have their own reads (moves-model.ts, signals-model.ts,
+ * building-model.ts).
  */
-export type AttentionPaneTab = AttentionTab | "moves" | "expansion" | "anomalies";
-const HIRING_READ_TABS = ["moves", "expansion", "anomalies"] as const;
+export type AttentionPaneTab = AttentionTab | "moves" | "expansion" | "anomalies" | "building";
+const HIRING_READ_TABS = ["moves", "expansion", "anomalies", "building"] as const;
 export function attentionPaneTabs(kind: AttentionKind, symbol: string | null | undefined): AttentionPaneTab[] {
   return kind === "hiring" ? [...attentionTabs(kind, symbol), ...HIRING_READ_TABS] : attentionTabs(kind, symbol);
 }

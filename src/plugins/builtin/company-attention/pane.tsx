@@ -26,6 +26,7 @@ import { cachedAttention, fetchAttention, fetchPostingDetail, loadAttention, val
 import { appsModel, attentionNumber, attentionPaneTabs, attentionSeries, count, hiringModel, remoteText, SIGNED_COLUMNS, sortAttentionRows, type AttentionKind, type AttentionPaneTab, type AttentionRow, type AttentionTab } from "./model";
 import { HiringMovesView } from "./moves";
 import { HiringSignalsView } from "./signals";
+import { HiringBuildingView } from "./building";
 
 type Size = Pick<PaneProps, "width" | "height" | "focused">;
 const rowId = (row: AttentionRow) => row.id;
@@ -92,9 +93,9 @@ function AttentionView({ kind, symbol, width, height, focused, initialTab }: Siz
   const [savedTab, setTab] = usePluginPaneState<string>(`${kind}:${symbol ?? "board"}:tab`, initialTab ?? openingTab);
   const paneTab: AttentionPaneTab = (attentionPaneTabs(kind, symbol) as string[]).includes(savedTab) ? savedTab as AttentionPaneTab : "table";
   const signalGroup = paneTab === "expansion" || paneTab === "anomalies" ? paneTab : null;
-  // Moves, Expansion and Anomalies draw their own reads; the report views behind them are the table's.
-  const moves = paneTab === "moves" || !!signalGroup;
-  const tab: AttentionTab = paneTab === "moves" || paneTab === "expansion" || paneTab === "anomalies" ? "table" : paneTab;
+  // Moves, Expansion, Anomalies and Building draw their own reads; the report views behind them are the table's.
+  const moves = paneTab === "moves" || paneTab === "building" || !!signalGroup;
+  const tab: AttentionTab = moves ? "table" : paneTab as AttentionTab;
   const [openingCountry] = usePaneSettingValue<string>("country", "");
   const [country, setCountry] = usePluginPaneState<string>(`${kind}:country`, openingCountry);
   const [openingChart] = usePaneSettingValue<string>("chart", "");
@@ -151,7 +152,7 @@ function AttentionView({ kind, symbol, width, height, focused, initialTab }: Siz
   const postingResource = useAsyncResource(postingLoader);
   const posting = postingKey ? postingResource.data : null;
   const tabLabels: Record<AttentionTab, string> = { table: "Table", chart: "Chart", mix: kind === "hiring" ? "Mix" : "Markets", peers: kind === "apps" && !symbol ? "Companies" : "Peers", evidence: "Evidence" };
-  const tabs = attentionPaneTabs(kind, symbol).map((value) => ({ value, label: value === "moves" ? "Moves" : value === "expansion" ? "Expansion" : value === "anomalies" ? "Anomalies" : tabLabels[value] }));
+  const tabs = attentionPaneTabs(kind, symbol).map((value) => ({ value, label: value === "moves" ? "Moves" : value === "expansion" ? "Expansion" : value === "anomalies" ? "Anomalies" : value === "building" ? "Building" : tabLabels[value] }));
   const signInWall = !data && isCloudSessionRequired(resource.error);
   const { strip, rows: tabRows } = usePaneTabs(!signInWall && !openCompany && !app ? { tabs, activeValue: paneTab, onSelect: (value) => { setTab(value); setOpenEvidence(null); }, focused, dense: true } : null);
   const bodyHeight = Math.max(3, height - tabRows);
@@ -189,6 +190,12 @@ function AttentionView({ kind, symbol, width, height, focused, initialTab }: Siz
     <HiringSignalsView key={signalGroup} group={signalGroup} symbol={symbol} width={width} height={bodyHeight} focused={focused} accessKey={accessKey}
       company={symbol ? undefined : { open: openCompany, onOpen: setOpenCompany,
         render: (company, detailWidth, detailHeight) => <AttentionView key={company} kind={kind} symbol={company} width={detailWidth} height={detailHeight} focused={focused} initialTab={signalGroup} /> }} />
+  </Box>;
+  if (paneTab === "building") return <Box width={width} height={height} flexDirection="column">
+    {strip}
+    <HiringBuildingView symbol={symbol} width={width} height={bodyHeight} focused={focused} accessKey={accessKey}
+      company={symbol ? undefined : { open: openCompany, onOpen: setOpenCompany,
+        render: (company, detailWidth, detailHeight) => <AttentionView key={company} kind={kind} symbol={company} width={detailWidth} height={detailHeight} focused={focused} initialTab="building" /> }} />
   </Box>;
   if (moves) return <Box width={width} height={height} flexDirection="column">
     {strip}

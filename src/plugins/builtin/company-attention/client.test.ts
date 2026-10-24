@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import type { HiringCompanyMoves, HiringCompanySignals, HiringMovesBoard, HiringPayload } from "../../../api-client/hiring";
+import type { HiringBuildingBoard, HiringCompanyBuilding, HiringCompanyMoves, HiringCompanySignals, HiringMovesBoard, HiringPayload } from "../../../api-client/hiring";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { AppAttentionPayload, AppRankPayload } from "../../../api-client/app-attention";
 import { setCloudApiFetchTransport } from "../../../api-client";
@@ -16,11 +16,16 @@ import realMoves from "./fixtures/hiring-moves.json";
 import realMovesBoard from "./fixtures/hiring-moves-board.json";
 import realExpansion from "./fixtures/hiring-expansion-board.json";
 import realAnomalies from "./fixtures/hiring-anomalies-board.json";
+import realBuilding from "./fixtures/hiring-building-board.json";
 
 const fixture = () => structuredClone(realHiring) as HiringPayload;
-/** A company HIRE has no moves for yet. */
 /** A company the signals job has not read yet. */
 const noSignals = async (symbol: string): Promise<HiringCompanySignals> => ({ generatedAt: "2026-10-19T08:00:00.000Z", proRequired: true, preview: false, symbol, name: null, week: null, watchedSince: null, held: null, skipped: [], signals: [], history: [], locked: { signals: 0, history: 0, expansion: 0, anomalies: 0 } });
+/** A company the building job has not read yet. */
+const noBuilding = async (symbol: string): Promise<HiringCompanyBuilding> => ({ generatedAt: "2026-10-19T08:00:00.000Z", proRequired: true, preview: false, symbol, name: null, week: null, held: null, skipped: [], window: null,
+  functions: [], themes: [], shifts: [], history: [], locked: { functions: 0, themes: 0, shifts: 0, history: 0 } });
+const building = async () => structuredClone(realBuilding) as HiringBuildingBoard;
+/** A company HIRE has no moves for yet. */
 const noMoves = async (symbol?: string): Promise<HiringCompanyMoves> => ({ generatedAt: "2026-10-19T08:00:00.000Z", proRequired: true, preview: false, symbol: symbol ?? "", name: null, latest: null, week: null, weeks: [], history: [],
   evidence: { added: [], closed: [] }, evidenceTotals: { added: 0, closed: 0 }, locked: { history: 0, added: 0, closed: 0 } });
 afterEach(() => { attentionCache.reset(); setCloudApiFetchTransport(null); });
@@ -112,12 +117,13 @@ test("the report prints shares as the pane does, and a remote share with the rol
 });
 
 test("a hiring report heads each view by what its rows are, and the board has only its table, as the pane's tabs do", async () => {
-  const company = await attentionHeadless("hiring").load(createTestHeadlessArgs({ symbols: ["ADYEN:AMS"] }), createTestHeadlessContext({ apiClient: { getCloudHiring: async () => fixture(), getCloudHiringMoves: noMoves, getCloudHiringCompanySignals: noSignals } as never }));
-  expect(company.sections.map((section) => section.title)).toEqual(["Open roles", "Hiring trend", "Role family", "Peers", "Posting evidence", "Hiring moves", "Move drivers", "Postings first seen", "Expansion", "Anomalies"]);
+  const company = await attentionHeadless("hiring").load(createTestHeadlessArgs({ symbols: ["ADYEN:AMS"] }), createTestHeadlessContext({ apiClient: { getCloudHiring: async () => fixture(), getCloudHiringMoves: noMoves, getCloudHiringCompanySignals: noSignals, getCloudHiringCompanyBuilding: noBuilding } as never }));
+  expect(company.sections.map((section) => section.title)).toEqual(["Open roles", "Hiring trend", "Role family", "Peers", "Posting evidence", "Hiring moves", "Move drivers", "Postings first seen", "Expansion", "Anomalies",
+    "Building: role families", "Building: themes", "Building: shifts"]);
   const board = { generatedAt: "2026-10-15T00:00:00.000Z", proRequired: true, preview: false, total: 0, locked: 0, companies: [] };
   const market = await attentionHeadless("hiring").load(createTestHeadlessArgs(), createTestHeadlessContext({ apiClient: { getCloudHiring: async () => board, getCloudHiringMoves: async () => realMovesBoard,
-    getCloudHiringSignals: async (group: string) => group === "expansion" ? realExpansion : realAnomalies } as never }));
-  expect(market.sections.map((section) => section.title)).toEqual(["Companies hiring", "Hiring moves", "Expansion", "Anomalies"]);
+    getCloudHiringSignals: async (group: string) => group === "expansion" ? realExpansion : realAnomalies, getCloudHiringBuilding: building } as never }));
+  expect(market.sections.map((section) => section.title)).toEqual(["Companies hiring", "Hiring moves", "Expansion", "Anomalies", "Building"]);
 });
 
 test("headless pages expose continuation and never claim a truncated report is complete", async () => {
@@ -168,14 +174,14 @@ test("a free HIRE and APPS preview say what free shows, what Pro adds and where 
   hiring.locked = { history: 5, evidence: 57, peers: 17, signals: 0, mix: 21 };
   hiring.coverage.firstObservedAt = "2026-09-19T00:00:00.000Z";
   hiring.latest = { ...hiring.latest!, completeness: "partial" };
-  const hire = await attentionHeadless("hiring").load(createTestHeadlessArgs({ symbols: ["ADYEN:AMS"] }), createTestHeadlessContext({ apiClient: { getCloudHiring: async () => hiring, getCloudHiringMoves: noMoves, getCloudHiringCompanySignals: noSignals } as never }));
+  const hire = await attentionHeadless("hiring").load(createTestHeadlessArgs({ symbols: ["ADYEN:AMS"] }), createTestHeadlessContext({ apiClient: { getCloudHiring: async () => hiring, getCloudHiringMoves: noMoves, getCloudHiringCompanySignals: noSignals, getCloudHiringCompanyBuilding: noBuilding } as never }));
   expect(hire.errors).toEqual([`Free shows ${hiring.evidence.length} of ${hiring.evidence.length + 57} open roles. Gloom Pro adds the other 57 roles, 5 weeks of history and 17 more peers, with history from 19 Sep 2026.`]);
   expect(hire.notes).toEqual(["The latest capture has incomplete or unknown coverage."]);
   expect(hire.sections.find((section) => section.title === "Hiring trend")).toMatchObject({ empty: "Weekly history is part of Gloom Pro." });
 
   // A preview that holds nothing back (a company with no captures) has nothing to unlock.
   hiring.locked = { history: 0, evidence: 0, peers: 0, signals: 0, mix: 0 };
-  expect((await attentionHeadless("hiring").load(createTestHeadlessArgs({ symbols: ["ADYEN:AMS"] }), createTestHeadlessContext({ apiClient: { getCloudHiring: async () => hiring, getCloudHiringMoves: noMoves, getCloudHiringCompanySignals: noSignals } as never }))).errors).toBeUndefined();
+  expect((await attentionHeadless("hiring").load(createTestHeadlessArgs({ symbols: ["ADYEN:AMS"] }), createTestHeadlessContext({ apiClient: { getCloudHiring: async () => hiring, getCloudHiringMoves: noMoves, getCloudHiringCompanySignals: noSignals, getCloudHiringCompanyBuilding: noBuilding } as never }))).errors).toBeUndefined();
 
   const apps = structuredClone(realApps) as AppAttentionPayload;
   apps.access = "preview";
@@ -205,9 +211,10 @@ test("HIRE's moves report each move with why, a company's weeks with why a week 
   expect(market.errors).toEqual(["Free shows 3 of 18 moves. Gloom Pro adds the other 15."]);
 
   const missing = await attentionHeadless("hiring").load(createTestHeadlessArgs(), createTestHeadlessContext({ apiClient: { getCloudHiring: async () => board,
-    getCloudHiringMoves: async () => { throw new ApiRequestError("Not found", 404); }, getCloudHiringSignals: async () => { throw new ApiRequestError("Not found", 404); } } as never }));
+    getCloudHiringMoves: async () => { throw new ApiRequestError("Not found", 404); }, getCloudHiringSignals: async () => { throw new ApiRequestError("Not found", 404); },
+    getCloudHiringBuilding: async () => { throw new ApiRequestError("Not found", 404); } } as never }));
   expect(missing.sections.map((section) => section.title)).toEqual(["Companies hiring"]);
-  expect(missing.notes).toEqual(["Hiring moves are not available yet.", "Hiring signals are not available yet."]);
+  expect(missing.notes).toEqual(["Hiring moves are not available yet.", "Hiring signals are not available yet.", "What companies are building is not available yet."]);
 });
 
 test("a flagged move is listed with what to check and never reads as alerted; a free read off the free board keeps the week, not the move", async () => {

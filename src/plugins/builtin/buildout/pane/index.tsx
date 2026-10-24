@@ -17,6 +17,7 @@ import type { PaneProps } from "../../../../types/plugin";
 import { useOptionalDialog, type PromptContext } from "../../../../ui/dialog";
 import { isPlainKey } from "../../../../utils/keyboard";
 import { logFailure } from "../../../../utils/log-failure";
+import { useRowNotes } from "../../../../components/ui/row-notes";
 import { nextHeaderSort, type SortPreference } from "../../../../utils/sort-values";
 import { usePaneStateValue } from "../../../../state/app/context";
 import { useInlineTickerQuoteFact, useInlineTickers } from "../../../../state/hooks/inline-tickers";
@@ -63,6 +64,15 @@ import { useBuildoutDataRuntime } from "../data-runtime";
 
 const BUILDOUT_UPGRADE_URL = "https://thebuildout.ai/pricing";
 
+/** A star a row's company or site did not take: said by its star cell, in full at the top of its detail. */
+const favoriteNoteKey = (row: BuildoutRow) => favoriteKey(row) ?? rowKey(row);
+
+function favoriteFailureText(row: BuildoutRow, starring: boolean, error: unknown): string {
+  // The service may answer with a page of its own; its first line says enough.
+  const reason = error instanceof Error ? error.message.trim().split("\n")[0]!.slice(0, 240) : "";
+  return `Could not ${starring ? "star" : "unstar"} ${rowTitle(row)}${reason ? `: ${reason}` : "."}`;
+}
+
 
 const NO_TICKER_TEXTS: string[] = [];
 
@@ -86,6 +96,7 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
   const dialog = useOptionalDialog();
   const tableScrollRef = useRef<ScrollBoxRenderable | null>(null);
   const favoriteBusyKeysRef = useRef<Set<string>>(new Set());
+  const clearFavoriteNotesRef = useRef<() => void>(() => {});
   const [activeTab, setActiveTab] = usePaneStateValue<BuildoutTabId>("activeTab", "companies");
   const [selectedList, setSelectedList] = useState<BuildoutList | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -94,14 +105,13 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
   const [upgradeBusy, setUpgradeBusy] = useState(false);
   const [upgradeMessage, setUpgradeMessage] = useState<string | null>(null);
   const [favoriteBusyKey, setFavoriteBusyKey] = useState<string | null>(null);
-  const [favoriteMessage, setFavoriteMessage] = useState<string | null>(null);
 
   const handleBeforeLoad = useCallback(() => {
     favoriteBusyKeysRef.current.clear();
     setDetailRow(null);
     setSelectedList(null);
     setUpgradeMessage(null);
-    setFavoriteMessage(null);
+    clearFavoriteNotesRef.current();
     setFavoriteBusyKey(null);
   }, []);
   const {
@@ -136,7 +146,6 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
   useEffect(() => {
     setSelectedIndex(0);
     setDetailRow(null);
-    setFavoriteMessage(null);
     const nextColumn: BuildoutColumnId | null = activeTab === "companies"
       ? selectedList ? "marketCap" : null
       : activeTab === "sites" ? "capture" : "time";
@@ -147,6 +156,10 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
     () => sortRows(activeRows(state, activeTab, selectedList), sort.columnId, sort.direction),
     [activeTab, selectedList, sort, state],
   );
+  // Until the next star on that row, or a reload.
+  const favoriteNotes = useRowNotes<BuildoutRow, string>(rows, { key: favoriteNoteKey });
+  const { setNote: setFavoriteNote, noteFor: favoriteNoteFor } = favoriteNotes;
+  clearFavoriteNotesRef.current = favoriteNotes.clearNotes;
   const columns = useMemo(() => columnsForTab(activeTab, selectedList, canFavorite), [activeTab, canFavorite, selectedList]);
   const selectedRow = rows[selectedIndex] ?? rows[0] ?? null;
   // The table's cells carry their own badges; this catalog only serves the open
@@ -226,7 +239,6 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
     setSelectedIndex(0);
     setDetailRow(null);
     setUpgradeMessage(null);
-    setFavoriteMessage(null);
     setSort({ columnId: "marketCap", direction: "desc" });
     resetCompanies();
   }, [resetCompanies]);
@@ -236,7 +248,6 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
     setSelectedIndex(0);
     setDetailRow(null);
     setUpgradeMessage(null);
-    setFavoriteMessage(null);
     setSort({ columnId: null, direction: "asc" });
   }, []);
 
@@ -265,20 +276,21 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
     const next = !previous;
     favoriteBusyKeysRef.current.add(key);
     setFavoriteBusyKey(key);
-    setFavoriteMessage(null);
+    setFavoriteNote(key, null);
     updateFavorite(key, next);
 
     try {
       const response = await buildoutApi<{ starred?: boolean }>(path, favoriteToken, { method: "POST" });
       updateFavorite(key, typeof response.starred === "boolean" ? response.starred : next);
-    } catch {
+    } catch (error) {
+      // The star goes back, and the row says it did not take.
       updateFavorite(key, previous);
-      setFavoriteMessage("favorite failed");
+      setFavoriteNote(key, favoriteFailureText(row, next, error));
     } finally {
       favoriteBusyKeysRef.current.delete(key);
       setFavoriteBusyKey((current) => current === key ? null : current);
     }
-  }, [favoriteToken, updateFavorite]);
+  }, [favoriteToken, setFavoriteNote, updateFavorite]);
 
   const toggleFavoriteRow = useCallback((row: BuildoutRow | null) => {
     if (!canFavorite || !row || !favoriteKey(row)) return false;
@@ -314,14 +326,13 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
 
   usePaneFooter("buildout", () => ({
     info: updateBuildoutFooterInfo(state, activeTab, selectedList, {
-      favoriteMessage,
       upgradeMessage,
       partialList,
       onUpgrade: startUpgrade,
       quoteFreshness: detailQuoteFreshness,
     }),
     hints: footerHints,
-  }), [activeTab, detailQuoteFreshness, favoriteMessage, footerHints, partialList, selectedList, startUpgrade, state, upgradeMessage]);
+  }), [activeTab, detailQuoteFreshness, footerHints, partialList, selectedList, startUpgrade, state, upgradeMessage]);
 
   const activePage = state.status === "ready" ? activeBuildoutPage(state, activeTab, selectedList) : null;
   const loadMoreActiveRows = useTableLoadMore(
@@ -367,8 +378,9 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
     rowState: { selected: boolean },
   ) => renderBuildoutCell(row, column, rowState, {
     favoriteBusyKey,
+    favoriteFailed: favoriteNoteFor(row) !== null,
     toggleFavorite,
-  }), [favoriteBusyKey, toggleFavorite]);
+  }), [favoriteBusyKey, favoriteNoteFor, toggleFavorite]);
 
   const { strip: tabStrip, rows: tabRows } = usePaneTabs({
     tabs,
@@ -401,6 +413,7 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
       detailContent={(
         <BuildoutDetail
           row={detailRow}
+          note={detailRow ? favoriteNoteFor(detailRow) : null}
           width={width}
           height={height}
           catalog={tickerCatalog}

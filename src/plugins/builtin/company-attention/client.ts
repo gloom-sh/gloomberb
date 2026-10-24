@@ -1,6 +1,6 @@
 import { apiClient } from "../../../api-client";
 import type { AppAttentionFilter, AppAttentionPayload, AppRankPayload } from "../../../api-client/app-attention";
-import type { HiringBoard, HiringCompanyMoves, HiringCompanySignals, HiringMove, HiringMovePosting, HiringMovesBoard, HiringMovesFilter, HiringMoveWeek, HiringPayload, HiringSignalGroup, HiringSignalsBoard, HiringSignalsFilter, HiringSummary, HiringWeekSignal } from "../../../api-client/hiring";
+import type { HiringBoard, HiringBuildingBoard, HiringBuildingFilter, HiringBuildingShift, HiringCompanyBuilding, HiringCompanyMoves, HiringCompanySignals, HiringMixRow, HiringMove, HiringMovePosting, HiringMovesBoard, HiringMovesFilter, HiringMoveWeek, HiringPayload, HiringSignalGroup, HiringSignalsBoard, HiringSignalsFilter, HiringSummary, HiringWeekSignal } from "../../../api-client/hiring";
 import type { CloudJobsPostingDetail } from "../../../api-client/types";
 import { createPluginCache } from "../../../data/plugin-cache";
 import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
@@ -12,6 +12,8 @@ export type MovesPayload = HiringMovesBoard | HiringCompanyMoves;
 export const movesCache = createPluginCache<MovesPayload>({ kind: "hiring-moves", source: "gloom-cloud", schemaVersion: 1, policy: { staleMs: 30 * 60_000, expireMs: 7 * 86_400_000 } });
 export type SignalsPayload = HiringSignalsBoard | HiringCompanySignals;
 export const signalsCache = createPluginCache<SignalsPayload>({ kind: "hiring-signals", source: "gloom-cloud", schemaVersion: 1, policy: { staleMs: 30 * 60_000, expireMs: 7 * 86_400_000 } });
+export type BuildingPayload = HiringBuildingBoard | HiringCompanyBuilding;
+export const buildingCache = createPluginCache<BuildingPayload>({ kind: "hiring-building", source: "gloom-cloud", schemaVersion: 1, policy: { staleMs: 30 * 60_000, expireMs: 7 * 86_400_000 } });
 export const appRankCache = createPluginCache<AppRankPayload>({ kind: "app-rank-history", source: "gloom-cloud", schemaVersion: 1, policy: { staleMs: 30 * 60_000, expireMs: 7 * 86_400_000 } });
 const finite = (value: unknown) => typeof value === "number" && Number.isFinite(value);
 const positive = (value: unknown) => finite(value) && (value as number) >= 0;
@@ -123,6 +125,36 @@ export async function fetchSignals(group: HiringSignalGroup, symbol: string | un
 const signalsKey = (group: HiringSignalGroup, symbol: string | undefined, access: string, filter: HiringSignalsFilter) => `${symbol ?? `${group}:${filter}`}:${access}`;
 export const cachedSignals = (group: HiringSignalGroup, symbol: string | undefined, access: string, filter: HiringSignalsFilter) => cachedCloudResource(signalsCache, signalsKey(group, symbol, access, filter), validateSignals);
 export const loadSignals = (group: HiringSignalGroup, symbol: string | undefined, access: string, filter: HiringSignalsFilter, force = false) => loadCloudResource(signalsCache, signalsKey(group, symbol, access, filter), () => fetchSignals(group, symbol, { filter }), { force, validate: validateSignals });
+
+const DIMENSIONS = new Set(["function", "theme"]);
+const mixRow = (row: HiringMixRow) => !!row && DIMENSIONS.has(row.dimension) && typeof row.key === "string" && typeof row.label === "string"
+  && positive(row.recentRoles) && fraction(row.recentShare) && positive(row.beforeRoles) && fraction(row.beforeShare) && finite(row.change) && typeof row.read === "boolean";
+const shiftPart = (part: HiringBuildingShift["recent"]) => !!part && positive(part.weeks) && positive(part.roles) && positive(part.total) && fraction(part.share) && Array.isArray(part.values);
+const buildingShift = (row: HiringBuildingShift) => !!row && typeof row.symbol === "string" && typeof row.name === "string" && date(row.week) && DIMENSIONS.has(row.dimension)
+  && typeof row.key === "string" && typeof row.label === "string" && shiftPart(row.recent) && shiftPart(row.before) && finite(row.change) && finite(row.zScore)
+  && Array.isArray(row.topTitles) && Array.isArray(row.postings) && row.postings.every(movePosting) && typeof row.why === "string" && Array.isArray(row.sourceTickers);
+export function validateBuilding(payload: BuildingPayload): BuildingPayload {
+  const valid = !!payload && date(payload.generatedAt) && typeof payload.preview === "boolean" && numericTree(payload) && ("shifts" in payload && "filter" in payload
+    ? (payload.week === null || date(payload.week)) && Array.isArray(payload.shifts) && payload.shifts.every(buildingShift) && positive(payload.total) && positive(payload.locked) && !!payload.coverage?.counts
+    : "functions" in payload && typeof payload.symbol === "string" && (payload.week === null || date(payload.week)) && Array.isArray(payload.functions) && payload.functions.every(mixRow)
+      && Array.isArray(payload.themes) && payload.themes.every(mixRow) && Array.isArray(payload.shifts) && payload.shifts.every(buildingShift)
+      && Array.isArray(payload.history) && payload.history.every(buildingShift) && Array.isArray(payload.skipped) && !!payload.locked);
+  if (!valid) throw new Error("The server returned an unreadable hiring mix.");
+  return payload;
+}
+export interface BuildingQuery { filter?: HiringBuildingFilter; offset?: number; limit?: number }
+/** The Building board, or one company's mix and shifts. */
+export async function fetchBuilding(symbol: string | undefined, query: BuildingQuery = {}, client: Pick<typeof apiClient, "getCloudHiringBuilding" | "getCloudHiringCompanyBuilding"> = apiClient, signal?: AbortSignal) {
+  try {
+    const data = validateBuilding(symbol ? await client.getCloudHiringCompanyBuilding(symbol, signal) : await client.getCloudHiringBuilding({ limit: query.limit, offset: query.offset, dimension: query.filter }, signal));
+    if (symbol && (!("symbol" in data) || data.symbol.toUpperCase() !== symbol.toUpperCase() && data.requestedSymbol?.toUpperCase() !== symbol.toUpperCase())) throw new Error("The server returned a hiring mix for a different company.");
+    if (!symbol && !("filter" in data)) throw new Error("The server returned a company's mix for the board.");
+    return data;
+  } catch (error) { throw unavailableOnServer(error, "What companies are building is not available yet.", [404, 503]); }
+}
+const buildingKey = (symbol: string | undefined, access: string, filter: HiringBuildingFilter) => `${symbol ?? `board:${filter}`}:${access}`;
+export const cachedBuilding = (symbol: string | undefined, access: string, filter: HiringBuildingFilter) => cachedCloudResource(buildingCache, buildingKey(symbol, access, filter), validateBuilding);
+export const loadBuilding = (symbol: string | undefined, access: string, filter: HiringBuildingFilter, force = false) => loadCloudResource(buildingCache, buildingKey(symbol, access, filter), () => fetchBuilding(symbol, { filter }), { force, validate: validateBuilding });
 
 export async function fetchAppRank(focus: AppFocus, days: number, offset = 0, signal?: AbortSignal, client: Pick<typeof apiClient, "getCloudAppRankHistory"> = apiClient, limit = 500) {
   const data = await client.getCloudAppRankHistory(focus.store, focus.appId, { country: focus.country, chart: focus.chart, days, offset, limit }, signal);

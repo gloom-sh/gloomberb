@@ -69,11 +69,56 @@ import {
   MembersSection,
   SettingsSection,
 } from "./pane-sections";
-import { Muted, PaneButton, TeamPaneFocusContext, type TeamPaneFocus } from "./pane-ui";
+import { Muted, PaneButton, RowReason, RowStatus, TeamPaneFocusContext, type TeamPaneFocus, type TeamRowState } from "./pane-ui";
 import { teamStore } from "../../../../team/store";
 import { logFailure } from "../../../../utils/log-failure";
+import { useRowNotes } from "../../../../components/ui/row-notes";
+import { wrapTextLines } from "../../../../utils/text-wrap";
 
 type Message = { tone: "info" | "success" | "error"; text: string } | null;
+
+/**
+ * What the last action on one row (a member, an invitation, a link, a
+ * channel, an invitation to me) came to, said on that row: `status` in its
+ * status cell, `text` under it while one of its controls holds the ring.
+ * Keyed `member:<id>`, `invitation:<id>`, `link:<token>`, `channel:<id>`,
+ * `received:<id>`.
+ */
+interface RowNote {
+  status: string;
+  text: string;
+  tone: "negative" | "warning";
+}
+
+/** An action on one row: its key, what its status cell says while it runs (none when its button says it), and if it fails. */
+interface RowAction {
+  row: string;
+  verb?: string;
+  failure: string;
+}
+
+type TeamForm = "invite" | "link" | "channel";
+
+const NO_ROWS: readonly string[] = [];
+const rowKey = (row: string) => row;
+
+/** The row a control of the ring belongs to: `remove:m-1` is the member m-1's. */
+const FIELD_ROWS: Readonly<Record<string, string>> = {
+  role: "member",
+  remove: "member",
+  "cancel-invitation": "invitation",
+  "copy-link": "link",
+  "revoke-link": "link",
+  "open-channel": "channel",
+  "delete-channel": "channel",
+  accept: "received",
+  decline: "received",
+};
+function fieldRow(field: string | null): string | null {
+  const split = field?.indexOf(":") ?? -1;
+  const kind = field && split > 0 ? FIELD_ROWS[field.slice(0, split)] : undefined;
+  return kind ? `${kind}:${field!.slice(split + 1)}` : null;
+}
 
 const TEAM_RING_SCOPE = "team-pane:ring";
 
@@ -173,36 +218,48 @@ function InvitationBanner({
   invitation,
   width,
   busy,
+  state,
   onAccept,
   onDecline,
 }: {
   invitation: TeamReceivedInvitation;
   width: number;
   busy: boolean;
+  state?: TeamRowState;
   onAccept: () => void;
   onDecline: () => void;
 }) {
   const accent = teamAccentHex(invitation.team.accentColor);
+  // One shape with or without a reason, so the banner's own box is never restyled into its wrapper.
   return (
-    <Box
-      flexDirection="row"
-      width={width}
-      height={1}
-      alignItems="center"
-      gap={1}
-      backgroundColor={colors.panel}
-      paddingX={1}
-    >
-      <Text fg={accent} attributes={TextAttributes.BOLD}>{`${teamPrefix(invitation.team)} ${invitation.team.name}`}</Text>
-      <Text fg={colors.text}>
-        {`${userHandle(invitation.inviter)} invited you · ${describeMemberCount(invitation.team.memberCount)} · ${describeExpiry(invitation.expiresAt)}`}
-      </Text>
-      <Box flexGrow={1} />
-      {/* In the keyboard ring, ahead of the section below. */}
-      <PaneButton id={`accept:${invitation.id}`} label={busy ? "Joining…" : "Accept"} variant="primary" compact disabled={busy} onPress={onAccept} />
-      <PaneButton id={`decline:${invitation.id}`} label="Decline" variant="ghost" compact disabled={busy} onPress={onDecline} />
+    <Box flexDirection="column" width={width}>
+      <Box
+        flexDirection="row"
+        width={width}
+        height={1}
+        alignItems="center"
+        gap={1}
+        backgroundColor={colors.panel}
+        paddingX={1}
+      >
+        <Text fg={accent} attributes={TextAttributes.BOLD}>{`${teamPrefix(invitation.team)} ${invitation.team.name}`}</Text>
+        <Text fg={colors.text}>
+          {`${userHandle(invitation.inviter)} invited you · ${describeMemberCount(invitation.team.memberCount)} · ${describeExpiry(invitation.expiresAt)}`}
+        </Text>
+        <Box flexGrow={1} />
+        <RowStatus state={state} />
+        {/* In the keyboard ring, ahead of the section below. */}
+        <PaneButton id={`accept:${invitation.id}`} label={busy ? "Joining…" : "Accept"} variant="primary" compact disabled={busy} onPress={onAccept} />
+        <PaneButton id={`decline:${invitation.id}`} label="Decline" variant="ghost" compact disabled={busy} onPress={onDecline} />
+      </Box>
+      <RowReason state={state} width={width} indent={1} />
     </Box>
   );
+}
+
+/** The lines a banner takes: itself, and its reason while shown. */
+function bannerRows(state: TeamRowState | undefined, width: number): number {
+  return 1 + (state?.reason ? wrapTextLines(state.reason, Math.max(8, width - 1)).length : 0);
 }
 
 export function TeamPane({ focused, width, height, close }: PaneProps) {
@@ -230,6 +287,15 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
   const [channelName, setChannelName] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<Message>(null);
+  // What an action on one row is doing, and what the last one came to (RowNote): said on that row.
+  const [busyRow, setBusyRow] = useState<{ row: string; verb?: string } | null>(null);
+  const { noteFor, setNote: setRowNote, clearNotes } = useRowNotes<string, RowNote>(NO_ROWS, { key: rowKey });
+  // What stopped the invite, a new link or a new channel, under its button.
+  const [formError, setFormError] = useState<{ form: TeamForm; text: string } | null>(null);
+  const resetMessages = useCallback(() => {
+    setMessage(null);
+    setFormError(null);
+  }, []);
   const [activeField, setActiveFieldState] = useState<string | null>(null);
   const actions = useRef(new Map<string, () => void>());
 
@@ -248,8 +314,8 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
       if (view.teamId) setTeamId(view.teamId);
     }
     if (view.section) setSection(view.section);
-    setMessage(null);
-  }, []);
+    resetMessages();
+  }, [resetMessages]);
   useEffect(() => subscribeRequestedTeamPaneView(applyView), [applyView]);
 
   // The settings draft follows the team until the person starts editing.
@@ -296,6 +362,21 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
       if (event.teamId === team.id && event.change === "channels") void chatController.refreshChatState();
     });
   }, [team]);
+
+  // The rows on screen, by note key: a failure on one of them is said on it, one that has left is a toast.
+  const listedRows = useRef<ReadonlySet<string>>(new Set());
+  listedRows.current = new Set([
+    ...details.members.map((member) => `member:${member.id}`),
+    ...details.invitations.map((invitation) => `invitation:${invitation.id}`),
+    ...details.links.map((link) => `link:${link.token}`),
+    ...channels.map((channel) => `channel:${channel.id}`),
+    ...snapshot.invitations.map((invitation) => `received:${invitation.id}`),
+  ]);
+  // Another team's rows are others; what was said on this one's goes with it.
+  useEffect(() => {
+    clearNotes();
+    setFormError(null);
+  }, [clearNotes, team?.id]);
 
   // Keyboard ring.
   const fieldIds = useMemo(() => sectionFieldIds({
@@ -348,7 +429,7 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
   const run = useCallback(async (key: string, work: () => Promise<Message>) => {
     if (busy) return;
     setBusy(key);
-    setMessage(null);
+    resetMessages();
     try {
       report(await work());
     } catch (error) {
@@ -356,7 +437,44 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
     } finally {
       setBusy(null);
     }
-  }, [busy, report]);
+  }, [busy, report, resetMessages]);
+
+  // An action on one row: its row says it is running and, if it fails while
+  // the row is listed, what it ran into. What `work` returns is what became of
+  // a row that has left the list (removed, revoked), a toast.
+  const runRow = useCallback(async (key: string, action: RowAction, work: () => Promise<Message>) => {
+    if (busy) return;
+    setBusy(key);
+    setBusyRow({ row: action.row, verb: action.verb });
+    setRowNote(action.row, null);
+    resetMessages();
+    try {
+      const gone = await work();
+      if (gone) notify({ body: gone.text, type: gone.tone });
+    } catch (error) {
+      const text = errorText(error, "That did not work.");
+      if (listedRows.current.has(action.row)) setRowNote(action.row, { status: action.failure, text, tone: "negative" });
+      else notify({ body: text, type: "error" });
+    } finally {
+      setBusy(null);
+      setBusyRow(null);
+    }
+  }, [busy, notify, resetMessages, setRowNote]);
+
+  // A form that adds a row (an invitation, a link, a channel): the new row is
+  // its result, and what stopped it goes under its button.
+  const runForm = useCallback(async (form: TeamForm, work: () => Promise<void>) => {
+    if (busy) return;
+    setBusy(form);
+    resetMessages();
+    try {
+      await work();
+    } catch (error) {
+      setFormError({ form, text: errorText(error, "That did not work.") });
+    } finally {
+      setBusy(null);
+    }
+  }, [busy, resetMessages]);
 
   const openChannel = useCallback((channel: ChatChannel | string) => {
     createPaneFromTemplate("new-chat-pane", { arg: typeof channel === "string" ? channel : channel.id });
@@ -394,7 +512,7 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
     if (!team) return;
     const username = inviteUsername.trim().replace(/^@/, "");
     if (!username) return;
-    void run("invite", async () => {
+    void runForm("invite", async () => {
       const invitation = await apiClient.inviteTeamMemberByUsername(team.id, username);
       setInviteUsername("");
       setDetails((previous) => ({
@@ -412,47 +530,44 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
           ...previous.invitations.filter((entry) => entry.id !== invitation.id),
         ],
       }));
-      return { tone: "success", text: `Invited ${userHandle(invitation.invitee)}. They have 7 days to accept.` };
     });
-  }, [inviteUsername, run, selfUserId, setDetails, team]);
+  }, [inviteUsername, runForm, selfUserId, setDetails, team]);
 
+  /** A link copied is a toast, as every copy is; one that would not copy says so on its row, with the link to copy by hand. */
   const copyLink = useCallback(async (link: TeamInviteLink) => {
+    const row = `link:${link.token}`;
+    setRowNote(row, null);
     try {
       await rendererHost.copyText(link.url);
-      report({ tone: "success", text: "Invite link copied." });
+      notify({ body: "Invite link copied.", type: "success" });
     } catch {
-      report({ tone: "info", text: link.url });
+      setRowNote(row, { status: "Not copied", text: `Copy it from here: ${link.url}`, tone: "warning" });
     }
-  }, [rendererHost, report]);
+  }, [notify, rendererHost, setRowNote]);
 
   const newLink = useCallback(() => {
     if (!team) return;
-    void run("link", async () => {
+    void runForm("link", async () => {
       const link = await apiClient.createTeamInviteLink(team.id);
       setDetails((previous) => ({ ...previous, links: [link, ...previous.links] }));
-      try {
-        await rendererHost.copyText(link.url);
-        return { tone: "success", text: `Link copied: ${link.url}` };
-      } catch {
-        return { tone: "info", text: link.url };
-      }
+      await copyLink(link);
     });
-  }, [rendererHost, run, setDetails, team]);
+  }, [copyLink, runForm, setDetails, team]);
 
   const createChannel = useCallback(() => {
     if (!team) return;
     const name = normalizeTeamChannelName(channelName);
     if (!name) return;
-    void run("channel", async () => {
-      const channel = await apiClient.createTeamChannel(team.id, name);
+    void runForm("channel", async () => {
+      await apiClient.createTeamChannel(team.id, name);
       setChannelName("");
       await chatController.refreshChatState()
         .catch(logFailure("cloud.team.pane", "Refresh chat channels after creating a channel failed"));
-      return { tone: "success", text: `#${channel.name} is ready. Open it from the list.` };
     });
-  }, [channelName, run, team]);
+  }, [channelName, runForm, team]);
 
-  const acceptInvitation = useCallback((invitation: TeamReceivedInvitation) => run(`accept:${invitation.id}`, async () => {
+  // The banner is the invitation's row: its button says it is joining, and a failure stays on it.
+  const acceptInvitation = useCallback((invitation: TeamReceivedInvitation) => runRow(`accept:${invitation.id}`, { row: `received:${invitation.id}`, failure: "Join failed" }, async () => {
     const joined = await apiClient.acceptTeamInvitation(invitation.id);
     teamStore.removeInvitation(invitation.id);
     teamStore.upsertTeam(joined);
@@ -462,13 +577,13 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
     setTeamId(joined.id);
     setSection("members");
     return { tone: "success", text: `You joined ${joined.name}.` };
-  }), [run]);
+  }), [runRow]);
 
-  const declineInvitation = useCallback((invitation: TeamReceivedInvitation) => run(`decline:${invitation.id}`, async () => {
+  const declineInvitation = useCallback((invitation: TeamReceivedInvitation) => runRow(`decline:${invitation.id}`, { row: `received:${invitation.id}`, verb: "Declining…", failure: "Decline failed" }, async () => {
     await apiClient.rejectTeamInvitation(invitation.id);
     teamStore.removeInvitation(invitation.id);
     return { tone: "info", text: `Declined ${invitation.team.name}.` };
-  }), [run]);
+  }), [runRow]);
 
   // The team strip is a row of tabs no key reaches (1-4 pick the section), so
   // [ and ] step through teams, from the create form too.
@@ -482,8 +597,8 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
     if (!next || (next.id === team?.id && !showCreate)) return;
     setCreating(false);
     setTeamId(next.id);
-    setMessage(null);
-  }, [showCreate, snapshot.teams, team?.id]);
+    resetMessages();
+  }, [resetMessages, showCreate, snapshot.teams, team?.id]);
   const canCycleTeams = snapshot.teams.length > (showCreate ? 0 : 1);
 
   // Tab, j/k and Enter on the ring; the keys below are the pane's own.
@@ -551,7 +666,7 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
         : [];
     }
     const list: PaneHint[] = [
-      { id: "new", key: "n", label: "ew team", onPress: () => { setCreating(true); setMessage(null); } },
+      { id: "new", key: "n", label: "ew team", onPress: () => { setCreating(true); resetMessages(); } },
     ];
     if (team) {
       list.push({ id: "chat", key: "c", label: "hat", onPress: () => openChannel(teamChannelId(team.id)) });
@@ -564,9 +679,11 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
     return list;
   }, [dirty, draft, openChannel, saveSettings, section, showCreate, signedIn, snapshot.teams.length, team]);
   const result = message ?? (details.error ? { tone: "error" as const, text: details.error } : null);
+  // A row's action, or a form's, shows on its row or button; the footer has the team's own.
+  const teamBusy = !!busy && !busyRow && !["invite", "link", "channel"].includes(busy);
   usePaneFooter(TEAM_PANE_ID, () => ({
     info: [
-      ...(busy ? [{ id: "busy", parts: [{ text: "working", tone: "muted" as const }] }] : []),
+      ...(teamBusy ? [{ id: "busy", parts: [{ text: "working", tone: "muted" as const }] }] : []),
       ...(details.loading && !busy ? [{ id: "loading", parts: [{ text: "syncing", tone: "muted" as const }] }] : []),
       ...(result && !busy ? [{
         id: "result",
@@ -577,7 +694,16 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
       } satisfies PaneFooterSegment] : []),
     ],
     hints,
-  }), [busy, details.loading, hints, result]);
+  }), [busy, details.loading, hints, result, teamBusy]);
+
+  // While one of a row's controls holds the ring, the row's reason shows in full under it.
+  const selectedRow = fieldRow(activeField);
+  const rowState = useCallback((row: string): TeamRowState | undefined => {
+    if (busyRow?.row === row) return busyRow.verb ? { status: { text: busyRow.verb, tone: "warning" } } : undefined;
+    const note = noteFor(row);
+    return note ? { status: { text: note.status, tone: note.tone }, reason: selectedRow === row ? note.text : null } : undefined;
+  }, [busyRow, noteFor, selectedRow]);
+  const formErrorFor = useCallback((form: TeamForm) => (formError?.form === form ? formError.text : null), [formError]);
 
   const teamTabs = useMemo(() => [
     ...snapshot.teams.map((entry) => ({
@@ -594,12 +720,12 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
       setCreating(false);
       setTeamId(value);
     }
-    setMessage(null);
-  }, []);
+    resetMessages();
+  }, [resetMessages]);
   const startCreate = useCallback(() => {
     setCreating(true);
-    setMessage(null);
-  }, []);
+    resetMessages();
+  }, [resetMessages]);
   const { strip: tabStrip, rows: tabRows } = usePaneTabs(signedIn ? {
     tabs: teamTabs,
     activeValue: showCreate ? "__create" : team?.id ?? null,
@@ -620,7 +746,8 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
   const banners = snapshot.invitations;
   // The section bar or the teams status line; the create form has neither.
   const sectionRows = showCreate ? 0 : 1;
-  const headerRows = sectionRows + tabRows + (banners.length > 0 ? banners.length + 1 : 0);
+  const bannerHeight = banners.reduce((rows, invitation) => rows + bannerRows(rowState(`received:${invitation.id}`), width), 0);
+  const headerRows = sectionRows + tabRows + (banners.length > 0 ? bannerHeight + 1 : 0);
   const bodyHeight = Math.max(3, height - headerRows);
 
   return (
@@ -632,6 +759,7 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
             invitation={invitation}
             width={width}
             busy={busy === `accept:${invitation.id}` || busy === `decline:${invitation.id}`}
+            state={rowState(`received:${invitation.id}`)}
             onAccept={() => { void acceptInvitation(invitation); }}
             onDecline={() => { void declineInvitation(invitation); }}
           />
@@ -650,7 +778,7 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
               inline: true,
               value: section,
               options: TEAM_PANE_SECTIONS,
-              onChange: (value: TeamPaneSection) => { setSection(value); setMessage(null); },
+              onChange: (value: TeamPaneSection) => { setSection(value); resetMessages(); },
             }]}
             meta={team.role}
           />
@@ -687,15 +815,17 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
                 selfUserId={selfUserId}
                 width={contentWidth}
                 busyId={busy}
+                rowState={rowState}
                 onChangeRole={(member, role) => {
-                  void run(member.id, async () => {
+                  // The row's role says the change took; nothing else does.
+                  void runRow(member.id, { row: `member:${member.id}`, verb: "Changing…", failure: "Change failed" }, async () => {
                     const members = await apiClient.updateTeamMemberRole(team.id, member.id, role);
                     setDetails((previous) => ({ ...previous, members }));
-                    return { tone: "success", text: `${userHandle(member.user)} is now ${role === "admin" ? "an admin" : "a member"}.` };
+                    return null;
                   });
                 }}
                 onRemove={(member) => {
-                  void run(member.id, async () => {
+                  void runRow(member.id, { row: `member:${member.id}`, verb: "Removing…", failure: "Remove failed" }, async () => {
                     const members = await apiClient.removeTeamMember(team.id, member.id);
                     setDetails((previous) => ({ ...previous, members }));
                     void teamStore.refresh();
@@ -713,19 +843,24 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
                 username={inviteUsername}
                 width={contentWidth}
                 busy={busy}
-                onUsernameChange={setInviteUsername}
+                rowState={rowState}
+                formError={formErrorFor}
+                onUsernameChange={(value) => {
+                  setInviteUsername(value);
+                  if (formError?.form === "invite") setFormError(null);
+                }}
                 onInvite={invite}
                 onCancelInvitation={(invitation) => {
-                  void run(invitation.id, async () => {
+                  void runRow(invitation.id, { row: `invitation:${invitation.id}`, verb: "Canceling…", failure: "Cancel failed" }, async () => {
                     await apiClient.cancelTeamInvitation(team.id, invitation.id);
                     setDetails((previous) => ({ ...previous, invitations: previous.invitations.filter((entry) => entry.id !== invitation.id) }));
-                    return { tone: "info", text: "Invitation canceled." };
+                    return { tone: "info", text: invitation.invitee ? `Canceled the invitation to ${userHandle(invitation.invitee)}.` : "Invitation canceled." };
                   });
                 }}
                 onNewLink={newLink}
                 onCopyLink={(link) => { void copyLink(link); }}
                 onRevokeLink={(link) => {
-                  void run(link.token, async () => {
+                  void runRow(link.token, { row: `link:${link.token}`, verb: "Revoking…", failure: "Revoke failed" }, async () => {
                     await apiClient.deleteTeamInviteLink(team.id, link.token);
                     setDetails((previous) => ({ ...previous, links: previous.links.filter((entry) => entry.token !== link.token) }));
                     return { tone: "info", text: "Link revoked." };
@@ -740,11 +875,16 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
                 channelName={channelName}
                 width={contentWidth}
                 busy={busy}
-                onChannelNameChange={setChannelName}
+                rowState={rowState}
+                formError={formErrorFor("channel")}
+                onChannelNameChange={(value) => {
+                  setChannelName(value);
+                  if (formError?.form === "channel") setFormError(null);
+                }}
                 onCreate={createChannel}
                 onOpen={openChannel}
                 onDelete={(channel) => {
-                  void run(channel.id, async () => {
+                  void runRow(channel.id, { row: `channel:${channel.id}`, verb: "Deleting…", failure: "Delete failed" }, async () => {
                     await apiClient.deleteTeamChannel(team.id, channel.id);
                     await chatController.refreshChatState()
                       .catch(logFailure("cloud.team.pane", "Refresh chat channels after deleting a channel failed"));

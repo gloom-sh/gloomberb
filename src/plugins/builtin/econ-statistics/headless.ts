@@ -3,6 +3,7 @@ import type {
   HeadlessPaneDefinition,
   HeadlessPaneEntry,
 } from "../../../types/plugin";
+import { fredSourceLabel } from "../../../sources/gloomberb-cloud/fred-series";
 import { formatBasisPoints, toBasisPoints } from "../../../utils/basis-points";
 import { formatNumber } from "../../../utils/format";
 import type { StatDef } from "./defs";
@@ -72,7 +73,7 @@ function detailEntries(view: StatViewModel, cutoffShown: boolean): HeadlessPaneE
     // A Treasury yield adds when in the day it was taken, so it is not read against ^TNX's earlier close.
     // A figure dated by its period also says when it was released: "Sep 2026, released Tue 20 Oct".
     { label: "Period", value: view.latest.date, formatted: view.stat.cutoff && !cutoffShown ? `${view.reading} ${view.stat.cutoff}` : view.readingReleased },
-    { label: "Source", value: `FRED ${view.stat.seriesId}` },
+    { label: "Source", value: fredSourceLabel(view.stat.seriesId) },
   ];
 }
 

@@ -1,6 +1,6 @@
 import type { PluginModule } from "../plugin-module";
 import type { PaneTemplateDef } from "../../../types/plugin";
-import { appRankCache, attentionCache, movesCache, signalsCache } from "./client";
+import { appRankCache, attentionCache, buildingCache, movesCache, signalsCache } from "./client";
 import { attentionHeadless } from "./headless";
 import { AppsPane, HiringPane } from "./pane";
 import { COMPANY_ATTENTION_SERIES } from "./series";
@@ -24,11 +24,12 @@ export const companyAttentionModule: PluginModule = {
     attentionCache.attach(ctx.persistence);
     movesCache.attach(ctx.persistence);
     signalsCache.attach(ctx.persistence);
+    buildingCache.attach(ctx.persistence);
     appRankCache.attach(ctx.persistence);
     ctx.registerTickerResearchTab({ id: "hiring-momentum", name: "Hiring momentum", order: 38, component: HiringPane, instruments: ["equity"] });
     ctx.registerTickerResearchTab({ id: "app-attention", name: "Apps", order: 39, component: AppsPane, instruments: ["equity"] });
   },
-  dispose() { attentionCache.reset(); movesCache.reset(); signalsCache.reset(); appRankCache.reset(); },
+  dispose() { attentionCache.reset(); movesCache.reset(); signalsCache.reset(); buildingCache.reset(); appRankCache.reset(); },
   panes: definitions.map((def) => ({ id: def.id, name: def.label, icon: def.prefix[0]!, component: def.component, defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 130, height: 32 }, tickerFollower: true, instruments: ["equity"], tableExport: true, headless: attentionHeadless(def.id) })),
   paneTemplates: templates,
 };

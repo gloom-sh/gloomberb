@@ -1,3 +1,4 @@
+import type { QuoteIntradayBar } from "../types/financials";
 import { nextResponseSequence } from "./response-sequence";
 import { servedFromSavedCopy } from "./saved-copies";
 
@@ -14,6 +15,10 @@ export interface CachedValue<T> {
   asOf?: number;
   /** How far a delayed source runs behind the market, in minutes; 0 for a real-time one. */
   delayMinutes?: number;
+  /** Exchange rates: the pair's bar the rate is the close of, when it is not a print. */
+  intradayBar?: QuoteIntradayBar;
+  /** Exchange rates: why a stale rate stands, as the data service states it. */
+  staleReason?: string;
   refreshError?: unknown;
 }
 

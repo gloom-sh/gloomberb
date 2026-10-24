@@ -2,7 +2,8 @@ import type { HeadlessPaneColumn, HeadlessPaneDefinition, HeadlessPaneRow } from
 import type { DataTableColumn } from "../../../components";
 import type { AppAttentionPayload, AppChart } from "../../../api-client/app-attention";
 import type { HiringBoard, HiringPayload } from "../../../api-client/hiring";
-import { fetchAppRank, fetchAttention, fetchMoves, fetchSignals, type SignalsPayload } from "./client";
+import { fetchAppRank, fetchAttention, fetchBuilding, fetchMoves, fetchSignals, type BuildingPayload, type SignalsPayload } from "./client";
+import { BUILDING_FILTERS, BUILDING_VIEWS, buildingBoardModel, buildingNumber, buildingPreviewNote, companyBuildingModel, isBuildingFilter, type BuildingSection } from "./building-model";
 import { appsModel, appsPreviewNote, attentionNumber, attentionSectionTitle, attentionTabs, hiringModel, hiringPreviewNote, remoteText, type AttentionKind } from "./model";
 import { companyMovesModel, isMovesFilter, movesBoardModel, movesNumber, movesPreviewNote, MOVES_FILTERS, MOVES_VIEWS, type MovesSection } from "./moves-model";
 import type { HiringMovesFilter, HiringSignalGroup } from "../../../api-client/hiring";
@@ -43,6 +44,24 @@ function signalsSection(title: string, section: SignalsSection) {
     rows: section.rows.map((row) => ({ ...row.values, ...(row.signal && !row.jobPosting ? { why: row.signal.why } : {}), ...(row.url ? { sourceUrl: row.url } : {}) })),
   };
 }
+/** A building view as a report section: shares as percents, changes in points, and each shift's why. */
+function buildingSection(title: string, section: BuildingSection) {
+  const why = section.rows.some((row) => row.shift && !row.jobPosting && !row.mix);
+  return {
+    title, empty: section.empty, ...(section.locked ? { locked: true } : {}),
+    columns: [...section.columns.map((column): HeadlessPaneColumn => column.align !== "right" ? { key: column.id, header: column.label, align: column.align }
+      : { key: column.id, header: column.label, align: column.align, format: (value: unknown) => typeof value === "number" ? buildingNumber(column.id, value) : value == null ? "-" : String(value) }),
+    ...(why ? [{ key: "why", header: "Why", align: "left" as const }] : [])],
+    rows: section.rows.map((row) => ({ ...row.values, ...(why && row.shift && !row.jobPosting ? { why: row.shift.why } : {}), ...(row.url ? { sourceUrl: row.url } : {}) })),
+  };
+}
+/** The Building board, or a company's mix by family and theme, its shifts and the postings behind them. */
+function buildingSections(data: BuildingPayload, filter: string): ReturnType<typeof buildingSection>[] {
+  if ("filter" in data) return [buildingSection("Building", buildingBoardModel(data, isBuildingFilter(filter) ? filter : "all").sections.board!)];
+  const model = companyBuildingModel(data);
+  return ([["families", "Building: role families"], ["themes", "Building: themes"], ["shifts", "Building: shifts"], ["postings", "Building postings"]] as const)
+    .filter(([id]) => id !== "postings" || model.sections.postings!.rows.length).map(([id, title]) => buildingSection(title, model.sections[id]!));
+}
 const SIGNAL_TITLES: Record<HiringSignalGroup, string> = { expansion: "Expansion", anomalies: "Anomalies" };
 /** A board's two groups, or a company's signals of both, as report sections. */
 function signalsSections(reads: Array<{ group: HiringSignalGroup; data: SignalsPayload }>, kind: string): ReturnType<typeof signalsSection>[] {
@@ -64,8 +83,8 @@ export function attentionHeadless(kind: AttentionKind): HeadlessPaneDefinition<"
     options: [
       { key: "limit", shot: REPORT_ROWS, type: "string", defaultValue: "100", description: "Rows per REST page, up to 200 for hiring and 500 for apps." },
       { key: "offset", shot: REPORT_PAGE, type: "string", defaultValue: "0", description: "Continuation offset from the prior report metadata." },
-      { key: "tab", type: "enum", settingKey: "tab", values: [...["table", "chart", "mix", "peers", "evidence"], ...(kind === "hiring" ? ["moves", "expansion", "anomalies"] : [])].map((value) => ({ value })), defaultValue: "table",
-        description: kind === "hiring" ? "Table, dated history, role mix, peers, source evidence, moves against the company's own weeks and peers, first roles in a new country or city, or place and role-family spikes." : "Table, dated history, geographic or role mix, peers, or source evidence." },
+      { key: "tab", type: "enum", settingKey: "tab", values: [...["table", "chart", "mix", "peers", "evidence"], ...(kind === "hiring" ? ["moves", "expansion", "anomalies", "building"] : [])].map((value) => ({ value })), defaultValue: "table",
+        description: kind === "hiring" ? "Table, dated history, role mix, peers, source evidence, moves against the company's own weeks and peers, first roles in a new country or city, place and role-family spikes, or the role families and themes whose share of new roles rose." : "Table, dated history, geographic or role mix, peers, or source evidence." },
       ...(kind === "hiring" ? [
         { key: "moves", type: "enum" as const, settingKey: "movesFilter", values: MOVES_FILTERS.map(({ value }) => ({ value })), defaultValue: "moves", description: "Which hiring moves the board lists: own moves, one direction, or every measured company." },
         { key: "view", type: "enum" as const, settingKey: "movesView", values: MOVES_VIEWS.map(({ value }) => ({ value })), defaultValue: "weeks", description: "A company's Moves tab: its weeks, the role families or titles behind the move, or the postings first seen or closed that week." },
@@ -73,6 +92,10 @@ export function attentionHeadless(kind: AttentionKind): HeadlessPaneDefinition<"
           description: "Which signals the Expansion or Anomalies board lists: new countries or cities, place or role-family spikes, or new role families." },
         { key: "signalsView", aliases: ["signals-view"], type: "enum" as const, settingKey: "signalsView", values: SIGNALS_VIEWS.map(({ value }) => ({ value })), defaultValue: "signals",
           description: "A company's Expansion or Anomalies tab: its signals, or the postings behind this week's." },
+        { key: "dimension", type: "enum" as const, settingKey: "buildingDimension", values: BUILDING_FILTERS.map(({ value }) => ({ value })), defaultValue: "all",
+          description: "Which shifts the Building board lists: role families, themes, or both." },
+        { key: "buildingView", aliases: ["building-view"], type: "enum" as const, settingKey: "buildingView", values: BUILDING_VIEWS.map(({ value }) => ({ value })), defaultValue: "families",
+          description: "A company's Building tab: its mix by role family or by theme, its shifts, or the postings behind this week's." },
       ] : []),
       ...(kind === "apps" ? [
         { key: "appId", aliases: ["app-id"], type: "string" as const, settingKey: "appId", description: "Open one app's exact country/chart rank history instead of a company." },
@@ -100,6 +123,9 @@ export function attentionHeadless(kind: AttentionKind): HeadlessPaneDefinition<"
       const signalsKind = typeof args.options.kind === "string" ? args.options.kind : "all";
       const signalsRead = kind !== "hiring" ? null : Promise.all((args.symbols[0] ? ["expansion" as const] : SIGNAL_GROUPS).map((group) =>
         fetchSignals(group, args.symbols[0], { filter: isSignalsFilter(group, signalsKind) ? signalsKind : "all" }, ctx.apiClient, ctx.signal))).catch(failed);
+      // And Building.
+      const dimension = typeof args.options.dimension === "string" && isBuildingFilter(args.options.dimension) ? args.options.dimension : "all";
+      const buildingRead = kind === "hiring" ? fetchBuilding(args.symbols[0], { filter: dimension }, ctx.apiClient, ctx.signal).catch(failed) : null;
       const data = await fetchAttention(kind, args.symbols[0], { limit: Number(args.options.limit) || 100, offset: Number(args.options.offset) || 0, ...(typeof args.options.country === "string" ? { country: args.options.country } : {}), ...(typeof args.options.chart === "string" ? { chart: args.options.chart as AppChart } : {}), days: Number(args.options.days) || 90 }, ctx.apiClient);
       const filtered = typeof args.options.country === "string" && !!args.options.country || typeof args.options.chart === "string" && !!args.options.chart;
       const model = kind === "hiring" ? hiringModel(data as HiringPayload | HiringBoard) : appsModel(data as AppAttentionPayload, undefined, filtered);
@@ -113,18 +139,22 @@ export function attentionHeadless(kind: AttentionKind): HeadlessPaneDefinition<"
       const signalsData = signalsRead ? await signalsRead : null;
       const signalsReads = !signalsData || signalsData instanceof Error ? [] : args.symbols[0] ? SIGNAL_GROUPS.map((group) => ({ group, data: signalsData[0]! })) : signalsData.map((data, index) => ({ group: SIGNAL_GROUPS[index]!, data }));
       const signalsLocks = !signalsData || signalsData instanceof Error ? [] : signalsData.map((data) => signalsPreviewNote(data, "group" in data && isSignalsFilter(data.group, signalsKind) ? signalsKind : undefined));
+      const buildingData = buildingRead ? await buildingRead : null;
+      const buildingLock = buildingData && !(buildingData instanceof Error) ? buildingPreviewNote(buildingData, dimension) : null;
+      const buildingHeld = buildingData && !(buildingData instanceof Error) && !("filter" in buildingData) ? companyBuildingModel(buildingData).held : null;
       // A company's move says why in one sentence; the board's rows each carry theirs.
       const why = movesModel?.latest?.why;
       const company = args.symbols[0] ? signalsReads[0]?.data : undefined;
       const held = company && !("group" in company) && company.held ? holdText(company.held) : null;
       const notes = [...model.notices, ...(nextOffset !== null ? [`Additional observations available with --offset ${nextOffset}.`] : []),
         ...(movesData instanceof Error ? [movesData.message] : []), ...(why ? [why] : []),
-        ...(signalsData instanceof Error ? [signalsData.message] : []), ...(held ? [`No expansion or anomaly signal this week: ${held.toLowerCase()}.`] : [])];
+        ...(signalsData instanceof Error ? [signalsData.message] : []), ...(held ? [`No expansion or anomaly signal this week: ${held.toLowerCase()}.`] : []),
+        ...(buildingData instanceof Error ? [buildingData.message] : []), ...(buildingHeld ? [`No mix to compare this week: ${buildingHeld.toLowerCase()}.`] : [])];
       const movesSections = !movesModel ? [] : (args.symbols[0] ? ([["weeks", "Hiring moves"], ["drivers", "Move drivers"], ["added", "Postings first seen"]] as const) : ([["board", "Hiring moves"]] as const))
         .map(([id, title]) => movesSection(title, movesModel.sections[id]!, id === "board"));
       return {
         complete: !model.preview && !model.partial && nextOffset === null,
-        ...(lock || movesLock || signalsLocks.some(Boolean) ? { errors: [lock, movesLock, ...signalsLocks].filter((line): line is string => !!line) } : {}),
+        ...(lock || movesLock || buildingLock || signalsLocks.some(Boolean) ? { errors: [lock, movesLock, ...signalsLocks, buildingLock].filter((line): line is string => !!line) } : {}),
         ...(notes.length ? { notes } : {}),
         // A ticker no observed app is mapped to says so once, not under each empty view.
         ...(model.unmapped ? { empty: model.unmapped } : {}),
@@ -134,7 +164,7 @@ export function attentionHeadless(kind: AttentionKind): HeadlessPaneDefinition<"
           return { title: attentionSectionTitle(kind, tab, args.symbols[0]),
             columns: section.columns.map(reportColumn), empty: section.empty, ...(section.locked ? { locked: true } : {}),
             rows: section.rows.map((row) => ({ ...row.values, ...(row.url ? { sourceUrl: row.url } : {}), ...(row.details ? { evidence: row.details } : {}) })) };
-        }).concat(movesSections, signalsSections(signalsReads, signalsKind)),
+        }).concat(movesSections, signalsSections(signalsReads, signalsKind), buildingData && !(buildingData instanceof Error) ? buildingSections(buildingData, dimension) : []),
         metadata: { nextOffset, asOf: model.asOf, preview: model.preview, lockedRows: model.locked, unit: model.chart.unit, provenance: data },
       };
     },

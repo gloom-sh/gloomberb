@@ -47,7 +47,8 @@ function build(def: StatDef, result: DatedObservation[] | SeriesCacheLoadResult)
     ? observations
     : observations.map((entry) => ({
       date: entry.date,
-      value: entry.value == null ? null : entry.value * scale,
+      // Rounded off the float's last digits: 2.36 × 100 is 236, not 236.00000000000003.
+      value: entry.value == null ? null : Number((entry.value * scale).toPrecision(12)),
     }));
   const points = applyTransform(scaled, def.transform);
   if (points.length === 0) return null;

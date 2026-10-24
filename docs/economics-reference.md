@@ -8,7 +8,7 @@ ECST shows FRED observations transformed into the measures below. The pane keeps
 
 `y/y` compares with the corresponding period one year earlier. `m/m` is the percentage change from the preceding month; payrolls use the absolute change instead. `q/q annualized` compounds the quarterly ratio to the fourth power, then expresses the change as a percentage. Monthly and quarterly transforms require the matching calendar period; missing observations are not replaced with a different period.
 
-NSA means not seasonally adjusted. An annual-rate housing count is a flow stated at an annual rate. Effective fed funds is the daily effective overnight rate (history from July 2000), while the FOMC sets a separate target range. The curve spread is 10Y minus 2Y; its zero reference marks inversion. The core-PCE 2% line is a reference: the Fed target applies to overall PCE inflation.
+NSA means not seasonally adjusted. An annual-rate housing count is a flow stated at an annual rate. Effective fed funds is the daily effective overnight rate (history from July 2000), while the FOMC sets a separate target range. The curve spread is 10Y minus 2Y; its zero reference marks inversion. The mortgage spread is Gloom Cloud's `MORTGAGE30US10Y`: each week's 30-year mortgage rate less the 10-year Treasury yield of the same date, the survey's release day; when the Treasury market is closed that day it takes the session before, and a week whose 10-year yield is not published yet has no spread until it is. The core-PCE 2% line is a reference: the Fed target applies to overall PCE inflation.
 
 High, low, mean and percentile are computed over the selected range (5Y, 20Y or ALL), the same window the chart draws. The trend line and sigma use the full loaded history.
 
@@ -48,6 +48,8 @@ Exports retain each statistic's retrieval time separately from its observation-p
 | Housing Starts | [HOUST](https://fred.stlouisfed.org/series/HOUST) | level | Homes broken ground on, at an annual rate. |
 | Building Permits | [PERMIT](https://fred.stlouisfed.org/series/PERMIT) | level | Permits issued for new housing. |
 | New Home Sales | [HSN1F](https://fred.stlouisfed.org/series/HSN1F) | level | Newly built homes sold, at an annual rate. |
+| 30-Year Mortgage Rate | [MORTGAGE30US](https://fred.stlouisfed.org/series/MORTGAGE30US) | level | Freddie Mac's weekly average 30-year fixed rate (PMMS), dated its Thursday release. |
+| Mortgage–10Y Spread (bp) | [MORTGAGE30US minus DGS10](https://fred.stlouisfed.org/graph/?id=MORTGAGE30US,DGS10) | level | The 30-year mortgage rate less the 10-year Treasury yield on each PMMS date, in basis points. |
 | Effective Federal Funds Rate | [EFFR](https://fred.stlouisfed.org/series/EFFR) | level | Daily effective overnight rate; the FOMC sets a separate target range. |
 | 10-Year Treasury | [DGS10](https://fred.stlouisfed.org/series/DGS10) | level | The benchmark long rate that discounts almost everything else. |
 | 2-Year Treasury | [DGS2](https://fred.stlouisfed.org/series/DGS2) | level | The short end, which tracks where policy is expected to go. |

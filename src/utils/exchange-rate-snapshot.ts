@@ -1,3 +1,5 @@
+import { readIntradayBar, readStaleReason } from "../market-data/quotes/intraday-bar";
+import type { QuoteIntradayBar } from "../types/financials";
 import type { ExchangeRateSnapshot } from "../types/exchange-rate";
 import { fixedUsdRate } from "./currency-units";
 import { fxFreshUntil } from "./fx-market-hours";
@@ -13,6 +15,10 @@ interface FxRateMetadata {
   source?: string;
   /** How far the snapshot runs behind the market, as the source states it; 0 is real-time. */
   delayMinutes?: number;
+  /** The rate is the close of this bar of the pair's, not a print. */
+  intradayBar?: QuoteIntradayBar;
+  /** Why the rate stands when it reads stale, as the data service states it. */
+  staleReason?: string;
 }
 
 export function isUsableCachedExchangeRate(rate: number | null, currency: string,
@@ -57,6 +63,8 @@ export function exchangeRateMetadata(value: unknown, currency: string, now = Dat
   const delayMinutes = typeof data.delayMinutes === "number" && Number.isFinite(data.delayMinutes) && data.delayMinutes >= 0
     ? data.delayMinutes : undefined;
   const delay = Math.min(delayMinutes ?? 0, 15) * 60_000;
+  const intradayBar = readIntradayBar(data.intradayBar);
+  const staleReason = readStaleReason(data.staleReason);
   const staleAt = Math.min(declaredStaleAt ?? Infinity,
     fetchedAt === undefined ? Infinity : fxFreshUntil(fetchedAt, FX_FRESH_MS),
     asOf === undefined ? Infinity : fxFreshUntil(asOf, FX_FRESH_MS + delay),
@@ -68,5 +76,7 @@ export function exchangeRateMetadata(value: unknown, currency: string, now = Dat
     ...(Number.isFinite(staleAt) ? { staleAt } : {}),
     ...(typeof data.source === "string" ? { source: data.source } : {}),
     ...(delayMinutes !== undefined ? { delayMinutes } : {}),
+    ...(intradayBar ? { intradayBar } : {}),
+    ...(staleReason ? { staleReason } : {}),
   };
 }

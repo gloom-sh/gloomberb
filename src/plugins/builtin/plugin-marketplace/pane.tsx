@@ -22,6 +22,7 @@ import {
   type PaneHint,
 } from "../../../components";
 import { loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
+import { useRowNotes } from "../../../components/ui/row-notes";
 import { colors } from "../../../theme/colors";
 import { t, tf } from "../../../i18n";
 import type { PaneProps } from "../../../types/plugin";
@@ -416,21 +417,21 @@ type Busy = { id: string; verb: "installing" | "updating" | "removing" } | null;
 /**
  * What the last action on one plugin ran into, said on its row: `status` in
  * STATUS, `text` in its detail. It stands while the row's own status is what
- * it was when the failure first showed (`baseline`), and goes when that moves:
- * a toggle, a restart, a later install.
+ * it was when the failure first showed, and goes when that moves: a toggle,
+ * a restart, a later install.
  */
 interface ActionFailure {
   status: string;
   text: string;
   /** STATUS's tone; a failure by default. */
   kind?: MarketplaceStatusKind;
-  baseline?: string;
 }
 
 function statusKey(entry: MarketplaceEntry): string {
   const status = statusOf(entry);
   return `${status.kind}:${status.text}`;
 }
+const entryId = (entry: MarketplaceEntry) => entry.id;
 
 export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
   const dialog = useDialog();
@@ -451,15 +452,6 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
   // Bumped after any local change so the list is re-read from the host.
   const [localRevision, setLocalRevision] = useState(0);
   const [busy, setBusy] = useState<Busy>(null);
-  // By plugin id, until the next action on the plugin.
-  const [failures, setFailures] = useState<Readonly<Record<string, ActionFailure>>>({});
-  const setFailure = useCallback((id: string, failure: Omit<ActionFailure, "baseline"> | null) => {
-    setFailures((current) => {
-      if (!failure && !current[id]) return current;
-      const { [id]: _previous, ...rest } = current;
-      return failure ? { ...rest, [id]: failure } : rest;
-    });
-  }, []);
   // Remote heads for plugins the registry does not pin, so a private or
   // side-loaded install can report an update like every other row.
   const [remoteHeads, setRemoteHeads] = useState<Record<string, string>>({});
@@ -503,25 +495,10 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
       return facts;
     };
   }, [entries, host]);
-  // A failure takes the row's status as the list shows it after the action,
-  // and goes once that status moves on.
-  useEffect(() => {
-    setFailures((current) => {
-      let next: Record<string, ActionFailure> | null = null;
-      for (const [id, failure] of Object.entries(current)) {
-        const entry = entries.find((candidate) => candidate.id === id);
-        if (!entry) continue;
-        const key = statusKey(entry);
-        if (failure.baseline === undefined) (next ??= { ...current })[id] = { ...failure, baseline: key };
-        else if (failure.baseline !== key) delete (next ??= { ...current })[id];
-      }
-      return next ?? current;
-    });
-  }, [entries, failures]);
-  const failureFor = useCallback((entry: MarketplaceEntry): ActionFailure | null => {
-    const failure = failures[entry.id];
-    return failure && (failure.baseline === undefined || failure.baseline === statusKey(entry)) ? failure : null;
-  }, [failures]);
+  // By plugin id, until the next action on the plugin. A failure takes the
+  // row's status as the list shows it after the action, and goes once that
+  // status moves on.
+  const { noteFor: failureFor, setNote: setFailure } = useRowNotes<MarketplaceEntry, ActionFailure>(entries, { key: entryId, signature: statusKey });
   // What an action on one plugin is doing, or ran into, is said on its row.
   const rowStatus = useCallback((entry: MarketplaceEntry): MarketplaceStatus => {
     if (busy?.id === entry.id) return { kind: "none", text: busy.verb };
@@ -720,7 +697,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
    * has one. A stopped plugin can leave the list, files and all; then only a
    * toast is left to say it.
    */
-  const failRemoval = useCallback((entry: MarketplaceEntry, failure: Omit<ActionFailure, "baseline">) => {
+  const failRemoval = useCallback((entry: MarketplaceEntry, failure: ActionFailure) => {
     const installed = host?.listInstalled() ?? [];
     const listed = mergeCatalog({ registry, installed, target, remoteHeads }).some((candidate) => candidate.id === entry.id);
     if (listed) setFailure(entry.id, failure);

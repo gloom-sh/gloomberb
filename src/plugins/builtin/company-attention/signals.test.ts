@@ -24,8 +24,8 @@ const noMoves = async (symbol?: string) => ({ generatedAt: "2026-10-19T08:00:00.
   evidence: { added: [], closed: [] }, evidenceTotals: { added: 0, closed: 0 }, locked: { history: 0, added: 0, closed: 0 } });
 
 test("HIRE has Expansion and Anomalies tabs after Moves, on the board and on a company", () => {
-  expect(attentionPaneTabs("hiring", null)).toEqual(["table", "moves", "expansion", "anomalies"]);
-  expect(attentionPaneTabs("hiring", "STT")).toEqual(["table", "chart", "mix", "peers", "evidence", "moves", "expansion", "anomalies"]);
+  expect(attentionPaneTabs("hiring", null)).toEqual(["table", "moves", "expansion", "anomalies", "building"]);
+  expect(attentionPaneTabs("hiring", "STT")).toEqual(["table", "chart", "mix", "peers", "evidence", "moves", "expansion", "anomalies", "building"]);
   expect(attentionPaneTabs("apps", "META")).not.toContain("expansion");
 });
 

@@ -132,11 +132,17 @@ describe("AlertsPane", () => {
     expect(frame).toContain("[a]dd alert");
   });
 
-  test("a quote one alert could not get is said on its row and, selected, in full under the table, never in the footer", async () => {
+  test("a quote one alert could not get is said on its row and in full in its detail, never in the footer", async () => {
     const checkedAt = Date.now() - 60_000;
     const quoted = (alert: AlertRule, price: number): AlertRule => ({ ...alert, lastCheckedPrice: price, lastCheckedAt: checkedAt });
     const missed = (alert: AlertRule, error: string): AlertRule => ({ ...alert, lastCheckedAt: checkedAt, lastCheckError: error });
     const footerLine = () => tui.frame().split("\n").find((line) => line.includes("[a]dd alert")) ?? "";
+    const press = (key: "down" | "enter" | "escape") => act(async () => {
+      if (key === "down") tui.setup().mockInput.pressArrow("down");
+      else if (key === "enter") tui.setup().mockInput.pressEnter();
+      else tui.setup().mockInput.pressEscape();
+      await tui.setup().renderOnce();
+    });
     await tui.render(
       <AlertsHarness height={14} alerts={[
         quoted(makeAlert("alert-aapl", "AAPL", "above", 400), 343),
@@ -147,35 +153,21 @@ describe("AlertsPane", () => {
     );
     await renderSettled();
     expect(tui.frame().split("\n").find((line) => line.includes("ZZQXW"))).toContain("No quote");
+    await press("down");
+    await renderSettled();
+    // The row says it; the reason waits in its detail.
     expect(tui.frame()).not.toContain("Not a ticker");
-    expect(footerLine()).not.toMatch(/Not a ticker|Rate limited/);
-
-    await act(async () => {
-      tui.setup().mockInput.pressArrow("down");
-      await tui.setup().renderOnce();
-    });
+    await press("enter");
     await tui.waitForFrameToContain("Not a ticker: ZZQXW.");
+    expect(tui.frame()).toContain("ZZQXW above 10.00");
     expect(footerLine()).not.toContain("Not a ticker");
-    await act(async () => {
-      tui.setup().mockInput.pressArrow("down");
-      await tui.setup().renderOnce();
-    });
+    await press("escape");
+    await tui.waitForFrameToExclude("Not a ticker");
+    await press("down");
+    await press("enter");
     // A reason that does not name the symbol is given it.
     await tui.waitForFrameToContain("MSFT: Rate limited.");
-
     expect(footerLine()).not.toContain("Rate limited");
-
-    // With no quote for any alert, the selected one still says why, once.
-    await tui.render(
-      <AlertsHarness height={14} alerts={[
-        missed(makeAlert("alert-bad", "ZZQXW", "above", 10), "ZZQXW: quotes are unavailable."),
-        missed(makeAlert("alert-msft", "MSFT", "below", 200), "MSFT: quotes are unavailable."),
-      ]} />,
-      { width: 110, height: 14 },
-    );
-    await tui.waitForFrameToContain("ZZQXW: quotes are unavailable.");
-    expect(tui.frame()).not.toContain("MSFT: quotes are unavailable.");
-    expect(footerLine()).not.toContain("unavailable");
   });
 
   test("edits the selected alert through the prefilled edit dialog", async () => {
@@ -284,6 +276,45 @@ describe("AlertsPane", () => {
     });
 
     expect(storedAlerts().map((alert) => alert.id)).toEqual(["alert-aapl"]);
+  });
+
+  test("an open detail stays on its alert when re-arming moves it, and goes back to the list when it is deleted", async () => {
+    await tui.render(
+      <AlertsHarness
+        alerts={[
+          makeAlert("alert-nvda", "NVDA", "above", 100, "triggered"),
+          makeAlert("alert-aapl", "AAPL", "above", 200),
+          makeAlert("alert-msft", "MSFT", "below", 300),
+        ]}
+      />,
+      { width: 110, height: 12 },
+    );
+    await renderSettled();
+    const press = async (key: "down" | "enter" | "m" | "d") => act(async () => {
+      if (key === "down") tui.setup().mockInput.pressArrow("down");
+      else if (key === "enter") tui.setup().mockInput.pressEnter();
+      else await tui.setup().mockInput.typeText(key);
+      await tui.setup().renderOnce();
+    });
+    // The triggered alert lists last; re-armed, it is active and lists first.
+    await press("down");
+    await press("down");
+    await press("enter");
+    await tui.waitForFrameToContain("NVDA above 100.00");
+    await press("m");
+    await renderSettled();
+    expect(storedAlerts().find((alert) => alert.id === "alert-nvda")?.status).toBe("active");
+    expect(tui.frame()).toContain("NVDA above 100.00");
+
+    await press("d");
+    await tui.waitForFrameToContain("Delete alert?");
+    await press("enter");
+    await renderSettled();
+    expect(storedAlerts().map((alert) => alert.id)).toEqual(["alert-aapl", "alert-msft"]);
+    // Back on the list, not on the alert that took its row.
+    const frame = await tui.waitForFrameToContain("SYMBOL");
+    expect(frame).not.toContain("AAPL above 200.00");
+    expect(frame).toContain("MSFT");
   });
 });
 

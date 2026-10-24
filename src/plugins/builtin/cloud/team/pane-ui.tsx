@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import type { TeamAccentColor } from "../../../../api-client";
-import { Badge, Button, Checkbox, FieldLabel, SectionHeading, TextField, type ButtonVariant } from "../../../../components";
+import { Badge, Button, Checkbox, FieldLabel, Notice, SectionHeading, TextField, type ButtonVariant } from "../../../../components";
 import { colors } from "../../../../theme/colors";
 import { Box, Span, Text, TextAttributes, type BoxRenderable } from "../../../../ui";
 import { TEAM_ACCENT_COLORS, teamAccentHex, teamPrefix } from "../../../../team/model";
@@ -305,20 +305,58 @@ export function Muted({ children, width }: { children: ReactNode; width?: number
   return <Text fg={colors.textMuted} wrapText={width !== undefined} width={width}>{children}</Text>;
 }
 
+/**
+ * What a row of the pane (a member, an invitation, a link, a channel) shows
+ * of the pane's work on it: the action running on it or what the last one
+ * came to in its status cell, and, while one of its controls holds the ring,
+ * the full reason under it (docs/pane-conventions.md, "Row messages").
+ */
+export interface TeamRowState {
+  status?: { text: string; tone: "warning" | "negative" };
+  reason?: string | null;
+}
+
+/** The row's status cell, beside its actions; nothing while there is nothing to say. */
+export function RowStatus({ state }: { state?: TeamRowState }) {
+  if (!state?.status) return null;
+  return (
+    <Text fg={state.status.tone === "negative" ? colors.negative : colors.warning} truncate wrapMode="none" flexShrink={1} minWidth={0}>
+      {state.status.text}
+    </Text>
+  );
+}
+
+/** A row's full reason, under it. */
+export function RowReason({ state, width, indent = 2 }: { state?: TeamRowState; width: number; indent?: number }) {
+  if (!state?.reason) return null;
+  return (
+    <Box paddingLeft={indent} width={width}>
+      <Notice tone={state.status?.tone ?? "negative"}>{state.reason}</Notice>
+    </Box>
+  );
+}
+
 /** A row with a leading accent dot; used for members, invites, and channels. */
 export function AccentRow({
   accent,
   children,
   width,
+  state,
 }: {
   accent: string;
   children: ReactNode;
   width: number;
+  /** Its status cell goes among `children`; the reason goes under the row. */
+  state?: TeamRowState;
 }) {
+  // One shape with or without a reason, so the row's own box is never restyled into its wrapper.
   return (
-    <Box height={1} width={width} flexDirection="row" alignItems="center" gap={1} overflow="hidden">
-      <Text fg={accent} flexShrink={0}>●</Text>
-      {children}
+    <Box flexDirection="column" width={width}>
+      <Box height={1} width={width} flexDirection="row" alignItems="center" gap={1} overflow="hidden">
+        <Text fg={accent} flexShrink={0}>●</Text>
+        {children}
+      </Box>
+      <RowReason state={state} width={width} />
     </Box>
   );
 }
