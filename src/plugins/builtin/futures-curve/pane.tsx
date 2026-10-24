@@ -168,6 +168,7 @@ function FuturesCurveView({ width, height, focused, root, ownsTitle }: PaneProps
   const spreadBasis = data ? curveSpreadBasis(data.slope, newest) : null;
   const slopeDate = !spreadBasis && data?.slope.asOf && curveTimestamp(data.slope.asOf) !== curveTimestamp(newest) ? curveTimestamp(data.slope.asOf) : null;
   const spreadRank = data ? curveRank(data.slope.percentile, data.slope.samples) : null;
+  const thinSpread = data ? thinSpreadNotice(data) : null;
   const statItems: StatItem[] = data ? [
     { id: "roll", label: "Ann. roll yield", value: signedPercent(data.slope.annualizedRollYield),
       detail: curveRank(data.slope.rollPercentile, data.slope.samples) },
@@ -241,7 +242,7 @@ function FuturesCurveView({ width, height, focused, root, ownsTitle }: PaneProps
   const untraded = data && !requestedDate && columns.some((entry) => entry.id === "change")
     ? noTradeChangeNote(tableRows, data, { count: true }) : null;
   usePaneNoticeFooter({ registrationId: "futures-curve:notices", focused,
-    notices: emptyPast ? [] : [...data?.gaps ?? [], ...data && thinSpreadNotice(data) ? [thinSpreadNotice(data)!] : [], ...basisNotes, ...untraded ? [untraded] : [],
+    notices: emptyPast ? [] : [...data?.gaps ?? [], ...thinSpread ? [thinSpread] : [], ...basisNotes, ...untraded ? [untraded] : [],
       ...delivering.length ? [`${delivering.join(", ")} ${delivering.length === 1 ? "is" : "are"} past first notice.`] : []] });
   const delay = Math.max(0, ...(data?.contracts.map((row) => row.delayMinutes ?? 0) ?? []));
   usePaneStatusFooter({ registrationId: "futures-curve", loading: resource.loading, error: resource.error,
