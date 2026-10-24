@@ -207,13 +207,18 @@ export function resolveIntradayRequest(options: {
   return { rangePreset, resolution, session };
 }
 
-function unavailableReason(symbol: string, request: IntradayRequest, kind: "empty" | "not-intraday"): string {
+function unavailableReason(symbol: string, request: IntradayRequest, kind: "empty" | "not-intraday" | "failed"): string {
   const window = request.session
     ? `session ${request.session}`
     : request.rangePreset === "1W" ? "the latest five sessions" : "the latest session";
+  if (kind === "failed") return `Intraday history request failed for ${symbol}. Try again.`;
   return kind === "not-intraday"
     ? `The market-data provider did not return intraday bars for ${symbol} for ${window}.`
     : `No intraday price history is available for ${symbol} for ${window}.`;
+}
+
+interface IntradayHistoryAttempt extends PriceHistoryResult {
+  requestFailed?: true;
 }
 
 async function loadTrailingHistory(
@@ -222,7 +227,7 @@ async function loadTrailingHistory(
   exchange: string,
   request: IntradayRequest,
   context?: MarketDataRequestContext,
-): Promise<PriceHistoryResult> {
+): Promise<IntradayHistoryAttempt> {
   const fetchRange: TimeRange = request.rangePreset === "1W" && request.resolution !== "1m"
     ? "1M"
     : "1W";
@@ -230,8 +235,9 @@ async function loadTrailingHistory(
     return await fetchHistoryResult(provider, symbol, exchange,
       { kind: "resolution", range: fetchRange, resolution: request.resolution }, context)
       ?? { points: [], resolution: request.resolution };
-  } catch {
-    return { points: [], resolution: request.resolution };
+  } catch (error) {
+    logFailure("chart-composer.session-history", "Load trailing intraday history failed")(error);
+    return { points: [], resolution: request.resolution, requestFailed: true };
   }
 }
 
@@ -243,18 +249,19 @@ async function loadHistoricalFallback(
   now: Date,
   timeZone: string,
   context?: MarketDataRequestContext,
-): Promise<PriceHistoryResult> {
+): Promise<IntradayHistoryAttempt> {
   const empty = { points: [], resolution: request.resolution };
+  const failed: IntradayHistoryAttempt = { ...empty, requestFailed: true };
   if (request.session) {
     const bounds = sessionUtcBounds(request.session, timeZone);
     return await fetchHistoryResult(provider, symbol, exchange,
-      { kind: "detail", start: bounds.start, end: bounds.end, interval: request.resolution }, context).catch(logFailure("chart-composer.session-history", "Load requested intraday session failed", null)) ?? empty;
+      { kind: "detail", start: bounds.start, end: bounds.end, interval: request.resolution }, context).catch(logFailure("chart-composer.session-history", "Load requested intraday session failed", failed)) ?? empty;
   }
   const end = new Date(now.getTime() - HISTORICAL_RETRY_DELAY_MS);
   const lookbackDays = request.rangePreset === "1W" ? 35 : 8;
   const start = new Date(end.getTime() - lookbackDays * DAY_MS);
   return await fetchHistoryResult(provider, symbol, exchange,
-    { kind: "detail", start, end, interval: request.resolution }, context).catch(logFailure("chart-composer.session-history", "Load historical intraday fallback failed", null)) ?? empty;
+    { kind: "detail", start, end, interval: request.resolution }, context).catch(logFailure("chart-composer.session-history", "Load historical intraday fallback failed", failed)) ?? empty;
 }
 
 export async function loadIntradayWindow(options: {
@@ -280,6 +287,7 @@ export async function loadIntradayWindow(options: {
         options.exchange,
         options.request, options.context,
       );
+  let requestFailed = acquisition.requestFailed === true;
   let raw = acquisition.points;
   let window = resolveIntradaySessionWindow(raw, {
     rangePreset: options.request.rangePreset,
@@ -303,6 +311,7 @@ export async function loadIntradayWindow(options: {
           options.request,
           options.now ?? new Date(), timeZone, options.context,
         );
+    requestFailed ||= acquisition.requestFailed === true;
     raw = acquisition.points;
     window = resolveIntradaySessionWindow(raw, {
       rangePreset: options.request.rangePreset,
@@ -324,7 +333,7 @@ export async function loadIntradayWindow(options: {
       unavailableReason: unavailableReason(
         options.symbol,
         options.request,
-        sawNonIntradayData ? "not-intraday" : "empty",
+        requestFailed ? "failed" : sawNonIntradayData ? "not-intraday" : "empty",
       ),
     };
   }
@@ -338,7 +347,7 @@ export async function loadIntradayWindow(options: {
       sessionDates: window.sessionDates,
       start: requestedWindow?.start ?? null,
       end: requestedWindow?.end ?? null,
-      unavailableReason: unavailableReason(options.symbol, options.request, "not-intraday"),
+      unavailableReason: unavailableReason(options.symbol, options.request, requestFailed ? "failed" : "not-intraday"),
     };
   }
   const bufferedPoints = normalizedPoints(raw);

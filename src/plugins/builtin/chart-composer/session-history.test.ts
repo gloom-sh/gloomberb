@@ -4,7 +4,7 @@ import { createDefaultConfig } from "../../../types/config";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { createSnapshotDataProvider } from "../../../market-data/snapshot-provider";
 import { chartHeadless, loadChartPaneModel, type ChartPaneModel } from "./headless";
-import { buildIntradayPriceChartPreset } from "./presets";
+import { buildIntradayPriceChartPreset, buildCustomChartPreset } from "./presets";
 import { loadIntradayWindow, resolveIntradayRequest, resolveIntradaySessionWindow } from "./session-history";
 
 // Synthetic domain boundary, not a replay of a published exchange tape. CME
@@ -224,5 +224,75 @@ describe("--session", () => {
     expect(resolveIntradayRequest({ session: "Apr 20 2020" }).session).toBe("2020-04-20");
     expect(() => resolveIntradayRequest({ session: "20/04/2020" })).toThrow('Invalid --session value "20/04/2020". Use a session date as');
     expect(() => resolveIntradayRequest({ session: "20/04/2020" })).toThrow("type --session 2020-04-20 for 20/04/2020");
+  });
+});
+
+
+describe("intraday request failures", () => {
+  test("a failed request is distinct from empty or unsupported bars in either acquisition order", async () => {
+    for (const session of [null, request.session]) {
+      for (const outcomes of [["fail", "empty"], ["empty", "fail"], ["fail", "fail"], ["daily", "fail"], ["fail", "daily"], ["empty", "empty"], ["daily", "daily"]]) {
+        const calls: string[] = [];
+        const read = async (kind: string) => {
+          const outcome = outcomes[calls.length]; calls.push(kind);
+          if (outcome === "fail") throw new Error("private transport payload");
+          return outcome === "daily" ? [bars([10])[0]!] : [];
+        };
+        const loaded = await loadIntradayWindow({
+          provider: createTestDataProvider({ getPriceHistoryForResolution: () => read("trailing"), getDetailedPriceHistory: () => read("historical") }),
+          symbol: "ACME", exchange: "NYSE", request: { ...request, session },
+        });
+        expect(calls).toEqual(session ? ["historical", "trailing"] : ["trailing", "historical"]);
+        expect(loaded.points).toEqual([]);
+        expect(loaded.unavailableReason).not.toContain("private transport");
+        if (outcomes.includes("fail")) expect(loaded.unavailableReason).toContain("request failed");
+        else if (outcomes.includes("daily")) expect(loaded.unavailableReason).toContain("did not return intraday bars");
+        else expect(loaded.unavailableReason).toContain("No intraday price history is available");
+      }
+    }
+  });
+
+  test("a usable fallback succeeds after a failed request and preserves the chosen acquisition", async () => {
+    for (const session of [null, request.session]) {
+      const calls: string[] = [];
+      const read = async (kind: string) => {
+        calls.push(kind);
+        if (calls.length === 1) throw new Error("first acquisition failed");
+        return { points: bars([10, 11]), resolution: "1m" as const, sourceKey: "provider:fixture" };
+      };
+      const provider = createTestDataProvider({
+        getPriceHistoryForResolutionWithMetadata: () => read("trailing"), getDetailedPriceHistoryWithMetadata: () => read("historical"),
+      });
+      const loaded = await loadIntradayWindow({ provider, symbol: "ACME", exchange: "NYSE", request: { ...request, session } });
+      expect(calls).toEqual(session ? ["historical", "trailing"] : ["trailing", "historical"]);
+      expect(loaded.points.map(({ close }) => close)).toEqual([10, 11]);
+      expect(loaded.bufferedPoints).toHaveLength(2);
+      expect(loaded.unavailableReason).toBeNull();
+      expect(loaded.sourceKey).toBe("provider:fixture");
+    }
+  });
+
+  test("a failed intraday symbol retains companion bars and its failure survives snapshot rendering", async () => {
+    const spec = buildCustomChartPreset("GOOD:NYSE:market.close,BAD:NYSE:market.close");
+    spec.viewport = { range: "1D", resolution: "1m" };
+    const history = async (symbol: string) => {
+      if (symbol === "BAD") throw new Error("private transport payload");
+      return bars([10, 11]);
+    };
+    const provider = createTestDataProvider({
+      getQuote: async (symbol) => ({ ...quote("EQUITY", symbol), listingExchangeName: "NYSE" }),
+      getTickerFinancials: async (symbol) => ({ annualStatements: [], quarterlyStatements: [], priceHistory: [], quote: { ...quote("EQUITY", symbol), listingExchangeName: "NYSE" } }),
+      getPriceHistoryForResolution: history, getDetailedPriceHistory: history,
+    });
+    const context = { marketData: provider, apiClient: {} as never, config: createDefaultConfig("/tmp/gloom-intraday-failure"), signal: new AbortController().signal, settings: { chartSpec: spec } };
+    const model = await chartHeadless("graph-intraday-price-pane").load({ rawArgument: "GOOD:NYSE,BAD:NYSE", argument: "GOOD:NYSE,BAD:NYSE", symbols: ["GOOD:NYSE", "BAD:NYSE"], options: {} }, context) as ChartPaneModel;
+    expect(model.series.find((series) => series.symbol?.startsWith("GOOD"))?.points.map((point) => point.value)).toEqual([10, 11]);
+    expect(model.unavailableSymbols).toContain("BAD:XNYS");
+    expect(model.errors?.join(" ")).toContain("request failed for BAD");
+    expect(JSON.stringify(model)).not.toContain("private transport");
+    const snapshot = createSnapshotDataProvider(model.snapshot, provider);
+    const reloaded = await loadChartPaneModel(model.spec, { ...context, marketData: snapshot });
+    expect(reloaded.chart.series.some((series) => series.points.length === 2)).toBe(true);
+    expect(reloaded.errors?.join(" ")).toContain("request failed for BAD");
   });
 });
