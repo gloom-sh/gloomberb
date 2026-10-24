@@ -124,7 +124,7 @@ export function mergeSuffixedListings(tickers: readonly TickerRecord[]): Suffixe
  * it went into, added to any target that row had: the two rows' share of the
  * portfolio is one listing's. The same config when no target moved.
  */
-export function moveTargetWeights(config: AppConfig, moved: ReadonlyMap<string, string>): AppConfig {
+function moveTargetWeights(config: AppConfig, moved: ReadonlyMap<string, string>): AppConfig {
   let changed = false;
   const portfolios = config.portfolios.map((portfolio) => {
     const targets = portfolio.targetWeights;
