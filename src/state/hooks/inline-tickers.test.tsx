@@ -254,5 +254,77 @@ describe("useInlineTickers", () => {
 
     expect(await renderUntil("7203:JPX 247540:KOSDAQ SAN:EPA RY:TSX")).toContain("7203:JPX 247540:KOSDAQ SAN:EPA RY:TSX");
   });
+
+  // Search settles $BRK-B on BRK.B and $TTF on TTF=F. Left looking under its own
+  // symbol, the badge asked again, got the saved ticker back and woke itself, as
+  // fast as React would render; a click in the DOM then never returned.
+  test("a symbol search settles on another key badges that ticker and stops asking", async () => {
+    let searches = 0;
+    setSharedRegistryForTests({
+      marketData: createTestDataProvider({
+        search: async (query) => {
+          searches += 1;
+          const listed = { "BRK-B": "BRK.B", "TTF=F": "TTF=F" }[query.toUpperCase()];
+          return listed ? [{ providerId: "test", symbol: listed, name: listed, exchange: "NYSE", currency: "USD", type: listed.endsWith("=F") ? "FUTURE" : "EQUITY" }] : [];
+        },
+      }),
+      tickerRepository: new JsonTickerRepository(),
+      events: { emit() {} },
+      pinTicker: () => {},
+    } as unknown as PluginRegistry);
+    let state: AppState = createInitialState(createDefaultConfig("/tmp/gloomberb-inline-tickers-spelling-test"));
+    const listeners = new Set<() => void>();
+    const store = {
+      dispatch: (action: AppAction) => {
+        state = appReducer(state, action);
+        for (const listener of listeners) listener();
+      },
+      getState: () => state,
+      subscribe: (listener: () => void) => {
+        listeners.add(listener);
+        return () => { listeners.delete(listener); };
+      },
+    };
+    let renders = 0;
+    function Message() {
+      renders += 1;
+      const { catalog } = useInlineTickers(["$BRK-B and $TTF"], { liveQuotes: false });
+      return <text>{["BRK-B", "TTF"].map((symbol) => `${catalog[symbol]?.status}:${catalog[symbol]?.ticker?.metadata.ticker ?? "?"}`).join(" ")}</text>;
+    }
+
+    await act(async () => {
+      await tui.render(<AppContext value={store}><Message /></AppContext>, { width: 60, height: 1 });
+    });
+
+    expect(await renderUntil("ready:BRK.B ready:TTF=F")).toContain("ready:BRK.B ready:TTF=F");
+    const settled = { renders, searches };
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(renders - settled.renders).toBeLessThan(3);
+    expect(searches).toBe(settled.searches);
+  });
+
+  // Fixtures and tests mount badges with no registry. A lookup there settled at
+  // once with nothing learnt and started again, in a loop that never yielded.
+  test("with no registry a badge asks nothing and waits", async () => {
+    let renders = 0;
+    function Message() {
+      renders += 1;
+      const { catalog } = useInlineTickers(["$NVDA"]);
+      return <text>{catalog.NVDA?.status ?? "none"}</text>;
+    }
+    const state = createInitialState(createDefaultConfig("/tmp/gloomberb-inline-tickers-no-registry-test"));
+
+    await act(async () => {
+      await tui.render(<AppContext value={createStaticAppStore(state)}><Message /></AppContext>, { width: 20, height: 1 });
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
+    expect(await renderUntil("loading")).toContain("loading");
+    expect(renders).toBeLessThan(5);
+  });
 });
 
