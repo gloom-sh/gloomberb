@@ -14,10 +14,10 @@ export const rssCliCommand: CliCommandDef = {
   },
   execute: async (args, ctx) => {
     const action = args[0] ?? "fetch";
-    if (action !== "fetch") ctx.fail("Usage: gloomberb rss fetch <url> [--name <label>]");
+    if (action !== "fetch") ctx.fail("Usage: gloom rss fetch <url> [--name <label>]");
     const rawArgs = args.slice(1);
     const name = takeOption(rawArgs, "--name") ?? "RSS";
-    const url = requireArg(rawArgs[0], "Usage: gloomberb rss fetch <url> [--name <label>]", ctx);
+    const url = requireArg(rawArgs[0], "Usage: gloom rss fetch <url> [--name <label>]", ctx);
     const capability = createRssNewsCapability([{
       id: "cli-feed",
       url,

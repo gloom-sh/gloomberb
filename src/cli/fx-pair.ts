@@ -3,7 +3,7 @@ import { parseTypedNumber, readCurrencyAmount } from "../utils/decimal-comma";
 import { currenciesNamed } from "../utils/currency-names";
 
 /**
- * What `gloomberb fx` is asked for. A bare code is one unit of it in the base
+ * What `gloom fx` is asked for. A bare code is one unit of it in the base
  * currency (`NGN`: USD per 1 NGN). A pair is market convention, BASE/QUOTE:
  * `USD/NGN` is how many NGN one USD buys, and `ZAR/NGN` a cross of two codes
  * with neither in USD.
@@ -74,7 +74,7 @@ export function parseFxRequest(raw: string, baseCurrency: string): FxRequest | {
   return readAs.length > 0 ? { ...request, readAs } : request;
 }
 
-/** What `gloomberb fx` is asked for, with the amount to convert when one comes first. */
+/** What `gloom fx` is asked for, with the amount to convert when one comes first. */
 export interface FxArgs {
   request: FxRequest;
   /** The amount of `currency` to convert into `baseCurrency`; absent for a rate alone. */

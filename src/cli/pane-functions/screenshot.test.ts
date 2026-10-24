@@ -593,7 +593,7 @@ describe("pane screenshot market bridge", () => {
   /**
    * The page can only reach the cloud API on its own, and the cloud carries no
    * per-rating price targets. Serving research requests from the router is what
-   * keeps a screenshot showing the same values as `gloomberb fn`.
+   * keeps a screenshot showing the same values as `gloom fn`.
    */
   test("answers research requests from the routed provider and refuses anything else", async () => {
     const calls: Array<[string, unknown[]]> = [];

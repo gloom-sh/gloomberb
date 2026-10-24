@@ -1116,7 +1116,7 @@ describe("core sync contributors", () => {
     syncedState.tickers = new Map([["NVDA", withoutPosition]]);
     const syncedPayload = await coreCollectionsSyncContributor.collect({ state: syncedState });
 
-    // `gloomberb portfolio position set` wrote this straight to the database.
+    // `gloom portfolio position set` wrote this straight to the database.
     const state = createInitialState(config);
     state.tickers = new Map([["NVDA", {
       metadata: {

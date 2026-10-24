@@ -5,7 +5,7 @@ import { treasuryYieldHint, treasuryYieldTenor } from "./treasury-yields";
 
 // "Not a ticker: APPLE." as the router words it; the symbol ends at the sentence's own period.
 // One that already names what to try (a search, a FRED series, a yield, the pair search offered) is left alone.
-const NOT_A_TICKER_SENTENCE = /Not a ticker: ((?:(?!\.\s)[^\n`\x1b])+?)\.(?=\s|\x1b|$)(?! Try `gloomberb (?:search|fred|quote) | Did you mean )/g;
+const NOT_A_TICKER_SENTENCE = /Not a ticker: ((?:(?!\.\s)[^\n`\x1b])+?)\.(?=\s|\x1b|$)(?! Try `gloom (?:search|fred|quote) | Did you mean )/g;
 
 /**
  * The symbol as the user typed it on the command line (`Apple`), not as the router saw it (`APPLE`).
@@ -25,13 +25,13 @@ function typedSymbol(symbol: string, args: readonly string[]): string {
   return symbol;
 }
 
-/** "Try `gloomberb search Apple`." naming what the user typed; a venue (`Apple:NYSE`) is not part of a search. */
+/** "Try `gloom search Apple`." naming what the user typed; a venue (`Apple:NYSE`) is not part of a search. */
 function searchHint(typed: string): string {
   const query = typed.split(":")[0]!.trim() || typed;
-  return `Try \`gloomberb search ${/\s/.test(query) ? JSON.stringify(query) : query}\`.`;
+  return `Try \`gloom search ${/\s/.test(query) ? JSON.stringify(query) : query}\`.`;
 }
 
-/** Whether an id is a FRED series the catalog charts (DFEDTARU), which `gloomberb fred` prints. */
+/** Whether an id is a FRED series the catalog charts (DFEDTARU), which `gloom fred` prints. */
 export type FredSeriesCheck = (seriesId: string) => boolean;
 
 /**
@@ -40,20 +40,30 @@ export type FredSeriesCheck = (seriesId: string) => boolean;
  * series id (DFEDTARU) is no ticker search finds, so its hint is the `fred` command instead, a
  * coin on the crypto board typed bare (USDT, TETHER) names its one symbol, USDT-USD, once
  * `primeBoardCoins` has read the board, and a Treasury yield typed as a ticker (US10Y) names the
- * commands that have it.
+ * commands that have it. A one-word company name a line says was read as a listing ("Read
+ * "APPLE" as AAPL:NASDAQ") is put back in the user's spelling too.
  */
 export function withSearchHints(text: string, args: readonly string[], isFredSeries: FredSeriesCheck = () => false): string {
-  return text.includes("Not a ticker: ")
-    ? text.replace(NOT_A_TICKER_SENTENCE, (sentence, symbol: string) => {
+  const named = withTypedNames(text, args);
+  return named.includes("Not a ticker: ")
+    ? named.replace(NOT_A_TICKER_SENTENCE, (sentence, symbol: string) => {
       const typed = typedSymbol(symbol, args);
       const id = typed.toUpperCase();
-      if (/^[A-Z0-9]+$/.test(id) && isFredSeries(id)) return `${sentence} Try \`gloomberb fred ${id}\`.`;
+      if (/^[A-Z0-9]+$/.test(id) && isFredSeries(id)) return `${sentence} Try \`gloom fred ${id}\`.`;
       const coin = boardCoinFor(id);
       if (coin) return `${sentence} Did you mean ${coin.symbol}${coin.name && coin.name.toUpperCase() !== coin.symbol ? ` (${coin.name})` : ""}?`;
       const tenor = treasuryYieldTenor(typed);
       return `${sentence} ${tenor ? treasuryYieldHint(tenor) : searchHint(typed)}`;
     })
-    : text;
+    : named;
+}
+
+// "Read "APPLE" as AAPL:NASDAQ (Apple Inc.)." as a list reads a one-word name, upper-cased like a symbol.
+const READ_AS_NAME = /Read "([^"\n]+)" as /g;
+
+/** A company's name the line says was read as a listing, in the user's own spelling from `args` (`Apple`). */
+function withTypedNames(text: string, args: readonly string[]): string {
+  return text.includes("Read \"") ? text.replace(READ_AS_NAME, (_line, name: string) => `Read "${typedSymbol(name, args)}" as `) : text;
 }
 
 /**

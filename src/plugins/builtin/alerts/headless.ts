@@ -1,5 +1,5 @@
 /**
- * `gloomberb fn ALRT`: the Alerts pane's three tabs as reports. Prices lists
+ * `gloom fn ALRT`: the Alerts pane's three tabs as reports. Prices lists
  * the price alerts as the pane's table does, Events the event alerts (earnings,
  * CPI and FOMC with their dates, filings, news, IV levels, market moves),
  * History the alerts this device's app fired, with the ones Gloom Cloud
@@ -112,9 +112,9 @@ function pricesResult(alerts: readonly AlertRule[], error: string | null, events
     columns: PRICE_COLUMNS,
     textColumns: PRICE_TEXT_COLUMNS,
     rows: [...active, ...triggered].map(priceRow),
-    empty: "No price alerts. Add one with gloomberb alerts add AAPL above 250.",
+    empty: "No price alerts. Add one with gloom alerts add AAPL above 250.",
     ...(error ? { errors: [error], complete: false } : {}),
-    ...(events > 0 ? { notes: [`${plural(events, "event alert")} not listed here: gloomberb fn ALRT --tab events`] } : {}),
+    ...(events > 0 ? { notes: [`${plural(events, "event alert")} not listed here: gloom fn ALRT --tab events`] } : {}),
   };
 }
 
@@ -143,7 +143,7 @@ function eventsResult(rules: readonly EventAlertRule[], error: string | null, ch
     // A Last check column only when an IV level rule has a reading to show.
     columns: checked ? [...EVENT_COLUMNS.slice(0, -2), { key: "lastCheck", header: "Last check" }, ...EVENT_COLUMNS.slice(-2)] : EVENT_COLUMNS,
     rows: [...rules].sort((a, b) => b.createdAt - a.createdAt).map((rule) => eventRow(rule, today, checks)),
-    empty: "No event alerts. Add one with gloomberb alerts add CRWV earnings --days 3 or gloomberb alerts add CPI --days 1.",
+    empty: "No event alerts. Add one with gloom alerts add CRWV earnings --days 3 or gloom alerts add CPI --days 1.",
     ...(error ? { errors: [error], complete: false } : {}),
   };
 }
@@ -164,7 +164,7 @@ export function alertHistoryLockNote({ verifyEmail }: PaneLock): string {
     : "log in or sign up free from the command bar (Ctrl+P, Log In or Sign Up)";
   return [
     `Only the alerts this app fired are listed: the ones Gloom Cloud delivered to your phone or email over the last 90 days need a free Gloom sign-in${verifyEmail ? " with a verified email" : ""}.`,
-    `To add them, open the app (gloomberb), ${account}; gloomberb fn ALRT --tab history then reads with that session.`,
+    `To add them, open the app (gloom), ${account}; gloom fn ALRT --tab history then reads with that session.`,
   ].join("\n");
 }
 

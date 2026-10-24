@@ -29,10 +29,10 @@ Collection ships disabled on the server. The separate **Attention Counts** conse
 ## Command line and REST
 
 ```sh
-gloomberb fn ATTN --window today --json
-gloomberb fn ATTN 6758:JPX --tab history --json
-gloomberb fn ATTN --tab sectors --window week --json
-gloomberb shot ATTN --tab ranking --width 1280 --height 540 --output attention.png
+gloom fn ATTN --window today --json
+gloom fn ATTN 6758:JPX --tab history --json
+gloom fn ATTN --tab sectors --window week --json
+gloom shot ATTN --tab ranking --width 1280 --height 540 --output attention.png
 ```
 
 Authenticated REST endpoints are `GET /cloud/attention?window=now|today|week` and `GET /cloud/attention/:symbol?window=now|today|week`. Responses contain the dated rows, sector/country groups, privacy policy parameters, coverage, entitlement, and methodology link. The read API is independent of collection consent; opting in is never required to read published data. Headless output preserves the same entitlement and provenance. CSV exports visible table values with units in their headers.

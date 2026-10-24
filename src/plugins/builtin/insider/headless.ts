@@ -459,7 +459,7 @@ export function createInsiderHeadless(
       if (!symbol || args.options.view === "insiders") {
         throw new Error(symbol
           ? `--name filters ${symbol}'s trades, not its insiders. Drop --view insiders or --name from shot.`
-          : `--name filters one company's trades: gloomberb shot INS <ticker> --name ${JSON.stringify(name)}`);
+          : `--name filters one company's trades: gloom shot INS <ticker> --name ${JSON.stringify(name)}`);
       }
       return { pluginState: { "ticker-research": { [`insider:nameFilter:${parsePublicTickerKey(symbol).symbol}`]: name } } };
     },

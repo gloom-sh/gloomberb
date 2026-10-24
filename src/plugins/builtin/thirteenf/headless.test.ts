@@ -212,7 +212,7 @@ describe("13F headless model", () => {
     expect(own.columns?.map((column) => column.header)).toEqual(["Fund", "CIK", "Period", "Est 13F", "Value (USD)", "2026Q1"]);
     expect(own.metadata?.notices).toEqual([
       "Est 13F: from the 2026-03-31 and 2026-06-30 filings, the Est P&L of positions held through the quarter over their value at its start (not in the 2026Q2 ranking)",
-      "Copy this basket: gloomberb portfolio import --13f 0001067983",
+      "Copy this basket: gloom portfolio import --13f 0001067983",
     ]);
 
     const holdings = await headless.load(args("holdings", 5), createTestHeadlessContext());
@@ -261,7 +261,7 @@ describe("13F headless model", () => {
     expect((await notices({ basis: "ranking", ranking: "ranked", filingGap: gap })).at(-1)).toBe(filingGapText(gap));
 
     await expect(headless.load({ ...args("performance"), argument: "Nobody Capital", rawArgument: "Nobody Capital" }, createTestHeadlessContext()))
-      .rejects.toThrow('No 13F fund matched "Nobody Capital". For the performance ranking, run gloomberb fn 13F --view performance; for one fund, give its CIK, as in gloomberb fn 13F 0001067983 --view performance.');
+      .rejects.toThrow('No 13F fund matched "Nobody Capital". For the performance ranking, run gloom fn 13F --view performance; for one fund, give its CIK, as in gloom fn 13F 0001067983 --view performance.');
   });
 
   test("the performance ranking without a fund prints as it did before a fund could have its own row", async () => {

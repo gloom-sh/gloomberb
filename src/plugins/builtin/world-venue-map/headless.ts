@@ -1,5 +1,5 @@
 /**
- * `gloomberb fn MAP`: the venue list, or with a layer (`MAP ships`,
+ * `gloom fn MAP`: the venue list, or with a layer (`MAP ships`,
  * `--layer vessels`) that layer's entity table with plain values and the
  * linked tickers, for JSON and CSV.
  */

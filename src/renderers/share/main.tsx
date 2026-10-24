@@ -40,7 +40,7 @@ function LayoutApp({ id }: { id: string }) {
 
   return state.entry
     ? <LayoutShareView entry={state.entry} openLiveUrl={openLiveMarketplaceLayoutUrl(id)} />
-    : <main><h1>Gloomberb</h1><p>{state.error ?? "Loading shared layout..."}</p></main>;
+    : <main><h1>Gloom</h1><p>{state.error ?? "Loading shared layout..."}</p></main>;
 }
 
 function ContentShareApp({ id }: { id: string }) {
@@ -91,18 +91,18 @@ function ContentShareApp({ id }: { id: string }) {
       />
     );
   }
-  return <main><h1>Gloomberb</h1><p>{state.error ?? "Loading shared view..."}</p></main>;
+  return <main><h1>Gloom</h1><p>{state.error ?? "Loading shared view..."}</p></main>;
 }
 
 function SocialShareApp() {
   const pathname = window.location.pathname;
   const layoutId = parseMarketplaceLayoutId(pathname);
   if (layoutId) return <LayoutApp id={layoutId} />;
-  if (pathname.startsWith("/l/")) return <main><h1>Gloomberb</h1><p>Invalid layout link.</p></main>;
+  if (pathname.startsWith("/l/")) return <main><h1>Gloom</h1><p>Invalid layout link.</p></main>;
   const shareId = parseShareId(pathname);
   return shareId
     ? <ContentShareApp id={shareId} />
-    : <main><h1>Gloomberb</h1><p>Invalid share link.</p></main>;
+    : <main><h1>Gloom</h1><p>Invalid share link.</p></main>;
 }
 
 const root = document.getElementById("root");

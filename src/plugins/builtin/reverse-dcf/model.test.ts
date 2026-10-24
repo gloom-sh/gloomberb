@@ -56,6 +56,12 @@ describe("reverse DCF", () => {
     const unavailable = projectReverseDcf({ ...financials(withdrawn), quote }, { symbol: "X", discountRate: 0.09 });
     expect(unavailable).toMatchObject({ enterpriseValue: null, implied: null, impliedRevenue: null });
     expect(unavailable.error).toStartWith("EV unavailable: the provider's");
+    // At or below zero it is N/M with the reason, as valuation and RV say it.
+    const reason = "Cash and short-term investments exceed market cap + total debt (balance sheet 2026-06-30)";
+    const negative = projectReverseDcf({ ...financials({ ...withdrawn, enterpriseValueCheck: { ...check, status: "not-meaningful" as const,
+      source: -85, computed: -99, reason } }), quote }, { symbol: "X", discountRate: 0.09 });
+    expect(negative).toMatchObject({ enterpriseValue: null, implied: null,
+      error: "EV N/M: cash and short-term investments exceed market cap + total debt (balance sheet 2026-06-30)." });
   });
 });
 

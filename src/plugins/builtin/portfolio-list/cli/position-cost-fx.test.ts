@@ -129,6 +129,51 @@ test("portfolio show names only lots entered by hand whose cost converts at toda
   expect(row("NVDA")).toMatchObject({ costFxRate: 32, costFxCurrency: "TRY", costBasis: 32_000 });
 });
 
+test("portfolio show converts a dated lot's cost at its purchase date's FX close in the currency the book is valued in now", async () => {
+  // Set with --date while the book was valued in USD, so only the date was kept; the base currency is TRY since.
+  const config = liraConfig();
+  const lot = (extra: Partial<TickerPosition> = {}): TickerPosition => ({ portfolio: "lira", shares: 10, avgCost: 100, currency: "USD", broker: "manual", ...extra });
+  const tickers = [
+    createTestTicker("AAPL", "Apple", { portfolios: ["lira"], positions: [lot({ dateAcquired: "2024-03-01" })] }),
+    // A rate entered into another currency than the book's is no rate for it: the date's close is.
+    createTestTicker("AMZN", "Amazon", { portfolios: ["lira"], positions: [lot({ dateAcquired: "2024-03-01", costFxRate: 0.92, costFxCurrency: "EUR" })] }),
+    createTestTicker("MSFT", "Microsoft", { portfolios: ["lira"], positions: [lot()] }),
+    // No TRY close in the week up to this date.
+    createTestTicker("NVDA", "NVIDIA", { portfolios: ["lira"], positions: [lot({ dateAcquired: "2020-01-01" })] }),
+  ];
+  const reads: string[] = [];
+  const history = { getCloudHistory: async (symbol: string, _exchange: string, params: { startDate?: string; endDate?: string }) => {
+    reads.push(`${symbol} ${params.endDate}`);
+    const inRange = params.startDate! <= "2024-03-01" && "2024-03-01" <= params.endDate!;
+    return { status: "success", data: symbol === "TRY=X" && inRange ? [{ date: "2024-03-01T00:00:00.000Z", close: 31.3694 }] : [] } as never;
+  } };
+  const show = (format?: "json") => createTestCliContext({ config, store: { loadAllTickers: async () => tickers },
+    dataProvider: createTestDataProvider({
+      getQuote: async (symbol) => ({ symbol, price: 110, currency: "USD", change: 0, changePercent: 0, lastUpdated: Date.now() }),
+      getExchangeRate: async (code: string) => USD_PER[code] ?? 1,
+    }),
+  }, format ? { format } : undefined);
+  const cli = show("json");
+  await showCollection("Lira", cli.context, { costFxHistory: history });
+  // One read per purchase date, however many lots share it.
+  expect(reads.sort()).toEqual(["TRY=X 2020-01-02", "TRY=X 2024-03-02"]);
+  const { data, metadata } = JSON.parse(serializeCliResult(cli.printed[0]!.result, { ...DEFAULT_CLI_OPTIONS, format: "json" }));
+  const row = (symbol: string) => data.find((entry: { symbol: string }) => entry.symbol === symbol);
+  expect(row("AAPL")).toMatchObject({ costFxRate: 31.3694, costFxCurrency: "TRY", dateAcquired: "2024-03-01" });
+  expect(row("AAPL").costBasis).toBeCloseTo(31_369.4, 6);
+  expect(row("AMZN")).toMatchObject({ costFxRate: 31.3694, costFxCurrency: "TRY" });
+  // Only an undated lot, or one whose date's close could not be read, converts at today's rate, and the note says which.
+  expect(metadata.costAtTodaysRateSymbols.sort()).toEqual(["MSFT", "NVDA"]);
+  const logged: string[] = [];
+  const log = spyOn(console, "log").mockImplementation((...parts: unknown[]) => { logged.push(parts.join(" ")); });
+  try { await showCollection("Lira", show().context, { costFxHistory: history }); } finally { log.mockRestore(); }
+  const notes = logged.join("\n").replace(/\x1b\[[0-9;]*m/g, "").split("\n").filter((line) => line.startsWith("Cost converted"));
+  expect(notes).toEqual([
+    "Cost converted at today's rate for MSFT:NASDAQ; give portfolio position set a --date or --cost-fx to use the rate when bought.",
+    "Cost converted at today's rate for NVDA:NASDAQ: the FX close of the purchase date could not be read.",
+  ]);
+});
+
 test("the ticker report's cost basis converts at the rate a lot was bought at, as its P&L does", async () => {
   const config = liraConfig();
   const record = createTestTicker("AAPL", "Apple", { portfolios: ["lira"],

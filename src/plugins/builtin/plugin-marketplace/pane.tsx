@@ -259,7 +259,7 @@ function EntryDetail({ entry, width, host, status, failure }: {
           */}
         {entry.hosts.length > 0 ? <KeyValueRow labelWidth={10} width={rowWidth} emphasis={false} label="Declares" value={entry.hosts.join(", ")} /> : null}
         {entry.repo ? <KeyValueRow labelWidth={10} width={rowWidth} emphasis={false} label="Source" value={`github.com/${entry.repo}`} /> : null}
-        {entry.minGloomberb ? <KeyValueRow labelWidth={10} width={rowWidth} emphasis={false} label="Requires" value={requiredGloomberb(entry.minGloomberb) ? `Gloomberb ${entry.minGloomberb}, this is ${VERSION}` : `Gloomberb ${entry.minGloomberb}`} /> : null}
+        {entry.minGloomberb ? <KeyValueRow labelWidth={10} width={rowWidth} emphasis={false} label="Requires" value={requiredGloomberb(entry.minGloomberb) ? `Gloom ${entry.minGloomberb}, this is ${VERSION}` : `Gloom ${entry.minGloomberb}`} /> : null}
         {entry.linked ? <KeyValueRow labelWidth={10} width={rowWidth} emphasis={false} label="Linked" value={entry.directory ?? "local checkout"} /> : null}
         {entry.installedCommit ? <KeyValueRow labelWidth={10} width={rowWidth} emphasis={false} label="Commit" value={entry.installedCommit.slice(0, 7)} /> : null}
         {!entry.installed && entry.availableCommit ? <KeyValueRow labelWidth={10} width={rowWidth} emphasis={false} label="Pinned" value={`${entry.availableVersion ?? ""} ${entry.availableCommit.slice(0, 7)}`.trim()} /> : null}
@@ -272,7 +272,7 @@ function EntryDetail({ entry, width, host, status, failure }: {
         runsExternalPlugins() ? (
           <Box paddingTop={1} flexDirection="column">
             <Text fg={colors.textDim}>Runs with your full permissions. Read the source first.</Text>
-            <Text fg={colors.textBright}>{`gloomberb install ${entry.repo}`}</Text>
+            <Text fg={colors.textBright}>{`gloom install ${entry.repo}`}</Text>
           </Box>
         ) : (
           // No shell here, so the install command would be a dead end. Say
@@ -334,7 +334,7 @@ function BuiltinDetail({ entry, width, facts, scrollRef }: {
             <RemoteImage
               key={code}
               src={functionShotUrl(code)}
-              alt={`${code} in Gloomberb`}
+              alt={`${code} in Gloom`}
               label={code}
               width={shotWidth}
               height={Math.max(8, Math.floor(shotWidth * 0.3))}
@@ -643,7 +643,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
       setFailure(entry.id, {
         kind: "needs-gloomberb",
         status: `needs ${required}`,
-        text: `${entry.name} needs Gloomberb ${required}. Update Gloomberb first.`,
+        text: `${entry.name} needs Gloom ${required}. Update Gloom first.`,
       });
     }
     return true;

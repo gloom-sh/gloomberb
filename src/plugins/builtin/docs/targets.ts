@@ -66,7 +66,7 @@ export function docsTopicForPane(
 export function docsTopicForArgument(index: HelpFunctionIndex | null, argument: string): DocsTopic {
   const query = argument.trim();
   if (!query) return { kind: "home" };
-  // A command line with no registry (`gloomberb fn DOCS RV`) cannot resolve a mnemonic here: the reader does, from its own entries.
+  // A command line with no registry (`gloom fn DOCS RV`) cannot resolve a mnemonic here: the reader does, from its own entries.
   const fn = index?.get(query.toUpperCase()) ?? index?.get((query.split(/\s+/)[0] ?? "").toUpperCase());
   if (fn) return docsTopicForFunction(fn);
   return { kind: "home", query };

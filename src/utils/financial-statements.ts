@@ -20,11 +20,11 @@ export function statementHistoryNotes(
   return period === "annual"
     ? [
       `annual history from ${oldest.slice(0, 4)}; older years not served`,
-      `earlier years, one metric at a time: gloomberb fn GF ${symbol} --period annual --periods 40`,
+      `earlier years, one metric at a time: gloom fn GF ${symbol} --period annual --periods 40`,
     ]
     : [
       `quarterly history from ${oldest}; older quarters not served`,
-      `earlier quarters, one metric at a time: gloomberb fn GF ${symbol} --period quarterly --periods 40`,
+      `earlier quarters, one metric at a time: gloom fn GF ${symbol} --period quarterly --periods 40`,
     ];
 }
 

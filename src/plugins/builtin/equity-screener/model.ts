@@ -21,6 +21,7 @@ import { yearToDateBaseLabel } from "../../../market-data/market/year-to-date";
 import { canonicalExchange } from "../../../utils/exchanges";
 import { LATEST_DISTRIBUTION, TRAILING_DIVIDEND_BASIS } from "../../../utils/forward-dividend";
 import { formatCompact, formatNumber } from "../../../utils/format";
+import { formatPriceEarnings, NOT_MEANINGFUL } from "../../../utils/price-earnings";
 import { kpiFreeLimitNote } from "../company-kpis/model";
 
 /**
@@ -133,6 +134,11 @@ export function formatScreenValue(field: NumericField, value: number | null): st
   // A value that rounds to zero prints 0.0, never -0.0.
   const fixed = Math.abs(value) < 0.05 ? "0.0" : formatNumber(value, 1);
   return SIGNED.has(field) && value > 0 && fixed !== "0.0" ? `+${fixed}` : fixed;
+}
+
+/** A row's metric as a cell prints it: N/M for a multiple that is not meaningful, as RV and `valuation` print it. */
+export function formatScreenMetric(field: NumericField, metric: Pick<ScreenMetric, "value" | "notMeaningful">): string {
+  return metric.value == null && metric.notMeaningful ? formatPriceEarnings(NOT_MEANINGFUL) : formatScreenValue(field, metric.value);
 }
 
 /**

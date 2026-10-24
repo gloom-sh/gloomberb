@@ -11,6 +11,7 @@ import { createTestDataProvider, createTestQuote } from "../../test-support/data
 import { captureConsole } from "../../test-support/console";
 import { createTestTicker } from "../../test-support/ticker";
 import { resetBoardCoins } from "../board-coins";
+import { withSearchHints } from "../not-a-ticker";
 import { buildSearchReport, search } from "./search";
 import { marketDataCliCommands } from "./market";
 
@@ -103,7 +104,7 @@ test("a bare symbol with no quote is asked on the venue it resolved to, then its
   // With no quote anywhere, one company's listings name the venue it resolved to and the others to try.
   const unquoted = await runQuote(["CSPX"], venueSource("CSPX", ["XETRA", "LSE"], {}));
   expect(unquoted.failure?.message).toBe("CSPX resolved to CSPX Fund (XETRA), which has no quote.");
-  expect(unquoted.failure?.details).toContain("CSPX:LSE CSPX Fund (try: gloomberb quote CSPX:LSE)");
+  expect(unquoted.failure?.details).toContain("CSPX:LSE CSPX Fund (try: gloom quote CSPX:LSE)");
 });
 
 test("a code several companies list is never quoted on one of them: it asks for an exchange, and only its row fails", async () => {
@@ -114,8 +115,8 @@ test("a code several companies list is never quoted on one of them: it asks for 
 
   const alone = await runQuote(["2222"], source);
   expect(alone.failure?.message).toBe("Choose an exchange for 2222.");
-  expect(alone.failure?.details).toContain("2222:JPX Kotobuki Spirits Co., Ltd. (try: gloomberb quote 2222:JPX)");
-  expect(alone.failure?.details).toContain("2222:TADAWUL Saudi Arabian Oil Co. (try: gloomberb quote 2222:TADAWUL)");
+  expect(alone.failure?.details).toContain("2222:JPX Kotobuki Spirits Co., Ltd. (try: gloom quote 2222:JPX)");
+  expect(alone.failure?.details).toContain("2222:TADAWUL Saudi Arabian Oil Co. (try: gloom quote 2222:TADAWUL)");
   // No listing was asked for its quote.
   expect(source.batches).toEqual([["2222"]]);
 
@@ -137,7 +138,7 @@ test("BDI asks for an exchange and says the Baltic Dry Index is not covered; on 
 
   const bare = await runQuote(["BDI"], source);
   expect(bare.failure?.message).toBe("Choose an exchange for BDI.");
-  expect(bare.failure?.details).toContain("BDI:TSX Black Diamond Group Limited (try: gloomberb quote BDI:TSX)");
+  expect(bare.failure?.details).toContain("BDI:TSX Black Diamond Group Limited (try: gloom quote BDI:TSX)");
   expect(bare.failure?.details).toContain("Baltic indices (BDI, Capesize, Panamax, Supramax) and freight forwards (FFA) are not covered.");
 
   const named = await runQuote(["BDI:TSX"], source);
@@ -213,9 +214,9 @@ test("a futures board code quotes its future where no security uses it, and name
   const names = { CSE: "Goldcana Resources Inc.", SET: "Global Connections Public Company Limited" };
   const gc = await runQuote(["GC"], venueSource("GC", ["CSE", "SET"], {}, names));
   expect(gc.failure?.message).toBe("Choose an exchange for GC.");
-  expect(gc.failure?.details).toContain("GC=F Gold future (try: gloomberb quote GC=F)");
+  expect(gc.failure?.details).toContain("GC=F Gold future (try: gloom quote GC=F)");
   // With no listing search knows, the future is still named.
-  expect((await runQuote(["ES"], venueSource("ES", [], {}))).failure?.details).toBe("ES=F E-Mini S&P 500 future (try: gloomberb quote ES=F)");
+  expect((await runQuote(["ES"], venueSource("ES", [], {}))).failure?.details).toBe("ES=F E-Mini S&P 500 future (try: gloom quote ES=F)");
   // A security that quotes keeps its code and says nothing of the future.
   const nova = await runQuote(["NG"], venueSource("NG", ["AMEX"], { NG: createTestQuote({ symbol: "NG", name: "NovaGold Resources Inc." }) }));
   expect([nova.rows.map((row) => row.target.symbol), nova.warnings]).toEqual([["NG"], []]);
@@ -223,7 +224,7 @@ test("a futures board code quotes its future where no security uses it, and name
 
 test("a bare index root points at its ^ index, whether it found nothing or another instrument", async () => {
   const none = await runQuote(["VIX"], venueSource("VIX", [], {}));
-  expect(none.failure?.details).toContain("gloomberb quote ^VIX");
+  expect(none.failure?.details).toContain("gloom quote ^VIX");
 
   const corvex = createTestQuote({ symbol: "MOVE", name: "Corvex, Inc.", instrumentType: "EQUITY" });
   const other = venueSource("MOVE", ["NASDAQ"], { MOVE: corvex, "MOVE:NASDAQ": corvex, "^MOVE": { ...corvex, instrumentType: "INDEX" } });
@@ -232,7 +233,7 @@ test("a bare index root points at its ^ index, whether it found nothing or anoth
   expect((await runQuote(["MOVE:NASDAQ"], other)).warnings).toEqual([]);
   expect((await runQuote(["^MOVE"], other)).warnings).toEqual([]);
 
-  expect(buildSearchReport({ query: "vix", candidates: [] })).toContain("gloomberb quote ^VIX");
+  expect(buildSearchReport({ query: "vix", candidates: [] })).toContain("gloom quote ^VIX");
   expect(buildSearchReport({ query: "AAPL", candidates: [] })).not.toContain("^");
 });
 
@@ -383,7 +384,7 @@ test("search lists a symbol it no longer finds as no longer trading with its las
   expect(fb.warnings).toEqual([`FB now lists ${fund}; Meta Platforms trades as META (changed 2022-06-09)`]);
   expect((fb.data as Array<{ category: string }>).map((row) => row.category)).not.toContain("No Longer Trading");
   // A symbol with no change and no quote says nothing more.
-  expect((await json("ZZZZ")).warnings).toEqual(['Search finds tickers and company names. Try: gloomberb catalog "ZZZZ"']);
+  expect((await json("ZZZZ")).warnings).toEqual(['Search finds tickers and company names. Try: gloom catalog "ZZZZ"']);
 });
 
 test("a pasted list is one row per symbol, in order, however it is separated, for quote and compare alike", async () => {
@@ -422,6 +423,70 @@ test("a company's name in a pasted list is quoted as its listing, never as its w
   await quoteCommand.execute(["WHR, Whirlpool Corporation, BRK.B"], cli.context);
   expect(asked).toEqual([["WHR", "WHR:NYSE", "BRK.B"]]);
   expect((cli.printed[0] as PrintedCliResult).result.warnings).toContain('Read "Whirlpool Corporation" as WHR:NYSE (Whirlpool Corp).');
+});
+
+test("a company's name typed as one word no listing trades as is quoted as its listing, said in the user's spelling; a ticker wins", async () => {
+  const listed = (symbol: string, name: string, exchange: string) => ({ providerId: "test", symbol, name, exchange, type: "Common Stock", currency: "USD" });
+  const asked: string[][] = [];
+  const dataProvider = createTestDataProvider({
+    search: async (query) => /^apple$/i.test(query) ? [listed("AAPL", "Apple Inc.", "NASDAQ"), listed("APC", "Apple Inc.", "XETRA")]
+      : /^gold$/i.test(query) ? [listed("GLDG", "Gold Corp", "NYSE")]
+      : /^grp$/i.test(query) ? [listed("GCR", "Greencoat Group plc", "NYSE")]
+      : [],
+    getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => {
+      asked.push(targets.map((target) => target.symbol));
+      return targets.map((target) => ["APPLE", "GRP"].includes(target.symbol)
+        ? { target, quote: null, error: new Error(`Not a ticker: ${target.symbol}.`) }
+        : { target, quote: createTestQuote({ symbol: target.symbol }) });
+    },
+  });
+  const cli = createTestCliContext({ dataProvider });
+  await quoteCommand.execute(["Apple", "GOLD", "grp"], cli.context);
+  const { result } = cli.printed[0] as PrintedCliResult;
+  // GOLD trades, so it is GOLD, never the company search finds for the word; a short form (grp) names no company.
+  expect((result.data as Array<{ target: QuoteSubscriptionTarget }>).map((row) => row.target.symbol)).toEqual(["AAPL:NASDAQ", "GOLD", "GRP"]);
+  expect(asked).toEqual([["APPLE", "GOLD", "GRP"], ["AAPL:NASDAQ"]]);
+  const read = result.warnings!.find((warning) => warning.startsWith("Read "))!;
+  expect(read).toBe('Read "APPLE" as AAPL:NASDAQ (Apple Inc.).');
+  expect(withSearchHints(read, ["Apple", "GOLD", "grp"])).toBe('Read "Apple" as AAPL:NASDAQ (Apple Inc.).');
+  expect(result.warnings).toContain("Not a ticker: GRP.");
+});
+
+test("a word many names share is a name only as search's top result or an exact name; a coin's or a subject's name keeps its hint", async () => {
+  const row = (symbol: string, name: string, exchange: string, type = "Common Stock") => ({ providerId: "test", symbol, name, exchange, type, currency: "USD" });
+  const dataProvider = createTestDataProvider({
+    search: async (query) => {
+      switch (query.toLowerCase()) {
+        // Search puts a REIT first, but Apple Inc. is the name and nothing more.
+        case "apple": return [row("APLE", "Apple Hospitality REIT, Inc.", "NYSE"), row("AAPL", "Apple Inc.", "NASDAQ")];
+        // The top result is a future; the stocks only have the word in their names.
+        case "oil": return [row("CL=F", "WTI Crude Oil", "NYM", "FUTURE"), row("OILX", "Onyx Spot Return Crude Oil", "ARCA"), row("OINL", "Oil India Limited", "NSE")];
+        case "bitcoin": return [row("BCH-USD", "Bitcoin Cash", "CCC", "CRYPTOCURRENCY"), row("BSTY/BTC", " Bitcoin", "YOBIT", "Digital Currency"), row("BTCS", "Bitcoin Shop Inc.", "NASDAQ")];
+        case "hyperliquid": return [row("PURR", "Hyperliquid Strategies Inc", "NASDAQ")];
+        // A venue the app cannot read is no answer, never a failed command.
+        case "zorblax": return [row("ZBX", "Zorblax", "MOONX")];
+        default: return [row("CRBN", "Carbon Inc.", "NASDAQ")];
+      }
+    },
+    getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => targets.map((target) => target.exchange
+      ? { target, quote: createTestQuote({ symbol: target.symbol }) }
+      : { target, quote: null, error: new Error(`Not a ticker: ${target.symbol}.`) }),
+  });
+  // The crypto board lists Hyperliquid, which no list of major coins names.
+  resetBoardCoins([{ symbol: "BTC-USD", code: "BTC", name: "Bitcoin", marketCap: 2 }, { symbol: "HYPE-USD", code: "HYPE", name: "Hyperliquid", marketCap: 1 }]);
+  const words = ["Apple", "oil", "bitcoin", "hyperliquid", "carbon", "zorblax"];
+  const cli = createTestCliContext({ dataProvider });
+  await quoteCommand.execute(words, cli.context);
+  const { result } = cli.printed[0] as PrintedCliResult;
+  expect((result.data as Array<{ target: QuoteSubscriptionTarget }>).map((row) => row.target.symbol)).toEqual(["AAPL:NASDAQ", "OIL", "BITCOIN", "HYPERLIQUID", "CARBON", "ZORBLAX"]);
+  expect(result.warnings!.map((warning) => withSearchHints(warning, words))).toEqual([
+    'Read "Apple" as AAPL:NASDAQ (Apple Inc.).',
+    "Not a ticker: OIL. Try `gloom search oil`.",
+    "Not a ticker: BITCOIN. Did you mean BTC-USD (Bitcoin)?",
+    "Not a ticker: HYPERLIQUID. Did you mean HYPE-USD (Hyperliquid)?",
+    "Not a ticker: CARBON. Try `gloom search carbon`.",
+    "Not a ticker: ZORBLAX. Try `gloom search zorblax`.",
+  ]);
 });
 
 test("a company's name read as an index asks about the company's stock; marked by the service, it is that stock", async () => {

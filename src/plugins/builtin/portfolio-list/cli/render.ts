@@ -30,6 +30,8 @@ import {
   type PortfolioFuturesTerms,
 } from "../../../../portfolio/futures-positions";
 import { dailyFuturesHistory, loadPortfolioFuturesTerms, type PortfolioFuturesSources } from "../../../../portfolio/futures-terms";
+import { loadPurchaseDateCostFx, withPurchaseDateCostFx, type CostFxHistoryClient, type PurchaseDateCostFx } from "../../../../portfolio/cost-fx";
+import { apiClient } from "../../../../api-client";
 import { formatUtcDayTime, parseReportTime } from "../../../../utils/utc-time";
 import { quoteFreshnessFields } from "../../shared/report-freshness";
 import { resolvePortfolioTotalsCurrency } from "../summary/totals";
@@ -202,6 +204,8 @@ export interface ShowCollectionOptions {
   dividendDeadlineMs?: number;
   /** Where futures' terms and settlements are read; Gloom Cloud's terms and the data provider's daily bars by default. */
   futuresSources?: PortfolioFuturesSources;
+  /** Where the FX closes of the lots' purchase dates are read; Gloom Cloud by default. */
+  costFxHistory?: CostFxHistoryClient;
 }
 
 export async function showCollection(name: string, ctx: CliCommandContext, options: ShowCollectionOptions = {}) {
@@ -317,8 +321,14 @@ export interface PortfolioValuation {
   unknownContractSize: Set<string>;
   /** Futures valued at the close without a confirmed settlement to value them at. */
   unsettled: Set<string>;
-  /** Holdings in another currency whose cost converts at today's rate: no purchase date or cost FX rate was entered. */
+  /**
+   * Holdings in another currency whose cost converts at today's rate: no
+   * purchase date or cost FX rate was entered (`costFxUndated`), or the
+   * date's FX close could not be read (`costFxUnread`).
+   */
   costAtTodaysRate: Set<string>;
+  costFxUndated: Set<string>;
+  costFxUnread: Set<string>;
   /** Long and short market value of the priced lots, and their net and gross, in the portfolio's currency. */
   exposure: PortfolioExposure;
 }
@@ -346,10 +356,16 @@ function portfolioExposure(values: Iterable<number | null | undefined>): Portfol
 /**
  * What a book says of holdings in another currency whose cost converts at
  * today's rate, which leaves the currency's move since purchase out of their
- * P&L; `named` lists them as the table names its rows.
+ * P&L: those with no purchase date or rate, and those whose date's FX close
+ * could not be read. `named` lists them as the table names its rows.
  */
-export function costAtTodaysRateNote(named: string): string {
-  return `Cost converted at today's rate for ${named}; give portfolio position set a --date or --cost-fx to use the rate when bought.`;
+export function costAtTodaysRateNotes(valuation: Pick<PortfolioValuation, "costFxUndated" | "costFxUnread">,
+  named: (symbols: Iterable<string>) => string): string[] {
+  const undated = valuation.costFxUndated;
+  return [
+    ...undated.size ? [`Cost converted at today's rate for ${named(undated)}; give portfolio position set a --date or --cost-fx to use the rate when bought.`] : [],
+    ...valuation.costFxUnread.size ? [`Cost converted at today's rate for ${named(valuation.costFxUnread)}: the FX close of the purchase date could not be read.`] : [],
+  ];
 }
 
 /**
@@ -368,6 +384,7 @@ export async function valuePortfolioPositions({
   toBase,
   basis = "latest-print",
   futures,
+  purchaseDateFx,
 }: {
   tickers: readonly TickerRecord[];
   quotes: ReadonlyMap<string, CollectionQuote>;
@@ -378,6 +395,11 @@ export async function valuePortfolioPositions({
   basis?: PortfolioValuationBasis;
   /** Each future's contract size and settlement (loadPortfolioFuturesTerms), by symbol. */
   futures?: ReadonlyMap<string, PortfolioFuturesTerms>;
+  /**
+   * The FX closes of the lots' purchase dates in `currency` (loadPurchaseDateCostFx): a dated lot with no rate of
+   * its own into `currency` converts its cost at its date's close, and at today's rate when that could not be read.
+   */
+  purchaseDateFx?: PurchaseDateCostFx;
 }): Promise<PortfolioValuation> {
   const id = portfolioId;
   let totalPnl = 0;
@@ -388,11 +410,13 @@ export async function valuePortfolioPositions({
   const unknownContractSize = new Set<string>();
   const unsettled = new Set<string>();
   const costAtTodaysRate = new Set<string>();
+  const costFxUndated = new Set<string>();
+  const costFxUnread = new Set<string>();
   const values: PortfolioPositionValue[] = [];
   const holdings: AllocationHolding[] = [];
   const known = (value: number | null | undefined): number | null => value != null && Number.isFinite(value) ? value : null;
 
-  for (const ticker of tickers) {
+  for (const ticker of purchaseDateFx ? withPurchaseDateCostFx(tickers, purchaseDateFx, currency, id) : tickers) {
     const quote = quotes.get(ticker.metadata.ticker);
     const futuresTerms = isFuturesTicker(ticker) ? futures?.get(ticker.metadata.ticker) ?? { size: null, settlement: null } : null;
     // A lot entered without its contract size takes the one the terms state; the entries keep the saved record.
@@ -430,7 +454,7 @@ export async function valuePortfolioPositions({
       const atSettlement = valuesAtSettlement(metrics, basis);
       const positionCurrency = metrics.positionCurrency;
       const positionRate = positionCurrency ? await toBase(1, positionCurrency) : Number.NaN;
-      // The cost converts at the rate the lot was bought at when one was entered, else at today's, as its value does.
+      // The cost converts at the rate the lot was bought at, entered or its purchase date's close, else at today's, as its value does.
       const baseMetrics = getPortfolioPositionMetrics({ ...ticker, metadata: { ...ticker.metadata, positions: [position] } }, id, quoteCurrency,
         { currency, convert: value => value * positionRate }, quote);
       const boughtRate = positionCurrency ? lotCostFxRate(position, positionCurrency, currency) : null;
@@ -438,7 +462,10 @@ export async function valuePortfolioPositions({
         : boughtRate !== null ? baseMetrics.totalCost : await toBase(metrics.totalCost, positionCurrency);
       // Only a lot entered by hand can be given the rate it was bought at; a broker's lot reads as it always has.
       const atTodaysRate = position.broker === "manual" && !!positionCurrency && lotCostAtTodaysRate(position, positionCurrency, currency);
-      if (atTodaysRate && metrics.hasCostBasis) costAtTodaysRate.add(ticker.metadata.ticker);
+      if (atTodaysRate && metrics.hasCostBasis) {
+        costAtTodaysRate.add(ticker.metadata.ticker);
+        (purchaseDateFx && position.dateAcquired ? costFxUnread : costFxUndated).add(ticker.metadata.ticker);
+      }
       const costFx = boughtRate !== null ? { rate: boughtRate, currency } : atTodaysRate ? null : undefined;
       const currentValueBase = resolvePortfolioMarketValue(baseMetrics,
         valuationQuote ? await toBase(valuationQuote.price, quoteCurrency) : null)?.gross ?? null;
@@ -481,7 +508,7 @@ export async function valuePortfolioPositions({
 
   const exposure = portfolioExposure(values.map((entry) => entry.position ? entry.row.marketValue as number | null : null));
   return { basis, positions: values, holdings, totalPnl, unavailablePnl, unavailableCost, unavailableMarketValue, brokerPnlSymbols,
-    unknownContractSize, unsettled, costAtTodaysRate, exposure };
+    unknownContractSize, unsettled, costAtTodaysRate, costFxUndated, costFxUnread, exposure };
 }
 
 /**
@@ -686,7 +713,7 @@ async function showCollectionWithMarketData(
   name: string,
   ctx: CliCommandContext,
   { config, store, dataProvider, persistence }: MarketContext,
-  { explain = false, basis = "latest-print", drip, dividendDeadlineMs = DIVIDEND_READ_DEADLINE_MS, futuresSources }: ShowCollectionOptions,
+  { explain = false, basis = "latest-print", drip, dividendDeadlineMs = DIVIDEND_READ_DEADLINE_MS, futuresSources, costFxHistory = apiClient }: ShowCollectionOptions,
 ) {
   const tickers = (await store.loadAllTickers()).sort((left, right) =>
     left.metadata.ticker.localeCompare(right.metadata.ticker)
@@ -702,10 +729,10 @@ async function showCollectionWithMarketData(
 
   const matchedPortfolio = collection.kind === "portfolio" ? collection.portfolio : undefined;
   if (!matchedPortfolio && basis === "regular-close") {
-    ctx.fail(`--close values a portfolio; "${collection.name}" is a watchlist.`, "Usage: gloomberb portfolio show <portfolio> --close");
+    ctx.fail(`--close values a portfolio; "${collection.name}" is a watchlist.`, "Usage: gloom portfolio show <portfolio> --close");
   }
   if (!matchedPortfolio && drip) {
-    ctx.fail(`--drip projects a portfolio's dividends; "${collection.name}" is a watchlist.`, "Usage: gloomberb portfolio show <portfolio> --drip");
+    ctx.fail(`--drip projects a portfolio's dividends; "${collection.name}" is a watchlist.`, "Usage: gloom portfolio show <portfolio> --drip");
   }
   const isPortfolio = !!matchedPortfolio;
   const id = collection.id;
@@ -731,12 +758,13 @@ async function showCollectionWithMarketData(
 
   const futuresHeld = filtered.filter((ticker) => isFuturesTicker(ticker)
     && ticker.metadata.positions.some((position) => position.portfolio === id && position.shares !== 0));
-  const [quotes, futures] = await Promise.all([
+  const [quotes, futures, purchaseDateFx] = await Promise.all([
     loadCollectionQuotes(filtered, collection, dataProvider),
     isPortfolio ? loadPortfolioFuturesTerms(futuresHeld, {
       settlement: basis === "regular-close",
       sources: { history: dailyFuturesHistory(dataProvider), ...futuresSources },
     }) : undefined,
+    isPortfolio ? loadPurchaseDateCostFx(filtered, { into: currency, history: costFxHistory, portfolioId: id }) : undefined,
   ]);
   // Worst of across the holdings' quotes, as the PORT and watchlist reports state it.
   const broker = !!(matchedPortfolio?.brokerId || matchedPortfolio?.brokerInstanceId);
@@ -756,7 +784,7 @@ async function showCollectionWithMarketData(
   }
 
   if (matchedPortfolio) {
-    const valuation = await valuePortfolioPositions({ tickers: filtered, quotes, portfolioId: id, currency, baseCurrency: config.baseCurrency, toBase, basis, futures });
+    const valuation = await valuePortfolioPositions({ tickers: filtered, quotes, portfolioId: id, currency, baseCurrency: config.baseCurrency, toBase, basis, futures, purchaseDateFx });
     // Exports carry no header line, so their source line names the basis.
     freshness = portfolioValuationFreshness(valuation, source, { note: structured });
     const {
@@ -930,7 +958,7 @@ async function showCollectionWithMarketData(
         exposure,
         ...(unknownContractSize.size > 0 ? { unknownContractSizeSymbols: [...unknownContractSize] } : {}),
         ...(unsettled.size > 0 ? { unsettledSymbols: [...unsettled] } : {}),
-        // Holdings in another currency with no purchase date or cost FX rate: their cost converts at today's rate.
+        // Holdings in another currency whose cost converts at today's rate: no purchase date or cost FX rate, or the date's close was not read.
         ...(costAtTodaysRate.size > 0 ? { costAtTodaysRateSymbols: [...costAtTodaysRate] } : {}),
         accountingBasis, ...(manualAccounting ? { manualAccounting } : {}),
         ...(matchedPortfolio.importedFrom ? { importedFrom: matchedPortfolio.importedFrom } : {}),
@@ -1086,7 +1114,7 @@ async function showCollectionWithMarketData(
     const targetNote = describeTargetSum(allocation.targetSum, allocation.weightBasis);
     if (targetNote) notes.push(cliStyles.muted(targetNote));
     if (brokerPnlSymbols.size > 0) notes.push(cliStyles.muted(`P&L for ${named(brokerPnlSymbols)} is the broker's last snapshot.`));
-    if (costAtTodaysRate.size > 0) notes.push(cliStyles.muted(costAtTodaysRateNote(named(costAtTodaysRate))));
+    notes.push(...costAtTodaysRateNotes(valuation, named).map((note) => cliStyles.muted(note)));
     if (unknownContractSize.size > 0) {
       notes.push(cliStyles.warning(`No contract size for ${named(unknownContractSize)}, so ${unknownContractSize.size === 1 ? "its" : "their"} value, cost and P&L are not shown.`));
     }

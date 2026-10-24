@@ -17,7 +17,7 @@ import { futuresSessionRefreshInterval } from "../shared/futures-session";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { useQuoteBoard } from "../shared/use-quote-board";
 import { getCachedFuturesCurve, loadFuturesCurve, loadFuturesCurveAsOf } from "./client";
-import { basisSpotSymbol, curveAsOfDate, curveAxisPrice, curveBasisPercent, curveBasisRows, curveChangeText, curveContractChanges, curveContractCode, curvePrice, curveRank, curveSpot, curveSpotLabel, curveSpotSource, curveSpreadLabel, curveTimestamp, curveTitle, curveUnitLabel, DEFAULT_CURVE_HORIZON, futuresCurveSeries, newestQuote, normalizeCurveRoot, paneCurveRoot, sortCurveContracts, thinContractCount, thinContractsNotice, unsupportedCurveRootMessage, type CurveContractChanges, type CurveSpot } from "./model";
+import { basisSpotSymbol, curveAsOfDate, curveAxisPrice, curveBasisPercent, curveBasisRows, curveChangeText, curveContractChanges, curveContractCode, curvePrice, curveRank, curveSpot, curveSpotLabel, curveSpotSource, curveSpreadLabel, curveTimestamp, curveTitle, curveUnitLabel, DEFAULT_CURVE_HORIZON, futuresCurveSeries, newestQuote, noTradeChangeNote, normalizeCurveRoot, paneCurveRoot, sortCurveContracts, thinContractCount, thinContractsNotice, unsupportedCurveRootMessage, type CurveContractChanges, type CurveSpot } from "./model";
 
 const TABS = [{ value: "curve", label: "Curve" }, { value: "contracts", label: "Contracts" }];
 // One column order for every root. SETTLE is the exchange settlement for the
@@ -215,8 +215,11 @@ function FuturesCurveView({ width, height, focused, root, ownsTitle }: PaneProps
   // Thin contracts join the data warnings: the info row has no room for them beside the quote times.
   // A long in these can be assigned delivery: the hedge a trader rolls before first notice.
   const delivering = data?.contracts.filter((row) => row.inDelivery).map((row) => curveContractCode(row.symbol)) ?? [];
+  // A blank Change on Contracts says why, as a blank basis does: no trade since the settlement it is measured from.
+  const untraded = data && !requestedDate && columns.some((entry) => entry.id === "change")
+    ? noTradeChangeNote(tableRows, data, { count: true }) : null;
   usePaneNoticeFooter({ registrationId: "futures-curve:notices", focused,
-    notices: emptyPast ? [] : [...data?.gaps ?? [], ...thinCount ? [thinContractsNotice(thinCount)] : [],
+    notices: emptyPast ? [] : [...data?.gaps ?? [], ...thinCount ? [thinContractsNotice(thinCount)] : [], ...untraded ? [untraded] : [],
       ...delivering.length ? [`${delivering.join(", ")} ${delivering.length === 1 ? "is" : "are"} past first notice.`] : []] });
   const delay = Math.max(0, ...(data?.contracts.map((row) => row.delayMinutes ?? 0) ?? []));
   usePaneStatusFooter({ registrationId: "futures-curve", loading: resource.loading, error: resource.error,

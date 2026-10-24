@@ -12,7 +12,7 @@ A failed or malformed RSS/Atom response leaves the last successfully cached stor
 
 If saved news feed settings contain unreadable JSON, the News Feed status reports that the settings could not be read. RSS loading and feed edits pause, including automatic migration; the saved values stay untouched. Repair the affected `feeds` or `disabledDefaultFeedIds` value in the `news` plugin configuration and refresh to resume. To discard a damaged value deliberately, back up the configuration first, then replace that value with `[]`: this removes custom feeds for `feeds`, or restores bundled feeds for `disabledDefaultFeedIds`. Readable settings keep their existing normalization and migration behavior.
 
-`gloomberb rss fetch <url>` exits with a non-zero status when the feed cannot be fetched or parsed. A valid feed with no items still succeeds; text output says "The feed has no items."
+`gloom rss fetch <url>` exits with a non-zero status when the feed cannot be fetched or parsed. A valid feed with no items still succeeds; text output says "The feed has no items."
 
 ## Sources, times, tickers and topics
 

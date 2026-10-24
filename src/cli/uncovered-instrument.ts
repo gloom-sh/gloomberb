@@ -14,7 +14,7 @@ const VIX_FUNCTION_INDICES: ReadonlySet<string> = new Set(VOLATILITY_INDICES.map
 export function uncoveredInstrumentCommand(instrument: InstrumentOfKind): string {
   const symbol = instrument.symbol;
   const bare = parsePublicTickerKey(symbol).symbol.toUpperCase();
-  if (instrument.kind === "index" && VIX_FUNCTION_INDICES.has(bare)) return "gloomberb fn VIX";
-  if (instrument.kind === "fund") return `gloomberb fundamentals ${symbol}`;
-  return `gloomberb ticker ${symbol}`;
+  if (instrument.kind === "index" && VIX_FUNCTION_INDICES.has(bare)) return "gloom fn VIX";
+  if (instrument.kind === "fund") return `gloom fundamentals ${symbol}`;
+  return `gloom ticker ${symbol}`;
 }

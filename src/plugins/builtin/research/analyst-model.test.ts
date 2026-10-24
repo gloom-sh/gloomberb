@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { AnalystRatingRecord, AnalystResearchData, Quote } from "../../../types/financials";
-import { analystReferencePrice, analystTargetCurrency, buildAnalystFooterInfo, buildAnalystStatusSegments, buildAnalystTargetHistory, buildMeanTargetHistory, buildRatingColumns, formatAnalystPrice, formatRatingTarget, formatRecommendationMix, latestRecommendation, ratingSplit, ratingTargetDelta, recommendationMix, recommendationTotal, sortRatingRows, targetUpside, type RatingSortPreference } from "./analyst-model";
+import { analystReferenceMetadata, analystReferencePrice, analystTargetCurrency, analystUpside, buildAnalystFooterInfo, buildAnalystStatusSegments, buildAnalystTargetHistory, buildMeanTargetHistory, buildRatingColumns, formatAnalystPrice, formatAnalystReference, formatRatingTarget, formatRecommendationMix, latestRecommendation, ratingSplit, ratingTargetDelta, recommendationMix, recommendationTotal, sortRatingRows, targetUpside, type RatingSortPreference } from "./analyst-model";
 const data: AnalystResearchData = { symbol: "FIX", recommendations: [], ratings: [], earningsEstimates: [], revenueEstimates: [] };
 const complete = { period: "current month", strongBuy: 2, buy: 3, hold: 4, sell: 0, strongSell: 0 };
 
@@ -40,7 +40,7 @@ test("status segments name an older mix's period and never claim fresh stale dat
 
   // The Buy/Hold/Sell split is a figure above the chart, not a footer segment.
   expect(text(research)).toBe(
-    "low $225.00 med $482.50 high $625.00 · rating 8.8/10 · upside vs $467.50 · fetched 2h ago",
+    "low $225.00 med $482.50 high $625.00 · rating 8.8/10 · upside vs $467.50 provider ref · fetched 2h ago",
   );
   expect(ratingSplit(research)).toEqual({ buy: 5, hold: 4, sell: 0, period: null });
   expect(ratingSplit({ ...research, recommendations: [{ ...complete, period: "previous month" }] })?.period)
@@ -113,19 +113,55 @@ test("upside follows the live price only when it is quoted in the target's curre
     symbol: "FIX", price: 110, change: 0, changePercent: 0, currency: "USD", lastUpdated: 1, dataSource: "live", ...overrides,
   });
   const live = analystReferencePrice(research, quote({}));
-  expect(live).toEqual({ price: 110, freshness: "real-time", live: true });
+  expect(live).toMatchObject({ price: 110, freshness: "real-time", live: true, close: false });
   expect(targetUpside(research.priceTarget, live.price)).toBeCloseTo(120 / 110 - 1);
   expect(analystReferencePrice(research, quote({ dataSource: "delayed" })).freshness).toBe("15m delayed");
   // After the close the upside is from the close, not the after-hours print the quote's price carries.
   expect(analystReferencePrice(research, quote({ price: 112, marketState: "POST", regularClose: 110, regularChange: 1 })).price).toBe(110);
   // An ADR quoted in another currency, a pence line or a stale quote keep the provider's reference.
   for (const other of [quote({ currency: "EUR" }), quote({ currency: "GBp" }), quote({ stale: true })]) {
-    expect(analystReferencePrice(research, other)).toEqual({ price: 100, freshness: null, live: false });
+    expect(analystReferencePrice(research, other)).toMatchObject({ price: 100, freshness: null, live: false });
   }
   const footer = buildAnalystStatusSegments(research, live)
     .find((segment) => segment.id === "analyst-reference-price")!
     .parts.map((part) => part.text).join(" ");
   expect(footer).toBe("upside vs $110.00 real-time");
+});
+
+// DUOL before the open on Fri 23 Oct 2026: research fetched after Wednesday's 137.32 close, Last the 141.39
+// Thursday close. `analyst` printed -1.40% from the stale reference; from Last it is -4.24%.
+test("the upside is measured from Last and says which price and when, for analyst and fn ANR alike", () => {
+  const research: AnalystResearchData = {
+    ...data,
+    currency: "USD",
+    fetchedAt: "2026-10-21T21:30:00.000Z",
+    priceTarget: { current: 137.32, average: 135.4, median: 137.5, low: 80, high: 210, currency: "USD" },
+  };
+  const quote: Quote = {
+    symbol: "DUOL", price: 140.59, change: -0.8, changePercent: -0.57, currency: "USD", dataSource: "delayed",
+    lastUpdated: Date.parse("2026-10-23T12:05:00Z"), marketState: "PRE", exchangeName: "NASDAQ", listingExchangeName: "NASDAQ",
+    previousClose: 141.39, regularClose: 141.39, regularCloseSessionDate: "2026-10-22", regularChange: 4.07,
+    regularChangePercent: 2.96, preMarketPrice: 140.59, changeSessionDate: "2026-10-23",
+  };
+  const { upside, reference } = analystUpside(research, quote);
+  expect(upside).toBeCloseTo(135.4 / 141.39 - 1, 6);
+  const now = Date.parse("2026-10-23T12:05:00Z");
+  expect(formatAnalystReference(reference, "USD", now)).toBe("$141.39, Thu 22 Oct close");
+  // The ANR pane's status bar names the same price and close.
+  const footer = buildAnalystStatusSegments(research, reference, now)
+    .find((segment) => segment.id === "analyst-reference-price")!.parts.map((part) => part.text).join(" ");
+  expect(footer).toBe("upside vs $141.39 Thu 22 Oct close");
+  expect(analystReferenceMetadata(reference)).toEqual({
+    price: 141.39, asOf: "2026-10-22T20:00:00.000Z", basis: "regular session close", freshness: "15m delayed",
+  });
+  // Without a quote it is the provider's reference, and says so.
+  const fallback = analystUpside(research, null);
+  expect(fallback.upside).toBeCloseTo(135.4 / 137.32 - 1, 6);
+  expect(formatAnalystReference(fallback.reference, "USD", now)).toBe("$137.32, provider reference at retrieval Wed 21 Oct 21:30 UTC");
+  // While the session trades, the print's time and feed.
+  const open = analystUpside(research, { ...quote, marketState: "REGULAR", price: 142.1, lastUpdated: Date.parse("2026-10-23T14:05:00Z"),
+    regularClose: undefined, regularCloseSessionDate: undefined, preMarketPrice: undefined, previousClose: 141.39 });
+  expect(formatAnalystReference(open.reference, "USD", now)).toBe("$142.10, Fri 23 Oct 14:05 UTC (15m delayed)");
 });
 
 test("the mean-target line starts once five firms, or every covering firm, are in it", () => {

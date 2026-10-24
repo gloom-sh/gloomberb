@@ -55,7 +55,7 @@ export function HiringBuildingView({ symbol, width, height, focused, accessKey, 
   const [storedView, setView] = usePluginPaneState<string>(`${scope}:view`, openingView);
   const view = isBuildingView(storedView) ? storedView : "families";
   const [snapshotSetting] = usePaneSettingValue<BuildingPayload | null>("buildingSnapshot", null);
-  // A `gloomberb shot` hands the payload in; a company opened from a board snapshot still loads its own.
+  // A `gloom shot` hands the payload in; a company opened from a board snapshot still loads its own.
   const snapshot = useMemo(() => {
     try {
       const payload = snapshotSetting ? validateBuilding(snapshotSetting) : null;

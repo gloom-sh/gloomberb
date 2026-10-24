@@ -847,7 +847,7 @@ export function Shell({
         justifyContent="center"
       >
         <Box flexDirection="column" alignItems="center">
-          <AsciiText text="Gloomberb" font="wordmark" color={colors.textMuted} />
+          <AsciiText text="Gloom" font="wordmark" color={colors.textMuted} />
           <Box height={1} />
           {/* An empty layout starts at the command bar: a click opens it, the key is beside it. */}
           <Button

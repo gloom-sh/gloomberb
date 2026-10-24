@@ -1,5 +1,6 @@
 import type { CliGlobalOptions } from "./options";
 import {
+  cliPlainEnabled,
   cliStyles,
   cliTerminalWidth,
   renderStats,
@@ -237,7 +238,7 @@ function formatTextValue(
   depth = 0,
   width: number | null = null,
 ): string {
-  const missing = context === "record" ? cliStyles.muted("-") : "";
+  const missing = context === "record" ? cliPlainEnabled() ? "—" : cliStyles.muted("-") : "";
   if (value == null || value === "") return missing;
   // Times print in UTC with the zone named, never in the host's zone; JSON and CSV keep the raw value.
   if (value instanceof Date) return formatUtcTime(value);
@@ -366,11 +367,23 @@ function renderCsv<Row extends Record<string, unknown>>(
   ]);
 }
 
+/**
+ * The key an NDJSON row says why its figures are empty under: `status`, or
+ * `value_status` beside a field of the row's own that the export writes under
+ * that name (an order's status), as CSV's header does.
+ */
+function ndjsonStatusKey(rows: readonly unknown[], columns?: readonly CliResultColumn<never>[]): string {
+  const own = columns && columns.length > 0
+    ? columns.some((column) => column.key === "status")
+    : rows.some((row) => isPlainObject(row) && "status" in row);
+  return own ? "value_status" : "status";
+}
+
 /** An NDJSON row: a figure that is no number is null, and the row says why its figures are empty when the command does. */
-function ndjsonRow<Row extends Record<string, unknown>>(row: Row, status?: (row: Row) => string | null | undefined): Record<string, unknown> {
+function ndjsonRow<Row extends Record<string, unknown>>(row: Row, status: ((row: Row) => string | null | undefined) | undefined, statusKey: string): Record<string, unknown> {
   const blanked = Object.entries(row).flatMap(([key, value]) => isNonFiniteNumber(value) ? [key] : []);
   const own = blanked.length > 0 ? { ...row, ...Object.fromEntries(blanked.map((key) => [key, null])) } : row;
-  return status ? { ...own, status: exportStatusText(status(row), blanked) || null } : own;
+  return status ? { ...own, [statusKey]: exportStatusText(status(row), blanked) || null } : own;
 }
 
 function stringField(row: Record<string, unknown>, key: string): string | null {
@@ -413,10 +426,11 @@ function renderTextTable<Row extends Record<string, unknown>>(
 ): string {
   const resolvedColumns = textColumns(rows, columns);
   const cells = rows.map((row) => resolvedColumns.map((column) => formatTextCell(column, row, "table")));
-  // A column no row fills is noise in a table; exports keep it.
+  // A column no row fills is noise in a table; exports keep it, and so does plain output, whose
+  // tables keep one shape from query to query with "—" in the empty cells.
   const filled = resolvedColumns
     .map((column, index) => ({ column, index }))
-    .filter(({ column, index }) => column.width != null || cells.some((row) => row[index] !== ""));
+    .filter(({ column, index }) => cliPlainEnabled() || column.width != null || cells.some((row) => row[index] !== ""));
   const shown = filled.length > 0 ? filled : resolvedColumns.map((column, index) => ({ column, index }));
   return renderTable(
     shown.map(({ column }) => ({
@@ -516,9 +530,10 @@ function serializeCliRows<T, Row extends Record<string, unknown>>(
   const rows = window.rows;
   const status = renderOptions.exportStatus;
   if (options.format === "ndjson") {
+    const statusKey = ndjsonStatusKey(rows, renderOptions.columns as readonly CliResultColumn<never>[] | undefined);
     return rows.map((row) => {
       if (!isPlainObject(row)) return JSON.stringify(row);
-      const fields = ndjsonRow(row as Row, status);
+      const fields = ndjsonRow(row as Row, status, statusKey);
       return JSON.stringify(cited ? { ...fields, ...exportIdentityFields(cited, rowIdentity(row as Row, renderOptions.exportIdentity)) } : fields);
     }).join("\n");
   }

@@ -277,7 +277,7 @@ export async function pickPeers(symbol: string, financials: TickerFinancials | n
     description: financials?.profile?.description ?? null,
     marketCapUsd: null,
   };
-  const listYourOwn = `List them yourself: gloomberb fn RV ${symbol} <tickers>.`;
+  const listYourOwn = `List them yourself: gloom fn RV ${symbol} <tickers>.`;
   const group = peerGroupOf(subject);
   if (!group) throw new Error(`${symbol}'s profile names no industry, so --peers cannot pick its peers. ${listYourOwn}`);
   let candidates: PeerCandidates | null = null;

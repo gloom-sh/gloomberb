@@ -26,14 +26,14 @@ export function brokerIndexReadAs(code: BrokerIndexCode): string {
   return `Read ${code.typed} as ${code.symbol} (${code.name}).`;
 }
 
-/** "^VIX  Cboe Volatility Index (try: gloomberb quote ^VIX)", under a bare root that found nothing. */
+/** "^VIX  Cboe Volatility Index (try: gloom quote ^VIX)", under a bare root that found nothing. */
 export function indexRootTryLine(root: IndexRoot, command = "quote"): string {
-  return `${root.symbol}  ${root.name} (try: gloomberb ${command} ${root.symbol})`;
+  return `${root.symbol}  ${root.name} (try: gloom ${command} ${root.symbol})`;
 }
 
-/** "also ^MOVE ICE BofA MOVE Index (gloomberb quote ^MOVE)", under a bare root that quoted another instrument. */
+/** "also ^MOVE ICE BofA MOVE Index (gloom quote ^MOVE)", under a bare root that quoted another instrument. */
 export function indexRootAlsoLine(root: IndexRoot, command = "quote"): string {
-  return `also ${root.symbol} ${root.name} (gloomberb ${command} ${root.symbol})`;
+  return `also ${root.symbol} ${root.name} (gloom ${command} ${root.symbol})`;
 }
 
 /** Cboe's Treasury yield indices: 13-week bill, 5-, 10- and 30-year notes. Each level is a yield in percent. */

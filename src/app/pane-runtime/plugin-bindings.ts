@@ -236,7 +236,7 @@ export function bindAppPanePluginRegistry({
       const sharedPane = materialized.layout.instances[0];
       if (!sharedPane) throw new Error("This shared pane is invalid.");
       const paneDef = pluginRegistry.panes.get(sharedPane.paneId);
-      if (!paneDef) throw new Error("This shared pane is unavailable in this version of Gloomberb.");
+      if (!paneDef) throw new Error("This shared pane is unavailable in this version of Gloom.");
       const owner = pluginRegistry.getDisabledPaneOwner(sharedPane.paneId, stateRef.current.config.disabledPlugins);
       if (owner) throw new PluginOffError(owner, "this shared pane");
       const instance = buildPaneInstance(sharedPane.paneId, sharedPane);

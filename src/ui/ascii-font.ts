@@ -69,9 +69,21 @@ const GLOOMBERB_WORDMARK = [
   "▝▀  ▘▝▀ ▝▀ ▘▝ ▘▀▀ ▝▀▘▘  ▀▀ ",
 ];
 
+/** The first five letters of the wordmark above. */
+const GLOOM_WORDMARK = GLOOMBERB_WORDMARK.map((line) => line.slice(0, 15));
+
+/**
+ * The drawn wordmarks, by the text they spell. The app is Gloom; chart
+ * screenshots keep the Gloomberb watermark.
+ */
+const WORDMARKS = new Map<string, string[]>([
+  ["gloom", GLOOM_WORDMARK],
+  ["gloomberb", GLOOMBERB_WORDMARK],
+]);
+
 export function renderAsciiText(text: string, font: AsciiFontName = "tiny"): string[] {
   if (font === "wordmark") {
-    return text.trim().toLowerCase() === "gloomberb" ? GLOOMBERB_WORDMARK : [text];
+    return WORDMARKS.get(text.trim().toLowerCase()) ?? [text];
   }
 
   const lines = ["", ""];

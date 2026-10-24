@@ -135,7 +135,7 @@ export async function runPluginAutoUpdate(
     if (only && !only.includes(directory)) continue;
     const absorbed = findAbsorbedPlugin(checkout);
     if (absorbed) {
-      deps.log(`Not updating ${directory}: ${absorbed.name} is built into Gloomberb now.`);
+      deps.log(`Not updating ${directory}: ${absorbed.name} is built into Gloom now.`);
       continue;
     }
     const listing = checkout.repo ? listings.get(checkout.repo.toLowerCase()) : undefined;
@@ -147,7 +147,7 @@ export async function runPluginAutoUpdate(
     }
     const required = requiredGloomberb(listing.minGloomberb, hostVersion) ?? checkout.needsGloomberb;
     if (required) {
-      deps.log(`Not updating ${directory}: it needs Gloomberb ${required}, this is ${hostVersion}.`);
+      deps.log(`Not updating ${directory}: it needs Gloom ${required}, this is ${hostVersion}.`);
       continue;
     }
     const pin: PluginPin | undefined = listing.ref || listing.commit

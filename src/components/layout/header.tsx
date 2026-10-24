@@ -412,7 +412,7 @@ function resolveUpdateStatusView({
     if (updateAvailable.updateAction.kind === "managed") {
       return {
         kind: "text",
-        text: tf("v{version} available, update through the package manager that installed Gloomberb", {
+        text: tf("v{version} available, update through the package manager that installed Gloom", {
           version: updateAvailable.version,
         }),
       };

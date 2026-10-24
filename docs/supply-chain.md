@@ -82,19 +82,19 @@ Verification can promote a lead when stronger evidence arrives. Conflicting valu
 ## CLI and REST
 
 ```sh
-gloomberb fn SPLC NVDA --json
-gloomberb fn SPLC 005930.KS --json
-gloomberb fn SPLC NVDA --tiers sec,company,call,reported --json
-gloomberb fn SPLC NVDA --tiers unconfirmed --json
-gloomberb fn SPLC NVDA --tab graph --depth 3 --direction upstream --json
-gloomberb fn SPLC NVDA --tab path --to MSFT --depth 4 --ranking shortest --json
-gloomberb fn SPLC AAPL --tab graph --roles supplier --sources filing_text,xbrl --tiers primary,structured --min-confidence 0.8 --min-pct 5 --limit 25 --as-of 2025-12-31 --json
-gloomberb shot SPLC NVDA --tab table --view names --width 1280 --height 540 --output supply-table.png
-gloomberb shot SPLC NVDA --tab flow --tiers sec,company,call,reported --width 720 --height 360 --output supply-flow.png
-gloomberb shot SPLC NVDA --evidence --width 1280 --height 540 --output supply-evidence.png
-gloomberb shot SPLC NVDA --tab graph --depth 3 --width 1280 --height 540 --output supply-graph.png
-gloomberb shot SPLC NVDA --tab path --to MSFT --depth 4 --width 720 --height 360 --output supply-path.png
-gloomberb shot SPLC NVDA --tab path --to MSFT --depth 4 --evidence --width 1280 --height 540 --output supply-path-evidence.png
+gloom fn SPLC NVDA --json
+gloom fn SPLC 005930.KS --json
+gloom fn SPLC NVDA --tiers sec,company,call,reported --json
+gloom fn SPLC NVDA --tiers unconfirmed --json
+gloom fn SPLC NVDA --tab graph --depth 3 --direction upstream --json
+gloom fn SPLC NVDA --tab path --to MSFT --depth 4 --ranking shortest --json
+gloom fn SPLC AAPL --tab graph --roles supplier --sources filing_text,xbrl --tiers primary,structured --min-confidence 0.8 --min-pct 5 --limit 25 --as-of 2025-12-31 --json
+gloom shot SPLC NVDA --tab table --view names --width 1280 --height 540 --output supply-table.png
+gloom shot SPLC NVDA --tab flow --tiers sec,company,call,reported --width 720 --height 360 --output supply-flow.png
+gloom shot SPLC NVDA --evidence --width 1280 --height 540 --output supply-evidence.png
+gloom shot SPLC NVDA --tab graph --depth 3 --width 1280 --height 540 --output supply-graph.png
+gloom shot SPLC NVDA --tab path --to MSFT --depth 4 --width 720 --height 360 --output supply-path.png
+gloom shot SPLC NVDA --tab path --to MSFT --depth 4 --evidence --width 1280 --height 540 --output supply-path-evidence.png
 ```
 
 `--tiers` is contextual: Table and Flow accept `sec,company,call,reported,unconfirmed` and default to `sec,company,call`; Graph and Path accept `structured,primary,secondary,imported` and default to all graph tiers. Values from one view are not aliases for the other view.

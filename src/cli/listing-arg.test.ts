@@ -207,8 +207,8 @@ test("a bare code several companies list asks which, whichever way the router wo
     // Every venue is a choice, the first included.
     expect(failure.details).toBe([
       "Listings:",
-      "  2222:JPX Kotobuki Spirits Co., Ltd. (try: gloomberb history 2222:JPX)",
-      "  2222:TADAWUL Saudi Arabian Oil Co. (try: gloomberb history 2222:TADAWUL)",
+      "  2222:JPX Kotobuki Spirits Co., Ltd. (try: gloom history 2222:JPX)",
+      "  2222:TADAWUL Saudi Arabian Oil Co. (try: gloom history 2222:TADAWUL)",
     ].join("\n"));
   }
   // A timeout is not a missing listing: it surfaces as it was thrown.
@@ -222,7 +222,7 @@ test("a bare code several companies list asks which, whichever way the router wo
   const saved = await loadForListing(await resolveCliListing("2222", undefined, deps), deps, ctx, async () => { throw new Error("Not a ticker: 2222."); }, undefined, request)
     .catch((error) => error);
   expect(saved.message).toBe("2222 resolved to Saudi Arabian Oil Co. (TADAWUL), which has no history.");
-  expect(saved.details).toBe("Other listings: 2222:JPX Kotobuki Spirits Co., Ltd. (try: gloomberb history 2222:JPX)");
+  expect(saved.details).toBe("Other listings: 2222:JPX Kotobuki Spirits Co., Ltd. (try: gloom history 2222:JPX)");
 });
 
 test("listings of one company, however each venue spells its name, still go to the first venue with the others as retries", async () => {
@@ -245,8 +245,8 @@ test("listings of one company, however each venue spells its name, still go to t
     undefined, { command: "history --range 5Y", noun: "history" },
   ).catch((error) => error);
   expect(failure.message).toBe("SAN resolved to Banco Santander, S.A. (NYSE), which has no history.");
-  expect(failure.details).toContain("SAN:BVL BANCO SANTANDER SA Sponsored ADR (try: gloomberb history SAN:BVL --range 5Y)");
-  expect(failure.details).toContain("SAN:XETRA (try: gloomberb history SAN:XETRA --range 5Y)");
+  expect(failure.details).toContain("SAN:BVL BANCO SANTANDER SA Sponsored ADR (try: gloom history SAN:BVL --range 5Y)");
+  expect(failure.details).toContain("SAN:XETRA (try: gloom history SAN:XETRA --range 5Y)");
 });
 
 // CAR as search listed it on 2026-10-11 in its first rows: Avis and Carrefour, but not CAR Group's ASX line.

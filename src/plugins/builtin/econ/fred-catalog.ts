@@ -8,8 +8,8 @@ type FredRow = readonly [seriesId: string, name: string, unit: string, frequency
  * maturities (UST:2Y and so on, from the yield curve) and the credit spreads
  * and yields (from the credit plugin). Ids follow the server's allowlist: a
  * series added there is listed here to reach the catalog.
- * Türkiye's CPI is served the same way but is not on FRED; its rows name
- * TurkStat (`seriesNotOnFred`).
+ * Türkiye's CPI and Brazil's IPCA are served the same way but are not on
+ * FRED; their rows name TurkStat and IBGE (`seriesNotOnFred`).
  */
 const GROUPS: ReadonlyArray<{ group: string; rows: readonly FredRow[] }> = [
   {
@@ -127,6 +127,9 @@ const GROUPS: ReadonlyArray<{ group: string; rows: readonly FredRow[] }> = [
       ["T5YIFR", "5Y, 5Y forward inflation expectation", "%", "daily", ["breakeven", "expectations", "5y5y"]],
       ["TURCPIYOY", "Türkiye CPI, y/y", "%", "monthly", ["CPI", "headline", "Turkey", "TR", "inflation", "lira"]],
       ["TURCPIMOM", "Türkiye CPI, m/m", "%", "monthly", ["CPI", "headline", "Turkey", "TR", "inflation", "lira"]],
+      ["BRAIPCAMOM", "Brazil IPCA, m/m", "%", "monthly", ["IPCA", "CPI", "headline", "Brazil", "BR", "Brazil inflation", "inflation", "real"]],
+      ["BRAIPCA15MOM", "Brazil IPCA-15 mid-month, m/m", "%", "monthly",
+        ["IPCA-15", "IPCA", "CPI", "mid-month", "Brazil", "BR", "Brazil inflation", "inflation", "real"]],
     ],
   },
   {

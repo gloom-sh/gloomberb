@@ -185,7 +185,7 @@ async function restoreShotCloudSession(): Promise<void> {
 
 /**
  * Runs an asset-data request in the Bun process so the page sees exactly what
- * `gloomberb fn` sees. The page can only reach the cloud API on its own, and
+ * `gloom fn` sees. The page can only reach the cloud API on its own, and
  * the cloud is one source among several: analyst rating price targets and part
  * of the corporate action history come from providers the router merges in.
  */

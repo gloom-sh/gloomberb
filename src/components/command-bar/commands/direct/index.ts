@@ -220,7 +220,7 @@ export function runDirectCommandAction(options: {
         title: "Reset All Data",
         body: [
           "This will permanently delete all portfolios, tickers, notes, broker credentials, and settings.",
-          "Gloomberb will quit and show the setup wizard on next launch.",
+          "Gloom will quit and show the setup wizard on next launch.",
         ],
         confirmLabel: "Reset Everything",
         cancelLabel: "Back",

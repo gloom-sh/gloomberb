@@ -91,13 +91,13 @@ export function BrokerSetupPanel({
             <Text fg={colors.textDim}>{t("   Enable \"ActiveX and Socket Clients\"")}</Text>
           </Box>
           <Box height={desktop ? 1 : 2} overflow="hidden">
-            <Text fg={colors.textDim}>{t("   Gloomberb can auto-detect local API ports (4001, 4002, 7496, 7497)")}</Text>
+            <Text fg={colors.textDim}>{t("   Gloom can auto-detect local API ports (4001, 4002, 7496, 7497)")}</Text>
           </Box>
           <Box height={desktop ? 1 : 2} overflow="hidden">
             <Text fg={colors.textDim}>{t("   Use Manual setup only if you need a custom host or exact socket port")}</Text>
           </Box>
           <Box height={1}>
-            <Text fg={colors.textDim}>{t("4. Keep it running while using Gloomberb")}</Text>
+            <Text fg={colors.textDim}>{t("4. Keep it running while using Gloom")}</Text>
           </Box>
           <Box height={desktop ? 2 : 1} />
           <GuideLink url={IBKR_GATEWAY_DOWNLOAD_URL} />

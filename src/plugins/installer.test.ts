@@ -125,7 +125,7 @@ describe("plugins that are built in now", () => {
     "gloom-sh/gloom-fear-greed",
     "https://github.com/someone/gloomberb-market-halts",
   ])("refuses to install %s", async (ref) => {
-    await expect(installPlugin(ref, { quiet: true })).rejects.toThrow(/is built into Gloomberb now\./);
+    await expect(installPlugin(ref, { quiet: true })).rejects.toThrow(/is built into Gloom now\./);
   });
 
   test("refuses to link a checkout whose gloom.json names one", async () => {
@@ -136,7 +136,7 @@ describe("plugins that are built in now", () => {
     writeFileSync(join(dir, "gloom.json"), JSON.stringify({ id: "market-halts" }));
     writeFileSync(join(dir, "index.ts"), `export default { id: "market-halts", name: "Market Halts" };\n`);
 
-    await expect(linkPlugin(dir, { quiet: true })).rejects.toThrow("Market Halts is built into Gloomberb now.");
+    await expect(linkPlugin(dir, { quiet: true })).rejects.toThrow("Market Halts is built into Gloom now.");
   });
 });
 

@@ -215,18 +215,18 @@ describe("pane function capabilities", () => {
 
   test("a word after a function that takes none is answered with its options, and runs as the option whose value it is", () => {
     expect(noArgumentMessage(jodiHeadless.options, "JODI", "Gas"))
-      .toBe("JODI does not accept an argument. Options: --commodity <oil|gas>. Run: gloomberb fn JODI --commodity gas");
+      .toBe("JODI does not accept an argument. Options: --commodity <oil|gas>. Run: gloom fn JODI --commodity gas");
     // Anything else gets an example: a choice that is not the default, in the command that was run.
     expect(noArgumentMessage(jodiHeadless.options, "JODI", "europe", "shot"))
-      .toBe("JODI does not accept an argument. Options: --commodity <oil|gas>. Example: gloomberb shot JODI --commodity gas");
-    expect(noArgumentMessage([], "CDX", "IG")).toBe("CDX does not accept an argument. Run: gloomberb fn CDX");
+      .toBe("JODI does not accept an argument. Options: --commodity <oil|gas>. Example: gloom shot JODI --commodity gas");
+    expect(noArgumentMessage([], "CDX", "IG")).toBe("CDX does not accept an argument. Run: gloom fn CDX");
     // A ticker after a function that takes its underlying as an option runs as that option.
     const ovme = [{ key: "model", type: "enum" as const, values: [{ value: "european" }, { value: "american" }] },
       { key: "symbol", type: "string" as const }];
     expect(noArgumentMessage(ovme, "OVME", "NEM")).toBe(
-      "OVME does not accept an argument. Options: --model <european|american>, --symbol <string>. Run: gloomberb fn OVME --symbol NEM");
-    expect(noArgumentMessage(ovme, "OVME", "american")).toEndWith("Run: gloomberb fn OVME --model american");
-    expect(noArgumentMessage(ovme, "OVME", "two words")).toEndWith("Example: gloomberb fn OVME --model european");
+      "OVME does not accept an argument. Options: --model <european|american>, --symbol <string>. Run: gloom fn OVME --symbol NEM");
+    expect(noArgumentMessage(ovme, "OVME", "american")).toEndWith("Run: gloom fn OVME --model american");
+    expect(noArgumentMessage(ovme, "OVME", "two words")).toEndWith("Example: gloom fn OVME --model european");
   });
 });
 
@@ -266,7 +266,7 @@ describe("pane catalog search", () => {
     ], "price chart");
 
     expect(matches.map((entry) => entry.token)).toEqual(["GP"]);
-    expect(renderPaneCatalogReport(matches, { query: "price chart", limit: 10, botSafeOnly: false })).toContain("gloomberb shot GP <ticker>");
+    expect(renderPaneCatalogReport(matches, { query: "price chart", limit: 10, botSafeOnly: false })).toContain("gloom shot GP <ticker>");
   });
 
   test("finds the semantic financial comparison capability from natural wording", () => {
@@ -394,7 +394,7 @@ describe("pane catalog search", () => {
       const entries = await buildPaneCatalogEntries(registry, context);
       // `catalog port` is PORT's page; MAP lists ports and vessels, so it is named under it.
       const page = renderPaneCatalogReport(filterPaneCatalogEntries(entries, "port"), { query: "port", limit: 10, botSafeOnly: false });
-      expect(page).toContain("gloomberb fn PORT <portfolio-id>");
+      expect(page).toContain("gloom fn PORT <portfolio-id>");
       expect(page).toMatch(/Also matches "port"[\s\S]*\nMAP\s/);
       for (const query of ["ais", "AIS", "shipping"]) expect(filterPaneCatalogEntries(entries, query).map(({ token }) => token), query).toContain("MAP");
     } finally {

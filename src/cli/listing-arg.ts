@@ -34,8 +34,10 @@ import {
 import { withMarketData } from "./scoped-context";
 import { failWithFields } from "./errors";
 import { stripStrayEdges } from "./symbol-args";
-import { isNoProviderMessage } from "../sources/provider-errors";
-import { dashedCoinPair } from "../utils/crypto-pair";
+import { isNoProviderMessage, isProviderBusy } from "../sources/provider-errors";
+import { dashedCoinPair, MAJOR_COIN_NAMES } from "../utils/crypto-pair";
+import { boardCoinFor, primeBoardCoins } from "./board-coins";
+import { knownGapMessage } from "./known-gaps";
 import { currencyPairSpelling } from "../utils/currency-pair";
 import { bareFuturesCode, futuresContractByCode } from "../market-data/futures-board";
 import { classifyInstrumentType, kindFromListingSyntax } from "../tickers/instrument-kind";
@@ -300,7 +302,7 @@ export interface ListingDataRequest {
   noun: string;
   /**
    * The retry for one listing, when the key does not go right after the
-   * command (`gloomberb watchlist add Growth SAN:EPA`); null names the listings alone.
+   * command (`gloom watchlist add Growth SAN:EPA`); null names the listings alone.
    */
   retry?: ((key: string) => string) | null;
   /**
@@ -368,7 +370,7 @@ export function listingChoiceNote(
     .filter((exchange) => exchange !== chosen.exchange);
   if (others.length === 0) return null;
   const more = others.length - MAX_OTHER_LISTINGS;
-  const also = `${others.slice(0, MAX_OTHER_LISTINGS).join(", ")}${more > 0 ? ` and ${more} more: gloomberb search ${symbol}` : ""}`;
+  const also = `${others.slice(0, MAX_OTHER_LISTINGS).join(", ")}${more > 0 ? ` and ${more} more: gloom search ${symbol}` : ""}`;
   return `${symbol} = ${name ? `${shortCompanyName(name)}, ` : ""}${chosen.exchange} (also ${also})`;
 }
 
@@ -472,7 +474,7 @@ async function usListingOfCompany(
  * instead of a bare error or another company's numbers under the same
  * symbol: "Time and sales covers US listings only, and SAN:EPA is Sanofi on
  * Euronext Paris (EPA).", then the company's US listing with the command that
- * asks for it ("Sanofi's US listing: SNY (try: gloomberb fn TAS SNY)"), or that
+ * asks for it ("Sanofi's US listing: SNY (try: gloom fn TAS SNY)"), or that
  * none was found.
  */
 export async function usListingsOnlyMessage(
@@ -526,17 +528,17 @@ interface OtherListingsMessage {
 }
 
 /**
- * The command that asks again for another listing: `gloomberb history SAN:EPA
+ * The command that asks again for another listing: `gloom history SAN:EPA
  * --range 5Y` keeps the options. Null where the request names listings alone.
  */
 function retryCommand(request: Pick<ListingDataRequest, "command" | "retry">, key: string): string | null {
   if (request.retry !== undefined) return request.retry?.(key) ?? null;
   const [command, ...options] = request.command.split(" ");
-  return ["gloomberb", command, key, ...options].join(" ");
+  return ["gloom", command, key, ...options].join(" ");
 }
 
 /**
- * "GC=F Gold future (try: gloomberb quote GC=F)", under a bare futures board
+ * "GC=F Gold future (try: gloom quote GC=F)", under a bare futures board
  * code a security keeps (GC, NG) when that security has no data: the future is
  * the other thing the code names. Null for any other symbol.
  */
@@ -560,7 +562,7 @@ function describeOtherListings(
     const retry = retryCommand(request, key);
     return `${key}${venue.name ? ` ${venue.name}` : ""}${retry ? ` (try: ${retry})` : ""}`;
   });
-  if (others.length > MAX_OTHER_LISTINGS) lines.push(`and ${others.length - MAX_OTHER_LISTINGS} more: gloomberb search ${listing.symbol}`);
+  if (others.length > MAX_OTHER_LISTINGS) lines.push(`and ${others.length - MAX_OTHER_LISTINGS} more: gloom search ${listing.symbol}`);
   if (future) lines.push(future);
   const heading = choose ? "Listings" : "Other listings";
   return {
@@ -581,7 +583,7 @@ function describeOtherListings(
  * the symbol's other listings, each with the command that asks for it, such
  * as "SXR8 resolved to iShares Core S&P 500 UCITS ETF USD (Acc) (XETRA), which has
  * no history." and "SXR8:BUD iShares Core S&P 500 UCITS ETF USD (Acc) (try:
- * gloomberb history SXR8:BUD)". When several
+ * gloom history SXR8:BUD)". When several
  * companies list the code, it went to none of them: "Choose an exchange for
  * 2222." and every listing with its retry command, as `2222:` asks. Null when
  * the symbol named its exchange or has no other listing. It searches, so ask
@@ -726,14 +728,14 @@ export function chosenListingNote(symbol: string, exchange: string, others: read
   const aside = [
     without.length > 0 ? `no quote on ${without.join(", ")}` : "",
     others.length > 0
-      ? `other listings: ${others.slice(0, MAX_OTHER_LISTINGS).join(", ")}${more > 0 ? ` and ${more} more: gloomberb search ${symbol}` : ""}`
+      ? `other listings: ${others.slice(0, MAX_OTHER_LISTINGS).join(", ")}${more > 0 ? ` and ${more} more: gloom search ${symbol}` : ""}`
       : "",
   ].filter(Boolean).join("; ");
   return `${symbol} -> ${exchange}${aside ? ` (${aside})` : ""}`;
 }
 
 /**
- * "HFC became DINO on 2022-03-15: `gloomberb history DINO`": a symbol whose
+ * "HFC became DINO on 2022-03-15: `gloom history DINO`": a symbol whose
  * company moved, with the command that asks for it under its new symbol.
  */
 export function movedSymbolLine(change: MovedTickerChange, retry: string | null): string {
@@ -879,6 +881,8 @@ async function loadSuffixedRow(store: ListingStore, key: string, exchange: strin
 
 export interface CliListing extends ListingArg {
   saved: TickerRecord | null;
+  /** What was typed for it, as written (`Apple`), so a word no listing trades as can be read as a company's name. */
+  typed?: string;
   /**
    * What data requests take: a named listing goes by its key (SAN:EPA), never
    * the bare symbol's cache; a bare symbol goes on its saved venue, as the
@@ -982,6 +986,7 @@ export async function resolveCliListing(
   return {
     ...listing,
     saved,
+    typed: typed.trim(),
     request: listing.exchange
       ? { symbol: listing.key, exchange: listing.exchange }
       : { symbol: listing.symbol, exchange: saved?.metadata.exchange ?? "" },
@@ -1063,8 +1068,46 @@ function readDollarIndexCode(raw: string, deps: Pick<ListingDeps, "dataProvider"
  */
 async function companyNameListingArg(raw: string, deps: ListingDeps): Promise<ListingArg | null> {
   const typed = stripStrayEdges(raw).text || raw;
-  if (!isCompanyNameInput(typed)) return null;
-  const found = await findListingOfCompanyName(deps.dataProvider, typed, { meant: true });
+  return isCompanyNameInput(typed) ? readCompanyName(typed, deps) : null;
+}
+
+/** One word that can be a company's name: letters first, no venue, pair or index mark (`Apple`, `Petrobras`, `Coca-Cola`). */
+const ONE_WORD_NAME = /^\p{L}[\p{L}\p{N}&'’.-]*$/u;
+
+/**
+ * A company's name typed as one word (`Apple`) where a symbol goes, once the
+ * sources said no listing trades as it, read as the listing search names for
+ * it the way a name of several words is (`companyNameListingArg`): "Read
+ * "Apple" as AAPL:NASDAQ (Apple Inc.).". A real ticker never gets here, so it
+ * always wins over a name. A word many names share (`oil`) is a name only
+ * when search puts it first, the service marks it, or a listing's name is
+ * the word alone (`findListingOfCompanyName` with `oneWord`). A coin's name
+ * (`bitcoin`, or any the crypto board lists) and a subject the app knows of
+ * (`carbon`, `freight`) are never read as a company: they keep their own
+ * hint, the coin's pair (BTC-USD) or the search that says where it is. Null
+ * for anything else, and when search names no company or is too busy to say.
+ */
+export async function oneWordCompanyName(typed: string, deps: Pick<ListingDeps, "dataProvider">): Promise<ListingArg | null> {
+  const word = typed.trim();
+  if (!ONE_WORD_NAME.test(word) || knownGapMessage(word) || isMajorCoinName(word)) return null;
+  const named = await readCompanyName(word, deps, { oneWord: true }).catch((error: unknown) => {
+    if (!isProviderBusy(error)) throw error;
+    // Intentional ignore: a busy search says nothing about the name, so the word keeps its own "Not a ticker".
+    return null;
+  });
+  if (!named) return null;
+  // The board is read only for a word that names a company, and once for the run (`primeBoardCoins`).
+  if (/^[A-Za-z0-9]+$/.test(word)) await primeBoardCoins([`Not a ticker: ${word.toUpperCase()}.`]);
+  return boardCoinFor(word) ? null : named;
+}
+
+function isMajorCoinName(word: string): boolean {
+  const wanted = word.toLowerCase();
+  return [...MAJOR_COIN_NAMES.values()].some((name) => name.toLowerCase() === wanted);
+}
+
+async function readCompanyName(typed: string, deps: Pick<ListingDeps, "dataProvider">, options: { oneWord?: boolean } = {}): Promise<ListingArg | null> {
+  const found = await findListingOfCompanyName(deps.dataProvider, typed, { meant: true, ...options });
   if (!found) return null;
   const key = `${found.symbol}:${found.exchange}`;
   // A fund or an index carrying the name asks about the company's stock: "Did you mean JPM (JPMorgan Chase & Co.)?".

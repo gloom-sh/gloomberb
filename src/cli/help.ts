@@ -17,7 +17,7 @@ export const TABLE_SECTION_OPTION = {
   description: "With --csv or --ndjson, write only that table, by its title, the start of it, or its number",
 };
 
-/** Headings of `gloomberb help`, in display order. */
+/** Headings of `gloom help`, in display order. */
 export const CLI_COMMAND_GROUPS = {
   research: "Research",
   companyData: "Company data",
@@ -37,10 +37,10 @@ const PIPED_HELP_WIDTH = 80;
 
 /** Commands that run as written, for someone who has just installed it. */
 const START_HERE: Array<[string, string]> = [
-  ["gloomberb search apple", "Find a ticker from a company name"],
-  ["gloomberb quote AAPL", "Show the latest price"],
-  ["gloomberb ticker AAPL", "Open the full research report"],
-  ["gloomberb catalog earnings", "Find a function, then run it with fn"],
+  ["gloom search apple", "Find a ticker from a company name"],
+  ["gloom quote AAPL", "Show the latest price"],
+  ["gloom ticker AAPL", "Open the full research report"],
+  ["gloom catalog earnings", "Find a function, then run it with fn"],
 ];
 
 const GLOBAL_OPTIONS: Array<[string, string]> = [
@@ -52,7 +52,8 @@ const GLOBAL_OPTIONS: Array<[string, string]> = [
   ["--refresh", "Fetch fresh data instead of reading the cache"],
   ["--dry-run", "Preview config, cache, notes, alerts, plugin on/off, and remote changes without saving"],
   ["-q, --quiet", "Print no results or errors in text mode, for commands that print results"],
-  ["--color, --no-color", "Force or turn off colors (NO_COLOR=1 also turns them off)"],
+  ["--color, --no-color", "Force or turn off colors (NO_COLOR also turns them off)"],
+  ["--plain, --no-plain", "Plain text for a screen reader or large text: no rule lines, arrows as words, every table column kept with a dash in empty cells. On by default when NO_COLOR is set or output is piped; --no-plain turns it off"],
   ["--width <n>", "Fit tables to n columns (default: the terminal width; piped output is not fitted). shot takes its own --width in pixels"],
 ];
 
@@ -75,8 +76,13 @@ function commandGroup(entry: CliHelpEntry): string {
   return entry.command.help?.group ?? (entry.source === "plugin" ? PLUGIN_COMMANDS_GROUP : OTHER_GROUP);
 }
 
+/**
+ * A usage line as typed. Plugin help written before the rename may start
+ * with the old command name, which prints as `gloom`.
+ */
 function withProgramName(invocation: string): string {
-  return invocation.startsWith("gloomberb ") ? invocation : `gloomberb ${invocation}`;
+  if (invocation.startsWith("gloom ")) return invocation;
+  return `gloom ${invocation.startsWith("gloomberb ") ? invocation.slice("gloomberb ".length) : invocation}`;
 }
 
 function renderInvocation(invocation: string, width: number): string[] {
@@ -112,7 +118,7 @@ export function renderCliHelp(entries: CliHelpEntry[], version: string, descript
   const listed = entries.filter(({ command }) => command.name !== "help");
   const nameWidth = Math.max(0, ...listed.map(({ command }) => visibleLength(command.name)));
   const lines = [
-    `${cliStyles.bold("gloomberb")} ${cliStyles.muted(version)}`,
+    `${cliStyles.bold("gloom")} ${cliStyles.muted(version)}`,
     ...wrapText(description, width),
     "",
     renderSection("Start here"),
@@ -120,10 +126,10 @@ export function renderCliHelp(entries: CliHelpEntry[], version: string, descript
     "",
     renderSection("Usage"),
     ...renderDefinitions([
-      ["gloomberb", "Open the terminal UI"],
-      ["gloomberb <command> [args]", "Run a command and print the result"],
-      ["gloomberb help <command>", "Show a command's usage, options, and examples"],
-      ["gloomberb ticker SAN:EPA", "Name the listing of a symbol that trades in several places (or --exchange EPA)"],
+      ["gloom", "Open the terminal UI"],
+      ["gloom <command> [args]", "Run a command and print the result"],
+      ["gloom help <command>", "Show a command's usage, options, and examples"],
+      ["gloom ticker SAN:EPA", "Name the listing of a symbol that trades in several places (or --exchange EPA)"],
     ], { width }),
   ];
 

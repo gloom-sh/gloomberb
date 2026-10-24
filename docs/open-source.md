@@ -10,7 +10,7 @@ The free tier works without paying, with rate limits, equity and options quotes 
 
 ## What it is not
 
-Gloomberb is not a Bloomberg replacement: it has no Bloomberg chat network, fixed-income reference database or direct exchange feeds.
+Gloom is not a Bloomberg replacement: it has no Bloomberg chat network, fixed-income reference database or direct exchange feeds.
 
 ## How it is built
 

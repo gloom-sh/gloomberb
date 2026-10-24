@@ -1,10 +1,10 @@
 import { logFailure } from "../../utils/log-failure";
 import { formatShortDate, parseDisplayDate } from "../../utils/datetime-format";
 import { formatReportedMoney } from "../../utils/reported-money";
-import { convertedPriceEarningsNote, enterpriseValueLabel, enterpriseValueReconciliationNote, epsConversionNote, fundamentalsCurrency, reportedEnterpriseValue, ttmConversionNote } from "../../utils/fundamentals";
+import { computedEnterpriseValueNote, convertedPriceEarningsNote, enterpriseValueLabel, enterpriseValueReconciliationNote, epsConversionNote, fundamentalsCurrency, reportedEnterpriseValue, ttmConversionNote } from "../../utils/fundamentals";
 import { latestFinancialPeriod } from "../../utils/latest-financial-period";
 import { burnsCash, cashRunway, SHORT_RUNWAY_HISTORY, formatRunwayMonths, offeringNote, offeringsAfter, runwayMethod, type CashRunway, type OfferingFiling, type RunwayEstimate } from "../../utils/cash-runway";
-import { exportedFundamentals, formatPriceEarnings, priceEarningsOnEarnings } from "../../utils/price-earnings";
+import { exportedFundamentals, formatPriceEarnings, NOT_MEANINGFUL, priceEarningsOnEarnings } from "../../utils/price-earnings";
 import { describeFundamentalMarketCap, marketCapBasisNote, selectMarketCapitalization, viewMarketCapitalization } from "../../utils/market-capitalization";
 import {
   formatCompact,
@@ -473,9 +473,13 @@ function reportedMoney(value: number | undefined, currency: string | undefined, 
   return { text: formatReportedMoney(value, currency, perShare, codes), value, unit: currency?.trim() || "ccy?" };
 }
 
-/** The EV line: labelled "(provider)" when it is more than 5% from market cap + debt - cash, "unavailable" when withdrawn. */
+/**
+ * The EV line: labelled "(provider)" when it is more than 5% from market cap + debt - cash, "unavailable" when
+ * withdrawn, N/M at or below zero as a P/E over a loss is.
+ */
 function enterpriseValueFigure(figure: MetricFigure, fundamentals: TickerFinancials["fundamentals"]): MetricFigure {
   const label = enterpriseValueLabel(fundamentals);
+  if (label === "not-meaningful") return { ...multipleFigure(NOT_MEANINGFUL), unit: figure.unit };
   if (label === "unavailable") return { text: "unavailable", value: null, unit: figure.unit };
   return label === "provider" && figure.text !== "—" ? { ...figure, text: `${figure.text} (provider)` } : figure;
 }
@@ -754,7 +758,10 @@ function fundamentalsNotes(
   const priceEarnings = metrics.some((metric) => metric.label === "P/E (TTM)" && typeof metric.value === "number")
     ? convertedPriceEarningsNote(fundamentals, quoteCurrency)
     : undefined;
-  const enterpriseValue = shown("Enterprise Value") ? enterpriseValueReconciliationNote(fundamentals) : undefined;
+  // Why the EV is labelled, withdrawn or N/M; for an insurer's, what Gloom Cloud computed it from.
+  const enterpriseValue = shown("Enterprise Value")
+    ? enterpriseValueReconciliationNote(fundamentals) ?? computedEnterpriseValueNote(fundamentals)
+    : undefined;
   return [shareBasis, enterpriseValue, conversion, eps, priceEarnings].filter((note): note is string => !!note);
 }
 
@@ -877,7 +884,7 @@ function fundamentalsReportMetrics(snapshot: FundamentalsReportData, view: "fund
   return valuation.length === 0 ? [] : [...valuationPriceMetrics(financials).filter((metric) => metric.text !== "—"), ...valuation];
 }
 
-/** Text for `gloomberb fundamentals` and `gloomberb valuation`: the ticker report's fundamentals without the rest. */
+/** Text for `gloom fundamentals` and `gloom valuation`: the ticker report's fundamentals without the rest. */
 export function renderFundamentalsReport(
   financials: FundamentalsReportData,
   view: "fundamentals" | "valuation",

@@ -235,7 +235,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
   OMON: {
     summary: "Calls and puts by expiry with bid, ask, spread, volume, open interest, implied volatility, Greeks, extrinsic per year and a put's cost as a percent of spot. "
       + "The Strikes filter lists every strike, a count either side of the money, or a delta band such as .70 to .90 for deep in-the-money LEAPS.",
-    usage: ["OMON NVDA", "gloomberb fn OMON NVDA --expiration 2028-01-21"],
+    usage: ["OMON NVDA", "gloom fn OMON NVDA --expiration 2028-01-21"],
     keys: [key("c", "alc"), key("a", "dd to OSA"), key("s", "urface")],
     data: OPTIONS,
     bloomberg: ["OMON"],
@@ -267,9 +267,9 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
       + "With a NAV and a budget in bps it sizes the position as a hedge: contracts, premium, notional protected and coverage of an equity sleeve. "
       + "--strategy csp sells a cash-secured put: cash secured, premium, yield on cash and annualised, the bid, ask and spread with the yield at the bid, "
       + "distance out of the money, break-even, days to expiry and an earnings flag. CSP ranks the same put across several names.",
-    usage: ["OSA AAPL", "gloomberb fn OSA AAPL --strategy vertical --expiration 2027-01-15",
-      "gloomberb fn OSA KO --strategy csp --strike 85 --expiration 2026-11-20",
-      "gloomberb fn OSA SPY --strategy put --strike 700 --expiration 2027-01-15 --nav 100m --budget-bps 50 --sleeve 100m"],
+    usage: ["OSA AAPL", "gloom fn OSA AAPL --strategy vertical --expiration 2027-01-15",
+      "gloom fn OSA KO --strategy csp --strike 85 --expiration 2026-11-20",
+      "gloom fn OSA SPY --strategy put --strike 700 --expiration 2027-01-15 --nav 100m --budget-bps 50 --sleeve 100m"],
     keys: [key("a", "dd leg"), key("c", "hain"), key("d", "ate"), key("v", "ol shift")],
     data: OPTIONS,
     bloomberg: ["OSA"],
@@ -277,21 +277,21 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
   CSP: {
     summary: "Which names pay most to sell a put? For each, the put nearest a delta (0.30) on the expiry nearest a date or a number of days out (30), "
       + "ranked by annualised yield on cash at the bid, with % out of the money, delta, IV rank, the spread (marked wide, never left out) and an earnings flag.",
-    usage: ["CSP JPM, GS, KO", "gloomberb fn CSP JPM GS KO AAPL --delta 0.20 --days 45"],
+    usage: ["CSP JPM, GS, KO", "gloom fn CSP JPM GS KO AAPL --delta 0.20 --days 45"],
     keys: [key("Enter", " open in OSA")],
     data: OPTIONS,
     bloomberg: [],
   },
   OVDV: {
     summary: "The implied volatility surface fitted from option quotes: 3D sheet, table, smiles, ATM term structure, 25-delta skew and forwards, live or on stored daily closes.",
-    usage: ["OVDV NVDA", "gloomberb fn OVDV NVDA --tab skew --expiration 2027-01-15", "gloomberb fn OVDV SPY --date 2026-10-09 --tab skew"],
+    usage: ["OVDV NVDA", "gloom fn OVDV NVDA --tab skew --expiration 2027-01-15", "gloom fn OVDV SPY --date 2026-10-09 --tab skew"],
     keys: [key("v", "iew"), key("c", "hain"), key("m", "ore expiries"), key("t", " stored dates")],
     data: { free: `${DELAYED}; stored dates at the close`, pro: "Real-time; stored dates at the close" },
     bloomberg: ["OVDV"],
   },
   HIVG: {
     summary: "Daily 30-day, 90-day and one-year at-the-money implied vol since February 2024 against realized vol, with each measure's 52-week rank and percentile.",
-    usage: ["HIVG AAPL", "gloomberb fn HIVG SPY --lookback ALL --csv"],
+    usage: ["HIVG AAPL", "gloom fn HIVG SPY --lookback ALL --csv"],
     keys: [key("s", "urface")],
     data: IV_DAILY,
     bloomberg: ["HIVG", "GV"],
@@ -390,7 +390,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
   },
   EVTS: {
     summary: "The market's report days with implied and past moves, or a past or coming week or day of them; a ticker picks its row.",
-    usage: ["EVTS", "EVTS NVDA", "gloomberb fn EVTS --week last", "gloomberb fn EVTS --date 2026-10-15"],
+    usage: ["EVTS", "EVTS NVDA", "gloom fn EVTS --week last", "gloom fn EVTS --date 2026-10-15"],
     keys: [key("t", "icker"), key("e", "stimates"), key("c", "alls"), key("a", "nalysts")],
     data: EARNINGS_DAYS,
     bloomberg: ["EVTS"],
@@ -530,7 +530,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
   },
   HIRE: {
     summary: "Pro hiring momentum: weekly observed open roles, additions and removals, role families, seniority, remote and location mix, peers and primary posting evidence. Moves ranks the companies whose new roles accelerated or slowed against their own weeks and their peers, with why and the postings behind it. Observed requisitions are not headcount. No argument opens the covered-company board.",
-    usage: ["HIRE", "HIRE NET", "HIRE 0700:HKEX", "gloomberb fn HIRE RIVN --tab moves"],
+    usage: ["HIRE", "HIRE NET", "HIRE 0700:HKEX", "gloom fn HIRE RIVN --tab moves"],
     keys: [TABS, OPEN, key("e", "vidence"), key("o", "pen source"), key("d", "es"), key("g", "raph"), key("n", "otify")],
     data: { free: "Latest values and three rows per section", pro: "Weekly history, all stored observations and evidence" },
     access: "preview",
@@ -753,7 +753,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["IMAP"],
   },
   FXC: {
-    summary: "A cross-rate matrix for the major currencies, or for any of 45 chosen in its settings or with --currencies from the command line (gloomberb fn FXC --currencies USD,ZAR,NGN).",
+    summary: "A cross-rate matrix for the major currencies, or for any of 45 chosen in its settings or with --currencies from the command line (gloom fn FXC --currencies USD,ZAR,NGN).",
     usage: ["FXC"],
     keys: [],
     data: FX,
@@ -776,7 +776,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
   },
   ETFF: {
     summary: "Daily net flows of the US spot bitcoin and ether ETFs, fund by fund in US$ millions, with the last 5 and 20 days, the running total since launch, and the funds the newest day still waits on.",
-    usage: ["ETFF", "gloomberb fn ETFF --asset eth"],
+    usage: ["ETFF", "gloom fn ETFF --asset eth"],
     keys: [key("1-4", " range"), OPEN_SOURCE],
     data: same("Daily, as each fund reports after the US close"),
     bloomberg: [],
@@ -1016,7 +1016,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
   },
   CDS: {
     summary: "Single-name corporate CDS from DTCC public dissemination. CDS alone lists the issuers traded in the last 5 days with trade count, last trade, 5Y spread and its 1W and 1M moves through the roll while the level is current, to rank them by (`fn CDS --sort 1m`); past 2,000bp a name is quoted in points upfront (`57.6 pts`), moves too, and ranks after the bp names; with a ticker or issuer, its 5Y spread (level, date, 1W and 1M change, range), its trades and, in `fn`, its daily levels (`fn CDS F --csv --section daily`).",
-    usage: ["CDS", "CDS F", "gloomberb fn CDS --sort 1m", "gloomberb fn CDS F --csv --section daily"],
+    usage: ["CDS", "CDS F", "gloom fn CDS --sort 1m", "gloom fn CDS F --csv --section daily"],
     keys: [OPEN, STEP],
     data: same("Delayed, as trades are disseminated"),
     bloomberg: ["CDS"],
@@ -1337,7 +1337,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: [],
   },
   PL: {
-    summary: "What Gloomberb is made of: switch built-ins on and off, one by one or by applying a starter pack, and install plugins from GitHub.",
+    summary: "What Gloom is made of: switch built-ins on and off, one by one or by applying a starter pack, and install plugins from GitHub.",
     usage: ["PL"],
     keys: [key("e", "nable"), key("a", "pply pack"), key("i", "nstall"), SEARCH],
     data: null,

@@ -1,5 +1,5 @@
 /**
- * What `gloomberb shot MAP <layers>` certifies: the layers the map drew and
+ * What `gloom shot MAP <layers>` certifies: the layers the map drew and
  * what each held, so a capture taken before the features arrived is refused.
  */
 import type { PaneScreenshotEvidenceHook } from "../../../cli/pane-functions/screenshot-evidence";

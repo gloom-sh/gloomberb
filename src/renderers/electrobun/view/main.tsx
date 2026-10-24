@@ -80,7 +80,7 @@ const releaseBootFrame = releaseBootFrameWhenDrawn(document, appRootElement);
 /** How long after the app mounts the launch frame stays at most. */
 const BOOT_FRAME_RELEASE_FALLBACK_MS = 4_000;
 
-function renderFatalError(error: unknown, details?: string, title = "Gloomberb failed to start"): void {
+function renderFatalError(error: unknown, details?: string, title = "Gloom failed to start"): void {
   releaseBootFrame();
   root.render(
     <DesktopFatalScreen
@@ -101,7 +101,7 @@ window.__gloomRenderFatalError = (error, details, source) => {
   }) === "ignore") {
     return;
   }
-  renderFatalError(error, details, "Gloomberb crashed");
+  renderFatalError(error, details, "Gloom crashed");
 };
 
 function focusWebSurface(): void {

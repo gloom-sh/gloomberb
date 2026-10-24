@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { PricePoint } from "../../../types/financials";
-import { projectMacroDays } from "./model";
+import { macroDayStats, matchesSurprise, projectMacroDays } from "./model";
 
 /** Weekday closes from `from` to `to`, skipping `closed`; each close is 1% above the one before unless `closes` says otherwise. */
 function weekdays(from: string, to: string, closed: string[], closes: Record<string, number> = {}): PricePoint[] {
@@ -92,5 +92,35 @@ describe("macro-day earnings overlap", () => {
     expect(flagged.every((event) => event.multiple != null && event.multiple > 0)).toBe(true);
     // An earnings day is not a normal day either: the baseline is the one the plain study has.
     expect(model.normal).toEqual(plain.normal);
+  });
+});
+
+describe("macro-day surprises", () => {
+  test("keeps each release's figures and sums up the days a surprise filter keeps", () => {
+    const history = weekdays("2026-09-01", "2026-10-23", [], { "2026-10-09": 95, "2026-10-14": 104 });
+    const hot = { event: "Inflation Rate YoY", actual: "3.7%", forecast: "3.6%", prior: "3.4%", surprise: "hot" as const };
+    const model = projectMacroDays(history, { symbol: "EWZ", lookbackYears: 1, coveredThrough: "2026-10-23", releases: [
+      { kind: "cpi", date: "2026-09-11", figures: { ...hot, actual: "3.4%", forecast: "3.4%", surprise: "in-line" } },
+      { kind: "ipca", date: "2026-10-09", figures: { event: "IPCA m/m", actual: "0.82%", forecast: "0.73%", prior: "-0.32%", surprise: "hot" } },
+      { kind: "cpi", date: "2026-10-14", figures: hot },
+      // Before the kept calendar: a release day with no figures.
+      { kind: "fomc", date: "2026-09-16" },
+    ] });
+    expect(model.events.map((event) => [event.kind, event.figures?.surprise ?? null])).toEqual([
+      ["cpi", "hot"], ["ipca", "hot"], ["fomc", null], ["cpi", "in-line"],
+    ]);
+    const hotDays = model.events.filter((event) => matchesSurprise(event, "hot"));
+    expect(hotDays.map((event) => event.date)).toEqual(["2026-10-14", "2026-10-09"]);
+    expect(model.events.filter((event) => matchesSurprise(event, "all"))).toHaveLength(4);
+    const summary = macroDayStats(hotDays, model.normal.meanAbs);
+    expect(summary.count).toBe(2);
+    expect(summary.hitRate).toBe(0.5);
+    // IPCA days are summed up on their own: the US figures and the normal day are the ones a list without them gives.
+    expect(model.kinds).toEqual(["cpi", "jobs", "fomc", "ipca"]);
+    expect(model.byKind.ipca.count).toBe(1);
+    const usOnly = projectMacroDays(history, { symbol: "EWZ", lookbackYears: 1, coveredThrough: "2026-10-23",
+      releases: model.events.filter((event) => event.kind !== "ipca").map(({ kind, date }) => ({ kind, date })) });
+    expect(usOnly.kinds).toEqual(["cpi", "jobs", "fomc"]);
+    expect([model.normal, model.allEvents, model.byKind.cpi]).toEqual([usOnly.normal, usOnly.allEvents, usOnly.byKind.cpi]);
   });
 });
