@@ -1,5 +1,7 @@
 import { act, Profiler, useReducer } from "react";
 import { afterEach, expect, test } from "bun:test";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { setCloudApiFetchTransport } from "../../../api-client";
 import { PaneFooterBar, PaneFooterKeys, PaneFooterProvider } from "../../../components/layout/pane/footer";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
@@ -23,7 +25,7 @@ async function mount(width: number, height: number, tab = "table", view = "says"
   commits = 0;
   supplyChainCache.attach(new MemoryPluginPersistence());
   const id = "supply-chain:test";
-  const state = createInitialState(createTestPaneConfig("/home/vince/.cache/gloom-smoke/supply-chain/focused-tests", {
+  const state = createInitialState(createTestPaneConfig(join(homedir(), ".cache/gloom-smoke/supply-chain/focused-tests"), {
     paneId: "supply-chain", instanceId: id, binding: { kind: "fixed", symbol: "FOCUS" }, settings: { tab, view, ...(typeof settings === "string" ? { tiers: settings } : settings) },
   }));
   state.tickers.set("FOCUS", createTestTicker("FOCUS", "Focus Company"));

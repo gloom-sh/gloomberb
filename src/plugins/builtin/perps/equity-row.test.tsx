@@ -1,4 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { act, useState } from "react";
 import { setCloudApiFetchTransport } from "../../../api-client";
 import type { PerpBoardPayload } from "../../../api-client/perps";
@@ -27,7 +29,7 @@ test("switching a saved bare symbol's listing hides cached and late issuer rows 
     if (url.pathname.endsWith("/AAPL")) return Response.json(await pendingApple.promise);
     return Response.json(equityBoard(nyse));
   });
-  const state = createInitialState(createTestPaneConfig("/home/vince/.cache/gloom-smoke/perps-listing-identity/test", { paneId: "perps", instanceId: "test" }));
+  const state = createInitialState(createTestPaneConfig(join(homedir(), ".cache/gloom-smoke/perps-listing-identity/test"), { paneId: "perps", instanceId: "test" }));
   const runtime = createTestPluginRuntime();
   let select!: (next: typeof nyse) => void;
   function Harness() {
@@ -59,7 +61,7 @@ test("switching a saved bare symbol's listing hides cached and late issuer rows 
 
 test("the stock's perpetual reads in plain words, with when it was read and the funding interval spelled out", async () => {
   setCloudApiFetchTransport(async () => Response.json(equityBoard({ symbol: "AAPL", exchange: "NASDAQ" })));
-  const state = createInitialState(createTestPaneConfig("/home/vince/.cache/gloom-smoke/perps-row-wording/test", { paneId: "perps", instanceId: "test" }));
+  const state = createInitialState(createTestPaneConfig(join(homedir(), ".cache/gloom-smoke/perps-row-wording/test"), { paneId: "perps", instanceId: "test" }));
   const runtime = createTestPluginRuntime();
   const wide = createOpenTuiTestHarness({ width: 110, height: 4 });
   await wide.render(<TestPaneProvider state={state} dispatch={() => {}} paneId="test" pluginId="market-overview" runtime={runtime}>
@@ -81,7 +83,7 @@ test("a perpetual market's own quote shows its contract: funding and open intere
     requests.push(url.pathname + url.search);
     return Response.json({ ...perpBoard({ rows: [row], access: "preview" }), evidence: [], methodologyUrl: "" });
   });
-  const state = createInitialState(createTestPaneConfig("/home/vince/.cache/gloom-smoke/perps-own-row/test", { paneId: "perps", instanceId: "test" }));
+  const state = createInitialState(createTestPaneConfig(join(homedir(), ".cache/gloom-smoke/perps-own-row/test"), { paneId: "perps", instanceId: "test" }));
   const wide = createOpenTuiTestHarness({ width: 110, height: 4 });
   await wide.render(<TestPaneProvider state={state} dispatch={() => {}} paneId="test" pluginId="market-overview" runtime={createTestPluginRuntime()}>
     <PerpEquityRow symbol="BZUSDT:BINANCE" exchange="BINANCE" instrumentType="PERP" />
