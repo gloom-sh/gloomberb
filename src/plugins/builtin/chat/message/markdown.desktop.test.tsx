@@ -1,8 +1,12 @@
 /** @jsxImportSource react */
-import { expect, test } from "bun:test";
+import { afterEach, expect, test } from "bun:test";
 import { createDomTestHarness } from "../../../../renderers/dom/test-utils";
 import type { ChatMessage, ChatUserSummary } from "../../../../api-client";
 import { useWholeMessageCopy } from "../content/whole-message-copy";
+import { attachChatCommands } from "../pane-links/commands";
+import type { ChatMessagePaneLink } from "../pane-links/model";
+import { openChatPaneLink } from "../pane-links/open";
+import { TEST_FUNCTIONS } from "../pane-links/test-fixture";
 import { DesktopChatMessage } from "./desktop";
 
 const { window: testWindow, render } = createDomTestHarness();
@@ -21,7 +25,7 @@ const MESSAGE: ChatMessage = {
   user: { id: "u1", username: "gloombot", displayName: "Gloombot" },
 };
 
-function Transcript({ messages }: { messages: ChatMessage[] }) {
+function Transcript({ messages, openPaneLink = () => {} }: { messages: ChatMessage[]; openPaneLink?: (link: ChatMessagePaneLink) => void }) {
   useWholeMessageCopy(true, messages);
   const noop = () => {};
   return (
@@ -38,7 +42,7 @@ function Transcript({ messages }: { messages: ChatMessage[] }) {
           catalog={{}}
           userByUsername={new Map([["quill", quill]])}
           openTicker={noop}
-          openPaneLink={noop}
+          openPaneLink={openPaneLink}
           onUserHover={noop}
           onUserHoverEnd={noop}
           beginReplyTo={noop}
@@ -86,4 +90,37 @@ test("a message's markdown runs as lines of text, and a copy of the whole messag
   const first = bold.firstChild!;
   range.setStart(first as never, 3);
   expect(copySelection()).toBe("");
+});
+
+let detachCommands: (() => void) | null = null;
+afterEach(() => detachCommands?.());
+
+test("a function in backticks is a chip that runs it in the command bar; other code and code blocks stay text", async () => {
+  detachCommands = attachChatCommands({ functions: () => TEST_FUNCTIONS, run: () => {} });
+  const opened: string[] = [];
+  const message: ChatMessage = {
+    ...MESSAGE,
+    id: "functions",
+    content: "try `NI CRYPTO` and `CRYP`, not `nope` or `CRYP BTC`\n```\nDES AAPL\n```",
+  };
+  const container = await render(
+    <Transcript
+      messages={[message]}
+      openPaneLink={(link) => openChatPaneLink(link, {
+        createPaneFromTemplate: (templateId) => opened.push(`template:${templateId}`),
+        notify: () => opened.push("notify"),
+        openExternal: (url) => opened.push(`external:${url}`),
+        runCommand: (query) => opened.push(`command:${query}`),
+      })}
+    />,
+  );
+  const chips = [...container.querySelectorAll("[data-gloom-role=chat-pane-chip]")] as HTMLElement[];
+  expect(chips.map((chip) => [chip.textContent, chip.title])).toEqual([["NI CRYPTO", "Topic News"], ["CRYP", "Crypto Board"]]);
+  // The chips sit in their line; the code that names nothing and the block are text.
+  const body = container.querySelector("[data-gloom-role=chat-message-body]")!;
+  expect([...body.firstElementChild!.children].map((line) => line.textContent))
+    .toEqual(["try NI CRYPTO and CRYP, not nope or CRYP BTC", "DES AAPL"]);
+
+  chips[0]!.dispatchEvent(new testWindow.MouseEvent("click", { bubbles: true }) as never);
+  expect(opened).toEqual(["command:NI CRYPTO"]);
 });

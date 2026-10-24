@@ -57,6 +57,7 @@ import type { ContextMenuItem } from "../../../../types/context-menu";
 import { usePluginAppActions } from "../../../runtime";
 import { openTeamPane } from "../../../../team/pane-request";
 import { openChatPaneLink } from "../pane-links/open";
+import { chatFunctions, runChatCommand } from "../pane-links/commands";
 import type { ChatMessagePaneLink } from "../pane-links/model";
 import { splitComposerDraft, type ComposerShareLink } from "../pane-links/composer";
 import { teamStore } from "../../../../team/store";
@@ -71,6 +72,7 @@ import {
   detectChatMentionTrigger,
   filterMentionSuggestions,
 } from "./mentions";
+import { applyCommandSuggestion, detectChatCommandTrigger, filterCommandSuggestions } from "./command-suggestions";
 import { getComposerCursorOffset } from "./composer-cursor";
 import { ChatHandlePrompt, chatHandlePromptRows, handleSavedMessage, useChatHandlePrompt } from "./handle-prompt";
 
@@ -321,12 +323,30 @@ export function ChatContent({
     if (!mentionTrigger || mentionTriggerKey === dismissedMentionKey) return [];
     return filterMentionSuggestions(recentMentionSuggestions, mentionTrigger.query);
   }, [dismissedMentionKey, mentionTrigger, mentionTriggerKey, recentMentionSuggestions]);
-  const mentionSelectedIndexSafe = mentionSuggestions.length > 0
-    ? Math.min(mentionSelectedIndex, mentionSuggestions.length - 1)
+  // Desktop and web: after a backtick the same list offers functions, which a message draws as chips there.
+  const commandTrigger = useMemo(() => (
+    nativePaneChrome && !mentionTrigger ? detectChatCommandTrigger(composerDraft, composerCursorOffset) : null
+  ), [composerCursorOffset, composerDraft, mentionTrigger, nativePaneChrome]);
+  const commandTriggerKey = commandTrigger
+    ? `${channelId}:code:${commandTrigger.start}:${commandTrigger.end}:${commandTrigger.query}`
+    : null;
+  const commandSuggestions = useMemo(() => {
+    if (!commandTrigger || commandTriggerKey === dismissedMentionKey) return [];
+    return filterCommandSuggestions(chatFunctions(), commandTrigger.query);
+  }, [commandTrigger, commandTriggerKey, dismissedMentionKey]);
+  // One list at a time: people after @, functions after a backtick.
+  const suggestionTriggerKey = mentionTriggerKey ?? commandTriggerKey;
+  const suggestionCount = mentionSuggestions.length + commandSuggestions.length;
+  const composerSuggestions = useMemo(() => mentionSuggestions.length > 0
+    ? mentionSuggestions.map((suggestion) => ({ id: suggestion.username, label: `@${suggestion.username}` }))
+    : commandSuggestions.map((suggestion) => ({ id: suggestion.code, label: suggestion.code, detail: suggestion.name })),
+  [commandSuggestions, mentionSuggestions]);
+  const mentionSelectedIndexSafe = suggestionCount > 0
+    ? Math.min(mentionSelectedIndex, suggestionCount - 1)
     : 0;
   useEffect(() => {
     setMentionSelectedIndex(0);
-  }, [mentionTriggerKey]);
+  }, [suggestionTriggerKey]);
   const {
     composerHeight,
     messageAreaHeight,
@@ -335,7 +355,7 @@ export function ChatContent({
     composerRows,
     editingMessage,
     height,
-    mentionSuggestionCount: mentionSuggestions.length,
+    mentionSuggestionCount: suggestionCount,
     nativePaneChrome,
     replyTo,
     stackHeader: stackedNav && !channelListOpen,
@@ -568,12 +588,13 @@ export function ChatContent({
     if (controller.attachToChannel(channelIdRef.current, files.map(uploadFromTransferFile)) > 0) focusInput();
   }, [canAttach, controller, focusInput, imagesAvailable, notify]);
 
-  // A chip under a message: the shared pane, or the story or calendar a Wire post names.
+  // A chip: the shared pane, the story or calendar a Wire post names, or a function written in a message.
   const openPaneLink = useCallback((link: ChatMessagePaneLink) => {
     openChatPaneLink(link, {
       createPaneFromTemplate,
       notify,
       openExternal: (url) => { void rendererHost.openExternal(url); },
+      runCommand: runChatCommand,
     });
   }, [createPaneFromTemplate, notify, rendererHost]);
 
@@ -821,41 +842,48 @@ export function ChatContent({
   }, [directMessageContext, messageUser, selectedMessageAuthor]);
 
   const moveMentionSelection = useCallback((direction: "up" | "down") => {
-    if (mentionSuggestions.length === 0) return false;
+    if (suggestionCount === 0) return false;
     setMentionSelectedIndex((current) => {
-      const safeCurrent = Math.max(0, Math.min(current, mentionSuggestions.length - 1));
+      const safeCurrent = Math.max(0, Math.min(current, suggestionCount - 1));
       if (direction === "up") {
-        return safeCurrent <= 0 ? mentionSuggestions.length - 1 : safeCurrent - 1;
+        return safeCurrent <= 0 ? suggestionCount - 1 : safeCurrent - 1;
       }
-      return safeCurrent >= mentionSuggestions.length - 1 ? 0 : safeCurrent + 1;
+      return safeCurrent >= suggestionCount - 1 ? 0 : safeCurrent + 1;
     });
     return true;
-  }, [mentionSuggestions.length]);
+  }, [suggestionCount]);
 
   const dismissMentionSuggestions = useCallback(() => {
-    if (!mentionTriggerKey || mentionSuggestions.length === 0) return false;
-    setDismissedMentionKey(mentionTriggerKey);
+    if (!suggestionTriggerKey || suggestionCount === 0) return false;
+    setDismissedMentionKey(suggestionTriggerKey);
     return true;
-  }, [mentionSuggestions.length, mentionTriggerKey]);
+  }, [suggestionCount, suggestionTriggerKey]);
 
   const commitMentionSelection = useCallback((index = mentionSelectedIndexSafe) => {
-    if (!mentionTrigger || mentionSuggestions.length === 0) return false;
-    const suggestion = mentionSuggestions[index] ?? mentionSuggestions[0];
-    if (!suggestion) return false;
-    const replacement = applyMentionSuggestion(composerDraft, mentionTrigger, suggestion);
+    let replacement: { draft: string; cursorOffset: number } | null = null;
+    if (mentionTrigger && mentionSuggestions.length > 0) {
+      const suggestion = mentionSuggestions[index] ?? mentionSuggestions[0]!;
+      replacement = applyMentionSuggestion(composerDraft, mentionTrigger, suggestion);
+    } else if (commandTrigger && commandSuggestions.length > 0) {
+      const suggestion = commandSuggestions[index] ?? commandSuggestions[0]!;
+      replacement = applyCommandSuggestion(composerDraft, commandTrigger, suggestion);
+    }
+    if (!replacement) return false;
     replaceComposerDraft(replacement.draft, replacement.cursorOffset);
     setMentionSelectedIndex(0);
-    setDismissedMentionKey(mentionTriggerKey);
+    setDismissedMentionKey(suggestionTriggerKey);
     queueMicrotask(() => focusInput());
     return true;
   }, [
+    commandSuggestions,
+    commandTrigger,
     composerDraft,
     focusInput,
     mentionSelectedIndexSafe,
     mentionSuggestions,
     mentionTrigger,
-    mentionTriggerKey,
     replaceComposerDraft,
+    suggestionTriggerKey,
   ]);
 
   const {
@@ -941,7 +969,7 @@ export function ChatContent({
     inputValueRef,
     loadingOlderMessages,
     messages,
-    mentionMenuOpen: mentionSuggestions.length > 0,
+    mentionMenuOpen: suggestionCount > 0,
     moveMentionSelection,
     dismissMentionSuggestions,
     commitMentionSelection,
@@ -1193,7 +1221,7 @@ export function ChatContent({
         replyPreview={replyPreview}
         replyTo={replyTo}
         sendMessage={sendMessage}
-        mentionSuggestions={mentionSuggestions}
+        suggestions={composerSuggestions}
         mentionSelectedIndex={mentionSelectedIndexSafe}
         onMentionCursorChange={syncComposerCursor}
         onMentionSelect={commitMentionSelection}

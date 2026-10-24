@@ -23,6 +23,8 @@ import { ChatStatusWidget } from "./status-widget";
 import { UnreadInboxPane } from "./unread-inbox-pane";
 import { installPaneChatSharing } from "./share/flow";
 import { attachChatPaneLinkPanes } from "./pane-links/previews";
+import { attachChatCommands, cachedChatFunctions } from "./pane-links/commands";
+import { getSharedRegistry } from "../../registry";
 import { UNREAD_INBOX_PANE_ID, UNREAD_INBOX_TEMPLATE_ID } from "./unread-inbox";
 import { watchUnreadBadge } from "./unread-badge";
 import { getAppBadgeHost } from "../../../notifications/app-badge";
@@ -54,6 +56,7 @@ function isPrivateConversation(channelId: unknown): boolean {
 
 let disposePaneChatSharing: (() => void) | undefined;
 let detachPaneLinkPanes: (() => void) | undefined;
+let detachCommands: (() => void) | undefined;
 let disposeUnreadBadge: (() => void) | undefined;
 
 export const chatModule: PluginModule = {
@@ -154,6 +157,12 @@ export const chatModule: PluginModule = {
     // A chip names the pane it opens (any plugin's) and its letter.
     detachPaneLinkPanes?.();
     detachPaneLinkPanes = attachChatPaneLinkPanes((paneId) => ctx.getPaneDef(paneId));
+    // A function written in a message is a chip for the codes this app runs, and runs in its command bar.
+    detachCommands?.();
+    detachCommands = attachChatCommands({
+      functions: () => cachedChatFunctions(getSharedRegistry()),
+      run: (query) => getSharedRegistry()?.runCommandBarQuery(query),
+    });
     chatController.attachPersistence(ctx.persistence, ctx.resume);
     chatSidebarStore.attach(ctx.persistence);
     chatHandlePromptStore.attach(ctx.persistence);
@@ -198,6 +207,8 @@ export const chatModule: PluginModule = {
     disposePaneChatSharing = undefined;
     detachPaneLinkPanes?.();
     detachPaneLinkPanes = undefined;
+    detachCommands?.();
+    detachCommands = undefined;
     // Before the controller drops its listeners, so the badge is cleared with the plugin.
     disposeUnreadBadge?.();
     disposeUnreadBadge = undefined;

@@ -206,6 +206,7 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
               textColor={state.bodyColor}
               mutedColor={state.bodyMutedColor}
               openTicker={openTicker}
+              openPaneLink={openPaneLink}
               userByUsername={userByUsername}
               onUserHover={onUserHover}
               onUserHoverEnd={onUserHoverEnd}

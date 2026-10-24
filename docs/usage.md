@@ -1942,6 +1942,12 @@ Messages read basic markdown, the same in the terminal, the desktop and the web:
 
 A link opens only http or https. A marker that is never closed, such as a lone `*`, shows as typed, and `snake_case` is not italic. Copy Message Text in the pane menu copies the selected message as written.
 
+### Functions in messages
+
+On the desktop and the web, a function written in backticks, such as `` `NI CRYPTO` ``, `` `DES AAPL` `` or `` `CRYP` ``, is a chip in its line. A click on it, or `o` on the selected message, runs it in the command bar, so it opens as typing it there would. The code counts written in capitals, and a one-letter code only with its argument (`T AAPL`). A command that changes your settings or lists, such as `AW` or `TH`, stays code, as do other code and code blocks. The terminal shows them all as code.
+
+After a backtick, the message field suggests functions by code or name, as `@` suggests people. Enter or Tab writes the one chosen with its closing backtick, leaving the cursor inside for a function that takes a ticker or topic.
+
 ### Discord
 
 Public channels are mirrored to the Gloom Discord, and messages written there carry a dim `Discord` tag. Someone on Discord who has not linked a Gloom account has no card and cannot be messaged, and a message written on Discord can only be edited there.
