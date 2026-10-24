@@ -11,7 +11,7 @@ const USAGE_PREFIX = "Usage: ";
 /** The code of every error a command fails with: bad input, nothing found, an option it does not take. */
 const CLI_ERROR_CODE = "cli_error";
 /** The code of a command whose requests never reached the data service. */
-const SERVICE_UNREACHABLE_CODE = "service_unreachable";
+export const SERVICE_UNREACHABLE_CODE = "service_unreachable";
 
 /** What to check when nothing answered: the connection, and the proxy when one is set. */
 function unreachableHint(): string {

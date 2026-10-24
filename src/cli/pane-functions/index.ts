@@ -36,7 +36,8 @@ import {
   ListingArgError, listingFateLoader, listingReadNotes, loadForListing, loadListingQuoteAnswer, quotedListingChoiceNotes, refuseMovedListing,
 } from "../listing-arg";
 import { isNotATickerMessage } from "../not-a-ticker";
-import { isCliFailure } from "../errors";
+import { isCliFailure, SERVICE_UNREACHABLE_CODE } from "../errors";
+import { DATA_SERVICE_UNREACHABLE_MESSAGE } from "../../utils/network-failure";
 import { isTickerLinkPeer } from "../../layout/ticker-navigation";
 import { knownGapMessage, commandPointer, commandPointerLeads, topicPointer } from "../known-gaps";
 import { selectReportTables, type CliReportTables } from "../report-tables";
@@ -247,7 +248,9 @@ function tablesHoldValues(tables: CliReportTables): boolean {
  * is a list (`failsWithoutData`) with no name that has any. A report with data
  * for some of what was asked, warnings or errors beside it, is a result: a
  * loss-maker's P/E band without a P/E, or IV history with only realized
- * volatility, exits 0.
+ * volatility, exits 0. Not one missing a part because the data service could
+ * not be reached: that is no answer rather than no data, and fails as
+ * retryable `service_unreachable`, whatever else it shows.
  */
 export function reportFailure(
   data: { empty: boolean; rowCount: number; symbols: readonly string[]; unavailableSymbols: readonly string[]; errors?: readonly string[]; reason?: unknown },
@@ -257,8 +260,12 @@ export function reportFailure(
   const missing = missingListings(data.symbols, data.unavailableSymbols);
   const noListing = data.symbols.length > 0 && data.symbols.every((symbol) => missing.has(listingKey(symbol)));
   const noValues = tables ? !tablesHoldValues(tables) : false;
-  if (!data.empty && !(noListing && noValues) && !(failsWithoutData && foundNothing(data))) return null;
   const reasons = [...data.errors ?? [], ...typeof data.reason === "string" ? [data.reason] : []];
+  const unreached = reasons.filter((reason) => reason.includes(DATA_SERVICE_UNREACHABLE_MESSAGE));
+  if (unreached.length > 0 && (data.empty || data.unavailableSymbols.length > 0)) {
+    return { code: SERVICE_UNREACHABLE_CODE, message: `${asked}: ${unreached.join("; ")}.`.replace(/\.\.$/, "."), retryable: true };
+  }
+  if (!data.empty && !(noListing && noValues) && !(failsWithoutData && foundNothing(data))) return null;
   const unavailable = data.unavailableSymbols.length > 0 ? `no data for ${data.unavailableSymbols.join(", ")}` : "no data";
   return { code: "no_data", message: `${asked}: ${reasons.length > 0 ? reasons.join("; ") : unavailable}.`.replace(/\.\.$/, ".") };
 }

@@ -6,6 +6,7 @@ import { hasLikelyQuoteUnitMismatch } from "../utils/currency-units";
 import { normalizePriceHistory } from "../utils/price-history";
 import { resolveTickerFinancialsQuoteState } from "./quotes/resolution";
 import { instrumentIdentityKey } from "../utils/instrument-identity";
+import { withSavedCopyMarkOf } from "../data/saved-copies";
 
 export function toMarketDataContext(instrument: InstrumentRef): MarketDataRequestContext {
   return {
@@ -123,6 +124,8 @@ export function buildTickerFinancialsSnapshot(
 
   return {
     ...resolved,
+    // The quote shown is a saved copy when the newest quote answered was one.
+    ...(resolved.quote ? { quote: withSavedCopyMarkOf(resolved.quote, quote ?? snapshot?.quote) } : {}),
     priceHistory: normalizePriceHistory(priceHistory ?? snapshot?.priceHistory ?? []),
   };
 }

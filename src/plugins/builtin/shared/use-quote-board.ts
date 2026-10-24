@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { DataTableCell, DataTableVisibleRange, PaneFooterSegment } from "../../../components";
+import { savedCopyFooterSegment, type DataTableCell, type DataTableVisibleRange, type PaneFooterSegment } from "../../../components";
+import { oldestSavedCopyAt } from "../../../data/saved-copies";
 import { useQuoteEntries } from "../../../market-data/hooks";
 import { getRegularSessionDisplay, quoteDotMarketState, quoteHeadlineTime, quoteSessionColor, quoteSessionLabel } from "../../../market-data/market/status";
 import type { InstrumentRef } from "../../../market-data/request-types";
@@ -499,6 +500,8 @@ export interface QuoteBoardStatus {
   /** Symbols with no quote to show at all. */
   unavailable: number;
   latestTs: number;
+  /** When the oldest quote shown from a saved copy, after its refresh failed, was saved; null when none is. */
+  savedAt: number | null;
 }
 
 export function quoteBoardStatus(quotes: BoardQuoteMap): QuoteBoardStatus {
@@ -512,7 +515,7 @@ export function quoteBoardStatus(quotes: BoardQuoteMap): QuoteBoardStatus {
     else if (!state.quote && !state.loading) unavailable += 1;
     latestTs = Math.max(latestTs, state.quote?.lastUpdated ?? 0);
   }
-  return { loading, stale, unavailable, latestTs };
+  return { loading, stale, unavailable, latestTs, savedAt: oldestSavedCopyAt(Array.from(quotes.values(), (state) => state.quote)) };
 }
 
 /** Board footer status: everything here changes as loads succeed or fail. */
@@ -525,7 +528,9 @@ export function quoteBoardFooterInfo(status: QuoteBoardStatus): PaneFooterSegmen
   if (status.unavailable > 0) {
     info.push({ id: "error", parts: [{ text: `${status.unavailable} unavailable`, tone: "warning" }] });
   }
-  if (status.latestTs > 0) {
+  if (status.savedAt != null) {
+    info.push(savedCopyFooterSegment("saved-copy", status.savedAt));
+  } else if (status.latestTs > 0) {
     info.push({
       id: "fresh",
       quoteStatus: true,

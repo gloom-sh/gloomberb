@@ -82,6 +82,7 @@ import {
   type QuoteSubscriptionHandle,
   type QuoteSubscriptionRequest,
 } from "./quotes";
+import { withSavedCopyMarkOf } from "../../data/saved-copies";
 
 /** How long a streamed tick may reuse the quote fields read from the cache. */
 const STREAM_QUOTE_BASELINE_TTL_MS = 60_000;
@@ -747,7 +748,8 @@ export class MarketDataCoordinator {
     const resolvedQuote = quote.stale === true ? quote : this.resolveIncomingQuote(instrument, quote);
     const startedAt = Date.now();
     const receivedAt = resolvedQuote.stale === true ? resolvedQuote.receivedAt : startedAt;
-    const storedQuote = receivedAt == null ? resolvedQuote : { ...resolvedQuote, receivedAt };
+    // A tick merged onto a saved copy is the stream's answer, not the saved copy.
+    const storedQuote = withSavedCopyMarkOf(receivedAt == null ? resolvedQuote : { ...resolvedQuote, receivedAt }, quote);
     const currentQuote = current.data ?? current.lastGoodData;
     if (areStreamQuotesEquivalent(currentQuote, storedQuote)) {
       const previousReceipt = currentQuote?.receivedAt;

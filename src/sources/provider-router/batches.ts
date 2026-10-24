@@ -26,6 +26,7 @@ import {
   type CachedFinancialsSelection,
 } from "./financials";
 import type { ProviderRouterCoreDeps } from "./route-types";
+import { isNetworkFailure } from "../../utils/network-failure";
 
 export interface ProviderRouterBatchDeps extends ProviderRouterCoreDeps {
   readCachedMergedFinancialsSelection(
@@ -89,6 +90,7 @@ export class ProviderRouterBatchRoutes {
     const batchProvider = this.deps.providersInPriorityOrder().find((provider) => provider.getQuotesBatch);
     const providerMisses = misses.filter(({ target }) => !this.deps.hasBrokerContext(target.context));
     const providerIndexes = new Map<string, Array<{ index: number; target: QuoteSubscriptionTarget }>>();
+    let batchFailure: unknown = null;
     if (batchProvider && providerMisses.length > 0) {
       for (const entry of providerMisses) {
         const key = this.quoteBatchKey(entry.target);
@@ -97,7 +99,10 @@ export class ProviderRouterBatchRoutes {
         providerIndexes.set(key, bucket);
       }
       const uniqueTargets = [...providerIndexes.values()].map((bucket) => bucket[0]!.target);
-      const batchResults = await batchProvider.getQuotesBatch!(uniqueTargets, providerOptions).catch(logFailure("sources.provider-router.batches", "Loading batch quotes failed", []));
+      const batchResults = await batchProvider.getQuotesBatch!(uniqueTargets, providerOptions).catch((error: unknown) => {
+        batchFailure = error;
+        return logFailure("sources.provider-router.batches", "Loading batch quotes failed", [] as QuoteBatchResult[])(error);
+      });
       for (const item of batchResults) {
         if (!isProviderQuoteUsableForCurrentSession(item.quote, item.target.exchange, item.target.symbol, { recentAnswer: true })) continue;
         const key = this.quoteBatchKey(item.target);
@@ -111,12 +116,15 @@ export class ProviderRouterBatchRoutes {
       }
     }
 
+    // The batch never reached the data service: a copy saved a moment ago is still a saved copy, not the
+    // service's answer, so each is asked for as a refresh, which fails at once and says it answers from that copy.
+    const unreached = isNetworkFailure(batchFailure) ? new Set(providerMisses.map(({ index }) => index)) : null;
     await Promise.all(misses.map(async ({ index, target }) => {
       if (results[index]) return;
       try {
         const quote = await this.deps.getQuote(target.symbol, target.exchange, {
           ...target.context,
-          cacheMode: forceRefresh ? "refresh" : "default",
+          cacheMode: forceRefresh || unreached?.has(index) ? "refresh" : "default",
         });
         results[index] = { target, quote };
       } catch (error) {

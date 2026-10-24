@@ -125,16 +125,21 @@ export interface ReportFreshness {
   /**
    * Refreshing the data failed and a copy saved earlier answered: when that
    * copy was saved, an ISO instant in UTC. The status line then says
-   * `couldn't refresh; saved 21:49 UTC` in place of how current the data is.
+   * `couldn't refresh; saved copy from 21:49 UTC` in place of how current the data is.
    */
   savedAt?: string;
+  /**
+   * Nothing was served: the data service could not be reached and no saved
+   * copy answered. The line then names no time, since nothing was retrieved.
+   */
+  unreached?: true;
 }
 
 /**
  * The freshness a command prints, saying when what it shows (`shown`: its
  * rows, or the data its line is drawn from) came from a copy saved earlier
  * because refreshing it failed (`collectSavedCopies`): its status line then
- * reads `couldn't refresh; saved 21:49 UTC` instead of live or delayed.
+ * reads `couldn't refresh; saved copy from 21:49 UTC` instead of live or delayed.
  */
 export function withSavedCopy<F extends ReportFreshness | undefined>(freshness: F, shown: unknown): F {
   if (!freshness || freshness.savedAt) return freshness;
@@ -819,7 +824,7 @@ function onRetrievalDay(iso: string, retrievedAt: string): boolean {
 
 /**
  * What a report answered from a saved copy says in place of how current its
- * data is: `couldn't refresh; saved 21:49 UTC`, with the day when the copy was
+ * data is: `couldn't refresh; saved copy from 21:49 UTC`, with the day when the copy was
  * saved on another day than the report was built.
  */
 function savedCopyText(savedAt: string, retrievedAt: string, local: boolean): string {
@@ -827,7 +832,7 @@ function savedCopyText(savedAt: string, retrievedAt: string, local: boolean): st
   if (!Number.isFinite(at)) return "couldn't refresh";
   const iso = new Date(at).toISOString();
   const time = onRetrievalDay(iso, retrievedAt) ? `${iso.slice(11, 16)} UTC${local ? localTimeSuffix(at) : ""}` : timeText(iso, local);
-  return `couldn't refresh; saved ${time}`;
+  return `couldn't refresh; saved copy from ${time}`;
 }
 
 /** `US and XETRA`, `US, XETRA and EPA`. */
@@ -970,6 +975,7 @@ function statusLineParts(freshness: ReportFreshness, detail: StatusLineDetail = 
   const undated = detail.date === "none";
   return [
     ...(freshness.sources?.length ? sourcesAsOfParts(freshness, freshness.sources, undated)
+      : freshness.unreached && !freshness.asOf ? []
       : [asOfText(freshness, detail.asOf === "short", local, undated)]),
     ...(freshness.schedule && detail.schedule !== "none"
       ? [typeof detail.schedule === "number" ? freshness.scheduleVariants?.[detail.schedule] ?? freshness.schedule : freshness.schedule] : []),

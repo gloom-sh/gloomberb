@@ -501,7 +501,7 @@ test("a list with a symbol served from a saved copy ends with when the copy was 
   await collectSavedCopies(() => history.execute(["AAPL", "MSFT"], cli.context));
   const [{ result, options }] = cli.printed;
   expect(result.freshness?.savedAt).toBe("2026-10-22T21:49:00.000Z");
-  expect(serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options)).toContain("couldn't refresh; saved Thu 22 Oct 2026 21:49 UTC");
+  expect(serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options)).toContain("couldn't refresh; saved copy from Thu 22 Oct 2026 21:49 UTC");
   // The same list from the live source says nothing of one.
   const live = createTestCliContext({
     config: createDefaultConfig("/tmp/gloom-history-command-fixture"),

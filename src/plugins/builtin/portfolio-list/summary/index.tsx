@@ -2,7 +2,8 @@ import { Box, Text } from "../../../../ui";
 import { TextAttributes } from "../../../../ui";
 import { colors, priceColor } from "../../../../theme/colors";
 import type { AppState } from "../../../../state/app/context";
-import type { PaneFooterSegment } from "../../../../components/layout/pane/footer/model";
+import { savedCopyFooterSegment, type PaneFooterSegment } from "../../../../components/layout/pane/footer/model";
+import { oldestSavedCopyAt } from "../../../../data/saved-copies";
 import type { BrokerConnectionStatus } from "../../../../types/broker";
 import type { TickerFinancials } from "../../../../types/financials";
 import type { Portfolio, TickerRecord } from "../../../../types/ticker";
@@ -446,11 +447,13 @@ export function buildPortfolioFooterSegments({
     : [];
   // Cached account numbers stay on screen when a live refresh fails, so the failure sits beside their date.
   if (accountState) return [...source, ...accountStatus];
+  const quotes = sortedTickers.map((ticker) => financialsMap.get(ticker.metadata.ticker)?.quote);
+  // Offline, the quotes listed are copies saved when they last refreshed: the footer says when, in place of the quote time.
+  const savedAt = refreshingSize > 0 ? null : oldestSavedCopyAt(quotes);
+  if (savedAt != null) return [...accountStatus, savedCopyFooterSegment("refresh", savedAt)];
   if (isPortfolioTab ? !totals.hasPositions && !accountStatusText : totals.watchlistCount === 0) return [];
 
-  const lastRefreshTimestamp = getMostRecentQuoteUpdate(
-    sortedTickers.map((ticker) => financialsMap.get(ticker.metadata.ticker)?.quote),
-  );
+  const lastRefreshTimestamp = getMostRecentQuoteUpdate(quotes);
   const refreshText = refreshingSize > 0
     ? "Refreshing..."
     : lastRefreshTimestamp != null
