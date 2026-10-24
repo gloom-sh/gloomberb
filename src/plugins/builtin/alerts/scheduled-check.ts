@@ -48,11 +48,16 @@ export function checkScheduledEventAlertsNow(): void {
   checkNow?.();
 }
 
-/** A release's row on the date a rule follows, when it is one whose figures the rule still waits for. */
+/**
+ * A release's row on the date a rule follows, when it is one whose figures
+ * the rule still waits for: not yet sent, and due after the rule was set (one
+ * set after its time sends none, so follows the next listing at once).
+ */
 function awaitedRow(rule: EventAlertRule, scheduled: ScheduledRule, calendar: readonly EconEvent[] | null): EconEvent | null {
   if (!calendar || !rule.eventDate || rule.printedFor === rule.eventDate || !followsRelease(scheduled.target)) return null;
   const row = releaseRowOn(scheduled.target, rule.eventDate, calendar);
-  return row && expectsFigures(row) && releaseInstant(row) != null ? row : null;
+  const time = row ? releaseInstant(row) : null;
+  return row && expectsFigures(row) && time != null && time >= rule.createdAt ? row : null;
 }
 
 /**
@@ -172,26 +177,28 @@ export function startScheduledEventAlerts(
           ? reportedResult(results, target.symbol, updated.eventDate)
           : null;
         if (scheduled.trigger === "results" && !result) return updated;
-        if (time != null && time <= at) {
-          // Its time has passed (the app was closed): no reminder, its figures follow.
-        } else if (result && target.kind === "earnings") {
-          const body = scheduledResultsMessage(target.symbol, result);
-          notify(body, { value: result.epsActual ?? null, unit: "EPS", symbol: target.symbol, ...(target.exchange ? { exchange: target.exchange } : {}) });
-        } else {
-          const body = row && target.kind === "release"
-            ? releaseReminderMessage(target, row, at)
-            : scheduledAlertMessage(target, updated.eventDate, ruleToday);
-          notify(body, target.kind === "earnings" ? { symbol: target.symbol, ...(target.exchange ? { exchange: target.exchange } : {}) } : {});
+        // Past its time (the app was closed through the lead day) there is nothing to remind of: its figures follow.
+        if (time == null || time > at) {
+          if (result && target.kind === "earnings") {
+            const body = scheduledResultsMessage(target.symbol, result);
+            notify(body, { value: result.epsActual ?? null, unit: "EPS", symbol: target.symbol, ...(target.exchange ? { exchange: target.exchange } : {}) });
+          } else {
+            const body = row && target.kind === "release"
+              ? releaseReminderMessage(target, row, at)
+              : scheduledAlertMessage(target, updated.eventDate, ruleToday);
+            notify(body, target.kind === "earnings" ? { symbol: target.symbol, ...(target.exchange ? { exchange: target.exchange } : {}) } : {});
+          }
+          updated = { ...updated, firedFor: updated.eventDate };
+          changed = true;
         }
-        updated = { ...updated, firedFor: updated.eventDate };
-        changed = true;
       }
       // The figures, once, when they print after the rule was set and within the window.
       if (row && time != null && followsRelease(target) && updated.printedFor !== updated.eventDate && expectsFigures(row)) {
         if (row.actual && at >= time && at - time <= PRINT_WINDOW_MS && time >= rule.createdAt) {
           const body = releasePrintMessage(target, row);
           notify(body, { value: null, ...printedValue(row.actual) }, "econ-calendar");
-          updated = { ...updated, printedFor: updated.eventDate };
+          // The figures count as its alert for the date, as the reminder does.
+          updated = { ...updated, firedFor: updated.eventDate, printedFor: updated.eventDate };
           changed = true;
         } else if (!row.actual && at < time + PRINT_WINDOW_MS) {
           // Asked for again soon after its time: every minute for half an hour, then at the regular checks.

@@ -17,7 +17,16 @@ import { newYorkToday } from "../earnings/board-model";
 import { fetchEconCalendarFrom } from "../econ/calendar-source";
 import { COUNTRY_FILTER_HINT, dateKey, loadCalendar, parseCountryFilter, type CountryFilter } from "../econ/calendar-model";
 import { isAllDayEvent, type EconEvent } from "../econ/types";
-import { calendarEventLabel, calendarNameWords, expectsFigures, matchCalendarEvent, type CalendarEventChoice } from "./calendar-events";
+import {
+  calendarEventLabel,
+  calendarNameWords,
+  expectsFigures,
+  macroEventNamed,
+  matchCalendarEvent,
+  releaseInstant,
+  releaseRowOn,
+  type CalendarEventChoice,
+} from "./calendar-events";
 import { createAlert, rearmAlert, serializeAlerts } from "./alert-engine";
 import { ALERTS_KEY, ALERTS_PLUGIN_ID } from "./constants";
 import { MAX_EVENT_ALERTS, eventAlertTarget, toggleEventAlert, writeEventAlertStores, type EventAlertRule } from "./events";
@@ -25,7 +34,7 @@ import { alertKindLabel } from "./history";
 import { IV_LEVEL_CHECKS_KEY, readIvLevelChecks, rearmIvLevelAlert, type IvLevelCheck } from "./iv-level";
 import { parseAlertPrice, readAlertPrice } from "./price";
 import { farTargetMessage } from "./quotes";
-import { createResearchAlert, formatPremium, ivLevelUnitError, parseAmount, parseIvLevel, researchAlertDescription } from "./research-builder";
+import { MACRO_EVENT_NAMES, createResearchAlert, formatPremium, ivLevelUnitError, parseAmount, parseIvLevel, researchAlertDescription } from "./research-builder";
 import { IV_LEVEL_RANGES, MAX_LEAD_DAYS, type IvLevelMetric, type MacroAlertEvent } from "./research-rules";
 import {
   createScheduledAlert,
@@ -459,12 +468,24 @@ function releaseReadNotes(query: string, choice: CalendarEventChoice, others: re
   return notes;
 }
 
+/** Every form `alerts add` takes but a price alert's details, as a refusal ends. */
+const ADD_FORMS = `Event alerts take ${EVENT_FORM} or a symbol with earnings (alerts add CRWV earnings --days 3); price alerts take a condition and a price (alerts add AAPL above 250).`;
+
+/**
+ * Why a name could not be looked up. A single word (alerts add AAPL) may be
+ * a slip of another form as much as a release, so it also says what each
+ * form takes.
+ */
+function calendarUnavailableMessage(query: string, country: CountryFilter | null, error: string): string {
+  if (country || /\s/.test(query.trim())) return eventDateUnavailableMessage({ kind: "release", event: query, country: country ?? "" }, error);
+  return `Unknown event "${query}": the economic calendar could not be loaded to look it up (${error}). ${ADD_FORMS}`;
+}
+
 /** The refusal of a name nothing in the calendar matches: the nearest names, and every form `alerts add` takes. */
 function noReleaseMessage(query: string, country: CountryFilter | null, suggestions: readonly CalendarEventChoice[]): string {
   const near = suggestions.length > 0 ? ` Did you mean ${choiceList(suggestions).join(", ")}?` : "";
   return `No release in the economic calendar matches "${query}"${country ? ` in ${country.split(",").join(", ")}` : ""}.${near} `
-    + `Event alerts take ${EVENT_FORM} or a symbol with earnings (alerts add CRWV earnings --days 3); price alerts take a condition and a price (alerts add AAPL above 250). `
-    + "gloom econ --country <code> lists the calendar.";
+    + `${ADD_FORMS} gloom econ --country <code> lists the calendar.`;
 }
 
 /** The refusal of a name listed in several countries, with the best of each. */
@@ -597,9 +618,13 @@ export const alertsCliCommand: CliCommandDef = {
     }
     // A release named from the calendar, with what the words were read as and what else they name.
     let newRelease: CalendarEventChoice | null = null;
+    // CPI and FOMC, typed so or named by one of their calendar rows (CPI y/y, Fed Interest Rate Decision).
+    let macro: { event: MacroAlertEvent; leadDays: number } | null = request?.kind === "macro" ? request : null;
+    let calendar: readonly EconEvent[] | null = null;
     if (request?.kind === "release") {
       const events = await loadAlertCalendar(now).catch((error: unknown) =>
-        ctx.fail(eventDateUnavailableMessage({ kind: "release", event: request.query, country: request.country ?? "" }, error instanceof Error ? error.message : String(error))));
+        ctx.fail(calendarUnavailableMessage(request.query, request.country, error instanceof Error ? error.message : String(error))));
+      calendar = events;
       const match = matchCalendarEvent(request.query, request.country, events, now);
       if (match.kind !== "match") {
         return ctx.fail(match.kind === "none"
@@ -607,24 +632,33 @@ export const alertsCliCommand: CliCommandDef = {
           : severalCountriesMessage(request.query, match.choices));
       }
       const { choice, others } = match;
-      newRelease = choice;
-      read = releaseReadNotes(request.query, choice, others);
-      const target: ScheduledEventTarget = { kind: "release", event: choice.name, country: choice.country, ...(choice.publisher ? { publisher: choice.publisher } : {}) };
-      try {
-        newEventRule = createScheduledAlert(target, request.leadDays, choice.next ? dateKey(choice.next.date) : null);
-      } catch (error) {
-        ctx.fail(error instanceof Error ? error.message : String(error));
+      const macroEvent = macroEventNamed(choice);
+      if (macroEvent) {
+        macro = { event: macroEvent, leadDays: request.leadDays };
+        read = [`Read "${request.query}" as the ${MACRO_EVENT_NAMES[macroEvent]} alert, which follows ${calendarEventLabel({ event: choice.name, country: choice.country })}.`];
+      } else {
+        newRelease = choice;
+        read = releaseReadNotes(request.query, choice, others);
+        const target: ScheduledEventTarget = { kind: "release", event: choice.name, country: choice.country, ...(choice.publisher ? { publisher: choice.publisher } : {}) };
+        try {
+          newEventRule = createScheduledAlert(target, request.leadDays, choice.next ? dateKey(choice.next.date) : null);
+        } catch (error) {
+          ctx.fail(error instanceof Error ? error.message : String(error));
+        }
       }
     }
-    if (request && (request.kind === "earnings" || request.kind === "macro")) {
-      const target: ScheduledEventTarget = request.kind === "macro"
-        ? { kind: "macro", event: request.event }
-        : await requireListingArg(request.symbol, exchangeOption, ctx)
+    // When CPI or FOMC came out earlier today: its figures are not sent to an alert set after them.
+    let macroOutAt: number | null = null;
+    const earnings = request?.kind === "earnings" ? request : null;
+    if (macro || earnings) {
+      const target: ScheduledEventTarget = macro
+        ? { kind: "macro", event: macro.event }
+        : await requireListingArg(earnings!.symbol, exchangeOption, ctx)
           .then((listing) => {
             read = listingReadNotes(listing);
             return { kind: "earnings" as const, symbol: listing.symbol, exchange: listing.exchange };
           });
-      const lead = request.kind === "earnings" && request.results ? "results" as const : request.leadDays;
+      const lead = earnings?.results ? "results" as const : (macro ?? earnings!).leadDays;
       // A listing the rule cannot follow fails before any request.
       try {
         createScheduledAlert(target, lead, null);
@@ -635,6 +669,15 @@ export const alertsCliCommand: CliCommandDef = {
         ? await withMarketData(ctx, (market) => requireEventDate(target, scheduledEventSources(market.dataProvider), today, (message) => ctx.fail(message)))
         : await requireEventDate(target, scheduledEventSources(null), today, (message) => ctx.fail(message));
       newEventRule = createScheduledAlert(target, lead, eventDate);
+      if (target.kind === "macro" && eventDate === today) {
+        const events = calendar ?? await loadAlertCalendar(now).catch(() => {
+          // Intentional ignore: without the calendar the alert is added as before, only without saying today's release is out.
+          return null;
+        });
+        const row = events ? releaseRowOn(target, eventDate, events) : null;
+        const at = row ? releaseInstant(row) : null;
+        if (at != null && at <= now) macroOutAt = at;
+      }
     }
 
     if (action === "list") {
@@ -738,6 +781,7 @@ export const alertsCliCommand: CliCommandDef = {
         const when = !eventDate ? null : newRelease?.next ? releaseWhen(newRelease.next) : `on ${eventDate}`;
         const reminder = !eventDate
           ? "the app alerts once the calendar lists its next date, about two weeks ahead"
+          : macroOutAt != null ? `it came out today at ${new Date(macroOutAt).toISOString().slice(11, 16)} UTC, so the app alerts before the next one`
           : due ? "already reached, so the app alerts at its next check" : `the app alerts on ${leadStartDate(eventDate, scheduled.leadDays)}`;
         ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, alert: rule,
           ...newRelease ? { release: releaseData(newRelease) } : {} }, ...(read.length > 0 ? { warnings: read } : {}) }, {

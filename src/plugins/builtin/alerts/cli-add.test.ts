@@ -164,8 +164,12 @@ test("the far-target refusal is exactly past ten times either way, and writes pr
   expect(farTargetMessage("XYZ", 85_000, 0, null)).toBeNull();
 });
 
-/** China's week as Gloom Cloud lists it on Sat 24 Oct 2026, with a US PMI beside it, from the stored calendar. */
-function serveCalendar() {
+/**
+ * China's week as Gloom Cloud lists it on Sat 24 Oct 2026 (or at `now`), with a US PMI and the FOMC decision beside it, from
+ * the stored calendar, and the FOMC meeting the rate path lists. `printed` gives NBS Manufacturing PMI its figure; `offline`
+ * answers nothing.
+ */
+function serveCalendar({ now = "2026-10-24T06:00:00Z", printed = false, offline = false } = {}) {
   const nbs = { name: "National Bureau of Statistics" };
   const row = (date: string, country: string, impact: string, event: string, extra: Record<string, unknown> = {}) => ({
     id: `${country}-${event}-${date}`, date, time: date.slice(11, 16), country, event, impact, actual: null, forecast: null, prior: null, ...extra,
@@ -174,14 +178,24 @@ function serveCalendar() {
     row("2026-10-26T00:00:00.000Z", "CN", "medium", "Communist Party Fifth Plenum", { time: "All Day" }),
     row("2026-10-27T01:30:00.000Z", "CN", "low", "Industrial Profits (YTD) YoY", { prior: "15.7%", source: nbs }),
     row("2026-10-31T01:30:00.000Z", "CN", "medium", "NBS Non Manufacturing PMI", { prior: "50.2", source: nbs }),
-    row("2026-10-31T01:30:00.000Z", "CN", "high", "NBS Manufacturing PMI", { prior: "50.1", source: nbs }),
+    row("2026-10-31T01:30:00.000Z", "CN", "high", "NBS Manufacturing PMI", { prior: "50.1", source: nbs, ...printed ? { actual: "50.3" } : {} }),
+    row("2026-10-28T18:00:00.000Z", "US", "high", "Fed Interest Rate Decision", { prior: "4%", source: { name: "Federal Reserve" } }),
     row("2026-11-02T14:00:00.000Z", "US", "high", "ISM Manufacturing PMI", { prior: "49.1" }),
   ];
-  setSystemTime(new Date("2026-10-24T06:00:00Z"));
-  setCloudApiFetchTransport(async (url) => ({
-    ok: true, status: 200, headers: new Headers(),
-    text: async () => JSON.stringify(new URL(url).pathname.endsWith("/calendar/history") ? { events, storedFrom: "2026-01-01" } : events),
-  }) as Response);
+  const ratePath = {
+    asOf: null, fetchedAt: now, stale: false, status: "available", gaps: [], fedFunds: [], sofr: [], ghosts: [],
+    current: { effr: {}, targetLower: {}, targetUpper: {} }, dotPlot: { points: [] }, schedule: {},
+    meetings: [{ date: "2026-10-28", impliedRate: null, percentile: null, samples: 0, probabilities: [] }],
+  };
+  setSystemTime(new Date(now));
+  setCloudApiFetchTransport(async (url) => {
+    if (offline) throw new TypeError("fetch failed");
+    const path = new URL(url).pathname;
+    return {
+      ok: true, status: 200, headers: new Headers(),
+      text: async () => JSON.stringify(path.endsWith("/rate-path") ? ratePath : path.endsWith("/calendar/history") ? { events, storedFrom: "2026-01-01" } : events),
+    } as Response;
+  });
 }
 
 test("an economic calendar event from the shell is matched by name, kept in its own list, and says what it was read as", async () => {
@@ -216,5 +230,34 @@ test("a calendar name that is ambiguous or matches nothing is refused with the w
   for (const { error } of [slip, await addAlert(["AAPL", "abve", "250"])]) {
     expect(error).toContain('a release in the economic calendar by name (alerts add "NBS Manufacturing PMI" --country CN, alerts add CN PMI, alerts add CPI --days 1)');
   }
-  expect([several, slip].map((attempt) => attempt.events)).toEqual([[], []]);
+  // A bare word that only starts a name, or is its initials, is offered rather than added.
+  const bare = await addAlert(["MAN"]);
+  expect(bare.error).toContain('No release in the economic calendar matches "MAN". Did you mean NBS Manufacturing PMI (CN), ISM Manufacturing PMI (US)');
+  expect([several, slip, bare].map((attempt) => attempt.events)).toEqual([[], [], []]);
+  // With no calendar to look a bare word up in, it still says what each form takes.
+  serveCalendar({ offline: true });
+  const offline = await addAlert(["AAPL"]);
+  expect(offline.error).toStartWith('Unknown event "AAPL": the economic calendar could not be loaded to look it up');
+  expect(offline.error).toContain("price alerts take a condition and a price (alerts add AAPL above 250)");
+});
+
+test("the FOMC's calendar row by name is the FOMC alert, and a release already out today is followed to its next listing", async () => {
+  serveCalendar();
+  const fed = await addAlert(["Fed", "Interest", "Rate", "Decision"]);
+  expect(fed.error).toBeNull();
+  // The rule `alerts add FOMC` saves, so the one duplicate check refuses the other.
+  expect(fed.events).toMatchObject([{ kind: "macro_event", eventDate: "2026-10-28" }]);
+  expect(JSON.parse(fed.events[0]!.value)).toEqual({ version: 1, event: "fomc", leadDays: 1 });
+  expect(fed.printed!.result.warnings).toEqual(['Read "Fed Interest Rate Decision" as the FOMC decision alert, which follows Fed Interest Rate Decision (US).']);
+
+  // An hour after the decision: the alert says it is out, rather than promising an alert at the next check.
+  serveCalendar({ now: "2026-10-28T19:00:00Z" });
+  const late = await addAlert(["FOMC"]);
+  expect(late.printed!.options!.text!(late.printed!.result.data)).toContain(
+    "FOMC decision on 2026-10-28, 1 day before and when it prints (it came out today at 18:00 UTC, so the app alerts before the next one");
+  // A release that printed earlier today follows its next listing, none here yet.
+  serveCalendar({ now: "2026-10-31T03:00:00Z", printed: true });
+  const pmi = await addAlert(["NBS", "Manufacturing", "PMI"]);
+  expect(pmi.events[0]!.eventDate).toBeUndefined();
+  expect(pmi.printed!.options!.text!(pmi.printed!.result.data)).toContain("the app alerts once the calendar lists its next date");
 });

@@ -200,9 +200,9 @@ export function createScheduledAlert(
   };
 }
 
-/** Re-armed: it alerts again for the event it already alerted for, and a paused rule resumes. */
+/** Re-armed: it alerts again for the event it already alerted for, its figures too, and a paused rule resumes. */
 export function rearmScheduledAlert(rule: EventAlertRule, now = Date.now()): EventAlertRule {
-  const { firedFor: _fired, ...rest } = rule;
+  const { firedFor: _fired, printedFor: _printed, ...rest } = rule;
   return { ...rest, status: "active", createdAt: rule.status === "paused" ? now : rule.createdAt };
 }
 
@@ -361,8 +361,8 @@ const errorText = (error: unknown) => (error instanceof Error ? error.message : 
  * The next date of every target, keyed by `scheduledTargetKey`: one earnings
  * request for all the symbols, one CPI, one FOMC and one calendar read. A
  * source that fails gives its targets an error and leaves the others alone.
- * `today` is New York's day; a calendar release counts from the UTC day of
- * `now`.
+ * `today` is New York's day; a calendar release follows its next row still
+ * to come at `now`.
  */
 export async function lookupScheduledDates(
   targets: readonly ScheduledEventTarget[],
@@ -377,7 +377,7 @@ export async function lookupScheduledDates(
   const readCalendar = sources.calendar?.bind(sources) ?? (() => Promise.reject(new Error("The economic calendar is not available.")));
   await Promise.all([
     releases.length === 0 ? null : readCalendar().then(
-      (events) => { for (const target of releases) result.set(scheduledTargetKey(target), { date: nextReleaseDate(events, target, scheduledToday(target, now)) }); },
+      (events) => { for (const target of releases) result.set(scheduledTargetKey(target), { date: nextReleaseDate(events, target, now) }); },
       (error) => { for (const target of releases) result.set(scheduledTargetKey(target), { error: errorText(error) }); },
     ),
     symbols.length === 0 ? null : sources.earnings(symbols).then(

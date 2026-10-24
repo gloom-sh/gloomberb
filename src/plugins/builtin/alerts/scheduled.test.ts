@@ -82,7 +82,9 @@ test("event rules keep their dates through storage and take only US listings and
   // A date that does not read is dropped; the rule stays.
   expect(rules[1]!.eventDate).toBeUndefined();
   expect(readScheduledRule(rules[1]!)).toEqual({ target: { kind: "macro", event: "cpi" }, leadDays: 1, trigger: "date" });
-  expect(rearmScheduledAlert(rules[0]!).firedFor).toBeUndefined();
+  // Re-armed, it sends the reminder and the figures again for the same date.
+  expect(rearmScheduledAlert({ ...rules[0]!, printedFor: "2026-11-09" })).not.toHaveProperty("firedFor");
+  expect(rearmScheduledAlert({ ...rules[0]!, printedFor: "2026-11-09" })).not.toHaveProperty("printedFor");
   expect(() => createScheduledAlert({ kind: "earnings", symbol: "SAN", exchange: "EPA" }, 1, null)).toThrow("US listings");
   expect(readEventAlerts(JSON.stringify([{ ...macro, value: JSON.stringify({ version: 1, event: "cpi", leadDays: 15 }) }])).error).not.toBeNull();
   expect([parseLeadDays(undefined), parseLeadDays("14"), parseLeadDays("0"), parseLeadDays("15"), parseLeadDays("2.5")]).toEqual([1, 14, null, null, null]);
@@ -440,6 +442,8 @@ test("a calendar event alerts before its release and once with its figures; CPI 
     fomc: async () => [],
     calendar: async () => [
       row("2026-10-27T01:30:00.000Z", "CN", "Industrial Profits (YTD) YoY", { actual: "3.2%", prior: "15.7%" }),
+      // Its sibling, out first: never read as it.
+      row("2026-10-31T01:30:00.000Z", "CN", "NBS Non Manufacturing PMI", { actual: "50.6", prior: "50.2", source: nbs }),
       row("2026-10-31T01:30:00.000Z", "CN", "NBS Manufacturing PMI", { actual: figures.pmi, forecast: "50.0", prior: "50.1", source: nbs }),
       row("2026-11-10T13:30:00.000Z", "US", "CPI y/y", { actual: figures.cpi, forecast: "3.0%", prior: "2.9%" }),
     ],
@@ -466,7 +470,10 @@ test("a calendar event alerts before its release and once with its figures; CPI 
     await check();
     expect(notifications.slice(1)).toEqual(["NBS Manufacturing PMI (CN) 50.3 vs 50.0 expected, prior 50.1"]);
     expect(panes.at(-1)).toBe("econ-calendar");
-    expect(readEventAlerts(store.get(CALENDAR_ALERTS_KEY)!).rules[0]).toMatchObject({ eventDate: "2026-10-31", firedFor: "2026-10-31", printedFor: "2026-10-31" });
+    // Sent, it moves on to the next listing, which this calendar does not have yet.
+    const sent = readEventAlerts(store.get(CALENDAR_ALERTS_KEY)!).rules[0]!;
+    expect(sent).toMatchObject({ firedFor: "2026-10-31", printedFor: "2026-10-31" });
+    expect(sent.eventDate).toBeUndefined();
 
     now = Date.parse("2026-11-09T15:00:00Z");
     await check();

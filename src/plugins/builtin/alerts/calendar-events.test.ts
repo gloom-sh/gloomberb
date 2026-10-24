@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import type { EconEvent, EconImpact } from "../econ/types";
 import {
+  macroEventNamed,
   matchCalendarEvent,
   nextReleaseDate,
   releasePrintMessage,
@@ -38,10 +39,15 @@ test("a release named by some of its words is the headline one, with the others 
   expect(nbs.choice).toMatchObject({ name: "NBS Manufacturing PMI", country: "CN", impact: "high", publisher: NBS.name });
   expect(nbs.choice.next?.date.toISOString()).toBe("2026-10-31T01:30:00.000Z");
   expect(names(nbs.others)).toEqual(["NBS Non Manufacturing PMI (CN)", "NBS General PMI (CN)"]);
-  // A word's start and a name's initials read too, any case.
-  for (const query of ["nbs manuf pmi", "Industrial Profits", "NFP"]) {
+  // With two words or more a word's start and a name's initials read too, any case.
+  for (const query of ["nbs manuf pmi", "Industrial Profits", "NFP payrolls"]) {
     expect(matchCalendarEvent(query, null, calendar, now).kind).toBe("match");
   }
+  // A single word has to be one of the name's words: a bare start or initials is offered, not taken.
+  const nfp = matchCalendarEvent("NFP", null, calendar, now);
+  expect(nfp.kind === "none" && names(nfp.suggestions)).toEqual(["Non Farm Payrolls (US)"]);
+  const man = matchCalendarEvent("MAN", "CN", calendar, now);
+  expect(man.kind === "none" && names(man.suggestions)).toEqual(["NBS Manufacturing PMI (CN)", "RatingDog Manufacturing PMI (CN)", "NBS Non Manufacturing PMI (CN)"]);
   // CPI is China's Inflation Rate YoY, listed only in the past: no next date yet.
   const cpi = matchCalendarEvent("CPI", "CN", calendar, now);
   expect(cpi.kind === "match" && [cpi.choice.name, cpi.choice.next]).toEqual(["Inflation Rate YoY", null]);
@@ -66,16 +72,54 @@ test("nothing matching offers the nearest names: a slip in a word, or a name spe
   expect(far).toEqual({ kind: "none", suggestions: [] });
 });
 
-test("a followed release is found when the feed renames it, from the same publisher", () => {
+test("a followed release is found when the feed renames it, and never in a sibling series printing beside it", () => {
   const target = { kind: "release" as const, event: "NBS Manufacturing PMI", country: "CN", publisher: NBS.name };
-  const renamed = [
+  const rows = [
+    // Its own day: the non-manufacturing PMI prints first; the manufacturing one is still to come.
+    row("2026-10-31T01:30:00.000Z", "CN", "medium", "NBS Non Manufacturing PMI", { source: NBS, actual: "50.6", prior: "50.2" }),
+    row("2026-10-31T01:30:00.000Z", "CN", "high", "NBS Manufacturing PMI", { source: NBS, prior: "50.1" }),
+    // A month on, the feed drops the NBS in front of both.
+    row("2026-11-30T01:30:00.000Z", "CN", "medium", "Non Manufacturing PMI", { source: NBS, actual: "50.9" }),
     row("2026-11-30T01:30:00.000Z", "CN", "high", "Manufacturing PMI", { source: NBS, prior: "50.1" }),
     // Another publisher's PMI of the same words is not it.
-    row("2026-11-30T01:45:00.000Z", "CN", "high", "Manufacturing PMI", { source: { name: "S&P Global" } }),
+    row("2026-12-01T01:45:00.000Z", "CN", "high", "Manufacturing PMI", { source: { name: "S&P Global" } }),
+    // Nor is the sibling alone on a day without the release.
+    row("2026-12-31T01:30:00.000Z", "CN", "medium", "NBS Non Manufacturing PMI", { source: NBS, actual: "50.1" }),
   ];
-  expect(nextReleaseDate(renamed, target, "2026-11-01")).toBe("2026-11-30");
-  expect(nextReleaseDate(renamed, { ...target, publisher: undefined }, "2026-11-01")).toBeNull();
-  expect(releaseRowOn(target, "2026-11-30", renamed)?.source?.name).toBe(NBS.name);
+  expect(releaseRowOn(target, "2026-10-31", rows)).toMatchObject({ event: "NBS Manufacturing PMI", actual: null });
+  expect(releaseRowOn(target, "2026-11-30", rows)).toMatchObject({ event: "Manufacturing PMI", actual: null });
+  expect(releaseRowOn(target, "2026-12-01", rows)).toBeNull();
+  expect(releaseRowOn(target, "2026-12-31", rows)).toBeNull();
+  expect(nextReleaseDate(rows, target, Date.parse("2026-11-01T00:00:00Z"))).toBe("2026-11-30");
+  expect(nextReleaseDate(rows, { ...target, publisher: undefined }, Date.parse("2026-11-01T00:00:00Z"))).toBeNull();
+  // Followed under its old name, the release is the renamed row, not the sibling.
+  const old = { ...target, event: "Manufacturing PMI" };
+  expect(releaseRowOn(old, "2026-10-31", rows)).toMatchObject({ event: "NBS Manufacturing PMI" });
+  expect(releaseRowOn(old, "2026-12-31", rows)).toBeNull();
+});
+
+test("a release listed ahead beats an old name listed only in the past, and one already out today is not its next", () => {
+  const past = row("2026-09-30T01:30:00.000Z", "CN", "high", "Manufacturing PMI", { actual: "49.8", source: NBS });
+  const pmi = matchCalendarEvent("PMI", "CN", [past, ...calendar], now);
+  expect(pmi.kind === "match" && [pmi.choice.name, pmi.choice.next?.date.toISOString()]).toEqual(["NBS Manufacturing PMI", "2026-10-31T01:30:00.000Z"]);
+  // Just after it printed, its next is the one listed after, or none.
+  const printed = calendar.map((event) => event.event === "NBS Manufacturing PMI" ? { ...event, actual: "50.3" } : event);
+  const later = [...printed, row("2026-11-30T01:30:00.000Z", "CN", "high", "NBS Manufacturing PMI", { prior: "50.3", source: NBS })];
+  const afterPrint = Date.parse("2026-10-31T03:00:00Z");
+  const next = matchCalendarEvent("NBS Manufacturing PMI", null, later, afterPrint);
+  expect(next.kind === "match" && next.choice.next?.date.toISOString()).toBe("2026-11-30T01:30:00.000Z");
+  const none = matchCalendarEvent("NBS Manufacturing PMI", null, printed, afterPrint);
+  expect(none.kind === "match" && none.choice.next).toBeNull();
+});
+
+test("CPI's and the FOMC's own calendar rows in the US are the CPI and FOMC alerts", () => {
+  expect([
+    macroEventNamed({ name: "CPI y/y", country: "US" }),
+    macroEventNamed({ name: "Inflation Rate YoY", country: "US" }),
+    macroEventNamed({ name: "Fed Interest Rate Decision", country: "US" }),
+    macroEventNamed({ name: "Core Inflation Rate YoY", country: "US" }),
+    macroEventNamed({ name: "Inflation Rate YoY", country: "CN" }),
+  ]).toEqual(["cpi", "cpi", "fomc", null, null]);
 });
 
 test("the reminder counts to the release time, or in days to an all-day event; the print gives the figures", () => {

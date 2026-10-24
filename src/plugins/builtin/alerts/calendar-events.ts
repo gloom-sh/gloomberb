@@ -56,6 +56,17 @@ const nameKey = (name: string) => calendarNameWords(name).join(" ");
 const utcDay = (time: number) => new Date(time).toISOString().slice(0, 10);
 
 /**
+ * Whether a row is still to come at `now`: a timed release before its time,
+ * a row with a day and no time (an all-day event) through its day. One whose
+ * time has passed is not, printed or not: an alert set after it would wait
+ * for figures it never sends.
+ */
+function stillAhead(event: EconEvent, now: number): boolean {
+  const at = releaseInstant(event);
+  return at != null ? at > now : dateKey(event.date) >= utcDay(now);
+}
+
+/**
  * Whether a typed word names a word of a calendar name: the word itself, its
  * start (`manuf`), or the initials of a run of them (`NFP` for Non Farm
  * Payrolls).
@@ -75,7 +86,7 @@ export interface CalendarEventChoice {
   country: string;
   publisher: string | null;
   impact: EconImpact;
-  /** Its next row, today (UTC) or later; null when the calendar lists it only in the past. */
+  /** Its next row still to come; null when the calendar lists none ahead (only past ones, or today's already out). */
   next: EconEvent | null;
 }
 
@@ -85,9 +96,9 @@ type RankedChoice = CalendarEventChoice & { words: string[] };
 
 /**
  * The calendar's releases, one per country and name, each with its next row
- * from `today` (UTC) on, named as that row (or the latest one) names it.
+ * still to come at `now`, named as that row (or the latest one) names it.
  */
-function calendarChoices(events: readonly EconEvent[], today: string): RankedChoice[] {
+function calendarChoices(events: readonly EconEvent[], now: number): RankedChoice[] {
   const groups = new Map<string, EconEvent[]>();
   for (const event of [...events].sort((left, right) => left.date.getTime() - right.date.getTime())) {
     const words = calendarNameWords(event.event);
@@ -96,7 +107,7 @@ function calendarChoices(events: readonly EconEvent[], today: string): RankedCho
     groups.set(key, [...groups.get(key) ?? [], event]);
   }
   return [...groups.values()].map((rows) => {
-    const next = rows.find((event) => dateKey(event.date) >= today) ?? null;
+    const next = rows.find((event) => stillAhead(event, now)) ?? null;
     const named = next ?? rows.at(-1)!;
     return {
       name: named.event,
@@ -167,10 +178,15 @@ function oneSlipApart(left: string, right: string): boolean {
 /**
  * The release `query` names among `events` in `country` (a country filter,
  * or any): the name itself, else every release whose name has each typed
- * word (`NBS PMI`, `CN PMI` with the country read off). Of several in one
- * country the highest impact wins, then the closest name and the soonest
- * date, so `NBS PMI` is the headline NBS Manufacturing PMI. Several
- * countries ask which; no match offers the nearest names.
+ * word (`NBS PMI`, `CN PMI` with the country read off). Two or more words
+ * also read as a word's start (`nbs manuf pmi`) or a name's initials; a
+ * single word has to be one of the name's words (`PMI`, `Plenum`), so a
+ * bare `MAN` or `NFP` is offered as what it may mean rather than added. Of
+ * several in one country the highest impact wins, then one listed ahead,
+ * then the closest name and the soonest date, so `NBS PMI` is the headline
+ * NBS Manufacturing PMI and an old name listed only in the past never beats
+ * the live one. Several countries ask which; no match offers the nearest
+ * names.
  */
 export function matchCalendarEvent(
   query: string,
@@ -179,14 +195,14 @@ export function matchCalendarEvent(
   now: number,
 ): CalendarEventMatch {
   const words = calendarNameWords(query);
-  const today = utcDay(now);
-  const choices = calendarChoices(country ? events.filter((event) => matchesCountry(event, country)) : events, today);
+  const choices = calendarChoices(country ? events.filter((event) => matchesCountry(event, country)) : events, now);
   const exact = choices.filter((choice) => choice.words.join(" ") === words.join(" "));
-  const naming = (typed: readonly string[]) => typed.length === 0 ? [] : choices.filter((choice) => typed.every((word) => wordFound(word, choice.words)));
+  const naming = (typed: readonly string[], loose: boolean) => typed.length === 0 ? [] : choices.filter((choice) =>
+    typed.every((word) => loose ? wordFound(word, choice.words) : choice.words.includes(word)));
   // CPI by the name one feed gives it everywhere but the US (China's Inflation Rate YoY).
   const aliased = words.flatMap((word) => QUERY_ALIASES[word] ?? [word]);
-  const typed = exact.length > 0 ? exact : naming(words);
-  const named = typed.length > 0 || aliased.join(" ") === words.join(" ") ? typed : naming(aliased);
+  const typed = exact.length > 0 ? exact : naming(words, words.length > 1);
+  const named = typed.length > 0 || aliased.join(" ") === words.join(" ") ? typed : naming(aliased, false);
   if (named.length === 0) {
     // Each typed word a slip from one of the name's (NBP PMI), or the name as a whole near what was typed.
     const slipped = choices.filter((choice) => words.length > 0
@@ -201,8 +217,8 @@ export function matchCalendarEvent(
     return { kind: "none", suggestions: [...ranked, ...alike].slice(0, 3).map(strip) };
   }
   const ranked = named.sort((left, right) => IMPACT_RANK[left.impact] - IMPACT_RANK[right.impact]
-    || (left.words.length - right.words.length)
     || (left.next ? 0 : 1) - (right.next ? 0 : 1)
+    || (left.words.length - right.words.length)
     || (left.next?.date.getTime() ?? 0) - (right.next?.date.getTime() ?? 0)
     || left.name.localeCompare(right.name));
   const countries = [...new Set(ranked.map((choice) => choice.country))];
@@ -221,11 +237,32 @@ export function calendarEventLabel(event: Pick<CalendarReleaseTarget, "event" | 
   return `${event.event} (${event.country})`;
 }
 
+/** Words in front of a name that make it another series (NBS Non Manufacturing PMI beside NBS Manufacturing PMI), never a rename. */
+const SERIES_QUALIFIERS = new Set(["non", "core", "ex", "final", "flash", "prel", "preliminary", "adv", "advance", "revised"]);
+
 /**
- * A followed release's rows in the calendar. Its own name first; the feeds
- * name a release differently from week to week (`Manufacturing PMI` this week,
- * `NBS Manufacturing PMI` after it), so a name whose words hold the other's,
- * in the same country and from the same publisher, is the release too.
+ * How many words a feed put in front of a release's name, or took off it,
+ * when `other` is that release under another title (`Manufacturing PMI` for
+ * `NBS Manufacturing PMI`): the shorter name, two words at least, ends the
+ * longer one, and the words in front are no qualifier. Null when `other` is
+ * not the release.
+ */
+function renamedBy(words: readonly string[], other: readonly string[]): number | null {
+  const [short, long] = words.length <= other.length ? [words, other] : [other, words];
+  if (short.length < 2 || long.length === short.length) return null;
+  const front = long.slice(0, long.length - short.length);
+  if (long.slice(front.length).join(" ") !== short.join(" ") || front.some((word) => SERIES_QUALIFIERS.has(word))) return null;
+  return front.length;
+}
+
+/**
+ * A followed release's rows in the calendar. Its own name, on any day that
+ * lists it; the feeds name a release differently from week to week
+ * (`Manufacturing PMI` one week, `NBS Manufacturing PMI` the next), so on a
+ * day without its own name, a row from the same publisher and country whose
+ * name differs only by the words in front (`renamedBy`) is the release, the
+ * closest of them where there are several. A sibling series that prints
+ * beside it (NBS Non Manufacturing PMI) is never read as it.
  */
 function releaseRows(target: CalendarReleaseTarget, events: readonly EconEvent[]): EconEvent[] {
   const words = calendarNameWords(target.event);
@@ -233,13 +270,29 @@ function releaseRows(target: CalendarReleaseTarget, events: readonly EconEvent[]
   const own = events.filter((event) => eventCountry(event) === target.country);
   const named = own.filter((event) => nameKey(event.event) === key);
   if (!target.publisher) return named;
-  const within = (inner: readonly string[], outer: readonly string[]) => inner.length >= 2 && inner.every((word) => outer.includes(word));
-  const renamed = own.filter((event) => {
-    if (named.includes(event) || event.source?.name !== target.publisher) return false;
-    const other = calendarNameWords(event.event);
-    return within(other, words) || within(words, other);
+  const namedDays = new Set(named.map((event) => dateKey(event.date)));
+  const renamed = own.flatMap((event) => {
+    if (namedDays.has(dateKey(event.date)) || event.source?.name !== target.publisher) return [];
+    const front = renamedBy(words, calendarNameWords(event.event));
+    return front == null ? [] : [{ event, front }];
   });
-  return [...named, ...renamed];
+  const closest = new Map<string, number>();
+  for (const { event, front } of renamed) {
+    const day = dateKey(event.date);
+    closest.set(day, Math.min(closest.get(day) ?? front, front));
+  }
+  return [...named, ...renamed.filter(({ event, front }) => closest.get(dateKey(event.date)) === front).map(({ event }) => event)];
+}
+
+/**
+ * CPI or FOMC when a release named from the calendar is one of their rows in
+ * the US (CPI y/y, Fed Interest Rate Decision): the macro alert follows it,
+ * so the two never run side by side.
+ */
+export function macroEventNamed(release: Pick<CalendarEventChoice, "name" | "country">): MacroAlertEvent | null {
+  if (release.country !== "US") return null;
+  const key = nameKey(release.name);
+  return (Object.keys(MACRO_RELEASE_NAMES) as MacroAlertEvent[]).find((event) => MACRO_RELEASE_NAMES[event].some((name) => nameKey(name) === key)) ?? null;
 }
 
 /** The rows of a macro release on its day, in the order its names are read. */
@@ -250,15 +303,16 @@ function macroRows(event: MacroAlertEvent, events: readonly EconEvent[]): EconEv
     .sort((left, right) => keys.indexOf(nameKey(left.event)) - keys.indexOf(nameKey(right.event)));
 }
 
-/** The next day (UTC) the calendar lists a release on, from `today` on; null when it lists none ahead. */
-export function nextReleaseDate(events: readonly EconEvent[], target: CalendarReleaseTarget, today: string): string | null {
-  return releaseRows(target, events).map((event) => dateKey(event.date)).filter((date) => date >= today).sort()[0] ?? null;
+/** The day (UTC) of a release's next row still to come at `now`; null when the calendar lists none ahead. */
+export function nextReleaseDate(events: readonly EconEvent[], target: CalendarReleaseTarget, now: number): string | null {
+  return releaseRows(target, events).filter((event) => stillAhead(event, now)).map((event) => dateKey(event.date)).sort()[0] ?? null;
 }
 
 /**
- * A release's row on `eventDate`: the one with its figures once they are
- * out, else the first listed. A macro release reads its headline row (CPI
- * y/y, the funds rate).
+ * A release's row on `eventDate`: of the rows under its own name, else of
+ * those that are it under another title, the one with its figures once they
+ * are out, else the first listed. A macro release reads its headline row
+ * (CPI y/y, the funds rate).
  */
 export function releaseRowOn(
   target: CalendarReleaseTarget | MacroReleaseTarget,
@@ -267,7 +321,9 @@ export function releaseRowOn(
 ): EconEvent | null {
   const rows = (target.kind === "macro" ? macroRows(target.event, events) : releaseRows(target, events))
     .filter((event) => dateKey(event.date) === eventDate);
-  return rows.find((event) => event.actual) ?? rows[0] ?? null;
+  const own = target.kind === "release" ? rows.filter((event) => nameKey(event.event) === nameKey(target.event)) : [];
+  const pool = own.length > 0 ? own : rows;
+  return pool.find((event) => event.actual) ?? pool[0] ?? null;
 }
 
 /** Whether a release prints figures (a PMI, a rate) rather than taking place (a plenum, a speech). */
