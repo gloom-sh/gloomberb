@@ -252,6 +252,10 @@ export class CloudDataApi {
     return this.request<import("./fund-facts").FundFactsPayload>(`/cloud/fund-facts/${encodeURIComponent(ticker)}`, options.signal ? { signal: options.signal } : undefined);
   }
 
+  getFundBreadth(fund: string) {
+    return this.request<import("./members").FundBreadthPayload>(`/cloud/members/${encodeURIComponent(fund)}/breadth`);
+  }
+
   getFundChanges(fund: string) {
     return this.request<import("./members").FundChangesPayload>(`/cloud/members/${encodeURIComponent(fund)}/changes`);
   }

@@ -30,3 +30,15 @@ export interface FundChangesPayload {
   estimateLabel: string; attribution: { text: string; url: string } | null;
 }
 export interface MemberFundsPayload { funds: (MemberFund & { asOf: string | null })[] }
+
+interface BreadthCount { above: number; eligible: number; percent: number | null }
+export interface BreadthDay {
+  date: string; asOf: string; membershipAsOf: string; memberCount: number; observed: number;
+  advances: number; declines: number; unchanged: number; advanceDeclineEligible: number;
+  ma20: BreadthCount; ma50: BreadthCount; ma200: BreadthCount;
+  newHighs: number; newLows: number; highLowEligible: number; adLine: number | null;
+}
+export interface FundBreadthPayload {
+  fund: MemberFund; basis: "daily-close" | "intraday"; access?: "realtime" | "delayed"; membershipBasis: "current-members";
+  latest: BreadthDay | null; history: BreadthDay[]; stale: boolean;
+}

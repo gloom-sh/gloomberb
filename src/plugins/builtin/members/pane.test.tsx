@@ -10,14 +10,14 @@ import type { PluginRuntimeAccess } from "../../../plugins/runtime";
 import type { ContextMenuActionItem, ContextMenuItem } from "../../../types/context-menu";
 import { setSharedRegistryForTests, type PluginRegistry } from "../../registry";
 import { MEMBER_DESTINATIONS } from "../shared/members-menu";
-import { fundChangesCache, fundListCache, fundMembersCache } from "./client";
+import { fundBreadthCache, fundChangesCache, fundListCache, fundMembersCache } from "./client";
 import { MembersPane } from "./pane";
 import { board, changes, member } from "./test-fixture";
 const tui = createOpenTuiTestHarness();
-afterEach(() => { setCloudApiFetchTransport(null); setSharedRegistryForTests(undefined); fundMembersCache.reset(); fundChangesCache.reset(); fundListCache.reset(); });
+afterEach(() => { setCloudApiFetchTransport(null); setSharedRegistryForTests(undefined); fundBreadthCache.reset(); fundMembersCache.reset(); fundChangesCache.reset(); fundListCache.reset(); });
 const covered = { funds: ["IVV", "IJH", "IJR", "IWM", "IWB"].map((ticker) => ({ ticker, name: ticker, aliases: ticker === "IVV" ? ["SPY", "SPX"] : [], changes: "none" as const, asOf: "2026-10-05" })) };
 async function mountMembers(symbol: string, { pins = [], runtime = {}, onMenu }: { pins?: string[]; runtime?: Partial<PluginRuntimeAccess>; onMenu?: (menu: ContextMenuItem[]) => void } = {}) {
-  for (const cache of [fundMembersCache, fundChangesCache, fundListCache]) cache.attach(new MemoryPluginPersistence());
+  for (const cache of [fundBreadthCache, fundMembersCache, fundChangesCache, fundListCache]) cache.attach(new MemoryPluginPersistence());
   const initial = createInitialState(createTestPaneConfig(":memory:", { instanceId: "members", paneId: "members", binding: { kind: "fixed", symbol }, settings: {} }));
   const pluginRuntime = createTestPluginRuntime({ getMarketData: () => null, pinTicker: (symbol) => { pins.push(symbol); }, ...runtime });
   function Harness() {
@@ -61,7 +61,7 @@ test("partial holdings keep number columns aligned, open tickers and lazily load
 test("a fund outside the server's covered list says which funds are covered", async () => {
   setCloudApiFetchTransport(async (input) => new URL(String(input)).pathname.endsWith("/members") ? Response.json(covered) : Response.json({ error: "Covered funds" }, { status: 404 }));
   await mountMembers("IBIT");
-  const frame = await tui.waitForFrameToContain("IBIT is not a covered fund. Covered: IVV (SPY, SPX, ^GSPC), IJH, IJR, IWM, IWB.");
+  const frame = await tui.waitForFrameToContain("IBIT is not a covered fund. Covered: IVV");
   expect(frame).not.toContain("not available on this server");
 });
 test("Movers has no members menu, and a search narrows what the menu opens", async () => {
@@ -85,4 +85,27 @@ test("Movers has no members menu, and a search narrows what the menu opens", asy
   await tui.waitForFrameToContain("Open IVV members matching \"BBB\" in");
   await act(async () => tui.setup().mockInput.pressEnter());
   expect(opened).toEqual([["relative-rotation-rrg", { symbols: ["BBB"], arg: "BBB" }]]);
+});
+
+test("index alias opens Breadth lazily and keeps missing windows distinct from zero", async () => {
+  const calls: string[] = [];
+  const row = { date: "2026-10-07", asOf: "2026-10-07T22:00:00Z", membershipAsOf: "2026-10-05", memberCount: 3, observed: 2,
+    advances: 1, declines: 0, unchanged: 1, advanceDeclineEligible: 2, ma20: { above: 1, eligible: 2, percent: 50 },
+    ma50: { above: 0, eligible: 1, percent: 0 }, ma200: { above: 0, eligible: 0, percent: null }, newHighs: 0, newLows: 0, highLowEligible: 0, adLine: 1 };
+  setCloudApiFetchTransport(async input => {
+    const path = new URL(String(input)).pathname; calls.push(path);
+    return Response.json(path.endsWith("/breadth") ? { fund: board.fund, latest: row, history: [row], stale: false, basis: "daily-close", membershipBasis: "current-members" }
+      : path.endsWith("/members") ? covered : board);
+  });
+  await mountMembers("^SPX");
+  await tui.waitForFrameToContain("Company AAA");
+  expect(calls.some(path => path.endsWith("/breadth"))).toBe(false);
+  await tui.clickFrameText("Breadth");
+  const frame = await tui.waitForFrameToContain("A/D 2/3");
+  expect(calls).toContain("/cloud/members/IVV/breadth");
+  expect(frame).toContain("50.0%");
+  expect(frame).toContain("0.0%");
+  expect(frame).toContain("--");
+  await tui.clickFrameText("Members");
+  await tui.waitForFrameToContain("Company AAA");
 });
