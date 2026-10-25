@@ -12,7 +12,7 @@ import {
 } from "./model";
 import { abortable, abortError } from "../../../utils/async-deadline";
 import { errorMessage } from "../../../utils/errors";
-import { expiredExpiryText, findListedExpiry, isLiveOptionExpiry, liveOptionExpiries, unlistedExpiryText } from "../../../utils/option-expiry";
+import { expiredExpiryText, findListedExpiry, isLiveOptionExpiry, liveOptionExpiries, optionExpiryVenue, unlistedExpiryText } from "../../../utils/option-expiry";
 import { optionModelSpot } from "../options/model-spot";
 
 const DEFAULT_SURFACE_EXPIRY_LIMIT = 18;
@@ -197,6 +197,8 @@ export async function loadVolatilitySurface(
     publish();
   });
 
+  // Expiries close on the listing's clock: a coin's options (Deribit) settle at 08:00 UTC on any day.
+  const expiryVenue = optionExpiryVenue(request.instrument.symbol, request.instrument.exchange);
   try {
     const initial = await abortable(dependencies.loadOptions({ instrument: request.instrument },
       { forceRefresh: request.expiries ? false : request.forceRefresh }), request.signal, CANCELLED);
@@ -217,7 +219,7 @@ export async function loadVolatilitySurface(
     catalogueError = initial.error?.message ?? null;
     catalogueReason = initial.error?.reasonCode;
     if (!chain) catalogueError ??= "Options expiry catalogue unavailable";
-    catalogue = liveOptionExpiries(chain?.expirationDates ?? [], now, request.instrument.exchange);
+    catalogue = liveOptionExpiries(chain?.expirationDates ?? [], now, expiryVenue);
     // A typed date is that day's UTC midnight; the catalogue's stamp for the
     // same expiry is matched by calendar date, as OMON matches it.
     const required = [...new Set([...(request.requiredExpiries ?? []), ...(request.expiries ?? [])]
@@ -228,8 +230,8 @@ export async function loadVolatilitySurface(
       ...required.filter((expiration) => listed.has(expiration))])].sort((a, b) => a - b);
     // An expiry whose last session has closed is named as expired, with the nearest live one to pick.
     requiredFailures = required.filter((expiration) => !listed.has(expiration)).map((expiration) => ({
-      expiration, message: isLiveOptionExpiry(expiration, now, request.instrument.exchange) ? unlistedExpiryText(expiration, catalogue)
-        : expiredExpiryText(expiration, catalogue, now, { exchange: request.instrument.exchange }),
+      expiration, message: isLiveOptionExpiry(expiration, now, expiryVenue) ? unlistedExpiryText(expiration, catalogue)
+        : expiredExpiryText(expiration, catalogue, now, { exchange: expiryVenue }),
     }));
     if (chain && catalogue.length === 0) catalogueError ??= "No unexpired option expiries available";
   } catch (error) {

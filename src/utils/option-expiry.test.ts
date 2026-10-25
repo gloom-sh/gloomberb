@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { OptionContract } from "../types/financials";
 import {
   daysToExpiry, expirationOptionSeconds, expiredExpiryText, findListedExpiry, formatDaysToExpiry, isLiveOptionExpiry, liveDefaultExpiry,
-  liveOptionExpiries, nextLiveExpiry, optionExpiryCloseMs, parseOptionExpiration, readOptionExpiration,
+  liveOptionExpiries, nextLiveExpiry, optionExpiryCloseMs, optionExpiryVenue, parseOptionExpiration, readOptionExpiration,
 } from "./option-expiry";
 
 const at = (date: string) => Date.parse(`${date}T00:00:00Z`) / 1000;
@@ -83,5 +83,30 @@ describe("an expiry is live until its last session closes on the listing's clock
     expect(expiredExpiryText(friday, listed, instant("2026-10-24T05:24:00Z"), { exchange: "ARCA", flag: "expiration" }))
       .toBe("expired on 23 Oct; nearest live: 30 Oct (--expiration 2026-10-30)");
     expect(nextLiveExpiry(at("2026-10-30"), listed, instant("2026-10-24T05:24:00Z"))).toBe(at("2026-11-06"));
+  });
+
+  test("a Deribit expiry settles at 08:00 UTC on any day, a weekend too, while a listed option keeps the NYSE close", () => {
+    const settles = (date: string) => Date.parse(`${date}T08:00:00Z`) / 1000;
+    const saturday = settles("2026-10-31");
+    const book = [settles("2026-10-30"), saturday, settles("2026-11-01"), settles("2026-11-06")];
+    // Friday 22:00 UTC: NYSE has closed, Saturday's and Sunday's expiries have not settled.
+    const fridayNight = instant("2026-10-30T22:00:00Z");
+    expect(liveOptionExpiries(book, fridayNight)).toEqual(book.slice(1));
+    expect(isLiveOptionExpiry(saturday, instant("2026-10-31T07:59:59Z"))).toBe(true);
+    expect(isLiveOptionExpiry(saturday, instant("2026-10-31T08:00:00Z"))).toBe(false);
+    expect(liveOptionExpiries(book, instant("2026-10-31T09:00:00Z"))).toEqual(book.slice(2));
+    expect(expiredExpiryText(saturday, book, instant("2026-10-31T09:00:00Z"), { flag: "expiration" }))
+      .toBe("expired on 31 Oct; nearest live: 1 Nov (--expiration 2026-11-01)");
+    expect(formatDaysToExpiry(saturday, instant("2026-10-31T09:00:00Z"))).toBe("expired");
+    // A typed date is that day's UTC midnight: a coin listing settles it at 08:00 UTC too, bare or on the coin board.
+    for (const venue of ["CCC", optionExpiryVenue("BTC-USD", ""), optionExpiryVenue("ETH-USD", "CCC")]) {
+      expect(optionExpiryCloseMs(at("2026-10-31"), venue)).toBe(saturday * 1000);
+      expect(isLiveOptionExpiry(at("2026-10-31"), fridayNight, venue)).toBe(true);
+    }
+    // The Grayscale fund trading as BTC, and every listed option, close with the US session before the weekend.
+    expect(optionExpiryVenue("BTC", "ARCA")).toBe("ARCA");
+    expect(optionExpiryVenue("SOL-USD", "")).toBe("");
+    expect(isLiveOptionExpiry(at("2026-10-31"), fridayNight, optionExpiryVenue("BTC", "ARCA"))).toBe(false);
+    expect(optionExpiryCloseMs(at("2026-10-30"), "ARCA")).toBe(instant("2026-10-30T20:00:00Z"));
   });
 });

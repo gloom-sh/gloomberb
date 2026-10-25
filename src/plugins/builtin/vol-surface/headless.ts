@@ -2,7 +2,7 @@ import type { Quote } from "../../../types/financials";
 import type { HeadlessBundleSection, HeadlessPaneDefinition, HeadlessPaneFreshness, HeadlessPaneLoadArgs, HeadlessPaneRow } from "../../../types/plugin";
 import {
   expirationOptionSeconds, expiredExpiryText, findListedExpiry, isLiveOptionExpiry, OPTION_EXPIRATION_FORMAT, OPTION_EXPIRATION_PLACEHOLDER,
-  readOptionExpiration, unlistedExpiryText,
+  optionExpiryVenue, readOptionExpiration, unlistedExpiryText,
 } from "../../../utils/option-expiry";
 import { DATE_OPTION_EXAMPLES } from "../../../utils/calendar-date";
 import { IMPLIED_VOL_WORDS, skewHeader } from "../iv-history/format";
@@ -224,8 +224,9 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
       }, createSurfaceDependencies(ctx.marketData, ctx.apiClient)));
       // An expired --expiration names the flag that asks for the nearest live one.
       const now = Date.now();
-      if (requested != null && !isLiveOptionExpiry(requested, now, instrument.exchange)) {
-        const message = expiredExpiryText(requested, snapshot.catalogue, now, { exchange: instrument.exchange, flag: "expiration" });
+      const expiryVenue = optionExpiryVenue(instrument.symbol, instrument.exchange);
+      if (requested != null && !isLiveOptionExpiry(requested, now, expiryVenue)) {
+        const message = expiredExpiryText(requested, snapshot.catalogue, now, { exchange: expiryVenue, flag: "expiration" });
         snapshot = { ...snapshot, failures: snapshot.failures.map((failure) => failure.expiration === requested ? { ...failure, message } : failure) };
       }
     }
