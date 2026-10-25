@@ -874,6 +874,7 @@ describe("OnboardingWizard", () => {
     apiClient.signUp = (async (email: string) => {
       signUps.push(email);
       const user = { id: "new-user", email, emailVerified: false, plan: "free" as const };
+      apiClient.setSessionToken("onboarding-signup-session");
       apiClient.restoreCachedUser(user);
       return user;
     }) as typeof apiClient.signUp;
@@ -926,6 +927,7 @@ describe("OnboardingWizard", () => {
     apiClient.signIn = (async (email: string) => {
       calls.push("login");
       const user = { id: "returning-user", email, emailVerified: true, plan: "free" as const };
+      apiClient.setSessionToken("onboarding-login-session");
       apiClient.restoreCachedUser(user);
       return user;
     }) as typeof apiClient.signIn;
