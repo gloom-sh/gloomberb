@@ -74,12 +74,14 @@ function seriesFieldId(series: ChartSeriesSpec): string {
 
 function compatiblePeriods(series: ChartSeriesSpec): SeriesPeriod[] {
   if (series.source.kind !== "security") return [];
+  if (series.source.fieldId.startsWith("valuation.")) return ["daily", ...FINANCIAL_PERIODS];
   return series.source.fieldId.startsWith("market.") ? MARKET_PERIODS : FINANCIAL_PERIODS;
 }
 
 export function supportsSeriesTimestampMode(series: ChartSeriesSpec | null): boolean {
   return !!series
     && series.source.kind === "security"
+    && series.source.period !== "daily"
     && isFundamentalFieldId(series.source.fieldId);
 }
 

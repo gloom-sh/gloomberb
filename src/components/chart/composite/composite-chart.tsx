@@ -7,6 +7,7 @@ import { AXIS_DOUBLE_PRESS_MS, isVerticalWheelDirection } from "./panel-gestures
 import { type ChartToolSpan, CHART_DRAWING_COLORS, isDrawingTool, type ChartDrawing } from "./tools";
 import { ChartDrawingStore, NO_DRAWINGS } from "./drawing-store";
 import { CompositeLegend } from "./legend";
+import { compositeRangeStatisticsLevels } from "./range-statistics";
 import { ChartToolbar, CHART_TOOLBAR_WIDTH } from "./toolbar";
 import { AsciiText, Box, ChartSurface, Text, useUiCapabilities, type BoxRenderable } from "../../../ui";
 import { Button } from "../../ui/button";
@@ -204,6 +205,7 @@ function ThemedCompositeChart({
   timePick,
   pricePick,
   levels,
+  rangeStatisticsSeriesId,
   chartLayout,
   onChartLayoutChange,
 }: CompositeChartProps & { chartLayout: ChartLayoutPrefs; onChartLayoutChange: ChartLayoutUpdate }) {
@@ -337,6 +339,20 @@ function ThemedCompositeChart({
     textDim: colors?.textDim ?? activeThemeColors.textDim,
     negative: colors?.negative ?? activeThemeColors.negative,
   }), [activeThemeColors, colors, paneSurface]);
+  const rangeStatisticsLevels = useMemo(() => {
+    void lastTickKey;
+    return compositeRangeStatisticsLevels(
+      panelSeries.find((entry) => entry.id === rangeStatisticsSeriesId),
+      effectiveViewport,
+      resolvedColors.textDim,
+      formatValue,
+    );
+  }, [effectiveViewport, formatValue, lastTickKey, panelSeries, rangeStatisticsSeriesId, resolvedColors.textDim]);
+  const displayedLevels = useMemo(() => (
+    levels && rangeStatisticsLevels && levels.seriesId === rangeStatisticsLevels.seriesId
+      ? { ...levels, items: [...levels.items, ...rangeStatisticsLevels.items] }
+      : levels ?? rangeStatisticsLevels
+  ), [levels, rangeStatisticsLevels]);
   // A custom x axis means x is not time: a tenor, a fraction, a return. Its
   // last observation belongs at the right edge, under its own label.
   const rightOffsetRatio = xAxis ? 0 : COMPOSITE_RIGHT_OFFSET_RATIO;
@@ -351,6 +367,7 @@ function ThemedCompositeChart({
       timelineSeries: marketTimelineSeries,
       rightOffsetRatio,
       valueScales,
+      referenceLevels: rangeStatisticsLevels,
     });
   }, [
     clipToViewport,
@@ -361,6 +378,7 @@ function ThemedCompositeChart({
     panelSeries,
     panels,
     rightOffsetRatio,
+    rangeStatisticsLevels,
     valueScales,
   ]);
   // Gutters follow the axes the scene actually built. Reading the series list
@@ -426,7 +444,7 @@ function ThemedCompositeChart({
     availableAxisWidth,
     Math.max(
       Math.min(MINIMUM_AXIS_LABEL_WIDTH, maximumAxisWidth),
-      ...(levels?.items ?? []).map((level) => level.axisLabel?.length ?? 0),
+      ...(displayedLevels?.items ?? []).map((level) => level.axisLabel?.length ?? 0),
       ...(layoutPanels ?? []).flatMap((panel) => (["left", "right"] as const).map((side) => {
         const width = compositeAxisLabelWidth(panel.axes[side], formatAxisValue, includeCursorLabels);
         if (!includeSeriesTags || !width) return includeCursorLabels ? width : Math.min(width, maximumAxisWidth);
@@ -437,7 +455,7 @@ function ThemedCompositeChart({
         return (width + 1) * lanes;
       })),
     ),
-  ), [availableAxisWidth, formatAxisValue, includeCursorLabels, includeSeriesTags, layoutPanels, maximumAxisWidth, levels?.items]);
+  ), [availableAxisWidth, displayedLevels?.items, formatAxisValue, includeCursorLabels, includeSeriesTags, layoutPanels, maximumAxisWidth]);
   const leftAxisWidth = hasLeftAxis ? resolvedAxisWidth : 0;
   const rightAxisWidth = hasRightAxis ? resolvedAxisWidth : 0;
   const axisGap = resolvedAxisWidth > 0 ? 1 : 0;
@@ -689,7 +707,7 @@ function ThemedCompositeChart({
     onActivate,
     timePick,
     pricePick,
-    levels,
+    levels: displayedLevels,
     visibleLegendSeries,
     visibleSeriesIds,
     onToggleSeries,
@@ -1136,7 +1154,7 @@ function ThemedCompositeChart({
           showTextFallback={showTextFallback}
           onPickTime={timePick?.onPick}
           onPickPrice={pricePick?.onPick}
-          levels={levelHost?.panel.id === panel.id ? levels ?? null : null}
+          levels={levelHost?.panel.id === panel.id ? displayedLevels ?? null : null}
           selectedLevelId={selectedLevelId}
           onSelectLevel={setSelectedLevelId}
           valueScalable={interactive}

@@ -23,6 +23,8 @@ export interface CompositeChartLevel {
   label?: string;
   /** Exact instrument price, independent of the grid's compact tick formatter. */
   axisLabel?: string;
+  /** A named reference guide keeps its axis label ahead of ordinary grid ticks. */
+  prioritizeAxisLabel?: boolean;
   dashed?: boolean;
 }
 

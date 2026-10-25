@@ -37,7 +37,7 @@ import { futuresSessionOpenMinute } from "../../../market-data/market/trading-se
 import { cleanFloat32Price } from "../../../cli/history-rows";
 import { parseChartSpec } from "./chart-spec";
 import { paneSchemas } from "./headless-schema";
-import { barHistoryFreshness, REPORTED_DATA } from "../shared/report-freshness";
+import { barHistoryFreshness, DAILY_CLOSES, REPORTED_DATA } from "../shared/report-freshness";
 import type { BarPeriodToDate } from "../../../market-data/market/bar-period";
 import { closedHistoryBarDay, formingHistoryBar } from "../ticker-detail/data-panes/history-bars";
 import { inferSeriesFrequency } from "../../../series/csv";
@@ -346,6 +346,12 @@ function chartFreshness(
   // A leg that failed to load has no bars to date; the ones that loaded say what the chart is.
   const loaded = allSeries.filter((entry) => entry.points.length > 0);
   const series = loaded.length ? loaded : allSeries;
+  const visible = spec.series.filter((entry) => entry.visible !== false);
+  if (visible.length && visible.every((entry) => entry.source.kind === "security"
+    && entry.source.period === "daily" && entry.source.fieldId.startsWith("valuation."))) {
+    const ends = series.flatMap((entry) => entry.points.at(-1)?.date ?? []).map((date) => new Date(date).toISOString().slice(0, 10)).sort();
+    return { ...DAILY_CLOSES, ...(ends.length ? { asOf: ends.at(-1)!, oldest: ends[0]! } : {}) };
+  }
   const resolutions = series.map((entry) => (entry as HeadlessSeries & { historyResolution?: string }).historyResolution);
   const dataset = isDatasetChart(spec);
   if (!series.length || resolutions.some((resolution) => !resolution)) {

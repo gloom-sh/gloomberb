@@ -210,6 +210,8 @@ export interface BuildCompositeChartSceneOptions {
   rightOffsetRatio?: number;
   /** Value axes stretched or squeezed by hand, in place of fitting them to the data. */
   valueScales?: CompositeValueScales;
+  /** Reference guides participate in auto-scaling on the axis of this series. */
+  referenceLevels?: CompositeChartLevels | null;
 }
 
 export interface CompositeChartXMarker {
@@ -347,4 +349,6 @@ export interface CompositeChartProps {
    * tool (Shift+H) adds, moves and deletes them by mouse and keyboard.
    */
   levels?: CompositeChartLevels | null;
+  /** Mean and population ±1σ of a series' positive observations in the active viewport. */
+  rangeStatisticsSeriesId?: string;
 }

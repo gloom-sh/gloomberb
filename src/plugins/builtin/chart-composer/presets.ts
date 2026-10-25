@@ -275,11 +275,8 @@ export function buildValuationChartPreset(
     const series = buildSeriesSpec(
       { kind: "security", ...instrument, fieldId: resolvedField },
       index,
-      { style: normalized.length === 1 ? "line" : "columns", axis: "left" },
+      { style: "line", axis: "left" },
     );
-    // Fiscal years: most US filers report no Q4 EPS, which charts do not
-    // reconstruct, so a quarterly trailing multiple has only its latest few
-    // quarters. Quarterly is the series' Period control away.
-    return series.source.kind === "security" ? { ...series, source: { ...series.source, period: "annual" } } : series;
+    return series.source.kind === "security" ? { ...series, source: { ...series.source, period: "daily" } } : series;
   }));
 }

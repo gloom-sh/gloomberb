@@ -542,6 +542,7 @@ export function CompositePanelSurface({
       yRatio,
       label: level.axisLabel ?? (formatAxisValue ? formatAxisValue(level.value, levelDomain) : formatCompositeCursorValue(level.value, levelDomain)),
       color: level.color,
+      prioritizeAxisLabel: level.prioritizeAxisLabel,
     })) : [], [formatAxisValue, levelDomain, projectedLevels, selectedLevelId]);
   const buildAxisMarkers = (side: "left" | "right") => {
     if (!panel.axes[side]) return undefined;
@@ -557,7 +558,8 @@ export function CompositePanelSurface({
     );
     const fixed = [lastPriceMarker, axisMarkers].filter(onSide).map(toAxisMarker);
     // The prior close's label yields to every level's.
-    const levelLabels = [...levelMarkers, priorCloseMarker].filter(onSide).map(toAxisMarker);
+    const referenceLabels = levelMarkers.filter((marker) => marker.prioritizeAxisLabel && onSide(marker)).map(toAxisMarker);
+    const levelLabels = [...levelMarkers.filter((marker) => !marker.prioritizeAxisLabel), priorCloseMarker].filter(onSide).map(toAxisMarker);
     // A label is a row tall, so close levels would stack into an unreadable
     // pile and hide the last price: each keeps its line, and only the labels
     // with a row to themselves show. Desktop badges sit between rows.
@@ -567,8 +569,13 @@ export function CompositePanelSurface({
         pixelY: tick.topPercent / 100 * Math.max(panel.height * cellHeightPx - 1, 1),
       }))
       : [...(side === "left" ? leftAxisLabels : rightAxisLabels)].map(([row, label]) => ({ id: undefined, row, pixelY: row * cellHeightPx, label, color: colors.textDim }));
+    const rowOf = (marker: ReturnType<typeof toAxisMarker>) => fractionalViewport ? marker.pixelY / cellHeightPx : marker.row;
+    // Named guides are part of the chart's readout: ordinary ticks yield to
+    // them, while a live price or cursor still keeps its place.
+    const references = fitAxisLabels(referenceLabels, fixed, rowOf);
     const markers = [
-      ...fitAxisLabels(levelLabels, [...fixed, ...grid], (marker) => fractionalViewport ? marker.pixelY / cellHeightPx : marker.row),
+      ...references,
+      ...fitAxisLabels(levelLabels, [...references, ...fixed, ...grid], rowOf),
       ...fixed,
     ];
     return markers.length > 0 ? markers : undefined;

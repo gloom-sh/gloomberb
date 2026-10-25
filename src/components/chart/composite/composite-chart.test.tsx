@@ -1165,6 +1165,35 @@ describe("CompositeChart", () => {
     expect(viewportInteractions.at(-1)).toBe("reset");
   });
 
+  test("range guides follow zoom, pan and reset instead of the loaded buffer, and disappear with their series", async () => {
+    let setHidden: (hidden: boolean) => void = () => {};
+    const valuation = { ...series("pe", "main", "left", "x", [900, 100, 30, 40, 50, 60, 70, 900, 900]), unitGroup: "ratio", style: "line" as const };
+    function Chart() {
+      const [hidden, updateHidden] = useState(false);
+      setHidden = updateHidden;
+      return <CompositeChart width={70} height={24} focused series={[{ ...valuation, hidden }]} panels={[{ id: "main" }]}
+        rangeStatisticsSeriesId="pe" clipToViewport formatValue={(value) => `${value.toFixed(1)}x`}
+        viewport={{ start: new Date("2025-01-03"), end: new Date("2025-01-07") }} />;
+    }
+    await tui.render(<InputHostProvider host={chartInputHost}><Chart /></InputHostProvider>, { width: 72, height: 26 });
+    await tui.waitForFrameToContain("Avg 50.0x");
+    expect(tui.frame()).toContain("+1σ 64.1x");
+    expect(tui.frame()).toContain("−1σ 35.9x");
+    const zoomIn = keyEvent("=", true);
+    zoomIn.sequence = "+";
+    await act(async () => chartShortcut?.(zoomIn));
+    await tui.waitForFrameToContain("Avg 55.0x");
+    expect(tui.frame()).toContain("+1σ 66.2x");
+    await act(async () => chartShortcut?.(keyEvent("left", true)));
+    await tui.waitForFrameToContain("Avg 50.0x");
+    expect(tui.frame()).toContain("+1σ 58.2x");
+    await act(async () => chartShortcut?.(keyEvent("0")));
+    await tui.waitForFrameToContain("+1σ 64.1x");
+    await act(async () => setHidden(true));
+    await tui.waitForFrameToExclude("Avg ");
+    expect(tui.frame()).not.toContain("1σ");
+  });
+
   test("keeps ownership of the window when zoom returns to the authored range", async () => {
     const viewportChanges: Array<{ start: string; end: string } | null> = [];
     await tui.render(

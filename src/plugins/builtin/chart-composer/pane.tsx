@@ -54,7 +54,7 @@ import {
 } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import { isUsListingExchange, parsePublicTickerKey, publicTickerKey } from "../../../utils/exchanges";
-import { isMarketFieldId } from "../../../time-series/field-catalog";
+import { getTimeSeriesField, isMarketFieldId } from "../../../time-series/field-catalog";
 import { isDatasetChart } from "../../../time-series/spec";
 import { seriesMessageName, studyMessageName } from "../../../time-series/series-name";
 import { CHART_COMPOSER_PANE_ID } from "../../../types/config";
@@ -446,6 +446,13 @@ function ChartComposerSurface({
   const selectedPairStudies = getSelectedPairStudies(spec);
   const viewport = resolution.viewport;
   const baseSeriesIds = useMemo(() => new Set(spec.series.map((series) => series.id)), [spec.series]);
+  const rangeStatisticsSeriesId = spec.series.length === 1
+    && spec.series[0]!.source.kind === "security"
+    && spec.series[0]!.source.fieldId.startsWith("valuation.")
+    && spec.series[0]!.source.period === "daily"
+    && spec.series[0]!.transform === "raw"
+    && spec.series[0]!.visible !== false
+    ? spec.series[0]!.id : undefined;
   // Hidden series are never loaded, so the resolver has nothing to report for
   // them. Without a placeholder they vanish from the legend entirely and the
   // only way back is the series dialog.
@@ -453,6 +460,12 @@ function ChartComposerSurface({
     // Each security series names its company once, beside its label: "AAPL Price · Apple".
     const named = new Set<string>();
     const resolved = (resolution.legendSeries ?? []).map((entry) => {
+      const authored = spec.series.find((series) => series.id === entry.id);
+      if (authored?.source.kind === "security" && authored.source.fieldId.startsWith("valuation.")) {
+        const field = getTimeSeriesField(authored.source.fieldId);
+        return { ...entry, label: authored.label?.trim()
+          || `${authored.source.instrument.symbol} ${field?.shortLabel ?? "Multiple"}` };
+      }
       const name = nameSeries ? listings.names.get(entry.id) : undefined;
       const company = name ? shortCompanyName(name) : "";
       if (!company || named.has(company)) return entry;
@@ -461,7 +474,7 @@ function ChartComposerSurface({
     });
     const resolvedIds = new Set(resolved.map((entry) => entry.id));
     const missing = spec.series.filter((entry) => !resolvedIds.has(entry.id));
-    if (missing.length === 0) return named.size > 0 ? resolved : resolution.legendSeries;
+    if (missing.length === 0) return resolved;
     const bySpecOrder = new Map(spec.series.map((entry, index) => [entry.id, index] as const));
     return [
       ...resolved,
@@ -1272,6 +1285,7 @@ function ChartComposerSurface({
           timePick={timePick}
           pricePick={pricePick}
           levels={chartLevels}
+          rangeStatisticsSeriesId={rangeStatisticsSeriesId}
           emptyMessage={emptyMessage}
           emptyDetail={emptyDetail}
           legendAccessory={(

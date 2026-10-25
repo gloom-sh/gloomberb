@@ -300,9 +300,9 @@ async function resolveChartSpecPass(
     const fieldId = getTimeSeriesField(source.fieldId)?.id ?? source.fieldId;
     // Calendar-window research needs the same full source bundle as a period
     // count. The extended bundle also carries the estimate history behind the
-    // forward multiples; PEG alone has no historical series.
+    // forward multiples; daily PEG also needs consecutive trailing years.
     const statementHistory = /^(fundamental|valuation)\./.test(fieldId)
-      && fieldId !== "valuation.pegRatio"
+      && (fieldId !== "valuation.pegRatio" || source.period === "daily")
       ? "extended" as const : undefined;
     const key = `${instrumentKey(source)}|history:${statementHistory ?? "default"}`;
     let pending = cache.financialsByInstrument.get(key);
@@ -496,7 +496,9 @@ async function resolveChartSpecPass(
     all = false,
   ) => {
     const support = await loadResolutionSupport(source, priceOnly);
-    const maxRange = getSupportMaxRange(support, initialResolution);
+    const dailyValuation = source.period === "daily" && source.fieldId.startsWith("valuation.");
+    const sourceResolution = dailyValuation ? "1d" : initialResolution;
+    const maxRange = getSupportMaxRange(support, sourceResolution);
     const ahead = movedWindow ? barsAhead(requestVisibleBounds, maxRange, referenceNow.getTime()) : 0;
     const durationEnd = rangeDurationBounds(spec, initialCalculationBounds).end;
     const historyBounds = clampHistoryBoundsToSupport(
@@ -517,8 +519,8 @@ async function resolveChartSpecPass(
       explicitWindow: hasExplicitWindow,
       authoredWindow: hasExplicitWindow && !movedWindow,
       fallbackRange,
-      resolution: initialResolution,
-      allowProviderDefaultFallback: spec.viewport.resolution === "auto",
+      resolution: sourceResolution,
+      allowProviderDefaultFallback: !dailyValuation && spec.viewport.resolution === "auto",
       support,
       requiredWarmupPoints: maxStudyWarmupPoints(spec.studies),
       ...(extendedHoursFor(source, initialResolution) ? { historySession: "extended" as const } : {}),
@@ -782,8 +784,9 @@ async function resolveChartSpecPass(
 
       const source = seriesSpec.source;
       const marketField = isMarketFieldId(source.fieldId);
+      const dailyValuation = source.period === "daily" && source.fieldId.startsWith("valuation.");
       const quoteDerivedValuation = valuationSeriesUsesLiveQuote(source.fieldId);
-      const historyPricedValuation = valuationSeriesUsesPriceHistory(source.fieldId);
+      const historyPricedValuation = valuationSeriesUsesPriceHistory(source.fieldId, source.period);
       // Forward P/E only prices a history when the bundle carries estimates;
       // otherwise the provider's single figure stands and history is not required.
       const forwardPE = getTimeSeriesField(source.fieldId)?.id === "valuation.forwardPE";
@@ -883,10 +886,10 @@ async function resolveChartSpecPass(
       // Keep provider history separate from quote-extended display bars. A live
       // mark is not a daily closing observation, including on snapshot replay.
       const historical = history ? { ...merged, priceHistory: history.points } : merged;
-      sources.onSecurityData?.(resolvedSpec, history?.session || realizedVolInputs.has(seriesSpec.id) ? historical : sourceBars, history !== null);
+      sources.onSecurityData?.(resolvedSpec, dailyValuation || history?.session || realizedVolInputs.has(seriesSpec.id) ? historical : sourceBars, history !== null);
       const base = baseSecuritySeries(
         resolvedSpec,
-        merged,
+        dailyValuation ? historical : merged,
         index,
         history?.resolution,
         quoteMetadata,
@@ -909,7 +912,7 @@ async function resolveChartSpecPass(
         if (historicalResult) historicalPriceSeries.set(seriesSpec.id, historicalResult);
       }
       const reportedForwardPE = merged.fundamentals?.forwardPE;
-      if (source.fieldId === "valuation.forwardPE" && merged.epsEstimates) {
+      if (source.fieldId === "valuation.forwardPE" && merged.epsEstimates && !dailyValuation) {
         warnings.push(FORWARD_PE_BASIS_NOTICE);
       } else if (source.fieldId === "valuation.forwardPE" && reportedForwardPE != null
         && Number.isFinite(reportedForwardPE) && reportedForwardPE <= 0) {
@@ -943,9 +946,23 @@ async function resolveChartSpecPass(
     ? latestSessionView(primaryRaw, rawSeries.filter((entry) => entry.observationKind === "market"),
       extendedHistories.has(primaryRaw?.id ?? ""), quoteReferences.get(primaryRaw?.id ?? ""))
     : null;
+  const dailyValuationView = spec.series.filter((entry) => entry.visible !== false);
+  const shortDailyValuation = !hasExplicitWindow && (spec.viewport.range === "1D" || spec.viewport.range === "1W")
+    && dailyValuationView.length > 0 && dailyValuationView.every(({ source }) => source.kind === "security"
+      && source.period === "daily" && source.fieldId.startsWith("valuation."));
+  const dailyTimes = shortDailyValuation ? [...new Set(rawSeries.flatMap((entry) => entry.points.map((point) => point.date.getTime())))]
+    .filter(Number.isFinite).sort((a, b) => a - b) : [];
+  const latestDaily = dailyTimes.at(-1);
+  // A daily multiple has no intraday observations. The day tab compares its
+  // last two closes; the week tab ends at the last close even on a weekend.
+  const dailyBounds = latestDaily === undefined ? null : {
+    start: spec.viewport.range === "1D" ? dailyTimes.at(-2) ?? latestDaily - CHART_RESOLUTION_STEP_MS["1d"]
+      : latestDaily - 7 * CHART_RESOLUTION_STEP_MS["1d"],
+    end: latestDaily,
+  };
   const bounds = hasExplicitWindow
     ? requestVisibleBounds
-    : sessionView?.bounds ?? (isDatasetChart(spec)
+    : dailyBounds ?? sessionView?.bounds ?? (isDatasetChart(spec)
       ? endAtNewestObservation(initialVisibleBounds, rawSeries)
       : followLatestMarketObservation(initialVisibleBounds, rawSeries));
   if (sessionView?.priorClose != null && primaryRaw?.transform === "raw"

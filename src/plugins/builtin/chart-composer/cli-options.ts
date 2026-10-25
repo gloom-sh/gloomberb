@@ -39,8 +39,8 @@ function chartResolution(options: HeadlessPaneOptionValues): ChartResolution | n
   return parseChartResolution(options.chartResolution ?? options.resolution);
 }
 
-function financialPeriod(value: unknown): SeriesPeriod | null {
-  return value === "annual" || value === "quarterly" || value === "ttm" ? value : null;
+function financialPeriod(value: unknown, valuation: boolean): SeriesPeriod | null {
+  return value === "annual" || value === "quarterly" || value === "ttm" || (valuation && value === "daily") ? value : null;
 }
 
 function mapSecuritySeries(
@@ -95,15 +95,15 @@ export function applyChartComposerCapabilityOptions(
   const graphKind = capabilityId === "fundamental-series"
     ? "fundamental"
     : capabilityId === "valuation-series" ? "valuation" : null;
-  if (graphKind && typeof options.metric === "string") {
-    const period = financialPeriod(options.period);
+  if (graphKind) {
+    const period = financialPeriod(options.period, graphKind === "valuation");
     next = {
       ...next,
       series: mapSecuritySeries(next.series, (entry) => ({
         ...entry,
         source: entry.source.kind === "security" ? {
           ...entry.source,
-          fieldId: `${graphKind}.${options.metric}`,
+          ...(typeof options.metric === "string" ? { fieldId: `${graphKind}.${options.metric}` } : {}),
           ...(period ? { period } : {}),
         } : entry.source,
       })),

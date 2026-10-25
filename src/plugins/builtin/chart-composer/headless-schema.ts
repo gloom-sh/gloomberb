@@ -204,6 +204,13 @@ export const paneSchemas = {
     argument: { kind: "tickers" },
     options: [
       {
+        key: "rangePreset",
+        description: "Chart history window.",
+        type: "enum",
+        aliases: ["range"],
+        values: HISTORY_RANGE_VALUES,
+      },
+      {
         key: "metric",
         description: "Valuation metric to compare.",
         type: "enum",
@@ -219,9 +226,13 @@ export const paneSchemas = {
         // The same metric the GE template opens with in the app.
         defaultValue: "trailingPE",
       },
-      // Annual, as the GE template opens in the app.
-      FINANCIAL_PERIOD_OPTION,
-      FINANCIAL_PERIOD_COUNT_OPTION,
+      {
+        ...FINANCIAL_PERIOD_OPTION,
+        description: "Daily multiples, or one observation per reporting period.",
+        values: [{ value: "daily", aliases: ["d"] }, ...FINANCIAL_PERIOD_OPTION.values!, { value: "ttm" }],
+        defaultValue: "daily",
+      },
+      { ...FINANCIAL_PERIOD_COUNT_OPTION, description: "Keep only the latest N observations per ticker." },
     ],
     discovery: {
       id: "valuation-series",

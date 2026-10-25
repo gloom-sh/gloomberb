@@ -330,11 +330,15 @@ function buildAxisDomain(
   scale: PanelScale,
   rows: number,
   manualScale?: CompositeManualValueScale,
+  referenceLevels?: BuildCompositeChartSceneOptions["referenceLevels"],
 ): CompositeAxisDomain | undefined {
   const axisSeries = series.filter((entry) => entry.axis === side);
   if (axisSeries.length === 0) return undefined;
   const values = axisSeries.flatMap(seriesDomainValues);
-  const fitted = paddedDomain([...values, ...priorCloseInReach(axisSeries, values)], scale);
+  const references = referenceLevels && axisSeries.some((entry) => entry.id === referenceLevels.seriesId)
+    ? referenceLevels.items.map((level) => level.value).filter(Number.isFinite)
+    : [];
+  const fitted = paddedDomain([...values, ...priorCloseInReach(axisSeries, values), ...references], scale);
   const scaleKey = valueScaleKey(scale, axisSeries);
   // A range set by hand holds while the axis plots the same series and some
   // of their data is in it; otherwise the axis fits the data again.
@@ -849,8 +853,8 @@ export function buildCompositeChartScene(
       ? dataSeries.filter((entry) => entry.panelId === panel.id)
       : panelSeries;
     const rows = panelHeights.get(panel.id) ?? 1;
-    const left = buildAxisDomain("left", domainSeries, scale, rows, options.valueScales?.[valueScaleSlot(panel.id, "left")]);
-    const right = buildAxisDomain("right", domainSeries, scale, rows, options.valueScales?.[valueScaleSlot(panel.id, "right")]);
+    const left = buildAxisDomain("left", domainSeries, scale, rows, options.valueScales?.[valueScaleSlot(panel.id, "left")], options.referenceLevels);
+    const right = buildAxisDomain("right", domainSeries, scale, rows, options.valueScales?.[valueScaleSlot(panel.id, "right")], options.referenceLevels);
     const axes: Partial<Record<CompositeAxisSide, CompositeAxisDomain>> = { left, right };
     return {
       id: panel.id,

@@ -1,9 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import { applyChartComposerCapabilityOptions, yearToDateWindow } from "./cli-options";
 import { applySeriesTimestampMode } from "./chart-spec-edit";
-import { buildComparisonChartPreset, buildCustomChartPreset, buildPriceChartPreset } from "./presets";
+import { buildComparisonChartPreset, buildCustomChartPreset, buildPriceChartPreset, buildValuationChartPreset } from "./presets";
 
 describe("chart composer CLI options", () => {
+  test("a reporting-period override works independently of the metric and daily can be restored", () => {
+    const daily = buildValuationChartPreset(["AAPL", "MSFT"]);
+    const annual = applyChartComposerCapabilityOptions(daily, "valuation-series", { period: "annual" });
+    expect(annual.series.map((series) => series.source)).toEqual(daily.series.map((series) => ({ ...series.source, period: "annual" })));
+    const restored = applyChartComposerCapabilityOptions(annual, "valuation-series", { period: "daily", metric: "evSales" });
+    expect(restored.series.map((series) => series.source)).toEqual(daily.series.map((series) => ({ ...series.source, fieldId: "valuation.evSales" })));
+  });
   test("applies price and financial options to the persisted spec", () => {
     const candle = applyChartComposerCapabilityOptions(
       buildPriceChartPreset("AAPL"),

@@ -8,7 +8,8 @@ import { fiscalPeriodLabel, fiscalYearEndMonth, ttmPeriodLabel } from "../utils/
 import { hasStatementGap, mergeStatementGaps } from "../utils/statement-gaps";
 import { trailingEpsAcrossFiscalYearEnd } from "../utils/trailing-eps";
 import { canonicalTimeSeriesFieldId, getTimeSeriesField } from "./field-catalog";
-import { forwardPeHistory, realizedNtmPeHistory } from "./forward-valuation";
+import { dailyForwardPeHistory, forwardPeHistory, realizedNtmPeHistory } from "./forward-valuation";
+import { dailyValuationHistory, type DailyValuationBasis } from "./daily-valuation";
 import { reportingCurrencySeries } from "./reporting-currency";
 import { createValuationCurrencyContext, type ValuationCurrencyContext } from "./valuation-currency";
 import { currentValuationPrice, valuationPriceAtOrBefore, valuationQuoteIssue, type ValuationPriceIssue } from "./valuation-price";
@@ -474,7 +475,7 @@ function buildTtmStatements(
       const availableAt = statementFieldAvailability(latest, field);
       if (availableAt) ttm.fieldAvailability![field] = availableAt;
     }
-    ttm.availableAt = completeStatementAvailability(ttm);
+    ttm.availableAt = completeStatementAvailability(ttm) ?? latest.availableAt;
     result.push(ttm);
   }
   return result;
@@ -500,6 +501,15 @@ function valuationStatements(financials: TickerFinancials): { quarterly: Financi
   return { quarterly: financials.quarterlyStatements.map(knownWhenFiled), annual: financials.annualStatements.map(knownWhenFiled) };
 }
 
+/** An undated vendor value cannot block a derivation from dated filings. */
+function datedValuationStatement(statement: FinancialStatement): FinancialStatement {
+  const dated = { ...statement };
+  for (const field of NUMERIC_STATEMENT_FIELDS) {
+    if (!statementFieldAvailability(statement, field)) delete dated[field];
+  }
+  return dated;
+}
+
 function normalizeFundamentalPeriod(period: SeriesPeriod | undefined): "annual" | "quarterly" | "ttm" | "auto" {
   return period === "annual" || period === "quarterly" || period === "ttm" ? period : "auto";
 }
@@ -510,10 +520,36 @@ function sourceStatements(
   valuationMetric?: string,
 ): { statements: InternalStatement[]; period: "annual" | "quarterly" | "ttm" } {
   const normalized = normalizeFundamentalPeriod(period);
-  const known = valuationMetric
+  let known = valuationMetric
     ? valuationStatements(financials)
     : { quarterly: financials.quarterlyStatements, annual: financials.annualStatements };
+  if (period === "daily" && valuationMetric) {
+    known = { quarterly: known.quarterly.map(datedValuationStatement), annual: known.annual.map(datedValuationStatement) };
+  }
   const quarterly = deriveQuarterlyStatements(known.quarterly, known.annual);
+  if (period === "daily" && valuationMetric) {
+    // Sparse or loss-making quarters are gaps, not permission to substitute
+    // an older annual denominator. Annual-only issuers retain their years.
+    if (!known.quarterly.length) return { statements: mergeStatementsByPeriod(known.annual), period: "annual" };
+    const statements = buildTtmStatements(quarterly, known.annual);
+    // Capitalization uses the latest reported share count, not an average
+    // of four quarters. Keep TTM average shares for the income/EPS fallback.
+    if (valuationMetric !== "trailingPE") for (const statement of statements) {
+      const latest = quarterly.find((row) => row.date === statement.date);
+      const year = known.annual.find((row) => areNearbyFinancialPeriodEnds(row.date, statement.date));
+      const shareRow = latest && selectedShares(latest) ? latest : year;
+      for (const field of ["dilutedShares", "basicShares", "ordinarySharesNumber", "shareIssued"] as const) {
+        delete statement[field];
+        delete statement.fieldAvailability?.[field];
+        if (shareRow?.[field] !== undefined) {
+          statement[field] = shareRow[field];
+          const availableAt = statementFieldAvailability(shareRow, field);
+          if (availableAt) (statement.fieldAvailability ??= {})[field] = availableAt;
+        }
+      }
+    }
+    return { statements, period: "ttm" };
+  }
   if (normalized === "annual") {
     return { statements: mergeStatementsByPeriod(known.annual), period: "annual" };
   }
@@ -775,6 +811,57 @@ function valuationAtPrice(
   return null;
 }
 
+function dailyStatementValuation(financials: TickerFinancials, metric: string): TimeSeriesPoint[] {
+  const earningsMetric = metric === "pegRatio" ? "trailingPE" : metric;
+  const selected = sourceStatements(financials, "daily", earningsMetric);
+  const currencies = createValuationCurrencyContext(financials);
+  const yearEndMonth = fiscalYearEndMonth(financials.annualStatements);
+  const bases: DailyValuationBasis[] = selected.statements.flatMap((statement) => {
+    const usable = valuationAtPrice(statement, earningsMetric, 1) !== null;
+    // Missing dates cannot put information at the period end: until its
+    // publication is known there is no historical denominator to use.
+    let publication = metricAvailability(statement, earningsMetric)
+      ?? (!usable ? statement.availableAt : undefined);
+    let growth: number | null = null;
+    if (metric === "pegRatio") {
+      const prior = selected.statements.find((candidate) => {
+        const days = (statementTime(statement) - statementTime(candidate)) / DAY_MS;
+        return days >= 330 && days <= 400;
+      });
+      const currentEps = selectedEps(statement)?.value;
+      const previousEps = prior ? selectedEps(prior)?.value : null;
+      if (prior && currentEps != null && currentEps > 0 && previousEps != null && previousEps > 0) {
+        publication = completeAvailability([publication, metricAvailability(prior, "trailingPE")]);
+        const change = (currentEps / previousEps - 1) * 100;
+        if (change > 0) growth = change;
+      }
+    }
+    const availableAt = validDate(publication);
+    const observedAt = validDate(statement.date);
+    if (!availableAt || !observedAt) return [];
+    const point = pointForStatement(statement, earningsMetric, null, selected.period, "available-at", true, yearEndMonth);
+    return [{
+      availableAt,
+      observedAt,
+      periodLabel: point?.periodLabel,
+      atPrice: (price: number) => {
+        const comparable = currencies.priceInStatementUnits(statement, price);
+        if (comparable === null) return null;
+        const value = valuationAtPrice(statement, earningsMetric, comparable);
+        // Negative cash flow, revenue or EBITDA cannot produce a meaningful
+        // multiple. Explicit period views retain their historical behavior.
+        const denominator = earningsMetric === "priceFcf" ? freeCashFlow(statement).value
+          : earningsMetric === "evEbitda" ? statement.ebitda
+            : earningsMetric === "priceSales" || earningsMetric === "evSales" ? statement.totalRevenue : 1;
+        if (denominator == null || denominator <= 0 || value === null) return null;
+        return metric === "pegRatio" ? growth === null ? null : value / growth : value;
+      },
+    }];
+  });
+  const points = dailyValuationHistory(financials.priceHistory, bases, financials.quote?.listingExchangeName || financials.quote?.exchangeName);
+  return points.some((point) => point.value !== null) ? points : [];
+}
+
 function providerCurrentValuationPoint(
   financials: TickerFinancials,
   metric: string,
@@ -887,9 +974,9 @@ export function valuationSeriesUsesLiveQuote(fieldId: string): boolean {
 }
 
 /** Whether a valuation field needs the full price history to date its observations. */
-export function valuationSeriesUsesPriceHistory(fieldId: string): boolean {
+export function valuationSeriesUsesPriceHistory(fieldId: string, period?: SeriesPeriod): boolean {
   const [namespace, metric = ""] = canonicalTimeSeriesFieldId(fieldId).split(".");
-  return namespace === "valuation" && PRICE_HISTORY_VALUATION_IDS.has(metric);
+  return namespace === "valuation" && (PRICE_HISTORY_VALUATION_IDS.has(metric) || (metric === "pegRatio" && period === "daily"));
 }
 
 function preferredPeriodPoint(
@@ -983,6 +1070,13 @@ export function extractFundamentalSeries(
   }
 
   if (namespace !== "valuation" || !VALUATION_IDS.has(metric)) return [];
+  if (source.period === "daily" && metric !== "realizedNtmPE") {
+    if (metric !== "forwardPE") return dailyStatementValuation(financials, metric);
+    const points = dailyForwardPeHistory(financials, createValuationCurrencyContext(financials));
+    if (points.some((point) => point.value !== null)) return points;
+    const current = providerCurrentValuationPoint(financials, metric);
+    return current ? [current] : [];
+  }
   if (metric === "forwardPE") {
     const points = forwardPeHistory(financials, createValuationCurrencyContext(financials));
     if (points.length > 0) return points;
@@ -1066,6 +1160,9 @@ export function valuationCurrencyWarning(financials: TickerFinancials, source: S
 
 /** Structured failures preserve source values independently of the chart's ratios. */
 export function valuationPriceIssues(financials: TickerFinancials, source: SecuritySeriesSource): ValuationPriceIssue[] {
+  if (source.period === "daily" && canonicalTimeSeriesFieldId(source.fieldId).startsWith("valuation.")) {
+    return extractFundamentalSeries(financials, source).flatMap((point) => point.provenance?.valuationPriceIssues ?? []);
+  }
   if (!valuationSeriesUsesLiveQuote(source.fieldId)) return [];
   const metric = canonicalTimeSeriesFieldId(source.fieldId).split(".")[1]!;
   const currencies = createValuationCurrencyContext(financials);

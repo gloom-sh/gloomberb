@@ -448,7 +448,8 @@ export function validateChartSpec(spec: ChartSpec): ChartSpecValidationResult {
           ));
         }
         if ((definition.id.startsWith("fundamental.") || definition.id.startsWith("valuation."))
-          && (entry.source.period === "daily" || entry.source.period === "weekly" || entry.source.period === "monthly")) {
+          && ((entry.source.period === "daily" && !definition.id.startsWith("valuation."))
+            || entry.source.period === "weekly" || entry.source.period === "monthly")) {
           errors.push(issue(`${path}.source.period`, "unsupported-period", "Financial fields support automatic, quarterly, annual, or TTM periods."));
         }
         const groups = unitGroupsByPanel.get(entry.panelId) ?? new Set<string>();
