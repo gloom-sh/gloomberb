@@ -386,10 +386,8 @@ A section header can carry one quiet `action` at its right end for the whole
 group, such as the preset its rows are set to (the Plugins pane's starter
 pack); it is a setting you apply, not a filter, and it also gets a footer key.
 Never build a table from padded `Text` rows: the kit gives the header band,
-gutters and fill to the footer. The rows draw the table's own background; the
-room under the last one is the pane's surface, as the rest of the pane is. A
-few rows of figures inside a section (an overview's positions, a quote book,
-label and value pairs in columns) are a
+gutters and fill to the footer. A few rows of figures inside a section (an
+overview's positions, a quote book, label and value pairs in columns) are a
 `ColumnGrid`: the terminal sets the columns at the cells you give them, and
 the desktop lays them out as one CSS grid counted in characters, so they
 follow a resize to the pixel and line up with their header. Text that can be

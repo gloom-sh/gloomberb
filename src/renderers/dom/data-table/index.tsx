@@ -13,7 +13,6 @@ import {
 } from "react";
 import { EmptyState } from "../../../components/ui/status";
 import { usePaneInstance } from "../../../state/app/context";
-import { usePaneSurface } from "../../../components/layout/pane/surface";
 import { useRegisterPaneScrollBox } from "../../../state/pane-scroll-registry";
 import { useRafCallback } from "../../../react/use-raf-callback";
 import { measurePerf } from "../../../utils/perf-marks";
@@ -58,17 +57,14 @@ const OVERFLOW_FADE_PX = 28;
  * A fade over one horizontal edge of the table, drawn above the scroller
  * rather than as a mask on it so the vertical scrollbar stays crisp. The
  * header band fades into the header colour and the rows into the table's.
- * `maxHeightPx` stops it at the last row, so the pane's own room beneath a
- * short table does not take a dark edge.
  */
-function overflowFadeStyle(side: "left" | "right", offsetPx: number, bottomPx: number, maxHeightPx?: number): CSSProperties {
+function overflowFadeStyle(side: "left" | "right", offsetPx: number, bottomPx: number): CSSProperties {
   const direction = side === "left" ? "to left" : "to right";
   const headerPx = tableHeaderPx();
   return {
     position: "absolute",
     top: 0,
     bottom: bottomPx,
-    maxHeight: maxHeightPx,
     [side]: offsetPx,
     width: OVERFLOW_FADE_PX,
     zIndex: 3,
@@ -123,9 +119,6 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
   scrollToIndexVersion = 0,
 }: DataTableProps<T, C>) {
   const paneInstanceId = usePaneInstance()?.instanceId ?? null;
-  // The rows paint the table's own background; the room under the last one is the pane's, as the rest of the pane is.
-  const paneSurface = usePaneSurface();
-  const emptyBackground = fillAvailableWidth && paneSurface ? paneSurface : CSS_BG;
   const focusPane = useFocusOwningPane();
   const bodyElementRef = useRef<HTMLDivElement | null>(null);
   const headerHorizontal = useScrollbarState(false);
@@ -207,7 +200,6 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
     ? rowVirtualizer.getTotalSize()
     : headerPx + items.length * WEB_CELL_HEIGHT;
   const bodyAfterHeight = bodyAfter ? WEB_CELL_HEIGHT * 6 : 0;
-  const fadeMaxHeight = emptyBackground !== CSS_BG && items.length > 0 ? totalHeight + bodyAfterHeight : undefined;
   const horizontalScrollEnabled = showHorizontalScrollbar
     && hasMeaningfulTableHorizontalOverflow(tableWidth, viewportWidth, columnGap);
   const scrollContentWidth = horizontalScrollEnabled
@@ -355,7 +347,7 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
     width: "100%",
     minWidth: 0,
     minHeight: 0,
-    backgroundColor: emptyBackground,
+    backgroundColor: CSS_BG,
     overflow: "hidden",
     // Its width comes from where it sits, never from its columns. When the
     // columns overflow, the content is laid out at their full width; in a box
@@ -373,7 +365,7 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
     minHeight: 0,
     overflowX: horizontalScrollEnabled ? "auto" : "hidden",
     overflowY: fitRows ? "hidden" : "auto",
-    backgroundColor: emptyBackground,
+    backgroundColor: CSS_BG,
     // The table runs to the pane footer. A partly visible last row is how every
     // scrolling list reads; trimming the viewport to whole rows left a blank
     // strip above the footer, and a half row over it after a trackpad scroll.
@@ -422,8 +414,6 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
             width: scrollContentWidth,
             height: items.length > 0 ? totalHeight + bodyAfterHeight : "100%",
             minHeight: WEB_CELL_HEIGHT,
-            // Rows still to be drawn while scrolling show the table's black, not the room beneath it.
-            backgroundColor: items.length > 0 ? CSS_BG : undefined,
           }}
         >
           <WebDataTableHeader
@@ -515,14 +505,14 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
         <div
           data-gloom-role="data-table-overflow-fade"
           data-gloom-edge="left"
-          style={overflowFadeStyle("left", frozenEdgePx, overflowEdges.scrollbarBottom, fadeMaxHeight)}
+          style={overflowFadeStyle("left", frozenEdgePx, overflowEdges.scrollbarBottom)}
         />
       ) : null}
       {horizontalScrollEnabled && overflowEdges.end ? (
         <div
           data-gloom-role="data-table-overflow-fade"
           data-gloom-edge="right"
-          style={overflowFadeStyle("right", overflowEdges.scrollbarRight, overflowEdges.scrollbarBottom, fadeMaxHeight)}
+          style={overflowFadeStyle("right", overflowEdges.scrollbarRight, overflowEdges.scrollbarBottom)}
         />
       ) : null}
     </div>
