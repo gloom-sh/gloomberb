@@ -249,6 +249,20 @@ export function matchKeybinding(resolved: ResolvedKeybindings, event: KeyChordEv
   return null;
 }
 
+/**
+ * The built-in action already on a chord, on this host, other than `exceptId`:
+ * one whose chord fires on the same keypress, a digit under the layout
+ * switcher's 1-9 included. Capture refuses such a chord, so a new binding never
+ * leaves a core key (the command bar, close pane, quit) dead. Null when no
+ * built-in action has it; a plugin shortcut or a bound command does not count.
+ */
+export function coreActionOnChord(resolved: ResolvedKeybindings, chord: KeyChord, exceptId?: string): ResolvedKeybindingAction | null {
+  return resolved.actions.find((action) => action.def && action.id !== exceptId
+    && action.chords.some((existing) => keyChordsOverlap(existing, chord)
+      || (existing.key === "digit" && /^[1-9]$/.test(chord.key) && keyChordsOverlap({ ...existing, key: chord.key }, chord))))
+    ?? null;
+}
+
 export function matchesKeybindingAction(resolved: ResolvedKeybindings, id: string, event: KeyChordEventLike): boolean {
   const action = resolved.actionsById.get(id);
   return !!action && action.chords.some((chord) => matchesKeyChord(chord, event));

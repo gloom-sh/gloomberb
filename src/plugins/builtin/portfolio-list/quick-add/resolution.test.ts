@@ -82,4 +82,33 @@ describe("quick-add listing resolution", () => {
     expect(validation).toMatchObject({ status: "ready", quote: { price: 47.1 } });
     expect(quoted).toEqual(["OMV.VI"]);
   });
+
+  test("a bare symbol is its US listing though its listing abroad holds the bare key, and the two stay separate rows", async () => {
+    const shell = (exchange: string, currency: string, name: string): InstrumentSearchResult => ({
+      providerId: "test", symbol: "SHEL", name, exchange, currency, type: "STK",
+    });
+    setSharedRegistryForTests({
+      marketData: createTestDataProvider({
+        search: async () => [shell("LSE", "GBP", "Shell plc"), shell("NYSE", "USD", "Shell PLC ADR")],
+        getQuote: async (_symbol, exchange) => createTestQuote({
+          symbol: "SHEL", listingExchangeName: exchange === "LSE" ? "LSE" : "NYSE", currency: exchange === "LSE" ? "GBP" : "USD",
+        }),
+      }),
+    } as PluginRegistry);
+    // SHEL.L, added first, saved under the bare key.
+    const london = createTestTicker("SHEL", "Shell plc", { exchange: "LSE", currency: "GBP", watchlists: ["watchlist"] });
+    const validate = (tickers: Map<string, ReturnType<typeof createTestTicker>>) => resolveQuickAddValidation({
+      query: "SHEL", collectionId: "watchlist", collectionKind: "watchlist", tickers, financials: new Map(),
+    });
+    const fresh = await validate(new Map());
+    const known = await validate(new Map([["SHEL", london]]));
+    for (const validation of [fresh, known]) {
+      expect(validation.status).toBe("ready");
+      if (validation.status !== "ready") return;
+      expect(exchangeLabelFromValidation(validation)).toBe("NYSE");
+    }
+    // Once New York's line is saved beside it, the bare symbol is that row.
+    const newYork = createTestTicker("SHEL:XNYS", "Shell PLC ADR", { exchange: "NYSE", currency: "USD", watchlists: ["watchlist"] });
+    expect(await validate(new Map([["SHEL", london], ["SHEL:XNYS", newYork]]))).toMatchObject({ status: "duplicate", symbol: "SHEL:XNYS" });
+  });
 });

@@ -545,7 +545,7 @@ const ABROAD: Record<string, { name: string; exchange: string; currency: string 
 };
 
 /** A saver's profile with Istanbul's banks as Gloom Cloud quotes them: GARAN and AKBNK trade on BIST only. */
-async function bistSaver(search: DataProvider["search"]) {
+async function bistSaver(search: DataProvider["search"], quote?: DataProvider["getQuote"]) {
   const persistence = new AppPersistence(":memory:");
   persistences.push(persistence);
   const store = new TickerRepository(persistence.tickers);
@@ -559,12 +559,12 @@ async function bistSaver(search: DataProvider["search"]) {
   const dataProvider = createTestDataProvider({
     search,
     // Asked as GARAN, or by its key GARAN:BIST.
-    getQuote: async (asked, exchange) => {
+    getQuote: quote ?? (async (asked, exchange) => {
       const [symbol, venue = exchange] = asked.split(":");
       const listing = ABROAD[symbol!];
       if (!listing || (venue && venue !== listing.exchange)) throw new Error(`Not a ticker: ${asked}.`);
       return createTestQuote({ symbol: symbol!, name: listing.name, currency: listing.currency, listingExchangeName: listing.exchange, exchangeName: listing.exchange, lastUpdated: Date.now() });
-    },
+    }),
   });
   const exec = async (options: { dryRun?: boolean }, command: CliCommandDef, ...args: string[]) => {
     const cli = hintedContext({ config: await loadConfig(dataDir), store, dataProvider }, { color: false, ...options });
@@ -652,9 +652,31 @@ test("a suffixed symbol removes its venue's row, else the row saved under the su
   expect(await saver.keys()).toEqual(["7203.T:XTKS", "MKC.V", "VOD:XLON"]);
 });
 
-test("a bare symbol saved on its listing abroad still needs a choice when search lists it in the US too", async () => {
-  const shopify = (exchange: string, currency: string) => ({ providerId: "test", symbol: "SHOP", name: "Shopify Inc.", exchange, currency, type: "Common Stock" });
-  const saver = await bistSaver(async (query) => query.startsWith("SHOP") ? [shopify("NYSE", "USD"), shopify("TSX", "CAD")] : []);
-  await saver.store.saveTicker(createTestTicker("SHOP", "Shopify Inc.", { exchange: "TSX", currency: "CAD" }));
-  expect((await caught(saver.run(watchlistCliCommand, "add", "Banks", "SHOP")))?.message).toBe("SHOP matched SHOP:TSX (Shopify Inc.), a listing abroad.");
+test("a bare symbol is its US listing in a fresh profile and in one that saved its listing abroad under the bare key", async () => {
+  const shell = (exchange: string, currency: string, name: string) => ({ providerId: "test", symbol: "SHEL", name, exchange, currency, type: "Common Stock" });
+  const search: DataProvider["search"] = async (query) => query.startsWith("SHEL")
+    ? [shell("LSE", "GBP", "Shell plc"), shell("NYSE", "USD", "Shell PLC ADR")]
+    : [];
+  // The bare symbol's own quote is New York's; SHEL:LSE's is London's.
+  const quote: DataProvider["getQuote"] = async (asked, exchange) => {
+    const london = asked === "SHEL:LSE" || exchange === "LSE";
+    return createTestQuote({
+      symbol: "SHEL", name: london ? "Shell plc" : "Shell PLC ADR", currency: london ? "GBP" : "USD",
+      listingExchangeName: london ? "LSE" : "NYSE", exchangeName: london ? "LSE" : "NYSE", lastUpdated: Date.now(),
+    });
+  };
+  const fresh = await bistSaver(search, quote);
+  expect((await fresh.run(watchlistCliCommand, "add", "Banks", "SHEL")).data).toMatchObject({ listing: "SHEL:NYSE", changed: true });
+
+  // SHEL.L added first took the bare key; SHEL still adds New York's line, as a row of its own.
+  const known = await bistSaver(search, quote);
+  await known.store.saveTicker(createTestTicker("SHEL", "Shell plc", { exchange: "LSE", currency: "GBP", watchlists: ["banks"] }));
+  expect((await known.run(watchlistCliCommand, "add", "Banks", "SHEL")).data).toMatchObject({ listing: "SHEL:NYSE", changed: true });
+  expect((await known.run(watchlistCliCommand, "add", "Banks", "SHEL")).data).toMatchObject({ listing: "SHEL:NYSE", changed: false });
+  expect(await known.keys()).toEqual(["SHEL", "SHEL:XNYS"]);
+  // A list reads it the same way, and removing the bare symbol takes the US row first.
+  const listed = await known.run(watchlistCliCommand, "add", "Banks", "SHEL, SHEL:LSE");
+  expect(listed.data.map((row) => [row.status, row.listing])).toEqual([["already_listed", "SHEL:NYSE"], ["already_listed", "SHEL:LSE"]]);
+  expect((await known.run(watchlistCliCommand, "remove", "Banks", "SHEL")).data).toMatchObject({ changed: true, listing: "SHEL:NYSE" });
+  expect((await known.store.loadTicker("SHEL"))!.metadata.watchlists).toEqual(["banks"]);
 });

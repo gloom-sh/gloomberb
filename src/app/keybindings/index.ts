@@ -14,6 +14,7 @@ export {
   type KeyChordEventLike,
 } from "./chord";
 export {
+  coreActionOnChord,
   describeKeybindingIssue,
   isPaneKeybindingAction,
   keyChordsOverlap,

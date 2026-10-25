@@ -119,7 +119,9 @@ function previousIndexSession(quote: Quote, date: string): string | null {
  * The session before the one a move is dated to: from the venue's published
  * calendar, with the closures in between (an index's, the venue whose days it
  * follows); otherwise for an index from its own sessions; for a currency pair
- * the weekday before. Null when nothing dates it.
+ * the weekday before; for any other listing the day its own daily closes date
+ * its previous close to (`previousCloseDate`, withDatedPreviousClose). Null
+ * when nothing dates it.
  */
 function previousSession(quote: Quote, sessionDate: string): DatedChangeBasis | null {
   const venue = calendarVenue(quote);
@@ -128,7 +130,19 @@ function previousSession(quote: Quote, sessionDate: string): DatedChangeBasis | 
   const index = previousIndexSession(quote, sessionDate);
   if (index) return { kind: "close", date: index };
   if (isCurrencyPair(quote)) return { kind: "close", date: weekdayBefore(sessionDate) };
+  const dated = quote.previousCloseDate;
+  if (dated && ISO_DATE.test(dated) && dated < sessionDate) return { kind: "close", date: dated };
   return null;
+}
+
+/**
+ * The exchange-local date of the session a quote's regular move is dated to,
+ * the one `quoteChangeBasis` measures from the session before; null when
+ * nothing dates it.
+ */
+export function changeBasisSessionDate(quote: Quote): string | null {
+  const date = regularSessionDisplayDate(quote) ?? quoteTradingDay(quote);
+  return date && ISO_DATE.test(date) ? date : null;
 }
 
 /**
@@ -138,9 +152,10 @@ function previousSession(quote: Quote, sessionDate: string): DatedChangeBasis | 
  * settlement or trade its terms name, or the close of the trade date before
  * on its venue's holiday calendar (futuresChangeBasis). Anything else is
  * the close of the session before the move's, dated by the venue's calendar;
- * a venue without one has a previous close that is left undated, never
- * guessed. Null for a quote with no move: none reported, or a listing that no
- * longer trades.
+ * on a venue without one, by the listing's own daily closes once they were
+ * read (withDatedPreviousClose), and otherwise left undated, never guessed.
+ * Null for a quote with no move: none reported, or a listing that no longer
+ * trades.
  */
 export function quoteChangeBasis(
   quote: Quote | null | undefined,

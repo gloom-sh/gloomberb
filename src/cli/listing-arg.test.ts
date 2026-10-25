@@ -73,12 +73,13 @@ test("an exchange code the app does not know is refused unless the symbol trades
   // A venue only search knows is still the symbol's own listing; data requests go by its key.
   expect((await resolveCliListing("SAN", "BVL", deps)).request).toEqual({ symbol: "SAN:BVL", exchange: "BVL" });
 
-  // A bare symbol keeps the listing it was saved with, as the ticker report always did.
+  // Sanofi in Paris saved under the bare key: the bare symbol is still its US listing, read as with nothing saved.
   await store.createTicker({
     ticker: "SAN", exchange: "EPA", currency: "EUR", name: "Sanofi", portfolios: [], watchlists: [], positions: [], custom: {}, tags: [],
   });
-  const saved = await resolveCliListing("SAN", undefined, deps);
-  expect(saved.request).toEqual({ symbol: "SAN", exchange: "EPA" });
+  const bare = await resolveCliListing("SAN", undefined, deps);
+  expect(bare.saved).toBeNull();
+  expect(bare.request).toEqual({ symbol: "SAN", exchange: "" });
   expect((await resolveCliListing("SAN:XPAR", undefined, deps)).saved?.metadata.name).toBe("Sanofi");
   expect((await resolveCliListing("SAN:NYSE", undefined, deps)).saved).toBeNull();
 });

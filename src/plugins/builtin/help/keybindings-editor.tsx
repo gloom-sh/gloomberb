@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   applyActionBinding,
+  coreActionOnChord,
   describeKeybindingIssue,
   formatChordForHost,
   isTypingChord,
@@ -242,11 +243,18 @@ export function KeybindingsEditor({
   const commitChord = useCallback((chord: KeyChord) => {
     if (!capture) return;
     const config = stateRef.current.config.keybindings;
-    if (capture.kind === "new-command" || capture.row.kind === "command") {
-      if (isTypingChord(chord)) {
-        setFeedback({ tone: "warning", text: t("That key would fire while typing. Use Ctrl, Cmd, Alt or a function key.") });
-        return;
-      }
+    const isCommand = capture.kind === "new-command" || capture.row.kind === "command";
+    if (isCommand && isTypingChord(chord)) {
+      setFeedback({ tone: "warning", text: t("That key would fire while typing. Use Ctrl, Cmd, Alt or a function key.") });
+      return;
+    }
+    // A built-in action's key is refused, so a binding never leaves the command bar or close pane dead.
+    const core = coreActionOnChord(resolved, chord, capture.kind === "row" ? capture.row.action?.id : undefined);
+    if (core) {
+      setFeedback({ tone: "warning", text: tf("{chord} is taken: {target}. Press another key.", { chord: formatChord(chord), target: describeTarget(core.id) }) });
+      return;
+    }
+    if (isCommand) {
       const query = capture.kind === "new-command" ? capture.query : capture.row.command!.query;
       let next = config;
       if (capture.kind === "row") next = removeCommandBinding(next, capture.row.command!.text);
@@ -266,7 +274,7 @@ export function KeybindingsEditor({
     setFeedback(taken
       ? { tone: "warning", text: tf("Also bound to {target}.", { target: describeTarget(taken.id) }) }
       : { tone: "info", text: tf("Bound to {chord}.", { chord: formatChord(chord) }) });
-  }, [capture, captureLabel, describeTarget, formatChord, resolved.actions, stateRef, writeKeybindings]);
+  }, [capture, describeTarget, formatChord, resolved, stateRef, writeKeybindings]);
 
   // Capture owns the keyboard: a fresh scope in the earliest phase gets first
   // refusal over every app shortcut, and preventDefault keeps the desktop

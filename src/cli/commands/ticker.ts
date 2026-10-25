@@ -39,6 +39,7 @@ import {
 } from "../../market-data/market/status";
 import type { FuturesContractTermsPayload } from "../../api-client/futures-curve";
 import { changeBasisJson, quoteChangeBasis, quotePreviousCloseDate, quoteSettleText } from "../../market-data/market/change-basis";
+import { withDatedPreviousClose } from "../../market-data/market/dated-previous-close";
 import {
   futuresContractLines, futuresPricePer, isFuturesInstrument, loadFuturesContractTerms, loadUsdPerMmbtu, usdPerMmbtuText, type UsdPerMmbtu,
 } from "../../market-data/futures-contract";
@@ -1522,7 +1523,9 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
       await failIfMovedAway();
       failCommand(`No research data available for ${normalized}.`);
     }
-    const resolvedFinancials = financials as TickerFinancials;
+    // A venue whose holidays the app does not carry (LSE, Helsinki) dates the close the move is from by the listing's own daily closes.
+    const datedQuote = await withDatedPreviousClose(financials!.quote ?? null, { symbol: requestSymbol, exchange }, dataProvider);
+    const resolvedFinancials = (datedQuote && datedQuote !== financials!.quote ? { ...financials, quote: datedQuote } : financials) as TickerFinancials;
     const quote = resolvedFinancials.quote;
     // The quote is the old line's (stopped, or named for the company that left): the profile and figures are another security's.
     researchQuote.resolve(quote ?? null);

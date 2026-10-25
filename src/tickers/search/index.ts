@@ -39,6 +39,7 @@ import { isProviderBusy, ProviderBusyError, SEARCH_BUSY_MESSAGE } from "../../so
 import { settleWithin } from "../../utils/async-deadline";
 import { companyNameExtraWords } from "../company-name";
 import { withHomeListingLead } from "./home-listing";
+import { savedAbroadForBareSymbol, savedUsListingOf } from "./bare-symbol";
 import { delistingLabel } from "../../market-data/quotes/delisting";
 import { hasNonLatinLetters } from "../../utils/typed-text";
 import { isNetworkFailure } from "../../utils/network-failure";
@@ -468,15 +469,27 @@ async function resolveTickerSymbol(
     if (contracts.size > 1) throw new AmbiguousContractError(symbol,
       [...contracts.values()].map((contract) => tickerInstrumentLabel(local.metadata.ticker, contract)));
   }
+  // A bare symbol is its US listing whenever it has one (`savedAbroadForBareSymbol`): a row abroad saved under it
+  // (SHEL on LSE, from SHEL.L) gives way to the US row saved beside it, else to search's US listing.
+  const abroad = !pickerQuery && !!local && savedAbroadForBareSymbol(symbol, local);
+  const savedUs = abroad ? savedUsListingOf(symbol, tickers.values()) : null;
+  if (savedUs) return { kind: "local", symbol: savedUs.metadata.ticker, ticker: savedUs };
   // A saved symbol keeps its company. The colon still offers the others.
-  const saved: ResolvedTickerSearch | null = local ? { kind: "local", symbol: local.metadata.ticker, ticker: local } : null;
-  if (saved && !pickerQuery) return saved;
+  let saved: ResolvedTickerSearch | null = local ? { kind: "local", symbol: local.metadata.ticker, ticker: local } : null;
+  if (saved && !pickerQuery && !abroad) return saved;
 
   const { results, busy } = await searchProviderResults(dataProvider, symbol, searchContext);
   const providerItems = createProviderTickerSearchCandidates(results, tickers);
   const literalMatches = providerItems.filter((item) => normalizeTickerSymbol(item.symbol) === symbol);
-  const matches = literalMatches.length ? literalMatches
+  let matches = literalMatches.length ? literalMatches
     : providerItems.filter((item) => findExactTickerSearchMatch([item], symbol));
+  if (abroad) {
+    const us = matches.filter((item) => isUsListingExchange(listingExchange(item.result!)));
+    // No US listing: the row abroad is the symbol's.
+    if (us.length === 0) return saved;
+    matches = us;
+    saved = null;
+  }
   let exactMatch = matches[0];
   if (!exactMatch?.result) {
     // Nothing matched while a source was too busy to answer: that is no answer, not a miss.

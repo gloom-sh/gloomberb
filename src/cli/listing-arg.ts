@@ -9,6 +9,7 @@ import {
   quotedOnVenue,
   readAmbiguousCurrencyPair,
   readSharedCode,
+  savedRowOfBareSymbol,
   type ListingDeps,
   type ListingStore,
   type ListingVenue,
@@ -55,6 +56,7 @@ import {
   type TerminalListingCode,
 } from "../tickers/terminal-codes";
 import { listingAbroadVenue } from "../utils/sec";
+import { savedAbroadForBareSymbol, savedUsListingOf } from "../tickers/search/bare-symbol";
 import { listingSuffixCandidate, listingSuffixVenue, tickerHasListingSuffix } from "../sources/listing-symbols";
 import { notTheCoinNote } from "./commands/crypto-hints";
 
@@ -948,6 +950,10 @@ export async function loadSavedListingOf(
   for (const listing of listings) {
     if (found.some((entry) => entry.listing.key === listing.key)) continue;
     const ticker = await loadSavedListing(store, listing);
+    // A bare symbol's US listing comes before a row abroad saved under its bare key (SHEL, saved from SHEL.L).
+    if (ticker && !listing.exchange && savedAbroadForBareSymbol(listing.symbol, ticker)) {
+      add(listing, savedUsListingOf(listing.symbol, await store.loadAllTickers()));
+    }
     add(listing, ticker);
     // A suffixed key as typed may be saved with a venue (7203.T:JPX, GARAN.IS:XNYS): any row of that symbol.
     if (!ticker && !listing.exchange && tickerHasListingSuffix(listing.symbol)) {
@@ -1115,7 +1121,9 @@ export async function resolveCliListing(
     parsed = market;
   }
   let listing = await settleSharedCode(parsed, deps);
-  const saved = await loadSavedListing(deps.store, listing) ?? (typedKey ? await loadSuffixedRow(deps.store, typedKey, listing.exchange) : null);
+  const found = await loadSavedListing(deps.store, listing) ?? (typedKey ? await loadSuffixedRow(deps.store, typedKey, listing.exchange) : null);
+  // A bare symbol is its US listing when it has one, whatever row abroad holds the bare key (SHEL saved from SHEL.L).
+  const saved = listing.exchange ? found : await savedRowOfBareSymbol(listing.symbol, found, deps);
   // A code nothing could read stays the venue it is saved on.
   const savedExchange = canonicalExchange(saved?.metadata.exchange);
   if (listing.sharedCode && savedExchange) listing = { symbol: listing.symbol, exchange: savedExchange, key: `${listing.symbol}:${savedExchange}` };

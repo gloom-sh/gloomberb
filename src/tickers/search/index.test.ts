@@ -100,8 +100,9 @@ describe("ticker-search utilities", () => {
     expect(error).toBeInstanceOf(AmbiguousTickerError);
     expect(error.query).toBe("NET:");
     expect(error.listings).toEqual(["NET:XNYS", "NET:XLON"]);
+    // A bare symbol is its US listing, whatever listing abroad is saved under it.
     expect(await resolveTickerSearch({ query: "NET", activeTicker: null, tickers, dataProvider }))
-      .toMatchObject({ kind: "local", ticker: saved });
+      .toMatchObject({ kind: "provider", result: { name: "Cloudflare", exchange: "NYSE" } });
     expect(await resolveTickerSearch({ query: "NET:XNYS", activeTicker: null, tickers, dataProvider }))
       .toMatchObject({ kind: "provider", result: { name: "Cloudflare", exchange: "NYSE" } });
     expect(quoteCalls).toBe(0);
@@ -156,10 +157,19 @@ describe("ticker-search utilities", () => {
       expect(await resolveTickerSearch({ query, activeTicker: null, tickers: new Map(), dataProvider }))
         .toMatchObject({ kind: "provider", result: { exchange } });
     }
-    const saved = createTestTicker("VOD", "Saved Vodafone", { exchange: "LSE", currency: "GBP" });
-    expect(await resolveTickerSearch({ query: "VOD", activeTicker: null, tickers: new Map([["VOD", saved]]), dataProvider }))
-      .toMatchObject({ kind: "local", ticker: saved });
+    const resolveSaved = (...saved: ReturnType<typeof createTestTicker>[]) => resolveTickerSearch({
+      query: "VOD", activeTicker: null, tickers: new Map(saved.map((ticker) => [ticker.metadata.ticker, ticker])), dataProvider,
+    });
+    const london = createTestTicker("VOD", "Saved Vodafone", { exchange: "LSE", currency: "GBP" });
+    const newYork = createTestTicker("VOD:XNAS", "Saved Vodafone ADR", { exchange: "NASDAQ", currency: "USD" });
+    // A listing abroad saved under the bare key gives way to the US one: saved beside it, else search's.
+    expect(await resolveSaved(london, newYork)).toMatchObject({ kind: "local", ticker: newYork });
+    expect(await resolveSaved(london)).toMatchObject({ kind: "provider", result: { name: "Vodafone ADR", exchange: "NASDAQ" } });
     expect(quoteCalls).toBe(0);
+    // With no US listing, the saved one abroad is the symbol's.
+    const vodacom = createTestTicker("VOD", "Saved Vodacom", { exchange: "JSE", currency: "ZAR" });
+    expect(await resolveTickerSearch({ query: "VOD", activeTicker: null, tickers: new Map([["VOD", vodacom]]),
+      dataProvider: createTestDataProvider({ search: async () => results.slice(0, 2) }) })).toMatchObject({ kind: "local", ticker: vodacom });
   });
 
   test("share-class aliases keep the requested security when duplicate venues need a quote", async () => {

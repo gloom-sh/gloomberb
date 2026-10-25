@@ -917,7 +917,7 @@ describe("PortfolioListPane cash and margin UI", () => {
     expect(tui.frame()).toMatch(/\+ MSFT\s+Ticker add failed/);
   });
 
-  test("quick-add shows the saved listing's venue, and a colon opens that symbol's venues in the command bar", async () => {
+  test("quick-add reads a bare symbol as its US listing beside one saved abroad, and a colon opens that symbol's venues in the command bar", async () => {
     const config = createManualCollectionConfig("watchlist");
     const nyse = { providerId: "quick-add-test", symbol: "NET", name: "Cloudflare", exchange: "NYSE", currency: "USD", type: "STK" };
     const lse = { providerId: "quick-add-test", symbol: "NET", name: "Netcall Plc", exchange: "LSE", currency: "GBP", type: "STK" };
@@ -959,9 +959,10 @@ describe("PortfolioListPane cash and margin UI", () => {
     });
     await flushFrame();
 
+    // Netcall in London holds the bare key; NET is still Cloudflare in New York.
     const bare = tui.frame();
-    expect(bare).toContain("Netcall Plc");
-    expect(bare).toContain("LSE");
+    expect(bare).toContain("Cloudflare");
+    expect(bare).toContain("NYSE");
 
     await act(async () => {
       await tui.setup().mockInput.typeText(":");
