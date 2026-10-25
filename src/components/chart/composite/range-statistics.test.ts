@@ -6,10 +6,10 @@ import { buildCompositeChartScene } from "./scene";
 
 const viewport = { start: new Date("2025-01-02"), end: new Date("2025-01-05") };
 
-test("range statistics include the boundary days, omit gaps and invalid multiples, and ignore the history buffer", () => {
+test("range statistics include the boundary days, omit gaps and non-finite values, and ignore the history buffer", () => {
   const points = [
     point("2025-01-01", 1000), point("2025-01-02", 20), point("2025-01-03", null),
-    point("2025-01-03", -5), point("2025-01-03", 0), point("2025-01-03", NaN),
+    point("2025-01-03", NaN),
     point("2025-01-03", Infinity), point(new Date(NaN), 500),
     point("2025-01-04", 30), point("2025-01-05", 40), point("2025-01-06", 1000),
   ];
@@ -22,6 +22,13 @@ test("range statistics include the boundary days, omit gaps and invalid multiple
     count: 2, mean: 35, standardDeviation: 5,
   });
   expect(compositeRangeStatistics(points, { start: new Date("2025-01-03"), end: new Date("2025-01-03") })).toBeNull();
+});
+
+test("valid enterprise-value multiples on either side of zero contribute to the guides", () => {
+  const statistics = compositeRangeStatistics([-.125, 0, .125].map(value => point("2025-01-02", value)), viewport)!;
+  expect(statistics.count).toBe(3);
+  expect(statistics.mean).toBe(0);
+  expect(statistics.standardDeviation).toBeCloseTo(Math.sqrt(2 * .125 ** 2 / 3), 12);
 });
 
 test("small dispersion around a large value remains accurate", () => {

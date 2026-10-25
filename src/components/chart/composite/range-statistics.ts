@@ -3,7 +3,7 @@ import { formatCompositeSeriesValue } from "./format";
 import type { CompositeViewportRange } from "./interactions";
 import type { CompositeChartLevel, CompositeChartLevels } from "./levels";
 
-/** Population statistics of the positive observations actually in the window. */
+/** Population statistics of the finite observations actually in the window. */
 export function compositeRangeStatistics(points: readonly TimeSeriesPoint[], viewport: CompositeViewportRange) {
   const start = viewport.start.getTime();
   const end = viewport.end.getTime();
@@ -15,7 +15,7 @@ export function compositeRangeStatistics(points: readonly TimeSeriesPoint[], vie
     const time = point.date.getTime();
     const value = Number.isFinite(point.value) ? point.value : point.close;
     if (!Number.isFinite(time) || time < start || time > end
-      || typeof value !== "number" || !Number.isFinite(value) || value <= 0) continue;
+      || typeof value !== "number" || !Number.isFinite(value)) continue;
     count += 1;
     // Welford's update avoids subtracting nearly equal squared sums when
     // valuations are tightly clustered around a large level.

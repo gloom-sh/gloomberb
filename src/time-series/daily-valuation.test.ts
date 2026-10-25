@@ -129,6 +129,24 @@ test("daily forward P/E uses recorded consensus, never future reports, and a lat
   expect(values(data, "forwardPE")).toEqual([null, 21 / 5, 22 / 5, null]);
 });
 
+test("matching annual balance-sheet evidence activates EV ratios before a later comparative quarter", () => {
+  const data = financials();
+  const fourth = data.quarterlyStatements[3]!;
+  fourth.fieldAvailability = Object.fromEntries(Object.entries(fourth)
+    .filter(([, value]) => typeof value === "number").map(([field]) => [field, "2025-02-03"]));
+  fourth.fieldAvailability.totalDebt = "2025-05-01";
+  fourth.fieldAvailability.cashAndCashEquivalents = "2025-05-01";
+  data.annualStatements = [{ ...quarter("2024-12-31", "2025-02-03", 4), totalRevenue: 400, ebitda: 80 }];
+  expect(values(data, "evSales")).toEqual([null, .575, .6, .625, .65]);
+  expect(values(data, "evEbitda")).toEqual([null, 230 / 80, 240 / 80, 250 / 80, 260 / 80]);
+  // A different value or currency is not evidence for the later snapshot.
+  data.annualStatements[0]!.totalDebt = 29;
+  expect(values(data, "evSales").slice(0, 3)).toEqual([null, null, null]);
+  data.annualStatements[0]!.totalDebt = 30;
+  data.annualStatements[0]!.currency = "EUR";
+  expect(values(data, "evSales").slice(0, 3)).toEqual([null, null, null]);
+});
+
 test("resolver requests daily price history even at a coarser viewport and preserves source closes in the daily result", async () => {
   const data = financials();
   const requests: string[] = [];

@@ -525,6 +525,28 @@ function sourceStatements(
     : { quarterly: financials.quarterlyStatements, annual: financials.annualStatements };
   if (period === "daily" && valuationMetric) {
     known = { quarterly: known.quarterly.map(datedValuationStatement), annual: known.annual.map(datedValuationStatement) };
+    // A later comparative quarter may repeat a year-end balance sheet that
+    // the annual filing already published. Only identical, same-currency
+    // snapshots can inherit that earlier evidence; changed values cannot.
+    known.quarterly = known.quarterly.map((statement) => {
+      const dated = { ...statement, fieldAvailability: Object.fromEntries(NUMERIC_STATEMENT_FIELDS.flatMap((field) => {
+        const availableAt = statementFieldAvailability(statement, field);
+        return availableAt ? [[field, availableAt]] : [];
+      })) };
+      for (const annual of known.annual) {
+        if (annual.currency !== dated.currency || !areNearbyFinancialPeriodEnds(annual.date, dated.date)) continue;
+        for (const field of QUARTERLY_SNAPSHOT_FIELDS) {
+          const value = statementNumber(dated, field);
+          const earlier = statementFieldAvailability(annual, field);
+          const current = statementFieldAvailability(dated, field);
+          if (value !== null && value === statementNumber(annual, field) && earlier
+            && (!current || Date.parse(earlier) < Date.parse(current))) {
+            dated.fieldAvailability[field] = earlier;
+          }
+        }
+      }
+      return dated;
+    });
   }
   const quarterly = deriveQuarterlyStatements(known.quarterly, known.annual);
   if (period === "daily" && valuationMetric) {
