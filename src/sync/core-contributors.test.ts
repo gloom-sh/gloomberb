@@ -549,10 +549,11 @@ describe("core sync contributors", () => {
     function deviceStore(state: AppState) {
       const store = {
         current: state,
-        disk: new Map<string, TickerRecord>(),
+        disk: new Map(state.tickers),
         saved: [] as string[],
-        /** Runs while the pull writes its first row, as an edit landing then would. */
-        duringFirstSave: undefined as (() => void) | undefined,
+        deleted: [] as string[],
+        /** Runs while the pull persists its first row, as an edit landing then would. */
+        duringFirstWrite: undefined as (() => void) | undefined,
         context: (baselinePayload: unknown, snapshot?: unknown) => ({
           snapshot,
           baselinePayload,
@@ -568,8 +569,15 @@ describe("core sync contributors", () => {
             saveTicker: async (record: TickerRecord) => {
               store.saved.push(record.metadata.ticker);
               store.disk.set(record.metadata.ticker, record);
-              const edit = store.duringFirstSave;
-              store.duringFirstSave = undefined;
+              const edit = store.duringFirstWrite;
+              store.duringFirstWrite = undefined;
+              edit?.();
+            },
+            deleteTicker: async (symbol: string) => {
+              store.deleted.push(symbol);
+              store.disk.delete(symbol);
+              const edit = store.duringFirstWrite;
+              store.duringFirstWrite = undefined;
               edit?.();
             },
           },
@@ -583,6 +591,44 @@ describe("core sync contributors", () => {
       await coreCollectionsSyncContributor.apply?.(pulled, store.context(baselinePayload));
       return { state: store.current, saved: store.saved };
     }
+
+    test.each(["save", "delete"])("profile cleanup keeps edits made during its first %s", async (firstWrite) => {
+      const config = deviceConfig(200);
+      const state = createInitialState(config);
+      state.tickers = new Map(["AAA", "BBB", "CCC", "DDD"].map((symbol) => [symbol, createTestTicker(symbol, symbol, {
+        portfolios: [signedInId],
+        positions: [signedInPosition(3)],
+        watchlists: symbol === "BBB" || (symbol === "AAA" && firstWrite === "save") ? ["watchlist"] : [],
+      })]));
+      const baseline = await coreConfigSyncContributor.collect({ state });
+      const pulled = await coreConfigSyncContributor.collect({ state: createInitialState({
+        ...config,
+        brokerInstances: [demo],
+        portfolios: config.portfolios.filter((portfolio) => portfolio.id !== signedInId),
+      }) });
+      const store = deviceStore(state);
+      const edited = createTestTicker("BBB", "Edited", { portfolios: ["main"], positions: [mainPosition] });
+      const recreated = createTestTicker("CCC", "Recreated", { watchlists: ["watchlist"] });
+      const added = createTestTicker("NEW", "Added", { watchlists: ["watchlist"] });
+      store.duringFirstWrite = () => {
+        const tickers = new Map(store.current.tickers);
+        for (const ticker of [edited, recreated, added]) {
+          tickers.set(ticker.metadata.ticker, ticker);
+          store.disk.set(ticker.metadata.ticker, ticker);
+        }
+        store.current = { ...store.current, tickers };
+      };
+
+      await coreConfigSyncContributor.apply?.(pulled, store.context(baseline));
+
+      for (const ticker of [edited, recreated, added]) {
+        expect(store.current.tickers.get(ticker.metadata.ticker)).toBe(ticker);
+        expect(store.disk.get(ticker.metadata.ticker)).toBe(ticker);
+      }
+      expect(store.current.tickers.has("DDD")).toBe(false);
+      expect(store.disk.has("DDD")).toBe(false);
+      expect(store.current.config.brokerInstances).toEqual([demo]);
+    });
 
     // The device that holds the signed-in account pulls what a device that was
     // away pushed: its own old copies of these rows, before sign-in, with the
@@ -654,6 +700,75 @@ describe("core sync contributors", () => {
       expect(after.tickers.get("CCC")?.metadata).toMatchObject({ portfolios: [], positions: [], watchlists: ["watchlist"] });
     });
 
+    test("a newer broker sync preserves hand-entered lots in pulled and omitted rows", async () => {
+      const state = createInitialState(deviceConfig(200));
+      const manual = { ...mainPosition, portfolio: signedInId };
+      state.tickers = new Map(["AAA", "BBB"].map((symbol) => [symbol, createTestTicker(symbol, symbol, {
+        portfolios: [signedInId], positions: symbol === "BBB" ? [signedInPosition(3), manual] : [signedInPosition(3)],
+      })]));
+      const pushed = await coreCollectionsSyncContributor.collect({ state });
+      const aaa = state.tickers.get("AAA")!;
+      state.tickers.set("AAA", { ...aaa, metadata: { ...aaa.metadata, positions: [...aaa.metadata.positions, manual] } });
+      const elsewhere = createInitialState(deviceConfig(300));
+      elsewhere.tickers = new Map([["AAA", createTestTicker("AAA", "AAA", {
+        portfolios: [signedInId], positions: [signedInPosition(8)],
+      })]]);
+      const pulled = await coreCollectionsSyncContributor.collect({ state: elsewhere });
+
+      const { state: after } = await pull(state, pulled, pushed);
+
+      expect(after.tickers.get("AAA")?.metadata).toMatchObject({ portfolios: [signedInId], positions: [signedInPosition(8), manual] });
+      expect(after.tickers.get("BBB")?.metadata).toMatchObject({ portfolios: [signedInId], positions: [manual] });
+    });
+
+    test("a first pull keeps manual lots from both devices without counting a shared lot twice", async () => {
+      const manual = { ...mainPosition, portfolio: signedInId };
+      const state = createInitialState(deviceConfig(200));
+      state.tickers = new Map([["AAA", createTestTicker("AAA", "AAA", {
+        portfolios: [signedInId], positions: [signedInPosition(3), manual, manual],
+      })]]);
+      const elsewhere = createInitialState(deviceConfig(300));
+      elsewhere.tickers = new Map([["AAA", createTestTicker("AAA", "AAA", {
+        portfolios: [signedInId], positions: [signedInPosition(8), manual, { ...manual, shares: 6 }],
+      })]]);
+      const pulled = await coreCollectionsSyncContributor.collect({ state: elsewhere });
+
+      const { state: after } = await pull(state, pulled, null);
+
+      expect(after.tickers.get("AAA")?.metadata.positions).toMatchObject([
+        signedInPosition(8), manual, manual, { ...manual, shares: 6 },
+      ]);
+    });
+
+    test.each([100, 300])("hand-entered lots merge independently of a broker sync at %d", async (remoteSyncedAt) => {
+      const manual = { ...mainPosition, portfolio: signedInId };
+      const state = createInitialState(deviceConfig(200));
+      const symbols = ["UNCHANGED", "EDITED", "DELETED"];
+      state.tickers = new Map(symbols.map((symbol) => [symbol, createTestTicker(symbol, symbol, {
+        portfolios: [signedInId], positions: [signedInPosition(3), manual],
+      })]));
+      const pushed = await coreCollectionsSyncContributor.collect({ state });
+      state.tickers = new Map([...state.tickers].map(([symbol, ticker]) => [symbol, {
+        ...ticker, metadata: { ...ticker.metadata, positions: [signedInPosition(3),
+          ...(symbol === "DELETED" ? [] : [{ ...manual, shares: symbol === "EDITED" ? 9 : manual.shares }]),
+        ] },
+      }]));
+      const elsewhere = createInitialState(deviceConfig(remoteSyncedAt));
+      elsewhere.tickers = new Map(symbols.map((symbol) => [symbol, createTestTicker(symbol, symbol, {
+        portfolios: [signedInId], positions: [signedInPosition(8), { ...manual, shares: 6 }],
+      })]));
+      const pulled = await coreCollectionsSyncContributor.collect({ state: elsewhere });
+
+      const { state: after } = await pull(state, pulled, pushed);
+
+      for (const symbol of symbols) {
+        expect(after.tickers.get(symbol)?.metadata.positions).toMatchObject([
+          signedInPosition(remoteSyncedAt > 200 ? 8 : 3),
+          ...(symbol === "DELETED" ? [] : [{ ...manual, shares: symbol === "EDITED" ? 9 : 6 }]),
+        ]);
+      }
+    });
+
     test("a row edited while the pull writes its rows keeps the edit on disk", async () => {
       const config = deviceConfig(200);
       const state = createInitialState(config);
@@ -671,7 +786,7 @@ describe("core sync contributors", () => {
 
       const store = deviceStore(state);
       const edited = createTestTicker("BBB", "BBB", { portfolios: ["main"], positions: [{ ...mainPosition, shares: 9 }] });
-      store.duringFirstSave = () => {
+      store.duringFirstWrite = () => {
         store.current = { ...store.current, tickers: new Map(store.current.tickers).set("BBB", edited) };
         store.disk.set("BBB", edited);
       };

@@ -221,6 +221,7 @@ export function bindPluginRegistryRuntimeAccess({
         return [heirId ? { ...portfolio, brokerInstanceId: heirId } : portfolio];
       });
       const nextTickers = new Map(stateRef.current.tickers);
+      const changed = new Map<string, TickerRecord | null>();
       const nextBrokerInstances = stateRef.current.config.brokerInstances.filter((entry) => entry.id !== instanceId);
       // What older removals and pulls from other devices left behind goes as well.
       const known = knownBrokerHoldings({ portfolios: nextPortfolios, brokerInstances: nextBrokerInstances });
@@ -255,16 +256,18 @@ export function bindPluginRegistryRuntimeAccess({
 
         if (shouldDeleteTicker) {
           nextTickers.delete(ticker.metadata.ticker);
-          await tickerRepository.deleteTicker(ticker.metadata.ticker);
-          dispatch({ type: "REMOVE_TICKER", symbol: ticker.metadata.ticker });
-          pluginRegistry.events.emit("ticker:removed", { symbol: ticker.metadata.ticker });
+          changed.set(ticker.metadata.ticker, null);
         } else {
-          await tickerRepository.saveTicker(nextTicker);
           nextTickers.set(nextTicker.metadata.ticker, nextTicker);
-          dispatch({ type: "UPDATE_TICKER", ticker: nextTicker });
+          changed.set(nextTicker.metadata.ticker, nextTicker);
         }
       }
 
+      // Clear deleted rows' pane bindings before saving the config. Commit
+      // every row before yielding so subsequent edits build on the removal.
+      for (const [symbol, ticker] of changed) {
+        if (!ticker) dispatch({ type: "REMOVE_TICKER", symbol });
+      }
       const nextConfig = {
         ...stateRef.current.config,
         brokerInstances: nextBrokerInstances,
@@ -273,7 +276,23 @@ export function bindPluginRegistryRuntimeAccess({
 
       dispatch({ type: "SET_CONFIG", config: nextConfig });
       dispatch({ type: "SET_TICKERS", tickers: nextTickers });
-      await saveConfigImmediately(nextConfig);
+      // A removal listener can synchronously save a newer config. Queue ours first.
+      const configSave = saveConfigImmediately(nextConfig);
+      for (const [symbol, ticker] of changed) {
+        if (!ticker) pluginRegistry.events.emit("ticker:removed", { symbol });
+      }
+      await configSave;
+      // A newer writer owns its persistence, including a row recreated while
+      // another removal was being saved.
+      for (const [symbol, ticker] of changed) {
+        if (ticker) {
+          if (stateRef.current.tickers.get(symbol) !== ticker) continue;
+          await tickerRepository.saveTicker(ticker);
+        } else {
+          if (stateRef.current.tickers.has(symbol)) continue;
+          await tickerRepository.deleteTicker(symbol);
+        }
+      }
       pluginRegistry.events.emit("config:changed", { config: nextConfig });
       // The profile that kept a portfolio fills in what the removed one held there.
       for (const heirId of new Set(heirs.values())) {

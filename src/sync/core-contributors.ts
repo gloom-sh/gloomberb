@@ -1184,6 +1184,23 @@ function holdingIn(positions: readonly TickerPosition[], links: readonly unknown
   };
 }
 
+/** Without a shared baseline, keep both devices' manual lots, matching identical copies one for one. */
+function mergeUntrackedManualPositions(local: TickerPosition[], pulled: TickerPosition[]): TickerPosition[] {
+  const unmatched = new Map<string, number>();
+  for (const position of local) {
+    const key = JSON.stringify(sanitizePosition(position));
+    unmatched.set(key, (unmatched.get(key) ?? 0) + 1);
+  }
+  const merged = [...local];
+  for (const position of pulled) {
+    const key = JSON.stringify(sanitizePosition(position));
+    const count = unmatched.get(key) ?? 0;
+    if (count > 0) unmatched.set(key, count - 1);
+    else merged.push(position);
+  }
+  return merged;
+}
+
 interface PulledTickersMerge {
   lastSyncedTickers: Map<string, Record<string, unknown>> | null;
   /** This device's live broker portfolios, each with the side holding its latest broker sync. */
@@ -1274,8 +1291,25 @@ function mergePulledTicker(
         holdingIn(baselinePositions, baselineLinks, portfolioId),
       );
     const [sidePositions, sideLinks] = takePulled ? [pulledPositions, pulledLinks] : [localPositions, localLinks];
-    positions.push(...sidePositions.filter((position) => position.portfolio === portfolioId));
-    if (sideLinks.includes(portfolioId)) portfolios.push(portfolioId);
+    if (brokerSide && !merge.localOnly?.portfolioIds.has(portfolioId)) {
+      // A broker's timestamp governs imported holdings, never hand-entered
+      // lots. Those use the same edit comparison as a manual portfolio.
+      const manualIn = (entries: readonly TickerPosition[]) => entries.filter((position) => (
+        position.portfolio === portfolioId && position.broker === "manual"
+      ));
+      const localManual = manualIn(localPositions);
+      const manualEdited = comparable && !sameAsStored(
+        localManual.map(sanitizePosition), manualIn(baselinePositions).map(sanitizePosition),
+      );
+      const pulledManual = manualIn(pulledPositions);
+      const manual = !comparable ? mergeUntrackedManualPositions(localManual, pulledManual)
+        : manualEdited ? localManual : pulledManual;
+      positions.push(...sidePositions.filter((position) => position.portfolio === portfolioId && position.broker !== "manual"), ...manual);
+      if (sideLinks.includes(portfolioId) || manual.length > 0) portfolios.push(portfolioId);
+    } else {
+      positions.push(...sidePositions.filter((position) => position.portfolio === portfolioId));
+      if (sideLinks.includes(portfolioId)) portfolios.push(portfolioId);
+    }
   }
 
   const record: TickerRecord = {
@@ -1297,8 +1331,9 @@ function mergePulledTicker(
 function withoutUnpulledHoldings(ticker: TickerRecord, merge: PulledTickersMerge): TickerRecord | null {
   const sold = (portfolioId: string) => merge.brokerPortfolios.get(portfolioId) === "pulled";
   const { metadata } = ticker;
-  const positions = metadata.positions.filter((position) => !sold(position.portfolio));
-  const portfolios = metadata.portfolios.filter((portfolioId) => !sold(portfolioId));
+  const positions = metadata.positions.filter((position) => position.broker === "manual" || !sold(position.portfolio));
+  const held = new Set(positions.map((position) => position.portfolio));
+  const portfolios = metadata.portfolios.filter((portfolioId) => held.has(portfolioId) || !sold(portfolioId));
   const kept = positions.length === metadata.positions.length && portfolios.length === metadata.portfolios.length
     ? ticker
     : { ...ticker, metadata: { ...metadata, positions, portfolios } };
@@ -1350,21 +1385,27 @@ export const coreConfigSyncContributor: SyncContributor = {
     const removed = removedBrokerHoldings(state.config, nextConfig);
     if (!removed) return;
     const nextTickers = new Map(getState().tickers);
-    let changed = false;
+    const changed = new Map<string, TickerRecord | null>();
     for (const ticker of getState().tickers.values()) {
-      if (!isCurrent()) return;
       const next = withoutRemovedBrokerHoldings(ticker, removed);
       if (next === ticker) continue;
-      changed = true;
+      changed.set(ticker.metadata.ticker, next);
+      if (next) nextTickers.set(next.metadata.ticker, next);
+      else nextTickers.delete(ticker.metadata.ticker);
+    }
+    if (changed.size === 0 || !isCurrent()) return;
+    // Commit before yielding; edits made while saving must see the cleanup.
+    dispatch({ type: "SET_TICKERS", tickers: nextTickers });
+    for (const [symbol, next] of changed) {
+      if (!isCurrent()) return;
       if (next) {
+        if (getState().tickers.get(symbol) !== next) continue;
         await tickerRepository.saveTicker(next);
-        nextTickers.set(next.metadata.ticker, next);
       } else {
-        await tickerRepository.deleteTicker(ticker.metadata.ticker);
-        nextTickers.delete(ticker.metadata.ticker);
+        if (getState().tickers.has(symbol)) continue;
+        await tickerRepository.deleteTicker(symbol);
       }
     }
-    if (changed && isCurrent()) dispatch({ type: "SET_TICKERS", tickers: nextTickers });
   },
 };
 

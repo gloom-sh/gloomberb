@@ -1858,7 +1858,7 @@ Each profile's row in `BR` shows its `STATUS`: `Sign-in needed`, `Sync failed` o
 - Press `b` there to reconnect (Interactive Brokers asks you to sign in again, as `c` does in `BR`).
 - A disabled broker says so and `b` enables it, and a broker whose plugin is missing has no `b`: install the plugin first.
 
-With Gloom Cloud on, a broker's portfolios, account values and positions sync like your other portfolios, so daily roundups, the weekly brief, position alerts, the mobile app and Ask Gloom include them.
+With Gloom Cloud on, a broker's portfolios, account values and positions sync like your other portfolios, so daily roundups, the weekly brief, position alerts, the mobile app and Ask Gloom include them. Hand-entered lots in a broker portfolio sync separately from imported positions, so a newer broker snapshot does not overwrite a local lot edit.
 
 To keep one connection's account data on this device only, set **Account data** to **Keep on this device** when you connect it, or later with Edit in Brokers. Its profile, portfolios and positions then stay out of Cloud sync, and the Cloud features above go without that account.
 
