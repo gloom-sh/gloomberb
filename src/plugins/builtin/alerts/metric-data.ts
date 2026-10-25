@@ -11,7 +11,7 @@ import type { AlertRule } from "./types";
 /** Current trailing figures on the same regular-session and currency basis as the research panes. */
 export function valuationAlertValue(kind: "pe" | "ps", data: TickerFinancials): number | null {
   const { quote, fundamentals: f } = data;
-  if (!quote || quote.stale || !f || f.stale) return null;
+  if (!quote || quote.stale || !Number.isFinite(quote.price) || quote.price <= 0 || !f || f.stale) return null;
   if (kind === "pe") return comparablePriceEarnings(liveTrailingPE(quote, f));
   const cap = liveMarketCapitalization(quote, f);
   if (!cap || !f.revenue || !Number.isFinite(f.revenue) || f.revenue <= 0

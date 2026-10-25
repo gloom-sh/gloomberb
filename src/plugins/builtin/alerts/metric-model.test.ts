@@ -92,6 +92,7 @@ test("trailing valuation rejects losses, missing figures and currency mismatches
   expect(valuationAlertValue("pe", { ...data, fundamentals: { ...data.fundamentals, eps: undefined } })).toBe(24);
   expect(valuationAlertValue("ps", { ...data, fundamentals: { ...data.fundamentals, financialCurrency: "EUR" } })).toBeNull();
   expect(valuationAlertValue("pe", { ...data, quote: { ...data.quote!, stale: true } })).toBeNull();
+  expect(valuationAlertValue("pe", { ...data, quote: { ...data.quote!, price: 0 } })).toBeNull();
 });
 
 test("CLI and form parse the trader examples identically and isolate their storage from old price evaluators", () => {
