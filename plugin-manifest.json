@@ -883,7 +883,7 @@
     {
       "id": "members",
       "name": "Index and ETF members",
-      "description": "ETF holdings, member returns, contributions and index changes",
+      "description": "ETF holdings, member returns, contributions, breadth and index changes",
       "tagline": "ETF holdings and index changes.",
       "categories": [
         "markets",
@@ -906,7 +906,7 @@
           {
             "code": "MEMB",
             "name": "Index and ETF members",
-            "description": "ETF holdings, member returns, daily contributions and index changes."
+            "description": "ETF holdings, member returns, daily contributions, breadth and index changes."
           }
         ]
       },

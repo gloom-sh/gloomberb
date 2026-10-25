@@ -8,12 +8,21 @@ import { formatShortDate } from "../../../../utils/datetime-format";
  * a Gloom share link someone posted, or what a Gloom Wire post names in its
  * `paneLink` (never read out of the post's text).
  */
-export type ChatMessagePaneLink =
+type ChatMessageChipLink =
   | { kind: "share"; id: string; url: string }
   | { kind: "wire"; link: ChatPaneLink };
 
+/**
+ * What a chip opens: one of the above, or a function written in backticks in
+ * the text (`NI CRYPTO`), which draws its chip where it is written and runs
+ * in the command bar.
+ */
+export type ChatMessagePaneLink =
+  | ChatMessageChipLink
+  | { kind: "command"; query: string; name: string };
+
 export interface ChatMessagePaneLinks {
-  links: ChatMessagePaneLink[];
+  links: ChatMessageChipLink[];
   /**
    * The text to draw: the message's own, less the share links its chips stand
    * for and the publisher address an older news post still ends in.
@@ -79,7 +88,7 @@ function withoutLegacyArticleLink(content: string): string {
 
 function computePaneLinks(message: Pick<ChatMessage, "content" | "paneLink">): ChatMessagePaneLinks {
   const content = message.paneLink?.kind === "news-story" ? withoutLegacyArticleLink(message.content) : message.content;
-  const links: ChatMessagePaneLink[] = [];
+  const links: ChatMessageChipLink[] = [];
   const drop = new Set<number>();
   // Cheap guard: the tokenizer only runs on messages that could hold a share link.
   if (content.includes("gloom.sh")) {

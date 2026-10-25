@@ -28,6 +28,7 @@ export type SeriesInventoryEntry = SeriesInventoryStatus & {
 };
 
 export const SERIES_INVENTORY: readonly SeriesInventoryEntry[] = [
+  { module: "members", chart: "Index member A/D line and percentages above moving averages", notInCatalog: "not-yet", reason: "Daily fund breadth comes from the members endpoint; its series are not registered for the composer yet." },
   { module: "chart-composer", chart: "Any ticker field: price, volume, fundamentals, valuation multiples", series: ["field:*", "option:*"] },
   { module: "chart-composer", chart: "CSV files in the profile's series folder", series: ["user:*"], runtime: true },
   { module: "ticker-detail", chart: "Price history and the overview's sparklines", series: ["field:market.*"] },

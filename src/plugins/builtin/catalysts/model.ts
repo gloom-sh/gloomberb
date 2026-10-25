@@ -122,11 +122,12 @@ export function catalystStatusTone(status: string): StateTone {
   return STATUS_TONES.find(([pattern]) => pattern.test(text))?.[1] ?? "text";
 }
 
-/** Event types: the adverse ones amber, the binary decisions in the accent, routine rulemaking quiet. */
+/** Event types: the adverse ones amber, the binary decisions in the accent, routine rulemaking quiet, a company's own dates plain. */
 const TYPE_TONES: Record<CatalystType, StateTone> = {
   litigation: "warning", antitrust: "warning", recall: "warning", sanctions: "warning", export_control: "warning", tariff: "warning",
   pdufa: "accent", advisory: "accent", approval: "accent", clinical: "text",
   regulatory: "muted", rulemaking: "muted",
+  results: "text", shareholder_meeting: "text", merger_vote: "text", deal_closing: "text", investor_day: "text",
 };
 export const catalystTypeTone = (type: CatalystType): StateTone => TYPE_TONES[type] ?? "text";
 function changeValue(value: unknown): string {

@@ -1,5 +1,5 @@
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/plugin";
-import { fetchChanges, fetchFunds, fetchMembers } from "./client";
+import { fetchBreadth, fetchChanges, fetchFunds, fetchMembers } from "./client";
 import { canonicalFund, changeReason, coverageText, decimal, DEFAULT_SORT, holdingsCaveats, holdingsSourceText, memberRows, percent } from "./model";
 const columns: HeadlessPaneColumn[] = [
   { key: "symbol", header: "Ticker" }, { key: "name", header: "Name" },
@@ -9,14 +9,22 @@ const columns: HeadlessPaneColumn[] = [
   ...["changePercent", "return1WPercent", "return1MPercent", "returnYtdPercent"].map((key, i) => ({ key, header: ["1D", "1W", "1M", "YTD"][i]!, align: "right" as const, format: (value: unknown) => percent(value as number | null) })),
 ];
 export const membersHeadless: HeadlessPaneDefinition<"rows"> = {
-  shape: "rows", argument: { kind: "ticker", optional: true, placeholder: "fund", description: "Covered fund or index alias; omit for the fund list." },
-  options: [{ key: "tab", type: "enum", values: [{ value: "members" }, { value: "movers" }, { value: "changes" }], defaultValue: "members", description: "Members, movers or changes." }],
-  discovery: { aliases: ["MEMB", "MRR", "IMOV"], limitations: ["ETF holdings, with file dates.", "Member prices are real-time with Pro and fifteen minutes delayed otherwise; partial 1D coverage.", "Nasdaq-100 is not covered."] },
+  shape: "rows", argument: { kind: "free-text", optional: true, placeholder: "fund", description: "Covered fund or index alias; omit for the fund list." },
+  options: [{ key: "tab", type: "enum", values: [{ value: "members" }, { value: "movers" }, { value: "changes" }, { value: "breadth" }], defaultValue: "members", description: "Members, movers, changes or daily breadth." }],
+  discovery: { aliases: ["MEMB", "MRR", "IMOV"], limitations: ["ETF holdings, with file dates.", "Member prices are real-time with Pro and fifteen minutes delayed otherwise; partial 1D coverage.", "Nasdaq-100 is not covered.", "Breadth history uses current members (survivorship bias)."] },
   describe: (args) => args.rawArgument ? `MEMB ${args.rawArgument}` : "Index and ETF members",
   async load(args, context) {
     const input = args.symbols[0] ?? args.rawArgument ?? "";
     if (!input) return { freshness: { status: "not-a-feed", basis: "fund holdings files" }, rows: (await fetchFunds(context.apiClient)).funds.map((fund) => ({ ...fund })), columns: [{ key: "ticker", header: "Fund" }, { key: "name", header: "Index" }, { key: "asOf", header: "Holdings as of" }] };
     const fund = canonicalFund(input);
+    if (args.options.tab === "breadth") {
+      const data = await fetchBreadth(fund, context.apiClient);
+      return { freshness: { status: data.stale ? "stale" : data.basis === "intraday" ? data.access === "realtime" ? "live" : "delayed" : "not-a-feed", basis: data.basis === "intraday" ? "regular session" : "daily closes", delayMinutes: 15 },
+        rows: [...data.history, ...(data.basis === "intraday" && data.latest ? [data.latest] : [])].reverse().map(row => ({ ...row, above20: row.ma20.percent, above50: row.ma50.percent, above200: row.ma200.percent })),
+        columns: [{ key: "date", header: "Date" }, ...["advances", "declines", "unchanged", "above20", "above50", "above200", "newHighs", "newLows", "adLine", "advanceDeclineEligible", "memberCount"].map((key, index) => ({ key, header: ["Adv", "Dec", "Unch", ">20D %", ">50D %", ">200D %", "52W high", "52W low", "A/D line", "A/D covered", "Members"][index]!, align: "right" as const }))],
+        complete: !data.stale && !!data.latest && data.latest.advanceDeclineEligible === data.latest.memberCount,
+        metadata: { ...data, history: undefined, notices: ["Breadth history uses current members (survivorship bias).", "History uses daily closes; percentages exclude members without the full window. 52-week records strictly break the prior 252 sessions' high/low."] } };
+    }
     if (args.options.tab === "changes") {
       const data = await fetchChanges(fund, context.apiClient);
       return { freshness: { status: "not-a-feed", basis: "index changes" }, rows: data.changes.map((row) => ({ ...row, reason: changeReason(row) })), columns: [{ key: "effectiveDate", header: "Effective" }, { key: "added", header: "Added" }, { key: "removed", header: "Removed" }, { key: "daysToGo", header: "In days", align: "right" }, { key: "reason", header: "Reason" }],

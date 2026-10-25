@@ -10,7 +10,6 @@ import { Button, ListView } from "../../../../components/ui";
 import { COMPOSER_ACTION_WIDTH } from "../layout";
 import { isManagedBot } from "../ghost-user";
 import { ChatBotIcon } from "../message/person-icons";
-import type { ChatMentionSuggestion } from "./mentions";
 import type { ChatDraftAttachment } from "../controller/attachments";
 import { DesktopChatAttachButton, DesktopChatAttachmentStrip } from "../attachments/desktop";
 import { TerminalChatAttachmentRows } from "../attachments/terminal";
@@ -48,7 +47,8 @@ interface ChatComposerAreaProps {
   replyPreview: string;
   replyTo: ChatMessage | null;
   sendMessage: () => void;
-  mentionSuggestions: ChatMentionSuggestion[];
+  /** People after @, or functions after a backtick: one list at a time. */
+  suggestions: ChatComposerSuggestion[];
   mentionSelectedIndex: number;
   onMentionCursorChange: () => void;
   onMentionSelect: (index?: number) => boolean;
@@ -69,6 +69,13 @@ interface ChatComposerAreaProps {
   attachPickerRef: { current: (() => void) | null };
 }
 
+/** A row of the list over the composer: a handle, or a function's code with its name at the end. */
+interface ChatComposerSuggestion {
+  id: string;
+  label: string;
+  detail?: string;
+}
+
 function ChatMentionSuggestions({
   contentWidth,
   onSelect,
@@ -78,14 +85,14 @@ function ChatMentionSuggestions({
   contentWidth: number;
   onSelect: (index?: number) => boolean;
   selectedIndex: number;
-  suggestions: ChatMentionSuggestion[];
+  suggestions: ChatComposerSuggestion[];
 }) {
   if (suggestions.length === 0) return null;
   const width = Math.max(18, Math.min(contentWidth, 44));
   return (
     <Box width={width}>
       <ListView
-        items={suggestions.map((suggestion) => ({ id: suggestion.username, label: `@${suggestion.username}` }))}
+        items={suggestions}
         selectedIndex={selectedIndex}
         height={suggestions.length}
         rowGap={0}
@@ -119,7 +126,7 @@ export function ChatComposerArea({
   replyPreview,
   replyTo,
   sendMessage,
-  mentionSuggestions,
+  suggestions,
   mentionSelectedIndex,
   onMentionCursorChange,
   onMentionSelect,
@@ -211,7 +218,7 @@ export function ChatComposerArea({
         contentWidth={contentWidth}
         onSelect={onMentionSelect}
         selectedIndex={mentionSelectedIndex}
-        suggestions={mentionSuggestions}
+        suggestions={suggestions}
       />
 
       {!editingMessage && draftAttachments.length > 0 && (nativePaneChrome ? (

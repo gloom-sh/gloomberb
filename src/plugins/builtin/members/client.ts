@@ -1,6 +1,6 @@
 import { apiClient } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
-import type { FundMembersPayload, FundChangesPayload, MemberFundsPayload } from "../../../api-client/members";
+import type { FundMembersPayload, FundChangesPayload, MemberFundsPayload, FundBreadthPayload } from "../../../api-client/members";
 import { createPluginCache } from "../../../data/plugin-cache";
 import { companyNameCase } from "../../../tickers/company-name";
 import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
@@ -9,6 +9,7 @@ const policy = { staleMs: 60_000, expireMs: 2 * 60 * 60_000 };
 export const fundListCache = createPluginCache<MemberFundsPayload>({ kind: "member-funds", source: "gloom-cloud", schemaVersion: 1, policy });
 export const fundMembersCache = createPluginCache<FundMembersPayload>({ kind: "fund-members", source: "gloom-cloud", schemaVersion: 1, policy });
 export const fundChangesCache = createPluginCache<FundChangesPayload>({ kind: "fund-changes", source: "gloom-cloud", schemaVersion: 1, policy });
+export const fundBreadthCache = createPluginCache<FundBreadthPayload>({ kind: "fund-breadth", source: "gloom-cloud", schemaVersion: 1, policy });
 type Client = Pick<typeof apiClient, "getMemberFunds" | "getFundMembers" | "getFundChanges">;
 const number = (value: unknown) => value === null || typeof value === "number" && Number.isFinite(value);
 function validateMembers(data: FundMembersPayload) {
@@ -35,13 +36,13 @@ async function fetchPayload<T>(fetcher: () => Promise<T>, validate: (data: T) =>
  * same. The covered list tells them apart: a fund missing from a readable list is not covered; a list
  * that cannot be read, or that holds the fund, leaves the server-side message.
  */
-async function fetchFundPayload<T>(fund: string, fetcher: () => Promise<T>, validate: (data: T) => T, client: Client) {
+async function fetchFundPayload<T>(fund: string, fetcher: () => Promise<T>, validate: (data: T) => T, client: Client, unavailable = UNAVAILABLE) {
   try { return validate(await fetcher()); } catch (error) {
     if (error instanceof ApiRequestError && error.status === 404) {
       const funds = await fetchFunds(client).then((payload) => payload.funds, () => []);
       if (funds.length && !coveredFund(funds, fund)) throw new Error(notCoveredMessage(fund, funds));
     }
-    throw unavailableOnServer(error, UNAVAILABLE);
+    throw unavailableOnServer(error, unavailable);
   }
 }
 export const fetchFunds = (client: Client = apiClient) => fetchPayload(() => client.getMemberFunds(), validateFunds);
@@ -53,3 +54,15 @@ export const cachedMembers = (fund: string) => cachedCloudResource(fundMembersCa
 export const loadMembers = (fund: string, force = false) => loadCloudResource(fundMembersCache, fund, () => fetchMembers(fund), { force, validate: validateMembers });
 export const cachedChanges = (fund: string) => cachedCloudResource(fundChangesCache, fund, validateChanges);
 export const loadChanges = (fund: string, force = false) => loadCloudResource(fundChangesCache, fund, () => fetchChanges(fund), { force, validate: validateChanges });
+
+function validateBreadth(data: FundBreadthPayload) {
+  const row = (value: FundBreadthPayload["history"][number]) => value && /^\d{4}-\d{2}-\d{2}$/.test(value.date)
+    && [value.memberCount, value.observed, value.advances, value.declines, value.unchanged, value.advanceDeclineEligible, value.newHighs, value.newLows, value.highLowEligible].every(n => Number.isInteger(n) && n >= 0)
+    && [value.ma20, value.ma50, value.ma200].every(m => m && Number.isInteger(m.eligible) && m.eligible >= 0 && Number.isInteger(m.above) && m.above >= 0 && m.above <= m.eligible && number(m.percent))
+    && number(value.adLine);
+  if (!data?.fund?.ticker || !Array.isArray(data.history) || !data.history.every(row) || (data.latest !== null && !row(data.latest))) throw new Error("Unreadable fund breadth response");
+  return data;
+}
+export const fetchBreadth = (fund: string, client: Client & Pick<typeof apiClient, "getFundBreadth"> = apiClient) => fetchFundPayload(fund, () => client.getFundBreadth(fund), validateBreadth, client, "Fund breadth is not available on this server yet.");
+export const cachedBreadth = (fund: string) => cachedCloudResource(fundBreadthCache, fund, validateBreadth);
+export const loadBreadth = (fund: string, force = false) => loadCloudResource(fundBreadthCache, fund, () => fetchBreadth(fund), { force, validate: validateBreadth });

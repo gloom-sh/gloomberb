@@ -1,3 +1,4 @@
+import { Breadth } from "./breadth-pane";
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { FundChange, FundMember } from "../../../api-client/members";
 import { delayedFooterSegment, DataTableStackView, DataTableView, DetailScrollBody, EmptyState, KeyValueRow, PaneFooterScope, PaneStatusBody, Prose, QueryBar, StatGrid,
@@ -151,14 +152,18 @@ function FundView({ fund, ...props }: Pick<PaneProps, "width" | "height" | "focu
   const initial = isTab(instance?.settings?.tab) ? instance.settings.tab : "members";
   const [storedTab, setTab] = usePluginPaneState<MembersTab>("tab", initial);
   const tab = isTab(storedTab) ? storedTab : "members";
-  const [visited, setVisited] = useState({ holdings: tab !== "changes", changes: tab === "changes" });
-  const selectTab = (value: string) => { if (isTab(value)) { setTab(value); setVisited((previous) => ({ holdings: previous.holdings || value !== "changes", changes: previous.changes || value === "changes" })); } };
+  const holdings = tab === "members" || tab === "movers";
+  const [visited, setVisited] = useState({ holdings, changes: tab === "changes", breadth: tab === "breadth" });
+  const selectTab = (value: string) => { if (isTab(value)) { setTab(value); setVisited((previous) => ({ holdings: previous.holdings || value === "members" || value === "movers", changes: previous.changes || value === "changes", breadth: previous.breadth || value === "breadth" })); } };
   const { strip, rows } = usePaneTabs({ tabs: TABS, activeValue: tab, onSelect: selectTab, focused: props.focused, compact: true, variant: "bare" });
   const height = Math.max(1, props.height - rows);
   return <Box width={props.width} height={props.height} flexDirection="column">
     {strip}
-    {visited.holdings && <Box visible={tab !== "changes"} flexGrow={1} flexBasis={0} overflow="hidden"><PaneFooterScope active={tab !== "changes"}>
-      <Holdings fund={fund} {...props} height={height} tab={tab} active={tab !== "changes"} focused={props.focused && tab !== "changes"} />
+    {visited.holdings && <Box visible={holdings} flexGrow={1} flexBasis={0} overflow="hidden"><PaneFooterScope active={holdings}>
+      <Holdings fund={fund} {...props} height={height} tab={tab} active={holdings} focused={props.focused && holdings} />
+    </PaneFooterScope></Box>}
+    {visited.breadth && <Box visible={tab === "breadth"} flexGrow={1} flexBasis={0} overflow="hidden"><PaneFooterScope active={tab === "breadth"}>
+      <Breadth fund={fund} {...props} height={height} active={tab === "breadth"} focused={props.focused && tab === "breadth"} />
     </PaneFooterScope></Box>}
     {visited.changes && <Box visible={tab === "changes"} flexGrow={1} flexBasis={0} overflow="hidden"><PaneFooterScope active={tab === "changes"}>
       <Changes fund={fund} {...props} height={height} active={tab === "changes"} focused={props.focused && tab === "changes"} />

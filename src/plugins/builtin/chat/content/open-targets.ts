@@ -4,6 +4,7 @@ import { chatMessageTokens } from "../markdown";
 import { chatImageLabel } from "../attachments/model";
 import { wirePaneTarget, type ChatMessagePaneLink } from "../pane-links/model";
 import { chatPaneLinkPane, peekSharePreview } from "../pane-links/previews";
+import { resolveChatCommand, type ChatFunction } from "../pane-links/commands";
 
 export type ChatOpenTarget =
   | { kind: "pane"; link: ChatMessagePaneLink; label: string }
@@ -11,8 +12,9 @@ export type ChatOpenTarget =
   | { kind: "link"; url: string; label: string }
   | { kind: "image"; index: number; url: string; label: string };
 
-/** What the Open list calls a chip: the share's title once read, else its link; a Wire post's pane. */
+/** What the Open list calls a chip: the share's title once read, else its link; a Wire post's pane; a function as written. */
 function paneLinkLabel(link: ChatMessagePaneLink): string {
+  if (link.kind === "command") return link.query;
   if (link.kind === "share") {
     const preview = peekSharePreview(link.id);
     return preview.status === "ready" ? preview.title : link.url;
@@ -27,13 +29,16 @@ function paneLinkLabel(link: ChatMessagePaneLink): string {
  * share links and Wire link open), the ticker badges its text draws (a symbol
  * the catalog does not know stays plain text), its links, then its images.
  * `content` is the text the message draws, without the links its chips stand
- * for. Code is text, so nothing in it is offered.
+ * for. Code is text, so nothing in it is offered, except where `functions` is
+ * given (the desktop and the web): there a function written in backticks is a
+ * chip, offered where the text names it.
  */
 export function chatMessageOpenTargets(
   content: string,
   catalog: Record<string, InlineTickerCatalogEntry>,
   attachments: readonly ChatAttachment[] = [],
   paneLinks: readonly ChatMessagePaneLink[] = [],
+  functions?: ReadonlyMap<string, ChatFunction>,
 ): ChatOpenTarget[] {
   const targets: ChatOpenTarget[] = paneLinks.map((link) => ({ kind: "pane", link, label: paneLinkLabel(link) }));
   const seen = new Set<string>();
@@ -45,7 +50,13 @@ export function chatMessageOpenTargets(
       continue;
     }
     open = null;
-    if (token.kind === "ticker") {
+    const command = functions && token.kind === "text" && token.style?.code ? resolveChatCommand(token.value, functions) : null;
+    if (command) {
+      if (seen.has(`command:${command.query}`)) continue;
+      seen.add(`command:${command.query}`);
+      const link = { kind: "command", query: command.query, name: command.fn.name } as const;
+      targets.push({ kind: "pane", link, label: paneLinkLabel(link) });
+    } else if (token.kind === "ticker") {
       const entry = catalog[token.symbol];
       if (!entry || entry.status === "missing" || seen.has(`ticker:${token.symbol}`)) continue;
       seen.add(`ticker:${token.symbol}`);
