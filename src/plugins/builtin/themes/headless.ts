@@ -50,8 +50,10 @@ function boardObservation(payload: ThemesPayload | ThemeMembersPayload, now = Da
     regularSessionDate: close?.date ?? null,
     regularSessionClosedAt: close?.closedAt ?? null,
   };
-  // A Pro account's board is priced from the server's live read.
-  const feed = isLiveBoard(payload) ? { status: "live" as const } : {};
+  // A Pro account's board is priced from the server's live read while a session trades; outside it the figures are
+  // the session's close and the report claims no feed, as the pane's footer names the close instead of "live".
+  // Everyone else's, and an older server's, is fifteen minutes delayed.
+  const feed = !isLiveBoard(payload) ? { status: "delayed" as const, delayMinutes: 15 } : close ? {} : { status: "live" as const };
   if (close && now - assembledAt <= SNAPSHOT_STALE_MS) {
     return {
       metadata: { asOf: close.closedAt != null ? new Date(close.closedAt).toISOString() : close.date, sessionExchange: "NYSE", ...snapshot },
@@ -77,10 +79,10 @@ function themeReportTitle(query: string | undefined, theme: Pick<ThemeSummary, "
 export const themesHeadless: HeadlessPaneDefinition<"rows"> = {
   shape: "rows",
   // The pane's stored snapshot, refreshed every 15 minutes, priced in real time for a Pro account and
-  // fifteen minutes delayed otherwise (boardObservation says which). As in the pane,
+  // fifteen minutes delayed otherwise (boardObservation says which, and declares the delay). As in the pane,
   // the payload's stale flags are historical; a snapshot over 30 minutes old is what reads stale
   // (boardObservation, which dates a board outside the regular session by its close).
-  freshness: { status: "delayed", delayMinutes: 15, ignoreStaleFlags: true },
+  freshness: { ignoreStaleFlags: true },
   argument: { kind: "free-text", optional: true, placeholder: "theme", description: "Theme name or keyword, such as nuclear; omit for all themes." },
   options: [],
   discovery: { aliases: ["THEM"], dataRequirements: ["Gloom Cloud stored equity snapshot"],

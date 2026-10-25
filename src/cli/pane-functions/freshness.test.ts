@@ -375,6 +375,10 @@ describe("report freshness", () => {
       expect(pick({ report, quoted }).variants[0]).toBe(marketLine);
     }
     expect(pick({ report: bars }).variants[0]).toBe(formatFreshnessLine(bars.freshness));
+    // A board whose figures are a session's close names no feed but still dates the capture by that close.
+    const closedBoard = deriveCaptureReport(rows(), { rows: [], metadata: { asOf: "2026-10-09T20:00:00Z", sessionExchange: "NYSE" } }, SUN);
+    expect(closedBoard.freshness.status).toBe("unreported");
+    expect(pick({ report: closedBoard }).variants[0]).toBe("Source: Gloom Cloud \u00b7 US trading day Fri 9 Oct 2026 close \u00b7 markets closed until Mon");
     // A report that cannot tell falls back to the rendered view.
     expect(pick({ report: silent, quoted: undefined })).toEqual({ freshness: rendered, dates: null, variants: ["Retrieved Sun 11 Oct 2026 06:17 UTC"] });
     // A dataset's report dates it whatever else the capture shows.

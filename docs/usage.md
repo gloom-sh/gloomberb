@@ -315,7 +315,7 @@ Outside the regular session `THEM` shows each member's last regular close and mo
 
 `--json`: `metadata.asOf` is that close, with `snapshotAssembledAt`, `snapshotAgeMinutes` and `regularSessionDate`, and each member adds the four `extended` fields.
 
-With Pro, `THEM` prices members and themes from real-time quotes: the footer reads `live · snapshot 3m ago` while a session trades, the pane refreshes every 15 seconds, and `fn THEM` reports `live`. Otherwise the board is fifteen minutes delayed. `MOST`'s Gainers, Losers and Most Active, and `movers`, read the real-time lists and say `live`.
+With Pro, `THEM` prices members and themes from real-time quotes: the footer reads `live · snapshot 3m ago` while a session trades, the pane refreshes every 15 seconds, and `fn THEM` reports `live`. Outside the session the footer names the close and `fn THEM` is as of it, with no feed named (`US trading day Fri 23 Oct 2026 close · markets closed until Mon`). Otherwise the board is fifteen minutes delayed. `MOST`'s Gainers, Losers and Most Active, and `movers`, read the real-time lists and say `live`.
 
 #### Valuation figures after the close
 

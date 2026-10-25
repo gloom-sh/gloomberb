@@ -1182,7 +1182,8 @@ export function captureStatusLine({ report: loaded, selfDated, quoted, rendered 
   }
   if (report && loaded?.declaresData) return sourced(report);
   if (quoted) return plain(quoted, "quotes");
-  if (report && (report.status !== "unreported" || report.ageOnly)) return sourced(report);
+  // A report that names no feed but dates its data by a session's close says so too: a board's figures outside the session.
+  if (report && (report.status !== "unreported" || report.ageOnly || report.asOfClose)) return sourced(report);
   return plain(rendered(), null);
 }
 
