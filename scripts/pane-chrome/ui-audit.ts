@@ -3,7 +3,8 @@ import { existsSync } from "fs";
 import { join, resolve } from "path";
 import { takeOption } from "../tui-benchmark-harness";
 import { cacheDir, click, evaluate, launchBrowser, sleep, waitFor, type Browser, type Cdp } from "./browser";
-import { checkoutPlugin, pluginLock } from "./plugin-lock";
+import { checkoutPlugin, pluginLock, readPluginLock } from "./plugin-lock";
+import { discoverAuditPluginEntries } from "./ui-audit-plugins";
 import { pathName, visitAlternatives } from "./tab-visits";
 import { UI_AUDIT_MEASURE, type AuditMeasure } from "./ui-audit-measure";
 import { writeAuditReport } from "./ui-audit-report";
@@ -142,7 +143,7 @@ async function registryPluginDirs(builtIn: Set<string>): Promise<string[]> {
     if (builtIn.has(plugin.id)) continue;
     if ((WEB_BUNDLED_PLUGIN_PACKAGES as readonly string[]).includes(plugin.repo.split("/")[1]!)) continue;
     const dir = await checkoutPlugin(plugin, pluginsDir);
-    if (!dir) { console.warn(`Left out ${plugin.id}: could not fetch ${plugin.repo}@${plugin.commit.slice(0, 12)}`); continue; }
+    if (!dir) throw new Error(`Could not fetch ${plugin.id} at ${plugin.commit.slice(0, 12)} for the audit`);
     dirs.push(dir);
   }
   // Linked once every plugin is checked out: a plugin's peer (ibkr-gateway's ibkr) may come after it.
@@ -157,27 +158,36 @@ async function buildWeb(pluginDirs: string[]): Promise<void> {
 }
 
 /** The functions of the plugins compiled into the audit's build, read from the compiled modules. */
-async function pluginEntries(): Promise<AuditEntry[]> {
+async function pluginEntries(builtIn: Set<string>): Promise<AuditEntry[]> {
   const { installPluginHostModules } = await import("../../src/plugins/host-modules");
   const { pluginFromModule } = await import("../../src/plugins/plugin-export");
+  const { WEB_BUNDLED_PLUGIN_PACKAGES } = await import("../../src/plugins/web-bundled");
+  const { createDefaultConfig } = await import("../../src/types/config");
   await installPluginHostModules();
   const entries: AuditEntry[] = [];
   const dir = join(web, "assets", "plugins");
-  for (const name of existsSync(dir) ? await readdir(dir) : []) {
+  const packages = await readdir(dir);
+  const expected = new Set<string>(WEB_BUNDLED_PLUGIN_PACKAGES);
+  if (withRegistry) {
+    const lock = await readPluginLock(replayDir);
+    if (!lock) throw new Error("The registry audit needs its replay's plugin lock; rebuild with --registry --build");
+    for (const plugin of lock.plugins) {
+      if (!builtIn.has(plugin.id)) expected.add(plugin.repo.split("/")[1]!);
+    }
+  }
+  for (const name of expected) {
+    if (!packages.includes(name)) throw new Error(`The audit build is missing compiled plugin ${name}`);
+  }
+  for (const name of packages) {
     const files = (await readdir(join(dir, name))).filter((file) => file.endsWith(".js"));
+    if (files.length === 0) throw new Error(`The audit build has no compiled module for ${name}`);
     for (const file of files) {
-      const plugin = await import(join(dir, name, file)).then(pluginFromModule).catch(() => null);
-      if (!plugin) continue;
-      const templated = new Set<string>();
-      for (const template of plugin.paneTemplates ?? []) {
-        // One function per pane: a plugin that lists a template per report (FXMD) draws them in one pane.
-        if (templated.has(template.paneId)) continue;
-        templated.add(template.paneId);
-        const token = template.shortcut?.prefix ?? template.id;
-        entries.push({ token, paneId: template.paneId, argKind: template.shortcut?.argKind ?? null, plugin: plugin.id });
-      }
-      for (const pane of plugin.panes ?? []) {
-        if (!templated.has(pane.id)) entries.push({ token: pane.id, paneId: pane.id, plugin: plugin.id });
+      try {
+        const plugin = pluginFromModule(await import(join(dir, name, file)));
+        if (!plugin) throw new Error("The compiled module does not export a valid GloomPlugin");
+        entries.push(...await discoverAuditPluginEntries(plugin, createDefaultConfig(cacheDir("ui-audit-discovery"))));
+      } catch (error) {
+        throw new Error(`Could not discover audit panes in ${name}/${file}`, { cause: error });
       }
     }
   }
@@ -236,7 +246,7 @@ async function main(): Promise<void> {
   if (args.includes("--build") || !await Bun.file(join(web, "index.html")).exists()) {
     await buildWeb(withRegistry ? await registryPluginDirs(builtIn) : []);
   }
-  const entries = [...catalog, ...(await pluginEntries()).filter((entry) => !builtIn.has(entry.paneId))]
+  const entries = [...catalog, ...(await pluginEntries(builtIn)).filter((entry) => !builtIn.has(entry.paneId))]
     .filter((entry) => !only || only.includes(entry.token))
     .filter((entry) => shardOf(entry.token, shard.count) === shard.index);
   const shells = SHELL_VIEWS.filter((view) => (!only || only.includes(view.id)) && shard.index === 0);
