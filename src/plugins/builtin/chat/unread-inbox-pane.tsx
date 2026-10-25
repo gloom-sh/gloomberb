@@ -23,11 +23,13 @@ import {
 import { scheduleConfigSave } from "../../../state/config-save-scheduler";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
+import { findPaneInstance } from "../../../types/config";
 import { Box, Text, TextAttributes, useUiCapabilities } from "../../../ui";
 import { formatFeedTime } from "../../../utils/datetime-format";
 import { displayWidth, truncateToDisplayWidth } from "../../../utils/format";
 import { usePluginAppActions, usePluginPaneState } from "../../runtime";
 import { requestPriceAlertFocus } from "../alerts/focus";
+import { LIVE_SCAN_TEMPLATE_ID } from "../shared/scanner-capture";
 import { SignInWall } from "../cloud/auth-actions";
 import { openTeamPane } from "../../../team/pane-request";
 import { teamStore } from "../../../team/store";
@@ -57,6 +59,7 @@ const NOTICE_LABELS: Record<MissedNoticeKind, string> = {
   catalyst: "Catalyst",
   econ: "Economic release",
   team: "Team",
+  scan: "Live scan",
 };
 
 function chatCell(
@@ -212,11 +215,17 @@ export function UnreadInboxPane({
       showPane("econ-calendar");
       return;
     }
+    if (ref.kind === "scan") {
+      // The scanner that alerted, when it is still in the layout; otherwise the one SCAN opens.
+      if (findPaneInstance(stateRef.current.config.layout, ref.id)) dispatch({ type: "FOCUS_PANE", paneId: ref.id });
+      else createPaneFromTemplate(LIVE_SCAN_TEMPLATE_ID);
+      return;
+    }
     const card = teamStore.getSnapshot().notifications.find((entry) => entry.id === ref.id) ?? null;
     const action = card ? teamStore.notificationAction(card) : null;
     if (action) action.onClick();
     else openTeamPane(createPaneFromTemplate, card ? { teamId: card.data.team.id } : {});
-  }, [createPaneFromTemplate, showPane]);
+  }, [createPaneFromTemplate, dispatch, showPane, stateRef]);
 
   const openRow = useCallback((row: UnreadListRow) => {
     if (row.kind === "chat") openChatItem(row.item);

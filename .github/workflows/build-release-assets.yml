@@ -103,31 +103,42 @@ jobs:
           ELECTROBUN_DEVELOPER_ID: ${{ secrets.ELECTROBUN_DEVELOPER_ID }}
         run: bun run desktop:release
 
-      - name: Build Homebrew app archive
+      - name: Build Homebrew app archives
         run: |
           set -euo pipefail
           brew install zstd
           tmp_dir="$(mktemp -d)"
-          zstd -d -o "$tmp_dir/Gloomberb.app.tar" artifacts/stable-macos-arm64-Gloomberb.app.tar.zst
-          tar -xf "$tmp_dir/Gloomberb.app.tar" -C "$tmp_dir"
-          test -x "$tmp_dir/Gloomberb.app/Contents/Resources/gloom"
-          test -x "$tmp_dir/Gloomberb.app/Contents/Resources/gloomberb"
-          test -f "$tmp_dir/Gloomberb.app/Contents/Resources/gloomberb-tui/tui-entry.js"
-          test -f "$tmp_dir/Gloomberb.app/Contents/Resources/gloomberb-tui/node_modules/@opentui/core-darwin-arm64/index.js"
-          test -f "$tmp_dir/Gloomberb.app/Contents/Resources/gloomberb-tui/node_modules/@opentui/core-darwin-arm64/libopentui.dylib"
-          "$tmp_dir/Gloomberb.app/Contents/Resources/gloom" help
-          "$tmp_dir/Gloomberb.app/Contents/Resources/gloomberb" help
+          zstd -d -o "$tmp_dir/Gloom.app.tar" artifacts/stable-macos-arm64-Gloom.app.tar.zst
+          tar -xf "$tmp_dir/Gloom.app.tar" -C "$tmp_dir"
+          app="$tmp_dir/Gloom.app"
+          test -x "$app/Contents/Resources/gloom"
+          test -x "$app/Contents/Resources/gloomberb"
+          test -f "$app/Contents/Resources/gloomberb-tui/tui-entry.js"
+          test -f "$app/Contents/Resources/gloomberb-tui/node_modules/@opentui/core-darwin-arm64/index.js"
+          test -f "$app/Contents/Resources/gloomberb-tui/node_modules/@opentui/core-darwin-arm64/libopentui.dylib"
+          "$app/Contents/Resources/gloom" help
+          "$app/Contents/Resources/gloomberb" help
+          ditto -c -k --keepParent "$app" artifacts/stable-macos-arm64-Gloom.app.zip
+          # The same signed bundle under its old name, for a Homebrew cask that
+          # still installs Gloomberb.app. Its signature does not cover the name.
+          mv "$app" "$tmp_dir/Gloomberb.app"
+          codesign --verify --verbose=4 "$tmp_dir/Gloomberb.app"
           ditto -c -k --keepParent "$tmp_dir/Gloomberb.app" artifacts/stable-macos-arm64-Gloomberb.app.zip
+
+      # Installs from before the rename ask the release for their update
+      # archive under the old name; the download page names the old disk image.
+      - name: Write the desktop files under the app's old name
+        run: bun scripts/write-legacy-desktop-files.ts artifacts
 
       - name: Verify desktop artifacts
         run: |
           set -euo pipefail
-          test -f artifacts/stable-macos-arm64-Gloomberb.dmg
-          test -f artifacts/stable-macos-arm64-Gloomberb.app.tar.zst
-          test -f artifacts/stable-macos-arm64-Gloomberb.app.zip
-          test -f artifacts/stable-macos-arm64-update.json
-          codesign --verify --verbose=4 artifacts/stable-macos-arm64-Gloomberb.dmg
-          xcrun stapler validate -v artifacts/stable-macos-arm64-Gloomberb.dmg
+          for file in Gloom.dmg Gloom.app.tar.zst Gloom.app.zip update.json Gloomberb.dmg Gloomberb.app.tar.zst Gloomberb.app.zip; do
+            test -f "artifacts/stable-macos-arm64-$file" || { echo "Missing stable-macos-arm64-$file" >&2; exit 1; }
+          done
+          cmp artifacts/stable-macos-arm64-Gloom.app.tar.zst artifacts/stable-macos-arm64-Gloomberb.app.tar.zst
+          codesign --verify --verbose=4 artifacts/stable-macos-arm64-Gloom.dmg
+          xcrun stapler validate -v artifacts/stable-macos-arm64-Gloom.dmg
 
       - name: Name the desktop files for the nightly channel
         if: ${{ inputs.channel == 'nightly' }}
@@ -168,6 +179,12 @@ jobs:
       - name: Build Windows installer
         shell: pwsh
         run: ./scripts/build-windows-installer.ps1
+
+      # Installs from before the rename update from an archive under the old
+      # name, holding a Gloomberb folder; the download page names the old installer.
+      - name: Write the desktop files under the app's old name
+        shell: pwsh
+        run: bun scripts/write-legacy-desktop-files.ts artifacts
 
       - name: Verify Windows desktop artifacts
         shell: pwsh

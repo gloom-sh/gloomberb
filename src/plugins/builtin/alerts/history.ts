@@ -44,6 +44,7 @@ const KIND_LABELS: Record<string, string> = {
   thesis: "Thesis",
   congress_trade: "Congress",
   thirteenf_filing: "13F filing",
+  live_scan: "Live scan",
 };
 export const alertKindLabel = (kind: string) =>
   isResearchAlertKind(kind) ? RESEARCH_LABELS[kind] : (KIND_LABELS[kind] ?? kind.replaceAll("_", " "));

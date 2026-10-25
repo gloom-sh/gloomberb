@@ -12,11 +12,13 @@ brew install --cask gloomberb
 curl -fsSL gloom.sh/install | bash
 ```
 
-The cask is in Homebrew itself; `vincelwt/tap/gloomberb`, the older tap, installs the same app. Both routes install `Gloomberb.app` and a `gloom` command that runs the TUI through the app bundle, so the bundled runtime is stored once.
+The cask is in Homebrew itself; `vincelwt/tap/gloomberb`, the older tap, installs the same app. Both routes install `Gloom.app` and a `gloom` command that runs the TUI through the app bundle, so the bundled runtime is stored once.
+
+The app was called `Gloomberb.app` up to 0.18.4. An install from then updates as usual, and the first time the new version starts it renames itself to `Gloom.app` and opens again, moving the `gloom` and `gloomberb` links the install script made in `~/.local/bin` (or `~/bin`, `/opt/homebrew/bin`, `/usr/local/bin`) along with it. A link it cannot rewrite, in a folder you cannot write to, keeps the old name until you can. A Homebrew install keeps the old name until `brew upgrade --cask gloomberb` installs `Gloom.app` in its place. Your settings and data stay where they are.
 
 The command was called `gloomberb` before 0.18.4. That name keeps working everywhere, and an install from before 0.18.4 gets `gloom` beside it when it updates: the terminal binary adds it next to itself the first time the new version runs, and the desktop app adds it next to the `gloomberb` link the installer or Homebrew made when it starts.
 
-`Gloomberb.app` is Apple Silicon (arm64) only. On an Intel Mac the install script installs the standalone `gloom` terminal app instead, and the Homebrew cask refuses to install rather than leaving an app that cannot launch.
+`Gloom.app` is Apple Silicon (arm64) only. On an Intel Mac the install script installs the standalone `gloom` terminal app instead, and the Homebrew cask refuses to install rather than leaving an app that cannot launch.
 
 Prefer a direct download?
 
@@ -38,10 +40,11 @@ On Alpine and other musl distributions the script installs the musl build, which
 
 Install the desktop app:
 
-- [Download GloomberbSetup.exe for Windows](https://github.com/gloom-sh/gloomberb/releases/latest/download/stable-win-x64-GloomberbSetup.exe)
+- [Download the installer for Windows](https://github.com/gloom-sh/gloomberb/releases/latest/download/stable-win-x64-GloomberbSetup.exe)
 
 The installer is not code-signed yet, so Windows SmartScreen may stop it. Click **More info** on the "Windows protected your PC" screen, then **Run anyway**. To check the file first, compare `Get-FileHash` on it with the SHA-256 on the [release page](https://github.com/gloom-sh/gloomberb/releases/latest).
 
+- **Folder:** `%LOCALAPPDATA%\Programs\Gloom`. Installers up to 0.18.4 used `Programs\Gloomberb`; running a new installer over such an install moves it, with its PATH entry.
 - **Terminal:** the installer adds `gloom` to your PATH, so open a new terminal window. PowerShell works.
 - **Charts:** Windows Terminal does not support Kitty graphics, so terminal charts draw as text. The desktop app draws them in full.
 - **Data:** `%USERPROFILE%\.gloomberb`, which `gloom version` prints. `GLOOMBERB_HOME` moves it.
@@ -84,7 +87,7 @@ For the best terminal experience, use a [Kitty](https://sw.kovidgoyal.net/kitty/
 
 The [install script](../scripts/install.sh) downloads a binary or app archive from [GitHub Releases](https://github.com/gloom-sh/gloomberb/releases/latest). It checks the SHA-256 of the download against the digest GitHub lists for the release asset, aborts on a mismatch, and warns if no checksum is available. That catches a corrupt or truncated download; it does not prove who published the release. The script needs `curl` or `wget`, `gzip`, and `sha256sum` or `shasum`, and does not run until the whole file has downloaded.
 
-On Apple Silicon Macs it installs the desktop app in `/Applications` and links the `gloom` command into `~/.local/bin`. On Intel Macs and Linux it installs the standalone terminal binary, a single Bun-compiled executable that needs no separate Bun installation, in `~/.local/bin`. `GLOOM_INSTALL_DIR` (or `GLOOMBERB_INSTALL_DIR`) changes the command's destination and `GLOOM_APP_DIR` (or `GLOOMBERB_APP_DIR`) the Mac app's. It also links `gloomberb`, the command's name before 0.18.4, to the same program. A `gloom` that belongs to another program is left as it is, and Gloom is installed as `gloomberb` only. It uses `sudo` only when a destination directory is not writable.
+On Apple Silicon Macs it installs the desktop app as `/Applications/Gloom.app`. A `Gloom.app` that belongs to another program stays, and the app goes in as `Gloomberb.app` instead. A `Gloomberb.app` from before the rename is removed once the `gloom` and `gloomberb` links into it point at `Gloom.app`, unless Homebrew installed it or one of those links is in a folder you cannot write. The script links the `gloom` command into `~/.local/bin`. On Intel Macs and Linux it installs the standalone terminal binary, a single Bun-compiled executable that needs no separate Bun installation, in `~/.local/bin`. `GLOOM_INSTALL_DIR` (or `GLOOMBERB_INSTALL_DIR`) changes the command's destination and `GLOOM_APP_DIR` (or `GLOOMBERB_APP_DIR`) the Mac app's. It also links `gloomberb`, the command's name before 0.18.4, to the same program. A `gloom` that belongs to another program is left as it is, and Gloom is installed as `gloomberb` only. It uses `sudo` only when a destination directory is not writable.
 
 To install by hand on Linux, download the [x64](https://github.com/gloom-sh/gloomberb/releases/latest/download/gloomberb-linux-x64.gz) or [ARM64](https://github.com/gloom-sh/gloomberb/releases/latest/download/gloomberb-linux-arm64.gz) binary (on musl, [x64](https://github.com/gloom-sh/gloomberb/releases/latest/download/gloomberb-linux-x64-musl.gz) or [ARM64](https://github.com/gloom-sh/gloomberb/releases/latest/download/gloomberb-linux-arm64-musl.gz)), unpack it with `gzip`, mark it executable and put it on your `PATH` as `gloom`.
 
@@ -94,7 +97,7 @@ On first start, the app clones its missing official plugins from GitHub once a l
 
 ## Uninstall
 
-Run `brew uninstall --cask gloomberb`, `bun remove -g gloomberb`, or remove the app from Windows Installed apps. For a script or manual install, delete `~/.local/bin/gloom` and `~/.local/bin/gloomberb` (or the path you chose) and `/Applications/Gloomberb.app` if it was installed. Your [profile data](#where-your-data-lives) stays on disk.
+Run `brew uninstall --cask gloomberb`, `bun remove -g gloomberb`, or remove the app from Windows Installed apps. For a script or manual install, delete `~/.local/bin/gloom` and `~/.local/bin/gloomberb` (or the path you chose) and `/Applications/Gloom.app` (`Gloomberb.app` up to 0.18.4) if it was installed. Your [profile data](#where-your-data-lives) stays on disk.
 
 ## Where your data lives
 

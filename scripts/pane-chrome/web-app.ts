@@ -19,7 +19,8 @@ import { evaluate, sleep, type Cdp } from "./browser";
  */
 
 const UPSTREAM = "https://api.gloom.sh";
-const READ_POSTS = /^\/api\/market\/[a-z-]+\/batch$/;
+/** POSTs that only read: the market batches, and a live scan (its watchlist would not fit a URL). */
+const READ_POSTS = /^\/api\/market\/(?:[a-z-]+\/batch|scanner\/live)$/;
 const REFUSED = /telemetry|crash|usage|analytics|research-activity|\/events|collect|beacon|track|posthog|sentry/i;
 
 export interface CatalogEntry { token: string; paneId: string; argKind?: string | null; defaultSettings?: Record<string, unknown> }

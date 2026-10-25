@@ -945,7 +945,7 @@ export interface AppNotificationRequest {
   /**
    * What a built-in notice is about, so the Unread list can keep it after the
    * toast is gone and open it again: `price:<alertId>`, `catalyst:<eventId>`,
-   * `econ:<eventId>` or `team:<cardId>`. Other values are not kept.
+   * `econ:<eventId>`, `team:<cardId>` or `scan:<paneId>`. Other values are not kept.
    */
   refId?: string;
   /** Rendered next to `action`. Use for a dismissing counterpart such as snooze. */

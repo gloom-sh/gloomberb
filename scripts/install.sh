@@ -185,15 +185,17 @@ main() {
   }
 
   # A `gloom` already in the install folder is replaced only when it is ours:
-  # a link into Gloomberb.app or to the `gloomberb` beside it, or the binary
-  # this script installed, which it pairs with a `gloomberb` link to it.
-  # Anything else is another program's command and stays as it is.
+  # a link into Gloom.app (Gloomberb.app before the rename) or to the
+  # `gloomberb` beside it, or the binary this script installed, which it pairs
+  # with a `gloomberb` link to it. Anything else is another program's command
+  # and stays as it is.
   owns_command() {
     command_path="$1"
     command_dir="$(dirname "$command_path")"
     if [ -L "$command_path" ]; then
       case "$(readlink "$command_path")" in
         gloomberb|./gloomberb|"${command_dir}/gloomberb") return 0 ;;
+        */Gloom.app/Contents/Resources/gloom|*/Gloom.app/Contents/Resources/gloomberb) return 0 ;;
         */Gloomberb.app/Contents/Resources/gloom|*/Gloomberb.app/Contents/Resources/gloomberb) return 0 ;;
         *) return 1 ;;
       esac
@@ -207,21 +209,137 @@ main() {
     RUN_COMMAND="gloomberb"
   }
 
-  install_macos_app() {
-    select_asset "stable-macos-arm64-Gloomberb.app.zip"
-    ZIP_PATH="${TMP_DIR}/${ASSET}"
-    APP_PATH="${TMP_DIR}/Gloomberb.app"
-    DEST_APP="${APP_DIR}/Gloomberb.app"
-    DEST_CLI="${INSTALL_DIR}/gloom"
+  has_asset() {
+    awk -F '\t' -v asset="$1" '$1 == asset { found = 1 } END { exit !found }' "$TMP_DIR/assets"
+  }
 
-    echo "Downloading ${ASSET} from ${DOWNLOAD_URL}"
-    echo "Will install ${DEST_APP} and link ${DEST_CLI}."
-    if ! download_file "$DOWNLOAD_URL" "$ZIP_PATH"; then
+  # The bundle identifier in an app's Info.plist, empty when it has none.
+  # PlistBuddy, on every Mac, reads binary plists too; elsewhere (the tests)
+  # the XML one Electrobun writes is read as text.
+  app_identifier() {
+    plist="$1/Contents/Info.plist"
+    [ -f "$plist" ] || return 0
+    if [ -x /usr/libexec/PlistBuddy ]; then
+      /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$plist" 2>/dev/null || true
+      return 0
+    fi
+    awk '
+      found && /<string>/ { sub(/.*<string>/, ""); sub(/<\/string>.*/, ""); print; exit }
+      /<key>CFBundleIdentifier<\/key>/ {
+        found = 1
+        sub(/.*<key>CFBundleIdentifier<\/key>/, "")
+        if ($0 ~ /<string>/) { sub(/.*<string>/, ""); sub(/<\/string>.*/, ""); print; exit }
+      }
+    ' "$plist"
+  }
+
+  # Whether the app at $1 is a build of Gloom, under either name.
+  is_our_app() {
+    [ "$(app_identifier "$1")" = "com.vincelwt.gloomberb" ]
+  }
+
+  # Points a `gloom` or `gloomberb` link that leads into the old bundle at the
+  # same file in the installed app, written the same way (absolute or
+  # relative). Returns 1 when it leads there and its folder is not writable.
+  relink_into_app() {
+    old_link="$1"
+    [ -L "$old_link" ] || return 0
+    old_target="$(readlink "$old_link")"
+    case "$old_target" in
+      *Gloomberb.app/Contents/*) ;;
+      *) return 0 ;;
+    esac
+    case "$old_target" in
+      /*) old_absolute="$old_target" ;;
+      *) old_absolute="$(dirname "$old_link")/${old_target}" ;;
+    esac
+    old_bundle="${old_absolute%%Gloomberb.app/Contents/*}Gloomberb.app"
+    [ "$(cd "$old_bundle" 2>/dev/null && pwd -P)" = "$(cd "$legacy_app" && pwd -P)" ] || return 0
+    [ -w "$(dirname "$old_link")" ] || return 1
+    ln -sfn "${old_target%%Gloomberb.app/Contents/*}$(basename "$DEST_APP")/Contents/${old_target#*Gloomberb.app/Contents/}" "$old_link"
+    echo "Pointed ${old_link} at ${DEST_APP}."
+  }
+
+  # Gloomberb.app is the app's name before the rename. Once Gloom.app is in,
+  # a copy under the old name beside it goes, unless Homebrew installed that
+  # one: Homebrew moves its own when it upgrades. The `gloom` and `gloomberb`
+  # links into it move to Gloom.app first, in the folders the app itself looks
+  # in; one in a folder this user cannot write keeps the old copy, and says so.
+  remove_legacy_app() {
+    legacy_app="${APP_DIR}/Gloomberb.app"
+    [ "$DEST_APP" != "$legacy_app" ] || return 0
+    [ -d "$legacy_app" ] || return 0
+    is_our_app "$legacy_app" || return 0
+    for brew_prefix in /opt/homebrew /usr/local; do
+      if [ -d "${brew_prefix}/Caskroom/gloomberb" ]; then
+        echo "Left ${legacy_app} to Homebrew, which installed it."
+        return 0
+      fi
+    done
+    stuck=""
+    saved_ifs="$IFS"
+    IFS=:
+    for folder in "$INSTALL_DIR" "$HOME/.local/bin" "$HOME/bin" /opt/homebrew/bin /usr/local/bin $PATH; do
+      IFS="$saved_ifs"
+      [ -n "$folder" ] || continue
+      for name in gloom gloomberb; do
+        relink_into_app "${folder}/${name}" || stuck="${stuck} ${folder}/${name}"
+      done
+    done
+    IFS="$saved_ifs"
+    if [ -n "$stuck" ]; then
+      echo "Kept ${legacy_app}, the app under its name before Gloom:${stuck} still lead into it, in a folder you cannot write."
+      echo "Point them at ${DEST_APP}, then delete ${legacy_app}."
+      return 0
+    fi
+    if [ -w "$APP_DIR" ]; then
+      rm -rf "$legacy_app"
+    else
+      sudo rm -rf "$legacy_app"
+    fi
+    echo "Removed ${legacy_app}, the app under its name before Gloom."
+  }
+
+  install_macos_app() {
+    # Releases from before the rename ship the app only as Gloomberb.app, and
+    # this script is served from main, so it meets those too. Either way the
+    # app goes in as Gloom.app. Without release metadata, both names are tried.
+    app_assets="stable-macos-arm64-Gloom.app.zip stable-macos-arm64-Gloomberb.app.zip"
+    if [ -s "$TMP_DIR/assets" ] && ! has_asset "stable-macos-arm64-Gloom.app.zip"; then
+      app_assets="stable-macos-arm64-Gloomberb.app.zip"
+    fi
+    DEST_APP="${APP_DIR}/Gloom.app"
+    DEST_CLI="${INSTALL_DIR}/gloom"
+    # A Gloom.app that is not this app belongs to another program and stays.
+    # This one goes in under its name before the rename, which it keeps: the
+    # app takes the new name only when it is free.
+    if [ -e "$DEST_APP" ] && ! is_our_app "$DEST_APP"; then
+      echo "Left ${DEST_APP} as it is: it belongs to another app."
+      DEST_APP="${APP_DIR}/Gloomberb.app"
+      if [ -e "$DEST_APP" ] && ! is_our_app "$DEST_APP"; then
+        echo "Error: ${APP_DIR}/Gloom.app and ${DEST_APP} both belong to other apps. Nothing was installed." >&2
+        exit 1
+      fi
+    fi
+
+    downloaded=""
+    for app_asset in $app_assets; do
+      select_asset "$app_asset"
+      ZIP_PATH="${TMP_DIR}/${ASSET}"
+      echo "Downloading ${ASSET} from ${DOWNLOAD_URL}"
+      if download_file "$DOWNLOAD_URL" "$ZIP_PATH"; then
+        downloaded=1
+        break
+      fi
+      rm -f "$ZIP_PATH"
+    done
+    if [ -z "$downloaded" ]; then
       echo "Combined macOS app install is not available for the latest release yet."
       echo "Falling back to the standalone terminal command."
       install_standalone_cli
       return
     fi
+    echo "Will install ${DEST_APP} and link ${DEST_CLI}."
 
     verify_download "$ZIP_PATH"
 
@@ -232,12 +350,19 @@ main() {
       unzip -q "$ZIP_PATH" -d "$TMP_DIR"
     fi
 
-    if [ ! -d "$APP_PATH" ]; then
-      echo "Error: ${ASSET} did not contain Gloomberb.app" >&2
+    APP_PATH=""
+    for bundle in Gloom.app Gloomberb.app; do
+      if [ -d "${TMP_DIR}/${bundle}" ]; then
+        APP_PATH="${TMP_DIR}/${bundle}"
+        break
+      fi
+    done
+    if [ -z "$APP_PATH" ]; then
+      echo "Error: ${ASSET} did not contain the Gloom app" >&2
       exit 1
     fi
 
-    echo "Installing Gloomberb.app to ${APP_DIR}..."
+    echo "Installing Gloom to ${DEST_APP}..."
     mkdir -p "$APP_DIR" 2>/dev/null || true
     if [ -w "$APP_DIR" ]; then
       rm -rf "$DEST_APP"
@@ -254,7 +379,7 @@ main() {
       echo "Error: installed app is missing the gloom terminal command" >&2
       exit 1
     fi
-    # Releases from before the rename ship the command only as gloomberb.
+    # Releases from before the command's rename ship it only as gloomberb.
     APP_CLI="${APP_RESOURCES}/gloom"
     if [ ! -x "$APP_CLI" ]; then
       APP_CLI="${APP_RESOURCES}/gloomberb"
@@ -263,13 +388,14 @@ main() {
     if owns_command "$DEST_CLI"; then
       install_symlink "$APP_CLI" "$DEST_CLI"
       install_symlink "${APP_RESOURCES}/gloomberb" "${INSTALL_DIR}/gloomberb"
-      echo "Installed Gloomberb.app to ${DEST_APP}"
+      echo "Installed Gloom to ${DEST_APP}"
       echo "Installed terminal command to ${DEST_CLI} (gloomberb runs it too)"
     else
       install_symlink "${APP_RESOURCES}/gloomberb" "${INSTALL_DIR}/gloomberb"
-      echo "Installed Gloomberb.app to ${DEST_APP}"
+      echo "Installed Gloom to ${DEST_APP}"
       skip_command "$DEST_CLI"
     fi
+    remove_legacy_app
   }
 
   install_standalone_cli() {

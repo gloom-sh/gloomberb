@@ -6,22 +6,24 @@ export const NOTIFICATION_LOG_LIMIT = 300;
 
 /**
  * The notices worth finding again after their toast is gone: a price alert or
- * a catalyst that fired, a high-impact economic print, and a team card. Chat
+ * a catalyst that fired, a high-impact economic print, a team card, and new
+ * matches of a live scan with its alerts on. Chat
  * keeps its own unread state on the account, and plain info, success and
  * error toasts are not logged.
  */
-export type MissedNoticeKind = "price" | "catalyst" | "econ" | "team";
+export type MissedNoticeKind = "price" | "catalyst" | "econ" | "team" | "scan";
 
 const KIND_PREFIXES: ReadonlyArray<readonly [MissedNoticeKind, string]> = [
   ["price", "price:"],
   ["catalyst", "catalyst:"],
   ["econ", "econ:"],
   ["team", "team:"],
+  ["scan", "scan:"],
 ];
 
 export interface NotificationLogEntry {
   id: string;
-  /** `price:<alertId>`, `catalyst:<eventId>`, `econ:<eventId>` or `team:<cardId>`. A later notice with the same ref updates this row. */
+  /** `price:<alertId>`, `catalyst:<eventId>`, `econ:<eventId>`, `team:<cardId>` or `scan:<paneId>`. A later notice with the same ref updates this row. */
   refId: string;
   title?: string;
   body: string;
@@ -137,7 +139,7 @@ export function unreadNotificationLogCount(log: readonly NotificationLogEntry[] 
 
 /**
  * Records a notice whose `refId` names a price alert, a catalyst, an economic
- * release or a team card; anything else returns null and is not kept. The same ref replaces its
+ * release, a team card or a live scan; anything else returns null and is not kept. The same ref replaces its
  * row: a price alert that fires again is new and unread again.
  */
 export function appendNotificationLog(

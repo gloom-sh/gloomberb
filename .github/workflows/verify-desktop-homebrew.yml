@@ -32,7 +32,7 @@ jobs:
           ELECTROBUN_DEVELOPER_ID: ${{ secrets.ELECTROBUN_DEVELOPER_ID }}
         run: bun run desktop:release
 
-      - name: Build and verify Homebrew archive
+      - name: Build and verify Homebrew archives
         run: |
           set -euo pipefail
           brew install zstd
@@ -41,31 +41,73 @@ jobs:
           mkdir -p "$smoke_root"
           tmp_dir="$(mktemp -d "$smoke_root/macos package.XXXXXX")"
           trap 'rm -rf "${tmp_dir:?}"' EXIT
-          zstd -d -o "$tmp_dir/Gloomberb.app.tar" artifacts/stable-macos-arm64-Gloomberb.app.tar.zst
-          tar -xf "$tmp_dir/Gloomberb.app.tar" -C "$tmp_dir"
+          zstd -d -o "$tmp_dir/Gloom.app.tar" artifacts/stable-macos-arm64-Gloom.app.tar.zst
+          tar -xf "$tmp_dir/Gloom.app.tar" -C "$tmp_dir"
+          app="$tmp_dir/Gloom.app"
 
-          test -x "$tmp_dir/Gloomberb.app/Contents/Resources/gloom"
-          test -x "$tmp_dir/Gloomberb.app/Contents/Resources/gloomberb"
-          test -f "$tmp_dir/Gloomberb.app/Contents/Resources/gloomberb-tui/tui-entry.js"
-          test -f "$tmp_dir/Gloomberb.app/Contents/Resources/gloomberb-tui/node_modules/@opentui/core-darwin-arm64/index.js"
-          test -f "$tmp_dir/Gloomberb.app/Contents/Resources/gloomberb-tui/node_modules/@opentui/core-darwin-arm64/libopentui.dylib"
+          test -x "$app/Contents/Resources/gloom"
+          test -x "$app/Contents/Resources/gloomberb"
+          test -f "$app/Contents/Resources/gloomberb-tui/tui-entry.js"
+          test -f "$app/Contents/Resources/gloomberb-tui/node_modules/@opentui/core-darwin-arm64/index.js"
+          test -f "$app/Contents/Resources/gloomberb-tui/node_modules/@opentui/core-darwin-arm64/libopentui.dylib"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleName" "$app/Contents/Info.plist" | grep -qx Gloom
           bun scripts/verify-desktop-cli.ts \
-            "$tmp_dir/Gloomberb.app/Contents/Resources/gloom" \
+            "$app/Contents/Resources/gloom" \
             artifacts/macos-cli-verification
-          "$tmp_dir/Gloomberb.app/Contents/Resources/gloomberb" help >/dev/null
+          "$app/Contents/Resources/gloomberb" help >/dev/null
 
+          codesign --verify --verbose=4 "$app"
+          ditto -c -k --keepParent "$app" artifacts/stable-macos-arm64-Gloom.app.zip
+          # The same signed bundle under its old name, for a Homebrew cask that
+          # still installs Gloomberb.app. Its signature does not cover the name.
+          mv "$app" "$tmp_dir/Gloomberb.app"
           codesign --verify --verbose=4 "$tmp_dir/Gloomberb.app"
+          "$tmp_dir/Gloomberb.app/Contents/Resources/gloom" help >/dev/null
           ditto -c -k --keepParent "$tmp_dir/Gloomberb.app" artifacts/stable-macos-arm64-Gloomberb.app.zip
+
+      - name: Write the desktop files under the app's old name
+        run: bun scripts/write-legacy-desktop-files.ts artifacts
 
       - name: Verify desktop artifacts
         run: |
           set -euo pipefail
-          test -f artifacts/stable-macos-arm64-Gloomberb.dmg
-          test -f artifacts/stable-macos-arm64-Gloomberb.app.tar.zst
-          test -f artifacts/stable-macos-arm64-Gloomberb.app.zip
-          test -f artifacts/stable-macos-arm64-update.json
-          codesign --verify --verbose=4 artifacts/stable-macos-arm64-Gloomberb.dmg
-          xcrun stapler validate -v artifacts/stable-macos-arm64-Gloomberb.dmg
+          for file in Gloom.dmg Gloom.app.tar.zst Gloom.app.zip update.json Gloomberb.dmg Gloomberb.app.tar.zst Gloomberb.app.zip; do
+            test -f "artifacts/stable-macos-arm64-$file" || { echo "Missing stable-macos-arm64-$file" >&2; exit 1; }
+          done
+          cmp artifacts/stable-macos-arm64-Gloom.app.tar.zst artifacts/stable-macos-arm64-Gloomberb.app.tar.zst
+          codesign --verify --verbose=4 artifacts/stable-macos-arm64-Gloom.dmg
+          xcrun stapler validate -v artifacts/stable-macos-arm64-Gloom.dmg
+
+      # What an install from before the rename has once its updater put this
+      # build in Gloomberb.app: started there, it renames itself to Gloom.app,
+      # moves the install script's command links and opens again.
+      - name: Verify a Gloomberb.app install takes the new name
+        run: |
+          set -euo pipefail
+          root="$HOME/.cache/gloom-smoke/desktop-rename"
+          rm -rf "$root"
+          mkdir -p "$root/Applications" "$HOME/.local/bin"
+          ditto -x -k artifacts/stable-macos-arm64-Gloomberb.app.zip "$root/Applications"
+          ln -sfn "$root/Applications/Gloomberb.app/Contents/Resources/gloom" "$HOME/.local/bin/gloom"
+          ln -sfn "$root/Applications/Gloomberb.app/Contents/Resources/gloomberb" "$HOME/.local/bin/gloomberb"
+          GLOOMBERB_HOME="$root/profile" "$root/Applications/Gloomberb.app/Contents/MacOS/launcher" >"$root/launch.log" 2>&1 &
+          for _ in $(seq 1 90); do [ -d "$root/Applications/Gloom.app" ] && break; sleep 1; done
+          relaunched=""
+          for _ in $(seq 1 90); do
+            if pgrep -f "$root/Applications/Gloom.app/Contents/MacOS" >/dev/null; then relaunched=yes; break; fi
+            sleep 1
+          done
+          pkill -f "$root/Applications/Gloom" || true
+          cat "$root/launch.log"
+          ls -la "$root/Applications" "$HOME/.local/bin"
+          test -d "$root/Applications/Gloom.app"
+          test ! -e "$root/Applications/Gloomberb.app"
+          test "$(readlink "$HOME/.local/bin/gloom")" = "$root/Applications/Gloom.app/Contents/Resources/gloom"
+          test "$(readlink "$HOME/.local/bin/gloomberb")" = "$root/Applications/Gloom.app/Contents/Resources/gloomberb"
+          "$HOME/.local/bin/gloom" help >/dev/null
+          "$HOME/.local/bin/gloomberb" help >/dev/null
+          codesign --verify --verbose=4 "$root/Applications/Gloom.app"
+          test "$relaunched" = yes
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -80,7 +122,7 @@ jobs:
           set -euo pipefail
           : "${GH_TOKEN:?missing HOMEBREW_TAP_TOKEN secret}"
 
-          sha256="$(shasum -a 256 artifacts/stable-macos-arm64-Gloomberb.app.zip | awk '{print $1}')"
+          sha256="$(shasum -a 256 artifacts/stable-macos-arm64-Gloom.app.zip | awk '{print $1}')"
           tap_dir="$RUNNER_TEMP/homebrew-tap"
           gh repo clone vincelwt/homebrew-tap "$tap_dir"
           git -C "$tap_dir" remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/vincelwt/homebrew-tap.git"
@@ -90,10 +132,11 @@ jobs:
             --output "$tap_dir/Casks/gloomberb.rb"
 
           ruby -c "$tap_dir/Casks/gloomberb.rb"
-          grep -q 'stable-macos-arm64-Gloomberb.app.zip' "$tap_dir/Casks/gloomberb.rb"
+          grep -q 'stable-macos-arm64-Gloom.app.zip' "$tap_dir/Casks/gloomberb.rb"
+          grep -q 'app "Gloom.app"' "$tap_dir/Casks/gloomberb.rb"
           grep -q 'depends_on arch: :arm64' "$tap_dir/Casks/gloomberb.rb"
-          grep -q 'binary "#{appdir}/Gloomberb.app/Contents/Resources/gloom", target: "gloom"' "$tap_dir/Casks/gloomberb.rb"
-          grep -q 'binary "#{appdir}/Gloomberb.app/Contents/Resources/gloomberb", target: "gloomberb"' "$tap_dir/Casks/gloomberb.rb"
+          grep -q 'binary "#{appdir}/Gloom.app/Contents/Resources/gloom", target: "gloom"' "$tap_dir/Casks/gloomberb.rb"
+          grep -q 'binary "#{appdir}/Gloom.app/Contents/Resources/gloomberb", target: "gloomberb"' "$tap_dir/Casks/gloomberb.rb"
 
           cd "$tap_dir"
           git add Casks/gloomberb.rb

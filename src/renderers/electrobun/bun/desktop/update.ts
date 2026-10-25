@@ -33,13 +33,14 @@ import {
 import { logFailure } from "../../../../utils/log-failure";
 import { compareSemver, isPrereleaseVersion } from "../../../../utils/semver";
 import { VERSION } from "../../../../version";
+import { DESKTOP_APP_NAME, LEGACY_DESKTOP_APP_NAME } from "../../shared/app-name";
 
 type ElectrobunUpdater = typeof Electrobun.Updater;
 
 /**
  * The part of Electrobun's updater this flow uses. Tests pass a fake, because
  * the real module cannot be loaded or exercised outside the packaged app.
- * `setUpdateSource` is Gloomberb's patch (patches/electrobun@*.patch).
+ * `setUpdateSource` is this app's patch (patches/electrobun@*.patch).
  */
 export type ElectrobunUpdaterApi = Pick<
   ElectrobunUpdater,
@@ -51,7 +52,7 @@ export type ElectrobunUpdaterApi = Pick<
   | "getStatusHistory"
   | "onStatusChange"
   | "setUpdateSource"
-> & {
+> & Partial<Pick<ElectrobunUpdater, "appDataFolder">> & {
   localInfo: Pick<ElectrobunUpdater["localInfo"], "channel" | "baseUrl">;
 };
 
@@ -81,6 +82,8 @@ function isUpdateAside(entry: string, appName: string): boolean {
  * process runs from: starting from it means the install that left them worked.
  * macOS keeps the app in its bundle, Linux in `<app data>/app` (`bin/bun`
  * inside it); Windows installs through its own script and leaves none.
+ * Beside `Gloom.app` it also takes `Gloomberb.app.previous`: the copy the
+ * update that brought the new name moved aside, under the old one.
  * Resolves to the paths it removed.
  */
 export async function removeUpdateAsides(
@@ -92,12 +95,74 @@ export async function removeUpdateAsides(
     : platform === "linux" && basename(dirname(execPath)) === "bin" ? dirname(dirname(execPath)) : undefined;
   if (!app) return [];
   const folder = dirname(app);
+  const names = platform === "darwin" && basename(app) === `${DESKTOP_APP_NAME}.app`
+    ? [basename(app), `${LEGACY_DESKTOP_APP_NAME}.app`]
+    : [basename(app)];
   const removed: string[] = [];
   for (const entry of await readdir(folder).catch(() => [] as string[])) {
-    if (!isUpdateAside(entry, basename(app))) continue;
+    if (!names.some((name) => isUpdateAside(entry, name))) continue;
     const path = join(folder, entry);
     // One that still cannot be removed (another user's) is tried again at the next start.
     const done = await rm(path, { recursive: true, force: true }).then(() => true, logFailure("desktop-update", "Could not remove an old copy of the app", false));
+    if (done) removed.push(path);
+  }
+  return removed;
+}
+
+const TAR_BLOCK = 512;
+
+/**
+ * The first path in a tar, read from its leading headers: a ustar name and
+ * prefix, or the long name a pax (`x`) or GNU (`L`) header gives it. Null when
+ * `bytes` ends before one.
+ */
+export function firstTarPath(bytes: Uint8Array): string | null {
+  const decoder = new TextDecoder();
+  const field = (start: number, length: number) => {
+    const raw = bytes.subarray(start, start + length);
+    const end = raw.indexOf(0);
+    return decoder.decode(end === -1 ? raw : raw.subarray(0, end));
+  };
+  let longName: string | null = null;
+  for (let header = 0; header + TAR_BLOCK <= bytes.length;) {
+    if (bytes[header] === 0) return null;
+    const type = String.fromCharCode(bytes[header + 156] ?? 0);
+    const size = Number.parseInt(field(header + 124, 12).trim() || "0", 8);
+    const data = header + TAR_BLOCK;
+    if (type === "x" || type === "L" || type === "g" || type === "K") {
+      if (!Number.isFinite(size) || data + size > bytes.length) return null;
+      if (type === "L") longName = field(data, size);
+      if (type === "x") longName = /(?:^|\n)\d+ path=([^\n]*)\n/.exec(decoder.decode(bytes.subarray(data, data + size)))?.[1] ?? longName;
+      header = data + Math.ceil(size / TAR_BLOCK) * TAR_BLOCK;
+      continue;
+    }
+    if (longName) return longName;
+    const name = field(header, 100);
+    // POSIX ustar ("ustar\0") only: GNU tar keeps other fields where the prefix would be.
+    const prefix = field(header + 257, 6) === "ustar" ? field(header + 345, 155) : "";
+    return prefix ? `${prefix}/${name}` : name;
+  }
+  return null;
+}
+
+/**
+ * Removes the unpacked update archives in Electrobun's `self-extraction`
+ * folder whose app carries its name from before the rename. The one that
+ * matters is the Windows archive an install from then updated from: it is
+ * packed again with the folder renamed (scripts/write-legacy-desktop-files.ts),
+ * so its bytes are not those of the archive the next release's patch is made
+ * from, and bspatch would turn it into a broken build. Without it the updater
+ * downloads the full archive instead. Resolves to the paths it removed.
+ */
+async function removeLegacyUpdateArchives(folder: string): Promise<string[]> {
+  const removed: string[] = [];
+  for (const entry of await readdir(folder).catch(() => [] as string[])) {
+    if (!entry.endsWith(".tar")) continue;
+    const path = join(folder, entry);
+    const head = await Bun.file(path).slice(0, 64 * 1024).bytes().catch(() => null);
+    const top = head ? firstTarPath(head)?.replace(/^\.\//, "").split("/")[0] : undefined;
+    if (top !== LEGACY_DESKTOP_APP_NAME && top !== `${LEGACY_DESKTOP_APP_NAME}.app`) continue;
+    const done = await rm(path, { force: true }).then(() => true, logFailure("desktop-update", "Could not remove an update archive from before the rename", false));
     if (done) removed.push(path);
   }
   return removed;
@@ -464,6 +529,8 @@ export function createElectrobunDesktopUpdater(
       }
       target = result.release;
 
+      const appData = await updater.appDataFolder?.().catch(() => null);
+      if (appData) await removeLegacyUpdateArchives(join(appData, "self-extraction"));
       await updater.downloadUpdate();
       const updateInfo = updater.updateInfo();
       if (updateInfo?.error) {

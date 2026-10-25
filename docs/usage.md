@@ -573,6 +573,7 @@ A zero or negative price is kept for a futures instrument. For any other instrum
 | `HM` | Market heatmap of the 500 largest US stocks by sector and industry, large US ETFs, and the portfolio pane's selected list |
 | `MOST` | Top gainers, losers, most active, and trending tickers |
 | `HILO` | Session new highs and new lows with 30s/1m/5m momentum |
+| `SCAN` | Your own live intraday scan of US stocks: moves, volume spikes, new highs and lows, VWAP crosses and gaps, with alerts ([Live scanner](#live-scanner)) |
 | `FLOW` | Unusual options activity: sweeps, blocks and large premium. Vol/OI divides the contract's day volume by its latest open interest |
 | `PM <query>` | Polymarket and Kalshi prediction data ([Prediction Markets plugin](https://github.com/gloom-sh/gloom-prediction-markets)) |
 | `N` | News feed |
@@ -889,6 +890,24 @@ The next date comes from `ERN`, the BLS release calendar behind `CPI`, the Fed m
 **Alert history.** Every alert the app fires (price, IV level, earnings, CPI, FOMC and other economic releases) is kept on this device, the last 1,000, with when it went off, the rule, the figure and the quote time and feed. **History** and `fn ALRT --tab history` list that log with no sign-in.
 
 Signed in, they also merge in the alerts Gloom Cloud delivered to your phone or email over the last 90 days, and the Via column says which sent each: this app, Gloom Cloud or both.
+
+### Live scanner
+
+`SCAN` runs your own intraday scan over US stocks and keeps its matches current through the session. **Matches** lists what matches now, strongest first by the first condition (click a header to sort by another column); **Conditions** holds the conditions, every one of which must hold; **Saved** keeps scans you saved with `s` and opens one with Enter.
+
+- **Universe:** all US listings, the S&P 500, MidCap 400 or SmallCap 600, the Russell 1000 or 2000 (members as their index funds last filed them), a sector, or a watchlist. A watchlist is read when the scan runs, so adding a symbol to it adds it to the scan; rows that are not US stocks are left out and named in the footer warning.
+- **Conditions:** a price move of at least a percent over the last 1, 5, 15, 30 or 60 minutes (up, down or either way); volume over one of those windows, or the session so far, against the pace of the 20-session average (a 5-minute window at 3x trades three times an average 5 minutes, the average day spread evenly over the 390-minute session); a new session high or low printed within a window; a cross of the session VWAP within a window, still on the side it crossed to; and the open's gap from the previous close.
+- **Floors** in the query bar: price, market cap and the session's volume so far.
+- Each condition gets a column with the figure it matched on: the move or gap, the volume multiple, or the time of the high, low or cross.
+- **STATUS** speaks for its row: `new` arrived with the last refresh, `alerted` with the time it alerted, and `stale` with the time of its last print when that print is more than 5 minutes older than the scan, as for a halted stock.
+- A watched window needs that much of the session watched first: right after the scanner starts (at the open, or after the first scan of a quiet day) conditions over longer windows match nothing until then, and the footer says so. A new high or low is one past the highest or lowest the session has printed since the scanner's first look at it, and a cross counts from that look too.
+- Every condition reads today's trading. A stock that has not traded since the open still carries the last session's bar, so it matches no condition, counts no volume against the floor and shows no change, gap or VWAP until its first print.
+
+**How fresh.** Pro scans a market-wide snapshot refreshed every 15 seconds; the pane asks again a second after each refresh, so a match is at most about 17 seconds old. Free and signed-out scans read a snapshot of 15-minute delayed prices refreshed every minute, so a match is 15 to 16 minutes old; the footer shows the delay and the time the scan is as of. When a refresh fails, the last matches stay and the footer says `degraded` until one succeeds. Outside the session the last matches stay, as of the close.
+
+**Alerts.** Turn on **Alerts** in the query bar and each symbol that newly matches alerts once a session. A refresh's new symbols make one notification on this device (it stays in **Unread**, and opening it brings back the scanner) and one line in ALRT's **History**. A scan sounds and reaches the desktop at most once a minute; new symbols in between are still told in the app. Live scans keep at most 100 lines of the history between them, so price and event alerts are never pushed out. What already matched when alerts were turned on, the scan changed or the app started does not alert, nor does the first list after the scanner starts. A scan with alerts on keeps running while its pane is covered or the app is in the background, but only while the pane is in the open layout.
+
+`gloom fn SCAN` runs the default scan once (`--universe sp500` or a sector, `--scan` with conditions and floors as JSON).
 
 ## Live prices and refresh cadence
 
@@ -2134,7 +2153,7 @@ Each built-in plugin can be switched on or off in `PL`. The Commodities & Energy
 | Quant | CORR, GR, BT, SEAS, MDAY |
 | Rates & Macro | ECO, ECST, CPI, GC, WIRP, BTMM, CBR, VIX, VOLS, VAL |
 | Global Markets | WEI, MAP, CHOKE, BI, THEM, FXC, RRG |
-| Screeners & Movers | EQS, MOST, HILO, FLOW |
+| Screeners & Movers | EQS, MOST, HILO, SCAN, FLOW |
 | Commodities & Energy | FUT, CTM, COT, DOE, NGS, PSD, JODI |
 | Crypto & Perps | CRYP, ETFF, PERP |
 

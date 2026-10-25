@@ -44,6 +44,14 @@ jobs:
           fi
           printf 'Uploading %s release artifacts:\n' "${#files[@]}"
           printf '  %s\n' "${files[@]}"
+          # Installs from before the rename update from these names; a release
+          # without them strands every one of them on its version.
+          for platform in macos-arm64 win-x64; do
+            [ -f "dist/stable-$platform-update.json" ] || continue
+            legacy="dist/stable-$platform-Gloomberb.tar.zst"
+            [ "$platform" = macos-arm64 ] && legacy="dist/stable-$platform-Gloomberb.app.tar.zst"
+            test -f "$legacy" || { echo "Missing $legacy for installs from before the rename." >&2; exit 1; }
+          done
 
       - name: Upload assets to GitHub release
         uses: softprops/action-gh-release@v2
@@ -71,7 +79,7 @@ jobs:
           fi
 
           VERSION="${GITHUB_REF_NAME#v}"
-          ZIP_PATH="dist/stable-macos-arm64-Gloomberb.app.zip"
+          ZIP_PATH="dist/stable-macos-arm64-Gloom.app.zip"
           if [ ! -f "$ZIP_PATH" ]; then
             echo "macOS desktop zip is missing; skipping Homebrew tap update."
             exit 0

@@ -1,13 +1,17 @@
 import type { ElectrobunConfig } from "electrobun/bun";
 import pkg from "./package.json";
+import { DESKTOP_APP_IDENTIFIER, DESKTOP_APP_NAME } from "./src/renderers/electrobun/shared/app-name";
 
 const RELEASE_BASE_URL = "https://github.com/gloom-sh/gloomberb/releases/latest/download";
 const GENERATE_RELEASE_PATCH = process.platform !== "win32";
 
 const config: ElectrobunConfig = {
   app: {
-    name: "Gloomberb",
-    identifier: "com.vincelwt.gloomberb",
+    // The bundle, the macOS menu bar and Dock, the update archives. Releases
+    // also carry the archives under the old name for installs from before
+    // the rename (scripts/write-legacy-desktop-files.ts).
+    name: DESKTOP_APP_NAME,
+    identifier: DESKTOP_APP_IDENTIFIER,
     version: pkg.version,
     description: pkg.description,
     urlSchemes: ["gloomberb"],

@@ -894,6 +894,13 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     data: US_SCANNER,
     bloomberg: [],
   },
+  SCAN: {
+    summary: "Your own intraday scan of US stocks over all listings, an index, a sector or a watchlist: moves over the last minutes, volume spikes against the average pace, new session highs and lows, VWAP crosses and gaps, above price, market cap and volume floors. Matches refresh through the session, and new ones can alert.",
+    usage: ["SCAN"],
+    keys: [TABS, OPEN, key("a", "dd condition"), key("s", "ave scan")],
+    data: US_SCANNER,
+    bloomberg: [],
+  },
   FLOW: {
     summary: "Sweeps, blocks and large premium prints as they hit the tape, with ticker, strike, expiry and premium.",
     usage: ["FLOW"],

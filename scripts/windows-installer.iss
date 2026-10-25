@@ -7,7 +7,7 @@
 #endif
 
 #ifndef SourceDir
-#define SourceDir "..\build\stable-win-x64\Gloomberb-inno-source\Gloomberb"
+#define SourceDir "..\build\stable-win-x64\Gloom-inno-source\Gloom"
 #endif
 
 [Setup]
@@ -18,8 +18,11 @@ AppPublisher=Gloom
 AppPublisherURL=https://gloom.sh
 AppSupportURL=https://github.com/gloom-sh/gloomberb/issues
 AppUpdatesURL=https://github.com/gloom-sh/gloomberb/releases
-; Kept under the previous name, as existing installs and their PATH entry have it.
-DefaultDirName={localappdata}\Programs\Gloomberb
+; Programs\Gloom. An install in Programs\Gloomberb, the folder before the
+; rename, moves there and its old folder and PATH entry go; one the user put
+; anywhere else stays where it is. See DefaultInstallDir.
+DefaultDirName={code:DefaultInstallDir}
+UsePreviousAppDir=no
 DefaultGroupName=Gloom
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
@@ -27,7 +30,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 AppendDefaultDirName=no
 OutputDir={#OutputDir}
-OutputBaseFilename=GloomberbSetup
+OutputBaseFilename=GloomSetup
 Compression=lzma2
 SolidCompression=yes
 SetupLogging=yes
@@ -58,6 +61,12 @@ Filename: "{app}\bin\launcher.exe"; Description: "Launch Gloom"; Flags: nowait p
 const
   EnvironmentKey = 'Environment';
   PathValueName = 'Path';
+  // Where Setup records this app's install, under its AppId.
+  UninstallKey = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{D7B2304C-840B-4E5F-956A-3D1C66E67B35}_is1';
+
+var
+  // The folder of the install this one replaces, read before Setup records the new one.
+  PreviousInstallDir: string;
 
 function PathEntry(): string;
 begin
@@ -125,17 +134,15 @@ begin
   RegWriteStringValue(HKCU, EnvironmentKey, PathValueName, PathValue);
 end;
 
-procedure RemovePathEntry();
+procedure RemovePathEntryFor(Entry: string);
 var
   PathValue: string;
-  Entry: string;
   Rest: string;
   Part: string;
   SeparatorPosition: Integer;
   NormalizedEntry: string;
   NextPath: string;
 begin
-  Entry := PathEntry();
   NormalizedEntry := NormalizePathValue(Entry);
   if not RegQueryStringValue(HKCU, EnvironmentKey, PathValueName, PathValue) then
     Exit;
@@ -172,10 +179,78 @@ begin
   RegWriteStringValue(HKCU, EnvironmentKey, PathValueName, NextPath);
 end;
 
+procedure RemovePathEntry();
+begin
+  RemovePathEntryFor(PathEntry());
+end;
+
+function SamePath(Left: string; Right: string): Boolean;
+begin
+  Result := (Left <> '') and (NormalizePathValue(Left) = NormalizePathValue(Right));
+end;
+
+// The default folder before the rename.
+function LegacyInstallDir(): string;
+begin
+  Result := ExpandConstant('{localappdata}\Programs\Gloomberb');
+end;
+
+function RecordedInstallDir(): string;
+begin
+  if not RegQueryStringValue(HKCU, UninstallKey, 'Inno Setup: App Path', Result) then
+    Result := '';
+end;
+
+function DefaultInstallDir(Param: string): string;
+var
+  Previous: string;
+begin
+  Previous := RecordedInstallDir();
+  if (Previous <> '') and not SamePath(Previous, LegacyInstallDir()) then
+    Result := Previous
+  else
+    Result := ExpandConstant('{localappdata}\Programs\Gloom');
+end;
+
+function MovesFromLegacyInstallDir(): Boolean;
+begin
+  Result := SamePath(PreviousInstallDir, LegacyInstallDir()) and not SamePath(ExpandConstant('{app}'), LegacyInstallDir());
+end;
+
+function InitializeSetup(): Boolean;
+begin
+  PreviousInstallDir := RecordedInstallDir();
+  Result := True;
+end;
+
+// The app running from the old folder is closed like one running from {app}.
+procedure RegisterExtraCloseApplicationsResources();
+begin
+  if not MovesFromLegacyInstallDir() then
+    Exit;
+  if FileExists(LegacyInstallDir() + '\bin\launcher.exe') then
+    RegisterExtraCloseApplicationsResource(False, LegacyInstallDir() + '\bin\launcher.exe');
+  if FileExists(LegacyInstallDir() + '\bin\bun.exe') then
+    RegisterExtraCloseApplicationsResource(False, LegacyInstallDir() + '\bin\bun.exe');
+end;
+
+// After the app is in its new folder: the old folder and its PATH entry go.
+procedure RemoveLegacyInstall();
+begin
+  if not MovesFromLegacyInstallDir() then
+    Exit;
+  RemovePathEntryFor(LegacyInstallDir() + '\bin');
+  if DirExists(LegacyInstallDir()) and not DelTree(LegacyInstallDir(), True, True, True) then
+    Log('Could not remove the previous install folder ' + LegacyInstallDir());
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then
+  begin
     AddPathEntry();
+    RemoveLegacyInstall();
+  end;
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);

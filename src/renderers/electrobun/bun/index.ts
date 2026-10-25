@@ -1,4 +1,5 @@
-import Electrobun, { ApplicationMenu, Screen } from "electrobun/bun";
+import Electrobun, { ApplicationMenu, Screen, Utils } from "electrobun/bun";
+import { homedir } from "os";
 import { debugLog } from "../../../utils/debug-log";
 import { setConfigStoreHost } from "../../../data/config/store";
 import * as nodeConfigStoreHost from "../../../data/config/store/node";
@@ -25,6 +26,8 @@ import {
 } from "./window/remembered-frame";
 import { reapStaleTerminalMedia } from "../../opentui/terminal-media";
 import { installProcessCrashListeners } from "../../../telemetry/crash-reports-node";
+import { renameLegacyMacApp } from "./desktop/app-name";
+import { scheduleDesktopRelaunch } from "./desktop/relaunch";
 
 console.log = (...args) => console.error(...args);
 console.info = (...args) => console.error(...args);
@@ -41,6 +44,27 @@ setConfigStoreHost(nodeConfigStoreHost);
 // ahead of it and spools the report for the next launch. Nothing is sent
 // before the config, and its off switch, has been read.
 installProcessCrashListeners();
+
+// An install from before the rename runs from Gloomberb.app, where its updater
+// put this build. It takes the new name and opens again from there before any
+// window shows. Anywhere else this returns without touching the disk.
+const appRename = await renameLegacyMacApp({
+  execPath: process.execPath,
+  platform: process.platform,
+  homeDir: homedir(),
+  pathEnv: process.env.PATH ?? "",
+}).catch((error: unknown) => {
+  console.error("[desktop] could not give the app its new name", error instanceof Error ? error.message : String(error));
+  return null;
+});
+if (appRename?.kind === "renamed") {
+  scheduleDesktopRelaunch(appRename.bundle);
+  Utils.quit();
+  // The process is exiting; nothing below may open a window meanwhile.
+  await new Promise<never>(() => {});
+} else if (appRename?.kind === "skipped") {
+  console.error(`[desktop] kept the app's old name: ${appRename.reason}`);
+}
 
 function readOpenUrlEvent(event: unknown): string | null {
   const data = event && typeof event === "object" ? (event as { data?: unknown }).data : null;

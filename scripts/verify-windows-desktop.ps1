@@ -2,9 +2,12 @@ $ErrorActionPreference = "Stop"
 
 $Root = Resolve-Path (Join-Path $PSScriptRoot "..")
 $PackageJson = Get-Content (Join-Path $Root "package.json") -Raw | ConvertFrom-Json
-$BundleDir = Join-Path $Root "build\stable-win-x64\Gloomberb-inno-source\Gloomberb"
+$BundleDir = Join-Path $Root "build\stable-win-x64\Gloom-inno-source\Gloom"
 $CoreDir = Join-Path $BundleDir "Resources\gloomberb-tui\node_modules\@opentui\core-win32-x64"
-$InstallerPath = Join-Path $Root "artifacts\stable-win-x64-GloomberbSetup.exe"
+$InstallerPath = Join-Path $Root "artifacts\stable-win-x64-GloomSetup.exe"
+# What installs from before the rename update from, and the installer under its old name.
+$LegacyUpdateArchivePath = Join-Path $Root "artifacts\stable-win-x64-Gloomberb.tar.zst"
+$LegacyInstallerPath = Join-Path $Root "artifacts\stable-win-x64-GloomberbSetup.exe"
 $UpdateManifestPath = Join-Path $Root "artifacts\stable-win-x64-update.json"
 $GuiArtifactDir = Join-Path $Root "artifacts\windows-gui-verification"
 $BundleAppIconPath = Join-Path $BundleDir "Resources\app.ico"
@@ -1044,6 +1047,119 @@ function Assert-WindowsUpdateManifest {
   }
 }
 
+# An install from 0.18.4 or before asks the release for its update archive
+# under the old name, unpacks it with the zig-zstd it ships, and installs the
+# folder inside it named Gloomberb. This unpacks it the same way.
+function Assert-LegacyUpdateArchive {
+  param([string]$Path)
+
+  $Zstd = Join-Path $Root "node_modules\electrobun\dist-win-x64\zig-zstd.exe"
+  $CheckDir = Join-Path $SmokeRoot "legacy-update"
+  if (Test-Path $CheckDir) {
+    Remove-Item -Recurse -Force $CheckDir
+  }
+  New-Item -ItemType Directory -Force -Path $CheckDir | Out-Null
+  $TarPath = Join-Path $CheckDir "update.tar"
+  & $Zstd decompress -i $Path -o $TarPath --no-timing
+  if ($LASTEXITCODE -ne 0) {
+    throw "zig-zstd could not unpack the update archive under the old name: $Path"
+  }
+  tar -xf $TarPath -C $CheckDir
+  if ($LASTEXITCODE -ne 0) {
+    throw "tar could not unpack the update archive under the old name: $Path"
+  }
+  Remove-Item -Force $TarPath
+  $Folders = @(Get-ChildItem -Path $CheckDir -Force | Select-Object -ExpandProperty Name)
+  if ($Folders.Count -ne 1 -or $Folders[0] -cne "Gloomberb") {
+    throw "The update archive under the old name should hold one folder, Gloomberb; it holds: $($Folders -join ', ')"
+  }
+  foreach ($Required in @("bin\bun.exe", "bin\gloomberb.cmd", "Resources\version.json", "Resources\gloomberb-tui\tui-entry.js")) {
+    if (-not (Test-Path (Join-Path $CheckDir "Gloomberb\$Required"))) {
+      throw "The update archive under the old name has no Gloomberb\$Required"
+    }
+  }
+  Remove-Item -Recurse -Force $CheckDir
+}
+
+function Get-NormalizedPathEntries {
+  param([string]$PathValue)
+
+  return @($PathValue -split ";" | ForEach-Object { $_.Trim().Trim('"').TrimEnd("\").ToLowerInvariant() } | Where-Object { $_ })
+}
+
+# An installer from before the rename put the app in Programs\Gloomberb, with
+# that folder's bin on the user's PATH. The new installer, run over it with no
+# /DIR, installs into Programs\Gloom and removes the old folder and PATH entry.
+# It writes the user's install record and PATH, so it runs only on a CI
+# machine with no install of its own.
+function Assert-InstallerMovesLegacyInstall {
+  $UninstallKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{D7B2304C-840B-4E5F-956A-3D1C66E67B35}_is1"
+  $LegacyDir = Join-Path $env:LOCALAPPDATA "Programs\Gloomberb"
+  $NewDir = Join-Path $env:LOCALAPPDATA "Programs\Gloom"
+  if ($env:GITHUB_ACTIONS -ne "true") {
+    Write-Host "Skipping the move from Programs\Gloomberb outside CI."
+    return
+  }
+  # The smoke install's uninstaller finishes in the background, removing the
+  # same record and then its PATH entry.
+  for ($Attempt = 0; ($Attempt -lt 120) -and (Test-Path $UninstallKey); $Attempt += 1) {
+    Start-Sleep -Seconds 1
+  }
+  Start-Sleep -Seconds 5
+  if ((Test-Path $UninstallKey) -or (Test-Path $LegacyDir) -or (Test-Path $NewDir)) {
+    throw "An install is already recorded on this machine; cannot check the move from Programs\Gloomberb."
+  }
+
+  $PreviousUserPath = [Environment]::GetEnvironmentVariable("Path", "User")
+  $LegacyBin = Join-Path $LegacyDir "bin"
+  $Log = Join-Path $SmokeRoot "move-install.log"
+  try {
+    New-Item -ItemType Directory -Force -Path $LegacyBin | Out-Null
+    Set-Content -Path (Join-Path $LegacyBin "gloomberb.cmd") -Value "@echo the install from before the rename"
+    New-Item -Path $UninstallKey -Force | Out-Null
+    New-ItemProperty -Path $UninstallKey -Name "Inno Setup: App Path" -Value $LegacyDir -PropertyType String -Force | Out-Null
+    [Environment]::SetEnvironmentVariable("Path", ((@($PreviousUserPath, $LegacyBin) | Where-Object { $_ }) -join ";"), "User")
+
+    $Process = Start-Process `
+      -FilePath $InstallerPath `
+      -ArgumentList @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CURRENTUSER", "/LOG=`"$Log`"") `
+      -Wait `
+      -PassThru
+    if ($Process.ExitCode -ne 0) {
+      Get-Content $Log -ErrorAction SilentlyContinue
+      throw "The installer failed over an install in Programs\Gloomberb: $($Process.ExitCode)"
+    }
+
+    foreach ($Required in @("bin\launcher.exe", "bin\gloom.cmd", "bin\gloomberb.cmd")) {
+      if (-not (Test-Path (Join-Path $NewDir $Required))) {
+        Get-Content $Log -ErrorAction SilentlyContinue
+        throw "The installer did not install $Required into $NewDir"
+      }
+    }
+    if (Test-Path $LegacyDir) {
+      Get-Content $Log -ErrorAction SilentlyContinue
+      throw "The installer left the old folder $LegacyDir"
+    }
+    $Entries = Get-NormalizedPathEntries ([Environment]::GetEnvironmentVariable("Path", "User"))
+    if ($Entries -contains $LegacyBin.TrimEnd("\").ToLowerInvariant()) {
+      throw "The installer left $LegacyBin on the user's PATH"
+    }
+    if (-not ($Entries -contains (Join-Path $NewDir "bin").ToLowerInvariant())) {
+      throw "The installer did not put $NewDir\bin on the user's PATH"
+    }
+    $Recorded = (Get-ItemProperty -Path $UninstallKey)."Inno Setup: App Path"
+    if ($Recorded.TrimEnd("\") -ne $NewDir) {
+      throw "The install record still names $Recorded"
+    }
+    Write-Host "The installer moved an install from $LegacyDir to $NewDir."
+  } finally {
+    Remove-Item -Recurse -Force $LegacyDir, $NewDir -ErrorAction SilentlyContinue
+    Remove-Item -Path $UninstallKey -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -Force (Join-Path ([Environment]::GetFolderPath("Programs")) "Gloom.lnk") -ErrorAction SilentlyContinue
+    [Environment]::SetEnvironmentVariable("Path", $PreviousUserPath, "User")
+  }
+}
+
 function Get-WindowIconHandle {
   param([object]$Window)
 
@@ -1453,10 +1569,12 @@ $RequiredPaths = @(
   (Join-Path $BundleDir "Resources\gloomberb-tui\tui-entry.js"),
   (Join-Path $BundleDir "Resources\gloomberb-tui\shot-view.json.gz"),
   (Join-Path $CoreDir "index.js"),
-  (Join-Path $Root "artifacts\stable-win-x64-Gloomberb-Setup.zip"),
-  (Join-Path $Root "artifacts\stable-win-x64-Gloomberb.tar.zst"),
+  (Join-Path $Root "artifacts\stable-win-x64-Gloom-Setup.zip"),
+  (Join-Path $Root "artifacts\stable-win-x64-Gloom.tar.zst"),
   $UpdateManifestPath,
-  $InstallerPath
+  $InstallerPath,
+  $LegacyUpdateArchivePath,
+  $LegacyInstallerPath
 )
 
 foreach ($Path in $RequiredPaths) {
@@ -1466,6 +1584,10 @@ foreach ($Path in $RequiredPaths) {
 }
 
 Assert-WindowsUpdateManifest $UpdateManifestPath
+Assert-LegacyUpdateArchive $LegacyUpdateArchivePath
+if ((Get-FileHash $LegacyInstallerPath).Hash -ne (Get-FileHash $InstallerPath).Hash) {
+  throw "The installer under the old name is not the same file as $InstallerPath"
+}
 Assert-IcoFile $BundleAppIconPath "Bundled app icon"
 Assert-IcoFile $BundleLogoIconPath "Bundled logo icon"
 Export-AssociatedIcon `
@@ -1711,3 +1833,5 @@ try {
     & $Uninstaller.FullName /VERYSILENT /SUPPRESSMSGBOXES /NORESTART "/LOG=$UninstallLog"
   }
 }
+
+Assert-InstallerMovesLegacyInstall

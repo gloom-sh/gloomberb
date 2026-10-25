@@ -44,6 +44,7 @@ import {
 import { MAIN_WINDOW_RPC_KEY } from "../window/focus";
 import { handleDesktopBackendRequest } from "./backend-requests";
 import { detectDesktopInstallKind, removeUpdateAsides } from "./update";
+import { removeLegacyMacApp } from "./app-name";
 import { DesktopCapabilityBridge } from "./capability-bridge";
 import { DesktopDetachedWindowManager } from "./detached-windows";
 import { handleDesktopHostRequest } from "./host-requests";
@@ -412,20 +413,29 @@ export class DesktopBackend {
   /**
    * An install from before the rename updates its bundle in place and keeps
    * only the `gloomberb` command its installer linked, so the app adds `gloom`
-   * beside it. That looks through PATH, which can hold a slow network folder,
-   * so it runs a while after the main window is up and never in its way.
+   * beside it. First, a Mac `Gloomberb.app` left beside this `Gloom.app` goes,
+   * its links moved here. That looks through PATH, which can hold a slow
+   * network folder, so it runs a while after the main window is up and never
+   * in its way.
    */
   private scheduleCommandLinks(): void {
     if (this.commandLinksScheduled) return;
     this.commandLinksScheduled = true;
     const log = debugLog.createLogger("desktop-command");
+    const where = {
+      platform: process.platform,
+      homeDir: homedir(),
+      pathEnv: process.env.PATH ?? "",
+    };
     const timer = setTimeout(() => {
-      void linkDesktopCommands({
-        platform: process.platform,
-        homeDir: homedir(),
-        pathEnv: process.env.PATH ?? "",
+      void removeLegacyMacApp({ ...where, execPath: process.execPath }).then((removed) => {
+        if (removed) log.info("Removed the app's copy under its old name");
+      }, (error: unknown) => {
+        log.warn("Could not remove the app's copy under its old name", summarizeError(error));
+      }).then(() => linkDesktopCommands({
+        ...where,
         localAppData: process.env.LOCALAPPDATA,
-      }).then((added) => {
+      })).then((added) => {
         if (added.length > 0) log.info(`Added the gloom command in ${added.length} folder(s)`);
       }, (error: unknown) => {
         log.warn("Could not add the gloom command", summarizeError(error));
