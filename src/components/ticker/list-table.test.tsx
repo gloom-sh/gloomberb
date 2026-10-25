@@ -159,11 +159,14 @@ describe("TickerListTableView", () => {
     expect(wide).toContain("AAPL");
 
     await act(async () => { tui.setup().resize(20, 6); });
-    const narrow = await tui.waitForFrameToExclude("front");
+    await tui.renderFrames();
+    const narrow = await tui.waitForFrameToContain("NGF27");
+    expect(narrow).not.toContain("front");
     expect(narrow).toContain("NGF27");
     expect(narrow).toContain("AAPL");
 
     await act(async () => { tui.setup().resize(48, 6); });
+    await tui.renderFrames();
     await tui.waitForFrameToContain("NGF27 front NGX26 3.116");
   });
 
