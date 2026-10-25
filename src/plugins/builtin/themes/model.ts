@@ -73,7 +73,7 @@ export function boardClose(payload: { regularSessionDate?: unknown; regularSessi
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
 /** `Fri 9 Oct close` for the US session dated 2026-10-09, named by its own day, never the reader's. */
-function closeLabel(date: string): string {
+export function closeLabel(date: string): string {
   const day = new Date(`${date}T00:00:00Z`);
   return `${WEEKDAYS[day.getUTCDay()]} ${day.getUTCDate()} ${MONTHS[day.getUTCMonth()]} close`;
 }

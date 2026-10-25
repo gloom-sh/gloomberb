@@ -1,6 +1,6 @@
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchBreadth, fetchChanges, fetchFunds, fetchMembers } from "./client";
-import { canonicalFund, changeReason, coverageText, decimal, DEFAULT_SORT, holdingsCaveats, holdingsSourceText, memberRows, percent } from "./model";
+import { canonicalFund, changeReason, coverageText, decimal, DEFAULT_SORT, holdingsCaveats, holdingsSourceText, memberRows, membersFeed, percent } from "./model";
 const columns: HeadlessPaneColumn[] = [
   { key: "symbol", header: "Ticker" }, { key: "name", header: "Name" },
   { key: "weight", header: "Weight %", align: "right", format: (value) => value == null ? "--" : decimal(Number(value) * 100) },
@@ -36,10 +36,15 @@ export const membersHeadless: HeadlessPaneDefinition<"rows"> = {
     // Member prices are the pane's quotes: real-time for a Pro account, 15 minutes delayed otherwise. As in the
     // pane, the fund's snapshot says whether it is stale; the members' own flags are not what the pane reads.
     const live = data.access === "realtime";
-    return { freshness: { status: data.stale ? "stale" : live ? "live" : "delayed", delayMinutes: 15, ignoreStaleFlags: true }, rows, columns: movers ? [...columns.slice(0, 3), { key: "contribution", header: "Contrib. pp", align: "right", format: (value) => percent(value as number | null, "", 3) }] : columns,
+    // Outside the regular session a Pro account's members are the session's close, not a live feed: the report
+    // is as of that close and says no feed, as the pane's footer names the close instead of "live".
+    const feed = membersFeed(data.access, Date.now());
+    const closed = feed.kind === "close";
+    const status = data.stale ? { status: "stale" as const, delayMinutes: 15 } : closed ? {} : { status: live ? "live" as const : "delayed" as const, delayMinutes: 15 };
+    return { freshness: { ...status, ignoreStaleFlags: true }, rows, columns: movers ? [...columns.slice(0, 3), { key: "contribution", header: "Contrib. pp", align: "right", format: (value) => percent(value as number | null, "", 3) }] : columns,
       complete: !data.stale && data.aggregate.fresh1D === data.aggregate.total,
       unavailableSymbols: data.members.flatMap((row) => row.symbol && row.changePercent === null ? [row.symbol] : []),
-      metadata: { fund: data.fund, asOf: data.asOf, snapshotAsOf: data.snapshotAsOf, aggregate: data.aggregate, stale: data.stale, notices: [
+      metadata: { fund: data.fund, asOf: data.asOf, ...(closed ? { sessionExchange: "NYSE", observedAt: new Date(feed.closedAt).toISOString() } : {}), snapshotAsOf: data.snapshotAsOf, aggregate: data.aggregate, stale: data.stale, notices: [
         holdingsSourceText(input, data),
         // The pane's coverage figure, and once what the table's dashes mean instead of leaving them bare.
         [coverageText(data.aggregate), data.aggregate.fresh1D < data.aggregate.total ? `1D -- means no fresh ${live ? "" : "delayed "}quote; those holdings are not counted` : ""].filter(Boolean).join(" | "),

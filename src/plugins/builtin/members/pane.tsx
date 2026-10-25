@@ -14,7 +14,7 @@ import { nextHeaderSort, type SortPreference } from "../../../utils/sort-values"
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
 import { useMembersMenu, type MemberList } from "../shared/members-menu";
 import { cachedChanges, cachedFunds, cachedMembers, loadChanges, loadFunds, loadMembers } from "./client";
-import { canonicalFund, changeColumns, changeLabel, changeReason, coverageText, coveredFund, decimal, DEFAULT_SORT, holdingsCaveats, isTab, memberColumns, memberRows, membersTitle, notCoveredMessage, percent, TABS, type MembersTab } from "./model";
+import { canonicalFund, changeColumns, changeLabel, changeReason, coverageText, coveredFund, decimal, DEFAULT_SORT, holdingsCaveats, isTab, memberColumns, memberRows, membersFeed, membersTitle, notCoveredMessage, percent, TABS, type MembersTab } from "./model";
 
 type ViewProps = Pick<PaneProps, "width" | "height" | "focused"> & { fund: string; active: boolean };
 const rowKey = (row: SectionedRow<FundMember>) => row.key;
@@ -48,25 +48,29 @@ function Holdings({ fund, tab, width, height, focused, active }: ViewProps & { t
   usePaneRefreshKey(() => void resource.reload(), { focused, enabled: active && !search.active });
   const info = useMemo<PaneFooterSegment[]>(() => {
     if (!data) return [];
-    const feed = data.access === "realtime" ? "live" : "15m delayed";
+    // Outside the regular session a Pro account's members are the session's close, so the footer names it, not "live".
+    const feed = membersFeed(data.access, resource.updatedAt ?? Date.now());
+    const feedText = feed.kind === "close" ? feed.label : feed.kind === "live" ? "live" : "15m delayed";
     const dates = [...new Set(data.members.flatMap((row) => row.changePercent !== null && row.dailyAsOf ? [row.dailyAsOf.slice(0, 10)] : []))].sort();
     const date = dates.length === 1 ? dates[0] : dates.length ? `${dates[0]} to ${dates.at(-1)}` : data.fundDailyAsOf?.slice(0, 10);
+    // The close names its own date, so a quote date that is the same day is not said twice.
+    const dateSaid = feed.kind === "close" && dates.length === 1 && dates[0] === feed.date;
     const partial = data.aggregate.fresh1D < data.aggregate.total;
     return [
       { id: "coverage", parts: [{ text: coverageText(data.aggregate, width < 60), tone: partial ? "warning" : "muted" }] },
       // A capture's status line says the quotes' date and delay too; it does not say returns are unavailable.
       ...(data.quotesUnavailable
-        ? [{ id: "quote-date", title: `${date ?? "Quote date unavailable"} · ${feed} · holdings ${data.asOf}`, parts: [{ text: "returns unavailable", tone: "muted" as const }] }]
+        ? [{ id: "quote-date", title: `${date ?? "Quote date unavailable"} · ${feedText} · holdings ${data.asOf}`, parts: [{ text: "returns unavailable", tone: "muted" as const }] }]
         : [
-          data.access === "realtime"
-            ? { id: "quote-live", quoteStatus: true, parts: [{ text: "live", tone: "positive" as const }] }
+          feed.kind === "live" ? { id: "quote-live", quoteStatus: true, parts: [{ text: "live", tone: "positive" as const }] }
+            : feed.kind === "close" ? { id: "quote-close", title: `${feed.label} · holdings ${data.asOf}`, quoteStatus: true, parts: [{ text: feed.label, tone: "muted" as const }] }
             : delayedFooterSegment({ id: "quote-delay", detail: "15m delayed", delay: "15m", quoteStatus: true }),
-          ...(date ? [{ id: "quote-date", title: `${date} · ${feed} · holdings ${data.asOf}`, quoteStatus: true,
+          ...(date && !dateSaid ? [{ id: "quote-date", title: `${date} · ${feedText} · holdings ${data.asOf}`, quoteStatus: true,
             parts: [{ text: width < 60 && dates.length === 1 ? date.slice(5) : date, tone: "muted" as const }] }] : []),
         ]),
       ...(width >= 60 ? [{ id: "holdings-date", asOf: true, parts: [{ text: `holdings ${data.asOf}`, tone: "muted" as const }] }] : []),
     ];
-  }, [data, width]);
+  }, [data, resource.updatedAt, width]);
   usePaneStatusFooter({ registrationId: "members:status", loading: !!data && resource.loading,
     stale: !!data && (data.stale || resource.data!.stale || !!resource.error), info });
   usePaneNoticeFooter({ registrationId: "members:notices", focused, notices: [

@@ -2,7 +2,9 @@ import type { FundChange, FundMember, FundMembersPayload, MemberFundsPayload } f
 import type { DataTableColumn } from "../../../components";
 import { buildSectionedRows, type SectionedRow } from "../../../components/data-table/sections";
 import { getTableWidth } from "../../../components/ui/table-layout";
+import { isRegularSessionTime, latestRegularSessionClose } from "../../../market-data/market/freshness";
 import { compareSortValues, type SortPreference } from "../../../utils/sort-values";
+import { closeLabel } from "../themes/model";
 export type MembersTab = "members" | "movers" | "changes" | "breadth";
 export const TABS = [{ value: "members", label: "Members" }, { value: "movers", label: "Movers" }, { value: "changes", label: "Changes" }, { value: "breadth", label: "Breadth" }];
 export const isTab = (value: unknown): value is MembersTab => TABS.some((tab) => tab.value === value);
@@ -29,6 +31,17 @@ export function notCoveredMessage(input: string, funds: MemberFundsPayload["fund
 export function coverageText(aggregate: FundMembersPayload["aggregate"], short = false) {
   const partial = aggregate.fresh1D < aggregate.total;
   return `${partial && !short ? "Partial " : ""}1D ${aggregate.fresh1D}/${aggregate.total} · ${decimal(aggregate.coveredWeight * 100, 1)}% wt`;
+}
+/**
+ * What a fund's member quotes are, as read at `readAt`. A Pro account's are live while the regular US session
+ * trades; outside it the server prices the members from the last completed session, so they are that session's
+ * close (`Fri 23 Oct close`), as THEM names it, never live. Everyone else's are 15 minutes delayed, in or out of
+ * a session. Hours that cannot be told read as live.
+ */
+export function membersFeed(access: FundMembersPayload["access"], readAt: number): { kind: "live" | "delayed" } | { kind: "close"; date: string; closedAt: number; label: string } {
+  if (access !== "realtime") return { kind: "delayed" };
+  const close = isRegularSessionTime("NYSE", readAt) === false ? latestRegularSessionClose("NYSE", readAt) : null;
+  return close ? { kind: "close", date: close.date, closedAt: close.close, label: closeLabel(close.date) } : { kind: "live" };
 }
 /** "S&P 500, IVV holdings as of 2026-10-08 (for SPY)": the holdings file the members come from. */
 export function holdingsSourceText(input: string, data: Pick<FundMembersPayload, "fund" | "asOf">) {
