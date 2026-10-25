@@ -1,0 +1,157 @@
+{
+  "baselineSha": "5ce0c7c5a08ec2eabc738a6789d5e8d9e9c80db4",
+  "headSha": "b696464db5f7c2ce06d1bc0d50400d0fab518102",
+  "singleLockedRun": true,
+  "navigation": {
+    "exitCode": 1,
+    "alternatingRunsPerSide": {
+      "baseline": 5,
+      "head": 5
+    },
+    "completed": true,
+    "assessment": "inconclusive",
+    "reason": "The benchmark flagged slower navigation and more redrawn cells. Severe shared-host contention and wide variation within the head runs prevent attributing these differences to the change. This is not a passing performance result.",
+    "sourceModeUpdater": "Source launch disables update checks; the modified update-status display is inactive by source inspection. The recorder does not capture header state or rendered pane content.",
+    "redrawScope": "Renderer-wide cells per recorded frame, not isolated to the header or selected pane.",
+    "runs": {
+      "baseline": [
+        {
+          "run": 1,
+          "samples": 60,
+          "p50Ms": 12.84,
+          "p95Ms": 131.23,
+          "medianCellsUpdated": 92.0,
+          "sha256": "3f73d41a4d37acf5ca6fe5c98acbb40ecbd6ec6956fb5f3264a9a594fb6f2518"
+        },
+        {
+          "run": 2,
+          "samples": 60,
+          "p50Ms": 14.99,
+          "p95Ms": 162.99,
+          "medianCellsUpdated": 92.0,
+          "sha256": "a82ebb2dd37a0738194fd7278c74f08159808bdd363b545a0431cb4a7757bc16"
+        },
+        {
+          "run": 3,
+          "samples": 60,
+          "p50Ms": 14.26,
+          "p95Ms": 175.66,
+          "medianCellsUpdated": 92.0,
+          "sha256": "527e3851e9b81aeb8d0e7b4afeb2402f22fa1ca9cc56cf8b96b0845eb3ca7ece"
+        },
+        {
+          "run": 4,
+          "samples": 60,
+          "p50Ms": 13.11,
+          "p95Ms": 53.33,
+          "medianCellsUpdated": 92.0,
+          "sha256": "b38a6bf3346ba80ebb98ed045eb9697305599d8af59cdd328d29308cf9d7cfdd"
+        },
+        {
+          "run": 5,
+          "samples": 60,
+          "p50Ms": 12.45,
+          "p95Ms": 125.42,
+          "medianCellsUpdated": 92.0,
+          "sha256": "7b1197ebef470903461bae75d3299341981669d6ea18ae9295fc30d1bdc757c3"
+        }
+      ],
+      "head": [
+        {
+          "run": 1,
+          "samples": 60,
+          "p50Ms": 114.16,
+          "p95Ms": 204.5,
+          "medianCellsUpdated": 592.0,
+          "sha256": "35cad234f7cf54e36af900babe06e19576bb6cd60cb8df5d44b14ec19d77de27"
+        },
+        {
+          "run": 2,
+          "samples": 60,
+          "p50Ms": 13.51,
+          "p95Ms": 121.2,
+          "medianCellsUpdated": 92.0,
+          "sha256": "842ad7161770ccf74a2fc701e5f6baf36ded75c26f1d53c283f657fb1d6e9b69"
+        },
+        {
+          "run": 3,
+          "samples": 60,
+          "p50Ms": 21.07,
+          "p95Ms": 204.36,
+          "medianCellsUpdated": 92,
+          "sha256": "a20198876351d22c9185b6a041a01a6bef69f90d1cab5378f313b085fbc10fc1"
+        },
+        {
+          "run": 4,
+          "samples": 60,
+          "p50Ms": 51.79,
+          "p95Ms": 212.5,
+          "medianCellsUpdated": 412,
+          "sha256": "c1f0ed844adc74f9660e703ddf3e5b072816a2ed6bb87e00c7de95c166440519"
+        },
+        {
+          "run": 5,
+          "samples": 60,
+          "p50Ms": 124.79,
+          "p95Ms": 238.46,
+          "medianCellsUpdated": 659,
+          "sha256": "9dec32eb9725b152737ad1ac01bb44512172ea1ab8dc93038488db6a90354d80"
+        }
+      ]
+    },
+    "observedMedians": {
+      "baseline": {
+        "p50Ms": 13.11,
+        "p95Ms": 131.23,
+        "medianCellsUpdated": 92.0
+      },
+      "head": {
+        "p50Ms": 51.79,
+        "p95Ms": 204.5,
+        "medianCellsUpdated": 412
+      }
+    },
+    "gateFlaggedSlower": true,
+    "redrawCountChanged": true
+  },
+  "memory": {
+    "before": {
+      "exitCode": 0,
+      "completed": true,
+      "tickers": 120,
+      "startHeapMiB": 109.76,
+      "endHeapMiB": 169.24,
+      "lateMiBPerTicker": 0.02,
+      "maxLateMiBPerTicker": 0.3,
+      "withinLateSlopeBudget": true
+    },
+    "after": {
+      "exitCode": 0,
+      "completed": true,
+      "tickers": 120,
+      "startHeapMiB": 109.28,
+      "endHeapMiB": 170.9,
+      "lateMiBPerTicker": 0.04,
+      "maxLateMiBPerTicker": 0.3,
+      "withinLateSlopeBudget": true
+    }
+  },
+  "execution": {
+    "runnerNice": 19,
+    "observedAppCount": 12,
+    "allObservedAppsNice19": true,
+    "sharedSupervisorLockHeld": true,
+    "hostContentionObserved": true,
+    "logicalCpus": 12,
+    "oneMinuteLoadAverage": {
+      "minimum": 33.14,
+      "median": 59.86,
+      "maximum": 112.34
+    },
+    "medianCpuIdlePercent": 1.0
+  },
+  "limitations": [
+    "Navigation timing and redraw causality remain unverified.",
+    "The memory check covers 120 ticker navigations and the slope after 72; it does not establish long-term leak absence."
+  ]
+}

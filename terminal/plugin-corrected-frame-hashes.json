@@ -1,0 +1,170 @@
+[
+  {
+    "pane": "adjacent",
+    "width": 80,
+    "same": true,
+    "beforeSha256": "67fc09482320f16f76ae0285080b1e97b7e9f2f957c846d1128e886c5eb83cc0",
+    "afterSha256": "67fc09482320f16f76ae0285080b1e97b7e9f2f957c846d1128e886c5eb83cc0"
+  },
+  {
+    "pane": "adjacent",
+    "width": 160,
+    "same": true,
+    "beforeSha256": "561b270e65d537d6871bec7faa85148bee1556f5f57eb540582df80831fee8d3",
+    "afterSha256": "561b270e65d537d6871bec7faa85148bee1556f5f57eb540582df80831fee8d3"
+  },
+  {
+    "pane": "ai-screener",
+    "width": 80,
+    "same": true,
+    "beforeSha256": "7e1fc73f682c64c52b59a786c99fe9f762ae69ac782610eece577a97a37c3a1a",
+    "afterSha256": "7e1fc73f682c64c52b59a786c99fe9f762ae69ac782610eece577a97a37c3a1a"
+  },
+  {
+    "pane": "ai-screener",
+    "width": 160,
+    "same": true,
+    "beforeSha256": "866752323bfc0b16e4ab48a985e8c9ec13d8feb6e5717db2bd925a5f367710eb",
+    "afterSha256": "866752323bfc0b16e4ab48a985e8c9ec13d8feb6e5717db2bd925a5f367710eb"
+  },
+  {
+    "pane": "crypto-fear-greed",
+    "width": 80,
+    "same": true,
+    "beforeSha256": "57d993732d527ea8bb1134cd25fd3eaf0cc9e135fc21e4b4be9d9eb52e1b80ae",
+    "afterSha256": "57d993732d527ea8bb1134cd25fd3eaf0cc9e135fc21e4b4be9d9eb52e1b80ae"
+  },
+  {
+    "pane": "crypto-fear-greed",
+    "width": 160,
+    "same": true,
+    "beforeSha256": "453cde6fb8b84303e05089d3f947c6031135f86a3a5c0fee7f22c2f008dadfed",
+    "afterSha256": "453cde6fb8b84303e05089d3f947c6031135f86a3a5c0fee7f22c2f008dadfed"
+  },
+  {
+    "pane": "fxmacrodata-research",
+    "width": 80,
+    "same": true,
+    "beforeSha256": "c8a94386ac130abe2ba3aa6309db651860b52032c09d960405ffd48dc523d1ef",
+    "afterSha256": "c8a94386ac130abe2ba3aa6309db651860b52032c09d960405ffd48dc523d1ef"
+  },
+  {
+    "pane": "fxmacrodata-research",
+    "width": 160,
+    "same": false,
+    "beforeSha256": null,
+    "afterSha256": "cdca5f1ca4586e5d8c98d36187758492586efad4b1aec0cb8ce2ba401139a139"
+  },
+  {
+    "pane": "growthepie",
+    "width": 80,
+    "same": true,
+    "beforeSha256": "58a6e70dbe6d8a2706eebe372c0b1ad491160be33290b25c0d4de9c0d0f17df3",
+    "afterSha256": "58a6e70dbe6d8a2706eebe372c0b1ad491160be33290b25c0d4de9c0d0f17df3"
+  },
+  {
+    "pane": "growthepie",
+    "width": 160,
+    "same": true,
+    "beforeSha256": "74f035c62de5f90719bf36f6dfc61ed3d5487fb7899a124cb916c382720b704b",
+    "afterSha256": "74f035c62de5f90719bf36f6dfc61ed3d5487fb7899a124cb916c382720b704b"
+  },
+  {
+    "pane": "hackernews",
+    "width": 80,
+    "same": true,
+    "beforeSha256": "02e40f644a8784bc47b685b85403ec6ce7bf3a34eebb602917002c6c93538ee8",
+    "afterSha256": "02e40f644a8784bc47b685b85403ec6ce7bf3a34eebb602917002c6c93538ee8"
+  },
+  {
+    "pane": "hackernews",
+    "width": 160,
+    "same": true,
+    "beforeSha256": "67876195627da6c5e1ce5be5a4fc45de06fd511009806e793def51684b596ce2",
+    "afterSha256": "67876195627da6c5e1ce5be5a4fc45de06fd511009806e793def51684b596ce2"
+  },
+  {
+    "pane": "ibkr-trading",
+    "width": 80,
+    "same": true,
+    "beforeSha256": "3e99fe85c9f6939b5b1c376d3abef3bad4da310267d098e3e64b92241c3a3197",
+    "afterSha256": "3e99fe85c9f6939b5b1c376d3abef3bad4da310267d098e3e64b92241c3a3197"
+  },
+  {
+    "pane": "ibkr-trading",
+    "width": 160,
+    "same": true,
+    "beforeSha256": "6d385e7cf09dfc4839c1ba2eec2ce36050c99adebb894c8dd11d45a77651e705",
+    "afterSha256": "6d385e7cf09dfc4839c1ba2eec2ce36050c99adebb894c8dd11d45a77651e705"
+  },
+  {
+    "pane": "local-agent-workspace",
+    "width": 80,
+    "same": true,
+    "beforeSha256": "1fc96f9debd6a2b29c8cd39c2ba11f7f805095d4c32414fb1b40cda4c6c3cb1a",
+    "afterSha256": "1fc96f9debd6a2b29c8cd39c2ba11f7f805095d4c32414fb1b40cda4c6c3cb1a"
+  },
+  {
+    "pane": "local-agent-workspace",
+    "width": 160,
+    "same": true,
+    "beforeSha256": "65a20f8e6aa3d8e79073fc4d42843bfb494dce8957b7e8d47a5375251ba6ae29",
+    "afterSha256": "65a20f8e6aa3d8e79073fc4d42843bfb494dce8957b7e8d47a5375251ba6ae29"
+  },
+  {
+    "pane": "macro-tv",
+    "width": 80,
+    "same": true,
+    "beforeSha256": "274ccc6e5fd5763bf17a24bd9c79abde20d03b848a7ff039c531f396f3ade778",
+    "afterSha256": "274ccc6e5fd5763bf17a24bd9c79abde20d03b848a7ff039c531f396f3ade778"
+  },
+  {
+    "pane": "macro-tv",
+    "width": 160,
+    "same": true,
+    "beforeSha256": "448a8e81664c2d7cccfb397c579690fbe5ea423685de870e2d6b6be8b728e7d2",
+    "afterSha256": "448a8e81664c2d7cccfb397c579690fbe5ea423685de870e2d6b6be8b728e7d2"
+  },
+  {
+    "pane": "polls",
+    "width": 80,
+    "same": true,
+    "beforeSha256": "fbf56da49d25cb24f6c696c8c998db5436eb55fc0337071523b2f02f0fbfbe97",
+    "afterSha256": "fbf56da49d25cb24f6c696c8c998db5436eb55fc0337071523b2f02f0fbfbe97"
+  },
+  {
+    "pane": "polls",
+    "width": 160,
+    "same": true,
+    "beforeSha256": "24ad03eea83b884225d6e08a01029210ef522d6aba9a8292d9ea995da765d37c",
+    "afterSha256": "24ad03eea83b884225d6e08a01029210ef522d6aba9a8292d9ea995da765d37c"
+  },
+  {
+    "pane": "prediction-markets",
+    "width": 80,
+    "same": true,
+    "beforeSha256": "4c7f35cd0ea7cde80a07b115ba9bf6c1e28061e518505be441d09685b3d909f6",
+    "afterSha256": "4c7f35cd0ea7cde80a07b115ba9bf6c1e28061e518505be441d09685b3d909f6"
+  },
+  {
+    "pane": "prediction-markets",
+    "width": 160,
+    "same": true,
+    "beforeSha256": "426d2dde71dd0c58cd95712eead081d5b64465340c0163a53f1b485c6d315ad1",
+    "afterSha256": "426d2dde71dd0c58cd95712eead081d5b64465340c0163a53f1b485c6d315ad1"
+  },
+  {
+    "pane": "substack",
+    "width": 80,
+    "same": true,
+    "beforeSha256": "d522df44a3876ab3bd1628b0ee2775f33914884b26caea965770a4d3176a0405",
+    "afterSha256": "d522df44a3876ab3bd1628b0ee2775f33914884b26caea965770a4d3176a0405"
+  },
+  {
+    "pane": "substack",
+    "width": 160,
+    "same": true,
+    "beforeSha256": "782b571a64144c2babc6aeb56ae9b452634fec88b6d8a965f4dea934e1a0e6d5",
+    "afterSha256": "782b571a64144c2babc6aeb56ae9b452634fec88b6d8a965f4dea934e1a0e6d5"
+  }
+]

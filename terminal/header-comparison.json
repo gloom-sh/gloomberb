@@ -1,0 +1,63 @@
+{
+  "baseline": "5ce0c7c5a08ec2eabc738a6789d5e8d9e9c80db4",
+  "totalFrames": 48,
+  "changedFrames": 10,
+  "changes": [
+    [
+      "white",
+      "downloading",
+      60
+    ],
+    [
+      "white",
+      "downloading",
+      80
+    ],
+    [
+      "white",
+      "ready",
+      60
+    ],
+    [
+      "white",
+      "ready",
+      80
+    ],
+    [
+      "white",
+      "failed",
+      60
+    ],
+    [
+      "paper",
+      "downloading",
+      60
+    ],
+    [
+      "paper",
+      "downloading",
+      80
+    ],
+    [
+      "paper",
+      "ready",
+      60
+    ],
+    [
+      "paper",
+      "ready",
+      80
+    ],
+    [
+      "paper",
+      "failed",
+      60
+    ]
+  ],
+  "alreadyFixedOnBaseline": [
+    "Help and market summary remain unobstructed",
+    "Failed update has compact signal at 80 columns",
+    "Transient update notice is clipped",
+    "Restart callback button fits at all four widths"
+  ]
+}

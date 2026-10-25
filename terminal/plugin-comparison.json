@@ -1,0 +1,162 @@
+{
+  "baselineSha": "5ce0c7c5a08ec2eabc738a6789d5e8d9e9c80db4",
+  "headSha": "b696464db5f7c2ce06d1bc0d50400d0fab518102",
+  "externalPackages": 16,
+  "rootPanes": 12,
+  "widths": [
+    80,
+    160
+  ],
+  "height": 24,
+  "retainedPairs": 24,
+  "byteIdenticalRetainedPairs": 24,
+  "perPairProvenance": "20 exact original pairs plus four exact pairs from a separately paired fixed-spinner capture. Each retained before and after comes from the same run.",
+  "originalRun": {
+    "comparedPairs": 24,
+    "byteIdenticalPairs": 20,
+    "spinnerPhaseOnlyPairs": 4,
+    "exitCodes": {
+      "before": 0,
+      "after": 0
+    },
+    "comparisonSha256": "ec572e8e2fa82374709551fee79eb167108a8b34bc987bca29158f6da14af580",
+    "frameHashManifestSha256": "35f31005580d1d1b41adb9cb45e6b6d8339191132229ef7702f66e4341ff5a60"
+  },
+  "fixedSpinnerRun": {
+    "attemptedPairs": 24,
+    "matchedPairs": 23,
+    "byteIdenticalPairs": 23,
+    "baselineFrames": 23,
+    "headFrames": 24,
+    "exitCodes": {
+      "before": 1,
+      "after": 0
+    },
+    "complete": false,
+    "sharedSpinnerFrame": 0,
+    "comparisonSha256": "8df396195f31e95c36ffce180a02f55d812dc5a48862cf613e10c7e668a8eb7c",
+    "frameHashManifestSha256": "3177105e2a022476d0470fcb91ae43370d03f7d42064b2990359f53eeb2eb99c",
+    "missingVariants": [
+      {
+        "pane": "fxmacrodata-research",
+        "width": 160,
+        "side": "before",
+        "reason": "Test exceeded its 10000 ms timeout; no corrected baseline frame was captured. The original paired variant was already byte-identical and is retained with original-run provenance."
+      }
+    ]
+  },
+  "comparisonMethod": "Exact SHA256 and direct equality of unmodified captured character strings. Spinner control applies before rendering only; captured output is never normalized.",
+  "scope": "Offline signed-out root panes. Styling spans, signed-in states, detail tabs, chart bitmap pixels, and loaded data for panes that remained loading are outside this coverage.",
+  "inventory": [
+    {
+      "id": "adjacent-indices",
+      "status": "root-panes",
+      "rootPanes": [
+        "adjacent"
+      ]
+    },
+    {
+      "id": "hackernews",
+      "status": "root-panes",
+      "rootPanes": [
+        "hackernews"
+      ]
+    },
+    {
+      "id": "crypto-fear-greed",
+      "status": "root-panes",
+      "rootPanes": [
+        "crypto-fear-greed"
+      ]
+    },
+    {
+      "id": "ibkr-gateway",
+      "status": "root-panes",
+      "rootPanes": [
+        "ibkr-trading"
+      ]
+    },
+    {
+      "id": "ibkr",
+      "status": "no-root-pane",
+      "rootPanes": []
+    },
+    {
+      "id": "substack",
+      "status": "root-panes",
+      "rootPanes": [
+        "substack"
+      ]
+    },
+    {
+      "id": "byok-ai",
+      "status": "root-panes",
+      "rootPanes": [
+        "local-agent-workspace",
+        "ai-screener"
+      ]
+    },
+    {
+      "id": "growthepie",
+      "status": "root-panes",
+      "rootPanes": [
+        "growthepie"
+      ]
+    },
+    {
+      "id": "polls",
+      "status": "root-panes",
+      "rootPanes": [
+        "polls"
+      ]
+    },
+    {
+      "id": "prediction-markets",
+      "status": "root-panes",
+      "rootPanes": [
+        "prediction-markets"
+      ]
+    },
+    {
+      "id": "public",
+      "status": "no-root-pane",
+      "rootPanes": []
+    },
+    {
+      "id": "robinhood",
+      "status": "no-root-pane",
+      "rootPanes": []
+    },
+    {
+      "id": "simplefin",
+      "status": "no-root-pane",
+      "rootPanes": []
+    },
+    {
+      "id": "tv",
+      "status": "root-panes",
+      "rootPanes": [
+        "macro-tv"
+      ]
+    },
+    {
+      "id": "fxmacrodata",
+      "status": "root-panes",
+      "rootPanes": [
+        "fxmacrodata-research"
+      ]
+    },
+    {
+      "id": "alpaca-data",
+      "status": "no-root-pane",
+      "rootPanes": []
+    }
+  ],
+  "alreadyCoveredAsBuiltIn": [
+    "fear-greed",
+    "ipo-calendar",
+    "market-halts",
+    "market-heatmap"
+  ],
+  "rawFramesPublished": false
+}

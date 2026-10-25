@@ -1,0 +1,9 @@
+{
+  "baselineWorktreeRemoved": true,
+  "ownedPerformanceSmokeProfilesRemoved": true,
+  "originalTerminalPluginSmokeRemoved": true,
+  "privateTmuxServerStopped": true,
+  "ownedAppProcessCount": 0,
+  "runnerAndRawEvidenceArchivedLocally": true,
+  "sharedUiEvidenceUntouched": true
+}

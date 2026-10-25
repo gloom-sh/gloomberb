@@ -1,0 +1,22 @@
+{
+  "baseline": "5ce0c7c5a08ec2eabc738a6789d5e8d9e9c80db4",
+  "head": "b696464db5f7c2ce06d1bc0d50400d0fab518102",
+  "builtinPanes": 122,
+  "widths": [
+    80,
+    160
+  ],
+  "rows": 24,
+  "beforeFrames": 244,
+  "afterFrames": 244,
+  "changedFrames": 0,
+  "renderErrorCards": 0,
+  "comparison": "Exact UTF-8 character-frame bytes; SHA-256 per frame in pane-frame-hashes.json.",
+  "fixture": "Actual built-in root PaneContent and TestPaneFrame; fixed clock; offline network transports; fixed spinner; seeded Notes. Requests are kept pending. Pane chunks run separately; the perpetual-market root runs alone to avoid elapsed request deadlines from earlier roots.",
+  "limits": [
+    "No signed-in account or live market data",
+    "Root states only; not every detail or tab",
+    "External-plugin terminal roots are not included",
+    "Character frames do not include kitty bitmap pixels or style attributes; the header captures include styled spans and the all-pane DOM benchmark covers visual styles"
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "runtimeWarningMatches": [],
+  "checks": [
+    "App launched in tmux at 120 columns",
+    "Command bar opened with Ctrl+P",
+    "App resized to 80, 60, 160 columns",
+    "Help opened with ? at 160 columns"
+  ],
+  "cleanup": {
+    "tmuxSessionRemoved": true,
+    "smokeProfileRemoved": true
+  }
+}
