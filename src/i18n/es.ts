@@ -1345,7 +1345,7 @@ export const es: Record<string, string> = {
   "Free: 12h delayed. Pro: real-time.": "Gratis: 12 h de retraso. Pro: tiempo real.",
   "GLOOM CLOUD": "GLOOM CLOUD",
   "GLOOM CLOUD PRO": "GLOOM CLOUD PRO",
-  "GLOOMBERB SETUP": "CONFIGURACIÓN DE GLOOMBERB",
+  "GLOOM SETUP": "CONFIGURACIÓN DE GLOOM",
   "Gloom Cloud is connected": "Gloom Cloud está conectado",
   "How do you want to start?": "¿Cómo quieres empezar?",
   "Imported {count} positions from {broker}. Your workspace is ready to explore.": "Se importaron {count} posiciones de {broker}. Tu espacio de trabajo está listo para explorar.",

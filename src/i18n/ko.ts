@@ -1331,7 +1331,7 @@ export const ko: Record<string, string> = {
   "Free: 12h delayed. Pro: real-time.": "무료: 12시간 지연. Pro: 실시간.",
   "GLOOM CLOUD": "GLOOM CLOUD",
   "GLOOM CLOUD PRO": "GLOOM CLOUD PRO",
-  "GLOOMBERB SETUP": "GLOOMBERB 설정",
+  "GLOOM SETUP": "GLOOM 설정",
   "Gloom Cloud is connected": "Gloom Cloud가 연결되었습니다",
   "How do you want to start?": "어떻게 시작하시겠어요?",
   "Imported {count} positions from {broker}. Your workspace is ready to explore.": "{broker}에서 {count}개 보유 종목을 가져왔습니다. 이제 작업 공간을 둘러볼 수 있습니다.",

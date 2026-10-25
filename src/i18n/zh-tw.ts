@@ -1333,7 +1333,7 @@ export const zhTW: Record<string, string> = {
   "Free: 12h delayed. Pro: real-time.": "免費：延遲 12 小時。Pro：即時。",
   "GLOOM CLOUD": "GLOOM CLOUD",
   "GLOOM CLOUD PRO": "GLOOM CLOUD PRO",
-  "GLOOMBERB SETUP": "GLOOMBERB 設定",
+  "GLOOM SETUP": "GLOOM 設定",
   "Gloom Cloud is connected": "Gloom Cloud 已連線",
   "How do you want to start?": "你想如何開始？",
   "Imported {count} positions from {broker}. Your workspace is ready to explore.": "已從 {broker} 匯入 {count} 個部位。你的工作區已準備好，可以開始探索。",

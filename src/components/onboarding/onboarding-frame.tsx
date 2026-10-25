@@ -343,7 +343,7 @@ export function OnboardingHeader({
   if (!desktop) {
     return (
       <Box height={1} flexDirection="row" justifyContent="space-between">
-        <Text fg={colors.textMuted}>{t("GLOOMBERB SETUP")}</Text>
+        <Text fg={colors.textMuted}>{t("GLOOM SETUP")}</Text>
         {showDismiss ? (
           <Button
             label={dismissing ? "Closing..." : "Skip setup"}

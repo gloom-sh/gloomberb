@@ -1333,7 +1333,7 @@ export const ja: Record<string, string> = {
   "Free: 12h delayed. Pro: real-time.": "無料：12時間遅延。Pro：リアルタイム。",
   "GLOOM CLOUD": "GLOOM CLOUD",
   "GLOOM CLOUD PRO": "GLOOM CLOUD PRO",
-  "GLOOMBERB SETUP": "GLOOMBERB セットアップ",
+  "GLOOM SETUP": "GLOOM セットアップ",
   "Gloom Cloud is connected": "Gloom Cloudに接続しました",
   "How do you want to start?": "どの方法で始めますか？",
   "Imported {count} positions from {broker}. Your workspace is ready to explore.": "{broker}から{count}件のポジションをインポートしました。ワークスペースの準備が整いました。",
