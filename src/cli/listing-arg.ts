@@ -623,15 +623,18 @@ async function quoteListings(
   dataProvider: DataProvider,
   listings: readonly CliListing[],
   refresh: boolean,
+  datesChangeBasis = false,
 ): Promise<Array<Quote | null>> {
   if (listings.length === 0) return [];
   const targets = listings.map((listing) => listing.request);
   if (dataProvider.getQuotesBatch) {
-    const results = await dataProvider.getQuotesBatch(targets, { forceRefresh: refresh }).catch(logFailure("cli.listing-arg", "Read listing quote batch failed", []));
+    const results = await dataProvider.getQuotesBatch(targets, { forceRefresh: refresh, ...(datesChangeBasis ? { datesChangeBasis } : {}) })
+      .catch(logFailure("cli.listing-arg", "Read listing quote batch failed", []));
     return targets.map((target, index) => (results.find((result) => result.target === target) ?? results[index])?.quote ?? null);
   }
   return Promise.all(targets.map((target) => dataProvider.getQuote(target.symbol, target.exchange, {
     cacheMode: refresh ? "refresh" : "default",
+    ...(datesChangeBasis ? { datesChangeBasis } : {}),
   }).catch(logFailure("cli.listing-arg", "Read listing quote failed", null))));
 }
 
@@ -663,7 +666,7 @@ export async function quoteBareListing(
   listing: CliListing,
   deps: ListingDeps,
   request: ListingDataRequest,
-  { refresh = false }: { refresh?: boolean } = {},
+  { refresh = false, datesChangeBasis = false }: { refresh?: boolean; datesChangeBasis?: boolean } = {},
 ): Promise<BareListingQuote | null> {
   const venues = await bareListingVenues(listing, deps);
   if (!venues) return null;
@@ -674,10 +677,10 @@ export async function quoteBareListing(
   const first = [namedListing(listing, venues.exchange)];
   const rest = venues.others.map((venue) => namedListing(listing, venue.exchange));
   let tried = first;
-  let quotes = await quoteListings(deps.dataProvider, first, refresh);
+  let quotes = await quoteListings(deps.dataProvider, first, refresh, datesChangeBasis);
   if (!quotes[0] && rest.length > 0) {
     tried = [...first, ...rest];
-    quotes = [...quotes, ...await quoteListings(deps.dataProvider, rest, refresh)];
+    quotes = [...quotes, ...await quoteListings(deps.dataProvider, rest, refresh, datesChangeBasis)];
   }
   const found = quotes.findIndex(Boolean);
   if (found < 0) {

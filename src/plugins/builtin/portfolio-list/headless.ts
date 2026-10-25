@@ -291,7 +291,7 @@ async function portfolioHoldings(
   const futuresHeld = tickers.filter((ticker) => isFuturesTicker(ticker)
     && ticker.metadata.positions.some((position) => position.portfolio === target.id && position.shares !== 0));
   const [quotes, futures, purchaseDateFx] = await Promise.all([
-    loadCollectionQuotes(tickers, target, ctx.marketData),
+    loadCollectionQuotes(tickers, target, ctx.marketData, { datesChangeBasis: basis === "regular-close" }),
     loadPortfolioFuturesTerms(futuresHeld, {
       settlement: basis === "regular-close",
       sources: { history: dailyFuturesHistory(ctx.marketData) },

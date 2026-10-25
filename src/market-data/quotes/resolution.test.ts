@@ -711,6 +711,12 @@ test("a previous close's day travels with that close through ticks and resolutio
   const monday = mergeQuoteContribution(ticked, { ...cloud, previousCloseDate: undefined, previousClose: 40.33,
     changeSessionDate: "2026-10-26", lastUpdated: Date.parse("2026-10-26T09:00:00Z") });
   expect(monday.previousCloseDate).toBeUndefined();
+  // A flat Friday: Monday moves from the same close, and a source that names no session still starts a new day.
+  const { changeSessionDate: _session, ...undeclared } = ticked;
+  const flat = mergeQuoteContribution(undeclared, { ...cloud, changeSessionDate: undefined, previousCloseDate: undefined,
+    lastUpdated: Date.parse("2026-10-26T09:00:00Z") });
+  expect(flat.previousClose).toBe(38.885);
+  expect(flat.previousCloseDate).toBeUndefined();
 });
 
 test("crypto stays open when the tape omits the session or copies an equity close", () => {

@@ -1,11 +1,11 @@
+import type { MarketDataRequestContext } from "../../types/data-provider";
 import type { PricePoint, Quote } from "../../types/financials";
-import { settleWithin } from "../../utils/async-deadline";
+import { abortable, settleWithin, withDeadline } from "../../utils/async-deadline";
 import { canonicalExchange } from "../../utils/exchanges";
 import { logFailure } from "../../utils/log-failure";
 import { dailyBarDate } from "../../utils/price-history";
 import { classifyInstrumentType } from "../../tickers/instrument-kind";
-import { isFuturesInstrument } from "../futures-contract";
-import { changeBasisSessionDate, quoteChangeBasis } from "./change-basis";
+import { changeBasisSessionDate, isChangeBasisDatedWithoutCloses, quoteChangeBasis } from "./change-basis";
 
 /** History closes come as float32 (30.93000030517578) where the quote says 30.93: one close. */
 const SAME_CLOSE_RELATIVE = 1e-5;
@@ -18,19 +18,35 @@ const UNDATED_RETRY_MS = 10 * 60_000;
 const MAX_READINGS = 2_000;
 /** Daily histories read at once. */
 const MAX_READS_IN_FLIGHT = 6;
+/** How long one read may take before its slot goes to the next: a hung read must not stall the rest. */
+const READ_DEADLINE_MS = 10_000;
 
-/** The listing a quote was asked for, as its daily closes are read. */
+/** The listing a quote was asked for, as its daily closes are read: its context names a broker's contract. */
 export interface DatedCloseListing {
   symbol: string;
   exchange: string;
+  context?: MarketDataRequestContext;
 }
 
 /** A listing's recent daily closes (a month is enough). */
 export type ReadDailyCloses = (listing: DatedCloseListing) => Promise<readonly Pick<PricePoint, "date" | "close">[]>;
 
+export interface PreviousCloseDatesOptions {
+  /** Called with the latest copy of a quote, dated, when a read lands that names its day. */
+  onDated?: (listing: DatedCloseListing, quote: Quote) => void;
+  now?: () => number;
+  maxReadsInFlight?: number;
+  readDeadlineMs?: number;
+}
+
 interface Reading {
   date: string | null;
   at: number;
+}
+
+/** One listing whatever spelling of its exchange a request used. */
+export function datedCloseListingKey(listing: DatedCloseListing): string {
+  return `${listing.symbol.trim().toUpperCase()}|${canonicalExchange(listing.exchange)}`;
 }
 
 function sameClose(left: number, right: number): boolean {
@@ -40,18 +56,18 @@ function sameClose(left: number, right: number): boolean {
 /**
  * What dates a quote's previous close by its listing's daily closes: the
  * listing, the session the move is dated to and the close itself. Null for a
- * quote whose basis is dated already (a venue calendar, a coin's UTC day, a
- * close the source dated) or that has no move from a previous close. A
- * future or an option, whose chain would read a history per contract, is
- * left as it is.
+ * quote something else dates (its venue's calendar, a coin's UTC day, a
+ * future's terms, a close the source dated), one with no move from a previous
+ * close, and an option, whose chain would read a history per contract. The
+ * venue's calendar is checked first, since this runs on every tick.
  */
-function readingKey(quote: Quote | null | undefined, listing: DatedCloseListing): string | null {
-  if (!quote || isFuturesInstrument(quote.symbol, quote.instrumentType) || classifyInstrumentType(quote.instrumentType) === "option") return null;
+function readingKey(quote: Quote | null | undefined, listing: DatedCloseListing, now: number): string | null {
+  if (!quote || isChangeBasisDatedWithoutCloses(quote, now) || classifyInstrumentType(quote.instrumentType) === "option") return null;
   if (quoteChangeBasis(quote)?.kind !== "previous close") return null;
   const previousClose = quote.previousClose;
   const sessionDate = changeBasisSessionDate(quote);
   if (previousClose == null || !Number.isFinite(previousClose) || !sessionDate) return null;
-  return [listing.symbol.trim().toUpperCase(), canonicalExchange(listing.exchange), sessionDate, previousClose].join("|");
+  return `${datedCloseListingKey(listing)}|${sessionDate}|${previousClose}`;
 }
 
 /**
@@ -82,47 +98,60 @@ function withDate<T extends Quote | null | undefined>(quote: T, date: string | n
  * own daily closes, so every surface that reads quotes through the app's
  * quote router names the day (`quoteChangeBasis`). The closes are read once
  * per listing, session and close, and the answer is kept: a refresh, a tick
- * or a cached read of the same quote is dated without another read.
+ * or a cached read of the same quote is dated without another read. A few
+ * reads run at once, each for at most ten seconds.
  */
 export class PreviousCloseDates {
   private readonly readings = new Map<string, Reading>();
   private readonly pending = new Map<string, Promise<string | null>>();
+  /** The latest copy of each quote a read is pending for, which the read dates when it lands. */
+  private readonly latestCopies = new Map<string, { quote: Quote; listing: DatedCloseListing }>();
   private readonly waiting: Array<() => void> = [];
   private active = 0;
+  private readonly now: () => number;
+  private readonly maxReadsInFlight: number;
+  private readonly readDeadlineMs: number;
 
-  constructor(private readonly readCloses: ReadDailyCloses, private readonly now: () => number = () => Date.now()) {}
+  constructor(private readonly readCloses: ReadDailyCloses, private readonly options: PreviousCloseDatesOptions = {}) {
+    this.now = options.now ?? (() => Date.now());
+    this.maxReadsInFlight = options.maxReadsInFlight ?? MAX_READS_IN_FLIGHT;
+    this.readDeadlineMs = options.readDeadlineMs ?? READ_DEADLINE_MS;
+  }
 
   /** The quote dated by what was already read for it; as it was when nothing was. Never reads. */
   known<T extends Quote | null | undefined>(quote: T, listing: DatedCloseListing): T {
-    const key = readingKey(quote, listing);
+    const key = readingKey(quote, listing, this.now());
     return key ? withDate(quote, this.readings.get(key)?.date) : quote;
   }
 
   /**
-   * The quote dated by what was read already, starting the read when no
-   * reading for it stands: for a tick, which cannot wait, so the ticks after
-   * it are dated.
+   * The quote dated by what was already read for it, starting the read when
+   * no reading for it stands. Never waits: the read dates the copies after
+   * it, and `onDated` the latest one.
    */
   observe<T extends Quote | null | undefined>(quote: T, listing: DatedCloseListing): T {
-    const key = readingKey(quote, listing);
+    const key = readingKey(quote, listing, this.now());
     if (!key) return quote;
     const reading = this.readings.get(key);
-    if (!this.stands(reading)) void (this.pending.get(key) ?? this.read(key, quote!, listing));
+    if (!this.stands(reading)) void this.start(key, quote!, listing);
     return withDate(quote, reading?.date);
   }
 
   /**
-   * The quote dated by its listing's daily closes, read unless a reading for
-   * it stands. Waits at most `waitMs` for the read (to the end without): one
-   * that lands later dates the quote's next copy.
+   * Starts the reads these quotes need and waits for them, at most `waitMs`
+   * in all and no longer than `signal` lets it; `known` then dates them.
    */
-  async date<T extends Quote | null | undefined>(quote: T, listing: DatedCloseListing, waitMs?: number): Promise<T> {
-    const key = readingKey(quote, listing);
-    if (!key) return quote;
-    const reading = this.readings.get(key);
-    if (this.stands(reading)) return withDate(quote, reading!.date);
-    const read = this.pending.get(key) ?? this.read(key, quote!, listing);
-    return withDate(quote, waitMs == null ? await read : await settleWithin(read, waitMs));
+  async settle(
+    entries: ReadonlyArray<{ quote: Quote; listing: DatedCloseListing }>,
+    { waitMs, signal }: { waitMs: number; signal?: AbortSignal },
+  ): Promise<void> {
+    if (signal?.aborted) return;
+    const reads: Promise<string | null>[] = [];
+    for (const { quote, listing } of entries) {
+      const key = readingKey(quote, listing, this.now());
+      if (key && !this.stands(this.readings.get(key))) reads.push(this.start(key, quote, listing));
+    }
+    if (reads.length) await settleWithin(abortable(Promise.all(reads), signal, "Stopped waiting for daily closes"), waitMs);
   }
 
   /** Whether a reading answers without another read: a day it named, or no day named lately. */
@@ -130,8 +159,13 @@ export class PreviousCloseDates {
     return !!reading && (!!reading.date || this.now() - reading.at < UNDATED_RETRY_MS);
   }
 
+  private start(key: string, quote: Quote, listing: DatedCloseListing): Promise<string | null> {
+    this.latestCopies.set(key, { quote, listing });
+    return this.pending.get(key) ?? this.read(key, quote, listing);
+  }
+
   private read(key: string, quote: Quote, listing: DatedCloseListing): Promise<string | null> {
-    const read = this.inSlot(() => this.readCloses(listing))
+    const read = this.inSlot(() => withDeadline(Promise.resolve().then(() => this.readCloses(listing)), this.readDeadlineMs, "Reading daily closes timed out"))
       .then((points) => latestCloseBefore(points, quote))
       .catch(logFailure("market-data.dated-previous-close", "Read daily closes failed", null))
       .then((date) => {
@@ -139,6 +173,15 @@ export class PreviousCloseDates {
         this.readings.delete(key);
         if (this.readings.size >= MAX_READINGS) this.readings.delete(this.readings.keys().next().value!);
         this.readings.set(key, { date, at: this.now() });
+        const latest = this.latestCopies.get(key);
+        this.latestCopies.delete(key);
+        if (date && latest && this.options.onDated) {
+          try {
+            this.options.onDated(latest.listing, withDate(latest.quote, date));
+          } catch (error) {
+            logFailure("market-data.dated-previous-close", "Passing on a dated quote failed")(error);
+          }
+        }
         return date;
       });
     this.pending.set(key, read);
@@ -146,7 +189,7 @@ export class PreviousCloseDates {
   }
 
   private async inSlot<T>(work: () => Promise<T>): Promise<T> {
-    if (this.active < MAX_READS_IN_FLIGHT) this.active += 1;
+    if (this.active < this.maxReadsInFlight) this.active += 1;
     else await new Promise<void>((resolve) => this.waiting.push(resolve));
     try {
       return await work();

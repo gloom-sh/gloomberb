@@ -1494,7 +1494,8 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
 
     let financials: TickerFinancials | null = null;
     try {
-      financials = await dataProvider.getTickerFinancials(requestSymbol, exchange);
+      // The Change line says what the move is from.
+      financials = await dataProvider.getTickerFinancials(requestSymbol, exchange, { datesChangeBasis: true });
     } catch (error) {
       // A known exchange the symbol is not listed on: say where it is.
       await failIfNotTraded(listing, { store, dataProvider }, { fail: failCommand });

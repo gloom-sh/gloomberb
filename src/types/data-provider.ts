@@ -148,6 +148,12 @@ export interface MarketDataRequestContext {
   historySession?: "extended";
   /** The listing's company, from its own quote: an SEC lookup for a non-US listing checks the registrant against it. */
   listingName?: string;
+  /**
+   * The caller prints what the quote's move is from: a short-lived process
+   * (the CLI) waits briefly for the daily closes that date a previous close
+   * no venue calendar dates. The long-lived app dates every quote anyway.
+   */
+  datesChangeBasis?: boolean;
 }
 
 export interface CachedFinancialsTarget {
@@ -216,6 +222,8 @@ export interface QuoteBatchOptions {
   revalidate?: boolean;
   /** The caller stopped waiting; a transport that can abandon the request does. */
   signal?: AbortSignal;
+  /** The caller prints what each move is from (MarketDataRequestContext.datesChangeBasis). */
+  datesChangeBasis?: boolean;
 }
 
 export interface TickerFinancialsBatchResult {
@@ -244,7 +252,7 @@ export interface AssetDataProvider {
   primaryMarketSourceName?(): string | null | Promise<string | null>;
   getCachedFinancialsForTargets?(targets: CachedFinancialsTarget[], options?: { allowExpired?: boolean; includeStaleQuotes?: boolean }): Map<string, TickerFinancials> | Promise<Map<string, TickerFinancials>>;
   getQuotesBatch?(targets: QuoteSubscriptionTarget[], options?: QuoteBatchOptions): Promise<QuoteBatchResult[]>;
-  getTickerFinancialsBatch?(targets: CachedFinancialsTarget[], options?: { forceRefresh?: boolean }): Promise<TickerFinancialsBatchResult[]>;
+  getTickerFinancialsBatch?(targets: CachedFinancialsTarget[], options?: { forceRefresh?: boolean; datesChangeBasis?: boolean }): Promise<TickerFinancialsBatchResult[]>;
   getTickerFinancials(ticker: string, exchange?: string, context?: MarketDataRequestContext): Promise<TickerFinancials>;
   getQuote(ticker: string, exchange?: string, context?: MarketDataRequestContext): Promise<Quote>;
   /** Listing facts may outlive the quote price; this method never returns price/session values. */

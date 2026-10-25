@@ -36,6 +36,12 @@ function isOtherTradingDay(current: Quote, next: Quote): boolean {
   return currentDay !== null && nextDay !== null && nextDay !== currentDay;
 }
 
+/** Whether two observations are known to describe the same trading day. */
+function isSameTradingDay(current: Quote, next: Quote): boolean {
+  const currentDay = quoteTradingDay(current);
+  return currentDay !== null && currentDay === quoteTradingDay(next);
+}
+
 function inferQuoteProviderId(quote: Quote | QuoteContribution): string {
   if (quote.providerId?.trim()) return quote.providerId;
   return "quote";
@@ -234,11 +240,16 @@ export function mergeQuoteContribution(
     delete merged.previousClose;
     delete merged.previousCloseDate;
   }
-  // The day a previous close is from is said of that close: a tick that names none keeps it with the
-  // close, and another close that names none drops it.
+  // The day a previous close is from is said of that close and that session: a tick that names
+  // none keeps it while both are the same, and drops it otherwise. A close can repeat across
+  // sessions (a flat day), so the trading day decides, not the close alone.
   if (next.previousCloseDate === undefined) {
-    if (next.previousClose !== undefined && next.previousClose !== current.previousClose) delete merged.previousCloseDate;
-    else if (samePriceBasis && merged.previousClose === current.previousClose && current.previousCloseDate) merged.previousCloseDate = current.previousCloseDate;
+    const sameClose = next.previousClose === undefined || next.previousClose === current.previousClose;
+    if (samePriceBasis && sameClose && merged.previousClose === current.previousClose && current.previousCloseDate && isSameTradingDay(current, next)) {
+      merged.previousCloseDate = current.previousCloseDate;
+    } else {
+      delete merged.previousCloseDate;
+    }
   }
 
   if (isOtherTradingDay(current, next)) {

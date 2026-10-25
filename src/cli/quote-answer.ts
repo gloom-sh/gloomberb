@@ -77,6 +77,8 @@ export async function answerQuote(
   request: ListingDataRequest,
   refresh: boolean,
   venues: Promise<ListingVenue[]> | null,
+  /** The row prints what its move is from: a quote asked for again is dated too. */
+  { datesChangeBasis = false }: { datesChangeBasis?: boolean } = {},
 ): Promise<QuoteAnswer> {
   const root = listing.exchange ? null : indexRootFor(listing.symbol);
   // A bare root that quoted something else, such as MOVE (Corvex), points at the index too.
@@ -95,7 +97,7 @@ export async function answerQuote(
   const notTraded = await notTradedMessage(listing, market);
   if (notTraded) return { result, listing, failure: { message: notTraded, oneLine: notTraded }, notes: [] };
   if (!isNoProviderError(result.error)) return { result, listing, notes: [] };
-  const other = await quoteBareListing(listing, market, request, { refresh });
+  const other = await quoteBareListing(listing, market, request, { refresh, datesChangeBasis });
   if (other?.kind === "quoted") {
     return {
       result: { target: other.listing.request, quote: other.quote },
@@ -113,7 +115,7 @@ export async function answerQuote(
     listing.exchange ? null : knownGapForTicker(listing.symbol),
   ].filter((line): line is string => !!line);
   if (!other && tryLines.length === 0) {
-    return await answerCompanyName(result, listing, market, request, refresh)
+    return await answerCompanyName(result, listing, market, request, refresh, datesChangeBasis)
       ?? { result: await withCurrencyPairHint(result, market), listing, notes: [] };
   }
   const message = other?.message ?? `${listing.symbol} has no ${request.noun}.`;
@@ -139,6 +141,7 @@ async function answerCompanyName(
   market: MarketContext,
   request: ListingDataRequest,
   refresh: boolean,
+  datesChangeBasis: boolean,
 ): Promise<QuoteAnswer | null> {
   if (!listing.typed || listing.exchange || !notATickerSymbol(errorMessage(result.error) ?? "")) return null;
   const named = await oneWordCompanyName(listing.typed, market);
@@ -150,8 +153,8 @@ async function answerCompanyName(
   });
   if (!resolved) return null;
   const found = { ...resolved, readAs: named.readAs, ...named.meant ? { meant: named.meant } : {} };
-  const [quoted] = await market.dataProvider.getQuotesBatch([found.request], { forceRefresh: refresh, revalidate: true });
-  return quoted?.quote ? answerQuote(quoted, found, market, request, refresh, null) : null;
+  const [quoted] = await market.dataProvider.getQuotesBatch([found.request], { forceRefresh: refresh, revalidate: true, datesChangeBasis });
+  return quoted?.quote ? answerQuote(quoted, found, market, request, refresh, null, { datesChangeBasis }) : null;
 }
 
 /** A listing a command found a quote for, with what `quote` says beside it. */

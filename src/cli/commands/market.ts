@@ -1016,13 +1016,14 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       : listings.map((listing) => [listing, startTickerChangeLookup(market.dataProvider, listing.symbol, listing.exchange)] as const));
     // The service's quote of the moment, not each form's local copy from whenever it was last asked for:
     // BRK.B saved on NYSE, BRK-B and BRK.B:NYSE print one quote. A local copy answers only offline.
-    const results = await market.dataProvider.getQuotesBatch(targets, { forceRefresh: ctx.cliOptions.refresh, revalidate: true });
+    // Each row prints what its move is from (Chg Basis).
+    const results = await market.dataProvider.getQuotesBatch(targets, { forceRefresh: ctx.cliOptions.refresh, revalidate: true, datesChangeBasis: true });
     const listingOf = (result: QuoteBatchResult, index: number) => listings[targets.indexOf(result.target)] ?? listings[index]!;
     const asked = results.map(listingOf);
     const request = { command: commandName, noun: "quote" };
     const answers = await Promise.all(results.map((result, index) => {
       const listing = asked[index]!;
-      return answerQuote(result, listing, market, request, ctx.cliOptions.refresh, venues.get(listing) ?? null);
+      return answerQuote(result, listing, market, request, ctx.cliOptions.refresh, venues.get(listing) ?? null, { datesChangeBasis: true });
     }));
     const now = Date.now();
     const symbolChanges = await Promise.all(answers.map(async ({ result }, index) => {

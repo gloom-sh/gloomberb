@@ -22,7 +22,7 @@ import type {
 import type { CapabilityRouteSource } from "../../types/capability-route-source";
 import { routeSourcePriority } from "../../types/capability-route-source";
 import type { AnalystResearchData, CorporateActionsData, HolderData, OptionsChain, PricePoint, Quote, QuoteContributionMap, QuoteMetadata, TickerFinancials } from "../../types/financials";
-import { PreviousCloseDates, type DatedCloseListing } from "../../market-data/market/dated-previous-close";
+import { datedCloseListingKey, PreviousCloseDates, type DatedCloseListing } from "../../market-data/market/dated-previous-close";
 import { mergeQuoteMetadata, quoteMetadataFromQuote, quoteMetadataMatchesTarget } from "../../market-data/quotes/metadata";
 import type { NewsArticle, NewsQuery } from "../../news/types";
 import type { BrokerContractRef, InstrumentSearchResult } from "../../types/instrument";
@@ -66,11 +66,12 @@ import {
 const providerLog = debugLog.createLogger("asset-data-router");
 
 /**
- * How long a quote waits for its previous close to be dated by the listing's
- * daily closes before it is answered undated; a short-lived process, which
- * cannot see a later copy, waits for the read.
+ * How long a short-lived process (the CLI) waits in all, per request that
+ * prints what its moves are from, for the daily closes that date them. The
+ * long-lived app never waits: it answers with what was read and dates the
+ * copies after.
  */
-const PREVIOUS_CLOSE_DATING_WAIT_MS = 1_500;
+const CHANGE_BASIS_WAIT_MS = 2_500;
 
 export class AssetDataRouter implements DataProvider {
   readonly id = "asset-data-router";
@@ -94,8 +95,18 @@ export class AssetDataRouter implements DataProvider {
   private realtimeCloudAccess: RealtimeCloudAccess = createSignedInRealtimeCloudAccess();
   /** A short-lived process exits before a background refresh can land, so it must await stale entries. */
   private revalidateInBackground = true;
-  /** Every quote this router answers names the day its previous close is from, where the venue's calendar cannot. */
-  private readonly previousCloseDates = new PreviousCloseDates((listing) => this.getPriceHistory(listing.symbol, listing.exchange, "1M"));
+  /**
+   * Every quote this router answers names the day its previous close is from,
+   * where the venue's calendar cannot. The closes come from the providers
+   * alone, the chart's month of them shared: a broker is never asked once
+   * per listing. A read that lands dates the latest copy for its listing's
+   * stream subscribers.
+   */
+  private readonly previousCloseDates = new PreviousCloseDates(
+    (listing) => this.historyRoutes.getPriceHistory(listing.symbol, listing.exchange, "1M", listingHistoryContext(listing.context), { askBrokers: false }),
+    { onDated: (listing, quote) => { for (const listener of this.datedQuoteListeners.get(datedCloseListingKey(listing)) ?? []) listener(quote); } },
+  );
+  private readonly datedQuoteListeners = new Map<string, Set<(quote: Quote) => void>>();
 
   constructor(
     fallbackSource: CapabilityRouteSource | DataProvider | null = null,
@@ -202,7 +213,7 @@ export class AssetDataRouter implements DataProvider {
     for (const target of valid) {
       const key = target.symbol.toUpperCase();
       const financials = cached.get(key);
-      if (financials) cached.set(key, this.knownFinancials(financials, listingOf(target)));
+      if (financials) cached.set(key, this.knownFinancials(financials, listingOf(target, contextFromCachedTarget(target))));
     }
     return cached;
   }
@@ -216,14 +227,18 @@ export class AssetDataRouter implements DataProvider {
     options: QuoteBatchOptions = {},
   ): Promise<QuoteBatchResult[]> {
     const mapped = mapListingTargets(targets, (target) => this.resolvePublicExchange(target.symbol, target.exchange, target.context));
-    const results = await Promise.all((await this.batchRoutes.getQuotesBatch(mapped.valid, options)).map(async (result) => {
+    const answered = await this.batchRoutes.getQuotesBatch(mapped.valid, withoutDating(options));
+    const quoted = answered.flatMap((result) => result.quote ? [{ quote: result.quote, listing: listingOf(result.target, result.target.context) }] : []);
+    // A cache-only answer never reaches the network, so it is dated only by what was read already.
+    const dated = options.cacheOnly
+      ? quoted.map(({ quote, listing }) => this.previousCloseDates.known(quote, listing))
+      : await this.datedAnswers(quoted, options.datesChangeBasis, options.signal);
+    let next = 0;
+    const results = answered.map((result) => {
       if (!result.quote) return result;
-      // A cache-only answer never reaches the network, so it is dated only by what was read already.
-      const quote = options.cacheOnly
-        ? this.previousCloseDates.known(result.quote, listingOf(result.target))
-        : await this.datedQuote(result.quote, listingOf(result.target));
+      const quote = dated[next++]!;
       return quote === result.quote ? result : { ...result, quote };
-    }));
+    });
     const restored = new Map<QuoteSubscriptionTarget, QuoteBatchResult>(results.map((result) => {
       const target = mapped.original(result.target);
       return [target, { ...result, target }] as const;
@@ -239,13 +254,19 @@ export class AssetDataRouter implements DataProvider {
 
   async getTickerFinancialsBatch(
     targets: CachedFinancialsTarget[],
-    options: { forceRefresh?: boolean } = {},
+    options: { forceRefresh?: boolean; datesChangeBasis?: boolean } = {},
   ): Promise<TickerFinancialsBatchResult[]> {
     const mapped = mapListingTargets(targets, (target) => this.resolvePublicExchange(target.symbol, target.exchange, contextFromCachedTarget(target)));
-    const results = await Promise.all((await this.batchRoutes.getTickerFinancialsBatch(mapped.valid, options)).map(async (result) => {
-      const financials = result.financials && await this.datedFinancials(result.financials, listingOf(result.target));
+    const answered = await this.batchRoutes.getTickerFinancialsBatch(mapped.valid, { forceRefresh: options.forceRefresh });
+    const listingOfResult = (result: TickerFinancialsBatchResult) => listingOf(result.target, contextFromCachedTarget(result.target));
+    const quoted = answered.flatMap((result) => result.financials?.quote ? [{ quote: result.financials.quote, listing: listingOfResult(result) }] : []);
+    const dated = await this.datedAnswers(quoted, options.datesChangeBasis);
+    let next = 0;
+    const results = answered.map((result) => {
+      if (!result.financials?.quote) return result;
+      const financials = this.withDatedQuote(result.financials, dated[next++]!, listingOfResult(result));
       return financials === result.financials ? result : { ...result, financials };
-    }));
+    });
     const restored = new Map(results.map((result) => {
       const target = mapped.original(result.target);
       return [target, { ...result, target }] as const;
@@ -254,25 +275,43 @@ export class AssetDataRouter implements DataProvider {
     return targets.map((target) => restored.get(target) ?? { target, financials: null });
   }
 
-  async getTickerFinancials(ticker: string, exchange?: string, context?: MarketDataRequestContext): Promise<TickerFinancials> {
+  async getTickerFinancials(ticker: string, exchange?: string, requestContext?: MarketDataRequestContext): Promise<TickerFinancials> {
+    const { context, datesChangeBasis } = splitDating(requestContext);
     exchange = this.resolvePublicExchange(ticker, exchange, context);
-    return this.datedFinancials(await this.financialRoutes.getTickerFinancials(ticker, exchange, context), listingOf({ symbol: ticker, exchange }));
-  }
-
-  async getQuote(ticker: string, exchange?: string, context?: MarketDataRequestContext): Promise<Quote> {
-    exchange = this.resolvePublicExchange(ticker, exchange, context);
-    return this.datedQuote(await this.financialRoutes.getQuote(ticker, exchange, context), listingOf({ symbol: ticker, exchange }));
-  }
-
-  /** The quote with its previous close dated (PreviousCloseDates), waiting for a read as long as this process can. */
-  private datedQuote(quote: Quote, listing: DatedCloseListing): Promise<Quote> {
-    return this.previousCloseDates.date(quote, listing, this.revalidateInBackground ? PREVIOUS_CLOSE_DATING_WAIT_MS : undefined);
-  }
-
-  /** The financials with their quote dated, and the contributions it is resolved from. */
-  private async datedFinancials(financials: TickerFinancials, listing: DatedCloseListing): Promise<TickerFinancials> {
+    const financials = await this.financialRoutes.getTickerFinancials(ticker, exchange, context);
     if (!financials.quote) return financials;
-    const quote = await this.datedQuote(financials.quote, listing);
+    const listing = listingOf({ symbol: ticker, exchange }, context);
+    const [quote] = await this.datedAnswers([{ quote: financials.quote, listing }], datesChangeBasis);
+    return this.withDatedQuote(financials, quote!, listing);
+  }
+
+  async getQuote(ticker: string, exchange?: string, requestContext?: MarketDataRequestContext): Promise<Quote> {
+    const { context, datesChangeBasis } = splitDating(requestContext);
+    exchange = this.resolvePublicExchange(ticker, exchange, context);
+    const quote = await this.financialRoutes.getQuote(ticker, exchange, context);
+    return (await this.datedAnswers([{ quote, listing: listingOf({ symbol: ticker, exchange }, context) }], datesChangeBasis))[0]!;
+  }
+
+  /**
+   * The quotes as this router answers them, their previous closes dated
+   * (PreviousCloseDates). The long-lived app never waits: each is dated by
+   * what was read already, and the reads it lacks start for the copies after
+   * it. A short-lived process starts reads only for a request that prints
+   * what its moves are from (`datesChangeBasis`), and waits for them a few
+   * seconds in all.
+   */
+  private async datedAnswers(
+    entries: Array<{ quote: Quote; listing: DatedCloseListing }>,
+    datesChangeBasis?: boolean,
+    signal?: AbortSignal,
+  ): Promise<Quote[]> {
+    if (this.revalidateInBackground) return entries.map(({ quote, listing }) => this.previousCloseDates.observe(quote, listing));
+    if (datesChangeBasis) await this.previousCloseDates.settle(entries, { waitMs: CHANGE_BASIS_WAIT_MS, signal });
+    return entries.map(({ quote, listing }) => this.previousCloseDates.known(quote, listing));
+  }
+
+  /** The financials with their dated quote, and the contributions it is resolved from dated alike. */
+  private withDatedQuote(financials: TickerFinancials, quote: Quote, listing: DatedCloseListing): TickerFinancials {
     return quote === financials.quote ? financials : { ...this.knownFinancials(financials, listing), quote };
   }
 
@@ -618,13 +657,54 @@ export class AssetDataRouter implements DataProvider {
     onQuote: (target: QuoteSubscriptionTarget, quote: Quote) => void,
   ): () => void {
     const mapped = mapListingTargets(targets, (target) => this.resolvePublicExchange(target.symbol, target.exchange, target.context));
-    return this.streamingRoutes.subscribeQuotes(mapped.valid, (target, quote) => {
-      // A tick is dated by what was read already; one not yet read is read for the ticks after it.
-      onQuote(mapped.original(target), this.previousCloseDates.observe(quote, listingOf(target)));
+    // A read that lands dates the latest copy of a quote for the listing's subscribers.
+    const listeners = mapped.valid.map((target) => {
+      const key = datedCloseListingKey(listingOf(target));
+      const listener = (quote: Quote) => onQuote(mapped.original(target), quote);
+      const set = this.datedQuoteListeners.get(key) ?? new Set();
+      set.add(listener);
+      this.datedQuoteListeners.set(key, set);
+      return { key, listener };
     });
+    const unsubscribe = this.streamingRoutes.subscribeQuotes(mapped.valid, (target, quote) => {
+      // A tick is dated by what was read already; one not yet read is read for the ticks after it.
+      onQuote(mapped.original(target), this.previousCloseDates.observe(quote, listingOf(target, target.context)));
+    });
+    return () => {
+      unsubscribe();
+      for (const { key, listener } of listeners) {
+        const set = this.datedQuoteListeners.get(key);
+        set?.delete(listener);
+        if (set?.size === 0) this.datedQuoteListeners.delete(key);
+      }
+    };
   }
 }
 
-function listingOf(target: { symbol: string; exchange?: string }): DatedCloseListing {
-  return { symbol: target.symbol, exchange: target.exchange ?? "" };
+function listingOf(target: { symbol: string; exchange?: string }, context?: MarketDataRequestContext): DatedCloseListing {
+  return { symbol: target.symbol, exchange: target.exchange ?? "", ...(context ? { context } : {}) };
+}
+
+/** A request's context without the dating flag, which no source reads. */
+function splitDating(requestContext?: MarketDataRequestContext): { context?: MarketDataRequestContext; datesChangeBasis: boolean } {
+  if (!requestContext || !("datesChangeBasis" in requestContext)) return { context: requestContext, datesChangeBasis: false };
+  const { datesChangeBasis, ...context } = requestContext;
+  return { context: Object.keys(context).length ? context : undefined, datesChangeBasis: datesChangeBasis === true };
+}
+
+function withoutDating(options: QuoteBatchOptions): QuoteBatchOptions {
+  if (!("datesChangeBasis" in options)) return options;
+  const { datesChangeBasis: _dates, ...rest } = options;
+  return rest;
+}
+
+/**
+ * The context a listing's daily closes are read with: its broker contract, so
+ * the chart's copy of them is shared, and nothing about the quote request.
+ */
+function listingHistoryContext(context?: MarketDataRequestContext): MarketDataRequestContext | undefined {
+  if (!context) return undefined;
+  const { brokerId, brokerInstanceId, instrument } = context;
+  const history = { ...(brokerId ? { brokerId } : {}), ...(brokerInstanceId ? { brokerInstanceId } : {}), ...(instrument ? { instrument } : {}) };
+  return Object.keys(history).length ? history : undefined;
 }

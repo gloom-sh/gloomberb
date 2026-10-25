@@ -8,6 +8,7 @@ import { assetDataProvider } from "../../capabilities";
 import type { BrokerAdapter } from "../../types/broker";
 import type { DataProvider, QuoteSubscriptionTarget } from "../../types/data-provider";
 import type { CapabilityRouteSource } from "../../types/capability-route-source";
+import type { Quote } from "../../types/financials";
 import { attachTestRegistry, brokerInstance, createBrokerConfig, setBrokerInstances } from "./test-support";
 import { createTestDataProvider, createTestFinancials, createTestQuote, fallbackProvider } from "../../test-support/data-provider";
 import { createTestArticle } from "../../test-support/news";
@@ -30,29 +31,75 @@ describe("AssetDataRouter", () => {
     expect(JSON.parse(JSON.stringify(result)).error).toBe("No quote provider available for ES=F");
   });
 
-  test("every quote it answers names the day of a London previous close, read once from the listing's daily closes", async () => {
-    // SHEL.L after Monday 14 Sep's close (the clock is 18:00 UTC): its move is from Friday 11 Sep's close.
-    const quote = createTestQuote({ symbol: "SHEL.L", currency: "GBP", listingExchangeName: "LSE", exchangeName: "LSE",
+  describe("dating a London previous close by the listing's daily closes", () => {
+    // SHEL.L after Monday 14 Sep's close: its move is from Friday 11 Sep's close. AAPL's calendar dates its own.
+    const shell = createTestQuote({ symbol: "SHEL.L", currency: "GBP", listingExchangeName: "LSE", exchangeName: "LSE",
       providerId: "gloomberb-cloud", price: 40.33, change: 1.445, changePercent: 3.72, previousClose: 38.885,
       changeSessionDate: "2026-09-14", marketState: "CLOSED", lastUpdated: Date.parse("2026-09-14T15:35:00Z") });
-    let reads = 0;
-    const provider = createTestDataProvider({
-      id: "gloomberb-cloud",
-      getQuote: async () => quote,
-      getQuotesBatch: async (targets) => targets.map((target) => ({ target, quote })),
-      getTickerFinancials: async () => createTestFinancials({ quote }),
-      getPriceHistory: async () => {
-        reads += 1;
-        return [["2026-09-10", 39.09], ["2026-09-11", 38.885], ["2026-09-14", 40.33]]
-          .map(([date, close]) => ({ date: new Date(`${date}T00:00:00Z`), close: close as number }));
-      },
+    const apple = createTestQuote({ symbol: "AAPL", listingExchangeName: "NASDAQ", exchangeName: "NASDAQ", providerId: "gloomberb-cloud",
+      changeSessionDate: "2026-09-14", lastUpdated: Date.parse("2026-09-14T20:00:00Z") });
+    const closes = [["2026-09-10", 39.09], ["2026-09-11", 38.885], ["2026-09-14", 40.33]]
+      .map(([date, close]) => ({ date: new Date(`${date}T00:00:00Z`), close: close as number }));
+
+    function quoting(closesRead: Promise<void> = Promise.resolve()) {
+      const reads = { provider: 0, broker: 0 };
+      const quoteOf = (symbol: string) => symbol === "AAPL" ? apple : shell;
+      const provider = createTestDataProvider({
+        id: "gloomberb-cloud",
+        getQuote: async (symbol) => quoteOf(symbol),
+        getQuotesBatch: async (targets) => targets.map((target) => ({ target, quote: quoteOf(target.symbol) })),
+        getTickerFinancials: async (symbol) => createTestFinancials({ quote: quoteOf(symbol) }),
+        getPriceHistory: async () => {
+          reads.provider += 1;
+          await closesRead;
+          return closes;
+        },
+      });
+      const broker = {
+        id: "ibkr", name: "IBKR", configSchema: [],
+        validate: async () => true,
+        importPositions: async () => [],
+        getPriceHistory: async () => {
+          reads.broker += 1;
+          return closes;
+        },
+      } as BrokerAdapter;
+      const router = new AssetDataRouter(provider, []);
+      attachTestRegistry(router, { brokers: [["ibkr", broker]] });
+      setBrokerInstances(router, [brokerInstance()]);
+      return { router, reads };
+    }
+
+    test("the app answers at once, reads the closes once from the providers alone, and dates the copies after", async () => {
+      let release!: () => void;
+      const { router, reads } = quoting(new Promise<void>((resolve) => { release = resolve; }));
+      const passedOn: Quote[] = [];
+      const unsubscribe = router.subscribeQuotes([{ symbol: "SHEL.L", exchange: "" }], (_target, quote) => passedOn.push(quote));
+      // A mixed batch is answered while the closes are still being read.
+      const batch = await router.getQuotesBatch([{ symbol: "AAPL", exchange: "NASDAQ" }, { symbol: "SHEL.L", exchange: "" }]);
+      expect(batch.map((result) => result.quote?.previousCloseDate)).toEqual([undefined, undefined]);
+      release();
+      for (let attempt = 0; attempt < 200 && passedOn.length === 0; attempt += 1) await Bun.sleep(5);
+      // The read passes the dated copy on to the listing's subscribers.
+      expect(passedOn.at(-1)?.previousCloseDate).toBe("2026-09-11");
+      expect((await router.getQuote("SHEL.L", "")).previousCloseDate).toBe("2026-09-11");
+      expect((await router.getTickerFinancials("SHEL.L", "")).quote!.previousCloseDate).toBe("2026-09-11");
+      expect(reads).toEqual({ provider: 1, broker: 0 });
+      unsubscribe();
     });
-    const router = new AssetDataRouter(provider, []);
-    expect((await router.getQuote("SHEL.L", "")).previousCloseDate).toBe("2026-09-11");
-    const [batched] = await router.getQuotesBatch([{ symbol: "SHEL.L", exchange: "" }]);
-    expect(batched!.quote!.previousCloseDate).toBe("2026-09-11");
-    expect((await router.getTickerFinancials("SHEL.L", "")).quote!.previousCloseDate).toBe("2026-09-11");
-    expect(reads).toBe(1);
+
+    test("the CLI reads the closes only for a request that prints what its move is from, and waits for them", async () => {
+      const { router, reads } = quoting();
+      router.setBackgroundRevalidation(false);
+      expect((await router.getQuote("SHEL.L", "")).previousCloseDate).toBeUndefined();
+      const [plain] = await router.getQuotesBatch([{ symbol: "SHEL.L", exchange: "" }]);
+      expect(plain!.quote!.previousCloseDate).toBeUndefined();
+      expect(reads.provider).toBe(0);
+      expect((await router.getQuote("SHEL.L", "", { datesChangeBasis: true })).previousCloseDate).toBe("2026-09-11");
+      const [batched] = await router.getQuotesBatch([{ symbol: "SHEL.L", exchange: "" }], { datesChangeBasis: true });
+      expect(batched!.quote!.previousCloseDate).toBe("2026-09-11");
+      expect(reads).toEqual({ provider: 1, broker: 0 });
+    });
   });
 
   test("a cache-only batch answers from the cache, an expired quote included, and never asks a provider", async () => {

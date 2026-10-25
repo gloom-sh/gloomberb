@@ -59,6 +59,12 @@ interface HistoryRequestDescriptor {
   interval?: string;
   method: "getPriceHistory" | "getPriceHistoryForResolution" | "getDetailedPriceHistory";
   context?: MarketDataRequestContext;
+  /**
+   * False to fetch from the providers alone: a broker's saved copy still
+   * answers, but a broker is not asked, so reads made for every quote never
+   * spend its request pacing.
+   */
+  askBrokers?: boolean;
   cachePolicyKey: PriceHistoryCachePolicyKey;
   missingProviderError?: string;
   /** `fetchedAt` is when the cached copy was fetched. */
@@ -66,6 +72,11 @@ interface HistoryRequestDescriptor {
   isFetchedValueStale(value: PriceHistoryResult): boolean;
   fetchBroker(candidate: BrokerCandidate): Promise<PricePoint[] | null>;
   fetchProvider(provider: DataProvider): Promise<PriceHistoryResult | null>;
+}
+
+/** The brokers a request may ask: none for one made for the providers alone. */
+function askedBrokers(request: HistoryRequestDescriptor, candidates: BrokerCandidate[]): BrokerCandidate[] {
+  return request.askBrokers === false ? [] : candidates;
 }
 
 interface HistoryAttempts {
@@ -363,8 +374,14 @@ export class ProviderRouterHistoryRoutes {
     }
   }
 
-  async getPriceHistory(ticker: string, exchange: string, range: TimeRange, context?: MarketDataRequestContext): Promise<PricePoint[]> {
-    return (await this.getPriceHistoryWithMetadata(ticker, exchange, range, context)).points;
+  async getPriceHistory(
+    ticker: string,
+    exchange: string,
+    range: TimeRange,
+    context?: MarketDataRequestContext,
+    options: Pick<HistoryRequestDescriptor, "askBrokers"> = {},
+  ): Promise<PricePoint[]> {
+    return (await this.getPriceHistoryWithMetadata(ticker, exchange, range, context, options)).points;
   }
 
   async getPriceHistoryWithMetadata(
@@ -372,6 +389,7 @@ export class ProviderRouterHistoryRoutes {
     exchange: string,
     range: TimeRange,
     context?: MarketDataRequestContext,
+    { askBrokers }: Pick<HistoryRequestDescriptor, "askBrokers"> = {},
   ): Promise<PriceHistoryResult> {
     if (context?.historyRecovery) throw new Error("History recovery requires an exact detailed request");
     const identity = makeHistoryRequestIdentity(this.deps, {
@@ -390,6 +408,7 @@ export class ProviderRouterHistoryRoutes {
       requestedStart: subtractTimeRange(new Date(), range).getTime(),
       method: "getPriceHistory",
       context,
+      askBrokers,
       cachePolicyKey: intraday ? "priceHistoryIntraday" : "priceHistoryDaily",
       missingProviderError: `No history provider available for ${ticker}`,
       isCachedValueStale: (value, fetchedAt) => intraday && resultIsStale(value, ticker, exchange, fetchedAt),
@@ -688,7 +707,9 @@ export class ProviderRouterHistoryRoutes {
     if (usableCached && !forceRefresh && !awaitRefresh) {
       const exactHit = request.exactCacheVariantKeys.includes(cached.variantKey);
       if (refreshDue) {
-        scheduleRouterRevalidation(this.historyRefreshInFlight, request.identity.revalidationKey, () => this.refreshHistory(request));
+        // A refresh from the providers alone never stands in for one that asks the brokers too.
+        const refreshKey = request.askBrokers === false ? `${request.identity.revalidationKey}|providers` : request.identity.revalidationKey;
+        scheduleRouterRevalidation(this.historyRefreshInFlight, refreshKey, () => this.refreshHistory(request));
       }
       // Only a copy a re-check could not replace reaches here short of the latest session.
       const answered = cachedHistoryStale ? { ...cachedValue, savedCopyBehind: true as const } : cachedValue;
@@ -702,7 +723,7 @@ export class ProviderRouterHistoryRoutes {
       if (value.points.length && !hasUsablePriceHistory(value.points)) supersededCacheSources.add(sourceKey);
     };
     const attempts: HistoryAttempts = { outcomes: new Map(), candidates: new Map(), pending: new Set(), misses: {} };
-    const brokerResult = await withBrokerTimeout(this.fetchBrokerHistory(request, brokerCandidates, onUnavailable, attempts));
+    const brokerResult = await withBrokerTimeout(this.fetchBrokerHistory(request, askedBrokers(request, brokerCandidates), onUnavailable, attempts));
     for (const sourceKey of [...attempts.pending]) recordHistoryOutcome(attempts, sourceKey, "timeout");
     if (brokerResult && hasUsablePriceHistory(brokerResult.value.points)) return withReportedGaps(brokerResult.value);
     if (brokerResult) reportedGaps.push(brokerResult.value);
@@ -715,7 +736,7 @@ export class ProviderRouterHistoryRoutes {
     });
     if (providerResult && hasUsablePriceHistory(providerResult.value.points)) return withReportedGaps(providerResult.value);
     if (providerResult) reportedGaps.push(providerResult.value);
-    if (regularSessionBrokers.length) {
+    if (askedBrokers(request, regularSessionBrokers).length) {
       const regularResult = await withBrokerTimeout(this.fetchBrokerHistory(request, regularSessionBrokers, onUnavailable, attempts));
       for (const sourceKey of [...attempts.pending]) recordHistoryOutcome(attempts, sourceKey, "timeout");
       if (regularResult && hasUsablePriceHistory(regularResult.value.points)) return withReportedGaps(regularResult.value);
@@ -785,11 +806,11 @@ export class ProviderRouterHistoryRoutes {
     try {
       const recovery = this.validateRecovery(request);
       const { first, last } = brokersForSession(recovery ? [] : this.deps.getBrokerCandidatesForContext(request.context, false), request.context);
-      const brokerResult = await withBrokerTimeout(this.fetchBrokerHistory(request, first));
+      const brokerResult = await withBrokerTimeout(this.fetchBrokerHistory(request, askedBrokers(request, first)));
       if (brokerResult && hasUsablePriceHistory(brokerResult.value.points)) return;
       const providerResult = await this.fetchProviderHistory(request);
       if (providerResult && hasUsablePriceHistory(providerResult.value.points)) return;
-      if (last.length) await withBrokerTimeout(this.fetchBrokerHistory(request, last));
+      if (askedBrokers(request, last).length) await withBrokerTimeout(this.fetchBrokerHistory(request, last));
     } catch (error) {
       logFailure("sources.provider-router.history", "Refreshing background price history failed")(error);
     }

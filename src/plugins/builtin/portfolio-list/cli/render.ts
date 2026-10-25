@@ -243,6 +243,8 @@ export async function loadCollectionQuotes(
   tickers: readonly TickerRecord[],
   collection: Pick<CollectionMatch, "kind" | "id">,
   dataProvider: Pick<DataProvider, "getQuote">,
+  /** The report prints what the day's move is from (`Day's move ... vs Thu 22 Oct close`). */
+  { datesChangeBasis = false }: { datesChangeBasis?: boolean } = {},
 ): Promise<Map<string, CollectionQuote>> {
   const isPortfolio = collection.kind === "portfolio";
   const quotes = new Map<string, CollectionQuote>();
@@ -251,8 +253,9 @@ export async function loadCollectionQuotes(
       try {
         const instrument = isPortfolio ? instrumentFromTicker(ticker, ticker.metadata.ticker, { portfolioId: collection.id }) : null;
         if (isPortfolio && !instrument) return;
+        const context = instrument ? toMarketDataContext(instrument) : undefined;
         const quote = await dataProvider.getQuote(ticker.metadata.ticker, ticker.metadata.exchange,
-          instrument ? toMarketDataContext(instrument) : undefined);
+          datesChangeBasis ? { ...context, datesChangeBasis } : context);
         quotes.set(ticker.metadata.ticker, quote);
       } catch {
         // Ignore partial quote failures so the rest of the table still renders.
@@ -759,7 +762,7 @@ async function showCollectionWithMarketData(
   const futuresHeld = filtered.filter((ticker) => isFuturesTicker(ticker)
     && ticker.metadata.positions.some((position) => position.portfolio === id && position.shares !== 0));
   const [quotes, futures, purchaseDateFx] = await Promise.all([
-    loadCollectionQuotes(filtered, collection, dataProvider),
+    loadCollectionQuotes(filtered, collection, dataProvider, { datesChangeBasis: basis === "regular-close" }),
     isPortfolio ? loadPortfolioFuturesTerms(futuresHeld, {
       settlement: basis === "regular-close",
       sources: { history: dailyFuturesHistory(dataProvider), ...futuresSources },
