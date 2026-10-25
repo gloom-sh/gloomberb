@@ -97,10 +97,10 @@ describe("pane function capabilities", () => {
   });
 
   // A read applies its period over the template, so a default that differs changes what it shows.
-  test("GF and GE read the period their app templates open on, with the other one option away", () => {
+  test("GF and GE keep CLI and app periods aligned while accepting explicit overrides", () => {
     for (const [id, build, period, other] of [
       ["fundamental-graph-pane", buildFundamentalChartPreset, "quarterly", "annual"],
-      ["valuation-graph-pane", buildValuationChartPreset, "annual", "quarterly"],
+      ["valuation-graph-pane", buildValuationChartPreset, "daily", "annual"],
     ] as const) {
       const capability = capabilityFor(id);
       for (const symbols of [["AAPL"], ["AAPL", "MSFT"]]) {
