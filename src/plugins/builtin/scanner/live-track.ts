@@ -20,6 +20,8 @@ export interface LiveScanTrack {
   fresh: ReadonlySet<string>;
   /** The refresh the track last read, so a payload read twice changes nothing. */
   takenAt: number | null;
+  /** When an alert of this scan last sounded and went to the desktop. */
+  loudAt: number | null;
 }
 
 /** The session a payload belongs to: New York's date when it was taken. */
@@ -29,18 +31,30 @@ function liveScanSession(payload: Pick<LiveScanPayload, "asOf" | "takenAt">, now
 }
 
 export interface TrackStep {
-  track: LiveScanTrack;
+  /** Null until a refresh of the session has data to start from. */
+  track: LiveScanTrack | null;
   /** Matches to alert on: new to the session while alerts are on. */
   alert: LiveScanMatch[];
+  /**
+   * Whether this refresh's alert sounds and goes to the desktop. A loose scan
+   * can bring new symbols on every refresh: they are still told in the app,
+   * in one notice per refresh, but sound at most once a minute.
+   */
+  loud: boolean;
 }
+
+/** A scan's alerts sound and reach the desktop at most this often. */
+export const LOUD_ALERT_EVERY_MS = 60_000;
 
 /**
  * Folds one refresh into the track. The first refresh of a scan and session
- * only records what matches: turning alerts on, changing the scan or opening
- * the app mid-session never alerts on a list that was already there. After
- * that a symbol alerts once a session, the first time it matches, so one that
- * flickers across a threshold does not alert on every refresh. Nothing alerts
- * outside the session or before the scanner has data.
+ * with data (live or degraded, from a snapshot) only records what matches:
+ * turning alerts on, changing the scan or opening the app mid-session never
+ * alerts on a list that was already there. A refresh without data (the
+ * scanner starting, the market closed) changes nothing, so the list that comes
+ * after it is not taken as new. After that a symbol alerts once a session,
+ * the first time it matches, so one that flickers across a threshold does not
+ * alert on every refresh.
  */
 export function trackLiveScan(
   previous: LiveScanTrack | null,
@@ -48,14 +62,20 @@ export function trackLiveScan(
   scanKey: string,
   { alerts, now }: { alerts: boolean; now: number },
 ): TrackStep {
+  const hasData = (payload.status === "live" || payload.status === "degraded") && payload.takenAt != null;
+  if (!hasData) return { track: previous, alert: [], loud: false };
   const key = `${scanKey}|${liveScanSession(payload, now)}`;
   const symbols = payload.matches.map((match) => match.symbol);
   if (!previous || previous.key !== key) {
     const seen = new Map(symbols.map((symbol) => [symbol, { since: now, alertedAt: null }]));
-    return { track: { key, seen, current: new Set(symbols), fresh: new Set(), takenAt: payload.takenAt }, alert: [] };
+    return {
+      track: { key, seen, current: new Set(symbols), fresh: new Set(), takenAt: payload.takenAt, loudAt: null },
+      alert: [],
+      loud: false,
+    };
   }
-  if (payload.takenAt != null && payload.takenAt === previous.takenAt) return { track: previous, alert: [] };
-  const alerting = alerts && (payload.status === "live" || payload.status === "degraded");
+  if (payload.takenAt === previous.takenAt) return { track: previous, alert: [], loud: false };
+  const alerting = alerts;
   const seen = new Map(previous.seen);
   const fresh = new Set<string>();
   const alert: LiveScanMatch[] = [];
@@ -65,7 +85,12 @@ export function trackLiveScan(
     seen.set(match.symbol, { since: now, alertedAt: alerting ? now : null });
     if (alerting) alert.push(match);
   }
-  return { track: { key, seen, current: new Set(symbols), fresh, takenAt: payload.takenAt }, alert };
+  const loud = alert.length > 0 && (previous.loudAt == null || now - previous.loudAt >= LOUD_ALERT_EVERY_MS);
+  return {
+    track: { key, seen, current: new Set(symbols), fresh, takenAt: payload.takenAt, loudAt: loud ? now : previous.loudAt },
+    alert,
+    loud,
+  };
 }
 
 /** What one row says about itself in its status cell; null for nothing to say. */
@@ -93,12 +118,23 @@ export function liveScanRowNote(
 
 /** How many symbols one alert names before it says how many more there are. */
 const NAMED_SYMBOLS = 4;
-/** The most alerts one refresh writes to the alert history. */
-export const MAX_RECORDED_PER_REFRESH = 25;
+/**
+ * The most entries live scans keep in the alert history, all scans together.
+ * The history is shared with price and event alerts and keeps 1,000 entries;
+ * a busy scan must not push those out.
+ */
+export const LIVE_SCAN_HISTORY_LIMIT = 100;
 
 export interface LiveScanAlertText {
   title: string;
   body: string;
+}
+
+/** The symbols of an alert, the first few by name: `NVDA, AMD and 3 more`. */
+function namedSymbols(matches: readonly LiveScanMatch[]): string {
+  const named = matches.slice(0, NAMED_SYMBOLS).map((match) => match.symbol);
+  const more = matches.length - named.length;
+  return more > 0 ? `${named.join(", ")} and ${more} more` : named.join(", ");
 }
 
 /** One notification per refresh, however many symbols it brings. */
@@ -108,17 +144,19 @@ export function liveScanAlertText(
   conditions: readonly LiveScanCondition[],
   delayMinutes: number,
 ): LiveScanAlertText {
-  const named = matches.slice(0, NAMED_SYMBOLS).map((match) => match.symbol);
-  const more = matches.length - named.length;
-  const who = more > 0 ? `${named.join(", ")} and ${more} more` : named.join(", ");
+  const who = namedSymbols(matches);
   const what = conditions.length ? conditions.map(conditionText).join("; ") : "the scan's floors";
   const delay = delayMinutes > 0 ? ` (${delayMinutes}m delayed)` : "";
   return { title: name, body: `${who} matched: ${what}${delay}` };
 }
 
-/** The alert history's entry for one match, as ALRT's History lists it. */
+/**
+ * The alert history's entry for one refresh's alert, as ALRT's History lists
+ * it: one entry however many symbols it brought, with the figure of the first
+ * (the strongest, as the scan ranks them).
+ */
 export function liveScanFiredAlert(
-  match: LiveScanMatch,
+  matches: readonly [LiveScanMatch, ...LiveScanMatch[]],
   { ruleId, rule, conditions, delayMinutes, firedAt }: {
     ruleId: string;
     rule: string;
@@ -127,6 +165,7 @@ export function liveScanFiredAlert(
     firedAt: number;
   },
 ): FiredAlertInput {
+  const match = matches[0];
   // The first condition is the one matches rank by; an event's figure is a time, not a value.
   const first = conditions[0];
   const unit = first ? conditionUnit(first) : "percent";
@@ -134,8 +173,8 @@ export function liveScanFiredAlert(
   return {
     kind: "live_scan",
     ruleId,
-    // History shows the rule and no symbol column, so the rule names the symbol, as a price alert's does.
-    rule: `${match.symbol} · ${rule}`,
+    // History shows the rule and no symbol column, so the rule names the symbols, as a price alert's does.
+    rule: `${namedSymbols(matches)} · ${rule}`,
     firedAt,
     value: unit === "time" ? match.price : figure,
     unit: unit === "time" ? "USD" : unit === "multiple" ? "x avg volume" : "%",

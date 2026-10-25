@@ -67,7 +67,7 @@ import {
   liveScanAlertText,
   liveScanFiredAlert,
   liveScanRowNote,
-  MAX_RECORDED_PER_REFRESH,
+  LIVE_SCAN_HISTORY_LIMIT,
   trackLiveScan,
   type LiveScanRowNote,
   type LiveScanTrack,
@@ -316,28 +316,30 @@ export default function LiveScanPane({ focused, width, height }: PaneProps) {
     if (step.track === trackRef.current) return;
     trackRef.current = step.track;
     setTrack(step.track);
-    if (!step.alert.length) return;
+    const [first, ...rest] = step.alert;
+    if (!first) return;
     const text = liveScanAlertText(scanName, step.alert, scan.conditions, payload.delayMinutes);
     notify({
       title: text.title,
       body: text.body,
       type: "info",
       refId: `scan:${paneId}`,
-      desktop: "always",
-      sound: "Glass",
+      desktop: step.loud ? "always" : "never",
+      ...(step.loud ? { sound: "Glass" } : {}),
       action: { label: "Open", onClick: () => focusPane(paneId) },
     });
     const rule = `${scanName} · ${universeLabel(scan.universe, watchlists)}`;
     recordFiredAlertFor(
       runtime,
-      step.alert.slice(0, MAX_RECORDED_PER_REFRESH).map((match) => liveScanFiredAlert(match, {
+      [liveScanFiredAlert([first, ...rest], {
         ruleId: currentSaved?.id ?? paneId,
         rule,
         conditions: scan.conditions,
         delayMinutes: payload.delayMinutes,
         firedAt: now,
-      })),
+      })],
       logFailure("scanner.live", "Record live scan alert failed"),
+      LIVE_SCAN_HISTORY_LIMIT,
     );
     // Only a new answer is folded in; the scan and its name are read as they are then.
   }, [payload]);

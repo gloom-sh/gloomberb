@@ -87,6 +87,5 @@ export interface LiveScanPayload {
   warnings: string[];
 }
 
-export function liveScanPath(definition: LiveScanWireDefinition): string {
-  return `/market/scanner/live?scan=${encodeURIComponent(JSON.stringify(definition))}`;
-}
+/** The scan travels in a POST body: a watchlist of 1,000 symbols would not fit a request line. */
+export const LIVE_SCAN_PATH = "/market/scanner/live";

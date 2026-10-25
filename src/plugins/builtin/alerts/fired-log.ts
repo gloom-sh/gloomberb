@@ -60,27 +60,48 @@ export function readFiredAlerts(value: unknown): FiredAlert[] {
     && optionalText(entry.unit) && optionalText(entry.detail) && optionalText(entry.symbol) && optionalText(entry.exchange));
 }
 
+function firedAlertEntry(input: FiredAlertInput, id: string = crypto.randomUUID()): FiredAlert {
+  const { firedAt, ...rest } = input;
+  return { id, firedAt: firedAlertTime(firedAt) ?? new Date().toISOString(), ...rest };
+}
+
 /** `entries` with one more at the end, the oldest dropped past the cap. */
 export function appendFiredAlert(entries: readonly FiredAlert[], input: FiredAlertInput, id: string = crypto.randomUUID()): FiredAlert[] {
-  const { firedAt, ...rest } = input;
-  const entry: FiredAlert = { id, firedAt: firedAlertTime(firedAt) ?? new Date().toISOString(), ...rest };
-  return [...entries, entry].slice(-MAX_FIRED_ALERTS);
+  return [...entries, firedAlertEntry(input, id)].slice(-MAX_FIRED_ALERTS);
+}
+
+/** `entries` keeping only the newest `max` of each kind in `kinds`; other kinds are untouched. */
+function capFiredAlertKinds(entries: readonly FiredAlert[], kinds: ReadonlySet<string>, max: number): FiredAlert[] {
+  const over = new Map<string, number>();
+  for (const entry of entries) if (kinds.has(entry.kind)) over.set(entry.kind, (over.get(entry.kind) ?? 0) + 1);
+  for (const [kind, count] of over) over.set(kind, count - max);
+  // Oldest first: the first entries of a kind over its cap are the ones to drop.
+  return entries.filter((entry) => {
+    const extra = over.get(entry.kind) ?? 0;
+    if (extra <= 0) return true;
+    over.set(entry.kind, extra - 1);
+    return false;
+  });
 }
 
 /**
  * Records an alert another plugin fired (a live scan's new matches) in this
  * log, through the runtime's access to the alerts plugin's resume state.
+ * `keepAtMost` bounds how many entries of the recorded kinds the shared log
+ * keeps, so a busy source cannot push the price and event alerts out.
  */
 export function recordFiredAlertFor(
   runtime: { getResumeState(pluginId: string, key: string): unknown; setResumeState(pluginId: string, key: string, value: unknown): void },
   inputs: readonly FiredAlertInput[],
   onError: (error: unknown) => void,
+  keepAtMost?: number,
 ): void {
   if (!inputs.length) return;
   try {
-    let entries = readFiredAlerts(runtime.getResumeState(ALERTS_PLUGIN_ID, FIRED_LOG_KEY));
-    for (const input of inputs) entries = appendFiredAlert(entries, input);
-    runtime.setResumeState(ALERTS_PLUGIN_ID, FIRED_LOG_KEY, entries);
+    let entries = [...readFiredAlerts(runtime.getResumeState(ALERTS_PLUGIN_ID, FIRED_LOG_KEY)), ...inputs.map((input) => firedAlertEntry(input))];
+    // The source's own oldest entries go first, before the log's cap reaches anyone else's.
+    if (keepAtMost != null) entries = capFiredAlertKinds(entries, new Set(inputs.map((input) => input.kind)), keepAtMost);
+    runtime.setResumeState(ALERTS_PLUGIN_ID, FIRED_LOG_KEY, entries.slice(-MAX_FIRED_ALERTS));
   } catch (error) {
     onError(error);
   }
