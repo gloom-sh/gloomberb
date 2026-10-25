@@ -31,10 +31,12 @@ import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../../../theme/font-scale";
 import { isLiveResizing, onLiveResizeEnd } from "../../../ui/live-resize";
 import { useScrollbarActivity } from "../scrollbar-activity";
 import { useHorizontalScrollEdges } from "../host/overflow-fade";
+import { trackTableResize } from "../host/surface-fit";
 import {
   CSS_BG,
   CSS_PANEL,
   CSS_TEXT_DIM,
+  TABLE_INLINE_PADDING_PX,
   tableHeaderPx,
   toCellX,
   toCellY,
@@ -42,6 +44,7 @@ import {
   useScrollbarState,
 } from "./dom";
 import { WebDataTableHeader, WebDataTableRow } from "./row";
+import { TABLE_RESIZE_DEFAULTS, useTableResizeColumns } from "./resize-columns";
 
 interface VirtualRow {
   index: number;
@@ -120,6 +123,7 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
 }: DataTableProps<T, C>) {
   const paneInstanceId = usePaneInstance()?.instanceId ?? null;
   const focusPane = useFocusOwningPane();
+  const rootElementRef = useRef<HTMLDivElement | null>(null);
   const bodyElementRef = useRef<HTMLDivElement | null>(null);
   const headerHorizontal = useScrollbarState(false);
   const headerVertical = useScrollbarState(false);
@@ -128,6 +132,10 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
   const [viewportWidth, setViewportWidth] = useState(0);
   const [frozenScrollLeft, setFrozenScrollLeft] = useState(0);
   const [scrollbarActive, markScrollbarActive] = useScrollbarActivity();
+  useLayoutEffect(() => {
+    const element = rootElementRef.current;
+    return element ? trackTableResize(element) : undefined;
+  }, []);
   const tableWidth = useMemo(
     () => getTableWidth(columns, columnGap, horizontalPadding),
     [columnGap, columns, horizontalPadding],
@@ -136,6 +144,12 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
     () => buildTableGridTemplateColumns(columns, fillAvailableWidth, columnGap),
     [columnGap, columns, fillAvailableWidth],
   );
+  useTableResizeColumns(rootElementRef, gridTemplateColumns, columns.map((column) => column.id).join("\u0000"), {
+    naturalWidth: Math.max(1, tableWidth * WEB_CELL_WIDTH),
+    viewportWidth,
+    fillAvailableWidth,
+    showHorizontalScrollbar,
+  });
   const selectRow = useCallback((item: T, index: number) => {
     onSelect(item, index);
   }, [onSelect]);
@@ -339,6 +353,9 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
   }, [columnGap, columns, freezeFirstColumn, frozenEdgePx, overflowEdges.start, viewportWidth]);
 
   const rootStyle: CSSProperties = {
+    // Stable React defaults preserve imperative holds across renders while
+    // keeping nested tables independent before and after their own resize.
+    ...TABLE_RESIZE_DEFAULTS,
     position: "relative",
     display: "flex",
     flexDirection: "column",
@@ -372,7 +389,7 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
   };
 
   return (
-    <div data-gloom-role="data-table" style={rootStyle}>
+    <div ref={rootElementRef} data-gloom-role="data-table" style={rootStyle}>
       <div
         ref={bodyElementRef}
         data-gloom-role="data-table-body-scroll"
@@ -411,9 +428,21 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
           data-gloom-role="data-table-scroll-content"
           style={{
             position: "relative",
-            width: scrollContentWidth,
+            width: `var(--gloom-table-resize-width, ${typeof scrollContentWidth === "number" ? `${scrollContentWidth}px` : scrollContentWidth})`,
             height: items.length > 0 ? totalHeight + bodyAfterHeight : "100%",
             minHeight: WEB_CELL_HEIGHT,
+            ...(items.length > 0 ? {
+              display: "grid",
+              gridTemplateColumns: `var(--gloom-table-resize-columns, ${gridTemplateColumns})`,
+              // Rows share one area, but the sticky header needs the entire
+              // content height as its containing block when the body scrolls.
+              gridTemplateRows: "minmax(0, 1fr)",
+              columnGap: columnGap === 0 ? 0 : `calc(${columnGap} * var(--cell-w))`,
+              paddingLeft: TABLE_INLINE_PADDING_PX * horizontalPadding,
+              paddingRight: TABLE_INLINE_PADDING_PX * horizontalPadding,
+              boxSizing: "border-box",
+              transition: "var(--gloom-table-column-transition, none)",
+            } : {}),
           }}
         >
           <WebDataTableHeader
@@ -426,6 +455,7 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
             focusPane={focusPane}
             onTableMouseDown={onTableMouseDown}
             gridTemplateColumns={gridTemplateColumns}
+            sharedGrid={items.length > 0}
             onHeaderClick={onHeaderClick}
             sortColumnId={sortColumnId}
             sortDirection={sortDirection}
@@ -462,7 +492,6 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
                     horizontalPadding={horizontalPadding}
                     focusPane={focusPane}
                     onTableMouseDown={onTableMouseDown}
-                    gridTemplateColumns={gridTemplateColumns}
                     onActivateRow={onActivate ? activateRow : undefined}
                     onRowContextMenu={onRowContextMenu}
                     onRowMouseDown={onRowMouseDown}

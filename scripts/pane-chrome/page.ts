@@ -45,9 +45,18 @@ async function buildFixture(root: string, fixture: string, outdir: string): Prom
   await mkdir(outdir, { recursive: true });
   const inPlace = resolve(dirname(fixture)) === join(root, dirname(FIXTURE_PATH));
   const entrypoint = inPlace ? fixture : join(root, dirname(FIXTURE_PATH), ".fixture-build.tsx");
+  const companions: string[] = [];
   if (!inPlace) {
     await mkdir(dirname(entrypoint), { recursive: true });
     await copyFile(fixture, entrypoint);
+    // New real-pane scenarios must run on the same invented inputs on both
+    // sides, including a base from before their fixture module existed.
+    const name = "table-resize-fixture.tsx";
+    const companion = join(dirname(entrypoint), name);
+    if (!await Bun.file(companion).exists()) {
+      await copyFile(join(import.meta.dir, name), companion);
+      companions.push(companion);
+    }
   }
   // The build reads the view and DOM renderer folders from the working directory.
   const cwd = process.cwd();
@@ -69,6 +78,7 @@ async function buildFixture(root: string, fixture: string, outdir: string): Prom
   } finally {
     process.chdir(cwd);
     if (!inPlace) await rm(entrypoint, { force: true });
+    for (const companion of companions) await rm(companion, { force: true });
   }
 }
 

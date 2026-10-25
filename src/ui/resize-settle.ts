@@ -36,7 +36,8 @@ function stretch(from: number, to: number): number {
 export function nextResizeHold(state: ResizeHold, size: CellSize, maxStretch = MAX_HELD_STRETCH): ResizeHold {
   if (state.size.width === size.width && state.size.height === size.height) return state;
   const held = state.held ?? state.size;
-  const far = Math.max(stretch(held.width, size.width), stretch(held.height, size.height)) > maxStretch;
+  const distance = Math.max(stretch(held.width, size.width), stretch(held.height, size.height));
+  const far = !Number.isFinite(distance) || distance > maxStretch;
   return { size, held: far ? size : held };
 }
 
@@ -64,7 +65,8 @@ export interface SettledLayoutSize extends CellSize {
  * each time. Instead, while the size changes the layout holds to the size it
  * had and the box stretches it by CSS, and once the size has held still it is
  * laid out once, at the size the box settled on. A stretch too far from the
- * held size lays it out again on the way.
+ * held size lays it out again on the way. A schema or summary band can pass
+ * `maxStretch: Infinity` to keep its columns and rows until the resize ends.
  *
  * `resizing` is the shared signal for anything that animates when its layout
  * changes (a glide, a fade, a pulse): none of it while the size is changing.
@@ -73,13 +75,13 @@ export interface SettledLayoutSize extends CellSize {
 export function useSettledLayoutSize(
   width: number,
   height: number,
-  { enabled = true }: { enabled?: boolean } = {},
+  { enabled = true, maxStretch = MAX_HELD_STRETCH }: { enabled?: boolean; maxStretch?: number } = {},
 ): SettledLayoutSize {
   const [state, setState] = useState<ResizeHold>(() => ({ size: { width, height }, held: null }));
   let current = state;
   if (state.size.width !== width || state.size.height !== height) {
     // Stored while rendering, so the render that has the new size already lays out at the held one.
-    current = enabled ? nextResizeHold(state, { width, height }) : { size: { width, height }, held: null };
+    current = enabled ? nextResizeHold(state, { width, height }, maxStretch) : { size: { width, height }, held: null };
     setState(current);
   }
 

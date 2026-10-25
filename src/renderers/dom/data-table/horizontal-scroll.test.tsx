@@ -132,7 +132,8 @@ test("DOM fixed axis fits covered values with ellipses and preserves selection, 
     expect(cells[0]!.style.position).toBe("sticky");
     expect(cells[0]!.style.left).toBe("8px");
     expect(cells[3]!.style.paddingLeft).toBe("16px");
-    expect((cells[3]!.firstElementChild as HTMLElement).style.textOverflow).toBe("ellipsis");
+    const value = (cells[3]!.querySelector("[title]") ?? cells[3]) as HTMLElement;
+    expect(value.style.textOverflow).toBe("ellipsis");
   }
   const axis = rows[2]!.children[0] as HTMLElement;
   await act(async () => { axis.dispatchEvent(new testWindow.MouseEvent("mousedown", { bubbles: true, cancelable: true }) as unknown as Event); });

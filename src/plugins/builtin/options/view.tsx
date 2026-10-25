@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, Text, useUiCapabilities } from "../../../ui";
+import { useSettledLayoutSize } from "../../../ui/resize-settle";
 import { usePaneAppConfig, usePaneSettingValue, usePaneTicker, useUpdatePaneSettings } from "../../../state/app/context";
 import { colors, priceColor } from "../../../theme/colors";
 import { isPlainKey } from "../../../utils/keyboard";
@@ -330,6 +331,7 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
   // being clicked before mouse-up, cancelling selection of an offscreen expiry.
   const expirationPickRef = useRef<(value: string) => void>(() => {});
   const { nativePaneChrome } = useUiCapabilities();
+  const summaryLayout = useSettledLayoutSize(width, height, { enabled: nativePaneChrome === true, maxStretch: Infinity });
   const selectedExpirationIndex = selectedExpiration == null ? -1 : expirationDates.indexOf(selectedExpiration);
   const strikeWindowOptions = useMemo(() => {
     const presets = STRIKE_WINDOW_PRESETS.map(({ value, label, short, description }) => ({ value, label, short, description }));
@@ -927,7 +929,7 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
     ? ticker.metadata.positions.reduce((sum, p) => sum + Math.abs(p.shares) * signedPositionDirection(p), 0)
     : 0;
   // The root insets the terminal body, so the band gets the width inside it.
-  const statWidth = Math.max(1, width - (nativePaneChrome ? 0 : 2));
+  const statWidth = Math.max(1, summaryLayout.width - (nativePaneChrome ? 0 : 2));
   const figures = optionsSummaryItems({
     spot: spotItem(underlying, isOpt ? undefined : ticker.metadata.assetCategory, modelSpot),
     summary, enrichment, currency: underlying?.quote?.currency || ticker.metadata.currency || "",
@@ -936,7 +938,7 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
   // The band keeps the chain's row budget (3, 4 or 6 rows by width). A live
   // Slope or IVR detail is the widest cell and would otherwise halve the
   // columns and push the chain down; the detail is cut short instead.
-  const statRowBudget = width >= 110 ? 3 : width >= 65 ? 4 : 6;
+  const statRowBudget = summaryLayout.width >= 110 ? 3 : summaryLayout.width >= 65 ? 4 : 6;
   const figureColumns = Math.max(statGridColumns(figures, statWidth), Math.ceil(figures.length / statRowBudget));
   // The expiry leads the band, since the strip above can scroll it out of
   // view. It joins the figures as one more cell where the row budget leaves a
@@ -950,7 +952,7 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
   const expiryInline = Math.floor((statWidth - 2 * (cellColumns - 1)) / cellColumns) >= expiryCells;
   const statColumns = expiryInline ? cellColumns : figureColumns;
   const statItems = [expiryInline ? expiryItem : { ...expiryItem, wide: true }, ...figures];
-  const summaryRowCount = Math.min(statGridRows(statItems, statWidth, statColumns), Math.max(0, height - 6));
+  const summaryRowCount = Math.min(statGridRows(statItems, statWidth, statColumns), Math.max(0, summaryLayout.height - 6));
   // A short band gives up figures from the end; the expiry stays.
   const shownStatItems = summaryRowCount === 0 ? []
     : [statItems[0]!, ...figures.slice(0, summaryRowCount * statColumns - (expiryInline ? 1 : statColumns))];

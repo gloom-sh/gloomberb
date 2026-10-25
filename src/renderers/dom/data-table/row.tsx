@@ -81,6 +81,7 @@ export function WebDataTableHeader<C extends DataTableColumn>({
   focusPane,
   onTableMouseDown,
   gridTemplateColumns,
+  sharedGrid,
   onHeaderClick,
   sortColumnId,
   sortDirection,
@@ -94,6 +95,7 @@ export function WebDataTableHeader<C extends DataTableColumn>({
   focusPane: () => void;
   onTableMouseDown?: (event: any) => void;
   gridTemplateColumns: string;
+  sharedGrid: boolean;
   onHeaderClick?: (columnId: string) => void;
   sortColumnId: string | null;
   sortDirection: "asc" | "desc";
@@ -108,10 +110,15 @@ export function WebDataTableHeader<C extends DataTableColumn>({
         top: 0,
         zIndex: 2,
         display: "grid",
-        gridTemplateColumns,
+        gridTemplateColumns: sharedGrid ? "subgrid" : `var(--gloom-table-resize-columns, ${gridTemplateColumns})`,
+        gridColumn: sharedGrid ? "1 / -1" : undefined,
+        gridRow: sharedGrid ? 1 : undefined,
+        transition: sharedGrid ? undefined : "var(--gloom-table-column-transition, none)",
         columnGap: columnGapCss(columnGap),
         alignItems: "center",
-        width: "100%",
+        width: sharedGrid ? undefined : "100%",
+        marginLeft: sharedGrid ? -inlinePaddingPx(horizontalPadding) : undefined,
+        marginRight: sharedGrid ? -inlinePaddingPx(horizontalPadding) : undefined,
         minWidth: 0,
         height: tableHeaderPx(),
         paddingLeft: inlinePaddingPx(horizontalPadding),
@@ -206,7 +213,6 @@ function WebDataTableRowInner<
   index,
   item,
   itemKey,
-  gridTemplateColumns,
   getRowBackgroundColor,
   renderCell,
   renderSectionHeader,
@@ -233,7 +239,6 @@ function WebDataTableRowInner<
   index: number;
   item: T;
   itemKey: string;
-  gridTemplateColumns: string;
   getRowBackgroundColor?: DataTableProps<T, C>["getRowBackgroundColor"];
   renderCell: DataTableProps<T, C>["renderCell"];
   renderSectionHeader?: DataTableProps<T, C>["renderSectionHeader"];
@@ -247,15 +252,22 @@ function WebDataTableRowInner<
   const sectionHeader: DataTableSectionHeader | null =
     renderSectionHeader?.(item, index) ?? null;
   const baseRowStyle: CSSProperties = {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    transform: `translateY(${rowStart}px)`,
+    position: "relative",
+    top: rowStart,
+    // Custom cell content stays below the sticky header, as it did inside
+    // each virtual row's transform stacking context.
+    zIndex: 0,
     display: "grid",
-    gridTemplateColumns,
+    // Rows overlap one grid area and retain their virtual Y
+    // offsets. Their columns reuse one parent layout instead of laying the
+    // same tracks out separately for every visible row on each pixel move.
+    gridTemplateColumns: "subgrid",
+    gridColumn: "1 / -1",
+    gridRow: 1,
     columnGap: columnGapCss(columnGap),
     alignItems: "center",
-    width: "100%",
+    marginLeft: -inlinePaddingPx(horizontalPadding),
+    marginRight: -inlinePaddingPx(horizontalPadding),
     minWidth: 0,
     height: rowSize,
     paddingLeft: inlinePaddingPx(horizontalPadding),
@@ -375,15 +387,46 @@ function WebDataTableRowInner<
     >
       {columns.map((column, columnIndex) => {
         const cell: DataTableCell = renderCell(item, column, index, rowState);
+        const color = selected && (cell.color === undefined || (selectedTextOverridesCellColor && !cell.keepColorWhenSelected))
+          ? CSS_SELECTED_TEXT
+          : cell.color ?? CSS_TEXT;
+        // Most cells are text. One clipping box can lay out and paint it;
+        // nesting another full-width clip doubles the work during a resize.
+        // Dim/inverse belong to the text alone, never its background.
+        const plainText = cell.content === undefined && cell.leading === undefined
+          && ((cell.attributes ?? TextAttributes.NONE) & (TextAttributes.DIM | TextAttributes.INVERSE)) === 0;
+        // A number that fits keeps one intrinsic line box while its track
+        // moves. Tints, pinned columns and cell-coordinate handlers retain
+        // the full track; the row handles presses in a plain cell's blank.
+        const directText = plainText && !freezeFirstColumn && !cell.onMouseDown && !onRowMouseDown
+          && cell.backgroundColor === undefined && (selected || rowBackgroundColor === undefined);
+        // Labels and italic text keep the track's clip: their glyphs can
+        // paint beyond their advance width, which an intrinsic box shaves off.
+        const intrinsicText = directText && column.align === "right"
+          && ((cell.attributes ?? TextAttributes.NONE) & TextAttributes.ITALIC) === 0;
+        const intrinsicChild = !directText && cell.content === undefined && cell.leading === undefined;
+        const lead = tableColumnLeadGap(columns, columnIndex, columnGap);
         return (
           <div
             key={column.id}
             data-gloom-role="data-table-cell"
+            title={directText ? cell.text : undefined}
             // The instant behind a shortened time ("Wed 11:27"), so a rendered-view report can print it whole.
             data-gloom-cell-instant={cell.value instanceof Date && Number.isFinite(cell.value.getTime()) ? cell.value.toISOString() : undefined}
             // The full-precision number behind a rounded cell (a trade of -9.4596 for -9.45963753), for the same reports.
             data-gloom-cell-value={typeof cell.value === "number" && Number.isFinite(cell.value) ? String(cell.value) : undefined}
             style={{
+              ...(directText ? { ...clippedCellTextStyle(column, color, cell.attributes), width: undefined } : {}),
+              ...(intrinsicText ? {
+                width: "max-content",
+                maxWidth: lead ? `calc(100% - ${lead} * var(--cell-w))` : "100%",
+                justifySelf: "end",
+              } : {}),
+              ...(intrinsicChild ? {
+                display: "flex",
+                alignItems: "center",
+                justifyContent: contentJustifyForAlign(column.align),
+              } : {}),
               minWidth: 0,
               position: freezeFirstColumn && columnIndex === 0 ? "sticky" : undefined,
               left: freezeFirstColumn && columnIndex === 0 ? inlinePaddingPx(horizontalPadding) : undefined,
@@ -392,9 +435,11 @@ function WebDataTableRowInner<
               paddingLeft: columnIndex > 0 ? insets[columnIndex] : undefined,
               boxSizing: "border-box",
               height: WEB_CELL_HEIGHT,
-              overflow: "hidden",
+              overflow: plainText ? "clip" : "hidden",
               cursor: cell.onMouseDown ? "pointer" : undefined,
-              backgroundColor: cell.backgroundColor ?? rowBg,
+              // The row already paints its solid fill. Only a frozen cell
+              // (covering scrolled content) or a custom tint needs another.
+              backgroundColor: cell.backgroundColor ?? (freezeFirstColumn && columnIndex === 0 || !selected && rowBackgroundColor !== undefined ? rowBg : undefined),
               boxShadow: freezeFirstColumn && columnIndex === 0 ? `-${inlinePaddingPx(horizontalPadding)}px 0 0 ${cell.backgroundColor ?? rowBg}, ${columnGap * WEB_CELL_WIDTH}px 0 0 ${cell.backgroundColor ?? rowBg}` : undefined,
             }}
             onMouseDown={(event) => {
@@ -424,7 +469,7 @@ function WebDataTableRowInner<
               onActivateRow?.(item, index);
             }}
           >
-            {cell.content !== undefined ? (
+            {directText ? cell.text : cell.content !== undefined ? (
               <div
                 title={cell.text}
                 style={{
@@ -443,9 +488,7 @@ function WebDataTableRowInner<
               <CellText
                 cell={cell}
                 column={column}
-                color={selected && (cell.color === undefined || (selectedTextOverridesCellColor && !cell.keepColorWhenSelected))
-                  ? CSS_SELECTED_TEXT
-                  : cell.color ?? CSS_TEXT}
+                color={color}
               />
             )}
           </div>
@@ -457,7 +500,11 @@ function WebDataTableRowInner<
 
 function CellText({ cell, column, color }: { cell: DataTableCell; column: DataTableColumn; color: string }) {
   const style = clippedCellTextStyle(column, color, cell.attributes ?? TextAttributes.NONE);
-  if (cell.leading === undefined) return <span title={cell.text} style={style}>{cell.text}</span>;
+  const intrinsic = column.align === "right"
+    && ((cell.attributes ?? TextAttributes.NONE) & TextAttributes.ITALIC) === 0;
+  if (cell.leading === undefined) return (
+    <span title={cell.text} style={{ ...style, width: intrinsic ? "max-content" : "100%", minWidth: 0, flex: "0 1 auto", overflow: "clip" }}>{cell.text}</span>
+  );
   return (
     <div
       style={{

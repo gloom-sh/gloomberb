@@ -110,6 +110,8 @@ interface DragSample {
 
 interface Scenario {
   name: string;
+  /** A hard added main-thread cost for table resizing, independent of ratio. */
+  maxAddedMs?: number;
   /** The fixture layout (fixture.tsx), as its query string. */
   fixture: string;
   /** Where the press lands, and where the pointer is `t` (0 to 1) into the drag. */
@@ -215,6 +217,7 @@ const SCENARIOS: Scenario[] = [
   },
   {
     name: "news table resize",
+    maxAddedMs: 0.5,
     fixture: "resize",
     grab: (cdp) => evaluate(cdp, middleOf(`${pane("news:float")} [data-gloom-role=resize-handle]`)),
     // Grows, shrinks past where it started, and grows back.
@@ -224,6 +227,18 @@ const SCENARIOS: Scenario[] = [
       content: lastRightOf(`${pane("news:float")} [data-gloom-role=data-table-header-cell]`),
     },
   },
+  ...["vols", "hp", "seas"].map((kind): Scenario => ({
+    name: `${kind.toUpperCase()} table resize`,
+    maxAddedMs: 0.5,
+    fixture: `table-resize&pane=${kind}&mode=float`,
+    ready: `document.querySelectorAll("${pane(`${kind}:resize`)} [data-gloom-role=data-table-cell]").length > 30`,
+    grab: (cdp) => evaluate(cdp, middleOf(`${pane(`${kind}:resize`)} [data-gloom-role=resize-handle]`)),
+    path: (start, t) => ({ x: start.x - (1 - Math.cos(t * Math.PI * 2)) * 110, y: start.y }),
+    track: {
+      frame: rightOf(pane(`${kind}:resize`)),
+      content: lastRightOf(`${pane(`${kind}:resize`)} [data-gloom-role=data-table-header-cell]`),
+    },
+  })),
   // The canvas a chart draws on the cell grid, which catches up with a
   // resize a few times a second and is stretched with the frame in between.
   cornerResize("chart resize", "chart", "chart:float", "canvas", `${pane("chart:float")} canvas`),
@@ -497,7 +512,7 @@ function judge(scenarios: Scenario[], samples: Record<"base" | "head", Array<Rec
   ];
   const problems: string[] = [];
   const notes: string[] = [];
-  for (const { name, track, canvas } of scenarios) {
+  for (const { name, track, canvas, maxAddedMs } of scenarios) {
     const pick = (side: "base" | "head", key: keyof DragSample) => median(samples[side].map((sample) => sample[name]![key] ?? 0));
     const row = (label: string, key: keyof DragSample, unit = "") => {
       lines.push(`| ${name}: ${label} | ${round(pick("base", key))}${unit} | ${round(pick("head", key))}${unit} |`);
@@ -538,15 +553,18 @@ function judge(scenarios: Scenario[], samples: Record<"base" | "head", Array<Rec
         problems.push(`${name}: the ${what} jumped ${round(releaseJump, 1)} px when the pointer let go (limit: ${MAX_RELEASE_JUMP_PX} px).`);
       }
     }
+    const frame = { base: pick("base", "mainMsPerFrame"), head: pick("head", "mainMsPerFrame") };
+    if (maxAddedMs != null && frame.head - frame.base > maxAddedMs) {
+      problems.push(`${name}: main thread per frame went from ${round(frame.base)} to ${round(frame.head)} ms (limit: +${maxAddedMs} ms).`);
+    }
     // A main branch whose frame did not follow the pointer did less work by
     // not resizing anything as it went, so its time and commits are no
     // budget for one that does.
     if (track && frameLag.base > MAX_FRAME_LAG_PX) {
-      notes.push(`${name}: main does not follow the pointer (${round(frameLag.base, 1)} px behind), so its main thread time and commits set no budget.`);
+      notes.push(`${name}: main does not follow the pointer (${round(frameLag.base, 1)} px behind), so its time ratio and commits set no budget${maxAddedMs == null ? "." : `; the +${maxAddedMs} ms table limit still applies.`}`);
       continue;
     }
-    const frame = { base: pick("base", "mainMsPerFrame"), head: pick("head", "mainMsPerFrame") };
-    if (frame.head > frame.base * MAX_FRAME_RATIO && frame.head - frame.base >= MIN_FRAME_DELTA_MS) {
+    if (maxAddedMs == null && frame.head > frame.base * MAX_FRAME_RATIO && frame.head - frame.base >= MIN_FRAME_DELTA_MS) {
       problems.push(`${name}: main thread per frame went from ${round(frame.base)} to ${round(frame.head)} ms (limit: +${Math.round((MAX_FRAME_RATIO - 1) * 100)}% and +${MIN_FRAME_DELTA_MS} ms).`);
     }
     const commits = { base: pick("base", "commits"), head: pick("head", "commits") };

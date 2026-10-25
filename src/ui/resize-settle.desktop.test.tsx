@@ -21,14 +21,21 @@ describe("nextResizeHold", () => {
     expect(state.held).toEqual({ width: 50, height: 30 });
     expect(nextResizeHold(state, { width: 50, height: 30 })).toBe(state);
     expect(settleResizeHold(nextResizeHold(state, { width: 60, height: 31 }))).toEqual({ size: { width: 60, height: 31 }, held: null });
+
+    // An unlimited hold must still discard unmeasurable dimensions on either side of a resize.
+    for (const size of [{ width: 0, height: 24 }, { width: 80, height: 0 }]) {
+      const unmeasured = nextResizeHold(state, size, Infinity);
+      expect(unmeasured.held).toEqual(size);
+      expect(nextResizeHold(unmeasured, { width: 80, height: 24 }, Infinity).held).toEqual({ width: 80, height: 24 });
+    }
   });
 });
 
 describe("useSettledLayoutSize", () => {
-  function Probe({ initial, seen, enabled }: { initial: CellSize; seen: { size?: SettledLayoutSize; resize?: (size: CellSize) => void }; enabled?: boolean }) {
+  function Probe({ initial, seen, enabled, maxStretch }: { initial: CellSize; seen: { size?: SettledLayoutSize; resize?: (size: CellSize) => void }; enabled?: boolean; maxStretch?: number }) {
     const [size, setSize] = useState(initial);
     seen.resize = setSize;
-    seen.size = useSettledLayoutSize(size.width, size.height, { enabled });
+    seen.size = useSettledLayoutSize(size.width, size.height, { enabled, maxStretch });
     return null;
   }
 
@@ -48,19 +55,19 @@ describe("useSettledLayoutSize", () => {
     expect(seen.size).toEqual({ width: 88, height: 24, resizing: false });
   });
 
-  test("a resize the pointer still holds settles when it lets go, however long it pauses", async () => {
+  test.each([["bounded", undefined, 90], ["unbounded", Infinity, 24]] as const)("the %s resize hold settles when the pointer lets go, however long it pauses", async (_name, maxStretch, width) => {
     const seen: { size?: SettledLayoutSize; resize?: (size: CellSize) => void } = {};
-    await harness.render(<Probe initial={{ width: 80, height: 24 }} seen={seen} />);
+    await harness.render(<Probe initial={{ width: 80, height: 24 }} seen={seen} maxStretch={maxStretch} />);
     const end = beginLiveResize();
     try {
-      await act(async () => seen.resize!({ width: 90, height: 26 }));
+      await act(async () => seen.resize!({ width, height: 26 }));
       await wait(RESIZE_SETTLE_MS * 3);
       expect(seen.size).toEqual({ width: 80, height: 24, resizing: true });
     } finally {
       end();
     }
     await wait(RESIZE_SETTLE_MS + 40);
-    expect(seen.size).toEqual({ width: 90, height: 26, resizing: false });
+    expect(seen.size).toEqual({ width, height: 26, resizing: false });
   });
 
   test("a pane frame under a resize is resizing from its first move, before its content changes size", async () => {

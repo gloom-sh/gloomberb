@@ -1,6 +1,7 @@
 import { useCompanyDisclosureLinks } from "../company-kpis/related";
 import { useCallback, useEffect, useMemo, useRef } from "react";
-import { Box, TextAttributes, type ScrollBoxRenderable } from "../../../ui";
+import { Box, TextAttributes, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
+import { useSettledLayoutSize } from "../../../ui/resize-settle";
 import {
   DataTableStackView,
   ChartTableHeader,
@@ -435,6 +436,8 @@ export function CorporateActionsView({
   footerPaneId?: string;
   variant?: "corporate-actions" | "earnings-estimates";
 }) {
+  const { nativePaneChrome } = useUiCapabilities();
+  const columnLayout = useSettledLayoutSize(width, height, { enabled: nativePaneChrome === true, maxStretch: Infinity });
   const dataProvider = useAssetData();
   const cloudSession = useResearchCloudSession();
   const { symbol, ticker, exchange, currency } = useSymbolBinding();
@@ -502,7 +505,7 @@ export function CorporateActionsView({
     ((row.qEps != null || row.annualEps != null) && !row.epsCurrency)
     || ((row.qRevenue != null || row.annualRevenue != null) && !row.revenueCurrency));
   const currencyMeta = [unit, hasUnstatedCurrency ? "? currency unstated" : null].filter(Boolean).join(" · ");
-  const columns = useMemo(() => buildEventColumns(width, unit, variant), [width, unit, variant]);
+  const columns = useMemo(() => buildEventColumns(columnLayout.width, unit, variant), [columnLayout.width, unit, variant]);
   const sourceNotice = useMemo(() => (
     actionsLoading || analystLoading
       ? null

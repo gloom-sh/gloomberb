@@ -759,7 +759,7 @@ export function DataTableView<
         isSelected={isItemSelected}
         onSelect={handleTableSelect}
         onActivate={handleTableActivate}
-        onRowMouseDown={handleRowMouseDown}
+        onRowMouseDown={tableProps.onRowMouseDown ? handleRowMouseDown : undefined}
         onRowContextMenu={handleRowContextMenu}
       />}
     </TableViewFrame>

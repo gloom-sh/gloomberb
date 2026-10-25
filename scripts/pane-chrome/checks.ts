@@ -7,6 +7,7 @@ import { chatSteps } from "./chat-checks";
 import { axisSteps } from "./axis-checks";
 import { desSteps } from "./des-checks";
 import { heatSteps } from "./heat-checks";
+import { tableResizeSteps } from "./table-resize-checks";
 import { headerSteps } from "./header-checks";
 import { layoutSteps } from "./layout-checks";
 import { selectionSteps } from "./selection-checks";
@@ -1067,10 +1068,9 @@ const steps: Step[] = [
     },
   })),
   {
-    // A chart over a data table stays on its cells and the prediction during a
-    // resize: following the frame would lay the table's rows out on every
-    // frame. The table keeps the size the pane last rendered it at.
-    name: "floating board: the table under the chart band keeps its size between catch-ups",
+    // A chart and the table below it share the frame's current width, even
+    // before the pane's deferred cell dimensions catch up.
+    name: "floating board: the table under the chart band follows the frame between catch-ups",
     scenario: "resize&float=board",
     async run(cdp) {
       const width = `__check.rect(__check.pane("board:float")?.querySelector("[data-gloom-role=data-table]"))?.width ?? null`;
@@ -1089,7 +1089,7 @@ const steps: Step[] = [
         await mouse(cdp, "mouseReleased", from.x + 140, from.y + 54, false);
         await frames(cdp, 2);
       }
-      if (during === null || Math.abs(during - before) > 0.5) fail("mid-drag, the table under the chart band was laid out at the frame's size", { before, during });
+      if (during === null || Math.abs(during - before - 140) > 1) fail("mid-drag, the table under the chart band did not follow its frame", { before, during });
     },
   },
   {
@@ -1616,6 +1616,7 @@ const steps: Step[] = [
   ...chatSteps,
   ...desSteps,
   ...heatSteps,
+  ...tableResizeSteps,
   ...headerSteps,
   ...layoutSteps,
   ...selectionSteps,

@@ -97,6 +97,7 @@ import { browserUiHost } from "../../src/renderers/browser/ui-host";
 import { LAYOUT_PANES, installLayoutFetches, layoutLayout } from "./layout-fixture";
 import { KitPage } from "./kit-fixture";
 import { TabSweepFixture } from "./tab-sweep-fixture";
+import { installTableResizeData, TABLE_RESIZE_PANES, TableResizeData, tableResizeLayout } from "./table-resize-fixture";
 // A namespace import: the frame budget builds this file against the base branch's
 // sources too, which may not have every capture yet.
 import * as domScreenshot from "../../src/utils/dom-screenshot";
@@ -197,7 +198,7 @@ function BrokenPane(_props: PaneProps): never {
 }
 
 const TABLE_COLUMNS = ["Symbol", "Last", "Chg", "Chg %", "Volume", "Mkt cap"].map((label, index) => ({
-  id: `c${index}`, label, width: index === 0 ? 10 : 9, align: index === 0 ? "left" as const : "right" as const,
+  id: `c${index}`, label, width: params.get("wide") === "1" ? 18 : index === 0 ? 10 : 9, align: index === 0 ? "left" as const : "right" as const,
 }));
 const TABLE_ROWS = Array.from({ length: 120 }, (_, row) => row);
 
@@ -211,6 +212,7 @@ function TablePane({ paneId, focused }: PaneProps) {
   return (
     <DataTableView<number>
       focused={focused}
+      freezeFirstColumn={params.get("frozen") === "1"}
       selection={{ kind: "id", selectedId, getId: String, onChange: setSelectedId }}
       columns={TABLE_COLUMNS}
       items={TABLE_ROWS}
@@ -1181,6 +1183,7 @@ const PANES = {
   "iv-history": { name: "IV history", component: IvHistoryFixturePane },
   macro: { name: "Macro series", component: MacroSeriesFixturePane },
   ...LAYOUT_PANES,
+  ...TABLE_RESIZE_PANES,
 };
 
 function registry(): PluginRegistry {
@@ -1411,6 +1414,7 @@ function config() {
     : scenario === "axis" ? axisLayout()
     : scenario === "cmp" ? chartComposerLayout()
     : scenario === "layout" ? layoutLayout(params)
+    : scenario === "table-resize" ? tableResizeLayout(params)
     : chromeLayout();
   if (scenario === "theme-detached") layout.detached.push({ instanceId: "chart:theme", x: 0, y: 0, width: 80, height: 24 });
   const layouts = scenario === "chat" ? chatLatencyLayouts(layout) : [{ name: "Fixture", layout: cloneLayout(layout) }];
@@ -1483,6 +1487,7 @@ registerAskGloomPaneHandler(({ paneId, visibleText, args }) => {
 if (scenario === "screenshot" || params.get("float") === "fear") await loadFearGreed(true, async () => INVENTED_FEAR_GREED);
 if (scenario === "cmp" && params.get("linked") === "mixed") await loadFearGreed(true, async () => recentFearGreed());
 if (scenario === "layout") installLayoutFetches(params);
+if (scenario === "table-resize") installTableResizeData();
 if (scenario === "header") {
   installHeaderPlatform(platform);
   installHeaderClock();
@@ -1516,6 +1521,7 @@ createRoot(root).render(
       {scenario === "paint" && <PaneAdder />}
       {scenario === "chat" && params.get("latencyCheck") === "1" && <ChatLatencySync />}
       {scenario === "chat" && params.get("layoutReturn") === "1" && <ChatNavigationShortcuts />}
+      {scenario === "table-resize" && <TableResizeData />}
       <Ready />
     </AppProvider>
   </DomHostProviders>,

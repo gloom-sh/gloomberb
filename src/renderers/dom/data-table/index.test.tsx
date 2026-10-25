@@ -2,7 +2,7 @@
 import { expect, test } from "bun:test";
 import { tableHeaderPx } from "./dom";
 import { act, useRef, useState } from "react";
-import type { ScrollBoxRenderable } from "../../../ui/host";
+import { TextAttributes, type ScrollBoxRenderable } from "../../../ui/host";
 import { AppContext, PaneInstanceProvider, createInitialState } from "../../../state/app/context";
 import { PaneKeyboardScrollController } from "../../../state/pane-scroll-registry";
 import { WebInputHostProvider } from "../input-host";
@@ -164,7 +164,7 @@ test("an opted-in table draws the selected row in selection text unless a cell k
 
   const container = await render(<Harness />);
   const colorsByRow = [...container.querySelectorAll('[data-gloom-role="data-table-row"]')].map((row) => (
-    [...row.querySelectorAll("span")].map((span) => (span as HTMLElement).style.color)
+    [...row.querySelectorAll('[data-gloom-role="data-table-cell"]')].map((cell) => (cell as HTMLElement).style.color)
   ));
   expect(colorsByRow).toEqual([
     ["var(--gloom-selected-text)", "#00ff00"],
@@ -221,6 +221,44 @@ test("artwork before a label is hidden decoration: the text keeps its selection 
   const art = container.querySelector('[data-art="row-b"]')!;
   await act(async () => { art.dispatchEvent(new testWindow.MouseEvent("mousedown", { bubbles: true, cancelable: true }) as unknown as Event); });
   expect(selected).toEqual(["b"]);
+});
+
+test("a cell changing text effects keeps its background opaque and its own action separate from row activation", async () => {
+  const state = createInitialState(createDefaultConfig("/tmp/gloom-table-test"));
+  const actions: string[] = [];
+  let setAttributes: (attributes: number) => void = () => {};
+  function Harness() {
+    const headerScrollRef = useRef<ScrollBoxRenderable | null>(null);
+    const scrollRef = useRef<ScrollBoxRenderable | null>(null);
+    const [attributes, updateAttributes] = useState<number>(TextAttributes.BOLD);
+    setAttributes = updateAttributes;
+    return <AppContext value={createStaticAppStore(state)}>
+      <WebDataTable items={["a"]} columns={[{ id: "value", label: "Value", width: 10, align: "right" }]}
+        sortColumnId={null} sortDirection="asc" headerScrollRef={headerScrollRef} scrollRef={scrollRef}
+        syncHeaderScroll={() => {}} onBodyScrollActivity={() => {}} getItemKey={String} isSelected={() => false}
+        onSelect={() => actions.push("select")} onActivate={() => actions.push("activate")}
+        renderCell={() => ({ text: "Open", attributes, backgroundColor: "var(--gloom-panel)", onMouseDown: (event) => {
+          event.stopPropagation();
+          actions.push("cell");
+        } })} emptyStateTitle="No rows" virtualize={false} />
+    </AppContext>;
+  }
+  const container = await render(<Harness />);
+  const cell = container.querySelector<HTMLElement>('[data-gloom-role="data-table-cell"]')!;
+  for (const attributes of [TextAttributes.BOLD, TextAttributes.DIM | TextAttributes.INVERSE, TextAttributes.ITALIC | TextAttributes.UNDERLINE]) {
+    await act(async () => setAttributes(attributes));
+    expect(cell.style.backgroundColor).toBe("var(--gloom-panel)");
+    expect(cell.style.opacity).toBe("");
+    expect(cell.style.filter).toBe("");
+    const label = cell.querySelector<HTMLElement>('[title="Open"]') ?? cell;
+    expect(label.style.opacity).toBe(attributes & TextAttributes.DIM ? "0.65" : "");
+    expect(label.style.filter).toBe(attributes & TextAttributes.INVERSE ? "invert(1)" : "");
+    await act(async () => {
+      label.dispatchEvent(new testWindow.MouseEvent("mousedown", { bubbles: true, cancelable: true }) as unknown as Event);
+      label.dispatchEvent(new testWindow.MouseEvent("dblclick", { bubbles: true, cancelable: true }) as unknown as Event);
+    });
+  }
+  expect(actions).toEqual(["cell", "cell", "cell"]);
 });
 
 test("the pane scroll keys scroll a table body, as they do in the terminal", async () => {
