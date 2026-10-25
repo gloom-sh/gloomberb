@@ -1,0 +1,37 @@
+{
+  "base": "4c11d3c99f0849cda8e9a7f296272fc7d73d2a22",
+  "head": "9a04f6db778bbe451c7811a5c57bea829102bd7d",
+  "change": "Existing offline-error content order; geometry and controls are unchanged.",
+  "method": "Identical failed fixture responses; only VIX and VIX 9D completion order changes. All 23 loads settle.",
+  "sameSource": true,
+  "results": {
+    "base": [
+      {
+        "firstCompleted": "^VIX",
+        "firstDisplayedError": "VIX ^VIX: no daily history",
+        "phase": "error",
+        "loaded": 23
+      },
+      {
+        "firstCompleted": "^VIX9D",
+        "firstDisplayedError": "VIX 9D ^VIX9D: no daily history",
+        "phase": "error",
+        "loaded": 23
+      }
+    ],
+    "head": [
+      {
+        "firstCompleted": "^VIX",
+        "firstDisplayedError": "VIX ^VIX: no daily history",
+        "phase": "error",
+        "loaded": 23
+      },
+      {
+        "firstCompleted": "^VIX9D",
+        "firstDisplayedError": "VIX 9D ^VIX9D: no daily history",
+        "phase": "error",
+        "loaded": 23
+      }
+    ]
+  }
+}

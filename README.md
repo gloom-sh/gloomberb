@@ -22,7 +22,9 @@ Both capture passes finished without runtime exceptions. `check:ui-tokens` passe
 
 ## Sweep scope
 
-The broader browser sweep is still in progress. Its final comparison counts and token audit are pending. Completed Earnings and supplemental desktop results below are valid.
+The broader browser sweep finished with complete root coverage and a partial deeper-state comparison. See the [all-pane comparison](broad-sweep.md) for measured changes, one-sided configurations and unstable exclusions. The four intended Names-menu configurations are reported separately from broad root stability.
+
+The combined UI token audit passed: 597 measured views across 181 function and shell entries, with four existing allowlist matches.
 
 The stock all-pane command was attempted. Its terminal catalog includes panes absent from the browser build, and its discovery fallback can label an unrelated pane as the requested function. Those misleading captures are excluded from the results.
 
@@ -42,3 +44,16 @@ The 96 supplemental captures appear at their original resolution, before on the 
 ## Limits
 
 For browser-omitted functions, desktop root captures supplement the sweep; native service integration and every deeper interaction are not covered. The Earnings fixture verifies rendering and interaction with fixture holdings and calendar responses, not the deployed holdings service. These captures do not verify native Windows rendering or WebKit.
+
+## Existing error-content variation
+
+The VIX Cross-asset view has a content-only difference at 640 px in light mode: the offline error names either VIX or VIX 9D. Geometry and controls match. The loader and pane are unchanged between revisions. A [controlled fixture](vix-error-order.json) reproduces both labels on both revisions by changing which failed history request finishes first; all 23 requests settle. This measured difference remains in the broad comparison count.
+
+- [Dark, 640 px](sheets/vix-cross-asset-white-640.jpg)
+- [Dark, 1280 px](sheets/vix-cross-asset-white-1280.jpg)
+- [Light, 640 px](sheets/vix-cross-asset-paper-640.jpg)
+- [Light, 1280 px](sheets/vix-cross-asset-paper-1280.jpg)
+
+## Interaction checks
+
+The pane-control suite passed 327/327 checks. The [drag and resize benchmark](pane-drag.md) failed absolute pointer-lag checks after its built-in ten-run comparison; its full result is retained separately from the visual comparison.

@@ -1,0 +1,4427 @@
+{
+  "base": "4c11d3c99f0849cda8e9a7f296272fc7d73d2a22",
+  "head": "9a04f6db778bbe451c7811a5c57bea829102bd7d",
+  "widths": [
+    640,
+    1280
+  ],
+  "themes": {
+    "white": {
+      "views": 517,
+      "changedCount": 0,
+      "unsteadyCount": 15,
+      "changedViews": [],
+      "unsteadyViews": [
+        "ANR--root",
+        "CFNG--detail",
+        "CMP--root",
+        "FXC--detail",
+        "FXC--root",
+        "GE--root",
+        "GEX--root",
+        "GEX--tab-expiries",
+        "GEX--tab-strikes",
+        "HM--tab-main-portfolio",
+        "HM--tab-us-etfs",
+        "HN--detail",
+        "HN--root",
+        "OSA--detail",
+        "VOLS--tab-history"
+      ]
+    },
+    "paper": {
+      "views": 517,
+      "changedCount": 1,
+      "unsteadyCount": 15,
+      "changedViews": [
+        {
+          "view": "VIX--tab-cross-asset",
+          "widths": {
+            "640": 0.004643854748603352,
+            "1280": 0
+          }
+        }
+      ],
+      "unsteadyViews": [
+        "ANR--root",
+        "CFNG--detail",
+        "CMP--root",
+        "FXC--detail",
+        "FXC--root",
+        "GE--root",
+        "GEX--root",
+        "GEX--tab-expiries",
+        "GEX--tab-strikes",
+        "HM--tab-main-portfolio",
+        "HM--tab-us-etfs",
+        "HN--detail",
+        "HN--root",
+        "OSA--detail",
+        "VOLS--tab-history"
+      ]
+    }
+  },
+  "scope": {
+    "paneAndPluginEntries": 160,
+    "shellEntries": 8,
+    "totalEntries": 168
+  },
+  "comparison": {
+    "colourTolerancePercent": 2,
+    "changedPixelThresholdPercent": 0.05,
+    "bodyInsetTop": 42,
+    "bodyInsetBottom": 42,
+    "uniqueViewsAcrossThemes": 517,
+    "changedViewsAcrossThemes": 1,
+    "unsteadyViewsAcrossThemes": 15
+  },
+  "sides": {
+    "before": {
+      "measurements": 2060,
+      "shots": 2060,
+      "functions": 160,
+      "shellEntries": 8,
+      "entryCount": 168,
+      "views": 516,
+      "gatedViews": 63,
+      "gatedViewIds": [
+        "ACM--root",
+        "ADR--root",
+        "ADR--tab-8-k",
+        "ADR--tab-analyst",
+        "ADR--tab-apps",
+        "ADR--tab-ask-ai",
+        "ADR--tab-calls",
+        "ADR--tab-catalysts",
+        "ADR--tab-chart",
+        "ADR--tab-diagnostic",
+        "ADR--tab-dividends",
+        "ADR--tab-events",
+        "ADR--tab-exec",
+        "ADR--tab-hiring",
+        "ADR--tab-hiring-momentum",
+        "ADR--tab-insider",
+        "ADR--tab-m-a",
+        "ADR--tab-news",
+        "ADR--tab-options",
+        "ADR--tab-revenue",
+        "ADR--tab-risks",
+        "ADR--tab-sec",
+        "ADR--tab-short-interest",
+        "ADR--tab-thesis",
+        "ADR--tab-tweets",
+        "ASKG--root",
+        "CALLS--root",
+        "DIAG--root",
+        "EK--root",
+        "EQS--tab-saved",
+        "JOBS--root",
+        "RIPL--tab-2-hops",
+        "RISK--root",
+        "SRCH--root",
+        "T--root",
+        "T--tab-8-k",
+        "T--tab-analyst",
+        "T--tab-apps",
+        "T--tab-ask-ai",
+        "T--tab-calls",
+        "T--tab-catalysts",
+        "T--tab-chart",
+        "T--tab-diagnostic",
+        "T--tab-dividends",
+        "T--tab-events",
+        "T--tab-exec",
+        "T--tab-hiring",
+        "T--tab-hiring-momentum",
+        "T--tab-insider",
+        "T--tab-m-a",
+        "T--tab-news",
+        "T--tab-options",
+        "T--tab-revenue",
+        "T--tab-risks",
+        "T--tab-sec",
+        "T--tab-short-interest",
+        "T--tab-thesis",
+        "T--tab-tweets",
+        "THESIS--root",
+        "attention-trending-pane--detail",
+        "attention-trending-pane--root",
+        "team-pane--root",
+        "unread-inbox-pane--root"
+      ],
+      "unmeasuredStates": {
+        "skipped": 72
+      },
+      "excludedStates": [
+        {
+          "id": "COT--tab-inventories-products",
+          "token": "COT",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "COT--tab-inventories-gas-storage",
+          "token": "COT",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "CRD--tab-treasury-bills",
+          "token": "CRD",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "CRD--tab-treasury-notes",
+          "token": "CRD",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "CRD--tab-treasury-bonds-2-4",
+          "token": "CRD",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "CRDOC--tab-treasury-bills",
+          "token": "CRDOC",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "CRDOC--tab-treasury-notes",
+          "token": "CRDOC",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "CRDOC--tab-treasury-bonds-3-4",
+          "token": "CRDOC",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "DDIS--tab-treasury-bills",
+          "token": "DDIS",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "DDIS--tab-treasury-notes",
+          "token": "DDIS",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "DDIS--tab-treasury-bonds-3-4",
+          "token": "DDIS",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "DOE--tab-positioning-disaggregated",
+          "token": "DOE",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "TRACE--tab-treasury-bills",
+          "token": "TRACE",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "TRACE--tab-treasury-notes",
+          "token": "TRACE",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "TRACE--tab-treasury-bonds-2-4",
+          "token": "TRACE",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "YAS--tab-treasury-bills",
+          "token": "YAS",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "YAS--tab-treasury-notes",
+          "token": "YAS",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "YAS--tab-treasury-bonds-3-4",
+          "token": "YAS",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "NGS--tab-positioning-disaggregated",
+          "token": "NGS",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "ADR--tab-catalysts-changes",
+          "token": "ADR",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "ADR--tab-hiring-momentum-chart-2-2",
+          "token": "ADR",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "ADR--tab-hiring-momentum-mix",
+          "token": "ADR",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "ADR--tab-hiring-momentum-peers",
+          "token": "ADR",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "ADR--tab-hiring-momentum-evidence",
+          "token": "ADR",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "ADR--tab-hiring-momentum-moves",
+          "token": "ADR",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "ADR--tab-hiring-momentum-expansion",
+          "token": "ADR",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "ADR--tab-hiring-momentum-anomalies",
+          "token": "ADR",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "ADR--tab-hiring-momentum-building",
+          "token": "ADR",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "ADR--tab-apps-chart-2-2",
+          "token": "ADR",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "ADR--tab-apps-markets",
+          "token": "ADR",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "ADR--tab-apps-peers",
+          "token": "ADR",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "ADR--tab-apps-evidence",
+          "token": "ADR",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "FI--tab-treasury-bills",
+          "token": "FI",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "FI--tab-treasury-notes",
+          "token": "FI",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "FI--tab-treasury-bonds-2-4",
+          "token": "FI",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "JODI--tab-positioning-disaggregated",
+          "token": "JODI",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "JODI--tab-inventories-products",
+          "token": "JODI",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "JODI--tab-inventories-gas-storage",
+          "token": "JODI",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "CDS--tab-treasury-bills",
+          "token": "CDS",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "CDS--tab-treasury-notes",
+          "token": "CDS",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "CDS--tab-treasury-bonds-2-4",
+          "token": "CDS",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "CDX--tab-treasury-bills",
+          "token": "CDX",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "CDX--tab-treasury-notes",
+          "token": "CDX",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "CDX--tab-treasury-bonds-2-4",
+          "token": "CDX",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "COVN--tab-treasury-bills",
+          "token": "COVN",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "COVN--tab-treasury-notes",
+          "token": "COVN",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "COVN--tab-treasury-bonds-3-4",
+          "token": "COVN",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "CTM--tab-positioning-disaggregated",
+          "token": "CTM",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "CTM--tab-inventories-products",
+          "token": "CTM",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "CTM--tab-inventories-gas-storage",
+          "token": "CTM",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "FUT--tab-positioning-disaggregated",
+          "token": "FUT",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "FUT--tab-inventories-products",
+          "token": "FUT",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "FUT--tab-inventories-gas-storage",
+          "token": "FUT",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "PSD--tab-positioning-disaggregated",
+          "token": "PSD",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "PSD--tab-inventories-products",
+          "token": "PSD",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "PSD--tab-inventories-gas-storage",
+          "token": "PSD",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "SOVR--tab-treasury-bills",
+          "token": "SOVR",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "SOVR--tab-treasury-notes",
+          "token": "SOVR",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "SOVR--tab-treasury-bonds-2-4",
+          "token": "SOVR",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "T--tab-catalysts-changes",
+          "token": "T",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "T--tab-hiring-momentum-chart-2-2",
+          "token": "T",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "T--tab-hiring-momentum-mix",
+          "token": "T",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "T--tab-hiring-momentum-peers",
+          "token": "T",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "T--tab-hiring-momentum-evidence",
+          "token": "T",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "T--tab-hiring-momentum-moves",
+          "token": "T",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "T--tab-hiring-momentum-expansion",
+          "token": "T",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "T--tab-hiring-momentum-anomalies",
+          "token": "T",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "T--tab-hiring-momentum-building",
+          "token": "T",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "T--tab-apps-chart-2-2",
+          "token": "T",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "T--tab-apps-markets",
+          "token": "T",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "T--tab-apps-peers",
+          "token": "T",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "T--tab-apps-evidence",
+          "token": "T",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        }
+      ]
+    },
+    "after": {
+      "measurements": 2063,
+      "shots": 2063,
+      "functions": 160,
+      "shellEntries": 8,
+      "entryCount": 168,
+      "views": 517,
+      "gatedViews": 63,
+      "gatedViewIds": [
+        "ACM--root",
+        "ADR--root",
+        "ADR--tab-8-k",
+        "ADR--tab-analyst",
+        "ADR--tab-apps",
+        "ADR--tab-ask-ai",
+        "ADR--tab-calls",
+        "ADR--tab-catalysts",
+        "ADR--tab-chart",
+        "ADR--tab-diagnostic",
+        "ADR--tab-dividends",
+        "ADR--tab-events",
+        "ADR--tab-exec",
+        "ADR--tab-hiring",
+        "ADR--tab-hiring-momentum",
+        "ADR--tab-insider",
+        "ADR--tab-m-a",
+        "ADR--tab-news",
+        "ADR--tab-options",
+        "ADR--tab-revenue",
+        "ADR--tab-risks",
+        "ADR--tab-sec",
+        "ADR--tab-short-interest",
+        "ADR--tab-thesis",
+        "ADR--tab-tweets",
+        "ASKG--root",
+        "CALLS--root",
+        "DIAG--root",
+        "EK--root",
+        "EQS--tab-saved",
+        "JOBS--root",
+        "RIPL--tab-2-hops",
+        "RISK--root",
+        "SRCH--root",
+        "T--root",
+        "T--tab-8-k",
+        "T--tab-analyst",
+        "T--tab-apps",
+        "T--tab-ask-ai",
+        "T--tab-calls",
+        "T--tab-catalysts",
+        "T--tab-chart",
+        "T--tab-diagnostic",
+        "T--tab-dividends",
+        "T--tab-events",
+        "T--tab-exec",
+        "T--tab-hiring",
+        "T--tab-hiring-momentum",
+        "T--tab-insider",
+        "T--tab-m-a",
+        "T--tab-news",
+        "T--tab-options",
+        "T--tab-revenue",
+        "T--tab-risks",
+        "T--tab-sec",
+        "T--tab-short-interest",
+        "T--tab-thesis",
+        "T--tab-tweets",
+        "THESIS--root",
+        "attention-trending-pane--detail",
+        "attention-trending-pane--root",
+        "team-pane--root",
+        "unread-inbox-pane--root"
+      ],
+      "unmeasuredStates": {
+        "skipped": 72
+      },
+      "excludedStates": [
+        {
+          "id": "COT--tab-inventories-products",
+          "token": "COT",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "COT--tab-inventories-gas-storage",
+          "token": "COT",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "CRD--tab-treasury-bills",
+          "token": "CRD",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "CRD--tab-treasury-notes",
+          "token": "CRD",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "CRD--tab-treasury-bonds-2-4",
+          "token": "CRD",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "CRDOC--tab-treasury-bills",
+          "token": "CRDOC",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "CRDOC--tab-treasury-notes",
+          "token": "CRDOC",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "CRDOC--tab-treasury-bonds-3-4",
+          "token": "CRDOC",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "DDIS--tab-treasury-bills",
+          "token": "DDIS",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "DDIS--tab-treasury-notes",
+          "token": "DDIS",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "DDIS--tab-treasury-bonds-3-4",
+          "token": "DDIS",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "DOE--tab-positioning-disaggregated",
+          "token": "DOE",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "TRACE--tab-treasury-bills",
+          "token": "TRACE",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "TRACE--tab-treasury-notes",
+          "token": "TRACE",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "TRACE--tab-treasury-bonds-2-4",
+          "token": "TRACE",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "YAS--tab-treasury-bills",
+          "token": "YAS",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "YAS--tab-treasury-notes",
+          "token": "YAS",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "YAS--tab-treasury-bonds-3-4",
+          "token": "YAS",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "NGS--tab-positioning-disaggregated",
+          "token": "NGS",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "ADR--tab-catalysts-changes",
+          "token": "ADR",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "ADR--tab-hiring-momentum-chart-2-2",
+          "token": "ADR",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "ADR--tab-hiring-momentum-mix",
+          "token": "ADR",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "ADR--tab-hiring-momentum-peers",
+          "token": "ADR",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "ADR--tab-hiring-momentum-evidence",
+          "token": "ADR",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "ADR--tab-hiring-momentum-moves",
+          "token": "ADR",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "ADR--tab-hiring-momentum-expansion",
+          "token": "ADR",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "ADR--tab-hiring-momentum-anomalies",
+          "token": "ADR",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "ADR--tab-hiring-momentum-building",
+          "token": "ADR",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "ADR--tab-apps-chart-2-2",
+          "token": "ADR",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "ADR--tab-apps-markets",
+          "token": "ADR",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "ADR--tab-apps-peers",
+          "token": "ADR",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "ADR--tab-apps-evidence",
+          "token": "ADR",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "FI--tab-treasury-bills",
+          "token": "FI",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "FI--tab-treasury-notes",
+          "token": "FI",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "FI--tab-treasury-bonds-2-4",
+          "token": "FI",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "JODI--tab-positioning-disaggregated",
+          "token": "JODI",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "JODI--tab-inventories-products",
+          "token": "JODI",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "JODI--tab-inventories-gas-storage",
+          "token": "JODI",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "CDS--tab-treasury-bills",
+          "token": "CDS",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "CDS--tab-treasury-notes",
+          "token": "CDS",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "CDS--tab-treasury-bonds-2-4",
+          "token": "CDS",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "CDX--tab-treasury-bills",
+          "token": "CDX",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "CDX--tab-treasury-notes",
+          "token": "CDX",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "CDX--tab-treasury-bonds-2-4",
+          "token": "CDX",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "COVN--tab-treasury-bills",
+          "token": "COVN",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "COVN--tab-treasury-notes",
+          "token": "COVN",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "COVN--tab-treasury-bonds-3-4",
+          "token": "COVN",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "CTM--tab-positioning-disaggregated",
+          "token": "CTM",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "CTM--tab-inventories-products",
+          "token": "CTM",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "CTM--tab-inventories-gas-storage",
+          "token": "CTM",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "FUT--tab-positioning-disaggregated",
+          "token": "FUT",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "FUT--tab-inventories-products",
+          "token": "FUT",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "FUT--tab-inventories-gas-storage",
+          "token": "FUT",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "PSD--tab-positioning-disaggregated",
+          "token": "PSD",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "PSD--tab-inventories-products",
+          "token": "PSD",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "PSD--tab-inventories-gas-storage",
+          "token": "PSD",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "SOVR--tab-treasury-bills",
+          "token": "SOVR",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "SOVR--tab-treasury-notes",
+          "token": "SOVR",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "SOVR--tab-treasury-bonds-2-4",
+          "token": "SOVR",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "T--tab-catalysts-changes",
+          "token": "T",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "T--tab-hiring-momentum-chart-2-2",
+          "token": "T",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "T--tab-hiring-momentum-mix",
+          "token": "T",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "T--tab-hiring-momentum-peers",
+          "token": "T",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "T--tab-hiring-momentum-evidence",
+          "token": "T",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "T--tab-hiring-momentum-moves",
+          "token": "T",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "T--tab-hiring-momentum-expansion",
+          "token": "T",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "T--tab-hiring-momentum-anomalies",
+          "token": "T",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "T--tab-hiring-momentum-building",
+          "token": "T",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "T--tab-apps-chart-2-2",
+          "token": "T",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "T--tab-apps-markets",
+          "token": "T",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "T--tab-apps-peers",
+          "token": "T",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        },
+        {
+          "id": "T--tab-apps-evidence",
+          "token": "T",
+          "view": "skipped",
+          "reason": "revealed 2 presses deep; the sweep opens 1"
+        }
+      ]
+    }
+  },
+  "intendedNamesMenuConfigurationsChanged": 4,
+  "unchangedEarningsRootConfigurations": 4,
+  "existingContentVariation": "VIX Cross-asset, light 640 px: first offline error depends on request completion order; reproduced on both unchanged revisions.",
+  "omittedImages": "TV channel 3 images are not republished; they remain included in comparison totals.",
+  "entries": [
+    {
+      "token": "ADJ",
+      "kind": "pane",
+      "paneId": "adjacent",
+      "plugin": "adjacent-indices",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 4,
+        "measurements": 16,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 4,
+        "measurements": 16,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "BI",
+      "kind": "pane",
+      "paneId": "sectors",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 3,
+        "measurements": 12,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 3,
+        "measurements": 12,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "BTST",
+      "kind": "pane",
+      "paneId": "backtest",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 2,
+        "measurements": 8,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 2,
+        "measurements": 8,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "CAT",
+      "kind": "pane",
+      "paneId": "data-catalog",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 19,
+        "measurements": 76,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 19,
+        "measurements": 76,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "CATL",
+      "kind": "pane",
+      "paneId": "catalysts",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 2,
+        "measurements": 8,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 2,
+        "measurements": 8,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "CFNG",
+      "kind": "pane",
+      "paneId": "crypto-fear-greed",
+      "plugin": "crypto-fear-greed",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 2,
+        "measurements": 5,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 2,
+        "measurements": 7,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "CHOKE",
+      "kind": "pane",
+      "paneId": "chart-composer",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "CLTR",
+      "kind": "pane",
+      "paneId": "comment-letters",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "CN",
+      "kind": "pane",
+      "paneId": "ticker-news",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "CORR",
+      "kind": "pane",
+      "paneId": "correlation",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "COT",
+      "kind": "pane",
+      "paneId": "commodities-energy",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 7,
+        "measurements": 28,
+        "gatedViews": 0,
+        "unmeasuredStates": {
+          "skipped": 2
+        }
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 7,
+        "measurements": 28,
+        "gatedViews": 0,
+        "unmeasuredStates": {
+          "skipped": 2
+        }
+      }
+    },
+    {
+      "token": "CPI",
+      "kind": "pane",
+      "paneId": "cpi",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "CRD",
+      "kind": "pane",
+      "paneId": "fixed-income",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 4,
+        "measurements": 16,
+        "gatedViews": 0,
+        "unmeasuredStates": {
+          "skipped": 3
+        }
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 4,
+        "measurements": 16,
+        "gatedViews": 0,
+        "unmeasuredStates": {
+          "skipped": 3
+        }
+      }
+    },
+    {
+      "token": "CRDOC",
+      "kind": "pane",
+      "paneId": "fixed-income",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 7,
+        "measurements": 28,
+        "gatedViews": 0,
+        "unmeasuredStates": {
+          "skipped": 3
+        }
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 7,
+        "measurements": 28,
+        "gatedViews": 0,
+        "unmeasuredStates": {
+          "skipped": 3
+        }
+      }
+    },
+    {
+      "token": "DDIS",
+      "kind": "pane",
+      "paneId": "fixed-income",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 6,
+        "measurements": 24,
+        "gatedViews": 0,
+        "unmeasuredStates": {
+          "skipped": 3
+        }
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 6,
+        "measurements": 24,
+        "gatedViews": 0,
+        "unmeasuredStates": {
+          "skipped": 3
+        }
+      }
+    },
+    {
+      "token": "DOCS",
+      "kind": "pane",
+      "paneId": "docs",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 2,
+        "measurements": 8,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 2,
+        "measurements": 8,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "DOE",
+      "kind": "pane",
+      "paneId": "commodities-energy",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 8,
+        "measurements": 32,
+        "gatedViews": 0,
+        "unmeasuredStates": {
+          "skipped": 1
+        }
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 8,
+        "measurements": 32,
+        "gatedViews": 0,
+        "unmeasuredStates": {
+          "skipped": 1
+        }
+      }
+    },
+    {
+      "token": "DVD",
+      "kind": "pane",
+      "paneId": "dividend-yield",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "EM",
+      "kind": "pane",
+      "paneId": "estimate-revisions",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 3,
+        "measurements": 12,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 3,
+        "measurements": 12,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "EVT",
+      "kind": "pane",
+      "paneId": "corporate-actions",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "G",
+      "kind": "pane",
+      "paneId": "chart-composer",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "GUIDE",
+      "kind": "pane",
+      "paneId": "company-guidance",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 4,
+        "measurements": 16,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 4,
+        "measurements": 16,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "HELP",
+      "kind": "pane",
+      "paneId": "help",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 5,
+        "measurements": 20,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 5,
+        "measurements": 20,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "HILO",
+      "kind": "pane",
+      "paneId": "scanner-hilo",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "HIVG",
+      "kind": "pane",
+      "paneId": "iv-history",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "HM",
+      "kind": "pane",
+      "paneId": "market-heatmap",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 3,
+        "measurements": 12,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 3,
+        "measurements": 10,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "HVT",
+      "kind": "pane",
+      "paneId": "realized-vol",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 2,
+        "measurements": 8,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 2,
+        "measurements": 8,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "LAY",
+      "kind": "pane",
+      "paneId": "layout-marketplace",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "MA",
+      "kind": "pane",
+      "paneId": "mna",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "MEMB",
+      "kind": "pane",
+      "paneId": "members",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "NGS",
+      "kind": "pane",
+      "paneId": "commodities-energy",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 8,
+        "measurements": 32,
+        "gatedViews": 0,
+        "unmeasuredStates": {
+          "skipped": 1
+        }
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 8,
+        "measurements": 32,
+        "gatedViews": 0,
+        "unmeasuredStates": {
+          "skipped": 1
+        }
+      }
+    },
+    {
+      "token": "OMON",
+      "kind": "pane",
+      "paneId": "options",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "OSA",
+      "kind": "pane",
+      "paneId": "options-scenario",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 4,
+        "measurements": 16,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 4,
+        "measurements": 16,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "PEB",
+      "kind": "pane",
+      "paneId": "pe-band",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "POLL",
+      "kind": "pane",
+      "paneId": "polls",
+      "plugin": "polls",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 6,
+        "measurements": 24,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 6,
+        "measurements": 24,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "RRG",
+      "kind": "pane",
+      "paneId": "relative-rotation",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 2,
+        "measurements": 8,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 2,
+        "measurements": 8,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "SEAS",
+      "kind": "pane",
+      "paneId": "seasonality",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 3,
+        "measurements": 12,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 3,
+        "measurements": 12,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "SEG",
+      "kind": "pane",
+      "paneId": "revenue-breakdown",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "SIW",
+      "kind": "pane",
+      "paneId": "short-watch",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "TAS",
+      "kind": "pane",
+      "paneId": "time-sales",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 2,
+        "measurements": 8,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 2,
+        "measurements": 8,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "TOP",
+      "kind": "pane",
+      "paneId": "news-top",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "TRACE",
+      "kind": "pane",
+      "paneId": "fixed-income",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 4,
+        "measurements": 16,
+        "gatedViews": 0,
+        "unmeasuredStates": {
+          "skipped": 3
+        }
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 4,
+        "measurements": 16,
+        "gatedViews": 0,
+        "unmeasuredStates": {
+          "skipped": 3
+        }
+      }
+    },
+    {
+      "token": "TRIAL",
+      "kind": "pane",
+      "paneId": "trials",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "TV",
+      "kind": "pane",
+      "paneId": "macro-tv",
+      "plugin": "tv",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 3,
+        "measurements": 12,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 3,
+        "measurements": 12,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "VAL",
+      "kind": "pane",
+      "paneId": "market-valuation",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "YAS",
+      "kind": "pane",
+      "paneId": "fixed-income",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 6,
+        "measurements": 24,
+        "gatedViews": 0,
+        "unmeasuredStates": {
+          "skipped": 3
+        }
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 6,
+        "measurements": 24,
+        "gatedViews": 0,
+        "unmeasuredStates": {
+          "skipped": 3
+        }
+      }
+    },
+    {
+      "token": "command-bar",
+      "kind": "shell",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "command-bar-search",
+      "kind": "shell",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "feedback-dialog",
+      "kind": "shell",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "new-watchlist-pane",
+      "kind": "pane",
+      "paneId": "portfolio-list",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 3,
+        "measurements": 12,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 3,
+        "measurements": 12,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "pane-menu",
+      "kind": "shell",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "pane-settings-dialog",
+      "kind": "shell",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "position-form",
+      "kind": "shell",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "shell",
+      "kind": "shell",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "team-pane",
+      "kind": "pane",
+      "paneId": "team",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 1,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 1,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "theme-picker",
+      "kind": "shell",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "ADR",
+      "kind": "pane",
+      "paneId": "ticker-research",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 24,
+        "measurements": 96,
+        "gatedViews": 24,
+        "unmeasuredStates": {
+          "skipped": 13
+        }
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 24,
+        "measurements": 96,
+        "gatedViews": 24,
+        "unmeasuredStates": {
+          "skipped": 13
+        }
+      }
+    },
+    {
+      "token": "ATS",
+      "kind": "pane",
+      "paneId": "short-interest",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 4,
+        "measurements": 16,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 4,
+        "measurements": 16,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "ATTN",
+      "kind": "pane",
+      "paneId": "attention",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 6,
+        "measurements": 24,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 6,
+        "measurements": 24,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "AWARDS",
+      "kind": "pane",
+      "paneId": "awards",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 5,
+        "measurements": 20,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 5,
+        "measurements": 20,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "CALLS",
+      "kind": "pane",
+      "paneId": "earnings-calls",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 1,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 1,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "CBR",
+      "kind": "pane",
+      "paneId": "central-bank-rates",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "CG",
+      "kind": "pane",
+      "paneId": "congress-trades",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "CHG",
+      "kind": "pane",
+      "paneId": "changelog",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "CRYP",
+      "kind": "pane",
+      "paneId": "crypto-board",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 3,
+        "measurements": 12,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 3,
+        "measurements": 12,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "DIAG",
+      "kind": "pane",
+      "paneId": "equity-diagnostic",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 1,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 1,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "DTS",
+      "kind": "pane",
+      "paneId": "fixed-income",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 5,
+        "measurements": 20,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 5,
+        "measurements": 20,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "ECO",
+      "kind": "pane",
+      "paneId": "econ-calendar",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "ECST",
+      "kind": "pane",
+      "paneId": "econ-statistics",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "EK",
+      "kind": "pane",
+      "paneId": "filing-events",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 1,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 1,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "EPWR",
+      "kind": "pane",
+      "paneId": "power",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 8,
+        "measurements": 32,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 8,
+        "measurements": 32,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "EQS",
+      "kind": "pane",
+      "paneId": "equity-screener",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 3,
+        "measurements": 12,
+        "gatedViews": 1,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 3,
+        "measurements": 12,
+        "gatedViews": 1,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "ETFF",
+      "kind": "pane",
+      "paneId": "crypto-etf-flows",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "EXPO",
+      "kind": "pane",
+      "paneId": "exposure",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 5,
+        "measurements": 20,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 5,
+        "measurements": 20,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "FDA",
+      "kind": "pane",
+      "paneId": "adverse-events",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "FI",
+      "kind": "pane",
+      "paneId": "fixed-income",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 4,
+        "measurements": 16,
+        "gatedViews": 0,
+        "unmeasuredStates": {
+          "skipped": 3
+        }
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 4,
+        "measurements": 16,
+        "gatedViews": 0,
+        "unmeasuredStates": {
+          "skipped": 3
+        }
+      }
+    },
+    {
+      "token": "FIRST",
+      "kind": "pane",
+      "paneId": "news-breaking",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "FNG",
+      "kind": "pane",
+      "paneId": "fear-greed",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "FTD",
+      "kind": "pane",
+      "paneId": "short-interest",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 4,
+        "measurements": 16,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 4,
+        "measurements": 16,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "FXMD_REST_HEALTH",
+      "kind": "pane",
+      "paneId": "fxmacrodata-research",
+      "plugin": "fxmacrodata",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "GC",
+      "kind": "pane",
+      "paneId": "yield-curve",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 3,
+        "measurements": 12,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 3,
+        "measurements": 12,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "GE",
+      "kind": "pane",
+      "paneId": "chart-composer",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "GIP",
+      "kind": "pane",
+      "paneId": "chart-composer",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "GP",
+      "kind": "pane",
+      "paneId": "chart-composer",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "GPU",
+      "kind": "pane",
+      "paneId": "gpu",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 4,
+        "measurements": 16,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 4,
+        "measurements": 16,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "GUID",
+      "kind": "pane",
+      "paneId": "estimate-revisions",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 3,
+        "measurements": 12,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 3,
+        "measurements": 12,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "HALT",
+      "kind": "pane",
+      "paneId": "market-halts",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 4,
+        "measurements": 16,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 4,
+        "measurements": 16,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "HN",
+      "kind": "pane",
+      "paneId": "hackernews",
+      "plugin": "hackernews",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 6,
+        "measurements": 23,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 6,
+        "measurements": 24,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "HP",
+      "kind": "pane",
+      "paneId": "historical-prices",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "HVG",
+      "kind": "pane",
+      "paneId": "realized-vol",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 2,
+        "measurements": 8,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 2,
+        "measurements": 8,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "IBKR",
+      "kind": "pane",
+      "paneId": "ibkr-trading",
+      "plugin": "ibkr-gateway",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "INS",
+      "kind": "pane",
+      "paneId": "insider",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "JODI",
+      "kind": "pane",
+      "paneId": "commodities-energy",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 6,
+        "measurements": 24,
+        "gatedViews": 0,
+        "unmeasuredStates": {
+          "skipped": 3
+        }
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 6,
+        "measurements": 24,
+        "gatedViews": 0,
+        "unmeasuredStates": {
+          "skipped": 3
+        }
+      }
+    },
+    {
+      "token": "KPIS",
+      "kind": "pane",
+      "paneId": "company-kpis",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 3,
+        "measurements": 12,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 3,
+        "measurements": 12,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "MARS",
+      "kind": "pane",
+      "paneId": "analytics",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 8,
+        "measurements": 32,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 8,
+        "measurements": 32,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "MDAY",
+      "kind": "pane",
+      "paneId": "macro-day",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "N",
+      "kind": "pane",
+      "paneId": "news-feed",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 2,
+        "measurements": 8,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 2,
+        "measurements": 8,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "NI",
+      "kind": "pane",
+      "paneId": "news-industry",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "OPX",
+      "kind": "pane",
+      "paneId": "options-positioning",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 3,
+        "measurements": 12,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 3,
+        "measurements": 12,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "OVME",
+      "kind": "pane",
+      "paneId": "options-calculator",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 2,
+        "measurements": 8,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 2,
+        "measurements": 8,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "PF",
+      "kind": "pane",
+      "paneId": "portfolio-list",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 3,
+        "measurements": 12,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 3,
+        "measurements": 12,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "PM",
+      "kind": "pane",
+      "paneId": "prediction-markets",
+      "plugin": "prediction-markets",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 10,
+        "measurements": 40,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 10,
+        "measurements": 40,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "QQ",
+      "kind": "pane",
+      "paneId": "quote-monitor",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 2,
+        "measurements": 8,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 2,
+        "measurements": 8,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "RDCF",
+      "kind": "pane",
+      "paneId": "reverse-dcf",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "RETURN",
+      "kind": "pane",
+      "paneId": "returns",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "RIPL",
+      "kind": "pane",
+      "paneId": "earnings-ripple",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 2,
+        "measurements": 8,
+        "gatedViews": 1,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 2,
+        "measurements": 8,
+        "gatedViews": 1,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "RISK",
+      "kind": "pane",
+      "paneId": "risk-factors",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 1,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 1,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "SPLC",
+      "kind": "pane",
+      "paneId": "supply-chain",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 4,
+        "measurements": 16,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 4,
+        "measurements": 16,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "SRCH",
+      "kind": "pane",
+      "paneId": "research-search",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 1,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 1,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "THEM",
+      "kind": "pane",
+      "paneId": "sectors",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 3,
+        "measurements": 12,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 3,
+        "measurements": 12,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "VCA",
+      "kind": "pane",
+      "paneId": "iv-screen",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "VOLS",
+      "kind": "pane",
+      "paneId": "volatility-term-structure",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 3,
+        "measurements": 12,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 3,
+        "measurements": 12,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "WEI",
+      "kind": "pane",
+      "paneId": "world-indices",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "WIRP",
+      "kind": "pane",
+      "paneId": "rate-path",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 4,
+        "measurements": 16,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 4,
+        "measurements": 16,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "news-story-pane",
+      "kind": "pane",
+      "paneId": "news-story",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "ACM",
+      "kind": "pane",
+      "paneId": "account-management",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 1,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 1,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "ANR",
+      "kind": "pane",
+      "paneId": "analyst-research",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "APPS",
+      "kind": "pane",
+      "paneId": "apps",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 5,
+        "measurements": 20,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 5,
+        "measurements": 20,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "ASKG",
+      "kind": "pane",
+      "paneId": "askg",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 1,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 1,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "AUCT",
+      "kind": "pane",
+      "paneId": "fixed-income",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 7,
+        "measurements": 28,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 7,
+        "measurements": 28,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "BT",
+      "kind": "pane",
+      "paneId": "backtest",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 2,
+        "measurements": 8,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 2,
+        "measurements": 8,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "BTMM",
+      "kind": "pane",
+      "paneId": "money-markets",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 3,
+        "measurements": 12,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 3,
+        "measurements": 12,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "BUZZ",
+      "kind": "pane",
+      "paneId": "social-mentions",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "CDS",
+      "kind": "pane",
+      "paneId": "fixed-income",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 4,
+        "measurements": 16,
+        "gatedViews": 0,
+        "unmeasuredStates": {
+          "skipped": 3
+        }
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 4,
+        "measurements": 16,
+        "gatedViews": 0,
+        "unmeasuredStates": {
+          "skipped": 3
+        }
+      }
+    },
+    {
+      "token": "CDX",
+      "kind": "pane",
+      "paneId": "fixed-income",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 4,
+        "measurements": 16,
+        "gatedViews": 0,
+        "unmeasuredStates": {
+          "skipped": 3
+        }
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 4,
+        "measurements": 16,
+        "gatedViews": 0,
+        "unmeasuredStates": {
+          "skipped": 3
+        }
+      }
+    },
+    {
+      "token": "CHAT",
+      "kind": "pane",
+      "paneId": "chat",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "CMP",
+      "kind": "pane",
+      "paneId": "chart-composer",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "CONN",
+      "kind": "pane",
+      "paneId": "connections",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 2,
+        "measurements": 8,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 2,
+        "measurements": 8,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "COVN",
+      "kind": "pane",
+      "paneId": "fixed-income",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 7,
+        "measurements": 28,
+        "gatedViews": 0,
+        "unmeasuredStates": {
+          "skipped": 3
+        }
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 7,
+        "measurements": 28,
+        "gatedViews": 0,
+        "unmeasuredStates": {
+          "skipped": 3
+        }
+      }
+    },
+    {
+      "token": "CSP",
+      "kind": "pane",
+      "paneId": "csp-screen",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "CTM",
+      "kind": "pane",
+      "paneId": "commodities-energy",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 6,
+        "measurements": 24,
+        "gatedViews": 0,
+        "unmeasuredStates": {
+          "skipped": 3
+        }
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 6,
+        "measurements": 24,
+        "gatedViews": 0,
+        "unmeasuredStates": {
+          "skipped": 3
+        }
+      }
+    },
+    {
+      "token": "DIST",
+      "kind": "pane",
+      "paneId": "mna",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 2,
+        "measurements": 8,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 2,
+        "measurements": 8,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "EE",
+      "kind": "pane",
+      "paneId": "earnings-estimates",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "ETF",
+      "kind": "pane",
+      "paneId": "sec",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "EXEC",
+      "kind": "pane",
+      "paneId": "executives",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "FA",
+      "kind": "pane",
+      "paneId": "financial-analysis",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "FLOW",
+      "kind": "pane",
+      "paneId": "scanner-flow",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "FUT",
+      "kind": "pane",
+      "paneId": "commodities-energy",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 6,
+        "measurements": 24,
+        "gatedViews": 0,
+        "unmeasuredStates": {
+          "skipped": 3
+        }
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 6,
+        "measurements": 24,
+        "gatedViews": 0,
+        "unmeasuredStates": {
+          "skipped": 3
+        }
+      }
+    },
+    {
+      "token": "FXC",
+      "kind": "pane",
+      "paneId": "fx-matrix",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 2,
+        "measurements": 6,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "GEX",
+      "kind": "pane",
+      "paneId": "options-positioning",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 3,
+        "measurements": 12,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 3,
+        "measurements": 12,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "GF",
+      "kind": "pane",
+      "paneId": "chart-composer",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "GR",
+      "kind": "pane",
+      "paneId": "relationship-graph",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "GTP",
+      "kind": "pane",
+      "paneId": "growthepie",
+      "plugin": "growthepie",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 7,
+        "measurements": 28,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 7,
+        "measurements": 28,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "HIRE",
+      "kind": "pane",
+      "paneId": "hiring",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 9,
+        "measurements": 36,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 9,
+        "measurements": 36,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "IPO",
+      "kind": "pane",
+      "paneId": "ipo-calendar",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 4,
+        "measurements": 16,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 4,
+        "measurements": 16,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "JOBS",
+      "kind": "pane",
+      "paneId": "jobs",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 1,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 1,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "KELLY",
+      "kind": "pane",
+      "paneId": "kelly-sizer",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 7,
+        "measurements": 28,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 7,
+        "measurements": 28,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "LITI",
+      "kind": "pane",
+      "paneId": "litigation",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 2,
+        "measurements": 8,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 2,
+        "measurements": 8,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "MAP",
+      "kind": "pane",
+      "paneId": "world-venue-map",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "OVDV",
+      "kind": "pane",
+      "paneId": "vol-surface",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 6,
+        "measurements": 24,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 6,
+        "measurements": 24,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "PDLR",
+      "kind": "pane",
+      "paneId": "fixed-income",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 5,
+        "measurements": 20,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 5,
+        "measurements": 20,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "PERP",
+      "kind": "pane",
+      "paneId": "perps",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 5,
+        "measurements": 20,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 5,
+        "measurements": 20,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "PORT",
+      "kind": "pane",
+      "paneId": "analytics",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 8,
+        "measurements": 32,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 8,
+        "measurements": 32,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "POWER",
+      "kind": "pane",
+      "paneId": "power",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 8,
+        "measurements": 32,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 8,
+        "measurements": 32,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "PSD",
+      "kind": "pane",
+      "paneId": "commodities-energy",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 6,
+        "measurements": 24,
+        "gatedViews": 0,
+        "unmeasuredStates": {
+          "skipped": 3
+        }
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 6,
+        "measurements": 24,
+        "gatedViews": 0,
+        "unmeasuredStates": {
+          "skipped": 3
+        }
+      }
+    },
+    {
+      "token": "QR",
+      "kind": "pane",
+      "paneId": "time-sales",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 2,
+        "measurements": 8,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 2,
+        "measurements": 8,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "RV",
+      "kind": "pane",
+      "paneId": "relative-valuation",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "SEC",
+      "kind": "pane",
+      "paneId": "sec",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "SI",
+      "kind": "pane",
+      "paneId": "short-interest",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 4,
+        "measurements": 16,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 4,
+        "measurements": 16,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "SIV",
+      "kind": "pane",
+      "paneId": "short-interest",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 4,
+        "measurements": 16,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 4,
+        "measurements": 16,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "SOVR",
+      "kind": "pane",
+      "paneId": "fixed-income",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 4,
+        "measurements": 16,
+        "gatedViews": 0,
+        "unmeasuredStates": {
+          "skipped": 3
+        }
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 4,
+        "measurements": 16,
+        "gatedViews": 0,
+        "unmeasuredStates": {
+          "skipped": 3
+        }
+      }
+    },
+    {
+      "token": "SUB",
+      "kind": "pane",
+      "paneId": "substack",
+      "plugin": "substack",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 2,
+        "measurements": 8,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 2,
+        "measurements": 8,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "T",
+      "kind": "pane",
+      "paneId": "ticker-research",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 24,
+        "measurements": 96,
+        "gatedViews": 24,
+        "unmeasuredStates": {
+          "skipped": 13
+        }
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 24,
+        "measurements": 96,
+        "gatedViews": 24,
+        "unmeasuredStates": {
+          "skipped": 13
+        }
+      }
+    },
+    {
+      "token": "THESIS",
+      "kind": "pane",
+      "paneId": "thesis-board",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 1,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 1,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "VIX",
+      "kind": "pane",
+      "paneId": "volatility-term-structure",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 3,
+        "measurements": 12,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 3,
+        "measurements": 12,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "attention-trending-pane",
+      "kind": "pane",
+      "paneId": "attention-trending",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 2,
+        "measurements": 8,
+        "gatedViews": 2,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 2,
+        "measurements": 8,
+        "gatedViews": 2,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "new-portfolio-pane",
+      "kind": "pane",
+      "paneId": "portfolio-list",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 3,
+        "measurements": 12,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 3,
+        "measurements": 12,
+        "gatedViews": 0,
+        "unmeasuredStates": {}
+      }
+    },
+    {
+      "token": "unread-inbox-pane",
+      "kind": "pane",
+      "paneId": "unread-inbox",
+      "before": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 1,
+        "unmeasuredStates": {}
+      },
+      "after": {
+        "rootConfigurations": 4,
+        "views": 1,
+        "measurements": 4,
+        "gatedViews": 1,
+        "unmeasuredStates": {}
+      }
+    }
+  ],
+  "configurationsAvailableOnlyOnOneSide": {
+    "before": [
+      {
+        "view": "HM--tab-main-portfolio",
+        "theme": "white",
+        "width": 640
+      },
+      {
+        "view": "HM--tab-us-etfs",
+        "theme": "white",
+        "width": 640
+      }
+    ],
+    "after": [
+      {
+        "view": "CFNG--detail",
+        "theme": "white",
+        "width": 640
+      },
+      {
+        "view": "CFNG--detail",
+        "theme": "white",
+        "width": 1280
+      },
+      {
+        "view": "FXC--detail",
+        "theme": "paper",
+        "width": 1280
+      },
+      {
+        "view": "FXC--detail",
+        "theme": "white",
+        "width": 640
+      },
+      {
+        "view": "HN--detail",
+        "theme": "paper",
+        "width": 1280
+      }
+    ]
+  },
+  "completeRootCoverage": true,
+  "completeDeeperStateComparison": false,
+  "uiTokens": {
+    "passed": true,
+    "measuredViews": 597,
+    "functionAndShellEntries": 181,
+    "existingAllowlistMatches": 4
+  }
+}
