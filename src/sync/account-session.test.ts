@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, jest, test } from "bun:test";
 import { apiClient, setCloudApiFetchTransport, type AuthUser } from "../api-client";
 import { installTestWebSocket } from "../test-support/cloud-api";
 import { ChatController } from "../plugins/builtin/chat/controller";
@@ -21,7 +21,12 @@ afterEach(() => {
   apiClient.setCookieSessionMode(false);
   setCloudApiFetchTransport(null);
   globalThis.WebSocket = originalWebSocket;
+  jest.useRealTimers();
 });
+
+async function flushSessionWork() {
+  for (let index = 0; index < 40; index += 1) await Promise.resolve();
+}
 
 function sessionHarness(browser: boolean) {
   apiClient.setCookieSessionMode(browser);
@@ -41,6 +46,7 @@ function sessionHarness(browser: boolean) {
   controller.setRuntime({
     getState: () => ({} as AppState), dispatch: () => {}, tickerRepository: {} as AppTickerRepositoryPort,
     getSessionIdentity: () => apiClient.getVerifiedSessionIdentity(),
+    getAccountId: () => apiClient.getVerifiedSessionIdentity() ? apiClient.getCurrentUser()?.id ?? null : null,
     getTransport: () => ({ pluginId: "test", transport }),
     getContributors: () => [{ pluginId: "test", contributor: {
       id: "test.data", schemaVersion: 1,
@@ -55,7 +61,8 @@ function sessionHarness(browser: boolean) {
   let ready = Promise.resolve();
   cleanups.push(subscribeToCloudVerification(apiClient,
     () => { ready = controller.requestSync({ reason: "session-verified" }); },
-    () => controller.resetAccount()));
+    (accountId) => controller.resetAccount(accountId),
+    () => controller.retireSession()));
   cleanups.push(() => controller.clearRuntime());
   return { controller, ready: () => ready, baseline: () => baseline, memos: () => memos,
     holdCollect: (next: () => Promise<unknown>) => { collect = next; },
@@ -110,6 +117,7 @@ test.each([["native", false], ["browser", true]] as const)("a sign-in's new cred
 });
 
 test.each(["same account", "failed sign-in", "failed validation"])("%s preserves the account's merge state", async (scenario) => {
+  if (scenario === "failed validation") jest.useFakeTimers();
   let sessionChecks = 0;
   let validate = scenario !== "failed validation";
   setCloudApiFetchTransport(async (url) => {
@@ -136,12 +144,118 @@ test.each(["same account", "failed sign-in", "failed validation"])("%s preserves
   if (scenario === "failed validation") {
     expect(apiClient.getVerifiedSessionIdentity()).toBeNull();
     validate = true;
-    await apiClient.getSession();
+    jest.advanceTimersByTime(1_000);
+    await flushSessionWork();
     await h.ready();
+    expect(sessionChecks).toBe(2);
     expect(h.baseline()).toBe(baseline);
     expect(h.memos()).toBe(memos);
   }
   expect(apiClient.getVerifiedSessionIdentity()).not.toBeNull();
+});
+
+test.each([["native", false], ["browser", true]] as const)("failed authentication retries session validation before resuming sync (%s)", async (_surface, browser) => {
+  jest.useFakeTimers();
+  let cloud = "a";
+  let online = false;
+  let sessionChecks = 0;
+  let pulls = 0;
+  const pushes: unknown[] = [];
+  setCloudApiFetchTransport(async (url, init) => {
+    const path = new URL(String(url)).pathname;
+    if (path === "/auth/sign-in/email") {
+      cloud = "b";
+      return { ok: true, status: 200,
+        headers: new Headers(browser ? {} : { "set-cookie": "gloomberb.session_token=token-b; Path=/; HttpOnly" }),
+        text: () => Promise.reject(new Error("Body interrupted")) };
+    }
+    if (path === "/auth/get-session") {
+      sessionChecks += 1;
+      return online ? Response.json({ user: accountB }) : Response.json({ message: "Unavailable" }, { status: 503 });
+    }
+    if (init?.method === "PUT") {
+      pushes.push(JSON.parse(String(init.body)));
+      return Response.json({ revision: 3, updatedAt: null });
+    }
+    pulls += 1;
+    return Response.json({ snapshot: snapshot(cloud), revision: cloud === "a" ? 10 : 2, updatedAt: null });
+  });
+  const h = sessionHarness(browser);
+  await h.controller.requestSync();
+  await expect(apiClient.signIn("b@example.invalid", "unused")).rejects.toThrow("Body interrupted");
+  expect(sessionChecks).toBe(1);
+  expect(apiClient.getVerifiedSessionIdentity()).toBeNull();
+  jest.advanceTimersByTime(1_000);
+  await flushSessionWork();
+  expect(sessionChecks).toBe(2);
+  await h.controller.requestSync({ force: true });
+  expect(pulls).toBe(1);
+  expect(pushes).toEqual([]);
+  online = true;
+  jest.advanceTimersByTime(1_999);
+  await flushSessionWork();
+  expect(sessionChecks).toBe(2);
+  expect(apiClient.getVerifiedSessionIdentity()).toBeNull();
+  jest.advanceTimersByTime(1);
+  await flushSessionWork();
+  await h.ready();
+
+  expect(sessionChecks).toBe(3);
+  expect(apiClient.getVerifiedSessionIdentity()).not.toBeNull();
+  expect(apiClient.getCurrentUser()?.id).toBe("account-b");
+  expect(h.local()).toEqual({ account: "b" });
+  expect(h.controller.getStatus()).toMatchObject({ phase: "synced", revision: 2 });
+  expect(pushes).toEqual([]);
+  jest.advanceTimersByTime(60_000);
+  await flushSessionWork();
+  expect(sessionChecks).toBe(3);
+});
+
+test.each([
+  ["sign-out", "scheduled"], ["sign-in", "in flight"],
+  ["device adoption", "in flight"], ["dispose", "scheduled"],
+] as const)("%s retires session revalidation that is %s", async (replacement, stage) => {
+  jest.useFakeTimers();
+  const retryBody = Promise.withResolvers<string>();
+  let sessionChecks = 0;
+  let signingIn = false;
+  setCloudApiFetchTransport(async (url) => {
+    const path = new URL(String(url)).pathname;
+    if (path === "/auth/sign-in/email") return signingIn ? Response.json({ user: accountB })
+      : Response.json({ message: "Sign-in failed" }, { status: 401 });
+    if (path === "/auth/get-session") {
+      sessionChecks += 1;
+      return sessionChecks === 1 ? Response.json({ message: "Unavailable" }, { status: 503 })
+        : { ok: true, status: 200, headers: new Headers(), text: () => retryBody.promise };
+    }
+    return Response.json({});
+  });
+  apiClient.setCookieSessionMode(true);
+  apiClient.restoreCachedUser(accountA);
+  await expect(apiClient.signIn("b@example.invalid", "unused")).rejects.toThrow("Sign-in failed");
+  if (stage === "in flight") {
+    jest.advanceTimersByTime(1_000);
+    await flushSessionWork();
+    expect(sessionChecks).toBe(2);
+  }
+  if (replacement === "sign-out") await apiClient.signOut();
+  else if (replacement === "sign-in") {
+    signingIn = true;
+    await apiClient.signIn("b@example.invalid", "unused");
+  } else if (replacement === "device adoption") {
+    apiClient.setSessionToken("device-token-b");
+    apiClient.restoreCachedUser(accountB);
+  } else apiClient.dispose();
+  retryBody.resolve(JSON.stringify({ user: accountA }));
+  await flushSessionWork();
+  jest.advanceTimersByTime(60_000);
+  await flushSessionWork();
+
+  expect(sessionChecks).toBe(stage === "in flight" ? 2 : 1);
+  expect(apiClient.getCurrentUser()?.id ?? null).toBe(replacement === "sign-out" ? null
+    : replacement === "dispose" ? "account-a" : "account-b");
+  if (replacement === "sign-out" || replacement === "dispose") expect(apiClient.getVerifiedSessionIdentity()).toBeNull();
+  else expect(apiClient.getVerifiedSessionIdentity()).not.toBeNull();
 });
 
 test("a failed auth body revalidates the new cookie instead of reusing a pending old session check", async () => {
@@ -290,6 +404,7 @@ test("socket verification makes an established unverified session ready", () => 
 });
 
 test("a discarded recovery read cannot revive a session validated before a failed browser sign-in", async () => {
+  jest.useFakeTimers();
   const sockets = installTestWebSocket();
   const authResponse = Promise.withResolvers<Response>();
   const recovering = Promise.withResolvers<void>();
@@ -300,6 +415,7 @@ test("a discarded recovery read cannot revive a session validated before a faile
     if (path === "/auth/sign-in/email") return authResponse.promise;
     if (path === "/auth/get-session") {
       if (++sessionReads === 1) return Response.json({ user: accountA });
+      if (sessionReads > 2) return Response.json({ user: accountB });
       return { ok: true, status: 200, headers: new Headers(),
         text: () => { recovering.resolve(); return recoveryBody.promise; } };
     }
@@ -320,6 +436,12 @@ test("a discarded recovery read cannot revive a session validated before a faile
   expect(apiClient.getCurrentUser()?.id).toBe("account-a");
   expect(apiClient.getVerifiedSessionIdentity()).toBeNull();
   expect(h.baseline()).toBe(baseline);
+  jest.advanceTimersByTime(1_000);
+  await flushSessionWork();
+  await h.ready();
+  expect(sessionReads).toBe(3);
+  expect(apiClient.getCurrentUser()?.id).toBe("account-b");
+  expect(apiClient.getVerifiedSessionIdentity()).not.toBeNull();
 });
 
 test("a session read started during sign-in cannot restore the previous browser account afterwards", async () => {
@@ -483,7 +605,40 @@ test("a queued email sign-in still runs after an intentional sign-out clears the
   expect(apiClient.getVerifiedSessionIdentity()).not.toBeNull();
 });
 
-test("native fallback validates a replacement token before restoring any cached account", async () => {
+test.each([["native", false], ["browser", true]] as const)("a failed sign-in queued behind sign-out revalidates automatically (%s)", async (_surface, browser) => {
+  jest.useFakeTimers();
+  const signOutResponse = Promise.withResolvers<Response>();
+  let online = false;
+  let sessionChecks = 0;
+  setCloudApiFetchTransport(async (url) => {
+    const path = new URL(String(url)).pathname;
+    if (path === "/auth/sign-out") return signOutResponse.promise;
+    if (path === "/auth/sign-in/email") return { ok: true, status: 200,
+      headers: new Headers(browser ? {} : { "set-cookie": "gloomberb.session_token=token-b; Path=/; HttpOnly" }),
+      text: () => Promise.reject(new Error("Body interrupted")) };
+    sessionChecks += 1;
+    return online ? Response.json({ user: accountB }) : Response.json({ message: "Unavailable" }, { status: 503 });
+  });
+  apiClient.setCookieSessionMode(browser);
+  if (!browser) apiClient.setSessionToken("token-a");
+  apiClient.restoreCachedUser(accountA);
+  const signOut = apiClient.signOut();
+  const signIn = apiClient.signIn("b@example.invalid", "unused");
+  signOutResponse.resolve(Response.json({}));
+  await expect(signIn).rejects.toThrow("Body interrupted");
+  await signOut;
+  expect(sessionChecks).toBe(1);
+  expect(apiClient.getVerifiedSessionIdentity()).toBeNull();
+  online = true;
+  jest.advanceTimersByTime(1_000);
+  await flushSessionWork();
+
+  expect(sessionChecks).toBe(2);
+  expect(apiClient.getCurrentUser()?.id).toBe("account-b");
+  expect(apiClient.getVerifiedSessionIdentity()).not.toBeNull();
+});
+
+test("failed native sign-in validates its replacement token after a null-session response", async () => {
   installTestWebSocket();
   let cloud = "a";
   let profileChecks = 0;
@@ -506,8 +661,6 @@ test("native fallback validates a replacement token before restoring any cached 
   chat.adoptSession("token-a", accountA);
   await h.controller.requestSync();
   await expect(apiClient.signIn("b@example.invalid", "unused")).rejects.toThrow("Body interrupted");
-  expect(apiClient.getVerifiedSessionIdentity()).toBeNull();
-  await chat.refreshSession();
   await h.ready();
 
   expect(profileChecks).toBe(1);
@@ -593,4 +746,94 @@ test("a failed native session refresh cannot associate its new token with the ol
   expect(apiClient.getVerifiedSessionIdentity()).not.toBeNull();
   expect(h.local()).toEqual({ account: "b" });
   expect(h.controller.getStatus().revision).toBe(2);
+});
+
+test("automatic native session recovery validates a replacement token after a null-session response", async () => {
+  jest.useFakeTimers();
+  installTestWebSocket();
+  let cloud = "a";
+  let sessionChecks = 0;
+  let profileChecks = 0;
+  setCloudApiFetchTransport(async (url) => {
+    const path = new URL(String(url)).pathname;
+    if (path === "/auth/sign-in/email") {
+      cloud = "b";
+      return { ok: true, status: 200,
+        headers: new Headers({ "set-cookie": "gloomberb.session_token=token-b; Path=/; HttpOnly" }),
+        text: () => Promise.reject(new Error("Body interrupted")) };
+    }
+    if (path === "/auth/get-session") {
+      sessionChecks += 1;
+      return sessionChecks <= 2 ? Response.json({ message: "Unavailable" }, { status: 503 }) : Response.json({ user: null });
+    }
+    if (path === "/account/profile") { profileChecks += 1; return Response.json({ profile: accountB }); }
+    if (path === "/chat/state") return Response.json({ channels: [], channelStates: [], notifications: [], onlineCount: 0 });
+    return Response.json({ snapshot: snapshot(cloud), revision: cloud === "a" ? 10 : 2, updatedAt: null });
+  });
+  const h = sessionHarness(false);
+  const chat = new ChatController();
+  cleanups.push(() => chat.dispose());
+  chat.adoptSession("token-a", accountA);
+  await h.controller.requestSync();
+  await expect(apiClient.signIn("b@example.invalid", "unused")).rejects.toThrow("Body interrupted");
+  jest.advanceTimersByTime(1_000);
+  await flushSessionWork();
+  expect(apiClient.getVerifiedSessionIdentity()).toBeNull();
+  jest.advanceTimersByTime(2_000);
+  await flushSessionWork();
+  await h.ready();
+
+  expect(sessionChecks).toBe(3);
+  expect(profileChecks).toBe(1);
+  expect(apiClient.getCurrentUser()?.id).toBe("account-b");
+  expect(apiClient.getSessionToken()).toBe("token-b");
+  expect(apiClient.getVerifiedSessionIdentity()).not.toBeNull();
+  expect(h.local()).toEqual({ account: "b" });
+  expect(h.controller.getStatus().revision).toBe(2);
+});
+
+test.each(["recover", "expired", "device adoption"] as const)("native recovery profile validation handles %s without reviving stale credentials", async (outcome) => {
+  jest.useFakeTimers();
+  const readingProfile = Promise.withResolvers<void>();
+  const firstProfile = Promise.withResolvers<Response>();
+  let sessionChecks = 0;
+  let profileChecks = 0;
+  setCloudApiFetchTransport(async (url) => {
+    const path = new URL(String(url)).pathname;
+    if (path === "/auth/sign-in/email") return { ok: true, status: 200,
+      headers: new Headers({ "set-cookie": "gloomberb.session_token=token-b; Path=/; HttpOnly" }),
+      text: () => Promise.reject(new Error("Body interrupted")) };
+    if (path === "/auth/get-session") { sessionChecks += 1; return Response.json({ user: null }); }
+    profileChecks += 1;
+    if (profileChecks > 1) return Response.json({ profile: accountB });
+    readingProfile.resolve();
+    return firstProfile.promise;
+  });
+  apiClient.setSessionToken("token-a");
+  apiClient.restoreCachedUser(accountA);
+  const signIn = apiClient.signIn("b@example.invalid", "unused");
+  await readingProfile.promise;
+  expect(apiClient.getVerifiedSessionIdentity()).toBeNull();
+  if (outcome === "device adoption") {
+    apiClient.setSessionToken("device-token-a");
+    apiClient.restoreCachedUser(accountA);
+    firstProfile.resolve(Response.json({ profile: accountB }, {
+      headers: { "set-cookie": "gloomberb.session_token=retired-token-b; Path=/; HttpOnly" },
+    }));
+  } else firstProfile.resolve(Response.json({ message: "Unavailable" }, { status: outcome === "expired" ? 401 : 503 }));
+  await expect(signIn).rejects.toThrow("Body interrupted");
+  if (outcome === "recover") {
+    expect(apiClient.getVerifiedSessionIdentity()).toBeNull();
+    jest.advanceTimersByTime(1_000);
+    await flushSessionWork();
+  }
+  jest.advanceTimersByTime(60_000);
+  await flushSessionWork();
+
+  expect(sessionChecks).toBe(outcome === "recover" ? 2 : 1);
+  expect(profileChecks).toBe(outcome === "recover" ? 2 : 1);
+  expect(apiClient.getSessionToken()).toBe(outcome === "expired" ? null : outcome === "recover" ? "token-b" : "device-token-a");
+  expect(apiClient.getCurrentUser()?.id ?? null).toBe(outcome === "expired" ? null : outcome === "recover" ? "account-b" : "account-a");
+  if (outcome === "expired") expect(apiClient.getVerifiedSessionIdentity()).toBeNull();
+  else expect(apiClient.getVerifiedSessionIdentity()).not.toBeNull();
 });

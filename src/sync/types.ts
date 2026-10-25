@@ -121,6 +121,9 @@ export interface SyncSettings {
 
 /** Durable record of the payloads this device last pushed to the cloud. */
 export interface SyncBaselineStore {
+  /** Account that owns this merge history; absent on stores written before account tracking. */
+  loadAccountId?(): string | null;
+  saveAccountId?(accountId: string): void;
   load(): Record<string, unknown> | null;
   save(payloads: Record<string, unknown>): void;
   /** Contributor memos by contributor id; see `SyncContributorMemo`. */

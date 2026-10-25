@@ -1876,6 +1876,8 @@ Sign in with email and password, or pick `Log In with QR Code` from the command 
 
 Signed in, your layouts, settings, portfolios and watchlists sync between your devices. What each pane is showing (cursor, open detail, scroll position) and which floating pane is on top stay on each device. If two devices change the layouts before either has synced, the later change wins.
 
+Signing out pauses sync and keeps unsynced edits for your next sign-in to the same account, including after restarting the app. Signing into a different account starts by merging its cloud workspace. If a sign-in is interrupted, sync stays paused while the app automatically retries session validation; uploads resume only after the account is confirmed.
+
 ## Connect an AI assistant (MCP)
 
 `MCP` opens a short setup for the [Gloom MCP server](https://gloom.sh/docs/mcp) (typing mcp, claude, codex or cursor in the command bar, or `ACM` > Advanced > Assistants (MCP), finds it too). Pick the client and copy its one command or config with `c` or Copy.

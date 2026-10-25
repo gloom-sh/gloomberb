@@ -9,24 +9,24 @@ export interface CloudSessionLifecycle {
 export function subscribeToCloudVerification(
   session: CloudSessionLifecycle,
   onVerified: () => void,
-  onAccountChange: () => void,
+  onAccountChange: (accountId: string) => void,
+  onSuspended?: () => void,
 ): () => void {
   let accountId = session.getCurrentUser()?.id ?? null;
   let wasVerified = session.getVerifiedSessionIdentity() !== null;
   return session.subscribeCurrentUser(() => {
-    // A native session check may temporarily return no user while its retained
-    // token is validated. That is not a sign-out or a different account.
-    const nextAccountId = session.getCurrentUser()?.id ?? (session.isSignedIn() ? accountId : null);
-    const accountChanged = nextAccountId !== accountId;
-    const resetAccount = accountChanged && accountId !== null;
     const isVerified = session.getVerifiedSessionIdentity() !== null;
+    const nextAccountId = isVerified ? session.getCurrentUser()?.id ?? null : null;
+    const accountChanged = nextAccountId !== null && nextAccountId !== accountId;
     const becameVerified = isVerified && (!wasVerified || accountChanged);
-    accountId = nextAccountId;
+    const becameSuspended = wasVerified && !isVerified;
+    const resetAccount = accountChanged && accountId !== null;
+    // Sign-out and failed validation retire pending work, but keep the last
+    // account's merge history until a different account is confirmed.
+    if (nextAccountId !== null) accountId = nextAccountId;
     wasVerified = isVerified;
-    // Clear the old account before a new one can pull or push, including a
-    // direct switch between two verified sessions without a sign-out event.
-    // The initial session restore keeps the baseline needed by offline edits.
-    if (resetAccount) onAccountChange();
+    if (becameSuspended) onSuspended?.();
+    if (resetAccount) onAccountChange(nextAccountId!);
     if (becameVerified) onVerified();
   });
 }

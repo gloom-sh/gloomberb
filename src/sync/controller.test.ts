@@ -14,6 +14,7 @@ import {
   coreConfigSyncContributor,
 } from "./core-contributors";
 import { CloudSyncController } from "./controller";
+import { createSyncBaselineStore } from "./baseline";
 import { subscribeToCloudVerification } from "./auth-transition";
 import {
   SYNC_SNAPSHOT_SCHEMA_VERSION,
@@ -33,6 +34,7 @@ function startController({
   dispatch = () => {},
   baselineStore,
   getSessionIdentity,
+  getAccountId,
 }: {
   transport: SyncTransport;
   contributors?: SyncContributor[];
@@ -40,6 +42,7 @@ function startController({
   dispatch?: (action: AppAction) => void;
   baselineStore?: SyncBaselineStore;
   getSessionIdentity?: () => object | null;
+  getAccountId?: () => string | null;
 }): CloudSyncController {
   const controller = new CloudSyncController();
   controller.setRuntime({
@@ -48,6 +51,7 @@ function startController({
     tickerRepository: {} as TickerRepository,
     ...(baselineStore ? { baselineStore } : {}),
     getSessionIdentity,
+    getAccountId,
     getContributors: () => contributors.map((contributor) => ({ pluginId: "test", contributor })),
     getTransport: () => ({ pluginId: "test", transport }),
   });
@@ -64,6 +68,82 @@ function remoteSnapshot(contributorId: string, payload: unknown, createdAt: stri
     contributors: { [contributorId]: { schemaVersion: 1, updatedAt: createdAt, payload } },
   };
 }
+
+test.each(["same session", "restart", "different account after restart"])("sign-out preserves unsynced edits for their account: %s", async (scenario) => {
+  let account: string | null = "account-a";
+  let identity: object | null = {};
+  let listener: (() => void) | undefined;
+  let pendingSync = Promise.resolve();
+  let state = createInitialState(createDefaultConfig(":memory:"));
+  const originalConfig = state.config;
+  const stored = new Map<string, unknown>();
+  const baselineStore = () => createSyncBaselineStore({
+    get: <T,>(pluginId: string, key: string) => stored.has(key)
+      ? { pluginId, key, value: stored.get(key) as T, schemaVersion: 1, updatedAt: 0 } : null,
+    set: (_pluginId, key, value) => { stored.set(key, value); },
+  });
+  let remote = remoteSnapshot("core.config", __syncContributorInternalsForTests.collectCoreConfigPayload(originalConfig), "2026-10-01T00:00:00.000Z");
+  let revision = 8;
+  const transport: SyncTransport = {
+    id: "account-cloud",
+    isAvailable: () => identity !== null,
+    pullSnapshot: async () => ({ snapshot: remote, revision, updatedAt: remote.createdAt }),
+    pushSnapshot: async (snapshot, options) => {
+      expect(options?.baseRevision).toBe(revision);
+      remote = snapshot;
+      return { revision: ++revision, updatedAt: snapshot.createdAt };
+    },
+  };
+  const start = () => startController({
+    transport, contributors: [coreConfigSyncContributor], getState: () => state,
+    dispatch: (action) => { state = appReducer(state, action); },
+    baselineStore: baselineStore(), getSessionIdentity: () => identity, getAccountId: () => identity ? account : null,
+  });
+  let controller = start();
+  const subscribe = () => subscribeToCloudVerification({
+    getCurrentUser: () => account ? { id: account } : null,
+    isSignedIn: () => account !== null,
+    getVerifiedSessionIdentity: () => identity,
+    subscribeCurrentUser: (next) => { listener = next; return () => { listener = undefined; }; },
+  }, () => { pendingSync = controller.requestSync({ reason: "session-verified", force: true }); },
+  (id) => controller.resetAccount(id), () => controller.retireSession());
+  let stop = subscribe();
+  try {
+    await controller.requestSync();
+    state = appReducer(state, { type: "SET_THEME", theme: "green" });
+    state = appReducer(state, { type: "RENAME_LAYOUT", index: 0, name: "Unsynced layout" });
+    controller.schedulePush("unsynced-edit");
+    account = null;
+    identity = null;
+    listener!();
+    remote = remoteSnapshot("core.config", __syncContributorInternalsForTests.collectCoreConfigPayload({
+      ...originalConfig, baseCurrency: "EUR",
+    }), "2026-10-02T00:00:00.000Z");
+    revision = 9;
+    if (scenario !== "same session") {
+      stop();
+      controller.clearRuntime();
+      controller = start();
+      stop = subscribe();
+    }
+    account = scenario === "different account after restart" ? "account-b" : "account-a";
+    identity = {};
+    listener!();
+    await pendingSync;
+    const expectedTheme = account === "account-a" ? "green" : originalConfig.theme;
+    const expectedLayout = account === "account-a" ? "Unsynced layout" : originalConfig.layouts[0]!.name;
+    const cloud = remote.contributors["core.config"]!.payload as typeof originalConfig;
+    expect(state.config.theme).toBe(expectedTheme);
+    expect(state.config.layouts[0]!.name).toBe(expectedLayout);
+    expect(state.config.baseCurrency).toBe("EUR");
+    expect(cloud.theme).toBe(expectedTheme);
+    expect(cloud.layouts[0]!.name).toBe(expectedLayout);
+    expect(baselineStore().loadAccountId!()).toBe(account);
+  } finally {
+    stop();
+    controller.clearRuntime();
+  }
+});
 
 // One running app keeps its transport when its signed-in account changes.
 // Exercise the same auth subscription used by the terminal, desktop and web.

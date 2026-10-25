@@ -67,6 +67,8 @@ export const ASSIST_ARG_OPTION_LIMIT = 128;
 const ASSIST_ARG_OPTION_VALUE_MAX_LENGTH = 40;
 const ASSIST_ARG_OPTION_LABEL_MAX_LENGTH = 60;
 const ASSIST_REQUEST_TIMEOUT_MS = 6_000;
+const SESSION_REVALIDATION_INITIAL_MS = 1_000;
+const SESSION_REVALIDATION_MAX_MS = 30_000;
 
 /**
  * Fits a command's argument values inside the server caps. The value is what
@@ -101,6 +103,8 @@ class GloomApiClient {
   private sessionTransition: Promise<void> | null = null;
   /** Device adoption and external session installs supersede pending email auth. */
   private sessionInstallationGeneration = 0;
+  private sessionRevalidationGeneration = 0;
+  private sessionRevalidationTimer: ReturnType<typeof setTimeout> | null = null;
   private sessionChecked = false;
   /** Last few session transitions, content-free, for app://auth. */
   private authTrace: Array<{ at: number; event: string; token: boolean; user: string }> = [];
@@ -169,6 +173,7 @@ class GloomApiClient {
   }
 
   setCookieSessionMode(enabled: boolean): void {
+    this.cancelSessionRevalidation();
     this.sessionInstallationGeneration += 1;
     this.sessionChecked = false;
     this.verifiedSessionIdentity = null;
@@ -177,7 +182,10 @@ class GloomApiClient {
   }
 
   setSessionToken(token: string | null): void {
-    if (this.transport.getSessionToken() !== token || !token) this.sessionInstallationGeneration += 1;
+    if (this.transport.getSessionToken() !== token || !token) {
+      this.cancelSessionRevalidation();
+      this.sessionInstallationGeneration += 1;
+    }
     this.installSessionToken(token);
   }
 
@@ -188,6 +196,7 @@ class GloomApiClient {
     if (changed) this.verifiedSessionIdentity = null;
     this.traceAuth(changed ? "setSessionToken:changed" : "setSessionToken:same");
     if (!token) {
+      this.cancelSessionRevalidation();
       this.currentUser = null;
       this.verifiedSessionIdentity = null;
     }
@@ -294,6 +303,7 @@ class GloomApiClient {
     this.traceAuth("setCurrentUser", user);
     this.currentUser = user;
     if (confirmSession) {
+      this.clearSessionRevalidationTimer();
       this.verifiedSessionIdentity = user ? {} : null;
       this.verifiedSessionCredential = this.transport.getSessionToken();
     } else if (!sameAccount || !user) {
@@ -357,29 +367,40 @@ class GloomApiClient {
   /** Cookies can change before an auth response's body arrives, including ones the browser hides. */
   private withSessionTransition<T>(run: (isCurrent: () => boolean) => Promise<T>, reconcileFailure = true): Promise<T> {
     const previous = this.sessionTransition;
+    this.cancelSessionRevalidation();
+    let revalidationGeneration = this.sessionRevalidationGeneration;
     const generation = this.sessionInstallationGeneration;
     const isCurrent = () => generation === this.sessionInstallationGeneration;
     this.sessionTransitions += 1;
+    this.sessionChecked = false;
     this.verifiedSessionIdentity = null;
     this.sessionRequestGeneration += 1;
     this.emitCurrentUserChange();
+    let needsRevalidation = false;
     const operation = (async () => {
       // Serialize credential-changing requests so a late response cannot pair
       // one account's user with another request's installed cookie.
       if (previous) await previous;
       try {
         if (!isCurrent()) throw new Error("Another sign-in replaced this request.");
+        // An earlier queued sign-out may have retired retries while clearing its token.
+        revalidationGeneration = this.sessionRevalidationGeneration;
         this.sessionRequestGeneration += 1;
         const result = await run(isCurrent);
         if (!isCurrent()) throw new Error("Another sign-in replaced this request.");
         return result;
       } catch (error) {
-        if (isCurrent()) this.verifiedSessionIdentity = null;
+        if (isCurrent()) {
+          this.verifiedSessionIdentity = null;
+          this.sessionChecked = false;
+        }
         if (isCurrent() && reconcileFailure && this.transport.hasSessionCredential()) {
           // A failed body may already have changed the cookie. A fresh session
-          // check is the only way to resume; an unanswered one leaves sync paused.
+          // check is the only way to resume; retry if it cannot validate yet.
+          needsRevalidation = true;
           this.sessionRequestGeneration += 1;
-          await this.getSession().catch((failure) => {
+          await this.revalidateSession(() => isCurrent()
+            && revalidationGeneration === this.sessionRevalidationGeneration).catch((failure) => {
             if (!isCurrent()) return;
             this.verifiedSessionIdentity = null;
             logFailure("cloud.auth", "Restore session after failed sign-in failed")(failure);
@@ -389,6 +410,7 @@ class GloomApiClient {
       } finally {
         if (isCurrent()) this.sessionRequestGeneration += 1;
         this.sessionTransitions -= 1;
+        if (isCurrent() && needsRevalidation) this.scheduleSessionRevalidation(revalidationGeneration);
         this.emitCurrentUserChange();
       }
     })();
@@ -398,6 +420,58 @@ class GloomApiClient {
     this.sessionTransition = settled;
     void settled.then(() => { if (this.sessionTransition === settled) this.sessionTransition = null; });
     return operation;
+  }
+
+  private clearSessionRevalidationTimer(): void {
+    if (this.sessionRevalidationTimer !== null) clearTimeout(this.sessionRevalidationTimer);
+    this.sessionRevalidationTimer = null;
+  }
+
+  private cancelSessionRevalidation(): void {
+    this.sessionRevalidationGeneration += 1;
+    this.clearSessionRevalidationTimer();
+  }
+
+  /** A failed auth response can replace a cookie even when its recovery read is offline. */
+  private scheduleSessionRevalidation(generation: number, delay = SESSION_REVALIDATION_INITIAL_MS): void {
+    const isCurrent = () => generation === this.sessionRevalidationGeneration;
+    const needsRevalidation = () => isCurrent() && this.sessionTransitions === 0
+      && !this.sessionChecked && this.verifiedSessionIdentity === null && this.transport.hasSessionCredential();
+    if (!needsRevalidation() || this.sessionRevalidationTimer !== null) return;
+    this.sessionRevalidationTimer = setTimeout(() => {
+      this.sessionRevalidationTimer = null;
+      if (!needsRevalidation()) return;
+      void this.revalidateSession(isCurrent).catch((error) => {
+        if (isCurrent()) logFailure("cloud.auth", "Retry session validation failed")(error);
+      }).finally(() => {
+        this.scheduleSessionRevalidation(generation, Math.min(delay * 2, SESSION_REVALIDATION_MAX_MS));
+      });
+    }, delay);
+    this.sessionRevalidationTimer.unref?.();
+  }
+
+  private async revalidateSession(isCurrent: () => boolean): Promise<void> {
+    const user = await this.getSession(isCurrent);
+    const credential = this.getSessionToken();
+    if (user || !credential || !isCurrent()) return;
+    // A native null-session response can retain a usable token. Validate it
+    // through the account endpoint, without pairing it with a cached user.
+    this.sessionChecked = false;
+    const previousUser = this.currentUser;
+    const canApply = () => isCurrent() && this.getSessionToken() === credential && this.currentUser === previousUser;
+    try {
+      const profile = await this.auth.getAccountProfile(canApply);
+      if (!canApply()) return;
+      this.sessionChecked = true;
+      this.auth.restoreCachedUser({ ...profile, updatedAt: profile.updatedAt ?? undefined });
+    } catch (error) {
+      if (!canApply()) return;
+      if (error instanceof ApiRequestError && error.status === 401) {
+        this.installSessionToken(null);
+        return;
+      }
+      throw error;
+    }
   }
 
   async getSession(isCurrent: () => boolean = () => true): Promise<AuthUser | null> {
@@ -421,7 +495,10 @@ class GloomApiClient {
       credential: this.getSessionToken(),
       promise: this.auth.getSession(canApply)
         .then(({ user, validated }) => {
-          if (validated && canApply()) this.sessionChecked = true;
+          if (validated && canApply()) {
+            this.sessionChecked = true;
+            this.clearSessionRevalidationTimer();
+          }
           this.traceAuth(validated ? "getSession:done" : "getSession:retained", user);
           return user;
         })
@@ -821,6 +898,7 @@ class GloomApiClient {
   subscribeScanner = this.socket.subscribeScanner.bind(this.socket);
 
   dispose(): void {
+    this.cancelSessionRevalidation();
     this.sessionInstallationGeneration += 1;
     this.sessionRequestGeneration += 1;
     this.sessionRequest = null;

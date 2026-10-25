@@ -35,6 +35,8 @@ interface SyncRuntime {
   baselineStore?: SyncBaselineStore;
   /** Retires pending operations when the Cloud session changes; transports decide availability. */
   getSessionIdentity?: () => object | null;
+  /** Confirmed Cloud account, used to keep persisted merge history scoped across restarts. */
+  getAccountId?: () => string | null;
   /** Sources whose quotes and bars never leave this device (`BrokerAdapter.localMarketData`); none when absent. */
   isLocalMarketData?: LocalMarketDataLookup;
 }
@@ -92,6 +94,7 @@ export class CloudSyncController {
   private syncQueued = false;
   private generation = 0;
   private clientId: string | null = null;
+  private accountId: string | null = null;
   private lastSignature: string | null = null;
   /**
    * The content signature of the cloud's copy, with the revision and the
@@ -149,6 +152,7 @@ export class CloudSyncController {
     if (this.runtime !== runtime) {
       this.resetOperations();
       this.runtime = runtime;
+      this.accountId = runtime.baselineStore?.loadAccountId?.() ?? null;
       this.updateAvailability();
     }
     return () => this.clearRuntime(runtime);
@@ -161,15 +165,27 @@ export class CloudSyncController {
     this.setStatus({ phase: "disabled", transportId: null, error: null });
   }
 
+  /** Retires pending session work without losing unsynced edits for the same account. */
+  retireSession(): void {
+    this.generation += 1;
+    if (this.pushTimer) clearTimeout(this.pushTimer);
+    this.pushTimer = null;
+    this.inFlight = null;
+    this.syncQueued = false;
+    this.updateAvailability();
+  }
+
   /** Account revisions, merge baselines and edit provenance never carry into another account. */
-  resetAccount(): void {
+  resetAccount(accountId?: string): void {
     this.resetOperations();
+    this.accountId = accountId ?? null;
     this.baseline = {};
     this.baselineLoaded = true;
     this.memos = {};
     this.memosLoaded = true;
     this.runtime?.baselineStore?.save({});
     this.runtime?.baselineStore?.saveMemos?.({});
+    if (accountId) this.runtime?.baselineStore?.saveAccountId?.(accountId);
     this.setStatus({ phase: "idle", transportId: null, lastSyncAt: null, lastPullAt: null, revision: null, error: null });
     this.updateAvailability();
   }
@@ -222,6 +238,15 @@ export class CloudSyncController {
   private async syncOnce(options: { reason?: string; force?: boolean }): Promise<void> {
     const runtime = this.runtime;
     if (!runtime) return;
+    const accountId = runtime.getAccountId?.();
+    if (accountId && accountId !== this.accountId) {
+      if (this.accountId !== null) this.resetAccount(accountId);
+      else {
+        // Legacy stores have no owner; retain their offline edits on first validation.
+        this.accountId = accountId;
+        runtime.baselineStore?.saveAccountId?.(accountId);
+      }
+    }
     const generation = this.generation;
     const sessionIdentity = runtime.getSessionIdentity?.();
     this.observe(runtime);
