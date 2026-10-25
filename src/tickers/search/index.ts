@@ -226,6 +226,7 @@ function createProviderTickerSearchCandidates(
       instrumentClass: classifyInstrumentKind(result.brokerContract?.secType || result.type),
       instrumentType: result.brokerContract?.secType || result.type,
       searchAliases: buildSearchResultAliases(result),
+      ...(searchResultNames(result) ? { nameAliases: searchResultNames(result) } : {}),
       ...(searchResultKeywords(result) ? { searchKeywords: searchResultKeywords(result) } : {}),
       result,
     }];
@@ -864,6 +865,14 @@ function getProviderHintScore(result: InstrumentSearchResult, preferredExchange?
   const matchesPreferredExchange = !!canonicalPreferredExchange
     && resultVenues(result).includes(canonicalPreferredExchange);
   return getProviderHintRichness(result) + (matchesPreferredExchange ? 10_000 : 0);
+}
+
+/** The names the service sent the row for, without the symbol spellings; older servers send none. */
+function searchResultNames(result: InstrumentSearchResult): string[] | undefined {
+  const names = Array.isArray(result.searchAliases)
+    ? result.searchAliases.filter((alias): alias is string => typeof alias === "string" && !!alias.trim())
+    : [];
+  return names.length > 0 ? names : undefined;
 }
 
 /** Older servers send none; anything malformed is ignored. */

@@ -1065,6 +1065,37 @@ describe("ticker-search utilities", () => {
     });
   });
 
+  describe("a renamed company's old name", () => {
+    const build = (query: string, providerResults: InstrumentSearchResult[]) => buildTickerSearchCandidates({
+      query,
+      tickers: new Map<string, TickerRecord>(),
+      providerResults,
+      totalLimit: 10,
+    }).map((item) => `${item.symbol}:${item.category}`);
+    // The service's answer to "cassava", 2026-10-25: the company's own line first, carrying the old name, then
+    // the German lines that still list it so, and a namesake.
+    const answer = [
+      makeSearchResult("FLNA", "Filana Therapeutics, Inc.", { type: "Common Stock", currency: "USD", searchAliases: ["CASSAVA SCIENCES INC"] }),
+      ...[["PX91.MU", "MUNICH", 20010], ["PX91.DU", "XDUS", 20005], ["PX91.SG", "XSTU", 20002], ["PX91.HM", "XHAM", 20001]]
+        .map(([symbol, exchange, popularity]) => makeSearchResult(symbol as string, "Cassava Sciences Inc", { exchange: exchange as string, popularity: popularity as number })),
+      makeSearchResult("0841", "Asia Cassava Resources Holdings Limited", { exchange: "HKEX", popularity: 20001 }),
+    ];
+
+    test("the company's own line leads, its old name matched, and the venues that still list the old name follow it", () => {
+      expect(build("cassava", answer)).toEqual([
+        "FLNA:Primary Listing", "PX91.MU:Other Listings", "PX91.DU:Other Listings", "PX91.SG:Other Listings", "PX91.HM:Other Listings",
+        "0841:Other Listings",
+      ]);
+      expect(build("Cassava Sciences", answer).slice(0, 2)).toEqual(["FLNA:Primary Listing", "PX91.MU:Other Listings"]);
+    });
+
+    test("another company's name still leads its own query, and a row sent without the alias keeps its place", () => {
+      expect(build("asia cassava", answer)[0]).toBe("0841:Primary Listing");
+      const withoutAlias = answer.map(({ searchAliases: _aliases, ...row }) => row);
+      expect(build("cassava", withoutAlias)[0]).toBe("PX91.MU:Primary Listing");
+    });
+  });
+
   describe("themes and several words", () => {
     const build = (query: string, providerResults: InstrumentSearchResult[]) => buildTickerSearchCandidates({
       query,

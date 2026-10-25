@@ -207,9 +207,19 @@ function formerIssuerNote(candidate: TickerSearchCandidate): string | null {
   return formerIssuerLine(former.symbol, former, former.successor ?? { symbol: candidate.label, name: resolveSearchName(candidate) });
 }
 
-/** The merged companies' lines, once each, unless the symbol's own line already says it. */
+/**
+ * A row search found by the name its company had before it was renamed
+ * ("cassava" finds Filana Therapeutics' FLNA): says what it was called.
+ */
+function formerNameNote(candidate: TickerSearchCandidate): string | null {
+  const formerName = candidate.result?.formerName;
+  if (typeof formerName !== "string" || !formerName.trim()) return null;
+  return `${candidate.label} is ${resolveSearchName(candidate)}, formerly ${formerName.trim()}`;
+}
+
+/** The merged companies' and renamed companies' lines, once each, unless the symbol's own line already says it. */
 function formerIssuerNotes(candidates: readonly TickerSearchCandidate[], fate: SearchFate): string[] {
-  const notes = new Set(candidates.flatMap((candidate) => formerIssuerNote(candidate) ?? []));
+  const notes = new Set(candidates.flatMap((candidate) => formerIssuerNote(candidate) ?? formerNameNote(candidate) ?? []));
   return [...notes].filter((note) => !fate.notes.some((line) => line.split(" ")[0] === note.split(" ")[0]));
 }
 
@@ -369,6 +379,9 @@ function searchCandidateRows(candidates: TickerSearchCandidate[]) {
     saved: candidate.kind === "ticker",
     // The company that merged into this one, whose old name the query is.
     ...candidate.result?.formerIssuer ? { formerIssuer: candidate.result.formerIssuer } : {},
+    // The name a renamed company had, which the query is.
+    ...typeof candidate.result?.formerName === "string" && candidate.result.formerName.trim()
+      ? { formerName: candidate.result.formerName.trim() } : {},
   }));
 }
 

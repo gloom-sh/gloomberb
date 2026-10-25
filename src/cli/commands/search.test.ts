@@ -63,3 +63,30 @@ test("a name typed in kana or kanji is searched as typed, matches no saved ticke
   // A Latin name the service is too busy for is still busy.
   expect((await run("gamestop", async () => { throw new ProviderBusyError(); })).failure).toMatchObject({ code: "search_busy" });
 });
+
+/**
+ * `search cassava` against production, 2026-10-25: the service answered with Filana Therapeutics' FLNA first,
+ * carrying the name it had, but the list put it last under Other Listings, behind the German lines that still
+ * list Cassava Sciences, and the name was nowhere on it.
+ */
+test("a company found by the name it had before it was renamed leads, and says what it was called", async () => {
+  const row = (symbol: string, name: string, exchange: string, extra: Record<string, unknown> = {}) =>
+    ({ providerId: "gloomberb-cloud", symbol, name, exchange, type: "EQUITY", primaryExchange: exchange, ...extra });
+  const answer = [
+    row("FLNA", "Filana Therapeutics, Inc.", "NASDAQ", { type: "Common Stock", currency: "USD", searchAliases: ["CASSAVA SCIENCES INC"], formerName: "Cassava Sciences Inc" }),
+    row("PX91.MU", "Cassava Sciences Inc", "MUNICH", { popularity: 20010 }),
+    row("PX91.DU", "Cassava Sciences Inc", "XDUS", { popularity: 20005 }),
+    row("0841", "Asia Cassava Resources Holdings Limited", "HKEX", { popularity: 20001 }),
+  ];
+  const dataProvider = createTestDataProvider({ search: async () => answer as never });
+  const initMarketData = async () => ({ store: { loadAllTickers: async () => [] }, dataProvider, persistence: { close() {} } }) as never;
+  const printed: PrintedCliResult["result"][] = [];
+  await search("cassava", { initMarketData, printResult: (result) => { printed.push(result); } });
+  const rows = printed[0]!.data as Array<{ category: string; symbol: string; formerName?: string }>;
+  expect(rows.map((item) => `${item.symbol}:${item.category}`)).toEqual([
+    "FLNA:Primary Listing", "PX91.MU:Other Listings", "PX91.DU:Other Listings", "0841:Other Listings",
+  ]);
+  expect(rows[0]!.formerName).toBe("Cassava Sciences Inc");
+  expect("formerName" in rows[1]!).toBe(false);
+  expect(printed[0]!.warnings).toEqual(["FLNA is Filana Therapeutics, Inc., formerly Cassava Sciences Inc"]);
+});

@@ -22,6 +22,11 @@ export interface TickerSearchRankableItem {
   providerRank?: number;
   popularity?: number;
   searchAliases?: string[];
+  /**
+   * The names the service sent the row for (`InstrumentSearchResult.searchAliases`: a trade name, or the name a
+   * renamed company had), apart from the symbol spellings `searchAliases` also holds.
+   */
+  nameAliases?: string[];
   /** Themes the row answers to that its name does not say (`InstrumentSearchResult.searchKeywords`). */
   searchKeywords?: string[];
 }

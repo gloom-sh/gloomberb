@@ -254,7 +254,16 @@ export function rankTickerSearchItems<T extends Pick<TickerSearchRankableItem, "
       const explicitIntentScore = scoreAssetPreference(intent, item.instrumentClass)
         + scoreExchangePreference(intent, item);
       const priorityScore = explicitIntentScore + scoreListingPriority(item);
-      const companyMatchRank = scoreCompanyNameMatch(intent, companyNameKey);
+      // A company the service found by a name it does not bear in this row (the one it had before it was renamed,
+      // a trade name) is that company by the name as much as its listing's own name says so. An index answers to
+      // its codes, never as a company.
+      const companyAliases = item.instrumentClass === "equity" && !(item.symbol || item.label).startsWith("^")
+        ? item.nameAliases ?? []
+        : [];
+      const companyMatchRank = Math.max(
+        scoreCompanyNameMatch(intent, companyNameKey),
+        ...companyAliases.map((alias) => scoreCompanyNameMatch(intent, normalizeCompanyName(alias))),
+      );
       return {
         item,
         index,
