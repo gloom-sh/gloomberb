@@ -63,6 +63,38 @@ export function quantityIdentity(quantity: string): string {
     : token.replace(/^shares$/, "share");
 }
 
+/**
+ * The physical quantities a price can count, each by one name: what sets a
+ * price's scale, so a per-gallon and a per-barrel price never share an axis.
+ * A share, a unit or a currency is none of them.
+ */
+const PHYSICAL_QUANTITIES: ReadonlyArray<readonly [RegExp, string]> = [
+  [GALLON, "gallon"],
+  [BARREL, "barrel"],
+  [TONNE, "tonne"],
+  [/^(?:dry\s+metric\s+tons?|dmtu?)$/i, "dry metric ton"],
+  [/^(?:short\s+)?tons?$/i, "short ton"],
+  [/^(?:bushels?|bu)$/i, "bushel"],
+  [/^(?:pounds?|lbs?)$/i, "pound"],
+  [/^(?:troy\s+)?(?:ounces?|oz)$/i, "troy ounce"],
+  [/^(?:hundredweight|cwt)$/i, "hundredweight"],
+  [/^(?:kilograms?|kg)$/i, "kilogram"],
+  [/^mmbtu$/i, "MMBtu"],
+  [/^therms?$/i, "therm"],
+  [/^gj$/i, "GJ"],
+  [/^mwh$/i, "MWh"],
+  [/^kwh$/i, "kWh"],
+  [/^(?:board\s+feet|mbf)$/i, "board feet"],
+  [/^(?:litres?|liters?)$/i, "litre"],
+  [/^(?:cubic\s+met(?:er|re)s?|m3)$/i, "cubic metre"],
+];
+
+/** The physical quantity a unit's denominator names ("barrel" for "bbl"), or null for a share, a unit or a currency. */
+export function physicalQuantity(quantity: string): string | null {
+  const token = quantity.trim();
+  return PHYSICAL_QUANTITIES.find(([pattern]) => pattern.test(token))?.[1] ?? null;
+}
+
 /** A price per gallon: "USD / gallon", "USD/gallon". */
 export function isPerGallonUnit(unit: string): boolean {
   const parts = unitParts(unit);

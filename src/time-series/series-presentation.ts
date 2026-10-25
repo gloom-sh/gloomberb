@@ -13,7 +13,8 @@ import {
   type PriceComparison,
 } from "./price-comparison";
 import { parsePublicTickerKey, publicTickerKey } from "../utils/exchanges";
-import { quantityIdentity } from "./price-units";
+import { physicalQuantity } from "./price-units";
+import { isCurrencyCode } from "../utils/currency-pair";
 import type {
   ChartSeriesSpec,
   ChartSpec,
@@ -42,22 +43,24 @@ export function resolvePriceHistoryIntegrity(
 }
 
 /**
- * The quantity a series' unit counts per unit of its currency, when it names
- * one: "gallon" for USD / gallon, "barrel" for USD/bbl, "EUR" for an FX rate's
- * USD / EUR. A bare currency names none.
+ * What sets a price's scale beyond its currency: the physical quantity it
+ * counts ("gallon" for USD / gallon, "barrel" for USD/bbl), or "currency" for
+ * an FX rate (USD / EUR). Null for a bare currency, a share or a unit, which
+ * scale as any price in their currency does.
  */
-function unitQuantity(unit: string): string | null {
+function scaleQuantity(unit: string): string | null {
   const slash = unit.indexOf("/");
   if (slash < 0) return null;
-  const quantity = unit.slice(slash + 1).split("/").map((part) => quantityIdentity(part)).join("/");
-  return quantity || null;
+  const per = unit.slice(slash + 1).trim();
+  return physicalQuantity(per) ?? (/^[A-Z]{3}$/.test(per) && isCurrencyCode(per) ? "currency" : null);
 }
 
 /**
  * Each series' axis: one a spec names, else the side whose series count the
- * same unit. Prices in one currency per different quantities (heating oil
- * USD / gallon beside Brent USD / barrel) scale on axes of their own; a price
- * that names no quantity shares either.
+ * same unit. Prices in one currency per different physical quantities
+ * (heating oil USD / gallon beside Brent USD / barrel), or a price beside an
+ * FX rate, scale on axes of their own; per-share and per-unit prices, and FX
+ * rates quoted in one currency, share one as any prices in that currency do.
  */
 export function assignAxes(
   series: ResolvedSeries[],
@@ -70,10 +73,11 @@ export function assignAxes(
   return series.map((entry) => {
     const groups = groupsByPanel.get(entry.panelId) ?? {};
     groupsByPanel.set(entry.panelId, groups);
-    const quantity = unitQuantity(entry.unit);
+    const quantity = scaleQuantity(entry.unit);
+    const sameGroup = (side: "left" | "right") => groups[side]?.group === entry.unitGroup;
     const fits = (side: "left" | "right") => {
       const held = groups[side];
-      return !!held && held.group === entry.unitGroup && (!held.quantity || !quantity || held.quantity === quantity);
+      return sameGroup(side) && (!held!.quantity || !quantity || held!.quantity === quantity);
     };
     const preferred = requested.get(entry.id);
     let axis: "left" | "right";
@@ -85,15 +89,18 @@ export function assignAxes(
       axis = "right";
     } else if (!groups.left) {
       axis = "left";
-    } else {
+    } else if (!groups.right || !sameGroup("left")) {
       axis = "right";
+    } else {
+      // Both axes taken: a third quantity in the same currency shares as it would without them.
+      axis = "left";
     }
     const held = groups[axis];
-    if (held && !fits(axis)) {
+    if (held && held.group !== entry.unitGroup) {
       warnings.push(`${entry.label} shares the ${axis} axis with a different unit; choose an explicit panel for independent scaling.`);
     }
     if (!held) groups[axis] = { group: entry.unitGroup, quantity };
-    else if (!held.quantity && quantity && held.group === entry.unitGroup) held.quantity = quantity;
+    else if (!held.quantity && quantity && fits(axis)) held.quantity = quantity;
     return { ...entry, axis };
   });
 }

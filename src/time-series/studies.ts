@@ -862,8 +862,8 @@ function combinedUnit(left: SeriesUnit, right: SeriesUnit, power: 1 | -1): Serie
   const unit = denominator.length === 0
     ? numerator.join("·") || "x"
     : `${numerator.join("·") || "1"}${slash}${denominator.join("·")}`;
-  if (isPriceGroup(left.unitGroup) && isPriceGroup(right.unitGroup) && numerator.length === 1 && denominator.length === 1
-    && isCurrencyFactor(numerator[0]!) && !isCurrencyFactor(denominator[0]!)) {
+  if (isPriceGroup(left.unitGroup) && isPriceGroup(right.unitGroup) && numerator.length === 1 && isCurrencyFactor(numerator[0]!)
+    && (denominator.length === 0 || (denominator.length === 1 && !isCurrencyFactor(denominator[0]!)))) {
     return { unit, unitGroup: `price:${unitCurrencyToken(numerator[0]!) ?? numerator[0]!}` };
   }
   const groupFactor = (value: string) => {
@@ -883,6 +883,34 @@ function ratioUnit(left: SeriesUnit, right: SeriesUnit): SeriesUnit {
   return combinedUnit(left, right, -1);
 }
 
+/** An FX rate's unit: one currency per another, as USD / EUR. */
+function isRateUnit(unit: string): boolean {
+  const { numerator, denominator } = unitFactors(unit);
+  return numerator.length === 1 && denominator.length === 1 && isCurrencyFactor(numerator[0]!) && isCurrencyFactor(denominator[0]!);
+}
+
+/**
+ * Why a price times (`power` 1) or over (-1) an FX rate is no price, with how
+ * to convert it instead: a crack in USD / barrel over USDJPY=X (JPY / USD) is
+ * USD·USD / barrel·JPY, and times it JPY / barrel. A ratio, which cannot
+ * multiply, names the formula to write (`priceName` its numerator). Null when
+ * the rate converts the price, or either is not what this asks about.
+ */
+function fxConversionIssue(price: SeriesUnit, rate: ResolvedSeries, power: 1 | -1, result: SeriesUnit, priceName?: string): string | null {
+  if (!isPriceGroup(price.unitGroup) || !isPriceGroup(rate.unitGroup) || !isRateUnit(rate.unit) || isPriceGroup(result.unitGroup)) {
+    return null;
+  }
+  const name = legName(rate);
+  const done = `${power < 0 ? "Dividing" : "Multiplying"} by ${name} (${rate.unit}) leaves ${result.unit}`;
+  const other = combinedUnit(price, rate, power < 0 ? 1 : -1);
+  if (isPriceGroup(other.unitGroup)) {
+    const fix = priceName ? `write (${priceName})${power < 0 ? "*" : "/"}${name}` : `${power < 0 ? "multiply" : "divide"} by ${name}`;
+    return `${done}; ${fix} instead to get ${other.unit}.`;
+  }
+  const currency = price.unitGroup.slice("price:".length) || "its currency";
+  return `${done}; ${price.unit} converts only with a rate that has ${currency} on one side.`;
+}
+
 /** The distinct currencies a unit still counts, once its factors cancel. */
 function unitCurrencies(unit: string): Set<string> {
   const { numerator, denominator } = unitFactors(unit);
@@ -891,14 +919,16 @@ function unitCurrencies(unit: string): Set<string> {
 
 /**
  * The decimals a value worked out from prices prints at: the most its legs
- * print, from two to four (a crack of 4.9842 USD / gallon heating oil and
- * 116.72 USD / barrel Brent reads to four). Undefined when a leg is not a price.
+ * print, from two to four, and no more than a value of its own size needs:
+ * four under 10, two from 10. A crack of 4.9842 USD / gallon heating oil and
+ * 116.72 USD / barrel Brent reads 92.62; a gasoline-heating oil spread reads
+ * 1.7726. Undefined when a leg is not a price or the value has none yet.
  */
-function derivedValueDecimals(inputs: readonly ResolvedSeries[]): number | undefined {
+function derivedValueDecimals(inputs: readonly ResolvedSeries[], points: readonly TimeSeriesPoint[]): number | undefined {
   let digits = 0;
   for (const input of inputs) {
     if (!isPriceGroup(input.unitGroup) || input.transform !== "raw") return undefined;
-    const reference = latestScalarValue(input);
+    const reference = latestScalarValue(input.points);
     if (reference === undefined) return undefined;
     digits = Math.max(digits, stablePriceFractionDigits({
       assetCategory: input.priceAssetCategory,
@@ -907,13 +937,15 @@ function derivedValueDecimals(inputs: readonly ResolvedSeries[]): number | undef
       sessionPrices: [reference],
     }));
   }
-  return Math.min(4, Math.max(2, digits));
+  const size = latestScalarValue(points);
+  if (size === undefined) return undefined;
+  return Math.min(size < 10 ? 4 : 2, Math.max(2, digits));
 }
 
-/** A series' last nonzero value, which its decimals are read from. */
-function latestScalarValue(series: ResolvedSeries): number | undefined {
-  for (let index = series.points.length - 1; index >= 0; index -= 1) {
-    const value = scalarPointValue(series.points[index]!);
+/** The size of a series' last nonzero value, which its decimals are read from. */
+function latestScalarValue(points: readonly TimeSeriesPoint[]): number | undefined {
+  for (let index = points.length - 1; index >= 0; index -= 1) {
+    const value = scalarPointValue(points[index]!);
     if (value !== null && Number.isFinite(value) && value !== 0) return Math.abs(value);
   }
   return undefined;
@@ -979,7 +1011,7 @@ function resolvePairStudy(
     // A price over an FX rate is a price in the other currency (EUR / barrel),
     // stated as a future's unit is; a plain ratio keeps its own decimals.
     const convertedPrice = ratioStudy && isPriceGroup(outputUnit.unitGroup);
-    const valueDecimals = !ratioStudy || convertedPrice ? derivedValueDecimals([left, right]) : undefined;
+    const valueDecimals = !ratioStudy || convertedPrice ? derivedValueDecimals([left, right], points) : undefined;
     return [outputSeries(spec, left, {
       ...(convertedPrice ? { statedUnit: outputUnit.unit, priceAssetCategory: null } : {}),
       ...(valueDecimals !== undefined ? { valueDecimals } : {}),
@@ -1046,6 +1078,15 @@ function resolvePairStudy(
 }
 
 /** Formulas of levels, which carry each input's latest value to the other inputs' dates. */
+/** The study's own colour, or the next after it no series or formula on the chart has taken. */
+function freeStudyColor(index: number, used: ReadonlySet<string>): string {
+  for (let offset = 0; offset < STUDY_COLORS.length; offset += 1) {
+    const color = STUDY_COLORS[(index + offset) % STUDY_COLORS.length]!;
+    if (!used.has(color.toLowerCase())) return color;
+  }
+  return STUDY_COLORS[index % STUDY_COLORS.length]!;
+}
+
 function isLevelFormula(kind: ChartStudyKind): boolean {
   return kind === "ratio" || kind === "spread" || kind === "formula";
 }
@@ -1175,17 +1216,35 @@ function alignedSamples(inputs: readonly ResolvedSeries[]): Array<{ point: TimeS
  * converted, then times or over the series it is scaled by, in the unit
  * that arithmetic leaves: a crack in USD / barrel over EURUSD=X is EUR / barrel.
  */
+/**
+ * A formula's unit: its legs' once converted, then times or over each series
+ * it is scaled by. Legs that count different units, or an FX rate the wrong
+ * way up, are an error that says why: a crack over USDJPY=X is no price, and
+ * times it JPY / barrel.
+ */
+function formulaUnit(terms: FormulaTerms, inputs: readonly ResolvedSeries[]): SeriesUnit | { error: string } {
+  const mismatch = formulaUnitMismatch(terms, inputs);
+  if (mismatch) return { error: mismatch };
+  const first = inputs[terms.legs[0]!.index]!;
+  let unit: SeriesUnit = { unit: formulaLegUnit(terms.legs[0]!, first), unitGroup: first.unitGroup };
+  for (const factor of terms.factors) {
+    const series = inputs[factor.index]!;
+    const next = combinedUnit(unit, series, factor.power);
+    const issue = fxConversionIssue(unit, series, factor.power, next);
+    if (issue) return { error: issue };
+    unit = next;
+  }
+  return unit;
+}
+
 function resolveFormula(
   spec: ChartStudySpec,
   inputs: readonly ResolvedSeries[],
   terms: FormulaTerms,
+  unit: SeriesUnit,
   color: string,
 ): ResolvedSeries[] {
   const first = inputs[terms.legs[0]!.index]!;
-  const unit = terms.factors.reduce<SeriesUnit>(
-    (sum, factor) => combinedUnit(sum, inputs[factor.index]!, factor.power),
-    { unit: formulaLegUnit(terms.legs[0]!, first), unitGroup: first.unitGroup },
-  );
   // Rounded off the float's last digits: 42 × 4.6233 - 96.12 is 98.0586, not 98.05860000000001.
   const points = alignedSamples(inputs).map(({ point, values }) => {
     let value: number | null = terms.legs.reduce((sum, leg) => sum + values[leg.index]! * leg.weight, 0) / terms.divisor;
@@ -1202,7 +1261,7 @@ function resolveFormula(
   const statedUnit = scaled
     ? isPriceGroup(unit.unitGroup) && unit.unit.includes("/") ? unit.unit : null
     : inputs.some((input) => input.statedUnit) ? unit.unit : null;
-  const valueDecimals = !scaled || isPriceGroup(unit.unitGroup) ? derivedValueDecimals(inputs) : undefined;
+  const valueDecimals = !scaled || isPriceGroup(unit.unitGroup) ? derivedValueDecimals(inputs, points) : undefined;
   return [outputSeries(spec, first, {
     label: formulaLabel(inputs, terms),
     points,
@@ -1418,6 +1477,8 @@ function resolveStudySpecs(
   anchors?: ReadonlyMap<string, StudyAnchor>,
 ): StudyResolutionResult {
   const byId = new Map(baseSeries.map((series) => [series.id, series]));
+  // A formula never takes a colour a series on the chart has: a crack in euros is not drawn in its EURUSD leg's yellow.
+  const usedColors = new Set(baseSeries.map((series) => series.color.toLowerCase()));
   const resolved: ResolvedSeries[] = [];
   const warnings: string[] = [];
   const errors: string[] = [];
@@ -1440,17 +1501,19 @@ function resolveStudySpecs(
         return;
       }
     }
-    let terms: FormulaTerms | null = null;
+    let formula: { terms: FormulaTerms; unit: SeriesUnit } | null = null;
     if (spec.kind === "formula") {
-      const read = formulaTerms(spec, inputs as ResolvedSeries[]);
-      const mismatch = "error" in read ? read.error : formulaUnitMismatch(read, inputs as ResolvedSeries[]);
-      if (mismatch) {
-        errors.push(`${studyMessageName(spec)}: ${mismatch}`);
+      const terms = formulaTerms(spec, inputs as ResolvedSeries[]);
+      const unit = "error" in terms ? terms : formulaUnit(terms, inputs as ResolvedSeries[]);
+      if ("error" in unit) {
+        errors.push(`${studyMessageName(spec)}: ${unit.error}`);
         return;
       }
-      terms = read as FormulaTerms;
+      formula = { terms: terms as FormulaTerms, unit };
     }
-    const color = spec.color ?? KIND_COLORS[spec.kind] ?? STUDY_COLORS[index % STUDY_COLORS.length]!;
+    const color = spec.color ?? KIND_COLORS[spec.kind]
+      ?? (isLevelFormula(spec.kind) ? freeStudyColor(index, usedColors) : STUDY_COLORS[index % STUDY_COLORS.length]!);
+    if (isLevelFormula(spec.kind)) usedColors.add(color.toLowerCase());
     if (spec.kind === "leverage" || spec.kind === "leverage-decay") {
       const index = inputs.at(-1)!;
       if (!isLeverageFactor(spec.parameters.factor)) {
@@ -1521,7 +1584,7 @@ function resolveStudySpecs(
       resolved.push(...outputs);
       return;
     }
-    else if (spec.kind === "formula" && terms) outputs = resolveFormula(spec, inputs as ResolvedSeries[], terms, color);
+    else if (spec.kind === "formula" && formula) outputs = resolveFormula(spec, inputs as ResolvedSeries[], formula.terms, formula.unit, color);
     else if (spec.kind === "volume") {
       outputs = resolveVolume(spec, input, color, nameVolumeInput);
       if (!input.volumeUnit && outputs.some((output) => output.points.length > 0)) {
@@ -1536,10 +1599,11 @@ function resolveStudySpecs(
         && pairedCurrency !== null
         && inputCurrency !== pairedCurrency;
       // Over an FX rate a price is converted, leaving one currency: EUR / barrel.
-      if (spec.kind === "ratio" && differentCurrencies && unitCurrencies(ratioUnit(input, pairedInput).unit).size !== 1) {
-        warnings.push(
-          `${studyMessageName(spec)}: ${spec.kind} inputs use different currencies (${inputCurrency} and ${pairedCurrency}); raw values are not FX-converted.`,
-        );
+      const ratio = spec.kind === "ratio" ? ratioUnit(input, pairedInput) : null;
+      if (ratio && differentCurrencies && unitCurrencies(ratio.unit).size !== 1) {
+        const issue = fxConversionIssue(input, pairedInput, -1, ratio, legName(input));
+        warnings.push(`${studyMessageName(spec)}: ${issue
+          ?? `${spec.kind} inputs use different currencies (${inputCurrency} and ${pairedCurrency}); raw values are not FX-converted.`}`);
       }
       if (spec.kind === "correlation" && input.nativeFrequency !== pairedInput.nativeFrequency) {
         warnings.push(`${studyMessageName(spec)}: correlation mixes ${input.nativeFrequency} and ${pairedInput.nativeFrequency} observations; only matching observation times contribute.`);

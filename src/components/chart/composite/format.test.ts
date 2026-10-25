@@ -162,13 +162,17 @@ describe("composite chart unit formatting", () => {
     })).toBe("0.500");
   });
 
-  test("a value worked out from prices keeps its legs' decimals at any size, beside its stated unit or its currency's sign", () => {
+  test("a value worked out from prices prints at its own decimals, beside its stated unit or its currency's sign", () => {
     const formula: ResolvedSeries = {
       id: "formula", label: "(42×HO=F - BZ=F)/EURUSD=X", color: "#ffffff", unit: "EUR / barrel", unitGroup: "price:EUR",
-      statedUnit: "EUR / barrel", valueDecimals: 4, nativeFrequency: "daily", dataShape: "scalar", style: "step", transform: "raw",
+      statedUnit: "EUR / barrel", valueDecimals: 2, nativeFrequency: "daily", dataShape: "scalar", style: "step", transform: "raw",
       axis: "left", panelId: "formula", interpolation: "step-after", observationKind: "market", points: [],
     };
-    expect([1_689.99218, 82.66, -0.00004].map((value) => formatCompositeSeriesValue(value, formula))).toEqual(["1,689.9922", "82.6600", "0.0000"]);
+    // A price-sized crack reads to the cent, beside its unit.
+    expect([1_689.99218, 82.6601].map((value) => formatCompositeSeriesValue(value, formula))).toEqual(["1,689.99", "82.66"]);
+    // A small spread keeps its legs' four, and rounds to zero unsigned.
+    const small = { ...formula, valueDecimals: 4 };
+    expect([0.49851, -0.00004].map((value) => formatCompositeSeriesValue(value, small))).toEqual(["0.4985", "0.0000"]);
     const spread = { ...formula, unit: "USD/share", unitGroup: "price:USD", statedUnit: undefined, valueDecimals: 2 };
     expect(formatCompositeSeriesValue(-0.5012, spread)).toBe("-$0.50");
   });
