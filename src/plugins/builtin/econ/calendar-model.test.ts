@@ -7,6 +7,7 @@ import {
   hasPendingHighImpactPrint,
   landedHighImpactPrints,
   loadCalendar,
+  lowerImpactHidden,
   countriesWithoutEvents,
   eventCountry,
   matchesCountry,
@@ -89,6 +90,21 @@ describe("econ calendar filters", () => {
       expect(matchesCountry({ ...makeEvent(country), country }, "G7")).toBe(true);
     }
     expect(matchesCountry({ ...makeEvent("cn"), country: "CN" }, "G7")).toBe(false);
+  });
+
+  // ECO opens on High, which hides most PMIs: it counts what it hides of the region shown, a member's national release in the euro area's.
+  test("High counts the region's lower-impact releases it hides; All, Medium and Low hide none to count", () => {
+    const row = (id: string, country: string, event: string, impact: EconEvent["impact"]): EconEvent => ({ ...makeEvent(id), country, event, impact });
+    const events = [
+      row("ecb", "EU", "Deposit Facility Rate", "high"),
+      row("pmi", "EU", "S&P Global Manufacturing PMI Flash", "medium"),
+      row("de", "EU", "German S&P Global Services PMI Final", "low"),
+      row("us", "US", "ISM Manufacturing Prices", "low"),
+    ];
+    expect(lowerImpactHidden(events, "high", "EU")).toBe(2);
+    expect(lowerImpactHidden(events, "high", "DE")).toBe(1);
+    expect(lowerImpactHidden(events, "high", "all")).toBe(3);
+    for (const impact of ["all", "medium", "low"] as const) expect(lowerImpactHidden(events, impact, "EU"), impact).toBe(0);
   });
 });
 

@@ -270,6 +270,7 @@ export const STATS: readonly StatDef[] = [
     reference: { value: 0, label: "flat" },
     staleAfterMs: NOWCAST_QUARTERLY,
     note: "Atlanta Fed model estimate of real GDP growth, updated within the quarter. Already an annualized percentage change, not a GDP level.",
+    keywords: ["nowcast", "GDP nowcast"],
   }),
   stat({
     id: "nfci",

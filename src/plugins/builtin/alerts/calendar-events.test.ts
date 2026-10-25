@@ -6,6 +6,7 @@ import {
   nextReleaseDate,
   releasePrintMessage,
   releaseReminderMessage,
+  releaseRenameNote,
   releaseRowOn,
 } from "./calendar-events";
 
@@ -96,6 +97,24 @@ test("a followed release is found when the feed renames it, and never in a sibli
   const old = { ...target, event: "Manufacturing PMI" };
   expect(releaseRowOn(old, "2026-10-31", rows)).toMatchObject({ event: "NBS Manufacturing PMI" });
   expect(releaseRowOn(old, "2026-12-31", rows)).toBeNull();
+});
+
+test("a series' former name reads as its current one, saying so, and an alert kept under it follows the renamed rows", () => {
+  const caixin = matchCalendarEvent("Caixin PMI", null, calendar, now);
+  expect(caixin.kind === "match" && [caixin.choice.name, caixin.choice.next?.date.toISOString()])
+    .toEqual(["RatingDog Manufacturing PMI", "2026-11-02T01:45:00.000Z"]);
+  expect(caixin.renamed).toEqual({ former: "Caixin", current: "RatingDog", since: "the August 2025 survey" });
+  expect(releaseRenameNote(caixin.renamed!)).toBe("Caixin releases were renamed RatingDog from the August 2025 survey.");
+  // A former name the calendar has nothing for still says it was renamed, beside the nearest names.
+  const construction = matchCalendarEvent("Caixin Construction PMI", "CN", calendar, now);
+  expect(construction.kind).toBe("none");
+  expect(construction.renamed?.current).toBe("RatingDog");
+  // A name with no former one is matched as typed.
+  expect(matchCalendarEvent("RatingDog PMI", null, calendar, now).renamed).toBeUndefined();
+
+  const followed = { kind: "release" as const, event: "Caixin Manufacturing PMI", country: "CN" };
+  expect(releaseRowOn(followed, "2026-11-02", calendar)).toMatchObject({ event: "RatingDog Manufacturing PMI" });
+  expect(nextReleaseDate(calendar, followed, now)).toBe("2026-11-02");
 });
 
 test("a release listed ahead beats an old name listed only in the past, and one already out today is not its next", () => {

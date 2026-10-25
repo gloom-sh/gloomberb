@@ -5,6 +5,7 @@ import { buildHeadlessFunctionReport } from "./headless";
 import { appendDomReportFooter, buildDomFunctionReport, domReportNote, domReportView } from "./dom";
 import type { ReportFreshness } from "./freshness";
 import type { CliReportTables } from "../report-tables";
+import { knownGapMessage } from "../known-gaps";
 
 export type PaneFunctionReportSource = "headless" | "dom";
 
@@ -72,7 +73,10 @@ export async function buildFunctionReport(
     // A pane `shot` can draw is still one command away.
     const screenshot = resolved.capability.screenshotReadiness;
     if (screenshot != null && screenshot !== "unsupported") {
-      throw new Error(`${resolved.token} is an interactive pane with no data report; run \`${shotCommand(resolved.token, rawArg)}\` to see it.`);
+      const error = new Error(`${resolved.token} is an interactive pane with no data report; run \`${shotCommand(resolved.token, rawArg)}\` to see it.`);
+      // What the query names that no series is (`fn CAT PMI`): where it is, as `catalog` says it.
+      const gap = rawArg.trim() ? knownGapMessage(rawArg) : null;
+      throw gap ? Object.assign(error, { details: gap }) : error;
     }
     throw new Error(`${resolved.token} is an interactive pane and does not expose a data report.`);
   }

@@ -172,6 +172,17 @@ export function matchesImpact(event: EconEvent, filter: ImpactFilter): boolean {
   return filter === "all" || event.impact === filter;
 }
 
+/**
+ * The releases of the region that the High filter, where the calendar opens,
+ * leaves out (most PMIs among them), for the footer and a report of the pane
+ * to count with the way to list them. None under All, and none under Medium
+ * or Low, which a reader picks to list one level.
+ */
+export function lowerImpactHidden(events: readonly EconEvent[], impact: ImpactFilter, country: CountryFilter): number {
+  if (impact !== "high") return 0;
+  return events.filter((event) => event.impact !== "high" && matchesCountry(event, country)).length;
+}
+
 const IMPACT_WORDS: Record<Exclude<ImpactFilter, "all">, string> = {
   high: "high-impact",
   medium: "medium-impact",

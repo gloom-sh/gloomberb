@@ -44,6 +44,12 @@ export interface PaneFooterSegment {
    */
   quoteStatus?: boolean;
   /**
+   * The segment says what the rows leave out (releases a filter hides), which
+   * a picture of the rows cannot: a `gloom shot` keeps it, as it keeps a
+   * warning.
+   */
+  capture?: boolean;
+  /**
    * Shorter forms of `parts`, longest first. When the row is too narrow for
    * `parts` beside the hints, it shows the first that fits, or the last, and
    * keeps the full text as the segment's title.

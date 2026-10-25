@@ -10,6 +10,7 @@ import { buildPaneCatalogEntries, filterPaneCatalogEntries, renderPaneCatalogRep
 import { createPaneCatalog } from "./pane-functions/discovery";
 import { parsePaneCatalogArgs } from "./pane-functions/options";
 import { lookupGlossary } from "./glossary";
+import { catalogEmptyCopy } from "../plugins/builtin/chart-composer/catalog-inventory";
 
 beforeEach(() => {
   // Catalog discovery starts chat and instantiates the map's chart templates.
@@ -327,4 +328,40 @@ test("BDH, BDP, Excel and Sheets lead with the Google Sheets page; an export to 
   }
   expect(commandPointer("export to excel")).toContain("Export: add --csv or --json");
   for (const query of ["balance sheets", "sheet music"]) expect(commandPointer(query), query).not.toBe(sheets);
+});
+
+// A PMI or a nowcast is a calendar release, not a function or a series: catalog, search and the data catalog sent people to each other.
+test("PMI and nowcast words lead to ECO, ECST and alerts add, with the terms explained, from catalog, search and the data catalog", async () => {
+  const pmi = knownGapMessage("PMI")!;
+  for (const pointer of ["gloom econ", "fn ECO --impact all", "gloom alerts add \"ISM Manufacturing PMI\"", "ECST", "formerly Caixin"]) expect(pmi, pointer).toContain(pointer);
+  for (const query of ["ISM", "pmis", "purchasing managers", "Purchasing Managers' Index", "flash PMI", "ISM manufacturing", "Caixin PMI", "Caixin"]) {
+    expect(knownGapMessage(query), query).toBe(pmi);
+  }
+  const nowcast = knownGapMessage("nowcast")!;
+  for (const pointer of ["fn ECST gdpnow", "gloom fred GDPNOW", "fn ECO US --impact all", "gloom alerts add \"Atlanta Fed GDPNow\""]) expect(nowcast, pointer).toContain(pointer);
+  for (const query of ["GDPNow", "GDP now", "nowcasting"]) expect(knownGapMessage(query), query).toBe(nowcast);
+  // Only the words whole: a word that holds the letters, or GDP alone, is not one.
+  for (const query of ["prism", "tourism", "GDP", "now"]) expect(knownGapMessage(query), query).toBeNull();
+
+  const search = buildSearchReport({ query: "ISM manufacturing", candidates: [] });
+  expect(search).toContain(pmi);
+  expect(search).not.toContain("catalog");
+  expect(catalogEmptyCopy(false, "PMI").hint).toBe("PMIs are releases in the economic calendar: ECO, Impact All. Industrial production and orders: ECST.");
+  expect(catalogEmptyCopy(false, "copper").hint).toBe("Press / to search.");
+
+  expect(lookupGlossary("PMI").exact.map((entry) => entry.term)).toEqual(["Purchasing managers' index"]);
+  expect(lookupGlossary("caixin pmi").exact.map((entry) => entry.term)).toEqual(["Purchasing managers' index"]);
+  expect(lookupGlossary("nowcast").exact.map((entry) => entry.term)).toEqual(["Nowcast"]);
+
+  const context = { config: createDefaultConfig("/tmp/known-gaps-test") } as MarketContext;
+  const registry = await createPaneCatalog(context, getLoadablePlugins());
+  try {
+    const entries = await buildPaneCatalogEntries(registry, context);
+    for (const query of ["PMI", "ISM", "purchasing managers", "flash PMI"]) {
+      expect(filterPaneCatalogEntries(entries, query).map((entry) => entry.token)[0], query).toBe("ECO");
+    }
+    for (const query of ["nowcast", "GDPNow"]) expect(filterPaneCatalogEntries(entries, query).map((entry) => entry.token)[0], query).toBe("ECST");
+  } finally {
+    registry.destroy();
+  }
 });

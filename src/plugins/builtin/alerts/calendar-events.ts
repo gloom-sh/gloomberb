@@ -5,6 +5,7 @@
 // two cases of the same alert, whose dates come from their own calendars.
 import { dateKey, eventCountry, matchesCountry, type CountryFilter } from "../econ/calendar-model";
 import { isAllDayEvent, hasNoReleaseTime, type EconEvent, type EconImpact } from "../econ/types";
+import { RENAMED_RELEASES } from "../shared/macro-releases";
 import { MACRO_EVENT_NAMES } from "./research-builder";
 import type { MacroAlertEvent } from "./research-rules";
 
@@ -51,6 +52,39 @@ export function calendarNameWords(name: string): string[] {
 }
 
 const nameKey = (name: string) => calendarNameWords(name).join(" ");
+
+/** A release series' former name a typed name used, read as its current one. */
+export interface ReleaseRename {
+  former: string;
+  current: string;
+  since: string;
+}
+
+/**
+ * A name's words with a renamed series' former name put as its current one
+ * (`caixin pmi` as `ratingdog pmi`), and the rename; null for a name that
+ * carries none.
+ */
+function withCurrentName(words: readonly string[]): { words: string[]; rename: ReleaseRename } | null {
+  for (const { former, current, since } of RENAMED_RELEASES) {
+    for (const name of former) {
+      const old = calendarNameWords(name);
+      for (let at = 0; at + old.length <= words.length; at += 1) {
+        if (!old.every((word, index) => words[at + index] === word)) continue;
+        return {
+          words: [...words.slice(0, at), ...calendarNameWords(current), ...words.slice(at + old.length)],
+          rename: { former: name, current, since },
+        };
+      }
+    }
+  }
+  return null;
+}
+
+/** "Caixin releases were renamed RatingDog from the August 2025 survey." */
+export function releaseRenameNote({ former, current, since }: ReleaseRename): string {
+  return `${former} releases were renamed ${current} from ${since}.`;
+}
 
 /** The UTC day the calendar lists a row under. */
 const utcDay = (time: number) => new Date(time).toISOString().slice(0, 10);
@@ -121,13 +155,17 @@ function calendarChoices(events: readonly EconEvent[], now: number): RankedChoic
 }
 
 /** What a typed release names in the calendar. */
-export type CalendarEventMatch =
+export type CalendarEventMatch = (
   /** One release, the best of those the words name, and the others they name in the same country. */
   | { kind: "match"; choice: CalendarEventChoice; others: CalendarEventChoice[] }
   /** The words name releases in several countries: the best of each. */
   | { kind: "countries"; choices: CalendarEventChoice[] }
   /** Nothing the words name; the nearest names, best first. */
-  | { kind: "none"; suggestions: CalendarEventChoice[] };
+  | { kind: "none"; suggestions: CalendarEventChoice[] }
+) & {
+  /** The former name the words used, read as the series' current one (`Caixin PMI` as RatingDog's). */
+  renamed?: ReleaseRename;
+};
 
 /** Character pairs of a name, for how near a slip is to it. */
 function pairs(text: string): Map<string, number> {
@@ -186,7 +224,8 @@ function oneSlipApart(left: string, right: string): boolean {
  * then the closest name and the soonest date, so `NBS PMI` is the headline
  * NBS Manufacturing PMI and an old name listed only in the past never beats
  * the live one. Several countries ask which; no match offers the nearest
- * names.
+ * names. A series' former name reads as its current one (`Caixin PMI` is
+ * RatingDog's), and the match says so.
  */
 export function matchCalendarEvent(
   query: string,
@@ -194,7 +233,18 @@ export function matchCalendarEvent(
   events: readonly EconEvent[],
   now: number,
 ): CalendarEventMatch {
-  const words = calendarNameWords(query);
+  const typedWords = calendarNameWords(query);
+  const current = withCurrentName(typedWords);
+  const match = matchCalendarWords(current?.words ?? typedWords, country, events, now);
+  return current ? { ...match, renamed: current.rename } : match;
+}
+
+function matchCalendarWords(
+  words: readonly string[],
+  country: CountryFilter | null,
+  events: readonly EconEvent[],
+  now: number,
+): CalendarEventMatch {
   const choices = calendarChoices(country ? events.filter((event) => matchesCountry(event, country)) : events, now);
   const exact = choices.filter((choice) => choice.words.join(" ") === words.join(" "));
   const naming = (typed: readonly string[], loose: boolean) => typed.length === 0 ? [] : choices.filter((choice) =>
@@ -266,9 +316,10 @@ function renamedBy(words: readonly string[], other: readonly string[]): number |
  */
 function releaseRows(target: CalendarReleaseTarget, events: readonly EconEvent[]): EconEvent[] {
   const words = calendarNameWords(target.event);
-  const key = words.join(" ");
+  // An alert kept under a series' former name follows the rows under its current one.
+  const keys = new Set([words.join(" "), withCurrentName(words)?.words.join(" ")]);
   const own = events.filter((event) => eventCountry(event) === target.country);
-  const named = own.filter((event) => nameKey(event.event) === key);
+  const named = own.filter((event) => keys.has(nameKey(event.event)));
   if (!target.publisher) return named;
   const namedDays = new Set(named.map((event) => dateKey(event.date)));
   const renamed = own.flatMap((event) => {

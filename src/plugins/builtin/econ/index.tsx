@@ -46,6 +46,7 @@ import {
   subscribeCalendar,
   impactIndicator,
   loadCalendar,
+  lowerImpactHidden,
   eventCountry,
   matchesCountry,
   matchesImpact,
@@ -103,7 +104,10 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   // The selected row and the open event are remembered by event id, so a
   // reload or a shared layout comes back to the same release.
   const [selectedKey, setSelectedKey] = usePluginPaneState<string | null>("selectedKey", null);
-  const [impactFilter, setImpactFilter] = usePluginPaneState<ImpactFilter>("impactFilter", DEFAULT_IMPACT_FILTER);
+  // A level a caller named (`fn ECO --impact all`) is where a new pane opens; a level the reader picks is kept.
+  const [impactSetting] = usePaneSettingValue<string>("impact", "");
+  const openingImpact = FILTER_CYCLE.find((level) => level === impactSetting) ?? DEFAULT_IMPACT_FILTER;
+  const [impactFilter, setImpactFilter] = usePluginPaneState<ImpactFilter>("impactFilter", openingImpact);
   const [chosenCountry, setCountryFilter] = usePluginPaneState<CountryFilter>("countryFilter", "all");
   // Countries a caller named (`ECO MX,BR`, `fn ECO --country MX`) are shown once per request; a later choice is the reader's.
   const pane = usePaneInstance();
@@ -323,18 +327,37 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   const showStale = stale && (!loading || calendar.updatedAt !== null);
   // An empty list says it in its empty state instead.
   const listedAfterStatus = listedAfter && !detailEvent && filtered.length > 0 ? listedAfter : null;
+  // What the High filter, where the calendar opens, leaves out, and the key that lists it (Shift+F steps back to All).
+  const hiddenCount = useMemo(() => lowerImpactHidden(events, impactFilter, countryFilter), [countryFilter, events, impactFilter]);
+  const hiddenStatus = hiddenCount > 0 && !detailEvent ? `${hiddenCount} lower-impact hidden` : null;
   const calendarStatus = useMemo<PaneFooterSegment[]>(() => [
+    ...(hiddenStatus ? [{
+      id: "hidden-impact",
+      capture: true,
+      title: `${hiddenStatus}: Shift+F or Impact All lists them`,
+      // First and whole: the countdown and the update time give way before the key does.
+      parts: [{ text: `${hiddenStatus} (Shift+F)`, tone: "muted" as const }],
+    }] : []),
     ...(nextText && !detailEvent ? [{ id: "next", parts: [{ text: nextText, tone: "muted" as const }] }] : []),
     ...(listedAfterStatus ? [{ id: "listed-after", parts: [{ text: listedAfterStatus, tone: "warning" as const }] }] : []),
     ...(showStale ? [{ id: "stale", parts: [{ text: "STALE", tone: "warning" as const }] }] : []),
     ...(staleness ? [{ id: "updated", parts: [{ text: staleness, tone: "muted" as const }] }] : []),
-  ], [detailEvent, listedAfterStatus, nextText, showStale, staleness]);
+  ], [detailEvent, hiddenStatus, listedAfterStatus, nextText, showStale, staleness]);
   // A report of the pane (`gloom fn ECO`) says it too.
   const listedThrough = listedEnd ? dateKey(listedEnd) : null;
   useRemoteUiNode(listedAfter && listedThrough ? {
     role: "report-notice",
     label: "Listed through",
     getMetadata: () => ({ text: listedAfter, key: "listedThrough", value: listedThrough }),
+  } : null);
+  useRemoteUiNode(hiddenCount > 0 ? {
+    role: "report-notice",
+    label: "Lower-impact hidden",
+    getMetadata: () => ({
+      text: `${hiddenCount} lower-impact ${hiddenCount === 1 ? "release" : "releases"} hidden: add --impact all to list them.`,
+      key: "lowerImpactHidden",
+      value: hiddenCount,
+    }),
   } : null);
   usePaneStatusFooter({
     registrationId: "econ-calendar",
@@ -527,6 +550,13 @@ export const economicCalendarModule: PluginModule = {
         if ("error" in parsed) throw new Error(`${parsed.error} ${COUNTRY_FILTER_HINT}`);
         return parsed.filter;
       },
+    }, {
+      key: "impact",
+      type: "enum",
+      values: [{ value: "high" }, { value: "medium", aliases: ["med"] }, { value: "low" }, { value: "all" }],
+      description: "Impact level to list: high (where the calendar opens, leaving out most PMIs), medium, low or all",
+      example: "--impact all",
+      exampleWithoutArgument: true,
     }],
     settings: {
       title: "Economic Calendar Settings",
@@ -546,7 +576,7 @@ export const economicCalendarModule: PluginModule = {
     description: "Upcoming economic events, releases, and indicators.",
     // "econ" stays a keyword so the old ECON prefix still finds this pane.
     keywords: ["econ", "economic", "calendar", "events", "macro", "releases", "fed", "cpi", "gdp", "rate decision", "ipca",
-      "brazil inflation"],
+      "brazil inflation", "pmi", "ism", "purchasing managers", "flash pmi"],
     // ECO MX,BR opens the calendar on those countries.
     shortcut: {
       prefix: "ECO",

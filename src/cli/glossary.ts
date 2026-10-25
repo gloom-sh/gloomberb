@@ -831,6 +831,19 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     term: "Impact", short: "IMP", aliases: ["importance", "event impact", "high impact"], functions: ["ECO"],
     definition: "How much a release usually moves markets: HIGH for the big ones (CPI, jobs, rate decisions), MED and LOW for speeches and smaller data.",
   },
+  {
+    term: "Purchasing managers' index", short: "PMI", aliases: ["pmis", "purchasing managers", "purchasing managers index", "ism", "ism pmi",
+      "flash pmi", "caixin pmi", "ratingdog pmi"], functions: ["ECO"],
+    definition: "A monthly survey of companies' purchasing managers on orders, output, jobs and prices: 50 is no change from the month before, "
+      + "above it growth, below it contraction. A flash PMI is the month's early read, the final a week or so later. ECO lists each as a release: "
+      + "ISM for the US, S&P Global's elsewhere, NBS and RatingDog (formerly Caixin) for China, most at medium or low impact.",
+  },
+  // Economic statistics (ECST).
+  {
+    term: "Nowcast", aliases: ["nowcasts", "nowcasting", "gdpnow", "gdp nowcast"], functions: ["ECST", "ECO"], shown: ["GDPNow"],
+    definition: "An estimate of this quarter's GDP growth from the data already out, revised as each release lands until the official figure. "
+      + "ECST shows the Atlanta Fed's GDPNow, annualized, against its own history; ECO lists each update as a release.",
+  },
 ];
 
 const ANSI = /\x1b\[[0-9;]*m/g;

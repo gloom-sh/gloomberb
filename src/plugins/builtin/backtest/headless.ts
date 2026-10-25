@@ -3,7 +3,7 @@ import type { InstrumentRef } from "../../../market-data/request-types";
 import { DATE_OPTION_EXAMPLES, isoDateOption } from "../../../utils/calendar-date";
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { createBacktestDependencies, loadBacktestHistory } from "./client";
-import { BACKTEST_PRESETS, DEFAULT_PRESET, lookbackYears, resolveRules } from "./presets";
+import { BACKTEST_PRESETS, CUSTOM_PRESET_ID, DEFAULT_PRESET, lookbackYears, presetRulesConflict, resolveRules } from "./presets";
 import { BACKTEST_FRESHNESS, backtestPriceUnit, backtestReport } from "./report";
 import { parseRule, RULE_SYNTAX } from "./rules";
 import { runHistoryBacktest } from "./window";
@@ -37,8 +37,10 @@ export const backtestHeadless: HeadlessPaneDefinition<"bundle"> = {
     ],
   },
   options: [
-    { key: "preset", type: "enum", defaultValue: DEFAULT_PRESET.id, description: "Strategy preset, or custom to use --entry and --exit",
-      values: [...BACKTEST_PRESETS.map(({ id }) => ({ value: id })), { value: "custom" }] },
+    // No default: a run given --entry or --exit and no preset tests those rules, and one given both is refused.
+    { key: "preset", type: "enum",
+      description: `Strategy preset, ${DEFAULT_PRESET.id} when neither it nor a rule is given; --entry and --exit alone (or with custom) test your own rules`,
+      values: [...BACKTEST_PRESETS.map(({ id }) => ({ value: id })), { value: CUSTOM_PRESET_ID }] },
     { key: "entry", type: "string", defaultValue: "", description: `Custom entry rule, for example 'close > sma(200)' or 'weekday == 3'. ${RULE_SYNTAX}` },
     { key: "exit", type: "string", defaultValue: "", description: "Custom exit rule, for example 'close < sma(200)' or 'weekday == 4'. Same operands and comparisons as --entry" },
     { key: "lookback", type: "enum", defaultValue: "10", values: [{ value: "5" }, { value: "10" }, { value: "max" }], description: "Evaluation years after indicator warmup" },
@@ -55,8 +57,11 @@ export const backtestHeadless: HeadlessPaneDefinition<"bundle"> = {
       pluginState: { pluginId: "ticker-research", key: "backtest:view" } },
   ],
   async load(args, ctx) {
-    const preset = String(args.options.preset ?? DEFAULT_PRESET.id);
-    const rules = resolveRules(preset, String(args.options.entry ?? ""), String(args.options.exit ?? ""));
+    const preset = args.options.preset == null ? null : String(args.options.preset);
+    const typedEntry = String(args.options.entry ?? ""), typedExit = String(args.options.exit ?? "");
+    const conflict = presetRulesConflict(preset, typedEntry, typedExit);
+    if (conflict) throw new Error(conflict);
+    const rules = resolveRules(preset, typedEntry, typedExit);
     const entry = parseRule(rules.entry), exit = parseRule(rules.exit);
     const instrument = await resolveHeadlessInstrument(ctx, args.symbols[0]!);
     const [history, unit] = await Promise.all([

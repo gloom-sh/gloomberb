@@ -1,5 +1,6 @@
 import { listingSuffixExchange } from "../sources/listing-symbols";
 import { kindFromListingSyntax } from "../tickers/instrument-kind";
+import { macroReleaseTopic } from "../plugins/builtin/shared/macro-releases";
 import { parsePublicTickerKey } from "../utils/exchanges";
 import { listingAbroadVenue } from "../utils/sec";
 import { nimCommand } from "./bank-section";
@@ -387,7 +388,8 @@ export function knownGapForTicker(symbol: string): string | null {
 
 /**
  * The line for a query that names a known subject as a whole ("carbon allowances", "EUA"), a Treasury yield
- * typed as a ticker (US10Y), or a topic with no function ("defense budget"), else null.
+ * typed as a ticker (US10Y), a topic with no function ("defense budget"), or a macro release no series carries
+ * ("ISM manufacturing", "GDPNow"), else null.
  */
 export function knownGapMessage(query: string): string | null {
   const key = lookupKey(query);
@@ -395,5 +397,6 @@ export function knownGapMessage(query: string): string | null {
   const tenor = treasuryYieldTenor(query);
   return KNOWN_GAPS.find((gap) => gap.terms.some((term) => lookupKey(term) === key))?.message
     ?? (tenor ? treasuryYieldLine(tenor) : null)
-    ?? topicPointer(query)?.message ?? null;
+    ?? topicPointer(query)?.message
+    ?? macroReleaseTopic(query)?.line ?? null;
 }

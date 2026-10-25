@@ -103,10 +103,13 @@ describe("EconCalendarPane", () => {
     const opened = await renderPane(110, null);
     expect(opened).toContain("CPI m/m");
     expect(opened).not.toContain("Retail Sales");
+    // What it leaves out is counted in the footer, with the key that lists it.
+    expect(opened).toContain("1 lower-impact hidden (Shift+F)");
 
     const saved = await renderPane(110, "all");
     expect(saved).toContain("CPI m/m");
     expect(saved).toContain("Retail Sales");
+    expect(saved).not.toContain("lower-impact hidden");
 
     const persistence = new MemoryPluginPersistence();
     persistence.seedResource("calendar", "global", [{

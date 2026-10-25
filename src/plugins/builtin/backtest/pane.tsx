@@ -30,7 +30,7 @@ import { loadBacktestHistory } from "./client";
 import type { BacktestTrade } from "./engine";
 import { backtestEquityCsv } from "./export";
 import { formatStat, PRICE_RETURN_NOTE, SUMMARY_ROWS, type SummaryRow } from "./format";
-import { BACKTEST_PRESETS, DEFAULT_PRESET, lookbackYears, resolveRules } from "./presets";
+import { BACKTEST_PRESETS, DEFAULT_PRESET, lookbackYears, resolveRules, strategyPreset } from "./presets";
 import { backtestPriceUnit, backtestReport } from "./report";
 import { parseRule } from "./rules";
 import { continuationNote, runHistoryBacktest, type HistoryBacktestResult } from "./window";
@@ -82,9 +82,14 @@ export function BacktestPane({ width, height, focused }: PaneProps) {
   const paneId = usePaneInstanceId();
   const { openPaneSettings } = usePluginAppActions();
   const { symbol, ticker, financials, error: identityError } = usePaneTicker();
-  const [preset, setPreset] = usePaneSettingValue("preset", DEFAULT_PRESET.id);
-  const [entryText] = usePaneSettingValue("entry", DEFAULT_PRESET.entry);
-  const [exitText] = usePaneSettingValue("exit", DEFAULT_PRESET.exit);
+  // Rules typed in settings, or by `shot BT --entry ... --exit ...`, with no strategy chosen are tested as custom rules.
+  const [chosenPreset, setPreset] = usePaneSettingValue<string | null>("preset", null);
+  const [typedEntry] = usePaneSettingValue<string | null>("entry", null);
+  const [typedExit] = usePaneSettingValue<string | null>("exit", null);
+  const preset = strategyPreset(chosenPreset, typedEntry ?? "", typedExit ?? "");
+  // Custom starts from the default preset's rules until one is typed.
+  const entryText = typedEntry ?? DEFAULT_PRESET.entry;
+  const exitText = typedExit ?? DEFAULT_PRESET.exit;
   const [lookback, setLookback] = usePaneSettingValue("lookback", "10");
   const [costText] = usePaneSettingValue<string | number>("cost", "5");
   // Set by `shot BT --end` and `--include-partial`; the pane has no control for them.

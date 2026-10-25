@@ -602,7 +602,7 @@ A zero or negative price is kept for a futures instrument. For any other instrum
 | `PERP [market]` | Perpetual funding, open interest and premiums: a board, rankings and one asset across venues (Pro history; free preview) |
 | `CRYP` | Top crypto assets by market cap with live prices, 7D, 30D and 1Y returns, 24h volume and market cap. Stablecoins have their own tab |
 | `ETFF` | Daily net flows of the US spot bitcoin and ether ETFs, fund by fund in US$ millions, with the last 5 and 20 days and the running total since launch |
-| `ECO` | Economic events and releases, grouped by day and timed in UTC. Opens on high-impact releases until you pick another impact |
+| `ECO` | Economic events and releases, grouped by day and timed in UTC. Opens on high-impact releases until you pick another impact; the footer counts the lower-impact releases left out (most PMIs among them), and `Shift+F` or `fn ECO --impact all` lists them |
 | `ECST [statistic]` | Economic statistics: inflation, labour, growth, consumer, housing, rates |
 | `GC [curve] [date]` | Government yield curves (UST, TIPS real, breakeven, euro AAA, Bund, Gilt, JGB, Canada) with spreads and percentiles, a compare date, the one-year-forward curve, a World tab and USD SOFR Swaps. CLI: `--curve`, `--date`, `--compare 1D` (or 1W, 1M, 3M, 1Y, or a date), `--tab world`, or `--tab swaps --tenor 10Y` |
 | `WIRP` / `FFIP` | Fed funds futures implied FOMC path, conditional target probabilities, SOFR contracts and Fed projections |
@@ -2411,11 +2411,12 @@ Settings also choose the lookback (5 years, 10 years or all history) and the cos
 - `--include-partial` keeps a session still forming, whose close moves until the day ends.
 - `--equity` reports the daily curve instead of the summary: each session's close in the listing's currency, the position (1 long, 0 flat), the strategy's and buy-and-hold's growth of 1 on the price alone (the CSV headers say `price return, distributions not included`) and the drawdown in percent, every digit in `--csv` and `--json`.
 - In `--csv` each summary row names its own unit (`%`, `ratio`, `trades`, `sessions`), trade prices are in the listing's currency, and the file closes with the run's warnings and notes.
+- `--entry` and `--exit` without `--preset` test the typed rules (the same as `--preset custom`). Beside another preset they are refused, since the preset tests its own.
 - `gloom fn BT --help` lists every option.
 
 ```sh
 gloom fn BT AAPL --json
-gloom fn BT SPY --preset custom --entry 'close > sma(200)' --exit 'close < sma(200)' --lookback max --cost 2
+gloom fn BT SPY --entry 'close > sma(200)' --exit 'close < sma(200)' --lookback max --cost 2
 gloom fn BT BTC-USD --preset trend-200 --end 2026-10-16 --csv --equity > btc-trend.csv
 gloom shot BT NVDA --preset breakout-55-20 --output nvda-breakout.png
 ```

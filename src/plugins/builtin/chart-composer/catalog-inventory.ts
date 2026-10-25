@@ -6,6 +6,7 @@ import {
 import type { SeriesCatalogEntry, SeriesFrequency, SeriesInput, SeriesPlacement } from "../../../series/types";
 import { parseOptionSymbol } from "../../../utils/options";
 import type { SeriesCatalogInstrument } from "./series-catalog";
+import { macroReleaseTopic } from "../shared/macro-releases";
 
 export const CHART_COMPOSER_TEMPLATE_ID = "chart-composer-pane";
 export const DATA_CATALOG_PANE_ID = "data-catalog";
@@ -358,6 +359,7 @@ export function catalogEmptyCopy(
 ): { title: string; hint?: string } {
   if (loading) return { title: "Loading catalog…" };
   const query = searchQuery.trim();
-  if (query) return { title: `No series matching "${query}"`, hint: "Press / to search." };
+  // A PMI or a nowcast is a calendar release, not a series: say where it is rather than search again.
+  if (query) return { title: `No series matching "${query}"`, hint: macroReleaseTopic(query)?.paneHint ?? "Press / to search." };
   return { title: "No series", hint: "Press / to search." };
 }

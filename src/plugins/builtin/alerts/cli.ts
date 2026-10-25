@@ -24,8 +24,10 @@ import {
   macroEventNamed,
   matchCalendarEvent,
   releaseInstant,
+  releaseRenameNote,
   releaseRowOn,
   type CalendarEventChoice,
+  type ReleaseRename,
 } from "./calendar-events";
 import { createAlert, rearmAlert, serializeAlerts } from "./alert-engine";
 import { ALERTS_KEY, ALERTS_PLUGIN_ID } from "./constants";
@@ -455,10 +457,16 @@ function releaseData(choice: CalendarEventChoice) {
 const choiceList = (choices: readonly CalendarEventChoice[]) => choices.map((choice) => calendarEventLabel({ event: choice.name, country: choice.country }));
 
 /** What a name read as, and what else it names in that country: said beside the alert added. */
-function releaseReadNotes(query: string, choice: CalendarEventChoice, others: readonly CalendarEventChoice[]): string[] {
+function releaseReadNotes(
+  query: string,
+  choice: CalendarEventChoice,
+  others: readonly CalendarEventChoice[],
+  renamed?: ReleaseRename,
+): string[] {
   const notes: string[] = [];
   if (calendarNameWords(query).join(" ") !== calendarNameWords(choice.name).join(" ")) {
-    notes.push(`Read "${query}" as ${calendarEventLabel({ event: choice.name, country: choice.country })}, ${choice.impact} impact.`);
+    notes.push(`Read "${query}" as ${calendarEventLabel({ event: choice.name, country: choice.country })}, ${choice.impact} impact.`
+      + (renamed ? ` ${releaseRenameNote(renamed)}` : ""));
   }
   if (others.length > 0) {
     const shown = choiceList(others.slice(0, 4));
@@ -482,9 +490,15 @@ function calendarUnavailableMessage(query: string, country: CountryFilter | null
 }
 
 /** The refusal of a name nothing in the calendar matches: the nearest names, and every form `alerts add` takes. */
-function noReleaseMessage(query: string, country: CountryFilter | null, suggestions: readonly CalendarEventChoice[]): string {
+function noReleaseMessage(
+  query: string,
+  country: CountryFilter | null,
+  suggestions: readonly CalendarEventChoice[],
+  renamed?: ReleaseRename,
+): string {
   const near = suggestions.length > 0 ? ` Did you mean ${choiceList(suggestions).join(", ")}?` : "";
-  return `No release in the economic calendar matches "${query}"${country ? ` in ${country.split(",").join(", ")}` : ""}.${near} `
+  return `No release in the economic calendar matches "${query}"${country ? ` in ${country.split(",").join(", ")}` : ""}.`
+    + `${renamed ? ` ${releaseRenameNote(renamed)}` : ""}${near} `
     + `${ADD_FORMS} gloom econ --country <code> lists the calendar.`;
 }
 
@@ -628,7 +642,7 @@ export const alertsCliCommand: CliCommandDef = {
       const match = matchCalendarEvent(request.query, request.country, events, now);
       if (match.kind !== "match") {
         return ctx.fail(match.kind === "none"
-          ? noReleaseMessage(request.query, request.country, match.suggestions)
+          ? noReleaseMessage(request.query, request.country, match.suggestions, match.renamed)
           : severalCountriesMessage(request.query, match.choices));
       }
       const { choice, others } = match;
@@ -638,7 +652,7 @@ export const alertsCliCommand: CliCommandDef = {
         read = [`Read "${request.query}" as the ${MACRO_EVENT_NAMES[macroEvent]} alert, which follows ${calendarEventLabel({ event: choice.name, country: choice.country })}.`];
       } else {
         newRelease = choice;
-        read = releaseReadNotes(request.query, choice, others);
+        read = releaseReadNotes(request.query, choice, others, match.renamed);
         const target: ScheduledEventTarget = { kind: "release", event: choice.name, country: choice.country, ...(choice.publisher ? { publisher: choice.publisher } : {}) };
         try {
           newEventRule = createScheduledAlert(target, request.leadDays, choice.next ? dateKey(choice.next.date) : null);
