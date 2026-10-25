@@ -1,8 +1,10 @@
 /** @jsxImportSource react */
-import { expect, test } from "bun:test";
-import { act, useState } from "react";
+import { expect, jest, test } from "bun:test";
+import { act, useLayoutEffect, useState } from "react";
 import { createDomTestHarness } from "../../renderers/dom/test-utils";
-import { buildHeatTreemapScene, heatTreemapCanvas, HeatTreemapSurface, type MetricTreemapItem } from ".";
+import { beginLiveResize } from "../../ui/live-resize";
+import { RESIZE_SETTLE_MS } from "../../ui/resize-settle";
+import { buildHeatTreemapScene, heatTreemapCanvas, HeatTreemapSurface, useHeatTreemapScene, type MetricTreemapItem } from ".";
 import type { MetricTreemapScene } from "./scene";
 
 const dom = createDomTestHarness();
@@ -15,6 +17,42 @@ function board(weights: readonly number[], move: number): Array<MetricTreemapIte
 }
 
 interface Shown { scene: MetricTreemapScene<null>; items: Array<MetricTreemapItem<null>>; resizing: boolean }
+
+test("a large drag holds the heat scene through refreshes and commits the final layout once after release", async () => {
+  jest.useFakeTimers();
+  const before = board([6, 5, 4, 3, 2, 1], 2);
+  const after = board([1, 2, 3, 4, 5, 6], -2);
+  let show: (width: number, items: Array<MetricTreemapItem<null>>) => void = () => {};
+  const seen: { scene: MetricTreemapScene<null> | null; builds: number } = { scene: null, builds: 0 };
+  function Harness() {
+    const [shown, setShown] = useState({ width: 80, items: before });
+    show = (width, items) => setShown({ width, items });
+    const layout = useHeatTreemapScene(shown.items, shown.width, 24);
+    useLayoutEffect(() => { seen.scene = layout.scene; seen.builds += 1; }, [layout.scene]);
+    return null;
+  }
+  let end: (() => void) | null = null;
+  try {
+    await dom.render(<Harness />);
+    const initial = seen.scene;
+    end = beginLiveResize();
+    // Both directions cross the old 1.5x stretch limit.
+    await act(async () => show(48, after));
+    await act(async () => { jest.advanceTimersByTime(RESIZE_SETTLE_MS * 3); });
+    await act(async () => show(136, after));
+    await act(async () => { jest.advanceTimersByTime(RESIZE_SETTLE_MS * 3); });
+    expect(seen.scene).toBe(initial);
+    expect(seen.builds).toBe(1);
+    end();
+    await act(async () => { jest.advanceTimersByTime(RESIZE_SETTLE_MS); });
+    expect(seen.builds).toBe(2);
+    expect(seen.scene!.width).toBe(136 * DESKTOP.cellWidthPx);
+    expect(seen.scene!.tiles.find((tile) => tile.item.id === "t0")!.item.weight).toBe(1);
+  } finally {
+    end?.();
+    jest.useRealTimers();
+  }
+});
 
 test("tiles hold still while their box resizes: a slide under way stops, colour changes snap, and no slide replays after the resize or into the layout it settles on", async () => {
   const before = board([6, 5, 4, 3, 2, 1], 2);

@@ -81,8 +81,7 @@ async function settlesOnce(cdp: Cdp, paneId: string, what: string): Promise<void
 }
 
 function stillWhileResizing(sample: Sample, what: string, steps: number): void {
-  // Over 1.5 times the size it was laid out for, the board is laid out again on the way; never once per step.
-  if (sample.builds > 1) fail(`${what}: the board was laid out ${sample.builds} times during ${steps} steps of the resize`, sample.builds);
+  if (sample.builds !== 0) fail(`${what}: the board was laid out ${sample.builds} times during ${steps} steps of the resize`, sample.builds);
   if (animatedFrames(sample) > 0) fail(`${what}: tiles animated while the size was changing`, sample.names);
 }
 
@@ -93,7 +92,12 @@ export const heatSteps: HeatStep[] = [
     async run(cdp) {
       const paneId = "heat:float";
       await boardReady(cdp, paneId);
-      const from = await evaluate<Point>(cdp, `(() => { const r = document.querySelector("${pane(paneId)} [data-gloom-role=resize-handle]").getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`);
+      const from = await evaluate<Point & { boardWidth: number }>(cdp, `(() => {
+        const r = document.querySelector("${pane(paneId)} [data-gloom-role=resize-handle]").getBoundingClientRect();
+        const board = document.querySelector("${pane(paneId)} [data-gloom-role=heat-treemap]").getBoundingClientRect();
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2, boardWidth: board.width };
+      })()`);
+      const to = { x: from.x - from.boardWidth * 0.4, y: from.y + 50 };
       const moves = 48;
       await mouse(cdp, "mouseMoved", from.x, from.y, false);
       await mouse(cdp, "mousePressed", from.x, from.y, true);
@@ -101,10 +105,11 @@ export const heatSteps: HeatStep[] = [
       try {
         await frames(cdp);
         await evaluate(cdp, startSampling(paneId));
-        // Out by 150 px and 50 px, within the stretch the board is held at, one move a frame.
+        // Shrink past two thirds: the old 1.5x limit rebuilt every tile
+        // before release. The board must keep stretching through it.
         for (let move = 1; move <= moves; move += 1) {
           const t = Math.sin((move / moves) * Math.PI / 2);
-          await mouse(cdp, "mouseMoved", from.x + t * 150, from.y + t * 50, true);
+          await mouse(cdp, "mouseMoved", from.x + (to.x - from.x) * t, from.y + (to.y - from.y) * t, true);
           if (move === moves / 2) await evaluate(cdp, "window.__heat.refresh()");
           await frames(cdp);
         }
@@ -112,11 +117,12 @@ export const heatSteps: HeatStep[] = [
         await sleep(300);
         const during = await stopSampling(cdp);
         stillWhileResizing(during, "corner resize", moves);
-        if (during.builds !== 0) fail("corner resize: the board was laid out again before the pointer let go", during.builds);
-        await mouse(cdp, "mouseReleased", from.x + 150, from.y + 50, false);
+        const duringWidth = await evaluate<number>(cdp, `document.querySelector("${pane(paneId)} [data-gloom-role=heat-treemap]").getBoundingClientRect().width`);
+        if (from.boardWidth / duringWidth <= 1.5) fail("corner resize: the board never crossed the former hold limit", { before: from.boardWidth, during: duringWidth });
+        await mouse(cdp, "mouseReleased", to.x, to.y, false);
         released = true;
       } finally {
-        if (!released) await mouse(cdp, "mouseReleased", from.x + 150, from.y + 50, false);
+        if (!released) await mouse(cdp, "mouseReleased", to.x, to.y, false);
       }
       await settlesOnce(cdp, paneId, "corner resize");
     },

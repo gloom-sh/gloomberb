@@ -121,7 +121,7 @@ export function useHeatTreemapScene<T>(
   key = "",
 ): HeatTreemapLayout<T> {
   const { nativePaneChrome, cellWidthPx, cellHeightPx } = useUiCapabilities();
-  const layout = useSettledLayoutSize(width, height, { enabled: nativePaneChrome === true });
+  const layout = useSettledLayoutSize(width, height, { enabled: nativePaneChrome === true, maxStretch: Infinity });
   const canvas = useMemo(
     () => heatTreemapCanvas(layout.width, layout.height, { nativePaneChrome, cellWidthPx, cellHeightPx }),
     [cellHeightPx, cellWidthPx, layout.height, layout.width, nativePaneChrome],
