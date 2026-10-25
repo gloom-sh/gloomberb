@@ -26,6 +26,9 @@ import type { GloomPlugin } from "../types/plugin";
 import type { LoadedExternalPlugin } from "./loader";
 import { portfolioAnalyticsModule } from "./builtin/analytics";
 import { earningsCallsModule } from "./builtin/earnings-calls";
+import { earningsModule } from "./builtin/earnings";
+import { holdersModule } from "./builtin/holders";
+import { thirteenFModule } from "./builtin/thirteenf";
 import { browserDividendYieldModule } from "./builtin/dividend-yield/browser";
 import { executivesModule } from "./builtin/executives";
 import { filingEventsModule } from "./builtin/filing-events";
@@ -136,9 +139,7 @@ const browserPortfolioPlugin = composeBuiltinPlugin({
   modules: [portfolioListModule, portfolioAnalyticsModule, positionSizerModule],
 });
 
-// Ticker Research's successors with the modules it had on the web. Holders,
-// 13F funds and the Congress tab are terminal-only, so Ownership & Insiders
-// is smaller here.
+// Ticker Research's successors with browser-safe data paths.
 const browserTickerCorePlugin = composeBuiltinPlugin({
   ...tickerCorePluginMeta,
   modules: [
@@ -171,8 +172,12 @@ const browserOptionsVolatilityPlugin = composeBuiltinPlugin({
 
 const browserOwnershipPlugin = composeBuiltinPlugin({
   ...ownershipPluginMeta,
-  description: "Insider trades, and short interest and volume.",
+  description: "Holders, 13F funds, insider trades, and short interest and volume.",
+  // The public 13F fallback goes through the same host proxy as other plugins.
+  hosts: ["forms13f.com"],
   modules: [
+    holdersModule,
+    thirteenFModule,
     // Form 4s come through Gloom Cloud, behind a sign-in wall.
     insiderModule,
     // Daily volume shares open this pane.
@@ -274,13 +279,13 @@ const browserCreditPlugin = composeBuiltinPlugin({
 });
 browserCreditPlugin.hosts = [...FIXED_INCOME_HOSTS];
 
-// The web app has never carried the earnings calendar. The call transcripts
-// and the ripple ran with Ticker Research here, so their pane state is under
-// its namespace, not Macro's as on the terminal.
+// The calendar keeps Macro's state namespace, as on the desktop and terminal.
+// Calls and the ripple keep the Ticker Research namespace they used on the web.
 const browserEarningsPlugin = composeBuiltinPlugin({
   ...earningsPluginMeta,
-  description: "Earnings call transcripts, and the earnings ripple through customers and suppliers.",
+  description: "Earnings calendar, call transcripts, and the earnings ripple through customers and suppliers.",
   modules: [
+    earningsModule,
     { module: earningsCallsModule, stateId: "ticker-research" },
     { module: earningsRippleModule, stateId: "ticker-research" },
   ],

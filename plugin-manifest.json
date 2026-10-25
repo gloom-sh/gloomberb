@@ -531,22 +531,12 @@
           {
             "code": "ERN",
             "name": "Earnings Calendar",
-            "description": "The market's report days with implied and past moves; with a ticker, its report history.",
-            "targets": [
-              "cli",
-              "tui",
-              "desktop"
-            ]
+            "description": "The market's report days with implied and past moves; with a ticker, its report history."
           },
           {
             "code": "EVTS",
             "name": "Earnings Days",
-            "description": "The market's report days with implied and past moves; a ticker picks its row.",
-            "targets": [
-              "cli",
-              "tui",
-              "desktop"
-            ]
+            "description": "The market's report days with implied and past moves; a ticker picks its row."
           },
           {
             "code": "CALLS",
@@ -1155,22 +1145,12 @@
           {
             "code": "HDS",
             "name": "Holders",
-            "description": "Institutional holders from 13F filings, and 13D/13G beneficial owners: activist and passive stakes over 5% of the class.",
-            "targets": [
-              "cli",
-              "tui",
-              "desktop"
-            ]
+            "description": "Institutional holders from 13F filings, and 13D/13G beneficial owners: activist and passive stakes over 5% of the class."
           },
           {
             "code": "13F",
             "name": "13F Funds",
-            "description": "Browse institutional 13F fund filings and estimated long-book performance.",
-            "targets": [
-              "cli",
-              "tui",
-              "desktop"
-            ]
+            "description": "Browse institutional 13F fund filings and estimated long-book performance."
           },
           {
             "code": "INS",

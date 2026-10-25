@@ -7,6 +7,7 @@ Open [term.gloom.sh](https://term.gloom.sh) without an account to start with a s
 ## Accounts and data
 
 - The workspace opens without signing in. Some panes, including filings and insider transactions, require a free, verified Gloom Cloud account; others require Pro.
+- 13F funds (`13F`), earnings history and calendar (`ERN`, `EVTS`), and institutional holders (`HDS`) open without an account, including from a saved layout.
 - Free access has rate limits, equity and options quotes delayed by 15 minutes, and news delayed by 12 hours. Pro provides real-time data and more datasets.
 - Chat is read-only until the account's email is verified.
 - Configuration, tickers, layouts, session state, and plugin state are stored in the browser.
@@ -22,6 +23,6 @@ The browser app does not install plugins. Code you pick would run on the origin 
 
 The browser build omits brokers and native integrations, filesystem notes, local AI, plugin installation, updater/debug tools, application menus, native window controls, pop-out native windows, and native context menus.
 
-Modules whose feeds the build has no path to are also unavailable: custom RSS feeds and Substack, market movers, ownership (13F, holders, short interest), earnings, and TV.
+Modules whose feeds the build has no path to are also unavailable: custom RSS feeds and Substack, market movers, and TV.
 
 For local development, validation, and deployment details, see [Contributing](../CONTRIBUTING.md#browser-development).
