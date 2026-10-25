@@ -135,8 +135,12 @@ function NativeKeyValueRow({ label, value, detail, tone, color, width, labelWidt
   } : {};
   const rowWidth = width === undefined ? undefined : Math.max(0, Math.floor(width));
   const labelChars = Math.max(0, labelWidth ?? (rowWidth === undefined ? 14 : Math.min(12, Math.max(8, Math.floor(rowWidth * 0.32)))));
+  // A bounded row fills its parent's width. Rows side by side (a pair of metrics) each give way to an equal
+  // share of their row, so the second is not pushed past the pane edge; never shorter than its line, so a
+  // column with less room than its rows still overflows and scrolls instead of squeezing them.
+  const bounded = width === undefined ? {} : { width: "100%", flexShrink: 1, minHeight: "min-content" };
   return (
-    <Box width={width === undefined ? undefined : "100%"} flexDirection="row" overflow="hidden" data-gloom-ui="key-value-row" {...target}>
+    <Box {...bounded} flexDirection="row" overflow="hidden" data-gloom-ui="key-value-row" {...target}>
       {/* At least the label width, in characters; a longer label keeps every character and moves its value along. */}
       <Text fg={colors.textDim} style={{ ...NATIVE_CLIP_STYLE, flex: "0 0 auto", minWidth: `${labelChars}ch`, paddingRight: "1ch", boxSizing: "border-box" }}>{t(label)}</Text>
       {country ? <CountryFlagLead value={country} /> : null}

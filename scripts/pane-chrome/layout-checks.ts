@@ -122,6 +122,9 @@ export const layoutSteps: LayoutStep[] = PANES.flatMap(({ id, label, opens }) =>
         // A value that fits the row's pixels shows whole: clipped in CSS where it ends, never cut at a count of columns.
         const cut = await evaluate<string[]>(cdp, `[...document.querySelectorAll('[data-gloom-pane-id="${id}:layout"] [data-gloom-ui=key-value-row]')].map((row) => row.innerText.trim()).filter((text) => /(\\.\\.\\.|\\u2026)$/.test(text))`);
         for (const text of cut) problems.push(`${size.width}x${size.height}: a label and value row cut its value at a column count ("${text.replace(/\s+/g, " ").slice(0, 60)}")`);
+        // Rows side by side share their row: none is pushed past the pane's edge, where only its first letter shows.
+        const past = await evaluate<string[]>(cdp, `(() => { const pane = document.querySelector('[data-gloom-pane-id="${id}:layout"]'); const edge = pane.getBoundingClientRect().right; return [...pane.querySelectorAll('[data-gloom-ui=key-value-row]')].filter((row) => row.getBoundingClientRect().right > edge + 1).map((row) => row.innerText.trim()); })()`);
+        for (const text of past) problems.push(`${size.width}x${size.height}: a label and value row runs past the pane's right edge ("${text.replace(/\s+/g, " ").slice(0, 60)}")`);
       }
     } finally {
       await cdp.send("Emulation.setDeviceMetricsOverride", { ...RESTORE, deviceScaleFactor: 1, mobile: false });

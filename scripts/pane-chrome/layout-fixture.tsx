@@ -493,6 +493,11 @@ function InlineFixturePane({ width }: PaneProps) {
           {Array.from({ length: 5 }, (_, index) => (
             <KeyValueRow key={index} label={`Field ${index + 1}`} value={valueFor(inner - 12, index)} width={inner} labelWidth={12} />
           ))}
+          {/* Two metrics side by side, as the options and bond calculators pair them. */}
+          <Box flexDirection="row">
+            <KeyValueRow label="Model" value="3.0211" detail="per unit" width={Math.floor(inner / 2)} />
+            <KeyValueRow label="Implied IV" value="24.10%" detail="from mid" width={inner - Math.floor(inner / 2)} />
+          </Box>
         </Box>
         <Prose text={SENTENCES.slice(3).join(" ")} width={inner} />
       </Box>
