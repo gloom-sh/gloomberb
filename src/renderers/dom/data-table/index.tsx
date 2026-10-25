@@ -43,7 +43,7 @@ import {
   useScrollBoxHandle,
   useScrollbarState,
 } from "./dom";
-import { WebDataTableHeader, WebDataTableRow } from "./row";
+import { columnGapCss, WebDataTableHeader, WebDataTableRow } from "./row";
 import { TABLE_RESIZE_DEFAULTS, useTableResizeColumns } from "./resize-columns";
 
 interface VirtualRow {
@@ -130,6 +130,10 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
   const bodyHorizontal = useScrollbarState(showHorizontalScrollbar);
   const bodyVertical = useScrollbarState(true);
   const [viewportWidth, setViewportWidth] = useState(0);
+  const readViewportWidth = useCallback(() => {
+    const element = bodyElementRef.current;
+    return element ? toCellX(element.clientWidth) : 0;
+  }, []);
   const [frozenScrollLeft, setFrozenScrollLeft] = useState(0);
   const [scrollbarActive, markScrollbarActive] = useScrollbarActivity();
   useLayoutEffect(() => {
@@ -144,9 +148,11 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
     () => buildTableGridTemplateColumns(columns, fillAvailableWidth, columnGap),
     [columnGap, columns, fillAvailableWidth],
   );
+  const naturalWidth = Math.max(1, tableWidth * WEB_CELL_WIDTH);
   useTableResizeColumns(rootElementRef, gridTemplateColumns, columns.map((column) => column.id).join("\u0000"), {
-    naturalWidth: Math.max(1, tableWidth * WEB_CELL_WIDTH),
+    naturalWidth,
     viewportWidth,
+    viewportIsCurrent: () => readViewportWidth() === viewportWidth,
     fillAvailableWidth,
     showHorizontalScrollbar,
   });
@@ -218,13 +224,12 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
     && hasMeaningfulTableHorizontalOverflow(tableWidth, viewportWidth, columnGap);
   const scrollContentWidth = horizontalScrollEnabled
     || !fillAvailableWidth
-    ? Math.max(1, tableWidth * WEB_CELL_WIDTH)
+    ? naturalWidth
     : "100%";
   const measureViewportWidth = useCallback(() => {
-    const element = bodyElementRef.current;
-    const nextValue = element ? toCellX(element.clientWidth) : 0;
+    const nextValue = readViewportWidth();
     setViewportWidth((current) => current === nextValue ? current : nextValue);
-  }, []);
+  }, [readViewportWidth]);
   const scheduleViewportWidthMeasure = useRafCallback(measureViewportWidth);
 
   useEffect(() => {
@@ -437,7 +442,7 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
               // Rows share one area, but the sticky header needs the entire
               // content height as its containing block when the body scrolls.
               gridTemplateRows: "minmax(0, 1fr)",
-              columnGap: columnGap === 0 ? 0 : `calc(${columnGap} * var(--cell-w))`,
+              columnGap: columnGapCss(columnGap),
               paddingLeft: TABLE_INLINE_PADDING_PX * horizontalPadding,
               paddingRight: TABLE_INLINE_PADDING_PX * horizontalPadding,
               boxSizing: "border-box",

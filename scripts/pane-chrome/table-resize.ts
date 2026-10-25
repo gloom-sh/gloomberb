@@ -25,14 +25,29 @@ const themes = (takeOption(args, "--themes") ?? "white,paper").split(",");
 const only = takeOption(args, "--only");
 const sideOnly = takeOption(args, "--side");
 await mkdir(out, { recursive: true });
+const startedAt = new Date().toISOString();
+const sources: Record<string, { sha: string; dirty: boolean }> = {};
 const reports: Array<{ side: string; kind: string; width: number; theme: string; maxShift: number; shifts: Array<{ name: string; shift: number }>; live: { frames: number; maxShift: number }; release: { travel: number; maxStep: number; maxStepPerFrame: number } }> = [];
-const rest: Array<{ kind: string; width: number; theme: string; comparison: ReturnType<typeof pixelChange>; exactPixels: number; releasedPixels: number }> = [];
+const rest: Array<{ kind: string; width: number; theme: string; comparison: ReturnType<typeof pixelChange>; releasedComparison: ReturnType<typeof pixelChange>; exactPixels: number; releasedPixels: number }> = [];
+function sourceState(checkout: string): { sha: string; dirty: boolean } {
+  const git = (args: string[]): string => {
+    const result = Bun.spawnSync(["git", ...args], { cwd: checkout, stdout: "pipe", stderr: "pipe" });
+    if (result.exitCode !== 0) throw new Error(result.stderr.toString());
+    return result.stdout.toString().trim();
+  };
+  return { sha: git(["rev-parse", "HEAD"]), dirty: git(["status", "--porcelain"]) !== "" };
+}
 function differentPixels(before: string, after: string): number {
-  const exact = Bun.spawnSync(["compare", "-metric", "AE", before, after, "null:"]);
+  const exact = Bun.spawnSync(["compare", "-regard-warnings", "-metric", "AE", before, after, "null:"]);
   if (exact.exitCode !== 0 && exact.exitCode !== 1) throw new Error(exact.stderr.toString());
-  return Number(exact.stderr.toString().trim());
+  const count = exact.stderr.toString().trim();
+  if (!/^\d+(?:\.\d+)?(?:e[+-]?\d+)?$/i.test(count) || !Number.isFinite(Number(count))) {
+    throw new Error(`Exact comparison gave no pixel count: ${JSON.stringify(count)}`);
+  }
+  return Number(count);
 }
 for (const [side, checkout] of ([...(base ? [["base", resolve(base)]] : []), ["head", root]] as Array<[string, string]>).filter(([side]) => !sideOnly || side === sideOnly)) {
+  sources[side] = sourceState(checkout);
   const page = await serveFixturePage(checkout, cacheDir("build", `table-resize-${side}-${process.pid}`));
   try {
     for (const width of widths) {
@@ -58,8 +73,10 @@ for (const [side, checkout] of ([...(base ? [["base", resolve(base)]] : []), ["h
           if (side === "head" && base) {
             const before = join(out, `${kind}-${width}-${theme}-base-rest.png`);
             const after = join(out, `${prefix}-rest.png`);
+            const beforeReleased = join(out, `${kind}-${width}-${theme}-base-released.png`);
+            const afterReleased = join(out, `${prefix}-released.png`);
             rest.push({ kind, width, theme, comparison: pixelChange(before, after), exactPixels: differentPixels(before, after),
-              releasedPixels: differentPixels(join(out, `${kind}-${width}-${theme}-base-released.png`), join(out, `${prefix}-released.png`)) });
+              releasedComparison: pixelChange(beforeReleased, afterReleased), releasedPixels: differentPixels(beforeReleased, afterReleased) });
             const pair = Bun.spawnSync(["montage", join(out, `${kind}-${width}-${theme}-base-rest.png`), join(out, `${prefix}-rest.png`), "-thumbnail", "640x", "-tile", "2x1", "-geometry", "+4+4", join(out, `${kind}-${width}-${theme}-rest-pair.jpg`)]);
             if (pair.exitCode !== 0) throw new Error(pair.stderr.toString());
           }
@@ -68,6 +85,16 @@ for (const [side, checkout] of ([...(base ? [["base", resolve(base)]] : []), ["h
     }
   } finally { await page.close(); }
 }
-await Bun.write(join(out, "report.json"), JSON.stringify({ reports, rest }, null, 2));
+const failures = [
+  ...reports.filter((report) => report.side === "head" && (report.maxShift > 1 || report.release.maxStepPerFrame > 3))
+    .map((report) => `${report.kind} ${report.width}px ${report.theme}: resize geometry moved beyond its limit`),
+  ...rest.flatMap((pair) => ([["initial", pair.comparison], ["released", pair.releasedComparison]] as const)
+    .filter(([, comparison]) => comparison.status !== "compared" || comparison.change > 0)
+    .map(([state, comparison]) => `${pair.kind} ${pair.width}px ${pair.theme}: ${state} rest differs or could not be compared: ${JSON.stringify(comparison)}`)),
+];
+await Bun.write(join(out, "report.json"), JSON.stringify({ startedAt, completedAt: new Date().toISOString(), sources, reports, rest, failures }, null, 2));
 console.log(`Captures and report: ${out}`);
-if (reports.some((report) => report.side === "head" && (report.maxShift > 1 || report.release.maxStepPerFrame > 3))) process.exitCode = 1;
+if (failures.length) {
+  console.error(failures.join("\n"));
+  process.exitCode = 1;
+}

@@ -242,6 +242,54 @@ export const tableResizeSteps = [...TABLE_RESIZE_KINDS.flatMap((kind) => ["float
     }
   },
 }, {
+  name: "table resize: resizing another pane leaves fractional table ancestors still",
+  scenario: "table-resize&pane=vols&fw=643&other=1",
+  async run(cdp: Cdp) {
+    await tableResizeReady(cdp, "vols");
+    const gap = await evaluate<number>(cdp, `(() => {
+      const table = document.querySelector('[data-gloom-pane-id="vols:resize"] [data-gloom-role=data-table]');
+      const cell = parseFloat(getComputedStyle(table).getPropertyValue('--cell-w'));
+      for (let box = table.parentElement; box && box.getAttribute('data-gloom-role') !== 'pane-content'; box = box.parentElement) {
+        if (!box.style.width.endsWith('px')) continue;
+        const short = box.parentElement.getBoundingClientRect().width - box.getBoundingClientRect().width;
+        if (short > 1 && short < cell) return short;
+      }
+      return 0;
+    })()`);
+    if (gap === 0) throw new Error("The unrelated-pane fixture has no fractional table ancestor");
+    const before = await evaluate<TableResizeFrame>(cdp, tableResizeFrame("vols"));
+    const from = await evaluate<Point & { right: number }>(cdp, `(() => {
+      const pane = document.querySelector('[data-gloom-pane-id="plain:other"]');
+      const handle = pane.querySelector('[data-gloom-role=resize-handle]').getBoundingClientRect();
+      return { x: handle.x + handle.width / 2, y: handle.y + handle.height / 2, right: pane.getBoundingClientRect().right };
+    })()`);
+    await mouse(cdp, "mouseMoved", from.x, from.y, false);
+    await mouse(cdp, "mousePressed", from.x, from.y, true);
+    let x = from.x;
+    try {
+      for (const distance of [0, -13]) {
+        x = from.x + distance;
+        if (distance) await mouse(cdp, "mouseMoved", x, from.y, true);
+        await frames(cdp, 1);
+        const right = await evaluate<number>(cdp, "document.querySelector('[data-gloom-pane-id=\"plain:other\"]').getBoundingClientRect().right");
+        if (Math.abs(right - from.right - distance) > 1) throw new Error("The unrelated pane did not follow its resize pointer");
+        for (const delay of [0, 180]) {
+          if (delay) await sleep(delay);
+          const after = await evaluate<TableResizeFrame>(cdp, tableResizeFrame("vols"));
+          const shift = catchupShift(before, after);
+          if (Math.abs(after.pane - before.pane) > 1 || shift > 1) {
+            throw new Error(`An unrelated pane resize moved the table ${shift.toFixed(2)}px (${distance}px movement, ${delay}ms catch-up)`);
+          }
+        }
+      }
+    } finally {
+      await mouse(cdp, "mouseReleased", x, from.y, false);
+    }
+    await sleep(280);
+    const released = await evaluate<TableResizeFrame>(cdp, tableResizeFrame("vols"));
+    if (catchupShift(before, released) > 1) throw new Error("An unrelated pane release moved the table");
+  },
+}, {
   name: "table resize: the header remains pinned above vertically scrolled rows",
   scenario: "table-resize&pane=table&fw=1000",
   async run(cdp: Cdp) {

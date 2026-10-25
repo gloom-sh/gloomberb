@@ -1,7 +1,6 @@
 import { useLayoutEffect, useRef, type CSSProperties, type RefObject } from "react";
 import { isLiveResizing, onLiveResizeEnd, onLiveResizeStart } from "../../../ui/live-resize";
 import { RESIZE_SETTLE_MS } from "../../../ui/resize-settle";
-import { toCellX } from "./dom";
 
 const COLUMNS = "--gloom-table-resize-columns";
 const WIDTH = "--gloom-table-resize-width";
@@ -17,6 +16,8 @@ export const TABLE_RESIZE_DEFAULTS: CSSProperties & Record<`--${string}`, string
 interface TableResizeWidth {
   naturalWidth: number;
   viewportWidth: number;
+  /** The owning table measures its shared viewport API; this hook only waits for it. */
+  viewportIsCurrent: () => boolean;
   fillAvailableWidth: boolean;
   showHorizontalScrollbar: boolean;
 }
@@ -81,12 +82,10 @@ export function useTableResizeColumns(root: RefObject<HTMLElement | null>, templ
       if (held.current === null) return;
       pendingFinish.current = () => {
         const width = latest.current.width;
-        const body = element.querySelector<HTMLElement>('[data-gloom-role="data-table-body-scroll"]');
         // The overflow decision deliberately waits until release to measure.
         // Its new width must land before removing the hold, or a shrink would
         // briefly target 100% before switching back to its natural extent.
-        if (width.fillAvailableWidth && width.showHorizontalScrollbar && body
-          && toCellX(body.clientWidth) !== width.viewportWidth) return;
+        if (width.fillAvailableWidth && width.showHorizontalScrollbar && !width.viewportIsCurrent()) return;
         pendingFinish.current = null;
         held.current = null;
         const reducedMotion = element.ownerDocument.defaultView?.matchMedia?.("(prefers-reduced-motion: reduce)").matches;

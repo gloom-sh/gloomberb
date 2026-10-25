@@ -337,6 +337,17 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
   height: auto !important;
   min-height: 0 !important;
 }
+/* Table ancestors keep their fractional trailing space while following.
+   Explicit attributes keep inherited custom properties off nested boxes. */
+[data-gloom-follow-gap-x] {
+  margin-right: var(--gloom-follow-x-margin) !important;
+}
+[data-gloom-follow-gap-y] {
+  margin-bottom: var(--gloom-follow-y-margin) !important;
+}
+[data-gloom-follow-settling] {
+  transition: var(--gloom-follow-transition) !important;
+}
 /* A chart whose time axis reaches a floating pane's resize grip keeps its
    last label clear of it. */
 [data-gloom-grip-clear] [data-gloom-role="chart-time-axis"] [data-gloom-edge="end"] {

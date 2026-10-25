@@ -94,9 +94,13 @@ export function tableResizeLayout(params: URLSearchParams): LayoutConfig {
       first: { kind: "pane", instanceId }, second: { kind: "pane", instanceId: plain.instanceId } },
     instances: [current, plain], floating: [], detached: [],
   };
+  const other: PaneInstanceConfig | null = params.has("other")
+    ? { instanceId: "plain:other", paneId: "plain", binding: { kind: "none" } }
+    : null;
   return {
-    dockRoot: { kind: "pane", instanceId: plain.instanceId }, instances: [current, plain],
+    dockRoot: { kind: "pane", instanceId: plain.instanceId }, instances: [current, plain, ...(other ? [other] : [])],
     floating: [{ instanceId, x: 2, y: 2, width: Math.min(window.innerWidth - 40, Number(params.get("fw")) || Infinity) / WEB_CELL_WIDTH,
-      height: (window.innerHeight - 80) / WEB_CELL_HEIGHT, zIndex: 60 }], detached: [],
+      height: (window.innerHeight - 80) / WEB_CELL_HEIGHT, zIndex: 60 },
+      ...(other ? [{ instanceId: other.instanceId, x: window.innerWidth / WEB_CELL_WIDTH - 42, y: 4, width: 40, height: 12, zIndex: 61 }] : [])], detached: [],
   };
 }

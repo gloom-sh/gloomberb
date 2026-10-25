@@ -10,6 +10,7 @@ import { TABLE_RESIZE_DEFAULTS, useTableResizeColumns } from "./resize-columns";
 const { window: testWindow, render } = createDomTestHarness({ withUi: false });
 
 test("a resize holds its overflow extent through catch-ups and until the final viewport measurement lands", async () => {
+  let viewport = 160 * WEB_CELL_WIDTH;
   let update: (width: { naturalWidth: number; viewportWidth: number }) => void = () => {};
   function Harness() {
     const ref = useRef<HTMLDivElement>(null);
@@ -17,6 +18,7 @@ test("a resize holds its overflow extent through catch-ups and until the final v
     update = setWidth;
     useTableResizeColumns(ref, `minmax(20px, ${width.naturalWidth}fr)`, "value", {
       ...width, fillAvailableWidth: true, showHorizontalScrollbar: true,
+      viewportIsCurrent: () => viewport === width.viewportWidth * WEB_CELL_WIDTH,
     });
     return <div ref={ref} data-gloom-role="data-table" style={{ ...TABLE_RESIZE_DEFAULTS }}>
       <div data-gloom-role="data-table-body-scroll">
@@ -33,7 +35,6 @@ test("a resize holds its overflow extent through catch-ups and until the final v
   const table = container.querySelector<HTMLElement>('[data-gloom-role="data-table"]')!;
   const body = table.querySelector<HTMLElement>('[data-gloom-role="data-table-body-scroll"]')!;
   const content = table.querySelector<HTMLElement>('[data-gloom-role="data-table-scroll-content"]')!;
-  let viewport = 160 * WEB_CELL_WIDTH;
   Object.defineProperty(body, "clientWidth", { get: () => viewport });
   content.getBoundingClientRect = () => new testWindow.DOMRect(0, 0, viewport, 240) as unknown as DOMRect;
 

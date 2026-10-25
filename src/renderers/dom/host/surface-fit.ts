@@ -1,5 +1,6 @@
 import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../../../theme/font-scale";
 import { isLiveResizing, onLiveResizeEnd, onLiveResizeStart } from "../../../ui/live-resize";
+import { RESIZE_SETTLE_MS } from "../../../ui/resize-settle";
 
 /**
  * A surface that draws for one size (a chart, a heat map) inside a pane's own
@@ -30,7 +31,7 @@ import { isLiveResizing, onLiveResizeEnd, onLiveResizeStart } from "../../../ui/
  * A surface's exact ancestor is already the size CSS gives it, and a filled
  * box only gains the fraction of a cell its cells leave, from space that is
  * empty: it starts where that space starts and nothing comes after it, and
- * no sibling grows into it. A table takes that fraction only during a drag.
+ * no sibling grows into it. A table preserves that fraction during a drag.
  */
 
 type Axis = "x" | "y";
@@ -45,7 +46,16 @@ const tables = new Set<HTMLElement>();
 /** The boxes above each surface that fill at rest along with it. */
 const boxFills = new Map<HTMLElement, Array<[HTMLElement, Axis, Mode]>>();
 const followed = new WeakMap<HTMLElement, { x: boolean; y: boolean }>();
-let followMarks: Array<[HTMLElement, Axis]> = [];
+interface FollowMark {
+  element: HTMLElement;
+  axis: Axis;
+  mode: Mode;
+  margin: number | null;
+}
+let followMarks: FollowMark[] = [];
+let settleFrame: number | null = null;
+let settleTimer: ReturnType<typeof setTimeout> | null = null;
+let settleObserver: MutationObserver | null = null;
 let installed = false;
 
 /** Below this, in px, two sizes are the same: the browser lays out in 1/64 px. */
@@ -57,6 +67,11 @@ const cellOn = (axis: Axis) => (axis === "x" ? WEB_CELL_WIDTH : WEB_CELL_HEIGHT)
 const SIZE = { x: "width", y: "height" } as const;
 const FILL_ATTRIBUTE = { x: "data-gloom-fill-x", y: "data-gloom-fill-y" } as const;
 const FOLLOW_ATTRIBUTE = { x: "data-gloom-follow-x", y: "data-gloom-follow-y" } as const;
+const GAP_ATTRIBUTE = { x: "data-gloom-follow-gap-x", y: "data-gloom-follow-gap-y" } as const;
+const GAP_MARGIN = { x: "--gloom-follow-x-margin", y: "--gloom-follow-y-margin" } as const;
+const MARGIN = { x: "marginRight", y: "marginBottom" } as const;
+const SETTLE_ATTRIBUTE = "data-gloom-follow-settling";
+const SETTLE_TRANSITION = "--gloom-follow-transition";
 
 interface Pass {
   styles: Map<Element, CSSStyleDeclaration>;
@@ -304,7 +319,7 @@ export function fitSurface(surface: HTMLElement): void {
   // A surface that is not displayed (a hidden tab) has no space to fit: it
   // keeps its fills for when it shows again, instead of losing them to the
   // 0 by 0 it is laid out at meanwhile and taking them back as it reappears.
-  if (!surface.isConnected || isLiveResizing() || surface.getClientRects().length === 0) return;
+  if (!surface.isConnected || isLiveResizing() || followMarks.length > 0 || surface.getClientRects().length === 0) return;
   const pass: Pass = { styles: new Map() };
   // Judged on the cells each box was given and where it starts, neither of which a fill changes.
   const fills = { x: restFill(pass, surface, "x"), y: restFill(pass, surface, "y") };
@@ -341,9 +356,55 @@ function fitGrip(surface: HTMLElement): void {
   else surface.removeAttribute("data-gloom-grip-clear");
 }
 
+function applyFollowMark({ element, axis, mode, margin }: FollowMark): void {
+  element.setAttribute(FOLLOW_ATTRIBUTE[axis], mode);
+  if (margin !== null) {
+    element.setAttribute(GAP_ATTRIBUTE[axis], "");
+    element.style.setProperty(GAP_MARGIN[axis], `${margin}px`);
+  }
+}
+
+function clearFollowMark({ element, axis }: FollowMark): void {
+  element.removeAttribute(FOLLOW_ATTRIBUTE[axis]);
+  element.removeAttribute(GAP_ATTRIBUTE[axis]);
+  element.style.removeProperty(GAP_MARGIN[axis]);
+  element.removeAttribute(SETTLE_ATTRIBUTE);
+  element.style.removeProperty(SETTLE_TRANSITION);
+}
+
+function cancelSettling(): void {
+  if (settleFrame !== null) cancelAnimationFrame(settleFrame);
+  if (settleTimer !== null) clearTimeout(settleTimer);
+  settleFrame = null;
+  settleTimer = null;
+  settleObserver?.disconnect();
+  settleObserver = null;
+}
+
+/** Placement excludes margins: add only the empty space after the visible box. */
+function followingMargin(pass: Pass, element: HTMLElement, axis: Axis): number {
+  const margin = px(styleOf(pass, element)[MARGIN[axis]]);
+  const { space } = placement(pass, element, axis);
+  const size = element.getBoundingClientRect()[SIZE[axis]];
+  return Number.isFinite(space) ? margin + space - size : margin;
+}
+
 function startFollowing(): void {
+  cancelSettling();
   const pass: Pass = { styles: new Map() };
-  const marks: Array<[HTMLElement, Axis, Mode]> = [];
+  const marks = new Map<HTMLElement, Map<Axis, FollowMark>>();
+  const add = (element: HTMLElement, axis: Axis, mode: Mode, keepGap: boolean) => {
+    let axes = marks.get(element);
+    if (!axes) marks.set(element, axes = new Map());
+    const mark = axes.get(axis) ?? { element, axis, mode, margin: null };
+    if (keepGap && mark.margin === null) mark.margin = followingMargin(pass, element, axis);
+    axes.set(axis, mark);
+  };
+  // A regrab keeps the currently visible, possibly interpolated gap. Its
+  // inline cell size may still be catching up, so retain the existing path.
+  for (const mark of followMarks) {
+    if (mark.element.isConnected) add(mark.element, mark.axis, mark.mode, mark.margin !== null);
+  }
   // A resize changes the parents' boxes on every frame; nothing refits until it ends.
   for (const observer of surfaces.values()) observer?.disconnect();
   for (const surface of surfaces.keys()) {
@@ -355,7 +416,7 @@ function startFollowing(): void {
       if (!trace(pass, surface.parentElement, axis, links).follows) continue;
       result[axis] = true;
       // A short box fills, and so follows, already.
-      for (const [element, mode, kind] of links) if (kind === "exact") marks.push([element, axis, mode]);
+      for (const [element, mode, kind] of links) if (kind === "exact") add(element, axis, mode, false);
     }
     followed.set(surface, result);
   }
@@ -364,26 +425,26 @@ function startFollowing(): void {
     for (const axis of ["x", "y"] as const) {
       const links: Link[] = [];
       if (!trace(pass, table.parentElement, axis, links).follows) continue;
-      // Table ancestors do not fill at rest: even the final fraction of a
-      // cell stays as it was. During the drag their lightweight cells can
-      // follow these boxes by CSS without a render on each pointer move.
-      for (const [element, mode] of links) marks.push([element, axis, mode]);
+      // Preserve the measured gap, including ancestors a chart already fills.
+      // Starting a resize in another pane must not move this table at all.
+      for (const [element, mode] of links) add(element, axis, mode, true);
     }
   }
   // Marked after every surface and table is traced, so every fit is judged
   // from the layout the pane drew before any ancestor starts following.
-  for (const [element, axis, mode] of marks) {
-    element.setAttribute(FOLLOW_ATTRIBUTE[axis], mode);
-    followMarks.push([element, axis]);
-  }
+  for (const mark of followMarks) clearFollowMark(mark);
+  followMarks = [...marks.values()].flatMap((axes) => [...axes.values()]);
+  for (const mark of followMarks) applyFollowMark(mark);
 }
 
-function stopFollowing(): void {
-  for (const [element, axis] of followMarks) element.removeAttribute(FOLLOW_ATTRIBUTE[axis]);
+function finishFollowing(): void {
+  cancelSettling();
+  for (const mark of followMarks) clearFollowMark(mark);
   followMarks = [];
   for (const surface of surfaces.keys()) followed.delete(surface);
   // After the release has laid the panes out: every surface fits its box again.
   const refit = () => {
+    if (isLiveResizing() || followMarks.length > 0) return;
     for (const [surface, observer] of surfaces) {
       fitSurface(surface);
       if (observer && surface.parentElement) observer.observe(surface.parentElement);
@@ -391,6 +452,69 @@ function stopFollowing(): void {
   };
   if (typeof requestAnimationFrame === "function") requestAnimationFrame(refit);
   else setTimeout(refit, 0);
+}
+
+function settleFollowing(): void {
+  settleFrame = null;
+  if (isLiveResizing()) return;
+  if (settleTimer !== null) clearTimeout(settleTimer);
+  const pass: Pass = { styles: new Map() };
+  const visible = followMarks.map(({ element, axis }) => px(styleOf(pass, element)[MARGIN[axis]]));
+  // Measure every target in the complete resting layout. Measuring a child
+  // against its still-following parent would give nested gaps the wrong end.
+  for (const mark of followMarks) clearFollowMark(mark);
+  const rest: Pass = { styles: new Map() };
+  const targets = followMarks.map(({ element, axis }) => followingMargin(rest, element, axis));
+  const transitions = new Map(followMarks.map(({ element }) => [element, styleOf(rest, element).transition]));
+  for (const [index, mark] of followMarks.entries()) {
+    mark.margin = visible[index]!;
+    applyFollowMark(mark);
+  }
+  // Establish the starting margins before changing their targets. Everything
+  // above happens in one task, so the temporary resting layout never paints.
+  for (const document of new Set(followMarks.map(({ element }) => element.ownerDocument))) {
+    void document.documentElement.offsetWidth;
+  }
+  for (const [element, existing] of transitions) {
+    const margins = `margin-right ${RESIZE_SETTLE_MS}ms linear, margin-bottom ${RESIZE_SETTLE_MS}ms linear`;
+    element.style.setProperty(SETTLE_TRANSITION, existing && existing !== "none" ? `${existing}, ${margins}` : margins);
+    element.setAttribute(SETTLE_ATTRIBUTE, "");
+  }
+  for (const [index, mark] of followMarks.entries()) {
+    mark.margin = targets[index]!;
+    mark.element.style.setProperty(GAP_MARGIN[mark.axis], `${mark.margin}px`);
+  }
+  settleTimer = setTimeout(finishFollowing, RESIZE_SETTLE_MS * 2);
+}
+
+function stopFollowing(): void {
+  for (const mark of followMarks) if (mark.margin === null) clearFollowMark(mark);
+  followMarks = followMarks.filter((mark) => mark.margin !== null);
+  const view = followMarks[0]?.element.ownerDocument.defaultView;
+  if (!view || view.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+    finishFollowing();
+    return;
+  }
+  const schedule = () => {
+    if (settleFrame === null) settleFrame = requestAnimationFrame(settleFollowing);
+  };
+  // A final React layout commit may land after release. Ignore the custom
+  // properties written by settling itself, but include insets and margins.
+  const layout = ({ style }: HTMLElement) => [style.width, style.height,
+    style.marginTop, style.marginRight, style.marginBottom, style.marginLeft,
+    style.paddingTop, style.paddingRight, style.paddingBottom, style.paddingLeft].join("/");
+  const sizes = new Map(followMarks.map(({ element }) => [element, layout(element)]));
+  settleObserver = new view.MutationObserver((records) => {
+    for (const { target } of records) {
+      const element = target as HTMLElement;
+      const size = layout(element);
+      if (sizes.get(element) === size) continue;
+      sizes.set(element, size);
+      schedule();
+    }
+  });
+  for (const element of sizes.keys()) settleObserver.observe(element, { attributes: true, attributeFilter: ["style"] });
+  schedule();
 }
 
 /**

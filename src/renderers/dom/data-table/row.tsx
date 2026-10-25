@@ -53,7 +53,7 @@ function contentJustifyForAlign(align: string | undefined): CSSProperties["justi
   return "flex-start";
 }
 
-function columnGapCss(columnGap: number): CSSProperties["columnGap"] {
+export function columnGapCss(columnGap: number): CSSProperties["columnGap"] {
   return columnGap === 0 ? 0 : `calc(${columnGap} * var(--cell-w))`;
 }
 
@@ -405,7 +405,7 @@ function WebDataTableRowInner<
         const intrinsicText = directText && column.align === "right"
           && ((cell.attributes ?? TextAttributes.NONE) & TextAttributes.ITALIC) === 0;
         const intrinsicChild = !directText && cell.content === undefined && cell.leading === undefined;
-        const lead = tableColumnLeadGap(columns, columnIndex, columnGap);
+        const leadGap = leadGapCss(columns, columnIndex, columnGap);
         return (
           <div
             key={column.id}
@@ -419,7 +419,7 @@ function WebDataTableRowInner<
               ...(directText ? { ...clippedCellTextStyle(column, color, cell.attributes), width: undefined } : {}),
               ...(intrinsicText ? {
                 width: "max-content",
-                maxWidth: lead ? `calc(100% - ${lead} * var(--cell-w))` : "100%",
+                maxWidth: leadGap ? `calc(100% - ${leadGap})` : "100%",
                 justifySelf: "end",
               } : {}),
               ...(intrinsicChild ? {
@@ -431,7 +431,7 @@ function WebDataTableRowInner<
               position: freezeFirstColumn && columnIndex === 0 ? "sticky" : undefined,
               left: freezeFirstColumn && columnIndex === 0 ? inlinePaddingPx(horizontalPadding) : undefined,
               zIndex: freezeFirstColumn && columnIndex === 0 ? 1 : undefined,
-              marginLeft: leadGapCss(columns, columnIndex, columnGap),
+              marginLeft: leadGap,
               paddingLeft: columnIndex > 0 ? insets[columnIndex] : undefined,
               boxSizing: "border-box",
               height: WEB_CELL_HEIGHT,
