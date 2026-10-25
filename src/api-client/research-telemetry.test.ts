@@ -156,32 +156,3 @@ test("browser privacy signals suppress existing anonymous ids and signed-in rese
   await Bun.sleep(0);
   expect(requests).toEqual([]);
 });
-
-test("the first screen's exposure and first action say where, never what", async () => {
-  setCurrentPluginTarget("web");
-  initializeBrowserResearchActivity();
-  const bodies: Array<Record<string, unknown>> = [];
-  setCloudApiFetchTransport(async (_url, init) => {
-    bodies.push(JSON.parse(String(init?.body)));
-    return new Response(JSON.stringify({ accepted: true, variant: "calm" }));
-  });
-  expect(await exposeWebExperiment("web_first_screen", { placement: "first-screen" })).toBe("calm");
-  // Milestones are sent once per session and identity; an account of its own
-  // keeps this test's out of the signed-out ones other tests count on.
-  signIn("research-first-screen");
-  recordResearchActivity("first_screen_engaged", undefined, undefined, { placement: "first-screen" });
-  await Bun.sleep(0);
-  const exposure = bodies.find((body) => body.event === "experiment_exposed");
-  const engaged = bodies.find((body) => body.event === "first_screen_engaged");
-  expect(exposure).toMatchObject({ experiment: "web_first_screen", placement: "first-screen", surface: "web" });
-  expect(engaged).toMatchObject({ placement: "first-screen", surface: "web" });
-  for (const body of [exposure, engaged]) {
-    expect(Object.keys(body ?? {}).sort()).toEqual(
-      body === exposure
-        ? ["anonymousId", "attribution", "event", "eventId", "experiment", "placement", "surface"]
-        : ["anonymousId", "attribution", "event", "eventId", "placement", "surface"],
-    );
-  }
-  // The arm rides on later milestones as the experiment's attribution.
-  expect((engaged?.attribution as Record<string, string>).experiments).toBe("web_first_screen:calm");
-});

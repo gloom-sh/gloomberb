@@ -7,7 +7,6 @@ import { AssetDataRouter } from "../../sources/provider-router";
 import { JsonPersistence } from "../../data/json-persistence";
 import { isBrokerAccountSnapshotKey } from "../../brokers/account-cache";
 import { JsonTickerRepository } from "../../data/json-ticker-repository";
-import { noteFirstScreenTicker } from "./first-screen";
 
 export function createBrowserAppServices({ config, plugins, externalPlugins }: AppServicesFactoryOptions) {
   const cloudProvider = createGloomberbCloudProvider();
@@ -28,12 +27,7 @@ export function createBrowserAppServices({ config, plugins, externalPlugins }: A
         priority: 0,
         provider: { fetchNews: (query) => cloudNews?.provider.fetchNews(query) ?? Promise.resolve([]) },
       }));
-      const offSaved = pluginRegistry.events.on("host:portfolio-ticker-saved", () => recordResearchActivity("ticker_saved"));
-      const offSelected = pluginRegistry.events.on("ticker:selected", ({ symbol, previous }) => noteFirstScreenTicker(symbol, previous));
-      return () => {
-        offSaved();
-        offSelected();
-      };
+      return pluginRegistry.events.on("host:portfolio-ticker-saved", () => recordResearchActivity("ticker_saved"));
     },
   });
 }
