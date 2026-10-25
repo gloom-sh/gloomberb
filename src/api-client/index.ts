@@ -225,7 +225,6 @@ class GloomApiClient {
   }
 
   restoreCachedUser(user: PersistedAuthUser | null): void {
-    if (this.currentUser?.id !== user?.id) this.sessionInstallationGeneration += 1;
     this.auth.restoreCachedUser(user);
   }
 

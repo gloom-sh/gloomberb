@@ -517,3 +517,39 @@ test("native fallback validates a replacement token before restoring any cached 
   expect(h.local()).toEqual({ account: "b" });
   expect(h.controller.getStatus().revision).toBe(2);
 });
+
+test("restoring the same native credential during a null session check does not cancel a pending login", async () => {
+  installTestWebSocket();
+  const signInResponse = Promise.withResolvers<Response>();
+  let cloud = "a";
+  setCloudApiFetchTransport(async (url) => {
+    const path = new URL(String(url)).pathname;
+    if (path === "/auth/sign-in/email") return signInResponse.promise;
+    if (path === "/auth/get-session") return Response.json({ user: null });
+    if (path === "/chat/state") return Response.json({ channels: [], channelStates: [], notifications: [], onlineCount: 0 });
+    return Response.json({ snapshot: snapshot(cloud), revision: cloud === "a" ? 10 : 2, updatedAt: null });
+  });
+  const h = sessionHarness(false);
+  const chat = new ChatController();
+  cleanups.push(() => chat.dispose());
+  chat.adoptSession("token-a", accountA);
+  await h.controller.requestSync();
+  const baseline = h.baseline();
+  const memos = h.memos();
+  const signIn = apiClient.signIn("b@example.invalid", "unused");
+  await chat.refreshSession();
+  expect(apiClient.getCurrentUser()?.id).toBe("account-a");
+  expect(h.baseline()).toBe(baseline);
+  expect(h.memos()).toBe(memos);
+  expect(h.controller.getStatus().revision).toBe(10);
+  cloud = "b";
+  signInResponse.resolve(Response.json({ user: accountB }, {
+    headers: { "set-cookie": "gloomberb.session_token=token-b; Path=/; HttpOnly" },
+  }));
+  await expect(signIn).resolves.toMatchObject({ id: "account-b" });
+  await h.ready();
+
+  expect(apiClient.getSessionToken()).toBe("token-b");
+  expect(h.local()).toEqual({ account: "b" });
+  expect(h.controller.getStatus().revision).toBe(2);
+});
