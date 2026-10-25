@@ -6,6 +6,7 @@ import {
   QueryBar,
   usePaneTabs,
   useQueryBarSearch,
+  useTableLayoutWidth,
   type DataTableCell,
   type DataTableColumn,
   type DataTableKeyEvent,
@@ -110,6 +111,7 @@ function buildColumns(width: number, showGroup: boolean): CatalogColumn[] {
 }
 
 export function DataCatalogPane({ focused, width, height }: PaneProps) {
+  const tableLayoutWidth = useTableLayoutWidth(width);
   const { createPaneFromTemplate, notify } = usePluginAppActions();
   const dialog = useDialog();
   const [seedQuery] = usePaneSettingValue("query", "");
@@ -156,7 +158,7 @@ export function DataCatalogPane({ focused, width, height }: PaneProps) {
   );
   const selectedUrl = selectedRow?.url ?? null;
 
-  const columns = useMemo(() => buildColumns(width, filter === "all"), [filter, width]);
+  const columns = useMemo(() => buildColumns(tableLayoutWidth, filter === "all"), [filter, tableLayoutWidth]);
 
   // A series that says where it is drawn, or draws several lines, opens as the chart it builds.
   const chartPlacedSeries = useCallback((row: CatalogSeriesRow, ticker?: string): boolean => {

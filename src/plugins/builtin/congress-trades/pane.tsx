@@ -9,6 +9,7 @@ import {
   usePaneTabs,
   ChoiceDialog,
   useTableLoadMore,
+  useTableLayoutWidth,
 } from "../../../components";
 
 const CONGRESS_TABS = [
@@ -86,6 +87,7 @@ export function CongressPane(props: PaneProps) {
 }
 
 export function CongressTradesPane({ focused, width, height, tickerFilter }: PaneProps & { tickerFilter?: string }) {
+  const tableLayoutWidth = useTableLayoutWidth(width);
   const rendererHost = useRendererHost();
   const dialog = useDialog();
   const statePrefix = tickerFilter ? "congressTicker." : "";
@@ -234,11 +236,11 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
   const summaries = useMemo(() => aggregateLoadedCongress(visibleTrades, payload?.members), [visibleTrades, payload?.members]);
   const members = summaries.members;
   const tickerRows = useMemo(() => sortedTickers(summaries.tickers, tickerSort), [summaries.tickers, tickerSort]);
-  const tickerColumns = useMemo(() => buildTickerColumns(width), [width]);
+  const tickerColumns = useMemo(() => buildTickerColumns(tableLayoutWidth), [tableLayoutWidth]);
   const tradeRows = useMemo(() => sortedTrades(visibleTrades, tradeSort), [visibleTrades, tradeSort]);
   const memberRows = useMemo(() => sortedMembers(members, memberSort), [members, memberSort]);
-  const tradeColumns = useMemo(() => buildTradeColumns(width, !!tickerFilter), [width, tickerFilter]);
-  const memberColumns = useMemo(() => buildMemberColumns(width), [width]);
+  const tradeColumns = useMemo(() => buildTradeColumns(tableLayoutWidth, !!tickerFilter), [tableLayoutWidth, tickerFilter]);
+  const memberColumns = useMemo(() => buildMemberColumns(tableLayoutWidth), [tableLayoutWidth]);
   const selectedTradeIndex = selectedIndexById(tradeRows, selectedTradeId);
   const selectedMemberIndex = selectedIndexById(memberRows, selectedMemberId);
   const selectedTrade = tradeRows[selectedTradeIndex] ?? null;

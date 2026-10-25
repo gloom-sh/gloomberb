@@ -3,6 +3,7 @@ import {
   DataTableView,
   QueryBar,
   useQueryBarSearch,
+  useTableLayoutWidth,
   type DataTableColumn,
   type DataTableSelectionChangeReason,
   type QueryBarFilter,
@@ -161,12 +162,14 @@ export function SeriesListDetail<Row, Column extends DataTableColumn, R extends 
   renderDetail: (size: { width: number; height: number; focused: boolean }) => ReactNode;
 }) {
   const { nativePaneChrome } = useUiCapabilities();
-  const split = width >= SPLIT_MIN_WIDTH;
+  const layoutWidth = useTableLayoutWidth(width);
+  const split = layoutWidth >= SPLIT_MIN_WIDTH;
   const listWidth = split ? Math.min(maxListWidth, Math.floor(width * 0.4)) : width;
   const detailWidth = split ? width - listWidth : width;
   // The terminal scroller draws its bar in the last column; the detail stays clear of it.
   const detailContentWidth = Math.max(1, detailWidth - (nativePaneChrome ? 0 : 1));
-  const columns = buildColumns(listWidth, !split);
+  const columnWidth = split ? Math.min(maxListWidth, Math.floor(layoutWidth * 0.4)) : layoutWidth;
+  const columns = buildColumns(columnWidth, !split);
   // Everything under the query bar. The split table fills it to the footer.
   const bodyHeight = Math.max(1, height - 1);
   // Stacked: header plus every row, and one more line for the horizontal scrollbar.

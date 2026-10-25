@@ -7,6 +7,7 @@
  */
 import { useCallback, useMemo, useState } from "react";
 import {
+  useTableLayoutWidth,
   buildSectionedRows,
   DataTableView,
   EMPTY_TABLE_CELL,
@@ -110,7 +111,8 @@ export function FunctionsTable({
     ? selectedId
     : entries[0]?.id ?? null;
 
-  const showArgument = width >= ARGUMENT_COLUMN_MIN_TABLE_WIDTH;
+  const tableLayoutWidth = useTableLayoutWidth(width);
+  const showArgument = tableLayoutWidth >= ARGUMENT_COLUMN_MIN_TABLE_WIDTH;
   const prefixWidth = useMemo(() => badgeColumnWidth(entries.map((entry) => entry.prefix), { min: 8, max: 16 }), [entries]);
   const argumentWidth = useMemo(
     () => badgeColumnWidth(entries.map((entry) => (entry.argument ? [entry.argument] : [])), { min: 8, max: 18 }),

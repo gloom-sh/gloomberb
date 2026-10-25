@@ -12,6 +12,7 @@ import {
   usePaneNoticeFooter,
   usePaneStatusLinkFooter,
   useQueryBarSearch,
+  useTableLayoutWidth,
   useTableLoadMore,
   type DataTableCell,
   type DataTableKeyEvent,
@@ -200,6 +201,7 @@ function RecordDetail({ record, width }: { record: OpenFdaRecord; width: number 
 const isDataset = (value: unknown): value is OpenFdaDataset => DATASETS.some((entry) => entry.value === value);
 
 export function OpenFdaPane({ width, height, focused }: PaneProps) {
+  const tableLayoutWidth = useTableLayoutWidth(width);
   const client = useMemo(() => new OpenFdaClient(), []);
   const [storedQuery] = usePaneSettingValue("query", "");
   const initialQuery = String(storedQuery ?? "").trim();
@@ -239,8 +241,8 @@ export function OpenFdaPane({ width, height, focused }: PaneProps) {
   const windowLimited = records.pages[records.pages.length - 1]?.windowLimited ?? false;
   const loadMore = useTableLoadMore(scrollRef, records.hasMore && !openItemId, records.loadMore);
   const columns = useMemo(
-    () => withoutQuietColumns(recordColumns(dataset, width), rows, (row, id) => cellFor(row, id as ColumnId, colors).text, QUIET_COLUMNS) as RecordColumn[],
-    [colors, dataset, rows, width],
+    () => withoutQuietColumns(recordColumns(dataset, tableLayoutWidth), rows, (row, id) => cellFor(row, id as ColumnId, colors).text, QUIET_COLUMNS) as RecordColumn[],
+    [colors, dataset, rows, tableLayoutWidth],
   );
   const datasetLabel = DATASETS.find((entry) => entry.value === dataset)!.label;
 

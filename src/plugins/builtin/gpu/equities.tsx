@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef } from "react";
 import type { GpuBoardRow } from "../../../api-client/gpu";
 import {
-  buildSectionedRows, DataTableView, EMPTY_TABLE_CELL, isSectionedItemRow, renderSectionedRowHeader, usePaneFooter, usePaneNoticeFooter,
+  buildSectionedRows, DataTableView, EMPTY_TABLE_CELL, isSectionedItemRow, renderSectionedRowHeader, usePaneFooter, usePaneNoticeFooter, useTableLayoutWidth,
   type DataTableCell, type DataTableColumn, type SectionedRow,
 } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
@@ -46,6 +46,7 @@ export function GpuEquities({ board, models, locked, model, setModel, reloadBoar
   pending?: boolean;
 }) {
   const colors = useThemeColors();
+  const tableLayoutWidth = useTableLayoutWidth(width);
   const provider = useAssetData();
   const { pinTicker } = usePluginTickerActions();
   const [selected, setSelected] = usePluginPaneState<string | null>("equitySelected", "NVDA");
@@ -110,7 +111,7 @@ export function GpuEquities({ board, models, locked, model, setModel, reloadBoar
         { formatPrice: (quote) => gpuPrice(quote.price), formatChange: (quote) => gpuChange(quote.change) });
     }
   }, [colors, desktop]);
-  return <DataTableView<Row> columns={equityColumns(width)} items={items} rootWidth={width} rootHeight={height} focused={focused}
+  return <DataTableView<Row> columns={equityColumns(tableLayoutWidth)} items={items} rootWidth={width} rootHeight={height} focused={focused}
     rootBefore={<GpuModelQuery models={models} model={model || "H100"} setModel={setModel} width={width} allowAll={false} />}
     status={pending ? { loading: true, subject: "GPU rental prices" } : undefined}
     selection={{ kind: "id", selectedId: selected, getId: rowKey, onChange: (id) => setSelected(String(id)) }} getItemKey={rowKey}

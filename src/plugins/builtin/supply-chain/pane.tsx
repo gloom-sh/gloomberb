@@ -6,7 +6,7 @@ import { usePlanAccess } from "../../../api-client/plan-access";
 import type { SupplyChainPayload, SupplyOptions, SupplyRole, SupplyRow, SupplyTierFilter } from "../../../api-client/supply-chain";
 import {
   Badge, buildSectionedRows, ChartTableHeader, DataTableView, EmptyState, formatPercentAxis, isSectionedItemRow, PageStackView, renderSectionedRowHeader, PaneStatusBody, QueryBar, StatGrid,
-  statGridRows, useChartTableSelection, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type DataTableCell, type DataTableColumn, type PaneHint, type SectionedRow, type StatItem,
+  statGridRows, useChartTableSelection, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, useTableLayoutWidth, type DataTableCell, type DataTableColumn, type PaneHint, type SectionedRow, type StatItem,
 } from "../../../components";
 import { staticSeries } from "../../../components/chart/static/series";
 import { ClippedText } from "../../../components/ui/display";
@@ -269,8 +269,9 @@ function SupplyView({ symbol, width, height, focused }: Pick<PaneProps, "width" 
   // no column; laid out a cell narrower, the table also clears its own scrollbar. Otherwise the
   // evidence view says it.
   const periodWidth = Math.max(PERIOD_DATE_CELLS, ...tableRows.map((row) => displayWidth(cellText(row, "fy"))));
-  const dated = tableColumns(width, desktop, locked > 0, valueWidth, bases);
-  const lengths = periodWidth > PERIOD_DATE_CELLS ? tableColumns(width - 1, desktop, locked > 0, valueWidth, bases, periodWidth) : null;
+  const layoutWidth = useTableLayoutWidth(width);
+  const dated = tableColumns(layoutWidth, desktop, locked > 0, valueWidth, bases);
+  const lengths = periodWidth > PERIOD_DATE_CELLS ? tableColumns(layoutWidth - 1, desktop, locked > 0, valueWidth, bases, periodWidth) : null;
   const columns = lengths?.some((column) => column.id === "fy") && lengths.map((column) => column.id).join() === dated.map((column) => column.id).join() ? lengths : dated;
   const shareColumn = shareLayout(columns.find((column) => column.id === "pct")?.width ?? 0, bases);
   const renderCell = (entry: SectionedRow<Item>, column: DataTableColumn, _index: number, state: { selected: boolean }): DataTableCell => {

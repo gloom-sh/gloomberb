@@ -7,7 +7,6 @@ import { resolveChartPalette } from "../../../components/chart/core/palette";
 import { useCallback, useMemo, useRef, useState, type RefObject } from "react";
 import { Box, ScrollBox, useRendererHost, type ScrollBoxRenderable } from "../../../ui";
 import {
-  chartTableChromeRows,
   Button,
   ChartTableHeader,
   DataTableStackView,
@@ -734,7 +733,7 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
             width={width}
             height={rootHeight}
             tableRows={rows.length}
-            tableChromeRows={chartTableChromeRows(columns, width)}
+            tableColumns={columns}
             // In the root only: a detail changes nothing the portfolio filter picks.
             query={
               <QueryBar

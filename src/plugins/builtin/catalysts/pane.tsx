@@ -4,7 +4,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { isAccessDenied } from "../../../api-client/errors";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import { CATALYST_TYPES, type CatalystDetail, type CatalystEvent, type CatalystResponse } from "../../../api-client/catalysts";
-import { buildSectionedRows, DataTableView, EmptyState, EMPTY_TABLE_CELL, PageStackView, PaneStatusBody, QueryBar, renderSectionedRowHeader, usePagedRows, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, useTableLoadMore,
+import { buildSectionedRows, DataTableView, EmptyState, EMPTY_TABLE_CELL, PageStackView, PaneStatusBody, QueryBar, renderSectionedRowHeader, usePagedRows, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, useTableLayoutWidth, useTableLoadMore,
   type DataTableCell, type PageRequest, type PaneHint, type SectionedRow } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
@@ -42,6 +42,7 @@ export function LitigationPane(props: PaneProps) {
   return symbol ? <CatalystView key={symbol} {...props} symbol={symbol} litigation /> : <EmptyState title="Select a ticker." />;
 }
 export function CatalystView({ width, height, focused, symbol, litigation = false }: Pick<PaneProps, "width" | "height" | "focused"> & { symbol: string | null; litigation?: boolean }) {
+  const tableLayoutWidth = useTableLayoutWidth(width);
   const colors = useThemeColors();
   const desktop = !!useUiCapabilities().nativePaneChrome;
   const instance = usePaneInstance();
@@ -120,7 +121,7 @@ export function CatalystView({ width, height, focused, symbol, litigation = fals
     ...(tab === "calendar" ? [{ id: "upcoming", kind: "toggle" as const, label: "Upcoming", value: filters.upcoming === true, onChange: (value: boolean) => changeFilter("upcoming", value) },
       { id: "date", label: "Date", value: String(filters.dateField ?? "any"), options: [{ value: "any", label: "Any date" }, { value: "announced", label: "Announced" }, { value: "effective", label: "Effective" }, { value: "deadline", label: "Deadlines" }], onChange: (value: string) => changeFilter("dateField", value) }] : []),
   ]} />;
-  const columns = catalystColumns(width, tab === "changes", litigation, catalystBasisWidth(rows, query.dateField));
+  const columns = catalystColumns(tableLayoutWidth, tab === "changes", litigation, catalystBasisWidth(rows, query.dateField));
   const renderCell = (row: Row, column: (typeof columns)[number], _index: number, state: { selected: boolean }): DataTableCell => {
     if (row.kind === "locked") {
       if (!desktop && column.id === "title" && row.key === "locked:0") return { text: "Upgrade for every catalyst and its history", content: <UpgradeLabel text="Upgrade for every catalyst and its history" onPress={openUpgrade} role="catalysts-upgrade" />, onMouseDown: openUpgrade };

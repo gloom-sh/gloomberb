@@ -2,7 +2,7 @@ import { useCallback, useMemo } from "react";
 import type { GpuEvent } from "../../../api-client/gpu";
 import {
   Badge, buildSectionedRows, DataTableView, EMPTY_TABLE_CELL, isSectionedItemRow, renderSectionedRowHeader,
-  usePaneNoticeFooter, usePaneStatusFooter, type DataTableCell, type DataTableColumn, type SectionedRow,
+  usePaneNoticeFooter, usePaneStatusFooter, useTableLayoutWidth, type DataTableCell, type DataTableColumn, type SectionedRow,
 } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource, useAutoRefresh, usePluginPaneState } from "../../../public/react";
@@ -34,6 +34,7 @@ export function GpuChanges({ models, model, setModel, reloadBoard, width, height
   models: readonly string[]; model: string; setModel: (value: string) => void; reloadBoard: () => void; width: number; height: number; focused: boolean;
 }) {
   const colors = useThemeColors();
+  const tableLayoutWidth = useTableLayoutWidth(width);
   const loader = useCallback((force: boolean) => loadGpuEvents(model || undefined, force), [model]);
   const resource = useAsyncResource(loader);
   const [selected, setSelected] = usePluginPaneState<string | null>("eventSelected", null);
@@ -44,9 +45,9 @@ export function GpuChanges({ models, model, setModel, reloadBoard, width, height
   const events = resource.data?.payload.events;
   const items = useMemo(() => buildSectionedRows(gpuEventSections(events ?? []), (event) => event.id), [events]);
   const firstId = items.find(isSectionedItemRow)?.key ?? null;
-  const wide = width >= 140, medium = width >= 100;
+  const wide = tableLayoutWidth >= 140, medium = tableLayoutWidth >= 100;
   const availabilityWidth = (events ?? []).reduce((size, event) => event.kind === "availability" ? Math.max(size, availabilityMove(event).length) : size, 0);
-  const columns = changeColumns(width, !model, availabilityWidth);
+  const columns = changeColumns(tableLayoutWidth, !model, availabilityWidth);
 
   const renderCell = (row: ChangeRow, column: DataTableColumn, _index: number, state: { selected: boolean }): DataTableCell => {
     if (!isSectionedItemRow(row)) return EMPTY_TABLE_CELL;

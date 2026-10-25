@@ -3,7 +3,7 @@ import { isAccessDenied } from "../../../api-client/errors";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import type { PerpBoardRow, PerpMarketPayload } from "../../../api-client/perps";
 import { buildSectionedRows, ChartTableHeader, DataTableView, EmptyState, KeyValueRow, SectionHeading, PaneStatusBody, QueryBar, StatGrid, useChartTableSelection,
-  usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, useQueryBarSearch, type DataTableCell, type KeyValueRowProps, type PaneFooterSegment, type PaneHint, type SectionedRow,
+  usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, useQueryBarSearch, useTableLayoutWidth, type DataTableCell, type KeyValueRowProps, type PaneFooterSegment, type PaneHint, type SectionedRow,
   type StatItem } from "../../../components";
 import { deriveHeadlessFreshness, paneStatusLineVariants } from "../../../cli/pane-functions/freshness";
 import { openFormModal } from "../../../components/form-modal";
@@ -210,6 +210,7 @@ function LockedPreview({ text, role, onPress }: { text: string; role: string; on
 }
 
 function Board({ accessKey, width, height, focused, onPick, onOpen }: ListTabProps) {
+  const tableLayoutWidth = useTableLayoutWidth(width);
   const colors = useThemeColors();
   const upgrade = useCloudUpgradeAction("perp");
   const session = useResearchCloudSession();
@@ -235,7 +236,7 @@ function Board({ accessKey, width, height, focused, onPick, onOpen }: ListTabPro
   const rows = stream.items;
   const selected = rows.find((row) => row.marketId === selectedId) ?? rows[0] ?? null;
   useEffect(() => { onPick(selected); }, [selected, onPick]);
-  const columns = useMemo(() => boardColumns(width), [width]);
+  const columns = useMemo(() => boardColumns(tableLayoutWidth), [tableLayoutWidth]);
   const locked = typeof data?.locked === "number" ? data.locked : 0;
   useAutoRefresh(resource.updatedAt, resource.load, { intervalMs: 60_000 });
   usePaneRefreshKey(() => { void resource.reload(); }, { focused: focused && !querySearch.active });
@@ -270,6 +271,7 @@ const FUNDING_RANKINGS: ReadonlySet<RankingKey> = new Set(RANKINGS.filter((ranki
 const rankedKey = (item: Ranked) => `${item.list}:${item.row.marketId}`;
 
 function Rankings({ accessKey, width, height, focused, onPick, onOpen }: ListTabProps) {
+  const tableLayoutWidth = useTableLayoutWidth(width);
   const colors = useThemeColors();
   const upgrade = useCloudUpgradeAction("perp");
   const session = useResearchCloudSession();
@@ -285,7 +287,7 @@ function Rankings({ accessKey, width, height, focused, onPick, onOpen }: ListTab
   const ranked = items.flatMap((item) => item.kind === "item" ? [item.item] : []);
   const selected = ranked.find((item) => rankedKey(item) === selectedId) ?? ranked[0] ?? null;
   useEffect(() => { onPick(selected?.row ?? null); }, [selected, onPick]);
-  const columns = useMemo(() => rankingColumns(width), [width]);
+  const columns = useMemo(() => rankingColumns(tableLayoutWidth), [tableLayoutWidth]);
   useAutoRefresh(resource.updatedAt, resource.load, { intervalMs: 60_000 });
   usePaneRefreshKey(() => { void resource.reload(); }, { focused });
   // The ranked rows on screen are dated; only the funding lists show funding.
@@ -318,6 +320,7 @@ function Rankings({ accessKey, width, height, focused, onPick, onOpen }: ListTab
 }
 
 function Compare({ asset, onAssetChange, accessKey, width, height, focused, onPick, onOpen }: ListTabProps & { asset: string; onAssetChange: (asset: string) => void }) {
+  const tableLayoutWidth = useTableLayoutWidth(width);
   const colors = useThemeColors();
   const upgrade = useCloudUpgradeAction("perp");
   const session = useResearchCloudSession();
@@ -332,7 +335,7 @@ function Compare({ asset, onAssetChange, accessKey, width, height, focused, onPi
   const rows = stream.items;
   const selected = rows.find((row) => row.marketId === selectedId) ?? rows[0] ?? null;
   useEffect(() => { onPick(selected); }, [selected, onPick]);
-  const columns = useMemo(() => compareColumns(width), [width]);
+  const columns = useMemo(() => compareColumns(tableLayoutWidth), [tableLayoutWidth]);
   const line = usePerpStatusLine(stream.shown, stream.shown, resource.updatedAt, stream.live);
   const spread = useMemo(() => fundingSpread(rows), [rows]);
   const locked = typeof data?.locked === "number" ? data.locked : 0;

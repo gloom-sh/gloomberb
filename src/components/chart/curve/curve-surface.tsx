@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Box, Text, useUiCapabilities } from "../../../ui";
+import { useSettledLayoutSize } from "../../../ui/resize-settle";
 import { useThemeColors } from "../../../theme/theme-context";
 import { useShortcut } from "../../../react/input";
 import { DataTableView } from "../../data-table/view";
@@ -74,6 +75,7 @@ export function CurveSurface({ series, width, height, focused = false, primarySe
   const pressRef = useRef(false);
   const totalWidth = Math.max(1, Math.floor(width));
   const totalHeight = Math.max(1, Math.floor(height));
+  const layout = useSettledLayoutSize(totalWidth, totalHeight, { enabled: nativePaneChrome === true, maxStretch: Infinity });
   const primary = curvePrimarySeries(series, primarySeriesId);
   const palette = useMemo(() => [colors.positive, colors.textMuted, colors.warning, colors.textDim], [colors]);
   const chart = useMemo(() => buildCurveChart(series, totalWidth, palette, { xScale }), [series, totalWidth, palette, xScale]);
@@ -104,7 +106,7 @@ export function CurveSurface({ series, width, height, focused = false, primarySe
           ids.add(entry.id);
           continue;
         }
-        if (used + 3 + displayWidth(text) + 2 > totalWidth - 2) {
+        if (used + 3 + displayWidth(text) + 2 > layout.width - 2) {
           complete = false;
           break;
         }
@@ -119,7 +121,7 @@ export function CurveSurface({ series, width, height, focused = false, primarySe
     legendRows.push(packed.row);
     if (visible.length > 1) named = packed.ids;
   } else {
-    for (const row of curveLegendLayout(series, totalWidth)) {
+    for (const row of curveLegendLayout(series, layout.width)) {
       legendRows.push(row.map((entry) => ({ id: entry.id, text: curveLegendText(entry), color: colorOf(entry.id) })));
     }
   }
@@ -129,12 +131,12 @@ export function CurveSurface({ series, width, height, focused = false, primarySe
     () => unnamed.size ? chart.series.filter((entry) => !unnamed.has(entry.id)) : chart.series,
     [chart.series, unnamed],
   );
-  const showChart = display !== "table" && totalWidth >= 24 && totalHeight >= Math.max(1, legendRows.length) + 6 && plottedCount >= 2;
+  const showChart = display !== "table" && layout.width >= 24 && layout.height >= Math.max(1, legendRows.length) + 6 && plottedCount >= 2;
   const showTable = display === "table" || display === "both" || (display === "auto" && !showChart);
   const legendHeight = showChart ? legendRows.length : 0;
-  const slopeHeight = slope && totalHeight > 5 ? 1 : 0;
+  const slopeHeight = slope && layout.height > 5 ? 1 : 0;
   const cursorHeight = showChart ? 1 : 0;
-  const contentHeight = Math.max(1, totalHeight - legendHeight - slopeHeight - cursorHeight);
+  const contentHeight = Math.max(1, layout.height - legendHeight - slopeHeight - cursorHeight);
   const tableHeight = showTable ? showChart ? Math.min(rows.length + 2, Math.max(3, Math.floor(contentHeight * 0.4))) : contentHeight : 0;
   const chartHeight = showChart ? Math.max(3, contentHeight - tableHeight) : 0;
   const axisFormat = formatAxisValue ?? formatValue;

@@ -9,6 +9,7 @@ import {
   usePaneStatusLinkFooter,
   useQueryBarSearch,
   useTableLoadMore,
+  useTableLayoutWidth,
   type DataTableCell,
   type DataTableKeyEvent,
   type DataTableRootKeyContext,
@@ -309,7 +310,8 @@ export function TrialsPane({ width, height, focused }: PaneProps) {
     return false;
   }, [focusSearch]);
 
-  const layout = useMemo(() => trialLayout(width), [width]);
+  const layoutWidth = useTableLayoutWidth(width);
+  const layout = useMemo(() => trialLayout(layoutWidth), [layoutWidth]);
   const renderCell = useCallback((trial: ClinicalTrial, column: TrialColumn, _index: number, rowState: { selected: boolean }): DataTableCell => {
     switch (column.id) {
       case "updated": {

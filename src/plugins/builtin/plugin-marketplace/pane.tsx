@@ -16,6 +16,7 @@ import {
   SectionHeading,
   useExternalLinkFooter,
   useQueryBarSearch,
+  useTableLayoutWidth,
   type DataTableCell,
   type DataTableColumn,
   type DataTableKeyEvent,
@@ -434,6 +435,7 @@ function statusKey(entry: MarketplaceEntry): string {
 const entryId = (entry: MarketplaceEntry) => entry.id;
 
 export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
+  const tableLayoutWidth = useTableLayoutWidth(width);
   const dialog = useDialog();
   const { createPaneFromTemplate, showPane, openPluginCommandWorkflow, notify } = usePluginAppActions();
   const [query, setQuery] = useState("");
@@ -955,7 +957,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
     functions: Math.min(16, Math.max(9, ...visible.map((entry) => factsFor(entry).codes.join(" ").length))),
     status: Math.min(14, Math.max(7, ...visible.map((entry) => rowStatus(entry).text.length))),
   }), [factsFor, rowStatus, visible]);
-  const columns = useMemo(() => buildColumns(width, fit), [fit, width]);
+  const columns = useMemo(() => buildColumns(tableLayoutWidth, fit), [fit, tableLayoutWidth]);
   // The pick is saved with the pane, so keep it listed (and resettable) even
   // when the catalog no longer has plugins in it.
   const categoryOptions = useMemo(

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import type { CloudEarningsCallPayload } from "../../../api-client";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import {
+  useTableLayoutWidth,
   buildSectionedRows,
   DataTableStackView,
   isSectionedItemRow,
@@ -191,7 +192,8 @@ export function UpcomingCallsView({ focused, width, height, view, renderCompany 
     ?? callRows[0]
     ?? null;
   const localClock = useMemo(() => !clockIsNewYork(calls, now), [calls, now]);
-  const columns = useMemo(() => calendarColumns(width, { localClock }), [localClock, width]);
+  const tableLayoutWidth = useTableLayoutWidth(width);
+  const columns = useMemo(() => calendarColumns(tableLayoutWidth, { localClock }), [localClock, tableLayoutWidth]);
   const renderCell = useCallback((row: CalendarRow, column: CalendarColumn) => renderCalendarCell(row, column, now), [now]);
 
   const openCall = openTicker ? calls.find((call) => call.ticker === openTicker) ?? null : null;

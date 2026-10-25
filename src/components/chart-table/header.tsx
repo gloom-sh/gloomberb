@@ -251,7 +251,7 @@ export function ChartTableHeader(props: ChartTableHeaderProps) {
       </Box>
     );
   } else if (layout.mode === "strip" && strip) {
-    band = <ChartStrip strip={strip} width={width} figures={layout.figures} />;
+    band = <ChartStrip strip={strip} width={layoutWidth} figures={layout.figures} />;
   } else if (layout.mode === "strip" && chart && (chart.loading || chart.empty)) {
     // The strip's row is held while the history loads, and on a row without one.
     band = (

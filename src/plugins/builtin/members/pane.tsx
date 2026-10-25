@@ -2,7 +2,7 @@ import { Breadth } from "./breadth-pane";
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { FundChange, FundMember } from "../../../api-client/members";
 import { delayedFooterSegment, DataTableStackView, DataTableView, DetailScrollBody, EmptyState, KeyValueRow, PaneFooterScope, PaneStatusBody, Prose, QueryBar, StatGrid,
-  isSectionedItemRow, renderSectionedRowHeader, useExternalLinkFooter, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, useQueryBarSearch,
+  isSectionedItemRow, renderSectionedRowHeader, useExternalLinkFooter, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, useQueryBarSearch, useTableLayoutWidth,
   type DataTableCell, type DataTableColumn, type PaneFooterSegment, type SectionedRow } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource, useAutoRefresh, usePaneInstance, usePaneTickerIdentity, usePaneTitle, usePluginPaneState, usePluginTickerActions } from "../../../public/react";
@@ -32,7 +32,8 @@ function Holdings({ fund, tab, width, height, focused, active }: ViewProps & { t
   const search = useQueryBarSearch();
   const movers = tab === "movers";
   const rows = useMemo(() => memberRows(data?.members ?? [], tab, query, sort), [data, tab, query, sort]);
-  const columns = useMemo(() => memberColumns(width, movers), [width, movers]);
+  const layoutWidth = useTableLayoutWidth(width);
+  const columns = useMemo(() => memberColumns(layoutWidth, movers), [layoutWidth, movers]);
   // Movers is a ranked slice of the fund, not its members, so the entries stay on the Members tab.
   const memberList = useMemo((): MemberList | null => {
     if (!data || tab !== "members") return null;
@@ -107,6 +108,7 @@ function Holdings({ fund, tab, width, height, focused, active }: ViewProps & { t
 
 function Changes({ fund, width, height, focused, active }: ViewProps) {
   const colors = useThemeColors();
+  const layoutWidth = useTableLayoutWidth(width);
   const resource = useAsyncResource(useCallback((force: boolean) => loadChanges(fund, force), [fund]), { initialData: useCallback(() => cachedChanges(fund), [fund]) });
   const data = resource.data?.payload;
   const [selected, setSelected] = usePluginPaneState<string | null>(`change:${fund}`, null);
@@ -130,7 +132,7 @@ function Changes({ fund, width, height, focused, active }: ViewProps) {
   }, [colors]);
   return <PaneStatusBody subject="index changes" loading={!data && resource.loading} error={!data ? resource.error : null}>
     {data && !data.available ? <EmptyState title="Index changes are not covered for this fund." /> : data && <DataTableStackView<FundChange>
-      rootWidth={width} rootHeight={height} focused={focused} columns={changeColumns(width)} items={data.changes}
+      rootWidth={width} rootHeight={height} focused={focused} columns={changeColumns(layoutWidth)} items={data.changes}
       getItemKey={(row) => row.id} selection={{ kind: "id", selectedId: selected, getId: (row) => row.id, onChange: (id) => setSelected(String(id)) }}
       onActivate={(row) => setOpened(row.id)} sortColumnId={null} sortDirection="desc" renderCell={renderCell} selectedTextOverridesCellColor
       detailOpen={!!detail} onBack={() => setOpened(null)} detailTitle={detail ? changeLabel(detail) : undefined} detailScrollRef={scrollRef}

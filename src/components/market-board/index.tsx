@@ -4,6 +4,7 @@ import type { PricePoint } from "../../types/financials";
 import { Box, useUiCapabilities } from "../../ui";
 import { useSettledLayoutSize } from "../../ui/resize-settle";
 import { compareSortValues, nextHeaderSort, type SortPreference } from "../../utils/sort-values";
+import { useTableLayoutWidth } from "../data-table/layout";
 import { DataTableStackView } from "../data-table/stack-view";
 import { PriceSparkline } from "../price-sparkline/view";
 import { PaneStatusBody, StatGrid, statGridRows, type DataTableColumn, type DataTableCell, type StatItem } from "../ui";
@@ -146,7 +147,7 @@ export function MarketBoardStack<T extends MarketBoardRow>({ rows, width, height
   rootBefore, emptyTitle = "No observations." }: MarketBoardStackProps<T>) {
   const colors = useThemeColors();
   const { nativePaneChrome } = useUiCapabilities();
-  const columnLayout = useSettledLayoutSize(width, height, { enabled: nativePaneChrome === true, maxStretch: Infinity });
+  const tableLayoutWidth = useTableLayoutWidth(width);
   // A board of countries leads each name with its flag where one is drawn.
   const flagged = nativePaneChrome === true && rows.some((row) => row.country !== undefined);
   const [sort, setSort] = useState<SortPreference<string>>({ columnId: null, direction: "asc" });
@@ -170,7 +171,7 @@ export function MarketBoardStack<T extends MarketBoardRow>({ rows, width, height
     { id: "percentile", label: percentileLabel, width: 8, align: "right" },
     { id: "history", label: "1Y", width: 14, align: "left" },
     { id: "asOf", label: "AS OF", width: asOfWidth + wordWidth, align: "left" },
-  ], columnLayout.width, wordWidth);
+  ], tableLayoutWidth, wordWidth);
   const renderCell = (row: T, column: DataTableColumn): DataTableCell => {
     const extra = extraColumns?.find((item) => item.column.id === column.id);
     if (extra) return extra.renderCell(row);

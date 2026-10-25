@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { DataTableView, EmptyState, PaneStatusBody, usePaneFooter, usePaneNoticeFooter, usePaneTabs,
+import { DataTableView, EmptyState, PaneStatusBody, usePaneFooter, usePaneNoticeFooter, usePaneTabs, useTableLayoutWidth,
   type DataTableCell, type DataTableColumn, type PaneHint } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { getTableWidth } from "../../../components/ui/table-layout";
@@ -200,7 +200,8 @@ export function EarningsRipplePane({ width, height, focused }: PaneProps) {
     ], hints };
   }, [ripple.loading, ripple.data?.stale, current, selected, selectedSecond, secondHop, graphHop, locked, openSupply, openRoute, createPaneFromTemplate, truncated.length, openUpgrade]);
 
-  const secondLayout = useMemo(() => secondHopLayout(width, secondRows), [width, secondRows]);
+  const layoutWidth = useTableLayoutWidth(width);
+  const secondLayout = useMemo(() => secondHopLayout(layoutWidth, secondRows), [layoutWidth, secondRows]);
   const firstHopWidth = secondLayout.firstHopWidth;
   const renderSecondCell = useCallback((row: SecondHopRow, column: DataTableColumn) => renderSecondHopCell(row, column, firstHopWidth), [firstHopWidth]);
   const windowMeta = () => [["window", `${ripple.data?.from} to ${ripple.data?.to}`]];

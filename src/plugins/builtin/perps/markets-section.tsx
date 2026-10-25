@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import { isAccessDenied } from "../../../api-client/errors";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import type { PerpBoardRow } from "../../../api-client/perps";
-import { ActionRow, ColumnGrid, SectionHeading, type ColumnGridCell, type ColumnGridColumn } from "../../../components";
+import { ActionRow, ColumnGrid, SectionHeading, useTableLayoutWidth, type ColumnGridCell, type ColumnGridColumn } from "../../../components";
 import { t, tf } from "../../../i18n";
 import { useAsyncResource, useAutoRefresh } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
@@ -81,6 +81,7 @@ export function PerpMarketsSection({ symbol, exchange, instrumentType, quote, wi
   width: number;
 }) {
   const colors = useThemeColors();
+  const tableLayoutWidth = useTableLayoutWidth(width);
   const session = useResearchCloudSession();
   const plan = usePlanAccess();
   const openMarket = useOpenPerpMarket();
@@ -105,7 +106,7 @@ export function PerpMarketsSection({ symbol, exchange, instrumentType, quote, wi
   const premiumLabel = asset?.kind === "stock" ? "vs last" : "Premium";
   // The venue column fits the longest venue name shown.
   const venueWidth = Math.min(VENUE_MAX_WIDTH, Math.max(VENUE_MIN_WIDTH, ...visible.map((market) => displayWidth(venueName(market.venue)))));
-  const columns = fitColumns(width, venueWidth);
+  const columns = fitColumns(tableLayoutWidth, venueWidth);
   const fixed = span(columns);
   // The last text column takes what the figures leave, on the desktop too, so a venue keeps its contract beside it.
   const growing = columns.some((column) => column.id === "contract") ? "contract" : "venue";

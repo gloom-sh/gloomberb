@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { ColumnGrid, ColumnGridPair, RangeTrack, usePaneLinkMenuEntry, type ColumnGridCell, type ColumnGridColumn } from "../../../../components";
+import { ColumnGrid, ColumnGridPair, RangeTrack, usePaneLinkMenuEntry, useTableLayoutWidth, type ColumnGridCell, type ColumnGridColumn } from "../../../../components";
 import { t, tf } from "../../../../i18n";
 import { formatMarketPriceWithCurrency, liveQuoteFormatOptions, type MarketFormatOptions } from "../../../../market-data/market/format";
 import { colors, hoverBg, priceColor } from "../../../../theme/colors";
@@ -339,7 +339,8 @@ function createPositionColumns(width: number, hasFaceQuantity: boolean): Positio
 }
 
 export function PositionTable({ rows, width }: { rows: PositionTableRow[]; width: number }) {
-  const columns = createPositionColumns(width, rows.some(row => row.quantityUnit === "face"));
+  const tableLayoutWidth = useTableLayoutWidth(width);
+  const columns = createPositionColumns(tableLayoutWidth, rows.some(row => row.quantityUnit === "face"));
   const pnlLabel = portfolioPnlLabel(rows.map((row) => row.pnlBasis));
   const gridColumns: ColumnGridColumn[] = columns.map((column, index) => ({
     width: column.width,

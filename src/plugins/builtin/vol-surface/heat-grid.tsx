@@ -1,4 +1,4 @@
-import { DataTableView, Notice, type DataTableColumn } from "../../../components";
+import { DataTableView, Notice, useTableLayoutWidth, type DataTableColumn } from "../../../components";
 import { turbo } from "../../../components/chart/surface3d/model";
 import { useThemeColors } from "../../../theme/theme-context";
 import { Box, Text } from "../../../ui";
@@ -74,7 +74,8 @@ export interface SurfaceHeatGridProps {
  */
 export function SurfaceHeatGrid({ grid, range, ticks, selected, onSelect, width, height, notice }: SurfaceHeatGridProps) {
   const colors = useThemeColors();
-  const shown = heatGridColumns(grid.moneyness, width);
+  const layoutWidth = useTableLayoutWidth(width);
+  const shown = heatGridColumns(grid.moneyness, layoutWidth);
   const columns: DataTableColumn[] = [{ id: "tenor", label: "Expiry", width: LABEL_WIDTH, align: "left" },
     ...shown.map((column) => ({ id: String(column), label: grid.axis === "delta" ? deltaLabel(grid.moneyness[column]!) : `${Math.round(grid.moneyness[column]! * 100)}%`,
       width: CELL_WIDTH, align: "right" as const }))];

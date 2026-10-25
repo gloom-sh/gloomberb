@@ -5,6 +5,7 @@ import {
   QueryBar,
   usePagedRows,
   usePaneStatusLinkFooter,
+  useTableLayoutWidth,
   useTableLoadMore,
   type DataTableCell,
   type PaneFooterSegment,
@@ -47,6 +48,7 @@ export function LettersBody({ focused, width, height, codeFilter }: {
   codeFilter: QueryBarFilter;
 }) {
   const rendererHost = useRendererHost();
+  const tableLayoutWidth = useTableLayoutWidth(width);
   // Saved by name; an older build's "all" or anything unknown reads as the default view.
   const [savedView, setKind] = usePluginPaneState<string>("industry:letters:kind", DEFAULT_KIND_VIEW);
   const view = letterKindView(savedView);
@@ -58,7 +60,7 @@ export function LettersBody({ focused, width, height, codeFilter }: {
   const loadMore = useTableLoadMore(scrollRef, letters.hasMore, letters.loadMore);
   const rows = letters.rows;
   const selected = rows.find((letter) => letter.id === selectedId) ?? rows[0] ?? null;
-  const columns = useMemo(() => letterColumns(width), [width]);
+  const columns = useMemo(() => letterColumns(tableLayoutWidth), [tableLayoutWidth]);
   const open = useCallback((letter: Letter) => { void rendererHost.openExternal(letter.url); }, [rendererHost]);
   usePaneRefreshKey(letters.reload, { focused });
   // A report or capture of this code lists letters, not news stories.
@@ -71,7 +73,7 @@ export function LettersBody({ focused, width, height, codeFilter }: {
   const loading = letters.loading && rows.length === 0;
   const error = letters.error?.message ?? null;
   // Too narrow for the Date basis column: the footer says what the selected row's date is.
-  const basisInFooter = width < BASIS_COLUMN_MIN_WIDTH && selected ? letterDateBasisLabel(selected).toLowerCase() : null;
+  const basisInFooter = tableLayoutWidth < BASIS_COLUMN_MIN_WIDTH && selected ? letterDateBasisLabel(selected).toLowerCase() : null;
   const info = useMemo<PaneFooterSegment[]>(() => [
     ...(basisInFooter ? [{ id: "date-basis", parts: [{ text: basisInFooter, tone: "muted" as const }] }] : []),
     ...(letters.loadingMore ? [{ id: "loading-more", parts: [{ text: "loading more", tone: "muted" as const }] }] : []),

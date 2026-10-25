@@ -6,6 +6,7 @@ import {
   usePaneFooter,
   usePaneMenuItems,
   useQueryBarSearch,
+  useTableLayoutWidth,
   type DataTableKeyEvent,
   type DataTableRootKeyContext,
   type DataTableVisibleRange,
@@ -128,9 +129,10 @@ export function FuturesPane({ focused, width, height }: PaneProps) {
     () => resolveFuturesColumnIds(paneInstance?.settings?.columnIds as string[] | undefined),
     [paneInstance?.settings?.columnIds],
   );
+  const layoutWidth = useTableLayoutWidth(width);
   const columns = useMemo<FuturesColumn[]>(
-    () => createFuturesColumns(width, visibleColumnIds),
-    [visibleColumnIds, width],
+    () => createFuturesColumns(layoutWidth, visibleColumnIds),
+    [visibleColumnIds, layoutWidth],
   );
   const paneVisible = usePaneVisible();
   const showsReturns = columns.some((column) => FUTURES_RETURN_COLUMNS[column.id]);
@@ -149,7 +151,7 @@ export function FuturesPane({ focused, width, height }: PaneProps) {
     [collapsedSectors, contractsBySector, quotes, returns, searchQuery, sortPreference, terms],
   );
 
-  const sessionText = usesSessionText(width);
+  const sessionText = usesSessionText(layoutWidth);
   const quotesRef = useRef(quotes);
   const returnsRef = useRef(returns);
   const termsRef = useRef(terms);

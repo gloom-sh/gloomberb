@@ -1,6 +1,6 @@
 import { useCallback, useMemo, type ReactNode } from "react";
 import type { ThemeMember, ThemePeriod, ThemeSummary } from "../../../api-client/themes";
-import { splitDelayedStatus, DataTableStackView, DataTableView, PaneStatusBody, usePaneNoticeFooter, usePaneStatusFooter, type DataTableCell, type DataTableColumn } from "../../../components";
+import { splitDelayedStatus, DataTableStackView, DataTableView, PaneStatusBody, usePaneNoticeFooter, usePaneStatusFooter, useTableLayoutWidth, type DataTableCell, type DataTableColumn } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import type { ExtendedSession } from "../../../market-data/market/status";
 import { useAsyncResource, useAutoRefresh, usePluginPaneState, usePluginTickerActions, useUpdatedAgo } from "../../../public/react";
@@ -53,6 +53,7 @@ function useSnapshotFooter(id: string, resource: { loading: boolean; error: stri
 }
 
 function Members({ id, width, height, focused }: { id: string; width: number; height: number; focused: boolean }) {
+  const tableLayoutWidth = useTableLayoutWidth(width);
   const colors = useThemeColors();
   const { navigateTicker } = usePluginTickerActions();
   const loader = useCallback((force: boolean) => loadMembers(id, force), [id]);
@@ -66,8 +67,8 @@ function Members({ id, width, height, focused }: { id: string; width: number; he
   const extendedSessionsKey = useMemo(() => memberExtendedSessions(data?.members ?? []).join(","), [data]);
   // YTD names the close it is measured from, `31 Dec`.
   const ytdBase = data ? boardYtdBase(data) : null;
-  const columns = useMemo(() => memberColumns(width, extendedSessionsKey ? extendedSessionsKey.split(",") as ExtendedSession[] : [], ytdBase),
-    [extendedSessionsKey, width, ytdBase]);
+  const columns = useMemo(() => memberColumns(tableLayoutWidth, extendedSessionsKey ? extendedSessionsKey.split(",") as ExtendedSession[] : [], ytdBase),
+    [extendedSessionsKey, tableLayoutWidth, ytdBase]);
   useBoardRefresh(resource);
   usePaneRefreshKey(() => void resource.reload(), { focused });
   useSnapshotFooter("themes:members", resource, focused);
@@ -116,6 +117,7 @@ interface ThemesBoardProps {
 
 /** The Themes tab of the Sector Performance pane (`THEM`). */
 export function ThemesBoard({ width, height, focused, tabStrip, tabRows = 0 }: ThemesBoardProps) {
+  const tableLayoutWidth = useTableLayoutWidth(width);
   const colors = useThemeColors();
   const [opened, setOpened] = useOpenTheme();
   const bodyHeight = Math.max(1, height - tabRows);
@@ -124,7 +126,7 @@ export function ThemesBoard({ width, height, focused, tabStrip, tabRows = 0 }: T
   const resource = useAsyncResource(loadThemes, { initialData: cachedThemes });
   const data = resource.data?.payload;
   const rows = useMemo(() => sortThemes(data?.themes ?? [], sort), [data, sort]);
-  const columns = useMemo(() => themeColumns(width, data?.themes ?? [], data ? boardYtdBase(data) : null), [width, data]);
+  const columns = useMemo(() => themeColumns(tableLayoutWidth, data?.themes ?? [], data ? boardYtdBase(data) : null), [tableLayoutWidth, data]);
   const theme = opened && data ? matchTheme(data.themes, opened) : null;
   useBoardRefresh(resource);
   usePaneRefreshKey(() => void resource.reload(), { focused, enabled: !opened });

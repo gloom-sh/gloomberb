@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  DataTableStackView, KeyValueRow, PaneStatusBody, SectionHeading, usePaneFooter, type DataTableCell,
+  DataTableStackView, KeyValueRow, PaneStatusBody, SectionHeading, usePaneFooter, useTableLayoutWidth, type DataTableCell,
   type DataTableColumn
 } from "../../../components";
 import type {
@@ -125,6 +125,7 @@ function ConnectionDetail({ source, width, now }: { source: ConnectionHealthStat
 }
 
 export function ConnectionsPane({ focused, width, height }: PaneProps) {
+  const tableLayoutWidth = useTableLayoutWidth(width);
   const health = useConnectionHealth();
   const [snapshot, setSnapshot] = useState(() => health.getSnapshot());
   // Selection and the open source are pane state, so a reload or a shared
@@ -227,7 +228,7 @@ export function ConnectionsPane({ focused, width, height }: PaneProps) {
           setSelectedId(source.id);
           setDetailOpen(true);
         }}
-        columns={columnsForWidth(width)}
+        columns={columnsForWidth(tableLayoutWidth)}
         items={sources}
         sortColumnId={sort.columnId}
         sortDirection={sort.direction}

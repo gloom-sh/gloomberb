@@ -4,6 +4,7 @@ import {
   EmptyState,
   PaneStatusBody,
   QueryBar,
+  useTableLayoutWidth,
   useTableLoadMore,
   usePaneFooter,
   usePaneTabs,
@@ -290,9 +291,10 @@ function MnaDealsView({ focused, width, height, symbol }: {
   const locked = data?.access === "delayed" ? data.lockedDeals : 0;
   const lockedText = `Unlock ${locked} newer deal${locked === 1 ? "" : "s"}`;
   // The prompt sits in the target column, which widens to hold it.
+  const tableLayoutWidth = useTableLayoutWidth(width);
   const columns = useMemo(
-    () => mnaColumns(status, width, locked > 0 ? Math.min(lockedText.length + 3, Math.floor(width / 3)) : undefined),
-    [locked, lockedText, status, width],
+    () => mnaColumns(status, tableLayoutWidth, locked > 0 ? Math.min(lockedText.length + 3, Math.floor(tableLayoutWidth / 3)) : undefined),
+    [locked, lockedText, status, tableLayoutWidth],
   );
   const items = useMemo<Item[]>(() => [
     ...Array.from({ length: Math.min(MAX_LOCKED_ROWS, locked) }, (_, index) => ({ kind: "locked" as const, index })),

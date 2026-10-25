@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Text, TextAttributes, useUiCapabilities } from "../../../ui";
 import {
-  chartTableChromeRows,
   ChartTableHeader,
   DataTableView,
   scalarPoint,
@@ -11,6 +10,7 @@ import {
   usePaneFooter,
   type ChartTableSelection,
   type DataTableCell,
+  type DataTableColumn,
   type DataTableKeyEvent,
   type StatItem,
 } from "../../../components";
@@ -80,7 +80,7 @@ interface AnalystQuoteBinding {
  * consensus: its legend names it and counts the firms in it at the cursor,
  * and leaves the level to the axis so the consensus is the one target figure.
  */
-function AnalystHeader({ data, history, series, currency, width, height, tableRows, tableChromeRows, binding, link }: {
+function AnalystHeader({ data, history, series, currency, width, height, tableRows, tableColumns, binding, link }: {
   data: AnalystResearchData | null;
   history: readonly AnalystTargetHistoryPoint[];
   series: ResolvedSeries[];
@@ -88,7 +88,7 @@ function AnalystHeader({ data, history, series, currency, width, height, tableRo
   width: number;
   height: number;
   tableRows: number;
-  tableChromeRows: number;
+  tableColumns: DataTableColumn[];
   binding: AnalystQuoteBinding;
   link: ChartTableSelection;
 }) {
@@ -131,7 +131,7 @@ function AnalystHeader({ data, history, series, currency, width, height, tableRo
     : history.findLast((point) => historyDate(point) <= cursorTime) ?? history[0];
   const firms = shown ? `${shown.firms} firms` : "";
   return (
-    <ChartTableHeader width={width} height={height} tableRows={tableRows} tableChromeRows={tableChromeRows} figures={figures}
+    <ChartTableHeader width={width} height={height} tableRows={tableRows} tableColumns={tableColumns} figures={figures}
       chart={history.length >= MIN_CHART_POINTS ? {
         series, formatValue, formatAxisValue, remoteKind: "analyst-mean-target", ...link,
         legendAccessory: <Text fg={colors.textMuted}>{firms}</Text>, legendAccessoryWidth: firms.length,
@@ -216,9 +216,6 @@ export function AnalystResearchView({ focused, width, height }: { focused: boole
     onSelect: (id) => setSelectedIdx(Math.max(0, rows.findIndex((row) => ratingId(row) === id))),
     focused,
   });
-  // The header row, plus the scrollbar row once the columns overflow the pane.
-  const tableChromeRows = chartTableChromeRows(columns, width);
-
   const renderCell = useCallback((
     row: RatingRow,
     column: RatingColumn,
@@ -298,7 +295,7 @@ export function AnalystResearchView({ focused, width, height }: { focused: boole
             width={width}
             height={height}
             tableRows={rows.length}
-            tableChromeRows={tableChromeRows}
+            tableColumns={columns}
             binding={binding}
             link={link}
           />

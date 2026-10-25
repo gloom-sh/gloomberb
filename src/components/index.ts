@@ -66,6 +66,7 @@ export { isTableScrollNearEnd, useTableLoadMore } from "./table-view-shared";
 export { usePagedRows } from "./paged-rows";
 export type { PageLoader, PageRequest, PagedRows, PagedRowsOptions, RowPage } from "./paged-rows";
 export { DataTableView } from "./data-table/view";
+export { useTableLayoutWidth } from "./data-table/layout";
 export type {
   DataTableBodyStatus,
   DataTableKeyEvent,

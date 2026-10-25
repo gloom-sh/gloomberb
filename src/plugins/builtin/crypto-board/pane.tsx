@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Box, TextAttributes, useUiCapabilities } from "../../../ui";
 import { withCompanyLogo } from "../../../components/company-logo";
 import {
+  useTableLayoutWidth,
   ChartTableHeader,
   DataTableView,
   PaneStatusBody,
@@ -272,7 +273,8 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
     : null, [now, observations]);
   // Supply columns join only once there is supply to show; an outage leaves the price columns as they are.
   const hasSupply = !!supplyRows && supplyRows.size > 0;
-  const columns = useMemo(() => buildCryptoColumns(width, assetKind, hasSupply), [assetKind, hasSupply, width]);
+  const tableLayoutWidth = useTableLayoutWidth(width);
+  const columns = useMemo(() => buildCryptoColumns(tableLayoutWidth, assetKind, hasSupply), [assetKind, hasSupply, tableLayoutWidth]);
 
   // Other is muted against the theme it is drawn on; the coins take the shared series palette, which the chart themes.
   const otherColor = useThemeColors().textMuted;

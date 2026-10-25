@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from "react";
 import type { BreadthDay } from "../../../api-client/members";
-import { ChartTableHeader, DataTableView, PaneStatusBody, QueryBar, useChartTableSelection, usePaneNoticeFooter, usePaneStatusFooter, type DataTableColumn } from "../../../components";
+import { ChartTableHeader, DataTableView, PaneStatusBody, QueryBar, useChartTableSelection, usePaneNoticeFooter, usePaneStatusFooter, useTableLayoutWidth, type DataTableColumn } from "../../../components";
 import { staticSeries } from "../../../components/chart/static/series";
 import { fitChartTableColumns } from "../../../components/chart-table/layout";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
@@ -34,7 +34,8 @@ export function Breadth({ fund, width, height, focused, active }: Pick<PaneProps
   const [selected, setSelected] = usePluginPaneState<string | null>(`breadth:selected:${fund}`, null);
   const history = useMemo(() => data ? [...data.history, ...(data.basis === "intraday" && data.latest ? [data.latest] : [])] : [], [data]);
   const rows = useMemo(() => [...history].reverse(), [history]);
-  const columns = useMemo(() => fitChartTableColumns(COLUMNS, width, ["unchanged", "ma20", "ma50", "coverage"]), [width]);
+  const layoutWidth = useTableLayoutWidth(width);
+  const columns = useMemo(() => fitChartTableColumns(COLUMNS, layoutWidth, ["unchanged", "ma20", "ma50", "coverage"]), [layoutWidth]);
   const series = useMemo(() => [staticSeries(history.map(row => ({ date: dateOf(row), observedAt: new Date(row.asOf), value: valueOf(row, metric) })), {
     id: `breadth-${metric}`, label: metric === "adLine" ? "Cumulative advances − declines" : `% above ${metric.slice(2)}-day average`,
     color: colors.warning, calendarSpaced: true,

@@ -10,6 +10,7 @@ import {
   unavailableText,
   useChartTableSelection,
   usePaneFooter,
+  useTableLayoutWidth,
   type DataTableCell,
 } from "../../../components";
 import { createDataTableCsv } from "../../../components/data-table/export";
@@ -71,9 +72,10 @@ function ShortInterestView({ width, height, focused }: { width: number; height: 
   const rows = useMemo(() => buildRows(records), [records]);
   const sortedRows = useMemo(() => sortRows(rows, sortPreference), [rows, sortPreference]);
   const allColumns = useMemo(() => buildColumns(records), [records]);
-  const columns = useMemo(() => dropColumnsToFit(allColumns, width - 1, DROP_ORDER), [allColumns, width]);
+  const layoutWidth = useTableLayoutWidth(width);
+  const columns = useMemo(() => dropColumnsToFit(allColumns, layoutWidth - 1, DROP_ORDER), [allColumns, layoutWidth]);
   // The header row, plus the scrollbar row once the columns overflow the pane.
-  const tableChromeRows = chartTableChromeRows(columns, width);
+  const tableChromeRows = chartTableChromeRows(columns, layoutWidth);
   const effectiveKey = sortedRows.some((row) => row.key === selectedKey) ? selectedKey : sortedRows[0]?.key ?? null;
   const figures = useMemo(() => shortInterestFigures(records), [records]);
   // The legend reads the same as the SHARES SHORT column.

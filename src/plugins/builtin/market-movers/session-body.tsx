@@ -5,7 +5,7 @@ import type {
   CloudSessionMoversSide,
 } from "../../../api-client/market-movers";
 import { usePlanAccess } from "../../../api-client/plan-access";
-import { DataTableView, EmptyState, QueryBar, usePaneFooter, type DataTableKeyEvent } from "../../../components";
+import { useTableLayoutWidth, DataTableView, EmptyState, QueryBar, usePaneFooter, type DataTableKeyEvent } from "../../../components";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import {
   buildScreenerQuoteTargets,
@@ -167,7 +167,8 @@ function SessionMoversTable({ view, session, focused, width, summaryQuotes, live
     freshnessScopeKey: `market-movers:${listKey}`,
     liveStreaming,
   });
-  const columns = useMemo(() => buildSessionMoverColumns(view, width), [view, width]);
+  const tableLayoutWidth = useTableLayoutWidth(width);
+  const columns = useMemo(() => buildSessionMoverColumns(view, tableLayoutWidth), [view, tableLayoutWidth]);
   // The sort survives a change of list, but not onto a column this list or width does not show.
   const sort = columns.some((column) => column.id === sortPreference.columnId) ? sortPreference : DEFAULT_SORT;
   const rows = useMemo(

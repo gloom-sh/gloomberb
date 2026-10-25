@@ -6,6 +6,7 @@ import {
   PaneStatusBody,
   usePaneFooter,
   usePaneNoticeFooter,
+  useTableLayoutWidth,
   type DataTableCell,
   type DataTableKeyEvent,
 } from "../../../components";
@@ -94,6 +95,7 @@ export function BeneficialOwnersView({
   onCycleView: () => void;
   onRefreshHolders: () => void;
 }) {
+  const tableLayoutWidth = useTableLayoutWidth(width);
   const rendererHost = useRendererHost();
   const { createPaneFromTemplate } = usePluginAppActions();
   const session = useResearchCloudSession();
@@ -126,7 +128,7 @@ export function BeneficialOwnersView({
     ...(row.today ? [{ kind: "today" as const, id: `${row.id}:today`, row }] : []),
   ]), [sortedRows]);
   const legend = useMemo(() => beneficialLegend(sortedRows), [sortedRows]);
-  const columns = useMemo(() => buildBeneficialColumns(width), [width]);
+  const columns = useMemo(() => buildBeneficialColumns(tableLayoutWidth), [tableLayoutWidth]);
   const selectedRow = sortedRows.find((row) => row.id === selectedId) ?? sortedRows[0] ?? null;
 
   const openFiling = useCallback((row: BeneficialOwnerRow | null | undefined) => {

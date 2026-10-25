@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { InsiderSignalSide } from "../../../api-client/insider-signals";
 import {
+  useTableLayoutWidth,
   DataTableView,
   PaneStatusBody,
   QueryBar,
@@ -13,7 +14,6 @@ import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource, useAutoRefresh } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
 import { Box, useUiCapabilities } from "../../../ui";
-import { useSettledLayoutSize } from "../../../ui/resize-settle";
 import { formatShortDate } from "../../../utils/datetime-format";
 import { compareSortValues, nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { SignInWall } from "../cloud/auth-actions";
@@ -86,7 +86,7 @@ export function InsiderActivityView({ symbol, control, viewBar, width, height, f
 }) {
   const colors = useThemeColors();
   const { nativePaneChrome } = useUiCapabilities();
-  const columnLayout = useSettledLayoutSize(width, height, { enabled: nativePaneChrome === true, maxStretch: Infinity });
+  const tableLayoutWidth = useTableLayoutWidth(width);
   const session = useResearchCloudSession();
   const window = control.window;
   const query = useMemo<InsiderCompanyQuery>(() => ({ ticker: symbol, window }), [symbol, window]);
@@ -125,7 +125,7 @@ export function InsiderActivityView({ symbol, control, viewBar, width, height, f
       || order.get(a)! - order.get(b)!
     ));
   }, [lines, sort]);
-  const columns = useMemo(() => buildInsiderActivityColumns(columnLayout.width, lines), [lines, columnLayout.width]);
+  const columns = useMemo(() => buildInsiderActivityColumns(tableLayoutWidth, lines), [lines, tableLayoutWidth]);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
 
   usePaneStatusFooter({

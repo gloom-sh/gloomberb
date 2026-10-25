@@ -21,6 +21,7 @@ import {
   usePaneFooter,
   usePaneNoticeFooter,
   usePaneTabs,
+  useTableLayoutWidth,
   useTableLoadMore,
   type DataTableColumn,
   type DataTableVisibleRange,
@@ -244,6 +245,7 @@ function EquityScreenView({
   focused,
   initial,
 }: PaneProps & { initial: ScreenDefinition }) {
+  const tableLayoutWidth = useTableLayoutWidth(width);
   const colors = useThemeColors(),
     dialog = useDialog(),
     host = useRendererHost();
@@ -367,7 +369,7 @@ function EquityScreenView({
   const ytdBase = screenYtdBase(snapshotRows, data?.snapshot?.assembledAt);
   // A screen its currency emptied says so, not that no company matches.
   const currencyEmpty = data && data.rows.length === 0 ? screenCurrencyEmpty(data.definition, data.universe) : null;
-  const columns = resultColumns(width, definition, metric, staleFocus, extendedSessions, ytdBase);
+  const columns = resultColumns(tableLayoutWidth, definition, metric, staleFocus, extendedSessions, ytdBase);
   const apply = (next: ScreenDefinition) => {
     try {
       setDefinition(parseScreenDefinition(next));

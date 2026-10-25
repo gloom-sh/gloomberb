@@ -287,7 +287,7 @@ export function DividendYieldPane({ focused, width, height, loadData = fetchDivi
       rootWidth={width}
       rootHeight={height}
       rootBefore={metrics || chartPoints.length >= 2 ? (
-        <ChartTableHeader width={width} height={height} tableRows={sortedRows.length} tableChromeRows={tableChromeRows}
+        <ChartTableHeader width={width} height={height} tableRows={sortedRows.length} tableColumns={columns}
           figures={figures}
           chart={chartPoints.length >= 2 ? {
             series, formatValue: formatCash, formatAxisValue: formatCashAxis, remoteKind: "dividend-ttm-history", ...link,

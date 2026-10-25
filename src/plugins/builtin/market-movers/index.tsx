@@ -1,7 +1,7 @@
 import { Box, useUiCapabilities } from "../../../ui";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { DataTableView, EmptyState, usePaneFooter, usePaneTabs, type DataTableKeyEvent } from "../../../components";
+import { DataTableView, EmptyState, usePaneFooter, usePaneTabs, useTableLayoutWidth, type DataTableKeyEvent } from "../../../components";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
@@ -150,6 +150,7 @@ function ScreenerMoversBody({ activeTab, focused, width, summaryQuotes, liveStre
   summaryQuotes: MarketSummaryQuote[];
   liveStreaming: boolean;
 }) {
+  const tableLayoutWidth = useTableLayoutWidth(width);
   const dataProvider = useAssetData();
   const { pinTicker } = usePluginTickerActions();
   const [quotes, setQuotes] = useState<MoverQuote[]>([]);
@@ -192,8 +193,8 @@ function ScreenerMoversBody({ activeTab, focused, width, summaryQuotes, liveStre
   // A pre-market or after-hours column only while a row has such a print.
   const extendedSessionsKey = moverExtendedSessions(rankedRows).join(",");
   const columns = useMemo(
-    () => buildMarketMoverColumns(width, extendedSessionsKey ? extendedSessionsKey.split(",") as ExtendedSession[] : []),
-    [extendedSessionsKey, width],
+    () => buildMarketMoverColumns(tableLayoutWidth, extendedSessionsKey ? extendedSessionsKey.split(",") as ExtendedSession[] : []),
+    [extendedSessionsKey, tableLayoutWidth],
   );
   const rows = useMemo(() => sortRows(rankedRows, sortPreference), [rankedRows, sortPreference]);
   const selectedIdx = selectedSymbol

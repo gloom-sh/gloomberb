@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useAppendedPages } from "./pages";
 import type { CloudJobsMoverPayload, CloudJobsPosting, CloudJobsSummaryPayload } from "../../../api-client/types";
 import {
-  chartTableChromeRows,
   Badge,
   ChartTableHeader,
   CompositeChart,
@@ -18,6 +17,7 @@ import {
   usePaneFooter,
   usePaneNoticeFooter,
   useTableLoadMore,
+  useTableLayoutWidth,
   type ChartTableHeaderProps,
   type DataTableCell,
   type PaneFooterSegment,
@@ -319,7 +319,8 @@ function CompanyView({
 
   const rows = useMemo(() => sortPostingRows(buildPostingRows(postings), sort), [postings, sort]);
   const hasSalary = postings.some((posting) => posting.salaryMin != null || posting.salaryMax != null);
-  const columns = useMemo(() => buildPostingColumns(width, hasSalary), [width, hasSalary]);
+  const layoutWidth = useTableLayoutWidth(width);
+  const columns = useMemo(() => buildPostingColumns(layoutWidth, hasSalary), [layoutWidth, hasSalary]);
   const functionRows = useMemo(() => buildShareBars(summary.functions, 7), [summary]);
   const countryRows = useMemo(() => buildShareBars(summary.countries, 12), [summary]);
   const seniorityRows = useMemo(() => buildShareBars(summary.seniority, 8), [summary]);
@@ -393,7 +394,7 @@ function CompanyView({
       case "title":
         return { text: row.title, color: colors.textBright };
       case "function":
-        return { text: row.seniority && width >= 96 ? `${row.function} · ${row.seniority}` : row.function, color: colors.text };
+        return { text: row.seniority && layoutWidth >= 96 ? `${row.function} · ${row.seniority}` : row.function, color: colors.text };
       case "location":
         return { text: row.location, color: colors.textDim };
       case "posted":
@@ -401,7 +402,7 @@ function CompanyView({
       case "salary":
         return { text: row.salary, color: colors.positive };
     }
-  }, [width]);
+  }, [layoutWidth]);
 
   const wide = width >= 96;
   const series = useMemo(() => {
@@ -420,7 +421,7 @@ function CompanyView({
   const header: Omit<ChartTableHeaderProps, "height"> = {
     width,
     tableRows: rows.length,
-    tableChromeRows: chartTableChromeRows(columns, width),
+    tableColumns: columns,
     figures: companyFigures(summary, width),
     chart: {
       render: (size) => (
@@ -629,7 +630,8 @@ function HomeView({ width, height, focused, registrationId }: { width: number; h
   const rows = useMemo(() => sortMoverRows(buildMoverRows(movers), sort), [movers, sort]);
   const hasHistory = rows.some((row) => row.mover.change30d != null);
   const hasWeek = moversHaveWeekHistory(rows);
-  const columns = useMemo(() => buildMoverColumns(width, hasHistory, hasWeek), [width, hasHistory, hasWeek]);
+  const layoutWidth = useTableLayoutWidth(width);
+  const columns = useMemo(() => buildMoverColumns(layoutWidth, hasHistory, hasWeek), [layoutWidth, hasHistory, hasWeek]);
   const selectedIdx = Math.max(0, rows.findIndex((row) => row.key === selectedKey));
   const selected = rows[selectedIdx] ?? null;
   const openMover: CloudJobsMoverPayload | null = useMemo(

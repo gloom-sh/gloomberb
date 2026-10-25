@@ -7,6 +7,7 @@ import {
   useChartTableSelection,
   usePaneMenuItems,
   usePaneNoticeFooter,
+  useTableLayoutWidth,
   type DataTableCell,
   type DataTableKeyEvent,
   type PaneFooterSegment,
@@ -175,7 +176,8 @@ function CdsTradeTable({
   /** What an empty table says: the window and the name searched. */
   emptyMessage: string;
 }) {
-  const columns = useMemo(() => buildTradeColumns(width), [width]);
+  const layoutWidth = useTableLayoutWidth(width);
+  const columns = useMemo(() => buildTradeColumns(layoutWidth), [layoutWidth]);
   const renderTradeRow = useCallback((trade: CdsTrade, column: TradeColumn) => (
     renderTradeCell(trade, column, lineMaturity)
   ), [lineMaturity]);
@@ -248,6 +250,7 @@ function IssuerHeader({ issuer, line, trades, width, height, focused, loading, s
   selectedId: string | null;
   onSelect: (id: string) => void;
 }) {
+  const layoutWidth = useTableLayoutWidth(width);
   // The level and its moves, as the index board heads its detail, then whose
   // spread it is and the range: in a short pane the figures at the end give
   // way. While the history loads the level holds its place, so the trades do
@@ -276,7 +279,7 @@ function IssuerHeader({ issuer, line, trades, width, height, focused, loading, s
   });
   return (
     <ChartTableHeader width={width} height={height} tableRows={trades.length} figures={figures}
-      tableColumns={buildTradeColumns(width)}
+      tableColumns={buildTradeColumns(layoutWidth)}
       chart={points.length >= 2 || loading || why ? {
         series,
         formatValue: (value: number) => formatQuoted(unit, value),

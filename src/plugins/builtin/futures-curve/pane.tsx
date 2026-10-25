@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { splitDelayedStatus, chartTableChromeRows, ChartTableHeader, CurveSurface, curveGhostColors, DataTableView, Notice, PaneStatusBody, QueryBar, useChartTableSelection, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type DataTableColumn, type PaneFooterSegment, type StatItem } from "../../../components";
+import { splitDelayedStatus, chartTableChromeRows, ChartTableHeader, CurveSurface, curveGhostColors, DataTableView, Notice, PaneStatusBody, QueryBar, useChartTableSelection, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, useTableLayoutWidth, type DataTableColumn, type PaneFooterSegment, type StatItem } from "../../../components";
 import { fitChartTableColumns } from "../../../components/chart-table";
 import { curveStrip, curveSurfaceMinRows } from "../../../components/chart/curve";
 import { isAccessDenied } from "../../../api-client/errors";
@@ -189,16 +189,17 @@ function FuturesCurveView({ width, height, focused, root, ownsTitle }: PaneProps
   // Cash-settled roots (ES, CL's Brent, VX) have no first notice day to show.
   const noNotice = !data?.contracts.some((row) => row.firstNotice);
   const shortDated = curveTab && curveRows.some((row) => shortDatedBasis(basis.get(row.symbol)));
+  const layoutWidth = useTableLayoutWidth(width);
   const columns = useMemo(() => {
     // Labelled before fitting: a dated header is wider than the column's numbers.
     const shown = (list: DataTableColumn[]) => list.filter((entry) => !(settlesOnly && entry.id === "price") && !(noNotice && entry.id === "notice"))
       .map((entry) => entry.id === "settle" ? { ...entry, label: settleLabel } : entry);
     // A curve that only settles keeps its settlement: it is the price.
     const order = (list: string[]) => settlesOnly ? list.filter((id) => id !== "settle") : list;
-    return !curveTab ? fitChartTableColumns(shown(COLUMNS), width, order(CONTRACTS_DROP_ORDER))
-      : basisActive ? fitChartTableColumns(shown(BASIS_CURVE_COLUMNS), width, order(shortDated ? SHORT_DATED_DROP_ORDER : BASIS_DROP_ORDER))
-        : fitChartTableColumns(shown(CURVE_COLUMNS), width, order(CURVE_DROP_ORDER));
-  }, [basisActive, curveTab, noNotice, settleLabel, settlesOnly, shortDated, width]);
+    return !curveTab ? fitChartTableColumns(shown(COLUMNS), layoutWidth, order(CONTRACTS_DROP_ORDER))
+      : basisActive ? fitChartTableColumns(shown(BASIS_CURVE_COLUMNS), layoutWidth, order(shortDated ? SHORT_DATED_DROP_ORDER : BASIS_DROP_ORDER))
+        : fitChartTableColumns(shown(CURVE_COLUMNS), layoutWidth, order(CURVE_DROP_ORDER));
+  }, [basisActive, curveTab, layoutWidth, noNotice, settleLabel, settlesOnly, shortDated]);
   const formatValue = useCallback((value: number) => curvePrice(value, root), [root]);
   const formatChange = useCallback((value: number) => curveChangeText(value, root), [root]);
   const unit = data ? curveUnitLabel(data) : null;
@@ -256,7 +257,7 @@ function FuturesCurveView({ width, height, focused, root, ownsTitle }: PaneProps
       ...(spot ? [spotSegment(spot, root, clock)] : []),
     ] : [],
   });
-  const tableChromeRows = chartTableChromeRows(columns, width);
+  const tableChromeRows = chartTableChromeRows(columns, layoutWidth);
   const chart = strip ? {
     render: (size: { width: number; height: number }) => <CurveSurface series={curves} width={size.width} height={size.height} display="chart"
       caption={caption} xScale="linear" formatValue={formatValue} formatChange={formatChange}

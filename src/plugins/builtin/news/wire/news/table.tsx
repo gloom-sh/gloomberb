@@ -5,6 +5,7 @@ import {
   TickerBadgeList,
   sortStackItems,
   usePaneFooter,
+  useTableLayoutWidth,
   type DataTableCell,
   type DataTableColumn,
   type StackSortPreference,
@@ -253,12 +254,13 @@ export function NewsArticleStackView({
   emptyStateHint,
   titleForArticle,
 }: NewsArticleStackViewProps) {
+  const tableLayoutWidth = useTableLayoutWidth(width);
   const sortedArticles = useMemo(
     () => sortNewsArticles(articles, sortPreference),
     [articles, sortPreference],
   );
   const selectedIdx = sortedArticles.findIndex((article) => article.id === selectedArticleId);
-  const columns = useMemo(() => buildColumns(width, columnIds), [columnIds, width]);
+  const columns = useMemo(() => buildColumns(tableLayoutWidth, columnIds), [columnIds, tableLayoutWidth]);
 
   const openArticle = useCallback((article: MarketNewsItem) => {
     onArticleRead?.(article.id);

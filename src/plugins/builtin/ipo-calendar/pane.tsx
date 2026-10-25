@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import {
+  useTableLayoutWidth,
   DataTableView,
   PaneStatusBody,
   QueryBar,
@@ -99,7 +100,8 @@ export function IpoCalendarPane({ focused, width, height }: PaneProps) {
   // The desktop and the web lead each venue with its country's flag.
   const flagged = useUiCapabilities().nativePaneChrome === true;
   const marketWidth = useMemo(() => marketColumnWidth(deals) + (flagged ? COUNTRY_FLAG_CELLS : 0), [deals, flagged]);
-  const columns = useMemo(() => buildIpoColumns(width, marketWidth), [marketWidth, width]);
+  const tableLayoutWidth = useTableLayoutWidth(width);
+  const columns = useMemo(() => buildIpoColumns(tableLayoutWidth, marketWidth), [marketWidth, tableLayoutWidth]);
 
   const openDeal = useCallback((deal: IpoDeal) => {
     const key = ipoTickerKey(deal);

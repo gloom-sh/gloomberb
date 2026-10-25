@@ -2,7 +2,6 @@ import { useCallback, useMemo, useState } from "react";
 import { Box } from "../../../ui";
 import { compareSortValues, nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import {
-  chartTableChromeRows,
   ChartTableHeader,
   DataTableStackView,
   PaneStatusBody,
@@ -320,7 +319,7 @@ function RotationView({
                   width={width}
                   height={height}
                   tableRows={rows.length}
-                  tableChromeRows={chartTableChromeRows(COLUMNS, width)}
+                  tableColumns={COLUMNS}
                   chart={trails.length ? {
                     render: (size) => (
                       <ScatterTrailSurface

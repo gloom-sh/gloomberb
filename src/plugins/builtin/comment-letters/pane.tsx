@@ -13,6 +13,7 @@ import {
   usePaneStatusLinkFooter,
   useQueryBarSearch,
   useTableLoadMore,
+  useTableLayoutWidth,
   type DataTableCell,
   type DataTableColumn,
   type DataTableKeyEvent,
@@ -132,7 +133,8 @@ export function CommentLettersPane({ width, height, focused }: PaneProps) {
   const issuer = letters.pages[0]?.issuer ?? null;
   const windowLimited = letters.pages[letters.pages.length - 1]?.windowLimited ?? false;
   const loadMore = useTableLoadMore(scrollRef, letters.hasMore && !openItemId, letters.loadMore);
-  const columns = useMemo(() => letterColumns(width, !!issuer), [issuer, width]);
+  const layoutWidth = useTableLayoutWidth(width);
+  const columns = useMemo(() => letterColumns(layoutWidth, !!issuer), [issuer, layoutWidth]);
 
   const selected = rows.find((row) => row.id === selectedId) ?? rows[0] ?? null;
   const openLetter = openItemId ? rows.find((row) => row.id === openItemId) ?? null : null;

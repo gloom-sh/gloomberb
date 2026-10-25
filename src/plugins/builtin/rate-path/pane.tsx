@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { chartTableChromeRows, ChartTableHeader, CurveSurface, curveGhostColors, DataTableView, formatPercentAxis, PaneStatusBody, useChartTableSelection, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type DataTableCell, type DataTableColumn, type StatItem } from "../../../components";
+import { ChartTableHeader, CurveSurface, curveGhostColors, DataTableView, formatPercentAxis, PaneStatusBody, useChartTableSelection, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type DataTableCell, type DataTableColumn, type StatItem } from "../../../components";
 import { curveStrip, curveSurfaceMinRows } from "../../../components/chart/curve";
 import { isAccessDenied } from "../../../api-client/errors";
 import type { RateContract, RateMeeting } from "../../../api-client/rates";
@@ -155,8 +155,7 @@ export function RatePathPane({ width, height, focused }: PaneProps) {
   } : null;
   // Every tab keeps the figures in the table's header zone; only Path draws the chart.
   const header = (columns: DataTableColumn[], rows: number, chart: typeof pathChart = null) => {
-    const tableChromeRows = chartTableChromeRows(columns, width);
-    return <ChartTableHeader width={width} height={bodyHeight} figures={statItems} tableChromeRows={tableChromeRows}
+    return <ChartTableHeader width={width} height={bodyHeight} figures={statItems} tableColumns={columns}
       tableRows={rows}
       chart={chart} />;
   };

@@ -24,6 +24,7 @@ import {
   usePaneFooter,
   usePaneLinkMenuEntry,
   useQueryBarSearch,
+  useTableLayoutWidth,
   type DataTableCell,
   type DataTableColumn,
   type PaneFooterSegment,
@@ -248,6 +249,7 @@ function TopicView({ topic, feed, width, scrollRef, onOpenTopic, onOpenLink, onS
 }
 
 export function DocsPane({ focused, width, height }: PaneProps) {
+  const tableLayoutWidth = useTableLayoutWidth(width);
   const colors = useThemeColors();
   const rendererHost = useRendererHost();
   const { openCommandBar } = usePluginAppActions();
@@ -343,7 +345,7 @@ export function DocsPane({ focused, width, height }: PaneProps) {
     ? selectedKey
     : visibleEntries[0]?.key ?? null;
 
-  const showAbout = width >= ABOUT_COLUMN_MIN_WIDTH;
+  const showAbout = tableLayoutWidth >= ABOUT_COLUMN_MIN_WIDTH;
   const columns = useMemo<DocsColumn[]>(() => [
     { id: "code", label: "FN", width: 9, align: "left" },
     { id: "title", label: "Title", width: showAbout ? 30 : 24, align: "left", flexGrow: showAbout ? 0 : 1 },
@@ -444,4 +446,3 @@ export function DocsPane({ focused, width, height }: PaneProps) {
     />
   );
 }
-

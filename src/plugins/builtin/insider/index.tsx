@@ -13,8 +13,8 @@ import {
 } from "../../../market-data/hooks";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { Box, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
-import { useSettledLayoutSize } from "../../../ui/resize-settle";
 import {
+  useTableLayoutWidth,
   DataTableStackView,
   EmptyState,
   PaneLinkMenu,
@@ -238,7 +238,7 @@ function InsiderTradesView({ ticker, viewBar, state, width, height, focused, sta
 }) {
   const tickerKey = ticker.metadata.ticker;
   const { nativePaneChrome } = useUiCapabilities();
-  const columnLayout = useSettledLayoutSize(width, height, { enabled: nativePaneChrome === true, maxStretch: Infinity });
+  const tableLayoutWidth = useTableLayoutWidth(width);
   // Every Type choice in view only where Back and the whole title still fit beside them.
   const typeInlineWidth = TYPE_FILTER_INLINE_WIDTH + (stackTitle != null && nativePaneChrome ? stackHeaderCells(stackTitle) : 0);
   const { selectedId, setSelectedId, nameFilter, setNameFilter, typeFilter, setTypeFilter, openItemId, setOpenItemId } = state;
@@ -345,7 +345,7 @@ function InsiderTradesView({ ticker, viewBar, state, width, height, focused, sta
   // Form 4 amounts are dollars: a reader whose base currency is another one gets them named, as PF names a holding's.
   const baseCurrency = useAppSelector((state) => state.config.baseCurrency);
   const amountCurrency = baseCurrency.trim().toUpperCase() === FORM4_CURRENCY ? undefined : FORM4_CURRENCY;
-  const columns = useMemo(() => buildInsiderColumns(columnLayout.width, rows, amountCurrency), [amountCurrency, rows, columnLayout.width]);
+  const columns = useMemo(() => buildInsiderColumns(tableLayoutWidth, rows, amountCurrency), [amountCurrency, rows, tableLayoutWidth]);
 
   // A narrowed list that cannot scroll cannot ask for older filings, so they
   // load here until it fills a page, back to a year at most.

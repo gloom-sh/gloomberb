@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   DataTableView,
-  PaneStatusBody, usePaneTabs, usePaneStatusFooter,
+  PaneStatusBody, usePaneTabs, usePaneStatusFooter, useTableLayoutWidth,
   type DataTableCell,
   type DataTableKeyEvent
 } from "../../../components";
@@ -85,7 +85,8 @@ export function MarketHaltsPane({ focused, width, height }: PaneProps) {
   const refresh = useCallback(() => load(), [load]);
   const selectFilter = useCallback((value: string) => setFilter(value as HaltFilter), [setFilter]);
   const cycleFilter = useCallback(() => setFilter((current) => nextHaltFilter(current)), [setFilter]);
-  const columns = useMemo(() => buildHaltColumns(width), [width]);
+  const layoutWidth = useTableLayoutWidth(width);
+  const columns = useMemo(() => buildHaltColumns(layoutWidth), [layoutWidth]);
   // A narrow pane drops columns; the sort keys only step through the ones on screen.
   const sortColumnIds = useMemo(
     () => HALT_SORT_COLUMN_IDS.filter((id) => columns.some((column) => column.id === id)),

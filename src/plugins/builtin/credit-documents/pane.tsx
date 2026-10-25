@@ -2,7 +2,7 @@ import { useCallback, useMemo } from "react";
 import { isAccessDenied } from "../../../api-client/errors";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import type { CreditDocumentsPayload, CreditHeadroom, CreditInstrument, CreditScreenPayload, CreditScreenRow } from "../../../api-client/credit-documents";
-import { ChartTableHeader, DataTableView, EmptyState, PageStackView, QueryBar, useChartTableSelection, usePaneFooter, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type DataTableCell, type DataTableColumn, type PaneHint } from "../../../components";
+import { useTableLayoutWidth, ChartTableHeader, DataTableView, EmptyState, PageStackView, QueryBar, useChartTableSelection, usePaneFooter, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type DataTableCell, type DataTableColumn, type PaneHint } from "../../../components";
 import { formatCompactAxis } from "../../../components/chart-table";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
@@ -10,7 +10,6 @@ import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, Text, useUiCapabilities } from "../../../ui";
-import { useSettledLayoutSize } from "../../../ui/resize-settle";
 import { SignInWall } from "../cloud/auth-actions";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { useOpenDescription } from "../shared/open-description";
@@ -35,7 +34,7 @@ export function CreditDocumentsPane(props: PaneProps) {
 }
 function CreditView({ symbol, width, height, focused, accessKey, needsVerification }: PaneProps & { symbol: string | null; accessKey: string; needsVerification: boolean }) {
   const colors = useThemeColors(), desktop = !!useUiCapabilities().nativePaneChrome;
-  const columnLayout = useSettledLayoutSize(width, height, { enabled: desktop, maxStretch: Infinity });
+  const tableLayoutWidth = useTableLayoutWidth(width);
   const { createPaneFromTemplate } = usePluginAppActions();
   const openDescription = useOpenDescription();
   const openUpgrade = useCloudUpgradeAction("crdoc");
@@ -68,8 +67,8 @@ function CreditView({ symbol, width, height, focused, accessKey, needsVerificati
   const maturityRows = useMemo(() => data ? creditMaturityRows(data, selectedCurrency) : [], [data, selectedCurrency]);
   const series = useMemo(() => maturitySeries(maturityRows, selectedCurrency, colors.warning), [maturityRows, selectedCurrency, colors.warning]);
   const preview = data?.access === "preview";
-  const columns = useMemo<DataTableColumn[]>(() => tab === "capital" ? data ? capitalColumns(data, columnLayout.width) : [] : tab === "covenants" ? covenantColumns(columnLayout.width)
-    : tab === "maturities" ? maturityColumns(columnLayout.width, preview) : screenColumns(columnLayout.width), [tab, data, columnLayout.width, preview]);
+  const columns = useMemo<DataTableColumn[]>(() => tab === "capital" ? data ? capitalColumns(data, tableLayoutWidth) : [] : tab === "covenants" ? covenantColumns(tableLayoutWidth)
+    : tab === "maturities" ? maturityColumns(tableLayoutWidth, preview) : screenColumns(tableLayoutWidth), [tab, data, tableLayoutWidth, preview]);
   const figures = useMemo(() => tab === "capital" && data ? capitalFigures(data) : [], [tab, data]);
   const unsortedRows = useMemo<Row[]>(() => {
     if (tab === "screen") return (screenData?.rows ?? []).map((row) => ({ id: screenRowId(row), instrumentId: row.instrumentId, screen: row, numbers: {value:row.value}, values: { symbol: row.symbol, kind: row.kind === "springing_maturity" ? "Springing maturity" : row.value != null && row.value < 0 ? "Breach" : "Low headroom", value: creditPercent(row.value), date: row.date ?? NO_VALUE, instrument: row.instrumentName, reason: sentence(row.reason) } }));

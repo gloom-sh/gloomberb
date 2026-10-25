@@ -23,6 +23,7 @@ import {
   usePaneNoticeFooter,
   useQueryBarSearch,
   useTableLoadMore,
+  useTableLayoutWidth,
   type DataTableCell,
   type PageRequest,
   type PaneHint,
@@ -392,7 +393,8 @@ export function LayeredMapView({ focused, width, height, layers, tokens, plain =
   const mapHeight = Math.max(2, mapSectionHeight - 2);
 
   const layerColumns = pages.pages[0]?.columns?.length ? pages.pages[0].columns : tableLayer.columns;
-  const columns = useMemo(() => entityColumns(layerColumns, listWidth), [layerColumns, listWidth]);
+  const tableLayoutWidth = useTableLayoutWidth(listWidth);
+  const columns = useMemo(() => entityColumns(layerColumns, tableLayoutWidth), [layerColumns, tableLayoutWidth]);
   const nowRef = useRef(now);
   nowRef.current = now;
   const renderCell = useCallback((row: GeoEntityRow, column: EntityColumn): DataTableCell => {

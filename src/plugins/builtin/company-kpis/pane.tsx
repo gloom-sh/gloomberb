@@ -4,7 +4,7 @@ import { usePlanAccess } from "../../../api-client/plan-access";
 import type { KpiObservation } from "../../../api-client/company-kpis";
 import { listingAbroad } from "../../../api-client/paths";
 import { ChartTableHeader, DataTableStackView, DetailScrollBody, EmptyState, KeyValueRow, PaneStatusBody, QueryBar, SectionHeading,
-  useChartTableSelection, usePaneMenuItems, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type DataTableCell, type PaneHint } from "../../../components";
+  useChartTableSelection, usePaneMenuItems, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, useTableLayoutWidth, type DataTableCell, type PaneHint } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
@@ -81,6 +81,7 @@ export function CompanyGuidancePane(props: PaneProps) {
   return <CompanyView key={`${key}:guidance`} {...props} {...listing} mode="guidance" />;
 }
 function CompanyView({ symbol, exchange, name, mode, width, height, focused }: PaneProps & { symbol: string | null; exchange?: string; name?: string; mode: CompanyMode }) {
+  const tableLayoutWidth = useTableLayoutWidth(width);
   const colors = useThemeColors();
   const host = useRendererHost();
   const desktop = !!useUiCapabilities().nativePaneChrome;
@@ -158,8 +159,8 @@ function CompanyView({ symbol, exchange, name, mode, width, height, focused }: P
     }
     return map;
   }, [kpis]);
-  const columns = useMemo(() => withoutQuietColumns(companyColumns(mode === "guidance", tab === "evidence", tab === "history", mode === "kpis" && tab === "table" && trends.size > 0 && width >= 100, desktop),
-    rows, (row, id) => id === "basis" ? basisLabel(row.basis) : id === "scope" ? dimensionLabel(row.dimensions) || "Consolidated" : "", QUIET_COLUMNS), [mode, tab, trends, rows, width, desktop]);
+  const columns = useMemo(() => withoutQuietColumns(companyColumns(mode === "guidance", tab === "evidence", tab === "history", mode === "kpis" && tab === "table" && trends.size > 0 && tableLayoutWidth >= 100, desktop),
+    rows, (row, id) => id === "basis" ? basisLabel(row.basis) : id === "scope" ? dimensionLabel(row.dimensions) || "Consolidated" : "", QUIET_COLUMNS), [mode, tab, trends, rows, tableLayoutWidth, desktop]);
   const metricOptions = useMemo(() => [{ value: "all", label: "All metrics" }, ...[...new Map(allRows.map((row) => [row.metricId, { value: row.metricId, label: row.metric.name }])).values()]], [allRows]);
   const kpiChart = useMemo(() => observationChart(rows.filter((row): row is KpiObservation => !isGuidance(row)), colors.warning), [rows, colors.warning]);
   const series = useMemo(() => tab !== "chart" ? [] : mode === "kpis" ? kpiChart.series

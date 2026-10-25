@@ -2,7 +2,7 @@ import { useCallback, useMemo } from "react";
 import type { GpuBoardRow } from "../../../api-client/gpu";
 import {
   Badge, buildSectionedRows, ChartTableHeader, DataTableView, EMPTY_TABLE_CELL, isSectionedItemRow, QueryBar,
-  renderSectionedRowHeader, type DataTableCell, type DataTableColumn, type SectionedRow,
+  renderSectionedRowHeader, useTableLayoutWidth, type DataTableCell, type DataTableColumn, type SectionedRow,
 } from "../../../components";
 import { PriceSparkline } from "../../../components/price-sparkline/view";
 import { useAsyncResource } from "../../../public/react";
@@ -86,6 +86,7 @@ export function GpuBoard({ rows, models, asOf, model, setModel, selectedId, sele
   pending?: boolean;
 }) {
   const colors = useThemeColors();
+  const tableLayoutWidth = useTableLayoutWidth(width);
   const sections = useMemo(() => gpuBoardSections(rows, model), [rows, model]);
   const items = useMemo(() => buildSectionedRows(sections.map((section) => ({ label: section.label, items: section.rows })), (row) => row.id), [sections]);
   const visible = useMemo(() => sections.flatMap((section) => section.rows), [sections]);
@@ -94,9 +95,9 @@ export function GpuBoard({ rows, models, asOf, model, setModel, selectedId, sele
   const trend = [...history.values()].some((points) => points.length >= MIN_TREND_POINTS);
   const ladder = useMemo(() => model ? gpuPriceLadder(rows, model) : [], [rows, model]);
   const selected = visible.find((row) => row.id === selectedId) ?? visible[0] ?? null;
-  const medium = width >= 100;
+  const medium = tableLayoutWidth >= 100;
   const asOfDay = asOf?.slice(0, 10) ?? null;
-  const columns = boardColumns(width, { windows, trend, range: visible.some((row) => row.stats), availability: visible.some((row) => row.availability) });
+  const columns = boardColumns(tableLayoutWidth, { windows, trend, range: visible.some((row) => row.stats), availability: visible.some((row) => row.availability) });
   // A free preview row's moves are Pro's; the cell says so, and the footer's upgrade hint unlocks them.
   const lockedCell: DataTableCell = { text: "Pro", value: null, color: colors.textDim };
 

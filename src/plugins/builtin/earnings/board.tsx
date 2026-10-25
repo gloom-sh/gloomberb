@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  useTableLayoutWidth,
   DataTableStackView,
   PageStackView,
   PaneStatusBody,
@@ -253,7 +254,8 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
     ?? (openKey ? data?.reports.find((report) => report.key === openKey) : undefined) ?? null;
   // A board with an actual keeps EPS ACT and EPS SURP when narrow; keyed by the flag, so the columns hold between renders.
   const actuals = boardHasActuals(rows);
-  const columns = useMemo(() => boardColumns(width, { actuals }), [actuals, width]);
+  const tableLayoutWidth = useTableLayoutWidth(width);
+  const columns = useMemo(() => boardColumns(tableLayoutWidth, { actuals }), [actuals, tableLayoutWidth]);
   // The move on each report out today, beside its implied move, from the quotes every board reads.
   // Keyed by content: the rows are rebuilt on renders that change nothing, and the quote board reloads on a new list.
   const reportedKey = [...new Set(reportRows.filter((row) => row.report.dateStatus === "reported" && row.report.date === today)

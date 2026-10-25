@@ -9,7 +9,6 @@ import {
   useUpdatedAgo,
 } from "../../../public/react";
 import {
-  chartTableChromeRows,
   ChartTableHeader,
   CompositeChart,
   DataTableStackView,
@@ -21,6 +20,7 @@ import {
   usePaneNoticeFooter,
   usePaneStatusLinkFooter,
   usePaneTabs,
+  useTableLayoutWidth,
   type DataTableCell,
   type StatItem,
 } from "../../../components";
@@ -84,9 +84,6 @@ const LINE_SLOTS = { edges: false };
 /** Legend, four plot rows and the year axis. */
 const HISTORY_CHART_MIN_ROWS = 6;
 const historyDate = (row: DebtHistoryPoint) => new Date(row.asOf);
-/** Table header rows, plus the horizontal scrollbar when the columns overflow. */
-const tableChrome = (columns: readonly { width: number }[], width: number) =>
-  chartTableChromeRows(columns, width);
 
 function MetricRow({ label, metric }: { label: string; metric: DebtMetric }) {
   return (
@@ -303,6 +300,7 @@ function HistoryDetail({
 }
 
 export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
+  const tableLayoutWidth = useTableLayoutWidth(width);
   const { ticker } = usePaneTickerIdentity();
   const symbol = listingIdentity(ticker?.metadata.ticker)?.symbol ?? null;
   const listing = useIssuerListing(ticker);
@@ -404,7 +402,7 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
   const wallScale = latest ? datedBucketScale(latest) : 0;
   // A bucket past the dated scale keeps room at the end for its value.
   const wallReserve = buckets.some((row) => bucketBar(row, wallScale)?.capped) ? WALL_CAP_RESERVE : 0;
-  const bucketColumnList = useMemo(() => bucketColumns(width), [width]);
+  const bucketColumnList = useMemo(() => bucketColumns(tableLayoutWidth), [tableLayoutWidth]);
   const updatedAgo = useUpdatedAgo(resource.updatedAt);
   // An open bucket or filing covers its tab; the tab keys wait until it closes.
   const detailOpen =
@@ -558,7 +556,7 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
                     width={width}
                     height={bodyHeight}
                     tableRows={buckets.length}
-                    tableChromeRows={tableChrome(bucketColumnList, width)}
+                    tableColumns={bucketColumnList}
                     figures={statItems}
                     chart={nearTermSeries.length ? {
                       series: nearTermSeries,
@@ -620,7 +618,7 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
                     width={width}
                     height={bodyHeight}
                     tableRows={history.length}
-                    tableChromeRows={tableChrome(HISTORY_COLUMNS, width)}
+                    tableColumns={HISTORY_COLUMNS}
                     chart={bars.length ? {
                       // A custom chart only so each filing's year sits under its own bar.
                       render: (size) => (

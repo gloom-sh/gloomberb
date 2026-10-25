@@ -5,6 +5,7 @@ import {
   PaneStatusBody,
   QueryBar,
   stackedSeries,
+  useTableLayoutWidth,
   type DataTableCell,
   type DataTableKeyEvent,
   type StatItem,
@@ -112,13 +113,14 @@ export function DefiTvlView({
   focused: boolean;
   resource: DefiResourceState;
 }) {
+  const tableLayoutWidth = useTableLayoutWidth(width);
   const { payload } = resource;
   const [list, setList] = usePluginPaneState<DefiList>("defiList", "protocol");
   const [range, setRange] = usePluginPaneState<SupplyRangeId>("defiRange", "1Y");
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("defiSelected", null);
   const [sort, setSort] = useState<DefiSortPreference>(DEFAULT_DEFI_SORT);
   const rows = useMemo(() => sortDefiRows(buildDefiRows(payload, list), sort), [list, payload, sort]);
-  const columns = useMemo(() => buildDefiColumns(width, list), [list, width]);
+  const columns = useMemo(() => buildDefiColumns(tableLayoutWidth, list), [list, tableLayoutWidth]);
   // A chain's figures are the total's day, which its figure dates; protocols are read live, so they say when.
   const listAsOf = list === "protocol" ? defiListAsOf(payload, list) : null;
 

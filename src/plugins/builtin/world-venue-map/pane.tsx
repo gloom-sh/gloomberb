@@ -12,6 +12,7 @@ import {
   shouldShowPaneSidebar,
   usePaneFooter,
   useQueryBarSearch,
+  useTableLayoutWidth,
   type DataTableCell,
   type DataTableColumn,
 } from "../../../components";
@@ -146,7 +147,8 @@ function VenueMapView({ focused, width, height }: PaneProps) {
   const mapSectionHeight = horizontal ? height : Math.max(8, Math.floor(height * 0.52));
   const tableHeight = horizontal ? height : Math.max(4, height - mapSectionHeight);
   const mapHeight = Math.max(2, mapSectionHeight - 2);
-  const columns = useMemo(() => venueColumns(listWidth), [listWidth]);
+  const tableLayoutWidth = useTableLayoutWidth(listWidth);
+  const columns = useMemo(() => venueColumns(tableLayoutWidth), [tableLayoutWidth]);
 
   const renderCell = useCallback((
     venue: CloudWorldVenuePayload,

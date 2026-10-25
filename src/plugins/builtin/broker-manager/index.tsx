@@ -11,7 +11,7 @@ import {
   resetSignedInBrokerCatalog,
   subscribeSignedInBrokers,
 } from "../../../brokers/signed-in/catalog";
-import { DataTableStackView, EmptyState } from "../../../components";
+import { DataTableStackView, EmptyState, useTableLayoutWidth } from "../../../components";
 import { t } from "../../../i18n";
 import { useAppLanguage } from "../../../i18n/react";
 import {
@@ -238,7 +238,8 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
 
   const bodyHeight = Math.max(5, height);
   const tableWidth = Math.max(24, width);
-  const columns = useMemo(() => buildBrokerColumns(tableWidth), [language, tableWidth]);
+  const tableLayoutWidth = useTableLayoutWidth(tableWidth);
+  const columns = useMemo(() => buildBrokerColumns(tableLayoutWidth), [language, tableLayoutWidth]);
 
   const renderCell = useCallback(
     (row: BrokerProfileRow, column: BrokerColumn) => renderBrokerCell(row, column, desktop, rowActivity(row)),

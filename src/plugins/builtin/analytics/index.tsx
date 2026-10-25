@@ -5,7 +5,6 @@ import { portfolioRiskCache } from "./risk-client";
 import { Box, Text } from "../../../ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  chartTableChromeRows,
   ChartTableHeader,
   EmptyState,
   formatPercentAxis,
@@ -424,7 +423,7 @@ function LegacyPortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
               height={bodyHeight}
               before={(
                 <ChartTableHeader width={width} height={bodyHeight} tableRows={sortedSectorRows.length}
-                  tableChromeRows={chartTableChromeRows(sectorColumns, width)}
+                  tableColumns={sectorColumns}
                   figures={figures} chart={historyChart} />
               )}
             />

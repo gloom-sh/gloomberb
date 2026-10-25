@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef } from "react";
 import {
+  useTableLayoutWidth,
   ChartTableHeader,
   DataTableView,
   PaneStatusBody,
@@ -51,7 +52,8 @@ export function EarningsHistoryView({ symbol, width, height, focused, registrati
   const payload = resource.data?.payload ?? null;
   const today = newYorkToday();
   const rows = useMemo(() => historyRows(payload, today, upcoming.data ?? null), [payload, today, upcoming.data]);
-  const columns = useMemo(() => historyColumns(width, rows), [rows, width]);
+  const tableLayoutWidth = useTableLayoutWidth(width);
+  const columns = useMemo(() => historyColumns(tableLayoutWidth, rows), [rows, tableLayoutWidth]);
   // A report out today shows its move so far, from the quotes EVTS reads, until its first close after settles it.
   const outToday = rows.some((row) => row.date === today && row.dateStatus === "reported" && row.move == null);
   const quoteSymbols = useMemo(() => (outToday ? [symbol] : []), [outToday, symbol]);

@@ -7,6 +7,7 @@ import {
   usePaneNoticeFooter,
   usePaneStatusFooter,
   usePaneTabs,
+  useTableLayoutWidth,
   type ChartTableChart,
   type DataTableCell,
   type DataTableKeyEvent,
@@ -94,7 +95,8 @@ export function PrimaryDealersPane({ focused, width, height }: PaneProps) {
     }
     return best;
   }, [rows]);
-  const columns = useMemo(() => buildDealerColumns(width), [width]);
+  const layoutWidth = useTableLayoutWidth(width);
+  const columns = useMemo(() => buildDealerColumns(layoutWidth), [layoutWidth]);
   const footerInfo = useMemo(
     () => asOf ? [{ id: "as-of", parts: [{ text: asOf, tone: "muted" as const }] }] : [],
     [asOf],

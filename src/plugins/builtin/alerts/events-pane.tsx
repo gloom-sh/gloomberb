@@ -7,6 +7,7 @@ import {
   DataTableView,
   PaneStatusBody,
   usePaneFooter,
+  useTableLayoutWidth,
   type DataTableColumn,
 } from "../../../components";
 import { colors } from "../../../theme/colors";
@@ -48,6 +49,7 @@ const columnsFor = (width: number, lastCheck: boolean): DataTableColumn[] => [
 ];
 
 export function EventAlertsPane({ focused, width, height }: PaneProps) {
+  const tableLayoutWidth = useTableLayoutWidth(width);
   const [catalystStatus] = usePluginConfigState<string>(CATALYST_POLL_STATUS, "Catalyst alerts check every five minutes while the app is open");
   const [json, setJson] = usePluginConfigState<string>(EVENT_ALERTS_KEY, "[]");
   // IV levels and calendar events are kept in their own lists, which released versions never read.
@@ -106,7 +108,7 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
     [history.data],
   );
   // An IV level is read by this app, so its last reading needs no session.
-  const columns = columnsFor(width, (hasResearch && !!history.data) || rules.some((rule) => rule.kind === "iv_level"));
+  const columns = columnsFor(tableLayoutWidth, (hasResearch && !!history.data) || rules.some((rule) => rule.kind === "iv_level"));
   const add = useCallback(
     () => openPluginCommandWorkflow("set-event-alert"),
     [openPluginCommandWorkflow],

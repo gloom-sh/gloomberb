@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { DataTableView, type DataTableVisibleRange } from "../../../components";
+import { DataTableView, useTableLayoutWidth, type DataTableVisibleRange } from "../../../components";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
@@ -40,6 +40,7 @@ function renderRegionHeader(row: WorldIndexTableRow) {
 }
 
 function WorldIndicesPane({ focused, width, height }: PaneProps) {
+  const tableLayoutWidth = useTableLayoutWidth(width);
   const { pinTicker } = usePluginTickerActions();
   const dataProvider = useAssetData();
   const [savedSymbols] = usePaneSettingValue<string[]>("symbols", NO_SAVED_SYMBOLS);
@@ -98,9 +99,9 @@ function WorldIndicesPane({ focused, width, height }: PaneProps) {
     }));
   }, []);
 
-  const columns = useMemo<WorldIndexColumn[]>(() => createWorldIndexColumns(width), [width]);
+  const columns = useMemo<WorldIndexColumn[]>(() => createWorldIndexColumns(tableLayoutWidth), [tableLayoutWidth]);
 
-  const sessionText = usesSessionText(width);
+  const sessionText = usesSessionText(tableLayoutWidth);
   const renderCell = useCallback((
     row: WorldIndexTableRow,
     column: WorldIndexColumn,

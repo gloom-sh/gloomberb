@@ -14,6 +14,7 @@ import {
   useExternalLinkFooter,
   usePaneFooter,
   usePaneNoticeFooter,
+  useTableLayoutWidth,
   type DataTableColumn,
   type StatItem,
 } from "../../../components";
@@ -247,7 +248,8 @@ export function EconDetailView({ event, width, height, focused }: EconDetailView
   const link = useChartTableSelection({
     rows, getId: historyKey, getDate: historyDate, selectedId, onSelect: setSelectedDate, focused,
   });
-  const columns = useMemo(() => historyColumns(label, width), [label, width]);
+  const tableLayoutWidth = useTableLayoutWidth(width);
+  const columns = useMemo(() => historyColumns(label, tableLayoutWidth), [label, tableLayoutWidth]);
 
   // A stale cache stays on screen while its refresh runs or fails.
   if (!mapping || ((loading || error) && !data)) {

@@ -8,6 +8,7 @@ import {
   EmptyState,
   QueryBar,
   usePaneFooter,
+  useTableLayoutWidth,
   type DataTableCell,
   type DataTableKeyEvent,
   type PaneFooterSegment,
@@ -85,6 +86,7 @@ const loadEvents = async (force: boolean): Promise<CalendarResult> => ({ ...awai
 const cachedEvents = () => getCalendarCache();
 
 function EconCalendarPane({ focused, width, height }: PaneProps) {
+  const tableLayoutWidth = useTableLayoutWidth(width);
   // loadCalendar serves a fresh cache without a request, so the pane can always
   // ask and still follow the global cadence once the cache goes stale.
   const calendar = useAsyncResource<CalendarResult>(loadEvents, { initialData: cachedEvents });
@@ -265,7 +267,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     // Padding, one gap per column boundary, and the vertical scrollbar lane;
     // one column short of that clipped the PRIOR values at the right edge.
     const roomBeside = (count: number, timesWidth: number) => (impactWidth: number, countryWidth: number) => (
-      width - 3 - count - (timesWidth + impactWidth + countryWidth + actualWidth + forecastWidth + priorWidth)
+      tableLayoutWidth - 3 - count - (timesWidth + impactWidth + countryWidth + actualWidth + forecastWidth + priorWidth)
     );
     const codeWidth = 2 + (flagged ? COUNTRY_FLAG_CELLS : 0);
     // The reader's column only where the event names keep room to read beside it, under the short headers.
@@ -294,7 +296,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
       { id: "forecast", label: "FORECAST", width: forecastWidth, align: "right" },
       { id: "prior", label: "PRIOR", width: priorWidth, align: "right" },
     ];
-  }, [filtered, flagged, readerZone, width]);
+  }, [filtered, flagged, readerZone, tableLayoutWidth]);
   const separatorBg = blendHex(colors.bg, colors.border, 0.3);
   const staleness = fetchedAt ? formatStaleness(fetchedAt, now) : "";
   // The calendar has events and the filters hid them all: say which, with the way back.

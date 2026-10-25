@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
-  chartTableChromeRows,
   ChartTableHeader,
   CompositeChart,
   DataTableView,
@@ -524,7 +523,7 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
       getExportMetadata={() => [["expiry", shownExpiry ?? ""], ["open interest as of", data?.oiDate ?? ""],
         ["change since", data?.previousOiDate ?? ""], ["spot", spot ?? ""], ["max pain", maxPain ?? ""]]}
       rootBefore={<ChartTableHeader width={width} height={bodyHeight} query={query} figures={strikeFigures}
-        tableRows={strikeRows.length} tableChromeRows={chartTableChromeRows(strikeColumnList, width)}
+        tableRows={strikeRows.length} tableColumns={strikeColumnList}
         chart={strikeChart ? {
           render: (size) => <PositioningChart width={size.width} height={size.height} series={strikeSeries}
             ticks={strikeChart.ticks}
@@ -552,7 +551,7 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
       getExportMetadata={() => [["open interest as of", data?.oiDate ?? ""], ["change since", data?.previousOiDate ?? ""], ["spot", spot ?? ""],
         ...(hasGamma ? [["net GEX unit", "dollars of dealer delta per 1% move"], ["quotes as of", netGammas ? gamma.data?.quotesAsOf ?? "" : ""]] : [])]}
       rootBefore={<ChartTableHeader width={width} height={bodyHeight} figures={ladderFigures}
-        tableRows={expiryRows.length} tableChromeRows={chartTableChromeRows(expiryColumnList, width)}
+        tableRows={expiryRows.length} tableColumns={expiryColumnList}
         chart={expiryChart ? {
           render: (size) => <PositioningChart width={size.width} height={size.height} series={expirySeries}
             ticks={expiryChart.ticks} markers={[]}
@@ -591,7 +590,7 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
               ["flip", gammaData.flip ?? ""], ["call wall", walls.callWall ?? ""], ["put wall", walls.putWall ?? ""],
               ["open interest as of", gammaData.oiDate ?? ""], ["quotes as of", gammaData.quotesAsOf ?? ""]]}
             rootBefore={<ChartTableHeader width={width} height={bodyHeight} query={query} figures={gammaFigures}
-              tableRows={gammaRows.length} tableChromeRows={chartTableChromeRows(GAMMA_COLUMNS, width)}
+              tableRows={gammaRows.length} tableColumns={GAMMA_COLUMNS}
               chart={gammaChart ? {
                 render: (size) => <PositioningChart width={size.width} height={size.height} series={gammaSeries}
                   ticks={gammaChart.ticks}

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Box } from "../../../ui";
-import { DataTableView, usePaneFooter, usePaneNoticeFooter, usePaneTabs, type DataTableCell, type DataTableKeyEvent, type DataTableVisibleRange } from "../../../components";
+import { DataTableView, usePaneFooter, usePaneNoticeFooter, usePaneTabs, useTableLayoutWidth, type DataTableCell, type DataTableKeyEvent, type DataTableVisibleRange } from "../../../components";
 import { handleRefreshKey, loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
@@ -122,6 +122,7 @@ interface EtfBoardProps {
 
 /** The Sectors and Industries tabs: one board of ETFs with live quotes. */
 function EtfBoard({ collectionId, focused, width, height, rootBefore }: EtfBoardProps) {
+  const tableLayoutWidth = useTableLayoutWidth(width);
   const dataProvider = useAssetData();
   const { navigateTicker } = usePluginTickerActions();
   const activeCollection = getSectorCollection(collectionId);
@@ -207,8 +208,8 @@ function EtfBoard({ collectionId, focused, width, height, rootBefore }: EtfBoard
   // A pre-market or after-hours column only while a fund has such a print.
   const extendedSessionsKey = sectorExtendedSessions(liveRows).join(",");
   const columns = useMemo(
-    () => buildSectorColumns(width, extendedSessionsKey ? extendedSessionsKey.split(",") as ExtendedSession[] : []),
-    [extendedSessionsKey, width],
+    () => buildSectorColumns(tableLayoutWidth, extendedSessionsKey ? extendedSessionsKey.split(",") as ExtendedSession[] : []),
+    [extendedSessionsKey, tableLayoutWidth],
   );
   const lastRefreshMs = lastRefreshByCollection[activeCollection.id] ?? null;
   const loading = rows.some((row) => row.loading);

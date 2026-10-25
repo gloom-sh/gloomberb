@@ -6,6 +6,7 @@ import {
   QueryBar,
   usePaneFooter,
   useQueryBarSearch,
+  useTableLayoutWidth,
   type DataTableCell,
   type DataTableColumn,
   type DataTableKeyEvent,
@@ -262,9 +263,10 @@ export function ThesisBoardPane({ focused, width, height }: PaneProps) {
     event.preventDefault?.();
   });
 
+  const layoutWidth = useTableLayoutWidth(width);
   const columns = useMemo(
-    () => (mode === "weights" ? weightColumns() : boardColumns(width, teams.length > 0)),
-    [mode, teams.length, width],
+    () => (mode === "weights" ? weightColumns() : boardColumns(layoutWidth, teams.length > 0)),
+    [mode, teams.length, layoutWidth],
   );
 
   const renderBoardCell = useCallback((item: BoardItem, column: BoardColumn): DataTableCell => {

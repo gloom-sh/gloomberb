@@ -4,6 +4,7 @@ import {
   PaneStatusBody,
   usePagedRows,
   usePaneFooter,
+  useTableLayoutWidth,
   useTableLoadMore,
   type DataTableColumn,
   type PageRequest,
@@ -57,6 +58,7 @@ function historyRow(row: AlertHistoryRow): HistoryRow {
  * the ones Gloom Cloud delivered to the account's phone or email over the last 90 days.
  */
 export function AlertHistoryPane({ focused, width, height }: PaneProps) {
+  const tableLayoutWidth = useTableLayoutWidth(width);
   const access = usePlanAccess();
   const session = useResearchCloudSession();
   const [firedLog] = usePluginState<unknown>(FIRED_LOG_KEY, []);
@@ -90,8 +92,8 @@ export function AlertHistoryPane({ focused, width, height }: PaneProps) {
     { id: "time", label: "Time (UTC)", width: 16, align: "left" },
     { id: "kind", label: "Event", width: 15, align: "left" },
     { id: "alert", label: "Alert", width: 20, flexGrow: 1, align: "left" },
-    ...(width >= 70 ? [{ id: "value", label: "Value", width: 16, align: "left" as const }] : []),
-    ...(width >= 115
+    ...(tableLayoutWidth >= 70 ? [{ id: "value", label: "Value", width: 16, align: "left" as const }] : []),
+    ...(tableLayoutWidth >= 115
       ? [
           { id: "quote", label: "Quote (UTC)", width: 16, align: "left" as const },
           { id: "source", label: "Source", width: 14, align: "left" as const },

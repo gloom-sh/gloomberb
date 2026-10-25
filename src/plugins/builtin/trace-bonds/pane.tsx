@@ -8,6 +8,7 @@ import {
   usePaneNoticeFooter,
   usePaneStatusFooter,
   useQueryBarSearch,
+  useTableLayoutWidth,
   type DataTableCell,
   type DataTableKeyEvent,
   type DataTableRootKeyContext,
@@ -74,7 +75,8 @@ export function TraceBondsPane({ focused, width, height }: PaneProps) {
   usePaneRefreshKey(() => void reload(), { focused, enabled: !searchActive });
 
   const rows = useMemo(() => sortBonds(bonds, sort), [bonds, sort]);
-  const columns = useMemo(() => buildBondColumns(width), [width]);
+  const layoutWidth = useTableLayoutWidth(width);
+  const columns = useMemo(() => buildBondColumns(layoutWidth), [layoutWidth]);
   const tradeDate = answered ? data.tradeDate : null;
   const footerInfo = useMemo(
     () => (tradeDate ? [{ id: "trade-date", parts: [{ text: tradeDate }] }] : []),

@@ -9,6 +9,7 @@ import {
   usePagedRows,
   usePaneStatusLinkFooter,
   useQueryBarSearch,
+  useTableLayoutWidth,
   useTableLoadMore,
   type DataTableCell,
   type DataTableColumn,
@@ -262,6 +263,7 @@ interface ListProps {
 const NO_ATTRIBUTIONS: DistressAttribution[] = [];
 
 function FilingsList({ kind, ...props }: ListProps & { kind: DistressFilingKind }) {
+  const tableLayoutWidth = useTableLayoutWidth(props.width);
   const loader = useCallback<Loader<CloudFilingEventPayload>>(async ({ force, signal }) => {
     const loaded = await loadDistressFilings(kind, force, signal);
     const rows = loaded.payload.events;
@@ -293,7 +295,7 @@ function FilingsList({ kind, ...props }: ListProps & { kind: DistressFilingKind 
       viewId="filings"
       loader={loader}
       spec={spec}
-      columns={filingColumns(props.width)}
+      columns={filingColumns(tableLayoutWidth)}
       subject="8-K filings"
       emptyTitle={kind === "listing" ? "No listing notices." : "No bankruptcy or obligation filings."}
     />
@@ -301,6 +303,7 @@ function FilingsList({ kind, ...props }: ListProps & { kind: DistressFilingKind 
 }
 
 function GoingConcernList({ verdict, ...props }: ListProps & { verdict: GoingConcernVerdictFilter }) {
+  const tableLayoutWidth = useTableLayoutWidth(props.width);
   const loader = useCallback<Loader<GoingConcernDisclosure>>(async ({ offset, force, signal }) => {
     const loaded = await loadGoingConcern({
       verdict: verdict === "all" ? undefined : verdict,
@@ -343,7 +346,7 @@ function GoingConcernList({ verdict, ...props }: ListProps & { verdict: GoingCon
       viewId="going-concern"
       loader={loader}
       spec={spec}
-      columns={goingConcernColumns(props.width, verdict)}
+      columns={goingConcernColumns(tableLayoutWidth, verdict)}
       subject="going-concern disclosures"
       emptyTitle="No disclosures."
       emptyHint="A company missing here may still have disclosed doubt."
@@ -352,6 +355,7 @@ function GoingConcernList({ verdict, ...props }: ListProps & { verdict: GoingCon
 }
 
 function DesignationsList({ kind, exchange, ...props }: ListProps & { kind: string; exchange: string }) {
+  const tableLayoutWidth = useTableLayoutWidth(props.width);
   const loader = useCallback<Loader<DistressDesignation>>(async ({ offset, force, signal }) => {
     const loaded = await loadDesignations({
       kind: unlessAll(kind),
@@ -394,7 +398,7 @@ function DesignationsList({ kind, exchange, ...props }: ListProps & { kind: stri
       viewId="listings"
       loader={loader}
       spec={spec}
-      columns={designationColumns(props.width)}
+      columns={designationColumns(tableLayoutWidth)}
       subject="listing designations"
       emptyTitle="No designations."
     />
@@ -409,6 +413,7 @@ function InsolvencyList({ country, kind, namePrefix: prefix, search, searching, 
   searching: boolean;
   onSearch: () => void;
 }) {
+  const tableLayoutWidth = useTableLayoutWidth(props.width);
   const loader = useCallback<Loader<InsolvencyNotice>>(async ({ offset, force, signal }) => {
     const loaded = await loadInsolvencyNotices({
       country: unlessAll(country),
@@ -448,7 +453,7 @@ function InsolvencyList({ country, kind, namePrefix: prefix, search, searching, 
       viewId="insolvency"
       loader={loader}
       spec={spec}
-      columns={insolvencyColumns(props.width, flagged ? COUNTRY_FLAG_CELLS : 0)}
+      columns={insolvencyColumns(tableLayoutWidth, flagged ? COUNTRY_FLAG_CELLS : 0)}
       subject="insolvency notices"
       search={search}
       searching={searching}
