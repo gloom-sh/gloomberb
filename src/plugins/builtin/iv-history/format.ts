@@ -1,4 +1,4 @@
-import type { IvMethod } from "./client";
+import type { IvCloseBasis, IvMethod } from "./client";
 import type { IvStatRow, IvStatUnit, RichCheap, RichCheapDates } from "./model";
 
 /**
@@ -6,11 +6,15 @@ import type { IvStatRow, IvStatUnit, RichCheap, RichCheapDates } from "./model";
  * line each: under the table, in the shot and in the report's notes. The skew
  * is the stored 25-delta put and call IVs at a 30-day constant maturity, from
  * the latest quote capture; both differences are decimal IV shown in points.
+ * Its line is there only while a skew column is.
  */
-export const VCA_DEFINITIONS = [
-  "25D skew: 30-day 25-delta put IV minus 25-delta call IV, in vol points; positive means puts are richer. 30-90: IV30 minus IV90.",
-  "VIX is Cboe's 30-day S&P 500 implied vol from the whole SPX strike strip, skew included; IV30 here is at the money, so VIX usually reads higher.",
-] as const;
+export function vcaDefinitions({ skew }: { skew: boolean }): string[] {
+  return [
+    ...(skew ? ["25D skew: 30-day 25-delta put IV minus 25-delta call IV, in vol points; positive means puts are richer."] : []),
+    "30-90: IV30 minus IV90. IV/HV: IV30 over the HV20 of the same date.",
+    "VIX is Cboe's 30-day S&P 500 implied vol from the whole SPX strike strip, skew included; IV30 here is at the money, so VIX usually reads higher.",
+  ];
+}
 
 /** Words for implied volatility that are no function's code: `fn IVOL` names HIVG and OVDV, which list them as `suggestFor`. */
 export const IMPLIED_VOL_WORDS = ["IVOL", "IV", "OVOL", "IMPVOL", "IMPLIEDVOL"];
@@ -43,22 +47,31 @@ export function formatStat(value: number | null | undefined, unit: IvStatUnit): 
 /**
  * How a stored reading was taken. A quote capture is the option quote mids
  * from the minutes before the close, taken once a session and never updated:
- * it is not a live feed, so it is not called live.
+ * it is not a live feed, so it is not called live. A close solved from quote
+ * midpoints, where its prints were off the market, says so.
  */
-const readingSource = (method: IvMethod | null | undefined) => method === "quote-mid" ? "quote" : "close";
-export function statSource(row: Pick<IvStatRow, "method">): string {
-  return row.method === "prices" ? "closes" : row.method ? readingSource(row.method) : "";
+const readingSource = (method: IvMethod | null | undefined, basis?: IvCloseBasis | null) =>
+  method === "quote-mid" ? "quote" : basis === "mid" || basis === "mixed" ? "close mid" : "close";
+export function statSource(row: Pick<IvStatRow, "method"> & { basis?: IvCloseBasis | null }): string {
+  return row.method === "prices" ? "closes" : row.method ? readingSource(row.method, row.basis) : "";
 }
-/** "2026-10-09 quote": the session a reading belongs to and how it was taken. */
-export const readingLabel = (date: string, method: IvMethod | null | undefined, short = false) =>
-  `${short ? shortDate(date) : date} ${readingSource(method)}`;
+/**
+ * "2026-10-09 quote": the session a reading belongs to and how it was taken.
+ * A stale reading says so instead, "2026-05-18 close, stale", and in the short
+ * form "05-18 stale".
+ */
+export function readingLabel(date: string, method: IvMethod | null | undefined, short = false,
+  extra: { basis?: IvCloseBasis | null; stale?: boolean } = {}): string {
+  if (extra.stale) return short ? `${shortDate(date)} stale` : `${date} ${readingSource(method, extra.basis)}, stale`;
+  return `${short ? shortDate(date) : date} ${readingSource(method, extra.basis)}`;
+}
 /**
  * The dates every row agrees on, said once: the reading's, and the trade close
  * its rank is measured on. `short` is for a footer with little room: month and
  * day, and no window.
  */
 export function sharedDates({ reading, rank }: Pick<RichCheapDates, "reading" | "rank">, short = false): string[] {
-  if (reading?.method === "trade-close" && reading.date === rank) return [readingLabel(reading.date, reading.method, short)];
-  return [reading && `IV30 ${readingLabel(reading.date, reading.method, short)}`,
+  if (reading?.method === "trade-close" && reading.date === rank) return [readingLabel(reading.date, reading.method, short, { basis: reading.basis })];
+  return [reading && `IV30 ${readingLabel(reading.date, reading.method, short, { basis: reading.basis })}`,
     rank && (short ? `IVR/IVP ${shortDate(rank)} close` : `IVR/IVP vs 52 weeks to ${rank} close`)].filter((part): part is string => !!part);
 }

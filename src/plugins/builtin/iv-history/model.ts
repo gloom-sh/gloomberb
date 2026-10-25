@@ -1,6 +1,7 @@
+import { getPublishedUsEquityCalendarDay } from "../../../market-data/published-us-sessions";
 import type { PricePoint } from "../../../types/financials";
 import { rollingRealizedVolatility } from "../shared/volatility";
-import type { IvCoverageStatus, IvHistoryPayload, IvMethod, IvPoint, IvScreenRow, IvStats } from "./client";
+import type { IvCloseBasis, IvCoverageStatus, IvHistoryPayload, IvMethod, IvPoint, IvScreenRow, IvStats, ScreenHv } from "./client";
 
 /**
  * A history's warnings in words for the reader. A symbol demand coverage could
@@ -18,6 +19,48 @@ export type IvLookback = "1Y" | "2Y" | "ALL";
 const RICH_PERCENTILE = 80;
 const CHEAP_PERCENTILE = 20;
 
+/** A reading trailing the symbol's newest session by more sessions than this is stale. */
+const STALE_AFTER_SESSIONS = 5;
+const DAY_MS = 86_400_000;
+
+/** Whether `date` ("2026-10-23") is a US equity session: the published NYSE calendar where it covers, else a weekday. */
+function isSession(date: string): boolean {
+  const published = getPublishedUsEquityCalendarDay("NYSE", date);
+  if (published) return published === "session";
+  const weekday = new Date(`${date}T00:00:00Z`).getUTCDay();
+  return weekday !== 0 && weekday !== 6;
+}
+
+/** US sessions after `date` up to and including `through`: how far behind that session a reading is. */
+export function sessionsBehind(date: string, through: string): number {
+  const end = Date.parse(`${through}T00:00:00Z`);
+  let behind = 0;
+  for (let time = Date.parse(`${date}T00:00:00Z`) + DAY_MS; time <= end; time += DAY_MS) {
+    if (isSession(new Date(time).toISOString().slice(0, 10))) behind += 1;
+  }
+  return behind;
+}
+
+/** The newest of the dates given: the newest session the symbol's stored readings, backfill and prices reach. */
+function newestSession(...dates: ReadonlyArray<string | null | undefined>): string | null {
+  return dates.filter((date): date is string => !!date).map((date) => date.slice(0, 10)).sort().at(-1) ?? null;
+}
+
+/** How many sessions a reading is behind the newest, and whether that makes it stale. */
+function staleness(date: string | null | undefined, newest: string | null): { sessionsBehind: number | null; stale: boolean } {
+  const behind = date && newest ? sessionsBehind(date.slice(0, 10), newest) : null;
+  return { sessionsBehind: behind, stale: behind != null && behind > STALE_AFTER_SESSIONS };
+}
+
+/** HV after the close of the last session on or before `date`; null before the series starts. */
+export function hvOn(hv: ScreenHv, date: string): { date: string; value: number } | null {
+  for (let index = hv.series.length - 1; index >= 0; index -= 1) {
+    const [sessionDate, value] = hv.series[index]!;
+    if (sessionDate <= date) return { date: sessionDate, value };
+  }
+  return null;
+}
+
 export interface DatedValue { date: Date; value: number | null }
 export type IvStatUnit = "vol" | "points" | "ratio";
 /** One measure's latest value ranked against its own prior 52 weeks. */
@@ -28,11 +71,21 @@ export interface IvStatRow {
   value: number | null;
   date: string | null;
   method: IvMethod | "prices" | null;
+  /** Prices a trade close was solved from, when the server says (see `IvCloseBasis`). */
+  basis: IvCloseBasis | null;
   low: number | null;
   high: number | null;
   rank: number | null;
   percentile: number | null;
   samples: number;
+  /**
+   * The reading trails the symbol's newest session by more than `STALE_AFTER_SESSIONS`
+   * sessions: its rank and percentile are left out, since they would rank an old
+   * figure as though it were current.
+   */
+  stale: boolean;
+  /** Sessions between the reading and the symbol's newest session. */
+  sessionsBehind: number | null;
 }
 /** Rank and percentile need this many prior sessions, matching the server. */
 const MIN_RANK_SAMPLES = 120;
@@ -96,6 +149,8 @@ export interface IvHistoryModel {
   /** "skew from 2026-09-23", or why there is no skew at all. */
   skewNote: string | null;
   stats: IvStatRow[];
+  /** Which measures are stale and what that leaves out, when any is. */
+  staleNote: string | null;
   since: string | null;
   /** Where the 1Y series starts and how deep it is, when that differs from the rest or leaves it unranked. */
   oneYearNote: string | null;
@@ -127,15 +182,16 @@ function lookbackStart(asOf: string, lookback: IvLookback): string | null {
 /** The latest value against the 52 weeks before it, with the same rules as the server's IV rank. */
 function seriesStat(id: string, label: string, unit: IvStatUnit, points: readonly DatedValue[], method: IvStatRow["method"]): IvStatRow {
   const latest = [...points].reverse().find((point) => point.value != null);
-  if (!latest) return { id, label, unit, value: null, date: null, method, low: null, high: null, rank: null, percentile: null, samples: 0 };
+  if (!latest) return { id, label, unit, value: null, date: null, method, basis: null, low: null, high: null, rank: null, percentile: null, samples: 0,
+    stale: false, sessionsBehind: null };
   const start = lookbackStart(day(latest.date), "1Y")!;
   const window = points.filter((point) => point.value != null && day(point.date) >= start && point.date < latest.date).map((point) => point.value!);
   const value = latest.value!;
   const low = window.length ? Math.min(value, ...window) : null, high = window.length ? Math.max(value, ...window) : null;
   const enough = window.length >= MIN_RANK_SAMPLES;
-  return { id, label, unit, value, date: day(latest.date), method, low, high,
+  return { id, label, unit, value, date: day(latest.date), method, basis: null, low, high,
     rank: enough && high! > low! ? (value - low!) / (high! - low!) * 100 : null,
-    percentile: midrankPercentile(window, value), samples: window.length };
+    percentile: midrankPercentile(window, value), samples: window.length, stale: false, sessionsBehind: null };
 }
 
 function byMethod(series: readonly IvPoint[], method: IvMethod, field: "iv30" | "iv90" | "iv365") {
@@ -192,24 +248,38 @@ export function projectIvHistory(
     return { date: point.date, value: point.value == null || iv90 == null || !(iv90 > 0) ? null : point.value / iv90 };
   });
   const fromServer = (id: string, label: string, stats: IvStats | null): IvStatRow => ({ id, label, unit: "vol",
-    value: stats?.value ?? null, date: stats?.date ?? null, method: stats?.method ?? null, low: stats?.low ?? null, high: stats?.high ?? null,
-    rank: stats?.rank ?? null, percentile: stats?.percentile ?? null, samples: stats?.samples ?? 0 });
+    value: stats?.value ?? null, date: stats?.date ?? null, method: stats?.method ?? null, basis: stats?.basis ?? null,
+    low: stats?.low ?? null, high: stats?.high ?? null,
+    rank: stats?.rank ?? null, percentile: stats?.percentile ?? null, samples: stats?.samples ?? 0, stale: false, sessionsBehind: null });
   const stats: IvStatRow[] = [fromServer("iv30", "IV 30d ATM", payload.stats.iv30)];
   // A newer quote capture is shown on its own row: its rank would mix methods.
   if (latest?.method === "quote-mid" && latest.iv30 != null && (!payload.stats.iv30 || latest.date > payload.stats.iv30.date)) {
-    stats.push({ id: "iv30-quote", label: "IV 30d quote", unit: "vol", value: latest.iv30, date: latest.date, method: "quote-mid",
-      low: null, high: null, rank: null, percentile: null, samples: 0 });
+    stats.push({ id: "iv30-quote", label: "IV 30d quote", unit: "vol", value: latest.iv30, date: latest.date, method: "quote-mid", basis: null,
+      low: null, high: null, rank: null, percentile: null, samples: 0, stale: false, sessionsBehind: null });
   }
   // IV1Y ranks trade closes only; until there is one, a stored quote gives its level, unranked.
   const oneYear = payload.stats.iv365 ?? null;
   stats.push(fromServer("iv90", "IV 90d ATM", payload.stats.iv90),
     !oneYear && latest?.iv365 != null
-      ? { id: "iv365", label: "IV 1Y ATM", unit: "vol", value: latest.iv365, date: latest.date, method: latest.method,
-        low: null, high: null, rank: null, percentile: null, samples: 0 }
+      ? { id: "iv365", label: "IV 1Y ATM", unit: "vol", value: latest.iv365, date: latest.date, method: latest.method, basis: latest.basis ?? null,
+        low: null, high: null, rank: null, percentile: null, samples: 0, stale: false, sessionsBehind: null }
       : fromServer("iv365", "IV 1Y ATM", oneYear),
     seriesStat("hv", `HV ${window}`, "vol", rolling, "prices"),
     seriesStat("spread", `IV 30d - HV ${window}`, "points", spreadAll, "trade-close"),
     seriesStat("term", "IV 30d / 90d", "ratio", termAll, "trade-close"));
+
+  // The newest session the symbol reaches, by its prices, its backfill and every reading it has: a reading more
+  // than STALE_AFTER_SESSIONS behind it is shown as it is, marked stale, and ranks nothing.
+  const newest = newestSession(payload.coverage?.backfilledThrough, latest?.date, latestDate,
+    ...payload.series.map((point) => point.sessionDate), ...prices.map((price) => day(price.date)));
+  const measured = stats.map((row): IvStatRow => {
+    const behind = staleness(row.date, newest);
+    return { ...row, ...behind, ...behind.stale ? { rank: null, percentile: null } : {} };
+  });
+  const staleRows = measured.filter((row) => row.stale);
+  const staleNote = staleRows.length
+    ? `Stale, left out of rank: ${staleRows.map((row) => `${row.label} ${row.date}`).join(", ")} `
+      + `(more than ${STALE_AFTER_SESSIONS} sessions behind ${newest}).` : null;
 
   // Worded as VCA words each symbol (screenCoverage).
   if (payload.status === "queued") warnings.push(`${payload.symbol} ${queuedText(payload.coverage?.addedAt, options.now ?? Date.now())}.`);
@@ -232,7 +302,7 @@ export function projectIvHistory(
     iv30: visible(tradeIv30), iv90: visible(byMethod(payload.series, "trade-close", "iv90")), iv365: visible(tradeIv365),
     quoteIv30: visible(byMethod(payload.series, "quote-mid", "iv30")),
     hv, spread: visible(spreadAll), skew: visible(skew.points),
-    skewSince: skew.points[0] ? day(skew.points[0].date) : null, skewNote: skew.note, stats,
+    skewSince: skew.points[0] ? day(skew.points[0].date) : null, skewNote: skew.note, stats: measured, staleNote,
     since, oneYearNote, asOf: latestDate, warnings,
   };
 }
@@ -251,6 +321,16 @@ export interface RichCheapRow {
   iv30: number | null;
   date: string | null;
   method: IvMethod | null;
+  /** Prices a trade close was solved from, when the server says (see `IvCloseBasis`). */
+  basis: IvCloseBasis | null;
+  /**
+   * The reading trails the symbol's newest session by more than `STALE_AFTER_SESSIONS`
+   * sessions. It is shown, marked stale, and left out of IV/HV, rank, percentile and
+   * Rich/Cheap, and so are its skew and IV1Y rank when they are as old.
+   */
+  stale: boolean;
+  /** Sessions between the reading and the symbol's newest session. */
+  sessionsBehind: number | null;
   /** The underlying price the reading was taken at: the session's close, or the spot at the quote capture. */
   spot: number | null;
   rank: number | null;
@@ -268,7 +348,14 @@ export interface RichCheapRow {
   skew: number | null;
   /** Session of the quote capture the skew comes from. */
   skewDate: string | null;
+  /**
+   * Realized volatility on the reading's own date, so the row reads as IV30 over HV;
+   * the newest HV for a stale reading or one with no HV on its date.
+   */
   hv: number | null;
+  /** Session of the HV shown. */
+  hvDate: string | null;
+  /** IV30 over the HV of its own date; empty for a stale reading. */
   ivHv: number | null;
   verdict: RichCheap;
 }
@@ -280,7 +367,7 @@ export interface RichCheapRow {
  * is measured on. A group the rows disagree on gets its own column.
  */
 export interface RichCheapDates {
-  reading: { date: string; method: IvMethod } | null;
+  reading: { date: string; method: IvMethod; basis: IvCloseBasis | null } | null;
   /** The trade close every ranked row is ranked on. */
   rank: string | null;
   /** Ranked rows are ranked on different closes. */
@@ -293,8 +380,9 @@ export function richCheapDates(rows: readonly RichCheapRow[]): RichCheapDates {
   const ranked = rows.filter((row) => row.rankDate);
   const first = read[0], firstRanked = ranked[0];
   return {
-    reading: first && read.every((row) => row.date === first.date && row.method === first.method)
-      ? { date: first.date!, method: first.method! } : null,
+    // A stale row's own date is said in its row, never once for all.
+    reading: first && read.every((row) => row.date === first.date && row.method === first.method && row.basis === first.basis && !row.stale)
+      ? { date: first.date!, method: first.method!, basis: first.basis } : null,
     rank: firstRanked && ranked.every((row) => row.rankDate === firstRanked.rankDate) ? firstRanked.rankDate : null,
     rankApart: !!firstRanked && ranked.some((row) => row.rankDate !== firstRanked.rankDate),
     skewApart: rows.some((row) => row.skew != null && row.skewDate !== row.date),
@@ -307,22 +395,34 @@ export function verdictFor(percentile: number | null): RichCheap {
   return percentile >= RICH_PERCENTILE ? "rich" : percentile <= CHEAP_PERCENTILE ? "cheap" : "fair";
 }
 
-export function projectRichCheap(rows: readonly IvScreenRow[], hv: ReadonlyMap<string, number | null> = new Map()): RichCheapRow[] {
+export function projectRichCheap(rows: readonly IvScreenRow[], hv: ReadonlyMap<string, ScreenHv | null> = new Map()): RichCheapRow[] {
   return rows.map((row) => {
     const latest = row.latest;
     const iv30 = latest?.iv30 ?? null;
-    const realized = hv.get(row.symbol) ?? null;
-    const percentile = row.iv30?.percentile ?? null;
+    const series = hv.get(row.symbol) ?? null;
+    // The newest session the symbol reaches: its prices, its backfill and every reading it has.
+    const newest = newestSession(row.coverage?.backfilledThrough, latest?.date, row.iv30?.date, row.iv90?.date, row.iv365?.date,
+      row.skew?.date, series?.date);
+    const { stale, sessionsBehind: behind } = staleness(latest?.date, newest);
+    // A rank on a close that old ranks an old figure; so does a skew.
+    const rankStale = stale || staleness(row.iv30?.date, newest).stale;
+    const skewStale = row.skew ? staleness(row.skew.date, newest).stale : false;
+    const percentile = rankStale ? null : row.iv30?.percentile ?? null;
+    // HV on the reading's own date: today's HV beside an old IV says nothing about it.
+    const atReading = series && !stale && latest?.date ? hvOn(series, latest.date) : null;
+    const shown = atReading ?? (series?.value != null && series.date ? { date: series.date, value: series.value } : null);
     return {
       symbol: row.symbol, status: row.coverageStatus ?? row.status, queuedAt: row.coverage?.addedAt ?? null,
       backfilledThrough: row.coverage?.backfilledThrough ?? null, warning: row.warnings?.[0] ?? null,
-      iv30, date: latest?.date ?? null, method: latest?.method ?? null, spot: latest?.spot ?? null,
-      rank: row.iv30?.rank ?? null, percentile, rankDate: row.iv30?.date ?? null,
+      iv30, date: latest?.date ?? null, method: latest?.method ?? null, basis: latest?.basis ?? null,
+      stale, sessionsBehind: behind, spot: latest?.spot ?? null,
+      rank: rankStale ? null : row.iv30?.rank ?? null, percentile, rankDate: rankStale ? null : row.iv30?.date ?? null,
       termSlope: iv30 != null && latest?.iv90 != null ? iv30 - latest.iv90 : null,
       iv1y: latest?.iv365 ?? null,
-      iv1yPercentile: latest?.iv365 != null && row.iv365 && row.iv365.date === row.iv30?.date ? row.iv365.percentile : null,
-      skew: row.skew?.skew ?? null, skewDate: row.skew?.date ?? null, hv: realized,
-      ivHv: iv30 != null && realized != null && realized > 0 ? iv30 / realized : null,
+      iv1yPercentile: !rankStale && latest?.iv365 != null && row.iv365 && row.iv365.date === row.iv30?.date ? row.iv365.percentile : null,
+      skew: skewStale ? null : row.skew?.skew ?? null, skewDate: skewStale ? null : row.skew?.date ?? null,
+      hv: shown?.value ?? null, hvDate: shown?.date ?? null,
+      ivHv: iv30 != null && atReading != null && atReading.value > 0 ? iv30 / atReading.value : null,
       verdict: verdictFor(percentile),
     };
   });
@@ -376,6 +476,15 @@ export function screenCoverage(
 }
 
 /**
+ * The symbols whose reading is stale, dated, and what that leaves out: "Stale,
+ * left out of IV/HV, rank and Rich/Cheap: FXB 2026-05-18, FXA 2026-03-19."
+ */
+export function screenStaleNote(rows: readonly RichCheapRow[]): string | null {
+  const stale = rows.filter((row) => row.stale && row.date);
+  return stale.length ? `Stale, left out of IV/HV, rank and Rich/Cheap: ${stale.map((row) => `${row.symbol} ${row.date}`).join(", ")}.` : null;
+}
+
+/**
  * The VCA pane's notices: the report's wording without a time to come back
  * at, since the pane checks again by itself, and a count of ready symbols with
  * no IV30, which is how an older server reports one that found no options.
@@ -383,7 +492,8 @@ export function screenCoverage(
 export function screenPaneNotices(rows: readonly RichCheapRow[], now = Date.now()): string[] {
   const empty = rows.filter((row) => row.status === "ready" && row.iv30 == null).length;
   return [...screenCoverage(rows, { now, retry: false }).notes,
-    ...(empty ? [`${empty} symbol${empty === 1 ? " has" : "s have"} no stored implied volatility yet.`] : [])];
+    ...(empty ? [`${empty} symbol${empty === 1 ? " has" : "s have"} no stored implied volatility yet.`] : []),
+    ...[screenStaleNote(rows)].filter((note): note is string => !!note)];
 }
 
 export const VCA_PRESETS = {

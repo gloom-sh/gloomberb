@@ -9,7 +9,7 @@ import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test
 import type { DataProvider } from "../../../types/data-provider";
 import type { HeadlessBundleResult, HeadlessPaneApiClient } from "../../../types/headless";
 import type { IvHistoryPayload, IvMethod, IvPoint, IvScreenPayload, IvScreenRow } from "./client";
-import { VCA_DEFINITIONS } from "./format";
+import { vcaDefinitions } from "./format";
 import { ivHistoryHeadless, ivScreenHeadless } from "./headless";
 
 const reading = (date: string, method: IvMethod, iv30: number) => ({
@@ -100,7 +100,7 @@ describe("VCA dates", () => {
     expect(cell("skewDate", 0)).toBe("2026-10-08");
     // Puts at 30% against calls at 28% read +2.0, and the report says which side is subtracted and in what unit.
     expect(cell("skew", 0)).toBe("+2.0");
-    expect(result.notes).toEqual([...VCA_DEFINITIONS]);
+    expect(result.notes).toEqual(vcaDefinitions({ skew: true }));
     expect(result.notes?.[0]).toContain("25-delta put IV minus 25-delta call IV, in vol points; positive means puts are richer");
   });
 });
@@ -115,7 +115,7 @@ describe("VCA backfill states", () => {
   const report = async (rows: IvScreenRow[]) => {
     setSystemTime(new Date("2026-10-11T08:04:00Z"));
     const { result } = await load(rows);
-    return { notes: result.notes!.filter((note) => !(VCA_DEFINITIONS as readonly string[]).includes(note)),
+    return { notes: result.notes!.filter((note) => !vcaDefinitions({ skew: true }).includes(note)),
       complete: result.complete, unavailableSymbols: result.unavailableSymbols };
   };
 
@@ -298,7 +298,7 @@ describe("HIVG exports for scripts", () => {
     const uncovered = await load("SCHD", []);
     expect(headers(uncovered.lines)).toEqual(headers(covered.lines));
     expect(headers(covered.lines)).toEqual([
-      "Measure,Current,As of,Method,52w low,52w high,Rank,Pctl,Sessions,status,symbol_or_series,currency_or_unit,interval,source,as_of",
+      "Measure,Current,As of,Method,52w low,52w high,Rank,Pctl,Sessions,Stale,status,symbol_or_series,currency_or_unit,interval,source,as_of",
       "Session,IV30 (%),IV90 (%),IV1Y (%),HV (%),IV-HV,skew25d put-call (pts),rr25d call-put (pts),status,symbol_or_series,currency_or_unit,interval,source,as_of",
     ]);
     // Each measure's unit stays in its label, figures or none.

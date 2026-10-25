@@ -24,7 +24,7 @@ const HV_OPTIONS = HV_WINDOWS.map((window) => ({ value: String(window), label: `
 const STAT_COLUMNS: DataTableColumn[] = [
   { id: "label", label: "Measure", width: 16, align: "left" },
   { id: "value", label: "Current", width: 9, align: "right" },
-  { id: "date", label: "As of", width: 17, align: "left" },
+  { id: "date", label: "As of", width: 20, align: "left" },
   { id: "low", label: "52w low", width: 9, align: "right" },
   { id: "high", label: "52w high", width: 9, align: "right" },
   { id: "rank", label: "Rank", width: 6, align: "right" },
@@ -66,7 +66,7 @@ export function IvHistoryPane({ width, height, focused }: PaneProps) {
     const timer = setTimeout(() => { void resource.reload(); }, 60_000);
     return () => clearTimeout(timer);
   }, [model?.status, resource.updatedAt]);
-  const notices = [identityError, resource.error, resource.data?.prices.error, ...(model?.warnings ?? [])]
+  const notices = [identityError, resource.error, resource.data?.prices.error, ...(model?.warnings ?? []), model?.staleNote]
     .filter((value): value is string => !!value);
   usePaneNoticeFooter({ registrationId: "iv-history-notices", notices: [...new Set(notices)], focused });
   const cycleLookback = () => setLookback(lookback === "1Y" ? "2Y" : lookback === "2Y" ? "ALL" : "1Y");
@@ -104,8 +104,9 @@ export function IvHistoryPane({ width, height, focused }: PaneProps) {
     const tone = row.percentile != null && (row.percentile >= 80 || row.percentile <= 20) ? colors.warning : colors.text;
     switch (id) {
       case "label": return { text: row.label, color: colors.textBright };
-      case "value": return { text: formatStat(row.value, row.unit), color: row.id.startsWith("iv30") ? colors.warning : colors.textBright };
-      case "date": return { text: row.date ? `${row.date} ${statSource(row)}` : "--", color: colors.textDim };
+      case "value": return { text: formatStat(row.value, row.unit), color: row.stale ? colors.textDim : row.id.startsWith("iv30") ? colors.warning : colors.textBright };
+      // A stale reading says so in place of how it was taken: it is no current figure either way.
+      case "date": return { text: row.date ? `${row.date} ${row.stale ? "stale" : statSource(row)}` : "--", color: row.stale ? colors.warning : colors.textDim };
       case "low": return { text: formatStat(row.low, row.unit), color: colors.textDim };
       case "high": return { text: formatStat(row.high, row.unit), color: colors.textDim };
       case "rank": return { text: formatRank(row.rank), color: tone };

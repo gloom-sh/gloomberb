@@ -75,6 +75,7 @@ import {
   loadOptionModelInputs,
   loadOptionsChainOpenInterest,
   chainCoinCurrency,
+  chainHasFilledIv,
   formatCoinPremiumCell,
   formatOptionDeltaCell,
   formatOptionDollarCell,
@@ -2711,7 +2712,7 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     // IV and delta are valued at one spot and instant, named under the table and on every exported row.
     const { chain, spot: modelSpot } = valueChainAtModelSpot(loaded, inputs, Date.now(), identity.exchange);
     const basis: OptionsChainBasis = { spot: modelSpot, dividendYield: inputs.dividendYield ?? null,
-      openInterest: await loadOptionsChainOpenInterest(symbol, chain) };
+      openInterest: await loadOptionsChainOpenInterest(symbol, chain), ivFilled: chainHasFilledIv(chain) };
     const basisFields = optionsBasisFields(basis);
     const currency = [...chain.calls, ...chain.puts].find((contract) => contract.currency?.trim())?.currency.trim().toUpperCase()
       ?? quote?.currency ?? null;
@@ -2783,6 +2784,7 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         { key: "bid", header: "Bid" },
         { key: "ask", header: "Ask" },
         { key: "iv", header: "IV (annualized decimal)" },
+        { key: "ivSource", header: "IV source" },
         { key: "delta", header: "Delta (decimal)" },
         { key: "volume", header: "Vol" },
         { key: "openInterest", header: "OI" },
@@ -2810,7 +2812,7 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         { key: "coinAsk", header: `Ask ${coin}`, align: "right", format: formatCoinPremiumCell },
         { key: "coinMark", header: `Mark ${coin}`, align: "right", format: formatCoinPremiumCell },
         { key: "mark", header: "Mark $", align: "right", format: formatOptionDollarCell },
-        { key: "iv", header: "IV", align: "right", format: formatOptionIvCell },
+        { key: "iv", header: "IV", align: "right", format: (value, row) => formatOptionIvCell(value, row) },
         { key: "delta", header: "Delta", align: "right", format: formatOptionDeltaCell },
         { key: "gamma", header: "Gamma", align: "right", format: formatOptionGammaCell, optional: true, dropPriority: 3 },
         { key: "vega", header: "Vega $", align: "right", format: formatOptionDollarCell, optional: true, dropPriority: 2 },
@@ -2826,7 +2828,7 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         { key: "last", header: "Last", align: "right" },
         { key: "bid", header: "Bid", align: "right", format: (_value, row) => formatOptionQuoteCell(row, "bid") },
         { key: "ask", header: "Ask", align: "right", format: (_value, row) => formatOptionQuoteCell(row, "ask") },
-        { key: "iv", header: "IV", align: "right", format: formatOptionIvCell },
+        { key: "iv", header: "IV", align: "right", format: (value, row) => formatOptionIvCell(value, row) },
         { key: "delta", header: "Delta", align: "right", format: formatOptionDeltaCell },
         { key: "volume", header: "Vol", align: "right", format: formatCountCell, optional: true, dropPriority: 1 },
         { key: "openInterest", header: "OI", align: "right", format: formatCountCell, optional: true, dropPriority: 1 },

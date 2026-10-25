@@ -8,14 +8,14 @@ import { Box, Text, useUiCapabilities } from "../../../ui";
 import { wrapTextLines } from "../../../utils/text-wrap";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { compareSortValues, nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
-import { loadIvScreen, loadScreenVolatilities } from "./client";
-import { formatPoints, formatRank, formatSpot, formatVol, readingLabel, sharedDates, shortDate, VCA_DEFINITIONS, verdictLabel } from "./format";
+import { loadIvScreen, loadScreenVolatilities, type ScreenHv } from "./client";
+import { formatPoints, formatRank, formatSpot, formatVol, readingLabel, sharedDates, shortDate, vcaDefinitions, verdictLabel } from "./format";
 import { projectRichCheap, type RichCheapRow, richCheapDates, screenPaneNotices, type VcaPreset } from "./model";
 import { vcaUniverse } from "./universe";
 import { MovedTickerState } from "../../../components/layout/pane/ticker-fate-gate";
 import type { MovedTickerChange } from "../../../tickers/ticker-changes";
 
-type SortId = keyof RichCheapRow;
+type SortId = Exclude<keyof RichCheapRow, "stale">;
 const HV_WINDOW = 20;
 /** Pane borders and the footer's own padding. */
 const FOOTER_MARGIN = 6;
@@ -49,7 +49,7 @@ export function IvScreenPane({ paneId, width, height, focused }: PaneProps) {
   const universe = useMemo(() => vcaUniverse(scope, symbolsText, collectionId, [...tickers.values()]), [scope, symbolsText, collectionId, tickers]);
   const key = universe.instruments.map((instrument) => instrument.symbol).join(",");
   const controller = useRef<AbortController | null>(null);
-  const [hv, setHv] = useState<Map<string, number | null>>(new Map());
+  const [hv, setHv] = useState<Map<string, ScreenHv | null>>(new Map());
   // Symbols whose company moved: their rows have no HV and the footer says where each company went.
   const [moved, setMoved] = useState<Array<{ symbol: string; change: MovedTickerChange }>>([]);
   const loader = useCallback(async () => {
@@ -83,17 +83,20 @@ export function IvScreenPane({ paneId, width, height, focused }: PaneProps) {
   }, [resource.data, hv, sort]);
   const dates = useMemo(() => richCheapDates(rows), [rows]);
   // A date every row shares moves to the footer; a column no row fills, or whose dates agree, is left out.
+  const hasSkew = useMemo(() => rows.some((row) => row.skew != null), [rows]);
+  // A close solved from quote midpoints names itself, which a date alone has no room for.
+  const dateWidth = useMemo(() => rows.some((row) => !row.stale && (row.basis === "mid" || row.basis === "mixed")) ? 15 : 11, [rows]);
   const columns = useMemo(() => COLUMNS.filter((column) => {
     switch (column.id) {
       case "date": return !dates.reading;
       case "rankDate": return dates.rankApart;
       case "iv1y": return rows.some((row) => row.iv1y != null);
       case "iv1yPercentile": return rows.some((row) => row.iv1yPercentile != null);
-      case "skew": return rows.some((row) => row.skew != null);
+      case "skew": return hasSkew;
       case "skewDate": return dates.skewApart;
       default: return true;
     }
-  }), [rows, dates]);
+  }).map((column) => column.id === "date" ? { ...column, width: dateWidth } : column), [rows, dates, hasSkew, dateWidth]);
   const [selected, setSelected] = useState<string | null>(null);
   const coverageNotices = useMemo(() => screenPaneNotices(rows), [rows]);
   // One symbol to screen whose company moved has nothing to show but where it went, as a ticker's panes say.
@@ -117,10 +120,10 @@ export function IvScreenPane({ paneId, width, height, focused }: PaneProps) {
   const cell = (row: RichCheapRow, id: string): { text: string; color?: string } => {
     switch (id) {
       case "symbol": return { text: row.symbol, color: colors.textBright };
-      case "iv30": return { text: formatVol(row.iv30), color: colors.warning };
+      case "iv30": return { text: formatVol(row.iv30), color: row.stale ? colors.textDim : colors.warning };
       case "spot": return { text: formatSpot(row.spot), color: colors.textDim };
-      case "date": return { text: row.date ? readingLabel(row.date, row.method, true)
-        : row.status === "queued" || row.status === "backfilling" ? row.status : "--", color: colors.textDim };
+      case "date": return { text: row.date ? readingLabel(row.date, row.method, true, { basis: row.basis, stale: row.stale })
+        : row.status === "queued" || row.status === "backfilling" ? row.status : "--", color: row.stale ? colors.warning : colors.textDim };
       case "rankDate": return { text: row.rankDate ? `${shortDate(row.rankDate)} close` : "--", color: colors.textDim };
       case "rank": return { text: formatRank(row.rank) };
       case "percentile": return { text: formatRank(row.percentile) };
@@ -137,7 +140,8 @@ export function IvScreenPane({ paneId, width, height, focused }: PaneProps) {
   };
   const custom = scope === "custom";
   // The skew's sign and VIX beside IV30 are units of the figures above them, so they stay under the table.
-  const definitions = useMemo(() => VCA_DEFINITIONS.flatMap((line) => wrapTextLines(line, Math.max(1, width - 2))), [width]);
+  const definitionLines = useMemo(() => vcaDefinitions({ skew: hasSkew }), [hasSkew]);
+  const definitions = useMemo(() => definitionLines.flatMap((line) => wrapTextLines(line, Math.max(1, width - 2))), [definitionLines, width]);
   return <Box width={width} height={height} flexDirection="column" overflow="hidden">
     <QueryBar width={width} filters={[
       { id: "universe", label: "Universe", value: VCA_SCOPE_OPTIONS.some((option) => option.value === scope) ? scope : "etfs",
@@ -159,7 +163,7 @@ export function IvScreenPane({ paneId, width, height, focused }: PaneProps) {
       {nativePaneChrome ? (
         // The desktop and the web wrap each definition at the pane's width, under a table that fills the rest.
         <Box flexDirection="column" paddingX={1} flexShrink={0}>
-          {VCA_DEFINITIONS.map((line) => <Prose key={line} text={line} width={Math.max(1, width - 2)} color={colors.textDim} figures={false} />)}
+          {definitionLines.map((line) => <Prose key={line} text={line} width={Math.max(1, width - 2)} color={colors.textDim} figures={false} />)}
         </Box>
       ) : (
         <Box flexDirection="column" paddingX={1} height={definitions.length} flexShrink={0}>

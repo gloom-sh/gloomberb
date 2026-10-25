@@ -281,6 +281,8 @@ export type LeapsRow = {
   // The fields below are on a row only when `--columns` asked for them.
   /** `iv`: the implied volatility the contract's delta is valued at, percent a year. */
   ivPercent?: number | null;
+  /** `iv`: `filled` when that strike has no two-sided out-of-the-money quote to solve from and its IV is read off the neighbouring strikes. */
+  ivSource?: "solved" | "filled" | null;
   /** `ivr`: the underlying's 30-day IV rank against its 52 weeks, 0 to 100, and the close it ranks. */
   ivRank?: number | null;
   ivRankAsOf?: string | null;
@@ -369,7 +371,10 @@ function screenLeapsChain(
       dataSource: chain.dataSource ?? null,
       delayMinutes: chain.delayMinutes ?? null,
     };
-    if (wants.has("iv")) row.ivPercent = contract.iv != null && Number.isFinite(contract.iv) ? round(contract.iv * 100, 2) : null;
+    if (wants.has("iv")) {
+      row.ivPercent = contract.iv != null && Number.isFinite(contract.iv) ? round(contract.iv * 100, 2) : null;
+      row.ivSource = row.ivPercent == null ? null : (contract as { ivFilled?: boolean }).ivFilled ? "filled" : "solved";
+    }
     // A two-sided quote passed the spread cap, so the midpoint is there.
     const mid = optionMid(contract)!;
     if (wants.has("cost")) row.costPerContract = round(mid * SHARES_PER_CONTRACT, 2);
@@ -694,7 +699,7 @@ const LEAPS_COLUMNS: CliResultColumn<LeapsRow>[] = [
 
 /** What each `--columns` name adds to the exports, after Extrinsic/yr %. */
 const EXTRA_EXPORT_COLUMNS: Record<LeapsExtraColumn, CliResultColumn<LeapsRow>[]> = {
-  iv: [{ key: "ivPercent", header: "IV %", align: "right", format: formatPercent }],
+  iv: [{ key: "ivPercent", header: "IV %", align: "right", format: formatPercent }, { key: "ivSource", header: "IV source" }],
   ivr: [{ key: "ivRank", header: "IV Rank", align: "right" }, { key: "ivRankAsOf", header: "IV Rank As Of" }],
   cost: [{ key: "costPerContract", header: "Cost/Contract (mid x 100)", align: "right" }],
   breakeven: [
@@ -717,7 +722,8 @@ const LEAPS_TEXT_COLUMNS: CliResultColumn<LeapsRow>[] = TEXT_COLUMN_KEYS.map((ke
 
 /** The text table's columns for a contract's own `--columns` figures; the underlying's go in a table of their own above. */
 const EXTRA_TEXT_COLUMNS: Partial<Record<LeapsExtraColumn, CliResultColumn<LeapsRow>[]>> = {
-  iv: [{ key: "ivPercent", header: "IV", align: "right", format: formatPercent }],
+  iv: [{ key: "ivPercent", header: "IV", align: "right", format: (value, row) => row.ivSource === "filled" && typeof value === "number" && Number.isFinite(value)
+    ? `~${value.toFixed(1)}%` : formatPercent(value) }],
   "carry-net": [{ key: "carryNetPerYearPercent", header: "Net/yr", align: "right", format: formatPercent }],
   cost: [{ key: "costPerContract", header: "Cost", align: "right", format: formatWhole }],
   breakeven: [

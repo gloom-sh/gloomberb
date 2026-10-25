@@ -44,7 +44,7 @@ import type { OptionContract } from "../../../types/financials";
 import { OPTIONS_CALCULATOR_TEMPLATE_ID } from "../options-calculator/model";
 import { buildChainCalcParams, resolveCalcSide } from "./calc-seed";
 import { useOptionsCatalogue } from "./expiry-catalogue";
-import { calculateOptionGreeks, calculateOptionsSummary, solveChainVolatilities, type OptionsSummary } from "./analytics";
+import { calculateOptionGreeks, calculateOptionsSummary, IV_FILLED_DETAIL, IV_FILLED_NOTE, IV_FILLED_SHORT, solveChainVolatilities, type OptionsSummary } from "./analytics";
 import {
   DEFAULT_OPTION_FIELD_IDS,
   buildStrikeList,
@@ -578,6 +578,7 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
       call,
       put,
       impliedVolatility: volatilities?.byStrike.get(strike),
+      impliedVolatilityFilled: volatilities?.filled.has(strike) ?? false,
       callGreeks: volatilities ? calculateOptionGreeks(call, "call", greeksSpot, dividendYield, volatilities) : undefined,
       putGreeks: volatilities ? calculateOptionGreeks(put, "put", greeksSpot, dividendYield, volatilities) : undefined,
       callExtrinsicPerYear: call && volatilities ? optionCarry(call, "call", greeksSpot, volatilities.valuationTime)?.extrinsicPerYear ?? null : null,
@@ -622,9 +623,21 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
     + `${new Date(footerSpot.observedAt).toISOString().slice(11, 16)} UTC` : null,
   strikeChain && !listedOpenInterest.loading ? openInterestAsOf?.date ? `OI ${openInterestAsOf.date.slice(5)}` : "OI undated" : null]
     .filter(Boolean).join(" · ");
-  usePaneFooter("options-basis", () => ({ info: basisText ? [{ id: "greeks-basis",
-    parts: [{ text: basisText, tone: "muted" as const }],
-    variants: [[{ text: shortBasisText, tone: "muted" as const }], []] }] : [] }), [basisText, shortBasisText]);
+  // How IV was solved is said while the chain shows a figure that was not: a strike with no two-sided
+  // out-of-the-money quote has its IV read off the neighbouring strikes, and its cell leads with "~".
+  const ivFilledShown = optionFieldIds.includes("iv") && rows.some((row) => row.impliedVolatilityFilled && row.impliedVolatility != null);
+  // A report of the pane (`gloom fn OMON`) says it too.
+  useRemoteUiNode(ivFilledShown ? {
+    role: "report-notice",
+    label: "IV filled",
+    getMetadata: () => ({ text: IV_FILLED_NOTE, key: "ivFilled", value: true }),
+  } : null);
+  usePaneFooter("options-basis", () => ({ info: [
+    ...(basisText ? [{ id: "greeks-basis", parts: [{ text: basisText, tone: "muted" as const }],
+      variants: [[{ text: shortBasisText, tone: "muted" as const }], []] }] : []),
+    ...(ivFilledShown ? [{ id: "iv-filled", parts: [{ text: IV_FILLED_NOTE, tone: "muted" as const }],
+      title: IV_FILLED_DETAIL, variants: [[{ text: IV_FILLED_SHORT, tone: "muted" as const }]] }] : []),
+  ] }), [basisText, shortBasisText, ivFilledShown]);
   // Figures that summarise the whole expiry move at most once a second, so a
   // busy stream reads as a steady strip rather than flicker.
   // A new expiry, a refreshed snapshot or the underlying price arriving or

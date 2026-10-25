@@ -4,7 +4,7 @@ import type { DataProvider } from "../../types/data-provider";
 import type { CliListing } from "../listing-arg";
 import { cliStyles, cliTerminalWidth, wrapText } from "../../utils/cli-output";
 import { isFiniteNumber } from "../../utils/guards";
-import { calculateOptionGreeks, solveChainVolatilities } from "../../plugins/builtin/options/analytics";
+import { calculateOptionGreeks, ivSolvedNote, solveChainVolatilities } from "../../plugins/builtin/options/analytics";
 import { optionQuoteSide } from "../../plugins/builtin/options/market-reference";
 import {
   formatModelSpotPrice, modelSpotLabel, optionModelSpot, type OptionModelSpot,
@@ -63,6 +63,8 @@ export interface OptionModelInputs {
 interface OptionModelFigures {
   /** Annualized volatility as a fraction, solved from the chain's quotes. */
   iv: number | null;
+  /** `iv` was read off the neighbouring strikes: this strike has no two-sided out-of-the-money quote to solve from. */
+  ivFilled?: boolean;
   delta: number | null;
 }
 
@@ -73,6 +75,7 @@ export const OPTION_MODEL_RATE = DEFAULT_OPTION_CALC_DRAFT.rate;
 export const MARKED_OPTION_FIELDS = {
   iv: "The venue's mark implied volatility (decimal), one per contract. Delta and the other greeks under mark are the venue's too: "
     + "Black-76 at the expiry's forward with no discounting, to its settlement.",
+  ivSource: "mark: iv is the venue's own, never solved or filled here.",
   bid: "Prices in USD are the coin prices (coin) at the expiry's forward (mark.forward), the venue's own model price.",
   mark: "price in USD; iv; delta and gamma per 1.00 move in the underlying; vega per volatility point and theta per calendar day, in USD.",
 } as const;
@@ -91,6 +94,8 @@ export function chainCoinCurrency(chain: OptionsChain): string | null {
 export const OPTION_VOLATILITY_FIELDS = {
   iv: "Annualized volatility (decimal) solved from the quote midpoint, one per strike from its out-of-the-money side, at the "
     + "spot, valuation time and rate in metadata.model. Delta here and dealer gamma (GEX) are valued with it.",
+  ivSource: "solved: iv comes from the strike's out-of-the-money quote midpoint. filled: that side has no two-sided quote, so iv is read off the "
+    + "nearest solved strikes (flat beyond the last one); it is no market's volatility, and delta is valued with it all the same.",
   impliedVolatility: "The data provider's own reported implied volatility, passed through unchanged. Delta does not use it; "
     + "GEX falls back to it only at a strike with no two-sided quote on either side.",
 } as const;
@@ -116,8 +121,9 @@ function optionModelFigures(chain: OptionsChain, inputs: OptionModelInputs): Map
       for (const contract of contracts) {
         const volatility = volatilities.byStrike.get(contract.strike);
         const delta = calculateOptionGreeks(contract, side, inputs.spot, inputs.dividendYield, volatilities)?.delta;
+        const iv = volatility != null && Number.isFinite(volatility) && volatility > 0 ? volatility : null;
         figures.set(contract, {
-          iv: volatility != null && Number.isFinite(volatility) && volatility > 0 ? volatility : null,
+          iv, ivFilled: iv != null && volatilities.filled.has(contract.strike),
           delta: delta != null && Number.isFinite(delta) ? delta : null,
         });
       }
@@ -167,7 +173,8 @@ export async function loadOptionModelInputs(
 /** The chain with each contract's modeled `iv` and `delta` added; every provider field is kept. */
 export function chainWithModelFigures(chain: OptionsChain, inputs: OptionModelInputs): OptionsChain {
   const figures = optionModelFigures(chain, inputs);
-  const add = (contract: OptionContract) => ({ ...contract, iv: figures.get(contract)?.iv ?? null, delta: figures.get(contract)?.delta ?? null });
+  const add = (contract: OptionContract) => ({ ...contract, iv: figures.get(contract)?.iv ?? null, ivFilled: figures.get(contract)?.ivFilled ?? false,
+    delta: figures.get(contract)?.delta ?? null });
   return { ...chain, calls: chain.calls.map(add), puts: chain.puts.map(add) };
 }
 
@@ -180,6 +187,13 @@ export interface OptionsChainBasis {
   spot: OptionModelSpot | null;
   dividendYield: number | null;
   openInterest: OpenInterestAsOf | null;
+  /** A strike's IV is filled from its neighbours (`chainHasFilledIv`), which the closing line says. */
+  ivFilled?: boolean;
+}
+
+/** Whether any contract's IV was read off the neighbouring strikes (see `ChainVolatilities.filled`). */
+export function chainHasFilledIv(chain: OptionsChain): boolean {
+  return [...chain.calls, ...chain.puts].some((contract) => (contract as OptionContract & OptionModelFigures).ivFilled === true);
 }
 
 /** The chain with `iv` and `delta` valued at the spot `optionModelSpot` picks for it, and that spot. */
@@ -207,7 +221,8 @@ export async function loadOptionsChainOpenInterest(symbol: string, chain: Option
 }
 
 /**
- * The line under the chain: `Greeks at spot 89.79 (close Mon 12 Oct 20:00 UTC), dividend yield 2.34%, rate 4% · OI as of Fri 9 Oct`.
+ * The line under the chain: `Greeks at spot 89.79 (close Mon 12 Oct 20:00 UTC), dividend yield 2.34%, rate 4% · IV solved from quote mids ·
+ * OI as of Fri 9 Oct`, with `, ~ filled from neighbouring strikes` after the IV when a strike has no quote to solve from.
  * An open interest whose date cannot be established says why. A chain its
  * venue marks says whose marks they are: `Deribit marks: IV and greeks at
  * each expiry's forward, rate 0%; $ is the BTC price at the forward · OI live, Thu 22 Oct 22:42 UTC`.
@@ -230,6 +245,7 @@ export function optionsBasisFootnote(basis: OptionsChainBasis, chain?: OptionsCh
       // An unknown yield is valued as none, and says so rather than read as a stated 0%.
       + `dividend yield ${basis.dividendYield == null ? "unknown (valued at 0%)" : `${Number((basis.dividendYield * 100).toFixed(2))}%`}, `
       + `rate ${Number((OPTION_MODEL_RATE * 100).toFixed(2))}%`);
+    parts.push(ivSolvedNote(basis.ivFilled === true));
   }
   const oi = basis.openInterest;
   parts.push(oi?.date ? openInterestAsOfLabel(oi)
@@ -266,6 +282,8 @@ export function optionRows(chain: OptionsChain) {
       volume: contract.volume,
       openInterest: contract.openInterest,
       iv: modeled.iv ?? null,
+      // Solved from the strike's quote, or filled from its neighbours when it has none to solve from; a venue's own mark is neither.
+      ivSource: modeled.iv == null ? null : contract.mark ? "mark" : modeled.ivFilled ? "filled" : "solved",
       delta: modeled.delta ?? null,
       expiration: expiryIsoDate(contract.expiration),
       // A venue's marks and coin prices (Deribit), beside the dollar ones.
@@ -301,9 +319,11 @@ export function formatOptionQuoteCell(row: Record<string, unknown>, side: "bid" 
   return quote == null ? "—" : String(quote);
 }
 
-/** Implied volatility as a percent; a dash when it could not be solved, never 0.0%. */
-export function formatOptionIvCell(value: unknown): string {
-  return isFiniteNumber(value) && value > 0 ? `${(value * 100).toFixed(1)}%` : "—";
+/** Implied volatility as a percent; a dash when it could not be solved, never 0.0%, and a leading "~" when it was filled from neighbouring strikes. */
+export function formatOptionIvCell(value: unknown, row?: Record<string, unknown>): string {
+  if (!isFiniteNumber(value) || !(value > 0)) return "—";
+  const text = `${(value * 100).toFixed(1)}%`;
+  return row?.ivSource === "filled" ? `~${text}` : text;
 }
 
 /** Delta to two places, signed for puts; a dash when it could not be valued, and no "-0.00" for a far wing. */
