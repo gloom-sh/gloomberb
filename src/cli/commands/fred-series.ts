@@ -44,6 +44,11 @@ export function fredInterval(frequency: string | null | undefined): string | nul
   return word || null;
 }
 
+/** Whether a series' dates are days it was observed on (FRED's `Daily`, `Weekly, Ending Friday`), not the start of a period; false when it does not say. */
+export function fredObservesDays(frequency: string | null | undefined): boolean {
+  return /^(?:daily|weekly)\b/i.test(frequency?.trim() ?? "");
+}
+
 /**
  * The observations from the series' first one on: Gloom Cloud answers a
  * `--start` before a series begins with a blank row for every day in between

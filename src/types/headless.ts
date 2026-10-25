@@ -216,6 +216,14 @@ export interface HeadlessPaneEntry {
    * rather than read back the number `formatted` draws.
    */
   unit?: string;
+  /**
+   * In a report with `exportDated`, where this line is not of the section's own period and release (a previous
+   * reading, a year ago): the period it covers, when it was released and what it is as of. A null `released`
+   * or `asOf` leaves the cell blank rather than borrow the section's.
+   */
+  period?: string | null;
+  released?: string | null;
+  asOf?: string | null;
 }
 
 /**

@@ -14,6 +14,7 @@ import {
 } from "./client";
 import { historyStartNotice } from "../shared/history-span";
 import { formatMoveRank } from "../shared/move-rank";
+import type { StatPoint } from "../shared/stat-transform";
 import { formatSigma } from "../shared/trend";
 import { STAT_CATEGORIES } from "./defs";
 import { DEFAULT_STAT_ID, resolveStatArg, STATS } from "./stats";
@@ -36,12 +37,14 @@ function detailEntries(view: StatViewModel, cutoffShown: boolean, text: boolean)
       label: "Previous",
       value: view.previous?.value ?? null,
       formatted: view.previous ? `${format(view.previous.value)}${text && view.previousReading ? ` (${view.previousReading})` : ""}` : "-",
+      ...earlierDating(view, view.previous),
     },
-    ...!text && view.previous ? [{ label: "Previous period", value: view.previous.date, formatted: view.previousReading ?? view.previous.date }] : [],
+    ...!text && view.previous ? [{ label: "Previous period", value: view.previous.date, formatted: view.previousReading ?? view.previous.date, ...earlierDating(view, view.previous) }] : [],
     {
       label: "1Y ago",
       value: view.yearAgo?.value ?? null,
       formatted: view.yearAgo ? format(view.yearAgo.value) : "-",
+      ...earlierDating(view, view.yearAgo),
     },
     { label: "Mean", value: view.mean, formatted: format(view.mean) },
     {
@@ -87,6 +90,15 @@ const PERCENTILE_WINDOW: Record<StatRangeId, string> = {
   "20Y": "the last 20 years",
   ALL: "the full history",
 };
+
+/**
+ * An earlier reading's own dating (previous, a year ago): its period, no release (the server dates only the
+ * latest print's), and its own day for as-of when the series is observed daily or weekly. A reading there is
+ * none of is of no period, never the latest's.
+ */
+function earlierDating(view: StatViewModel, point: StatPoint | null): Pick<HeadlessPaneEntry, "period" | "released" | "asOf"> {
+  return { period: point?.date ?? null, released: null, asOf: point && !view.periodicity ? point.date : null };
+}
 
 /** The period a statistic's lines cover and the day they were released, for the `period` and `released` of each exported line. */
 function exportDating(view: StatViewModel): { period: string; released?: string; asOf: string | null } {

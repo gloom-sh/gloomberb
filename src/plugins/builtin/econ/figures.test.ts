@@ -1,4 +1,6 @@
 import { expect, test } from "bun:test";
+import { colors } from "../../../theme/colors";
+import { actualColor } from "./calendar-model";
 import { econRowFigures, parseEconFigure } from "./figures";
 
 test("a drawn figure reads back as its number, unit and scale, every digit exact", () => {
@@ -15,6 +17,18 @@ test("a drawn figure reads back as its number, unit and scale, every digit exact
   expect(Object.is(parseEconFigure("-0M b/d")!.value, 0)).toBe(true);
 });
 
+test("the figures the app reads are numbers in an export too: grouped thousands, a lower-case scale, a decimal comma", () => {
+  expect(parseEconFigure("1,250")).toEqual({ value: 1250, unit: "", scale: 1 });
+  expect(parseEconFigure("-1,250,000.5")).toEqual({ value: -1_250_000.5, unit: "", scale: 1 });
+  expect(parseEconFigure("30k")).toEqual({ value: 30000, unit: "", scale: 1000 });
+  expect(parseEconFigure("1,5%")).toEqual({ value: 1.5, unit: "%", scale: 1 });
+  expect(parseEconFigure("+2.5%")).toEqual({ value: 2.5, unit: "%", scale: 1 });
+  expect(parseEconFigure("\u22120.4%")).toEqual({ value: -0.4, unit: "%", scale: 1 });
+  // The colour of an actual against its forecast reads them the same way.
+  expect(actualColor("1,250", "1,100")).toBe(colors.positive);
+  expect(actualColor("30k", "40k")).toBe(colors.negative);
+});
+
 test("text that is not one figure is no number", () => {
   for (const text of ["<1.25%", "", "  ", null, undefined, "n/a", "1.2-1.5%", "3% y/y"]) expect(parseEconFigure(text)).toBeNull();
 });
@@ -25,5 +39,7 @@ test("a row's figures share its unit and scale, and one in another unit is not p
   expect(econRowFigures({ actual: null, forecast: "-0.987M bbl", prior: "0.5M bbl" })).toEqual({ actual: null, forecast: -987_000, prior: 500_000, unit: "bbl", scale: 1_000_000 });
   expect(econRowFigures({ actual: "3%", forecast: "30K", prior: "2.9%" })).toEqual({ actual: 3, forecast: null, prior: 2.9, unit: "%", scale: 1 });
   expect(econRowFigures({ actual: null, forecast: "<1.25%", prior: "0.5%" })).toMatchObject({ forecast: null, prior: 0.5, unit: "%" });
+  // Each figure is multiplied out by its own scale, so mixed scales are still exact; `scale` is the first one's.
+  expect(econRowFigures({ actual: "950K", forecast: "1.2M", prior: "1,250" })).toEqual({ actual: 950_000, forecast: 1_200_000, prior: 1250, unit: null, scale: 1000 });
   expect(econRowFigures({})).toEqual({ actual: null, forecast: null, prior: null, unit: null, scale: null });
 });

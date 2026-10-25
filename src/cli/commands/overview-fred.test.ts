@@ -302,3 +302,28 @@ test("every export dates a figure by the period it covers, when it was released 
   expect(json.data[0]).toEqual({ date: "2026-09-01", value: 1400, released: "2026-10-20" });
   expect(json.source).toMatchObject({ retrievalTime: retrieved });
 });
+
+test("a figure with no stated release is as of its own day only when the series says it observes days, never its period's first day", async () => {
+  // [info, as_of of a row whose release is not stated, as_of of one whose release is]
+  const cases: Array<[string, Record<string, unknown> | undefined, string, string]> = [
+    ["quarterly", { id: "GDPC1", units: "Billions", frequency: "Quarterly, Seasonally Adjusted Annual Rate", observationStart: "1947-01-01" }, "", "2026-07-30"],
+    ["weekly", { id: "ICSA", units: "Number", frequency: "Weekly, Ending Saturday", observationStart: "1967-01-07" }, "2026-07-01", "2026-07-30"],
+    ["daily", { id: "DGS10", units: "Percent", frequency: "Daily", observationStart: "1962-01-02" }, "2026-07-01", "2026-07-30"],
+    // A frequency the report does not map, and a series that says nothing: the first day of a period is not an as-of.
+    ["unmapped", { id: "GDPNOW", units: "Percent", frequency: "Semiannual", observationStart: "2011-07-01" }, "", "2026-07-30"],
+    ["unstated", undefined, "", "2026-07-30"],
+  ];
+  for (const [kind, info, own, released] of cases) {
+    serveSeries(() => ({
+      observations: [{ date: "2026-07-08", value: 2, releasedOn: "2026-07-30" }, { date: "2026-07-01", value: 1 }],
+      ...info ? { info } : {},
+    }));
+    const { result, options } = await runFred(["GDPNOW", "--start", "2026-07-01"]);
+    const csv = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options).split("\n");
+    const header = csv[0]!.split(",");
+    const cell = (line: string, name: string) => line.split(",")[header.indexOf(name)];
+    expect([kind, cell(csv[1]!, "as_of"), cell(csv[1]!, "released")]).toEqual([kind, released, released]);
+    expect([kind, cell(csv[2]!, "as_of"), cell(csv[2]!, "released")]).toEqual([kind, own, ""]);
+    expect(cell(csv[2]!, "period")).toBe("2026-07-01");
+  }
+});

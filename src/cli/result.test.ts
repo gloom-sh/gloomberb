@@ -251,6 +251,12 @@ test("a CSV or NDJSON export a --limit cut says so: CSV in a closing note line, 
   expect(printed.stderr).toBe(`note: ${note}`);
   const whole = await captureConsole(() => printCliResult({ data: rows }, { ...baseOptions, format: "ndjson" }, { dateKey: "date" }));
   expect(whole.stderr).toBe("");
+  // A command's own notes (where a stored calendar starts) follow the cut on stderr, as CSV closes with them; --quiet silences both.
+  const noted = await captureConsole(() => printCliResult({ data: rows }, { ...baseOptions, format: "ndjson", limit: 2 }, { dateKey: "date", exportNotes: ["kept by the command", "and another"] }));
+  expect(noted.stdout).toBe('{"date":"2026-10-05"}\n{"date":"2026-10-06"}');
+  expect(noted.stderr).toBe(`note: ${note}\nnote: kept by the command\nnote: and another`);
+  const quiet = await captureConsole(() => printCliResult({ data: rows }, { ...baseOptions, format: "ndjson", limit: 2, quiet: true }, { dateKey: "date", exportNotes: ["kept by the command"] }));
+  expect(quiet.stderr).toBe("");
 });
 
 test("plain output words the arrows of its tables and nothing else: a note, an answer or an error prints as written", async () => {

@@ -73,6 +73,7 @@ import {
   fredExportValue,
   fredHistoryNotes,
   fredInterval,
+  fredObservesDays,
   fredObservationsFromStart,
   fredProvenance,
   fredPublicationTime,
@@ -338,12 +339,16 @@ const ECON_PUBLISHER_COLUMN: CliResultColumn = {
   key: "publisher", header: "Publisher", format: (value) => typeof value === "string" ? value : "",
 };
 
-/** What only the exports say about a row: how to read its figures, who publishes it and where. */
+/** What only the exports say about a row: how to read its figures, who publishes it and where, and the figures as drawn. */
 const econExportColumns: CliResultColumn[] = [
   { key: "unit", header: "Unit" },
   { key: "scale", header: "Scale" },
   { key: "publisher", header: "Publisher" },
   { key: "sourceUrl", header: "Link" },
+  // The figures as the calendar draws them, so a bound (`<1.25%`) that is no number keeps its text.
+  { key: "actualText", header: "actual_text" },
+  { key: "forecastText", header: "forecast_text" },
+  { key: "priorText", header: "prior_text" },
 ];
 
 /**
@@ -522,7 +527,8 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
       exportDated: true,
       exportIdentity: (row) => ({
         symbolOrSeries: typeof row.indicatorId === "string" ? row.indicatorId : null,
-        currencyOrUnit: typeof row.unit === "string" ? row.unit : null,
+        // A percent is `pct` here as in `fred` and `yield-curve`; `unit` keeps the `%` the calendar draws.
+        currencyOrUnit: row.unit === "%" ? "pct" : typeof row.unit === "string" ? row.unit : null,
         asOf: typeof row.released === "string" ? row.released : null,
         released: typeof row.released === "string" ? row.released : null,
         period: typeof row.referencePeriod === "string" ? row.referencePeriod : null,
@@ -642,6 +648,7 @@ async function runFred(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
     ctx.fail(`No ${seriesId} observations on or after ${startDate}.`, fredEmptyAdvice(seriesId, latest));
   }
   const periodicity = periodicityOf(data.info?.frequency);
+  const observesDays = fredObservesDays(data.info?.frequency);
   const newestDate = rows.reduce<string | null>((newest, row) => (!newest || row.date > newest ? row.date : newest), null);
   // A newest value FRED does not list yet names its publisher, Treasury for a yield; FRED's own stay "FRED".
   const ahead = fredProvenance(data.observations.filter((observation) => observation.date === newestDate), seriesId);
@@ -670,13 +677,13 @@ async function runFred(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
     dateKey: "date",
     empty: fredEmptyMessage(startDate, latest == null ? null : exportRow(latest)),
     ...(notes.length ? { footnote: notes.join("\n"), exportNotes: notes } : {}),
-    // `as_of` is the release. A figure with none stated is as of its own day when the series observes days
-    // (a daily rate), and of nothing when its date only starts the period it covers: never that first day.
+    // `as_of` is the release. A figure with none stated is as of its own day when the series is known to observe
+    // days (a daily or weekly rate), and of nothing otherwise, never the first day of the period it covers.
     exportDated: true,
     exportIdentity: (row) => {
       const released = typeof row.released === "string" ? row.released : null;
       const date = typeof row.date === "string" ? row.date : null;
-      return { symbolOrSeries: seriesId, currencyOrUnit: unit, interval, asOf: released ?? (periodicity ? null : date), period: date, released };
+      return { symbolOrSeries: seriesId, currencyOrUnit: unit, interval, asOf: released ?? (observesDays ? date : null), period: date, released };
     },
     // The release closes the row with the other dating columns, so it is not one of the observation's own.
     columns: [...new Set(rows.flatMap((row) => Object.keys(row)))].filter((key) => key !== "released").map((key) => ({ key, header: key })),

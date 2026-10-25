@@ -644,22 +644,22 @@ export function printCliResult<T, Row extends Record<string, unknown> = Record<s
       console.error(`${cliStyles.warning("warning:")} ${hinted(warning)}`);
     }
   }
-  // CSV says it in its closing `# note:` lines; NDJSON has no place for one
-  // among its rows, so what a cut left out goes to stderr too.
+  // CSV says what its rows do not in closing `# note:` lines; NDJSON has no place for one among its rows,
+  // so the same notes go to stderr, where the warnings are.
   if (options.format === "ndjson" && !options.quiet) {
-    const note = exportCutNote(result, options, renderOptions);
-    if (note) console.error(`note: ${note}`);
+    for (const note of exportNdjsonNotes(result, options, renderOptions)) console.error(`note: ${note}`);
   }
 }
 
-/** What a `--limit`, or the default a command caps its rows at, left out of a list, in words; null when it cut nothing that needs saying. */
-function exportCutNote<T, Row extends Record<string, unknown>>(
+/** What a `--limit`, or the default a command caps its rows at, left out of a list, then the command's own notes: what CSV closes with as `# note:` lines. */
+function exportNdjsonNotes<T, Row extends Record<string, unknown>>(
   result: CliResult<T>,
   options: CliGlobalOptions,
   renderOptions: CliResultRenderOptions<T, Row>,
-): string | null {
-  if (renderOptions.tables || renderOptions.text) return null;
-  return windowed(asRows(result.data, renderOptions.rows), options, renderOptions).note;
+): string[] {
+  if (renderOptions.tables || renderOptions.text) return [];
+  const cut = windowed(asRows(result.data, renderOptions.rows), options, renderOptions).note;
+  return [...cut ? [cut] : [], ...renderOptions.exportNotes ?? []];
 }
 
 export function serializeCliError(error: CliErrorObject, options: CliGlobalOptions): string {

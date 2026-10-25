@@ -3,6 +3,7 @@ import type { DataTableColumn } from "../../../components";
 import { colors } from "../../../theme/colors";
 import { displayWidth } from "../../../utils/format";
 import { fetchEconCalendar } from "./calendar-source";
+import { parseEconFigure } from "./figures";
 import { isAllDayEvent, type EconEvent, type EconImpact } from "./types";
 
 const CACHE_KIND = "calendar";
@@ -398,16 +399,9 @@ export function valueColumnWidth(events: readonly EconEvent[], key: "actual" | "
   return width;
 }
 
-function parseNumeric(value: string | null): number | null {
-  if (!value) return null;
-  const cleaned = value.replace(/[%,KMBTkmbts]/g, "").trim();
-  const n = parseFloat(cleaned);
-  return isNaN(n) ? null : n;
-}
-
 export function actualColor(actual: string | null, forecast: string | null): string {
-  const a = parseNumeric(actual);
-  const f = parseNumeric(forecast);
+  const a = parseEconFigure(actual)?.value ?? null;
+  const f = parseEconFigure(forecast)?.value ?? null;
   if (a === null || f === null) return colors.text;
   if (a > f) return colors.positive;
   if (a < f) return colors.negative;

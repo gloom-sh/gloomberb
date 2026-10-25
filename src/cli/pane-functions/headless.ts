@@ -788,8 +788,17 @@ export function headlessReportTables(
         if (!("rows" in section && section.rows)) {
           const entries = exportEntriesTable(section.title, section.entries);
           // A figure that declares its unit names it in the unit column of its own line too.
-          const rowIdentities = section.entries.some((entry) => entry.unit?.trim())
-            ? section.entries.map((entry) => entry.unit?.trim() ? { currencyOrUnit: entry.unit.trim() } : undefined) : undefined;
+          // A line of its own period or release (a previous reading) names them rather than the section's.
+          const own = (entry: HeadlessPaneEntry): ExportIdentity | undefined => {
+            const identity = {
+              ...(entry.unit?.trim() ? { currencyOrUnit: entry.unit.trim() } : {}),
+              ...(entry.period !== undefined ? { period: entry.period } : {}),
+              ...(entry.released !== undefined ? { released: entry.released } : {}),
+              ...(entry.asOf !== undefined ? { asOf: entry.asOf } : {}),
+            };
+            return Object.keys(identity).length > 0 ? identity : undefined;
+          };
+          const rowIdentities = section.entries.some((entry) => own(entry)) ? section.entries.map(own) : undefined;
           return { ...entries, ...(Object.keys(named).length > 0 ? { identity: named } : {}), ...(rowIdentities ? { rowIdentities } : {}) };
         }
         const table = exportRowsTable(section.title, displayedColumns(columnsFor(section.rows, section.columns, definition.columns)), section.rows, { status: true });

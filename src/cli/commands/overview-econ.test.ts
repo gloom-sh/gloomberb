@@ -1,12 +1,17 @@
 import { afterEach, beforeEach, expect, setSystemTime, test } from "bun:test";
 import { setCloudApiFetchTransport } from "../../api-client/request";
 import { DEFAULT_CLI_OPTIONS, type CliGlobalOptions } from "../options";
-import { serializeCliResult } from "../result";
+import { printCliResult, serializeCliResult } from "../result";
 import { isCliFailure } from "../errors";
 import { createTestCliContext } from "../../test-support/cli-context";
 import { attachEconCalendarPersistence, resetEconCalendarPersistence } from "../../plugins/builtin/econ/calendar-model";
 import { MemoryPluginPersistence } from "../../test-support/plugin-persistence";
 import { overviewCliCommands } from "./overview";
+import { dispatchCli } from "../index";
+import { captureConsole } from "../../test-support/console";
+import { mkdtemp, rm } from "fs/promises";
+import { tmpdir } from "os";
+import { join } from "path";
 
 const econ = overviewCliCommands.find((command) => command.name === "econ")!;
 
@@ -259,7 +264,7 @@ const exportCalendar = [
     source: { name: "Office for National Statistics", url: "https://www.ons.gov.uk/" } },
   { ...event("2026-10-14T14:30:00.000Z", "US", "medium", "EIA Crude Oil Stocks Change"), actual: "-4.1M bbl", forecast: "-0.987M bbl", prior: "0.5M bbl", referencePeriod: "9 Oct 2026",
     source: { name: "U.S. Energy Information Administration", url: "https://www.eia.gov/" } },
-  { ...event("2026-10-14T12:30:00.000Z", "US", "high", "Unemployment Rate"), actual: "4.7%", forecast: "4.9%", prior: "4.9%", referencePeriod: "Sep 2026" },
+  { ...event("2026-10-14T12:30:00.000Z", "US", "high", "Unemployment Rate"), actual: "4.7%", forecast: "4.9%", prior: "4.9%", referencePeriod: "Sep 2026", indicatorId: "us-unemployment-rate" },
   { ...event("2026-10-15T14:30:00.000Z", "US", "low", "EIA Natural Gas Stocks Change"), forecast: "77 Bcf", prior: "-119 Bcf" },
   // A bound is no single number, and a release with nothing out yet has no release time.
   { ...event("2026-10-30T02:30:00.000Z", "JP", "high", "BOJ Policy Rate"), forecast: "<1.25%", prior: "0.5%" },
@@ -298,7 +303,7 @@ test("the CSV, NDJSON and JSON of the same calendar say the same, and the CSV ad
     ...json.columns.map((column) => column.header),
     "symbol_or_series", "currency_or_unit", "interval", "source", "as_of", "period", "released", "retrieved",
   ]);
-  expect(csv.header.slice(0, json.columns.length)).toEqual(["Date", "Day", "Time", "Viewer", "Local", "Country", "Impact", "Event", "Actual", "Forecast", "Prior", "Unit", "Scale", "Publisher", "Link"]);
+  expect(csv.header.slice(0, json.columns.length)).toEqual(["Date", "Day", "Time", "Viewer", "Local", "Country", "Impact", "Event", "Actual", "Forecast", "Prior", "Unit", "Scale", "Publisher", "Link", "actual_text", "forecast_text", "prior_text"]);
   expect(csv.rows).toHaveLength(json.data.length);
   expect(ndjson).toHaveLength(json.data.length);
   const cell = (value: unknown) => value == null ? "" : String(value);
@@ -309,12 +314,26 @@ test("the CSV, NDJSON and JSON of the same calendar say the same, and the CSV ad
     expect(cells.as_of).toBe(cell(row.released));
     expect(cells.released).toBe(cell(row.released));
     expect(cells.period).toBe(cell(row.referencePeriod));
-    expect(cells.currency_or_unit).toBe(cell(row.unit));
+    // A percent is `pct` in the unit column, as in `fred` and `yield-curve`; `unit` itself keeps the `%` drawn.
+    expect(cells.currency_or_unit).toBe(row.unit === "%" ? "pct" : cell(row.unit));
     expect(cells.symbol_or_series).toBe(cell(row.indicatorId));
     expect(cells.retrieved).toBe(json.metadata.freshness.retrievedAt);
     // NDJSON is the JSON row with the fixed fields, a publisher's own `released` untouched.
     expect(ndjson[index]).toMatchObject({ ...row, as_of: row.released, period: row.referencePeriod ?? null, retrieved: json.metadata.freshness.retrievedAt, source: "Gloom Cloud" });
   });
+  // The indicator id the server sends is the series column; none is blank, never made up.
+  expect(json.data.find((row) => row.event === "Unemployment Rate")).toMatchObject({ indicatorId: "us-unemployment-rate", unit: "%" });
+  const unemployment = json.data.findIndex((row) => row.event === "Unemployment Rate");
+  expect(csv.rows[unemployment]![csv.header.indexOf("symbol_or_series")]).toBe("us-unemployment-rate");
+  expect(csv.rows[unemployment]![csv.header.indexOf("currency_or_unit")]).toBe("pct");
+  expect(ndjson[unemployment]).toMatchObject({ symbol_or_series: "us-unemployment-rate", currency_or_unit: "pct", unit: "%" });
+  expect(json.data.find((row) => row.event === "Housing Starts")).toMatchObject({ indicatorId: null });
+  // The text columns keep what was drawn, so a bound that is no number keeps its words in every format.
+  const boj = json.data.findIndex((row) => row.event === "BOJ Policy Rate");
+  const bojCells = Object.fromEntries(csv.header.map((name, column) => [name, csv.rows[boj]![column]!]));
+  expect([bojCells.Forecast, bojCells.forecast_text, bojCells.Prior, bojCells.prior_text]).toEqual(["", "<1.25%", "0.5", "0.5%"]);
+  expect(ndjson[boj]).toMatchObject({ forecast: null, forecastText: "<1.25%", prior: 0.5, priorText: "0.5%" });
+  expect(json.data[boj]).toMatchObject({ forecast: null, forecastText: "<1.25%" });
   // A figure is a number in every format, and a missing one is empty in CSV and null in JSON.
   const crude = json.data.findIndex((row) => row.event === "EIA Crude Oil Stocks Change");
   expect(csv.rows[crude]!.slice(8, 13)).toEqual(["-4100000", "-987000", "500000", "bbl", "1000000"]);
@@ -346,4 +365,43 @@ test("a CSV carries what the text says under the table, such as where the stored
   const { result, options } = await econPrinted(twoWeeks, ["--from", "2026-08-01", "--country", "US"], {}, "2026-09-01");
   const footer = readCsv(serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options)).footer;
   expect(footer).toContain("# note: The stored calendar starts 2026-09-01; nothing earlier is listed");
+  // NDJSON has no footer: the same note goes to stderr, and stdout stays rows.
+  const ndjson = await captureConsole(() => printCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "ndjson" }, options));
+  expect(ndjson.stderr).toContain("note: The stored calendar starts 2026-09-01; nothing earlier is listed");
+  expect(ndjson.stdout.split("\n").every((line) => line.startsWith("{"))).toBe(true);
+});
+
+test("the earliest-day error is the same JSON a script reads, with a failing exit code", async () => {
+  setSystemTime(new Date("2026-10-18T23:00:00.000Z"));
+  const home = await mkdtemp(join(tmpdir(), "gloom-econ-earliest-"));
+  const originalHome = process.env.HOME;
+  process.env.HOME = home;
+  resetEconCalendarPersistence();
+  attachEconCalendarPersistence(new MemoryPluginPersistence());
+  setCloudApiFetchTransport(async (url) => {
+    const refused = new URL(url).pathname.endsWith("/calendar/history");
+    return {
+      ok: !refused, status: refused ? 422 : 200, headers: new Headers(),
+      text: async () => JSON.stringify(refused ? { message: "The calendar reaches back 400 days" } : twoWeeks),
+    } as Response;
+  });
+  try {
+    const { result, stdout, stderr, exitCode } = await captureConsole(() => dispatchCli(["econ", "--from", "2025-01-01", "--json"]));
+    expect(result).toEqual({ kind: "handled" });
+    expect(exitCode).toBe(1);
+    expect(stdout).toBe("");
+    expect(JSON.parse(stderr)).toEqual({
+      ok: false,
+      error: {
+        code: "cli_error",
+        message: "--from 2025-01-01 is before the earliest day the calendar reaches back to, 2025-09-13. Use --from 2025-09-13 or later.",
+        earliest: "2025-09-13",
+        days: 400,
+      },
+    });
+  } finally {
+    process.env.HOME = originalHome;
+    process.exitCode = 0;
+    await rm(home, { recursive: true, force: true });
+  }
 });

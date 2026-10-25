@@ -113,7 +113,7 @@ describe("economic statistics headless model", () => {
 test("an export says which period Previous is, dates each row by its release, and ends with period, released and retrieved", async () => {
   const permits = resolveStatArg("building-permits")!;
   const tenYear = resolveStatArg("ten-year")!;
-  const months = ["2026-07-01", "2026-08-01", "2026-09-01"].map((date, index) => ({
+  const months = ["2025-09-01", "2025-10-01", "2025-11-01", "2025-12-01", "2026-01-01", "2026-02-01", "2026-03-01", "2026-04-01", "2026-05-01", "2026-06-01", "2026-07-01", "2026-08-01", "2026-09-01"].map((date, index) => ({
     date, value: 1400 + index, ...(date === "2026-09-01" ? { releasedOn: "2026-10-20" } : {}),
   }));
   const days = ["2026-10-21", "2026-10-22", "2026-10-23"].map((date, index) => ({ date, value: 4.9 + index * 0.05 }));
@@ -133,21 +133,24 @@ test("an export says which period Previous is, dates each row by its release, an
   // Previous names its period beside it; the table's own period and released stand in for the fixed columns of those names.
   expect(csv[housing + 1]).toBe("Indicator,Latest,Previous,Previous period,%ile,period,released,status,symbol_or_series,currency_or_unit,interval,source,as_of,retrieved");
   // The release is the row's as-of, never September's first day.
-  expect(csv[housing + 2]).toBe(`Permits,1402000,1401000,2026-08-01,100,2026-09-01,2026-10-20,,,,,FRED,2026-10-20,${retrieved}`);
+  expect(csv[housing + 2]).toBe(`Permits,1412000,1411000,2026-08-01,100,2026-09-01,2026-10-20,,,,,FRED,2026-10-20,${retrieved}`);
   // A daily yield has no release to state: it is as of its own day, and its release stays empty.
   expect(csv[rates + 2]).toBe(`10Y yield,5,4.95,2026-10-22,100,2026-10-23,,,,,,FRED,2026-10-23,${retrieved}`);
   // The selected statistic's lines are dated the same way.
   const permitsLines = csv.slice(csv.indexOf("# section: Building Permits") + 1);
   expect(permitsLines[0]).toBe(`Metric,Value,${fixed}`);
-  expect(permitsLines.find((line) => line.startsWith("Previous period,"))).toBe(`Previous period,2026-08-01,,,,FRED,2026-10-20,2026-09-01,2026-10-20,${retrieved}`);
-  expect(permitsLines.find((line) => line.startsWith("Latest,"))).toMatch(/^Latest,1402000,,,,FRED,2026-10-20,2026-09-01,2026-10-20,/);
+  expect(permitsLines.find((line) => line.startsWith("Latest,"))).toMatch(/^Latest,1412000,,,,FRED,2026-10-20,2026-09-01,2026-10-20,/);
+  // Previous and a year ago are of their own period, and carry no release: the server dates only the newest print.
+  for (const [label, period] of [["Previous", "2026-08-01"], ["Previous period", "2026-08-01"], ["1Y ago", "2025-09-01"]] as const) {
+    expect(permitsLines.find((line) => line.startsWith(`${label},`))!.split(",").slice(2)).toEqual(["", "", "", "FRED", "", period, "", retrieved]);
+  }
   // A month whose release the server does not say yet is as of nothing, never the first day of the month.
   const unreleased = projectStatsHeadlessBundle(
     await loadStatsBundle({ loader: async () => months.map(({ date, value }) => ({ date, value })), stats: [permits] }), "ALL", permits.id);
   const unreleasedFreshness = deriveHeadlessFreshness(econStatisticsHeadless, unreleased, Date.parse("2026-10-25T10:00:00Z"));
   const unreleasedCsv = renderReportCsv(headlessReportTables(econStatisticsHeadless, unreleased, args, "Economic Statistics", unreleasedFreshness, { complete: true, unavailableSymbols: [] }), unreleasedFreshness).split("\n");
-  expect(unreleasedCsv.find((line) => line.startsWith("Permits,"))).toBe(`Permits,1402000,1401000,2026-08-01,100,2026-09-01,,,,,,FRED,,${unreleasedFreshness.retrievedAt}`);
-  expect(unreleasedCsv.find((line) => line.startsWith("Latest,"))).toMatch(/^Latest,1402000,,,,FRED,,2026-09-01,,/);
+  expect(unreleasedCsv.find((line) => line.startsWith("Permits,"))).toBe(`Permits,1412000,1411000,2026-08-01,100,2026-09-01,,,,,,FRED,,${unreleasedFreshness.retrievedAt}`);
+  expect(unreleasedCsv.find((line) => line.startsWith("Latest,"))).toMatch(/^Latest,1412000,,,,FRED,,2026-09-01,,/);
   // NDJSON rows say the same.
   const [first] = renderReportNdjson(tables, freshness).split("\n").map((line) => JSON.parse(line) as Record<string, unknown>);
   expect(first).toMatchObject({ section: "Housing", Indicator: "Permits", "Previous period": "2026-08-01", period: "2026-09-01", released: "2026-10-20", as_of: "2026-10-20", retrieved });
@@ -155,7 +158,33 @@ test("an export says which period Previous is, dates each row by its release, an
   const text = renderHeadlessPaneText(econStatisticsHeadless, report, args, "Economic Statistics", freshness);
   expect(text).toMatch(/Indicator\s+Latest\s+Previous\s+%ile\s+Period\s+Released/);
   expect(text).not.toContain("Previous period");
-  expect(text).toMatch(/Previous\s+1\.40M \(Aug 2026\)/);
+  expect(text).toMatch(/Previous\s+1\.41M \(Aug 2026\)/);
+});
+
+test("a quarterly statistic's lines, and a daily rate's, are as of their own release or day, never the start of their period", async () => {
+  const gdpnow = resolveStatArg("gdpnow")!;
+  const tenYear = resolveStatArg("ten-year")!;
+  const args = { rawArgument: "", argument: null, symbols: [], options: { range: "ALL" } } as HeadlessPaneLoadArgs;
+  const lines = async (stat: typeof gdpnow, points: Array<{ date: string; value: number }>) => {
+    const bundle = await loadStatsBundle({ stats: [stat], loader: async () => points });
+    const report = projectStatsHeadlessBundle(bundle, "ALL", stat.id);
+    const freshness = deriveHeadlessFreshness(econStatisticsHeadless, report, Date.parse("2026-10-25T10:00:00Z"));
+    const csv = renderReportCsv(headlessReportTables(econStatisticsHeadless, report, args, "Economic Statistics", freshness, { complete: true, unavailableSymbols: [] }), freshness).split("\n");
+    const detail = csv.slice(csv.findIndex((line) => line.startsWith("Metric,")) + 1);
+    // [period, released, as_of] of a line.
+    return (label: string) => {
+      const cells = detail.find((line) => line.startsWith(`${label} (%),`) || line.startsWith(`${label},`))!.split(",");
+      return [cells[7], cells[8], cells[6]];
+    };
+  };
+  const quarter = await lines(gdpnow, [{ date: "2026-01-01", value: 1 }, { date: "2026-04-01", value: 2 }, { date: "2026-07-01", value: 3 }]);
+  expect(quarter("Latest")).toEqual(["2026-07-01", "", ""]);
+  expect(quarter("Previous")).toEqual(["2026-04-01", "", ""]);
+  // With no reading a year back there is no period to name, rather than the latest's.
+  expect(quarter("1Y ago")).toEqual(["", "", ""]);
+  const daily = await lines(tenYear, [{ date: "2026-10-21", value: 4.9 }, { date: "2026-10-22", value: 4.95 }, { date: "2026-10-23", value: 5 }]);
+  expect(daily("Latest")).toEqual(["2026-10-23", "", "2026-10-23"]);
+  expect(daily("Previous")).toEqual(["2026-10-22", "", "2026-10-22"]);
 });
 
 test("nowcasts retain published rates and signed indexes, ranked against their own history", async () => {
