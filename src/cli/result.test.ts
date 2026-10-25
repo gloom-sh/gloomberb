@@ -232,6 +232,27 @@ test("plain text keeps every column with a dash in the empty cells, and JSON, CS
   for (const format of ["json", "csv", "ndjson"] as const) expect(print(true, format)).toBe(print(false, format));
 });
 
+test("a CSV or NDJSON export a --limit cut says so: CSV in a closing note line, NDJSON on stderr, rows alone on stdout", async () => {
+  const rows = [{ date: "2026-10-05" }, { date: "2026-10-06" }, { date: "2026-10-07" }];
+  const note = "showing the oldest 2 of 3 rows; --tail 2 for the latest";
+  const freshness = { source: "Gloom Cloud", asOf: "2026-10-23T15:48:00Z", status: "not-a-feed", basis: "calendar" } as ReportFreshness;
+  const render: CliResultRenderOptions = { dateKey: "date", exportNotes: ["kept by the command"] };
+  // With or without a cited source the note follows the rows, ahead of the command's own notes.
+  const cited = serializeCliResult({ data: rows, freshness }, { ...baseOptions, format: "csv", limit: 2 }, render).split("\n");
+  expect(cited.slice(0, 3)).toEqual(["date,symbol_or_series,currency_or_unit,interval,source,as_of", "2026-10-05,,,,Gloom Cloud,2026-10-23T15:48:00Z", "2026-10-06,,,,Gloom Cloud,2026-10-23T15:48:00Z"]);
+  expect(cited.slice(-3)).toEqual([expect.stringContaining("# Retrieval time"), `# note: ${note}`, "# note: kept by the command"]);
+  expect(serializeCliResult({ data: rows }, { ...baseOptions, format: "csv", limit: 2 }, { dateKey: "date" })).toBe(`date\n2026-10-05\n2026-10-06\n\n# note: ${note}`);
+  // Rows that were all kept have nothing to say, and neither does a newest-first series' newest rows.
+  expect(serializeCliResult({ data: rows }, { ...baseOptions, format: "csv", limit: 3 }, { dateKey: "date" })).not.toContain("note");
+  expect(serializeCliResult({ data: [...rows].reverse() }, { ...baseOptions, format: "csv", limit: 2 }, { dateKey: "date" })).not.toContain("note");
+  // NDJSON has no place for a line among its rows: they stay rows alone, and the note goes where warnings do.
+  const printed = await captureConsole(() => printCliResult({ data: rows }, { ...baseOptions, format: "ndjson", limit: 2 }, { dateKey: "date" }));
+  expect(printed.stdout).toBe('{"date":"2026-10-05"}\n{"date":"2026-10-06"}');
+  expect(printed.stderr).toBe(`note: ${note}`);
+  const whole = await captureConsole(() => printCliResult({ data: rows }, { ...baseOptions, format: "ndjson" }, { dateKey: "date" }));
+  expect(whole.stderr).toBe("");
+});
+
 test("plain output words the arrows of its tables and nothing else: a note, an answer or an error prints as written", async () => {
   setCliPlainOverride(true);
   setCliColorEnabledOverride(false);

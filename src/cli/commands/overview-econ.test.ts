@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, setSystemTime, test } from "bun:test";
 import { setCloudApiFetchTransport } from "../../api-client/request";
 import { DEFAULT_CLI_OPTIONS, type CliGlobalOptions } from "../options";
 import { serializeCliResult } from "../result";
+import { isCliFailure } from "../errors";
 import { createTestCliContext } from "../../test-support/cli-context";
 import { attachEconCalendarPersistence, resetEconCalendarPersistence } from "../../plugins/builtin/econ/calendar-model";
 import { MemoryPluginPersistence } from "../../test-support/plugin-persistence";
@@ -100,7 +101,19 @@ test("an earlier --from lists the stored calendar's past events and says where i
     expect(text).toContain("No events are stored before 2026-10-23");
     expect(text).toContain(`The stored calendar could not be read (${why}); listing the current calendar`);
   }
-  await expect(econText(twoWeeks, ["--from", "2025-01-01", "--country", "US"], {}, 422)).rejects.toThrow("The calendar reaches back 400 days");
+});
+
+test("a --from before the stored calendar reaches is an input error naming the earliest day", async () => {
+  // 400 days before Sunday 18 Oct 2026.
+  setSystemTime(new Date("2026-10-18T23:00:00.000Z"));
+  const error = await econText(twoWeeks, ["--from", "2025-01-01", "--country", "US"], {}, 422).catch((caught: unknown) => caught);
+  expect(isCliFailure(error)).toBe(true);
+  if (!isCliFailure(error)) return;
+  expect(error.code).toBe("cli_error");
+  expect(error.message).toBe("--from 2025-01-01 is before the earliest day the calendar reaches back to, 2025-09-13. Use --from 2025-09-13 or later.");
+  expect(error.fields).toEqual({ earliest: "2025-09-13", days: 400 });
+  // The earliest day itself is read, not refused.
+  expect(await econText(twoWeeks, ["--from", "2025-09-13", "--country", "US"], {}, "2025-09-01")).toContain("Core Inflation Rate YoY");
 });
 
 test("a calendar two weeks ahead lists from today on a Saturday, with nothing to flag", async () => {
@@ -143,7 +156,7 @@ test("rows a bank or a statistics office times itself show its clock; a bank tha
   expect(text).toMatch(/2026-10-22\s+Thu\s+TR\s+high\s+CBRT Interest Rate Decision\s+39\.50%/);
   expect(text).toContain("No time for CBRT Interest Rate Decision (TR): the bank's calendar gives the day, not the time.");
   const [row] = (await econPrinted(added, ["--country", "TR"])).result.data as Record<string, unknown>[];
-  expect(row).toMatchObject({ time: "", localTime: null, timeZone: "Europe/Istanbul", priorAsOf: "2026-10-16", prior: "39.50%" });
+  expect(row).toMatchObject({ time: "", localTime: null, timeZone: "Europe/Istanbul", priorAsOf: "2026-10-16", prior: 39.5, priorText: "39.50%", actual: null });
   // The feeds' own calendar prints without the publisher's clock column.
   expect(await econText(twoWeeks, ["--country", "US"])).not.toContain("Local");
 });
@@ -160,12 +173,12 @@ test("a row names who publishes it, the period it covers and its page, in the ta
   ];
   const rows = (await econPrinted(mortgages, ["--country", "US"])).result.data as Record<string, unknown>[];
   expect(rows.find((row) => row.event === "30-Year Mortgage Rate")).toMatchObject({
-    publisher: "Freddie Mac", referencePeriod: "22 Oct 2026", source: "Freddie Mac", sourceUrl: "https://www.freddiemac.com/", actual: "7.32%",
+    publisher: "Freddie Mac", referencePeriod: "22 Oct 2026", sourceUrl: "https://www.freddiemac.com/", actual: 7.32, actualText: "7.32%",
   });
   expect(rows.find((row) => row.event === "MBA 30-Year Mortgage Rate")).toMatchObject({ publisher: "Mortgage Bankers Association", referencePeriod: "16 Oct 2026" });
   expect(rows.find((row) => row.event === "EIA Natural Gas Stocks Change")).toMatchObject({ publisher: "Energy Information Administration", sourceUrl: null });
   // The feed's own rows name nobody.
-  expect(rows.find((row) => row.event === "Housing Starts")).toMatchObject({ publisher: null, referencePeriod: null, source: null, sourceUrl: null });
+  expect(rows.find((row) => row.event === "Housing Starts")).toMatchObject({ publisher: null, referencePeriod: null, sourceUrl: null });
   const text = await econText(mortgages, ["--country", "US"]);
   expect(text).toMatch(/Publisher/);
   expect(text).toMatch(/30-Year Mortgage Rate\s+7\.32%\s+7\.40%\s+Freddie Mac/);
@@ -216,4 +229,121 @@ test("a day-long event prints All day under its own weekday, never a midnight cl
     ["Communist Party Fifth Plenum", "All Day", "Mon", null],
     ["Midnight release", "00:00", "Sun", "20:00"],
   ]);
+});
+
+/** A CSV as its header and rows of cells, quoted cells and doubled quotes read back; closing `#` lines apart. */
+function readCsv(text: string): { header: string[]; rows: string[][]; footer: string[] } {
+  const [body = "", ...footer] = text.split(/\n\n(?=#)/);
+  const rows: string[][] = [];
+  let cells: string[] = [];
+  let cell = "";
+  let quoted = false;
+  for (let index = 0; index < body.length; index += 1) {
+    const char = body[index]!;
+    if (quoted) {
+      if (char === '"' && body[index + 1] === '"') { cell += '"'; index += 1; } else if (char === '"') quoted = false; else cell += char;
+    } else if (char === '"') quoted = true;
+    else if (char === ",") { cells.push(cell); cell = ""; }
+    else if (char === "\n") { cells.push(cell); rows.push(cells); cells = []; cell = ""; }
+    else cell += char;
+  }
+  if (cell || cells.length > 0) rows.push([...cells, cell]);
+  const [header = [], ...rest] = rows;
+  return { header, rows: rest, footer: footer.flatMap((block) => block.split("\n")) };
+}
+
+const exportCalendar = [
+  ...twoWeeks,
+  // A feed row with every figure drawn as text, and a publisher, period and page.
+  { ...event("2026-10-14T06:00:00.000Z", "GB", "low", "Claimant Count Change"), actual: "30.3K", forecast: "19.4K", prior: "-27.8K", referencePeriod: "Sep 2026",
+    source: { name: "Office for National Statistics", url: "https://www.ons.gov.uk/" } },
+  { ...event("2026-10-14T14:30:00.000Z", "US", "medium", "EIA Crude Oil Stocks Change"), actual: "-4.1M bbl", forecast: "-0.987M bbl", prior: "0.5M bbl", referencePeriod: "9 Oct 2026",
+    source: { name: "U.S. Energy Information Administration", url: "https://www.eia.gov/" } },
+  { ...event("2026-10-14T12:30:00.000Z", "US", "high", "Unemployment Rate"), actual: "4.7%", forecast: "4.9%", prior: "4.9%", referencePeriod: "Sep 2026" },
+  { ...event("2026-10-15T14:30:00.000Z", "US", "low", "EIA Natural Gas Stocks Change"), forecast: "77 Bcf", prior: "-119 Bcf" },
+  // A bound is no single number, and a release with nothing out yet has no release time.
+  { ...event("2026-10-30T02:30:00.000Z", "JP", "high", "BOJ Policy Rate"), forecast: "<1.25%", prior: "0.5%" },
+  { ...event("2026-10-20T00:00:00.000Z", "CN", "medium", "Party Plenum"), time: "All Day", actual: "1" },
+];
+
+test("an export carries the calendar's figures as numbers with their unit and scale, null where there is none", async () => {
+  const { result } = await econPrinted(exportCalendar, ["--from", "2026-10-14"]);
+  const rows = result.data as Record<string, unknown>[];
+  const by = (name: string) => rows.find((row) => row.event === name)!;
+  // A scale is multiplied out, exactly: 0.987M is 987000, and the scale says how it was drawn.
+  expect(by("Claimant Count Change")).toMatchObject({ actual: 30300, forecast: 19400, prior: -27800, unit: null, scale: 1000, actualText: "30.3K" });
+  expect(by("EIA Crude Oil Stocks Change")).toMatchObject({ actual: -4_100_000, forecast: -987_000, prior: 500_000, unit: "bbl", scale: 1_000_000, priorText: "0.5M bbl" });
+  expect(by("Unemployment Rate")).toMatchObject({ actual: 4.7, forecast: 4.9, prior: 4.9, unit: "%", scale: 1 });
+  expect(by("EIA Natural Gas Stocks Change")).toMatchObject({ actual: null, forecast: 77, prior: -119, unit: "Bcf", scale: 1, actualText: null });
+  // A bound is not a figure; the text it was drawn as stays.
+  expect(by("BOJ Policy Rate")).toMatchObject({ actual: null, forecast: null, prior: 0.5, unit: "%", forecastText: "<1.25%" });
+  // A row with no figures has no unit or scale.
+  expect(by("Housing Starts")).toMatchObject({ actual: null, forecast: null, prior: null, unit: null, scale: null });
+  // The text table still draws them as they were.
+  const text = await econText(exportCalendar, ["--from", "2026-10-14"]);
+  expect(text).toMatch(/Claimant Count Change\s+30\.3K\s+19\.4K\s+-27\.8K/);
+  expect(text).toMatch(/EIA Crude Oil Stocks Change\s+-4\.1M bbl\s+-0\.987M bbl\s+0\.5M bbl/);
+  expect(text).not.toContain("Scale");
+});
+
+test("the CSV, NDJSON and JSON of the same calendar say the same, and the CSV adds nothing the JSON lacks", async () => {
+  const { result, options } = await econPrinted(exportCalendar, ["--from", "2026-10-14"]);
+  const json = JSON.parse(serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "json" }, options)) as {
+    data: Record<string, unknown>[]; columns: Array<{ key: string; header: string }>; metadata: { freshness: { retrievedAt: string } };
+  };
+  const csv = readCsv(serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options));
+  const ndjson = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "ndjson" }, options).split("\n").map((line) => JSON.parse(line) as Record<string, unknown>);
+  // Every column the JSON lists is in the CSV, in order, then the fixed ones every dated export ends with.
+  expect(csv.header).toEqual([
+    ...json.columns.map((column) => column.header),
+    "symbol_or_series", "currency_or_unit", "interval", "source", "as_of", "period", "released", "retrieved",
+  ]);
+  expect(csv.header.slice(0, json.columns.length)).toEqual(["Date", "Day", "Time", "Viewer", "Local", "Country", "Impact", "Event", "Actual", "Forecast", "Prior", "Unit", "Scale", "Publisher", "Link"]);
+  expect(csv.rows).toHaveLength(json.data.length);
+  expect(ndjson).toHaveLength(json.data.length);
+  const cell = (value: unknown) => value == null ? "" : String(value);
+  json.data.forEach((row, index) => {
+    const cells = Object.fromEntries(csv.header.map((name, column) => [name, csv.rows[index]![column]!]));
+    for (const column of json.columns) expect(cells[column.header]).toBe(cell(row[column.key]));
+    // The fixed columns say what the row's own fields do: the release is the as-of, the period is the reference period.
+    expect(cells.as_of).toBe(cell(row.released));
+    expect(cells.released).toBe(cell(row.released));
+    expect(cells.period).toBe(cell(row.referencePeriod));
+    expect(cells.currency_or_unit).toBe(cell(row.unit));
+    expect(cells.symbol_or_series).toBe(cell(row.indicatorId));
+    expect(cells.retrieved).toBe(json.metadata.freshness.retrievedAt);
+    // NDJSON is the JSON row with the fixed fields, a publisher's own `released` untouched.
+    expect(ndjson[index]).toMatchObject({ ...row, as_of: row.released, period: row.referencePeriod ?? null, retrieved: json.metadata.freshness.retrievedAt, source: "Gloom Cloud" });
+  });
+  // A figure is a number in every format, and a missing one is empty in CSV and null in JSON.
+  const crude = json.data.findIndex((row) => row.event === "EIA Crude Oil Stocks Change");
+  expect(csv.rows[crude]!.slice(8, 13)).toEqual(["-4100000", "-987000", "500000", "bbl", "1000000"]);
+  const housing = json.data.findIndex((row) => row.event === "Housing Starts");
+  expect(csv.rows[housing]!.slice(8, 13)).toEqual(["", "", "", "", ""]);
+  expect(json.data[housing]).toMatchObject({ actual: null, released: null });
+  // Released once it has an actual: a day alone for a row with no time, an instant otherwise.
+  expect(json.data.find((row) => row.event === "Unemployment Rate")).toMatchObject({ released: "2026-10-14T12:30:00.000Z" });
+  expect(json.data.find((row) => row.event === "Party Plenum")).toMatchObject({ released: "2026-10-20" });
+});
+
+test("a capped export says so after its rows, as text and JSON do", async () => {
+  const many = Array.from({ length: 60 }, (_, index) => event(`2026-10-1${index % 10}T${String(index % 24).padStart(2, "0")}:00:00.000Z`, "US", "low", `Release ${index}`));
+  const { result, options } = await econPrinted(many, ["--from", "2026-10-10"]);
+  const note = "showing the oldest 50 of 60 rows; --tail 50 for the latest";
+  const csv = readCsv(serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options));
+  expect(csv.rows).toHaveLength(50);
+  expect(csv.footer).toContain(`# note: ${note}`);
+  const json = JSON.parse(serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "json" }, options)) as { metadata: { rows: { note: string } } };
+  expect(json.metadata.rows.note).toBe(note);
+  expect((await econText(many, ["--from", "2026-10-10"]))).toContain(note);
+  // A window that holds all its rows has nothing to say.
+  const { result: fewer, options: fewerOptions } = await econPrinted(many.slice(0, 5), ["--from", "2026-10-10"]);
+  expect(serializeCliResult(fewer, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, fewerOptions)).not.toContain("showing the oldest");
+});
+
+test("a CSV carries what the text says under the table, such as where the stored calendar starts", async () => {
+  setSystemTime(new Date("2026-10-18T23:00:00.000Z"));
+  const { result, options } = await econPrinted(twoWeeks, ["--from", "2026-08-01", "--country", "US"], {}, "2026-09-01");
+  const footer = readCsv(serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options)).footer;
+  expect(footer).toContain("# note: The stored calendar starts 2026-09-01; nothing earlier is listed");
 });

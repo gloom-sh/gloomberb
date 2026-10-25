@@ -18,7 +18,9 @@ import {
 import { isEpochMilliseconds, parseReportTime } from "../utils/utc-time";
 import type { ReportFreshness } from "./pane-functions/freshness";
 import {
+  EXPORT_DATING_COLUMNS,
   EXPORT_IDENTITY_COLUMNS,
+  exportDatingCells,
   exportIdentityCells,
   exportSourceLines,
   type ExportIdentity,
@@ -46,6 +48,12 @@ export interface CliReportTables {
   footer: string[];
   /** What the rows are of, for the fixed columns every row ends with (`EXPORT_IDENTITY_COLUMNS`). */
   identity?: ExportIdentity;
+  /**
+   * The rows are statistics dated by a period and a release: every table also
+   * ends with `period`, `released` and `retrieved` (`EXPORT_DATING_COLUMNS`),
+   * less any it has by name, with `as_of` the release.
+   */
+  dated?: boolean;
 }
 
 /** A column as a report declares it: the text view draws `format(value, row)`, or the value itself. */
@@ -623,19 +631,22 @@ function csvLine(row: readonly unknown[]): string {
 function identifiedTable(table: CliReportTable, report: CliReportTables, freshness: ReportFreshness | undefined): CliReportTable {
   if (!freshness || table.columns.length === 0) return table;
   const identity = { ...report.identity, ...table.identity };
-  const cells = exportIdentityCells(freshness, identity);
-  const rowCells = (index: number) => {
+  const identityFor = (index: number) => {
     const own = table.rowIdentities?.[index];
-    return own ? exportIdentityCells(freshness, { ...identity, ...own }) : cells;
+    return own ? { ...identity, ...own } : identity;
   };
   const added = EXPORT_IDENTITY_COLUMNS.flatMap((column, index) => table.columns.includes(column) ? [] : [index]);
-  if (added.length === 0) return table;
+  const dating = report.dated
+    ? EXPORT_DATING_COLUMNS.flatMap((column, index) => table.columns.includes(column) ? [] : [index]) : [];
+  if (added.length === 0 && dating.length === 0) return table;
   return {
     ...table,
-    columns: [...table.columns, ...added.map((index) => EXPORT_IDENTITY_COLUMNS[index]!)],
+    columns: [...table.columns, ...added.map((index) => EXPORT_IDENTITY_COLUMNS[index]!), ...dating.map((index) => EXPORT_DATING_COLUMNS[index]!)],
     rows: table.rows.map((row, index) => {
-      const identityCells = rowCells(index);
-      return [...row, ...added.map((column) => identityCells[column]!)];
+      const rowIdentity = identityFor(index);
+      const identityCells = exportIdentityCells(freshness, rowIdentity);
+      const datingCells = exportDatingCells(freshness, rowIdentity);
+      return [...row, ...added.map((column) => identityCells[column]!), ...dating.map((column) => datingCells[column]!)];
     }),
   };
 }

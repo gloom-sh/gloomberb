@@ -27,6 +27,8 @@ export interface EconEvent {
   referencePeriod?: string | null;
   /** Who publishes it (Freddie Mac for the 30-year mortgage rate), and its page when one is named. */
   source?: { name: string; url?: string };
+  /** The indicator this release is of, the same from one release to the next; `id` is this row's alone. */
+  indicatorId?: string | null;
 }
 
 /** Whether a row's time is blank because its publisher states none (a bank whose calendar gives the day only). */

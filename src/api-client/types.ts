@@ -516,6 +516,12 @@ export interface CloudEconEventPayload {
   referencePeriod?: string | null;
   /** Who publishes the release (Freddie Mac for the 30-year mortgage rate), and its page when one is named. */
   source?: { name: string; url?: string };
+  /**
+   * The indicator this release is of, the same from one release to the next
+   * (US CPI m/m on every month's row), where `id` names the one row. Absent
+   * until Gloom Cloud names indicators; exports leave the column empty.
+   */
+  indicatorId?: string | null;
 }
 
 /** One currency's short-term rate, as GET /cloud/econ/short-rates serves it. */

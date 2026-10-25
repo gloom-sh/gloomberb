@@ -120,7 +120,9 @@ test("a start before the series begins starts every format at its first observat
   expect(result.data).toEqual([{ date: "1980-01-02", value: 0.8271 }, { date: "1980-01-03", value: 0.8271 }]);
   expect(text.split("\n")[2]).toStartWith("1980-01-02");
   const csv = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options).split("\n");
-  expect(csv[1]).toBe("1980-01-02,0.8271,DEXSFUS,South African Rand to One U.S. Dollar,daily,FRED,1980-01-03");
+  // A daily series is as of each row's own day; the release has nothing to say yet.
+  expect(csv[0]).toBe("date,value,symbol_or_series,currency_or_unit,interval,source,as_of,period,released,retrieved");
+  expect(csv[1]).toStartWith("1980-01-02,0.8271,DEXSFUS,South African Rand to One U.S. Dollar,daily,FRED,1980-01-02,1980-01-02,,");
   expect(csv.at(-1)).toBe("# note: Series begins 1980-01-02.");
 });
 
@@ -134,11 +136,9 @@ test("a spread prints and exports in basis points as value, names bp in its unit
   expect(result.data).toEqual([{ date: "2026-10-09", value: 44 }, { date: "2026-10-08", value: -12.5 }]);
   expect(result.metadata).toMatchObject({ unit: "bp", interval: "daily" });
   const csv = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options).split("\n");
-  expect(csv.slice(0, 3)).toEqual([
-    "date,value,symbol_or_series,currency_or_unit,interval,source,as_of",
-    "2026-10-09,44,T10Y2Y,bp,daily,FRED,2026-10-09",
-    "2026-10-08,-12.5,T10Y2Y,bp,daily,FRED,2026-10-09",
-  ]);
+  expect(csv[0]).toBe("date,value,symbol_or_series,currency_or_unit,interval,source,as_of,period,released,retrieved");
+  expect(csv[1]).toStartWith("2026-10-09,44,T10Y2Y,bp,daily,FRED,2026-10-09,2026-10-09,,");
+  expect(csv[2]).toStartWith("2026-10-08,-12.5,T10Y2Y,bp,daily,FRED,2026-10-08,2026-10-08,,");
   expect(csv).toContain("# Publication time: 2026-10-09T21:02:11.000Z");
   expect(csv.at(-1)).toBe("# note: Showing from 2021-01-01; earlier: --start YYYY-MM-DD (series begins 1976-06-01).");
   // The default start says it is one.
@@ -188,7 +188,7 @@ test("a yield ahead of FRED names Treasury and when it published, in the source 
   const ahead = await runFred(["DGS10"]);
   expect(ahead.text.split("\n").at(-1)).toBe("Source: U.S. Treasury via FRED, published 2026-10-09 \u00b7 Fri 9 Oct 2026 \u00b7 not a live feed (published statistics)");
   expect(ahead.result.data).toEqual([
-    { date: "2026-10-09", value: 5.24, publisher: "U.S. Treasury", publishedAt: "2026-10-09T20:01:09.391Z" },
+    { date: "2026-10-09", value: 5.24, publisher: "U.S. Treasury", publishedAt: "2026-10-09T20:01:09.391Z", released: "2026-10-09T20:01:09.391Z" },
     { date: "2026-10-08", value: 5.22 },
   ]);
   expect(ahead.result.freshness).toMatchObject({ publisher: "U.S. Treasury", publishedAt: "2026-10-09T20:01:09.391Z" });
@@ -280,4 +280,25 @@ test("yield-curve reads each tenor's move against the previous observation, not 
     .toEqual([["DGS3MO", "2026-10-09", 0], ["DGS2", "2026-10-09", -4], ["DGS10", "2026-10-09", 4.1], ["DGS30", null, null]]);
   const rows = serializeCliResult({ ...result, freshness: undefined }, DEFAULT_CLI_OPTIONS, options).split("\n").slice(2).map((line) => line.split(/\s+/));
   expect(rows.map(([tenor, yieldText, change]) => [tenor, yieldText, change])).toEqual([["3M", "4.25", "0.0bp"], ["2Y", "4.80", "-4.0bp"], ["10Y", "5.24", "+4.1bp"], ["30Y", "5.60", "-"]]);
+});
+
+test("every export dates a figure by the period it covers, when it was released and when it was retrieved, and as_of is the release", async () => {
+  // Permits for September are dated 1 Sep and were released 20 Oct; August's release is not stated.
+  serveSeries(() => ({
+    observations: [{ date: "2026-09-01", value: 1400, releasedOn: "2026-10-20" }, { date: "2026-08-01", value: 1403 }],
+    info: { id: "PERMIT", units: "Thousands of Units", frequency: "Monthly", observationStart: "1960-01-01", observationEnd: "2026-09-01" },
+  }));
+  const { result, options } = await runFred(["PERMIT", "--start", "2026-08-01"]);
+  const csv = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options).split("\n");
+  const retrieved = (result.freshness as { retrievedAt: string }).retrievedAt;
+  expect(csv[0]).toBe("date,value,symbol_or_series,currency_or_unit,interval,source,as_of,period,released,retrieved");
+  // The period's first day is never the as-of: the release is, and a month with none says none.
+  expect(csv[1]).toBe(`2026-09-01,1400,PERMIT,Thousands of Units,monthly,FRED,2026-10-20,2026-09-01,2026-10-20,${retrieved}`);
+  expect(csv[2]).toBe(`2026-08-01,1403,PERMIT,Thousands of Units,monthly,FRED,,2026-08-01,,${retrieved}`);
+  // NDJSON and JSON say the same release, the JSON beside the period the row's date is.
+  const [newest] = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "ndjson" }, options).split("\n").map((line) => JSON.parse(line) as Record<string, unknown>);
+  expect(newest).toMatchObject({ date: "2026-09-01", as_of: "2026-10-20", period: "2026-09-01", released: "2026-10-20", retrieved });
+  const json = JSON.parse(serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "json" }, options)) as { data: Array<Record<string, unknown>>; source: Record<string, unknown> };
+  expect(json.data[0]).toEqual({ date: "2026-09-01", value: 1400, released: "2026-10-20" });
+  expect(json.source).toMatchObject({ retrievalTime: retrieved });
 });

@@ -3,6 +3,8 @@ import { apiClient } from "../../api-client";
 import { ApiRequestError } from "../../api-client/errors";
 import type { CliCommandDef } from "../../types/plugin";
 import { withCliServices, withMarketData } from "../context";
+import { CLI_ERROR_CODE, failWithFields } from "../errors";
+import type { CliResultColumn } from "../result";
 import { formatCompact } from "../../utils/format";
 import { DATE_OPTION_EXAMPLES, DATE_OPTION_FORMATS, dateOptionError, readCalendarDate } from "../../utils/calendar-date";
 import {
@@ -40,6 +42,7 @@ import {
   type ImpactFilter,
 } from "../../plugins/builtin/econ/calendar-model";
 import { hasNoReleaseTime, hasNoStatedTime } from "../../plugins/builtin/econ/types";
+import { econRowFigures } from "../../plugins/builtin/econ/figures";
 import { isoDate, rejectExtraArgs, requireArg, requireOneArg, takeFlag, takeOption } from "./command-utils";
 import { buildCorrelationSeries } from "../../plugins/builtin/correlation/matrix/model";
 import { alignDailyCloses, correlateDailyCloses } from "../../plugins/builtin/correlation/compute";
@@ -299,6 +302,50 @@ function publisherClock(localTime: unknown, timeZone: unknown): string {
 }
 const DAY_MS = 86_400_000;
 
+/** The calendar's columns up to the event: shared by the text table and the exports, which keep the raw values under them. */
+function econHeadColumns(viewerZone: string | null): CliResultColumn[] {
+  return [
+    // Text shows both halves of the event timestamp in UTC, never the host's zone; exports keep the source values.
+    { key: "date", header: "Date", format: (value) => utcDateTimePart(value, "date") },
+    // The weekday sits before the clock it is on: the UTC time's, or with --tz the viewer's.
+    ...viewerZone ? [] : [ECON_DAY_COLUMN],
+    // With --tz the viewer's clock has its own column, so the UTC time does not repeat it.
+    { key: "time", header: "Time", format: (value, row) => value === "All Day" ? "All day" : value === ""
+      ? "" : utcDateTimePart(row.date, "time", !viewerZone) },
+    ...viewerZone ? [ECON_DAY_COLUMN] : [],
+    // Only --tz fills it: the viewer's clock, its weekday in Day before it.
+    { key: "viewerTime", header: viewerZone ? timeZoneCity(viewerZone) : "Viewer", shrink: false,
+      format: (value) => typeof value === "string" && viewerZone ? value : "" },
+    // Only rows a publisher times itself fill it, so the feeds' calendar prints as before.
+    { key: "localTime", header: "Local", optional: true, dropPriority: 1, format: (value, row) => publisherClock(value, row.timeZone) },
+    { key: "country", header: "Country" },
+    { key: "impact", header: "Impact" },
+    { key: "event", header: "Event" },
+  ];
+}
+
+/**
+ * Actual, Forecast and Prior: as the text draws them (`30.3K`, `-4.1M bbl`) in the table, as
+ * numbers in the exports (30300, -4100000), where Unit and Scale say what they count and how they were drawn.
+ */
+function econFigureColumns(text: boolean): CliResultColumn[] {
+  return text
+    ? [{ key: "actualText", header: "Actual" }, { key: "forecastText", header: "Forecast" }, { key: "priorText", header: "Prior" }]
+    : [{ key: "actual", header: "Actual" }, { key: "forecast", header: "Forecast" }, { key: "prior", header: "Prior" }];
+}
+
+const ECON_PUBLISHER_COLUMN: CliResultColumn = {
+  key: "publisher", header: "Publisher", format: (value) => typeof value === "string" ? value : "",
+};
+
+/** What only the exports say about a row: how to read its figures, who publishes it and where. */
+const econExportColumns: CliResultColumn[] = [
+  { key: "unit", header: "Unit" },
+  { key: "scale", header: "Scale" },
+  { key: "publisher", header: "Publisher" },
+  { key: "sourceUrl", header: "Link" },
+];
+
 /**
  * What an empty calendar says. A window that starts after the last day listed
  * says where the listing stops, whatever the filters, rather than nothing.
@@ -357,6 +404,22 @@ function blankTimeNotes(rows: ReadonlyArray<{ event: string; country: string; ti
   return [...byNote].map(([note, events]) => `No time for ${events.join(", ")}: ${note.charAt(0).toLowerCase()}${note.slice(1)}.`);
 }
 
+/**
+ * A `--from` the stored calendar does not reach back to, which Gloom Cloud refuses
+ * with "The calendar reaches back 400 days": an input error naming the earliest
+ * day it takes, and `--json` carries it as `earliest`. Any other failure goes on as it was.
+ */
+function failBeforeCalendar(error: unknown, from: string, todayStart: number): never {
+  const days = error instanceof ApiRequestError && error.status === 422 ? /reaches back (\d+) days?/i.exec(error.message)?.[1] : undefined;
+  if (!days) throw error;
+  const earliest = isoDate(new Date(todayStart - Number(days) * DAY_MS)).slice(0, 10);
+  return failWithFields(
+    `--from ${from} is before the earliest day the calendar reaches back to, ${earliest}. Use --from ${earliest} or later.`,
+    CLI_ERROR_CODE,
+    { earliest, days: Number(days) },
+  );
+}
+
 async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const rawArgs = [...args];
   const country = parseCountry(takeOption(rawArgs, "--country"), ctx);
@@ -372,7 +435,9 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
     const todayStart = Math.floor(Date.now() / DAY_MS) * DAY_MS;
     // An earlier day reads the stored calendar, which keeps past events after the week's listing drops them.
     // A server without it, a server error or no network lists the current calendar (cached when offline) instead.
-    const stored = fromOption != null && fromOption < isoDate(new Date(todayStart)) ? await fetchEconCalendarFrom(fromOption) : null;
+    const stored = fromOption != null && fromOption < isoDate(new Date(todayStart))
+      ? await fetchEconCalendarFrom(fromOption).catch((error: unknown) => failBeforeCalendar(error, fromOption, todayStart))
+      : null;
     const past = stored?.events ? stored : null;
     const unread = stored && !stored.events && stored.failure ? `The stored calendar could not be read (${stored.failure}); listing the current calendar` : null;
     const { data: events, fetchedAt, stale } = past ? { data: past.events, fetchedAt: Date.now(), stale: false } : await loadCalendar(ctx.cliOptions.refresh);
@@ -400,6 +465,8 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
       .map((event) => {
         // The viewer's clock (--tz) for a row with a time: its date and time there.
         const clock = viewerZone && !hasNoReleaseTime(event) ? zonedClock(event.date.getTime(), viewerZone) : null;
+        // The figures as numbers, scale multiplied out, with their unit and the scale they are drawn in; the text stays as drawn.
+        const figures = econRowFigures(event);
         return {
           date: isoDate(event.date),
           // The weekday on the viewer's clock (--tz), else the UTC day's; a row with no time is its day's.
@@ -409,9 +476,14 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
           country: eventCountry(event),
           impact: event.impact,
           event: event.event,
-          actual: event.actual ?? "",
-          forecast: event.forecast ?? "",
-          prior: event.prior ?? "",
+          actual: figures.actual,
+          forecast: figures.forecast,
+          prior: figures.prior,
+          unit: figures.unit,
+          scale: figures.scale,
+          actualText: event.actual ?? null,
+          forecastText: event.forecast ?? null,
+          priorText: event.prior ?? null,
           // The publisher's own clock, for rows Gloom Cloud adds from a bank's or a statistics office's calendar.
           localTime: event.localTime ?? null,
           timeZone: event.timeZone ?? null,
@@ -420,15 +492,19 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
           // Who publishes the figure (Freddie Mac for the 30-year mortgage rate), the period it covers and its page.
           publisher: event.source?.name ?? null,
           referencePeriod: event.referencePeriod ?? null,
-          source: event.source?.name ?? null,
+          // When the figure came out: the row's time once it has an actual (its day alone when it states no time), null before.
+          released: event.actual?.trim() ? (hasNoReleaseTime(event) ? isoDate(event.date).slice(0, 10) : isoDate(event.date)) : null,
           sourceUrl: event.source?.url ?? null,
+          // The same indicator from one release to the next; empty until Gloom Cloud names it.
+          indicatorId: event.indicatorId ?? null,
         };
       });
     // A filter of countries only, none of which has anything in the window, says so as its empty list.
     const allUnscheduled = unscheduled.length > 0 && unscheduled.length === country.split(",").length;
-    const footnote = [listedBefore, listedAfter, ...(rows.length > 0 ? blankTimeNotes(rows) : []),
+    const notes = [listedBefore, listedAfter, ...(rows.length > 0 ? blankTimeNotes(rows) : []),
       rows.length > 0 && unscheduled.length > 0 ? noScheduledReleasesMessage(unscheduled) : null]
-      .filter((note): note is string => !!note).join("\n");
+      .filter((note): note is string => !!note);
+    const footnote = notes.join("\n");
     ctx.printResult({
       data: rows,
       ...(unread ? { warnings: [unread] } : {}),
@@ -440,28 +516,20 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
       defaultLimit: 50,
       empty: allUnscheduled ? noScheduledReleasesMessage(unscheduled) : econEmptyMessage(from, listedThrough, listedAfter != null),
       ...(footnote ? { footnote } : {}),
-      columns: [
-        // Text shows both halves of the event timestamp in UTC, never the host's zone; exports keep the source values.
-        { key: "date", header: "Date", format: (value) => utcDateTimePart(value, "date") },
-        // The weekday sits before the clock it is on: the UTC time's, or with --tz the viewer's.
-        ...viewerZone ? [] : [ECON_DAY_COLUMN],
-        // With --tz the viewer's clock has its own column, so the UTC time does not repeat it.
-        { key: "time", header: "Time", format: (value, row) => value === "All Day" ? "All day" : value === ""
-          ? "" : utcDateTimePart(row.date, "time", !viewerZone) },
-        ...viewerZone ? [ECON_DAY_COLUMN] : [],
-        // Only --tz fills it: the viewer's clock, its weekday in Day before it.
-        { key: "viewerTime", header: viewerZone ? timeZoneCity(viewerZone) : "Viewer", shrink: false,
-          format: (value) => typeof value === "string" && viewerZone ? value : "" },
-        // Only rows a publisher times itself fill it, so the feeds' calendar prints as before.
-        { key: "localTime", header: "Local", optional: true, dropPriority: 1, format: (value, row) => publisherClock(value, row.timeZone) },
-        { key: "country", header: "Country" },
-        { key: "impact", header: "Impact" },
-        { key: "event", header: "Event" },
-        { key: "actual", header: "Actual" },
-        { key: "forecast", header: "Forecast" },
-        { key: "prior", header: "Prior" },
-        { key: "publisher", header: "Publisher", format: (value) => typeof value === "string" ? value : "" },
-      ],
+      // What the text says under the table, a script reads in the CSV's closing lines.
+      exportNotes: notes,
+      // `as_of` is the release: when a row's figure came out, blank for one that has none yet.
+      exportDated: true,
+      exportIdentity: (row) => ({
+        symbolOrSeries: typeof row.indicatorId === "string" ? row.indicatorId : null,
+        currencyOrUnit: typeof row.unit === "string" ? row.unit : null,
+        asOf: typeof row.released === "string" ? row.released : null,
+        released: typeof row.released === "string" ? row.released : null,
+        period: typeof row.referencePeriod === "string" ? row.referencePeriod : null,
+      }),
+      // The exports add what a script needs to read a row; the text table keeps the columns it had.
+      columns: [...econHeadColumns(viewerZone), ...econFigureColumns(false), ...econExportColumns],
+      textColumns: [...econHeadColumns(viewerZone), ...econFigureColumns(true), ECON_PUBLISHER_COLUMN],
     });
   });
 }
@@ -545,12 +613,16 @@ async function runFred(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
   if (mismatch) ctx.fail(mismatch);
   // Each row's change in the unit its value exports in, and the date it is from; a holiday's stays blank.
   const changes = horizon ? fredChanges(seriesId, data.observations, horizon) : null;
+  const releasedOf = (observation: { publisher?: string; publishedAt?: string; releasedOn?: string }) =>
+    observation.releasedOn ?? (observation.publisher?.trim() ? observation.publishedAt : undefined);
   // A value FRED does not list yet carries its publisher and when it published, in every export.
-  const exportRow = (observation: { date: string; value: number | null; publisher?: string; publishedAt?: string }) => ({
+  const exportRow = (observation: { date: string; value: number | null; publisher?: string; publishedAt?: string; releasedOn?: string }) => ({
     date: observation.date,
     value: fredExportValue(seriesId, observation.value),
     ...(changes ? { change: changes.get(observation.date)?.change ?? null, changeFrom: changes.get(observation.date)?.changeFrom ?? null } : {}),
     ...(observation.publisher?.trim() ? { publisher: observation.publisher.trim(), ...(observation.publishedAt ? { publishedAt: observation.publishedAt } : {}) } : {}),
+    // When the figure came out, where the data says: only a series' newest observation does. `date` is the period it covers.
+    ...releasedOf(observation) ? { released: releasedOf(observation) } : {},
   });
   // A --start before the series begins comes back padded with blank days: the rows start at its first observation.
   const rows = fredObservationsFromStart(data.observations, data.info?.observationStart)
@@ -598,7 +670,16 @@ async function runFred(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
     dateKey: "date",
     empty: fredEmptyMessage(startDate, latest == null ? null : exportRow(latest)),
     ...(notes.length ? { footnote: notes.join("\n"), exportNotes: notes } : {}),
-    exportIdentity: { symbolOrSeries: seriesId, currencyOrUnit: unit, interval },
+    // `as_of` is the release. A figure with none stated is as of its own day when the series observes days
+    // (a daily rate), and of nothing when its date only starts the period it covers: never that first day.
+    exportDated: true,
+    exportIdentity: (row) => {
+      const released = typeof row.released === "string" ? row.released : null;
+      const date = typeof row.date === "string" ? row.date : null;
+      return { symbolOrSeries: seriesId, currencyOrUnit: unit, interval, asOf: released ?? (periodicity ? null : date), period: date, released };
+    },
+    // The release closes the row with the other dating columns, so it is not one of the observation's own.
+    columns: [...new Set(rows.flatMap((row) => Object.keys(row)))].filter((key) => key !== "released").map((key) => ({ key, header: key })),
     textColumns: [
       { key: "date", header: "Date" },
       isSpreadSeries(seriesId)

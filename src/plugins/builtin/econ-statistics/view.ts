@@ -34,6 +34,8 @@ export interface StatViewModel {
   periodicity: "monthly" | "quarterly" | "annual" | null;
   /** The print before this one, for the direction of the last move. */
   previous: StatPoint | null;
+  /** What that print is a reading of, as `reading` says the latest's: "Aug 2026"; null with no previous print. */
+  previousReading: string | null;
   yearAgo: StatPoint | null;
   changeOnPrevious: number | null;
   /** Where the current reading sits within the selected range. */
@@ -153,6 +155,7 @@ export function projectStat(
     readingReleased: periodReleasedText(reading, releasedOn, latest.date),
     periodicity: periodStartPeriodicity(latest.date, perYear),
     previous,
+    previousReading: previous ? formatStatReading(previous.date, perYear) : null,
     yearAgo,
     changeOnPrevious: previous ? latest.value - previous.value : null,
     percentile: visible.length === 0 ? 0 : (100 * atOrBelow) / visible.length,

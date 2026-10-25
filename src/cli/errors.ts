@@ -9,7 +9,7 @@ import { DATA_SERVICE_UNREACHABLE_MESSAGE, isNetworkFailure } from "../utils/net
 
 const USAGE_PREFIX = "Usage: ";
 /** The code of every error a command fails with: bad input, nothing found, an option it does not take. */
-const CLI_ERROR_CODE = "cli_error";
+export const CLI_ERROR_CODE = "cli_error";
 /** The code of a command whose requests never reached the data service. */
 export const SERVICE_UNREACHABLE_CODE = "service_unreachable";
 

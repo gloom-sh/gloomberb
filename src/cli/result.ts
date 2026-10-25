@@ -18,7 +18,10 @@ import { formatFreshnessLine, withSavedCopy, type ReportFreshness } from "./pane
 import { withSearchHints, type FredSeriesCheck } from "./not-a-ticker";
 import { renderReportCsv, renderReportNdjson, withCsvFooter, type CliReportTables } from "./report-tables";
 import {
+  EXPORT_DATING_COLUMNS,
   EXPORT_IDENTITY_COLUMNS,
+  exportDatingCells,
+  exportDatingFields,
   exportIdentityCells,
   exportIdentityFields,
   exportSource,
@@ -120,6 +123,15 @@ export interface CliResultRenderOptions<T = unknown, Row = Record<string, unknow
   exportIdentity?: ExportIdentity | ((row: Row) => ExportIdentity);
   /** What CSV says after the source lines as `# note:` lines: what the rows do not show, such as where a series begins. */
   exportNotes?: readonly string[];
+  /**
+   * The rows are statistics dated by a period and a release (`econ`, `fred`):
+   * CSV and NDJSON rows also end with `period`, `released` and `retrieved`
+   * (`EXPORT_DATING_COLUMNS`) after the five fixed columns, from the `period`
+   * and `released` of each row's `exportIdentity`, and `as_of` is the release.
+   * A column the rows already have by name keeps its own values. Needs a
+   * cited source, as the fixed columns do.
+   */
+  exportDated?: boolean;
   /**
    * Why a row's figures are empty (`Not a ticker: ZZZZQQ.`, `Chg%: no previous
    * close`), for the `status` column CSV writes after the row's own columns and
@@ -348,20 +360,31 @@ function renderCsv<Row extends Record<string, unknown>>(
   columns?: CliResultColumn<Row>[],
   identity?: (row: Row) => string[],
   status?: (row: Row) => string | null | undefined,
+  dating?: (row: Row) => string[],
 ): string {
   const resolvedColumns = columns && columns.length > 0
     ? columns
     : inferColumns(rows as Record<string, unknown>[]) as CliResultColumn<Row>[];
   const headers = resolvedColumns.map((column) => column.header);
+  // A dated export's own `released` column keeps its values; the others close the row.
+  const datingAdded = dating
+    ? EXPORT_DATING_COLUMNS.flatMap((column, index) => headers.includes(column) ? [] : [index]) : [];
   return serializeCsv([
-    [...headers, ...status ? [statusHeader(headers)] : [], ...identity ? EXPORT_IDENTITY_COLUMNS : []],
+    [
+      ...headers,
+      ...status ? [statusHeader(headers)] : [],
+      ...identity ? EXPORT_IDENTITY_COLUMNS : [],
+      ...datingAdded.map((index) => EXPORT_DATING_COLUMNS[index]!),
+    ],
     ...rows.map((row) => {
       const values = resolvedColumns.map((column) => (column.value ? column.value(row) : row[column.key]));
       const blanked = resolvedColumns.flatMap((column, index) => isNonFiniteNumber(values[index]) ? [column.header] : []);
+      const datingCells = dating?.(row) ?? [];
       return [
         ...values.map((value) => isNonFiniteNumber(value) ? "" : value),
         ...status ? [exportStatusText(status(row), blanked)] : [],
         ...identity?.(row) ?? [],
+        ...datingAdded.map((index) => datingCells[index] ?? ""),
       ];
     }),
   ]);
@@ -534,13 +557,26 @@ function serializeCliRows<T, Row extends Record<string, unknown>>(
     return rows.map((row) => {
       if (!isPlainObject(row)) return JSON.stringify(row);
       const fields = ndjsonRow(row as Row, status, statusKey);
-      return JSON.stringify(cited ? { ...fields, ...exportIdentityFields(cited, rowIdentity(row as Row, renderOptions.exportIdentity)) } : fields);
+      if (!cited) return JSON.stringify(fields);
+      const identity = rowIdentity(row as Row, renderOptions.exportIdentity);
+      // A dated export's own fields (a row's `released`) keep their values.
+      const dating = renderOptions.exportDated
+        ? Object.fromEntries(Object.entries(exportDatingFields(cited, identity)).filter(([key]) => !(key in fields))) : {};
+      return JSON.stringify({ ...fields, ...exportIdentityFields(cited, identity), ...dating });
     }).join("\n");
   }
   if (options.format === "csv") {
-    if (!cited) return renderCsv(rows as Row[], renderOptions.columns, undefined, status);
-    const csv = renderCsv(rows as Row[], renderOptions.columns, (row) => exportIdentityCells(cited, rowIdentity(row, renderOptions.exportIdentity)), status);
-    return withCsvFooter(csv, [...exportSourceLines(cited), ...(renderOptions.exportNotes ?? []).map((note) => `note: ${note}`)]);
+    // The rows a window cut say so after them, as text and JSON do: a script has no other way to know.
+    const cutNote = window.note ? [`note: ${window.note}`] : [];
+    if (!cited) return withCsvFooter(renderCsv(rows as Row[], renderOptions.columns, undefined, status), cutNote);
+    const csv = renderCsv(
+      rows as Row[],
+      renderOptions.columns,
+      (row) => exportIdentityCells(cited, rowIdentity(row, renderOptions.exportIdentity)),
+      status,
+      renderOptions.exportDated ? (row) => exportDatingCells(cited, rowIdentity(row, renderOptions.exportIdentity)) : undefined,
+    );
+    return withCsvFooter(csv, [...exportSourceLines(cited), ...cutNote, ...(renderOptions.exportNotes ?? []).map((note) => `note: ${note}`)]);
   }
   if (renderOptions.text) {
     return renderOptions.text(result.data);
@@ -608,6 +644,22 @@ export function printCliResult<T, Row extends Record<string, unknown> = Record<s
       console.error(`${cliStyles.warning("warning:")} ${hinted(warning)}`);
     }
   }
+  // CSV says it in its closing `# note:` lines; NDJSON has no place for one
+  // among its rows, so what a cut left out goes to stderr too.
+  if (options.format === "ndjson" && !options.quiet) {
+    const note = exportCutNote(result, options, renderOptions);
+    if (note) console.error(`note: ${note}`);
+  }
+}
+
+/** What a `--limit`, or the default a command caps its rows at, left out of a list, in words; null when it cut nothing that needs saying. */
+function exportCutNote<T, Row extends Record<string, unknown>>(
+  result: CliResult<T>,
+  options: CliGlobalOptions,
+  renderOptions: CliResultRenderOptions<T, Row>,
+): string | null {
+  if (renderOptions.tables || renderOptions.text) return null;
+  return windowed(asRows(result.data, renderOptions.rows), options, renderOptions).note;
 }
 
 export function serializeCliError(error: CliErrorObject, options: CliGlobalOptions): string {

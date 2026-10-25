@@ -529,6 +529,8 @@ export type HeadlessBundleSection =
     locked?: boolean;
     entries?: never;
     textEntries?: never;
+    period?: never;
+    released?: never;
   }
   | {
     title: string;
@@ -542,8 +544,14 @@ export type HeadlessBundleSection =
     textEntries?: HeadlessPaneEntry[];
     /** The symbol the figures are of, where the report's own is not: each exported line names it in `symbol_or_series`. */
     symbol?: string;
-    /** When the figures were observed (an ISO date or instant), where it is not the report's newest: each exported line names it in `as_of`. */
-    asOf?: string;
+    /**
+     * When the figures were observed (an ISO date or instant), where it is not the report's newest: each exported line names it in `as_of`.
+     * Null leaves `as_of` blank, for figures with no date of their own to state.
+     */
+    asOf?: string | null;
+    /** In a report with `exportDated`: the period the figures cover, and when they were released (an ISO date or instant), which each exported line names in `period` and `released`. */
+    period?: string;
+    released?: string;
     columns?: never;
     rows?: never;
     textColumns?: never;
@@ -699,6 +707,13 @@ export interface HeadlessPaneDefinition<Shape extends HeadlessPaneShape = Headle
    * sessions), so a saved file keeps what stderr said.
    */
   exportWarnings?: boolean;
+  /**
+   * The rows are statistics dated by a period and a release, so `--csv` and
+   * `--ndjson` end every table with `period`, `released` and `retrieved` after
+   * the five fixed columns (a table's own columns of those names stand in for
+   * them), and `as_of` is the release, from the section's `rowAsOfKey` or `asOf`.
+   */
+  exportDated?: boolean;
   columns?: HeadlessPaneColumn[];
   /**
    * The report title. A report passes the loaded result, so a title can name

@@ -781,7 +781,9 @@ export function headlessReportTables(
         // A section of one name or one date says so for every line it exports.
         const named = {
           ...(section.symbol?.trim() ? { symbolOrSeries: section.symbol.trim() } : {}),
-          ...(section.asOf?.trim() ? { asOf: section.asOf.trim() } : {}),
+          ...(section.asOf === null ? { asOf: null } : section.asOf?.trim() ? { asOf: section.asOf.trim() } : {}),
+          ...(section.period?.trim() ? { period: section.period.trim() } : {}),
+          ...(section.released?.trim() ? { released: section.released.trim() } : {}),
         };
         if (!("rows" in section && section.rows)) {
           const entries = exportEntriesTable(section.title, section.entries);
@@ -820,6 +822,7 @@ export function headlessReportTables(
   const gate = reportGate(definition, result);
   return {
     tables,
+    ...(definition.exportDated ? { dated: true } : {}),
     identity: reportIdentity(definition, result, args),
     footer: reportFooterLines({
       freshness,
