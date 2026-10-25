@@ -38,17 +38,9 @@ import { WindowControls, WINDOWS_CONTROL_GROUP_WIDTH_PX } from "./window-control
 import { Button, terminalButtonColumns } from "../ui/button";
 
 const UPDATE_NOTICE_DURATION_MS = 5_000;
-/**
- * The failed-update message is cut to the room it has, but not below this many
- * columns ("Update fa..."): narrower says nothing, so the banner is left out.
- * The retry hint gives way before the message goes under it.
- */
-const UPDATE_ERROR_MIN_COLUMNS = 12;
 /** Kept clear after the terminal update status, so its last character never touches the Help pill. */
 const UPDATE_STATUS_GAP_COLUMNS = 1;
-/** Below this many characters of the reason, the terminal banner says "Update failed" and the retry key instead. */
-const UPDATE_REASON_MIN_COLUMNS = 8;
-/** A terminal line about an update narrower than this is left out rather than shown as a stub. */
+/** A clipped terminal notice narrower than this is left out rather than shown as a stub. */
 const UPDATE_TEXT_MIN_COLUMNS = 8;
 /** Left padding of the update status's slot, in cells; the desktop's title-bar layout also pads its right. */
 const UPDATE_SLOT_PADDING_COLUMNS = 2;
@@ -316,7 +308,7 @@ function HeaderCommandPrompt({
  */
 type UpdateStatusView =
   | { kind: "busy"; text: string; parts: StatusPart[] }
-  | { kind: "text"; text: string }
+  | { kind: "text"; text: string; compact?: string; clip?: boolean }
   | { kind: "restart"; text: string; version: string }
   | { kind: "failed"; message: string; parts: StatusPart[]; retry: boolean };
 
@@ -374,7 +366,7 @@ function resolveUpdateStatusView({
       if (updateProgress.canRestart && canRestart) {
         return { kind: "restart", text: t("Update ready"), version: updateAvailable?.version ?? "" };
       }
-      return { kind: "text", text: t("Update ready, restart to apply") };
+      return { kind: "text", text: t("Update ready, restart to apply"), compact: t("Update ready") };
     }
     if (updateProgress.phase === "done") {
       return { kind: "text", text: t(updateProgress.message ?? "Update ready, restart to apply") };
@@ -419,7 +411,7 @@ function resolveUpdateStatusView({
     }
     return { kind: "text", text: tf("v{version} available — starting download...", { version: updateAvailable.version }) };
   }
-  if (updateNotice) return { kind: "text", text: updateNotice };
+  if (updateNotice) return { kind: "text", text: updateNotice, clip: true };
   return null;
 }
 
@@ -460,8 +452,8 @@ function retryHint(view: Extract<UpdateStatusView, { kind: "failed" }>, updateKe
 }
 
 /**
- * Columns the terminal status takes when nothing is cut: the header gives the
- * slot that much from the closed prompt's empty room before it cuts anything.
+ * Columns the terminal status takes when everything fits: the header gives
+ * the slot that much from the closed prompt's empty room before dropping parts.
  */
 function terminalUpdateStatusColumns(view: UpdateStatusView, updateKey: string): number {
   return UPDATE_STATUS_GAP_COLUMNS + terminalUpdateStatusContentColumns(view, updateKey);
@@ -490,7 +482,7 @@ function terminalClosedPromptFloor(): number {
 }
 
 /**
- * What the header says about an update. The terminal cuts it to `columns`,
+ * What the header says about an update. The terminal fits it to `columns`,
  * the room its slot is guaranteed; the desktop and the web let the browser fit
  * it to the room the bar leaves (NativeUpdateStatus). Either way it never runs
  * into the Help pill or the market cluster beside it.
@@ -525,7 +517,7 @@ function TerminalUpdateStatus({ columns, onRestart, updateKey, view }: {
   );
 }
 
-/** The status cut to `room` columns, or null when nothing of it would read. */
+/** Whole status parts in priority order; only transient notices may be clipped. */
 function terminalUpdateStatusContent({ onRestart, room, updateKey, view }: {
   onRestart?: () => void;
   room: number;
@@ -533,9 +525,9 @@ function terminalUpdateStatusContent({ onRestart, room, updateKey, view }: {
   view: UpdateStatusView;
 }): ReactNode {
   if (view.kind === "busy") {
-    // The spinner and a cell after it, then the words, cut to what is left.
-    if (room < 2 + UPDATE_TEXT_MIN_COLUMNS) return null;
-    return <TerminalBusyStatus text={fitStatusParts(view.parts, room - 2)} />;
+    // The percent stays when the words give way; the spinner never stands alone.
+    const text = fitStatusParts(view.parts, room - 2);
+    return text ? <TerminalBusyStatus text={text} /> : null;
   }
   if (view.kind === "restart") {
     // The button stays when the words do not fit beside it.
@@ -549,9 +541,7 @@ function terminalUpdateStatusContent({ onRestart, room, updateKey, view }: {
     const hintColumns = displayWidth(hint);
     const messageColumns = displayWidth(view.message);
     const short = t(UPDATE_FAILED_SHORT);
-    const reasonRoom = room - displayWidth(view.parts[0]?.cut === false ? view.parts[0].text : "");
-    // The whole message with its key, then the message alone, then as much of
-    // the reason as reads, then "Update failed" with its key; never less.
+    // The reason and retry hint give way whole, leaving a compact failure signal.
     let text: string;
     let showHint = false;
     if (messageColumns + hintColumns <= room) {
@@ -559,37 +549,33 @@ function terminalUpdateStatusContent({ onRestart, room, updateKey, view }: {
       showHint = hintColumns > 0;
     } else if (messageColumns <= room) {
       text = view.message;
-    } else if (reasonRoom >= UPDATE_REASON_MIN_COLUMNS) {
-      text = truncateToDisplayWidth(view.message, room);
     } else if (displayWidth(short) + hintColumns <= room) {
       text = short;
       showHint = hintColumns > 0;
-    } else if (room >= UPDATE_ERROR_MIN_COLUMNS) {
-      text = truncateToDisplayWidth(short, room);
+    } else if (displayWidth(short) <= room) {
+      text = short;
     } else {
       return null;
     }
     return <TerminalFailedStatus text={text} hint={showHint ? hint : ""} />;
   }
-  // A notice or a line about the update: cut to the slot, never past it.
-  if (room < UPDATE_TEXT_MIN_COLUMNS) return null;
-  return <TerminalTextStatus text={view.text} width={room} />;
+  if (view.clip) {
+    if (room < UPDATE_TEXT_MIN_COLUMNS) return null;
+    return <TerminalTextStatus text={view.text} width={room} />;
+  }
+  const text = displayWidth(view.text) <= room ? view.text : view.compact;
+  return text && displayWidth(text) <= room ? <TerminalTextStatus text={text} width={room} /> : null;
 }
 
 /**
- * A status line in `width` columns: the pieces that stay whole (a download's
- * percent) keep their room, and the rest is cut to what they leave.
+ * A status line in `width` columns: the parts the desktop may clip instead
+ * drop out whole in the terminal, keeping the download's percent readable.
  */
 function fitStatusParts(parts: StatusPart[], width: number): string {
-  const whole = parts.reduce((total, part) => total + (part.cut ? 0 : displayWidth(part.text)), 0);
-  const cutRoom = Math.max(0, width - whole);
-  const cutTotal = parts.reduce((total, part) => total + (part.cut ? displayWidth(part.text) : 0), 0);
-  if (cutTotal <= cutRoom) return parts.map((part) => part.text).join("");
-  // A cut piece keeps a space before the whole one after it: "Downloading v... 42%".
-  const cut = (part: StatusPart, index: number) => index < parts.length - 1
-    ? `${truncateToDisplayWidth(part.text.trimEnd(), Math.max(0, cutRoom - 1))} `
-    : truncateToDisplayWidth(part.text, cutRoom);
-  return truncateToDisplayWidth(parts.map((part, index) => (part.cut ? cut(part, index) : part.text)).join(""), width);
+  const full = parts.map((part) => part.text).join("");
+  if (displayWidth(full) <= width) return full;
+  const compact = parts.filter((part) => !part.cut).map((part) => part.text).join("").trim();
+  return displayWidth(compact) <= width ? compact : "";
 }
 
 function TerminalBusyStatus({ text }: { text: string }) {
