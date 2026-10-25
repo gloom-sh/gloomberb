@@ -1,5 +1,6 @@
 import type { TickerMetadata, TickerRecord } from "../../../../types/ticker";
 import { backendRequest } from "../backend-rpc";
+import { runTickerWrite } from "../../../../data/ticker-writes";
 
 export class RemoteTickerRepository {
   async loadAllTickers(): Promise<TickerRecord[]> {
@@ -10,17 +11,23 @@ export class RemoteTickerRepository {
     return backendRequest("ticker.load", { symbol });
   }
 
-  async saveTicker(ticker: TickerRecord): Promise<void> {
-    await backendRequest("ticker.save", { ticker });
+  saveTicker(ticker: TickerRecord): Promise<void> {
+    return runTickerWrite(this, ticker.metadata.ticker, async () => {
+      await backendRequest("ticker.save", { ticker });
+    });
   }
 
-  async createTicker(metadata: TickerMetadata): Promise<TickerRecord> {
+  createTicker(metadata: TickerMetadata): Promise<TickerRecord> {
     const ticker: TickerRecord = { metadata };
-    await this.saveTicker(ticker);
-    return ticker;
+    return runTickerWrite(this, metadata.ticker, async () => {
+      await backendRequest("ticker.save", { ticker });
+      return ticker;
+    });
   }
 
-  async deleteTicker(symbol: string): Promise<void> {
-    await backendRequest("ticker.delete", { symbol });
+  deleteTicker(symbol: string): Promise<void> {
+    return runTickerWrite(this, symbol, async () => {
+      await backendRequest("ticker.delete", { symbol });
+    });
   }
 }

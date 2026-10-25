@@ -1,4 +1,6 @@
 import { saveConfigImmediately, scheduleConfigSave } from "../state/config-save-scheduler";
+import { persistTickerCleanup } from "../state/ticker-cleanup";
+import { hasPendingTickerWrites } from "../data/ticker-writes";
 import { normalizeStoredBaseCurrency } from "../utils/base-currency";
 import { debugLog } from "../utils/debug-log";
 import { fnv1aHex, stableStringify } from "../utils/hash";
@@ -1357,12 +1359,57 @@ export const coreConfigSyncContributor: SyncContributor = {
   },
   apply: async (payload, { snapshot, baselinePayload, baselineState, state, getState, isCurrent, dispatch, tickerRepository, memo }) => {
     const pushedAt = snapshot?.contributors[CORE_CONFIG_CONTRIBUTOR_ID]?.updatedAt;
-    const nextConfig = mergeConfigPayload(state.config, payload, baselineState.config, baselinePayload, {
+    const merge = (config: AppConfig) => mergeConfigPayload(config, payload, baselineState.config, baselinePayload, {
       memo: memo?.get(),
       pushedAt,
-    }, localOnlyScope(state.config));
+    }, localOnlyScope(config));
+    let nextConfig = merge(state.config);
     if (!nextConfig) return;
-    const configChanged = !valuesEqual(nextConfig, state.config);
+    const removed = removedBrokerHoldings(state.config, nextConfig);
+    if (removed) {
+      // Keep the profile until row and config writes succeed, so a failed
+      // cleanup remains visible to the next attempt.
+      const cleanTickers = () => persistTickerCleanup({
+        tickerRepository,
+        getTickers: () => getState().tickers,
+        transform: (ticker) => withoutRemovedBrokerHoldings(ticker, removed),
+        publish: (symbol, ticker) => {
+          const tickers = new Map(getState().tickers);
+          if (ticker) tickers.set(symbol, ticker);
+          else tickers.delete(symbol);
+          dispatch({ type: "SET_TICKERS", tickers });
+        },
+        isCurrent,
+      });
+      let savedRemoval = false;
+      for (;;) {
+        const cleaned = await cleanTickers().catch(async (error: unknown) => {
+          // Restore the profile if a late row fails after config was saved,
+          // so retry can also recover after restarting the app.
+          if (savedRemoval) await saveConfigImmediately(getState().config);
+          throw error;
+        });
+        if (!cleaned || !isCurrent()) return;
+        if (hasPendingTickerWrites(tickerRepository) || getState().tickers !== cleaned) continue;
+        const source = getState().config;
+        const merged = merge(source);
+        if (!merged) return;
+        // Preserve unrelated edits while retaining the removal already applied
+        // to rows, including pulls from builds that merged whole profile lists.
+        nextConfig = {
+          ...merged,
+          brokerInstances: merged.brokerInstances.filter((instance) => !removed.instanceIds.has(instance.id)),
+          portfolios: merged.portfolios.filter((portfolio) => !removed.portfolioIds.has(portfolio.id)),
+        };
+        await saveConfigImmediately(nextConfig);
+        savedRemoval = true;
+        if (!isCurrent()) return;
+        if (getState().config !== source || getState().tickers !== cleaned
+          || hasPendingTickerWrites(tickerRepository)) continue;
+        break;
+      }
+    }
+    const configChanged = !valuesEqual(nextConfig, getState().config);
     if (configChanged) {
       // Adopting another device's workspace rearranges the screen under the
       // user, so it is worth a line in the log when a report says "my panes
@@ -1374,38 +1421,9 @@ export const coreConfigSyncContributor: SyncContributor = {
         });
       }
       dispatch({ type: "SET_CONFIG", config: nextConfig });
-      scheduleConfigSave(nextConfig);
+      if (!removed) scheduleConfigSave(nextConfig);
     }
     if (memo && isRecord(payload)) rememberCloudLayout(payload, pushedAt, getState().config, memo, nextConfig.layouts !== state.config.layouts);
-    if (!configChanged) return;
-
-    // A profile removed on another device takes its positions with it here
-    // too; kept, this device would push them back and recreate the tickers
-    // that removal deleted.
-    const removed = removedBrokerHoldings(state.config, nextConfig);
-    if (!removed) return;
-    const nextTickers = new Map(getState().tickers);
-    const changed = new Map<string, TickerRecord | null>();
-    for (const ticker of getState().tickers.values()) {
-      const next = withoutRemovedBrokerHoldings(ticker, removed);
-      if (next === ticker) continue;
-      changed.set(ticker.metadata.ticker, next);
-      if (next) nextTickers.set(next.metadata.ticker, next);
-      else nextTickers.delete(ticker.metadata.ticker);
-    }
-    if (changed.size === 0 || !isCurrent()) return;
-    // Commit before yielding; edits made while saving must see the cleanup.
-    dispatch({ type: "SET_TICKERS", tickers: nextTickers });
-    for (const [symbol, next] of changed) {
-      if (!isCurrent()) return;
-      if (next) {
-        if (getState().tickers.get(symbol) !== next) continue;
-        await tickerRepository.saveTicker(next);
-      } else {
-        if (getState().tickers.has(symbol)) continue;
-        await tickerRepository.deleteTicker(symbol);
-      }
-    }
   },
 };
 

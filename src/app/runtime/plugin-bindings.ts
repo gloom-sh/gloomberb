@@ -10,6 +10,8 @@ import type { MarketDataCoordinator } from "../../market-data/coordinator";
 import { instrumentFromTicker } from "../../market-data/request-types";
 import type { PluginRegistry } from "../../plugins/registry";
 import { saveConfigImmediately } from "../../state/config-save-scheduler";
+import { persistTickerCleanup } from "../../state/ticker-cleanup";
+import { hasPendingTickerWrites } from "../../data/ticker-writes";
 import { settleWithin } from "../../utils/async-deadline";
 import type { AppAction, AppState } from "../../state/app/context";
 import type { AppConfig, BrokerInstanceConfig } from "../../types/config";
@@ -215,85 +217,81 @@ export function bindPluginRegistryRuntimeAccess({
         else removedPortfolioIds.add(portfolio.id);
       }
 
-      const nextPortfolios = stateRef.current.config.portfolios.flatMap((portfolio) => {
-        if (removedPortfolioIds.has(portfolio.id)) return [];
-        const heirId = heirs.get(portfolio.id);
-        return [heirId ? { ...portfolio, brokerInstanceId: heirId } : portfolio];
+      const removeProfile = (config: AppConfig): AppConfig => ({
+        ...config,
+        brokerInstances: config.brokerInstances.filter((entry) => entry.id !== instanceId),
+        portfolios: config.portfolios.flatMap((portfolio) => {
+          if (removedPortfolioIds.has(portfolio.id)) return [];
+          const heirId = heirs.get(portfolio.id);
+          return [heirId ? { ...portfolio, brokerInstanceId: heirId } : portfolio];
+        }),
       });
-      const nextTickers = new Map(stateRef.current.tickers);
-      const changed = new Map<string, TickerRecord | null>();
-      const nextBrokerInstances = stateRef.current.config.brokerInstances.filter((entry) => entry.id !== instanceId);
-      // What older removals and pulls from other devices left behind goes as well.
-      const known = knownBrokerHoldings({ portfolios: nextPortfolios, brokerInstances: nextBrokerInstances });
 
-      for (const ticker of stateRef.current.tickers.values()) {
-        // A position here without a profile came from another device's sync of this one.
-        const nextPositions = ticker.metadata.positions.filter((position) => position.brokerInstanceId !== instanceId
-          && !(removedPortfolioIds.has(position.portfolio) && !position.brokerInstanceId));
-        const heldPortfolioIds = new Set(nextPositions.map((position) => position.portfolio));
-        const nextPortfolioRefs = ticker.metadata.portfolios.filter((portfolioId) =>
-          !removedPortfolioIds.has(portfolioId) && (!heirs.has(portfolioId) || heldPortfolioIds.has(portfolioId)));
-        const nextBrokerContracts = (ticker.metadata.broker_contracts ?? []).filter((contract) => contract.brokerInstanceId !== instanceId);
+      const cleanTickers = () => persistTickerCleanup({
+        tickerRepository,
+        getTickers: () => stateRef.current.tickers,
+        transform: (ticker) => {
+          // A position without a profile came from another device's sync of this one.
+          const nextPositions = ticker.metadata.positions.filter((position) => position.brokerInstanceId !== instanceId
+            && !(removedPortfolioIds.has(position.portfolio) && !position.brokerInstanceId));
+          const heldPortfolioIds = new Set(nextPositions.map((position) => position.portfolio));
+          const nextPortfolioRefs = ticker.metadata.portfolios.filter((portfolioId) =>
+            !removedPortfolioIds.has(portfolioId) && (!heirs.has(portfolioId) || heldPortfolioIds.has(portfolioId)));
+          const nextBrokerContracts = (ticker.metadata.broker_contracts ?? []).filter((contract) => contract.brokerInstanceId !== instanceId);
+          const changed = nextPositions.length !== ticker.metadata.positions.length
+            || nextPortfolioRefs.length !== ticker.metadata.portfolios.length
+            || nextBrokerContracts.length !== (ticker.metadata.broker_contracts ?? []).length;
+          const removedTicker: TickerRecord = changed ? {
+            ...ticker,
+            metadata: {
+              ...ticker.metadata,
+              positions: nextPositions,
+              portfolios: nextPortfolioRefs,
+              broker_contracts: nextBrokerContracts,
+            },
+          } : ticker;
+          // Also clear holdings left behind by older removals or pulls.
+          const known = knownBrokerHoldings(removeProfile(stateRef.current.config));
+          const nextTicker = clearLeftoverBrokerHoldings(removedTicker, known) ?? removedTicker;
+          if (nextTicker === ticker) return ticker;
+          const empty = nextTicker.metadata.positions.length === 0
+            && nextTicker.metadata.portfolios.length === 0
+            && nextTicker.metadata.watchlists.length === 0
+            && (nextTicker.metadata.broker_contracts ?? []).length === 0
+            && nextTicker.metadata.tags.length === 0
+            && Object.keys(nextTicker.metadata.custom).length === 0;
+          return empty ? null : nextTicker;
+        },
+        publish: (symbol, ticker) => {
+          if (ticker) dispatch({ type: "UPDATE_TICKER", ticker });
+          else {
+            dispatch({ type: "REMOVE_TICKER", symbol });
+            pluginRegistry.events.emit("ticker:removed", { symbol });
+          }
+        },
+      });
 
-        const removedTicker: TickerRecord = {
-          ...ticker,
-          metadata: {
-            ...ticker.metadata,
-            positions: nextPositions,
-            portfolios: nextPortfolioRefs,
-            broker_contracts: nextBrokerContracts,
-          },
-        };
-        const nextTicker = clearLeftoverBrokerHoldings(removedTicker, known) ?? removedTicker;
-
-        const shouldDeleteTicker =
-          nextTicker.metadata.positions.length === 0
-          && nextTicker.metadata.portfolios.length === 0
-          && nextTicker.metadata.watchlists.length === 0
-          && (nextTicker.metadata.broker_contracts ?? []).length === 0
-          && nextTicker.metadata.tags.length === 0
-          && Object.keys(nextTicker.metadata.custom).length === 0;
-
-        if (shouldDeleteTicker) {
-          nextTickers.delete(ticker.metadata.ticker);
-          changed.set(ticker.metadata.ticker, null);
-        } else {
-          nextTickers.set(nextTicker.metadata.ticker, nextTicker);
-          changed.set(nextTicker.metadata.ticker, nextTicker);
-        }
+      // Keep the profile available for retry until cleanup and config both
+      // succeed. Rebase after callbacks and edits, including during config saves.
+      let savedRemoval = false;
+      for (;;) {
+        const cleaned = await cleanTickers().catch(async (error: unknown) => {
+          // A config acknowledgement can precede a late row write. If that
+          // cleanup fails, keep its removal intent durable for a restart too.
+          if (savedRemoval) await saveConfigImmediately(stateRef.current.config);
+          throw error;
+        });
+        if (hasPendingTickerWrites(tickerRepository) || stateRef.current.tickers !== cleaned) continue;
+        const source = stateRef.current.config;
+        const nextConfig = removeProfile(source);
+        await saveConfigImmediately(nextConfig);
+        savedRemoval = true;
+        if (stateRef.current.config !== source || stateRef.current.tickers !== cleaned
+          || hasPendingTickerWrites(tickerRepository)) continue;
+        dispatch({ type: "SET_CONFIG", config: nextConfig });
+        pluginRegistry.events.emit("config:changed", { config: nextConfig });
+        break;
       }
-
-      // Clear deleted rows' pane bindings before saving the config. Commit
-      // every row before yielding so subsequent edits build on the removal.
-      for (const [symbol, ticker] of changed) {
-        if (!ticker) dispatch({ type: "REMOVE_TICKER", symbol });
-      }
-      const nextConfig = {
-        ...stateRef.current.config,
-        brokerInstances: nextBrokerInstances,
-        portfolios: nextPortfolios,
-      };
-
-      dispatch({ type: "SET_CONFIG", config: nextConfig });
-      dispatch({ type: "SET_TICKERS", tickers: nextTickers });
-      // A removal listener can synchronously save a newer config. Queue ours first.
-      const configSave = saveConfigImmediately(nextConfig);
-      for (const [symbol, ticker] of changed) {
-        if (!ticker) pluginRegistry.events.emit("ticker:removed", { symbol });
-      }
-      await configSave;
-      // A newer writer owns its persistence, including a row recreated while
-      // another removal was being saved.
-      for (const [symbol, ticker] of changed) {
-        if (ticker) {
-          if (stateRef.current.tickers.get(symbol) !== ticker) continue;
-          await tickerRepository.saveTicker(ticker);
-        } else {
-          if (stateRef.current.tickers.has(symbol)) continue;
-          await tickerRepository.deleteTicker(symbol);
-        }
-      }
-      pluginRegistry.events.emit("config:changed", { config: nextConfig });
       // The profile that kept a portfolio fills in what the removed one held there.
       for (const heirId of new Set(heirs.values())) {
         void importBrokerPositions(heirId).catch(logFailure("app.runtime.plugin-bindings", "Replacement broker positions import failed"));

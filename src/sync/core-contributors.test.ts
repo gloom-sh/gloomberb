@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { createInitialState } from "../core/state/app/state";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../market-data/coordinator";
 import { createTestDataProvider } from "../test-support/data-provider";
@@ -16,6 +16,9 @@ import { setSyncedProfileAnalytics } from "./profile-analytics";
 import { captureConfigSaves } from "../test-support/config-store";
 import { createTestTicker } from "../test-support/ticker";
 import { createTestFinancials } from "../test-support/data-provider";
+import { runTickerWrite } from "../data/ticker-writes";
+import { flushPendingPersistence } from "../state/persist-scheduler";
+import * as configStore from "../data/config/store";
 
 describe("core sync contributors", () => {
   const configSaves = captureConfigSaves();
@@ -552,8 +555,27 @@ describe("core sync contributors", () => {
         disk: new Map(state.tickers),
         saved: [] as string[],
         deleted: [] as string[],
+        beforeWrite: undefined as ((kind: "save" | "delete", symbol: string, record?: TickerRecord) => void | Promise<void>) | undefined,
         /** Runs while the pull persists its first row, as an edit landing then would. */
         duringFirstWrite: undefined as (() => void) | undefined,
+        repository: {
+          saveTicker: (record: TickerRecord): Promise<void> => runTickerWrite(store.repository, record.metadata.ticker, async () => {
+            if (store.beforeWrite) await store.beforeWrite("save", record.metadata.ticker, record);
+            store.saved.push(record.metadata.ticker);
+            store.disk.set(record.metadata.ticker, record);
+            const edit = store.duringFirstWrite;
+            store.duringFirstWrite = undefined;
+            edit?.();
+          }),
+          deleteTicker: (symbol: string): Promise<void> => runTickerWrite(store.repository, symbol, async () => {
+            if (store.beforeWrite) await store.beforeWrite("delete", symbol);
+            store.deleted.push(symbol);
+            store.disk.delete(symbol);
+            const edit = store.duringFirstWrite;
+            store.duringFirstWrite = undefined;
+            edit?.();
+          }),
+        },
         context: (baselinePayload: unknown, snapshot?: unknown) => ({
           snapshot,
           baselinePayload,
@@ -565,22 +587,7 @@ describe("core sync contributors", () => {
             if (action.type === "SET_CONFIG") store.current = { ...store.current, config: action.config! };
             if (action.type === "SET_TICKERS") store.current = { ...store.current, tickers: action.tickers! };
           },
-          tickerRepository: {
-            saveTicker: async (record: TickerRecord) => {
-              store.saved.push(record.metadata.ticker);
-              store.disk.set(record.metadata.ticker, record);
-              const edit = store.duringFirstWrite;
-              store.duringFirstWrite = undefined;
-              edit?.();
-            },
-            deleteTicker: async (symbol: string) => {
-              store.deleted.push(symbol);
-              store.disk.delete(symbol);
-              const edit = store.duringFirstWrite;
-              store.duringFirstWrite = undefined;
-              edit?.();
-            },
-          },
+          tickerRepository: store.repository,
         }) as unknown as ApplyContext,
       };
       return store;
@@ -628,6 +635,223 @@ describe("core sync contributors", () => {
       expect(store.current.tickers.has("DDD")).toBe(false);
       expect(store.disk.has("DDD")).toBe(false);
       expect(store.current.config.brokerInstances).toEqual([demo]);
+    });
+
+    test("profile cleanup waits for a manual position save before reading its row", async () => {
+      const config = deviceConfig(200);
+      const state = createInitialState(config);
+      const original = createTestTicker("AAA", "AAA", {
+        portfolios: [signedInId], positions: [signedInPosition(3)],
+      });
+      state.tickers = new Map([["AAA", original]]);
+      const baseline = await coreConfigSyncContributor.collect({ state });
+      const pulled = await coreConfigSyncContributor.collect({ state: createInitialState({
+        ...config, brokerInstances: [demo], portfolios: config.portfolios.filter((portfolio) => portfolio.id !== signedInId),
+      }) });
+      const store = deviceStore(state);
+      const edited = { ...original, metadata: { ...original.metadata,
+        portfolios: [signedInId, "main"], positions: [signedInPosition(3), mainPosition],
+      } };
+      const started = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<void>();
+      store.beforeWrite = async (_kind, _symbol, record) => {
+        if (record !== edited) return;
+        started.resolve();
+        await release.promise;
+      };
+      // Position entry persists first and publishes the edited row only after acknowledgement.
+      const editing = (async () => {
+        await store.repository.saveTicker(edited);
+        store.current = { ...store.current, tickers: new Map(store.current.tickers).set("AAA", edited) };
+      })();
+      await started.promise;
+      const cleanup = coreConfigSyncContributor.apply!(pulled, store.context(baseline));
+      const profilesBeforeAcknowledgement = store.current.config.brokerInstances;
+      release.resolve();
+      await Promise.all([editing, cleanup]);
+
+      expect(profilesBeforeAcknowledgement).toEqual([signedIn, demo]);
+      expect(store.current.config.brokerInstances).toEqual([demo]);
+      expect(store.current.tickers.get("AAA")?.metadata).toMatchObject({ portfolios: ["main"], positions: [mainPosition] });
+      expect(store.disk.get("AAA")?.metadata).toEqual(store.current.tickers.get("AAA")!.metadata);
+    });
+
+    test.each(["AAA", "NEW"])("profile cleanup rescans a saved %s row that arrives during its acknowledgement", async (symbol) => {
+      const config = deviceConfig(200);
+      const state = createInitialState(config);
+      state.tickers = new Map([["AAA", createTestTicker("AAA", "AAA", {
+        portfolios: [signedInId], positions: [signedInPosition(3)], watchlists: ["watchlist"],
+      })]]);
+      const baseline = await coreConfigSyncContributor.collect({ state });
+      const pulled = await coreConfigSyncContributor.collect({ state: createInitialState({
+        ...config, brokerInstances: [demo], portfolios: config.portfolios.filter((portfolio) => portfolio.id !== signedInId),
+      }) });
+      const store = deviceStore(state);
+      const started = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<void>();
+      let paused = false;
+      store.beforeWrite = async () => {
+        if (paused) return;
+        paused = true;
+        started.resolve();
+        await release.promise;
+      };
+      const cleanup = coreConfigSyncContributor.apply!(pulled, store.context(baseline));
+      await started.promise;
+      const edited = createTestTicker(symbol, symbol, {
+        portfolios: [signedInId, "main"], positions: [signedInPosition(3), mainPosition], watchlists: ["watchlist"],
+      });
+      const editing = (async () => {
+        await store.repository.saveTicker(edited);
+        store.current = { ...store.current, tickers: new Map(store.current.tickers).set(symbol, edited) };
+      })();
+      release.resolve();
+      await Promise.all([editing, cleanup]);
+
+      expect(store.current.config.brokerInstances).toEqual([demo]);
+      expect(store.current.tickers.get(symbol)?.metadata).toMatchObject({ portfolios: ["main"], positions: [mainPosition] });
+      for (const [tickerSymbol, ticker] of store.current.tickers) {
+        expect(ticker.metadata.positions.some((position) => position.brokerInstanceId === signedIn.id)).toBe(false);
+        expect(store.disk.get(tickerSymbol)?.metadata).toEqual(ticker.metadata);
+      }
+    });
+
+    test.each(["save", "delete"])("profile cleanup retries a failed %s before committing the profile removal", async (failedWrite) => {
+      const config = deviceConfig(200);
+      const state = createInitialState(config);
+      state.tickers = new Map(["AAA", "BBB"].map((symbol) => [symbol, createTestTicker(symbol, symbol, {
+        portfolios: [signedInId], positions: [signedInPosition(3)],
+        watchlists: symbol === "AAA" || failedWrite === "save" ? ["watchlist"] : [],
+      })]));
+      const originalB = state.tickers.get("BBB")!;
+      const baseline = await coreConfigSyncContributor.collect({ state });
+      const pulled = await coreConfigSyncContributor.collect({ state: createInitialState({
+        ...config, brokerInstances: [demo], portfolios: config.portfolios.filter((portfolio) => portfolio.id !== signedInId),
+      }) });
+      const store = deviceStore(state);
+      let failed = false;
+      store.beforeWrite = (kind, symbol) => {
+        if (failed || kind !== failedWrite || symbol !== "BBB") return;
+        failed = true;
+        throw new Error("Ticker write unavailable");
+      };
+
+      await expect(coreConfigSyncContributor.apply!(pulled, store.context(baseline))).rejects.toThrow("Ticker write unavailable");
+      await flushPendingPersistence();
+      expect(store.current.config.brokerInstances).toEqual([signedIn, demo]);
+      expect(store.current.config.portfolios).toContainEqual(config.portfolios.find((portfolio) => portfolio.id === signedInId)!);
+      expect(store.current.tickers.get("BBB")).toBe(originalB);
+      expect(store.disk.get("BBB")).toBe(originalB);
+      expect(configSaves.every((saved) => saved.brokerInstances.some((instance) => instance.id === signedIn.id))).toBe(true);
+
+      // A failed pull has not advanced the baseline; retry the same removal against its live state.
+      await coreConfigSyncContributor.apply!(pulled, store.context(baseline));
+      await flushPendingPersistence();
+      const reloaded = createInitialState(JSON.parse(JSON.stringify(configSaves.at(-1)!)));
+      reloaded.tickers = new Map([...store.disk].map(([symbol, ticker]) => [symbol, JSON.parse(JSON.stringify(ticker)) as TickerRecord]));
+      expect(reloaded.config.brokerInstances).toEqual([demo]);
+      expect(reloaded.config.portfolios.some((portfolio) => portfolio.id === signedInId)).toBe(false);
+      expect(reloaded.tickers.get("AAA")?.metadata).toMatchObject({ portfolios: [], positions: [], watchlists: ["watchlist"] });
+      if (failedWrite === "save") expect(reloaded.tickers.get("BBB")?.metadata).toMatchObject({ portfolios: [], positions: [], watchlists: ["watchlist"] });
+      else expect(reloaded.tickers.has("BBB")).toBe(false);
+      expect([...reloaded.tickers]).toEqual(JSON.parse(JSON.stringify([...store.current.tickers])));
+    });
+
+    test.each(["AAA", "NEW"])("profile cleanup retries a late %s row after its config acknowledgement", async (symbol) => {
+      const config = deviceConfig(200);
+      const state = createInitialState(config);
+      state.tickers = new Map([["AAA", createTestTicker("AAA", "AAA", {
+        portfolios: [signedInId], positions: [signedInPosition(3)], watchlists: ["watchlist"],
+      })]]);
+      const baseline = await coreConfigSyncContributor.collect({ state });
+      const pulled = await coreConfigSyncContributor.collect({ state: createInitialState({
+        ...config, brokerInstances: [demo], portfolios: config.portfolios.filter((portfolio) => portfolio.id !== signedInId),
+      }) });
+      const store = deviceStore(state);
+      const configStarted = Promise.withResolvers<void>();
+      const releaseConfig = Promise.withResolvers<void>();
+      spyOn(configStore, "saveConfig").mockImplementationOnce(async (saved) => {
+        configSaves.push(saved);
+        configStarted.resolve();
+        await releaseConfig.promise;
+      });
+      const cleanup = coreConfigSyncContributor.apply!(pulled, store.context(baseline));
+      await configStarted.promise;
+      const edited = createTestTicker(symbol, symbol, {
+        portfolios: [signedInId, "main"], positions: [signedInPosition(3), mainPosition], watchlists: ["watchlist"],
+      });
+      await store.repository.saveTicker(edited);
+      store.current = { ...store.current, tickers: new Map(store.current.tickers).set(symbol, edited) };
+      let failed = false;
+      store.beforeWrite = (kind, writtenSymbol) => {
+        if (failed || kind !== "save" || writtenSymbol !== symbol) return;
+        failed = true;
+        throw new Error("Late cleanup write unavailable");
+      };
+      releaseConfig.resolve();
+
+      const error = await cleanup.then(() => null, (error: unknown) => error);
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toBe("Late cleanup write unavailable");
+      expect(store.current.config.brokerInstances).toEqual([signedIn, demo]);
+      expect(store.current.tickers.get(symbol)).toBe(edited);
+      expect(store.disk.get(symbol)).toBe(edited);
+
+      await flushPendingPersistence();
+      expect(configSaves.at(-1)?.brokerInstances).toEqual([signedIn, demo]);
+      store.current = createInitialState(JSON.parse(JSON.stringify(configSaves.at(-1)!)));
+      store.current.tickers = new Map([...store.disk].map(([tickerSymbol, ticker]) => [tickerSymbol, JSON.parse(JSON.stringify(ticker)) as TickerRecord]));
+
+      await coreConfigSyncContributor.apply!(pulled, store.context(baseline));
+      await flushPendingPersistence();
+      const reloaded = createInitialState(JSON.parse(JSON.stringify(configSaves.at(-1)!)));
+      reloaded.tickers = new Map([...store.disk].map(([tickerSymbol, ticker]) => [tickerSymbol, JSON.parse(JSON.stringify(ticker)) as TickerRecord]));
+      expect(reloaded.config.brokerInstances).toEqual([demo]);
+      expect(reloaded.config.portfolios.some((portfolio) => portfolio.id === signedInId)).toBe(false);
+      expect(reloaded.tickers.get(symbol)?.metadata).toMatchObject({ portfolios: ["main"], positions: [mainPosition] });
+      expect([...reloaded.tickers]).toEqual(JSON.parse(JSON.stringify([...store.current.tickers])));
+    });
+
+    test.each([true, false])("profile cleanup keeps config additions made during its write (profile merge marker %s)", async (mergedById) => {
+      const config = deviceConfig(200);
+      const state = createInitialState(config);
+      state.tickers = new Map([["AAA", createTestTicker("AAA", "AAA", {
+        portfolios: [signedInId], positions: [signedInPosition(3)], watchlists: ["watchlist"],
+      })]]);
+      const baseline = await coreConfigSyncContributor.collect({ state });
+      const payload = await coreConfigSyncContributor.collect({ state: createInitialState({
+        ...config, brokerInstances: [demo], portfolios: config.portfolios.filter((portfolio) => portfolio.id !== signedInId),
+      }) }) as Record<string, unknown>;
+      const { brokerInstancesMergedById: _mergeMarker, ...legacyPayload } = payload;
+      const store = deviceStore(state);
+      const started = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<void>();
+      let paused = false;
+      store.beforeWrite = async () => {
+        if (paused) return;
+        paused = true;
+        started.resolve();
+        await release.promise;
+      };
+      const cleanup = coreConfigSyncContributor.apply!(mergedById ? payload : legacyPayload, store.context(baseline));
+      await started.promise;
+      const addedProfile = { id: "new-demo", brokerType: "demo", label: "New account", config: {} };
+      const addedWatchlist = { id: "new-list", name: "New list" };
+      store.current = { ...store.current, config: { ...store.current.config,
+        brokerInstances: [...store.current.config.brokerInstances, addedProfile],
+        watchlists: [...store.current.config.watchlists, addedWatchlist],
+        pluginConfig: { ...store.current.config.pluginConfig, example: { display: "compact" } },
+      } };
+      release.resolve();
+      await cleanup;
+      await flushPendingPersistence();
+
+      expect(store.current.config.brokerInstances).toEqual([demo, addedProfile]);
+      expect(store.current.config.portfolios.some((portfolio) => portfolio.id === signedInId)).toBe(false);
+      expect(store.current.config.watchlists).toContainEqual(addedWatchlist);
+      expect(store.current.config.pluginConfig.example).toEqual({ display: "compact" });
+      expect(configSaves.at(-1)).toEqual(store.current.config);
+      expect(store.disk.get("AAA")?.metadata).toEqual(store.current.tickers.get("AAA")!.metadata);
     });
 
     // The device that holds the signed-in account pulls what a device that was
