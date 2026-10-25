@@ -261,10 +261,12 @@ const exportCalendar = [
   ...twoWeeks,
   // A feed row with every figure drawn as text, and a publisher, period and page.
   { ...event("2026-10-14T06:00:00.000Z", "GB", "low", "Claimant Count Change"), actual: "30.3K", forecast: "19.4K", prior: "-27.8K", referencePeriod: "Sep 2026",
-    source: { name: "Office for National Statistics", url: "https://www.ons.gov.uk/" } },
+    source: { name: "Office for National Statistics", url: "https://www.ons.gov.uk/" },
+    consensus: { source: "release-calendar", readAt: "2026-10-09T08:00:00.000Z" } },
   { ...event("2026-10-14T14:30:00.000Z", "US", "medium", "EIA Crude Oil Stocks Change"), actual: "-4.1M bbl", forecast: "-0.987M bbl", prior: "0.5M bbl", referencePeriod: "9 Oct 2026",
     source: { name: "U.S. Energy Information Administration", url: "https://www.eia.gov/" } },
-  { ...event("2026-10-14T12:30:00.000Z", "US", "high", "Unemployment Rate"), actual: "4.7%", forecast: "4.9%", prior: "4.9%", referencePeriod: "Sep 2026", indicatorId: "us-unemployment-rate" },
+  { ...event("2026-10-14T12:30:00.000Z", "US", "high", "Unemployment Rate"), actual: "4.7%", forecast: "4.9%", prior: "4.9%", referencePeriod: "Sep 2026", indicatorId: "us-unemployment-rate",
+    consensus: { source: "week-feed", readAt: "2026-10-09T08:30:00.000Z" } },
   { ...event("2026-10-15T14:30:00.000Z", "US", "low", "EIA Natural Gas Stocks Change"), forecast: "77 Bcf", prior: "-119 Bcf" },
   // A bound is no single number, and a release with nothing out yet has no release time.
   { ...event("2026-10-30T02:30:00.000Z", "JP", "high", "BOJ Policy Rate"), forecast: "<1.25%", prior: "0.5%" },
@@ -303,7 +305,7 @@ test("the CSV, NDJSON and JSON of the same calendar say the same, and the CSV ad
     ...json.columns.map((column) => column.header),
     "symbol_or_series", "currency_or_unit", "interval", "source", "as_of", "period", "released", "retrieved",
   ]);
-  expect(csv.header.slice(0, json.columns.length)).toEqual(["Date", "Day", "Time", "Viewer", "Local", "Country", "Impact", "Event", "Actual", "Forecast", "Prior", "Unit", "Scale", "Publisher", "Link", "actual_text", "forecast_text", "prior_text"]);
+  expect(csv.header.slice(0, json.columns.length)).toEqual(["Date", "Day", "Time", "Viewer", "Local", "Country", "Impact", "Event", "Actual", "Forecast", "Prior", "Unit", "Scale", "Publisher", "Link", "actual_text", "forecast_text", "prior_text", "consensus_feed", "consensus_read_at"]);
   expect(csv.rows).toHaveLength(json.data.length);
   expect(ndjson).toHaveLength(json.data.length);
   const cell = (value: unknown) => value == null ? "" : String(value);
@@ -334,6 +336,16 @@ test("the CSV, NDJSON and JSON of the same calendar say the same, and the CSV ad
   expect([bojCells.Forecast, bojCells.forecast_text, bojCells.Prior, bojCells.prior_text]).toEqual(["", "<1.25%", "0.5", "0.5%"]);
   expect(ndjson[boj]).toMatchObject({ forecast: null, forecastText: "<1.25%", prior: 0.5, priorText: "0.5%" });
   expect(json.data[boj]).toMatchObject({ forecast: null, forecastText: "<1.25%" });
+  // The feed a forecast was read from and when, in every format; a row with no forecast names none.
+  const claimant = json.data.findIndex((row) => row.event === "Claimant Count Change");
+  expect(json.data[claimant]).toMatchObject({ consensusFeed: "release-calendar", consensusReadAt: "2026-10-09T08:00:00.000Z" });
+  expect(ndjson[claimant]).toMatchObject({ consensusFeed: "release-calendar", consensusReadAt: "2026-10-09T08:00:00.000Z" });
+  const claimantCells = Object.fromEntries(csv.header.map((name, column) => [name, csv.rows[claimant]![column]!]));
+  expect([claimantCells.consensus_feed, claimantCells.consensus_read_at]).toEqual(["release-calendar", "2026-10-09T08:00:00.000Z"]);
+  expect(json.data[unemployment]).toMatchObject({ consensusFeed: "week-feed", consensusReadAt: "2026-10-09T08:30:00.000Z" });
+  expect(csv.rows[unemployment]![csv.header.indexOf("consensus_feed")]).toBe("week-feed");
+  expect(json.data.find((row) => row.event === "Housing Starts")).toMatchObject({ consensusFeed: null, consensusReadAt: null });
+  expect(csv.rows[json.data.findIndex((row) => row.event === "Housing Starts")]!.slice(csv.header.indexOf("consensus_feed"), csv.header.indexOf("consensus_read_at") + 1)).toEqual(["", ""]);
   // A figure is a number in every format, and a missing one is empty in CSV and null in JSON.
   const crude = json.data.findIndex((row) => row.event === "EIA Crude Oil Stocks Change");
   expect(csv.rows[crude]!.slice(8, 13)).toEqual(["-4100000", "-987000", "500000", "bbl", "1000000"]);
@@ -404,4 +416,32 @@ test("the earliest-day error is the same JSON a script reads, with a failing exi
     process.exitCode = 0;
     await rm(home, { recursive: true, force: true });
   }
+});
+
+test("a row with no figures comes out at its own time once that has passed, as released and as_of in every format", async () => {
+  setSystemTime(new Date("2026-10-20T12:00:00.000Z"));
+  const calendar = [
+    ...twoWeeks,
+    event("2026-10-19T09:00:00.000Z", "GB", "medium", "BoE Bailey Speech"),
+    event("2026-10-22T15:00:00.000Z", "GB", "medium", "BoE Pill Speech"),
+    { ...event("2026-10-19T00:00:00.000Z", "EU", "low", "Eurogroup Meeting"), time: "All Day" },
+    { ...event("2026-10-19T12:30:00.000Z", "US", "low", "Housing Starts"), forecast: "1.3M", prior: "1.4M" },
+    { ...event("2026-10-19T14:00:00.000Z", "US", "low", "Existing Home Sales"), actual: "4.1M", forecast: "4.0M", prior: "3.9M" },
+  ];
+  const { result, options } = await econPrinted(calendar, ["--from", "2026-10-19"]);
+  const csv = readCsv(serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options));
+  const ndjson = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "ndjson" }, options).split("\n").map((line) => JSON.parse(line) as Record<string, unknown>);
+  const json = (result.data as Array<Record<string, unknown>>);
+  const at = (name: string) => json.findIndex((row) => row.event === name);
+  const cells = (name: string) => Object.fromEntries(csv.header.map((header, column) => [header, csv.rows[at(name)]![column]!]));
+  // The row's released in JSON, in NDJSON beside its as_of, and in CSV beside its as_of.
+  const seen = (name: string) => [json[at(name)]!.released, ndjson[at(name)]!.released, ndjson[at(name)]!.as_of, cells(name).released, cells(name).as_of];
+  // A speech given: its own time. A meeting that takes the day: its day.
+  expect(seen("BoE Bailey Speech")).toEqual(Array(5).fill("2026-10-19T09:00:00.000Z"));
+  expect(seen("Eurogroup Meeting")).toEqual(Array(5).fill("2026-10-19"));
+  // A speech still to come has not come out; nor has a release with a forecast and no actual yet, whatever its time.
+  expect(seen("BoE Pill Speech")).toEqual([null, null, null, "", ""]);
+  expect(seen("Housing Starts")).toEqual([null, null, null, "", ""]);
+  // A release with its actual is unchanged.
+  expect(seen("Existing Home Sales")).toEqual(Array(5).fill("2026-10-19T14:00:00.000Z"));
 });

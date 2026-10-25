@@ -29,6 +29,8 @@ export interface EconEvent {
   source?: { name: string; url?: string };
   /** The indicator this release is of, the same from one release to the next; `id` is this row's alone. */
   indicatorId?: string | null;
+  /** Which feed the forecast was read from (`week-feed`, `release-calendar`) and when that feed was read. */
+  consensus?: { source: string; readAt: string } | null;
 }
 
 /** Whether a row's time is blank because its publisher states none (a bank whose calendar gives the day only). */

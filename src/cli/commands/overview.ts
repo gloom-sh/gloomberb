@@ -41,7 +41,7 @@ import {
   type CountryFilter,
   type ImpactFilter,
 } from "../../plugins/builtin/econ/calendar-model";
-import { hasNoReleaseTime, hasNoStatedTime } from "../../plugins/builtin/econ/types";
+import { hasNoReleaseTime, hasNoStatedTime, type EconEvent } from "../../plugins/builtin/econ/types";
 import { econRowFigures } from "../../plugins/builtin/econ/figures";
 import { isoDate, rejectExtraArgs, requireArg, requireOneArg, takeFlag, takeOption } from "./command-utils";
 import { buildCorrelationSeries } from "../../plugins/builtin/correlation/matrix/model";
@@ -349,6 +349,9 @@ const econExportColumns: CliResultColumn[] = [
   { key: "actualText", header: "actual_text" },
   { key: "forecastText", header: "forecast_text" },
   { key: "priorText", header: "prior_text" },
+  // Which feed the forecast was read from and when, so a consensus can be told from another read of it.
+  { key: "consensusFeed", header: "consensus_feed" },
+  { key: "consensusReadAt", header: "consensus_read_at" },
 ];
 
 /**
@@ -410,6 +413,16 @@ function blankTimeNotes(rows: ReadonlyArray<{ event: string; country: string; ti
 }
 
 /**
+ * Whether a row has come out: it has an actual, or it has no figure at all (a
+ * speech, a meeting, a holiday) and its time has passed. A row with a forecast
+ * or a prior and no actual is still to come, whatever its time.
+ */
+function cameOut(event: Pick<EconEvent, "actual" | "forecast" | "prior" | "date">, now: number): boolean {
+  if (event.actual?.trim()) return true;
+  return !event.forecast?.trim() && !event.prior?.trim() && event.date.getTime() <= now;
+}
+
+/**
  * A `--from` the stored calendar does not reach back to, which Gloom Cloud refuses
  * with "The calendar reaches back 400 days": an input error naming the earliest
  * day it takes, and `--json` carries it as `earliest`. Any other failure goes on as it was.
@@ -437,7 +450,8 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
   }
   rejectArgs(rawArgs, ECON_USAGE, ctx, "Filter with --country and --impact.");
   await withCliServices(ctx, async () => {
-    const todayStart = Math.floor(Date.now() / DAY_MS) * DAY_MS;
+    const now = Date.now();
+    const todayStart = Math.floor(now / DAY_MS) * DAY_MS;
     // An earlier day reads the stored calendar, which keeps past events after the week's listing drops them.
     // A server without it, a server error or no network lists the current calendar (cached when offline) instead.
     const stored = fromOption != null && fromOption < isoDate(new Date(todayStart))
@@ -497,11 +511,15 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
           // Who publishes the figure (Freddie Mac for the 30-year mortgage rate), the period it covers and its page.
           publisher: event.source?.name ?? null,
           referencePeriod: event.referencePeriod ?? null,
-          // When the figure came out: the row's time once it has an actual (its day alone when it states no time), null before.
-          released: event.actual?.trim() ? (hasNoReleaseTime(event) ? isoDate(event.date).slice(0, 10) : isoDate(event.date)) : null,
+          // When the figure came out: the row's time once it has an actual, and for a row with no figures (a speech, a
+          // meeting) once its time has passed; its day alone when it states no time, null before.
+          released: cameOut(event, now) ? (hasNoReleaseTime(event) ? isoDate(event.date).slice(0, 10) : isoDate(event.date)) : null,
           sourceUrl: event.source?.url ?? null,
-          // The same indicator from one release to the next; empty until Gloom Cloud names it.
+          // The same indicator from one release to the next, as Gloom Cloud names it.
           indicatorId: event.indicatorId ?? null,
+          // The feed the forecast was read from and when, for a row with a forecast.
+          consensusFeed: event.consensus?.source ?? null,
+          consensusReadAt: event.consensus?.readAt ?? null,
         };
       });
     // A filter of countries only, none of which has anything in the window, says so as its empty list.

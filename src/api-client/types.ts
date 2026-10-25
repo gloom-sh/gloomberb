@@ -518,10 +518,16 @@ export interface CloudEconEventPayload {
   source?: { name: string; url?: string };
   /**
    * The indicator this release is of, the same from one release to the next
-   * (US CPI m/m on every month's row), where `id` names the one row. Absent
-   * until Gloom Cloud names indicators; exports leave the column empty.
+   * (`us-unemployment-rate` on every month's row), where `id` names the one
+   * row. Absent from a server that names none; exports leave the column empty.
    */
   indicatorId?: string | null;
+  /**
+   * Where the forecast (the consensus) was read from, `week-feed` or
+   * `release-calendar`, and when that feed was read. Absent on a row with no
+   * forecast and on one kept before the read was recorded.
+   */
+  consensus?: { source: string; readAt: string } | null;
 }
 
 /** One currency's short-term rate, as GET /cloud/econ/short-rates serves it. */
