@@ -1,23 +1,29 @@
 import { currencyPairSpelling } from "../../../utils/currency-pair";
 import { dashedCoinPair } from "../../../utils/crypto-pair";
-import { GALLONS_PER_BARREL } from "../../../time-series/price-units";
+import { GALLONS_PER_BARREL, isBarrelsPerTonne } from "../../../time-series/price-units";
 import { MAX_CHART_COMPOSER_SERIES } from "./chart-spec";
 import { parseSeriesExpression, resolveChartFieldAlias, type ParsedSeriesExpression } from "./series-expression";
 import { getTimeSeriesField } from "../../../time-series/field-catalog";
 
 /**
  * Series formulas: a sum of series each times a number, the whole optionally
- * in brackets over a number.
+ * in brackets over or times numbers and series.
  *
  *   42*HO=F - CL=F                       heating-oil crack, USD per barrel
  *   HO=F*42 - BZ=F                       a multiplier on either side
  *   (2*42*RB=F + 42*HO=F - 3*CL=F)/3     3:2:1 crack, per barrel of crude
+ *   (42*HO=F - BZ=F)/EURUSD=X            the crack in EUR per barrel
+ *   7.45*42*HO=F - 7.45*BZ=F             a gasoil-style crack per tonne
  *
  * A literal 42 on a series is the 42 gallons of a barrel: it makes a price per
- * gallon a price per barrel. Any other number is a count and keeps the unit.
+ * gallon a price per barrel. A literal 7.45 or 8.45 is the barrels in a tonne
+ * of gasoil or gasoline: it makes a price per barrel a price per tonne. Any
+ * other number is a count and keeps the unit. A series the whole formula is
+ * divided or multiplied by changes its unit as the arithmetic does: over
+ * EURUSD=X (USD per EUR), dollars are euros.
  *
  * Grammar, no other precedence to learn:
- *   formula := sum | "(" sum ")" [ "/" number ]
+ *   formula := sum | "(" sum ")" { ( "/" | "*" ) factor }
  *   sum     := [ "+" | "-" ] term { ( "+" | "-" ) term }
  *   term    := factor { ( "*" | "×" ) factor }     with exactly one series
  *   factor  := number | series
@@ -29,7 +35,17 @@ interface FormulaLeg {
   weight: number;
   /** The leg was multiplied by a literal 42: the gallons in a barrel. */
   perBarrel: boolean;
+  /** The barrels in a tonne the leg was multiplied by (7.45 or 8.45), or null. */
+  perTonne: number | null;
   /** The leg as written: `HO=F`. */
+  text: string;
+}
+
+/** A series the whole formula is multiplied (power 1) or divided (-1) by. */
+interface FormulaFactor {
+  series: ParsedSeriesExpression;
+  power: 1 | -1;
+  /** The series as written: `EURUSD=X`. */
   text: string;
 }
 
@@ -37,9 +53,12 @@ export interface ParsedFormula {
   legs: FormulaLeg[];
   /** What the whole sum is divided by; 1 when it is not. */
   divisor: number;
+  /** The series the whole sum is then multiplied or divided by, in the order written. */
+  factors: FormulaFactor[];
 }
 
 const EXAMPLE = "(2*42*RB=F + 42*HO=F - 3*CL=F)/3";
+const SCALED_EXAMPLE = "(42*HO=F - BZ=F)/EURUSD=X";
 
 type Token =
   | { kind: "number"; value: number; text: string }
@@ -75,9 +94,20 @@ function minusIsOperator(atom: string, previous: Token | undefined, rest: string
   )));
 }
 
+/**
+ * After the formula's closing bracket every `/` divides, except inside a
+ * currency or coin pair written with one: `(...)/EUR/USD` is over EUR/USD.
+ */
+function slashIsPairSpelling(atom: string, rest: string): boolean {
+  const quote = rest.match(/^[^\s*×+()/]*/)![0];
+  const symbol = `${atom}/${quote.split(":")[0]}`;
+  return /^[A-Za-z]{3,}$/.test(atom) && !!quote && (!!currencyPairSpelling(symbol) || !!dashedCoinPair(symbol));
+}
+
 function tokenize(expression: string): Token[] {
   const tokens: Token[] = [];
   let atom = "";
+  let closed = false;
   const flush = () => {
     if (!atom) return;
     tokens.push(NUMBER.test(atom) ? { kind: "number", value: Number(atom), text: atom } : { kind: "atom", text: atom });
@@ -89,11 +119,14 @@ function tokenize(expression: string): Token[] {
       flush();
     } else if (char === "*" || char === "×" || char === "+" || char === "(" || char === ")") {
       flush();
+      if (char === ")") closed = true;
       tokens.push({ kind: char === "×" ? "*" : char, text: char });
     } else if (char === "-" && (minusIsOperator(atom, tokens.at(-1), expression.slice(index + 1)) || /\s/.test(expression[index - 1] ?? " "))) {
       flush();
       tokens.push({ kind: "-", text: char });
-    } else if (char === "/" && !atom && tokens.at(-1)?.kind === ")") {
+    } else if (char === "/" && (!atom || (closed && !slashIsPairSpelling(atom, expression.slice(index + 1))))) {
+      // A slash on its own divides; inside a word it is part of a pair (EUR/USD), until the brackets close.
+      flush();
       tokens.push({ kind: "/", text: char });
     } else {
       atom += char;
@@ -111,7 +144,7 @@ function fail(message: string): never {
 function legSeries(text: string): ParsedSeriesExpression {
   const symbol = text.split(":")[0]!;
   if (symbol.includes("/") && !currencyPairSpelling(symbol) && !dashedCoinPair(symbol)) {
-    fail(`"${text}" divides inside the formula. Divide the whole formula by a number in brackets, as in ${EXAMPLE}; chart a ratio of two series as A / B on its own.`);
+    fail(`"${text}" divides inside the formula. Divide the whole formula in brackets by a number or a series, as in ${SCALED_EXAMPLE}; chart a ratio of two series as A / B on its own.`);
   }
   return parseSeriesExpression(text)
     ?? fail(`"${text}" is not a series. Use SYMBOL, SYMBOL:field, FUT:code, UST:maturity, FRED:series, GEO:series or CAP:capability-id:series-id.`);
@@ -143,7 +176,7 @@ export function parseFormulaExpression(expression: string): ParsedFormula | null
   const closes = tokens.filter((token) => token.kind === ")").length;
   if (opens !== closes) fail(`The brackets in "${trimmed}" do not pair up.`);
   if (opens > 1 || (opens === 1 && !bracketed)) {
-    fail(`Brackets go around the whole formula only, before an optional divisor: ${EXAMPLE}.`);
+    fail(`Brackets go around the whole formula only, then divide or multiply it: ${EXAMPLE}, ${SCALED_EXAMPLE}.`);
   }
 
   const legs: FormulaLeg[] = [];
@@ -158,6 +191,7 @@ export function parseFormulaExpression(expression: string): ParsedFormula | null
     // One term: numbers and exactly one series, multiplied.
     let weight = sign;
     let perBarrel = false;
+    let perTonne: number | null = null;
     const factors: Token[] = [];
     for (;;) {
       const factor = take();
@@ -171,6 +205,7 @@ export function parseFormulaExpression(expression: string): ParsedFormula | null
       if (factor.kind === "number") {
         if (factor.value === 0) fail("A multiplier of 0 removes its series; leave the term out instead.");
         if (factor.value === GALLONS_PER_BARREL && !perBarrel) perBarrel = true;
+        else if (isBarrelsPerTonne(factor.value) && perTonne === null) perTonne = factor.value;
         weight *= factor.value;
       }
       if (peek()?.kind !== "*") break;
@@ -189,14 +224,14 @@ export function parseFormulaExpression(expression: string): ParsedFormula | null
     if (legs.some((leg) => leg.text.toUpperCase() === text.toUpperCase())) {
       fail(`${text} appears twice. Write it once with its combined multiplier, such as 2*${text}.`);
     }
-    legs.push({ series: parsed, weight, perBarrel, text });
+    legs.push({ series: parsed, weight, perBarrel, perTonne, text });
     expectTerm = false;
 
     const next = peek();
     if (!next || next.kind === ")") break;
     if (next.kind !== "+" && next.kind !== "-") {
       fail(next.kind === "/"
-        ? `Divide the whole formula in brackets by a number, as in ${EXAMPLE}.`
+        ? `Divide the whole formula in brackets by a number or a series, as in ${SCALED_EXAMPLE}.`
         : `Expected + or - after ${written}, not "${next.text}".`);
     }
     take();
@@ -208,26 +243,44 @@ export function parseFormulaExpression(expression: string): ParsedFormula | null
   }
 
   let divisor = 1;
+  const scaleFactors: FormulaFactor[] = [];
   if (bracketed) {
     if (take()?.kind !== ")") fail(`The brackets in "${trimmed}" do not pair up.`);
-    if (peek()?.kind === "/") {
-      take();
+    while (peek()?.kind === "/" || peek()?.kind === "*") {
+      const divides = take()!.kind === "/";
       const value = take();
-      if (!value || value.kind !== "number") {
-        fail(`Divide the whole formula by a number, such as /3${value ? `, not ${value.text}` : ""}.`);
+      if (!value || (value.kind !== "number" && value.kind !== "atom")) {
+        fail(`${divides ? "Divide" : "Multiply"} the whole formula by a number or a series, such as ${divides ? "/3 or /EURUSD=X" : "*7.45 or *EURUSD=X"}${value ? `, not ${value.text}` : ""}.`);
       }
-      if (value.value === 0) fail("A formula cannot be divided by 0.");
-      divisor = value.value;
+      if (value.kind === "number") {
+        if (value.value === 0) fail(divides ? "A formula cannot be divided by 0." : "A multiplier of 0 removes the formula; leave it out instead.");
+        if (divides) {
+          divisor *= value.value;
+        } else {
+          // A number times the whole sum multiplies each leg, converting its unit as it would there.
+          for (const leg of legs) {
+            if (value.value === GALLONS_PER_BARREL && !leg.perBarrel) leg.perBarrel = true;
+            else if (isBarrelsPerTonne(value.value) && leg.perTonne === null) leg.perTonne = value.value;
+            leg.weight *= value.value;
+          }
+        }
+        continue;
+      }
+      const text = value.text;
+      if ([...legs, ...scaleFactors].some((entry) => entry.text.toUpperCase() === text.toUpperCase())) {
+        fail(`${text} appears twice in the formula. Use each series once.`);
+      }
+      scaleFactors.push({ series: legSeries(text), power: divides ? -1 : 1, text });
     }
   }
   const rest = tokens.slice(position);
   if (rest.length > 0) {
     fail(rest[0]!.kind === "/" || rest[0]!.kind === "*"
-      ? `Divide the whole formula in brackets by a number, as in ${EXAMPLE}.`
+      ? `Divide or multiply the whole formula in brackets, as in ${EXAMPLE} or ${SCALED_EXAMPLE}.`
       : `Unexpected "${rest.map((token) => token.text).join(" ")}" after the formula.`);
   }
-  if (legs.length > MAX_CHART_COMPOSER_SERIES) {
+  if (legs.length + scaleFactors.length > MAX_CHART_COMPOSER_SERIES) {
     fail(`A formula takes up to ${MAX_CHART_COMPOSER_SERIES} series.`);
   }
-  return { legs, divisor };
+  return { legs, divisor, factors: scaleFactors };
 }

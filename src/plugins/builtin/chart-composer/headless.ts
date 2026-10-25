@@ -221,9 +221,12 @@ export async function loadChartPaneModel(
         kind, source.fieldId.split(".")[1]!, source.period === "quarterly" ? "quarterly" : "annual",
         source.instrument.symbol,
       ).map((row) => [row.date, row.growth])) : null;
+      // A formula or a converted price prints at its legs' decimals in text; JSON keeps every digit.
+      const { valueDecimals, ...reported } = series;
       return {
-        ...series,
+        ...reported,
         ...name ? { name } : {},
+        ...valueDecimals !== undefined ? { textDecimals: valueDecimals } : {},
         derived: !ids.has(series.id),
         points: series.points.map((point) => ({
           ...point,

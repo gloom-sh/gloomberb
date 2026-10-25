@@ -20,7 +20,7 @@ import { compareChartQuoteRecency } from "./live-quotes";
 import { marketSeriesFrequency } from "./market";
 import { canonicalExchange, resolveExchangeTimeZone } from "../utils/exchanges";
 import { futuresGenericCaption, futuresGenericListing, futuresListingPriceBasis } from "../utils/futures-generic";
-import { contractPriceUnit } from "./price-units";
+import { contractPriceUnit, currencyPairPriceUnit } from "./price-units";
 import { INDEX_POINTS_UNIT, isIndexLevel } from "../market-data/market/index-level";
 import { isOhlcSeriesStyle } from "./spec";
 import { SERIES_COLORS } from "../theme/series-colors";
@@ -147,8 +147,13 @@ export function baseSecuritySeries(
   // A future's price in a currency counts what its contract terms say: heating
   // oil is USD / gallon and crude USD / barrel, which a bare USD does not tell apart.
   const statedUnit = !genericUnit && unitTemplate === "currency" ? contractPriceUnit(contractUnit, currency) : null;
+  // A currency pair's rate is the quote currency one unit of the base buys:
+  // EURUSD=X is USD / EUR, so Brent over it reads EUR / barrel.
+  const pairUnit = !genericUnit && unitTemplate === "currency" && field.unitGroup === "price" && isMarketFieldId(field.id)
+    ? currencyPairPriceUnit(spec.source.instrument.symbol, spec.source.instrument.exchange, currency) : null;
   const unit = field.id === "market.volume" ? volumeUnit ?? ""
-    : statedUnit ?? genericUnit ?? (unitTemplate.startsWith("currency") && currency ? unitTemplate.replace("currency", currency) : unitTemplate);
+    : statedUnit ?? genericUnit ?? pairUnit
+      ?? (unitTemplate.startsWith("currency") && currency ? unitTemplate.replace("currency", currency) : unitTemplate);
   const currencyUnitGroup = genericUnit ? `${field.unitGroup}:${genericUnit}`
     : unknownBondBasis && field.unitGroup === "price" ? "price:unknown"
     : field.unit.startsWith("currency") && currency

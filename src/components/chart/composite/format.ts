@@ -2,7 +2,7 @@ import { formatMarketPrice, formatMarketPriceWithCurrency, stablePriceFractionDi
 import { INDEX_POINTS_UNIT } from "../../../market-data/market/index-level";
 import type { ResolvedSeries, TimeSeriesPoint } from "../../../time-series/types";
 import type { CompositeAxisDomain, CompositePanelScene } from "./types";
-import { formatPercentRaw } from "../../../utils/format";
+import { formatNumber, formatPercentRaw } from "../../../utils/format";
 import { timeZoneLabel, zonedWallClockMs } from "../../../utils/zoned-date-time";
 
 const CURRENCY_SYMBOLS: Record<string, string> = {
@@ -243,6 +243,23 @@ function isChangeSeries(series: ResolvedSeries): boolean {
   return series.unit.trim() === "%" && (series.transform === "percent" || series.transform === "yoy" || series.transform === "qoq");
 }
 
+/**
+ * A value worked out from prices (a formula, a spread, a price over an FX
+ * rate) at its legs' decimals: bare beside a stated unit (92.6164 USD /
+ * barrel), with its derived unit, or with its currency's sign ($12.34).
+ */
+function formatDerivedValue(value: number, series: ResolvedSeries, decimals: number): string {
+  const number = formatNumber(Math.abs(value), decimals);
+  const sign = value < 0 && /[1-9]/.test(number) ? "-" : "";
+  if (series.statedUnit) return `${sign}${number}`;
+  const unit = series.unit.trim();
+  if (series.unitGroup.toLowerCase().startsWith("derived-unit:")) return `${sign}${number} ${unit}`;
+  const currency = unitCurrencyCode(unit);
+  if (!currency) return `${sign}${number}`;
+  const symbol = CURRENCY_SYMBOLS[currency];
+  return symbol ? `${sign}${symbol}${number}` : `${sign}${number} ${currency}`;
+}
+
 /** `referencePrice` defaults to the series' own; a study on a price axis
  * passes the axis's reference so it shares the price's decimals. */
 export function formatCompositeSeriesValue(
@@ -253,6 +270,7 @@ export function formatCompositeSeriesValue(
   // A return reads as every other return in the app, signed with two decimals, so a legend of them lines up
   // (+34.02%, +0.76%, +15.80%) instead of one precision per magnitude.
   if (isChangeSeries(series)) return formatPercentRaw(value);
+  if (series.valueDecimals !== undefined) return formatDerivedValue(value, series, series.valueDecimals);
   if (series.statedUnit) {
     // The number alone: the legend prints the unit beside it, as FUT prints
     // a price beside its unit (4.6242 USD / gallon, not $4.6242).

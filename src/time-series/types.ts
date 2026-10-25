@@ -192,6 +192,11 @@ export interface ResolvedSeries {
   statedUnit?: string;
   /** Source instrument category used only for monetary market-price precision. */
   priceAssetCategory?: string;
+  /**
+   * The decimals a value worked out from prices (a formula, a spread, a price
+   * over an FX rate) prints at: the most its legs print, from two to four.
+   */
+  valueDecimals?: number;
   /** Volume basis established by the source instrument; omitted when unspecified. */
   volumeUnit?: "shares" | "contracts";
   nativeFrequency: SeriesPeriod;

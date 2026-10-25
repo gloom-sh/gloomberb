@@ -424,14 +424,16 @@ G MSFT:revenue / AAPL:revenue
 
 Series are separated by commas, and tickers separated by spaces are a list too: `fn G AAPL MSFT` charts both, as `fn G AAPL,MSFT` does. Words that are one thing, not tickers side by side, are refused with what to write: a Bloomberg code (`AAPL US Equity` reads as `AAPL`), a currency pair (`EUR USD` is `EUR/USD`) and a series whose field has spaces (`MSFT:net income`, one series among commas). `A/B` charts the ratio of two series and `A - B` the spread. A slash that is part of the symbol stays one series (`EUR/USD`, `BTC/USD`).
 
-A formula adds and subtracts series, each times a number, and charts the result in the Formula panel. The number goes on either side of its series (`HO=F*42`), and only the whole formula, in brackets, is divided by a number:
+A formula adds and subtracts series, each times a number, and charts the result in the Formula panel. The number goes on either side of its series (`HO=F*42`), and only the whole formula, in brackets, is divided or multiplied by a number or a series:
 
 ```text
 G "42*HO=F - CL=F"
 G "(2*42*RB=F + 42*HO=F - 3*CL=F)/3"
+G "(42*HO=F - BZ=F)/EURUSD=X"
+G "7.45*42*HO=F - 7.45*BZ=F"
 ```
 
-A futures price is in its contract's unit (heating oil and gasoline USD / gallon, crude USD / barrel), so the 42 turns a per-gallon series into per barrel and both formulas above are crack spreads in USD / barrel. Series in different units do not add up.
+A futures price is in its contract's unit (heating oil and gasoline USD / gallon, crude USD / barrel), and units follow the arithmetic. A 42 turns a per-gallon series into per barrel, so the first two formulas are crack spreads in USD / barrel. A 7.45 (barrels in a tonne of gasoil) or 8.45 (gasoline) turns a per-barrel series into per tonne, so the last one is the crack in USD / tonne. Any other number is a count and keeps the unit. An FX pair is priced in its quote currency per unit of its base (`EURUSD=X` is USD / EUR), so dividing by it turns dollars into euros: the third formula is the crack in EUR / barrel, and `BZ=F / EURUSD=X` is Brent in EUR / barrel. A series the formula is divided or multiplied by is drawn in a panel of its own. Series in different units do not add up, and on one chart they read on axes of their own. A formula prints at the precision of its legs, two to four decimals.
 
 `catalog crack` lists the heating-oil and 3:2:1 cracks, and so does G's series search (`n`, then `crack`): picking one adds its legs and replaces the chart's formula.
 

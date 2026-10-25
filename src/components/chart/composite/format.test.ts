@@ -162,6 +162,17 @@ describe("composite chart unit formatting", () => {
     })).toBe("0.500");
   });
 
+  test("a value worked out from prices keeps its legs' decimals at any size, beside its stated unit or its currency's sign", () => {
+    const formula: ResolvedSeries = {
+      id: "formula", label: "(42×HO=F - BZ=F)/EURUSD=X", color: "#ffffff", unit: "EUR / barrel", unitGroup: "price:EUR",
+      statedUnit: "EUR / barrel", valueDecimals: 4, nativeFrequency: "daily", dataShape: "scalar", style: "step", transform: "raw",
+      axis: "left", panelId: "formula", interpolation: "step-after", observationKind: "market", points: [],
+    };
+    expect([1_689.99218, 82.66, -0.00004].map((value) => formatCompositeSeriesValue(value, formula))).toEqual(["1,689.9922", "82.6600", "0.0000"]);
+    const spread = { ...formula, unit: "USD/share", unitGroup: "price:USD", statedUnit: undefined, valueDecimals: 2 };
+    expect(formatCompositeSeriesValue(-0.5012, spread)).toBe("-$0.50");
+  });
+
   test("shows full price precision in the legend and cursor, not compact axis ticks", () => {
     const btc: ResolvedSeries = {
       id: "btc",

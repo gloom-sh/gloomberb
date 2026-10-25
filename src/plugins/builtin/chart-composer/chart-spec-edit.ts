@@ -210,7 +210,7 @@ function effectiveSeriesUnitGroup(series: ChartSeriesSpec): string {
       : getTimeSeriesField(series.source.fieldId)?.unitGroup ?? series.source.fieldId;
 }
 
-function nextGeneratedPanelId(
+export function nextGeneratedPanelId(
   spec: Pick<ChartSpec, "panels" | "series" | "studies">,
   prefix = "panel",
 ): string {

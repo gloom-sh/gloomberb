@@ -13,6 +13,7 @@ import {
   type PriceComparison,
 } from "./price-comparison";
 import { parsePublicTickerKey, publicTickerKey } from "../utils/exchanges";
+import { quantityIdentity } from "./price-units";
 import type {
   ChartSeriesSpec,
   ChartSpec,
@@ -40,33 +41,59 @@ export function resolvePriceHistoryIntegrity(
   ];
 }
 
+/**
+ * The quantity a series' unit counts per unit of its currency, when it names
+ * one: "gallon" for USD / gallon, "barrel" for USD/bbl, "EUR" for an FX rate's
+ * USD / EUR. A bare currency names none.
+ */
+function unitQuantity(unit: string): string | null {
+  const slash = unit.indexOf("/");
+  if (slash < 0) return null;
+  const quantity = unit.slice(slash + 1).split("/").map((part) => quantityIdentity(part)).join("/");
+  return quantity || null;
+}
+
+/**
+ * Each series' axis: one a spec names, else the side whose series count the
+ * same unit. Prices in one currency per different quantities (heating oil
+ * USD / gallon beside Brent USD / barrel) scale on axes of their own; a price
+ * that names no quantity shares either.
+ */
 export function assignAxes(
   series: ResolvedSeries[],
   specs: readonly { id: string; axis: ChartSeriesSpec["axis"] }[],
   warnings: string[],
 ): ResolvedSeries[] {
+  type AxisUnit = { group: string; quantity: string | null };
   const requested = new Map(specs.map((spec) => [spec.id, spec.axis] as const));
-  const groupsByPanel = new Map<string, Partial<Record<"left" | "right", string>>>();
+  const groupsByPanel = new Map<string, Partial<Record<"left" | "right", AxisUnit>>>();
   return series.map((entry) => {
     const groups = groupsByPanel.get(entry.panelId) ?? {};
     groupsByPanel.set(entry.panelId, groups);
+    const quantity = unitQuantity(entry.unit);
+    const fits = (side: "left" | "right") => {
+      const held = groups[side];
+      return !!held && held.group === entry.unitGroup && (!held.quantity || !quantity || held.quantity === quantity);
+    };
     const preferred = requested.get(entry.id);
     let axis: "left" | "right";
     if (preferred === "left" || preferred === "right") {
       axis = preferred;
-    } else if (groups.left === entry.unitGroup) {
+    } else if (fits("left")) {
       axis = "left";
-    } else if (groups.right === entry.unitGroup) {
+    } else if (fits("right")) {
       axis = "right";
     } else if (!groups.left) {
       axis = "left";
     } else {
       axis = "right";
     }
-    if (groups[axis] && groups[axis] !== entry.unitGroup) {
+    const held = groups[axis];
+    if (held && !fits(axis)) {
       warnings.push(`${entry.label} shares the ${axis} axis with a different unit; choose an explicit panel for independent scaling.`);
     }
-    groups[axis] ??= entry.unitGroup;
+    if (!held) groups[axis] = { group: entry.unitGroup, quantity };
+    else if (!held.quantity && quantity && held.group === entry.unitGroup) held.quantity = quantity;
     return { ...entry, axis };
   });
 }

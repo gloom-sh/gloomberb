@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { validateChartSpec } from "./spec";
 import { resolveStudies } from "./studies";
 import { applyResolvedSeriesTransform } from "./transforms";
-import { contractPriceUnit, perBarrelUnit } from "./price-units";
+import { contractPriceUnit, perBarrelUnit, perTonneUnit } from "./price-units";
 import { CHART_SPEC_VERSION, type ChartStudySpec, type ResolvedSeries, type TimeSeriesPoint } from "./types";
 
 /** A futures price series: `days` maps a day of January 2026 to its settle. */
@@ -55,6 +55,48 @@ describe("formula studies", () => {
     // Two per-gallon legs need no conversion.
     expect(resolveStudies([HO, RB], [formula(["HO=F", "RB=F"], { weight1: 1, weight2: -1, divisor: 1 })]).series[0]?.unit)
       .toBe("USD / gallon");
+  });
+
+  test("7.45 or 8.45 barrels make a tonne of a per-barrel leg; the crack prints at its legs' decimals", () => {
+    const ho = future("HO=F", "USD / gallon", { 1: 2.5123, 2: 2.6031 });
+    const result = resolveStudies([ho, BZ], [formula(["HO=F", "BZ=F"], {
+      weight1: 7.45 * 42, perBarrel1: 1, perTonne1: 7.45, weight2: -7.45, perTonne2: 7.45, divisor: 1,
+    })]);
+    expect(result.errors).toEqual([]);
+    expect(result.series[0]).toMatchObject({
+      label: "7.45×42×HO=F - 7.45×BZ=F", unit: "USD / tonne", statedUnit: "USD / tonne", unitGroup: "price:USD", valueDecimals: 4,
+    });
+    expect(result.series[0]!.points[0]!.value).toBeCloseTo(7.45 * (42 * 2.5123 - 75), 9);
+    // On a per-gallon leg, without the 42, 7.45 is a count: gallons do not become tonnes.
+    expect(resolveStudies([HO, BZ], [formula(["HO=F", "BZ=F"], { weight1: 7.45, perTonne1: 7.45, weight2: -7.45, perTonne2: 7.45 })]).errors)
+      .toEqual(["Formula: HO=F is USD / gallon and BZ=F is USD / tonne: a formula needs every leg in one unit."]);
+  });
+
+  test("over an FX rate, quoted per unit of its base, dollars are euros: a crack and a ratio read EUR / barrel", () => {
+    const eurusd = { ...future("EURUSD=X", "USD / EUR", { 1: 1.1, 2: 1.125, 3: 1.12 }), statedUnit: undefined, priceAssetCategory: "CURRENCY",
+      listing: { symbol: "EURUSD=X", exchange: "CCY" } };
+    const crack = resolveStudies([HO, BZ, eurusd], [formula(["HO=F", "BZ=F", "EURUSD=X"], {
+      weight1: 42, perBarrel1: 1, weight2: -1, power3: -1, divisor: 1,
+    })]);
+    expect(crack.errors).toEqual([]);
+    expect(crack.series[0]).toMatchObject({
+      label: "(42×HO=F - BZ=F)/EURUSD=X", unit: "EUR / barrel", statedUnit: "EUR / barrel", unitGroup: "price:EUR", valueDecimals: 4,
+    });
+    expect(crack.series[0]!.points.map(({ value }) => value))
+      .toEqual([(42 * 2.5 - 75) / 1.1, (42 * 2.6 - 76) / 1.125, (42 * 2.4 - 77) / 1.12].map((value) => expect.closeTo(value, 9)));
+    // Times the rate, a euro price is in dollars; a formula of nothing but rates has nothing to add up.
+    const ttf = future("TTF=F", "EUR / MWh", { 1: 30, 2: 31, 3: 32 }, "EUR");
+    expect(resolveStudies([ttf, eurusd], [formula(["TTF=F", "EURUSD=X"], { weight1: 1, power2: 1 })]).series[0])
+      .toMatchObject({ label: "(TTF=F)×EURUSD=X", unit: "USD / MWh", unitGroup: "price:USD" });
+    expect(resolveStudies([eurusd], [formula(["EURUSD=X"], { power1: -1 })]).errors)
+      .toEqual(["Formula: The formula has no series to add up, only series it divides by; write the formula again."]);
+
+    const ratio = resolveStudies([BZ, eurusd], [{ ...formula(["BZ=F", "EURUSD=X"], {}), id: "ratio", kind: "ratio" }]);
+    expect(ratio.warnings).toEqual([]);
+    expect(ratio.series[0]).toMatchObject({ unit: "EUR / barrel", statedUnit: "EUR / barrel", unitGroup: "price:EUR", valueDecimals: 4 });
+    // A ratio of two prices in one unit is a plain multiple, with no legs' decimals.
+    const multiple = resolveStudies([CL, BZ], [{ ...formula(["CL=F", "BZ=F"], {}), id: "ratio", kind: "ratio" }]).series[0]!;
+    expect([multiple.unit, multiple.unitGroup, multiple.valueDecimals]).toEqual(["x", "ratio", undefined]);
   });
 
   test("a spread names both legs' units and the fix, whichever side the gallons are on", () => {
@@ -133,7 +175,10 @@ describe("futures price units", () => {
     expect(contractPriceUnit("USD / gallon", undefined)).toBeNull();
   });
 
-  test("a per-gallon unit becomes per barrel in the same wording", () => {
+  test("a per-gallon unit becomes per barrel, and a per-barrel one per tonne, in the same wording", () => {
+    expect(perTonneUnit("USD / barrel")).toBe("USD / tonne");
+    expect(perTonneUnit("USD/bbl")).toBe("USD/tonne");
+    expect(perTonneUnit("USD / gallon")).toBe("USD / gallon");
     expect(perBarrelUnit("USD / gallon")).toBe("USD / barrel");
     expect(perBarrelUnit("USD/gallon")).toBe("USD/barrel");
     expect(perBarrelUnit("US cents / gallon")).toBe("US cents / barrel");
