@@ -1,0 +1,798 @@
+{
+  "before": [
+    {
+      "id": "13F--root",
+      "kind": "pane",
+      "token": "13F",
+      "paneId": "thirteenf-funds",
+      "view": "root",
+      "observedPaneId": "alerts"
+    },
+    {
+      "id": "13F--detail",
+      "kind": "pane",
+      "token": "13F",
+      "paneId": "thirteenf-funds",
+      "view": "detail",
+      "observedPaneId": "alerts"
+    },
+    {
+      "id": "13F--tab-events",
+      "kind": "pane",
+      "token": "13F",
+      "paneId": "thirteenf-funds",
+      "view": "tab",
+      "tab": "Events",
+      "observedPaneId": "alerts"
+    },
+    {
+      "id": "13F--tab-history",
+      "kind": "pane",
+      "token": "13F",
+      "paneId": "thirteenf-funds",
+      "view": "tab",
+      "tab": "History",
+      "observedPaneId": "alerts"
+    },
+    {
+      "id": "NOTE--root",
+      "kind": "pane",
+      "token": "NOTE",
+      "paneId": "quick-notes",
+      "view": "root",
+      "observedPaneId": "changelog"
+    },
+    {
+      "id": "ORD--root",
+      "kind": "pane",
+      "token": "ORD",
+      "paneId": "broker-orders",
+      "view": "root",
+      "observedPaneId": "earnings-ripple"
+    },
+    {
+      "id": "ORD--tab-2-hops",
+      "kind": "pane",
+      "token": "ORD",
+      "paneId": "broker-orders",
+      "view": "tab",
+      "tab": "2 hops",
+      "observedPaneId": "earnings-ripple"
+    },
+    {
+      "id": "MOST--root",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "root",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-revenue",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "tab",
+      "tab": "Revenue",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-chart",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "tab",
+      "tab": "Chart",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-analyst",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "tab",
+      "tab": "Analyst",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-diagnostic",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "tab",
+      "tab": "Diagnostic",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-calls",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "tab",
+      "tab": "Calls",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-events",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "tab",
+      "tab": "Events",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-options",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "tab",
+      "tab": "Options",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-catalysts",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "tab",
+      "tab": "Catalysts",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-exec",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "tab",
+      "tab": "Exec",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-short-interest",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "tab",
+      "tab": "Short Interest",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-risks",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "tab",
+      "tab": "Risks",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-m-a",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "tab",
+      "tab": "M&A",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-8-k",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "tab",
+      "tab": "8-K",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-hiring",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "tab",
+      "tab": "Hiring",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-dividends",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "tab",
+      "tab": "Dividends",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-hiring-momentum",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "tab",
+      "tab": "Hiring momentum",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-tweets",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "tab",
+      "tab": "Tweets",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-apps",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "tab",
+      "tab": "Apps",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-news",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "tab",
+      "tab": "News",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-sec",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "tab",
+      "tab": "SEC",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-insider",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "tab",
+      "tab": "Insider",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-thesis",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "tab",
+      "tab": "Thesis",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-ask-ai",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "tab",
+      "tab": "Ask AI",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-catalysts-changes",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "skipped",
+      "tab": "Catalysts > Changes",
+      "reason": "revealed 2 presses deep; the sweep opens 1",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-hiring-momentum-chart-2-2",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "skipped",
+      "tab": "Hiring momentum > Chart [2.2]",
+      "reason": "revealed 2 presses deep; the sweep opens 1",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-hiring-momentum-mix",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "skipped",
+      "tab": "Hiring momentum > Mix",
+      "reason": "revealed 2 presses deep; the sweep opens 1",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-hiring-momentum-peers",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "skipped",
+      "tab": "Hiring momentum > Peers",
+      "reason": "revealed 2 presses deep; the sweep opens 1",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-hiring-momentum-evidence",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "skipped",
+      "tab": "Hiring momentum > Evidence",
+      "reason": "revealed 2 presses deep; the sweep opens 1",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-hiring-momentum-moves",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "skipped",
+      "tab": "Hiring momentum > Moves",
+      "reason": "revealed 2 presses deep; the sweep opens 1",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-hiring-momentum-expansion",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "skipped",
+      "tab": "Hiring momentum > Expansion",
+      "reason": "revealed 2 presses deep; the sweep opens 1",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-hiring-momentum-anomalies",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "skipped",
+      "tab": "Hiring momentum > Anomalies",
+      "reason": "revealed 2 presses deep; the sweep opens 1",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-hiring-momentum-building",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "skipped",
+      "tab": "Hiring momentum > Building",
+      "reason": "revealed 2 presses deep; the sweep opens 1",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-apps-chart-2-2",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "skipped",
+      "tab": "Apps > Chart [2.2]",
+      "reason": "revealed 2 presses deep; the sweep opens 1",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-apps-markets",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "skipped",
+      "tab": "Apps > Markets",
+      "reason": "revealed 2 presses deep; the sweep opens 1",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-apps-peers",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "skipped",
+      "tab": "Apps > Peers",
+      "reason": "revealed 2 presses deep; the sweep opens 1",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-apps-evidence",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "skipped",
+      "tab": "Apps > Evidence",
+      "reason": "revealed 2 presses deep; the sweep opens 1",
+      "observedPaneId": "ticker-research"
+    }
+  ],
+  "after": [
+    {
+      "id": "NOTE--root",
+      "kind": "pane",
+      "token": "NOTE",
+      "paneId": "quick-notes",
+      "view": "root",
+      "observedPaneId": "changelog"
+    },
+    {
+      "id": "ORD--root",
+      "kind": "pane",
+      "token": "ORD",
+      "paneId": "broker-orders",
+      "view": "root",
+      "observedPaneId": "earnings-ripple"
+    },
+    {
+      "id": "ORD--tab-2-hops",
+      "kind": "pane",
+      "token": "ORD",
+      "paneId": "broker-orders",
+      "view": "tab",
+      "tab": "2 hops",
+      "observedPaneId": "earnings-ripple"
+    },
+    {
+      "id": "MOST--root",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "root",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-revenue",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "tab",
+      "tab": "Revenue",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-chart",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "tab",
+      "tab": "Chart",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-analyst",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "tab",
+      "tab": "Analyst",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-diagnostic",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "tab",
+      "tab": "Diagnostic",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-calls",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "tab",
+      "tab": "Calls",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-events",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "tab",
+      "tab": "Events",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-options",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "tab",
+      "tab": "Options",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-catalysts",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "tab",
+      "tab": "Catalysts",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-exec",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "tab",
+      "tab": "Exec",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-risks",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "tab",
+      "tab": "Risks",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-short-interest",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "tab",
+      "tab": "Short Interest",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-m-a",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "tab",
+      "tab": "M&A",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-8-k",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "tab",
+      "tab": "8-K",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-hiring",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "tab",
+      "tab": "Hiring",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-dividends",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "tab",
+      "tab": "Dividends",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-hiring-momentum",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "tab",
+      "tab": "Hiring momentum",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-tweets",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "tab",
+      "tab": "Tweets",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-13f",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "tab",
+      "tab": "13F",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-apps",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "tab",
+      "tab": "Apps",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-news",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "tab",
+      "tab": "News",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-holders",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "tab",
+      "tab": "Holders",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-sec",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "tab",
+      "tab": "SEC",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-insider",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "tab",
+      "tab": "Insider",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-thesis",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "tab",
+      "tab": "Thesis",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-ask-ai",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "tab",
+      "tab": "Ask AI",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-catalysts-changes",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "skipped",
+      "tab": "Catalysts > Changes",
+      "reason": "revealed 2 presses deep; the sweep opens 1",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-hiring-momentum-chart-2-2",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "skipped",
+      "tab": "Hiring momentum > Chart [2.2]",
+      "reason": "revealed 2 presses deep; the sweep opens 1",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-hiring-momentum-mix",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "skipped",
+      "tab": "Hiring momentum > Mix",
+      "reason": "revealed 2 presses deep; the sweep opens 1",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-hiring-momentum-peers",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "skipped",
+      "tab": "Hiring momentum > Peers",
+      "reason": "revealed 2 presses deep; the sweep opens 1",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-hiring-momentum-evidence",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "skipped",
+      "tab": "Hiring momentum > Evidence",
+      "reason": "revealed 2 presses deep; the sweep opens 1",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-hiring-momentum-moves",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "skipped",
+      "tab": "Hiring momentum > Moves",
+      "reason": "revealed 2 presses deep; the sweep opens 1",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-hiring-momentum-expansion",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "skipped",
+      "tab": "Hiring momentum > Expansion",
+      "reason": "revealed 2 presses deep; the sweep opens 1",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-hiring-momentum-anomalies",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "skipped",
+      "tab": "Hiring momentum > Anomalies",
+      "reason": "revealed 2 presses deep; the sweep opens 1",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-hiring-momentum-building",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "skipped",
+      "tab": "Hiring momentum > Building",
+      "reason": "revealed 2 presses deep; the sweep opens 1",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-apps-chart-2-2",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "skipped",
+      "tab": "Apps > Chart [2.2]",
+      "reason": "revealed 2 presses deep; the sweep opens 1",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-apps-markets",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "skipped",
+      "tab": "Apps > Markets",
+      "reason": "revealed 2 presses deep; the sweep opens 1",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-apps-peers",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "skipped",
+      "tab": "Apps > Peers",
+      "reason": "revealed 2 presses deep; the sweep opens 1",
+      "observedPaneId": "ticker-research"
+    },
+    {
+      "id": "MOST--tab-apps-evidence",
+      "kind": "pane",
+      "token": "MOST",
+      "paneId": "market-movers",
+      "view": "skipped",
+      "tab": "Apps > Evidence",
+      "reason": "revealed 2 presses deep; the sweep opens 1",
+      "observedPaneId": "ticker-research"
+    }
+  ]
+}

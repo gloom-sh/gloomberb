@@ -1,0 +1,42 @@
+  > Search or run a command  Ctrl+P                                                   Help ? CLOSED SPY $759.97 -0.52% base USD
+:: Main Portfolio               ⚡          :: Main Portfolio  ⧉ Linked to Main Portfolio                            ⚡
+  Main Portfolio  Watchlist                   No tickers in Main Portfolio.
+  TICKER┌─:: 13F───────────────────────────────────────────────────────────────────────────────────────────         x ─┐
+        │ F┌─:: HDS AAPL─────────────────────────────────────────────────────────────────────────────── ?  ...  x ─┐   │
+  No tic│ /   Table  Chart  13D/G                                                                                      │
+  Click │ F  HOLDER                                  MKT VAL ▼     AMOUNT        CHG     CHG%    HELD      PERIOD      │
+        │┌─  Blackrock Inc.  13F                        $404.4B      1.16B     +18.3M   +1.60%   7.97% 2026-06-30    ─┐│
+  + tick││   Vanguard Capital Management LLC  13F      $333.51B    959.11M     +5.26M   +0.55%   6.57% 2026-06-30     ││
+        ││   State Street Corporation                   $213.9B    615.13M    +12.79M   +2.12%   4.21% 2026-06-30     ││
+        ││   Geode Capital Management, LLC  13F        $129.12B    371.34M     +2.72M   +0.74%   2.54% 2026-06-30    ▀││
+        ││   Vanguard Portfolio Management LLC  13F    $116.18B    334.12M     +2.68M   +0.81%   2.29% 2026-06-30     ││
+        ││   FMR, LLC                                  $113.13B    325.35M    +17.91M   +5.82%   2.23% 2026-06-30     ││
+        ││   Morgan Stanley  13F                        $84.36B    242.61M     -1.86M   -0.76%   1.66% 2026-06-30     ││
+        ││   JPMORGAN CHASE & CO  13F                   $79.55B    228.76M     -2.86M   -1.23%   1.57% 2026-06-30     ││
+        ││   Berkshire Hathaway, Inc                    $79.25B    227.92M          0    0.00%   1.56% 2026-06-30     ││
+        ││   NORGES BANK  13F                           $66.32B    190.73M          —        —   1.31% 2026-06-30     ││
+        ││                                                                                                            ││
+        ││                                                                                                            ││
+        ││                                                                                                            ││
+        ││                                                                                                            ││
+        ││                                                                                                            ││
+  + tick││                                                                                                            ││
+        ││                                                                                                            ││
+        ││                                                                                                            ││
+:: #ever││                                                                                                            ││
+ -------││                                                                                                            ││
+        ││                                                                                                            ││
+        ││                                                                                                            ││
+        ││                                                                                                            ││
+        ││                                                                                                            ││
+   Gloom││                                                                                                            ││
+        ││                                                                                                            ││
+        ││                                                                                                            ││
+        │└1                                                                                                          ─◢│
+        │ E                                                                                                            │
+        │ O                                                                                                            │
+ -------│ A└2026-06-30                                                                                  [o]pen 13F─◢   │
+  Read-o└                                                                                                             ─◢
+  Log in Sign up free
+
+  ^1 Home  ^2 Monitor  ^3 Macro   +   ^⇧G Tidy Windows                                                v0.18.4 ☁ Log in Feedback

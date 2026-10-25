@@ -1,0 +1,162 @@
+[
+  {
+    "token": "13F",
+    "width": 640,
+    "theme": "white",
+    "command": "Panes\n  ALRT\nAlerts\nAlerts\nAdd Event Alert\nSearch\nSearch is busy",
+    "restored": {
+      "text": "> \nSearch or run a command\n  Ctrl+K\nHelp\n?\nSPY —\nbase USD\n  ____ _                       \n / ___| | ___   ___  _ __ ___  \n| |  _| |/ _ \\ / _ \\| '_ ` _ \\ \n| |_| | | (_) | (_) | | | | | |\n \\____|_|\\___/ \\___/|_| |_| |_|\nSearch or run a command\nCtrl+K\n+\nv0.18.4\nDownload desktop app\nLog in\nFeedback",
+      "panes": []
+    }
+  },
+  {
+    "token": "ERN",
+    "width": 640,
+    "theme": "white",
+    "command": "Panes\n  DIST\nDistress\n   WEI\nWorld Equity Indices\nAWARDS\nGovernment Awards\n    GC\nYield Curve\n  POLL\nPolls\n    HN\nHacker News\n  CFNG\nCrypto Fear & Greed\nFXMacroData rate_curve (...\nFXMD_...\nFXMacroData seasonality ...\nFXMD_...\nFXMacroData financial_pr...\nFXMD_...\nFXMacroData official_dat...\nFXMD_...\nInstruments\nNASDAQ\nMETA\n  Meta Platforms Inc.\n  NYSE\nBRK.B\n  Berkshire Hathawa...",
+    "restored": {
+      "text": "> \nSearch or run a command\n  Ctrl+K\nHelp\n?\nSPY —\nbase USD\n  ____ _                       \n / ___| | ___   ___  _ __ ___  \n| |  _| |/ _ \\ / _ \\| '_ ` _ \\ \n| |_| | | (_) | (_) | | | | | |\n \\____|_|\\___/ \\___/|_| |_| |_|\nSearch or run a command\nCtrl+K\n+\nv0.18.4\nDownload desktop app\nLog in\nFeedback",
+      "panes": []
+    }
+  },
+  {
+    "token": "EVTS",
+    "width": 640,
+    "theme": "white",
+    "command": "Search\nSearch is busy\nAsk AI\nAsk AI — sign up to enable\n✦",
+    "restored": {
+      "text": "> \nSearch or run a command\n  Ctrl+K\nHelp\n?\nSPY —\nbase USD\n  ____ _                       \n / ___| | ___   ___  _ __ ___  \n| |  _| |/ _ \\ / _ \\| '_ ` _ \\ \n| |_| | | (_) | (_) | | | | | |\n \\____|_|\\___/ \\___/|_| |_| |_|\nSearch or run a command\nCtrl+K\n+\nv0.18.4\nDownload desktop app\nLog in\nFeedback",
+      "panes": []
+    }
+  },
+  {
+    "token": "HDS",
+    "width": 640,
+    "theme": "white",
+    "command": "Search\nSearch is busy\nAsk AI\nAsk AI — sign up to enable\n✦",
+    "restored": {
+      "text": "> \nSearch or run a command\n  Ctrl+K\nHelp\n?\nSPY —\nbase USD\n  ____ _                       \n / ___| | ___   ___  _ __ ___  \n| |  _| |/ _ \\ / _ \\| '_ ` _ \\ \n| |_| | | (_) | (_) | | | | | |\n \\____|_|\\___/ \\___/|_| |_| |_|\nSearch or run a command\nCtrl+K\n+\nv0.18.4\nDownload desktop app\nLog in\nFeedback",
+      "panes": []
+    }
+  },
+  {
+    "token": "13F",
+    "width": 1280,
+    "theme": "white",
+    "command": "Panes\n  ALRT\nAlerts\nAlerts\nAdd Event Alert\nSearch\nSearch is busy",
+    "restored": {
+      "text": "> \nSearch or run a command\n  Ctrl+K\nHelp\n?\nSPY —\nbase USD\n  ____ _                       \n / ___| | ___   ___  _ __ ___  \n| |  _| |/ _ \\ / _ \\| '_ ` _ \\ \n| |_| | | (_) | (_) | | | | | |\n \\____|_|\\___/ \\___/|_| |_| |_|\nSearch or run a command\nCtrl+K\n+\nv0.18.4\nDownload desktop app\nLog in\nFeedback",
+      "panes": []
+    }
+  },
+  {
+    "token": "ERN",
+    "width": 1280,
+    "theme": "white",
+    "command": "Panes\n  DIST\nDistress\n   WEI\nWorld Equity Indices\nAWARDS\nGovernment Awards\n    GC\nYield Curve\n  POLL\nPolls\n    HN\nHacker News\n  CFNG\nCrypto Fear & Greed\nFXMacroData rate_curve (MCP)\nFXMD_MCP_...\nFXMacroData seasonality (MCP)\nFXMD_MCP_...\nFXMacroData financial_prices (MCP)\nFXMD_MCP_...\nFXMacroData official_dataset_family (MCP)\nFXMD_MCP_...\nInstruments\nNASDAQ\nMETA\n  Meta Platforms Inc.\n  NYSE\nBRK.B\n  Berkshire Hathaway Inc.",
+    "restored": {
+      "text": "> \nSearch or run a command\n  Ctrl+K\nHelp\n?\nSPY —\nbase USD\n  ____ _                       \n / ___| | ___   ___  _ __ ___  \n| |  _| |/ _ \\ / _ \\| '_ ` _ \\ \n| |_| | | (_) | (_) | | | | | |\n \\____|_|\\___/ \\___/|_| |_| |_|\nSearch or run a command\nCtrl+K\n+\nv0.18.4\nDownload desktop app\nLog in\nFeedback",
+      "panes": []
+    }
+  },
+  {
+    "token": "EVTS",
+    "width": 1280,
+    "theme": "white",
+    "command": "Search\nSearch is busy\nAsk AI\nAsk AI — sign up to enable\n✦",
+    "restored": {
+      "text": "> \nSearch or run a command\n  Ctrl+K\nHelp\n?\nSPY —\nbase USD\n  ____ _                       \n / ___| | ___   ___  _ __ ___  \n| |  _| |/ _ \\ / _ \\| '_ ` _ \\ \n| |_| | | (_) | (_) | | | | | |\n \\____|_|\\___/ \\___/|_| |_| |_|\nSearch or run a command\nCtrl+K\n+\nv0.18.4\nDownload desktop app\nLog in\nFeedback",
+      "panes": []
+    }
+  },
+  {
+    "token": "HDS",
+    "width": 1280,
+    "theme": "white",
+    "command": "Search\nSearch is busy\nAsk AI\nAsk AI — sign up to enable\n✦",
+    "restored": {
+      "text": "> \nSearch or run a command\n  Ctrl+K\nHelp\n?\nSPY —\nbase USD\n  ____ _                       \n / ___| | ___   ___  _ __ ___  \n| |  _| |/ _ \\ / _ \\| '_ ` _ \\ \n| |_| | | (_) | (_) | | | | | |\n \\____|_|\\___/ \\___/|_| |_| |_|\nSearch or run a command\nCtrl+K\n+\nv0.18.4\nDownload desktop app\nLog in\nFeedback",
+      "panes": []
+    }
+  },
+  {
+    "token": "13F",
+    "width": 640,
+    "theme": "paper",
+    "command": "Panes\n  ALRT\nAlerts\nAlerts\nAdd Event Alert\nSearch\nSearch is busy",
+    "restored": {
+      "text": "> \nSearch or run a command\n  Ctrl+K\nHelp\n?\nSPY —\nbase USD\n  ____ _                       \n / ___| | ___   ___  _ __ ___  \n| |  _| |/ _ \\ / _ \\| '_ ` _ \\ \n| |_| | | (_) | (_) | | | | | |\n \\____|_|\\___/ \\___/|_| |_| |_|\nSearch or run a command\nCtrl+K\n+\nv0.18.4\nDownload desktop app\nLog in\nFeedback",
+      "panes": []
+    }
+  },
+  {
+    "token": "ERN",
+    "width": 640,
+    "theme": "paper",
+    "command": "Panes\n  DIST\nDistress\n   WEI\nWorld Equity Indices\nAWARDS\nGovernment Awards\n    GC\nYield Curve\n  POLL\nPolls\n    HN\nHacker News\n  CFNG\nCrypto Fear & Greed\nFXMacroData rate_curve (...\nFXMD_...\nFXMacroData seasonality ...\nFXMD_...\nFXMacroData financial_pr...\nFXMD_...\nFXMacroData official_dat...\nFXMD_...\nInstruments\nNASDAQ\nMETA\n  Meta Platforms Inc.\n  NYSE\nBRK.B\n  Berkshire Hathawa...",
+    "restored": {
+      "text": "> \nSearch or run a command\n  Ctrl+K\nHelp\n?\nSPY —\nbase USD\n  ____ _                       \n / ___| | ___   ___  _ __ ___  \n| |  _| |/ _ \\ / _ \\| '_ ` _ \\ \n| |_| | | (_) | (_) | | | | | |\n \\____|_|\\___/ \\___/|_| |_| |_|\nSearch or run a command\nCtrl+K\n+\nv0.18.4\nDownload desktop app\nLog in\nFeedback",
+      "panes": []
+    }
+  },
+  {
+    "token": "EVTS",
+    "width": 640,
+    "theme": "paper",
+    "command": "Search\nSearch is busy\nAsk AI\nAsk AI — sign up to enable\n✦",
+    "restored": {
+      "text": "> \nSearch or run a command\n  Ctrl+K\nHelp\n?\nSPY —\nbase USD\n  ____ _                       \n / ___| | ___   ___  _ __ ___  \n| |  _| |/ _ \\ / _ \\| '_ ` _ \\ \n| |_| | | (_) | (_) | | | | | |\n \\____|_|\\___/ \\___/|_| |_| |_|\nSearch or run a command\nCtrl+K\n+\nv0.18.4\nDownload desktop app\nLog in\nFeedback",
+      "panes": []
+    }
+  },
+  {
+    "token": "HDS",
+    "width": 640,
+    "theme": "paper",
+    "command": "Search\nSearch is busy\nAsk AI\nAsk AI — sign up to enable\n✦",
+    "restored": {
+      "text": "> \nSearch or run a command\n  Ctrl+K\nHelp\n?\nSPY —\nbase USD\n  ____ _                       \n / ___| | ___   ___  _ __ ___  \n| |  _| |/ _ \\ / _ \\| '_ ` _ \\ \n| |_| | | (_) | (_) | | | | | |\n \\____|_|\\___/ \\___/|_| |_| |_|\nSearch or run a command\nCtrl+K\n+\nv0.18.4\nDownload desktop app\nLog in\nFeedback",
+      "panes": []
+    }
+  },
+  {
+    "token": "13F",
+    "width": 1280,
+    "theme": "paper",
+    "command": "Panes\n  ALRT\nAlerts\nAlerts\nAdd Event Alert\nSearch\nSearch is busy",
+    "restored": {
+      "text": "> \nSearch or run a command\n  Ctrl+K\nHelp\n?\nSPY —\nbase USD\n  ____ _                       \n / ___| | ___   ___  _ __ ___  \n| |  _| |/ _ \\ / _ \\| '_ ` _ \\ \n| |_| | | (_) | (_) | | | | | |\n \\____|_|\\___/ \\___/|_| |_| |_|\nSearch or run a command\nCtrl+K\n+\nv0.18.4\nDownload desktop app\nLog in\nFeedback",
+      "panes": []
+    }
+  },
+  {
+    "token": "ERN",
+    "width": 1280,
+    "theme": "paper",
+    "command": "Panes\n  DIST\nDistress\n   WEI\nWorld Equity Indices\nAWARDS\nGovernment Awards\n    GC\nYield Curve\n  POLL\nPolls\n    HN\nHacker News\n  CFNG\nCrypto Fear & Greed\nFXMacroData rate_curve (MCP)\nFXMD_MCP_...\nFXMacroData seasonality (MCP)\nFXMD_MCP_...\nFXMacroData financial_prices (MCP)\nFXMD_MCP_...\nFXMacroData official_dataset_family (MCP)\nFXMD_MCP_...\nInstruments\nNASDAQ\nMETA\n  Meta Platforms Inc.\n  NYSE\nBRK.B\n  Berkshire Hathaway Inc.",
+    "restored": {
+      "text": "> \nSearch or run a command\n  Ctrl+K\nHelp\n?\nSPY —\nbase USD\n  ____ _                       \n / ___| | ___   ___  _ __ ___  \n| |  _| |/ _ \\ / _ \\| '_ ` _ \\ \n| |_| | | (_) | (_) | | | | | |\n \\____|_|\\___/ \\___/|_| |_| |_|\nSearch or run a command\nCtrl+K\n+\nv0.18.4\nDownload desktop app\nLog in\nFeedback",
+      "panes": []
+    }
+  },
+  {
+    "token": "EVTS",
+    "width": 1280,
+    "theme": "paper",
+    "command": "Search\nSearch is busy\nAsk AI\nAsk AI — sign up to enable\n✦",
+    "restored": {
+      "text": "> \nSearch or run a command\n  Ctrl+K\nHelp\n?\nSPY —\nbase USD\n  ____ _                       \n / ___| | ___   ___  _ __ ___  \n| |  _| |/ _ \\ / _ \\| '_ ` _ \\ \n| |_| | | (_) | (_) | | | | | |\n \\____|_|\\___/ \\___/|_| |_| |_|\nSearch or run a command\nCtrl+K\n+\nv0.18.4\nDownload desktop app\nLog in\nFeedback",
+      "panes": []
+    }
+  },
+  {
+    "token": "HDS",
+    "width": 1280,
+    "theme": "paper",
+    "command": "Search\nSearch is busy\nAsk AI\nAsk AI — sign up to enable\n✦",
+    "restored": {
+      "text": "> \nSearch or run a command\n  Ctrl+K\nHelp\n?\nSPY —\nbase USD\n  ____ _                       \n / ___| | ___   ___  _ __ ___  \n| |  _| |/ _ \\ / _ \\| '_ ` _ \\ \n| |_| | | (_) | (_) | | | | | |\n \\____|_|\\___/ \\___/|_| |_| |_|\nSearch or run a command\nCtrl+K\n+\nv0.18.4\nDownload desktop app\nLog in\nFeedback",
+      "panes": []
+    }
+  }
+]

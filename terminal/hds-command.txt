@@ -1,0 +1,42 @@
+  > HDS AAPL                                                                          Help ? CLOSED SPY $759.97 -0.52% base USD
+:                                                                       to Main Portfolio                            ⚡
+    Shortcut: Holders for AAPL                                          io.
+                                                                        ───────────────────────────────────         x ─┐
+           Panes                                                                                                       │
+       HDS Holders                                                                                                     │
+                                                                             VALUE     2026Q1     2025Q4      2025Q3   │
+           Keybindings                                                  ──────────────────────────────────         x ─┐│
+           Bind a key to HDS AAPL                                                                   Size  Mine first  ││
+                                                                        E   EPS EST   EPS ACT   SALES EST  MKT CAP ▼  ││
+                                                                                                                     ▀││
+                                                                        0%      1.27        --      34.85B   185.55B  ││
+                                                                        7%      1.64        --       3.75B   171.01B  ││
+                                                                        6%      2.05        --       1.62B    87.16B  ││
+                                                                        3%      5.83        --      10.79B    58.56B  ││
+                                                                        7%      4.27        --       1.31B    54.42B  ││
+                                                                        3%      2.97        --       5.47B    38.49B  ││
+                                                                        6%      3.17        --       7.41B    37.15B  ││
+                                                                        5%      2.11        --       3.03B    27.06B  ││
+                                                                        5%      1.08        --       1.76B    24.08B  ││
+                                                                        8%      2.42        --       4.26B    23.30B  ││
+                                                                        --      1.29        --          --    15.52B  ││
+                                                                        --      0.21        --       4.40B    14.85B  ││
+                                                                        0%      0.97        --     575.02M    14.62B  ││
+                                                                        7%     -0.28        --          --    12.10B  ││
+:                                                                       8%     -0.12        --       1.02B    10.83B  ││
+ ← Back ││   GGB      Gerdau S.A.     AMC        ±10.3%      --         --      0.18        --          --    10.01B  ││
+  gloomb││   AMKR     Amkor Technolo… AMC        ±13.2%      --       9.1%      0.78        --       2.04B     9.75B  ││
+    open││   RMBS     Rambus, Inc.    AMC        ±18.7%      --      11.6%      0.79        --     213.00M     9.29B  ││
+    and ││   BRX      Brixmor Proper… AMC         ±9.6%      --       2.6%      0.59        --     355.75M     8.67B  ││
+    don'││   SSD      Simpson Manufa… AMC         ±8.5%      --       4.2%      2.40        --     625.19M     7.63B  ││
+    Port││   NE       Noble Corporat… AMC        ±11.3%      --       5.0%      0.23        --     712.75M     7.61B  ││
+    tick││   ARE      Alexandria Rea… AMC        ±11.2%      --       6.9%      0.00        --     658.56M     7.34B  ││
+    you ││   PECO     Phillips Ediso… AMC         ±8.2%      --       1.2%      0.69        --     190.31M     5.35B  ││
+    Inte│└just now                                                                                                   ─◢│
+    Publ│ EMERGENCE GP PARTNERS, LLC  0001589115   2026-06-30   +61.58%          --         --         --         --   │
+    them│ Outlook Capital Management… 0002149913   2026-06-30   +55.42%          --         --         --         --   │
+ -------│ Anatole Investment Managem… 0001693745   2026-06-30   +55.31%          --         --         --         --   │
+  Read-o└                                                                                                             ─◢
+  Log in Sign up free
+
+  ^1 Home  ^2 Monitor  ^3 Macro   +   ^⇧G Tidy Windows                                                v0.18.4 ☁ Log in Feedback

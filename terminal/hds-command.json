@@ -1,0 +1,79 @@
+{
+  "ok": true,
+  "data": {
+    "open": true,
+    "query": "HDS AAPL",
+    "stateQuery": "HDS AAPL",
+    "launchRequest": null,
+    "selectedIndex": 0,
+    "results": [
+      {
+        "nodeId": "ui:18d",
+        "index": 0,
+        "label": "Holders",
+        "detail": "Institutional holders from 13F filings, and 13D/13G beneficial owners: activist and passive stakes over 5% of the class. \u00b7 HDS <ticker>",
+        "category": "Panes",
+        "kind": "action",
+        "right": "HDS",
+        "selected": true,
+        "disabled": false,
+        "actions": [
+          "activate",
+          "press"
+        ],
+        "itemId": "pane-template:holders-pane:AAPL",
+        "metadata": {
+          "index": 0,
+          "selected": true,
+          "hovered": false,
+          "listKind": "root",
+          "listTitle": "Commands",
+          "listQuery": "HDS AAPL",
+          "item": {
+            "id": "pane-template:holders-pane:AAPL",
+            "label": "Holders",
+            "detail": "Institutional holders from 13F filings, and 13D/13G beneficial owners: activist and passive stakes over 5% of the class. \u00b7 HDS <ticker>",
+            "category": "Panes",
+            "kind": "action",
+            "right": "HDS",
+            "shortcutQuery": "HDS",
+            "searchText": "holders ownership institutional owners hds 13d 13g 13d/g schedule 13d schedule 13g beneficial owners beneficial ownership activist activists Holders Holders holders HDS <ticker> Ownership & Insiders",
+            "disabled": false
+          }
+        }
+      },
+      {
+        "nodeId": "ui:18f",
+        "index": 1,
+        "label": "Bind a key to HDS AAPL",
+        "detail": "Holders, on a key of your choice",
+        "category": "Keybindings",
+        "kind": "action",
+        "selected": false,
+        "disabled": false,
+        "actions": [
+          "activate",
+          "press"
+        ],
+        "itemId": "bind-key:HDS AAPL",
+        "metadata": {
+          "index": 1,
+          "selected": false,
+          "hovered": false,
+          "listKind": "root",
+          "listTitle": "Commands",
+          "listQuery": "HDS AAPL",
+          "item": {
+            "id": "bind-key:HDS AAPL",
+            "label": "Bind a key to HDS AAPL",
+            "detail": "Holders, on a key of your choice",
+            "category": "Keybindings",
+            "kind": "action",
+            "disabled": false
+          }
+        }
+      }
+    ]
+  },
+  "rev": "c33e7ac7"
+}

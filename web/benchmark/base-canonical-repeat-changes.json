@@ -1,0 +1,777 @@
+{
+  "views": 101,
+  "moving": [
+    {
+      "view": "CHOKE--root",
+      "widths": {
+        "640": 0.005217789804469274,
+        "1280": 0
+      }
+    },
+    {
+      "view": "VIX--root",
+      "widths": {
+        "640": 0,
+        "1280": 0.0019989525139664805
+      }
+    },
+    {
+      "view": "ANR--root",
+      "widths": {
+        "640": 0,
+        "1280": 0.0012395251396648045
+      }
+    },
+    {
+      "view": "VOLS--root",
+      "widths": {
+        "640": 0,
+        "1280": 0.0019989525139664805
+      }
+    },
+    {
+      "view": "VOLS--tab-history",
+      "widths": {
+        "640": 0,
+        "1280": 0.0019989525139664805
+      }
+    }
+  ],
+  "tokens": [
+    "ANR",
+    "CHOKE",
+    "VIX",
+    "VOLS"
+  ],
+  "all": [
+    {
+      "view": "T--tab-calls",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "ADR--tab-thesis",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "T--root",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "T--tab-8-k",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "T--tab-news",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "ADR--tab-catalysts",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "CHOKE--root",
+      "widths": {
+        "640": 0.005217789804469274,
+        "1280": 0
+      }
+    },
+    {
+      "view": "13F--detail",
+      "widths": {
+        "640": 0.00022259078212290504,
+        "1280": 0.00011129539106145252
+      }
+    },
+    {
+      "view": "VOLS--tab-curve",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "T--tab-dividends",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "ADR--tab-hiring-momentum",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "T--tab-diagnostic",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "T--tab-tweets",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "ATS--tab-fails-to-deliver",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "ADR--tab-exec",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "MOST--tab-events",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "MOST--tab-chart",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "13F--tab-events",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "HELP--tab-functions",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "ETF--root",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "T--tab-apps",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "MOST--tab-ask-ai",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "command-bar",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "13F--tab-history",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "T--tab-catalysts",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "T--tab-m-a",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "MOST--tab-news",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "MOST--root",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "T--tab-analyst",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "MOST--tab-calls",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "ADR--tab-news",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "HELP--tab-shortcuts",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "13F--root",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "MOST--tab-catalysts",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "MOST--tab-thesis",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "VIX--tab-history",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "MOST--tab-m-a",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "MOST--tab-apps",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "ADR--tab-short-interest",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "VIX--tab-cross-asset",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "OSA--tab-legs",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "ADR--tab-sec",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "MOST--tab-diagnostic",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "ADR--tab-m-a",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "ADR--tab-chart",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "ADR--tab-analyst",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "ADR--tab-options",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "ADR--tab-hiring",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "MOST--tab-exec",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "T--tab-risks",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "MOST--tab-revenue",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "T--tab-events",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "MOST--tab-hiring",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "MOST--tab-sec",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "VIX--root",
+      "widths": {
+        "640": 0,
+        "1280": 0.0019989525139664805
+      }
+    },
+    {
+      "view": "T--tab-options",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "T--tab-chart",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "ANR--root",
+      "widths": {
+        "640": 0,
+        "1280": 0.0012395251396648045
+      }
+    },
+    {
+      "view": "MOST--tab-analyst",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "ADR--root",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "ADR--tab-calls",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "MOST--tab-short-interest",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "ADR--tab-risks",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "T--tab-sec",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "ADR--tab-8-k",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "T--tab-hiring",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "MOST--tab-dividends",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "T--tab-thesis",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "HELP--tab-reference",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "T--tab-short-interest",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "OSA--root",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "ADR--tab-ask-ai",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "ADR--tab-apps",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "CFNG--root",
+      "widths": {
+        "640": 0.00013311801675977653,
+        "1280": 5.782995810055866e-05
+      }
+    },
+    {
+      "view": "MOST--tab-insider",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "ATS--tab-daily-volume",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "ATS--tab-interest",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "T--tab-hiring-momentum",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "MOST--tab-8-k",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "SEC--root",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "HELP--root",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "VOLS--root",
+      "widths": {
+        "640": 0,
+        "1280": 0.0019989525139664805
+      }
+    },
+    {
+      "view": "ADR--tab-revenue",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "ADR--tab-diagnostic",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "ADR--tab-dividends",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "ADR--tab-events",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "MOST--tab-tweets",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "ADR--tab-tweets",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "T--tab-insider",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "OSA--detail",
+      "widths": {
+        "640": 0.0004735509776536313,
+        "1280": 0.00026296263966480446
+      }
+    },
+    {
+      "view": "T--tab-exec",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "ATS--root",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "ADR--tab-insider",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "VOLS--tab-history",
+      "widths": {
+        "640": 0,
+        "1280": 0.0019989525139664805
+      }
+    },
+    {
+      "view": "OSA--tab-p-l-grid",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "MOST--tab-options",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "T--tab-ask-ai",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "HELP--tab-feedback",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "MOST--tab-risks",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "MOST--tab-hiring-momentum",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "T--tab-revenue",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    }
+  ],
+  "requestedTokens": [
+    "13F",
+    "ADR",
+    "ANR",
+    "ATS",
+    "CFNG",
+    "CHOKE",
+    "ERN",
+    "ETF",
+    "EVTS",
+    "HDS",
+    "HELP",
+    "MOST",
+    "OSA",
+    "SEC",
+    "T",
+    "VIX",
+    "VOLS",
+    "command-bar"
+  ],
+  "scope": "Only the commands requested in the repeated audit. Unrequested catalog commands are omitted here, not treated as missing repeat pictures.",
+  "rawComparisonSha256": "0ae98383edf926583e1ae65e7d887b9b8cb38ed81596a2c837b0364d113ea0d1"
+}

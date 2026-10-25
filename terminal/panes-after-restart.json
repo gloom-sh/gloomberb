@@ -1,0 +1,222 @@
+{
+  "ok": true,
+  "data": [
+    {
+      "instanceId": "attention-trending:home",
+      "paneId": "attention-trending",
+      "binding": {
+        "kind": "none"
+      },
+      "placementMemory": {
+        "docked": {
+          "path": [
+            1,
+            1
+          ],
+          "anchorInstanceId": "ticker-detail:main",
+          "position": "below"
+        }
+      },
+      "placement": "docked",
+      "focused": false,
+      "runtimeState": {}
+    },
+    {
+      "instanceId": "portfolio-list:main",
+      "paneId": "portfolio-list",
+      "binding": {
+        "kind": "none"
+      },
+      "params": {
+        "collectionId": "main"
+      },
+      "settings": {
+        "columnIds": [
+          "ticker",
+          "price",
+          "change_pct",
+          "market_cap",
+          "pe",
+          "forward_pe",
+          "as_of",
+          "sparkline",
+          "shares",
+          "avg_cost",
+          "cost_basis",
+          "mkt_value",
+          "day_pnl",
+          "pnl",
+          "pnl_pct"
+        ],
+        "collectionScope": "all",
+        "visibleCollectionIds": [],
+        "viewMode": "table"
+      },
+      "placementMemory": {
+        "docked": {
+          "path": [
+            0,
+            0
+          ],
+          "anchorInstanceId": "chat:main",
+          "position": "above"
+        }
+      },
+      "placement": "docked",
+      "focused": false,
+      "runtimeState": {
+        "collectionId": "main",
+        "cursorSymbol": null
+      }
+    },
+    {
+      "instanceId": "ticker-detail:main",
+      "paneId": "ticker-research",
+      "binding": {
+        "kind": "follow",
+        "sourceInstanceId": "portfolio-list:main"
+      },
+      "settings": {
+        "hideTabs": false,
+        "lockedTabId": "overview"
+      },
+      "placementMemory": {
+        "docked": {
+          "path": [
+            1,
+            0
+          ],
+          "anchorInstanceId": "attention-trending:home",
+          "position": "above"
+        }
+      },
+      "placement": "docked",
+      "focused": false,
+      "runtimeState": {
+        "activeTabId": "overview"
+      }
+    },
+    {
+      "instanceId": "chat:main",
+      "paneId": "chat",
+      "title": "#everyone",
+      "binding": {
+        "kind": "none"
+      },
+      "settings": {
+        "hideTabs": false,
+        "channelId": "everyone"
+      },
+      "placementMemory": {
+        "docked": {
+          "path": [
+            0,
+            1
+          ],
+          "anchorInstanceId": "portfolio-list:main",
+          "position": "below"
+        }
+      },
+      "placement": "docked",
+      "focused": false,
+      "runtimeState": {}
+    },
+    {
+      "instanceId": "thirteenf-funds:performance:performance",
+      "paneId": "thirteenf-funds",
+      "title": "13F",
+      "binding": {
+        "kind": "none"
+      },
+      "settings": {
+        "query": ""
+      },
+      "placementMemory": {
+        "floating": {
+          "x": 8,
+          "y": 2,
+          "width": 112,
+          "height": 36
+        }
+      },
+      "placement": "floating",
+      "focused": false,
+      "runtimeState": {
+        "pluginState": {
+          "ticker-research": {
+            "selectedId": "performance:0001815467"
+          }
+        }
+      }
+    },
+    {
+      "instanceId": "earnings-calendar:mvncrfh31",
+      "paneId": "earnings-calendar",
+      "title": "ERN AAPL",
+      "binding": {
+        "kind": "none"
+      },
+      "settings": {
+        "symbols": [
+          "AAPL"
+        ],
+        "symbolsText": "AAPL"
+      },
+      "placementMemory": {
+        "floating": {
+          "x": 9,
+          "y": 6,
+          "width": 110,
+          "height": 28
+        }
+      },
+      "placement": "floating",
+      "focused": false,
+      "runtimeState": {}
+    },
+    {
+      "instanceId": "earnings-calendar:mvncrljh2",
+      "paneId": "earnings-calendar",
+      "title": "Earnings Calendar",
+      "binding": {
+        "kind": "none"
+      },
+      "settings": {
+        "board": true
+      },
+      "placementMemory": {
+        "floating": {
+          "x": 9,
+          "y": 6,
+          "width": 110,
+          "height": 28
+        }
+      },
+      "placement": "floating",
+      "focused": false,
+      "runtimeState": {}
+    },
+    {
+      "instanceId": "holders:AAPL",
+      "paneId": "holders",
+      "title": "HDS AAPL",
+      "binding": {
+        "kind": "fixed",
+        "symbol": "AAPL",
+        "instrument": null
+      },
+      "placementMemory": {
+        "floating": {
+          "x": 11,
+          "y": 3,
+          "width": 105,
+          "height": 34
+        }
+      },
+      "placement": "floating",
+      "focused": true,
+      "runtimeState": {}
+    }
+  ],
+  "rev": "d5527ed1"
+}

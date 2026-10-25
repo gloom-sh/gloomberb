@@ -1,0 +1,42 @@
+  > EVTS                                                                              Help ? CLOSED SPY $759.97 -0.52% base USD
+:                                                                       to Main Portfolio                            ⚡
+    Shortcut: Earnings Days                                             io.
+                                                                        ───────────────────────────────────         x ─┐
+           Panes                                                                                                       │
+      EVTS Earnings Days                                                                                               │
+                                                                             VALUE     2026Q1     2025Q4      2025Q3   │
+           Keybindings                                                  ──────────────────────────────────         x ─┐│
+           Bind a key to EVTS                                           e    2.5%  last 8                             ││
+                                                                        ts   8 of 8                                   ││
+                                                                                                                      ││
+                                                                                                        │█        7.8%││
+                                                                                                        │█            ││
+                                                                                                        │█            ││
+                                                                         █              █               │█            ││
+                                                                         █  ·  · █·  ·  █  ·  · ██  ·  ·┼█·  ·  · 3.8%││
+                                                                         ██      █      █       ██      ┼█            ││
+                                                                         ██      █      █       ██      ┼█            ││
+                                                                         ██      ██     ██      ██      ┼█        0.0%││
+                                                                        l 25  Oct 25 Jan 26        Jul 30 '26         ││
+                                                                        LES EST   SALES ACT   IMPLIED     MOVE        ││
+                                                                         113.36B          --        --      --        ││
+                                                                              --     109.42B     ±3.8%   -7.4%        ││
+                                                                              --     111.18B     ±3.8%   +3.2%        ││
+                                                                              --     143.76B     ±4.5%   +0.5%        ││
+:                                                                             --     102.47B     ±3.3%   -0.4%        ││
+ ← Back ││ Jul 31 '25 AMC         1.42      1.57  GAAP        +10.6%          --      94.04B     ±4.4%   -2.5%        ││
+  gloomb││ May 1 '25  AMC         1.61      1.65  GAAP         +2.5%          --      95.36B     ±4.3%   -3.7%        ││
+    open││ Jan 30 '25 AMC         2.36      2.40  ?            +1.7%          --          --     ±4.2%   -0.7%        ││
+    and ││ Oct 31 '24 AMC         1.49      1.64  ?           +10.1%          --          --     ±3.9%   -1.3%        ││
+    don'││ Aug 1 '24  AMC         1.34      1.40  ?            +4.5%          --          --     ±4.2%   +0.7%        ││
+    Port││ May 2 '24  AMC         1.51      1.53  ?            +1.3%          --          --     ±3.8%   +6.0%        ││
+    tick││ Feb 1 '24  AMC         2.09      2.18  ?            +4.3%          --          --     ±3.6%   -0.5%        ││
+    you ││ Nov 2 '23  AMC         1.39      1.46  ?            +5.0%          --          --        --   -0.5%        ││
+    Inte│└just now                                                                                                   ─◢│
+    Publ│ EMERGENCE GP PARTNERS, LLC  0001589115   2026-06-30   +61.58%          --         --         --         --   │
+    them│ Outlook Capital Management… 0002149913   2026-06-30   +55.42%          --         --         --         --   │
+ -------│ Anatole Investment Managem… 0001693745   2026-06-30   +55.31%          --         --         --         --   │
+  Read-o└                                                                                                             ─◢
+  Log in Sign up free
+
+  ^1 Home  ^2 Monitor  ^3 Macro   +                                                                   v0.18.4 ☁ Log in Feedback

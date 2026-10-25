@@ -1,0 +1,12 @@
+[
+  {
+    "function": "HDS",
+    "exit": 0,
+    "capture": true
+  },
+  {
+    "function": "EVTS",
+    "exit": 0,
+    "capture": true
+  }
+]

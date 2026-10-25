@@ -1,0 +1,24 @@
+Head: aa607800d9385046761be15bbe778ef0b9381541
+Fixture: src/sync/account-session.test.ts from aa607800d9385046761be15bbe778ef0b9381541
+Command: bun test src/sync/account-session.test.ts --timeout 20000 --test-name-pattern "a late sign|a tolerated native|a delayed verification"
+Bun 1.3.11
+
+bun test v1.3.11 (af24e281)
+
+src/sync/account-session.test.ts:
+(pass) a late sign-in success cannot replace an adopted device session [56.03ms]
+(pass) a late sign-in failure cannot replace an adopted device session [1.28ms]
+(pass) a late sign-up success cannot replace an adopted device session [0.81ms]
+(pass) a late sign-up failure cannot replace an adopted device session [0.43ms]
+(pass) a late sign-out success cannot replace an adopted device session [26.90ms]
+(pass) a late sign-out failure cannot replace an adopted device session [0.60ms]
+(pass) a tolerated native null-session response preserves the same account's sync state [239.41ms]
+(pass) a delayed verification email cannot adopt its old user with a device session's token [23.79ms]
+
+ 8 pass
+ 17 filtered out
+ 0 fail
+ 60 expect() calls
+Ran 8 tests across 1 file. [1158.00ms]
+
+Exit status: 0

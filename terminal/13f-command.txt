@@ -1,0 +1,42 @@
+  > 13F                                                                               Help ? CLOSED SPY $759.97 -0.52% base USD
+:                                                                       to Main Portfolio                            ⚡
+    Shortcut: 13F Funds                                                 io.
+
+           Panes
+       13F 13F Funds
+      ALRT Alerts
+       HDS Holders
+
+           Keybindings
+           Bind a key to 13F
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+:
+ ← Back
+  gloombot ⍠ 6h ago
+    open the command bar with ctrl+p
+    and run New Portfolio (if you
+    don't have one yet), then Set
+    Portfolio Position to enter the
+    ticker, number of shares and what       :: Gloom Trending
+    you paid. if your shares are at
+    Interactive Brokers, Robinhood or         Sign in to view research attention.
+    Public, Add Broker Account imports
+    them for you instead.                ▄     Log in  Enter  Sign up free
+ ---------------------------------------
+  Read-only chat. Log in or sign up to...
+  Log in Sign up free
+
+  ^1 Home  ^2 Monitor  ^3 Macro   +                                                                   v0.18.4 ☁ Log in Feedback

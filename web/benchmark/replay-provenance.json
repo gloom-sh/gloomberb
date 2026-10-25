@@ -1,0 +1,8 @@
+{
+  "mode": "empty-offline-replay",
+  "clockOrigin": "2026-01-06T14:30:00.000Z",
+  "clockSource": "scripts/pane-chrome/web-app.ts OFFLINE_CLOCK_MS",
+  "registryLockSha256": "6ef42746deff1c18d236788d99da7dd37ac45a283c394854f43ab53c0f5231f5",
+  "baseline": "4c11d3c99f0849cda8e9a7f296272fc7d73d2a22",
+  "head": "badc3ac6257cba4a1bca1232f811580db4b844c7"
+}

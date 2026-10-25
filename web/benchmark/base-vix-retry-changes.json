@@ -1,0 +1,38 @@
+{
+  "views": 3,
+  "moving": [
+    {
+      "view": "VIX--root",
+      "widths": {
+        "640": 0,
+        "1280": 0.0019989525139664805
+      }
+    }
+  ],
+  "tokens": [
+    "VIX"
+  ],
+  "all": [
+    {
+      "view": "VIX--tab-history",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "VIX--tab-cross-asset",
+      "widths": {
+        "640": 0,
+        "1280": 0
+      }
+    },
+    {
+      "view": "VIX--root",
+      "widths": {
+        "640": 0,
+        "1280": 0.0019989525139664805
+      }
+    }
+  ]
+}

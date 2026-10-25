@@ -1,0 +1,42 @@
+  > Search or run a command  Ctrl+P                                                   Help ? CLOSED SPY $759.97 -0.52% base USD
+:: Main Portfolio               ⚡          :: Main Portfolio  ⧉ Linked to Main Portfolio                            ⚡
+  Main Portfolio  Watchlist                   No tickers in Main Portfolio.
+  TICKER┌─:: 13F───────────────────────────────────────────────────────────────────────────────────────────         x ─┐
+        │ Funds  Crowding                                                                                              │
+  No tic│ / fund, ticker, CIK, or latest                                                                               │
+  Click │ FUND                        CIK          PERIOD     EST 13F ▼      VALUE     2026Q1     2025Q4      2025Q3   │
+        │┌─:: Earnings Calendar─────────────────────────────────────────────────────────────────────────── ?  ...  x ─┐│
+  + tick│    [ ] Mine  Range Upcoming                                                               Size  Mine first   │
+        │    TICKER   NAME            WHEN     IMPLIED    MOVE   AVG MOVE   EPS EST   EPS ACT   SALES EST  MKT CAP ▼   │
+        │  Tomorrow (74)                                                                                             ▀ │
+        │    VZ       Verizon Commun… BMO         ±4.6%      --       4.0%      1.27        --      34.85B   185.55B   │
+        │    WELL     Welltower Inc.  AMC         ±6.4%      --       2.7%      1.64        --       3.75B   171.01B   │
+        │    CDNS     Cadence Design… AMC         ±7.6%      --       6.6%      2.05        --       1.62B    87.16B   │
+        │    NUE      Nucor Corporat… AMC         ±9.3%      --       4.3%      5.83        --      10.79B    58.56B   │
+        │    PSA      Public Storage  AMC         ±5.5%      --       2.7%      4.27        --       1.31B    54.42B   │
+        │    CLS      Celestica, Inc. AMC        ±13.6%      --      11.3%      2.97        --       5.47B    38.49B   │
+        │    HIG      The Hartford I… AMC         ±5.7%      --       2.6%      3.17        --       7.41B    37.15B   │
+        │    CINF     Cincinnati Fin… AMC         ±6.1%      --       2.5%      2.11        --       3.03B    27.06B   │
+        │    BRO      Brown & Brown,… AMC         ±8.2%      --       5.5%      1.08        --       1.76B    24.08B   │
+        │    PFG      Principal Fina… AMC         ±6.7%      --       2.8%      2.42        --       4.26B    23.30B   │
+        │    PKX      POSCO HOLDINGS… --          ±9.0%      --         --      1.29        --          --    15.52B   │
+  + tick│    CX       Cemex S.A.B. d… BMO         ±9.6%      --         --      0.21        --       4.40B    14.85B   │
+        │    SUI      Sun Communitie… AMC         ±5.5%      --       3.0%      0.97        --     575.02M    14.62B   │
+        │    SMMT     Summit Therape… AMC        ±12.6%      --       9.7%     -0.28        --          --    12.10B   │
+:: #ever│    BMRN     BioMarin Pharm… AMC         ±8.8%      --       2.8%     -0.12        --       1.02B    10.83B   │
+ -------│    GGB      Gerdau S.A.     AMC        ±10.3%      --         --      0.18        --          --    10.01B   │
+        │    AMKR     Amkor Technolo… AMC        ±13.2%      --       9.1%      0.78        --       2.04B     9.75B   │
+        │    RMBS     Rambus, Inc.    AMC        ±18.7%      --      11.6%      0.79        --     213.00M     9.29B   │
+        │    BRX      Brixmor Proper… AMC         ±9.6%      --       2.6%      0.59        --     355.75M     8.67B   │
+        │    SSD      Simpson Manufa… AMC         ±8.5%      --       4.2%      2.40        --     625.19M     7.63B   │
+   Gloom│    NE       Noble Corporat… AMC        ±11.3%      --       5.0%      0.23        --     712.75M     7.61B   │
+        │    ARE      Alexandria Rea… AMC        ±11.2%      --       6.9%      0.00        --     658.56M     7.34B   │
+        │    PECO     Phillips Ediso… AMC         ±8.2%      --       1.2%      0.69        --     190.31M     5.35B   │
+        │└just now                                           [v]iew catalysts [t]icker [e]stimates [c]alls [a]nalysts─◢│
+        │ EMERGENCE GP PARTNERS, LLC  0001589115   2026-06-30   +61.58%    $112.27M         --         --         --   │
+        │ Outlook Capital Management… 0002149913   2026-06-30   +55.42%    $309.82M         --         --         --   │
+ -------│ Anatole Investment Managem… 0001693745   2026-06-30   +55.31%    $589.79M         --         --         --   │
+  Read-o└                                                                                                             ─◢
+  Log in Sign up free
+
+  ^1 Home  ^2 Monitor  ^3 Macro   +   ^⇧G Tidy Windows                                                v0.18.4 ☁ Log in Feedback

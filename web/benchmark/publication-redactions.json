@@ -1,0 +1,43 @@
+{
+  "scope": "An unrelated, unchanged TV tab name is replaced with a neutral label in public metadata. Both revisions use the same replacement. Pixel comparisons, view identities across revisions, and all counts are preserved.",
+  "publicViewId": "TV--tab-3-stream",
+  "publicLabel": "3 Stream",
+  "rawEvidencePreserved": true,
+  "files": [
+    {
+      "path": "web/benchmark/after-views.json",
+      "rawSha256": "8002eaf8d7d7ae33b8b2888b6b3e442e1dec92ff8acf46377ed78d2539358e53",
+      "publishedSha256": "1f93e07f3562a32c5e116d6bfb20e610b2a3b1d28233da8045e7476eaf3fa3f3"
+    },
+    {
+      "path": "web/benchmark/initial-changes.json",
+      "rawSha256": "f4c7a573d5aec60ef73cae40cf382d7f4689fdafffd65d9e827f29bbb5deaa8d",
+      "publishedSha256": "92232ca4eb36e1fcc6914a75229dfeb7bd9f43fa71bc5256b69eedf4abb63546"
+    },
+    {
+      "path": "web/benchmark/before-views.json",
+      "rawSha256": "d540b0bc30840c764c21c4be7c0147365b8757214b3caa49cd503037a6dcaf02",
+      "publishedSha256": "a407442e150299f84afd056d239c988c52aa0e931a6af1d1d3c3e94189070c00"
+    },
+    {
+      "path": "web/benchmark/changes.json",
+      "rawSha256": "dc1a48092437cbe7d7714574facee206b7a8ce5c5fea92ff11d1a3d312d21984",
+      "publishedSha256": "eb113f6064a7ecbfd659441eafaaa831e358910a96d186fc28859bfd1873d727"
+    },
+    {
+      "path": "web/benchmark/canonical-changes.json",
+      "rawSha256": "b00c97efe2bf3684732ad5f75f5140518f1a7fb5b2c03e58ad67e9d521b38665",
+      "publishedSha256": "5f83379eb66261700e079bc425e9fc89217fcc31a8b46448348ca80a488a2b83"
+    },
+    {
+      "path": "web/benchmark/compare/compare.json",
+      "rawSha256": "1fd740e69f16ed7bcfc14e4ae229c6c73f5f8207ed54d1fbb1702b6bc10d476d",
+      "publishedSha256": "a54933cf280e5a0f5e353ab35d76e29d6d56dc74e16bafb914e7452671b4ea90"
+    },
+    {
+      "path": "web/benchmark/capture-repairs/original/20261025T112714Z-3fc89bba/initial-changes.json",
+      "rawSha256": "f4c7a573d5aec60ef73cae40cf382d7f4689fdafffd65d9e827f29bbb5deaa8d",
+      "publishedSha256": "92232ca4eb36e1fcc6914a75229dfeb7bd9f43fa71bc5256b69eedf4abb63546"
+    }
+  ]
+}

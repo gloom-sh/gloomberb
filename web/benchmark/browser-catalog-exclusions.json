@@ -1,0 +1,24 @@
+{
+  "bothRevisions": {
+    "BR": "brokers",
+    "ORD": "broker-orders",
+    "NOTE": "quick-notes",
+    "debug-log": "debug",
+    "VIEW": "custom-view",
+    "PL": "plugin-marketplace",
+    "MOST": "market-movers",
+    "TBO": "buildout"
+  },
+  "unsupportedRegistryTargets": {
+    "IBKR": {
+      "paneId": "ibkr-trading",
+      "plugin": "ibkr-gateway",
+      "targets": [
+        "cli",
+        "tui",
+        "desktop"
+      ]
+    }
+  },
+  "classification": "The native CLI inventory includes these built-in panes, but the browser catalog intentionally omits them. IBKR declares only native targets; the registry audit bypasses web-target filtering. Zero-view attempts remain unmeasured; fuzzy matches are recorded separately."
+}

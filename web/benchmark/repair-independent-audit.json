@@ -1,0 +1,35 @@
+{
+  "status": "passed",
+  "originalArchiveFilesVerified": 29,
+  "replacementArchiveFilesVerified": 18,
+  "retrySourceFilesVerified": 18,
+  "installedReplacementPicturesVerified": 12,
+  "installedTokenRowSetsVerified": 6,
+  "removedPicturesPreserved": 3,
+  "overwrittenPicturesPreserved": 6,
+  "changedOrRemovedMeasurementsPreserved": 9,
+  "before": {
+    "catalogEntries": 182,
+    "normalViews": 550,
+    "measurements": 1100,
+    "pictures": 1100
+  },
+  "after": {
+    "catalogEntries": 182,
+    "normalViews": 559,
+    "measurements": 1118,
+    "pictures": 1118
+  },
+  "incompleteNormalViews": 0,
+  "duplicateIds": 0,
+  "orphanRecords": 0,
+  "atsInventoryDelta": {
+    "added": [
+      "ATS--tab-interest"
+    ],
+    "removed": [
+      "ATS--tab-weekly-ats-otc"
+    ]
+  },
+  "initialComparisonPreserved": true
+}

@@ -1,0 +1,15 @@
+{
+  "plugin": "crypto-fear-greed",
+  "bundleHashes": {
+    "before": "29574a37fa3704e4ac9fa97824f7f76c8ccd4c5b2d89a1153bc132bb03332166",
+    "after": "cc846060e8522c614baaddb24b7d314b01b6e3c3a5eb506cf27711373d81af87"
+  },
+  "rootTransitions": "Initial root captures are loading. The one alleged detail picture shows the same pane root error/retry state. Both full retries discover root only.",
+  "identicalBundle": false,
+  "normalizedBundleHashes": {
+    "before": "65b51ca77ae67f2c95105ad5c3fb175d73607ab58e3ddb10e4387ec596fde076",
+    "after": "65b51ca77ae67f2c95105ad5c3fb175d73607ab58e3ddb10e4387ec596fde076"
+  },
+  "identicalAfterSourceCommentNormalization": true,
+  "normalization": "Only build-root prefixes in source-location comments differ. Normalize those comment prefixes; all executable code remains identical."
+}

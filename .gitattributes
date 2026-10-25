@@ -1,0 +1,5 @@
+# Preserve captured console output, empty TSV columns and generated report bytes.
+sync/*-before.txt -whitespace
+web/benchmark/catalog-before.tsv -whitespace
+web/benchmark/catalog-after.tsv -whitespace
+web/benchmark/compare/compare.md -whitespace

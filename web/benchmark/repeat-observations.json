@@ -1,0 +1,76 @@
+{
+  "unsteady": [
+    "ANR--root",
+    "CHOKE--root",
+    "OSA--detail",
+    "VIX--root",
+    "VIX--tab-cross-asset",
+    "VIX--tab-history",
+    "VOLS--root",
+    "VOLS--tab-history"
+  ],
+  "excludedFromOfficialCount": [
+    "ANR--root",
+    "CHOKE--root",
+    "OSA--detail",
+    "VIX--root",
+    "VIX--tab-cross-asset",
+    "VIX--tab-history",
+    "VOLS--root",
+    "VOLS--tab-history"
+  ],
+  "varyingWidths": {
+    "CHOKE--root": {
+      "before": [
+        "640"
+      ],
+      "after": [
+        "640"
+      ]
+    },
+    "VIX--root": {
+      "before": [
+        "1280"
+      ],
+      "after": [
+        "640"
+      ]
+    },
+    "ANR--root": {
+      "before": [
+        "1280"
+      ]
+    },
+    "VOLS--root": {
+      "before": [
+        "1280"
+      ],
+      "after": [
+        "1280"
+      ]
+    },
+    "VOLS--tab-history": {
+      "before": [
+        "1280"
+      ]
+    },
+    "VIX--tab-history": {
+      "after": [
+        "640",
+        "1280"
+      ]
+    },
+    "OSA--detail": {
+      "after": [
+        "640"
+      ]
+    },
+    "VIX--tab-cross-asset": {
+      "after": [
+        "640"
+      ]
+    }
+  },
+  "captureGaps": [],
+  "stableDifferencesInUnsteadyViews": []
+}

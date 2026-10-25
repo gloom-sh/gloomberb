@@ -1,0 +1,42 @@
+  > ERN AAPL                                                                          Help ? CLOSED SPY $759.97 -0.52% base USD
+:                                                                       to Main Portfolio                            ⚡
+    Shortcut: Earnings Calendar · AAPL                                  io.
+                                                                        ───────────────────────────────────         x ─┐
+           Panes                                                                                                       │
+       ERN Earnings Calendar                                                                                           │
+                                                                             VALUE     2026Q1     2025Q4      2025Q3   │
+           Keybindings                                                           --         --         --         --  ▀│
+           Bind a key to ERN AAPL                                                --         --         --         --   │
+                                                                                 --         --         --         --   │
+                                                                                 --         --         --         --   │
+                                                                                 --         --         --         --   │
+                                                                                 --         --         --         --   │
+                                                                                 --         --         --         --   │
+                                                                                 --         --         --         --   │
+                                                                                 --         --         --         --   │
+                                                                                 --         --         --         --   │
+                                                                                 --         --         --         --   │
+                                                                                 --         --         --         --   │
+                                                                                 --         --         --         --   │
+                                                                                 --         --         --         --   │
+                                                                                 --         --         --         --   │
+                                                                                 --         --         --         --   │
+                                                                                 --         --         --         --   │
+                                                                                 --         --         --         --   │
+:                                                                                --         --         --         --   │
+ ← Back │ O'Connor Alternative Inves… 0002081629   2026-06-30   +78.21%          --         --         --         --   │
+  gloomb│ Valliance Asset Management… 0001846639   2026-06-30   +76.00%          --         --         --         --   │
+    open│ Helix Partners Management…  0001995612   2026-06-30   +74.01%          --         --         --         --   │
+    and │ Optimus Prime Fund Managem… 0001732539   2026-06-30   +72.07%          --         --         --         --   │
+    don'│ Theleme Partners LLP        0001511881   2026-06-30   +71.08%          --         --         --         --   │
+    Port│ Shengqi Capital (Hong Kong… 0002040405   2026-06-30   +70.81%          --         --         --         --   │
+    tick│ PATHWAY CAPITAL MANAGEMENT… 0001037353   2026-06-30   +69.95%          --         --         --         --   │
+    you │ AMERICAN EXPRESS CO         0000004962   2026-06-30   +66.67%          --         --         --         --   │
+    Inte│ Q Fund Management (Hong Ko… 0002078832   2026-06-30   +65.95%          --         --         --         --   │
+    Publ│ EMERGENCE GP PARTNERS, LLC  0001589115   2026-06-30   +61.58%          --         --         --         --   │
+    them│ Outlook Capital Management… 0002149913   2026-06-30   +55.42%          --         --         --         --   │
+ -------│ Anatole Investment Managem… 0001693745   2026-06-30   +55.31%          --         --         --         --   │
+  Read-o└                                                                                                             ─◢
+  Log in Sign up free
+
+  ^1 Home  ^2 Monitor  ^3 Macro   +                                                                   v0.18.4 ☁ Log in Feedback

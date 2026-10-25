@@ -1,0 +1,13 @@
+bun test v1.3.11 (af24e281)
+
+src/plugins/catalog-browser.test.ts:
+(pass) browser plugin catalog > excludes native, filesystem, and debug plugins [0.13ms]
+(pass) browser plugin catalog > keeps every public pane handoff restorable in the hosted browser [1.62ms]
+(pass) browser plugin catalog > omits unsupported modules inside otherwise browser-safe product areas [0.13ms]
+(pass) browser plugin catalog > browser offers public research commands and restores their saved panes signed out [12.40ms]
+(pass) browser plugin catalog > desktop and terminal offers public research commands and restores their saved panes signed out [31.19ms]
+
+ 5 pass
+ 0 fail
+ 18 expect() calls
+Ran 5 tests across 1 file. [1410.00ms]

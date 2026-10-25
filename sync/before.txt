@@ -1,0 +1,57 @@
+bun test v1.3.11 (af24e281)
+
+src/sync/account-change-repro.test.ts:
+129 |     await pendingSync;
+130 |     await controller.requestSync({ reason: "poll" });
+131 |
+132 |     const cloud = snapshots.get("account-b")!.snapshot.contributors["core.config"]!.payload as typeof accountB;
+133 |     expect({ local: state.config.layouts.map((layout) => layout.name), cloud: cloud.layouts.map((layout) => layout.name) })
+134 |       .toEqual({ local: accountB.layouts.map((layout) => layout.name), cloud: accountB.layouts.map((layout) => layout.name) });
+             ^
+error: expect(received).toEqual(expected)
+
+  {
+    "cloud": [
+-     "Account B Home",
+-     "Account B Monitor",
+-     "Account B Macro",
++     "Home",
++     "Monitor",
++     "Macro",
++     "Account A edit",
+    ],
+    "local": [
+-     "Account B Home",
+-     "Account B Monitor",
+-     "Account B Macro",
++     "Home",
++     "Monitor",
++     "Macro",
++     "Account A edit",
+    ],
+  }
+
+- Expected  - 6
++ Received  + 8
+
+      at <anonymous> (<checkout>/src/sync/account-change-repro.test.ts:134:8)
+(fail) switching accounts first merges the new account at revision 2 [45.92ms]
+131 |
+132 |     const cloud = snapshots.get("account-b")!.snapshot.contributors["core.config"]!.payload as typeof accountB;
+133 |     expect({ local: state.config.layouts.map((layout) => layout.name), cloud: cloud.layouts.map((layout) => layout.name) })
+134 |       .toEqual({ local: accountB.layouts.map((layout) => layout.name), cloud: accountB.layouts.map((layout) => layout.name) });
+135 |     expect(state.config.theme).toBe("green");
+136 |     expect(cloud.portfolios.map((portfolio) => portfolio.id)).toContain("account-b-portfolio");
+                                                                    ^
+error: expect(received).toContain(expected)
+
+Expected to contain: "account-b-portfolio"
+Received: [ "main", "local-portfolio" ]
+
+      at <anonymous> (<checkout>/src/sync/account-change-repro.test.ts:136:63)
+(fail) switching accounts first merges the new account at revision 20 [12.52ms]
+
+ 0 pass
+ 2 fail
+ 8 expect() calls
+Ran 2 tests across 1 file. [550.00ms]

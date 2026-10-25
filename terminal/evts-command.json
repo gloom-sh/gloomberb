@@ -1,0 +1,79 @@
+{
+  "ok": true,
+  "data": {
+    "open": true,
+    "query": "EVTS",
+    "stateQuery": "EVTS",
+    "launchRequest": null,
+    "selectedIndex": 0,
+    "results": [
+      {
+        "nodeId": "ui:xc",
+        "index": 0,
+        "label": "Earnings Days",
+        "detail": "The market's report days with implied and past moves; a ticker picks its row. \u00b7 EVTS <ticker>",
+        "category": "Panes",
+        "kind": "action",
+        "right": "EVTS",
+        "selected": true,
+        "disabled": false,
+        "actions": [
+          "activate",
+          "press"
+        ],
+        "itemId": "pane-template:earnings-board-pane:",
+        "metadata": {
+          "index": 0,
+          "selected": true,
+          "hovered": false,
+          "listKind": "root",
+          "listTitle": "Commands",
+          "listQuery": "EVTS",
+          "item": {
+            "id": "pane-template:earnings-board-pane:",
+            "label": "Earnings Days",
+            "detail": "The market's report days with implied and past moves; a ticker picks its row. \u00b7 EVTS <ticker>",
+            "category": "Panes",
+            "kind": "action",
+            "right": "EVTS",
+            "shortcutQuery": "EVTS",
+            "searchText": "evts events earnings calendar earnings season reporting today Earnings Days Earnings Days earnings-calendar EVTS <ticker> Earnings",
+            "disabled": false
+          }
+        }
+      },
+      {
+        "nodeId": "ui:xe",
+        "index": 1,
+        "label": "Bind a key to EVTS",
+        "detail": "Earnings Days, on a key of your choice",
+        "category": "Keybindings",
+        "kind": "action",
+        "selected": false,
+        "disabled": false,
+        "actions": [
+          "activate",
+          "press"
+        ],
+        "itemId": "bind-key:EVTS",
+        "metadata": {
+          "index": 1,
+          "selected": false,
+          "hovered": false,
+          "listKind": "root",
+          "listTitle": "Commands",
+          "listQuery": "EVTS",
+          "item": {
+            "id": "bind-key:EVTS",
+            "label": "Bind a key to EVTS",
+            "detail": "Earnings Days, on a key of your choice",
+            "category": "Keybindings",
+            "kind": "action",
+            "disabled": false
+          }
+        }
+      }
+    ]
+  },
+  "rev": "b5a355a8"
+}

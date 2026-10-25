@@ -1,0 +1,114 @@
+{
+  "engine": "webkit",
+  "workspace": {
+    "snapshotBytes": 227081,
+    "positions": 300,
+    "tickers": 1200,
+    "days": 500
+  },
+  "results": {
+    "idle": [
+      {
+        "blockMs": 22,
+        "totalMs": 55,
+        "pushed": false
+      },
+      {
+        "blockMs": 22,
+        "totalMs": 56,
+        "pushed": false
+      },
+      {
+        "blockMs": 27,
+        "totalMs": 67,
+        "pushed": false
+      },
+      {
+        "blockMs": 24,
+        "totalMs": 57,
+        "pushed": false
+      },
+      {
+        "blockMs": 31,
+        "totalMs": 66,
+        "pushed": false
+      }
+    ],
+    "quotes": [
+      {
+        "blockMs": 19,
+        "totalMs": 52,
+        "pushed": true
+      },
+      {
+        "blockMs": 18,
+        "totalMs": 53,
+        "pushed": true
+      },
+      {
+        "blockMs": 21,
+        "totalMs": 56,
+        "pushed": true
+      },
+      {
+        "blockMs": 32,
+        "totalMs": 73,
+        "pushed": true
+      },
+      {
+        "blockMs": 20,
+        "totalMs": 58,
+        "pushed": true
+      }
+    ],
+    "layout": [
+      {
+        "blockMs": 31,
+        "totalMs": 71,
+        "pushed": true
+      },
+      {
+        "blockMs": 29,
+        "totalMs": 72,
+        "pushed": true
+      },
+      {
+        "blockMs": 43,
+        "totalMs": 84,
+        "pushed": true
+      },
+      {
+        "blockMs": 30,
+        "totalMs": 70,
+        "pushed": true
+      },
+      {
+        "blockMs": 26,
+        "totalMs": 64,
+        "pushed": true
+      }
+    ]
+  },
+  "codec": [
+    {
+      "blockMs": 17,
+      "totalMs": 51
+    },
+    {
+      "blockMs": 11,
+      "totalMs": 52
+    },
+    {
+      "blockMs": 13,
+      "totalMs": 49
+    },
+    {
+      "blockMs": 15,
+      "totalMs": 47
+    },
+    {
+      "blockMs": 14,
+      "totalMs": 60
+    }
+  ]
+}

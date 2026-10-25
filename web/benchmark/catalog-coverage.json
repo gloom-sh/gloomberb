@@ -1,0 +1,50 @@
+{
+  "before": {
+    "expectedEntries": 182,
+    "actualEntries": 182,
+    "missing": [],
+    "unexpected": [],
+    "viewEntries": 645,
+    "renderedViews": 550,
+    "failedEntries": [
+      "BR",
+      "ERN",
+      "EVTS",
+      "HDS",
+      "IBKR",
+      "PL",
+      "TBO",
+      "VIEW",
+      "debug-log"
+    ],
+    "unmeasuredViewIds": [
+      "LAY--detail"
+    ],
+    "measurementRows": 1100,
+    "pictureFiles": 1100,
+    "incompleteNormalViews": []
+  },
+  "after": {
+    "expectedEntries": 182,
+    "actualEntries": 182,
+    "missing": [],
+    "unexpected": [],
+    "viewEntries": 652,
+    "renderedViews": 559,
+    "failedEntries": [
+      "BR",
+      "IBKR",
+      "PL",
+      "TBO",
+      "VIEW",
+      "debug-log"
+    ],
+    "unmeasuredViewIds": [
+      "CFNG--detail",
+      "LAY--detail"
+    ],
+    "measurementRows": 1118,
+    "pictureFiles": 1118,
+    "incompleteNormalViews": []
+  }
+}

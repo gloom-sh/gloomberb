@@ -1,0 +1,9 @@
+[
+  {
+    "theme": "white",
+    "width": 640,
+    "wall": "Sign in to view 13D/13G filings.\nLog in\n↵\nSign up free",
+    "cursor": "pointer",
+    "loginDialog": true
+  }
+]

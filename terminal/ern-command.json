@@ -1,0 +1,79 @@
+{
+  "ok": true,
+  "data": {
+    "open": true,
+    "query": "ERN AAPL",
+    "stateQuery": "ERN AAPL",
+    "launchRequest": null,
+    "selectedIndex": 0,
+    "results": [
+      {
+        "nodeId": "ui:sd",
+        "index": 0,
+        "label": "Earnings Calendar",
+        "detail": "The market's report days with implied and past moves; with a ticker, its report history. \u00b7 ERN <tickers>",
+        "category": "Panes",
+        "kind": "action",
+        "right": "ERN",
+        "selected": true,
+        "disabled": false,
+        "actions": [
+          "activate",
+          "press"
+        ],
+        "itemId": "pane-template:earnings-calendar-pane:AAPL",
+        "metadata": {
+          "index": 0,
+          "selected": true,
+          "hovered": false,
+          "listKind": "root",
+          "listTitle": "Commands",
+          "listQuery": "ERN AAPL",
+          "item": {
+            "id": "pane-template:earnings-calendar-pane:AAPL",
+            "label": "Earnings Calendar",
+            "detail": "The market's report days with implied and past moves; with a ticker, its report history. \u00b7 ERN <tickers>",
+            "category": "Panes",
+            "kind": "action",
+            "right": "ERN",
+            "shortcutQuery": "ERN",
+            "searchText": "earn earnings calendar implied move surprise eps revenue quarterly Earnings Calendar Earnings Calendar earnings-calendar ERN <tickers> Earnings",
+            "disabled": false
+          }
+        }
+      },
+      {
+        "nodeId": "ui:sf",
+        "index": 1,
+        "label": "Bind a key to ERN AAPL",
+        "detail": "Earnings Calendar, on a key of your choice",
+        "category": "Keybindings",
+        "kind": "action",
+        "selected": false,
+        "disabled": false,
+        "actions": [
+          "activate",
+          "press"
+        ],
+        "itemId": "bind-key:ERN AAPL",
+        "metadata": {
+          "index": 1,
+          "selected": false,
+          "hovered": false,
+          "listKind": "root",
+          "listTitle": "Commands",
+          "listQuery": "ERN AAPL",
+          "item": {
+            "id": "bind-key:ERN AAPL",
+            "label": "Bind a key to ERN AAPL",
+            "detail": "Earnings Calendar, on a key of your choice",
+            "category": "Keybindings",
+            "kind": "action",
+            "disabled": false
+          }
+        }
+      }
+    ]
+  },
+  "rev": "109fe9b0"
+}

@@ -1,0 +1,149 @@
+{
+  "ok": true,
+  "data": {
+    "open": true,
+    "query": "13F",
+    "stateQuery": "13F",
+    "launchRequest": null,
+    "selectedIndex": 0,
+    "results": [
+      {
+        "nodeId": "ui:i2",
+        "index": 0,
+        "label": "13F Funds",
+        "detail": "Browse institutional 13F fund filings and estimated long-book performance. \u00b7 13F <fund, ticker, or CIK>",
+        "category": "Panes",
+        "kind": "action",
+        "right": "13F",
+        "selected": true,
+        "disabled": false,
+        "actions": [
+          "activate",
+          "press"
+        ],
+        "itemId": "pane-template:thirteenf-funds-pane:",
+        "metadata": {
+          "index": 0,
+          "selected": true,
+          "hovered": false,
+          "listKind": "root",
+          "listTitle": "Commands",
+          "listQuery": "13F",
+          "item": {
+            "id": "pane-template:thirteenf-funds-pane:",
+            "label": "13F Funds",
+            "detail": "Browse institutional 13F fund filings and estimated long-book performance. \u00b7 13F <fund, ticker, or CIK>",
+            "category": "Panes",
+            "kind": "action",
+            "right": "13F",
+            "shortcutQuery": "13F",
+            "searchText": "13f funds hedge funds holdings filings institutional buffett berkshire overlap copy basket active share portfolio import 13F Funds 13F Funds thirteenf-funds 13F <fund, ticker, or CIK> Ownership & Insiders",
+            "disabled": false
+          }
+        }
+      },
+      {
+        "nodeId": "ui:i4",
+        "index": 1,
+        "label": "Alerts",
+        "detail": "Price, earnings, filing, news and flow alerts \u00b7 ALRT",
+        "category": "Panes",
+        "kind": "action",
+        "right": "ALRT",
+        "selected": false,
+        "disabled": false,
+        "actions": [
+          "activate",
+          "press"
+        ],
+        "itemId": "pane-template:alerts-pane:",
+        "metadata": {
+          "index": 1,
+          "selected": false,
+          "hovered": false,
+          "listKind": "root",
+          "listTitle": "Commands",
+          "listQuery": "13F",
+          "item": {
+            "id": "pane-template:alerts-pane:",
+            "label": "Alerts",
+            "detail": "Price, earnings, filing, news and flow alerts \u00b7 ALRT",
+            "category": "Panes",
+            "kind": "action",
+            "right": "ALRT",
+            "shortcutQuery": "ALRT",
+            "searchText": "alerts alert price trigger alarm watch notify notification earnings cpi fomc filing filings sec 8-k 13f news keyword analyst upgrade downgrade 52-week unusual volume volume short interest insider congress catalyst implied volatility iv spike options flow perps funding Alerts Alerts alerts ALRT Alerts",
+            "disabled": false
+          }
+        }
+      },
+      {
+        "nodeId": "ui:i6",
+        "index": 2,
+        "label": "Holders",
+        "detail": "Institutional holders from 13F filings, and 13D/13G beneficial owners: activist and passive stakes over 5% of the class. \u00b7 HDS <ticker>",
+        "category": "Panes",
+        "kind": "action",
+        "right": "HDS",
+        "selected": false,
+        "disabled": false,
+        "actions": [
+          "activate",
+          "press"
+        ],
+        "itemId": "pane-template:holders-pane:",
+        "metadata": {
+          "index": 2,
+          "selected": false,
+          "hovered": false,
+          "listKind": "root",
+          "listTitle": "Commands",
+          "listQuery": "13F",
+          "item": {
+            "id": "pane-template:holders-pane:",
+            "label": "Holders",
+            "detail": "Institutional holders from 13F filings, and 13D/13G beneficial owners: activist and passive stakes over 5% of the class. \u00b7 HDS <ticker>",
+            "category": "Panes",
+            "kind": "action",
+            "right": "HDS",
+            "shortcutQuery": "HDS",
+            "searchText": "holders ownership institutional owners hds 13d 13g 13d/g schedule 13d schedule 13g beneficial owners beneficial ownership activist activists Holders Holders holders HDS <ticker> Ownership & Insiders",
+            "disabled": false
+          }
+        }
+      },
+      {
+        "nodeId": "ui:i8",
+        "index": 3,
+        "label": "Bind a key to 13F",
+        "detail": "13F Funds, on a key of your choice",
+        "category": "Keybindings",
+        "kind": "action",
+        "selected": false,
+        "disabled": false,
+        "actions": [
+          "activate",
+          "press"
+        ],
+        "itemId": "bind-key:13F",
+        "metadata": {
+          "index": 3,
+          "selected": false,
+          "hovered": false,
+          "listKind": "root",
+          "listTitle": "Commands",
+          "listQuery": "13F",
+          "item": {
+            "id": "bind-key:13F",
+            "label": "Bind a key to 13F",
+            "detail": "13F Funds, on a key of your choice",
+            "category": "Keybindings",
+            "kind": "action",
+            "disabled": false
+          }
+        }
+      }
+    ]
+  },
+  "rev": "80f8fd5b"
+}

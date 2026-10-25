@@ -1,0 +1,42 @@
+  > Search or run a command  Ctrl+P                                                   Help ? CLOSED SPY $759.97 -0.52% base USD
+:: Main Portfolio               ⚡          :: Main Portfolio  ⧉ Linked to Main Portfolio                            ⚡
+  Main Portfolio  Watchlist                   No tickers in Main Portfolio.
+  TICKER┌─:: 13F─────────────────────────────────────────────────────────────────────────────────────────── ?  ...  x ─┐
+          Funds  Crowding
+  No tic  / fund, ticker, CIK, or latest
+  Click   FUND                        CIK          PERIOD     EST 13F ▼      VALUE     2026Q1     2025Q4      2025Q3
+          Great Mountain Partners LLC 0001815467   2026-06-30  +936.80%      $9.28M         --         --         --  ▀
+  + tick  Magma Venture Partners Gen… 0001907544   2026-06-30  +511.82%     $43.10M         --         --         --
+          Ridgeback Capital Investme… 0001423994   2026-06-30  +353.15%     $80.93M         --         --         --
+          Cannae Holdings, Inc.       0001704720   2026-06-30  +305.33%    $133.62M         --         --         --
+          Viola Growth Management Fu… 0001803169   2026-06-30  +153.65%     $74.90M         --         --         --
+          Merck & Co., Inc.           0000310158   2026-06-30  +146.62%    $526.41M         --         --         --
+          Blue Water Life Science Ad… 0001789778   2026-06-30  +145.85%    $158.75M         --         --         --
+          NASPERS LTD                 0001106051   2026-06-30  +136.76%     $84.36M         --         --         --
+          AMERICAN INTERNATIONAL GRO… 0000005272   2026-06-30  +120.28%      $2.93M         --         --         --
+          Kalehua Capital Management… 0002106181   2026-06-30  +119.69%    $313.49M         --         --         --
+          Lynrock Lake LP             0001734341   2026-06-30  +109.84%      $1.58B         --         --         --
+          Institutional Venture Mana… 0001640275   2026-06-30  +107.61%    $121.53M         --         --         --
+          Fund Resources Investment…  0001652026   2026-06-30   +98.91%    $817.03M         --         --         --
+          New Mountain Capital, L.L.… 0001407718   2026-06-30   +98.20%    $138.60M         --         --         --
+          J.H. Whitney Equity Partne… 0001567459   2026-06-30   +90.63%    $231.92M         --         --         --
+  + tick  Vitruvian Partners LLP      0001692590   2026-06-30   +89.00%    $200.96M         --         --         --
+          Funde Sino Life Insurance…  0001652027   2026-06-30   +84.49%    $306.75M         --         --         --
+          22C Capital LLC             0002075659   2026-06-30   +84.15%    $102.73M         --         --         --
+:: #ever  Step Capital Management Pt… 0002091341   2026-06-30   +79.40%    $463.08M         --         --         --
+ -------  O'Connor Alternative Inves… 0002081629   2026-06-30   +78.21%      $1.37B         --         --         --
+          Valliance Asset Management… 0001846639   2026-06-30   +76.00%    $864.33M         --         --         --
+          Helix Partners Management…  0001995612   2026-06-30   +74.01%    $744.11M         --         --         --
+          Optimus Prime Fund Managem… 0001732539   2026-06-30   +72.07%      $1.35B         --         --         --
+          Theleme Partners LLP        0001511881   2026-06-30   +71.08%      $1.68B         --         --         --
+   Gloom  Shengqi Capital (Hong Kong… 0002040405   2026-06-30   +70.81%    $483.75M         --         --         --
+          PATHWAY CAPITAL MANAGEMENT… 0001037353   2026-06-30   +69.95%     $23.95M         --         --         --
+          AMERICAN EXPRESS CO         0000004962   2026-06-30   +66.67%      $1.48B         --         --         --
+          Q Fund Management (Hong Ko… 0002078832   2026-06-30   +65.95%    $109.55M         --         --         --
+          EMERGENCE GP PARTNERS, LLC  0001589115   2026-06-30   +61.58%    $112.27M         --         --         --
+          Outlook Capital Management… 0002149913   2026-06-30   +55.42%    $309.82M         --         --         --
+ -------  Anatole Investment Managem… 0001693745   2026-06-30   +55.31%    $589.79M         --         --         --
+  Read-o└                                                                                                    [/]search─◢
+  Log in Sign up free
+
+  ^1 Home  ^2 Monitor  ^3 Macro   +   ^⇧G Tidy Windows                                                v0.18.4 ☁ Log in Feedback

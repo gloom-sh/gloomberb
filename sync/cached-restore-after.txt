@@ -1,0 +1,17 @@
+Head: aa607800d9385046761be15bbe778ef0b9381541
+Fixture: src/sync/account-session.test.ts from aa607800d9385046761be15bbe778ef0b9381541
+Command: bun test src/sync/account-session.test.ts --timeout 20000 --test-name-pattern "restoring the same native credential"
+Bun 1.3.11
+
+bun test v1.3.11 (af24e281)
+
+src/sync/account-session.test.ts:
+(pass) restoring the same native credential during a null session check does not cancel a pending login [184.60ms]
+
+ 1 pass
+ 24 filtered out
+ 0 fail
+ 8 expect() calls
+Ran 1 test across 1 file. [980.00ms]
+
+Exit status: 0

@@ -1,0 +1,42 @@
+  > Search or run a command  Ctrl+P                                                   Help ? CLOSED SPY $759.97 -0.52% base USD
+:: Main Portfolio               ⚡          :: Main Portfolio  ⧉ Linked to Main Portfolio                            ⚡
+  Main Portfolio  Watchlist                   No tickers in Main Portfolio.
+  TICKER┌─:: 13F───────────────────────────────────────────────────────────────────────────────────────────         x ─┐
+        │ Funds  Crowding                                                                                              │
+  No tic│ / fund, ticker, CIK, or latest                                                                               │
+  Click │ FUND                        CIK          PERIOD     EST 13F ▼      VALUE     2026Q1     2025Q4      2025Q3   │
+        │┌─:: ERN AAPL──────────────────────────────────────────────────────────────────────────────────── ?  ...  x ─┐│
+  + tick│  Next report Nov 2 AMC  confirmed, in 8 days           Avg move    2.5%  last 8                              │
+        │  Avg implied ±4.0%  last 8                             EPS beats   8 of 8                                    │
+        │  ● Implied 3.8% ● Move 7.4%                                                                                  │
+        │                                                                                               │█        7.8% │
+        │                                                                                               │█             │
+        │                          █                                                                    │█             │
+        │                          █     █               █       █       █              █               │█             │
+        │ ·  ·  ·  ·  ·  ·█ ·  ·  ██ ·  ·█ ·  ·  █  ·  · █·  ·  ·██·  ·  █  ·  · █·  ·  █  ·  · ██  ·  ·┼█·  ·  · 3.8% │
+        │                 █       ██     █       █       █       ██      ██      █      █       ██      ┼█             │
+        │                 █       ██     ██      ██      ██      ██      ██      █      █       ██      ┼█             │
+        │         █       ██      ██     ██      ██      ██      ██      ██      ██     ██      ██      ┼█        0.0% │
+        │      Nov 23  Feb 24  May 24 Aug 24  Oct 24  Jan 25  May 25  Jul 25  Oct 25 Jan 26        Jul 30 '26          │
+        │  DATE       WHEN    EPS EST    EPS ACT  BASIS    EPS SURP   SALES EST   SALES ACT   IMPLIED     MOVE         │
+        │  Nov 2 '26  AMC         1.98        --  --              --     113.36B          --        --      --         │
+  + tick│  Jul 30 '26 AMC         1.88      1.91  adj          +1.6%          --     109.42B     ±3.8%   -7.4%         │
+        │  Apr 30 '26 AMC         1.92      2.01  GAAP         +4.7%          --     111.18B     ±3.8%   +3.2%         │
+        │  Jan 29 '26 AMC         2.65      2.84  GAAP         +7.2%          --     143.76B     ±4.5%   +0.5%         │
+:: #ever│  Oct 30 '25 AMC         1.73      1.85  GAAP         +6.9%          --     102.47B     ±3.3%   -0.4%         │
+ -------│  Jul 31 '25 AMC         1.42      1.57  GAAP        +10.6%          --      94.04B     ±4.4%   -2.5%         │
+        │  May 1 '25  AMC         1.61      1.65  GAAP         +2.5%          --      95.36B     ±4.3%   -3.7%         │
+        │  Jan 30 '25 AMC         2.36      2.40  ?            +1.7%          --          --     ±4.2%   -0.7%         │
+        │  Oct 31 '24 AMC         1.49      1.64  ?           +10.1%          --          --     ±3.9%   -1.3%         │
+        │  Aug 1 '24  AMC         1.34      1.40  ?            +4.5%          --          --     ±4.2%   +0.7%         │
+   Gloom│  May 2 '24  AMC         1.51      1.53  ?            +1.3%          --          --     ±3.8%   +6.0%         │
+        │  Feb 1 '24  AMC         2.09      2.18  ?            +4.3%          --          --     ±3.6%   -0.5%         │
+        │  Nov 2 '23  AMC         1.39      1.46  ?            +5.0%          --          --        --   -0.5%         │
+        │└just now                                                            [t]icker [e]stimates [c]alls [a]nalysts─◢│
+        │ EMERGENCE GP PARTNERS, LLC  0001589115   2026-06-30   +61.58%    $112.27M         --         --         --   │
+        │ Outlook Capital Management… 0002149913   2026-06-30   +55.42%    $309.82M         --         --         --   │
+ -------│ Anatole Investment Managem… 0001693745   2026-06-30   +55.31%    $589.79M         --         --         --   │
+  Read-o└                                                                                                             ─◢
+  Log in Sign up free
+
+  ^1 Home  ^2 Monitor  ^3 Macro   +   ^⇧G Tidy Windows                                                v0.18.4 ☁ Log in Feedback

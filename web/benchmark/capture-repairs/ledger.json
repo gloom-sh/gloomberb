@@ -1,0 +1,523 @@
+{
+  "version": 1,
+  "batches": [
+    {
+      "id": "20261025T112714Z-3fc89bba",
+      "status": "applied",
+      "planSha256": "e3192fda4c44339ee2fad9dafa0b6338388a429c53220cadc4e28c9cab31c271",
+      "operations": [
+        {
+          "kind": "replacement",
+          "side": "before",
+          "token": "ATS",
+          "sourceSide": "before-again",
+          "reason": "Initial discovery used an empty-settings fallback instance and selected Interest. The completed retry discovered the actual ATS command instance with tab=ats, matching the head and both head runs. Replace the whole token inventory and pictures so tab identities remain coherent; preserve the original fallback capture.",
+          "observedPaneIds": [
+            "short-interest"
+          ],
+          "removedViewIds": [
+            "ATS--tab-weekly-ats-otc"
+          ],
+          "addedViewIds": [
+            "ATS--tab-interest"
+          ]
+        },
+        {
+          "kind": "replacement",
+          "side": "before",
+          "token": "ETF",
+          "sourceSide": "before-again",
+          "reason": "Initial capture omitted the 1280 px picture and measurement. The completed retry captured the same observed pane at both required widths; replace the whole token inventory and pictures.",
+          "observedPaneIds": [
+            "sec"
+          ],
+          "removedViewIds": [],
+          "addedViewIds": []
+        },
+        {
+          "kind": "replacement",
+          "side": "after",
+          "token": "SEC",
+          "sourceSide": "after-again",
+          "reason": "Initial capture omitted the 1280 px picture and measurement. The completed retry captured the same observed pane at both required widths; replace the whole token inventory and pictures.",
+          "observedPaneIds": [
+            "sec"
+          ],
+          "removedViewIds": [],
+          "addedViewIds": []
+        },
+        {
+          "kind": "classification",
+          "side": "before",
+          "view": "LAY--detail",
+          "auditOutcome": "non-detail-pane-closed",
+          "reason": "Enter activates a local layout and closes the gallery. The audit treats the disappeared pane text as a detail even when record() fails. Neither the initial run nor the bounded paired retry produced a detail picture on this revision. Preserve this as an unmeasured audit outcome; root coverage remains measured.",
+          "token": "LAY",
+          "originalView": "detail"
+        },
+        {
+          "kind": "classification",
+          "side": "after",
+          "view": "LAY--detail",
+          "auditOutcome": "non-detail-pane-closed",
+          "reason": "Enter activates a local layout and closes the gallery. The audit treats the disappeared pane text as a detail even when record() fails. Neither the initial run nor the bounded paired retry produced a detail picture on this revision. Preserve this as an unmeasured audit outcome; root coverage remains measured.",
+          "token": "LAY",
+          "originalView": "detail"
+        },
+        {
+          "kind": "classification",
+          "side": "after",
+          "view": "CFNG--detail",
+          "auditOutcome": "non-detail-async-transition",
+          "reason": "The audit mistook the root loading-to-HTTP503 transition after Enter for a detail view. Its one 1280 px picture shows the root error and retry state, without a detail stack or back action; 640 px has no detail picture. Both completed repeated runs discover only the root. Preserve the original picture and measurement as audit evidence, without counting this transition as an added detail.",
+          "token": "CFNG",
+          "originalView": "detail"
+        }
+      ],
+      "originalFiles": [
+        {
+          "side": "after",
+          "token": "CFNG",
+          "path": "capture-repairs/original/20261025T112714Z-3fc89bba/after/CFNG/results.jsonl",
+          "sha256": "638a6d77bbf68601cb213ad56b8068fe299df950ad189253bfd1e8ebaf95fa09",
+          "published": false
+        },
+        {
+          "side": "after",
+          "token": "CFNG",
+          "path": "capture-repairs/original/20261025T112714Z-3fc89bba/after/CFNG/shots/white/1280/CFNG--detail.jpg",
+          "sha256": "9a8bad101391de6c052dbbd9900619f74be1e52415f4dcf8aa61e65f6d634422",
+          "published": true
+        },
+        {
+          "side": "after",
+          "token": "CFNG",
+          "path": "capture-repairs/original/20261025T112714Z-3fc89bba/after/CFNG/shots/white/1280/CFNG--root.jpg",
+          "sha256": "d7ab0deaef594b180889de6b9947bdf4aa75c55a129b82faa0c1170322258320",
+          "published": true
+        },
+        {
+          "side": "after",
+          "token": "CFNG",
+          "path": "capture-repairs/original/20261025T112714Z-3fc89bba/after/CFNG/shots/white/640/CFNG--root.jpg",
+          "sha256": "bb3cff3cb87fad6a78cba460a0c03154836c3aa29a6a7568ba207e85ad793a8b",
+          "published": true
+        },
+        {
+          "side": "after",
+          "token": "CFNG",
+          "path": "capture-repairs/original/20261025T112714Z-3fc89bba/after/CFNG/views.jsonl",
+          "sha256": "fdfe1ad70520a85c978d8fa5d7c1c540f294a8dd6198cfdb25409bee61d34688",
+          "published": false
+        },
+        {
+          "side": "after",
+          "token": "LAY",
+          "path": "capture-repairs/original/20261025T112714Z-3fc89bba/after/LAY/results.jsonl",
+          "sha256": "1582b4fa26d8204dca2e7668de99035ae44903d7aa336a52d5c16489d9759759",
+          "published": false
+        },
+        {
+          "side": "after",
+          "token": "LAY",
+          "path": "capture-repairs/original/20261025T112714Z-3fc89bba/after/LAY/shots/white/1280/LAY--root.jpg",
+          "sha256": "460856227ea9eb62381af8b167d7a87d3b80a43f3bcfe6194751fe5fbf5bddb8",
+          "published": true
+        },
+        {
+          "side": "after",
+          "token": "LAY",
+          "path": "capture-repairs/original/20261025T112714Z-3fc89bba/after/LAY/shots/white/640/LAY--root.jpg",
+          "sha256": "d6a0b5b0aed5e6230139faaa174ca85ee64152c0ffe885ff3081a5df1d2b2796",
+          "published": true
+        },
+        {
+          "side": "after",
+          "token": "LAY",
+          "path": "capture-repairs/original/20261025T112714Z-3fc89bba/after/LAY/views.jsonl",
+          "sha256": "dfc0dc41de11e063e6c5ad48c422eecadc56c175b8cd08b9bd4338ae9f08e9d2",
+          "published": false
+        },
+        {
+          "side": "after",
+          "token": "SEC",
+          "path": "capture-repairs/original/20261025T112714Z-3fc89bba/after/SEC/results.jsonl",
+          "sha256": "4dd31a826f952412b53b4a68830dbe59e74091978b77112a13b35681d7581881",
+          "published": false
+        },
+        {
+          "side": "after",
+          "token": "SEC",
+          "path": "capture-repairs/original/20261025T112714Z-3fc89bba/after/SEC/shots/white/640/SEC--root.jpg",
+          "sha256": "ec3aa48e25e56ccb1c4b2f124d1485f05a41c8f92b46080fec08ec36d487c3a1",
+          "published": true
+        },
+        {
+          "side": "after",
+          "token": "SEC",
+          "path": "capture-repairs/original/20261025T112714Z-3fc89bba/after/SEC/views.jsonl",
+          "sha256": "68cbd98f5c657a46d4aba973c540174b3f3769c0f1369987602db34d696d95d9",
+          "published": false
+        },
+        {
+          "side": "before",
+          "token": "ATS",
+          "path": "capture-repairs/original/20261025T112714Z-3fc89bba/before/ATS/results.jsonl",
+          "sha256": "d1a114a57f20e45d78968616ba5a860c3976a93b6e9c7baeeb11340c8a4a9008",
+          "published": false
+        },
+        {
+          "side": "before",
+          "token": "ATS",
+          "path": "capture-repairs/original/20261025T112714Z-3fc89bba/before/ATS/shots/white/1280/ATS--root.jpg",
+          "sha256": "5c1f63263bbd1c8d128672b7ff0eeae688d8d3f05c26fbe43855268de6927649",
+          "published": true
+        },
+        {
+          "side": "before",
+          "token": "ATS",
+          "path": "capture-repairs/original/20261025T112714Z-3fc89bba/before/ATS/shots/white/1280/ATS--tab-daily-volume.jpg",
+          "sha256": "1053823f0c3df1c4adb77ec5f3a34e12d6f7fe00f73c6e678ce2d848623cb5a5",
+          "published": true
+        },
+        {
+          "side": "before",
+          "token": "ATS",
+          "path": "capture-repairs/original/20261025T112714Z-3fc89bba/before/ATS/shots/white/1280/ATS--tab-fails-to-deliver.jpg",
+          "sha256": "ba4fcc3a77aed80e2452edca3d2734668f80b13f1748e5c31a68706cb2d6fead",
+          "published": true
+        },
+        {
+          "side": "before",
+          "token": "ATS",
+          "path": "capture-repairs/original/20261025T112714Z-3fc89bba/before/ATS/shots/white/1280/ATS--tab-weekly-ats-otc.jpg",
+          "sha256": "821cd047e5077341150ad6748a280a2069f8a9d723d60bef2f9976f4ab0941ef",
+          "published": true
+        },
+        {
+          "side": "before",
+          "token": "ATS",
+          "path": "capture-repairs/original/20261025T112714Z-3fc89bba/before/ATS/shots/white/640/ATS--root.jpg",
+          "sha256": "eeecfb56a141e6c32dc173dbcf62180c20a7a06287a0f32f661ba6b484edd3d1",
+          "published": true
+        },
+        {
+          "side": "before",
+          "token": "ATS",
+          "path": "capture-repairs/original/20261025T112714Z-3fc89bba/before/ATS/shots/white/640/ATS--tab-daily-volume.jpg",
+          "sha256": "fa9d7d360911290a021d87b66f5e4b0c4302939e19e216ad0ca1b5b0d00e67b2",
+          "published": true
+        },
+        {
+          "side": "before",
+          "token": "ATS",
+          "path": "capture-repairs/original/20261025T112714Z-3fc89bba/before/ATS/shots/white/640/ATS--tab-fails-to-deliver.jpg",
+          "sha256": "0b7fc8378589ec6d7bede3b3dbe4eb513a4caf7335f951bf9a8b5c26af8e9bf1",
+          "published": true
+        },
+        {
+          "side": "before",
+          "token": "ATS",
+          "path": "capture-repairs/original/20261025T112714Z-3fc89bba/before/ATS/shots/white/640/ATS--tab-weekly-ats-otc.jpg",
+          "sha256": "d37cc7d5e1bc50c628ffd7fdeb8a4dffde13aa9d64dc29597356741fd3cccb84",
+          "published": true
+        },
+        {
+          "side": "before",
+          "token": "ATS",
+          "path": "capture-repairs/original/20261025T112714Z-3fc89bba/before/ATS/views.jsonl",
+          "sha256": "c4e4edc021b23ba2d98d3fa9287f729cac06a3dd7b00fda078dc7bfd668f86fa",
+          "published": false
+        },
+        {
+          "side": "before",
+          "token": "ETF",
+          "path": "capture-repairs/original/20261025T112714Z-3fc89bba/before/ETF/results.jsonl",
+          "sha256": "e422eda4f5e9b090f0d3b1459fb470107f35962484be02662216c7d238587c13",
+          "published": false
+        },
+        {
+          "side": "before",
+          "token": "ETF",
+          "path": "capture-repairs/original/20261025T112714Z-3fc89bba/before/ETF/shots/white/640/ETF--root.jpg",
+          "sha256": "d14d1f81f14054ed156185ab03c23c8ce336b76d2a5560400f9388ff0bb37ad1",
+          "published": true
+        },
+        {
+          "side": "before",
+          "token": "ETF",
+          "path": "capture-repairs/original/20261025T112714Z-3fc89bba/before/ETF/views.jsonl",
+          "sha256": "90bd420a3f08f495fe58cf9a412d4a1e6425fb0dcfea2db71a59d4a61442e4ac",
+          "published": false
+        },
+        {
+          "side": "before",
+          "token": "LAY",
+          "path": "capture-repairs/original/20261025T112714Z-3fc89bba/before/LAY/results.jsonl",
+          "sha256": "8b7293b370ac11517b8c8a33e36bc0f335d67641e07c94a8fab1ca8347edd146",
+          "published": false
+        },
+        {
+          "side": "before",
+          "token": "LAY",
+          "path": "capture-repairs/original/20261025T112714Z-3fc89bba/before/LAY/shots/white/1280/LAY--root.jpg",
+          "sha256": "460856227ea9eb62381af8b167d7a87d3b80a43f3bcfe6194751fe5fbf5bddb8",
+          "published": true
+        },
+        {
+          "side": "before",
+          "token": "LAY",
+          "path": "capture-repairs/original/20261025T112714Z-3fc89bba/before/LAY/shots/white/640/LAY--root.jpg",
+          "sha256": "d6a0b5b0aed5e6230139faaa174ca85ee64152c0ffe885ff3081a5df1d2b2796",
+          "published": true
+        },
+        {
+          "side": "before",
+          "token": "LAY",
+          "path": "capture-repairs/original/20261025T112714Z-3fc89bba/before/LAY/views.jsonl",
+          "sha256": "8698b5db6460061aaf6ef8edc0699e5f213dfd4154983c569b743daf0d49373c",
+          "published": false
+        }
+      ],
+      "replacementFiles": [
+        {
+          "side": "after",
+          "token": "SEC",
+          "path": "capture-repairs/sources/20261025T112714Z-3fc89bba/after/SEC/results.jsonl",
+          "sha256": "0d05824d13f5a2d1b09e9531bb405a512748b3d678892cfac18a00ba3728874c",
+          "sourcePath": "benchmark/shards/all/after-again/results.jsonl",
+          "selectedTokenRows": true,
+          "sourceFileSha256": "866cecd649254d8830d258683c5b10be25b765f08d92b41f5016fada20d47f6b",
+          "published": false
+        },
+        {
+          "side": "after",
+          "token": "SEC",
+          "path": "capture-repairs/sources/20261025T112714Z-3fc89bba/after/SEC/shots/white/1280/SEC--root.jpg",
+          "sha256": "feb5b41abe985aa3bfcc15654f965e37d127f30be58676dcee7c836dc5ca828c",
+          "sourcePath": "benchmark/shards/all/after-again/shots/white/1280/SEC--root.jpg",
+          "selectedTokenRows": false,
+          "sourceFileSha256": "feb5b41abe985aa3bfcc15654f965e37d127f30be58676dcee7c836dc5ca828c",
+          "published": true
+        },
+        {
+          "side": "after",
+          "token": "SEC",
+          "path": "capture-repairs/sources/20261025T112714Z-3fc89bba/after/SEC/shots/white/640/SEC--root.jpg",
+          "sha256": "ec3aa48e25e56ccb1c4b2f124d1485f05a41c8f92b46080fec08ec36d487c3a1",
+          "sourcePath": "benchmark/shards/all/after-again/shots/white/640/SEC--root.jpg",
+          "selectedTokenRows": false,
+          "sourceFileSha256": "ec3aa48e25e56ccb1c4b2f124d1485f05a41c8f92b46080fec08ec36d487c3a1",
+          "published": true
+        },
+        {
+          "side": "after",
+          "token": "SEC",
+          "path": "capture-repairs/sources/20261025T112714Z-3fc89bba/after/SEC/views.jsonl",
+          "sha256": "68cbd98f5c657a46d4aba973c540174b3f3769c0f1369987602db34d696d95d9",
+          "sourcePath": "benchmark/shards/all/after-again/views.jsonl",
+          "selectedTokenRows": true,
+          "sourceFileSha256": "dd89225cd50dc2ed2fb5a04399270f4ef4d9181a627336ea22a81c64a8eb6b57",
+          "published": false
+        },
+        {
+          "side": "before",
+          "token": "ATS",
+          "path": "capture-repairs/sources/20261025T112714Z-3fc89bba/before/ATS/results.jsonl",
+          "sha256": "40c256ab1e0fa8ed0f53ef5f07a82527235603eff0243ab4dfca995f2c622cca",
+          "sourcePath": "benchmark/shards/all/before-again/results.jsonl",
+          "selectedTokenRows": true,
+          "sourceFileSha256": "4692963a657e34bd50d2328ad983311a4000a91d5dc754a94776776f9dc6f279",
+          "published": false
+        },
+        {
+          "side": "before",
+          "token": "ATS",
+          "path": "capture-repairs/sources/20261025T112714Z-3fc89bba/before/ATS/shots/white/1280/ATS--root.jpg",
+          "sha256": "977168af69dcffa2e01c6faa3f10f146996cb5fbafc61989f15db61fdf72eecb",
+          "sourcePath": "benchmark/shards/all/before-again/shots/white/1280/ATS--root.jpg",
+          "selectedTokenRows": false,
+          "sourceFileSha256": "977168af69dcffa2e01c6faa3f10f146996cb5fbafc61989f15db61fdf72eecb",
+          "published": true
+        },
+        {
+          "side": "before",
+          "token": "ATS",
+          "path": "capture-repairs/sources/20261025T112714Z-3fc89bba/before/ATS/shots/white/1280/ATS--tab-daily-volume.jpg",
+          "sha256": "eafd68dd79a696a3da3d35d5c062bcf8b24e43cb0d6c4770167f1debf9e9eb36",
+          "sourcePath": "benchmark/shards/all/before-again/shots/white/1280/ATS--tab-daily-volume.jpg",
+          "selectedTokenRows": false,
+          "sourceFileSha256": "eafd68dd79a696a3da3d35d5c062bcf8b24e43cb0d6c4770167f1debf9e9eb36",
+          "published": true
+        },
+        {
+          "side": "before",
+          "token": "ATS",
+          "path": "capture-repairs/sources/20261025T112714Z-3fc89bba/before/ATS/shots/white/1280/ATS--tab-fails-to-deliver.jpg",
+          "sha256": "1b7a4f7bdad1558446548089b6b4167c039ab88c9c848ad8271f68cf73dfbfd4",
+          "sourcePath": "benchmark/shards/all/before-again/shots/white/1280/ATS--tab-fails-to-deliver.jpg",
+          "selectedTokenRows": false,
+          "sourceFileSha256": "1b7a4f7bdad1558446548089b6b4167c039ab88c9c848ad8271f68cf73dfbfd4",
+          "published": true
+        },
+        {
+          "side": "before",
+          "token": "ATS",
+          "path": "capture-repairs/sources/20261025T112714Z-3fc89bba/before/ATS/shots/white/1280/ATS--tab-interest.jpg",
+          "sha256": "3dbf027631917210c843c5b644b1db9b82370a9d58ea9fe083f8e03e50dd01e4",
+          "sourcePath": "benchmark/shards/all/before-again/shots/white/1280/ATS--tab-interest.jpg",
+          "selectedTokenRows": false,
+          "sourceFileSha256": "3dbf027631917210c843c5b644b1db9b82370a9d58ea9fe083f8e03e50dd01e4",
+          "published": true
+        },
+        {
+          "side": "before",
+          "token": "ATS",
+          "path": "capture-repairs/sources/20261025T112714Z-3fc89bba/before/ATS/shots/white/640/ATS--root.jpg",
+          "sha256": "388900e33b3a8e9d33f0e1278d474790da939bf82fcd073e83d7a1b3910fd602",
+          "sourcePath": "benchmark/shards/all/before-again/shots/white/640/ATS--root.jpg",
+          "selectedTokenRows": false,
+          "sourceFileSha256": "388900e33b3a8e9d33f0e1278d474790da939bf82fcd073e83d7a1b3910fd602",
+          "published": true
+        },
+        {
+          "side": "before",
+          "token": "ATS",
+          "path": "capture-repairs/sources/20261025T112714Z-3fc89bba/before/ATS/shots/white/640/ATS--tab-daily-volume.jpg",
+          "sha256": "cd765e719c077e0026fc139e94d9700fe579468f4b6dd660f0223cbd7a6c8924",
+          "sourcePath": "benchmark/shards/all/before-again/shots/white/640/ATS--tab-daily-volume.jpg",
+          "selectedTokenRows": false,
+          "sourceFileSha256": "cd765e719c077e0026fc139e94d9700fe579468f4b6dd660f0223cbd7a6c8924",
+          "published": true
+        },
+        {
+          "side": "before",
+          "token": "ATS",
+          "path": "capture-repairs/sources/20261025T112714Z-3fc89bba/before/ATS/shots/white/640/ATS--tab-fails-to-deliver.jpg",
+          "sha256": "c2e54a2a7aa9e49f65fe7f0a9937f772f59b6e2027df08f0680e7ae251db7f68",
+          "sourcePath": "benchmark/shards/all/before-again/shots/white/640/ATS--tab-fails-to-deliver.jpg",
+          "selectedTokenRows": false,
+          "sourceFileSha256": "c2e54a2a7aa9e49f65fe7f0a9937f772f59b6e2027df08f0680e7ae251db7f68",
+          "published": true
+        },
+        {
+          "side": "before",
+          "token": "ATS",
+          "path": "capture-repairs/sources/20261025T112714Z-3fc89bba/before/ATS/shots/white/640/ATS--tab-interest.jpg",
+          "sha256": "744762b2783d15725c84d9b495341f1ac61a051f9963c512bc45bb5606182455",
+          "sourcePath": "benchmark/shards/all/before-again/shots/white/640/ATS--tab-interest.jpg",
+          "selectedTokenRows": false,
+          "sourceFileSha256": "744762b2783d15725c84d9b495341f1ac61a051f9963c512bc45bb5606182455",
+          "published": true
+        },
+        {
+          "side": "before",
+          "token": "ATS",
+          "path": "capture-repairs/sources/20261025T112714Z-3fc89bba/before/ATS/views.jsonl",
+          "sha256": "f7d9572430a336a37044b10d2d2e508d0dd26330dff5b8ee0740041b64f2f75b",
+          "sourcePath": "benchmark/shards/all/before-again/views.jsonl",
+          "selectedTokenRows": true,
+          "sourceFileSha256": "1fde762fe9c28433b31c42e76af078560cf92dfeb4d1abc42f06657762ec6589",
+          "published": false
+        },
+        {
+          "side": "before",
+          "token": "ETF",
+          "path": "capture-repairs/sources/20261025T112714Z-3fc89bba/before/ETF/results.jsonl",
+          "sha256": "5c197c6e68ab27c8f410581284a2e90e98e085b97f61df6d7586918e2f1caed3",
+          "sourcePath": "benchmark/shards/all/before-again/results.jsonl",
+          "selectedTokenRows": true,
+          "sourceFileSha256": "4692963a657e34bd50d2328ad983311a4000a91d5dc754a94776776f9dc6f279",
+          "published": false
+        },
+        {
+          "side": "before",
+          "token": "ETF",
+          "path": "capture-repairs/sources/20261025T112714Z-3fc89bba/before/ETF/shots/white/1280/ETF--root.jpg",
+          "sha256": "e3657516b6ef23ad36b8cd29a6caf519b3a74cb67c2f8fc03d6bfc6cba2c0e48",
+          "sourcePath": "benchmark/shards/all/before-again/shots/white/1280/ETF--root.jpg",
+          "selectedTokenRows": false,
+          "sourceFileSha256": "e3657516b6ef23ad36b8cd29a6caf519b3a74cb67c2f8fc03d6bfc6cba2c0e48",
+          "published": true
+        },
+        {
+          "side": "before",
+          "token": "ETF",
+          "path": "capture-repairs/sources/20261025T112714Z-3fc89bba/before/ETF/shots/white/640/ETF--root.jpg",
+          "sha256": "d14d1f81f14054ed156185ab03c23c8ce336b76d2a5560400f9388ff0bb37ad1",
+          "sourcePath": "benchmark/shards/all/before-again/shots/white/640/ETF--root.jpg",
+          "selectedTokenRows": false,
+          "sourceFileSha256": "d14d1f81f14054ed156185ab03c23c8ce336b76d2a5560400f9388ff0bb37ad1",
+          "published": true
+        },
+        {
+          "side": "before",
+          "token": "ETF",
+          "path": "capture-repairs/sources/20261025T112714Z-3fc89bba/before/ETF/views.jsonl",
+          "sha256": "90bd420a3f08f495fe58cf9a412d4a1e6425fb0dcfea2db71a59d4a61442e4ac",
+          "sourcePath": "benchmark/shards/all/before-again/views.jsonl",
+          "selectedTokenRows": true,
+          "sourceFileSha256": "1fde762fe9c28433b31c42e76af078560cf92dfeb4d1abc42f06657762ec6589",
+          "published": false
+        }
+      ],
+      "initialComparison": {
+        "path": "capture-repairs/original/20261025T112714Z-3fc89bba/initial-changes.json",
+        "sha256": "f4c7a573d5aec60ef73cae40cf382d7f4689fdafffd65d9e827f29bbb5deaa8d",
+        "publicCopyRedacted": true,
+        "publishedSha256": "92232ca4eb36e1fcc6914a75229dfeb7bd9f43fa71bc5256b69eedf4abb63546"
+      },
+      "coverage": {
+        "before": {
+          "expectedEntries": 182,
+          "actualEntries": 182,
+          "missing": [],
+          "unexpected": [],
+          "viewEntries": 645,
+          "renderedViews": 550,
+          "failedEntries": [
+            "BR",
+            "ERN",
+            "EVTS",
+            "HDS",
+            "IBKR",
+            "PL",
+            "TBO",
+            "VIEW",
+            "debug-log"
+          ],
+          "unmeasuredViewIds": [
+            "LAY--detail"
+          ],
+          "measurementRows": 1100,
+          "pictureFiles": 1100,
+          "incompleteNormalViews": []
+        },
+        "after": {
+          "expectedEntries": 182,
+          "actualEntries": 182,
+          "missing": [],
+          "unexpected": [],
+          "viewEntries": 652,
+          "renderedViews": 559,
+          "failedEntries": [
+            "BR",
+            "IBKR",
+            "PL",
+            "TBO",
+            "VIEW",
+            "debug-log"
+          ],
+          "unmeasuredViewIds": [
+            "CFNG--detail",
+            "LAY--detail"
+          ],
+          "measurementRows": 1118,
+          "pictureFiles": 1118,
+          "incompleteNormalViews": []
+        }
+      },
+      "comparisonRequiresRecompute": true
+    }
+  ]
+}

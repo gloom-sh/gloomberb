@@ -1,0 +1,5747 @@
+[
+  {
+    "id": "13F--root",
+    "kind": "pane",
+    "token": "13F",
+    "paneId": "thirteenf-funds",
+    "view": "root",
+    "observedPaneId": "thirteenf-funds"
+  },
+  {
+    "id": "13F--tab-crowding",
+    "kind": "pane",
+    "token": "13F",
+    "paneId": "thirteenf-funds",
+    "view": "tab",
+    "tab": "Crowding",
+    "observedPaneId": "thirteenf-funds"
+  },
+  {
+    "id": "ERN--root",
+    "kind": "pane",
+    "token": "ERN",
+    "paneId": "earnings-calendar",
+    "view": "root",
+    "observedPaneId": "earnings-calendar"
+  },
+  {
+    "id": "EVTS--root",
+    "kind": "pane",
+    "token": "EVTS",
+    "paneId": "earnings-calendar",
+    "view": "root",
+    "observedPaneId": "earnings-calendar"
+  },
+  {
+    "id": "HDS--root",
+    "kind": "pane",
+    "token": "HDS",
+    "paneId": "holders",
+    "view": "root",
+    "observedPaneId": "holders"
+  },
+  {
+    "id": "HDS--tab-chart",
+    "kind": "pane",
+    "token": "HDS",
+    "paneId": "holders",
+    "view": "tab",
+    "tab": "Chart",
+    "observedPaneId": "holders"
+  },
+  {
+    "id": "HDS--tab-13d-g",
+    "kind": "pane",
+    "token": "HDS",
+    "paneId": "holders",
+    "view": "tab",
+    "tab": "13D/G",
+    "observedPaneId": "holders"
+  },
+  {
+    "id": "shell",
+    "kind": "shell",
+    "token": "shell",
+    "view": "root"
+  },
+  {
+    "id": "command-bar",
+    "kind": "shell",
+    "token": "command-bar",
+    "view": "root"
+  },
+  {
+    "id": "command-bar-search",
+    "kind": "shell",
+    "token": "command-bar-search",
+    "view": "root"
+  },
+  {
+    "id": "theme-picker",
+    "kind": "shell",
+    "token": "theme-picker",
+    "view": "root"
+  },
+  {
+    "id": "feedback-dialog",
+    "kind": "shell",
+    "token": "feedback-dialog",
+    "view": "root"
+  },
+  {
+    "id": "pane-settings-dialog",
+    "kind": "shell",
+    "token": "pane-settings-dialog",
+    "view": "root"
+  },
+  {
+    "id": "position-form",
+    "kind": "shell",
+    "token": "position-form",
+    "view": "root"
+  },
+  {
+    "id": "pane-menu",
+    "kind": "shell",
+    "token": "pane-menu",
+    "view": "root"
+  },
+  {
+    "id": "ACM--root",
+    "kind": "pane",
+    "token": "ACM",
+    "paneId": "account-management",
+    "view": "root",
+    "observedPaneId": "account-management"
+  },
+  {
+    "id": "ADR--root",
+    "kind": "pane",
+    "token": "ADR",
+    "paneId": "ticker-research",
+    "view": "root",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "ADR--tab-revenue",
+    "kind": "pane",
+    "token": "ADR",
+    "paneId": "ticker-research",
+    "view": "tab",
+    "tab": "Revenue",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "ADR--tab-chart",
+    "kind": "pane",
+    "token": "ADR",
+    "paneId": "ticker-research",
+    "view": "tab",
+    "tab": "Chart",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "ADR--tab-analyst",
+    "kind": "pane",
+    "token": "ADR",
+    "paneId": "ticker-research",
+    "view": "tab",
+    "tab": "Analyst",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "ADR--tab-diagnostic",
+    "kind": "pane",
+    "token": "ADR",
+    "paneId": "ticker-research",
+    "view": "tab",
+    "tab": "Diagnostic",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "ADR--tab-calls",
+    "kind": "pane",
+    "token": "ADR",
+    "paneId": "ticker-research",
+    "view": "tab",
+    "tab": "Calls",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "ADR--tab-events",
+    "kind": "pane",
+    "token": "ADR",
+    "paneId": "ticker-research",
+    "view": "tab",
+    "tab": "Events",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "ADR--tab-options",
+    "kind": "pane",
+    "token": "ADR",
+    "paneId": "ticker-research",
+    "view": "tab",
+    "tab": "Options",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "ADR--tab-catalysts",
+    "kind": "pane",
+    "token": "ADR",
+    "paneId": "ticker-research",
+    "view": "tab",
+    "tab": "Catalysts",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "ADR--tab-exec",
+    "kind": "pane",
+    "token": "ADR",
+    "paneId": "ticker-research",
+    "view": "tab",
+    "tab": "Exec",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "ADR--tab-risks",
+    "kind": "pane",
+    "token": "ADR",
+    "paneId": "ticker-research",
+    "view": "tab",
+    "tab": "Risks",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "ADR--tab-short-interest",
+    "kind": "pane",
+    "token": "ADR",
+    "paneId": "ticker-research",
+    "view": "tab",
+    "tab": "Short Interest",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "ADR--tab-m-a",
+    "kind": "pane",
+    "token": "ADR",
+    "paneId": "ticker-research",
+    "view": "tab",
+    "tab": "M&A",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "ADR--tab-8-k",
+    "kind": "pane",
+    "token": "ADR",
+    "paneId": "ticker-research",
+    "view": "tab",
+    "tab": "8-K",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "ADR--tab-hiring",
+    "kind": "pane",
+    "token": "ADR",
+    "paneId": "ticker-research",
+    "view": "tab",
+    "tab": "Hiring",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "ADR--tab-dividends",
+    "kind": "pane",
+    "token": "ADR",
+    "paneId": "ticker-research",
+    "view": "tab",
+    "tab": "Dividends",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "ADR--tab-hiring-momentum",
+    "kind": "pane",
+    "token": "ADR",
+    "paneId": "ticker-research",
+    "view": "tab",
+    "tab": "Hiring momentum",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "ADR--tab-tweets",
+    "kind": "pane",
+    "token": "ADR",
+    "paneId": "ticker-research",
+    "view": "tab",
+    "tab": "Tweets",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "ADR--tab-13f",
+    "kind": "pane",
+    "token": "ADR",
+    "paneId": "ticker-research",
+    "view": "tab",
+    "tab": "13F",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "ADR--tab-apps",
+    "kind": "pane",
+    "token": "ADR",
+    "paneId": "ticker-research",
+    "view": "tab",
+    "tab": "Apps",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "ADR--tab-news",
+    "kind": "pane",
+    "token": "ADR",
+    "paneId": "ticker-research",
+    "view": "tab",
+    "tab": "News",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "ADR--tab-holders",
+    "kind": "pane",
+    "token": "ADR",
+    "paneId": "ticker-research",
+    "view": "tab",
+    "tab": "Holders",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "ADR--tab-sec",
+    "kind": "pane",
+    "token": "ADR",
+    "paneId": "ticker-research",
+    "view": "tab",
+    "tab": "SEC",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "ADR--tab-insider",
+    "kind": "pane",
+    "token": "ADR",
+    "paneId": "ticker-research",
+    "view": "tab",
+    "tab": "Insider",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "ADR--tab-thesis",
+    "kind": "pane",
+    "token": "ADR",
+    "paneId": "ticker-research",
+    "view": "tab",
+    "tab": "Thesis",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "ADR--tab-ask-ai",
+    "kind": "pane",
+    "token": "ADR",
+    "paneId": "ticker-research",
+    "view": "tab",
+    "tab": "Ask AI",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "ADR--tab-catalysts-changes",
+    "kind": "pane",
+    "token": "ADR",
+    "paneId": "ticker-research",
+    "view": "skipped",
+    "tab": "Catalysts > Changes",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "ADR--tab-hiring-momentum-chart-2-2",
+    "kind": "pane",
+    "token": "ADR",
+    "paneId": "ticker-research",
+    "view": "skipped",
+    "tab": "Hiring momentum > Chart [2.2]",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "ADR--tab-hiring-momentum-mix",
+    "kind": "pane",
+    "token": "ADR",
+    "paneId": "ticker-research",
+    "view": "skipped",
+    "tab": "Hiring momentum > Mix",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "ADR--tab-hiring-momentum-peers",
+    "kind": "pane",
+    "token": "ADR",
+    "paneId": "ticker-research",
+    "view": "skipped",
+    "tab": "Hiring momentum > Peers",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "ADR--tab-hiring-momentum-evidence",
+    "kind": "pane",
+    "token": "ADR",
+    "paneId": "ticker-research",
+    "view": "skipped",
+    "tab": "Hiring momentum > Evidence",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "ADR--tab-hiring-momentum-moves",
+    "kind": "pane",
+    "token": "ADR",
+    "paneId": "ticker-research",
+    "view": "skipped",
+    "tab": "Hiring momentum > Moves",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "ADR--tab-hiring-momentum-expansion",
+    "kind": "pane",
+    "token": "ADR",
+    "paneId": "ticker-research",
+    "view": "skipped",
+    "tab": "Hiring momentum > Expansion",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "ADR--tab-hiring-momentum-anomalies",
+    "kind": "pane",
+    "token": "ADR",
+    "paneId": "ticker-research",
+    "view": "skipped",
+    "tab": "Hiring momentum > Anomalies",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "ADR--tab-hiring-momentum-building",
+    "kind": "pane",
+    "token": "ADR",
+    "paneId": "ticker-research",
+    "view": "skipped",
+    "tab": "Hiring momentum > Building",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "ADR--tab-apps-chart-2-2",
+    "kind": "pane",
+    "token": "ADR",
+    "paneId": "ticker-research",
+    "view": "skipped",
+    "tab": "Apps > Chart [2.2]",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "ADR--tab-apps-markets",
+    "kind": "pane",
+    "token": "ADR",
+    "paneId": "ticker-research",
+    "view": "skipped",
+    "tab": "Apps > Markets",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "ADR--tab-apps-peers",
+    "kind": "pane",
+    "token": "ADR",
+    "paneId": "ticker-research",
+    "view": "skipped",
+    "tab": "Apps > Peers",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "ADR--tab-apps-evidence",
+    "kind": "pane",
+    "token": "ADR",
+    "paneId": "ticker-research",
+    "view": "skipped",
+    "tab": "Apps > Evidence",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "ATS--root",
+    "kind": "pane",
+    "token": "ATS",
+    "paneId": "short-interest",
+    "view": "root",
+    "observedPaneId": "short-interest"
+  },
+  {
+    "id": "ATS--tab-interest",
+    "kind": "pane",
+    "token": "ATS",
+    "paneId": "short-interest",
+    "view": "tab",
+    "tab": "Interest",
+    "observedPaneId": "short-interest"
+  },
+  {
+    "id": "ATS--tab-daily-volume",
+    "kind": "pane",
+    "token": "ATS",
+    "paneId": "short-interest",
+    "view": "tab",
+    "tab": "Daily volume",
+    "observedPaneId": "short-interest"
+  },
+  {
+    "id": "ATS--tab-fails-to-deliver",
+    "kind": "pane",
+    "token": "ATS",
+    "paneId": "short-interest",
+    "view": "tab",
+    "tab": "Fails to deliver",
+    "observedPaneId": "short-interest"
+  },
+  {
+    "id": "attention-trending-pane--root",
+    "kind": "pane",
+    "token": "attention-trending-pane",
+    "paneId": "attention-trending",
+    "view": "root",
+    "observedPaneId": "attention-trending"
+  },
+  {
+    "id": "attention-trending-pane--detail",
+    "kind": "pane",
+    "token": "attention-trending-pane",
+    "paneId": "attention-trending",
+    "view": "detail",
+    "observedPaneId": "attention-trending"
+  },
+  {
+    "id": "AUCT--root",
+    "kind": "pane",
+    "token": "AUCT",
+    "paneId": "fixed-income",
+    "view": "root",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "AUCT--tab-credit",
+    "kind": "pane",
+    "token": "AUCT",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Credit",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "AUCT--tab-issuer-debt",
+    "kind": "pane",
+    "token": "AUCT",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Issuer Debt",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "AUCT--tab-bonds-1-3",
+    "kind": "pane",
+    "token": "AUCT",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Bonds [1.3]",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "AUCT--tab-bills",
+    "kind": "pane",
+    "token": "AUCT",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Bills",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "AUCT--tab-notes",
+    "kind": "pane",
+    "token": "AUCT",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Notes",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "AUCT--tab-bonds-2-4",
+    "kind": "pane",
+    "token": "AUCT",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Bonds [2.4]",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "BI--root",
+    "kind": "pane",
+    "token": "BI",
+    "paneId": "sectors",
+    "view": "root",
+    "observedPaneId": "sectors"
+  },
+  {
+    "id": "BI--tab-industries",
+    "kind": "pane",
+    "token": "BI",
+    "paneId": "sectors",
+    "view": "tab",
+    "tab": "Industries",
+    "observedPaneId": "sectors"
+  },
+  {
+    "id": "BI--tab-themes",
+    "kind": "pane",
+    "token": "BI",
+    "paneId": "sectors",
+    "view": "tab",
+    "tab": "Themes",
+    "observedPaneId": "sectors"
+  },
+  {
+    "id": "BTST--root",
+    "kind": "pane",
+    "token": "BTST",
+    "paneId": "backtest",
+    "view": "root",
+    "observedPaneId": "backtest"
+  },
+  {
+    "id": "BTST--tab-trades",
+    "kind": "pane",
+    "token": "BTST",
+    "paneId": "backtest",
+    "view": "tab",
+    "tab": "Trades",
+    "observedPaneId": "backtest"
+  },
+  {
+    "id": "CAT--root",
+    "kind": "pane",
+    "token": "CAT",
+    "paneId": "data-catalog",
+    "view": "root",
+    "observedPaneId": "data-catalog"
+  },
+  {
+    "id": "CAT--detail",
+    "kind": "pane",
+    "token": "CAT",
+    "paneId": "data-catalog",
+    "view": "detail",
+    "observedPaneId": "data-catalog"
+  },
+  {
+    "id": "CAT--tab-securities",
+    "kind": "pane",
+    "token": "CAT",
+    "paneId": "data-catalog",
+    "view": "tab",
+    "tab": "Securities",
+    "observedPaneId": "data-catalog"
+  },
+  {
+    "id": "CAT--tab-options",
+    "kind": "pane",
+    "token": "CAT",
+    "paneId": "data-catalog",
+    "view": "tab",
+    "tab": "Options",
+    "observedPaneId": "data-catalog"
+  },
+  {
+    "id": "CAT--tab-crypto",
+    "kind": "pane",
+    "token": "CAT",
+    "paneId": "data-catalog",
+    "view": "tab",
+    "tab": "Crypto",
+    "observedPaneId": "data-catalog"
+  },
+  {
+    "id": "CAT--tab-futures",
+    "kind": "pane",
+    "token": "CAT",
+    "paneId": "data-catalog",
+    "view": "tab",
+    "tab": "Futures",
+    "observedPaneId": "data-catalog"
+  },
+  {
+    "id": "CAT--tab-rates",
+    "kind": "pane",
+    "token": "CAT",
+    "paneId": "data-catalog",
+    "view": "tab",
+    "tab": "Rates",
+    "observedPaneId": "data-catalog"
+  },
+  {
+    "id": "CAT--tab-credit",
+    "kind": "pane",
+    "token": "CAT",
+    "paneId": "data-catalog",
+    "view": "tab",
+    "tab": "Credit",
+    "observedPaneId": "data-catalog"
+  },
+  {
+    "id": "CAT--tab-economy",
+    "kind": "pane",
+    "token": "CAT",
+    "paneId": "data-catalog",
+    "view": "tab",
+    "tab": "Economy",
+    "observedPaneId": "data-catalog"
+  },
+  {
+    "id": "CAT--tab-defense-fiscal",
+    "kind": "pane",
+    "token": "CAT",
+    "paneId": "data-catalog",
+    "view": "tab",
+    "tab": "Defense & fiscal",
+    "observedPaneId": "data-catalog"
+  },
+  {
+    "id": "CAT--tab-inflation",
+    "kind": "pane",
+    "token": "CAT",
+    "paneId": "data-catalog",
+    "view": "tab",
+    "tab": "Inflation",
+    "observedPaneId": "data-catalog"
+  },
+  {
+    "id": "CAT--tab-fx",
+    "kind": "pane",
+    "token": "CAT",
+    "paneId": "data-catalog",
+    "view": "tab",
+    "tab": "FX",
+    "observedPaneId": "data-catalog"
+  },
+  {
+    "id": "CAT--tab-energy",
+    "kind": "pane",
+    "token": "CAT",
+    "paneId": "data-catalog",
+    "view": "tab",
+    "tab": "Energy",
+    "observedPaneId": "data-catalog"
+  },
+  {
+    "id": "CAT--tab-commodities",
+    "kind": "pane",
+    "token": "CAT",
+    "paneId": "data-catalog",
+    "view": "tab",
+    "tab": "Commodities",
+    "observedPaneId": "data-catalog"
+  },
+  {
+    "id": "CAT--tab-volatility",
+    "kind": "pane",
+    "token": "CAT",
+    "paneId": "data-catalog",
+    "view": "tab",
+    "tab": "Volatility",
+    "observedPaneId": "data-catalog"
+  },
+  {
+    "id": "CAT--tab-sentiment",
+    "kind": "pane",
+    "token": "CAT",
+    "paneId": "data-catalog",
+    "view": "tab",
+    "tab": "Sentiment",
+    "observedPaneId": "data-catalog"
+  },
+  {
+    "id": "CAT--tab-positioning",
+    "kind": "pane",
+    "token": "CAT",
+    "paneId": "data-catalog",
+    "view": "tab",
+    "tab": "Positioning",
+    "observedPaneId": "data-catalog"
+  },
+  {
+    "id": "CAT--tab-valuation",
+    "kind": "pane",
+    "token": "CAT",
+    "paneId": "data-catalog",
+    "view": "tab",
+    "tab": "Valuation",
+    "observedPaneId": "data-catalog"
+  },
+  {
+    "id": "CAT--tab-alternative-data",
+    "kind": "pane",
+    "token": "CAT",
+    "paneId": "data-catalog",
+    "view": "tab",
+    "tab": "Alternative data",
+    "observedPaneId": "data-catalog"
+  },
+  {
+    "id": "CDS--root",
+    "kind": "pane",
+    "token": "CDS",
+    "paneId": "fixed-income",
+    "view": "root",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "CDS--tab-issuer-debt",
+    "kind": "pane",
+    "token": "CDS",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Issuer Debt",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "CDS--tab-bonds",
+    "kind": "pane",
+    "token": "CDS",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Bonds",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "CDS--tab-treasury",
+    "kind": "pane",
+    "token": "CDS",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Treasury",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "CDS--tab-treasury-bills",
+    "kind": "pane",
+    "token": "CDS",
+    "paneId": "fixed-income",
+    "view": "skipped",
+    "tab": "Treasury > Bills",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "CDS--tab-treasury-notes",
+    "kind": "pane",
+    "token": "CDS",
+    "paneId": "fixed-income",
+    "view": "skipped",
+    "tab": "Treasury > Notes",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "CDS--tab-treasury-bonds-2-4",
+    "kind": "pane",
+    "token": "CDS",
+    "paneId": "fixed-income",
+    "view": "skipped",
+    "tab": "Treasury > Bonds [2.4]",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "CG--root",
+    "kind": "pane",
+    "token": "CG",
+    "paneId": "congress-trades",
+    "view": "root",
+    "observedPaneId": "congress-trades"
+  },
+  {
+    "id": "CHOKE--root",
+    "kind": "pane",
+    "token": "CHOKE",
+    "paneId": "chart-composer",
+    "view": "root",
+    "observedPaneId": "chart-composer"
+  },
+  {
+    "id": "CN--root",
+    "kind": "pane",
+    "token": "CN",
+    "paneId": "ticker-news",
+    "view": "root",
+    "observedPaneId": "ticker-news"
+  },
+  {
+    "id": "COT--root",
+    "kind": "pane",
+    "token": "COT",
+    "paneId": "commodities-energy",
+    "view": "root",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "COT--tab-markets",
+    "kind": "pane",
+    "token": "COT",
+    "paneId": "commodities-energy",
+    "view": "tab",
+    "tab": "Markets",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "COT--tab-curve",
+    "kind": "pane",
+    "token": "COT",
+    "paneId": "commodities-energy",
+    "view": "tab",
+    "tab": "Curve",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "COT--tab-inventories",
+    "kind": "pane",
+    "token": "COT",
+    "paneId": "commodities-energy",
+    "view": "tab",
+    "tab": "Inventories",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "COT--tab-crops",
+    "kind": "pane",
+    "token": "COT",
+    "paneId": "commodities-energy",
+    "view": "tab",
+    "tab": "Crops",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "COT--tab-oil-gas",
+    "kind": "pane",
+    "token": "COT",
+    "paneId": "commodities-energy",
+    "view": "tab",
+    "tab": "Oil & Gas",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "COT--tab-disaggregated",
+    "kind": "pane",
+    "token": "COT",
+    "paneId": "commodities-energy",
+    "view": "tab",
+    "tab": "Disaggregated",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "COT--tab-inventories-products",
+    "kind": "pane",
+    "token": "COT",
+    "paneId": "commodities-energy",
+    "view": "skipped",
+    "tab": "Inventories > Products",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "COT--tab-inventories-gas-storage",
+    "kind": "pane",
+    "token": "COT",
+    "paneId": "commodities-energy",
+    "view": "skipped",
+    "tab": "Inventories > Gas Storage",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "CRD--root",
+    "kind": "pane",
+    "token": "CRD",
+    "paneId": "fixed-income",
+    "view": "root",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "CRD--tab-issuer-debt",
+    "kind": "pane",
+    "token": "CRD",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Issuer Debt",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "CRD--tab-bonds",
+    "kind": "pane",
+    "token": "CRD",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Bonds",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "CRD--tab-treasury",
+    "kind": "pane",
+    "token": "CRD",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Treasury",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "CRD--tab-treasury-bills",
+    "kind": "pane",
+    "token": "CRD",
+    "paneId": "fixed-income",
+    "view": "skipped",
+    "tab": "Treasury > Bills",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "CRD--tab-treasury-notes",
+    "kind": "pane",
+    "token": "CRD",
+    "paneId": "fixed-income",
+    "view": "skipped",
+    "tab": "Treasury > Notes",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "CRD--tab-treasury-bonds-2-4",
+    "kind": "pane",
+    "token": "CRD",
+    "paneId": "fixed-income",
+    "view": "skipped",
+    "tab": "Treasury > Bonds [2.4]",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "CSP--root",
+    "kind": "pane",
+    "token": "CSP",
+    "paneId": "csp-screen",
+    "view": "root",
+    "observedPaneId": "csp-screen"
+  },
+  {
+    "id": "DIAG--root",
+    "kind": "pane",
+    "token": "DIAG",
+    "paneId": "equity-diagnostic",
+    "view": "root",
+    "observedPaneId": "equity-diagnostic"
+  },
+  {
+    "id": "DOE--root",
+    "kind": "pane",
+    "token": "DOE",
+    "paneId": "commodities-energy",
+    "view": "root",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "DOE--tab-markets",
+    "kind": "pane",
+    "token": "DOE",
+    "paneId": "commodities-energy",
+    "view": "tab",
+    "tab": "Markets",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "DOE--tab-curve",
+    "kind": "pane",
+    "token": "DOE",
+    "paneId": "commodities-energy",
+    "view": "tab",
+    "tab": "Curve",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "DOE--tab-positioning",
+    "kind": "pane",
+    "token": "DOE",
+    "paneId": "commodities-energy",
+    "view": "tab",
+    "tab": "Positioning",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "DOE--tab-crops",
+    "kind": "pane",
+    "token": "DOE",
+    "paneId": "commodities-energy",
+    "view": "tab",
+    "tab": "Crops",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "DOE--tab-oil-gas",
+    "kind": "pane",
+    "token": "DOE",
+    "paneId": "commodities-energy",
+    "view": "tab",
+    "tab": "Oil & Gas",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "DOE--tab-products",
+    "kind": "pane",
+    "token": "DOE",
+    "paneId": "commodities-energy",
+    "view": "tab",
+    "tab": "Products",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "DOE--tab-gas-storage",
+    "kind": "pane",
+    "token": "DOE",
+    "paneId": "commodities-energy",
+    "view": "tab",
+    "tab": "Gas Storage",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "DOE--tab-positioning-disaggregated",
+    "kind": "pane",
+    "token": "DOE",
+    "paneId": "commodities-energy",
+    "view": "skipped",
+    "tab": "Positioning > Disaggregated",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "ECO--root",
+    "kind": "pane",
+    "token": "ECO",
+    "paneId": "econ-calendar",
+    "view": "root",
+    "observedPaneId": "econ-calendar"
+  },
+  {
+    "id": "EK--root",
+    "kind": "pane",
+    "token": "EK",
+    "paneId": "filing-events",
+    "view": "root",
+    "observedPaneId": "filing-events"
+  },
+  {
+    "id": "EQS--root",
+    "kind": "pane",
+    "token": "EQS",
+    "paneId": "equity-screener",
+    "view": "root",
+    "observedPaneId": "equity-screener"
+  },
+  {
+    "id": "EQS--tab-criteria",
+    "kind": "pane",
+    "token": "EQS",
+    "paneId": "equity-screener",
+    "view": "tab",
+    "tab": "Criteria",
+    "observedPaneId": "equity-screener"
+  },
+  {
+    "id": "EQS--tab-saved",
+    "kind": "pane",
+    "token": "EQS",
+    "paneId": "equity-screener",
+    "view": "tab",
+    "tab": "Saved",
+    "observedPaneId": "equity-screener"
+  },
+  {
+    "id": "ETF--root",
+    "kind": "pane",
+    "token": "ETF",
+    "paneId": "sec",
+    "view": "root",
+    "observedPaneId": "sec"
+  },
+  {
+    "id": "EXPO--root",
+    "kind": "pane",
+    "token": "EXPO",
+    "paneId": "exposure",
+    "view": "root",
+    "observedPaneId": "exposure"
+  },
+  {
+    "id": "EXPO--detail",
+    "kind": "pane",
+    "token": "EXPO",
+    "paneId": "exposure",
+    "view": "detail",
+    "observedPaneId": "exposure"
+  },
+  {
+    "id": "EXPO--tab-drivers",
+    "kind": "pane",
+    "token": "EXPO",
+    "paneId": "exposure",
+    "view": "tab",
+    "tab": "Drivers",
+    "observedPaneId": "exposure"
+  },
+  {
+    "id": "EXPO--tab-paths",
+    "kind": "pane",
+    "token": "EXPO",
+    "paneId": "exposure",
+    "view": "tab",
+    "tab": "Paths",
+    "observedPaneId": "exposure"
+  },
+  {
+    "id": "EXPO--tab-portfolio",
+    "kind": "pane",
+    "token": "EXPO",
+    "paneId": "exposure",
+    "view": "tab",
+    "tab": "Portfolio",
+    "observedPaneId": "exposure"
+  },
+  {
+    "id": "FI--root",
+    "kind": "pane",
+    "token": "FI",
+    "paneId": "fixed-income",
+    "view": "root",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "FI--tab-issuer-debt",
+    "kind": "pane",
+    "token": "FI",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Issuer Debt",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "FI--tab-bonds",
+    "kind": "pane",
+    "token": "FI",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Bonds",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "FI--tab-treasury",
+    "kind": "pane",
+    "token": "FI",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Treasury",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "FI--tab-treasury-bills",
+    "kind": "pane",
+    "token": "FI",
+    "paneId": "fixed-income",
+    "view": "skipped",
+    "tab": "Treasury > Bills",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "FI--tab-treasury-notes",
+    "kind": "pane",
+    "token": "FI",
+    "paneId": "fixed-income",
+    "view": "skipped",
+    "tab": "Treasury > Notes",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "FI--tab-treasury-bonds-2-4",
+    "kind": "pane",
+    "token": "FI",
+    "paneId": "fixed-income",
+    "view": "skipped",
+    "tab": "Treasury > Bonds [2.4]",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "FNG--root",
+    "kind": "pane",
+    "token": "FNG",
+    "paneId": "fear-greed",
+    "view": "root",
+    "observedPaneId": "fear-greed"
+  },
+  {
+    "id": "FXC--root",
+    "kind": "pane",
+    "token": "FXC",
+    "paneId": "fx-matrix",
+    "view": "root",
+    "observedPaneId": "fx-matrix"
+  },
+  {
+    "id": "GC--root",
+    "kind": "pane",
+    "token": "GC",
+    "paneId": "yield-curve",
+    "view": "root",
+    "observedPaneId": "yield-curve"
+  },
+  {
+    "id": "GC--tab-world",
+    "kind": "pane",
+    "token": "GC",
+    "paneId": "yield-curve",
+    "view": "tab",
+    "tab": "World",
+    "observedPaneId": "yield-curve"
+  },
+  {
+    "id": "GC--tab-swaps",
+    "kind": "pane",
+    "token": "GC",
+    "paneId": "yield-curve",
+    "view": "tab",
+    "tab": "Swaps",
+    "observedPaneId": "yield-curve"
+  },
+  {
+    "id": "GF--root",
+    "kind": "pane",
+    "token": "GF",
+    "paneId": "chart-composer",
+    "view": "root",
+    "observedPaneId": "chart-composer"
+  },
+  {
+    "id": "GPU--root",
+    "kind": "pane",
+    "token": "GPU",
+    "paneId": "gpu",
+    "view": "root",
+    "observedPaneId": "gpu"
+  },
+  {
+    "id": "GPU--tab-history",
+    "kind": "pane",
+    "token": "GPU",
+    "paneId": "gpu",
+    "view": "tab",
+    "tab": "History",
+    "observedPaneId": "gpu"
+  },
+  {
+    "id": "GPU--tab-changes",
+    "kind": "pane",
+    "token": "GPU",
+    "paneId": "gpu",
+    "view": "tab",
+    "tab": "Changes",
+    "observedPaneId": "gpu"
+  },
+  {
+    "id": "GPU--tab-equities",
+    "kind": "pane",
+    "token": "GPU",
+    "paneId": "gpu",
+    "view": "tab",
+    "tab": "Equities",
+    "observedPaneId": "gpu"
+  },
+  {
+    "id": "GUID--root",
+    "kind": "pane",
+    "token": "GUID",
+    "paneId": "estimate-revisions",
+    "view": "root",
+    "observedPaneId": "estimate-revisions"
+  },
+  {
+    "id": "GUID--tab-revisions",
+    "kind": "pane",
+    "token": "GUID",
+    "paneId": "estimate-revisions",
+    "view": "tab",
+    "tab": "Revisions",
+    "observedPaneId": "estimate-revisions"
+  },
+  {
+    "id": "GUID--tab-surprises",
+    "kind": "pane",
+    "token": "GUID",
+    "paneId": "estimate-revisions",
+    "view": "tab",
+    "tab": "Surprises",
+    "observedPaneId": "estimate-revisions"
+  },
+  {
+    "id": "HELP--root",
+    "kind": "pane",
+    "token": "HELP",
+    "paneId": "help",
+    "view": "root",
+    "observedPaneId": "help"
+  },
+  {
+    "id": "HELP--tab-functions",
+    "kind": "pane",
+    "token": "HELP",
+    "paneId": "help",
+    "view": "tab",
+    "tab": "Functions",
+    "observedPaneId": "help"
+  },
+  {
+    "id": "HELP--tab-shortcuts",
+    "kind": "pane",
+    "token": "HELP",
+    "paneId": "help",
+    "view": "tab",
+    "tab": "Shortcuts",
+    "observedPaneId": "help"
+  },
+  {
+    "id": "HELP--tab-reference",
+    "kind": "pane",
+    "token": "HELP",
+    "paneId": "help",
+    "view": "tab",
+    "tab": "Reference",
+    "observedPaneId": "help"
+  },
+  {
+    "id": "HELP--tab-feedback",
+    "kind": "pane",
+    "token": "HELP",
+    "paneId": "help",
+    "view": "tab",
+    "tab": "Feedback",
+    "observedPaneId": "help"
+  },
+  {
+    "id": "HIVG--root",
+    "kind": "pane",
+    "token": "HIVG",
+    "paneId": "iv-history",
+    "view": "root",
+    "observedPaneId": "iv-history"
+  },
+  {
+    "id": "HP--root",
+    "kind": "pane",
+    "token": "HP",
+    "paneId": "historical-prices",
+    "view": "root",
+    "observedPaneId": "historical-prices"
+  },
+  {
+    "id": "JOBS--root",
+    "kind": "pane",
+    "token": "JOBS",
+    "paneId": "jobs",
+    "view": "root",
+    "observedPaneId": "jobs"
+  },
+  {
+    "id": "KPIS--root",
+    "kind": "pane",
+    "token": "KPIS",
+    "paneId": "company-kpis",
+    "view": "root",
+    "observedPaneId": "company-kpis"
+  },
+  {
+    "id": "KPIS--tab-chart",
+    "kind": "pane",
+    "token": "KPIS",
+    "paneId": "company-kpis",
+    "view": "tab",
+    "tab": "Chart",
+    "observedPaneId": "company-kpis"
+  },
+  {
+    "id": "KPIS--tab-evidence",
+    "kind": "pane",
+    "token": "KPIS",
+    "paneId": "company-kpis",
+    "view": "tab",
+    "tab": "Evidence",
+    "observedPaneId": "company-kpis"
+  },
+  {
+    "id": "MA--root",
+    "kind": "pane",
+    "token": "MA",
+    "paneId": "mna",
+    "view": "root",
+    "observedPaneId": "mna"
+  },
+  {
+    "id": "MDAY--root",
+    "kind": "pane",
+    "token": "MDAY",
+    "paneId": "macro-day",
+    "view": "root",
+    "observedPaneId": "macro-day"
+  },
+  {
+    "id": "N--root",
+    "kind": "pane",
+    "token": "N",
+    "paneId": "news-feed",
+    "view": "root",
+    "observedPaneId": "news-feed"
+  },
+  {
+    "id": "news-story-pane--root",
+    "kind": "pane",
+    "token": "news-story-pane",
+    "paneId": "news-story",
+    "view": "root",
+    "observedPaneId": "news-story"
+  },
+  {
+    "id": "NOTE--root",
+    "kind": "pane",
+    "token": "NOTE",
+    "paneId": "quick-notes",
+    "view": "root",
+    "observedPaneId": "changelog"
+  },
+  {
+    "id": "ORD--root",
+    "kind": "pane",
+    "token": "ORD",
+    "paneId": "broker-orders",
+    "view": "root",
+    "observedPaneId": "earnings-ripple"
+  },
+  {
+    "id": "ORD--tab-2-hops",
+    "kind": "pane",
+    "token": "ORD",
+    "paneId": "broker-orders",
+    "view": "tab",
+    "tab": "2 hops",
+    "observedPaneId": "earnings-ripple"
+  },
+  {
+    "id": "OVME--root",
+    "kind": "pane",
+    "token": "OVME",
+    "paneId": "options-calculator",
+    "view": "root",
+    "observedPaneId": "options-calculator"
+  },
+  {
+    "id": "OVME--detail",
+    "kind": "pane",
+    "token": "OVME",
+    "paneId": "options-calculator",
+    "view": "detail",
+    "observedPaneId": "options-calculator"
+  },
+  {
+    "id": "PERP--root",
+    "kind": "pane",
+    "token": "PERP",
+    "paneId": "perps",
+    "view": "root",
+    "observedPaneId": "perps"
+  },
+  {
+    "id": "PERP--tab-rankings",
+    "kind": "pane",
+    "token": "PERP",
+    "paneId": "perps",
+    "view": "tab",
+    "tab": "Rankings",
+    "observedPaneId": "perps"
+  },
+  {
+    "id": "PERP--tab-compare",
+    "kind": "pane",
+    "token": "PERP",
+    "paneId": "perps",
+    "view": "tab",
+    "tab": "Compare",
+    "observedPaneId": "perps"
+  },
+  {
+    "id": "PERP--tab-history",
+    "kind": "pane",
+    "token": "PERP",
+    "paneId": "perps",
+    "view": "tab",
+    "tab": "History",
+    "observedPaneId": "perps"
+  },
+  {
+    "id": "PERP--tab-evidence",
+    "kind": "pane",
+    "token": "PERP",
+    "paneId": "perps",
+    "view": "tab",
+    "tab": "Evidence",
+    "observedPaneId": "perps"
+  },
+  {
+    "id": "POWER--root",
+    "kind": "pane",
+    "token": "POWER",
+    "paneId": "power",
+    "view": "root",
+    "observedPaneId": "power"
+  },
+  {
+    "id": "POWER--tab-history",
+    "kind": "pane",
+    "token": "POWER",
+    "paneId": "power",
+    "view": "tab",
+    "tab": "History",
+    "observedPaneId": "power"
+  },
+  {
+    "id": "POWER--tab-outcomes",
+    "kind": "pane",
+    "token": "POWER",
+    "paneId": "power",
+    "view": "tab",
+    "tab": "Outcomes",
+    "observedPaneId": "power"
+  },
+  {
+    "id": "POWER--tab-loads",
+    "kind": "pane",
+    "token": "POWER",
+    "paneId": "power",
+    "view": "tab",
+    "tab": "Loads",
+    "observedPaneId": "power"
+  },
+  {
+    "id": "POWER--tab-utilities",
+    "kind": "pane",
+    "token": "POWER",
+    "paneId": "power",
+    "view": "tab",
+    "tab": "Utilities",
+    "observedPaneId": "power"
+  },
+  {
+    "id": "POWER--tab-capacity",
+    "kind": "pane",
+    "token": "POWER",
+    "paneId": "power",
+    "view": "tab",
+    "tab": "Capacity",
+    "observedPaneId": "power"
+  },
+  {
+    "id": "POWER--tab-prices",
+    "kind": "pane",
+    "token": "POWER",
+    "paneId": "power",
+    "view": "tab",
+    "tab": "Prices",
+    "observedPaneId": "power"
+  },
+  {
+    "id": "POWER--tab-coverage",
+    "kind": "pane",
+    "token": "POWER",
+    "paneId": "power",
+    "view": "tab",
+    "tab": "Coverage",
+    "observedPaneId": "power"
+  },
+  {
+    "id": "QR--root",
+    "kind": "pane",
+    "token": "QR",
+    "paneId": "time-sales",
+    "view": "root",
+    "observedPaneId": "time-sales"
+  },
+  {
+    "id": "QR--tab-trades",
+    "kind": "pane",
+    "token": "QR",
+    "paneId": "time-sales",
+    "view": "tab",
+    "tab": "Trades",
+    "observedPaneId": "time-sales"
+  },
+  {
+    "id": "RIPL--root",
+    "kind": "pane",
+    "token": "RIPL",
+    "paneId": "earnings-ripple",
+    "view": "root",
+    "observedPaneId": "earnings-ripple"
+  },
+  {
+    "id": "RIPL--tab-2-hops",
+    "kind": "pane",
+    "token": "RIPL",
+    "paneId": "earnings-ripple",
+    "view": "tab",
+    "tab": "2 hops",
+    "observedPaneId": "earnings-ripple"
+  },
+  {
+    "id": "RV--root",
+    "kind": "pane",
+    "token": "RV",
+    "paneId": "relative-valuation",
+    "view": "root",
+    "observedPaneId": "relative-valuation"
+  },
+  {
+    "id": "SEG--root",
+    "kind": "pane",
+    "token": "SEG",
+    "paneId": "revenue-breakdown",
+    "view": "root",
+    "observedPaneId": "revenue-breakdown"
+  },
+  {
+    "id": "SIW--root",
+    "kind": "pane",
+    "token": "SIW",
+    "paneId": "short-watch",
+    "view": "root",
+    "observedPaneId": "short-watch"
+  },
+  {
+    "id": "SRCH--root",
+    "kind": "pane",
+    "token": "SRCH",
+    "paneId": "research-search",
+    "view": "root",
+    "observedPaneId": "research-search"
+  },
+  {
+    "id": "TOP--root",
+    "kind": "pane",
+    "token": "TOP",
+    "paneId": "news-top",
+    "view": "root",
+    "observedPaneId": "news-top"
+  },
+  {
+    "id": "unread-inbox-pane--root",
+    "kind": "pane",
+    "token": "unread-inbox-pane",
+    "paneId": "unread-inbox",
+    "view": "root",
+    "observedPaneId": "unread-inbox"
+  },
+  {
+    "id": "WEI--root",
+    "kind": "pane",
+    "token": "WEI",
+    "paneId": "world-indices",
+    "view": "root",
+    "observedPaneId": "world-indices"
+  },
+  {
+    "id": "PM--root",
+    "kind": "pane",
+    "token": "PM",
+    "paneId": "prediction-markets",
+    "view": "root",
+    "observedPaneId": "prediction-markets"
+  },
+  {
+    "id": "PM--tab-politics",
+    "kind": "pane",
+    "token": "PM",
+    "paneId": "prediction-markets",
+    "view": "tab",
+    "tab": "Politics",
+    "observedPaneId": "prediction-markets"
+  },
+  {
+    "id": "PM--tab-world",
+    "kind": "pane",
+    "token": "PM",
+    "paneId": "prediction-markets",
+    "view": "tab",
+    "tab": "World",
+    "observedPaneId": "prediction-markets"
+  },
+  {
+    "id": "PM--tab-macro",
+    "kind": "pane",
+    "token": "PM",
+    "paneId": "prediction-markets",
+    "view": "tab",
+    "tab": "Macro",
+    "observedPaneId": "prediction-markets"
+  },
+  {
+    "id": "PM--tab-crypto",
+    "kind": "pane",
+    "token": "PM",
+    "paneId": "prediction-markets",
+    "view": "tab",
+    "tab": "Crypto",
+    "observedPaneId": "prediction-markets"
+  },
+  {
+    "id": "PM--tab-science",
+    "kind": "pane",
+    "token": "PM",
+    "paneId": "prediction-markets",
+    "view": "tab",
+    "tab": "Science",
+    "observedPaneId": "prediction-markets"
+  },
+  {
+    "id": "PM--tab-sports",
+    "kind": "pane",
+    "token": "PM",
+    "paneId": "prediction-markets",
+    "view": "tab",
+    "tab": "Sports",
+    "observedPaneId": "prediction-markets"
+  },
+  {
+    "id": "PM--tab-entertainment",
+    "kind": "pane",
+    "token": "PM",
+    "paneId": "prediction-markets",
+    "view": "tab",
+    "tab": "Entertainment",
+    "observedPaneId": "prediction-markets"
+  },
+  {
+    "id": "PM--tab-climate",
+    "kind": "pane",
+    "token": "PM",
+    "paneId": "prediction-markets",
+    "view": "tab",
+    "tab": "Climate",
+    "observedPaneId": "prediction-markets"
+  },
+  {
+    "id": "PM--tab-social",
+    "kind": "pane",
+    "token": "PM",
+    "paneId": "prediction-markets",
+    "view": "tab",
+    "tab": "Social",
+    "observedPaneId": "prediction-markets"
+  },
+  {
+    "id": "TV--root",
+    "kind": "pane",
+    "token": "TV",
+    "paneId": "macro-tv",
+    "view": "root",
+    "observedPaneId": "macro-tv"
+  },
+  {
+    "id": "TV--tab-2-cnbc",
+    "kind": "pane",
+    "token": "TV",
+    "paneId": "macro-tv",
+    "view": "tab",
+    "tab": "2 CNBC",
+    "observedPaneId": "macro-tv"
+  },
+  {
+    "id": "TV--tab-3-stream",
+    "kind": "pane",
+    "token": "TV",
+    "paneId": "macro-tv",
+    "view": "tab",
+    "tab": "3 Stream",
+    "observedPaneId": "macro-tv"
+  },
+  {
+    "id": "debug-log--failed",
+    "kind": "pane",
+    "token": "debug-log",
+    "paneId": "debug",
+    "view": "failed",
+    "reason": "debug-log: 0 views in 8s",
+    "auditOutcome": "zero-views"
+  },
+  {
+    "id": "TBO--failed",
+    "kind": "pane",
+    "token": "TBO",
+    "paneId": "buildout",
+    "view": "failed",
+    "reason": "TBO: 0 views in 9s",
+    "auditOutcome": "zero-views"
+  },
+  {
+    "id": "VIEW--failed",
+    "kind": "pane",
+    "token": "VIEW",
+    "paneId": "custom-view",
+    "view": "failed",
+    "reason": "VIEW: 0 views in 8s",
+    "auditOutcome": "zero-views"
+  },
+  {
+    "id": "IBKR--failed",
+    "kind": "pane",
+    "token": "IBKR",
+    "paneId": "ibkr-trading",
+    "view": "failed",
+    "reason": "IBKR: 0 views in 8s",
+    "auditOutcome": "zero-views"
+  },
+  {
+    "id": "ALRT--root",
+    "kind": "pane",
+    "token": "ALRT",
+    "paneId": "alerts",
+    "view": "root",
+    "observedPaneId": "alerts"
+  },
+  {
+    "id": "ALRT--detail",
+    "kind": "pane",
+    "token": "ALRT",
+    "paneId": "alerts",
+    "view": "detail",
+    "observedPaneId": "alerts"
+  },
+  {
+    "id": "ALRT--tab-events",
+    "kind": "pane",
+    "token": "ALRT",
+    "paneId": "alerts",
+    "view": "tab",
+    "tab": "Events",
+    "observedPaneId": "alerts"
+  },
+  {
+    "id": "ALRT--tab-history",
+    "kind": "pane",
+    "token": "ALRT",
+    "paneId": "alerts",
+    "view": "tab",
+    "tab": "History",
+    "observedPaneId": "alerts"
+  },
+  {
+    "id": "ANR--root",
+    "kind": "pane",
+    "token": "ANR",
+    "paneId": "analyst-research",
+    "view": "root",
+    "observedPaneId": "analyst-research"
+  },
+  {
+    "id": "ATTN--root",
+    "kind": "pane",
+    "token": "ATTN",
+    "paneId": "attention",
+    "view": "root",
+    "observedPaneId": "attention"
+  },
+  {
+    "id": "ATTN--tab-abnormal",
+    "kind": "pane",
+    "token": "ATTN",
+    "paneId": "attention",
+    "view": "tab",
+    "tab": "Abnormal",
+    "observedPaneId": "attention"
+  },
+  {
+    "id": "ATTN--tab-sectors",
+    "kind": "pane",
+    "token": "ATTN",
+    "paneId": "attention",
+    "view": "tab",
+    "tab": "Sectors",
+    "observedPaneId": "attention"
+  },
+  {
+    "id": "ATTN--tab-countries",
+    "kind": "pane",
+    "token": "ATTN",
+    "paneId": "attention",
+    "view": "tab",
+    "tab": "Countries",
+    "observedPaneId": "attention"
+  },
+  {
+    "id": "ATTN--tab-history",
+    "kind": "pane",
+    "token": "ATTN",
+    "paneId": "attention",
+    "view": "tab",
+    "tab": "History",
+    "observedPaneId": "attention"
+  },
+  {
+    "id": "ATTN--tab-evidence",
+    "kind": "pane",
+    "token": "ATTN",
+    "paneId": "attention",
+    "view": "tab",
+    "tab": "Evidence",
+    "observedPaneId": "attention"
+  },
+  {
+    "id": "BTMM--root",
+    "kind": "pane",
+    "token": "BTMM",
+    "paneId": "money-markets",
+    "view": "root",
+    "observedPaneId": "money-markets"
+  },
+  {
+    "id": "BTMM--tab-bills",
+    "kind": "pane",
+    "token": "BTMM",
+    "paneId": "money-markets",
+    "view": "tab",
+    "tab": "Bills",
+    "observedPaneId": "money-markets"
+  },
+  {
+    "id": "BTMM--tab-liquidity",
+    "kind": "pane",
+    "token": "BTMM",
+    "paneId": "money-markets",
+    "view": "tab",
+    "tab": "Liquidity",
+    "observedPaneId": "money-markets"
+  },
+  {
+    "id": "CALLS--root",
+    "kind": "pane",
+    "token": "CALLS",
+    "paneId": "earnings-calls",
+    "view": "root",
+    "observedPaneId": "earnings-calls"
+  },
+  {
+    "id": "CBR--root",
+    "kind": "pane",
+    "token": "CBR",
+    "paneId": "central-bank-rates",
+    "view": "root",
+    "observedPaneId": "central-bank-rates"
+  },
+  {
+    "id": "CHG--root",
+    "kind": "pane",
+    "token": "CHG",
+    "paneId": "changelog",
+    "view": "root",
+    "observedPaneId": "changelog"
+  },
+  {
+    "id": "CMP--root",
+    "kind": "pane",
+    "token": "CMP",
+    "paneId": "chart-composer",
+    "view": "root",
+    "observedPaneId": "chart-composer"
+  },
+  {
+    "id": "CORR--root",
+    "kind": "pane",
+    "token": "CORR",
+    "paneId": "correlation",
+    "view": "root",
+    "observedPaneId": "correlation"
+  },
+  {
+    "id": "CPI--root",
+    "kind": "pane",
+    "token": "CPI",
+    "paneId": "cpi",
+    "view": "root",
+    "observedPaneId": "cpi"
+  },
+  {
+    "id": "CRYP--root",
+    "kind": "pane",
+    "token": "CRYP",
+    "paneId": "crypto-board",
+    "view": "root",
+    "observedPaneId": "crypto-board"
+  },
+  {
+    "id": "CRYP--tab-stablecoins",
+    "kind": "pane",
+    "token": "CRYP",
+    "paneId": "crypto-board",
+    "view": "tab",
+    "tab": "Stablecoins",
+    "observedPaneId": "crypto-board"
+  },
+  {
+    "id": "CRYP--tab-defi",
+    "kind": "pane",
+    "token": "CRYP",
+    "paneId": "crypto-board",
+    "view": "tab",
+    "tab": "DeFi",
+    "observedPaneId": "crypto-board"
+  },
+  {
+    "id": "DDIS--root",
+    "kind": "pane",
+    "token": "DDIS",
+    "paneId": "fixed-income",
+    "view": "root",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "DDIS--tab-credit",
+    "kind": "pane",
+    "token": "DDIS",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Credit",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "DDIS--tab-bonds",
+    "kind": "pane",
+    "token": "DDIS",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Bonds",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "DDIS--tab-treasury",
+    "kind": "pane",
+    "token": "DDIS",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Treasury",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "DDIS--tab-history",
+    "kind": "pane",
+    "token": "DDIS",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "History",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "DDIS--tab-filing",
+    "kind": "pane",
+    "token": "DDIS",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Filing",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "DDIS--tab-treasury-bills",
+    "kind": "pane",
+    "token": "DDIS",
+    "paneId": "fixed-income",
+    "view": "skipped",
+    "tab": "Treasury > Bills",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "DDIS--tab-treasury-notes",
+    "kind": "pane",
+    "token": "DDIS",
+    "paneId": "fixed-income",
+    "view": "skipped",
+    "tab": "Treasury > Notes",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "DDIS--tab-treasury-bonds-3-4",
+    "kind": "pane",
+    "token": "DDIS",
+    "paneId": "fixed-income",
+    "view": "skipped",
+    "tab": "Treasury > Bonds [3.4]",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "DOCS--root",
+    "kind": "pane",
+    "token": "DOCS",
+    "paneId": "docs",
+    "view": "root",
+    "observedPaneId": "docs"
+  },
+  {
+    "id": "DOCS--detail",
+    "kind": "pane",
+    "token": "DOCS",
+    "paneId": "docs",
+    "view": "detail",
+    "observedPaneId": "docs"
+  },
+  {
+    "id": "DVD--root",
+    "kind": "pane",
+    "token": "DVD",
+    "paneId": "dividend-yield",
+    "view": "root",
+    "observedPaneId": "dividend-yield"
+  },
+  {
+    "id": "EE--root",
+    "kind": "pane",
+    "token": "EE",
+    "paneId": "earnings-estimates",
+    "view": "root",
+    "observedPaneId": "earnings-estimates"
+  },
+  {
+    "id": "EPWR--root",
+    "kind": "pane",
+    "token": "EPWR",
+    "paneId": "power",
+    "view": "root",
+    "observedPaneId": "power"
+  },
+  {
+    "id": "EPWR--tab-queue",
+    "kind": "pane",
+    "token": "EPWR",
+    "paneId": "power",
+    "view": "tab",
+    "tab": "Queue",
+    "observedPaneId": "power"
+  },
+  {
+    "id": "EPWR--tab-history",
+    "kind": "pane",
+    "token": "EPWR",
+    "paneId": "power",
+    "view": "tab",
+    "tab": "History",
+    "observedPaneId": "power"
+  },
+  {
+    "id": "EPWR--tab-outcomes",
+    "kind": "pane",
+    "token": "EPWR",
+    "paneId": "power",
+    "view": "tab",
+    "tab": "Outcomes",
+    "observedPaneId": "power"
+  },
+  {
+    "id": "EPWR--tab-loads",
+    "kind": "pane",
+    "token": "EPWR",
+    "paneId": "power",
+    "view": "tab",
+    "tab": "Loads",
+    "observedPaneId": "power"
+  },
+  {
+    "id": "EPWR--tab-utilities",
+    "kind": "pane",
+    "token": "EPWR",
+    "paneId": "power",
+    "view": "tab",
+    "tab": "Utilities",
+    "observedPaneId": "power"
+  },
+  {
+    "id": "EPWR--tab-capacity",
+    "kind": "pane",
+    "token": "EPWR",
+    "paneId": "power",
+    "view": "tab",
+    "tab": "Capacity",
+    "observedPaneId": "power"
+  },
+  {
+    "id": "EPWR--tab-coverage",
+    "kind": "pane",
+    "token": "EPWR",
+    "paneId": "power",
+    "view": "tab",
+    "tab": "Coverage",
+    "observedPaneId": "power"
+  },
+  {
+    "id": "EVT--root",
+    "kind": "pane",
+    "token": "EVT",
+    "paneId": "corporate-actions",
+    "view": "root",
+    "observedPaneId": "corporate-actions"
+  },
+  {
+    "id": "EXEC--root",
+    "kind": "pane",
+    "token": "EXEC",
+    "paneId": "executives",
+    "view": "root",
+    "observedPaneId": "executives"
+  },
+  {
+    "id": "FDA--root",
+    "kind": "pane",
+    "token": "FDA",
+    "paneId": "adverse-events",
+    "view": "root",
+    "observedPaneId": "adverse-events"
+  },
+  {
+    "id": "FLOW--root",
+    "kind": "pane",
+    "token": "FLOW",
+    "paneId": "scanner-flow",
+    "view": "root",
+    "observedPaneId": "scanner-flow"
+  },
+  {
+    "id": "FUT--root",
+    "kind": "pane",
+    "token": "FUT",
+    "paneId": "commodities-energy",
+    "view": "root",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "FUT--tab-curve",
+    "kind": "pane",
+    "token": "FUT",
+    "paneId": "commodities-energy",
+    "view": "tab",
+    "tab": "Curve",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "FUT--tab-positioning",
+    "kind": "pane",
+    "token": "FUT",
+    "paneId": "commodities-energy",
+    "view": "tab",
+    "tab": "Positioning",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "FUT--tab-inventories",
+    "kind": "pane",
+    "token": "FUT",
+    "paneId": "commodities-energy",
+    "view": "tab",
+    "tab": "Inventories",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "FUT--tab-crops",
+    "kind": "pane",
+    "token": "FUT",
+    "paneId": "commodities-energy",
+    "view": "tab",
+    "tab": "Crops",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "FUT--tab-oil-gas",
+    "kind": "pane",
+    "token": "FUT",
+    "paneId": "commodities-energy",
+    "view": "tab",
+    "tab": "Oil & Gas",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "FUT--tab-positioning-disaggregated",
+    "kind": "pane",
+    "token": "FUT",
+    "paneId": "commodities-energy",
+    "view": "skipped",
+    "tab": "Positioning > Disaggregated",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "FUT--tab-inventories-products",
+    "kind": "pane",
+    "token": "FUT",
+    "paneId": "commodities-energy",
+    "view": "skipped",
+    "tab": "Inventories > Products",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "FUT--tab-inventories-gas-storage",
+    "kind": "pane",
+    "token": "FUT",
+    "paneId": "commodities-energy",
+    "view": "skipped",
+    "tab": "Inventories > Gas Storage",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "G--root",
+    "kind": "pane",
+    "token": "G",
+    "paneId": "chart-composer",
+    "view": "root",
+    "observedPaneId": "chart-composer"
+  },
+  {
+    "id": "GEX--root",
+    "kind": "pane",
+    "token": "GEX",
+    "paneId": "options-positioning",
+    "view": "root",
+    "observedPaneId": "options-positioning"
+  },
+  {
+    "id": "GEX--tab-strikes",
+    "kind": "pane",
+    "token": "GEX",
+    "paneId": "options-positioning",
+    "view": "tab",
+    "tab": "Strikes",
+    "observedPaneId": "options-positioning"
+  },
+  {
+    "id": "GEX--tab-expiries",
+    "kind": "pane",
+    "token": "GEX",
+    "paneId": "options-positioning",
+    "view": "tab",
+    "tab": "Expiries",
+    "observedPaneId": "options-positioning"
+  },
+  {
+    "id": "GP--root",
+    "kind": "pane",
+    "token": "GP",
+    "paneId": "chart-composer",
+    "view": "root",
+    "observedPaneId": "chart-composer"
+  },
+  {
+    "id": "HALT--root",
+    "kind": "pane",
+    "token": "HALT",
+    "paneId": "market-halts",
+    "view": "root",
+    "observedPaneId": "market-halts"
+  },
+  {
+    "id": "HALT--tab-active",
+    "kind": "pane",
+    "token": "HALT",
+    "paneId": "market-halts",
+    "view": "tab",
+    "tab": "Active",
+    "observedPaneId": "market-halts"
+  },
+  {
+    "id": "HALT--tab-resumed",
+    "kind": "pane",
+    "token": "HALT",
+    "paneId": "market-halts",
+    "view": "tab",
+    "tab": "Resumed",
+    "observedPaneId": "market-halts"
+  },
+  {
+    "id": "HALT--tab-long-term",
+    "kind": "pane",
+    "token": "HALT",
+    "paneId": "market-halts",
+    "view": "tab",
+    "tab": "Long-term",
+    "observedPaneId": "market-halts"
+  },
+  {
+    "id": "HIRE--root",
+    "kind": "pane",
+    "token": "HIRE",
+    "paneId": "hiring",
+    "view": "root",
+    "observedPaneId": "hiring"
+  },
+  {
+    "id": "HIRE--tab-chart",
+    "kind": "pane",
+    "token": "HIRE",
+    "paneId": "hiring",
+    "view": "tab",
+    "tab": "Chart",
+    "observedPaneId": "hiring"
+  },
+  {
+    "id": "HIRE--tab-mix",
+    "kind": "pane",
+    "token": "HIRE",
+    "paneId": "hiring",
+    "view": "tab",
+    "tab": "Mix",
+    "observedPaneId": "hiring"
+  },
+  {
+    "id": "HIRE--tab-peers",
+    "kind": "pane",
+    "token": "HIRE",
+    "paneId": "hiring",
+    "view": "tab",
+    "tab": "Peers",
+    "observedPaneId": "hiring"
+  },
+  {
+    "id": "HIRE--tab-evidence",
+    "kind": "pane",
+    "token": "HIRE",
+    "paneId": "hiring",
+    "view": "tab",
+    "tab": "Evidence",
+    "observedPaneId": "hiring"
+  },
+  {
+    "id": "HIRE--tab-moves",
+    "kind": "pane",
+    "token": "HIRE",
+    "paneId": "hiring",
+    "view": "tab",
+    "tab": "Moves",
+    "observedPaneId": "hiring"
+  },
+  {
+    "id": "HIRE--tab-expansion",
+    "kind": "pane",
+    "token": "HIRE",
+    "paneId": "hiring",
+    "view": "tab",
+    "tab": "Expansion",
+    "observedPaneId": "hiring"
+  },
+  {
+    "id": "HIRE--tab-anomalies",
+    "kind": "pane",
+    "token": "HIRE",
+    "paneId": "hiring",
+    "view": "tab",
+    "tab": "Anomalies",
+    "observedPaneId": "hiring"
+  },
+  {
+    "id": "HIRE--tab-building",
+    "kind": "pane",
+    "token": "HIRE",
+    "paneId": "hiring",
+    "view": "tab",
+    "tab": "Building",
+    "observedPaneId": "hiring"
+  },
+  {
+    "id": "HVT--root",
+    "kind": "pane",
+    "token": "HVT",
+    "paneId": "realized-vol",
+    "view": "root",
+    "observedPaneId": "realized-vol"
+  },
+  {
+    "id": "HVT--tab-history",
+    "kind": "pane",
+    "token": "HVT",
+    "paneId": "realized-vol",
+    "view": "tab",
+    "tab": "History",
+    "observedPaneId": "realized-vol"
+  },
+  {
+    "id": "IPO--root",
+    "kind": "pane",
+    "token": "IPO",
+    "paneId": "ipo-calendar",
+    "view": "root",
+    "observedPaneId": "ipo-calendar"
+  },
+  {
+    "id": "IPO--tab-us",
+    "kind": "pane",
+    "token": "IPO",
+    "paneId": "ipo-calendar",
+    "view": "tab",
+    "tab": "US",
+    "observedPaneId": "ipo-calendar"
+  },
+  {
+    "id": "IPO--tab-apac",
+    "kind": "pane",
+    "token": "IPO",
+    "paneId": "ipo-calendar",
+    "view": "tab",
+    "tab": "APAC",
+    "observedPaneId": "ipo-calendar"
+  },
+  {
+    "id": "IPO--tab-europe",
+    "kind": "pane",
+    "token": "IPO",
+    "paneId": "ipo-calendar",
+    "view": "tab",
+    "tab": "Europe",
+    "observedPaneId": "ipo-calendar"
+  },
+  {
+    "id": "KELLY--root",
+    "kind": "pane",
+    "token": "KELLY",
+    "paneId": "kelly-sizer",
+    "view": "root",
+    "observedPaneId": "kelly-sizer"
+  },
+  {
+    "id": "KELLY--detail",
+    "kind": "pane",
+    "token": "KELLY",
+    "paneId": "kelly-sizer",
+    "view": "detail",
+    "observedPaneId": "kelly-sizer"
+  },
+  {
+    "id": "KELLY--tab-scenario",
+    "kind": "pane",
+    "token": "KELLY",
+    "paneId": "kelly-sizer",
+    "view": "tab",
+    "tab": "Scenario",
+    "observedPaneId": "kelly-sizer"
+  },
+  {
+    "id": "KELLY--tab-risk",
+    "kind": "pane",
+    "token": "KELLY",
+    "paneId": "kelly-sizer",
+    "view": "tab",
+    "tab": "Risk",
+    "observedPaneId": "kelly-sizer"
+  },
+  {
+    "id": "KELLY--tab-market",
+    "kind": "pane",
+    "token": "KELLY",
+    "paneId": "kelly-sizer",
+    "view": "tab",
+    "tab": "Market",
+    "observedPaneId": "kelly-sizer"
+  },
+  {
+    "id": "KELLY--tab-asym",
+    "kind": "pane",
+    "token": "KELLY",
+    "paneId": "kelly-sizer",
+    "view": "tab",
+    "tab": "Asym",
+    "observedPaneId": "kelly-sizer"
+  },
+  {
+    "id": "KELLY--tab-history",
+    "kind": "pane",
+    "token": "KELLY",
+    "paneId": "kelly-sizer",
+    "view": "tab",
+    "tab": "History",
+    "observedPaneId": "kelly-sizer"
+  },
+  {
+    "id": "LITI--root",
+    "kind": "pane",
+    "token": "LITI",
+    "paneId": "litigation",
+    "view": "root",
+    "observedPaneId": "litigation"
+  },
+  {
+    "id": "LITI--tab-changes",
+    "kind": "pane",
+    "token": "LITI",
+    "paneId": "litigation",
+    "view": "tab",
+    "tab": "Changes",
+    "observedPaneId": "litigation"
+  },
+  {
+    "id": "MARS--root",
+    "kind": "pane",
+    "token": "MARS",
+    "paneId": "analytics",
+    "view": "root",
+    "observedPaneId": "analytics"
+  },
+  {
+    "id": "MARS--tab-factors",
+    "kind": "pane",
+    "token": "MARS",
+    "paneId": "analytics",
+    "view": "tab",
+    "tab": "Factors",
+    "observedPaneId": "analytics"
+  },
+  {
+    "id": "MARS--tab-holdings",
+    "kind": "pane",
+    "token": "MARS",
+    "paneId": "analytics",
+    "view": "tab",
+    "tab": "Holdings",
+    "observedPaneId": "analytics"
+  },
+  {
+    "id": "MARS--tab-correlation",
+    "kind": "pane",
+    "token": "MARS",
+    "paneId": "analytics",
+    "view": "tab",
+    "tab": "Correlation",
+    "observedPaneId": "analytics"
+  },
+  {
+    "id": "MARS--tab-stress",
+    "kind": "pane",
+    "token": "MARS",
+    "paneId": "analytics",
+    "view": "tab",
+    "tab": "Stress",
+    "observedPaneId": "analytics"
+  },
+  {
+    "id": "MARS--tab-performance",
+    "kind": "pane",
+    "token": "MARS",
+    "paneId": "analytics",
+    "view": "tab",
+    "tab": "Performance",
+    "observedPaneId": "analytics"
+  },
+  {
+    "id": "MARS--tab-attribution",
+    "kind": "pane",
+    "token": "MARS",
+    "paneId": "analytics",
+    "view": "tab",
+    "tab": "Attribution",
+    "observedPaneId": "analytics"
+  },
+  {
+    "id": "MARS--tab-greeks",
+    "kind": "pane",
+    "token": "MARS",
+    "paneId": "analytics",
+    "view": "tab",
+    "tab": "Greeks",
+    "observedPaneId": "analytics"
+  },
+  {
+    "id": "MOST--root",
+    "kind": "pane",
+    "token": "MOST",
+    "paneId": "market-movers",
+    "view": "root",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "MOST--tab-revenue",
+    "kind": "pane",
+    "token": "MOST",
+    "paneId": "market-movers",
+    "view": "tab",
+    "tab": "Revenue",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "MOST--tab-chart",
+    "kind": "pane",
+    "token": "MOST",
+    "paneId": "market-movers",
+    "view": "tab",
+    "tab": "Chart",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "MOST--tab-analyst",
+    "kind": "pane",
+    "token": "MOST",
+    "paneId": "market-movers",
+    "view": "tab",
+    "tab": "Analyst",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "MOST--tab-diagnostic",
+    "kind": "pane",
+    "token": "MOST",
+    "paneId": "market-movers",
+    "view": "tab",
+    "tab": "Diagnostic",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "MOST--tab-calls",
+    "kind": "pane",
+    "token": "MOST",
+    "paneId": "market-movers",
+    "view": "tab",
+    "tab": "Calls",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "MOST--tab-events",
+    "kind": "pane",
+    "token": "MOST",
+    "paneId": "market-movers",
+    "view": "tab",
+    "tab": "Events",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "MOST--tab-options",
+    "kind": "pane",
+    "token": "MOST",
+    "paneId": "market-movers",
+    "view": "tab",
+    "tab": "Options",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "MOST--tab-catalysts",
+    "kind": "pane",
+    "token": "MOST",
+    "paneId": "market-movers",
+    "view": "tab",
+    "tab": "Catalysts",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "MOST--tab-exec",
+    "kind": "pane",
+    "token": "MOST",
+    "paneId": "market-movers",
+    "view": "tab",
+    "tab": "Exec",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "MOST--tab-risks",
+    "kind": "pane",
+    "token": "MOST",
+    "paneId": "market-movers",
+    "view": "tab",
+    "tab": "Risks",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "MOST--tab-short-interest",
+    "kind": "pane",
+    "token": "MOST",
+    "paneId": "market-movers",
+    "view": "tab",
+    "tab": "Short Interest",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "MOST--tab-m-a",
+    "kind": "pane",
+    "token": "MOST",
+    "paneId": "market-movers",
+    "view": "tab",
+    "tab": "M&A",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "MOST--tab-8-k",
+    "kind": "pane",
+    "token": "MOST",
+    "paneId": "market-movers",
+    "view": "tab",
+    "tab": "8-K",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "MOST--tab-hiring",
+    "kind": "pane",
+    "token": "MOST",
+    "paneId": "market-movers",
+    "view": "tab",
+    "tab": "Hiring",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "MOST--tab-dividends",
+    "kind": "pane",
+    "token": "MOST",
+    "paneId": "market-movers",
+    "view": "tab",
+    "tab": "Dividends",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "MOST--tab-hiring-momentum",
+    "kind": "pane",
+    "token": "MOST",
+    "paneId": "market-movers",
+    "view": "tab",
+    "tab": "Hiring momentum",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "MOST--tab-tweets",
+    "kind": "pane",
+    "token": "MOST",
+    "paneId": "market-movers",
+    "view": "tab",
+    "tab": "Tweets",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "MOST--tab-13f",
+    "kind": "pane",
+    "token": "MOST",
+    "paneId": "market-movers",
+    "view": "tab",
+    "tab": "13F",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "MOST--tab-apps",
+    "kind": "pane",
+    "token": "MOST",
+    "paneId": "market-movers",
+    "view": "tab",
+    "tab": "Apps",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "MOST--tab-news",
+    "kind": "pane",
+    "token": "MOST",
+    "paneId": "market-movers",
+    "view": "tab",
+    "tab": "News",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "MOST--tab-holders",
+    "kind": "pane",
+    "token": "MOST",
+    "paneId": "market-movers",
+    "view": "tab",
+    "tab": "Holders",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "MOST--tab-sec",
+    "kind": "pane",
+    "token": "MOST",
+    "paneId": "market-movers",
+    "view": "tab",
+    "tab": "SEC",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "MOST--tab-insider",
+    "kind": "pane",
+    "token": "MOST",
+    "paneId": "market-movers",
+    "view": "tab",
+    "tab": "Insider",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "MOST--tab-thesis",
+    "kind": "pane",
+    "token": "MOST",
+    "paneId": "market-movers",
+    "view": "tab",
+    "tab": "Thesis",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "MOST--tab-ask-ai",
+    "kind": "pane",
+    "token": "MOST",
+    "paneId": "market-movers",
+    "view": "tab",
+    "tab": "Ask AI",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "MOST--tab-catalysts-changes",
+    "kind": "pane",
+    "token": "MOST",
+    "paneId": "market-movers",
+    "view": "skipped",
+    "tab": "Catalysts > Changes",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "MOST--tab-hiring-momentum-chart-2-2",
+    "kind": "pane",
+    "token": "MOST",
+    "paneId": "market-movers",
+    "view": "skipped",
+    "tab": "Hiring momentum > Chart [2.2]",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "MOST--tab-hiring-momentum-mix",
+    "kind": "pane",
+    "token": "MOST",
+    "paneId": "market-movers",
+    "view": "skipped",
+    "tab": "Hiring momentum > Mix",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "MOST--tab-hiring-momentum-peers",
+    "kind": "pane",
+    "token": "MOST",
+    "paneId": "market-movers",
+    "view": "skipped",
+    "tab": "Hiring momentum > Peers",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "MOST--tab-hiring-momentum-evidence",
+    "kind": "pane",
+    "token": "MOST",
+    "paneId": "market-movers",
+    "view": "skipped",
+    "tab": "Hiring momentum > Evidence",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "MOST--tab-hiring-momentum-moves",
+    "kind": "pane",
+    "token": "MOST",
+    "paneId": "market-movers",
+    "view": "skipped",
+    "tab": "Hiring momentum > Moves",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "MOST--tab-hiring-momentum-expansion",
+    "kind": "pane",
+    "token": "MOST",
+    "paneId": "market-movers",
+    "view": "skipped",
+    "tab": "Hiring momentum > Expansion",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "MOST--tab-hiring-momentum-anomalies",
+    "kind": "pane",
+    "token": "MOST",
+    "paneId": "market-movers",
+    "view": "skipped",
+    "tab": "Hiring momentum > Anomalies",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "MOST--tab-hiring-momentum-building",
+    "kind": "pane",
+    "token": "MOST",
+    "paneId": "market-movers",
+    "view": "skipped",
+    "tab": "Hiring momentum > Building",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "MOST--tab-apps-chart-2-2",
+    "kind": "pane",
+    "token": "MOST",
+    "paneId": "market-movers",
+    "view": "skipped",
+    "tab": "Apps > Chart [2.2]",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "MOST--tab-apps-markets",
+    "kind": "pane",
+    "token": "MOST",
+    "paneId": "market-movers",
+    "view": "skipped",
+    "tab": "Apps > Markets",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "MOST--tab-apps-peers",
+    "kind": "pane",
+    "token": "MOST",
+    "paneId": "market-movers",
+    "view": "skipped",
+    "tab": "Apps > Peers",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "MOST--tab-apps-evidence",
+    "kind": "pane",
+    "token": "MOST",
+    "paneId": "market-movers",
+    "view": "skipped",
+    "tab": "Apps > Evidence",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "new-watchlist-pane--root",
+    "kind": "pane",
+    "token": "new-watchlist-pane",
+    "paneId": "portfolio-list",
+    "view": "root",
+    "observedPaneId": "portfolio-list"
+  },
+  {
+    "id": "new-watchlist-pane--detail",
+    "kind": "pane",
+    "token": "new-watchlist-pane",
+    "paneId": "portfolio-list",
+    "view": "detail",
+    "observedPaneId": "portfolio-list"
+  },
+  {
+    "id": "new-watchlist-pane--tab-watchlist",
+    "kind": "pane",
+    "token": "new-watchlist-pane",
+    "paneId": "portfolio-list",
+    "view": "tab",
+    "tab": "Watchlist",
+    "observedPaneId": "portfolio-list"
+  },
+  {
+    "id": "NI--root",
+    "kind": "pane",
+    "token": "NI",
+    "paneId": "news-industry",
+    "view": "root",
+    "observedPaneId": "news-industry"
+  },
+  {
+    "id": "OPX--root",
+    "kind": "pane",
+    "token": "OPX",
+    "paneId": "options-positioning",
+    "view": "root",
+    "observedPaneId": "options-positioning"
+  },
+  {
+    "id": "OPX--tab-expiries",
+    "kind": "pane",
+    "token": "OPX",
+    "paneId": "options-positioning",
+    "view": "tab",
+    "tab": "Expiries",
+    "observedPaneId": "options-positioning"
+  },
+  {
+    "id": "OPX--tab-gex",
+    "kind": "pane",
+    "token": "OPX",
+    "paneId": "options-positioning",
+    "view": "tab",
+    "tab": "GEX",
+    "observedPaneId": "options-positioning"
+  },
+  {
+    "id": "OVDV--root",
+    "kind": "pane",
+    "token": "OVDV",
+    "paneId": "vol-surface",
+    "view": "root",
+    "observedPaneId": "vol-surface"
+  },
+  {
+    "id": "OVDV--tab-table",
+    "kind": "pane",
+    "token": "OVDV",
+    "paneId": "vol-surface",
+    "view": "tab",
+    "tab": "Table",
+    "observedPaneId": "vol-surface"
+  },
+  {
+    "id": "OVDV--tab-smile",
+    "kind": "pane",
+    "token": "OVDV",
+    "paneId": "vol-surface",
+    "view": "tab",
+    "tab": "Smile",
+    "observedPaneId": "vol-surface"
+  },
+  {
+    "id": "OVDV--tab-term",
+    "kind": "pane",
+    "token": "OVDV",
+    "paneId": "vol-surface",
+    "view": "tab",
+    "tab": "Term",
+    "observedPaneId": "vol-surface"
+  },
+  {
+    "id": "OVDV--tab-skew",
+    "kind": "pane",
+    "token": "OVDV",
+    "paneId": "vol-surface",
+    "view": "tab",
+    "tab": "Skew",
+    "observedPaneId": "vol-surface"
+  },
+  {
+    "id": "OVDV--tab-forwards",
+    "kind": "pane",
+    "token": "OVDV",
+    "paneId": "vol-surface",
+    "view": "tab",
+    "tab": "Forwards",
+    "observedPaneId": "vol-surface"
+  },
+  {
+    "id": "PEB--root",
+    "kind": "pane",
+    "token": "PEB",
+    "paneId": "pe-band",
+    "view": "root",
+    "observedPaneId": "pe-band"
+  },
+  {
+    "id": "PORT--root",
+    "kind": "pane",
+    "token": "PORT",
+    "paneId": "analytics",
+    "view": "root",
+    "observedPaneId": "analytics"
+  },
+  {
+    "id": "PORT--tab-factors",
+    "kind": "pane",
+    "token": "PORT",
+    "paneId": "analytics",
+    "view": "tab",
+    "tab": "Factors",
+    "observedPaneId": "analytics"
+  },
+  {
+    "id": "PORT--tab-holdings",
+    "kind": "pane",
+    "token": "PORT",
+    "paneId": "analytics",
+    "view": "tab",
+    "tab": "Holdings",
+    "observedPaneId": "analytics"
+  },
+  {
+    "id": "PORT--tab-correlation",
+    "kind": "pane",
+    "token": "PORT",
+    "paneId": "analytics",
+    "view": "tab",
+    "tab": "Correlation",
+    "observedPaneId": "analytics"
+  },
+  {
+    "id": "PORT--tab-stress",
+    "kind": "pane",
+    "token": "PORT",
+    "paneId": "analytics",
+    "view": "tab",
+    "tab": "Stress",
+    "observedPaneId": "analytics"
+  },
+  {
+    "id": "PORT--tab-performance",
+    "kind": "pane",
+    "token": "PORT",
+    "paneId": "analytics",
+    "view": "tab",
+    "tab": "Performance",
+    "observedPaneId": "analytics"
+  },
+  {
+    "id": "PORT--tab-attribution",
+    "kind": "pane",
+    "token": "PORT",
+    "paneId": "analytics",
+    "view": "tab",
+    "tab": "Attribution",
+    "observedPaneId": "analytics"
+  },
+  {
+    "id": "PORT--tab-greeks",
+    "kind": "pane",
+    "token": "PORT",
+    "paneId": "analytics",
+    "view": "tab",
+    "tab": "Greeks",
+    "observedPaneId": "analytics"
+  },
+  {
+    "id": "QQ--root",
+    "kind": "pane",
+    "token": "QQ",
+    "paneId": "quote-monitor",
+    "view": "root",
+    "observedPaneId": "quote-monitor"
+  },
+  {
+    "id": "QQ--detail",
+    "kind": "pane",
+    "token": "QQ",
+    "paneId": "quote-monitor",
+    "view": "detail",
+    "observedPaneId": "quote-monitor"
+  },
+  {
+    "id": "RETURN--root",
+    "kind": "pane",
+    "token": "RETURN",
+    "paneId": "returns",
+    "view": "root",
+    "observedPaneId": "returns"
+  },
+  {
+    "id": "RRG--root",
+    "kind": "pane",
+    "token": "RRG",
+    "paneId": "relative-rotation",
+    "view": "root",
+    "observedPaneId": "relative-rotation"
+  },
+  {
+    "id": "RRG--detail",
+    "kind": "pane",
+    "token": "RRG",
+    "paneId": "relative-rotation",
+    "view": "detail",
+    "observedPaneId": "relative-rotation"
+  },
+  {
+    "id": "SEC--root",
+    "kind": "pane",
+    "token": "SEC",
+    "paneId": "sec",
+    "view": "root",
+    "observedPaneId": "sec"
+  },
+  {
+    "id": "SIV--root",
+    "kind": "pane",
+    "token": "SIV",
+    "paneId": "short-interest",
+    "view": "root",
+    "observedPaneId": "short-interest"
+  },
+  {
+    "id": "SIV--tab-interest",
+    "kind": "pane",
+    "token": "SIV",
+    "paneId": "short-interest",
+    "view": "tab",
+    "tab": "Interest",
+    "observedPaneId": "short-interest"
+  },
+  {
+    "id": "SIV--tab-fails-to-deliver",
+    "kind": "pane",
+    "token": "SIV",
+    "paneId": "short-interest",
+    "view": "tab",
+    "tab": "Fails to deliver",
+    "observedPaneId": "short-interest"
+  },
+  {
+    "id": "SIV--tab-weekly-ats-otc",
+    "kind": "pane",
+    "token": "SIV",
+    "paneId": "short-interest",
+    "view": "tab",
+    "tab": "Weekly ATS/OTC",
+    "observedPaneId": "short-interest"
+  },
+  {
+    "id": "SPLC--root",
+    "kind": "pane",
+    "token": "SPLC",
+    "paneId": "supply-chain",
+    "view": "root",
+    "observedPaneId": "supply-chain"
+  },
+  {
+    "id": "SPLC--tab-flow",
+    "kind": "pane",
+    "token": "SPLC",
+    "paneId": "supply-chain",
+    "view": "tab",
+    "tab": "Flow",
+    "observedPaneId": "supply-chain"
+  },
+  {
+    "id": "SPLC--tab-graph",
+    "kind": "pane",
+    "token": "SPLC",
+    "paneId": "supply-chain",
+    "view": "tab",
+    "tab": "Graph",
+    "observedPaneId": "supply-chain"
+  },
+  {
+    "id": "SPLC--tab-path",
+    "kind": "pane",
+    "token": "SPLC",
+    "paneId": "supply-chain",
+    "view": "tab",
+    "tab": "Path",
+    "observedPaneId": "supply-chain"
+  },
+  {
+    "id": "T--root",
+    "kind": "pane",
+    "token": "T",
+    "paneId": "ticker-research",
+    "view": "root",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "T--tab-revenue",
+    "kind": "pane",
+    "token": "T",
+    "paneId": "ticker-research",
+    "view": "tab",
+    "tab": "Revenue",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "T--tab-chart",
+    "kind": "pane",
+    "token": "T",
+    "paneId": "ticker-research",
+    "view": "tab",
+    "tab": "Chart",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "T--tab-analyst",
+    "kind": "pane",
+    "token": "T",
+    "paneId": "ticker-research",
+    "view": "tab",
+    "tab": "Analyst",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "T--tab-diagnostic",
+    "kind": "pane",
+    "token": "T",
+    "paneId": "ticker-research",
+    "view": "tab",
+    "tab": "Diagnostic",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "T--tab-calls",
+    "kind": "pane",
+    "token": "T",
+    "paneId": "ticker-research",
+    "view": "tab",
+    "tab": "Calls",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "T--tab-events",
+    "kind": "pane",
+    "token": "T",
+    "paneId": "ticker-research",
+    "view": "tab",
+    "tab": "Events",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "T--tab-options",
+    "kind": "pane",
+    "token": "T",
+    "paneId": "ticker-research",
+    "view": "tab",
+    "tab": "Options",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "T--tab-catalysts",
+    "kind": "pane",
+    "token": "T",
+    "paneId": "ticker-research",
+    "view": "tab",
+    "tab": "Catalysts",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "T--tab-exec",
+    "kind": "pane",
+    "token": "T",
+    "paneId": "ticker-research",
+    "view": "tab",
+    "tab": "Exec",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "T--tab-risks",
+    "kind": "pane",
+    "token": "T",
+    "paneId": "ticker-research",
+    "view": "tab",
+    "tab": "Risks",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "T--tab-short-interest",
+    "kind": "pane",
+    "token": "T",
+    "paneId": "ticker-research",
+    "view": "tab",
+    "tab": "Short Interest",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "T--tab-m-a",
+    "kind": "pane",
+    "token": "T",
+    "paneId": "ticker-research",
+    "view": "tab",
+    "tab": "M&A",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "T--tab-8-k",
+    "kind": "pane",
+    "token": "T",
+    "paneId": "ticker-research",
+    "view": "tab",
+    "tab": "8-K",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "T--tab-hiring",
+    "kind": "pane",
+    "token": "T",
+    "paneId": "ticker-research",
+    "view": "tab",
+    "tab": "Hiring",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "T--tab-dividends",
+    "kind": "pane",
+    "token": "T",
+    "paneId": "ticker-research",
+    "view": "tab",
+    "tab": "Dividends",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "T--tab-hiring-momentum",
+    "kind": "pane",
+    "token": "T",
+    "paneId": "ticker-research",
+    "view": "tab",
+    "tab": "Hiring momentum",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "T--tab-tweets",
+    "kind": "pane",
+    "token": "T",
+    "paneId": "ticker-research",
+    "view": "tab",
+    "tab": "Tweets",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "T--tab-13f",
+    "kind": "pane",
+    "token": "T",
+    "paneId": "ticker-research",
+    "view": "tab",
+    "tab": "13F",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "T--tab-apps",
+    "kind": "pane",
+    "token": "T",
+    "paneId": "ticker-research",
+    "view": "tab",
+    "tab": "Apps",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "T--tab-news",
+    "kind": "pane",
+    "token": "T",
+    "paneId": "ticker-research",
+    "view": "tab",
+    "tab": "News",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "T--tab-holders",
+    "kind": "pane",
+    "token": "T",
+    "paneId": "ticker-research",
+    "view": "tab",
+    "tab": "Holders",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "T--tab-sec",
+    "kind": "pane",
+    "token": "T",
+    "paneId": "ticker-research",
+    "view": "tab",
+    "tab": "SEC",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "T--tab-insider",
+    "kind": "pane",
+    "token": "T",
+    "paneId": "ticker-research",
+    "view": "tab",
+    "tab": "Insider",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "T--tab-thesis",
+    "kind": "pane",
+    "token": "T",
+    "paneId": "ticker-research",
+    "view": "tab",
+    "tab": "Thesis",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "T--tab-ask-ai",
+    "kind": "pane",
+    "token": "T",
+    "paneId": "ticker-research",
+    "view": "tab",
+    "tab": "Ask AI",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "T--tab-catalysts-changes",
+    "kind": "pane",
+    "token": "T",
+    "paneId": "ticker-research",
+    "view": "skipped",
+    "tab": "Catalysts > Changes",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "T--tab-hiring-momentum-chart-2-2",
+    "kind": "pane",
+    "token": "T",
+    "paneId": "ticker-research",
+    "view": "skipped",
+    "tab": "Hiring momentum > Chart [2.2]",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "T--tab-hiring-momentum-mix",
+    "kind": "pane",
+    "token": "T",
+    "paneId": "ticker-research",
+    "view": "skipped",
+    "tab": "Hiring momentum > Mix",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "T--tab-hiring-momentum-peers",
+    "kind": "pane",
+    "token": "T",
+    "paneId": "ticker-research",
+    "view": "skipped",
+    "tab": "Hiring momentum > Peers",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "T--tab-hiring-momentum-evidence",
+    "kind": "pane",
+    "token": "T",
+    "paneId": "ticker-research",
+    "view": "skipped",
+    "tab": "Hiring momentum > Evidence",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "T--tab-hiring-momentum-moves",
+    "kind": "pane",
+    "token": "T",
+    "paneId": "ticker-research",
+    "view": "skipped",
+    "tab": "Hiring momentum > Moves",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "T--tab-hiring-momentum-expansion",
+    "kind": "pane",
+    "token": "T",
+    "paneId": "ticker-research",
+    "view": "skipped",
+    "tab": "Hiring momentum > Expansion",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "T--tab-hiring-momentum-anomalies",
+    "kind": "pane",
+    "token": "T",
+    "paneId": "ticker-research",
+    "view": "skipped",
+    "tab": "Hiring momentum > Anomalies",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "T--tab-hiring-momentum-building",
+    "kind": "pane",
+    "token": "T",
+    "paneId": "ticker-research",
+    "view": "skipped",
+    "tab": "Hiring momentum > Building",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "T--tab-apps-chart-2-2",
+    "kind": "pane",
+    "token": "T",
+    "paneId": "ticker-research",
+    "view": "skipped",
+    "tab": "Apps > Chart [2.2]",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "T--tab-apps-markets",
+    "kind": "pane",
+    "token": "T",
+    "paneId": "ticker-research",
+    "view": "skipped",
+    "tab": "Apps > Markets",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "T--tab-apps-peers",
+    "kind": "pane",
+    "token": "T",
+    "paneId": "ticker-research",
+    "view": "skipped",
+    "tab": "Apps > Peers",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "T--tab-apps-evidence",
+    "kind": "pane",
+    "token": "T",
+    "paneId": "ticker-research",
+    "view": "skipped",
+    "tab": "Apps > Evidence",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "ticker-research"
+  },
+  {
+    "id": "TAS--root",
+    "kind": "pane",
+    "token": "TAS",
+    "paneId": "time-sales",
+    "view": "root",
+    "observedPaneId": "time-sales"
+  },
+  {
+    "id": "TAS--tab-nbbo",
+    "kind": "pane",
+    "token": "TAS",
+    "paneId": "time-sales",
+    "view": "tab",
+    "tab": "NBBO",
+    "observedPaneId": "time-sales"
+  },
+  {
+    "id": "THESIS--root",
+    "kind": "pane",
+    "token": "THESIS",
+    "paneId": "thesis-board",
+    "view": "root",
+    "observedPaneId": "thesis-board"
+  },
+  {
+    "id": "TRIAL--root",
+    "kind": "pane",
+    "token": "TRIAL",
+    "paneId": "trials",
+    "view": "root",
+    "observedPaneId": "trials"
+  },
+  {
+    "id": "twitter-feed-pane--root",
+    "kind": "pane",
+    "token": "twitter-feed-pane",
+    "paneId": "twitter-feed",
+    "view": "root",
+    "observedPaneId": "twitter-feed"
+  },
+  {
+    "id": "twitter-feed-pane--detail",
+    "kind": "pane",
+    "token": "twitter-feed-pane",
+    "paneId": "twitter-feed",
+    "view": "detail",
+    "observedPaneId": "twitter-feed"
+  },
+  {
+    "id": "VCA--root",
+    "kind": "pane",
+    "token": "VCA",
+    "paneId": "iv-screen",
+    "view": "root",
+    "observedPaneId": "iv-screen"
+  },
+  {
+    "id": "VOLS--root",
+    "kind": "pane",
+    "token": "VOLS",
+    "paneId": "volatility-term-structure",
+    "view": "root",
+    "observedPaneId": "volatility-term-structure"
+  },
+  {
+    "id": "VOLS--tab-curve",
+    "kind": "pane",
+    "token": "VOLS",
+    "paneId": "volatility-term-structure",
+    "view": "tab",
+    "tab": "Curve",
+    "observedPaneId": "volatility-term-structure"
+  },
+  {
+    "id": "VOLS--tab-history",
+    "kind": "pane",
+    "token": "VOLS",
+    "paneId": "volatility-term-structure",
+    "view": "tab",
+    "tab": "History",
+    "observedPaneId": "volatility-term-structure"
+  },
+  {
+    "id": "YAS--root",
+    "kind": "pane",
+    "token": "YAS",
+    "paneId": "fixed-income",
+    "view": "root",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "YAS--tab-credit",
+    "kind": "pane",
+    "token": "YAS",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Credit",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "YAS--tab-issuer-debt",
+    "kind": "pane",
+    "token": "YAS",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Issuer Debt",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "YAS--tab-treasury",
+    "kind": "pane",
+    "token": "YAS",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Treasury",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "YAS--tab-cash-flows",
+    "kind": "pane",
+    "token": "YAS",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Cash flows",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "YAS--tab-sensitivity",
+    "kind": "pane",
+    "token": "YAS",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Sensitivity",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "YAS--tab-treasury-bills",
+    "kind": "pane",
+    "token": "YAS",
+    "paneId": "fixed-income",
+    "view": "skipped",
+    "tab": "Treasury > Bills",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "YAS--tab-treasury-notes",
+    "kind": "pane",
+    "token": "YAS",
+    "paneId": "fixed-income",
+    "view": "skipped",
+    "tab": "Treasury > Notes",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "YAS--tab-treasury-bonds-3-4",
+    "kind": "pane",
+    "token": "YAS",
+    "paneId": "fixed-income",
+    "view": "skipped",
+    "tab": "Treasury > Bonds [3.4]",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "CFNG--root",
+    "kind": "pane",
+    "token": "CFNG",
+    "paneId": "crypto-fear-greed",
+    "view": "root",
+    "observedPaneId": "crypto-fear-greed"
+  },
+  {
+    "id": "CFNG--detail",
+    "kind": "pane",
+    "token": "CFNG",
+    "paneId": "crypto-fear-greed",
+    "view": "unmeasured",
+    "reason": "The audit mistook the root loading-to-HTTP503 transition after Enter for a detail view. Its one 1280 px picture shows the root error and retry state, without a detail stack or back action; 640 px has no detail picture. Both completed repeated runs discover only the root. Preserve the original picture and measurement as audit evidence, without counting this transition as an added detail.",
+    "auditOutcome": "non-detail-async-transition",
+    "observedPaneId": "crypto-fear-greed"
+  },
+  {
+    "id": "HN--root",
+    "kind": "pane",
+    "token": "HN",
+    "paneId": "hackernews",
+    "view": "root",
+    "observedPaneId": "hackernews"
+  },
+  {
+    "id": "HN--detail",
+    "kind": "pane",
+    "token": "HN",
+    "paneId": "hackernews",
+    "view": "detail",
+    "observedPaneId": "hackernews"
+  },
+  {
+    "id": "HN--tab-new",
+    "kind": "pane",
+    "token": "HN",
+    "paneId": "hackernews",
+    "view": "tab",
+    "tab": "New",
+    "observedPaneId": "hackernews"
+  },
+  {
+    "id": "HN--tab-best",
+    "kind": "pane",
+    "token": "HN",
+    "paneId": "hackernews",
+    "view": "tab",
+    "tab": "Best",
+    "observedPaneId": "hackernews"
+  },
+  {
+    "id": "HN--tab-show",
+    "kind": "pane",
+    "token": "HN",
+    "paneId": "hackernews",
+    "view": "tab",
+    "tab": "Show",
+    "observedPaneId": "hackernews"
+  },
+  {
+    "id": "HN--tab-ask",
+    "kind": "pane",
+    "token": "HN",
+    "paneId": "hackernews",
+    "view": "tab",
+    "tab": "Ask",
+    "observedPaneId": "hackernews"
+  },
+  {
+    "id": "GTP--root",
+    "kind": "pane",
+    "token": "GTP",
+    "paneId": "growthepie",
+    "view": "root",
+    "observedPaneId": "growthepie"
+  },
+  {
+    "id": "GTP--tab-addresses",
+    "kind": "pane",
+    "token": "GTP",
+    "paneId": "growthepie",
+    "view": "tab",
+    "tab": "Addresses",
+    "observedPaneId": "growthepie"
+  },
+  {
+    "id": "GTP--tab-fees",
+    "kind": "pane",
+    "token": "GTP",
+    "paneId": "growthepie",
+    "view": "tab",
+    "tab": "Fees",
+    "observedPaneId": "growthepie"
+  },
+  {
+    "id": "GTP--tab-tx-cost",
+    "kind": "pane",
+    "token": "GTP",
+    "paneId": "growthepie",
+    "view": "tab",
+    "tab": "Tx cost",
+    "observedPaneId": "growthepie"
+  },
+  {
+    "id": "GTP--tab-throughput",
+    "kind": "pane",
+    "token": "GTP",
+    "paneId": "growthepie",
+    "view": "tab",
+    "tab": "Throughput",
+    "observedPaneId": "growthepie"
+  },
+  {
+    "id": "GTP--tab-stables",
+    "kind": "pane",
+    "token": "GTP",
+    "paneId": "growthepie",
+    "view": "tab",
+    "tab": "Stables",
+    "observedPaneId": "growthepie"
+  },
+  {
+    "id": "GTP--tab-tvs",
+    "kind": "pane",
+    "token": "GTP",
+    "paneId": "growthepie",
+    "view": "tab",
+    "tab": "TVS",
+    "observedPaneId": "growthepie"
+  },
+  {
+    "id": "PL--failed",
+    "kind": "pane",
+    "token": "PL",
+    "paneId": "plugin-marketplace",
+    "view": "failed",
+    "reason": "PL: 0 views in 7s",
+    "auditOutcome": "zero-views"
+  },
+  {
+    "id": "APPS--root",
+    "kind": "pane",
+    "token": "APPS",
+    "paneId": "apps",
+    "view": "root",
+    "observedPaneId": "apps"
+  },
+  {
+    "id": "APPS--tab-chart",
+    "kind": "pane",
+    "token": "APPS",
+    "paneId": "apps",
+    "view": "tab",
+    "tab": "Chart",
+    "observedPaneId": "apps"
+  },
+  {
+    "id": "APPS--tab-markets",
+    "kind": "pane",
+    "token": "APPS",
+    "paneId": "apps",
+    "view": "tab",
+    "tab": "Markets",
+    "observedPaneId": "apps"
+  },
+  {
+    "id": "APPS--tab-peers",
+    "kind": "pane",
+    "token": "APPS",
+    "paneId": "apps",
+    "view": "tab",
+    "tab": "Peers",
+    "observedPaneId": "apps"
+  },
+  {
+    "id": "APPS--tab-evidence",
+    "kind": "pane",
+    "token": "APPS",
+    "paneId": "apps",
+    "view": "tab",
+    "tab": "Evidence",
+    "observedPaneId": "apps"
+  },
+  {
+    "id": "ASKG--root",
+    "kind": "pane",
+    "token": "ASKG",
+    "paneId": "askg",
+    "view": "root",
+    "observedPaneId": "askg"
+  },
+  {
+    "id": "AWARDS--root",
+    "kind": "pane",
+    "token": "AWARDS",
+    "paneId": "awards",
+    "view": "root",
+    "observedPaneId": "awards"
+  },
+  {
+    "id": "AWARDS--tab-company",
+    "kind": "pane",
+    "token": "AWARDS",
+    "paneId": "awards",
+    "view": "tab",
+    "tab": "Company",
+    "observedPaneId": "awards"
+  },
+  {
+    "id": "AWARDS--tab-agencies",
+    "kind": "pane",
+    "token": "AWARDS",
+    "paneId": "awards",
+    "view": "tab",
+    "tab": "Agencies",
+    "observedPaneId": "awards"
+  },
+  {
+    "id": "AWARDS--tab-sectors",
+    "kind": "pane",
+    "token": "AWARDS",
+    "paneId": "awards",
+    "view": "tab",
+    "tab": "Sectors",
+    "observedPaneId": "awards"
+  },
+  {
+    "id": "AWARDS--tab-events",
+    "kind": "pane",
+    "token": "AWARDS",
+    "paneId": "awards",
+    "view": "tab",
+    "tab": "Events",
+    "observedPaneId": "awards"
+  },
+  {
+    "id": "BT--root",
+    "kind": "pane",
+    "token": "BT",
+    "paneId": "backtest",
+    "view": "root",
+    "observedPaneId": "backtest"
+  },
+  {
+    "id": "BT--tab-trades",
+    "kind": "pane",
+    "token": "BT",
+    "paneId": "backtest",
+    "view": "tab",
+    "tab": "Trades",
+    "observedPaneId": "backtest"
+  },
+  {
+    "id": "BUZZ--root",
+    "kind": "pane",
+    "token": "BUZZ",
+    "paneId": "social-mentions",
+    "view": "root",
+    "observedPaneId": "social-mentions"
+  },
+  {
+    "id": "CATL--root",
+    "kind": "pane",
+    "token": "CATL",
+    "paneId": "catalysts",
+    "view": "root",
+    "observedPaneId": "catalysts"
+  },
+  {
+    "id": "CATL--tab-changes",
+    "kind": "pane",
+    "token": "CATL",
+    "paneId": "catalysts",
+    "view": "tab",
+    "tab": "Changes",
+    "observedPaneId": "catalysts"
+  },
+  {
+    "id": "CDX--root",
+    "kind": "pane",
+    "token": "CDX",
+    "paneId": "fixed-income",
+    "view": "root",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "CDX--tab-issuer-debt",
+    "kind": "pane",
+    "token": "CDX",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Issuer Debt",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "CDX--tab-bonds",
+    "kind": "pane",
+    "token": "CDX",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Bonds",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "CDX--tab-treasury",
+    "kind": "pane",
+    "token": "CDX",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Treasury",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "CDX--tab-treasury-bills",
+    "kind": "pane",
+    "token": "CDX",
+    "paneId": "fixed-income",
+    "view": "skipped",
+    "tab": "Treasury > Bills",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "CDX--tab-treasury-notes",
+    "kind": "pane",
+    "token": "CDX",
+    "paneId": "fixed-income",
+    "view": "skipped",
+    "tab": "Treasury > Notes",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "CDX--tab-treasury-bonds-2-4",
+    "kind": "pane",
+    "token": "CDX",
+    "paneId": "fixed-income",
+    "view": "skipped",
+    "tab": "Treasury > Bonds [2.4]",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "CHAT--root",
+    "kind": "pane",
+    "token": "CHAT",
+    "paneId": "chat",
+    "view": "root",
+    "observedPaneId": "chat"
+  },
+  {
+    "id": "CLTR--root",
+    "kind": "pane",
+    "token": "CLTR",
+    "paneId": "comment-letters",
+    "view": "root",
+    "observedPaneId": "comment-letters"
+  },
+  {
+    "id": "CONN--root",
+    "kind": "pane",
+    "token": "CONN",
+    "paneId": "connections",
+    "view": "root",
+    "observedPaneId": "connections"
+  },
+  {
+    "id": "CONN--detail",
+    "kind": "pane",
+    "token": "CONN",
+    "paneId": "connections",
+    "view": "detail",
+    "observedPaneId": "connections"
+  },
+  {
+    "id": "COVN--root",
+    "kind": "pane",
+    "token": "COVN",
+    "paneId": "fixed-income",
+    "view": "root",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "COVN--tab-credit",
+    "kind": "pane",
+    "token": "COVN",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Credit",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "COVN--tab-bonds",
+    "kind": "pane",
+    "token": "COVN",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Bonds",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "COVN--tab-treasury",
+    "kind": "pane",
+    "token": "COVN",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Treasury",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "COVN--tab-capital",
+    "kind": "pane",
+    "token": "COVN",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Capital",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "COVN--tab-maturities",
+    "kind": "pane",
+    "token": "COVN",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Maturities",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "COVN--tab-screen",
+    "kind": "pane",
+    "token": "COVN",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Screen",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "COVN--tab-treasury-bills",
+    "kind": "pane",
+    "token": "COVN",
+    "paneId": "fixed-income",
+    "view": "skipped",
+    "tab": "Treasury > Bills",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "COVN--tab-treasury-notes",
+    "kind": "pane",
+    "token": "COVN",
+    "paneId": "fixed-income",
+    "view": "skipped",
+    "tab": "Treasury > Notes",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "COVN--tab-treasury-bonds-3-4",
+    "kind": "pane",
+    "token": "COVN",
+    "paneId": "fixed-income",
+    "view": "skipped",
+    "tab": "Treasury > Bonds [3.4]",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "CRDOC--root",
+    "kind": "pane",
+    "token": "CRDOC",
+    "paneId": "fixed-income",
+    "view": "root",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "CRDOC--tab-credit",
+    "kind": "pane",
+    "token": "CRDOC",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Credit",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "CRDOC--tab-bonds",
+    "kind": "pane",
+    "token": "CRDOC",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Bonds",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "CRDOC--tab-treasury",
+    "kind": "pane",
+    "token": "CRDOC",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Treasury",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "CRDOC--tab-covenants",
+    "kind": "pane",
+    "token": "CRDOC",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Covenants",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "CRDOC--tab-maturities",
+    "kind": "pane",
+    "token": "CRDOC",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Maturities",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "CRDOC--tab-screen",
+    "kind": "pane",
+    "token": "CRDOC",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Screen",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "CRDOC--tab-treasury-bills",
+    "kind": "pane",
+    "token": "CRDOC",
+    "paneId": "fixed-income",
+    "view": "skipped",
+    "tab": "Treasury > Bills",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "CRDOC--tab-treasury-notes",
+    "kind": "pane",
+    "token": "CRDOC",
+    "paneId": "fixed-income",
+    "view": "skipped",
+    "tab": "Treasury > Notes",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "CRDOC--tab-treasury-bonds-3-4",
+    "kind": "pane",
+    "token": "CRDOC",
+    "paneId": "fixed-income",
+    "view": "skipped",
+    "tab": "Treasury > Bonds [3.4]",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "CTM--root",
+    "kind": "pane",
+    "token": "CTM",
+    "paneId": "commodities-energy",
+    "view": "root",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "CTM--tab-markets",
+    "kind": "pane",
+    "token": "CTM",
+    "paneId": "commodities-energy",
+    "view": "tab",
+    "tab": "Markets",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "CTM--tab-positioning",
+    "kind": "pane",
+    "token": "CTM",
+    "paneId": "commodities-energy",
+    "view": "tab",
+    "tab": "Positioning",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "CTM--tab-inventories",
+    "kind": "pane",
+    "token": "CTM",
+    "paneId": "commodities-energy",
+    "view": "tab",
+    "tab": "Inventories",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "CTM--tab-crops",
+    "kind": "pane",
+    "token": "CTM",
+    "paneId": "commodities-energy",
+    "view": "tab",
+    "tab": "Crops",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "CTM--tab-oil-gas",
+    "kind": "pane",
+    "token": "CTM",
+    "paneId": "commodities-energy",
+    "view": "tab",
+    "tab": "Oil & Gas",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "CTM--tab-positioning-disaggregated",
+    "kind": "pane",
+    "token": "CTM",
+    "paneId": "commodities-energy",
+    "view": "skipped",
+    "tab": "Positioning > Disaggregated",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "CTM--tab-inventories-products",
+    "kind": "pane",
+    "token": "CTM",
+    "paneId": "commodities-energy",
+    "view": "skipped",
+    "tab": "Inventories > Products",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "CTM--tab-inventories-gas-storage",
+    "kind": "pane",
+    "token": "CTM",
+    "paneId": "commodities-energy",
+    "view": "skipped",
+    "tab": "Inventories > Gas Storage",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "DIST--root",
+    "kind": "pane",
+    "token": "DIST",
+    "paneId": "mna",
+    "view": "root",
+    "observedPaneId": "mna"
+  },
+  {
+    "id": "DIST--tab-deals",
+    "kind": "pane",
+    "token": "DIST",
+    "paneId": "mna",
+    "view": "tab",
+    "tab": "Deals",
+    "observedPaneId": "mna"
+  },
+  {
+    "id": "DTS--root",
+    "kind": "pane",
+    "token": "DTS",
+    "paneId": "fixed-income",
+    "view": "root",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "DTS--tab-credit",
+    "kind": "pane",
+    "token": "DTS",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Credit",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "DTS--tab-issuer-debt",
+    "kind": "pane",
+    "token": "DTS",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Issuer Debt",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "DTS--tab-bonds",
+    "kind": "pane",
+    "token": "DTS",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Bonds",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "DTS--tab-debt",
+    "kind": "pane",
+    "token": "DTS",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Debt",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "ECST--root",
+    "kind": "pane",
+    "token": "ECST",
+    "paneId": "econ-statistics",
+    "view": "root",
+    "observedPaneId": "econ-statistics"
+  },
+  {
+    "id": "EM--root",
+    "kind": "pane",
+    "token": "EM",
+    "paneId": "estimate-revisions",
+    "view": "root",
+    "observedPaneId": "estimate-revisions"
+  },
+  {
+    "id": "EM--tab-surprises",
+    "kind": "pane",
+    "token": "EM",
+    "paneId": "estimate-revisions",
+    "view": "tab",
+    "tab": "Surprises",
+    "observedPaneId": "estimate-revisions"
+  },
+  {
+    "id": "EM--tab-guidance",
+    "kind": "pane",
+    "token": "EM",
+    "paneId": "estimate-revisions",
+    "view": "tab",
+    "tab": "Guidance",
+    "observedPaneId": "estimate-revisions"
+  },
+  {
+    "id": "ETFF--root",
+    "kind": "pane",
+    "token": "ETFF",
+    "paneId": "crypto-etf-flows",
+    "view": "root",
+    "observedPaneId": "crypto-etf-flows"
+  },
+  {
+    "id": "FA--root",
+    "kind": "pane",
+    "token": "FA",
+    "paneId": "financial-analysis",
+    "view": "root",
+    "observedPaneId": "financial-analysis"
+  },
+  {
+    "id": "FIRST--root",
+    "kind": "pane",
+    "token": "FIRST",
+    "paneId": "news-breaking",
+    "view": "root",
+    "observedPaneId": "news-breaking"
+  },
+  {
+    "id": "FTD--root",
+    "kind": "pane",
+    "token": "FTD",
+    "paneId": "short-interest",
+    "view": "root",
+    "observedPaneId": "short-interest"
+  },
+  {
+    "id": "FTD--tab-interest",
+    "kind": "pane",
+    "token": "FTD",
+    "paneId": "short-interest",
+    "view": "tab",
+    "tab": "Interest",
+    "observedPaneId": "short-interest"
+  },
+  {
+    "id": "FTD--tab-daily-volume",
+    "kind": "pane",
+    "token": "FTD",
+    "paneId": "short-interest",
+    "view": "tab",
+    "tab": "Daily volume",
+    "observedPaneId": "short-interest"
+  },
+  {
+    "id": "FTD--tab-weekly-ats-otc",
+    "kind": "pane",
+    "token": "FTD",
+    "paneId": "short-interest",
+    "view": "tab",
+    "tab": "Weekly ATS/OTC",
+    "observedPaneId": "short-interest"
+  },
+  {
+    "id": "GE--root",
+    "kind": "pane",
+    "token": "GE",
+    "paneId": "chart-composer",
+    "view": "root",
+    "observedPaneId": "chart-composer"
+  },
+  {
+    "id": "GIP--root",
+    "kind": "pane",
+    "token": "GIP",
+    "paneId": "chart-composer",
+    "view": "root",
+    "observedPaneId": "chart-composer"
+  },
+  {
+    "id": "GR--root",
+    "kind": "pane",
+    "token": "GR",
+    "paneId": "relationship-graph",
+    "view": "root",
+    "observedPaneId": "relationship-graph"
+  },
+  {
+    "id": "GUIDE--root",
+    "kind": "pane",
+    "token": "GUIDE",
+    "paneId": "company-guidance",
+    "view": "root",
+    "observedPaneId": "company-guidance"
+  },
+  {
+    "id": "GUIDE--tab-chart",
+    "kind": "pane",
+    "token": "GUIDE",
+    "paneId": "company-guidance",
+    "view": "tab",
+    "tab": "Chart",
+    "observedPaneId": "company-guidance"
+  },
+  {
+    "id": "GUIDE--tab-history",
+    "kind": "pane",
+    "token": "GUIDE",
+    "paneId": "company-guidance",
+    "view": "tab",
+    "tab": "History",
+    "observedPaneId": "company-guidance"
+  },
+  {
+    "id": "GUIDE--tab-evidence",
+    "kind": "pane",
+    "token": "GUIDE",
+    "paneId": "company-guidance",
+    "view": "tab",
+    "tab": "Evidence",
+    "observedPaneId": "company-guidance"
+  },
+  {
+    "id": "HILO--root",
+    "kind": "pane",
+    "token": "HILO",
+    "paneId": "scanner-hilo",
+    "view": "root",
+    "observedPaneId": "scanner-hilo"
+  },
+  {
+    "id": "HM--root",
+    "kind": "pane",
+    "token": "HM",
+    "paneId": "market-heatmap",
+    "view": "root",
+    "observedPaneId": "market-heatmap"
+  },
+  {
+    "id": "HM--tab-us-etfs",
+    "kind": "pane",
+    "token": "HM",
+    "paneId": "market-heatmap",
+    "view": "tab",
+    "tab": "US ETFs",
+    "observedPaneId": "market-heatmap"
+  },
+  {
+    "id": "HM--tab-main-portfolio",
+    "kind": "pane",
+    "token": "HM",
+    "paneId": "market-heatmap",
+    "view": "tab",
+    "tab": "Main Portfolio",
+    "observedPaneId": "market-heatmap"
+  },
+  {
+    "id": "HVG--root",
+    "kind": "pane",
+    "token": "HVG",
+    "paneId": "realized-vol",
+    "view": "root",
+    "observedPaneId": "realized-vol"
+  },
+  {
+    "id": "HVG--tab-cone",
+    "kind": "pane",
+    "token": "HVG",
+    "paneId": "realized-vol",
+    "view": "tab",
+    "tab": "Cone",
+    "observedPaneId": "realized-vol"
+  },
+  {
+    "id": "INS--root",
+    "kind": "pane",
+    "token": "INS",
+    "paneId": "insider",
+    "view": "root",
+    "observedPaneId": "insider"
+  },
+  {
+    "id": "JODI--root",
+    "kind": "pane",
+    "token": "JODI",
+    "paneId": "commodities-energy",
+    "view": "root",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "JODI--tab-markets",
+    "kind": "pane",
+    "token": "JODI",
+    "paneId": "commodities-energy",
+    "view": "tab",
+    "tab": "Markets",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "JODI--tab-curve",
+    "kind": "pane",
+    "token": "JODI",
+    "paneId": "commodities-energy",
+    "view": "tab",
+    "tab": "Curve",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "JODI--tab-positioning",
+    "kind": "pane",
+    "token": "JODI",
+    "paneId": "commodities-energy",
+    "view": "tab",
+    "tab": "Positioning",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "JODI--tab-inventories",
+    "kind": "pane",
+    "token": "JODI",
+    "paneId": "commodities-energy",
+    "view": "tab",
+    "tab": "Inventories",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "JODI--tab-crops",
+    "kind": "pane",
+    "token": "JODI",
+    "paneId": "commodities-energy",
+    "view": "tab",
+    "tab": "Crops",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "JODI--tab-positioning-disaggregated",
+    "kind": "pane",
+    "token": "JODI",
+    "paneId": "commodities-energy",
+    "view": "skipped",
+    "tab": "Positioning > Disaggregated",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "JODI--tab-inventories-products",
+    "kind": "pane",
+    "token": "JODI",
+    "paneId": "commodities-energy",
+    "view": "skipped",
+    "tab": "Inventories > Products",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "JODI--tab-inventories-gas-storage",
+    "kind": "pane",
+    "token": "JODI",
+    "paneId": "commodities-energy",
+    "view": "skipped",
+    "tab": "Inventories > Gas Storage",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "LAY--root",
+    "kind": "pane",
+    "token": "LAY",
+    "paneId": "layout-marketplace",
+    "view": "root",
+    "observedPaneId": "layout-marketplace"
+  },
+  {
+    "id": "LAY--detail",
+    "kind": "pane",
+    "token": "LAY",
+    "paneId": "layout-marketplace",
+    "view": "unmeasured",
+    "reason": "Enter activates a local layout and closes the gallery. The audit treats the disappeared pane text as a detail even when record() fails. Neither the initial run nor the bounded paired retry produced a detail picture on this revision. Preserve this as an unmeasured audit outcome; root coverage remains measured.",
+    "auditOutcome": "non-detail-pane-closed",
+    "observedPaneId": "layout-marketplace"
+  },
+  {
+    "id": "MAP--root",
+    "kind": "pane",
+    "token": "MAP",
+    "paneId": "world-venue-map",
+    "view": "root",
+    "observedPaneId": "world-venue-map"
+  },
+  {
+    "id": "MEMB--root",
+    "kind": "pane",
+    "token": "MEMB",
+    "paneId": "members",
+    "view": "root",
+    "observedPaneId": "members"
+  },
+  {
+    "id": "new-portfolio-pane--root",
+    "kind": "pane",
+    "token": "new-portfolio-pane",
+    "paneId": "portfolio-list",
+    "view": "root",
+    "observedPaneId": "portfolio-list"
+  },
+  {
+    "id": "new-portfolio-pane--detail",
+    "kind": "pane",
+    "token": "new-portfolio-pane",
+    "paneId": "portfolio-list",
+    "view": "detail",
+    "observedPaneId": "portfolio-list"
+  },
+  {
+    "id": "new-portfolio-pane--tab-watchlist",
+    "kind": "pane",
+    "token": "new-portfolio-pane",
+    "paneId": "portfolio-list",
+    "view": "tab",
+    "tab": "Watchlist",
+    "observedPaneId": "portfolio-list"
+  },
+  {
+    "id": "NGS--root",
+    "kind": "pane",
+    "token": "NGS",
+    "paneId": "commodities-energy",
+    "view": "root",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "NGS--tab-markets",
+    "kind": "pane",
+    "token": "NGS",
+    "paneId": "commodities-energy",
+    "view": "tab",
+    "tab": "Markets",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "NGS--tab-curve",
+    "kind": "pane",
+    "token": "NGS",
+    "paneId": "commodities-energy",
+    "view": "tab",
+    "tab": "Curve",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "NGS--tab-positioning",
+    "kind": "pane",
+    "token": "NGS",
+    "paneId": "commodities-energy",
+    "view": "tab",
+    "tab": "Positioning",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "NGS--tab-crops",
+    "kind": "pane",
+    "token": "NGS",
+    "paneId": "commodities-energy",
+    "view": "tab",
+    "tab": "Crops",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "NGS--tab-oil-gas",
+    "kind": "pane",
+    "token": "NGS",
+    "paneId": "commodities-energy",
+    "view": "tab",
+    "tab": "Oil & Gas",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "NGS--tab-crude",
+    "kind": "pane",
+    "token": "NGS",
+    "paneId": "commodities-energy",
+    "view": "tab",
+    "tab": "Crude",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "NGS--tab-products",
+    "kind": "pane",
+    "token": "NGS",
+    "paneId": "commodities-energy",
+    "view": "tab",
+    "tab": "Products",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "NGS--tab-positioning-disaggregated",
+    "kind": "pane",
+    "token": "NGS",
+    "paneId": "commodities-energy",
+    "view": "skipped",
+    "tab": "Positioning > Disaggregated",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "OMON--root",
+    "kind": "pane",
+    "token": "OMON",
+    "paneId": "options",
+    "view": "root",
+    "observedPaneId": "options"
+  },
+  {
+    "id": "OSA--root",
+    "kind": "pane",
+    "token": "OSA",
+    "paneId": "options-scenario",
+    "view": "root",
+    "observedPaneId": "options-scenario"
+  },
+  {
+    "id": "OSA--detail",
+    "kind": "pane",
+    "token": "OSA",
+    "paneId": "options-scenario",
+    "view": "detail",
+    "observedPaneId": "options-scenario"
+  },
+  {
+    "id": "OSA--tab-p-l-grid",
+    "kind": "pane",
+    "token": "OSA",
+    "paneId": "options-scenario",
+    "view": "tab",
+    "tab": "P&L grid",
+    "observedPaneId": "options-scenario"
+  },
+  {
+    "id": "OSA--tab-legs",
+    "kind": "pane",
+    "token": "OSA",
+    "paneId": "options-scenario",
+    "view": "tab",
+    "tab": "Legs",
+    "observedPaneId": "options-scenario"
+  },
+  {
+    "id": "PDLR--root",
+    "kind": "pane",
+    "token": "PDLR",
+    "paneId": "fixed-income",
+    "view": "root",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "PDLR--tab-credit",
+    "kind": "pane",
+    "token": "PDLR",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Credit",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "PDLR--tab-issuer-debt",
+    "kind": "pane",
+    "token": "PDLR",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Issuer Debt",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "PDLR--tab-bonds",
+    "kind": "pane",
+    "token": "PDLR",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Bonds",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "PDLR--tab-fails",
+    "kind": "pane",
+    "token": "PDLR",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Fails",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "PF--root",
+    "kind": "pane",
+    "token": "PF",
+    "paneId": "portfolio-list",
+    "view": "root",
+    "observedPaneId": "portfolio-list"
+  },
+  {
+    "id": "PF--detail",
+    "kind": "pane",
+    "token": "PF",
+    "paneId": "portfolio-list",
+    "view": "detail",
+    "observedPaneId": "portfolio-list"
+  },
+  {
+    "id": "PF--tab-watchlist",
+    "kind": "pane",
+    "token": "PF",
+    "paneId": "portfolio-list",
+    "view": "tab",
+    "tab": "Watchlist",
+    "observedPaneId": "portfolio-list"
+  },
+  {
+    "id": "PSD--root",
+    "kind": "pane",
+    "token": "PSD",
+    "paneId": "commodities-energy",
+    "view": "root",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "PSD--tab-markets",
+    "kind": "pane",
+    "token": "PSD",
+    "paneId": "commodities-energy",
+    "view": "tab",
+    "tab": "Markets",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "PSD--tab-curve",
+    "kind": "pane",
+    "token": "PSD",
+    "paneId": "commodities-energy",
+    "view": "tab",
+    "tab": "Curve",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "PSD--tab-positioning",
+    "kind": "pane",
+    "token": "PSD",
+    "paneId": "commodities-energy",
+    "view": "tab",
+    "tab": "Positioning",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "PSD--tab-inventories",
+    "kind": "pane",
+    "token": "PSD",
+    "paneId": "commodities-energy",
+    "view": "tab",
+    "tab": "Inventories",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "PSD--tab-oil-gas",
+    "kind": "pane",
+    "token": "PSD",
+    "paneId": "commodities-energy",
+    "view": "tab",
+    "tab": "Oil & Gas",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "PSD--tab-positioning-disaggregated",
+    "kind": "pane",
+    "token": "PSD",
+    "paneId": "commodities-energy",
+    "view": "skipped",
+    "tab": "Positioning > Disaggregated",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "PSD--tab-inventories-products",
+    "kind": "pane",
+    "token": "PSD",
+    "paneId": "commodities-energy",
+    "view": "skipped",
+    "tab": "Inventories > Products",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "PSD--tab-inventories-gas-storage",
+    "kind": "pane",
+    "token": "PSD",
+    "paneId": "commodities-energy",
+    "view": "skipped",
+    "tab": "Inventories > Gas Storage",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "commodities-energy"
+  },
+  {
+    "id": "RDCF--root",
+    "kind": "pane",
+    "token": "RDCF",
+    "paneId": "reverse-dcf",
+    "view": "root",
+    "observedPaneId": "reverse-dcf"
+  },
+  {
+    "id": "RISK--root",
+    "kind": "pane",
+    "token": "RISK",
+    "paneId": "risk-factors",
+    "view": "root",
+    "observedPaneId": "risk-factors"
+  },
+  {
+    "id": "SEAS--root",
+    "kind": "pane",
+    "token": "SEAS",
+    "paneId": "seasonality",
+    "view": "root",
+    "observedPaneId": "seasonality"
+  },
+  {
+    "id": "SEAS--tab-overlay",
+    "kind": "pane",
+    "token": "SEAS",
+    "paneId": "seasonality",
+    "view": "tab",
+    "tab": "Overlay",
+    "observedPaneId": "seasonality"
+  },
+  {
+    "id": "SEAS--tab-weekdays",
+    "kind": "pane",
+    "token": "SEAS",
+    "paneId": "seasonality",
+    "view": "tab",
+    "tab": "Weekdays",
+    "observedPaneId": "seasonality"
+  },
+  {
+    "id": "SI--root",
+    "kind": "pane",
+    "token": "SI",
+    "paneId": "short-interest",
+    "view": "root",
+    "observedPaneId": "short-interest"
+  },
+  {
+    "id": "SI--tab-daily-volume",
+    "kind": "pane",
+    "token": "SI",
+    "paneId": "short-interest",
+    "view": "tab",
+    "tab": "Daily volume",
+    "observedPaneId": "short-interest"
+  },
+  {
+    "id": "SI--tab-fails-to-deliver",
+    "kind": "pane",
+    "token": "SI",
+    "paneId": "short-interest",
+    "view": "tab",
+    "tab": "Fails to deliver",
+    "observedPaneId": "short-interest"
+  },
+  {
+    "id": "SI--tab-weekly-ats-otc",
+    "kind": "pane",
+    "token": "SI",
+    "paneId": "short-interest",
+    "view": "tab",
+    "tab": "Weekly ATS/OTC",
+    "observedPaneId": "short-interest"
+  },
+  {
+    "id": "SOVR--root",
+    "kind": "pane",
+    "token": "SOVR",
+    "paneId": "fixed-income",
+    "view": "root",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "SOVR--tab-issuer-debt",
+    "kind": "pane",
+    "token": "SOVR",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Issuer Debt",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "SOVR--tab-bonds",
+    "kind": "pane",
+    "token": "SOVR",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Bonds",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "SOVR--tab-treasury",
+    "kind": "pane",
+    "token": "SOVR",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Treasury",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "SOVR--tab-treasury-bills",
+    "kind": "pane",
+    "token": "SOVR",
+    "paneId": "fixed-income",
+    "view": "skipped",
+    "tab": "Treasury > Bills",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "SOVR--tab-treasury-notes",
+    "kind": "pane",
+    "token": "SOVR",
+    "paneId": "fixed-income",
+    "view": "skipped",
+    "tab": "Treasury > Notes",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "SOVR--tab-treasury-bonds-2-4",
+    "kind": "pane",
+    "token": "SOVR",
+    "paneId": "fixed-income",
+    "view": "skipped",
+    "tab": "Treasury > Bonds [2.4]",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "team-pane--root",
+    "kind": "pane",
+    "token": "team-pane",
+    "paneId": "team",
+    "view": "root",
+    "observedPaneId": "team"
+  },
+  {
+    "id": "THEM--root",
+    "kind": "pane",
+    "token": "THEM",
+    "paneId": "sectors",
+    "view": "root",
+    "observedPaneId": "sectors"
+  },
+  {
+    "id": "THEM--tab-sectors",
+    "kind": "pane",
+    "token": "THEM",
+    "paneId": "sectors",
+    "view": "tab",
+    "tab": "Sectors",
+    "observedPaneId": "sectors"
+  },
+  {
+    "id": "THEM--tab-industries",
+    "kind": "pane",
+    "token": "THEM",
+    "paneId": "sectors",
+    "view": "tab",
+    "tab": "Industries",
+    "observedPaneId": "sectors"
+  },
+  {
+    "id": "TRACE--root",
+    "kind": "pane",
+    "token": "TRACE",
+    "paneId": "fixed-income",
+    "view": "root",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "TRACE--tab-credit",
+    "kind": "pane",
+    "token": "TRACE",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Credit",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "TRACE--tab-issuer-debt",
+    "kind": "pane",
+    "token": "TRACE",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Issuer Debt",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "TRACE--tab-treasury",
+    "kind": "pane",
+    "token": "TRACE",
+    "paneId": "fixed-income",
+    "view": "tab",
+    "tab": "Treasury",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "TRACE--tab-treasury-bills",
+    "kind": "pane",
+    "token": "TRACE",
+    "paneId": "fixed-income",
+    "view": "skipped",
+    "tab": "Treasury > Bills",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "TRACE--tab-treasury-notes",
+    "kind": "pane",
+    "token": "TRACE",
+    "paneId": "fixed-income",
+    "view": "skipped",
+    "tab": "Treasury > Notes",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "TRACE--tab-treasury-bonds-2-4",
+    "kind": "pane",
+    "token": "TRACE",
+    "paneId": "fixed-income",
+    "view": "skipped",
+    "tab": "Treasury > Bonds [2.4]",
+    "reason": "revealed 2 presses deep; the sweep opens 1",
+    "observedPaneId": "fixed-income"
+  },
+  {
+    "id": "VAL--root",
+    "kind": "pane",
+    "token": "VAL",
+    "paneId": "market-valuation",
+    "view": "root",
+    "observedPaneId": "market-valuation"
+  },
+  {
+    "id": "VIX--root",
+    "kind": "pane",
+    "token": "VIX",
+    "paneId": "volatility-term-structure",
+    "view": "root",
+    "observedPaneId": "volatility-term-structure"
+  },
+  {
+    "id": "VIX--tab-history",
+    "kind": "pane",
+    "token": "VIX",
+    "paneId": "volatility-term-structure",
+    "view": "tab",
+    "tab": "History",
+    "observedPaneId": "volatility-term-structure"
+  },
+  {
+    "id": "VIX--tab-cross-asset",
+    "kind": "pane",
+    "token": "VIX",
+    "paneId": "volatility-term-structure",
+    "view": "tab",
+    "tab": "Cross-asset",
+    "observedPaneId": "volatility-term-structure"
+  },
+  {
+    "id": "WIRP--root",
+    "kind": "pane",
+    "token": "WIRP",
+    "paneId": "rate-path",
+    "view": "root",
+    "observedPaneId": "rate-path"
+  },
+  {
+    "id": "WIRP--tab-probabilities",
+    "kind": "pane",
+    "token": "WIRP",
+    "paneId": "rate-path",
+    "view": "tab",
+    "tab": "Probabilities",
+    "observedPaneId": "rate-path"
+  },
+  {
+    "id": "WIRP--tab-contracts",
+    "kind": "pane",
+    "token": "WIRP",
+    "paneId": "rate-path",
+    "view": "tab",
+    "tab": "Contracts",
+    "observedPaneId": "rate-path"
+  },
+  {
+    "id": "WIRP--tab-projections",
+    "kind": "pane",
+    "token": "WIRP",
+    "paneId": "rate-path",
+    "view": "tab",
+    "tab": "Projections",
+    "observedPaneId": "rate-path"
+  },
+  {
+    "id": "FXMD_REST_HEALTH--root",
+    "kind": "pane",
+    "token": "FXMD_REST_HEALTH",
+    "paneId": "fxmacrodata-research",
+    "view": "root",
+    "observedPaneId": "fxmacrodata-research"
+  },
+  {
+    "id": "SUB--root",
+    "kind": "pane",
+    "token": "SUB",
+    "paneId": "substack",
+    "view": "root",
+    "observedPaneId": "substack"
+  },
+  {
+    "id": "SUB--detail",
+    "kind": "pane",
+    "token": "SUB",
+    "paneId": "substack",
+    "view": "detail",
+    "observedPaneId": "substack"
+  },
+  {
+    "id": "ADJ--root",
+    "kind": "pane",
+    "token": "ADJ",
+    "paneId": "adjacent",
+    "view": "root",
+    "observedPaneId": "adjacent"
+  },
+  {
+    "id": "ADJ--detail",
+    "kind": "pane",
+    "token": "ADJ",
+    "paneId": "adjacent",
+    "view": "detail",
+    "observedPaneId": "adjacent"
+  },
+  {
+    "id": "ADJ--tab-rates",
+    "kind": "pane",
+    "token": "ADJ",
+    "paneId": "adjacent",
+    "view": "tab",
+    "tab": "Rates",
+    "observedPaneId": "adjacent"
+  },
+  {
+    "id": "ADJ--tab-cftc",
+    "kind": "pane",
+    "token": "ADJ",
+    "paneId": "adjacent",
+    "view": "tab",
+    "tab": "CFTC",
+    "observedPaneId": "adjacent"
+  },
+  {
+    "id": "POLL--root",
+    "kind": "pane",
+    "token": "POLL",
+    "paneId": "polls",
+    "view": "root",
+    "observedPaneId": "polls"
+  },
+  {
+    "id": "POLL--tab-favorability",
+    "kind": "pane",
+    "token": "POLL",
+    "paneId": "polls",
+    "view": "tab",
+    "tab": "Favorability",
+    "observedPaneId": "polls"
+  },
+  {
+    "id": "POLL--tab-generic",
+    "kind": "pane",
+    "token": "POLL",
+    "paneId": "polls",
+    "view": "tab",
+    "tab": "Generic",
+    "observedPaneId": "polls"
+  },
+  {
+    "id": "POLL--tab-senate",
+    "kind": "pane",
+    "token": "POLL",
+    "paneId": "polls",
+    "view": "tab",
+    "tab": "Senate",
+    "observedPaneId": "polls"
+  },
+  {
+    "id": "POLL--tab-governor",
+    "kind": "pane",
+    "token": "POLL",
+    "paneId": "polls",
+    "view": "tab",
+    "tab": "Governor",
+    "observedPaneId": "polls"
+  },
+  {
+    "id": "POLL--tab-house",
+    "kind": "pane",
+    "token": "POLL",
+    "paneId": "polls",
+    "view": "tab",
+    "tab": "House",
+    "observedPaneId": "polls"
+  },
+  {
+    "id": "BR--failed",
+    "kind": "pane",
+    "token": "BR",
+    "paneId": "brokers",
+    "view": "failed",
+    "reason": "BR: 0 views in 12s",
+    "auditOutcome": "zero-views"
+  }
+]

@@ -1,0 +1,23 @@
+bun test v1.3.11 (af24e281)
+
+src/sync/account-session.test.ts:
+585 |   expect(apiClient.getVerifiedSessionIdentity()).toBeNull();
+586 |   await chat.refreshSession();
+587 |   await h.ready();
+588 | 
+589 |   expect(sessionChecks).toBe(3);
+590 |   expect(profileChecks).toBe(1);
+                              ^
+error: expect(received).toBe(expected)
+
+Expected: 1
+Received: 0
+
+      at <anonymous> (src/sync/account-session.test.ts:590:25)
+(fail) a failed native session refresh cannot associate its new token with the old cached user [85.25ms]
+
+ 0 pass
+ 24 filtered out
+ 1 fail
+ 5 expect() calls
+Ran 1 test across 1 file. [720.00ms]

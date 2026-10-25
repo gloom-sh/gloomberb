@@ -1,0 +1,31 @@
+bun test v1.3.11 (af24e281)
+
+src/plugins/catalog-browser.test.ts:
+(pass) browser plugin catalog > excludes native, filesystem, and debug plugins [0.10ms]
+(pass) browser plugin catalog > keeps every public pane handoff restorable in the hosted browser [0.19ms]
+(pass) browser plugin catalog > omits unsupported modules inside otherwise browser-safe product areas [0.07ms]
+60 |         pluginRegistry: registry,
+61 |         disabledPlugins: [],
+62 |         context: { config, layout: config.layout, focusedPaneId: null, activeTicker: null, activeCollectionId: null },
+63 |         query,
+64 |       });
+65 |       expect(templates.map((template) => template.paneId)).toEqual([paneId]);
+                                                                ^
+error: expect(received).toEqual(expected)
+
+- [
+-   "thirteenf-funds",
+- ]
++ []
+
+- Expected  - 3
++ Received  + 1
+
+      at <anonymous> (<checkout>/src/plugins/catalog-browser.test.ts:65:60)
+(fail) browser plugin catalog > browser offers public research commands and restores their saved panes signed out [4.49ms]
+(pass) browser plugin catalog > desktop and terminal offers public research commands and restores their saved panes signed out [4.33ms]
+
+ 4 pass
+ 1 fail
+ 13 expect() calls
+Ran 5 tests across 1 file. [1212.00ms]

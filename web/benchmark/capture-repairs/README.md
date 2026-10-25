@@ -1,0 +1,1 @@
+Reviewed capture corrections are listed in ledger.json. Original and replacement pictures are published at the recorded paths. Full raw measurement and view records are preserved separately; their hashes are recorded with published=false. No application source was changed during these corrections.
