@@ -4,6 +4,7 @@ import { RESIZE_SETTLE_MS } from "../../src/ui/resize-settle";
 import { median, positiveInteger, takeOption } from "../tui-benchmark-harness";
 import { cacheDir, evaluate, frames, launchBrowser, mouse, sleep, waitFor, type Cdp, type Point } from "./browser";
 import { serveFixturePage, type FixturePage } from "./page";
+import { paceInput, type PacedInputDiagnostics } from "./paced-input";
 
 /**
  * Frame budget of pane drags and resizes, against a base checkout. Each run
@@ -46,10 +47,12 @@ const FRAME_MS = 1_000 / 60;
  * ancestor transitions and cleanup for two more. The final read also waits
  * two animation frames so that layout has painted, outside the timed drag. */
 const RELEASE_SETTLE_MS = RESIZE_SETTLE_MS * 3;
-/** Input validity: deliver at least 90% of the target (81 of 90 moves).
+/** Input validity: receive at least 90% of the target (81 of 90 trusted samples)
+ * at 54 samples/s over the page's recording interval, including input draining.
  * This is a validation criterion, not a measured noise allowance. A slow
  * input driver must not make a busy renderer look cheaper by giving it
- * fewer updates; the renderer's own frame rate remains a reported result. */
+ * fewer updates. Submitted/acknowledged commands do not count as delivered
+ * samples; the renderer's own frame rate remains a reported result. */
 const MIN_INPUT_SHARE = 0.9;
 // Calibrated on main (ac27f2d6a) with identical code on both sides: the
 // medians of five runs differed by at most 1.06x quiet and 1.17x on a 12-core
@@ -85,18 +88,26 @@ window.__REACT_DEVTOOLS_GLOBAL_HOOK__ = {
   onCommitFiberRoot() { window.__commits += 1; },
 };
 window.__pointerX = 0;
-document.addEventListener("pointermove", (event) => { window.__pointerX = event.clientX; }, true);
+document.addEventListener("pointermove", (event) => {
+  window.__pointerX = event.clientX;
+  if (!window.__recording || !event.isTrusted || !(event.buttons & 1)) return;
+  window.__pointerCallbacks += 1;
+  const samples = event.getCoalescedEvents?.() ?? [];
+  window.__pointerSamples += Math.max(1, samples.filter((sample) => sample.isTrusted).length);
+}, true);
 `;
 
-interface DragSample {
+interface DragSample extends PacedInputDiagnostics {
   /** Main-thread time (script, style, layout, paint and the rest) per animation frame, ms. */
   mainMsPerFrame: number;
   scriptMsPerFrame: number;
   styleLayoutMsPerFrame: number;
   commits: number;
-  /** Mouse moves whose dispatch completed during the measured input window. */
+  /** Trusted pointer samples received by the page, including coalesced samples. */
   pointerMoves: number;
-  /** Completed moves per second, excluding the metrics request afterward. */
+  /** Actual pointer callbacks; one callback can contain several native samples. */
+  pointerCallbacks: number;
+  /** Received samples per second over the full page recording, including draining. */
   pointerMovesPerSecond: number;
   /** Animation frames the page ran during the drag. */
   frames: number;
@@ -389,6 +400,8 @@ async function measureDrag(cdp: Cdp, page: FixturePage, scenario: Scenario): Pro
     window.__lag = [];
     window.__stretch = [];
     window.__commits = 0;
+    window.__pointerCallbacks = 0;
+    window.__pointerSamples = 0;
     const stretch = ${scenario.canvas ? `() => ${stretchOf(scenario.canvas)}` : "null"};
     const track = ${scenario.track ? `{ frame: () => ${scenario.track.frame}, content: () => ${scenario.track.content}, anchor: ${scenario.track.anchor ? `() => ${scenario.track.anchor}` : "null"} }` : "null"};
     const origin = track && { frame: track.frame() - ${start.x}, content: track.content() - (track.anchor ? track.anchor() : ${start.x}) };
@@ -412,29 +425,25 @@ async function measureDrag(cdp: Cdp, page: FixturePage, scenario: Scenario): Pro
     };
     requestAnimationFrame(tick);
   })()`);
-  const began = performance.now();
-  let pointerMoves = 0;
-  for (let move = 1; ; move += 1) {
-    const t = (performance.now() - began) / DRAG_MS;
-    if (t >= 1) break;
+  const input = await paceInput((t) => {
     const at = scenario.path(start, t);
-    await mouse(cdp, "mouseMoved", at.x, at.y, true);
-    pointerMoves += 1;
-    const wait = began + move * FRAME_MS - performance.now();
-    if (wait > 0) await sleep(wait);
-  }
-  const inputElapsed = performance.now() - began;
-  const pointerMovesPerSecond = pointerMoves / (inputElapsed / 1000);
-  const recorded = await evaluate<{ startedAt: number; stoppedAt: number; frameTimes: number[]; commits: number; lag: Array<[number, number]>; stretch: number[] }>(cdp, `(() => {
+    return mouse(cdp, "mouseMoved", at.x, at.y, true);
+  }, { durationMs: DRAG_MS, intervalMs: FRAME_MS });
+  // Every native dispatch has settled before the page stops recording. Work
+  // queued behind a busy renderer and its drain frames stay inside the metrics.
+  const recorded = await evaluate<{ startedAt: number; stoppedAt: number; frameTimes: number[]; commits: number; pointerSamples: number; pointerCallbacks: number; lag: Array<[number, number]>; stretch: number[] }>(cdp, `(() => {
     window.__recording = false;
     const stoppedAt = performance.now();
     return { startedAt: window.__recordingStartedAt, stoppedAt, frameTimes: window.__frameTimes.slice(1),
-      commits: window.__commits, lag: window.__lag.slice(1), stretch: window.__stretch.slice(1) };
+      commits: window.__commits, pointerSamples: window.__pointerSamples, pointerCallbacks: window.__pointerCallbacks,
+      lag: window.__lag.slice(1), stretch: window.__stretch.slice(1) };
   })()`);
   const after = await metrics(cdp);
-  // FPS uses the page's exact recording interval; input validity still uses
-  // the driver's delivery window. Neither clock is mixed with CDP timestamps.
+  // Both FPS and delivered input use the same page interval, including any
+  // drain. Submitted commands and acknowledgements cannot satisfy the gate.
   const elapsed = recorded.stoppedAt - recorded.startedAt;
+  const pointerMoves = recorded.pointerSamples;
+  const pointerMovesPerSecond = pointerMoves / (elapsed / 1000);
   // The pointer comes to rest where the drag ends, and lets go there.
   const end = scenario.path(start, 1);
   await mouse(cdp, "mouseMoved", end.x, end.y, true);
@@ -454,8 +463,11 @@ async function measureDrag(cdp: Cdp, page: FixturePage, scenario: Scenario): Pro
   const restStretch = scenario.canvas ? await evaluate<number>(cdp, stretchOf(scenario.canvas)) : 0;
   const minimumMoves = Math.ceil(DRAG_MS / FRAME_MS * MIN_INPUT_SHARE);
   const minimumRate = 1000 / FRAME_MS * MIN_INPUT_SHARE;
-  if (pointerMoves < minimumMoves || !Number.isFinite(pointerMovesPerSecond) || pointerMovesPerSecond < minimumRate) {
-    throw new Error(`Input delivery was undersampled: ${pointerMoves} moves at ${round(pointerMovesPerSecond, 1)}/s; need at least ${minimumMoves} moves and ${round(minimumRate, 1)}/s to measure the 60Hz workload.`);
+  if (!Number.isInteger(pointerMoves) || !Number.isInteger(recorded.pointerCallbacks)
+    || recorded.pointerCallbacks < 1 || recorded.pointerCallbacks > pointerMoves
+    || pointerMoves < minimumMoves || !Number.isFinite(pointerMovesPerSecond) || pointerMovesPerSecond < minimumRate
+    || pointerMoves > input.offeredMoves) {
+    throw new Error(`Input delivery was undersampled or inconsistent: ${pointerMoves} trusted samples at ${round(pointerMovesPerSecond, 1)}/s; need at least ${minimumMoves} samples and ${round(minimumRate, 1)}/s to measure the 60Hz workload. ${JSON.stringify({ ...input, pointerCallbacks: recorded.pointerCallbacks, recordingMs: elapsed })}`);
   }
   const usable = (values: readonly number[]) => values.length > 0 && values.every((value) => Number.isFinite(value) && value >= 0);
   if (![recorded.startedAt, recorded.stoppedAt, elapsed].every(Number.isFinite)
@@ -478,11 +490,13 @@ async function measureDrag(cdp: Cdp, page: FixturePage, scenario: Scenario): Pro
     throw new Error("The drag did not record valid performance metrics, commits or release edges.");
   }
   return {
+    ...input,
     mainMsPerFrame: ms("TaskDuration") / drawn,
     scriptMsPerFrame: ms("ScriptDuration") / drawn,
     styleLayoutMsPerFrame: (ms("RecalcStyleDuration") + ms("LayoutDuration")) / drawn,
     commits: recorded.commits,
     pointerMoves,
+    pointerCallbacks: recorded.pointerCallbacks,
     pointerMovesPerSecond,
     frames: recorded.frameTimes.length,
     fps: recorded.frameTimes.length / (elapsed / 1000),
@@ -572,6 +586,8 @@ function judge(scenarios: Scenario[], samples: Record<"base" | "head", Array<Rec
     "",
     `Middle value of ${runs} alternating runs per side, ${DRAG_MS / 1000} s drags at 60 moves a second, headless Chrome without a GPU. Frames are animation frames, not GPU-presented frames; missed frames are estimated against a 60 Hz display. Behind the pointer: how far the dragged edge of the frame, and of the content in it, was from where the pointer had it, in px (95th percentile). Release displacement: the largest early or settled release displacement from the held edge, sampled three frames after release and again after another ${RELEASE_SETTLE_MS} ms and two frames.`,
     "",
+    "Native input is offered on fixed 60 Hz deadlines without waiting for the previous acknowledgement. Missed slots are skipped. Delivered moves count trusted page samples, including coalesced input; callback counts are separate. All input drains before the recording stops, and that full page interval determines delivery rate and FPS.",
+    "",
     ...(baseOwnFixture ? ["Main was measured with its own fixture: this PR changed the fixture, and the new one needs source main does not have. The stand-in panes may differ between the two columns.", ""] : []),
     `| | main${baseOwnFixture ? " (own fixture)" : ""} | this PR |`,
     "|---|---|---|",
@@ -588,7 +604,14 @@ function judge(scenarios: Scenario[], samples: Record<"base" | "head", Array<Rec
     row("style and layout per frame", "styleLayoutMsPerFrame", " ms");
     row("React commits", "commits");
     row("delivered pointer moves", "pointerMoves");
+    row("pointer callbacks", "pointerCallbacks");
     row("pointer moves per second", "pointerMovesPerSecond");
+    row("offered pointer moves", "offeredMoves");
+    row("acknowledged moves", "acknowledgedMoves");
+    row("skipped input slots", "skippedSlots");
+    row("maximum pending inputs", "maxPendingMoves");
+    row("input dispatch lateness (max)", "maxDispatchLatenessMs", " ms");
+    row("input drain", "drainMs", " ms");
     row("frames per second", "fps");
     row("frame time p95", "p95FrameMs", " ms");
     row("missed frames (est., 60 Hz)", "missedFrames");
