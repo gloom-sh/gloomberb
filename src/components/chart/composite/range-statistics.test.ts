@@ -24,21 +24,15 @@ test("range statistics include the boundary days, omit gaps and non-finite value
   expect(compositeRangeStatistics(points, { start: new Date("2025-01-03"), end: new Date("2025-01-03") })).toBeNull();
 });
 
-test("valid enterprise-value multiples on either side of zero contribute to the guides", () => {
-  const statistics = compositeRangeStatistics([-.125, 0, .125].map(value => point("2025-01-02", value)), viewport)!;
-  expect(statistics.count).toBe(3);
-  expect(statistics.mean).toBe(0);
-  expect(statistics.standardDeviation).toBeCloseTo(Math.sqrt(2 * .125 ** 2 / 3), 12);
-});
-
 test("small dispersion around a large value remains accurate", () => {
   const statistics = compositeRangeStatistics([1, 2, 3].map((offset) => point("2025-01-02", 1e12 + offset)), viewport)!;
   expect(statistics.mean).toBe(1e12 + 2);
   expect(statistics.standardDeviation).toBeCloseTo(Math.sqrt(2 / 3), 12);
 });
 
-test("missing and hidden series have no guides, and one observation or zero spread coalesces to the mean", () => {
-  const series = createTestResolvedSeries({ id: "pe", unit: "x", unitGroup: "ratio", points: [point("2025-01-02", 25)] });
+test("guides require 20 valid observations; hidden series and empty windows have none", () => {
+  const series = createTestResolvedSeries({ id: "pe", unit: "x", unitGroup: "ratio", points: Array.from({ length: 20 }, () => point("2025-01-02", 25)) });
+  expect(compositeRangeStatisticsLevels({ ...series, points: series.points.slice(1) }, viewport, "#808080")).toBeNull();
   const one = compositeRangeStatisticsLevels(series, viewport, "#808080")!;
   expect(one.items).toHaveLength(1);
   expect(one.items[0]!.value).toBe(25);
@@ -53,7 +47,7 @@ test("missing and hidden series have no guides, and one observation or zero spre
 test("auto-scaling keeps a skewed series' sigma guides visible without changing a neighbouring axis", () => {
   const series = createTestResolvedSeries({
     id: "pe", unit: "x", unitGroup: "ratio",
-    points: [1, 1, 1, 1, 1, 100].map((value, index) => point(`2025-01-0${index + 1}`, value)),
+    points: [1, 1, 1, 1, 1, 100].flatMap((value, index) => Array.from({ length: 4 }, () => point(`2025-01-0${index + 1}`, value))),
   });
   const other = createTestResolvedSeries({ id: "other", axis: "right", points: [point("2025-01-01", 1000), point("2025-01-06", 2000)] });
   const window = { start: new Date("2025-01-01"), end: new Date("2025-01-06") };

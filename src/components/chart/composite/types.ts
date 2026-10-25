@@ -349,6 +349,6 @@ export interface CompositeChartProps {
    * tool (Shift+H) adds, moves and deletes them by mouse and keyboard.
    */
   levels?: CompositeChartLevels | null;
-  /** Mean and population ±1σ of a series' positive observations in the active viewport. */
+  /** Mean and population ±1σ of at least 20 finite observations in the active viewport. */
   rangeStatisticsSeriesId?: string;
 }

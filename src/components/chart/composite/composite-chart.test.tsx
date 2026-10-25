@@ -1168,6 +1168,7 @@ describe("CompositeChart", () => {
   test("range guides follow zoom, pan and reset instead of the loaded buffer, and disappear with their series", async () => {
     let setHidden: (hidden: boolean) => void = () => {};
     const valuation = { ...series("pe", "main", "left", "x", [900, 100, 30, 40, 50, 60, 70, 900, 900]), unitGroup: "ratio", style: "line" as const };
+    valuation.points = valuation.points.flatMap(point => Array.from({ length: 8 }, () => point));
     function Chart() {
       const [hidden, updateHidden] = useState(false);
       setHidden = updateHidden;

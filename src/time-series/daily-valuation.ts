@@ -2,10 +2,12 @@ import type { PricePoint } from "../types/financials";
 import type { TimeSeriesPoint } from "./types";
 import { valuationPriceAtOrBefore } from "./valuation-price";
 import { regularSessionCloseOn } from "../market-data/market/freshness";
+import { financialAvailabilityTime } from "../utils/financial-statements";
 
 export interface DailyValuationBasis {
-  /** The first public date of every input, never the fiscal period end. */
-  availableAt: Date;
+  /** ISO publication date or timestamp. A date without a time takes effect after that session. */
+  availableAt?: string;
+  /** An undated, unusable statement invalidates the old basis from its period end. */
   observedAt: Date;
   atPrice: (price: number) => number | null;
   periodLabel?: string;
@@ -23,7 +25,10 @@ export function dailyValuationHistory(
     if (!Number.isFinite(time) || bar.partial) continue;
     byDate.set(time, [...byDate.get(time) ?? [], bar]);
   }
-  const releases = [...bases].sort((a, b) => a.availableAt.getTime() - b.availableAt.getTime()
+  const effectiveTime = (basis: DailyValuationBasis) => basis.availableAt
+    ? financialAvailabilityTime(basis.availableAt)
+    : basis.observedAt.getTime();
+  const releases = [...bases].sort((a, b) => effectiveTime(a) - effectiveTime(b)
     || a.observedAt.getTime() - b.observedAt.getTime());
   let next = 0;
   let active: DailyValuationBasis | undefined;
@@ -33,7 +38,7 @@ export function dailyValuationHistory(
     // that close only if it was already public, including on early closes.
     const day = new Date(time).toISOString().slice(0, 10);
     const closeTime = regularSessionCloseOn(exchange, day) ?? time;
-    while (next < releases.length && releases[next]!.availableAt.getTime() <= closeTime) {
+    while (next < releases.length && effectiveTime(releases[next]!) <= closeTime) {
       const release = releases[next++]!;
       if (!active || release.observedAt >= active.observedAt) active = release;
     }
@@ -43,7 +48,7 @@ export function dailyValuationHistory(
     points.push({
       date,
       observedAt: date,
-      availableAt: active?.availableAt,
+      availableAt: active?.availableAt ? new Date(active.availableAt) : undefined,
       value: value !== null && Number.isFinite(value) ? value : null,
       periodLabel: active?.periodLabel,
       provenance: {

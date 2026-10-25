@@ -116,11 +116,16 @@ export function statementFieldAvailability(row: FinancialStatement | undefined, 
   return value && Number.isFinite(Date.parse(value)) ? value : undefined;
 }
 
+/** A date without a publication time is only known to be available after that day. */
+export function financialAvailabilityTime(value: string): number {
+  return Date.parse(value) + (/^\d{4}-\d{2}-\d{2}$/.test(value) ? 86_400_000 : 0);
+}
+
 /** A derived value is dated only when every input's availability is known. */
 export function completeAvailability(values: readonly (string | null | undefined)[]): string | undefined {
   if (values.length === 0 || values.some((value) => !value || !Number.isFinite(Date.parse(value)))) return undefined;
   return values.reduce<string | undefined>((latest, value) => (
-    !latest || Date.parse(value!) > Date.parse(latest) ? value! : latest
+    !latest || financialAvailabilityTime(value!) > financialAvailabilityTime(latest) ? value! : latest
   ), undefined);
 }
 

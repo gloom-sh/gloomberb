@@ -23,7 +23,7 @@ import {
 import { aggregatePriceBars, futuresOpenMinuteOf, withBuiltBarSize } from "./bar-aggregation";
 import { TIME_RANGES, type TimeRange } from "./range";
 import type { DataProvider } from "../types/data-provider";
-import type { Quote, TickerFinancials } from "../types/financials";
+import type { EarningsAction, Quote, TickerFinancials } from "../types/financials";
 import { mergeQuoteMetadata, quoteMetadataFromQuote, quoteMetadataMatchesTarget } from "../market-data/quotes/metadata";
 import type { FredSeriesRequest } from "../sources/gloomberb-cloud/fred-series";
 import { fredCreditCoverageNotice } from "./economic";
@@ -326,6 +326,33 @@ async function resolveChartSpecPass(
           return null;
         });
       cache.financialsByInstrument.set(key, pending);
+      cache.revision += 1;
+    }
+    return pending;
+  };
+  const loadEarningsReleases = (source: Extract<ChartSeriesSpec["source"], { kind: "security" }>) => {
+    const key = instrumentKey(source);
+    let pending = cache.earningsReleasesByInstrument.get(key);
+    if (!pending) {
+      pending = (async () => {
+        const [events, history] = await Promise.allSettled([
+          sources.dataProvider?.getCorporateActions?.(source.instrument.symbol, source.instrument.exchange, requestContext(source)),
+          isUsListingExchange(source.instrument.exchange) ? sources.loadEarningsHistory?.(source.instrument.symbol) : undefined,
+        ]);
+        const releases: EarningsAction[] = [];
+        if (history.status === "fulfilled") for (const report of history.value?.reports ?? []) {
+          if (report.dateStatus !== "reported") continue;
+          releases.push({ date: report.date, dateType: "announcement", dateStatus: "reported",
+            fiscalPeriod: report.fiscalPeriod ?? undefined, reportedAt: report.reportedAt ?? undefined,
+            time: report.timingSource !== "history" ? report.timing ?? undefined : undefined });
+        }
+        else logFailure("time-series-resolve", "Loading earnings release history failed")(history.reason);
+        if (events.status === "fulfilled") releases.push(...events.value?.earnings ?? []);
+        else logFailure("time-series-resolve", "Loading earnings release events failed")(events.reason);
+        if (events.status === "rejected" || history.status === "rejected") cache.earningsReleasesByInstrument.delete(key);
+        return releases;
+      })();
+      cache.earningsReleasesByInstrument.set(key, pending);
       cache.revision += 1;
     }
     return pending;
@@ -836,6 +863,10 @@ async function resolveChartSpecPass(
       let merged = financials ?? (history ? emptyFinancials() : null);
       if (merged && quoteOverride) merged = { ...merged, quote: latestQuote(merged.quote, quoteOverride) };
       if (!merged) throw new Error(`No financial data is available for ${instrumentLabel(source)}.`);
+      if (dailyValuation && source.fieldId !== "valuation.forwardPE" && source.fieldId !== "valuation.realizedNtmPE"
+        && merged.earningsReleases === undefined) {
+        merged = { ...merged, earningsReleases: await loadEarningsReleases(resolvedSource) };
+      }
       // Historical labels can retain listing facts after the live price is
       // unavailable. Reuse existing facts before requesting a price-free snapshot.
       const existingMetadata = merged.quoteMetadata && quoteMetadataMatchesTarget(merged.quoteMetadata, resolvedSource.instrument.symbol, resolvedSource.instrument.exchange)
@@ -921,7 +952,7 @@ async function resolveChartSpecPass(
       if (source.fieldId === "valuation.realizedNtmPE" && merged.epsEstimates) {
         warnings.push(REALIZED_NTM_PE_BASIS_NOTICE);
       }
-      if (isFundamentalFieldId(source.fieldId) && fundamentalSeriesUsesAvailabilityFallback(merged, source)) {
+      if (!dailyValuation && isFundamentalFieldId(source.fieldId) && fundamentalSeriesUsesAvailabilityFallback(merged, source)) {
         result.warning = [result.warning, "Publication dates are unavailable for some observations; period-end dates are used as a fallback."].filter(Boolean).join(" ");
       }
       return result;
@@ -948,6 +979,7 @@ async function resolveChartSpecPass(
     : null;
   const dailyValuationView = spec.series.filter((entry) => entry.visible !== false);
   const shortDailyValuation = !hasExplicitWindow && (spec.viewport.range === "1D" || spec.viewport.range === "1W")
+    && rawSeries.every(series => series.nativeFrequency === "daily")
     && dailyValuationView.length > 0 && dailyValuationView.every(({ source }) => source.kind === "security"
       && source.period === "daily" && source.fieldId.startsWith("valuation."));
   const dailyTimes = shortDailyValuation ? [...new Set(rawSeries.flatMap((entry) => entry.points.map((point) => point.date.getTime())))]

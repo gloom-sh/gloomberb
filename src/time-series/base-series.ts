@@ -10,6 +10,7 @@ import { extractFredSeries } from "./economic";
 import { getTimeSeriesField, isMarketFieldId } from "./field-catalog";
 import {
   unreportedStatementPeriod,
+  dailyValuationFallbackPeriod,
   valuationCurrencyWarning,
   valuationPriceIssues,
 } from "./fundamentals";
@@ -118,6 +119,7 @@ export function baseSecuritySeries(
   const field = getTimeSeriesField(spec.source.fieldId);
   if (!field) return null;
   const points = extractSecuritySeries(financials, spec.source);
+  const valuationFallback = dailyValuationFallbackPeriod(financials, spec.source);
   const unreportedPeriod = points.length === 0 ? unreportedStatementPeriod(financials, spec.source) : null;
   const symbol = instrumentLabel(spec.source);
   const statementCurrency = field.id.startsWith("fundamental.") && field.unit.startsWith("currency")
@@ -198,10 +200,11 @@ export function baseSecuritySeries(
       ? financials.quote?.instrumentType || quoteMetadata?.instrumentType : undefined,
     volumeUnit,
     ...(priceIssues.length ? { valuationPriceIssues: priceIssues } : {}),
-    warning: field.id === "market.volume" && !volumeUnit && points.length > 0
-      ? "Volume unit unknown." : statementCurrency?.warning ?? valuationCurrencyWarning(financials, spec.source),
+    warning: [valuationFallback ? "Release dates unavailable; showing reported periods." : undefined,
+      field.id === "market.volume" && !volumeUnit && points.length > 0
+        ? "Volume unit unknown." : statementCurrency?.warning ?? valuationCurrencyWarning(financials, spec.source)].filter(Boolean).join(" ") || undefined,
     nativeFrequency: marketField ? marketSeriesFrequency(spec.source, marketResolution)
-      : spec.source.period && spec.source.period !== "auto" ? spec.source.period : field.nativeFrequency,
+      : valuationFallback ?? (spec.source.period && spec.source.period !== "auto" ? spec.source.period : field.nativeFrequency),
     ...(unreportedPeriod ? { unreportedPeriod } : {}),
     ...(marketField ? { historyResolution: marketResolution } : {}),
     timestampMode: spec.source.timestampMode,

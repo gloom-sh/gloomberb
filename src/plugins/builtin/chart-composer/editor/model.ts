@@ -74,7 +74,7 @@ function seriesFieldId(series: ChartSeriesSpec): string {
 
 function compatiblePeriods(series: ChartSeriesSpec): SeriesPeriod[] {
   if (series.source.kind !== "security") return [];
-  if (series.source.fieldId.startsWith("valuation.")) return ["daily", ...FINANCIAL_PERIODS];
+  if (series.source.fieldId.startsWith("valuation.") && series.source.fieldId !== "valuation.realizedNtmPE") return ["daily", ...FINANCIAL_PERIODS];
   return series.source.fieldId.startsWith("market.") ? MARKET_PERIODS : FINANCIAL_PERIODS;
 }
 

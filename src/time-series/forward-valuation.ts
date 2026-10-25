@@ -256,7 +256,7 @@ export function dailyForwardPeHistory(
       next ? { eps: next.epsAverage } : undefined);
     const date = new Date(day);
     return {
-      availableAt: date,
+      availableAt: day,
       observedAt: date,
       periodLabel: `Consensus observed ${day}`,
       atPrice: (price: number) => {

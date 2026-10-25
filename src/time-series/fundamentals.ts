@@ -10,6 +10,7 @@ import { trailingEpsAcrossFiscalYearEnd } from "../utils/trailing-eps";
 import { canonicalTimeSeriesFieldId, getTimeSeriesField } from "./field-catalog";
 import { dailyForwardPeHistory, forwardPeHistory, realizedNtmPeHistory } from "./forward-valuation";
 import { dailyValuationHistory, type DailyValuationBasis } from "./daily-valuation";
+import { statementAtRelease } from "./valuation-releases";
 import { reportingCurrencySeries } from "./reporting-currency";
 import { createValuationCurrencyContext, type ValuationCurrencyContext } from "./valuation-currency";
 import { currentValuationPrice, valuationPriceAtOrBefore, valuationQuoteIssue, type ValuationPriceIssue } from "./valuation-price";
@@ -491,7 +492,7 @@ function buildTtmStatements(
 export function knownWhenFiled(row: FinancialStatement): FinancialStatement {
   const filed = row.epsBasis?.status === "split-adjusted" ? row.epsBasis.originalFiled : undefined;
   if (!filed || !Number.isFinite(Date.parse(filed))) return row;
-  const current = row.fieldAvailability !== undefined ? row.fieldAvailability.eps : row.availableAt;
+  const current = statementFieldAvailability(row, "eps");
   if (current && Date.parse(current) <= Date.parse(filed)) return row;
   return { ...row, fieldAvailability: { ...row.fieldAvailability, eps: filed } };
 }
@@ -518,12 +519,17 @@ function sourceStatements(
   financials: TickerFinancials,
   period: SeriesPeriod | undefined,
   valuationMetric?: string,
+  exchange?: string,
 ): { statements: InternalStatement[]; period: "annual" | "quarterly" | "ttm" } {
   const normalized = normalizeFundamentalPeriod(period);
   let known = valuationMetric
     ? valuationStatements(financials)
     : { quarterly: financials.quarterlyStatements, annual: financials.annualStatements };
   if (period === "daily" && valuationMetric) {
+    const releases = financials.earningsReleases ?? [];
+    const venue = financials.quote?.listingExchangeName || financials.quote?.exchangeName || exchange;
+    known = { quarterly: known.quarterly.map(row => statementAtRelease(row, releases, venue)),
+      annual: known.annual.map(row => statementAtRelease(row, releases, venue)) };
     known = { quarterly: known.quarterly.map(datedValuationStatement), annual: known.annual.map(datedValuationStatement) };
     // A later comparative quarter may repeat a year-end balance sheet that
     // the annual filing already published. Only identical, same-currency
@@ -785,7 +791,7 @@ function historicalValuation(
   currencies: ValuationCurrencyContext,
 ) {
   // A price failure cannot make absent financial inputs appear available.
-  if (currencies.priceInStatementUnits(statement, 1) === null || valuationAtPrice(statement, metric, 1) === null) return null;
+  if (currencies.priceInStatementUnits(statement, 1) === null || valuationAtPrice(statement, metric, 1, true) === null) return null;
   const priceDate = metricAvailability(statement, metric) ?? statement.date;
   const price = valuationPriceAtOrBefore(financials.priceHistory, priceDate);
   if (!price) return null;
@@ -812,6 +818,7 @@ function valuationAtPrice(
   statement: FinancialStatement,
   metric: string,
   price: number,
+  checkingInputs = false,
 ): number | null {
   const shares = selectedShares(statement);
   const marketCap = shares ? price * shares.value : null;
@@ -827,6 +834,8 @@ function valuationAtPrice(
     return eps && eps > 0 ? price / eps : null;
   }
   if (metric === "priceSales") return ratio(marketCap, statement.totalRevenue);
+  // The probe at price=1 checks input coverage, not the historical EV sign.
+  if (!checkingInputs && enterpriseValue !== null && enterpriseValue < 0 && (metric === "evSales" || metric === "evEbitda")) return null;
   if (metric === "evSales") return ratio(enterpriseValue, statement.totalRevenue);
   if (metric === "evEbitda") return ratio(enterpriseValue, statement.ebitda);
   if (metric === "priceFcf") return ratio(marketCap, freeCashFlow(statement).value);
@@ -835,11 +844,11 @@ function valuationAtPrice(
 
 function dailyStatementValuation(financials: TickerFinancials, metric: string, exchange?: string): TimeSeriesPoint[] {
   const earningsMetric = metric === "pegRatio" ? "trailingPE" : metric;
-  const selected = sourceStatements(financials, "daily", earningsMetric);
+  const selected = sourceStatements(financials, "daily", earningsMetric, exchange);
   const currencies = createValuationCurrencyContext(financials);
   const yearEndMonth = fiscalYearEndMonth(financials.annualStatements);
   const bases: DailyValuationBasis[] = selected.statements.flatMap((statement) => {
-    const usable = valuationAtPrice(statement, earningsMetric, 1) !== null;
+    const usable = valuationAtPrice(statement, earningsMetric, 1, true) !== null;
     // Missing dates cannot put information at the period end: until its
     // publication is known there is no historical denominator to use.
     let publication = metricAvailability(statement, earningsMetric)
@@ -858,15 +867,19 @@ function dailyStatementValuation(financials: TickerFinancials, metric: string, e
         if (change > 0) growth = change;
       }
     }
-    const availableAt = validDate(publication);
     const observedAt = validDate(statement.date);
-    if (!availableAt || !observedAt) return [];
+    if (!observedAt) return [];
+    const availableAt = validDate(publication);
+    if (availableAt && availableAt < observedAt) publication = undefined;
     const point = pointForStatement(statement, earningsMetric, null, selected.period, "available-at", true, yearEndMonth);
     return [{
-      availableAt,
+      availableAt: publication,
       observedAt,
       periodLabel: point?.periodLabel,
       atPrice: (price: number) => {
+        // An undated newer period must stop the previous TTM from continuing.
+        // Its period end only bounds the gap; it never publishes a value.
+        if (!publication || !availableAt) return null;
         const comparable = currencies.priceInStatementUnits(statement, price);
         if (comparable === null) return null;
         const value = valuationAtPrice(statement, earningsMetric, comparable);
@@ -882,6 +895,20 @@ function dailyStatementValuation(financials: TickerFinancials, metric: string, e
   });
   const points = dailyValuationHistory(financials.priceHistory, bases, financials.quote?.listingExchangeName || financials.quote?.exchangeName || exchange);
   return points.some((point) => point.value !== null) ? points : [];
+}
+
+/** A daily history cannot be dated at all, but the issuer still has reported figures. */
+export function dailyValuationFallbackPeriod(financials: TickerFinancials, source: SecuritySeriesSource): "annual" | "quarterly" | "ttm" | null {
+  if (source.period !== "daily") return null;
+  const [namespace, metric = ""] = canonicalTimeSeriesFieldId(source.fieldId).split(".");
+  const inputMetric = metric === "pegRatio" ? "trailingPE" : metric;
+  if (namespace !== "valuation" || !QUOTE_DERIVED_VALUATION_IDS.has(inputMetric)) return null;
+  const daily = sourceStatements(financials, "daily", inputMetric, source.instrument.exchange);
+  if (daily.statements.some(row => metricAvailability(row, inputMetric))) return null;
+  const annual = sourceStatements(financials, "annual", inputMetric);
+  if (annual.statements.some(row => valuationAtPrice(row, inputMetric, 1, true) !== null)) return "annual";
+  const reported = sourceStatements(financials, "auto", inputMetric);
+  return reported.statements.some(row => valuationAtPrice(row, inputMetric, 1, true) !== null) ? reported.period : null;
 }
 
 function providerCurrentValuationPoint(
@@ -1092,6 +1119,8 @@ export function extractFundamentalSeries(
   }
 
   if (namespace !== "valuation" || !VALUATION_IDS.has(metric)) return [];
+  const fallback = dailyValuationFallbackPeriod(financials, source);
+  if (fallback) return extractFundamentalSeries(financials, { ...source, period: fallback });
   if (source.period === "daily" && metric !== "realizedNtmPE") {
     if (metric !== "forwardPE") return dailyStatementValuation(financials, metric, source.instrument.exchange);
     const points = dailyForwardPeHistory(financials, createValuationCurrencyContext(financials), source.instrument.exchange);

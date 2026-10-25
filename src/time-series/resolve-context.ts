@@ -3,7 +3,8 @@ import type { PriceHistoryResult } from "../types/price-history";
 import { LiveBarAccumulator } from "./live-bars";
 import type { ChartResolutionSupport, ManualChartResolution } from "./resolution";
 import type { DataProvider, MarketDataRequestContext } from "../types/data-provider";
-import type { Quote, QuoteMetadata, TickerFinancials } from "../types/financials";
+import type { EarningsAction, Quote, QuoteMetadata, TickerFinancials } from "../types/financials";
+import type { EarningsHistoryPayload } from "../api-client/earnings";
 import type { FredSeriesLoadResult, FredSeriesRequest } from "../sources/gloomberb-cloud/fred-series";
 import { chartQuoteOverrideKeyForSource } from "./live-quotes";
 import { publicTickerKey } from "../utils/exchanges";
@@ -16,6 +17,8 @@ import type {
 export interface ChartResolveSources {
   dataProvider: DataProvider | null;
   loadFredSeries: (request: FredSeriesRequest) => Promise<FredSeriesLoadResult>;
+  /** Dated releases from the same history the earnings calendar reads. US listings only. */
+  loadEarningsHistory?: (symbol: string) => Promise<EarningsHistoryPayload>;
   now?: Date;
   /** Latest streamed quote per security identity, layered over snapshot data. */
   quoteOverrides?: ReadonlyMap<string, Quote>;
@@ -74,6 +77,7 @@ export interface LiveTailRequest {
 /** Raw source data retained while live quotes recompute the chart tail. */
 export class ChartResolveCache {
   readonly financialsByInstrument = new Map<string, Promise<TickerFinancials | null>>();
+  readonly earningsReleasesByInstrument = new Map<string, Promise<EarningsAction[]>>();
   readonly quoteMetadataByInstrument = new Map<string, Promise<QuoteMetadata | null>>();
   /** Each futures symbol's contract price unit, asked once per chart once known. */
   readonly futuresPriceUnits = new Map<string, Promise<string | null>>();

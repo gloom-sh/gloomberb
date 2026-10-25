@@ -151,6 +151,7 @@ export async function loadChartPaneModel(
     },
     resolveCapabilitySeries: headlessCapabilityResolver(context),
     loadFuturesPriceUnit: (symbol) => loadFuturesPriceUnit(symbol, (key) => loadFuturesContractTerms(key, context.apiClient)),
+    loadEarningsHistory: (symbol) => context.apiClient.getCloudEarningsHistory(symbol, 100),
     loadFredSeries: async (request) => ({
       data: await context.apiClient.getCloudFredSeries(request.seriesId, {
         startDate: request.startDate,
@@ -347,7 +348,8 @@ function chartFreshness(
   const loaded = allSeries.filter((entry) => entry.points.length > 0);
   const series = loaded.length ? loaded : allSeries;
   const visible = spec.series.filter((entry) => entry.visible !== false);
-  if (visible.length && visible.every((entry) => entry.source.kind === "security"
+  if (visible.length && series.every(entry => (entry as HeadlessSeries & Pick<ResolvedSeries, "nativeFrequency">).nativeFrequency === "daily")
+    && visible.every((entry) => entry.source.kind === "security"
     && entry.source.period === "daily" && entry.source.fieldId.startsWith("valuation."))) {
     const ends = series.flatMap((entry) => entry.points.at(-1)?.date ?? []).map((date) => new Date(date).toISOString().slice(0, 10)).sort();
     return { ...DAILY_CLOSES, ...(ends.length ? { asOf: ends.at(-1)!, oldest: ends[0]! } : {}) };

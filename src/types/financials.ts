@@ -521,6 +521,8 @@ export type EarningsDateStatus = "reported" | "confirmed" | "projected";
 
 export interface EarningsAction {
   date: string;
+  /** Known release/acceptance timestamp, when the calendar has one. */
+  reportedAt?: string;
   dateType?: "announcement" | "fiscal-period-end";
   currency?: string;
   time?: string;
@@ -976,6 +978,8 @@ export interface EpsEstimateHistory {
 }
 
 export interface TickerFinancials {
+  /** Reported earnings-release events retained with daily valuation snapshots. */
+  earningsReleases?: EarningsAction[];
   statementHistory?: StatementHistoryAttempt;
   /** @deprecated No longer populated. */
   operatingHistoryRetryAt?: number;

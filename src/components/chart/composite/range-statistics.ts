@@ -36,7 +36,7 @@ export function compositeRangeStatisticsLevels(
 ): CompositeChartLevels | null {
   if (!series || series.hidden || !viewport) return null;
   const statistics = compositeRangeStatistics(series.points, viewport);
-  if (!statistics) return null;
+  if (!statistics || statistics.count < 20) return null;
   const { mean, standardDeviation } = statistics;
   const guides = [
     { id: "mean", label: "Avg", value: mean, dashed: false },

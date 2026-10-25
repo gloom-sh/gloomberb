@@ -450,6 +450,7 @@ function ChartComposerSurface({
     && spec.series[0]!.source.kind === "security"
     && spec.series[0]!.source.fieldId.startsWith("valuation.")
     && spec.series[0]!.source.period === "daily"
+    && resolution.series.find(series => series.id === spec.series[0]!.id)?.nativeFrequency === "daily"
     && spec.series[0]!.transform === "raw"
     && spec.series[0]!.visible !== false
     ? spec.series[0]!.id : undefined;
