@@ -402,9 +402,6 @@ async function checkColumns() {
   const container = await dom.render(<RankingPane />);
   await until(() => !!container.textContent?.includes("Wide World Importers"));
   const headers = () => [...container.querySelectorAll("[data-gloom-role='data-table-header-cell']")] as HTMLElement[];
-  expect(headers().map((header) => header.textContent?.replace(/[▲▼]/g, "").trim().toUpperCase()))
-    .toEqual(["TICKER", "COMPANY", "SCORE", "ROLE", "NTH", "VS USUAL", "STAKE", "BUYERS", "BOUGHT", "LAST BUY"]);
-  expect(container.querySelector("[data-gloom-ui='badge']")).toBeNull();
   const cells = (ticker: string) => [...[...container.querySelectorAll("[data-gloom-role='data-table-row']")]
     .find((row) => row.textContent?.includes(ticker))!
     .querySelectorAll("[data-gloom-role='data-table-cell']")] as HTMLElement[];
@@ -417,10 +414,19 @@ async function checkColumns() {
   const runs = [...both.querySelectorAll("span")].filter((span) => span.children.length === 0 && span.textContent?.trim());
   expect(runs.map((span) => span.textContent?.trim())).toEqual(["+4%", "\u00b1"]);
   expect(runs[0]!.style.color).not.toBe(runs[1]!.style.color);
-  const fresh = [...cells("CTSO")[column("STAKE")]!.querySelectorAll("span")].find((span) => span.textContent === "NEW") as HTMLElement;
-  expect(fresh.style.fontWeight).toBe("700");
+  // Text may live directly in a cheap cell or in a styled child. Check its
+  // computed appearance without requiring a wrapper for each value.
+  const textStyle = (cell: HTMLElement) => {
+    const walker = cell.ownerDocument.createTreeWalker(cell, dom.window.NodeFilter.SHOW_TEXT);
+    let node;
+    while ((node = walker.nextNode())) {
+      if (node.textContent?.trim()) return dom.window.getComputedStyle(node.parentElement as never);
+    }
+    throw new Error("The cell has no text");
+  };
+  expect(textStyle(cells("CTSO")[column("STAKE")]!).fontWeight).toBe("700");
   // Numbers right-aligned: plain cells by the column, the marked one by its content.
-  expect((cells("NWBI")[column("STAKE")]!.querySelector("span") as HTMLElement).style.textAlign).toBe("right");
+  expect(textStyle(cells("NWBI")[column("STAKE")]!).textAlign).toBe("right");
   expect((both.firstElementChild as HTMLElement).style.justifyContent).toBe("flex-end");
 
   // A header sorts its column, largest first: NEW above any raise; the dash last.

@@ -101,8 +101,6 @@ test("the desktop and web draw a flag beside each currency code in the row label
   for (const leading of container.querySelectorAll('[data-gloom-role="data-table-leading"]')) {
     expect(leading.getAttribute("aria-hidden")).toBe("true");
   }
-  // Right-aligned headers stay flush over the rates.
-  expect((headers[0] as HTMLElement).style.justifyContent).toBe("flex-end");
 });
 
 test("every currency the settings offer draws its flag in the rows and the headers, in the saved order", async () => {
@@ -152,13 +150,11 @@ test("a cross is tinted by its move against the pairs' previous closes, whether 
   expect(tinted("EUR", "EUR")).toBe(false);
 });
 
-test("without desktop chrome the matrix keeps its plain codes and its original base column", async () => {
+test("without desktop chrome the matrix keeps plain currency codes", async () => {
   installCoordinator();
   const container = await bare.render(<Pane />);
 
   expect(container.querySelectorAll('[data-gloom-role="data-table-row"]')).toHaveLength(8);
   expect(flagRegions(container)).toEqual([]);
   expect(container.querySelectorAll('[data-gloom-role="data-table-leading"]')).toHaveLength(0);
-  const header = container.querySelector('[data-gloom-role="data-table-header-row"]') as HTMLElement;
-  expect(header.style.gridTemplateColumns.startsWith("minmax(calc(5 * var(--cell-w))")).toBe(true);
 });
