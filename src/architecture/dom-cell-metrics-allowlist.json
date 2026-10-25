@@ -24,8 +24,8 @@
     "why": "The table's scroll and pointer API speaks rows and columns to callers shared with the terminal (j/k, paging, visible range); a row of text is one line tall."
   },
   "src/renderers/dom/data-table/index.tsx": {
-    "uses": 19,
-    "why": "Every pane gives its columns in cells (DataTableColumn.width) and rows are one line tall: the horizontal extent, the overflow decision, virtualization and paging follow from them."
+    "uses": 20,
+    "why": "Every pane gives preferred column widths and resize minima in cells (DataTableColumn.width and minWidth), and rows are one line tall: the horizontal extent, the overflow decision, virtualization and paging follow from them."
   },
   "src/renderers/dom/data-table/row.tsx": {
     "uses": 10,
