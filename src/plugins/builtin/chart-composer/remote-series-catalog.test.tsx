@@ -74,8 +74,10 @@ test("the inline picker keeps available choices beside a failure and its keyboar
   await tui.render(<AppContext value={store}><ChartSeriesQuickAdd spec={buildPriceChartPreset("AAPL")} setSpec={() => { adds++; }} focused width={100} height={16} shortcutEnabled shortcutBlocked={false} onActivatePane={() => {}} /></AppContext>);
   await tui.emitKeypress({ name: "n", sequence: "n" });
   await act(async () => { await tui.setup().mockInput.typeText("fixture"); });
-  const frame = await tui.waitForFrameToContain("Series catalog unavailable.");
-  expect(frame).toContain("Local");
+  // The failure shows from the moment the picker opens, before the query is typed: wait for the suggestions of
+  // the typed query, or a frame painted before it would be read as the one that has them.
+  const frame = await tui.waitForFrameToContain("Local");
+  expect(frame).toContain("Series catalog unavailable.");
   expect(frame).toContain("Retry");
   source.failed = false;
   await tui.emitKeypress({ name: "up", sequence: "\u001b[A" }, { trackPropagation: true });
