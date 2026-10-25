@@ -585,6 +585,7 @@ the same way:
 **Axis.** Tick labels never repeat and take their decimals from the plotted
 range (`formatBpAxis`, `formatPercentAxis`, `spanAxisFormatter`). A daily
 series shorter than two weeks still spans two weeks, so the axis reads days.
+A series' value under the cursor sits on its axis in a box in the series colour, as a chart level's label does; a bare tick or dash beside a number reads as its sign.
 
 **Loading and failure.** While a separate history request loads, the band
 holds its rows (`loading`) so the table does not jump, and figures that come

@@ -291,6 +291,14 @@ export function priceColor(value: number, palette: ThemeColors = colors): string
   return palette.neutral;
 }
 
+/**
+ * `priceColor` for a figure as it is printed, to `digits` decimals: a move that
+ * rounds to zero (0.00%, never -0.00%) is neutral, not red or green.
+ */
+export function shownPriceColor(value: number, digits: number, palette: ThemeColors = colors): string {
+  return priceColor(Number(value.toFixed(digits)), palette);
+}
+
 const TONE_TINT = 0.18;
 
 /**

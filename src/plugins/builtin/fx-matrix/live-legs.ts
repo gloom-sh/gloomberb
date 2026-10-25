@@ -4,6 +4,7 @@ import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
 import type { Quote } from "../../../types/financials";
 import { isStreamCarryingQuote } from "../shared/use-quote-board";
 import { fxTradingDay } from "../../../utils/fx-market-hours";
+import { savedCopyAt } from "../../../data/saved-copies";
 
 /** Currencies the market quotes as USD per unit; the rest quote as units per USD. */
 const USD_QUOTED = new Set(["EUR", "GBP", "AUD", "NZD"]);
@@ -69,6 +70,17 @@ export function liveFxLegEntry(
     error: null,
     attempts: [],
   };
+}
+
+/**
+ * When the rate a leg draws was saved, if it is a copy shown because its
+ * refresh failed (offline, a hung or refused connection), or null for a
+ * current one: the pair quote's own mark when `liveQuote` draws the leg, else
+ * the loaded rate's last fetch once a refresh of it failed.
+ */
+export function fxLegSavedAt(liveQuote: Quote | null | undefined, rate: QueryEntry<number> | null | undefined): number | null {
+  if (liveQuote) return savedCopyAt(liveQuote);
+  return rate?.error && resolveEntryData(rate) != null && rate.fetchedAt != null ? rate.fetchedAt : null;
 }
 
 /**

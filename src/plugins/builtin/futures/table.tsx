@@ -1,5 +1,5 @@
 import type { DataTableCell, DataTableColumn } from "../../../components";
-import { colors, priceColor } from "../../../theme/colors";
+import { colors, shownPriceColor } from "../../../theme/colors";
 import type { Quote } from "../../../types/financials";
 import { TextAttributes } from "../../../ui";
 import { formatCompact, formatNumber, formatPercentRaw } from "../../../utils/format";
@@ -253,7 +253,7 @@ export function renderFuturesCell(
       if (isBoardRowLoading(state) || returns?.loading) return { text: "…", color: colors.textDim };
       const value = returns?.values[FUTURES_RETURN_COLUMNS[column.id]!];
       if (value == null || !Number.isFinite(value)) return { text: "—", color: colors.textDim };
-      return { text: formatPercentRaw(value), color: priceColor(value) };
+      return { text: formatPercentRaw(value), color: shownPriceColor(value, 2) };
     }
     case "prevClose":
       if (isBoardRowLoading(state)) return { text: "…", color: colors.textDim };

@@ -5,8 +5,17 @@ import { pluginSeedFailure, pluginSeedNotice, samePluginSeedFailure, seedExtract
 import { setPluginSeedNotice } from "../plugins/seed-notice";
 import { debugLog } from "../utils/debug-log";
 import type { AppConfig } from "../types/config";
+import { withDeadline } from "../utils/async-deadline";
 
 const log = debugLog.createLogger("plugin-seed");
+
+/**
+ * How long a launch waits for the plugin registry before it starts without
+ * the plugins left to install. A connection that hangs would otherwise hold
+ * the screen blank: the registry is read first, and git would hang the same
+ * way after it. They are retried at the next launch.
+ */
+const REGISTRY_WAIT_MS = 8_000;
 
 /**
  * Reinstalls plugins that moved out of this repository into their own.
@@ -40,7 +49,10 @@ export async function restoreExtractedPlugins(): Promise<Pick<AppConfig, "seeded
       // Without git every clone fails the same way: no registry read, no attempt.
       gitMissing ??= !gitInstalled();
       if (gitMissing) throw new Error("git is not installed");
-      listings ??= loadRegistryListings();
+      // Only no answer at all stops here: the network hangs, and a clone would
+      // too, so nothing is tried until the next launch. A registry that fails
+      // is not reported as silent: the plugins install from their repositories.
+      listings ??= withDeadline(loadRegistryListings(), REGISTRY_WAIT_MS, "the plugin registry did not answer");
       return installListedPlugin(repo, { quiet: true }, await listings);
     });
     // Recorded, so doctor knows a launch tried, and a failure the next launch

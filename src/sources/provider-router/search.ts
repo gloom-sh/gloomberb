@@ -5,6 +5,7 @@ import type { BrokerCandidate } from "./brokers";
 import { isProviderBusy, ProviderBusyError, SEARCH_BUSY_MESSAGE, shouldLogProviderError } from "../provider-errors";
 import { searchInstrumentKey } from "../../tickers/search/identity";
 import { OperationTimeoutError, settleWithin, withDeadline } from "../../utils/async-deadline";
+import { isNetworkFailure } from "../../utils/network-failure";
 
 const SEARCH_CACHE_TTL_MS = 30_000;
 const SEARCH_CACHE_MAX_ENTRIES = 100;
@@ -142,6 +143,9 @@ export class ProviderRouterSearchRoutes {
    * A search nothing answered because a provider was busy (rate limited,
    * overloaded, out of time) rejects with a `ProviderBusyError` instead of
    * reading as an empty one, and is not cached, so asking again asks again.
+   * One nothing answered because the data service could not be reached
+   * (offline, a refused or hung connection) rejects with that failure: it is
+   * no answer, not a search that found nothing.
    */
   private fetchSearchResults(
     query: string,
@@ -172,6 +176,7 @@ export class ProviderRouterSearchRoutes {
     });
     let answered = false;
     let busy = false;
+    let unreachable: unknown = null;
 
     const record = (items: InstrumentSearchResult[] | null) => {
       if (!items?.length) return;
@@ -204,8 +209,10 @@ export class ProviderRouterSearchRoutes {
         record(await withDeadline(provider.search(query, context), timeoutMs, `${provider.id} search timed out`));
       } catch (error) {
         const timedOut = error instanceof OperationTimeoutError;
-        // A keystroke gives up on a slow source by design and asks again on the next one; only a full wait is busy.
-        if (isProviderBusy(error) || (timedOut && !context?.interactive)) {
+        if (isNetworkFailure(error)) {
+          unreachable ??= error;
+        } else if (isProviderBusy(error) || (timedOut && !context?.interactive)) {
+          // A keystroke gives up on a slow source by design and asks again on the next one; only a full wait is busy.
           busy = true;
         } else if (!timedOut && shouldLogProviderError(error)) {
           this.deps.logProviderError(`${provider.id} failed: ${error}`);
@@ -231,6 +238,10 @@ export class ProviderRouterSearchRoutes {
     })().then(() => {
       if (answered) return;
       answered = true;
+      if (unreachable) {
+        rejectFirst(unreachable);
+        return;
+      }
       if (busy) {
         rejectFirst(new ProviderBusyError(SEARCH_BUSY_MESSAGE));
         return;

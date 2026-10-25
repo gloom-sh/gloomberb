@@ -1,5 +1,5 @@
 import type { PaneFooterSegment } from "../../../components";
-import { priceColor } from "../../../theme/colors";
+import { shownPriceColor } from "../../../theme/colors";
 import { formatPercentRaw } from "../../../utils/format";
 import { INDEX_SHORT } from "./model";
 import type { MarketSummaryQuote } from "./screener";
@@ -12,7 +12,7 @@ export function summaryFooterSegments(summaryQuotes: readonly MarketSummaryQuote
       id: `summary:${idx.symbol}`,
       parts: [
         { text: short, tone: "label" as const },
-        { text: formatPercentRaw(idx.changePercent), tone: "value" as const, color: priceColor(idx.changePercent), bold: true },
+        { text: formatPercentRaw(idx.changePercent), tone: "value" as const, color: shownPriceColor(idx.changePercent, 2), bold: true },
       ],
     };
   });

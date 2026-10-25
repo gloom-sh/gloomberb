@@ -19,7 +19,7 @@ import { useSampledValue } from "../../../state/hooks/live-ticker-financials";
 import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
 import type { TickerFinancials } from "../../../types/financials";
 import { normalizeSymbol } from "../../../utils/exchanges";
-import { colors, priceColor } from "../../../theme/colors";
+import { colors, priceColor, shownPriceColor } from "../../../theme/colors";
 import { extendedSessionStateLabel, type ExtendedSession } from "../../../market-data/market/status";
 import { compareSortValues, nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { formatCompact, formatLevelPercent, formatNumber, formatPercent, formatPercentRaw } from "../../../utils/format";
@@ -295,12 +295,12 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
       case "price":
         return { text: formatRelativePrice(row.price, row.currency), color: colors.text };
       case "changePercent":
-        return { text: row.changePercent != null ? formatPercentRaw(row.changePercent) : "-", color: priceColor(row.changePercent ?? 0) };
+        return { text: row.changePercent != null ? formatPercentRaw(row.changePercent) : "-", color: shownPriceColor(row.changePercent ?? 0, 2) };
       case "preMarket":
       case "afterHours":
       case "overnight": {
         const move = extendedMove(row, column.id);
-        return { text: move != null ? formatPercentRaw(move) : "-", value: move, color: move == null ? colors.textDim : priceColor(move) };
+        return { text: move != null ? formatPercentRaw(move) : "-", value: move, color: move == null ? colors.textDim : shownPriceColor(move, 2) };
       }
       case "marketCap":
         return { text: formatCompact(row.marketCap ?? undefined, { fixedDecimals: true }), color: colors.textDim };
@@ -317,7 +317,7 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
       case "fcfYield":
         return { text: formatLevelPercent(row.fcfYield ?? undefined), color: priceColor(row.fcfYield ?? 0) };
       case "revenueGrowth":
-        return { text: formatPercent(row.revenueGrowth ?? undefined), color: priceColor(row.revenueGrowth ?? 0) };
+        return { text: formatPercent(row.revenueGrowth ?? undefined), color: shownPriceColor((row.revenueGrowth ?? 0) * 100, 2) };
       case "operatingMargin":
         return { text: formatLevelPercent(row.operatingMargin ?? undefined), color: colors.text };
     }

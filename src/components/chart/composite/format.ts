@@ -2,6 +2,7 @@ import { formatMarketPrice, formatMarketPriceWithCurrency, stablePriceFractionDi
 import { INDEX_POINTS_UNIT } from "../../../market-data/market/index-level";
 import type { ResolvedSeries, TimeSeriesPoint } from "../../../time-series/types";
 import type { CompositeAxisDomain, CompositePanelScene } from "./types";
+import { formatPercentRaw } from "../../../utils/format";
 import { timeZoneLabel, zonedWallClockMs } from "../../../utils/zoned-date-time";
 
 const CURRENCY_SYMBOLS: Record<string, string> = {
@@ -237,6 +238,11 @@ function compactResolution(value: number): number {
   return absolute > 0 ? 10 ** (Math.floor(Math.log10(absolute)) - 2) : 0;
 }
 
+/** A series of changes over a baseline: returns since the range began, year-on-year or quarter-on-quarter growth. */
+function isChangeSeries(series: ResolvedSeries): boolean {
+  return series.unit.trim() === "%" && (series.transform === "percent" || series.transform === "yoy" || series.transform === "qoq");
+}
+
 /** `referencePrice` defaults to the series' own; a study on a price axis
  * passes the axis's reference so it shares the price's decimals. */
 export function formatCompositeSeriesValue(
@@ -244,6 +250,9 @@ export function formatCompositeSeriesValue(
   series: ResolvedSeries,
   referencePrice = seriesPriceReference(series),
 ): string {
+  // A return reads as every other return in the app, signed with two decimals, so a legend of them lines up
+  // (+34.02%, +0.76%, +15.80%) instead of one precision per magnitude.
+  if (isChangeSeries(series)) return formatPercentRaw(value);
   if (series.statedUnit) {
     // The number alone: the legend prints the unit beside it, as FUT prints
     // a price beside its unit (4.6242 USD / gallon, not $4.6242).

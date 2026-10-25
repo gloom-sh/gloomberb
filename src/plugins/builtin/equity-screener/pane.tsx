@@ -36,7 +36,7 @@ import {
 } from "../../../public/react";
 import { useDialog } from "../../../ui/dialog";
 import { useThemeColors } from "../../../theme/theme-context";
-import { priceColor } from "../../../theme/colors";
+import { priceColor, shownPriceColor } from "../../../theme/colors";
 import { apiClient } from "../../../api-client";
 import {
   NUMERIC_FIELDS,
@@ -987,7 +987,7 @@ function EquityScreenView({
                 const move = screenExtendedMove(row, column.id.slice(EXTENDED_COLUMN_PREFIX.length) as ExtendedSession);
                 return move == null
                   ? { text: "--", color: colors.textDim }
-                  : { text: formatPercentRaw(move), color: priceColor(move, colors) };
+                  : { text: formatPercentRaw(move), color: shownPriceColor(move, 2, colors) };
               }
               const field = column.id.startsWith("m:")
                 ? (column.id.slice(2) as NumericField)

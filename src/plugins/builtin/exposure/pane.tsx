@@ -20,7 +20,7 @@ import { ExposurePathDiagram, ExposureRanges } from "./charts";
 import { fetchExposure, fetchScenarios, validateExposure } from "./client";
 import { ExposureEditor, type ExposureInputs } from "./editor";
 import { portfolioHoldings, watchlistHoldings } from "./holdings";
-import { basisLabel, DEFAULT_SCENARIO, exposureCellText, fraction, parseCustomScenario, parseHoldings, pathRows, portfolioRows, rangeText, tableRows, TABS, type ExposureRow } from "./model";
+import { basisLabel, DEFAULT_SCENARIO, exposureCellText, fraction, hopsText, parseCustomScenario, parseHoldings, pathRows, periodText, portfolioRows, rangeText, tableRows, TABS, type ExposureRow } from "./model";
 import { useExposureEvidence } from "./evidence";
 import { driverRows, driverScope, driverUnits, driverValue } from "./drivers";
 
@@ -29,7 +29,7 @@ function EvidenceItem({ item }: { item: ExposureEvidence }) {
   const host = useRendererHost();
   return <Box flexDirection="column" paddingY={1}>
     <KeyValueRow labelWidth={20} label="Evidence" value={`${item.tier} · ${item.asOf ?? "undated"}`} detail={item.confidence === null ? undefined : `${Math.round(item.confidence * 100)}% confidence`} />
-    <KeyValueRow labelWidth={20} label="Period / units" value={`${item.period ?? "unknown"} · ${item.units}${item.currency ? ` ${item.currency}` : ""}`} />
+    <KeyValueRow labelWidth={20} label="Period / units" value={`${item.period ? periodText(item.period) : "unknown"} · ${item.units}${item.currency ? ` ${item.currency}` : ""}`} />
     {item.revision ? <KeyValueRow labelWidth={20} label="Revision" value={item.revision} /> : null}
     {item.quote ? <Text fg={colors.textBright}>{item.quote}</Text> : <Text fg={colors.textDim}>{item.tier === "user" ? "User-supplied assumption" : "Structured observation; no verbatim quote"}</Text>}
     {item.url ? <ActionRow label="Open primary evidence" onPress={() => void host.openExternal(item.url!)} /> : null}
@@ -49,7 +49,7 @@ function ExposureDetail({ row, data, width }: { row: ExposureRow | null; data: E
       {Object.entries(row.driver.dimensions ?? {}).map(([key, value]) => <KeyValueRow key={key} labelWidth={20} label={humanLabel(key)} value={value} />)}
       {row.driver.evidence.map(item => <EvidenceItem key={item.id} item={item} />)}
     </> : row ? <>
-      <KeyValueRow labelWidth={20} label="Basis / period" value={`${basisLabel(row.basis)} · ${row.period ?? "unknown"}`} />
+      <KeyValueRow labelWidth={20} label="Basis / period" value={`${basisLabel(row.basis)} · ${row.period ? periodText(row.period) : "unknown"}`} />
       <KeyValueRow labelWidth={20} label={row.concentration ? "Gross exposure" : "Exposure"} value={rangeText(row.exposure)} detail={`${row.classification}${row.incomplete ? " · incomplete bound" : ""}`} />
       <KeyValueRow labelWidth={20} label={row.concentration ? "Signed exposure" : "Operating stress"} value={rangeText(row.impact)} detail={row.concentration ? "NAV-weighted operating exposure; not a scenario change" : "Estimated change in the stated denominator"} />
       {row.components.map(component => <Box key={component.id} flexDirection="column" paddingY={1}>
@@ -249,7 +249,7 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
   const query = <QueryBar width={width} filters={[
     { id: "scenario", label: "Scenario", value: scenarioId, options: [...(library.data ?? [DEFAULT_SCENARIO]).map(s => ({ value: s.id ?? (snapshot ? "captured" : "custom"), label: s.label })), { value: "custom", label: "Custom" }].filter((s, i, all) => all.findIndex(v => v.value === s.value) === i), onChange: (value: string) => { if (value === "custom") setEditing(true); else setScenarioId(value); } },
     ...(tab === "portfolio" ? [{ id: "group", label: "View", value: view, options: [{ value: "stress", label: "Stress" }, { value: "country", label: "Country" }, { value: "supplier", label: "Supplier" }, { value: "customer", label: "Customer" }], onChange: setView }] : []),
-  ]} meta={tab === "drivers" ? "Company disclosures" : tab === "portfolio" ? "NAV-weighted operating exposure" : `${data?.depth ?? inputs.depth} hops`} />;
+  ]} meta={tab === "drivers" ? "Company disclosures" : tab === "portfolio" ? "NAV-weighted operating exposure" : hopsText(data?.depth ?? inputs.depth)} />;
   if (!data && isCloudSessionRequired(resource.error) && !editing) return <SignInWall placement="exposure-signin" action="analyze exposures" needsVerification={session.needsVerification} />;
   return <Box width={width} height={height} flexDirection="column">
     {strip}

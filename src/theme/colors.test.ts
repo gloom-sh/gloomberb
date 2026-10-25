@@ -5,6 +5,7 @@ import {
   getCurrentThemeId,
   getThemeColors,
   previewTheme,
+  shownPriceColor,
   syncTheme,
 } from "./colors";
 import { DEFAULT_THEME, getTheme } from "./themes";
@@ -81,5 +82,15 @@ describe("theme colors", () => {
 
     expect(getCurrentThemeId()).toBe(DEFAULT_THEME);
     expect(values.get("--gloom-bg")).toBe(getTheme(DEFAULT_THEME).bg);
+  });
+
+  test("colors a move by the sign it prints with, so one that rounds to zero is neutral", () => {
+    const palette = getThemeColors(DEFAULT_THEME);
+    expect(shownPriceColor(0.5, 2, palette)).toBe(palette.positive);
+    expect(shownPriceColor(-0.01, 2, palette)).toBe(palette.negative);
+    // -0.004 prints 0.00%, never red.
+    expect(shownPriceColor(-0.004, 2, palette)).toBe(palette.neutral);
+    expect(shownPriceColor(0.004, 2, palette)).toBe(palette.neutral);
+    expect(shownPriceColor(0.004, 3, palette)).toBe(palette.positive);
   });
 });

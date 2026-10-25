@@ -11,6 +11,7 @@ import {
   toMarketDataContext,
 } from "../selectors";
 import { traceMarketData } from "../trace";
+import { savedCopyAt } from "../../data/saved-copies";
 import { createBaselineChartRequest } from "./chart";
 import {
   EXPECTED_EMPTY,
@@ -94,8 +95,10 @@ function storeFinancialsSnapshot(
   if (normalized.quote) {
     const quoteKey = buildQuoteKey(instrument);
     const currentQuoteEntry = stores.quoteStore.get(quoteKey);
-    // A tick streamed while the snapshot was in flight is newer than its quote.
-    if (!heldQuoteSupersedes(currentQuoteEntry, normalized.quote)) {
+    // A tick streamed while the snapshot was in flight is newer than its quote. And a snapshot read
+    // from the cache carries the quote saved with it: no newer than a saved copy the quote's own
+    // failed refresh answered with, it is that copy, and the quote keeps saying so.
+    if (!heldQuoteSupersedes(currentQuoteEntry, normalized.quote) && !repeatsHeldSavedCopy(currentQuoteEntry, normalized.quote)) {
       stores.quoteStore.set(
         quoteKey,
         readyEntry(currentQuoteEntry, normalized.quote, normalized.quote.providerId ?? source, attempts),
@@ -110,6 +113,11 @@ function storeFinancialsSnapshot(
     );
   }
   return entry;
+}
+
+function repeatsHeldSavedCopy(current: QueryEntry<Quote>, incoming: Quote): boolean {
+  const held = current.data ?? current.lastGoodData;
+  return !!held && savedCopyAt(held) != null && savedCopyAt(incoming) == null && !(incoming.lastUpdated > held.lastUpdated);
 }
 
 /** Fresh data, or a failure too recent to ask about again unless forced. */

@@ -52,12 +52,15 @@ export function SeriesAxisTags({ placed, pixelHeight, lanes, background }: {
         data-carried={tag.carried ? "true" : undefined}
         aria-label={`${tag.seriesLabel}: ${tag.label}${tag.carried ? " (carried)" : ""}`}
         style={{
-          position: "absolute", [edge]: `calc(${inset} + .5em)`, top: percent(tag.centerY), transform: "translateY(-50%)",
-          width: `calc(${100 / lanes}% - .5em)`, height: "1.5em", lineHeight: "1.5em",
-          alignItems: left ? "flex-end" : "flex-start", justifyContent: "center",
+          position: "absolute", [edge]: inset, top: percent(tag.centerY), transform: "translateY(-50%)",
+          // The value sits in a box in its series colour, as a chart level's label does, so nothing
+          // beside it can read as the value's sign. A box wider than its lane is clipped, not wrapped.
+          width: "max-content", maxWidth: `calc(${100 / lanes}% - ${lanes > 1 ? ".25em" : "0px"})`,
+          boxSizing: "border-box", height: "1.5em", lineHeight: "1.5em", paddingInline: ".15em",
+          alignItems: left ? "flex-end" : "flex-start", justifyContent: "center", overflow: "hidden",
           // Every badge paints above every leader, including another lane's.
           zIndex: 2, color: tag.color, backgroundColor: background, whiteSpace: "nowrap",
-          borderBlockEnd: tag.carried ? `1px dashed ${tag.color}` : undefined,
+          border: `1px ${tag.carried ? "dashed" : "solid"} ${tag.color}`,
         }}
       >
         <Text fg={tag.color} selectable={false}>{tag.label}</Text>

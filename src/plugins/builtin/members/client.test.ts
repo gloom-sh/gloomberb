@@ -26,6 +26,15 @@ test("other failures pass through without a list lookup", async () => {
   expect(lookups).toBe(0);
 });
 
+test("holdings named in capitals come back in the case other panes write company names, tickers untouched", async () => {
+  const row = (id: string, name: string) => ({ id, symbol: id, name, sector: null, weight: 0.1, shares: 1, holdingPrice: 1, marketValue: 1, price: 1, priceAsOf: null,
+    changePercent: 0, dailyAsOf: null, return1WPercent: 0, return1MPercent: 0, returnYtdPercent: 0, contribution: 0, stale: false });
+  const payload = { fund: funds.funds[0], asOf: "2026-10-05T00:00:00Z", members: [row("MSFT", "MICROSOFT"), row("BRK-B", "BERKSHIRE HATHAWAY INC CLASS B"), row("EDU", "New Oriental Education")],
+    aggregate: { sum: 0 } } as never;
+  const data = await fetchMembers("IVV", { getMemberFunds: async () => funds, getFundMembers: async () => payload } as never);
+  expect(data.members.map((member) => `${member.symbol} ${member.name}`)).toEqual(["MSFT Microsoft", "BRK-B Berkshire Hathaway Inc Class B", "EDU New Oriental Education"]);
+});
+
 test("an old server identifies breadth as the unavailable surface", async () => {
   await expect(fetchBreadth("SPX", { ...client as object, getFundBreadth: notFound } as never)).rejects.toThrow("Fund breadth is not available on this server yet.");
 });

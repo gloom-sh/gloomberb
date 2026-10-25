@@ -202,6 +202,20 @@ describe("composite chart unit formatting", () => {
   });
 });
 
+test("a legend of returns prints every value to two decimals, signed, whatever its size", () => {
+  const returns = (transform: ResolvedSeries["transform"]): ResolvedSeries => ({
+    id: "r", label: "AAPL", color: "#ffffff", unit: "%", unitGroup: "percent", nativeFrequency: "daily", dataShape: "scalar",
+    style: "line", transform, axis: "left", panelId: "main", interpolation: "none", points: [],
+  });
+  const percent = returns("percent");
+  expect([34.0211, 0.7594, 15.8, -12.3456, 123.456, 0.004, -0.004].map((value) => formatCompositeSeriesValue(value, percent)))
+    .toEqual(["+34.02%", "+0.76%", "+15.80%", "-12.35%", "+123.46%", "0.00%", "0.00%"]);
+  expect(formatCompositeSeriesValue(3.2, returns("yoy"))).toBe("+3.20%");
+  // A level that happens to be in percent (a yield, a margin) keeps the compact reading.
+  expect(formatCompositeSeriesValue(0.125, returns("raw"))).toBe("0.125%");
+  expect(formatCompositeSeriesValue(15.8, returns("raw"))).toBe("15.8%");
+});
+
 test("international price legends and cursors retain currency and price precision", () => {
   for (const [currency, expected] of [["CAD", "CA$173.45"], ["CHF", "CHF173.45"], ["HKD", "HK$173.45"], ["SEK", "SEK173.45"]]) {
     const unit = `${currency}/share`;

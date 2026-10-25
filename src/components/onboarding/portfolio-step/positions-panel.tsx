@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ComponentProps, type RefObject } from "react";
 import { Box, Text, TextAttributes, useUiCapabilities, type InputRenderable } from "../../../ui";
 import { useThemeColors } from "../../../theme/theme-context";
-import { priceColor } from "../../../theme/colors";
+import { shownPriceColor } from "../../../theme/colors";
 import { t, tf } from "../../../i18n";
 import { formatMarketPrice } from "../../../market-data/market/format";
 import { getRegularSessionDisplay } from "../../../market-data/market/status";
@@ -62,7 +62,7 @@ function PreviewLine({ preview, error }: Pick<OnboardingPositionsState, "preview
       <Text fg={colors.text} attributes={TextAttributes.BOLD}>{preview.symbol}</Text>
       {preview.name ? <Text fg={colors.textDim}>{`  ${preview.name}`}</Text> : null}
       {price != null ? <Text fg={colors.text}>{`  ${formatMarketPrice(price, { maxWidth: 12 })}`}</Text> : null}
-      {change != null ? <Text fg={priceColor(change, colors)}>{` ${formatPercentRaw(change)}`}</Text> : null}
+      {change != null ? <Text fg={shownPriceColor(change, 2, colors)}>{` ${formatPercentRaw(change)}`}</Text> : null}
       {preview.duplicate ? <Text fg={colors.textMuted}>{t("  already added")}</Text> : null}
     </Box>
   );

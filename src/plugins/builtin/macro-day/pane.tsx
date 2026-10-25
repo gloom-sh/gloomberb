@@ -8,6 +8,7 @@ import { instrumentFromTicker } from "../../../market-data/request-types";
 import { usePaneSettingValue, usePluginPaneState } from "../../../public/react";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useAutoRefresh } from "../../../react/auto-refresh";
+import { shownPriceColor } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box } from "../../../ui";
@@ -54,14 +55,16 @@ export function columnsFor(release: string, rows: readonly MacroDayEvent[]): Dat
   return marked ? [DATE, { id: "release", label: "Note", width: EARNINGS_MARK.length, align: "left" }, ...values] : [DATE, ...values];
 }
 
-const tone = (value: number | null) => value == null ? undefined : value >= 0 ? "positive" as const : "negative" as const;
+/** By the sign the two-decimal text shows: an average that rounds to 0.00% is neither up nor down. */
+export const moveTone = (value: number | null) => value == null || !/[1-9]/.test((value * 100).toFixed(2)) ? undefined
+  : value > 0 ? "positive" as const : "negative" as const;
 
 /** The figures over the days a surprise filter keeps: the same four as one release's. */
 function surpriseFigures(model: MacroDayModel, rows: readonly MacroDayEvent[]): StatItem[] {
   const stats = macroDayStats(rows, model.normal.meanAbs);
   return [
     { id: "abs", label: "Avg |move|", value: pct(stats.meanAbs, false), detail: stats.count ? `${times(stats.multiple)} normal` : undefined },
-    { id: "mean", label: "Avg move", value: pct(stats.mean), tone: tone(stats.mean) },
+    { id: "mean", label: "Avg move", value: pct(stats.mean), tone: moveTone(stats.mean) },
     { id: "up", label: "Up", value: stats.hitRate == null ? "--" : `${Math.round(stats.hitRate * 100)}%`,
       detail: stats.count ? `${Math.round(stats.hitRate! * stats.count)} of ${stats.count}` : undefined },
     { id: "normal", label: "Normal day", value: pct(model.normal.meanAbs, false), detail: "avg |move|" },
@@ -81,7 +84,7 @@ function figures(model: MacroDayModel, release: string): StatItem[] {
   const stats = model.byKind[release as MacroEventKind];
   return [
     { id: "abs", label: "Avg |move|", value: pct(stats.meanAbs, false), detail: stats.count ? `${times(stats.multiple)} normal` : undefined },
-    { id: "mean", label: "Avg move", value: pct(stats.mean), tone: tone(stats.mean) },
+    { id: "mean", label: "Avg move", value: pct(stats.mean), tone: moveTone(stats.mean) },
     { id: "up", label: "Up", value: stats.hitRate == null ? "--" : `${Math.round(stats.hitRate * 100)}%`,
       detail: stats.count ? `${Math.round(stats.hitRate! * stats.count)} of ${stats.count}` : undefined },
     normal,
@@ -138,8 +141,7 @@ export function MacroDayPane({ width, height, focused }: PaneProps) {
       : event.figures?.surprise === "cool" ? colors.negative : undefined };
     if (column.id === "forecast") return { text: event.figures?.forecast ?? "" };
     if (column.id === "prior") return { text: event.figures?.prior ?? "" };
-    if (column.id === "move") return { text: pct(event.move), value: event.move * 100,
-      color: event.move > 0 ? colors.positive : event.move < 0 ? colors.negative : undefined };
+    if (column.id === "move") return { text: pct(event.move), value: event.move * 100, color: shownPriceColor(event.move * 100, 2, colors) };
     return { text: times(event.multiple), value: event.multiple };
   }, [colors, release]);
 

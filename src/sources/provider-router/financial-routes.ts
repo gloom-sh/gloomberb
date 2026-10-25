@@ -16,7 +16,7 @@ import {
   sortCachedRecords,
 } from "./cache";
 import { noProviderError, type ProviderMissNote } from "../provider-errors";
-import { servedFromSavedCopy } from "../../data/saved-copies";
+import { quoteServedFromSavedCopy, servedFromSavedCopy } from "../../data/saved-copies";
 import { withBrokerTimeout } from "./brokers";
 import {
   hasMeaningfulProfile,
@@ -240,7 +240,7 @@ export class ProviderRouterFinancialRoutes {
     }
     if (cached) {
       // The refresh failed rather than finding nothing newer: the saved copy answers, and says so.
-      return misses.failure !== undefined ? servedFromSavedCopy(cached.value, cached.fetchedAt) : cached.value;
+      return misses.failure !== undefined ? quoteServedFromSavedCopy(cached.value, cached.fetchedAt) : cached.value;
     }
     // No source has a current quote: the last price one answered with, flagged
     // stale and dated by its own time, rather than none.
@@ -379,5 +379,5 @@ export class ProviderRouterFinancialRoutes {
 /** Financials as served from their saved copy, with their quote when it is the saved one. */
 function savedFinancials(value: TickerFinancials, savedAt: number, savedQuote: boolean): TickerFinancials {
   const served = servedFromSavedCopy(value, savedAt);
-  return savedQuote && served.quote ? { ...served, quote: servedFromSavedCopy(served.quote, savedAt) } : served;
+  return savedQuote && served.quote ? { ...served, quote: quoteServedFromSavedCopy(served.quote, savedAt) } : served;
 }

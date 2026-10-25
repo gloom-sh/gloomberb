@@ -20,6 +20,6 @@ export function useWorldIndicesFooter(quotes: BoardQuoteMap, onRefresh: () => vo
       if (errorMessage) info.push({ id: "reason", parts: [{ text: errorMessage, tone: "warning" }] });
       return { info };
     },
-    [errorMessage, focused, onRefresh, status.latestTs, status.loading, status.stale, status.unavailable],
+    [errorMessage, focused, onRefresh, status.latestTs, status.loading, status.savedAt, status.stale, status.unavailable],
   );
 }

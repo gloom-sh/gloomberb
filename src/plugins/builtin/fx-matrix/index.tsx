@@ -9,6 +9,7 @@ import {
   type PaneFooterSegment,
 } from "../../../components";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
+import { savedCopyFooterSegment } from "../../../components/layout/pane/footer";
 import { CountryFlag } from "../../../components/ui/country-flag";
 import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { useFxRatesMap } from "../../../market-data/hooks";
@@ -25,7 +26,7 @@ import { fxRateObservations } from "../shared/fx-rate-freshness";
 import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
 import { useAutoRefresh, useUpdatedAgo } from "../../../react/auto-refresh";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
-import { fxLegMoveReference, fxLegQuoteKey, fxLegReferenceRate, fxLegTargets, fxLegs, fxLegsBehind, liveFxLegEntry } from "./live-legs";
+import { fxLegMoveReference, fxLegQuoteKey, fxLegReferenceRate, fxLegSavedAt, fxLegTargets, fxLegs, fxLegsBehind, liveFxLegEntry } from "./live-legs";
 import { CURRENCY_FLAG_REGIONS, FX_CURRENCIES, formatRate, resolveCurrencies, type FxCurrency } from "./pairs";
 import { crossMovePercent, directionTint, nextTintLevel } from "./direction";
 import { fxMatrixSettings } from "./settings";
@@ -138,6 +139,14 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
   });
   const status = summarizeFxRates(currencies, rates, (currency) => rateEntries.get(currency));
   const statusText = fxStatusLabel(status);
+  // Offline, the rates drawn are the copies saved when they last refreshed: the footer says when, as other panes do.
+  const savedAt = legs.reduce<number | null>((oldest, leg) => {
+    const at = fxLegSavedAt(
+      liveEntries.has(leg.currency) ? resolveEntryData(legEntries.get(fxLegQuoteKey(leg))) : null,
+      rateEntries.get(leg.currency),
+    );
+    return at == null ? oldest : Math.min(oldest ?? at, at);
+  }, null);
   const snapshotFetchedAt = summarizeFxRates(currencies, snapshotRates, (currency) => (
     getSharedMarketDataCoordinator()?.getFxEntry(currency)
   )).latestFetchedAt;
@@ -232,9 +241,10 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
     const info: PaneFooterSegment[] = [];
     if (status.loading > 0) info.push({ id: "loading", parts: [{ text: "loading", tone: "muted" }] });
     if (statusText) info.push({ id: "rates", parts: [{ text: statusText, tone: status.stale || status.unknownTime || status.unavailable ? "warning" : "muted" }] });
-    if (updatedAgo) info.push({ id: "updated", parts: [{ text: `fetched ${updatedAgo}`, tone: "muted" }] });
+    if (savedAt != null) info.push(savedCopyFooterSegment("updated", savedAt));
+    else if (updatedAgo) info.push({ id: "updated", parts: [{ text: `fetched ${updatedAgo}`, tone: "muted" }] });
     return { info };
-  }, [status.loading, statusText, updatedAgo]);
+  }, [savedAt, status.loading, statusText, updatedAgo]);
 
   return (
     <DataTableView<FxCurrency>

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { ExposurePayload, ExposureScenario } from "../../../api-client/exposure";
-import { parseCustomScenario, parseHoldings, pathRows, portfolioRows, tableRows } from "./model";
+import { exposureCellText, hopsText, parseCustomScenario, parseHoldings, pathRows, periodText, portfolioRows, tableRows } from "./model";
 import { validateExposure } from "./client";
 import drivers from "./fixtures/drivers.fixture.json";
 import { driverValue, driverUnits, driverRows } from "./drivers";
@@ -89,4 +89,15 @@ test("company drivers retain native scale, range qualifiers and unknown credit h
     bad.holdings[0]!.extensions = [{ ...row.driver!, ...malformed }] as ExposureExtensionObservation[];
     expect(() => validateExposure(bad)).toThrow("unreadable");
   }
+});
+
+test("a quarter key reads as the month it ends in, a date or the source's own words as they are, and one hop is not hops", () => {
+  expect(periodText("quarter:2026-07-31")).toBe("Jul 2026");
+  expect(periodText("quarter:2025-12")).toBe("Dec 2025");
+  expect(periodText("2026-01-25")).toBe("2026-01-25");
+  expect(periodText("Q2 FY27")).toBe("Q2 FY27");
+  const row = tableRows(payload()).find(item => item.period)!;
+  expect(exposureCellText({ ...row, period: "quarter:2026-07-31" }, "period")).toBe("Jul 2026");
+  expect(exposureCellText({ ...row, period: null }, "period")).toBe("--");
+  expect([1, 2, 4].map(hopsText)).toEqual(["1 hop", "2 hops", "4 hops"]);
 });

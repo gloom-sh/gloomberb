@@ -3,6 +3,7 @@ import { combinedChangeBasisLabel } from "../../../market-data/market/change-bas
 import { resolveEntryData } from "../../../market-data/selectors";
 import { formatPercentRaw } from "../../../utils/format";
 import { formatUtcTime } from "../../../utils/utc-time";
+import { servedFromSavedCopy } from "../../../data/saved-copies";
 import { fxPairObservation, fxRateObservations } from "../shared/fx-rate-freshness";
 import { loadFxBoard, type FxLegReading } from "./client";
 import { crossMovePercent } from "./direction";
@@ -71,11 +72,13 @@ export function projectFxCrosses(
     const quoteRate = rates.get(quote);
     // A missing leg leaves the cross unavailable, never at parity.
     if (baseRate == null || quoteRate == null) return { pair, base, quote, rate: null, movePercent: null, asOf: null };
+    // A cross drawn from a leg's saved copy, its refresh having failed, is as old as that copy.
+    const saved = [base, quote].flatMap((currency) => readings.get(currency)?.savedAt ?? []);
     const legs = [base, quote].flatMap((currency) => observed.get(currency) ?? []);
     const observation = fxPairObservation(legs);
     const baseReference = reference(base);
     const quoteReference = reference(quote);
-    return {
+    return servedFromSavedCopy({
       pair,
       base,
       quote,
@@ -88,7 +91,7 @@ export function projectFxCrosses(
       stale: observation?.stale ?? false,
       ...(observation?.dataSource ? { dataSource: observation.dataSource } : {}),
       ...(observation?.delayMinutes ? { delayMinutes: observation.delayMinutes } : {}),
-    };
+    }, saved.length > 0 ? Math.min(...saved) : Number.NaN);
   }));
 
   // The closes the moves are read from: one day for a board read at once, "vs mixed closes" otherwise.
