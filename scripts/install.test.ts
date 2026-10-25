@@ -197,7 +197,7 @@ describe("install.sh architecture detection", () => {
       procTranslated: "1",
     });
 
-    expect(run.downloadLog).toContain("stable-macos-arm64-Gloomberb.app.zip");
+    expect(run.downloadLog).toContain("stable-macos-arm64-Gloom.app.zip");
     expect(run.stderr).not.toContain("does not support Intel Macs");
   });
 
@@ -208,7 +208,9 @@ describe("install.sh architecture detection", () => {
       hardwareArm64: "1",
     });
 
-    expect(run.downloadLog).toContain("stable-macos-arm64-Gloomberb.app.zip");
+    // Without release metadata it tries the app's name, then its name before the rename.
+    expect(run.downloadLog).toContain("releases/latest/download/stable-macos-arm64-Gloom.app.zip");
+    expect(run.downloadLog).toContain("releases/latest/download/stable-macos-arm64-Gloomberb.app.zip");
   });
 
   test("installs the x64 binary on Linux", async () => {
@@ -427,59 +429,86 @@ describe("install.sh verification", () => {
 });
 
 describe("install.sh on an Apple Silicon Mac", () => {
-  const appAsset = "stable-macos-arm64-Gloomberb.app.zip";
-  const appUrl = `https://github.com/gloom-sh/gloomberb/releases/download/v1.2.3/${appAsset}`;
+  const appAsset = "stable-macos-arm64-Gloom.app.zip";
+  const legacyAsset = "stable-macos-arm64-Gloomberb.app.zip";
+  const releaseUrl = "https://github.com/gloom-sh/gloomberb/releases/download/v1.2.3";
+  const mac = { unameSystem: "Darwin", unameMachine: "arm64", hardwareArm64: "1" };
+  const hasZip = Bun.which("zip") && Bun.which("unzip");
 
-  /** A zipped app bundle holding the given terminal commands. */
-  function zippedApp(commands: string[]): Uint8Array {
+  /** A zipped app bundle named `bundle`, holding the given terminal commands. */
+  function zippedApp(commands: string[], bundle = "Gloom.app"): Uint8Array {
     const root = mkdtempSync(join(workDir, "app-"));
-    const resources = join(root, "Gloomberb.app", "Contents", "Resources");
+    const resources = join(root, bundle, "Contents", "Resources");
     mkdirSync(resources, { recursive: true });
     for (const command of commands) {
       writeFileSync(join(resources, command), "#!/bin/sh\n");
       chmodSync(join(resources, command), 0o755);
     }
-    const zip = Bun.spawnSync(["zip", "-qr", "app.zip", "Gloomberb.app"], { cwd: root });
+    const zip = Bun.spawnSync(["zip", "-qr", "app.zip", bundle], { cwd: root });
     if (zip.exitCode !== 0) throw new Error(zip.stderr.toString());
     return readFileSync(join(root, "app.zip"));
   }
 
+  /** A release listing `archives` by name, with their digests. */
+  function release(archives: Record<string, Uint8Array>): Record<string, string | Uint8Array> {
+    const assets = Object.entries(archives).map(([name, archive]) => ({
+      name,
+      digest: `sha256:${new Bun.CryptoHasher("sha256").update(archive).digest("hex")}`,
+      browser_download_url: `${releaseUrl}/${name}`,
+    }));
+    return {
+      [metadataUrl]: JSON.stringify({ assets }),
+      ...Object.fromEntries(Object.entries(archives).map(([name, archive]) => [`${releaseUrl}/${name}`, archive])),
+    };
+  }
+
+  const resources = () => join(workDir, "Applications", "Gloom.app", "Contents", "Resources");
+
   // gloom.sh/install serves this script from main, so it meets releases from
-  // before the rename, whose app has only the gloomberb command.
-  test.skipIf(!Bun.which("zip") || !Bun.which("unzip")).each([
-    ["a release that ships gloom", ["gloom", "gloomberb"], "gloom"],
-    ["a release from before the rename", ["gloomberb"], "gloomberb"],
-  ] as const)("links gloom and gloomberb for %s", async (_, commands, gloomTarget) => {
-    const archive = zippedApp([...commands]);
-    const checksum = new Bun.CryptoHasher("sha256").update(archive).digest("hex");
-    const run = await runInstall({ unameSystem: "Darwin", unameMachine: "arm64", hardwareArm64: "1" }, {
-      downloads: {
-        [metadataUrl]: JSON.stringify({ assets: [{ name: appAsset, digest: `sha256:${checksum}`, browser_download_url: appUrl }] }),
-        [appUrl]: archive,
-      },
+  // before the rename, which ship Gloomberb.app (and before that, only the
+  // gloomberb command). The app goes in as Gloom.app either way.
+  test.skipIf(!hasZip).each([
+    ["a release that ships Gloom.app", { [appAsset]: ["Gloom.app", ["gloom", "gloomberb"]] }, "gloom"],
+    ["a release from before the app's rename", { [legacyAsset]: ["Gloomberb.app", ["gloom", "gloomberb"]] }, "gloom"],
+    ["a release from before the command's rename", { [legacyAsset]: ["Gloomberb.app", ["gloomberb"]] }, "gloomberb"],
+  ] as const)("installs Gloom.app and links gloom and gloomberb for %s", async (_, archives, gloomTarget) => {
+    const run = await runInstall(mac, {
+      downloads: release(Object.fromEntries(Object.entries(archives).map(([name, [bundle, commands]]) => [name, zippedApp([...commands], bundle)]))),
       existingInstall: "old binary",
     });
 
-    const resources = join(workDir, "Applications", "Gloomberb.app", "Contents", "Resources");
     expect(run.exitCode).toBe(0);
-    expect(run.links).toEqual({ gloom: join(resources, gloomTarget), gloomberb: join(resources, "gloomberb") });
+    expect(readdirSync(join(workDir, "Applications"))).toEqual(["Gloom.app"]);
+    expect(run.links).toEqual({ gloom: join(resources(), gloomTarget), gloomberb: join(resources(), "gloomberb") });
     expect(run.stdout).toContain("Run 'gloom' to start.");
   });
 
-  test.skipIf(!Bun.which("zip") || !Bun.which("unzip"))("keeps another program's gloom link and links gloomberb", async () => {
-    const archive = zippedApp(["gloom", "gloomberb"]);
-    const checksum = new Bun.CryptoHasher("sha256").update(archive).digest("hex");
-    const run = await runInstall({ unameSystem: "Darwin", unameMachine: "arm64", hardwareArm64: "1" }, {
-      downloads: {
-        [metadataUrl]: JSON.stringify({ assets: [{ name: appAsset, digest: `sha256:${checksum}`, browser_download_url: appUrl }] }),
-        [appUrl]: archive,
+  test.skipIf(!hasZip)("replaces a Gloomberb.app install and moves its command links to Gloom.app", async () => {
+    const legacy = join(workDir, "Applications", "Gloomberb.app");
+    const run = await runInstall(mac, {
+      downloads: release({ [appAsset]: zippedApp(["gloom", "gloomberb"]), [legacyAsset]: zippedApp(["gloom", "gloomberb"], "Gloomberb.app") }),
+      prepare: (installDir) => {
+        mkdirSync(join(legacy, "Contents", "Resources"), { recursive: true });
+        writeFileSync(join(legacy, "Contents", "Resources", "version.json"), '{"identifier":"com.vincelwt.gloomberb","name":"Gloomberb"}');
+        symlinkSync(join(legacy, "Contents", "Resources", "gloom"), join(installDir, "gloom"));
+        symlinkSync(join(legacy, "Contents", "Resources", "gloomberb"), join(installDir, "gloomberb"));
       },
+    });
+
+    expect(run.exitCode).toBe(0);
+    expect(run.downloadLog).not.toContain(legacyAsset);
+    expect(readdirSync(join(workDir, "Applications"))).toEqual(["Gloom.app"]);
+    expect(run.links).toEqual({ gloom: join(resources(), "gloom"), gloomberb: join(resources(), "gloomberb") });
+  });
+
+  test.skipIf(!hasZip)("keeps another program's gloom link and links gloomberb", async () => {
+    const run = await runInstall(mac, {
+      downloads: release({ [appAsset]: zippedApp(["gloom", "gloomberb"]) }),
       prepare: (installDir) => symlinkSync("/opt/other/bin/gloom", join(installDir, "gloom")),
     });
 
-    const resources = join(workDir, "Applications", "Gloomberb.app", "Contents", "Resources");
     expect(run.exitCode).toBe(0);
-    expect(run.links).toEqual({ gloom: "/opt/other/bin/gloom", gloomberb: join(resources, "gloomberb") });
+    expect(run.links).toEqual({ gloom: "/opt/other/bin/gloom", gloomberb: join(resources(), "gloomberb") });
     expect(run.stdout).toContain("Run 'gloomberb' to start.");
   });
 });

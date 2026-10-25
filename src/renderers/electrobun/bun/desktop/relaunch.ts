@@ -21,9 +21,14 @@ function spawnDetached(command: string[]): void {
   child.unref();
 }
 
-export function scheduleDesktopRelaunch(): void {
+/**
+ * Opens the app again once this process has exited. On a Mac, `bundle` opens
+ * that bundle instead of the one this process runs from: the app's own, under
+ * the name it was just given.
+ */
+export function scheduleDesktopRelaunch(bundle?: string): void {
   const pid = process.pid;
-  const macAppBundle = process.platform === "darwin" ? findMacAppBundle(process.execPath) : null;
+  const macAppBundle = process.platform === "darwin" ? bundle ?? findMacAppBundle(process.execPath) : null;
 
   if (macAppBundle) {
     spawnDetached([

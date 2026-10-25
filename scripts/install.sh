@@ -185,15 +185,17 @@ main() {
   }
 
   # A `gloom` already in the install folder is replaced only when it is ours:
-  # a link into Gloomberb.app or to the `gloomberb` beside it, or the binary
-  # this script installed, which it pairs with a `gloomberb` link to it.
-  # Anything else is another program's command and stays as it is.
+  # a link into Gloom.app (Gloomberb.app before the rename) or to the
+  # `gloomberb` beside it, or the binary this script installed, which it pairs
+  # with a `gloomberb` link to it. Anything else is another program's command
+  # and stays as it is.
   owns_command() {
     command_path="$1"
     command_dir="$(dirname "$command_path")"
     if [ -L "$command_path" ]; then
       case "$(readlink "$command_path")" in
         gloomberb|./gloomberb|"${command_dir}/gloomberb") return 0 ;;
+        */Gloom.app/Contents/Resources/gloom|*/Gloom.app/Contents/Resources/gloomberb) return 0 ;;
         */Gloomberb.app/Contents/Resources/gloom|*/Gloomberb.app/Contents/Resources/gloomberb) return 0 ;;
         *) return 1 ;;
       esac
@@ -207,21 +209,60 @@ main() {
     RUN_COMMAND="gloomberb"
   }
 
+  has_asset() {
+    awk -F '\t' -v asset="$1" '$1 == asset { found = 1 } END { exit !found }' "$TMP_DIR/assets"
+  }
+
+  # Gloomberb.app is the app's name before the rename. Once Gloom.app is in
+  # and the commands point at it, a copy under the old name beside it goes,
+  # unless Homebrew installed that one: Homebrew moves its own when it upgrades.
+  remove_legacy_app() {
+    legacy_app="${APP_DIR}/Gloomberb.app"
+    [ -d "$legacy_app" ] || return 0
+    grep -q 'com\.vincelwt\.gloomberb' "${legacy_app}/Contents/Resources/version.json" 2>/dev/null || return 0
+    for brew_prefix in /opt/homebrew /usr/local; do
+      if [ -d "${brew_prefix}/Caskroom/gloomberb" ]; then
+        echo "Left ${legacy_app} to Homebrew, which installed it."
+        return 0
+      fi
+    done
+    if [ -w "$APP_DIR" ]; then
+      rm -rf "$legacy_app"
+    else
+      sudo rm -rf "$legacy_app"
+    fi
+    echo "Removed ${legacy_app}, the app under its name before Gloom."
+  }
+
   install_macos_app() {
-    select_asset "stable-macos-arm64-Gloomberb.app.zip"
-    ZIP_PATH="${TMP_DIR}/${ASSET}"
-    APP_PATH="${TMP_DIR}/Gloomberb.app"
-    DEST_APP="${APP_DIR}/Gloomberb.app"
+    # Releases from before the rename ship the app only as Gloomberb.app, and
+    # this script is served from main, so it meets those too. Either way the
+    # app goes in as Gloom.app. Without release metadata, both names are tried.
+    app_assets="stable-macos-arm64-Gloom.app.zip stable-macos-arm64-Gloomberb.app.zip"
+    if [ -s "$TMP_DIR/assets" ] && ! has_asset "stable-macos-arm64-Gloom.app.zip"; then
+      app_assets="stable-macos-arm64-Gloomberb.app.zip"
+    fi
+    DEST_APP="${APP_DIR}/Gloom.app"
     DEST_CLI="${INSTALL_DIR}/gloom"
 
-    echo "Downloading ${ASSET} from ${DOWNLOAD_URL}"
-    echo "Will install ${DEST_APP} and link ${DEST_CLI}."
-    if ! download_file "$DOWNLOAD_URL" "$ZIP_PATH"; then
+    downloaded=""
+    for app_asset in $app_assets; do
+      select_asset "$app_asset"
+      ZIP_PATH="${TMP_DIR}/${ASSET}"
+      echo "Downloading ${ASSET} from ${DOWNLOAD_URL}"
+      if download_file "$DOWNLOAD_URL" "$ZIP_PATH"; then
+        downloaded=1
+        break
+      fi
+      rm -f "$ZIP_PATH"
+    done
+    if [ -z "$downloaded" ]; then
       echo "Combined macOS app install is not available for the latest release yet."
       echo "Falling back to the standalone terminal command."
       install_standalone_cli
       return
     fi
+    echo "Will install ${DEST_APP} and link ${DEST_CLI}."
 
     verify_download "$ZIP_PATH"
 
@@ -232,12 +273,19 @@ main() {
       unzip -q "$ZIP_PATH" -d "$TMP_DIR"
     fi
 
-    if [ ! -d "$APP_PATH" ]; then
-      echo "Error: ${ASSET} did not contain Gloomberb.app" >&2
+    APP_PATH=""
+    for bundle in Gloom.app Gloomberb.app; do
+      if [ -d "${TMP_DIR}/${bundle}" ]; then
+        APP_PATH="${TMP_DIR}/${bundle}"
+        break
+      fi
+    done
+    if [ -z "$APP_PATH" ]; then
+      echo "Error: ${ASSET} did not contain the Gloom app" >&2
       exit 1
     fi
 
-    echo "Installing Gloomberb.app to ${APP_DIR}..."
+    echo "Installing Gloom.app to ${APP_DIR}..."
     mkdir -p "$APP_DIR" 2>/dev/null || true
     if [ -w "$APP_DIR" ]; then
       rm -rf "$DEST_APP"
@@ -254,7 +302,7 @@ main() {
       echo "Error: installed app is missing the gloom terminal command" >&2
       exit 1
     fi
-    # Releases from before the rename ship the command only as gloomberb.
+    # Releases from before the command's rename ship it only as gloomberb.
     APP_CLI="${APP_RESOURCES}/gloom"
     if [ ! -x "$APP_CLI" ]; then
       APP_CLI="${APP_RESOURCES}/gloomberb"
@@ -263,13 +311,14 @@ main() {
     if owns_command "$DEST_CLI"; then
       install_symlink "$APP_CLI" "$DEST_CLI"
       install_symlink "${APP_RESOURCES}/gloomberb" "${INSTALL_DIR}/gloomberb"
-      echo "Installed Gloomberb.app to ${DEST_APP}"
+      echo "Installed Gloom.app to ${DEST_APP}"
       echo "Installed terminal command to ${DEST_CLI} (gloomberb runs it too)"
     else
       install_symlink "${APP_RESOURCES}/gloomberb" "${INSTALL_DIR}/gloomberb"
-      echo "Installed Gloomberb.app to ${DEST_APP}"
+      echo "Installed Gloom.app to ${DEST_APP}"
       skip_command "$DEST_CLI"
     fi
+    remove_legacy_app
   }
 
   install_standalone_cli() {

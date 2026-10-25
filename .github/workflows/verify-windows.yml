@@ -56,6 +56,10 @@ jobs:
         shell: pwsh
         run: ./scripts/build-windows-installer.ps1
 
+      - name: Write the desktop files under the app's old name
+        shell: pwsh
+        run: bun scripts/write-legacy-desktop-files.ts artifacts
+
       - name: Verify Windows desktop artifacts
         shell: pwsh
         run: ./scripts/verify-windows-desktop.ps1

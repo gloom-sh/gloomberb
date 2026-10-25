@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import type { UpdateStatusEntry } from "electrobun/bun";
@@ -10,7 +10,8 @@ import {
   type UpdateReportState,
 } from "../../../../telemetry/update-failures";
 import type { UpdateProgress } from "../../../../updater";
-import { createElectrobunDesktopUpdater, removeUpdateAsides, type ElectrobunUpdaterApi } from "./update";
+import { writeLegacyDesktopFiles } from "../../../../../scripts/write-legacy-desktop-files";
+import { createElectrobunDesktopUpdater, firstTarPath, removeUpdateAsides, type ElectrobunUpdaterApi } from "./update";
 
 type UpdateInfo = ReturnType<ElectrobunUpdaterApi["updateInfo"]>;
 
@@ -431,6 +432,7 @@ describe("old copies of the app at the next start", () => {
   }
 
   test.each([
+    ["darwin", "Gloom.app", "Gloom.app/Contents/MacOS/bun"],
     ["darwin", "Gloomberb.app", "Gloomberb.app/Contents/MacOS/bun"],
     ["linux", "app", "app/bin/bun"],
   ])("%s removes %s.previous and the uniquely named ones, and nothing else", async (platform, app, exec) => {
@@ -440,6 +442,18 @@ describe("old copies of the app at the next start", () => {
       const removed = await removeUpdateAsides(join(folder, exec), platform);
       expect(removed.map((path) => path.slice(folder.length + 1)).sort()).toEqual([`${app}.previous`, `${app}.previous-mgx1k2`, `${app}.previous-mgx1k2-1`]);
       expect(readdirSync(folder).sort()).toEqual([...keep].sort());
+    } finally {
+      rmSync(folder, { recursive: true, force: true });
+    }
+  });
+
+  test("beside Gloom.app, also removes what the update that brought the new name moved aside", async () => {
+    const folder = folderWith(["Gloom.app", "Gloomberb.app.previous", "Gloomberb.app.previous-mgx1k2", "Gloomberb.app"]);
+    try {
+      const removed = await removeUpdateAsides(join(folder, "Gloom.app/Contents/MacOS/bun"), "darwin");
+      expect(removed.map((path) => path.slice(folder.length + 1)).sort()).toEqual(["Gloomberb.app.previous", "Gloomberb.app.previous-mgx1k2"]);
+      // The old bundle itself is not an aside; removeLegacyMacApp decides about it.
+      expect(readdirSync(folder).sort()).toEqual(["Gloom.app", "Gloomberb.app"]);
     } finally {
       rmSync(folder, { recursive: true, force: true });
     }
@@ -455,6 +469,85 @@ describe("old copies of the app at the next start", () => {
       expect(existsSync(join(folder, "bun.previous"))).toBe(true);
     } finally {
       rmSync(folder, { recursive: true, force: true });
+    }
+  });
+});
+
+// An install from before the rename updates on Windows from the archive packed
+// again with a Gloomberb folder. Electrobun keeps it unpacked as the running
+// build's tar and would apply the next release's patch, made from the Gloom
+// archive, to it: bspatch does not check what it patches, so the result would
+// be a broken build. The download drops it first and fetches the full archive.
+describe("update archives from before the rename", () => {
+  /**
+   * Writes `file` (a path under its top folder) and packs `entry` with the
+   * system tar in `format`, as `<name>.tar`: the top folder packs it with
+   * everything under it, the file's own path packs it alone.
+   */
+  function tar(folder: string, name: string, file: string, format = "ustar", entry = file.split("/")[0]!): string {
+    const stage = mkdtempSync(join(folder, "stage-"));
+    mkdirSync(join(stage, file, ".."), { recursive: true });
+    writeFileSync(join(stage, file), "{}");
+    const packed = Bun.spawnSync(["tar", `--format=${format}`, "-cf", join(folder, `${name}.tar`), entry], { cwd: stage });
+    if (packed.exitCode !== 0) throw new Error(packed.stderr.toString());
+    rmSync(stage, { recursive: true });
+    return join(folder, `${name}.tar`);
+  }
+
+  test.each(["ustar", "pax", "gnu"])("reads the first path of a %s tar", (format) => {
+    const folder = mkdtempSync(join(tmpdir(), "gloom-update-tar-"));
+    try {
+      const short = tar(folder, "short", "Gloomberb/Resources/version.json", format);
+      expect(firstTarPath(readFileSync(short))).toBe("Gloomberb/");
+      // Over 100 characters: a pax or GNU header ahead of the entry names it.
+      const long = `Gloomberb/${"deep/".repeat(30)}version.json`;
+      if (format !== "ustar") expect(firstTarPath(readFileSync(tar(folder, "long", long, format, long)))).toBe(long);
+      expect(firstTarPath(readFileSync(short).subarray(0, 100))).toBeNull();
+      expect(firstTarPath(new Uint8Array(1024))).toBeNull();
+    } finally {
+      rmSync(folder, { recursive: true, force: true });
+    }
+  });
+
+  test("a download first drops the unpacked archives that carry the old name", async () => {
+    const root = mkdtempSync(join(tmpdir(), "gloom-update-legacy-"));
+    try {
+      const appData = join(root, "app-data");
+      const extraction = join(appData, "self-extraction");
+      const artifacts = join(root, "artifacts");
+      mkdirSync(extraction, { recursive: true });
+      mkdirSync(artifacts);
+      // The release's Windows archive, and its copy for installs from before the rename, packed by the release script.
+      const stage = mkdtempSync(join(root, "stage-"));
+      mkdirSync(join(stage, "Gloom", "Resources"), { recursive: true });
+      writeFileSync(join(stage, "Gloom", "Resources", "version.json"), "{}");
+      Bun.spawnSync(["tar", "-cf", "out.tar", "Gloom"], { cwd: stage });
+      writeFileSync(join(artifacts, "stable-win-x64-Gloom.tar.zst"), Bun.zstdCompressSync(readFileSync(join(stage, "out.tar"))));
+      await writeLegacyDesktopFiles(artifacts, join(root, "work"));
+      const unpack = (name: string, as: string) => writeFileSync(join(extraction, `${as}.tar`), Bun.zstdDecompressSync(readFileSync(join(artifacts, name))));
+      unpack("stable-win-x64-Gloomberb.tar.zst", "from-the-old-name");
+      unpack("stable-win-x64-Gloom.tar.zst", "from-the-new-name");
+      tar(extraction, "mac-old", "Gloomberb.app/Contents/Resources/version.json");
+      tar(extraction, "mac-new", "Gloom.app/Contents/Resources/version.json");
+      tar(extraction, "other", "Gloomberbish/Resources/version.json");
+      writeFileSync(join(extraction, "hash.patch"), "patch");
+
+      const { updater, calls } = createFakeUpdater();
+      const seenAtDownload: string[] = [];
+      const download = updater.downloadUpdate;
+      updater.appDataFolder = async () => appData;
+      updater.downloadUpdate = async () => {
+        seenAtDownload.push(...readdirSync(extraction).sort());
+        await download();
+      };
+      const { progress, onProgress } = collect();
+      await createElectrobunDesktopUpdater(updater, { runningVersion: "0.17.0" }).download(STABLE, onProgress);
+
+      expect(calls).toEqual(["check", "download"]);
+      expect(progress.at(-1)).toEqual({ phase: "ready", canRestart: true });
+      expect(seenAtDownload).toEqual(["from-the-new-name.tar", "hash.patch", "mac-new.tar", "other.tar"]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
     }
   });
 });

@@ -58,17 +58,21 @@ export function linkStandaloneCommand(execPath: string): string | null {
   return addSymlink(name, path);
 }
 
+/** Homebrew's prefixes on Apple Silicon and on Intel. */
+export const HOMEBREW_PREFIXES = ["/opt/homebrew", "/usr/local"];
+
 /** Homebrew's command folders on Apple Silicon and on Intel. */
-const HOMEBREW_BINS = ["/opt/homebrew/bin", "/usr/local/bin"];
+const HOMEBREW_BINS = HOMEBREW_PREFIXES.map((prefix) => join(prefix, "bin"));
 
 /**
- * Where a Mac keeps the desktop app's command: install.sh's folder, Homebrew's,
- * then the rest of PATH. A GUI app's PATH rarely has the first ones, so they
- * are named outright.
+ * Where a Mac keeps the desktop app's command: install.sh's folder, `~/bin`,
+ * Homebrew's, then the rest of PATH. A GUI app's PATH rarely has the first
+ * ones, so they are named outright.
  */
-function macCommandFolders(homeDir: string, pathEnv: string, homebrewBins: readonly string[]): string[] {
+export function macCommandFolders(homeDir: string, pathEnv: string, homebrewBins: readonly string[] = HOMEBREW_BINS): string[] {
   return [...new Set([
     homeDir ? join(homeDir, ".local", "bin") : "",
+    homeDir ? join(homeDir, "bin") : "",
     ...homebrewBins,
     ...pathEnv.split(":"),
   ].filter(Boolean))];
@@ -141,7 +145,7 @@ interface DesktopCommandOptions {
   homeDir: string;
   /** PATH as the app sees it. */
   pathEnv: string;
-  /** `%LOCALAPPDATA%`, where the Windows installer puts the app by default. */
+  /** `%LOCALAPPDATA%`, where the Windows installer puts the app by default (`Programs\Gloom`, `Programs\Gloomberb` before the rename). */
   localAppData?: string;
   /** Homebrew's command folders; tests pass none. */
   homebrewBins?: readonly string[];
@@ -166,6 +170,7 @@ export async function linkDesktopCommands({
     added = await Promise.all(macCommandFolders(homeDir, pathEnv, homebrewBins).map(linkMacCommand));
   } else if (platform === "win32") {
     const folders = new Set([
+      localAppData ? join(localAppData, "Programs", "Gloom", "bin") : "",
       localAppData ? join(localAppData, "Programs", "Gloomberb", "bin") : "",
       ...pathEnv.split(";"),
     ].filter(Boolean));

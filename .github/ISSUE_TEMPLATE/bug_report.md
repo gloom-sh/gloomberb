@@ -1,6 +1,6 @@
 ---
 name: Bug report
-about: Something in Gloomberb does not work as it should
+about: Something in Gloom does not work as it should
 labels: bug
 ---
 
@@ -16,7 +16,7 @@ labels: bug
 
 **Version and platform**
 
-<!-- Paste the output of `gloomberb version`, or the version the desktop app shows. Say whether this was the terminal, the desktop app or term.gloom.sh, and for the terminal, which terminal emulator. -->
+<!-- Paste the output of `gloom version`, or the version the desktop app shows. Say whether this was the terminal, the desktop app or term.gloom.sh, and for the terminal, which terminal emulator. -->
 
 ```
 ```
