@@ -721,7 +721,7 @@ test("a slow valuation read leaves price delivery independent and cannot overwri
     registerCommand() {}, registerPane() {}, registerPaneTemplate() {},
     configState: { get: (key: string) => store.get(key), set: (key: string, value: unknown) => { store.set(key, value); (key === "alerts" ? priceSaved : metricSaved).resolve(); } },
     marketData: createTestDataProvider({
-      getQuote: async () => ({ symbol: "AAPL", price: 240, change: 1, changePercent: 1, lastUpdated: Date.now() }),
+      getQuote: async () => ({ symbol: "AAPL", price: 240, currency: "USD", change: 1, changePercent: 1, lastUpdated: Date.now() }),
       getTickerFinancials: () => financials.promise,
     }),
     notify() {}, log: { info() {}, warn() {} },
