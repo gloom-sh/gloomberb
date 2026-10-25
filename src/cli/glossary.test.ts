@@ -79,7 +79,7 @@ test("a term's related terms hold its word whole; a word no term names still fin
   expect(terms(lookupGlossary("settle").partial)).toEqual([]);
   // A plural holds its word whole; a search that names no term keeps the word starts after the whole words.
   expect(terms(lookupGlossary("asset").partial)).toEqual(["Fed assets", "NAV"]);
-  expect(terms(lookupGlossary("vol").partial)).toEqual(["Average daily volume", "VVIX", "Short volume", "Term structure", "Contango/backwardation (VIX)"]);
+  expect(terms(lookupGlossary("vol").partial)).toEqual(["Average daily volume", "VVIX", "Short volume", "Term structure", "Contango/backwardation (VIX)", "DVOL"]);
   expect(["short interest", "shares short", "short ratio", "dtc", "settlement date", "crowded rising", "short squeeze", "% float"].map((query) => terms(lookupGlossary(query).exact)))
     .toEqual([["Short interest"], ["Short interest"], ["Days to cover"], ["Days to cover"], ["Settlement"], ["Crowded"], ["Squeeze"], ["Float"]]);
   // Borrow data is not offered, so it has no entry to define.
