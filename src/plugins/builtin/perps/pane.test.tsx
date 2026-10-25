@@ -148,11 +148,12 @@ test("rankings read as five sections of at most ten markets, with the preview's 
 test("compare spreads 8h funding between the venues it shows, dates each venue, and one venue shows no spread", async () => {
   serve({ compare: perpBoard({ rows: [venueRow("binance", { fundingRate8h: 0.00003, observedAt: "2026-10-03T23:11:40Z" }), venueRow("bybit", { fundingRate8h: 0.0001 })] }) });
   await mount({ market: "", tab: "compare" });
-  const two = await tui.waitForFrameToContain("Funding spread 8h");
+  // The footer line registers a frame after the rows paint, so wait for it: the spread and the table are on screen by then.
+  const two = await tui.waitForFrameToContain("Binance 23:11 · Bybit 23:20 UTC · oldest");
+  expect(two).toContain("Funding spread 8h");
   expect(two).toContain("0.0070pp");
   expect(two).toContain("Bybit over Binance");
   // The footer dates each venue by its own row, as `fn PERP` does, and the table keeps when each was observed.
-  expect(two).toContain("Binance 23:11 · Bybit 23:20 UTC · oldest");
   expect(two).toContain("10-03 23:11");
   await remount();
   serve({ compare: perpBoard({ access: "preview", locked: 3, rows: [perpRow()] }) });
@@ -213,8 +214,7 @@ test("the board's footer says live only while every row on screen streams, and o
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
   expect(subscribed.map((target) => target.symbol).sort()).toEqual(["BTCUSDT:BINANCE", "BTCUSDT:BYBIT", "ETHUSDT:BINANCE"]);
   // Nothing streams yet: the minute's read is neither live nor delayed; the line says how old its oldest price is.
-  const read = tui.frame();
-  expect(read).toContain("UTC · oldest 3 min");
+  const read = await tui.waitForFrameToContain("UTC · oldest 3 min");
   expect(read).not.toMatch(/delayed|· live/);
   const stream = async (index: number) => {
     const row = { ...rows[index]!, markPrice: 81_000 + index, observedAt: new Date().toISOString() };
