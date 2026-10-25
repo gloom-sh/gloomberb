@@ -24,6 +24,8 @@ export type DataTableColumn = Pick<
 
 export interface DataTableCell {
   text: string;
+  /** Muted context after `text`, shown whole only when both fit on one line. Does not change the exported value. */
+  note?: string;
   /**
    * What CSV export writes instead of `text`: the full-precision number behind
    * it (3.45 for +3.45%, 1234567890 for 1.23B), or a date as an ISO string or

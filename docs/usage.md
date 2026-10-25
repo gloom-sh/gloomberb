@@ -704,6 +704,7 @@ That returns valuation, cash flows and yield shocks. Use `--price 103.333937` in
 
 - From then until the old month stops trading the row names it: "WTI Crude Oil Dec 2026, rolled (Nov expires 20 Oct)". The most active month is named when it is another month: "WTI Crude Oil Nov 2026, Dec most active".
 - `quote` on a deferred contract or a later generic (NGF27.NYM, NG2) prints the front contract and its price, and the quote, chart and `history` follow the same month.
+- Watchlist and portfolio tables add a muted front reference beside the ticker (or Name when shown), such as `front NGX26 3.116`. It follows the front quote, leaves Last at the row's own contract price, and hides when the whole note cannot fit.
 - Generic tickers take OI for the open interest switch (CL1OI). UNIT says what a price counts, as `quote` does ("USD / barrel", "US cents / bushel").
 - Search matches the root's name and code. `FUT TTF` (`gloom fn FUT TTF`, `shot FUT TTF`) opens the board searched for that contract.
 - `--tab markets|inventories|positioning|crops` opens the workspace on that board (`gloom fn FUT --tab inventories`). FUT takes no other option and refuses one it does not know.

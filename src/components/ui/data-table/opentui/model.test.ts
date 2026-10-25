@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { fitTableCellText, fitTableHeaderText, tableColumnStarts } from "../../table-layout";
-import { cutColumnText, resolveDataTableColumnClips, resolveMoreColumnsHint, resolveDataTableVisibleWindow, reuseDataTableColumnClips } from "./model";
+import { cutColumnText, fitColumnCellText, resolveDataTableColumnClips, resolveMoreColumnsHint, resolveDataTableVisibleWindow, reuseDataTableColumnClips } from "./model";
 
 describe("OpenTUI data table model", () => {
   test("resolves the virtualized window with overscan around the scroll top", () => {
@@ -109,6 +109,27 @@ describe("OpenTUI data table model", () => {
     // Text starts at the visible edge, with an ellipsis when it is longer.
     expect(cell("Definitive agreement", "left", 22, { inset: 4, width: 12 })).toBe("Definitive\u2026 ");
     expect(cell("anything", "right", 12, { inset: 12, width: 0 })).toBe("");
+  });
+
+  test("a cell note fits whole beside its label, otherwise the label keeps its room and ellipsis", () => {
+    const note = "front NGX26 3.116";
+    expect(fitColumnCellText("NGF27", 24, "left", null, note)).toEqual({ text: "NGF27 ", note, padding: " " });
+    expect(fitColumnCellText("NGF27", 23, "left", null, note)).toEqual({ text: "NGF27 ", note, padding: "" });
+    expect(fitColumnCellText("NGF27", 22, "left", null, note)).toEqual({ text: "NGF27                 " });
+    expect(fitColumnCellText("NGF27", 4, "left", null, note)).toEqual({ text: "NGF…" });
+    expect(fitColumnCellText("NGF27", 23, "left", null)).toEqual({ text: fitTableCellText("NGF27", 23, "left") });
+    // Terminal cells, not UTF-16 length: the two ideographs occupy four cells.
+    expect(fitColumnCellText("天然", 22, "left", null, note)).toEqual({ text: "天然 ", note, padding: "" });
+    expect(fitColumnCellText("天然", 21, "left", null, note).note).toBeUndefined();
+  });
+
+  test("a note is hidden when the viewport cuts any of it, including an aligned cell's placement", () => {
+    const note = "front NGX26 3.116";
+    expect(fitColumnCellText("NGF27", 30, "left", { inset: 0, width: 23 }, note).note).toBe(note);
+    expect(fitColumnCellText("NGF27", 30, "left", { inset: 0, width: 22 }, note).note).toBeUndefined();
+    // The combined value fits 23 cells, but its right-aligned position ends outside them.
+    expect(fitColumnCellText("NGF27", 30, "right", { inset: 0, width: 23 }, note)).toEqual({ text: " ".repeat(23) });
+    expect(fitColumnCellText("NGF27", 30, "right", { inset: 7, width: 23 }, note)).toEqual({ text: "NGF27 ", note, padding: "" });
   });
 
   test("a cut header keeps its label's trailing blank unless the edge is that cell", () => {

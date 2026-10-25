@@ -104,6 +104,7 @@ import { hasUnknownOptionMultiplier } from "../../../../portfolio/position-metri
 import { withFuturesContractSizes } from "../../../../portfolio/futures-positions";
 import { withPurchaseDateCostFx } from "../../../../portfolio/cost-fx";
 import { usePortfolioFuturesTerms } from "./futures-terms";
+import { useFuturesFrontNotes } from "./futures-front";
 import { usePurchaseDateCostFx } from "./purchase-date-fx";
 import {
   allocationWeightBase,
@@ -185,7 +186,8 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     [config.baseCurrency, currentPortfolio],
   );
   // A future counts contracts of the size its terms give, and at the close is valued at its settlement.
-  const futuresTerms = usePortfolioFuturesTerms(collectionTickers, { enabled: isPortfolioTab, settlement: valuationBasis === "regular-close" });
+  const futuresTerms = usePortfolioFuturesTerms(collectionTickers, { enabled: true, settlement: isPortfolioTab && valuationBasis === "regular-close" });
+  const futuresFrontNotes = useFuturesFrontNotes(futuresTerms.terms, { enabled: appActive && viewMode === "table", liveStreaming });
   // A dated lot in another currency costs what its purchase date's FX close says in that currency, as portfolio show values it.
   const purchaseDateFx = usePurchaseDateCostFx(collectionTickers, { enabled: isPortfolioTab, portfolioId: activeCollectionId, into: totalsCurrency });
   const tickers = useMemo(
@@ -796,6 +798,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
           onCursorChange={handleCursorChange}
           financialsMap={financialsMap}
           columnContext={columnContext}
+          futuresFrontNotes={futuresFrontNotes}
           flashSymbols={flashSymbols}
           sinceLastSeen={sinceLastSeen}
           onRootKeyDown={handleTableKeyDown}

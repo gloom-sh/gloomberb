@@ -1,5 +1,5 @@
 import { displayWidth } from "../../../../utils/format";
-import { tableColumnLeadGap } from "../../table-layout";
+import { fitTableCellText, tableColumnLeadGap } from "../../table-layout";
 
 /**
  * Where the viewport cuts a column: `inset` cells hidden on its left (past the
@@ -44,6 +44,31 @@ export function cutColumnText(
   const shownEnd = clip.inset + clip.width;
   if (!body || start < clip.inset || end > shownEnd) return " ".repeat(clip.width);
   return `${" ".repeat(start - clip.inset)}${body}${" ".repeat(shownEnd - end)}`;
+}
+
+/** A note uses only spare room: neither the label nor part of the note is cut to fit it. */
+export function fitColumnCellText(
+  text: string,
+  width: number,
+  align: string | undefined,
+  clip: DataTableColumnClip | null,
+  note?: string,
+): { text: string; note?: string; padding?: string } {
+  const fit = (value: string) => clip
+    ? cutColumnText(value, align, width, clip, (body, shown) => fitTableCellText(body, shown, align))
+    : width > 0 ? fitTableCellText(value, width, align) : "";
+  const combined = note ? `${text} ${note}` : "";
+  if (combined && displayWidth(combined) <= (clip?.width ?? width)) {
+    const fitted = fit(combined);
+    const start = fitted.indexOf(combined);
+    // A right-aligned value may fit the visible width but sit beyond its edge.
+    if (start >= 0) return {
+      text: fitted.slice(0, start + text.length + 1),
+      note,
+      padding: fitted.slice(start + combined.length),
+    };
+  }
+  return { text: fit(text) };
 }
 
 function sameClip(a: DataTableColumnClip | null, b: DataTableColumnClip | null): boolean {

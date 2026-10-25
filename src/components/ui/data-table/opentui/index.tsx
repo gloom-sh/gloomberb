@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, ScrollBox, Text, TextAttributes, useNativeRenderer } from "../../../../ui";
+import { Box, ScrollBox, Span, Text, TextAttributes, useNativeRenderer } from "../../../../ui";
 import { hoverBg } from "../../../../theme/colors";
 import { useThemeColors } from "../../../../theme/theme-context";
 import { usePaneInstance } from "../../../../state/app/context";
@@ -12,7 +12,6 @@ import { EmptyState } from "../../status";
 import { observeScrollBoxContentSize, observeScrollBoxViewportSize } from "../../../../renderers/opentui/scrollbox-layout";
 import {
   expandTableColumns,
-  fitTableCellText,
   fitTableHeaderText,
   getTableWidth,
   hasMeaningfulTableHorizontalOverflow,
@@ -30,6 +29,7 @@ import { useFocusOwningPane, useVisibleRangeEmitter } from "../hooks";
 import { useStableColumns } from "../stable-columns";
 import {
   cutColumnText,
+  fitColumnCellText,
   resolveDataTableColumnClips,
   resolveDataTableVisibleWindow,
   resolveMoreColumnsHint,
@@ -212,10 +212,8 @@ function OpenTuiDataTableRowInner<
         const shownWidth = clip ? clip.width : column.width - inset;
         // Cut text is fitted to what shows; a number the edge cuts stays blank in its own place,
         // and its cell keeps its background and its press.
-        const shownText = clip
-          ? cutColumnText(cell.text, column.align, column.width, clip, (text, width) => fitTableCellText(text, width, column.align))
-          : shownWidth > 0 ? fitTableCellText(cell.text, shownWidth, column.align) : "";
-        const contentCut = clip !== null && column.align === "right" && shownText.trim() === "";
+        const fitted = fitColumnCellText(cell.text, clip ? column.width : shownWidth, column.align, clip, cell.note);
+        const contentCut = clip !== null && column.align === "right" && fitted.text.trim() === "";
         return (
           <Box
             key={column.id}
@@ -255,7 +253,11 @@ function OpenTuiDataTableRowInner<
                   ? colors.selectedText
                   : cell.color ?? colors.text}
               >
-                {`${frozen ? " ".repeat(horizontalPadding) : ""}${" ".repeat(inset)}${shownText}${frozen ? " ".repeat(columnGap) : ""}`}
+                {fitted.note ? <>
+                  {`${frozen ? " ".repeat(horizontalPadding) : ""}${" ".repeat(inset)}${fitted.text}`}
+                  <Span fg={colors.textDim} attributes={TextAttributes.NONE}>{fitted.note}</Span>
+                  {`${fitted.padding ?? ""}${frozen ? " ".repeat(columnGap) : ""}`}
+                </> : `${frozen ? " ".repeat(horizontalPadding) : ""}${" ".repeat(inset)}${fitted.text}${frozen ? " ".repeat(columnGap) : ""}`}
               </Text>
             )}
           </Box>

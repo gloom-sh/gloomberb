@@ -35,6 +35,51 @@ import { equitiesPayload, perpBoard, venueRow } from "../../perps/test-fixture";
 
 const TEST_PANE_ID = "portfolio-list:test";
 
+test.each([true, false])("deferred and continuous futures share a front reference without replacing their prices (streaming %s)", async (liveStreaming) => {
+  const symbols = ["NGF27", "NG2", "NGX26"];
+  const config = createManualCollectionConfig("watchlist");
+  config.layout.instances.find((pane) => pane.instanceId === TEST_PANE_ID)!.settings = { columnIds: ["ticker", "price", "change_pct"], liveStreaming };
+  const terms = spyOn(apiClient, "getCloudFuturesContract").mockImplementation(async (symbol) => ({
+    symbol, root: "NG", name: "Natural Gas", contract: symbol === "NG2" ? "NGZ26" : symbol,
+    contractSymbol: symbol, deliveryMonth: "2027-01", spec: null, settlement: null,
+    firstNotice: null, lastTrade: null, inDelivery: false,
+    front: symbol === "NGX26" ? null : { contract: "NGX26", contractSymbol: "NGX26", deliveryMonth: "2026-11", lastTrade: null },
+  }));
+  let frontPrice = 3.116;
+  const quoteFor = (symbol: string) => makeQuote({ symbol, name: "Natural Gas", instrumentType: "FUTURE",
+    price: symbol === "NGX26" ? frontPrice : symbol === "NG2" ? 3.482 : 4.221 });
+  const batches: string[][] = [];
+  const provider = createTestDataProvider({
+    async getQuote(symbol) { return quoteFor(symbol); },
+    async getQuotesBatch(targets) {
+      batches.push(targets.map((target) => `${target.symbol}@${target.exchange}`));
+      return targets.map((target) => ({ target, quote: quoteFor(target.symbol) }));
+    },
+    async getTickerFinancials(symbol) { return createTestFinancials({ quote: quoteFor(symbol) }); },
+  });
+  sharedCoordinator = new MarketDataCoordinator(provider);
+  setSharedMarketDataCoordinator(sharedCoordinator);
+  try {
+    await tui.render(<PortfolioHarness config={config} collectionId="watchlist" paneWidth={110} stateMutator={(state) => {
+      state.tickers = new Map(symbols.map((symbol) => [symbol, createTestTicker(symbol, "Natural Gas", {
+        assetCategory: "FUTURE", exchange: "NYMEX", watchlists: ["watchlist"], portfolios: [], positions: [],
+      })]));
+      state.financials = new Map(symbols.map((symbol) => [symbol, createTestFinancials({ quote: quoteFor(symbol) })]));
+    }} />, { width: 110, height: 12 });
+    const frame = await tui.waitForFrameToContain("front NGX26 3.116");
+    expect(frame.match(/front NGX26 3\.116/g)).toHaveLength(2);
+    expect(frame).toContain("4.221");
+    expect(frame).toContain("3.482");
+    expect(batches.flat().filter((target) => target === "NGX26@")).toHaveLength(1);
+    frontPrice = 3.127;
+    await act(async () => { await sharedCoordinator!.loadQuotesBatch([{ symbol: "NGX26", exchange: "" }], { forceRefresh: true }); });
+    await tui.waitForFrameToContain("front NGX26 3.127");
+    expect(tui.frame()).not.toContain("front NGX26 3.116");
+  } finally {
+    terms.mockRestore();
+  }
+});
+
 const tui = createOpenTuiTestHarness();
 let harnessDispatch: React.Dispatch<AppAction> | null = null;
 let sharedCoordinator: MarketDataCoordinator | null = null;
