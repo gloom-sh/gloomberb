@@ -52,7 +52,7 @@ export async function loadFxBoard(
       coordinator.loadQuotesBatch(legs.map((leg) => ({ symbol: leg.symbol, exchange: "" })), { forceRefresh })
         .catch(logFailure("fx-matrix.client", "Load FX pair quotes failed", [] as QueryEntry<Quote>[])),
     ]);
-    // Every leg moves from the board's one close, as the pane's tint does.
+    // Every leg moves from the board's one close, read off the clock, as the pane's tint does.
     const boardDay = fxBoardMoveDay(quotes);
     return new Map(legs.map((leg, index) => {
       const rate = rates[index]!;

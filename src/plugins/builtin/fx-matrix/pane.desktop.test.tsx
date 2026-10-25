@@ -1,5 +1,5 @@
 /** @jsxImportSource react */
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, setSystemTime, test } from "bun:test";
 import type { ReactNode } from "react";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { createIdleEntry, type QueryEntry } from "../../../market-data/result-types";
@@ -117,6 +117,16 @@ test("every currency the settings offer draws its flag in the rows and the heade
 });
 
 test("a cross is tinted by its move against the pairs' previous closes, whether a leg draws its quote or a newer snapshot", async () => {
+  // A Wednesday, while FX trades: the board's day is the one the quotes print in.
+  setSystemTime(new Date("2026-10-21T14:00:00Z"));
+  try {
+    await tintedCrosses();
+  } finally {
+    setSystemTime();
+  }
+});
+
+async function tintedCrosses() {
   const now = Date.now();
   installCoordinator({
     "EURUSD=X": { price: 1.1, previousClose: 1.08 },
@@ -150,7 +160,7 @@ test("a cross is tinted by its move against the pairs' previous closes, whether 
   // Stale, previous-close-less and unfetched legs, and the diagonal, stay plain.
   expect(["JPY", "CHF", "CAD"].flatMap((leg) => [tinted(leg, "USD"), tinted("EUR", leg), tinted(leg, "EUR")])).not.toContain(true);
   expect(tinted("EUR", "EUR")).toBe(false);
-});
+}
 
 test("without desktop chrome the matrix keeps its plain codes and its original base column", async () => {
   installCoordinator();

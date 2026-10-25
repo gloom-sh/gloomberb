@@ -101,8 +101,8 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
   const directionReferences = useMemo(() => {
     const coordinator = getSharedMarketDataCoordinator();
     const references = new Map<string, number>([["USD", 1]]);
-    // One close for the board (fxBoardMoveDay): a leg still on the day before has no move.
-    const boardDay = fxBoardMoveDay(legs.map((leg) => legEntries.get(fxLegQuoteKey(leg))));
+    // One close for the board, read off the clock (fxBoardMoveDay): a leg on another day has no move.
+    const boardDay = fxBoardMoveDay(legs.map((leg) => legEntries.get(fxLegQuoteKey(leg))), Date.now());
     for (const leg of legs) {
       const drawn = liveEntries.get(leg.currency) ?? coordinator?.getFxEntry(leg.currency);
       const reference = fxLegMoveReference(leg, legEntries.get(fxLegQuoteKey(leg)), drawn, boardDay);

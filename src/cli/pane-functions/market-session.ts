@@ -125,12 +125,12 @@ function closeDateOf(observation: SessionObservation, session: VenueSession, now
   const time = observation.time;
   if (!time || time.dateOnly) return null;
   // FX closes once a week, Friday 17:00 New York time, and its trading day turns
-  // at 17:00: a print from that last day, up to the close, is that Friday's
-  // close. A tick after it, over the weekend, is no price of the week and keeps
-  // its own time.
+  // at 17:00: a print from that last day, after Thursday's 17:00 close through
+  // Friday's, is that Friday's close. A tick after it, over the weekend, is no
+  // price of the week and keeps its own time.
   const weekClose = canonicalExchange(observation.exchange) === FX_VENUE ? currentFxClosureStart(now) : null;
   if (weekClose != null) {
-    return time.time >= weekClose - DAY_MS && time.time <= weekClose ? zonedDateKey(weekClose - 1, "America/New_York") : null;
+    return time.time > weekClose - DAY_MS && time.time <= weekClose ? zonedDateKey(weekClose - 1, "America/New_York") : null;
   }
   if (session.last && session.timeZone) {
     if (session.last.open != null && time.time < session.last.open) return null;

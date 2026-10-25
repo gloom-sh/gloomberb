@@ -4,7 +4,7 @@ import type { Quote } from "../../types/financials";
 import { canonicalExchange } from "../../utils/exchanges";
 import { isFiniteNumber } from "../../utils/guards";
 import { formatUtcDayTime } from "../../utils/utc-time";
-import { fxTradingDay } from "../../utils/fx-market-hours";
+import { fxPrintTradingDay } from "../../utils/fx-market-hours";
 import { zonedDateKey } from "../../utils/zoned-date-time";
 import { futuresChangeBasis, futuresSettleText, isFuturesInstrument } from "../futures-contract";
 import { quoteTradingDay } from "../quotes/day-range";
@@ -98,12 +98,13 @@ function isCurrencyPair(quote: Quote): boolean {
 /**
  * The trading day a quote describes (quoteTradingDay); for a currency pair,
  * whose venue has no clock, the FX trading day of its print, which turns at
- * 17:00 New York, so every pair on a board is dated alike.
+ * 17:00 New York, so every pair on a board is dated alike. Null for a pair's
+ * print made while FX is shut, which belongs to no trading day.
  */
 function tradingDayOf(quote: Quote): string | null {
   const day = quoteTradingDay(quote);
   if (day || !isCurrencyPair(quote) || !Number.isFinite(quote.lastUpdated) || quote.lastUpdated <= 0) return day;
-  return fxTradingDay(quote.lastUpdated);
+  return fxPrintTradingDay(quote.lastUpdated);
 }
 
 /** A coin on the spot crypto venue: its day is the UTC day. */
