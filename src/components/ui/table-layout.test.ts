@@ -3,6 +3,7 @@ import {
   buildTableGridTemplateColumns,
   fitTableCellText,
   fitTableHeaderText,
+  getTableResizeWidth,
   getTableWidth,
   hasMeaningfulTableHorizontalOverflow,
   tableColumnStarts,
@@ -86,6 +87,21 @@ describe("table layout", () => {
       // The flexible column follows a right-aligned one, so its track carries the extra gap cell.
       "minmax(calc(4 * var(--cell-w)), calc(4 * var(--cell-w))) minmax(calc(15 * var(--cell-w)), 41fr) minmax(calc(8 * var(--cell-w)), calc(24 * var(--cell-w))) minmax(calc(5 * var(--cell-w)), calc(5 * var(--cell-w)))",
     );
+  });
+
+  test("authored resize floors relax spare space without tightening the resting grid or clipping headers", () => {
+    const columns = [
+      { width: 12, minWidth: 12, flexGrow: 1, label: "Title" },
+      { width: 80, minWidth: 8, flexGrow: 1, label: "Open" },
+      { width: 80, minWidth: 1, flexGrow: 1, label: "Change %" },
+    ];
+
+    expect(buildTableGridTemplateColumns(columns)).toBe(
+      "minmax(calc(8 * var(--cell-w)), 12fr) minmax(calc(8 * var(--cell-w)), 80fr) minmax(calc(10 * var(--cell-w)), 80fr)",
+    );
+    // Resize extent keeps the authored title floor, independently of its lower grid minimum.
+    expect(getTableResizeWidth(columns)).toBe(35);
+    expect(getTableWidth(columns)).toBe(177);
   });
 
   test("keeps proportional web table columns when no column is flexible", () => {

@@ -100,6 +100,48 @@ test("regrabbing a shrinking table preserves its painted width instead of jumpin
   }
 });
 
+test.each([0, 8])("responsive presses and regrabs use the fractional inner viewport with a %ipx scrollbar", async (scrollbarWidth) => {
+  let viewport = 900.25;
+  let paintedWidth = 950.5;
+  function Harness() {
+    const ref = useRef<HTMLDivElement>(null);
+    useTableResizeColumns(ref, "minmax(20px, 1000fr)", "value", {
+      naturalWidth: 1_000, resizeWidth: 700, viewportWidth: 113, viewportIsCurrent: () => true,
+      fillAvailableWidth: true, showHorizontalScrollbar: true,
+    });
+    return <div ref={ref} style={{ ...TABLE_RESIZE_DEFAULTS }}>
+      <div data-gloom-role="data-table-body-scroll">
+        <div data-gloom-role="data-table-scroll-content" />
+      </div>
+    </div>;
+  }
+  const container = await render(<Harness />);
+  const table = container.firstElementChild as HTMLElement;
+  const body = table.firstElementChild as HTMLElement;
+  const content = body.firstElementChild as HTMLElement;
+  Object.defineProperties(body, {
+    clientWidth: { get: () => Math.round(viewport) },
+    offsetWidth: { get: () => Math.round(viewport + scrollbarWidth) },
+  });
+  body.getBoundingClientRect = () => new testWindow.DOMRect(0, 0, viewport + scrollbarWidth, 240) as unknown as DOMRect;
+  content.getBoundingClientRect = () => new testWindow.DOMRect(0, 0, paintedWidth, 240) as unknown as DOMRect;
+  let end = beginLiveResize();
+  try {
+    // CSS 100% resolves to 900.25px: subtracting the border box would move
+    // painted overflow by the scrollbar width as soon as the pointer presses.
+    expect(table.style.getPropertyValue("--gloom-table-resize-width"))
+      .toBe("max(100%, 700px, calc(950.5px + min(0px, calc(100% - 900.25px))))");
+    end();
+    viewport = 870.75;
+    paintedWidth = 920.125;
+    end = beginLiveResize();
+    expect(table.style.getPropertyValue("--gloom-table-resize-width"))
+      .toBe("max(100%, 700px, calc(920.125px + min(0px, calc(100% - 870.75px))))");
+  } finally {
+    end();
+  }
+});
+
 test("a late layout commit gets a whole settling transition without holding another pane or later data updates", async () => {
   jest.useFakeTimers();
   const delayed = Promise.withResolvers<void>();

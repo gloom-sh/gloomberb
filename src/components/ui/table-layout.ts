@@ -189,7 +189,9 @@ function columnMinCh(column: TableWidthColumn): number {
     }
     return Math.max(1, Math.min(width, 8));
   })();
-  return Math.max(column.minWidth === undefined ? heuristic : Math.min(width, Math.max(1, Math.floor(column.minWidth))), headerFloor);
+  const authoredMinimum = column.minWidth === undefined ? heuristic : Math.min(width, Math.max(1, Math.floor(column.minWidth)));
+  // An authored resize floor may release spare space without tightening the resting grid.
+  return Math.max(headerFloor, Math.min(heuristic, authoredMinimum));
 }
 
 function columnFlexWeight(column: TableWidthColumn): number {

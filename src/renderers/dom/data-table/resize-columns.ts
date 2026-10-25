@@ -33,7 +33,10 @@ function resizeContentWidth(element: HTMLElement, width: TableResizeWidth, inter
   if (!width.showHorizontalScrollbar) return "100%";
   const minimum = width.resizeWidth ?? width.naturalWidth;
   if (minimum < width.naturalWidth) {
-    const viewport = content?.parentElement?.getBoundingClientRect().width;
+    const body = content?.parentElement;
+    // The borderless, unpadded body can reserve a vertical scrollbar. Match
+    // CSS 100% while retaining the fractional width clientWidth rounds away.
+    const viewport = body ? body.getBoundingClientRect().width - (body.offsetWidth - body.clientWidth) : undefined;
     if (viewport && Number.isFinite(viewport)) {
       // Responsive widths already include spare pane space. Let that space
       // shrink with the viewport, preserving any painted overflow on press.
