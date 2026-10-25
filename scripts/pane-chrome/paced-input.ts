@@ -7,6 +7,39 @@ export interface PacedInputDiagnostics {
   drainMs: number;
 }
 
+export interface InputWindowDiagnostics extends PacedInputDiagnostics {
+  trustedSamples: number;
+  pointerCallbacks: number;
+  recordingMs: number;
+}
+
+/** Only a completely accounted-for shortfall in offered input can be retried. */
+export class InvalidInputWindowError extends Error {
+  readonly retryableDriverWindow: boolean;
+
+  constructor(readonly diagnostics: InputWindowDiagnostics, targetMoves: number, minimumMoves: number, minimumRate: number) {
+    const d = diagnostics;
+    const rate = d.trustedSamples / (d.recordingMs / 1000);
+    super(`Input delivery was undersampled or inconsistent: ${d.trustedSamples} trusted samples at ${Number(rate.toFixed(1))}/s; need at least ${minimumMoves} samples and ${minimumRate}/s to measure the 60Hz workload. ${JSON.stringify(d)}`);
+    this.name = "InvalidInputWindowError";
+    this.retryableDriverWindow = [targetMoves, minimumMoves, d.offeredMoves, d.acknowledgedMoves,
+      d.skippedSlots, d.maxPendingMoves, d.trustedSamples, d.pointerCallbacks].every(Number.isInteger)
+      && targetMoves >= minimumMoves && minimumMoves > 0
+      && Number.isFinite(minimumRate) && minimumRate > 0
+      && d.offeredMoves > 0 && d.offeredMoves < minimumMoves
+      && d.offeredMoves === d.acknowledgedMoves && d.offeredMoves === d.trustedSamples
+      && d.skippedSlots > 0 && d.offeredMoves + d.skippedSlots === targetMoves
+      && d.pointerCallbacks > 0 && d.pointerCallbacks <= d.trustedSamples
+      && d.maxPendingMoves > 0 && d.maxPendingMoves <= d.offeredMoves
+      && [d.maxDispatchLatenessMs, d.drainMs, d.recordingMs].every(Number.isFinite)
+      && d.maxDispatchLatenessMs >= 0 && d.drainMs >= 0 && d.recordingMs > 0
+      // Even a full target must still fit the rate gate, and draining may
+      // consume at most one interval at that rate. Slow delivery stays fatal.
+      && d.recordingMs <= targetMoves / minimumRate * 1000
+      && d.drainMs <= 1000 / minimumRate;
+  }
+}
+
 /** Offer native input on a wall clock, independently of the renderer's acknowledgements. */
 export async function paceInput(
   send: (progress: number) => Promise<void>,

@@ -4,7 +4,7 @@ import { RESIZE_SETTLE_MS } from "../../src/ui/resize-settle";
 import { median, positiveInteger, takeOption } from "../tui-benchmark-harness";
 import { cacheDir, evaluate, frames, launchBrowser, mouse, sleep, waitFor, type Cdp, type Point } from "./browser";
 import { serveFixturePage, type FixturePage } from "./page";
-import { paceInput, type PacedInputDiagnostics } from "./paced-input";
+import { InvalidInputWindowError, paceInput, type InputWindowDiagnostics, type PacedInputDiagnostics } from "./paced-input";
 
 /**
  * Frame budget of pane drags and resizes, against a base checkout. Each run
@@ -54,6 +54,9 @@ const RELEASE_SETTLE_MS = RESIZE_SETTLE_MS * 3;
  * fewer updates. Submitted/acknowledged commands do not count as delivered
  * samples; the renderer's own frame rate remains a reported result. */
 const MIN_INPUT_SHARE = 0.9;
+const MAX_INPUT_ATTEMPTS = 3;
+/** Shared by both sides and any second performance-budget pass. */
+const MAX_DISCARDED_INPUT_WINDOWS = 3;
 // Calibrated on main (ac27f2d6a) with identical code on both sides: the
 // medians of five runs differed by at most 1.06x quiet and 1.17x on a 12-core
 // host at load 35, and React commits by at most 3. The drag that re-rendered
@@ -98,6 +101,8 @@ document.addEventListener("pointermove", (event) => {
 `;
 
 interface DragSample extends PacedInputDiagnostics {
+  inputAttempts?: number;
+  rejectedInputWindows?: number;
   /** Main-thread time (script, style, layout, paint and the rest) per animation frame, ms. */
   mainMsPerFrame: number;
   scriptMsPerFrame: number;
@@ -463,12 +468,6 @@ async function measureDrag(cdp: Cdp, page: FixturePage, scenario: Scenario): Pro
   const restStretch = scenario.canvas ? await evaluate<number>(cdp, stretchOf(scenario.canvas)) : 0;
   const minimumMoves = Math.ceil(DRAG_MS / FRAME_MS * MIN_INPUT_SHARE);
   const minimumRate = 1000 / FRAME_MS * MIN_INPUT_SHARE;
-  if (!Number.isInteger(pointerMoves) || !Number.isInteger(recorded.pointerCallbacks)
-    || recorded.pointerCallbacks < 1 || recorded.pointerCallbacks > pointerMoves
-    || pointerMoves < minimumMoves || !Number.isFinite(pointerMovesPerSecond) || pointerMovesPerSecond < minimumRate
-    || pointerMoves > input.offeredMoves) {
-    throw new Error(`Input delivery was undersampled or inconsistent: ${pointerMoves} trusted samples at ${round(pointerMovesPerSecond, 1)}/s; need at least ${minimumMoves} samples and ${round(minimumRate, 1)}/s to measure the 60Hz workload. ${JSON.stringify({ ...input, pointerCallbacks: recorded.pointerCallbacks, recordingMs: elapsed })}`);
-  }
   const usable = (values: readonly number[]) => values.length > 0 && values.every((value) => Number.isFinite(value) && value >= 0);
   if (![recorded.startedAt, recorded.stoppedAt, elapsed].every(Number.isFinite)
     || recorded.startedAt < 0 || elapsed <= 0) {
@@ -488,6 +487,16 @@ async function measureDrag(cdp: Cdp, page: FixturePage, scenario: Scenario): Pro
     || !Number.isFinite(recorded.commits) || recorded.commits < 0
     || ![...held, ...released, ...settled].every(Number.isFinite)) {
     throw new Error("The drag did not record valid performance metrics, commits or release edges.");
+  }
+  // Malformed frame/CPU measurements above are fatal even if the driver also
+  // missed slots. Only a fully accounted-for short offered workload can retry.
+  if (!Number.isInteger(pointerMoves) || !Number.isInteger(recorded.pointerCallbacks)
+    || recorded.pointerCallbacks < 1 || recorded.pointerCallbacks > pointerMoves
+    || pointerMoves < minimumMoves || !Number.isFinite(pointerMovesPerSecond) || pointerMovesPerSecond < minimumRate
+    || pointerMoves > input.offeredMoves) {
+    throw new InvalidInputWindowError({
+      ...input, trustedSamples: pointerMoves, pointerCallbacks: recorded.pointerCallbacks, recordingMs: elapsed,
+    }, Math.ceil(DRAG_MS / FRAME_MS), minimumMoves, minimumRate);
   }
   return {
     ...input,
@@ -516,18 +525,65 @@ async function measureDrag(cdp: Cdp, page: FixturePage, scenario: Scenario): Pro
   };
 }
 
-async function runSide(page: FixturePage, label: string, scenarios: Scenario[]): Promise<Record<string, DragSample>> {
+interface InputRejection {
+  side: "base" | "head";
+  scenario: string;
+  attempt: number;
+  discarded: boolean;
+  reason: string;
+  diagnostics: InputWindowDiagnostics;
+}
+
+interface InputWindows {
+  discarded: number;
+  rejections: InputRejection[];
+}
+
+function inputWindowReport(windows: InputWindows): string[] {
+  const counts = (["base", "head"] as const).map((side) => {
+    const rejected = windows.rejections.filter((entry) => entry.side === side);
+    return `${side}: ${rejected.length} rejected, ${rejected.filter((entry) => entry.discarded).length} discarded`;
+  });
+  return [
+    `Input-window validation (${counts.join("; ")}): at most ${MAX_INPUT_ATTEMPTS} attempts per scenario and ${MAX_DISCARDED_INPUT_WINDOWS} discarded driver windows across the whole comparison. The first valid sample is kept without inspecting its CPU cost.`,
+    "A driver shortfall is an invalid workload, not proof that the renderer played no part in contention. These bounded retries do not establish that transient stalls disappeared; every rejected window remains in the report.",
+    ...(windows.rejections.length ? ["", ...windows.rejections.map((entry) => `- Rejected input window: ${JSON.stringify(entry)}`)] : []),
+  ];
+}
+
+async function runSide(page: FixturePage, label: "base" | "head", scenarios: Scenario[], inputWindows: InputWindows): Promise<Record<string, DragSample>> {
   const browser = await launchBrowser(`budget-${label}`, VIEWPORT.width, VIEWPORT.height);
   try {
     await browser.cdp.send("Page.addScriptToEvaluateOnNewDocument", { source: PAGE_PROBES });
     await browser.cdp.send("Performance.enable", { timeDomain: "threadTicks" });
     const samples: Record<string, DragSample> = {};
     for (const scenario of scenarios) {
-      try {
-        samples[scenario.name] = await measureDrag(browser.cdp, page, scenario);
-      } catch (error) {
-        // Say which side: a base measured with its own fixture may lack a layout this one has.
-        throw new Error(`${label}, ${scenario.name}: ${error instanceof Error ? error.message : String(error)}`);
+      for (let attempt = 1; attempt <= MAX_INPUT_ATTEMPTS; attempt += 1) {
+        try {
+          // measureDrag navigates afresh and resets probes on every attempt.
+          samples[scenario.name] = {
+            ...await measureDrag(browser.cdp, page, scenario), inputAttempts: attempt, rejectedInputWindows: attempt - 1,
+          };
+          break;
+        } catch (error) {
+          if (error instanceof InvalidInputWindowError) {
+            const discarded = error.retryableDriverWindow && attempt < MAX_INPUT_ATTEMPTS
+              && inputWindows.discarded < MAX_DISCARDED_INPUT_WINDOWS;
+            const rejection: InputRejection = {
+              side: label, scenario: scenario.name, attempt, discarded,
+              reason: !error.retryableDriverWindow ? "Input delivery was not a fully accounted-for driver shortfall"
+                : discarded ? "The driver offered fewer than the required samples; every offered sample arrived"
+                  : "Driver shortfall exhausted the per-scenario or whole-comparison retry limit",
+              diagnostics: error.diagnostics,
+            };
+            inputWindows.rejections.push(rejection);
+            if (discarded) inputWindows.discarded += 1;
+            console.error(`Rejected input window: ${JSON.stringify(rejection)}`);
+            if (discarded) continue;
+          }
+          // Generic failures and delivered-workload performance failures never retry here.
+          throw new Error(`${label}, ${scenario.name}: ${error instanceof Error ? error.message : String(error)}`);
+        }
       }
     }
     return samples;
@@ -552,6 +608,7 @@ async function main(): Promise<void> {
     head: await serveFixturePage(resolve(takeOption(args, "--head") ?? join(import.meta.dir, "../..")), cacheDir("build", `budget-head-${process.pid}`)),
   };
   const samples: Record<keyof typeof sides, Array<Record<string, DragSample>>> = { base: [], head: [] };
+  const inputWindows: InputWindows = { discarded: 0, rejections: [] };
   let verdict: { lines: string[]; problems: string[] };
   try {
     // A result over budget is measured again, on twice the runs, before it
@@ -559,15 +616,19 @@ async function main(): Promise<void> {
     for (let attempt = 1; ; attempt += 1) {
       for (let run = 1; run <= runs; run += 1) {
         for (const side of ["base", "head"] as const) {
-          const result = await runSide(sides[side], side, scenarios);
+          const result = await runSide(sides[side], side, scenarios, inputWindows);
           samples[side].push(result);
           console.error(`${side} ${samples[side].length}: ${Object.entries(result).map(([name, sample]) => `${name} ${round(sample.mainMsPerFrame)} ms/frame, ${sample.commits} commits, ${sample.pointerMoves} moves at ${round(sample.pointerMovesPerSecond, 1)}/s${sample.frameLagPx !== undefined ? `, ${round(sample.frameLagPx, 1)} px behind` : ""}`).join("; ")}`);
         }
       }
-      verdict = judge(scenarios, samples, sides.base.ownFixture);
+      verdict = judge(scenarios, samples, sides.base.ownFixture, inputWindows);
       if (verdict.problems.length === 0 || attempt === 2) break;
       console.error("Over budget; measuring again.");
     }
+  } catch (error) {
+    // An exhausted or non-retriable run still reports every rejected window.
+    console.error(inputWindowReport(inputWindows).join("\n"));
+    throw error;
   } finally {
     await sides.base.close();
     await sides.head.close();
@@ -579,7 +640,7 @@ async function main(): Promise<void> {
   if (verdict.problems.length > 0) process.exitCode = 1;
 }
 
-function judge(scenarios: Scenario[], samples: Record<"base" | "head", Array<Record<string, DragSample>>>, baseOwnFixture: boolean): { lines: string[]; problems: string[] } {
+function judge(scenarios: Scenario[], samples: Record<"base" | "head", Array<Record<string, DragSample>>>, baseOwnFixture: boolean, inputWindows: InputWindows): { lines: string[]; problems: string[] } {
   const runs = samples.head.length;
   const lines = [
     "### Pane drag and resize frame budget",
@@ -587,6 +648,8 @@ function judge(scenarios: Scenario[], samples: Record<"base" | "head", Array<Rec
     `Middle value of ${runs} alternating runs per side, ${DRAG_MS / 1000} s drags at 60 moves a second, headless Chrome without a GPU. Frames are animation frames, not GPU-presented frames; missed frames are estimated against a 60 Hz display. Behind the pointer: how far the dragged edge of the frame, and of the content in it, was from where the pointer had it, in px (95th percentile). Release displacement: the largest early or settled release displacement from the held edge, sampled three frames after release and again after another ${RELEASE_SETTLE_MS} ms and two frames.`,
     "",
     "Native input is offered on fixed 60 Hz deadlines without waiting for the previous acknowledgement. Missed slots are skipped. Delivered moves count trusted page samples, including coalesced input; callback counts are separate. All input drains before the recording stops, and that full page interval determines delivery rate and FPS.",
+    "",
+    ...inputWindowReport(inputWindows),
     "",
     ...(baseOwnFixture ? ["Main was measured with its own fixture: this PR changed the fixture, and the new one needs source main does not have. The stand-in panes may differ between the two columns.", ""] : []),
     `| | main${baseOwnFixture ? " (own fixture)" : ""} | this PR |`,
@@ -603,6 +666,8 @@ function judge(scenarios: Scenario[], samples: Record<"base" | "head", Array<Rec
     row("script per frame", "scriptMsPerFrame", " ms");
     row("style and layout per frame", "styleLayoutMsPerFrame", " ms");
     row("React commits", "commits");
+    row("input attempts", "inputAttempts");
+    row("rejected input windows", "rejectedInputWindows");
     row("delivered pointer moves", "pointerMoves");
     row("pointer callbacks", "pointerCallbacks");
     row("pointer moves per second", "pointerMovesPerSecond");
