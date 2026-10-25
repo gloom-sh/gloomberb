@@ -66,6 +66,7 @@ test("intraday bars cannot trigger; the next completed close can, including earl
   const completed = dailyMetricReading(armed, rows, session.close + 15 * 60_000, calendar);
   expect(metricTrigger(armed, completed)).toBe("below");
   const short = rule({ kind: "close_ma", period: 2 }, 0);
+  expect(reading(short, [100, 90])).toMatchObject({ value: 90, target: 95 });
   const early = [{ date: "2026-11-24", close: 100 }, { date: "2026-11-25", close: 100 }, { date: "2026-11-27", close: 80 }];
   expect(dailyMetricReading(short, early, Date.parse("2026-11-27T18:15:00Z"), calendar).day).toBe("2026-11-27");
 });

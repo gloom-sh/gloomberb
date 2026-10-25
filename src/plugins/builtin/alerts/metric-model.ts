@@ -108,7 +108,7 @@ export function dailyMetricReading(
   }
   const days = [...byDay.keys()].sort();
   if (days.at(-1) !== latest.day) throw new Error(`Waiting for the ${latest.day} daily close.`);
-  const needed = (m.kind === "ma_cross" ? m.slowPeriod : m.period) + 1;
+  const needed = m.kind === "close_ma" ? m.period : (m.kind === "ma_cross" ? m.slowPeriod : m.period) + 1;
   if (days.length < needed) throw new Error(`Need ${needed} completed daily bars; only ${days.length} available.`);
   // Never bridge a missing session. Weekends and published holidays are not missing bars.
   const start = m.kind === "rsi" ? days[0]! : days[days.length - needed]!;
@@ -121,15 +121,19 @@ export function dailyMetricReading(
   }
   const closes = days.map(day => byDay.get(day)!);
   const end = closes.length;
-  let value: number, target = rule.targetPrice, previousValue: number | undefined, previousTarget = target;
+  let value: number, target = rule.targetPrice, previousValue: number | undefined, previousTarget: number | undefined = target;
   if (m.kind === "rsi") {
     const values = rsi(closes, m.period);
     value = values.at(-1)!; previousValue = values.at(-2);
+  } else if (m.kind === "close_ma") {
+    value = closes[end - 1]!;
+    target = mean(closes, m.period, end);
+    previousTarget = undefined;
   } else {
-    value = m.kind === "close_ma" ? closes[end - 1]! : mean(closes, m.period, end);
-    previousValue = m.kind === "close_ma" ? closes[end - 2]! : mean(closes, m.period, end - 1);
-    const targetWindow = m.kind === "ma_cross" ? m.slowPeriod : m.period;
-    target = mean(closes, targetWindow, end); previousTarget = mean(closes, targetWindow, end - 1);
+    value = mean(closes, m.period, end);
+    previousValue = mean(closes, m.period, end - 1);
+    target = mean(closes, m.slowPeriod, end);
+    previousTarget = mean(closes, m.slowPeriod, end - 1);
   }
   return { value, target, previousValue, previousTarget, day: latest.day, at: latest.at };
 }
