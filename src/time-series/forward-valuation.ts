@@ -241,6 +241,7 @@ export function forwardPeHistory(
 export function dailyForwardPeHistory(
   financials: TickerFinancials,
   currencies: ValuationCurrencyContext,
+  exchange?: string,
 ): TimeSeriesPoint[] {
   const history = financials.epsEstimates;
   if (!history) return [];
@@ -264,7 +265,7 @@ export function dailyForwardPeHistory(
       },
     };
   });
-  return dailyValuationHistory(financials.priceHistory, bases, financials.quote?.listingExchangeName || financials.quote?.exchangeName);
+  return dailyValuationHistory(financials.priceHistory, bases, financials.quote?.listingExchangeName || financials.quote?.exchangeName || exchange);
 }
 
 /** Price at each report date over the EPS reported in the following four quarters. */

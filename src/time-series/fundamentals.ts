@@ -833,7 +833,7 @@ function valuationAtPrice(
   return null;
 }
 
-function dailyStatementValuation(financials: TickerFinancials, metric: string): TimeSeriesPoint[] {
+function dailyStatementValuation(financials: TickerFinancials, metric: string, exchange?: string): TimeSeriesPoint[] {
   const earningsMetric = metric === "pegRatio" ? "trailingPE" : metric;
   const selected = sourceStatements(financials, "daily", earningsMetric);
   const currencies = createValuationCurrencyContext(financials);
@@ -880,7 +880,7 @@ function dailyStatementValuation(financials: TickerFinancials, metric: string): 
       },
     }];
   });
-  const points = dailyValuationHistory(financials.priceHistory, bases, financials.quote?.listingExchangeName || financials.quote?.exchangeName);
+  const points = dailyValuationHistory(financials.priceHistory, bases, financials.quote?.listingExchangeName || financials.quote?.exchangeName || exchange);
   return points.some((point) => point.value !== null) ? points : [];
 }
 
@@ -1093,8 +1093,8 @@ export function extractFundamentalSeries(
 
   if (namespace !== "valuation" || !VALUATION_IDS.has(metric)) return [];
   if (source.period === "daily" && metric !== "realizedNtmPE") {
-    if (metric !== "forwardPE") return dailyStatementValuation(financials, metric);
-    const points = dailyForwardPeHistory(financials, createValuationCurrencyContext(financials));
+    if (metric !== "forwardPE") return dailyStatementValuation(financials, metric, source.instrument.exchange);
+    const points = dailyForwardPeHistory(financials, createValuationCurrencyContext(financials), source.instrument.exchange);
     if (points.some((point) => point.value !== null)) return points;
     const current = providerCurrentValuationPoint(financials, metric);
     return current ? [current] : [];

@@ -43,6 +43,12 @@ test("daily TTM steps on public report dates and reprices every close, with no q
   expect(latest.availableAt?.toISOString().slice(0, 10)).toBe("2025-05-01");
   expect(latest.observedAt.toISOString().slice(0, 10)).toBe("2025-05-02");
   expect(values(JSON.parse(JSON.stringify(data)))).toEqual(values(data));
+  // The instrument's venue still dates a timed release when the quote has
+  // no venue metadata (or is unavailable altogether).
+  data.quarterlyStatements[4]!.availableAt = "2025-05-01T19:00:00Z";
+  expect(values(data).slice(-2)).toEqual([23 / 5, 24 / 5]);
+  data.quarterlyStatements[4]!.availableAt = "2025-05-01T21:00:00Z";
+  expect(values(data).slice(-2)).toEqual([23 / 4, 24 / 5]);
 });
 
 test("losses, withheld EPS and missing quarterly inputs break the line instead of reviving an annual figure", () => {
