@@ -14,6 +14,7 @@ import {
   coreConfigSyncContributor,
 } from "./core-contributors";
 import { CloudSyncController } from "./controller";
+import { subscribeToCloudVerification } from "./auth-transition";
 import {
   SYNC_SNAPSHOT_SCHEMA_VERSION,
   SyncRevisionConflictError,
@@ -60,6 +61,249 @@ function remoteSnapshot(contributorId: string, payload: unknown, createdAt: stri
     contributors: { [contributorId]: { schemaVersion: 1, updatedAt: createdAt, payload } },
   };
 }
+
+// One running app keeps its transport when its signed-in account changes.
+// Exercise the same auth subscription used by the terminal, desktop and web.
+test.each([2, 20])("switching accounts first merges the new account at revision %i", async (revision) => {
+  let account: string | null = "account-a";
+  let listener: (() => void) | undefined;
+  let pendingSync = Promise.resolve();
+  let baseline: Record<string, unknown> | null = null;
+  let memos: Record<string, unknown> | null = null;
+  let state = createInitialState(createDefaultConfig(":memory:"));
+  const accountB = {
+    ...state.config,
+    theme: "green",
+    portfolios: [{ id: "account-b-portfolio", name: "Account B", currency: "USD" }],
+    layouts: state.config.layouts.map((layout) => ({ ...layout, name: `Account B ${layout.name}` })),
+  };
+  const snapshots = new Map([
+    ["account-a", { snapshot: remoteSnapshot("core.config", __syncContributorInternalsForTests.collectCoreConfigPayload(state.config), "2026-10-01T00:00:00.000Z"), revision: 8 }],
+    ["account-b", { snapshot: remoteSnapshot("core.config", __syncContributorInternalsForTests.collectCoreConfigPayload(accountB), "2026-10-01T00:00:00.000Z"), revision }],
+  ]);
+  const pushes: string[] = [];
+  const transport: SyncTransport = {
+    id: "account-cloud",
+    isAvailable: () => account !== null,
+    pullSnapshot: async () => ({ ...snapshots.get(account!)!, updatedAt: null }),
+    pushSnapshot: async (snapshot, options) => {
+      const cloud = snapshots.get(account!)!;
+      expect(options?.baseRevision).toBe(cloud.revision);
+      pushes.push(account!);
+      snapshots.set(account!, { snapshot, revision: cloud.revision + 1 });
+      return { revision: cloud.revision + 1, updatedAt: snapshot.createdAt };
+    },
+  };
+  const controller = startController({
+    transport,
+    contributors: [coreConfigSyncContributor],
+    getState: () => state,
+    dispatch: (action) => { state = appReducer(state, action); },
+    baselineStore: {
+      load: () => baseline,
+      save: (next) => { baseline = next; },
+      loadMemos: () => memos,
+      saveMemos: (next) => { memos = next; },
+    },
+  });
+  const stop = subscribeToCloudVerification({
+    getCurrentUser: () => account ? { id: account } : null,
+    isVerified: () => account !== null,
+    subscribeCurrentUser: (next) => { listener = next; return () => { listener = undefined; }; },
+  }, () => { pendingSync = controller.requestSync({ reason: "session-verified", force: true }); },
+  () => controller.resetAccount());
+  try {
+    await controller.requestSync({ reason: "startup" });
+    state = appReducer(state, { type: "NEW_LAYOUT", name: "Account A edit" });
+    await controller.requestSync({ reason: "state-change" });
+    const accountASnapshot = snapshots.get("account-a")!.snapshot;
+    // An edit against account A must not make the new account's cloud
+    // portfolio list look older than the local copy.
+    state = appReducer(state, { type: "SET_CONFIG", config: {
+      ...state.config,
+      portfolios: [...state.config.portfolios, { id: "local-portfolio", name: "Local", currency: "USD" }],
+    } });
+    account = "account-b";
+    listener!();
+    await pendingSync;
+    await controller.requestSync({ reason: "poll" });
+
+    const cloud = snapshots.get("account-b")!.snapshot.contributors["core.config"]!.payload as typeof accountB;
+    expect({ local: state.config.layouts.map((layout) => layout.name), cloud: cloud.layouts.map((layout) => layout.name) })
+      .toEqual({ local: accountB.layouts.map((layout) => layout.name), cloud: accountB.layouts.map((layout) => layout.name) });
+    expect(state.config.theme).toBe("green");
+    expect(cloud.portfolios.map((portfolio) => portfolio.id)).toContain("account-b-portfolio");
+    expect(snapshots.get("account-a")!.snapshot).toBe(accountASnapshot);
+    expect(pushes).toContain("account-b");
+  } finally {
+    stop();
+    controller.clearRuntime();
+  }
+});
+
+test("an account reset drops an old account's pending pull and persisted merge state", async () => {
+  let account = "account-a";
+  let local = { value: "a" };
+  let baseline: Record<string, unknown> | null = null;
+  let memos: Record<string, unknown> | null = null;
+  const latePull = Promise.withResolvers<SyncSnapshotResponse>();
+  const oldSnapshot = remoteSnapshot("test.data", { value: "a" }, "2026-10-01T00:00:00.000Z");
+  let delayPull = false;
+  const applied: string[] = [];
+  const pushes: string[] = [];
+  const contributor: SyncContributor = {
+    id: "test.data",
+    schemaVersion: 1,
+    collect: () => local,
+    apply: (payload, context) => {
+      if (account === "account-b") {
+        expect(context.baselinePayload).toBeNull();
+        expect(context.memo!.get()).toBeNull();
+      }
+      local = payload as typeof local;
+      applied.push(local.value);
+      context.memo!.set({ account });
+    },
+  };
+  const transport: SyncTransport = {
+    id: "account-cloud",
+    isAvailable: () => true,
+    pullSnapshot: async () => delayPull ? latePull.promise : {
+      snapshot: account === "account-a" ? oldSnapshot : remoteSnapshot("test.data", { value: "b" }, "2026-10-02T00:00:00.000Z"),
+      revision: account === "account-a" ? 10 : 2,
+      updatedAt: null,
+    },
+    pushSnapshot: async () => {
+      pushes.push(account);
+      return { revision: 11, updatedAt: "2026-10-02T00:00:00.000Z" };
+    },
+  };
+  const controller = startController({ transport, contributors: [contributor], baselineStore: {
+    load: () => baseline,
+    save: (next) => { baseline = next; },
+    loadMemos: () => memos,
+    saveMemos: (next) => { memos = next; },
+  } });
+  try {
+    await controller.requestSync();
+    delayPull = true;
+    const oldRun = controller.requestSync();
+    // The second account can sync before the old account's request returns.
+    account = "account-b";
+    controller.resetAccount();
+    expect(baseline).toEqual({});
+    expect(memos).toEqual({});
+    expect(controller.getStatus().revision).toBeNull();
+    delayPull = false;
+    await controller.requestSync();
+    latePull.resolve({ snapshot: oldSnapshot, revision: 10, updatedAt: null });
+    await oldRun;
+
+    expect(applied).toEqual(["a", "b"]);
+    expect(local).toEqual({ value: "b" });
+    expect(controller.getStatus().revision).toBe(2);
+    expect(pushes).toEqual([]);
+    expect(baseline).toEqual({ "test.data": { value: "b" } });
+    expect(memos).toEqual({ "test.data": { account: "account-b" } });
+  } finally {
+    controller.clearRuntime();
+  }
+});
+
+test("a late contributor cannot restore the previous account's revision or edit memo", async () => {
+  const applying = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  let value = "a";
+  let revision = 10;
+  let local = { value };
+  let delayApply = false;
+  let memos: Record<string, unknown> | null = null;
+  const controller = startController({
+    contributors: [{
+      id: "test.data",
+      schemaVersion: 1,
+      collect: () => local,
+      apply: async (payload, context) => {
+        if (delayApply) {
+          applying.resolve();
+          await release.promise;
+          context.memo!.set({ account: "old" });
+        }
+        if (context.isCurrent()) local = payload as typeof local;
+      },
+    }],
+    baselineStore: {
+      load: () => null,
+      save: () => {},
+      loadMemos: () => memos,
+      saveMemos: (next) => { memos = next; },
+    },
+    transport: {
+      id: "account-cloud",
+      isAvailable: () => true,
+      pullSnapshot: async () => ({ snapshot: remoteSnapshot("test.data", { value }, "2026-10-01T00:00:00.000Z"), revision, updatedAt: null }),
+      pushSnapshot: async () => { throw new Error("matching copies should not push"); },
+    },
+  });
+  try {
+    await controller.requestSync();
+    delayApply = true;
+    revision = 11;
+    const oldRun = controller.requestSync();
+    await applying.promise;
+    controller.resetAccount();
+    delayApply = false;
+    value = "b";
+    revision = 2;
+    await controller.requestSync();
+    release.resolve();
+    await oldRun;
+    value = "b-edited-elsewhere";
+    revision = 3;
+    await controller.requestSync();
+
+    expect(local).toEqual({ value });
+    expect(controller.getStatus()).toMatchObject({ phase: "synced", revision: 3, error: null });
+    expect(memos).toEqual({});
+  } finally {
+    controller.clearRuntime();
+  }
+});
+
+test("an older read on the same account leaves its newer synced state in place", async () => {
+  let local = { value: "current" };
+  let revision = 10;
+  let remote = remoteSnapshot("test.data", local, "2026-10-02T00:00:00.000Z");
+  const applied: unknown[] = [];
+  let pushes = 0;
+  const controller = startController({
+    contributors: [{
+      id: "test.data",
+      schemaVersion: 1,
+      collect: () => local,
+      apply: (payload) => { local = payload as typeof local; applied.push(payload); },
+    }],
+    transport: {
+      id: "stale-read",
+      isAvailable: () => true,
+      pullSnapshot: async () => ({ snapshot: remote, revision, updatedAt: remote.createdAt }),
+      pushSnapshot: async () => { pushes += 1; return { revision: 11, updatedAt: remote.createdAt }; },
+    },
+  });
+  try {
+    await controller.requestSync();
+    revision = 9;
+    remote = remoteSnapshot("test.data", { value: "stale" }, "2026-10-01T00:00:00.000Z");
+    await controller.requestSync({ reason: "poll" });
+
+    expect(local).toEqual({ value: "current" });
+    expect(applied).toEqual([{ value: "current" }]);
+    expect(controller.getStatus()).toMatchObject({ phase: "synced", revision: 10, error: null });
+    expect(pushes).toBe(0);
+  } finally {
+    controller.clearRuntime();
+  }
+});
 
 test("keeps workspace edits made while the app was closed and uploads them", async () => {
   // The CLI writes config.json directly, so at launch local state looks
@@ -462,7 +706,7 @@ test("a cloud copy written again under a revision number seen before is compared
 
   await controller.requestSync({ reason: "startup" });
   await controller.requestSync({ reason: "poll" });
-  // Another account's copy at the same revision, which this device already holds.
+  // A rewritten copy at the same revision, which this device already holds.
   remote = remoteSnapshot("test.data", { value: 2 }, "2026-08-27T00:00:01.000Z", "device-b");
   local = { value: 2 };
   await controller.requestSync({ reason: "poll" });

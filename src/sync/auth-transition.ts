@@ -1,22 +1,29 @@
 export interface CloudSessionLifecycle {
+  getCurrentUser(): { id: string } | null;
   isVerified(): boolean;
   subscribeCurrentUser(listener: () => void): () => void;
 }
 
-/**
- * Runs exactly when a signed-in desktop session becomes verified. It deliberately
- * ignores ordinary account and entitlement refreshes so they cannot re-run the
- * initial sync pull and push.
- */
+/** Starts a first merge for a newly verified account, ignoring ordinary user and entitlement refreshes. */
 export function subscribeToCloudVerification(
   session: CloudSessionLifecycle,
   onVerified: () => void,
+  onAccountChange: () => void,
 ): () => void {
+  let accountId = session.getCurrentUser()?.id ?? null;
   let wasVerified = session.isVerified();
   return session.subscribeCurrentUser(() => {
+    const nextAccountId = session.getCurrentUser()?.id ?? null;
+    const accountChanged = nextAccountId !== accountId;
+    const resetAccount = accountChanged && accountId !== null;
     const isVerified = session.isVerified();
-    const becameVerified = !wasVerified && isVerified;
+    const becameVerified = isVerified && (!wasVerified || accountChanged);
+    accountId = nextAccountId;
     wasVerified = isVerified;
+    // Clear the old account before a new one can pull or push, including a
+    // direct switch between two verified sessions without a sign-out event.
+    // The initial session restore keeps the baseline needed by offline edits.
+    if (resetAccount) onAccountChange();
     if (becameVerified) onVerified();
   });
 }
