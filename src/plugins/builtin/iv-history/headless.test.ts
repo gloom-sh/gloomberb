@@ -341,3 +341,41 @@ describe("HIVG exports for scripts", () => {
     expect(zero.result.notes).toContain("Left out FOMC 2026-10-21: no closing reading yet for its session at --offset 0.");
   });
 });
+
+describe("HIVG footer", () => {
+  afterEach(() => setSystemTime());
+  /** Weekdays from 1 Jun through `to`; no holiday falls in between. */
+  const weekdays = (to: string) => {
+    const days: string[] = [];
+    for (let time = Date.parse("2026-06-01T00:00:00Z"); time <= Date.parse(`${to}T00:00:00Z`); time += 86_400_000) {
+      if (![0, 6].includes(new Date(time).getUTCDay())) days.push(new Date(time).toISOString().slice(0, 10));
+    }
+    return days;
+  };
+  /** The footer of `fn HIVG USO` at `now`, with trade closes through `ivThrough` and daily prices through 23 Oct. */
+  const footer = async (now: string, ivThrough: string) => {
+    setSystemTime(new Date(now));
+    const series: IvPoint[] = weekdays(ivThrough).map((sessionDate) => ({ sessionDate, method: "trade-close",
+      capturedAt: `${sessionDate}T22:20:00Z`, spot: 100, iv7: null, iv30: 0.47, iv60: null, iv90: 0.45, iv180: null, iv365: null }));
+    const payload: IvHistoryPayload = { version: 1, symbol: "USO", asOf: now.slice(0, 10), status: "ready",
+      coverage: { source: "seed", addedAt: "2026-09-23T00:00:00Z", backfilledThrough: ivThrough, since: "2026-06-01" },
+      stats: { iv30: null, iv90: null }, latest: null, series, warnings: [] };
+    const bars = weekdays("2026-10-23").map((date, index) => {
+      const close = 100 * (1 + 0.01 * Math.sin(index));
+      return { date: new Date(`${date}T20:00:00Z`), open: close, high: close, low: close, close, volume: 1_000 };
+    });
+    const apiClient = { impliedVolatility: async () => payload } as unknown as HeadlessPaneApiClient;
+    const result = await ivHistoryHeadless.load(createTestHeadlessArgs({ rawArgument: "USO", argument: "USO", symbols: ["USO"],
+      options: { lookback: "1Y", hvWindow: "20", offset: 0 } }),
+    createTestHeadlessContext({ apiClient, marketData: createTestDataProvider({ getPriceHistory: async () => bars }) })) as HeadlessBundleResult;
+    return formatFreshnessLine(deriveHeadlessFreshness(ivHistoryHeadless, result));
+  };
+
+  test("dates the IV rows by their own newest session, not the HV row beside them, and says stale once it falls behind", async () => {
+    // Sunday 25 Oct: prices run to Friday 23 Oct, the IV history stopped on Tuesday 20 Oct.
+    expect(await footer("2026-10-25T05:22:00Z", "2026-10-20")).toBe("Source: Gloom Cloud · Tue 20 Oct 2026 · stale (5 days old)");
+    expect(await footer("2026-10-25T05:22:00Z", "2026-10-23")).toBe("Source: Gloom Cloud · Fri 23 Oct 2026 · not a live feed (daily implied volatility)");
+    // Friday 17:00 New York, before that evening's trade close: one session behind is the schedule, not stale.
+    expect(await footer("2026-10-23T21:00:00Z", "2026-10-22")).toBe("Source: Gloom Cloud · Thu 22 Oct 2026 · not a live feed (daily implied volatility)");
+  });
+});

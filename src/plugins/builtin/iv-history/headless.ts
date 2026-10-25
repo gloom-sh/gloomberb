@@ -136,6 +136,9 @@ export const ivHistoryHeadless: HeadlessPaneDefinition<"bundle"> = {
       complete: payload.status === "ready" && errors.length === 0,
       unavailableSymbols: model.iv30.length ? [] : [instrument.symbol], errors,
       ...(notes.length > 0 ? { notes } : {}),
+      // Dated by the newest IV reading, not by the HV row beside it: prices sessions ahead of a stalled IV history
+      // must not make it read as current. The daily cadence calls it stale once more than a session has closed since.
+      ...(model.asOf ? { freshness: { asOf: model.asOf } } : {}),
       metadata: { status: payload.status, coverage: payload.coverage, latest: payload.latest, stats: payload.stats,
         skewSince: model.skewSince, unit: "decimal annualized volatility", methodology: METHODOLOGY },
     };
