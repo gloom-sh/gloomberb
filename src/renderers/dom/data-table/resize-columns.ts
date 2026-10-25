@@ -1,6 +1,7 @@
-import { useLayoutEffect, useRef, type CSSProperties, type RefObject } from "react";
+import { useContext, useLayoutEffect, useRef, type CSSProperties, type RefObject } from "react";
 import { isLiveResizing, onLiveResizeEnd, onLiveResizeStart } from "../../../ui/live-resize";
-import { RESIZE_SETTLE_MS } from "../../../ui/resize-settle";
+import { LivePaneFrameContext } from "../../../ui/live-stretch";
+import { hasPendingResizeLayouts, onResizeLayoutChange, RESIZE_SETTLE_MS } from "../../../ui/resize-settle";
 
 const COLUMNS = "--gloom-table-resize-columns";
 const WIDTH = "--gloom-table-resize-width";
@@ -54,22 +55,37 @@ function interruptedTemplate(element: HTMLElement, template: string): string {
  * pointer is down, then let CSS settle to the new weights after release.
  */
 export function useTableResizeColumns(root: RefObject<HTMLElement | null>, template: string, columnIds: string, width: TableResizeWidth): void {
+  const scope = useContext(LivePaneFrameContext)?.resizeLayoutScope ?? null;
   const latest = useRef({ template, columnIds, width });
   latest.current = { template, columnIds, width };
   const held = useRef<string | null>(null);
   const pendingFinish = useRef<(() => void) | null>(null);
+  const retargetTransition = useRef<(() => void) | null>(null);
 
   useLayoutEffect(() => {
     const element = root.current;
     if (!element) return;
     let timer: ReturnType<typeof setTimeout> | null = null;
-    const clearTransition = () => {
+    let settling = false;
+    const cancelTimer = () => {
       if (timer !== null) clearTimeout(timer);
       timer = null;
+    };
+    const clearTransition = () => {
+      cancelTimer();
+      settling = false;
       element.style.setProperty(TRANSITION, "initial");
     };
+    const settleTransition = () => {
+      if (!settling) return;
+      cancelTimer();
+      // The hold can outlive its timer when React commits late. Give its
+      // actual final tracks a whole transition after that commit.
+      if (!hasPendingResizeLayouts(scope)) timer = setTimeout(clearTransition, RESIZE_SETTLE_MS);
+    };
+    retargetTransition.current = settleTransition;
     const begin = () => {
-      const template = timer === null && held.current === null
+      const template = !settling && held.current === null
         ? latest.current.template : interruptedTemplate(element, latest.current.template);
       const width = resizeContentWidth(element, latest.current.width);
       pendingFinish.current = null;
@@ -90,8 +106,9 @@ export function useTableResizeColumns(root: RefObject<HTMLElement | null>, templ
         held.current = null;
         const reducedMotion = element.ownerDocument.defaultView?.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
         if (!reducedMotion) {
+          settling = true;
           element.style.setProperty(TRANSITION, `grid-template-columns ${RESIZE_SETTLE_MS}ms linear, width ${RESIZE_SETTLE_MS}ms linear`);
-          timer = setTimeout(clearTransition, RESIZE_SETTLE_MS * 2);
+          settleTransition();
         }
         element.style.setProperty(COLUMNS, "initial");
         element.style.setProperty(WIDTH, "initial");
@@ -100,17 +117,20 @@ export function useTableResizeColumns(root: RefObject<HTMLElement | null>, templ
     };
     const stopBeginning = onLiveResizeStart(begin);
     const stopFinishing = onLiveResizeEnd(finish);
+    const stopSettling = onResizeLayoutChange(scope, settleTransition);
     if (isLiveResizing()) begin();
     return () => {
       stopBeginning();
       stopFinishing();
+      stopSettling();
       clearTransition();
       element.style.setProperty(COLUMNS, "initial");
       element.style.setProperty(WIDTH, "initial");
       held.current = null;
       pendingFinish.current = null;
+      retargetTransition.current = null;
     };
-  }, [root]);
+  }, [root, scope]);
 
   useLayoutEffect(() => {
     // A breakpoint or mode switch can replace the columns themselves. The
@@ -124,6 +144,10 @@ export function useTableResizeColumns(root: RefObject<HTMLElement | null>, templ
       }
     }
   }, [columnIds, root, template]);
+
+  useLayoutEffect(() => {
+    retargetTransition.current?.();
+  }, [template, width.naturalWidth]);
 
   useLayoutEffect(() => {
     pendingFinish.current?.();

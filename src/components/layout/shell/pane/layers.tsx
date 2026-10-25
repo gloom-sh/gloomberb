@@ -134,11 +134,13 @@ function useLivePaneFrame(
   sizeOf: ((geometry: LiveDragGeometry) => CellSize | null) | null,
 ): LivePaneFrame | null {
   const { width, height } = rendered;
+  const resizeLayoutScope = useRef({}).current;
   return useMemo(() => (sizeOf ? {
+    resizeLayoutScope,
     rendered: { width, height },
     live: () => sizeOf(live.get()),
     subscribe: live.subscribeMotion,
-  } : null), [height, live, sizeOf, width]);
+  } : null), [height, live, resizeLayoutScope, sizeOf, width]);
 }
 
 /**

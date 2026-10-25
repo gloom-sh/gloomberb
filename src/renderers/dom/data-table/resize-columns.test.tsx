@@ -1,9 +1,10 @@
 /** @jsxImportSource react */
-import { expect, test } from "bun:test";
-import { act, useRef, useState, type CSSProperties } from "react";
+import { expect, jest, test } from "bun:test";
+import { act, startTransition, Suspense, useRef, useState, type CSSProperties } from "react";
 import { WEB_CELL_WIDTH } from "../../../theme/font-scale";
 import { beginLiveResize } from "../../../ui/live-resize";
-import { RESIZE_SETTLE_MS } from "../../../ui/resize-settle";
+import { LivePaneFrameContext, type LivePaneFrame } from "../../../ui/live-stretch";
+import { RESIZE_SETTLE_MS, useSettledLayoutSize } from "../../../ui/resize-settle";
 import { createDomTestHarness } from "../test-utils";
 import { TABLE_RESIZE_DEFAULTS, useTableResizeColumns } from "./resize-columns";
 
@@ -61,5 +62,124 @@ test("a resize holds its overflow extent through catch-ups and until the final v
       .getPropertyValue("--gloom-table-column-transition")).toBe("initial");
   } finally {
     end();
+  }
+});
+
+test("a late layout commit gets a whole settling transition without holding another pane or later data updates", async () => {
+  jest.useFakeTimers();
+  const delayed = Promise.withResolvers<void>();
+  let blocked = true;
+  const updates = new Map<string, { resize: (width: number) => void; retarget: (extra: number) => void }>();
+  const frame = (): LivePaneFrame => ({
+    resizeLayoutScope: {}, rendered: { width: 80, height: 24 },
+    live: () => null, subscribe: () => () => {},
+  });
+  function Gate({ width, slow }: { width: number; slow: boolean }) {
+    if (slow && width !== 80 && blocked) throw delayed.promise;
+    return null;
+  }
+  function Table({ id, width }: { id: string; width: number }) {
+    const ref = useRef<HTMLDivElement>(null);
+    const [extra, retarget] = useState(0);
+    updates.get(id)!.retarget = retarget;
+    const template = `minmax(20px, ${width + extra}fr)`;
+    useTableResizeColumns(ref, template, "value", {
+      naturalWidth: (width + extra) * WEB_CELL_WIDTH, viewportWidth: width,
+      viewportIsCurrent: () => true, fillAvailableWidth: true, showHorizontalScrollbar: true,
+    });
+    return <div id={id} ref={ref} data-width={width} style={{ ...TABLE_RESIZE_DEFAULTS }}>
+      <div data-gloom-role="data-table-scroll-content" style={{ gridTemplateColumns: template }} />
+    </div>;
+  }
+  function Parent({ id, slow = false }: { id: string; slow?: boolean }) {
+    const [width, resize] = useState(80);
+    updates.set(id, { resize, retarget: updates.get(id)?.retarget ?? (() => {}) });
+    const layout = useSettledLayoutSize(width, 24, { maxStretch: Infinity });
+    return <><Table id={id} width={layout.width} /><Gate width={layout.width} slow={slow} /></>;
+  }
+  const transition = (table: HTMLElement) => table.style.getPropertyValue("--gloom-table-column-transition");
+  const advance = (ms: number) => act(async () => { jest.advanceTimersByTime(ms); });
+  let end: (() => void) | null = null;
+  try {
+    const container = await render(
+      <LivePaneFrameContext.Provider value={frame()}><Suspense fallback={null}><Parent id="late" slow /></Suspense></LivePaneFrameContext.Provider>
+    );
+    const readyContainer = await render(<LivePaneFrameContext.Provider value={frame()}><Parent id="ready" /></LivePaneFrameContext.Provider>);
+    const late = container.querySelector<HTMLElement>("#late")!;
+    const ready = readyContainer.querySelector<HTMLElement>("#ready")!;
+    end = beginLiveResize();
+    await act(async () => {
+      updates.get("late")!.resize(96);
+      updates.get("ready")!.resize(96);
+    });
+    end();
+    // The held width's timer fires, but its parent cannot commit yet. The
+    // previously committed table stays visible throughout the transition.
+    await act(async () => startTransition(() => jest.advanceTimersByTime(RESIZE_SETTLE_MS)));
+    await advance(RESIZE_SETTLE_MS * 2);
+    expect(late.dataset.width).toBe("80");
+    expect(transition(late)).toContain("grid-template-columns");
+    expect(transition(ready)).toBe("initial");
+
+    // Regrabbing while no cleanup timer is armed still cancels the phase.
+    end = beginLiveResize();
+    expect(transition(late)).toBe("initial");
+    end();
+    await act(async () => { blocked = false; delayed.resolve(); });
+    expect(late.dataset.width).toBe("96");
+    await advance(RESIZE_SETTLE_MS / 2);
+    await act(async () => updates.get("late")!.retarget(8));
+    await advance(RESIZE_SETTLE_MS - 1);
+    expect(transition(late)).toContain("grid-template-columns");
+    await advance(1);
+    expect(transition(late)).toBe("initial");
+    await act(async () => updates.get("late")!.retarget(16));
+    expect(transition(late)).toBe("initial");
+  } finally {
+    end?.();
+    await act(async () => { blocked = false; delayed.resolve(); });
+    jest.useRealTimers();
+  }
+});
+
+test.each([["normal", false], ["reduced", true]] as const)("unmounting a held layout lets its table finish settling (%s motion)", async (_name, reducedMotion) => {
+  jest.useFakeTimers();
+  const previousMotion = testWindow.happyDOM.settings.device.prefersReducedMotion;
+  testWindow.happyDOM.settings.device.prefersReducedMotion = reducedMotion ? "reduce" : "no-preference";
+  let resize: (width: number) => void = () => {};
+  let removeHold: () => void = () => {};
+  function Hold() {
+    const [width, setWidth] = useState(80);
+    resize = setWidth;
+    useSettledLayoutSize(width, 24);
+    return null;
+  }
+  function Harness() {
+    const [show, setShow] = useState(true);
+    removeHold = () => setShow(false);
+    const ref = useRef<HTMLDivElement>(null);
+    useTableResizeColumns(ref, "minmax(20px, 1fr)", "value", {
+      naturalWidth: 800, viewportWidth: 100, viewportIsCurrent: () => true,
+      fillAvailableWidth: true, showHorizontalScrollbar: true,
+    });
+    return <>{show && <Hold />}<div ref={ref} style={{ ...TABLE_RESIZE_DEFAULTS }} /></>;
+  }
+  let end: (() => void) | null = null;
+  try {
+    const container = await render(<Harness />);
+    const table = container.firstElementChild as HTMLElement;
+    end = beginLiveResize();
+    await act(async () => resize(90));
+    end();
+    await act(async () => removeHold());
+    await act(async () => { jest.advanceTimersByTime(RESIZE_SETTLE_MS - 1); });
+    expect(table.style.getPropertyValue("--gloom-table-column-transition")).toBe(reducedMotion
+      ? "initial" : `grid-template-columns ${RESIZE_SETTLE_MS}ms linear, width ${RESIZE_SETTLE_MS}ms linear`);
+    await act(async () => { jest.advanceTimersByTime(1); });
+    expect(table.style.getPropertyValue("--gloom-table-column-transition")).toBe("initial");
+  } finally {
+    end?.();
+    testWindow.happyDOM.settings.device.prefersReducedMotion = previousMotion;
+    jest.useRealTimers();
   }
 });

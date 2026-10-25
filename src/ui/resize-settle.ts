@@ -1,4 +1,4 @@
-import { useContext, useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { isLiveResizing, onLiveResizeEnd } from "./live-resize";
 import { LivePaneFrameContext, type CellSize } from "./live-stretch";
 
@@ -16,6 +16,43 @@ export const RESIZE_SETTLE_MS = 120;
  * blocks drawn in percentages of the old size would look squashed or pulled.
  */
 const MAX_HELD_STRETCH = 1.5;
+
+interface LayoutHolds {
+  pending: Set<object>;
+  listeners: Set<() => void>;
+}
+
+const unscopedLayout = {};
+const layoutHolds = new WeakMap<object, LayoutHolds>();
+
+function holdsFor(scope: object | null): LayoutHolds {
+  const key = scope ?? unscopedLayout;
+  let holds = layoutHolds.get(key);
+  if (!holds) {
+    holds = { pending: new Set(), listeners: new Set() };
+    layoutHolds.set(key, holds);
+  }
+  return holds;
+}
+
+/** A held layout stays pending until the render at its final size commits. */
+export function hasPendingResizeLayouts(scope: object | null): boolean {
+  return holdsFor(scope).pending.size > 0;
+}
+
+/** Imperative followers can finish settling after their pane's last layout commits. */
+export function onResizeLayoutChange(scope: object | null, listener: () => void): () => void {
+  const holds = holdsFor(scope);
+  holds.listeners.add(listener);
+  return () => { holds.listeners.delete(listener); };
+}
+
+function setLayoutHold(holds: LayoutHolds, token: object, pending: boolean): void {
+  if (holds.pending.has(token) === pending) return;
+  if (pending) holds.pending.add(token);
+  else holds.pending.delete(token);
+  for (const listener of [...holds.listeners]) listener();
+}
 
 export interface ResizeHold {
   /** The box's size as it last rendered. */
@@ -89,6 +126,21 @@ export function useSettledLayoutSize(
   const frame = useContext(LivePaneFrameContext);
   const [framed, setFramed] = useState(false);
   const framedRef = useRef(false);
+  const holdToken = useRef({}).current;
+  const committedHold = useRef<LayoutHolds | null>(null);
+  useLayoutEffect(() => {
+    const next = enabled && (current.held !== null || framed)
+      ? holdsFor(frame?.resizeLayoutScope ?? null) : null;
+    if (next === committedHold.current) return;
+    const previous = committedHold.current;
+    committedHold.current = next;
+    if (next) setLayoutHold(next, holdToken, true);
+    if (previous) setLayoutHold(previous, holdToken, false);
+  });
+  useLayoutEffect(() => () => {
+    if (committedHold.current) setLayoutHold(committedHold.current, holdToken, false);
+    committedHold.current = null;
+  }, [holdToken]);
   useEffect(() => {
     // Called on every move: only a resize starting or ending is news.
     const follow = () => {

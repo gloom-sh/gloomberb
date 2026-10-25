@@ -13,6 +13,8 @@ export interface CellSize {
  * cell grid renders at the new size a few times a second (live-resize.ts).
  */
 export interface LivePaneFrame {
+  /** Stable across rendered sizes, so a pane's layout holds share one settling phase. */
+  readonly resizeLayoutScope?: object;
   /** The frame's size as its content last rendered. */
   readonly rendered: CellSize;
   /** Where the resize has the frame this move; null when no resize has it. */
