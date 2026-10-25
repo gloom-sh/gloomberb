@@ -227,7 +227,7 @@ When Gloom Cloud is too busy to search, the list says `Search is busy` rather th
 | `HIVG <ticker>` | Implied volatility history against realized, with IV rank and percentile |
 | `VCA [tickers]` | Rich/cheap implied volatility across a list: IV rank, percentile, term slope, skew, IV/HV |
 | `OSA <ticker>` | Multi-leg option positions, scenario P&L, payoff charts and aggregate Greeks, with a hedge budget, a collar or a cash-secured put |
-| `CSP <tickers>` | Cash-secured puts across a list, ranked by annualised yield at the bid |
+| `CSP <tickers>` | Option strategies across a list: cash-secured puts ranked by annualised yield at the bid, or covered calls, verticals, iron condors, straddles, strangles and calendars with max gain and loss, break-evens and probability of profit |
 | `OVME` | Option calculator: European Black-Scholes or American pricing, discrete dividends, Greeks, implied and surface volatility |
 | `HDS <ticker>` | Institutional holders, and 13D/13G beneficial owners over 5% |
 | `DVD <ticker>` | Dividend yield and history; several tickers rank in one table by yield |
@@ -2276,6 +2276,18 @@ Each row has the expiry, days to it, strike, bid, ask, spread as a percent of th
 - In the pane, type the names in Symbols and pick the delta and the expiry from the bar. Enter opens the selected name's put in OSA.
 - The pane ranks the first 20 names typed, and `fn CSP` refuses more than 20.
 - Each figure is defined under [Cash-secured put screen](research-data.md#cash-secured-put-screen).
+
+`--strategy` screens the same names for another strategy, its legs picked by delta on the same expiry: `covered-call`, `bull-put`, `bear-call`, `bull-call`, `bear-put`, `iron-condor`, `short-straddle`, `long-straddle`, `short-strangle`, `long-strangle` or `calendar` (`cc`, `put-credit`, `call-credit`, `call-debit`, `put-debit`, `ic` and `call-calendar` also work). `--delta` moves the legs each one picks by delta, `--wing-delta` a vertical's or a condor's legs further out of the money:
+
+```sh
+gloom fn CSP JPM GS KO --strategy iron-condor
+gloom fn CSP JPM GS KO --strategy bull-put --delta 0.25 --wing-delta 0.10 --csv
+```
+
+Each row has the trade in words (`Sell 90 put, buy 87 put`), the credit or debit per share at the quote midpoints, the max gain and max loss of one contract a leg (`unlimited` where a side has no cover), the break-evens, the probability of profit, the annualised return on risk, the IV rank, the spread (marked `wide` over `--max-spread`) and the earnings flag; a calendar adds the expiry it buys. Covered calls, verticals, condors and calendars rank by annualised return on risk, straddles and strangles by IV rank (highest first to sell, lowest first to buy).
+
+- In the pane, each strategy is a tab; Vertical picks its spread and Straddle and Strangle their side from the bar. A tab opens at its own deltas and keeps the names and the expiry. Enter opens the selected trade in OSA as its legs.
+- Each figure is defined under [Options strategy screen](research-data.md#options-strategy-screen).
 
 To collar shares, `--strategy collar` buys the put at `--put-strike` and sells the call at `--call-strike` on the `--expiration` chain, each at its quote midpoint (the strikes nearest 10% below and above spot when omitted), and holds the 100 shares per contract they cover:
 

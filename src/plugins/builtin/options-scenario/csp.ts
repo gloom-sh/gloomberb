@@ -87,6 +87,13 @@ function newYorkCalendarDate(time: number): string {
   return newYorkDate.format(time);
 }
 
+/** The valuation date in New York, and the calendar days from it to `expiry` (YYYY-MM-DD), 0 once it is reached. */
+export function calendarDaysToExpiry(asOf: number, expiry: string): { valuationDate: string; daysToExpiry: number } {
+  const valuationDate = newYorkCalendarDate(asOf);
+  return { valuationDate,
+    daysToExpiry: Math.max(0, Math.round((Date.parse(`${expiry}T00:00:00Z`) - Date.parse(`${valuationDate}T00:00:00Z`)) / DAY_MS)) };
+}
+
 /** Whether the next report falls before the put expires; unknown without an upcoming date. */
 export function earningsBeforeExpiry(earningsDate: string | null | undefined, valuationDate: string, expiry: string): CspEarnings {
   if (!earningsDate || !/^\d{4}-\d{2}-\d{2}$/.test(earningsDate) || earningsDate < valuationDate) return { date: null, beforeExpiry: null };
@@ -114,8 +121,7 @@ export function cashSecuredPut(
   if (position.legs.length !== 1 || !leg || leg.side !== "put" || leg.quantity >= 0 || position.underlying) return null;
   const contracts = -leg.quantity;
   const expiry = new Date(leg.expiration * 1000).toISOString().slice(0, 10);
-  const valuationDate = newYorkCalendarDate(position.asOf);
-  const daysToExpiry = Math.max(0, Math.round((Date.parse(`${expiry}T00:00:00Z`) - Date.parse(`${valuationDate}T00:00:00Z`)) / DAY_MS));
+  const { valuationDate, daysToExpiry } = calendarDaysToExpiry(position.asOf, expiry);
   const cashSecured = leg.strike * leg.multiplier * contracts;
   const sharesSold = leg.multiplier * contracts;
   const atEntry = putYield(leg.price, cashSecured, sharesSold, daysToExpiry);

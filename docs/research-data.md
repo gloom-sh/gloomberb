@@ -1088,6 +1088,38 @@ KO's November 20, 2026 85 put at 0.67/0.72, valued on 2026-10-13: cash secured 8
 
 Names are ranked by annualised yield at the bid, highest first: a wide spread costs a seller the difference between the mid and the bid, so a name priced rich only at the mid does not rank first. A wide put is ranked with the rest and flagged; a name with no chain, no quoted put or no rate to value it by is listed after the ranked ones with the reason. Up to 20 names; `--csv` writes the percents as numbers with `wide spread` and `earnings before expiry` as yes/no columns. The screen reads the chains, quotes and rates OSA reads, and its closing line dates it by the underlying quotes.
 
+#### Options strategy screen
+
+`CSP --strategy` (`fn CSP JPM GS KO --strategy iron-condor`), and the pane's tabs, screen the same names, expiry and limits for other strategies. Each strategy's legs are picked from the chain OSA seeds from: every two-sided quote, entered at its midpoint with the IV that midpoint implies against its expiry's parity forward, on each name's listed expiry nearest the target, as for the put. A leg picked by delta is the contract whose spot delta at that IV is nearest the target (a put's negative), the one further out of the money on a tie. One contract a leg:
+
+| Strategy | Legs | Default delta | Ranked by |
+|---|---|---|---|
+| `csp` | the cash-secured put above | 0.30 | annualised yield at the bid |
+| `covered-call` | 100 shares bought at the spot the quotes imply, the call nearest `--delta` sold | 0.30 | return on risk |
+| `bull-put`, `bear-call` | the put (call) nearest `--delta` sold, the put below it (call above it) nearest `--wing-delta` bought | 0.30, wings 0.15 | return on risk |
+| `bull-call`, `bear-put` | the call (put) nearest `--delta` bought, the call above it (put below it) nearest `--wing-delta` sold | 0.50, wings 0.30 | return on risk |
+| `iron-condor` | the put and the call above it nearest `--delta` sold, the put below and the call above them nearest `--wing-delta` bought | 0.20, wings 0.10 | return on risk |
+| `short-straddle`, `long-straddle` | the put and the call at the strike nearest spot quoted on both, sold or bought | none | IV rank, highest first to sell, lowest first to buy |
+| `short-strangle`, `long-strangle` | the put and the call above it nearest `--delta`, sold or bought | 0.20 short, 0.30 long | IV rank, as for straddles |
+| `calendar` | the call nearest `--delta` among the strikes quoted on both expiries, sold on the expiry and bought on the listed expiry nearest 30 days after it | 0.50 | return on risk |
+
+A wing is always further out of the money than the leg it covers: a typed `--wing-delta` must be below `--delta`, and a default one that is not is half of it. Each row reads its trade with OSA's own figures:
+
+| Figure | Definition |
+|---|---|
+| Trade | the legs in words, what is sold and what is bought: `Sell 90 put, buy 87 put`, `Sell 325 put / 370 call, buy 320 put / 375 call` |
+| Credit, Debit | the options' midpoints added up, per share: taken in when the trade sells more than it buys, paid otherwise. A covered call's credit is its call's premium |
+| Max gain, Max loss | OSA's expiry risk of the trade, in the underlying's currency: the exact payoff at expiry, shares included. `unlimited` on a side with no cover (a short straddle's loss, a long one's gain) |
+| Break-even | where that payoff crosses zero, lowest first |
+| PoP | the chance the trade is in profit when its first leg expires, under Black-Scholes-Merton: from the spot the quotes imply, at the scenario's rate and dividend yield, the probability the underlying ends in each stretch between break-evens where the payoff is above zero, each break-even at the IV of the expiring leg whose strike is nearest it. A model's figure, not a forecast |
+| Return/yr | max gain / max loss x 365 / days to expiry (simple); none when either side is unlimited |
+| Spread | the legs' ask - bid added up, over the net midpoint; over `--max-spread` (10%) it is marked `wide`. For one leg this is the put screen's spread |
+| IVR, Earnings | as the put screen reads them; earnings against the first expiry |
+
+A calendar is read when its sold call expires, with the bought call valued at its own IV (OSA's scenario value on that date): the most it makes is at the strike, where the sold call expires worthless; the most it loses is the debit; its break-evens are where that value crosses zero, and PoP is read at that date with the sold call's IV. It is an estimate: the bought call's IV is held where it is.
+
+KO's November 27, 2026 bull put spread on Friday 23 October's close: sell the 90 put, buy the 87 put for a 0.61 credit, max gain 61.00, max loss (3 - 0.61) x 100 = 239.00, break-even 90 - 0.61 = 89.39, return on risk 61 / 239 = 25.5%, 266.2% a year over 35 days. Covered calls, verticals, condors and calendars rank by annualised return on risk, highest first; a straddle or strangle has no return on risk on its unlimited side, so a seller's rank by the richest IV rank and a buyer's by the cheapest. A wide trade is ranked and flagged, a trade with nothing to rank it by follows, and a name with no trade is listed last with why. Assignment, early exercise and margin are not modelled.
+
 ### Greeks spot and time
 
 A chain's IV and Greeks (`options`, OMON) are valued at one spot and one instant, which the pane and every export name; OVDV values its surface at the same spot:

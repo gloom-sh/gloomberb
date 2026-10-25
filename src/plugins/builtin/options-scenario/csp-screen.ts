@@ -61,9 +61,9 @@ export interface CspScreen {
   freshness: HeadlessPaneFreshness;
 }
 
-const supplied = (value: unknown) => value != null && value !== "";
+export const supplied = (value: unknown) => value != null && value !== "";
 
-function readNumber(value: unknown, flag: string, example: string): number {
+export function readNumber(value: unknown, flag: string, example: string): number {
   const text = typeof value === "number" ? String(value) : typeof value === "string" ? value.trim().replace(/%$/, "") : "";
   const number = Number(text);
   if (!text || !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(text) || !Number.isFinite(number)) {
@@ -73,7 +73,7 @@ function readNumber(value: unknown, flag: string, example: string): number {
 }
 
 /** `--days`: whole calendar days. A decimal is told the whole numbers beside it, never a decimal to type. */
-function readDays(value: unknown): number {
+export function readDays(value: unknown): number {
   const decimal = wholeNumberOptionMessage("--days", "days", value);
   if (decimal) throw new Error(decimal);
   const days = readNumber(value, "days", "whole calendar days, such as 30");
@@ -143,11 +143,16 @@ export interface CspScreenDependencies {
 
 interface ScreenedPut { csp: CashSecuredPut; delta: number | null; market: ScenarioMarketSnapshot }
 
-/** One name's put: OSA's csp seed at `--delta` on the listed expiry nearest the target, read as OSA reads it. */
-async function screenPut(
-  instrument: InstrumentRef, criteria: CspScreenCriteria, dependencies: ScenarioLoaderDependencies, target: string,
-  earningsDate: string | null, signal: AbortSignal | undefined,
-): Promise<ScreenedPut> {
+/**
+ * One name's chain on its listed expiry nearest `target` (YYYY-MM-DD), the
+ * catalogue's own chain when it is already on that expiry. A typed
+ * `expiration` whose last session has closed is refused with the live ones
+ * nearest it.
+ */
+export async function loadScreenMarket(
+  instrument: InstrumentRef, criteria: Pick<CspScreenCriteria, "expiration">, dependencies: ScenarioLoaderDependencies, target: string,
+  signal: AbortSignal | undefined,
+): Promise<ScenarioMarketSnapshot> {
   const first = await loadScenarioMarket({ instrument, signal }, dependencies);
   // A typed date whose last session has closed is not stood in for by the next one: it says so, and names it.
   const now = dependencies.now?.() ?? Date.now();
@@ -160,8 +165,16 @@ async function screenPut(
     throw new Error(first.warnings.find((warning) => warning.startsWith("Options chain")) ?? "No listed option expiries");
   }
   const loaded = first.chain ? [...first.chain.puts, ...first.chain.calls][0]?.expiration : undefined;
-  const market = loaded != null && expiryIsoDate(loaded) === expiryIsoDate(expiration)
+  return loaded != null && expiryIsoDate(loaded) === expiryIsoDate(expiration)
     ? first : await loadScenarioMarket({ instrument, expiration, signal }, dependencies);
+}
+
+/** One name's put: OSA's csp seed at `--delta` on the listed expiry nearest the target, read as OSA reads it. */
+async function screenPut(
+  instrument: InstrumentRef, criteria: CspScreenCriteria, dependencies: ScenarioLoaderDependencies, target: string,
+  earningsDate: string | null, signal: AbortSignal | undefined,
+): Promise<ScreenedPut> {
+  const market = await loadScreenMarket(instrument, criteria, dependencies, target, signal);
   const settings = { symbol: instrument.symbol, exchange: instrument.exchange, strategy: "csp", delta: criteria.delta };
   const position = scenarioPositionFromSettings(settings, market);
   const leg = position?.legs[0];
@@ -201,13 +214,26 @@ function screenFreshness(markets: readonly ScenarioMarketSnapshot[], now: number
   };
 }
 
+/** One name of a screen: what it found, or why it found nothing, with its IV rank either way. */
+export interface ScreenedName<T> { symbol: string; ivRank: number | null; value: T | null; note: string | null }
+
+export interface ScreenedNames<T> {
+  names: ScreenedName<T>[];
+  missingRanks: string[];
+  ivRankError: string | null;
+  freshness: HeadlessPaneFreshness;
+}
+
 /**
- * Each name's cash-secured put, ranked: one IV rank request, one earnings
- * calendar request and one Treasury curve for all of them.
+ * Each name screened by `screen`, four at a time: one IV rank request, one
+ * earnings calendar request and one Treasury curve for all of them. A name
+ * `screen` throws on is kept with the error as its note (`fallback` when the
+ * error has no message). `screen` returns the market that dates its row.
  */
-export async function loadCspScreen(
-  instruments: readonly InstrumentRef[], criteria: CspScreenCriteria, dependencies: CspScreenDependencies, signal?: AbortSignal,
-): Promise<CspScreen> {
+export async function screenNames<T>(
+  instruments: readonly InstrumentRef[], dependencies: CspScreenDependencies, signal: AbortSignal | undefined, fallback: string,
+  screen: (instrument: InstrumentRef, earningsDate: string | null, scenario: ScenarioLoaderDependencies) => Promise<{ value: T; market: ScenarioMarketSnapshot }>,
+): Promise<ScreenedNames<T>> {
   const now = dependencies.scenario.now?.() ?? Date.now();
   // Every name reads the same curve, up to twice (the catalogue, then its expiry): asked for once, when the first name needs it.
   let curve: ReturnType<ScenarioLoaderDependencies["loadYieldCurve"]> | null = null;
@@ -218,29 +244,43 @@ export async function loadCspScreen(
     loadNextEarningsDates(dependencies.earnings, symbols, zonedDateKey(now, "America/New_York")),
   ]);
   signal?.throwIfAborted();
-  const target = cspTargetDate(criteria, now);
   const markets: ScenarioMarketSnapshot[] = [];
   const missingRanks: string[] = [];
-  const rows = await mapWithConcurrency(instruments, CONCURRENCY, async (instrument, index): Promise<Omit<CspScreenRow, "rank">> => {
+  const names = await mapWithConcurrency(instruments, CONCURRENCY, async (instrument, index): Promise<ScreenedName<T>> => {
     const symbol = symbols[index]!;
     const ivRow = ivRanks.rows.get(symbol);
     const rank = ivRow?.iv30?.rank;
     const ivRank = rank != null && Number.isFinite(rank) ? rank : null;
     try {
-      const screened = await screenPut(instrument, criteria, scenario, target, earnings.get(symbol) ?? null, signal);
+      const screened = await screen(instrument, earnings.get(symbol) ?? null, scenario);
       markets.push(screened.market);
       if (ivRank == null && !ivRanks.error) {
         const reason = ivRankReason(ivRow);
         missingRanks.push(reason ? `${symbol} (${reason})` : symbol);
       }
-      return { symbol, csp: screened.csp, delta: screened.delta, ivRank, wideSpread: cspWideSpread(screened.csp, criteria.maxSpreadPercent), note: null };
+      return { symbol, ivRank, value: screened.value, note: null };
     } catch (error) {
       if (signal?.aborted) throw error;
-      return { symbol, csp: null, delta: null, ivRank, wideSpread: false, note: errorMessage(error) ?? "No put to sell" };
+      return { symbol, ivRank, value: null, note: errorMessage(error) ?? fallback };
     }
   });
-  return { rows: rankCspScreen(rows), criteria, missingRanks: missingRanks.sort(), ivRankError: ivRanks.error,
-    freshness: screenFreshness(markets, now) };
+  return { names, missingRanks: missingRanks.sort(), ivRankError: ivRanks.error, freshness: screenFreshness(markets, now) };
+}
+
+/** Each name's cash-secured put, ranked. */
+export async function loadCspScreen(
+  instruments: readonly InstrumentRef[], criteria: CspScreenCriteria, dependencies: CspScreenDependencies, signal?: AbortSignal,
+): Promise<CspScreen> {
+  const target = cspTargetDate(criteria, dependencies.scenario.now?.() ?? Date.now());
+  const screened = await screenNames(instruments, dependencies, signal, "No put to sell", async (instrument, earningsDate, scenario) => {
+    const put = await screenPut(instrument, criteria, scenario, target, earningsDate, signal);
+    return { value: put, market: put.market };
+  });
+  const rows = screened.names.map(({ symbol, ivRank, value, note }): Omit<CspScreenRow, "rank"> => ({
+    symbol, csp: value?.csp ?? null, delta: value?.delta ?? null, ivRank,
+    wideSpread: value ? cspWideSpread(value.csp, criteria.maxSpreadPercent) : false, note }));
+  return { rows: rankCspScreen(rows), criteria, missingRanks: screened.missingRanks, ivRankError: screened.ivRankError,
+    freshness: screened.freshness };
 }
 
 /** `nearest 0.30 delta · expiry nearest 2026-11-21 (30 days)`: what each name's put is. */
@@ -249,8 +289,8 @@ export function cspScreenCriteriaText(criteria: CspScreenCriteria, now: number):
     + (criteria.expiration == null ? ` (${criteria.days} days)` : "");
 }
 
-/** `before 2026-11-04`, `after 2027-01-19`, `unknown`: whether the next report falls before the put expires, and its date. */
-export function cspEarningsText(csp: CashSecuredPut | null): string {
+/** `before 2026-11-04`, `after 2027-01-19`, `unknown`: whether the next report falls before the put (or a trade's first leg) expires, and its date. */
+export function cspEarningsText(csp: Pick<CashSecuredPut, "earnings"> | null): string {
   if (!csp) return "--";
   const { beforeExpiry, date } = csp.earnings;
   return beforeExpiry == null ? "unknown" : `${beforeExpiry ? "before" : "after"} ${date}`;

@@ -8,6 +8,10 @@ import {
   CSP_SCREEN_DEFAULTS, CSP_SCREEN_LIMIT, cspEarningsText, cspScreenCriteriaText, loadCspScreen, readCspScreenCriteria,
   type CspScreen, type CspScreenRow,
 } from "./csp-screen";
+import {
+  loadStrategyScreen, readStrategyFamily, readStrategyScreenCriteria, STRATEGY_FAMILY_DEFS, strategyFamilyDef,
+  strategyRankedBy, strategyScreenCriteriaText, type ScreenFamily, type StrategyScreen, type StrategyScreenCriteria, type StrategyScreenRow,
+} from "./strategy-screen";
 
 const percentCell = (digits: number) => (value: unknown) => typeof value === "number" ? `${value.toFixed(digits)}%` : "--";
 const priceCell = (value: unknown) => typeof value === "number" ? formatHedgePrice(value) : "--";
@@ -69,14 +73,74 @@ const listText = (items: readonly string[]) => items.length <= 1 ? items.join(""
  * sessions).`), and a bare symbol, which has none to give, is just not ranked
  * yet (`No IV rank for DAL yet.`).
  */
-export function cspScreenNotes(screen: Pick<CspScreen, "criteria" | "missingRanks">): string[] {
+export function cspScreenNotes(screen: Pick<CspScreen, "criteria" | "missingRanks">, rankedBy = "annualised yield at the bid"): string[] {
   const reasoned = screen.missingRanks.filter((entry) => entry.includes(" "));
   const bare = screen.missingRanks.filter((entry) => !entry.includes(" "));
   return [
-    `Ranked by annualised yield at the bid. Wide is a spread over ${screen.criteria.maxSpreadPercent}% of the mid (--max-spread).`,
+    `Ranked by ${rankedBy}. Wide is a spread over ${screen.criteria.maxSpreadPercent}% of the mid (--max-spread).`,
     ...(reasoned.length ? [`No IV rank: ${reasoned.join(", ")}.`] : []),
     ...(bare.length ? [`No IV rank for ${listText(bare)} yet.`] : []),
   ];
+}
+
+const money = (value: number) => value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/** One name's trade, flat: money per share for the premium and for the whole trade for gain and loss, every percent in percent. */
+export type StrategyScreenReportRow = {
+  rank: number | null; symbol: string; expiry: string | null; farExpiry: string | null; days: number | null; trade: string | null;
+  net: number | null; maxGain: number | null; maxLoss: number | null; unlimited: "gain" | "loss" | null;
+  breakEven: number | null; secondBreakEven: number | null; breakEvens: string; pop: number | null; returnOnRisk: number | null;
+  returnPerYear: number | null; ivRank: number | null; spread: number | null; wide: boolean | null;
+  earnings: string; earningsBeforeExpiry: boolean | null; earningsDate: string | null; spot: number | null; note: string | null;
+};
+
+export function strategyScreenReportRow(row: StrategyScreenRow): StrategyScreenReportRow {
+  const { trade } = row;
+  return {
+    rank: row.rank, symbol: row.symbol, expiry: trade?.expiry ?? null, farExpiry: trade?.farExpiry ?? null, days: trade?.daysToExpiry ?? null,
+    trade: trade?.text ?? null, net: trade ? Math.abs(trade.net) : null, maxGain: trade?.maxGain ?? null, maxLoss: trade?.maxLoss ?? null,
+    unlimited: trade?.unlimited ?? null, breakEven: trade?.breakEvens[0] ?? null, secondBreakEven: trade?.breakEvens[1] ?? null,
+    breakEvens: trade?.breakEvens.length ? trade.breakEvens.map((value) => value.toFixed(2)).join(" / ") : "--",
+    pop: exportPercent(trade?.probabilityOfProfit), returnOnRisk: exportPercent(trade?.returnOnRisk), returnPerYear: exportPercent(trade?.annualizedReturn),
+    ivRank: row.ivRank, spread: exportPercent(trade?.quote?.spreadOfMid), wide: trade?.quote ? row.wideSpread : null,
+    earnings: cspEarningsText(trade), earningsBeforeExpiry: trade ? trade.earnings.beforeExpiry : null, earningsDate: trade?.earnings.date ?? null,
+    spot: trade?.spot ?? null, note: row.note,
+  };
+}
+
+/** A gain or loss for the whole trade, `unlimited` on the side that has no limit. */
+const riskCell = (side: "gain" | "loss") => (value: unknown, row: Record<string, unknown>) =>
+  typeof value === "number" ? money(value) : row.unlimited === side ? "unlimited" : "--";
+
+/** A family's columns: its money column is `Credit` or `Debit`, and a calendar names the expiry it buys. */
+export function strategyScreenColumns(strategy: ScreenFamily): { text: HeadlessPaneColumn[]; exported: HeadlessPaneColumn[] } {
+  const def = strategyFamilyDef(strategy);
+  const lead: HeadlessPaneColumn[] = [COLUMNS[0]!, COLUMNS[1]!, COLUMNS[2]!];
+  const farExpiry: HeadlessPaneColumn[] = strategy === "calendar" ? [{ key: "farExpiry", header: "Bought expiry" }] : [];
+  const body: HeadlessPaneColumn[] = [
+    COLUMNS[3]!,
+    { key: "trade", header: "Trade", format: (value) => typeof value === "string" ? value : "--" },
+    { key: "net", header: def.net === "credit" ? "Credit" : "Debit", align: "right", format: priceCell },
+    { key: "maxGain", header: "Max gain", align: "right", format: riskCell("gain") },
+    { key: "maxLoss", header: "Max loss", align: "right", format: riskCell("loss") },
+  ];
+  const odds: HeadlessPaneColumn[] = [
+    { key: "pop", header: "PoP", align: "right", format: percentCell(0) },
+    { key: "returnPerYear", header: "Return/yr", align: "right", format: percentCell(1) },
+    COLUMNS[12]!, COLUMNS[7]!, COLUMNS[13]!,
+  ];
+  const breakEven: HeadlessPaneColumn = { key: "breakEven", header: "Break-even", align: "right", format: priceCell,
+    textFormat: (_value, row) => String(row.breakEvens) };
+  return {
+    text: [...lead, ...farExpiry, ...body, breakEven, ...odds, NOTE],
+    exported: [...lead, ...farExpiry, ...body, breakEven, { key: "secondBreakEven", header: "Second break-even", format: priceCell }, ...odds,
+      { key: "returnOnRisk", header: "Return on risk", align: "right", format: percentCell(2) }, ...EXPORT_ONLY, NOTE],
+  };
+}
+
+function strategyMetadata(screen: StrategyScreen) {
+  return { strategy: screen.criteria.strategy, criteria: screen.criteria, rankedBy: strategyRankedBy(screen.criteria.strategy),
+    unit: "percent; premium and break-evens per share; max gain and loss for one contract a leg", methodology: "docs/research-data.md#options-strategy-screen" };
 }
 
 export const cspScreenHeadless: HeadlessPaneDefinition<"rows"> = {
@@ -84,27 +148,49 @@ export const cspScreenHeadless: HeadlessPaneDefinition<"rows"> = {
   argument: { kind: "tickers", maximum: CSP_SCREEN_LIMIT, description: "US option underlyings to rank" },
   usListingsOnly: "Options data",
   failsWithoutData: true,
-  description: "Cash-secured puts across a list, ranked by annualised yield on cash at the bid: for each name, the put nearest a delta "
-    + "(0.30) on the listed expiry nearest a date or a number of days out (30), with its strike, bid, ask, spread (flagged wide over "
-    + "--max-spread, never left out), delta, distance out of the money, yield at the mid and at the bid, IV rank and whether earnings fall before expiry.",
+  description: "Option strategies across a list, one family at a time (--strategy): cash-secured puts by default, ranked by annualised yield on "
+    + "cash at the bid, the put nearest a delta (0.30) on the listed expiry nearest a date or a number of days out (30), with its strike, bid, ask, "
+    + "spread (flagged wide over --max-spread, never left out), delta, distance out of the money, yield at the mid and at the bid, IV rank and whether "
+    + "earnings fall before expiry. Covered calls, verticals, iron condors, straddles, strangles and calendars pick their legs by delta on the same "
+    + "expiry and show the trade, credit or debit, max gain and loss, break-evens, probability of profit and annualised return on risk.",
   discovery: { screenshotReadiness: "live-dom", dataRequirements: ["Current option chains", "Cloud stored implied volatility", "Earnings calendar"],
-    limitations: ["Assignment, margin and the interest the cash earns are not modelled."] },
+    limitations: ["Assignment, margin and the interest the cash earns are not modelled.",
+      "Probability of profit is the Black-Scholes chance at each break-even's nearest leg IV, not a forecast."] },
   describe: (_args, result) => {
-    const criteria = (result?.metadata as { criteria?: CspScreen["criteria"] } | undefined)?.criteria;
+    const metadata = result?.metadata as { criteria?: CspScreen["criteria"] | StrategyScreenCriteria; strategy?: ScreenFamily } | undefined;
+    const criteria = metadata?.criteria;
+    if (metadata?.strategy && criteria) {
+      return [strategyFamilyDef(metadata.strategy).title, strategyScreenCriteriaText(criteria as StrategyScreenCriteria, Date.now())].join(" · ");
+    }
     return ["Cash-secured puts", ...(criteria ? [cspScreenCriteriaText(criteria, Date.now())] : [])].join(" · ");
   },
   options: [
+    { key: "strategy", type: "enum", example: "--strategy iron-condor",
+      values: STRATEGY_FAMILY_DEFS.map((def) => ({ value: def.id, ...(def.aliases.length ? { aliases: def.aliases } : {}) })),
+      description: "The strategy each name trades, a cash-secured put (csp) when not given; also cc, put-credit, call-credit, call-debit, "
+        + "put-debit, ic and call-calendar" },
     { key: "delta", type: "string", placeholder: "0.30", example: "--delta 0.20",
-      description: `Each name's put is the one whose delta is nearest this, as a put's delta reads without its sign. Default ${CSP_SCREEN_DEFAULTS.delta.toFixed(2)}` },
+      description: `Each name's put is the one whose delta is nearest this, as a put's delta reads without its sign. Default ${CSP_SCREEN_DEFAULTS.delta.toFixed(2)}. `
+        + "Other strategies pick their legs the same way: a covered call's call, a vertical's leg nearer the money, a condor's or a strangle's put and call, "
+        + "a calendar's call, each strategy at its own default (0.30; 0.50 for debit verticals and calendars; 0.20 for condors and short strangles)" },
+    { key: "wingDelta", aliases: ["wing-delta"], type: "string", placeholder: "0.15", example: "--strategy iron-condor --wing-delta 0.05",
+      description: "A vertical's or an iron condor's legs further out of the money are the ones whose delta is nearest this: the legs a credit spread "
+        + "buys and a debit spread sells. Default 0.15 (0.30 for debit verticals, 0.10 for condors), or half --delta when that is not below it" },
     { key: "days", type: "string", placeholder: "days", example: "--days 45",
       description: `Each name's expiry is its listed one nearest this many calendar days out. Default ${CSP_SCREEN_DEFAULTS.days}` },
     { key: "expiration", type: "string", placeholder: OPTION_EXPIRATION_PLACEHOLDER, example: "--expiration 2026-11-20",
       description: `Each name's expiry is its listed one nearest this date, in place of --days, as ${OPTION_EXPIRATION_FORMAT}`,
       normalize: (value) => expirationOptionSeconds(value) },
     { key: "maxSpread", aliases: ["max-spread"], type: "string", placeholder: "percent", example: "--max-spread 15",
-      description: `A put whose bid/ask spread is over this percent of its mid is marked wide; it is still ranked. Default ${CSP_SCREEN_DEFAULTS.maxSpreadPercent}` },
+      description: "A put whose bid/ask spread is over this percent of its mid is marked wide; it is still ranked. A strategy of several legs adds "
+        + `their spreads up against its net mid. Default ${CSP_SCREEN_DEFAULTS.maxSpreadPercent}` },
   ],
   async load(args, ctx) {
+    const strategy = readStrategyFamily(args.options.strategy);
+    if (strategy !== "csp") return loadStrategyReport(strategy, args, ctx);
+    if (args.options.wingDelta != null && args.options.wingDelta !== "") {
+      throw new Error("--wing-delta sets the far legs of a vertical or an iron condor; a cash-secured put has none");
+    }
     const criteria = readCspScreenCriteria(args.options);
     const instruments = await Promise.all(args.symbols.map((symbol) => resolveHeadlessInstrument(ctx, symbol)));
     const screen = await loadCspScreen(instruments, criteria, {
@@ -125,3 +211,27 @@ export const cspScreenHeadless: HeadlessPaneDefinition<"rows"> = {
     };
   },
 };
+
+/** `fn CSP --strategy <family>`: each name's trade of the family, ranked, with its own columns. */
+async function loadStrategyReport(
+  strategy: ScreenFamily, args: Parameters<HeadlessPaneDefinition["load"]>[0], ctx: Parameters<HeadlessPaneDefinition["load"]>[1],
+) {
+  const criteria = readStrategyScreenCriteria(strategy, args.options);
+  const instruments = await Promise.all(args.symbols.map((symbol) => resolveHeadlessInstrument(ctx, symbol)));
+  const screen = await loadStrategyScreen(instruments, criteria, {
+    scenario: createScenarioDependencies(ctx.marketData, ctx.apiClient), earnings: ctx.marketData, ivApi: ctx.apiClient,
+  }, ctx.signal);
+  const unavailable = screen.rows.filter((row) => !row.trade);
+  const columns = strategyScreenColumns(strategy);
+  return {
+    freshness: screen.freshness,
+    columns: columns.exported,
+    textColumns: columns.text,
+    rows: screen.rows.map(strategyScreenReportRow),
+    complete: unavailable.length === 0 && !screen.ivRankError,
+    unavailableSymbols: unavailable.map((row) => row.symbol),
+    errors: screen.ivRankError ? [`IV rank unavailable: ${screen.ivRankError}`] : [],
+    notes: cspScreenNotes(screen, strategyRankedBy(strategy)),
+    metadata: strategyMetadata(screen),
+  };
+}
