@@ -45,8 +45,8 @@ describe("kelly sizing model", () => {
     expect(result.fullKellyFraction).toBeGreaterThan(4);
     expectClose(result.clippedFraction, 0.08);
     expect(result.clipReasons).toContain("max name");
-    expectClose(result.targetValue, 8_000, 0.01);
-    expectClose(result.addTrimValue, 4_000, 0.01);
+    expectClose(result.targetValue ?? 0, 8_000, 0.01);
+    expectClose(result.addTrimValue ?? 0, 4_000, 0.01);
     expectClose(result.estimatedUnits ?? 0, 20, 0.01);
     expectClose(result.riskFraction, 0.0072, 0.0001);
 
@@ -55,6 +55,40 @@ describe("kelly sizing model", () => {
     expect(unavailable.addTrimValue).toBe(0);
     expect(unavailable.estimatedUnits).toBeNull();
     expect(unavailable.warnings).toContain("Current holding value unavailable; check FX rates.");
+  });
+
+  test("sizes the fractions without a bankroll and leaves the money fields empty", () => {
+    const draft: BinaryKellyAssumptions = {
+      winProbability: 0.57,
+      upsideReturn: 0.24,
+      downsideReturn: -0.09,
+      kellyFraction: 0.25,
+      maxNameFraction: 0.08,
+      maxLossFraction: 0.01,
+    };
+    const funded = calculateKellySizing({ mode: "binary", draft, bankroll: 100_000, currentValue: 0, price: 200 });
+
+    for (const bankroll of [0, -5, Number.NaN]) {
+      const result = calculateKellySizing({ mode: "binary", draft, bankroll, currentValue: 0, price: 200 });
+      expect(result.fullKellyFraction).toBeGreaterThan(4);
+      expect(result.fullKellyFraction).toBe(funded.fullKellyFraction);
+      expect(result.fractionalKellyFraction).toBe(funded.fractionalKellyFraction);
+      expect(result.clippedFraction).toBe(funded.clippedFraction);
+      expect(result.clipReasons).toEqual(funded.clipReasons);
+      expect(result.riskFraction).toBe(funded.riskFraction);
+      expect(result.expectedReturn).toBe(funded.expectedReturn);
+      expect(result.expectedLogGrowth).toBe(funded.expectedLogGrowth);
+      expect(result.currentFraction).toBe(0);
+      expect(result.recommendationLabel).toBe("Binary thesis");
+      expect(result.warnings).toEqual(funded.warnings);
+      expect(result.targetValue).toBeNull();
+      expect(result.addTrimValue).toBeNull();
+      expect(result.riskValue).toBeNull();
+      expect(result.estimatedUnits).toBeNull();
+    }
+
+    // A holding with no bankroll is not a share of anything.
+    expect(calculateKellySizing({ mode: "binary", draft, bankroll: 0, currentValue: 4_000 }).currentFraction).toBeNull();
   });
 
   test("returns zero size when there is no positive edge", () => {
@@ -115,7 +149,7 @@ describe("kelly sizing model", () => {
 
     expectClose(result.unclippedFraction, 0.1);
     expectClose(result.clippedFraction, 0.1);
-    expectClose(result.riskValue, 500);
+    expectClose(result.riskValue ?? 0, 500);
   });
 
   test("sizes prediction market yes contracts from probability and price", () => {

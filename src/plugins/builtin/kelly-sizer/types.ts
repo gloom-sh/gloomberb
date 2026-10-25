@@ -69,21 +69,26 @@ export interface KellySolveResult {
   warning?: string;
 }
 
+/**
+ * The fractions, expected return and growth need no bankroll. The money fields
+ * (target, add or trim, units, risk) are null until there is one, and
+ * `currentFraction` is null for a holding that has no bankroll to be a share of.
+ */
 export interface KellySizingResult {
   mode: KellySizingMode;
   bankroll: number;
   currentValue: number;
-  currentFraction: number;
+  currentFraction: number | null;
   price: number | null;
   fullKellyFraction: number;
   fractionalKellyFraction: number;
   unclippedFraction: number;
   clippedFraction: number;
-  targetValue: number;
-  addTrimValue: number;
+  targetValue: number | null;
+  addTrimValue: number | null;
   estimatedUnits: number | null;
   downsideLossFraction: number;
-  riskValue: number;
+  riskValue: number | null;
   riskFraction: number;
   expectedReturn: number;
   expectedLogGrowth: number;

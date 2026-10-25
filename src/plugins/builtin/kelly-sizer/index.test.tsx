@@ -120,6 +120,19 @@ describe("KellySizerPane", () => {
     expect(frame).not.toMatch(/Current\s+10000\s+USD/);
   });
 
+  test("sizes in fractions without a bankroll and reads a dash for the money", async () => {
+    await renderPane({ paneState: { bankrollOverride: 0, currentValueOverride: 0 } });
+    await flushFrame();
+
+    const frame = tui.frame();
+    expect(frame).toMatch(/Full Kelly\s+4\d\d\.\d%/);
+    expect(frame).toMatch(/Clipped\s+8\.00%/);
+    expect(frame).toMatch(/Target val\s+—\s+Set a bankroll/);
+    expect(frame).toMatch(/Add \/ trim\s+—/);
+    expect(frame).toMatch(/Risk\s+—\s+0\.72%/);
+    expect(frame).not.toContain("$0.00");
+  });
+
   test("toggles sensitivity with s", async () => {
     await renderPane();
     await flushFrame();

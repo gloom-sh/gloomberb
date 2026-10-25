@@ -282,7 +282,7 @@ export function calculateKellySizing({
   price?: number | null;
 }): KellySizingResult {
   const warnings: string[] = [];
-  if (!finite(bankroll) || bankroll <= 0 || !finite(currentValue)) {
+  if (!finite(currentValue)) {
     return {
       mode,
       bankroll: 0,
@@ -301,7 +301,7 @@ export function calculateKellySizing({
       riskFraction: 0,
       expectedReturn: 0,
       expectedLogGrowth: 0,
-      warnings: [!finite(currentValue) ? "Current holding value unavailable; check FX rates." : "No positive bankroll available."],
+      warnings: ["Current holding value unavailable; check FX rates."],
       clipReasons: [],
       recommendationLabel: "Unavailable",
     };
@@ -342,20 +342,24 @@ export function calculateKellySizing({
 
   const safeCurrentValue = finite(currentValue) ? Math.max(0, currentValue) : 0;
   const safePrice = price != null && finite(price) && price > 0 ? price : null;
-  const targetValue = clippedFraction * bankroll;
-  const addTrimValue = targetValue - safeCurrentValue;
-  const estimatedUnits = safePrice ? addTrimValue / safePrice : null;
+  // Sizes are shares of the bankroll; only the money amounts need one.
+  const hasBankroll = finite(bankroll) && bankroll > 0;
+  const targetValue = hasBankroll ? clippedFraction * bankroll : null;
+  const addTrimValue = targetValue == null ? null : targetValue - safeCurrentValue;
+  const estimatedUnits = safePrice && addTrimValue != null ? addTrimValue / safePrice : null;
   const riskFraction = clippedFraction * downsideLossFraction;
-  const riskValue = riskFraction * bankroll;
+  const riskValue = hasBankroll ? riskFraction * bankroll : null;
+  // Nothing held is 0% of any bankroll; a holding with no bankroll has no share.
+  const currentFraction = hasBankroll ? safeCurrentValue / bankroll : safeCurrentValue > 0 ? null : 0;
 
   if (fullKellyFraction === 0 && solve.expectedReturn <= 0) warnings.push("No positive Kelly edge.");
   if (downsideLossFraction <= 0) warnings.push("No downside assumption; risk caps cannot bind.");
 
   return {
     mode,
-    bankroll,
+    bankroll: hasBankroll ? bankroll : 0,
     currentValue: safeCurrentValue,
-    currentFraction: safeCurrentValue / bankroll,
+    currentFraction,
     price: safePrice,
     fullKellyFraction,
     fractionalKellyFraction,
