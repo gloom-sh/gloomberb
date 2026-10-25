@@ -1,5 +1,6 @@
 import { mkdir } from "fs/promises";
 import { join } from "path";
+import { isTickerPaneId } from "../../src/types/config";
 import { evaluate, sleep, type Cdp } from "./browser";
 
 /**
@@ -242,7 +243,9 @@ export function fallbackInstance(entry: CatalogEntry): Record<string, unknown> {
   return {
     instanceId: `${entry.paneId}:sweep`,
     paneId: entry.paneId,
-    binding: argument(entry) ? { kind: "fixed", symbol: "AAPL" } : { kind: "none" },
+    // Some account-gated templates have no ticker argument even though layout
+    // normalization removes their pane when it has no ticker binding.
+    binding: argument(entry) || isTickerPaneId(entry.paneId) ? { kind: "fixed", symbol: "AAPL" } : { kind: "none" },
     ...(entry.defaultSettings ? { settings: entry.defaultSettings } : {}),
   };
 }
