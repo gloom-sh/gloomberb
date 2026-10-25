@@ -206,7 +206,7 @@ export const alertsPlugin: GloomPlugin = {
         }
         const existing = loadAlerts(ctx);
         existing.push(alert);
-        await saveAlerts(ctx, existing);
+        await saveAlerts(ctx, existing, input.metric ? "metric" : "price");
         alertStream?.sync();
 
         ctx.notify({
@@ -289,9 +289,9 @@ export const alertsPlugin: GloomPlugin = {
 
     // The poll carries whatever the stream does not: symbols the feed has not
     // delivered lately, and every symbol while the app is hidden.
-    const poll = async () => {
+    const pollLevels = async (metrics: boolean) => {
       alertStream?.sync();
-      const pending = loadAlerts(ctx).filter((alert) => alert.status === "active" && !readStreamedAlertQuote(alert));
+      const pending = loadAlerts(ctx).filter((alert) => Boolean(alert.metric) === metrics && alert.status === "active" && !readStreamedAlertQuote(alert));
       if (pending.length === 0) return;
 
       ctx.log.info("poll", { active: pending.length });
@@ -319,7 +319,7 @@ export const alertsPlugin: GloomPlugin = {
 
       // Read the store again: the stream or the pane may have changed an alert
       // while the quotes were in flight, and an alert must trigger only once.
-      const alerts = loadAlerts(ctx);
+      const alerts = loadAlerts(ctx).filter(alert => Boolean(alert.metric) === metrics);
       let changed = false;
       for (const alert of alerts) {
         if (alert.status !== "active") continue;
@@ -327,6 +327,8 @@ export const alertsPlugin: GloomPlugin = {
           const result = readings.get(alert.id);
           if (!result || result.armedAt !== (alert.armedAt ?? alert.createdAt)) continue;
           const reading = result.reading;
+          if (typeof reading !== "string" && reading.day && reading.day === alert.lastDailyClose && !alert.lastCheckError) continue;
+          if (typeof reading === "string" && reading === alert.lastCheckError) continue;
           if (typeof reading === "string") Object.assign(alert, quoteErrorAlertFields(reading));
           else {
             if (metricTrigger(alert, reading)) {
@@ -368,8 +370,15 @@ export const alertsPlugin: GloomPlugin = {
       }
 
       if (changed) {
-        await saveAlerts(ctx, alerts);
+        await saveAlerts(ctx, alerts, metrics ? "metric" : "price");
       }
+    };
+
+    // Metric work may span a poll, but cannot delay the next price check or overlap itself.
+    let metricPoll: Promise<void> | null = null;
+    const poll = () => {
+      metricPoll ??= pollLevels(true).catch(logFailure("alerts.metrics", "Check metric alerts failed")).finally(() => { metricPoll = null; });
+      return pollLevels(false);
     };
 
     // Re-armed each cycle so a change to the pane's Check interval setting takes

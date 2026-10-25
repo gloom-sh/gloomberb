@@ -63,12 +63,13 @@ test("intraday bars cannot trigger; the next completed close can, including earl
   const armed = { ...r, armedAt: session.close - 3_600_000 };
   const before = dailyMetricReading(armed, rows, session.close - 1, calendar);
   expect(metricTrigger(armed, before)).toBeNull();
-  const completed = dailyMetricReading(armed, rows, session.close + 15 * 60_000, calendar);
+  for (const minutes of [15, 29.999]) expect(metricTrigger(armed, dailyMetricReading(armed, rows, session.close + minutes * 60_000, calendar))).toBeNull();
+  const completed = dailyMetricReading(armed, rows, session.close + 30 * 60_000, calendar);
   expect(metricTrigger(armed, completed)).toBe("below");
   const short = rule({ kind: "close_ma", period: 2 }, 0);
   expect(reading(short, [100, 90])).toMatchObject({ value: 90, target: 95 });
   const early = [{ date: "2026-11-24", close: 100 }, { date: "2026-11-25", close: 100 }, { date: "2026-11-27", close: 80 }];
-  expect(dailyMetricReading(short, early, Date.parse("2026-11-27T18:15:00Z"), calendar).day).toBe("2026-11-27");
+  expect(dailyMetricReading(short, early, Date.parse("2026-11-27T18:30:00Z"), calendar).day).toBe("2026-11-27");
 });
 
 test("missing, invalid, duplicate and short histories never bridge a session or fabricate a technical value", () => {
@@ -132,4 +133,15 @@ test("valuation alerts keep the regular close and converted EPS basis outside re
     // A cap already measured at the close must not move down a second time.
     expect(valuationAlertValue("ps", { ...financials, quote: { ...financials.quote!, marketCap: 2400 } })).toBe(8);
   }
+});
+
+// These same fixtures run against delivery's valuation and bar-day adapters.
+import parity from "./metric-parity-fixture.json";
+import { barSessionDay } from "../../../market-data/market/period-return";
+test("metric model and valuation fixtures preserve delivery parity", async () => {
+  expect(new Bun.CryptoHasher("sha256").update(await Bun.file(new URL("./metric-model.ts", import.meta.url)).text()).digest("hex")).toBe(parity.modelSha256);
+  for (const fixture of parity.valuations) for (const kind of ["pe", "ps"] as const) {
+    expect(valuationAlertValue(kind, fixture.data as unknown as TickerFinancials), `${fixture.name} ${kind}`).toBe(fixture[kind]);
+  }
+  for (const fixture of parity.barDays) expect(barSessionDay(Date.parse(fixture.stamp), fixture.exchange)).toBe(fixture.day);
 });

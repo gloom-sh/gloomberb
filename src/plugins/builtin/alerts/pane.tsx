@@ -1,4 +1,5 @@
 import { METRIC_ALERTS_KEY, isDailyMetric, metricName } from "./metric-model";
+import { metricAvailabilityError } from "./metric-data";
 import { readLevelAlertStores } from "./storage";
 import { Box, type ScrollBoxRenderable } from "../../../ui";
 import { Button, DetailScrollBody, KeyValueRow, Notice, PaneStatusBody, PaneFooterScope, usePaneTabs } from "../../../components";
@@ -194,23 +195,26 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
     syncAlertQuoteStream();
   }, [liveSymbolsKey]);
   const displayRows = useMemo(() => rows.map((alert) => {
-    if (alert.metric || alert.status !== "active") return alert;
+    if (alert.metric) {
+      const error = metricAvailabilityError(alert) ?? alert.lastCheckError;
+      return error ? { ...alert, lastCheckError: error } : alert;
+    }
+    if (alert.status !== "active") return alert;
     const quote = streamedAlertQuote(resolveEntryData(liveEntries.get(buildQuoteKey(alertInstrument(alert)))));
     return quote ? { ...alert, ...quoteAlertFields(quote, quote.receivedAt) } : alert;
   }), [liveEntries, rows]);
 
-  const savePaneAlerts = useCallback((next: (current: AlertRule[]) => AlertRule[]): string | null => {
-    if (storeError) return storeError;
+  const savePaneAlerts = useCallback((id: string, next: (current: AlertRule[]) => AlertRule[]): string | null => {
+    const key = alerts.find(alert => alert.id === id)?.metric ? METRIC_ALERTS_KEY : ALERTS_KEY;
+    if (stores.errors[key]) return stores.errors[key];
     let error: string | null = null;
-    for (const setJson of [setAlertsJson, setMetricsJson]) {
-      setJson((currentJson: unknown) => {
-        error ??= readAlertsStoreError(currentJson);
-        if (error) return currentJson;
-        return serializeAlerts(next(deserializeAlerts(currentJson)));
-      });
-    }
+    const setJson = key === METRIC_ALERTS_KEY ? setMetricsJson : setAlertsJson;
+    setJson((currentJson: unknown) => {
+      error = readAlertsStoreError(currentJson);
+      return error ? currentJson : serializeAlerts(next(deserializeAlerts(currentJson)));
+    });
     return error;
-  }, [setAlertsJson, setMetricsJson, storeError]);
+  }, [alerts, setAlertsJson, setMetricsJson, stores]);
 
   const deleteAlert = useCallback(async (id: string) => {
     const alert = alerts.find((a) => a.id === id);
@@ -221,7 +225,7 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
       confirmLabel: "Delete",
     });
     if (!confirmed) return;
-    const error = savePaneAlerts((current) => current.filter((a) => a.id !== id));
+    const error = savePaneAlerts(id, (current) => current.filter((a) => a.id !== id));
     if (error) {
       notify({ body: error, type: "error" });
       return;
@@ -230,7 +234,7 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
   }, [alerts, dialog, notify, rows.length, savePaneAlerts]);
 
   const rearmAlert = useCallback((id: string) => {
-    const error = savePaneAlerts(
+    const error = savePaneAlerts(id,
       (current) => current.map((a) => (a.id === id ? rebuildAlert(a) : a)),
     );
     if (error) notify({ body: error, type: "error" });
@@ -277,7 +281,7 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
             const parsed = parseAlertCommandValues({ shortcut: value });
             if (!parsed) throw new Error("Use SYMBOL above|below|crosses PRICE.");
             if (!!parsed.metric !== !!selected.metric) throw new Error("Add a new alert to change between price and a valuation or technical measure.");
-            const error = savePaneAlerts((current) => current.map((alert) => (
+            const error = savePaneAlerts(selected.id, (current) => current.map((alert) => (
               alert.id === selected.id
                 ? { ...editAlert(alert, parsed.symbol, parsed.condition, parsed.price), ...(parsed.metric ? { metric: parsed.metric } : {}) }
                 : alert
@@ -363,7 +367,7 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
     switch (column.id) {
       case "status":
         return {
-          text: alert.status === "triggered" ? "Triggered" : "Active",
+          text: alert.status === "triggered" ? "Triggered" : alert.lastCheckError && alert.metric ? "Blocked" : "Active",
           color: alert.status === "triggered" ? colors.positive : colors.textDim,
           attributes: alert.status === "triggered" ? TextAttributes.BOLD : TextAttributes.NONE,
         };

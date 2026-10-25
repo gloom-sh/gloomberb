@@ -737,16 +737,18 @@ export const alertsCliCommand: CliCommandDef = {
     }
 
     await withConfigData(ctx, async (config) => {
-      const { pluginState, alerts, alertsError, events } = readAlertStores(config.config);
+      const { pluginState, alerts, alertsError, levelErrors, events } = readAlertStores(config.config);
       const save = async (next: { alerts?: AlertRule[]; events?: EventAlertRule[] }) => {
-        if (next.alerts && alertsError) ctx.fail(alertsError);
+        if (next.alerts) for (const [key, value] of Object.entries(writeLevelAlertStores(next.alerts))) {
+          if (levelErrors[key] && value !== "[]") ctx.fail(levelErrors[key]!);
+        }
         const nextConfig = {
           ...config.config,
           pluginConfig: {
             ...config.config.pluginConfig,
             [ALERTS_PLUGIN_ID]: {
               ...pluginState,
-              ...(next.alerts ? writeLevelAlertStores(next.alerts) : {}),
+              ...(next.alerts ? Object.fromEntries(Object.entries(writeLevelAlertStores(next.alerts)).filter(([key]) => !levelErrors[key])) : {}),
               // Each list keeps what it holds of kinds this version does not know; IV levels go in their own.
               ...(next.events ? writeEventAlertStores(events.lists, next.events) : {}),
             },

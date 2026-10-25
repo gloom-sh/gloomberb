@@ -1,3 +1,4 @@
+// Keep this model identical to the delivery model; the parity fixture checks both copies.
 /** Synced separately from price rules so older clients cannot judge a ratio as a price. */
 export const METRIC_ALERTS_KEY = "metricAlerts";
 export type AlertMetric =
@@ -79,7 +80,35 @@ const mean = (closes: readonly number[], n: number, end: number) => closes.slice
 export type DailySession = { kind: "session"; close: number } | { kind: "closed" };
 const DAY = 86_400_000;
 /** Same allowance for delayed and live accounts: never judge a still-forming daily bar. */
-const CLOSE_ALLOWANCE = 15 * 60_000;
+export const DAILY_CLOSE_SETTLE_MS = 30 * 60_000;
+
+export function latestSettledClose(now: number, session: (day: string) => DailySession | null): { day: string; at: number } {
+  // Find the newest completed exchange session, including holidays and early closes.
+  let latest: { day: string; at: number } | undefined;
+  for (let offset = 0; offset < 15; offset++) {
+    const day = new Date(now - offset * DAY).toISOString().slice(0, 10);
+    const s = session(day);
+    if (!s) throw new Error("Daily close calendar unavailable for this listing or date.");
+    if (s.kind === "session" && s.close + DAILY_CLOSE_SETTLE_MS <= now) { latest = { day, at: s.close }; break; }
+  }
+  if (!latest) throw new Error("No completed daily close available.");
+  return latest;
+}
+
+/** Cache only completed calculations; failed reads retry after five minutes, never on every poll. */
+export class DailyMetricCache {
+  private entries = new Map<string, { day: string; retryAt: number; result: Promise<MetricReading> }>();
+  read(key: string, day: string, now: number, load: () => Promise<MetricReading>): Promise<MetricReading> {
+    const cached = this.entries.get(key);
+    if (cached?.day === day && now < cached.retryAt) return cached.result;
+    const entry = { day, retryAt: Infinity, result: Promise.resolve().then(load) };
+    this.entries.delete(key);
+    this.entries.set(key, entry);
+    if (this.entries.size > 5000) this.entries.delete(this.entries.keys().next().value!);
+    void entry.result.catch(() => { entry.retryAt = now + 5 * 60_000; });
+    return entry.result;
+  }
+}
 
 export function dailyMetricReading(
   rule: MetricRule,
@@ -89,15 +118,7 @@ export function dailyMetricReading(
 ): MetricReading {
   const m = rule.metric!;
   if (!isDailyMetric(m) || !("period" in m)) throw new Error("Expected a daily technical alert.");
-  // Find the newest completed exchange session, including holidays and early closes.
-  let latest: { day: string; at: number } | undefined;
-  for (let offset = 0; offset < 15; offset++) {
-    const day = new Date(now - offset * DAY).toISOString().slice(0, 10);
-    const s = session(day);
-    if (!s) throw new Error("Daily close calendar unavailable for this listing or date.");
-    if (s.kind === "session" && s.close + CLOSE_ALLOWANCE <= now) { latest = { day, at: s.close }; break; }
-  }
-  if (!latest) throw new Error("No completed daily close available.");
+  const latest = latestSettledClose(now, session);
   const byDay = new Map<string, number>();
   for (const bar of bars) {
     const day = bar.date.slice(0, 10);

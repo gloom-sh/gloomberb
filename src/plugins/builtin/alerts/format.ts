@@ -16,7 +16,9 @@ export function relativeTime(ts: number): string {
 }
 
 export function formatCurrentPrice(alert: AlertRule, maxWidth = 9): string {
-  if (alert.lastCheckError) return alert.metric ? "Unavailable" : "No quote";
+  if (alert.lastCheckError) return !alert.metric ? "No quote"
+    : /US listing|US equities|calendar/.test(alert.lastCheckError) ? "US only"
+    : /missing|bars|history/i.test(alert.lastCheckError) ? "Bar gap" : "No data";
   return alert.lastCheckedPrice == null
     ? "-"
     : formatMarketPrice(alert.lastCheckedPrice, {

@@ -66,3 +66,21 @@ test("CLI list exposes the read failure in text and JSON while healthy event rul
     expect((await loadConfig(dataDir)).pluginConfig.alerts!.alerts).toBe(raw);
   }
 });
+
+test("corrupt metric storage leaves price additions and deletions usable and is kept byte for byte", async () => {
+  const { config, dataDir, provider } = await fixture("[]");
+  const broken = "[{broken";
+  config.pluginConfig.alerts!.metricAlerts = broken;
+  await saveConfig(config);
+  const add = createTestCliContext({ config, dataProvider: provider });
+  await alertsCliCommand.execute(["add", "AAPL", "above", "200"], add.context);
+  const current = await loadConfig(dataDir);
+  expect(current.pluginConfig.alerts!.metricAlerts).toBe(broken);
+  const [price] = JSON.parse(current.pluginConfig.alerts!.alerts as string);
+  expect(price.symbol).toBe("AAPL");
+  const remove = createTestCliContext({ config: current, dataProvider: provider });
+  await alertsCliCommand.execute(["delete", price.id], remove.context);
+  const after = await loadConfig(dataDir);
+  expect(after.pluginConfig.alerts!.alerts).toBe("[]");
+  expect(after.pluginConfig.alerts!.metricAlerts).toBe(broken);
+});
