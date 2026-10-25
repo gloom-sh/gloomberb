@@ -5,7 +5,7 @@ import { pluginSeedFailure, pluginSeedNotice, samePluginSeedFailure, seedExtract
 import { setPluginSeedNotice } from "../plugins/seed-notice";
 import { debugLog } from "../utils/debug-log";
 import type { AppConfig } from "../types/config";
-import { settleWithin } from "../utils/async-deadline";
+import { withDeadline } from "../utils/async-deadline";
 
 const log = debugLog.createLogger("plugin-seed");
 
@@ -43,17 +43,17 @@ export async function restoreExtractedPlugins(): Promise<Pick<AppConfig, "seeded
     // Quiet: the terminal app is about to own the screen, and git's or bun's
     // output would be left behind in the scrollback.
     const { gitInstalled, installListedPlugin, loadRegistryListings } = await import("../plugins/installer");
-    let listings: Promise<Awaited<ReturnType<typeof loadRegistryListings>> | null> | undefined;
+    let listings: ReturnType<typeof loadRegistryListings> | undefined;
     let gitMissing: boolean | undefined;
     const result = await seedExtractedPlugins(config, async (repo) => {
       // Without git every clone fails the same way: no registry read, no attempt.
       gitMissing ??= !gitInstalled();
       if (gitMissing) throw new Error("git is not installed");
-      listings ??= settleWithin(loadRegistryListings(), REGISTRY_WAIT_MS);
-      const known = await listings;
-      // No answer at all: the network hangs, and a clone would too. Nothing is tried until the next launch.
-      if (!known) throw new Error("the plugin registry did not answer");
-      return installListedPlugin(repo, { quiet: true }, known);
+      // Only no answer at all stops here: the network hangs, and a clone would
+      // too, so nothing is tried until the next launch. A registry that fails
+      // is not reported as silent: the plugins install from their repositories.
+      listings ??= withDeadline(loadRegistryListings(), REGISTRY_WAIT_MS, "the plugin registry did not answer");
+      return installListedPlugin(repo, { quiet: true }, await listings);
     });
     // Recorded, so doctor knows a launch tried, and a failure the next launch
     // retries is not announced again while it lasts.

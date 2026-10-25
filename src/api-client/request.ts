@@ -26,8 +26,12 @@ export const DEFAULT_API_URL = "https://api.gloom.sh";
  * fails as the data service being unreachable, as a refused one does.
  */
 const DEFAULT_MARKET_REQUEST_TIMEOUT_MS = 10_000;
-/** A search, which a command and a keystroke wait on, gives up sooner. */
-const SEARCH_REQUEST_TIMEOUT_MS = 4_000;
+/**
+ * A search, which a command and a keystroke wait on, gives up on a connection
+ * that sends nothing back sooner. A slow search on a service that answers
+ * (some take five seconds) still gets the full market deadline.
+ */
+const SEARCH_ANSWER_TIMEOUT_MS = 4_000;
 /**
  * Once a request went unanswered, later ones wait this long for an answer,
  * until any answer comes back: a hung connection is not waited out in full by
@@ -45,9 +49,10 @@ const DEFAULT_RESEARCH_REQUEST_TIMEOUT_MS = 45_000;
 const DEFAULT_SERVICE_REQUEST_LIMIT_MS = 120_000;
 const UPLOAD_REQUEST_LIMIT_MS = 300_000;
 /**
- * How long the check that the service answers at all waits. It runs before
- * the answer deadline of a request allowed to take longer, so a slow server is
- * waited for and a dead connection is not.
+ * How long the check that the service answers at all waits. It runs this long
+ * before a request's answer deadline, unless something answered meanwhile, so
+ * one slow request on a service that answers is waited for and a dead
+ * connection is not.
  */
 const SERVICE_PROBE_TIMEOUT_MS = 3_000;
 const SERVICE_PROBE_PATH = "/health";
@@ -61,7 +66,7 @@ const RESEARCH_MARKET_PATHS = new Set([
 interface RequestDeadline {
   answerMs: number;
   limitMs: number;
-  /** When to check that the service answers at all, for a request allowed past `answerMs`. */
+  /** When to check that the service answers at all, if nothing has by then; null when the deadline is too short for it. */
   probeAtMs: number | null;
 }
 /** Local status for "this runtime cannot stream", never returned by the server. */
@@ -220,7 +225,9 @@ export class CloudApiRequestTransport {
   private hungAt: number | null = null;
   /** The installed transport the two above were learned on. */
   private connectionGeneration = cloudApiTransportGeneration;
-  private probe: Promise<void> | null = null;
+  /** Requests waiting under a deadline: the check that the service answers runs only while one is. */
+  private pending = 0;
+  private probe: AbortController | null = null;
 
   readonly baseUrl = getCloudApiBaseUrl();
 
@@ -341,38 +348,38 @@ export class CloudApiRequestTransport {
   }
 
   /**
-   * Every request's deadline. A market read waits about ten seconds (a search
-   * four), research and requests outside market data longer once the service
-   * is known to answer. After a request went unanswered, the next ones wait
-   * only briefly until something answers again.
+   * Every request's deadline. A market read or a search waits about ten
+   * seconds, research and requests outside market data longer. With nothing
+   * back from the service, a request gives up at ten seconds, a search at
+   * four, and any request at three after one went unanswered, until something
+   * answers again. Three seconds before that, a request still unanswered
+   * checks that the service answers at all, so one slow request on a working
+   * connection is waited for and a dead connection is not.
    */
   private deadlineFor(path: string, limitMs?: number): RequestDeadline {
     this.forgetOtherTransport();
     const pathname = path.split("?")[0]!;
     const market = pathname.startsWith("/market/");
-    const answerMs = pathname === "/market/search"
-      ? Math.min(this.marketRequestTimeoutMs, SEARCH_REQUEST_TIMEOUT_MS)
-      : this.marketRequestTimeoutMs;
     const limit = limitMs ?? (!market ? DEFAULT_SERVICE_REQUEST_LIMIT_MS
-      : RESEARCH_MARKET_PATHS.has(pathname) ? this.researchRequestTimeoutMs : answerMs);
-    if (this.unreachable) {
-      const shortened = Math.min(answerMs, UNREACHABLE_REQUEST_TIMEOUT_MS);
-      return { answerMs: shortened, limitMs: limit === answerMs ? shortened : limit, probeAtMs: null };
-    }
+      : RESEARCH_MARKET_PATHS.has(pathname) ? this.researchRequestTimeoutMs : this.marketRequestTimeoutMs);
+    let answerMs = pathname === "/market/search"
+      ? Math.min(this.marketRequestTimeoutMs, SEARCH_ANSWER_TIMEOUT_MS)
+      : this.marketRequestTimeoutMs;
+    if (this.unreachable) answerMs = Math.min(answerMs, UNREACHABLE_REQUEST_TIMEOUT_MS);
     return {
       answerMs,
-      limitMs: limit,
-      probeAtMs: limit > answerMs && answerMs > SERVICE_PROBE_TIMEOUT_MS ? answerMs - SERVICE_PROBE_TIMEOUT_MS : null,
+      limitMs: Math.max(limit, answerMs),
+      probeAtMs: answerMs >= SERVICE_PROBE_TIMEOUT_MS ? answerMs - SERVICE_PROBE_TIMEOUT_MS : null,
     };
   }
 
   /**
    * Runs one request under its deadline. Without an answer from the service by
-   * `answerMs` (from this request or any other), the connection is taken as
-   * hung: the request is aborted and fails as the data service being
-   * unreachable, as a refused connection does. A service that answers but is
-   * slow gets until `limitMs`, then the request times out. A caller's abort
-   * stays an abort.
+   * `answerMs` (from this request, any other, or the check that the service
+   * answers at all), the connection is taken as hung: the request is aborted
+   * and fails as the data service being unreachable, as a refused connection
+   * does. A service that answers but is slow gets until `limitMs`, then the
+   * request times out. A caller's abort stays an abort.
    */
   private async withDeadline<T>(
     path: string,
@@ -389,6 +396,7 @@ export class CloudApiRequestTransport {
     }
     const answersAtStart = this.answers;
     const answered = () => this.answers > answersAtStart;
+    const generation = cloudApiTransportGeneration;
     const what = path.startsWith("/market/") ? "Cloud market request" : "Cloud request";
     const timedOut = (ms: number) => new OperationTimeoutError(`${what} timed out after ${ms}ms: ${path.split("?")[0]}`);
     const timers: Array<ReturnType<typeof setTimeout>> = [];
@@ -396,6 +404,7 @@ export class CloudApiRequestTransport {
       callerSignal?.removeEventListener("abort", abortFromCaller);
       throw new DataServiceUnreachableError(new OperationTimeoutError(`${what} not sent: the last one got no answer: ${path.split("?")[0]}`));
     }
+    this.pending += 1;
     try {
       const work = run(controller.signal);
       return await new Promise<T>((resolve, reject) => {
@@ -413,8 +422,7 @@ export class CloudApiRequestTransport {
           // The caller gave up first: its abort settles the request, and says nothing of the connection.
           if (callerSignal?.aborted) return;
           if (!answered()) {
-            this.unreachable = true;
-            this.hungAt = Date.now();
+            this.recordNoAnswer(generation, true);
             fail(new DataServiceUnreachableError(timedOut(deadline.answerMs)));
           } else if (deadline.limitMs > deadline.answerMs) {
             timers.push(setTimeout(() => fail(timedOut(deadline.limitMs)), deadline.limitMs - deadline.answerMs));
@@ -426,6 +434,9 @@ export class CloudApiRequestTransport {
     } finally {
       for (const timer of timers) clearTimeout(timer);
       callerSignal?.removeEventListener("abort", abortFromCaller);
+      this.pending -= 1;
+      // Nothing waits on the check any more: it must not hold a command's process open.
+      if (this.pending === 0) this.probe?.abort();
     }
   }
 
@@ -438,13 +449,14 @@ export class CloudApiRequestTransport {
    * connection works, for the deadlines of the requests beside it.
    */
   private async reachService<R>(fetch: () => Promise<R>, signal: AbortSignal | null | undefined): Promise<R> {
+    const generation = cloudApiTransportGeneration;
     let response: R;
     try {
       response = await fetch();
     } catch (error) {
       if (signal?.aborted) throw error;
       const failure = asDataServiceFailure(error);
-      if (failure instanceof DataServiceUnreachableError) this.unreachable = true;
+      if (failure instanceof DataServiceUnreachableError) this.recordNoAnswer(generation, false);
       throw failure;
     }
     this.recordAnswer();
@@ -467,22 +479,38 @@ export class CloudApiRequestTransport {
   }
 
   /**
+   * A request sent on the transport installed as `generation` got no answer:
+   * refused, or `hung` with nothing back by its deadline. Once another
+   * transport is installed, what one sent on the last says nothing of it.
+   */
+  private recordNoAnswer(generation: number, hung: boolean): void {
+    if (!this.fetchTransport && generation !== cloudApiTransportGeneration) return;
+    this.unreachable = true;
+    if (hung) this.hungAt = Date.now();
+  }
+
+  /**
    * Asks the service for anything at all, once at a time, so a request that
-   * may take long can tell a slow server (which answers this) from a dead
-   * connection (which does not). Any status counts as an answer.
+   * is slow can tell a slow server (which answers this) from a dead
+   * connection (which does not). Any status counts as an answer. It stops
+   * when nothing waits on it any more.
    */
   private checkServiceAnswers(): void {
     if (this.probe) return;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), SERVICE_PROBE_TIMEOUT_MS);
-    this.probe = (this.fetchTransport ?? cloudApiFetchTransport)(`${this.baseUrl}${SERVICE_PROBE_PATH}`, { signal: controller.signal })
+    const done = () => {
+      clearTimeout(timer);
+      if (this.probe === controller) this.probe = null;
+    };
+    // Done once given up on, even through a transport that ignores the abort.
+    controller.signal.addEventListener("abort", done, { once: true });
+    this.probe = controller;
+    (this.fetchTransport ?? cloudApiFetchTransport)(`${this.baseUrl}${SERVICE_PROBE_PATH}`, { signal: controller.signal })
       .then(() => this.recordAnswer(), () => {
         // Intentional ignore: an unanswered check only leaves the request it guards to its own deadline.
       })
-      .finally(() => {
-        clearTimeout(timer);
-        this.probe = null;
-      });
+      .finally(done);
   }
 
   /**

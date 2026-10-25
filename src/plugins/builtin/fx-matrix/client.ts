@@ -5,8 +5,7 @@ import { resolveEntryData } from "../../../market-data/selectors";
 import type { DataProvider } from "../../../types/data-provider";
 import type { Quote } from "../../../types/financials";
 import { quoteChangeBasis, type QuoteChangeBasis } from "../../../market-data/market/change-basis";
-import { fxLegMoveReference, fxLegs, liveFxLegEntry, type FxLeg } from "./live-legs";
-import { savedCopyShownAt } from "../../../data/saved-copies";
+import { fxLegMoveReference, fxLegs, fxLegSavedAt, liveFxLegEntry, type FxLeg } from "./live-legs";
 
 /** One USD leg as the board reads it: the rate it draws and where that rate came from. */
 export interface FxLegReading {
@@ -59,8 +58,7 @@ export async function loadFxBoard(
       const entry = live ?? (resolveEntryData(rate) != null ? rate : null);
       const close = fxLegMoveReference(leg, quote, entry);
       // A pair quote or a loaded rate whose refresh failed is the copy saved before, not a current answer.
-      const savedAt = live ? savedCopyShownAt(resolveEntryData(quote))
-        : entry && rate.error && rate.fetchedAt != null ? rate.fetchedAt : null;
+      const savedAt = fxLegSavedAt(live ? resolveEntryData(quote) : null, rate);
       return [leg.currency, {
         leg,
         entry,

@@ -166,6 +166,28 @@ describe("CloudApiRequestTransport market deadlines", () => {
     expect(asked).toEqual([]);
   });
 
+  // Some searches take five seconds on a working connection. One that slow
+  // made the client take the connection for hung and refuse to send anything
+  // for five seconds, so `search insur` exited non-zero.
+  test("a slow search on a service that answers is waited for, and the requests after it are sent", async () => {
+    jest.useFakeTimers();
+    const asked: string[] = [];
+    const transport = new CloudApiRequestTransport({ fetchTransport: async (url) => {
+      const path = new URL(url).pathname;
+      asked.push(path);
+      const body = responseWithBody(async () => JSON.stringify([{ symbol: "INSW" }]));
+      return path === "/market/search" ? new Promise<Response>((resolve) => setTimeout(() => resolve(body), 4_900)) : body;
+    } });
+    const search = transport.request("/market/search?q=insur");
+    jest.advanceTimersByTime(1_000);
+    await flush();
+    jest.advanceTimersByTime(3_900);
+    expect(await search).toEqual([{ symbol: "INSW" }]);
+
+    expect(await transport.request("/market/quote?symbol=INSW")).toEqual([{ symbol: "INSW" }]);
+    expect(asked).toEqual(["/market/search", "/health", "/market/quote"]);
+  });
+
   test("injected deadlines also govern research requests", async () => {
     const transport = new CloudApiRequestTransport({ marketRequestTimeoutMs: 10, fetchTransport: async () => new Promise<Response>(() => {}) });
     const error = await transport.request("/market/earnings-calendar?symbols=AAPL").catch((caught: unknown) => caught);
