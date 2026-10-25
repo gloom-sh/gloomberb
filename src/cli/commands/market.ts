@@ -41,6 +41,7 @@ import {
 import { cliArrow, cliStyles, colorBySign, renderSection, renderStats } from "../../utils/cli-output";
 import { filledPeriodsNote, stalePeriodNote, statementHistoryNotes } from "../../utils/financial-statements";
 import { formatPerShareNumber } from "../../utils/reported-money";
+import { isCurrencyPairListing } from "../../utils/fx-market-hours";
 import {
   analystTargetCurrency,
   formatAnalystPrice,
@@ -1400,7 +1401,9 @@ async function loadListingHistory(
   };
   // A coin's volume is traded value in its quote currency: said in every row and on the status line.
   const volume = historyVolume(unit, traded);
-  const rows = historyRows(points, resolution, unit.currency, unit.unit, volume);
+  // Spot FX has no exchange to count its trades: a source's 0 is no volume, printed as missing.
+  const pair = quote?.instrumentType === "CURRENCY" || isCurrencyPairListing(symbol, exchange);
+  const rows = historyRows(pair ? points.map(({ volume: _volume, ...point }) => point) : points, resolution, unit.currency, unit.unit, volume);
   // Bars stop arriving on the listing's own trading days, not New York's.
   const venue = quote?.listingExchangeName || exchange || undefined;
   const served = range === "YTD" && !window ? rows.slice(Math.max(0, yearToDateStartIndex(rows.map((row) => row.date), rows[0]?.interval, venue))) : rows;

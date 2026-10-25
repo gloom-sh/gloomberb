@@ -58,7 +58,12 @@ interface RiskMarketHistory {
    * Set when the listing quotes in another currency and its closes were
    * restated in USD at same-date daily FX closes; quote and closeMark are then in USD.
    */
-  converted?: { currency: string; fxAsOf: string } | null;
+  converted?: {
+    currency: string;
+    fxAsOf: string;
+    /** US sessions converted at the FX close before them, the pair having none that day (bridgedFxClose). */
+    fxBridged?: string[];
+  } | null;
   error: string | null;
 }
 export interface RiskMarketSnapshot {
@@ -162,6 +167,8 @@ export function validateRiskHistory(
   closeMark: { price: number; date: string; currency: string } | null;
   /** Latest completed close in the returns' currency, whatever marks the holding. */
   latestClose: { price: number; date: string };
+  /** With a conversion, the US sessions converted at the FX close before them (bridgedFxClose). */
+  fxBridged?: string[];
 } {
   if (
     response.status !== "success" ||
@@ -244,13 +251,14 @@ export function validateRiskHistory(
   if (local.integrity)
     throw new Error("Daily history has inconsistent OHLC observations");
   // A converted series is on the NYSE calendar the basket and SPY share.
-  const series = conversion
+  const usd = conversion
     ? convertClosesToUsd(
         points.map((point) => ({ date: new Date(point.date).toISOString().slice(0, 10), close: point.close })),
         conversion.fx,
         conversion.divisor,
       )
-    : prices;
+    : null;
+  const series = usd ? usd.points : prices;
   const returns = conversion ? resolveDatedReturns(series).returns : local.returns;
   const cadence = qualifySharpeCadence(returns, [
     { symbol: instrument.symbol, exchange: conversion ? "NYSE" : exchange, history: series },
@@ -264,6 +272,7 @@ export function validateRiskHistory(
   };
   return {
     returns,
+    ...(usd?.bridged.length ? { fxBridged: usd.bridged } : {}),
     asOf: latestClose.date,
     // A missing or stale quote is not a current mark; the latest dated close is.
     closeMark:
@@ -591,7 +600,7 @@ export async function fetchPortfolioRiskMarket(
             historyParams,
             signal ? { signal } : undefined,
           );
-          const { latestClose, ...resolved } = validateRiskHistory(
+          const { latestClose, fxBridged, ...resolved } = validateRiskHistory(
             response,
             instrument,
             quote,
@@ -610,7 +619,9 @@ export async function fetchPortfolioRiskMarket(
               quote: current,
               currency: "USD",
               closeMark: current ? null : { ...latestClose, currency: "USD" },
-              converted: { currency: conversion.listingCurrency, fxAsOf: fxCloses.asOf },
+              converted: {
+                currency: conversion.listingCurrency, fxAsOf: fxCloses.asOf, ...(fxBridged?.length ? { fxBridged } : {}),
+              },
               error: null,
             };
             continue;

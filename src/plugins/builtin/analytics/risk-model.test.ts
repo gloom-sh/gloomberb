@@ -184,15 +184,23 @@ test("a TRY account converts each holding's USD returns at its own dates' USD/TR
   const quality = rollingBeta(model.basket, subtractReturns(usdReturns("QUAL"), usdReturns("SPY")), "", "quality");
   expect(model.factors.find((row) => row.id === "quality")!.value).toBeCloseTo(quality.value!, 12);
 
-  // A missing lira close on a holding's dates leaves that holding out, never bridged; one whose history starts later still converts.
-  const us02 = market.histories.find((row) => row.instrument.symbol === "US02")!;
-  us02.returns = us02.returns.slice(-80);
+  // A missing lira close on a holding's dates converts at the close before it, and the notes say which.
   const gap = held("US01", usd).returns[10]!.dateKey;
   const { [gap]: _missing, ...closes } = fx.closes;
-  const gapped = buildPortfolioRisk(account, tickers, { ...market, accountFx: { ...fx, closes } });
+  const bridged = buildPortfolioRisk(account, tickers, { ...market, accountFx: { ...fx, closes } });
+  expect(bridged.coverage.leftOut.map((row) => [row.symbol, row.reason])).toEqual([["SAR1", FX_NO_PAIR]]);
+  expect(bridged.notes).toContain(`USD/TRY has no daily close on ${gap}; the returns across it use the close before it.`);
+  expect(model.notes.some((note) => note.startsWith("USD/TRY has no daily close"))).toBe(false);
+  // Four FX trading days without one are missing data: those holdings are left out; one whose history starts later still converts.
+  const us02 = market.histories.find((row) => row.instrument.symbol === "US02")!;
+  us02.returns = us02.returns.slice(-80);
+  const dates = Object.keys(fx.closes).sort();
+  const dropped = new Set(dates.slice(dates.indexOf(gap), dates.indexOf(gap) + 4));
+  const longGap = Object.fromEntries(Object.entries(fx.closes).filter(([date]) => !dropped.has(date)));
+  const gapped = buildPortfolioRisk(account, tickers, { ...market, accountFx: { ...fx, closes: longGap } });
   expect(gapped.coverage.leftOut.map((row) => [row.symbol, row.reason])).toEqual([
-    ["JPY1", "USD/TRY daily FX history has gaps on the holding's dates"],
-    ["US01", "USD/TRY daily FX history has gaps on the holding's dates"],
+    ["JPY1", "USD/TRY daily FX history has gaps longer than three days on the holding's dates"],
+    ["US01", "USD/TRY daily FX history has gaps longer than three days on the holding's dates"],
     ["SAR1", FX_NO_PAIR],
   ]);
   expect(gapped.coverage.sufficient).toBe(true);

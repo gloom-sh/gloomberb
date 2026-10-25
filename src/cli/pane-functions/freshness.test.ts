@@ -444,11 +444,35 @@ describe("report freshness", () => {
     // A pair that last printed before the final trading day is no close; the line dates it.
     expect(at("2026-10-10T18:45:00Z", pair("2026-10-07T15:00:00Z")))
       .toBe("Source: Gloom Cloud · Wed 7 Oct 2026 15:00 UTC · 15 min delayed · markets closed");
-    // A closed state on a day the FX week trades (a holiday) keeps the day of the print.
+    // While the FX week trades, a closed state a source stamped is no closure: the pair trades, and its print keeps its time.
     expect(at("2026-10-13T12:00:00Z", pair("2026-10-13T09:30:00Z")))
-      .toBe("Source: Gloom Cloud · FX trading day Tue 13 Oct 2026 close · 15 min delayed · markets closed");
+      .toBe("Source: Gloom Cloud · Tue 13 Oct 2026 09:30 UTC · 15 min delayed · markets open");
     expect(at("2026-10-14T14:00:00Z", pair("2026-10-14T13:59:00Z", "REGULAR")))
       .toBe("Source: Gloom Cloud · Wed 14 Oct 2026 13:59 UTC · 15 min delayed · markets open");
+  });
+
+  test("after the Sunday 17:00 New York reopen a pair's quote and its exchange rate say the same", () => {
+    const row = (marketState: string) => ({
+      dataSource: "delayed", delayMinutes: 15, stale: false, sessionExchange: "CCY", marketState,
+      lastUpdated: Date.parse("2026-10-23T20:59:00Z"),
+    });
+    const at = (now: string, marketState: string) => formatFreshnessLine(
+      deriveHeadlessFreshness(rows(), { rows: [row(marketState)] }, Date.parse(now)),
+    );
+    // Before the reopen both are Friday's close.
+    for (const state of ["CLOSED", "REGULAR"]) {
+      expect(at("2026-10-25T20:59:00Z", state), state)
+        .toBe("Source: Gloom Cloud · FX trading day Fri 23 Oct 2026 close · 15 min delayed · markets closed");
+    }
+    // At 21:19 UTC the quote still stored as CLOSED on Friday's print, and the rate placed on the clock, both trade.
+    for (const state of ["CLOSED", "REGULAR"]) {
+      expect(at("2026-10-25T21:19:00Z", state), state)
+        .toBe("Source: Gloom Cloud · Fri 23 Oct 2026 20:59 UTC · 15 min delayed · markets open");
+    }
+    // As does a print after the reopen the source still calls CLOSED: never the close of a day.
+    const sunday = { ...row("CLOSED"), lastUpdated: Date.parse("2026-10-25T21:55:00Z") };
+    expect(formatFreshnessLine(deriveHeadlessFreshness(rows(), { rows: [sunday] }, Date.parse("2026-10-25T22:10:00Z"))))
+      .toBe("Source: Gloom Cloud · Sun 25 Oct 2026 21:55 UTC · 15 min delayed · markets open");
   });
 
   test("futures are closed from the Friday close to the Sunday open, whatever state a quote stamped before it", () => {

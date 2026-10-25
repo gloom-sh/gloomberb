@@ -48,7 +48,16 @@ import {
   type RiskHoldingRequest,
   type RiskMarketSnapshot,
 } from "./risk-client";
-import { accountFxPair, accountFxReason, convertReturnsToAccount, FX_UNAVAILABLE, type AccountFx } from "./risk-fx";
+import {
+  accountFxPair,
+  accountFxReason,
+  bridgedFxClose,
+  convertReturnsToAccount,
+  FX_UNAVAILABLE,
+  fxBridgeNote,
+  riskConversion,
+  type AccountFx,
+} from "./risk-fx";
 
 interface PortfolioRiskHolding {
   id: string;
@@ -77,6 +86,8 @@ interface PortfolioRiskHolding {
   historyAsOf: string | null;
   /** Daily returns in the account currency. */
   returns: DatedReturn[];
+  /** Dates its returns converted at the FX close before them, by pair ("GBP/USD"), its daily closes having none (bridgedFxClose). */
+  fxBridged: ReadonlyMap<string, readonly string[]>;
   error: string | null;
   /** Why the holding is outside the basket; null when it qualifies. */
   leftOut: string | null;
@@ -386,14 +397,42 @@ function cashReason(line: RiskCashLine, accountCurrency: string): string {
     ? "Cash is outside the equity basket"
     : `Cash is outside the equity basket; its ${accountCurrency} value moves with ${own}`;
 }
+/** One note per pair whose missing daily closes the basket's returns were converted across (fxBridgeNote). */
+function fxBridgeNotes(members: readonly Pick<PortfolioRiskHolding, "fxBridged">[]): string[] {
+  const byPair = new Map<string, Set<string>>();
+  for (const member of members)
+    for (const [pair, dates] of member.fxBridged) {
+      const set = byPair.get(pair) ?? new Set<string>();
+      for (const date of dates) set.add(date);
+      byPair.set(pair, set);
+    }
+  return [...byPair].flatMap(([pair, dates]) => fxBridgeNote(pair, dates) ?? []);
+}
 /** USD returns in the account currency, or none with the reason its daily closes cannot convert them. */
-function accountReturns(returns: readonly DatedReturn[], account: AccountFx): { returns: DatedReturn[]; error: string | null } {
-  if (account.error) return { returns: [], error: account.error };
+function accountReturns(
+  returns: readonly DatedReturn[],
+  account: AccountFx,
+): { returns: DatedReturn[]; bridged: string[]; error: string | null } {
+  if (account.error) return { returns: [], bridged: [], error: account.error };
   try {
-    return { returns: convertReturnsToAccount(returns, account), error: null };
+    return { ...convertReturnsToAccount(returns, account), error: null };
   } catch (error) {
-    return { returns: [], error: error instanceof Error ? error.message : accountFxReason(account.currency, FX_UNAVAILABLE) };
+    return { returns: [], bridged: [], error: error instanceof Error ? error.message : accountFxReason(account.currency, FX_UNAVAILABLE) };
   }
+}
+/** The dates a holding's returns converted at the FX close before them, by pair: its listing's into USD, then USD into the account's. */
+function holdingFxBridges(
+  listingCurrency: string | null,
+  listingBridged: readonly string[] | undefined,
+  account: AccountFx | null | undefined,
+  accountBridged: readonly string[] | undefined,
+): Map<string, readonly string[]> {
+  const bridges = new Map<string, readonly string[]>();
+  const listingPair = listingCurrency && listingBridged?.length ? accountFxPair(riskConversion(listingCurrency)?.currency ?? listingCurrency) : null;
+  if (listingPair) bridges.set(listingPair, listingBridged!);
+  const accountPair = account?.pair;
+  if (accountPair && accountBridged?.length) bridges.set(accountPair, [...(bridges.get(accountPair) ?? []), ...accountBridged]);
+  return bridges;
 }
 /**
  * "returns in TRY at daily USD/TRY closes": the currency the basket views of a
@@ -692,6 +731,7 @@ export function buildPortfolioRisk(
       // Converted returns end with the account currency's last daily close.
       historyAsOf: (inAccount ? inAccount.returns.at(-1)?.dateKey : null) ?? history?.asOf ?? null,
       returns,
+      fxBridged: holdingFxBridges(convertedFrom, history?.converted?.fxBridged, account, inAccount?.bridged),
       error,
       leftOut,
     };
@@ -776,6 +816,8 @@ export function buildPortfolioRisk(
           "Converted holdings are matched to the US close of the same date; where their market closes at another time, correlations and betas to US holdings read lower than they are.",
         ]
       : []),
+    // A pair's daily closes skip Good Friday, Easter Monday, 25 Dec and 1 Jan; returns across them use the close before.
+    ...fxBridgeNotes(members),
   ];
   const warnings = [
     ...market.warnings,
@@ -798,12 +840,14 @@ export function buildPortfolioRisk(
     return (instrument && byId.get(riskInstrumentId(instrument))?.returns) || [];
   };
   // SPY's USD returns are the market factor and the equity stress; the risk
-  // rows compare the basket with SPY in the basket's own currency. A session
-  // without an account close is a gap in that benchmark, never bridged, so it
-  // cannot blank the holdings the closes do cover.
+  // rows compare the basket with SPY in the basket's own currency, bridged
+  // across missing account closes as the holdings are (bridgedFxClose). A
+  // session past a longer gap is a gap in that benchmark, so it cannot blank
+  // the holdings the closes do cover.
   const spy = proxy(RISK_BENCHMARK);
+  const accountClose = (date: string) => account ? bridgedFxClose((day) => account.closes[day], date) : null;
   const benchmark = account
-    ? accountReturns(spy.filter((point) => account.closes[point.startDateKey] && account.closes[point.dateKey]), account).returns
+    ? accountReturns(spy.filter((point) => accountClose(point.startDateKey) && accountClose(point.dateKey)), account).returns
     : spy;
   // Since the filing only for a portfolio that has one; any other keeps the trailing window and says why.
   const filed = window.since === "filed" ? portfolio.importedFrom?.filed ?? null : null;

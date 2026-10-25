@@ -621,3 +621,36 @@ test("a bare symbol one company lists, with no quote of its own, is still served
     expect(result?.metadata).toMatchObject({ bars: 1 });
   }
 });
+
+test("a currency pair's bars count no volume: a source's 0 prints as missing in the table and stays empty in the export", async () => {
+  setSystemTime(new Date("2026-10-26T12:00:00Z"));
+  try {
+    const run = async (format: "text" | "csv") => {
+      const cli = createTestCliContext({
+        config: createDefaultConfig("/tmp/gloom-history-command-fixture"),
+        dataProvider: createTestDataProvider({
+          getQuote: async () => createTestQuote({ symbol: "EURUSD=X", currency: "USD", instrumentType: "CURRENCY", listingExchangeName: "CCY" }),
+          getPriceHistoryWithMetadata: async () => ({
+            resolution: "1d",
+            points: [
+              { date: new Date("2025-04-14"), open: 1.13417, high: 1.14247, low: 1.13007, close: 1.13533, volume: 0 },
+              { date: new Date("2025-04-15"), open: 1.1352, high: 1.13792, low: 1.12689, close: 1.12854, volume: 0 },
+            ],
+          }),
+        }),
+      }, { format });
+      await history.execute(["EURUSD=X", "--from", "2025-04-14", "--to", "2025-04-15"], cli.context);
+      const [{ result, options }] = cli.printed;
+      return { result, text: serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format }, options) };
+    };
+    const text = await run("text");
+    expect((text.result.data as Array<{ volume: unknown }>).map((row) => row.volume)).toEqual([null, null]);
+    const table = text.text.split("\n").filter((line) => line.startsWith("2025-04-1"));
+    expect(table).toHaveLength(2);
+    for (const line of table) expect(line).not.toMatch(/\s0\s/);
+    const csv = await run("csv");
+    expect(csv.text.split("\n")[1]).toMatch(/^2025-04-14,1\.13417,1\.14247,1\.13007,1\.13533,,/);
+  } finally {
+    setSystemTime();
+  }
+});

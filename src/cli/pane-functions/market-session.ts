@@ -8,7 +8,7 @@ import {
   nextRegularSessionOpen,
 } from "../../market-data/market/freshness";
 import { futuresWeekendClosure } from "../../market-data/market/futures-week";
-import { currentFxClosureStart } from "../../utils/fx-market-hours";
+import { currentFxClosureStart, isFxMarketOpen } from "../../utils/fx-market-hours";
 import { zonedDateKey } from "../../utils/zoned-date-time";
 import type { ReportTime } from "../../utils/utc-time";
 import type { QuoteIndexSession } from "../../types/financials";
@@ -60,6 +60,10 @@ const US_EXCHANGE_TIME_ZONE = "America/New_York";
  */
 function venueSession(exchange: string, marketState: string | undefined, now: number, calendar?: QuoteIndexSession): VenueSession | null {
   if (isAlwaysOpenExchange(exchange)) return { state: "always" };
+  // Spot FX trades its week, Sunday 17:00 to Friday 17:00 New York, by the clock as an exchange rate's line has it.
+  // A source's own state is not its week: Yahoo stamps a pair CLOSED from that open to London's midnight, which read
+  // `markets closed` beside `fx`'s `markets open` for the same pair.
+  if (exchange === FX_VENUE) return { state: isFxMarketOpen(now) ? "open" : "closed" };
   const next = nextRegularSessionOpen(exchange, now);
   if (next) {
     const { timeZone } = next;
