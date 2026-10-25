@@ -5,6 +5,7 @@ import { portfolioRiskCache } from "./risk-client";
 import { Box, Text } from "../../../ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  useTableLayoutWidth,
   ChartTableHeader,
   EmptyState,
   formatPercentAxis,
@@ -269,7 +270,8 @@ function LegacyPortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
   const effectiveSelectedSectorId = selectedSectorId && sortedSectorRows.some((row) => row.id === selectedSectorId)
     ? selectedSectorId
     : sortedSectorRows[0]?.id ?? null;
-  const sectorColumns = useMemo(() => buildSectorColumns(width), [width]);
+  const tableLayoutWidth = useTableLayoutWidth(width);
+  const sectorColumns = useMemo(() => buildSectorColumns(tableLayoutWidth), [tableLayoutWidth]);
   const hasPositions = portfolioTickers.length > 0;
   const hasAccountContent = accountState != null || brokerPerformance.performance != null
     || brokerPerformance.loading || brokerPerformance.error != null;

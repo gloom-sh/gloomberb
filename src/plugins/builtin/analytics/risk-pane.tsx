@@ -7,6 +7,7 @@ import { resolveChartPalette } from "../../../components/chart/core/palette";
 import { useCallback, useMemo, useRef, useState, type RefObject } from "react";
 import { Box, ScrollBox, useRendererHost, type ScrollBoxRenderable } from "../../../ui";
 import {
+  useTableLayoutWidth,
   Button,
   ChartTableHeader,
   DataTableStackView,
@@ -646,12 +647,13 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
     : sharedUnit
       ? sharedUnit.length <= 3 ? `Value ${sharedUnit}` : sharedUnit
       : "Value";
+  const tableLayoutWidth = useTableLayoutWidth(width);
   const columns = useMemo<DataTableColumn[]>(
     () => [
       {
         id: "label",
         label: LABEL_HEADERS[view],
-        width: Math.min(30, Math.max(19, width - 45)),
+        width: Math.min(30, Math.max(19, tableLayoutWidth - 45)),
         align: "left",
       },
       {
@@ -671,7 +673,7 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
         ? []
         : [{ id: "asOf", label: "As of", width: 11, align: "left" as const }]),
       // Attribution's evidence is the three effects, now columns of their own.
-      ...(width >= 95 && !footerEvidence && !attributionParts
+      ...(tableLayoutWidth >= 95 && !footerEvidence && !attributionParts
         ? [
             {
               id: "detail",
@@ -683,7 +685,7 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
           ]
         : []),
     ],
-    [width, view, valueHeader, sharedUnit, attributionParts, footerEvidence, showPercentile, sharedDate, rows],
+    [tableLayoutWidth, view, valueHeader, sharedUnit, attributionParts, footerEvidence, showPercentile, sharedDate, rows],
   );
   const selectView = (value: string) => {
     setView(value);

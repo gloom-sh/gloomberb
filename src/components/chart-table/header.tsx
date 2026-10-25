@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from "react";
+import { useLayoutEffect, useMemo, useRef, type ReactNode } from "react";
 import { useThemeColors } from "../../theme/theme-context";
 import type { PricePoint } from "../../types/financials";
 import type { ChartPanelSpec, ResolvedSeries } from "../../time-series/types";
@@ -166,6 +166,15 @@ export function ChartStrip({ strip, width, figures = [] }: {
 function useChartTableSizing(props: ChartTableHeaderProps): { layout: ChartTableLayout; width: number } {
   const { nativePaneChrome } = useUiCapabilities();
   const size = useSettledLayoutSize(props.width, props.height, { enabled: nativePaneChrome === true, maxStretch: Infinity });
+  const nextChromeRows = props.tableChromeRows
+    ?? (props.tableColumns ? chartTableChromeRows(props.tableColumns, props.width) : undefined);
+  // Column builders can follow the current width while this band's size is held.
+  // Keep its scrollbar budget with the committed layout until the resize settles.
+  const committedChromeRows = useRef(nextChromeRows);
+  useLayoutEffect(() => {
+    if (!size.resizing) committedChromeRows.current = nextChromeRows;
+  }, [nextChromeRows, size.resizing]);
+  const tableChromeRows = size.resizing ? committedChromeRows.current : nextChromeRows;
   const { chart } = props;
   const hasChart = !!chart && (!!chart.render || !!plottable(chart.series) || !!chart.loading || !!chart.empty);
   const layout = chartTableLayout({
@@ -174,8 +183,7 @@ function useChartTableSizing(props: ChartTableHeaderProps): { layout: ChartTable
     queryRows: props.query ? 1 : 0,
     figures: props.figures,
     tableRows: props.tableRows,
-    tableChromeRows: props.tableChromeRows
-      ?? (props.tableColumns ? chartTableChromeRows(props.tableColumns, size.width) : undefined),
+    tableChromeRows,
     chart: hasChart
       ? {
         minRows: chart.minRows,

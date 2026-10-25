@@ -1,5 +1,5 @@
 /** @jsxImportSource react */
-import { expect, test } from "bun:test";
+import { expect, jest, test } from "bun:test";
 import { createDomUiHost } from "../../renderers/dom/dom-ui-host";
 import { WebInputHostProvider } from "../../renderers/dom/input-host";
 import { createDomTestHarness } from "../../renderers/dom/test-utils";
@@ -14,6 +14,7 @@ import { DataTableView } from "../data-table/view";
 import type { DataTableColumn } from "../ui";
 import { formatBpAxis } from "./axis";
 import { ChartTableHeader, useChartTableLayout, type ChartTableHeaderProps } from "./header";
+import { chartTableChromeRows } from "./layout";
 import { beginLiveResize } from "../../ui/live-resize";
 import { RESIZE_SETTLE_MS } from "../../ui/resize-settle";
 
@@ -103,4 +104,40 @@ test("the header holds its band and summary through a live resize while its char
   expect(container.querySelector('[data-band-mode="none"]')).toBeTruthy();
   expect(container.querySelector('[data-chart-width]')).toBeNull();
   expect(summaryRows()).toBe(1);
+});
+
+
+test.each(["columns", "explicit"] as const)("the header holds its scrollbar budget through live %s sizing", async (source) => {
+  let resize: (width: number) => void = () => {};
+  function Harness() {
+    const [width, setWidth] = useState(90);
+    resize = setWidth;
+    const columns = [{ width: Math.max(86, width - 4) }];
+    const layout = useChartTableLayout({
+      width, height: 11, tableRows: 60, chart: { minRows: 6, render: () => null },
+      ...(source === "columns" ? { tableColumns: columns } : { tableChromeRows: chartTableChromeRows(columns, width) }),
+    });
+    return <div data-band-mode={layout.mode} />;
+  }
+  const container = await render(<Harness />);
+  const mode = () => container.querySelector("[data-band-mode]")?.getAttribute("data-band-mode");
+  expect(mode()).toBe("full");
+  jest.useFakeTimers();
+  let end = () => {};
+  try {
+    for (const [width, settledMode] of [[160, "full"], [40, "strip"]] as const) {
+      end = beginLiveResize();
+      await act(async () => resize(width));
+      await act(async () => { jest.advanceTimersByTime(RESIZE_SETTLE_MS * 2); });
+      // Live columns grow with the viewport, then genuinely overflow on shrinking.
+      // Neither may remove the full chart until the held layout commits.
+      expect(mode()).toBe("full");
+      await act(async () => { end(); });
+      await act(async () => { jest.advanceTimersByTime(RESIZE_SETTLE_MS); });
+      expect(mode()).toBe(settledMode);
+    }
+  } finally {
+    end();
+    jest.useRealTimers();
+  }
 });
