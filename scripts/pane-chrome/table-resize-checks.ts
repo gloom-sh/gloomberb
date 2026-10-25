@@ -299,7 +299,7 @@ async function checkHeaderMinimumRegrab(cdp: Cdp, empty: boolean): Promise<void>
         if (event.target !== grid || event.propertyName !== 'grid-template-columns') return;
         const labels = [...pane.querySelectorAll('[data-gloom-role=data-table-header-cell]')].map((cell) => cell.textContent.trim());
         // Release can start an earlier transition before the held labels commit.
-        if (labels.join() !== 'IMPACT,COUNTRY,EVENT') return;
+        if (labels.join() !== 'IMPACT,COUNTRY NAME,EVENT') return;
         grid.removeEventListener('transitionrun', regrab);
         const animation = grid.getAnimations().find((item) => item.transitionProperty === 'grid-template-columns');
         if (!animation) { window.__headerRegrab = { error: 'No header-floor transition' }; return; }
@@ -311,7 +311,7 @@ async function checkHeaderMinimumRegrab(cdp: Cdp, empty: boolean): Promise<void>
         const before = ${tableResizeFrame("headers")};
         const widths = getComputedStyle(grid).gridTemplateColumns.split(/\\s+/).map(parseFloat);
         const cell = parseFloat(getComputedStyle(grid).getPropertyValue('--cell-w'));
-        const floors = [8 * cell, 9 * cell];
+        const floors = [8 * cell, 14 * cell];
         const handle = pane.querySelector('[data-gloom-role=resize-handle]');
         const box = handle.getBoundingClientRect();
         const init = { bubbles: true, cancelable: true, button: 0, buttons: 1, clientX: box.x + box.width / 2, clientY: box.y + box.height / 2 };
@@ -497,16 +497,30 @@ export const tableResizeSteps = [...TABLE_RESIZE_KINDS.flatMap((kind) => ["float
       const content = pane.querySelector('[data-gloom-role=data-table-scroll-content]');
       content.addEventListener('transitionrun', function regrab(event) {
         if (event.target !== content || event.propertyName !== 'grid-template-columns') return;
-        content.removeEventListener('transitionrun', regrab);
         // Pause the real CSS transition halfway through: the machine's frame
         // rate must not decide whether the test catches the short transition.
         const animation = content.getAnimations().find((item) => item.transitionProperty === 'grid-template-columns');
         if (!animation) { window.__tableRegrab = { error: 'No column transition' }; return; }
+        const time = animation.currentTime;
+        const playing = animation.playState === 'running';
         animation.pause();
         animation.currentTime = 0;
         const start = ${tableResizeFrame("hp")};
         animation.currentTime = Number(animation.effect.getTiming().duration) / 2;
         const before = ${tableResizeFrame("hp")};
+        const travel = Math.max(0, ...['cells', 'text'].flatMap((family) =>
+          Object.entries(start[family]).flatMap(([key, edges]) => {
+            const next = before[family][key];
+            return next ? [Math.abs(next[0] - edges[0]), Math.abs(next[1] - edges[1])] : [];
+          })));
+        // Releasing the painted override can change track syntax without
+        // moving a column. Wait for the deferred layout's actual redistribution.
+        if (travel < 1) {
+          animation.currentTime = time;
+          if (playing) animation.play();
+          return;
+        }
+        content.removeEventListener('transitionrun', regrab);
         const handle = pane.querySelector('[data-gloom-role=resize-handle]');
         const box = handle.getBoundingClientRect();
         const init = { bubbles: true, cancelable: true, button: 0, buttons: 1, clientX: box.x + box.width / 2, clientY: box.y + box.height / 2 };
