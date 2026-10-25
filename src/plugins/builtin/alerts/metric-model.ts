@@ -2,7 +2,8 @@
 export const METRIC_ALERTS_KEY = "metricAlerts";
 export type AlertMetric =
   | { kind: "pe" | "ps" }
-  | { kind: "rsi" | "close_ma"; period: number }
+  | { kind: "rsi"; period: number }
+  | { kind: "close_ma"; period: number }
   | { kind: "ma_cross"; period: number; slowPeriod: number; direction: "above" | "below" };
 export interface MetricReading {
   value: number;
