@@ -52,13 +52,40 @@ function staleness(date: string | null | undefined, newest: string | null): { se
   return { sessionsBehind: behind, stale: behind != null && behind > STALE_AFTER_SESSIONS };
 }
 
-/** HV after the close of the last session on or before `date`; null before the series starts. */
+/** An HV further than this many sessions from the IV's date says nothing about it: IV/HV is left empty. */
+const HV_MAX_SESSIONS_APART = 3;
+
+/**
+ * HV after the close of the last session on or before `date`, when that is within
+ * `HV_MAX_SESSIONS_APART` sessions of it; null before the series starts or when the
+ * nearest HV is older than that.
+ */
 export function hvOn(hv: ScreenHv, date: string): { date: string; value: number } | null {
   for (let index = hv.series.length - 1; index >= 0; index -= 1) {
     const [sessionDate, value] = hv.series[index]!;
-    if (sessionDate <= date) return { date: sessionDate, value };
+    if (sessionDate <= date) return sessionsBehind(sessionDate, date) <= HV_MAX_SESSIONS_APART ? { date: sessionDate, value } : null;
   }
   return null;
+}
+
+/**
+ * How a reading's method is worded wherever it is dated: "quote", "close", or "close mid" for a
+ * close solved from quote midpoints (mid or mixed). Two readings that word alike share one label.
+ */
+export function readingSource(method: IvMethod | null | undefined, basis?: IvCloseBasis | null): string {
+  return method === "quote-mid" ? "quote" : basis === "mid" || basis === "mixed" ? "close mid" : "close";
+}
+
+const STALE_NOTE_LIMIT = 5;
+/**
+ * The stale readings, dated, and what that leaves out, in one wording for HIVG and VCA: "Stale, left
+ * out of rank: IV 1Y ATM 2025-01-17 (over 5 sessions behind)." The list stops at five, then "N more".
+ */
+export function staleReadingsNote(leftOut: string, items: ReadonlyArray<{ label: string; date: string }>): string | null {
+  if (!items.length) return null;
+  const listed = items.slice(0, STALE_NOTE_LIMIT).map((item) => `${item.label} ${item.date}`);
+  const more = items.length - listed.length;
+  return `Stale, left out of ${leftOut}: ${listed.join(", ")}${more > 0 ? `, ${more} more` : ""} (over ${STALE_AFTER_SESSIONS} sessions behind).`;
 }
 
 export interface DatedValue { date: Date; value: number | null }
@@ -277,9 +304,7 @@ export function projectIvHistory(
     return { ...row, ...behind, ...behind.stale ? { rank: null, percentile: null } : {} };
   });
   const staleRows = measured.filter((row) => row.stale);
-  const staleNote = staleRows.length
-    ? `Stale, left out of rank: ${staleRows.map((row) => `${row.label} ${row.date}`).join(", ")} `
-      + `(more than ${STALE_AFTER_SESSIONS} sessions behind ${newest}).` : null;
+  const staleText = staleReadingsNote("rank", staleRows.map((row) => ({ label: row.label, date: row.date! })));
 
   // Worded as VCA words each symbol (screenCoverage).
   if (payload.status === "queued") warnings.push(`${payload.symbol} ${queuedText(payload.coverage?.addedAt, options.now ?? Date.now())}.`);
@@ -302,7 +327,7 @@ export function projectIvHistory(
     iv30: visible(tradeIv30), iv90: visible(byMethod(payload.series, "trade-close", "iv90")), iv365: visible(tradeIv365),
     quoteIv30: visible(byMethod(payload.series, "quote-mid", "iv30")),
     hv, spread: visible(spreadAll), skew: visible(skew.points),
-    skewSince: skew.points[0] ? day(skew.points[0].date) : null, skewNote: skew.note, stats: measured, staleNote,
+    skewSince: skew.points[0] ? day(skew.points[0].date) : null, skewNote: skew.note, stats: measured, staleNote: staleText,
     since, oneYearNote, asOf: latestDate, warnings,
   };
 }
@@ -374,6 +399,8 @@ export interface RichCheapDates {
   rankApart: boolean;
   /** Some skew comes from a different session than its row's reading. */
   skewApart: boolean;
+  /** Some HV is dated on a different session than the IV it sits beside. */
+  hvApart: boolean;
 }
 export function richCheapDates(rows: readonly RichCheapRow[]): RichCheapDates {
   const read = rows.filter((row) => row.date && row.method);
@@ -381,11 +408,13 @@ export function richCheapDates(rows: readonly RichCheapRow[]): RichCheapDates {
   const first = read[0], firstRanked = ranked[0];
   return {
     // A stale row's own date is said in its row, never once for all.
-    reading: first && read.every((row) => row.date === first.date && row.method === first.method && row.basis === first.basis && !row.stale)
+    // The label the rows would be dated with, not the raw basis: a mid and a mixed close are both "close mid".
+    reading: first && read.every((row) => row.date === first.date && readingSource(row.method, row.basis) === readingSource(first.method, first.basis) && !row.stale)
       ? { date: first.date!, method: first.method!, basis: first.basis } : null,
     rank: firstRanked && ranked.every((row) => row.rankDate === firstRanked.rankDate) ? firstRanked.rankDate : null,
     rankApart: !!firstRanked && ranked.some((row) => row.rankDate !== firstRanked.rankDate),
     skewApart: rows.some((row) => row.skew != null && row.skewDate !== row.date),
+    hvApart: rows.some((row) => row.hv != null && row.hvDate != null && row.hvDate !== row.date),
   };
 }
 
@@ -475,13 +504,9 @@ export function screenCoverage(
     missing: pending.filter((row) => row.iv30 == null && row.date == null).map((row) => row.symbol) };
 }
 
-/**
- * The symbols whose reading is stale, dated, and what that leaves out: "Stale,
- * left out of IV/HV, rank and Rich/Cheap: FXB 2026-05-18, FXA 2026-03-19."
- */
+/** The symbols whose reading is stale, dated, and what that leaves out of the screen. */
 export function screenStaleNote(rows: readonly RichCheapRow[]): string | null {
-  const stale = rows.filter((row) => row.stale && row.date);
-  return stale.length ? `Stale, left out of IV/HV, rank and Rich/Cheap: ${stale.map((row) => `${row.symbol} ${row.date}`).join(", ")}.` : null;
+  return staleReadingsNote("IV/HV, rank and Rich/Cheap", rows.flatMap((row) => row.stale && row.date ? [{ label: row.symbol, date: row.date }] : []));
 }
 
 /**

@@ -105,6 +105,21 @@ describe("VCA dates", () => {
   });
 });
 
+describe("VCA definitions", () => {
+  test("the skew line is there only with a skew column, and IV/HV always says it uses the HV of the same date", async () => {
+    const without = vcaDefinitions({ skew: false });
+    const withSkew = vcaDefinitions({ skew: true });
+    expect(without.some((line) => line.includes("25D skew"))).toBe(false);
+    expect(withSkew[0]).toContain("25D skew");
+    expect(withSkew.slice(1)).toEqual(without);
+    expect(without[0]).toContain("IV/HV: IV30 over the HV20 of the same date");
+    // The report follows its columns: no row has a skew, so the notes carry none.
+    const { keys, result } = await load([row("NVDA", reading("2026-10-09", "trade-close", 0.293), "2026-10-09")]);
+    expect(keys).not.toContain("skew");
+    expect(result.notes).toEqual(without);
+  });
+});
+
 describe("VCA backfill states", () => {
   afterEach(() => { setSystemTime(); });
   const ready = row("AAPL", reading("2026-10-09", "trade-close", 0.3), "2026-10-09");
@@ -273,11 +288,12 @@ describe("HIVG exports for scripts", () => {
     asOf: null, fetchedAt: "2026-10-21T00:00:00Z", stale: false, status: "available",
   });
   /** `meetings`: the FOMC days the rate path lists, or null when it cannot be read. */
-  const load = async (symbol: string, points: IvPoint[], options: Record<string, string | number> = {}, meetings: string[] | null = []) => {
+  const load = async (symbol: string, points: IvPoint[], options: Record<string, string | number> = {}, meetings: string[] | null = [],
+    patch: Partial<IvHistoryPayload> = {}) => {
     const last = points.at(-1)?.sessionDate ?? null;
     const payload: IvHistoryPayload = { version: 1, symbol, asOf: "2026-10-21", status: points.length ? "ready" : "unavailable",
       coverage: { source: "seed", addedAt: "2026-08-01T00:00:00Z", backfilledThrough: last, since: points[0]?.sessionDate ?? null },
-      stats: { iv30: null, iv90: null }, latest: null, series: points, warnings: points.length ? [] : ["Coverage for new underlyings is full; try again later."] };
+      stats: { iv30: null, iv90: null }, latest: null, series: points, warnings: points.length ? [] : ["Coverage for new underlyings is full; try again later."], ...patch };
     const args = createTestHeadlessArgs({ rawArgument: symbol, argument: symbol, symbols: [symbol], options: { lookback: "ALL", hvWindow: "20", offset: 0, ...options } });
     const apiClient = { impliedVolatility: async () => payload, getCloudRatePath: async () => {
       if (!meetings) throw new Error("offline");
@@ -287,7 +303,7 @@ describe("HIVG exports for scripts", () => {
     const result = await ivHistoryHeadless.load(args, createTestHeadlessContext({ apiClient, marketData })) as HeadlessBundleResult;
     const freshness = deriveHeadlessFreshness(ivHistoryHeadless, result);
     const csv = renderReportCsv(headlessReportTables(ivHistoryHeadless, result, args, "HIVG", freshness, { complete: true, unavailableSymbols: [] }), freshness);
-    return { result, lines: csv.split("\n") };
+    return { result, lines: csv.split("\n"), text: renderHeadlessPaneText(ivHistoryHeadless, result, args, "HIVG", freshness) };
   };
   const headers = (lines: string[]) => lines.filter((_, index) => lines[index - 1]?.startsWith("# section:"));
   const releaseRows = (lines: string[]) => lines.filter((line) => line.startsWith("FOMC,")).map((line) => line.split(",").slice(0, 5).join(","));
@@ -298,12 +314,33 @@ describe("HIVG exports for scripts", () => {
     const uncovered = await load("SCHD", []);
     expect(headers(uncovered.lines)).toEqual(headers(covered.lines));
     expect(headers(covered.lines)).toEqual([
-      "Measure,Current,As of,Method,52w low,52w high,Rank,Pctl,Sessions,Stale,status,symbol_or_series,currency_or_unit,interval,source,as_of",
+      "Measure,Current,As of,Method,52w low,52w high,Rank,Pctl,Sessions,Basis,Stale,status,symbol_or_series,currency_or_unit,interval,source,as_of",
       "Session,IV30 (%),IV90 (%),IV1Y (%),HV (%),IV-HV,skew25d put-call (pts),rr25d call-put (pts),status,symbol_or_series,currency_or_unit,interval,source,as_of",
     ]);
     // Each measure's unit stays in its label, figures or none.
     const measures = (lines: string[]) => lines.filter((line) => /^(IV|HV) /.test(line)).map((line) => line.split(",")[0]);
     expect(measures(uncovered.lines)).toEqual(measures(covered.lines));
+  });
+
+  test("a stale measure is dated stale, a close solved from mids says close mid, and the note is VCA's wording", async () => {
+    setSystemTime(new Date("2026-10-21T14:00:00Z"));
+    const old = { method: "trade-close" as const, rank: 80, percentile: 80, low: 0.07, high: 0.09, samples: 0, windowStart: null };
+    // The prices run to the 21st: the 20th is a session behind, the 13th six, January 2025 far more.
+    const { result, lines, text } = await load("SPY", september, {}, [], { stats: {
+      iv30: { ...old, value: 0.14, date: "2026-10-20", basis: "mid" },
+      iv90: { ...old, value: 0.15, date: "2026-10-13" },
+      iv365: { ...old, value: 0.083, date: "2025-01-17" },
+    } });
+    expect(text).toMatch(/IV 30d ATM\s+14\.0%\s+2026-10-20\s+close mid/);
+    expect(text).toMatch(/IV 90d ATM\s+15\.0%\s+2026-10-13 stale\s+close\s/);
+    expect(text).toMatch(/IV 1Y ATM\s+8\.3%\s+2025-01-17 stale/);
+    expect(text).not.toContain("trade-close mid");
+    expect(result.notes?.find((note) => note.startsWith("Stale, left out of rank: IV 90d ATM 2026-10-13, IV 1Y ATM 2025-01-17"))
+      ?.endsWith("(over 5 sessions behind).")).toBe(true);
+    // Exports keep the raw method and carry the basis and the stale flag.
+    const measure = lines.find((line) => line.startsWith("IV 30d ATM"))!.split(",");
+    expect(measure.slice(2, 4)).toEqual(["2026-10-20", "trade-close"]);
+    expect(measure).toContain("mid");
   });
 
   test("--event fomc --offset -6 is one row per release, read on the sixth session before the first session on or after it", async () => {

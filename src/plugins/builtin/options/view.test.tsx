@@ -13,6 +13,7 @@ import type { OptionContract, OptionsChain, Quote, TickerFinancials } from "../.
 import type { TickerRecord } from "../../../types/ticker";
 import { formatExpDate } from "../../../utils/options";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
+import { IV_FILLED_NOTE } from "./analytics";
 import { OptionsView } from "./view";
 import { takeTradeIntent } from "../broker-trading/command";
 import type { BrokerAdapter } from "../../../types/broker";
@@ -366,6 +367,27 @@ test("a typed expiry the chain does not list fails its report with the options c
   // `fn OMON --expiration` prints this and exits non-zero, as `options --expiration` does, instead of reading the pane back.
   expect(renderedReportFailure(registry.snapshot())).toEqual(missingExpiryMessage("AAPL", 1_782_432_000, chain.expirationDates));
   expect(renderedReportNotices(registry.snapshot()).notices.some((notice) => notice.startsWith("Expiry"))).toBe(false);
+});
+
+test("a strike whose IV was filled from its neighbours prints ~, says so in the footer, and its report carries the notice", async () => {
+  // No bid on the 120 call: it has no two-sided quote to solve, so its IV is read off the strikes either side.
+  const chain = makeChain([100, 101, 120], 101);
+  chain.calls = chain.calls.map((contract) => contract.strike === 120 ? { ...contract, bid: 0, ask: 0.05, lastPrice: 0.02 } : contract);
+  setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({ getOptionsChain: async () => chain })));
+  const registry = createRemoteUiRegistry();
+  await act(async () => {
+    await tui.render(<RemoteUiRegistryProvider registry={registry}>
+      <OptionsHarness ticker={makeTicker("AAPL")} quotePrice={101} showFooter width={190} height={16} />
+    </RemoteUiRegistryProvider>, { width: 190, height: 16 });
+  });
+  await renderSettled();
+  const frame = tui.frame();
+  const row = (strike: number) => frame.split("\n").find((line) => new RegExp(`\\s${strike}\\s`).test(line))!;
+  // The filled strike's IV is marked; a solved strike's is not.
+  expect(row(120)).toMatch(/~\d+\.\d%/);
+  expect(row(100)).not.toContain("~");
+  expect(frame).toContain("IV filled");
+  expect(renderedReportNotices(registry.snapshot()).notices).toContain(IV_FILLED_NOTE);
 });
 
 test("shows the spot, volatility statistics and the mirrored default fields", async () => {

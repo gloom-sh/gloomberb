@@ -1,5 +1,5 @@
 import type { IvCloseBasis, IvMethod } from "./client";
-import type { IvStatRow, IvStatUnit, RichCheap, RichCheapDates } from "./model";
+import { readingSource, type IvStatRow, type IvStatUnit, type RichCheap, type RichCheapDates } from "./model";
 
 /**
  * VCA's sign conventions, and what VIX is beside an at-the-money IV30, one
@@ -50,8 +50,6 @@ export function formatStat(value: number | null | undefined, unit: IvStatUnit): 
  * it is not a live feed, so it is not called live. A close solved from quote
  * midpoints, where its prints were off the market, says so.
  */
-const readingSource = (method: IvMethod | null | undefined, basis?: IvCloseBasis | null) =>
-  method === "quote-mid" ? "quote" : basis === "mid" || basis === "mixed" ? "close mid" : "close";
 export function statSource(row: Pick<IvStatRow, "method"> & { basis?: IvCloseBasis | null }): string {
   return row.method === "prices" ? "closes" : row.method ? readingSource(row.method, row.basis) : "";
 }

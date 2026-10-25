@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { PricePoint } from "../../../types/financials";
 import type { IvHistoryPayload, IvPoint, IvScreenRow, ScreenHv } from "./client";
 import { statSource } from "./format";
-import { hvOn, midrankPercentile, projectIvHistory, projectRichCheap, richCheapDates, screenCoverage, screenPaneNotices, screenStaleNote, sessionsBehind, verdictFor } from "./model";
+import { hvOn, midrankPercentile, projectIvHistory, projectRichCheap, readingSource, richCheapDates, screenCoverage, screenPaneNotices, screenStaleNote, sessionsBehind, staleReadingsNote, verdictFor } from "./model";
 
 const DAY = 86_400_000;
 const sessions = (count: number, end = "2026-09-22") => {
@@ -151,7 +151,7 @@ test("a queued symbol does not break a date every other row shares", () => {
   });
   const queued: IvScreenRow = { symbol: "ZZZZ", status: "queued", iv30: null, iv90: null, latest: null, skew: null };
   expect(richCheapDates(projectRichCheap([ready("A", "2026-09-22"), queued, ready("B", "2026-09-22")])))
-    .toEqual({ reading: { date: "2026-09-23", method: "quote-mid", basis: null }, rank: "2026-09-22", rankApart: false, skewApart: false });
+    .toEqual({ reading: { date: "2026-09-23", method: "quote-mid", basis: null }, rank: "2026-09-22", rankApart: false, skewApart: false, hvApart: false });
   expect(richCheapDates(projectRichCheap([ready("A", "2026-09-22"), ready("B", "2026-09-21")])))
     .toMatchObject({ rank: null, rankApart: true });
 });
@@ -251,7 +251,7 @@ describe("stale readings", () => {
     expect(edge).toMatchObject({ verdict: "rich", rank: 100 });
     // Today's HV stays beside a stale IV30 as today's, but never divides it.
     expect(stale!.hv).toBe(0.054);
-    expect(screenStaleNote([fresh!, stale!])).toBe("Stale, left out of IV/HV, rank and Rich/Cheap: FXB 2026-10-15.");
+    expect(screenStaleNote([fresh!, stale!])).toBe("Stale, left out of IV/HV, rank and Rich/Cheap: FXB 2026-10-15 (over 5 sessions behind).");
     expect(screenStaleNote([fresh!])).toBeNull();
   });
 
@@ -261,7 +261,30 @@ describe("stale readings", () => {
     expect(row!.ivHv).toBeCloseTo(0.085 / 0.053);
     // A reading dated before the HV series starts has nothing to divide by.
     expect(projectRichCheap([screened("FXB", "2026-05-01")], hv)[0]).toMatchObject({ ivHv: null, stale: true });
-    expect(hvOn(hv.get("FXB")!, "2026-10-21")).toEqual({ date: "2026-05-18", value: 0.05 });
+  });
+
+  test("an HV more than three sessions from the IV's date is not its HV: IV/HV is empty and the HV shown says its own date", () => {
+    // The HV series skips from May to October; the reading of the 21st has only the May HV before it.
+    expect(hvOn(hv.get("FXB")!, "2026-10-21")).toBeNull();
+    // Three sessions off still divides; four does not.
+    const near = hvSeries([["2026-10-16", 0.05], ["2026-10-23", 0.054]]);
+    expect(hvOn(near, "2026-10-21")).toEqual({ date: "2026-10-16", value: 0.05 });
+    expect(hvOn(near, "2026-10-22")).toBeNull();
+    const [row] = projectRichCheap([screened("FXB", "2026-10-22")], new Map([["FXB", near]]));
+    expect(row).toMatchObject({ stale: false, ivHv: null, hv: 0.054, hvDate: "2026-10-23" });
+    const [close] = projectRichCheap([screened("FXB", "2026-10-21")], new Map([["FXB", near]]));
+    expect(close).toMatchObject({ hv: 0.05, hvDate: "2026-10-16" });
+    expect(close!.ivHv).toBeCloseTo(0.085 / 0.05);
+  });
+
+  test("the HV date is its own column when any HV is not dated as its IV is", () => {
+    const both = new Map([...hv, ["FXA", hvSeries([["2026-10-21", 0.06], ["2026-10-22", 0.061]])] as const]);
+    expect(richCheapDates(projectRichCheap([screened("FXB", "2026-10-22"), screened("FXA", "2026-10-22")], both)).hvApart).toBe(false);
+    // FXA's HV stops on the 16th, four sessions before its IV: its HV is dated, and beside no IV/HV.
+    const behind = new Map([...hv, ["FXA", hvSeries([["2026-10-15", 0.06], ["2026-10-16", 0.061]])] as const]);
+    const rows = projectRichCheap([screened("FXB", "2026-10-22"), screened("FXA", "2026-10-22")], behind);
+    expect(richCheapDates(rows).hvApart).toBe(true);
+    expect(rows[1]).toMatchObject({ hv: 0.061, hvDate: "2026-10-16", ivHv: null });
   });
 
   test("a stale reading breaks the date every other row shares, and a stale skew is not shown", () => {
@@ -283,6 +306,32 @@ describe("stale readings", () => {
     expect(stat("iv365")).toMatchObject({ value: 0.083, stale: true, rank: null, percentile: null });
     expect(stat("iv365").sessionsBehind).toBeGreaterThan(200);
     expect(stat("hv").stale).toBe(false);
-    expect(model.staleNote).toBe("Stale, left out of rank: IV 1Y ATM 2025-01-17 (more than 5 sessions behind 2026-10-23).");
+    expect(model.staleNote).toBe("Stale, left out of rank: IV 1Y ATM 2025-01-17 (over 5 sessions behind).");
+  });
+  test("HIVG and VCA word a stale note alike, and a long list stops at five", () => {
+    const items = ["FXB", "FXA", "UDN", "FXC", "FXF", "FXS", "FXE"].map((label, index) => ({ label, date: `2026-03-0${index + 1}` }));
+    expect(staleReadingsNote("rank", items.slice(0, 2))).toBe("Stale, left out of rank: FXB 2026-03-01, FXA 2026-03-02 (over 5 sessions behind).");
+    expect(staleReadingsNote("rank", items)).toBe(
+      "Stale, left out of rank: FXB 2026-03-01, FXA 2026-03-02, UDN 2026-03-03, FXC 2026-03-04, FXF 2026-03-05, 2 more (over 5 sessions behind).");
+    expect(staleReadingsNote("rank", [])).toBeNull();
+    const rows = projectRichCheap(items.map((item) => screened(item.label, item.date)));
+    expect(screenStaleNote(rows)).toBe(
+      "Stale, left out of IV/HV, rank and Rich/Cheap: FXB 2026-03-01, FXA 2026-03-02, UDN 2026-03-03, FXC 2026-03-04, FXF 2026-03-05, 2 more (over 5 sessions behind).");
+  });
+
+  test("rows share a date label when they word their method alike, whatever the raw basis", () => {
+    type Basis = "print" | "mid" | "mixed" | null | undefined;
+    const rows = (...bases: Basis[]) => projectRichCheap(bases.map((basis, index) => {
+      const row = screened(`S${index}`, "2026-10-22");
+      // An older server sends no basis at all.
+      return { ...row, latest: { ...row.latest!, ...basis === undefined ? {} : { basis } } };
+    }));
+    // Mid and mixed are both "close mid"; null, absent and print are all "close".
+    expect(richCheapDates(rows("mid", "mixed")).reading).toMatchObject({ date: "2026-10-22" });
+    expect(richCheapDates(rows(null, "print", undefined)).reading).toMatchObject({ date: "2026-10-22" });
+    // A close and a close mid are worded apart, so each row says its own.
+    expect(richCheapDates(rows("print", "mid")).reading).toBeNull();
+    expect(readingSource("trade-close", "mixed")).toBe("close mid");
+    expect(readingSource("quote-mid", "mid")).toBe("quote");
   });
 });

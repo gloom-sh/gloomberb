@@ -10,7 +10,7 @@ import { useAutoRefresh } from "../../../react/auto-refresh";
 import { compareSortValues, nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { loadIvScreen, loadScreenVolatilities, type ScreenHv } from "./client";
 import { formatPoints, formatRank, formatSpot, formatVol, readingLabel, sharedDates, shortDate, vcaDefinitions, verdictLabel } from "./format";
-import { projectRichCheap, type RichCheapRow, richCheapDates, screenPaneNotices, type VcaPreset } from "./model";
+import { projectRichCheap, readingSource, type RichCheapRow, richCheapDates, screenPaneNotices, type VcaPreset } from "./model";
 import { vcaUniverse } from "./universe";
 import { MovedTickerState } from "../../../components/layout/pane/ticker-fate-gate";
 import type { MovedTickerChange } from "../../../tickers/ticker-changes";
@@ -34,6 +34,7 @@ const COLUMNS: DataTableColumn[] = [
   { id: "skew", label: "25D skew", width: 9, align: "right" },
   { id: "skewDate", label: "Skew as of", width: 11, align: "right" },
   { id: "hv", label: `HV${HV_WINDOW}`, width: 7, align: "right" },
+  { id: "hvDate", label: "HV as of", width: 9, align: "right" },
   { id: "ivHv", label: "IV/HV", width: 6, align: "right" },
 ];
 
@@ -85,7 +86,7 @@ export function IvScreenPane({ paneId, width, height, focused }: PaneProps) {
   // A date every row shares moves to the footer; a column no row fills, or whose dates agree, is left out.
   const hasSkew = useMemo(() => rows.some((row) => row.skew != null), [rows]);
   // A close solved from quote midpoints names itself, which a date alone has no room for.
-  const dateWidth = useMemo(() => rows.some((row) => !row.stale && (row.basis === "mid" || row.basis === "mixed")) ? 15 : 11, [rows]);
+  const dateWidth = useMemo(() => rows.some((row) => !row.stale && readingSource(row.method, row.basis) === "close mid") ? 15 : 11, [rows]);
   const columns = useMemo(() => COLUMNS.filter((column) => {
     switch (column.id) {
       case "date": return !dates.reading;
@@ -94,6 +95,7 @@ export function IvScreenPane({ paneId, width, height, focused }: PaneProps) {
       case "iv1yPercentile": return rows.some((row) => row.iv1yPercentile != null);
       case "skew": return hasSkew;
       case "skewDate": return dates.skewApart;
+      case "hvDate": return dates.hvApart;
       default: return true;
     }
   }).map((column) => column.id === "date" ? { ...column, width: dateWidth } : column), [rows, dates, hasSkew, dateWidth]);
@@ -134,6 +136,7 @@ export function IvScreenPane({ paneId, width, height, focused }: PaneProps) {
       case "skew": return { text: formatPoints(row.skew) };
       case "skewDate": return { text: row.skewDate ? readingLabel(row.skewDate, "quote-mid", true) : "--", color: colors.textDim };
       case "hv": return { text: hv.has(row.symbol) ? formatVol(row.hv) : "...", color: colors.positive };
+      case "hvDate": return { text: row.hvDate ? shortDate(row.hvDate) : "--", color: colors.textDim };
       case "ivHv": return { text: row.ivHv == null ? "--" : row.ivHv.toFixed(2) };
       default: return { text: "" };
     }
