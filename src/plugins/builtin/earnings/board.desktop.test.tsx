@@ -47,15 +47,16 @@ const WEEK: EarningsCalendarReport[] = [
 let nextWeek: Promise<EarningsCalendarReport[]> = Promise.resolve([]);
 
 const calendarRequests = spyOn(apiClient, "getCloudEarningsCalendar");
-// The S&P 500's holdings, two of them in Information Technology.
-const holdingsRequests = spyOn(apiClient, "getFundMembers").mockImplementation(async () => ({
-  ...ivv,
-  members: [
-    { ...member("MSFT", 0.4, 0.06), sector: "Information Technology" },
-    { ...member("JPM", 0.1, 0.03), sector: "Financials" },
-    { ...member("NVDA", 1.2, 0.08), sector: "Information Technology" },
-  ],
-}));
+const holdingsRequests = spyOn(apiClient, "getFundMembers");
+function serveHoldings() {
+  holdingsRequests.mockImplementation(async (fund: string) => ({
+    ...ivv,
+    fund: { ...ivv.fund, ticker: fund },
+    members: fund === "XLK" ? [member("MSFT", 0.4, 0.06), member("NVDA", 1.2, 0.08)]
+      : fund === "SOXX" ? [member("NVDA", 1.2, 0.08), member("A", 0.4, 0.06)]
+        : fund === "XBI" ? [member("B", 0.4, 0.06)] : [],
+  }));
+}
 beforeAll(() => {
   setSystemTime(new Date("2026-10-14T15:00:00Z"));
   setSharedRegistryForTests({ commands: new Map([["set-event-alert", {}]]) } as never);
@@ -73,6 +74,8 @@ beforeEach(() => {
   resetEarningsCloudCaches();
   fundMembersCache.reset();
   holdingsRequests.mockClear();
+  calendarRequests.mockClear();
+  serveHoldings();
   serve();
 });
 
@@ -212,11 +215,75 @@ test("the Names filter lists Mine, each portfolio and watchlist and the sector f
   expect(lastSymbols()).toEqual(["NFLX"]);
   expect(rowKeys(root)).toEqual(["NFLX:2026-10-15"]);
 
-  // A sector fund's companies are the S&P 500's holdings in its sector, largest first.
+  // Each fund reads its own holdings, including industry members outside the broad sector fund.
   await choose("Technology (XLK)");
-  expect(holdingsRequests).toHaveBeenCalledWith("IVV");
+  expect(holdingsRequests).toHaveBeenCalledWith("XLK");
   expect(lastSymbols()).toEqual(["NVDA", "MSFT"]);
+
+  await choose("Semiconductors (SOXX)");
+  expect(holdingsRequests).toHaveBeenLastCalledWith("SOXX");
+  expect(lastSymbols()).toEqual(["NVDA", "A"]);
+  expect(rowKeys(root)).toEqual(["A:2026-10-16"]);
+
+  await choose("Biotech (XBI)");
+  expect(holdingsRequests).toHaveBeenLastCalledWith("XBI");
+  expect(lastSymbols()).toEqual(["B"]);
+  expect(rowKeys(root)).toEqual(["B:2026-10-16"]);
+
+  // Reusing a fund must show its cached calendar, never the last industry's rows.
+  const reads = calendarRequests.mock.calls.length;
+  await choose("Technology (XLK)");
+  expect(calendarRequests.mock.calls.length).toBe(reads);
+  expect(rowKeys(root)).toEqual([]);
 
   await choose("Mine");
   expect([...lastSymbols()!].sort()).toEqual(["JPM", "NFLX"]);
+}, 15_000);
+
+
+test("failed or empty industry holdings never show the previous market or request an unfiltered calendar", async () => {
+  const pending = Promise.withResolvers<typeof ivv>();
+  holdingsRequests.mockImplementation(async () => pending.promise);
+  const root = await dom.render(<Harness />);
+  await settle();
+  expect(rowKeys(root)).toContain("NFLX:2026-10-15");
+  const calendarReads = calendarRequests.mock.calls.length;
+
+  await act(async () => dispatch({ type: "UPDATE_PLUGIN_PANE_STATE", paneId: PANE, pluginId: "earnings", key: "scope", value: "industry:SOXX" }));
+  await settle();
+  expect(rowKeys(root)).toEqual([]);
+  expect(root.textContent).toContain("Names");
+  expect(root.querySelector("[data-gloom-status=loading]")).not.toBeNull();
+
+  await act(async () => pending.reject(new Error("Holdings unavailable")));
+  await settle();
+  expect(rowKeys(root)).toEqual([]);
+  expect(root.querySelector("[data-gloom-status=error]")).not.toBeNull();
+  expect(root.textContent).toContain("Names");
+  expect(calendarRequests.mock.calls.length).toBe(calendarReads);
+
+  holdingsRequests.mockImplementation(async () => ({ ...ivv, members: [] }));
+  await act(async () => dispatch({ type: "UPDATE_PLUGIN_PANE_STATE", paneId: PANE, pluginId: "earnings", key: "scope", value: "industry:XBI" }));
+  await settle();
+  expect(rowKeys(root)).toEqual([]);
+  expect(root.querySelector("[data-gloom-status=error]")).toBeNull();
+  expect(calendarRequests.mock.calls.length).toBe(calendarReads);
+});
+
+test("a failed holdings refresh keeps the same industry's rows and marks its cached membership stale", async () => {
+  const root = await dom.render(<Harness />);
+  await settle();
+  await act(async () => dispatch({ type: "UPDATE_PLUGIN_PANE_STATE", paneId: PANE, pluginId: "earnings", key: "scope", value: "industry:XBI" }));
+  await settle();
+  expect(rowKeys(root)).toEqual(["B:2026-10-16"]);
+  const reads = holdingsRequests.mock.calls.length;
+
+  holdingsRequests.mockRejectedValueOnce(new Error("Holdings refresh failed"));
+  await act(async () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "r", bubbles: true, cancelable: true })));
+  await settle();
+  expect(holdingsRequests.mock.calls.length).toBe(reads + 1);
+  expect(rowKeys(root)).toEqual(["B:2026-10-16"]);
+  const status = footer.info.flatMap((segment) => segment.parts.map((part) => part.text)).join(" ");
+  expect(status).toContain("Holdings refresh failed");
+  expect(status).toContain("stale");
 });

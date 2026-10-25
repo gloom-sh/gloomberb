@@ -5,6 +5,7 @@ import { WEB_CELL_HEIGHT } from "../../../theme/font-scale";
 import { Box } from "../../../ui";
 import { MenuPopover } from "../../../components/ui/menu";
 import type { SelectFieldHandle, SelectFieldProps } from "../../../components/ui/select-field";
+import { withChoiceGroupHeadings } from "../../../components/ui/choice-groups";
 import { WebIcon } from "./icons";
 import { isInsideDialogSurface } from "../host/focus-scope";
 
@@ -136,13 +137,14 @@ export function WebSelectField({
         minWidth={typeof resolvedWidth === "number" ? Math.max(160, resolvedWidth) : 170}
         items={[
           ...(showUnset ? [{ id: UNSET_VALUE, label: "Unset", selected: true, disabled: true }] : []),
-          ...options.map((option) => ({
+          ...withChoiceGroupHeadings(options.map((option) => ({
             id: option.value,
             label: option.label,
+            group: option.group,
             description: option.description,
             disabled: option.disabled,
             selected: option.value === value,
-          })),
+          }))),
         ]}
         onSelect={(id) => {
           if (id !== UNSET_VALUE && id !== value) onChange(id);

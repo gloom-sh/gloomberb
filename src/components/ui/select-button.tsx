@@ -18,6 +18,8 @@ export interface SelectControl {
 export interface SelectButtonOption<T extends string = string> {
   value: T;
   label: string;
+  /** Heading for a contiguous group of choices; never selectable itself. */
+  group?: string;
   /** Trigger wording when the full label is too wide for a pane header. */
   short?: string;
   description?: string;
@@ -130,6 +132,7 @@ export function SelectButton<T extends string = string>({
           choices={options.map((option) => ({
             id: option.value,
             label: option.label,
+            group: option.group,
             description: option.description,
             disabled: option.disabled,
             color: option.color,
@@ -158,7 +161,7 @@ export function SelectButton<T extends string = string>({
           selectRef={(element) => { selectFieldRef.current = element; }}
           onFocus={onFocus}
           value={value}
-          options={options.map((option) => ({ value: option.value, label: option.label, disabled: option.disabled }))}
+          options={options.map((option) => ({ value: option.value, label: option.label, group: option.group, disabled: option.disabled }))}
           disabled={disabled}
           onChange={selectValue}
         />
@@ -180,6 +183,7 @@ export function SelectButton<T extends string = string>({
           options={options.map((option) => ({
             value: option.value,
             label: option.label,
+            group: option.group,
             disabled: option.disabled,
           }))}
           disabled={disabled}

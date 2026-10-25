@@ -417,6 +417,7 @@ export function QueryBar({ width, search, filters = [], view, meta: given, asOf,
       options: filter.options.map((option) => ({
         value: option.value,
         label: option.label,
+        group: option.group,
         description: option.description,
         disabled: option.disabled,
         selected: option.value === filter.value,

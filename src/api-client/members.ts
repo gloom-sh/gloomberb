@@ -1,7 +1,7 @@
 interface MemberFund { ticker: string; name: string; aliases: string[]; changes: "sp500" | "announcements" | "none" }
 export interface FundMember {
   id: string; symbol: string | null; name: string; sector: string | null;
-  weight: number | null; shares: number; holdingPrice: number; marketValue: number;
+  weight: number | null; shares: number; holdingPrice: number | null; marketValue: number | null;
   price: number | null; priceAsOf: string | null; changePercent: number | null; dailyAsOf: string | null;
   return1WPercent: number | null; return1MPercent: number | null; returnYtdPercent: number | null;
   contribution: number | null; stale: boolean;

@@ -1,6 +1,7 @@
 /** @jsxImportSource react */
 import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { HostQueryBarItem, HostQueryBarProps } from "../../../ui/host";
+import { withChoiceGroupHeadings } from "../../../components/ui/choice-groups";
 import { WebPopover } from "./popover";
 import { WebMenu } from "./menu";
 import { useHorizontalOverflow } from "../host/overflow-fade";
@@ -75,15 +76,16 @@ function QueryMenu({ item, onClose }: { item: HostQueryBarItem; onClose: () => v
     <WebMenu
       label={item.label}
       selection={item.kind === "multi" ? "multi" : "single"}
-      items={item.options.map((option) => ({
+      items={withChoiceGroupHeadings(item.options.map((option) => ({
         id: option.value,
         label: option.label,
+        group: option.group,
         description: option.description,
         disabled: option.disabled,
         selected: item.kind === "select" ? option.selected : undefined,
         checked: item.kind === "multi" ? option.selected : undefined,
         color: option.color,
-      }))}
+      })))}
       onSelect={(value) => {
         item.onSelect(value);
         if (item.kind === "select") onClose();

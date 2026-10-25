@@ -12,6 +12,7 @@ import type { QueryBarFilter, QueryBarSearch, QueryBarView } from "./query-bar";
 interface ChoiceOption {
   value: string;
   label: string;
+  group?: string;
   description?: string;
   disabled?: boolean;
   color?: string;
@@ -70,6 +71,7 @@ export function useQueryBarKeys({
           choices={options.map((option) => ({
             id: option.value,
             label: option.label,
+            group: option.group,
             description: option.description,
             disabled: option.disabled,
             color: option.color,

@@ -15,6 +15,7 @@ export interface ListViewItem {
   description?: string;
   detail?: string;
   category?: string;
+  /** `heading` draws a muted group label; pair it with `disabled: true`. */
   kind?: string;
   right?: string;
   checked?: boolean;
@@ -148,6 +149,7 @@ function DefaultRow({
   selected: boolean;
 }) {
   const colors = useThemeColors();
+  if (item.kind === "heading") return <Text fg={colors.textMuted}>{t(item.label)}</Text>;
   // The label gives way to the detail: a long label is cut with an ellipsis
   // instead of wrapping under the row or running into the right column.
   return (
@@ -289,6 +291,7 @@ export function ListView({
   const rowHoverBg = hoverBgColor ?? hoverBg(colors);
   const selectedItem = selectedIndex >= 0 ? items[selectedIndex] : undefined;
   const activeScrollIndex = scrollIndex ?? selectedIndex;
+  const headingAboveSelection = items[activeScrollIndex - 1]?.kind === "heading";
   const terminalRowHeight = rowHeight ?? 1;
   const terminalRowGap = rowGap ?? 0;
   const rowStride = terminalRowHeight + terminalRowGap;
@@ -299,13 +302,14 @@ export function ListView({
     if (!sb) return;
     const safeIndex = Math.min(activeScrollIndex, items.length - 1);
     const viewportH = Math.max(sb.viewport?.height ?? 1, 1);
-    const rowTop = safeIndex * rowStride;
+    const rowTop = Math.max(0, safeIndex - (headingAboveSelection ? 1 : 0)) * rowStride;
+    const rowBottom = safeIndex * rowStride + terminalRowHeight;
     if (rowTop < sb.scrollTop) {
       sb.scrollTo(rowTop);
-    } else if (rowTop + terminalRowHeight > sb.scrollTop + viewportH) {
-      sb.scrollTo(rowTop + terminalRowHeight - viewportH);
+    } else if (rowBottom > sb.scrollTop + viewportH) {
+      sb.scrollTo(rowBottom - viewportH);
     }
-  }, [activeScrollIndex, autoScrollToIndex, items.length, rowStride, scrollable, terminalRowHeight]);
+  }, [activeScrollIndex, autoScrollToIndex, headingAboveSelection, items.length, rowStride, scrollable, terminalRowHeight]);
   useEffect(revealActiveRow, [revealActiveRow]);
   // A list that opens on a row past the fold has nothing to scroll until its
   // first computed layout sizes the viewport and the rows.

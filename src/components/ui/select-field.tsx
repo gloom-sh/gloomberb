@@ -9,6 +9,7 @@ export interface SelectFieldHandle {
 
 interface SelectFieldOption {
   label: string;
+  group?: string;
   value: string;
   description?: string;
   disabled?: boolean;

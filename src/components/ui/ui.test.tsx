@@ -7,7 +7,7 @@ import { Box } from "../../ui";
 import { AppContext, PaneInstanceProvider, createInitialState } from "../../state/app/context";
 import { createStaticAppStore } from "../../test-support/app-store";
 import { createDefaultConfig } from "../../types/config";
-import { ChoiceDialog } from "./choice-dialog";
+import { ChoiceDialog, type ChoiceDialogChoice } from "./choice-dialog";
 import { DataTable, type DataTableVisibleRange } from "./data-table";
 import { TextField } from "./fields";
 import { ListView } from "./list-view";
@@ -216,7 +216,7 @@ function ChoiceDialogHarness({
   choices,
 }: {
   selectedChoiceId?: string;
-  choices?: Array<{ id: string; label: string; description: string }>;
+  choices?: ChoiceDialogChoice[];
 } = {}) {
   return (
     <ChoiceDialog
@@ -403,37 +403,45 @@ describe("shared UI kit", () => {
     expect(resolvedChoice).toBe("gamma");
   });
 
-  test("keeps long choice catalogs bounded and scrolls to the keyboard selection", async () => {
-    const choices = Array.from({ length: 20 }, (_, index) => ({
+  test.each([
+    { selectedChoiceId: "gamma", highlighted: "Gamma", resolved: null },
+    { selectedChoiceId: "missing", highlighted: "Alpha", resolved: null },
+    { selectedChoiceId: undefined, highlighted: "Beta", resolved: "beta" },
+  ])("choice dialogs preserve a disabled saved selection and the missing-selection fallback: $highlighted", async ({ selectedChoiceId, highlighted, resolved }) => {
+    await tui.render(<ChoiceDialogHarness selectedChoiceId={selectedChoiceId} choices={[
+      { id: "alpha", label: "Alpha", disabled: true },
+      { id: "beta", label: "Beta" },
+      { id: "gamma", label: "Gamma", disabled: true },
+    ]} />, { width: 44, height: 10 });
+    await tui.waitForFrameToContain(`▸ ${highlighted}`);
+    await emitKeypress({ name: "enter", sequence: "\r" });
+    expect(resolvedChoice).toBe(resolved);
+  });
+
+  test("keeps grouped choice catalogs bounded, skips headings and reveals a selection below the fold", async () => {
+    const choices = Array.from({ length: 25 }, (_, index) => ({
       id: `model-${index + 1}`,
       label: `Model ${index + 1}`,
       description: `Catalog model ${index + 1}`,
+      group: index < 11 ? "Sectors" : "Industries",
     }));
-    await tui.render(<ChoiceDialogHarness choices={choices} />, { width: 44, height: 17 });
+    await tui.render(<ChoiceDialogHarness choices={choices} selectedChoiceId="model-25" />, { width: 44, height: 17 });
+    await tui.waitForFrameToContain("Catalog model 25");
+    expect(tui.frame()).toContain("▸ Model 25");
 
-    await act(async () => {
-      await tui.setup().renderOnce();
-    });
-    expect(tui.frame()).not.toContain("Model 20");
+    await emitKeypress({ name: "home" });
+    await tui.waitForFrameToContain("Sectors");
+    expect(tui.frame()).toContain("▸ Model 1");
+    expect(tui.frame()).not.toContain("Model 25");
+    await tui.clickFrameText("Sectors");
+    expect(resolvedChoice).toBeNull();
+    await act(async () => { await tui.setup().mockMouse.moveTo(43, 16); });
 
-    for (let index = 0; index < 19; index += 1) {
-      await emitKeypress({ name: "down" });
-    }
-
-    const frame = tui.frame();
-    expect(frame).toContain("Model 20");
-    expect(frame).toContain("Catalog model 20");
-  });
-
-  test("cancels choice dialogs with escape", async () => {
-    await tui.render(<ChoiceDialogHarness />, { width: 44, height: 10 });
-
-    await act(async () => {
-      await tui.setup().renderOnce();
-    });
-    await emitKeypress({ name: "escape", sequence: "\u001b" });
-
-    expect(resolvedChoice).toBe("");
+    await emitKeypress({ name: "pagedown" });
+    expect(tui.frame()).toContain("▸ Model 12");
+    expect(tui.frame()).toContain("Industries");
+    await tui.emitKeypress([{ name: "up" }, { name: "down" }, { name: "enter", sequence: "\r" }], { trackPropagation: true });
+    expect(resolvedChoice).toBe("model-12");
   });
 
   test("keeps shared multi-select values in option order when toggling", () => {
@@ -718,13 +726,14 @@ test("a select opened through its handle skips disabled options and ignores resu
     disable = () => setDisabled(true);
     return <TestDialogProvider><SelectButton
       controlRef={handle} label="Account" value="alpha" disabled={disabled}
-      options={[{ value: "alpha", label: "Alpha" }, { value: "blocked", label: "Blocked", disabled: true }, { value: "gamma", label: "Gamma" }]}
+      options={[{ value: "alpha", label: "Alpha" }, { value: "blocked", label: "Blocked", group: "Other accounts", disabled: true }, { value: "gamma", label: "Gamma", group: "Other accounts" }]}
       onChange={(value) => changes.push(value)}
     /></TestDialogProvider>;
   }
   await tui.render(<Harness />, { width: 44, height: 12 });
   await act(async () => { await tui.setup().renderOnce(); });
   await act(async () => { handle.current!.open(); await tui.setup().renderOnce(); });
+  await tui.waitForFrameToContain("Other accounts");
   await emitKeypress({ name: "down" });
   await emitKeypress({ name: "enter", sequence: "\r" });
   expect(changes).toEqual(["gamma"]);

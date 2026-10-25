@@ -242,14 +242,14 @@ When Gloom Cloud is too busy to search, the list says `Search is busy` rather th
 #### Company function notes
 
 - **`GR`:** beta and alpha regress the first ticker's daily returns on the second's and say so (`EQT on UNG: beta`). Text prints the rolling correlation to three decimals, `--json` and `--csv` keep every digit.
-- **`ERN`:** the bar's Range looks back or ahead, as in `EVTS`. With Mine the market's report days narrow to the names in your portfolios and watchlists.
+- **`ERN`:** the bar's Range looks back or ahead, as in `EVTS`. Names narrows the reports to Mine, one portfolio or watchlist, a broad sector, or an industry. Sectors and industries are grouped separately, with each fund named beside its group.
 - **`EVTS`:** a ticker selects its row and its report says whether it is on the board (`ERN <ticker>` has its own dates). The bar's Range gives a week (`gloom fn EVTS --week last`, `this` or `next`), or one day (`--date 2026-10-15`) whose reports carry their actuals and surprises. The default is today, the next session and the rest of its week.
 - **`CALLS`:** with a ticker, the company's calls, the next one on its own line with its start here and in New York. Alone, the calendar of every company's calls today, the next session and the rest of the week. `--view transcripts` lists the latest transcribed calls instead.
 - **`DVD`:** `gloom fn DVD KO PEP JNJ` ranks several tickers by yield, with payout, growth, last ex-date and pay date. A bond fund's SEC yield sits beside its distribution yield, and `gloom fn DVD MUB --tax-rate 40.8` adds a muni fund's tax-equivalent yield and muni/Treasury ratio ([research data](research-data.md#bond-funds-sec-yield-tax-equivalent-yield-and-the-munitreasury-ratio)).
 
 **The `ERN` calendar** (desktop and web):
 
-- The bar's Names filter offers Mine, each portfolio, each watchlist and each sector fund `SECT` charts, and narrows the table and the calendar alike.
+- The bar's Names filter narrows the table and the calendar alike. It offers Mine, each portfolio and watchlist, the sector funds `SECT` charts, and nine industry funds: semiconductors (SOXX), pharmaceuticals (XPH), biotech (XBI), aerospace & defense (ITA), regional banks (KRE), software (IGV), retail (XRT), homebuilders (XHB), and oil & gas exploration (XOP). The terminal offers the same Names choices in its table.
 - Calendar shows a week, a column per day, with companies reporting before the open and after the close as logos, largest first (green or red once reported, by surprise). Range picks the week, from last week to three weeks ahead, and `+N more` shows the rest of a busy day.
 - Enter or a second click opens a company's reports, and `n` sets an `ALRT` earnings alert on it.
 

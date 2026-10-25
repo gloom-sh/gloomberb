@@ -12,7 +12,8 @@ test("a focused list row follows the outside cursor, and checkbox rows leave Ent
   function Checklist() {
     const [selectedIndex, setSelectedIndex] = useState(0);
     moveCursor = setSelectedIndex;
-    return <WebListView checkboxRows items={[{ id: "a", label: "A" }, { id: "b", label: "B" }, { id: "c", label: "C" }]}
+    return <WebListView checkboxRows items={[{ id: "a", label: "A" }, { id: "b", label: "B" },
+      { id: "group", label: "Other", kind: "heading", disabled: true }, { id: "c", label: "C" }]}
       selectedIndex={selectedIndex} onSelect={setSelectedIndex} onActivate={(item) => activated.push(item.id)} />;
   }
   const container = await renderDom(<Checklist />);
@@ -24,7 +25,7 @@ test("a focused list row follows the outside cursor, and checkbox rows leave Ent
 
   // Tab left the focus on row A, then the dialog's j/k moves the cursor to C.
   await act(async () => { rows[0]!.focus(); });
-  await act(async () => { moveCursor(2); });
+  await act(async () => { moveCursor(3); });
   expect(document.activeElement).toBe(rows[2]);
   const enter = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
   const space = new KeyboardEvent("keydown", { key: " ", bubbles: true, cancelable: true });

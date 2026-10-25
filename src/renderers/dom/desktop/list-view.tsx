@@ -27,6 +27,7 @@ function DefaultDesktopRow({
   stacked: boolean;
 }) {
   const colors = useThemeColors();
+  if (item.kind === "heading") return <Text fg={colors.textMuted}>{item.label}</Text>;
   return (
     <Box
       flexDirection="row"
@@ -142,6 +143,7 @@ export function WebListView({
   const rowHoverBg = hoverBgColor ?? hoverBg(colors);
   const selectedItem = selectedIndex >= 0 ? items[selectedIndex] : undefined;
   const activeScrollIndex = scrollIndex ?? selectedIndex;
+  const headingAboveSelection = items[activeScrollIndex - 1]?.kind === "heading";
   const rowStride = rowHeight + rowGap;
   const tabStopIndex = selectedIndex >= 0 && items[selectedIndex] && !items[selectedIndex].disabled
     ? selectedIndex : items.findIndex((item) => !item.disabled);
@@ -176,14 +178,14 @@ export function WebListView({
     if (!scrollBox) return;
     const safeIndex = Math.min(activeScrollIndex, items.length - 1);
     const viewportHeight = Math.max(scrollBox.viewport?.height ?? 0, 1);
-    const rowTop = safeIndex * rowStride;
-    const rowBottom = rowTop + rowHeight;
+    const rowTop = Math.max(0, safeIndex - (headingAboveSelection ? 1 : 0)) * rowStride;
+    const rowBottom = safeIndex * rowStride + rowHeight;
     if (rowTop < scrollBox.scrollTop) {
       scrollBox.scrollTo(rowTop);
     } else if (rowBottom > scrollBox.scrollTop + viewportHeight) {
       scrollBox.scrollTo(rowBottom - viewportHeight);
     }
-  }, [activeScrollIndex, autoScrollToIndex, items.length, rowHeight, rowStride, scrolls]);
+  }, [activeScrollIndex, autoScrollToIndex, headingAboveSelection, items.length, rowHeight, rowStride, scrolls]);
 
   useEffect(() => {
     if (!scrolls) return;
@@ -202,7 +204,7 @@ export function WebListView({
     const list = document.getElementById(listDomId);
     const active = document.activeElement;
     if (!list || !active || !list.contains(active) || isEditableKeyboardTarget(active)) return;
-    const row = list.querySelectorAll<HTMLElement>('[role="option"]')[selectedIndex];
+    const row = list.querySelector<HTMLElement>(`[data-gloom-list-index="${selectedIndex}"]`);
     if (row && !row.contains(active)) row.focus({ preventScroll: scrolls });
   }, [listDomId, scrolls, selectedIndex]);
 
@@ -246,10 +248,11 @@ export function WebListView({
             onActivate?.(item, index);
           }}
           data-gloom-role="desktop-list-row"
-          role="option"
-          aria-selected={selected}
-          aria-disabled={disabled || undefined}
-          tabIndex={index === tabStopIndex ? 0 : -1}
+          data-gloom-list-index={index}
+          role={item.kind === "heading" ? "presentation" : "option"}
+          aria-selected={item.kind === "heading" ? undefined : selected}
+          aria-disabled={item.kind === "heading" ? undefined : disabled || undefined}
+          tabIndex={item.kind === "heading" ? undefined : index === tabStopIndex ? 0 : -1}
           onKeyDown={(event: React.KeyboardEvent<HTMLElement>) => {
             if (disabled) return;
             if (event.key === " " || (event.key === "Enter" && !checkboxRows)) {
@@ -267,8 +270,8 @@ export function WebListView({
             while (items[nextIndex]?.disabled) nextIndex += direction;
             if (!items[nextIndex]) return;
             onSelect?.(nextIndex);
-            const rows = event.currentTarget.parentElement?.querySelectorAll<HTMLElement>('[role="option"]');
-            rows?.[nextIndex]?.focus();
+            const row = event.currentTarget.parentElement?.querySelector<HTMLElement>(`[data-gloom-list-index="${nextIndex}"]`);
+            row?.focus();
           }}
           style={listRowStyle(selected, disabled, colors, selection === "frame")}
         >

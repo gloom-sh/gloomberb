@@ -508,6 +508,7 @@ export interface HostCheckboxProps {
 interface HostQueryBarOption {
   value: string;
   label: string;
+  group?: string;
   description?: string;
   disabled?: boolean;
   selected: boolean;
