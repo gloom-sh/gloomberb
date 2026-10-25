@@ -45,18 +45,20 @@ function leg(currency: string, lastUpdated: string, overrides: Partial<Quote> = 
   return { quote, entry: liveFxLegEntry(pair, quoteEntry, null)! };
 }
 
-test("over a weekend the matrix is Friday's close, whatever quiet ticks the pairs printed since", () => {
-  // Saturday 18:45 UTC, with the rates as the data service served them: the
-  // euro and yen last traded Friday, the others ticked on Saturday.
-  const { line, freshness } = reportLine("2026-10-10T18:45:00Z", {
-    EUR: snapshot("2026-10-09T21:29:00Z"),
+test("over a weekend the matrix is Friday's close while its rates are, and a tick after the close keeps its time", () => {
+  // Saturday 18:45 UTC, with the rates as the data service serves them: each
+  // pair's last print by Friday's 17:00 New York close.
+  const friday = {
+    EUR: snapshot("2026-10-09T20:59:00Z"),
     JPY: snapshot("2026-10-09T20:59:00Z"),
-    CAD: snapshot("2026-10-10T04:21:11Z"),
-    GBP: snapshot("2026-10-10T14:50:28Z"),
-  });
+    CAD: snapshot("2026-10-09T20:41:11Z"),
+  };
+  const { line, freshness } = reportLine("2026-10-10T18:45:00Z", friday);
   expect(line).toBe("Source: Gloom Cloud · FX trading day Fri 9 Oct 2026 close · 15 min delayed · markets closed");
-  // The newest observation stays as it was; only the wording dates it by the close.
-  expect(freshness).toMatchObject({ status: "delayed", delayMinutes: 15, asOf: "2026-10-10T14:50:28.000Z", asOfClose: "2026-10-09", market: { state: "closed" } });
+  expect(freshness).toMatchObject({ status: "delayed", delayMinutes: 15, asOf: "2026-10-09T20:59:00.000Z", asOfClose: "2026-10-09", market: { state: "closed" } });
+  // A rate ticked on Saturday is no close: the line dates it.
+  expect(reportLine("2026-10-10T18:45:00Z", { ...friday, GBP: snapshot("2026-10-10T14:50:28Z") }).line)
+    .toBe("Source: Gloom Cloud · Sat 10 Oct 2026 14:50 UTC · 15 min delayed · markets closed");
 });
 
 test("on a weekday it is dated by the newest pair quote, with the feed's delay and the market open", () => {
@@ -104,7 +106,7 @@ test("a currency with no pair quote in the matrix is dated by its loaded rate, i
     .toBe("Source: Gloom Cloud · Wed 14 Oct 2026 13:59 UTC · 15 min delayed · markets open");
   // Alone, on a weekend, it is dated by the close like any other pair.
   expect(reportLine("2026-10-10T18:45:00Z", {
-    SAR: snapshot("2026-10-10T03:09:15Z"), NGN: snapshot("2026-10-10T03:09:13Z"),
+    SAR: snapshot("2026-10-09T20:39:15Z"), NGN: snapshot("2026-10-09T20:39:13Z"),
   }).line).toBe("Source: Gloom Cloud · FX trading day Fri 9 Oct 2026 close · 15 min delayed · markets closed");
   // A rate the matrix cannot draw is no observation, and the base currency has none.
   expect(fxRateObservations(["USD", "SAR", "NGN"], new Map([["SAR", 0.2663]]), (currency) => ({ entry: snapshot("2026-10-10T03:09:15Z"), legQuote: null }), at("2026-10-10T18:45:00Z")))

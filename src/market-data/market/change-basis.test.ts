@@ -55,6 +55,11 @@ test("a quote dated by when it was read, on a weekend or a holiday, holds the la
   const eurusd = createTestQuote({ symbol: "EURUSD=X", instrumentType: "CURRENCY", listingExchangeName: "CCY", price: 1.16, change: 0.002,
     changePercent: 0.17, previousClose: 1.158, changeSessionDate: "2026-10-17", lastUpdated: saturday });
   expect(quoteChangeBasis(eurusd)).toEqual({ kind: "close", date: "2026-10-15" });
+  // Undated, a pair's move is of the FX trading day of its print, which turns at 17:00 New York.
+  const undated = (lastUpdated: string) => ({ ...eurusd, changeSessionDate: undefined, lastUpdated: Date.parse(lastUpdated) });
+  expect(quoteChangeBasis(undated("2026-10-15T20:59:00Z"))).toEqual({ kind: "close", date: "2026-10-14" });
+  expect(quoteChangeBasis(undated("2026-10-15T21:00:00Z"))).toEqual({ kind: "close", date: "2026-10-15" });
+  expect(quotePreviousCloseDate(undated("2026-10-16T20:59:00Z"))).toBe("2026-10-15");
   // HKEX's Monday holiday: a quote read that day holds Friday's move, from Thursday.
   expect(previousPublishedSession("HKEX", "2026-10-19")).toEqual({ date: "2026-10-15", closed: [] });
   expect(previousPublishedSession("HKEX", "2026-10-20")).toEqual({ date: "2026-10-16", closed: ["2026-10-19"] });

@@ -201,7 +201,7 @@ test("dates a rendered FXC by the observations behind its rates, in the report a
   const resolved = {
     token: "FXC", label: "FX Cross Rates", options: {}, capability: { id: "fx-matrix-pane" }, pane: { id: "fx-matrix" },
   } as unknown as ResolvedPaneFunction;
-  // Saturday 12:00 UTC (the clock above): Friday's close for the euro, a quiet tick on Saturday morning for the rand.
+  // Saturday 12:00 UTC (the clock above): Friday's close for the euro, the rand's last print of the day before it.
   const observation = (currency: string, quoteTime: string) => ({
     currency, quoteTime, dataSource: "delayed", stale: false, sessionExchange: "CCY", marketState: "CLOSED",
   });
@@ -210,11 +210,11 @@ test("dates a rendered FXC by the observations behind its rates, in the report a
     render: {
       visibleText: "",
       // The pane's own footer states its rates' ages, not their feed.
-      footerText: "oldest rate 2026-10-09 21:29 UTC · fetched 5m ago",
+      footerText: "oldest rate 2026-10-09 20:41 UTC · fetched 5m ago",
       rows: [{ tableIndex: 0, rowIndex: 0, selected: false, cells: [{ columnLabel: "EUR", text: "1.1206" }] }],
       semanticUi: [{
         id: "ui:1", role: "report-freshness", actions: [], metadata: {
-          observations: [observation("EUR", "2026-10-09T21:29:00.000Z"), observation("ZAR", "2026-10-10T04:21:11.000Z")],
+          observations: [observation("EUR", "2026-10-09T20:59:00.000Z"), observation("ZAR", "2026-10-09T20:41:11.000Z")],
         },
       }],
       truncated: false, truncationReasons: [], loadingStateDetected: false, errorStateDetected: false, errorStateMarkers: [],
@@ -224,7 +224,7 @@ test("dates a rendered FXC by the observations behind its rates, in the report a
 
   const report = await buildDomPaneReportFromRender(resolved, screenshot);
   expect(formatFreshnessLine(report.data.freshness!)).toBe("Source: Gloom Cloud · FX trading day Fri 9 Oct 2026 close · delayed · markets closed");
-  expect(report.data.freshness).toMatchObject({ status: "delayed", asOf: "2026-10-10T04:21:11.000Z", asOfClose: "2026-10-09", market: { state: "closed" } });
+  expect(report.data.freshness).toMatchObject({ status: "delayed", asOf: "2026-10-09T20:59:00.000Z", asOfClose: "2026-10-09", market: { state: "closed" } });
   expect(renderReportCsv(report.tables)).toContain("# Source: Gloom Cloud · FX trading day Fri 9 Oct 2026 close · delayed · markets closed");
 
   // A pane that publishes nothing keeps the unknown status in data, without filler in its line.

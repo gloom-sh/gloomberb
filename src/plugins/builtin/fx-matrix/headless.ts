@@ -94,7 +94,7 @@ export function projectFxCrosses(
     }, saved.length > 0 ? Math.min(...saved) : Number.NaN);
   }));
 
-  // The closes the moves are read from: one day for a board read at once, "vs mixed closes" otherwise.
+  // The close the moves are read from: the board's one trading day (fxBoardMoveDay), never mixed closes.
   const moveBasis = combinedChangeBasisLabel(currencies.map((currency) => readings.get(currency)?.changeBasis));
   const unavailable = currencies.filter((currency) => !rates.has(currency));
   const errors = unavailable.flatMap((currency) => {

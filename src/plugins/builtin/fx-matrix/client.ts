@@ -5,7 +5,7 @@ import { resolveEntryData } from "../../../market-data/selectors";
 import type { DataProvider } from "../../../types/data-provider";
 import type { Quote } from "../../../types/financials";
 import { quoteChangeBasis, type QuoteChangeBasis } from "../../../market-data/market/change-basis";
-import { fxLegMoveReference, fxLegs, fxLegSavedAt, liveFxLegEntry, type FxLeg } from "./live-legs";
+import { fxBoardMoveDay, fxLegMoveReference, fxLegs, fxLegSavedAt, liveFxLegEntry, type FxLeg } from "./live-legs";
 
 /** One USD leg as the board reads it: the rate it draws and where that rate came from. */
 export interface FxLegReading {
@@ -17,7 +17,8 @@ export interface FxLegReading {
   /**
    * USD per unit at the pair quote's previous daily close, for the rate drawn
    * whether it is the quote's or a loaded rate of the same FX trading day
-   * (fxLegMoveReference); null when the quote is stale or has none.
+   * (fxLegMoveReference); null when the quote is stale, has none, or is not
+   * of the board's trading day (fxBoardMoveDay).
    */
   reference: number | null;
   /** The close `reference` is, as `quote` names it ("vs Wed 21 Oct close"). */
@@ -51,12 +52,14 @@ export async function loadFxBoard(
       coordinator.loadQuotesBatch(legs.map((leg) => ({ symbol: leg.symbol, exchange: "" })), { forceRefresh })
         .catch(logFailure("fx-matrix.client", "Load FX pair quotes failed", [] as QueryEntry<Quote>[])),
     ]);
+    // Every leg moves from the board's one close, as the pane's tint does.
+    const boardDay = fxBoardMoveDay(quotes);
     return new Map(legs.map((leg, index) => {
       const rate = rates[index]!;
       const quote = quotes[index];
       const live = liveFxLegEntry(leg, quote, rate);
       const entry = live ?? (resolveEntryData(rate) != null ? rate : null);
-      const close = fxLegMoveReference(leg, quote, entry);
+      const close = fxLegMoveReference(leg, quote, entry, boardDay);
       // A pair quote or a loaded rate whose refresh failed is the copy saved before, not a current answer.
       const savedAt = fxLegSavedAt(live ? resolveEntryData(quote) : null, rate);
       return [leg.currency, {

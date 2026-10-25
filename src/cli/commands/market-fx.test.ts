@@ -115,17 +115,21 @@ test("a pair reads BASE/QUOTE as quote per base and crosses two non-USD codes th
 
 test("a pair ends with the source line a quote does, dated and held back as its rates are", async () => {
   const hour = 3_600_000;
-  // Saturday: the FX week is shut, so a quiet Saturday print reads as Friday's close.
+  // Saturday: the FX week is shut, so the pair's last print before the close reads as Friday's close.
   setSystemTime(new Date("2026-10-10T18:45:00Z"));
-  const asOf = Date.parse("2026-10-10T03:09:15Z");
+  const asOf = Date.parse("2026-10-09T20:39:15Z");
   const weekend = harness("USD", { SAR: { rate: 0.2663, asOf, staleAt: Date.now() + hour, delayMinutes: 15 } });
   await fx.execute(["USD/SAR"], weekend.context);
   const line = "Source: Gloom Cloud · FX trading day Fri 9 Oct 2026 close · 15 min delayed · markets closed";
   // The line says the time and the state, so there is no separate "As of".
   expect(weekend.output("text")[0]).toBe(`1 USD = 3.75516 SAR  (SAR/USD 0.2663)\n\n${line}`);
   expect(JSON.parse(weekend.output("json")[0]!).metadata.freshness).toMatchObject({
-    source: "Gloom Cloud", asOf: "2026-10-10T03:09:15.000Z", status: "delayed", delayMinutes: 15, asOfClose: "2026-10-09", market: { state: "closed" },
+    source: "Gloom Cloud", asOf: "2026-10-09T20:39:15.000Z", status: "delayed", delayMinutes: 15, asOfClose: "2026-10-09", market: { state: "closed" },
   });
+  // A quiet Saturday print is no close: the line dates it.
+  const tick = harness("USD", { SAR: { rate: 0.2663, asOf: Date.parse("2026-10-10T03:09:15Z"), staleAt: Date.now() + hour, delayMinutes: 15 } });
+  await fx.execute(["USD/SAR"], tick.context);
+  expect(tick.output("text")[0]).toEndWith("Source: Gloom Cloud · Sat 10 Oct 2026 03:09 UTC · 15 min delayed · markets closed");
 
   // Wednesday: a cross is as old as its older leg and as delayed as its most delayed.
   setSystemTime(new Date("2026-10-14T14:00:00Z"));

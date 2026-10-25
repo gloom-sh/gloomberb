@@ -4,6 +4,7 @@ import type { Quote } from "../../types/financials";
 import { canonicalExchange } from "../../utils/exchanges";
 import { isFiniteNumber } from "../../utils/guards";
 import { formatUtcDayTime } from "../../utils/utc-time";
+import { fxTradingDay } from "../../utils/fx-market-hours";
 import { zonedDateKey } from "../../utils/zoned-date-time";
 import { futuresChangeBasis, futuresSettleText, isFuturesInstrument } from "../futures-contract";
 import { quoteTradingDay } from "../quotes/day-range";
@@ -94,6 +95,17 @@ function isCurrencyPair(quote: Quote): boolean {
     || kindFromListingSyntax(quote.symbol, quote.listingExchangeName || quote.exchangeName) === "currency";
 }
 
+/**
+ * The trading day a quote describes (quoteTradingDay); for a currency pair,
+ * whose venue has no clock, the FX trading day of its print, which turns at
+ * 17:00 New York, so every pair on a board is dated alike.
+ */
+function tradingDayOf(quote: Quote): string | null {
+  const day = quoteTradingDay(quote);
+  if (day || !isCurrencyPair(quote) || !Number.isFinite(quote.lastUpdated) || quote.lastUpdated <= 0) return day;
+  return fxTradingDay(quote.lastUpdated);
+}
+
 /** A coin on the spot crypto venue: its day is the UTC day. */
 function isSpotCoin(quote: Quote): boolean {
   return quoteVenue(quote) === "CCC";
@@ -154,7 +166,7 @@ export function isChangeBasisDatedWithoutCloses(quote: Quote, now = Date.now()):
  * nothing dates it.
  */
 export function changeBasisSessionDate(quote: Quote): string | null {
-  const date = regularSessionDisplayDate(quote) ?? quoteTradingDay(quote);
+  const date = regularSessionDisplayDate(quote) ?? tradingDayOf(quote);
   return date && ISO_DATE.test(date) ? date : null;
 }
 
@@ -179,7 +191,7 @@ export function quoteChangeBasis(
   if (!display || !isFiniteNumber(display.change)) return null;
   if (quote.changeBasis === "24h" || isPerpetualExchange(quote.listingExchangeName || quote.exchangeName)) return { kind: "24h" };
   if (isSpotCoin(quote)) return { kind: "utc day" };
-  const sessionDate = (session === "active" ? quote.changeSessionDate : regularSessionDisplayDate(quote)) ?? quoteTradingDay(quote);
+  const sessionDate = (session === "active" ? quote.changeSessionDate : regularSessionDisplayDate(quote)) ?? tradingDayOf(quote);
   if (isFuturesInstrument(quote.symbol, quote.instrumentType)) {
     const basis = futuresChangeBasis(terms ?? { settlement: null }, { ...display, sessionDate }, quoteVenue(quote));
     return basis ? { kind: basis.kind, date: basis.session } : { kind: "previous close" };
@@ -211,7 +223,7 @@ export function quoteSettleText(
 export function quotePreviousCloseDate(quote: Quote | null | undefined): string | null {
   if (!quote || !isFiniteNumber(quote.previousClose) || quote.changeBasis != null) return null;
   if (isPerpetualExchange(quote.listingExchangeName || quote.exchangeName)) return null;
-  const sessionDate = quote.changeSessionDate ?? quoteTradingDay(quote);
+  const sessionDate = quote.changeSessionDate ?? tradingDayOf(quote);
   if (!sessionDate || !ISO_DATE.test(sessionDate)) return null;
   if (isSpotCoin(quote)) return dayBefore(sessionDate);
   if (isFuturesInstrument(quote.symbol, quote.instrumentType)) {
