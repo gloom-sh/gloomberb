@@ -122,7 +122,6 @@ export async function refreshChatControllerSession({
   syncVerificationPolling,
 }: RefreshChatControllerSessionOptions): Promise<void> {
   const cachedToken = session.sessionToken;
-  session.sessionToken = apiClient.getSessionToken();
   const apiSession = await apiClient.getSession(isCurrent);
   if (!isCurrent()) return;
   if (!apiSession) {

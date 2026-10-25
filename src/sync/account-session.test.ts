@@ -553,3 +553,44 @@ test("restoring the same native credential during a null session check does not 
   expect(h.local()).toEqual({ account: "b" });
   expect(h.controller.getStatus().revision).toBe(2);
 });
+
+test("a failed native session refresh cannot associate its new token with the old cached user", async () => {
+  installTestWebSocket();
+  let cloud = "a";
+  let sessionChecks = 0;
+  let profileChecks = 0;
+  setCloudApiFetchTransport(async (url) => {
+    const path = new URL(String(url)).pathname;
+    if (path === "/auth/sign-in/email") {
+      cloud = "b";
+      return { ok: true, status: 200,
+        headers: new Headers({ "set-cookie": "gloomberb.session_token=token-b; Path=/; HttpOnly" }),
+        text: () => Promise.reject(new Error("Body interrupted")) };
+    }
+    if (path === "/auth/get-session") {
+      sessionChecks += 1;
+      return sessionChecks <= 2 ? Response.json({ message: "Unavailable" }, { status: 503 }) : Response.json({ user: null });
+    }
+    if (path === "/account/profile") { profileChecks += 1; return Response.json({ profile: accountB }); }
+    if (path === "/chat/state") return Response.json({ channels: [], channelStates: [], notifications: [], onlineCount: 0 });
+    return Response.json({ snapshot: snapshot(cloud), revision: cloud === "a" ? 10 : 2, updatedAt: null });
+  });
+  const h = sessionHarness(false);
+  const chat = new ChatController();
+  cleanups.push(() => chat.dispose());
+  chat.adoptSession("token-a", accountA);
+  await h.controller.requestSync();
+  await expect(apiClient.signIn("b@example.invalid", "unused")).rejects.toThrow("Body interrupted");
+  await expect(chat.refreshSession()).rejects.toThrow("Unavailable");
+  expect(apiClient.getVerifiedSessionIdentity()).toBeNull();
+  await chat.refreshSession();
+  await h.ready();
+
+  expect(sessionChecks).toBe(3);
+  expect(profileChecks).toBe(1);
+  expect(apiClient.getCurrentUser()?.id).toBe("account-b");
+  expect(apiClient.getSessionToken()).toBe("token-b");
+  expect(apiClient.getVerifiedSessionIdentity()).not.toBeNull();
+  expect(h.local()).toEqual({ account: "b" });
+  expect(h.controller.getStatus().revision).toBe(2);
+});
