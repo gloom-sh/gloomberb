@@ -61,7 +61,7 @@ export type TickerColumn = DataTableColumn & { id: TickerColumnId };
 
 export function buildTickerColumns(width: number): TickerColumn[] {
   return [
-    { id: "ticker", label: "TICKER", width: Math.max(12, width - 68), align: "left" },
+    { id: "ticker", label: "TICKER", width: Math.max(12, width - 68), minWidth: 12, align: "left" },
     { id: "buyCount", label: "BUY", width: 6, align: "right" },
     { id: "sellCount", label: "SELL", width: 6, align: "right" },
     { id: "memberCount", label: "MEMBERS", width: 8, align: "right" },
@@ -224,10 +224,10 @@ export function buildTradeColumns(width: number, tickerView = false): TradeColum
     { id: "filed", label: "FILED", width: filedWidth, align: "left" },
     { id: "tx", label: "TX", width: txWidth, align: "left" },
     { id: "lag", label: "LAG", width: lagWidth, align: "right" },
-    { id: "member", label: "MEMBER", width: showAsset ? memberWidth : flexWidth, align: "left" },
+    { id: "member", label: "MEMBER", width: showAsset ? memberWidth : flexWidth, minWidth: showAsset ? 18 : 14, align: "left" },
     { id: "side", label: "SIDE", width: sideWidth, align: "left" },
     ...(!tickerView ? [{ id: "ticker" as const, label: "TICKER", width: tickerWidth, align: "left" as const, assetFallback: !showAsset }] : []),
-    ...(showAsset ? [{ id: "asset" as const, label: "ASSET", width: assetWidth, align: "left" as const }] : []),
+    ...(showAsset ? [{ id: "asset" as const, label: "ASSET", width: assetWidth, minWidth: 12, align: "left" as const }] : []),
     { id: "amount", label: "AMOUNT", width: amountWidth, align: "right" },
     { id: "owner", label: "OWNER", width: ownerWidth, align: "left" },
     { id: "returnSinceTx", label: "TX RET%", width: 10, align: "right" },
@@ -253,7 +253,7 @@ export function buildMemberTradeColumns(width: number): TradeColumn[] {
     { id: "side", label: "SIDE", width: sideWidth, align: "left" },
     { id: "ticker", label: "TICKER", width: tickerWidth, align: "left" },
     { id: "amount", label: "AMOUNT", width: amountWidth, align: "right" },
-    { id: "asset", label: "ASSET", width: assetWidth, align: "left" },
+    { id: "asset", label: "ASSET", width: assetWidth, minWidth: 18, align: "left" },
     { id: "owner", label: "OWNER", width: ownerWidth, align: "left" },
     { id: "lag", label: "LAG", width: lagWidth, align: "right" },
   ];
@@ -272,7 +272,7 @@ export function buildMemberColumns(width: number): MemberColumn[] {
     width - districtWidth - tradesWidth - buysWidth - sellsWidth - rangeWidth - lastWidth - lagWidth - 47,
   );
   return [
-    { id: "member", label: "MEMBER", width: memberWidth, align: "left" },
+    { id: "member", label: "MEMBER", width: memberWidth, minWidth: 18, align: "left" },
     { id: "district", label: "DIST", width: districtWidth, align: "left" },
     { id: "party", label: "PARTY", width: 11, align: "left" },
     { id: "trades", label: "TRADES", width: tradesWidth, align: "right" },

@@ -217,6 +217,7 @@ export function buildInsiderColumns(width: number, rows: readonly InsiderTableRo
   const each = Math.floor(spare / columns.length);
   return columns.map((column) => ({
     ...column,
+    minWidth: column.id === "insider" ? 6 : column.width,
     width: column.width + each + (column.id === "insider" ? spare - each * columns.length : 0),
   }));
 }

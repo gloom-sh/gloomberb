@@ -516,6 +516,6 @@ export function buildCryptoColumns(width: number, kind: CryptoAssetKind = "coin"
   const spare = Math.max(0, width - getTableWidth(columns));
   return columns.map(({ optional: _optional, ...column }) =>
     column.id === "name"
-      ? { ...column, width: Math.min(MAX_NAME_WIDTH, column.width + spare) }
+      ? { ...column, minWidth: column.width, width: Math.min(MAX_NAME_WIDTH, column.width + spare) }
       : column);
 }

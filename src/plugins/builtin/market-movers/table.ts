@@ -63,7 +63,7 @@ export function buildMarketMoverColumns(width: number, extendedSessions: readonl
     if (extendedSessions.length === 0 || nameRoom() >= EXTENDED_MIN_NAME_WIDTH) break;
     trailing.splice(trailing.findIndex((column) => column.id === id), 1);
   }
-  return [...lead, { id: "name", label: "NAME", width: Math.max(6, nameRoom()), align: "left" }, ...quote, ...trailing];
+  return [...lead, { id: "name", label: "NAME", width: Math.max(6, nameRoom()), minWidth: 6, align: "left" }, ...quote, ...trailing];
 }
 
 /** `logos`: the desktop and the web lead each name with the company's logo; the terminal draws none. */

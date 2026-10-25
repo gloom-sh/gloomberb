@@ -53,12 +53,12 @@ export function buildSectorColumns(width: number): SectorTableColumn[] {
   const barWidth = Math.max(8, width - sectorWidth - weightWidth - valueWidth - pnlWidth - returnWidth - 10);
 
   return [
-    { id: "sector", label: "SECTOR", width: sectorWidth, align: "left" },
+    { id: "sector", label: "SECTOR", width: sectorWidth, minWidth: 12, align: "left" },
     { id: "weight", label: "WEIGHT", width: weightWidth, align: "right" },
     { id: "value", label: "VALUE", width: valueWidth, align: "right" },
     { id: "pnl", label: "P&L", width: pnlWidth, align: "right" },
     { id: "return", label: "P&L %", width: returnWidth, align: "right" },
-    { id: "bar", label: "ALLOCATION", width: barWidth, align: "left" },
+    { id: "bar", label: "ALLOCATION", width: barWidth, minWidth: 8, align: "left" },
   ];
 }
 

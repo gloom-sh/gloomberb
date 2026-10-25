@@ -654,6 +654,7 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
         id: "label",
         label: LABEL_HEADERS[view],
         width: Math.min(30, Math.max(19, tableLayoutWidth - 45)),
+        minWidth: 19,
         align: "left",
       },
       {

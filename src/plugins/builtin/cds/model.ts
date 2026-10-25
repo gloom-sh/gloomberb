@@ -628,7 +628,7 @@ export function buildTradeColumns(width: number): TradeColumn[] {
   const maturityWidth = Math.max(10, Math.min(12, width - 59));
   return [
     { id: "time", label: "TIME UTC", width: 16, align: "left" },
-    { id: "maturity", label: "MATURITY", width: maturityWidth, align: "left" },
+    { id: "maturity", label: "MATURITY", width: maturityWidth, minWidth: 10, align: "left" },
     { id: "notional", label: "NOTIONAL", width: 11, align: "right" },
     { id: "currency", label: "CCY", width: 5, align: "left" },
     { id: "coupon", label: "COUPON", width: 9, align: "right" },

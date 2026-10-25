@@ -99,7 +99,7 @@ function buildColumns(width: number, fit: { functions: number; status: number })
   const nameWidth = Math.min(23, Math.max(14, Math.floor(width * 0.2)));
   // The description takes what the other columns leave; the chips take what they need.
   return [
-    { id: "name", label: "PLUGIN", width: nameWidth, align: "left" },
+    { id: "name", label: "PLUGIN", width: nameWidth, minWidth: 14, align: "left" },
     { id: "tagline", label: "DESCRIPTION", width: 16, align: "left", flexGrow: 1 },
     { id: "panes", label: "PANES", width: 5, align: "right" },
     ...(width >= 80 ? [{ id: "functions" as const, label: "FUNCTIONS", width: fit.functions, align: "left" as const }] : []),

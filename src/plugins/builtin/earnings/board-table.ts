@@ -69,7 +69,7 @@ export function boardColumns(width: number, { actuals = false }: { actuals?: boo
   }
   // The name takes what the other columns leave.
   const nameWidth = Math.max(NAME_MIN_WIDTH, width - fixed(columns));
-  return columns.map((column) => (column.id === "name" ? { ...column, width: nameWidth } : column));
+  return columns.map((column) => (column.id === "name" ? { ...column, minWidth: NAME_MIN_WIDTH, width: nameWidth } : column));
 }
 
 export function renderBoardSection(row: BoardRow) {

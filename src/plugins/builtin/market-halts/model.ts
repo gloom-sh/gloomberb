@@ -305,8 +305,8 @@ export function buildHaltColumns(width: number): HaltColumn[] {
   const companyWidth = hasCompany ? Math.max(COMPANY_MIN_WIDTH, Math.floor(text * 0.45)) : 0;
   const reasonWidth = text - companyWidth;
   return columns.map((column) => {
-    if (column.id === "company") return { ...column, width: companyWidth };
-    if (column.id === "reason") return { ...column, width: reasonWidth };
+    if (column.id === "company") return { ...column, minWidth: COMPANY_MIN_WIDTH, width: companyWidth };
+    if (column.id === "reason") return { ...column, minWidth: REASON_MIN_WIDTH, width: reasonWidth };
     return { ...column };
   });
 }

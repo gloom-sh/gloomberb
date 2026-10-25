@@ -424,7 +424,7 @@ function fit(columns: Column[], dropOrder: string[], width: number): Column[] {
     if (!column.flexGrow) return column;
     const share = column === growing[growing.length - 1] ? left : Math.floor((spare * column.flexGrow) / weight);
     left -= share;
-    return { ...column, width: column.width + share };
+    return { ...column, minWidth: column.width, width: column.width + share };
   });
 }
 

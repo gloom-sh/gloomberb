@@ -27,7 +27,7 @@ export function buildSessionMoverColumns(view: CloudSessionMoversCategory, width
   const columns: SessionMoverColumn[] = [
     { id: "rank", label: "#", width: 3, align: "left" },
     { id: "symbol", label: "TICKER", width: 8, align: "left" },
-    { id: "name", label: "NAME", width: 6, align: "left" },
+    { id: "name", label: "NAME", width: 6, minWidth: 6, align: "left" },
     { id: "price", label: "LAST", width: 10, align: "right" },
     ...(view === "gaps" ? [{ id: "gapPercent" as const, label: "GAP%", width: 8, align: "right" as const }] : []),
     { id: "changePercent", label: "CHG%", width: 8, align: "right" },

@@ -134,6 +134,8 @@ function tableColumns(width: number, desktop: boolean, locked: boolean, valueWid
   if (overflow() > 0 && shares) fit(plain + bare);
   if (overflow() > 0) fit(shares ? plain + bare : SHARE_FIGURE_CELLS + 2, 12);
   if (overflow() > 0 && shares) fit(plain + SHARE_BASIS_LAST_CELLS, 12);
+  name.minWidth = 12;
+  share.minWidth = shares ? plain + Math.min(bare, SHARE_BASIS_LAST_CELLS) : SHARE_FIGURE_CELLS + 2;
   return columns;
 }
 

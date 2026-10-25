@@ -84,7 +84,7 @@ function calendarColumns(width: number, { localClock }: { localClock: boolean })
     columns = columns.filter((column) => column.id !== id);
   }
   const companyWidth = Math.max(COMPANY_MIN_WIDTH, width - fixed(columns));
-  return columns.map((column) => (column.id === "company" ? { ...column, width: companyWidth } : column));
+  return columns.map((column) => (column.id === "company" ? { ...column, minWidth: COMPANY_MIN_WIDTH, width: companyWidth } : column));
 }
 
 function renderCalendarCell(row: CalendarRow, column: CalendarColumn, now: number): DataTableCell {

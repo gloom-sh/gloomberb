@@ -20,8 +20,8 @@
         "@types/react-dom": "^19.2.3",
         "@types/three": "0.165.0",
         "electrobun": "^1.18.1",
-        "gloom-polls": "github:gloom-sh/gloom-polls#33e6399d4d3c1ec27b653b38437244a66b5a3ad7",
-        "gloom-prediction-markets": "github:gloom-sh/gloom-prediction-markets",
+        "gloom-polls": "github:gloom-sh/gloom-polls#dfd641e78984a6f579cae3be1c7d0b8d2c8a080c",
+        "gloom-prediction-markets": "github:gloom-sh/gloom-prediction-markets#4a7163e4b9238eabb8271e9e22774d9d62e88c27",
         "happy-dom": "^20.11.1",
         "playwright-core": "1.60.0",
         "png-to-ico": "^2.1.8",
@@ -361,9 +361,9 @@
 
     "gifwrap": ["gifwrap@0.10.1", "", { "dependencies": { "image-q": "^4.0.0", "omggif": "^1.0.10" } }, "sha512-2760b1vpJHNmLzZ/ubTtNnEx5WApN/PYWJvXvgS+tL1egTTthayFYIQQNi136FLEDcN/IyEY2EcGpIITD6eYUw=="],
 
-    "gloom-polls": ["gloom-polls@github:gloom-sh/gloom-polls#33e6399", { "peerDependencies": { "gloomberb": ">=0.15.0", "react": ">=19" }, "optionalPeers": ["gloomberb", "react"] }, "gloom-sh-gloom-polls-33e6399", "sha512-FmBzIcvDtFJbGBs52doJZYLCwYKBvv+61z/2tVdMqX7RS17ptYUZ5w694jh6SeLOjGvDhQIJF+Nxxw5nYraUiQ=="],
+    "gloom-polls": ["gloom-polls@github:gloom-sh/gloom-polls#dfd641e", { "peerDependencies": { "gloomberb": ">=0.15.0", "react": ">=19" }, "optionalPeers": ["gloomberb", "react"] }, "gloom-sh-gloom-polls-dfd641e", "sha512-iagMoy/17/FsTahLqdWiE5A3yVwno7ORKzp0ObOpz5BY4yTL5W9cG2YGIBlkqLg31Nno4AN2VwG/0jyl/ixqew=="],
 
-    "gloom-prediction-markets": ["gloom-prediction-markets@github:gloom-sh/gloom-prediction-markets#705c6c9", { "peerDependencies": { "gloomberb": ">=0.15.0", "react": ">=19" }, "optionalPeers": ["gloomberb", "react"] }, "gloom-sh-gloom-prediction-markets-705c6c9", "sha512-rK3tdAL01yFgb/tcFfD8WtX8KGM/1TizEcZ8IXgX4dvETPrxRR8OvTqcsd3KlSTNki7n8HeGFAFFHXNrHqDJvg=="],
+    "gloom-prediction-markets": ["gloom-prediction-markets@github:gloom-sh/gloom-prediction-markets#4a7163e", { "peerDependencies": { "gloomberb": ">=0.15.0", "react": ">=19" }, "optionalPeers": ["gloomberb", "react"] }, "gloom-sh-gloom-prediction-markets-4a7163e", "sha512-qV2O3E1KhPY8wigIIFrLVDq/QBMl7gKbxfVsEHdx834BNQ2+JnzHZ1ENlwqKHy74wR36KwpVa69+Oi9mlzTf6Q=="],
 
     "happy-dom": ["happy-dom@20.11.1", "", { "dependencies": { "@types/node": ">=20.0.0", "@types/whatwg-mimetype": "^3.0.2", "@types/ws": "^8.18.1", "buffer-image-size": "^0.6.4", "entities": "^7.0.1", "whatwg-mimetype": "^3.0.0", "ws": "^8.21.0" } }, "sha512-XSt8tMzbW9ymE7687xztkO1ckR7qJNQ3LywY9vlYGhGi3zXrGBHuUo2Cl1ztZaICW+1eAGdkLbj6iwVqDT33kg=="],
 

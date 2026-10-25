@@ -137,7 +137,7 @@ export function bucketColumns(width: number): BucketColumn[] {
   if (wall < MIN_WALL_WIDTH) return BUCKET_TEXT_COLUMNS;
   return [
     ...BUCKET_TEXT_COLUMNS,
-    { id: "wall", label: "WALL", width: wall, align: "left" },
+    { id: "wall", label: "WALL", width: wall, minWidth: MIN_WALL_WIDTH, align: "left" },
   ];
 }
 export type HistoryColumnId =

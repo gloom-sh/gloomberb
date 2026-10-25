@@ -251,7 +251,7 @@ export function buildBeneficialColumns(width: number): BeneficialColumn[] {
   const showEvent = roomWithEvent >= EVENT_FILER_WIDTH;
   const filerWidth = Math.min(MAX_FILER_WIDTH, Math.max(MIN_FILER_WIDTH, showEvent ? roomWithEvent : roomWithEvent + DATE_WIDTH + 1));
   return [
-    { id: "filer", label: "FILER", width: filerWidth, align: "left" },
+    { id: "filer", label: "FILER", width: filerWidth, minWidth: MIN_FILER_WIDTH, align: "left" },
     { id: "form", label: "FORM", width: FORM_WIDTH, align: "left" },
     { id: "percentOfClass", label: "% CLASS", width: PERCENT_WIDTH, align: "right" },
     { id: "change", label: "CHG", width: CHANGE_WIDTH, align: "right" },

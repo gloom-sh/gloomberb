@@ -78,6 +78,7 @@ const column = (id: string, label: string, width: number, align: "left" | "right
 function fit(columns: DataTableColumn[], width: number, drops: string[]) {
   for (const id of drops) { if (getTableWidth(columns) <= width) break; columns = columns.filter((col) => col.id !== id); }
   const flexible = columns.find((col) => col.id === "name" || col.id === "reason") ?? columns[0]!;
+  flexible.minWidth = flexible.width;
   flexible.width = Math.max(6, flexible.width + Math.max(0, width - getTableWidth(columns)));
   flexible.flexGrow = 1;
   return columns;

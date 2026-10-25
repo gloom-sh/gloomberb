@@ -59,7 +59,7 @@ interface HistoryRow {
 function historyColumns(label: string, width: number): DataTableColumn[] {
   const overflows = (columns: DataTableColumn[]) => hasMeaningfulTableHorizontalOverflow(getTableWidth(columns), width - 1);
   const date: DataTableColumn = { id: "date", label: "Period", width: 12, align: "left" };
-  const value: DataTableColumn = { id: "value", label, width: Math.max(10, Math.min(26, displayWidth(label) + 2)), align: "right" };
+  const value: DataTableColumn = { id: "value", label, width: Math.max(10, Math.min(26, displayWidth(label) + 2)), minWidth: 10, align: "right" };
   while (value.width > 10 && overflows([date, value])) value.width -= 1;
   const columns: DataTableColumn[] = [date, value, { id: "change", label: "Chg", width: 10, align: "right" }];
   return overflows(columns) ? columns.slice(0, 2) : columns;

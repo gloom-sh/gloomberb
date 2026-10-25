@@ -9,6 +9,7 @@ import {
   StatGrid,
   usePaneFooter,
   usePaneNoticeFooter,
+  useTableLayoutWidth,
   useTableLoadMore,
   type DataTableKeyEvent,
   type StatItem,
@@ -214,7 +215,8 @@ export function MemberTradesDetail({
   }, [load]);
 
   const sortedRows = useMemo(() => sortedTrades(trades, sortPreference), [sortPreference, trades]);
-  const columns = useMemo(() => buildMemberTradeColumns(width), [width]);
+  const tableLayoutWidth = useTableLayoutWidth(width);
+  const columns = useMemo(() => buildMemberTradeColumns(tableLayoutWidth), [tableLayoutWidth]);
   const selectedTrade = useMemo(() => (
     sortedRows.find((trade) => trade.id === selectedTradeId) ?? sortedRows[0] ?? null
   ), [selectedTradeId, sortedRows]);

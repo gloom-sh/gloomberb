@@ -49,7 +49,7 @@ export function entityColumns(columns: readonly GeoColumn[], width: number): Ent
   }
   const middle = inOrder();
   const spare = Math.max(0, width - getTableWidth([label, ...middle, ...tail]));
-  return [{ ...label, width: MIN_LABEL_WIDTH + spare }, ...middle, ...tail];
+  return [{ ...label, minWidth: MIN_LABEL_WIDTH, width: MIN_LABEL_WIDTH + spare }, ...middle, ...tail];
 }
 
 /** A cell's text and the plain value an export writes. */

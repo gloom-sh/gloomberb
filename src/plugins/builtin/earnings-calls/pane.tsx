@@ -11,8 +11,10 @@ import {
   StatGrid,
   usePaneFooter,
   useQueryBarSearch,
+  useTableLayoutWidth,
   useTableLoadMore,
   type DataTableCell,
+  type DataTableColumn,
   type DataTableKeyEvent,
   type DataTableRootKeyContext,
   type PaneFooterSegment,
@@ -61,7 +63,7 @@ function isReaderTab(value: string): value is ReaderTab {
   return READER_TABS.some((tab) => tab.value === value);
 }
 
-interface CallColumn {
+interface CallColumn extends DataTableColumn {
   id: string;
   label: string;
   width: number;
@@ -83,7 +85,7 @@ function buildColumns(width: number, showTicker: boolean): CallColumn[] {
   const columns: CallColumn[] = [];
   if (showTicker) columns.push({ id: "ticker", label: "TICKER", width: tickerWidth, align: "left" });
   columns.push(
-    { id: "company", label: "COMPANY", width: companyWidth, align: "left" },
+    { id: "company", label: "COMPANY", width: companyWidth, minWidth: 10, align: "left" },
     { id: "date", label: "DATE", width: dateWidth, align: "left" },
     { id: "period", label: "PERIOD", width: periodWidth, align: "left" },
     { id: "length", label: "LENGTH", width: lengthWidth, align: "right" },
@@ -720,7 +722,8 @@ function CallsListView({
     (!access.hasProAccess || listError?.status === 402);
   const transcriptProRequired = transcriptError?.status === 402;
 
-  const columns = useMemo(() => buildColumns(width, !ticker), [width, ticker]);
+  const tableLayoutWidth = useTableLayoutWidth(width);
+  const columns = useMemo(() => buildColumns(tableLayoutWidth, !ticker), [tableLayoutWidth, ticker]);
   const renderRow = useCallback((call: CloudEarningsCallPayload, column: CallColumn) => renderCell(call, column, now), [now]);
 
   const handleRootKey = useCallback(

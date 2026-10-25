@@ -106,7 +106,7 @@ function buildColumns(width: number, showGroup: boolean): CatalogColumn[] {
   if (width >= 84) columns.push({ id: "unit", label: "UNIT", width: 10, align: "left" });
   if (width >= 96) columns.push({ id: "frequency", label: "FREQ", width: 9, align: "left" });
   if (width >= 60) columns.push({ id: "publisher", label: "PUBLISHER", width: 10, align: "left" });
-  columns.push({ id: "expression", label: "EXPRESSION", width: expressionWidth, align: "left" });
+  columns.push({ id: "expression", label: "EXPRESSION", width: expressionWidth, minWidth: 16, align: "left" });
   return columns;
 }
 

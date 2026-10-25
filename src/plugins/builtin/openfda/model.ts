@@ -22,8 +22,8 @@ export function recordColumns(dataset: OpenFdaDataset, width: number): RecordCol
   if (dataset === "drug") {
     return [
       date,
-      { id: "product", label: "Drug", width: clamp(width * 0.25, 20, 34), align: "left", ...(wide ? {} : { flexGrow: 1 }) },
-      ...(roomy ? [{ id: "labeler" as const, label: "Labeler", width: clamp(width * 0.13, 16, 24), align: "left" as const }] : []),
+      { id: "product", label: "Drug", width: clamp(width * 0.25, 20, 34), minWidth: 20, align: "left", ...(wide ? {} : { flexGrow: 1 }) },
+      ...(roomy ? [{ id: "labeler" as const, label: "Labeler", width: clamp(width * 0.13, 16, 24), minWidth: 16, align: "left" as const }] : []),
       ...(wide ? [
         { id: "role" as const, label: "Role", width: 11, align: "left" as const },
         { id: "reactions" as const, label: "Reactions", width: 16, align: "left" as const, flexGrow: 1 },
@@ -34,18 +34,18 @@ export function recordColumns(dataset: OpenFdaDataset, width: number): RecordCol
   if (dataset === "device") {
     return [
       date,
-      { id: "product", label: "Device", width: clamp(width * 0.22, 18, 34), align: "left", ...(roomy ? {} : { flexGrow: 1 }) },
-      ...(wide ? [{ id: "manufacturer" as const, label: "Manufacturer", width: clamp(width * 0.16, 16, 26), align: "left" as const }] : []),
+      { id: "product", label: "Device", width: clamp(width * 0.22, 18, 34), minWidth: 18, align: "left", ...(roomy ? {} : { flexGrow: 1 }) },
+      ...(wide ? [{ id: "manufacturer" as const, label: "Manufacturer", width: clamp(width * 0.16, 16, 26), minWidth: 16, align: "left" as const }] : []),
       { id: "event", label: "Event", width: 11, align: "left" },
       ...(roomy ? [{ id: "problems" as const, label: "Device problems", width: 20, align: "left" as const, flexGrow: 1 }] : []),
     ];
   }
   return [
     date,
-    { id: "firm", label: "Firm", width: clamp(width * 0.18, 16, 28), align: "left", ...(wide ? {} : { flexGrow: 1 }) },
+    { id: "firm", label: "Firm", width: clamp(width * 0.18, 16, 28), minWidth: 16, align: "left", ...(wide ? {} : { flexGrow: 1 }) },
     { id: "class", label: "Class", width: 9, align: "left" },
     ...(wide ? [{ id: "status" as const, label: "Status", width: 10, align: "left" as const }] : []),
-    ...(width >= 120 ? [{ id: "reason" as const, label: "Reason", width: clamp(width * 0.24, 24, 48), align: "left" as const }] : []),
+    ...(width >= 120 ? [{ id: "reason" as const, label: "Reason", width: clamp(width * 0.24, 24, 48), minWidth: 24, align: "left" as const }] : []),
     ...(wide ? [{ id: "product" as const, label: "Product", width: 20, align: "left" as const, flexGrow: 1 }] : []),
   ];
 }

@@ -291,7 +291,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
       ...withReader ? [{ id: "readerTime" as const, label: readerLabel!, width: readerWidth, align: "left" as const, title: readerZone! }] : [],
       { id: "impact", ...impactColumn, align: "left" },
       { id: "country", ...countryColumn, align: "left" },
-      { id: "event", label: "EVENT", width: eventWidth, align: "left" },
+      { id: "event", label: "EVENT", width: eventWidth, minWidth: minEventWidth, align: "left" },
       { id: "actual", label: "ACTUAL", width: actualWidth, align: "right" },
       { id: "forecast", label: "FORECAST", width: forecastWidth, align: "right" },
       { id: "prior", label: "PRIOR", width: priorWidth, align: "right" },
