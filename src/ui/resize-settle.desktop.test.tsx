@@ -1,5 +1,5 @@
 /** @jsxImportSource react */
-import { describe, expect, test } from "bun:test";
+import { describe, expect, jest, test } from "bun:test";
 import { act, useState } from "react";
 import { createDomTestHarness } from "../renderers/dom/test-utils";
 import { beginLiveResize } from "./live-resize";
@@ -40,19 +40,28 @@ describe("useSettledLayoutSize", () => {
   }
 
   test("a run of size changes keeps the first size and settles once, RESIZE_SETTLE_MS after the last", async () => {
-    const seen: { size?: SettledLayoutSize; resize?: (size: CellSize) => void } = {};
-    await harness.render(<Probe initial={{ width: 80, height: 24 }} seen={seen} />);
-    expect(seen.size).toEqual({ width: 80, height: 24, resizing: false });
+    jest.useFakeTimers();
+    try {
+      const advance = (ms: number) => act(async () => { jest.advanceTimersByTime(ms); });
+      const seen: { size?: SettledLayoutSize; resize?: (size: CellSize) => void } = {};
+      await harness.render(<Probe initial={{ width: 80, height: 24 }} seen={seen} />);
+      expect(seen.size).toEqual({ width: 80, height: 24, resizing: false });
 
-    for (const width of [82, 85, 88]) {
-      await act(async () => seen.resize!({ width, height: 24 }));
-      // The render with the new size already holds and says so.
+      for (const width of [82, 85, 88]) {
+        await act(async () => seen.resize!({ width, height: 24 }));
+        // Each change resets the deadline; earlier timers must not settle it.
+        expect(seen.size).toEqual({ width: 80, height: 24, resizing: true });
+        await advance(RESIZE_SETTLE_MS / 2);
+        expect(seen.size?.resizing).toBe(true);
+      }
+      await advance(RESIZE_SETTLE_MS / 2 - 1);
       expect(seen.size).toEqual({ width: 80, height: 24, resizing: true });
-      await wait(RESIZE_SETTLE_MS / 2);
+      await advance(1);
+      expect(seen.size).toEqual({ width: 88, height: 24, resizing: false });
+    } finally {
+      // The DOM harness tears down on real timers.
+      jest.useRealTimers();
     }
-    expect(seen.size?.resizing).toBe(true);
-    await wait(RESIZE_SETTLE_MS + 40);
-    expect(seen.size).toEqual({ width: 88, height: 24, resizing: false });
   });
 
   test.each([["bounded", undefined, 90], ["unbounded", Infinity, 24]] as const)("the %s resize hold settles when the pointer lets go, however long it pauses", async (_name, maxStretch, width) => {

@@ -496,6 +496,10 @@ function stopFollowing(): void {
     return;
   }
   const schedule = () => {
+    // A delayed frame must get to retarget before the old deadline removes
+    // the marks. Its own settle pass installs a fresh cleanup timer.
+    if (settleTimer !== null) clearTimeout(settleTimer);
+    settleTimer = null;
     if (settleFrame === null) settleFrame = requestAnimationFrame(settleFollowing);
   };
   // A final React layout commit may land after release. Ignore the custom

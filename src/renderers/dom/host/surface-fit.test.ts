@@ -76,6 +76,11 @@ test("table following preserves nested visible gaps through release, late commit
     outer.style.width = "654px";
     inner.style.width = "651px";
     await new Promise((resolve) => setTimeout(resolve, 0));
+    // Retargeting is queued, but the browser can miss its next frame. The
+    // previous cleanup deadline must not remove the held gap first.
+    await new Promise((resolve) => setTimeout(resolve, RESIZE_SETTLE_MS * 2 + 10));
+    expect(inner.hasAttribute("data-gloom-follow-x")).toBe(true);
+    expect(inner.style.getPropertyValue("--gloom-follow-x-margin")).toBe("2px");
     frame();
     expect(outer.style.getPropertyValue("--gloom-follow-x-margin")).toBe("3px");
     expect(inner.style.getPropertyValue("--gloom-follow-x-margin")).toBe("3px");

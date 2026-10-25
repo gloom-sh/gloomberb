@@ -1,5 +1,6 @@
 import { appendFile } from "fs/promises";
 import { join, resolve } from "path";
+import { RESIZE_SETTLE_MS } from "../../src/ui/resize-settle";
 import { median, positiveInteger, takeOption } from "../tui-benchmark-harness";
 import { cacheDir, evaluate, frames, launchBrowser, mouse, sleep, waitFor, type Cdp, type Point } from "./browser";
 import { serveFixturePage, type FixturePage } from "./page";
@@ -24,8 +25,8 @@ import { serveFixturePage, type FixturePage } from "./page";
  * time), the React commits and the animation frames the page ran, and for a
  * resize how far the frame's edge and the content's edge fell behind the
  * pointer. Base and this checkout take turns, so a runner that slows down
- * mid-job slows both, and the gate is a ratio of the medians: absolute
- * numbers mean little on a shared runner with no GPU.
+ * mid-job slows both. Shared-table resizes have a hard +0.5 ms limit on
+ * median main-thread time per frame; other scenarios retain the ratio gate.
  *
  * Frames are requestAnimationFrame callbacks in headless Chrome, not frames a
  * GPU presented. Missed frames are estimated against a fixed 60 Hz display:
@@ -41,6 +42,15 @@ const VIEWPORT = { width: 1400, height: 900 };
 const DRAG_MS = 1_500;
 /** One frame slot of the 60 Hz display the drag is paced and judged against. */
 const FRAME_MS = 1_000 / 60;
+/** A held schema settles after one interval; its final layout can restart
+ * ancestor transitions and cleanup for two more. The final read also waits
+ * two animation frames so that layout has painted, outside the timed drag. */
+const RELEASE_SETTLE_MS = RESIZE_SETTLE_MS * 3;
+/** Input validity: deliver at least 90% of the target (81 of 90 moves).
+ * This is a validation criterion, not a measured noise allowance. A slow
+ * input driver must not make a busy renderer look cheaper by giving it
+ * fewer updates; the renderer's own frame rate remains a reported result. */
+const MIN_INPUT_SHARE = 0.9;
 // Calibrated on main (ac27f2d6a) with identical code on both sides: the
 // medians of five runs differed by at most 1.06x quiet and 1.17x on a 12-core
 // host at load 35, and React commits by at most 3. The drag that re-rendered
@@ -84,6 +94,10 @@ interface DragSample {
   scriptMsPerFrame: number;
   styleLayoutMsPerFrame: number;
   commits: number;
+  /** Mouse moves whose dispatch completed during the measured input window. */
+  pointerMoves: number;
+  /** Completed moves per second, excluding the metrics request afterward. */
+  pointerMovesPerSecond: number;
   /** Animation frames the page ran during the drag. */
   frames: number;
   /** Animation frames per second. */
@@ -98,9 +112,9 @@ interface DragSample {
   frameLagPx?: number;
   /** Resizes: how far the content's edge was from the pointer, px, 95th percentile. */
   contentLagPx?: number;
-  /** Resizes: how far the frame's edge moved when the pointer let go where it stood, px. */
+  /** Resizes: largest early or settled release displacement of the frame's edge, px. */
   releaseJumpPx?: number;
-  /** Resizes: how far the content's edge moved when the pointer let go, px. */
+  /** Resizes: largest early or settled release displacement of the content's edge, px. */
   contentReleaseJumpPx?: number;
   /** Charts: how far CSS scaled the canvas's bitmap from 1:1 during the drag, %, 95th percentile. */
   bitmapStretchPct?: number;
@@ -250,6 +264,7 @@ const SCENARIOS: Scenario[] = [
   cornerResize("fear and greed resize", "fear", "fear-greed:float", "[data-gloom-role=composite-chart]", `${pane("fear-greed:float")} [data-gloom-role=composite-chart] canvas`),
   {
     name: "dock divider drag",
+    maxAddedMs: 0.5,
     fixture: "resize",
     grab: (cdp) => evaluate(cdp, TOP_DIVIDER),
     path: (start, t) => ({ x: start.x + Math.sin(t * Math.PI * 2) * 240, y: start.y }),
@@ -262,6 +277,7 @@ const SCENARIOS: Scenario[] = [
     // The same divider, from the chart's side: the pointer moves the chart
     // pane's left edge, and its canvas keeps to the pane's right edge.
     name: "dock divider beside a chart",
+    maxAddedMs: 0.5,
     fixture: "resize",
     grab: (cdp) => evaluate(cdp, TOP_DIVIDER),
     path: (start, t) => ({ x: start.x + Math.sin(t * Math.PI * 2) * 240, y: start.y }),
@@ -276,15 +292,16 @@ const SCENARIOS: Scenario[] = [
   // chart-table kit's band over a table with the pane's tabs, beside a table,
   // and under a toolbar laid over them.
   cornerResize("G layout resize", "g", "chart-bar:float", "canvas", `${pane("chart-bar:float")} canvas`),
-  cornerResize("chart over a table resize", "board", "board:float", "canvas", `${pane("board:float")} canvas`),
-  cornerResize("chart beside a table resize", "beside", "beside:float", "canvas", `${pane("beside:float")} canvas`),
+  { ...cornerResize("chart over a table resize", "board", "board:float", "canvas", `${pane("board:float")} canvas`), maxAddedMs: 0.5 },
+  { ...cornerResize("chart beside a table resize", "beside", "beside:float", "canvas", `${pane("beside:float")} canvas`), maxAddedMs: 0.5 },
   cornerResize("chart under a toolbar resize", "overlay", "overlay:float", "canvas", `${pane("overlay:float")} canvas`),
   // A static chart under a table that grows into what the chart leaves, as the volatility board draws its index history.
-  cornerResize("chart under a table resize", "under", "under:float", "canvas", `${pane("under:float")} canvas`),
+  { ...cornerResize("chart under a table resize", "under", "under:float", "canvas", `${pane("under:float")} canvas`), maxAddedMs: 0.5 },
   {
     // The divider between the docked G layout and the chart beside a table:
     // the G chart's canvas keeps to its pane's moving right edge.
     name: "dock divider beside a G layout",
+    maxAddedMs: 0.5,
     fixture: "nested",
     grab: (cdp) => evaluate(cdp, NESTED_DIVIDER),
     path: (start, t) => ({ x: start.x + Math.sin(t * Math.PI * 2) * 240, y: start.y }),
@@ -294,6 +311,7 @@ const SCENARIOS: Scenario[] = [
   {
     // The same divider from the other side: the chart beside a table keeps to its pane's right edge.
     name: "dock divider beside a chart beside a table",
+    maxAddedMs: 0.5,
     fixture: "nested",
     grab: (cdp) => evaluate(cdp, NESTED_DIVIDER),
     path: (start, t) => ({ x: start.x + Math.sin(t * Math.PI * 2) * 240, y: start.y }),
@@ -324,6 +342,7 @@ const SCENARIOS: Scenario[] = [
   desLinesDrag("DES divider drag, footer hint", rightOf(`${pane("des:a")} [data-gloom-role=pane-hint]`)),
   {
     name: "table column drag",
+    maxAddedMs: 0.5,
     fixture: "resize",
     // The divider of the table in the sidebar pane: its grab strip straddles
     // the sidebar's right edge. Pressed just inside it, where a base branch
@@ -389,14 +408,18 @@ async function measureDrag(cdp: Cdp, page: FixturePage, scenario: Scenario): Pro
   })()`);
   const before = await metrics(cdp);
   const began = performance.now();
+  let pointerMoves = 0;
   for (let move = 1; ; move += 1) {
     const t = (performance.now() - began) / DRAG_MS;
     if (t >= 1) break;
     const at = scenario.path(start, t);
     await mouse(cdp, "mouseMoved", at.x, at.y, true);
+    pointerMoves += 1;
     const wait = began + move * FRAME_MS - performance.now();
     if (wait > 0) await sleep(wait);
   }
+  const inputElapsed = performance.now() - began;
+  const pointerMovesPerSecond = pointerMoves / (inputElapsed / 1000);
   const after = await metrics(cdp);
   const elapsed = performance.now() - began;
   const recorded = await evaluate<{ frameTimes: number[]; commits: number; lag: Array<[number, number]>; stretch: number[] }>(cdp, "(() => { window.__recording = false; return { frameTimes: window.__frameTimes.slice(1), commits: window.__commits, lag: window.__lag.slice(1), stretch: window.__stretch.slice(1) }; })()");
@@ -409,15 +432,39 @@ async function measureDrag(cdp: Cdp, page: FixturePage, scenario: Scenario): Pro
   await mouse(cdp, "mouseReleased", end.x, end.y, false);
   await frames(cdp, 3);
   const released = await evaluate<[number, number]>(cdp, edges);
-  // At rest: what renders a frame or two after the release has.
-  const restStretch = scenario.canvas ? (await frames(cdp, 6), await evaluate<number>(cdp, stretchOf(scenario.canvas))) : 0;
-  const drawn = Math.max(1, recorded.frameTimes.length);
+  // Keep the early displacement, then include the held layout's delayed
+  // commit and transitions. Neither read contributes to the timed metrics.
+  if (scenario.track || scenario.canvas) {
+    await sleep(RELEASE_SETTLE_MS);
+    await frames(cdp, 2);
+  }
+  const settled = scenario.track ? await evaluate<[number, number]>(cdp, edges) : released;
+  const restStretch = scenario.canvas ? await evaluate<number>(cdp, stretchOf(scenario.canvas)) : 0;
+  const minimumMoves = Math.ceil(DRAG_MS / FRAME_MS * MIN_INPUT_SHARE);
+  const minimumRate = 1000 / FRAME_MS * MIN_INPUT_SHARE;
+  if (pointerMoves < minimumMoves || !Number.isFinite(pointerMovesPerSecond) || pointerMovesPerSecond < minimumRate) {
+    throw new Error(`Input delivery was undersampled: ${pointerMoves} moves at ${round(pointerMovesPerSecond, 1)}/s; need at least ${minimumMoves} moves and ${round(minimumRate, 1)}/s to measure the 60Hz workload.`);
+  }
+  const usable = (values: readonly number[]) => values.length > 0 && values.every((value) => Number.isFinite(value) && value >= 0);
+  if (!usable(recorded.frameTimes) || !recorded.frameTimes.some((time) => time > 0)
+    || (scenario.track && (!recorded.lag.length || !recorded.lag.every((pair) => pair.length === 2 && usable(pair))))
+    || (scenario.canvas && (!usable(recorded.stretch) || !Number.isFinite(restStretch)))) {
+    throw new Error("The drag did not record usable frame, edge-lag or bitmap samples.");
+  }
+  const drawn = recorded.frameTimes.length;
   const ms = (name: string) => (after[name]! - before[name]!) * 1000;
+  if (!["TaskDuration", "ScriptDuration", "RecalcStyleDuration", "LayoutDuration"].every((name) => Number.isFinite(ms(name)) && ms(name) >= 0)
+    || !Number.isFinite(recorded.commits) || recorded.commits < 0
+    || ![...held, ...released, ...settled].every(Number.isFinite)) {
+    throw new Error("The drag did not record valid performance metrics, commits or release edges.");
+  }
   return {
     mainMsPerFrame: ms("TaskDuration") / drawn,
     scriptMsPerFrame: ms("ScriptDuration") / drawn,
     styleLayoutMsPerFrame: (ms("RecalcStyleDuration") + ms("LayoutDuration")) / drawn,
     commits: recorded.commits,
+    pointerMoves,
+    pointerMovesPerSecond,
     frames: recorded.frameTimes.length,
     fps: recorded.frameTimes.length / (elapsed / 1000),
     p95FrameMs: percentile(recorded.frameTimes, 0.95),
@@ -426,8 +473,8 @@ async function measureDrag(cdp: Cdp, page: FixturePage, scenario: Scenario): Pro
     ...(scenario.track ? {
       frameLagPx: percentile(recorded.lag.map(([frame]) => frame), 0.95),
       contentLagPx: percentile(recorded.lag.map(([, content]) => content), 0.95),
-      releaseJumpPx: Math.abs(released[0] - held[0]),
-      contentReleaseJumpPx: Math.abs(released[1] - held[1]),
+      releaseJumpPx: Math.max(Math.abs(released[0] - held[0]), Math.abs(settled[0] - held[0])),
+      contentReleaseJumpPx: Math.max(Math.abs(released[1] - held[1]), Math.abs(settled[1] - held[1])),
     } : {}),
     ...(scenario.canvas ? {
       bitmapStretchPct: percentile(recorded.stretch, 0.95),
@@ -481,7 +528,7 @@ async function main(): Promise<void> {
         for (const side of ["base", "head"] as const) {
           const result = await runSide(sides[side], side, scenarios);
           samples[side].push(result);
-          console.error(`${side} ${samples[side].length}: ${Object.entries(result).map(([name, sample]) => `${name} ${round(sample.mainMsPerFrame)} ms/frame, ${sample.commits} commits${sample.frameLagPx !== undefined ? `, ${round(sample.frameLagPx, 1)} px behind` : ""}`).join("; ")}`);
+          console.error(`${side} ${samples[side].length}: ${Object.entries(result).map(([name, sample]) => `${name} ${round(sample.mainMsPerFrame)} ms/frame, ${sample.commits} commits, ${sample.pointerMoves} moves at ${round(sample.pointerMovesPerSecond, 1)}/s${sample.frameLagPx !== undefined ? `, ${round(sample.frameLagPx, 1)} px behind` : ""}`).join("; ")}`);
         }
       }
       verdict = judge(scenarios, samples, sides.base.ownFixture);
@@ -504,7 +551,7 @@ function judge(scenarios: Scenario[], samples: Record<"base" | "head", Array<Rec
   const lines = [
     "### Pane drag and resize frame budget",
     "",
-    `Middle value of ${runs} alternating runs per side, ${DRAG_MS / 1000} s drags at 60 moves a second, headless Chrome without a GPU. Frames are animation frames, not GPU-presented frames; missed frames are estimated against a 60 Hz display. Behind the pointer: how far the dragged edge of the frame, and of the content in it, was from where the pointer had it, in px (95th percentile). Jump on release: how far the frame's and the content's edge moved when the pointer let go where it rested.`,
+    `Middle value of ${runs} alternating runs per side, ${DRAG_MS / 1000} s drags at 60 moves a second, headless Chrome without a GPU. Frames are animation frames, not GPU-presented frames; missed frames are estimated against a 60 Hz display. Behind the pointer: how far the dragged edge of the frame, and of the content in it, was from where the pointer had it, in px (95th percentile). Release displacement: the largest early or settled release displacement from the held edge, sampled three frames after release and again after another ${RELEASE_SETTLE_MS} ms and two frames.`,
     "",
     ...(baseOwnFixture ? ["Main was measured with its own fixture: this PR changed the fixture, and the new one needs source main does not have. The stand-in panes may differ between the two columns.", ""] : []),
     `| | main${baseOwnFixture ? " (own fixture)" : ""} | this PR |`,
@@ -521,6 +568,8 @@ function judge(scenarios: Scenario[], samples: Record<"base" | "head", Array<Rec
     row("script per frame", "scriptMsPerFrame", " ms");
     row("style and layout per frame", "styleLayoutMsPerFrame", " ms");
     row("React commits", "commits");
+    row("delivered pointer moves", "pointerMoves");
+    row("pointer moves per second", "pointerMovesPerSecond");
     row("frames per second", "fps");
     row("frame time p95", "p95FrameMs", " ms");
     row("missed frames (est., 60 Hz)", "missedFrames");
@@ -528,8 +577,8 @@ function judge(scenarios: Scenario[], samples: Record<"base" | "head", Array<Rec
     if (track) {
       row("frame behind the pointer", "frameLagPx", " px");
       row("content behind the pointer", "contentLagPx", " px");
-      row("frame jump on release", "releaseJumpPx", " px");
-      row("content jump on release", "contentReleaseJumpPx", " px");
+      row("frame release displacement (early/settled max)", "releaseJumpPx", " px");
+      row("content release displacement (early/settled max)", "contentReleaseJumpPx", " px");
     }
     if (canvas) {
       row("chart bitmap scaled by CSS (p95)", "bitmapStretchPct", "%");
@@ -550,7 +599,7 @@ function judge(scenarios: Scenario[], samples: Record<"base" | "head", Array<Rec
     for (const [what, key] of [["frame", "releaseJumpPx"], ["content", "contentReleaseJumpPx"]] as const) {
       const releaseJump = pick("head", key);
       if (track && releaseJump > MAX_RELEASE_JUMP_PX) {
-        problems.push(`${name}: the ${what} jumped ${round(releaseJump, 1)} px when the pointer let go (limit: ${MAX_RELEASE_JUMP_PX} px).`);
+        problems.push(`${name}: the ${what}'s largest early or settled release displacement was ${round(releaseJump, 1)} px (limit: ${MAX_RELEASE_JUMP_PX} px).`);
       }
     }
     const frame = { base: pick("base", "mainMsPerFrame"), head: pick("head", "mainMsPerFrame") };
