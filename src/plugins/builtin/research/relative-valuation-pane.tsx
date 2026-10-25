@@ -97,7 +97,7 @@ function extendedMove(row: RelativeRow, columnId: ExtendedColumnId): number | nu
  * AFTER-HRS or OVERNIGHT column, named as BI and MOST name it, follows CHG%
  * for each session in `extendedSessions`.
  */
-function buildRelativeColumns(baseCurrency: string, extendedSessions: readonly ExtendedSession[]): RelativeColumn[] {
+function buildRelativeColumns(baseCurrency: string, extendedSessions: readonly ExtendedSession[], marginNamesYear: boolean): RelativeColumn[] {
   const symbolWidth = 8;
   const priceWidth = 10;
   const pctWidth = 8;
@@ -117,7 +117,8 @@ function buildRelativeColumns(baseCurrency: string, extendedSessions: readonly E
     { id: "fcfYield", label: "FCF%", width: metricWidth, align: "right" },
     // Latest quarter against the year before, and a trailing-twelve-month margin.
     { id: "revenueGrowth", label: REVENUE_GROWTH_LABEL, width: metricWidth, align: "right" },
-    { id: "operatingMargin", label: "TTM OP%", width: metricWidth, align: "right" },
+    // Wider while a peer's margin is of its latest fiscal year and names it ("16.83% FY25").
+    { id: "operatingMargin", label: "TTM OP%", width: marginNamesYear ? 12 : metricWidth, align: "right" },
   ];
 }
 
@@ -217,9 +218,10 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
   const fxRates = useFxRatesMap([baseCurrency, ...rows.map((row) => row.marketCapCurrency)]);
   // A pre-market or after-hours print gets its own column when a peer has one.
   const extendedSessionsKey = extendedSessionsOf(rows).join(",");
+  const marginNamesYear = rows.some((row) => row.operatingMarginPeriod != null);
   const columns = useMemo(
-    () => buildRelativeColumns(baseCurrency, extendedSessionsKey ? extendedSessionsKey.split(",") as ExtendedSession[] : []),
-    [baseCurrency, extendedSessionsKey],
+    () => buildRelativeColumns(baseCurrency, extendedSessionsKey ? extendedSessionsKey.split(",") as ExtendedSession[] : [], marginNamesYear),
+    [baseCurrency, extendedSessionsKey, marginNamesYear],
   );
 
   const comparableRows = useMemo(() => rows.map((row) => ({
@@ -319,7 +321,7 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
       case "revenueGrowth":
         return { text: formatPercent(row.revenueGrowth ?? undefined), color: shownPriceColor((row.revenueGrowth ?? 0) * 100, 2) };
       case "operatingMargin":
-        return { text: formatLevelPercent(row.operatingMargin ?? undefined), color: colors.text };
+        return { text: `${formatLevelPercent(row.operatingMargin ?? undefined)}${row.operatingMargin != null && row.operatingMarginPeriod ? ` ${row.operatingMarginPeriod}` : ""}`, color: colors.text };
     }
   }, []);
 

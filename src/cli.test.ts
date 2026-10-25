@@ -312,7 +312,7 @@ describe("CLI portfolio commands", () => {
     }]);
   });
 
-  test("a size of 1.250 on a listing held in whole lots asks which was meant, as 1,250 does; a US listing takes it as 1.25", async () => {
+  test("a size of 1.250 or 1.000 asks which was meant, as 1,250 does, on a US listing as on one held in whole lots", async () => {
     const { dataDir } = await createCliFixture({
       portfolios: [{ id: "lira", name: "Lira", currency: "TRY" }],
       watchlists: [],
@@ -326,13 +326,28 @@ describe("CLI portfolio commands", () => {
     expect(lots.exitCode).toBe(1);
     expect(lots.stderr).toContain("Shares 1.250 could be 1250 (thousands) or 1.25 (decimal point), and THYAO.IS:BIST trades in whole shares; type 1250 or 1.25.");
 
-    const fraction = await captureConsole(() => runCli(["portfolio", "position", "set", "Lira", "NVDA", "1.250", "180", "USD"]));
-    expect(fraction.exitCode).toBe(0);
+    // A US listing may be held in fractions, but 1.000 reads as cash reads it just as likely: it asks.
+    const thousand = await captureConsole(() => runCli(["portfolio", "position", "set", "Lira", "NVDA", "1.000", "180", "USD"]));
+    expect(thousand.exitCode).toBe(1);
+    expect(thousand.stderr).toContain("Shares 1.000 could be 1000 (thousands) or 1 (decimal point); type 1000 or 1.");
+    // A fraction that would read two ways is asked back as one that does not.
+    const fraction = await captureConsole(() => runCli(["portfolio", "position", "set", "Lira", "NVDA", "1.234", "180", "USD"]));
+    expect(fraction.exitCode).toBe(1);
+    expect(fraction.stderr).toContain("Shares 1.234 could be 1234 (thousands) or 1.234 (decimal point); type 1234 or 1.2340.");
     const persistence = new AppPersistence(join(dataDir, ".gloomberb-cache.db"));
     const store = new TickerRepository(persistence.tickers);
-    expect((await store.loadTicker("NVDA"))?.metadata.positions[0]?.shares).toBe(1.25);
+    expect((await store.loadTicker("NVDA"))?.metadata.positions).toEqual([]);
     expect((await store.loadTicker("THYAO.IS"))?.metadata.positions).toEqual([]);
     persistence.close();
+
+    // Either answer is stored as typed.
+    for (const [size, shares] of [["1000", 1000], ["1.0", 1], ["1.2340", 1.234], ["0.500", 0.5]] as const) {
+      const stored = await captureConsole(() => runCli(["portfolio", "position", "set", "Lira", "NVDA", size, "180", "USD"]));
+      expect(stored.exitCode, size).toBe(0);
+      const reread = new AppPersistence(join(dataDir, ".gloomberb-cache.db"));
+      expect((await new TickerRepository(reread.tickers).loadTicker("NVDA"))?.metadata.positions[0]?.shares, size).toBe(shares);
+      reread.close();
+    }
   });
 
   test("removes portfolio membership and positions, then cleans all references on delete", async () => {

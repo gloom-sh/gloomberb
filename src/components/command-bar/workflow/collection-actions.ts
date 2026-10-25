@@ -36,7 +36,7 @@ import { resolvePortfolioTotalsCurrency } from "../../../portfolio/totals-curren
 import { createBaseConverter } from "../../../cli/base-converter";
 import { heldCurrencyUnit } from "../../../utils/currency-units";
 import { positionCostTermsPrefill } from "./portfolio-position";
-import { wholeUnitQuantityProblem } from "../../../portfolio/position-quantity";
+import { ambiguousQuantityProblem } from "../../../portfolio/position-quantity";
 import type { CommandBarFieldValue } from "./types";
 import type { WorkflowStringValues } from "./broker";
 import { coerceFieldString } from "../helpers";
@@ -259,8 +259,8 @@ export function createCommandBarCollectionWorkflowActions(options: {
       // Negative for a short; zero is no position. A future counts contracts, and the messages say so.
       const quantityLabel = positionQuantityLabel(ticker);
       const shares = readTypedNumber(coerceFieldString(values.shares), quantityLabel);
-      // 1.250 on a listing held in whole lots could be 1,250 as well, and asks the same way.
-      const lots = wholeUnitQuantityProblem(coerceFieldString(values.shares).trim(), ticker, { label: quantityLabel });
+      // 1.250 could be 1,250 as well, and asks the same way.
+      const lots = ambiguousQuantityProblem(coerceFieldString(values.shares).trim(), ticker, { label: quantityLabel });
       if (lots) throw new Error(lots);
       const sharesError = validatePositionShares(shares, quantityLabel);
       if (sharesError) {

@@ -23,21 +23,27 @@ function tradesInWholeUnits(ticker: TickerRecord): boolean {
 }
 
 /**
- * Why a typed size cannot be stored as read: a dot and three digits (`1.250`)
- * on a listing held in whole units, where it is far likelier the thousands
- * grouping many locales write (1,250 shares) than a quarter of a share, so the
- * command asks which, as it does for `1,250`. Null for any other size, and
- * for a listing that may be held in fractions, where `1.250` is 1.25.
+ * Why a typed size cannot be stored as read: a dot and three digits (`1.000`,
+ * `1.250`), which is as likely the thousands grouping many locales write
+ * (1,000 shares, as cash reads `1.000`) as a fraction of a share, so the
+ * command asks which, as it does for `1,250`. On a listing held in whole
+ * units the thousands reading is the only one that can be held, and the
+ * message says so. Null for any other size (`0.500`, `12.25`).
  */
-export function wholeUnitQuantityProblem(
+export function ambiguousQuantityProblem(
   typed: string,
   ticker: TickerRecord,
   options: { label?: PositionQuantityLabel; listing?: string } = {},
 ): string | null {
   const reading = thousandsDotReadings(typed);
-  if (!reading || !tradesInWholeUnits(ticker)) return null;
+  if (!reading) return null;
   const label = options.label ?? positionQuantityLabel(ticker);
   const listing = options.listing ?? ticker.metadata.ticker;
-  const because = `${listing} trades in whole ${label === "Contracts" ? "contracts" : "shares"}`;
-  return `${label} ${ambiguousNumberMessage(typed, reading, { because })}.`;
+  const because = tradesInWholeUnits(ticker)
+    ? `${listing} trades in whole ${label === "Contracts" ? "contracts" : "shares"}`
+    : undefined;
+  // The fraction typed so it does not read two ways itself: 1.234 asks again, 1.2340 does not.
+  const fraction = String(reading.decimal);
+  const decimalAs = thousandsDotReadings(fraction) ? `${fraction}0` : fraction;
+  return `${label} ${ambiguousNumberMessage(typed, reading, { because, decimalAs })}.`;
 }

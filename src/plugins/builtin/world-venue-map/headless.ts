@@ -84,15 +84,15 @@ function layerColumns(layer: GeoLayerInfo): HeadlessPaneColumn[] {
 /**
  * What a search that finds nothing says. A search outside a one-country layer
  * finds nothing because the layer has nothing there; ships are found by name,
- * not by the ticker of the company that runs them, so a ticker that links no
- * fleet (or a server that links none) gets a name to try.
+ * or by the name or ticker of an operator whose fleet is linked, so anything
+ * else (or a server that links no fleet) gets a name to try.
  */
 function emptySearchNote(layer: GeoLayerInfo, query: string): string | null {
   const typed = query.trim();
   if (!typed) return null;
   const coverage = layerCoverageNote(layer);
   if (coverage) return `No ${layer.name.toLowerCase()} match "${typed}". ${coverage}`;
-  if (layer.id === "vessels") return `No ${layer.name.toLowerCase()} match "${typed}"; try a ship-name prefix, such as --query Norwegian.`;
+  if (layer.id === "vessels") return `No ${layer.name.toLowerCase()} match "${typed}"; try a ship-name prefix or an operator, such as --query Norwegian or --query "Royal Caribbean".`;
   return null;
 }
 

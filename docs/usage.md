@@ -1881,7 +1881,8 @@ gloom portfolio show Retirement                    # --csv and --json keep raw n
 **Amounts** (cash, `position set` shares and cost, `target set`, `--notional`) read with either decimal mark: `1.234,5`, `1234,5` and `1,234.5` are 1234.5, `18,50` is 18.5, and a space (in quotes) or `_` may group thousands. A comma or a dot before exactly three digits goes by what the number counts:
 
 - **Cash and `--notional`** are amounts of a currency (cash in the portfolio's currency unless you name one, `--notional` in USD), so `500,000` and `1.234` are thousands. In a currency with three decimals (KWD, BHD, OMR, JOD, TND) both readings are amounts, so the command names them and stores nothing (`type 1234 or 1.2340`).
-- **`position set` shares and cost** read a lone dot as a decimal point (a cost of `123.456`, `1.234` shares) and refuse a lone comma before three digits (`1,234`), naming both readings. On a listing held in whole lots (shares outside the US such as `THYAO:BIST`, futures and option contracts) a lone dot before three digits is refused too (`Shares 1.250 could be 1250 (thousands) or 1.25 (decimal point)...`).
+- **`position set` shares and contracts** ask which a dot or a comma before exactly three digits meant (`1.000`, `1.250`, `1,234`): thousands, as cash reads `1.000`, or a decimal. The command names both readings and stores nothing (`Shares 1.000 could be 1000 (thousands) or 1 (decimal point); type 1000 or 1`). A listing held in whole lots (shares outside the US such as `THYAO:BIST`, futures and option contracts) adds that it trades in whole units.
+- **`position set` average cost** reads a lone dot as a decimal point (`123.456`) and refuses a lone comma before three digits (`1,234`), naming both readings.
 - **A target weight** is never in the thousands, so `12,500` there is 12.5%.
 
 The terms in the table:

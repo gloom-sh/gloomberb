@@ -122,3 +122,16 @@ test("euro and dollar caps under MCAP USD name the rate in the footer, beside th
   await settle();
   expect(tui.frame()).toContain("MCAP USD at EUR/USD 1.1612 · fundamentals through 2026-06-30 ");
 });
+
+test("a peer whose trailing quarters are not in yet shows its latest fiscal year's margin, named, and the column widens to fit", async () => {
+  setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({ getTickerFinancials: async (symbol) => ({
+    annualStatements: symbol === "CCL" ? [{ date: "2025-11-30", totalRevenue: 26.62e9, operatingIncome: 4.48e9 }] : [], quarterlyStatements: [], priceHistory: [],
+    quote: { symbol, price: 26, change: 0, changePercent: 0, currency: "USD", lastUpdated: 1789167600002, marketCap: 35e9 },
+    fundamentals: { financialCurrency: "USD", ...symbol === "CCL" ? {} : { operatingMargin: 0.2732 } },
+  }) })));
+  await act(async () => { await tui.render(<Harness width={140} symbols={["CCL", "RCL"]} />, { width: 140, height: 16 }); });
+  await settle();
+  const frame = tui.frame();
+  expect(frame).toContain("16.83% FY25");
+  expect(frame).toContain("27.32%");
+});

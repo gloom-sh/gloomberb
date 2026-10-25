@@ -50,7 +50,7 @@ import { importSource, notionalPositions, rankThirteenFLines, type ThirteenFImpo
 import { importedFromText } from "../imported-from";
 import { savedListingCoinNote } from "../../../../cli/commands/crypto-hints";
 import { findNamedCollection } from "../../../../portfolio/collection-name";
-import { wholeUnitQuantityProblem } from "../../../../portfolio/position-quantity";
+import { ambiguousQuantityProblem } from "../../../../portfolio/position-quantity";
 import {
   CLI_COST_FX_WORDING, loadPurchaseDateCostFx, readCostFxRate, readPurchaseDate, resolvePositionCostFx, type CostFxHistoryClient,
 } from "../../../../portfolio/cost-fx";
@@ -363,8 +363,8 @@ async function setPositionCommand(
       const avgCost = parseAmountArg(avgCostValue, "Average cost");
       // The notes say which listing a bare symbol went to, and that a bare coin ticker is not the coin, as `portfolio add` does.
       const { ticker, notes } = await resolveCliTicker(symbol, store, dataProvider, exchange);
-      // `1.250` on a listing held in whole lots asks which was meant, as `1,250` did above.
-      const lots = wholeUnitQuantityProblem(sharesValue, ticker, { listing: savedListingName(ticker).key });
+      // `1.250` and `1.000` ask which was meant, as `1,250` did above: a dot before three digits is as often thousands.
+      const lots = ambiguousQuantityProblem(sharesValue, ticker, { listing: savedListingName(ticker).key });
       if (lots) throw new PortfolioCliError(lots);
       // A future is held in contracts of the size its terms give, as `quote` states it, and a cost typed as
       // corn is quoted counts cents.
@@ -942,7 +942,7 @@ const AMOUNTS_HELP = {
   lines: [
     "Numbers take either decimal mark: 1.234,5, 1234,5 and 1,234.5 are 1234.5, and 18,50 is 18.5.",
     "Cash and --notional are amounts of a currency (cash in the portfolio's unless named, --notional in USD), so 500,000 and 1.234 are thousands, a third decimal being below a cent. In a currency with three decimals (KWD, BHD, OMR) they could be either, and the command asks which.",
-    "Shares, contracts and average cost read a lone dot as a decimal point (123.456) and ask which a lone comma before three digits meant (1,234). On a listing held in whole lots (shares listed outside the US, a future's contracts) a lone dot before three digits (1.250) asks too.",
+    "Average cost reads a lone dot as a decimal point (123.456). Shares and contracts ask which a lone dot or comma before three digits meant (1.000, 1,234), thousands or a decimal, and name both readings to type.",
   ],
 };
 

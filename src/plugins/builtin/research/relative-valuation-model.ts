@@ -4,6 +4,7 @@ import { marketCapBasisNote, viewMarketCapitalization } from "../../../utils/mar
 import { enterpriseValueNotMeaningful, enterpriseValueReconciliationNote, enterpriseValueWithdrawn, reportedEnterpriseValue } from "../../../utils/fundamentals";
 import { getExtendedSessionDisplay, getQuoteSessionFields } from "../../../market-data/market/status";
 import { atRegularSessionPrice, movePriceDerivedFigures, regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
+import { fiscalPeriodLabel, fiscalYearEndMonth } from "../../../utils/fiscal-period";
 import { latestFinancialPeriod, latestReportedPeriod } from "../../../utils/latest-financial-period";
 import type { Quote, TickerFinancials } from "../../../types/financials";
 
@@ -49,6 +50,25 @@ function fcfYieldGap(fundamentals: TickerFinancials["fundamentals"], capCurrency
   return NOT_REPORTED;
 }
 export const RELATIVE_VALUATION_STALE_FUNDAMENTALS_NOTICE = "Fundamentals stale: retained values may be out of date";
+
+/**
+ * The operating margin of the latest fiscal year, for a row whose trailing
+ * twelve months are not whole (a quarter the source has not carried yet):
+ * that year's operating income over its revenue, named for the year ("FY25")
+ * so a cell never passes it off as trailing. Null when the latest year lacks
+ * either figure; an older year is never stood in for it.
+ */
+function fiscalYearOperatingMargin(annualStatements: TickerFinancials["annualStatements"] | undefined) {
+  const latest = latestFinancialPeriod(annualStatements, (row) => row.date);
+  if (!latest || !finiteNumber(latest.operatingIncome) || !finiteNumber(latest.totalRevenue) || latest.totalRevenue <= 0) return null;
+  const year = /^FY\d{2}(\d{2})$/.exec(fiscalPeriodLabel(latest.date, "annual", fiscalYearEndMonth(annualStatements ?? [])))?.[1];
+  return {
+    value: latest.operatingIncome / latest.totalRevenue,
+    // The fiscal year's own name; the calendar year of its end where the year cannot be named.
+    label: `FY${year ?? latest.date.slice(2, 4)}`,
+    periodEnd: latest.date.slice(0, 10),
+  };
+}
 
 /**
  * A peer's row. Last, its change and the extended print are the quote's
@@ -97,7 +117,9 @@ export function relativeValuationValues(snapshot: TickerFinancials | null) {
     && fundamentals.freeCashFlow != null && Number.isFinite(fundamentals.freeCashFlow) && capitalization.value > 0
     ? fundamentals.freeCashFlow / capitalization.value : null;
   const revenueGrowth = fundamentals?.revenueGrowth ?? fundamentals?.lastQuarterGrowth ?? null;
-  const operatingMargin = fundamentals?.operatingMargin ?? null;
+  const trailingOperatingMargin = fundamentals?.operatingMargin ?? null;
+  const fiscalYearMargin = trailingOperatingMargin == null ? fiscalYearOperatingMargin(financials?.annualStatements) : null;
+  const operatingMargin = trailingOperatingMargin ?? fiscalYearMargin?.value ?? null;
   const trailingPE = trailingNotMeaningful ? null : comparablePriceEarnings(reportedMultiples.trailingPE);
   const forwardPE = forwardNotMeaningful ? null : comparablePriceEarnings(reportedMultiples.forwardPE);
   // Every figure a row lacks says why, so an export's blank cell is never silent: N/M multiples say so themselves.
@@ -151,6 +173,9 @@ export function relativeValuationValues(snapshot: TickerFinancials | null) {
     fcfYield,
     revenueGrowth,
     operatingMargin,
+    /** The fiscal year the operating margin is of ("FY25") when no trailing figure was served; null when it is trailing twelve months. */
+    operatingMarginPeriod: fiscalYearMargin?.label ?? null,
+    operatingMarginPeriodEnd: fiscalYearMargin?.periodEnd ?? null,
     /** Why each missing figure is missing, in a few words the row draws in its place. */
     gaps,
   };

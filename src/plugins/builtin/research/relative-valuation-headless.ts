@@ -96,7 +96,10 @@ const VALUATION_COLUMNS: HeadlessPaneColumn[] = [
   ...([["fcfYield", "FCF Yield"], ["revenueGrowth", REVENUE_GROWTH_HEADER], ["operatingMargin", "TTM Op Margin"]] as const).map(([key, header]) => ({
     key, header, align: "right" as const,
     format: (value: unknown, row: Record<string, unknown>) => value == null ? gapText(row, key)
-      : key === "revenueGrowth" ? formatPercent(Number(value)) : formatLevelPercent(Number(value)),
+      : key === "revenueGrowth" ? formatPercent(Number(value))
+        // A margin of the latest fiscal year, where no trailing quarters were served, says which year.
+        : key === "operatingMargin" && typeof row.operatingMarginPeriod === "string"
+          ? `${formatLevelPercent(Number(value))} ${row.operatingMarginPeriod}` : formatLevelPercent(Number(value)),
   })),
 ];
 

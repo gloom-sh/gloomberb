@@ -78,6 +78,23 @@ test("relative valuations share derived metrics, preserve zeroes, and identify m
 });
 
 
+test("RV's TTM Op Margin names the fiscal year it falls back to, in the text table and the export", async () => {
+  const carnival = {
+    annualStatements: [{ date: "2025-11-30", totalRevenue: 26.62e9, operatingIncome: 4.48e9 }], quarterlyStatements: [], priceHistory: [],
+    quote: { symbol: "CCL", price: 26, change: 0, changePercent: 0, currency: "USD", lastUpdated: 1, marketCap: 35e9 },
+    fundamentals: { financialCurrency: "USD", marketCap: 35e9, enterpriseValue: 59e9, revenue: 27.59e9, freeCashFlow: 3.2e9 },
+  };
+  const royal = { ...carnival, quote: { ...carnival.quote, symbol: "RCL" }, fundamentals: { ...carnival.fundamentals, operatingMargin: 0.2732 } };
+  const ctx = { signal: new AbortController().signal, marketData: createTestDataProvider({
+    async getTickerFinancials(symbol) { return symbol === "CCL" ? carnival : royal; },
+  }) } as HeadlessPaneContext;
+  const result = await relativeValuationHeadless.load({ symbols: ["CCL", "RCL"], argument: ["CCL", "RCL"], rawArgument: "CCL RCL", options: {} }, ctx);
+  const margin = relativeValuationHeadless.columns!.find((column) => column.key === "operatingMargin")!;
+  expect(result.rows.map((row) => margin.format!(row.operatingMargin, row))).toEqual(["16.83% FY25", "27.32%"]);
+  expect(result.rows[0]).toMatchObject({ operatingMarginPeriod: "FY25", operatingMarginPeriodEnd: "2025-11-30" });
+  expect(result.unavailableSymbols).toEqual([]);
+});
+
 test("relative valuation does not divide unconverted foreign cash flows by a USD market value", () => {
   const financials = {
     annualStatements: [], quarterlyStatements: [], priceHistory: [], financialCurrency: "TWD",
