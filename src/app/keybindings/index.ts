@@ -33,6 +33,8 @@ export {
   formatChordForHost,
   menuAcceleratorFor,
   primaryModifierFor,
+  shortActionLabel,
+  takenChordMessage,
 } from "./labels";
 export { KeybindingsProvider, getDefaultKeybindings, useKeybindings, useResolvedKeybindings } from "./react";
 export {

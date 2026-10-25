@@ -22,7 +22,9 @@ import {
   resolveKeybindings,
   serializeKeyChord,
   setCommandBinding,
+  shortActionLabel,
   subscribeKeybindingCapture,
+  takenChordMessage,
   takeKeybindingCaptureRequest,
   updateKeybindingsConfig,
   type KeyChord,
@@ -88,12 +90,6 @@ interface Feedback {
   text: string;
 }
 
-/** The first clause of a description, for messages that name an action mid-sentence. */
-function shortLabel(description: string): string {
-  const clause = description.split(/[,.](?:\s|$)/)[0] ?? description;
-  return clause.trim() || description.trim();
-}
-
 function pluginShortcutsFromRegistry(disabledPlugins: readonly string[]): KeyboardShortcut[] {
   const registry = getSharedRegistry();
   if (!registry?.shortcuts) return [];
@@ -155,7 +151,7 @@ export function KeybindingsEditor({
       return `"${command?.query ?? target.slice("command:".length)}"`;
     }
     const action = resolved.actionsById.get(target);
-    return shortLabel(action?.def ? t(action.def.description) : action?.pluginShortcut?.description ?? target);
+    return shortActionLabel(action?.def ? t(action.def.description) : action?.pluginShortcut?.description ?? target);
   }, [resolved]);
 
   const rows = useMemo<EditorRow[]>(() => {
@@ -237,7 +233,7 @@ export function KeybindingsEditor({
   }, [bindableRows, startCapture]);
 
   const captureLabel = capture
-    ? capture.kind === "row" ? shortLabel(capture.row.label) : `"${capture.query}"`
+    ? capture.kind === "row" ? shortActionLabel(capture.row.label) : `"${capture.query}"`
     : null;
 
   const commitChord = useCallback((chord: KeyChord) => {
@@ -251,7 +247,7 @@ export function KeybindingsEditor({
     // A built-in action's key is refused, so a binding never leaves the command bar or close pane dead.
     const core = coreActionOnChord(resolved, chord, capture.kind === "row" ? capture.row.action?.id : undefined);
     if (core) {
-      setFeedback({ tone: "warning", text: tf("{chord} is taken: {target}. Press another key.", { chord: formatChord(chord), target: describeTarget(core.id) }) });
+      setFeedback({ tone: "warning", text: takenChordMessage(formatChord(chord), core) });
       return;
     }
     if (isCommand) {

@@ -354,6 +354,11 @@ function barDate(time: number, timeZone: string): string {
   return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
+/** The venue date a daily bar at `time` names on `exchange`, read as calendarHistoryLastBarDate reads it. */
+export function dailyBarDate(time: number, exchange: string): string {
+  return barDate(time, sessionCalendarTimeZone(exchange) ?? "UTC");
+}
+
 /**
  * The venue date of the latest bar, read as calendarHistoryFetchState reads
  * it, so copies whose sources label a session differently compare equal.

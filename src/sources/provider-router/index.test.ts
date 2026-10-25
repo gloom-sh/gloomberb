@@ -9,7 +9,7 @@ import type { BrokerAdapter } from "../../types/broker";
 import type { DataProvider, QuoteSubscriptionTarget } from "../../types/data-provider";
 import type { CapabilityRouteSource } from "../../types/capability-route-source";
 import { attachTestRegistry, brokerInstance, createBrokerConfig, setBrokerInstances } from "./test-support";
-import { createTestFinancials, createTestQuote, fallbackProvider } from "../../test-support/data-provider";
+import { createTestDataProvider, createTestFinancials, createTestQuote, fallbackProvider } from "../../test-support/data-provider";
 import { createTestArticle } from "../../test-support/news";
 import { createTempDbPath, removeTempDbFiles } from "../../test-support/temp-db";
 
@@ -28,6 +28,31 @@ describe("AssetDataRouter", () => {
     const [result] = await router.getQuotesBatch([{ symbol: "ES=F", exchange: "" }]);
     expect(result!.quote).toBeNull();
     expect(JSON.parse(JSON.stringify(result)).error).toBe("No quote provider available for ES=F");
+  });
+
+  test("every quote it answers names the day of a London previous close, read once from the listing's daily closes", async () => {
+    // SHEL.L after Monday 14 Sep's close (the clock is 18:00 UTC): its move is from Friday 11 Sep's close.
+    const quote = createTestQuote({ symbol: "SHEL.L", currency: "GBP", listingExchangeName: "LSE", exchangeName: "LSE",
+      providerId: "gloomberb-cloud", price: 40.33, change: 1.445, changePercent: 3.72, previousClose: 38.885,
+      changeSessionDate: "2026-09-14", marketState: "CLOSED", lastUpdated: Date.parse("2026-09-14T15:35:00Z") });
+    let reads = 0;
+    const provider = createTestDataProvider({
+      id: "gloomberb-cloud",
+      getQuote: async () => quote,
+      getQuotesBatch: async (targets) => targets.map((target) => ({ target, quote })),
+      getTickerFinancials: async () => createTestFinancials({ quote }),
+      getPriceHistory: async () => {
+        reads += 1;
+        return [["2026-09-10", 39.09], ["2026-09-11", 38.885], ["2026-09-14", 40.33]]
+          .map(([date, close]) => ({ date: new Date(`${date}T00:00:00Z`), close: close as number }));
+      },
+    });
+    const router = new AssetDataRouter(provider, []);
+    expect((await router.getQuote("SHEL.L", "")).previousCloseDate).toBe("2026-09-11");
+    const [batched] = await router.getQuotesBatch([{ symbol: "SHEL.L", exchange: "" }]);
+    expect(batched!.quote!.previousCloseDate).toBe("2026-09-11");
+    expect((await router.getTickerFinancials("SHEL.L", "")).quote!.previousCloseDate).toBe("2026-09-11");
+    expect(reads).toBe(1);
   });
 
   test("a cache-only batch answers from the cache, an expired quote included, and never asks a provider", async () => {

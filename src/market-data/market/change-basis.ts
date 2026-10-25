@@ -120,7 +120,7 @@ function previousIndexSession(quote: Quote, date: string): string | null {
  * calendar, with the closures in between (an index's, the venue whose days it
  * follows); otherwise for an index from its own sessions; for a currency pair
  * the weekday before; for any other listing the day its own daily closes date
- * its previous close to (`previousCloseDate`, withDatedPreviousClose). Null
+ * its previous close to (`previousCloseDate`, PreviousCloseDates). Null
  * when nothing dates it.
  */
 function previousSession(quote: Quote, sessionDate: string): DatedChangeBasis | null {
@@ -153,7 +153,7 @@ export function changeBasisSessionDate(quote: Quote): string | null {
  * on its venue's holiday calendar (futuresChangeBasis). Anything else is
  * the close of the session before the move's, dated by the venue's calendar;
  * on a venue without one, by the listing's own daily closes once they were
- * read (withDatedPreviousClose), and otherwise left undated, never guessed.
+ * read (PreviousCloseDates), and otherwise left undated, never guessed.
  * Null for a quote with no move: none reported, or a listing that no longer
  * trades.
  */

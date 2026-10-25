@@ -221,6 +221,8 @@ function assignDailyChangeFields(
   }
 
   assignField(target, provenance, "previousClose", referenceProvider);
+  // The day that close is from comes with it, from the same source.
+  if (referenceProvider.previousCloseDate) target.previousCloseDate = referenceProvider.previousCloseDate;
   const price = target.price;
   const previousClose = target.previousClose;
   if (!finitePositiveNumber(price) || !finitePositiveNumber(previousClose)) {
@@ -500,6 +502,7 @@ export function resolveCanonicalQuote(
     // What that move is from when it is not previousClose; absent when it is.
     ...(resolved.changeBasis ? { changeBasis: resolved.changeBasis } : {}),
     previousClose: resolved.previousClose as Quote["previousClose"],
+    ...(resolved.previousCloseDate ? { previousCloseDate: resolved.previousCloseDate } : {}),
     regularClose: priceProvider?.regularClose,
     regularCloseSessionDate: priceProvider?.regularClose != null ? priceProvider.regularCloseSessionDate : undefined,
     regularChange: priceProvider?.regularClose != null ? priceProvider.regularChange : undefined,

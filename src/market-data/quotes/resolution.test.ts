@@ -695,6 +695,24 @@ test("a coin's 24-hour move keeps its basis through merging and resolution, and 
   expect(none.changePercent).toBeNaN();
 });
 
+test("a previous close's day travels with that close through ticks and resolution, a broker's price included, and not to the next close", () => {
+  const now = Date.parse("2026-10-23T14:00:00Z");
+  const base = { symbol: "SHEL.L", currency: "GBP", listingExchangeName: "LSE", changeSessionDate: "2026-10-23", lastUpdated: now };
+  const cloud = { ...base, providerId: "gloomberb-cloud", dataSource: "delayed" as const, price: 40.3, change: 1.415,
+    changePercent: 3.64, previousClose: 38.885, previousCloseDate: "2026-10-22" };
+  // A tick that does not restate the day keeps it while the close is the same.
+  const ticked = mergeQuoteContribution(normalizeQuoteContribution(cloud)!, { ...cloud, previousCloseDate: undefined, price: 40.33 });
+  expect(ticked.previousCloseDate).toBe("2026-10-22");
+  // A broker's live price is measured from the cloud's close, and so carries its day.
+  const broker = { ...base, providerId: "ibkr", dataSource: "live" as const, price: 40.35, change: 1.5, changePercent: 3.8, previousClose: 38.85 };
+  expect(resolveCanonicalQuote({ "gloomberb-cloud": ticked, ibkr: broker }, now).quote)
+    .toMatchObject({ price: 40.35, previousClose: 38.885, previousCloseDate: "2026-10-22" });
+  // Monday's quote moves from Friday's close, which no day was read for yet.
+  const monday = mergeQuoteContribution(ticked, { ...cloud, previousCloseDate: undefined, previousClose: 40.33,
+    changeSessionDate: "2026-10-26", lastUpdated: Date.parse("2026-10-26T09:00:00Z") });
+  expect(monday.previousCloseDate).toBeUndefined();
+});
+
 test("crypto stays open when the tape omits the session or copies an equity close", () => {
   const now = Date.parse("2026-10-09T14:45:00Z");
   const tape = {

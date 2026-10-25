@@ -20,7 +20,7 @@ const PRICE_DENOMINATED_DESCRIPTIVE_FIELDS: ReadonlySet<string> = new Set(["high
  * reconciled separately (reconcileQuoteDayRange).
  */
 const TRADING_DAY_FIELDS = [
-  "changeSessionDate", "previousClose", "open", "volume", "mark", "bid", "ask", "bidSize", "askSize",
+  "changeSessionDate", "previousClose", "previousCloseDate", "open", "volume", "mark", "bid", "ask", "bidSize", "askSize",
   "lastTradePrice", "lastTradeTime",
 ] as const;
 
@@ -195,7 +195,7 @@ export function mergeQuoteContribution(
     // Close provenance belongs to this observation; never borrow an anchor
     // from another session, listing or currency when a new quote omits it.
     ...(!samePriceBasis ? {
-      previousClose: next.previousClose, bid: next.bid, ask: next.ask,
+      previousClose: next.previousClose, previousCloseDate: next.previousCloseDate, bid: next.bid, ask: next.ask,
       open: next.open, mark: next.mark, high52w: next.high52w, low52w: next.low52w,
       lastTradePrice: next.lastTradePrice, lastTradeTime: next.lastTradeTime,
       preMarketPrice: next.preMarketPrice, preMarketChange: next.preMarketChange,
@@ -232,6 +232,13 @@ export function mergeQuoteContribution(
     delete merged.changeBasis;
   } else if (next.previousClose === undefined) {
     delete merged.previousClose;
+    delete merged.previousCloseDate;
+  }
+  // The day a previous close is from is said of that close: a tick that names none keeps it with the
+  // close, and another close that names none drops it.
+  if (next.previousCloseDate === undefined) {
+    if (next.previousClose !== undefined && next.previousClose !== current.previousClose) delete merged.previousCloseDate;
+    else if (samePriceBasis && merged.previousClose === current.previousClose && current.previousCloseDate) merged.previousCloseDate = current.previousCloseDate;
   }
 
   if (isOtherTradingDay(current, next)) {

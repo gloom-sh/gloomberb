@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { createTestDataProvider, createTestQuote } from "../../test-support/data-provider";
+import { createTestQuote } from "../../test-support/data-provider";
 import type { Quote } from "../../types/financials";
 import {
   changeBasisJson,
@@ -9,7 +9,6 @@ import {
   quoteChangeBasis,
   quotePreviousCloseDate,
 } from "./change-basis";
-import { withDatedPreviousClose } from "./dated-previous-close";
 import { previousPublishedSession } from "./freshness";
 
 // Wed 21 Oct 2026, 01:30 UTC.
@@ -66,36 +65,6 @@ test("a venue without a published calendar keeps its previous close undated, nev
   expect(quoteChangeBasis(sap)).toEqual({ kind: "previous close" });
   expect(changeBasisLabel({ kind: "previous close" })).toBe("vs prev close");
   expect(quotePreviousCloseDate(sap)).toBeNull();
-});
-
-test("a London or Helsinki move is dated by the listing's own daily close that its previous close is, and only then", async () => {
-  // SHEL.L and NESTE.HE as `quote` served them on Sat 24 Oct: Friday's move, from Thursday's close.
-  const friday = { changeSessionDate: "2026-10-23", marketState: "CLOSED" as const, lastUpdated: Date.parse("2026-10-23T15:39:00Z") };
-  const shell = createTestQuote({ symbol: "SHEL.L", currency: "GBP", listingExchangeName: "LSE", exchangeName: "LSE",
-    price: 40.33, change: 1.445, changePercent: 3.72, previousClose: 38.885, ...friday });
-  const neste = createTestQuote({ symbol: "NESTE.HE", currency: "EUR", listingExchangeName: "HEL", exchangeName: "HEL",
-    price: 31.28, change: 0.35, changePercent: 1.13, previousClose: 30.93, ...friday });
-  const asked: string[] = [];
-  const history = (closes: Record<string, number>) => createTestDataProvider({
-    getPriceHistory: async (symbol) => {
-      asked.push(symbol);
-      return Object.entries(closes).map(([date, close]) => ({ date: new Date(`${date}T00:00:00Z`), close }));
-    },
-  });
-  const dated = async (quote: Quote, closes: Record<string, number>) => {
-    const read = await withDatedPreviousClose(quote, { symbol: quote.symbol, exchange: "" }, history(closes));
-    return changeBasisLabel(quoteChangeBasis(read)!, NOW);
-  };
-  expect(await dated(shell, { "2026-10-21": 39.09, "2026-10-22": 38.885, "2026-10-23": 40.33 })).toBe("vs Thu 22 Oct close");
-  // History closes come as float32.
-  expect(await dated(neste, { "2026-10-22": 30.93000030517578, "2026-10-23": 31.280000686645508 })).toBe("vs Thu 22 Oct close");
-  // A gap in the history, whose latest close before Friday is not the previous close, names no day.
-  expect(await dated(shell, { "2026-10-20": 39, "2026-10-21": 39.09 })).toBe("vs prev close");
-  // A venue whose calendar dates the move asks for no history.
-  asked.length = 0;
-  const read = await withDatedPreviousClose(hk, { symbol: "3042.HK", exchange: "" }, history({}));
-  expect(read).toBe(hk);
-  expect(asked).toEqual([]);
 });
 
 test("a coin moves since 00:00 UTC unless Gloom Cloud says 24 hours, and a perpetual always over 24 hours", () => {

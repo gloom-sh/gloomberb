@@ -121,8 +121,9 @@ export interface Quote extends DepositaryReceiptFacts {
   changeBasis?: "24h" | "none";
   previousClose?: number;
   /**
-   * Exchange-local date of previousClose, read from the listing's own daily
-   * closes where the venue's calendar cannot date it (withDatedPreviousClose).
+   * Exchange-local date of previousClose. The app's quote router reads it
+   * from the listing's own daily closes where the venue's calendar cannot
+   * date the close (PreviousCloseDates); a source may set it too.
    */
   previousCloseDate?: string;
   /** Official close of a completed regular session, in this quote's currency. */
