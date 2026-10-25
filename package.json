@@ -119,7 +119,7 @@
     "@types/react-dom": "^19.2.3",
     "@types/three": "0.165.0",
     "electrobun": "^1.18.1",
-    "gloom-polls": "github:gloom-sh/gloom-polls",
+    "gloom-polls": "github:gloom-sh/gloom-polls#33e6399d4d3c1ec27b653b38437244a66b5a3ad7",
     "gloom-prediction-markets": "github:gloom-sh/gloom-prediction-markets",
     "happy-dom": "^20.11.1",
     "playwright-core": "1.60.0",

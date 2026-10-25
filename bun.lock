@@ -20,7 +20,7 @@
         "@types/react-dom": "^19.2.3",
         "@types/three": "0.165.0",
         "electrobun": "^1.18.1",
-        "gloom-polls": "github:gloom-sh/gloom-polls",
+        "gloom-polls": "github:gloom-sh/gloom-polls#33e6399d4d3c1ec27b653b38437244a66b5a3ad7",
         "gloom-prediction-markets": "github:gloom-sh/gloom-prediction-markets",
         "happy-dom": "^20.11.1",
         "playwright-core": "1.60.0",
@@ -361,7 +361,7 @@
 
     "gifwrap": ["gifwrap@0.10.1", "", { "dependencies": { "image-q": "^4.0.0", "omggif": "^1.0.10" } }, "sha512-2760b1vpJHNmLzZ/ubTtNnEx5WApN/PYWJvXvgS+tL1egTTthayFYIQQNi136FLEDcN/IyEY2EcGpIITD6eYUw=="],
 
-    "gloom-polls": ["gloom-polls@github:gloom-sh/gloom-polls#90a780e", { "peerDependencies": { "gloomberb": ">=0.15.0", "react": ">=19" }, "optionalPeers": ["gloomberb", "react"] }, "gloom-sh-gloom-polls-90a780e", "sha512-X5zm3AZ2fL7LUXvY80FV8YCNEprsGISSa/15hYMEYzDmWR1pYdmpdqTqE8WJBl8QM50RNT7unZAQWhAWO2h86w=="],
+    "gloom-polls": ["gloom-polls@github:gloom-sh/gloom-polls#33e6399", { "peerDependencies": { "gloomberb": ">=0.15.0", "react": ">=19" }, "optionalPeers": ["gloomberb", "react"] }, "gloom-sh-gloom-polls-33e6399", "sha512-FmBzIcvDtFJbGBs52doJZYLCwYKBvv+61z/2tVdMqX7RS17ptYUZ5w694jh6SeLOjGvDhQIJF+Nxxw5nYraUiQ=="],
 
     "gloom-prediction-markets": ["gloom-prediction-markets@github:gloom-sh/gloom-prediction-markets#705c6c9", { "peerDependencies": { "gloomberb": ">=0.15.0", "react": ">=19" }, "optionalPeers": ["gloomberb", "react"] }, "gloom-sh-gloom-prediction-markets-705c6c9", "sha512-rK3tdAL01yFgb/tcFfD8WtX8KGM/1TizEcZ8IXgX4dvETPrxRR8OvTqcsd3KlSTNki7n8HeGFAFFHXNrHqDJvg=="],
 
