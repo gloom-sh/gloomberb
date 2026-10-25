@@ -9,6 +9,7 @@ test("restoring and refreshing a session preserves its baseline; switching accou
   const events: string[] = [];
   const stop = subscribeToCloudVerification({
     getCurrentUser: () => account ? { id: account } : null,
+    isSignedIn: () => account !== null,
     getVerifiedSessionIdentity: () => verified ? sessionIdentity : null,
     subscribeCurrentUser: (listener) => {
       listeners.add(listener);

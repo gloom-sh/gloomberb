@@ -99,6 +99,8 @@ class GloomApiClient {
   private verifiedSessionCredential: string | null = null;
   private sessionTransitions = 0;
   private sessionTransition: Promise<void> | null = null;
+  /** Device adoption and external session installs supersede pending email auth. */
+  private sessionInstallationGeneration = 0;
   private sessionChecked = false;
   /** Last few session transitions, content-free, for app://auth. */
   private authTrace: Array<{ at: number; event: string; token: boolean; user: string }> = [];
@@ -113,7 +115,7 @@ class GloomApiClient {
     request: (path, options, canApplySession) => this.request(path, options, canApplySession),
     requireCapturedSession: (message) => this.requireCapturedSession(message),
     setCurrentUser: (user) => this.setCurrentUser(user),
-    setSessionToken: (token) => this.setSessionToken(token),
+    setSessionToken: (token) => this.installSessionToken(token),
     updateCurrentUser: (updater) => this.updateCurrentUser(updater),
   });
   private readonly socket: CloudApiSocket = new CloudApiSocket({
@@ -167,6 +169,7 @@ class GloomApiClient {
   }
 
   setCookieSessionMode(enabled: boolean): void {
+    this.sessionInstallationGeneration += 1;
     this.sessionChecked = false;
     this.verifiedSessionIdentity = null;
     this.transport.setCookieSessionMode(enabled);
@@ -174,6 +177,11 @@ class GloomApiClient {
   }
 
   setSessionToken(token: string | null): void {
+    if (this.transport.getSessionToken() !== token || !token) this.sessionInstallationGeneration += 1;
+    this.installSessionToken(token);
+  }
+
+  private installSessionToken(token: string | null): void {
     const changed = this.transport.getSessionToken() !== token;
     this.sessionChecked = false;
     this.transport.setSessionToken(token);
@@ -217,6 +225,7 @@ class GloomApiClient {
   }
 
   restoreCachedUser(user: PersistedAuthUser | null): void {
+    if (this.currentUser?.id !== user?.id) this.sessionInstallationGeneration += 1;
     this.auth.restoreCachedUser(user);
   }
 
@@ -338,15 +347,19 @@ class GloomApiClient {
     return this.currentUser?.emailVerified ? this.currentUser : null;
   }
 
-  signUp = (...args: Parameters<CloudAuthApi["signUp"]>) => this.withSessionTransition(() => this.auth.signUp(...args));
-  signIn = (...args: Parameters<CloudAuthApi["signIn"]>) => this.withSessionTransition(() => this.auth.signIn(...args));
+  signUp = (email: string, username: string, name: string, password: string) =>
+    this.withSessionTransition((isCurrent) => this.auth.signUp(email, username, name, password, isCurrent));
+  signIn = (email: string, password: string) =>
+    this.withSessionTransition((isCurrent) => this.auth.signIn(email, password, isCurrent));
   startDeviceSignIn = this.auth.startDeviceSignIn.bind(this.auth);
   pollDeviceSignIn = this.auth.pollDeviceSignIn.bind(this.auth);
-  signOut = () => this.withSessionTransition(() => this.auth.signOut(), false);
+  signOut = () => this.withSessionTransition((isCurrent) => this.auth.signOut(isCurrent), false);
 
   /** Cookies can change before an auth response's body arrives, including ones the browser hides. */
-  private withSessionTransition<T>(run: () => Promise<T>, reconcileFailure = true): Promise<T> {
+  private withSessionTransition<T>(run: (isCurrent: () => boolean) => Promise<T>, reconcileFailure = true): Promise<T> {
     const previous = this.sessionTransition;
+    const generation = this.sessionInstallationGeneration;
+    const isCurrent = () => generation === this.sessionInstallationGeneration;
     this.sessionTransitions += 1;
     this.verifiedSessionIdentity = null;
     this.sessionRequestGeneration += 1;
@@ -355,23 +368,27 @@ class GloomApiClient {
       // Serialize credential-changing requests so a late response cannot pair
       // one account's user with another request's installed cookie.
       if (previous) await previous;
-      this.sessionRequestGeneration += 1;
       try {
-        return await run();
+        if (!isCurrent()) throw new Error("Another sign-in replaced this request.");
+        this.sessionRequestGeneration += 1;
+        const result = await run(isCurrent);
+        if (!isCurrent()) throw new Error("Another sign-in replaced this request.");
+        return result;
       } catch (error) {
-        this.verifiedSessionIdentity = null;
-        if (reconcileFailure && this.transport.hasSessionCredential()) {
+        if (isCurrent()) this.verifiedSessionIdentity = null;
+        if (isCurrent() && reconcileFailure && this.transport.hasSessionCredential()) {
           // A failed body may already have changed the cookie. A fresh session
           // check is the only way to resume; an unanswered one leaves sync paused.
           this.sessionRequestGeneration += 1;
           await this.getSession().catch((failure) => {
+            if (!isCurrent()) return;
             this.verifiedSessionIdentity = null;
             logFailure("cloud.auth", "Restore session after failed sign-in failed")(failure);
           });
         }
         throw error;
       } finally {
-        this.sessionRequestGeneration += 1;
+        if (isCurrent()) this.sessionRequestGeneration += 1;
         this.sessionTransitions -= 1;
         this.emitCurrentUserChange();
       }
@@ -805,6 +822,7 @@ class GloomApiClient {
   subscribeScanner = this.socket.subscribeScanner.bind(this.socket);
 
   dispose(): void {
+    this.sessionInstallationGeneration += 1;
     this.sessionRequestGeneration += 1;
     this.sessionRequest = null;
     this.socket.dispose();

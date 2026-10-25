@@ -125,12 +125,16 @@ export async function performEmailAuth(mode: AccountMode, email: string, passwor
   } else {
     user = await apiClient.signIn(email, password);
   }
-  if (!user.emailVerified) {
-    await apiClient.sendVerification().catch(logFailure("account-auth", "Verification email request failed"));
-  }
+  if (apiClient.getCurrentUser()?.id !== user.id) throw new Error("Another sign-in replaced this request.");
   const sessionToken = apiClient.getSessionToken();
   if (sessionToken) {
     chatController.adoptSession(sessionToken, user);
+  }
+  if (!user.emailVerified) {
+    await apiClient.sendVerification().catch(logFailure("account-auth", "Verification email request failed"));
+  }
+  if (apiClient.getSessionToken() !== sessionToken || apiClient.getCurrentUser()?.id !== user.id) {
+    throw new Error("Another sign-in replaced this request.");
   }
   identifyResearchUser();
   await chatController.refreshSession().catch(logFailure("account-auth", "Session refresh after email authentication failed"));

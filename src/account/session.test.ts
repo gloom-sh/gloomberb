@@ -41,6 +41,7 @@ test.each(["email", "device"] as const)("%s sign-in persists through the registe
   if (flow === "email") {
     const signIn = spyOn(apiClient, "signIn").mockImplementation(async () => {
       apiClient.setSessionToken("account-test-token");
+      apiClient.restoreCachedUser(user);
       return user;
     });
     restore.push(() => signIn.mockRestore());

@@ -111,6 +111,7 @@ test.each([2, 20])("switching accounts first merges the new account at revision 
   });
   const stop = subscribeToCloudVerification({
     getCurrentUser: () => account ? { id: account } : null,
+    isSignedIn: () => account !== null,
     getVerifiedSessionIdentity: () => account !== null ? {} : null,
     subscribeCurrentUser: (next) => { listener = next; return () => { listener = undefined; }; },
   }, () => { pendingSync = controller.requestSync({ reason: "session-verified", force: true }); },

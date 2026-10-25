@@ -1,5 +1,6 @@
 export interface CloudSessionLifecycle {
   getCurrentUser(): { id: string } | null;
+  isSignedIn(): boolean;
   getVerifiedSessionIdentity(): object | null;
   subscribeCurrentUser(listener: () => void): () => void;
 }
@@ -13,7 +14,9 @@ export function subscribeToCloudVerification(
   let accountId = session.getCurrentUser()?.id ?? null;
   let wasVerified = session.getVerifiedSessionIdentity() !== null;
   return session.subscribeCurrentUser(() => {
-    const nextAccountId = session.getCurrentUser()?.id ?? null;
+    // A native session check may temporarily return no user while its retained
+    // token is validated. That is not a sign-out or a different account.
+    const nextAccountId = session.getCurrentUser()?.id ?? (session.isSignedIn() ? accountId : null);
     const accountChanged = nextAccountId !== accountId;
     const resetAccount = accountChanged && accountId !== null;
     const isVerified = session.getVerifiedSessionIdentity() !== null;

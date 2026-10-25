@@ -74,6 +74,7 @@ export class CloudAuthApi {
     username: string,
     name: string,
     password: string,
+    isCurrent: () => boolean = () => true,
   ): Promise<AuthUser> {
     const result = await this.options.request<{ user: AuthUser }>(
       "/auth/sign-up/email",
@@ -81,7 +82,9 @@ export class CloudAuthApi {
         method: "POST",
         body: JSON.stringify({ email, username, name, password }),
       },
+      isCurrent,
     );
+    if (!isCurrent()) throw new Error("Another sign-in replaced this request.");
     this.options.requireCapturedSession(
       "Account created, but Gloom could not save the login session. Please try logging in again.",
     );
@@ -89,14 +92,16 @@ export class CloudAuthApi {
     return result.user;
   }
 
-  async signIn(email: string, password: string): Promise<AuthUser> {
+  async signIn(email: string, password: string, isCurrent: () => boolean = () => true): Promise<AuthUser> {
     const result = await this.options.request<{ user: AuthUser }>(
       "/auth/sign-in/email",
       {
         method: "POST",
         body: JSON.stringify({ email, password }),
       },
+      isCurrent,
     );
+    if (!isCurrent()) throw new Error("Another sign-in replaced this request.");
     this.options.requireCapturedSession(
       "Logged in, but Gloom could not save the login session. Please try again.",
     );
@@ -127,11 +132,11 @@ export class CloudAuthApi {
     });
   }
 
-  async signOut(): Promise<void> {
+  async signOut(isCurrent: () => boolean = () => true): Promise<void> {
     try {
-      await this.options.request("/auth/sign-out", { method: "POST" });
+      await this.options.request("/auth/sign-out", { method: "POST" }, isCurrent);
     } finally {
-      this.options.setSessionToken(null);
+      if (isCurrent()) this.options.setSessionToken(null);
     }
   }
 
