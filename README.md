@@ -13,6 +13,8 @@ The default columns show the front reference at 1280px and hide the whole note a
 
 The terminal smoke resized a populated watchlist from wide to narrow and back. It retained each row's own price, showed the front reference when it fit, and hid the complete note at the narrow size. Captures: [wide](terminal/wide.txt), [narrow](terminal/narrow.txt), [restored](terminal/restored.txt). [Memory observations](terminal/memory.txt) cover this short smoke; no runtime warning was found.
 
-Both required terminal performance benchmarks passed with Bun 1.3.11: [navigation and memory results](terminal/performance.md).
+Terminal navigation and memory measurements are recorded in the [terminal performance results](terminal/performance.md).
 
 The desktop and web share the DOM table renderer. A native desktop shell launch and authenticated views beyond sign-in or upgrade walls were not part of these captures.
+
+The locked desktop/web drag and resize comparison failed the absolute 24px pointer-lag budget in eight scenarios. Three also failed on main; the other five have not been established as pre-existing. A complete locked pointer sweep was not completed. See the [DOM validation summary](benchmark/dom-validation.md) and [native drag and resize report](benchmark/pane-drag.md).
