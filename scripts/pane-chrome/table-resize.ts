@@ -60,10 +60,11 @@ for (const [side, checkout] of ([...(base ? [["base", resolve(base)]] : []), ["h
           await loaded;
           if (!await waitFor(cdp, "window.__paneChrome?.ready === true", 15_000)) throw new Error("Fixture did not mount");
           const prefix = `${kind}-${width}-${theme}-${side}`;
+          // The baseline is allowed to demonstrate the old responsive jump.
           const result = await checkTableResize(cdp, kind, "float", async (name) => {
             const { data } = await cdp.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
             await Bun.write(join(out, `${prefix}-${name}.png`), Buffer.from(data, "base64"));
-          });
+          }, undefined, side === "head");
           const shifts = result.results.map(({ name, shift }) => ({ name, shift }));
           reports.push({ side, kind, width, theme, maxShift: result.maxShift, shifts, live: result.live, release: result.release });
           console.log(`${side} ${kind} ${width}px ${theme}: ${JSON.stringify(shifts)}; live ${JSON.stringify(result.live)}; release ${JSON.stringify(result.release)}`);

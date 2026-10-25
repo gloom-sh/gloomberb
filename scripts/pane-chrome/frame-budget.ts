@@ -378,6 +378,10 @@ async function measureDrag(cdp: Cdp, page: FixturePage, scenario: Scenario): Pro
   const start = await scenario.grab(cdp);
   await mouse(cdp, "mouseMoved", start.x, start.y, false);
   await mouse(cdp, "mousePressed", start.x, start.y, true);
+  // Enclose the page's recording window in the CPU snapshots. Setup and
+  // protocol overhead may add CPU time, but no counted frame can fall outside
+  // that interval and make its per-frame cost appear cheaper.
+  const before = await metrics(cdp);
   // Each frame notes where the pointer was when it began, and once the frame
   // has drawn (a task after it), where the tracked edges ended up.
   await evaluate(cdp, `(() => {
@@ -388,9 +392,11 @@ async function measureDrag(cdp: Cdp, page: FixturePage, scenario: Scenario): Pro
     const stretch = ${scenario.canvas ? `() => ${stretchOf(scenario.canvas)}` : "null"};
     const track = ${scenario.track ? `{ frame: () => ${scenario.track.frame}, content: () => ${scenario.track.content}, anchor: ${scenario.track.anchor ? `() => ${scenario.track.anchor}` : "null"} }` : "null"};
     const origin = track && { frame: track.frame() - ${start.x}, content: track.content() - (track.anchor ? track.anchor() : ${start.x}) };
-    let last = performance.now();
+    window.__recordingStartedAt = performance.now();
+    let last = window.__recordingStartedAt;
     window.__recording = true;
     const tick = (now) => {
+      if (!window.__recording) return;
       window.__frameTimes.push(now - last);
       last = now;
       if (track) {
@@ -406,7 +412,6 @@ async function measureDrag(cdp: Cdp, page: FixturePage, scenario: Scenario): Pro
     };
     requestAnimationFrame(tick);
   })()`);
-  const before = await metrics(cdp);
   const began = performance.now();
   let pointerMoves = 0;
   for (let move = 1; ; move += 1) {
@@ -420,9 +425,16 @@ async function measureDrag(cdp: Cdp, page: FixturePage, scenario: Scenario): Pro
   }
   const inputElapsed = performance.now() - began;
   const pointerMovesPerSecond = pointerMoves / (inputElapsed / 1000);
+  const recorded = await evaluate<{ startedAt: number; stoppedAt: number; frameTimes: number[]; commits: number; lag: Array<[number, number]>; stretch: number[] }>(cdp, `(() => {
+    window.__recording = false;
+    const stoppedAt = performance.now();
+    return { startedAt: window.__recordingStartedAt, stoppedAt, frameTimes: window.__frameTimes.slice(1),
+      commits: window.__commits, lag: window.__lag.slice(1), stretch: window.__stretch.slice(1) };
+  })()`);
   const after = await metrics(cdp);
-  const elapsed = performance.now() - began;
-  const recorded = await evaluate<{ frameTimes: number[]; commits: number; lag: Array<[number, number]>; stretch: number[] }>(cdp, "(() => { window.__recording = false; return { frameTimes: window.__frameTimes.slice(1), commits: window.__commits, lag: window.__lag.slice(1), stretch: window.__stretch.slice(1) }; })()");
+  // FPS uses the page's exact recording interval; input validity still uses
+  // the driver's delivery window. Neither clock is mixed with CDP timestamps.
+  const elapsed = recorded.stoppedAt - recorded.startedAt;
   // The pointer comes to rest where the drag ends, and lets go there.
   const end = scenario.path(start, 1);
   await mouse(cdp, "mouseMoved", end.x, end.y, true);
@@ -446,7 +458,14 @@ async function measureDrag(cdp: Cdp, page: FixturePage, scenario: Scenario): Pro
     throw new Error(`Input delivery was undersampled: ${pointerMoves} moves at ${round(pointerMovesPerSecond, 1)}/s; need at least ${minimumMoves} moves and ${round(minimumRate, 1)}/s to measure the 60Hz workload.`);
   }
   const usable = (values: readonly number[]) => values.length > 0 && values.every((value) => Number.isFinite(value) && value >= 0);
-  if (!usable(recorded.frameTimes) || !recorded.frameTimes.some((time) => time > 0)
+  if (![recorded.startedAt, recorded.stoppedAt, elapsed].every(Number.isFinite)
+    || recorded.startedAt < 0 || elapsed <= 0) {
+    throw new Error("The drag did not record a valid page frame interval.");
+  }
+  if (recorded.frameTimes.length < 2) {
+    throw new Error(`The ${round(elapsed, 1)} ms page recording contained only ${recorded.frameTimes.length} complete frame intervals; need at least two.`);
+  }
+  if (!usable(recorded.frameTimes) || recorded.frameTimes.some((time) => time <= 0)
     || (scenario.track && (!recorded.lag.length || !recorded.lag.every((pair) => pair.length === 2 && usable(pair))))
     || (scenario.canvas && (!usable(recorded.stretch) || !Number.isFinite(restStretch)))) {
     throw new Error("The drag did not record usable frame, edge-lag or bitmap samples.");

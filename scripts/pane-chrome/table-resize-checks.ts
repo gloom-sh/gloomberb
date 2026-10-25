@@ -1,4 +1,5 @@
 import { evaluate, frames, mouse, sleep, waitFor, type Cdp, type Point } from "./browser";
+import { RESIZE_SETTLE_MS } from "../../src/ui/resize-settle";
 
 /** Edges of cells and text before/after the pane's deferred width catch-up. */
 interface TableResizeFrame { pane: number; cells: Record<string, [number, number]>; text: Record<string, [number, number]> }
@@ -51,7 +52,19 @@ async function tableResizeGrab(cdp: Cdp, kind: string, mode: string): Promise<Po
   })()`);
 }
 
-function catchupShift(first: TableResizeFrame, settled: TableResizeFrame): number {
+function requireSameGeometry(first: TableResizeFrame, settled: TableResizeFrame): void {
+  for (const family of ["cells", "text"] as const) {
+    const before = Object.keys(first[family]), after = Object.keys(settled[family]);
+    const missing = before.filter((key) => !(key in settled[family]));
+    const added = after.filter((key) => !(key in first[family]));
+    if (missing.length || added.length) {
+      throw new Error(`Table ${family} changed identity during the held drag: ${JSON.stringify({ missing, added })}`);
+    }
+  }
+}
+
+function catchupShift(first: TableResizeFrame, settled: TableResizeFrame, held = false): number {
+  if (held) requireSameGeometry(first, settled);
   let shift = 0;
   for (const family of ["cells", "text"] as const) for (const [key, edges] of Object.entries(first[family])) {
     const after = settled[family][key];
@@ -60,8 +73,43 @@ function catchupShift(first: TableResizeFrame, settled: TableResizeFrame): numbe
   return shift;
 }
 
+/** Final layout commits can restart both column and ancestor transitions. */
+async function waitForTableResizeSettled(cdp: Cdp, kind: string): Promise<void> {
+  await evaluate(cdp, `new Promise((resolve, reject) => {
+    const pane = document.querySelector('[data-gloom-pane-id="${kind}:resize"]');
+    const started = performance.now();
+    let previous = '', stableFrames = 0, stopped = false;
+    const timeout = setTimeout(() => {
+      stopped = true;
+      reject(new Error('The ${kind} table did not finish its resize within 5000ms'));
+    }, 5000);
+    const tick = () => {
+      if (stopped) return;
+      const following = pane.querySelector('[data-gloom-follow-x], [data-gloom-follow-y], [data-gloom-follow-settling]');
+      const held = [...pane.querySelectorAll('[data-gloom-role=data-table]')].some((table) =>
+        ['--gloom-table-resize-columns', '--gloom-table-resize-width', '--gloom-table-column-transition'].some((name) => {
+          const value = table.style.getPropertyValue(name).trim();
+          return value !== '' && value !== 'initial';
+        }));
+      const animating = pane.getAnimations({ subtree: true }).some((animation) =>
+        animation.playState === 'running' && ['width', 'height', 'grid-template-columns', 'margin-right', 'margin-bottom'].includes(animation.transitionProperty));
+      const vertical = [...pane.querySelectorAll('[data-gloom-role=data-table], [data-gloom-role=data-table-body-scroll]')]
+        .map((element) => { const box = element.getBoundingClientRect(); return [box.top, box.bottom]; });
+      const current = JSON.stringify([${tableResizeFrame(kind)}, vertical]);
+      stableFrames = !following && !held && !animating && current === previous ? stableFrames + 1 : 0;
+      previous = current;
+      if (stableFrames >= 3 && performance.now() - started >= ${RESIZE_SETTLE_MS}) {
+        stopped = true;
+        clearTimeout(timeout);
+        resolve();
+      } else requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  })`, 6000);
+}
+
 /** A movement inside a cell and one beyond the deferred layout interval. */
-export async function checkTableResize(cdp: Cdp, kind: string, mode: string, capture?: (name: string) => Promise<void>, distances = [13, 14, 15, 29, 61]) {
+export async function checkTableResize(cdp: Cdp, kind: string, mode: string, capture?: (name: string) => Promise<void>, distances = [13, 14, 15, 29, 61], verifyHeldIdentities = true) {
   await tableResizeReady(cdp, kind);
   const read = () => evaluate<TableResizeFrame>(cdp, tableResizeFrame(kind));
   const from = await tableResizeGrab(cdp, kind, mode);
@@ -104,6 +152,31 @@ export async function checkTableResize(cdp: Cdp, kind: string, mode: string, cap
     const held = await read();
     const sampled = await evaluate<TableResizeFrame[]>(cdp, "(() => { window.__tableLive.active = false; return window.__tableLive.frames; })()");
     live.frames = sampled.length;
+    await evaluate(cdp, `(() => {
+      const record = { active: true, samples: [{ time: performance.now(), frame: ${JSON.stringify(held)} }] };
+      window.__tableRelease = record;
+      const tick = (time) => {
+        if (!record.active) return;
+        record.samples.push({ time, frame: ${tableResizeFrame(kind)} });
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    })()`);
+    let settled = held;
+    let samples: Array<{ time: number; frame: TableResizeFrame }> = [];
+    try {
+      await mouse(cdp, "mouseReleased", x, from.y, false);
+      await waitForTableResizeSettled(cdp, kind);
+      settled = await read();
+    } finally {
+      samples = await evaluate(cdp, "(() => { window.__tableRelease.active = false; return window.__tableRelease.samples; })()");
+    }
+    // Validate the held snapshots only after letting go, including on failure.
+    // A schema is allowed to change once the pointer has been released.
+    for (const result of verifyHeldIdentities ? results : []) {
+      requireSameGeometry(before, result.first);
+      requireSameGeometry(before, result.settled);
+    }
     // Compare every painted frame to the settled frame at that same pane
     // width. This includes the frames before an out-of-process first-frame
     // read reached a busy browser, without assuming that a clipped intrinsic
@@ -111,6 +184,7 @@ export async function checkTableResize(cdp: Cdp, kind: string, mode: string, cap
     const references = [pressed, ...results.map((result) => result.settled)];
     for (let index = 0; index < sampled.length; index += 1) {
       const sample = sampled[index]!;
+      if (verifyHeldIdentities) requireSameGeometry(before, sample);
       // The viewport always fills the pane, including when the columns keep
       // a wider scrollable extent. A table that stayed frozen until release
       // cannot pass merely because all of its text stayed frozen with it.
@@ -127,19 +201,6 @@ export async function checkTableResize(cdp: Cdp, kind: string, mode: string, cap
       if (previous) live.maxShift = Math.max(live.maxShift,
         catchupShift(previous, sample) - Math.abs(sample.pane - previous.pane));
     }
-    await evaluate(cdp, `(() => {
-      const samples = [{ time: performance.now(), frame: ${JSON.stringify(held)} }];
-      window.__tableRelease = samples;
-      const tick = (time) => {
-        samples.push({ time, frame: ${tableResizeFrame(kind)} });
-        if (samples.length < 120 && time - samples[0].time < 250) requestAnimationFrame(tick);
-      };
-      requestAnimationFrame(tick);
-    })()`);
-    await mouse(cdp, "mouseReleased", x, from.y, false);
-    await sleep(280);
-    const settled = await read();
-    const samples = await evaluate<Array<{ time: number; frame: TableResizeFrame }>>(cdp, "window.__tableRelease");
     release.travel = catchupShift(held, settled);
     for (let index = 1; index < samples.length; index += 1) {
       const before = samples[index - 1]!, after = samples[index]!;
@@ -165,6 +226,7 @@ async function checkOverflowBoundary(cdp: Cdp, grow: boolean): Promise<void> {
   await tableResizeReady(cdp, "table");
   const read = () => evaluate<{ pane: number; viewport: number; content: number; endInset: number; cell: number }>(cdp, overflowGeometry);
   const before = await read();
+  const initialFrame = await evaluate<TableResizeFrame>(cdp, tableResizeFrame("table"));
   if (grow ? before.content - before.viewport < 100 : Math.abs(before.content - before.viewport) > 1) {
     throw new Error(`Wrong initial overflow state: ${JSON.stringify(before)}`);
   }
@@ -180,10 +242,11 @@ async function checkOverflowBoundary(cdp: Cdp, grow: boolean): Promise<void> {
       await mouse(cdp, "mouseMoved", x, from.y, true);
       await frames(cdp, 1);
       const first = await evaluate<TableResizeFrame>(cdp, tableResizeFrame("table"));
+      requireSameGeometry(initialFrame, first);
       if (Math.abs(first.pane - before.pane - direction * distance) > 2) throw new Error("The overflow-boundary resize did not follow its pointer");
       await sleep(180);
       held = await evaluate<TableResizeFrame>(cdp, tableResizeFrame("table"));
-      const shift = catchupShift(first, held);
+      const shift = catchupShift(first, held, true);
       if (shift > 1) throw new Error(`Crossing the overflow boundary moved cells at catch-up by ${shift.toFixed(2)}px`);
     }
     const during = await read();
@@ -194,7 +257,7 @@ async function checkOverflowBoundary(cdp: Cdp, grow: boolean): Promise<void> {
   } finally {
     await mouse(cdp, "mouseReleased", x, from.y, false);
   }
-  await sleep(280);
+  await waitForTableResizeSettled(cdp, "table");
   const after = await evaluate<TableResizeFrame>(cdp, tableResizeFrame("table"));
   const shift = catchupShift(held!, after);
   if (shift > 1) throw new Error(`Crossing the overflow boundary moved cells on release by ${shift.toFixed(2)}px`);
@@ -276,7 +339,7 @@ export const tableResizeSteps = [...TABLE_RESIZE_KINDS.flatMap((kind) => ["float
         for (const delay of [0, 180]) {
           if (delay) await sleep(delay);
           const after = await evaluate<TableResizeFrame>(cdp, tableResizeFrame("vols"));
-          const shift = catchupShift(before, after);
+          const shift = catchupShift(before, after, true);
           if (Math.abs(after.pane - before.pane) > 1 || shift > 1) {
             throw new Error(`An unrelated pane resize moved the table ${shift.toFixed(2)}px (${distance}px movement, ${delay}ms catch-up)`);
           }
@@ -285,7 +348,7 @@ export const tableResizeSteps = [...TABLE_RESIZE_KINDS.flatMap((kind) => ["float
     } finally {
       await mouse(cdp, "mouseReleased", x, from.y, false);
     }
-    await sleep(280);
+    await waitForTableResizeSettled(cdp, "vols");
     const released = await evaluate<TableResizeFrame>(cdp, tableResizeFrame("vols"));
     if (catchupShift(before, released) > 1) throw new Error("An unrelated pane release moved the table");
   },
@@ -355,7 +418,7 @@ export const tableResizeSteps = [...TABLE_RESIZE_KINDS.flatMap((kind) => ["float
     const result = await evaluate<{ error?: string; start: TableResizeFrame; before: TableResizeFrame; after: TableResizeFrame }>(cdp, "window.__tableRegrab");
     if (result.error) throw new Error(result.error);
     if (catchupShift(result.start, result.before) < 1) throw new Error("The fixture did not redistribute its columns during the transition");
-    const shift = catchupShift(result.before, result.after);
+    const shift = catchupShift(result.before, result.after, true);
     if (shift > 1) throw new Error(`Regrabbing a settling table moved its columns ${shift.toFixed(2)}px`);
   },
 }, {
@@ -417,7 +480,7 @@ export const tableResizeSteps = [...TABLE_RESIZE_KINDS.flatMap((kind) => ["float
     } finally {
       await mouse(cdp, "mouseReleased", from.x - distance, from.y, false);
     }
-    await sleep(400);
+    await waitForTableResizeSettled(cdp, kind);
     const after = await read();
     if (kind === "vols" ? after.columns !== 6 : after.rows !== 2) {
       throw new Error(`The ${kind} breakpoint did not settle after release: ${JSON.stringify({ before, after })}`);
