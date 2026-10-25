@@ -1,0 +1,2 @@
+Terminal smoke RSS: 326.8 MiB after startup; 335.9 MiB after resizing wide, narrow, then wide.
+No runtime warning found during this short smoke.

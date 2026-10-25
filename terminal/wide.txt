@@ -1,0 +1,34 @@
+  > Search or run a command  Ctrl+P                                                                                      Help ? OPEN SPY $3.116 +0.30% base USD
+┌─:: Watchlist ⚡ ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── ?  ... ─┐
+  Avg Day +0.30% vs prev close
+  TICKER                                                                                      LAST     CHG%       MCAP     P/E   FWD P/E    AS OF UTC  1M
+  ● AAPL                                                                                     252.29   +0.30%          —       —         —       04:15  ⠉⠉⠉⠉⠑⢄
+  ● NG2 front NGX26 3.116                                                                     3.518   +0.30%          —       —         —       04:15  ⠒⠉⠑⠢⡤⠂
+  ● NGF27 front NGX26 3.116                                                                   4.638   +0.30%          —       —         —       04:15
+  ● NGX26.NYM                                                                                 3.116   +0.30%          —       —         —       04:15
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  + ticker
+└5:15 AM                                                                                                                                         [d]elete [a]dd┘
+  +                                                                                                                                   v0.18.4 ☁ Log in Feedback
