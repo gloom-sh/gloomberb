@@ -1520,7 +1520,7 @@ try {
   }
 
   $InstalledCli = Join-Path $InstallDir "bin\gloom.cmd"
-  # The command's name before 0.19, which existing scripts still call.
+  # The command's name before 0.18.4, which existing scripts still call.
   $InstalledLegacyCli = Join-Path $InstallDir "bin\gloomberb.cmd"
   foreach ($Cli in @($InstalledCli, $InstalledLegacyCli)) {
     if (-not (Test-Path $Cli)) {

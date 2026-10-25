@@ -1,8 +1,9 @@
 import { expect, test } from "bun:test";
-import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
+import { deriveHeadlessFreshness, formatFreshnessLine, paneStatusLine } from "../../../cli/pane-functions/freshness";
 import { renderHeadlessPaneText, serializeHeadlessPaneResult } from "../../../cli/pane-functions/headless";
 import type { PerpMarketPayload } from "../../../api-client/perps";
 import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
+import { perpFreshness } from "./freshness";
 import { perpsHeadless } from "./headless";
 import { longShort, longShortPoint, okxLongShort, perpBoard, perpHistory, perpRankings, perpRow, venueRow } from "./test-fixture";
 
@@ -298,4 +299,23 @@ test("a venue filter names no count it does not have, and a venue with no contra
   expect((await load("BTC", { venue: "kraken" })).result.metadata).toMatchObject({ marketId: "binance:BTCUSDT", notices: ["Kraken has no BTC contract in the free preview; showing Binance."] });
   expect((await load("BTC", { venue: "kraken" }, "pro")).result.metadata).toMatchObject({ notices: ["Kraken has no BTC contract; showing Binance."] });
   expect((await load("hyperliquid:default:BTC", { venue: "bybit" })).result.metadata).toMatchObject({ notices: ["hyperliquid:default:BTC is a Hyperliquid market, so the Bybit filter does not apply."] });
+});
+
+test("fn PERP dates the board as the pane footer does: each venue's time and the oldest price, with no feed word", async () => {
+  const now = Date.parse("2026-10-03T23:30:00Z");
+  // Bybit has a market read at 23:20 and one at 23:11: the oldest price is 18 minutes old, though Bybit's newest is 10.
+  const rows = [venueRow("binance", { observedAt: "2026-10-03T23:20:09Z" }), venueRow("bybit", { observedAt: "2026-10-03T23:20:30Z" }),
+    venueRow("bybit", { symbol: "ETHUSDT", observedAt: "2026-10-03T23:11:40Z" })];
+  const args = createTestHeadlessArgs({ argument: null, rawArgument: "", options: { tab: "board", "asset-class": "all", venue: "all", sort: "oi" } });
+  const board = await perpsHeadless.load(args, createTestHeadlessContext({ apiClient: { getCloudPerpsBoard: async () => perpBoard({ rows, access: "preview", locked: 2555 }) } as never }));
+  const report = deriveHeadlessFreshness(perpsHeadless, board, now);
+  expect(formatFreshnessLine(report)).toStartWith("Sat 3 Oct 2026 · Binance 23:20 · Bybit 23:20 UTC · oldest 18 min · funding = current estimate");
+  expect(report).toMatchObject({ status: "unreported", ageOnly: true, oldestAgeMinutes: 18 });
+  // The pane's footer over the same rows, none of them streaming.
+  const pane = deriveHeadlessFreshness({ shape: "rows" }, { rows: [], freshness: perpFreshness(rows, { funding: rows, now }) }, now);
+  expect(paneStatusLine(pane)).toBe(paneStatusLine(report));
+  expect(paneStatusLine(report)).not.toMatch(/delayed|live/);
+  // A venue that stopped answering for a market still says so.
+  const stopped = deriveHeadlessFreshness({ shape: "rows" }, { rows: [], freshness: perpFreshness(rows.map((row) => ({ ...row, stale: true })), { now }) }, now);
+  expect(paneStatusLine(stopped)).toContain("stale");
 });

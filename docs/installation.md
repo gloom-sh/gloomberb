@@ -14,7 +14,7 @@ curl -fsSL gloom.sh/install | bash
 
 The cask is in Homebrew itself; `vincelwt/tap/gloomberb`, the older tap, installs the same app. Both routes install `Gloomberb.app` and a `gloom` command that runs the TUI through the app bundle, so the bundled runtime is stored once.
 
-The command was called `gloomberb` before 0.19. That name keeps working everywhere, and an install from before 0.19 gets `gloom` beside it when it updates: the terminal binary adds it next to itself the first time the new version runs, and the desktop app adds it next to the `gloomberb` link the installer or Homebrew made when it starts.
+The command was called `gloomberb` before 0.18.4. That name keeps working everywhere, and an install from before 0.18.4 gets `gloom` beside it when it updates: the terminal binary adds it next to itself the first time the new version runs, and the desktop app adds it next to the `gloomberb` link the installer or Homebrew made when it starts.
 
 `Gloomberb.app` is Apple Silicon (arm64) only. On an Intel Mac the install script installs the standalone `gloom` terminal app instead, and the Homebrew cask refuses to install rather than leaving an app that cannot launch.
 
@@ -62,7 +62,7 @@ Already have Bun installed on any supported OS?
 bun install -g gloomberb
 ```
 
-`npm install -g gloomberb` works too. The package installs the `gloom` command, and `gloomberb`, its name before 0.19, which runs the same program. An install from before 0.19 gets `gloom` when it updates with `bun install -g gloomberb@latest` (or `npm install -g gloomberb@latest`).
+`npm install -g gloomberb` works too. The package installs the `gloom` command, and `gloomberb`, its name before 0.18.4, which runs the same program. An install from before 0.18.4 gets `gloom` when it updates with `bun install -g gloomberb@latest` (or `npm install -g gloomberb@latest`).
 
 Then run:
 
@@ -84,7 +84,7 @@ For the best terminal experience, use a [Kitty](https://sw.kovidgoyal.net/kitty/
 
 The [install script](../scripts/install.sh) downloads a binary or app archive from [GitHub Releases](https://github.com/gloom-sh/gloomberb/releases/latest). It checks the SHA-256 of the download against the digest GitHub lists for the release asset, aborts on a mismatch, and warns if no checksum is available. That catches a corrupt or truncated download; it does not prove who published the release. The script needs `curl` or `wget`, `gzip`, and `sha256sum` or `shasum`, and does not run until the whole file has downloaded.
 
-On Apple Silicon Macs it installs the desktop app in `/Applications` and links the `gloom` command into `~/.local/bin`. On Intel Macs and Linux it installs the standalone terminal binary, a single Bun-compiled executable that needs no separate Bun installation, in `~/.local/bin`. `GLOOM_INSTALL_DIR` (or `GLOOMBERB_INSTALL_DIR`) changes the command's destination and `GLOOM_APP_DIR` (or `GLOOMBERB_APP_DIR`) the Mac app's. It also links `gloomberb`, the command's name before 0.19, to the same program. A `gloom` that belongs to another program is left as it is, and Gloom is installed as `gloomberb` only. It uses `sudo` only when a destination directory is not writable.
+On Apple Silicon Macs it installs the desktop app in `/Applications` and links the `gloom` command into `~/.local/bin`. On Intel Macs and Linux it installs the standalone terminal binary, a single Bun-compiled executable that needs no separate Bun installation, in `~/.local/bin`. `GLOOM_INSTALL_DIR` (or `GLOOMBERB_INSTALL_DIR`) changes the command's destination and `GLOOM_APP_DIR` (or `GLOOMBERB_APP_DIR`) the Mac app's. It also links `gloomberb`, the command's name before 0.18.4, to the same program. A `gloom` that belongs to another program is left as it is, and Gloom is installed as `gloomberb` only. It uses `sudo` only when a destination directory is not writable.
 
 To install by hand on Linux, download the [x64](https://github.com/gloom-sh/gloomberb/releases/latest/download/gloomberb-linux-x64.gz) or [ARM64](https://github.com/gloom-sh/gloomberb/releases/latest/download/gloomberb-linux-arm64.gz) binary (on musl, [x64](https://github.com/gloom-sh/gloomberb/releases/latest/download/gloomberb-linux-x64-musl.gz) or [ARM64](https://github.com/gloom-sh/gloomberb/releases/latest/download/gloomberb-linux-arm64-musl.gz)), unpack it with `gzip`, mark it executable and put it on your `PATH` as `gloom`.
 

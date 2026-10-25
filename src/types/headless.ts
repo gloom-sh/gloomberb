@@ -353,7 +353,8 @@ export interface HeadlessPaneFreshness {
    * Each source's own newest observation, for data drawn from several venues
    * polled apart (a perpetuals board). The line then dates every source and
    * says how old the oldest of them is (`Binance 02:15 · Bybit 02:24 UTC ·
-   * oldest 9 min`), and `asOf` is the newest of them unless declared.
+   * oldest 9 min`), or with `ageOnly` the oldest observation, and `asOf` is the
+   * newest of them unless declared.
    */
   sources?: Array<{ source: string; asOf: string | number | Date }>;
   /** Say how old the oldest observation is (`oldest 4 min`): rows polled apart from one source. */
@@ -363,7 +364,8 @@ export interface HeadlessPaneFreshness {
    * For rows priced apart from a snapshot refreshed on a schedule (CRYP's board), where `live` would call prices
    * that are minutes old real-time and `delayed` would call a snapshot renewed every few seconds held back. A row
    * that states its own feed (`dataSource`, `delayMinutes`) still says it, and so does a declared `status`.
-   * Says how old the oldest observation is, as `oldestAge` does.
+   * Says how old the oldest observation is, as `oldestAge` does, even beside `sources`: a venue that streams some
+   * rows and not others is as old as its oldest row, not its newest.
    */
   ageOnly?: boolean;
   /**

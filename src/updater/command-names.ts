@@ -3,7 +3,7 @@ import { lstat, readFile, readlink, stat, symlink, writeFile } from "fs/promises
 import { basename, dirname, join, resolve } from "path";
 
 /**
- * The terminal command is `gloom`. `gloomberb`, its name before 0.19, keeps
+ * The terminal command is `gloom`. `gloomberb`, its name before 0.18.4, keeps
  * working beside it, for scripts and habits.
  *
  * An install from before the rename has only `gloomberb`, and the ways it

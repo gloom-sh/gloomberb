@@ -74,7 +74,7 @@ function renderCask({ version, sha256 }: Pick<Options, "version" | "sha256">): s
   # The app keeps its bundle name: its updater finds the new build by it.
   app "Gloomberb.app"
   binary "#{appdir}/Gloomberb.app/Contents/Resources/gloom", target: "gloom"
-  # The command's name before 0.19, kept for scripts and habits.
+  # The command's name before 0.18.4, kept for scripts and habits.
   binary "#{appdir}/Gloomberb.app/Contents/Resources/gloomberb", target: "gloomberb"
 
   uninstall quit: "com.vincelwt.gloomberb"

@@ -53,7 +53,7 @@ With [Bun](https://bun.sh), on any supported OS:
 bun install -g gloomberb
 ```
 
-Then run `gloom`. The command was called `gloomberb` before 0.19, and that name still works. For chart graphics, use a Kitty-compatible terminal such as Ghostty, Kitty, or WezTerm. Windows Terminal draws charts as text; the desktop app draws them in full.
+Then run `gloom`. The command was called `gloomberb` before 0.18.4, and that name still works. For chart graphics, use a Kitty-compatible terminal such as Ghostty, Kitty, or WezTerm. Windows Terminal draws charts as text; the desktop app draws them in full.
 
 ## Start
 

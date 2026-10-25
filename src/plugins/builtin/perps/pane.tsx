@@ -24,7 +24,7 @@ import { UpgradeLabel } from "../shared/locked-rows";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { boardSearchText, cachedPerpSelection, cachedPerpsBoard, cachedPerpsCompare, cachedPerpsRankings, loadPerpSelection, loadPerpsBoard, loadPerpsCompare,
   loadPerpsHistoryForRange, loadPerpsRankings } from "./client";
-import { perpFreshness, perpObservation } from "./freshness";
+import { perpFreshness } from "./freshness";
 import { useLivePerpRows, useLivePerpTableRows } from "./live-rows";
 import { aprFormula, ASSET_FILTERS, BOARD_SORTS, boardColumns, collectedVenueCount, compact, compareColumns, dayChange, fundingInterval, fundingSpread, historyCaption, historyCell, historyChange, historyColumns,
   HISTORY_METRICS, historyRows, historySeries, historyValue, inPoints, isMarketTab, label, longShortReason, marketLabel, metricLabel, openingTab, perpCell, perpHistoryProText, PERP_TABS, percent,
@@ -39,17 +39,18 @@ const withRankedRow = (entry: SectionedRow<Ranked>, row: PerpBoardRow): Sectione
   entry.kind === "item" ? { ...entry, item: { ...entry.item, row } } : entry;
 
 /**
- * The footer line for the rows on screen: each venue's own observation time, how old the oldest is, the delay state
- * and what the funding figures are, the line `fn PERP` and `shot PERP` end with. It keeps ageing while the pane is
- * seen (`since` is when the rows loaded), and is published for a capture to date itself the same way.
+ * The footer line for the rows on screen: each venue's own observation time, how old the oldest price is, `live` while
+ * every one of them streams, and what the funding figures are, the line `fn PERP` and `shot PERP` end with. It keeps
+ * ageing while the pane is seen (`since` is when the rows loaded), and is published for a capture to date itself the
+ * same way.
  */
 function usePerpStatusLine(rows: readonly PerpBoardRow[], funding: readonly PerpBoardRow[], since: number | null, live = false): PaneFooterSegment[] {
   const now = useAgeClock(since);
   const declared = useMemo(() => rows.length ? perpFreshness(rows, { funding, now, live }) : null, [rows, funding, now, live]);
-  useRemoteUiNode(declared ? { role: "report-freshness", label: "Venue freshness", getMetadata: () => ({ ...declared, observations: rows.map(perpObservation) }) } : null);
+  useRemoteUiNode(declared ? { role: "report-freshness", label: "Venue freshness", getMetadata: () => ({ ...declared }) } : null);
   return useMemo(() => {
     if (!declared) return [];
-    const freshness = deriveHeadlessFreshness({ shape: "rows" }, { rows: rows.map(perpObservation), freshness: declared }, now);
+    const freshness = deriveHeadlessFreshness({ shape: "rows" }, { rows: [], freshness: declared }, now);
     const tone = freshness.status === "stale" ? "warning" as const : "muted" as const;
     // A footer too narrow beside its keys gives up the funding part before any venue's time.
     const [line, ...shorter] = paneStatusLineVariants(freshness).map((text) => [{ text, tone }]);
@@ -238,7 +239,7 @@ function Board({ accessKey, width, height, focused, onPick, onOpen }: ListTabPro
   const locked = typeof data?.locked === "number" ? data.locked : 0;
   useAutoRefresh(resource.updatedAt, resource.load, { intervalMs: 60_000 });
   usePaneRefreshKey(() => { void resource.reload(); }, { focused: focused && !querySearch.active });
-  const line = usePerpStatusLine(rows, rows, resource.updatedAt, stream.live);
+  const line = usePerpStatusLine(stream.shown, stream.shown, resource.updatedAt, stream.live);
   usePaneStatusFooter({ registrationId: "perps:board", loading: resource.loading, error: data ? resource.error : null, stale: resource.data?.stale, info: line });
   usePaneNoticeFooter({ registrationId: "perps:board-notice", focused, notices: resource.data?.refreshError ? [resource.data.refreshError] : [] });
   if (!data && isCloudSessionRequired(resource.error)) return <SignInWall placement="perps-signin" action="view perpetual markets" needsVerification={session.needsVerification} />;
@@ -264,6 +265,8 @@ function Board({ accessKey, width, height, focused, onPick, onOpen }: ListTabPro
 }
 
 type Ranked = { list: RankingKey; row: PerpBoardRow };
+/** The rankings whose lists show funding. */
+const FUNDING_RANKINGS: ReadonlySet<RankingKey> = new Set(RANKINGS.filter((ranking) => ranking.field === "fundingRate8h").map((ranking) => ranking.key));
 const rankedKey = (item: Ranked) => `${item.list}:${item.row.marketId}`;
 
 function Rankings({ accessKey, width, height, focused, onPick, onOpen }: ListTabProps) {
@@ -285,9 +288,10 @@ function Rankings({ accessKey, width, height, focused, onPick, onOpen }: ListTab
   const columns = useMemo(() => rankingColumns(width), [width]);
   useAutoRefresh(resource.updatedAt, resource.load, { intervalMs: 60_000 });
   usePaneRefreshKey(() => { void resource.reload(); }, { focused });
-  // Every ranked row is dated; only the funding lists show funding.
-  const rankedRows = useMemo(() => RANKINGS.flatMap((ranking) => rankingRows(data, ranking.key)), [data]);
-  const fundingRows = useMemo(() => RANKINGS.filter((ranking) => ranking.field === "fundingRate8h").flatMap((ranking) => rankingRows(data, ranking.key)), [data]);
+  // The ranked rows on screen are dated; only the funding lists show funding.
+  const shownRanked = useMemo(() => stream.shown.flatMap((entry) => entry.kind === "item" ? [entry.item] : []), [stream.shown]);
+  const rankedRows = useMemo(() => shownRanked.map((item) => item.row), [shownRanked]);
+  const fundingRows = useMemo(() => shownRanked.filter((item) => FUNDING_RANKINGS.has(item.list)).map((item) => item.row), [shownRanked]);
   const line = usePerpStatusLine(rankedRows, fundingRows, resource.updatedAt, stream.live);
   usePaneStatusFooter({ registrationId: "perps:rankings", loading: resource.loading, error: data ? resource.error : null, stale: resource.data?.stale, info: line });
   usePaneNoticeFooter({ registrationId: "perps:rankings-notice", focused, notices: resource.data?.refreshError ? [resource.data.refreshError] : [] });
@@ -329,7 +333,7 @@ function Compare({ asset, onAssetChange, accessKey, width, height, focused, onPi
   const selected = rows.find((row) => row.marketId === selectedId) ?? rows[0] ?? null;
   useEffect(() => { onPick(selected); }, [selected, onPick]);
   const columns = useMemo(() => compareColumns(width), [width]);
-  const line = usePerpStatusLine(rows, rows, resource.updatedAt, stream.live);
+  const line = usePerpStatusLine(stream.shown, stream.shown, resource.updatedAt, stream.live);
   const spread = useMemo(() => fundingSpread(rows), [rows]);
   const locked = typeof data?.locked === "number" ? data.locked : 0;
   useAutoRefresh(resource.updatedAt, resource.load, { intervalMs: 60_000 });
