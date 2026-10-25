@@ -113,7 +113,7 @@ const riskCell = (side: "gain" | "loss") => (value: unknown, row: Record<string,
   typeof value === "number" ? money(value) : row.unlimited === side ? "unlimited" : "--";
 
 /** A family's columns: its money column is `Credit` or `Debit`, and a calendar names the expiry it buys. */
-export function strategyScreenColumns(strategy: ScreenFamily): { text: HeadlessPaneColumn[]; exported: HeadlessPaneColumn[] } {
+function strategyScreenColumns(strategy: ScreenFamily): { text: HeadlessPaneColumn[]; exported: HeadlessPaneColumn[] } {
   const def = strategyFamilyDef(strategy);
   const lead: HeadlessPaneColumn[] = [COLUMNS[0]!, COLUMNS[1]!, COLUMNS[2]!];
   const farExpiry: HeadlessPaneColumn[] = strategy === "calendar" ? [{ key: "farExpiry", header: "Bought expiry" }] : [];

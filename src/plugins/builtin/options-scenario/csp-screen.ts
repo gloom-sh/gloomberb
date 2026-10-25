@@ -73,7 +73,7 @@ export function readNumber(value: unknown, flag: string, example: string): numbe
 }
 
 /** `--days`: whole calendar days. A decimal is told the whole numbers beside it, never a decimal to type. */
-export function readDays(value: unknown): number {
+function readDays(value: unknown): number {
   const decimal = wholeNumberOptionMessage("--days", "days", value);
   if (decimal) throw new Error(decimal);
   const days = readNumber(value, "days", "whole calendar days, such as 30");
@@ -215,7 +215,7 @@ function screenFreshness(markets: readonly ScenarioMarketSnapshot[], now: number
 }
 
 /** One name of a screen: what it found, or why it found nothing, with its IV rank either way. */
-export interface ScreenedName<T> { symbol: string; ivRank: number | null; value: T | null; note: string | null }
+interface ScreenedName<T> { symbol: string; ivRank: number | null; value: T | null; note: string | null }
 
 export interface ScreenedNames<T> {
   names: ScreenedName<T>[];

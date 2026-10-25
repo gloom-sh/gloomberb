@@ -403,7 +403,7 @@ export interface QuotedChain {
 }
 
 /** The quoted chain every seed reads, as `scenarioStrategyLegs` describes it. */
-export function quoteStrategyChain(chain: OptionsChain, spot: number, pricing: StrategyPricing | null): QuotedChain {
+function quoteStrategyChain(chain: OptionsChain, spot: number, pricing: StrategyPricing | null): QuotedChain {
   const parity = new Map<number, StrategyParity | null>();
   const parityFor = (expiration: number) => {
     if (!pricing) return null;

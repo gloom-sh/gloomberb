@@ -93,7 +93,7 @@ export function readStrategyFamily(value: unknown): StrategyFamily {
 }
 
 /** Calendar days after the sold expiry a calendar's bought one is nearest. */
-export const CALENDAR_GAP_DAYS = 30;
+const CALENDAR_GAP_DAYS = 30;
 const DAY_MS = 86_400_000;
 
 export interface StrategyScreenCriteria extends CspScreenCriteria {
@@ -143,7 +143,7 @@ export function readStrategyScreenCriteria(strategy: ScreenFamily, options: Reco
  * sides, a calendar's call nearest `delta` among the strikes quoted on both
  * expiries, sold on `near` and bought on `far`. `unusable` words a pick the chain has no quote for.
  */
-export function pickStrategyLegs(
+function pickStrategyLegs(
   criteria: Pick<StrategyScreenCriteria, "strategy" | "delta" | "wingDelta">, quoted: QuotedChain, pricing: StrategyPricing,
   unusable: UnusableChainText, near: number, far?: number,
 ): ScreenSeed {
@@ -222,7 +222,7 @@ const legExpiry = (expiration: number) => new Date(expiration * 1000).toISOStrin
  * `Sell 95 put / 105 call`, `buy 90 put / 110 call`. A calendar's expiries
  * are its row's.
  */
-export function strategyTradeParts(strategy: StrategyFamily, position: Pick<ScenarioPosition, "legs" | "underlying">): string[] {
+function strategyTradeParts(strategy: StrategyFamily, position: Pick<ScenarioPosition, "legs" | "underlying">): string[] {
   const name = (leg: ScenarioPosition["legs"][number]) => `${strikeText(leg.strike)} ${leg.side}`;
   const sides = {
     sell: position.legs.filter((leg) => leg.quantity < 0).map(name),
@@ -234,7 +234,7 @@ export function strategyTradeParts(strategy: StrategyFamily, position: Pick<Scen
 }
 
 /** The trade in plain words, its parts in one line: `Sell 95 put, buy 90 put`. */
-export const strategyTradeText = (strategy: StrategyFamily, position: Pick<ScenarioPosition, "legs" | "underlying">) =>
+const strategyTradeText = (strategy: StrategyFamily, position: Pick<ScenarioPosition, "legs" | "underlying">) =>
   strategyTradeParts(strategy, position).join(", ");
 
 export interface StrategyTrade {
@@ -314,7 +314,7 @@ function calendarRisk(position: ScenarioPosition, net: number): TradeRisk {
  * nearest it, from the spot the quotes imply at the scenario's rate and
  * dividend yield.
  */
-export function probabilityOfProfit(position: ScenarioPosition, breakEvens: readonly number[]): number | null {
+function probabilityOfProfit(position: ScenarioPosition, breakEvens: readonly number[]): number | null {
   if (!position.legs.length) return null;
   const close = firstClose(position);
   const days = Math.max(0, (close - position.asOf) / DAY_MS);
@@ -338,7 +338,7 @@ export function probabilityOfProfit(position: ScenarioPosition, breakEvens: read
 }
 
 /** A trade's figures, as the screen's row and its export read them; `quotes` are its legs' bids and asks. */
-export function strategyTrade(
+function strategyTrade(
   strategy: ScreenFamily, position: ScenarioPosition, quotes: ReadonlyMap<string, { bid: number; ask: number }>, earningsDate: string | null | undefined,
 ): StrategyTrade {
   const expirations = [...new Set(position.legs.map((leg) => leg.expiration))].sort((a, b) => a - b);
