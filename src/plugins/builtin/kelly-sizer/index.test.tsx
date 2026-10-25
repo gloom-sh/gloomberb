@@ -133,6 +133,16 @@ describe("KellySizerPane", () => {
     expect(frame).not.toContain("$0.00");
   });
 
+  test("labels the target marker with the cap that set it", async () => {
+    // Defaults: the loss cap would allow 11.1%, the 8% name cap is the one that binds.
+    await renderPane();
+    await flushFrame();
+
+    const frame = tui.frame();
+    expect(frame).toContain("name cap");
+    expect(frame).not.toContain("loss cap");
+  });
+
   test("toggles sensitivity with s", async () => {
     await renderPane();
     await flushFrame();

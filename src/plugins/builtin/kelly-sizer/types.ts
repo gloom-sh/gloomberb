@@ -93,6 +93,7 @@ export interface KellySizingResult {
   expectedReturn: number;
   expectedLogGrowth: number;
   warnings: string[];
+  /** The caps that cut the size, in the order applied; the last one set the target. */
   clipReasons: string[];
   recommendationLabel: string;
 }

@@ -395,7 +395,8 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
   );
   const curveMarkers = useMemo<StaticChartXMarker[]>(() => {
     if (!Number.isFinite(curveMaxFraction) || curveMaxFraction <= 0) return [];
-    const targetLabel = result.clipReasons[0]?.replace(/^max /, "") ?? "target";
+    // Caps apply in turn, so with both binding the last one set the target.
+    const targetLabel = result.clipReasons.at(-1)?.replace(/^max /, "") ?? "target";
     const markers: StaticChartXMarker[] = [
       ...(result.currentFraction == null ? [] : [{
         id: "current",

@@ -57,6 +57,29 @@ describe("kelly sizing model", () => {
     expect(unavailable.warnings).toContain("Current holding value unavailable; check FX rates.");
   });
 
+  test("names the cap that set the target when both caps bind", () => {
+    const draft: BinaryKellyAssumptions = {
+      winProbability: 0.57,
+      upsideReturn: 0.24,
+      downsideReturn: -0.09,
+      kellyFraction: 0.25,
+      maxNameFraction: 0.08,
+      maxLossFraction: 0.01,
+    };
+
+    // Loss cap alone allows 1% / 9% = 11.1%; the 8% name cap is what is left.
+    const both = calculateKellySizing({ mode: "binary", draft, bankroll: 100_000 });
+    expect(both.clipReasons).toEqual(["max loss", "max name"]);
+    expectClose(both.clippedFraction, 0.08);
+
+    const lossOnly = calculateKellySizing({ mode: "binary", draft: { ...draft, maxNameFraction: 0.5 }, bankroll: 100_000 });
+    expect(lossOnly.clipReasons).toEqual(["max loss"]);
+    expectClose(lossOnly.clippedFraction, 0.1111);
+
+    const nameOnly = calculateKellySizing({ mode: "binary", draft: { ...draft, maxLossFraction: 0.5 }, bankroll: 100_000 });
+    expect(nameOnly.clipReasons).toEqual(["max name"]);
+  });
+
   test("sizes the fractions without a bankroll and leaves the money fields empty", () => {
     const draft: BinaryKellyAssumptions = {
       winProbability: 0.57,
