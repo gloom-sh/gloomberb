@@ -31,7 +31,7 @@ export interface CspScreenCriteria {
 }
 
 export const CSP_SCREEN_DEFAULTS: Readonly<Omit<CspScreenCriteria, "expiration">> = { delta: 0.3, days: 30, maxSpreadPercent: 10 };
-/** The most names one screen reads: each is two chain requests. */
+/** The most names one screen reads: each is up to two chain requests (the first lists the expiries, the next is the one traded), a calendar one more. */
 export const CSP_SCREEN_LIMIT = 20;
 const DAY_MS = 86_400_000;
 const CONCURRENCY = 4;

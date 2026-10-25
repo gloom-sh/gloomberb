@@ -48,9 +48,15 @@ export interface StrategyFamilyDef {
   delta: number | null;
   /** The delta its legs further out of the money (a vertical's or a condor's wings) are nearest by default; null without them. */
   wing: number | null;
-  /** How its rows rank: annualised return on risk, or IV rank high or low first. */
-  rank: "return" | "iv-rank-high" | "iv-rank-low";
-  /** Whether it takes in premium or pays it, which names its money column. */
+  /**
+   * How its rows rank: an income trade's annualised return, a debit trade's
+   * reward to risk, or IV rank high or low first.
+   */
+  rank: "return" | "reward-risk" | "iv-rank-high" | "iv-rank-low";
+  /**
+   * Whether it takes in premium or pays it. That names its money column and its
+   * measure: an income trade's annualised return, a debit trade's reward to risk.
+   */
   net: "credit" | "debit";
   /** Which side of the trade its plain words start with. */
   lead: "sell" | "buy";
@@ -65,15 +71,15 @@ export const STRATEGY_FAMILY_DEFS: readonly StrategyFamilyDef[] = [
   family({ id: "bear-call", title: "Bear call spreads", tab: "vertical", choice: "Bear call", aliases: ["call-credit", "bear-call-spread"],
     delta: 0.3, wing: 0.15, rank: "return", net: "credit", lead: "sell" }),
   family({ id: "bull-call", title: "Bull call spreads", tab: "vertical", choice: "Bull call", aliases: ["call-debit", "bull-call-spread"],
-    delta: 0.5, wing: 0.3, rank: "return", net: "debit", lead: "buy" }),
+    delta: 0.5, wing: 0.3, rank: "reward-risk", net: "debit", lead: "buy" }),
   family({ id: "bear-put", title: "Bear put spreads", tab: "vertical", choice: "Bear put", aliases: ["put-debit", "bear-put-spread"],
-    delta: 0.5, wing: 0.3, rank: "return", net: "debit", lead: "buy" }),
+    delta: 0.5, wing: 0.3, rank: "reward-risk", net: "debit", lead: "buy" }),
   family({ id: "iron-condor", title: "Iron condors", tab: "iron-condor", aliases: ["ic", "condor"], delta: 0.2, wing: 0.1, rank: "return", net: "credit", lead: "sell" }),
   family({ id: "short-straddle", title: "Short straddles", tab: "straddle", choice: "Short", aliases: [], delta: null, wing: null, rank: "iv-rank-high", net: "credit", lead: "sell" }),
   family({ id: "long-straddle", title: "Long straddles", tab: "straddle", choice: "Long", aliases: [], delta: null, wing: null, rank: "iv-rank-low", net: "debit", lead: "buy" }),
   family({ id: "short-strangle", title: "Short strangles", tab: "strangle", choice: "Short", aliases: [], delta: 0.2, wing: null, rank: "iv-rank-high", net: "credit", lead: "sell" }),
   family({ id: "long-strangle", title: "Long strangles", tab: "strangle", choice: "Long", aliases: [], delta: 0.3, wing: null, rank: "iv-rank-low", net: "debit", lead: "buy" }),
-  family({ id: "calendar", title: "Call calendars", tab: "calendar", aliases: ["call-calendar", "calendar-spread"], delta: 0.5, wing: null, rank: "return", net: "debit", lead: "sell" }),
+  family({ id: "calendar", title: "Call calendars", tab: "calendar", aliases: ["call-calendar", "calendar-spread"], delta: 0.5, wing: null, rank: "reward-risk", net: "debit", lead: "sell" }),
 ];
 
 export function strategyFamilyDef(id: StrategyFamily): StrategyFamilyDef {
@@ -96,10 +102,10 @@ export function readStrategyFamily(value: unknown): StrategyFamily {
 const CALENDAR_GAP_DAYS = 30;
 const DAY_MS = 86_400_000;
 
-export interface StrategyScreenCriteria extends CspScreenCriteria {
+export interface StrategyScreenCriteria extends Omit<CspScreenCriteria, "delta"> {
   strategy: ScreenFamily;
-  /** The absolute delta the legs are nearest; unread by a straddle, which takes the strike nearest the money. */
-  delta: number;
+  /** The absolute delta the legs are nearest; null for a straddle, which takes the strike nearest the money. */
+  delta: number | null;
   /** The absolute delta a vertical's or a condor's legs further out of the money are nearest; null without them. */
   wingDelta: number | null;
 }
@@ -121,7 +127,8 @@ export function readStrategyScreenCriteria(strategy: ScreenFamily, options: Reco
   if (def.wing == null && supplied(options.wingDelta)) {
     throw new Error(`--wing-delta sets the far legs of a vertical or an iron condor; ${def.title.toLowerCase()} have none`);
   }
-  const delta = supplied(options.delta) ? Math.abs(readNumber(options.delta, "delta", deltaExample)) : def.delta ?? 0.5;
+  if (def.delta == null) return { strategy, delta: null, wingDelta: null, days, expiration, maxSpreadPercent };
+  const delta = supplied(options.delta) ? Math.abs(readNumber(options.delta, "delta", deltaExample)) : def.delta;
   if (!(delta > 0 && delta < 1)) throw new Error(`Invalid --delta "${String(options.delta)}". Use ${deltaExample}.`);
   let wingDelta: number | null = null;
   if (def.wing != null) {
@@ -140,14 +147,16 @@ export function readStrategyScreenCriteria(strategy: ScreenFamily, options: Reco
  * strike nearest `delta` (a put's as its delta reads without its sign), a
  * vertical's or a condor's far legs nearest `wingDelta` and strictly further
  * out of the money, a straddle at the strike nearest spot quoted on both
- * sides, a calendar's call nearest `delta` among the strikes quoted on both
- * expiries, sold on `near` and bought on `far`. `unusable` words a pick the chain has no quote for.
+ * sides when it is near the money (`straddleReach`), a calendar's call nearest
+ * `delta` among the strikes quoted on both expiries, sold on `near` and bought
+ * on `far`. `unusable` words a pick the chain has no quote for.
  */
 function pickStrategyLegs(
   criteria: Pick<StrategyScreenCriteria, "strategy" | "delta" | "wingDelta">, quoted: QuotedChain, pricing: StrategyPricing,
   unusable: UnusableChainText, near: number, far?: number,
 ): ScreenSeed {
-  const { strategy, delta } = criteria;
+  const { strategy } = criteria;
+  const delta = criteria.delta ?? 0.5;
   const wing = criteria.wingDelta ?? delta / 2;
   const onNear = (list: QuotedContract[]) => list.filter(({ contract }) => contract.expiration === near);
   const calls = onNear(quoted.calls);
@@ -192,6 +201,11 @@ function pickStrategyLegs(
       const call = calls.find(({ contract }) => puts.some((put) => put.contract.strike === contract.strike));
       const put = call && puts.find(({ contract }) => contract.strike === call.contract.strike);
       if (!call || !put) throw new Error(unusable("straddle"));
+      const reach = straddleReach([...calls, ...puts].map(({ contract }) => contract.strike), pricing.spot);
+      if (Math.abs(call.contract.strike - pricing.spot) > reach) {
+        throw new Error(`No put and call both quoted within ${reach.toFixed(2)} of spot ${pricing.spot.toFixed(2)}: `
+          + `the nearest is the ${strike(call)} strike`);
+      }
       const quantity = strategy === "short-straddle" ? -1 : 1;
       return { legs: [seededLeg(put, quantity), seededLeg(call, quantity)] };
     }
@@ -212,37 +226,62 @@ function pickStrategyLegs(
   }
 }
 
+/** A straddle's strike is at the money when it is this share of spot from it, or half a strike step where strikes are wider. */
+const STRADDLE_REACH = 0.025;
+
+/**
+ * How far from spot a straddle's strike may sit: 2.5% of spot, or half the
+ * usual step between the quoted strikes where they are listed wider apart, so
+ * a chain whose strikes near the money are missing quotes skips the name
+ * rather than trade a strike well away from it.
+ */
+function straddleReach(strikes: readonly number[], spot: number): number {
+  const sorted = [...new Set(strikes)].sort((a, b) => a - b);
+  const steps = sorted.slice(1).map((value, index) => value - sorted[index]!).sort((a, b) => a - b);
+  const step = steps.length ? steps[Math.floor(steps.length / 2)]! : 0;
+  return Math.max(spot * STRADDLE_REACH, step / 2);
+}
+
 /** A strike as a trader says it: `92.5`, `105`. */
 const strikeText = (value: number) => String(Number(value.toFixed(4)));
 const legExpiry = (expiration: number) => new Date(expiration * 1000).toISOString().slice(0, 10);
 
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+/** `Dec 18`: a later leg's expiry, the row's own being its DTE. */
+const monthDay = (expiration: number) => {
+  const date = new Date(expiration * 1000);
+  return `${MONTHS[date.getUTCMonth()]} ${date.getUTCDate()}`;
+};
+
 /**
  * The trade in plain words, one part per side, the side the family leads
- * with first: `Sell 95 put`, `buy 90 put`; `Sell 105 call`, `buy 100 shares`;
- * `Sell 95 put / 105 call`, `buy 90 put / 110 call`. A calendar's expiries
- * are its row's.
+ * with first, each leg its strike and `p` or `c`: `Sell 95p`, `buy 90p`;
+ * `Sell 105c`, `buy 100 shares`; `Sell 95p/105c`, `buy 90p/110c`. A leg on a
+ * later expiry than the row's names it: a calendar's `buy Dec 18 95c`.
  */
 function strategyTradeParts(strategy: StrategyFamily, position: Pick<ScenarioPosition, "legs" | "underlying">): string[] {
-  const name = (leg: ScenarioPosition["legs"][number]) => `${strikeText(leg.strike)} ${leg.side}`;
+  const first = Math.min(...position.legs.map((leg) => leg.expiration));
+  const name = (leg: ScenarioPosition["legs"][number]) =>
+    `${leg.expiration === first ? "" : `${monthDay(leg.expiration)} `}${strikeText(leg.strike)}${leg.side === "put" ? "p" : "c"}`;
   const sides = {
     sell: position.legs.filter((leg) => leg.quantity < 0).map(name),
     buy: [...(position.underlying ? [`${position.underlying.quantity} shares`] : []), ...position.legs.filter((leg) => leg.quantity > 0).map(name)],
   };
   const order = strategyFamilyDef(strategy).lead === "sell" ? ["sell", "buy"] as const : ["buy", "sell"] as const;
   return order.filter((side) => sides[side].length)
-    .map((side, index) => `${index ? side : side === "sell" ? "Sell" : "Buy"} ${sides[side].join(" / ")}`);
+    .map((side, index) => `${index ? side : side === "sell" ? "Sell" : "Buy"} ${sides[side].join("/")}`);
 }
 
-/** The trade in plain words, its parts in one line: `Sell 95 put, buy 90 put`. */
+/** The trade in plain words, its parts in one line: `Sell 95p/105c · buy 90p/110c`. */
 const strategyTradeText = (strategy: StrategyFamily, position: Pick<ScenarioPosition, "legs" | "underlying">) =>
-  strategyTradeParts(strategy, position).join(", ");
+  strategyTradeParts(strategy, position).join(" · ");
+
+const finite = (value: number | null | undefined): value is number => typeof value === "number" && Number.isFinite(value);
 
 export interface StrategyTrade {
   strategy: ScreenFamily;
   position: ScenarioPosition;
-  /** The legs in plain words, a part per side, the side the family leads with first. */
-  parts: string[];
-  /** The parts in one line. */
+  /** The legs in plain words, the side the family leads with first: `Sell 95p/105c · buy 90p/110c`. */
   text: string;
   /** The first expiry, YYYY-MM-DD: when the trade is read. */
   expiry: string;
@@ -255,19 +294,28 @@ export interface StrategyTrade {
   spot: number;
   /** Per share: the options' premium at their midpoints, taken in when positive, paid when negative. */
   net: number;
-  /** In currency for the whole trade; null when unlimited. */
+  /** The same premium for one contract a leg, in currency, as OSA counts money: what the Credit or Debit column shows. */
+  netAmount: number;
+  /** In currency for one contract a leg; null when unlimited. */
   maxGain: number | null;
   maxLoss: number | null;
   /** Which side has no limit: a long straddle's gain, a short one's loss. */
   unlimited: "gain" | "loss" | null;
   breakEvens: number[];
   probabilityOfProfit: number | null;
-  /** Max gain over max loss; null when either is unlimited or nothing is at risk. */
-  returnOnRisk: number | null;
-  /** Return on risk x 365 / days to expiry; null on the expiry day. */
+  /**
+   * An income trade's return to expiry: max gain over max loss, or for a short
+   * straddle or strangle, whose loss has no limit, the credit over the cash
+   * that secures its put (the put screen's yield on cash). Null for a debit trade.
+   */
+  returnToExpiry: number | null;
+  /** Return to expiry x 365 / days to expiry; null on the expiry day. */
   annualizedReturn: number | null;
+  /** A debit trade's max gain over its max loss; null for an income trade, an unlimited gain, or nothing at risk. */
+  rewardToRisk: number | null;
   /** The legs' spreads added up and over the net midpoint; null when a leg has no two-sided quote. */
   quote: { spread: number; spreadOfMid: number } | null;
+  /** The next report against the last expiry: a calendar's bought one, which an earnings move between its expiries reaches. */
   earnings: CspEarnings;
 }
 
@@ -337,14 +385,25 @@ function probabilityOfProfit(position: ScenarioPosition, breakEvens: readonly nu
   return Math.min(1, total);
 }
 
-/** A trade's figures, as the screen's row and its export read them; `quotes` are its legs' bids and asks. */
+/**
+ * A trade's figures, as the screen's row and its export read them; `quotes`
+ * are its legs' bids and asks. Mids that cross (an income trade that would pay
+ * to open, a debit trade that would be paid) leave the name out.
+ */
 function strategyTrade(
   strategy: ScreenFamily, position: ScenarioPosition, quotes: ReadonlyMap<string, { bid: number; ask: number }>, earningsDate: string | null | undefined,
 ): StrategyTrade {
+  const def = strategyFamilyDef(strategy);
   const expirations = [...new Set(position.legs.map((leg) => leg.expiration))].sort((a, b) => a - b);
   const expiry = legExpiry(expirations[0]!);
+  const farExpiry = expirations.length > 1 ? legExpiry(expirations.at(-1)!) : null;
   const { valuationDate, daysToExpiry } = calendarDaysToExpiry(position.asOf, expiry);
   const net = Math.round(position.legs.reduce((sum, leg) => sum - leg.quantity * leg.price, 0) * 1e8) / 1e8;
+  if (def.net === "credit" ? !(net > 0) : !(net < 0)) {
+    throw new Error(`Crossed mids: the legs ${net > 0 ? `take in ${net.toFixed(2)}` : net < 0 ? `cost ${(-net).toFixed(2)}` : "net to nothing"} `
+      + `where the trade ${def.net === "credit" ? "takes in a credit" : "pays a debit"}`);
+  }
+  const multiplier = position.legs[0]!.multiplier;
   let risk: TradeRisk;
   if (expirations.length > 1) risk = calendarRisk(position, net);
   else {
@@ -352,17 +411,22 @@ function strategyTrade(
     risk = { maxGain: expiryRisks.unlimitedProfit ? null : expiryRisks.maxProfit, maxLoss: expiryRisks.unlimitedLoss ? null : expiryRisks.maxLoss,
       unlimited: expiryRisks.unlimitedProfit ? "gain" : expiryRisks.unlimitedLoss ? "loss" : null, breakEvens: expiryRisks.breakevens };
   }
-  const returnOnRisk = risk.maxGain != null && risk.maxLoss != null && risk.maxLoss > 0 ? risk.maxGain / risk.maxLoss : null;
+  const riskRatio = finite(risk.maxGain) && finite(risk.maxLoss) && risk.maxLoss > 0 ? risk.maxGain / risk.maxLoss : null;
+  // A short straddle or strangle has no max loss to divide by: its credit is read on the cash its put would take, as the put screen's yield is.
+  const securedPut = risk.unlimited === "loss" ? position.legs.find((leg) => leg.side === "put" && leg.quantity < 0) : undefined;
+  const returnToExpiry = def.net === "debit" ? null
+    : riskRatio ?? (securedPut ? net * multiplier / (securedPut.strike * securedPut.multiplier * -securedPut.quantity) : null);
   const legQuotes = position.legs.map((leg) => quotes.get(leg.id));
   const spread = legQuotes.every((quote) => quote && quote.ask >= quote.bid && quote.bid > 0)
     ? legQuotes.reduce((sum, quote) => sum + quote!.ask - quote!.bid, 0) : null;
   return {
-    strategy, position, parts: strategyTradeParts(strategy, position), text: strategyTradeText(strategy, position), expiry,
-    farExpiry: expirations.length > 1 ? legExpiry(expirations.at(-1)!) : null, daysToExpiry, valuationDate, spot: position.spot, net,
-    ...risk, probabilityOfProfit: probabilityOfProfit(position, risk.breakEvens), returnOnRisk,
-    annualizedReturn: returnOnRisk != null && daysToExpiry > 0 ? returnOnRisk * 365 / daysToExpiry : null,
-    quote: spread != null && net !== 0 ? { spread, spreadOfMid: spread / Math.abs(net) } : null,
-    earnings: earningsBeforeExpiry(earningsDate, valuationDate, expiry),
+    strategy, position, text: strategyTradeText(strategy, position), expiry, farExpiry, daysToExpiry, valuationDate, spot: position.spot,
+    net, netAmount: Math.round(net * multiplier * 1e6) / 1e6,
+    ...risk, probabilityOfProfit: probabilityOfProfit(position, risk.breakEvens), returnToExpiry,
+    annualizedReturn: finite(returnToExpiry) && daysToExpiry > 0 ? returnToExpiry * 365 / daysToExpiry : null,
+    rewardToRisk: def.net === "debit" ? riskRatio : null,
+    quote: spread != null ? { spread, spreadOfMid: spread / Math.abs(net) } : null,
+    earnings: earningsBeforeExpiry(earningsDate, valuationDate, farExpiry ?? expiry),
   };
 }
 
@@ -384,16 +448,17 @@ export interface StrategyScreen extends Omit<CspScreen, "rows" | "criteria"> {
   criteria: StrategyScreenCriteria;
 }
 
-/** What a row ranks by: its annualised return on risk, or its IV rank. */
+/** What a row ranks by: an income trade's annualised return, a debit trade's reward to risk, or its IV rank. */
 function rankValue(row: Omit<StrategyScreenRow, "rank">, def: StrategyFamilyDef): number | null {
   if (!row.trade) return null;
-  return def.rank === "return" ? row.trade.annualizedReturn : row.ivRank;
+  const value = def.rank === "return" ? row.trade.annualizedReturn : def.rank === "reward-risk" ? row.trade.rewardToRisk : row.ivRank;
+  return finite(value) ? value : null;
 }
 
 /**
- * The family's order: the highest annualised return on risk first, or for a
- * straddle or strangle the richest IV rank first when selling and the
- * cheapest when buying. A wide spread is ranked and flagged. A trade with
+ * The family's order: an income trade's highest annualised return first, a
+ * debit trade's highest reward to risk, or for a straddle or strangle the
+ * richest IV rank first when selling and the cheapest when buying. A wide spread is ranked and flagged. A trade with
  * nothing to rank it by follows, then the names with no trade, by symbol.
  */
 export function rankStrategyScreen(rows: readonly Omit<StrategyScreenRow, "rank">[], strategy: ScreenFamily): StrategyScreenRow[] {
@@ -452,7 +517,7 @@ export async function loadStrategyScreen(
 /** `nearest 0.30 delta, wings 0.15 · expiry nearest 2026-11-20 (30 days)`: what each name's trade is. */
 export function strategyScreenCriteriaText(criteria: StrategyScreenCriteria, now: number): string {
   const def = strategyFamilyDef(criteria.strategy);
-  const legs = def.delta == null ? "strike nearest the money"
+  const legs = def.delta == null || criteria.delta == null ? "strike nearest the money"
     : `nearest ${criteria.delta.toFixed(2)} delta${criteria.wingDelta != null ? `, wings ${criteria.wingDelta.toFixed(2)}` : ""}`;
   return `${legs} · expiry nearest ${cspTargetDate(criteria, now)}${criteria.expiration == null ? ` (${criteria.days} days)` : ""}`
     + (criteria.strategy === "calendar" ? `, bought about ${CALENDAR_GAP_DAYS} days later` : "");
@@ -460,6 +525,8 @@ export function strategyScreenCriteriaText(criteria: StrategyScreenCriteria, now
 
 /** How a family's rows are ranked, in the words the notes and exports use. */
 export function strategyRankedBy(strategy: ScreenFamily): string {
-  const rank = strategyFamilyDef(strategy).rank;
-  return rank === "return" ? "annualised return on risk at the mid" : rank === "iv-rank-high" ? "IV rank, highest first" : "IV rank, lowest first";
+  const def = strategyFamilyDef(strategy);
+  if (def.rank === "reward-risk") return "reward to risk (max gain over max loss) at the mid";
+  if (def.rank === "return") return "annualised return on risk at the mid";
+  return def.rank === "iv-rank-high" ? "IV rank, highest first" : "IV rank, lowest first";
 }

@@ -2284,9 +2284,10 @@ gloom fn CSP JPM GS KO --strategy iron-condor
 gloom fn CSP JPM GS KO --strategy bull-put --delta 0.25 --wing-delta 0.10 --csv
 ```
 
-Each row has the trade in words (`Sell 90 put, buy 87 put`), the credit or debit per share at the quote midpoints, the max gain and max loss of one contract a leg (`unlimited` where a side has no cover), the break-evens, the probability of profit, the annualised return on risk, the IV rank, the spread (marked `wide` over `--max-spread`) and the earnings flag; a calendar adds the expiry it buys. Covered calls, verticals, condors and calendars rank by annualised return on risk, straddles and strangles by IV rank (highest first to sell, lowest first to buy).
+Each row has the trade in words (`Sell 90p · buy 87p`), the credit or debit at the quote midpoints, the max gain and max loss (`unlimited` where a side has no cover), the break-evens, the probability of profit, the IV rank, the spread (marked `wide` over `--max-spread`) and the earnings flag. Money is in USD per contract, one contract a leg, as OSA counts it. An income trade (covered call, credit vertical, iron condor, short straddle or strangle) shows its annualised return; a debit trade (debit vertical, calendar, long straddle or strangle) shows its reward to risk instead, max gain over max loss as `2.68x`. Covered calls, credit verticals and condors rank by annualised return, debit verticals and calendars by reward to risk, and straddles and strangles by IV rank (highest first to sell, lowest first to buy).
 
 - In the pane, each strategy is a tab; Vertical picks its spread and Straddle and Strangle their side from the bar. A tab opens at its own deltas and keeps the names and the expiry. Enter opens the selected trade in OSA as its legs.
+- A narrow pane drops the max gain or loss that repeats the credit or debit, then the break-evens, the rank, the other max, earnings and spread; symbol, days, trade, credit or debit, PoP, the return and IV rank always show.
 - Each figure is defined under [Options strategy screen](research-data.md#options-strategy-screen).
 
 To collar shares, `--strategy collar` buys the put at `--put-strike` and sells the call at `--call-strike` on the `--expiration` chain, each at its quote midpoint (the strikes nearest 10% below and above spot when omitted), and holds the 100 shares per contract they cover:

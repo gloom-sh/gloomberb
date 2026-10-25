@@ -3,6 +3,7 @@ import {
   DataTableView, PaneStatusBody, QueryBar, usePaneFooter, usePaneNoticeFooter, usePaneTabs, type DataTableCell, type DataTableColumn, type DataTableKeyEvent,
   type QueryBarFilter,
 } from "../../../components";
+import { dropColumnsToFit } from "../../../components/ui/table-layout";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { usePaneSettingValue, usePluginAppActions } from "../../../public/react";
@@ -14,7 +15,8 @@ import { compareSortValues, nextHeaderSort, type SortDirection } from "../../../
 import { useAssetData } from "../../runtime";
 import { createScenarioDependencies } from "./client";
 import {
-  cspScreenNotes, cspScreenReportRow, strategyScreenReportRow, type CspScreenReportRow, type StrategyScreenReportRow,
+  cspScreenNotes, cspScreenReportRow, rewardRiskText, STRATEGY_MONEY_UNIT, strategyScreenReportRow, type CspScreenReportRow,
+  type StrategyScreenReportRow,
 } from "./csp-screen-headless";
 import { CSP_SCREEN_DEFAULTS, CSP_SCREEN_LIMIT, cspScreenCriteriaText, cspTargetDate, loadCspScreen, readCspScreenCriteria, type CspScreenRow } from "./csp-screen";
 import { formatHedgePrice } from "./hedge";
@@ -43,29 +45,47 @@ const COLUMNS: DataTableColumn[] = [
   { id: "earnings", label: "Earnings", width: 17, align: "left" },
 ];
 
-/** The Trade column fits the longest trade listed, so a condor's bought wings show beside its sold legs. */
-const TRADE_WIDTH = { min: 22, max: 46 };
-const tradeWidth = (rows: readonly { trade: string | null }[]) =>
-  Math.min(TRADE_WIDTH.max, Math.max(TRADE_WIDTH.min, ...rows.map((row) => (row.trade?.length ?? 0) + 1)));
+/** At a narrow width the put screen keeps the put, its yield and its risks; its expiry and the mid's yield give way first. */
+const PUT_DROP_ORDER = ["midYield", "expiry", "otm", "ask", "bid", "rank", "delta"];
 
-/** A family's columns: the trade in words takes the room the figures leave, and a calendar dates the expiry it buys. */
-const tradeColumns = (strategy: ScreenFamily, tradeColumnWidth: number): DataTableColumn[] => [
-  { id: "rank", label: "#", width: 3, align: "right" },
-  { id: "symbol", label: "Symbol", width: 7, align: "left" },
-  { id: "expiry", label: "Expiry", width: 10, align: "right" },
-  ...(strategy === "calendar" ? [{ id: "farExpiry", label: "Bought", width: 10, align: "right" as const }] : []),
-  { id: "days", label: "DTE", width: 4, align: "right" },
-  { id: "trade", label: "Trade", width: tradeColumnWidth, align: "left", flexGrow: 1 },
-  { id: "net", label: strategyFamilyDef(strategy).net === "credit" ? "Credit" : "Debit", width: 7, align: "right" },
-  { id: "maxGain", label: "Max gain", width: 9, align: "right" },
-  { id: "maxLoss", label: "Max loss", width: 9, align: "right" },
-  { id: "breakEven", label: "Break-even", width: 15, align: "right" },
-  { id: "pop", label: "PoP", width: 4, align: "right" },
-  { id: "returnPerYear", label: "Return/yr", width: 9, align: "right" },
-  { id: "ivRank", label: "IVR", width: 4, align: "right" },
-  { id: "spread", label: "Spread", width: 11, align: "right" },
-  { id: "earnings", label: "Earnings", width: 17, align: "left" },
-];
+/** The Trade column fits the longest trade listed, so a condor's bought wings show beside its sold legs. */
+const TRADE_WIDTH = { min: 14, max: 40 };
+const tradeWidth = (rows: readonly { trade: string | null }[]) =>
+  Math.min(TRADE_WIDTH.max, Math.max(TRADE_WIDTH.min, ...rows.map((row) => row.trade?.length ?? 0)));
+
+/**
+ * A family's columns. DTE dates the trade (a calendar's bought expiry is in
+ * its words). Money is per contract, said once in the bar. An income trade
+ * reads its annualised return, a debit trade its reward to risk.
+ */
+const tradeColumns = (strategy: ScreenFamily, tradeColumnWidth: number): DataTableColumn[] => {
+  const credit = strategyFamilyDef(strategy).net === "credit";
+  return [
+    { id: "rank", label: "#", width: 3, align: "right" },
+    { id: "symbol", label: "Symbol", width: 7, align: "left" },
+    { id: "days", label: "DTE", width: 4, align: "right" },
+    { id: "trade", label: "Trade", width: tradeColumnWidth, align: "left", flexGrow: 1 },
+    { id: "net", label: credit ? "Credit" : "Debit", width: 8, align: "right", title: STRATEGY_MONEY_UNIT },
+    { id: "maxGain", label: "Max gain", width: 9, align: "right", title: STRATEGY_MONEY_UNIT },
+    { id: "maxLoss", label: "Max loss", width: 9, align: "right", title: STRATEGY_MONEY_UNIT },
+    { id: "breakEven", label: "Break-even", width: 15, align: "right" },
+    { id: "pop", label: "PoP", width: 4, align: "right" },
+    credit ? { id: "returnPerYear", label: "Return/yr", width: 9, align: "right" }
+      : { id: "rewardRisk", label: "Reward/risk", width: 9, align: "right", title: "Max gain over max loss" },
+    { id: "ivRank", label: "IVR", width: 4, align: "right" },
+    { id: "spread", label: "Spread", width: 11, align: "right" },
+    { id: "earnings", label: "Earnings", width: 13, align: "left" },
+  ];
+};
+/**
+ * What a narrow pane gives up first: the max gain or loss that repeats the
+ * credit or debit, then the break-evens, the rank, the other max, the
+ * earnings flag and the spread. Symbol, DTE, trade, credit or debit, PoP,
+ * the return and IV rank stay at every width.
+ */
+const tradeDropOrder = (strategy: ScreenFamily) => strategyFamilyDef(strategy).net === "credit"
+  ? ["maxGain", "breakEven", "rank", "maxLoss", "earnings", "spread"]
+  : ["maxLoss", "breakEven", "rank", "maxGain", "earnings", "spread"];
 
 const DELTA_OPTIONS = ["0.10", "0.15", "0.20", "0.25", "0.30", "0.35", "0.40", "0.50"];
 const WING_OPTIONS = ["0.05", "0.10", "0.15", "0.20", "0.25", "0.30", "0.35", "0.40"];
@@ -79,12 +99,18 @@ const percentText = (value: unknown, digits: number) => typeof value === "number
 const priceText = (value: unknown) => typeof value === "number" ? formatHedgePrice(value) : "--";
 const moneyText = (value: number) => value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const riskText = (value: number | null, unlimited: boolean) => value != null ? moneyText(value) : unlimited ? "unlimited" : "--";
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+/** `before Oct 28`: the flag and the date without its year, which the next report never needs. */
+const earningsCell = (row: { earningsDate: string | null; earningsBeforeExpiry: boolean | null; earnings: string }) => {
+  const date = row.earningsDate;
+  if (!date || row.earningsBeforeExpiry == null) return row.earnings;
+  return `${row.earningsBeforeExpiry ? "before" : "after"} ${MONTHS[Number(date.slice(5, 7)) - 1]} ${Number(date.slice(8, 10))}`;
+};
 /** A column's value to sort on: earnings by date, a flag as a number, an unlimited gain or loss above every limit. */
 function sortValue(row: Record<string, unknown>, columnId: string): string | number | null {
   if (columnId === "earnings") return typeof row.earningsDate === "string" ? row.earningsDate : null;
-  if ((columnId === "maxGain" || columnId === "maxLoss") && row.unlimited === (columnId === "maxGain" ? "gain" : "loss")) {
-    return Number.POSITIVE_INFINITY;
-  }
+  if ((columnId === "maxGain" || columnId === "rewardRisk") && row.unlimited === "gain") return Number.POSITIVE_INFINITY;
+  if (columnId === "maxLoss" && row.unlimited === "loss") return Number.POSITIVE_INFINITY;
   const value = row[columnId];
   return typeof value === "boolean" ? Number(value) : typeof value === "number" || typeof value === "string" ? value : null;
 }
@@ -215,29 +241,25 @@ export function CspScreenPane({ width, height, focused }: PaneProps) {
     switch (id) {
       case "rank": return { text: row.rank == null ? "" : String(row.rank), color: colors.textDim };
       case "symbol": return { text: row.symbol, color: colors.textBright };
-      case "expiry": return { text: String(row.expiry ?? "--"), color: colors.textDim };
-      case "farExpiry": return { text: String(row.farExpiry ?? "--"), color: colors.textDim };
       case "days": return { text: row.days == null ? "--" : String(row.days) };
-      // The side the trade leads with stays whole; the rest follows, muted, where it fits.
-      case "trade": {
-        const parts = row.source.trade?.parts ?? [];
-        return parts.length > 1 ? { text: parts[0]!, note: parts.slice(1).join(", "), value: row.trade } : { text: row.trade ?? "--" };
-      }
-      case "net": return { text: priceText(row.net) };
+      case "trade": return { text: row.trade ?? "--" };
+      case "net": return { text: row.net == null ? "--" : moneyText(row.net) };
       case "maxGain": return { text: riskText(row.maxGain, row.unlimited === "gain") };
       case "maxLoss": return { text: riskText(row.maxLoss, row.unlimited === "loss") };
       case "breakEven": return { text: row.breakEvens };
       case "pop": return { text: percentText(row.pop, 0) };
       // A return above zero reads as a gain; none, or nothing to rank, stays neutral.
       case "returnPerYear": return { text: percentText(row.returnPerYear, 1), color: (row.returnPerYear ?? 0) > 0 ? colors.positive : undefined };
+      case "rewardRisk": return { text: rewardRiskText(row.rewardRisk, row.unlimited), value: row.rewardRisk };
       case "ivRank": return { text: typeof row.ivRank === "number" ? row.ivRank.toFixed(0) : "--" };
       case "spread": return { text: `${percentText(row.spread, 1)}${row.wide ? " wide" : ""}`, color: row.wide ? colors.warning : undefined };
-      case "earnings": return { text: String(row.earnings), color: row.earningsBeforeExpiry === true ? colors.warning : colors.textDim };
+      case "earnings": return { text: earningsCell(row), value: row.earningsDate,
+        color: row.earningsBeforeExpiry === true ? colors.warning : colors.textDim };
       default: return { text: "" };
     }
   };
   const familyDelta = family.delta ?? CSP_SCREEN_DEFAULTS.delta;
-  const deltaValue = (criteria.value ?? criteria.trade)?.delta.toFixed(2) ?? familyDelta.toFixed(2);
+  const deltaValue = (criteria.value ?? criteria.trade)?.delta?.toFixed(2) ?? familyDelta.toFixed(2);
   const wingValue = criteria.trade?.wingDelta?.toFixed(2) ?? (family.wing != null ? family.wing.toFixed(2) : "");
   const defaultWing = family.wing == null ? "" : (family.wing < Number(deltaValue) ? family.wing : Number(deltaValue) / 2).toFixed(2);
   const daysValue = String(ready?.days ?? CSP_SCREEN_DEFAULTS.days);
@@ -269,19 +291,25 @@ export function CspScreenPane({ width, height, focused }: PaneProps) {
     onActivate: openScenario, onRootKeyDown: handleKey,
     getExportMetadata: (): Array<[string, string | undefined]> => [[strategy === "csp" ? "puts" : subject, criteriaText || undefined],
       ["ranked by", strategy === "csp" ? "annualised yield on cash at the bid" : rankedBy],
-      ["wide", ready ? `spread over ${ready.maxSpreadPercent}% of the mid` : undefined]],
+      ["wide", ready ? `spread over ${ready.maxSpreadPercent}% of the mid` : undefined],
+      ...(strategy === "csp" ? [] : [["money", STRATEGY_MONEY_UNIT] as [string, string]])],
   };
+  // Whole columns give way, least needed first, so nothing scrolls sideways; a vertical scrollbar takes a cell.
+  const putColumns = useMemo(() => dropColumnsToFit(COLUMNS, width - 1, PUT_DROP_ORDER), [width]);
+  const tradeColumnWidth = tradeWidth(tradeRows);
+  const shownTradeColumns = useMemo(() => strategy === "csp" ? [] : dropColumnsToFit(tradeColumns(strategy, tradeColumnWidth), width - 1,
+    tradeDropOrder(strategy)), [strategy, tradeColumnWidth, width]);
   const firstSymbol = (strategy === "csp" ? putRows : tradeRows)[0]?.symbol ?? "";
   const selection = { kind: "id" as const, selectedId: selected ?? firstSymbol, getId: (row: { symbol: string }) => row.symbol, onChange: (id: string) => setSelected(id) };
   return <Box width={width} height={height} flexDirection="column" overflow="hidden">
     {tabStrip}
-    <QueryBar width={width} filters={filters} />
+    <QueryBar width={width} filters={filters} meta={strategy === "csp" ? undefined : STRATEGY_MONEY_UNIT} />
     <PaneStatusBody subject={subject} loading={resource.loading && !data}
       error={criteria.error && !ready ? criteria.error : !data ? resource.error : null}>
       {strategy === "csp"
-        ? <DataTableView<ScreenRow> {...table} columns={COLUMNS} items={putRows} selection={selection}
+        ? <DataTableView<ScreenRow> {...table} columns={putColumns} items={putRows} selection={selection}
           renderCell={(row, column) => putCell(row, column.id)} />
-        : <DataTableView<TradeRow> {...table} columns={tradeColumns(strategy as ScreenFamily, tradeWidth(tradeRows))} items={tradeRows} selection={selection}
+        : <DataTableView<TradeRow> {...table} columns={shownTradeColumns} items={tradeRows} selection={selection}
           renderCell={(row, column) => tradeCell(row, column.id)} />}
     </PaneStatusBody>
   </Box>;

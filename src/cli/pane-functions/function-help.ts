@@ -287,7 +287,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     summary: "Which names pay most to sell a put? For each, the put nearest a delta (0.30) on the expiry nearest a date or a number of days out (30), "
       + "ranked by annualised yield on cash at the bid, with % out of the money, delta, IV rank, the spread (marked wide, never left out) and an earnings flag. "
       + "--strategy screens covered calls, verticals, iron condors, straddles, strangles and calendars the same way, with the trade, credit or debit, "
-      + "max gain and loss, break-evens, probability of profit and annualised return on risk.",
+      + "max gain and loss per contract, break-evens, probability of profit, and an income trade's annualised return or a debit trade's reward to risk.",
     usage: ["CSP JPM, GS, KO", "gloom fn CSP JPM GS KO AAPL --delta 0.20 --days 45", "gloom fn CSP JPM GS KO --strategy iron-condor"],
     keys: [key("Enter", " open in OSA")],
     data: OPTIONS,

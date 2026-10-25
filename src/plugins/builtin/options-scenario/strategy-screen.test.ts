@@ -25,14 +25,24 @@ const RATE = 0.04;
 const DIVIDEND = 0.01;
 const VOL = 0.3;
 
+interface Fixture {
+  /** Each expiry's vol, 30% by default. */
+  vol?: (expiry: number) => number;
+  /** Strikes listed with no quote. */
+  unquoted?: (strike: number) => boolean;
+  /** The next report date of `symbol`, a name of its own since the earnings calendar is kept between screens. */
+  earnings?: { symbol: string; date: string };
+}
+
 /** One chain on one model: spot 100, 30% vol at every strike, quotes two cents either side of the model price. */
-function sources() {
+function sources(fixture: Fixture = {}) {
   const chain = (symbol: string, expiry: number): OptionsChain => {
     const years = daysToExpiryFrom(expiry, now);
     const contract = (side: "call" | "put", strike: number) => {
-      const { price } = valueOption({ side, spot: 100, strike, daysToExpiry: years, rate: RATE, dividendYield: DIVIDEND, volatility: VOL });
-      const bid = Math.max(0.01, price - 0.02);
-      return { contractSymbol: `${symbol}-${side}-${strike}-${expiry}`, strike, bid, ask: bid + 0.04, currency: "USD", expiration: expiry,
+      const { price } = valueOption({ side, spot: 100, strike, daysToExpiry: years, rate: RATE, dividendYield: DIVIDEND,
+        volatility: fixture.vol?.(expiry) ?? VOL });
+      const bid = fixture.unquoted?.(strike) ? 0 : Math.max(0.01, price - 0.02);
+      return { contractSymbol: `${symbol}-${side}-${strike}-${expiry}`, strike, bid, ask: bid ? bid + 0.04 : 0, currency: "USD", expiration: expiry,
         impliedVolatility: 0, lastPrice: 0, change: 0, percentChange: 0, inTheMoney: false, lastTradeDate: now / 1000 };
     };
     return { underlyingSymbol: symbol, expirationDates: [day("2026-10-23"), NEAR, FAR], asOf: new Date(now).toISOString(),
@@ -45,7 +55,9 @@ function sources() {
     getTickerFinancials: async (symbol: string) => ({ quote: quote(symbol), fundamentals: { dividendYield: DIVIDEND }, annualStatements: [],
       quarterlyStatements: [], priceHistory: [] }) as TickerFinancials,
     getOptionsChain: async (symbol: string, _exchange?: string, expiration?: number) => chain(symbol, expiration ?? NEAR),
-    getEarningsCalendar: async () => [],
+    getEarningsCalendar: async () => fixture.earnings
+      ? [{ symbol: fixture.earnings.symbol, name: fixture.earnings.symbol, earningsDate: new Date(`${fixture.earnings.date}T00:00:00Z`), epsEstimate: null }]
+      : [],
   } as unknown as DataProvider;
   const cloud = {
     impliedVolatility: async () => ({ version: 1, asOf: "2026-10-20", rows: [{ symbol: "AAA", status: "ready", iv30: { rank: 42 }, iv90: null, latest: null, skew: null }] }),
@@ -54,9 +66,9 @@ function sources() {
   return { provider, cloud };
 }
 
-async function screen(strategy: ScreenFamily, options: Record<string, unknown> = {}) {
-  const { provider, cloud } = sources();
-  const loaded = await loadStrategyScreen([{ symbol: "AAA" }], readStrategyScreenCriteria(strategy, options),
+async function screen(strategy: ScreenFamily, options: Record<string, unknown> = {}, fixture: Fixture = {}) {
+  const { provider, cloud } = sources(fixture);
+  const loaded = await loadStrategyScreen([{ symbol: fixture.earnings?.symbol ?? "AAA" }], readStrategyScreenCriteria(strategy, options),
     { scenario: { ...createScenarioDependencies(provider, cloud), now: () => now }, earnings: provider, ivApi: cloud as unknown as ImpliedVolatilityApi });
   return loaded.rows[0]!;
 }
@@ -160,8 +172,9 @@ describe("payoff and probability of profit on the fixture chain", () => {
     check(trade, { gain: (call.strike - cost + call.price) * 100, loss: (cost - call.price) * 100, breakEvens: [cost - call.price] });
     expect(trade.net).toBeCloseTo(call.price, 8);
     expect(trade.probabilityOfProfit!).toBeCloseTo(chanceAbove(trade, cost - call.price, iv(trade)), 3);
-    expect(trade.returnOnRisk!).toBeCloseTo(trade.maxGain! / trade.maxLoss!, 10);
-    expect(trade.annualizedReturn!).toBeCloseTo(trade.returnOnRisk! * 365 / 30, 10);
+    expect(trade.returnToExpiry!).toBeCloseTo(trade.maxGain! / trade.maxLoss!, 10);
+    expect(trade.annualizedReturn!).toBeCloseTo(trade.returnToExpiry! * 365 / 30, 10);
+    expect(trade.netAmount).toBeCloseTo(call.price * 100, 6);
   });
 
   test("credit verticals: the credit is the most made, the width less it the most lost", async () => {
@@ -183,6 +196,9 @@ describe("payoff and probability of profit on the fixture chain", () => {
     const debit = bought.price - sold.price;
     check(bull, { gain: (sold.strike - bought.strike - debit) * 100, loss: debit * 100, breakEvens: [bought.strike + debit] });
     expect(bull.net).toBeCloseTo(-debit, 8);
+    expect(bull.netAmount).toBeCloseTo(-debit * 100, 6);
+    // A debit trade reads its reward to risk, not an annualised return.
+    expect([bull.rewardToRisk!, bull.returnToExpiry, bull.annualizedReturn]).toEqual([bull.maxGain! / bull.maxLoss!, null, null]);
     expect(bull.probabilityOfProfit!).toBeCloseTo(chanceAbove(bull, bought.strike + debit, bought.volatility), 3);
     const bear = (await screen("bear-put")).trade!;
     const [long, short] = [price(bear, "put", 1), price(bear, "put", -1)];
@@ -210,7 +226,10 @@ describe("payoff and probability of profit on the fixture chain", () => {
       const inside = chanceAbove(trade, breakEvens[0]!, put!.volatility) - chanceAbove(trade, breakEvens[1]!, call!.volatility);
       const selling = strategy.startsWith("short");
       check(trade, selling ? { gain: premium * 100, loss: null, breakEvens } : { gain: null, loss: premium * 100, breakEvens });
-      expect([trade.unlimited, trade.returnOnRisk]).toEqual([selling ? "loss" : "gain", null]);
+      expect([trade.unlimited, trade.rewardToRisk]).toEqual([selling ? "loss" : "gain", null]);
+      // With no max loss, a seller's return is the credit on the cash its put would take, as the put screen's yield is.
+      if (selling) expect(trade.returnToExpiry!).toBeCloseTo(premium / put!.strike, 10);
+      else expect(trade.returnToExpiry).toBeNull();
       // A seller keeps the premium between the break-evens; a buyer needs the move past either one.
       expect(trade.probabilityOfProfit!).toBeCloseTo(selling ? inside : 1 - inside, 3);
     }
@@ -233,15 +252,44 @@ describe("payoff and probability of profit on the fixture chain", () => {
     expect(trade.probabilityOfProfit!).toBeCloseTo(chanceAbove(trade, trade.breakEvens[0]!, sold!.volatility)
       - chanceAbove(trade, trade.breakEvens[1]!, sold!.volatility), 3);
     expect([trade.expiry, trade.farExpiry]).toEqual(["2026-11-20", "2026-12-18"]);
+    expect(trade.rewardToRisk!).toBeCloseTo(trade.maxGain! / trade.maxLoss!, 10);
+    expect(trade.text).toBe(`Sell ${sold!.strike}c · buy Dec 18 ${sold!.strike}c`);
   });
 });
 
-test("each family ranks by its own measure: return on risk, or IV rank rich first to sell and cheap first to buy", () => {
-  const row = (symbol: string, annualizedReturn: number | null, ivRank: number | null, trade = true): Omit<StrategyScreenRow, "rank"> =>
-    ({ symbol, trade: trade ? { annualizedReturn } as StrategyTrade : null, ivRank, wideSpread: false, note: trade ? null : "No chain" });
-  const rows = [row("AAA", 0.4, 30), row("BBB", 0.9, 70), row("CCC", null, null), row("DDD", 0.6, 50), row("EEE", null, null, false)];
+describe("a name whose chain cannot open the trade is left out with why", () => {
+  test("a straddle needs a put and a call quoted near the money, not the nearest pair at any distance", async () => {
+    const far = await screen("short-straddle", {}, { unquoted: (strike) => strike >= 95 && strike <= 105 });
+    expect(far.trade).toBeNull();
+    expect(far.note).toBe("No put and call both quoted within 2.50 of spot 100.00: the nearest is the 92.5 strike");
+    // One strike missing leaves the next one, a step away, which is still at the money.
+    const near = await screen("short-straddle", {}, { unquoted: (strike) => strike === 100 });
+    expect(near.trade!.position.legs.map((leg) => leg.strike)).toEqual([97.5, 97.5]);
+  });
+  test("mids that cross, a front month priced over the back, leave a calendar out rather than call its credit a debit", async () => {
+    const row = await screen("calendar", {}, { vol: (expiry) => expiry === NEAR ? 0.9 : 0.3 });
+    expect(row.trade).toBeNull();
+    expect(row.note).toStartWith("Crossed mids: the legs take in ");
+    expect(row.note).toEndWith(" where the trade pays a debit");
+  });
+  test("a calendar flags earnings before the expiry it buys, the move it is exposed to", async () => {
+    const earnings = { symbol: "ERN", date: "2026-12-01" };
+    const trade = (await screen("calendar", {}, { earnings })).trade!;
+    expect(trade.earnings).toEqual({ date: "2026-12-01", beforeExpiry: true });
+    const vertical = (await screen("bull-put", {}, { earnings })).trade!;
+    expect(vertical.earnings).toEqual({ date: "2026-12-01", beforeExpiry: false });
+  });
+});
+
+test("each family ranks by its own measure: return, reward to risk, or IV rank rich first to sell and cheap first to buy", () => {
+  const row = (symbol: string, measure: number | null, ivRank: number | null, trade = true): Omit<StrategyScreenRow, "rank"> =>
+    ({ symbol, trade: trade ? { annualizedReturn: measure, rewardToRisk: measure } as StrategyTrade : null, ivRank, wideSpread: false,
+      note: trade ? null : "No chain" });
+  // A figure that came out not a number is unranked, never a sort that breaks.
+  const rows = [row("AAA", 0.4, 30), row("BBB", 0.9, 70), row("CCC", Number.NaN, null), row("DDD", 0.6, 50), row("EEE", null, null, false)];
   const order = (strategy: ScreenFamily) => rankStrategyScreen(rows, strategy).map((entry) => `${entry.rank ?? "-"}${entry.symbol}`);
   expect(order("bull-put")).toEqual(["1BBB", "2DDD", "3AAA", "-CCC", "-EEE"]);
+  expect(order("calendar")).toEqual(["1BBB", "2DDD", "3AAA", "-CCC", "-EEE"]);
   expect(order("short-strangle")).toEqual(["1BBB", "2DDD", "3AAA", "-CCC", "-EEE"]);
   expect(order("long-straddle")).toEqual(["1AAA", "2DDD", "3BBB", "-CCC", "-EEE"]);
 });
@@ -257,14 +305,20 @@ describe("fn CSP --strategy writes each family's trades with their figures as nu
         const result = await cspScreenHeadless.load(input, ctx);
         const freshness = deriveHeadlessFreshness(cspScreenHeadless, result);
         const def = strategyFamilyDef(strategy);
-        expect(renderHeadlessPaneText(cspScreenHeadless, result, input, "CSP", freshness).split("\n")[0]).toContain(`${def.title} · `);
+        // The heading says the money's unit once, as OSA does.
+        const heading = renderHeadlessPaneText(cspScreenHeadless, result, input, "CSP", freshness).split("\n")[0]!;
+        expect(heading).toStartWith(`${def.title} · `);
+        expect(heading).toEndWith(" · USD per contract");
         const csv = renderReportCsv(headlessReportTables(cspScreenHeadless, result, input, "CSP", freshness, { complete: true, unavailableSymbols: [] }), freshness)
           .split("\n").map((line) => line.match(/("[^"]*"|[^,]*)(,|$)/g)!.map((cell) => cell.replace(/,$/, "").replace(/^"|"$/g, "")));
         const cell = (header: string) => csv[1]![csv[0]!.indexOf(header)]!;
         const row = (result as { rows: Array<Record<string, unknown>> }).rows[0]!;
         // Every figure as a number, to the twelve digits an export keeps.
-        for (const [header, key] of [[def.net === "credit" ? "Credit" : "Debit", "net"], ["Break-even", "breakEven"], ["PoP (%)", "pop"],
-          ["Return/yr (%)", "returnPerYear"], ["Spread (%)", "spread"]] as const) {
+        const credit = def.net === "credit";
+        // An income trade reads its annualised return, a debit trade its reward to risk, never both.
+        expect([csv[0]!.includes("Return/yr (%)"), csv[0]!.includes("Reward/risk (x)")]).toEqual([credit, !credit]);
+        for (const [header, key] of [[credit ? "Credit" : "Debit", "net"], ["Break-even", "breakEven"], ["PoP (%)", "pop"],
+          credit ? ["Return/yr (%)", "returnPerYear"] : ["Reward/risk (x)", "rewardRisk"], ["Spread (%)", "spread"]] as const) {
           if (row[key] == null) expect(cell(header)).toBe("");
           else expect(Number(cell(header))).toBeCloseTo(row[key] as number, 8);
         }
@@ -276,8 +330,9 @@ describe("fn CSP --strategy writes each family's trades with their figures as nu
           if (unlimited === side) expect(cell(header)).toBe("");
           else expect(Number(cell(header))).toBeCloseTo(row[side === "gain" ? "maxGain" : "maxLoss"] as number, 8);
         }
-        expect(cell("status")).toBe(unlimited ? `Max ${unlimited}: unlimited` : "");
-        expect(result.notes?.[0]).toStartWith(`Ranked by ${def.rank === "return" ? "annualised return on risk" : "IV rank"}`);
+        expect(cell("status")).toBe(unlimited === "gain" ? "Max gain, Reward/risk: unlimited" : unlimited ? `Max ${unlimited}: unlimited` : "");
+        expect(result.notes?.[0]).toStartWith(`Ranked by ${{ return: "annualised return on risk", "reward-risk": "reward to risk",
+          "iv-rank-high": "IV rank", "iv-rank-low": "IV rank" }[def.rank]}`);
       } finally {
         setSystemTime();
       }

@@ -73,7 +73,9 @@ const listText = (items: readonly string[]) => items.length <= 1 ? items.join(""
  * sessions).`), and a bare symbol, which has none to give, is just not ranked
  * yet (`No IV rank for DAL yet.`).
  */
-export function cspScreenNotes(screen: Pick<CspScreen, "criteria" | "missingRanks">, rankedBy = "annualised yield at the bid"): string[] {
+export function cspScreenNotes(
+  screen: { criteria: Pick<CspScreen["criteria"], "maxSpreadPercent">; missingRanks: string[] }, rankedBy = "annualised yield at the bid",
+): string[] {
   const reasoned = screen.missingRanks.filter((entry) => entry.includes(" "));
   const bare = screen.missingRanks.filter((entry) => !entry.includes(" "));
   return [
@@ -85,12 +87,16 @@ export function cspScreenNotes(screen: Pick<CspScreen, "criteria" | "missingRank
 
 const money = (value: number) => value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-/** One name's trade, flat: money per share for the premium and for the whole trade for gain and loss, every percent in percent. */
+/**
+ * One name's trade, flat: money (credit or debit, max gain and loss) for one
+ * contract a leg as OSA counts it, break-evens per share, every percent in
+ * percent, reward to risk as a multiple.
+ */
 export type StrategyScreenReportRow = {
   rank: number | null; symbol: string; expiry: string | null; farExpiry: string | null; days: number | null; trade: string | null;
   net: number | null; maxGain: number | null; maxLoss: number | null; unlimited: "gain" | "loss" | null;
-  breakEven: number | null; secondBreakEven: number | null; breakEvens: string; pop: number | null; returnOnRisk: number | null;
-  returnPerYear: number | null; ivRank: number | null; spread: number | null; wide: boolean | null;
+  breakEven: number | null; secondBreakEven: number | null; breakEvens: string; pop: number | null; returnToExpiry: number | null;
+  returnPerYear: number | null; rewardRisk: number | null; ivRank: number | null; spread: number | null; wide: boolean | null;
   earnings: string; earningsBeforeExpiry: boolean | null; earningsDate: string | null; spot: number | null; note: string | null;
 };
 
@@ -98,21 +104,33 @@ export function strategyScreenReportRow(row: StrategyScreenRow): StrategyScreenR
   const { trade } = row;
   return {
     rank: row.rank, symbol: row.symbol, expiry: trade?.expiry ?? null, farExpiry: trade?.farExpiry ?? null, days: trade?.daysToExpiry ?? null,
-    trade: trade?.text ?? null, net: trade ? Math.abs(trade.net) : null, maxGain: trade?.maxGain ?? null, maxLoss: trade?.maxLoss ?? null,
+    // The screen keeps only trades whose mids open the way the family does, so the amount is the column's own credit or debit.
+    trade: trade?.text ?? null, net: trade ? Math.abs(trade.netAmount) : null, maxGain: trade?.maxGain ?? null, maxLoss: trade?.maxLoss ?? null,
     unlimited: trade?.unlimited ?? null, breakEven: trade?.breakEvens[0] ?? null, secondBreakEven: trade?.breakEvens[1] ?? null,
     breakEvens: trade?.breakEvens.length ? trade.breakEvens.map((value) => value.toFixed(2)).join(" / ") : "--",
-    pop: exportPercent(trade?.probabilityOfProfit), returnOnRisk: exportPercent(trade?.returnOnRisk), returnPerYear: exportPercent(trade?.annualizedReturn),
+    pop: exportPercent(trade?.probabilityOfProfit), returnToExpiry: exportPercent(trade?.returnToExpiry),
+    returnPerYear: exportPercent(trade?.annualizedReturn), rewardRisk: trade?.rewardToRisk ?? null,
     ivRank: row.ivRank, spread: exportPercent(trade?.quote?.spreadOfMid), wide: trade?.quote ? row.wideSpread : null,
     earnings: cspEarningsText(trade), earningsBeforeExpiry: trade ? trade.earnings.beforeExpiry : null, earningsDate: trade?.earnings.date ?? null,
     spot: trade?.spot ?? null, note: row.note,
   };
 }
 
-/** A gain or loss for the whole trade, `unlimited` on the side that has no limit. */
+/** A gain or loss for one contract a leg, `unlimited` on the side that has no limit. */
 const riskCell = (side: "gain" | "loss") => (value: unknown, row: Record<string, unknown>) =>
   typeof value === "number" ? money(value) : row.unlimited === side ? "unlimited" : "--";
+/** `2.68x`, or `unlimited` where the gain has no limit. */
+export const rewardRiskText = (value: unknown, unlimited: unknown) =>
+  typeof value === "number" ? `${value.toFixed(2)}x` : unlimited === "gain" ? "unlimited" : "--";
 
-/** A family's columns: its money column is `Credit` or `Debit`, and a calendar names the expiry it buys. */
+/** The unit every money column of a trade is in, said once: OSA's own for position money. */
+export const STRATEGY_MONEY_UNIT = "USD per contract";
+
+/**
+ * A family's columns: its money column is `Credit` or `Debit`; an income trade
+ * reads its annualised return and a debit trade its reward to risk. A
+ * calendar's trade names the expiry it buys, which exports also give alone.
+ */
 function strategyScreenColumns(strategy: ScreenFamily): { text: HeadlessPaneColumn[]; exported: HeadlessPaneColumn[] } {
   const def = strategyFamilyDef(strategy);
   const lead: HeadlessPaneColumn[] = [COLUMNS[0]!, COLUMNS[1]!, COLUMNS[2]!];
@@ -120,27 +138,29 @@ function strategyScreenColumns(strategy: ScreenFamily): { text: HeadlessPaneColu
   const body: HeadlessPaneColumn[] = [
     COLUMNS[3]!,
     { key: "trade", header: "Trade", format: (value) => typeof value === "string" ? value : "--" },
-    { key: "net", header: def.net === "credit" ? "Credit" : "Debit", align: "right", format: priceCell },
+    { key: "net", header: def.net === "credit" ? "Credit" : "Debit", align: "right", format: (value) => typeof value === "number" ? money(value) : "--" },
     { key: "maxGain", header: "Max gain", align: "right", format: riskCell("gain") },
     { key: "maxLoss", header: "Max loss", align: "right", format: riskCell("loss") },
   ];
-  const odds: HeadlessPaneColumn[] = [
-    { key: "pop", header: "PoP", align: "right", format: percentCell(0) },
-    { key: "returnPerYear", header: "Return/yr", align: "right", format: percentCell(1) },
-    COLUMNS[12]!, COLUMNS[7]!, COLUMNS[13]!,
-  ];
+  const measure: HeadlessPaneColumn = def.net === "credit"
+    ? { key: "returnPerYear", header: "Return/yr", align: "right", format: percentCell(1) }
+    : { key: "rewardRisk", header: "Reward/risk", align: "right", format: (value, row) => rewardRiskText(value, row.unlimited) };
+  const odds: HeadlessPaneColumn[] = [{ key: "pop", header: "PoP", align: "right", format: percentCell(0) }, measure, COLUMNS[12]!, COLUMNS[7]!, COLUMNS[13]!];
   const breakEven: HeadlessPaneColumn = { key: "breakEven", header: "Break-even", align: "right", format: priceCell,
     textFormat: (_value, row) => String(row.breakEvens) };
+  const toExpiry: HeadlessPaneColumn[] = def.net === "credit"
+    ? [{ key: "returnToExpiry", header: "Return to expiry", align: "right", format: percentCell(2) }] : [];
   return {
-    text: [...lead, ...farExpiry, ...body, breakEven, ...odds, NOTE],
+    text: [...lead, ...body, breakEven, ...odds, NOTE],
     exported: [...lead, ...farExpiry, ...body, breakEven, { key: "secondBreakEven", header: "Second break-even", format: priceCell }, ...odds,
-      { key: "returnOnRisk", header: "Return on risk", align: "right", format: percentCell(2) }, ...EXPORT_ONLY, NOTE],
+      ...toExpiry, ...EXPORT_ONLY, NOTE],
   };
 }
 
 function strategyMetadata(screen: StrategyScreen) {
   return { strategy: screen.criteria.strategy, criteria: screen.criteria, rankedBy: strategyRankedBy(screen.criteria.strategy),
-    unit: "percent; premium and break-evens per share; max gain and loss for one contract a leg", methodology: "docs/research-data.md#options-strategy-screen" };
+    unit: `credit, debit, max gain and max loss in ${STRATEGY_MONEY_UNIT} (one contract a leg, 100 shares); break-evens per share; percent; reward/risk as a multiple`,
+    methodology: "docs/research-data.md#options-strategy-screen" };
 }
 
 export const cspScreenHeadless: HeadlessPaneDefinition<"rows"> = {
@@ -152,7 +172,8 @@ export const cspScreenHeadless: HeadlessPaneDefinition<"rows"> = {
     + "cash at the bid, the put nearest a delta (0.30) on the listed expiry nearest a date or a number of days out (30), with its strike, bid, ask, "
     + "spread (flagged wide over --max-spread, never left out), delta, distance out of the money, yield at the mid and at the bid, IV rank and whether "
     + "earnings fall before expiry. Covered calls, verticals, iron condors, straddles, strangles and calendars pick their legs by delta on the same "
-    + "expiry and show the trade, credit or debit, max gain and loss, break-evens, probability of profit and annualised return on risk.",
+    + "expiry and show the trade, credit or debit, max gain and loss per contract, break-evens, probability of profit, and an income trade's "
+    + "annualised return or a debit trade's reward to risk.",
   discovery: { screenshotReadiness: "live-dom", dataRequirements: ["Current option chains", "Cloud stored implied volatility", "Earnings calendar"],
     limitations: ["Assignment, margin and the interest the cash earns are not modelled.",
       "Probability of profit is the Black-Scholes chance at each break-even's nearest leg IV, not a forecast."] },
@@ -160,9 +181,10 @@ export const cspScreenHeadless: HeadlessPaneDefinition<"rows"> = {
     const metadata = result?.metadata as { criteria?: CspScreen["criteria"] | StrategyScreenCriteria; strategy?: ScreenFamily } | undefined;
     const criteria = metadata?.criteria;
     if (metadata?.strategy && criteria) {
-      return [strategyFamilyDef(metadata.strategy).title, strategyScreenCriteriaText(criteria as StrategyScreenCriteria, Date.now())].join(" · ");
+      return [strategyFamilyDef(metadata.strategy).title, strategyScreenCriteriaText(criteria as StrategyScreenCriteria, Date.now()), STRATEGY_MONEY_UNIT]
+        .join(" · ");
     }
-    return ["Cash-secured puts", ...(criteria ? [cspScreenCriteriaText(criteria, Date.now())] : [])].join(" · ");
+    return ["Cash-secured puts", ...(criteria ? [cspScreenCriteriaText(criteria as CspScreen["criteria"], Date.now())] : [])].join(" · ");
   },
   options: [
     { key: "strategy", type: "enum", example: "--strategy iron-condor",
