@@ -213,19 +213,85 @@ main() {
     awk -F '\t' -v asset="$1" '$1 == asset { found = 1 } END { exit !found }' "$TMP_DIR/assets"
   }
 
-  # Gloomberb.app is the app's name before the rename. Once Gloom.app is in
-  # and the commands point at it, a copy under the old name beside it goes,
-  # unless Homebrew installed that one: Homebrew moves its own when it upgrades.
+  # The bundle identifier in an app's Info.plist, empty when it has none.
+  # PlistBuddy, on every Mac, reads binary plists too; elsewhere (the tests)
+  # the XML one Electrobun writes is read as text.
+  app_identifier() {
+    plist="$1/Contents/Info.plist"
+    [ -f "$plist" ] || return 0
+    if [ -x /usr/libexec/PlistBuddy ]; then
+      /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$plist" 2>/dev/null || true
+      return 0
+    fi
+    awk '
+      found && /<string>/ { sub(/.*<string>/, ""); sub(/<\/string>.*/, ""); print; exit }
+      /<key>CFBundleIdentifier<\/key>/ {
+        found = 1
+        sub(/.*<key>CFBundleIdentifier<\/key>/, "")
+        if ($0 ~ /<string>/) { sub(/.*<string>/, ""); sub(/<\/string>.*/, ""); print; exit }
+      }
+    ' "$plist"
+  }
+
+  # Whether the app at $1 is a build of Gloom, under either name.
+  is_our_app() {
+    [ "$(app_identifier "$1")" = "com.vincelwt.gloomberb" ]
+  }
+
+  # Points a `gloom` or `gloomberb` link that leads into the old bundle at the
+  # same file in the installed app, written the same way (absolute or
+  # relative). Returns 1 when it leads there and its folder is not writable.
+  relink_into_app() {
+    old_link="$1"
+    [ -L "$old_link" ] || return 0
+    old_target="$(readlink "$old_link")"
+    case "$old_target" in
+      *Gloomberb.app/Contents/*) ;;
+      *) return 0 ;;
+    esac
+    case "$old_target" in
+      /*) old_absolute="$old_target" ;;
+      *) old_absolute="$(dirname "$old_link")/${old_target}" ;;
+    esac
+    old_bundle="${old_absolute%%Gloomberb.app/Contents/*}Gloomberb.app"
+    [ "$(cd "$old_bundle" 2>/dev/null && pwd -P)" = "$(cd "$legacy_app" && pwd -P)" ] || return 0
+    [ -w "$(dirname "$old_link")" ] || return 1
+    ln -sfn "${old_target%%Gloomberb.app/Contents/*}$(basename "$DEST_APP")/Contents/${old_target#*Gloomberb.app/Contents/}" "$old_link"
+    echo "Pointed ${old_link} at ${DEST_APP}."
+  }
+
+  # Gloomberb.app is the app's name before the rename. Once Gloom.app is in,
+  # a copy under the old name beside it goes, unless Homebrew installed that
+  # one: Homebrew moves its own when it upgrades. The `gloom` and `gloomberb`
+  # links into it move to Gloom.app first, in the folders the app itself looks
+  # in; one in a folder this user cannot write keeps the old copy, and says so.
   remove_legacy_app() {
     legacy_app="${APP_DIR}/Gloomberb.app"
+    [ "$DEST_APP" != "$legacy_app" ] || return 0
     [ -d "$legacy_app" ] || return 0
-    grep -q 'com\.vincelwt\.gloomberb' "${legacy_app}/Contents/Resources/version.json" 2>/dev/null || return 0
+    is_our_app "$legacy_app" || return 0
     for brew_prefix in /opt/homebrew /usr/local; do
       if [ -d "${brew_prefix}/Caskroom/gloomberb" ]; then
         echo "Left ${legacy_app} to Homebrew, which installed it."
         return 0
       fi
     done
+    stuck=""
+    saved_ifs="$IFS"
+    IFS=:
+    for folder in "$INSTALL_DIR" "$HOME/.local/bin" "$HOME/bin" /opt/homebrew/bin /usr/local/bin $PATH; do
+      IFS="$saved_ifs"
+      [ -n "$folder" ] || continue
+      for name in gloom gloomberb; do
+        relink_into_app "${folder}/${name}" || stuck="${stuck} ${folder}/${name}"
+      done
+    done
+    IFS="$saved_ifs"
+    if [ -n "$stuck" ]; then
+      echo "Kept ${legacy_app}, the app under its name before Gloom:${stuck} still lead into it, in a folder you cannot write."
+      echo "Point them at ${DEST_APP}, then delete ${legacy_app}."
+      return 0
+    fi
     if [ -w "$APP_DIR" ]; then
       rm -rf "$legacy_app"
     else
@@ -244,6 +310,17 @@ main() {
     fi
     DEST_APP="${APP_DIR}/Gloom.app"
     DEST_CLI="${INSTALL_DIR}/gloom"
+    # A Gloom.app that is not this app belongs to another program and stays.
+    # This one goes in under its name before the rename, which it keeps: the
+    # app takes the new name only when it is free.
+    if [ -e "$DEST_APP" ] && ! is_our_app "$DEST_APP"; then
+      echo "Left ${DEST_APP} as it is: it belongs to another app."
+      DEST_APP="${APP_DIR}/Gloomberb.app"
+      if [ -e "$DEST_APP" ] && ! is_our_app "$DEST_APP"; then
+        echo "Error: ${APP_DIR}/Gloom.app and ${DEST_APP} both belong to other apps. Nothing was installed." >&2
+        exit 1
+      fi
+    fi
 
     downloaded=""
     for app_asset in $app_assets; do
@@ -285,7 +362,7 @@ main() {
       exit 1
     fi
 
-    echo "Installing Gloom.app to ${APP_DIR}..."
+    echo "Installing Gloom to ${DEST_APP}..."
     mkdir -p "$APP_DIR" 2>/dev/null || true
     if [ -w "$APP_DIR" ]; then
       rm -rf "$DEST_APP"
@@ -311,11 +388,11 @@ main() {
     if owns_command "$DEST_CLI"; then
       install_symlink "$APP_CLI" "$DEST_CLI"
       install_symlink "${APP_RESOURCES}/gloomberb" "${INSTALL_DIR}/gloomberb"
-      echo "Installed Gloom.app to ${DEST_APP}"
+      echo "Installed Gloom to ${DEST_APP}"
       echo "Installed terminal command to ${DEST_CLI} (gloomberb runs it too)"
     else
       install_symlink "${APP_RESOURCES}/gloomberb" "${INSTALL_DIR}/gloomberb"
-      echo "Installed Gloom.app to ${DEST_APP}"
+      echo "Installed Gloom to ${DEST_APP}"
       skip_command "$DEST_CLI"
     fi
     remove_legacy_app

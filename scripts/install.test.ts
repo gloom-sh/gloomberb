@@ -462,7 +462,24 @@ describe("install.sh on an Apple Silicon Mac", () => {
     };
   }
 
-  const resources = () => join(workDir, "Applications", "Gloom.app", "Contents", "Resources");
+  const resources = (bundle = "Gloom.app") => join(workDir, "Applications", bundle, "Contents", "Resources");
+
+  /** An installed app at `Applications/<bundle>`, with the Info.plist Electrobun writes for `identifier`. */
+  function installedApp(bundle: string, identifier: string): string {
+    const app = join(workDir, "Applications", bundle);
+    mkdirSync(join(app, "Contents", "Resources"), { recursive: true });
+    writeFileSync(join(app, "Contents", "Info.plist"), [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      "<plist version=\"1.0\">",
+      "<dict>",
+      "    <key>CFBundleIdentifier</key>",
+      `    <string>${identifier}</string>`,
+      "</dict>",
+      "</plist>",
+    ].join("\n"));
+    for (const command of ["gloom", "gloomberb"]) writeFileSync(join(app, "Contents", "Resources", command), `${bundle} ${identifier}`);
+    return app;
+  }
 
   // gloom.sh/install serves this script from main, so it meets releases from
   // before the rename, which ship Gloomberb.app (and before that, only the
@@ -483,15 +500,22 @@ describe("install.sh on an Apple Silicon Mac", () => {
     expect(run.stdout).toContain("Run 'gloom' to start.");
   });
 
+  // The links into the old bundle move wherever the app itself would move
+  // them: the install folder, ~/.local/bin, ~/bin, Homebrew's and PATH's
+  // folders. Left pointing at the removed bundle, they would run nothing.
   test.skipIf(!hasZip)("replaces a Gloomberb.app install and moves its command links to Gloom.app", async () => {
-    const legacy = join(workDir, "Applications", "Gloomberb.app");
+    const localBin = join(workDir, ".local", "bin");
+    const homeBin = join(workDir, "bin");
     const run = await runInstall(mac, {
       downloads: release({ [appAsset]: zippedApp(["gloom", "gloomberb"]), [legacyAsset]: zippedApp(["gloom", "gloomberb"], "Gloomberb.app") }),
       prepare: (installDir) => {
-        mkdirSync(join(legacy, "Contents", "Resources"), { recursive: true });
-        writeFileSync(join(legacy, "Contents", "Resources", "version.json"), '{"identifier":"com.vincelwt.gloomberb","name":"Gloomberb"}');
+        const legacy = installedApp("Gloomberb.app", "com.vincelwt.gloomberb");
         symlinkSync(join(legacy, "Contents", "Resources", "gloom"), join(installDir, "gloom"));
         symlinkSync(join(legacy, "Contents", "Resources", "gloomberb"), join(installDir, "gloomberb"));
+        mkdirSync(localBin, { recursive: true });
+        symlinkSync("../../Applications/Gloomberb.app/Contents/Resources/gloom", join(localBin, "gloom"));
+        symlinkSync(join(legacy, "Contents", "Resources", "gloomberb"), join(homeBin, "gloomberb"));
+        symlinkSync("/opt/other/Gloomberb.app/Contents/Resources/gloom", join(homeBin, "gloom"));
       },
     });
 
@@ -499,6 +523,68 @@ describe("install.sh on an Apple Silicon Mac", () => {
     expect(run.downloadLog).not.toContain(legacyAsset);
     expect(readdirSync(join(workDir, "Applications"))).toEqual(["Gloom.app"]);
     expect(run.links).toEqual({ gloom: join(resources(), "gloom"), gloomberb: join(resources(), "gloomberb") });
+    expect(readlinkSync(join(localBin, "gloom"))).toBe("../../Applications/Gloom.app/Contents/Resources/gloom");
+    expect(readlinkSync(join(homeBin, "gloomberb"))).toBe(join(resources(), "gloomberb"));
+    // Into another bundle under the old name: not this install's.
+    expect(readlinkSync(join(homeBin, "gloom"))).toBe("/opt/other/Gloomberb.app/Contents/Resources/gloom");
+  });
+
+  test.skipIf(!hasZip || process.getuid?.() === 0)("keeps Gloomberb.app while a link into it sits in a folder the user cannot write", async () => {
+    const localBin = join(workDir, ".local", "bin");
+    try {
+      const run = await runInstall(mac, {
+        downloads: release({ [appAsset]: zippedApp(["gloom", "gloomberb"]) }),
+        prepare: () => {
+          const legacy = installedApp("Gloomberb.app", "com.vincelwt.gloomberb");
+          mkdirSync(localBin, { recursive: true });
+          symlinkSync(join(legacy, "Contents", "Resources", "gloom"), join(localBin, "gloom"));
+          chmodSync(localBin, 0o555);
+        },
+      });
+
+      expect(run.exitCode).toBe(0);
+      expect(readdirSync(join(workDir, "Applications")).sort()).toEqual(["Gloom.app", "Gloomberb.app"]);
+      expect(readlinkSync(join(localBin, "gloom"))).toBe(join(resources("Gloomberb.app"), "gloom"));
+      expect(run.stdout).toContain(`Kept ${join(workDir, "Applications", "Gloomberb.app")}`);
+      expect(run.stdout).toContain(join(localBin, "gloom"));
+    } finally {
+      chmodSync(localBin, 0o755);
+    }
+  });
+
+  // Only a Gloom.app with this app's bundle identifier is replaced. Another
+  // program's stays, and Gloom goes in under its old name, which the app keeps
+  // while the new one is taken.
+  test.skipIf(!hasZip).each([
+    ["this app's", "com.vincelwt.gloomberb", ["Gloom.app"], "Gloom.app"],
+    ["another program's", "com.example.gloom", ["Gloom.app", "Gloomberb.app"], "Gloomberb.app"],
+  ] as const)("an existing Gloom.app that is %s", async (_, identifier, apps, installedAs) => {
+    const run = await runInstall(mac, {
+      downloads: release({ [appAsset]: zippedApp(["gloom", "gloomberb"]) }),
+      prepare: () => { installedApp("Gloom.app", identifier); },
+    });
+
+    expect(run.exitCode).toBe(0);
+    expect(readdirSync(join(workDir, "Applications")).sort()).toEqual([...apps]);
+    expect(run.links).toEqual({ gloom: join(resources(installedAs), "gloom"), gloomberb: join(resources(installedAs), "gloomberb") });
+    // The installed commands are the release's; another program's Gloom.app is untouched.
+    expect(readFileSync(join(resources(installedAs), "gloom"), "utf8")).toBe("#!/bin/sh\n");
+    if (installedAs !== "Gloom.app") expect(readFileSync(join(resources(), "gloom"), "utf8")).toBe(`Gloom.app ${identifier}`);
+  });
+
+  test("refuses when Gloom.app and Gloomberb.app both belong to other programs", async () => {
+    const run = await runInstall(mac, {
+      downloads: release({ [appAsset]: new Uint8Array([1]) }),
+      prepare: () => {
+        installedApp("Gloom.app", "com.example.gloom");
+        installedApp("Gloomberb.app", "com.example.gloomberb");
+      },
+    });
+
+    expect(run.exitCode).not.toBe(0);
+    expect(run.stderr).toContain("both belong to other apps. Nothing was installed.");
+    expect(run.downloadLog).not.toContain(appAsset);
+    expect(readFileSync(join(resources(), "gloom"), "utf8")).toBe("Gloom.app com.example.gloom");
   });
 
   test.skipIf(!hasZip)("keeps another program's gloom link and links gloomberb", async () => {
