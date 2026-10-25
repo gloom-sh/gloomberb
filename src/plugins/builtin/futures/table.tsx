@@ -57,6 +57,7 @@ const COLUMN_MIN_PANE_WIDTH: Partial<Record<FuturesColumnId, number>> = {
 /** From this width the unit column fits lumber's "USD / 1,000 board ft" whole. */
 const WIDE_UNIT_MIN_WIDTH = 200;
 const SESSION_TEXT_MIN_WIDTH = 100;
+const NAME_MIN_WIDTH = 10;
 
 const COLUMN_WIDTHS: Record<Exclude<FuturesColumnId, "name">, number> = {
   status: 1,
@@ -95,13 +96,13 @@ export function createFuturesColumns(width: number, visibleIds?: readonly string
     .reduce((total, id) => total + columnWidth(id, width), 0);
   // Leaves room for the pane border and scrollbar gutter; the name column grows
   // back into any slack because it is the flexible one.
-  const nameWidth = Math.max(10, width - 6 - ids.length - fixed);
+  const nameWidth = Math.max(NAME_MIN_WIDTH, width - 6 - ids.length - fixed);
 
   return ids.map((id) => {
     const label = id === "status" && usesSessionText(width) ? "SESSION" : FUTURES_HEADER_LABELS[id];
     // The leftover width lands on the contract name rather than being spread
     // across the number columns, which is what left a dead zone after it.
-    if (id === "name") return { id, label, width: nameWidth, align: "left", flexGrow: 1 };
+    if (id === "name") return { id, label, width: nameWidth, minWidth: NAME_MIN_WIDTH, align: "left", flexGrow: 1 };
     return {
       id,
       label,

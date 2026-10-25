@@ -36,6 +36,7 @@ export { WORLD_VENUE_MAP_PANE_ID } from "./ids";
 
 type VenueColumnId = "status" | "mic" | "name" | "time";
 type VenueColumn = DataTableColumn & { id: VenueColumnId };
+const MIN_VENUE_NAME_WIDTH = 10;
 
 function venueColumns(width: number): VenueColumn[] {
   const timeWidth = width >= 34 ? 6 : 0;
@@ -43,7 +44,7 @@ function venueColumns(width: number): VenueColumn[] {
   return [
     { id: "status", label: "", width: 1, align: "left" },
     { id: "mic", label: "MIC", width: 6, align: "left" },
-    { id: "name", label: "VENUE", width: Math.max(10, width - fixed - 6), flexGrow: 1, align: "left" },
+    { id: "name", label: "VENUE", width: Math.max(MIN_VENUE_NAME_WIDTH, width - fixed - 6), minWidth: MIN_VENUE_NAME_WIDTH, flexGrow: 1, align: "left" },
     ...(timeWidth ? [{ id: "time" as const, label: "LOCAL", width: timeWidth, align: "left" as const }] : []),
   ];
 }

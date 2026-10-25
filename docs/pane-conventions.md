@@ -394,7 +394,7 @@ follow a resize to the pixel and line up with their header. Text that can be
 wider than its track (a column that shrinks to `growFrom`) is clipped at the
 track at every frame of a resize, ending in an ellipsis.
 
-For tables that add or drop columns at width breakpoints, pass `useTableLayoutWidth(width)` to the column builder. It holds responsive column choices during a desktop drag and updates them after release; data, filters, and view modes stay live. Keep the actual table viewport and chart dimensions on the current width. The terminal receives the current width directly. External plugins import the hook from `gloomberb/components`.
+For tables that add or drop columns at width breakpoints, pass `useTableLayoutWidth(width)` to the column builder. It holds responsive column choices during a desktop drag and updates them after release; data, filters, and view modes stay live. Keep the actual table viewport and chart dimensions on the current width. The terminal receives the current width directly. External plugins import the hook from `gloomberb/components`. When a builder distributes spare pane space into a column’s `width`, also give that column its authored `minWidth`. The desktop uses that floor while resizing, so the allocated spare space can shrink with the edge; resting widths and terminal layout keep using `width`.
 
 Pick by interaction: `DataTableView` (sortable columns, cursor, Enter opens),
 `DataTableStackView` (same, detail in the pane), `FeedDataTableStackView`

@@ -162,6 +162,8 @@ export function buildPostingRows(postings: readonly CloudJobsPosting[], now = ne
   }));
 }
 
+const POSTING_TITLE_MIN_WIDTH = 18;
+
 export function buildPostingColumns(width: number, hasSalary: boolean): PostingColumn[] {
   const narrow = width < 96;
   const fixed = narrow ? 14 + 18 + 7 : 24 + 24 + 8 + (hasSalary ? 14 : 0);
@@ -169,7 +171,7 @@ export function buildPostingColumns(width: number, hasSalary: boolean): PostingC
   // A gap after each column, the table's padding and the vertical scrollbar,
   // so the columns never overflow into a horizontal scrollbar.
   const columns: PostingColumn[] = [
-    { id: "title", label: "ROLE", width: Math.max(18, width - fixed - count - 3), align: "left", flexGrow: 1 },
+    { id: "title", label: "ROLE", width: Math.max(POSTING_TITLE_MIN_WIDTH, width - fixed - count - 3), minWidth: POSTING_TITLE_MIN_WIDTH, align: "left", flexGrow: 1 },
     { id: "function", label: "FUNCTION", width: narrow ? 14 : 24, align: "left" },
     { id: "location", label: "LOCATION", width: narrow ? 18 : 24, align: "left" },
     { id: "posted", label: "POSTED", width: narrow ? 7 : 8, align: "right" },

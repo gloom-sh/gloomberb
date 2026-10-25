@@ -9,7 +9,7 @@ function tableResizeFrame(kind: string): string {
   return `(() => {
     const pane = document.querySelector('[data-gloom-pane-id="${kind}:resize"]');
     const result = { pane: pane.getBoundingClientRect().right, cells: {}, text: {} };
-    for (const role of ['data-table', 'data-table-body-scroll']) {
+    for (const role of ['data-table', 'data-table-body-scroll', 'data-table-scroll-content']) {
       const box = pane.querySelector('[data-gloom-role=' + role + ']').getBoundingClientRect();
       result.cells['@' + role] = [box.left, box.right];
     }
@@ -269,6 +269,16 @@ export const tableResizeSteps = [...TABLE_RESIZE_KINDS.flatMap((kind) => ["float
   async run(cdp: Cdp) {
     const result = await checkTableResize(cdp, kind, mode);
     if (result.maxShift > 1) throw new Error(`${kind} moved ${result.maxShift.toFixed(2)}px off the pane's current width: ${JSON.stringify({ live: result.live, steps: result.results.map(({ name, shift }) => ({ name, shift })) })}`);
+    if (kind === "hp") {
+      // The wide fixture has spare room in its responsive price columns.
+      // Its content must shrink with the edge, not wait clipped until release.
+      const inset = result.before.pane - result.before.cells["@data-table-scroll-content"]![1];
+      for (const { first, settled } of result.results) for (const frame of [first, settled]) {
+        if (Math.abs(frame.pane - frame.cells["@data-table-scroll-content"]![1] - inset) > 1) {
+          throw new Error("HP's responsive columns did not follow the pane edge");
+        }
+      }
+    }
     if (result.release.maxStepPerFrame > 3) throw new Error(`${kind} jumped on release: ${JSON.stringify(result.release)}`);
   },
 }))), ...[true, false].map((grow) => ({
@@ -309,6 +319,20 @@ export const tableResizeSteps = [...TABLE_RESIZE_KINDS.flatMap((kind) => ["float
   scenario: "table-resize&pane=vols&fw=643&other=1",
   async run(cdp: Cdp) {
     await tableResizeReady(cdp, "vols");
+    // Make the empty fraction explicit: the real pane may already fill every
+    // ancestor at this width, which would not exercise preserving a table gap.
+    await evaluate(cdp, `(() => {
+      const table = document.querySelector('[data-gloom-pane-id="vols:resize"] [data-gloom-role=data-table]');
+      const frame = table.closest('[data-gloom-role=table-view-frame]');
+      if (!frame?.parentElement) throw new Error('The unrelated-pane fixture has no table frame');
+      const parent = frame.parentElement;
+      const style = getComputedStyle(parent);
+      const inset = ['borderLeftWidth', 'borderRightWidth', 'paddingLeft', 'paddingRight']
+        .reduce((sum, name) => sum + (parseFloat(style[name]) || 0), 0);
+      const cell = parseFloat(getComputedStyle(table).getPropertyValue('--cell-w'));
+      frame.style.width = (parent.getBoundingClientRect().width - inset - cell / 2) + 'px';
+    })()`);
+    await waitForTableResizeSettled(cdp, "vols");
     const gap = await evaluate<number>(cdp, `(() => {
       const table = document.querySelector('[data-gloom-pane-id="vols:resize"] [data-gloom-role=data-table]');
       const cell = parseFloat(getComputedStyle(table).getPropertyValue('--cell-w'));

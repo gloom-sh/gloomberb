@@ -20,6 +20,11 @@ export type DataTableColumn = Pick<
    */
   title?: string;
   flexGrow?: number;
+  /**
+   * Authored floor for a column whose width includes a share of the pane.
+   * The desktop can shrink that share during a resize; the terminal uses width.
+   */
+  minWidth?: number;
 };
 
 export interface DataTableCell {

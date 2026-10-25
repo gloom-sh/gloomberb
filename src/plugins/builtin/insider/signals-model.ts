@@ -577,7 +577,7 @@ export function buildInsiderActivityColumns(width: number, lines: readonly Insid
     show[drop] = false;
   }
   return [
-    { id: "name", label: "Insider", width: Math.max(COMPANY_MIN, room()), align: "left", flexGrow: 1 },
+    { id: "name", label: "Insider", width: Math.max(COMPANY_MIN, room()), minWidth: COMPANY_MIN, align: "left", flexGrow: 1 },
     ...(show.role ? [{ id: "role" as const, label: "Role", width: widths.role, align: "left" as const }] : []),
     ...(show.nth ? [{ id: "nth" as const, label: "Nth", width: widths.nth, align: "right" as const }] : []),
     ...(show.usual ? [{ id: "usual" as const, label: "Vs Usual", width: widths.usual, align: "right" as const }] : []),
@@ -680,9 +680,9 @@ export function buildInsiderSignalColumns(
   const role = show.company ? widths.role : widths.role + left;
   return [
     { id: "ticker", label: "Ticker", width: widths.ticker, align: "left" },
-    ...(show.company ? [{ id: "company" as const, label: "Company", width: company, align: "left" as const, flexGrow: 1 }] : []),
+    ...(show.company ? [{ id: "company" as const, label: "Company", width: company, minWidth: COMPANY_MIN, align: "left" as const, flexGrow: 1 }] : []),
     { id: "score", label: "Score", width: widths.score, align: "right" },
-    { id: "role", label: "Role", width: role, align: "left", ...(show.company ? {} : { flexGrow: 1 }) },
+    { id: "role", label: "Role", width: role, align: "left", ...(show.company ? {} : { minWidth: widths.role, flexGrow: 1 }) },
     ...(show.nth ? [{ id: "nth" as const, label: "Nth", width: widths.nth, align: "right" as const }] : []),
     ...(show.usual ? [{ id: "usual" as const, label: "Vs Usual", width: widths.usual, align: "right" as const }] : []),
     { id: "stake", label: "Stake", width: widths.stake, align: "right" },

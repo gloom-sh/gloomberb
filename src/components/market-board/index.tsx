@@ -134,7 +134,7 @@ function fitBoardColumns(candidates: DataTableColumn[], width: number, wordWidth
   const excess = Math.max(0, getTableWidth(columns) - width);
   return {
     columns: columns.map((column) => column.id === growId
-      ? { ...column, width: Math.max(MIN_GROW_WIDTH, column.width - excess), flexGrow: 1 } : column),
+      ? { ...column, width: Math.max(MIN_GROW_WIDTH, column.width - excess), minWidth: MIN_GROW_WIDTH, flexGrow: 1 } : column),
     shortAsOf,
   };
 }

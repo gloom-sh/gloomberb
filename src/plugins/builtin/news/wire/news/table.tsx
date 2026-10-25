@@ -150,6 +150,8 @@ const columnAlign = (id: NewsColumnId): "left" | "right" =>
 
 /** Below this the headline takes room back from the other columns. */
 const MIN_HEADLINE_WIDTH = 40;
+/** The headline's floor after the removable columns have gone. */
+const HEADLINE_WIDTH_FLOOR = 16;
 
 /**
  * What a narrowing pane gives up, in order, to keep the headline readable: a
@@ -202,13 +204,14 @@ export function buildColumns(width: number, requestedIds: NewsColumnId[]): NewsT
       sentimentSpelled = true;
     }
   }
-  const titleWidth = Math.max(16, headlineWidth());
+  const titleWidth = Math.max(HEADLINE_WIDTH_FLOOR, headlineWidth());
 
   return columnIds.map((id) => ({
     id,
     label: id === "sentiment" && sentimentSpelled ? SPELLED_SENTIMENT : COLUMN_LABELS[id],
     ...(COLUMN_TITLES[id] && !(id === "sentiment" && sentimentSpelled) ? { title: COLUMN_TITLES[id] } : {}),
     width: id === "title" ? titleWidth : widths[id],
+    minWidth: id === "title" ? HEADLINE_WIDTH_FLOOR : undefined,
     align: columnAlign(id),
     flexGrow: id === "title" ? 1 : undefined,
   }));

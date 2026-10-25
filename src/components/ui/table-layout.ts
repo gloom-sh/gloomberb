@@ -5,6 +5,7 @@ import { clipToDisplayWidth, displayWidth } from "../../utils/format";
 export interface TableWidthColumn {
   width: number;
   flexGrow?: number;
+  minWidth?: number;
   align?: string;
   label?: string;
 }
@@ -165,6 +166,12 @@ export function expandTableColumns<C extends TableWidthColumn>(
   });
 }
 
+/** Preferred widths can include spare pane space; only authored floors constrain a drag. */
+export function getTableResizeWidth(columns: readonly TableWidthColumn[], columnGap = 1, horizontalPadding = 1): number {
+  return getTableWidth(columns.map((column) => column.minWidth === undefined ? column
+    : { ...column, width: Math.min(column.width, column.minWidth) }), columnGap, horizontalPadding);
+}
+
 function columnMinCh(column: TableWidthColumn): number {
   const width = tableColumnWidth(column);
   const headerFloor = column.label
@@ -182,7 +189,7 @@ function columnMinCh(column: TableWidthColumn): number {
     }
     return Math.max(1, Math.min(width, 8));
   })();
-  return Math.max(heuristic, headerFloor);
+  return Math.max(column.minWidth === undefined ? heuristic : Math.min(width, Math.max(1, Math.floor(column.minWidth))), headerFloor);
 }
 
 function columnFlexWeight(column: TableWidthColumn): number {

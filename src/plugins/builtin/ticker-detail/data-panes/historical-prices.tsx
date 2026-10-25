@@ -200,12 +200,12 @@ function buildHistoryColumns(width: number, intraday: boolean, size: HistoryBarS
   const [open, high, low, close, change, changePercent] = numeric as [number, number, number, number, number, number];
   return [
     { id: "date", label: intraday ? "DATE/TIME" : historyDateHeader(size)?.toUpperCase() ?? "DATE", width: dateWidth, align: "left" },
-    { id: "open", label: "OPEN", width: open, align: "right", flexGrow: 1 },
-    { id: "high", label: "HIGH", width: high, align: "right", flexGrow: 1 },
-    { id: "low", label: "LOW", width: low, align: "right", flexGrow: 1 },
-    { id: "close", label: "CLOSE", width: close, align: "right", flexGrow: 1 },
-    { id: "change", label: "CHG", width: change, align: "right", flexGrow: 1 },
-    { id: "changePercent", label: "CHG %", width: changePercent, align: "right", flexGrow: 1 },
+    { id: "open", label: "OPEN", width: open, align: "right", flexGrow: 1, minWidth: HISTORY_NUMERIC_MIN_WIDTH },
+    { id: "high", label: "HIGH", width: high, align: "right", flexGrow: 1, minWidth: HISTORY_NUMERIC_MIN_WIDTH },
+    { id: "low", label: "LOW", width: low, align: "right", flexGrow: 1, minWidth: HISTORY_NUMERIC_MIN_WIDTH },
+    { id: "close", label: "CLOSE", width: close, align: "right", flexGrow: 1, minWidth: HISTORY_NUMERIC_MIN_WIDTH },
+    { id: "change", label: "CHG", width: change, align: "right", flexGrow: 1, minWidth: HISTORY_NUMERIC_MIN_WIDTH },
+    { id: "changePercent", label: "CHG %", width: changePercent, align: "right", flexGrow: 1, minWidth: HISTORY_NUMERIC_MIN_WIDTH },
     { id: "volume", label: "VOLUME", width: HISTORY_VOLUME_WIDTH, align: "right" },
   ];
 }

@@ -16,6 +16,8 @@ export const TABLE_RESIZE_DEFAULTS: CSSProperties & Record<`--${string}`, string
 
 interface TableResizeWidth {
   naturalWidth: number;
+  /** Excludes spare pane space already distributed into responsive columns. */
+  resizeWidth?: number;
   viewportWidth: number;
   /** The owning table measures its shared viewport API; this hook only waits for it. */
   viewportIsCurrent: () => boolean;
@@ -24,14 +26,25 @@ interface TableResizeWidth {
 }
 
 /** Keep the current overflow extent while CSS follows the viewport across it. */
-function resizeContentWidth(element: HTMLElement, width: TableResizeWidth): string {
+function resizeContentWidth(element: HTMLElement, width: TableResizeWidth, interrupted = false): string {
   const content = element.querySelector<HTMLElement>('[data-gloom-role="data-table-scroll-content"]');
   const current = content?.getBoundingClientRect().width ?? width.naturalWidth;
   if (!width.fillAvailableWidth) return `${current}px`;
   if (!width.showHorizontalScrollbar) return "100%";
+  const minimum = width.resizeWidth ?? width.naturalWidth;
+  if (minimum < width.naturalWidth) {
+    const viewport = content?.parentElement?.getBoundingClientRect().width;
+    if (viewport && Number.isFinite(viewport)) {
+      // Responsive widths already include spare pane space. Let that space
+      // shrink with the viewport, preserving any painted overflow on press.
+      return `max(100%, ${Math.min(current, minimum)}px, calc(${current}px + min(0px, calc(100% - ${viewport}px))))`;
+    }
+  }
   // A table can fit within the trailing gutter despite being slightly below
   // its natural width. Starting from its actual extent avoids a press jump.
-  return `max(100%, ${Math.min(current, width.naturalWidth)}px)`;
+  // A settling table can still be wider than its new natural extent. Taking
+  // that smaller target on regrab would cancel the animation with a jump.
+  return `max(100%, ${interrupted ? current : Math.min(current, minimum)}px)`;
 }
 
 /** A regrab during the settling transition starts from the tracks currently on screen. */
@@ -85,9 +98,10 @@ export function useTableResizeColumns(root: RefObject<HTMLElement | null>, templ
     };
     retargetTransition.current = settleTransition;
     const begin = () => {
-      const template = !settling && held.current === null
-        ? latest.current.template : interruptedTemplate(element, latest.current.template);
-      const width = resizeContentWidth(element, latest.current.width);
+      const interrupted = settling || held.current !== null;
+      const template = interrupted
+        ? interruptedTemplate(element, latest.current.template) : latest.current.template;
+      const width = resizeContentWidth(element, latest.current.width, interrupted);
       pendingFinish.current = null;
       clearTransition();
       held.current = latest.current.columnIds;

@@ -65,6 +65,41 @@ test("a resize holds its overflow extent through catch-ups and until the final v
   }
 });
 
+test("regrabbing a shrinking table preserves its painted width instead of jumping to its destination", async () => {
+  let resize: (width: number) => void = () => {};
+  let paintedWidth = 1_040;
+  function Harness() {
+    const ref = useRef<HTMLDivElement>(null);
+    const [naturalWidth, setNaturalWidth] = useState(1_000);
+    resize = setNaturalWidth;
+    useTableResizeColumns(ref, `minmax(20px, ${naturalWidth}fr)`, "value", {
+      naturalWidth, viewportWidth: 100, viewportIsCurrent: () => true,
+      fillAvailableWidth: true, showHorizontalScrollbar: true,
+    });
+    return <div ref={ref} style={{ ...TABLE_RESIZE_DEFAULTS }}>
+      <div data-gloom-role="data-table-scroll-content" />
+    </div>;
+  }
+  const container = await render(<Harness />);
+  const table = container.firstElementChild as HTMLElement;
+  const content = table.firstElementChild as HTMLElement;
+  content.getBoundingClientRect = () => new testWindow.DOMRect(0, 0, paintedWidth, 240) as unknown as DOMRect;
+  let end = beginLiveResize();
+  try {
+    // A fresh drag can shrink through the spare space above the natural width.
+    expect(table.style.getPropertyValue("--gloom-table-resize-width")).toBe("max(100%, 1000px)");
+    await act(async () => resize(900));
+    end();
+    // The browser has painted only part of the transition to the new width.
+    paintedWidth = 950;
+    end = beginLiveResize();
+    expect(table.style.getPropertyValue("--gloom-table-column-transition")).toBe("initial");
+    expect(table.style.getPropertyValue("--gloom-table-resize-width")).toBe("max(100%, 950px)");
+  } finally {
+    end();
+  }
+});
+
 test("a late layout commit gets a whole settling transition without holding another pane or later data updates", async () => {
   jest.useFakeTimers();
   const delayed = Promise.withResolvers<void>();

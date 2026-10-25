@@ -241,6 +241,7 @@ export interface TrialLayout {
 
 /** The gap after each column plus the table's padding, as the terminal table draws them. */
 const TABLE_CHROME = 1 + 2;
+const TITLE_MIN_WIDTH = 12;
 
 /**
  * The title takes what is left; status, phase and ticker stay narrow and the
@@ -263,7 +264,7 @@ export function trialLayout(width: number): TrialLayout {
     { id: "ticker", label: "Ticker", width: wide ? 11 : 6, align: "left" },
   ];
   const used = fixed.reduce((sum, column) => sum + column.width + 1, 0) + TABLE_CHROME;
-  const title: TrialColumn = { id: "title", label: "Title", width: Math.max(12, width - used - 1), align: "left", flexGrow: 1 };
+  const title: TrialColumn = { id: "title", label: "Title", width: Math.max(TITLE_MIN_WIDTH, width - used - 1), minWidth: TITLE_MIN_WIDTH, align: "left", flexGrow: 1 };
   const statusAt = fixed.findIndex((column) => column.id === "status") + 1;
   return { compact, showVenue: wide, columns: [...fixed.slice(0, statusAt), title, ...fixed.slice(statusAt)] };
 }

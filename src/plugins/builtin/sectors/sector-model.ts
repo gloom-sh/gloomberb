@@ -335,6 +335,7 @@ export function sectorRowIssues(row: SectorRow): string[] {
 }
 
 const EXTENDED_COLUMN_WIDTH = 9;
+const MIN_SECTOR_NAME_WIDTH = 10;
 /** The longest name in either collection ("Consumer Staples"), which a narrow pane keeps whole as long as it can. */
 const FULL_NAME_WIDTH = 16;
 
@@ -374,7 +375,7 @@ export function buildSectorColumns(width: number, extendedSessions: readonly Ext
   const showBar = width - extendedWidth >= 67 && nameRoom(withBar) >= FULL_NAME_WIDTH;
   const columns = showBar ? withBar : [...lead, ...shownExtended, ...returns];
   return [
-    { id: "name", label: "SECTOR", width: Math.max(10, Math.min(22, nameRoom(columns))), align: "left", flexGrow: 1 },
+    { id: "name", label: "SECTOR", width: Math.max(MIN_SECTOR_NAME_WIDTH, Math.min(22, nameRoom(columns))), minWidth: MIN_SECTOR_NAME_WIDTH, align: "left", flexGrow: 1 },
     ...columns,
   ];
 }

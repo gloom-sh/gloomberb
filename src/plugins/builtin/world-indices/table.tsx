@@ -15,6 +15,7 @@ export type WorldIndexColumn = DataTableColumn & { id: WorldIndexColumnId };
 const SESSION_TEXT_MIN_WIDTH = 84;
 const CHANGE_MIN_WIDTH = 62;
 const TIME_MIN_WIDTH = 78;
+const NAME_MIN_WIDTH = 10;
 
 /** A colored dot needs a legend; the session word does not, so wide panes spell it out. */
 export function usesSessionText(width: number): boolean {
@@ -51,14 +52,14 @@ export function createWorldIndexColumns(width: number): WorldIndexColumn[] {
     + trailing.reduce((total, column) => total + (column.width ?? 0), 0);
   // Leaves room for the pane border and scrollbar gutter; the name column grows
   // back into any slack because it is the flexible one.
-  const nameWidth = Math.max(10, width - 6 - columnCount - fixedWidth);
+  const nameWidth = Math.max(NAME_MIN_WIDTH, width - 6 - columnCount - fixedWidth);
 
   return [
     { id: "status", label: usesSessionText(width) ? "SESSION" : "", width: statusWidth, align: "left" },
     { id: "symbol", label: "INDEX", width: symbolWidth, align: "left" },
     // The leftover width lands here rather than being spread across the number
     // columns, which is what left a dead zone between NAME and LAST.
-    { id: "name", label: "NAME", width: nameWidth, align: "left", flexGrow: 1 },
+    { id: "name", label: "NAME", width: nameWidth, minWidth: NAME_MIN_WIDTH, align: "left", flexGrow: 1 },
     ...trailing,
   ];
 }

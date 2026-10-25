@@ -178,12 +178,16 @@ export function memberColumns(width: number, extendedSessions: readonly Extended
   if (ytd) ytd.label = periodLabel("returnYtdPercent", ytdBase, ytd.width - HEADER_ROOM);
   return fitted;
 }
+
+const MIN_NAME_WIDTH = 8;
+
 function fitColumns(columns: DataTableColumn[], width: number, drop: string[]): DataTableColumn[] {
   columns = dropColumnsToFit(columns, width, drop);
   const used = () => getTableWidth(columns);
   const name = columns.find((col) => col.id === "name") ?? columns[0]!;
   const spare = width - used();
-  name.width = Math.max(8, name.width + Math.min(spare, Math.max(0, 36 - name.width)));
+  name.width = Math.max(MIN_NAME_WIDTH, name.width + Math.min(spare, Math.max(0, 36 - name.width)));
+  name.minWidth = MIN_NAME_WIDTH;
   name.flexGrow = 1;
   // Wide boards share room across the figures instead of separating every name
   // from its daily move with an almost pane-wide blank name column.
@@ -191,6 +195,7 @@ function fitColumns(columns: DataTableColumn[], width: number, drop: string[]): 
   let remaining = Math.max(0, width - used());
   for (const [index, col] of figures.entries()) {
     const extra = Math.floor(remaining / (figures.length - index));
+    col.minWidth = col.width;
     col.width += extra;
     col.flexGrow = 1;
     remaining -= extra;

@@ -25,6 +25,7 @@ import { useFocusOwningPane, useVisibleRangeEmitter } from "../../../components/
 import {
   buildTableGridTemplateColumns,
   getTableWidth,
+  getTableResizeWidth,
   hasMeaningfulTableHorizontalOverflow,
 } from "../../../components/ui/table-layout";
 import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../../../theme/font-scale";
@@ -149,8 +150,11 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
     [columnGap, columns, fillAvailableWidth],
   );
   const naturalWidth = Math.max(1, tableWidth * WEB_CELL_WIDTH);
+  const resizeWidth = useMemo(() => Math.max(1, getTableResizeWidth(columns, columnGap, horizontalPadding) * WEB_CELL_WIDTH),
+    [columns, columnGap, horizontalPadding]);
   useTableResizeColumns(rootElementRef, gridTemplateColumns, columns.map((column) => column.id).join("\u0000"), {
     naturalWidth,
+    resizeWidth,
     viewportWidth,
     viewportIsCurrent: () => readViewportWidth() === viewportWidth,
     fillAvailableWidth,

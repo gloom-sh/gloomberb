@@ -19,9 +19,10 @@ const BASES = [{ value: "all", label: "All bases" }, { value: "list", label: "Li
   { value: "ask", label: "Ask" }, { value: "reserved", label: "Reserved" }, { value: "reference", label: "Reference" }];
 type ListRow = SectionedRow<GpuBoardRow>;
 const listRowId = (row: ListRow) => row.key;
+const SERIES_MIN_WIDTH = 16;
 const listColumns = (width: number): DataTableColumn[] => [
   // Gutters and the scrollbar take four cells beside the two columns.
-  { id: "series", label: "Series", width: Math.max(16, width - 9 - 5), flexGrow: 1, align: "left" },
+  { id: "series", label: "Series", width: Math.max(SERIES_MIN_WIDTH, width - 9 - 5), minWidth: SERIES_MIN_WIDTH, flexGrow: 1, align: "left" },
   { id: "price", label: "$/GPU-hr", width: 9, align: "right" },
 ];
 const PERIOD_COLUMNS: DataTableColumn[] = [
