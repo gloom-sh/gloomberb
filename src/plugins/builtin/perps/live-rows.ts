@@ -127,14 +127,16 @@ const FIRST_VIEW: Range = { start: 0, end: 40 };
 /**
  * A table's rows with the quote stream laid over the ones in view: pass
  * `onVisibleRangeChange` to the table, and its rows in view (and the row
- * `pinned`, the one other tabs follow) are subscribed as it scrolls.
+ * `pinned`, the one other tabs follow) are subscribed as it scrolls. `shown`
+ * is what the footer dates, the items in view, and `live` says whether every
+ * one of them streams.
  */
 export function useLivePerpTableRows<T>(
   items: readonly T[],
   rowOf: (item: T) => PerpBoardRow | null,
   withRow: (item: T, row: PerpBoardRow) => T,
   { surface = "screener", pinned = null }: { surface?: Surface; pinned?: PerpBoardRow | null } = {},
-): { items: T[]; live: boolean; onVisibleRangeChange: (range: Range) => void } {
+): { items: T[]; shown: T[]; live: boolean; onVisibleRangeChange: (range: Range) => void } {
   const [range, setRange] = useState<Range>(FIRST_VIEW);
   const onVisibleRangeChange = useCallback((next: Range) => {
     setRange((current) => current.start === next.start && current.end === next.end ? current : next);
@@ -157,5 +159,10 @@ export function useLivePerpTableRows<T>(
       return row && fresh && fresh !== row ? withRow(item, fresh) : item;
     });
   }, [items, live.rows, rowOf, withRow]);
-  return { items: next, live: live.live, onVisibleRangeChange };
+  const view = useMemo(() => {
+    const shown = next.slice(range.start, range.end);
+    const rows = shown.flatMap((item) => rowOf(item) ?? []);
+    return { shown, live: rows.length > 0 && rows.every((row) => live.liveMarkets.has(row.marketId)) };
+  }, [next, range, rowOf, live.liveMarkets]);
+  return { items: next, shown: view.shown, live: view.live, onVisibleRangeChange };
 }

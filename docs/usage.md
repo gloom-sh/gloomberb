@@ -1616,9 +1616,9 @@ The status is one of four:
 
 A command that shows a copy saved earlier because it could not refresh says `couldn't refresh; saved 21:49 UTC` in place of the status (`freshness.savedAt`). A request that reaches nothing fails with `Gloom couldn't reach its data service` (`service_unreachable` in `--json`).
 
-**Venues polled apart.** A report over such venues dates each by its own newest observation and says how old the oldest is: `fn PERP` ends `Sun 11 Oct 2026 · Binance 02:15 · Bybit 02:24 UTC · oldest 9 min · delayed · funding = current estimate, pays 08:00 UTC`.
+**Venues polled apart.** A report over such venues dates each by its own newest observation and says how old its oldest price is: `fn PERP` ends `Sun 11 Oct 2026 · Binance 02:15 · Bybit 02:24 UTC · oldest 9 min · funding = current estimate, pays 08:00 UTC`.
 
-`delayed` means the venues are polled, not streamed (`stale` when one has stopped answering). `--json` carries each venue's time as `sources`, the age as `oldestAgeMinutes` and the funding part as `note`.
+The venues publish in real time and Gloom Cloud reads each about once a minute, so the line names no feed and its age says how far behind it is. The `PERP` footer reads the same over the rows on screen, with `live` after the age only while every one of them streams from its venue's socket. `stale` replaces it when a venue has stopped answering. `--json` carries each venue's time as `sources`, the age as `oldestAgeMinutes`, `status: "unreported"` (or `live`) and the funding part as `note`.
 
 `fn CRYP` and the `CRYP` footer say when the newest price is from and how old the oldest is (`22:48 UTC · oldest 4 min`), with no feed status:
 

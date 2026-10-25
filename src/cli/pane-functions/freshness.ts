@@ -100,8 +100,8 @@ export interface ReportFreshness {
    */
   sources?: ReportSourceAsOf[];
   /**
-   * Whole minutes from the oldest of `sources` (or, declared `oldestAge`, the
-   * oldest observation) to when this report was built: `oldest 9 min`.
+   * Whole minutes from the oldest of `sources` (or, declared `oldestAge` or
+   * `ageOnly`, the oldest observation) to when this report was built: `oldest 9 min`.
    */
   oldestAgeMinutes?: number;
   /** The data states no feed (`status` is `unreported`) and its line says only its time and age (`ageOnly`). */
@@ -463,9 +463,11 @@ function resolveFreshness({ declared, signals, observations, now }: FreshnessInp
   // A bar still forming covers its period through a later day than the one it is dated by.
   const periodToDate = readPeriodToDate(declared.periodToDate, now);
   const asOf = declaredAsOf ?? periodToDate?.through ?? newest([...observations.units, ...observations.extra]);
-  // The oldest source, not the newest, says how far behind the view can be.
-  const agedFrom = sources.length ? oldest(sources.map(({ time }) => time))
-    : declared.oldestAge || declared.ageOnly ? oldest(observations.units) ?? asOf : null;
+  // The oldest source, not the newest, says how far behind the view can be. A line that is dated by its age says how
+  // old its oldest observation is, even beside each source's newest: a source can stream some rows and not others.
+  const oldestSource = oldest(sources.map(({ time }) => time));
+  const agedFrom = declared.ageOnly ? oldest(observations.units) ?? oldestSource ?? asOf
+    : oldestSource ?? (declared.oldestAge ? oldest(observations.units) ?? asOf : null);
   const oldestAgeMinutes = agedFrom && !agedFrom.dateOnly ? Math.max(0, Math.floor((now - agedFrom.time) / 60_000)) : null;
   // A loader that dates its data itself also says how old the oldest part is, or nothing;
   // `oldest: null` says the rows are a history, whose first entry is not stale data.

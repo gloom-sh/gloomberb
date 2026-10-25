@@ -143,6 +143,12 @@ describe("report freshness", () => {
     const lagging = deriveHeadlessFreshness(rows({ status: "delayed", sources: [{ source: "Binance", asOf: "2026-10-10T23:58:00Z" }, { source: "Bybit", asOf: "2026-10-11T00:04:00Z" }] }),
       { rows: [{ observedAt: "2026-10-10T23:58:00Z", stale: true }, { observedAt: "2026-10-11T00:04:00Z", stale: true }] }, Date.parse("2026-10-11T01:30:00Z"));
     expect(paneStatusLine(lagging)).toBe("Binance Sat 10 Oct 23:58 · Bybit 00:04 UTC · oldest 92 min · stale");
+    // Dated by age alone, a venue whose newest row streams is as old as its oldest row: Binance's other market is 9
+    // minutes old, though its newest price is from 02:24.
+    const streaming = { rows: [{ observedAt: "2026-10-11T02:24:30Z" }, { observedAt: "2026-10-11T02:15:10Z" }, { observedAt: "2026-10-11T02:24:05Z" }] };
+    const sources = [{ source: "Binance", asOf: "2026-10-11T02:24:30Z" }, { source: "Bybit", asOf: "2026-10-11T02:24:05Z" }];
+    expect(paneStatusLine(deriveHeadlessFreshness(rows({ ageOnly: true, sources }), streaming, now))).toBe("Binance 02:24 · Bybit 02:24 UTC · oldest 9 min");
+    expect(paneStatusLine(deriveHeadlessFreshness(rows({ status: "live", ageOnly: true, sources }), streaming, now))).toBe("Binance 02:24 · Bybit 02:24 UTC · oldest 9 min · live");
     // One source says how old its oldest row is the same way.
     expect(line(rows({ status: "delayed", oldestAge: true }), { rows: [{ quoteTime: "2026-10-09T04:59:00Z" }, { quoteTime: "2026-10-09T04:56:00Z" }] }))
       .toBe("Source: Gloom Cloud · Fri 9 Oct 2026 04:59 UTC · oldest 4 min · delayed");
