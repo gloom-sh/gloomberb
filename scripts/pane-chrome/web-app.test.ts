@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { normalizePaneLayout, type PaneInstanceConfig } from "../../src/types/config";
+import { normalizePaneLayout } from "../../src/types/config";
 import { fallbackInstance } from "./web-app";
 
 describe("audit fallback layout", () => {
   test("retains ticker panes whose account-gated template declares no argument", () => {
-    const instance = fallbackInstance({ token: "IBKR", paneId: "ibkr-trading", argKind: null }) as PaneInstanceConfig;
+    const instance = fallbackInstance({ token: "IBKR", paneId: "ibkr-trading", argKind: null });
     const layout = normalizePaneLayout({
       dockRoot: { kind: "pane", instanceId: instance.instanceId },
       instances: [instance],

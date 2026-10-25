@@ -1,6 +1,6 @@
 import { mkdir } from "fs/promises";
 import { join } from "path";
-import { isTickerPaneId } from "../../src/types/config";
+import { isTickerPaneId, type PaneInstanceConfig } from "../../src/types/config";
 import { evaluate, sleep, type Cdp } from "./browser";
 
 /**
@@ -239,7 +239,7 @@ export async function discover(cdp: Cdp, url: string, replay: Replay, entry: Cat
 }
 
 /** The instance a function's pane opens as when the command bar did not open one. */
-export function fallbackInstance(entry: CatalogEntry): Record<string, unknown> {
+export function fallbackInstance(entry: CatalogEntry) {
   return {
     instanceId: `${entry.paneId}:sweep`,
     paneId: entry.paneId,
@@ -247,7 +247,7 @@ export function fallbackInstance(entry: CatalogEntry): Record<string, unknown> {
     // normalization removes their pane when it has no ticker binding.
     binding: argument(entry) || isTickerPaneId(entry.paneId) ? { kind: "fixed", symbol: "AAPL" } : { kind: "none" },
     ...(entry.defaultSettings ? { settings: entry.defaultSettings } : {}),
-  };
+  } satisfies PaneInstanceConfig;
 }
 
 export async function shot(cdp: Cdp, scope: string | null, file: string, format: "jpeg" | "png" = "jpeg"): Promise<void> {
