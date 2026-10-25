@@ -263,6 +263,81 @@ async function checkOverflowBoundary(cdp: Cdp, grow: boolean): Promise<void> {
   if (shift > 1) throw new Error(`Crossing the overflow boundary moved cells on release by ${shift.toFixed(2)}px`);
 }
 
+async function checkHeaderMinimumRegrab(cdp: Cdp, empty: boolean): Promise<void> {
+  const pane = '[data-gloom-pane-id="headers:resize"]';
+  if (!await waitFor(cdp, `document.querySelectorAll('${pane} [data-gloom-role=data-table-header-cell]').length === 3`, 15_000)) {
+    throw new Error("The header-minimum fixture did not render its columns");
+  }
+  await sleep(700);
+  const state = await evaluate<{ labels: string[]; rows: number; sharedGrid: boolean }>(cdp, `(() => {
+    const pane = document.querySelector('${pane}');
+    return { labels: [...pane.querySelectorAll('[data-gloom-role=data-table-header-cell]')].map((cell) => cell.textContent.trim()),
+      rows: pane.querySelectorAll('[data-gloom-role=data-table-cell]').length,
+      sharedGrid: getComputedStyle(pane.querySelector('[data-gloom-role=data-table-scroll-content]')).display === 'grid' };
+  })()`);
+  if (state.labels.join() !== "IMP,CTY,EVENT" || (state.rows === 0) !== empty || state.sharedGrid === empty) {
+    throw new Error(`Wrong header-minimum fixture state: ${JSON.stringify(state)}`);
+  }
+  const read = () => evaluate<TableResizeFrame>(cdp, tableResizeFrame("headers"));
+  const before = await read();
+  const from = await tableResizeGrab(cdp, "headers", "float");
+  await mouse(cdp, "mouseMoved", from.x, from.y, false);
+  await mouse(cdp, "mousePressed", from.x, from.y, true);
+  try {
+    await frames(cdp, 1);
+    const shift = catchupShift(before, await read(), true);
+    if (shift > 1) throw new Error(`Pressing the ${empty ? "empty" : "loaded"} table moved its headers ${shift.toFixed(2)}px`);
+    await mouse(cdp, "mouseMoved", from.x + 128, from.y, true);
+    await sleep(180);
+    const held = await read();
+    requireSameGeometry(before, held);
+    if (Math.abs(held.pane - before.pane - 128) > 1) throw new Error("The header fixture did not grow across its label breakpoint");
+    await evaluate(cdp, `(() => {
+      const pane = document.querySelector('${pane}');
+      const grid = pane.querySelector('[data-gloom-role=${empty ? "data-table-header-row" : "data-table-scroll-content"}]');
+      grid.addEventListener('transitionrun', function regrab(event) {
+        if (event.target !== grid || event.propertyName !== 'grid-template-columns') return;
+        const labels = [...pane.querySelectorAll('[data-gloom-role=data-table-header-cell]')].map((cell) => cell.textContent.trim());
+        // Release can start an earlier transition before the held labels commit.
+        if (labels.join() !== 'IMPACT,COUNTRY,EVENT') return;
+        grid.removeEventListener('transitionrun', regrab);
+        const animation = grid.getAnimations().find((item) => item.transitionProperty === 'grid-template-columns');
+        if (!animation) { window.__headerRegrab = { error: 'No header-floor transition' }; return; }
+        animation.pause();
+        const duration = Number(animation.effect.getTiming().duration);
+        animation.currentTime = 0;
+        const start = ${tableResizeFrame("headers")};
+        animation.currentTime = duration / 2;
+        const before = ${tableResizeFrame("headers")};
+        const widths = getComputedStyle(grid).gridTemplateColumns.split(/\\s+/).map(parseFloat);
+        const cell = parseFloat(getComputedStyle(grid).getPropertyValue('--cell-w'));
+        const floors = [8 * cell, 9 * cell];
+        const handle = pane.querySelector('[data-gloom-role=resize-handle]');
+        const box = handle.getBoundingClientRect();
+        const init = { bubbles: true, cancelable: true, button: 0, buttons: 1, clientX: box.x + box.width / 2, clientY: box.y + box.height / 2 };
+        handle.dispatchEvent(new MouseEvent('mousedown', init));
+        const after = ${tableResizeFrame("headers")};
+        const held = pane.querySelector('[data-gloom-role=data-table]').style.getPropertyValue('--gloom-table-resize-columns');
+        window.__headerRegrab = { start, before, after, widths, floors, held };
+        document.dispatchEvent(new MouseEvent('mouseup', { ...init, buttons: 0 }));
+      });
+    })()`);
+  } finally {
+    await mouse(cdp, "mouseReleased", from.x + 128, from.y, false);
+  }
+  if (!await waitFor(cdp, "!!window.__headerRegrab", 3000)) throw new Error("The wider header floors did not transition after release");
+  const result = await evaluate<{ error?: string; start: TableResizeFrame; before: TableResizeFrame; after: TableResizeFrame; widths: number[]; floors: number[]; held: string }>(cdp, "window.__headerRegrab");
+  if (result.error) throw new Error(result.error);
+  if (!result.held || result.held === "initial") throw new Error("The halfway press did not begin another resize");
+  if (result.widths.length !== 3 || result.floors.some((floor, index) => !Number.isFinite(result.widths[index]) || floor - result.widths[index]! < 1)) {
+    throw new Error(`The fixed and flexible destination floors must exceed their painted widths: ${JSON.stringify({ widths: result.widths, floors: result.floors })}`);
+  }
+  if (catchupShift(result.start, result.before) < 1) throw new Error("The header fixture did not advance into its transition");
+  const shift = catchupShift(result.before, result.after, true);
+  if (shift > 1) throw new Error(`Regrabbing the ${empty ? "empty" : "loaded"} table at wider header floors moved its cells ${shift.toFixed(2)}px`);
+  await waitForTableResizeSettled(cdp, "headers");
+}
+
 export const tableResizeSteps = [...TABLE_RESIZE_KINDS.flatMap((kind) => ["float", "dock"].map((mode) => ({
   name: `table resize: ${kind.toUpperCase()} ${mode} cells and text follow before the width catch-up`,
   scenario: `table-resize&pane=${kind}&mode=${mode}`,
@@ -281,7 +356,11 @@ export const tableResizeSteps = [...TABLE_RESIZE_KINDS.flatMap((kind) => ["float
     }
     if (result.release.maxStepPerFrame > 3) throw new Error(`${kind} jumped on release: ${JSON.stringify(result.release)}`);
   },
-}))), ...[true, false].map((grow) => ({
+}))), ...[false, true].map((empty) => ({
+  name: `table resize: ${empty ? "empty" : "loaded"} headers keep painted tracks when regrabbed below wider destination floors`,
+  scenario: `table-resize&pane=headers&fw=512${empty ? "&empty=1" : ""}`,
+  run: (cdp: Cdp) => checkHeaderMinimumRegrab(cdp, empty),
+})), ...[true, false].map((grow) => ({
   name: `table resize: columns follow across the ${grow ? "overflow-to-fit" : "fit-to-overflow"} boundary`,
   scenario: `table-resize&pane=table&wide=1&fw=${grow ? 640 : 1100}`,
   run: (cdp: Cdp) => checkOverflowBoundary(cdp, grow),

@@ -100,7 +100,7 @@ test("regrabbing a shrinking table preserves its painted width instead of jumpin
   }
 });
 
-test("releasing an authored minimum on press preserves the painted column proportions", async () => {
+test.each([false, true])("releasing an authored minimum preserves the painted tracks (empty: %s)", async (empty) => {
   function Harness() {
     const ref = useRef<HTMLDivElement>(null);
     useTableResizeColumns(ref, "minmax(10px, 100fr) minmax(10px, 100fr)", "label,value", {
@@ -108,14 +108,50 @@ test("releasing an authored minimum on press preserves the painted column propor
       fillAvailableWidth: true, showHorizontalScrollbar: true,
     });
     return <div ref={ref} style={{ ...TABLE_RESIZE_DEFAULTS }}>
-      <div data-gloom-role="data-table-scroll-content" style={{ gridTemplateColumns: "120px 80px" }} />
+      <div data-gloom-role="data-table-scroll-content" style={{ gridTemplateColumns: empty ? "none" : "120px 80px" }}>
+        {empty ? <div data-gloom-role="data-table-header-row" style={{ gridTemplateColumns: "120px 80px" }} /> : null}
+      </div>
     </div>;
   }
   const container = await render(<Harness />);
   const end = beginLiveResize();
   try {
     expect((container.firstElementChild as HTMLElement).style.getPropertyValue("--gloom-table-resize-columns"))
-      .toBe("minmax(10px, 120fr) minmax(10px, 80fr)");
+      .toBe("minmax(min(10px, 120px), 120fr) minmax(min(10px, 80px), 80fr)");
+  } finally {
+    end();
+  }
+});
+
+test("regrabbing caps new header floors to the painted fixed and flexible tracks", async () => {
+  let widenHeaders: () => void = () => {};
+  function Harness() {
+    const ref = useRef<HTMLDivElement>(null);
+    const [wide, setWide] = useState(false);
+    widenHeaders = () => setWide(true);
+    useTableResizeColumns(ref, wide
+      ? "minmax(calc(8 * var(--cell-w)), 100px) minmax(calc(9 * var(--cell-w)), 100fr)"
+      : "minmax(40px, 100px) minmax(40px, 100fr)", "impact,country", {
+      naturalWidth: 200, resizeWidth: 100, viewportWidth: 25, viewportIsCurrent: () => true,
+      fillAvailableWidth: true, showHorizontalScrollbar: true,
+    });
+    return <div ref={ref} style={{ ...TABLE_RESIZE_DEFAULTS }}>
+      <div data-gloom-role="data-table-scroll-content" style={{ gridTemplateColumns: "50px 60px" }} />
+    </div>;
+  }
+  const container = await render(<Harness />);
+  const table = container.firstElementChild as HTMLElement;
+  let end = beginLiveResize();
+  try {
+    end();
+    // A responsive label expands on release. The browser is still painting
+    // halfway to its new minimum when the pointer grabs the edge again.
+    await act(async () => widenHeaders());
+    end = beginLiveResize();
+    expect(table.style.getPropertyValue("--gloom-table-column-transition")).toBe("initial");
+    expect(table.style.getPropertyValue("--gloom-table-resize-columns")).toBe(
+      "minmax(min(calc(8 * var(--cell-w)), 50px), 50px) minmax(min(calc(9 * var(--cell-w)), 60px), 60fr)",
+    );
   } finally {
     end();
   }

@@ -1,7 +1,8 @@
 /** @jsxImportSource react */
 /** Real table panes over invented, fixed observations, with no network. */
-import { useLayoutEffect } from "react";
+import { useLayoutEffect, useMemo } from "react";
 import { apiClient } from "../../src/api-client";
+import { DataTableView } from "../../src/components/data-table/view";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../src/market-data/coordinator";
 import { SeasonalityPane } from "../../src/plugins/builtin/seasonality/pane";
 import { HistoricalPricesPane } from "../../src/plugins/builtin/ticker-detail/data-panes/historical-prices";
@@ -15,6 +16,7 @@ import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../../src/theme/font-scale";
 import type { LayoutConfig, PaneInstanceConfig } from "../../src/types/config";
 import type { PricePoint } from "../../src/types/financials";
 import type { PaneProps } from "../../src/types/plugin";
+import { useSettledLayoutSize } from "../../src/ui/resize-settle";
 
 const SYMBOL = "ALFA";
 const DAYS = Array.from({ length: 300 }, (_, index) => new Date(Date.UTC(2025, 11, 1 + index)))
@@ -52,10 +54,39 @@ function SeasonalityFixture(props: PaneProps) {
   return <PluginRenderProvider pluginId="seasonality" runtime={runtime}><SeasonalityPane {...props} /></PluginRenderProvider>;
 }
 
+const HEADER_ROWS = Array.from({ length: 16 }, (_, index) => index);
+
+/** Same column IDs, but wider fixed and flexible header floors after release. */
+function HeaderMinimumFixture({ focused, width }: PaneProps) {
+  // This fixture is also bundled against the base checkout, before the
+  // table-specific hook existed. Its shared settling primitive already did.
+  const layoutWidth = useSettledLayoutSize(width, 1, { maxStretch: Infinity }).width;
+  const columns = useMemo(() => {
+    const spelled = layoutWidth >= 70;
+    return [
+      { id: "impact", label: spelled ? "IMPACT" : "IMP", width: spelled ? 8 : 5 },
+      { id: "country", label: spelled ? "COUNTRY" : "CTY", width: spelled ? 9 : 5, minWidth: 5, flexGrow: 1 },
+      { id: "event", label: "EVENT", width: Math.max(12, layoutWidth - 15), minWidth: 12, flexGrow: 1 },
+    ];
+  }, [layoutWidth]);
+  return <DataTableView
+    focused={focused}
+    columns={columns}
+    items={new URLSearchParams(window.location.search).has("empty") ? [] : HEADER_ROWS}
+    selection={{ kind: "none" }}
+    sortColumnId={null}
+    sortDirection="asc"
+    getItemKey={String}
+    emptyStateTitle="No rows"
+    renderCell={(row, column) => ({ text: column.id === "event" ? `Release ${row + 1}` : String(row + 1) })}
+  />;
+}
+
 export const TABLE_RESIZE_PANES = {
   vols: { name: "VOLS", component: VolatilityFixture },
   hp: { name: "HP ALFA", component: HistoryFixture },
   seas: { name: "SEAS ALFA", component: SeasonalityFixture },
+  headers: { name: "Header resize", component: HeaderMinimumFixture },
 };
 
 export function installTableResizeData(): void {

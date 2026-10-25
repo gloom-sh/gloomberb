@@ -52,16 +52,24 @@ function resizeContentWidth(element: HTMLElement, width: TableResizeWidth, inter
 
 /** Start from painted tracks when releasing resize minima or regrabbing a transition. */
 function paintedTemplate(element: HTMLElement, template: string): string {
-  const row = element.querySelector<HTMLElement>('[data-gloom-role="data-table-scroll-content"]');
-  const computed = row && element.ownerDocument.defaultView?.getComputedStyle(row).gridTemplateColumns;
-  if (!computed) return template;
-  const widths = computed.split(/\s+/).map(parseFloat);
   const tracks = template.split(/ (?=minmax\()/);
-  if (widths.length !== tracks.length || widths.some((width) => !Number.isFinite(width) || width <= 0)) return template;
-  return tracks.map((track, index) => {
-    const comma = track.lastIndexOf(", ");
-    return comma < 0 ? track : `${track.slice(0, comma + 2)}${widths[index]}${track.endsWith("fr)") ? "fr" : "px"})`;
-  }).join(" ");
+  // An empty table has no shared content grid; its header owns the tracks.
+  for (const role of ["data-table-scroll-content", "data-table-header-row"]) {
+    const row = element.querySelector<HTMLElement>(`[data-gloom-role="${role}"]`);
+    const computed = row && element.ownerDocument.defaultView?.getComputedStyle(row).gridTemplateColumns;
+    if (!computed) continue;
+    const widths = computed.split(/\s+/).map(parseFloat);
+    if (widths.length !== tracks.length || widths.some((width) => !Number.isFinite(width) || width <= 0)) continue;
+    return tracks.map((track, index) => {
+      const comma = track.lastIndexOf(", ");
+      if (comma < 0) return track;
+      // A wider header can raise the destination floor while it is still
+      // transitioning. Regrabbing must keep the narrower painted track.
+      const minimum = track.slice("minmax(".length, comma);
+      return `minmax(min(${minimum}, ${widths[index]}px), ${widths[index]}${track.endsWith("fr)") ? "fr" : "px"})`;
+    }).join(" ");
+  }
+  return template;
 }
 
 /**
