@@ -123,20 +123,25 @@ test.each([false, true])("releasing an authored minimum preserves the painted tr
   }
 });
 
-test("regrabbing caps new header floors to the painted fixed and flexible tracks", async () => {
+test.each([
+  ["authored", 80, 20, 40, 60],
+  ["zero", 0, 0, 60, 90],
+  ["invalid", Infinity, 20, 60, 90],
+  ["partial", 0.25, 0.25, 60, 90],
+] as const)("regrabbing preserves painted ratios and header floors with %s weights", async (_kind, firstWeight, secondWeight, firstPainted, secondPainted) => {
   let widenHeaders: () => void = () => {};
   function Harness() {
     const ref = useRef<HTMLDivElement>(null);
     const [wide, setWide] = useState(false);
     widenHeaders = () => setWide(true);
     useTableResizeColumns(ref, wide
-      ? "minmax(calc(8 * var(--cell-w)), 100px) minmax(calc(9 * var(--cell-w)), 100fr)"
-      : "minmax(40px, 100px) minmax(40px, 100fr)", "impact,country", {
-      naturalWidth: 200, resizeWidth: 100, viewportWidth: 25, viewportIsCurrent: () => true,
+      ? `minmax(calc(8 * var(--cell-w)), 100px) minmax(calc(9 * var(--cell-w)), ${firstWeight}fr) minmax(calc(12 * var(--cell-w)), ${secondWeight}fr)`
+      : `minmax(40px, 100px) minmax(40px, ${firstWeight}fr) minmax(40px, ${secondWeight}fr)`, "impact,country,event", {
+      naturalWidth: 300, resizeWidth: 200, viewportWidth: 25, viewportIsCurrent: () => true,
       fillAvailableWidth: true, showHorizontalScrollbar: true,
     });
     return <div ref={ref} style={{ ...TABLE_RESIZE_DEFAULTS }}>
-      <div data-gloom-role="data-table-scroll-content" style={{ gridTemplateColumns: "50px 60px" }} />
+      <div data-gloom-role="data-table-scroll-content" style={{ gridTemplateColumns: "50px 60px 90px" }} />
     </div>;
   }
   const container = await render(<Harness />);
@@ -149,8 +154,10 @@ test("regrabbing caps new header floors to the painted fixed and flexible tracks
     await act(async () => widenHeaders());
     end = beginLiveResize();
     expect(table.style.getPropertyValue("--gloom-table-column-transition")).toBe("initial");
+    // Normalize the fr total without changing the 2:3 painted ratio or the
+    // fixed 50px track. New header minima must still cap to the painted widths.
     expect(table.style.getPropertyValue("--gloom-table-resize-columns")).toBe(
-      "minmax(min(calc(8 * var(--cell-w)), 50px), 50px) minmax(min(calc(9 * var(--cell-w)), 60px), 60fr)",
+      `minmax(min(calc(8 * var(--cell-w)), 50px), 50px) minmax(min(calc(9 * var(--cell-w)), 60px), ${firstPainted}fr) minmax(min(calc(12 * var(--cell-w)), 90px), ${secondPainted}fr)`,
     );
   } finally {
     end();

@@ -495,6 +495,7 @@ export const tableResizeSteps = [...TABLE_RESIZE_KINDS.flatMap((kind) => ["float
     await evaluate(cdp, `(() => {
       const pane = document.querySelector('[data-gloom-pane-id="hp:resize"]');
       const content = pane.querySelector('[data-gloom-role=data-table-scroll-content]');
+      window.__tableRegrabSamples = [];
       content.addEventListener('transitionrun', function regrab(event) {
         if (event.target !== content || event.propertyName !== 'grid-template-columns') return;
         // Pause the real CSS transition halfway through: the machine's frame
@@ -506,13 +507,19 @@ export const tableResizeSteps = [...TABLE_RESIZE_KINDS.flatMap((kind) => ["float
         animation.pause();
         animation.currentTime = 0;
         const start = ${tableResizeFrame("hp")};
-        animation.currentTime = Number(animation.effect.getTiming().duration) / 2;
-        const before = ${tableResizeFrame("hp")};
-        const travel = Math.max(0, ...['cells', 'text'].flatMap((family) =>
+        const travelFromStart = (frame) => Math.max(0, ...['cells', 'text'].flatMap((family) =>
           Object.entries(start[family]).flatMap(([key, edges]) => {
-            const next = before[family][key];
+            const next = frame[family][key];
             return next ? [Math.abs(next[0] - edges[0]), Math.abs(next[1] - edges[1])] : [];
           })));
+        const duration = Number(animation.effect.getTiming().duration);
+        animation.currentTime = duration * (1 - 1e-6);
+        const endpointTravel = travelFromStart(${tableResizeFrame("hp")});
+        animation.currentTime = duration / 2;
+        const before = ${tableResizeFrame("hp")};
+        const travel = travelFromStart(before);
+        window.__tableRegrabSamples.push({ duration, time, travel, endpointTravel,
+          tracks: animation.effect.getKeyframes().map((frame) => frame.gridTemplateColumns) });
         // Releasing the painted override can change track syntax without
         // moving a column. Wait for the deferred layout's actual redistribution.
         if (travel < 1) {
@@ -531,7 +538,9 @@ export const tableResizeSteps = [...TABLE_RESIZE_KINDS.flatMap((kind) => ["float
       });
     })()`);
     await mouse(cdp, "mouseReleased", from.x - 61, from.y, false);
-    if (!await waitFor(cdp, "!!window.__tableRegrab", 3000)) throw new Error("The resized table did not settle its columns");
+    if (!await waitFor(cdp, "!!window.__tableRegrab", 3000)) {
+      throw new Error(`The resized table did not settle its columns: ${JSON.stringify(await evaluate(cdp, "window.__tableRegrabSamples"))}`);
+    }
     const result = await evaluate<{ error?: string; start: TableResizeFrame; before: TableResizeFrame; after: TableResizeFrame }>(cdp, "window.__tableRegrab");
     if (result.error) throw new Error(result.error);
     if (catchupShift(result.start, result.before) < 1) throw new Error("The fixture did not redistribute its columns during the transition");

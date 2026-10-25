@@ -53,6 +53,9 @@ function resizeContentWidth(element: HTMLElement, width: TableResizeWidth, inter
 /** Start from painted tracks when releasing resize minima or regrabbing a transition. */
 function paintedTemplate(element: HTMLElement, template: string): string {
   const tracks = template.split(/ (?=minmax\()/);
+  const flexible = tracks.map((track) => track.endsWith("fr)"));
+  const weightTotal = tracks.reduce((sum, track, index) => sum + (flexible[index]
+    ? Number(track.slice(track.lastIndexOf(", ") + 2, -3)) : 0), 0);
   // An empty table has no shared content grid; its header owns the tracks.
   for (const role of ["data-table-scroll-content", "data-table-header-row"]) {
     const row = element.querySelector<HTMLElement>(`[data-gloom-role="${role}"]`);
@@ -60,13 +63,20 @@ function paintedTemplate(element: HTMLElement, template: string): string {
     if (!computed) continue;
     const widths = computed.split(/\s+/).map(parseFloat);
     if (widths.length !== tracks.length || widths.some((width) => !Number.isFinite(width) || width <= 0)) continue;
+    const paintedTotal = widths.reduce((sum, width, index) => sum + (flexible[index] ? width : 0), 0);
+    // A common factor keeps the painted ratios while giving CSS comparable
+    // weights to interpolate. Pixel-sized fr weights otherwise concentrate
+    // the settlement into its last frames. Totals below 1fr leave spare space.
+    const scale = weightTotal >= 1 && Number.isFinite(weightTotal) && paintedTotal > 0 && Number.isFinite(paintedTotal)
+      ? weightTotal / paintedTotal : 1;
     return tracks.map((track, index) => {
       const comma = track.lastIndexOf(", ");
       if (comma < 0) return track;
       // A wider header can raise the destination floor while it is still
       // transitioning. Regrabbing must keep the narrower painted track.
       const minimum = track.slice("minmax(".length, comma);
-      return `minmax(min(${minimum}, ${widths[index]}px), ${widths[index]}${track.endsWith("fr)") ? "fr" : "px"})`;
+      const maximum = flexible[index] ? `${widths[index]! * scale}fr` : `${widths[index]}px`;
+      return `minmax(min(${minimum}, ${widths[index]}px), ${maximum})`;
     }).join(" ");
   }
   return template;
