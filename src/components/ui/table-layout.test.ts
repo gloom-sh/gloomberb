@@ -89,7 +89,7 @@ describe("table layout", () => {
     );
   });
 
-  test("authored resize floors relax spare space without tightening the resting grid or clipping headers", () => {
+  test("authored resize floors leave resting tracks unchanged and preserve headers during a drag", () => {
     const columns = [
       { width: 12, minWidth: 12, flexGrow: 1, label: "Title" },
       { width: 80, minWidth: 8, flexGrow: 1, label: "Open" },
@@ -97,6 +97,9 @@ describe("table layout", () => {
     ];
 
     expect(buildTableGridTemplateColumns(columns)).toBe(
+      buildTableGridTemplateColumns(columns.map(({ minWidth: _, ...column }) => column)),
+    );
+    expect(buildTableGridTemplateColumns(columns, true, 1, true)).toBe(
       "minmax(calc(8 * var(--cell-w)), 12fr) minmax(calc(8 * var(--cell-w)), 80fr) minmax(calc(10 * var(--cell-w)), 80fr)",
     );
     // Resize extent keeps the authored title floor, independently of its lower grid minimum.

@@ -172,7 +172,7 @@ export function getTableResizeWidth(columns: readonly TableWidthColumn[], column
     : { ...column, width: Math.min(column.width, column.minWidth) }), columnGap, horizontalPadding);
 }
 
-function columnMinCh(column: TableWidthColumn): number {
+function columnMinCh(column: TableWidthColumn, resizing: boolean): number {
   const width = tableColumnWidth(column);
   const headerFloor = column.label
     ? Math.min(width, displayWidth(column.label) + HEADER_RESERVED_WIDTH)
@@ -189,8 +189,9 @@ function columnMinCh(column: TableWidthColumn): number {
     }
     return Math.max(1, Math.min(width, 8));
   })();
-  const authoredMinimum = column.minWidth === undefined ? heuristic : Math.min(width, Math.max(1, Math.floor(column.minWidth)));
-  // An authored resize floor may release spare space without tightening the resting grid.
+  if (!resizing || column.minWidth === undefined) return Math.max(headerFloor, heuristic);
+  const authoredMinimum = Math.min(width, Math.max(1, Math.floor(column.minWidth)));
+  // Only the held resize grid releases spare space; the resting grid is unchanged.
   return Math.max(headerFloor, Math.min(heuristic, authoredMinimum));
 }
 
@@ -213,13 +214,14 @@ export function buildTableGridTemplateColumns(
   columns: readonly TableWidthColumn[],
   fillAvailableWidth = true,
   columnGap = TABLE_COLUMN_GAP,
+  resizing = false,
 ): string {
   const hasFlexColumn = columns.some((column) => (column.flexGrow ?? 0) > 0);
   return columns
     .map((column, index) => {
       const lead = tableColumnLeadGap(columns, index, columnGap);
       const width = tableColumnWidth(column) + lead;
-      const minWidth = cellWidthCss(columnMinCh(column) + lead);
+      const minWidth = cellWidthCss(columnMinCh(column, resizing) + lead);
       if (!fillAvailableWidth) {
         return `minmax(${minWidth}, ${cellWidthCss(width)})`;
       }

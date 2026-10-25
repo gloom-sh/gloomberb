@@ -100,6 +100,27 @@ test("regrabbing a shrinking table preserves its painted width instead of jumpin
   }
 });
 
+test("releasing an authored minimum on press preserves the painted column proportions", async () => {
+  function Harness() {
+    const ref = useRef<HTMLDivElement>(null);
+    useTableResizeColumns(ref, "minmax(10px, 100fr) minmax(10px, 100fr)", "label,value", {
+      naturalWidth: 200, resizeWidth: 100, viewportWidth: 25, viewportIsCurrent: () => true,
+      fillAvailableWidth: true, showHorizontalScrollbar: true,
+    });
+    return <div ref={ref} style={{ ...TABLE_RESIZE_DEFAULTS }}>
+      <div data-gloom-role="data-table-scroll-content" style={{ gridTemplateColumns: "120px 80px" }} />
+    </div>;
+  }
+  const container = await render(<Harness />);
+  const end = beginLiveResize();
+  try {
+    expect((container.firstElementChild as HTMLElement).style.getPropertyValue("--gloom-table-resize-columns"))
+      .toBe("minmax(10px, 120fr) minmax(10px, 80fr)");
+  } finally {
+    end();
+  }
+});
+
 test.each([0, 8])("responsive presses and regrabs use the fractional inner viewport with a %ipx scrollbar", async (scrollbarWidth) => {
   let viewport = 900.25;
   let paintedWidth = 950.5;

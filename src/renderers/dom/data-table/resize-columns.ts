@@ -50,8 +50,8 @@ function resizeContentWidth(element: HTMLElement, width: TableResizeWidth, inter
   return `max(100%, ${interrupted ? current : Math.min(current, minimum)}px)`;
 }
 
-/** A regrab during the settling transition starts from the tracks currently on screen. */
-function interruptedTemplate(element: HTMLElement, template: string): string {
+/** Start from painted tracks when releasing resize minima or regrabbing a transition. */
+function paintedTemplate(element: HTMLElement, template: string): string {
   const row = element.querySelector<HTMLElement>('[data-gloom-role="data-table-scroll-content"]');
   const computed = row && element.ownerDocument.defaultView?.getComputedStyle(row).gridTemplateColumns;
   if (!computed) return template;
@@ -102,8 +102,10 @@ export function useTableResizeColumns(root: RefObject<HTMLElement | null>, templ
     retargetTransition.current = settleTransition;
     const begin = () => {
       const interrupted = settling || held.current !== null;
-      const template = interrupted
-        ? interruptedTemplate(element, latest.current.template) : latest.current.template;
+      const current = latest.current;
+      const releasesSpace = (current.width.resizeWidth ?? current.width.naturalWidth) < current.width.naturalWidth;
+      const template = interrupted || releasesSpace
+        ? paintedTemplate(element, current.template) : current.template;
       const width = resizeContentWidth(element, latest.current.width, interrupted);
       pendingFinish.current = null;
       clearTransition();

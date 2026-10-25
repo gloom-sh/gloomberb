@@ -149,10 +149,14 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
     () => buildTableGridTemplateColumns(columns, fillAvailableWidth, columnGap),
     [columnGap, columns, fillAvailableWidth],
   );
+  const resizeGridTemplateColumns = useMemo(
+    () => buildTableGridTemplateColumns(columns, fillAvailableWidth, columnGap, true),
+    [columnGap, columns, fillAvailableWidth],
+  );
   const naturalWidth = Math.max(1, tableWidth * WEB_CELL_WIDTH);
   const resizeWidth = useMemo(() => Math.max(1, getTableResizeWidth(columns, columnGap, horizontalPadding) * WEB_CELL_WIDTH),
     [columns, columnGap, horizontalPadding]);
-  useTableResizeColumns(rootElementRef, gridTemplateColumns, columns.map((column) => column.id).join("\u0000"), {
+  useTableResizeColumns(rootElementRef, resizeGridTemplateColumns, columns.map((column) => column.id).join("\u0000"), {
     naturalWidth,
     resizeWidth,
     viewportWidth,
