@@ -13,7 +13,8 @@ import { resolveHeatCellColors } from "../../../theme/heat-colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { ResolvedSeries } from "../../../time-series/types";
 import type { PaneProps } from "../../../types/plugin";
-import { Box } from "../../../ui";
+import { Box, useUiCapabilities } from "../../../ui";
+import { useSettledLayoutSize } from "../../../ui/resize-settle";
 import { cachedSeasonalityHistory, loadSeasonalityHistory } from "./client";
 import { type DailyReturnStat, MONTH_LABELS, OVERLAY_YEAR, projectSeasonality, projectWeekdays, type SeasonalityModel,
   TURN_OF_MONTH_LABELS, type WeekdayModel } from "./model";
@@ -139,6 +140,8 @@ function monthStats(model: SeasonalityModel): StatItem[] {
 
 export function SeasonalityPane({ width, height, focused }: PaneProps) {
   const colors = useThemeColors();
+  const { nativePaneChrome } = useUiCapabilities();
+  const summaryLayout = useSettledLayoutSize(width, height, { enabled: nativePaneChrome === true, maxStretch: Infinity });
   const { symbol, ticker, error: identityError } = usePaneTicker();
   const [view, setView] = usePluginPaneState("activeTabId", "returns");
   const [lookback, setLookback] = usePaneSettingValue("lookbackYears", "10");
@@ -190,7 +193,7 @@ export function SeasonalityPane({ width, height, focused }: PaneProps) {
 
   const { strip, rows: tabRows } = usePaneTabs({ tabs: TABS, activeValue: view, onSelect: setView, focused, dense: true });
   const queryRows = cadence === "monthly" ? 1 : 0;
-  const contentHeight = Math.max(4, height - queryRows - tabRows - statGridRows(stats, width));
+  const contentHeight = Math.max(4, height - queryRows - tabRows - statGridRows(stats, summaryLayout.width));
   const palette = resolveChartPalette(colors);
 
   return <Box width={width} height={height} flexDirection="column" overflow="hidden">
@@ -200,7 +203,7 @@ export function SeasonalityPane({ width, height, focused }: PaneProps) {
       error={!model && !weekdayModel ? history.error ?? identityError ?? null : null}
       empty={model ? !model.years.length : !!weekdayModel && !weekdayModel.start}>
       {weekdayModel ? <>
-        <StatGrid items={stats} width={width} />
+        <StatGrid items={stats} width={summaryLayout.width} />
         <DataTableView<WeekdayRow> focused={focused} columns={WEEKDAY_COLUMNS} items={dailyRows} rootWidth={width} rootHeight={contentHeight}
           getItemKey={(row) => row.id} emptyStateTitle="No daily returns." sortColumnId={null} sortDirection="desc"
           isNavigable={(row) => row.kind === "stat"} renderSectionHeader={(row) => row.kind === "section" ? { text: row.label } : null}
@@ -209,7 +212,7 @@ export function SeasonalityPane({ width, height, focused }: PaneProps) {
             ["units", "percent, local-price session close to close"]]}
           renderCell={renderWeekdayCell} />
       </> : model ? <>
-        <StatGrid items={stats} width={width} />
+        <StatGrid items={stats} width={summaryLayout.width} />
         {view === "overlay"
           ? <CompositeChart series={series} panels={[{ id: "main" }]} width={width} height={contentHeight} focused={focused}
             navigable={false} showLegend showTimeAxis remoteKind="seasonality"

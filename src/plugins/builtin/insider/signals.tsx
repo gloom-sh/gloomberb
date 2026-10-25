@@ -13,6 +13,7 @@ import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource, useAutoRefresh } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
 import { Box, useUiCapabilities } from "../../../ui";
+import { useSettledLayoutSize } from "../../../ui/resize-settle";
 import { formatShortDate } from "../../../utils/datetime-format";
 import { compareSortValues, nextHeaderSort } from "../../../utils/sort-values";
 import { usePluginPaneState } from "../../runtime";
@@ -94,6 +95,7 @@ interface InsiderSignalsAnswer {
 export function InsiderSignalsView({ width, height, focused, renderCompany }: InsiderSignalsViewProps) {
   const colors = useThemeColors();
   const { nativePaneChrome } = useUiCapabilities();
+  const columnLayout = useSettledLayoutSize(width, height, { enabled: nativePaneChrome === true, maxStretch: Infinity });
   const session = useResearchCloudSession();
   // Each part of the query is its own pane state, so `gloom shot INS --side sell` and the CLI's options set them one by one.
   const [storedSide, setSide] = usePluginPaneState<InsiderSignalSide>("insider:signals:side", "buy");
@@ -171,7 +173,7 @@ export function InsiderSignalsView({ width, height, focused, renderCompany }: In
       || order.get(a.ticker)! - order.get(b.ticker)!
     ));
   }, [rows, sort]);
-  const columns = useMemo(() => buildInsiderSignalColumns(width, rows, { side: dataSide }), [dataSide, rows, width]);
+  const columns = useMemo(() => buildInsiderSignalColumns(columnLayout.width, rows, { side: dataSide }), [dataSide, rows, columnLayout.width]);
   // The company stays open while the ranking refreshes, ranked or not: it reads its own data.
   const openRow = openTicker ? rows.find((row) => row.ticker === openTicker) ?? null : null;
   const openTitle = openRow

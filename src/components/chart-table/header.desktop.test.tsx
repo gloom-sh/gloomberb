@@ -4,7 +4,7 @@ import { createDomUiHost } from "../../renderers/dom/dom-ui-host";
 import { WebInputHostProvider } from "../../renderers/dom/input-host";
 import { createDomTestHarness } from "../../renderers/dom/test-utils";
 import { UiHostProvider, useRendererHost, useUiHost } from "../../ui";
-import type { ReactNode } from "react";
+import { act, useState, type ReactNode } from "react";
 import { createInitialState } from "../../state/app/context";
 import { TestPaneProvider } from "../../test-support/pane";
 import { createTestPluginRuntime } from "../../test-support/plugin-runtime";
@@ -13,7 +13,9 @@ import { staticSeries } from "../chart/static/series";
 import { DataTableView } from "../data-table/view";
 import type { DataTableColumn } from "../ui";
 import { formatBpAxis } from "./axis";
-import { ChartTableHeader } from "./header";
+import { ChartTableHeader, useChartTableLayout, type ChartTableHeaderProps } from "./header";
+import { beginLiveResize } from "../../ui/live-resize";
+import { RESIZE_SETTLE_MS } from "../../ui/resize-settle";
 
 const { render } = createDomTestHarness({ capabilities: { nativePaneChrome: true } });
 
@@ -66,4 +68,39 @@ test("on the desktop the figures and chart sit above a table that fills the rest
   expect(grid!.compareDocumentPosition(chart!) & 4).toBeTruthy();
   expect(container.textContent).toContain("5Y spread");
   expect(container.textContent).toContain("DATE");
+});
+
+test("the header holds its band and summary through a live resize while its chart width follows", async () => {
+  let resize: (size: { width: number; height: number }) => void = () => {};
+  function Harness() {
+    const [size, setSize] = useState({ width: 90, height: 26 });
+    resize = setSize;
+    const props: ChartTableHeaderProps = { ...size, tableRows: 60,
+      figures: [
+        { label: "5Y spread", value: "235bp", detail: "2026-09-25" },
+        { label: "1M", value: "+13bp" },
+        { label: "Range", value: "34 to 235bp", detail: "since 2025-02-24" },
+      ],
+      chart: { minRows: 6, strip: null, render: ({ width, height }) => <div data-chart-width={width} data-chart-height={height} /> },
+    };
+    const layout = useChartTableLayout(props);
+    return <div data-band-mode={layout.mode}><ChartTableHeader {...props} /></div>;
+  }
+  const container = await render(<Harness />);
+  const summaryRows = () => container.querySelectorAll('[data-gloom-role="stat-grid-row"]').length;
+  expect(summaryRows()).toBe(2);
+  const end = beginLiveResize();
+  try {
+    await act(async () => resize({ width: 40, height: 10 }));
+    await act(() => new Promise((resolve) => setTimeout(resolve, RESIZE_SETTLE_MS * 2)));
+    expect(container.querySelector('[data-band-mode="full"]')).toBeTruthy();
+    expect(summaryRows()).toBe(2);
+    expect(container.querySelector('[data-chart-width="40"][data-chart-height="10"]')).toBeTruthy();
+  } finally {
+    end();
+  }
+  await act(() => new Promise((resolve) => setTimeout(resolve, RESIZE_SETTLE_MS * 2 + 20)));
+  expect(container.querySelector('[data-band-mode="none"]')).toBeTruthy();
+  expect(container.querySelector('[data-chart-width]')).toBeNull();
+  expect(summaryRows()).toBe(1);
 });

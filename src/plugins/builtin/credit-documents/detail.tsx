@@ -4,6 +4,7 @@ import { Button, ChartTableHeader, DataTableStackView, DetailScrollBody, Externa
 import { useAsyncResource, usePluginPaneState } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
 import { Box, Text, TextAttributes, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
+import { useSettledLayoutSize } from "../../../ui/resize-settle";
 import { quoteBlockStyle } from "../../../components/ui/quote";
 import { fetchCreditInstrument } from "./client";
 import { comparatorSymbol, covenantNumber, covenantTerms, creditPercent, factColumns, factValue, fieldLabel, hasAmendments, headroomTone, NO_VALUE, sentence, structuredFields } from "./model";
@@ -67,6 +68,8 @@ export function CreditInstrumentDetail({ symbol, instrument, width, height, focu
   view: string; setView: (view: string) => void; covenant?: CreditHeadroom | null; captured?: CreditInstrument | null; pro: boolean; onUpgrade: () => void;
 }) {
   const colors = useThemeColors(), host = useRendererHost();
+  const { nativePaneChrome } = useUiCapabilities();
+  const columnLayout = useSettledLayoutSize(width, height, { enabled: nativePaneChrome === true, maxStretch: Infinity });
   const detailScrollRef = useRef<ScrollBoxRenderable | null>(null);
   const loader = useCallback(() => captured ? Promise.resolve(captured) : fetchCreditInstrument(symbol, instrument.id), [symbol, instrument.id, accessKey, captured]);
   const resource = useAsyncResource(loader, { initialData: () => captured ?? instrument });
@@ -80,7 +83,7 @@ export function CreditInstrumentDetail({ symbol, instrument, width, height, focu
   const open = rows.find((row) => row.id === openId) ?? null;
   usePaneStatusFooter({ registrationId: "credit:instrument", loading: resource.loading, error: resource.error,
     hints: selected ? [{ id: "credit:open-source", key: "o", label: "pen filing", onPress: () => void host.openExternal((open ?? selected).filingUrl) }] : [] });
-  const columns = useMemo(() => factColumns(view, width), [view, width]);
+  const columns = useMemo(() => factColumns(view, columnLayout.width), [view, columnLayout.width]);
   const query = <QueryBar width={width} view={{ value: view, options: [{ value: "terms", label: "Current terms" }, { value: "history", label: "Amendment history" }], onChange: (value) => { setView(value); setOpen(null); } }} />;
   // Why headroom is missing stays beside the figures it explains.
   const reason = covenant?.reason && covenant.status !== "compliant" && covenant.status !== "breach" ? covenant.reason : null;

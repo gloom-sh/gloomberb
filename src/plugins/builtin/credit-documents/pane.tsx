@@ -10,6 +10,7 @@ import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, Text, useUiCapabilities } from "../../../ui";
+import { useSettledLayoutSize } from "../../../ui/resize-settle";
 import { SignInWall } from "../cloud/auth-actions";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { useOpenDescription } from "../shared/open-description";
@@ -34,6 +35,7 @@ export function CreditDocumentsPane(props: PaneProps) {
 }
 function CreditView({ symbol, width, height, focused, accessKey, needsVerification }: PaneProps & { symbol: string | null; accessKey: string; needsVerification: boolean }) {
   const colors = useThemeColors(), desktop = !!useUiCapabilities().nativePaneChrome;
+  const columnLayout = useSettledLayoutSize(width, height, { enabled: desktop, maxStretch: Infinity });
   const { createPaneFromTemplate } = usePluginAppActions();
   const openDescription = useOpenDescription();
   const openUpgrade = useCloudUpgradeAction("crdoc");
@@ -66,8 +68,8 @@ function CreditView({ symbol, width, height, focused, accessKey, needsVerificati
   const maturityRows = useMemo(() => data ? creditMaturityRows(data, selectedCurrency) : [], [data, selectedCurrency]);
   const series = useMemo(() => maturitySeries(maturityRows, selectedCurrency, colors.warning), [maturityRows, selectedCurrency, colors.warning]);
   const preview = data?.access === "preview";
-  const columns = useMemo<DataTableColumn[]>(() => tab === "capital" ? data ? capitalColumns(data, width) : [] : tab === "covenants" ? covenantColumns(width)
-    : tab === "maturities" ? maturityColumns(width, preview) : screenColumns(width), [tab, data, width, preview]);
+  const columns = useMemo<DataTableColumn[]>(() => tab === "capital" ? data ? capitalColumns(data, columnLayout.width) : [] : tab === "covenants" ? covenantColumns(columnLayout.width)
+    : tab === "maturities" ? maturityColumns(columnLayout.width, preview) : screenColumns(columnLayout.width), [tab, data, columnLayout.width, preview]);
   const figures = useMemo(() => tab === "capital" && data ? capitalFigures(data) : [], [tab, data]);
   const unsortedRows = useMemo<Row[]>(() => {
     if (tab === "screen") return (screenData?.rows ?? []).map((row) => ({ id: screenRowId(row), instrumentId: row.instrumentId, screen: row, numbers: {value:row.value}, values: { symbol: row.symbol, kind: row.kind === "springing_maturity" ? "Springing maturity" : row.value != null && row.value < 0 ? "Breach" : "Low headroom", value: creditPercent(row.value), date: row.date ?? NO_VALUE, instrument: row.instrumentName, reason: sentence(row.reason) } }));

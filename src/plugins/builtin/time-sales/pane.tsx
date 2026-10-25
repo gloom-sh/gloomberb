@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Box } from "../../../ui";
+import { Box, useUiCapabilities } from "../../../ui";
+import { useSettledLayoutSize } from "../../../ui/resize-settle";
 import { usePaneSettingValue, useShortcut } from "../../../public/react";
 import { splitDelayedStatus, DataTableStackView, KeyValueRow, PaneStatusBody, StatGrid, usePaneFooter, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, usePaneTicker, type DataTableColumn } from "../../../components";
 import { useThemeColors } from "../../../theme/theme-context";
@@ -45,6 +46,8 @@ export function TimeSalesPane(props: PaneProps) {
 }
 function TimeSalesView({ width, height, focused, symbol, exchange }: PaneProps & { symbol: string; exchange: string }) {
   const colors = useThemeColors();
+  const { nativePaneChrome } = useUiCapabilities();
+  const summaryLayout = useSettledLayoutSize(width, height, { enabled: nativePaneChrome === true, maxStretch: Infinity });
   const session = useResearchCloudSession();
   const [refresh, setRefresh] = useState(0);
   const resource = useTape(symbol, exchange, session.requestKey, refresh);
@@ -125,7 +128,7 @@ function TimeSalesView({ width, height, focused, symbol, exchange }: PaneProps &
         sortColumnId={null} sortDirection="desc" freezeFirstColumn
         detailOpen={!!detail && !!resource.data} onBack={() => setDetail(null)} detailTitle={detail?.trade ? `Trade ${detail.trade.id}` : "Quote"}
         detailContent={detail && resource.data ? <TapeDetail row={detail} data={data} width={width} /> : null}
-        rootBefore={<StatGrid width={width} items={[
+        rootBefore={<StatGrid width={summaryLayout.width} items={[
           ...(tab === "quotes" ? [
             { id: "spread", label: "Spread", value: spreads.median == null ? "--" : `${spreads.median.toFixed(2)} bp`, detail: "median" },
             { id: "widest", label: "Widest", value: spreads.widest == null ? "--" : `${spreads.widest.toFixed(2)} bp` },

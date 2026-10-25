@@ -2,7 +2,8 @@ import { useMemo, type ReactNode } from "react";
 import { useThemeColors } from "../../theme/theme-context";
 import type { PricePoint } from "../../types/financials";
 import type { ChartPanelSpec, ResolvedSeries } from "../../time-series/types";
-import { Box, Text } from "../../ui";
+import { Box, Text, useUiCapabilities } from "../../ui";
+import { useSettledLayoutSize } from "../../ui/resize-settle";
 import { displayWidth, truncateToDisplayWidth } from "../../utils/format";
 import { CompositeChart } from "../chart/composite";
 import type { CompositeAxisDomain, CompositeChartProps } from "../chart/composite/types";
@@ -162,18 +163,19 @@ export function ChartStrip({ strip, width, figures = [] }: {
   );
 }
 
-/** Where a pane puts its chart when it wants the kit's layout without the kit's header. */
-export function useChartTableLayout(props: ChartTableHeaderProps): ChartTableLayout {
+function useChartTableSizing(props: ChartTableHeaderProps): { layout: ChartTableLayout; width: number } {
+  const { nativePaneChrome } = useUiCapabilities();
+  const size = useSettledLayoutSize(props.width, props.height, { enabled: nativePaneChrome === true, maxStretch: Infinity });
   const { chart } = props;
   const hasChart = !!chart && (!!chart.render || !!plottable(chart.series) || !!chart.loading || !!chart.empty);
-  return chartTableLayout({
-    width: props.width,
-    height: props.height,
+  const layout = chartTableLayout({
+    width: size.width,
+    height: size.height,
     queryRows: props.query ? 1 : 0,
     figures: props.figures,
     tableRows: props.tableRows,
     tableChromeRows: props.tableChromeRows
-      ?? (props.tableColumns ? chartTableChromeRows(props.tableColumns, props.width) : undefined),
+      ?? (props.tableColumns ? chartTableChromeRows(props.tableColumns, size.width) : undefined),
     chart: hasChart
       ? {
         minRows: chart.minRows,
@@ -184,6 +186,12 @@ export function useChartTableLayout(props: ChartTableHeaderProps): ChartTableLay
       }
       : null,
   });
+  return { layout, width: size.width };
+}
+
+/** Where a pane puts its chart when it wants the kit's layout without the kit's header. */
+export function useChartTableLayout(props: ChartTableHeaderProps): ChartTableLayout {
+  return useChartTableSizing(props).layout;
 }
 
 /**
@@ -195,7 +203,7 @@ export function useChartTableLayout(props: ChartTableHeaderProps): ChartTableLay
 export function ChartTableHeader(props: ChartTableHeaderProps) {
   const { width, query, chart } = props;
   const colors = useThemeColors();
-  const layout = useChartTableLayout(props);
+  const { layout, width: layoutWidth } = useChartTableSizing(props);
   const series = chart?.series;
   const viewport = useMemo(() => {
     if (chart?.viewport || !series?.length) return chart?.viewport;
@@ -257,7 +265,7 @@ export function ChartTableHeader(props: ChartTableHeaderProps) {
   return (
     <Box flexDirection="column" flexShrink={0}>
       {query}
-      {layout.figureRows ? <StatGrid items={layout.figures} width={width} /> : null}
+      {layout.figureRows ? <StatGrid items={layout.figures} width={layoutWidth} /> : null}
       {band}
     </Box>
   );

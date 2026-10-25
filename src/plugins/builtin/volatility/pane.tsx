@@ -10,7 +10,8 @@ import { shownPriceColor } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { formatPercentileRank } from "../../../utils/format";
-import { Box, Text } from "../../../ui";
+import { Box, Text, useUiCapabilities } from "../../../ui";
+import { useSettledLayoutSize } from "../../../ui/resize-settle";
 import { nextHeaderSort, type SortPreference } from "../../../utils/sort-values";
 import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors";
@@ -63,6 +64,8 @@ const number = (value: number | null | undefined, signed = false) => value == nu
 const percentile = (value: number | null | undefined) => value == null || !Number.isFinite(value) ? "--" : value.toFixed(0);
 
 export function VolatilityPane({ focused, width, height }: PaneProps) {
+  const { nativePaneChrome } = useUiCapabilities();
+  const columnLayout = useSettledLayoutSize(width, height, { enabled: nativePaneChrome === true, maxStretch: Infinity });
   const colors = useThemeColors();
   // By the sign the two-decimal text shows, so a move that rounds to zero stays neutral.
   const signColor = (value: number) => shownPriceColor(value, 2, colors);
@@ -200,7 +203,7 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
     { id: "spread", label: "Spread", value: `${number(curve.slope, true)} pts` },
   ] : [];
   const ready = !!data && (data.board.some((row) => row.value != null) || data.fred.metrics.some((metric) => metric.value != null));
-  const boardColumns = useMemo(() => dropColumnsToFit(BOARD_COLUMNS, width - 1, BOARD_DROP_ORDER), [width]);
+  const boardColumns = useMemo(() => dropColumnsToFit(BOARD_COLUMNS, columnLayout.width - 1, BOARD_DROP_ORDER), [columnLayout.width]);
   return <Box width={width} height={height} flexDirection="column" overflow="hidden">
     {tabStrip}
     <PaneStatusBody subject="volatility" loading={resource.loading && !ready} error={!ready ? resource.error ?? result?.errors[0] ?? null : null} empty={!resource.loading && !ready}>

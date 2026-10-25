@@ -24,6 +24,7 @@ import { usePaneInstanceId, usePaneSettingValue, usePluginAppActions, usePluginP
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, useUiCapabilities } from "../../../ui";
+import { useSettledLayoutSize } from "../../../ui/resize-settle";
 import { FILL_REST } from "../../../components/ui/fill";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { loadBacktestHistory } from "./client";
@@ -175,9 +176,10 @@ export function BacktestPane({ width, height, focused }: PaneProps) {
 
   const { strip: tabStrip, rows: tabRows } = usePaneTabs(symbol ? { tabs: TABS, activeValue: view, onSelect: setView, focused, dense: true } : null);
   const { nativePaneChrome } = useUiCapabilities();
+  const layout = useSettledLayoutSize(width, height, { enabled: nativePaneChrome === true, maxStretch: Infinity });
   if (!symbol) return <EmptyState title="Select a ticker." hint="Open BT with a symbol, for example BT AAPL." />;
   const bodyHeight = Math.max(4, height - 1 - tabRows);
-  const wide = width - SUMMARY_WIDTH - 1 >= MIN_WIDE_CHART_COLS;
+  const wide = layout.width - SUMMARY_WIDTH - 1 >= MIN_WIDE_CHART_COLS;
   const summaryTable = (tableWidth: number, tableHeight: number, before?: ReactNode) => (
     <DataTableView<SummaryRow, DataTableColumn>
       focused={false}
@@ -278,7 +280,7 @@ export function BacktestPane({ width, height, focused }: PaneProps) {
           // The desktop's query bar is taller than a row: the chart and the
           // metrics take what is left under it, down to the pane footer.
           <Box flexDirection="row" width={width} {...(nativePaneChrome ? FILL_REST : { height: bodyHeight })}>
-            {chart(width - SUMMARY_WIDTH - 1, bodyHeight)}
+            {chart(Math.max(1, width - SUMMARY_WIDTH - 1), bodyHeight)}
             <Box width={1} />
             {summaryTable(SUMMARY_WIDTH, bodyHeight)}
           </Box>

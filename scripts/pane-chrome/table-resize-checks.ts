@@ -383,4 +383,44 @@ export const tableResizeSteps = [...TABLE_RESIZE_KINDS.flatMap((kind) => ["float
       throw new Error(`Frozen table changed while resized: ${JSON.stringify({ before, after, shift: result.maxShift, release: result.release })}`);
     }
   },
-}];
+}, ...([
+  { kind: "vols", width: 720, distance: 96, part: "columns" },
+  { kind: "seas", width: 456, distance: 64, part: "summary rows" },
+] as const).map(({ kind, width, distance, part }) => ({
+  name: `table resize: ${kind.toUpperCase()} ${part} keep their arrangement across a breakpoint until release`,
+  scenario: `table-resize&pane=${kind}&fw=${width}`,
+  async run(cdp: Cdp) {
+    await tableResizeReady(cdp, kind);
+    const read = () => evaluate<{ columns: number; rows: number; top: number; gap: number }>(cdp, `(() => {
+      const pane = document.querySelector('[data-gloom-pane-id="${kind}:resize"]');
+      const table = pane.querySelector('[data-gloom-role=data-table]');
+      const rect = table.getBoundingClientRect();
+      return { columns: table.querySelectorAll('[data-gloom-role=data-table-header-cell]').length,
+        rows: pane.querySelectorAll('[data-gloom-role=stat-grid-row]').length,
+        top: rect.top, gap: pane.getBoundingClientRect().right - rect.right };
+    })()`);
+    const before = await read();
+    if (kind === "vols" ? before.columns !== 7 : before.rows !== 1) {
+      throw new Error(`The ${kind} fixture did not begin above its ${part} breakpoint: ${JSON.stringify(before)}`);
+    }
+    const from = await tableResizeGrab(cdp, kind, "float");
+    await mouse(cdp, "mouseMoved", from.x, from.y, false);
+    await mouse(cdp, "mousePressed", from.x, from.y, true);
+    try {
+      await mouse(cdp, "mouseMoved", from.x - distance, from.y, true);
+      await sleep(250);
+      const held = await read();
+      if (held.columns !== before.columns || held.rows !== before.rows
+        || Math.abs(held.top - before.top) > 1 || Math.abs(held.gap - before.gap) > 1) {
+        throw new Error(`The ${kind} breakpoint reflowed during the drag: ${JSON.stringify({ before, held })}`);
+      }
+    } finally {
+      await mouse(cdp, "mouseReleased", from.x - distance, from.y, false);
+    }
+    await sleep(400);
+    const after = await read();
+    if (kind === "vols" ? after.columns !== 6 : after.rows !== 2) {
+      throw new Error(`The ${kind} breakpoint did not settle after release: ${JSON.stringify({ before, after })}`);
+    }
+  },
+}))];

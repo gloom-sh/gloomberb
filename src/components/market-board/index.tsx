@@ -2,6 +2,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import { useThemeColors } from "../../theme/theme-context";
 import type { PricePoint } from "../../types/financials";
 import { Box, useUiCapabilities } from "../../ui";
+import { useSettledLayoutSize } from "../../ui/resize-settle";
 import { compareSortValues, nextHeaderSort, type SortPreference } from "../../utils/sort-values";
 import { DataTableStackView } from "../data-table/stack-view";
 import { PriceSparkline } from "../price-sparkline/view";
@@ -144,8 +145,10 @@ export function MarketBoardStack<T extends MarketBoardRow>({ rows, width, height
   labelWidth = 18, labelHeader = "INSTRUMENT", labelDetailHeader = "DETAIL", labelDetailWidth = 22, valueLabel = "LEVEL", percentileLabel = "PCTL 1Y", asOfWidth = 10, signedChange = false, extraColumns,
   rootBefore, emptyTitle = "No observations." }: MarketBoardStackProps<T>) {
   const colors = useThemeColors();
+  const { nativePaneChrome } = useUiCapabilities();
+  const columnLayout = useSettledLayoutSize(width, height, { enabled: nativePaneChrome === true, maxStretch: Infinity });
   // A board of countries leads each name with its flag where one is drawn.
-  const flagged = useUiCapabilities().nativePaneChrome === true && rows.some((row) => row.country !== undefined);
+  const flagged = nativePaneChrome === true && rows.some((row) => row.country !== undefined);
   const [sort, setSort] = useState<SortPreference<string>>({ columnId: null, direction: "asc" });
   const items = useMemo(() => sort.columnId ? [...rows].sort((a, b) => {
     const key = sort.columnId as "label" | "labelDetail" | "value" | "change" | "percentile" | "asOf" | "changeAsOf";
@@ -167,7 +170,7 @@ export function MarketBoardStack<T extends MarketBoardRow>({ rows, width, height
     { id: "percentile", label: percentileLabel, width: 8, align: "right" },
     { id: "history", label: "1Y", width: 14, align: "left" },
     { id: "asOf", label: "AS OF", width: asOfWidth + wordWidth, align: "left" },
-  ], width, wordWidth);
+  ], columnLayout.width, wordWidth);
   const renderCell = (row: T, column: DataTableColumn): DataTableCell => {
     const extra = extraColumns?.find((item) => item.column.id === column.id);
     if (extra) return extra.renderCell(row);
@@ -213,11 +216,13 @@ export interface StatChartDetailProps {
 
 /** An opened board row: its figures over a chart of its history. */
 export function StatChartDetail({ items, width, height, empty, emptySubject, emptyTitle, renderChart }: StatChartDetailProps) {
+  const { nativePaneChrome } = useUiCapabilities();
+  const summaryLayout = useSettledLayoutSize(width, height, { enabled: nativePaneChrome === true, maxStretch: Infinity });
   return (
     <Box flexDirection="column" width={width} height={height}>
-      <StatGrid items={items} width={width} />
+      <StatGrid items={items} width={summaryLayout.width} />
       <PaneStatusBody empty={empty} subject={emptySubject} emptyTitle={emptyTitle}>
-        {renderChart(Math.max(3, height - statGridRows(items, width)))}
+        {renderChart(Math.max(3, height - statGridRows(items, summaryLayout.width)))}
       </PaneStatusBody>
     </Box>
   );
