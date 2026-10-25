@@ -94,8 +94,11 @@ interface PendingSessionRequest {
 
 class GloomApiClient {
   private currentUser: AuthUser | null = null;
-  /** Local identity of a verified user/credential pair, never serialized. */
+  /** Local user/credential binding, masked until verified and never serialized. */
   private verifiedSessionIdentity: object | null = null;
+  private verifiedSessionCredential: string | null = null;
+  private sessionTransitions = 0;
+  private sessionTransition: Promise<void> | null = null;
   private sessionChecked = false;
   /** Last few session transitions, content-free, for app://auth. */
   private authTrace: Array<{ at: number; event: string; token: boolean; user: string }> = [];
@@ -123,7 +126,6 @@ class GloomApiClient {
     markCurrentUserUnverified: () => {
       if (this.currentUser) {
         this.currentUser = { ...this.currentUser, emailVerified: false };
-        this.verifiedSessionIdentity = null;
         this.emitCurrentUserChange();
       }
     },
@@ -224,7 +226,9 @@ class GloomApiClient {
 
   /** Null while a replacement credential still awaits its matching user. */
   getVerifiedSessionIdentity(): object | null {
-    return this.isVerified() ? this.verifiedSessionIdentity : null;
+    return this.sessionTransitions === 0 && this.isVerified()
+      && this.verifiedSessionCredential === this.transport.getSessionToken()
+      ? this.verifiedSessionIdentity : null;
   }
 
   /**
@@ -276,11 +280,17 @@ class GloomApiClient {
     if (this.authTrace.length > 24) this.authTrace.shift();
   }
 
-  private setCurrentUser(user: AuthUser | null): void {
+  private setCurrentUser(user: AuthUser | null, confirmSession = true): void {
+    const sameAccount = this.currentUser?.id === user?.id;
     const changed = this.socketEntitlementKey(this.currentUser) !== this.socketEntitlementKey(user);
     this.traceAuth("setCurrentUser", user);
     this.currentUser = user;
-    this.verifiedSessionIdentity = this.isVerified() ? {} : null;
+    if (confirmSession) {
+      this.verifiedSessionIdentity = user ? {} : null;
+      this.verifiedSessionCredential = this.transport.getSessionToken();
+    } else if (!sameAccount || !user) {
+      this.verifiedSessionIdentity = null;
+    }
     this.socket.syncAuthState({ reconnect: changed });
     this.emitCurrentUserChange();
   }
@@ -291,7 +301,9 @@ class GloomApiClient {
 
   private updateCurrentUser(updater: (user: AuthUser) => AuthUser): void {
     if (!this.currentUser) return;
-    this.setCurrentUser(updater(this.currentUser));
+    // A socket/profile update is metadata, not proof that a replacement
+    // credential belongs to this user. Keep its existing binding, even null.
+    this.setCurrentUser(updater(this.currentUser), false);
   }
 
   private socketEntitlementKey(user: AuthUser | null): string {
@@ -326,11 +338,51 @@ class GloomApiClient {
     return this.currentUser?.emailVerified ? this.currentUser : null;
   }
 
-  signUp = this.auth.signUp.bind(this.auth);
-  signIn = this.auth.signIn.bind(this.auth);
+  signUp = (...args: Parameters<CloudAuthApi["signUp"]>) => this.withSessionTransition(() => this.auth.signUp(...args));
+  signIn = (...args: Parameters<CloudAuthApi["signIn"]>) => this.withSessionTransition(() => this.auth.signIn(...args));
   startDeviceSignIn = this.auth.startDeviceSignIn.bind(this.auth);
   pollDeviceSignIn = this.auth.pollDeviceSignIn.bind(this.auth);
-  signOut = this.auth.signOut.bind(this.auth);
+  signOut = () => this.withSessionTransition(() => this.auth.signOut(), false);
+
+  /** Cookies can change before an auth response's body arrives, including ones the browser hides. */
+  private withSessionTransition<T>(run: () => Promise<T>, reconcileFailure = true): Promise<T> {
+    const previous = this.sessionTransition;
+    this.sessionTransitions += 1;
+    this.verifiedSessionIdentity = null;
+    this.sessionRequestGeneration += 1;
+    this.emitCurrentUserChange();
+    const operation = (async () => {
+      // Serialize credential-changing requests so a late response cannot pair
+      // one account's user with another request's installed cookie.
+      if (previous) await previous;
+      this.sessionRequestGeneration += 1;
+      try {
+        return await run();
+      } catch (error) {
+        this.verifiedSessionIdentity = null;
+        if (reconcileFailure && this.transport.hasSessionCredential()) {
+          // A failed body may already have changed the cookie. A fresh session
+          // check is the only way to resume; an unanswered one leaves sync paused.
+          this.sessionRequestGeneration += 1;
+          await this.getSession().catch((failure) => {
+            this.verifiedSessionIdentity = null;
+            logFailure("cloud.auth", "Restore session after failed sign-in failed")(failure);
+          });
+        }
+        throw error;
+      } finally {
+        this.sessionRequestGeneration += 1;
+        this.sessionTransitions -= 1;
+        this.emitCurrentUserChange();
+      }
+    })();
+    const settled = operation.then(() => {}, () => {
+      // Intentional ignore: the caller receives the error while the auth queue continues.
+    });
+    this.sessionTransition = settled;
+    void settled.then(() => { if (this.sessionTransition === settled) this.sessionTransition = null; });
+    return operation;
+  }
 
   async getSession(isCurrent: () => boolean = () => true): Promise<AuthUser | null> {
     if (!isCurrent()) return this.currentUser;

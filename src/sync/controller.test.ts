@@ -32,12 +32,14 @@ function startController({
   getState = () => ({} as AppState),
   dispatch = () => {},
   baselineStore,
+  getSessionIdentity,
 }: {
   transport: SyncTransport;
   contributors?: SyncContributor[];
   getState?: () => AppState;
   dispatch?: (action: AppAction) => void;
   baselineStore?: SyncBaselineStore;
+  getSessionIdentity?: () => object | null;
 }): CloudSyncController {
   const controller = new CloudSyncController();
   controller.setRuntime({
@@ -45,6 +47,7 @@ function startController({
     dispatch,
     tickerRepository: {} as TickerRepository,
     ...(baselineStore ? { baselineStore } : {}),
+    getSessionIdentity,
     getContributors: () => contributors.map((contributor) => ({ pluginId: "test", contributor })),
     getTransport: () => ({ pluginId: "test", transport }),
   });
@@ -108,7 +111,7 @@ test.each([2, 20])("switching accounts first merges the new account at revision 
   });
   const stop = subscribeToCloudVerification({
     getCurrentUser: () => account ? { id: account } : null,
-    isVerified: () => account !== null,
+    getVerifiedSessionIdentity: () => account !== null ? {} : null,
     subscribeCurrentUser: (next) => { listener = next; return () => { listener = undefined; }; },
   }, () => { pendingSync = controller.requestSync({ reason: "session-verified", force: true }); },
   () => controller.resetAccount());
@@ -300,6 +303,27 @@ test("an older read on the same account leaves its newer synced state in place",
     expect(applied).toEqual([{ value: "current" }]);
     expect(controller.getStatus()).toMatchObject({ phase: "synced", revision: 10, error: null });
     expect(pushes).toBe(0);
+  } finally {
+    controller.clearRuntime();
+  }
+});
+
+test("an available custom transport syncs without a Cloud session", async () => {
+  const pushed: SyncSnapshot[] = [];
+  const controller = startController({
+    getSessionIdentity: () => null,
+    contributors: [{ id: "test.data", schemaVersion: 1, collect: () => ({ local: true }) }],
+    transport: {
+      id: "custom-sync",
+      isAvailable: () => true,
+      pullSnapshot: async () => ({ snapshot: null, revision: 0, updatedAt: null }),
+      pushSnapshot: async (snapshot) => { pushed.push(snapshot); return { revision: 1, updatedAt: snapshot.createdAt }; },
+    },
+  });
+  try {
+    await controller.requestSync();
+    expect(pushed.map((snapshot) => snapshot.contributors["test.data"]?.payload)).toEqual([{ local: true }]);
+    expect(controller.getStatus()).toMatchObject({ phase: "synced", revision: 1 });
   } finally {
     controller.clearRuntime();
   }

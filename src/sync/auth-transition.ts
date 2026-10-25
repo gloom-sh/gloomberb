@@ -1,6 +1,6 @@
 export interface CloudSessionLifecycle {
   getCurrentUser(): { id: string } | null;
-  isVerified(): boolean;
+  getVerifiedSessionIdentity(): object | null;
   subscribeCurrentUser(listener: () => void): () => void;
 }
 
@@ -11,12 +11,12 @@ export function subscribeToCloudVerification(
   onAccountChange: () => void,
 ): () => void {
   let accountId = session.getCurrentUser()?.id ?? null;
-  let wasVerified = session.isVerified();
+  let wasVerified = session.getVerifiedSessionIdentity() !== null;
   return session.subscribeCurrentUser(() => {
     const nextAccountId = session.getCurrentUser()?.id ?? null;
     const accountChanged = nextAccountId !== accountId;
     const resetAccount = accountChanged && accountId !== null;
-    const isVerified = session.isVerified();
+    const isVerified = session.getVerifiedSessionIdentity() !== null;
     const becameVerified = isVerified && (!wasVerified || accountChanged);
     accountId = nextAccountId;
     wasVerified = isVerified;

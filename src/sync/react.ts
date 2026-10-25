@@ -39,6 +39,7 @@ export function useCloudSyncRuntime({
       dispatch,
       tickerRepository,
       baselineStore,
+      getSessionIdentity: () => apiClient.getVerifiedSessionIdentity(),
       getContributors: () => pluginRegistry.getEnabledSyncContributors(),
       getTransport: () => pluginRegistry.getActiveSyncTransport(),
       isLocalMarketData: (providerId) => {

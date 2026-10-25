@@ -4,11 +4,12 @@ import { subscribeToCloudVerification } from "./auth-transition";
 test("restoring and refreshing a session preserves its baseline; switching accounts resets before syncing", () => {
   let account: string | null = null;
   let verified = false;
+  const sessionIdentity = {};
   const listeners = new Set<() => void>();
   const events: string[] = [];
   const stop = subscribeToCloudVerification({
     getCurrentUser: () => account ? { id: account } : null,
-    isVerified: () => verified,
+    getVerifiedSessionIdentity: () => verified ? sessionIdentity : null,
     subscribeCurrentUser: (listener) => {
       listeners.add(listener);
       return () => listeners.delete(listener);
