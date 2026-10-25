@@ -1,3 +1,5 @@
+import { metricFormInput, metricShortcut, parseMetricAlert } from "./metric-command";
+import type { AlertMetric } from "./metric-model";
 import type { AlertCondition } from "./types";
 import { readAlertPrice } from "./price";
 import { normalizeAlertSymbol } from "./quotes";
@@ -6,6 +8,7 @@ export interface AlertCommandInput {
   symbol: string;
   condition: AlertCondition;
   price: number;
+  metric?: AlertMetric;
 }
 
 function parseAlertCondition(value: string | undefined): AlertCondition | null {
@@ -34,6 +37,8 @@ export function parseAlertShortcutValues(
   input: string,
   context?: { activeTicker: string | null },
 ): Record<string, string> {
+  const metric = parseMetricAlert(input);
+  if (metric) return metricShortcut(metric);
   const parts = input.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) {
     const activeTicker = normalizeAlertSymbol(context?.activeTicker);
@@ -73,6 +78,8 @@ export function parseAlertCommandValues(
     };
   }
 
+  const metric = values ? metricFormInput(values) : null;
+  if (metric) return metric;
   const symbol = values?.symbol?.trim().toUpperCase();
   const condition = parseAlertCondition(values?.condition);
   const priceStr = values?.price?.trim();

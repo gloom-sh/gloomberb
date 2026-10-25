@@ -1,3 +1,6 @@
+import { METRIC_CHOICES, metricWizardFields } from "./metric-command";
+import { metricReadings } from "./metric-data";
+import { metricTrigger, isDailyMetric, type MetricReading } from "./metric-model";
 import { startCatalystAlerts } from "./catalysts";
 import { notTheCoinNote } from "../../../cli/commands/crypto-hints";
 import { createFiredAlertRecorder, firedAlertTime, quoteSourceWords } from "./fired-log";
@@ -66,7 +69,7 @@ export const alertsPlugin: GloomPlugin = {
   id: "alerts",
   name: "Alerts",
   version: "1.0.0",
-  description: "Price, earnings, filing, news and flow alerts",
+  description: "Price, valuation, daily technical and event alerts",
   toggleable: true,
   cliCommands: [alertsCliCommand],
 
@@ -114,7 +117,7 @@ export const alertsPlugin: GloomPlugin = {
       let persist = false;
       let touched = false;
       for (const alert of alerts) {
-        if (alert.status !== "active") continue;
+        if (alert.metric || alert.status !== "active") continue;
         const quote = readStreamedAlertQuote(alert, undefined, now);
         if (!quote) continue;
         // A re-armed or new alert has no stored baseline: judge nothing on this
@@ -136,7 +139,7 @@ export const alertsPlugin: GloomPlugin = {
       }
       if (!persist && !(touched && now - lastStreamPersistAt >= STREAM_PERSIST_MS)) return;
       lastStreamPersistAt = now;
-      void saveAlerts(ctx, alerts).catch(logFailure("alerts.stream", "Save streamed price alerts failed"));
+      void saveAlerts(ctx, alerts, "price").catch(logFailure("alerts.stream", "Save streamed price alerts failed"));
       if (persist) alertStream?.sync();
     };
     alertStream?.dispose();
@@ -144,8 +147,8 @@ export const alertsPlugin: GloomPlugin = {
     ctx.registerCommand({
       id: "set-alert",
       label: "Add Alert",
-      description: "Create a price alert from a symbol, condition, and target price",
-      keywords: ["add", "set", "alert", "price", "trigger", "notify", "alarm", "watch"],
+      description: "Create a price, valuation or daily technical alert",
+      keywords: ["add", "set", "alert", "pe", "ps", "rsi", "moving average", "valuation", "price", "trigger", "notify", "alarm", "watch"],
       category: "data",
       shortcut: "SA",
       shortcutArg: {
@@ -155,6 +158,7 @@ export const alertsPlugin: GloomPlugin = {
       },
       wizardLayout: "form",
       wizard: [
+        { key: "kind", label: "Kind", type: "select", defaultValue: "price", options: METRIC_CHOICES },
         {
           key: "symbol",
           label: "Symbol",
@@ -162,6 +166,7 @@ export const alertsPlugin: GloomPlugin = {
           type: "text",
         },
         {
+          dependsOn: { key: "kind", value: "price" },
           key: "condition",
           label: "Condition",
           type: "select",
@@ -172,11 +177,13 @@ export const alertsPlugin: GloomPlugin = {
           ],
         },
         {
+          dependsOn: { key: "kind", value: "price" },
           key: "price",
           label: "Target Price",
           placeholder: "200.00",
           type: "number",
         },
+        ...metricWizardFields,
       ],
       async execute(values) {
         const input = parseAlertCommandValues(values);
@@ -187,19 +194,23 @@ export const alertsPlugin: GloomPlugin = {
         const quote = await resolveAlertQuote(ctx.marketData, symbol);
         // A target ten times away is a slip or another instrument's price, such as bitcoin's on the BTC fund.
         const far = farTargetMessage(symbol, input.price, quote.price, symbol.includes(":") ? null : notTheCoinNote(symbol, quote));
-        if (far) throw new Error(far);
+        if (!input.metric && far) throw new Error(far);
 
         const alert = {
           ...createAlert(quote.symbol || symbol, input.condition, input.price),
-          ...quoteAlertFields(quote),
+          ...(!input.metric ? quoteAlertFields(quote) : { metric: input.metric, exchange: quote.listingExchangeName || quote.exchangeName }),
         };
+        if (input.metric) {
+          const reading = await metricReadings(ctx.marketData)(alert);
+          Object.assign(alert, { lastCheckedPrice: reading.value, lastCheckedTarget: reading.target, lastQuoteUpdatedAt: reading.at });
+        }
         const existing = loadAlerts(ctx);
         existing.push(alert);
         await saveAlerts(ctx, existing);
         alertStream?.sync();
 
         ctx.notify({
-          body: `Alert set: ${formatAlertDescription(alert)} (current ${formatMarketPrice(quote.price, { minimumFractionDigits: 2 })})`,
+          body: `Alert set: ${formatAlertDescription(alert)}${input.metric ? "" : ` (current ${formatMarketPrice(quote.price, { minimumFractionDigits: 2 })})`}`,
           type: "success",
         });
       },
@@ -287,7 +298,7 @@ export const alertsPlugin: GloomPlugin = {
 
       // One batched pass over the distinct symbols: the alerts pane reads the same
       // persisted store, so this is the only place that talks to the provider.
-      const quoteKeys = [...new Set(pending.map((alert) => `${alert.symbol}\0${alert.exchange ?? ""}`))];
+      const quoteKeys = [...new Set(pending.filter(alert => !alert.metric).map((alert) => `${alert.symbol}\0${alert.exchange ?? ""}`))];
       const results = await Promise.all(quoteKeys.map(async (key): Promise<[string, Quote | string]> => {
         const [symbol, exchange = ""] = key.split("\0");
         try {
@@ -297,6 +308,12 @@ export const alertsPlugin: GloomPlugin = {
           return [key, createQuoteErrorMessage(symbol ?? "", err)];
         }
       }));
+      const readMetric = metricReadings(ctx.marketData);
+      const readings = new Map<string, { armedAt: number; reading: MetricReading | string }>();
+      for (const alert of pending.filter(a => a.metric)) {
+        try { readings.set(alert.id, { armedAt: alert.armedAt ?? alert.createdAt, reading: await readMetric(alert) }); }
+        catch (error) { readings.set(alert.id, { armedAt: alert.armedAt ?? alert.createdAt, reading: error instanceof Error ? error.message : String(error) }); }
+      }
       if (generation !== pollGeneration) return;
       const quotes = new Map<string, Quote | string>(results);
 
@@ -306,6 +323,30 @@ export const alertsPlugin: GloomPlugin = {
       let changed = false;
       for (const alert of alerts) {
         if (alert.status !== "active") continue;
+        if (alert.metric) {
+          const result = readings.get(alert.id);
+          if (!result || result.armedAt !== (alert.armedAt ?? alert.createdAt)) continue;
+          const reading = result.reading;
+          if (typeof reading === "string") Object.assign(alert, quoteErrorAlertFields(reading));
+          else {
+            if (metricTrigger(alert, reading)) {
+              const firedAt = Date.now();
+              alert.status = "triggered"; alert.triggeredAt = firedAt;
+              const description = formatAlertDescription(alert);
+              recordFired({ kind: alert.metric.kind, ruleId: alert.id, rule: description, firedAt, value: reading.value,
+                unit: alert.metric.kind === "pe" || alert.metric.kind === "ps" ? "x" : undefined,
+                quoteAt: firedAlertTime(reading.at), source: isDailyMetric(alert.metric) ? "daily close" : null,
+                symbol: alert.symbol, exchange: alert.exchange });
+              ctx.notify({ body: `${description} triggered at ${Number(reading.value.toFixed(4))}`, type: "success",
+                refId: `price:${alert.id}`, desktop: "always", persistent: true, sound: "Glass",
+                action: { label: "Open", onClick: () => ctx.showPane("alerts") } });
+            }
+            Object.assign(alert, { lastCheckedPrice: reading.value, lastCheckedTarget: reading.target,
+              lastDailyClose: reading.day, lastQuoteUpdatedAt: reading.at, lastCheckedAt: Date.now(), lastCheckError: undefined });
+          }
+          changed = true;
+          continue;
+        }
         if (readStreamedAlertQuote(alert)) continue;
         const quote = quotes.get(`${alert.symbol}\0${alert.exchange ?? ""}`);
         if (quote === undefined) continue;
@@ -377,9 +418,9 @@ export const alertsPlugin: GloomPlugin = {
       id: "alerts-pane",
       paneId: "alerts",
       label: "Alerts",
-      description: "Price, earnings, filing, news and flow alerts",
+      description: "Price, valuation, daily technical and event alerts",
       keywords: [
-        "alerts", "alert", "price", "trigger", "alarm", "watch", "notify", "notification",
+        "alerts", "alert", "price", "valuation", "pe", "ps", "rsi", "moving average", "trigger", "alarm", "watch", "notify", "notification",
         "earnings", "cpi", "fomc", "filing", "filings", "sec", "8-k", "13f", "news", "keyword",
         "analyst", "upgrade", "downgrade", "52-week", "unusual volume", "volume", "short interest",
         "insider", "congress", "catalyst", "implied volatility", "iv spike", "options flow", "perps", "funding",

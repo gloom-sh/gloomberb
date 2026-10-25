@@ -1,3 +1,4 @@
+import { metricDescription, readAlertMetric, validMetricRule } from "./metric-model";
 import type { AlertCondition, AlertRule } from "./types";
 import { logFailure } from "../../../utils/log-failure";
 
@@ -42,6 +43,7 @@ export function editAlert(
     armedAt: Date.now(),
     status: "active",
     message: alert.message,
+    ...(alert.metric ? { metric: alert.metric } : {}),
   };
 }
 
@@ -50,7 +52,7 @@ export function rearmAlert(alert: AlertRule): AlertRule {
 }
 
 export function evaluateAlert(alert: AlertRule, currentPrice: number): boolean {
-  if (alert.status !== "active") return false;
+  if (alert.metric || alert.status !== "active") return false;
 
   switch (alert.condition) {
     case "above":
@@ -69,6 +71,7 @@ export function evaluateAlert(alert: AlertRule, currentPrice: number): boolean {
 }
 
 export function formatAlertDescription(alert: AlertRule): string {
+  if (alert.metric) return metricDescription(alert);
   const prefix = alert.condition === "above" ? ">"
     : alert.condition === "below" ? "<" : "↕";
   return `${alert.symbol} ${prefix} ${alert.targetPrice}`;
@@ -94,6 +97,7 @@ function readAlerts(json: unknown): { alerts: AlertRule[]; error: string | null 
       a != null && typeof a.id === "string" && !!a.id && typeof a.symbol === "string" && !!a.symbol
       && typeof a.condition === "string" && !!a.condition && typeof a.targetPrice === "number"
       && (a.exchange == null || typeof a.exchange === "string")
+      && (a.metric == null || (readAlertMetric(a.metric) != null && validMetricRule(a)))
     ));
     return {
       alerts,

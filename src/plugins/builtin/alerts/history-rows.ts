@@ -47,7 +47,7 @@ function sameAlert(entry: FiredAlert, item: AlertHistoryItem): boolean {
   if (item.kind !== entry.kind) return false;
   const apart = Math.abs(Date.parse(item.deliveredAt) - Date.parse(entry.firedAt));
   if (!Number.isFinite(apart)) return false;
-  if (entry.kind === "price") return item.data?.alertId === entry.ruleId && apart <= PRICE_MATCH_MS;
+  if (entry.kind === "price" || ["pe", "ps", "rsi", "ma_cross", "close_ma"].includes(entry.kind)) return item.data?.alertId === entry.ruleId && apart <= PRICE_MATCH_MS;
   const symbol = upper(item.data?.symbol);
   return !!symbol && symbol === upper(entry.symbol) && apart <= EVENT_MATCH_MS;
 }
@@ -63,7 +63,10 @@ function firedRow(entry: FiredAlert, delivered: AlertHistoryItem | undefined): A
 function deliveredRow(item: AlertHistoryItem): AlertHistoryRow {
   return {
     id: `cloud:${item.id}`, time: item.deliveredAt, via: "cloud", kind: item.kind, alert: item.title,
-    value: null, unit: null, quoteAt: null, source: null, detail: item.body, delivered: item,
+    value: typeof item.data?.value === "number" ? item.data.value : null,
+    unit: typeof item.data?.unit === "string" ? item.data.unit : null,
+    quoteAt: typeof item.data?.quoteAt === "string" ? item.data.quoteAt : null,
+    source: item.data?.dailyClose ? "daily close" : null, detail: item.body, delivered: item,
   };
 }
 

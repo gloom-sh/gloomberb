@@ -9,6 +9,9 @@ export interface AlertRule {
   exchange?: string;
   condition: AlertCondition;
   targetPrice: number;
+  metric?: import("./metric-model").AlertMetric;
+  lastDailyClose?: string;
+  lastCheckedTarget?: number;
   createdAt: number;
   /** When an edit or re-arm last armed the rule; createdAt until then. Gloom Cloud emails a trigger once per arming. */
   armedAt?: number;

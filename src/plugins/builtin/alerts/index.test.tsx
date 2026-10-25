@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { act, useReducer } from "react";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppState } from "../../../state/app/context";
@@ -433,7 +433,7 @@ test("disposing alerts ignores an in-flight quote and does not schedule another 
   const ctx = {
     registerCommand() {}, registerPane() {}, registerPaneTemplate() {},
     configState: {
-      get: () => serializeAlerts([makeAlert("pending", "AAPL", "above", 200)]),
+      get: (key: string) => key === "alerts" ? serializeAlerts([makeAlert("pending", "AAPL", "above", 200)]) : null,
       set: () => { writes += 1; },
     },
     marketData: { getQuote: () => quote.promise },
@@ -450,6 +450,54 @@ test("disposing alerts ignores an in-flight quote and does not schedule another 
   } finally {
     alertsPlugin.dispose?.();
   }
+});
+
+test("a completed daily close persists one technical trigger and in-app history, leaving price rules intact", async () => {
+  const now = spyOn(Date, "now").mockReturnValue(Date.parse("2026-10-23T20:15Z"));
+  const price = serializeAlerts([makeAlert("price", "AAPL", "above", 250, "triggered")]);
+  const store = new Map<string, unknown>([
+    ["alerts", price],
+    ["metricAlerts", serializeAlerts([{
+      ...makeAlert("daily", "TSLA", "below", 0),
+      exchange: "NASDAQ", metric: { kind: "close_ma", period: 2 },
+      armedAt: Date.parse("2026-10-23T19:00Z"),
+    }])],
+  ]);
+  const device = new Map<string, unknown>();
+  const notifications: string[] = [];
+  const saved = Promise.withResolvers<void>();
+  const ctx = {
+    registerCommand() {}, registerPane() {}, registerPaneTemplate() {},
+    configState: {
+      get: (key: string) => store.get(key),
+      set: (key: string, value: unknown) => { store.set(key, value); saved.resolve(); },
+    },
+    resume: { getState: (key: string) => device.get(key), setState: (key: string, value: unknown) => { device.set(key, value); } },
+    marketData: createTestDataProvider({
+      getTickerFinancials: async () => ({ symbol: "TSLA", annualStatements: [], quarterlyStatements: [], priceHistory: [] }),
+      getPriceHistory: async () => ["2026-10-21", "2026-10-22", "2026-10-23"].map((day, i) => ({
+        date: new Date(day), open: 100, high: 100, low: 90, close: i === 2 ? 90 : 100, volume: 1,
+      })),
+    }),
+    notify: (notification: { body: string }) => notifications.push(notification.body),
+    showPane() {}, log: { info() {}, warn() {} },
+  };
+  try {
+    await alertsPlugin.setup?.(ctx as any);
+    await saved.promise;
+    alertsPlugin.dispose?.();
+    expect(deserializeAlerts(store.get("metricAlerts"))[0]).toMatchObject({
+      status: "triggered", lastCheckedPrice: 90, lastCheckedTarget: 95, lastDailyClose: "2026-10-23",
+    });
+    expect(store.get("alerts")).toBe(price);
+    expect(device.get("firedLog")).toEqual([expect.objectContaining({
+      kind: "close_ma", ruleId: "daily", value: 90, source: "daily close",
+    })]);
+    await alertsPlugin.setup?.(ctx as any);
+    await Bun.sleep(0);
+    expect(notifications).toHaveLength(1);
+    expect(notifications[0]).toContain("on daily close");
+  } finally { alertsPlugin.dispose?.(); now.mockRestore(); }
 });
 
 test("a streamed tick triggers a price alert once, and the poll leaves streaming symbols alone", async () => {

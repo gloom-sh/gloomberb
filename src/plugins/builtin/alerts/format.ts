@@ -1,3 +1,4 @@
+import { isDailyMetric } from "./metric-model";
 import { formatMarketPrice } from "../../../market-data/market/format";
 import { formatQuoteAgeWithSource } from "../../../market-data/quotes/time";
 import type { AlertCondition, AlertRule } from "./types";
@@ -15,7 +16,7 @@ export function relativeTime(ts: number): string {
 }
 
 export function formatCurrentPrice(alert: AlertRule, maxWidth = 9): string {
-  if (alert.lastCheckError) return "No quote";
+  if (alert.lastCheckError) return alert.metric ? "Unavailable" : "No quote";
   return alert.lastCheckedPrice == null
     ? "-"
     : formatMarketPrice(alert.lastCheckedPrice, {
@@ -25,6 +26,8 @@ export function formatCurrentPrice(alert: AlertRule, maxWidth = 9): string {
 }
 
 export function formatAlertTargetPrice(alert: AlertRule, maxWidth = 9): string {
+  if (alert.metric?.kind === "ma_cross") return `${alert.metric.slowPeriod}-day MA`;
+  if (alert.metric?.kind === "close_ma") return `${alert.metric.period}-day MA`;
   return formatMarketPrice(alert.targetPrice, {
     maxWidth,
     minimumFractionDigits: 2,
@@ -37,7 +40,7 @@ export function formatAlertDistance(alert: AlertRule): string {
   if (currentPrice == null || !Number.isFinite(currentPrice) || currentPrice === 0) {
     return "-";
   }
-  const percent = ((alert.targetPrice - currentPrice) / currentPrice) * 100;
+  const percent = (((alert.lastCheckedTarget ?? alert.targetPrice) - currentPrice) / currentPrice) * 100;
   if (!Number.isFinite(percent)) return "-";
   // One decimal at any distance, so the column holds still as the price moves;
   // a distance that rounds to zero is unsigned (0.0%, never -0.0%).
@@ -47,6 +50,7 @@ export function formatAlertDistance(alert: AlertRule): string {
 
 /** The Quote cell: the quote's age and feed, or, on the row of an alert that got none, why (a stale quote, or none). */
 export function formatQuoteChecked(alert: AlertRule): string {
+  if (alert.metric && isDailyMetric(alert.metric)) return "on daily close";
   if (alert.lastCheckError) return /\bstale\b/i.test(alert.lastCheckError) ? "Stale" : "No quote";
   if (alert.lastQuoteUpdatedAt) {
     return formatQuoteAgeWithSource({

@@ -3,7 +3,7 @@ export const ALERTS_KEY = "alerts";
 
 /** The Alerts pane's tabs: what `ALRT --tab` takes, and the pane state `tab` holds. */
 export const ALERT_TABS = [
-  { label: "Prices", value: "prices" },
+  { label: "Levels", value: "prices" },
   { label: "Events", value: "events" },
   { label: "History", value: "history" },
 ];

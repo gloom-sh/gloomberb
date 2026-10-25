@@ -1,3 +1,6 @@
+import { metricDescription } from "./metric-model";
+import { parseMetricAlert, type MetricAlertInput } from "./metric-command";
+import { metricReadings } from "./metric-data";
 import { withConfigData, withMarketData } from "../../../cli/scoped-context";
 import { CLI_COMMAND_GROUPS } from "../../../cli/help";
 import { dryRunNote } from "../../../cli/helpers";
@@ -27,8 +30,8 @@ import {
   releaseRowOn,
   type CalendarEventChoice,
 } from "./calendar-events";
-import { createAlert, rearmAlert, serializeAlerts } from "./alert-engine";
-import { ALERTS_KEY, ALERTS_PLUGIN_ID } from "./constants";
+import { createAlert, rearmAlert } from "./alert-engine";
+import { ALERTS_PLUGIN_ID } from "./constants";
 import { MAX_EVENT_ALERTS, eventAlertTarget, toggleEventAlert, writeEventAlertStores, type EventAlertRule } from "./events";
 import { alertKindLabel } from "./history";
 import { IV_LEVEL_CHECKS_KEY, readIvLevelChecks, rearmIvLevelAlert, type IvLevelCheck } from "./iv-level";
@@ -58,7 +61,7 @@ import {
   type ScheduledEventTarget,
 } from "./scheduled";
 import { scheduledEventSources } from "./scheduled-sources";
-import { readAlertStores } from "./storage";
+import { readAlertStores, writeLevelAlertStores } from "./storage";
 import type { AlertCondition, AlertRule } from "./types";
 
 /**
@@ -78,6 +81,7 @@ const COUNTRY_RULE = "--country is for an alert on a calendar event, such as ale
 
 /** What `alerts add` was asked for, before any listing or date is looked up. */
 export type AlertAddRequest =
+  | ({ kind: "metric" } & MetricAlertInput)
   | {
     kind: "price"; symbol: string; condition: AlertCondition; price: number;
     /** A price typed as 81.000, which the last price may show was 81000 with a dot between thousands. */
@@ -151,6 +155,11 @@ export function parseAlertAddArgs(
   const [first, second, third, ...rest] = args;
   if (!first) throw new Error(ADD_USAGE);
   const countryFilter = readCountryOption(country);
+  const metric = parseMetricAlert(args.join(" "));
+  if (metric) {
+    if (days !== undefined || country !== undefined) throw new Error("Valuation and daily technical alerts take neither --days nor --country.");
+    return { kind: "metric", ...metric };
+  }
   const research = parseResearchAddArgs(args);
   if (research) {
     if (days !== undefined) throw new Error("--days is for earnings and calendar event alerts, not news, flow or IV alerts.");
@@ -346,7 +355,7 @@ type AlertListRow = Record<string, unknown> & {
 };
 
 function priceRow(alert: AlertRule): AlertListRow {
-  return { ...alert, kind: "price", target: alert.exchange ? `${alert.symbol}:${alert.exchange}` : alert.symbol };
+  return { ...alert, kind: alert.metric?.kind ?? "price", rule: alert.metric ? metricDescription(alert) : undefined, target: alert.exchange ? `${alert.symbol}:${alert.exchange}` : alert.symbol };
 }
 
 function eventRow(rule: EventAlertRule, now: number, eventDate: string | null | undefined, check?: IvLevelCheck): AlertListRow {
@@ -380,11 +389,11 @@ function textRow(row: AlertListRow): Record<string, unknown> {
     id: row.id,
     kind: price ? "Price" : alertKindLabel(row.kind),
     target: row.target,
-    trigger: price
+    trigger: row.rule ?? (price
       ? `${row.condition} ${row.targetPrice}`
       : typeof row.leadDays === "number"
         ? scheduledTriggerText({ leadDays: row.leadDays, trigger: row.when === "results" ? "results" : "date", prints: row.onRelease === true })
-        : "",
+        : ""),
     eventDate: typeof row.leadDays === "number" ? row.eventDate ?? "not known" : "",
     status: row.status,
     lastCheckedPrice: row.lastCheckedPrice,
@@ -511,12 +520,15 @@ async function requireEventDate(
 export const alertsCliCommand: CliCommandDef = {
   name: "alerts",
   aliases: ["alert"],
-  description: "List, add, and remove price alerts, alerts before earnings and any economic calendar release (CPI, FOMC, NBS PMI), and news, options flow and IV alerts",
+  description: "List, add, and remove price, valuation and daily technical alerts, alerts before earnings and any economic calendar release (CPI, FOMC, NBS PMI), and news, options flow and IV alerts",
   help: {
     group: CLI_COMMAND_GROUPS.portfolios,
     usage: [
       "alerts list",
       "alerts add <symbol> <above|below|crosses> <price>",
+      "alerts add <symbol> <pe|ps|rsi(14)> <above|below> <level>",
+      "alerts add <symbol> ma(50) crosses <above|below> ma(200)",
+      "alerts add <symbol> closes <above|below> ma(200)",
       "alerts add <symbol> earnings [--days <n> | results]",
       "alerts add <calendar event> [--country <code>] [--days <n>]",
       "alerts add [symbol] news <keyword>",
@@ -534,6 +546,11 @@ export const alertsCliCommand: CliCommandDef = {
     examples: [
       "alerts",
       "alerts add AAPL above 250",
+      "alerts add AAPL pe below 25",
+      "alerts add AAPL ps above 8",
+      'alerts add NVDA "rsi(14)" under 30',
+      'alerts add SPY "ma(50)" crosses above "ma(200)"',
+      'alerts add TSLA closes below "ma(200)"',
       "alerts add SAN:EPA below 70",
       "alerts add CRWV earnings --days 3",
       "alerts add CRWV earnings results",
@@ -568,7 +585,7 @@ export const alertsCliCommand: CliCommandDef = {
     };
     const request = action === "add" ? parseAdd() : null;
     const research = request && isResearchRequest(request) ? request : null;
-    const listedSymbol = request?.kind === "price" ? request.symbol
+    const listedSymbol = (request?.kind === "price" || request?.kind === "metric") ? request.symbol
       : research && research.kind !== "iv_spike" ? research.symbol : null;
     // A price alert is kept for the listing `quote` prints for the symbol, and for no symbol that quotes nothing;
     // a news, flow or IV rule on a symbol follows that listing too, and only in the US, where their data is.
@@ -588,6 +605,12 @@ export const alertsCliCommand: CliCommandDef = {
       })
       : null;
     const priceListing = priced?.listing ?? null;
+    if (request?.kind === "metric" && priced) {
+      const exchange = canonicalExchange(priced.listing.exchange || priced.quote.listingExchangeName || priced.quote.exchangeName);
+      const preview = { ...createAlert(priced.listing.symbol, request.condition, request.price, exchange), metric: request.metric };
+      await withMarketData(ctx, market => metricReadings(market.dataProvider)(preview)).catch(error => ctx.fail(error instanceof Error ? error.message : String(error)));
+      priced.listing.exchange = exchange;
+    }
     if (request?.kind === "price" && request.thousandsDot && priced) {
       const question = thousandsDotMessage(request, priced.listing.key, lastPrice(priced.quote), exchangeOption);
       if (question) ctx.fail(question);
@@ -723,7 +746,7 @@ export const alertsCliCommand: CliCommandDef = {
             ...config.config.pluginConfig,
             [ALERTS_PLUGIN_ID]: {
               ...pluginState,
-              ...(next.alerts ? { [ALERTS_KEY]: serializeAlerts(next.alerts) } : {}),
+              ...(next.alerts ? writeLevelAlertStores(next.alerts) : {}),
               // Each list keeps what it holds of kinds this version does not know; IV levels go in their own.
               ...(next.events ? writeEventAlertStores(events.lists, next.events) : {}),
             },
@@ -737,14 +760,14 @@ export const alertsCliCommand: CliCommandDef = {
         return events.rules;
       };
 
-      if (request?.kind === "price") {
+      if (request?.kind === "price" || request?.kind === "metric") {
         const { condition, price } = request;
         const symbol = requireArg(priceListing?.key, ADD_USAGE, ctx);
-        const alert = createAlert(symbol, condition, price, priceListing?.exchange);
+        const alert = { ...createAlert(symbol, condition, price, priceListing?.exchange), ...(request.kind === "metric" ? { metric: request.metric } : {}) };
         await save({ alerts: [...alerts, alert] });
         ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, alert }, ...(read.length > 0 ? { warnings: read } : {}) }, {
           // The delivery, as docs/usage.md states it, before any full stop, which after the price would read as part of it (below 81.).
-          text: (data) => `Added alert ${data.alert.id}: ${symbol} ${condition} ${price} (${PRICE_DELIVERY}).${dryRunNote(data.dryRun)}`,
+          text: (data) => `Added alert ${data.alert.id}: ${data.alert.metric ? metricDescription(data.alert) : `${symbol} ${condition} ${price}`} (${PRICE_DELIVERY}).${dryRunNote(data.dryRun)}`,
         });
         return;
       }

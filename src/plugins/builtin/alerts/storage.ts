@@ -1,3 +1,4 @@
+import { METRIC_ALERTS_KEY } from "./metric-model";
 import type { AppConfig } from "../../../types/config";
 import type { GloomPluginContext } from "../../../types/plugin";
 import {
@@ -10,30 +11,45 @@ import { readEventAlertStores } from "./events";
 import type { AlertRule } from "./types";
 
 export function loadAlerts(ctx: GloomPluginContext): AlertRule[] {
-  const json = ctx.configState.get<unknown>(ALERTS_KEY);
-  // Background evaluation must not notify from a partial store it cannot safely update.
-  if (readAlertsStoreError(json)) return [];
-  return deserializeAlerts(json);
+  const result = readLevelAlertStores((key) => ctx.configState.get<unknown>(key));
+  return result.error ? [] : result.alerts;
 }
 
 export async function saveAlerts(
   ctx: GloomPluginContext,
   alerts: AlertRule[],
+  scope: "all" | "price" = "all",
 ): Promise<void> {
-  const error = readAlertsStoreError(ctx.configState.get<unknown>(ALERTS_KEY));
+  const { error } = readLevelAlertStores((key) => ctx.configState.get<unknown>(key));
   if (error) throw new Error(error);
-  await ctx.configState.set(ALERTS_KEY, serializeAlerts(alerts));
+  for (const [key, value] of Object.entries(writeLevelAlertStores(alerts))) {
+    if (scope === "price" && key !== ALERTS_KEY) continue;
+    if (ctx.configState.get<unknown>(key) !== value) await ctx.configState.set(key, value);
+  }
 }
 
 /** Both alert stores as the saved config holds them, for the CLI and the reports, which have no plugin context. */
 export function readAlertStores(config: AppConfig) {
   const pluginState = config.pluginConfig[ALERTS_PLUGIN_ID] ?? {};
-  const rawPrice = pluginState[ALERTS_KEY];
+  const levels = readLevelAlertStores((key) => pluginState[key]);
   return {
     pluginState,
-    alerts: deserializeAlerts(rawPrice),
-    alertsError: readAlertsStoreError(rawPrice),
+    alerts: levels.alerts,
+    alertsError: levels.error,
     // The event alerts, and the IV levels kept apart from them.
     events: readEventAlertStores((key) => pluginState[key]),
   };
+}
+
+export function readLevelAlertStores(get: (key: string) => unknown): { alerts: AlertRule[]; error: string | null } {
+  const prices = get(ALERTS_KEY), metrics = get(METRIC_ALERTS_KEY);
+  const priceRows = deserializeAlerts(prices), metricRows = deserializeAlerts(metrics);
+  const misplaced = priceRows.some(a => a.metric) || metricRows.some(a => !a.metric);
+  return { alerts: [...priceRows, ...metricRows],
+    error: readAlertsStoreError(prices) ?? readAlertsStoreError(metrics)
+      ?? (misplaced ? "Saved alerts contain a rule in the wrong list. Original data has been kept." : null) };
+}
+export function writeLevelAlertStores(alerts: AlertRule[]): Record<string, string> {
+  return { [ALERTS_KEY]: serializeAlerts(alerts.filter(a => !a.metric)),
+    [METRIC_ALERTS_KEY]: serializeAlerts(alerts.filter(a => a.metric)) };
 }

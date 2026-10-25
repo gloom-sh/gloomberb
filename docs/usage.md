@@ -852,7 +852,29 @@ A symbol is read as `gloom quote` reads it and must be a US listing, as in the d
 - A target more than 10 times the last price, or under a tenth of it, is refused, in **Add Alert** too (`alerts add btc above 85000` is bitcoin's price typed on the fund).
 - A price reads the same in `alerts add`, the `SA` shortcut and the **Add Alert** form: `81000`, `81,000.50`, `1.350,5` and `81k` or `1.5m` (a thousand and a million). A comma before exactly three digits (`81,000`) could be thousands or a decimal comma, so it names both readings and adds nothing; text that is no number is refused with the format to type (`type 81000 or 81k`).
 - If saved price alerts cannot be read, the app and CLI leave the data unchanged and price checks pause until it is repaired. The pane and `gloom alerts list` show the read error, and event alerts stay usable.
-- On **Prices**, Enter opens an alert in full: its state, the price and how far it is from the level, and when its quote was checked. An alert that could not get a quote shows that in red on its row, and its detail says why. `m` re-arms an alert that went off.
+- On **Levels**, Enter opens an alert in full: its state, the price and how far it is from the level, and when its quote was checked. An alert that could not get a quote shows that in red on its row, and its detail says why. `m` re-arms an alert that went off.
+
+### Valuation and daily technical alerts
+
+Use **Add Alert** (`SA`, or `a` in ALRT's **Levels** tab) and choose **P/E (TTM)**, **P/S (TTM)**, **RSI**, **MA crossover**, or **Close vs MA**. These share price alerts' list, detail, edit, delete, re-arm and History actions. The CLI accepts the same rules:
+
+```bash
+gloom alerts add AAPL pe below 25
+gloom alerts add AAPL ps above 8
+gloom alerts add NVDA 'rsi(14)' under 30
+gloom alerts add SPY 'ma(50)' crosses above 'ma(200)'
+gloom alerts add TSLA closes below 'ma(200)'
+```
+
+Quote parentheses in shells that interpret them. `rsi 14`, `50-day MA crosses above the 200-day`, and `closes below its 200-day` work too. Periods are whole numbers from 2 to 200; the fast MA must be shorter than the slow MA.
+
+P/E uses the research panes' trailing P/E and regular-session price basis. A zero or negative trailing EPS is not meaningful and never triggers. If EPS is missing, a meaningful served trailing P/E remains usable, as in the research panes; no multiple is invented from missing earnings. P/S divides capitalization on that same regular-session basis by trailing revenue, only when their currencies agree. Missing or stale valuation inputs leave the alert active with the reason in its detail.
+
+Daily technical alerts use the standard one-year daily history. RSI uses Wilder smoothing, seeded with the first period's average gains and losses; flat prices read 50. Moving averages are simple averages of completed daily closes. The published US equity calendar determines completed sessions, including holidays and early closes, with a 15-minute allowance after the close for daily bars to settle. Other close calendars are currently unavailable for technical alerts. Missing sessions, insufficient history, and invalid or duplicate bars prevent evaluation and appear on the alert's detail.
+
+Technical rows say **on daily close**. Adding or re-arming a rule waits for the next completed close; intraday bars cannot fire it. A crossover compares the fast and slow averages on two consecutive sessions, firing only on the specified crossing. Like price alerts, each rule fires once until re-armed. Valuation alerts can fire on their first check if their threshold is already met.
+
+Delivery and access follow price alerts: the running app notifies locally; Cloud sync and a verified account enable existing email and registered-phone delivery, with the same cadence, settings and shared delivery limits. No separate technical-alert subscription is needed.
 
 ### Alerts before earnings and economic releases
 

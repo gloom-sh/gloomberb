@@ -1,3 +1,4 @@
+import { isDailyMetric, metricName } from "./metric-model";
 /**
  * `gloom fn ALRT`: the Alerts pane's three tabs as reports. Prices lists
  * the price alerts as the pane's table does, Events the event alerts (earnings,
@@ -47,10 +48,14 @@ const instant = (value: unknown) => (typeof value === "number" ? firedAlertTime(
 const PRICE_COLUMNS: HeadlessPaneColumn[] = [
   { key: "status", header: "State", format: (value) => (value === "triggered" ? "Triggered" : "Active") },
   { key: "symbol", header: "Symbol", format: (value, row) => (row.exchange ? `${text(value)}:${text(row.exchange)}` : text(value)) },
+  { key: "metric", header: "Measure", format: (_value, row) => asAlert(row).metric ? metricName(asAlert(row).metric!) : "Price" },
   { key: "lastCheckedPrice", header: "Current", align: "right", textFormat: (_value, row) => formatCurrentPrice(asAlert(row), 14) },
   { key: "targetPrice", header: "Target", align: "right", textFormat: (_value, row) => formatAlertTargetPrice(asAlert(row), 14) },
   { key: "awayPercent", header: "Away", align: "right", format: percent, textFormat: (_value, row) => formatAlertDistance(asAlert(row)) },
-  { key: "condition", header: "Trigger", format: (value) => conditionLabel(value as AlertRule["condition"]) },
+  { key: "condition", header: "Trigger", format: (value, row) => {
+    const metric = asAlert(row).metric;
+    return metric?.kind === "ma_cross" ? `Cross ${metric.direction}` : conditionLabel(value as AlertRule["condition"]);
+  } },
   { key: "quoteAt", header: "Quote", textFormat: (_value, row) => formatQuoteChecked(asAlert(row)) },
   { key: "quoteSource", header: "Quote source" },
   { key: "lastCheckedAt", header: "Checked", format: instant },
@@ -93,13 +98,13 @@ const HISTORY_TEXT_COLUMNS = HISTORY_COLUMNS.filter((column) => column.key !== "
 function priceRow(alert: AlertRule): HeadlessPaneRow {
   const { lastQuoteProviderId: _provider, ...stored } = alert;
   const price = alert.lastCheckError ? null : alert.lastCheckedPrice;
-  const away = price == null || !Number.isFinite(price) || price === 0 ? null : ((alert.targetPrice - price) / price) * 100;
+  const away = price == null || !Number.isFinite(price) || price === 0 ? null : (((alert.lastCheckedTarget ?? alert.targetPrice) - price) / price) * 100;
   const quoted = !alert.lastCheckError;
   return {
     ...stored,
     awayPercent: away != null && Number.isFinite(away) ? Number(away.toFixed(2)) : null,
     quoteAt: quoted ? firedAlertTime(alert.lastQuoteUpdatedAt) : null,
-    quoteSource: quoted ? quoteSourceWords(alert.lastQuoteSource) : null,
+    quoteSource: quoted ? alert.metric && isDailyMetric(alert.metric) ? "daily close" : quoteSourceWords(alert.lastQuoteSource) : null,
   };
 }
 
@@ -111,7 +116,7 @@ function pricesResult(alerts: readonly AlertRule[], error: string | null, events
     columns: PRICE_COLUMNS,
     textColumns: PRICE_TEXT_COLUMNS,
     rows: [...active, ...triggered].map(priceRow),
-    empty: "No price alerts. Add one with gloom alerts add AAPL above 250.",
+    empty: "No level alerts. Add one with gloom alerts add AAPL above 250.",
     ...(error ? { errors: [error], complete: false } : {}),
     ...(events > 0 ? { notes: [`${plural(events, "event alert")} not listed here: gloom fn ALRT --tab events`] } : {}),
   };
@@ -214,7 +219,7 @@ async function historyResult(ctx: HeadlessPaneContext): Promise<HeadlessRowsResu
 
 export const alertsHeadless: HeadlessPaneDefinition<"rows"> = {
   shape: "rows",
-  description: "Your alerts: price alerts with current price and distance to target, event alerts (earnings, CPI, FOMC and other economic calendar releases, filings, news, IV levels, market moves) or the alerts that went off, from this app and, signed in, Gloom Cloud.",
+  description: "Your alerts: price, valuation and daily technical alerts with current price and distance to target, event alerts (earnings, CPI, FOMC and other economic calendar releases, filings, news, IV levels, market moves) or the alerts that went off, from this app and, signed in, Gloom Cloud.",
   freshness: { source: "Your alerts", status: "not-a-feed", basis: "your alert rules" },
   argument: { kind: "none" },
   options: [{

@@ -54,7 +54,7 @@ test("--tab events lists the event alerts the Events tab shows, with their dates
   // The distance to target reads from the stored last price, and the quote's provider id stays out of the report.
   expect(prices.rows[0]).toMatchObject({ lastCheckedPrice: 90, awayPercent: expect.closeTo(11.11, 1) });
   expect(prices.rows[0]).not.toHaveProperty("lastQuoteProviderId");
-  expect(renderHeadlessPaneText(alertsHeadless, prices, createTestHeadlessArgs(), "ALRT")).toMatch(/Active\s+CRWV\s+90\.00\s+100\.00\s+\+11\.1%\s+Above/);
+  expect(renderHeadlessPaneText(alertsHeadless, prices, createTestHeadlessArgs(), "ALRT")).toMatch(/Active\s+CRWV\s+Price\s+90\.00\s+100\.00\s+\+11\.1%\s+Above/);
   expect(prices.notes).toEqual(["2 event alerts not listed here: gloom fn ALRT --tab events"]);
   expect((await alertsHeadless.load(createTestHeadlessArgs({ options: { tab: "prices" } }), contextWith([], []))).notes).toBeUndefined();
 });
@@ -83,7 +83,7 @@ test("Prices exports the quote's own time and feed apart from the check time, an
   expect(Number(cell(table.columns.find((column) => column.startsWith("Away"))!))).toBeCloseTo(8.55, 1);
   // The terminal keeps the pane's columns: no source or check-time column of its own.
   const text = renderHeadlessPaneText(alertsHeadless, result, args, "ALRT");
-  expect(text).toMatch(/State\s+Symbol\s+Current\s+Target\s+Away\s+Trigger\s+Quote\s+Alerted/);
+  expect(text).toMatch(/State\s+Symbol\s+Measure\s+Current\s+Target\s+Away\s+Trigger\s+Quote\s+Alerted/);
   expect(text).not.toContain("Quote source");
 });
 
