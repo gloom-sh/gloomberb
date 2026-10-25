@@ -64,9 +64,9 @@ function HeaderMinimumFixture({ focused, width }: PaneProps) {
   const columns = useMemo(() => {
     const spelled = layoutWidth >= 70;
     return [
-      { id: "impact", label: spelled ? "IMPACT" : "IMP", width: spelled ? 8 : 5 },
-      { id: "country", label: spelled ? "COUNTRY" : "CTY", width: spelled ? 9 : 5, minWidth: 5, flexGrow: 1 },
-      { id: "event", label: "EVENT", width: Math.max(12, layoutWidth - 15), minWidth: 12, flexGrow: 1 },
+      { id: "impact", label: spelled ? "IMPACT" : "IMP", width: spelled ? 8 : 5, align: "left" as const },
+      { id: "country", label: spelled ? "COUNTRY" : "CTY", width: spelled ? 9 : 5, minWidth: 5, flexGrow: 1, align: "left" as const },
+      { id: "event", label: "EVENT", width: Math.max(12, layoutWidth - 15), minWidth: 12, flexGrow: 1, align: "left" as const },
     ];
   }, [layoutWidth]);
   return <DataTableView
