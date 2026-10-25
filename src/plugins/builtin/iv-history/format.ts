@@ -3,14 +3,15 @@ import { readingSource, type IvStatRow, type IvStatUnit, type RichCheap, type Ri
 
 /**
  * VCA's sign conventions, and what VIX is beside an at-the-money IV30, one
- * line each: under the table, in the shot and in the report's notes. The skew
- * is the stored 25-delta put and call IVs at a 30-day constant maturity, from
- * the latest quote capture; both differences are decimal IV shown in points.
- * Its line is there only while a skew column is.
+ * line each: under the table, in the shot and in the report's notes. The risk
+ * reversal is the stored 25-delta call and put IVs at a 30-day constant
+ * maturity, from the latest quote capture, signed as OVDV signs it; both
+ * differences are decimal IV shown in points. Its line is there only while a
+ * risk reversal column is.
  */
 export function vcaDefinitions({ skew }: { skew: boolean }): string[] {
   return [
-    ...(skew ? ["25D skew: 30-day 25-delta put IV minus 25-delta call IV, in vol points; positive means puts are richer."] : []),
+    ...(skew ? ["25D RR: 30-day 25-delta call IV minus 25-delta put IV, in vol points, as OVDV's risk reversal; positive means calls are richer."] : []),
     "30-90: IV30 minus IV90. IV/HV: IV30 over the HV20 of the same date.",
     "VIX is Cboe's 30-day S&P 500 implied vol from the whole SPX strike strip, skew included; IV30 here is at the money, so VIX usually reads higher.",
   ];
@@ -20,11 +21,12 @@ export function vcaDefinitions({ skew }: { skew: boolean }): string[] {
 export const IMPLIED_VOL_WORDS = ["IVOL", "IV", "OVOL", "IMPVOL", "IMPLIEDVOL"];
 
 /**
- * A skew column's header names its sign, since the conventions differ: the
- * 25-delta skew is put minus call (HIVG, VCA), the risk reversal call minus
- * put (OVDV). "skew25d put-call (pts)": the stem a script keys on, the
- * sign, and vol points in the unit's usual place, as in "IV30 (%)". No
- * comma, so a CSV header needs no quoting.
+ * A skew column's header names its sign. The risk reversal is call minus put
+ * wherever it is shown (OVDV, VCA, HIVG's rr25d), so positive means calls are
+ * richer; HIVG's skew25d keeps the put-minus-call sign it was first exported
+ * with, the negative of that. "rr25d call-put (pts)": the stem a script keys
+ * on, the sign, and vol points in the unit's usual place, as in "IV30 (%)".
+ * No comma, so a CSV header needs no quoting.
  */
 export const skewHeader = (stem: string, sign: string) => `${stem} ${sign} (pts)`;
 

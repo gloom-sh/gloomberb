@@ -1,6 +1,7 @@
 import { expect, setSystemTime, test } from "bun:test";
 import type { HeadlessPaneContext } from "../../../types/headless";
 import { createDefaultConfig } from "../../../types/config";
+import { createTestTicker } from "../../../test-support/ticker";
 import { portfolioRiskHeadless } from "./risk-headless";
 import { BROKER_PORTFOLIO, brokerFixtureHoldings, brokerFixtureTickers, brokerRiskClient, now, sessionHistory } from "./risk-test-data";
 
@@ -26,6 +27,27 @@ test("local evidence reports keep account identity and work without market netwo
   // The error names the portfolios and ids that exist, so a guessed id ("default") is fixed in one more call.
   await expect(portfolioRiskHeadless.load({ ...args, rawArgument: "default" }, context)).rejects.toThrow("Unknown local portfolio: default. Portfolios: Local account (local).");
   await expect(portfolioRiskHeadless.load({ ...args, options: { ...args.options, evidence: JSON.stringify({ ...evidence, currency: "EUR" }) } }, context)).rejects.toThrow("different portfolio or currency");
+});
+
+test("a portfolio with no holdings answers with the commands that fill it, not a table of dashes, and asks the market for nothing", async () => {
+  const portfolio = { id: "main", name: "Main Portfolio", currency: "USD" };
+  const listed = (symbols: string[]) => symbols.map((symbol) => createTestTicker(symbol, symbol, { portfolios: [portfolio.id], positions: [] }));
+  const load = (tickers: ReturnType<typeof listed>) => portfolioRiskHeadless.load(
+    { rawArgument: "", argument: null, symbols: [], options: {} },
+    { config: { ...createDefaultConfig("/tmp/unused-risk-headless"), portfolios: [portfolio] }, signal: new AbortController().signal,
+      apiClient: new Proxy({}, { get() { throw new Error("Unexpected market network access"); } }),
+      resolvePortfolio: async () => ({ portfolio, tickers }),
+    } as unknown as HeadlessPaneContext,
+  );
+  const empty = await load([]);
+  expect(empty.sections).toEqual([]);
+  // `portfolio add` lists a symbol, `position set` gives it shares; risk reads shares.
+  expect(empty.empty).toBe("No holdings in Main Portfolio. Add symbols with gloom portfolio add 'Main Portfolio' AAPL,MSFT, "
+    + "then their shares with gloom portfolio position set 'Main Portfolio' AAPL 10 150.");
+  expect(empty.metadata).toEqual({ portfolio: { id: "main", name: "Main Portfolio", currency: "USD" } });
+  // Symbols listed without shares are named, and so is the command that gives one its shares.
+  expect((await load(listed(["AAPL", "MSFT"]))).empty)
+    .toBe("Main Portfolio lists AAPL, MSFT but holds no shares: gloom portfolio position set 'Main Portfolio' AAPL 10 150.");
 });
 
 function riskRow(id: string, value: number | null, unit = "% gross") {

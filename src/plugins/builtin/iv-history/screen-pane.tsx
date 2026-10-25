@@ -31,8 +31,8 @@ const COLUMNS: DataTableColumn[] = [
   { id: "iv1y", label: "IV1Y", width: 7, align: "right" },
   { id: "iv1yPercentile", label: "IVP1Y", width: 6, align: "right" },
   { id: "termSlope", label: "30-90", width: 7, align: "right" },
-  { id: "skew", label: "25D skew", width: 9, align: "right" },
-  { id: "skewDate", label: "Skew as of", width: 11, align: "right" },
+  { id: "riskReversal", label: "25D RR", width: 9, align: "right" },
+  { id: "skewDate", label: "RR as of", width: 11, align: "right" },
   { id: "hv", label: `HV${HV_WINDOW}`, width: 7, align: "right" },
   { id: "hvDate", label: "HV as of", width: 9, align: "right" },
   { id: "ivHv", label: "IV/HV", width: 6, align: "right" },
@@ -84,7 +84,7 @@ export function IvScreenPane({ paneId, width, height, focused }: PaneProps) {
   }, [resource.data, hv, sort]);
   const dates = useMemo(() => richCheapDates(rows), [rows]);
   // A date every row shares moves to the footer; a column no row fills, or whose dates agree, is left out.
-  const hasSkew = useMemo(() => rows.some((row) => row.skew != null), [rows]);
+  const hasSkew = useMemo(() => rows.some((row) => row.riskReversal != null), [rows]);
   // A close solved from quote midpoints names itself, which a date alone has no room for.
   const dateWidth = useMemo(() => rows.some((row) => !row.stale && readingSource(row.method, row.basis) === "close mid") ? 15 : 11, [rows]);
   const columns = useMemo(() => COLUMNS.filter((column) => {
@@ -93,7 +93,7 @@ export function IvScreenPane({ paneId, width, height, focused }: PaneProps) {
       case "rankDate": return dates.rankApart;
       case "iv1y": return rows.some((row) => row.iv1y != null);
       case "iv1yPercentile": return rows.some((row) => row.iv1yPercentile != null);
-      case "skew": return hasSkew;
+      case "riskReversal": return hasSkew;
       case "skewDate": return dates.skewApart;
       case "hvDate": return dates.hvApart;
       default: return true;
@@ -133,7 +133,7 @@ export function IvScreenPane({ paneId, width, height, focused }: PaneProps) {
       case "iv1y": return { text: formatVol(row.iv1y) };
       case "iv1yPercentile": return { text: formatRank(row.iv1yPercentile) };
       case "termSlope": return { text: formatPoints(row.termSlope), color: row.termSlope != null && row.termSlope > 0 ? colors.negative : colors.text };
-      case "skew": return { text: formatPoints(row.skew) };
+      case "riskReversal": return { text: formatPoints(row.riskReversal) };
       case "skewDate": return { text: row.skewDate ? readingLabel(row.skewDate, "quote-mid", true) : "--", color: colors.textDim };
       case "hv": return { text: hv.has(row.symbol) ? formatVol(row.hv) : "...", color: colors.positive };
       case "hvDate": return { text: row.hvDate ? shortDate(row.hvDate) : "--", color: colors.textDim };

@@ -95,27 +95,29 @@ describe("VCA dates", () => {
       skew: { date: "2026-10-08", put25: 0.3, call25: 0.28, skew: 0.02 } };
     const { keys, header, cell, result } = await load([stale]);
     expect(keys).toContain("skewDate");
-    // The header names the sign: OVDV's risk reversal subtracts the other way.
-    expect(header("skew")).toBe("25D skew put-call (pts)");
+    // The header names the sign, the one OVDV's risk reversal has: call minus put.
+    expect(header("riskReversal")).toBe("25D RR call-put (pts)");
+    expect(keys).not.toContain("skew");
     expect(cell("skewDate", 0)).toBe("2026-10-08");
-    // Puts at 30% against calls at 28% read +2.0, and the report says which side is subtracted and in what unit.
-    expect(cell("skew", 0)).toBe("+2.0");
+    // Puts at 30% against calls at 28% read -2.0 (puts richer), and the report says which side is subtracted and in what unit.
+    expect(cell("riskReversal", 0)).toBe("-2.0");
     expect(result.notes).toEqual(vcaDefinitions({ skew: true }));
-    expect(result.notes?.[0]).toContain("25-delta put IV minus 25-delta call IV, in vol points; positive means puts are richer");
+    expect(result.notes?.[0]).toContain("25-delta call IV minus 25-delta put IV, in vol points, as OVDV's risk reversal; positive means calls are richer");
+    expect(result.notes?.join(" ")).not.toContain("puts are richer");
   });
 });
 
 describe("VCA definitions", () => {
-  test("the skew line is there only with a skew column, and IV/HV always says it uses the HV of the same date", async () => {
+  test("the risk reversal line is there only with a risk reversal column, and IV/HV always says it uses the HV of the same date", async () => {
     const without = vcaDefinitions({ skew: false });
     const withSkew = vcaDefinitions({ skew: true });
-    expect(without.some((line) => line.includes("25D skew"))).toBe(false);
-    expect(withSkew[0]).toContain("25D skew");
+    expect(without.some((line) => line.includes("25D RR"))).toBe(false);
+    expect(withSkew[0]).toContain("25D RR");
     expect(withSkew.slice(1)).toEqual(without);
     expect(without[0]).toContain("IV/HV: IV30 over the HV20 of the same date");
-    // The report follows its columns: no row has a skew, so the notes carry none.
+    // The report follows its columns: no row has a risk reversal, so the notes carry none.
     const { keys, result } = await load([row("NVDA", reading("2026-10-09", "trade-close", 0.293), "2026-10-09")]);
-    expect(keys).not.toContain("skew");
+    expect(keys).not.toContain("riskReversal");
     expect(result.notes).toEqual(without);
   });
 });

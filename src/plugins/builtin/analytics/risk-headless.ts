@@ -3,6 +3,7 @@ import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchPortfolioRiskMarket, RISK_HISTORY_LIMIT } from "./risk-client";
 import { parsePortfolioRiskEvidence } from "./risk-evidence";
 import { describeCollections } from "../../../portfolio/collection-name";
+import { shellWord } from "../../../utils/shell-word";
 import { formatShocks, parseAssetShifts, parseFxShifts, riskCashLines } from "./risk-book";
 import {
   BASKET_VIEWS,
@@ -46,6 +47,22 @@ function reportPortfolioName(metadata: Record<string, unknown> | undefined): str
   const compact = metadata?.portfolio as { name?: unknown } | undefined;
   const name = model?.portfolio?.name ?? compact?.name;
   return typeof name === "string" ? name : undefined;
+}
+
+/**
+ * What a portfolio with nothing to estimate says, as one line: the commands
+ * that fill it. Risk is read from lots, so a symbol listed without shares
+ * (`portfolio add`) is no holding yet; `portfolio position set` gives it
+ * shares, and adds the symbol too when it is not listed.
+ */
+function emptyPortfolioHint(name: string, listed: readonly string[]): string {
+  const portfolio = shellWord(name);
+  if (listed.length > 0) {
+    return `${name} lists ${listed.slice(0, 3).join(", ")}${listed.length > 3 ? ` and ${listed.length - 3} more` : ""} but holds no shares: `
+      + `gloom portfolio position set ${portfolio} ${shellWord(listed[0]!)} 10 150.`;
+  }
+  return `No holdings in ${name}. Add symbols with gloom portfolio add ${portfolio} AAPL,MSFT, `
+    + `then their shares with gloom portfolio position set ${portfolio} AAPL 10 150.`;
 }
 
 /** Rows of one view in the compact result; the pane and reports keep every row. */
@@ -260,6 +277,16 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
       throw new Error(
         "Imported evidence belongs to a different portfolio or currency",
       );
+    // A portfolio with no holdings and no cash has nothing to estimate: say how to fill it, not a table of dashes.
+    if (tickers.length === 0 && cash.length === 0 && !evidence) {
+      const listed = local.tickers.filter((ticker) => ticker.metadata.portfolios.includes(id)).map((ticker) => ticker.metadata.ticker);
+      return {
+        sections: [],
+        complete: false,
+        empty: emptyPortfolioHint(local.portfolio.name, listed),
+        metadata: { portfolio: { id, name: local.portfolio.name, currency: local.portfolio.currency } },
+      };
+    }
     const requestedView = isRiskView(args.options.view) ? args.options.view : null;
     const view: string = requestedView ?? "risk";
     const localOnly =

@@ -800,7 +800,7 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     term: "Risk reversal", short: "RR", aliases: ["25d risk reversal", "25-delta risk reversal", "25 delta risk reversal", "rr25", "risk reversals"],
     functions: ["OVDV"], shown: ["RR"],
     definition: "The 25-delta call's implied volatility minus the 25-delta put's, in vol points, for one expiry. Negative means puts cost more than calls "
-      + "as far from the forward (downside protection is bid), positive that upside calls are. OVDV signs it call minus put.",
+      + "as far from the forward (downside protection is bid), positive that upside calls are. OVDV, VCA and HIVG's rr25d all sign it call minus put.",
   },
   {
     term: "Butterfly", short: "BF", aliases: ["25d butterfly", "25-delta butterfly", "25 delta butterfly", "bf25", "smile curvature", "fly"],

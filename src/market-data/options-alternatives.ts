@@ -1,4 +1,5 @@
 import { isRoundTheClockCoin } from "../utils/crypto-pair";
+import { currencyPairCode, isCurrencyCode } from "../utils/currency-pair";
 import { parsePublicTickerKey } from "../utils/exchanges";
 import { parseFuturesGeneric } from "../utils/futures-generic";
 
@@ -34,23 +35,24 @@ const FUTURES_ALTERNATIVES: Readonly<Record<string, ListedOptionsAlternative>> =
   ZN: { symbol: "IEF", name: "iShares 7-10 Year Treasury Bond ETF" },
   "6E": { symbol: "FXE", name: "Invesco CurrencyShares Euro Trust" },
   "6J": { symbol: "FXY", name: "Invesco CurrencyShares Japanese Yen Trust" },
+  "6B": { symbol: "FXB", name: "Invesco CurrencyShares British Pound Sterling Trust" },
   BTC: { symbol: "IBIT", name: "iShares Bitcoin Trust" },
   ETH: { symbol: "ETHA", name: "iShares Ethereum Trust" },
 };
 
 const MONTH_CODE_CONTRACT = /^([A-Z0-9]{1,3}?)[FGHJKMNQUVXZ]\d{1,4}$/;
 
-/** The futures root a symbol names: GC=F, GCZ26 and the generic GC1 all give GC. */
-function futuresRoot(symbol: string): string | null {
+/** The futures root a symbol names: GC=F, GCZ26 and the generic GC1 all give GC. `known` says which roots a bare contract may carry. */
+function futuresRoot(symbol: string, known: (root: string) => boolean = (root) => !!FUTURES_ALTERNATIVES[root]): string | null {
   const ticker = symbol.trim().toUpperCase().replace(/[.:][A-Z]+$/, "");
   if (ticker.endsWith("=F")) {
     const body = ticker.slice(0, -2);
-    return FUTURES_ALTERNATIVES[body] ? body : MONTH_CODE_CONTRACT.exec(body)?.[1] ?? body;
+    return known(body) ? body : MONTH_CODE_CONTRACT.exec(body)?.[1] ?? body;
   }
   const generic = parseFuturesGeneric(ticker);
   if (generic) return generic.root;
   const contract = MONTH_CODE_CONTRACT.exec(ticker)?.[1];
-  return contract && FUTURES_ALTERNATIVES[contract] ? contract : null;
+  return contract && known(contract) ? contract : null;
 }
 
 /** The listed fund whose options stand in for an instrument with no chain, if there is one. */
@@ -125,5 +127,80 @@ export function coinOptionsAlias(code: string) {
     const key = typed.trim().toUpperCase();
     const pair = COIN_OPTION_UNDERLYINGS[key];
     return pair ? { symbol: pair, note: `${key} read as ${pair}, the coin's options. For the US fund that trades as ${key}: gloomberb fn ${code} ${key}:ARCA` } : null;
+  };
+}
+
+/**
+ * The CME currency futures, each as the pair it settles on, in the order the
+ * pair is quoted: 6E is EUR/USD, 6J USD/JPY. No chain of options on any of
+ * them is served here, as none is on the spot pair.
+ */
+const FX_FUTURES_PAIRS: Readonly<Record<string, string>> = {
+  "6E": "EURUSD", "6J": "USDJPY", "6B": "GBPUSD", "6A": "AUDUSD", "6C": "USDCAD", "6S": "USDCHF", "6N": "NZDUSD", "6M": "USDMXN",
+};
+
+/** The US-listed currency funds whose options stand in for an FX pair's volatility, by the currency they hold. */
+const FX_VOL_FUNDS: Readonly<Record<string, string>> = { EUR: "FXE", JPY: "FXY", GBP: "FXB" };
+/** The fund that holds the dollar against a basket, for a pair none of the single-currency funds holds. */
+const DOLLAR_FUND = "UUP";
+const FX_VOL_FUND_LIST = [...Object.values(FX_VOL_FUNDS), DOLLAR_FUND];
+
+/** The pair a symbol is: a spot pair in any spelling (EURUSD=X, EUR/USD), or a currency future (6E=F, 6EZ26, 6E1) as the pair it settles on; null for anything else. */
+export function fxVolatilityPair(symbol: string, exchange?: string): string | null {
+  const spot = currencyPairCode(symbol, exchange);
+  // Metals quoted against a currency (XAUUSD=X) are no currency pair.
+  if (spot) return isCurrencyCode(spot.slice(0, 3)) && isCurrencyCode(spot.slice(3)) ? spot : null;
+  const root = futuresRoot(symbol, (candidate) => !!FX_FUTURES_PAIRS[candidate]);
+  return root ? FX_FUTURES_PAIRS[root] ?? null : null;
+}
+
+/**
+ * The listed fund that stands in for an FX pair's volatility: the one that
+ * holds the pair's euro, yen or pound, else the dollar index fund.
+ */
+function fxVolatilityFunds(pair: string): string[] {
+  const held = [pair.slice(0, 3), pair.slice(3)].map((code) => FX_VOL_FUNDS[code]).filter((fund): fund is string => !!fund);
+  return held.length > 0 ? held : FX_VOL_FUND_LIST;
+}
+
+/**
+ * What exists instead for the volatility of an FX pair or currency future,
+ * worded as one line for the CLI: OTC FX volatility is not served, the
+ * currency funds' options are the nearest listed thing (the one that holds
+ * the pair's euro, yen or pound, else any of them), and HVT reads the pair's
+ * realized volatility. Null for anything that is no FX pair. `code` is the
+ * function asked (OVDV), `symbol` as typed.
+ */
+function fxVolatilityAnswer(code: string, symbol: string): string | null {
+  const pair = fxVolatilityPair(symbol);
+  if (!pair) return null;
+  const typed = symbol.trim().toUpperCase();
+  const funds = fxVolatilityFunds(pair);
+  // VCA screens every fund; the others read the pair's own, or the dollar's when it has none.
+  const read = code === "VCA" ? funds.join(",") : funds === FX_VOL_FUND_LIST ? DOLLAR_FUND : funds[0]!;
+  return `OTC FX volatility is not covered for ${typed}. Currency-ETF options are the listed proxy: `
+    + `${funds.join(", ")} (gloom fn ${code} ${read}). Realized volatility: gloom fn HVT ${typed}.`;
+}
+
+/**
+ * The same for a pane, which has no commands to give: what is not covered,
+ * the funds whose options stand in, and HVT for realized volatility.
+ */
+export function fxVolatilityNote(symbol: string, exchange?: string): string | null {
+  const pair = fxVolatilityPair(symbol, exchange);
+  if (!pair) return null;
+  return `OTC FX volatility is not covered for ${symbol.trim().toUpperCase()}. Currency-ETF options are the listed proxy: `
+    + `${fxVolatilityFunds(pair).join(", ")}. HVT shows the pair's realized volatility.`;
+}
+
+/**
+ * A volatility function's `refuseSymbol` for FX (OVDV, VCA, HIVG): an FX pair
+ * or currency future is answered before any request, with one line saying
+ * OTC FX volatility is not covered and what to read instead.
+ */
+export function fxVolatilityRefusal(code: string) {
+  return (key: string): { message: string; details?: string } | null => {
+    const message = fxVolatilityAnswer(code, key);
+    return message ? { message } : null;
   };
 }

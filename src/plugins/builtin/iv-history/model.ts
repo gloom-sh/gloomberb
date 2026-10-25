@@ -370,8 +370,9 @@ export interface RichCheapRow {
    * series has no reading that session, or there is no IV1Y beside it to describe.
    */
   iv1yPercentile: number | null;
-  skew: number | null;
-  /** Session of the quote capture the skew comes from. */
+  /** The 25-delta risk reversal at 30 days: call IV minus put IV, so positive means calls are richer, as OVDV signs it. */
+  riskReversal: number | null;
+  /** Session of the quote capture the risk reversal comes from. */
   skewDate: string | null;
   /**
    * Realized volatility on the reading's own date, so the row reads as IV30 over HV;
@@ -397,7 +398,7 @@ export interface RichCheapDates {
   rank: string | null;
   /** Ranked rows are ranked on different closes. */
   rankApart: boolean;
-  /** Some skew comes from a different session than its row's reading. */
+  /** Some risk reversal comes from a different session than its row's reading. */
   skewApart: boolean;
   /** Some HV is dated on a different session than the IV it sits beside. */
   hvApart: boolean;
@@ -413,7 +414,7 @@ export function richCheapDates(rows: readonly RichCheapRow[]): RichCheapDates {
       ? { date: first.date!, method: first.method!, basis: first.basis } : null,
     rank: firstRanked && ranked.every((row) => row.rankDate === firstRanked.rankDate) ? firstRanked.rankDate : null,
     rankApart: !!firstRanked && ranked.some((row) => row.rankDate !== firstRanked.rankDate),
-    skewApart: rows.some((row) => row.skew != null && row.skewDate !== row.date),
+    skewApart: rows.some((row) => row.riskReversal != null && row.skewDate !== row.date),
     hvApart: rows.some((row) => row.hv != null && row.hvDate != null && row.hvDate !== row.date),
   };
 }
@@ -449,7 +450,7 @@ export function projectRichCheap(rows: readonly IvScreenRow[], hv: ReadonlyMap<s
       termSlope: iv30 != null && latest?.iv90 != null ? iv30 - latest.iv90 : null,
       iv1y: latest?.iv365 ?? null,
       iv1yPercentile: !rankStale && latest?.iv365 != null && row.iv365 && row.iv365.date === row.iv30?.date ? row.iv365.percentile : null,
-      skew: skewStale ? null : row.skew?.skew ?? null, skewDate: skewStale ? null : row.skew?.date ?? null,
+      riskReversal: skewStale || !row.skew ? null : row.skew.call25 - row.skew.put25, skewDate: skewStale ? null : row.skew?.date ?? null,
       hv: shown?.value ?? null, hvDate: shown?.date ?? null,
       ivHv: iv30 != null && atReading != null && atReading.value > 0 ? iv30 / atReading.value : null,
       verdict: verdictFor(percentile),

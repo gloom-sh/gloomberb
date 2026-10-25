@@ -333,6 +333,14 @@ const ALL_WORDS_WITH_FLAGS_BAND = 1000;
 const PER_MATCHED_WORD = 100;
 /** Loose matches (no function carries every word) listed before the rest are left to a refined query. */
 const LOOSE_MATCH_LIMIT = 5;
+/** Loose matches a word of the query names (in the function's code, name or aliases) are all listed, up to this many. */
+const LOOSE_NAMED_LIMIT = 8;
+/** A query word found in what the function is called (its code, name or aliases) outweighs one found in its keywords or description. */
+const PER_WORD_IN_NAME = 3;
+/** A query word that begins a function's code (`vol` for VOLS, `fx` for FXC) is the start of typing it. */
+const PER_WORD_STARTING_CODE = 3;
+/** A query word that is one of the function's own keywords (`vol` for the volatility functions, which also say volume's) names it. */
+const PER_WORD_IS_KEYWORD = 3;
 
 function phraseBand(entry: PaneCatalogEntry, phrase: string): number {
   const lower = (values: Array<string | undefined>) => values
@@ -375,6 +383,12 @@ function nameAndDescription(entry: PaneCatalogEntry): string {
   return nameAndDescriptionFields(entry).join(" ");
 }
 
+/** What a function is called: its code, name and aliases, apart from the keywords and description that say what it covers. */
+function identityFields(entry: PaneCatalogEntry): string[] {
+  return [entry.token, entry.label, entry.paneName, entry.shortcut, ...entry.aliases]
+    .filter((value): value is string => !!value).map((value) => value.toLowerCase().replace(/\s+/g, " "));
+}
+
 function flagText(entry: PaneCatalogEntry): string {
   return [
     entry.argKind,
@@ -394,12 +408,14 @@ interface CatalogMatchScore {
   terms: number;
   /** Those found in the function's name, keywords or description. */
   named: number;
+  /** Those found in what the function is called: its code, name or aliases. */
+  called: number;
 }
 
 function scorePaneCatalogEntry(entry: PaneCatalogEntry, query: string): CatalogMatchScore {
   const terms = queryTerms(query);
-  if (terms.length === 0) return { score: 1, terms: 0, named: 0 };
-  const none = { score: 0, terms: terms.length, named: 0 };
+  if (terms.length === 0) return { score: 1, terms: 0, named: 0, called: 0 };
+  const none = { score: 0, terms: terms.length, named: 0, called: 0 };
 
   const exactTokens = [
     entry.token,
@@ -414,6 +430,8 @@ function scorePaneCatalogEntry(entry: PaneCatalogEntry, query: string): CatalogM
   const named = nameAndDescription(entry);
   const flags = flagText(entry);
   const wholeQuery = query.toLowerCase().trim().replace(/\s+/g, " ");
+  const called = identityFields(entry);
+  const codes = [entry.token, entry.shortcut, ...entry.aliases].filter((value): value is string => !!value).map((value) => normalizeLookupToken(value));
 
   let score = containsPhrase(`${named} ${flags}`, wholeQuery) ? 12 : 0;
   // A query that is one of the function's own keywords ("hedge" for OSA) beats one found inside a
@@ -423,9 +441,16 @@ function scorePaneCatalogEntry(entry: PaneCatalogEntry, query: string): CatalogM
   if (keywords.includes(wholeQuery)) score += 4;
   let matchedTerms = 0;
   let matchedNamed = 0;
+  let matchedCalled = 0;
   let matchedFlagKeys = 0;
   for (const term of terms) {
     const normalized = normalizeLookupToken(term);
+    if (called.some((field) => containsPhrase(field, term))) {
+      score += PER_WORD_IN_NAME;
+      matchedCalled += 1;
+    }
+    if (codes.some((code) => normalized.length >= 2 && code.startsWith(normalized))) score += PER_WORD_STARTING_CODE;
+    if (keywords.includes(term)) score += PER_WORD_IS_KEYWORD;
     // A term starts a word: "rate" is found in "rates" but not in "separate", nor "budget" in "budgetBps".
     if (exactTokens.includes(normalized)) {
       score += 8;
@@ -455,12 +480,13 @@ function scorePaneCatalogEntry(entry: PaneCatalogEntry, query: string): CatalogM
   score += Math.round((matchedTerms / terms.length) * 8);
   if (entry.capability.botSafe) score += 2;
   // One word has no phrase to prefer: it keeps the plain term scores.
-  if (terms.length === 1) return { score, terms: 1, named: matchedNamed };
+  if (terms.length === 1) return { score, terms: 1, named: matchedNamed, called: matchedCalled };
   const allWords = matchedNamed === terms.length ? ALL_WORDS_BAND : matchedTerms === terms.length ? ALL_WORDS_WITH_FLAGS_BAND : 0;
   return {
     score: score + matchedTerms * PER_MATCHED_WORD + (phraseBand(entry, wholeQuery) || allWords),
     terms: terms.length,
     named: matchedNamed,
+    called: matchedCalled,
   };
 }
 
@@ -535,8 +561,14 @@ export function selectPaneCatalogMatches(ranked: PaneCatalogEntry[], query: stri
     const shown = every(complete).slice(0, limit);
     return { shown, hidden: ranked.length - shown.length, loose: false };
   }
+  // No function carries every word: the ones a word names come first, the code or name of a function being what a
+  // reader types ("fx vol" is FXC, whose name has fx, and VOLS, whose name has vol), ahead of one that mentions a word
+  // in its keywords ("implied fx" in ADR) or its flags, and however many of the words a weaker match has.
   const named = scored.filter(({ named }) => named > 0);
-  const shown = every(named.length > 0 ? named : scored).slice(0, Math.min(limit, LOOSE_MATCH_LIMIT));
+  const pool = named.length > 0 ? named : scored;
+  const leading = pool.filter((item) => item.called > 0).slice(0, LOOSE_NAMED_LIMIT);
+  const rest = pool.filter((item) => !leading.includes(item)).slice(0, Math.max(0, LOOSE_MATCH_LIMIT - leading.length));
+  const shown = every([...leading, ...rest]).slice(0, limit);
   return { shown, hidden: ranked.length - shown.length, loose: true };
 }
 

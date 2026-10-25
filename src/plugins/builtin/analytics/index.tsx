@@ -1,6 +1,7 @@
 import { usePaneSettingValue } from "../../../public/react";
 import { PortfolioRiskPane } from "./risk-pane";
 import { portfolioRiskHeadless } from "./risk-headless";
+import { NO_HOLDINGS_HINT } from "./risk-model";
 import { portfolioRiskCache } from "./risk-client";
 import { Box, Text } from "../../../ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -398,7 +399,7 @@ function LegacyPortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
                 message={accountsError ?? undefined}
                 hint={accountsError
                   ? "Reconnect the broker in the Brokers pane (BR), then refresh."
-                  : "Add holdings from the Portfolio pane (PF), or connect a broker in BR to sync them."}
+                  : NO_HOLDINGS_HINT}
               />
             </Box>
           ) : historyOnly ? (

@@ -1077,7 +1077,7 @@ The FUT board's codes work wherever a symbol is typed (`quote`, `history`, `tick
 
 **Central banks and CPI dates.** The calendar also lists the rate decisions of the central banks `fn CBR` follows (Banxico, Copom, SARB, CBRT, RBI, BoK and the rest), each with the policy rate before it as Prior, and the CPI release dates INEGI (Mexico) and IBGE (Brazil) publish.
 
-Those rows add a Local column with the publisher's own clock (`06:00 Mexico City` for INEGI's 12:00 UTC release). `--json` carries `localTime`, `timeZone`, `timeNote`, `priorAsOf`, `publisher`, `referencePeriod` and `sourceUrl` on them.
+Those rows add a Local column with the publisher's own clock (`06:00 Mexico City` for INEGI's 12:00 UTC release); a calendar with none of them has no Local column, in plain output too, and the viewer's clock has its column only with `--tz`. The exports always carry both. `--json` carries `localTime`, `timeZone`, `timeNote`, `priorAsOf`, `publisher`, `referencePeriod` and `sourceUrl` on them.
 
 **After a release time.** Once a high-impact release's time passes with no actual, the app asks Gloom Cloud for the calendar again (after about 15 seconds, then 30, then once a minute for 20 minutes) while ECO is in view or **Notifications** is on in ECO's settings.
 

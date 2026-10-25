@@ -225,9 +225,10 @@ export async function applyListingArgument(
   if (refusals.length > 0) {
     listings = listings.filter((listing) => !refusals.some((entry) => entry.listing === listing));
     if (listings.length === 0) {
-      throw new ListingArgError(refusals.map(({ refusal }) => refusal.message).join("\n"), refusals.map(({ refusal }) => refusal.details).join("\n"));
+      const details = refusals.flatMap(({ refusal }) => refusal.details ? [refusal.details] : []).join("\n");
+      throw new ListingArgError(refusals.map(({ refusal }) => refusal.message).join("\n"), details || undefined);
     }
-    notes.push(...refusals.map(({ refusal }) => `${refusal.message} ${refusal.details}`));
+    notes.push(...refusals.map(({ refusal }) => [refusal.message, refusal.details].filter(Boolean).join(" ")));
   }
   const usOnly = headless?.usListingsOnly;
   const abroad = usOnly ? listings.filter((listing) => listingAbroadVenue(listing.key) != null) : [];

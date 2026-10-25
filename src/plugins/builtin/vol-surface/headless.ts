@@ -12,7 +12,7 @@ import { createSurfaceDependencies, loadVolatilitySurface } from "./client";
 import { buildSurfaceGrid, type SurfaceGridOptions, type SurfaceSettings, type SurfaceSnapshot } from "./model";
 import { atCapturePrecision, formatCaptureTime, loadDatedSurface, storedSurfaceDate, type DatedSurfaceSnapshot } from "./stored";
 import { listingFateEmpty, loadListingFate } from "../../../tickers/listing-fate";
-import { coinOptionsAlias, coinWithoutOptionsRefusal } from "../../../market-data/options-alternatives";
+import { coinOptionsAlias, coinWithoutOptionsRefusal, fxVolatilityRefusal } from "../../../market-data/options-alternatives";
 import { formatUtcTime } from "../../../utils/utc-time";
 import { dvolCurrency, dvolGap, dvolSeriesId, loadDvol, type DvolPayload } from "../volatility/dvol";
 import {
@@ -118,7 +118,7 @@ function skewSection(snapshot: SurfaceSnapshot): HeadlessBundleSection {
   return { title: "Skew", columns: [
     { key: "expiry", header: "Expiry" }, { key: "days", header: "Days", format: days },
     { key: "put25", header: "25D put IV", format: iv }, { key: "call25", header: "25D call IV", format: iv },
-    // Each difference names its sign: the risk reversal is call minus put, unlike HIVG and VCA's put-minus-call skew.
+    // Each difference names its sign: the risk reversal is call minus put here and in VCA and HIVG's rr25d.
     { key: "riskReversal", header: skewHeader("RR", "call-put"), format: gap }, { key: "butterfly", header: skewHeader("BF", "wings-ATM"), format: gap },
     { key: "moneynessSkew", header: skewHeader("90/110", "90%-110%"), format: (value, row) => typeof value === "number" ? points(value)
       : (row as unknown as SurfaceSkewRow).moneynessGap ?? "--" },
@@ -169,7 +169,7 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle", argument: { kind: "ticker", description: "Underlying ticker" },
   usListingsOnly: "Options data",
   symbolAlias: coinOptionsAlias("OVDV"),
-  refuseSymbol: coinWithoutOptionsRefusal("OVDV"),
+  refuseSymbol: (key) => coinWithoutOptionsRefusal("OVDV")(key) ?? fxVolatilityRefusal("OVDV")(key),
   discovery: { suggestFor: IMPLIED_VOL_WORDS },
   describe: (args) => `OVDV ${args.symbols[0] ?? ""}`,
   options: [

@@ -16,6 +16,7 @@ import type { HeadlessPaneContext } from "../../../types/headless";
 import { zonedDateKey } from "../../../utils/zoned-date-time";
 import { listingFateNotes, listingFateReport, loadListingFate, MovedSymbolError } from "../../../tickers/listing-fate";
 import { startTickerChangeLookup } from "../../../tickers/ticker-changes";
+import { fxVolatilityRefusal } from "../../../market-data/options-alternatives";
 
 const METHODOLOGY = "docs/research-data.md#implied-volatility-history";
 const percent = (value: unknown) => typeof value === "number" ? formatVol(value) : "--";
@@ -24,6 +25,7 @@ const points = (value: unknown) => typeof value === "number" ? formatPoints(valu
 export const ivHistoryHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle", argument: { kind: "ticker", description: "US option underlying" },
   usListingsOnly: "Implied volatility history",
+  refuseSymbol: fxVolatilityRefusal("HIVG"),
   freshness: { status: "not-a-feed", basis: "daily implied volatility", cadence: "daily", observedKey: "date", oldest: null },
   describe: (args) => `HIVG ${args.symbols[0] ?? ""}`,
   discovery: { aliases: ["HIVG"], suggestFor: IMPLIED_VOL_WORDS, screenshotReadiness: "live-dom", dataRequirements: ["Cloud stored implied volatility", "Daily price history"],
@@ -160,6 +162,7 @@ export const ivScreenHeadless: HeadlessPaneDefinition<"bundle"> = {
   freshness: { status: "not-a-feed", basis: "daily implied volatility", cadence: "daily", observedKey: "date" },
   argument: { kind: "symbol-list", optional: true, maximum: VCA_LIMIT, description: "US option underlyings; defaults to index and sector ETFs." },
   usListingsOnly: "Implied volatility",
+  refuseSymbol: fxVolatilityRefusal("VCA"),
   options: [{ key: "preset", type: "enum", values: [{ value: "etfs" }, { value: "megacaps" }], defaultValue: "etfs", description: "Preset when no symbols are given" }],
   describe: "Volatility rich/cheap",
   // The pane names its universe `scope`; symbols typed open their own (custom), which a preset does not replace.
@@ -189,7 +192,7 @@ export const ivScreenHeadless: HeadlessPaneDefinition<"bundle"> = {
     // A listing that stopped trading has its row's note, not a line saying it has no options history.
     const coverage = screenCoverage(rows, { explained: new Set([...noted].filter(([, entry]) => entry.fate.endedOn).map(([symbol]) => symbol)) });
     const dates = richCheapDates(rows);
-    const hasSkew = rows.some((row) => row.skew != null);
+    const hasSkew = rows.some((row) => row.riskReversal != null);
     const hasIv1y = rows.some((row) => row.iv1y != null), hasIv1yRank = rows.some((row) => row.iv1yPercentile != null);
     const dated = (value: unknown) => typeof value === "string" ? value : "--";
     return {
@@ -207,8 +210,8 @@ export const ivScreenHeadless: HeadlessPaneDefinition<"bundle"> = {
         ...(hasIv1y ? [{ key: "iv1y", header: "IV1Y", format: percent }] : []),
         ...(hasIv1yRank ? [{ key: "iv1yPercentile", header: "IVP1Y", format: (value: unknown) => formatRank(value as number | null) }] : []),
         { key: "termSlope", header: "30-90", format: (value: unknown) => formatPoints(value as number | null) },
-        ...(hasSkew ? [{ key: "skew", header: skewHeader("25D skew", "put-call"), format: (value: unknown) => formatPoints(value as number | null) }] : []),
-        ...(hasSkew && dates.skewApart ? [{ key: "skewDate", header: "Skew as of", format: dated }] : []),
+        ...(hasSkew ? [{ key: "riskReversal", header: skewHeader("25D RR", "call-put"), format: (value: unknown) => formatPoints(value as number | null) }] : []),
+        ...(hasSkew && dates.skewApart ? [{ key: "skewDate", header: "RR as of", format: dated }] : []),
         { key: "hv", header: "HV20", format: percent },
         // Said only where an HV is not the one of its IV's date: a stale reading's, or one a few sessions off.
         ...(dates.hvApart ? [{ key: "hvDate", header: "HV as of", format: dated }] : []),

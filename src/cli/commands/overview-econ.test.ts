@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, setSystemTime, test } from "bun:test";
 import { setCloudApiFetchTransport } from "../../api-client/request";
 import { DEFAULT_CLI_OPTIONS, type CliGlobalOptions } from "../options";
 import { printCliResult, serializeCliResult } from "../result";
+import { setCliPlainOverride } from "../../utils/cli-output";
 import { isCliFailure } from "../errors";
 import { createTestCliContext } from "../../test-support/cli-context";
 import { attachEconCalendarPersistence, resetEconCalendarPersistence } from "../../plugins/builtin/econ/calendar-model";
@@ -164,6 +165,30 @@ test("rows a bank or a statistics office times itself show its clock; a bank tha
   expect(row).toMatchObject({ time: "", localTime: null, timeZone: "Europe/Istanbul", priorAsOf: "2026-10-16", prior: 39.5, priorText: "39.50%", actual: null });
   // The feeds' own calendar prints without the publisher's clock column.
   expect(await econText(twoWeeks, ["--country", "US"])).not.toContain("Local");
+});
+
+test("plain output, which keeps every column a query has, leaves out the Local and Viewer columns when nothing fills them", async () => {
+  const timed = { ...event("2026-10-22T12:00:00.000Z", "MX", "high", "Mid-Month CPI"), localTime: "06:00", timeZone: "America/Mexico_City" };
+  setCliPlainOverride(true);
+  try {
+    // A calendar of the feeds' own rows has no publisher clock and, without --tz, no viewer clock: no column of dashes for either.
+    const feeds = await econText(twoWeeks, ["--country", "US"]);
+    expect(feeds).toMatch(/Date\s+Day\s+Time\s+Country\s+Impact\s+Event\s+Actual\s+Forecast\s+Prior/);
+    expect(feeds).not.toContain("Local");
+    expect(feeds).not.toContain("Viewer");
+    // One row a publisher times itself brings the column back, with the dash on the rows that have none.
+    const mixed = await econText([...twoWeeks, timed], ["--country", "US,MX"]);
+    expect(mixed).toMatch(/Time\s+Local\s+Country/);
+    expect(mixed).toMatch(/12:00 UTC\s+06:00 Mexico City\s+MX\s+high\s+Mid-Month CPI/);
+    expect(mixed).toMatch(/12:30 UTC\s+—\s+US\s+high\s+Housing Starts/);
+    // --tz gives the viewer's clock its column, named for the zone.
+    expect(await econText(twoWeeks, ["--country", "US", "--tz", "America/New_York"])).toMatch(/Time\s+Day\s+New York\s+Country/);
+    // A script's CSV header keeps both columns whatever the rows hold.
+    const { result, options } = await econPrinted(twoWeeks, ["--country", "US"]);
+    expect(serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options).split("\n")[0]).toContain("Viewer,Local");
+  } finally {
+    setCliPlainOverride(null);
+  }
 });
 
 test("a row names who publishes it, the period it covers and its page, in the table and in every export", async () => {

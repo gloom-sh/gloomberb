@@ -69,13 +69,12 @@ async function renderPane(
   width: number,
   height: number,
   settings: Record<string, unknown> = {},
-  { portfolio = MAIN, tickers = mainTickers() }: { portfolio?: Portfolio; tickers?: TickerRecord[] } = {},
+  { portfolio = MAIN, tickers = mainTickers(), runtime = createTestPluginRuntime() }: { portfolio?: Portfolio; tickers?: TickerRecord[]; runtime?: ReturnType<typeof createTestPluginRuntime> } = {},
 ) {
   const config = createTestPaneConfig("/tmp/gloomberb-risk-pane-test", {
     paneId: "analytics", instanceId: PANE_ID, params: { portfolioId: portfolio.id }, settings: { analyticsView: "risk", ...settings },
   });
   config.portfolios = [portfolio];
-  const runtime = createTestPluginRuntime();
   function Harness() {
     const [paneState, setPaneState] = useState<AppState["paneState"]>({});
     const state = createInitialState(config);
@@ -94,6 +93,19 @@ async function renderPane(
   await settle();
   return () => tui.frame().trimEnd().split("\n");
 }
+
+test("a portfolio with no holdings says so with where holdings come from and a button to the Portfolio pane, as the other panes' empty states do", async () => {
+  const shown: string[] = [];
+  const runtime = createTestPluginRuntime({ showPane: (paneId) => { shown.push(paneId); } });
+  const frame = (await renderPane(100, 20, {}, { tickers: [], runtime }))().join("\n");
+  expect(frame).toContain("No holdings in this portfolio.");
+  expect(frame).toContain("Add holdings from the Portfolio pane (PF), or connect a broker in BR to sync them.");
+  // Not a table of dashes.
+  expect(frame).not.toContain("60D basket return");
+  await tui.clickFrameText("Open Portfolio");
+  await settle();
+  expect(shown).toEqual(["portfolio-list"]);
+});
 
 /** The value a table row shows, read from its line below the table header. */
 function rowValue(lines: string[], label: string): string {

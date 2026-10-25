@@ -326,6 +326,19 @@ function econHeadColumns(viewerZone: string | null): CliResultColumn[] {
 }
 
 /**
+ * The text table's columns up to the event. Plain output keeps every column a
+ * query has, so a column that is empty by construction has to be left out
+ * here, not hidden by the table: the viewer's clock only exists with --tz, and
+ * the publisher's own clock only on rows a bank or statistics office times
+ * itself. Exports keep both, so a script's header never moves.
+ */
+function econTextHeadColumns(viewerZone: string | null, publisherTimed: boolean): CliResultColumn[] {
+  return econHeadColumns(viewerZone).filter((column) => (
+    column.key === "viewerTime" ? !!viewerZone : column.key === "localTime" ? publisherTimed : true
+  ));
+}
+
+/**
  * Actual, Forecast and Prior: as the text draws them (`30.3K`, `-4.1M bbl`) in the table, as
  * numbers in the exports (30300, -4100000), where Unit and Scale say what they count and how they were drawn.
  */
@@ -553,7 +566,7 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
       }),
       // The exports add what a script needs to read a row; the text table keeps the columns it had.
       columns: [...econHeadColumns(viewerZone), ...econFigureColumns(false), ...econExportColumns],
-      textColumns: [...econHeadColumns(viewerZone), ...econFigureColumns(true), ECON_PUBLISHER_COLUMN],
+      textColumns: [...econTextHeadColumns(viewerZone, rows.some((row) => !!publisherClock(row.localTime, row.timeZone))), ...econFigureColumns(true), ECON_PUBLISHER_COLUMN],
     });
   });
 }

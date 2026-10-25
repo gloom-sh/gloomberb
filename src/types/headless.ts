@@ -672,9 +672,11 @@ export interface HeadlessPaneDefinition<Shape extends HeadlessPaneShape = Headle
   /**
    * A listing the function has no data for, answered before any request with
    * what exists instead: OPX and OVDV answer a coin nothing lists options on
-   * (SOL-USD) with BTC and ETH options. `key` is the listing as read.
+   * (SOL-USD) with BTC and ETH options, and OVDV, VCA and HIVG an FX pair with
+   * the currency funds' options. `key` is the listing as read; `details` is
+   * the line after `message`, left out when the message says it all.
    */
-  refuseSymbol?(key: string): { message: string; details: string } | null;
+  refuseSymbol?(key: string): { message: string; details?: string } | null;
   /**
    * `fn` exits 1 when the report has no name with data: no rows, or every row
    * is one of `unavailableSymbols`. A list that gives data for some names

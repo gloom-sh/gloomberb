@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listingIdentity } from "../shared/ticker-request";
 import { DataTableView, EmptyState, PaneStatusBody, QueryBar, usePaneFooter, usePaneNoticeFooter, usePaneTicker, type DataTableColumn } from "../../../components";
 import { instrumentFromTicker } from "../../../market-data/request-types";
+import { fxVolatilityNote } from "../../../market-data/options-alternatives";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useShortcut } from "../../../react/input";
@@ -54,7 +55,9 @@ export function IvHistoryPane({ width, height, focused }: PaneProps) {
     ]);
     return { payload, prices };
   }, [instrumentKey]);
-  const resource = useAsyncResource(instrument ? loader : null);
+  // An FX pair has no implied volatility history: the pane says what stands in, and asks for nothing.
+  const fxNote = symbol ? fxVolatilityNote(symbol, ticker?.metadata.exchange) : null;
+  const resource = useAsyncResource(instrument && !fxNote ? loader : null);
   useEffect(() => () => controller.current?.abort(), [loader]);
   useAutoRefresh(resource.updatedAt, resource.load);
   const model = useMemo(() => resource.data
@@ -120,7 +123,7 @@ export function IvHistoryPane({ width, height, focused }: PaneProps) {
       { id: "lookback", label: "Lookback", value: lookback, options: LOOKBACKS, onChange: setLookback },
       { id: "realized", label: "Realized", value: String(hvWindow), options: HV_OPTIONS, onChange: setHvWindow },
     ]} />
-    {!symbol ? <EmptyState title="Select a ticker." /> : <PaneStatusBody subject="implied volatility history" loading={resource.loading && !model}
+    {!symbol ? <EmptyState title="Select a ticker." /> : fxNote ? <PaneStatusBody empty emptyTitle={fxNote} /> : <PaneStatusBody subject="implied volatility history" loading={resource.loading && !model}
       error={!model ? resource.error ?? identityError ?? null : null} empty={!!model && !model.iv30.length && !model.quoteIv30.length}
       emptyTitle={model?.status === "queued" || model?.status === "backfilling" ? `Backfilling ${symbol} implied volatility history...` : undefined}>
       {model ? <>

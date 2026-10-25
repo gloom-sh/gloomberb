@@ -547,6 +547,59 @@ describe("pane catalog search", () => {
     expect(select(some, "price date", Number.POSITIVE_INFINITY).shown).toHaveLength(7);
   });
 
+  test("with no function carrying every word, the ones a word names lead the few closest, ahead of mentions in keywords and flags", () => {
+    const entry = (token: string, label: string, description: string, keywords: string[] = [], options: PaneCatalogEntry["capability"]["options"] = []) => ({
+      token,
+      label,
+      description,
+      paneId: token.toLowerCase(),
+      paneName: label,
+      shortcut: token,
+      aliases: [],
+      keywords,
+      defaultSettings: {},
+      capability: { ...capabilityFor(`${token.toLowerCase()}-pane`), aliases: keywords, options },
+    });
+    const flag = (key: string, description: string) => ({ key, type: "string" as const, description });
+    // Alphabetical order puts the weak matches first: a mention of each word, one in a keyword and one in a flag, matches both words.
+    const entries = [
+      entry("AAA", "Receipts", "A receipt beside its home listing.", ["implied fx"], [flag("size", "Share volume")]),
+      entry("BBB", "Alerts", "Alerts on a move.", ["fx rate"], [flag("kind", "Volume spike")]),
+      entry("FXC", "FX Cross Rates", "Currency cross-rate matrix.", ["fx"]),
+      entry("SURF", "Volatility Surface", "Implied smiles and skew.", ["vol"]),
+      entry("VOLS", "Cross-asset Volatility", "Index closes."),
+    ];
+    const { shown, loose, hidden } = selectPaneCatalogMatches(filterPaneCatalogEntries(entries, "fx vol"), "fx vol", 25);
+    expect(loose).toBe(true);
+    // Each of the three is named by a word; the two mentions come after them, so none is lost to the limit.
+    expect(shown.slice(0, 3).map(({ token }) => token).sort()).toEqual(["FXC", "SURF", "VOLS"]);
+    expect(shown.slice(3).map(({ token }) => token).sort()).toEqual(["AAA", "BBB"]);
+    expect(hidden).toBe(0);
+  });
+
+  test("fx vol lists the functions named for fx or vol without --all, volatility before volume", async () => {
+    const context = { config: createDefaultConfig("/tmp/capabilities-test") } as MarketContext;
+    const registry = await createPaneCatalog(context, getLoadablePlugins());
+    try {
+      const entries = await buildPaneCatalogEntries(registry, context);
+      const { shown, loose } = selectPaneCatalogMatches(filterPaneCatalogEntries(entries, "fx vol"), "fx vol", 25);
+      const tokens = shown.map(({ token }) => token);
+      expect(loose).toBe(true);
+      // Not ADR (a fund's implied FX rate), ALRT (volume alerts) or ATS (OTC volume), which only mention a word.
+      expect(tokens).toEqual(expect.arrayContaining(["FXC", "OVDV", "VOLS", "HVT", "VCA"]));
+      expect(tokens).not.toEqual(expect.arrayContaining(["ADR"]));
+      expect(tokens).not.toContain("ALRT");
+      expect(tokens).not.toContain("ATS");
+      // One word: the volatility functions before the two about volume.
+      const vol = filterPaneCatalogEntries(entries, "vol").map(({ token }) => token);
+      for (const volatility of ["VOLS", "OVDV", "HVT", "VCA"]) {
+        expect(vol.indexOf(volatility), volatility).toBeLessThan(Math.min(vol.indexOf("ATS"), vol.indexOf("SIV"), vol.indexOf("ALRT")));
+      }
+    } finally {
+      registry.destroy();
+    }
+  });
+
   test("an alias opens its function even when other functions contain the same letters", () => {
     const entry = (token: string, aliases: string[], keywords: string[]) => ({
       token,

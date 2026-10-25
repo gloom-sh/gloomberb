@@ -43,7 +43,7 @@ import { expiryLabel, formatIv, formatPrice, formatVolPoints, HIDDEN_SLOPE_TEXT,
   surfaceSkewRow, surfaceSpotBasisLabel } from "./tables";
 import { findListedExpiry, unlistedExpiryText } from "../../../utils/option-expiry";
 import { dvolCurrency, dvolGap, loadDvol, type DvolPayload } from "../volatility/dvol";
-import { COIN_OPTIONS_HINT, isCoinWithoutOptions, optionsUnavailableTitle } from "../../../market-data/options-alternatives";
+import { COIN_OPTIONS_HINT, fxVolatilityNote, isCoinWithoutOptions, optionsUnavailableTitle } from "../../../market-data/options-alternatives";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { surfaceThirtyDayAtm } from "./tables";
 
@@ -191,9 +191,10 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   const fateExchange = target?.effectiveExchange ?? "";
   const fateLoader = useCallback(async () => (await getSharedMarketDataCoordinator()
     ?.loadListingFate({ symbol: underlying, exchange: fateExchange }))?.note ?? null, [underlying, fateExchange]);
-  // A coin nothing lists options on (SOL-USD) says which coins have them.
+  // A coin nothing lists options on (SOL-USD) says which coins have them, and an FX pair which funds stand in.
   const coinNote = underlying && isCoinWithoutOptions(underlying)
-    ? `${optionsUnavailableTitle(parsePublicTickerKey(underlying).symbol)} ${COIN_OPTIONS_HINT}` : null;
+    ? `${optionsUnavailableTitle(parsePublicTickerKey(underlying).symbol)} ${COIN_OPTIONS_HINT}`
+    : underlying ? fxVolatilityNote(underlying, target?.effectiveExchange) : null;
   const fateNote = useAsyncResource(underlying && noChain && !coinNote ? fateLoader : null).data ?? coinNote;
   const ivRank = useIvRank(underlying || null);
   // A coin's options (BTC-USD, ETH-USD) come with Deribit's volatility index.

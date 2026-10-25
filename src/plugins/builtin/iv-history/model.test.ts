@@ -131,7 +131,9 @@ test("rich and cheap follow the IV percentile", () => {
   };
   const [projected] = projectRichCheap([row, { symbol: "ZZZZ", status: "queued", iv30: null, iv90: null, latest: null, skew: null }],
     new Map([["AAPL", hvSeries([["2026-09-23", 0.25]])]]));
-  expect(projected).toMatchObject({ iv30: 0.32, rankDate: "2026-09-22", verdict: "rich", skew: 0.07, iv1y: null, iv1yPercentile: null });
+  expect(projected).toMatchObject({ iv30: 0.32, rankDate: "2026-09-22", verdict: "rich", iv1y: null, iv1yPercentile: null });
+  // The server stores put minus call; the row is the risk reversal OVDV shows, call minus put.
+  expect(projected!.riskReversal).toBeCloseTo(-0.07, 10);
   // IVP1Y shows only when the 1Y series was ranked on the close IVR and IVP are.
   const oneYear = (date: string) => ({ ...row, latest: { ...row.latest!, iv365: 0.28 },
     iv365: { ...row.iv30!, value: 0.27, percentile: 35, date } });
@@ -287,12 +289,12 @@ describe("stale readings", () => {
     expect(rows[1]).toMatchObject({ hv: 0.061, hvDate: "2026-10-16", ivHv: null });
   });
 
-  test("a stale reading breaks the date every other row shares, and a stale skew is not shown", () => {
+  test("a stale reading breaks the date every other row shares, and a stale risk reversal is not shown", () => {
     const rows = projectRichCheap([screened("FXB", "2026-10-22"), screened("FXA", "2026-10-22"),
       screened("UDN", "2026-08-20", { skew: { date: "2026-08-20", put25: 0.2, call25: 0.18, skew: 0.02 } })]);
     expect(richCheapDates(rows.slice(0, 2)).reading).toMatchObject({ date: "2026-10-22" });
     expect(richCheapDates(rows).reading).toBeNull();
-    expect(rows[2]).toMatchObject({ stale: true, skew: null, skewDate: null });
+    expect(rows[2]).toMatchObject({ stale: true, riskReversal: null, skewDate: null });
   });
 
   test("a stale measure on a symbol's history is marked and unranked, and the note says which", () => {

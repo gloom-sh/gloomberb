@@ -474,6 +474,8 @@ export function riskCoverageNotices(coverage: RiskCoverage | undefined): string[
       `${row.symbol} (${row.share == null ? "value unknown" : `${shareText(row.share)} of the book`}) is excluded from the risk estimate: ${lowerFirst(row.reason.replace(/\.$/, ""))}.`,
   );
 }
+/** What an empty portfolio's pane says after "No holdings in this portfolio.": where holdings come from. */
+export const NO_HOLDINGS_HINT = "Add holdings from the Portfolio pane (PF), or connect a broker in BR to sync them.";
 /** Why the basket views show no estimate, when too little of the holdings qualifies. */
 export function riskCoverageShortfall(
   coverage: RiskCoverage | undefined,

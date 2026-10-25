@@ -30,6 +30,7 @@ import {
   useAsyncResource,
   useAutoRefresh,
   usePaneSettingValue,
+  usePluginAppActions,
   usePluginPaneState,
   useShortcut,
 } from "../../../public/react";
@@ -54,6 +55,7 @@ import {
   HOLDINGS_SHARE_UNIT,
   HOLDINGS_SUMMARY_ROW_IDS,
   isShockRow,
+  NO_HOLDINGS_HINT,
   portfolioRiskRequests,
   portfolioRiskTickers,
   riskCoverageLine,
@@ -234,6 +236,7 @@ function RiskDetail({
 export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
   const instance = usePaneInstance(),
     renderer = useRendererHost();
+  const { showPane } = usePluginAppActions();
   const portfolios = useAppSelector((state) => state.config.portfolios),
     tickers = useAppSelector((state) => state.tickers),
     brokerAccounts = useAppSelector((state) => state.brokerAccounts);
@@ -403,14 +406,16 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
   const model = derived.model;
   const marketLoading = resource.loading && !resource.data;
   // A basket view with nothing to estimate says why in the body, not with a table of dashes.
-  const basketBody = useMemo<{ loading?: boolean; error?: string; title?: string; message?: string } | null>(() => {
+  const basketBody = useMemo<{ loading?: boolean; error?: string; title?: string; message?: string; noHoldings?: boolean } | null>(() => {
     if (!model || !BASKET_VIEWS.has(view)) return null;
     if (!frozen && !resource.data)
       return marketLoading ? { loading: true } : resource.error ? { error: resource.error } : null;
     if (view === "holdings") return null;
     const shortfall = riskCoverageShortfall(model.coverage);
     // The currency and price shocks reprice the book without the basket, so they stay; the footer says why the basket scenarios do not.
-    return shortfall && view === "stress" && model.rows.stress.some(isShockRow) ? null : shortfall;
+    if (shortfall && view === "stress" && model.rows.stress.some(isShockRow)) return null;
+    // A portfolio with no holdings says where they come from, as the other panes' empty states do.
+    return shortfall && !model.coverage?.holdings ? { ...shortfall, message: NO_HOLDINGS_HINT, noHoldings: true } : shortfall;
   }, [frozen, marketLoading, model, resource.data, resource.error, view]);
   // Stress with too little covered for the basket scenarios, its shocks shown alone.
   const stressShortfall = useMemo(
@@ -816,6 +821,7 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
               loadingLabel="Loading portfolio risk"
               emptyTitle={basketBody.title}
               emptyMessage={basketBody.message || undefined}
+              actions={basketBody.noHoldings ? <Button label="Open Portfolio" compact onPress={() => showPane("portfolio-list")} /> : undefined}
             />
           ) : evidenceMissing ? (
             <PaneStatusBody
