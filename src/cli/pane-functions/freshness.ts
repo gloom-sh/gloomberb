@@ -920,10 +920,11 @@ function reopenText(market: ReportMarket, now: number, local: boolean): { text: 
 
 /**
  * `markets closed until Mon`; `short` is the compact form a narrow capture
- * falls back to (`reopens Mon`). A time is always the regular session's open,
- * and says so (`pre-market open · regular session opens 13:30 UTC`), so it is
+ * falls back to (`reopens Mon`). A time is the regular session's open, and
+ * says so (`pre-market open · regular session opens 13:30 UTC`), so it is
  * never read as when the pre-market opens, nor a US market as closed until
- * then while its pre-market trades first.
+ * then while its pre-market trades first. A futures venue's Sunday open is no
+ * regular session's, so it reads `markets closed · reopens 22:00 UTC`.
  */
 function marketText(market: ReportMarket, now: number, short: boolean, local: boolean): string {
   const reopen = reopenText(market, now, local);
@@ -937,6 +938,8 @@ function marketText(market: ReportMarket, now: number, short: boolean, local: bo
       return short ? `pre-market · regular opens ${reopen.text}` : `pre-market open · regular session opens ${reopen.text}`;
     case "closed":
       if (!reopen) return short ? "closed" : "markets closed";
+      // A futures venue's Sunday open is its first trade of the week, which no regular session is.
+      if (reopen.time && market.firstTrade) return short ? `reopens ${reopen.text}` : `markets closed · reopens ${reopen.text}`;
       if (reopen.time) return short ? `regular opens ${reopen.text}` : `markets closed · regular session opens ${reopen.text}`;
       return short ? `reopens ${reopen.text}` : `markets closed until ${reopen.text}`;
     default: {

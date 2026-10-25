@@ -267,6 +267,22 @@ describe("a quote older than its venue's latest completed session", () => {
     expect(quoteDotMarketState({ ...close, marketState: "REGULAR" }, regular)).toBe("REGULAR");
   });
 
+  test("a futures contract reads closed over the weekend, not the OPEN its last Friday tick stamped", () => {
+    // CL=F as the Futures board holds it: the last tick Friday at the 21:00 UTC close, still reading REGULAR.
+    const crude: Quote = { ...nyse("REGULAR", "2026-10-23T21:00:00Z"), symbol: "CL=F", listingExchangeName: "NY MERCANTILE", stale: true };
+    const sunday = Date.parse("2026-10-25T05:35:00Z");
+    expect(quoteSessionLabel(crude, sunday)).toBe("CLOSED");
+    expect(quoteMarketStateLabel(crude, sunday)).toBe("CLOSED");
+    expect(quoteSessionStateLabel(crude, sunday)).toBe("CLOSED");
+    expect(quoteSessionColor(crude, colors, sunday)).toBe(colors.textDim);
+    expect(quoteDotMarketState(crude, sunday)).toBe("CLOSED");
+    // After the Sunday 22:00 UTC open the source's state stands again, and so does a quote that never said.
+    const reopened = Date.parse("2026-10-25T22:05:00Z");
+    expect(quoteSessionLabel(crude, reopened)).toBe("OPEN");
+    expect(quoteDotMarketState(crude, reopened)).toBe("REGULAR");
+    expect(quoteSessionLabel({ ...crude, marketState: undefined }, sunday)).toBeNull();
+  });
+
   test("an FX pair or a coin keeps its state: neither has a session to fall behind", () => {
     const fx: Quote = { ...nyse("REGULAR", "2026-10-12T14:00:00Z"), symbol: "EURUSD=X", listingExchangeName: "CCY", stale: true };
     expect(quoteSessionLabel(fx, regular)).toBe("OPEN");

@@ -5,6 +5,7 @@ import type { BoardQuoteMap } from "../shared/use-quote-board";
 import { FUTURES_SECTOR_ORDER, type FuturesContract, type FuturesSector } from "../../../market-data/futures-board";
 import { futuresPriceUnit } from "../../../market-data/futures-contract";
 import { contractMonthLabel } from "../../../utils/contract-month";
+import { quoteDotMarketState } from "../../../market-data/market/status";
 import type { FuturesReturnHorizon } from "./returns";
 import type { FuturesTermsMap } from "./use-board-terms";
 import type { FrontReturnsMap } from "./use-front-returns";
@@ -169,7 +170,7 @@ function getSortValue(
     case "unit":
       return futuresUnitLabel(contract, terms?.get(contract.symbol)?.terms);
     case "status":
-      return quote?.marketState === "REGULAR" ? 0 : 1;
+      return quoteDotMarketState(quote) === "REGULAR" ? 0 : 1;
     case "code":
       return contract.code;
     case "name":

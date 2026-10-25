@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, setSystemTime, spyOn, test } from "bun:test";
 import { act } from "react";
 import { apiClient } from "../../../api-client";
 import type { FuturesContractTermsPayload } from "../../../api-client/futures-curve";
@@ -9,7 +9,8 @@ import type { QuoteBatchResult } from "../../../types/data-provider";
 import type { PinTickerOptions } from "../../../types/plugin";
 import type { PluginRuntimeAccess } from "../../runtime";
 import { futuresModule } from "./index";
-import { TestPaneProvider } from "../../../test-support/pane";
+import { TestPaneFrame, TestPaneProvider } from "../../../test-support/pane";
+import type { Quote } from "../../../types/financials";
 import { resetFuturesBoardTerms } from "./use-board-terms";
 
 const FuturesPane = futuresModule.panes![0]!.component as (props: {
@@ -43,12 +44,13 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  setSystemTime();
   pinned.length = 0;
   termsSpy?.mockRestore();
   resetFuturesBoardTerms();
 });
 
-function makeRuntime(quoteError?: string): PluginRuntimeAccess {
+function makeRuntime(quoteError?: string, quoteOverrides: Partial<Quote> = {}): PluginRuntimeAccess {
   const marketData = quoteError ? {
     getQuote: async () => { throw new Error(quoteError); },
     getQuotesBatch: async (targets: Array<{ symbol: string }>): Promise<QuoteBatchResult[]> => (
@@ -64,6 +66,7 @@ function makeRuntime(quoteError?: string): PluginRuntimeAccess {
       changePercent: 1,
       marketState: "REGULAR" as const,
       lastUpdated: Date.now(),
+      ...quoteOverrides,
     }),
     getQuotesBatch: async (targets: Array<{ symbol: string }>): Promise<QuoteBatchResult[]> => (
       targets.map((target) => ({
@@ -75,6 +78,7 @@ function makeRuntime(quoteError?: string): PluginRuntimeAccess {
           changePercent: 1,
           marketState: "REGULAR" as const,
           lastUpdated: Date.now(),
+          ...quoteOverrides,
         },
       })) as QuoteBatchResult[]
     ),
@@ -253,6 +257,26 @@ describe("FuturesPane", () => {
     const narrow = tui.frame().split("\n").find((line) => line.includes("WTI Crude Oil"));
     expect(narrow).toContain("WTI Crude Oil Dec 2026");
     expect(narrow).toContain("USD / barrel");
+  });
+
+  test("over the weekend every row reads closed, not the open its Friday tick stamped", async () => {
+    // Sunday 05:35 UTC: CME reopens at 22:00 UTC. Gloom Cloud still served Friday's last tick, stale, reading REGULAR.
+    setSystemTime(new Date("2026-10-25T05:35:00Z"));
+    const stale: Partial<Quote> = { stale: true, lastUpdated: Date.parse("2026-10-23T21:00:00Z"), listingExchangeName: "CME", exchangeName: "CME" };
+    const state = createInitialState(createDefaultConfig("/tmp/gloomberb-futures-pane-test"));
+    await tui.render(
+      <TestPaneFrame state={state} paneId="futures" runtime={makeRuntime(undefined, stale)} pluginId="market-overview" width={120} height={30}>
+        {(body) => <FuturesPane paneId="futures" paneType="futures" focused width={body.width} height={body.height} />}
+      </TestPaneFrame>,
+      { width: 120, height: 30 },
+    );
+    await renderSettled();
+    await renderSettled();
+
+    const frame = tui.frame();
+    const contract = frame.split("\n").find((line) => line.includes("E-Mini S&P 500"));
+    expect(contract).toContain("CLOSED");
+    expect(frame).not.toContain("OPEN");
   });
 
   test("search narrows the board to matching contracts", async () => {

@@ -442,6 +442,33 @@ describe("report freshness", () => {
       .toBe("Source: Gloom Cloud · Wed 14 Oct 2026 13:59 UTC · 15 min delayed · markets open");
   });
 
+  test("futures are closed from the Friday close to the Sunday open, whatever state a quote stamped before it", () => {
+    // The FUT board's rows as Gloom Cloud serves them: each venue by its full name, the last tick Friday at the 21:00 UTC close.
+    const status = (time: string, marketState: "REGULAR" | "CLOSED", lastUpdated: string, stale: boolean) => {
+      const now = Date.parse(time);
+      const observations = [["CME", "ES=F"], ["NY MERCANTILE", "CL=F"], ["COMEX", "GC=F"], ["CBOT", "ZC=F"], ["ICE FUTURES", "KC=F"]]
+        .map(([venue, symbol]) => quoteObservation(createTestQuote({
+          symbol, instrumentType: "FUTURE", listingExchangeName: venue, exchangeName: venue, marketState, stale,
+          dataSource: "delayed", providerId: "gloomberb-cloud", lastUpdated: Date.parse(lastUpdated),
+        }), now));
+      return paneStatusLine(deriveHeadlessFreshness(rows(), { rows: observations }, now));
+    };
+    const friday = "2026-10-23T21:00:00Z";
+    // Sunday 05:35 UTC, the Futures pane's capture: stale rows still reading REGULAR were "markets open".
+    expect(status("2026-10-25T05:35:00Z", "REGULAR", friday, true))
+      .toBe("Fri 23 Oct 2026 close · stale (32 hours old) · markets closed · reopens 22:00 UTC");
+    expect(status("2026-10-25T05:35:00Z", "CLOSED", friday, true))
+      .toBe("Fri 23 Oct 2026 close · stale (32 hours old) · markets closed · reopens 22:00 UTC");
+    // Saturday: the weekday of the open, as every other market names its Monday.
+    expect(status("2026-10-24T12:00:00Z", "REGULAR", friday, true))
+      .toBe("Fri 23 Oct 2026 close · stale (15 hours old) · markets closed until Sun");
+    // Just after the Sunday open, a board whose source says open is open; so is Monday's.
+    expect(status("2026-10-25T22:05:00Z", "REGULAR", "2026-10-25T22:00:00Z", false))
+      .toBe("22:00 UTC · 15 min delayed · markets open");
+    expect(status("2026-10-26T09:00:00Z", "REGULAR", "2026-10-26T08:59:00Z", false))
+      .toBe("08:59 UTC · 15 min delayed · markets open");
+  });
+
   test("filed data is never stale for its age, only for a release it missed", () => {
     const filings = rows({ source: "SEC EDGAR", status: "not-a-feed", basis: "filed data", observedKey: "filedAt", oldest: null });
     expect(line(filings, { rows: [{ filedAt: "2025-02-01" }, { filedAt: "2019-03-01" }] }))

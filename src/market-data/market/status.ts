@@ -6,6 +6,7 @@ import { quoteTradingDay } from "../quotes/day-range";
 import { isQuoteBeforeLatestSession } from "../quotes/freshness";
 import { delistingLabel, delistingStateLabel } from "../quotes/delisting";
 import { preMarketOpenOn, regularSessionCloseOn } from "./freshness";
+import { futuresWeekendClosure } from "./futures-week";
 
 const CLOSED_CHANGE_MUTING_RATIO = 0.55;
 const US_SESSION_TIME = new Intl.DateTimeFormat("en-US", {
@@ -98,6 +99,17 @@ function closeLabel(date: string): string {
 }
 
 /**
+ * The market state a quote's venue is in now. A futures venue's weekend gap
+ * closes every contract, so it outranks the state a quote stamped before the
+ * Friday close (a stale print reading REGULAR on a Sunday); every other quote
+ * keeps the state its source reported.
+ */
+function quoteMarketState(quote: Quote | null | undefined, now = Date.now()): MarketState | undefined {
+  if (!quote?.marketState) return undefined;
+  return futuresWeekendClosure(quote.listingExchangeName || quote.exchangeName, now) ? "CLOSED" : quote.marketState;
+}
+
+/**
  * A quote's market state as a status cell names it (marketStateLabel), STALE
  * for a print older than its venue's latest session, and the close it stands
  * at (`Thu close`) in a pre-market nothing has traded in yet. A listing that
@@ -109,7 +121,7 @@ export function quoteMarketStateLabel(quote: Quote | null | undefined, now = Dat
   if (!quote?.marketState) return null;
   if (isQuoteBeforeLatestSession(quote, now)) return STALE_SESSION_LABEL;
   const awaiting = preMarketCloseAwaitingPrint(quote);
-  return awaiting ? closeLabel(awaiting.date) : marketStateLabel(quote.marketState);
+  return awaiting ? closeLabel(awaiting.date) : marketStateLabel(quoteMarketState(quote, now)!);
 }
 
 /** An extended session's column, named as marketStateLabel names its state. */
@@ -216,7 +228,7 @@ function sessionLabel(quote: Quote | null | undefined, now: number, standingClos
   if (isQuoteBeforeLatestSession(quote, now)) return STALE_SESSION_LABEL;
   if (overnightSessionDisplay(quote)) return "OVERNIGHT";
   const awaiting = standingClose ? preMarketCloseAwaitingPrint(quote) : null;
-  return awaiting ? closeLabel(awaiting.date) : marketStateLabel(quote.marketState);
+  return awaiting ? closeLabel(awaiting.date) : marketStateLabel(quoteMarketState(quote, now)!);
 }
 
 /**
@@ -230,7 +242,7 @@ export function quoteSessionColor(quote: Quote | null | undefined, palette: Them
   if (!quote?.marketState) return palette.textDim;
   if (isQuoteBeforeLatestSession(quote, now)) return palette.warning;
   if (overnightSessionDisplay(quote)) return marketStateColor("POST", palette);
-  return marketStateColor(preMarketCloseAwaitingPrint(quote) ? "CLOSED" : quote.marketState, palette);
+  return marketStateColor(preMarketCloseAwaitingPrint(quote) ? "CLOSED" : quoteMarketState(quote, now)!, palette);
 }
 
 /**
@@ -239,7 +251,7 @@ export function quoteSessionColor(quote: Quote | null | undefined, palette: Them
  * with no known session rather than an open market.
  */
 export function quoteDotMarketState(quote: Quote | null | undefined, now = Date.now()): MarketState | undefined {
-  return quote && !quote.delisting && !isQuoteBeforeLatestSession(quote, now) ? quote.marketState : undefined;
+  return quote && !quote.delisting && !isQuoteBeforeLatestSession(quote, now) ? quoteMarketState(quote, now) : undefined;
 }
 
 /** Closed prices are final snapshots, so they should not look live or directional. */
