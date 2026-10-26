@@ -1,5 +1,5 @@
 import { apiClient } from "../../../api-client";
-import type { FundFactsPayload, FundFlows, FundLeverage, FundMetalHoldings } from "../../../api-client/fund-facts";
+import type { FundFactsPayload, FundLeverage, FundMetalHoldings } from "../../../api-client/fund-facts";
 import type { StatItem } from "../../../components/ui/stat-grid";
 import { leverageFactorLabel } from "../../../time-series/leverage";
 import { t, tf } from "../../../i18n";
@@ -7,7 +7,8 @@ import { createPluginCache } from "../../../data/plugin-cache";
 import type { HeadlessPaneEntry } from "../../../types/plugin";
 import { errorMessage } from "../../../utils/errors";
 import { formatCompact } from "../../../utils/format";
-import { bondClassText, bondFigures, isBondFactsShape } from "../../../market-data/bond-funds";
+import { bondClassText, bondFigures } from "../../../market-data/bond-funds";
+import { readFundFacts, validateFundFacts } from "../../../market-data/fund-facts";
 import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
 
 /** Sponsors publish once a day, in the US evening; a copy younger than this is not asked for again. */
@@ -16,38 +17,6 @@ export const fundFactsCache = createPluginCache<FundFactsPayload>({
 });
 
 type Client = Pick<typeof apiClient, "getFundFacts">;
-
-const fact = (value: unknown) => value === null || (typeof value === "object" && value !== null && "value" in value && "source" in value);
-const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
-
-function isMetalHoldingsShape(value: FundFactsPayload["metalHoldings"]): boolean {
-  return value == null || ((value.metal === "gold" || value.metal === "silver") && typeof value.asOf === "string" && finite(value.ounces)
-    && (value.tonnes === null || finite(value.tonnes)) && typeof value.source?.publisher === "string"
-    && (value.change === null || (typeof value.change?.since === "string" && finite(value.change.ounces))));
-}
-
-/** Absent from servers before it; otherwise a dated factor with its reset period. */
-const leverageShape = (value: FundFactsPayload["leverage"]) => value === undefined || value === null
-  || (fact(value) && typeof value.value === "number" && Number.isFinite(value.value) && (value.reset === "daily" || value.reset === "monthly"));
-
-/** A NAV's estimate range, when the sponsor published one: absent, or two ends in order. */
-const estimateShape = (nav: FundFactsPayload["nav"]) => !nav?.estimate
-  || (finite(nav.estimate.low) && finite(nav.estimate.high) && nav.estimate.low <= nav.estimate.high);
-
-/** Absent from servers before them; otherwise a dated count, and a change between two dated counts. */
-const sharesShape = (value: FundFactsPayload["sharesOutstanding"]) => value == null || (fact(value) && finite(value.value));
-const flowsShape = (value: FundFlows | null | undefined) => value == null
-  || (finite(value.shares) && (value.value === null || finite(value.value)) && typeof value.from === "string" && typeof value.asOf === "string");
-
-function validateFundFacts(data: FundFactsPayload): FundFactsPayload {
-  if (!data || typeof data.ticker !== "string" || typeof data.covered !== "boolean"
-    || ![data.expenseRatio, data.nav, data.premiumDiscount, data.netAssets, data.sponsor, data.inception, data.index].every(fact)
-    || !estimateShape(data.nav) || !sharesShape(data.sharesOutstanding) || !flowsShape(data.flows)
-    || !isBondFactsShape(data.bond) || !leverageShape(data.leverage) || !isMetalHoldingsShape(data.metalHoldings)) {
-    throw new Error("Unreadable fund facts response");
-  }
-  return data;
-}
 
 export const FUND_FACTS_UNAVAILABLE = "Fund facts are not available on this server yet.";
 
@@ -64,7 +33,7 @@ export function fundFactsErrorLine(error: unknown): string {
 }
 
 export async function fetchFundFacts(ticker: string, client: Client = apiClient, signal?: AbortSignal): Promise<FundFactsPayload> {
-  try { return validateFundFacts(await (signal ? client.getFundFacts(ticker, { signal }) : client.getFundFacts(ticker))); } catch (error) { throw unavailableOnServer(error, FUND_FACTS_UNAVAILABLE); }
+  try { return await readFundFacts(ticker, client, signal); } catch (error) { throw unavailableOnServer(error, FUND_FACTS_UNAVAILABLE); }
 }
 const cacheKey = (ticker: string) => ticker.trim().toUpperCase();
 export const cachedFundFacts = (ticker: string) => cachedCloudResource(fundFactsCache, cacheKey(ticker), validateFundFacts);

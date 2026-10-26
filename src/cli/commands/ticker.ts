@@ -98,7 +98,7 @@ import type { BankFiguresPayload } from "../../api-client/bank-figures";
 import { bankSection } from "../bank-section";
 import type { FundBondFacts, FundFactsPayload } from "../../api-client/fund-facts";
 import { bondFigures, NOT_SEC_YIELD } from "../../market-data/bond-funds";
-import { fetchFundFacts } from "../../plugins/builtin/sec/fund-facts";
+import { readFundFacts } from "../../market-data/fund-facts";
 import { taxEquivalentLines, type TaxEquivalentAnalysis } from "../../market-data/tax-equivalent";
 import { isRoundTheClockCoin } from "../../utils/crypto-pair";
 import { coinNewsFallbackNotice } from "../../sources/gloomberb-cloud/news";
@@ -678,7 +678,7 @@ export async function loadReportFundFacts(
   exchange: string | undefined,
   financials: Pick<TickerFinancials, "quote" | "quoteMetadata">,
   tickerFile: TickerRecord | null = null,
-  load: (symbol: string) => Promise<FundFactsPayload> = (ticker) => fetchFundFacts(ticker),
+  load: (symbol: string) => Promise<FundFactsPayload> = (ticker) => readFundFacts(ticker),
 ): Promise<FundFactsPayload | null> {
   if (resolveTickerInstrumentKind(tickerFile, financials) !== "fund" || (exchange && !isUsListingExchange(exchange))) return null;
   try {
