@@ -12,6 +12,7 @@ import { buildQuoteKey } from "../../../market-data/selectors";
 import type { Quote } from "../../../types/financials";
 import { formatCurrency, formatPercentRaw } from "../../../utils/format";
 import { fetchSavedScreens, fetchScreen, fetchScreenCheck } from "./client";
+import { SCREEN_IDEAS, screenIdea } from "./ideas";
 import { checkRows, screenCheckSummary, screenCheckTicker } from "./screen-check";
 import { overlayScreenQuotes, screenExtendedSessions, sortLiveScreenRows } from "./live";
 import {
@@ -113,6 +114,14 @@ export const equityScreenerHeadless: HeadlessPaneDefinition<"bundle"> = {
       replaces: ["definition"],
     },
     {
+      key: "preset",
+      type: "enum",
+      description: `A ready screen from Ideas, ranked by its own metric unless --metric says otherwise: ${SCREEN_IDEAS.map((entry) => `${entry.id} (${entry.name})`).join(", ")}. Cannot be combined with --saved or --definition.`,
+      values: SCREEN_IDEAS.map((entry) => ({ value: entry.id })),
+      example: "--preset golden-cross",
+      replaces: ["definition", "saved"],
+    },
+    {
       key: "definition",
       type: "string",
       placeholder: "json",
@@ -126,10 +135,10 @@ export const equityScreenerHeadless: HeadlessPaneDefinition<"bundle"> = {
     {
       key: "metric",
       type: "enum",
+      // No default: a preset leads with its own metric, anything else with marketCap.
       description:
-        "Metric to display with its source date and covered-universe rank.",
+        "Metric to display with its source date and covered-universe rank: marketCap, or the preset's own metric.",
       values: NUMERIC_FIELDS.map((value) => ({ value })),
-      defaultValue: "marketCap",
     },
   ],
   describe: "Equity screener",
@@ -142,13 +151,16 @@ export const equityScreenerHeadless: HeadlessPaneDefinition<"bundle"> = {
       "Observed-subset insider activity cannot establish an absence.",
       "ATR% is the 14-session average true range as a percent of the last close, for US listings with at least 15 completed daily sessions.",
       "IV rank is a rank, not an IV percentile: 0 is the lowest 30-day implied volatility of the past 52 weeks and 100 the highest.",
+      "Technical fields (RSI, moving averages, MACD and golden crosses, new highs and lows, Bollinger width) read US listings' completed daily sessions: they describe the last close, not the session in progress. A days-since field counts trading days, 0 at the last session.",
     ],
   },
   async load(args, ctx) {
-    if (args.options.saved && args.options.definition) throw new Error("Choose --saved or --definition, not both.");
-    let definition = args.options.definition
+    if ([args.options.preset, args.options.saved, args.options.definition].filter(Boolean).length > 1)
+      throw new Error(args.options.preset ? "Choose one of --preset, --saved and --definition." : "Choose --saved or --definition, not both.");
+    const preset = screenIdea(args.options.preset == null ? undefined : String(args.options.preset));
+    let definition = preset?.definition ?? (args.options.definition
       ? readDefinition(String(args.options.definition))
-      : DEFAULT_SCREEN;
+      : DEFAULT_SCREEN);
     let savedName: string | undefined;
     if (args.options.saved) {
       const screens = await fetchSavedScreens(ctx.signal, ctx.apiClient);
@@ -190,7 +202,7 @@ export const equityScreenerHeadless: HeadlessPaneDefinition<"bundle"> = {
       };
     }
     const data = await fetchScreen(definition, null, ctx.signal, ctx.apiClient);
-    const metric = (args.options.metric ?? "marketCap") as NumericField;
+    const metric = (args.options.metric ?? preset?.metric ?? "marketCap") as NumericField;
     // Last, Chg% and market cap are the regular session, as `quote` and the
     // pane read each row's quote; an extended print is a column of its own.
     // A sort on one of them is redone on those figures.

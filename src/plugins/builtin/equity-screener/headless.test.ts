@@ -3,6 +3,7 @@ import { KPI_FIELDS } from "../../../api-client/equity-screener";
 import { isProLock } from "../../../cli/pane-functions/access-gate";
 import { MAX_TOOL_RESULT_BYTES } from "../cloud/askg/protocol";
 import { equityScreenerHeadless } from "./headless";
+import { SCREEN_IDEAS } from "./ideas";
 import { parseScreenDefinition } from "./model";
 import { screenFixture } from "./test-fixture";
 
@@ -87,4 +88,36 @@ test("a screen its currency emptied says the currency keeps only listings quoted
   const usdOnly = { ...tobacco, universe: { ...tobacco.universe, currencies: ["USD"] } };
   expect(await load(usdOnly)).toStartWith("None of the 4,287 covered listings is quoted in CAD. Currency CAD keeps only the listings quoted in CAD and converts nothing; the covered listings are quoted in USD.");
   expect(await load({ ...tobacco, definition: { ...tobacco.definition, currency: "USD" } })).toBeUndefined();
+});
+
+test("--preset golden-cross runs the Ideas screen on days since the cross, and a preset is one choice of three", async () => {
+  const data = screenFixture();
+  data.definition = structuredClone(SCREEN_IDEAS.find((idea) => idea.id === "golden-cross")!.definition);
+  data.rows[0]!.metrics.goldenCrossDays = { ...data.rows[0]!.metrics.goldenCrossDays, value: 4, unit: "days", asOf: "2026-09-21", state: "available", scope: "derived" };
+  const queried: unknown[] = [];
+  const apiClient = { equityScreener: async (_path: string, init?: { body?: string }) => {
+    const { version, currency, criteria, sort } = JSON.parse(init!.body!);
+    queried.push({ version, currency, criteria, sort });
+    return structuredClone(data);
+  } };
+  const load = (options: Record<string, string>) => equityScreenerHeadless.load({ argument: undefined, options } as never, { apiClient } as never);
+  const result = await load({ preset: "golden-cross" });
+  expect(queried[0]).toEqual({
+    version: 1,
+    currency: "USD",
+    criteria: [{ field: "goldenCrossDays", op: "lte", value: 10 }, { field: "marketCap", op: "gte", value: 2_000_000_000 }],
+    sort: { field: "goldenCrossDays", direction: "asc" },
+  });
+  const section = result.sections![0]!;
+  expect(section.columns!.find((column) => column.key === "value")!.header).toBe("GOLDEN X AGO");
+  expect(section.rows![0]).toMatchObject({ symbol: "AAPL", value: "4", unit: "days", asOf: "2026-09-21" });
+  // --metric still names the column.
+  const priced = await load({ preset: "golden-cross", metric: "priceVsSma200Percent" });
+  expect(priced.sections![0]!.columns!.find((column) => column.key === "value")!.header).toBe("VS SMA200%");
+
+  expect(equityScreenerHeadless.options.find((option) => option.key === "preset")!.values!.map((value) => value.value))
+    .toEqual(SCREEN_IDEAS.map((idea) => idea.id));
+  await expect(load({ preset: "golden-cross", saved: "Growth" })).rejects.toThrow("Choose one of --preset, --saved and --definition.");
+  // Every idea is a definition the validator takes.
+  for (const idea of SCREEN_IDEAS) expect(parseScreenDefinition(idea.definition)).toEqual(idea.definition);
 });

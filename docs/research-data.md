@@ -1388,6 +1388,21 @@ an invalid bar or fewer than 15 sessions leaves it unavailable. IV rank is a ran
 not an IV percentile: 0 is the lowest 30-day implied volatility of the past 52 weeks
 and 100 the highest.
 
+The technical fields are read from the same stored daily bars, US listings only,
+over the latest run of consecutive completed sessions (at most 300), all at the last
+one. RSI 14 and the distance from the 20, 50 and 200-session simple averages are the
+readings a daily RSI or moving-average price alert takes; a golden or death cross is
+judged as the moving-average cross alert judges one, from at or under to over. MACD
+(12, 26, 9) and the Bollinger bands (20 sessions, two population deviations) are the
+chart studies', an EMA starting from the mean of its first period. A days-since field
+counts sessions to the latest event, 0 at the last session, and looks back 60
+sessions (10 for a new 52-week high or low, which compares a session with every
+session of the 365 days before it). The Bollinger width percentile is the share of
+the previous 125 widths below the last one. A field without the closes it needs
+(15 for RSI, the period for an average, 35 for MACD, 201 for a 50/200 cross, 145 for
+the width percentile) is unavailable and says so; a field read more than five days after
+its last session is stale.
+
 Growth compares matching annual periods with compatible currency and a positive
 base. Margins use reported revenue and their corresponding profit measure.
 Insider purchase/sale counts reflect observed filings and are lower bounds;

@@ -2,6 +2,17 @@
 export const KPI_FIELDS = ["kpiArr", "kpiNrrPercent", "kpiRpo", "kpiCrpo", "kpiSubscribers", "kpiDau", "kpiMau", "kpiGmv", "kpiTakeRatePercent", "kpiSameStoreSalesPercent", "kpiStores", "kpiBacklog", "kpiBookToBill", "kpiNimPercent", "kpiCet1Percent", "kpiCombinedRatioPercent", "kpiOccupancyPercent", "kpiLoadFactorPercent", "guideRevenueChangePercent", "guideEpsChangePercent"] as const;
 /** Payout ratio and dividend growth; listed only when asked (`include=dividends`), and omitted by a server from before them. */
 export const DIVIDEND_FIELDS = ["payoutRatioPercent", "dividendGrowth1YPercent", "dividendGrowth3YPercent"] as const;
+/**
+ * Technical readings of the stored daily bars at the last completed session; listed only when asked
+ * (`include=technical`), and omitted by a server from before them.
+ */
+export const TECHNICAL_FIELDS = [
+  "rsi14",
+  "priceVsSma20Percent", "priceVsSma50Percent", "priceVsSma200Percent",
+  "macdBullishCrossDays", "macdBearishCrossDays", "goldenCrossDays", "deathCrossDays",
+  "newHigh20dDays", "newLow20dDays", "newHigh52wDays", "newLow52wDays",
+  "bollingerWidthPercentile",
+] as const;
 export const NUMERIC_FIELDS = [
   ...KPI_FIELDS,
   "price",
@@ -42,6 +53,7 @@ export const NUMERIC_FIELDS = [
   "fromHigh52WPercent",
   "beta",
   "atrPercent",
+  ...TECHNICAL_FIELDS,
   "priceToBook",
   "evToEbitda",
   "roePercent",

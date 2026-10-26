@@ -598,7 +598,7 @@ A zero or negative price is kept for a futures instrument. For any other instrum
 | `FUT` | Futures quote aliases across index, equity sectors, rates, energy, metals, grains and softs, livestock, and FX |
 | `RRG` / `GRR` | Weekly relative rotation of sectors or a watchlist against a benchmark, with dated trails |
 | `BT <ticker>` / `BTST <ticker>` | Backtest a long-only indicator rule on daily history against buy-and-hold |
-| `EQS` | Equity screener over the stored Cloud universe: valuation, growth, margins, short interest, insider and 13F criteria, saved screens and export |
+| `EQS` | Equity screener over the stored Cloud universe: valuation, growth, margins, technicals, short interest, insider and 13F criteria, ready technical screens, saved screens and export |
 | `PERP [market]` | Perpetual funding, open interest and premiums: a board, rankings and one asset across venues (Pro history; free preview) |
 | `CRYP` | Top crypto assets by market cap with live prices, 7D, 30D and 1Y returns, 24h volume and market cap. Stablecoins have their own tab |
 | `ETFF` | Daily net flows of the US spot bitcoin and ether ETFs, fund by fund in US$ millions, with the last 5 and 20 days and the running total since launch |
@@ -2382,6 +2382,14 @@ Besides valuation, growth, margins, short interest, insider and 13F activity and
 - **VS 52W HI%**: price against the highest high of the last 52 weeks, 0 at a new high.
 - **Beta**: raw beta of two years of weekly returns against SPY, US listings.
 - **ATR%**: the 14-session average true range (Wilder's, as in the chart's ATR study) as a percent of the last close, US listings. A gap counts. Unavailable with fewer than 15 completed sessions. Pair it with Beta and IV RANK to screen volatility.
+- **Technicals**, US listings, at the last completed session (the session in progress never counts):
+  - **RSI 14** (`rsi14`) and **VS SMA20%**, **VS SMA50%**, **VS SMA200%** (`priceVsSma200Percent`, ...): the readings an RSI or moving-average price alert takes, so a screen and an alert agree. Above 0 the close is over its average.
+  - **MACD BULL AGO** and **MACD BEAR AGO** (`macdBullishCrossDays`, `macdBearishCrossDays`): trading days since MACD (12, 26) crossed above or below its 9-session signal line, 0 at the last session, within 60 sessions. Only the side of the latest cross has a value; the other says where the line went.
+  - **GOLDEN X AGO** and **DEATH X AGO** (`goldenCrossDays`, `deathCrossDays`): the same for the 50-session average crossing the 200-session, judged as the moving-average cross alert judges one. They need 201 consecutive sessions.
+  - **20D HIGH AGO**, **20D LOW AGO** (`newHigh20dDays`, ...): trading days since a session's high went over the 20 sessions before it (its low under them), within 60 sessions. **52W HIGH AGO** and **52W LOW AGO** do the same against the 52 weeks before, within 10 sessions.
+  - **BB WIDTH PCTL** (`bollingerWidthPercentile`): the 20-session, 2-deviation Bollinger band width (as in the chart study) ranked against its previous 125 sessions. 0 is the narrowest in six months, a squeeze.
+
+  A field without the sessions it needs is unavailable and says how many. `goldenCrossDays lte 10` is a golden cross in the last ten sessions.
 - **P/B**, **EV/EBITDA** and **FY ROE%**: market cap over latest balance-sheet equity; the enterprise value the valuation view shows over the last four quarters' EBITDA, unavailable where that EV is withdrawn (under 0.7x or over 1.5x market cap plus debt minus cash); annual net income over average equity. Statements in another currency than the market cap (most ADRs) leave them unavailable.
 - **EPS REV 30D%**: change in the current fiscal year's consensus EPS over 30 days, unavailable when the fiscal year rolled in between.
 - **UPSIDE%**: mean analyst price target over the price.
@@ -2389,7 +2397,7 @@ Besides valuation, growth, margins, short interest, insider and 13F activity and
 - **FY PAYOUT%** (`payoutRatioPercent`): common dividends paid in the latest fiscal year over net income attributable to the parent, from SEC filings, so US filers only; unavailable when the income is zero or negative.
 - **DIV GR 1Y%** and **DIV CAGR 3Y%** (`dividendGrowth1YPercent`, `dividendGrowth3YPercent`): trailing twelve-month cash per share against one and three years before, the growth `DVD` shows, compounded yearly for 3Y. A payer that stopped reads -100%; a company with too short a history or none paid in the base year has none. Distribution history is stored for most large USD payers and fewer elsewhere.
 
-Returns, EPS revisions, upside and dividend growth take the sign colour.
+Returns, EPS revisions, upside, dividend growth and the distances from the moving averages take the sign colour.
 
 ### Results
 
@@ -2398,6 +2406,8 @@ Results lead with the chosen metric and its covered-universe percentile, then on
 - Price, change and market cap follow the live quote while the regular session trades. Otherwise they are the last regular close and its move, as `quote` shows them, and a PRE-MKT, AFTER-HRS or OVERNIGHT column beside CHG% carries the extended print's move while a row has one. The screen filters, sorts and ranks by the close.
 - Click a metric header to sort by it and make it the focus, again to reverse. The footer shows matches, covered listings, currency and the snapshot time.
 - Enter opens a company's dated observations, `o` opens it in Ticker Research.
+
+**Ideas** holds ready technical screens of companies above $2 billion: oversold in an uptrend (RSI 14 at most 30 over the 200-session average), a fresh golden cross (10 sessions), a 52-week high breakout (at the last session, largest first), a Bollinger squeeze (width percentile at most 5) and MACD turning up in an uptrend. Enter opens one in Results on its own metric, where its criteria can be edited and saved like any screen.
 
 `s` saves a named screen to your Cloud account, **Saved** restores one, and **Save copy** creates another (saving an existing screen updates its revision). Conflicting edits from another device are reported. `x` exports all matches from the displayed snapshot, up to 5,000 rows, and the pane CSV menu exports the loaded rows. Expired snapshots ask for a refresh first.
 
@@ -2426,6 +2436,13 @@ gloom fn EQS --check NVDA --definition '{"version":1,"currency":"USD","criteria"
 
 ```sh
 gloom fn EQS --definition '{"version":1,"currency":"USD","criteria":[{"field":"trailingPE","op":"between","value":[0,25]},{"field":"revenueGrowthPercent","op":"gte","value":10}],"sort":{"field":"marketCap","direction":"desc"}}' --json
+```
+
+`--preset` runs a screen from Ideas (`oversold-uptrend`, `golden-cross`, `52-week-high`, `bollinger-squeeze`, `macd-turn`) and shows its own metric unless `--metric` names another. `--csv` writes the same rows:
+
+```sh
+gloom fn EQS --preset golden-cross
+gloom fn EQS --preset oversold-uptrend --metric priceVsSma200Percent --csv
 ```
 
 Company KPIs and guidance (`kpiBacklog`, `kpiNimPercent`, ...) and hiring and app attention are Pro. On Free their rows read `locked` and the report says so once (`The free screener shows no KPI values; Gloom Pro shows each company's Backlog`). With Pro, a KPI column with gaps says how many rows have none, and missing data is not zero.

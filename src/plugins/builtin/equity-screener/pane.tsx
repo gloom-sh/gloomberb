@@ -54,6 +54,7 @@ import { useSampledValue } from "../../../state/hooks/live-ticker-financials";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import { SignInWall } from "../cloud/auth-actions";
 import { CriterionEditor } from "./criterion-editor";
+import { SCREEN_IDEAS, screenIdea } from "./ideas";
 import { ScreenTickerCheck } from "./ticker-check";
 import {
   fetchSavedScreens,
@@ -92,6 +93,7 @@ const TABS = [
   { value: "results", label: "Results" },
   { value: "criteria", label: "Criteria" },
   { value: "saved", label: "Saved" },
+  { value: "ideas", label: "Ideas" },
 ];
 const errorText = (error: unknown) =>
   error instanceof Error ? error.message : "Request failed.";
@@ -222,9 +224,12 @@ export function EquityScreenerPane(props: PaneProps) {
     "definition",
     undefined,
   );
+  // A ready screen from Ideas (`--preset`), which opens on its own metric.
+  const [presetId] = usePaneSettingValue<string | undefined>("preset", undefined);
+  const preset = screenIdea(presetId);
   let initial: ScreenDefinition;
   try {
-    initial = seed ? parseScreenDefinition(JSON.parse(seed)) : DEFAULT_SCREEN;
+    initial = preset?.definition ?? (seed ? parseScreenDefinition(JSON.parse(seed)) : DEFAULT_SCREEN);
   } catch (error) {
     return (
       <PaneStatusBody subject="screen definition" error={errorText(error)} />
@@ -232,9 +237,10 @@ export function EquityScreenerPane(props: PaneProps) {
   }
   return (
     <EquityScreenView
-      key={`${seed ?? "default"}:${session.requestKey}`}
+      key={`${preset?.id ?? seed ?? "default"}:${session.requestKey}`}
       {...props}
       initial={initial}
+      initialMetric={preset?.metric ?? "marketCap"}
     />
   );
 }
@@ -243,7 +249,8 @@ function EquityScreenView({
   height,
   focused,
   initial,
-}: PaneProps & { initial: ScreenDefinition }) {
+  initialMetric,
+}: PaneProps & { initial: ScreenDefinition; initialMetric: NumericField }) {
   const colors = useThemeColors(),
     dialog = useDialog(),
     host = useRendererHost();
@@ -255,7 +262,7 @@ function EquityScreenView({
   const [definition, setDefinition] = usePluginPaneState("definition", initial);
   const [metric, setMetric] = usePaneSettingValue<NumericField>(
     "metric",
-    "marketCap",
+    initialMetric,
   );
   const [mode, setMode] = usePluginPaneState("mode", "results");
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>(
@@ -271,6 +278,10 @@ function EquityScreenView({
   const [savedSelectedId, setSavedSelectedId] = usePluginPaneState<
     string | null
   >("savedSelected", null);
+  const [ideaSelectedId, setIdeaSelectedId] = usePluginPaneState(
+    "ideaSelected",
+    SCREEN_IDEAS[0]!.id,
+  );
   const [currentSavedId, setCurrentSavedId] = usePluginPaneState<string | null>(
     "currentSaved",
     null,
@@ -494,7 +505,7 @@ function EquityScreenView({
   useAutoRefresh(results.updatedAt, results.load);
   const openQueryControl = () => queryControl.current?.open();
   const hints =
-    saveForm || editing !== null || check
+    saveForm || editing !== null || check || mode === "ideas"
       ? []
       : mode === "criteria"
         ? [
@@ -863,6 +874,36 @@ function EquityScreenView({
           />
         ) : null}
       </PaneStatusBody>
+    ) : mode === "ideas" ? (
+      <DataTableView
+        columns={[
+          { id: "name", label: "SCREEN", width: 28, align: "left" },
+          { id: "criteria", label: "CRITERIA", width: 20, flexGrow: 1, align: "left" },
+        ]}
+        items={SCREEN_IDEAS}
+        focused={focused && !saveForm}
+        rootWidth={width}
+        rootHeight={bodyHeight}
+        getItemKey={(row) => row.id}
+        selection={{
+          kind: "id",
+          selectedId: ideaSelectedId,
+          getId: (row) => row.id,
+          onChange: setIdeaSelectedId,
+        }}
+        onActivate={(row) => {
+          setMetric(row.metric);
+          apply(row.definition);
+          setCurrentSavedId(null);
+          setMode("results");
+        }}
+        renderCell={(row, column) => ({
+          text: column.id === "name" ? row.name : row.definition.criteria.map(criterionText).join("; "),
+        })}
+        sortColumnId={null}
+        sortDirection="asc"
+        emptyStateTitle="No ideas."
+      />
     ) : mode === "saved" ? (
       !access.emailVerified ? (
         <SignInWall

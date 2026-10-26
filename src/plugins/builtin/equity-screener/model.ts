@@ -7,6 +7,7 @@ import {
   RESEARCH_FIELDS,
   KPI_FIELDS,
   SOCIAL_FIELDS,
+  TECHNICAL_FIELDS,
   VOLATILITY_FIELDS,
   type NumericField,
   type ScreenMetric,
@@ -90,6 +91,20 @@ export const SHORT_LABELS: Record<NumericField, string> = {
   fromHigh52WPercent: "VS 52W HI%",
   beta: "BETA",
   atrPercent: "ATR%",
+  rsi14: "RSI 14",
+  priceVsSma20Percent: "VS SMA20%",
+  priceVsSma50Percent: "VS SMA50%",
+  priceVsSma200Percent: "VS SMA200%",
+  // Sessions since the event: 0 is the last completed session.
+  macdBullishCrossDays: "MACD BULL AGO",
+  macdBearishCrossDays: "MACD BEAR AGO",
+  goldenCrossDays: "GOLDEN X AGO",
+  deathCrossDays: "DEATH X AGO",
+  newHigh20dDays: "20D HIGH AGO",
+  newLow20dDays: "20D LOW AGO",
+  newHigh52wDays: "52W HIGH AGO",
+  newLow52wDays: "52W LOW AGO",
+  bollingerWidthPercentile: "BB WIDTH PCTL",
   priceToBook: "P/B",
   evToEbitda: "EV/EBITDA",
   roePercent: "FY ROE%",
@@ -116,10 +131,14 @@ const SIGNED = new Set<NumericField>(["hiringNetAddsWeek", "hiringZScore", "appR
   "changePercent", "revenueGrowthPercent", "earningsGrowthPercent", "shortInterestChangePercent",
   "dividendGrowth1YPercent", "dividendGrowth3YPercent",
   ...RETURNS, "fromHigh52WPercent", "epsRevision30dPercent", "analystUpsidePercent",
+  "priceVsSma20Percent", "priceVsSma50Percent", "priceVsSma200Percent",
 ]);
 /** Moves whose sign is the news: they take the sign colour. */
-export const SIGN_COLORED = new Set<NumericField>(["changePercent", ...RETURNS, "epsRevision30dPercent", "analystUpsidePercent"]);
-const COUNTS = new Set<NumericField>(["appRatingCountGrowth7d", "hiringNetAddsWeek", "hiringOpenRoles", "attentionResearchUnits", "insiderPurchases90d", "insiderSales90d", "institutionalHolders", "institutionalNewHolders", "institutionalExits", "ivRank"]);
+export const SIGN_COLORED = new Set<NumericField>(["changePercent", ...RETURNS, "epsRevision30dPercent", "analystUpsidePercent",
+  "priceVsSma20Percent", "priceVsSma50Percent", "priceVsSma200Percent"]);
+const COUNTS = new Set<NumericField>(["appRatingCountGrowth7d", "hiringNetAddsWeek", "hiringOpenRoles", "attentionResearchUnits", "insiderPurchases90d", "insiderSales90d", "institutionalHolders", "institutionalNewHolders", "institutionalExits", "ivRank",
+  "macdBullishCrossDays", "macdBearishCrossDays", "goldenCrossDays", "deathCrossDays",
+  "newHigh20dDays", "newLow20dDays", "newHigh52wDays", "newLow52wDays", "bollingerWidthPercentile"]);
 const MONETARY = new Set<NumericField>(["price", "marketCap", "kpiArr", "kpiRpo", "kpiCrpo", "kpiGmv", "kpiBacklog"]);
 /** Shown after the screen's own criteria when the pane has room. */
 const CONTEXT_FIELDS: NumericField[] = ["marketCap", "price", "changePercent", "trailingPE", "revenueGrowthPercent", "operatingMarginPercent", "dividendYieldPercent"];
@@ -288,6 +307,19 @@ export const screenLabel = (field: string) =>
     fromHigh52WPercent: "From 52-week high %",
     beta: "Beta",
     atrPercent: "ATR%",
+    rsi14: "RSI 14",
+    priceVsSma20Percent: "Price vs SMA 20 %",
+    priceVsSma50Percent: "Price vs SMA 50 %",
+    priceVsSma200Percent: "Price vs SMA 200 %",
+    macdBullishCrossDays: "Days since MACD bullish cross",
+    macdBearishCrossDays: "Days since MACD bearish cross",
+    goldenCrossDays: "Days since golden cross",
+    deathCrossDays: "Days since death cross",
+    newHigh20dDays: "Days since new 20-day high",
+    newLow20dDays: "Days since new 20-day low",
+    newHigh52wDays: "Days since new 52-week high",
+    newLow52wDays: "Days since new 52-week low",
+    bollingerWidthPercentile: "Bollinger width percentile",
     priceToBook: "P/B",
     evToEbitda: "EV / EBITDA",
     roePercent: "Annual ROE %",
@@ -593,9 +625,9 @@ export function validateScreenPayload(value: unknown): ScreenPayload {
       throw new Error("Invalid screener listing identity.");
     ids.add(screenRowId(row));
     for (const field of NUMERIC_FIELDS) {
-      // A server from before social, research, volatility or dividend fields omits them; they read as unavailable.
+      // A server from before social, research, volatility, dividend or technical fields omits them; they read as unavailable.
       // A Pro field it left out was held back from this caller.
-      if (!row.metrics[field] && ([...SOCIAL_FIELDS, ...RESEARCH_FIELDS, ...VOLATILITY_FIELDS, ...ATTENTION_FIELDS, ...HIRING_APP_FIELDS, ...KPI_FIELDS, ...DIVIDEND_FIELDS] as readonly string[]).includes(field))
+      if (!row.metrics[field] && ([...SOCIAL_FIELDS, ...RESEARCH_FIELDS, ...VOLATILITY_FIELDS, ...TECHNICAL_FIELDS, ...ATTENTION_FIELDS, ...HIRING_APP_FIELDS, ...KPI_FIELDS, ...DIVIDEND_FIELDS] as readonly string[]).includes(field))
         row.metrics[field] = PRO_FIELDS.has(field) ? withheldMetric() : unavailableMetric();
       const metric = row.metrics[field];
       if (

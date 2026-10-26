@@ -1,7 +1,7 @@
 import { screenFixture as payload } from "./test-fixture";
 import { expect, spyOn, test } from "bun:test";
 import { apiClient } from "../../../api-client";
-import { DIVIDEND_FIELDS, RESEARCH_FIELDS, SOCIAL_FIELDS, VOLATILITY_FIELDS, type ScreenSnapshot } from "../../../api-client/equity-screener";
+import { DIVIDEND_FIELDS, RESEARCH_FIELDS, SOCIAL_FIELDS, TECHNICAL_FIELDS, VOLATILITY_FIELDS, type ScreenSnapshot } from "../../../api-client/equity-screener";
 import { fetchScreen, fetchScreenFields } from "./client";
 import {
   appendScreenPage,
@@ -153,13 +153,14 @@ test("social and research fields format by kind, and an older server's rows stil
     formatScreenValue("beta", 1.052), formatScreenValue("ivRank", 46.89)])
     .toEqual(["+32.5", "-2.0", "45.9x", "1.05", "47"]);
   const older = payload();
-  for (const row of older.rows) for (const field of [...SOCIAL_FIELDS, ...RESEARCH_FIELDS, ...VOLATILITY_FIELDS, ...DIVIDEND_FIELDS])
+  for (const row of older.rows) for (const field of [...SOCIAL_FIELDS, ...RESEARCH_FIELDS, ...VOLATILITY_FIELDS, ...DIVIDEND_FIELDS, ...TECHNICAL_FIELDS])
     delete (row.metrics as Partial<typeof row.metrics>)[field];
   const loaded = validateScreenPayload(older);
   expect(loaded.rows[0]!.metrics.xPostsVsMedian).toMatchObject({ value: null, state: "unavailable" });
   expect(loaded.rows[0]!.metrics.atrPercent).toMatchObject({ value: null, state: "unavailable" });
   expect(loaded.rows[0]!.metrics.roePercent).toMatchObject({ value: null, state: "unavailable" });
   expect(loaded.rows[0]!.metrics.payoutRatioPercent).toMatchObject({ value: null, state: "unavailable" });
+  expect(loaded.rows[0]!.metrics.goldenCrossDays).toMatchObject({ value: null, state: "unavailable" });
   const broken = payload();
   delete (broken.rows[0]!.metrics as Partial<typeof broken.rows[0]["metrics"]>).price;
   expect(() => validateScreenPayload(broken)).toThrow("price");
@@ -194,7 +195,7 @@ test("the field list is requested with the volatility group, which servers witho
   } as never);
   try {
     const data = await fetchScreenFields();
-    expect(String(ask.mock.calls[0]![0])).toMatch(/^fields\?include=.*\bvolatility\b.*\bdividends\b/);
+    expect(String(ask.mock.calls[0]![0])).toMatch(/^fields\?include=.*\bvolatility\b.*\bdividends\b.*\btechnical\b/);
     expect(data.fields.map((entry) => entry.id)).toEqual(["atrPercent"]);
   } finally {
     ask.mockRestore();
@@ -217,4 +218,13 @@ test("YTD's header names the prior year's last close the returns start from", ()
   expect(screenColumnLabel("returnYtdPercent", "31 Dec", "compact")).toBe("YTD% 31 Dec");
   expect(screenColumnLabel("returnYtdPercent", null)).toBe(SHORT_LABELS.returnYtdPercent);
   expect(screenColumnLabel("trailingPE", "31 Dec", "report")).toBe(SHORT_LABELS.trailingPE);
+});
+
+test("technical fields: RSI and the width percentile without a sign, distances from the averages signed, days since as whole sessions", () => {
+  expect([formatScreenValue("rsi14", 28.44), formatScreenValue("bollingerWidthPercentile", 3.2), formatScreenValue("priceVsSma200Percent", 4.06),
+    formatScreenValue("priceVsSma50Percent", -2.31), formatScreenValue("goldenCrossDays", 0), formatScreenValue("newHigh52wDays", 7)])
+    .toEqual(["28.4", "3", "+4.1", "-2.3", "0", "7"]);
+  expect([SIGN_COLORED.has("priceVsSma20Percent"), SIGN_COLORED.has("rsi14"), SIGN_COLORED.has("macdBullishCrossDays")]).toEqual([true, false, false]);
+  for (const field of TECHNICAL_FIELDS) expect(SHORT_LABELS[field].length).toBeLessThanOrEqual(13);
+  expect(screenLabel("goldenCrossDays")).toBe("Days since golden cross");
 });
