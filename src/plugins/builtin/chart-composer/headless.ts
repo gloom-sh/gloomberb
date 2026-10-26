@@ -723,6 +723,9 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
         }, context.marketData) };
       }
       const model = await loadChartPaneModel(spec, context);
+      // A bare coin ticker charted as another listing (ETH, the Grayscale fund) says where the coin is, as `quote` does.
+      const coinNotes = (await Promise.all(listings.values())).flatMap((read) => read?.coinNote ?? []);
+      if (coinNotes.length) model.warnings = [...model.warnings ?? [], ...coinNotes];
       if (template === "graph-intraday-price-pane" && !intradayHistories.length && model.chart.viewport) {
         const { start, end } = model.chart.viewport;
         for (const { target, data } of [

@@ -6,8 +6,7 @@ import { CLI_COMMAND_GROUPS } from "../../../cli/help";
 import { dryRunNote } from "../../../cli/helpers";
 import { requireArg, takeOption } from "../../../cli/commands/command-utils";
 import { requireQuotedListing } from "../../../cli/quote-answer";
-import { EXCHANGE_OPTION, listingReadNotes, requireListingArg, usListingsOnlyMessage } from "../../../cli/listing-arg";
-import { notTheCoinNote } from "../../../cli/commands/crypto-hints";
+import { coinListingNotes, EXCHANGE_OPTION, listingReadNotes, requireListingArg, usListingsOnlyMessage } from "../../../cli/listing-arg";
 import { saveConfig } from "../../../data/config/store";
 import { resumeStateKey } from "../../registry/plugin-state";
 import type { CliCommandDef } from "../../../types/plugin";
@@ -619,6 +618,9 @@ export const alertsCliCommand: CliCommandDef = {
       })
       : null;
     const priceListing = priced?.listing ?? null;
+    // A bare coin ticker read as another listing (SOL, a stale company; BTC, the Grayscale trust) gets `quote`'s note
+    // naming the coin's pair, before a metric alert names the venue it was read on.
+    const coinNote = priced ? coinListingNotes(priced.listing, priced.quote)[0] ?? null : null;
     if (request?.kind === "metric" && priced) {
       const exchange = canonicalExchange(priced.listing.exchange || priced.quote.listingExchangeName || priced.quote.exchangeName);
       const preview = { ...createAlert(priced.listing.symbol, request.condition, request.price, exchange), metric: request.metric };
@@ -629,8 +631,6 @@ export const alertsCliCommand: CliCommandDef = {
       const question = thousandsDotMessage(request, priced.listing.key, lastPrice(priced.quote), exchangeOption);
       if (question) ctx.fail(question);
     }
-    // A bare coin ticker read as a fund (BTC, the Grayscale trust) gets `quote`'s note naming the coin's pair.
-    const coinNote = priced && !priced.listing.exchange ? notTheCoinNote(priced.listing.symbol, priced.quote) : null;
     if (request?.kind === "price" && priced) {
       // A target ten times away is a slip or another instrument's price, such as bitcoin's on the BTC fund.
       // Against the price the alert is checked on, as Add Alert measures it.

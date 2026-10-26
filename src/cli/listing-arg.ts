@@ -410,33 +410,49 @@ export function listingReadNotes(listing: Pick<ListingArg, "readAs">): string[] 
 }
 
 /**
+ * The coin line for a bare coin ticker (SOL, ETH) a command read as a listing that is
+ * not the coin, from the quote it was read on (`notTheCoinNote`). A list, so a command can
+ * spread it into its warnings. A named listing (`ETH:ARCA`, `--exchange`) asked for that
+ * listing on purpose and gets none.
+ */
+export function coinListingNotes(
+  listing: Pick<CliListing, "symbol" | "exchange">,
+  quote: Pick<Quote, "name" | "instrumentType" | "stale" | "delisting"> | null | undefined,
+): string[] {
+  const note = listing.exchange ? null : notTheCoinNote(listing.symbol, quote);
+  return note ? [note] : [];
+}
+
+/**
  * `listingChoiceNote` for a listing a command resolved, from the quote it was
  * read on: only a bare symbol went where the data service chose. A named
  * listing whose code names several venues says which it was read as
- * (`listingReadNotes`). A list, so a command can spread it into its warnings.
+ * (`listingReadNotes`). A bare coin ticker read as another listing ends with
+ * the coin's pair (`coinListingNotes`). A list, so a command can spread it into
+ * its warnings.
  */
 export async function listingChoiceNotes(
   listing: Pick<CliListing, "symbol" | "exchange" | "saved" | "readAs">,
   deps: ListingDeps,
-  quote: Pick<Quote, "name" | "listingExchangeName" | "exchangeName" | "instrumentType"> | null | undefined,
+  quote: Pick<Quote, "name" | "listingExchangeName" | "exchangeName" | "instrumentType" | "stale" | "delisting"> | null | undefined,
   /** The venues `loadBareVenues` already started; looked up here when not given. */
   venues?: Promise<ListingVenue[]> | null,
 ): Promise<string[]> {
-  if (!isBareListing(listing)) return listingReadNotes(listing);
-  if (!quote || UNLISTED_TYPES.has(quote.instrumentType?.trim().toUpperCase() ?? "")) return [];
+  const coin = coinListingNotes(listing, quote);
+  if (!isBareListing(listing)) return [...listingReadNotes(listing), ...coin];
+  if (!quote || UNLISTED_TYPES.has(quote.instrumentType?.trim().toUpperCase() ?? "")) return coin;
   const exchange = canonicalExchange(quote.listingExchangeName || quote.exchangeName);
-  if (!exchange) return [];
+  if (!exchange) return coin;
   const listed = await (venues ?? loadBareVenues(listing, deps) ?? []);
   const note = listingChoiceNote(listing.symbol, { exchange, name: quote.name }, listed);
-  return note ? [note] : [];
+  return [...note ? [note] : [], ...coin];
 }
 
 /**
  * `listingChoiceNotes` for a command with no quote of its own to read the
  * listing from (`fn`): it loads the listing's quote, and only for a bare
  * symbol, so a named or saved listing costs nothing. A bare coin ticker read
- * as a fund (BTC, the Grayscale trust) ends with `quote`'s note naming the
- * coin's pair.
+ * as another listing (BTC, the Grayscale trust) ends with the coin's pair.
  */
 export async function quotedListingChoiceNotes(
   listing: Pick<CliListing, "symbol" | "exchange" | "saved" | "request" | "readAs">,
@@ -444,9 +460,7 @@ export async function quotedListingChoiceNotes(
 ): Promise<string[]> {
   const venues = loadBareVenues(listing, deps);
   if (!venues) return listingReadNotes(listing);
-  const quote = await loadListingQuote(deps.dataProvider, listing);
-  const coin = notTheCoinNote(listing.symbol, quote);
-  return [...await listingChoiceNotes(listing, deps, quote, venues), ...coin ? [coin] : []];
+  return listingChoiceNotes(listing, deps, await loadListingQuote(deps.dataProvider, listing), venues);
 }
 
 /**
@@ -708,6 +722,8 @@ export interface ReadListing {
   exchange: string;
   /** The listing's company, from its quote. */
   name: string | null;
+  /** A bare coin ticker read as a listing that is not the coin (`coinListingNotes`); null otherwise. */
+  coinNote: string | null;
 }
 
 /**
@@ -728,10 +744,14 @@ export async function readBareListing(
   const listing = await resolveCliListing(symbol, null, deps);
   if (listing.exchange) return null;
   const answer = await loadListingQuoteAnswer(deps.dataProvider, listing);
-  if (answer.quote) return { symbol: listing.symbol, exchange: listing.request.exchange, name: answer.quote.name?.trim() || null };
+  if (answer.quote) {
+    return { symbol: listing.symbol, exchange: listing.request.exchange, name: answer.quote.name?.trim() || null, coinNote: coinListingNotes(listing, answer.quote)[0] ?? null };
+  }
   if (!isNoProviderError(answer.error)) return null;
   const other = await quoteBareListing(listing, deps, request, { refresh });
-  if (other?.kind === "quoted") return { symbol: listing.symbol, exchange: other.listing.exchange, name: other.quote.name?.trim() || null };
+  if (other?.kind === "quoted") {
+    return { symbol: listing.symbol, exchange: other.listing.exchange, name: other.quote.name?.trim() || null, coinNote: coinListingNotes(listing, other.quote)[0] ?? null };
+  }
   if (other?.choose) throw new ListingArgError(other.message, other.details, other.choices);
   return null;
 }

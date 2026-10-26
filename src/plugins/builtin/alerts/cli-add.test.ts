@@ -39,11 +39,16 @@ function cloud() {
       marketState: "POST", postMarketPrice: 300 }),
     // The bare coin ticker is the Grayscale fund, as the data service answers it.
     BTC: createTestQuote({ symbol: "BTC", name: "Grayscale Bitcoin Mini Trust ETF", price: 37.35, listingExchangeName: "ARCA", exchangeName: "ARCA", instrumentType: "ETF" }),
+    // A stale company shares SOL's letters, and a live one LINK's.
+    SOL: createTestQuote({ symbol: "SOL", name: "Emeren Group Ltd", price: 1.94, listingExchangeName: "NYSE", exchangeName: "NYSE", instrumentType: "Common Stock", stale: true }),
+    LINK: createTestQuote({ symbol: "LINK", name: "Interlink Electronics, Inc.", price: 4.08, listingExchangeName: "NASDAQ", exchangeName: "NASDAQ", instrumentType: "EQUITY" }),
   };
   return createTestDataProvider({
     search: async (query: string) => {
       if (query.toUpperCase() === "AAPL") return [{ providerId: "test", symbol: "AAPL", name: "Apple Inc.", exchange: "NASDAQ", type: "EQUITY", currency: "USD" }];
       if (query.toUpperCase() === "BTC") return [{ providerId: "test", symbol: "BTC", name: "Grayscale Bitcoin Mini Trust ETF", exchange: "ARCA", type: "ETF", currency: "USD" }];
+      if (query.toUpperCase() === "SOL") return [{ providerId: "test", symbol: "SOL", name: "Emeren Group Ltd", exchange: "NYSE", type: "Common Stock", currency: "USD" }];
+      if (query.toUpperCase() === "LINK") return [{ providerId: "test", symbol: "LINK", name: "Interlink Electronics, Inc.", exchange: "NASDAQ", type: "EQUITY", currency: "USD" }];
       const found = currencyPairSpelling(query.replace("_", "/").toUpperCase(), "CCY");
       const quote = found ? quotes[found.symbol] : undefined;
       return quote ? [{ providerId: "test", symbol: quote.symbol, name: quote.name!, exchange: "CCY", type: "CURRENCY", currency: quote.currency }] : [];
@@ -116,6 +121,14 @@ test("a bare coin ticker on its fund gets quote's note, and a target ten times i
   const near = await addAlert(["btc", "above", "40"]);
   expect(near.stored.map((alert) => [alert.symbol, alert.targetPrice])).toEqual([["BTC", 40]]);
   expect(near.printed!.result.warnings).toContain("BTC is Grayscale Bitcoin Mini Trust ETF, not bitcoin. For bitcoin use BTC-USD.");
+});
+
+test("a coin ticker on a stale company says so firmly, and on a live one softly", async () => {
+  expect((await addAlert(["SOL", "below", "90"])).error)
+    .toBe("A target of 90 is more than 10 times SOL's last price of 1.94. SOL is Emeren Group Ltd, not solana. For solana use SOL-USD.");
+  expect((await addAlert(["LINK", "above", "500"])).error)
+    .toBe("A target of 500 is more than 10 times LINK's last price of 4.08. LINK is Interlink Electronics, Inc. Also a coin: LINK-USD.");
+  expect((await addAlert(["LINK", "above", "5"])).printed!.result.warnings).toContain("LINK is Interlink Electronics, Inc. Also a coin: LINK-USD.");
 });
 
 test("alerts add reads the dialog's news, flow and IV forms", () => {

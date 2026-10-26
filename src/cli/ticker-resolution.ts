@@ -85,7 +85,8 @@ export interface CliTicker {
   /**
    * A bare coin ticker (ETH) read as a listing that is not the coin, such as a
    * fund named for it: "ETH is Grayscale Ethereum Mini Trust ETF, not ethereum.
-   * For ethereum use ETH-USD." It is also the last of `notes`.
+   * For ethereum use ETH-USD." A live company that only shares the letters gets
+   * "Also a coin: LINK-USD" (`notTheCoinNote`). It is also the last of `notes`.
    */
   coinNote: string | null;
   /**
@@ -367,7 +368,7 @@ async function describeResolution(
   const formerIssuer = describeFormerIssuer(listing.symbol, payload, current);
   // One line: a company that left the symbol, else one that merged away from it.
   const line = tickerChangeLine(change) ?? formerIssuer?.note;
-  const coinNote = listing.exchange ? null : savedListingCoinNote(listing.symbol, resolved.ticker);
+  const coinNote = listing.exchange ? null : savedListingCoinNote(listing.symbol, resolved.ticker, { ended: !!resolved.ended });
   return { ...resolved, notes: [...line ? [line] : [], ...resolved.notes, ...coinNote ? [coinNote] : []], change, formerIssuer, coinNote,
     readAs: listing.readAs ?? null, bareSymbol: listing.exchange ? null : listing.symbol, otherVenues: resolved.otherVenues ?? null };
 }

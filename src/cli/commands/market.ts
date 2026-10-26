@@ -217,6 +217,7 @@ import {
   type ResolvedEarningsEvent,
 } from "../../plugins/builtin/shared/earnings-calendar";
 import {
+  coinListingNotes,
   EXCHANGE_OPTION,
   listingHeading,
   listingIdentity,
@@ -1104,7 +1105,7 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
         return pair ? [`${row.target.symbol}: ${depositaryPairText(pair, isReceiptSide({ quote: row.quote }))}.`] : [];
       }),
       // A cell shows only "unavailable", and an exported row only its status, so stderr names each failure; the JSON rows carry each reason.
-      ...ctx.cliOptions.format !== "json" ? quoteNotes(data, { exchange }) : [],
+      ...ctx.cliOptions.format !== "json" ? quoteNotes(data) : [],
     ];
     const columns = commandName === "compare" ? compareColumns() : quoteColumns();
     const basisNotes = changeBasisNotes(data, now);
@@ -2047,7 +2048,8 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
       return;
     }
     const empty = emptyMessage(false);
-    const read = listing ? listingReadNotes(listing) : [];
+    // A bare coin ticker read as another listing (ETH, the Grayscale fund) says where the coin is, as `quote` does.
+    const read = listing ? [...listingReadNotes(listing), ...coinListingNotes(listing, quote)] : [];
     // A word that is also the company's name ("gold" for Gold.com Inc.) says once which ticker it found and how
     // to search the stories that mention it instead, when those stories are mostly about something else.
     const typed = args[0]?.trim() ?? "";

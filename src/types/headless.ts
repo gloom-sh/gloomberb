@@ -138,8 +138,10 @@ export interface HeadlessPaneContext {
    * known. A code several companies list (BDI) throws asking which, with
    * `quote`'s message; `argumentWith(key)` is the function's argument naming
    * that listing instead (`BDI:TSX`), for the retry each listing offers.
+   * `coinNote` is what `quote` says of a bare coin ticker read as a listing
+   * that is not the coin (ETH, the Grayscale fund), for the report's warnings.
    */
-  resolveListing?: (symbol: string, argumentWith: (key: string) => string) => Promise<{ symbol: string; exchange?: string; name?: string } | null>;
+  resolveListing?: (symbol: string, argumentWith: (key: string) => string) => Promise<{ symbol: string; exchange?: string; name?: string; coinNote?: string } | null>;
   /**
    * What a plugin keeps on this device only (its `ctx.resume` state, never
    * synced), such as ALRT's log of the alerts the app fired; null when none.

@@ -15,7 +15,6 @@ import {
   futuresTryLine,
   isNoProviderError,
   listingChoiceNotes,
-  listingReadNotes,
   ListingArgError,
   loadBareVenues,
   notTradedMessage,
@@ -86,7 +85,7 @@ export async function answerQuote(
     ? [indexRootAlsoLine(root, request.command)] : [];
   if (result.quote) {
     // "CAR = Avis Budget Group, NASDAQ (also XETRA, ASX)" names the venue too, so it replaces "SXR8 -> XETRA".
-    const choice = venues ? await listingChoiceNotes(listing, market, result.quote, venues) : listingReadNotes(listing);
+    const choice = await listingChoiceNotes(listing, market, result.quote, venues);
     const venue = choice.length > 0 ? null : bareListingNote(listing, result.quote);
     // A row saved as 247540:KRX is quoted from KOSDAQ, the board it trades on.
     const board = tradingBoardNote(listing, result.quote);

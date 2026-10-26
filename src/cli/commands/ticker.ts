@@ -76,7 +76,7 @@ import { isKnownNonUsListing, secFilingItemCodes, US_FUND_FACTS_ONLY } from "../
 import { currentReportItemsLabel, hiddenFilingsNote, loadLatestFilings, type HiddenFilings } from "../../utils/sec-filings";
 import { canonicalExchange, exchangeLabel, isKnownExchangeCode, isUsListingExchange } from "../../utils/exchanges";
 import {
-  failIfNotTraded, failMovedSymbol, ListingArgError, listingChoiceNotes, listingFateLoader, listingIdentity, loadBareVenues,
+  coinListingNotes, failIfNotTraded, failMovedSymbol, ListingArgError, listingChoiceNotes, listingFateLoader, listingIdentity, loadBareVenues,
   resolveCliListing, type CliListing, type ListingDataRequest,
 } from "../listing-arg";
 import { movedAwayChange } from "../../tickers/ticker-changes";
@@ -92,7 +92,6 @@ import { fundamentalsFreshness, quotesFreshness } from "../freshness";
 import { distributionHistory, forwardDividendBasis, forwardDividendMayHaveLapsed, lapsedDividend, noCurrentDividend, TRAILING_DIVIDEND_BASIS, type DistributionHistory, type DividendLapse } from "../../utils/forward-dividend";
 import { declaredDividends } from "../../utils/declared-dividends";
 import { historyTrailingDividendYield, measuresTrailingYield } from "../../market-data/quotes/live-valuation";
-import { notTheCoinNote } from "./crypto-hints";
 import { loadOfferingFilings, loadStatementFilings, resultsReleaseText, statementPeriodText, type StatementFilingsReport } from "../statement-filings";
 import type { BankFiguresPayload } from "../../api-client/bank-figures";
 import { bankSection } from "../bank-section";
@@ -1589,17 +1588,18 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
     // The quote is the feed in this report; without one, the fundamentals date it.
     const freshness = quote ? quotesFreshness([quote]) : fundamentalsFreshness(resolvedFinancials);
     const quoteNote = quote ? undefined : await quoteUnavailableNote(dataProvider, requestSymbol, exchange);
-    const [choiceNote] = await listingChoiceNotes(listing, { store, dataProvider }, quote, venues);
-    // A bare coin ticker read as a fund says where the coin is, as `quote` does; a named listing was meant.
-    const coinNote = listing.exchange ? null
-      : notTheCoinNote(listing.symbol, quote ?? (tickerFile ? { name: tickerFile.metadata.name, instrumentType: tickerFile.metadata.assetCategory } : null));
-    const listingNote = [choiceNote, coinNote].filter((note): note is string => !!note).join("\n") || undefined;
+    // A bare coin ticker read as another listing says where the coin is, as `quote` does: from the quote, else from the saved listing.
+    const choiceNotes = [
+      ...await listingChoiceNotes(listing, { store, dataProvider }, quote, venues),
+      ...quote || !tickerFile ? [] : coinListingNotes(listing, { name: tickerFile.metadata.name, instrumentType: tickerFile.metadata.assetCategory }),
+    ];
+    const listingNote = choiceNotes.join("\n") || undefined;
     const memberships = await membershipsLoad;
     // A converted TTM block at the rate the rest of the report converts at, the one `fx` reports.
     const shownFinancials = await atReportTtmRate(resolvedFinancials, toBase);
     if (dependencies.printResult) {
       const newsNote = recentNews[0]?.searchedFor ? coinNewsFallbackNotice(requestSymbol, recentNews[0].searchedFor) : null;
-      const warnings = [choiceNote, coinNote, quoteNote, newsNote].filter((note): note is string => !!note);
+      const warnings = [...choiceNotes, quoteNote, newsNote].filter((note): note is string => !!note);
       dependencies.printResult({
         freshness,
         warnings: warnings.length > 0 ? warnings : undefined,

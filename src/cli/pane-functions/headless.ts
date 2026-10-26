@@ -235,7 +235,12 @@ export function createHeadlessPaneContext(
         command, noun: "a quote", retry: (key) => `gloom ${command} ${argumentWith(key)}`,
       }, { refresh: !!context.refresh });
       if (!read) return null;
-      return { symbol: read.symbol, ...read.exchange ? { exchange: read.exchange } : {}, ...read.name ? { name: read.name } : {} };
+      return {
+        symbol: read.symbol,
+        ...read.exchange ? { exchange: read.exchange } : {},
+        ...read.name ? { name: read.name } : {},
+        ...read.coinNote ? { coinNote: read.coinNote } : {},
+      };
     },
   };
 }

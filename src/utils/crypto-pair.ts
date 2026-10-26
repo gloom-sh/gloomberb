@@ -91,6 +91,50 @@ export const MAJOR_COIN_NAMES: ReadonlyMap<string, string> = new Map([
   ["BNB", "BNB"],
 ]);
 
+/**
+ * The largest coins by market value, stablecoins and gold tokens left out, with
+ * how a note names each: the coins whose bare ticker a listed company or fund
+ * may hold instead (SOL is a stale Emeren Group, LINK is Interlink Electronics).
+ * A hint reads this list; `MAJOR_COIN_NAMES` stays the shorter one stories and
+ * company-name lookups use, so a word such as "stellar" is still a company's.
+ */
+export const TOP_COIN_NAMES: ReadonlyMap<string, string> = new Map([
+  ...MAJOR_COIN_NAMES,
+  ["TRX", "tron"],
+  ["ZEC", "zcash"],
+  ["HYPE", "hyperliquid"],
+  ["XMR", "monero"],
+  ["XLM", "stellar"],
+  ["NEAR", "near protocol"],
+  ["TON", "toncoin"],
+  ["UNI", "uniswap"],
+  ["SUI", "sui"],
+  ["HBAR", "hedera"],
+  ["TAO", "bittensor"],
+  ["SHIB", "shiba inu"],
+  ["ENA", "ethena"],
+  ["CRO", "cronos"],
+  ["AAVE", "aave"],
+  ["ONDO", "ondo"],
+  ["PEPE", "pepe"],
+  ["ICP", "internet computer"],
+  ["ETC", "ethereum classic"],
+  ["ARB", "arbitrum"],
+  ["ALGO", "algorand"],
+  ["ATOM", "cosmos"],
+  ["APT", "aptos"],
+  ["FIL", "filecoin"],
+  ["POL", "polygon"],
+  ["OP", "optimism"],
+  ["WLD", "worldcoin"],
+  ["MNT", "mantle"],
+  ["KAS", "kaspa"],
+  ["QNT", "quant"],
+  ["VET", "vechain"],
+  ["INJ", "injective"],
+  ["RENDER", "render"],
+]);
+
 const COIN_PAIR = /^([A-Z0-9]{1,15})[-/](?:USD|EUR|GBP|USDT|USDC|BTC)$/;
 // What a pair's listing name adds after the coin's: its quote currency, an id in brackets.
 const PAIR_NAME_SUFFIX = /(?:\s*\([^)]*\))+$|\s+(?:USD|EUR|GBP|USDT|USDC|BTC|US Dollars?)$/i;
