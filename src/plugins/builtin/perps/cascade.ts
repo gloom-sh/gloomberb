@@ -112,7 +112,9 @@ export function printCell(row: PerpLiquidationPrint, id: PrintColumnId, colors: 
 const isRecent = (since: string | null, from: string) => !!since && Date.parse(since) > Date.parse(from);
 /** The four totals; a window that reaches back before collection started says when it starts. */
 export function liquidationFigures(data: PerpLiquidationsPayload, colors: Colors): StatItem[] {
-  const since = isRecent(data.collectingSince, data.from) ? `since ${stamp(data.collectingSince)} UTC` : undefined;
+  // The date only when collection started on another UTC day, so the detail fits beside every figure.
+  const started = data.collectingSince?.slice(0, 10) === data.asOf.slice(0, 10) ? data.collectingSince.slice(11, 16) : stamp(data.collectingSince);
+  const since = isRecent(data.collectingSince, data.from) ? `since ${started} UTC` : undefined;
   const day = isRecent(data.collectingSince, new Date(Date.parse(data.asOf) - 86_400_000).toISOString()) ? since : undefined;
   // The tab and the chart's legend say these are liquidated positions; the label names the side and the window.
   const figure = (id: "long24h" | "short24h" | "long7d" | "short7d", label: string, detail?: string): StatItem =>

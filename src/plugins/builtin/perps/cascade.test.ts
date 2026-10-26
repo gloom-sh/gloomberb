@@ -39,8 +39,10 @@ test("liquidations read by side, and windows that start before collection say wh
     .toEqual(["10-26 07:00:49", "Short", "Fill", "32.0k", "07:00:50"]);
   const figures = liquidationFigures(data, colors);
   expect(figures.map((figure) => [figure.label, figure.value, figure.color, figure.detail])).toEqual([
-    ["Longs 24h", "3.2k", "red", "since 10-26 06:52 UTC"], ["Shorts 24h", "29.2k", "green", "since 10-26 06:52 UTC"],
-    ["Longs 7d", "3.2k", "red", "since 10-26 06:52 UTC"], ["Shorts 7d", "29.2k", "green", "since 10-26 06:52 UTC"]]);
+    ["Longs 24h", "3.2k", "red", "since 06:52 UTC"], ["Shorts 24h", "29.2k", "green", "since 06:52 UTC"],
+    ["Longs 7d", "3.2k", "red", "since 06:52 UTC"], ["Shorts 7d", "29.2k", "green", "since 06:52 UTC"]]);
+  // Started on an earlier day: the date is said.
+  expect(liquidationFigures(liquidations({ collectingSince: "2026-10-24T21:05:00.000Z" }), colors)[2]!.detail).toBe("since 10-24 21:05 UTC");
   // A week of collection behind it: the windows are whole and need no date.
   expect(liquidationFigures(liquidations({ collectingSince: "2026-10-01T00:00:00.000Z" }), colors).every((figure) => !figure.detail)).toBeTrue();
   // A stream that is down is said with the figures' date; it is not a feed.
