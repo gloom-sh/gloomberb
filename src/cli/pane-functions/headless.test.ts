@@ -654,7 +654,7 @@ describe("fn --csv", () => {
       "HP,2026-10-01,37614444,",
       "SBK.JO,2026-10-01,1838873,",
       "",
-      "# Source: SEC EDGAR · Thu 1 Oct 2026 00:00 UTC · not a live feed (filed data)",
+      "# Source: SEC EDGAR · Thu 1 Oct 2026 · not a live feed (filed data)",
       "# Publisher: U.S. Securities and Exchange Commission",
       "# Observation date: 2026-10-01T00:00:00.000Z",
       "# Publication time: 2026-10-02T20:05:00.000Z",

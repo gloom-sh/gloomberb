@@ -186,8 +186,8 @@ describe("report freshness", () => {
       "Source: Gloom Cloud · observed Sun 4 Oct · lag 6d · 1 stale",
       "Observed Sun 4 Oct · lag 6d · 1 stale",
     ]);
-    // The fn footer keeps its wording.
-    expect(formatFreshnessLine(dataset)).toBe("Source: Gloom Cloud · Sun 4 Oct 2026 00:00 UTC (oldest Sun 27 Sep 2026) · 1 of 2 stale");
+    // The fn footer keeps its wording, with the day a dataset observes stated as a day.
+    expect(formatFreshnessLine(dataset)).toBe("Source: Gloom Cloud · Sun 4 Oct 2026 (oldest Sun 27 Sep 2026) · 1 of 2 stale");
     // GPU's Equities tab: quotes on a dataset's pane read as quotes.
     const quoted = deriveHeadlessFreshness(rows({ dataset: true }), { rows: [
       { dataSource: "delayed", delayMinutes: 15, sessionExchange: "NASDAQ", marketState: "CLOSED", lastUpdated: Date.parse("2026-10-09T23:59:00Z") },
@@ -561,6 +561,25 @@ describe("report freshness", () => {
     // Before Friday's open, Thursday's close is current and Wednesday's is a day behind.
     expect(deriveHeadlessFreshness(daily, series("2026-10-07T00:00:00Z"), NOW).status).toBe("not-a-feed");
     expect(deriveHeadlessFreshness(daily, series("2026-10-06T00:00:00Z"), NOW)).toMatchObject({ status: "stale", asOf: "2026-10-06T00:00:00.000Z" });
+  });
+
+  test("a day a feed stamps at 00:00 UTC reads as the day, while a time of a feed or an intraday bar keeps it", () => {
+    const daily = { shape: "series" as const, freshness: { status: "not-a-feed" as const, basis: "daily closes", cadence: "daily" as const } };
+    const series = (date: string) => ({ series: [{ id: "spy", label: "SPY", points: [{ date, close: 1 }] }] });
+    // A daily close has no time of day: GR and the other analyses over daily closes are dated by the day alone.
+    const closed = deriveHeadlessFreshness(daily, series("2026-10-08T00:00:00Z"), NOW);
+    expect(formatFreshnessLine(closed)).toBe("Source: Gloom Cloud · Thu 8 Oct 2026 · not a live feed (daily closes)");
+    // JSON keeps the instant the data carries; only the line says the day.
+    expect(closed.asOf).toBe("2026-10-08T00:00:00.000Z");
+    // Filings and published reports stamped at midnight are as undated as a daily close.
+    expect(line(rows({ source: "SEC EDGAR", status: "not-a-feed", basis: "Form 4 filings", observedKey: "filed", oldest: null }), { rows: [{ filed: "2026-10-08T00:00:00Z" }] }))
+      .toBe("Source: SEC EDGAR · Thu 8 Oct 2026 · not a live feed (Form 4 filings)");
+    // A stale daily history is still a day.
+    expect(formatFreshnessLine(deriveHeadlessFreshness(daily, series("2026-10-06T00:00:00Z"), NOW))).toMatch(/^Source: Gloom Cloud · Tue 6 Oct 2026 · stale/);
+    // Bars under a day open at midnight on a time of day, and a feed's own time is never a day.
+    const hourly = rows({ status: "not-a-feed", basis: "intraday bars", observedKey: "time", oldest: null });
+    expect(line(hourly, { rows: [{ time: "2026-10-09T00:00:00Z" }] })).toBe("Source: Gloom Cloud · Fri 9 Oct 2026 00:00 UTC · not a live feed (intraday bars)");
+    expect(line(rows({ status: "delayed", delayMinutes: 15 }), { rows: [{ quoteTime: "2026-10-09T00:00:00Z" }] })).toContain("Fri 9 Oct 2026 00:00 UTC");
   });
 
   test("without a dated observation it cites the retrieval time instead of inventing an as-of", () => {

@@ -858,6 +858,21 @@ function venueSessionsText(sessions: readonly VenueSessionDate[]): string {
 }
 
 /**
+ * An as-of the feed stamped at exactly 00:00:00.000 UTC reads as the day it
+ * names, as a date-only value does: a daily close, a filing's date or a
+ * published report's has no time of day, so `Mon 26 Oct 2026 00:00 UTC` would
+ * claim one. Quotes keep their time, as does anything a feed or a venue's
+ * sessions date, and bars of a size under a day, whose midnight bar opens then.
+ */
+function asOfAsDay(freshness: ReportFreshness, time: ReportTime | null): ReportTime | null {
+  if (!time || time.dateOnly || time.time % DAY_MS !== 0) return time;
+  const feed = freshness.status === "live" || freshness.status === "delayed" || freshness.feed != null;
+  const intradayBars = freshness.basis === "intraday bars";
+  return feed || intradayBars || freshness.market || freshness.sources?.length || freshness.oldestAgeMinutes != null
+    ? time : { ...time, dateOnly: true };
+}
+
+/**
  * The dated as-of: a session close, a UTC time, a date, or when the report was
  * retrieved; with the oldest observation unless `short`, or when the line says
  * how old the oldest is instead. `undated` leaves the day off a time of the
@@ -868,7 +883,7 @@ function asOfText(freshness: ReportFreshness, short: boolean, local: boolean, un
   if (freshness.venueSessions?.length) return venueSessionsText(freshness.venueSessions);
   const market = freshness.tradingDayMarket;
   const period = freshness.periodicity;
-  const time = parseReportTime(freshness.asOf);
+  const time = asOfAsDay(freshness, parseReportTime(freshness.asOf));
   const reference = freshness.referencePeriod;
   // `Sep 2026, released Tue 20 Oct`: the period the figure covers, then when it was released.
   const released = reference ? releasedText(freshness.asOf, reference) : null;
