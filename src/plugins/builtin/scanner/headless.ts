@@ -34,7 +34,8 @@ import {
 } from "./flow-model";
 import { flowStrikeRows, flowTideMoves, flowTideRows, formatSignedFlowPremium } from "./flow-session";
 import { signalWithTimeout } from "../../../utils/async-deadline";
-import { explainRefusal } from "../shared/cloud-denied";
+import { errorMessage } from "../../../utils/errors";
+import { explainRefusal, refusedLock } from "../shared/cloud-denied";
 import { captureScannerEvent, SCANNER_SNAPSHOT_TIMEOUT_MS } from "../shared/scanner-capture";
 import { flowLockNote } from "./lock-note";
 import { buildHiloBarRows, filterHiloRows, formatHiloPrice, type HiloMinPrice, type HiloSort } from "./hilo-model";
@@ -197,7 +198,7 @@ type FlowReportTab = "prints" | "tide" | "strikes";
 const FLOW_REPORT_RECORDED = 100;
 
 /** The side rule, said once in every report that sums prints by side. */
-export const FLOW_SIDE_RULE = "Net premium counts a print at the ask as bought and one at the bid as sold; mid prints count as neither.";
+export const FLOW_SIDE_RULE = "Net premium counts a print at the ask as bought and one at the bid as sold; mid or unknown prints count as neither.";
 
 const utcTime = (value: unknown) => {
   const time = Number(value);
@@ -236,10 +237,10 @@ const TIDE_TEXT_COLUMNS = TIDE_COLUMNS.filter((column) => !["callAsk", "callBid"
 const STRIKE_COLUMNS: HeadlessPaneColumn[] = [
   { key: "expiry", header: "Expiry" },
   { key: "strike", header: "Strike", align: "right" },
-  { key: "callPremium", header: "Calls", align: "right", textFormat: premium, description: "All call premium, mid prints included." },
+  { key: "callPremium", header: "Calls", align: "right", textFormat: premium, description: "All call premium, mid and unknown prints included." },
   { key: "callAsk", header: "Call ask", align: "right", textFormat: premium },
   { key: "callBid", header: "Call bid", align: "right", textFormat: premium },
-  { key: "putPremium", header: "Puts", align: "right", textFormat: premium, description: "All put premium, mid prints included." },
+  { key: "putPremium", header: "Puts", align: "right", textFormat: premium, description: "All put premium, mid and unknown prints included." },
   { key: "putAsk", header: "Put ask", align: "right", textFormat: premium },
   { key: "putBid", header: "Put bid", align: "right", textFormat: premium },
   { key: "net", header: "Net", align: "right", textFormat: signedPremium, description: "Net call premium less net put premium at the strike." },
@@ -296,6 +297,7 @@ function projectFlowReport(
       title: sessionDate ? `${symbol} by expiry and strike, ${sessionDate}` : `${symbol} by expiry and strike`,
       columns: STRIKE_COLUMNS,
       rows: flowStrikeRows(session).map(({ id: _id, ...row }) => row),
+      unit: "USD",
       empty: `No ${symbol} prints under these filters this session.`,
     });
   }
@@ -375,19 +377,36 @@ export function createFlowHeadless(
       };
       // The live feed answers the entitlement first, as the pane's does.
       const payload = await dependencies.load(args, ctx.apiClient, ctx.signal).catch(refuse);
+      // The recorded prints and the session's sums add to the tape: one that
+      // fails (a timeout, a server without the route) is said under errors and
+      // the rest of the report stands. A wall still refuses the whole read.
+      const failures: string[] = [];
+      const extra = async <T>(load: Promise<T> | null, what: string): Promise<T | null> => {
+        if (!load) return null;
+        try {
+          return await load;
+        } catch (error) {
+          if (ctx.signal.aborted || refusedLock(error)) return refuse(error);
+          failures.push(`${what} unavailable: ${errorMessage(error)}`);
+          return null;
+        }
+      };
       const wantsPrints = !tab || tab === "prints";
       const wantsSession = !tab || tab === "tide" || tab === "strikes";
       const [recorded, session] = await Promise.all([
-        symbol && wantsPrints
-          ? dependencies.recorded(flowHistorySearch(flowHistoryQuery(filters, scope, undefined, FLOW_REPORT_RECORDED)), ctx.apiClient, ctx.signal).catch(refuse)
-          : null,
-        wantsSession ? dependencies.session(flowSessionSearch(filters, scope), ctx.apiClient, ctx.signal).catch(refuse) : null,
+        extra(symbol && wantsPrints
+          ? dependencies.recorded(flowHistorySearch(flowHistoryQuery(filters, scope, undefined, FLOW_REPORT_RECORDED)), ctx.apiClient, ctx.signal)
+          : null, "Recorded prints"),
+        extra(wantsSession ? dependencies.session(flowSessionSearch(filters, scope), ctx.apiClient, ctx.signal) : null, "Session totals"),
       ]);
-      const report = projectFlowReport({ payload, recorded, session }, filters, scope, tab);
+      // Asked for the session's sums alone, a failure to read them is the report's.
+      if (!wantsPrints && failures.length > 0) throw new Error(failures[0]);
+      const report = projectFlowReport({ payload, recorded, session }, filters, scope, wantsSession && !session ? "prints" : tab);
+      const errors = [...report.errors ?? [], ...failures];
       return {
         sections: report.sections,
         ...(report.notes ? { notes: report.notes } : {}),
-        ...(report.errors ? { errors: report.errors } : {}),
+        ...(errors.length > 0 ? { errors } : {}),
         ...(symbol ? { symbols: [symbol] } : {}),
         freshness: report.freshness,
         metadata: { asOf: report.asOf, ...report.metadata },

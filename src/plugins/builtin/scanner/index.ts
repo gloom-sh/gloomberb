@@ -123,7 +123,7 @@ export const scannerModule: PluginModule = {
       id: "scanner-flow-pane",
       paneId: FLOW_PANE_ID,
       label: "Options Flow",
-      description: "Unusual options activity: sweeps, blocks, and large premium prints, with the net-premium tide through the session. Add a ticker for its prints and its premium by strike and expiry.",
+      description: "Unusual options activity: sweeps, blocks, large premium prints, and the net premium tide.",
       keywords: ["flow", "options", "sweep", "block", "unusual", "premium", "scanner", "tide", "net premium", "market tide"],
       shortcut: { prefix: "FLOW", argKind: "ticker", argPlaceholder: "ticker", argOptional: true, openWithoutArg: true },
       headless: flowHeadless,

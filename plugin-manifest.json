@@ -1493,7 +1493,7 @@
           {
             "code": "FLOW",
             "name": "Options Flow",
-            "description": "Unusual options activity: sweeps, blocks, and large premium prints, with the net-premium tide through the session. Add a ticker for its prints and its premium by strike and expiry.",
+            "description": "Unusual options activity: sweeps, blocks, large premium prints, and the net premium tide.",
             "access": "pro"
           },
           {

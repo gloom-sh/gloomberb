@@ -579,7 +579,7 @@ A zero or negative price is kept for a futures instrument. For any other instrum
 | `MOST` | Top gainers, losers, most active, and trending tickers |
 | `HILO` | Session new highs and new lows with 30s/1m/5m momentum |
 | `SCAN` | Your own live intraday scan of US stocks: moves, volume spikes, new highs and lows, VWAP crosses and gaps, with alerts ([Live scanner](#live-scanner)) |
-| `FLOW [ticker]` | Unusual options activity: sweeps, blocks and large premium. Vol/OI divides the contract's day volume by its latest open interest. Tide charts the net premium through the session; with a ticker, the prints are that name's and Strikes sums its premium by expiry and strike ([Options flow](#options-flow)) |
+| `FLOW [ticker]` | Unusual options activity: sweeps, blocks and large premium, and the net premium tide ([Options flow](#options-flow)). Vol/OI divides the contract's day volume by its latest open interest |
 | `PM <query>` | Polymarket and Kalshi prediction data ([Prediction Markets plugin](https://github.com/gloom-sh/gloom-prediction-markets)) |
 | `N` | News feed |
 | `CN <ticker>` | Ticker news |
@@ -939,15 +939,7 @@ Signed in, they also merge in the alerts Gloom Cloud delivered to your phone or 
 
 ### Options flow
 
-`FLOW` (Gloom Cloud Pro) lists the market's sweeps, blocks and large premium prints as they hit the tape, under the filters in its query bar: minimum premium, calls or puts, print kind, Vol/OI floor, expiry window and, for the whole market, a universe (the most active names or your watchlists). `FLOW NVDA` narrows every tab to one name. Scrolling past the live prints pages back through the recorded ones.
-
-- **Prints:** each print's time, strike, expiry, side, size, premium and Vol/OI. Enter opens the ticker.
-- **Tide:** the net premium through the latest session, in 5-minute steps, for the market or the ticker, with net calls and net puts beside it. Net premium is call premium bought at the ask less call premium sold at the bid, minus the same for puts: a rising tide is call buying or put selling.
-- **Strikes** (with a ticker): the session's call and put premium by expiry and strike, each split into bought at the ask and sold at the bid, largest first; click a header to sort. Enter opens that expiry's chain.
-
-A print counts as bought when it trades at the ask and as sold at the bid. Mid prints count as neither: they are in a strike's call and put totals but not in any net figure.
-
-`gloom fn FLOW` reads the same tabs as sections (`gloom fn FLOW NVDA` for one name; `--tab prints`, `tide` or `strikes` for one; `--min-premium`, `--side`, `--kind`, `--vol-oi` and `--expiry` as in the pane), in text, `--json` or `--csv`.
+`FLOW` (Pro) lists sweeps, blocks and large premium prints under the query bar's filters; `FLOW NVDA` narrows it to one name. **Tide** charts the session's net premium: call premium at the ask less call premium at the bid, minus the same for puts. Mid or unknown prints count as neither. With a ticker, **Strikes** sums its premium by expiry and strike. `gloom fn FLOW [ticker] --tab prints|tide|strikes` reads the same.
 
 ## Live prices and refresh cadence
 

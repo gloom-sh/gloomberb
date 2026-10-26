@@ -187,7 +187,8 @@ function renderTideCell(row: FlowTideRow, column: DataTableColumn): DataTableCel
   return {
     text: formatSignedFlowPremium(value),
     value,
-    color: signedColor(value),
+    // Coloured by what it means for the name: put buying is bearish, put selling bullish.
+    color: signedColor(column.id === "netPuts" ? -value : value),
     ...(column.id === "net" ? { attributes: TextAttributes.BOLD } : {}),
   };
 }
@@ -299,18 +300,24 @@ function FlowPane({ focused, width, height }: PaneProps) {
   const history = useFlowHistory(historyQuery, oldestLive, !!feed.payload && !feed.denied);
   const events = useMemo(() => mergeFlowRows(liveRows, history.events), [history.events, liveRows]);
 
-  // The session summary loads once its tab is first opened, and refreshes from then on.
-  const [sessionOpened, setSessionOpened] = useState(tab !== "prints");
-  useEffect(() => {
-    if (tab !== "prints") setSessionOpened(true);
-  }, [tab]);
+  // The session summary is read only while Tide or Strikes is on screen: it
+  // loads when one first opens, follows the filters and refreshes while shown,
+  // and holds still behind Prints.
+  const sessionShown = tab !== "prints";
   const sessionSearch = useMemo(() => flowSessionSearch(filters, scope), [filters, scope]);
-  const sessionLoader = useCallback(() => loadFlowSession(sessionSearch), [sessionSearch]);
+  const [shownSearch, setShownSearch] = useState<string | null>(sessionShown ? sessionSearch : null);
+  useEffect(() => {
+    if (sessionShown) setShownSearch(sessionSearch);
+  }, [sessionSearch, sessionShown]);
+  const sessionLoader = useMemo(
+    () => (shownSearch === null ? null : () => loadFlowSession(shownSearch)),
+    [shownSearch],
+  );
   const session = useAsyncResource<ScannerFlowSession>(
-    sessionOpened && !!feed.payload && !feed.denied ? sessionLoader : null,
+    sessionLoader && feed.payload && !feed.denied ? sessionLoader : null,
   );
   useAutoRefresh(session.updatedAt, () => void session.load(), {
-    intervalMs: feed.payload?.status === "live" ? FLOW_SESSION_LIVE_REFRESH_MS : null,
+    intervalMs: sessionShown && feed.payload?.status === "live" ? FLOW_SESSION_LIVE_REFRESH_MS : null,
   });
 
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);

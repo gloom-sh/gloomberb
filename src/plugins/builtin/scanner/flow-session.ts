@@ -10,7 +10,7 @@ import { formatFlowPremium } from "./flow-model";
  * The session's recorded prints summed by the server under the pane's
  * filters: the net-premium tide through the day and, for one name, its
  * premium by expiry and strike. A print at the ask counts as bought and one at
- * the bid as sold; mid prints count as neither (docs/usage.md, Options flow).
+ * the bid as sold; mid or unknown prints count as neither (docs/usage.md, Options flow).
  */
 export type FlowSessionLoader = (search: string, signal?: AbortSignal) => Promise<ScannerFlowSession>;
 

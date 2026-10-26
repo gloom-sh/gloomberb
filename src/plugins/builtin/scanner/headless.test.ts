@@ -20,6 +20,8 @@ function args(minPrice: string, sort: string): HeadlessPaneLoadArgs {
   return { rawArgument: "", argument: null, symbols: [], options: { minPrice, sort } };
 }
 
+const ctx = { signal: new AbortController().signal } as HeadlessPaneContext;
+
 describe("highs and lows headless model", () => {
   test("waits for scanner data beyond the connecting snapshot", async () => {
     let unsubscribed = 0;
@@ -61,15 +63,15 @@ describe("highs and lows headless model", () => {
       load: async () => ({ ...payload, status: "degraded" }),
     });
 
-    const result = await headless.load(args("1", "recent"), {} as HeadlessPaneContext);
+    const result = await headless.load(args("1", "recent"), ctx);
 
     expect(result.errors).toEqual(["Scanner feed degraded"]);
   });
 
   test("applies the pane price and sort options to a stream snapshot", async () => {
     const headless = createHiloHeadless({ load: async () => payload });
-    const filtered = await headless.load(args("1", "recent"), {} as HeadlessPaneContext);
-    const unfiltered = await headless.load(args("off", "count"), {} as HeadlessPaneContext);
+    const filtered = await headless.load(args("1", "recent"), ctx);
+    const unfiltered = await headless.load(args("off", "count"), ctx);
 
     expect(filtered.items.map((row) => row.symbol)).toEqual(["LOW", "HIGH"]);
     expect(unfiltered.items.map((row) => row.symbol)).toEqual(["PENNY", "LOW", "HIGH"]);
@@ -110,7 +112,7 @@ describe("options flow report", () => {
 
   test("one name: its live and recorded prints, its tide and its strikes, with the side rule once", async () => {
     searches.length = 0;
-    const report = await headless.load(args("nvda"), {} as HeadlessPaneContext);
+    const report = await headless.load(args("nvda"), ctx);
     expect(searches).toEqual([
       "history?limit=100&minPremium=250000&universe=symbols&symbols=NVDA",
       "session?minPremium=250000&symbol=NVDA",
@@ -126,13 +128,30 @@ describe("options flow report", () => {
     expect(report.notes).toEqual([FLOW_SIDE_RULE]);
   });
 
+  test("a session or recorded read that fails leaves the live prints standing, said under errors", async () => {
+    const failing = createFlowHeadless({
+      load: async () => feed,
+      recorded: async () => { throw new Error("Request timed out"); },
+      session: async () => { throw new Error("Not Found"); },
+    });
+    const market = await failing.load(args(null), ctx);
+    expect(market.sections.map((section) => section.title)).toEqual(["Prints"]);
+    expect(market.errors).toEqual(["Session totals unavailable: Not Found"]);
+    expect(market.notes).toBeUndefined();
+    const nvda = await failing.load(args("NVDA"), ctx);
+    expect((nvda.sections[0] as { rows: Array<{ id: string }> }).rows.map((row) => row.id)).toEqual(["live-nvda"]);
+    expect(nvda.errors).toEqual(["Recorded prints unavailable: Request timed out", "Session totals unavailable: Not Found"]);
+    // Asked for the sums alone, there is nothing left to report.
+    await expect(failing.load(args(null, { tab: "tide" }), ctx)).rejects.toThrow("Session totals unavailable");
+  });
+
   test("the market reads the live tape alone, a tab one section, and strikes need a ticker", async () => {
     searches.length = 0;
-    const market = await headless.load(args(null, { tab: "prints" }), {} as HeadlessPaneContext);
+    const market = await headless.load(args(null, { tab: "prints" }), ctx);
     expect(searches).toEqual([]);
     expect(market.sections).toHaveLength(1);
     expect(market.notes).toBeUndefined();
     expect((market.sections[0] as { rows: unknown[] }).rows).toHaveLength(2);
-    await expect(headless.load(args(null, { tab: "strikes" }), {} as HeadlessPaneContext)).rejects.toThrow("needs a ticker");
+    await expect(headless.load(args(null, { tab: "strikes" }), ctx)).rejects.toThrow("needs a ticker");
   });
 });
