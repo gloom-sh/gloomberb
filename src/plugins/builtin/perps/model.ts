@@ -10,10 +10,22 @@ export const PERP_TABS = ["board", "rankings", "compare", "history", "evidence"]
 export type PerpTab = typeof PERP_TABS[number];
 /** One market's tabs; the others list many markets. */
 export const isMarketTab = (tab: string) => tab === "history" || tab === "evidence";
-/** A named market opens its history; nothing named opens the board. */
-export const openingTab = (market: string | null | undefined): PerpTab => market?.trim() ? "history" : "board";
+/**
+ * A named market opens its history, or its latest values (Evidence) where history is Pro's, so a free account
+ * lands on the figures it has and not on a lock; nothing named opens the board.
+ */
+export const openingTab = (market: string | null | undefined, pro = true): PerpTab => market?.trim() ? pro ? "history" : "evidence" : "board";
 export const ASSET_FILTERS = ["all", "stocks", "indices", "energy", "metals", "fx", "crypto"] as const;
-export const VENUES = ["hyperliquid", "binance", "bybit", "okx", "deribit", "coinbase", "kraken", "dydx"] as const;
+/** The venues Gloom collects perpetuals from: what the venue filter and `--venue` take. */
+export const VENUES = ["hyperliquid", "binance", "bybit", "okx"] as const;
+/** Every venue a market identity can name (`kraken:PF_XBTUSD`), collected or not. */
+export const IDENTITY_VENUES = [...VENUES, "deribit", "coinbase", "kraken", "dydx"] as const;
+/** What `--venue` says of a venue Gloom does not collect yet; null for a covered venue and for any other word. */
+export function uncoveredVenueNote(venue: string): string | null {
+  const id = venue.trim().toLowerCase();
+  return (IDENTITY_VENUES as readonly string[]).includes(id) && !(VENUES as readonly string[]).includes(id)
+    ? `Gloom doesn't cover ${venueName(id)} perps yet.` : null;
+}
 export const BOARD_SORTS = ["oi", "funding", "oi-change", "premium", "long-short"] as const;
 export const sortLabel = (sort: string) => ({ oi: "OI", funding: "Funding", "oi-change": "OI change", premium: "Premium", "long-short": "Long %" })[sort] ?? sort;
 export const label = (s: string) => s === "fx" ? "FX" : s.charAt(0).toUpperCase() + s.slice(1);

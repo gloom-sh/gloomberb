@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { deriveHeadlessFreshness, formatFreshnessLine, paneStatusLine } from "../../../cli/pane-functions/freshness";
 import { renderHeadlessPaneText, serializeHeadlessPaneResult } from "../../../cli/pane-functions/headless";
 import type { PerpMarketPayload } from "../../../api-client/perps";
+import { normalizeCapabilityOptions, type PaneFunctionCapability } from "../../../cli/pane-functions/capabilities";
 import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
 import { perpFreshness } from "./freshness";
 import { perpsHeadless } from "./headless";
@@ -285,8 +286,8 @@ test("a venue filter names no count it does not have, and a venue with no contra
   const bybit = await load(null, { tab: "board", venue: "bybit" });
   expect(bybit.text).toContain("Pro: Bybit markets beyond the free preview need Gloom Pro");
   expect(bybit.text).not.toContain("2,501");
-  const none = await load(null, { tab: "board", venue: "kraken" });
-  expect(none.text).toMatch(/Perpetual markets\n\nPro: Kraken markets beyond the free preview need Gloom Pro · gloom.sh\/cloud\n/);
+  const none = await load(null, { tab: "board", venue: "okx" });
+  expect(none.text).toMatch(/Perpetual markets\n\nPro: OKX markets beyond the free preview need Gloom Pro · gloom.sh\/cloud\n/);
   expect(none.text.match(/Pro:/g)).toHaveLength(1);
   expect(none.text).not.toContain("No data");
 
@@ -296,8 +297,8 @@ test("a venue filter names no count it does not have, and a venue with no contra
     expect(opened).toMatchObject({ marketId });
     expect(opened).not.toHaveProperty("notices");
   }
-  expect((await load("BTC", { venue: "kraken" })).result.metadata).toMatchObject({ marketId: "binance:BTCUSDT", notices: ["Kraken has no BTC contract in the free preview; showing Binance."] });
-  expect((await load("BTC", { venue: "kraken" }, "pro")).result.metadata).toMatchObject({ notices: ["Kraken has no BTC contract; showing Binance."] });
+  expect((await load("BTC", { venue: "okx" })).result.metadata).toMatchObject({ marketId: "binance:BTCUSDT", notices: ["OKX has no BTC contract in the free preview; showing Binance."] });
+  expect((await load("BTC", { venue: "okx" }, "pro")).result.metadata).toMatchObject({ notices: ["OKX has no BTC contract; showing Binance."] });
   expect((await load("hyperliquid:default:BTC", { venue: "bybit" })).result.metadata).toMatchObject({ notices: ["hyperliquid:default:BTC is a Hyperliquid market, so the Bybit filter does not apply."] });
 });
 
@@ -318,4 +319,15 @@ test("fn PERP dates the board as the pane footer does: each venue's time and the
   // A venue that stopped answering for a market still says so.
   const stopped = deriveHeadlessFreshness({ shape: "rows" }, { rows: [], freshness: perpFreshness(rows.map((row) => ({ ...row, stale: true })), { now }) }, now);
   expect(paneStatusLine(stopped)).toContain("stale");
+});
+
+test("--venue lists the venues Gloom collects, and one it does not says so instead of a free preview", () => {
+  const capability = { id: "perps", botSafe: true, options: perpsHeadless.options } as unknown as PaneFunctionCapability;
+  const normalize = (venue: string) => normalizeCapabilityOptions(capability, { venue }, { strict: true, code: "PERP" }).venue;
+  expect(perpsHeadless.options.find((option) => option.key === "venue")!.values!.map(({ value }) => value)).toEqual(["all", "hyperliquid", "binance", "bybit", "okx"]);
+  expect(normalize("OKX")).toBe("okx");
+  for (const [venue, name] of [["deribit", "Deribit"], ["kraken", "Kraken"], ["coinbase", "Coinbase International"], ["dydx", "dYdX"]] as const) {
+    expect(() => normalize(venue)).toThrow(`Invalid --venue value "${venue}". Gloom doesn't cover ${name} perps yet. Use one of: all, hyperliquid, binance, bybit, okx.`);
+  }
+  expect(() => normalize("nowhere")).toThrow('Invalid --venue value "nowhere". Use one of: all, hyperliquid, binance, bybit, okx.');
 });

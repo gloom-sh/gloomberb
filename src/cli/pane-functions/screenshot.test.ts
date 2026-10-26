@@ -530,6 +530,13 @@ describe("pane screenshot rendered readiness", () => {
     expect(isPaneScreenshotUsable({ ...rendered, emptyStateDetected: true })).toBe(false);
   });
 
+  test("a surface to operate needs no rows or empty-state marker, only that it rendered", () => {
+    const layouts = { ...rendered, interactive: true, rowCount: 0, emptyStateDetected: true };
+    expect(isPaneScreenshotUsable(layouts)).toBe(true);
+    expect(isPaneScreenshotUsable({ ...layouts, loadingStateDetected: true })).toBe(false);
+    expect(isPaneScreenshotUsable({ ...layouts, errorStateDetected: true })).toBe(false);
+  });
+
   test("preserves mapped capability completeness and evidence checks", () => {
     expect(isPaneScreenshotUsable({ ...rendered, complete: false })).toBe(false);
     expect(isPaneScreenshotUsable({ ...rendered, semanticMismatch: true })).toBe(false);

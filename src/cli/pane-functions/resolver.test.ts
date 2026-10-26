@@ -16,6 +16,7 @@ import type { HeadlessPaneDefinition, PaneDef, PaneTemplateDef } from "../../typ
 import type { MarketContext } from "../types";
 import { buildPaneCatalogEntries, type PaneFunctionCatalog } from "./catalog";
 import { createPaneCatalog } from "./discovery";
+import { buildFunctionReport } from "./report";
 import { parsePaneFunctionArgs } from "./options";
 import { applyListingArgument, parsePaneFunctionArgsFor, resolvePaneFunction, UnknownPaneFunctionError } from "./resolver";
 import { portfolioRiskHeadless } from "../../plugins/builtin/analytics/risk-headless";
@@ -231,6 +232,15 @@ test("a central bank's name or short form typed as a function points to CBR, and
   }
   // FOMC is one of WIRP's own words, so it opens the rate path as before.
   expect((await resolve(["FOMC"])).token).toBe("WIRP");
+});
+
+test("a pane no template opens goes by its command-bar code, in the error that sends its reader to shot too", async () => {
+  const layouts: PaneFunctionCatalog = { panes: new Map([["layout-marketplace", pane("layout-marketplace")]]), paneTemplates: new Map(), destroy: () => {} };
+  for (const word of ["LAY", "layout-marketplace"]) {
+    const resolved = await resolvePaneFunction(layouts, context, parsePaneFunctionArgs([word]));
+    expect(resolved.token).toBe("LAY");
+    await expect(buildFunctionReport(resolved, context, "")).rejects.toThrow("LAY is an interactive pane with no data report; run `gloom shot LAY` to see it.");
+  }
 });
 
 test("CMP of one ticker says it needs two or more and how to ask, before any chart is built", async () => {

@@ -108,6 +108,11 @@ export type PaneScreenshotDataEvidence =
   | PaneScreenshotEvidence;
 
 export interface PaneScreenshotReadinessSignals {
+  /**
+   * A surface to operate rather than data to read (Layouts, Brokers): its rows
+   * and an empty-state marker inside it say nothing of whether it rendered.
+   */
+  interactive?: boolean;
   rowCount: number;
   loadingStateDetected: boolean;
   errorStateDetected: boolean;

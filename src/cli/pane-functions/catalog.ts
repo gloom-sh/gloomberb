@@ -79,6 +79,14 @@ function builtInPanePrefixes(paneId: string): string[] {
   return command ? getCommandPrefixes(command) : [];
 }
 
+/**
+ * What a user types for a function, as the catalog lists it and every error names it: a template's
+ * shortcut or id, a pane opened by a built-in command (LAY) by that command's mnemonic, else the pane's id.
+ */
+export function paneFunctionCode(template: PaneTemplateDef | undefined, pane: PaneDef): string {
+  return template?.shortcut?.prefix ?? template?.id ?? builtInPanePrefixes(pane.id)[0] ?? pane.id;
+}
+
 function registerResolverToken(
   lookup: Map<string, PaneTemplateDef | PaneDef>,
   token: string | undefined,
@@ -296,7 +304,7 @@ export async function buildPaneCatalogEntries(
     const [shortcut, ...aliases] = builtInPanePrefixes(pane.id);
     const argument = paneFunctionArgument(undefined, pane);
     entries.push({
-      token: shortcut ?? pane.id,
+      token: paneFunctionCode(undefined, pane),
       label: pane.name,
       description: `Open the ${pane.name} pane.`,
       paneId: pane.id,

@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, expect, setSystemTime, test } from "bun:test";
 import type { ResolvedPaneFunction } from "./resolver";
 import type { HeadlessPaneContext } from "../../types/headless";
-import { assessPaneScreenshot } from "./screenshot-assessment";
+import { assessPaneScreenshot, shotStatusIssues } from "./screenshot-assessment";
 import type { PaneScreenshotResult } from "./screenshot-types";
 import type { DesktopPaneShotPayload, DesktopPaneShotRenderResult } from "../desktop-pane-shot";
 import { appendDomReportFooter, buildDomPaneReportFromRender, domReportNote, domReportView } from "./dom";
@@ -159,6 +159,24 @@ test("an OMON shot names the rows its image cuts and how many strikes the window
   expect(shot.notices).toEqual([notice]);
   expect(shot.rowCount).toBe(3);
   expect(shot.render.truncationReasons).toEqual(["rows above and below the rendered viewport are cut"]);
+});
+
+test("a capture of the Layouts surface is not empty for having no rows, and reports no reason", () => {
+  const resolved = {
+    token: "LAY", label: "Layouts", options: {}, pane: { id: "layout-marketplace" },
+    capability: { id: "layout-marketplace", botSafe: false, outputKind: "pane", reportReadiness: "unsupported", screenshotReadiness: "live-dom" },
+  } as unknown as ResolvedPaneFunction;
+  const render = {
+    visibleText: "Layouts", rows: [], visibleKeyValues: [], semanticUi: [], emptyStateDetected: true, loadingStateDetected: false, errorStateDetected: false,
+    accessGate: null, surfaces: [], emptyStateMarkers: ["Log in to browse community layouts."],
+  };
+  const shot = assessPaneScreenshot(resolved, { financials: [] } as unknown as DesktopPaneShotPayload, render as unknown as DesktopPaneShotRenderResult, "", "/tmp/lay-shot-test.png");
+  expect(shot).toMatchObject({ rowCount: 0, empty: false, usable: true, unusableReason: null });
+  expect(shotStatusIssues(shot)).toEqual([]);
+  // The same capture of a pane that shows data is empty.
+  const data = assessPaneScreenshot({ ...resolved, pane: { id: "world-indices" } } as unknown as ResolvedPaneFunction, { financials: [] } as unknown as DesktopPaneShotPayload,
+    render as unknown as DesktopPaneShotRenderResult, "", "/tmp/lay-shot-test.png");
+  expect(data).toMatchObject({ empty: true, usable: false });
 });
 
 test("states the expiry a rendered OMON shows and dates the report by the chain behind it", async () => {

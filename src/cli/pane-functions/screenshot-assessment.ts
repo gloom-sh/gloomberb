@@ -4,6 +4,7 @@ import type { DesktopPaneShotPayload, DesktopPaneShotRenderResult } from "../des
 import type { ResolvedPaneFunction } from "./resolver";
 import type { RemoteUiNodeSnapshot } from "../../remote/types";
 import { accessGateSentence, accessGateStatus } from "./access-gate";
+import { isDataPaneForDomFallback } from "./capabilities";
 import { paneEvidenceMismatches, paneScreenshotEvidenceHook } from "./screenshot-evidence";
 import { collectShotSymbols } from "./data";
 import { renderedReportNotices } from "./report-notices";
@@ -21,10 +22,9 @@ import {
 import { shotExpectedChart, chartEvidenceMismatchesFor, intradayChartEvidenceMismatchesFor } from "./screenshot-chart-evidence";
 
 export function isPaneScreenshotUsable(signals: PaneScreenshotReadinessSignals): boolean {
-  return signals.rowCount > 0
+  return (signals.interactive || (signals.rowCount > 0 && !signals.emptyStateDetected))
     && !signals.loadingStateDetected
     && !signals.errorStateDetected
-    && !signals.emptyStateDetected
     && signals.complete
     && !signals.semanticMismatch
     && (!signals.requiresStructuredDataEvidence || signals.hasStructuredDataEvidence);
@@ -111,12 +111,14 @@ export function assessPaneScreenshot(
   const semanticMismatch = missingExpectedText.length > 0
     || missingExpectedSelections.length > 0
     || chartEvidenceMismatches.length > 0;
+  // Layouts and the other panes that are surfaces to operate have no rows to count: a capture of one is not empty for that.
+  const interactive = !isDataPaneForDomFallback(resolved.pane);
   const empty = render.loadingStateDetected
     || render.errorStateDetected
-    || render.emptyStateDetected
-    || rowCount === 0
+    || (!interactive && (render.emptyStateDetected || rowCount === 0))
     || semanticMismatch;
   const usable = isPaneScreenshotUsable({
+    interactive,
     rowCount,
     loadingStateDetected: render.loadingStateDetected,
     errorStateDetected: render.errorStateDetected,

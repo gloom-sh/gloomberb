@@ -4,7 +4,7 @@ import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../
 import { AssetDataRouter } from "../../../sources/provider-router";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
-import { setCloudApiFetchTransport } from "../../../api-client";
+import { apiClient, setCloudApiFetchTransport } from "../../../api-client";
 import type { PerpBoardPayload, PerpRankingsPayload } from "../../../api-client/perps";
 import { PaneFooterBar, PaneFooterKeys, PaneFooterProvider } from "../../../components/layout/pane/footer";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
@@ -20,10 +20,16 @@ import { equityBoard, longShort, perpBoard, perpHistory, perpRankings, perpRow, 
 const tui = createOpenTuiTestHarness();
 let coordinator: MarketDataCoordinator | null = null;
 const reset = () => {
+  apiClient.setSessionToken(null);
   setCloudApiFetchTransport(null); perpsCache.reset(); perpsHistoryCache.reset(); perpsMarketCache.reset(); perpsRankingsCache.reset();
   setSharedMarketDataCoordinator(null); coordinator?.destroy(); coordinator = null;
 };
 afterEach(reset);
+/** A Pro account: a named market opens its history, which a free one has locked. */
+function signInPro() {
+  apiClient.setSessionToken("perps-test-session");
+  apiClient.restoreCachedUser({ id: "pro-user", name: "Test", email: "pro@example.invalid", emailVerified: true, plan: "pro", effectivePlan: "pro" } as never);
+}
 /** A second pane in the same test starts from empty caches. */
 async function remount() { await tui.destroy(); reset(); }
 /** The mounted app state and its dispatch, for a test that changes the instance the way the app does. */
@@ -56,7 +62,7 @@ function serve({ board = perpBoard(), rankings = perpRankings(), compare = perpB
   return calls;
 }
 
-test("no market opens the board in its preview; a named market still opens its history", async () => {
+test("no market opens the board in its preview; a named market opens its latest values, where history is Pro's", async () => {
   serve({ board: perpBoard({ access: "preview", locked: 2501, rows: [perpRow(), venueRow("bybit")] }) });
   await mount({ market: "" });
   const board = await tui.waitForFrameToContain("Upgrade for 2,501 more markets");
@@ -66,11 +72,21 @@ test("no market opens the board in its preview; a named market still opens its h
   await remount();
   serve({ board: perpBoard({ access: "preview", locked: 5, sources: ["hyperliquid", "binance"].map((source) => ({ source })) }) });
   await mount({ market: "BTC" });
+  // A free account lands on the figures it has, not on a lock.
+  const latest = await tui.waitForFrameToContain("Funding 8h / APR");
+  expect(latest).toContain("Premium vs oracle");
+  expect(latest).not.toContain("Full history requires Gloom Pro.");
+  await tui.clickFrameText("History");
   const history = await tui.waitForFrameToContain("Full history requires Gloom Pro.");
   expect(history).toContain("Funding / 8h");
   // The lock says what Pro adds, with the venues Gloom Cloud collects.
   expect(history).toContain("Gloom Pro adds Hyperliquid BTC history and every market on 2 venues.");
   expect(history).toContain("Upgrade for full history");
+  await remount();
+  signInPro();
+  serve({ board: perpBoard({ access: "pro", sources: ["hyperliquid", "binance"].map((source) => ({ source })) }) });
+  await mount({ market: "BTC" });
+  expect(await tui.waitForFrameToContain("Series")).not.toContain("Full history requires Gloom Pro.");
 });
 
 test("asking for a market again brings its pane back to that market from the board, and d opens its stock's DES", async () => {
@@ -80,7 +96,7 @@ test("asking for a market again brings its pane back to that market from the boa
   const first = perpsInstance(stock.marketId);
   await mount(first.settings!, { instanceId: first.instanceId, params: first.params },
     createTestPluginRuntime({ pinTicker: (symbol, options) => { opened.push([options?.paneType ?? "", symbol]); } }));
-  await tui.waitForFrameToContain("Full history requires Gloom Pro.");
+  await tui.waitForFrameToContain("Funding 8h / APR");
   await tui.clickFrameText("Board");
   await tui.waitForFrameToContain("Search markets");
   // A stock's perpetual row pressed again: the workflow finds this pane by its id and stamps the new request on it.
@@ -91,7 +107,7 @@ test("asking for a market again brings its pane back to that market from the boa
   const layout = state.config.layout;
   await act(async () => { dispatch({ type: "SET_CONFIG", config: { ...state.config, layout: { ...layout,
     instances: layout.instances.map((entry) => entry.instanceId === again.instanceId ? { ...entry, params: { ...entry.params, ...again.params } } : entry) } } }); });
-  const frame = await tui.waitForFrameToContain("Full history requires Gloom Pro.");
+  const frame = await tui.waitForFrameToContain("Funding 8h / APR");
   expect(frame).toContain(stock.marketId);
   expect(frame).not.toContain("Search markets");
   await tui.emitKeypress({ name: "d" });
@@ -109,7 +125,7 @@ test("a named market opened on another tab, as `shot PERP <market> --tab evidenc
 
 test("free long/short history keeps the row's latest reading beside the same Pro lock as every series", async () => {
   serve({ board: perpBoard({ access: "preview", locked: 5, rows: [venueRow("binance", { longShortRatio: longShort() })] }) });
-  await mount({ market: "BTC", metric: "long-short" });
+  await mount({ market: "BTC", tab: "history", metric: "long-short" });
   const frame = await tui.waitForFrameToContain("Full history requires Gloom Pro.");
   expect(frame).toContain("Long accounts");
   expect(frame).toContain("61.83%");
@@ -118,6 +134,7 @@ test("free long/short history keeps the row's latest reading beside the same Pro
 });
 
 test("the venue filter narrows the board, and Enter opens the chosen venue's contract in History", async () => {
+  signInPro();
   const calls = serve({ board: perpBoard({ rows: [perpRow(), venueRow("binance"), venueRow("bybit", { fundingRate: 0.0002 })] }) });
   await mount({ market: "", venue: "bybit" });
   const frame = await tui.waitForFrameToContain("+0.02000% /8h");

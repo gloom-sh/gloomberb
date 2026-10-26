@@ -4,7 +4,7 @@ import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { boardSearchText, fetchPerpSelection, fetchPerpsBoard, fetchPerpsCompare, fetchPerpsHistory, fetchPerpsRankings, marketQuery, nearestPerpMarkets } from "./client";
 import { perpFreshness } from "./freshness";
 import { aprFootnote, ASSET_FILTERS, BOARD_COLUMNS, BOARD_SORTS, collectedVenueCount, COMPARE_COLUMNS, compact, fundingSpread, HISTORY_METRICS, label, marketLabel, openingTab, PERP_TABS, perpCellText,
-  perpColumnLabel, percent, perpHistoryProText, positioningFields, price, RANKING_COLUMNS, rankingRows, RANKINGS, ratioText, share, time, VENUES, venueName, type PerpColumnId } from "./model";
+  perpColumnLabel, percent, perpHistoryProText, positioningFields, price, RANKING_COLUMNS, rankingRows, RANKINGS, ratioText, share, time, uncoveredVenueNote, VENUES, venueName, IDENTITY_VENUES, type PerpColumnId } from "./model";
 import { freePreviewNote } from "../shared/free-preview";
 import { basisSpotSymbol } from "../futures-curve/model";
 
@@ -108,7 +108,7 @@ const historyLock = (selected: PerpBoardRow, venues: number | null) => {
 const venueNotice = (venue: string, selected: PerpBoardRow, requested: string, access: string) => {
   if (venue === "all" || selected.venue === venue) return [];
   const [wanted, shown] = [venueName(venue), venueName(selected.venue)];
-  return [VENUES.some((id) => requested.startsWith(`${id}:`)) ? `${requested} is a ${shown} market, so the ${wanted} filter does not apply.`
+  return [IDENTITY_VENUES.some((id) => requested.startsWith(`${id}:`)) ? `${requested} is a ${shown} market, so the ${wanted} filter does not apply.`
     : `${wanted} has no ${selected.baseAsset} contract${access === "pro" ? "" : " in the free preview"}; showing ${shown}.`];
 };
 const venueUnused = (venue: string, tab: string) => venue === "all" ? [] : [`The ${venueName(venue)} filter applies to the board, not ${tab}; showing every venue.`];
@@ -120,7 +120,8 @@ export const perpsHeadless: HeadlessPaneDefinition<"bundle"> = {
   options: [
     { key: "tab", type: "enum", settingKey: "tab", values: PERP_TABS.map((value) => ({ value })), description: "Board, rankings, compare, history or evidence. Board without a market, history with one." },
     { key: "asset-class", type: "enum", settingKey: "assetClass", values: ASSET_FILTERS.map((value) => ({ value })), defaultValue: "all", description: "Board asset class." },
-    { key: "venue", type: "enum", settingKey: "venue", values: ["all", ...VENUES].map((value) => ({ value })), defaultValue: "all", description: "Board venue; with a market, opens that venue's contract when the board lists it." },
+    { key: "venue", type: "enum", settingKey: "venue", values: ["all", ...VENUES].map((value) => ({ value })), defaultValue: "all", invalidValueHint: uncoveredVenueNote,
+      description: "Board venue; with a market, opens that venue's contract when the board lists it." },
     { key: "sort", type: "enum", settingKey: "sort", values: BOARD_SORTS.map((value) => ({ value })), defaultValue: "oi", description: "Board order: open interest, funding, open-interest change, premium or long share of accounts." },
     { key: "days", type: "enum", settingKey: "days", values: ["1", "7", "30", "90", "365"].map((value) => ({ value })), defaultValue: "7", description: "History lookback in days." },
     { key: "metric", type: "enum", settingKey: "metric", values: HISTORY_METRICS.map((value) => ({ value })), defaultValue: "funding", description: "Displayed history chart; JSON retains every series." },

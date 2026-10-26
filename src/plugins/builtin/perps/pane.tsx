@@ -378,11 +378,12 @@ export function PerpsPane({ width, height, focused, marketAction }: Pick<PanePro
   const openDescription = useOpenDescription();
   const upgrade = useCloudUpgradeAction("perp");
   const [openingMarket] = usePaneSettingValue("market", "");
-  const [openingTabValue] = usePaneSettingValue("tab", openingTab(openingMarket));
+  const opening = openingTab(openingMarket, access.hasProAccess);
+  const [openingTabValue] = usePaneSettingValue("tab", opening);
   // A market asked for again (a stock's perpetual row, PERP) comes back to it on its opening tab, whatever this pane
   // shows by then.
   const [savedTab, setTab] = useCommandValue<string>("perps", "perps:tab", (params) => params.market ? openingTabValue : null, openingTabValue);
-  const tab = PERP_TABS.includes(savedTab as PerpTab) ? savedTab as PerpTab : openingTab(openingMarket);
+  const tab = PERP_TABS.includes(savedTab as PerpTab) ? savedTab as PerpTab : opening;
   const marketTab = isMarketTab(tab);
   const [search, setSearch] = useCommandValue("perps", "perps:search", (params) => params.market || null, openingMarket);
   const [compareAsset, setCompareAsset] = usePluginPaneState<string>("perps:compare", compareOpening(openingMarket));
@@ -415,7 +416,7 @@ export function PerpsPane({ width, height, focused, marketAction }: Pick<PanePro
     setListRow(null);
     setTab(next);
   }, [carried, marketTab, setSearch, setCompareAsset, setTab]);
-  const openMarket = useCallback((row: PerpBoardRow, next: PerpTab = "history") => { setSearch(row.marketId); setTab(next); }, [setSearch, setTab]);
+  const openMarket = useCallback((row: PerpBoardRow, next: PerpTab = openingTab(row.marketId, access.hasProAccess)) => { setSearch(row.marketId); setTab(next); }, [setSearch, setTab, access.hasProAccess]);
   const { strip, rows: tabRows } = usePaneTabs({ tabs: PERP_TABS.map((value) => ({ value, label: label(value) })), activeValue: tab, onSelect: selectTab, focused, dense: true });
   const refreshMarket = useCallback(() => { void resource.reload(); }, [resource.reload]);
   useAutoRefresh(resource.updatedAt, resource.load, { intervalMs: 60_000 });

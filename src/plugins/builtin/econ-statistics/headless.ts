@@ -17,7 +17,7 @@ import { formatMoveRank } from "../shared/move-rank";
 import type { StatPoint } from "../shared/stat-transform";
 import { formatSigma } from "../shared/trend";
 import { STAT_CATEGORIES } from "./defs";
-import { DEFAULT_STAT_ID, resolveStatArg, STATS } from "./stats";
+import { DEFAULT_STAT_ID, readStatArg, STATS } from "./stats";
 import { selectStatViews, type StatRangeId, type StatViewModel } from "./view";
 
 /** How a report reads a statistic: a spread in basis points, everything else as the pane does. */
@@ -238,7 +238,7 @@ export const econStatisticsHeadless: HeadlessPaneDefinition<"bundle"> = {
   argument: {
     kind: "free-text",
     placeholder: "statistic",
-    description: "Optional statistic id, FRED series id, label, or prefix.",
+    description: "Optional statistic id, name (PCE, GDP), label, FRED series id, or prefix.",
     optional: true,
   },
   options: [{
@@ -250,7 +250,8 @@ export const econStatisticsHeadless: HeadlessPaneDefinition<"bundle"> = {
   }],
   describe: (args) => `Economic Statistics | ${String(args.options.range)}`,
   async load(args, ctx) {
-    const requested = typeof args.argument === "string" ? resolveStatArg(args.argument) : null;
+    const read = typeof args.argument === "string" ? readStatArg(args.argument) : null;
+    const requested = read?.stat ?? null;
     if (args.argument && !requested) {
       throw new Error(
         `Unknown economic statistic "${String(args.argument)}". Use one of: ${STATS.map(({ id }) => id).join(", ")}.`,
@@ -261,6 +262,7 @@ export const econStatisticsHeadless: HeadlessPaneDefinition<"bundle"> = {
       loader: createStatSeriesLoader(ctx.apiClient),
       ...(requested ? { stats: [requested] } : {}),
     });
-    return projectStatsHeadlessBundle(bundle, range, requested?.id ?? DEFAULT_STAT_ID);
+    const report = projectStatsHeadlessBundle(bundle, range, requested?.id ?? DEFAULT_STAT_ID);
+    return read?.readAs ? { ...report, warnings: [read.readAs] } : report;
   },
 };

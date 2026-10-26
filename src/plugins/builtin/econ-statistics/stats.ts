@@ -68,6 +68,7 @@ export const STATS: readonly StatDef[] = [
   }),
   stat({
     id: "pce-yoy",
+    aliases: ["pce", "pce inflation", "pce price index"],
     label: "PCE Prices",
     shortLabel: "PCE y/y",
     category: "inflation",
@@ -179,6 +180,7 @@ export const STATS: readonly StatDef[] = [
   // ---- Growth ----------------------------------------------------------
   stat({
     id: "real-gdp",
+    aliases: ["gdp", "gdp growth"],
     measurementBasis: "q/q annualized",
     label: "Real GDP",
     shortLabel: "Real GDP q/q",
@@ -637,15 +639,40 @@ export const STATS: readonly StatDef[] = [
 
 export const DEFAULT_STAT_ID = STATS[0]!.id;
 
-/** Resolves shortcut arguments like `ECST cpi` onto a statistic. */
-export function resolveStatArg(arg: string | null | undefined): StatDef | null {
+/** A statistic an argument names, and what to say when it had to be read. */
+interface StatArgRead {
+  stat: StatDef;
+  /** "Read "PCE" as PCE Prices (PCE y/y)." when the argument is a name or a prefix, not the statistic's id, label or FRED series; null when it spelled one. */
+  readAs: string | null;
+}
+
+/**
+ * Reads a shortcut argument like `ECST cpi` as a statistic. What it is called
+ * comes before what FRED files it under: a statistic's id, its label, one of
+ * its common names (`PCE`, `gdp`), then a FRED series id, then the start of an
+ * id or a label. A name or a start says what it read, and a name that is also
+ * another statistic's FRED series (`PCE` is personal spending there) points at it.
+ */
+export function readStatArg(arg: string | null | undefined): StatArgRead | null {
   const query = arg?.trim().toLowerCase();
   if (!query) return null;
-  return STATS.find((entry) => entry.id === query)
-    ?? STATS.find((entry) => entry.seriesId.toLowerCase() === query)
-    ?? STATS.find((entry) =>
-      entry.id.startsWith(query)
-      || entry.label.toLowerCase().startsWith(query)
-      || entry.shortLabel.toLowerCase().startsWith(query))
-    ?? null;
+  const exact = STATS.find((entry) => entry.id === query)
+    ?? STATS.find((entry) => entry.label.toLowerCase() === query || entry.shortLabel.toLowerCase() === query);
+  if (exact) return { stat: exact, readAs: null };
+  const named = STATS.find((entry) => entry.aliases?.some((alias) => alias.toLowerCase() === query));
+  const series = STATS.find((entry) => entry.seriesId.toLowerCase() === query);
+  if (!named && series) return { stat: series, readAs: null };
+  const stat = named ?? STATS.find((entry) =>
+    entry.id.startsWith(query)
+    || entry.label.toLowerCase().startsWith(query)
+    || entry.shortLabel.toLowerCase().startsWith(query));
+  if (!stat) return null;
+  const otherSeries = series && series !== stat
+    ? ` FRED's series ${series.seriesId} is ${series.label.toLowerCase()}: type ${series.id} for it.` : "";
+  return { stat, readAs: `Read "${arg!.trim()}" as ${stat.label} (${stat.shortLabel}).${otherSeries}` };
+}
+
+/** Resolves shortcut arguments like `ECST cpi` onto a statistic. */
+export function resolveStatArg(arg: string | null | undefined): StatDef | null {
+  return readStatArg(arg)?.stat ?? null;
 }

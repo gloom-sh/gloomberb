@@ -25,6 +25,7 @@ import {
   buildTemplateContext,
   findFunctionCode,
   nearFunctionCodes,
+  paneFunctionCode,
   suggestedFunctionCodes,
   suggestPaneFunctions,
   type NearFunctionCode,
@@ -349,7 +350,7 @@ export async function resolvePaneFunction(
     tableSection = taken.tableSection;
   }
   // What the user types for the function, which every error about it names.
-  const token = template?.shortcut?.prefix ?? template?.id ?? pane.id;
+  const token = paneFunctionCode(template, pane);
   // A word after a function that takes none is most often one of its option values (`fn JODI gas`).
   // Every function the catalog lists with no argument refuses one, a rendered view (HALT) as a report (CBR).
   // The catalog lists templates and the panes no template opens (HELP); a pane opened by its id stands for its templates.
