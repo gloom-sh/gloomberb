@@ -83,7 +83,7 @@ function projectEarningsEstimatesHeadless(
       returned: rows.length,
       truncated: rows.length < matching.length,
       coverageNote: notice?.text,
-      epsBasis: `${EPS_BASIS_NOTE} The TTM row's EPS is the GAAP diluted trailing figure ticker shows as EPS (TTM), or the four statement quarters' diluted EPS when none is served; reported quarters of different bases are never summed, and the row adds an adjusted sum only when all four quarters are adjusted.`,
+      epsBasis: `${EPS_BASIS_NOTE} The TTM row's EPS is the GAAP diluted trailing figure ticker shows as EPS (TTM): the last four filed quarters', or Gloom Cloud's TTM (named so) when they give none, or the four statement quarters' diluted EPS when neither is there; reported quarters of different bases are never summed, and the row adds an adjusted sum only when all four quarters are adjusted.`,
       dateNote: "Fiscal period dates are not announcement dates. Revenue is attached only to an identified statement period.",
       unmatchedReportedPeriods,
     },

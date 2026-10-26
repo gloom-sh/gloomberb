@@ -55,7 +55,7 @@ function calendarDateWins(calendar: EarningsDateStatus | null, other: EarningsDa
 }
 
 /** The calendar's report as a quarter on record takes it. */
-interface CalendarReport {
+export interface CalendarReport {
   date: string;
   timing: "bmo" | "amc" | null;
   dateStatus: EarningsDateStatus | null;
@@ -86,7 +86,11 @@ function consensusIsReports(event: EarningsEvent, dateStatus: EarningsDateStatus
   return periodEnd != null && periodEnd < date;
 }
 
-function calendarReport(event: EarningsEvent, today: string): CalendarReport {
+/**
+ * A calendar event read as its report, as every surface reads it: reported
+ * once out, and with a consensus only when it is that report's.
+ */
+export function calendarReport(event: EarningsEvent, today: string): CalendarReport {
   const date = calendarDay(event);
   const dateStatus = calendarStatus(event, today);
   const ownConsensus = consensusIsReports(event, dateStatus, date);

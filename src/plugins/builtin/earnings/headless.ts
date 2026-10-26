@@ -9,7 +9,7 @@ import type {
   HeadlessRowsResult,
 } from "../../../types/plugin";
 import type { EarningsEvent } from "../../../types/data-provider";
-import { addDays, boardReport, fallbackReport, MIN_AVERAGE_REPORTS, newYorkToday } from "./board-model";
+import { addDays, boardReport, fallbackReport, MIN_AVERAGE_REPORTS, newYorkToday, type BoardReport } from "./board-model";
 import { BOARD_WEEKS, boardRangeDays, boardRangeLabel, isBoardWeek, requestedBoardRange, type BoardRange } from "./calendar-model";
 import { fetchEarningsCalendar, fetchEarningsHistory } from "./client";
 import { loadEarningsCalendar } from "./data/cache";
@@ -104,6 +104,41 @@ function boardTickerNotice(symbol: string, board: ReadonlyArray<{ symbol: string
   };
 }
 
+/** Two dates this close are one report under the per-ticker calendar and the stored board. */
+const SAME_REPORT_DAYS = 3;
+const eventDay = (event: EarningsEvent) => event.earningsDate.toISOString().slice(0, 10);
+const dayGap = (left: string, right: string) => Math.abs(Date.parse(`${left}T00:00:00Z`) - Date.parse(`${right}T00:00:00Z`)) / 86_400_000;
+
+/**
+ * The stored board's own report for each named company whose per-ticker
+ * calendar still names a report gone by (META the week after it reported),
+ * read over those days as `ERN --date` reads them: the estimate it was
+ * measured against, its analysts, the actual, its basis and the cap, as the
+ * date board and `ERN <ticker>` show them. One the board does not have is
+ * left to the per-ticker calendar.
+ */
+async function storedPastReports(
+  events: readonly EarningsEvent[],
+  today: string,
+  context: HeadlessPaneContext,
+  deps: EarningsHeadlessDependencies,
+): Promise<Map<EarningsEvent, BoardReport>> {
+  const past = events.filter((event) => eventDay(event) < today);
+  const found = new Map<EarningsEvent, BoardReport>();
+  if (!past.length) return found;
+  const from = addDays(past.map(eventDay).sort()[0]!, -SAME_REPORT_DAYS);
+  const symbols = [...new Set(past.map((event) => event.symbol))];
+  const payload = await deps.calendar({ from, to: addDays(today, -1), perDay: 0, symbols }, context)
+    .catch(logFailure("earnings.headless", "Read the board's past reports for named companies failed", null));
+  for (const event of past) {
+    const nearest = (payload?.reports ?? [])
+      .filter((report) => report.symbol === event.symbol && dayGap(report.date, eventDay(event)) <= SAME_REPORT_DAYS)
+      .sort((left, right) => dayGap(left.date, eventDay(event)) - dayGap(right.date, eventDay(event)))[0];
+    if (nearest) found.set(event, boardReport(nearest, NO_OWNERSHIP));
+  }
+  return found;
+}
+
 async function boardRows(args: HeadlessPaneLoadArgs, context: HeadlessPaneContext, deps: EarningsHeadlessDependencies, highlight?: string, range: BoardRange = ""): Promise<HeadlessRowsResult> {
   const today = newYorkToday();
   const named = args.symbols;
@@ -124,9 +159,10 @@ async function boardRows(args: HeadlessPaneLoadArgs, context: HeadlessPaneContex
   const payload = cloud.status === "fulfilled" ? cloud.value : null;
   const reports = (payload?.reports ?? []).map((report) => boardReport(report, NO_OWNERSHIP));
   const covered = new Set(reports.map((report) => report.symbol));
-  const extra = fallback.status === "fulfilled"
-    ? fallback.value.filter((event) => !covered.has(event.symbol)).map((event) => fallbackReport(event, NO_OWNERSHIP, today))
-    : [];
+  const uncovered = fallback.status === "fulfilled" ? fallback.value.filter((event) => !covered.has(event.symbol)) : [];
+  // The days ahead leave out a report just gone by, which the stored board has as the date board shows it.
+  const stored = named.length && !range ? await storedPastReports(uncovered, today, context, deps) : new Map<EarningsEvent, BoardReport>();
+  const extra = uncovered.map((event) => stored.get(event) ?? fallbackReport(event, NO_OWNERSHIP, today));
   const limit = Number(args.options.limit ?? 200);
   const all = [...reports, ...extra].sort((left, right) => left.date.localeCompare(right.date) || (right.marketCap ?? 0) - (left.marketCap ?? 0));
   const rows = all.slice(0, limit).map((report) => ({

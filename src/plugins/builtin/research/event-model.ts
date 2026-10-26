@@ -15,7 +15,7 @@ import {
 } from "../../../utils/format";
 import { computeTTM } from "../ticker-detail/financials/aggregation";
 import { declaredDividends } from "../../../utils/declared-dividends";
-import { fundamentalsEpsCurrency } from "../../../utils/fundamentals";
+import { fundamentalsEpsCurrency, SERVED_TRAILING_EPS } from "../../../utils/fundamentals";
 import {
   earningsDateStatus,
   earningsDetail,
@@ -175,11 +175,11 @@ function estimateValue(pair: EstimatePair): string {
 }
 
 /**
- * What the TTM row reads: the statements for its four quarters and revenue, and the trailing EPS Gloom Cloud serves
- * with the fundamentals, the figure `ticker` prints as EPS (TTM).
+ * What the TTM row reads: the statements for its four quarters and revenue, and the trailing EPS of the fundamentals,
+ * the figure `ticker` prints as EPS (TTM) (the filed quarters' when they give one, see time-series/filed-trailing-eps).
  */
 export type EventFinancials = Pick<TickerFinancials, "quarterlyStatements" | "financialCurrency"> & {
-  fundamentals?: Pick<NonNullable<TickerFinancials["fundamentals"]>, "eps" | "epsCurrency" | "financialCurrency" | "marketCapCurrency"> | null;
+  fundamentals?: Pick<NonNullable<TickerFinancials["fundamentals"]>, "eps" | "epsCurrency" | "financialCurrency" | "marketCapCurrency" | "trailingEpsSource"> | null;
   /** The listing's currency, which says whether an unlabelled EPS can be in the statements' (fundamentalsCurrency). */
   quote?: Pick<NonNullable<TickerFinancials["quote"]>, "currency"> | null;
 };
@@ -204,9 +204,10 @@ function adjustedQuarterSum(
 }
 
 /**
- * The TTM row's EPS is the GAAP diluted trailing figure, the one `ticker` prints as EPS (TTM). Without it, the four
- * statement quarters' diluted EPS summed. The reported rows above it are often adjusted, so they are never added to
- * it: only when all four are adjusted does the detail also give their sum.
+ * The TTM row's EPS is the GAAP diluted trailing figure `ticker` prints as EPS (TTM): the last four filed quarters',
+ * or Gloom Cloud's trailing figure, named so, when they give none. Without either, the four statement quarters'
+ * diluted EPS summed. The reported rows above it are often adjusted, so they are never added to it: only when all
+ * four are adjusted does the detail also give their sum.
  */
 function ttmRow(
   quarterlyStatements: readonly FinancialStatement[],
@@ -226,7 +227,8 @@ function ttmRow(
     date: latest?.date ?? "",
     status: "TTM",
     period: "4 qtrs",
-    detail: [eps == null ? "statement sum" : served ? "GAAP diluted" : "GAAP diluted (statements)",
+    detail: [eps == null ? "statement sum" : !served ? "GAAP diluted (statements)"
+      : financials?.fundamentals?.trailingEpsSource === "served" ? `GAAP diluted (${SERVED_TRAILING_EPS})` : "GAAP diluted",
       adjusted == null ? null : `adj sum ${formatNumber(adjusted, 2)}`].filter(Boolean).join(", "),
     epsCurrency: served ? fundamentalsEpsCurrency(financials) : ttm.currency ?? financials?.financialCurrency,
     revenueCurrency: ttm.currency ?? financials?.financialCurrency,

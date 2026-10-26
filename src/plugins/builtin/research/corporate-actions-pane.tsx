@@ -446,6 +446,7 @@ export function CorporateActionsView({
   const financialCurrency = tickerFinancials?.financialCurrency;
   const trailingEps = tickerFinancials?.fundamentals?.eps;
   const trailingEpsCurrency = tickerFinancials?.fundamentals?.epsCurrency;
+  const trailingEpsSource = tickerFinancials?.fundamentals?.trailingEpsSource;
   const fundamentalsCurrency = tickerFinancials?.fundamentals?.financialCurrency;
   const marketCapCurrency = tickerFinancials?.fundamentals?.marketCapCurrency;
   const quoteCurrency = tickerFinancials?.quote?.currency;
@@ -453,10 +454,10 @@ export function CorporateActionsView({
     () => (quarterlyStatements || financialCurrency || trailingEps != null ? {
       quarterlyStatements: quarterlyStatements ?? [],
       financialCurrency,
-      fundamentals: { eps: trailingEps, epsCurrency: trailingEpsCurrency, financialCurrency: fundamentalsCurrency, marketCapCurrency },
+      fundamentals: { eps: trailingEps, epsCurrency: trailingEpsCurrency, financialCurrency: fundamentalsCurrency, marketCapCurrency, trailingEpsSource },
       quote: quoteCurrency ? { currency: quoteCurrency } : null,
     } : null),
-    [financialCurrency, fundamentalsCurrency, marketCapCurrency, quarterlyStatements, quoteCurrency, trailingEps, trailingEpsCurrency],
+    [financialCurrency, fundamentalsCurrency, marketCapCurrency, quarterlyStatements, quoteCurrency, trailingEps, trailingEpsCurrency, trailingEpsSource],
   );
   const actionsLoader = useCallback((nextSymbol: string, nextExchange: string, forceRefresh: boolean) => {
     if (!dataProvider?.getCorporateActions) throw new Error("Corporate actions source unavailable");

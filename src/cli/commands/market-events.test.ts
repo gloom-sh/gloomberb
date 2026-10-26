@@ -36,7 +36,7 @@ test("events preserve earnings inputs in NDJSON while formatting known bases, pe
     "est $0.41, confirmed, 24 analysts (Sep 2026)",
     "eps $0.31, adj, +0.03 vs est (Jun 2026)",
     "eps $0.24, GAAP, +0.07 vs est (Dec 2025)",
-    "eps $0.04, -0.04 vs est",
+    "eps $0.04, unknown, -0.04 vs est",
   ]);
   expect(rows[0]).toMatchObject({ type: "earnings", date: "2026-11-02", epsEstimate: 0.41222, epsAnalysts: 24, dateStatus: "confirmed", fiscalPeriod: "2026-09" });
   // An upcoming estimate no basis was served for carries none.

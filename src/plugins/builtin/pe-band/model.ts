@@ -1,39 +1,20 @@
 import { fxLegForCurrency } from "../../../market-data/coordinator/fx-legs";
 import { regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
 import { fxCloseOnOrBefore, type FxCloses } from "../../../market-data/fx-closes";
-import { extractFundamentalSeries, knownWhenFiled } from "../../../time-series/fundamentals";
-import type { SecuritySeriesSource, TimeSeriesPoint } from "../../../time-series/types";
+import { knownWhenFiled } from "../../../time-series/fundamentals";
+import { STALE_TRAILING_EPS_MS, trailingEpsSteps as sharedTrailingEpsSteps, type EpsStep } from "../../../time-series/filed-trailing-eps";
 import { createValuationCurrencyContext } from "../../../time-series/valuation-currency";
 import type { FinancialStatement, PricePoint, TickerFinancials } from "../../../types/financials";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
-import { areNearbyFinancialPeriodEnds } from "../../../utils/financial-statements";
 import { datedByReport, type ReportDate } from "./report-dates";
+
+export type { EpsStep };
 
 const DAY_MS = 86_400_000;
 const YEAR_MS = 365.25 * DAY_MS;
-/**
- * A figure stops pricing weeks this long after its period end. Sixteen months
- * covers a fiscal year plus its filing, so a year of unavailable quarterly
- * sums falls back on the last annual figure but never on one long overdue.
- */
-const STALE_EPS_MS = 487 * DAY_MS;
 /** Spacing between band multiples, finest first; the first that needs four lines or fewer wins. */
 const MULTIPLE_STEPS = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000];
 const MAX_BANDS = 4, MIN_BANDS = 3;
-
-/** One trailing-twelve-month EPS figure and when it became known. */
-export interface EpsStep {
-  /** ISO period end. */
-  periodEnd: string;
-  /** Four reported quarters summed, or a reported fiscal year. */
-  basis: "ttm" | "annual";
-  knownAt: Date;
-  /** False when no publication date or report is on record and `knownAt` is the period end. */
-  dated: boolean;
-  /** Statement currency units; null when unavailable (a declared gap or an incomplete run of quarters). */
-  eps: number | null;
-  currency: string | null;
-}
 
 interface PeBandWeek {
   date: Date;
@@ -97,34 +78,14 @@ export interface PeBandModel {
   notice: string | null;
 }
 
-function epsSeries(financials: TickerFinancials, period: "ttm" | "annual"): TimeSeriesPoint[] {
-  const source: SecuritySeriesSource = { kind: "security", instrument: { symbol: "" }, fieldId: "fundamental.eps", period, timestampMode: "available-at" };
-  return extractFundamentalSeries(financials, source);
-}
-
 /**
- * Trailing EPS through time, oldest first. Four reported quarters are summed
- * by the shared statement series, which keeps declared gaps and broken runs
- * of quarters unavailable. A reported fiscal year is itself a trailing
- * twelve-month figure; at a fiscal year end it replaces the quarterly sum.
- * A figure is known no later than the company's report of that quarter, when
- * `reports` has it, including one with no publication date of its own.
+ * Trailing EPS through time, oldest first, as the headline EPS (TTM) reads it
+ * (time-series/filed-trailing-eps). A figure is known no later than the
+ * company's report of that quarter, when `reports` has it, including one with
+ * no publication date of its own.
  */
 export function trailingEpsSteps(financials: TickerFinancials, reports: readonly ReportDate[] = []): EpsStep[] {
-  const known = (row: FinancialStatement) => datedByReport(knownWhenFiled(row), reports);
-  const adjusted = { ...financials, quarterlyStatements: financials.quarterlyStatements.map(known),
-    annualStatements: financials.annualStatements.map(known) };
-  const toStep = (basis: EpsStep["basis"]) => (point: TimeSeriesPoint): EpsStep => ({
-    periodEnd: point.observedAt.toISOString().slice(0, 10), basis, knownAt: point.date, dated: point.availableAt !== undefined,
-    eps: point.value != null && Number.isFinite(point.value) ? point.value : null, currency: point.provenance?.currency ?? null,
-  });
-  const steps = epsSeries(adjusted, "annual").map(toStep("annual"));
-  for (const step of epsSeries(adjusted, "ttm").map(toStep("ttm"))) {
-    const index = steps.findIndex((other) => areNearbyFinancialPeriodEnds(other.periodEnd, step.periodEnd));
-    if (index < 0) steps.push(step);
-    else if (steps[index]!.eps == null && step.eps != null) steps[index] = step;
-  }
-  return steps.sort((a, b) => a.knownAt.getTime() - b.knownAt.getTime() || a.periodEnd.localeCompare(b.periodEnd));
+  return sharedTrailingEpsSteps(financials, (row: FinancialStatement) => datedByReport(knownWhenFiled(row), reports));
 }
 
 /**
@@ -230,7 +191,7 @@ export function stepAt(steps: readonly EpsStep[], time: number): EpsStep | null 
     if (candidate.eps == null || candidate.knownAt.getTime() > time) continue;
     if (!step || candidate.periodEnd > step.periodEnd) step = candidate;
   }
-  return step && time - Date.parse(step.periodEnd) <= STALE_EPS_MS ? step : null;
+  return step && time - Date.parse(step.periodEnd) <= STALE_TRAILING_EPS_MS ? step : null;
 }
 
 export function projectPeBand(

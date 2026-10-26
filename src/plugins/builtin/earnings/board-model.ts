@@ -5,8 +5,7 @@ import type { EarningsEvent } from "../../../types/data-provider";
 import type { EarningsDateStatus, EarningsEpsBasis, Quote } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
 import { earningsDateStatus, earningsEpsBasis, isProvisionalActual } from "../shared/earnings-report";
-import { calendarStatus } from "../shared/earnings-calendar";
-import { coherentEarningsValue } from "../shared/earnings-estimate-basis";
+import { calendarReport } from "../shared/earnings-calendar";
 import { shortDate, surprise, weekday } from "./format";
 
 /** A held name is in a portfolio; a watched one only in watchlists. */
@@ -149,33 +148,35 @@ export function boardReport(report: EarningsCalendarReport, owned: ReadonlyMap<s
   };
 }
 
-/** A company the stored calendar does not carry (a listing abroad, a date past its horizon) from the per-ticker calendar. */
+/**
+ * A company the stored calendar does not carry (a listing abroad, a date past
+ * its horizon) from the per-ticker calendar, read as every earnings surface
+ * reads its report (shared/earnings-calendar): a date gone by is reported, and
+ * keeps a consensus only when it is that report's, not the next quarter's.
+ */
 export function fallbackReport(event: EarningsEvent, owned: ReadonlyMap<string, Ownership>, today: string): BoardReport {
-  const date = event.earningsDate.toISOString().slice(0, 10);
-  const timing = event.timing === "BMO" ? "bmo" : event.timing === "AMC" ? "amc" : null;
+  const report = calendarReport(event, today);
   // Estimates in another currency would read as dollars beside the rest.
   const dollars = (field: "epsEstimate" | "revenueEstimate") => {
     const currency = event.estimateBasis?.[field]?.currency;
-    return currency && currency !== "USD" ? null : coherentEarningsValue(event, field);
+    return currency && currency !== "USD" ? null : report[field];
   };
   const epsEstimate = dollars("epsEstimate");
   return {
-    key: `${event.symbol}:${date}`,
+    key: `${event.symbol}:${report.date}`,
     symbol: event.symbol,
     name: event.name || event.symbol,
-    date,
-    timing,
+    date: report.date,
+    timing: report.timing,
     expectedTiming: false,
-    // A date gone by is reported, as every earnings surface reads it (shared/earnings-calendar).
-    dateStatus: calendarStatus(event, today),
+    dateStatus: report.dateStatus,
     marketCap: null,
     epsEstimate,
-    // The count belongs to the estimate beside it.
-    epsAnalysts: epsEstimate == null ? null : coherentEarningsValue(event, "epsAnalysts"),
+    // The count and the basis belong to the estimate beside them.
+    epsAnalysts: epsEstimate == null ? null : report.epsAnalysts,
     epsActual: null,
     provisional: false,
-    // The estimate's basis goes with it.
-    epsBasis: epsEstimate == null ? null : earningsEpsBasis(event.epsBasis),
+    epsBasis: epsEstimate == null ? null : report.epsBasis,
     epsSurprise: null,
     revenueEstimate: dollars("revenueEstimate"),
     impliedMove: null,

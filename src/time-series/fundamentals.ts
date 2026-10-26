@@ -502,6 +502,21 @@ function valuationStatements(financials: TickerFinancials): { quarterly: Financi
   return { quarterly: financials.quarterlyStatements.map(knownWhenFiled), annual: financials.annualStatements.map(knownWhenFiled) };
 }
 
+/**
+ * A fiscal fourth quarter's EPS stated without a filing date of its own (a
+ * 10-K states the year, the results release the quarter) was public once its
+ * year's filing was, so it is dated by that filing. The daily P/E then sums the
+ * same four quarters PEB and the headline EPS (TTM) sum
+ * (time-series/filed-trailing-eps), rather than reading the quarter from the
+ * year and landing a cent of rounding away from them.
+ */
+function fourthQuarterEpsAtYearFiling(row: FinancialStatement, annual: readonly FinancialStatement[]): FinancialStatement {
+  if (!isFiniteNumber(row.eps) || hasStatementGap(row, "eps") || statementFieldAvailability(row, "eps")) return row;
+  const year = annual.find((candidate) => candidate.currency === row.currency && areNearbyFinancialPeriodEnds(candidate.date, row.date));
+  const filed = year && isFiniteNumber(year.eps) ? statementFieldAvailability(year, "eps") : undefined;
+  return filed ? { ...row, fieldAvailability: { ...row.fieldAvailability, eps: filed } } : row;
+}
+
 /** An undated vendor value cannot block a derivation from dated filings. */
 function datedValuationStatement(statement: FinancialStatement): FinancialStatement {
   const dated = { ...statement };
@@ -530,6 +545,8 @@ function sourceStatements(
     const venue = financials.quote?.listingExchangeName || financials.quote?.exchangeName || exchange;
     known = { quarterly: known.quarterly.map(row => statementAtRelease(row, releases, venue)),
       annual: known.annual.map(row => statementAtRelease(row, releases, venue)) };
+    const annualRows = known.annual;
+    known = { ...known, quarterly: known.quarterly.map((row) => fourthQuarterEpsAtYearFiling(row, annualRows)) };
     known = { quarterly: known.quarterly.map(datedValuationStatement), annual: known.annual.map(datedValuationStatement) };
     // A later comparative quarter may repeat a year-end balance sheet that
     // the annual filing already published. Only identical, same-currency

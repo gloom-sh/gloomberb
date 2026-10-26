@@ -53,6 +53,7 @@ import { ProviderRouterSearchRoutes } from "./search";
 import { collectCapabilityRouteSources, normalizeRouteSource } from "./sources";
 import type { ProviderRouterCoreDeps } from "./route-types";
 import { withProviderConnectionHealth } from "./connection-health";
+import { withFiledTrailingEps } from "../../time-series/filed-trailing-eps";
 import {
   contextFromCachedTarget,
   getBrokerCandidates,
@@ -213,7 +214,7 @@ export class AssetDataRouter implements DataProvider {
     for (const target of valid) {
       const key = target.symbol.toUpperCase();
       const financials = cached.get(key);
-      if (financials) cached.set(key, this.knownFinancials(financials, listingOf(target, contextFromCachedTarget(target))));
+      if (financials) cached.set(key, withFiledTrailingEps(this.knownFinancials(financials, listingOf(target, contextFromCachedTarget(target)))));
     }
     return cached;
   }
@@ -263,8 +264,9 @@ export class AssetDataRouter implements DataProvider {
     const dated = await this.datedAnswers(quoted, options.datesChangeBasis);
     let next = 0;
     const results = answered.map((result) => {
-      if (!result.financials?.quote) return result;
-      const financials = this.withDatedQuote(result.financials, dated[next++]!, listingOfResult(result));
+      if (!result.financials) return result;
+      const quoted = result.financials.quote ? this.withDatedQuote(result.financials, dated[next++]!, listingOfResult(result)) : result.financials;
+      const financials = withFiledTrailingEps(quoted);
       return financials === result.financials ? result : { ...result, financials };
     });
     const restored = new Map(results.map((result) => {
@@ -279,10 +281,11 @@ export class AssetDataRouter implements DataProvider {
     const { context, datesChangeBasis } = splitDating(requestContext);
     exchange = this.resolvePublicExchange(ticker, exchange, context);
     const financials = await this.financialRoutes.getTickerFinancials(ticker, exchange, context);
-    if (!financials.quote) return financials;
+    if (!financials.quote) return withFiledTrailingEps(financials);
     const listing = listingOf({ symbol: ticker, exchange }, context);
     const [quote] = await this.datedAnswers([{ quote: financials.quote, listing }], datesChangeBasis);
-    return this.withDatedQuote(financials, quote!, listing);
+    // One trailing EPS and P/E for every view of the listing: the filed quarters', as PEB and GE read them.
+    return withFiledTrailingEps(this.withDatedQuote(financials, quote!, listing));
   }
 
   async getQuote(ticker: string, exchange?: string, requestContext?: MarketDataRequestContext): Promise<Quote> {

@@ -94,7 +94,7 @@ test("fiscal period ends stay labeled and unknown EPS currency stays unknown", (
   const [row] = buildEventRows({ symbol: "COST", currency: "USD", dividends: [], splits: [],
     earnings: [{ date: "2026-05-31", dateType: "fiscal-period-end", epsActual: 4.93, difference: 0.01 }],
   }, null, null, "USD");
-  expect(row).toMatchObject({ dateType: "fiscal-period-end", detail: "Period end; +0.01 vs est" });
+  expect(row).toMatchObject({ dateType: "fiscal-period-end", detail: "Period end; unknown, +0.01 vs est" });
   expect(row?.epsCurrency).toBeUndefined();
 });
 
@@ -244,7 +244,7 @@ test("a beat against a negative estimate reads as a beat", () => {
   const [row] = buildEventRows({ symbol: "CRWV", dividends: [], splits: [], earnings: [
     { date: "2026-08-11", dateType: "announcement", epsEstimate: -1.47, epsActual: -1.14, difference: 0.33, surprisePercent: -22.45 },
   ] }, null, null, "USD");
-  expect(row).toMatchObject({ surprisePercent: 22.45, value: "+22.45%", tone: "positive", detail: "+0.33 vs est" });
+  expect(row).toMatchObject({ surprisePercent: 22.45, value: "+22.45%", tone: "positive", detail: "unknown, +0.33 vs est" });
 });
 
 test("missing or ambiguous fiscal periods and announcements cannot borrow a previous quarter's revenue", () => {

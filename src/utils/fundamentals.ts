@@ -243,6 +243,19 @@ export function epsConversionNote(fundamentals: Pick<Fundamentals, "financialCur
   return eps && amounts && eps !== amounts ? `EPS (TTM) in ${eps}, converted from ${amounts} at report-date rates.` : undefined;
 }
 
+/** What a trailing EPS that is not the filed quarters' is called where it is shown (EE's TTM row). */
+export const SERVED_TRAILING_EPS = "Gloom Cloud's TTM";
+
+/**
+ * "EPS (TTM) and P/E (TTM) are Gloom Cloud's trailing figures, not the last four filed quarters'.": the headline EPS
+ * is the filed quarters' (time-series/filed-trailing-eps), so one that is not says so. Undefined otherwise.
+ */
+export function trailingEpsSourceNote(fundamentals: Pick<Fundamentals, "trailingEpsSource"> | undefined): string | undefined {
+  return fundamentals?.trailingEpsSource === "served"
+    ? "EPS (TTM) and P/E (TTM) are Gloom Cloud's trailing figures, not the last four filed quarters'."
+    : undefined;
+}
+
 type PriceEarningsBasis = Pick<Fundamentals, "financialCurrency" | "ttmConversion" | "epsCurrency" | "trailingPEConversion">;
 
 /** The trailing EPS in the price's currency: converted at the rate the served P/E used when it says so. */

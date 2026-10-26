@@ -3,7 +3,7 @@ import { formatShortDate, parseDisplayDate } from "../../utils/datetime-format";
 import { formatReportedMoney } from "../../utils/reported-money";
 import {
   appTtmRate, computedEnterpriseValueNote, convertedPriceEarningsNote, enterpriseValueLabel, enterpriseValueReconciliationNote, epsConversionNote,
-  fundamentalsCurrency, reportedEnterpriseValue, ttmAtAppRate, ttmConversionNote,
+  fundamentalsCurrency, reportedEnterpriseValue, trailingEpsSourceNote, ttmAtAppRate, ttmConversionNote,
 } from "../../utils/fundamentals";
 import { latestFinancialPeriod } from "../../utils/latest-financial-period";
 import { burnsCash, cashRunway, SHORT_RUNWAY_HISTORY, formatRunwayMonths, offeringNote, offeringsAfter, runwayMethod, type CashRunway, type OfferingFiling, type RunwayEstimate } from "../../utils/cash-runway";
@@ -799,6 +799,7 @@ function fundamentalsNotes(
     : undefined;
   const conversion = [...TRAILING_MONEY_METRICS].some(shown) ? ttmConversionNote(fundamentals) : undefined;
   const eps = shown("EPS (TTM)") ? epsConversionNote(fundamentals) : undefined;
+  const epsSource = shown("EPS (TTM)") ? trailingEpsSourceNote(fundamentals) : undefined;
   const priceEarnings = metrics.some((metric) => metric.label === "P/E (TTM)" && typeof metric.value === "number")
     ? convertedPriceEarningsNote(fundamentals, quoteCurrency)
     : undefined;
@@ -806,7 +807,7 @@ function fundamentalsNotes(
   const enterpriseValue = shown("Enterprise Value")
     ? enterpriseValueReconciliationNote(fundamentals) ?? computedEnterpriseValueNote(fundamentals)
     : undefined;
-  return [shareBasis, enterpriseValue, conversion, eps, priceEarnings].filter((note): note is string => !!note);
+  return [shareBasis, enterpriseValue, conversion, eps, epsSource, priceEarnings].filter((note): note is string => !!note);
 }
 
 // The share count is the market cap's basis: the cap is the count times the price, or a note says why not.

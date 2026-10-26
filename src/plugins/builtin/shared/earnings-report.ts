@@ -54,8 +54,8 @@ export function epsBasisShort(basis: EarningsEpsBasis | null): string {
   return basis === "gaap" ? "GAAP" : basis === "adjusted" ? "adj" : "?";
 }
 
-/** Known bases are named in row details; unknown stays in the structured data and drilldown. */
-const BASIS_TEXT: Record<EpsBasisName, string> = { GAAP: "GAAP", adjusted: "adj", unknown: "" };
+/** A reported row's detail names its basis as ERN's Basis column does, unknown included. */
+const BASIS_TEXT: Record<EpsBasisName, string> = { GAAP: "GAAP", adjusted: "adj", unknown: "unknown" };
 
 type EarningsRecord = CorporateActionsData["earnings"][number];
 
