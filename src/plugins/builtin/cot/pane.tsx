@@ -6,16 +6,15 @@ import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import type { ResolvedSeries } from "../../../time-series/types";
 import type { CompositeAxisDomain } from "../../../components/chart/composite/types";
-import type { CotBoardRow, CotClass, CotClassSummary, CotFamily } from "../../../api-client/cot";
+import type { CotBoardRow, CotClass, CotClassSummary, CotFamily, CotPositions } from "../../../api-client/cot";
 import { isAccessDenied } from "../../../api-client/errors";
 import { Box } from "../../../ui";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { compareSortValues, nextHeaderSort, type SortPreference } from "../../../utils/sort-values";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { cachedCotBoard, loadCotBoard, loadCotDetail } from "./client";
-import { COT_CLASSES, COT_MAJOR_CODES, COT_SCOPES, cotChartSeries, cotClass, cotContractUnitText, cotInteger, cotLegendValue, cotMarketName, cotScope, type CotScope } from "./model";
+import { COT_CLASSES, COT_FAMILIES, COT_MAJOR_CODES, COT_POSITIONS, COT_SCOPES, cotChartSeries, cotClass, cotContractUnitText, cotFamily, cotInteger, cotLegendValue, cotMarketName, cotPositions, cotPositionsText, cotScope, type CotScope } from "./model";
 
-const FAMILIES = [{ value: "legacy", label: "Legacy" }, { value: "disaggregated", label: "Disaggregated" }];
 const BOARD_COLUMNS: DataTableColumn[] = [
   { id: "name", label: "MARKET", width: 30, align: "left", flexGrow: 1 },
   { id: "code", label: "CODE", width: 7, align: "left" },
@@ -44,8 +43,9 @@ const cotDetailTitle = (name: string | undefined, code: string | null) => name ?
 
 export function CotPane(props: PaneProps) {
   const pane = usePaneInstance();
-  const [family, setFamily] = usePluginPaneState<CotFamily>("report", pane?.settings?.report === "disaggregated" ? "disaggregated" : "legacy");
-  const { strip: tabStrip, rows: tabRows } = usePaneTabs({ tabs: FAMILIES, activeValue: family, onSelect: (value) => setFamily(value as CotFamily), focused: props.focused, dense: true });
+  const [storedFamily, setFamily] = usePluginPaneState<CotFamily>("report", cotFamily(pane?.settings?.report));
+  const family = cotFamily(storedFamily);
+  const { strip: tabStrip, rows: tabRows } = usePaneTabs({ tabs: [...COT_FAMILIES], activeValue: family, onSelect: (value) => setFamily(value as CotFamily), focused: props.focused, dense: true });
   return <Box width={props.width} height={props.height} flexDirection="column">
     {tabStrip}
     <CotBoard key={family} {...props} height={Math.max(3, props.height - tabRows)} family={family} initialCode={pane?.params?.code ?? null} />
@@ -63,14 +63,18 @@ function CotBoard({ width, height, focused, family, initialCode }: PaneProps & {
   const open = storedOpen || null;
   const [storedScope, setScope] = usePluginPaneState<CotScope>("scope", "major");
   const scope = cotScope(storedScope);
+  // Futures only, as the pane always read, unless futures and options combined is picked.
+  const [storedPositions, setPositions] = usePluginPaneState<CotPositions>("positions", "futures-only");
+  const positions = cotPositions(storedPositions);
   const [query, setQuery] = useState("");
   const { active: searching, focus: focusSearch, searchProps } = useQueryBarSearch();
   const [sort, setSort] = useState<SortPreference<string>>({ columnId: null, direction: "desc" });
   const control = useRef<SelectControl>(null);
   const scopeControl = useRef<SelectControl>(null);
-  const loader = useCallback((force: boolean) => loadCotBoard(family, traderClass, force), [family, traderClass, session.requestKey]);
-  const resource = useAsyncResource(loader, { initialData: () => cachedCotBoard(family, traderClass), clearOnError: isAccessDenied });
-  const data = resource.data?.traderClass === traderClass ? resource.data : null;
+  const positionsControl = useRef<SelectControl>(null);
+  const loader = useCallback((force: boolean) => loadCotBoard(family, traderClass, force, positions), [family, traderClass, positions, session.requestKey]);
+  const resource = useAsyncResource(loader, { initialData: () => cachedCotBoard(family, traderClass, positions), clearOnError: isAccessDenied });
+  const data = resource.data?.traderClass === traderClass && resource.data.scope === positions ? resource.data : null;
   const rows = useMemo(() => {
     // A typed query searches every market; the scope only shapes the unsearched board.
     const result = (data?.rows ?? []).filter((row) => query ? `${row.marketName} ${row.contractCode}`.toLowerCase().includes(query.toLowerCase())
@@ -90,15 +94,17 @@ function CotBoard({ width, height, focused, family, initialCode }: PaneProps & {
     if (!boardShown) return;
     if (event.name === "c") { event.preventDefault(); control.current?.open(); }
     if (event.name === "s") { event.preventDefault(); scopeControl.current?.open(); }
+    if (event.name === "p") { event.preventDefault(); positionsControl.current?.open(); }
   });
   usePaneFooter("cot:actions", () => ({ hints: boardShown ? [
     { id: "class", key: "c", label: "class", onPress: () => control.current?.open() },
     { id: "scope", key: "s", label: "cope", onPress: () => scopeControl.current?.open() },
+    { id: "positions", key: "p", label: "ositions", onPress: () => positionsControl.current?.open() },
     { id: "search", key: "/", label: "search", onPress: focusSearch },
   ] : [] }), [boardShown, focusSearch]);
   usePaneNoticeFooter({ registrationId: "cot:board-notices", focused, enabled: !open, notices: data?.gaps ?? [] });
   usePaneStatusFooter({ registrationId: "cot:board", enabled: !open, loading: resource.loading, error: resource.error,
-    info: data ? [{ id: "as-of", parts: [{ text: `CFTC futures only · ${data.asOf ?? "--"} · contracts`, tone: "muted" }] }] : [] });
+    info: data ? [{ id: "as-of", parts: [{ text: `CFTC ${cotPositionsText(positions)} · ${data.asOf ?? "--"} · contracts`, tone: "muted" }] }] : [] });
   // A class change reloads under the query bar, which stays.
   return <DataTableStackView<CotBoardRow> columns={BOARD_COLUMNS} items={rows} focused={focused && !searching}
     status={data ? undefined : { loading: resource.loading, error: resource.error, empty: !resource.loading && !resource.error, subject: "COT history" }}
@@ -118,11 +124,12 @@ function CotBoard({ width, height, focused, family, initialCode }: PaneProps & {
       filters={[
         { id: "class", label: "Class", value: traderClass, options: COT_CLASSES[family], onChange: setClass, controlRef: control },
         { id: "scope", label: "Scope", value: scope, defaultValue: "major", options: [...COT_SCOPES], onChange: setScope, controlRef: scopeControl },
+        { id: "positions", label: "Positions", value: positions, defaultValue: "futures-only", options: [...COT_POSITIONS], onChange: setPositions, controlRef: positionsControl },
       ]} />}
     emptyStateTitle={data ? query ? "No matching COT markets." : "No major markets in this report; switch the scope to all markets." : ""} detailOpen={!!open} onBack={() => setOpen("")}
     detailTitle={cotDetailTitle(data?.rows.find((row) => row.contractCode === open)?.marketName, open)}
-    detailContent={open ? <CotDetail key={`${family}:${open}`} width={width} height={Math.max(3, height - 1)} focused={focused}
-      code={open} family={family} traderClass={traderClass} onClassChange={setClass} /> : null} />;
+    detailContent={open ? <CotDetail key={`${family}:${positions}:${open}`} width={width} height={Math.max(3, height - 1)} focused={focused}
+      code={open} family={family} positions={positions} traderClass={traderClass} onClassChange={setClass} /> : null} />;
 }
 
 /**
@@ -147,10 +154,10 @@ function CotChart({ series, width, height }: { series: ResolvedSeries[]; width: 
     remoteKind="cot-history" />;
 }
 
-function CotDetail({ width, height, focused, code, family, traderClass, onClassChange }: Pick<PaneProps, "width" | "height" | "focused"> & { code: string; family: CotFamily; traderClass: CotClass; onClassChange: (value: CotClass) => void }) {
+function CotDetail({ width, height, focused, code, family, positions, traderClass, onClassChange }: Pick<PaneProps, "width" | "height" | "focused"> & { code: string; family: CotFamily; positions: CotPositions; traderClass: CotClass; onClassChange: (value: CotClass) => void }) {
   const colors = useThemeColors();
   const session = useResearchCloudSession();
-  const loader = useCallback(() => loadCotDetail(code, family), [code, family, session.requestKey]);
+  const loader = useCallback(() => loadCotDetail(code, family, undefined, positions), [code, family, positions, session.requestKey]);
   const resource = useAsyncResource(loader, { clearOnError: isAccessDenied });
   const data = resource.data;
   const payload = data?.payload;
@@ -178,7 +185,8 @@ function CotDetail({ width, height, focused, code, family, traderClass, onClassC
   usePaneNoticeFooter({ registrationId: "cot:detail-notices", focused, notices: [...(payload?.gaps ?? []), ...(data?.priceWarning ? [data.priceWarning] : []), ...partialRanks] });
   usePaneStatusFooter({ registrationId: "cot:detail", loading: resource.loading, error: resource.error,
     // The unit the net is counted in, as `fn COT` titles it: what one contract is, where the report says.
-    info: payload ? [{ id: "as-of", parts: [{ text: `CFTC ${payload.asOf ?? "--"} · ${cotContractUnitText(payload.contract?.contractUnits) ?? "contracts"}${data?.priceAsOf ? ` · ${data.priceSymbol} ${data.priceAsOf}` : ""}`, tone: "muted" }] }] : [] });
+    // Futures and options combined says so; futures only reads as it always has.
+    info: payload ? [{ id: "as-of", parts: [{ text: `CFTC ${positions === "combined" ? `${cotPositionsText(positions)} · ` : ""}${payload.asOf ?? "--"} · ${cotContractUnitText(payload.contract?.contractUnits) ?? "contracts"}${data?.priceAsOf ? ` · ${data.priceSymbol} ${data.priceAsOf}` : ""}`, tone: "muted" }] }] : [] });
   return <PaneStatusBody loading={resource.loading && !data} error={!data ? resource.error : null} empty={!!payload && !payload.contract} subject="COT contract">
     {payload && data ? <DataTableView columns={POSITION_COLUMNS} items={payload.positions} focused={focused} rootWidth={width} rootHeight={height}
       rootBefore={<ChartTableHeader width={width} height={height} tableRows={payload.positions.length} chart={chart}

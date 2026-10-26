@@ -1,5 +1,9 @@
-export type CotFamily = "legacy" | "disaggregated"
+/** The CFTC report: Legacy, Disaggregated, or Traders in Financial Futures (TFF). */
+export type CotFamily = "legacy" | "disaggregated" | "tff"
 export type CotClass = "noncommercial" | "commercial" | "producer" | "swap" | "managed-money" | "other-reportable" | "nonreportable"
+  | "dealer" | "asset-manager" | "leveraged-funds"
+/** Futures positions alone, or futures and options combined (options delta-adjusted, as the CFTC reports them). */
+export type CotPositions = "futures-only" | "combined"
 interface CotPosition { long: number | null; short: number | null; spreading: number | null }
 interface CotPercentile {
   value: number | null
@@ -34,7 +38,7 @@ interface CotMarket {
 }
 export interface CotPayloadBase {
   source: "CFTC"
-  scope: "futures-only"
+  scope: CotPositions
   reportFamily: CotFamily
   generatedAt: string
   /** Tuesday position observation date, distinct from publication/download time. */

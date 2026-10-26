@@ -1,4 +1,4 @@
-import type { CotClass, CotContractPayload, CotFamily, CotHistoryPoint } from "../../../api-client/cot";
+import type { CotClass, CotContractPayload, CotFamily, CotHistoryPoint, CotPositions } from "../../../api-client/cot";
 import { staticSeries } from "../../../components/chart/static/series";
 import type { ResolvedSeries } from "../../../time-series/types";
 import type { PricePoint } from "../../../types/financials";
@@ -10,7 +10,20 @@ import { bestNameMatch, FUTURES_CONTRACTS, futuresBoardContract, futuresBoardCon
 export const COT_CLASSES: Record<CotFamily, Array<{ value: CotClass; label: string }>> = {
   legacy: [{ value: "noncommercial", label: "Noncommercial" }, { value: "commercial", label: "Commercial" }, { value: "nonreportable", label: "Nonreportable" }],
   disaggregated: [{ value: "managed-money", label: "Managed Money" }, { value: "producer", label: "Producer/Merchant" }, { value: "swap", label: "Swap Dealers" }, { value: "other-reportable", label: "Other Reportables" }, { value: "nonreportable", label: "Nonreportable" }],
+  tff: [{ value: "leveraged-funds", label: "Leveraged Funds" }, { value: "asset-manager", label: "Asset Manager/Institutional" }, { value: "dealer", label: "Dealer/Intermediary" }, { value: "other-reportable", label: "Other Reportables" }, { value: "nonreportable", label: "Nonreportable" }],
 };
+/** The three CFTC reports, as the pane's tabs and `--report` name them. */
+export const COT_FAMILIES: ReadonlyArray<{ value: CotFamily; label: string }> = [
+  { value: "legacy", label: "Legacy" }, { value: "disaggregated", label: "Disaggregated" }, { value: "tff", label: "Financial (TFF)" },
+];
+export function cotFamily(value: unknown): CotFamily { return value === "disaggregated" || value === "tff" ? value : "legacy"; }
+/** Futures alone, as before, or futures and options combined. */
+export const COT_POSITIONS: ReadonlyArray<{ value: CotPositions; label: string }> = [
+  { value: "futures-only", label: "Futures only" }, { value: "combined", label: "Futures + options" },
+];
+export function cotPositions(value: unknown): CotPositions { return value === "combined" ? "combined" : "futures-only"; }
+/** How a status line names the positions counted: "futures only" or "futures + options". */
+export const cotPositionsText = (positions: CotPositions) => positions === "combined" ? "futures + options" : "futures only";
 const ROOTS: Record<string, { code: string; exchange: string; priceSymbol: string | null; name: string; crypto?: true }> = {
   ZN: { code: "043602", exchange: "CBT", priceSymbol: "ZN=F", name: "10-Year T-Note" },
   ZQ: { code: "045601", exchange: "CBT", priceSymbol: "ZQ=F", name: "30-Day Fed Funds" },

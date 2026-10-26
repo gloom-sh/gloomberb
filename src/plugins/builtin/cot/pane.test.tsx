@@ -84,10 +84,10 @@ afterEach(() => {
 const paneRuntime = createTestPluginRuntime();
 
 /** A COT pane created by typing COT with CL active: the template puts the code in params. */
-function Harness({ width = 110, height = 28 }: { width?: number; height?: number }) {
+function Harness({ width = 110, height = 28, report = "legacy", code = "067651" }: { width?: number; height?: number; report?: string; code?: string | null }) {
   const [paneState, setPaneState] = useState<AppState["paneState"]>({});
   const state = createInitialState(createTestPaneConfig("/tmp/gloomberb-cot-pane-test", {
-    paneId: "cot", instanceId: PANE_INSTANCE_ID, params: { code: "067651" }, settings: { report: "legacy" },
+    paneId: "cot", instanceId: PANE_INSTANCE_ID, params: code ? { code } : undefined, settings: { report },
   }));
   state.paneState = paneState;
   const dispatch = (action: AppAction) => setPaneState(
@@ -197,4 +197,42 @@ test("a short detail keeps the class rows and folds the chart into a strip", asy
   expect(lines.some((line) => line.includes("● Noncommercial net") && line.includes("+159,000"))).toBe(true);
   expect(lines.some((line) => line.includes("Front price"))).toBe(false);
   expect(lines.filter((line) => /^ (Noncommercial|Commercial|Nonreportable) /.test(line))).toHaveLength(3);
+});
+
+test("the Financial (TFF) tab reads leveraged funds, and Positions switches the board and its detail to futures and options", async () => {
+  const boards = spyOn(apiClient, "getCloudCotBoard").mockImplementation(async (report, traderClass, positions = "futures-only") => ({
+    ...board(), reportFamily: report, scope: positions, traderClass,
+    classes: [{ id: "leveraged-funds", label: "Leveraged Funds" }],
+    rows: board().rows.map((row) => ({ ...row, position: position("leveraged-funds", "Leveraged Funds", positions === "combined" ? 40 : 10) })),
+  }));
+  const contracts = spyOn(apiClient, "getCloudCotContract").mockImplementation(async (code, report, positions = "futures-only") => ({
+    ...contract(code), reportFamily: report, scope: positions, classes: [{ id: "leveraged-funds", label: "Leveraged Funds" }],
+    positions: [position("leveraged-funds", "Leveraged Funds")],
+    history: [{ reportDate: "2026-09-15", openInterest: 200, positions: [{ id: "leveraged-funds", long: 10, short: 30, spreading: 0, net: -20, netPercentOfOpenInterest: -10 }] }],
+  }));
+  spies.push(boards, contracts);
+  await tui.render(<Harness report="tff" code={null} />, { width: 110, height: 28 });
+  await settle();
+
+  let frame = tui.frame();
+  expect(frame).toContain("Financial (TFF)");
+  expect(frame).toContain("Leveraged Funds");
+  expect(frame).toContain("Futures only");
+  expect(frame).toContain("-20");
+  expect(boards.mock.calls.at(-1)).toEqual(["tff", "leveraged-funds", "futures-only"]);
+
+  await press("p");
+  expect(tui.frame()).toContain("Futures + options");
+  await press("down");
+  await press("return");
+  frame = tui.frame();
+  expect(boards.mock.calls.at(-1)).toEqual(["tff", "leveraged-funds", "combined"]);
+  expect(frame).toContain("Positions Futures + options");
+  expect(frame).toContain("+10");
+  expect(frame).not.toContain("-20");
+
+  // A market opened from the combined board reads its combined history.
+  await press("return");
+  expect(contracts.mock.calls.at(-1)).toEqual(["13874A", "tff", "combined"]);
+  expect(tui.frame()).toContain("Leveraged Funds");
 });

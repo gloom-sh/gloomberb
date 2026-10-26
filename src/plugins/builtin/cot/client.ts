@@ -1,5 +1,5 @@
 import { apiClient } from "../../../api-client";
-import type { CotBoardPayload, CotClass, CotClassSummary, CotContractPayload, CotFamily, CotPayloadBase } from "../../../api-client/cot";
+import type { CotBoardPayload, CotClass, CotClassSummary, CotContractPayload, CotFamily, CotPayloadBase, CotPositions } from "../../../api-client/cot";
 import { createPluginCache } from "../../../data/plugin-cache";
 import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
 import type { PricePoint } from "../../../types/financials";
@@ -12,8 +12,8 @@ const date = (value: unknown): value is string => typeof value === "string" && /
 const number = (value: unknown) => value === null || typeof value === "number" && Number.isFinite(value);
 const count = (value: unknown) => value === null || typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 const code = (value: unknown) => typeof value === "string" && /^[0-9A-Z]{5}[0-9A-Z+]$/.test(value);
-function base(data: CotPayloadBase, family: CotFamily) {
-  if (!data || data.source !== "CFTC" || data.scope !== "futures-only" || data.reportFamily !== family
+function base(data: CotPayloadBase, family: CotFamily, positions: CotPositions) {
+  if (!data || data.source !== "CFTC" || data.scope !== positions || data.reportFamily !== family
     || !Array.isArray(data.gaps) || !data.gaps.every((gap) => typeof gap === "string")
     || !Array.isArray(data.classes) || data.classes.some((row) => !COT_CLASSES[family].some((option) => option.value === row.id))
     || data.asOf !== null && !date(data.asOf) || !Number.isFinite(Date.parse(data.generatedAt))
@@ -33,8 +33,8 @@ function summary(row: CotClassSummary, family: CotFamily) {
     }
   }
 }
-function validateCotBoard(data: CotBoardPayload, family: CotFamily, traderClass: CotClass) {
-  base(data, family);
+function validateCotBoard(data: CotBoardPayload, family: CotFamily, traderClass: CotClass, positions: CotPositions) {
+  base(data, family, positions);
   if (!Array.isArray(data.rows) || data.traderClass !== traderClass) throw new Error("The server returned an invalid COT board");
   const seen = new Set<string>();
   for (const row of data.rows) {
@@ -44,8 +44,8 @@ function validateCotBoard(data: CotBoardPayload, family: CotFamily, traderClass:
   }
   return data;
 }
-export function validateCotContract(data: CotContractPayload, family: CotFamily, contractCode: string) {
-  base(data, family);
+export function validateCotContract(data: CotContractPayload, family: CotFamily, contractCode: string, positions: CotPositions = "futures-only") {
+  base(data, family, positions);
   if (data.contract !== null && data.contract.contractCode !== contractCode || !Array.isArray(data.positions) || !Array.isArray(data.history)) {
     throw new Error("The server returned an invalid COT contract");
   }
@@ -63,30 +63,34 @@ export function validateCotContract(data: CotContractPayload, family: CotFamily,
   return data;
 }
 const unavailable = (error: unknown) => unavailableOnServer(error, "COT history is not available yet.", [404, 503]);
-export async function fetchCotBoard(family: CotFamily, traderClass: CotClass, client: Pick<typeof apiClient, "getCloudCotBoard"> = apiClient) {
-  try { return validateCotBoard(await client.getCloudCotBoard(family, traderClass), family, traderClass); }
+export async function fetchCotBoard(family: CotFamily, traderClass: CotClass, client: Pick<typeof apiClient, "getCloudCotBoard"> = apiClient, positions: CotPositions = "futures-only") {
+  try { return validateCotBoard(await client.getCloudCotBoard(family, traderClass, positions), family, traderClass, positions); }
   catch (error) { throw unavailable(error); }
 }
-const cotBoardKey = (family: CotFamily, traderClass: CotClass) => `${family}:${traderClass}`;
+// Futures-only boards keep the key they always had, so a cached board still opens.
+const cotBoardKey = (family: CotFamily, traderClass: CotClass, positions: CotPositions) =>
+  positions === "combined" ? `${family}:${traderClass}:combined` : `${family}:${traderClass}`;
 const presentCotBoard = (payload: CotBoardPayload, stale: boolean, refreshError: string | null) => ({
   ...payload, gaps: [...payload.gaps, ...(refreshError ? [refreshError] : [])],
   status: stale && payload.status === "available" ? "partial" as const : payload.status,
 });
-export function cachedCotBoard(family: CotFamily, traderClass: CotClass) {
-  const cached = cachedCloudResource(cotBoardCache, cotBoardKey(family, traderClass), (payload) => validateCotBoard(payload, family, traderClass));
+export function cachedCotBoard(family: CotFamily, traderClass: CotClass, positions: CotPositions = "futures-only") {
+  const cached = cachedCloudResource(cotBoardCache, cotBoardKey(family, traderClass, positions), (payload) => validateCotBoard(payload, family, traderClass, positions));
   return cached ? presentCotBoard(cached.payload, false, null) : null;
 }
-export async function loadCotBoard(family: CotFamily, traderClass: CotClass, force = false) {
-  const { payload, stale, refreshError } = await loadCloudResource(cotBoardCache, cotBoardKey(family, traderClass), () => fetchCotBoard(family, traderClass), { force });
+export async function loadCotBoard(family: CotFamily, traderClass: CotClass, force = false, positions: CotPositions = "futures-only") {
+  const { payload, stale, refreshError } = await loadCloudResource(cotBoardCache, cotBoardKey(family, traderClass, positions),
+    () => fetchCotBoard(family, traderClass, apiClient, positions), { force });
   return presentCotBoard(payload, stale, refreshError);
 }
-export async function fetchCotContract(contractCode: string, family: CotFamily, client: Pick<typeof apiClient, "getCloudCotContract"> = apiClient) {
-  try { return validateCotContract(await client.getCloudCotContract(contractCode, family), family, contractCode); }
+export async function fetchCotContract(contractCode: string, family: CotFamily, client: Pick<typeof apiClient, "getCloudCotContract"> = apiClient, positions: CotPositions = "futures-only") {
+  try { return validateCotContract(await client.getCloudCotContract(contractCode, family, positions), family, contractCode, positions); }
   catch (error) { throw unavailable(error); }
 }
 export interface CotDetailData { payload: CotContractPayload; price: PricePoint[]; priceSymbol: string | null; priceAsOf: string | null; priceWarning: string | null }
-export async function loadCotDetail(contractCode: string, family: CotFamily, client: Pick<typeof apiClient, "getCloudCotContract" | "getCloudHistory"> = apiClient): Promise<CotDetailData> {
-  const payload = await fetchCotContract(contractCode, family, client);
+export async function loadCotDetail(contractCode: string, family: CotFamily, client: Pick<typeof apiClient, "getCloudCotContract" | "getCloudHistory"> = apiClient,
+  positions: CotPositions = "futures-only"): Promise<CotDetailData> {
+  const payload = await fetchCotContract(contractCode, family, client, positions);
   const mapping = cotPriceMapping(contractCode);
   // An unmapped market simply has no price panel; that is not a data failure.
   if (!mapping?.priceSymbol) return { payload, price: [], priceSymbol: null, priceAsOf: null, priceWarning: null };

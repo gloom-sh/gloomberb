@@ -197,6 +197,61 @@ test("a market's report lists its weeks newest first, the newest n with --limit 
   }
 });
 
+test("--report tff and --positions combined read the TFF board and contracts with options, and refuse a reply for the other scope", async () => {
+  const capability = getPaneFunctionCapability({ id: "cot-pane", paneId: "cot", label: "COT", description: "COT", headless: cotHeadless },
+    { id: "cot", name: "COT", component: () => null, defaultPosition: "right" });
+  const asked: unknown[][] = [];
+  const tff = (scope: "futures-only" | "combined"): CotContractPayload => ({ ...payload(), scope, reportFamily: "tff", status: "available", gaps: [],
+    classes: [{ id: "leveraged-funds", label: "Leveraged Funds" }],
+    contract: { contractCode: "13874A", marketName: "E-MINI S&P 500 - CHICAGO MERCANTILE EXCHANGE", exchangeCode: "CME", commodityCode: "138", contractUnits: "$50 X S&P 500 INDEX" },
+    positions: [{ ...position(), id: "leveraged-funds", label: "Leveraged Funds" }],
+    history: [{ reportDate: "2026-09-15", openInterest: 200, positions: [{ id: "leveraged-funds", long: 10, short: 30, spreading: 0, net: -20, netPercentOfOpenInterest: -10 }] }] });
+  const run = async (argument: string | undefined, flags: string[], reply: "futures-only" | "combined") => {
+    const global = parseCliGlobalArgs(["fn", "COT", ...(argument ? [argument] : []), ...flags]);
+    const options = normalizeCapabilityOptions(capability, parsePaneFunctionArgs(global.args.slice(1), global.options).options, { strict: true });
+    return cotHeadless.load({ argument, symbols: [], options } as never, { apiClient: {
+      getCloudCotContract: async (...args: unknown[]) => { asked.push(["contract", ...args]); return tff(reply); },
+      getCloudCotBoard: async (...args: unknown[]) => {
+        asked.push(["board", ...args]);
+        const { contract, positions, history, sourceUrl, openInterest, ...base } = tff(reply);
+        return { ...base, traderClass: "leveraged-funds", rows: [{ ...contract!, reportDate: "2026-09-15", openInterest: 200, position: positions[0]!, status: "available" }] };
+      },
+    } } as never) as Promise<{ sections: Array<{ title: string; rows: Array<Record<string, unknown>> }> }>;
+  };
+
+  const detail = await run("13874A", ["--report", "tff", "--positions", "combined"], "combined");
+  expect(detail.sections[0]!.title).toBe("E-MINI S&P 500  ·  report date 2026-09-15  ·  1 contract = $50 X S&P 500 INDEX  ·  futures + options");
+  expect(detail.sections[0]!.rows[0]!.class).toBe("Leveraged Funds");
+  const extremes = await run(undefined, ["--report", "tff", "--positions", "combined", "--scope", "all"], "combined");
+  expect(extremes.sections[0]!.title).toBe("Positioning extremes  ·  futures + options");
+  expect(extremes.sections[0]!.rows[0]!.contractCode).toBe("13874A");
+  // Without --positions the board is futures only, as it always was.
+  expect((await run(undefined, ["--report", "tff", "--scope", "all"], "futures-only")).sections[0]!.title).toBe("Positioning extremes");
+  expect(asked).toEqual([
+    ["contract", "13874A", "tff", "combined"],
+    ["board", "tff", "leveraged-funds", "combined"],
+    ["board", "tff", "leveraged-funds", "futures-only"],
+  ]);
+  await expect(run("13874A", ["--report", "tff", "--positions", "combined"], "futures-only")).rejects.toThrow();
+  await expect(run(undefined, ["--report", "tff", "--traderClass", "managed-money"], "futures-only")).rejects.toThrow("does not belong");
+});
+
+test("the API asks for a scope only when it is combined, so the default request is the one it always was", async () => {
+  const { CloudDataApi } = await import("../../../api-client/data");
+  const paths: string[] = [];
+  const client = new CloudDataApi((async (path: string) => { paths.push(path); return {}; }) as never);
+  await client.getCloudCotBoard("legacy", "noncommercial");
+  await client.getCloudCotBoard("tff", "leveraged-funds", "combined");
+  await client.getCloudCotContract("13874A", "tff");
+  await client.getCloudCotContract("13874A", "tff", "combined");
+  expect(paths).toEqual([
+    "/cloud/cot/board?report=legacy&traderClass=noncommercial",
+    "/cloud/cot/board?report=tff&traderClass=leveraged-funds&scope=combined",
+    "/cloud/cot/contracts/13874A?report=tff",
+    "/cloud/cot/contracts/13874A?report=tff&scope=combined",
+  ]);
+});
+
 test("a contract's size reads in plain words where the CFTC spells a unit, and keeps its own spelling otherwise", () => {
   expect(cotContractUnitText("CONTRACTS OF 5,000 BUSHELS")).toBe("1 contract = 5,000 bushels");
   expect(cotContractUnitText("(CONTRACTS OF JPY 12,500,000)")).toBe("1 contract = JPY 12,500,000");

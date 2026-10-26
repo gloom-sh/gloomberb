@@ -78,7 +78,7 @@ test("a term's related terms hold its word whole; a word no term names still fin
   expect(terms(lookupGlossary("weight").partial)).toEqual(["Target", "Drift"]);
   expect(terms(lookupGlossary("settle").partial)).toEqual([]);
   // A plural holds its word whole; a search that names no term keeps the word starts after the whole words.
-  expect(terms(lookupGlossary("asset").partial)).toEqual(["Fed assets", "NAV"]);
+  expect(terms(lookupGlossary("asset").partial)).toEqual(["Fed assets", "NAV", "Asset manager/institutional"]);
   expect(terms(lookupGlossary("vol").partial)).toEqual(["Average daily volume", "VVIX", "Short volume", "Term structure", "Contango/backwardation (VIX)", "DVOL"]);
   expect(["short interest", "shares short", "short ratio", "dtc", "settlement date", "crowded rising", "short squeeze", "% float"].map((query) => terms(lookupGlossary(query).exact)))
     .toEqual([["Short interest"], ["Short interest"], ["Days to cover"], ["Days to cover"], ["Settlement"], ["Crowded"], ["Squeeze"], ["Float"]]);
@@ -249,4 +249,7 @@ test("COT's words are found by plain names and explained from the classes and co
   // The disaggregated report's classes are its own.
   expect(terms(reportGlossary("COT", "Class  Net\nManaged Money  +1\nProducer/Merchant  -1\nSwap Dealers  +2\nOther Reportables  0")))
     .toEqual(["Net position", "Managed money", "Producer/merchant", "Swap dealers", "Other reportables"]);
+  // So are the TFF report's, and the options it can count.
+  expect(terms(reportGlossary("COT", "Class  Net\nLeveraged Funds  +1\nAsset Manager/Institutional  -1\nDealer/Intermediary  +2\nFutures + options")))
+    .toEqual(["Net position", "Leveraged funds", "Asset manager/institutional", "Dealer/intermediary", "Futures and options combined"]);
 });

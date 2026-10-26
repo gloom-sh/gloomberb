@@ -44,7 +44,7 @@ import type { BeneficialOwnersPayload, CloudBeneficialOwnersParams } from "./ben
 import type { CloudInsiderSignalsParams, InsiderSignalsPayload } from "./insider-signals";
 import type { SocialMentionDayPosts, SocialMentionsPayload, SocialMentionsRange } from "./social-mentions";
 import type { FuturesContractTermsPayload, FuturesCurveAsOfPayload, FuturesCurvePayload } from "./futures-curve";
-import type { CotBoardPayload, CotContractPayload, CotFamily, CotClass } from "./cot";
+import type { CotBoardPayload, CotContractPayload, CotFamily, CotClass, CotPositions } from "./cot";
 import type { DoeBoardPayload, DoePricesPayload } from "./doe";
 import type { JodiBoardPayload, PsdBoardPayload } from "./commodity-balances";
 import type { CarbonBoard, CarbonHistory, EuropePowerBoard, EuropePowerHistory, GasStorageBoard, GasStorageHistory, GasStorageSeasonal } from "./europe-energy";
@@ -594,12 +594,15 @@ export class CloudDataApi {
     return this.request<CloudShillerPayload>(cloudShillerPath());
   }
 
-  async getCloudCotBoard(report: CotFamily, traderClass: CotClass): Promise<CotBoardPayload> {
-    return this.request<CotBoardPayload>(`/cloud/cot/board?${new URLSearchParams({ report, traderClass })}`);
+  /** Futures-only positions unless `positions` asks for futures and options combined; the default request is unchanged. */
+  async getCloudCotBoard(report: CotFamily, traderClass: CotClass, positions: CotPositions = "futures-only"): Promise<CotBoardPayload> {
+    const query = new URLSearchParams({ report, traderClass, ...(positions === "combined" ? { scope: positions } : {}) });
+    return this.request<CotBoardPayload>(`/cloud/cot/board?${query}`);
   }
 
-  async getCloudCotContract(code: string, report: CotFamily): Promise<CotContractPayload> {
-    return this.request<CotContractPayload>(`/cloud/cot/contracts/${encodeURIComponent(code)}?${new URLSearchParams({ report })}`);
+  async getCloudCotContract(code: string, report: CotFamily, positions: CotPositions = "futures-only"): Promise<CotContractPayload> {
+    const query = new URLSearchParams({ report, ...(positions === "combined" ? { scope: positions } : {}) });
+    return this.request<CotContractPayload>(`/cloud/cot/contracts/${encodeURIComponent(code)}?${query}`);
   }
 
   /** Geo layers (the map's layers, entities and series); one prefix-scoped method, like EQS. */

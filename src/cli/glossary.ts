@@ -714,7 +714,30 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
   },
   {
     term: "Other reportables", aliases: ["other reportable", "other reportable traders"], functions: ["COT"], shown: ["Other Reportables"],
-    definition: "The disaggregated report's large traders that fit none of its other classes, such as proprietary traders and family offices.",
+    definition: "The disaggregated and TFF reports' large traders that fit none of their other classes, such as proprietary traders and family offices.",
+  },
+  // The Traders in Financial Futures report's classes, and the options it can count.
+  {
+    term: "Traders in Financial Futures", short: "TFF", aliases: ["tff report", "financial futures report", "financial traders report"], functions: ["COT"], shown: ["Financial (TFF)"],
+    definition: "The CFTC's report on financial futures, such as rates, currencies, stock indexes and VIX. "
+      + "It splits large traders into dealers, asset managers, leveraged funds and other reportables.",
+  },
+  {
+    term: "Leveraged funds", aliases: ["leveraged fund", "leveraged money", "lev funds"], functions: ["COT"], shown: ["Leveraged Funds"],
+    definition: "The TFF report's hedge funds, CTAs and other money managers trading for clients or with borrowed money: the speculators most watched in rates, currencies and indexes.",
+  },
+  {
+    term: "Asset manager/institutional", aliases: ["asset manager", "asset managers", "institutional", "real money"], functions: ["COT"], shown: ["Asset Manager/Institutional"],
+    definition: "The TFF report's pension funds, insurers, mutual funds and endowments, investing for the long run; usually net long stock index futures.",
+  },
+  {
+    term: "Dealer/intermediary", aliases: ["dealer intermediary", "intermediary", "intermediaries"], functions: ["COT"], shown: ["Dealer/Intermediary"],
+    definition: "The TFF report's banks and dealers on the sell side, taking the other side of their clients' trades and hedging it.",
+  },
+  {
+    term: "Futures and options combined", aliases: ["futures + options", "futures and options", "combined report", "combined positions"], functions: ["COT"], shown: ["Futures + options"],
+    definition: "A COT report that adds each group's options to its futures, delta-adjusted: an option counts as the futures it moves like. "
+      + "Futures only, the default, counts futures alone.",
   },
   // Futures basis and curve shape (CTM, FUT, PERP).
   {

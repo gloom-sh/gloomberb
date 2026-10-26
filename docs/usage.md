@@ -613,7 +613,7 @@ A zero or negative price is kept for a futures instrument. For any other instrum
 | `TRACE [issuer, symbol or CUSIP]` | FINRA corporate and agency bond last sales. Alone, the latest prints market-wide |
 | `CBR` / `ECFC` / `CBRT` | Policy rates of the G20, SNB, Norges Bank, Riksbank and RBNZ, last observed moves and one-year history |
 | `CTM [root]` | Futures contract curve, historical ghosts, roll yield and open interest, including `CTM VX` and CME crypto (`CTM BTC` adds each contract's premium to spot and annualised basis, `(Last / spot - 1) × 365 / days to expiry`) |
-| `COT [code or name]` / `CFTC [code or name]` | CFTC positioning extremes, weekly changes and historical percentiles, by root or commodity name (`COT KC`, `COT coffee`), including CME crypto (`COT BTC`) |
+| `COT [code or name]` / `CFTC [code or name]` | CFTC positioning extremes, weekly changes and historical percentiles, by root or commodity name (`COT KC`, `COT coffee`), including CME crypto (`COT BTC`). Tabs pick the Legacy, Disaggregated or Financial (TFF) report and `p` picks futures only or futures + options; `fn COT --report tff --positions combined` reads the same |
 | `AUCT [search]` | Treasury auction results: auction rate (a TIPS rate is a real yield and an FRN's a spread in bp), stop-out versus average, bid-to-cover, indirect, direct and dealer takedown, and size |
 | `VIX` | VIX 9D through 1Y cash-tenor curve, VIX and VIX 3M history and the 3M/30D ratio |
 | `VOLS` | Cross-asset volatility indices, daily changes and one-year percentiles |
