@@ -44,6 +44,44 @@ export function metricNumber(value: unknown): number | null {
   return (negative ? -parsed : parsed) * multiplier;
 }
 
+/** A dollar figure as the service prints it ("$5094.1B", "$-4.9B"); anything else is not money to reformat. */
+const DOLLAR_STRING = /^-?\$-?[\d,]*\.?\d+\s*[KMBT]?$/i;
+
+/** The dollars in a string the service prints as money, or null for anything else. */
+export function moneyAmount(value: unknown): number | null {
+  return typeof value === "string" && DOLLAR_STRING.test(value.trim()) ? metricNumber(value) : null;
+}
+
+const MONEY_UNITS = [
+  { divisor: 1e12, suffix: "T" },
+  { divisor: 1e9, suffix: "B" },
+  { divisor: 1e6, suffix: "M" },
+  { divisor: 1e3, suffix: "K" },
+] as const;
+
+/**
+ * Dollars in the one compact form every TheBuildout table uses: "$5.1T",
+ * "$356.4B", "-$4.9B". The unit is picked after rounding, so $999.96B is
+ * "$1.0T" and not "$1000.0B".
+ */
+export function formatCompactMoney(amount: number): string {
+  const abs = Math.abs(amount);
+  let index = MONEY_UNITS.findIndex((unit) => abs >= unit.divisor);
+  let digits = index < 0 ? abs.toFixed(0) : (abs / MONEY_UNITS[index]!.divisor).toFixed(1);
+  if (index > 0 && Number(digits) >= 1000) {
+    index -= 1;
+    digits = (abs / MONEY_UNITS[index]!.divisor).toFixed(1);
+  }
+  const sign = amount < 0 && /[1-9]/.test(digits) ? "-" : "";
+  return `${sign}$${digits}${index < 0 ? "" : MONEY_UNITS[index]!.suffix}`;
+}
+
+/** A table cell's text for a dollar figure: compact when it is money, the service's own text otherwise, "-" when absent. */
+export function moneyText(value: string | null | undefined): string {
+  const amount = moneyAmount(value);
+  return amount == null ? text(value) : formatCompactMoney(amount);
+}
+
 export function dateShort(value: string | null | undefined) {
   const date = parseDisplayDate(value);
   if (!date) return "-";

@@ -12,10 +12,18 @@ import {
   activityLabel,
   criticalityColor,
   metricColor,
+  moneyAmount,
+  moneyText,
   text,
   tickerSymbol,
 } from "./format";
 import { favoriteKey } from "./table-model";
+
+/** A dollar figure in the compact form, with its whole number for an export. */
+function moneyCell(value: string | null | undefined, color: string): DataTableCell {
+  const amount = moneyAmount(value);
+  return { text: moneyText(value), ...(amount == null ? {} : { value: amount }), color };
+}
 
 interface BuildoutCellContext {
   favoriteBusyKey: string | null;
@@ -40,7 +48,7 @@ export function renderBuildoutCell(
       case "companyCount":
         return { text: list.companyCount == null ? "-" : String(list.companyCount), color: colors.textDim };
       case "totalMarketCap":
-        return { text: text(list.totalMarketCap), color: colors.textDim };
+        return moneyCell(list.totalMarketCap, colors.textDim);
       case "avgSectorGrowth":
         return { text: text(list.avgSectorGrowth), color: metricColor(list.avgSectorGrowth) };
       case "avgReturn1y":
@@ -87,16 +95,16 @@ export function renderBuildoutCell(
       case "criticality":
         return { text: text(company.aiCriticality), color: criticalityColor(company.aiCriticality), attributes: TextAttributes.BOLD };
       case "marketCap":
-        return { text: text(company.marketCap), color: colors.textDim };
+        return moneyCell(company.marketCap, colors.textDim);
       case "revenue":
-        return { text: text(company.revenue), color: colors.textDim };
+        return moneyCell(company.revenue, colors.textDim);
       case "revenueGrowth":
         return {
           text: text(company.revenueGrowthYoy ?? company.lastQuarterGrowth),
           color: metricColor(company.revenueGrowthYoy ?? company.lastQuarterGrowth),
         };
       case "netIncome":
-        return { text: text(company.netIncome), color: metricColor(company.netIncome) };
+        return moneyCell(company.netIncome, metricColor(company.netIncome));
       case "margin":
         return { text: text(company.profitMargins), color: metricColor(company.profitMargins) };
       case "forwardPE":
