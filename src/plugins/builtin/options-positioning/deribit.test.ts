@@ -8,6 +8,8 @@ import { optionsPositioningHeadless } from "./headless";
 import { expiryWithTimeLabel, formatContracts, formatPositioningSpot, positioningSpotDetail, settlementTime, wallsByExpiry } from "./model";
 
 // Deribit's BTC book as Gloom Cloud serves it: live OI in coins, expiries settling at 08:00 UTC.
+// Read a minute after its spot and OI time, so the fixture never ages into "stale".
+const READ_AT = Date.parse("2026-10-22T22:49:34.592Z");
 const expiry = (date: string, days: number, maxPain: number) => ({
   date, days, callOI: 87_461.9, putOI: 49_016.5, putCallRatio: 0.56, maxPain, callChange: null, putChange: null,
   expiresAt: `${date}T08:00:00.000Z`,
@@ -60,7 +62,7 @@ test("OPX BTC-USD reports max pain and walls per expiry, settling at 08:00 UTC, 
     optionsPositioning: async (path: string) => path.startsWith("open-interest") ? openInterest : gamma,
   } as never;
   const result = await definition.load(args, createTestHeadlessContext({ apiClient })) as HeadlessBundleResult;
-  const freshness = deriveHeadlessFreshness(definition, result);
+  const freshness = deriveHeadlessFreshness(definition, result, READ_AT);
   const tables = headlessReportTables(definition, result, args, "OPX", freshness, { complete: true, unavailableSymbols: [] });
   const expiries = tables.tables.find((table) => table.title?.startsWith("Expiries"))!;
   expect(expiries.columns).toEqual(expect.arrayContaining(["Settles", "Call OI (BTC)", "Max pain", "Call wall", "Put wall"]));
