@@ -3,18 +3,21 @@ import { apiClient } from "../../../api-client";
 import { dedupeHeatmapAssets, fetchMarketHeatmap, resetMarketHeatmapCache } from "./data";
 let restore: (() => void) | undefined;
 afterEach(() => { restore?.(); restore = undefined; resetMarketHeatmapCache(); });
-test("concurrent requests share the backend snapshot and force refresh replaces the cache", async () => {
-  const pending = Promise.withResolvers<Awaited<ReturnType<typeof apiClient.getMarketHeatmap>>>();
-  const api = spyOn(apiClient, "getMarketHeatmap").mockReturnValue(pending.promise);
+test("a read with the cache off, or through another client, neither uses nor fills the shared board", async () => {
+  const answer = { status: "success" as const, data: { universe: "us-etf" as const, source: "gloom" as const, fetchedAt: 123, assets: [] } };
+  const api = spyOn(apiClient, "getMarketHeatmap").mockResolvedValue(answer);
   restore = () => api.mockRestore();
-  const first = fetchMarketHeatmap("us-etf");
-  const second = fetchMarketHeatmap("us-etf");
-  pending.resolve({ status: "success", data: { universe: "us-etf", source: "gloom", fetchedAt: 123, assets: [] } });
-  expect(await first).toEqual(await second);
-  await fetchMarketHeatmap("us-etf");
+  const own = { client: { getMarketHeatmap: async () => answer } };
+  await fetchMarketHeatmap("us-etf", { cache: false });
+  await fetchMarketHeatmap("us-etf", undefined, own);
   expect(api).toHaveBeenCalledTimes(1);
-  await fetchMarketHeatmap("us-etf", { forceRefresh: true });
+  // Neither filled the cache, so the first shared read asks and the second is served.
+  await fetchMarketHeatmap("us-etf");
+  await fetchMarketHeatmap("us-etf");
   expect(api).toHaveBeenCalledTimes(2);
+  // A read with the cache off skips a filled one.
+  await fetchMarketHeatmap("us-etf", { cache: false });
+  expect(api).toHaveBeenCalledTimes(3);
 });
 test("a real-time board is checked again after 15 seconds, a delayed one after a minute", async () => {
   const board = (access?: "realtime" | "delayed") => ({ status: "success" as const,

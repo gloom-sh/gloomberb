@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
+import { createTtlCache } from "../../../data/ttl-cache";
 import type { DataProvider } from "../../../types/data-provider";
 import type { PricePoint } from "../../../types/financials";
+import { logFailure } from "../../../utils/log-failure";
 import type { BoardQuoteMap } from "../shared/use-quote-board";
 import type { FuturesContract } from "../../../market-data/futures-board";
 import {
@@ -27,29 +29,13 @@ const HISTORY_TTL_MS = 30 * 60_000;
 /** Forty-odd contracts open at once; a few requests at a time keep the board's quotes first. */
 const HISTORY_CONCURRENCY = 4;
 
-interface CachedHistory {
-  at: number;
-  /** Null when the contract has no history to read (delisted, unknown). */
-  points: readonly PricePoint[] | null;
-}
+/** Null when the contract has no history to read (delisted, unknown) or the read failed; kept the same as any answer. */
+const historyCache = createTtlCache<readonly PricePoint[] | null>({ ttlMs: HISTORY_TTL_MS });
 
-const historyCache = new Map<string, CachedHistory>();
-const inFlight = new Map<string, Promise<void>>();
-
-function freshHistory(symbol: string, now: number): CachedHistory | undefined {
-  const cached = historyCache.get(symbol);
-  return cached && now - cached.at < HISTORY_TTL_MS ? cached : undefined;
-}
-
-function loadHistory(provider: DataProvider, symbol: string): Promise<void> {
-  const pending = inFlight.get(symbol);
-  if (pending) return pending;
-  const request = provider.getPriceHistory(symbol, "", "1Y")
-    .then((points) => { historyCache.set(symbol, { at: Date.now(), points: points.length > 0 ? points : null }); })
-    .catch(() => { historyCache.set(symbol, { at: Date.now(), points: null }); })
-    .finally(() => { inFlight.delete(symbol); });
-  inFlight.set(symbol, request);
-  return request;
+function loadHistory(provider: DataProvider, symbol: string): Promise<unknown> {
+  return historyCache.load(symbol, () => provider.getPriceHistory(symbol, "", "1Y")
+    .then((points) => points.length > 0 ? points : null)
+    .catch(logFailure("futures", "Read a futures contract's history failed", null)));
 }
 
 /**
@@ -78,8 +64,7 @@ export function useFrontContractReturns(
 
   useEffect(() => {
     if (!enabled || !provider) return;
-    const now = Date.now();
-    const queue = [...new Set([...candidates.values()].flat())].filter((symbol) => !freshHistory(symbol, now));
+    const queue = [...new Set([...candidates.values()].flat())].filter((symbol) => historyCache.peek(symbol) === undefined);
     if (queue.length === 0) return;
     let cancelled = false;
     const worker = async () => {
@@ -101,12 +86,13 @@ export function useFrontContractReturns(
     for (const contract of contracts) {
       const quote = quotes.get(contract.symbol)?.quote;
       const symbols = candidates.get(contract.symbol) ?? [];
-      const loaded = symbols.map((symbol) => ({ symbol, cached: historyCache.get(symbol) }));
-      if (loaded.some((entry) => !entry.cached)) {
+      // A contract keeps the history it had past its TTL until the next load lands.
+      const loaded = symbols.map((symbol) => ({ symbol, history: historyCache.peek(symbol, { stale: true }) }));
+      if (loaded.some((entry) => entry.history === undefined)) {
         result.set(contract.symbol, { loading: true, values: NO_FUTURES_RETURNS });
         continue;
       }
-      const available = loaded.flatMap((entry) => entry.cached?.points ? [{ symbol: entry.symbol, history: entry.cached.points }] : []);
+      const available = loaded.flatMap((entry) => entry.history ? [{ symbol: entry.symbol, history: entry.history }] : []);
       const front = pickFrontContract(available, quote?.price);
       const history = available.find((entry) => entry.symbol === front)?.history;
       result.set(contract.symbol, {

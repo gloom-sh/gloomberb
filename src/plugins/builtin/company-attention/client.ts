@@ -3,6 +3,7 @@ import type { AppAttentionFilter, AppAttentionPayload, AppRankPayload } from "..
 import type { HiringBoard, HiringBuildingBoard, HiringBuildingFilter, HiringBuildingShift, HiringCompanyBuilding, HiringCompanyMoves, HiringCompanySignals, HiringMixRow, HiringMove, HiringMovePosting, HiringMovesBoard, HiringMovesFilter, HiringMoveWeek, HiringPayload, HiringSignalGroup, HiringSignalsBoard, HiringSignalsFilter, HiringSummary, HiringWeekSignal } from "../../../api-client/hiring";
 import type { CloudJobsPostingDetail } from "../../../api-client/types";
 import { createPluginCache } from "../../../data/plugin-cache";
+import { createTtlCache } from "../../../data/ttl-cache";
 import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
 import type { AppFocus, AttentionKind } from "./model";
 
@@ -165,21 +166,16 @@ export async function fetchAppRank(focus: AppFocus, days: number, offset = 0, si
 export const loadAppRank = (focus: AppFocus, access: string, days: number, force = false) => loadCloudResource(appRankCache, `${access}:${focus.store}:${focus.appId}:${focus.country}:${focus.chart}:${days}`, () => fetchAppRank(focus, days), { force });
 
 const POSTING_TTL_MS = 5 * 60_000;
-const postingCache = new Map<string, { at: number; posting: Promise<CloudJobsPostingDetail> }>();
+const postings = createTtlCache<CloudJobsPostingDetail>({ ttlMs: POSTING_TTL_MS });
 /**
  * The page HIRE's evidence row was read from: its title, place, date, pay,
  * hours and description. Kept a few minutes, so stepping back and forth
  * through the evidence does not read it again.
  */
 export function fetchPostingDetail(ticker: string, externalId: string, client: Pick<typeof apiClient, "getCloudJobsPosting"> = apiClient): Promise<CloudJobsPostingDetail> {
-  const key = `${ticker.toUpperCase()}:${externalId}`;
-  const cached = postingCache.get(key);
-  if (cached && Date.now() - cached.at < POSTING_TTL_MS) return cached.posting;
-  const posting = client.getCloudJobsPosting(ticker, { externalId }).then((detail) => {
+  return postings.load(`${ticker.toUpperCase()}:${externalId}`, async () => {
+    const detail = await client.getCloudJobsPosting(ticker, { externalId });
     if (!detail || typeof detail.title !== "string" || detail.externalId !== externalId) throw new Error("The server returned an unreadable posting.");
     return detail;
   });
-  postingCache.set(key, { at: Date.now(), posting });
-  posting.catch(() => postingCache.delete(key));
-  return posting;
 }

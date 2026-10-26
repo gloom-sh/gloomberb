@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createTtlCache, type TtlCache } from "../../../data/ttl-cache";
 import type { InstrumentRef } from "../../../market-data/request-types";
 import type { QueryEntry } from "../../../market-data/result-types";
 import { buildOptionsKey, resolveEntryData } from "../../../market-data/selectors";
@@ -15,6 +16,17 @@ const OPTIONS_LIVE_ANALYTICS_INTERVAL_MS = 1_000;
 const LIVE_ANALYTICS_MAX_LOAD = 0.05;
 /** The Treasury curve is daily; a refreshed chain reuses the one it already loaded. */
 const TREASURY_REUSE_MS = 30 * 60_000;
+const TREASURY_CURVE = "treasury";
+
+interface Selection {
+  key: string | null;
+  cache: OptionsEnrichmentCache;
+  curve: TtlCache<YieldPoint[]>;
+}
+
+const newSelection = (key: string | null): Selection => ({
+  key, cache: {}, curve: createTtlCache<YieldPoint[]>({ ttlMs: TREASURY_REUSE_MS }),
+});
 
 interface EnrichmentResult {
   key: string;
@@ -59,9 +71,9 @@ export function useOptionsEnrichment(input: {
   const current = useRef(input);
   current.current = input;
   // Per selection: the adjacent model and the Treasury curve outlive a chain refresh.
-  const store = useRef<{ key: string | null; cache: OptionsEnrichmentCache; curve: { value: YieldPoint[]; at: number } | null }>(
-    { key: null, cache: {}, curve: null });
-  if (store.current.key !== key) store.current = { key, cache: {}, curve: null };
+  const [first] = useState(() => newSelection(key));
+  const store = useRef(first);
+  if (store.current.key !== key) store.current = newSelection(key);
   const [result, setResult] = useState<EnrichmentResult | null>(null);
   const resultRef = useRef(result);
   resultRef.current = result;
@@ -71,7 +83,7 @@ export function useOptionsEnrichment(input: {
     const request = current.current;
     const identity = { key, entryKey, catalogueKey };
     const selection = store.current;
-    const curve = selection.curve && Date.now() - selection.curve.at < TREASURY_REUSE_MS ? selection.curve.value : undefined;
+    const curve = selection.curve.peek(TREASURY_CURVE);
     let projection: OptionsEnrichmentProjection | null = null;
     // A refresh of the same expiry swaps in its analytics complete, never
     // through a partial projection that would blank the strip for a moment.
@@ -93,7 +105,7 @@ export function useOptionsEnrichment(input: {
     }).then((snapshot) => {
       if (controller.signal.aborted) return;
       if (projection && !projection.curveLoading && !projection.treasuryError && projection.curve?.length && !curve) {
-        selection.curve = { value: [...projection.curve], at: Date.now() };
+        selection.curve.set(TREASURY_CURVE, [...projection.curve]);
       }
       setResult({ ...identity, loading: false, carried: false, snapshot, projection, error: null });
     }).catch((error: unknown) => {

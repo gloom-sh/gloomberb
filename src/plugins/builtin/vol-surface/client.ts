@@ -1,4 +1,5 @@
 import { apiClient } from "../../../api-client";
+import { createTtlCache } from "../../../data/ttl-cache";
 import { getSharedMarketDataCoordinator, MarketDataCoordinator, resolveEntryValue } from "../../../market-data/coordinator";
 import type { InstrumentRef, OptionsRequest } from "../../../market-data/request-types";
 import type { QueryEntry } from "../../../market-data/result-types";
@@ -73,19 +74,8 @@ export function withReusedYieldCurve(
   dependencies: SurfaceLoaderDependencies,
   reuseMs = TREASURY_CURVE_REUSE_MS,
 ): SurfaceLoaderDependencies {
-  let held: { at: number; curve: Promise<YieldPoint[]> } | null = null;
-  return {
-    ...dependencies,
-    loadYieldCurve: () => {
-      const now = Date.now();
-      if (held && now - held.at < reuseMs) return held.curve;
-      const curve = dependencies.loadYieldCurve();
-      const entry = { at: now, curve };
-      held = entry;
-      curve.catch(() => { if (held === entry) held = null; });
-      return curve;
-    },
-  };
+  const curves = createTtlCache<YieldPoint[]>({ ttlMs: reuseMs });
+  return { ...dependencies, loadYieldCurve: () => curves.load("curve", () => dependencies.loadYieldCurve()) };
 }
 
 export interface SurfaceLoadRequest {

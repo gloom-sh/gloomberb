@@ -1,0 +1,19 @@
+{
+  "src/plugins/builtin/alerts/metric-model.ts": {
+    "deadline: now < cached.retryAt": "A byte-identical copy of Gloom Cloud's delivery model (metric-parity-fixture.json pins its hash), so it cannot import the helper. Its failed-read backoff is the rejectionMs rule; move it when both copies move together.",
+    "map: new Map<string, { day: string; retryAt: number; result: Promise<MetricReading> }>()": "A byte-identical copy of Gloom Cloud's delivery model (metric-parity-fixture.json pins its hash), so it cannot import the helper. Its failed-read backoff is the rejectionMs rule; move it when both copies move together."
+  },
+  "src/plugins/builtin/cloud-tweets/table.tsx": {
+    "age: Date.now() - cached.fetchedAt < TWEET_CACHE_TTL_MS": "Feed results kept across tab switches and shown stale while a refetch runs; the entry's fetchedAt also drives the pane's auto-refresh and moves with every appended page, so the stamp is state the view reads.",
+    "map: new Map<string, { data: CloudTweetSearchResponse; fetchedAt: number; hasMore: boolean }>()": "Feed results kept across tab switches and shown stale while a refetch runs; the entry's fetchedAt also drives the pane's auto-refresh and moves with every appended page, so the stamp is state the view reads."
+  },
+  "src/plugins/builtin/correlation/index.tsx": {
+    "map: new Map<string, { values: DailyClose[]; fetchedAt: number }>()": "Not a TTL cache: the last good series per range, kept so a failed refresh still draws it. Nothing expires, and fetchedAt is shown with the data."
+  },
+  "src/plugins/builtin/portfolio-list/since-last-seen.ts": {
+    "map: new Map<string, Departure>()": "Not loaded data: what a pane showed when it went out of sight, read once on return against the reader's own away threshold, then used up."
+  },
+  "src/plugins/builtin/sec/command-bar-search.ts": {
+    "map: new Map<string, FocusRequest>()": "Not loaded data: a filing to focus handed from the command bar to the SEC pane, taken on first read and dropped after a few seconds unread."
+  }
+}

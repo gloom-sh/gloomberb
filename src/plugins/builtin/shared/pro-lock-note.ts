@@ -1,3 +1,4 @@
+import { createTtlCache, type TtlCache } from "../../../data/ttl-cache";
 import type { HeadlessPaneContext } from "../../../types/headless";
 import type { PaneLock } from "../../../types/plugin";
 import { settleWithin, signalWithTimeout } from "../../../utils/async-deadline";
@@ -35,8 +36,7 @@ const ANSWER_TTL_MS = 5 * 60_000;
  */
 const ROUTE_CHECK_WAIT_MS = 3_000;
 
-interface KeptAnswer { at: number; answer: Promise<boolean> }
-const answers = new WeakMap<FreeRoute, Map<string, KeptAnswer>>();
+const answers = new WeakMap<FreeRoute, TtlCache<boolean>>();
 
 /**
  * Whether the route has data for the symbol, null when its check failed or was
@@ -45,20 +45,18 @@ const answers = new WeakMap<FreeRoute, Map<string, KeptAnswer>>();
  * rather than hiding the route for minutes over one slow read.
  */
 async function routeAnswers(route: FreeRoute, check: NonNullable<FreeRoute["answers"]>, symbol: string, context: HeadlessPaneContext, deadline: number): Promise<boolean | null> {
-  const bySymbol = answers.get(route) ?? new Map<string, KeptAnswer>();
+  const bySymbol = answers.get(route) ?? createTtlCache<boolean>({ ttlMs: ANSWER_TTL_MS });
   answers.set(route, bySymbol);
   const key = symbol.trim().toUpperCase();
-  let kept = bySymbol.get(key);
-  if (!kept || Date.now() - kept.at >= ANSWER_TTL_MS) {
+  const answer = await settleWithin(bySymbol.load(key, () => {
     // The check's own reads stop at the deadline where they take a signal.
     const signal = signalWithTimeout(context.signal, Math.max(0, deadline - Date.now()));
-    const entry: KeptAnswer = { at: Date.now(), answer: check(symbol, { ...context, signal }) };
-    entry.answer.catch(logFailure("plugins.pro-lock-note", "Check a free route's data failed"));
-    bySymbol.set(key, entry);
-    kept = entry;
-  }
-  const answer = await settleWithin(kept.answer, Math.max(0, deadline - Date.now()));
-  if (answer === null && bySymbol.get(key) === kept) bySymbol.delete(key);
+    return check(symbol, { ...context, signal }).catch((error: unknown) => {
+      logFailure("plugins.pro-lock-note", "Check a free route's data failed")(error);
+      throw error;
+    });
+  }), Math.max(0, deadline - Date.now()));
+  if (answer === null) bySymbol.delete(key);
   return answer;
 }
 

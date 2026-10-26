@@ -6,6 +6,7 @@ import {
   validateOrganizationTickers,
   type OrganizationTicker,
 } from "../../../api-client/organization-tickers";
+import { createTtlCache, type TtlCache } from "../../../data/ttl-cache";
 
 /**
  * A lead sponsor's ticker, only ever as Gloom Cloud resolved it. `none` is an
@@ -46,17 +47,19 @@ const sponsorKey = (name: string) => name.trim().replace(/\s+/g, " ").toLowerCas
  * never stored as having no ticker because the lookup did not happen.
  */
 export class SponsorTickerStore {
-  private readonly answers = new Map<string, { value: SponsorTicker; expiresAt: number }>();
+  private readonly answers: TtlCache<SponsorTicker>;
   private readonly failures = new Map<string, string>();
   private readonly inFlight = new Set<string>();
   private readonly listeners = new Set<() => void>();
 
-  constructor(private readonly lookup: Lookup, private readonly now: () => number = Date.now) {}
+  constructor(private readonly lookup: Lookup, now: () => number = Date.now) {
+    this.answers = createTtlCache<SponsorTicker>({ ttlMs: CACHE_TTL_MS, now });
+  }
 
   get(name: string): SponsorTicker {
     const key = sponsorKey(name);
-    const answer = this.answers.get(key);
-    if (answer && answer.expiresAt > this.now()) return answer.value;
+    const answer = this.answers.peek(key);
+    if (answer) return answer;
     const reason = this.failures.get(key);
     return reason ? { kind: "failed", reason } : { kind: "pending" };
   }
@@ -86,8 +89,7 @@ export class SponsorTickerStore {
       keys.forEach((key) => this.inFlight.add(key));
       try {
         const results = await this.lookup(batch, signal);
-        const expiresAt = this.now() + CACHE_TTL_MS;
-        results.forEach((result, index) => this.answers.set(keys[index]!, { value: sponsorTickerFrom(result), expiresAt }));
+        results.forEach((result, index) => this.answers.set(keys[index]!, sponsorTickerFrom(result)));
       } catch (error) {
         // An abandoned lookup (its pane closed) is neither an answer nor a failure.
         if (!signal?.aborted) {

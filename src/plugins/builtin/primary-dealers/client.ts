@@ -1,3 +1,4 @@
+import { createTtlCache } from "../../../data/ttl-cache";
 import { httpFetch } from "../../../utils/http-transport";
 import { isoDateOrNull, numericOrNull, recordOrNull, textOrNull } from "../../../utils/guards";
 import {
@@ -84,20 +85,14 @@ async function readJson(url: string): Promise<unknown> {
 }
 
 /** The series break changes about every two years; one read serves the session. */
-let seriesBreakRead: Promise<string> | null = null;
+const seriesBreaks = createTtlCache<string>({ ttlMs: Infinity });
 
 function currentSeriesBreak(force: boolean): Promise<string> {
-  if (!seriesBreakRead || force) {
-    const read = readJson(`${API}/list/seriesbreaks.json`).then((payload) => {
-      const seriesBreak = newestSeriesBreak(parseSeriesBreaks(payload));
-      if (!seriesBreak) throw new Error("No series break was listed.");
-      return seriesBreak;
-    });
-    seriesBreakRead = read;
-    // A failed read is not kept, so the next one asks again.
-    read.catch(() => { if (seriesBreakRead === read) seriesBreakRead = null; });
-  }
-  return seriesBreakRead;
+  return seriesBreaks.load("current", async () => {
+    const seriesBreak = newestSeriesBreak(parseSeriesBreaks(await readJson(`${API}/list/seriesbreaks.json`)));
+    if (!seriesBreak) throw new Error("No series break was listed.");
+    return seriesBreak;
+  }, { force });
 }
 
 /**
@@ -117,31 +112,11 @@ export async function fetchPrimaryDealers(): Promise<DealerBoard> {
   };
 }
 
-interface SeriesRead {
-  at: number;
-  read: Promise<SeriesPoint[]>;
-  points: SeriesPoint[] | null;
-}
-
-const seriesReads = new Map<string, SeriesRead>();
+const seriesReads = createTtlCache<SeriesPoint[]>({ ttlMs: HISTORY_TTL_MS });
 
 function seriesRead(seriesBreak: string, key: string, force: boolean): Promise<SeriesPoint[]> {
-  const id = `${seriesBreak}:${key}`;
-  const known = seriesReads.get(id);
-  if (known && !force && Date.now() - known.at < HISTORY_TTL_MS) return known.read;
   const url = `${API}/get/${encodeURIComponent(seriesBreak)}/timeseries/${encodeURIComponent(key)}.json`;
-  const entry: SeriesRead = {
-    at: Date.now(),
-    points: null,
-    read: readJson(url).then((payload) => {
-      entry.points = parseSeriesPoints(payload);
-      return entry.points;
-    }),
-  };
-  seriesReads.set(id, entry);
-  // A failed read is not kept, so the next one asks again.
-  entry.read.catch(() => { if (seriesReads.get(id) === entry) seriesReads.delete(id); });
-  return entry.read;
+  return seriesReads.load(`${seriesBreak}:${key}`, async () => parseSeriesPoints(await readJson(url)), { force });
 }
 
 /** A row's history, one read per series behind it, each kept for the session. */
@@ -158,9 +133,9 @@ export async function loadDealerHistory(
 function heldSeries(seriesBreak: string, row: Pick<DealerRow, "keys">): SeriesPoint[][] | null {
   const series: SeriesPoint[][] = [];
   for (const key of row.keys) {
-    const known = seriesReads.get(`${seriesBreak}:${key}`);
-    if (!known?.points || Date.now() - known.at >= HISTORY_TTL_MS) return null;
-    series.push(known.points);
+    const points = seriesReads.peek(`${seriesBreak}:${key}`);
+    if (!points) return null;
+    series.push(points);
   }
   return series;
 }
@@ -178,6 +153,6 @@ export function cachedDealerHistory(seriesBreak: string, row: Pick<DealerRow, "i
 
 /** Forgets what was read, for a test or a refresh that must see the release again. */
 export function resetPrimaryDealersCache(): void {
-  seriesBreakRead = null;
+  seriesBreaks.clear();
   seriesReads.clear();
 }

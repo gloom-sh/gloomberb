@@ -11,6 +11,7 @@ import {
 } from "../../../components";
 import { DetailReader } from "../../../components/reader/detail-reader";
 import { loadingErrorFooterInfo, usePaneRefreshKey } from "../../../components/data-table/table-pane";
+import { createTtlCache } from "../../../data/ttl-cache";
 import { fetchChangelogReleases, type ChangelogRelease } from "../../../updater/github-releases";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
@@ -32,7 +33,8 @@ const CHANGELOG_CACHE_TTL_MS = 10 * 60 * 1000;
 
 // Process-lifetime cache. Move it into the updater module if other
 // surfaces start reading releases too.
-let cachedReleases: { releases: ChangelogRelease[]; fetchedAt: number } | null = null;
+const releaseCache = createTtlCache<ChangelogRelease[]>({ ttlMs: CHANGELOG_CACHE_TTL_MS });
+const RELEASES = "releases";
 
 type ChangelogColumn = DataTableColumn & { id: ChangelogColumnId };
 type LoadStatus = "loading" | "loaded" | "error";
@@ -83,10 +85,10 @@ function ChangelogDetail({
 function ChangelogPane({ focused, width, height }: PaneProps) {
   const paneInstance = usePaneInstance();
   const requestedVersion = paneInstance?.params?.version ?? null;
-  const [releases, setReleases] = useState<ChangelogRelease[]>(() => cachedReleases?.releases ?? []);
+  const [releases, setReleases] = useState<ChangelogRelease[]>(() => releaseCache.peek(RELEASES, { stale: true }) ?? []);
   // The mount effect starts the request immediately, so the first paint is a
   // spinner and never "No changelog entries found".
-  const [status, setStatus] = useState<LoadStatus>(() => (cachedReleases ? "loaded" : "loading"));
+  const [status, setStatus] = useState<LoadStatus>(() => (releaseCache.peek(RELEASES, { stale: true }) ? "loaded" : "loading"));
   const [error, setError] = useState<string | null>(null);
   // The selected row and the open release are pane state, so a reload or a
   // shared layout comes back to the same release.
@@ -98,8 +100,9 @@ function ChangelogPane({ focused, width, height }: PaneProps) {
   const requestedVersionOpenedRef = useRef(false);
 
   const loadReleases = useCallback(async (force = false) => {
-    if (!force && cachedReleases && Date.now() - cachedReleases.fetchedAt < CHANGELOG_CACHE_TTL_MS) {
-      setReleases(cachedReleases.releases);
+    const fresh = force ? undefined : releaseCache.peek(RELEASES);
+    if (fresh) {
+      setReleases(fresh);
       setError(null);
       setStatus("loaded");
       return;
@@ -118,7 +121,7 @@ function ChangelogPane({ focused, width, height }: PaneProps) {
 
     try {
       const nextReleases = await fetchChangelogReleases(CHANGELOG_LIMIT, controller.signal);
-      cachedReleases = { releases: nextReleases, fetchedAt: Date.now() };
+      releaseCache.set(RELEASES, nextReleases);
       setReleases(nextReleases);
       setStatus("loaded");
     } catch (loadError) {

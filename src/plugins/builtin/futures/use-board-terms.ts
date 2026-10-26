@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FuturesContractTermsPayload } from "../../../api-client/futures-curve";
 import type { FuturesContract } from "../../../market-data/futures-board";
+import { createTtlCache } from "../../../data/ttl-cache";
 import { loadFuturesContractTerms } from "../../../market-data/futures-contract";
+import { logFailure } from "../../../utils/log-failure";
 
 interface FuturesTermsState {
   /** The row's terms are still being asked for. */
@@ -17,29 +19,12 @@ const TERMS_TTL_MS = 30 * 60_000;
 /** Forty-odd rows open at once; a few requests at a time keep the board's quotes first. */
 const TERMS_CONCURRENCY = 4;
 
-interface CachedTerms {
-  at: number;
-  /** Null when the server has no terms for the symbol, or could not answer. */
-  terms: FuturesContractTermsPayload | null;
-}
+/** Null when the server has no terms for the symbol, or could not answer; kept the same as any answer. */
+const termsCache = createTtlCache<FuturesContractTermsPayload | null>({ ttlMs: TERMS_TTL_MS });
 
-const termsCache = new Map<string, CachedTerms>();
-const inFlight = new Map<string, Promise<void>>();
-
-function fresh(symbol: string, now: number): CachedTerms | undefined {
-  const cached = termsCache.get(symbol);
-  return cached && now - cached.at < TERMS_TTL_MS ? cached : undefined;
-}
-
-function loadTerms(symbol: string): Promise<void> {
-  const pending = inFlight.get(symbol);
-  if (pending) return pending;
-  const request = loadFuturesContractTerms(symbol)
-    .then((terms) => { termsCache.set(symbol, { at: Date.now(), terms }); })
-    .catch(() => { termsCache.set(symbol, { at: Date.now(), terms: null }); })
-    .finally(() => { inFlight.delete(symbol); });
-  inFlight.set(symbol, request);
-  return request;
+function loadTerms(symbol: string): Promise<unknown> {
+  return termsCache.load(symbol, () => loadFuturesContractTerms(symbol)
+    .catch(logFailure("futures", "Read a futures row's contract terms failed", null)));
 }
 
 /**
@@ -54,8 +39,7 @@ export function useFuturesBoardTerms(contracts: readonly FuturesContract[], enab
 
   useEffect(() => {
     if (!enabled || !symbolKey) return;
-    const now = Date.now();
-    const queue = symbolKey.split(",").filter((symbol) => !fresh(symbol, now));
+    const queue = symbolKey.split(",").filter((symbol) => termsCache.peek(symbol) === undefined);
     if (queue.length === 0) return;
     let cancelled = false;
     const worker = async () => {
@@ -75,8 +59,9 @@ export function useFuturesBoardTerms(contracts: readonly FuturesContract[], enab
     const result = new Map<string, FuturesTermsState>();
     if (!enabled) return result;
     for (const symbol of symbolKey ? symbolKey.split(",") : []) {
-      const cached = termsCache.get(symbol);
-      result.set(symbol, { loading: !cached, terms: cached?.terms ?? null });
+      // A row keeps the terms it had past their TTL until the next load lands.
+      const terms = termsCache.peek(symbol, { stale: true });
+      result.set(symbol, { loading: terms === undefined, terms: terms ?? null });
     }
     return result;
     // `version` re-reads the cache as loads land.

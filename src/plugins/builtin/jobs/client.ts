@@ -1,4 +1,5 @@
 import { apiClient } from "../../../api-client";
+import { createTtlCache } from "../../../data/ttl-cache";
 import { ApiRequestError } from "../../../api-client/errors";
 import type {
   CloudJobsMoversPayload,
@@ -25,43 +26,38 @@ export type JobsCompanyState =
   | { kind: "denied"; status: 401 | 402 | 403; message: string };
 
 const SUMMARY_TTL_MS = 5 * 60_000;
-const summaryCache = new Map<string, { at: number; state: JobsCompanyState }>();
+/**
+ * `pending` is never kept, so the pane's poll reads it afresh each time, and
+ * `denied` is not either: the account can change under the pane.
+ */
+const summaries = createTtlCache<JobsCompanyState>({
+  ttlMs: SUMMARY_TTL_MS,
+  keep: (state) => state.kind === "ready" || state.kind === "uncovered",
+});
 
-function cachedJobs(ticker: string): JobsCompanyState | null {
-  const entry = summaryCache.get(ticker.toUpperCase());
-  if (!entry || Date.now() - entry.at > SUMMARY_TTL_MS) return null;
-  return entry.state;
-}
-
-export async function fetchJobs(
-  ticker: string,
-  options: { name?: string | null; force?: boolean; client?: JobsCloudClient } = {},
-): Promise<JobsCompanyState> {
-  const key = ticker.toUpperCase();
-  if (!options.force) {
-    const cached = cachedJobs(key);
-    // A pending answer is never served from cache: the point is to poll.
-    if (cached && cached.kind !== "pending") return cached;
-  }
-  const client = options.client ?? apiClient;
-  let state: JobsCompanyState;
+async function loadJobs(key: string, name: string | null | undefined, client: JobsCloudClient): Promise<JobsCompanyState> {
   try {
-    const response: CloudJobsResponse = await client.getCloudJobs(key, options.name);
-    state = response.status === "pending"
+    const response: CloudJobsResponse = await client.getCloudJobs(key, name);
+    return response.status === "pending"
       ? { kind: "pending", ticker: key, message: response.message }
       : { kind: "ready", summary: response };
   } catch (error) {
     if (error instanceof ApiRequestError && error.status === 404) {
-      state = { kind: "uncovered", ticker: key, message: error.message };
-    } else if (error instanceof ApiRequestError && (error.status === 401 || error.status === 402 || error.status === 403)) {
-      // Not cached: the account can change under the pane.
-      return { kind: "denied", status: error.status, message: error.message };
-    } else {
-      throw error;
+      return { kind: "uncovered", ticker: key, message: error.message };
     }
+    if (error instanceof ApiRequestError && (error.status === 401 || error.status === 402 || error.status === 403)) {
+      return { kind: "denied", status: error.status, message: error.message };
+    }
+    throw error;
   }
-  summaryCache.set(key, { at: Date.now(), state });
-  return state;
+}
+
+export function fetchJobs(
+  ticker: string,
+  options: { name?: string | null; force?: boolean; client?: JobsCloudClient } = {},
+): Promise<JobsCompanyState> {
+  const key = ticker.toUpperCase();
+  return summaries.load(key, () => loadJobs(key, options.name, options.client ?? apiClient), { force: options.force });
 }
 
 export function fetchJobsPostings(
@@ -81,5 +77,5 @@ export function fetchJobsMovers(
 }
 
 export function resetJobsCache(): void {
-  summaryCache.clear();
+  summaries.clear();
 }

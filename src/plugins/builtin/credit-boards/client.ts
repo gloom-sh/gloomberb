@@ -5,7 +5,9 @@ import type {
   SovrBoardPayload,
 } from "../../../api-client/credit-boards";
 import { createPluginCache } from "../../../data/plugin-cache";
+import { createTtlCache } from "../../../data/ttl-cache";
 import type { PricePoint } from "../../../types/financials";
+import { logFailure } from "../../../utils/log-failure";
 import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
 import { currencyMoveFromHistory, currencyPair } from "./model";
 
@@ -84,18 +86,12 @@ export type PriceHistoryLoader = (symbol: string) => Promise<PricePoint[]>;
 const FX_HISTORY_TTL_MS = 30 * 60_000;
 /** Twenty-odd currencies at once; a few requests at a time keep the feed from refusing them. */
 const FX_HISTORY_CONCURRENCY = 4;
-const fxMoves = new Map<string, { at: number; move: Promise<number | null> }>();
+const fxMoves = createTtlCache<number | null>({ ttlMs: FX_HISTORY_TTL_MS });
 
+/** A load that fails reads as unknown for everyone waiting on it and is asked again next time, never remembered as unknown. */
 function currencyMove(symbol: string, dollarsPerUnit: boolean, loadHistory: PriceHistoryLoader): Promise<number | null> {
-  const cached = fxMoves.get(symbol);
-  if (cached && Date.now() - cached.at <= FX_HISTORY_TTL_MS) return cached.move;
-  const move = loadHistory(symbol).then((history) => currencyMoveFromHistory(history, dollarsPerUnit));
-  fxMoves.set(symbol, { at: Date.now(), move });
-  // A failed load is retried next time rather than remembered as unknown.
-  return move.catch(() => {
-    fxMoves.delete(symbol);
-    return null;
-  });
+  return fxMoves.load(symbol, async () => currencyMoveFromHistory(await loadHistory(symbol), dollarsPerUnit))
+    .catch(logFailure("credit-boards", "Read a currency's price history failed", null));
 }
 
 /**

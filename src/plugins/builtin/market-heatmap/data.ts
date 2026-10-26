@@ -1,4 +1,5 @@
 import { apiClient } from "../../../api-client";
+import { createTtlCache } from "../../../data/ttl-cache";
 import type { MarketHeatmapResult, MarketHeatmapUniverseId } from "../../../api-client/market-discovery";
 export type { MarketHeatmapUniverseId } from "../../../api-client/market-discovery";
 
@@ -39,8 +40,7 @@ const MAX_MARKET_HEATMAP_COUNT = 500;
 export function heatmapCheckIntervalMs(board: Pick<MarketHeatmapResult, "access"> | null | undefined): number {
   return board?.access === "realtime" ? 15_000 : 60_000;
 }
-const activeFetches = new Map<string, Promise<MarketHeatmapBoard>>();
-const memoryCache = new Map<string, { expiresAt: number; result: MarketHeatmapBoard }>();
+const boards = createTtlCache<MarketHeatmapBoard>({ ttlMs: heatmapCheckIntervalMs });
 
 /**
  * One tile per symbol. A company listed on two exchanges (KHC on NASDAQ and
@@ -75,43 +75,18 @@ async function loadMarketHeatmap(universe: MarketHeatmapUniverseId, count: numbe
   };
 }
 
-export async function fetchMarketHeatmap(
+export function fetchMarketHeatmap(
   universe: MarketHeatmapUniverseId,
   options?: MarketHeatmapFetchOptions,
   sources?: MarketHeatmapSources,
 ): Promise<MarketHeatmapBoard> {
   const count = Math.max(1, Math.min(MAX_MARKET_HEATMAP_COUNT, Math.round(options?.count ?? DEFAULT_COUNT)));
-  const cacheKey = `${universe}:${count}`;
-  const useCache = options?.cache !== false && !sources?.client;
-  const now = Date.now();
-  const cached = memoryCache.get(cacheKey);
-  if (useCache && !options?.forceRefresh && cached && cached.expiresAt > now) {
-    return cached.result;
-  }
-
-  if (useCache) {
-    const active = activeFetches.get(cacheKey);
-    if (active) return active;
-  }
-
-  const fetchPromise = loadMarketHeatmap(universe, count, sources)
-    .then((result) => {
-      if (useCache) {
-        memoryCache.set(cacheKey, { result, expiresAt: Date.now() + heatmapCheckIntervalMs(result) });
-      }
-      return result;
-    })
-    .finally(() => {
-      if (activeFetches.get(cacheKey) === fetchPromise) {
-        activeFetches.delete(cacheKey);
-      }
-    });
-
-  if (useCache) activeFetches.set(cacheKey, fetchPromise);
-  return fetchPromise;
+  const load = () => loadMarketHeatmap(universe, count, sources);
+  // A board asked for uncached, or through another client, neither reads nor fills the shared cache.
+  if (options?.cache === false || sources?.client) return load();
+  return boards.load(`${universe}:${count}`, load, { force: options?.forceRefresh });
 }
 
 export function resetMarketHeatmapCache(): void {
-  activeFetches.clear();
-  memoryCache.clear();
+  boards.clear();
 }
