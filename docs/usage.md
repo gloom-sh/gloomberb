@@ -314,6 +314,8 @@ After the close and through a weekend, the boards' Last and change agree with `g
 
 Outside the regular session `THEM` shows each member's last regular close and move, as `ticker` does, and its 1W, 1M, 3M and YTD end at that close (YTD measured from the prior year's last close, `YTD vs 31 Dec close`). A pre-market or after-hours print gets its own column and never enters a return. The footer names the close and the snapshot's age (`Fri 9 Oct close · snapshot 12m ago`).
 
+A figure drawn from only some of a theme's names says how many, beside it: `-7.52% 7 of 8`. The column headed `YTD vs 31 Dec` is the return since that close.
+
 `--json`: `metadata.asOf` is that close, with `snapshotAssembledAt`, `snapshotAgeMinutes` and `regularSessionDate`, and each member adds the four `extended` fields.
 
 With Pro, `THEM` prices members and themes from real-time quotes: the footer reads `live · snapshot 3m ago` while a session trades, the pane refreshes every 15 seconds, and `fn THEM` reports `live`. Outside the session the footer names the close and `fn THEM` is as of it, with no feed named (`US trading day Fri 23 Oct 2026 close · markets closed until Mon`). Otherwise the board is fifteen minutes delayed. `MOST`'s Gainers, Losers and Most Active, and `movers`, read the real-time lists and say `live`.

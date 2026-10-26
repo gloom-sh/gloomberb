@@ -5,14 +5,14 @@ import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import type { ExtendedSession } from "../../../market-data/market/status";
 import { useAsyncResource, useAutoRefresh, usePluginPaneState, usePluginTickerActions, useUpdatedAgo } from "../../../public/react";
 import { usePaneInstance } from "../../../state/app/context";
-import { priceColor, shownPriceColor } from "../../../theme/colors";
+import { shownPriceColor } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import { Box, Text } from "../../../ui";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import { useMembersMenu } from "../shared/members-menu";
 import { cachedMembers, cachedThemes, loadMembers, loadThemes } from "./client";
 import {
-  aggregateText, boardYtdBase, coverageWidth, DEFAULT_SORT, extendedMove, matchTheme, memberColumns, memberExtendedSessions, memberPrice, percent,
+  aggregateText, boardYtdBase, coverageText, coverageWidth, DEFAULT_SORT, extendedMove, matchTheme, memberColumns, memberExtendedSessions, memberPrice, percent,
   isLiveBoard, LIVE_BOARD_REFRESH_MS, SNAPSHOT_STALE_MS, snapshotFooterText, sortMembers, sortThemes, themeColumns, type ThemeSort,
 } from "./model";
 
@@ -135,14 +135,14 @@ export function ThemesBoard({ width, height, focused, tabStrip, tabRows = 0 }: T
     if (column.id === "best" || column.id === "worst") {
       const member = row[column.id];
       return { text: member ? `${member.symbol} ${percent(member.changePercent)}` : "--", value: member?.changePercent ?? null,
-        color: member ? priceColor(member.changePercent, colors) : colors.textMuted };
+        color: member ? shownPriceColor(member.changePercent, 2, colors) : colors.textMuted };
     }
     const breadth = column.id === "breadth";
     const metric = breadth ? row.breadth : row.returns[column.id as ThemePeriod];
     const suffixWidth = coverageWidth((data?.themes ?? []).map((theme) => breadth ? theme.breadth : theme.returns[column.id as ThemePeriod]));
-    const color = metric.value === null || breadth ? colors.textMuted : priceColor(metric.value, colors);
+    const color = metric.value === null || breadth ? colors.textMuted : shownPriceColor(metric.value, 2, colors);
     const valueText = breadth && metric.value !== null ? `${Math.round(metric.value)}%` : percent(metric.value);
-    const suffix = metric.covered < metric.total ? `${metric.covered}/${metric.total}` : "";
+    const suffix = coverageText(metric);
     return { text: aggregateText(metric, breadth), value: metric.value,
       color, content: suffixWidth ? <Box flexDirection="row" width={column.width} justifyContent="flex-end">
         <Text fg={color}>{valueText}</Text><Text fg={colors.textMuted}>{suffix.padStart(suffixWidth)}</Text>
