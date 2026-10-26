@@ -164,7 +164,7 @@ const DEPTH_COLUMNS: Record<DepthColumnId, DataTableColumn> = {
   bid2: { id: "bid2", label: "Bid 2% USD", width: 10, align: "right" },
   ask2: { id: "ask2", label: "Ask 2% USD", width: 10, align: "right" },
   reach: { id: "reach", label: "Book reach %", width: 12, align: "right" },
-  observedAt: { id: "observedAt", label: "Observed UTC", width: 12, align: "left" },
+  observedAt: { id: "observedAt", label: "Observed UTC", width: 17, align: "left" },
 };
 export const DEPTH_COLUMN_IDS: DepthColumnId[] = ["venue", "symbol", "mid", "bid05", "ask05", "bid1", "ask1", "bid2", "ask2", "reach", "observedAt"];
 export const depthColumns = (width: number) => fit(DEPTH_COLUMNS, DEPTH_COLUMN_IDS, [["reach"], ["mid"], ["observedAt"], ["bid2", "ask2"], ["bid05", "ask05"]], width);
@@ -181,7 +181,8 @@ export function depthCellText(row: PerpDepthRow, id: DepthColumnId): string {
   if (id === "symbol") return row.symbol;
   if (id === "mid") return price(row.mid);
   if (id === "reach") return `${(bookReach(row) * 100).toFixed(2)}%`;
-  if (id === "observedAt") return stamp(row.observedAt);
+  // A book not read for 2.5 hours says so, since the band totals leave it out.
+  if (id === "observedAt") return `${stamp(row.observedAt)}${row.stale ? " stale" : ""}`;
   return `${isFloor(row, id) ? "≥" : ""}${usd(row[id])}`;
 }
 export function depthCell(row: PerpDepthRow, id: DepthColumnId, colors: Colors): DataTableCell {
@@ -194,17 +195,25 @@ export function depthCell(row: PerpDepthRow, id: DepthColumnId, colors: Colors):
   return { text, value: row[id], color: row.stale ? colors.textMuted : id.startsWith("bid") ? colors.positive : colors.negative };
 }
 
-/** Each band's resting bids and asks summed over the books shown; at least, when any book ends inside the band. */
-export function depthFigures(rows: readonly PerpDepthRow[]): StatItem[] {
+/**
+ * Each band's resting bids and asks summed over the current books; `floor` when any of them ends inside the band. A stale
+ * book (it left its venue's 50 largest, or the venue has been failing) is listed, marked, and not added to books read now.
+ */
+export function depthBandTotals(all: readonly PerpDepthRow[]) {
+  const rows = all.filter((row) => !row.stale);
   if (!rows.length) return [];
-  return DEPTH_BANDS.map((band) => {
-    const bids = rows.reduce((sum, row) => sum + row[`bid${band.key}`], 0);
-    const asks = rows.reduce((sum, row) => sum + row[`ask${band.key}`], 0);
-    const floor = rows.some((row) => isFloor(row, `bid${band.key}`) || isFloor(row, `ask${band.key}`)) ? "≥" : "";
-    return { id: `band-${band.key}`, label: `±${band.label} of mid`, value: `${floor}${usd(bids + asks)}`, detail: `bids ${usd(bids)} · asks ${usd(asks)}`,
-      detailVariants: [`${usd(bids)} / ${usd(asks)}`, ""] };
-  });
+  return DEPTH_BANDS.map((band) => ({ key: band.key, label: `±${band.label} of mid`, books: rows.length,
+    bids: rows.reduce((sum, row) => sum + row[`bid${band.key}`], 0), asks: rows.reduce((sum, row) => sum + row[`ask${band.key}`], 0),
+    floor: rows.some((row) => isFloor(row, `bid${band.key}`) || isFloor(row, `ask${band.key}`)) }));
 }
+export const depthFigures = (rows: readonly PerpDepthRow[]): StatItem[] => depthBandTotals(rows).map(({ key, label, bids, asks, floor }) => ({
+  id: `band-${key}`, label, value: `${floor ? "≥" : ""}${usd(bids + asks)}`, detail: `bids ${usd(bids)} · asks ${usd(asks)}`, detailVariants: [`${usd(bids)} / ${usd(asks)}`, ""] }));
+
+/** Said under the depth figures when a stale book is left out of them. */
+export const depthStaleNote = (rows: readonly PerpDepthRow[]) => {
+  const stale = rows.filter((row) => row.stale).length;
+  return stale ? `${stale === 1 ? "One book" : `${stale} books`} not read for 2.5 hours ${stale === 1 ? "is" : "are"} marked stale and left out of the band totals.` : null;
+};
 
 /** One book's hourly bids and asks within 1% of mid, for the chart over the table. */
 export function depthSeries(history: readonly PerpDepthSnapshot[], row: PerpDepthRow | null, colors: Pick<ThemeColors, "positive" | "negative">) {

@@ -10,7 +10,7 @@ import { SignInWall } from "../cloud/auth-actions";
 import { useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { UpgradeLabel } from "../shared/locked-rows";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
-import { depthCell, depthColumns, depthFigures, depthFreshness, depthHistoryCount, depthSeries, LIQUIDATION_VIEWS, liquidationCell, liquidationColumns, liquidationFigures,
+import { depthCell, depthColumns, depthFigures, depthFreshness, depthHistoryCount, depthSeries, depthStaleNote, LIQUIDATION_VIEWS, liquidationCell, liquidationColumns, liquidationFigures,
   liquidationFreshness, liquidationSeries, printCell, printColumns, printHour, printKey, type DepthColumnId, type LiquidationColumnId, type LiquidationView, type PrintColumnId } from "./cascade";
 import { cachedPerpsDepth, cachedPerpsLiquidations, loadPerpsDepth, loadPerpsLiquidations } from "./client";
 import { compact } from "./model";
@@ -130,9 +130,10 @@ export function Depth({ asset, onAssetChange, accessKey, width, height, focused,
   const declare = useCallback(() => data?.rows.length ? depthFreshness(data) : null, [data]);
   const line = useFreshnessStatusLine(declare, resource.updatedAt);
   usePaneStatusFooter({ registrationId: "perps:depth", loading: resource.loading, error: data ? resource.error : null, stale: resource.data?.stale, info: line });
-  usePaneNoticeFooter({ registrationId: "perps:depth-notice", focused, title: "Order book depth",
-    notices: [...resource.data?.refreshError ? [resource.data.refreshError] : [], ...data?.notes ?? []] });
   const rows = data?.rows ?? [];
+  const staleNote = depthStaleNote(rows);
+  usePaneNoticeFooter({ registrationId: "perps:depth-notice", focused, title: "Order book depth",
+    notices: [...resource.data?.refreshError ? [resource.data.refreshError] : [], ...staleNote ? [staleNote] : [], ...data?.notes ?? []] });
   const selected = rows.find((row) => row.marketId === selectedId) ?? rows[0] ?? null;
   const series = useMemo(() => depthSeries(data?.history ?? [], selected, colors), [data?.history, selected, colors]);
   if (!data && isCloudSessionRequired(resource.error)) return <SignInWall placement="perps-signin" action="view perpetual order book depth" needsVerification={session.needsVerification} />;
@@ -155,6 +156,6 @@ export function Depth({ asset, onAssetChange, accessKey, width, height, focused,
       emptyStateTitle={data?.status === "unavailable" ? "Order book depth is not collected yet." : `No order book depth for ${base} yet.`} bodyAfter={lock}
       getExportMetadata={() => [["As of", data?.asOf ?? ""], ["Base asset", data?.baseAsset ?? base],
         ["Units", "quote notional in USD resting within the band of mid on each side; a value marked ≥ is a floor, the book returned ended inside the band; book reach in percent of mid"],
-        ...(data?.notes ?? []).map((note) => ["Note", note])]} />
+        ...[...staleNote ? [staleNote] : [], ...data?.notes ?? []].map((note) => ["Note", note])]} />
   </PaneStatusBody>;
 }

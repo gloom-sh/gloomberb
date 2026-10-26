@@ -1,7 +1,7 @@
 import type { PerpBoardPayload, PerpBoardRow, PerpDepthRow, PerpLiquidationMarket, PerpLiquidationPrint } from "../../../api-client/perps";
 import type { HeadlessBundleSection, HeadlessPaneColumn, HeadlessPaneLoadArgs, HeadlessPaneRow } from "../../../types/headless";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
-import { DEPTH_COLUMN_IDS, depthCellText, depthColumnLabel, depthFreshness, downStreams, LIQUIDATION_COLUMN_IDS, liquidationCellText, liquidationColumnLabel, liquidationFreshness,
+import { DEPTH_COLUMN_IDS, depthBandTotals, depthCellText, depthColumnLabel, depthFreshness, depthStaleNote, downStreams, LIQUIDATION_COLUMN_IDS, liquidationCellText, liquidationColumnLabel, liquidationFreshness,
   PRINT_COLUMN_IDS, printCellText, printColumnLabel, type DepthColumnId, type LiquidationColumnId, type PrintColumnId } from "./cascade";
 import { boardSearchText, fetchPerpSelection, fetchPerpsBoard, fetchPerpsCompare, fetchPerpsDepth, fetchPerpsHistory, fetchPerpsLiquidations, fetchPerpsRankings, marketQuery, nearestPerpMarkets } from "./client";
 import { perpFreshness } from "./freshness";
@@ -216,9 +216,14 @@ export const perpsHeadless: HeadlessPaneDefinition<"bundle"> = {
       const data = await fetchPerpsDepth(asked, ctx.apiClient);
       if (!data.rows.length && data.status !== "unavailable") throw noMarket(requested || asked, await nearestPerpMarkets(requested || asked, ctx.apiClient));
       const told = notices(data.baseAsset);
-      return { sections: [{ title: "Order books", columns: DEPTH_TEXT_COLUMNS, rows: data.rows.map((row) => ({ ...row })) },
+      const staleNote = depthStaleNote(data.rows);
+      // The band totals over the current books, as the tab's figures show them; a floor (≥) when a book ends inside the band.
+      const bands = depthBandTotals(data.rows).map((band) => ({ key: `band${band.key}`, label: band.label, value: band.bids + band.asks,
+        formatted: `${band.floor ? "≥" : ""}${compact(band.bids + band.asks)} USD (bids ${compact(band.bids)} · asks ${compact(band.asks)}, ${band.books} ${band.books === 1 ? "book" : "books"})` }));
+      return { sections: [...bands.length ? [{ title: "Band totals", entries: bands }] : [],
+        { title: "Order books", columns: DEPTH_TEXT_COLUMNS, rows: data.rows.map((row) => ({ ...row })) },
         { title: "Hourly depth", columns: DEPTH_HISTORY_COLUMNS, rows: data.history.map((row) => ({ ...row })), ...lockedTable(data.locked) }],
-        complete: !data.locked && data.status === "ok", notes: data.notes,
+        complete: !data.locked && data.status === "ok" && !staleNote, notes: [...staleNote ? [staleNote] : [], ...data.notes],
         errors: data.locked ? [freePreviewNote({ shows: "each book's latest depth", adds: "the week's hourly depth" })] : [],
         freshness: depthFreshness(data),
         metadata: { ...(requested ? {} : { defaultArgument: DEFAULT_MARKET }), ...(told.length ? { notices: told } : {}), baseAsset: data.baseAsset, asOf: data.asOf,

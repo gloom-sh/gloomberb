@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { renderHeadlessPaneText, serializeHeadlessPaneResult } from "../../../cli/pane-functions/headless";
 import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
-import { depthCellText, depthColumns, depthFigures, liquidationCellText, liquidationColumns, liquidationFigures, liquidationFreshness, printCellText, printColumns } from "./cascade";
+import { depthCellText, depthColumns, depthFigures, depthStaleNote, liquidationCellText, liquidationColumns, liquidationFigures, liquidationFreshness, printCellText, printColumns } from "./cascade";
 import { fetchPerpsLiquidations, validatePerpsDepth, validatePerpsLiquidations } from "./client";
 import { perpsHeadless } from "./headless";
 import { cascadeAsOf as asOf, depthPayload as depth, depthRow, liquidationPrint as print, liquidationsPayload as liquidations } from "./test-fixture";
@@ -17,6 +17,14 @@ test("a band wider than the book the venue returned reads as at least what the b
   const figures = depthFigures(depth().rows);
   expect(figures.map((figure) => [figure.label, figure.value])).toEqual([["±0.5% of mid", "≥193.66M"], ["±1% of mid", "≥217.87M"], ["±2% of mid", "≥293.61M"]]);
   expect(figures[1]!.detail).toBe("bids 103.19M · asks 114.69M");
+  // A book not read for 2.5 hours is marked and left out: the totals are the current books'.
+  const gone = depthRow({ marketId: "bybit:ETHUSDT", venue: "bybit", observedAt: "2026-10-26T03:15:00.000Z", bid1: 9e9, ask1: 9e9, stale: true });
+  expect(depthFigures([...depth().rows, gone]).map((figure) => figure.value)).toEqual(["≥193.66M", "≥217.87M", "≥293.61M"]);
+  expect(depthCellText(gone, "observedAt")).toBe("10-26 03:15 stale");
+  expect(depthCellText(depthRow(), "observedAt")).toBe("10-26 06:52");
+  expect(depthStaleNote([...depth().rows, gone])).toBe("One book not read for 2.5 hours is marked stale and left out of the band totals.");
+  expect(depthStaleNote(depth().rows)).toBeNull();
+  expect(depthFigures([gone])).toEqual([]);
 });
 
 test("narrow panes give up a band's bid and ask together and always keep the venue and the contract", () => {
@@ -62,7 +70,8 @@ test("payloads are validated, and a pair reads as the base asset it stands for",
 });
 
 test("fn PERP --tab liquidations and depth: totals, contracts and prints free, the hourly series and depth history Pro, with every stream limit", async () => {
-  const apiClient = { getCloudPerpsLiquidations: async () => liquidations(), getCloudPerpsDepth: async () => depth() } as never;
+  const stale = depthRow({ marketId: "bybit:ETHUSDT", venue: "bybit", observedAt: "2026-10-26T03:15:00.000Z", stale: true });
+  const apiClient = { getCloudPerpsLiquidations: async () => liquidations(), getCloudPerpsDepth: async () => depth({ rows: [...depth().rows, stale] }) } as never;
   const run = async (tab: string) => {
     const args = createTestHeadlessArgs({ argument: "ETH-USD", rawArgument: "ETH-USD", options: { tab } });
     const result = await perpsHeadless.load(args, createTestHeadlessContext({ apiClient }));
@@ -84,5 +93,12 @@ test("fn PERP --tab liquidations and depth: totals, contracts and prints free, t
   expect(books.text.split("\n")[0]).toBe("Perpetual order book depth across venues");
   expect(books.text).toMatch(/Binance\s+ETHUSDT\s+2,318\.38\s+≥57\.58M\s+≥66\.75M/);
   expect(books.text).toContain("Pro: Free shows each book's latest depth. Gloom Pro adds the week's hourly depth");
-  expect(books.text).toMatch(/Binance 06:52 · OKX 06:54 UTC/);
+  expect(books.text).toMatch(/Binance 06:52 · Bybit 03:15 · OKX 06:54 UTC/);
+  // The band totals are the current books'; the stale one is marked in the table and said in the notes.
+  expect(books.text).toMatch(/±1% of mid\s+≥217\.87M USD \(bids 103\.19M · asks 114\.69M, 2 books\)/);
+  expect(books.text).toMatch(/Bybit\s+ETHUSDT\s+.*10-26 03:15 stale/);
+  expect(books.text).toContain("One book not read for 2.5 hours is marked stale and left out of the band totals.");
+  const depthJson = serializeHeadlessPaneResult(perpsHeadless, books.result) as { sections: Array<{ title: string; entries?: Array<{ value: unknown }> }> };
+  expect(depthJson.sections[0]).toMatchObject({ title: "Band totals" });
+  expect(depthJson.sections[0]!.entries!.map((entry) => entry.value)).toEqual([193_662_129.8, 217_872_129.8, 293_612_129.8]);
 });
