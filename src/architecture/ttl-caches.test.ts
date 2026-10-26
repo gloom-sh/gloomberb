@@ -13,20 +13,28 @@ import ts from "typescript";
 // with the reason.
 //
 // The scan is a heuristic over names, so it cannot prove a plugin has no hand
-// rolled cache: it catches the shapes that were actually written.
+// rolled cache: it catches the shapes that were actually written. It does not
+// see a single slot in a `let`, a cache kept in a class or a Record, a stamp
+// named `updatedAt` or `timestamp`, an age checked against a limit that is not
+// named like a TTL (`MAX_AGE`, `STALE_MS`), or an age compared in another
+// order than `now - stamp`.
 const ROOT = resolve(import.meta.dir, "../..");
 const ALLOWLIST = new URL("./ttl-caches-allowlist.json", import.meta.url);
 const SCANNED = ["src/plugins/builtin"];
 
 /** The names a cache entry's timestamp goes by. */
 const STAMPS = new Set(["at", "fetchedAt", "loadedAt", "cachedAt", "savedAt", "storedAt", "checkedAt", "expiresAt", "retryAt"]);
-/** What an age is compared with when it is a cache's limit. */
-const LIMIT_NAME = /ttl|reuse|cache|fresh/i;
+/** The words a cache's limit is named with; whole words, so `refresh` and `throttle` are not them. */
+const LIMIT_WORDS = new Set(["ttl", "reuse", "cache", "cached", "fresh", "freshness"]);
+const wordsOf = (text: string) => text.replace(/([a-z0-9])([A-Z])/g, "$1 $2").toLowerCase().split(/[^a-z0-9]+/);
+const namesLimit = (text: string) => wordsOf(text).some((word) => LIMIT_WORDS.has(word));
 const COMPARISONS = new Set([
   ts.SyntaxKind.LessThanToken, ts.SyntaxKind.LessThanEqualsToken, ts.SyntaxKind.GreaterThanToken, ts.SyntaxKind.GreaterThanEqualsToken,
 ]);
 
 interface Site { file: string; line: number; signature: string }
+
+const printer = ts.createPrinter({ removeComments: true });
 
 function sourceFiles(dir: string, files: string[] = []): string[] {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -69,11 +77,18 @@ function handRolledTtlCaches(file: string, text: string): Site[] {
   };
 
   const sites: Site[] = [];
-  const found = (node: ts.Node, kind: string) => sites.push({
-    file,
-    line: source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1,
-    signature: `${kind}: ${normalize(node.getText(source))}`,
-  });
+  const seen = new Map<string, number>();
+  const found = (node: ts.Node, kind: string) => {
+    // Printed, so the allowlist key survives reformatting; a second identical site gets its own key.
+    const base = `${kind}: ${normalize(printer.printNode(ts.EmitHint.Unspecified, node, source))}`;
+    const count = (seen.get(base) ?? 0) + 1;
+    seen.set(base, count);
+    sites.push({
+      file,
+      line: source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1,
+      signature: count === 1 ? base : `${base} #${count}`,
+    });
+  };
   const visit = (node: ts.Node) => {
     if (ts.isNewExpression(node) && /^(Map|WeakMap)$/.test(node.expression.getText(source))
       && node.typeArguments?.some((argument) => carriesStamp(argument))) found(node, "map");
@@ -82,7 +97,7 @@ function handRolledTtlCaches(file: string, text: string): Site[] {
       for (const [age, limit] of [[left, right], [right, left]] as const) {
         // `now - entry.at < TTL`: how old an entry is against how long it may live.
         if (ts.isBinaryExpression(age) && age.operatorToken.kind === ts.SyntaxKind.MinusToken
-          && isClock(unwrap(age.left)) && stampOf(age.right) && LIMIT_NAME.test(limit.getText(source))) found(node, "age");
+          && isClock(unwrap(age.left)) && stampOf(age.right) && namesLimit(limit.getText(source))) found(node, "age");
         // `entry.expiresAt > now`: an entry's own deadline against the clock.
         const deadline = stampOf(age);
         if (deadline && /^(expiresAt|retryAt)$/.test(deadline.name.text) && isClock(limit)) found(node, "deadline");
@@ -141,4 +156,44 @@ test("the scan finds the Map of timestamped entries and the age check, and leave
     const cache = createTtlCache<string>({ ttlMs: 1_000 });
   `);
   expect(sites.map((site) => site.signature.split(":")[0])).toEqual(["map", "map", "map", "age", "age", "deadline", "deadline"]);
+});
+
+test("a limit is named by whole words, so refresh and throttle are not a cache's", () => {
+  const sites = handRolledTtlCaches("src/plugins/builtin/example.ts", `
+    if (now - last.at < REFRESH_MS) return;
+    if (now - last.at < refreshEveryMs) return;
+    if (now - last.at < throttleMs) return;
+    if (now - last.at < THROTTLE_TTL) return;
+    if (now - last.at < cacheMs) return;
+    if (now - last.at < FRESH_MS) return;
+    if (now - last.at < options.reuseAfter) return;
+  `);
+  expect(sites.map((site) => site.signature)).toEqual([
+    "age: now - last.at < THROTTLE_TTL", "age: now - last.at < cacheMs", "age: now - last.at < FRESH_MS", "age: now - last.at < options.reuseAfter",
+  ]);
+});
+
+test("a site's key survives reformatting, and two identical sites in one file have their own keys", () => {
+  const one = handRolledTtlCaches("src/plugins/builtin/example.ts", `
+    const a = new Map<string, { at: number; state: State }>();
+  `);
+  const reformatted = handRolledTtlCaches("src/plugins/builtin/example.ts", `
+    // Kept for a while.
+    const a = new Map<
+      string,
+      {
+        at: number,
+        state: State,
+      }
+    >();
+  `);
+  expect(reformatted.map((site) => site.signature)).toEqual(one.map((site) => site.signature));
+
+  const twice = handRolledTtlCaches("src/plugins/builtin/example.ts", `
+    function load() { if (Date.now() - held.at < DEAL_TTL_MS) return held; }
+    function peek() { if (Date.now() - held.at < DEAL_TTL_MS) return held; }
+  `);
+  expect(twice.map((site) => site.signature)).toEqual([
+    "age: Date.now() - held.at < DEAL_TTL_MS", "age: Date.now() - held.at < DEAL_TTL_MS #2",
+  ]);
 });

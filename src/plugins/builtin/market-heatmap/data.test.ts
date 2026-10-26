@@ -19,6 +19,23 @@ test("a read with the cache off, or through another client, neither uses nor fil
   await fetchMarketHeatmap("us-etf", { cache: false });
   expect(api).toHaveBeenCalledTimes(3);
 });
+test("panes that refresh together on one universe make one request, and a failed refresh keeps the last board", async () => {
+  const answer = { status: "success" as const, data: { universe: "us-etf" as const, source: "gloom" as const, fetchedAt: 123, assets: [] } };
+  const api = spyOn(apiClient, "getMarketHeatmap").mockResolvedValue(answer);
+  restore = () => api.mockRestore();
+  await fetchMarketHeatmap("us-etf");
+  const refresh = Promise.withResolvers<typeof answer>();
+  api.mockReturnValue(refresh.promise);
+  const panes = [1, 2, 3].map(() => fetchMarketHeatmap("us-etf", { forceRefresh: true }));
+  expect(api).toHaveBeenCalledTimes(2);
+  refresh.resolve({ ...answer, data: { ...answer.data, fetchedAt: 456 } });
+  expect((await Promise.all(panes)).map((board) => board.fetchedAt)).toEqual([456, 456, 456]);
+
+  api.mockRejectedValue(new Error("Unavailable"));
+  await expect(fetchMarketHeatmap("us-etf", { forceRefresh: true })).rejects.toThrow("Unavailable");
+  expect((await fetchMarketHeatmap("us-etf")).fetchedAt).toBe(456);
+});
+
 test("a real-time board is checked again after 15 seconds, a delayed one after a minute", async () => {
   const board = (access?: "realtime" | "delayed") => ({ status: "success" as const,
     data: { universe: "us-equity" as const, source: "gloom" as const, fetchedAt: 123, ...(access ? { access } : {}), assets: [] } });

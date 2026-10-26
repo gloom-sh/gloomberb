@@ -39,3 +39,24 @@ test("a pending answer and a refused account are never kept, so the pane's next 
   expect((await fetchJobs("ACME", { client })).kind).toBe("ready");
   expect(requests).toHaveLength(4);
 });
+
+test("reads that overlap share one request, and a forced read that fails leaves the earlier answer", async () => {
+  const slow = Promise.withResolvers<CloudJobsResponse>();
+  const requests: string[] = [];
+  let failNext = false;
+  const client = { getCloudJobs: async (ticker: string) => {
+    requests.push(ticker);
+    if (failNext) throw new ApiRequestError("Bad gateway", 502);
+    return slow.promise;
+  } } as unknown as JobsCloudClient;
+  const overlapping = [fetchJobs("ACME", { client }), fetchJobs("acme", { client }), fetchJobs("ACME", { client })];
+  expect(requests).toEqual(["ACME"]);
+  slow.resolve(summary);
+  expect((await Promise.all(overlapping)).map((state) => state.kind)).toEqual(["ready", "ready", "ready"]);
+
+  failNext = true;
+  await expect(fetchJobs("ACME", { client, force: true })).rejects.toThrow("Bad gateway");
+  failNext = false;
+  expect((await fetchJobs("ACME", { client })).kind).toBe("ready");
+  expect(requests).toEqual(["ACME", "ACME"]);
+});

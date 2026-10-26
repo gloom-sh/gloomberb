@@ -46,15 +46,13 @@ test("the TTL counts from when the value arrives and can depend on the value", a
   expect(cache.peek("b")).toBe("delayed");
 });
 
-test("callers share a load that is still out, however long it has been", async () => {
-  const time = clock();
-  const cache = createTtlCache<number>({ ttlMs: 1_000, now: time.now });
+test("callers share a load that is still out", async () => {
+  const cache = createTtlCache<number>({ ttlMs: 1_000 });
   const slow = deferred<number>();
   let loads = 0;
   const load = () => { loads += 1; return slow.promise; };
 
   const first = cache.load("a", load);
-  time.advance(60 * 60_000);
   const second = cache.load("a", load);
   expect(second).toBe(first);
   expect(cache.peek("a")).toBeUndefined();
@@ -63,18 +61,86 @@ test("callers share a load that is still out, however long it has been", async (
   expect(loads).toBe(1);
 });
 
-test("force starts a new load, and an older load that lands later is not kept", async () => {
-  const cache = createTtlCache<string>({ ttlMs: 60_000 });
+test("a load that hangs is shared for no longer than the TTL, and its late answer is not kept", async () => {
+  const time = clock();
+  const cache = createTtlCache<string>({ ttlMs: 1_000, now: time.now });
+  const hung = deferred<string>();
+  const first = cache.load("a", () => hung.promise);
+  time.advance(999);
+  expect(cache.load("a", async () => "never")).toBe(first);
+  time.advance(1);
+  expect(await cache.load("a", async () => "retried")).toBe("retried");
+  hung.resolve("late");
+  expect(await first).toBe("late");
+  expect(cache.peek("a")).toBe("retried");
+
+  // A TTL that is not a number, or never ends, puts no limit on sharing.
+  const unlimited = createTtlCache<string>({ ttlMs: Infinity, now: time.now });
+  const slow = deferred<string>();
+  const pending = unlimited.load("a", () => slow.promise);
+  time.advance(60 * 60_000);
+  expect(unlimited.load("a", async () => "never")).toBe(pending);
+});
+
+test("force starts a load past a fresh value, and joins one that began after that value", async () => {
+  const time = clock();
+  const cache = createTtlCache<string>({ ttlMs: 60_000, now: time.now });
+  expect(await cache.load("a", async () => "first")).toBe("first");
+
+  // Several panes refresh together: one request, answered to all of them.
+  let loads = 0;
+  const slow = deferred<string>();
+  const load = () => { loads += 1; return slow.promise; };
+  time.advance(10);
+  const forced = [cache.load("a", load, { force: true }), cache.load("a", load, { force: true }), cache.load("a", load, { force: true })];
+  expect(loads).toBe(1);
+  expect(cache.peek("a")).toBe("first");
+  slow.resolve("second");
+  expect(await Promise.all(forced)).toEqual(["second", "second", "second"]);
+  expect(cache.peek("a")).toBe("second");
+
+  // Once it has landed, the next forced call asks again.
+  expect(await cache.load("a", async () => "third", { force: true })).toBe("third");
+  expect(cache.peek("a")).toBe("third");
+});
+
+test("force does not join a load that began before the value it would replace", async () => {
+  const time = clock();
+  const cache = createTtlCache<string>({ ttlMs: 60_000, now: time.now });
   const older = deferred<string>();
   const first = cache.load("a", () => older.promise);
-  const forced = await cache.load("a", async () => "forced", { force: true });
-  expect(forced).toBe("forced");
+  time.advance(10);
+  cache.set("a", "arrived another way");
+  expect(await cache.load("a", async () => "forced", { force: true })).toBe("forced");
   older.resolve("older");
   expect(await first).toBe("older");
   expect(cache.peek("a")).toBe("forced");
-  expect(await cache.load("a", async () => "never")).toBe("forced");
+});
 
-  expect(await cache.load("a", async () => "again", { force: true })).toBe("again");
+test("the last good value stays while a reload is out and when a forced one fails or is not kept", async () => {
+  const time = clock();
+  const cache = createTtlCache<string>({ ttlMs: 1_000, keep: (value) => value !== "pending", now: time.now });
+  await cache.load("a", async () => "good");
+  time.advance(5_000);
+  expect(cache.peek("a")).toBeUndefined();
+  expect(cache.peek("a", { stale: true })).toBe("good");
+
+  // A reload is out: the stale copy is still there to draw.
+  const reload = deferred<string>();
+  const pending = cache.load("a", () => reload.promise);
+  expect(cache.peek("a")).toBeUndefined();
+  expect(cache.peek("a", { stale: true })).toBe("good");
+  reload.reject(new Error("down"));
+  await expect(pending).rejects.toThrow("down");
+  expect(cache.peek("a", { stale: true })).toBe("good");
+
+  // A fresh value survives a forced load that fails or brings something `keep` refuses.
+  expect(await cache.load("a", async () => "better")).toBe("better");
+  await expect(cache.load("a", async () => { throw new Error("down"); }, { force: true })).rejects.toThrow("down");
+  expect(cache.peek("a")).toBe("better");
+  expect(await cache.load("a", async () => "pending", { force: true })).toBe("pending");
+  expect(cache.peek("a")).toBe("better");
+  expect(await cache.load("a", async () => "never")).toBe("better");
 });
 
 test("a rejected load reaches everyone waiting on it and is not kept", async () => {
@@ -110,12 +176,21 @@ test("a rejection is kept for rejectionMs when asked, then the key loads again",
   await expect(cache.load("a", failing)).rejects.toThrow("no history");
   expect(loads).toBe(1);
   expect(cache.peek("a")).toBeUndefined();
-  time.advance(1);
-  expect(await cache.load("a", async () => 5)).toBe(5);
   // A forced load skips even a kept rejection.
-  const second = createTtlCache<number>({ ttlMs: 60_000, rejectionMs: 300_000, now: time.now });
-  await expect(second.load("a", failing)).rejects.toThrow();
-  expect(await second.load("a", async () => 9, { force: true })).toBe(9);
+  expect(await cache.load("a", async () => 9, { force: true })).toBe(9);
+
+  const later = createTtlCache<number>({ ttlMs: 60_000, rejectionMs: 300_000, now: time.now });
+  await expect(later.load("a", failing)).rejects.toThrow();
+  time.advance(300_000);
+  expect(await later.load("a", async () => 5)).toBe(5);
+});
+
+test("a `keep` or TTL function that throws is a rejection for the callers, not an unhandled one", async () => {
+  const refusing = createTtlCache<number>({ ttlMs: 60_000, keep: () => { throw new Error("cannot judge"); } });
+  await expect(refusing.load("a", async () => 1)).rejects.toThrow("cannot judge");
+  const unbounded = createTtlCache<number>({ ttlMs: () => { throw new Error("no ttl"); } });
+  await expect(unbounded.load("a", async () => 1)).rejects.toThrow("no ttl");
+  expect(unbounded.peek("a", { stale: true })).toBeUndefined();
 });
 
 test("a value `keep` refuses answers its callers but is loaded again next time", async () => {
@@ -145,14 +220,7 @@ test("set keeps a value that arrived another way, peek reads null as an answer, 
   expect(cache.peek("missing", { stale: true })).toBeUndefined();
 });
 
-test("a call can bring its own clock", async () => {
-  const cache = createTtlCache<number>({ ttlMs: 1_000 });
-  expect(await cache.load("a", async () => 1, { now: 10_000 })).toBe(1);
-  expect(await cache.load("a", async () => 2, { now: 10_999 })).toBe(1);
-  expect(await cache.load("a", async () => 2, { now: 11_000 })).toBe(2);
-});
-
-test("past maxEntries the oldest entries go first, and delete and clear forget", async () => {
+test("past maxEntries the oldest keys go first, and delete and clear forget", async () => {
   const cache = createTtlCache<number>({ ttlMs: 60_000, maxEntries: 2 });
   await cache.load("a", async () => 1);
   await cache.load("b", async () => 2);
@@ -162,4 +230,26 @@ test("past maxEntries the oldest entries go first, and delete and clear forget",
   expect(cache.peek("b")).toBeUndefined();
   cache.clear();
   expect(cache.peek("c")).toBeUndefined();
+});
+
+test("a caller that gives up on a load drops that load only, never a newer one", async () => {
+  const time = clock();
+  const cache = createTtlCache<string>({ ttlMs: 1_000, now: time.now });
+  const stalled = deferred<string>();
+  const first = cache.load("a", () => stalled.promise);
+  cache.delete("a", first);
+  // Nothing is out any more, so the next call loads.
+  const second = cache.load("a", async () => "next");
+  expect(await second).toBe("next");
+  // Dropping the old promise again does nothing to what the key holds now.
+  cache.delete("a", first);
+  expect(cache.peek("a")).toBe("next");
+  stalled.resolve("late");
+  await first;
+  expect(cache.peek("a")).toBe("next");
+
+  const pending = deferred<string>();
+  const newer = cache.load("b", () => pending.promise);
+  cache.delete("b", first);
+  expect(cache.load("b", async () => "never")).toBe(newer);
 });

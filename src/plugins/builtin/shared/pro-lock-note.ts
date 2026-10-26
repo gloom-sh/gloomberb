@@ -48,15 +48,17 @@ async function routeAnswers(route: FreeRoute, check: NonNullable<FreeRoute["answ
   const bySymbol = answers.get(route) ?? createTtlCache<boolean>({ ttlMs: ANSWER_TTL_MS });
   answers.set(route, bySymbol);
   const key = symbol.trim().toUpperCase();
-  const answer = await settleWithin(bySymbol.load(key, () => {
+  const kept = bySymbol.load(key, () => {
     // The check's own reads stop at the deadline where they take a signal.
     const signal = signalWithTimeout(context.signal, Math.max(0, deadline - Date.now()));
     return check(symbol, { ...context, signal }).catch((error: unknown) => {
       logFailure("plugins.pro-lock-note", "Check a free route's data failed")(error);
       throw error;
     });
-  }), Math.max(0, deadline - Date.now()));
-  if (answer === null) bySymbol.delete(key);
+  });
+  const answer = await settleWithin(kept, Math.max(0, deadline - Date.now()));
+  // Only this check is dropped: a newer one for the symbol stays.
+  if (answer === null) bySymbol.delete(key, kept);
   return answer;
 }
 
