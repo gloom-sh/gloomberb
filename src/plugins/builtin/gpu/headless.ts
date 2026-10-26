@@ -1,6 +1,6 @@
 import type { GpuObservation } from "../../../api-client/gpu";
 import type { HeadlessPaneDefinition, HeadlessPaneRow } from "../../../types/plugin";
-import { formatUtcTime } from "../../../utils/utc-time";
+import { formatUtcTime, parseReportTime } from "../../../utils/utc-time";
 import { fetchGpuBoard, fetchGpuEvents, fetchGpuHistory, fetchGpuModelPreviews, gpuPreviewModels, loadGpuEquityHistory } from "./client";
 import {
   GPU_TABS, gpuBasisLabel, gpuChange, gpuChangesLocked, gpuEquityGap, gpuEquityModels, gpuEquityRows, gpuEventDate, gpuFamilies, gpuFamily,
@@ -16,7 +16,13 @@ const observationRow = (row: GpuObservation) => ({ gpu: gpuLabel(row), source: g
 const percent = (value: unknown) => gpuChange(typeof value === "number" ? value : null);
 /** Prices to the cent and times to the minute, as the pane draws them; exports keep the full value. */
 const price = (value: unknown) => typeof value === "number" ? gpuPrice(value) : "-";
-const minute = (value: unknown) => typeof value === "string" ? formatUtcTime(value) : "-";
+const DAY_MS = 86_400_000;
+/** A reference index's daily figure is stamped at 00:00 UTC: that is a day, not a time to the minute. */
+const minute = (value: unknown) => {
+  if (typeof value !== "string") return "-";
+  const time = parseReportTime(value);
+  return time && !time.dateOnly && time.time % DAY_MS === 0 ? formatUtcTime({ ...time, dateOnly: true }) : formatUtcTime(value);
+};
 /** A move the free preview leaves to Pro says so, instead of reading as missing. */
 const change = (value: unknown, row: HeadlessPaneRow) => row.changesLocked === true ? "Pro" : percent(value);
 const columns = [

@@ -100,6 +100,39 @@ test("keeps a cell under its own column when an earlier cell in the row is blank
   ]);
 });
 
+test("a time the pane draws as a date, at 00:00 UTC, prints as the date; one it draws with a time of day keeps it", async () => {
+  const resolved = {
+    token: "CLTR", label: "SEC Comment Letters", options: {}, capability: { id: "comment-letters-pane" },
+    pane: { id: "comment-letters", reportFreshness: { status: "not-a-feed", basis: "comment letters" } },
+  } as unknown as ResolvedPaneFunction;
+  const cell = (columnId: string, columnLabel: string, text: string, instant?: string) => ({ columnId, columnLabel, text, ...(instant ? { instant } : {}) });
+  const screenshot = {
+    symbols: [],
+    render: {
+      visibleText: "",
+      rows: [
+        // A filing's date, an all-day event and a shortened date carry no time of day.
+        { tableIndex: 0, rowIndex: 0, selected: false, cells: [cell("filed", "Filed", "2026-08-31", "2026-08-31T00:00:00.000Z"), cell("what", "What", "Alpha")] },
+        { tableIndex: 0, rowIndex: 1, selected: false, cells: [cell("filed", "Filed", "All day", "2026-08-28T00:00:00.000Z"), cell("what", "What", "Bravo")] },
+        { tableIndex: 0, rowIndex: 2, selected: false, cells: [cell("filed", "Filed", "Oct 2", "2026-10-02T00:00:00.000Z"), cell("what", "What", "Charlie")] },
+        // A time of day the pane draws, even a midnight, is a time.
+        { tableIndex: 0, rowIndex: 3, selected: false, cells: [cell("filed", "Filed", "Thu 00:00", "2026-10-01T00:00:00.000Z"), cell("what", "What", "Delta")] },
+        { tableIndex: 0, rowIndex: 4, selected: false, cells: [cell("filed", "Filed", "Wed 11:27", "2026-10-07T11:27:00.000Z"), cell("what", "What", "Echo")] },
+      ],
+      truncated: false, truncationReasons: [], loadingStateDetected: false, errorStateDetected: false,
+      errorStateMarkers: [], emptyStateDetected: false, emptyStateMarkers: [],
+    },
+  } as unknown as PaneScreenshotResult;
+
+  const report = await buildDomPaneReportFromRender(resolved, screenshot);
+  const lines = report.text.split("\n");
+  const filed = (what: string) => lines.find((line) => line.includes(what))!.split(/\s{2,}/)[0]!.trim();
+  expect(["Alpha", "Bravo", "Charlie", "Delta", "Echo"].map(filed))
+    .toEqual(["2026-08-31", "2026-08-28", "2026-10-02", "2026-10-01 00:00 UTC", "2026-10-07 11:27 UTC"]);
+  // The CSV keeps the instant.
+  expect(renderReportCsv(report.tables).split("\n")[1]).toStartWith("2026-08-31T00:00:00.000Z,Alpha");
+});
+
 /**
  * An OMON capture of a 10-strike window centred on the money: the viewport
  * shows three rows, the table publishes all five it lists, and the pane says

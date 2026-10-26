@@ -70,6 +70,28 @@ test("relationship notes mixed session closes only, and keeps a small ratio's di
   expect((await relationshipHeadless.load(args(["IBIT", "MSFT"]), ctx)).metadata?.notices).toBeUndefined();
 });
 
+test("a newest day the source has not finished is no close: the line says daily bars and why, and only when that day is in the analysis", async () => {
+  const bars = (symbol: string, forming: "partial" | "unsettled" | null, days = 7) => [100, 110, 105, 115, 111, 118, 130].slice(0, days).map((close, index, all) => ({
+    date: new Date(Date.UTC(2026, 0, index + 1)), close: close * (symbol === "SPY" ? 2 : 1),
+    ...(forming && index === all.length - 1 ? { [forming]: true } : {}),
+  }));
+  const ctx = (forming: Record<string, "partial" | "unsettled" | null>, days: Record<string, number> = {}) => ({
+    ...context(),
+    marketData: createTestDataProvider({ getPriceHistory: async (symbol) => bars(symbol, forming[symbol] ?? null, days[symbol]) }),
+  }) as HeadlessPaneContext;
+  const coin = await relationshipHeadless.load(args(["BTC-USD", "SPY"]), ctx({ "BTC-USD": "partial" }));
+  expect(coin.freshness).toEqual({ basis: "daily bars", note: "the newest bar is today so far" });
+  expect((await relationshipHeadless.load(args(["GC=F", "SPY"]), ctx({ "GC=F": "unsettled" }))).freshness)
+    .toEqual({ basis: "daily bars", note: "the newest bar is not yet settled" });
+  // Finished bars leave the closes the pane declares, and so does a forming bar beyond the last day both have.
+  expect((await relationshipHeadless.load(args(["ABC", "SPY"]), ctx({}))).freshness).toEqual({});
+  expect((await relationshipHeadless.load(args(["BTC-USD", "SPY"]), ctx({ "BTC-USD": "partial" }, { SPY: 6 }))).freshness).toEqual({});
+  // A matrix dates itself by the newest day any of its symbols has.
+  expect((await correlationHeadless.load(args(["BTC-USD", "SPY"]), ctx({ "BTC-USD": "partial" }))).freshness)
+    .toMatchObject({ asOf: "2026-01-07", basis: "daily bars", note: "the newest bar is today so far" });
+  expect((await correlationHeadless.load(args(["ABC", "SPY"]), ctx({}))).freshness).toEqual({ asOf: "2026-01-07" });
+});
+
 test("one usable pair cannot make a matrix with disjoint histories look complete", async () => {
   const result = await correlationHeadless.load(args(["ABC", "DEF", "SPY"]), context("", true));
   expect(result.rows[0]!.correlation).toBeCloseTo(1);

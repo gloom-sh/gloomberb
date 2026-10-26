@@ -1,6 +1,7 @@
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { loadSeasonalityHistory } from "./client";
+import { closedHistoryBarDay, formingHistoryBar } from "../ticker-detail/data-panes/history-bars";
 import { MONTH_LABELS, projectSeasonality, projectWeekdays, TURN_OF_MONTH_LABELS } from "./model";
 
 const percent = (digits: number) => (value: unknown) => typeof value === "number" ? `${(value * 100).toFixed(digits)}%` : "--";
@@ -9,7 +10,7 @@ const statColumns = (digits: number, countHeader: string) => [{ key: "mean", hea
 
 export const seasonalityHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle", argument: { kind: "ticker", description: "Ticker" },
-  // Dated by the month of its last monthly close.
+  // Dated by its last monthly close, or by how far the running month's bar runs (`month to date, through Fri 23 Oct 2026`).
   freshness: { status: "not-a-feed", basis: "monthly closes", maxAgeMinutes: 45 * 24 * 60 },
   describe: (args) => `SEAS ${args.symbols[0] ?? ""}`,
   discovery: { screenshotReadiness: "live-dom", limitations: ["Local-price closes; dividends and FX are excluded.",
@@ -46,6 +47,13 @@ export const seasonalityHeadless: HeadlessPaneDefinition<"bundle"> = {
       };
     }
     const model = projectSeasonality(history.history, { symbol: instrument.symbol, lookbackYears: Number(args.options.lookbackYears) || 10 });
+    // Monthly bars are dated by their month's first day, which is no close while the month runs.
+    const bar = model.asOf?.toISOString().slice(0, 10);
+    // The venue whose sessions say whether the month still runs: the key's, or for a bare symbol its quote's.
+    const quote = bar && !instrument.exchange ? await ctx.marketData.getQuote(instrument.symbol, "").catch(() => null) : null;
+    const venue = instrument.exchange || quote?.listingExchangeName || quote?.exchangeName || undefined;
+    const forming = formingHistoryBar("1mo", bar, venue, Date.now());
+    const closed = forming ? null : closedHistoryBarDay("1mo", bar, venue, Date.now());
     const monthColumns = MONTH_LABELS.map((label, month) => ({ key: `m${month}`, header: label, format: percent(1) }));
     return {
       sections: [
@@ -57,6 +65,7 @@ export const seasonalityHeadless: HeadlessPaneDefinition<"bundle"> = {
       complete: !history.stale && !history.error && model.years.length > 0,
       unavailableSymbols: model.years.length ? [] : [instrument.symbol],
       ...common,
+      ...(forming ? { freshness: { periodToDate: forming } } : closed ? { freshness: { asOf: closed } } : {}),
       metadata: { unit: "decimal return, local-price close to close", asOf: model.asOf?.toISOString() ?? null, stale: history.stale,
         fetchedAt: history.fetchedAt, averagePath: model.averagePath, methodology: "docs/research-data.md#seasonality" },
     };

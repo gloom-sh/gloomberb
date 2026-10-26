@@ -1,6 +1,6 @@
 import type { DesktopPaneShotRenderedRow } from "../desktop-pane-shot";
 import { cliStyles, cliTerminalWidth, renderSection, renderTable, wrapText } from "../../utils/cli-output";
-import { formatUtcTime } from "../../utils/utc-time";
+import { formatUtcTime, parseReportTime } from "../../utils/utc-time";
 import type { MarketContext } from "../types";
 import type { PaneFunctionReport } from "./report";
 import type { ResolvedPaneFunction } from "./resolver";
@@ -83,12 +83,22 @@ function domCellKeys(row: DesktopPaneShotRenderedRow): string[] {
   });
 }
 
+const DAY_MS = 86_400_000;
+/** A time of day in what a cell draws: `11:27`, `9am`. */
+const DRAWN_CLOCK = /\d{1,2}:\d{2}|\b\d{1,2}\s?[ap]m\b/i;
+
 /**
  * A pane may shorten a time to fit ("Wed 11:27", "Oct 2"); the report prints
- * the instant behind it with its date and zone instead.
+ * the instant behind it with its date and zone instead. An instant at exactly
+ * 00:00 UTC that the cell draws without a time of day (a filing's date, an
+ * all-day event) is a day, not a midnight: it prints as the date, as a
+ * date-only value does. The CSV and JSON keep the instant.
  */
 function cellText(cell: DesktopPaneShotRenderedRow["cells"][number]): string {
-  return cell.instant ? formatUtcTime(cell.instant) || cell.text : cell.text;
+  if (!cell.instant) return cell.text;
+  const time = parseReportTime(cell.instant);
+  if (time && !time.dateOnly && time.time % DAY_MS === 0 && !DRAWN_CLOCK.test(cell.text)) return formatUtcTime({ ...time, dateOnly: true });
+  return formatUtcTime(cell.instant) || cell.text;
 }
 
 interface DomTable {

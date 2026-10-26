@@ -38,6 +38,9 @@ test("a GPU the free board leaves out reads from its own free preview, printed t
   const row = section.rows![0]!;
   const cell = (key: string) => section.columns!.find((column) => column.key === key)!.format!(row[key], row);
   expect([cell("price"), cell("change7d"), cell("observedAt")]).toEqual(["4.00", "Pro", "2026-10-03 19:00 UTC"]);
+  // A reference index's daily figure is stamped at 00:00 UTC: a day, beside the observations that have a time.
+  const stamped = (observedAt: string) => section.columns!.find((column) => column.key === "observedAt")!.format!(observedAt, row);
+  expect([stamped("2026-10-24T00:00:00.000Z"), stamped("2026-10-24T00:01:00.000Z")]).toEqual(["2026-10-24", "2026-10-24 00:01 UTC"]);
   expect(report.complete).toBe(false);
   // What the free view leaves to Pro prints on the report's Pro line, not as a note.
   expect(report.errors).toEqual(["Free shows the latest rows of H100, which the free board leaves out. Gloom Pro adds every provider and the 1D, 7D and 30D moves."]);

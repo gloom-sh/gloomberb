@@ -8,8 +8,9 @@ import { buildCorrelationMatrix, buildCorrelationSeries, buildGeoCorrelationSeri
 import { geoSeriesToken, loadGeoCorrelationHistory } from "./geo";
 import { buildRelationshipAnalysis, DEFAULT_RELATIONSHIP_SECOND_SYMBOL } from "./relationship/model";
 import { paneSchemas } from "./headless-schema";
-import { CORRELATION_RETURN_BASIS, GEO_CORRELATION_CHANGE_BASIS, loadCorrelationHistory } from "./history";
+import { CORRELATION_RETURN_BASIS, GEO_CORRELATION_CHANGE_BASIS, loadCorrelationHistory, unfinishedBarFreshness } from "./history";
 import type { HeadlessPaneContext } from "../../../types/headless";
+import type { PricePoint } from "../../../types/financials";
 import { newestReportTime } from "../../../utils/utc-time";
 import { DAILY_CLOSES } from "../shared/report-freshness";
 
@@ -34,9 +35,13 @@ async function loadListedHistory(ctx: HeadlessPaneContext, key: string, range: T
 }
 
 /** A ticker's daily closes, or a map series' daily values read straight from the Cloud client. */
-async function loadCorrelationInput(ctx: HeadlessPaneContext, key: string, range: TimeRange): Promise<CorrelationSeries> {
+async function loadCorrelationInput(ctx: HeadlessPaneContext, key: string, range: TimeRange, onBars?: (bars: PricePoint[]) => void): Promise<CorrelationSeries> {
   const geo = geoSeriesToken(key);
-  if (!geo) return buildCorrelationSeries(key, await loadHistory(ctx, key, range));
+  if (!geo) {
+    const bars = await loadHistory(ctx, key, range);
+    onBars?.(bars);
+    return buildCorrelationSeries(key, bars);
+  }
   const request = <T,>(path: string, init?: RequestInit) => ctx.apiClient.geo<T>(path, { ...init, signal: init?.signal ?? ctx.signal });
   return buildGeoCorrelationSeries(key, await loadGeoCorrelationHistory(request, geo, range, ctx.signal));
 }
@@ -53,7 +58,8 @@ export const correlationHeadless: HeadlessPaneDefinition<"rows"> = {
   ],
   async load({ symbols, options }, ctx) {
     const range = (options.rangePreset ?? "1Y") as TimeRange;
-    const loaded = await loadHeadlessSymbols(symbols, ctx, (symbol) => loadCorrelationInput(ctx, symbol, range));
+    const bars = new Map<string, PricePoint[]>();
+    const loaded = await loadHeadlessSymbols(symbols, ctx, (symbol) => loadCorrelationInput(ctx, symbol, range, (points) => bars.set(symbol, points)));
     const bySymbol = new Map(loaded.entries.map(({ symbol, data }) => [symbol, data]));
     const matrix = buildCorrelationMatrix(symbols, bySymbol);
     const rows = symbols.flatMap((left, index) => symbols.slice(index + 1).map((right) => {
@@ -68,8 +74,9 @@ export const correlationHeadless: HeadlessPaneDefinition<"rows"> = {
         ? "Inconsistent OHLC history"
         : row.sampleSize < 5 ? "Insufficient shared return observations" : "Zero return variance",
     }));
+    const asOf = newestReportTime(symbols.map((symbol) => bySymbol.get(symbol)?.prices.at(-1)?.dateKey));
     return {
-      freshness: { asOf: newestReportTime(symbols.map((symbol) => bySymbol.get(symbol)?.prices.at(-1)?.dateKey)) },
+      freshness: { asOf, ...unfinishedBarFreshness([...bars.values()], asOf?.slice(0, 10)) },
       rows, unavailableSymbols,
       errors: [
         ...loaded.errors,
@@ -132,6 +139,7 @@ export const relationshipHeadless: HeadlessPaneDefinition<"series"> = {
         })),
         { key: "returnCount", label: "Shared returns", value: analysis.stats?.sampleSize ?? analysis.returns.length },
       ],
+      freshness: unfinishedBarFreshness([...histories.values()], analysis.aligned.at(-1)?.dateKey) ?? {},
       unavailableSymbols: [...new Set(unavailableSymbols)],
       errors: [...loaded.errors, ...(analysis.unavailableReason ? [analysis.unavailableReason] : []),
         ...(analysis.correlationUnavailableReason ? [analysis.correlationUnavailableReason] : [])],
