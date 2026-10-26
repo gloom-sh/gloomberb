@@ -160,7 +160,10 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
   const favoriteNotes = useRowNotes<BuildoutRow, string>(rows, { key: favoriteNoteKey });
   const { setNote: setFavoriteNote, noteFor: favoriteNoteFor } = favoriteNotes;
   clearFavoriteNotesRef.current = favoriteNotes.clearNotes;
-  const columns = useMemo(() => columnsForTab(activeTab, selectedList, canFavorite), [activeTab, canFavorite, selectedList]);
+  const columns = useMemo(
+    () => columnsForTab(activeTab, selectedList, canFavorite, width),
+    [activeTab, canFavorite, selectedList, width],
+  );
   const selectedRow = rows[selectedIndex] ?? rows[0] ?? null;
   // The table's cells carry their own badges; this catalog only serves the open
   // detail: its row's tickers, plus the loaded rows' tickers its text mentions.
