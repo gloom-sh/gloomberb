@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from "react";
 import { Box } from "../../../../../ui";
-import type { NewsArticle, NewsQuery } from "../../../../../news/types";
+import type { NewsAccess, NewsArticle, NewsQuery } from "../../../../../news/types";
 import { useLoadNewsStory, useNewsArticles, useNewsTableLoadMore } from "../../../../../news/hooks";
 import type { PaneProps } from "../../../../../types/plugin";
 import { useDebouncedPluginPaneState, usePluginConfigState, usePluginPaneState } from "../../../../runtime";
@@ -31,6 +31,8 @@ interface NewsArticleStackOptions {
   /** Rows stay on screen while a refresh runs, so the footer says it is loading. */
   refreshing: boolean;
   error: string | null;
+  /** Which news the rows are, from the service's answer, for the footer's real-time or delayed label. */
+  feedAccess?: NewsAccess | null;
 }
 
 /**
@@ -46,6 +48,7 @@ export function useNewsArticleStack({
   defaultSort,
   refreshing,
   error,
+  feedAccess,
 }: NewsArticleStackOptions) {
   const [selectedArticleId, setSelectedArticleId] = useDebouncedPluginPaneState<string | null>(
     `${paneKey}:selectedArticleId`,
@@ -95,6 +98,7 @@ export function useNewsArticleStack({
     loading: detailLoading || refreshing,
     error: [error, detailError].filter(Boolean).join(" ") || null,
     onPopOut: readableArticle ? popOutReadable : undefined,
+    feedAccess,
   });
 
   return {
@@ -172,6 +176,7 @@ export function NewsPresetPane({
     defaultSort,
     refreshing: loading && persisted.length > 0,
     error,
+    feedAccess: newsState.access,
   });
   const emptyCopy = newsListEmptyCopy({
     query: searchQuery,

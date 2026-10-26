@@ -81,11 +81,20 @@ export interface NewsQuery {
 
 type NewsQueryPhase = "idle" | "loading" | "ready" | "refreshing" | "error";
 
+/**
+ * Which news a source answered with: the live wire, or the one held back for
+ * an account without real-time news. Read from the answer itself, never from
+ * the plan the app remembers.
+ */
+export type NewsAccess = "realtime" | "delayed";
+
 export interface NewsPage {
   /** Active source failure, including a partial failure with usable articles. */
   error?: string | null;
   articles: NewsArticle[];
   nextCursor?: string | null;
+  /** Which news the source answered with; null or absent when the answer does not say. */
+  access?: NewsAccess | null;
 }
 
 export interface NewsQueryState {
@@ -96,4 +105,6 @@ export interface NewsQueryState {
   sourceIds: string[];
   nextCursor: string | null;
   loadingMore: boolean;
+  /** Which news the stories are, from the last answer; null or absent when it did not say. */
+  access?: NewsAccess | null;
 }

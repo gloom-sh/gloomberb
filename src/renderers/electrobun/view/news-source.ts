@@ -10,7 +10,8 @@ interface BackendNews {
   getNewsPage(query: NewsQuery): Promise<NewsPage>;
 }
 
-type CloudNewsClient = Pick<typeof apiClient, "getCloudNews" | "getCloudNewsStory" | "searchCloudNews">;
+type CloudNewsClient = Pick<typeof apiClient, "getCloudNews" | "getCloudNewsStory" | "searchCloudNews">
+  & Partial<Pick<typeof apiClient, "hasSessionCredential">>;
 
 /**
  * The view's only news source: the desktop view runs without capability
@@ -32,6 +33,7 @@ export function createDesktopNewsSource(backend: BackendNews, client: CloudNewsC
           return {
             articles: cloudNewsReadArticles(read, query.ticker),
             nextCursor: read.nextCursor ?? null,
+            access: read.access ?? null,
           };
         } catch {
           // The aggregate page keeps RSS failures beside any usable stories.

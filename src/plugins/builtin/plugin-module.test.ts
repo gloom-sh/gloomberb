@@ -97,6 +97,28 @@ describe("composeBuiltinPlugin", () => {
     ]);
   });
 
+  test("synchronous module setups finish before setup hands back the tick", async () => {
+    // Gloom Cloud restores the saved session in its second module, and the
+    // panes restored at launch send their first requests once the tick is free.
+    const lifecycle: string[] = [];
+    const plugin = composeBuiltinPlugin({
+      id: "parent",
+      name: "Parent",
+      version: "1.0.0",
+      modules: [
+        { setup: () => { lifecycle.push("first"); } },
+        { setup: () => { lifecycle.push("second"); } },
+        { setup: async () => { lifecycle.push("async"); await Bun.sleep(0); lifecycle.push("async:done"); } },
+        { setup: () => { lifecycle.push("after-async"); } },
+      ],
+    });
+
+    const pending = plugin.setup?.(context());
+    expect(lifecycle).toEqual(["first", "second", "async"]);
+    await pending;
+    expect(lifecycle).toEqual(["first", "second", "async", "async:done", "after-async"]);
+  });
+
   test("a module that moved plugins keeps reading the state saved under its old namespace", async () => {
     const persistence = new AppPersistence(":memory:");
     const registry = new PluginRegistry(createTestDataProvider(), new TickerRepository(persistence.tickers), persistence);

@@ -1,7 +1,8 @@
 import { normalizeNewsFeed } from "../../news/news-model";
 import { readableNewsSource } from "../../news/source-label";
 import { collectNewsDisplayTickers } from "../../news/ticker-symbols";
-import type { NewsArticle, NewsQuery, NewsStoryItem } from "../../types/news-source";
+import type { NewsAccess, NewsArticle, NewsQuery, NewsStoryItem } from "../../types/news-source";
+import { CLOUD_NEWS_DELAY_HOURS } from "../../api-client/plan-rules";
 import type {
   apiClient,
   CloudNewsListResponse,
@@ -134,10 +135,44 @@ export function cloudNewsParams(query: NewsQuery): CloudNewsParams {
   };
 }
 
-/** A page of Gloom Cloud stories, with the text searched for when a coin pair's feed had none filed under it. */
-export type CloudNewsRead = CloudNewsListResponse & { searchedFor?: string };
+/**
+ * A page of Gloom Cloud stories, with the text searched for when a coin pair's
+ * feed had none filed under it, and which news the service answered with.
+ */
+export type CloudNewsRead = Omit<CloudNewsListResponse, "access"> & { searchedFor?: string; access?: NewsAccess | null };
 
-type CloudNewsClient = Pick<typeof apiClient, "getCloudNews" | "searchCloudNews">;
+/**
+ * How recently the service must have seen a story for the answer to be the
+ * live wire. It holds a story back from an account without real-time news
+ * until it last saw it {@link CLOUD_NEWS_DELAY_HOURS} hours ago; the hour
+ * less leaves room for this clock and the service's to disagree.
+ */
+const LIVE_STORY_WINDOW_MS = (CLOUD_NEWS_DELAY_HOURS - 1) * 60 * 60 * 1000;
+
+/**
+ * Which news a Gloom Cloud answer is, from the answer: what the service says
+ * when it says it; held back when the request carried no session, since the
+ * service holds news back for anyone it cannot name; live when it holds a
+ * story seen too recently to have been held back. Otherwise null: a quiet
+ * feed read live looks the same as a held-back one.
+ */
+export function cloudNewsAccess(
+  response: Pick<CloudNewsListResponse, "items" | "access">,
+  sentSession: boolean,
+  now = Date.now(),
+): NewsAccess | null {
+  if (response.access === "realtime" || response.access === "delayed") return response.access;
+  if (!sentSession) return "delayed";
+  const live = response.items.some((item) => {
+    const seenAt = Date.parse(item.lastSeenAt);
+    return Number.isFinite(seenAt) && now - seenAt < LIVE_STORY_WINDOW_MS;
+  });
+  return live ? "realtime" : null;
+}
+
+/** A client that cannot say whether a session goes with its requests (a test double) is taken to send one. */
+type CloudNewsClient = Pick<typeof apiClient, "getCloudNews" | "searchCloudNews">
+  & Partial<Pick<typeof apiClient, "hasSessionCredential">>;
 
 /**
  * A news query's first page from Gloom Cloud. Stories are filed under company
@@ -147,13 +182,18 @@ type CloudNewsClient = Pick<typeof apiClient, "getCloudNews" | "searchCloudNews"
  * no name to search keeps the empty answer.
  */
 export async function readCloudNews(client: CloudNewsClient, query: NewsQuery): Promise<CloudNewsRead> {
+  // Asked in the tick the request goes out in, which is when its headers take the session.
+  const sentSession = client.hasSessionCredential?.() ?? true;
   const response = await client.getCloudNews(cloudNewsParams(query));
-  if (response.items.length > 0 || query.cursor || normalizeNewsFeed(query) !== "ticker") return response;
+  const read: CloudNewsRead = { ...response, access: cloudNewsAccess(response, sentSession) };
+  if (response.items.length > 0 || query.cursor || normalizeNewsFeed(query) !== "ticker") return read;
   const text = coinSearchName(query.ticker, query.exchange, query.listingName);
-  if (!text) return response;
+  if (!text) return read;
   const found = await client.searchCloudNews(text, query.limit)
     .catch(logFailure("sources.gloomberb-cloud.news", "Search a coin's stories failed", null));
-  return found && found.items.length > 0 ? { items: found.items, nextCursor: null, searchedFor: text } : response;
+  return found && found.items.length > 0
+    ? { items: found.items, nextCursor: null, searchedFor: text, access: cloudNewsAccess(found, sentSession) }
+    : read;
 }
 
 /** A read's stories as articles, each marked with the text a coin's fallback searched for. */

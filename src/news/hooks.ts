@@ -22,6 +22,7 @@ const IDLE_NEWS_QUERY_STATE: NewsQueryState = {
   sourceIds: [],
   nextCursor: null,
   loadingMore: false,
+  access: null,
 };
 
 export function useNewsArticles(query: NewsQuery | null | undefined): NewsQueryState {

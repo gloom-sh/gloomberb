@@ -1,5 +1,6 @@
 import { MarketDataCoordinator, getSharedMarketDataCoordinator, setSharedMarketDataCoordinator } from "../market-data/coordinator";
 import { NewsService, type NewsServiceOptions } from "../news/aggregator";
+import { cloudNewsSession } from "../news/cloud-session";
 import { getSharedNewsService, setSharedNewsService } from "../news/hooks";
 import { PluginRegistry } from "../plugins/registry";
 import { releaseSharedRegistry } from "../plugins/registry/shared";
@@ -61,6 +62,7 @@ export function createAppRuntime({
   const newsService = new NewsService({
     connectionHealth: pluginRegistry.connectionHealth,
     pollIntervalMs: () => Math.max(1, config.refreshIntervalMinutes) * 60_000,
+    session: cloudNewsSession,
     ...newsOptions,
   });
   const modules = { pluginRegistry, marketData, newsService };

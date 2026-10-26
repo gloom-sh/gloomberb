@@ -964,6 +964,7 @@ export function createGloomberbCloudCapabilities(provider = createGloomberbCloud
           return {
             articles: cloudNewsReadArticles(read, query.ticker),
             nextCursor: read.nextCursor ?? null,
+            access: read.access ?? null,
           };
         },
         async fetchNews(query: NewsQuery): Promise<NewsArticle[]> {

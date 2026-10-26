@@ -225,6 +225,14 @@ class GloomApiClient {
     return !!this.transport.getSessionToken() || !!this.currentUser;
   }
 
+  /**
+   * Whether a request sent now carries a session: the token this client
+   * holds, or, in the browser, the cookie it cannot see and assumes is there.
+   */
+  hasSessionCredential(): boolean {
+    return this.transport.hasSessionCredential();
+  }
+
   /** Notifies when the user or credential changes, including plan and trial entitlement. */
   subscribeCurrentUser(listener: () => void): () => void {
     this.currentUserListeners.add(listener);

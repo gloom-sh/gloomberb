@@ -1556,6 +1556,8 @@ export interface CloudNewsPayload {
 export interface CloudNewsListResponse {
   items: CloudNewsPayload[];
   nextCursor: string | null;
+  /** Which news the service answered with, when it says: the live wire, or the one held back for a free account. */
+  access?: "realtime" | "delayed";
 }
 
 interface CloudTweetUserPayload {

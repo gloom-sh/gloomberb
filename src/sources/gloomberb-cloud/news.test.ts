@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import type { CloudNewsListResponse } from "../../api-client";
 import type { NewsQuery } from "../../news/types";
-import { cloudNewsReadArticles, readCloudNews } from "./news";
+import { cloudNewsAccess, cloudNewsReadArticles, readCloudNews } from "./news";
 
 function story(id: string, tickers: string[] = []) {
   const at = "2026-10-20T21:41:38.000Z";
@@ -72,5 +72,24 @@ test("only an empty first page of a coin pair's feed falls back, and a failed se
   const failing = cloud({ searchFails: true });
   const read = await readCloudNews(failing.client as never, tickerQuery("BTC-USD"));
   expect(failing.searches).toEqual([["bitcoin", 20]]);
-  expect(read).toEqual({ items: [], nextCursor: null });
+  expect(read).toEqual({ items: [], nextCursor: null, access: null });
+});
+
+test("an answer is held back when no session went with it, and live only when it holds a story too recent to hold back", async () => {
+  const now = Date.parse("2026-10-26T17:00:00.000Z");
+  const seen = (hoursAgo: number) => ({ ...story(`seen-${hoursAgo}h`), lastSeenAt: new Date(now - hoursAgo * 3_600_000).toISOString() });
+  // No session: the service holds news back for anyone it cannot name.
+  expect(cloudNewsAccess({ items: [seen(1)] }, false, now)).toBe("delayed");
+  // A session and a story seen an hour ago: only the live wire carries it.
+  expect(cloudNewsAccess({ items: [seen(13), seen(1)] }, true, now)).toBe("realtime");
+  // Nothing newer than the delay, or within the hour left for the clocks to disagree: a quiet live feed looks the same as a held-back one.
+  expect(cloudNewsAccess({ items: [seen(13)] }, true, now)).toBeNull();
+  expect(cloudNewsAccess({ items: [seen(11.5)] }, true, now)).toBeNull();
+  expect(cloudNewsAccess({ items: [] }, true, now)).toBeNull();
+  // What the service says wins.
+  expect(cloudNewsAccess({ items: [seen(1)], access: "delayed" }, true, now)).toBe("delayed");
+
+  // A read asks the client whether a session goes with the request.
+  const signedOut = { ...cloud({ filed: [story("filed")] }).client, hasSessionCredential: () => false };
+  expect((await readCloudNews(signedOut as never, { feed: "top", limit: 20 })).access).toBe("delayed");
 });

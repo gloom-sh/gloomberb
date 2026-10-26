@@ -92,6 +92,7 @@ export function createIdleNewsQueryState(): NewsQueryState {
     sourceIds: [],
     nextCursor: null,
     loadingMore: false,
+    access: null,
   };
 }
 

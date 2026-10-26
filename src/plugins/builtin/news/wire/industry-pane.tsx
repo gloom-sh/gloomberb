@@ -125,6 +125,7 @@ function IndustryNewsBody({ focused, width, height, entry, code, codeFilter }: P
     defaultSort: DEFAULT_SORT,
     refreshing: loaded.loading && loaded.articles.length > 0,
     error: loaded.error,
+    feedAccess: loaded.query ? loaded.newsState.access : null,
   });
   const { setSelectedArticleId } = stack;
 

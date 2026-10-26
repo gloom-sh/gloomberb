@@ -161,7 +161,11 @@ export function composeBuiltinPlugin(options: CompositePluginOptions): GloomPlug
       for (const module of modules) {
         startedModules.push(module);
         try {
-          await module.setup?.(ctx);
+          // Only an async setup is waited for. Awaiting a synchronous one hands
+          // the tick to the panes first: Gloom Cloud restores the saved session
+          // in its second module, and the panes' first requests went out without it.
+          const pending = module.setup?.(ctx);
+          if (pending) await pending;
         } catch (error) {
           // Logged as the plugin, so the failure counts toward its health.
           ctx.log.error("Module setup failed", { error: error instanceof Error ? error.message : String(error) });

@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act } from "react";
+import { apiClient } from "../../../../../api-client";
 import { PaneFooterBar, PaneFooterProvider } from "../../../../../components/layout/pane/footer";
 import type { NewsService } from "../../../../../news/aggregator";
 import { setSharedNewsService } from "../../../../../news/hooks";
-import type { NewsArticle, NewsQueryState } from "../../../../../news/types";
+import type { NewsAccess, NewsArticle, NewsQueryState } from "../../../../../news/types";
 import { createOpenTuiTestHarness } from "../../../../../renderers/opentui/test-utils";
 import { createInitialState } from "../../../../../state/app/context";
 import { createStatefulTestPluginRuntime } from "../../../../../test-support/plugin-runtime";
@@ -36,7 +37,10 @@ function makeArticle(): NewsArticle {
   });
 }
 
-function createReadyNewsService(articles: NewsArticle[]): { service: NewsService; getQueryStateCalls: () => number } {
+function createReadyNewsService(
+  articles: NewsArticle[],
+  access: NewsAccess | null = null,
+): { service: NewsService; getQueryStateCalls: () => number } {
   const state: NewsQueryState = {
     phase: "ready",
     articles,
@@ -45,6 +49,7 @@ function createReadyNewsService(articles: NewsArticle[]): { service: NewsService
     sourceIds: ["test"],
     nextCursor: null,
     loadingMore: false,
+    access,
   };
   const listeners = new Set<(state: NewsQueryState) => void>();
   let queryStateCalls = 0;
@@ -96,6 +101,8 @@ function createHarness() {
 
 afterEach(() => {
   setSharedNewsService(null);
+  apiClient.setSessionToken(null);
+  apiClient.restoreCachedUser(null);
 });
 
 describe("BreakingPane", () => {
@@ -111,5 +118,26 @@ describe("BreakingPane", () => {
     });
 
     expect(newsService.getQueryStateCalls()).toBeGreaterThan(0);
+  });
+
+  test("labels the wire by what the service answered, not by the plan the app remembers", async () => {
+    // A paying Pro account, as restored from disk at launch.
+    apiClient.setSessionToken("news-label-session");
+    apiClient.restoreCachedUser({ id: "user-pro", email: "pro@example.com", emailVerified: true, plan: "pro" });
+    const footer = async (access: NewsAccess | null) => {
+      setSharedNewsService(createReadyNewsService([makeArticle()], access).service);
+      await tui.render(createHarness(), { width: 90, height: 18 });
+      const frame = await tui.waitForFrameToContain("Chip stocks rally");
+      return frame.split("\n").filter((line) => line.trim()).at(-1) ?? "";
+    };
+
+    expect(await footer("realtime")).toContain("real-time news");
+    // A read that went out before the session: held back, said so, and nothing to upgrade to.
+    const heldBack = await footer("delayed");
+    expect(heldBack).toContain("12h");
+    expect(heldBack).not.toContain("real-time news");
+    expect(heldBack).not.toContain("upgrade");
+    // An answer that does not say is not called live on the plan's word.
+    expect(await footer(null)).not.toContain("real-time news");
   });
 });
