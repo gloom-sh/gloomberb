@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   buildTableGridTemplateColumns,
+  dropColumnsToFit,
   fitTableCellText,
   fitTableHeaderText,
   getTableWidth,
@@ -58,6 +59,21 @@ describe("table layout", () => {
     expect(tableColumnStarts(columns, 1)).toEqual([0, 6, 13, 17, 23]);
     // Tables packed without gaps stay packed.
     expect(getTableWidth(columns, 0, 0)).toBe(23);
+  });
+
+  test("drops columns in order until the rest fit, an entry with several ids all at once", () => {
+    const columns = ["a", "b", "c", "d", "e"].map((id) => ({ id, width: 8, align: "right" }));
+    const ids = (width: number, order: Parameters<typeof dropColumnsToFit>[2]) =>
+      dropColumnsToFit(columns, width, order).map((column) => column.id).join("");
+    const fits = (count: number) => getTableWidth(columns.slice(0, count));
+
+    expect(ids(fits(5), ["a", "b"])).toBe("abcde");
+    expect(ids(fits(4), ["a", "b"])).toBe("bcde");
+    expect(ids(fits(3), ["a", "b", "c"])).toBe("cde");
+    // A pair leaves together, even when dropping the first alone would have fit.
+    expect(ids(fits(4), [["a", "b"], "c"])).toBe("cde");
+    // Columns not in the order stay, so the table can still overflow.
+    expect(ids(fits(1), ["a"])).toBe("bcde");
   });
 
   test("marks clipped cells so a cut number cannot read as a smaller value", () => {

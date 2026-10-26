@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Box } from "../../../ui";
 import { usePaneSettingValue, useShortcut } from "../../../public/react";
-import { splitDelayedStatus, DataTableStackView, KeyValueRow, PaneStatusBody, StatGrid, usePaneFooter, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, usePaneTicker, type DataTableColumn } from "../../../components";
+import { createDataTableCsv } from "../../../components/data-table/export";
+import { dropColumnsToFit } from "../../../components/ui/table-layout";
+import { splitDelayedStatus, DataTableStackView, KeyValueRow, PaneStatusBody, StatGrid, usePaneFooter, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, usePaneTicker, type DataTableCell, type DataTableColumn } from "../../../components";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import type { TapeQuote, TapeSnapshot, TapeTrade } from "../../../api-client/tape";
@@ -32,6 +34,12 @@ const QUOTES: DataTableColumn[] = [
   { id: "askExchange", label: "VENUE", width: 9, align: "left" },
   { id: "spread", label: "SPREAD BP", width: 10, align: "right" },
 ];
+/**
+ * A narrow pane gives up the venues, then the lots, before the right edge cuts
+ * the spread: each pair together, since one side's alone would not say which
+ * side it is. The scrollbar keeps one cell, and exports keep every column.
+ */
+const QUOTE_DROP_ORDER = [["bidExchange", "askExchange"], ["bidSize", "askSize"]];
 const rank = (value: number | null) => value == null ? "pctl --" : `${value.toFixed(0)} pctl`;
 type TapeRow = { id: string; trade?: TapeTrade; quote?: TapeQuote };
 
@@ -112,13 +120,32 @@ function TimeSalesView({ width, height, focused, symbol, exchange }: PaneProps &
     info: data ? [...splitDelayedStatus({ id: "feed", quoteStatus: true, parts: [{ text: `${data.feed === "sip" ? "real-time" : "15m delayed"} · ${tapeStampNewYork(data.asOf)}`, tone: "muted" }] }),
       ...(frozen ? [{ id: "paused", parts: [{ text: "paused", tone: "warning" as const }] }] : []),
       ...(!data.connected || resource.snapshotOnly ? [{ id: "snapshot", parts: [{ text: "snapshot", tone: "warning" as const }] }] : [])] : [] });
+  const quoteColumns = useMemo(() => dropColumnsToFit(QUOTES, width - 1, QUOTE_DROP_ORDER), [width]);
+  const columns = tab === "quotes" ? quoteColumns : TRADES;
   const selectTab = (value: string) => { setTab(value); setDetail(null); setSelected(null); };
   const { strip: tabStrip, rows: tabRows } = usePaneTabs({ tabs: TABS, activeValue: tab, onSelect: selectTab, focused: focused && !detail, dense: true });
+  const renderCell = (row: TapeRow, column: DataTableColumn): DataTableCell => {
+    if (row.trade) {
+      const trade = row.trade;
+      const tick = ticks.get(trade);
+      return { text: column.id === "time" ? tapeClockNewYork(trade.timestamp) : column.id === "price" ? tapePrice(trade.price, tradeDigits)
+        : column.id === "size" ? tapeQuantity(trade.size) : column.id === "venue" ? tapeVenue(trade.exchange)
+        : column.id === "conditions" ? tapeConditionWords(trade.conditions) : trade.tape,
+        // Price by tick, as on a tape; a block print lights the rest of its row.
+        color: laterThanPin(row) ? colors.textMuted : column.id === "price" ? tick === "up" ? colors.positive : tick === "down" ? colors.negative : colors.text
+          : trade.size >= 10_000 ? colors.warning : colors.textMuted };
+    }
+    const quote = row.quote!, spread = quoteSpread(quote);
+    return { text: column.id === "time" ? tapeClockNewYork(quote.timestamp) : column.id === "bid" ? tapePrice(quote.bid, quoteDigits) : column.id === "ask" ? tapePrice(quote.ask, quoteDigits)
+      : column.id === "bidSize" ? tapeQuantity(quote.bidSize) : column.id === "askSize" ? tapeQuantity(quote.askSize)
+      : column.id === "bidExchange" ? tapeVenue(quote.bidExchange) : column.id === "askExchange" ? tapeVenue(quote.askExchange)
+      : spread.bps == null ? "--" : spread.bps.toFixed(2), color: laterThanPin(row) ? colors.textMuted : spread.state === "normal" ? colors.text : colors.warning };
+  };
   if (!data && isCloudSessionRequired(resource.error)) return <SignInWall placement="time-sales-signin" action="view time and sales" needsVerification={session.needsVerification} />;
   return <Box width={width} height={height} flexDirection="column">
     {tabStrip}
     <PaneStatusBody loading={resource.loading && !data} error={!data ? resource.error : null} empty={!!data && !rows.length} subject={tab === "quotes" ? "NBBO observations" : "trade observations"}>
-      {data && stats ? <DataTableStackView<TapeRow> columns={tab === "quotes" ? QUOTES : TRADES} items={rows}
+      {data && stats ? <DataTableStackView<TapeRow> columns={columns} items={rows}
         focused={focused} rootWidth={width} rootHeight={Math.max(3, height - tabRows)}
         selection={{ kind: "id", selectedId: selected, getId: (row) => row.id, onChange: setSelected }}
         onActivate={(row) => { setPaused({ data, epoch: resource.epoch }); setDetail({ row, epoch: resource.epoch }); }} getItemKey={(row) => row.id}
@@ -136,23 +163,8 @@ function TimeSalesView({ width, height, focused, symbol, exchange }: PaneProps &
           ]),
           ...(data.session.high != null && data.session.low != null ? [{ id: "session", label: "Session", value: `${tapePrice(data.session.low, sessionDigits)} to ${tapePrice(data.session.high, sessionDigits)}` }] : []),
         ]} />}
-        renderCell={(row, column) => {
-          if (row.trade) {
-            const trade = row.trade;
-            const tick = ticks.get(trade);
-            return { text: column.id === "time" ? tapeClockNewYork(trade.timestamp) : column.id === "price" ? tapePrice(trade.price, tradeDigits)
-              : column.id === "size" ? tapeQuantity(trade.size) : column.id === "venue" ? tapeVenue(trade.exchange)
-              : column.id === "conditions" ? tapeConditionWords(trade.conditions) : trade.tape,
-              // Price by tick, as on a tape; a block print lights the rest of its row.
-              color: laterThanPin(row) ? colors.textMuted : column.id === "price" ? tick === "up" ? colors.positive : tick === "down" ? colors.negative : colors.text
-                : trade.size >= 10_000 ? colors.warning : colors.textMuted };
-          }
-          const quote = row.quote!, spread = quoteSpread(quote);
-          return { text: column.id === "time" ? tapeClockNewYork(quote.timestamp) : column.id === "bid" ? tapePrice(quote.bid, quoteDigits) : column.id === "ask" ? tapePrice(quote.ask, quoteDigits)
-            : column.id === "bidSize" ? tapeQuantity(quote.bidSize) : column.id === "askSize" ? tapeQuantity(quote.askSize)
-            : column.id === "bidExchange" ? tapeVenue(quote.bidExchange) : column.id === "askExchange" ? tapeVenue(quote.askExchange)
-            : spread.bps == null ? "--" : spread.bps.toFixed(2), color: laterThanPin(row) ? colors.textMuted : spread.state === "normal" ? colors.text : colors.warning };
-        }} emptyStateTitle="No observations in this window." /> : null}
+        renderCell={renderCell} exportCsv={() => createDataTableCsv({ columns: tab === "quotes" ? QUOTES : TRADES, items: rows, renderCell })}
+        emptyStateTitle="No observations in this window." /> : null}
     </PaneStatusBody>
   </Box>;
 }
