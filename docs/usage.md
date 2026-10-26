@@ -1135,6 +1135,8 @@ A command fails on an option it does not take instead of ignoring it. `gloom his
 - A coin's day rebuilt from hourly bars because the source left it empty is `filled: true`, without volume (`volumeNote` says why).
 - A coin, a currency pair, a future or an index keeps the bars as served.
 
+**RETURN's clock.** In the `RETURN` pane an intraday bar's time is on its venue's clock, with the zone in the column header: `TIME ET` for New York, so the open reads 09:30, the venue's city for another zone (`TIME TOKYO`), and `TIME UTC` for a coin, a currency pair or a venue whose zone the app does not know. A daily or longer bar is a date. Under the query bar the pane sums its window up: the total return from the base close, and the best and worst interval with the bar each was. An export, `fn RETURN` and `--json` keep UTC.
+
 ### A window of dates
 
 `gloom history`, `fn HP` and `fn RETURN` also take a window of dates in place of a range: `--from` and `--to`, each a year or a date. `history JPM --from 2007 --to 2009` is every bar from 1 Jan 2007 to 31 Dec 2009. `history` also takes them as `--start` and `--end`.
