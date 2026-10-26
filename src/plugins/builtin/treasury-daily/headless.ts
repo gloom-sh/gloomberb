@@ -3,7 +3,7 @@ import { fetchTreasuryDaily } from "./client";
 import { formatBillions, formatTrillions } from "./model";
 
 const CASH_COLUMNS: HeadlessPaneColumn[] = [
-  { key: "account", header: "Account" },
+  { key: "account", header: "Treasury General Account" },
   { key: "today", header: "Today $bn", align: "right", description: "The day's figure, billions of dollars", format: formatBillions },
   { key: "month", header: "This month $bn", align: "right", description: "Month to date, billions of dollars", format: formatBillions },
 ];
@@ -32,7 +32,7 @@ export const treasuryDailyHeadless: HeadlessPaneDefinition<"bundle"> = {
   describe: "Treasury operating cash and public debt",
   freshness: { source: "US Treasury", status: "not-a-feed", basis: "daily statement" },
   async load(_args, ctx) {
-    const { cash, debt } = await fetchTreasuryDaily(ctx.signal);
+    const { cash, debt } = await fetchTreasuryDaily(ctx.signal, { history: false });
     return {
       complete: cash.rows.length > 0 && debt.length > 0,
       sections: [

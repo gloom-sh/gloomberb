@@ -362,7 +362,7 @@
           {
             "code": "DTS",
             "name": "Treasury Cash and Debt",
-            "description": "Treasury operating cash for the latest day, and debt held by the public for the last 20 business days."
+            "description": "Treasury operating cash for the latest day with the Treasury General Account's closing balance history, and debt held by the public for the last 20 business days."
           },
           {
             "code": "PDLR",
