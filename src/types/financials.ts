@@ -346,11 +346,14 @@ export interface Fundamentals extends DepositaryReceiptFacts {
   netIncome?: number;
   eps?: number;
   /**
-   * Where `eps` and the `trailingPE` over it come from: `filed-quarters` when
-   * `eps` is the diluted EPS of the last four filed quarters (or the fiscal
-   * year they end with), as PEB and GE read the statements, its last period
-   * ending `trailingEpsPeriodEnd`; `served` when those quarters give none and
-   * it is Gloom Cloud's trailing figure. Absent where no statements were read.
+   * Where `eps` and `trailingPE` come from: `filed-quarters` when `eps` is the
+   * diluted EPS of the last four filed quarters (or the fiscal year they end
+   * with), as PEB and GE read the statements, its last period ending
+   * `trailingEpsPeriodEnd`, and `trailingPE` the price over it; `served` when
+   * those quarters give none (or one that cannot be priced: see
+   * time-series/filed-trailing-eps) and both are Gloom Cloud's trailing
+   * figures, including a P/E it serves with no EPS (a fund's). Absent when
+   * there is neither an EPS nor a P/E.
    */
   trailingEpsSource?: "filed-quarters" | "served";
   trailingEpsPeriodEnd?: string;

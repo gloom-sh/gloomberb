@@ -11,15 +11,18 @@ import { resetEarningsCalendarPersistence } from "../earnings/data/cache";
 import { createEarningsHeadless } from "../earnings/headless";
 import { projectPeBand } from "../pe-band/model";
 import { createEarningsEstimatesHeadless } from "../research/headless";
-import { AGREEMENT_NOW, agreementEarningsSources, createAgreementProvider } from "./earnings-agreement.test-data";
+import { AGREEMENT_NOW, agreementEarningsSources, createAgreementProvider, YEAR_END_NOW } from "./earnings-agreement.test-data";
 
 /**
  * One trailing EPS, one P/E and one consensus per company in every function
  * that shows them: `ticker`, `valuation`, EE, PEB and GE price the last four
- * filed quarters, and ERN (one ticker, a ticker list, a day), EE and `events`
- * read a report gone by from the stored board, not the next quarter's
- * consensus the per-ticker calendar has rolled to.
+ * filed quarters (the fiscal year's EPS when they end one), and ERN (one
+ * ticker, a ticker list, a day), EE and `events` read a report gone by from
+ * the stored board, not the next quarter's consensus the per-ticker calendar
+ * has rolled to.
  */
+
+interface Priced { eps: number; epsText: string; pe: number; peText: string }
 
 const COMPANIES = {
   // A cent apart from a fiscal-year reading when the fourth quarter's EPS is the results release's.
@@ -31,6 +34,9 @@ const COMPANIES = {
 } as const;
 type Symbol = keyof typeof COMPANIES;
 const SYMBOLS = Object.keys(COMPANIES) as Symbol[];
+
+/** Between a 10-K and the next 10-Q; four quarters of 1.00 would give 25.00. */
+const ACME: Priced = { eps: 3.9, epsText: "$3.90", pe: 100 / 3.9, peText: "25.64" };
 
 const plain = (text: string) => text.replace(/\u001b\[[0-9;]*m/g, "").replace(/\u00a0/g, " ").replace(/ {2,}/g, " ");
 const consensus = (row: Record<string, unknown> | undefined) => row && {
@@ -55,36 +61,39 @@ const args = (symbols: string[], options: HeadlessPaneLoadArgs["options"] = {}):
   rawArgument: symbols.join(" "), argument: symbols.length === 1 ? symbols[0]! : symbols, symbols, options,
 });
 
+/** `ticker`, `valuation`, EE's TTM row, PEB and GE all read `company`'s trailing EPS and P/E at `now`. */
+async function expectOneTrailingEps(symbol: string, company: Priced, now: Date): Promise<void> {
+  const financials = await router.getTickerFinancials(symbol, "");
+  expect(financials.fundamentals).toMatchObject({ trailingEpsSource: "filed-quarters" });
+
+  const ticker = plain(await buildTickerReport({ symbol, tickerFile: null, financials, config, toBase: async (value) => value }));
+  const valuation = plain(renderFundamentalsReport({ ...financials, symbol }, "valuation"));
+  for (const report of [ticker, valuation]) {
+    expect(report).toContain(`EPS (TTM) ${company.epsText}`);
+    expect(report).toContain(`P/E (TTM) ${company.peText}`);
+  }
+
+  const ee = await createEarningsEstimatesHeadless().load(args([symbol]), createTestHeadlessContext({ marketData: router }));
+  const ttm = ee.rows.find((row) => row.status === "TTM");
+  expect(ttm?.annualEps).toBeCloseTo(company.eps, 6);
+  expect(ttm?.detail).toBe("GAAP diluted");
+
+  const extended = await router.getTickerFinancials(symbol, "", { statementHistory: "extended" });
+  const band = projectPeBand(extended, extended.priceHistory, { symbol, lookbackYears: 0, now: now.getTime() });
+  expect(band.current?.eps).toBeCloseTo(company.eps, 6);
+  expect(band.current?.pe).toBeCloseTo(company.pe, 6);
+
+  const ge = extractFundamentalSeries(extended, {
+    kind: "security", instrument: { symbol, exchange: "NASDAQ" }, fieldId: "valuation.trailingPE", period: "daily", timestampMode: "available-at",
+  });
+  expect(ge.at(-1)?.date.toISOString().slice(0, 10)).toBe(now.toISOString().slice(0, 10));
+  expect(ge.at(-1)?.value).toBeCloseTo(company.pe, 6);
+}
+
 describe.each(SYMBOLS)("%s", (symbol) => {
   const company = COMPANIES[symbol];
 
-  test("ticker, valuation, EE, PEB and GE price the same trailing EPS", async () => {
-    const financials = await router.getTickerFinancials(symbol, "");
-    expect(financials.fundamentals).toMatchObject({ trailingEpsSource: "filed-quarters" });
-
-    const ticker = plain(await buildTickerReport({ symbol, tickerFile: null, financials, config, toBase: async (value) => value }));
-    const valuation = plain(renderFundamentalsReport({ ...financials, symbol }, "valuation"));
-    for (const report of [ticker, valuation]) {
-      expect(report).toContain(`EPS (TTM) ${company.epsText}`);
-      expect(report).toContain(`P/E (TTM) ${company.peText}`);
-    }
-
-    const ee = await createEarningsEstimatesHeadless().load(args([symbol]), createTestHeadlessContext({ marketData: router }));
-    const ttm = ee.rows.find((row) => row.status === "TTM");
-    expect(ttm?.annualEps).toBeCloseTo(company.eps, 6);
-    expect(ttm?.detail).toBe("GAAP diluted");
-
-    const extended = await router.getTickerFinancials(symbol, "", { statementHistory: "extended" });
-    const band = projectPeBand(extended, extended.priceHistory, { symbol, lookbackYears: 0, now: AGREEMENT_NOW.getTime() });
-    expect(band.current?.eps).toBeCloseTo(company.eps, 6);
-    expect(band.current?.pe).toBeCloseTo(company.pe, 6);
-
-    const ge = extractFundamentalSeries(extended, {
-      kind: "security", instrument: { symbol, exchange: "NASDAQ" }, fieldId: "valuation.trailingPE", period: "daily", timestampMode: "available-at",
-    });
-    expect(ge.at(-1)?.date.toISOString().slice(0, 10)).toBe("2026-10-26");
-    expect(ge.at(-1)?.value).toBeCloseTo(company.pe, 6);
-  });
+  test("ticker, valuation, EE, PEB and GE price the same trailing EPS", () => expectOneTrailingEps(symbol, company, AGREEMENT_NOW));
 
   test("ERN for one ticker, a ticker list and the report's day, EE and events show one consensus for the report", async () => {
     const ern = createEarningsHeadless(agreementEarningsSources);
@@ -109,6 +118,13 @@ describe.each(SYMBOLS)("%s", (symbol) => {
       expect(consensus(row)).toEqual(expected(symbol));
     }
   });
+});
+
+describe("between a 10-K and the next 10-Q", () => {
+  beforeAll(() => setSystemTime(YEAR_END_NOW));
+  afterAll(() => setSystemTime(AGREEMENT_NOW));
+
+  test("ticker, valuation, EE, PEB and GE price the fiscal year's EPS", () => expectOneTrailingEps("ACME", ACME, YEAR_END_NOW));
 });
 
 test("a quarter whose basis Gloom Cloud cannot tell reads unknown in events as in ERN", async () => {

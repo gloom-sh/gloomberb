@@ -20,9 +20,9 @@ const year = (date: string, eps: number, filed: string, totalRevenue: number): F
   date, currency: "USD", eps, totalRevenue, fieldAvailability: { eps: filed, totalRevenue: filed },
 });
 const closes = (values: ReadonlyArray<readonly [string, number]>): PricePoint[] => values.map(([date, close]) => ({ date: new Date(`${date}T20:00:00.000Z`), close }));
-const quote = (symbol: string, name: string, price: number, previousClose: number) => ({
+const quote = (symbol: string, name: string, price: number, previousClose: number, close = "2026-10-26") => ({
   symbol, name, price, previousClose, change: price - previousClose, changePercent: (price / previousClose - 1) * 100, currency: "USD",
-  exchangeName: "NASDAQ", listingExchangeName: "NASDAQ", marketState: "CLOSED" as const, lastUpdated: Date.parse("2026-10-26T20:00:00.000Z"),
+  exchangeName: "NASDAQ", listingExchangeName: "NASDAQ", marketState: "CLOSED" as const, lastUpdated: Date.parse(`${close}T20:00:00.000Z`),
 });
 
 /** Gloom Cloud's own trailing EPS and P/E (1.13 and 175.96 for PLTR) disagree with the filed quarters (1.17). */
@@ -62,10 +62,30 @@ const META_FINANCIALS: TickerFinancials = {
   priceHistory: closes([["2026-10-19", 655.1], ["2026-10-20", 650.3], ["2026-10-21", 652.8], ["2026-10-22", 607.1], ["2026-10-23", 642.62], ["2026-10-26", 630.56]]),
 };
 
+/** Between ACME's 10-K and its next 10-Q: the evening of 2026-03-16. */
+export const YEAR_END_NOW = new Date("2026-03-16T22:00:00.000Z");
+
+/** Four quarters of 1.00 beside a filed year of 3.90: the year is the trailing figure until the March quarter is filed. */
+const ACME_FINANCIALS: TickerFinancials = {
+  quote: quote("ACME", "Acme Corp.", 100, 99, "2026-03-16"),
+  fundamentals: { eps: 3.88, trailingPE: 25.77, marketCap: 50e9, marketCapCurrency: "USD", financialCurrency: "USD", sharesOutstanding: 500e6 },
+  financialCurrency: "USD",
+  quarterlyStatements: [
+    quarter("2024-12-31", 0.9, undefined, 9e9),
+    quarter("2025-03-31", 1, "2025-05-01", 10e9),
+    quarter("2025-06-30", 1, "2025-07-31", 10e9),
+    quarter("2025-09-30", 1, "2025-10-30", 10e9),
+    quarter("2025-12-31", 1, undefined, 10e9),
+  ],
+  annualStatements: [year("2024-12-31", 3.5, "2025-02-20", 36e9), year("2025-12-31", 3.9, "2026-02-20", 40e9)],
+  priceHistory: closes([["2026-03-10", 97], ["2026-03-11", 98], ["2026-03-12", 98.5], ["2026-03-13", 99], ["2026-03-16", 100]]),
+};
+
 type ActionEarnings = CorporateActionsData["earnings"][number];
 const announced = (fields: ActionEarnings): ActionEarnings => ({ dateType: "announcement", currency: "USD", time: "After Hours", ...fields });
 
 const ACTIONS: Record<string, CorporateActionsData> = {
+  ACME: { symbol: "ACME", currency: "USD", dividends: [], splits: [], earnings: [] },
   META: { symbol: "META", currency: "USD", dividends: [], splits: [], earnings: [
     announced({ date: "2026-10-21", fiscalPeriod: "2026-09", epsEstimate: 6.52, epsActual: 7.4, difference: 0.88, surprisePercent: 13.5,
       epsAnalysts: 6, epsBasis: "adjusted", dateStatus: "reported" }),
@@ -83,6 +103,7 @@ const ACTIONS: Record<string, CorporateActionsData> = {
 };
 
 const RESEARCH: Record<string, AnalystResearchData> = {
+  ACME: { symbol: "ACME", currency: "USD", recommendations: [], ratings: [], revenueEstimates: [], earningsEstimates: [] },
   META: { symbol: "META", currency: "USD", recommendations: [], ratings: [], revenueEstimates: [], earningsEstimates: [
     { date: "2026-12-31", period: "current quarter", analysts: 41, currency: "USD", average: 8.32977, growth: -0.062 },
   ] },
@@ -145,7 +166,7 @@ export const agreementEarningsSources = {
   upcoming: async (symbols: string[]) => symbols.flatMap((symbol) => CALENDAR[symbol] ? [CALENDAR[symbol]!] : []),
 };
 
-const FINANCIALS: Record<string, TickerFinancials> = { META: META_FINANCIALS, PLTR: PLTR_FINANCIALS };
+const FINANCIALS: Record<string, TickerFinancials> = { ACME: ACME_FINANCIALS, META: META_FINANCIALS, PLTR: PLTR_FINANCIALS };
 const known = (symbol: string) => {
   const key = symbol.split(":")[0]!.toUpperCase();
   if (!FINANCIALS[key]) throw new Error(`No fixture for ${symbol}`);

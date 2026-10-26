@@ -505,16 +505,42 @@ function valuationStatements(financials: TickerFinancials): { quarterly: Financi
 /**
  * A fiscal fourth quarter's EPS stated without a filing date of its own (a
  * 10-K states the year, the results release the quarter) was public once its
- * year's filing was, so it is dated by that filing. The daily P/E then sums the
- * same four quarters PEB and the headline EPS (TTM) sum
- * (time-series/filed-trailing-eps), rather than reading the quarter from the
- * year and landing a cent of rounding away from them.
+ * year's filing was, so it is dated by that filing. The daily P/E of the
+ * quarters after it then sums the same four quarters PEB and the headline EPS
+ * (TTM) sum (time-series/filed-trailing-eps), rather than reading the quarter
+ * from the year and landing a cent of rounding away from them. The window that
+ * ends with the year takes the year's own EPS (fiscalYearEpsAtYearEnd).
  */
 function fourthQuarterEpsAtYearFiling(row: FinancialStatement, annual: readonly FinancialStatement[]): FinancialStatement {
   if (!isFiniteNumber(row.eps) || hasStatementGap(row, "eps") || statementFieldAvailability(row, "eps")) return row;
   const year = annual.find((candidate) => candidate.currency === row.currency && areNearbyFinancialPeriodEnds(candidate.date, row.date));
   const filed = year && isFiniteNumber(year.eps) ? statementFieldAvailability(year, "eps") : undefined;
   return filed ? { ...row, fieldAvailability: { ...row.fieldAvailability, eps: filed } } : row;
+}
+
+/**
+ * At a fiscal year end the filed year's diluted EPS is the daily trailing
+ * figure, as PEB and the headline EPS (TTM) read it (filed-trailing-eps): four
+ * quarters need not add up to their year (3.90 for the year beside four
+ * quarters of 1.00), so their sum stands only where the year gives no dated EPS.
+ */
+function fiscalYearEpsAtYearEnd(statements: readonly InternalStatement[], annual: readonly FinancialStatement[]): InternalStatement[] {
+  return statements.map((statement) => {
+    const year = annual.find((row) => row.currency === statement.currency && areNearbyFinancialPeriodEnds(row.date, statement.date));
+    const eps = year && !hasStatementGap(year, "eps") ? statementNumber(year, "eps") : null;
+    if (!year || eps === null) return statement;
+    const { epsBasis: _sum, ...rest } = statement;
+    const fieldAvailability = { ...statement.fieldAvailability };
+    const filed = statementFieldAvailability(year, "eps");
+    if (filed) fieldAvailability.eps = filed;
+    else delete fieldAvailability.eps;
+    const next: InternalStatement = {
+      ...rest, eps, fieldAvailability, ...(year.epsBasis ? { epsBasis: year.epsBasis } : {}),
+      __timeSeriesDerivedFields: [...new Set([...(statement.__timeSeriesDerivedFields ?? []), "eps" as const])],
+    };
+    next.availableAt = completeStatementAvailability(next) ?? statement.availableAt;
+    return next;
+  });
 }
 
 /** An undated vendor value cannot block a derivation from dated filings. */
@@ -576,7 +602,7 @@ function sourceStatements(
     // Sparse or loss-making quarters are gaps, not permission to substitute
     // an older annual denominator. Annual-only issuers retain their years.
     if (!known.quarterly.length) return { statements: mergeStatementsByPeriod(known.annual), period: "annual" };
-    const statements = buildTtmStatements(quarterly, known.annual);
+    const statements = fiscalYearEpsAtYearEnd(buildTtmStatements(quarterly, known.annual), known.annual);
     // Capitalization uses the latest reported share count, not an average
     // of four quarters. Keep TTM average shares for the income/EPS fallback.
     if (valuationMetric !== "trailingPE") for (const statement of statements) {

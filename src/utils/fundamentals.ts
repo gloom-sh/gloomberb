@@ -248,12 +248,17 @@ export const SERVED_TRAILING_EPS = "Gloom Cloud's TTM";
 
 /**
  * "EPS (TTM) and P/E (TTM) are Gloom Cloud's trailing figures, not the last four filed quarters'.": the headline EPS
- * is the filed quarters' (time-series/filed-trailing-eps), so one that is not says so. Undefined otherwise.
+ * and P/E are the filed quarters' (time-series/filed-trailing-eps), so served ones say so, naming those `shown`
+ * ("P/E (TTM) is Gloom Cloud's trailing figure, ..." for a fund's P/E with no EPS). Undefined otherwise.
  */
-export function trailingEpsSourceNote(fundamentals: Pick<Fundamentals, "trailingEpsSource"> | undefined): string | undefined {
-  return fundamentals?.trailingEpsSource === "served"
-    ? "EPS (TTM) and P/E (TTM) are Gloom Cloud's trailing figures, not the last four filed quarters'."
-    : undefined;
+export function trailingEpsSourceNote(
+  fundamentals: Pick<Fundamentals, "trailingEpsSource"> | undefined,
+  shown: { eps: boolean; pe: boolean },
+): string | undefined {
+  if (fundamentals?.trailingEpsSource !== "served" || (!shown.eps && !shown.pe)) return undefined;
+  const figures = shown.eps && shown.pe ? "EPS (TTM) and P/E (TTM) are Gloom Cloud's trailing figures"
+    : `${shown.eps ? "EPS (TTM)" : "P/E (TTM)"} is Gloom Cloud's trailing figure`;
+  return `${figures}, not the last four filed quarters'.`;
 }
 
 type PriceEarningsBasis = Pick<Fundamentals, "financialCurrency" | "ttmConversion" | "epsCurrency" | "trailingPEConversion">;

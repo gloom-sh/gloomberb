@@ -105,11 +105,12 @@ test("losses, withheld EPS and missing quarterly inputs break the line instead o
     const rows = quarters();
     rows[4] = { ...rows[4]!, eps: missing === 0 ? -3 : missing };
     const data = financials(rows);
-    data.annualStatements = [{ date: "2024-12-31", availableAt: "2025-02-03T12:00:00Z", currency: "USD", eps: 100 }];
-    expect(values(data)).toEqual([null, 21 / 4, 22 / 4, null, null]);
+    data.annualStatements = [{ date: "2024-12-31", availableAt: "2025-02-03T12:00:00Z", currency: "USD", eps: 4.4 }];
+    // The year's own EPS is the trailing figure at its year end, as PEB reads it, never after.
+    expect(values(data)).toEqual([null, 21 / 4.4, 22 / 4.4, null, null]);
   }
   const gap = financials(quarters().filter((_, index) => index !== 1));
-  gap.annualStatements = [{ date: "2024-12-31", availableAt: "2025-02-03T12:00:00Z", currency: "USD", eps: 100 }];
+  gap.annualStatements = [{ date: "2024-12-31", availableAt: "2025-02-03T12:00:00Z", currency: "USD", eps: 4.4 }];
   expect(values(gap)).toEqual([]);
 });
 

@@ -71,6 +71,14 @@ interface FiledTrailingEps {
   currency: string;
 }
 
+/**
+ * How far the filed figure may sit from Gloom Cloud's, either way, before it
+ * is taken for another share basis (a receipt or a class the flags miss, as
+ * BRK.B's statements are per Class A share) rather than newer or restated
+ * quarters: PLTR's 1.17 against 1.13 stands, 4.00 against 0.40 does not.
+ */
+const SERVED_EPS_RATIO_LIMIT = 1.5;
+
 type TrailingEpsInputs = Pick<TickerFinancials, "quote" | "fundamentals" | "annualStatements" | "quarterlyStatements" | "financialCurrency">;
 
 const isReceipt = (financials: TrailingEpsInputs) => !!(
@@ -78,7 +86,8 @@ const isReceipt = (financials: TrailingEpsInputs) => !!(
   || financials.fundamentals?.shareBasis === "depositary_receipt" || financials.quote?.adrRatio || financials.fundamentals?.adrRatio
 );
 
-type LatestStep = { periodEnd: string; eps: number; currency: string } | null;
+/** `filed` is the day the latest EPS on record was filed (a restated one's restating filing), the period end when none is dated. */
+type LatestStep = { periodEnd: string; eps: number; currency: string; filed: string } | null;
 
 /**
  * The last period's step by what it is read from: the router answers the same
@@ -106,7 +115,12 @@ function latestStep(financials: TrailingEpsInputs): LatestStep {
   if (latestSteps.has(key)) return latestSteps.get(key)!;
   const found = trailingEpsSteps({ financialCurrency: financials.financialCurrency, priceHistory: [], quarterlyStatements, annualStatements })
     .find((candidate) => areNearbyFinancialPeriodEnds(candidate.periodEnd, latest));
-  const step = found?.eps != null && found.currency ? { periodEnd: found.periodEnd, eps: found.eps, currency: found.currency } : null;
+  const filed = [...quarterlyStatements, ...annualStatements]
+    .flatMap((row) => typeof row.eps === "number" ? [statementFieldAvailability(row, "eps")?.slice(0, 10)] : [])
+    .filter((date): date is string => !!date).sort().at(-1);
+  const step = found?.eps != null && found.currency
+    ? { periodEnd: found.periodEnd, eps: found.eps, currency: found.currency, filed: filed && filed > found.periodEnd ? filed : found.periodEnd }
+    : null;
   if (latestSteps.size >= LATEST_STEPS_KEPT) latestSteps.delete(latestSteps.keys().next().value!);
   latestSteps.set(key, step);
   return step;
@@ -117,8 +131,11 @@ function latestStep(financials: TrailingEpsInputs): LatestStep {
  * EPS of the last four filed quarters, or of the fiscal year when that is the
  * last period filed. Null when that period gives none (a quarter missing or
  * withheld, a split basis unresolved, two share bases), when it is overdue,
- * when its currency is not the price's, and for a depositary receipt, whose
- * statements are per ordinary share.
+ * when its currency is not the price's, for a depositary receipt, whose
+ * statements are per ordinary share, when a split went ex after the last of
+ * its figures was filed (they are on the old share count until a filing
+ * restates them), and when it is more than SERVED_EPS_RATIO_LIMIT times
+ * Gloom Cloud's figure either way.
  */
 function filedTrailingEps(financials: TrailingEpsInputs, now = Date.now()): FiledTrailingEps | null {
   const price = resolveCurrencyUnit(financials.quote?.currency);
@@ -130,10 +147,21 @@ function filedTrailingEps(financials: TrailingEpsInputs, now = Date.now()): File
   // The trailing block's amounts are in another currency: an EPS beside them in this one would be read as theirs.
   const block = financials.fundamentals?.financialCurrency?.trim();
   if (block && resolveCurrencyUnit(block).currency !== price.currency) return null;
+  const split = financials.fundamentals?.splitShareBasis?.exDate;
+  if (split && split > step.filed) return null;
+  const served = financials.fundamentals?.eps;
+  if (typeof served === "number" && Number.isFinite(served) && !withinServedRatio(step.eps, served)) return null;
   return { eps: step.eps, periodEnd: step.periodEnd, currency: price.currency };
 }
 
-const positive = (value: number | null | undefined): value is number => typeof value === "number" && Number.isFinite(value) && value > 0;
+/** Same sign and within SERVED_EPS_RATIO_LIMIT of each other; a figure against a zero is not. */
+function withinServedRatio(filed: number, served: number): boolean {
+  const ratio = filed / served;
+  return Number.isFinite(ratio) && ratio > 0 && ratio <= SERVED_EPS_RATIO_LIMIT && ratio >= 1 / SERVED_EPS_RATIO_LIMIT;
+}
+
+const finite = (value: number | null | undefined): value is number => typeof value === "number" && Number.isFinite(value);
+const positive = (value: number | null | undefined): value is number => finite(value) && value > 0;
 
 /**
  * The financials with their headline trailing EPS and P/E on the filed
@@ -141,15 +169,15 @@ const positive = (value: number | null | undefined): value is number => typeof v
  * `trailingPE` the quote's price over it, so every view that moves the P/E to
  * the regular session price (atRegularSessionPrice, liveTrailingPE) reads the
  * multiple PEB and GE read. Without one, Gloom Cloud's trailing EPS and P/E
- * stand, marked `served`. A block with no trailing EPS either way is left as
- * it is.
+ * stand, marked `served`, as does a P/E it serves with no EPS (a fund's). A
+ * block with neither is left as it is.
  */
 export function withFiledTrailingEps<T extends TrailingEpsInputs>(financials: T, now = Date.now()): T {
   const fundamentals = financials.fundamentals;
   if (!fundamentals) return financials;
   const filed = filedTrailingEps(financials, now);
   if (!filed) {
-    const served = typeof fundamentals.eps === "number" && Number.isFinite(fundamentals.eps);
+    const served = finite(fundamentals.eps) || finite(fundamentals.trailingPE);
     if (!served || (fundamentals.trailingEpsSource === "served" && fundamentals.trailingEpsPeriodEnd === undefined)) return financials;
     const { trailingEpsPeriodEnd: _period, ...rest } = fundamentals;
     return { ...financials, fundamentals: { ...rest, trailingEpsSource: "served" } };

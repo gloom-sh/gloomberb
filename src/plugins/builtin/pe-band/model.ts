@@ -272,6 +272,8 @@ export function projectPeBand(
   const ordered = [...pes].sort((a, b) => a - b);
   // The regular session's price, as the quote headlines it: after the close, the close rather than an after-hours print.
   const price = regularSessionValuationPrice(financials.quote) ?? sorted.at(-1)?.close ?? null;
+  // Today's figure reads like every week's: one whose newest quarter has no EPS keeps the last figure, dated in the
+  // table, where the headline EPS (TTM) needs that quarter's own (filed-trailing-eps) and shows Gloom Cloud's, labelled.
   const currentStep = stepAt(allSteps, now);
   // Today's EPS at the latest completed FX close.
   const currentEps = priced(currentStep, day(now))?.eps ?? null;
