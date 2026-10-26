@@ -60,6 +60,7 @@ import {
   universeLabel,
   universeOptions,
   universeValue,
+  warmingWindowsText,
   type LiveScan,
   type SavedLiveScan,
 } from "./live-model";
@@ -194,9 +195,8 @@ function emptyState(payload: LiveScanPayload | null): { title: string; hint?: st
 }
 
 function warmingNotice(payload: LiveScanPayload | null): string | null {
-  const windows = payload?.status === "live" || payload?.status === "degraded" ? payload.warmingWindows : [];
-  if (!windows?.length) return null;
-  const list = windows.map((window) => `${window} min`).join(", ");
+  const list = warmingWindowsText(payload);
+  if (!list) return null;
   return `The scanner started recently: conditions over ${list} match nothing until that much of the session has been watched.`;
 }
 

@@ -385,6 +385,7 @@ export function serializeHeadlessPaneResult(
         asOf: snapshot.asOf,
         columns: serializableColumns(columns),
         items: snapshot.items,
+        ...(snapshot.empty && snapshot.items.length === 0 ? { empty: snapshot.empty } : {}),
       };
     }
     default: {
@@ -706,6 +707,7 @@ function emptyReportReason(
   const bundleReason = definition.shape === "bundle" ? (result as HeadlessBundleResult).empty : undefined;
   if (bundleReason) return bundleReason;
   const ownReason = definition.shape === "rows" ? !!(result as HeadlessRowsResult).empty
+    : definition.shape === "snapshot" ? !!(result as HeadlessSnapshotResult).empty
     : definition.shape === "bundle" && (result as HeadlessBundleResult).sections.some((section) => "empty" in section && !!section.empty && !isLockedSection(section));
   const { failed } = splitErrors(result);
   if (ownReason || failed.length) return null;
@@ -914,7 +916,7 @@ export function renderHeadlessPaneText(
     case "snapshot": {
       const snapshot = result as HeadlessSnapshotResult;
       // The closing source line carries the snapshot's as-of, so it is not printed twice.
-      lines.push(renderRows(snapshot.items, undefined, definition.columns));
+      lines.push(renderRows(snapshot.items, undefined, definition.columns, snapshot.empty));
       break;
     }
     default: {

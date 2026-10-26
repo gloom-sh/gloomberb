@@ -617,6 +617,8 @@ export interface HeadlessSeriesResult extends HeadlessPaneResultBase {
 export interface HeadlessSnapshotResult extends HeadlessPaneResultBase {
   asOf: string | number | Date;
   items: HeadlessPaneRow[];
+  /** What the report says when `items` is empty, in place of "No data.": why there are none. */
+  empty?: string;
 }
 
 export interface HeadlessPaneResultByShape {

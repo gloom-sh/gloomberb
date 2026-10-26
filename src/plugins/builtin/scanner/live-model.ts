@@ -5,6 +5,7 @@ import {
   type LiveScanDirection,
   type LiveScanIndex,
   type LiveScanMatch,
+  type LiveScanPayload,
   type LiveScanWindow,
   type LiveScanWireDefinition,
 } from "../../../api-client/live-scan";
@@ -206,6 +207,16 @@ export function conditionUnit(condition: LiveScanCondition): "percent" | "multip
 export function formatMultiple(value: number | null | undefined): string {
   if (value == null || !Number.isFinite(value)) return "--";
   return value >= 10 ? `${Math.round(value)}x` : `${value.toFixed(1)}x`;
+}
+
+/**
+ * The windows a running scan's conditions cannot measure yet (the scanner
+ * started recently), as a list to read: `5 min, 15 min`. Empty when there are
+ * none, or when the scanner is not running a session.
+ */
+export function warmingWindowsText(payload: LiveScanPayload | null): string {
+  const windows = payload?.status === "live" || payload?.status === "degraded" ? payload.warmingWindows : [];
+  return (windows ?? []).map((window) => `${window} min`).join(", ");
 }
 
 /** A time of day the scanner saw something, to the second. */

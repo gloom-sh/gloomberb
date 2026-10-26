@@ -4,7 +4,18 @@ import type {
   HeadlessPaneFreshness,
   HeadlessSnapshotResult,
 } from "../../../types/plugin";
-import { conditionColumnLabel, conditionText, DEFAULT_LIVE_SCAN, LIVE_SCAN_SECTORS, parseUniverseValue, readLiveScan, type LiveScan } from "./live-model";
+import { formatPercentRaw } from "../../../utils/format";
+import {
+  conditionColumnLabel,
+  conditionText,
+  DEFAULT_LIVE_SCAN,
+  formatMultiple,
+  LIVE_SCAN_SECTORS,
+  parseUniverseValue,
+  readLiveScan,
+  warmingWindowsText,
+  type LiveScan,
+} from "./live-model";
 import { LIVE_SCAN_INDEXES } from "../../../api-client/live-scan";
 
 /** `all`, an index (`sp500`) or a sector (`Energy`), as `--universe` takes it. */
@@ -39,9 +50,21 @@ function freshness(payload: LiveScanPayload): HeadlessPaneFreshness {
   return payload.access === "realtime" ? { status: "live" } : { status: "delayed", delayMinutes: payload.delayMinutes };
 }
 
+/** Why a scan lists nothing, as the pane says it: still starting, warming up, closed, or no match. */
+function emptyText(payload: LiveScanPayload): string {
+  if (payload.status === "starting") return "The scanner is starting. Matches appear within a minute.";
+  if (payload.status === "closed") return "Nothing matched at the close. The scan runs again at the open.";
+  const warming = warmingWindowsText(payload);
+  if (warming) return `The scanner is warming up: conditions over ${warming} match nothing until that much of the session has been watched.`;
+  return "Nothing matches right now.";
+}
+
+const number = (value: unknown) => (typeof value === "number" ? value : undefined);
+
 function projectLiveScan(payload: LiveScanPayload, scan: LiveScan): HeadlessSnapshotResult {
   return {
     asOf: new Date(payload.asOf ?? payload.takenAt ?? Date.now()).toISOString(),
+    empty: emptyText(payload),
     items: payload.matches.map((match) => ({
       symbol: match.symbol,
       exchange: match.exchange ?? null,
@@ -64,6 +87,7 @@ function projectLiveScan(payload: LiveScanPayload, scan: LiveScan): HeadlessSnap
       scanned: payload.scanned,
       matched: payload.matched,
       conditions: scan.conditions.map(conditionText),
+      ...(payload.warmingWindows?.length ? { warmingWindows: payload.warmingWindows } : {}),
     },
   };
 }
@@ -94,8 +118,8 @@ export const liveScanHeadless: HeadlessPaneDefinition<"snapshot"> = {
     { key: "symbol", header: "Symbol" },
     { key: "name", header: "Name" },
     { key: "price", header: "Price", align: "right" },
-    { key: "changePercent", header: "Chg %", align: "right" },
-    { key: "relativeVolume", header: "RVol", align: "right" },
+    { key: "changePercent", header: "Chg %", align: "right", format: (value) => formatPercentRaw(number(value)) },
+    { key: "relativeVolume", header: "RVol", align: "right", format: (value) => formatMultiple(number(value)) },
     { key: "volume", header: "Volume", align: "right" },
   ],
   describe: "Live Scanner",
