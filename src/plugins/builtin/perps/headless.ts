@@ -1,7 +1,9 @@
-import type { PerpBoardPayload, PerpBoardRow } from "../../../api-client/perps";
+import type { PerpBoardPayload, PerpBoardRow, PerpDepthRow, PerpLiquidationMarket, PerpLiquidationPrint } from "../../../api-client/perps";
 import type { HeadlessBundleSection, HeadlessPaneColumn, HeadlessPaneLoadArgs, HeadlessPaneRow } from "../../../types/headless";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
-import { boardSearchText, fetchPerpSelection, fetchPerpsBoard, fetchPerpsCompare, fetchPerpsHistory, fetchPerpsRankings, marketQuery, nearestPerpMarkets } from "./client";
+import { DEPTH_COLUMN_IDS, depthCellText, depthColumnLabel, depthFreshness, downStreams, LIQUIDATION_COLUMN_IDS, liquidationCellText, liquidationColumnLabel, liquidationFreshness,
+  PRINT_COLUMN_IDS, printCellText, printColumnLabel, type DepthColumnId, type LiquidationColumnId, type PrintColumnId } from "./cascade";
+import { boardSearchText, fetchPerpSelection, fetchPerpsBoard, fetchPerpsCompare, fetchPerpsDepth, fetchPerpsHistory, fetchPerpsLiquidations, fetchPerpsRankings, marketQuery, nearestPerpMarkets } from "./client";
 import { perpFreshness } from "./freshness";
 import { aprFootnote, ASSET_FILTERS, BOARD_COLUMNS, BOARD_SORTS, collectedVenueCount, COMPARE_COLUMNS, compact, fundingSpread, HISTORY_METRICS, label, marketLabel, openingTab, PERP_TABS, perpCellText,
   perpColumnLabel, percent, perpHistoryProText, positioningFields, price, RANKING_COLUMNS, rankingRows, RANKINGS, ratioText, share, time, uncoveredVenueNote, VENUES, venueName, IDENTITY_VENUES, type PerpColumnId } from "./model";
@@ -71,6 +73,18 @@ const REVISION_COLUMNS: HeadlessPaneColumn[] = [
   { key: "fingerprint", header: "Fingerprint", format: (value) => text(value)?.slice(0, 8) || "--" },
 ];
 
+// Liquidations and depth print what their tabs' cells show, through the same formatters.
+const LIQUIDATION_RIGHT = new Set<string>(["long24h", "short24h", "long7d", "short7d", "count24h", "notionalUsd", "price", "quantity", "mid", "bid05", "ask05", "bid1", "ask1", "bid2", "ask2", "reach"]);
+const cascadeColumn = <Id extends string>(id: Id, header: string, format: (row: HeadlessPaneRow) => string): HeadlessPaneColumn =>
+  ({ key: id === "reach" ? "bidReach" : id, header, ...(LIQUIDATION_RIGHT.has(id) ? { align: "right" as const } : {}), format: (_, row) => format(row) });
+const LIQUIDATION_TEXT_COLUMNS = LIQUIDATION_COLUMN_IDS.map((id: LiquidationColumnId) => cascadeColumn(id, liquidationColumnLabel(id), (row) => liquidationCellText(row as unknown as PerpLiquidationMarket, id)));
+const printTextColumns = (base: string) => PRINT_COLUMN_IDS.map((id: PrintColumnId) => cascadeColumn(id, printColumnLabel(id, base), (row) => printCellText(row as unknown as PerpLiquidationPrint, id)));
+const DEPTH_TEXT_COLUMNS = DEPTH_COLUMN_IDS.map((id: DepthColumnId) => cascadeColumn(id, depthColumnLabel(id), (row) => depthCellText(row as unknown as PerpDepthRow, id)));
+const HOURLY_COLUMNS: HeadlessPaneColumn[] = [timeColumn("time", "Hour"), right("long", "Longs USD", (value) => compact(num(value))), right("short", "Shorts USD", (value) => compact(num(value))),
+  right("count", "Events", (value) => num(value)?.toLocaleString("en-US") ?? "--")];
+const DEPTH_HISTORY_COLUMNS: HeadlessPaneColumn[] = [{ key: "marketId", header: "Market", format: (value) => text(value) ?? "--" }, timeColumn("bucket", "Hour"),
+  ...(["bid05", "ask05", "bid1", "ask1", "bid2", "ask2"] as const).map((id) => right(id, depthColumnLabel(id), (value) => compact(num(value))))];
+
 // With no market the report shows the first; a market nothing matches names ones that work, a builder dex's among them.
 const EXAMPLE_MARKETS = ["BTC", "ETH", "SOL"] as const;
 const DEFAULT_MARKET = EXAMPLE_MARKETS[0];
@@ -92,7 +106,7 @@ const tabOf = (args: HeadlessPaneLoadArgs) => PERP_TABS.find((tab) => tab === ar
 // A free account's market opens its latest values under the title, so the title names the function, not the Pro history: a table the free view
 // locks is left out and named on the report's one Pro line (`lockedTable`), never marked on the title over the free ones.
 const TITLES: Record<typeof PERP_TABS[number], string> = { board: "Perpetual markets", rankings: "Perpetual rankings", compare: "Perpetual contracts across venues",
-  history: "Perpetuals", evidence: "Perpetual evidence" };
+  liquidations: "Perpetual liquidations across venues", depth: "Perpetual order book depth across venues", history: "Perpetuals", evidence: "Perpetual evidence" };
 const copy = (rows: readonly PerpBoardRow[]) => rows.map((row) => ({ ...row }));
 const more = (count: number, noun: string) => `${count.toLocaleString("en-US")} more ${noun} need Gloom Pro`;
 // A table the free view leaves empty is locked: the report leaves it out and its one Pro line says what Pro adds.
@@ -116,9 +130,9 @@ const listMetadata = (data: Pick<PerpBoardPayload, "asOf" | "access" | "status">
 
 export const perpsHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle", argument: { kind: "free-text", optional: true, placeholder: "market",
-    description: "A base asset, underlying, canonical market identity or Market column label, such as BTC, hyperliquid:xyz:TSLA or SP500 · XYZ. Opens its history; with --tab board it searches the board, with --tab compare it is the base asset. Without one, the board." },
+    description: "A base asset, underlying, canonical market identity or Market column label, such as BTC, hyperliquid:xyz:TSLA or SP500 · XYZ. Opens its history; with --tab board it searches the board, with --tab compare, liquidations or depth it is the base asset. Without one, the board." },
   options: [
-    { key: "tab", type: "enum", settingKey: "tab", values: PERP_TABS.map((value) => ({ value })), description: "Board, rankings, compare, history or evidence. Board without a market, history with one." },
+    { key: "tab", type: "enum", settingKey: "tab", values: PERP_TABS.map((value) => ({ value })), description: "Board, rankings, compare, liquidations, depth, history or evidence. Board without a market, history with one." },
     { key: "asset-class", type: "enum", settingKey: "assetClass", values: ASSET_FILTERS.map((value) => ({ value })), defaultValue: "all", description: "Board asset class." },
     { key: "venue", type: "enum", settingKey: "venue", values: ["all", ...VENUES].map((value) => ({ value })), defaultValue: "all", invalidValueHint: uncoveredVenueNote,
       description: "Board venue; with a market, opens that venue's contract when the board lists it." },
@@ -127,7 +141,9 @@ export const perpsHeadless: HeadlessPaneDefinition<"bundle"> = {
     { key: "metric", type: "enum", settingKey: "metric", values: HISTORY_METRICS.map((value) => ({ value })), defaultValue: "funding", description: "Displayed history chart; JSON retains every series." },
   ],
   discovery: { aliases: ["PERP"], dataRequirements: ["Perpetual market observations"], limitations: ["Free accounts see a fixed preview of the board, rankings and comparisons, and latest values for one market.", "Pro unlocks every market, full rankings and history.", "Rankings list up to ten markets each.", "Rates, premiums and changes are fractions in JSON.", "Open-interest history begins at first collection.", "Funding APR is a simple annualization, not a forecast.",
-    "Long/short account shares: venue definitions differ; history begins at first collection."] },
+    "Long/short account shares: venue definitions differ; history begins at first collection.",
+    "Liquidations come from each venue's public stream and begin at first collection: Binance and OKX send at most one a second per contract, Hyperliquid only its vault's backstop liquidations. Free shows totals and the three largest; Pro the hourly series and twenty.",
+    "Order book depth is read hourly for each venue's 50 largest markets; a band wider than the book a venue returns is a floor (≥). Free shows the latest; Pro the week's history."] },
   describe: (args) => TITLES[tabOf(args)],
   async load(args, ctx) {
     const requested = requestedOf(args);
@@ -173,6 +189,40 @@ export const perpsHeadless: HeadlessPaneDefinition<"bundle"> = {
         metadata: { ...(requested ? {} : { defaultArgument: DEFAULT_MARKET }), ...(notices.length ? { notices } : {}),
           ...listMetadata(compare), total: compare.total, baseAsset: base,
           ...(spread ? { fundingSpread8h: spread.value, fundingSpreadHigh: spread.high.marketId, fundingSpreadLow: spread.low.marketId } : {}) } };
+    }
+    if (tab === "liquidations" || tab === "depth") {
+      // A canonical identity names one contract; its base asset is what the venues share. A pair or plain name reads as its base asset.
+      const identity = marketQuery(requested);
+      const asked = identity.includes(":") ? (await fetchPerpSelection(identity, ctx.apiClient)).rows[0]?.baseAsset ?? identity : (requested || DEFAULT_MARKET).toUpperCase();
+      const notices = (base: string) => [...(requested ? [] : [`Showing ${DEFAULT_MARKET}. Try fn PERP ${EXAMPLE_MARKETS[1]} --tab ${tab}.`]),
+        ...requested && !identity.includes(":") && base.toUpperCase() !== asked ? readAs(base, requested) : [], ...venueUnused(String(args.options.venue ?? "all"), tab)];
+      if (tab === "liquidations") {
+        const data = await fetchPerpsLiquidations(asked, ctx.apiClient);
+        if (!data.markets.length && data.status !== "unavailable") throw noMarket(requested || asked, await nearestPerpMarkets(requested || asked, ctx.apiClient));
+        const told = notices(data.baseAsset);
+        const locked = lockedTable(data.locked);
+        const entries = (["long24h", "short24h", "long7d", "short7d"] as const).map((key) => ({ key, label: `${key.startsWith("long") ? "Longs" : "Shorts"} liquidated ${key.endsWith("24h") ? "24h" : "7d"}`,
+          value: data.totals[key], formatted: `${compact(data.totals[key])} USD` }));
+        return { sections: [{ title: "Totals", entries: [...entries, { key: "collectingSince", label: "Collecting since", value: data.collectingSince, formatted: time(data.collectingSince) }] },
+          { title: "By contract", columns: LIQUIDATION_TEXT_COLUMNS, rows: data.markets.map((row) => ({ ...row })) },
+          { title: "Hourly", columns: HOURLY_COLUMNS, rows: data.hourly.map((row) => ({ ...row })), ...locked },
+          { title: "Largest prints", columns: printTextColumns(data.baseAsset), rows: data.largest.map((row) => ({ ...row })) }],
+          complete: !data.locked && data.status === "ok" && !downStreams(data).length, notes: data.notes,
+          errors: data.locked ? [freePreviewNote({ shows: "liquidation totals and the three largest prints", adds: "the hourly series and the twenty largest prints" })] : [],
+          freshness: liquidationFreshness(data),
+          metadata: { ...(requested ? {} : { defaultArgument: DEFAULT_MARKET }), ...(told.length ? { notices: told } : {}), baseAsset: data.baseAsset, asOf: data.asOf, from: data.from,
+            access: data.access, locked: data.locked, status: data.status, collectingSince: data.collectingSince, streams: data.streams, notionalCurrency: "USD" } };
+      }
+      const data = await fetchPerpsDepth(asked, ctx.apiClient);
+      if (!data.rows.length && data.status !== "unavailable") throw noMarket(requested || asked, await nearestPerpMarkets(requested || asked, ctx.apiClient));
+      const told = notices(data.baseAsset);
+      return { sections: [{ title: "Order books", columns: DEPTH_TEXT_COLUMNS, rows: data.rows.map((row) => ({ ...row })) },
+        { title: "Hourly depth", columns: DEPTH_HISTORY_COLUMNS, rows: data.history.map((row) => ({ ...row })), ...lockedTable(data.locked) }],
+        complete: !data.locked && data.status === "ok", notes: data.notes,
+        errors: data.locked ? [freePreviewNote({ shows: "each book's latest depth", adds: "the week's hourly depth" })] : [],
+        freshness: depthFreshness(data),
+        metadata: { ...(requested ? {} : { defaultArgument: DEFAULT_MARKET }), ...(told.length ? { notices: told } : {}), baseAsset: data.baseAsset, asOf: data.asOf,
+          access: data.access, locked: data.locked, status: data.status, sources: data.sources, notionalCurrency: "USD", reach: "fraction of mid" } };
     }
     const search = requested || DEFAULT_MARKET, venue = String(args.options.venue ?? "all");
     const market = await fetchPerpSelection(search, ctx.apiClient, venue !== "all" ? venue : undefined);

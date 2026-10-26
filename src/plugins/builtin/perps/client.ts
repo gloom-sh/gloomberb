@@ -1,6 +1,6 @@
 import { apiClient } from "../../../api-client";
-import type { PerpBoardPayload, PerpBoardQuery, PerpBoardRow, PerpEquitiesPayload, PerpEquityListing, PerpHistoryPayload, PerpHistoryQuery, PerpLongShortPoint,
-  PerpLongShortRatio, PerpMarketPayload, PerpRankingsPayload } from "../../../api-client/perps";
+import type { PerpBoardPayload, PerpBoardQuery, PerpBoardRow, PerpDepthPayload, PerpDepthSnapshot, PerpEquitiesPayload, PerpEquityListing, PerpHistoryPayload, PerpHistoryQuery,
+  PerpLiquidationsPayload, PerpLongShortPoint, PerpLongShortRatio, PerpMarketPayload, PerpRankingsPayload } from "../../../api-client/perps";
 import { createPluginCache } from "../../../data/plugin-cache";
 import { cachedCloudResource, loadCloudResource } from "../shared/cloud-resource";
 import { baseOfLabel, marketLabel, perpBaseCandidates, separatedPairBase } from "./model";
@@ -97,6 +97,60 @@ export const loadPerpsRankings = (access: string, force = false) => loadCloudRes
 const compareKey = (baseAsset: string, access: string) => `compare:v1:${baseAsset.toUpperCase()}:${access}`;
 export const cachedPerpsCompare = (baseAsset: string, access: string) => cachedCloudResource(perpsCache, compareKey(baseAsset, access), (data) => validatePerpsCompare(data, baseAsset));
 export const loadPerpsCompare = (baseAsset: string, access: string, force = false) => loadCloudResource(perpsCache, compareKey(baseAsset, access), () => fetchPerpsCompare(baseAsset), { force, validate: (data) => validatePerpsCompare(data, baseAsset) });
+// Liquidations and order book depth of one base asset. Older servers answer 404, which the tab shows as its error.
+const finite = (n: unknown) => typeof n === "number" && Number.isFinite(n);
+const nonNegative = (n: unknown) => finite(n) && (n as number) >= 0;
+const strings = (value: unknown) => Array.isArray(value) && value.every((entry) => typeof entry === "string");
+const cascadeEnvelope = (data: { access: string; locked: boolean; asOf: string; baseAsset: string; notes: unknown }) =>
+  !!data && ["pro", "preview"].includes(data.access) && typeof data.locked === "boolean" && date(data.asOf) && typeof data.baseAsset === "string" && strings(data.notes);
+const named = (row: { marketId: string; venue: string; symbol: string }) => !!row && typeof row.marketId === "string" && typeof row.venue === "string" && typeof row.symbol === "string";
+const TOTALS = ["long24h", "short24h", "long7d", "short7d", "count24h", "count7d"] as const;
+export function validatePerpsLiquidations(data: PerpLiquidationsPayload): PerpLiquidationsPayload {
+  if (!cascadeEnvelope(data) || !date(data.from) || !(data.collectingSince === null || date(data.collectingSince)) || !data.totals || !TOTALS.every((key) => nonNegative(data.totals[key]))
+    || !Array.isArray(data.markets) || !data.markets.every((row) => named(row) && TOTALS.every((key) => nonNegative(row[key])) && (row.lastEventAt === null || date(row.lastEventAt)))
+    || new Set(data.markets.map((row) => row.marketId)).size !== data.markets.length
+    || !Array.isArray(data.hourly) || !data.hourly.every((hour) => !!hour && date(hour.time) && nonNegative(hour.long) && nonNegative(hour.short) && nonNegative(hour.count))
+    || !Array.isArray(data.largest) || !data.largest.every((print) => named(print) && (print.side === "long" || print.side === "short") && (print.priceKind === "fill" || print.priceKind === "bankruptcy")
+      && [print.price, print.quantity, print.notionalUsd].every(nonNegative) && date(print.eventAt) && date(print.receivedAt))
+    || !Array.isArray(data.streams) || !data.streams.every((stream) => !!stream && typeof stream.venue === "string" && (stream.state === "live" || stream.state === "down")))
+    throw new Error("The server returned unreadable perpetual liquidations");
+  return data;
+}
+const BANDS = ["bid05", "ask05", "bid1", "ask1", "bid2", "ask2"] as const;
+const validSnapshot = (row: PerpDepthSnapshot) => !!row && typeof row.marketId === "string" && date(row.bucket) && date(row.observedAt) && (row.sourceAsOf === null || date(row.sourceAsOf))
+  && finite(row.mid) && row.mid > 0 && BANDS.every((band) => nonNegative(row[band])) && nonNegative(row.bidReach) && nonNegative(row.askReach) && finite(row.levels) && (row.grouping === null || finite(row.grouping));
+export function validatePerpsDepth(data: PerpDepthPayload): PerpDepthPayload {
+  if (!cascadeEnvelope(data) || !Array.isArray(data.rows) || !data.rows.every((row) => validSnapshot(row) && named(row) && typeof row.stale === "boolean")
+    || new Set(data.rows.map((row) => row.marketId)).size !== data.rows.length
+    || !Array.isArray(data.history) || !data.history.every(validSnapshot) || !Array.isArray(data.sources)) throw new Error("The server returned unreadable order book depth");
+  return data;
+}
+/** A name the venues do not list as typed (ETH-USD, bitcoin) is read as the base asset it stands for, as Compare reads it. */
+async function byBaseAsset<T extends { markets?: unknown[]; rows?: unknown[] }>(baseAsset: string, fetch: (base: string) => Promise<T>): Promise<T> {
+  const listed = (data: T) => (data.markets ?? data.rows ?? []).length > 0;
+  const direct = await fetch(baseAsset);
+  if (listed(direct)) return direct;
+  for (const base of perpBaseCandidates(baseAsset).map(baseOfLabel)) {
+    const found = await fetch(base);
+    if (listed(found)) return found;
+  }
+  return direct;
+}
+export const fetchPerpsLiquidations = (baseAsset: string, client: Pick<typeof apiClient, "getCloudPerpsLiquidations"> = apiClient) =>
+  byBaseAsset(baseAsset, async (base) => validatePerpsLiquidations(await client.getCloudPerpsLiquidations(base)));
+export const fetchPerpsDepth = (baseAsset: string, client: Pick<typeof apiClient, "getCloudPerpsDepth"> = apiClient) =>
+  byBaseAsset(baseAsset, async (base) => validatePerpsDepth(await client.getCloudPerpsDepth(base)));
+export const perpsLiquidationsCache = createPluginCache<PerpLiquidationsPayload>({ kind: "perps-liquidations", source: "gloom-cloud", schemaVersion: 1,
+  policy: { staleMs: 60_000, expireMs: 86_400_000 } });
+export const perpsDepthCache = createPluginCache<PerpDepthPayload>({ kind: "perps-depth", source: "gloom-cloud", schemaVersion: 1,
+  policy: { staleMs: 300_000, expireMs: 86_400_000 } });
+const cascadeKey = (kind: string, baseAsset: string, access: string) => `${kind}:v1:${baseAsset.toUpperCase()}:${access}`;
+export const cachedPerpsLiquidations = (baseAsset: string, access: string) => cachedCloudResource(perpsLiquidationsCache, cascadeKey("liquidations", baseAsset, access), validatePerpsLiquidations);
+export const loadPerpsLiquidations = (baseAsset: string, access: string, force = false) => loadCloudResource(perpsLiquidationsCache, cascadeKey("liquidations", baseAsset, access),
+  () => fetchPerpsLiquidations(baseAsset), { force, validate: validatePerpsLiquidations });
+export const cachedPerpsDepth = (baseAsset: string, access: string) => cachedCloudResource(perpsDepthCache, cascadeKey("depth", baseAsset, access), validatePerpsDepth);
+export const loadPerpsDepth = (baseAsset: string, access: string, force = false) => loadCloudResource(perpsDepthCache, cascadeKey("depth", baseAsset, access),
+  () => fetchPerpsDepth(baseAsset), { force, validate: validatePerpsDepth });
 const sameListing = (value: PerpEquityListing | null | undefined, listing: PerpEquityListing) =>
   value?.symbol === listing.symbol && value.exchange === listing.exchange;
 /** The server's proof that a stock contract belongs to the listing asked about. */

@@ -1004,6 +1004,8 @@ class GloomApiClient {
   getCloudPerpsHistory = this.data.getCloudPerpsHistory.bind(this.data);
   getCloudPerpsRankings = this.data.getCloudPerpsRankings.bind(this.data);
   getCloudPerpsCompare = this.data.getCloudPerpsCompare.bind(this.data);
+  getCloudPerpsLiquidations = this.data.getCloudPerpsLiquidations.bind(this.data);
+  getCloudPerpsDepth = this.data.getCloudPerpsDepth.bind(this.data);
   getCloudPerpsEquity = this.data.getCloudPerpsEquity.bind(this.data);
   getCloudPerpsEquities = this.data.getCloudPerpsEquities.bind(this.data);
   getCloudPerpsMarket = this.data.getCloudPerpsMarket.bind(this.data);

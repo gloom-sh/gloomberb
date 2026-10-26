@@ -13,15 +13,15 @@ import { createTestPaneConfig, TestPaneProvider } from "../../../test-support/pa
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import type { PaneInstanceConfig } from "../../../types/config";
 import { Box } from "../../../ui";
-import { perpsCache, perpsHistoryCache, perpsMarketCache, perpsRankingsCache } from "./client";
+import { perpsCache, perpsDepthCache, perpsHistoryCache, perpsLiquidationsCache, perpsMarketCache, perpsRankingsCache } from "./client";
 import { perpsInstance } from "./index";
 import { PerpsPane } from "./pane";
-import { equityBoard, longShort, perpBoard, perpHistory, perpRankings, perpRow, venueRow } from "./test-fixture";
+import { depthPayload, equityBoard, liquidationsPayload, longShort, perpBoard, perpHistory, perpRankings, perpRow, venueRow } from "./test-fixture";
 const tui = createOpenTuiTestHarness();
 let coordinator: MarketDataCoordinator | null = null;
 const reset = () => {
   apiClient.setSessionToken(null);
-  setCloudApiFetchTransport(null); perpsCache.reset(); perpsHistoryCache.reset(); perpsMarketCache.reset(); perpsRankingsCache.reset();
+  setCloudApiFetchTransport(null); perpsCache.reset(); perpsHistoryCache.reset(); perpsMarketCache.reset(); perpsRankingsCache.reset(); perpsLiquidationsCache.reset(); perpsDepthCache.reset();
   setSharedMarketDataCoordinator(null); coordinator?.destroy(); coordinator = null;
 };
 afterEach(reset);
@@ -57,6 +57,8 @@ function serve({ board = perpBoard(), rankings = perpRankings(), compare = perpB
       const marketId = url.split("marketId=")[1]!.split("&")[0]!;
       return Response.json({ ...board, rows: [...board.rows, ...compare.rows].filter((row) => row.marketId === marketId).slice(0, 1), evidence: [], methodologyUrl: "https://gloom.sh/docs/perpetuals" });
     }
+    if (url.includes("/liquidations?")) return Response.json(liquidationsPayload({ access: board.access, locked: board.access === "preview" }));
+    if (url.includes("/depth?")) return Response.json(depthPayload({ access: board.access, locked: board.access === "preview" }));
     return Response.json(url.includes("/rankings") ? rankings : url.includes("/compare") ? compare : board);
   });
   return calls;
@@ -178,6 +180,30 @@ test("compare spreads 8h funding between the venues it shows, dates each venue, 
   const one = await tui.waitForFrameToContain("Upgrade for 3 more contracts");
   expect(one).toContain("Hyperliquid");
   expect(one).not.toContain("Funding spread");
+});
+
+test("liquidations and depth list one asset's contracts on every venue, with the preview's lock, and Enter opens a contract's history", async () => {
+  const calls = serve({ board: perpBoard({ access: "preview", locked: 5 }) });
+  await mount({ market: "ETH-USD", tab: "liquidations" });
+  const liquidations = await tui.waitForFrameToContain("Upgrade for hourly liquidations and the 20 largest prints");
+  expect(liquidations).toMatch(/Longs 24h\s+3\.2k/);
+  expect(liquidations).toMatch(/Binance\s+ETHUSDT\s+3\.1k\s+29\.2k/);
+  expect(liquidations).toContain("By contract");
+  // A pair reads as its base asset, as Compare reads it; the stream that is down is said in the footer.
+  expect(calls.some((url) => url.includes("/liquidations?baseAsset=ETH-USD"))).toBeTrue();
+  expect(calls.some((url) => url.endsWith("/liquidations?baseAsset=ETH"))).toBeFalse();
+  expect(liquidations).toContain("OKX stream down");
+  expect(liquidations).not.toMatch(/NaN|undefined/);
+  await remount();
+  serve({ board: perpBoard({ access: "preview", locked: 5 }) });
+  await mount({ market: "ETH", tab: "depth" });
+  const depth = await tui.waitForFrameToContain("Upgrade for hourly depth history");
+  expect(depth).toMatch(/Binance\s+ETHUSDT\s+≥57\.58M\s+≥66\.75M/);
+  expect(depth).toMatch(/OKX\s+ETH-USDT-SWAP\s+33\.92M/);
+  expect(depth).toContain("±1% of mid");
+  await tui.emitKeypress({ name: "return" });
+  // The selected book's contract opens by its identity, on Evidence for a free account, as a board row does.
+  expect(await tui.waitForFrameToContain("binance:ETHUSDT")).not.toContain("Upgrade for hourly depth history");
 });
 
 test("the APR % column adds no data warning, and a market nothing matches says which to try", async () => {

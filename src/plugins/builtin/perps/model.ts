@@ -6,10 +6,12 @@ import { formatCompact } from "../../../utils/format";
 import { isUsListingExchange, publicTickerKey } from "../../../utils/exchanges";
 import { isRecord } from "../../../utils/guards";
 import type { ThemeColors } from "../../../theme/colors";
-export const PERP_TABS = ["board", "rankings", "compare", "history", "evidence"] as const;
+export const PERP_TABS = ["board", "rankings", "compare", "liquidations", "depth", "history", "evidence"] as const;
 export type PerpTab = typeof PERP_TABS[number];
 /** One market's tabs; the others list many markets. */
 export const isMarketTab = (tab: string) => tab === "history" || tab === "evidence";
+/** One base asset's tabs, across its contracts on every venue; they share the asset. */
+export const isAssetTab = (tab: string) => tab === "compare" || tab === "liquidations" || tab === "depth";
 /**
  * A named market opens its history, or its latest values (Evidence) where history is Pro's, so a free account
  * lands on the figures it has and not on a lock; nothing named opens the board.

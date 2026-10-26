@@ -7,7 +7,7 @@ import { companyDisclosurePath } from "./company-kpis";
 import { cloudExchangeAnnouncementsPath } from "./exchange-announcements";
 import type { PowerBoard, PowerDetail, PowerFilter, PowerHistory } from "./power";
 import type { PerpBoardPayload, PerpEquitiesPayload, PerpEquityListing, PerpHistoryPayload, PerpRankingsPayload, PerpBoardQuery, PerpHistoryQuery,
-  PerpMarketPayload } from "./perps";
+  PerpMarketPayload, PerpLiquidationsPayload, PerpDepthPayload } from "./perps";
 import type { ExposureRequest, ExposurePayload, ExposureScenario } from "./exposure";
 import type { SupplyChainPayload, SupplyOptions } from "./supply-chain";
 import { supplyGraphQuery, type GraphOptions, type GraphPayload } from "./supply-chain-graph";
@@ -692,6 +692,8 @@ export class CloudDataApi {
   }
   async getCloudPerpsRankings(): Promise<PerpRankingsPayload> { return this.request("/cloud/perps/rankings"); }
   async getCloudPerpsCompare(baseAsset: string): Promise<PerpBoardPayload> { return this.request(`/cloud/perps/compare?${new URLSearchParams({ baseAsset })}`); }
+  async getCloudPerpsLiquidations(baseAsset: string): Promise<PerpLiquidationsPayload> { return this.request(`/cloud/perps/liquidations?${new URLSearchParams({ baseAsset })}`); }
+  async getCloudPerpsDepth(baseAsset: string): Promise<PerpDepthPayload> { return this.request(`/cloud/perps/depth?${new URLSearchParams({ baseAsset })}`); }
   async getCloudPerpsEquity(symbol: string, exchange?: string): Promise<PerpBoardPayload> {
     const query = exchange === undefined ? "" : `?${new URLSearchParams({ identity: "listing", exchange })}`;
     return this.request(`/cloud/perps/equity/${encodeURIComponent(symbol)}${query}`);

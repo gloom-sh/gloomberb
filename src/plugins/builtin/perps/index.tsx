@@ -2,7 +2,7 @@ import type { PaneTemplateInstanceConfig } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { commandRequestParams } from "../shared/command-tab";
 import { PERP_SERIES } from "./series";
-import { perpsCache, perpsHistoryCache, perpsListCache, perpsMarketCache, perpsRankingsCache } from "./client";
+import { perpsCache, perpsDepthCache, perpsHistoryCache, perpsLiquidationsCache, perpsListCache, perpsMarketCache, perpsRankingsCache } from "./client";
 import { perpsHeadless } from "./headless";
 import { PerpsPane } from "./pane";
 
@@ -18,16 +18,18 @@ export function perpsInstance(arg: string | undefined): PaneTemplateInstanceConf
     settings: { market }, params: commandRequestParams({ market }) };
 }
 
+const PERP_CACHES = [perpsCache, perpsHistoryCache, perpsListCache, perpsMarketCache, perpsRankingsCache, perpsLiquidationsCache, perpsDepthCache] as const;
+
 export const perpsModule: PluginModule = {
   series: PERP_SERIES,
   panes: [{ id: "perps", name: "Perpetuals", icon: "P", component: PerpsPane, defaultPosition: "right", defaultMode: "floating",
     defaultFloatingSize: { width: 138, height: 34 }, tableExport: true, headless: perpsHeadless }],
-  paneTemplates: [{ id: "perps-pane", paneId: "perps", label: "Perpetuals", description: "Perpetual funding, open interest and premiums by market and venue, with rankings, a venue comparison and Pro history.",
-    keywords: ["perp", "perpetual", "perpetuals", "funding", "funding rate", "open interest", "hip-3", "stock perps", "basis", "basis trade", "carry", "venue", "funding spread", "long short ratio", "long/short", "positioning"],
+  paneTemplates: [{ id: "perps-pane", paneId: "perps", label: "Perpetuals", description: "Perpetual funding, open interest and premiums by market and venue, with rankings, a venue comparison, liquidations, order book depth and Pro history.",
+    keywords: ["perp", "perpetual", "perpetuals", "funding", "funding rate", "open interest", "hip-3", "stock perps", "basis", "basis trade", "carry", "venue", "funding spread", "long short ratio", "long/short", "positioning", "liquidations", "liquidation", "order book depth", "market depth", "liquidity"],
     shortcut: { prefix: "PERP", argKind: "text", argOptional: true, argPlaceholder: "market" }, headless: perpsHeadless,
     createInstance: (_ctx, options) => perpsInstance(options?.arg) }],
   setup(ctx) {
-    for (const cache of [perpsCache, perpsHistoryCache, perpsListCache, perpsMarketCache, perpsRankingsCache]) cache.attach(ctx.persistence);
+    for (const cache of PERP_CACHES) cache.attach(ctx.persistence);
   },
-  dispose() { for (const cache of [perpsCache, perpsHistoryCache, perpsListCache, perpsMarketCache, perpsRankingsCache]) cache.reset(); },
+  dispose() { for (const cache of PERP_CACHES) cache.reset(); },
 };

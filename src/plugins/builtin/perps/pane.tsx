@@ -5,13 +5,10 @@ import type { PerpBoardRow, PerpMarketPayload } from "../../../api-client/perps"
 import { buildSectionedRows, ChartTableHeader, DataTableView, EmptyState, KeyValueRow, SectionHeading, PaneStatusBody, QueryBar, StatGrid, useChartTableSelection,
   usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, useQueryBarSearch, type DataTableCell, type KeyValueRowProps, type PaneFooterSegment, type PaneHint, type SectionedRow,
   type StatItem } from "../../../components";
-import { deriveHeadlessFreshness, paneStatusLineVariants } from "../../../cli/pane-functions/freshness";
 import { openFormModal } from "../../../components/form-modal";
 import { tf } from "../../../i18n";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePaneTitle, usePluginAppActions, usePluginPaneState } from "../../../public/react";
-import { useAgeClock } from "../../../react/auto-refresh";
-import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, ScrollBox, useRendererHost, useUiCapabilities } from "../../../ui";
@@ -25,9 +22,11 @@ import { isCloudSessionRequired, useResearchCloudSession } from "../shared/resea
 import { boardSearchText, cachedPerpSelection, cachedPerpsBoard, cachedPerpsCompare, cachedPerpsRankings, loadPerpSelection, loadPerpsBoard, loadPerpsCompare,
   loadPerpsHistoryForRange, loadPerpsRankings } from "./client";
 import { perpFreshness } from "./freshness";
+import { Depth, Liquidations } from "./cascade-tabs";
+import { useFreshnessStatusLine } from "./status-line";
 import { useLivePerpRows, useLivePerpTableRows } from "./live-rows";
 import { aprFormula, ASSET_FILTERS, BOARD_SORTS, boardColumns, collectedVenueCount, compact, compareColumns, dayChange, fundingInterval, fundingSpread, historyCaption, historyCell, historyChange, historyColumns,
-  HISTORY_METRICS, historyRows, historySeries, historyValue, inPoints, isMarketTab, label, longShortReason, marketLabel, metricLabel, openingTab, perpCell, perpHistoryProText, PERP_TABS, percent,
+  HISTORY_METRICS, historyRows, historySeries, historyValue, inPoints, isAssetTab, isMarketTab, label, longShortReason, marketLabel, metricLabel, openingTab, perpCell, perpHistoryProText, PERP_TABS, percent,
   positioningFields, price, rankingColumns, rankingRows, RANKINGS, ratioText, share, sortLabel, time, underlyingTicker, venueLabel, venueName, venuesOf, type HistoryMetric,
   type PerpColumnId, type PerpTab, type RankingKey } from "./model";
 
@@ -45,17 +44,8 @@ const withRankedRow = (entry: SectionedRow<Ranked>, row: PerpBoardRow): Sectione
  * same way.
  */
 function usePerpStatusLine(rows: readonly PerpBoardRow[], funding: readonly PerpBoardRow[], since: number | null, live = false): PaneFooterSegment[] {
-  const now = useAgeClock(since);
-  const declared = useMemo(() => rows.length ? perpFreshness(rows, { funding, now, live }) : null, [rows, funding, now, live]);
-  useRemoteUiNode(declared ? { role: "report-freshness", label: "Venue freshness", getMetadata: () => ({ ...declared }) } : null);
-  return useMemo(() => {
-    if (!declared) return [];
-    const freshness = deriveHeadlessFreshness({ shape: "rows" }, { rows: [], freshness: declared }, now);
-    const tone = freshness.status === "stale" ? "warning" as const : "muted" as const;
-    // A footer too narrow beside its keys gives up the funding part before any venue's time.
-    const [line, ...shorter] = paneStatusLineVariants(freshness).map((text) => [{ text, tone }]);
-    return [{ id: "perp-freshness", asOf: true, parts: line!, variants: shorter }];
-  }, [declared, rows, now]);
+  const declare = useCallback((now: number) => rows.length ? perpFreshness(rows, { funding, now, live }) : null, [rows, funding, live]);
+  return useFreshnessStatusLine(declare, since);
 }
 
 type EvidenceField = [label: string, value: string, detail?: string, link?: KeyValueRowProps["link"]];
@@ -410,13 +400,17 @@ export function PerpsPane({ width, height, focused, marketAction }: Pick<PanePro
   // The market on screen goes with the user: History and Evidence open the row picked on a list, Compare its base asset.
   const current = marketTab ? active : listRow;
   const carried = marketTab ? active : listRow ?? picked;
+  // Liquidations and Depth list no board rows: a market tab after them opens their asset, and they keep Compare's.
+  const assetOnly = tab === "liquidations" || tab === "depth";
   const selectTab = useCallback((next: string) => {
-    if (carried && isMarketTab(next) && !marketTab) setSearch(carried.marketId);
-    if (carried && next === "compare") setCompareAsset(carried.baseAsset);
+    if (assetOnly && isMarketTab(next)) setSearch(compareAsset);
+    else if (carried && isMarketTab(next) && !marketTab) setSearch(carried.marketId);
+    if (carried && isAssetTab(next) && !assetOnly) setCompareAsset(carried.baseAsset);
     setListRow(null);
     setTab(next);
-  }, [carried, marketTab, setSearch, setCompareAsset, setTab]);
+  }, [assetOnly, carried, compareAsset, marketTab, setSearch, setCompareAsset, setTab]);
   const openMarket = useCallback((row: PerpBoardRow, next: PerpTab = openingTab(row.marketId, access.hasProAccess)) => { setSearch(row.marketId); setTab(next); }, [setSearch, setTab, access.hasProAccess]);
+  const openMarketId = useCallback((marketId: string) => { setSearch(marketId); setTab(openingTab(marketId, access.hasProAccess)); }, [setSearch, setTab, access.hasProAccess]);
   const { strip, rows: tabRows } = usePaneTabs({ tabs: PERP_TABS.map((value) => ({ value, label: label(value) })), activeValue: tab, onSelect: selectTab, focused, dense: true });
   const refreshMarket = useCallback(() => { void resource.reload(); }, [resource.reload]);
   useAutoRefresh(resource.updatedAt, resource.load, { intervalMs: 60_000 });
@@ -451,7 +445,9 @@ export function PerpsPane({ width, height, focused, marketAction }: Pick<PanePro
   return <Box width={width} height={height} flexDirection="column">
     {strip}
     {tab === "board" ? <Board {...list} /> : tab === "rankings" ? <Rankings {...list} />
-      : tab === "compare" ? <Compare {...list} asset={compareAsset} onAssetChange={setCompareAsset} /> : <>
+      : tab === "compare" ? <Compare {...list} asset={compareAsset} onAssetChange={setCompareAsset} />
+      : tab === "liquidations" ? <Liquidations accessKey={accessKey} width={width} height={listHeight} focused={focused} asset={compareAsset} onAssetChange={setCompareAsset} onOpenMarket={openMarketId} />
+      : tab === "depth" ? <Depth accessKey={accessKey} width={width} height={listHeight} focused={focused} asset={compareAsset} onAssetChange={setCompareAsset} onOpenMarket={openMarketId} /> : <>
         <QueryBar width={width} search={{ focused, value: search, onChange: setSearch, placeholder: "Market or canonical identity", debounceMs: 300, ...querySearch.searchProps }}
           filters={tab === "history" ? [
             { id: "metric", label: "Series", value: metric, options: HISTORY_METRICS.map((value) => ({ value, label: metricLabel(value) })), onChange: setMetric },
