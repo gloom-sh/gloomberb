@@ -314,6 +314,8 @@ After the close and through a weekend, the boards' Last and change agree with `g
 
 Outside the regular session `THEM` shows each member's last regular close and move, as `ticker` does, and its 1W, 1M, 3M and YTD end at that close (YTD measured from the prior year's last close, `YTD vs 31 Dec close`). A pre-market or after-hours print gets its own column and never enters a return. The footer names the close and the snapshot's age (`Fri 9 Oct close · snapshot 12m ago`).
 
+A figure drawn from only some of a theme's names says how many, beside it: `-7.52% 7 of 8`. The column headed `YTD vs 31 Dec` is the return since that close.
+
 `--json`: `metadata.asOf` is that close, with `snapshotAssembledAt`, `snapshotAgeMinutes` and `regularSessionDate`, and each member adds the four `extended` fields.
 
 With Pro, `THEM` prices members and themes from real-time quotes: the footer reads `live · snapshot 3m ago` while a session trades, the pane refreshes every 15 seconds, and `fn THEM` reports `live`. Outside the session the footer names the close and `fn THEM` is as of it, with no feed named (`US trading day Fri 23 Oct 2026 close · markets closed until Mon`). Otherwise the board is fifteen minutes delayed. `MOST`'s Gainers, Losers and Most Active, and `movers`, read the real-time lists and say `live`.
@@ -336,7 +338,7 @@ From the close until the next open (overnight, weekend, pre-market), every figur
 
 #### Earnings-call exports
 
-Earnings-call exports and fiscal-quarter lookup inspect at most the latest 200 calls in the requested scope (the interactive list loads 50). When a response fills that limit, exports report `sourceLimitReached: true`, `complete: false` and `truncated: true`: more calls may exist, and a missing quarter is not proof the company had no such call. `totalIsExact: false` marks capped, pending or stale results.
+Earnings-call exports and fiscal-quarter lookup inspect at most the latest 200 calls in the requested scope (the interactive list loads 50). When a response fills that limit, exports report `sourceLimitReached: true`, `complete: false` and `truncated: true`: more calls may exist, and a missing quarter is not proof the company had no such call. `totalIsExact: false` marks capped, pending or stale results. An event that is not an earnings call (a deal call, an investor day) has no fiscal period: the list and the detail title show its label, exports carry it as `event`, and `latest` reads the newest earnings call.
 
 #### 13F
 
@@ -1134,6 +1136,8 @@ A command fails on an option it does not take instead of ignoring it. `gloom his
 - The closing line then dates the history by the last day it covers (`month to date, through Thu 15 Oct 2026`, `freshness.periodToDate` in `--json`).
 - A coin's day rebuilt from hourly bars because the source left it empty is `filled: true`, without volume (`volumeNote` says why).
 - A coin, a currency pair, a future or an index keeps the bars as served.
+
+**RETURN's clock.** In the `RETURN` pane an intraday bar's time is on its venue's clock, with the zone in the column header: `TIME ET` for New York, so the open reads 09:30, the venue's city for another zone (`TIME TOKYO`), and `TIME UTC` for a coin, a currency pair or a venue whose zone the app does not know. A daily or longer bar is a date. Under the query bar the pane sums its window up: the total return from the base close, and the best and worst interval with the bar each was. An export, `fn RETURN` and `--json` keep UTC.
 
 ### A window of dates
 

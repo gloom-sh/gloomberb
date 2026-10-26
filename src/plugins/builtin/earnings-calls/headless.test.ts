@@ -9,6 +9,7 @@ import {
   createEarningsCallsHeadless,
   type EarningsCallsHeadlessDependencies,
 } from "./headless";
+import { callPeriod, callTitle } from "./format";
 import { buildTranscriptSegments, findCallForQuarter } from "./model";
 
 const calls: CloudEarningsCallPayload[] = [
@@ -153,6 +154,23 @@ describe("earnings transcript headless", () => {
     expect(findCallForQuarter(cost, "FQ4-2025")?.id).toBe("cost-fq4");
     expect(findCallForQuarter(cost, "FY2026")?.id).toBe("cost-fq1");
   });
+  test("an event that is not an earnings call is listed by its label and is not the latest earnings call", () => {
+    const deal: CloudEarningsCallPayload = {
+      ...calls[0]!,
+      id: "amd-deal",
+      fiscalYear: null,
+      fiscalQuarter: null,
+      callAt: "2026-09-06T12:00:00.000Z",
+      eventKind: "other",
+      eventLabel: "M&A call",
+    };
+    expect(findCallForQuarter([deal, ...calls], "latest")?.id).toBe("amd-fq2-2026");
+    expect(findCallForQuarter([deal], "latest")?.id).toBe("amd-deal");
+    expect(callTitle(deal)).toBe("AMD M&A call");
+    expect(callPeriod(deal)).toBe("M&A");
+    expect(callTitle(calls[0]!)).toBe("AMD FQ2 26");
+  });
+
   test("a ticker alone lists the company's calls; a quarter or section reads the transcript", async () => {
     const definition = createEarningsCallsHeadless(dependencies());
     const title = definition.describe;
@@ -315,7 +333,7 @@ describe("upcoming calls", () => {
           upcoming("tsla", "TSLA", "2026-10-21T21:30:00Z"),
           upcoming("ko", "KO", "2026-10-21T12:30:00Z", { status: "published", hasTranscript: true }),
           upcoming("meta", "META", "2026-10-21T20:30:00Z"),
-          upcoming("aal", "AAL", "2026-10-22T12:30:00Z"),
+          upcoming("aal", "AAL", "2026-10-22T12:30:00Z", { eventKind: "other", eventLabel: "investor day", fiscalYear: null, fiscalQuarter: null }),
         ],
         fetchedAt: 123,
         stale: false,
@@ -332,6 +350,8 @@ describe("upcoming calls", () => {
       ["Tomorrow", "IBM", null, "tomorrow"],
     ]);
     expect(result.metadata).toMatchObject({ view: "upcoming", from: "2026-10-21", to: "2026-10-23", total: 5 });
+    // An event that is not an earnings call keeps its label in the calendar too.
+    expect(result.rows.find((row) => row.ticker === "AAL")).toMatchObject({ period: "Inv day", event: "investor day" });
     const title = definition.describe;
     if (typeof title !== "function") throw new Error("The report title depends on the arguments");
     expect(title(callArgs({}))).toBe("Earnings Calls | Calendar");

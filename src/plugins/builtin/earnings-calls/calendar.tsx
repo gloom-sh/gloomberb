@@ -29,7 +29,7 @@ import { usePluginPaneState } from "../../runtime";
 import { newYorkToday } from "../earnings/board-model";
 import { ProWall, SignInWall } from "../cloud/auth-actions";
 import { cachedUpcomingCalls, calendarAway, loadUpcomingCalls, statusOf, upcomingCutNotice, type UpcomingCallsResult } from "./data";
-import { formatPeriod } from "./format";
+import { callPeriod } from "./format";
 import {
   calendarDays,
   calendarSections,
@@ -106,7 +106,7 @@ function renderCalendarCell(row: CalendarRow, column: CalendarColumn, now: numbe
       return clock ? { text: clock, color: tone(colors.textDim) } : { text: MISSING, color: colors.textMuted };
     }
     case "period":
-      return { text: formatPeriod(call.fiscalYear, call.fiscalQuarter), color: tone(colors.textDim) };
+      return { text: callPeriod(call), color: tone(colors.textDim) };
     case "away":
       return { text: calendarAway(call, now), color: over ? colors.textMuted : colors.textBright };
   }

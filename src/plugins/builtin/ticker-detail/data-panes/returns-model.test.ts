@@ -10,10 +10,13 @@ import {
   returnBaseCloseDay,
   returnBaseDay,
   returnLookbackMs,
+  returnTimeHeader,
+  returnTimeText,
   returnRowsFrom,
   returnVisibleFrom,
   returnWindowEnd,
   returnWindowStart,
+  summarizeReturns,
 } from "./returns-model";
 
 const point = (date: string, close: number, extra: Partial<PricePoint> = {}): PricePoint => ({ date: new Date(date), close, ...extra });
@@ -213,3 +216,51 @@ describe("where a return window ends", () => {
     expect(closedMarketNote("2026-12-31", Date.parse("2027-01-01T15:00:00Z"))).toBe("market closed, last session Thu 31 Dec 2026");
   });
 });
+
+describe("the time column", () => {
+  const open = Date.parse("2026-10-23T13:30:00Z");
+
+  test("an intraday bar is on its venue's clock, so the open reads 09:30 under ET, and UTC where the venue has no known clock", () => {
+    expect(returnTimeText(open, "1h", "NASDAQ")).toBe("2026-10-23 09:30");
+    expect(returnTimeHeader("1h", "NASDAQ")).toBe("TIME ET");
+    // Standard time after the clocks change: the same open is an hour later in UTC.
+    expect(returnTimeText(Date.parse("2026-11-02T14:30:00Z"), "1h", "NYSE")).toBe("2026-11-02 09:30");
+    // The date is the venue's too: Tokyo's 09:00 open is the evening before in UTC.
+    expect(returnTimeText(Date.parse("2026-10-22T00:00:00Z"), "1h", "JPX")).toBe("2026-10-22 09:00");
+    expect(returnTimeHeader("1h", "JPX")).toBe("TIME TOKYO");
+    // A coin, a pair and an unknown venue keep UTC, and an hourly bar at midnight keeps its time.
+    expect(returnTimeText(Date.parse("2026-10-23T00:00:00Z"), "1h", undefined)).toBe("2026-10-23 00:00");
+    expect(returnTimeHeader("1h", undefined)).toBe("TIME UTC");
+    expect(returnTimeHeader("1h", "CCC")).toBe("TIME UTC");
+  });
+
+  test("a daily or longer bar is dated by its session, under the header its bars call for", () => {
+    expect(returnTimeText(Date.parse("2026-10-23T00:00:00Z"), "1d", "NASDAQ")).toBe("2026-10-23");
+    // A feed that stamps Tokyo's session at 00:00 JST sends 15:00 UTC the day before.
+    expect(returnTimeText(Date.parse("2026-10-22T15:00:00Z"), "1d", "JPX")).toBe("2026-10-23");
+    expect([returnTimeHeader("1d", "NASDAQ"), returnTimeHeader("1wk", "NASDAQ"), returnTimeHeader("1mo", "NASDAQ")]).toEqual(["DATE", "WEEK OF", "MONTH"]);
+  });
+});
+
+describe("summarizeReturns", () => {
+  const bars = (closes: number[]) => closes.map((close, index) => point(`2026-10-0${index + 1}T13:30:00Z`, close));
+
+  test("names the window's total and its best and worst interval, newest first on a tie", () => {
+    const rows = buildReturnRows(bars([100, 102, 99, 104, 104]), 0);
+    const { total, best, worst } = summarizeReturns(rows);
+    expect(total).toBeCloseTo(0.04, 12);
+    expect(new Date(best!.timestamp).toISOString()).toBe("2026-10-04T13:30:00.000Z");
+    expect(new Date(worst!.timestamp).toISOString()).toBe("2026-10-03T13:30:00.000Z");
+    // Two intervals of the same size: the newest is named.
+    const tied = summarizeReturns(buildReturnRows(bars([100, 110, 100, 110]), 0));
+    expect(new Date(tied.best!.timestamp).toISOString()).toBe("2026-10-04T13:30:00.000Z");
+  });
+
+  test("a window with one interval, or only equal ones, has a total and no best or worst", () => {
+    // The first bar is the base, so one more bar is one interval and the same as its total.
+    expect(summarizeReturns(buildReturnRows(bars([100, 101]), 0))).toMatchObject({ best: null, worst: null });
+    expect(summarizeReturns(buildReturnRows(bars([100, 100, 100]), 0))).toMatchObject({ total: 0, best: null, worst: null });
+    expect(summarizeReturns([])).toEqual({ total: null, best: null, worst: null });
+  });
+});
+

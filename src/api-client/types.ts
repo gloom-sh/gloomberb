@@ -897,6 +897,13 @@ export interface CloudEarningsCallPayload {
    * New York day). Absent from a server that predates it.
    */
   callTimeKnown?: boolean;
+  /**
+   * "other" for an event that is not an earnings call (a deal call, a
+   * conference, an investor day), named by eventLabel and with no fiscal
+   * period; null when unclear. Older servers omit both.
+   */
+  eventKind?: "earnings" | "other" | null;
+  eventLabel?: string | null;
 }
 
 interface CloudJobsSeriesPoint {
@@ -1261,6 +1268,13 @@ export interface CloudEarningsTranscriptPayload {
   companyName: string | null;
   fiscalYear: number | null;
   fiscalQuarter: number | null;
+  /**
+   * "other" for an event that is not an earnings call (a deal call, a
+   * conference, an investor day), named by eventLabel and with no fiscal
+   * period; null when unclear. Older servers omit both.
+   */
+  eventKind?: "earnings" | "other" | null;
+  eventLabel?: string | null;
   callAt: string | null;
   timing: string | null;
   webcastUrl: string | null;

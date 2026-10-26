@@ -23,7 +23,7 @@ import {
   type UpcomingCallsResult,
   type UpcomingDays,
 } from "./data";
-import { formatPeriod } from "./format";
+import { callPeriod, eventLabelOf } from "./format";
 import type { MarketDay } from "../earnings/board-model";
 import {
   calendarDays,
@@ -53,6 +53,7 @@ const CALL_COLUMNS = [
   { key: "callAt", header: "Call date" },
   { key: "fiscalYear", header: "FY", align: "right" as const },
   { key: "fiscalQuarter", header: "FQ", align: "right" as const },
+  { key: "event", header: "Event" },
   { key: "status", header: "Status" },
   { key: "durationSeconds", header: "Seconds", align: "right" as const },
   { key: "wordCount", header: "Words", align: "right" as const },
@@ -124,6 +125,8 @@ function callRow(call: CloudEarningsCallPayload, now: number) {
     callAt: call.callAt,
     fiscalYear: call.fiscalYear,
     fiscalQuarter: call.fiscalQuarter,
+    // A deal call, a conference, an investor day: not a quarter's earnings call.
+    event: eventLabelOf(call),
     status: call.hasTranscript ? "transcribed" : callStatusLabel(call, now) || call.status,
     upcoming,
     in: upcoming ? callCountdown(call, now) : null,
@@ -219,6 +222,7 @@ function transcriptResult(
       company: transcript.companyName,
       fiscalYear: transcript.fiscalYear,
       fiscalQuarter: transcript.fiscalQuarter,
+      event: eventLabelOf(transcript),
       callAt: transcript.callAt,
       durationSeconds: transcript.durationSeconds,
       wordCount: transcript.wordCount,
@@ -259,7 +263,8 @@ function projectCalendar(
     timeKnown: callTimeKnown(call),
     local: callLocalClock(call),
     newYork: callNewYorkClock(call),
-    period: formatPeriod(call.fiscalYear, call.fiscalQuarter),
+    period: callPeriod(call),
+    event: eventLabelOf(call),
     fiscalYear: call.fiscalYear,
     fiscalQuarter: call.fiscalQuarter,
     in: calendarAway(call, now),
