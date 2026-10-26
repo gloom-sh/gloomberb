@@ -24,6 +24,8 @@ export interface PriceHistoryResult {
   session?: HistorySession;
   /** Router-selected provider or broker, never its preferred/default source. */
   sourceKey?: string;
+  /** The name of that provider or broker ("Gloom Cloud", a broker), set by the router as it answers. */
+  sourceName?: string;
   /** First date (YYYY-MM-DD) the source vouches for; it excluded earlier prices. */
   coverageStart?: string;
   /** Why nothing before `coverageStart` is served, when the source says: "old-shekel quotes before 1992 are not served". */

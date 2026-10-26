@@ -23,7 +23,10 @@ import type { MarketContext } from "../types";
 import {
   buildPaneFunctionLookup,
   buildTemplateContext,
+  findFunctionCode,
   nearFunctionCodes,
+  paneFunctionCode,
+  suggestedFunctionCodes,
   suggestPaneFunctions,
   type NearFunctionCode,
   type PaneFunctionCatalog,
@@ -34,15 +37,20 @@ import {
   cleanTickerInput,
   normalizeLookupToken,
   optionSettings,
+  parsePaneFunctionArgs,
   type ParsedPaneFunctionArgs,
 } from "./options";
+import { argumentSymbols, validateSymbolCount } from "./headless";
 import {
   capabilityHasOption,
   capabilityPaneSettings,
+  findCapabilityOption,
   getHeadlessPaneDefinition,
   getPaneFunctionCapability,
   noArgumentMessage,
   normalizeCapabilityOptions,
+  paneFunctionArgument,
+  takesNoArgument,
   type NormalizedPaneFunctionOptions,
   type PaneFunctionCapability,
 } from "./capabilities";
@@ -65,9 +73,10 @@ export interface ResolvedPaneFunction {
 }
 
 async function buildPaneInstance(
-  resolved: Pick<ResolvedPaneFunction, "pane" | "template" | "headless" | "createOptions" | "optionSettings" | "capability" | "options">,
+  resolved: Pick<ResolvedPaneFunction, "token" | "pane" | "template" | "headless" | "createOptions" | "optionSettings" | "capability" | "options">,
   context: MarketContext,
   target: string,
+  command: "fn" | "shot",
 ): Promise<PaneInstanceConfig> {
   // Free text is a phrase, not a symbol. Treating it as a ticker makes the
   // pane look for a provider for values such as "HIGH GROWTH SOFTWARE".
@@ -88,7 +97,11 @@ async function buildPaneInstance(
       return { ...spec.settings, ...resolved.optionSettings };
     }
     const chartSpec = parseChartSpec(spec.settings?.chartSpec);
-    if (!chartSpec) throw new Error("The chart template did not produce a valid chart specification.");
+    if (!chartSpec) {
+      // A chart of too few tickers (CMP of one) has none to draw: say how many it takes.
+      if (resolved.headless) validateSymbolCount(resolved.headless, resolved.token, argumentSymbols(target), command);
+      throw new Error("The chart template did not produce a valid chart specification.");
+    }
     return {
       ...spec.settings,
       chartSpec: applyChartComposerCapabilityOptions(
@@ -114,6 +127,24 @@ export function findPaneFunction(registry: PaneFunctionCatalog, target: string):
   if (!entry) return null;
   const template = "paneId" in entry && "description" in entry ? entry as PaneTemplateDef : undefined;
   return { template, pane: template ? registry.panes.get(template.paneId) : entry as PaneDef };
+}
+
+/**
+ * `fn` and `shot` arguments read with the function's own options: one whose
+ * value is a pair (MARS's `--fx-shift TRY -20`) takes the words after its
+ * flag, which a function that has none would read as its argument.
+ */
+export function parsePaneFunctionArgsFor(
+  registry: PaneFunctionCatalog,
+  args: string[],
+  globalOptions: { limit?: number; tail?: number } = {},
+): ParsedPaneFunctionArgs {
+  const parsed = parsePaneFunctionArgs(args, globalOptions);
+  const found = parsed.target ? findPaneFunction(registry, parsed.target) : null;
+  if (!found?.pane) return parsed;
+  const capability = getPaneFunctionCapability(found.template, found.pane);
+  if (!capability.options.some((option) => (option.valueWords ?? 1) > 1)) return parsed;
+  return parsePaneFunctionArgs(args, globalOptions, (key) => findCapabilityOption(capability, key)?.valueWords ?? 1);
 }
 
 /**
@@ -145,13 +176,28 @@ export async function applyListingArgument(
   }
   const exchange = typeof args.options.exchange === "string" ? args.options.exchange : undefined;
   const { exchange: _exchange, ...options } = args.options;
-  // A list entry with spaces is a company's name search finds, or the symbols it holds.
-  const typed = takesOneTicker ? [args.arg] : await readNameEntries(splitSymbolArgs([args.arg]), context.dataProvider);
-  if (typed.length === 0) return args;
-  let listings = await Promise.all(typed.map((raw) => resolveCliListing(raw, exchange, context, { ownExchangeWins: typed.length > 1 })));
+  // A list entry with spaces, or an argument of words, is a company's name search finds, or the symbols it holds.
+  const entered = takesOneTicker ? [args.arg] : await readNameEntries(splitSymbolArgs([args.arg], { phrases: true }), context.dataProvider);
+  if (entered.length === 0) return args;
+  // A symbol the function reads as another (OPX's BTC is the coin, BTC-USD) is named in a note; --exchange keeps it as typed.
+  const aliases = exchange ? [] : entered.map((raw) => headless?.symbolAlias?.(raw) ?? null);
+  const typed = entered.map((raw, index) => aliases[index]?.symbol ?? raw);
+  // RY.TO is the listing its quote names, RY:TSX, as `quote` reads it: a function's data is read by venue.
+  let listings = await Promise.all(typed.map((raw) => resolveCliListing(raw, exchange, context, { ownExchangeWins: typed.length > 1, venueSuffix: true })));
   // A separator stuck to the end of a pasted list (`UPST;`) is not part of a symbol; it is named.
   const notes: string[] = takesOneTicker ? [] : stripStrayEdges(args.arg).notes;
+  notes.push(...aliases.flatMap((alias) => alias ? [alias.note] : []));
   const token = found.template?.shortcut?.prefix ?? args.target.toUpperCase();
+  // Words search finds no company for, and that are not symbols either, name nothing a function can read: tickers do.
+  const unnamed = takesList ? listings.filter((listing) => /\s/.test(listing.symbol)) : [];
+  if (unnamed.length > 0) {
+    const names = unnamed.map((listing) => typed[listings.indexOf(listing)]!.trim());
+    const answer = `No company found for ${names.map((name) => `"${name}"`).join(", ")}; type tickers`;
+    const details = `Such as gloom ${command} ${token} GME,AMC. Find a company's ticker with gloom search "${names[0]!.replace(/"/g, "")}".`;
+    listings = listings.filter((listing) => !unnamed.includes(listing));
+    if (listings.length === 0) throw new ListingArgError(`${answer}.`, details);
+    notes.push(`${answer}, such as GME,AMC.`);
+  }
   // A function with company data answers an index or an ETF with what it is and where its data is, before
   // any request: its source would only say "Unknown ticker" or come back empty. A list leaves it out.
   const covered = found.pane.instruments;
@@ -172,11 +218,24 @@ export async function applyListingArgument(
       notes.push(...answers.map((answer) => `${answer.message} ${answer.details}`));
     }
   }
+  // A listing the function has nothing for (OPX's SOL-USD) says what exists instead; a list leaves it out.
+  const refusals = headless?.refuseSymbol ? listings.flatMap((listing) => {
+    const refusal = headless.refuseSymbol!(listing.key);
+    return refusal ? [{ listing, refusal }] : [];
+  }) : [];
+  if (refusals.length > 0) {
+    listings = listings.filter((listing) => !refusals.some((entry) => entry.listing === listing));
+    if (listings.length === 0) {
+      const details = refusals.flatMap(({ refusal }) => refusal.details ? [refusal.details] : []).join("\n");
+      throw new ListingArgError(refusals.map(({ refusal }) => refusal.message).join("\n"), details || undefined);
+    }
+    notes.push(...refusals.map(({ refusal }) => [refusal.message, refusal.details].filter(Boolean).join(" ")));
+  }
   const usOnly = headless?.usListingsOnly;
   const abroad = usOnly ? listings.filter((listing) => listingAbroadVenue(listing.key) != null) : [];
   if (usOnly && abroad.length > 0) {
     const answers = await Promise.all(abroad.map(async (listing) => {
-      const answer = await usListingsOnlyMessage(usOnly, listing, context, (key) => `gloomberb ${command} ${token} ${key}`);
+      const answer = await usListingsOnlyMessage(usOnly, listing, context, (key) => `gloom ${command} ${token} ${key}`);
       const hint = headless?.usListingsOnlyHint?.(listing.key);
       return hint ? { ...answer, details: `${answer.details}\n${hint}` } : answer;
     }));
@@ -242,18 +301,24 @@ async function unknownPaneFunctionError(
   // NIM is one slip from NI, but a bank figure is in `fundamentals`, not in a function's statement lines.
   const bank = bankFigurePointer(name, arg);
   if (bank) return new UnknownPaneFunctionError(name, bank.details, null, bank.message);
-  const near = nearFunctionCodes(registry, name);
+  // A word that asks for a function's data (IVOL for HIVG and OVDV) names them as a slip from a code names it.
+  const suggested = suggestedFunctionCodes(registry, name);
+  const near = [...suggested, ...nearFunctionCodes(registry, name).filter(({ code }) => !suggested.some((entry) => entry.code === code))];
   // A catalog that cannot be read still leaves the pointer to it.
   const closest = (await suggestPaneFunctions(registry, context, name).catch(logFailure("cli.pane-functions-resolver", "Find pane function suggestions failed", [])))
     .filter((entry) => !near.some(({ code }) => code === entry.token));
   const tokenWidth = Math.max(0, ...closest.map((entry) => entry.token.length));
   const word = /^[\w.:-]+$/.test(name) ? name : JSON.stringify(name);
   const argument = arg.trim() ? ` ${/^[\w.:,=%+@/$^-]+$/.test(arg.trim()) ? arg.trim() : JSON.stringify(arg.trim())}` : "";
+  // One code is run on the argument; the functions a word asks for are each.
+  const runs = suggested.length > 0 ? suggested : near.length === 1 ? near : [];
   return new UnknownPaneFunctionError(name, [
-    ...near.length === 1 ? [`Run: gloomberb ${command} ${near[0]!.code}${argument}`] : [],
+    // A function a word asks for, typed with no argument, shows the one it takes (`<ticker>`).
+    ...runs.map(({ code }, index) => [index === 0 ? "Run:" : "    ", "gloom", command, code,
+      argument.trim() || (suggested.length > 0 ? findFunctionCode(registry, code)?.argument : "")].filter(Boolean).join(" ")),
     ...closest.length > 0
-      ? ["Closest matches:", ...closest.map((entry) => `  ${entry.token.padEnd(tokenWidth)}  ${entry.label}`), `Search the catalog: gloomberb catalog ${word}`]
-      : near.length > 0 ? [] : [`No function code is close to ${word}. List every function: gloomberb catalog`],
+      ? ["Closest matches:", ...closest.map((entry) => `  ${entry.token.padEnd(tokenWidth)}  ${entry.label}`), `Search the catalog: gloom catalog ${word}`]
+      : near.length > 0 ? [] : [`No function code is close to ${word}. List every function: gloom catalog`],
   ].join("\n"), near.length > 0 ? nearCodesText(near) : null);
 }
 
@@ -265,7 +330,7 @@ export async function resolvePaneFunction(
 ): Promise<ResolvedPaneFunction> {
   let args = parsedArgs;
   if (!args.target) {
-    throw new Error("Usage: gloomberb fn <function-or-pane> [argument] [--key value]");
+    throw new Error("Usage: gloom fn <function-or-pane> [argument] [--key value]");
   }
 
   const found = findPaneFunction(registry, args.target);
@@ -285,18 +350,23 @@ export async function resolvePaneFunction(
     tableSection = taken.tableSection;
   }
   // What the user types for the function, which every error about it names.
-  const token = template?.shortcut?.prefix ?? template?.id ?? pane.id;
+  const token = paneFunctionCode(template, pane);
   // A word after a function that takes none is most often one of its option values (`fn JODI gas`).
-  if (headless?.argument.kind === "none" && args.arg?.trim()) {
+  // Every function the catalog lists with no argument refuses one, a rendered view (HALT) as a report (CBR).
+  // The catalog lists templates and the panes no template opens (HELP); a pane opened by its id stands for its templates.
+  const listed = template !== undefined || ![...registry.paneTemplates.values()].some((entry) => entry.paneId === pane.id);
+  const refusesArgument = listed ? takesNoArgument(paneFunctionArgument(template, pane)) : headless?.argument.kind === "none";
+  if (refusesArgument && args.arg?.trim()) {
     throw new Error(noArgumentMessage(capability.options, token, args.arg, resolutionSettings.command ?? "fn"));
   }
   const normalizedOptions = normalizeCapabilityOptions(capability, args.options, {
-    strict: args.requireBotSafe || (!!headless && resolutionSettings.strictHeadlessOptions === true),
+    strict: args.requireBotSafe || capability.strictOptions === true || (!!headless && resolutionSettings.strictHeadlessOptions === true),
     code: token,
     argument: args.arg || null,
   });
   const settings = {
-    ...optionSettings(args.options),
+    // A view that takes only its declared options gets only their settings.
+    ...capability.strictOptions ? {} : optionSettings(args.options),
     ...capabilityPaneSettings(capability, normalizedOptions),
   };
   if (args.requireBotSafe) {
@@ -317,7 +387,7 @@ export async function resolvePaneFunction(
     options: normalizedOptions,
     ...(tableSection !== undefined ? { tableSection } : {}),
   };
-  resolved.instance = await buildPaneInstance(resolved, context, args.arg);
+  resolved.instance = await buildPaneInstance(resolved, context, args.arg, resolutionSettings.command ?? "fn");
   return resolved;
 }
 

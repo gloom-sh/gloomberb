@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listingIdentity } from "../shared/ticker-request";
 import { DataTableView, EmptyState, PaneStatusBody, QueryBar, usePaneFooter, usePaneNoticeFooter, usePaneTicker, type DataTableColumn } from "../../../components";
 import { instrumentFromTicker } from "../../../market-data/request-types";
+import { fxVolatilityNote } from "../../../market-data/options-alternatives";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useShortcut } from "../../../react/input";
@@ -24,7 +25,7 @@ const HV_OPTIONS = HV_WINDOWS.map((window) => ({ value: String(window), label: `
 const STAT_COLUMNS: DataTableColumn[] = [
   { id: "label", label: "Measure", width: 16, align: "left" },
   { id: "value", label: "Current", width: 9, align: "right" },
-  { id: "date", label: "As of", width: 17, align: "left" },
+  { id: "date", label: "As of", width: 20, align: "left" },
   { id: "low", label: "52w low", width: 9, align: "right" },
   { id: "high", label: "52w high", width: 9, align: "right" },
   { id: "rank", label: "Rank", width: 6, align: "right" },
@@ -54,7 +55,9 @@ export function IvHistoryPane({ width, height, focused }: PaneProps) {
     ]);
     return { payload, prices };
   }, [instrumentKey]);
-  const resource = useAsyncResource(instrument ? loader : null);
+  // An FX pair has no implied volatility history: the pane says what stands in, and asks for nothing.
+  const fxNote = symbol ? fxVolatilityNote(symbol, ticker?.metadata.exchange) : null;
+  const resource = useAsyncResource(instrument && !fxNote ? loader : null);
   useEffect(() => () => controller.current?.abort(), [loader]);
   useAutoRefresh(resource.updatedAt, resource.load);
   const model = useMemo(() => resource.data
@@ -66,7 +69,7 @@ export function IvHistoryPane({ width, height, focused }: PaneProps) {
     const timer = setTimeout(() => { void resource.reload(); }, 60_000);
     return () => clearTimeout(timer);
   }, [model?.status, resource.updatedAt]);
-  const notices = [identityError, resource.error, resource.data?.prices.error, ...(model?.warnings ?? [])]
+  const notices = [identityError, resource.error, resource.data?.prices.error, ...(model?.warnings ?? []), model?.staleNote]
     .filter((value): value is string => !!value);
   usePaneNoticeFooter({ registrationId: "iv-history-notices", notices: [...new Set(notices)], focused });
   const cycleLookback = () => setLookback(lookback === "1Y" ? "2Y" : lookback === "2Y" ? "ALL" : "1Y");
@@ -104,8 +107,9 @@ export function IvHistoryPane({ width, height, focused }: PaneProps) {
     const tone = row.percentile != null && (row.percentile >= 80 || row.percentile <= 20) ? colors.warning : colors.text;
     switch (id) {
       case "label": return { text: row.label, color: colors.textBright };
-      case "value": return { text: formatStat(row.value, row.unit), color: row.id.startsWith("iv30") ? colors.warning : colors.textBright };
-      case "date": return { text: row.date ? `${row.date} ${statSource(row)}` : "--", color: colors.textDim };
+      case "value": return { text: formatStat(row.value, row.unit), color: row.stale ? colors.textDim : row.id.startsWith("iv30") ? colors.warning : colors.textBright };
+      // A stale reading says so in place of how it was taken: it is no current figure either way.
+      case "date": return { text: row.date ? `${row.date} ${row.stale ? "stale" : statSource(row)}` : "--", color: row.stale ? colors.warning : colors.textDim };
       case "low": return { text: formatStat(row.low, row.unit), color: colors.textDim };
       case "high": return { text: formatStat(row.high, row.unit), color: colors.textDim };
       case "rank": return { text: formatRank(row.rank), color: tone };
@@ -119,7 +123,7 @@ export function IvHistoryPane({ width, height, focused }: PaneProps) {
       { id: "lookback", label: "Lookback", value: lookback, options: LOOKBACKS, onChange: setLookback },
       { id: "realized", label: "Realized", value: String(hvWindow), options: HV_OPTIONS, onChange: setHvWindow },
     ]} />
-    {!symbol ? <EmptyState title="Select a ticker." /> : <PaneStatusBody subject="implied volatility history" loading={resource.loading && !model}
+    {!symbol ? <EmptyState title="Select a ticker." /> : fxNote ? <PaneStatusBody empty emptyTitle={fxNote} /> : <PaneStatusBody subject="implied volatility history" loading={resource.loading && !model}
       error={!model ? resource.error ?? identityError ?? null : null} empty={!!model && !model.iv30.length && !model.quoteIv30.length}
       emptyTitle={model?.status === "queued" || model?.status === "backfilling" ? `Backfilling ${symbol} implied volatility history...` : undefined}>
       {model ? <>

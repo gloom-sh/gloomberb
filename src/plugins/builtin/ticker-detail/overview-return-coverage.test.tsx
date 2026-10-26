@@ -1,5 +1,6 @@
-import { expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
 import { act } from "react";
+import { apiClient } from "../../../api-client";
 import { createOpenTuiTestHarness, settleFrame } from "../../../renderers/opentui/test-utils";
 import { AppContext, createInitialState } from "../../../state/app/context";
 import { createStaticAppStore } from "../../../test-support/app-store";
@@ -9,11 +10,25 @@ import { buildTickerReport, ticker as runTickerCommand } from "../../../cli/comm
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { createTestCliContext } from "../../../test-support/cli-context";
 import type { TickerFinancials } from "../../../types/financials";
+import { fundFactsCache } from "../sec/fund-facts";
 import { OverviewTab } from "./overview-tab";
 
 const config = createDefaultConfig("/tmp/gloom-fund-coverage-test-unused");
 const savedTicker = createTestTicker("NEWF", "New fund", { assetCategory: "ETF", exchange: "ARCA", currency: "USD" });
 const tui = createOpenTuiTestHarness();
+
+beforeEach(() => {
+  fundFactsCache.reset();
+  spyOn(apiClient, "getFundFacts").mockResolvedValue({
+    ticker: "NEWF", covered: false, name: "New fund", structure: "registered",
+    expenseRatio: null, nav: null, closingPrice: null, premiumDiscount: null,
+    netAssets: null, sponsor: null, inception: null, index: null, stale: false, fetchedAt: null,
+  });
+});
+afterEach(() => {
+  mock.restore();
+  fundFactsCache.reset();
+});
 
 for (const withSummary of [true, false]) for (const covered of [false, true]) {
   test(`${covered ? "covered zero" : "incomplete"} fund returns ${withSummary ? "with cached summary" : "without company fundamentals"} agree across overview, text and JSON`, async () => {

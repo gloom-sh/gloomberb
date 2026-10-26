@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   currencyCodeLabel,
   currencyUnitLabel,
+  fxRateCurrencies,
   hasLikelyQuoteUnitMismatch,
   minorUnitSign,
   resolveCurrencyUnit,
@@ -74,4 +75,8 @@ describe("currency unit helpers", () => {
       { price: 0.231, currency: "USD" },
     )).toBe(false);
   });
+});
+
+test("the rates converting a minor unit include its major currency's, which GBX and ILA have none without", () => {
+  expect(fxRateCurrencies(["GBX", "ZAc", "ILA", "GBp", "usd", "USX", " ", null, undefined])).toEqual(["GBP", "GBX", "ILA", "ILS", "USD", "USX", "ZAC", "ZAR"]);
 });

@@ -2,6 +2,8 @@
 
 `CATL` opens the market-wide catalyst calendar. `CATL PFE` narrows it to a company. `LITI MSFT` opens company litigation, enforcement and antitrust cases. International exchange-qualified tickers use the same ticker identity as other research functions. The company description pane has a Catalysts research tab; the earnings calendar (`EVTS`) links to CATL from its menu and selected-company footer.
 
+The calendar also carries dates a company or its exchange sets itself: results, shareholder meetings, merger votes, deal closings and investor days. `CATL TSLA` shows them with the company's other events; the market-wide calendar shows them once the Type filter names one. A meeting or call stays Scheduled until it is confirmed as held.
+
 Calendar shows published announcement, effective and deadline dates. The date-basis column distinguishes them. The Parties column names who the event is about, the party linked to a listing first, with legal forms such as Inc. left off and `+N` for the others; a Federal Register notice that records no parties is read for the filer its title names first (`Self-Regulatory Organizations; Cboe EDGA Exchange, Inc.; ...`), and the Event column then shows the rest of the title. Status and Type are coloured by what they mean for the company: refusals, complete response letters, withdrawals, terminations and charges red; approvals and cleared reviews green; proposals and decisions still pending amber; trials under way in the accent; routine notices quiet. The words are always shown, so the colour is never the only signal. On a narrow pane the agency, country and type go first, then the date basis; date, ticker, parties, event and status stay. A date reported only to the month or year remains at that precision. Upcoming selects future effective dates and deadlines. Search and filters cover type, agency, country, sector, status and date window. Country describes the event's jurisdiction, not necessarily the company's domicile. Unresolved parties stay unlinked; unlinked events remain available market-wide. Filters apply on the server, including rows beyond the first page; scrolling loads further events.
 
 Changes lists observed revisions. An unchanged fetched document does not create another revision. The observation date is the time Gloom detected the change, not a claim about when the underlying event occurred. An empty change feed means no matching revisions have been collected yet.
@@ -25,12 +27,12 @@ Ticker linking follows explicit identifiers and audited aliases to corporate par
 ## Headless usage
 
 ```sh
-gloomberb fn CATL --json
-gloomberb fn CATL PFE --type clinical --upcoming --json
-gloomberb fn CATL --country EU --from 2026-10-01 --to 2026-12-31 --dateField deadline --json
-gloomberb fn CATL --tab changes --limit 100 --offset 0 --json
-gloomberb fn LITI MSFT --json
-gloomberb fn CATL --event EVENT_ID --json
+gloom fn CATL --json
+gloom fn CATL PFE --type clinical --upcoming --json
+gloom fn CATL --country EU --from 2026-10-01 --to 2026-12-31 --dateField deadline --json
+gloom fn CATL --tab changes --limit 100 --offset 0 --json
+gloom fn LITI MSFT --json
+gloom fn CATL --event EVENT_ID --json
 ```
 
 Structured output preserves event IDs, revision IDs, primary URLs, evidence, all three source dates, observed timestamps, parties, confidence, coverage and preview access metadata. `limit` and `offset` page through the server dataset; `complete` is false for previews and partial pages.

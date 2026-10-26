@@ -1,8 +1,8 @@
 import { drag, evaluate, frames, mouse, waitFor, type Cdp, type Point } from "./browser";
 
 /**
- * Text selection on the desktop and the web, with real pointer and key input
- * (GLO-668). The app is chrome, not a document: pressing Ctrl+A, double or
+ * Text selection on the desktop and the web, with real pointer and key input.
+ * The app is chrome, not a document: pressing Ctrl+A, double or
  * triple clicking a label and dragging across panes selects nothing, while the
  * text people copy by hand (reader and markdown text, a chat message, a field)
  * still selects.

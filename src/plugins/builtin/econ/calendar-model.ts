@@ -1,8 +1,10 @@
 import { createPluginCache } from "../../../data/plugin-cache";
 import type { DataTableColumn } from "../../../components";
 import { colors } from "../../../theme/colors";
+import { displayWidth } from "../../../utils/format";
 import { fetchEconCalendar } from "./calendar-source";
-import type { EconEvent, EconImpact } from "./types";
+import { parseEconFigure } from "./figures";
+import { isAllDayEvent, type EconEvent, type EconImpact } from "./types";
 
 const CACHE_KIND = "calendar";
 const CACHE_KEY = "global";
@@ -14,7 +16,10 @@ const CACHE_POLICY = {
 } as const;
 
 export type ImpactFilter = "high" | "medium" | "low" | "all";
-/** A region the pane cycles through, or one country by its two-letter code (`econ --country TR`). */
+/**
+ * A region the pane cycles through, or countries by their ISO codes, comma
+ * separated (`econ --country MX,BR,ZA`); a list matches any of its parts.
+ */
 export type CountryFilter = "all" | "US" | "G7" | "EU" | (string & {});
 
 export const FILTER_CYCLE: ImpactFilter[] = ["all", "high", "medium", "low"];
@@ -39,6 +44,7 @@ export type DisplayRow =
 
 type EconCalendarColumnId =
   | "time"
+  | "readerTime"
   | "impact"
   | "country"
   | "event"
@@ -76,7 +82,7 @@ export function dateKey(d: Date): string {
 
 /**
  * The release's UTC clock time. Rows group by UTC day and the column header
- * names the zone, as `gloomberb econ` prints it; local time would move a 23:00
+ * names the zone, as `gloom econ` prints it; local time would move a 23:00
  * UTC release under another day and read differently on every machine.
  */
 export function timeLabel(d: Date): string {
@@ -167,6 +173,17 @@ export function matchesImpact(event: EconEvent, filter: ImpactFilter): boolean {
   return filter === "all" || event.impact === filter;
 }
 
+/**
+ * The releases of the region that the High filter, where the calendar opens,
+ * leaves out (most PMIs among them), for the footer and a report of the pane
+ * to count with the way to list them. None under All, and none under Medium
+ * or Low, which a reader picks to list one level.
+ */
+export function lowerImpactHidden(events: readonly EconEvent[], impact: ImpactFilter, country: CountryFilter): number {
+  if (impact !== "high") return 0;
+  return events.filter((event) => event.impact !== "high" && matchesCountry(event, country)).length;
+}
+
 const IMPACT_WORDS: Record<Exclude<ImpactFilter, "all">, string> = {
   high: "high-impact",
   medium: "medium-impact",
@@ -179,16 +196,113 @@ const IMPACT_WORDS: Record<Exclude<ImpactFilter, "all">, string> = {
  */
 export function filteredEmptyTitle(impact: ImpactFilter, country: CountryFilter): string | null {
   if (impact === "all" && country === "all") return null;
-  const words = [impact === "all" ? null : IMPACT_WORDS[impact], country === "all" ? null : country];
+  const words = [impact === "all" ? null : IMPACT_WORDS[impact], country === "all" ? null : country.split(",").join(", ")];
   return `No ${words.filter(Boolean).join(" ")} events listed`;
 }
 
-export function matchesCountry(event: EconEvent, filter: CountryFilter): boolean {
+function matchesOneCountry(country: string, filter: string): boolean {
   if (filter === "all") return true;
-  if (filter === "US") return event.country === "US";
-  if (filter === "G7") return G7_COUNTRIES.has(event.country);
-  if (filter === "EU") return event.country === "EU";
-  return event.country === filter;
+  if (filter === "G7") return G7_COUNTRIES.has(country);
+  return country === filter;
+}
+
+/**
+ * The euro area's members by the word a national release's title starts
+ * with ("German Ifo Business Climate"). Both feeds list such a release under
+ * EU: the week feed by its currency, with the member's adjective in front of
+ * the title, and Gloom Cloud writes the release calendar's members the same
+ * way. Each word names exactly one member.
+ */
+const EURO_AREA_MEMBERS: Readonly<Record<string, string>> = {
+  Austrian: "AT", Belgian: "BE", Croatian: "HR", Cypriot: "CY", Dutch: "NL", Estonian: "EE", Finnish: "FI",
+  French: "FR", German: "DE", Greek: "GR", Irish: "IE", Italian: "IT", Latvian: "LV", Lithuanian: "LT",
+  Luxembourgish: "LU", Maltese: "MT", Portuguese: "PT", Slovak: "SK", Slovenian: "SI", Spanish: "ES",
+};
+
+/**
+ * The member state an EU row is a national release of ("German Ifo Business
+ * Climate" is DE), by the adjective its title starts with; null for a
+ * release of the whole euro area (ECB, euro area CPI) and for any other row.
+ */
+function euroAreaMember(event: Pick<EconEvent, "country" | "event">): string | null {
+  if (event.country !== "EU") return null;
+  const word = /^([A-Z][a-z]+) /.exec(event.event)?.[1];
+  return word ? EURO_AREA_MEMBERS[word] ?? null : null;
+}
+
+/** The country a row is for, as the calendar shows it: a national euro-area release's member, otherwise its own. */
+export function eventCountry(event: Pick<EconEvent, "country" | "event">): string {
+  return euroAreaMember(event) ?? event.country;
+}
+
+/** A national euro-area release matches EU (and G7, as EU) and its own member's code. */
+export function matchesCountry(event: Pick<EconEvent, "country" | "event">, filter: CountryFilter): boolean {
+  const member = euroAreaMember(event);
+  return filter.split(",").some((part) => matchesOneCountry(event.country, part) || (member !== null && member === part));
+}
+
+/** What people type for a country whose ISO code is another. */
+const COUNTRY_ALIASES: Readonly<Record<string, string>> = { UK: "GB" };
+
+let regionNames: Intl.DisplayNames | null | undefined;
+
+/** An ISO 3166 country (or the EU) the runtime can name; any two letters when it names none. */
+function isCountryCode(code: string): boolean {
+  if (regionNames === undefined) {
+    try {
+      regionNames = new Intl.DisplayNames(["en"], { type: "region", fallback: "none" });
+    } catch {
+      regionNames = null;
+    }
+  }
+  if (!regionNames) return /^[A-Z]{2}$/.test(code);
+  try {
+    // ZZ is CLDR's "Unknown Region".
+    return code !== "ZZ" && regionNames.of(code) !== undefined;
+  } catch {
+    return false;
+  }
+}
+
+export const COUNTRY_FILTER_HINT = `Use ${COUNTRY_CYCLE.join(", ")}, or two-letter country codes such as MX, or several as MX,BR,ZA.`;
+
+/**
+ * A country filter as typed: the pane's regions and ISO country codes, any
+ * case, comma separated (`mx, br`, `G7,MX`, `UK` for GB). The filter as the
+ * pane stores it (`MX,BR`), or why it is not one.
+ */
+export function parseCountryFilter(text: string): { filter: CountryFilter } | { error: string } {
+  const parts: string[] = [];
+  for (const token of text.split(/[\s,]+/).filter(Boolean)) {
+    const region = COUNTRY_CYCLE.find((candidate) => candidate.toLowerCase() === token.toLowerCase());
+    const upper = token.toUpperCase();
+    const code = region ?? COUNTRY_ALIASES[upper] ?? (/^[A-Z]{2}$/.test(upper) && isCountryCode(upper) ? upper : null);
+    if (!code) return { error: `Unknown country "${token}".` };
+    if (!parts.includes(code)) parts.push(code);
+  }
+  if (parts.length === 0) return { error: "No country given." };
+  return { filter: parts.includes("all") ? "all" : parts.join(",") };
+}
+
+/** The countries a filter names one by one (MX and BR in `G7,MX,BR`), leaving out the regions. */
+function filterCountries(filter: CountryFilter): string[] {
+  return filter.split(",").filter((part) => !(COUNTRY_CYCLE as readonly string[]).includes(part));
+}
+
+/**
+ * Countries the filter names that no event in `events` is for, so a list
+ * says which of them has nothing scheduled instead of reading as a quiet week
+ * (or as a country the terminal does not know).
+ */
+export function countriesWithoutEvents(filter: CountryFilter, events: ReadonlyArray<Pick<EconEvent, "country" | "event">>): string[] {
+  const listed = new Set(events.flatMap((event) => [event.country, euroAreaMember(event) ?? event.country]));
+  return filterCountries(filter).filter((country) => !listed.has(country));
+}
+
+/** "No scheduled releases for MX in this window", or for MX or ZA. */
+export function noScheduledReleasesMessage(countries: readonly string[]): string {
+  const named = countries.length > 1 ? `${countries.slice(0, -1).join(", ")} or ${countries.at(-1)}` : countries.join("");
+  return `No scheduled releases for ${named} in this window.`;
 }
 
 /**
@@ -198,10 +312,16 @@ export function matchesCountry(event: EconEvent, filter: CountryFilter): boolean
  */
 export const PRINT_PENDING_MS = 20 * 60 * 1000;
 
-/** High-impact releases whose time has come in the last {@link PRINT_PENDING_MS} and that have no actual yet. */
+/**
+ * High-impact releases whose time has come in the last {@link PRINT_PENDING_MS}
+ * and that have no actual yet. Rows Gloom Cloud adds from a bank's or a
+ * statistics office's calendar (`kind`) never get an actual, and a bank's
+ * untimed decision would fall due at midnight UTC, so they are never waited
+ * on; nor is an all-day event (an election), which prints nothing.
+ */
 export function pendingHighImpactPrints(events: readonly EconEvent[], now: number): EconEvent[] {
   return events.filter((event) => {
-    if (event.impact !== "high" || event.actual) return false;
+    if (event.impact !== "high" || event.actual || event.kind || isAllDayEvent(event)) return false;
     const releasedFor = now - event.date.getTime();
     return releasedFor >= 0 && releasedFor <= PRINT_PENDING_MS;
   });
@@ -220,15 +340,6 @@ export function landedHighImpactPrints(
     if (event.impact !== "high" || !event.actual || !previous.has(event.id)) return false;
     return !previous.get(event.id);
   });
-}
-
-export function formatCountdown(ms: number): string {
-  if (ms <= 60_000) return "in <1m";
-  const totalMin = Math.floor(ms / 60_000);
-  if (totalMin < 60) return `in ${totalMin}m`;
-  const h = Math.floor(totalMin / 60);
-  const m = totalMin % 60;
-  return m > 0 ? `in ${h}h ${m}m` : `in ${h}h`;
 }
 
 export function formatStaleness(fetchedAt: number, now: number): string {
@@ -275,16 +386,22 @@ export function loadCalendar(
   return cache.load(CACHE_KEY, loader, { force });
 }
 
-function parseNumeric(value: string | null): number | null {
-  if (!value) return null;
-  const cleaned = value.replace(/[%,KMBTkmbts]/g, "").trim();
-  const n = parseFloat(cleaned);
-  return isNaN(n) ? null : n;
+/** The widest a value column grows: "-3.061M bbl" and "0.034M b/d" whole. */
+const MAX_VALUE_WIDTH = 12;
+
+/**
+ * A value column as wide as the widest figure shown, from its usual width up
+ * to MAX_VALUE_WIDTH, so an energy row keeps its unit (77 Bcf, -3.061M bbl).
+ */
+export function valueColumnWidth(events: readonly EconEvent[], key: "actual" | "forecast" | "prior", base: number): number {
+  let width = base;
+  for (const event of events) width = Math.max(width, Math.min(MAX_VALUE_WIDTH, displayWidth(event[key] ?? "")));
+  return width;
 }
 
 export function actualColor(actual: string | null, forecast: string | null): string {
-  const a = parseNumeric(actual);
-  const f = parseNumeric(forecast);
+  const a = parseEconFigure(actual)?.value ?? null;
+  const f = parseEconFigure(forecast)?.value ?? null;
   if (a === null || f === null) return colors.text;
   if (a > f) return colors.positive;
   if (a < f) return colors.negative;

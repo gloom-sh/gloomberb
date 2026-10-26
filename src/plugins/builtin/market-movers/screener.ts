@@ -1,6 +1,7 @@
 import type { ScreenerQuote } from "../../../api-client/market-discovery";
 export type { ScreenerQuote } from "../../../api-client/market-discovery";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
+import { logFailure } from "../../../utils/log-failure";
 import type { PluginPersistence } from "../../../types/plugin";
 import { apiClient } from "../../../api-client";
 import type {
@@ -145,7 +146,7 @@ export interface MarketMoversResult {
 }
 
 export interface PreferredMarketMoverSources {
-  isCloudEligible(): boolean;
+  isCloudEligible(): boolean | Promise<boolean>;
   fetchCloud(
     category: CloudMarketScreenerCategory,
     count: number,
@@ -274,9 +275,19 @@ function cloudScreenerCategory(category: ScreenerCategory): CloudMarketScreenerC
   return "most-active";
 }
 
-function isCloudScreenerEligible(): boolean {
+/**
+ * Whether the signed-in account reads the real-time lists. A session restored
+ * without its account, as the CLI starts from the saved one, is asked for it
+ * first, so a Pro account is never handed the delayed lists.
+ */
+export function isCloudScreenerEligible(): boolean | Promise<boolean> {
   const user = apiClient.getCurrentUser();
-  return apiClient.isVerified() && hasProAccess(user);
+  if (user || !apiClient.isSignedIn()) return apiClient.isVerified() && hasProAccess(user);
+  return apiClient.ensureVerifiedSession().then((verified) => !!verified && hasProAccess(verified), (error: unknown) => {
+    // The delayed lists still load; the failed account check is logged, not shown.
+    logFailure("market-movers", "Account check for the real-time lists failed")(error);
+    return false;
+  });
 }
 
 const defaultPreferredMarketMoverSources: PreferredMarketMoverSources = {
@@ -324,7 +335,7 @@ async function bestEffortMarketMetadata(
   let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
-      request.then((result) => result.data).catch(() => []),
+      request.then((result) => result.data).catch(logFailure("market-movers", "Market metadata failed", [])),
       new Promise<ScreenerQuote[]>((resolve) => {
         timeout = setTimeout(() => resolve([]), waitMs);
       }),
@@ -360,7 +371,9 @@ export async function fetchPreferredMarketMovers(
   sources: PreferredMarketMoverSources = defaultPreferredMarketMoverSources,
 ): Promise<MarketMoversResult> {
   const { metadataWaitMs = MARKET_METADATA_WAIT_MS, ...options } = preferredOptions ?? {};
-  if (!sources.isCloudEligible()) {
+  // Answered at once unless the account has to be asked for, so a loaded account's list starts as soon as before.
+  const eligibility = sources.isCloudEligible();
+  if (!(typeof eligibility === "boolean" ? eligibility : await eligibility)) {
     const result = await sources.fetchMarket(category, count, options);
     return { quotes: rankScreenerQuotes(category, result.data), source: "gloom", stale: result.stale };
   }
@@ -392,8 +405,8 @@ export async function fetchPreferredMarketMovers(
         stale: response.stale === true || response.data.stale === true,
       };
     }
-  } catch {
-    // The public backend snapshot remains available when live rankings fail.
+  } catch (error) {
+    logFailure("market-movers", "Live rankings failed")(error);
   }
 
   const fallback = await marketMetadata;
@@ -409,19 +422,28 @@ export function parseTrendingResponse(data: unknown): TrendingSymbol[] {
   return data.flatMap(q => q && typeof q.symbol === "string" && q.symbol.trim() ? [{ symbol: q.symbol.trim() }] : []);
 }
 
-export async function fetchTrending(
+export async function fetchTrendingResult(
   count = 25,
   api: MarketScreenerApi = screenerApi,
   options?: FetchCacheOptions,
-): Promise<TrendingSymbol[]> {
+): Promise<CachedResult<TrendingSymbol[]>> {
   const load = async () => {
     const response = await (api.getMarketTrending ?? apiClient.getMarketTrending)(count);
     if (response.status === "empty") return { data: [], stale: response.stale === true };
     if (!response.data) throw new Error("Market trends unavailable");
     return { data: parseTrendingResponse(response.data), stale: response.stale === true };
   };
-  if (!shouldUseCache(api, options)) return (await load()).data;
-  return (await loadCached(`trending:US:count=${count}`, load, options)).data;
+  if (!shouldUseCache(api, options)) return load();
+  return loadCached(`trending:US:count=${count}`, load, options);
+}
+
+/** Array-only reader retained for the overview command. */
+export async function fetchTrending(
+  count = 25,
+  api: MarketScreenerApi = screenerApi,
+  options?: FetchCacheOptions,
+): Promise<TrendingSymbol[]> {
+  return (await fetchTrendingResult(count, api, options)).data;
 }
 
 export const MARKET_SUMMARY_SYMBOLS = ["^GSPC", "^DJI", "^IXIC", "^RUT"] as const;

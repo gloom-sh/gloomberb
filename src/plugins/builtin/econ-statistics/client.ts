@@ -12,6 +12,8 @@ export interface StatBuild {
   stat: StatDef;
   points: StatPoint[];
   trend: TrendFit;
+  /** The day the latest point's figure was released (`YYYY-MM-DD`), when FRED says. */
+  releasedOn?: string;
   cache?: SeriesCacheMetadata;
 }
 
@@ -45,10 +47,12 @@ function build(def: StatDef, result: DatedObservation[] | SeriesCacheLoadResult)
     ? observations
     : observations.map((entry) => ({
       date: entry.date,
-      value: entry.value == null ? null : entry.value * scale,
+      // Rounded off the float's last digits: 2.36 × 100 is 236, not 236.00000000000003.
+      value: entry.value == null ? null : Number((entry.value * scale).toPrecision(12)),
     }));
   const points = applyTransform(scaled, def.transform);
   if (points.length === 0) return null;
+  const releasedOn = latestRelease(observations, points.at(-1)!.date);
   const cache = Array.isArray(result) ? undefined : {
     fetchedAt: result.fetchedAt,
     stale: result.stale,
@@ -56,7 +60,14 @@ function build(def: StatDef, result: DatedObservation[] | SeriesCacheLoadResult)
     ...(result.refreshError ? { refreshError: result.refreshError } : {}),
   };
   // These go negative routinely, so the fit stays linear.
-  return { stat: def, points, trend: fitTrend(points, "linear"), ...(cache ? { cache } : {}) };
+  return { stat: def, points, trend: fitTrend(points, "linear"), ...(releasedOn ? { releasedOn } : {}), ...(cache ? { cache } : {}) };
+}
+
+/** When the newest observation was released, if the latest point is that observation's. */
+function latestRelease(observations: readonly DatedObservation[], latestDate: string): string | undefined {
+  const newest = observations.reduce<DatedObservation | null>((best, entry) =>
+    entry.value != null && (!best || entry.date > best.date) ? entry : best, null);
+  return newest?.date === latestDate && typeof newest.releasedOn === "string" ? newest.releasedOn : undefined;
 }
 
 /**
@@ -72,7 +83,9 @@ function alignDerivedBuilds(builds: StatBuild[]): StatBuild[] {
     const cap = (legs as string[]).reduce((oldest, date) => date < oldest ? date : oldest);
     if ((entry.points.at(-1)?.date ?? "") <= cap) return entry;
     const points = entry.points.filter((point) => point.date <= cap);
-    return points.length > 0 ? { ...entry, points, trend: fitTrend(points, "linear") } : entry;
+    if (points.length === 0) return entry;
+    const { releasedOn: _cutRelease, ...rest } = entry;
+    return { ...rest, points, trend: fitTrend(points, "linear") };
   });
 }
 

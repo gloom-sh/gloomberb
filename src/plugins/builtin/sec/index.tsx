@@ -1,24 +1,26 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { PluginModule } from "../plugin-module";
 import type { SecFilingDocument, SecFilingItem } from "../../../types/data-provider";
-import { useResolvedEntryValue, useSecFilingDocuments, useSecFilingsQuery } from "../../../market-data/hooks";
+import { useResolvedEntryValue, useSecFilingDocuments, useSecFilingsQuery, useTickerFinancials } from "../../../market-data/hooks";
 import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { useShortcut } from "../../../react/input";
 import { isPlainKey } from "../../../utils/keyboard";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { useDebouncedPluginPaneState, usePluginPaneState } from "../../runtime";
 import { usePaneSettingValue } from "../../../state/app/context";
-import { Box, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
+import { Box, Text, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { FILL_REST } from "../../../components/ui/fill";
 import { t, tf } from "../../../i18n";
-import { EmptyState, FeedDataTableStackView, QueryBar, Spinner, TickerBadgeList, usePaneNoticeFooter, useTableLoadMore, type FeedDataTableItem, type PaneHint, type QueryBarFilter } from "../../../components";
+import { EmptyState, ExternalLinkText, FeedDataTableStackView, PaneLinkMenu, QueryBar, Spinner, TickerBadgeList, usePaneNoticeFooter, useTableLoadMore, type FeedDataTableItem, type PaneHint, type QueryBarFilter } from "../../../components";
 import { displayWidth } from "../../../utils/format";
 import type { DetailFact } from "../../../components/reader/detail-reader";
 import type { ThemeColors } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import { useOpenDescription } from "../shared/open-description";
 import { toneColor } from "../shared/research-cells";
-import { mayBeUsEquityOrFundTicker, mayBeUsEquityTicker, secFilingItemCodes } from "../../../utils/sec";
+import { mayBeUsEquityOrFundTicker, mayBeUsEquityTicker, secFilingItemCodes, US_FUND_FACTS_ONLY } from "../../../utils/sec";
+import { fundAbroadProfile, venueAbroad, type FundAbroadProfile } from "./fund-abroad";
+import { listingAnnouncementsPage } from "../../../utils/exchange-announcements";
 import { pricingSupplementTest } from "../../../utils/sec-filings";
 import { parseForm4Xml } from "../insider/insider-data";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
@@ -42,7 +44,7 @@ import {
 import { usePaneStatusLinkFooter } from "../../../components/layout/pane/status-footer";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { SignInWall } from "../cloud/auth-actions";
-import { ETF_FORMS_SETTING, filterFilingsByForms, parseFormsSetting, SEC_FILING_FETCH_LIMIT } from "./forms";
+import { ETF_FORMS_SETTING, filterFilingsByForms, fundSeriesFilings, parseFormsSetting, SEC_FILING_FETCH_LIMIT } from "./forms";
 import { fundHeadless, secHeadless } from "./headless";
 import { FundFactsSummary, FundViewNotice, useFundFacts } from "./fund-facts-view";
 import { fundFactPublishers, fundFactsCache, listNames } from "./fund-facts";
@@ -272,6 +274,15 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
   useSecFilingFocusRequest(forms ? null : ticker?.metadata.ticker, setOpenItemId);
   // A form list is the fund filings view (ETF), which US-listed funds open too.
   const eligibleTicker = forms ? mayBeUsEquityOrFundTicker(ticker) : mayBeUsEquityTicker(ticker);
+  // A fund listed abroad (3042.HK) gets what `ticker` says of it and its issuer's page, as `fn ETF` does.
+  const abroadVenue = forms && !eligibleTicker && ticker ? venueAbroad(ticker.metadata.ticker) : null;
+  const abroadFinancials = useTickerFinancials(abroadVenue ? ticker?.metadata.ticker : null, abroadVenue ? ticker : null);
+  const abroad = abroadVenue ? fundAbroadProfile(abroadFinancials) : null;
+  const abroadPage = abroad?.page ?? null;
+  // An equity listed abroad links the page its exchange publishes its announcements on (ASX's for NST.AX).
+  const announcements = !forms && !eligibleTicker && ticker
+    ? listingAnnouncementsPage(ticker.metadata.ticker, ticker.metadata.exchange)
+    : null;
   // The fund view (ETF) leads with the fund's facts, which load apart from its filings, so a filings wall or failure leaves them on screen.
   const fundFacts = useFundFacts(forms && eligibleTicker ? ticker?.metadata.ticker : null);
   const facts = fundFacts.data?.payload ?? null;
@@ -285,8 +296,9 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
   const issuerFilings = useResolvedEntryValue(filingsEntry) ?? NO_FILINGS;
   // The filter runs over every filing the service returned for the issuer,
   // the same list the unfiltered pane shows, not over a first page of it.
+  // The fund view keeps the fund's own series out of its trust's filings.
   const formFilings = useMemo(
-    () => (forms ? filterFilingsByForms(issuerFilings, forms) : issuerFilings),
+    () => (forms ? filterFilingsByForms(fundSeriesFilings(issuerFilings), forms) : issuerFilings),
     [forms, issuerFilings],
   );
   // The fund view (ETF) has its own groups; each view keeps its own choice.
@@ -444,14 +456,14 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
   usePaneStatusLinkFooter({
     registrationId: "sec",
     focused,
-    url: openFiling ? openFiling.filingUrl : factsUrl,
-    source: openFiling ? openFiling.form : facts?.covered ? listNames(fundFactPublishers(facts)) : null,
-    label: openFiling || !factsUrl ? "filing" : "source",
+    url: openFiling ? openFiling.filingUrl : factsUrl ?? abroadPage ?? announcements?.url,
+    source: openFiling ? openFiling.form : facts?.covered ? listNames(fundFactPublishers(facts)) : announcements?.name ?? null,
+    label: openFiling ? "filing" : factsUrl ? "source" : abroadPage ? "issuer page" : announcements ? "announcements" : "filing",
     // Rows read in the background for their insiders do not hold up the pane.
     loading: loading || loadingDocuments || (!!loadingKey && viewedTargets.some((target) => target.accessionNumber === loadingKey)),
     error: authWall ? null : error ?? detailError,
     hints,
-    showOpenHint: !!(openFiling ? openFiling.filingUrl : factsUrl),
+    showOpenHint: !!(openFiling ? openFiling.filingUrl : factsUrl ?? abroadPage ?? announcements),
   });
 
   usePaneNoticeFooter({
@@ -507,6 +519,7 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
   if (!ticker) {
     return <EmptyState title="No ticker selected." message="Select a ticker to view SEC filings." />;
   }
+  if (abroadVenue) return <FundAbroadNotice profile={abroad} />;
   if (!eligibleTicker) {
     return renderFilingNotice(forms ? "Fund filings are only shown for US-listed funds and equities." : "SEC filings are only shown for US equities.");
   }
@@ -614,8 +627,9 @@ export const secModule: PluginModule = {
         id: "sec-etf-pane",
         paneId: "sec",
         label: "Fund Facts",
-        description: "A US-listed fund's fee, NAV, premium or discount, net assets, sponsor, inception and index, then its SEC filings: prospectus updates, shareholder reports, N-CEN and N-PORT.",
-        keywords: ["etf", "fund", "expense ratio", "fee", "nav", "premium", "discount", "aum", "net assets", "n-1a", "485bpos", "497", "n-csr", "n-cen", "n-port", "prospectus"],
+        description: "A US-listed fund's fee, NAV, premium or discount, net assets, sponsor, inception and index, a leveraged or inverse fund's daily objective, then the fund's own SEC filings: prospectus updates, shareholder reports, N-CEN and N-PORT.",
+        keywords: ["etf", "fund", "expense ratio", "fee", "nav", "premium", "discount", "aum", "net assets", "n-1a", "485bpos", "497", "n-csr", "n-cen", "n-port", "prospectus",
+          "leveraged", "inverse", "daily objective", "daily-reset", "decay"],
         shortcut: "ETF",
         viewKey: "etf",
         canCreate: (_context, options) => !options?.ticker || mayBeUsEquityOrFundTicker(options.ticker),
@@ -642,3 +656,35 @@ export const secModule: PluginModule = {
     resetSecFilingFocusRequests();
   },
 };
+
+/** A link under its label, as the CLI prints it ("Issuer page: ..."). */
+function LabelledLink({ label, url, text }: { label: string; url: string; text: string }) {
+  const colors = useThemeColors();
+  return (
+    <Box flexDirection="row">
+      <Text flexShrink={0} fg={colors.textDim}>{`${t(label)}: `}</Text>
+      <ExternalLinkText url={url} label={text} />
+    </Box>
+  );
+}
+
+/**
+ * ETF for a fund listed abroad (3042.HK): what `fn ETF` prints of it, its
+ * name, its page at its issuer and where its description is from, the last
+ * two as links the pane menu lists too. The footer's `o` opens the issuer page.
+ */
+function FundAbroadNotice({ profile }: { profile: FundAbroadProfile | null }) {
+  const page = profile?.page;
+  const source = profile?.descriptionSource;
+  const links = page || source
+    ? (
+      <PaneLinkMenu>
+        <Box flexDirection="column">
+          {page && <LabelledLink label="Issuer page" url={page} text={new URL(page).hostname.replace(/^www\./, "")} />}
+          {source && <LabelledLink label="Description from" url={source.url} text={source.publisher} />}
+        </Box>
+      </PaneLinkMenu>
+    )
+    : undefined;
+  return <EmptyState title={US_FUND_FACTS_ONLY} message={profile?.name} actions={links} />;
+}

@@ -1,6 +1,7 @@
 import type { HeadlessPaneDefinition } from "../../../types/headless";
 import type { TimeRange } from "../../../time-series/range";
 import { formatNumber, formatSignificant } from "../../../utils/format";
+import { logFailure } from "../../../utils/log-failure";
 import { mixedSessionCloseNote } from "../../../market-data/market/session-close-note";
 import { resolveHeadlessInstrument, loadHeadlessSymbols } from "../shared/headless-market-data";
 import { buildCorrelationMatrix, buildCorrelationSeries, buildGeoCorrelationSeries, pairKey, type CorrelationSeries } from "./matrix/model";
@@ -27,7 +28,7 @@ async function loadListedHistory(ctx: HeadlessPaneContext, key: string, range: T
   const { symbol, exchange } = await resolveHeadlessInstrument(ctx, key);
   const [points, quote] = await Promise.all([
     loadHistory(ctx, key, range),
-    exchange ? null : (async () => ctx.marketData.getQuote(symbol, "", ctx.refresh ? { cacheMode: "refresh" } : undefined))().catch(() => null),
+    exchange ? null : (async () => ctx.marketData.getQuote(symbol, "", ctx.refresh ? { cacheMode: "refresh" } : undefined))().catch(logFailure("correlation", "Listing exchange quote failed", null)),
   ]);
   return { exchange: exchange || quote?.listingExchangeName || quote?.exchangeName || "", points };
 }
@@ -112,17 +113,19 @@ export const relationshipHeadless: HeadlessPaneDefinition<"series"> = {
     if (analysis.integrity?.right.length) unavailableSymbols.push(symbols[1]!);
     if (!unavailableSymbols.length && !analysis.returns.length) unavailableSymbols.push(...symbols);
     const correlations = new Map(analysis.correlationPoints.map(({ date, close }) => [date.getTime(), close]));
+    const regression = `${symbols[0]} on ${symbols[1]}`;
     return {
       symbols,
       series: [
         { id: "ratio", label: `${symbols[0]}/${symbols[1]}`, points: analysis.ratioPoints.map(({ date, close }) => ({ date: date.toISOString(), value: close })) },
-        { id: "correlation", label: `Rolling correlation (${correlationWindow})`, points: analysis.returns.slice(correlationWindow - 1).map(({ date }) => ({ date: date.toISOString(), value: correlations.get(date.getTime()) ?? null })) },
+        { id: "correlation", label: `Rolling correlation (${correlationWindow})`, textDecimals: 3, points: analysis.returns.slice(correlationWindow - 1).map(({ date }) => ({ date: date.toISOString(), value: correlations.get(date.getTime()) ?? null })) },
       ],
       stats: [
         { key: "latestRatio", label: "Latest ratio", value: analysis.latestRatio, formatted: formatSignificant(analysis.latestRatio ?? undefined) },
         { key: "latestCorrelation", label: `Rolling correlation (${correlationWindow})`, value: analysis.latestCorrelation, formatted: formatNumber(analysis.latestCorrelation ?? undefined, 3) },
         ...(["beta", "alpha", "rSquared"] as const).map((key) => ({
-          key, label: { beta: "Beta", alpha: "Alpha", rSquared: "R squared" }[key],
+          // The first ticker's daily returns are regressed on the second's, so a beta says which way round it reads.
+          key, label: { beta: `${regression}: beta`, alpha: `${regression}: alpha`, rSquared: "R squared" }[key],
           value: analysis.stats?.[key] ?? null,
           // Alpha is the regression intercept on daily percent returns.
           formatted: key === "alpha" && analysis.stats ? `${formatNumber(analysis.stats.alpha, 3)}%` : formatNumber(analysis.stats?.[key], 3),
@@ -140,7 +143,7 @@ export const relationshipHeadless: HeadlessPaneDefinition<"series"> = {
         lastDate: analysis.aligned.at(-1)?.dateKey ?? null,
         ...(analysis.integrity ? { integrity: analysis.integrity } : {}),
         latestRatio: analysis.latestRatio, latestCorrelation: analysis.latestCorrelation,
-        regression: analysis.stats, alignedPriceCount: analysis.aligned.length, returnCount: analysis.returns.length,
+        regression: analysis.stats && { dependent: symbols[0], independent: symbols[1], ...analysis.stats }, alignedPriceCount: analysis.aligned.length, returnCount: analysis.returns.length,
       },
     };
   },

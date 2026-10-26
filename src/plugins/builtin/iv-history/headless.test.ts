@@ -9,7 +9,7 @@ import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test
 import type { DataProvider } from "../../../types/data-provider";
 import type { HeadlessBundleResult, HeadlessPaneApiClient } from "../../../types/headless";
 import type { IvHistoryPayload, IvMethod, IvPoint, IvScreenPayload, IvScreenRow } from "./client";
-import { VCA_DEFINITIONS } from "./format";
+import { vcaDefinitions } from "./format";
 import { ivHistoryHeadless, ivScreenHeadless } from "./headless";
 
 const reading = (date: string, method: IvMethod, iv30: number) => ({
@@ -95,13 +95,30 @@ describe("VCA dates", () => {
       skew: { date: "2026-10-08", put25: 0.3, call25: 0.28, skew: 0.02 } };
     const { keys, header, cell, result } = await load([stale]);
     expect(keys).toContain("skewDate");
-    // The header names the sign: OVDV's risk reversal subtracts the other way.
-    expect(header("skew")).toBe("25D skew put-call (pts)");
+    // The header names the sign, the one OVDV's risk reversal has: call minus put.
+    expect(header("riskReversal")).toBe("25D RR call-put (pts)");
+    expect(keys).not.toContain("skew");
     expect(cell("skewDate", 0)).toBe("2026-10-08");
-    // Puts at 30% against calls at 28% read +2.0, and the report says which side is subtracted and in what unit.
-    expect(cell("skew", 0)).toBe("+2.0");
-    expect(result.notes).toEqual([...VCA_DEFINITIONS]);
-    expect(result.notes?.[0]).toContain("25-delta put IV minus 25-delta call IV, in vol points; positive means puts are richer");
+    // Puts at 30% against calls at 28% read -2.0 (puts richer), and the report says which side is subtracted and in what unit.
+    expect(cell("riskReversal", 0)).toBe("-2.0");
+    expect(result.notes).toEqual(vcaDefinitions({ skew: true }));
+    expect(result.notes?.[0]).toContain("25-delta call IV minus 25-delta put IV, in vol points, as OVDV's risk reversal; positive means calls are richer");
+    expect(result.notes?.join(" ")).not.toContain("puts are richer");
+  });
+});
+
+describe("VCA definitions", () => {
+  test("the risk reversal line is there only with a risk reversal column, and IV/HV always says it uses the HV of the same date", async () => {
+    const without = vcaDefinitions({ skew: false });
+    const withSkew = vcaDefinitions({ skew: true });
+    expect(without.some((line) => line.includes("25D RR"))).toBe(false);
+    expect(withSkew[0]).toContain("25D RR");
+    expect(withSkew.slice(1)).toEqual(without);
+    expect(without[0]).toContain("IV/HV: IV30 over the HV20 of the same date");
+    // The report follows its columns: no row has a risk reversal, so the notes carry none.
+    const { keys, result } = await load([row("NVDA", reading("2026-10-09", "trade-close", 0.293), "2026-10-09")]);
+    expect(keys).not.toContain("riskReversal");
+    expect(result.notes).toEqual(without);
   });
 });
 
@@ -115,7 +132,7 @@ describe("VCA backfill states", () => {
   const report = async (rows: IvScreenRow[]) => {
     setSystemTime(new Date("2026-10-11T08:04:00Z"));
     const { result } = await load(rows);
-    return { notes: result.notes!.filter((note) => !(VCA_DEFINITIONS as readonly string[]).includes(note)),
+    return { notes: result.notes!.filter((note) => !vcaDefinitions({ skew: true }).includes(note)),
       complete: result.complete, unavailableSymbols: result.unavailableSymbols };
   };
 
@@ -145,7 +162,7 @@ describe("VCA backfill states", () => {
 
   test("a symbol demand coverage could not take is not final", async () => {
     expect(await report([ready, pending("FULL", "unavailable", null, null, ["Coverage for new underlyings is full; try again later."])]))
-      .toEqual({ notes: ["Not queued: FULL. Coverage for new underlyings is full; try again later."], complete: false, unavailableSymbols: ["FULL"] });
+      .toEqual({ notes: ["No IV history yet: FULL."], complete: false, unavailableSymbols: ["FULL"] });
   });
 
   test("a row with no reading says what became of its symbol, and one that stopped trading is not listed again as having no options history", async () => {
@@ -225,8 +242,8 @@ describe("HIVG skew history", () => {
     ]);
     // Existing columns keep their order; the two skew columns follow IV-HV, each naming its sign.
     expect(daily[0]!.split(",").map((header) => header.replace(/ \(%\)$/, "")))
-      .toEqual(["Session", "IV30", "IV90", "IV1Y", "HV", "IV-HV", "skew25d put-call (pts)", "rr25d call-put (pts)"]);
-    expect(daily.slice(1).map((line) => line.split(",").slice(-2).join(","))).toEqual(["2.5,-2.5", "2.8,-2.8", ",", ","]);
+      .toEqual(["Session", "IV30", "IV90", "IV1Y", "HV", "IV-HV", "skew25d put-call (pts)", "rr25d call-put (pts)", "status"]);
+    expect(daily.slice(1).map((line) => line.split(",").slice(-3, -1).join(","))).toEqual(["2.5,-2.5", "2.8,-2.8", ",", ","]);
     expect(daily.slice(1).map((line) => line.split(",")[0])).toEqual(["2026-10-08", "2026-10-07", "2026-10-06", "2026-10-05"]);
     expect(result.notes).toEqual(["no IV1Y history yet", "skew from 2026-10-07"]);
     const cells = (date: string) => text.split("\n").find((line) => line.startsWith(date))!.trim().split(/\s{2,}/);
@@ -236,10 +253,168 @@ describe("HIVG skew history", () => {
 
   test("an older server without the wing fields keeps the CSV columns blank and says skew is unavailable", async () => {
     const { result, daily, text } = await report([point("2026-10-07", "trade-close"), point("2026-10-07", "quote-mid"), point("2026-10-08", "trade-close")]);
-    expect(daily[0]!.endsWith(",IV-HV,skew25d put-call (pts),rr25d call-put (pts)")).toBe(true);
-    expect(daily.slice(1).every((line) => line.endsWith(",,"))).toBe(true);
+    expect(daily[0]!.endsWith(",IV-HV,skew25d put-call (pts),rr25d call-put (pts),status")).toBe(true);
+    expect(daily.slice(1).every((line) => line.endsWith(",,,"))).toBe(true);
     expect(result.notes).toContain("skew unavailable from this server");
     // The text table leaves out columns no session fills.
     expect(text).not.toContain("skew25d");
+  });
+});
+
+describe("HIVG exports for scripts", () => {
+  afterEach(() => setSystemTime());
+  const session = (sessionDate: string, iv30: number): IvPoint => ({
+    sessionDate, method: "trade-close", capturedAt: `${sessionDate}T23:30:00Z`, spot: 100,
+    iv7: null, iv30, iv60: null, iv90: iv30 + 0.01, iv180: null, iv365: null,
+  });
+  /** NYSE sessions from `from` through `to`: weekdays but Labor Day (7 Sep 2026). */
+  const sessions = (from: string, to: string) => {
+    const days: string[] = [];
+    for (let time = Date.parse(`${from}T00:00:00Z`); time <= Date.parse(`${to}T00:00:00Z`); time += 86_400_000) {
+      const date = new Date(time).toISOString().slice(0, 10);
+      if (![0, 6].includes(new Date(time).getUTCDay()) && date !== "2026-09-07") days.push(date);
+    }
+    return days;
+  };
+  const series = (to: string) => sessions("2026-09-01", to).map((date, index) => session(date, 0.12 + index / 1000));
+  const september = series("2026-09-30");
+  // Daily bars through Wednesday 21 Oct 2026, whose session is under way at 10:00 New York.
+  const bars = sessions("2026-07-01", "2026-10-21").map((date, index) => {
+    const close = 100 * (1 + 0.01 * Math.sin(index));
+    return { date: new Date(`${date}T20:00:00Z`), open: close, high: close, low: close, close, volume: 1_000 };
+  });
+  const ratePath = (dates: string[]) => ({
+    meetings: dates.map((date) => ({ date, impliedRate: null, targetMidpoint: null, changeBps: null, percentile: null, samples: 0, asOf: null,
+      probabilities: [], method: null, reason: null })),
+    fedFunds: [], sofr: [], ghosts: [], gaps: [], current: { effr: {}, targetLower: {}, targetUpper: {} }, dotPlot: { points: [] }, schedule: {},
+    asOf: null, fetchedAt: "2026-10-21T00:00:00Z", stale: false, status: "available",
+  });
+  /** `meetings`: the FOMC days the rate path lists, or null when it cannot be read. */
+  const load = async (symbol: string, points: IvPoint[], options: Record<string, string | number> = {}, meetings: string[] | null = [],
+    patch: Partial<IvHistoryPayload> = {}) => {
+    const last = points.at(-1)?.sessionDate ?? null;
+    const payload: IvHistoryPayload = { version: 1, symbol, asOf: "2026-10-21", status: points.length ? "ready" : "unavailable",
+      coverage: { source: "seed", addedAt: "2026-08-01T00:00:00Z", backfilledThrough: last, since: points[0]?.sessionDate ?? null },
+      stats: { iv30: null, iv90: null }, latest: null, series: points, warnings: points.length ? [] : ["Coverage for new underlyings is full; try again later."], ...patch };
+    const args = createTestHeadlessArgs({ rawArgument: symbol, argument: symbol, symbols: [symbol], options: { lookback: "ALL", hvWindow: "20", offset: 0, ...options } });
+    const apiClient = { impliedVolatility: async () => payload, getCloudRatePath: async () => {
+      if (!meetings) throw new Error("offline");
+      return ratePath(meetings);
+    } } as unknown as HeadlessPaneApiClient;
+    const marketData = createTestDataProvider({ getPriceHistory: async () => bars });
+    const result = await ivHistoryHeadless.load(args, createTestHeadlessContext({ apiClient, marketData })) as HeadlessBundleResult;
+    const freshness = deriveHeadlessFreshness(ivHistoryHeadless, result);
+    const csv = renderReportCsv(headlessReportTables(ivHistoryHeadless, result, args, "HIVG", freshness, { complete: true, unavailableSymbols: [] }), freshness);
+    return { result, lines: csv.split("\n"), text: renderHeadlessPaneText(ivHistoryHeadless, result, args, "HIVG", freshness) };
+  };
+  const headers = (lines: string[]) => lines.filter((_, index) => lines[index - 1]?.startsWith("# section:"));
+  const releaseRows = (lines: string[]) => lines.filter((line) => line.startsWith("FOMC,")).map((line) => line.split(",").slice(0, 5).join(","));
+
+  test("a symbol with no IV history exports the same columns as one with it, with no unit moving into or out of a header", async () => {
+    setSystemTime(new Date("2026-10-01T14:00:00Z"));
+    const covered = await load("SPY", september);
+    const uncovered = await load("SCHD", []);
+    expect(headers(uncovered.lines)).toEqual(headers(covered.lines));
+    expect(headers(covered.lines)).toEqual([
+      "Measure,Current,As of,Method,52w low,52w high,Rank,Pctl,Sessions,Basis,Stale,status,symbol_or_series,currency_or_unit,interval,source,as_of",
+      "Session,IV30 (%),IV90 (%),IV1Y (%),HV (%),IV-HV,skew25d put-call (pts),rr25d call-put (pts),status,symbol_or_series,currency_or_unit,interval,source,as_of",
+    ]);
+    // Each measure's unit stays in its label, figures or none.
+    const measures = (lines: string[]) => lines.filter((line) => /^(IV|HV) /.test(line)).map((line) => line.split(",")[0]);
+    expect(measures(uncovered.lines)).toEqual(measures(covered.lines));
+  });
+
+  test("a stale measure is dated stale, a close solved from mids says close mid, and the note is VCA's wording", async () => {
+    setSystemTime(new Date("2026-10-21T14:00:00Z"));
+    const old = { method: "trade-close" as const, rank: 80, percentile: 80, low: 0.07, high: 0.09, samples: 0, windowStart: null };
+    // The prices run to the 21st: the 20th is a session behind, the 13th six, January 2025 far more.
+    const { result, lines, text } = await load("SPY", september, {}, [], { stats: {
+      iv30: { ...old, value: 0.14, date: "2026-10-20", basis: "mid" },
+      iv90: { ...old, value: 0.15, date: "2026-10-13" },
+      iv365: { ...old, value: 0.083, date: "2025-01-17" },
+    } });
+    expect(text).toMatch(/IV 30d ATM\s+14\.0%\s+2026-10-20\s+close mid/);
+    expect(text).toMatch(/IV 90d ATM\s+15\.0%\s+2026-10-13 stale\s+close\s/);
+    expect(text).toMatch(/IV 1Y ATM\s+8\.3%\s+2025-01-17 stale/);
+    expect(text).not.toContain("trade-close mid");
+    expect(result.notes?.find((note) => note.startsWith("Stale, left out of rank: IV 90d ATM 2026-10-13, IV 1Y ATM 2025-01-17"))
+      ?.endsWith("(over 5 sessions behind).")).toBe(true);
+    // Exports keep the raw method and carry the basis and the stale flag.
+    const measure = lines.find((line) => line.startsWith("IV 30d ATM"))!.split(",");
+    expect(measure.slice(2, 4)).toEqual(["2026-10-20", "trade-close"]);
+    expect(measure).toContain("mid");
+  });
+
+  test("--event fomc --offset -6 is one row per release, read on the sixth session before the first session on or after it", async () => {
+    setSystemTime(new Date("2026-10-01T14:00:00Z"));
+    const { lines, result } = await load("SPY", september, { event: "fomc", offset: -6 });
+    expect(lines[0]).toBe("Release,Release date,Offset (sessions),Session,IV30 (%),IV90 (%),IV1Y (%),HV (%),IV-HV,"
+      + "skew25d put-call (pts),rr25d call-put (pts),status,symbol_or_series,currency_or_unit,interval,source,as_of");
+    // 16 Sep's FOMC, six sessions back over Labor Day.
+    expect(releaseRows(lines)).toEqual(["FOMC,2026-09-16,-6,2026-09-08,12.4"]);
+    // Every release before the history (July's, and those since 2021) is counted under the rows, with where the history starts.
+    expect(result.notes).toContainEqual(expect.stringMatching(/^\d+ earlier FOMC releases predate the IV history, which starts 2026-09-01\.$/));
+    await expect(Promise.resolve(ivHistoryHeadless.load(createTestHeadlessArgs({ symbols: ["SPY"], options: { lookback: "1Y", hvWindow: "20", offset: -6 } }),
+      createTestHeadlessContext()))).rejects.toThrow("--offset counts sessions from a release day: add --event fomc, cpi or jobs.");
+  });
+
+  test("the next FOMC has its row once its session at the offset has closed and been read; today's open session is none", async () => {
+    // Wednesday 21 Oct 2026, 10:00 New York: IV is read through Tuesday's close, and today's bar is under way.
+    setSystemTime(new Date("2026-10-21T14:00:00Z"));
+    const october = series("2026-10-20");
+    // 28 Oct: six sessions back is 20 Oct, read last night.
+    const week = await load("SPY", october, { event: "fomc", offset: -6 }, ["2026-10-28", "2026-12-09"]);
+    expect(releaseRows(week.lines)).toEqual(["FOMC,2026-09-16,-6,2026-09-08,12.4", "FOMC,2026-10-28,-6,2026-10-20,15.4"]);
+    expect(week.result.metadata).toMatchObject({ nextRelease: "2026-10-28" });
+    // Five back is today's session, still open: the release is named, not read off a partial bar.
+    const today = await load("SPY", october, { event: "fomc", offset: -5 }, ["2026-10-28"]);
+    expect(releaseRows(today.lines)).toEqual(["FOMC,2026-09-16,-5,2026-09-09,12.5"]);
+    expect(today.result.notes).toContain("Left out FOMC 2026-10-28: no closing reading yet for its session at --offset -5.");
+    // A release whose next date cannot be read says so instead of leaving it out silently.
+    const unread = await load("SPY", october, { event: "fomc", offset: -6 }, null);
+    expect(releaseRows(unread.lines)).toEqual(["FOMC,2026-09-16,-6,2026-09-08,12.4"]);
+    expect(unread.result.notes).toContain("The next FOMC date could not be loaded (offline), so it has no row.");
+    // Offset 0 of a past release whose day had no reading yet is pending, not a row with no IV.
+    const zero = await load("SPY", october, { event: "fomc", offset: 0 }, ["2026-10-21"]);
+    expect(releaseRows(zero.lines)).toEqual(["FOMC,2026-09-16,0,2026-09-16,13"]);
+    expect(zero.result.notes).toContain("Left out FOMC 2026-10-21: no closing reading yet for its session at --offset 0.");
+  });
+});
+
+describe("HIVG footer", () => {
+  afterEach(() => setSystemTime());
+  /** Weekdays from 1 Jun through `to`; no holiday falls in between. */
+  const weekdays = (to: string) => {
+    const days: string[] = [];
+    for (let time = Date.parse("2026-06-01T00:00:00Z"); time <= Date.parse(`${to}T00:00:00Z`); time += 86_400_000) {
+      if (![0, 6].includes(new Date(time).getUTCDay())) days.push(new Date(time).toISOString().slice(0, 10));
+    }
+    return days;
+  };
+  /** The footer of `fn HIVG USO` at `now`, with trade closes through `ivThrough` and daily prices through 23 Oct. */
+  const footer = async (now: string, ivThrough: string) => {
+    setSystemTime(new Date(now));
+    const series: IvPoint[] = weekdays(ivThrough).map((sessionDate) => ({ sessionDate, method: "trade-close",
+      capturedAt: `${sessionDate}T22:20:00Z`, spot: 100, iv7: null, iv30: 0.47, iv60: null, iv90: 0.45, iv180: null, iv365: null }));
+    const payload: IvHistoryPayload = { version: 1, symbol: "USO", asOf: now.slice(0, 10), status: "ready",
+      coverage: { source: "seed", addedAt: "2026-09-23T00:00:00Z", backfilledThrough: ivThrough, since: "2026-06-01" },
+      stats: { iv30: null, iv90: null }, latest: null, series, warnings: [] };
+    const bars = weekdays("2026-10-23").map((date, index) => {
+      const close = 100 * (1 + 0.01 * Math.sin(index));
+      return { date: new Date(`${date}T20:00:00Z`), open: close, high: close, low: close, close, volume: 1_000 };
+    });
+    const apiClient = { impliedVolatility: async () => payload } as unknown as HeadlessPaneApiClient;
+    const result = await ivHistoryHeadless.load(createTestHeadlessArgs({ rawArgument: "USO", argument: "USO", symbols: ["USO"],
+      options: { lookback: "1Y", hvWindow: "20", offset: 0 } }),
+    createTestHeadlessContext({ apiClient, marketData: createTestDataProvider({ getPriceHistory: async () => bars }) })) as HeadlessBundleResult;
+    return formatFreshnessLine(deriveHeadlessFreshness(ivHistoryHeadless, result));
+  };
+
+  test("dates the IV rows by their own newest session, not the HV row beside them, and says stale once it falls behind", async () => {
+    // Sunday 25 Oct: prices run to Friday 23 Oct, the IV history stopped on Tuesday 20 Oct.
+    expect(await footer("2026-10-25T05:22:00Z", "2026-10-20")).toBe("Source: Gloom Cloud · Tue 20 Oct 2026 · stale (5 days old)");
+    expect(await footer("2026-10-25T05:22:00Z", "2026-10-23")).toBe("Source: Gloom Cloud · Fri 23 Oct 2026 · not a live feed (daily implied volatility)");
+    // Friday 17:00 New York, before that evening's trade close: one session behind is the schedule, not stale.
+    expect(await footer("2026-10-23T21:00:00Z", "2026-10-22")).toBe("Source: Gloom Cloud · Thu 22 Oct 2026 · not a live feed (daily implied volatility)");
   });
 });

@@ -1,3 +1,4 @@
+import { Breadth } from "./breadth-pane";
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { FundChange, FundMember } from "../../../api-client/members";
 import { delayedFooterSegment, DataTableStackView, DataTableView, DetailScrollBody, EmptyState, KeyValueRow, PaneFooterScope, PaneStatusBody, Prose, QueryBar, StatGrid,
@@ -5,7 +6,7 @@ import { delayedFooterSegment, DataTableStackView, DataTableView, DetailScrollBo
   type DataTableCell, type DataTableColumn, type PaneFooterSegment, type SectionedRow } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource, useAutoRefresh, usePaneInstance, usePaneTickerIdentity, usePaneTitle, usePluginPaneState, usePluginTickerActions } from "../../../public/react";
-import { priceColor } from "../../../theme/colors";
+import { shownPriceColor } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, type ScrollBoxRenderable } from "../../../ui";
@@ -13,10 +14,12 @@ import { nextHeaderSort, type SortPreference } from "../../../utils/sort-values"
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
 import { useMembersMenu, type MemberList } from "../shared/members-menu";
 import { cachedChanges, cachedFunds, cachedMembers, loadChanges, loadFunds, loadMembers } from "./client";
-import { canonicalFund, changeColumns, changeLabel, changeReason, coverageText, coveredFund, decimal, DEFAULT_SORT, holdingsCaveats, isTab, memberColumns, memberRows, membersTitle, notCoveredMessage, percent, TABS, type MembersTab } from "./model";
+import { canonicalFund, changeColumns, changeLabel, changeReason, coverageText, coveredFund, decimal, DEFAULT_SORT, holdingsCaveats, isTab, memberColumns, memberRows, membersFeed, membersTitle, notCoveredMessage, percent, TABS, type MembersTab } from "./model";
 
 type ViewProps = Pick<PaneProps, "width" | "height" | "focused"> & { fund: string; active: boolean };
 const rowKey = (row: SectionedRow<FundMember>) => row.key;
+/** How often live members are worth checking again: the server renews their prices every 15 seconds. */
+const LIVE_MEMBERS_REFRESH_MS = 15_000;
 
 function Holdings({ fund, tab, width, height, focused, active }: ViewProps & { tab: MembersTab }) {
   const colors = useThemeColors();
@@ -39,26 +42,35 @@ function Holdings({ fund, tab, width, height, focused, active }: ViewProps & { t
       members: rows.flatMap((row) => isSectionedItemRow(row) && row.item.symbol ? [{ symbol: row.item.symbol, name: row.item.name }] : []) };
   }, [data, fund, query, rows, tab]);
   useMembersMenu("members:members-menu", memberList);
-  useAutoRefresh(resource.updatedAt, () => { if (active) void resource.load(); });
+  // A Pro account's members are priced from the server's live read, renewed every 15 seconds.
+  const live = data?.access === "realtime";
+  useAutoRefresh(resource.updatedAt, () => { if (active) void resource.load(live); }, { intervalMs: live ? LIVE_MEMBERS_REFRESH_MS : null });
   usePaneRefreshKey(() => void resource.reload(), { focused, enabled: active && !search.active });
   const info = useMemo<PaneFooterSegment[]>(() => {
     if (!data) return [];
+    // Outside the regular session a Pro account's members are the session's close, so the footer names it, not "live".
+    const feed = membersFeed(data.access, resource.updatedAt ?? Date.now());
+    const feedText = feed.kind === "close" ? feed.label : feed.kind === "live" ? "live" : "15m delayed";
     const dates = [...new Set(data.members.flatMap((row) => row.changePercent !== null && row.dailyAsOf ? [row.dailyAsOf.slice(0, 10)] : []))].sort();
     const date = dates.length === 1 ? dates[0] : dates.length ? `${dates[0]} to ${dates.at(-1)}` : data.fundDailyAsOf?.slice(0, 10);
+    // The close names its own date, so a quote date that is the same day is not said twice.
+    const dateSaid = feed.kind === "close" && dates.length === 1 && dates[0] === feed.date;
     const partial = data.aggregate.fresh1D < data.aggregate.total;
     return [
       { id: "coverage", parts: [{ text: coverageText(data.aggregate, width < 60), tone: partial ? "warning" : "muted" }] },
       // A capture's status line says the quotes' date and delay too; it does not say returns are unavailable.
       ...(data.quotesUnavailable
-        ? [{ id: "quote-date", title: `${date ?? "Quote date unavailable"} · 15m delayed · holdings ${data.asOf}`, parts: [{ text: "returns unavailable", tone: "muted" as const }] }]
+        ? [{ id: "quote-date", title: `${date ?? "Quote date unavailable"} · ${feedText} · holdings ${data.asOf}`, parts: [{ text: "returns unavailable", tone: "muted" as const }] }]
         : [
-          delayedFooterSegment({ id: "quote-delay", detail: "15m delayed", delay: "15m", quoteStatus: true }),
-          ...(date ? [{ id: "quote-date", title: `${date} · 15m delayed · holdings ${data.asOf}`, quoteStatus: true,
+          feed.kind === "live" ? { id: "quote-live", quoteStatus: true, parts: [{ text: "live", tone: "positive" as const }] }
+            : feed.kind === "close" ? { id: "quote-close", title: `${feed.label} · holdings ${data.asOf}`, quoteStatus: true, parts: [{ text: feed.label, tone: "muted" as const }] }
+            : delayedFooterSegment({ id: "quote-delay", detail: "15m delayed", delay: "15m", quoteStatus: true }),
+          ...(date && !dateSaid ? [{ id: "quote-date", title: `${date} · ${feedText} · holdings ${data.asOf}`, quoteStatus: true,
             parts: [{ text: width < 60 && dates.length === 1 ? date.slice(5) : date, tone: "muted" as const }] }] : []),
         ]),
       ...(width >= 60 ? [{ id: "holdings-date", asOf: true, parts: [{ text: `holdings ${data.asOf}`, tone: "muted" as const }] }] : []),
     ];
-  }, [data, width]);
+  }, [data, resource.updatedAt, width]);
   usePaneStatusFooter({ registrationId: "members:status", loading: !!data && resource.loading,
     stale: !!data && (data.stale || resource.data!.stale || !!resource.error), info });
   usePaneNoticeFooter({ registrationId: "members:notices", focused, notices: [
@@ -75,14 +87,15 @@ function Holdings({ fund, tab, width, height, focused, active }: ViewProps & { t
     if (column.id === "shares") return { text: decimal(row.shares, 0), value: row.shares };
     if (column.id === "price") return { text: decimal(row.price), value: row.price };
     const value = row[column.id as "changePercent"];
-    return { text: percent(value, column.id === "contribution" ? "" : "%", column.id === "contribution" ? 3 : 2), value, color: value === null ? colors.textMuted : priceColor(value, colors) };
+    const digits = column.id === "contribution" ? 3 : 2;
+    return { text: percent(value, column.id === "contribution" ? "" : "%", digits), value, color: value === null ? colors.textMuted : shownPriceColor(value, digits, colors) };
   }, [colors]);
   return <PaneStatusBody subject="fund holdings" loading={!data && resource.loading} error={!data ? resource.error : null}>
     {data && <DataTableView<SectionedRow<FundMember>> items={rows} columns={columns} rootWidth={width} rootHeight={height} focused={focused && !search.active}
       rootBefore={<Box flexDirection="column"><QueryBar width={width} search={{ value: query, onChange: setQuery, placeholder: "ticker, name or sector", focused, ...search.searchProps }} />
         {movers && <StatGrid width={width} items={[
-          { label: "Covered contrib.", value: percent(data.aggregate.sum, " pp"), color: priceColor(data.aggregate.sum ?? 0, colors) },
-          { label: `${fund} 1D`, value: percent(data.aggregate.fundReturn), color: priceColor(data.aggregate.fundReturn ?? 0, colors) },
+          { label: "Covered contrib.", value: percent(data.aggregate.sum, " pp"), color: shownPriceColor(data.aggregate.sum ?? 0, 2, colors) },
+          { label: `${fund} 1D`, value: percent(data.aggregate.fundReturn), color: shownPriceColor(data.aggregate.fundReturn ?? 0, 2, colors) },
           { label: "Difference", value: percent(data.aggregate.residual, " pp"), tone: data.aggregate.withinTolerance === false ? "warning" : "muted" },
         ]} />}</Box>}
       selection={{ kind: "id", selectedId: selected, getId: rowKey, onChange: (id) => setSelected(String(id)) }} getItemKey={rowKey}
@@ -143,14 +156,18 @@ function FundView({ fund, ...props }: Pick<PaneProps, "width" | "height" | "focu
   const initial = isTab(instance?.settings?.tab) ? instance.settings.tab : "members";
   const [storedTab, setTab] = usePluginPaneState<MembersTab>("tab", initial);
   const tab = isTab(storedTab) ? storedTab : "members";
-  const [visited, setVisited] = useState({ holdings: tab !== "changes", changes: tab === "changes" });
-  const selectTab = (value: string) => { if (isTab(value)) { setTab(value); setVisited((previous) => ({ holdings: previous.holdings || value !== "changes", changes: previous.changes || value === "changes" })); } };
+  const holdings = tab === "members" || tab === "movers";
+  const [visited, setVisited] = useState({ holdings, changes: tab === "changes", breadth: tab === "breadth" });
+  const selectTab = (value: string) => { if (isTab(value)) { setTab(value); setVisited((previous) => ({ holdings: previous.holdings || value === "members" || value === "movers", changes: previous.changes || value === "changes", breadth: previous.breadth || value === "breadth" })); } };
   const { strip, rows } = usePaneTabs({ tabs: TABS, activeValue: tab, onSelect: selectTab, focused: props.focused, compact: true, variant: "bare" });
   const height = Math.max(1, props.height - rows);
   return <Box width={props.width} height={props.height} flexDirection="column">
     {strip}
-    {visited.holdings && <Box visible={tab !== "changes"} flexGrow={1} flexBasis={0} overflow="hidden"><PaneFooterScope active={tab !== "changes"}>
-      <Holdings fund={fund} {...props} height={height} tab={tab} active={tab !== "changes"} focused={props.focused && tab !== "changes"} />
+    {visited.holdings && <Box visible={holdings} flexGrow={1} flexBasis={0} overflow="hidden"><PaneFooterScope active={holdings}>
+      <Holdings fund={fund} {...props} height={height} tab={tab} active={holdings} focused={props.focused && holdings} />
+    </PaneFooterScope></Box>}
+    {visited.breadth && <Box visible={tab === "breadth"} flexGrow={1} flexBasis={0} overflow="hidden"><PaneFooterScope active={tab === "breadth"}>
+      <Breadth fund={fund} {...props} height={height} active={tab === "breadth"} focused={props.focused && tab === "breadth"} />
     </PaneFooterScope></Box>}
     {visited.changes && <Box visible={tab === "changes"} flexGrow={1} flexBasis={0} overflow="hidden"><PaneFooterScope active={tab === "changes"}>
       <Changes fund={fund} {...props} height={height} active={tab === "changes"} focused={props.focused && tab === "changes"} />

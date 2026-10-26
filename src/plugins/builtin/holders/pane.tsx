@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, Text, TextAttributes, useUiCapabilities } from "../../../ui";
+import { Box, Text, TextAttributes, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import {
   Badge,
   DataTableView,
+  usePagedRows,
   usePaneFooter,
   usePaneTabs,
   usePaneTicker,
+  useTableLoadMore,
   type DataTableCell,
   type DataTableKeyEvent,
+  type PageRequest,
 } from "../../../components";
 import { handleRefreshKey, loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
 import { useAsyncResource } from "../../../react/async-resource";
@@ -22,8 +25,8 @@ import { THIRTEENF_TEMPLATE_ID } from "../thirteenf/model";
 import { useInResearchTab } from "../ticker-detail/research-tab-keys";
 import {
   displayDate,
+  formatHolderChangePercent,
   formatHolderOwnershipPercent,
-  formatMaybePercent,
   formatMoneyCompact,
   formatSignedCompact,
   holderStakeMarketCap,
@@ -40,15 +43,23 @@ import {
   sortRows,
   VIEW_TABS,
 } from "./table-model";
-import { classSharesToday, loadHolderData } from "./client";
+import { classSharesAsOf, classSharesToday, loadHolderData } from "./client";
 import { HoldersTreemap } from "./treemap";
 import { BeneficialOwnersView } from "./beneficial-view";
 import { useIssuerListing } from "../shared/ticker-request";
 import type { HolderColumn, HolderColumnId, HolderRow, SortPreference, ViewMode } from "./types";
 import { loadHolder13FMatches, type Holder13FMatch } from "./thirteenf-match";
+import { indexedHolderUnits, indexHolderTicker, loadIndexedHolderPage, withIndexedHolders } from "./index-holders";
 import { useSampledValue, useTickerQuoteStream } from "../../../state/hooks/live-ticker-financials";
 
 const HOLDER_MARKET_CAP_SAMPLE_MS = 5_000;
+/** Rows past the end of the table that a scroll loads the next page within, as `useTableLoadMore` does. */
+const LOAD_MORE_ROWS = 8;
+
+/** Index rows have their CIK, so their 13F filing needs no name search. */
+function cikMatches(rows: readonly HolderRow[]): Map<string, Holder13FMatch> {
+  return new Map(rows.flatMap((row) => row.cik ? [[row.id, { cik: row.cik, fundName: row.name, periodOfReport: row.reportDate }]] : []));
+}
 
 /** The width of a three-letter badge ("13F", "ADR"): the label and its padding. */
 const BADGE_WIDTH = 5;
@@ -64,6 +75,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
   const [fundMatching, setFundMatching] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const fundMatchAbortRef = useRef<AbortController | null>(null);
+  const tableScrollRef = useRef<ScrollBoxRenderable | null>(null);
 
   const exchange = ticker?.metadata.exchange ?? "";
   const issuerListing = useIssuerListing(ticker);
@@ -80,8 +92,33 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
     keepPreviousData: true,
   });
 
+  // A US line's 13F holders are every filer in the SEC holder index, paged
+  // as fn 13F pages them and asked beside the source's short list, which
+  // stands until the first page answers and whenever the index cannot be read.
+  const indexTicker = indexHolderTicker(symbol, exchange);
+  const loadIndexPage = useMemo(() => indexTicker
+    ? ({ offset, signal }: PageRequest) => loadIndexedHolderPage(indexTicker, offset, signal)
+    : null, [indexTicker]);
+  const index = usePagedRows(loadIndexPage, { getId: (row) => row.cik });
+  // The source's list kept from the previous ticker must not price this one's filers: they wait for its own.
+  const base = data && indexHolderTicker(data.symbol) === indexTicker ? data : null;
+  const indexed = index.rows.length > 0 && (!!base || !loading) && indexHolderTicker(symbol, exchange, base) != null;
+  const indexPending = !!indexTicker && index.loading && index.rows.length === 0;
+  // Index rows take the source's price; the quote's only when the source gave none, sampled so ticks do not re-sort.
+  // The rows follow the units in use, so a quote that is not the price used leaves them as they are.
+  const quotePrice = useSampledValue(financials?.quote?.price, HOLDER_MARKET_CAP_SAMPLE_MS, symbol ?? "");
+  const { price: unitPrice, classShares: unitClassShares } = indexedHolderUnits(base, quotePrice);
+  const listData = useMemo(() => {
+    const first = index.pages[0];
+    if (!indexed || !first || !indexTicker) return data;
+    return withIndexedHolders(base, indexTicker, { ...first, rows: index.rows }, {
+      ...(unitPrice != null ? { price: unitPrice } : {}),
+      ...(unitClassShares != null ? { classShares: unitClassShares } : {}),
+    });
+  }, [base, data, index.pages, index.rows, indexTicker, indexed, unitClassShares, unitPrice]);
+
   // The values' own currency: dollars from the 13F filings on a London line, not its pence.
-  const currency = holderValueCurrency(data, ticker?.metadata.currency || "USD")!;
+  const currency = holderValueCurrency(listData, ticker?.metadata.currency || "USD")!;
   // A stake without a reported percentage is the holding's value over the
   // market cap, when both are in one currency. The stream keeps the cap
   // current, about once a second; the stakes follow it at most every few
@@ -91,10 +128,11 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
   const marketCap = useSampledValue(liveMarketCap, HOLDER_MARKET_CAP_SAMPLE_MS, `${symbol ?? ""}:${currency}`);
   // Today's share count, which a 13D/13G report's own base is checked against.
   const sharesOutstanding = classSharesToday(financials);
-  const rows = useMemo(() => buildRows(data), [data]);
+  const sharesOutstandingAsOf = classSharesAsOf(financials);
+  const rows = useMemo(() => buildRows(listData), [listData]);
   const periodsDiffer = useMemo(() => holderPeriodsDiffer(rows), [rows]);
   const sortedRows = useMemo(() => sortRows(rows, sortPreference, marketCap), [marketCap, rows, sortPreference]);
-  // Change columns only when the source reports a change; otherwise they read "-" on every row.
+  // Change columns only when the source reports a change; otherwise every row would read as missing.
   const showChange = useMemo(() => hasHolderChanges(rows), [rows]);
   const columns = useMemo(() => buildColumns(width, showChange), [showChange, width]);
   const selectedIdx = selectedId
@@ -114,8 +152,14 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
   // restart 25 two-request 13F lookups.
   useEffect(() => {
     fundMatchAbortRef.current?.abort();
+    if (rows.length > 0 && rows.every((row) => row.cik)) {
+      setFundMatches(cikMatches(rows));
+      setFundMatching(false);
+      return;
+    }
     setFundMatches(new Map());
-    if (rows.length === 0) {
+    // The source's rows are not matched while the index's may replace them.
+    if (rows.length === 0 || indexPending) {
       setFundMatching(false);
       return;
     }
@@ -138,7 +182,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
         fundMatchAbortRef.current = null;
       }
     };
-  }, [rows]);
+  }, [indexPending, rows]);
 
   const selectedRow = activeIdx >= 0 ? sortedRows[activeIdx] ?? null : null;
   const selectedFundMatch = selectedRow ? fundMatches.get(selectedRow.id) ?? null : null;
@@ -167,9 +211,12 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
     setViewMode(nextViewMode);
   }, [setViewMode]);
 
+  const reloadIndex = index.reload;
   const refresh = useCallback(() => {
     void reload();
-  }, [reload]);
+    reloadIndex();
+  }, [reload, reloadIndex]);
+  const loadMoreFromScroll = useTableLoadMore(tableScrollRef, indexed && index.hasMore, index.loadMore);
 
   // Plain keys only: Cmd/Ctrl+Shift+R, S and O resize, share and pop out the pane.
   const handleKeyDown = useCallback((event: DataTableKeyEvent) => {
@@ -261,7 +308,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
         };
       case "changePercent":
         return {
-          text: formatMaybePercent(row.changePercent),
+          text: formatHolderChangePercent(row.changePercent),
           color: row.changePercent != null ? priceColor(row.changePercent) : colors.textDim,
         };
       case "percentHeld":
@@ -282,8 +329,14 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
         // One date only when every holder's row is of it; the PERIOD column dates each row.
         ...(periodsDiffer
           ? [{ id: "as-of", parts: [{ text: "latest period per holder", tone: "muted" as const }] }]
-          : data?.asOf ? [{ id: "as-of", parts: [{ text: data.asOf, tone: "value" as const }] }] : []),
-        ...loadingErrorFooterInfo(loading, data ? error : null),
+          : listData?.asOf ? [{ id: "as-of", parts: [{ text: listData.asOf, tone: "value" as const }] }] : []),
+        // The index's first page replaces the source's list, so it is loading too; a failed one leaves that list.
+        ...loadingErrorFooterInfo(loading || (indexPending && !!data), listData ? error : null),
+        ...(index.loadingMore ? [{ id: "loading-more", parts: [{ text: "loading more", tone: "muted" as const }] }] : []),
+        // A later page that failed keeps the rows loaded; scrolling asks for it again.
+        ...(indexed && index.moreError && !index.loadingMore
+          ? [{ id: "more-error", parts: [{ text: "more holders could not be read", tone: "warning" as const }] }]
+          : []),
         ...(fundMatching ? [{ id: "fund-matching", parts: [{ text: "13F matching", tone: "muted" as const }] }] : []),
       ],
       // The title-bar tabs (or the query bar inside Ticker Research) switch
@@ -293,7 +346,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
         ...(selectedFundMatch ? [{ id: "fund", key: "o", label: "pen 13F", onPress: () => openFundDetail(selectedRow) }] : []),
       ],
     };
-  }, [data, error, fundMatching, loading, openFundDetail, periodsDiffer, selectedFundMatch, selectedRow, viewMode]);
+  }, [data, error, fundMatching, index.loadingMore, index.moreError, indexed, indexPending, listData, loading, openFundDetail, periodsDiffer, selectedFundMatch, selectedRow, viewMode]);
 
   const selectView = useCallback((value: string) => setViewMode(value as ViewMode), [setViewMode]);
   // As a research tab, h/l move between research tabs; `s` switches the view.
@@ -313,10 +366,18 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
   // values" while the request is still in flight or the pane has no ticker.
   const statusTitle = !symbol
     ? "No ticker selected."
-    : loading && !data
+    : (loading || indexPending) && !listData
       ? "Loading holders..."
-      : !data && error ? error : sortedRows.length === 0 ? "No holders available" : null;
+      : !listData && error ? error : sortedRows.length === 0 ? "No holders available" : null;
   const chartHeight = Math.max(1, height - tabRows - (nativePaneChrome ? 1 : 0));
+
+  // A list shorter than the table cannot scroll to load more, so it pages on
+  // until it fills the table, as a scroll would; a failed page waits for one.
+  const { hasMore: indexHasMore, loading: indexLoading, loadingMore: indexLoadingMore, moreError: indexMoreError, loadMore: loadMoreIndex } = index;
+  useEffect(() => {
+    if (viewMode !== "table" || !indexed || !indexHasMore || indexLoading || indexLoadingMore || indexMoreError) return;
+    if (sortedRows.length < chartHeight + LOAD_MORE_ROWS) loadMoreIndex();
+  }, [chartHeight, indexHasMore, indexLoading, indexLoadingMore, indexMoreError, indexed, loadMoreIndex, sortedRows.length, viewMode]);
 
   return (
     <Box flexDirection="column" width={width} height={height}>
@@ -333,6 +394,8 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
           }}
           onActivate={openFundDetail}
           onRootKeyDown={handleKeyDown}
+          scrollRef={tableScrollRef}
+          onBodyScrollActivity={loadMoreFromScroll}
           resetScrollKey={data?.symbol}
           rootWidth={width}
           columns={columns}
@@ -354,6 +417,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
           holderRows={rows}
           fundMatches={fundMatches}
           sharesOutstanding={sharesOutstanding}
+          sharesOutstandingAsOf={sharesOutstandingAsOf}
           onCycleView={toggleView}
           onRefreshHolders={refresh}
         />

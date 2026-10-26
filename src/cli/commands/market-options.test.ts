@@ -70,7 +70,7 @@ test("options takes --expiration as a date, asks for its UTC midnight, and rejec
   expect(hit.requests[0]!.slice(0, 3)).toEqual(["AAPL", "", EXPIRIES[1]]);
   expect(hit.cli.printed[0]!.options!.rows!(hit.cli.printed[0]!.result.data)).toHaveLength(1);
 
-  for (const bad of ["2028-02-30", "next-friday", "2028-3-17"]) {
+  for (const bad of ["2028-02-30", "next-friday", "17-3-2028"]) {
     const miss = expiryProvider([]);
     await expect(options.execute(["AAPL", "--expiration", bad], miss.cli.context)).rejects.toThrow(`Invalid --expiration "${bad}"`);
     expect(miss.requests).toEqual([]);
@@ -89,6 +89,35 @@ test("options fails on an expiry the chain does not list, in dates, and on one t
   // A provider that hands back its nearest expiry for an unlisted date has not answered the request.
   await expect(options.execute(["AAPL", "--expiration", "2028-01-21"], expiryProvider([EXPIRIES[0]!]).cli.context))
     .rejects.toThrow("no expiry 2028-01-21 for AAPL");
+});
+
+test("after Friday's close options shows the nearest live expiry, not the one the source still defaults to, and names it for a lapsed date", async () => {
+  // Saturday morning: the source still answers a chain without a date with Friday's, and lists it.
+  setSystemTime(new Date("2026-10-24T05:24:00Z"));
+  try {
+    const day = (date: string) => Date.parse(`${date}T00:00:00Z`) / 1000;
+    const friday = day("2026-10-23"), next = day("2026-10-30"), later = day("2026-11-06");
+    const requests: unknown[] = [];
+    const dataProvider = {
+      getOptionsChain: async (_symbol: string, _exchange: string, expiration?: number) => {
+        requests.push(expiration);
+        return { underlyingSymbol: "COPX", expirationDates: [friday, next, later], puts: [], calls: [{ contractSymbol: "COPX", strike: 45,
+          currency: "USD", lastPrice: 1, change: 0, percentChange: 0, bid: 1, ask: 2, impliedVolatility: 0, inTheMoney: false,
+          expiration: expiration ?? friday, lastTradeDate: 0 }] };
+      },
+    };
+    const shown = createTestCliContext({ dataProvider });
+    await options.execute(["COPX"], shown.context);
+    expect(requests).toEqual([undefined, next]);
+    const printed = shown.cli ? undefined : shown.printed[0]!;
+    expect(printed!.options!.rows!(printed!.result.data).map((row) => row.expiration)).toEqual(["2026-10-30"]);
+    expect(printed!.result.metadata!.expirations).toEqual([next, later]);
+
+    await expect(options.execute(["COPX", "--expiration", "2026-10-23"], createTestCliContext({ dataProvider }).context))
+      .rejects.toThrow("expiry 2026-10-23 for COPX expired on 23 Oct; nearest live: 30 Oct (--expiration 2026-10-30)");
+  } finally {
+    setSystemTime();
+  }
 });
 
 test("an options export says on every row what it is, the spot and time behind IV and delta, and the open interest's date", async () => {
@@ -114,7 +143,7 @@ test("an options export says on every row what it is, the spot and time behind I
     expect(listedOpenInterest).toHaveBeenCalledWith("open-interest?symbol=GOOGL&expiry=2028-03-17", expect.anything());
     const csv = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, render).split("\n");
     const [header, ...rows] = csv.filter((line) => line && !line.startsWith("#"));
-    expect(header).toBe(["Side,Contract,Expiry,Strike,Last,Bid,Ask,IV (annualized decimal),Delta (decimal),Vol,OI",
+    expect(header).toBe(["Side,Contract,Expiry,Strike,Last,Bid,Ask,IV (annualized decimal),IV source,Delta (decimal),Vol,OI",
       "Spot,Spot basis,Spot as of,OI as of", ...EXPORT_IDENTITY_COLUMNS].join(","));
     expect(rows).toHaveLength(4);
     for (const row of rows) {
@@ -126,7 +155,7 @@ test("an options export says on every row what it is, the spot and time behind I
     expect(json.metadata).toMatchObject({ symbol: "GOOGL", currency: "USD", interval: "snapshot",
       model: { spot: 352.72, spotBasis: "close", spotAsOf: "2026-10-12T20:00:00.000Z" }, openInterest: { asOf: "2026-10-09" } });
     expect(json.source).toMatchObject({ name: "Gloom Cloud", observationDate: "2026-10-12T19:59:59.000Z" });
-    expect(render!.footnote).toBe("Greeks at spot 352.72 (close Mon 12 Oct 20:00 UTC), dividend yield 0%, rate 4% · OI as of Fri 9 Oct");
+    expect(render!.footnote).toBe("Greeks at spot 352.72 (close Mon 12 Oct), dividend yield 0%, rate 4% · IV solved from quote mids · OI as of Fri 9 Oct");
   } finally {
     setSystemTime();
   }
@@ -146,4 +175,18 @@ test("a chain that dates its own open interest is labelled with that date, and O
     expect(json.metadata.openInterest).toEqual({ asOf: openInterestAsOf, listedAsOf: null, compared: 0, matched: 0 });
   }
   expect(listedOpenInterest).not.toHaveBeenCalled();
+});
+
+test("options on a company's name read as an index asks about the company's stock, whose options are listed", async () => {
+  // The service answers "JP Morgan" with an index and a fund carrying the words, "JPMorgan" with the company.
+  const row = (symbol: string, name: string, exchange: string, type: string) => ({ providerId: "test", symbol, name, exchange, type, currency: "USD" });
+  const dataProvider = {
+    search: async (query: string) => query === "JP Morgan"
+      ? [row("^JTEK", "JP MORGAN ETF TRUS", "NASDAQ", "INDEX"), row("XEMD", "BondBloxx JP Morgan USD Emerging Markets 1-10 Year Bond ETF", "BATS", "ETF")]
+      : query === "JPMorgan" ? [row("JPM", "JPMorgan Chase & Co.", "NYSE", "EQUITY")] : [],
+    getOptionsChain: async (symbol: string) => { throw new Error(`No options provider available for ${symbol}`); },
+  };
+  const cli = createTestCliContext({ dataProvider });
+  await expect(options.execute(["JP Morgan"], cli.context))
+    .rejects.toThrow("Options are not available for ^JTEK:NASDAQ. Did you mean JPM (JPMorgan Chase & Co.)?");
 });

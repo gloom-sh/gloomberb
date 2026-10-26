@@ -13,6 +13,8 @@ export const DEFAULT_FRED_START = "2021-01-01";
  */
 const SPREAD_SERIES: ReadonlySet<string> = new Set([
   "T10Y2Y", "T10Y3M",
+  // The 30-year mortgage rate less the 10-year Treasury, which Gloom Cloud computes on each PMMS date.
+  "MORTGAGE30US10Y",
   ...ICE_SPREAD_SERIES.map((series) => series.seriesId),
 ]);
 
@@ -40,6 +42,11 @@ export function fredUnit(seriesId: string, info: { units?: string | null; season
 export function fredInterval(frequency: string | null | undefined): string | null {
   const word = frequency?.split(",")[0]?.trim().toLowerCase();
   return word || null;
+}
+
+/** Whether a series' dates are days it was observed on (FRED's `Daily`, `Weekly, Ending Friday`), not the start of a period; false when it does not say. */
+export function fredObservesDays(frequency: string | null | undefined): boolean {
+  return /^(?:daily|weekly)\b/i.test(frequency?.trim() ?? "");
 }
 
 /**
@@ -269,8 +276,8 @@ export function fredEmptyMessage(startDate: string, latest: { date: string; valu
 /** What an export of nothing on or after `--start` says to try instead: a start that reaches the latest observation. */
 export function fredEmptyAdvice(seriesId: string, latest: { date: string } | null): string {
   return latest
-    ? `Latest observation: ${latest.date}. Try: gloomberb fred ${seriesId} --start ${latest.date.slice(0, 4)}`
-    : `No observations came back for ${seriesId}. Try an earlier --start, or gloomberb fred --list for the series served.`;
+    ? `Latest observation: ${latest.date}. Try: gloom fred ${seriesId} --start ${latest.date.slice(0, 4)}`
+    : `No observations came back for ${seriesId}. Try an earlier --start, or gloom fred --list for the series served.`;
 }
 
 /** A series as `fred --list` shows it. */

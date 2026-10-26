@@ -74,7 +74,8 @@ function normalizeInstanceIdPart(value: string): string {
   return encodeURIComponent(value.trim().toUpperCase()).replace(/%/g, "~");
 }
 
-function buildTickerSurfaceInstanceId(paneId: string, symbol: string, viewKey?: string): string {
+/** `short-interest:AAPL`, `ticker-research:GGAL:ADR`: the one window a function keeps for a listing. */
+export function buildTickerSurfaceInstanceId(paneId: string, symbol: string, viewKey?: string): string {
   const parts = [paneId, normalizeInstanceIdPart(symbol)];
   if (viewKey) parts.push(normalizeInstanceIdPart(viewKey));
   return parts.join(":");

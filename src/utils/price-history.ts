@@ -7,6 +7,7 @@ import { zonedDateTimeParts } from "./zoned-date-time";
 import { regularHistorySessionStaleness } from "../market-data/history-session";
 import type { HistorySession } from "../types/price-history";
 import { BAR_INTERVAL_UNIT_MS, parseBarInterval } from "../time-series/resolution";
+import { parseOptionTicker } from "./options";
 
 // A venue without session hours here (OTC Markets, Cboe Canada) has no
 // session to hold: its copy is current while the latest bar is this recent.
@@ -217,6 +218,9 @@ export function isPriceHistoryStaleForCurrentWindow(
   // Daily/weekly/monthly labels are period starts, not live observation times.
   // Their cache policy controls refresh; an intraday lag test is inapplicable.
   if (intervalMs != null && intervalMs >= DAY_MS) return false;
+  // An option contract can go hours without a trade, so its last bar's age says nothing of
+  // its source; judged on it, a contract quiet since the open had no chart at all.
+  if (options.symbol && parseOptionTicker(options.symbol)) return false;
 
   const latestTime = getPricePointTimestamp(latest);
   if (!Number.isFinite(latestTime)) return false;
@@ -309,6 +313,8 @@ function zonedWeekday(time: number, timeZone: string): number {
 }
 
 const CRYPTO_BAR_MAX_AGE_MS = 60 * 60 * 1000;
+// A coin's UTC day is served whole this long after midnight: the delay on bars that are not live.
+const CRYPTO_DAY_ROLL_MS = 15 * 60 * 1000;
 // A copy missing a settled session is asked again at most this often, and less
 // often as that close recedes, so a halted, delisted or late listing costs a
 // handful of requests per session rather than one per request.
@@ -346,6 +352,11 @@ function barDate(time: number, timeZone: string): string {
   if (time % DAY_MS === 0) return new Date(time).toISOString().slice(0, 10);
   const { year, month, day } = zonedDateTimeParts(time, timeZone);
   return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+/** The venue date a daily bar at `time` names on `exchange`, read as calendarHistoryLastBarDate reads it. */
+export function dailyBarDate(time: number, exchange: string): string {
+  return barDate(time, sessionCalendarTimeZone(exchange) ?? "UTC");
 }
 
 /**
@@ -400,12 +411,15 @@ function intradayHistoryFetchState(
 }
 
 /**
- * A daily or coarser series changes at every close. A copy fetched before the
- * latest settled close is outdated whatever its cache TTL. A copy fetched
- * after it but without its bar is behind only where the venue's closures are
- * published (hasPublishedSessionCalendar): elsewhere, and for a bare symbol whose venue is
- * unknown, a local holiday would read as a missing session. A copy of a 24/7
- * series goes out of date within the hour.
+ * A daily or coarser series changes at every close, and gains a bar for the
+ * day once a session opens. A copy fetched before the latest settled close is
+ * outdated whatever its cache TTL, and so is one fetched before a session that
+ * has opened since: it lacks today's bar, so a morning copy would answer for
+ * yesterday all day. A copy fetched after the latest settled close but without
+ * its bar is behind only where the venue's closures are published
+ * (hasPublishedSessionCalendar): elsewhere, and for a bare symbol whose venue
+ * is unknown, a local holiday would read as a missing session. A copy of a
+ * 24/7 series goes out of date within the hour.
  */
 export function calendarHistoryFetchState(
   points: PricePoint[],
@@ -420,13 +434,18 @@ export function calendarHistoryFetchState(
   if (intervalMs < DAY_MS) return intradayHistoryFetchState(normalized, fetchedAt, now, intervalMs, options);
   const exchange = canonicalExchange(options.exchange);
   if (isRoundTheClockCoin(options.symbol, options.exchange)) {
-    return now - fetchedAt > CRYPTO_BAR_MAX_AGE_MS
-      ? unsettledState(fetchedAt + CRYPTO_BAR_MAX_AGE_MS, options.checkedAt, now) : "current";
+    // A coin's day closes at UTC midnight, and the service has it by the delay after:
+    // a copy from before then holds that day as still forming.
+    const roll = Math.floor((now - CRYPTO_DAY_ROLL_MS) / DAY_MS) * DAY_MS + CRYPTO_DAY_ROLL_MS;
+    const settledAt = Math.min(fetchedAt + CRYPTO_BAR_MAX_AGE_MS, fetchedAt < roll ? roll : Number.POSITIVE_INFINITY);
+    return now >= settledAt ? unsettledState(settledAt, options.checkedAt, now) : "current";
   }
   // Bare symbols resolve to their US listing at the sources.
   const session = latestRegularSessionClose(exchange || "NYSE", now - SESSION_BAR_SETTLE_MS);
   if (!session) return "current";
   if (fetchedAt < session.close + SESSION_BAR_SETTLE_MS) return unsettledState(session.close + SESSION_BAR_SETTLE_MS, options.checkedAt, now);
+  const open = latestRegularSessionOpen(exchange || "NYSE", now);
+  if (open !== null && open > session.close && fetchedAt < open) return unsettledState(open, options.checkedAt, now);
   if (!exchange || !hasPublishedSessionCalendar(exchange, session.date)) return "current";
   const latest = normalized.findLast(hasFiniteClose);
   if (!latest || !isBarBeforeSession(getPricePointTimestamp(latest), session.date, intervalMs, session.timeZone)) return "current";

@@ -213,7 +213,10 @@ function TabsFamily() {
         </Row>
         <Row>
           <Sample label="hover on Financials" force="hover" width={420}><Box style={{ height: "var(--chrome-h)", width: "100%" }} data-kit-hover-target="Financials"><Tabs tabs={tabs} activeValue="overview" onSelect={noop} /></Box></Sample>
-          <Sample label="title-bar variant" width={420}><Box style={{ height: "var(--chrome-h)", width: "100%", "--pane-tab-active-fg": "var(--gloom-text-bright)" }}><Tabs tabs={tabs} activeValue="financials" onSelect={noop} variant="header" /></Box></Sample>
+        </Row>
+        <Row>
+          <Sample label="title-bar tabs: the active one a box open into the pane" width={420}><Box flexDirection="column" style={{ width: "100%" }}><PaneHeader title="AAPL" width={52} focused tabs={{ tabs, activeValue: "financials", onSelect: noop, focused: true }} /></Box></Sample>
+          <Sample label="title-bar tabs, hover on Holders" force="hover" width={420}><Box flexDirection="column" style={{ width: "100%" }} data-kit-hover-target="Holders"><PaneHeader title="AAPL" width={52} focused={false} tabs={{ tabs, activeValue: "financials", onSelect: noop }} /></Box></Sample>
         </Row>
         <Row>
           <Sample label="closable, with add: icon buttons" width={420}><Box style={{ height: "var(--chrome-h)", width: "100%" }}><Tabs tabs={tabs.slice(0, 3).map((tab) => ({ ...tab, onClose: noop }))} activeValue="overview" onSelect={noop} closeMode="always" onAdd={noop} /></Box></Sample>
@@ -415,6 +418,7 @@ function ContentFamily() {
 
 function ChromeFamily() {
   const tabs = { tabs: [{ label: "Overview", value: "o" }, { label: "Financials", value: "f" }, { label: "Holders", value: "h" }], activeValue: "o", onSelect: noop, focused: true };
+  const closableTabs = { tabs: [{ label: "Ideas", value: "i", onClose: noop }, { label: "Earnings", value: "e", onClose: noop }], activeValue: "i", onSelect: noop, focused: true, closeMode: "active" as const, onAdd: noop };
   const footer = {
     info: [
       delayedFooterSegment({ id: "status", detail: "15m delayed", delay: "15m", onPress: noop }),
@@ -430,6 +434,8 @@ function ChromeFamily() {
       <Group title="Title bar">
         <Box flexDirection="column" style={{ width: "100%", gap: "var(--gloom-space-sm)" }}>
           <PaneHeader title="AAPL" width={Math.min(100, pageColumns())} focused showActions tabs={tabs} />
+          <PaneHeader title="AAPL" width={Math.min(100, pageColumns())} focused={false} tabs={{ ...tabs, focused: false }} />
+          <PaneHeader title="Quick Notes" width={Math.min(100, pageColumns())} focused showActions tabs={closableTabs} />
           <PaneHeader title="World Indices" width={Math.min(100, pageColumns())} focused={false} />
         </Box>
       </Group>

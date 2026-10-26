@@ -2,7 +2,7 @@
 // the browser catalog (catalog-browser.ts). Keep this file import-free so the
 // browser catalog can read it without pulling in native-only modules.
 //
-// Screeners & Movers, Ownership & Insiders and Earnings ship fewer panes on
+// Screeners & Movers and Ownership & Insiders ship fewer panes on
 // the web, so each catalog gives them their own description rather than
 // advertising panes they lack.
 
@@ -107,7 +107,7 @@ export const cryptoPluginMeta = {
   stateId: "market-overview",
   name: "Crypto & Perps",
   version: "1.0.0",
-  description: "Top crypto assets by market cap, and perpetual funding, open interest and premiums.",
+  description: "Top crypto assets by market cap, daily spot bitcoin and ether ETF flows, and perpetual funding, open interest and premiums.",
   toggleable: true,
 };
 

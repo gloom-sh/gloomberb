@@ -457,6 +457,32 @@ function WebDataTableRowInner<
 
 function CellText({ cell, column, color }: { cell: DataTableCell; column: DataTableColumn; color: string }) {
   const style = clippedCellTextStyle(column, color, cell.attributes ?? TextAttributes.NONE);
+  if (cell.note) {
+    const text = (
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          alignContent: "flex-start",
+          justifyContent: contentJustifyForAlign(column.align),
+          columnGap: "var(--gloom-space-sm)",
+          width: "100%",
+          height: "100%",
+          minWidth: 0,
+          overflow: "hidden",
+        }}
+      >
+        <span title={cell.text} style={{ ...style, width: "auto", flex: "0 1 auto", minWidth: 0 }}>{cell.text}</span>
+        <span data-gloom-role="data-table-cell-note" style={{ ...cellTextStyle(CSS_TEXT_DIM, TextAttributes.NONE), flex: "none" }}>{cell.note}</span>
+      </div>
+    );
+    return cell.leading === undefined ? text : (
+      <div style={{ display: "flex", alignItems: "center", gap: LABEL_GAP_PX, width: "100%", height: "100%", minWidth: 0, overflow: "hidden" }}>
+        <Leading>{cell.leading}</Leading>
+        {text}
+      </div>
+    );
+  }
   if (cell.leading === undefined) return <span title={cell.text} style={style}>{cell.text}</span>;
   return (
     <div

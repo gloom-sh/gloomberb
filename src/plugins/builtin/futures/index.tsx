@@ -274,6 +274,7 @@ export function FuturesPane({ focused, width, height }: PaneProps) {
     noQuotes,
     status.latestTs,
     status.loading,
+    status.savedAt,
     status.stale,
     status.unavailable,
   ]);

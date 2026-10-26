@@ -8,6 +8,8 @@ export interface DesktopSharedStateSnapshot {
   /** @deprecated Ignored and no longer sent. */
   activePanel?: "left" | "right";
   statusBarVisible: boolean;
+  /** Transient position-sync failures, shared with detached Brokers panes. */
+  brokerSyncErrors?: Record<string, string>;
   mainStateRevision?: number;
   layoutChanged?: boolean;
 }

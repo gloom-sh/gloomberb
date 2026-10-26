@@ -3,7 +3,7 @@ import { getSharedMarketDataCoordinator, MarketDataCoordinator, resolveEntryValu
 import type { InstrumentRef, OptionsRequest } from "../../../market-data/request-types";
 import type { QueryEntry } from "../../../market-data/result-types";
 import type { DataProvider } from "../../../types/data-provider";
-import type { OptionsChain } from "../../../types/financials";
+import type { OptionsChain, Quote } from "../../../types/financials";
 import { daysToExpiryFrom } from "../shared/volatility";
 import type { YieldPoint } from "../yield-curve/treasury-data";
 import {
@@ -12,7 +12,8 @@ import {
 } from "./model";
 import { abortable, abortError } from "../../../utils/async-deadline";
 import { errorMessage } from "../../../utils/errors";
-import { findListedExpiry, unlistedExpiryText } from "../../../utils/option-expiry";
+import { expiredExpiryText, findListedExpiry, isLiveOptionExpiry, liveOptionExpiries, optionExpiryVenue, unlistedExpiryText } from "../../../utils/option-expiry";
+import { optionModelSpot } from "../options/model-spot";
 
 const DEFAULT_SURFACE_EXPIRY_LIMIT = 18;
 const SURFACE_LOAD_CONCURRENCY = 4;
@@ -91,6 +92,14 @@ export interface SurfaceLoadRequest {
   instrument: InstrumentRef;
   spot: number;
   spotAsOf?: string | number | null;
+  /**
+   * The underlying's quote, to read the spot from as OMON reads it
+   * (`optionModelSpot`): a chain from a closed session is priced at that
+   * session's official close, which the quote carries, so the same chain
+   * gives the same surface whatever trades before the next open. Without
+   * it, or without a chain to date, `spot` is used as given.
+   */
+  quote?: Quote | null;
   settings?: Partial<SurfaceSettings>;
   limit?: number;
   /** Listed expiries required by a selection, added to the representative sample. */
@@ -134,6 +143,9 @@ export async function loadVolatilitySurface(
   let catalogueExpiration: number | null = null;
   let treasuryError: string | null = null;
   let finished = false;
+  let spot = request.spot;
+  let spotAsOf = request.spotAsOf ?? null;
+  let spotBasis: SurfaceSnapshot["spotBasis"] = null;
   const checkAbort = () => { if (request.signal?.aborted) throw abortError(CANCELLED); };
   const snapshot = (): SurfaceSnapshot => {
     const failures: SurfaceFailure[] = [];
@@ -152,7 +164,7 @@ export async function loadVolatilitySurface(
       }
       const cached = models.get(expiration);
       if (cached?.entry === entry && cached.curve === curve) return cached.value;
-      const value = buildSurfaceExpiry({ chain, expiration, spot: request.spot, curve, settings, now,
+      const value = buildSurfaceExpiry({ chain, expiration, spot, curve, settings, now,
         source: entry.source, stale: !!entry.error || (entry.staleAt != null && entry.staleAt <= now), error });
       models.set(expiration, { entry, curve, value });
       return value;
@@ -166,7 +178,7 @@ export async function loadVolatilitySurface(
       : failures.length > 0 ? (ready ? "partial" : "error") : "ready";
     const dates = [...new Set(expiries.flatMap((expiry) => expiry.rateAsOf))];
     return {
-      symbol, spot: request.spot, spotAsOf: request.spotAsOf ?? null, phase, settings, catalogue: [...catalogue],
+      symbol, spot, spotAsOf, ...spotBasis ? { spotBasis } : {}, phase, settings, catalogue: [...catalogue],
       requested: selected.length, loaded, failed, expiries, failures,
       warnings: [...new Set([...expiries.flatMap((expiry) => expiry.warnings), ...surfaceCalendarWarnings(expiries)])],
       rateAsOf: dates.length === 1 ? dates[0]! : null, fetchedAt: now,
@@ -185,11 +197,21 @@ export async function loadVolatilitySurface(
     publish();
   });
 
+  // Expiries close on the listing's clock: a coin's options (Deribit) settle at 08:00 UTC on any day.
+  const expiryVenue = optionExpiryVenue(request.instrument.symbol, request.instrument.exchange);
   try {
     const initial = await abortable(dependencies.loadOptions({ instrument: request.instrument },
       { forceRefresh: request.expiries ? false : request.forceRefresh }), request.signal, CANCELLED);
     checkAbort();
     const chain = resolveEntryValue(initial);
+    // Every expiry is valued at one spot, read against the catalogue chain's time before any expiry is fitted.
+    const modelSpot = request.quote ? optionModelSpot(request.quote, chain, now, request.instrument.exchange) : null;
+    if (modelSpot) {
+      spot = modelSpot.price;
+      spotAsOf = modelSpot.observedAt;
+      spotBasis = { basis: modelSpot.basis, session: modelSpot.session,
+        sessionDate: modelSpot.basis === "close" ? request.quote!.regularCloseSessionDate ?? null : null };
+    }
     const initialContracts = chain ? [...chain.calls, ...chain.puts] : [];
     const representedExpiry = initialContracts[0]?.expiration;
     if (representedExpiry != null && initialContracts.every((contract) => contract.expiration === representedExpiry)
@@ -197,8 +219,7 @@ export async function loadVolatilitySurface(
     catalogueError = initial.error?.message ?? null;
     catalogueReason = initial.error?.reasonCode;
     if (!chain) catalogueError ??= "Options expiry catalogue unavailable";
-    catalogue = [...new Set((chain?.expirationDates ?? []).filter((expiration) =>
-      Number.isFinite(expiration) && expiration > 0 && daysToExpiryFrom(expiration, now) > 0))].sort((a, b) => a - b);
+    catalogue = liveOptionExpiries(chain?.expirationDates ?? [], now, expiryVenue);
     // A typed date is that day's UTC midnight; the catalogue's stamp for the
     // same expiry is matched by calendar date, as OMON matches it.
     const required = [...new Set([...(request.requiredExpiries ?? []), ...(request.expiries ?? [])]
@@ -207,8 +228,10 @@ export async function loadVolatilitySurface(
     const listed = new Set(catalogue);
     selected = [...new Set([...request.expiries ? [] : selectSurfaceExpiries(catalogue, limit, now),
       ...required.filter((expiration) => listed.has(expiration))])].sort((a, b) => a - b);
+    // An expiry whose last session has closed is named as expired, with the nearest live one to pick.
     requiredFailures = required.filter((expiration) => !listed.has(expiration)).map((expiration) => ({
-      expiration, message: unlistedExpiryText(expiration, catalogue),
+      expiration, message: isLiveOptionExpiry(expiration, now, expiryVenue) ? unlistedExpiryText(expiration, catalogue)
+        : expiredExpiryText(expiration, catalogue, now, { exchange: expiryVenue }),
     }));
     if (chain && catalogue.length === 0) catalogueError ??= "No unexpired option expiries available";
   } catch (error) {

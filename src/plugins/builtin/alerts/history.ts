@@ -38,12 +38,14 @@ export interface AlertHistory {
 const KIND_LABELS: Record<string, string> = {
   catalyst: "Catalyst",
   price: "Price",
+  pe: "P/E", ps: "P/S", rsi: "RSI", ma_cross: "MA crossover", close_ma: "Close vs MA",
   breaking_news: "Breaking news",
   earnings: "Earnings",
   chat: "Chat",
   thesis: "Thesis",
   congress_trade: "Congress",
   thirteenf_filing: "13F filing",
+  live_scan: "Live scan",
 };
 export const alertKindLabel = (kind: string) =>
   isResearchAlertKind(kind) ? RESEARCH_LABELS[kind] : (KIND_LABELS[kind] ?? kind.replaceAll("_", " "));

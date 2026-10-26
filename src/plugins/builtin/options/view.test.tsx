@@ -5,7 +5,7 @@ import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pa
 import type { ScrollBoxRenderable } from "@opentui/core";
 import { createOpenTuiTestHarness, takeSavedTextFile } from "../../../renderers/opentui/test-utils";
 import { exportPaneTable, hasPaneTableExporter } from "../../../state/pane-table-export-registry";
-import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
+import { getSharedMarketDataCoordinator, MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { appReducer, createInitialState } from "../../../state/app/context";
 import { createTestDataProvider, createTestFinancials, createTestQuote } from "../../../test-support/data-provider";
 import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
@@ -13,16 +13,23 @@ import type { OptionContract, OptionsChain, Quote, TickerFinancials } from "../.
 import type { TickerRecord } from "../../../types/ticker";
 import { formatExpDate } from "../../../utils/options";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
+import { IV_FILLED_NOTE } from "./analytics";
 import { OptionsView } from "./view";
+import { takeTradeIntent } from "../broker-trading/command";
+import type { BrokerAdapter } from "../../../types/broker";
+import type { BrokerInstanceConfig } from "../../../types/config";
+import type { PinTickerOptions } from "../../../types/plugin";
 import { TestPaneProvider, createTestTicker, createTestPaneConfig } from "../../../test-support/pane";
 import { RemoteUiRegistryProvider, createRemoteUiRegistry } from "../../../remote/semantic-tree";
 import { renderedReportFailure, renderedReportFreshness, renderedReportNotices } from "../../../cli/pane-functions/report-notices";
 import { missingExpiryMessage } from "../../../utils/option-expiry";
+import { installOptionsReferenceFixtures } from "./test-fixture";
 
 const TEST_PANE_ID = "ticker-detail:options-test";
 
 const tui = createOpenTuiTestHarness();
 let setOptionsQuotePrice: ((price: number) => void) | null = null;
+let restoreReferenceData: (() => void) | undefined;
 
 function makeTicker(symbol: string): TickerRecord {
   return createTestTicker(symbol, symbol, {
@@ -76,6 +83,8 @@ function OptionsHarness({
   height = 14,
   nestedInTabs = false,
   settings,
+  runtime = createTestPluginRuntime(),
+  brokerInstances,
 }: {
   ticker: TickerRecord;
   quotePrice?: number;
@@ -86,6 +95,8 @@ function OptionsHarness({
   height?: number;
   nestedInTabs?: boolean;
   settings?: Record<string, unknown>;
+  runtime?: ReturnType<typeof createTestPluginRuntime>;
+  brokerInstances?: BrokerInstanceConfig[];
 }) {
   const config = createTestPaneConfig("/tmp/gloomberb-options-test", {
     instanceId: TEST_PANE_ID,
@@ -94,6 +105,7 @@ function OptionsHarness({
     ...(settings ? { settings } : {}),
   });
 
+  if (brokerInstances) config.brokerInstances = brokerInstances;
   const [persistedState, dispatch] = useReducer(appReducer, config, createInitialState);
   const state = { ...persistedState, config: { ...persistedState.config, layout: { ...persistedState.config.layout,
     instances: persistedState.config.layout.instances.map((instance) => ({ ...instance,
@@ -109,7 +121,7 @@ function OptionsHarness({
   }
 
   return (
-    <TestPaneProvider state={state} dispatch={dispatch} paneId={TEST_PANE_ID} pluginId="ticker-research" runtime={createTestPluginRuntime()}>
+    <TestPaneProvider state={state} dispatch={dispatch} paneId={TEST_PANE_ID} pluginId="ticker-research" runtime={runtime}>
       {showFooter ? <PaneFooterProvider>{(footer) => <Box width={width} height={height} flexDirection="column">
         <Box width={width} height={height - 1}><OptionsView width={width} height={height - 1} focused nestedInTabs={nestedInTabs} /></Box>
         <PaneFooterBar footer={footer} focused width={width} />
@@ -134,12 +146,19 @@ async function renderSettled() {
 }
 
 // Chain IVs are solved from the fixture's quotes against the clock, so pin it before the Jun 2026 expiry.
-beforeEach(() => { setSystemTime(new Date("2026-05-26T16:00:00Z")); });
+beforeEach(() => {
+  setSystemTime(new Date("2026-05-26T16:00:00Z"));
+  setSharedMarketDataCoordinator(null);
+  restoreReferenceData = installOptionsReferenceFixtures();
+});
 
 afterEach(() => {
   setSystemTime();
   setOptionsQuotePrice = null;
+  getSharedMarketDataCoordinator()?.destroy();
   setSharedMarketDataCoordinator(null);
+  restoreReferenceData?.();
+  restoreReferenceData = undefined;
 });
 
 test("exposes exactly one exportable table so CSV export stays wired up", async () => {
@@ -191,6 +210,56 @@ test("defaults the table around the nearest strike to the current quote", async 
   const frame = tui.frame();
   expect(frame).toContain("120");
   expect(frame).not.toContain(" 50 ");
+});
+
+test("Enter opens the cursor's contract on its broker, and with trading t opens its Trade while s still opens the surface", async () => {
+  const provider = createTestDataProvider({ getOptionsChain: async () => makeChain([100, 101, 102], 101) });
+  setSharedMarketDataCoordinator(new MarketDataCoordinator(provider));
+  const pinned: Array<{ symbol: string; options?: PinTickerOptions }> = [];
+  const templates: string[] = [];
+  const profile: BrokerInstanceConfig = { id: "sim", brokerType: "demo", label: "Demo", enabled: true, config: {} };
+  const adapter = { id: "demo", placeOrder: async () => ({}), previewOrder: async () => ({}),
+    getTradingCapabilities: (_profile: unknown, contract: { secType?: string }) => ({ orderTypes: contract.secType === "OPT" ? ["LMT"] : [] }) } as unknown as BrokerAdapter;
+  const runtime = createTestPluginRuntime({
+    pinTicker: (symbol, options) => { pinned.push({ symbol, options }); },
+    createPaneFromTemplate: (templateId) => { templates.push(templateId); },
+    getBrokerAdapter: () => adapter,
+  });
+  const ticker = createTestTicker("AAPL", "AAPL", { assetCategory: "STK",
+    broker_contracts: [{ brokerId: "demo", brokerInstanceId: "sim", symbol: "AAPL", secType: "STK", exchange: "SMART", currency: "USD" }] });
+  await act(async () => {
+    await tui.render(<OptionsHarness ticker={ticker} quotePrice={101.2} runtime={runtime} brokerInstances={[profile]} />, { width: 124, height: 12 });
+  });
+  await renderSettled();
+  await act(async () => { await tui.emitKeypress({ name: "return" }); });
+  const contract = { brokerId: "demo", brokerInstanceId: "sim", symbol: "AAPL", localSymbol: "AAPL260619C00100000", secType: "OPT", currency: "USD",
+    lastTradeDateOrContractMonth: "20260619", right: "C" as const, strike: 100, multiplier: "100" };
+  expect(pinned[0]).toEqual({ symbol: "AAPL260619C00100000", options: { instrument: contract, listing: { name: "AAPL Jun 19 '26 $100 Call", exchange: "", currency: "USD", type: "OPT" } } });
+  await act(async () => { await tui.emitKeypress({ name: "t" }); });
+  expect(pinned[1]).toMatchObject({ symbol: "AAPL260619C00100000", options: { instrument: contract, tabId: "broker-trade" } });
+  // The ticket opens on Buy and chooses the side itself.
+  expect(takeTradeIntent(pinned[1]!.options!.tabState!.brokerTradeIntent as string)).toEqual({ action: "BUY" });
+  await act(async () => { await tui.emitKeypress({ name: "S", shift: true }); });
+  expect(templates).toEqual([]);
+  await act(async () => { await tui.emitKeypress({ name: "s" }); });
+  expect(templates).toEqual(["vol-surface-pane"]);
+  expect(pinned).toHaveLength(2);
+});
+
+test("a broker's chain says nothing of Gloom Cloud's delay: a free account sees no 15m clock or upsell on it", async () => {
+  setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({ getOptionsChain: async () => makeChain([100, 101], 101) })));
+  const profile: BrokerInstanceConfig = { id: "sim", brokerType: "demo", label: "Demo", enabled: true, config: {} };
+  const brokerTicker = createTestTicker("AAPL", "AAPL", { assetCategory: "STK",
+    broker_contracts: [{ brokerId: "demo", brokerInstanceId: "sim", symbol: "AAPL", secType: "STK", exchange: "SMART", currency: "USD" }] });
+  for (const [ticker, delayed] of [[makeTicker("AAPL"), true], [brokerTicker, false]] as const) {
+    await act(async () => {
+      await tui.render(<OptionsHarness ticker={ticker} quotePrice={101} brokerInstances={[profile]} showFooter height={20} width={160} />, { width: 160, height: 20 });
+    });
+    await renderSettled();
+    // The terminal draws Cloud's delay as the clock and its figure.
+    expect(tui.frame().includes("◷15m")).toBe(delayed);
+    expect(tui.frame().includes("upgrade")).toBe(delayed);
+  }
 });
 
 test("reads a put's cost as a percent of spot from its quote midpoint, on the put side alone", async () => {
@@ -298,6 +367,27 @@ test("a typed expiry the chain does not list fails its report with the options c
   // `fn OMON --expiration` prints this and exits non-zero, as `options --expiration` does, instead of reading the pane back.
   expect(renderedReportFailure(registry.snapshot())).toEqual(missingExpiryMessage("AAPL", 1_782_432_000, chain.expirationDates));
   expect(renderedReportNotices(registry.snapshot()).notices.some((notice) => notice.startsWith("Expiry"))).toBe(false);
+});
+
+test("a strike whose IV was filled from its neighbours prints ~, says so in the footer, and its report carries the notice", async () => {
+  // No bid on the 120 call: it has no two-sided quote to solve, so its IV is read off the strikes either side.
+  const chain = makeChain([100, 101, 120], 101);
+  chain.calls = chain.calls.map((contract) => contract.strike === 120 ? { ...contract, bid: 0, ask: 0.05, lastPrice: 0.02 } : contract);
+  setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({ getOptionsChain: async () => chain })));
+  const registry = createRemoteUiRegistry();
+  await act(async () => {
+    await tui.render(<RemoteUiRegistryProvider registry={registry}>
+      <OptionsHarness ticker={makeTicker("AAPL")} quotePrice={101} showFooter width={190} height={16} />
+    </RemoteUiRegistryProvider>, { width: 190, height: 16 });
+  });
+  await renderSettled();
+  const frame = tui.frame();
+  const row = (strike: number) => frame.split("\n").find((line) => new RegExp(`\\s${strike}\\s`).test(line))!;
+  // The filled strike's IV is marked; a solved strike's is not.
+  expect(row(120)).toMatch(/~\d+\.\d%/);
+  expect(row(100)).not.toContain("~");
+  expect(frame).toContain("IV filled");
+  expect(renderedReportNotices(registry.snapshot()).notices).toContain(IV_FILLED_NOTE);
 });
 
 test("shows the spot, volatility statistics and the mirrored default fields", async () => {

@@ -1,3 +1,4 @@
+import type { PerpBoardRow } from "../api-client/perps";
 import type { PriceBasis } from "./instrument";
 
 export type MarketState = "PRE" | "REGULAR" | "POST" | "PREPRE" | "POSTPOST" | "CLOSED";
@@ -72,12 +73,28 @@ export interface QuoteMetadata {
  */
 export type ShareBasis = "depositary_receipt" | "ordinary";
 
+/**
+ * A depositary receipt and the listings of the ordinary shares it represents,
+ * as Gloom Cloud serves it on both sides' records: GGAL with ratio 10 and
+ * GGAL.BA, on GGAL's quote and on GGAL.BA's alike.
+ */
+export interface DepositaryPair {
+  /** The receipt's US symbol. */
+  receipt: string;
+  /** Ordinary shares one receipt represents. */
+  ratio: number;
+  /** Listings of the ordinary shares (GGAL.BA), the home line first. */
+  ordinary: string[];
+}
+
 /** How a depositary receipt relates to the ordinary shares, as Gloom Cloud states it. */
 interface DepositaryReceiptFacts {
   /** Whether the listing is a depositary receipt; absent when unknown. */
   isDepositaryReceipt?: boolean;
   /** Ordinary shares per receipt, on a receipt's own records. */
   adrRatio?: number;
+  /** The receipt and its home lines, on the receipt's records and each home line's. */
+  depositaryPair?: DepositaryPair;
 }
 
 export interface Quote extends DepositaryReceiptFacts {
@@ -95,7 +112,20 @@ export interface Quote extends DepositaryReceiptFacts {
   providerPriceDivisor?: number;
   change: number;
   changePercent: number;
+  /**
+   * What change and changePercent measure from when it is not previousClose,
+   * as Gloom Cloud says of a coin whose previous close it cannot date to the
+   * last two days: the last 24 hours ("24h", previousClose absent), or
+   * nothing ("none", no move). Absent on every other quote.
+   */
+  changeBasis?: "24h" | "none";
   previousClose?: number;
+  /**
+   * Exchange-local date of previousClose. The app's quote router reads it
+   * from the listing's own daily closes where the venue's calendar cannot
+   * date the close (PreviousCloseDates); a source may set it too.
+   */
+  previousCloseDate?: string;
   /** Official close of a completed regular session, in this quote's currency. */
   regularClose?: number;
   /** Exchange-local date of regularClose; separate from the daily previous-close reference. */
@@ -114,6 +144,14 @@ export interface Quote extends DepositaryReceiptFacts {
   receivedAt?: number; // local receipt timestamp ms for streamed/display freshness
   delivery?: QuoteDelivery;
   stale?: boolean;
+  /**
+   * The price is the close of this intraday bar of a currency pair's, not a
+   * print: Gloom Cloud took the bar because the pair's print had stopped
+   * behind it. lastUpdated is the bar's end.
+   */
+  intradayBar?: QuoteIntradayBar;
+  /** Why a stale currency pair's price stands, in Gloom Cloud's words: its bars have nothing newer, or could not be read in time. */
+  staleReason?: string;
   /** The listing no longer trades: the price is its last trade (ListingDelisting). */
   delisting?: ListingDelisting;
   exchangeName?: string;
@@ -174,6 +212,18 @@ export interface Quote extends DepositaryReceiptFacts {
   provenance?: QuoteProvenance;
   /** Freshness class for the quote data. Provider identity lives in providerId/provenance. */
   dataSource?: QuoteDataSource;
+  /**
+   * A perpetual contract's whole market row as of this quote (funding, open
+   * interest, premium), so every view of the contract reads the figures that
+   * came with its price, streamed or fetched.
+   */
+  perpetual?: PerpBoardRow;
+}
+
+/** A bar a quote's price is the close of: its start (epoch ms) and its length in minutes. */
+export interface QuoteIntradayBar {
+  start: number;
+  minutes: number;
 }
 
 export interface QuoteContribution extends Quote {
@@ -188,7 +238,7 @@ export interface TtmConversion {
   from: string;
   /** Units of `financialCurrency` per unit of `from` for revenue, income and cash flow; absent when not measured. */
   rate?: number;
-  /** YYYY-MM-DD the converted figures were fetched. */
+  /** YYYY-MM-DD the converted figures were fetched; once the app converts them again at its own rate (ttmAtAppRate), the ISO time of that rate. */
   asOf?: string;
   /** EPS is converted at the rate of each report date, so a P/E on it divides a spot price by EPS at older rates. */
   eps?: "report_date";
@@ -198,20 +248,28 @@ export interface TtmConversion {
  * How a served enterprise value ties to market cap + total debt - cash from the latest balance sheet served beside it.
  * `matches` within 5%; `differs` beyond it (or beyond 2% on the other side of the market cap from net debt), within
  * 0.7x to 1.5x, shown labelled as the provider's; `withdrawn` outside that band, with no EV or EV/revenue; `unchecked`
- * without a recent balance sheet carrying both lines.
+ * without a recent balance sheet carrying both lines. `computed`: an insurer's or a holding company's EV, which is
+ * `computed` itself, its investment book kept in (`investmentsKept`). `not-meaningful`: the EV comes out at or below
+ * zero, served as no EV or EV/revenue, with `reason`; shown N/M.
  */
 export interface EnterpriseValueCheck {
-  status: "matches" | "differs" | "withdrawn" | "unchecked";
-  /** The provider's enterprise value, served as `enterpriseValue` unless withdrawn. */
-  source: number;
-  currency: string;
-  marketCap: number;
+  status: "matches" | "differs" | "withdrawn" | "unchecked" | "computed" | "not-meaningful";
+  /** The provider's enterprise value, served as `enterpriseValue` unless withdrawn, computed or not meaningful; absent when it served none. */
+  source?: number;
+  /** The currency of the EV and the market cap. Absent, with `marketCap`, only on a not-meaningful source EV the block names no currency for. */
+  currency?: string;
+  /** The market cap the EV is measured on; absent only on a not-meaningful source EV served without one. */
+  marketCap?: number;
   totalDebt?: number;
   cash?: number;
   /** YYYY-MM-DD of the balance sheet the debt and cash come from. */
   balanceSheetDate?: string;
   /** marketCap + totalDebt - cash. */
   computed?: number;
+  /** `cash` is cash and equivalents alone: an insurer's or a holding company's investments stay in its EV. */
+  investmentsKept?: true;
+  /** Why the EV is not meaningful (`not-meaningful`). */
+  reason?: string;
 }
 
 /** How a trailing P/E converts the EPS it divides by, when that EPS is in another currency than the price. */
@@ -220,6 +278,23 @@ export interface TrailingPEConversion {
   from: string;
   /** Units of the quote's (major) currency per unit of `from`. */
   rate: number;
+}
+
+/** How a share count and market cap were put on the basis after a split. */
+export interface SplitShareBasis {
+  /** The split's ex-date, YYYY-MM-DD. */
+  exDate: string;
+  /** What a price from before the split is multiplied by: 15 for a 1-for-15 reverse split, 0.1 for a 10-for-1 split. */
+  priceFactor: number;
+  /**
+   * `filing`: the count a filing reported as of `reportedAsOf`, moved by the split, the cap that count times the price.
+   * `provider_cap`: the provider's cap, its share count (`reportedShares`) being from before the split.
+   */
+  method: "filing" | "provider_cap";
+  reportedShares: number;
+  reportedAsOf?: string;
+  /** The provider's market cap the shown one replaced. */
+  providerMarketCap?: number;
 }
 
 export interface Fundamentals extends DepositaryReceiptFacts {
@@ -277,8 +352,14 @@ export interface Fundamentals extends DepositaryReceiptFacts {
   return3Y?: number;
   lastQuarterGrowth?: number;
   sharesOutstanding?: number;
+  /** Set when a recent split put `sharesOutstanding` and `marketCap` on the basis the listing trades on. */
+  splitShareBasis?: SplitShareBasis;
+  /** YYYY-MM-DD `sharesOutstanding` was counted, when it is a 10-K or 10-Q cover count; a source's own count is undated. */
+  sharesOutstandingAsOf?: string;
   /** Free float: shares outstanding less insider and strategic holdings, never above `sharesOutstanding`. */
   floatShares?: number;
+  /** YYYY-MM-DD `floatShares` was counted, when it is a dated count itself (held at a cover count); a source's own float is undated. */
+  floatSharesAsOf?: string;
   beta?: number;
   /** Shares short at the latest FINRA settlement, the one `SI` and `SIW` show; dated by `shortInterestDate`. */
   sharesShort?: number;
@@ -301,11 +382,15 @@ export interface HolderRecord {
   providerId?: string;
   ownerType: HolderOwnerType;
   name: string;
+  /** The 13F filer's CIK, on a row from the SEC 13F holder index. */
+  cik?: string;
   reportDate?: string;
   shares?: number;
   value?: number;
+  /** The stake as a fraction of the shares outstanding: 0.0519 is 5.19%. */
   percentHeld?: number;
   changeShares?: number;
+  /** The quarter's change as a fraction of the prior position: 1.086 is +108.6%, -0.6 is -60%. */
   changePercent?: number;
   /** Set when the position's filing ties it to the receipts or to the ordinary shares. */
   shareBasis?: ShareBasis;
@@ -437,6 +522,8 @@ export type EarningsDateStatus = "reported" | "confirmed" | "projected";
 
 export interface EarningsAction {
   date: string;
+  /** Known release/acceptance timestamp, when the calendar has one. */
+  reportedAt?: string;
   dateType?: "announcement" | "fiscal-period-end";
   currency?: string;
   time?: string;
@@ -475,6 +562,12 @@ export interface CorporateActionsData {
 
 export interface CompanyProfile {
   description?: string;
+  /**
+   * Who published the description and where, when it is quoted from a
+   * document rather than the data provider's own text: a fund's issuer page,
+   * or the key facts its exchange publishes.
+   */
+  descriptionSource?: { publisher: string; url: string };
   sector?: string;
   industry?: string;
   employees?: number;
@@ -514,6 +607,18 @@ export interface IncomeStatementSource {
  * as the full year minus the other quarters.
  */
 export type StatementGapField = IncomeStatementField | "totalRevenue" | "operatingRevenue" | "pretaxIncome" | "taxProvision";
+
+/** Lines Gloom Cloud fills from a listing's exchange for a year the statements source does not have yet. */
+export type StatementFillField = "totalRevenue" | "netIncome" | "totalAssets" | "totalLiabilities";
+
+/** Where a row's filled lines came from: the exchange's figures, its page, and when they were read. */
+export interface StatementFill {
+  source: "asx";
+  page: string;
+  retrievedAt: string;
+  /** The lines taken from the exchange; the row's other figures are the statements source's. */
+  fields: StatementFillField[];
+}
 
 /** Per-share earnings lines that can be declared unavailable. */
 export type EarningsField = "basicEps" | "eps";
@@ -639,6 +744,8 @@ export interface FinancialStatement {
   fieldSources?: Partial<Record<IncomeStatementField, IncomeStatementSource>>;
   /** Lines unavailable for this period; another source or income basis must not fill them. */
   unavailableFields?: StatementGapField[];
+  /** Lines filled from the listing's exchange for a year the statements source lacks. */
+  filledFrom?: StatementFill;
   // Income Statement
   totalRevenue?: number;
   costOfRevenue?: number;
@@ -805,6 +912,11 @@ export interface PricePoint {
   low?: number;
   close: number;
   volume?: number;
+  /**
+   * The trades of one venue alone, when the market's volume for the bar is unavailable: never its volume, so no sum
+   * or comparison with a day's count takes it.
+   */
+  venueVolume?: { venue: string; volume: number };
   /** The bar's period had not ended when it was served: its close is the latest price, and it may have no volume yet. */
   partial?: boolean;
   /** The bar's prices were rebuilt from shorter bars where the source left it empty or too coarse. */
@@ -867,6 +979,8 @@ export interface EpsEstimateHistory {
 }
 
 export interface TickerFinancials {
+  /** Reported earnings-release events retained with daily valuation snapshots. */
+  earningsReleases?: EarningsAction[];
   statementHistory?: StatementHistoryAttempt;
   /** @deprecated No longer populated. */
   operatingHistoryRetryAt?: number;
@@ -910,6 +1024,29 @@ export interface OptionContract {
   lastTradeDate: number;
   /** Millisecond timestamp for the latest streamed quote applied to this snapshot. */
   lastUpdated?: number;
+  /**
+   * A venue's own mark, for a venue that marks every contract (Deribit): the
+   * premium in `currency`, its implied volatility (a decimal) and Black-76
+   * greeks at the expiry's forward (delta per 1.00, gamma per 1.00, vega per
+   * volatility point, theta per calendar day). These replace the solved ones.
+   */
+  mark?: OptionMark;
+  /**
+   * The premiums in the coin a venue quotes them in (Deribit's BTC and ETH
+   * options); null where there is none. The contract's own prices are these
+   * at the expiry's forward.
+   */
+  coin?: { currency: string; bid: number | null; ask: number | null; mark: number; last: number | null };
+}
+
+export interface OptionMark {
+  price: number;
+  iv: number;
+  delta: number;
+  gamma: number;
+  vega: number;
+  theta: number;
+  forward: number;
 }
 
 export interface OptionsChain {
@@ -919,11 +1056,18 @@ export interface OptionsChain {
   puts: OptionContract[];
   providerId?: string;
   dataSource?: "live" | "delayed";
-  feed?: "opra" | "gloom";
+  feed?: "opra" | "gloom" | "deribit";
   delayMinutes?: number;
   realtimeEligible?: boolean;
   /** ISO timestamp for the upstream options snapshot. */
   asOf?: string;
+  /**
+   * The rate the venue prices its premiums at (Deribit marks at zero); the
+   * model rate when absent, as for US listed options.
+   */
+  rate?: number;
+  /** The venue a chain is listed on when it is not a US options exchange (Deribit). */
+  venue?: string;
   /**
    * The session the chain's open interest counts, YYYY-MM-DD, as Gloom Cloud
    * states it; null when none of its counts is dated. Absent from a source

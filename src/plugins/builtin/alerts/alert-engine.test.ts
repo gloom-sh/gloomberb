@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { evaluateAlert, createAlert, editAlert, rearmAlert, serializeAlerts, deserializeAlerts } from "./alert-engine";
+import { evaluateAlert, createAlert, editAlert, rearmAlert, serializeAlerts, deserializeAlerts, readAlertsStoreError } from "./alert-engine";
 
 describe("evaluateAlert", () => {
   test("above: triggers when price exceeds target", () => {
@@ -98,13 +98,21 @@ describe("editAlert", () => {
   });
 });
 
-describe("serializeAlerts / deserializeAlerts", () => {
-  test("roundtrips alerts", () => {
-    const alerts = [createAlert("AAPL", "above", 200), createAlert("TSLA", "below", 100)];
-    const json = serializeAlerts(alerts);
-    const restored = deserializeAlerts(json);
-    expect(restored).toHaveLength(2);
-    expect(restored[0]!.symbol).toBe("AAPL");
-    expect(restored[1]!.symbol).toBe("TSLA");
-  });
+test("unreadable members and overflowing JSON numbers cannot be saved as a filtered list", () => {
+  const legacy = { id: "old", symbol: "AAPL", condition: "above", targetPrice: 200, custom: { retained: true } };
+  for (const raw of [
+    JSON.stringify([legacy, null]),
+    JSON.stringify([legacy, { id: "unfinished", symbol: "MSFT" }]),
+    JSON.stringify([{ ...legacy, symbol: 42 }]),
+    JSON.stringify([{ ...legacy, exchange: 42 }]),
+    '[{"id":"overflow","symbol":"AAPL","condition":"above","targetPrice":1e400}]',
+    JSON.stringify([legacy]).replace('true', '1e400'),
+    { alerts: [legacy] },
+    "null",
+  ]) expect(readAlertsStoreError(raw)).not.toBeNull();
+  // Older rows without newer lifecycle fields remain readable and keep unknown data.
+  const raw = JSON.stringify([legacy]);
+  expect(readAlertsStoreError(raw)).toBeNull();
+  expect(serializeAlerts(deserializeAlerts(raw))).toBe(raw);
+  for (const unset of [undefined, null, "", "[]"]) expect(readAlertsStoreError(unset)).toBeNull();
 });

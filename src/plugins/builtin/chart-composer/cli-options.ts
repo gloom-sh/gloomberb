@@ -1,10 +1,10 @@
 import type { HeadlessPaneOptionValues } from "../../../types/headless";
 import {
-  CHART_RESOLUTIONS,
   TIME_RANGES,
   type ChartResolution,
   type TimeRange,
 } from "../../../time-series/range";
+import { parseChartResolution } from "../../../time-series/resolution";
 import {
   coerceSeriesTransformForStyle,
   normalizeChartSpec,
@@ -36,14 +36,11 @@ export function yearToDateWindow(spec: ChartSpec, now = Date.now()): { start: st
 }
 
 function chartResolution(options: HeadlessPaneOptionValues): ChartResolution | null {
-  const value = options.chartResolution ?? options.resolution;
-  return typeof value === "string" && (CHART_RESOLUTIONS as readonly string[]).includes(value)
-    ? value as ChartResolution
-    : null;
+  return parseChartResolution(options.chartResolution ?? options.resolution);
 }
 
-function financialPeriod(value: unknown): SeriesPeriod | null {
-  return value === "annual" || value === "quarterly" || value === "ttm" ? value : null;
+function financialPeriod(value: unknown, valuation: boolean): SeriesPeriod | null {
+  return value === "annual" || value === "quarterly" || value === "ttm" || (valuation && value === "daily") ? value : null;
 }
 
 function mapSecuritySeries(
@@ -84,6 +81,10 @@ export function applyChartComposerCapabilityOptions(
     next = { ...next, viewport: { ...next.viewport, extendedHours: true } };
   }
 
+  if (capabilityId === "price-comparison" && options.totalReturn === true) {
+    next = { ...next, viewport: { ...next.viewport, totalReturn: true } };
+  }
+
   if (PRICE_CAPABILITIES.has(capabilityId) && options.axisMode) {
     const transform = options.axisMode === "percent" ? "percent" : "raw";
     next = {
@@ -98,15 +99,15 @@ export function applyChartComposerCapabilityOptions(
   const graphKind = capabilityId === "fundamental-series"
     ? "fundamental"
     : capabilityId === "valuation-series" ? "valuation" : null;
-  if (graphKind && typeof options.metric === "string") {
-    const period = financialPeriod(options.period);
+  if (graphKind) {
+    const period = financialPeriod(options.period, graphKind === "valuation");
     next = {
       ...next,
       series: mapSecuritySeries(next.series, (entry) => ({
         ...entry,
         source: entry.source.kind === "security" ? {
           ...entry.source,
-          fieldId: `${graphKind}.${options.metric}`,
+          ...(typeof options.metric === "string" ? { fieldId: `${graphKind}.${options.metric}` } : {}),
           ...(period ? { period } : {}),
         } : entry.source,
       })),

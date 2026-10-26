@@ -1,3 +1,4 @@
+import { unavailableText } from "../../../components/ui/status";
 import { getSharedMarketDataCoordinator, MarketDataCoordinator, resolveEntryValue } from "../../../market-data/coordinator";
 import type { InstrumentRef } from "../../../market-data/request-types";
 import type { ManualChartResolution } from "../../../time-series/resolution";
@@ -66,7 +67,7 @@ export async function loadSeasonalityHistory(
       granularity: "resolution", resolution: SEASONALITY_HISTORY_RESOLUTION[cadence] }, { forceRefresh: request.forceRefresh }), request.signal, CANCELLED);
     const history = resolveEntryValue(entry) ?? [];
     return { history, stale: !!entry.error || (entry.staleAt != null && entry.staleAt <= now),
-      error: entry.error?.message ?? (history.length ? null : `${cadence === "daily" ? "Daily" : "Monthly"} price history unavailable`),
+      error: entry.error?.message ?? (history.length ? null : unavailableText(cadence === "daily" ? "Daily price history" : "Monthly price history")),
       fetchedAt: entry.fetchedAt ?? now };
   } catch (error) {
     if (request.signal?.aborted || (error instanceof Error && error.name === "AbortError")) throw abortError(CANCELLED);

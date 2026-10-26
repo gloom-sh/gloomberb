@@ -1,8 +1,9 @@
-import { afterEach, beforeEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import { act, useReducer } from "react";
+import { apiClient } from "../../../api-client";
 import { requestKeybindingCapture } from "../../../app/keybindings";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { flushPendingPersistence } from "../../../state/persist-scheduler";
@@ -51,10 +52,12 @@ async function openShortcutsTab() {
 
 // Rebinding saves the config for real, so each test gets a directory of its own.
 beforeEach(async () => {
+  spyOn(apiClient, "getCloudPricing").mockRejectedValue(new Error("Fixture has no pricing"));
   dataDir = await mkdtemp(join(tmpdir(), "gloom-help-keybindings-"));
 });
 
 afterEach(async () => {
+  mock.restore();
   latestState = null;
   // Let the saves a rebind started land before their directory goes.
   await flushPendingPersistence();
@@ -100,17 +103,18 @@ test("rebinding from the help pane captures the next chord, shows the way back, 
   expect(tui.frame()).toContain("unbound");
 });
 
-test("a capture landing on a taken chord still binds and names the other owner", async () => {
+test("a capture landing on a built-in action's chord is refused, names that action and saves nothing", async () => {
   await openShortcutsTab();
+  // The command bar's row, rebound to close pane's key.
   await tui.emitKeypress({ name: "return" });
   await tui.emitKeypress({ name: "w", ctrl: true });
   await frame();
-  expect(latestState?.config.keybindings).toEqual({ actions: { "command-bar": "CmdOrCtrl+W" } });
-  const text = tui.frame();
-  expect(text).toContain("Also bound to Close the");
-  expect(text).toContain("also Close the focused");
-  // The pane row names the collision from its side too.
-  expect(text).toContain("also Open the command bar");
+  expect(latestState?.config.keybindings).toBeUndefined();
+  expect(tui.frame()).toContain("Ctrl+W is taken: Close the focused pane. Press another key.");
+  // Still capturing: the next key binds.
+  await tui.emitKeypress({ name: "y", ctrl: true, shift: true });
+  await frame();
+  expect(latestState?.config.keybindings).toEqual({ actions: { "command-bar": "CmdOrCtrl+Shift+Y" } });
 });
 
 test("a bind request from the command bar captures a command chord and refuses typing keys", async () => {
@@ -124,6 +128,12 @@ test("a bind request from the command bar captures a command chord and refuses t
   await frame();
   expect(latestState?.config.keybindings).toBeUndefined();
   expect(tui.frame()).toContain("That key would fire while typing.");
+
+  // The command bar's own key would leave both dead.
+  await tui.emitKeypress({ name: "p", ctrl: true });
+  await frame();
+  expect(latestState?.config.keybindings).toBeUndefined();
+  expect(tui.frame()).toContain("Ctrl+P is taken: Open the command bar.");
 
   await tui.emitKeypress({ name: "1", alt: true });
   await frame();

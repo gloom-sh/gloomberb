@@ -54,6 +54,7 @@ export type {
   CrashReportSurface,
   CrashReportsPayload,
   FunctionUsageCount,
+  UpdateFailureReport,
   UsageCountsPayload,
   UsageCountsSurface,
 } from "./telemetry";
@@ -61,11 +62,13 @@ export type {
 /** Server-side caps for `/assist/command`; enforced here so a 422 is never sent. */
 const ASSIST_QUERY_MAX_LENGTH = 200;
 const ASSIST_COMMAND_LIMIT = 150;
-/** The futures curve's root list is the longest a command sends: 76 since GLO-783. */
+/** The futures curve's root list is the longest a command sends: 76. */
 export const ASSIST_ARG_OPTION_LIMIT = 128;
 const ASSIST_ARG_OPTION_VALUE_MAX_LENGTH = 40;
 const ASSIST_ARG_OPTION_LABEL_MAX_LENGTH = 60;
 const ASSIST_REQUEST_TIMEOUT_MS = 6_000;
+const SESSION_REVALIDATION_INITIAL_MS = 1_000;
+const SESSION_REVALIDATION_MAX_MS = 30_000;
 
 /**
  * Fits a command's argument values inside the server caps. The value is what
@@ -93,8 +96,15 @@ interface PendingSessionRequest {
 
 class GloomApiClient {
   private currentUser: AuthUser | null = null;
-  /** Local identity of a verified user/credential pair, never serialized. */
+  /** Local user/credential binding, masked until verified and never serialized. */
   private verifiedSessionIdentity: object | null = null;
+  private verifiedSessionCredential: string | null = null;
+  private sessionTransitions = 0;
+  private sessionTransition: Promise<void> | null = null;
+  /** Device adoption and external session installs supersede pending email auth. */
+  private sessionInstallationGeneration = 0;
+  private sessionRevalidationGeneration = 0;
+  private sessionRevalidationTimer: ReturnType<typeof setTimeout> | null = null;
   private sessionChecked = false;
   /** Last few session transitions, content-free, for app://auth. */
   private authTrace: Array<{ at: number; event: string; token: boolean; user: string }> = [];
@@ -109,7 +119,7 @@ class GloomApiClient {
     request: (path, options, canApplySession) => this.request(path, options, canApplySession),
     requireCapturedSession: (message) => this.requireCapturedSession(message),
     setCurrentUser: (user) => this.setCurrentUser(user),
-    setSessionToken: (token) => this.setSessionToken(token),
+    setSessionToken: (token) => this.installSessionToken(token),
     updateCurrentUser: (updater) => this.updateCurrentUser(updater),
   });
   private readonly socket: CloudApiSocket = new CloudApiSocket({
@@ -122,7 +132,6 @@ class GloomApiClient {
     markCurrentUserUnverified: () => {
       if (this.currentUser) {
         this.currentUser = { ...this.currentUser, emailVerified: false };
-        this.verifiedSessionIdentity = null;
         this.emitCurrentUserChange();
       }
     },
@@ -164,6 +173,8 @@ class GloomApiClient {
   }
 
   setCookieSessionMode(enabled: boolean): void {
+    this.cancelSessionRevalidation();
+    this.sessionInstallationGeneration += 1;
     this.sessionChecked = false;
     this.verifiedSessionIdentity = null;
     this.transport.setCookieSessionMode(enabled);
@@ -171,12 +182,21 @@ class GloomApiClient {
   }
 
   setSessionToken(token: string | null): void {
+    if (this.transport.getSessionToken() !== token || !token) {
+      this.cancelSessionRevalidation();
+      this.sessionInstallationGeneration += 1;
+    }
+    this.installSessionToken(token);
+  }
+
+  private installSessionToken(token: string | null): void {
     const changed = this.transport.getSessionToken() !== token;
     this.sessionChecked = false;
     this.transport.setSessionToken(token);
     if (changed) this.verifiedSessionIdentity = null;
     this.traceAuth(changed ? "setSessionToken:changed" : "setSessionToken:same");
     if (!token) {
+      this.cancelSessionRevalidation();
       this.currentUser = null;
       this.verifiedSessionIdentity = null;
     }
@@ -223,7 +243,9 @@ class GloomApiClient {
 
   /** Null while a replacement credential still awaits its matching user. */
   getVerifiedSessionIdentity(): object | null {
-    return this.isVerified() ? this.verifiedSessionIdentity : null;
+    return this.sessionTransitions === 0 && this.isVerified()
+      && this.verifiedSessionCredential === this.transport.getSessionToken()
+      ? this.verifiedSessionIdentity : null;
   }
 
   /**
@@ -275,11 +297,18 @@ class GloomApiClient {
     if (this.authTrace.length > 24) this.authTrace.shift();
   }
 
-  private setCurrentUser(user: AuthUser | null): void {
+  private setCurrentUser(user: AuthUser | null, confirmSession = true): void {
+    const sameAccount = this.currentUser?.id === user?.id;
     const changed = this.socketEntitlementKey(this.currentUser) !== this.socketEntitlementKey(user);
     this.traceAuth("setCurrentUser", user);
     this.currentUser = user;
-    this.verifiedSessionIdentity = this.isVerified() ? {} : null;
+    if (confirmSession) {
+      this.clearSessionRevalidationTimer();
+      this.verifiedSessionIdentity = user ? {} : null;
+      this.verifiedSessionCredential = this.transport.getSessionToken();
+    } else if (!sameAccount || !user) {
+      this.verifiedSessionIdentity = null;
+    }
     this.socket.syncAuthState({ reconnect: changed });
     this.emitCurrentUserChange();
   }
@@ -290,7 +319,9 @@ class GloomApiClient {
 
   private updateCurrentUser(updater: (user: AuthUser) => AuthUser): void {
     if (!this.currentUser) return;
-    this.setCurrentUser(updater(this.currentUser));
+    // A socket/profile update is metadata, not proof that a replacement
+    // credential belongs to this user. Keep its existing binding, even null.
+    this.setCurrentUser(updater(this.currentUser), false);
   }
 
   private socketEntitlementKey(user: AuthUser | null): string {
@@ -325,11 +356,123 @@ class GloomApiClient {
     return this.currentUser?.emailVerified ? this.currentUser : null;
   }
 
-  signUp = this.auth.signUp.bind(this.auth);
-  signIn = this.auth.signIn.bind(this.auth);
+  signUp = (email: string, username: string, name: string, password: string) =>
+    this.withSessionTransition((isCurrent) => this.auth.signUp(email, username, name, password, isCurrent));
+  signIn = (email: string, password: string) =>
+    this.withSessionTransition((isCurrent) => this.auth.signIn(email, password, isCurrent));
   startDeviceSignIn = this.auth.startDeviceSignIn.bind(this.auth);
   pollDeviceSignIn = this.auth.pollDeviceSignIn.bind(this.auth);
-  signOut = this.auth.signOut.bind(this.auth);
+  signOut = () => this.withSessionTransition((isCurrent) => this.auth.signOut(isCurrent), false);
+
+  /** Cookies can change before an auth response's body arrives, including ones the browser hides. */
+  private withSessionTransition<T>(run: (isCurrent: () => boolean) => Promise<T>, reconcileFailure = true): Promise<T> {
+    const previous = this.sessionTransition;
+    this.cancelSessionRevalidation();
+    let revalidationGeneration = this.sessionRevalidationGeneration;
+    const generation = this.sessionInstallationGeneration;
+    const isCurrent = () => generation === this.sessionInstallationGeneration;
+    this.sessionTransitions += 1;
+    this.sessionChecked = false;
+    this.verifiedSessionIdentity = null;
+    this.sessionRequestGeneration += 1;
+    this.emitCurrentUserChange();
+    let needsRevalidation = false;
+    const operation = (async () => {
+      // Serialize credential-changing requests so a late response cannot pair
+      // one account's user with another request's installed cookie.
+      if (previous) await previous;
+      try {
+        if (!isCurrent()) throw new Error("Another sign-in replaced this request.");
+        // An earlier queued sign-out may have retired retries while clearing its token.
+        revalidationGeneration = this.sessionRevalidationGeneration;
+        this.sessionRequestGeneration += 1;
+        const result = await run(isCurrent);
+        if (!isCurrent()) throw new Error("Another sign-in replaced this request.");
+        return result;
+      } catch (error) {
+        if (isCurrent()) {
+          this.verifiedSessionIdentity = null;
+          this.sessionChecked = false;
+        }
+        if (isCurrent() && reconcileFailure && this.transport.hasSessionCredential()) {
+          // A failed body may already have changed the cookie. A fresh session
+          // check is the only way to resume; retry if it cannot validate yet.
+          needsRevalidation = true;
+          this.sessionRequestGeneration += 1;
+          await this.revalidateSession(() => isCurrent()
+            && revalidationGeneration === this.sessionRevalidationGeneration).catch((failure) => {
+            if (!isCurrent()) return;
+            this.verifiedSessionIdentity = null;
+            logFailure("cloud.auth", "Restore session after failed sign-in failed")(failure);
+          });
+        }
+        throw error;
+      } finally {
+        if (isCurrent()) this.sessionRequestGeneration += 1;
+        this.sessionTransitions -= 1;
+        if (isCurrent() && needsRevalidation) this.scheduleSessionRevalidation(revalidationGeneration);
+        this.emitCurrentUserChange();
+      }
+    })();
+    const settled = operation.then(() => {}, () => {
+      // Intentional ignore: the caller receives the error while the auth queue continues.
+    });
+    this.sessionTransition = settled;
+    void settled.then(() => { if (this.sessionTransition === settled) this.sessionTransition = null; });
+    return operation;
+  }
+
+  private clearSessionRevalidationTimer(): void {
+    if (this.sessionRevalidationTimer !== null) clearTimeout(this.sessionRevalidationTimer);
+    this.sessionRevalidationTimer = null;
+  }
+
+  private cancelSessionRevalidation(): void {
+    this.sessionRevalidationGeneration += 1;
+    this.clearSessionRevalidationTimer();
+  }
+
+  /** A failed auth response can replace a cookie even when its recovery read is offline. */
+  private scheduleSessionRevalidation(generation: number, delay = SESSION_REVALIDATION_INITIAL_MS): void {
+    const isCurrent = () => generation === this.sessionRevalidationGeneration;
+    const needsRevalidation = () => isCurrent() && this.sessionTransitions === 0
+      && !this.sessionChecked && this.verifiedSessionIdentity === null && this.transport.hasSessionCredential();
+    if (!needsRevalidation() || this.sessionRevalidationTimer !== null) return;
+    this.sessionRevalidationTimer = setTimeout(() => {
+      this.sessionRevalidationTimer = null;
+      if (!needsRevalidation()) return;
+      void this.revalidateSession(isCurrent).catch((error) => {
+        if (isCurrent()) logFailure("cloud.auth", "Retry session validation failed")(error);
+      }).finally(() => {
+        this.scheduleSessionRevalidation(generation, Math.min(delay * 2, SESSION_REVALIDATION_MAX_MS));
+      });
+    }, delay);
+    this.sessionRevalidationTimer.unref?.();
+  }
+
+  private async revalidateSession(isCurrent: () => boolean): Promise<void> {
+    const user = await this.getSession(isCurrent);
+    const credential = this.getSessionToken();
+    if (user || !credential || !isCurrent()) return;
+    // A native null-session response can retain a usable token. Validate it
+    // through the account endpoint, without pairing it with a cached user.
+    this.sessionChecked = false;
+    const previousUser = this.currentUser;
+    const canApply = () => isCurrent() && this.getSessionToken() === credential && this.currentUser === previousUser;
+    try {
+      const profile = await this.auth.getAccountProfile(canApply);
+      if (!canApply()) return;
+      this.sessionChecked = true;
+      this.auth.restoreCachedUser({ ...profile, updatedAt: profile.updatedAt ?? undefined });
+    } catch (error) {
+      if (!canApply()) return;
+      if (error instanceof ApiRequestError && error.status === 401) {
+        this.installSessionToken(null);
+        return;
+      }
+      throw error;
+    }
+  }
 
   async getSession(isCurrent: () => boolean = () => true): Promise<AuthUser | null> {
     if (!isCurrent()) return this.currentUser;
@@ -352,7 +495,10 @@ class GloomApiClient {
       credential: this.getSessionToken(),
       promise: this.auth.getSession(canApply)
         .then(({ user, validated }) => {
-          if (validated && canApply()) this.sessionChecked = true;
+          if (validated && canApply()) {
+            this.sessionChecked = true;
+            this.clearSessionRevalidationTimer();
+          }
           this.traceAuth(validated ? "getSession:done" : "getSession:retained", user);
           return user;
         })
@@ -372,9 +518,13 @@ class GloomApiClient {
   requestPasswordReset = this.auth.requestPasswordReset.bind(this.auth);
   createBrowserHandoff = this.auth.createBrowserHandoff.bind(this.auth);
 
-  /** Creates a Stripe checkout session for Cloud Pro; the URL opens in a browser. */
-  async createCloudCheckout(returnTo?: string, interval: "month" | "year" = "month"): Promise<{ url: string }> {
-    return this.request<{ url: string }>("/stripe/checkout", { method: "POST", body: JSON.stringify({ returnTo, interval }) });
+  /**
+   * Creates a Stripe checkout session for Cloud Pro; the URL opens in a browser.
+   * `link` is a short link to the same checkout, to read or scan on another
+   * device. Older servers send none.
+   */
+  async createCloudCheckout(returnTo?: string, interval: "month" | "year" = "month"): Promise<{ url: string; link?: string }> {
+    return this.request<{ url: string; link?: string }>("/stripe/checkout", { method: "POST", body: JSON.stringify({ returnTo, interval }) });
   }
 
   async recordResearchActivity(payload: {
@@ -403,7 +553,7 @@ class GloomApiClient {
   async brokerRequest<T>(
     broker: string,
     path: string,
-    options: { method?: "GET" | "POST" | "DELETE"; body?: unknown; signal?: AbortSignal } = {},
+    options: { method?: "GET" | "POST" | "PUT" | "DELETE"; body?: unknown; signal?: AbortSignal } = {},
   ): Promise<T> {
     if (!/^[a-z][a-z0-9-]{0,31}$/.test(broker)) throw new Error(`Invalid broker id "${broker}".`);
     if (path !== "" && (!/^\/[A-Za-z0-9/_.~%?=&-]*$/.test(path) || path.includes(".."))) {
@@ -748,6 +898,8 @@ class GloomApiClient {
   subscribeScanner = this.socket.subscribeScanner.bind(this.socket);
 
   dispose(): void {
+    this.cancelSessionRevalidation();
+    this.sessionInstallationGeneration += 1;
     this.sessionRequestGeneration += 1;
     this.sessionRequest = null;
     this.socket.dispose();
@@ -774,12 +926,14 @@ class GloomApiClient {
   getCloudTickerChanges = this.data.getCloudTickerChanges.bind(this.data);
   getCloudOrganizationTickers = this.data.getCloudOrganizationTickers.bind(this.data);
   getCloudTickerChangesBatch = this.data.getCloudTickerChangesBatch.bind(this.data);
+  getCloudIssuerListings = this.data.getCloudIssuerListings.bind(this.data);
   searchInstrumentsBatch = this.data.searchInstrumentsBatch.bind(this.data);
   getCloudHistory = this.data.getCloudHistory.bind(this.data);
   getCloudExchangeRate = this.data.getCloudExchangeRate.bind(this.data);
   getCloudEconomicCalendar = this.data.getCloudEconomicCalendar.bind(this.data);
   getCloudEconomicCalendarFrom = this.data.getCloudEconomicCalendarFrom.bind(this.data);
   getCloudMacroReleaseDays = this.data.getCloudMacroReleaseDays.bind(this.data);
+  getCloudShortRates = this.data.getCloudShortRates.bind(this.data);
   getCloudEquityDiagnostic = this.data.getCloudEquityDiagnostic.bind(this.data);
   getCloudEarningsCalendar = this.data.getCloudEarningsCalendar.bind(this.data);
   getCloudEarningsHistory = this.data.getCloudEarningsHistory.bind(this.data);
@@ -788,16 +942,20 @@ class GloomApiClient {
   getCloudCryptoMarkets = this.data.getCloudCryptoMarkets.bind(this.data);
   getCloudStablecoinSupply = this.data.getCloudStablecoinSupply.bind(this.data);
   getCloudStablecoinSupplyHistory = this.data.getCloudStablecoinSupplyHistory.bind(this.data);
+  getCloudDefiTvl = this.data.getCloudDefiTvl.bind(this.data);
   getCloudCentralBankRates = this.data.getCloudCentralBankRates.bind(this.data);
   getMobileAlertHistory = this.data.getMobileAlertHistory.bind(this.data);
   getScannerFlowHistory = this.data.getScannerFlowHistory.bind(this.data);
+  getLiveScan = this.data.getLiveScan.bind(this.data);
   getCloudEstimateRevisions = this.data.getCloudEstimateRevisions.bind(this.data);
   getCloudMoneyMarkets = this.data.getCloudMoneyMarkets.bind(this.data);
   equityScreener = this.data.equityScreener.bind(this.data);
   getMemberFunds = this.data.getMemberFunds.bind(this.data);
   getFundMembers = this.data.getFundMembers.bind(this.data);
+  getFundBreadth = this.data.getFundBreadth.bind(this.data);
   getFundChanges = this.data.getFundChanges.bind(this.data);
   getFundFacts = this.data.getFundFacts.bind(this.data);
+  getCloudExchangeAnnouncements = this.data.getCloudExchangeAnnouncements.bind(this.data);
   getCloudThemes = this.data.getCloudThemes.bind(this.data);
   getCloudThemeMembers = this.data.getCloudThemeMembers.bind(this.data);
   impliedVolatility = this.data.impliedVolatility.bind(this.data);
@@ -813,7 +971,10 @@ class GloomApiClient {
   getPublicInsolvencyNotices = this.data.getPublicInsolvencyNotices.bind(this.data);
   getPublicLetters = this.data.getPublicLetters.bind(this.data);
   getCloudIpoCalendar = this.data.getCloudIpoCalendar.bind(this.data);
+  getCloudFailsToDeliver = this.data.getCloudFailsToDeliver.bind(this.data);
+  getCloudOtcVolume = this.data.getCloudOtcVolume.bind(this.data);
   getCloudShortVolume = this.data.getCloudShortVolume.bind(this.data);
+  getCloudCryptoEtfFlows = this.data.getCloudCryptoEtfFlows.bind(this.data);
   getCloudSocialMentions = this.data.getCloudSocialMentions.bind(this.data);
   getCloudSocialMentionPosts = this.data.getCloudSocialMentionPosts.bind(this.data);
   getCloudFuturesCurve = this.data.getCloudFuturesCurve.bind(this.data);
@@ -826,6 +987,11 @@ class GloomApiClient {
   creditDocuments = this.data.creditDocuments.bind(this.data);
   geo = this.data.geo.bind(this.data);
   getCloudHiring = this.data.getCloudHiring.bind(this.data);
+  getCloudHiringMoves = this.data.getCloudHiringMoves.bind(this.data);
+  getCloudHiringSignals = this.data.getCloudHiringSignals.bind(this.data);
+  getCloudHiringCompanySignals = this.data.getCloudHiringCompanySignals.bind(this.data);
+  getCloudHiringBuilding = this.data.getCloudHiringBuilding.bind(this.data);
+  getCloudHiringCompanyBuilding = this.data.getCloudHiringCompanyBuilding.bind(this.data);
   getCloudAppRankHistory = this.data.getCloudAppRankHistory.bind(this.data);
   getCloudAppAttention = this.data.getCloudAppAttention.bind(this.data);
   getCloudCatalystChanges = this.data.getCloudCatalystChanges.bind(this.data);
@@ -870,6 +1036,7 @@ class GloomApiClient {
   getCloudTape = this.data.getCloudTape.bind(this.data);
   getCloudYieldCurve = this.data.getCloudYieldCurve.bind(this.data);
   getCloudCurve = this.data.getCloudCurve.bind(this.data);
+  getCloudSwapCurve = this.data.getCloudSwapCurve.bind(this.data);
   getCloudCurveHistory = this.data.getCloudCurveHistory.bind(this.data);
   getCloudWorldCurves = this.data.getCloudWorldCurves.bind(this.data);
   getCloudCds = this.data.getCloudCds.bind(this.data);
@@ -880,6 +1047,7 @@ class GloomApiClient {
   getCloudCongressHouse = this.data.getCloudCongressHouse.bind(this.data);
   getCloudJobs = this.data.getCloudJobs.bind(this.data);
   getCloudJobsPostings = this.data.getCloudJobsPostings.bind(this.data);
+  getCloudJobsPosting = this.data.getCloudJobsPosting.bind(this.data);
   getCloudJobsMovers = this.data.getCloudJobsMovers.bind(this.data);
   getCloudEarningsCalls = this.data.getCloudEarningsCalls.bind(this.data);
   getCloudEarningsTranscript = this.data.getCloudEarningsTranscript.bind(this.data);

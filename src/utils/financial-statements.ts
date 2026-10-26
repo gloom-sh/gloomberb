@@ -1,4 +1,4 @@
-import type { FinancialStatement } from "../types/financials";
+import type { FinancialStatement, StatementFill, StatementFillField } from "../types/financials";
 import { copyIncomeField, incomeFieldOwner, INCOME_STATEMENT_FIELDS, isIncomeStatementField } from "./income-statement";
 import { mergeStatementGaps } from "./statement-gaps";
 
@@ -20,17 +20,93 @@ export function statementHistoryNotes(
   return period === "annual"
     ? [
       `annual history from ${oldest.slice(0, 4)}; older years not served`,
-      `earlier years, one metric at a time: gloomberb fn GF ${symbol} --period annual --periods 40`,
+      `earlier years, one metric at a time: gloom fn GF ${symbol} --period annual --periods 40`,
     ]
     : [
       `quarterly history from ${oldest}; older quarters not served`,
-      `earlier quarters, one metric at a time: gloomberb fn GF ${symbol} --period quarterly --periods 40`,
+      `earlier quarters, one metric at a time: gloom fn GF ${symbol} --period quarterly --periods 40`,
     ];
+}
+
+/** How old a statement's latest period may be before a report says how old it is. */
+const STALE_STATEMENT_MONTHS = 15;
+
+/** Whole months from a YYYY-MM-DD period end to `now`, in UTC. */
+function monthsSince(date: string, now: number): number | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(date);
+  if (!match) return null;
+  const today = new Date(now);
+  const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  return (today.getUTCFullYear() - year) * 12 + (today.getUTCMonth() + 1 - month) - (today.getUTCDate() < day ? 1 : 0);
+}
+
+/**
+ * "Latest period 2024-06-30 is 27 months old.": what a statements report and
+ * FA say when the latest period with the statement's lead figure (revenue,
+ * total assets) ended more than 15 months ago, so a table that stops years
+ * back never reads as current (EVN:ASX's balance sheet stopped at 2024-06-30
+ * in October 2026). A newer period with only some figures (EVN's FY2025: EPS
+ * alone) is named as such. `periods` are the table's columns, any order; a
+ * column without a date (TTM) is not a period. Null when the latest period is
+ * recent, or no column has a date.
+ */
+export function stalePeriodNote(
+  periods: ReadonlyArray<{ date: string; lead: boolean }>,
+  now = Date.now(),
+): string | null {
+  const dated = periods.filter(({ date }) => /^\d{4}-\d{2}-\d{2}/.test(date)).map(({ date, lead }) => ({ date: date.slice(0, 10), lead }));
+  if (dated.length === 0) return null;
+  const newest = dated.reduce((latest, period) => (period.date > latest ? period.date : latest), "");
+  const lead = dated.filter((period) => period.lead).reduce((latest, period) => (period.date > latest ? period.date : latest), "") || newest;
+  const [year, month, day] = lead.split("-").map(Number) as [number, number, number];
+  // Over 15 months: past the same day 15 months on.
+  if (!(now > Date.UTC(year, month - 1 + STALE_STATEMENT_MONTHS, day, 23, 59, 59, 999))) return null;
+  const months = monthsSince(lead, now);
+  return `Latest period ${lead} is ${months} months old${newest > lead ? `; ${newest} has only some figures` : ""}.`;
+}
+
+const FILL_SOURCES: Record<StatementFill["source"], string> = { asx: "ASX key statistics" };
+const FILL_FIELDS: Record<StatementFillField, string> = {
+  totalRevenue: "revenue", netIncome: "net income", totalAssets: "total assets", totalLiabilities: "total liabilities",
+};
+
+/**
+ * "From ASX key statistics (read 2026-10-22): 2026-06-30 revenue, net income;
+ * 2025-06-30 revenue, net income.": the years a statements table shows that
+ * Gloom Cloud filled from the listing's exchange because the statements source
+ * does not have them yet, newest first, with the lines taken. `shown` keeps the
+ * lines the table has a row for. Null when no shown line was filled.
+ */
+export function filledPeriodsNote(
+  statements: readonly Pick<FinancialStatement, "date" | "filledFrom">[],
+  shown?: ReadonlySet<string>,
+): string | null {
+  const filled = statements.flatMap(({ date, filledFrom }) => {
+    const source = filledFrom && FILL_SOURCES[filledFrom.source];
+    const fields = (filledFrom?.fields ?? []).filter((field) => FILL_FIELDS[field] && (!shown || shown.has(field)));
+    return source && fields.length > 0 ? [{ date: date.slice(0, 10), source, fields, read: filledFrom.retrievedAt.slice(0, 10) }] : [];
+  }).sort((left, right) => right.date.localeCompare(left.date));
+  if (filled.length === 0) return null;
+  const read = filled.map((period) => period.read).sort().at(-1);
+  return `From ${filled[0]!.source} (read ${read}): ${filled.map(({ date, fields }) => `${date} ${fields.map((field) => FILL_FIELDS[field]).join(", ")}`).join("; ")}.`;
+}
+
+/**
+ * A merged row's fill, for the filled lines it still holds as the filled row
+ * gave them; a line another source's row supplied is that source's.
+ */
+function retainedFill(merged: FinancialStatement, rows: Array<FinancialStatement | undefined>): StatementFill | undefined {
+  for (const row of rows) {
+    const fill = row?.filledFrom;
+    const fields = fill?.fields.filter((field) => typeof merged[field] === "number" && Object.is(merged[field], row![field])) ?? [];
+    if (fill && fields.length > 0) return { ...fill, fields };
+  }
+  return undefined;
 }
 
 export const SEC_EPS_BASIS_NOTICE = "SEC EPS uses corroborated split-adjusted share bases. Unverified bases are unavailable.";
 
-const STATEMENT_METADATA_KEYS = new Set(["date", "dateSource", "providerDate", "dateEvidence", "currency", "availableAt", "fieldAvailability", "epsBasis", "fieldSources", "unavailableFields", "withdrawnObservations", "operatingResult", "operatingResultAggregation", "earningsResult", "unavailableEarnings"]);
+const STATEMENT_METADATA_KEYS = new Set(["date", "dateSource", "providerDate", "dateEvidence", "currency", "availableAt", "fieldAvailability", "epsBasis", "fieldSources", "unavailableFields", "withdrawnObservations", "operatingResult", "operatingResultAggregation", "earningsResult", "unavailableEarnings", "filledFrom"]);
 const NEARBY_PERIOD_END_MS = 7 * 24 * 60 * 60 * 1_000;
 
 /** An explicit field map is authoritative: omitted fields have unknown availability. */
@@ -40,11 +116,16 @@ export function statementFieldAvailability(row: FinancialStatement | undefined, 
   return value && Number.isFinite(Date.parse(value)) ? value : undefined;
 }
 
+/** A date without a publication time is only known to be available after that day. */
+export function financialAvailabilityTime(value: string): number {
+  return Date.parse(value) + (/^\d{4}-\d{2}-\d{2}$/.test(value) ? 86_400_000 : 0);
+}
+
 /** A derived value is dated only when every input's availability is known. */
 export function completeAvailability(values: readonly (string | null | undefined)[]): string | undefined {
   if (values.length === 0 || values.some((value) => !value || !Number.isFinite(Date.parse(value)))) return undefined;
   return values.reduce<string | undefined>((latest, value) => (
-    !latest || Date.parse(value!) > Date.parse(latest) ? value! : latest
+    !latest || financialAvailabilityTime(value!) > financialAvailabilityTime(latest) ? value! : latest
   ), undefined);
 }
 
@@ -238,6 +319,9 @@ export function mergeFinancialStatementRows(
 
     // A gap either report declares for the period survives the other's value.
     mergeStatementGaps(merged, [row, fallback]);
+    const fill = retainedFill(merged, [row, fallback]);
+    if (fill) merged.filledFrom = fill;
+    else delete merged.filledFrom;
     // A fallback row-level date cannot safely date a different primary value.
     // Retained fallback fields still carry their own per-field provenance.
     for (const key of keys) if (!hasMetricValue(merged, key)) delete fieldAvailability[key];

@@ -1,7 +1,8 @@
 import type { EarningsTiming } from "../../../api-client/earnings";
 import type { PricePoint } from "../../../types/financials";
 import { zonedDateTimeParts } from "../../../utils/zoned-date-time";
-import { MACRO_EVENT_KINDS, MACRO_EVENT_LABELS, type MacroEventKind, type MacroRelease } from "./releases";
+import { MACRO_EVENT_KINDS, MACRO_EVENT_LABELS, US_MACRO_EVENT_KINDS, type MacroEventKind, type MacroRelease, type MacroReleaseFigures,
+  type MacroSurprise } from "./releases";
 
 const DAY_MS = 86_400_000;
 /** Longest calendar gap between two closes that is still one session apart: Thursday to Monday over a Friday holiday. */
@@ -28,6 +29,8 @@ export interface MacroDayEvent {
   move: number;
   /** |move| over the normal day's average |move|. */
   multiple: number | null;
+  /** What the release came out with, when the list has it. */
+  figures: MacroReleaseFigures | null;
 }
 
 export interface MacroDayStats {
@@ -44,13 +47,19 @@ export interface MacroDayModel {
   symbol: string;
   /** Newest first. */
   events: MacroDayEvent[];
+  /** The kinds the list carries: the US releases, and IPCA when Gloom Cloud lists its days. */
+  kinds: MacroEventKind[];
   /** Without the earnings days. */
   byKind: Record<MacroEventKind, MacroDayStats>;
-  /** Every release day of the three kinds together, without the earnings days; a day with two releases counts once. */
+  /**
+   * Every US release day together, without the earnings days; a day with two
+   * releases counts once. IPCA days are summed up on their own only, so a US
+   * name's figures do not move with Brazil's calendar.
+   */
   allEvents: MacroDayStats;
-  /** Release days that are the ticker's earnings reaction, which no other figure counts; a day with two releases counts once. */
+  /** US release days that are the ticker's earnings reaction, which no other figure counts; a day with two releases counts once. */
   earnings: MacroDayStats;
-  /** Sessions with no release of the three kinds, and none of the earnings days among them. */
+  /** Sessions with no US release, and none of the earnings days among them. */
   normal: MacroDayStats;
   start: string | null;
   asOf: string | null;
@@ -69,6 +78,15 @@ function sessionDate(time: number): string {
 
 const dayNumber = (date: string) => Date.parse(`${date}T00:00:00Z`) / DAY_MS;
 const isWeekday = (date: string) => { const day = new Date(`${date}T00:00:00Z`).getUTCDay(); return day > 0 && day < 6; };
+
+/** The figures over some of the model's release days (the hot CPI days): their moves, the earnings days left out as the kinds' are. */
+export function macroDayStats(events: readonly MacroDayEvent[], normalAbs: number | null): MacroDayStats {
+  return stats(events.filter((event) => !event.earnings).map((event) => event.move), normalAbs);
+}
+
+/** Whether a release day's print matches a surprise filter; `all` matches every day, figures or not. */
+export const matchesSurprise = (event: Pick<MacroDayEvent, "figures">, surprise: MacroSurprise | "all") =>
+  surprise === "all" || event.figures?.surprise === surprise;
 
 function stats(moves: number[], normalAbs: number | null): MacroDayStats {
   if (!moves.length) return { count: 0, meanAbs: null, mean: null, hitRate: null, multiple: null };
@@ -98,6 +116,8 @@ function earningsReactionSessions(reports: readonly MacroDayEarningsReport[], se
   }
   return reacted;
 }
+
+const US_KINDS: ReadonlySet<MacroEventKind> = new Set(US_MACRO_EVENT_KINDS);
 
 /**
  * Close to close on the release day: 8:30 ET releases land before the open
@@ -129,7 +149,8 @@ export function projectMacroDays(history: readonly PricePoint[], options: {
   const sessions = [...byDate.keys()].sort();
   const last = sessions.at(-1) ?? null;
   const empty = (): MacroDayStats => stats([], null);
-  if (!last) return { symbol: options.symbol, events: [], byKind: { cpi: empty(), jobs: empty(), fomc: empty() },
+  const kinds = MACRO_EVENT_KINDS.filter((kind) => US_KINDS.has(kind) || options.releases.some((release) => release.kind === kind));
+  if (!last) return { symbol: options.symbol, events: [], kinds, byKind: { cpi: empty(), jobs: empty(), fomc: empty(), ipca: empty() },
     allEvents: empty(), earnings: empty(), normal: empty(), start: null, asOf: null };
 
   // Sessions after the published lists end may be unlisted release days, so they are left out of both sides.
@@ -157,8 +178,8 @@ export function projectMacroDays(history: readonly PricePoint[], options: {
     const session = sessions[at]!;
     const move = moves.get(session);
     if (move == null || (session !== release.date && skipsAnotherWeekday(release.date, sessions[at - 1]!, session))) continue;
-    reactionSessions.add(session);
-    found.push({ kind: release.kind, date: release.date, session, move });
+    if (US_KINDS.has(release.kind)) reactionSessions.add(session);
+    found.push({ kind: release.kind, date: release.date, session, move, figures: release.figures ?? null });
   }
 
   const normalMoves = [...moves].filter(([date]) => !reactionSessions.has(date)).map(([, move]) => move);
@@ -170,7 +191,7 @@ export function projectMacroDays(history: readonly PricePoint[], options: {
   const byKind = Object.fromEntries(MACRO_EVENT_KINDS.map((kind) =>
     [kind, stats(events.filter((event) => event.kind === kind && !event.earnings).map((event) => event.move), normalAbs)])) as Record<MacroEventKind, MacroDayStats>;
   const sessionMoves = (flagged: boolean) => [...reactionSessions].filter((session) => reacted.has(session) === flagged).map((session) => moves.get(session)!);
-  return { symbol: options.symbol, events, byKind, allEvents: stats(sessionMoves(false), normalAbs), earnings: stats(sessionMoves(true), normalAbs),
+  return { symbol: options.symbol, events, kinds, byKind, allEvents: stats(sessionMoves(false), normalAbs), earnings: stats(sessionMoves(true), normalAbs),
     normal, start, asOf: end };
 }
 

@@ -21,7 +21,7 @@ function formatFatalError(error: unknown, details?: string): string {
 }
 
 export function DesktopFatalScreen({
-  title = "Gloomberb crashed",
+  title = "Gloom crashed",
   error,
   details,
   source,

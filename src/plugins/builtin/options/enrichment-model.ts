@@ -4,7 +4,7 @@ import { buildOptionsKey, resolveEntryData } from "../../../market-data/selector
 import type { OptionsChain } from "../../../types/financials";
 import { normalizeSymbol, parsePublicTickerKey } from "../../../utils/exchanges";
 import { daysToExpiryFrom, volatilityTermSlope, type ExpectedMove } from "../shared/volatility";
-import { buildSurfaceExpiry, evaluateSurfaceSmile, type SurfaceExpiry } from "../vol-surface/model";
+import { buildSurfaceExpiry, type SurfaceExpiry } from "../vol-surface/model";
 import type { YieldPoint } from "../yield-curve/treasury-data";
 
 export interface OptionsEnrichmentSelection {
@@ -97,8 +97,8 @@ export function optionsEnrichmentSelectionIssue(input: OptionsEnrichmentSelectio
 
 /**
  * Models kept between projections of one selection. The adjacent expiry does
- * not stream, so a live re-projection refits only the selected smile and reads
- * the adjacent ATM level off its existing fit at the current spot.
+ * not stream, so a live re-projection refits only the selected smile and keeps
+ * the adjacent fit, whose ATM-forward level does not move with the spot.
  */
 export interface OptionsEnrichmentCache {
   neighbour?: { chain: OptionsChain; curve: readonly YieldPoint[] | undefined; model: SurfaceExpiry };
@@ -134,17 +134,18 @@ export function projectOptionsEnrichment(input: OptionsEnrichmentProjection, cac
     else if (neighbourChain) {
       const cached = cache?.neighbour?.chain === neighbourChain && cache.neighbour.curve === input.curve
         ? cache.neighbour.model : null;
-      const neighbour = cached ? { ...cached, atmIV: evaluateSurfaceSmile(cached, input.spot) }
-        : buildSurfaceExpiry({ chain: neighbourChain, expiration: neighbourExpiration, spot: input.spot,
-          curve: input.curve ?? [], now: input.now, source: input.neighbourEntry?.source });
+      const neighbour = cached ?? buildSurfaceExpiry({ chain: neighbourChain, expiration: neighbourExpiration, spot: input.spot,
+        curve: input.curve ?? [], now: input.now, source: input.neighbourEntry?.source });
       if (cache && !cached) cache.neighbour = { chain: neighbourChain, curve: input.curve, model: neighbour };
       result.rateAsOf = [...new Set([...result.rateAsOf, ...neighbour.rateAsOf])];
       result.warnings.push(...neighbour.warnings
         .filter((warning) => !(input.curveLoading && warning === "Treasury rate unavailable"))
         .map((warning) => `Adjacent expiry: ${warning}`));
-      if (selected.atmIV != null && neighbour.atmIV != null) {
-        Object.assign(result, optionsEnrichmentTermSlope({ years: selected.years, volatility: selected.atmIV },
-          { years: neighbour.years, volatility: neighbour.atmIV }));
+      // The slope runs between the two expiries' IVs at their forwards, as OVDV's does, so a print
+      // against a closed session's chain does not tilt it.
+      if (selected.skew.atm != null && neighbour.skew.atm != null) {
+        Object.assign(result, optionsEnrichmentTermSlope({ years: selected.years, volatility: selected.skew.atm },
+          { years: neighbour.years, volatility: neighbour.skew.atm }));
         if (new Date(selected.asOf!).toISOString().slice(0, 10) !== new Date(neighbour.asOf!).toISOString().slice(0, 10)) {
           result.warnings.push("Term slope uses option observations from different dates");
         }

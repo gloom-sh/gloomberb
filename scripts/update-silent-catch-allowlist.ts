@@ -10,6 +10,9 @@ const EXCLUDED = [
 ];
 // Folders inside an excluded one that are already checked; bring the next one in with a line here.
 const INCLUDED = [
+  "src/plugins/builtin/chart-composer/",
+  "src/plugins/builtin/broker-trading/",
+  "src/plugins/builtin/account-management/",
   "src/plugins/builtin/cloud/",
   "src/plugins/builtin/notes/",
   "src/plugins/builtin/news/",
@@ -19,6 +22,17 @@ const INCLUDED = [
   "src/plugins/builtin/dividend-yield/",
   "src/plugins/builtin/exposure/",
   "src/plugins/builtin/trace-bonds/",
+  "src/plugins/builtin/market-movers/",
+  "src/plugins/builtin/plugin-marketplace/",
+  "src/plugins/builtin/alerts/",
+  "src/plugins/builtin/sectors/",
+  "src/plugins/builtin/holders/",
+  "src/plugins/builtin/correlation/",
+  "src/plugins/builtin/world-venue-map/",
+  "src/plugins/builtin/power/",
+  "src/plugins/builtin/earnings/",
+  "src/plugins/builtin/futures-curve/",
+  "src/plugins/builtin/fx-matrix/",
 ];
 
 type SilentCatch = {

@@ -267,8 +267,17 @@ function HelpPane({ focused, width, height }: PaneProps) {
         entry("place", ["Enter", "Arrows"], "With a tool picked, Enter starts it at the cursor, the arrows move its end, and Enter finishes it."),
         entry("drawings", ["[", "]"], "With a drawing tool picked, pick a drawing."),
         entry("colour", ["c", "Backspace"], "Cycle the drawing colour, or delete the picked drawing (the last one while a drawing tool is picked)."),
-        entry("zoom-pointer", ["Ctrl+Scroll"], "Zoom around the pointer."),
-        entry("zoom-keys", ["+/-", "0"], "Zoom the focused chart in or out, or reset it."),
+        entry("zoom-pointer", shortcutDisplayMode === "terminal" ? ["Ctrl+Scroll"] : ["Ctrl+Scroll", "Pinch"], "Zoom time around the pointer."),
+        entry("time-axis", ["Drag"], "On the time axis, zoom time: left zooms in, right zooms out. Double-click fits it again."),
+        entry("value-axis", ["Drag", "Scroll"], "On a value axis, stretch or squeeze that panel's values. Dragging the plot then moves them too."),
+        entry("value-fit", ["Double-click", "Auto"], "Fit a hand-scaled panel's values again, from its axis or the Auto button at its foot."),
+        entry("zoom-keys", ["+/-", "0"], "Zoom the focused chart in or out, or reset it, values included."),
+        shortcutDisplayMode === "terminal"
+          ? entry("panel-height", ["Shift+Up/Down"], "Make the top panel taller or shorter; Reset Panel Heights in the pane menu puts back the split.")
+          : entry("panel-height", ["Drag", "Shift+Up/Down"], "Drag the line between two panels to resize them, double-click it for the default split; Shift+Up and Shift+Down resize the top panel."),
+        entry("panel-max", ["Double-click"], "Double-click a panel to give it the whole chart, and again to show every panel."),
+        entry("tools-hide", ["Shift+T"], "Hide the drawing tools to a single button, or show them again."),
+        entry("legend-fold", ["Shift+L"], "Fold the legend to its first series and a count of the rest, or open it again."),
       ],
     },
     {
@@ -334,7 +343,7 @@ function HelpPane({ focused, width, height }: PaneProps) {
             )}
 
             <Box flexDirection="column" gap={1}>
-              <SectionHeading title="How To Use Gloomberb" />
+              <SectionHeading title="How To Use Gloom" />
               <Box flexDirection="column">
                 <Text fg={colors.textDim} wrapText>{t("Click anything to use it; the keys shown beside actions are shortcuts.")}</Text>
                 <Text fg={colors.textDim} wrapText>
@@ -413,6 +422,7 @@ export const helpModule: PluginModule = {
       name: "Help",
       icon: "?",
       component: HelpPane,
+      reportFreshness: { status: "not-a-feed", basis: "documentation" },
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 88, height: 32 },

@@ -8,6 +8,7 @@ import type { AppServices } from "../../../core/app-services";
 import { diskNotesFilesIO, isNotesFile } from "../../../plugins/builtin/notes/files";
 import type { BrokerAdapter } from "../../../types/broker";
 import type { AppConfig, BrokerInstanceConfig } from "../../../types/config";
+import { errorMessage } from "../../../utils/errors";
 
 const DESKTOP_CORE_PLUGIN_ID = "desktop-core";
 
@@ -30,6 +31,7 @@ const BROKER_INVOKE_OPERATIONS = new Set([
   "getChartResolutionCapabilities",
   "getOptionsChain",
   "listOpenOrders",
+  "getOrderStatus",
   "listExecutions",
   "previewOrder",
   "placeOrder",
@@ -116,6 +118,8 @@ function invokeBrokerOperation(
     case "previewOrder":
     case "placeOrder":
       return (broker[operation] as any)?.call(broker, instance, args[0]);
+    case "getOrderStatus":
+      return broker.getOrderStatus?.(instance, args[0] as number);
     case "modifyOrder":
       return broker.modifyOrder?.(instance, args[0] as number, args[1] as never);
     case "cancelOrder":
@@ -167,6 +171,15 @@ function createBrokerCapability(options: CoreCapabilityOptions): PluginCapabilit
           },
         );
       }),
+      orders: stream((input: any, emit) => {
+        const instanceId = requireString(input.instanceId, "Broker instance");
+        const { instance, broker } = resolveBrokerInstance(options, instanceId);
+        if (!broker.subscribeOrders) throw new Error(`Broker "${broker.name}" does not stream orders.`);
+        return broker.subscribeOrders(instance, {
+          order: (order) => emit({ kind: "order", order }),
+          live: (live) => emit({ kind: "orders-live", live }),
+        });
+      }),
       removeInstance: op(async (input: any) => {
         const { instance, broker } = resolveBrokerInstance(options, input.instanceId);
         await broker.disconnect?.(instance);
@@ -209,7 +222,14 @@ function createNotesFilesCapability(): PluginCapability {
         await io(input).delete(file(input));
         return null;
       }, "action"),
-      listKeys: op((input: any) => io(input).listKeys({ strict: input.strict === true })),
+      listKeys: op(async (input: any) => {
+        const skipped: Array<{ key: string; reason: string }> = [];
+        const keys = await io(input).listKeys({
+          strict: input.strict === true,
+          ...(input.reportSkipped === true ? { skipped: (key: string, error: unknown) => skipped.push({ key, reason: errorMessage(error) }) } : {}),
+        });
+        return input.reportSkipped === true ? { keys, skipped } : keys;
+      }),
     },
   };
 }

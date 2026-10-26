@@ -72,7 +72,7 @@ export interface InstalledPlugin {
   path?: string;
   /** Checked-out commit, when the install is a git checkout. */
   commit?: string;
-  /** A dev link (`gloomberb plugin link`) rather than a clone. */
+  /** A dev link (`gloom plugin link`) rather than a clone. */
   linked?: boolean;
   /** Set when the plugin is installed but cannot run on this renderer. */
   unsupportedTarget?: PluginTarget;
@@ -180,7 +180,7 @@ function isFeatured(id: string, bundled: boolean, feedFeatured: boolean | undefi
  * plugin can be installed but inert because this renderer cannot run it. The
  * merge keeps all three visible rather than showing whichever list is handy.
  */
-/** The folder `gloomberb install owner/repo` creates, which is the repository name. */
+/** The folder `gloom install owner/repo` creates, which is the repository name. */
 function repoDirectory(repo: string | undefined): string | null {
   const name = repo?.split("/")[1]?.replace(/\.git$/, "");
   return name ? name.toLowerCase() : null;

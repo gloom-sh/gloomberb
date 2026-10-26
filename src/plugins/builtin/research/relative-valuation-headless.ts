@@ -4,18 +4,29 @@ import { EXTENDED_SESSION_LABELS, type ExtendedSession } from "../../../market-d
 import { formatCompact, formatCurrency, formatLevelPercent, formatNumber, formatPercent, formatPercentRaw } from "../../../utils/format";
 import { loadHeadlessFinancials, loadHeadlessSymbols } from "../shared/headless-market-data";
 import { quoteFreshnessFields } from "../shared/report-freshness";
-import { RELATIVE_VALUATION_STALE_FUNDAMENTALS_NOTICE, RELATIVE_VALUATION_STALE_QUOTE_NOTICE, relativeValuationValues } from "./relative-valuation-model";
+import {
+  RELATIVE_VALUATION_STALE_FUNDAMENTALS_NOTICE, RELATIVE_VALUATION_STALE_QUOTE_NOTICE, relativeValuationValues, type RelativeValuationGapKey,
+} from "./relative-valuation-model";
 import { paneSchemas } from "./headless-schema";
 import { isRecord } from "../../../utils/guards";
+import { errorMessage } from "../../../utils/errors";
+import { notATickerSymbol } from "../../../sources/provider-errors";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import { pickPeers, peerMethodTitle, type PeerSelection } from "./relative-valuation-peers";
-import { extraColumns, loadExtraColumns, parseExtraColumns } from "./relative-valuation-columns";
+import { extraColumns, extraColumnsBasis, loadExtraColumns, parseExtraColumns } from "./relative-valuation-columns";
+import { fundamentalsBasisParts } from "./relative-valuation-basis";
 import { conversionNote, convertMarketCaps, loadFxLegs } from "./relative-valuation-currency";
 
 const price = (value: unknown, row: Record<string, unknown>) => (
   value == null || !row.currency ? "-" : formatCurrency(Number(value), String(row.currency))
 );
 const percent = (value: unknown) => value == null ? "-" : formatPercentRaw(Number(value));
+
+/** The reason a row lacks the figure under `key` ("no TTM FCF"), which exports move to their status column. */
+function gapText(row: Record<string, unknown>, key: RelativeValuationGapKey): string {
+  const gaps = row.gaps as Partial<Record<RelativeValuationGapKey, string>> | undefined;
+  return gaps?.[key] ?? "-";
+}
 
 /**
  * The pre-market, after-hours or overnight print and its move from the regular close in Last, for the peers that have
@@ -32,32 +43,63 @@ function extendedColumn(session: ExtendedSession): HeadlessPaneColumn {
   };
 }
 
+/**
+ * An export's extended print: the price alone, in the row's currency, then its move from the close in a
+ * `<session> Chg%` column, blank for a peer whose print is from another session or that has none.
+ */
+function extendedExportColumns(session: ExtendedSession): HeadlessPaneColumn[] {
+  const label = EXTENDED_SESSION_LABELS[session];
+  return [
+    { key: "extendedPrice", header: label, align: "right", unitKey: "currency",
+      format: (value, row) => row.extendedSession === session && typeof value === "number" ? price(value, row) : "-" },
+    { key: "extendedChangePercent", header: `${label} Chg%`, align: "right",
+      format: (value, row) => row.extendedSession === session && typeof value === "number" ? percent(value) : "-" },
+  ];
+}
+
+const EXTENDED_SESSIONS = ["PRE", "POST", "OVERNIGHT"] as const;
+
+/** Every session's columns, whichever peers have a print, so the header is the same before the open and after the close. */
+const EXTENDED_EXPORT_COLUMNS = EXTENDED_SESSIONS.flatMap(extendedExportColumns);
+
+// Last is in each peer's own currency: an export writes the number, and the row's `currency_or_unit` names its currency.
 const QUOTE_COLUMNS: HeadlessPaneColumn[] = [
   { key: "symbol", header: "Ticker" },
-  { key: "price", header: "Last", align: "right", format: price },
-  { key: "changePercent", header: "Chg%", align: "right", format: percent },
+  { key: "price", header: "Last", align: "right", unitKey: "currency",
+    format: (value, row) => value == null ? gapText(row, "price") : price(value, row) },
+  { key: "changePercent", header: "Chg%", align: "right", format: (value, row) => value == null ? gapText(row, "changePercent") : percent(value) },
 ];
+
+/** The latest quarter's revenue against the same quarter a year earlier; the footer names the quarter. */
+const REVENUE_GROWTH_HEADER = "Quarter Revenue YoY";
 
 const VALUATION_COLUMNS: HeadlessPaneColumn[] = [
   // In the currency each peer's cap is in, which exports write in the header or beside the figure.
-  { key: "marketCap", header: "Mkt Cap", align: "right", unitKey: "marketCapCurrency",
-    format: (value, row) => value == null ? "-" : `${formatCompact(Number(value), { fixedDecimals: true })}${row.marketCapCurrency ? ` ${row.marketCapCurrency}` : ""}` },
+  { key: "marketCap", header: "Mkt Cap", align: "right", unitKey: "marketCapCurrency", unitColumn: true,
+    format: (value, row) => value == null ? gapText(row, "marketCap") : `${formatCompact(Number(value), { fixedDecimals: true })}${row.marketCapCurrency ? ` ${row.marketCapCurrency}` : ""}` },
   ...([ ["trailingPE", "P/E"], ["forwardPE", "Fwd P/E"] ] as const).map(([key, header]) => ({
     key, header, align: "right" as const,
-    format: (_value: unknown, row: Record<string, unknown>) => {
+    // The multiple as reported, else the comparable value itself, so an export reads the column as one of figures.
+    format: (value: unknown, row: Record<string, unknown>) => {
       const values = row as Partial<ReturnType<typeof relativeValuationValues>>;
-      return formatPriceEarnings(values.notMeaningful?.[key] ? NOT_MEANINGFUL : values.reportedMultiples?.[key]);
+      const multiple = values.notMeaningful?.[key] ? NOT_MEANINGFUL : values.reportedMultiples?.[key] ?? (typeof value === "number" ? value : null);
+      return multiple == null ? gapText(row, key) : formatPriceEarnings(multiple);
     },
   })),
-  ...[["evSales", "EV/S"]].map(([key, header]) => ({
-    key: key!, header: header!, align: "right" as const,
-    // A withdrawn EV says so rather than leaving a bare dash; the note under the table says why.
+  ...([["evSales", "EV/S"]] as const).map(([key, header]) => ({
+    key, header, align: "right" as const,
+    // A withdrawn EV says so rather than leaving a bare dash, one at or below zero reads N/M; the note under the table says why.
     format: (value: unknown, row: Record<string, unknown>) => value != null ? formatNumber(Number(value), 1)
-      : row.evSalesUnavailable ? "EV unavailable" : "-",
+      : (row as Partial<ReturnType<typeof relativeValuationValues>>).notMeaningful?.evSales ? formatPriceEarnings(NOT_MEANINGFUL)
+        : gapText(row, key),
   })),
-  ...[["fcfYield", "FCF Yield"], ["revenueGrowth", "Quarter Revenue YoY"], ["operatingMargin", "TTM Op Margin"]].map(([key, header]) => ({
-    key: key!, header: header!, align: "right" as const,
-    format: (value: unknown) => value == null ? "-" : key === "revenueGrowth" ? formatPercent(Number(value)) : formatLevelPercent(Number(value)),
+  ...([["fcfYield", "FCF Yield"], ["revenueGrowth", REVENUE_GROWTH_HEADER], ["operatingMargin", "TTM Op Margin"]] as const).map(([key, header]) => ({
+    key, header, align: "right" as const,
+    format: (value: unknown, row: Record<string, unknown>) => value == null ? gapText(row, key)
+      : key === "revenueGrowth" ? formatPercent(Number(value))
+        // A margin of the latest fiscal year, where no trailing quarters were served, says which year.
+        : key === "operatingMargin" && typeof row.operatingMarginPeriod === "string"
+          ? `${formatLevelPercent(Number(value))} ${row.operatingMarginPeriod}` : formatLevelPercent(Number(value)),
   })),
 ];
 
@@ -76,7 +118,14 @@ async function choosePeers(symbols: readonly string[], ctx: HeadlessPaneContext)
     throw new Error(`--peers picks the peers of one symbol, such as RV ${symbols[0] ?? "DUOL"} --peers; with several symbols, leave it out.`);
   }
   const subject = symbols[0]!;
-  return pickPeers(subject, await loadHeadlessFinancials(ctx, subject).catch(() => null), ctx);
+  const financials = await loadHeadlessFinancials(ctx, subject).catch((error: unknown) => {
+    ctx.signal.throwIfAborted();
+    // A word that is no ticker is said as `fn RV duolingo lrn` says it, which the CLI follows with the search to run.
+    if (notATickerSymbol(errorMessage(error))) throw error;
+    // Any other failure leaves the peers to what the symbol alone places (a curated core's member).
+    return null;
+  });
+  return pickPeers(subject, financials, ctx);
 }
 
 const PEER_SELECTION_SETTING = "peerSelection";
@@ -93,7 +142,7 @@ export const relativeValuationHeadless: HeadlessPaneDefinition<"rows"> = {
       ? `Relative Valuation | ${selection.subject} and ${peerMethodTitle(selection)}`
       : `Relative Valuation | ${(result?.symbols ?? symbols).join(", ")}`;
   },
-  columns: [...QUOTE_COLUMNS, ...VALUATION_COLUMNS],
+  columns: [...QUOTE_COLUMNS, ...EXTENDED_EXPORT_COLUMNS, ...VALUATION_COLUMNS],
   async expandArgument(args, ctx) {
     if (args.options.peers !== true) return null;
     const selection = await choosePeers(args.symbols, ctx);
@@ -137,23 +186,33 @@ export const relativeValuationHeadless: HeadlessPaneDefinition<"rows"> = {
       const reason = fx?.failed.find((failure) => failure.currency === resolveCurrencyUnit(currency).currency)?.reason;
       return `No ${currency} rate${reason ? ` (${reason})` : ""}: ${left.join(", ")} ${left.length === 1 ? "keeps its" : "keep their"} market cap in ${currency}.`;
     }) ?? [];
-    const conversionText = capCurrency && converted ? conversionNote(capCurrency, converted.conversions) : null;
+    // The footer: the rates the caps were converted at, the statement period the figures run through, and the
+    // basis of each column that is not trailing twelve months.
+    const footnote = [
+      ...capCurrency && converted ? [conversionNote(capCurrency, converted.conversions)] : [],
+      ...fundamentalsBasisParts(rows, REVENUE_GROWTH_HEADER),
+      ...extraColumnsBasis(extraIds, rows),
+    ].filter(Boolean).join(" · ");
     const notes = [
-      ...selection ? [`Peers chosen automatically: ${selection.basis}. To choose your own: gloomberb fn RV ${selection.subject} <tickers>.`] : [],
+      ...selection ? [`Peers chosen automatically: ${selection.basis}. To choose your own: gloom fn RV ${selection.subject} <tickers>.`] : [],
       ...extra.notes,
     ];
     // Last and Chg% are the regular session; an extended print gets a column only when a peer has one.
-    const extendedSessions = (["PRE", "POST", "OVERNIGHT"] as const).filter((session) => rows.some((row) => row.extendedSession === session));
-    const columns = [...QUOTE_COLUMNS, ...extendedSessions.map(extendedColumn), ...VALUATION_COLUMNS];
+    // Exports keep every session's price and move, so their header is the same in every market state.
+    const extendedSessions = EXTENDED_SESSIONS.filter((session) => rows.some((row) => row.extendedSession === session));
+    const textColumns = [...QUOTE_COLUMNS, ...extendedSessions.map(extendedColumn), ...VALUATION_COLUMNS];
     const added = extraIds.length > 0 ? extraColumns(extraIds) : null;
     return {
       rows, unavailableSymbols, errors, complete: unavailableSymbols.length === 0 && errors.length === 0,
       ...(selection ? { symbols } : {}),
-      ...(added ? { columns: [...columns, ...added.export], textColumns: [...columns, ...added.text] }
-        : extendedSessions.length > 0 ? { columns } : {}),
+      columns: [...QUOTE_COLUMNS, ...EXTENDED_EXPORT_COLUMNS, ...VALUATION_COLUMNS, ...added?.export ?? []],
+      textColumns: [...textColumns, ...added?.text ?? []],
+      // Each peer's row names its ticker and the currency its prices are in.
+      rowSymbolKey: "symbol",
+      rowUnitKey: "currency",
       ...(notes.length > 0 ? { notes } : {}),
       ...(warnings.length > 0 ? { warnings } : {}),
-      ...(conversionText ? { freshness: { note: conversionText } } : {}),
+      ...(footnote ? { freshness: { note: footnote } } : {}),
       metadata: {
         staleSymbols,
         staleFundamentalsSymbols,
@@ -165,11 +224,13 @@ export const relativeValuationHeadless: HeadlessPaneDefinition<"rows"> = {
         priceBasis: "price, change and changePercent are the regular session: after the close, its close and that close's move. A pre-market, after-hours or overnight print is in extendedPrice, extendedChange and extendedChangePercent, measured from that close (extendedMark when it is a bid and ask midpoint). marketCap, the P/E multiples, evSales (through the equity part of the enterprise value) and fcfYield are measured at that regular session price.",
         fundamentalsBasis: "Provider multiples and operating metrics retain independent fundamentalsProvenance. Retrieval time does not establish the valuation date.",
         notices: [
-          ...rows.some((row) => Object.keys(row.notMeaningful).length > 0
+          ...rows.some((row) => row.notMeaningful.trailingPE || row.notMeaningful.forwardPE
             || Object.values(row.reportedMultiples).some((value) => value != null && value <= 0)) ? [PRICE_EARNINGS_NOTICE] : [],
           ...rows.flatMap((row) => row.evSalesUnavailable ? [`${row.symbol}: ${row.evSalesUnavailable}`] : []),
+          ...rows.flatMap((row) => row.evSalesNote ? [`${row.symbol}: ${row.evSalesNote}`] : []),
+          ...rows.flatMap((row) => row.marketCapNote ? [`${row.symbol}: ${row.marketCapNote}`] : []),
         ],
-        multipleBasis: "Comparable P/E fields require a positive finite multiple over positive EPS; notMeaningful says why one is null, and reportedMultiples preserves the finite provider values.",
+        multipleBasis: "Comparable P/E fields require a positive finite multiple over positive EPS, and evSales an enterprise value above zero; notMeaningful says why one is null, and reportedMultiples preserves the finite provider P/E values.",
         marketCapBasis: "Market caps retain their own currency and source. Fundamentals retrieval time is not a valuation date; quote timestamps do not date fallback caps.",
       },
     };

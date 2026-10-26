@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { TickerRecord } from "../types/ticker";
-import { isKnownNonUsEquityTicker, mayBeUsEquityOrFundTicker, mayBeUsEquityTicker } from "./sec";
+import { homeInsiderReportsNote, isKnownNonUsEquityTicker, mayBeUsEquityOrFundTicker, mayBeUsEquityTicker } from "./sec";
 import { createTestTicker } from "../test-support/ticker";
 
 const makeTicker = (overrides: Partial<TickerRecord["metadata"]>) => createTestTicker("AAPL", "Apple Inc.", overrides);
@@ -52,4 +52,28 @@ describe("SEC pane eligibility", () => {
     expect(mayBeUsEquityOrFundTicker(ticker)).toBe(equityOrFund);
     expect(isKnownNonUsEquityTicker(ticker)).toBe(!equity);
   });
+});
+
+test("a company from abroad names its home market's insider reports as not covered, by its country, else its venue", () => {
+  // RY:TSX said only that foreign private issuers file no Form 4.
+  expect([
+    homeInsiderReportsNote({ exchange: "TSX", foreignPrivateIssuer: true }),
+    homeInsiderReportsNote({ country: "CA", exchange: "NYSE", foreignPrivateIssuer: true }),
+    homeInsiderReportsNote({ exchange: "LSE" }),
+    homeInsiderReportsNote({ exchange: "JPX" }),
+    homeInsiderReportsNote({ country: "ZZ", exchange: "NYSE", foreignPrivateIssuer: true }),
+    homeInsiderReportsNote({ exchange: "NYSE" }),
+    // A company from abroad listed in the US that files as a domestic one: its insiders file Form 4.
+    homeInsiderReportsNote({ country: "ES", exchange: "NYSE" }),
+    homeInsiderReportsNote({ country: "US", exchange: "TSX" }),
+  ]).toEqual([
+    "Canadian insider reports (SEDI) not covered.",
+    "Canadian insider reports (SEDI) not covered.",
+    "UK insider reports (PDMR notifications) not covered.",
+    "Insider reports filed in Japan not covered.",
+    "Home-market insider reports not covered.",
+    null,
+    null,
+    null,
+  ]);
 });

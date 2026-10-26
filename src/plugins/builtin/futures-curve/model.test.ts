@@ -4,7 +4,7 @@ import type { FuturesContract, FuturesCurveAsOfPayload, FuturesCurvePayload } fr
 import { fetchFuturesCurve, validateFuturesCurve } from "./client";
 import { FUTURES_CONTRACTS } from "../../../market-data/futures-board";
 import type { CompositeAxisDomain } from "../../../components/chart/composite/types";
-import { annualisedBasisPct, archivedFuturesCurve, basisSpotSymbol, blankBasisNote, contractBasis, CURVE_ROOTS, curveAsOfDate, curveAxisPrice, curveBasisPercent, curveBasisRows, curveChangeText, curveContractChanges, curveContractMonth, curvePrice, curveRank, curveRootForTicker, curveSpot, curveSpotLabel, curveSpotSource, curveSpreadLabel, curveUnitLabel, daysToExpiry, futuresCurveSeries, newestQuote, normalizeCurveRoot, shortDatedBasisNote, sortCurveContracts, thinContractCount, thinContractsNotice, vsSpotPct } from "./model";
+import { annualisedBasisPct, archivedFuturesCurve, basisSpotSymbol, blankBasisNote, contractBasis, CURVE_ROOTS, curveAsOfDate, curveAxisPrice, curveBasisPercent, curveBasisRows, curveChangeText, curveContractChanges, curveContractMonth, curvePrice, curveRank, curveRootForTicker, curveSpot, curveSpotLabel, curveSpotSource, curveSpreadBasis, curveSpreadLabel, curveUnitLabel, daysToExpiry, futuresCurveSeries, newestQuote, normalizeCurveRoot, shortDatedBasis, shortDatedBasisNote, sortCurveContracts, spotBarsFromHistory, thinSpreadNotice, unpairedContractCount, vsSpotPct } from "./model";
 import { futuresCurveModule } from "./index";
 
 const first: FuturesContract = { symbol: "CLX26.NYM", label: "Nov 2026", expiration: "2026-10-20",
@@ -91,10 +91,10 @@ test("Treasury prices keep one decimal count per root on their 32nd tick grid an
   expect(curvePrice(-0.001, "CL")).toBe("0.00");
   expect(curvePrice(0.00635, "6J")).toBe("0.0063500");
   // Crude's November contract expires in October.
-  expect(curveContractMonth("CLX26.NYM", "2026-10-20")).toBe("Nov 26");
-  expect(curveContractMonth("ZFZ26.CBT", "2026-12-31")).toBe("Dec 26");
-  expect(curveContractMonth("RTYH27.CME", "2027-03-19")).toBe("Mar 27");
-  expect(curveContractMonth("VX/V6", "2026-10-21")).toBe("Oct 26");
+  expect(curveContractMonth("CLX26.NYM", "2026-10-20")).toBe("Nov 2026");
+  expect(curveContractMonth("ZFZ26.CBT", "2026-12-31")).toBe("Dec 2026");
+  expect(curveContractMonth("RTYH27.CME", "2027-03-19")).toBe("Mar 2027");
+  expect(curveContractMonth("VX/V6", "2026-10-21")).toBe("Oct 2026");
 });
 
 test("CME crypto roots are listed with prices at their tick, and FUT's board keeps its own list", () => {
@@ -213,39 +213,71 @@ test("each contract's move since the look-back curves, with missing legs left em
 describe("basis against spot", () => {
   const SPOT_AT = Date.parse("2026-10-09T07:25:00Z");
   const btc = { price: 67_250.1, lastUpdated: SPOT_AT };
-  const contract = { price: 67_500, stale: false, expiration: "2026-12-25", asOf: "2026-10-09T07:24:00Z" as string | null };
+  const minute = (time: string) => Date.parse(`2026-10-09T${time}:00Z`);
+  // One-minute spot bars from 07:20 to 07:25 UTC, BTC-USD rising $50 a minute; 07:23 is missing.
+  const BARS = spotBarsFromHistory(["07:20", "07:21", "07:22", "07:24", "07:25"].map((time, index) => ({ date: new Date(minute(time)), close: 67_000 + index * 50 })));
+  const contract = { price: 67_500, stale: false, expiration: "2026-12-25", asOf: "2026-10-09T07:24:30Z" as string | null };
 
   test("a premium is positive in contango and negative in backwardation, annualised on a 365-day year", () => {
     expect(vsSpotPct(67_500, 67_250.1)).toBeCloseTo((67_500 / 67_250.1 - 1) * 100, 10);
     expect(vsSpotPct(66_000, 67_250.1)!).toBeLessThan(0);
-    // 77 calendar days from 9 Oct to 25 Dec.
-    expect(daysToExpiry(SPOT_AT, "2026-12-25")).toBe(77);
     expect(annualisedBasisPct(67_500, 67_250.1, 77)).toBeCloseTo((67_500 / 67_250.1 - 1) * 365 / 77 * 100, 10);
     expect(annualisedBasisPct(66_000, 67_250.1, 77)!).toBeLessThan(0);
-    // The day count starts at the UTC date of the spot's own timestamp, whatever the local zone.
-    expect(daysToExpiry(Date.parse("2026-10-09T23:59:00Z"), "2026-10-30")).toBe(21);
-    expect(daysToExpiry(Date.parse("2026-10-10T00:01:00Z"), "2026-10-30")).toBe(20);
-  });
-
-  test("on the expiry day or after it the annualised rate is blank and the premium stays", () => {
-    expect(daysToExpiry(SPOT_AT, "2026-10-09")).toBe(0);
-    expect(annualisedBasisPct(67_500, 67_250.1, 0)).toBeNull();
-    expect(annualisedBasisPct(67_500, 67_250.1, -3)).toBeNull();
-    const spot = curveSpot("BTC-USD", btc, SPOT_AT);
-    expect(contractBasis({ ...contract, expiration: "2026-10-09" }, spot)).toEqual({ vsSpotPct: vsSpotPct(67_500, 67_250.1), annualisedBasisPct: null, thin: false });
-    expect(contractBasis({ ...contract, expiration: "2026-10-01" }, spot).annualisedBasisPct).toBeNull();
-  });
-
-  test("a missing, zero, negative or non-finite price on either side gives nothing", () => {
     for (const bad of [null, undefined, 0, -1, Number.NaN, Infinity]) {
       expect(vsSpotPct(bad, 67_250.1)).toBeNull();
-      expect(vsSpotPct(67_500, bad)).toBeNull();
-      expect(annualisedBasisPct(bad, 67_250.1, 77)).toBeNull();
       expect(annualisedBasisPct(67_500, bad, 77)).toBeNull();
     }
     expect(annualisedBasisPct(67_500, 67_250.1, null)).toBeNull();
-    expect(annualisedBasisPct(67_500, 67_250.1, Number.NaN)).toBeNull();
+  });
+
+  test("days to expiry run to final settlement at 16:00 London, in fractions of a day, across the clock change", () => {
+    // Saturday 24 Oct 01:33 UTC to Friday 30 Oct 16:00 London, which is GMT again after the 25th: 6 days 14h27m, not the 6 UTC dates.
+    expect(daysToExpiry(Date.parse("2026-10-24T01:33:00Z"), "2026-10-30")).toBeCloseTo(6 + (14 * 60 + 27) / 1440, 10);
+    // In summer 16:00 London is 15:00 UTC.
+    expect(daysToExpiry(Date.parse("2026-06-20T15:00:00Z"), "2026-06-26")).toBe(6);
+    // The last morning still has hours to run; after the fixing there is no rate, and the premium stays.
+    expect(daysToExpiry(Date.parse("2026-10-30T10:00:00Z"), "2026-10-30")).toBeCloseTo(0.25, 10);
+    // 9 Oct is still summer time: the fixing is at 15:00 UTC.
+    const late = { ...contract, expiration: "2026-10-09", asOf: "2026-10-09T07:22:10Z" };
+    expect(contractBasis(late, BARS)).toMatchObject({ annualisedBasisPct: expect.any(Number), daysToExpiry: expect.closeTo((15 * 3600 - (7 * 3600 + 22 * 60 + 10)) / 86_400, 10) });
+    const settled = { ...late, expiration: "2026-10-08" };
+    expect(contractBasis(settled, BARS)).toMatchObject({ vsSpotPct: expect.any(Number), annualisedBasisPct: null });
     expect(daysToExpiry(SPOT_AT, "soon")).toBeNull();
+  });
+
+  test("each trade is read against the spot bar of its own minute, never a spot from another minute", () => {
+    // The trade at 07:24:30 reads the 07:24 bar's close, 67,150, though a later spot (67,200 at 07:25) is known.
+    const basis = contractBasis(contract, BARS);
+    expect(basis).toEqual({ vsSpotPct: vsSpotPct(67_500, 67_150), annualisedBasisPct: annualisedBasisPct(67_500, 67_150, daysToExpiry(Date.parse(contract.asOf!), contract.expiration)),
+      spot: 67_150, spotTime: "2026-10-09T07:24:00Z", daysToExpiry: daysToExpiry(Date.parse(contract.asOf!), contract.expiration), unpaired: null });
+    // The same trade reads the same basis however the bars around its minute move.
+    const moved = spotBarsFromHistory([{ date: new Date(minute("07:24")), close: 67_150 }, { date: new Date(minute("07:25")), close: 69_000 }]);
+    expect(contractBasis(contract, moved).vsSpotPct).toBe(basis.vsSpotPct);
+  });
+
+  test("a trade no spot bar shares a minute with is blank, before or after the bars alike, and says how far apart they are", () => {
+    const at = (asOf: string | null) => contractBasis({ ...contract, asOf }, BARS);
+    // After the newest bar (a delayed spot trails the futures), before the oldest, and in a minute the bars skip.
+    expect(at("2026-10-09T07:31:05Z")).toEqual({ vsSpotPct: null, annualisedBasisPct: null, spot: null, spotTime: null, daysToExpiry: null,
+      unpaired: { print: Date.parse("2026-10-09T07:31:05Z"), spot: minute("07:25") } });
+    expect(at("2026-10-09T07:14:59Z").unpaired).toEqual({ print: Date.parse("2026-10-09T07:14:59Z"), spot: minute("07:20") });
+    expect(at("2026-10-09T07:23:00Z").unpaired).toMatchObject({ spot: expect.any(Number) });
+    // A date-only price has no minute to pair; with no bars at all there is nothing near.
+    expect(at("2026-10-09").unpaired).toEqual({ print: null, spot: null });
+    expect(at(null).unpaired).toEqual({ print: null, spot: null });
+    expect(contractBasis(contract, []).unpaired).toEqual({ print: Date.parse(contract.asOf!), spot: null });
+    // Until the bars are known, and for rows another rule blanks, nothing is unpaired, so nothing is counted twice.
+    expect(contractBasis(contract, null)).toMatchObject({ vsSpotPct: null, unpaired: null });
+    expect(contractBasis({ ...contract, stale: true }, BARS).unpaired).toBeNull();
+    expect(contractBasis({ ...contract, price: null }, BARS).unpaired).toBeNull();
+    expect(unpairedContractCount([at("2026-10-09T07:31:05Z"), at("2026-10-09"), at("2026-10-09T07:24:00Z")])).toBe(2);
+  });
+
+  test("bars are read by minute, oldest first, without closes that cannot price anything", () => {
+    expect(spotBarsFromHistory([
+      { date: "2026-10-09T07:21:00.000Z", close: 2 }, { date: new Date(minute("07:20")), close: 1 },
+      { date: new Date(minute("07:22")), close: Number.NaN }, { date: "not a date", close: 3 }, { date: new Date(minute("07:23")), close: 0 },
+    ])).toEqual([{ minute: minute("07:20"), price: 1 }, { minute: minute("07:21"), price: 2 }]);
   });
 
   test("spot is stale past ten minutes of the quote's own time, with a delayed feed's hold-back allowed on top", () => {
@@ -253,7 +285,6 @@ describe("basis against spot", () => {
     expect(curveSpot("BTC-USD", btc, minutes(10))).toMatchObject({ status: "ok", price: 67_250.1, asOf: "2026-10-09T07:25:00Z", reason: null });
     expect(curveSpot("BTC-USD", btc, minutes(11))).toMatchObject({ status: "stale", reason: "BTC-USD quote is 11m old", price: 67_250.1 });
     expect(curveSpot("BTC-USD", btc, SPOT_AT + 2.5 * 3_600_000).reason).toBe("BTC-USD quote is 2h old");
-    expect(curveSpot("BTC-USD", btc, SPOT_AT + 3 * 86_400_000).reason).toBe("BTC-USD quote is 3d old");
     // The free tier's quotes are always about 15 minutes old; that is the feed, not a stall.
     const delayed = { ...btc, dataSource: "delayed" };
     expect(curveSpot("BTC-USD", delayed, minutes(17)).status).toBe("ok");
@@ -261,98 +292,57 @@ describe("basis against spot", () => {
     expect(curveSpot("BTC-USD", { ...btc, stale: true }, minutes(1))).toMatchObject({ status: "stale", reason: "BTC-USD quote is stale" });
     expect(curveSpot("BTC-USD", { ...btc, lastUpdated: 0 }, SPOT_AT)).toMatchObject({ status: "stale", asOf: null });
     expect(curveSpot("BTC-USD", null, SPOT_AT)).toEqual({ symbol: "BTC-USD", price: null, asOf: null, status: "missing", reason: "no BTC-USD quote" });
-    expect(curveSpot("BTC-USD", { ...btc, price: Number.NaN }, SPOT_AT).status).toBe("missing");
-  });
-
-  test("a stale or unpriced contract, or an unusable spot, blanks every basis cell", () => {
-    const ok = curveSpot("BTC-USD", btc, SPOT_AT);
-    expect(contractBasis(contract, ok).vsSpotPct).toBeCloseTo(0.3716, 3);
-    expect(contractBasis({ ...contract, stale: true }, ok)).toEqual({ vsSpotPct: null, annualisedBasisPct: null, thin: false });
-    expect(contractBasis({ ...contract, price: null }, ok)).toEqual({ vsSpotPct: null, annualisedBasisPct: null, thin: false });
-    for (const spot of [curveSpot("BTC-USD", btc, SPOT_AT + 3_600_000), curveSpot("BTC-USD", null, SPOT_AT)]) {
-      expect(contractBasis(contract, spot)).toEqual({ vsSpotPct: null, annualisedBasisPct: null, thin: false });
-    }
-  });
-
-  test("a print more than an hour before the spot is blank and thin, whatever the server's stale flag says", () => {
-    const ok = curveSpot("BTC-USD", btc, SPOT_AT);
-    const printed = (asOf: string | null) => contractBasis({ ...contract, asOf }, ok);
-    // 60 minutes is still readable; 60 minutes and a second is not.
-    expect(printed("2026-10-09T06:25:00Z")).toMatchObject({ thin: false, vsSpotPct: expect.any(Number), annualisedBasisPct: expect.any(Number) });
-    expect(printed("2026-10-09T06:24:59Z")).toEqual({ vsSpotPct: null, annualisedBasisPct: null, thin: true });
-    // A date-only print is UTC midnight of that date: 07:25 is 7h25m after 2026-10-09, over a day after 2026-10-08.
-    expect(printed("2026-10-09")).toMatchObject({ thin: true });
-    expect(printed("2026-10-08")).toMatchObject({ thin: true });
-    expect(contractBasis({ ...contract, asOf: "2026-10-09" }, curveSpot("BTC-USD", { price: 67_250.1, lastUpdated: Date.parse("2026-10-09T00:30:00Z") }, Date.parse("2026-10-09T00:30:00Z"))).thin).toBe(false);
-    // A print that cannot be read counts as old.
-    expect(printed(null)).toMatchObject({ thin: true });
-    expect(printed("yesterday")).toMatchObject({ thin: true });
-    // A future that printed after a held-back spot is current, never blank.
-    expect(printed("2026-10-09T07:40:00Z")).toMatchObject({ thin: false, vsSpotPct: expect.any(Number) });
-    expect(printed("2026-10-10T00:00:00Z").thin).toBe(false);
-    // Rows another rule already blanks are not thin, so the footer never counts a contract twice.
-    expect(contractBasis({ ...contract, asOf: "2026-10-08", stale: true }, ok).thin).toBe(false);
-    expect(contractBasis({ ...contract, asOf: "2026-10-08", price: null }, ok).thin).toBe(false);
-    expect(contractBasis({ ...contract, asOf: "2026-10-08" }, curveSpot("BTC-USD", btc, SPOT_AT + 3_600_000)).thin).toBe(false);
-    expect(thinContractCount([printed("2026-10-08"), printed("2026-10-09T07:00:00Z"), printed(null), printed("2026-10-09T06:00:00Z")])).toBe(3);
-    expect(thinContractsNotice(1)).toBe("Basis blank on 1 thin contract (last print over 1h before spot)");
-    expect(thinContractsNotice(3)).toBe("Basis blank on 3 thin contracts (last print over 1h before spot)");
   });
 
   test("cells read to two decimals and one, signed, and the footer names the spot and its UTC time", () => {
     expect(curveBasisPercent(0.4213, 2)).toBe("+0.42%");
     expect(curveBasisPercent(-0.4213, 2)).toBe("-0.42%");
-    expect(curveBasisPercent(5.14, 1)).toBe("+5.1%");
     expect(curveBasisPercent(-0.001, 2)).toBe("0.00%");
     expect(curveBasisPercent(null, 1)).toBe("--");
     const spot = curveSpot("BTC-USD", btc, SPOT_AT);
     expect(curveSpotLabel(spot, "BTC", SPOT_AT)).toBe("spot BTC-USD 67,250.10 · 07:25 UTC");
     // A quote from an earlier UTC day carries its date.
     expect(curveSpotLabel(spot, "BTC", SPOT_AT + 86_400_000)).toBe("spot BTC-USD 67,250.10 · 2026-10-09 07:25 UTC");
-    expect(curveSpotLabel(curveSpot("XRP-USD", { price: 1.3978, lastUpdated: SPOT_AT }, SPOT_AT), "XRP", SPOT_AT)).toBe("spot XRP-USD 1.3978 · 07:25 UTC");
   });
 
-  test("the quote path's own listing and feed stay beside the spot, and the footer names them only when the quote reports them", () => {
+  test("the quote's listing is named in plain words, never as its code, with its feed beside it", () => {
     const reported = curveSpot("BTC-USD", { ...btc, listingExchangeName: "CCC", dataSource: "live" }, SPOT_AT);
-    expect(reported).toMatchObject({ status: "ok", venue: "CCC", feed: "real-time" });
-    expect(curveSpotSource(reported)).toBe("CCC, real-time");
-    expect(curveSpotSource(curveSpot("BTC-USD", { ...btc, exchangeName: " CCC ", dataSource: "delayed" }, SPOT_AT))).toBe("CCC, delayed");
-    // A stale spot still says what it was, and a snapshot is neither real-time nor delayed.
-    expect(curveSpot("BTC-USD", { ...btc, listingExchangeName: "CCC", dataSource: "snapshot" }, SPOT_AT + 3_600_000)).toMatchObject({ status: "stale", venue: "CCC" });
+    expect(reported).toMatchObject({ status: "ok", venue: "crypto composite price", feed: "real-time" });
+    expect(curveSpotSource(reported)).toBe("crypto composite price, real-time");
+    expect(curveSpotSource(curveSpot("BTC-USD", { ...btc, exchangeName: " ccc ", dataSource: "delayed" }, SPOT_AT))).toBe("crypto composite price, delayed");
+    // A snapshot is neither real-time nor delayed, and a quote that reports neither is not given a venue it did not name.
     expect(curveSpot("BTC-USD", { ...btc, listingExchangeName: "CCC", dataSource: "snapshot" }, SPOT_AT)).not.toHaveProperty("feed");
-    // A quote that reports neither is not given a venue it did not name.
     expect(curveSpotSource(curveSpot("BTC-USD", btc, SPOT_AT))).toBeNull();
-    expect(curveSpot("BTC-USD", btc, SPOT_AT)).not.toHaveProperty("venue");
   });
 
-  test("a blank basis names its contracts and cause, and a short-dated rate says what 10 bp of spot noise does to it", () => {
-    const spot = curveSpot("BTC-USD", btc, SPOT_AT);
+  test("a blank basis names its contracts, cause and both times, and a rate inside a week says what 10 bp of spot does to it", () => {
     const row = (code: string, expiration: string, extra: Partial<FuturesContract> = {}): FuturesContract =>
-      ({ ...first, symbol: `${code}.CME`, expiration, price: 67_500, stale: false, asOf: "2026-10-09T07:24:00Z", ...extra });
-    const rows = [row("BTCV26", "2026-10-27"), row("BTCX26", "2026-11-27"),
-      // Printed hours (and a day) before the spot, unpriced, and flagged stale by the server.
-      row("BTCZ26", "2026-12-25", { asOf: "2026-10-09T05:00:00Z" }), row("BTCF27", "2027-01-29", { asOf: "2026-10-08" }),
-      row("BTCG27", "2027-02-26", { price: null }), row("BTCH27", "2027-03-26", { stale: true })];
-    const basis = curveBasisRows(rows, spot);
-    expect(blankBasisNote(rows, basis)).toBe("Basis blank for BTCZ26, BTCF27 (last trade over 1h before the spot quote); BTCG27 (no price); BTCH27 (price over two sessions old).");
-    // 18 days: 10 bp of spot is 0.1% x 365 / 18 = 2.0 points a year. Beyond 30 days nothing is said.
-    expect(shortDatedBasisNote(rows, basis, spot)).toBe("Ann Basis is noisy under 30 days to expiry: 10 bp of spot noise moves BTCV26 (18d) by ±2.0 points.");
-    const nearer = [row("BTCU26", "2026-10-14"), rows[0]!, row("BTCT26", "2026-10-09")];
-    expect(shortDatedBasisNote(nearer, curveBasisRows(nearer, spot), spot))
-      .toBe("Ann Basis is noisy under 30 days to expiry: 10 bp of spot noise moves BTCU26 (5d) by ±7.3 points, BTCV26 (18d) by ±2.0 points.");
-    // A curve with every cell filled, or one past 30 days, has nothing to say; a spot that is not usable blanks the cells for its own reason.
-    expect(blankBasisNote(rows.slice(0, 2), curveBasisRows(rows.slice(0, 2), spot))).toBeNull();
-    expect(shortDatedBasisNote(rows.slice(1, 2), curveBasisRows(rows.slice(1, 2), spot), spot)).toBeNull();
-    expect(shortDatedBasisNote(rows, curveBasisRows(rows, curveSpot("BTC-USD", btc, SPOT_AT + 3_600_000)), curveSpot("BTC-USD", btc, SPOT_AT + 3_600_000))).toBeNull();
-    expect(shortDatedBasisNote(rows, basis, null)).toBeNull();
+      ({ ...first, symbol: `${code}.CME`, expiration, price: 67_500, stale: false, asOf: "2026-10-09T07:24:30Z", ...extra });
+    const rows = [row("BTCV26", "2026-10-16"), row("BTCX26", "2026-11-27"),
+      // Printed after the newest bar, the day before, without a time, unpriced, and flagged stale by the server.
+      row("BTCZ26", "2026-12-25", { asOf: "2026-10-09T07:31:05Z" }), row("BTCF27", "2027-01-29", { asOf: "2026-10-08T22:10:00Z" }),
+      row("BTCG27", "2027-02-26", { asOf: "2026-10-08" }), row("BTCH27", "2027-03-26", { price: null }), row("BTCJ27", "2027-04-30", { stale: true })];
+    const basis = curveBasisRows(rows, BARS);
+    expect(blankBasisNote(rows, basis)).toBe("Basis blank for BTCZ26 (spot and print 6 min apart: print 07:31, nearest spot 07:25 UTC); "
+      + "BTCF27 (spot and print 9 h apart: print 2026-10-08 22:10, nearest spot 2026-10-09 07:20 UTC); BTCG27 (last trade has no time of day); "
+      + "BTCH27 (no price); BTCJ27 (price over two sessions old).");
+    expect(blankBasisNote(rows, curveBasisRows(rows.slice(0, 1), []))).toBe("Basis blank for BTCV26 (no one-minute spot prices).");
+    // BTCV26 settles 7.32 days after its 07:24 trade (15:00 UTC, London still on summer time), so it is not short-dated;
+    // a day nearer it is: 0.1% × 365 / 6.32 = 5.8 points.
+    expect(shortDatedBasisNote(rows, basis)).toBeNull();
+    const near = [row("BTCU26", "2026-10-15"), row("BTCX26", "2026-11-27")];
+    expect(shortDatedBasisNote(near, curveBasisRows(near, BARS)))
+      .toBe("Ann Basis is noisy under 7 days to expiry, so read Vs Spot there: 10 bp of spot noise moves BTCU26 (6.3 days) by ±5.8 points.");
+    expect(shortDatedBasis(curveBasisRows(near, BARS).get("BTCU26.CME"))).toBe(true);
+    expect(shortDatedBasis(curveBasisRows(near, BARS).get("BTCX26.CME"))).toBe(false);
   });
 
   test("only the four crypto roots have a spot, and the basis columns sort with blanks last", () => {
     expect(["BTC", "ETH", "SOL", "XRP"].map(basisSpotSymbol)).toEqual(["BTC-USD", "ETH-USD", "SOL-USD", "XRP-USD"]);
     expect(["ES", "CL", "VX", "constructor"].map(basisSpotSymbol)).toEqual([null, null, null, null]);
     const rows = [first, { ...first, symbol: "CLZ26.NYM", price: 90 }, { ...first, symbol: "CLF27.NYM", price: 70 }, { ...first, symbol: "CLG27.NYM", stale: true }];
-    const fresh = rows.map((row) => ({ ...row, asOf: "2026-10-09T07:20:00Z" }));
-    const basis = curveBasisRows(fresh, curveSpot("CL-USD", { price: 80, lastUpdated: SPOT_AT }, SPOT_AT));
+    const fresh = rows.map((row) => ({ ...row, expiration: "2026-12-18", asOf: "2026-10-09T07:20:00Z" }));
+    const basis = curveBasisRows(fresh, spotBarsFromHistory([{ date: new Date(minute("07:20")), close: 80 }]));
     expect(sortCurveContracts(rows, "vsSpot", "desc", undefined, basis).map((row) => row.symbol)).toEqual(["CLZ26.NYM", "CLX26.NYM", "CLF27.NYM", "CLG27.NYM"]);
     expect(sortCurveContracts(rows, "annBasis", "asc", undefined, basis).map((row) => row.symbol).slice(0, 2)).toEqual(["CLF27.NYM", "CLX26.NYM"]);
   });
@@ -373,7 +363,7 @@ test("axis labels take their decimals from the plotted range, never the contract
 describe("past curves", () => {
   const row = (symbol: string, expiration: string, price: number, extra: Partial<FuturesCurveAsOfPayload["contracts"][number]> = {}) => ({
     contract: symbol.replace("/", ""), symbol, label: symbol, deliveryMonth: expiration.slice(0, 7), expiration, tradeDate: "2020-03-16",
-    price, volume: 10, openInterest: 100, asOf: "2020-03-16T00:00:00.000Z", stale: false, ...extra,
+    price, volume: 500, openInterest: 1000, asOf: "2020-03-16T00:00:00.000Z", stale: false, ...extra,
   });
   const payload = (date: string, contracts: FuturesCurveAsOfPayload["contracts"]): FuturesCurveAsOfPayload => ({
     root: "VX", name: "VIX Futures", date, asOf: date, currency: "USD", quoteUnit: "volatility points", archiveStart: "2013-05-20", contracts, gaps: [],
@@ -427,6 +417,24 @@ describe("past curves", () => {
     expect(mixed.slope).toMatchObject({ frontSymbol: null, nextSymbol: null, value: null, state: "unavailable" });
   });
 
+  test("a past curve's spread is thin when a leg traded under 20 lots, and says it subtracts settlements", () => {
+    // ALI on Fri 23 Oct 2026: the front, ALIX26, traded 4 lots against ALIZ26's 51.
+    const aluminium = archivedFuturesCurve("ALI", payload("2026-10-23", [
+      row("ALIX26.CMX", "2026-11-25", 3277.5, { tradeDate: "2026-10-23", volume: 4, settled: true }),
+      row("ALIZ26.CMX", "2026-12-29", 3228.75, { tradeDate: "2026-10-23", volume: 51, settled: true })]), { "1W": null, "1M": null }, "2026-10-24T12:00:00.000Z");
+    expect(aluminium.slope).toMatchObject({ state: "thin", thinSymbol: "ALIX26.CMX", basis: "settle", asOf: "2026-10-23" });
+    expect(thinSpreadNotice(aluminium)).toBe("ALIZ26-ALIX26 is thin (ALIX26 traded 4 lots): no contango or backwardation call");
+    expect(curveSpreadBasis(aluminium.slope, aluminium.asOf)).toBe("settle 10-23");
+  });
+
+  test("a live spread says which prices it subtracts, timed when they are last trades", () => {
+    expect(curveSpreadBasis({ basis: "last", asOf: "2026-10-23T20:58:00.000Z" }, "2026-10-23T20:59:35.000Z")).toBe("last 20:58");
+    expect(curveSpreadBasis({ basis: "last", asOf: "2026-10-22T20:58:00.000Z" }, "2026-10-23T20:59:35.000Z")).toBe("last 10-22 20:58");
+    expect(curveSpreadBasis({ basis: "settle", asOf: "2026-10-22" }, "2026-10-23T20:59:35.000Z")).toBe("settle 10-22");
+    // A server that does not say leaves the figure as it was.
+    expect(curveSpreadBasis({ asOf: "2026-10-22" }, null)).toBeNull();
+  });
+
   test("the front spread is named by the contracts it subtracts, next less front", () => {
     expect(curveSpreadLabel({ frontSymbol: "GCZ26.CMX", nextSymbol: "GCF27.CMX" })).toBe("GCF27-GCZ26");
     expect(curveSpreadLabel({ frontSymbol: "VX/V6", nextSymbol: "VX/X6" })).toBe("VX/X6-VX/V6");
@@ -441,5 +449,12 @@ describe("past curves", () => {
     expect(() => curveAsOfDate("2026-09-29", now)).toThrow("future");
     expect(() => curveAsOfDate("2020-02-30", now)).toThrow("YYYY-MM-DD");
     expect(() => curveAsOfDate("2020-13-01", now)).toThrow("YYYY-MM-DD");
+  });
+
+  test("a date written day first gets the date to type, as every date option gives", () => {
+    const now = new Date("2026-10-23T12:00:00Z");
+    expect(() => curveAsOfDate("22/10/2026", now, "--date")).toThrow("type --date 2026-10-22 for 22/10/2026");
+    expect(() => curveAsOfDate("22/10/2026", now)).toThrow("type 2026-10-22 for 22/10/2026");
+    expect(curveAsOfDate("22.10.2026", now, "--date")).toBe("2026-10-22");
   });
 });

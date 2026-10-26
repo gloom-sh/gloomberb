@@ -39,11 +39,11 @@ export function streamedAlertQuote(quote: Quote | null | undefined, now = Date.n
 }
 
 export function readStreamedAlertQuote(
-  alert: Pick<AlertRule, "symbol" | "exchange">,
+  alert: Pick<AlertRule, "symbol" | "exchange" | "metric">,
   coordinator: MarketDataCoordinator | null = getSharedMarketDataCoordinator(),
   now = Date.now(),
 ): Quote | null {
-  if (!coordinator) return null;
+  if (alert.metric || !coordinator) return null;
   return streamedAlertQuote(resolveEntryData(coordinator.getQuoteEntry(alertInstrument(alert))), now);
 }
 
@@ -93,7 +93,7 @@ export function createAlertQuoteStream({
     const next = getSharedMarketDataCoordinator();
     const instruments = new Map<string, InstrumentRef>();
     for (const alert of readAlerts()) {
-      if (alert.status !== "active") continue;
+      if (alert.metric || alert.status !== "active") continue;
       const instrument = alertInstrument(alert);
       instruments.set(buildQuoteKey(instrument), instrument);
     }

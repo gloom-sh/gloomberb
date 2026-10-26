@@ -2,6 +2,7 @@ import type { ExchangeRateSnapshot } from "./exchange-rate";
 import type {
   AnalystResearchData,
   CorporateActionsData,
+  EarningsDateStatus,
   EarningsEpsBasis,
   Quote,
   QuoteMetadata,
@@ -16,6 +17,7 @@ import type { BrokerContractRef, InstrumentSearchResult } from "./instrument";
 import type { CachePolicyMap } from "./persistence";
 import type { CachedQueryHandle } from "../data/cached-query";
 import type { TickerChanges } from "./ticker-changes";
+import type { IssuerListings } from "./issuer-listings";
 
 export type CachedAssetMethod = "getExchangeRate" | "getHolders" | "getAnalystResearch" | "getCorporateActions"
   | "getOptionsChain" | "getSecFilings" | "getSecFilingDocuments" | "getSecFilingContent" | "getArticleSummary";
@@ -52,6 +54,13 @@ export interface SecFilingItem {
    * does not say (an older server).
    */
   fileNumber?: string;
+  /**
+   * In a fund's list from a trust that runs several funds: whether EDGAR
+   * lists the filing under the fund's own series. Absent when the source does
+   * not say (another registrant, an older server, a filing older than the
+   * series list reaches).
+   */
+  fundSeries?: boolean;
 }
 
 export interface SecFilingDocument {
@@ -88,6 +97,12 @@ export interface EarningsEvent {
   earningsDate: Date;
   earningsCallDate?: Date | null;
   isDateEstimate?: boolean | null;
+  /**
+   * The report's status as Gloom Cloud holds it: reported once the report is
+   * out, before the calendar has its actual. Absent from servers that do not
+   * say; `isDateEstimate` and `epsActual` tell the rest.
+   */
+  dateStatus?: EarningsDateStatus | null;
   estimateBasis?: Partial<Record<EarningsEstimateField, EarningsEstimateBasis>>;
   epsEstimate: number | null;
   epsLow?: number | null;
@@ -119,7 +134,11 @@ export interface MarketDataRequestContext {
   brokerId?: string;
   brokerInstanceId?: string;
   instrument?: BrokerContractRef | null;
-  cacheMode?: "default" | "refresh";
+  /**
+   * "refresh" always fetches. "current" refetches a stored value past its stale time before answering, and
+   * answers with it only if that fetch fails: for a caller that cannot see a refresh landing in the background.
+   */
+  cacheMode?: "default" | "refresh" | "current";
   statementHistory?: "extended";
   /** A validated, same-target detailed retry constrained to one exhausted source. */
   historyRecovery?: import("../sources/history-retention").HistoryRecoveryCandidate;
@@ -129,6 +148,12 @@ export interface MarketDataRequestContext {
   historySession?: "extended";
   /** The listing's company, from its own quote: an SEC lookup for a non-US listing checks the registrant against it. */
   listingName?: string;
+  /**
+   * The caller prints what the quote's move is from: a short-lived process
+   * (the CLI) waits briefly for the daily closes that date a previous close
+   * no venue calendar dates. The long-lived app dates every quote anyway.
+   */
+  datesChangeBasis?: boolean;
 }
 
 export interface CachedFinancialsTarget {
@@ -197,6 +222,8 @@ export interface QuoteBatchOptions {
   revalidate?: boolean;
   /** The caller stopped waiting; a transport that can abandon the request does. */
   signal?: AbortSignal;
+  /** The caller prints what each move is from (MarketDataRequestContext.datesChangeBasis). */
+  datesChangeBasis?: boolean;
 }
 
 export interface TickerFinancialsBatchResult {
@@ -225,7 +252,7 @@ export interface AssetDataProvider {
   primaryMarketSourceName?(): string | null | Promise<string | null>;
   getCachedFinancialsForTargets?(targets: CachedFinancialsTarget[], options?: { allowExpired?: boolean; includeStaleQuotes?: boolean }): Map<string, TickerFinancials> | Promise<Map<string, TickerFinancials>>;
   getQuotesBatch?(targets: QuoteSubscriptionTarget[], options?: QuoteBatchOptions): Promise<QuoteBatchResult[]>;
-  getTickerFinancialsBatch?(targets: CachedFinancialsTarget[], options?: { forceRefresh?: boolean }): Promise<TickerFinancialsBatchResult[]>;
+  getTickerFinancialsBatch?(targets: CachedFinancialsTarget[], options?: { forceRefresh?: boolean; datesChangeBasis?: boolean }): Promise<TickerFinancialsBatchResult[]>;
   getTickerFinancials(ticker: string, exchange?: string, context?: MarketDataRequestContext): Promise<TickerFinancials>;
   getQuote(ticker: string, exchange?: string, context?: MarketDataRequestContext): Promise<Quote>;
   /** Listing facts may outlive the quote price; this method never returns price/session values. */
@@ -248,6 +275,11 @@ export interface AssetDataProvider {
    * answer for is left out; null when the source cannot answer a batch at all.
    */
   getTickerChangesBatch?(symbols: string[], options?: { signal?: AbortSignal }): Promise<Map<string, TickerChanges | null> | null>;
+  /**
+   * Every listing of the company a listing belongs to (RCI and RCI.B:TSX are
+   * Rogers). Null when the source does not hold the company.
+   */
+  getIssuerListings?(symbol: string, exchange?: string, options?: { signal?: AbortSignal }): Promise<IssuerListings | null>;
   /**
    * Several searches in a few requests, each answered with the rows `search`
    * gives it from this source (up to `limit`), by query as asked. A query the

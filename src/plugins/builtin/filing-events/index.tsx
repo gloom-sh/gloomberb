@@ -22,7 +22,7 @@ function filingEventsLockNote(lock: PaneLock): Promise<string> {
     does: "it reads each 8-K and sums up what it said and who it names",
     shows: "them",
     free: [{
-      text: (ticker, company) => `gloomberb fn SEC ${ticker} lists ${company}'s recent filings, 8-Ks among them, each with its filing date and its items by number and name.`,
+      text: (ticker, company) => `gloom fn SEC ${ticker} lists ${company}'s recent filings, 8-Ks among them, each with its filing date and its items by number and name.`,
       answers: (symbol, context) => filesForm(symbol, "8-K", context),
     }],
   });

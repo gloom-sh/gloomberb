@@ -126,3 +126,39 @@ test("portfolio show reads cents in rand, converts income, owes a short's divide
     setCliColorEnabledOverride(null);
   }
 });
+
+test("a portfolio in another currency converts income into it, a lot valued at its purchase date's FX close included, and keeps the columns when the rate is missing", async () => {
+  // A dollar lot bought on a date, in a euro portfolio: its cost converts at that day's EUR/USD close.
+  const bought = day(30);
+  const lot = createTestTicker("KO", "Coca-Cola", {
+    exchange: "NYSE", portfolios: ["main"], positions: [{ ...position(100, 60, "USD"), dateAcquired: bought }],
+  });
+  const costFxHistory = {
+    getCloudHistory: async () => ({ status: "success" as const, data: [{ date: `${bought}T00:00:00.000Z`, close: 1.1 }] }),
+  };
+  const euroBook = (euroRate: () => number) => createTestCliContext({
+    config: { ...createDefaultConfig("/unused-income"), baseCurrency: "EUR" },
+    store: { loadAllTickers: async () => [lot] },
+    dataProvider: createTestDataProvider({
+      getQuote: async (symbol) => ({ symbol, price: 100, currency: "USD", change: 0, changePercent: 0, previousClose: 100, lastUpdated: Date.now() }),
+      // USD per unit: one euro is $1.25.
+      getExchangeRate: async (currency) => currency === "EUR" ? euroRate() : 1,
+      getCorporateActions: async () => history("KO", "USD", quarterly(0.5)),
+    }),
+  });
+  setCliColorEnabledOverride(false);
+  try {
+    // $200 a year on 100 shares is €160, 2% of the €8,000 held.
+    const shown = await text(() => showCollection("main", euroBook(() => 1.25).context, { costFxHistory }));
+    expect(shown).toMatch(/KO:NYSE[^\n]*€8,000 +100\.0% +€160\.00 +2\.00%/);
+    expect(shown).toMatch(/TOTAL[^\n]*€160\.00 +2\.00%/);
+
+    // No dollar rate into euros: the columns stay, with no figure, and one line says why.
+    const missing = await text(() => showCollection("main", euroBook(() => { throw new Error("No rate"); }).context, { costFxHistory }));
+    expect(missing).toMatch(/Income +Yield/);
+    expect(missing).toMatch(/KO:NYSE[^\n]*— +— /);
+    expect(missing).toContain("Income unavailable: no USD exchange rate for KO:NYSE.");
+  } finally {
+    setCliColorEnabledOverride(null);
+  }
+});

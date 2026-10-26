@@ -5,6 +5,7 @@ import { buildHeadlessFunctionReport } from "./headless";
 import { appendDomReportFooter, buildDomFunctionReport, domReportNote, domReportView } from "./dom";
 import type { ReportFreshness } from "./freshness";
 import type { CliReportTables } from "../report-tables";
+import { knownGapMessage } from "../known-gaps";
 
 export type PaneFunctionReportSource = "headless" | "dom";
 
@@ -51,10 +52,10 @@ export function resolvePaneFunctionReportSource(
   return resolved.capability.reportReadiness === "live-dom" ? "dom" : null;
 }
 
-/** `gloomberb shot CAT santander`, the argument quoted when it has spaces. */
+/** `gloom shot CAT santander`, the argument quoted when it has spaces. */
 function shotCommand(token: string, rawArg: string): string {
   const arg = rawArg.trim();
-  return ["gloomberb shot", token, arg && /\s/.test(arg) ? JSON.stringify(arg) : arg].filter(Boolean).join(" ");
+  return ["gloom shot", token, arg && /\s/.test(arg) ? JSON.stringify(arg) : arg].filter(Boolean).join(" ");
 }
 
 export async function buildFunctionReport(
@@ -67,12 +68,15 @@ export async function buildFunctionReport(
   if (!source) {
     // HELP is what a newcomer tries first: send them to the command guide and the function list.
     if (resolved.pane.id === "help") {
-      throw new Error("HELP is an in-app pane, so it has no report. For the commands run `gloomberb help`; for the functions run `gloomberb catalog`.");
+      throw new Error("HELP is an in-app pane, so it has no report. For the commands run `gloom help`; for the functions run `gloom catalog`.");
     }
     // A pane `shot` can draw is still one command away.
     const screenshot = resolved.capability.screenshotReadiness;
     if (screenshot != null && screenshot !== "unsupported") {
-      throw new Error(`${resolved.token} is an interactive pane with no data report; run \`${shotCommand(resolved.token, rawArg)}\` to see it.`);
+      const error = new Error(`${resolved.token} is an interactive pane with no data report; run \`${shotCommand(resolved.token, rawArg)}\` to see it.`);
+      // What the query names that no series is (`fn CAT PMI`): where it is, as `catalog` says it.
+      const gap = rawArg.trim() ? knownGapMessage(rawArg) : null;
+      throw gap ? Object.assign(error, { details: gap }) : error;
     }
     throw new Error(`${resolved.token} is an interactive pane and does not expose a data report.`);
   }
@@ -88,10 +92,10 @@ export async function buildFunctionReport(
   }
   if (source === "dom") {
     const view = domReportView(report.data);
-    report.text = appendDomReportFooter(report.text, elapsedMs, view, report.data.freshness);
+    report.text = appendDomReportFooter(report.text, view, report.data.freshness);
     report.tables = {
       ...report.tables,
-      footer: [...report.tables.footer, `note: ${domReportNote(elapsedMs, view)}`],
+      footer: [...report.tables.footer, `note: ${domReportNote(view)}`],
     };
   }
   return report;

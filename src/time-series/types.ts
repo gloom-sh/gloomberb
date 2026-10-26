@@ -1,4 +1,4 @@
-import type { ChartResolution, TimeRange } from "./range";
+import type { ChartResolution, CustomChartResolution, TimeRange } from "./range";
 import type { ChartResolutionSupport, ManualChartResolution } from "./resolution";
 import type { InstrumentRef } from "../market-data/request-types";
 import type { SeriesAttribution } from "../series/types";
@@ -69,7 +69,20 @@ export type ChartStudyKind =
   | "spread"
   | "correlation"
   /** A weighted sum of any number of series over a divisor: `(2*42*RB=F + 42*HO=F - 3*CL=F)/3`. */
-  | "formula";
+  | "formula"
+  /**
+   * A leveraged or inverse fund's objective drawn from its index fund: `factor`
+   * times the index fund's return each session, compounded (3× daily QQQ beside
+   * TQQQ). Inputs: the index fund.
+   */
+  | "leverage"
+  /**
+   * How far a leveraged fund falls short of its objective, in percentage
+   * points: the fund against the `factor`× daily line, and that line against
+   * `factor` times the index fund's return over the period. Inputs: the fund,
+   * then the index fund.
+   */
+  | "leverage-decay";
 
 export interface ChartStudySpec {
   id: string;
@@ -97,6 +110,11 @@ export interface ChartViewportSpec {
   maxPoints?: number;
   /** Intraday market history includes pre-market and after-hours bars where the venue has them. */
   extendedHours?: boolean;
+  /**
+   * Security price series are drawn as total returns: each cash distribution
+   * is reinvested at the close of its ex-date bar. Price returns otherwise.
+   */
+  totalReturn?: boolean;
 }
 
 export interface ChartSpec {
@@ -113,6 +131,13 @@ export interface TimeSeriesPoint {
   date: Date;
   observedAt: Date;
   availableAt?: Date;
+  /**
+   * The day the figure was released (`2026-10-20`), when its source says so for
+   * this point alone: FRED's newest observation from Gloom Cloud. The report
+   * line reads it; unlike `availableAt`, it never moves where the point is
+   * drawn or aligned, so the newest figure stays at its period like the rest.
+   */
+  releasedOn?: string;
   value: number | null;
   /** Original primary scalar before any presentation transform, including missing values. */
   rawValue?: number | null;
@@ -163,6 +188,12 @@ export interface ResolvedSeries {
   unit: string;
   /** Unit of rawValue, retained when presentation transforms change unit. */
   rawUnit?: string;
+  /**
+   * What a price series' returns are, set when the chart asked for total
+   * returns: `total` once its distributions are reinvested, `price` when the
+   * source gave none to reinvest (`warning` says why).
+   */
+  returnBasis?: "total" | "price";
   unitGroup: string;
   /**
    * The unit the legend states beside each value, read bare as FUT prints its
@@ -172,6 +203,11 @@ export interface ResolvedSeries {
   statedUnit?: string;
   /** Source instrument category used only for monetary market-price precision. */
   priceAssetCategory?: string;
+  /**
+   * The decimals a value worked out from prices (a formula, a spread, a price
+   * over an FX rate) prints at: the most its legs print, from two to four.
+   */
+  valueDecimals?: number;
   /** Volume basis established by the source instrument; omitted when unspecified. */
   volumeUnit?: "shares" | "contracts";
   nativeFrequency: SeriesPeriod;
@@ -182,6 +218,11 @@ export interface ResolvedSeries {
   unreportedPeriod?: "quarterly";
   /** Acquired market-history cadence; null is explicitly unknown, undefined is legacy or nonmarket. */
   historyResolution?: ManualChartResolution | null;
+  /**
+   * The bar size the points were built in from `historyResolution` bars
+   * (`4h` from `1h`, `2d` from `1d`). Absent when the points are the source's own bars.
+   */
+  barSize?: CustomChartResolution;
   /**
    * When known, the first bar this listing has at `historyResolution`: the
    * source keeps nothing older, so the chart stops there instead of asking.
@@ -282,6 +323,14 @@ export interface ChartResolutionResult {
   errors: string[];
   warnings: string[];
   /**
+   * Where a series' source starts after the range asked for, and why (a
+   * publisher's cap on history), as `warnings` also carries it, so a report
+   * says it where it would otherwise print a range that quietly starts later.
+   */
+  coverageNotices?: string[];
+  /** What the price levels of a total-return chart without a comparison are (`warnings` also carries it). */
+  returnBasisNotice?: string;
+  /**
    * Each charted listing that no longer trades: its symbol and label
    * ("Delisted Oct 27, 2022"), which `warnings` carries as "TWTR: Delisted Oct 27, 2022".
    */
@@ -290,4 +339,6 @@ export interface ChartResolutionResult {
   viewport?: { start: Date; end: Date };
   /** Bar resolution the loaded market history was fetched at. */
   resolution?: ManualChartResolution;
+  /** The bar size the market series were built in from `resolution` bars, when the source does not serve it. */
+  barSize?: CustomChartResolution;
 }

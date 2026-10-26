@@ -90,6 +90,18 @@ test("a failed save rejects its caller, leaves no temp file and does not block t
   expect(await readdir(dataDir)).toEqual(["config.json"]);
 });
 
+test("a config kept in memory (:memory:) is never written to disk", async () => {
+  const cwd = await createTempConfigDir();
+  const original = process.cwd();
+  process.chdir(cwd);
+  try {
+    await saveConfig({ ...await loadConfig(await createTempConfigDir()), dataDir: ":memory:" });
+  } finally {
+    process.chdir(original);
+  }
+  expect(await readdir(cwd)).toEqual([]);
+});
+
 test("recent panes survive a save and reload", async () => {
   const dataDir = await createTempConfigDir();
   const loaded = await loadConfig(dataDir);
@@ -176,6 +188,13 @@ test("existing users retain pending and completed plugin migrations", async () =
   expect(loaded.seededPlugins).toEqual(["substack"]);
   await saveConfig(loaded);
   expect((await loadConfig(dataDir)).seededPlugins).toEqual(["substack"]);
+
+  // What a launch could not install survives a save, which doctor and the launch notice read; clearing it sticks.
+  await saveConfig({ ...loaded, pluginSeedFailure: { plugins: ["tv", "polls"], gitMissing: true } });
+  const failed = await loadConfig(dataDir);
+  expect(failed.pluginSeedFailure).toEqual({ plugins: ["polls", "tv"], gitMissing: true });
+  await saveConfig({ ...failed, pluginSeedFailure: undefined });
+  expect((await loadConfig(dataDir)).pluginSeedFailure).toBeUndefined();
 });
 
 describe("sanitizeLayout", () => {

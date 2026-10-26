@@ -20,6 +20,22 @@ export function numberErrorMessage(message: string, value: unknown): string {
   return dotted == null ? message : `${message.replace(/\.$/, "")}; use a dot: ${dotted}`;
 }
 
+/**
+ * What to tell someone who typed a decimal (`30,5` or `30.5`) for an option
+ * that takes only whole numbers: the whole numbers either side to type, never
+ * a decimal, so the way out is not itself refused ("--days takes whole days:
+ * 30 or 31, not "30,5"."). Null for text that is not a decimal number, or has
+ * no whole number at or above `minimum` beside it.
+ */
+export function wholeNumberOptionMessage(flag: string, noun: string, value: unknown, minimum = 1): string | null {
+  const text = typeof value === "number" ? String(value) : typeof value === "string" ? value.trim() : "";
+  const dotted = dottedDecimal(text) ?? text;
+  if (!/^[+-]?\d+\.\d+$/.test(dotted)) return null;
+  const number = Number(dotted);
+  const choices = [...new Set([Math.floor(number), Math.ceil(number)])].filter((choice) => choice >= minimum);
+  return choices.length > 0 ? `${flag} takes whole ${noun}: ${choices.join(" or ")}, not "${text}".` : null;
+}
+
 const DECIMAL_COMMA_RANGE = /^([+-]?\d+(?:,\d+)?)\s*(-|to|\.\.)\s*([+-]?\d+(?:,\d+)?)$/i;
 
 /**
@@ -155,6 +171,15 @@ export function readTypedNumber(value: unknown, label: string): number {
   return read.kind === "number" ? read.value : Number.NaN;
 }
 
+/** The refusal for an amount that reads two ways: both readings, the decimal one typed so it does not read two ways itself. */
+function ambiguousAmountError(value: unknown, reading: { thousands: number; decimal: number }, label: string, code: string): Error {
+  const decimal = String(reading.decimal);
+  const decimalAs = thousandsDotReadings(decimal) ? `${decimal}0` : decimal;
+  const digits = currencyMinorDigits(code);
+  const because = digits > 2 ? `${code} has ${digits} decimals` : undefined;
+  return new Error(`${label} ${ambiguousNumberMessage(String(value), reading, { because, decimalAs })}.`);
+}
+
 /**
  * A labelled amount of `currency` as `parseCurrencyAmount` reads it: the
  * number, or NaN when it is none. In a three-decimal currency `1,234` throws
@@ -164,13 +189,21 @@ export function readTypedNumber(value: unknown, label: string): number {
 export function readCurrencyAmount(value: unknown, label: string, currency: string): number {
   const code = currency.trim().toUpperCase();
   const read = parseCurrencyAmount(value, code);
-  if (read.kind === "ambiguous") {
-    const decimal = String(read.decimal);
-    const decimalAs = thousandsDotReadings(decimal) ? `${decimal}0` : decimal;
-    const because = `${code} has ${currencyMinorDigits(code)} decimals`;
-    throw new Error(`${label} ${ambiguousNumberMessage(String(value), read, { because, decimalAs })}.`);
-  }
+  if (read.kind === "ambiguous") throw ambiguousAmountError(value, read, label, code);
   return read.kind === "number" ? read.value : Number.NaN;
+}
+
+/**
+ * A labelled amount to convert (`fx 81,000 EUR/USD`) as `alerts add` reads a
+ * price: a comma and exactly three digits could be thousands or a decimal
+ * comma whatever the currency's minor units, so it throws naming both
+ * readings, the same string read the same way in both commands. Anything else
+ * reads as `readCurrencyAmount` reads it.
+ */
+export function readConvertedAmount(value: unknown, label: string, currency: string): number {
+  const read = parseTypedNumber(value);
+  if (read.kind === "ambiguous") throw ambiguousAmountError(value, read, label, currency.trim().toUpperCase());
+  return readCurrencyAmount(value, label, currency);
 }
 
 /** What a dot and exactly three digits after one to three (`81.000`, `81.250`) could mean. */

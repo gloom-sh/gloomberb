@@ -6,13 +6,16 @@ import {
   renderSection,
   renderTable,
   wrapText,
+  wrapToTerminal,
 } from "../../utils/cli-output";
 import type { DataProvider } from "../../types/data-provider";
 import type { Quote } from "../../types/financials";
 import { quotedListingName } from "../../tickers/listing-name";
 import type { TickerRecord } from "../../types/ticker";
 import {
+  candidateExchange,
   LISTING_SEARCH_LIMIT,
+  listingDistance,
   searchTickerCandidates,
   type TickerSearchCandidate,
 } from "../../tickers/search";
@@ -22,18 +25,23 @@ import { formatMarketPriceWithCurrency, quoteFormatOptions } from "../../market-
 import { formerIssuerLine, startTickerChangeLookup, type TickerChangeLookup } from "../../tickers/ticker-changes";
 import { fail, failRetryable } from "../errors";
 import { isProviderBusy, SEARCH_BUSY_CODE, SEARCH_BUSY_MESSAGE } from "../../sources/provider-errors";
+import { isNetworkFailure } from "../../utils/network-failure";
 import type { MarketContext } from "../types";
 import type { CliCommandContext, GloomPlugin } from "../../types/plugin";
-import { indexRootFor, indexRootTryLine } from "../index-roots";
+import { indexRootTryLine } from "../index-roots";
+import { indexRootFor } from "../../tickers/index-roots";
 import { readBrokerIndexCode } from "../listing-arg";
 import { knownGapMessage, commandPointer } from "../known-gaps";
 import { instrumentTypeLabel } from "../../tickers/instrument-kind";
 import { canonicalExchange, isUsListingExchange } from "../../utils/exchanges";
-import { groupByCompany, sameCompany } from "../../tickers/company-name";
+import { companyNameExtraWords, groupByCompany, sameCompany } from "../../tickers/company-name";
+import { namedByService } from "../../tickers/company-name-listing";
 import { findCatalogSeries, renderSeriesMatches, type SeriesMatch } from "../series-search";
-import { centralBankCiting, centralBankNamed, type CentralBank } from "../../utils/central-banks";
+import { centralBankAskedAbout, centralBankCiting, type CentralBank } from "../../utils/central-banks";
 import { createPaneCatalog } from "../pane-functions/discovery";
 import { buildPaneCatalogEntries, filterPaneCatalogEntries, selectPaneCatalogMatches } from "../pane-functions/catalog";
+import { normalizeSearchText } from "../../tickers/search/ranking";
+import { hasNonLatinLetters } from "../../utils/typed-text";
 
 interface SearchCommandDependencies {
   initMarketData?: () => Promise<MarketContext>;
@@ -102,7 +110,8 @@ export async function searchCandidatesForCli({
   quote?: Promise<Quote | null>;
 }): Promise<TickerSearchCandidate[]> {
   const trimmedQuery = query.trim();
-  if (!trimmedQuery) return [];
+  // Only signs (`!!!`) name nothing: no saved ticker is a match for them.
+  if (!normalizeSearchText(trimmedQuery)) return [];
 
   const localTickerMap = new Map(
     tickers.map((ticker) => [ticker.metadata.ticker.toUpperCase(), ticker] as const),
@@ -124,10 +133,13 @@ export async function searchCandidatesForCli({
     const quote = BARE_SYMBOL.test(symbol) && candidates.some((candidate) => candidate.symbol.toUpperCase() === symbol)
       ? await (quoted ?? loadSearchedQuote(symbol, savedExchange, dataProvider))
       : null;
-    return withQuotedNames(symbol, withHomeListingPrimary(symbol, withPrimaryListingFirst(symbol, candidates, quote)), quote).slice(0, totalLimit);
+    return withQuotedNames(symbol, withHomeListingPrimary(trimmedQuery, withPrimaryListingFirst(symbol, candidates, quote)), quote)
+      .slice(0, totalLimit);
   } catch (error) {
     // Not "No matches found": a script or a reader would take that for a name nothing lists.
     if (isProviderBusy(error)) failRetryable(SEARCH_BUSY_MESSAGE, SEARCH_BUSY_CODE);
+    // Nor is no answer at all: the command fails as "couldn't reach", as any command offline does.
+    if (isNetworkFailure(error)) throw error;
     logFailure("cli.commands-search", "Search ticker candidates failed")(error);
     return [];
   }
@@ -195,24 +207,29 @@ function formerIssuerNote(candidate: TickerSearchCandidate): string | null {
   return formerIssuerLine(former.symbol, former, former.successor ?? { symbol: candidate.label, name: resolveSearchName(candidate) });
 }
 
-/** The merged companies' lines, once each, unless the symbol's own line already says it. */
+/**
+ * A row search found by the name its company had before it was renamed
+ * ("cassava" finds Filana Therapeutics' FLNA): says what it was called.
+ */
+function formerNameNote(candidate: TickerSearchCandidate): string | null {
+  const formerName = candidate.result?.formerName;
+  if (typeof formerName !== "string" || !formerName.trim()) return null;
+  return `${candidate.label} is ${resolveSearchName(candidate)}, formerly ${formerName.trim()}`;
+}
+
+/** The merged companies' and renamed companies' lines, once each, unless the symbol's own line already says it. */
 function formerIssuerNotes(candidates: readonly TickerSearchCandidate[], fate: SearchFate): string[] {
-  const notes = new Set(candidates.flatMap((candidate) => formerIssuerNote(candidate) ?? []));
+  const notes = new Set(candidates.flatMap((candidate) => formerIssuerNote(candidate) ?? formerNameNote(candidate) ?? []));
   return [...notes].filter((note) => !fate.notes.some((line) => line.split(" ")[0] === note.split(" ")[0]));
 }
 
 /** A query that is a bare symbol (CAR, BRK.B), not a name or a phrase. */
 const BARE_SYMBOL = /^[A-Z0-9][A-Z0-9.\-]{0,11}$/;
 
-function candidateExchange(candidate: TickerSearchCandidate): string {
-  return canonicalExchange(candidate.result?.exchange === "SMART"
-    ? candidate.result.primaryExchange
-    : candidate.result?.exchange || candidate.result?.primaryExchange || candidate.ticker?.metadata.exchange || candidate.right);
-}
-
 /**
  * For a bare symbol several companies list (CAR: Avis, Carrefour, CAR Group),
- * the listing `quote CAR` reads goes first as the primary listing, then each
+ * the company of the listing `quote CAR` reads goes first, under its home
+ * line when the service marks one of its listings so, then each
  * other company's first listing, then the rest of their venues, so a short
  * list still shows every company. A saved listing is the user's choice and
  * stays where search put it. Any other query keeps search's order.
@@ -228,8 +245,10 @@ function withPrimaryListingFirst(
   const listed = exact.filter((candidate) => candidate.kind === "search" && (candidate.instrumentClass === "equity" || candidate.instrumentClass === "other"));
   const companies = groupByCompany(listed, resolveSearchName);
   if (companies.length < 2) return candidates;
-  const primary = quotedCandidate(listed, quote);
-  if (!primary) return candidates;
+  const quoted = quotedCandidate(listed, quote);
+  if (!quoted) return candidates;
+  // That company leads with its home line where it lists one under the symbol too (TD on TSX before NYSE).
+  const primary = companies.find((group) => group.includes(quoted))?.find((candidate) => candidate.result?.homeListing === true) ?? quoted;
   const firsts = companies.filter((group) => !group.includes(primary)).map((group) => group[0]!);
   const ordered = [primary, ...firsts, ...listed.filter((candidate) => candidate !== primary && !firsts.includes(candidate))];
   const at = candidates.indexOf(listed[0]!);
@@ -241,19 +260,6 @@ function withPrimaryListingFirst(
   ));
 }
 
-/** Venues that only quote shares listed elsewhere: the OTC tiers, Frankfurt's open market and Germany's regional exchanges. */
-const SECONDARY_VENUES = new Set(["OTC", "PNK", "OTCQX", "OTCQB", "FWB2", "MUNICH", "XSTU", "XDUS", "XBER", "XHAM", "HANOVER"]);
-
-/**
- * How far a listing is from being its company's own line: 0 a plain one, 1 a
- * line that only quotes shares listed elsewhere (a regional venue, OTC, a
- * Milan 4MSFT or London 0XXX code), 2 a depositary receipt.
- */
-function listingDistance(candidate: TickerSearchCandidate): 0 | 1 | 2 {
-  if (/depositary|^(?:ADR|ADS|GDR|CDR|BDR)$/i.test(candidate.instrumentType ?? "")) return 2;
-  return SECONDARY_VENUES.has(candidateExchange(candidate)) || /\d/.test(candidate.symbol) && /[A-Za-z]/.test(candidate.symbol) ? 1 : 0;
-}
-
 /**
  * A company searched by name lists its home line as the primary listing. A
  * search row names no home exchange or volume, so a company's lines go by
@@ -262,20 +268,31 @@ function listingDistance(candidate: TickerSearchCandidate): 0 | 1 | 2 {
  * listing search put first, often the one-off cross-listing whose short name
  * matched the query (LUFTHANSA on Budapest), gives way only to a closer line,
  * or to one searched at least twice as often, or any scored line when it has
- * no score. A listing searched by its own symbol is not moved.
+ * no score. A listing searched by its own symbol is not moved, and nor is
+ * the line the service marks as the company's home (`homeListing`).
+ *
+ * The line the service marks with the name as typed is the company the name
+ * means ("coca cola" is The Coca-Cola Company's KO). A company whose name
+ * only adds words to it (Coca-Cola Consolidated, Coca-Cola Europacific) is
+ * not one of its lines, and no score outweighs the mark: only a closer line
+ * of the same name takes the lead, its home line for a receipt.
  */
-function withHomeListingPrimary(symbol: string, candidates: TickerSearchCandidate[]): TickerSearchCandidate[] {
+function withHomeListingPrimary(query: string, candidates: TickerSearchCandidate[]): TickerSearchCandidate[] {
   const primary = candidates.find((candidate) => candidate.category === "Primary Listing");
-  if (!primary || primary.kind !== "search" || primary.symbol.toUpperCase() === symbol) return candidates;
+  if (!primary || primary.kind !== "search" || primary.result?.homeListing === true
+    || primary.symbol.toUpperCase() === query.toUpperCase()) return candidates;
   const company = resolveSearchName(primary);
+  const marked = !!primary.result && namedByService(query, primary.result);
   const lines = candidates.filter((candidate) => candidate.kind === "search" && candidate.category !== "Funds & Derivatives"
-    && (candidate.instrumentClass === "equity" || candidate.instrumentClass === "other") && sameCompany(resolveSearchName(candidate), company));
+    && (candidate.instrumentClass === "equity" || candidate.instrumentClass === "other") && sameCompany(resolveSearchName(candidate), company)
+    && (!marked || companyNameExtraWords(resolveSearchName(candidate), company) != null));
   const score = (candidate: TickerSearchCandidate) => candidate.result?.popularity ?? candidate.popularity ?? null;
   const [home] = [...lines].sort((a, b) => listingDistance(a) - listingDistance(b) || (score(b) ?? -1) - (score(a) ?? -1) || candidates.indexOf(a) - candidates.indexOf(b));
   if (!home || home === primary) return candidates;
   const closer = listingDistance(home) < listingDistance(primary);
   const [homeScore, primaryScore] = [score(home), score(primary)];
-  const moreSearched = listingDistance(home) === listingDistance(primary) && homeScore != null && (primaryScore == null || homeScore >= primaryScore * 2);
+  const moreSearched = !marked && listingDistance(home) === listingDistance(primary) && homeScore != null
+    && (primaryScore == null || homeScore >= primaryScore * 2);
   if (!closer && !moreSearched) return candidates;
   const rest = candidates.filter((candidate) => candidate !== home);
   const at = rest.indexOf(primary);
@@ -362,11 +379,14 @@ function searchCandidateRows(candidates: TickerSearchCandidate[]) {
     saved: candidate.kind === "ticker",
     // The company that merged into this one, whose old name the query is.
     ...candidate.result?.formerIssuer ? { formerIssuer: candidate.result.formerIssuer } : {},
+    // The name a renamed company had, which the query is.
+    ...typeof candidate.result?.formerName === "string" && candidate.result.formerName.trim()
+      ? { formerName: candidate.result.formerName.trim() } : {},
   }));
 }
 
 /**
- * "^VIX  Cboe Volatility Index (try: gloomberb quote ^VIX)" for a bare index root, whose
+ * "^VIX  Cboe Volatility Index (try: gloom quote ^VIX)" for a bare index root, whose
  * search finds funds named after the index but not the index, unless it does list it.
  */
 function indexRootNote(query: string, candidates: TickerSearchCandidate[]): string | null {
@@ -375,19 +395,31 @@ function indexRootNote(query: string, candidates: TickerSearchCandidate[]): stri
   return indexRootTryLine(root);
 }
 
-/** The bank on the CBR board a query names ("SNB", "Norges Bank"), or whose row reads the FRED series it names (DFEDTARU). */
+/**
+ * The bank on the CBR board a query names ("SNB", "Norges Bank"), asks the
+ * policy rate of ("bank of japan rate"), or whose row reads the FRED series
+ * it names (DFEDTARU).
+ */
 function searchedCentralBank(query: string): CentralBank | null {
-  return centralBankNamed(query) ?? centralBankCiting(query.replace(/^FRED:/i, ""));
+  return centralBankAskedAbout(query) ?? centralBankCiting(query.replace(/^FRED:/i, ""));
 }
 
-/** "Swiss National Bank (Switzerland): policy rate on the CBR board, gloomberb fn CBR." */
+/** "Swiss National Bank (Switzerland): policy rate on the CBR board, gloom fn CBR." */
 function centralBankLine(bank: CentralBank): string {
-  return `${bank.name} (${bank.place}): policy rate on the CBR board, gloomberb fn CBR.`;
+  return `${bank.name} (${bank.place}): policy rate on the CBR board, gloom fn CBR.`;
 }
 
 /** Search finds tickers and companies; a function, a dataset or a term is in the catalog, so an empty search points there. */
 function catalogHint(query: string): string {
-  return `Search finds tickers and company names. Try: gloomberb catalog "${query.replace(/"/g, "")}"`;
+  return `Search finds tickers and company names. Try: gloom catalog "${query.replace(/"/g, "")}"`;
+}
+
+/** What a search for a name in another script (任天堂) that found nothing says: listings are named in Latin letters. */
+const OTHER_SCRIPT_NO_MATCH = "No matches. Try the ticker or the English name.";
+
+/** The line an empty search ends with: where else to look, or for a name in another script, what to type instead. */
+function emptySearchHint(query: string): string {
+  return hasNonLatinLetters(query) ? OTHER_SCRIPT_NO_MATCH : catalogHint(query);
 }
 
 /**
@@ -408,7 +440,7 @@ function searchNotes(
   const empty = candidates.length === 0 && !fate.stopped;
   // A gap line that names the index (TNX's yield line names ^TNX) says it once.
   return [...fate.notes, ...formerIssuerNotes(candidates, fate), gap ? null : indexRootNote(query, candidates), gap, bank ? centralBankLine(bank) : null, setting,
-    empty && !gap && !bank && !setting && functions.length === 0 ? catalogHint(query) : null]
+    empty && !gap && !bank && !setting && functions.length === 0 ? emptySearchHint(query) : null]
     .filter((note): note is string => !!note);
 }
 
@@ -419,7 +451,7 @@ function renderFunctionMatches(functions: readonly SearchFunctionMatch[]): strin
     renderSection("Functions"),
     ...renderDefinitions(functions.map((match) => [`${match.token}  ${match.label}`, match.description] as const), { width, termStyle: cliStyles.command }),
     "",
-    ...wrapText("No ticker or company matches. gloomberb catalog <function> shows a function's options and examples.", width)
+    ...wrapText("No ticker or company matches. gloom catalog <function> shows a function's options and examples.", width)
       .map((line) => cliStyles.muted(line)),
   ].join("\n");
 }
@@ -455,7 +487,7 @@ export function buildSearchReport({
   if (indexNote) lines.push("", indexNote);
   if (gap) lines.push("", gap);
   const bank = searchedCentralBank(query);
-  if (bank) lines.push("", centralBankLine(bank));
+  if (bank) lines.push("", wrapToTerminal(centralBankLine(bank)));
   const setting = commandPointer(query);
   if (setting) lines.push("", setting);
   const charted = renderSeriesMatches(query, series, SEARCH_SERIES_LIMIT, cliTerminalWidth() ?? 100, "catalog");
@@ -469,7 +501,10 @@ export function buildSearchReport({
   if (candidates.length === 0) {
     if (fate.stopped) return lines.join("\n");
     if (functions.length > 0) lines.push("", renderFunctionMatches(functions));
-    else if (!gap && !bank && !setting && !charted) return [...lines, cliStyles.muted("No matches found."), cliStyles.muted(catalogHint(query))].join("\n");
+    else if (!gap && !bank && !setting && !charted) {
+      return [...lines, ...hasNonLatinLetters(query) ? [cliStyles.muted(OTHER_SCRIPT_NO_MATCH)]
+        : [cliStyles.muted("No matches found."), cliStyles.muted(catalogHint(query))]].join("\n");
+    }
     if (pointToCatalog) lines.push("", cliStyles.muted(catalogHint(query)));
     return lines.join("\n");
   }
@@ -516,7 +551,8 @@ function searchedFunctions(
   plugins: GloomPlugin[] | undefined,
   context: MarketContext,
 ): Promise<SearchFunctionMatch[]> {
-  return candidates.length === 0 && !fate.stopped && !knownGapMessage(query) && !searchedCentralBank(query) && plugins
+  // Functions are named in English: a name in another script is no function's.
+  return candidates.length === 0 && !fate.stopped && !knownGapMessage(query) && !searchedCentralBank(query) && plugins && !hasNonLatinLetters(query)
     ? searchFunctionsForCli(query, plugins, context)
     : Promise.resolve([]);
 }
@@ -538,7 +574,7 @@ export async function search(query: string, dependencies: SearchCommandDependenc
   const failCommand = dependencies.fail ?? fail;
   const initMarketDataFn = dependencies.initMarketData ?? initMarketData;
   if (!trimmedQuery) {
-    failCommand("Usage: gloomberb search <query>");
+    failCommand("Usage: gloom search <query>");
   }
 
   await withMarketData(initMarketDataFn, async (context) => {

@@ -1,3 +1,6 @@
+import { isFigure, isNumberCell, protectFigureCommas, restoreFigureCommas } from "./symbol-cells";
+import { readTerminalListingCode, unknownBloombergMarket } from "../tickers/terminal-codes";
+
 /** The quote marks a pasted list wraps its entries in: "AAPL", 'MSFT', “NVDA”. */
 const QUOTE_MARKS = "\"'`\u2018\u2019\u201C\u201D";
 const QUOTE_EDGES = new RegExp(`^[${QUOTE_MARKS}]+|[${QUOTE_MARKS}]+$`, "g");
@@ -12,18 +15,37 @@ const LIST_SEPARATOR = /[,;\t\r\n]/;
  * in it is split on those, so an entry may be a company's name (`WHR,
  * Whirlpool Corporation, BRK.B`) or several symbols with spaces between them
  * (`brk.b bf-b` on a pasted line); one without them is split on spaces (`JNK
- * EMB BRK.B`). Which an entry with a space is takes a search: a command that
+ * EMB BRK.B`), or with `phrases` kept whole (`splitSymbolArgLines`). Which an
+ * entry with a space is takes a search: a command that
  * resolves its symbols reads them with `readNameEntries`, and a parser that
- * looks nothing up takes `splitSymbolWords`.
+ * looks nothing up takes `splitSymbolWords`. A comma inside a figure
+ * (`2.582,52`, `1,899.21`) is no separator: the figure stays one entry. One
+ * between plain digits is a decimal comma only on a line with another
+ * separator (`ED 2,5`); alone it splits codes (`9988,5`, `700,388`).
  */
-export function splitSymbolArgs(args: readonly string[]): string[] {
-  return args
-    .flatMap((arg) => {
-      const text = arg.replace(/^\uFEFF/, "");
-      return LIST_SEPARATOR.test(text) ? text.split(LIST_SEPARATOR) : text.split(/\s+/);
-    })
-    .map((entry) => entry.trim().replace(QUOTE_EDGES, "").trim().replace(/\s+/g, " "))
-    .filter(Boolean);
+export function splitSymbolArgs(args: readonly string[], options: { phrases?: boolean } = {}): string[] {
+  return args.flatMap((arg) => splitSymbolArgLines(arg, options).flat());
+}
+
+/**
+ * `splitSymbolArgs` of one argument, its entries kept by the line they are
+ * on, so a figure can be told to sit beside the symbol on its line. With
+ * `phrases`, an argument with spaces and no list separator is one entry, as
+ * an entry between commas is: a company's name (`"Beyond Meat"`) or symbols
+ * typed on one line (`"GME AMC"`), which `readNameEntries` tells apart.
+ */
+export function splitSymbolArgLines(arg: string, { phrases = false }: { phrases?: boolean } = {}): string[][] {
+  const lines = arg.replace(/^\uFEFF/, "").split(/\r\n?|\n/).map((line) => protectFigureCommas(line));
+  const separated = lines.length > 1 || lines.some((line) => LIST_SEPARATOR.test(line));
+  // A terminal's code (`VOD LN`, `JPM US Equity`), or words written as one (`AAPL GP`), is one entry.
+  return lines.map((line) => (separated ? line.split(/[,;\t]/) : phrases || isTerminalCodeLine(line) ? [line] : line.split(/\s+/))
+    .map((entry) => restoreFigureCommas(entry).trim().replace(QUOTE_EDGES, "").trim().replace(/\s+/g, " "))
+    .filter(Boolean));
+}
+
+function isTerminalCodeLine(line: string): boolean {
+  const text = line.trim().replace(QUOTE_EDGES, "").trim();
+  return /\s/.test(text) && (readTerminalListingCode(text) != null || unknownBloombergMarket(text) != null);
 }
 
 /**
@@ -31,15 +53,28 @@ export function splitSymbolArgs(args: readonly string[]): string[] {
  * spaces and no list separator into it: `quote "10 year yield"`, `quote
  * "Apple Inc"` or a pasted line `quote "AAPL MSFT"`. Which of those it is
  * takes a lookup (`readPhraseArgument`); `splitSymbolArgs` would split it
- * into words, each a symbol (10, YEAR, YIELD). Null for anything else:
- * several arguments, one word, or a list with commas.
+ * into words, each a symbol (10, YEAR, YIELD). A figure in it is part of
+ * the phrase (`"10.5 year yield"`, `"fed funds rate 5.25%"`). Null for
+ * anything else: several arguments, one word, a list with commas, or a
+ * pasted row of symbols each followed by its prices (`ED 2.582,52`, `AAPL
+ * 150.00 MSFT 300.00`), which is read as a list is.
  */
 export function quotedPhrase(args: readonly string[]): string | null {
   if (args.length !== 1) return null;
   const text = args[0]!.replace(/^\uFEFF/, "");
-  if (LIST_SEPARATOR.test(text)) return null;
+  if (LIST_SEPARATOR.test(protectFigureCommas(text))) return null;
   const phrase = text.trim().replace(QUOTE_EDGES, "").trim().replace(/\s+/g, " ");
-  return phrase.includes(" ") ? phrase : null;
+  return phrase.includes(" ") && !isPricedRow(phrase.split(" ")) ? phrase : null;
+}
+
+/**
+ * Words that are a sheet's row rather than a phrase: a number (`2.582,52`)
+ * among them, and each word that is no figure followed by one (`ED
+ * 2.582,52`), so no two words of a name or a phrase sit side by side.
+ */
+function isPricedRow(words: readonly string[]): boolean {
+  if (!words.some(isNumberCell) || isFigure(words[0]!)) return false;
+  return words.every((word, index) => isFigure(word) || (index + 1 < words.length && isFigure(words[index + 1]!)));
 }
 
 /**
@@ -50,7 +85,7 @@ export function quotedPhrase(args: readonly string[]): string | null {
  */
 export function splitSymbolWords(args: readonly string[]): string[] {
   return splitSymbolArgs(args)
-    .flatMap((entry) => entry.split(" "))
+    .flatMap((entry) => isTerminalCodeLine(entry) ? [entry] : entry.split(" "))
     .map((word) => word.replace(QUOTE_EDGES, ""))
     .filter(Boolean);
 }

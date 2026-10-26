@@ -26,7 +26,10 @@ export interface CreditFact {
   status: "active" | "superseded" | "pending";
   supersedesId: string | null;
 }
+/** The party an instrument, covenant or wall bucket is of, when the filing names one other than the issuer. */
+export interface CreditObligor { name: string; role?: string | null }
 export interface CreditInstrument {
+  obligor?: CreditObligor | null;
   lifecycle?: string | null;
   id: string;
   key: string;
@@ -41,6 +44,7 @@ export interface CreditInstrument {
   history?: CreditFact[];
 }
 export interface CreditHeadroom {
+  obligor?: CreditObligor | null;
   id: string;
   instrumentId: string;
   instrumentName: string;
@@ -57,12 +61,14 @@ export interface CreditHeadroom {
   evidenceIds: string[];
 }
 export interface CreditMaturityBucket {
+  obligor?: CreditObligor | null;
   year: number;
   currency: string;
   principal: number;
   instruments: Array<{ id: string; name: string; principal: number; evidenceIds: string[] }>;
 }
 interface CreditControlExposure {
+  obligor?: CreditObligor | null;
   instrumentId: string;
   instrumentName: string;
   currency: string | null;

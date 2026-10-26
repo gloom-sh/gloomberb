@@ -54,6 +54,9 @@ function Harness({
   app,
   detached = false,
   beforeCreate,
+  syncFails,
+  connectFails,
+  removeFails,
 }: {
   instance?: BrokerInstanceConfig;
   instances?: BrokerInstanceConfig[];
@@ -67,6 +70,12 @@ function Harness({
   detached?: boolean;
   /** Holds a new profile's creation until it resolves. */
   beforeCreate?: () => Promise<void>;
+  /** Why every sync fails, if it does. */
+  syncFails?: string;
+  /** Why every connect fails, if it does. */
+  connectFails?: string;
+  /** Why every removal fails, if it does. */
+  removeFails?: string;
 }) {
   // Pane state (the open profile) lives in the app state, so it needs a real reducer.
   const [state, dispatch] = useReducer(appReducer, instances, (instances) => {
@@ -104,11 +113,28 @@ function Harness({
     },
     openCommandBar: (query) => calls.push(`command:${query ?? ""}`),
     showPane: (paneId) => calls.push(`pane:${paneId}`),
-    connectBrokerInstance: async (instanceId) => { calls.push(`connect:${instanceId}`); },
-    syncBrokerInstance: async (instanceId) => { calls.push(`sync:${instanceId}`); },
-    updateBrokerInstance: async (instanceId, config) => { calls.push(`update:${instanceId}:${String(config.connectionMode)}`); },
+    connectBrokerInstance: async (instanceId) => {
+      calls.push(`connect:${instanceId}`);
+      if (connectFails) throw new Error(connectFails);
+    },
+    syncBrokerInstance: async (instanceId) => {
+      calls.push(`sync:${instanceId}`);
+      if (syncFails) throw new Error(syncFails);
+      dispatch({ type: "SET_BROKER_SYNC_ERROR", instanceId, error: null });
+    },
+    updateBrokerInstance: async (instanceId, config, options) => {
+      // Turning a profile back on changes nothing else.
+      if (options?.enabled === true && Object.keys(config).length === 0) {
+        calls.push(`enable:${instanceId}`);
+        const current = stateRef.current.config;
+        dispatch({ type: "SET_CONFIG", config: { ...current, brokerInstances: current.brokerInstances.map((entry) => entry.id === instanceId ? { ...entry, enabled: true } : entry) } });
+        return;
+      }
+      calls.push(`update:${instanceId}:${String(config.connectionMode)}`);
+    },
     removeBrokerInstance: async (instanceId) => {
       calls.push(`remove:${instanceId}`);
+      if (removeFails) throw new Error(removeFails);
       const { config } = stateRef.current;
       dispatch({ type: "SET_CONFIG", config: { ...config, brokerInstances: config.brokerInstances.filter((entry) => entry.id !== instanceId) } });
     },
@@ -215,6 +241,158 @@ describe("BrokersPane", () => {
     expect(calls).toEqual(["connect:ibkr-paper", "sync:ibkr-paper", "pane:ibkr-trading"]);
   });
 
+  test("a disabled profile is never connected or synced: b enables it, then syncs it", async () => {
+    const calls: string[] = [];
+    await tui.render(<Harness calls={calls} instance={{ ...createGatewayInstance(), enabled: false }} height={35} />, { width: 92, height: 35 });
+    await settle();
+    expect(frameLine("IBKR Paper")).toContain("Disabled");
+    expect(frame()).toContain("[b] enable");
+    expect(frame()).not.toContain("[c]onnect");
+    expect(frame()).not.toContain("[s]ync");
+
+    await pressKey("c");
+    await pressKey("s");
+    expect(calls).toEqual([]);
+
+    await pressKey("b");
+    await settle();
+    expect(calls).toEqual(["enable:ibkr-paper", "sync:ibkr-paper"]);
+    expect(frameLine("IBKR Paper")).not.toContain("Disabled");
+    expect(frame()).toContain("[s]ync");
+    expect(frame()).not.toContain("[b] enable");
+  });
+
+  test("what an action on a profile came to is said on its row and in its detail, not in the footer", async () => {
+    const calls: string[] = [];
+    const reason = "Gateway refused the session.";
+    await tui.render(
+      <Harness calls={calls} instance={{ ...createGatewayInstance(), enabled: false }} syncFails={reason} height={35} />,
+      { width: 92, height: 35 },
+    );
+    await settle();
+
+    // Enabling worked and the sync after it did not: the row names the sync.
+    await pressKey("b");
+    await settle();
+    expect(calls).toEqual(["enable:ibkr-paper", "sync:ibkr-paper"]);
+    expect(frameLine("IBKR Paper")).toContain("Sync failed");
+    expect(frame()).not.toContain(reason);
+    expect(frame()).not.toContain("Could not enable");
+    await pressKey("RETURN");
+    expect(frame()).toContain(`Enabled IBKR Paper, but it did not sync: ${reason}`);
+
+    // The next action on the profile starts over.
+    await pressKey("s");
+    await settle();
+    expect(frame()).toContain(reason);
+    expect(frame()).not.toContain("Enabled IBKR Paper");
+  });
+
+  test("a profile only a new sign-in gets going reads Sign-in needed, and a failed connect says so on its row", async () => {
+    const calls: string[] = [];
+    const reason = "Interactive Brokers needs you to sign in again. Press Connect in Brokers.";
+    const ended = createTestBrokerAdapter({
+      id: "ended",
+      name: "Ended Broker",
+      getStatus: () => ({ state: "error", message: reason, needsSignIn: true, updatedAt: 1 }),
+    });
+    const failing = createTestBrokerAdapter({ id: "failing", name: "Failing Broker" });
+    const profile = (id: string, brokerType: string): BrokerInstanceConfig => ({ id, brokerType, label: id, config: {}, enabled: true });
+    await tui.render(
+      <Harness
+        calls={calls}
+        instances={[profile("needs-sign-in", "ended"), profile("refuses", "failing")]}
+        adapters={[ended, failing]}
+        connectFails="Gateway refused the connection."
+        height={30}
+      />,
+      { width: 92, height: 30 },
+    );
+    await settle();
+    expect(frameLine("needs-sign-in")).toContain("Sign-in needed");
+    await pressKey("RETURN");
+    expect(frame()).toContain(reason);
+    await pressEscape();
+
+    await pressArrow("down");
+    await pressKey("c");
+    await settle();
+    expect(calls).toEqual(["connect:refuses"]);
+    expect(frameLine("refuses")).toContain("Connect failed");
+    expect(frame()).not.toContain("Gateway refused the connection.");
+    await pressKey("RETURN");
+    expect(frame()).toContain("Gateway refused the connection.");
+  });
+
+  test("a failure stays on its row through status reads that only restamp it, and goes on a real change", async () => {
+    const calls: string[] = [];
+    let state: "disconnected" | "connected" = "disconnected";
+    const listeners = new Set<() => void>();
+    // Stamps every read, as a polled status can.
+    const polled = createTestBrokerAdapter({
+      id: "polled",
+      name: "Polled Broker",
+      getStatus: () => ({ state, message: "", updatedAt: Date.now() }),
+      subscribeStatus: (_instance, listener) => {
+        listeners.add(listener);
+        return () => { listeners.delete(listener); };
+      },
+    });
+    const poll = async () => {
+      await act(async () => {
+        await Bun.sleep(5);
+        for (const listener of listeners) listener();
+      });
+      await settle();
+    };
+    await tui.render(
+      <Harness
+        calls={calls}
+        instances={[{ id: "polled-1", brokerType: "polled", label: "Polled", config: {}, enabled: true }]}
+        adapters={[polled]}
+        syncFails="Session expired."
+        height={30}
+      />,
+      { width: 92, height: 30 },
+    );
+    await settle();
+    await pressKey("s");
+    await settle();
+    expect(frameLine("Polled")).toContain("Sync failed");
+
+    await poll();
+    await poll();
+    expect(frameLine("Polled")).toContain("Sync failed");
+
+    state = "connected";
+    await poll();
+    expect(frameLine("Polled")).toContain("Connected");
+    expect(frameLine("Polled")).not.toContain("Sync failed");
+  });
+
+  test("what stops a save is said beside Save, and goes with the form", async () => {
+    const calls: string[] = [];
+    const instance = { ...createGatewayInstance(), connectionMode: undefined, config: { connectionMode: "token", credentials: { token: "secret", accountId: "" } } };
+    // Too short for the whole form: Save starts below the fold.
+    await tui.render(<Harness calls={calls} instance={instance} height={20} />, { width: 92, height: 20 });
+    await settle();
+
+    await pressKey("e");
+    expect(frame()).not.toContain("Cancel");
+    await pressKey("RETURN");
+    await settle();
+    expect(calls).toEqual([]);
+    const lines = frame().split("\n");
+    const errorAt = lines.findIndex((line) => line.includes("Account is required."));
+    const saveAt = lines.findIndex((line) => line.includes("Save") && line.includes("Cancel"));
+    expect(errorAt).toBeGreaterThan(0);
+    expect(saveAt - errorAt).toBe(1);
+
+    await pressEscape();
+    expect(frame()).not.toContain("Edit Profile");
+    expect(frame()).not.toContain("Account is required.");
+  });
+
   test("the edit form walks every field by keyboard, Esc cancels only the edit and Enter saves", async () => {
     const calls: string[] = [];
     const instance = { ...createGatewayInstance(), connectionMode: undefined, config: { connectionMode: "token", credentials: { token: "secret", accountId: "A1" } } };
@@ -294,6 +472,27 @@ describe("BrokersPane", () => {
       apiClient.brokerRequest = brokerRequest;
     }
   });
+  test("a removal that fails while the profile is still listed is said on its row, not as a toast", async () => {
+    const calls: string[] = [];
+    await tui.render(
+      <Harness calls={calls} instances={[createGatewayInstance()]} removeFails="Config is read-only." />,
+      { width: 92, height: 25 },
+    );
+    await settle();
+
+    await pressKey("d");
+    await settle();
+    await tui.emitKeypress({ name: "return", sequence: "\r" }, { frames: 2, trackPropagation: true, afterCommit: true });
+    await settle();
+    expect(frame()).toContain("Config is read-only.");
+    await pressEscape();
+    expect(frame()).not.toContain("Disconnect broker?");
+    expect(calls).toEqual(["remove:ibkr-paper"]);
+    expect(frameLine("IBKR Paper")).toContain("Remove failed");
+    await pressKey("RETURN");
+    expect(frame()).toContain("Config is read-only.");
+  });
+
   test("in a detached window, d confirms in the window's own dialog", async () => {
     const calls: string[] = [];
     await tui.render(
@@ -494,6 +693,8 @@ describe("BrokersPane", () => {
       await pressKey("c");
       await settle();
       expect(asked).toEqual([{ renew: renews }]);
+      // Said in the profile's detail; nothing on the row changed.
+      await pressKey("RETURN");
       expect(frame()).toContain(renews ? "sign-in was not renewed." : "was not connected.");
     }
   });
@@ -563,5 +764,24 @@ describe("BrokersPane", () => {
     await request();
     expect(frame()).toContain("> Profile Label");
     expect(frame()).toContain("Save or cancel the edit first.");
+
+    // Cancelling the edit answers it.
+    await pressEscape();
+    expect(frame()).not.toContain("Save or cancel the edit first.");
   });
+});
+
+
+test("a background sync failure reaches the Brokers row and existing mouse Sync retries it", async () => {
+  const app: { state?: AppState; dispatch?: Dispatch<AppAction> } = {};
+  const calls: string[] = [];
+  await tui.render(<Harness calls={calls} instance={createGatewayInstance()} app={app} />, { width: 92, height: 25 });
+  await act(async () => {
+    app.dispatch!({ type: "SET_BROKER_SYNC_ERROR", instanceId: "ibkr-paper", error: "Positions could not be synced. Use Sync to retry." });
+  });
+  await tui.waitForFrameToContain("Sync failed");
+  expect(frameLine("IBKR Paper")).toContain("Sync failed");
+  await tui.clickFrameText("[s]ync");
+  await tui.waitForFrameToExclude("Sync failed");
+  expect(calls).toEqual(["sync:ibkr-paper"]);
 });

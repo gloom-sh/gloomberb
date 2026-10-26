@@ -7,6 +7,7 @@ import { QueryStore } from "../query-store";
 import type { QueryEntry } from "../result-types";
 import { buildQuoteKey, instrumentFromQuoteTarget, toMarketDataContext } from "../selectors";
 import { measurePerf } from "../../utils/perf-marks";
+import { withSavedCopyMarkOf } from "../../data/saved-copies";
 import {
   EXPECTED_EMPTY,
   SNAPSHOT_CACHE_TTL_MS,
@@ -112,7 +113,8 @@ export async function loadQuoteEntry({
           cacheMode: options.forceRefresh ? "refresh" : "default",
         },
       );
-      const resolvedQuote = resolveQuote?.(instrument, quote) ?? quote;
+      // Resolved onto an older quote, the answer stays a saved copy exactly when the router served one.
+      const resolvedQuote = withSavedCopyMarkOf(resolveQuote?.(instrument, quote) ?? quote, quote);
       const source = resolvedQuote.providerId ?? dataProvider.id;
       const attempts = [createAttempt(source, startedAt, "success")];
       return quoteStore.update(key, (current) => readyQuoteEntry(current, resolvedQuote, source, attempts, { keepNewerHeldQuote: true, acceptLastKnown: true }));
@@ -183,7 +185,7 @@ export async function loadQuoteBatchEntries({
         if (item.error != null) results.set(key, storeQuoteFailure(quoteStore, key, dataProvider.id, startedAt, item.error));
         return;
       }
-      const quote = resolveQuote?.(instrument, item.quote) ?? item.quote;
+      const quote = withSavedCopyMarkOf(resolveQuote?.(instrument, item.quote) ?? item.quote, item.quote);
       const source = quote.providerId ?? dataProvider.id;
       const attempts = [createAttempt(source, Date.now(), "success")];
       results.set(key, quoteStore.update(key, (current) => readyQuoteEntry(current, quote, source, attempts, { keepNewerHeldQuote: true, acceptLastKnown: true })));

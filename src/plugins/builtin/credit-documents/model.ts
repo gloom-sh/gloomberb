@@ -54,12 +54,14 @@ function structuredSummary(fact: CreditFact): string | null {
   const low = finite(value.minimum), high = finite(value.maximum);
   return low !== null && high !== null ? [`${low}–${high}${unitSuffix(fact.unit)}`, words(value.condition)].filter(Boolean).join(" · ") : null;
 }
+const VALUE_KINDS = new Set(["text", "date"]);
 export function factValue(fact: CreditFact): string {
   if (typeof fact.value === "number" && ["percent", "%"].includes(fact.unit ?? "")) return `${fact.value}%`;
   const summary = structuredSummary(fact);
   if (summary) return summary;
   const value = typeof fact.value === "number" && fact.currency ? creditAmount(fact.value) : typeof fact.value === "string" ? sentence(fact.value) : creditValue(fact.value);
-  return [value, fact.currency ?? fact.unit].filter(Boolean).join(" ");
+  // `text` and `date` say what kind of value a fact holds, not what it is measured in.
+  return [value, fact.currency ?? (fact.unit && !VALUE_KINDS.has(fact.unit) ? fact.unit : null)].filter(Boolean).join(" ");
 }
 
 export interface CreditTermField { label: string; value: string; detail?: string }
@@ -98,13 +100,34 @@ function instrumentFact(row: CreditInstrument, field: string): CreditFact | unde
   return row.facts.find((fact) => fact.field === field);
 }
 const CLOSED = new Set(["repaid", "redeemed", "terminated", "cancelled", "matured"]);
-export const isClosed = (row: CreditInstrument) => !!row.lifecycle && CLOSED.has(row.lifecycle);
+export const isClosed = (row: Pick<CreditInstrument, "lifecycle">) => !!row.lifecycle && CLOSED.has(row.lifecycle);
 /** What is owed now: a revolver's drawn balance, otherwise outstanding principal. */
 export const instrumentOutstanding = (row: CreditInstrument) => row.drawn ?? row.principal;
-const creditCoupon = (row: CreditInstrument) => {
+/** A margin in basis points, from the unit the filing states it in; null when the unit does not say. */
+function marginBasisPoints(margin: CreditFact): number | null {
+  const value = finite(margin.value);
+  if (value === null) return null;
+  if (margin.unit === "bps" || margin.unit === "bp") return value;
+  return margin.unit === "percent" || margin.unit === "%" ? Number((value * 100).toFixed(2)) : null;
+}
+/** SOFR is written `S`, as a floating spread is quoted; any other named base keeps its name. */
+const baseLabel = (reference: string) => /\bSOFR\b/i.test(reference) ? "S" : reference;
+/**
+ * What an instrument pays: a fixed coupon as its percentage, a floating margin
+ * as its spread over the base in basis points (`S+148`, `EURIBOR+175`). A
+ * margin with no named base is read as SOFR for a dollar or undated currency
+ * instrument, the market's base for dollar loans, and is left bare for any other.
+ */
+export function creditCoupon(row: CreditInstrument): string {
   const coupon = instrumentFact(row, "coupon"), margin = instrumentFact(row, "margin"), reference = instrumentFact(row, "reference_rate");
-  return coupon ? factValue(coupon) : [reference ? creditValue(reference.value) : null, margin ? factValue(margin) : null].filter(Boolean).join(" + ") || NO_VALUE;
-};
+  const named = reference ? words(typeof reference.value === "string" ? reference.value : creditValue(reference.value)) : null;
+  if (margin) {
+    const base = named ? baseLabel(named) : !row.currency || row.currency === "USD" ? "S" : "";
+    const basisPoints = marginBasisPoints(margin);
+    return basisPoints === null ? `${base}+${factValue(margin)}` : `${base}${basisPoints < 0 ? "-" : "+"}${Math.abs(basisPoints)}`;
+  }
+  return coupon ? factValue(coupon) : named ?? NO_VALUE;
+}
 const rankText = (row: CreditInstrument) => {
   const fact = instrumentFact(row, "ranking") ?? instrumentFact(row, "security");
   return fact ? sentence(creditValue(fact.value)) : NO_VALUE;
@@ -114,6 +137,12 @@ function securityClass(row: CreditInstrument): "secured" | "unsecured" | null {
   const text = ["ranking", "security"].map((field) => { const fact = instrumentFact(row, field); return fact ? creditValue(fact.value).toLowerCase() : ""; }).join(" ");
   return /\bunsecured\b/.test(text) ? "unsecured" : /\bsecured\b/.test(text) ? "secured" : null;
 }
+/** The maintenance covenant fact a headroom row was computed from, which says its unit. */
+export const covenantFact = (data: Pick<CreditDocumentsPayload, "instruments">, row: Pick<CreditHeadroom, "id" | "instrumentId">): CreditFact | undefined =>
+  data.instruments.find((item) => item.id === row.instrumentId)?.facts.find((item) => item.id === row.id);
+/** What a screen row flags, in the words the pane and its exports use. */
+export const screenSignal = (row: Pick<CreditScreenRow, "kind" | "value">) =>
+  row.kind === "springing_maturity" ? "Springing maturity" : row.value != null && row.value < 0 ? "Breach" : "Low headroom";
 export const screenRowId = (row: CreditScreenRow) => `${row.symbol}:${row.instrumentId}:${row.kind}:${row.date ?? ""}:${row.reason}`;
 /** Wall currencies, the one with the most instruments first so the wall opens on the issuer's main debt. */
 export function creditCurrencies(data: CreditDocumentsPayload): string[] {
@@ -208,14 +237,14 @@ type CapitalColumnId = "name" | "facility" | "coupon" | "maturity" | "principal"
 const CAPITAL_COLUMNS: Column<CapitalColumnId>[] = [
   { id: "name", label: "Instrument", width: 24, flexGrow: 1, align: "left" },
   { id: "facility", label: "Type", width: 12, align: "left" },
-  { id: "coupon", label: "Coupon", width: 20, align: "left" },
+  { id: "coupon", label: "Coupon/Margin", width: 20, align: "left" },
   { id: "maturity", label: "Maturity", width: 10, align: "left" },
   { id: "principal", label: "Outstanding", width: 11, align: "right" },
   { id: "currency", label: "CCY", width: 3, align: "left" },
   { id: "ranking", label: "Rank", width: 26, align: "left" },
   { id: "control", label: "CoC put", width: 7, align: "right" },
 ];
-/** Text columns take the width their values need, up to the column's own width. */
+/** Text columns take the width their values and their label need, up to the column's own width. */
 const FITTED_CAPITAL = new Set<CapitalColumnId>(["facility", "coupon", "ranking"]);
 const SPARSE_CAPITAL = new Set<CapitalColumnId>(["ranking", "control"]);
 export function capitalColumns(data: CreditDocumentsPayload, width: number): DataTableColumn[] {
@@ -223,20 +252,19 @@ export function capitalColumns(data: CreditDocumentsPayload, width: number): Dat
   const disclosed = (id: CapitalColumnId) => rows.filter((row) => capitalCell(row, id, data) !== NO_VALUE).length;
   // A column nothing discloses is left out; ranking and puts need most instruments.
   const columns = CAPITAL_COLUMNS.filter((column) => column.id === "name" || column.id === "principal" || (SPARSE_CAPITAL.has(column.id) ? disclosed(column.id) * 2 > rows.length : disclosed(column.id) > 0))
-    .map((column) => FITTED_CAPITAL.has(column.id) ? { ...column, width: Math.min(column.width, Math.max(4, ...rows.map((row) => displayWidth(capitalCell(row, column.id, data))))) } : column);
+    .map((column) => FITTED_CAPITAL.has(column.id) ? { ...column, width: Math.min(column.width, Math.max(4, displayWidth(column.label), ...rows.map((row) => displayWidth(capitalCell(row, column.id, data))))) } : column);
   // One currency is said by the figures; several keep their column at every width.
   const single = new Set(rows.map((row) => row.currency).filter(Boolean)).size <= 1;
   return fitColumns(columns, width, ["control", "ranking", ...(single ? ["currency" as const] : []), "facility", "coupon", "maturity"]);
 }
+/** A revolver reads as drawn of commitment; the strip carries the undrawn total. */
+export const outstandingText = (outstanding: number | null, commitment: number | null): string =>
+  commitment != null && commitment !== outstanding ? `${creditAmount(outstanding)} of ${creditAmount(commitment)}` : creditAmount(outstanding);
 export function capitalCell(row: CreditInstrument, column: string, data: CreditDocumentsPayload): string {
   const control = data.changeOfControl.find((entry) => entry.instrumentId === row.id);
   switch (column) {
     case "name": return isClosed(row) ? `${row.name} (${row.lifecycle})` : row.name;
-    case "principal": {
-      // A revolver reads as drawn of commitment; the strip carries the undrawn total.
-      const outstanding = creditAmount(instrumentOutstanding(row));
-      return row.commitment != null && row.commitment !== instrumentOutstanding(row) ? `${outstanding} of ${creditAmount(row.commitment)}` : outstanding;
-    }
+    case "principal": return outstandingText(instrumentOutstanding(row), row.commitment);
     case "currency": return row.currency ?? NO_VALUE;
     case "maturity": return row.maturity ?? NO_VALUE;
     case "coupon": return creditCoupon(row);
@@ -320,7 +348,7 @@ export function maturityAxis(rows: readonly CreditMaturityBucket[]) {
 }
 
 /** The source fact, not the magnitude, determines a covenant's unit. */
-export function covenantNumber(value: number | null, fact: CreditFact | undefined): string {
+export function covenantNumber(value: number | null, fact: Pick<CreditFact, "currency" | "unit"> | undefined): string {
   if (value === null) return NO_VALUE;
   if (fact?.currency) return `${creditAmount(value)} ${fact.currency}`;
   if (fact?.unit === "ratio" || fact?.unit === "times") return `${value}x`;

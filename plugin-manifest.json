@@ -4,7 +4,7 @@
     {
       "id": "alerts",
       "name": "Alerts",
-      "description": "Price, earnings, filing, news and flow alerts",
+      "description": "Price, valuation, daily technical and event alerts",
       "tagline": "Price, earnings, filing, news and flow alerts.",
       "categories": [
         "alerts"
@@ -99,7 +99,7 @@
           {
             "code": "HIRE",
             "name": "Hiring Momentum",
-            "description": "Pro hiring momentum: observed weekly open roles, additions, removals, role and location mix, peer comparisons and primary posting evidence.",
+            "description": "Pro hiring momentum: observed weekly open roles, additions, removals, role and location mix, peer comparisons, hiring moves against each company's own weeks and peers, first roles in a new country or city, place and role-family spikes, and primary posting evidence.",
             "access": "preview"
           },
           {
@@ -161,7 +161,7 @@
           {
             "code": "PL",
             "name": "Plugins",
-            "description": "Browse and install Gloomberb plugins, and enable or disable the ones you have.",
+            "description": "Browse and install Gloom plugins, and enable or disable the ones you have.",
             "targets": [
               "cli",
               "tui",
@@ -194,7 +194,7 @@
     {
       "id": "broker",
       "name": "Broker",
-      "description": "Broker profiles, account sync, and connection status.",
+      "description": "Broker profiles, account sync, order review, and trading status.",
       "tagline": "Broker accounts, sync and connections.",
       "categories": [
         "broker"
@@ -207,6 +207,7 @@
       ],
       "contributes": {
         "panes": [
+          "broker-orders",
           "brokers"
         ],
         "capabilities": [],
@@ -216,11 +217,17 @@
             "code": "BR",
             "name": "Brokers",
             "description": "Open broker profiles and connection status"
+          },
+          {
+            "code": "ORD",
+            "name": "Orders",
+            "description": "Open orders and recent activity for a broker account"
           }
         ]
       },
       "highlights": [
-        "BR"
+        "BR",
+        "ORD"
       ]
     },
     {
@@ -395,7 +402,7 @@
     {
       "id": "crypto",
       "name": "Crypto & Perps",
-      "description": "Top crypto assets by market cap, and perpetual funding, open interest and premiums.",
+      "description": "Top crypto assets by market cap, daily spot bitcoin and ether ETF flows, and perpetual funding, open interest and premiums.",
       "tagline": "Crypto prices, funding and open interest.",
       "categories": [
         "markets",
@@ -411,6 +418,7 @@
       "contributes": {
         "panes": [
           "crypto-board",
+          "crypto-etf-flows",
           "perps"
         ],
         "capabilities": [],
@@ -419,7 +427,12 @@
           {
             "code": "CRYP",
             "name": "Crypto",
-            "description": "Top crypto assets by market cap with live prices, 7D, 30D and 1Y returns, volume and market cap, and stablecoin supply."
+            "description": "Top crypto assets by market cap with live prices, 7D, 30D and 1Y returns, volume and market cap, stablecoin supply, and DeFi TVL by protocol and chain."
+          },
+          {
+            "code": "ETFF",
+            "name": "Crypto ETF Flows",
+            "description": "Daily net flows of the US spot bitcoin and ether ETFs, per fund in US$ millions, with the running total since launch, as Farside Investors publishes them."
           },
           {
             "code": "PERP",
@@ -431,6 +444,7 @@
       },
       "highlights": [
         "CRYP",
+        "ETFF",
         "PERP"
       ],
       "screenshots": [
@@ -517,27 +531,17 @@
           {
             "code": "ERN",
             "name": "Earnings Calendar",
-            "description": "The market's report days with implied and past moves; with a ticker, its report history.",
-            "targets": [
-              "cli",
-              "tui",
-              "desktop"
-            ]
+            "description": "The market's report days with implied and past moves; with a ticker, its report history."
           },
           {
             "code": "EVTS",
             "name": "Earnings Days",
-            "description": "The market's report days with implied and past moves; a ticker picks its row.",
-            "targets": [
-              "cli",
-              "tui",
-              "desktop"
-            ]
+            "description": "The market's report days with implied and past moves; a ticker picks its row."
           },
           {
             "code": "CALLS",
             "name": "Earnings Calls",
-            "description": "Pro earnings call transcripts with speaker attribution, analyst Q&A, and extracted guidance. Alone, every transcribed call; with a ticker, that company's calls.",
+            "description": "Pro earnings call transcripts with speaker attribution, analyst Q&A, and extracted guidance. Alone, the calendar of upcoming calls this week; with a ticker, that company's calls, its next one first.",
             "access": "pro"
           },
           {
@@ -591,7 +595,7 @@
           {
             "code": "ETF",
             "name": "Fund Facts",
-            "description": "A US-listed fund's fee, NAV, premium or discount, net assets, sponsor, inception and index, then its SEC filings: prospectus updates, shareholder reports, N-CEN and N-PORT."
+            "description": "A US-listed fund's fee, NAV, premium or discount, net assets, sponsor, inception and index, a leveraged or inverse fund's daily objective, then the fund's own SEC filings: prospectus updates, shareholder reports, N-CEN and N-PORT."
           },
           {
             "code": "RISK",
@@ -869,7 +873,7 @@
     {
       "id": "members",
       "name": "Index and ETF members",
-      "description": "ETF holdings, member returns, contributions and index changes",
+      "description": "ETF holdings, member returns, contributions, breadth and index changes",
       "tagline": "ETF holdings and index changes.",
       "categories": [
         "markets",
@@ -892,7 +896,7 @@
           {
             "code": "MEMB",
             "name": "Index and ETF members",
-            "description": "ETF holdings, member returns, daily contributions and index changes."
+            "description": "ETF holdings, member returns, daily contributions, breadth and index changes."
           }
         ]
       },
@@ -945,7 +949,7 @@
           {
             "code": "NI",
             "name": "Topic News",
-            "description": "Market news by topic code (MNA, CB, ENERGY, REG, CRYPTO, EARN, IPO) or sector, and public fund letters (LTR)"
+            "description": "Market news by topic code (MNA, CB, ENERGY, METALS, REG, CRYPTO, EARN, IPO) or sector, and public fund letters (LTR)"
           },
           {
             "code": "FIRST",
@@ -1031,6 +1035,7 @@
       ],
       "contributes": {
         "panes": [
+          "csp-screen",
           "iv-history",
           "iv-screen",
           "options",
@@ -1051,7 +1056,7 @@
           {
             "code": "OPX",
             "name": "Options Positioning",
-            "description": "Open interest by strike and expiry, max pain, and dealer gamma (GEX)."
+            "description": "Open interest by strike and expiry, max pain, walls and dealer gamma (GEX); BTC-USD and ETH-USD from Deribit."
           },
           {
             "code": "GEX",
@@ -1064,6 +1069,11 @@
             "description": "European Black-Scholes or American CRR value, Greeks, implied volatility and cash dividends."
           },
           {
+            "code": "CSP",
+            "name": "Options Strategy Screen",
+            "description": "Cash-secured puts, covered calls, verticals, iron condors, straddles, strangles and calendars across a list, ranked, with max gain and loss, break-evens, probability of profit, IV rank, spread and an earnings flag."
+          },
+          {
             "code": "OSA",
             "name": "Options Scenario",
             "description": "Build multi-leg positions and compare scenario P&L, payoff and aggregate Greeks."
@@ -1071,7 +1081,7 @@
           {
             "code": "OVDV",
             "name": "Volatility Surface",
-            "description": "Implied volatility surface, smiles, term structure, skew and forwards."
+            "description": "Implied volatility surface, smiles, term structure, skew (25-delta risk reversal and butterfly) and forwards; DVOL beside BTC-USD and ETH-USD."
           },
           {
             "code": "HVG",
@@ -1135,22 +1145,12 @@
           {
             "code": "HDS",
             "name": "Holders",
-            "description": "Institutional holders from 13F filings, and 13D/13G beneficial owners: activist and passive stakes over 5% of the class.",
-            "targets": [
-              "cli",
-              "tui",
-              "desktop"
-            ]
+            "description": "Institutional holders from 13F filings, and 13D/13G beneficial owners: activist and passive stakes over 5% of the class."
           },
           {
             "code": "13F",
             "name": "13F Funds",
-            "description": "Browse institutional 13F fund filings and estimated long-book performance.",
-            "targets": [
-              "cli",
-              "tui",
-              "desktop"
-            ]
+            "description": "Browse institutional 13F fund filings and estimated long-book performance."
           },
           {
             "code": "INS",
@@ -1160,12 +1160,22 @@
           {
             "code": "SI",
             "name": "Short Interest",
-            "description": "Bi-monthly short interest settlements from FINRA with days to cover and average daily volume. Daily volume is the other tab."
+            "description": "Bi-monthly short interest settlements from FINRA with days to cover and average daily volume. Daily volume, fails to deliver and weekly ATS/OTC volume share the pane."
           },
           {
             "code": "SIV",
             "name": "Daily Short Volume",
             "description": "The short interest pane on Daily volume: FINRA daily off-exchange short-volume ratios, historical percentile and reported share quantities."
+          },
+          {
+            "code": "FTD",
+            "name": "Fails to Deliver",
+            "description": "The short interest pane on Fails to deliver: outstanding fail shares by settlement date and CUSIP from SEC publications."
+          },
+          {
+            "code": "ATS",
+            "name": "Weekly ATS / OTC Volume",
+            "description": "The short interest pane on Weekly ATS/OTC: FINRA weekly ATS and non-ATS shares and trades, including dark-pool volume."
           },
           {
             "code": "SIW",
@@ -1291,7 +1301,7 @@
           {
             "code": "MDAY",
             "name": "Macro-Day Reaction",
-            "description": "How a name moves on CPI, jobs and FOMC days against a normal day: average move, direction, hit rate and every release day."
+            "description": "How a name moves on CPI, jobs, FOMC and Brazil IPCA days against a normal day: average move, direction, hit rate, and every release day with its actual, forecast and prior."
           }
         ]
       },
@@ -1354,7 +1364,7 @@
           {
             "code": "GC",
             "name": "Yield Curve",
-            "description": "Government bond curves: US Treasury, TIPS real, breakevens, euro AAA, Bund, Gilt, JGB and Canada, with a world grid."
+            "description": "Government bond curves, a world grid, and USD SOFR swap rates, swap spreads and tenor history."
           },
           {
             "code": "WIRP",
@@ -1454,7 +1464,8 @@
           "equity-screener",
           "market-movers",
           "scanner-flow",
-          "scanner-hilo"
+          "scanner-hilo",
+          "scanner-live"
         ],
         "capabilities": [],
         "broker": false,
@@ -1484,6 +1495,11 @@
             "name": "Options Flow",
             "description": "Unusual options activity: sweeps, blocks, and large premium prints.",
             "access": "pro"
+          },
+          {
+            "code": "SCAN",
+            "name": "Live Scanner",
+            "description": "Your own intraday scan of US stocks: moves, volume spikes, new highs and lows, VWAP crosses and gaps, with alerts."
           }
         ]
       },
@@ -1545,6 +1561,11 @@
             "description": "Open another research pane for the selected ticker or current collection"
           },
           {
+            "code": "ADR",
+            "name": "ADR vs Home",
+            "description": "A depositary receipt beside its home listing: the ratio, both prices, the dollar rate they imply (the CCL rate for an Argentine pair), spot, and the receipt's premium or discount."
+          },
+          {
             "code": "QQ",
             "name": "Quote Monitor",
             "description": "Open a compact quote monitor for one or more tickers"
@@ -1587,7 +1608,7 @@
           {
             "code": "CMP",
             "name": "Comparison Chart",
-            "description": "Compare price returns over shared observation dates for two or more tickers."
+            "description": "Compare price returns over shared observation dates for two or more tickers, or total returns with distributions reinvested. A leveraged or inverse fund gets its daily objective drawn from its index fund (3× daily QQQ beside TQQQ) and its decay against it."
           },
           {
             "code": "GF",
@@ -1656,7 +1677,7 @@
           {
             "code": "DVD",
             "name": "Dividend Yield",
-            "description": "Cash distribution history, trailing and forward yield, payout and growth; gloomberb fn DVD with several tickers ranks them by yield. A bond fund's SEC yield beside its distribution yield, and with --tax-rate a muni fund's tax-equivalent yield. Future payments are not forecast."
+            "description": "Cash distribution history, trailing and forward yield, payout and growth; gloom fn DVD with several tickers ranks them by yield. A bond fund's SEC yield beside its distribution yield, and with --tax-rate a muni fund's tax-equivalent yield. Future payments are not forecast."
           },
           {
             "code": "RDCF",

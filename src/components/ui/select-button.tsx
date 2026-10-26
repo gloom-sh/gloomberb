@@ -18,6 +18,8 @@ export interface SelectControl {
 export interface SelectButtonOption<T extends string = string> {
   value: T;
   label: string;
+  /** Heading for a contiguous group of choices; never selectable itself. */
+  group?: string;
   /** Trigger wording when the full label is too wide for a pane header. */
   short?: string;
   description?: string;
@@ -48,9 +50,10 @@ export interface SelectButtonProps<T extends string = string> {
    * `inline`: the label and the value in a row, in a toolbar. `field`: a
    * bordered field. `form`: a field in a form of text fields; on the desktop
    * and the web its label sits above it, bold, as a TextField's does; the
-   * terminal draws it inline.
+   * terminal draws it inline. `well`: a field without its border, on a
+   * recessed fill, for a dense panel such as the order ticket.
    */
-  variant?: "inline" | "field" | "form";
+  variant?: "inline" | "field" | "form" | "well";
   width?: number;
   onFocus?: () => void;
   /**
@@ -129,6 +132,7 @@ export function SelectButton<T extends string = string>({
           choices={options.map((option) => ({
             id: option.value,
             label: option.label,
+            group: option.group,
             description: option.description,
             disabled: option.disabled,
             color: option.color,
@@ -157,7 +161,7 @@ export function SelectButton<T extends string = string>({
           selectRef={(element) => { selectFieldRef.current = element; }}
           onFocus={onFocus}
           value={value}
-          options={options.map((option) => ({ value: option.value, label: option.label, disabled: option.disabled }))}
+          options={options.map((option) => ({ value: option.value, label: option.label, group: option.group, disabled: option.disabled }))}
           disabled={disabled}
           onChange={selectValue}
         />
@@ -179,6 +183,7 @@ export function SelectButton<T extends string = string>({
           options={options.map((option) => ({
             value: option.value,
             label: option.label,
+            group: option.group,
             disabled: option.disabled,
           }))}
           disabled={disabled}
@@ -189,8 +194,8 @@ export function SelectButton<T extends string = string>({
   }
 
   // The terminal draws a form select as it draws an inline one.
-  if (variant === "field") {
-    return <Button label={showLabel ? `${label}: ${current?.short ?? current?.label ?? ""}` : current?.short ?? current?.label ?? label} width={width} active={emphasized} disabled={disabled} onPress={openDialog} stopPropagation />;
+  if (variant === "field" || variant === "well") {
+    return <Button label={showLabel ? `${label}: ${current?.short ?? current?.label ?? ""}` : current?.short ?? current?.label ?? label} width={width} variant={variant === "well" ? "quiet" : undefined} active={emphasized} disabled={disabled} onPress={openDialog} stopPropagation />;
   }
 
   return (

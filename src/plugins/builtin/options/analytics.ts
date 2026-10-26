@@ -51,7 +51,25 @@ export interface ChainVolatilities {
   /** Valuation instant the volatilities were solved at, reused for the Greeks. */
   valuationTime: number;
   byStrike: ReadonlyMap<number, number>;
+  /**
+   * Strikes in `byStrike` whose volatility was not solved: with no two-sided
+   * out-of-the-money quote to solve from, it is read off the neighbouring solved
+   * strikes (flat beyond the last of them). Shown marked, never as a solved figure.
+   */
+  filled: ReadonlySet<number>;
 }
+
+/**
+ * How a chain's IV is solved, said under the chain in a report and in the pane's
+ * footer while a strike's IV is filled: marked "~", it is read off the
+ * neighbouring solved strikes, not solved from a quote.
+ */
+export const IV_FILLED_NOTE = "~ IV filled from neighbouring strikes";
+export const IV_FILLED_SHORT = "~ IV filled";
+export const IV_FILLED_DETAIL = "Each strike's IV is solved from the midpoint of its out-of-the-money option. A strike with no two-sided quote there "
+  + "has its IV read off the nearest solved strikes, flat beyond the last one, and its cell leads with ~.";
+/** The report's line on how IV was solved, with what "~" marks when a strike is filled. */
+export const ivSolvedNote = (anyFilled: boolean) => `IV solved from quote mids${anyFilled ? ", ~ filled from neighbouring strikes" : ""}`;
 
 function tightestQuotes(contracts: readonly OptionContract[], expiration: number): Map<number, OptionContract> {
   const quotes = new Map<number, OptionContract>();
@@ -78,8 +96,21 @@ export function solveChainVolatilities(
 ): ChainVolatilities {
   const valuationTime = optionQuoteValuationTime(chain, now);
   const byStrike = new Map<number, number>();
-  if (!positive(spot)) return { valuationTime, byStrike };
-  const rate = DEFAULT_OPTION_CALC_DRAFT.rate;
+  const filled = new Set<number>();
+  // A venue that marks every contract (Deribit) states its volatility: the out-of-the-money side's at each strike.
+  if ([...chain.calls, ...chain.puts].some((contract) => contract.mark)) {
+    for (const [side, contracts] of [["call", chain.calls], ["put", chain.puts]] as const) {
+      for (const contract of contracts) {
+        const mark = contract.mark;
+        if (!mark || !positive(mark.iv)) continue;
+        const outOfTheMoney = side === "call" ? contract.strike >= mark.forward : contract.strike < mark.forward;
+        if (outOfTheMoney || !byStrike.has(contract.strike)) byStrike.set(contract.strike, mark.iv);
+      }
+    }
+    return { valuationTime, byStrike, filled };
+  }
+  if (!positive(spot)) return { valuationTime, byStrike, filled };
+  const rate = optionChainRate(chain);
   const carry = Number.isFinite(dividendYield) ? dividendYield! : 0;
   const expirations = new Set([...chain.calls, ...chain.puts].map((contract) => contract.expiration));
   for (const expiration of expirations) {
@@ -103,7 +134,8 @@ export function solveChainVolatilities(
       ? solve("call", calls.get(strike)) : solve("put", puts.get(strike)));
     // Without a two-sided out-of-the-money quote a strike's time value sits inside
     // the tick, and the in-the-money quote is intrinsic plus spread noise. Read its
-    // volatility off the neighbouring solved strikes so delta stays monotonic.
+    // volatility off the neighbouring solved strikes so delta stays monotonic, and
+    // say it was filled: it is no market's volatility.
     strikes.forEach((strike, index) => {
       let volatility = solved[index];
       if (volatility == null) {
@@ -116,10 +148,14 @@ export function solveChainVolatilities(
           ? low + (high - low) * (strike - strikes[below]!) / (strikes[above]! - strikes[below]!)
           : low ?? high;
       }
-      if (volatility != null) byStrike.set(strike, volatility);
+      if (volatility != null) {
+        byStrike.set(strike, volatility);
+        if (solved[index] == null) filled.add(strike);
+        else filled.delete(strike);
+      }
     });
   }
-  return { valuationTime, byStrike };
+  return { valuationTime, byStrike, filled };
 }
 
 function atmImpliedVolatility(volatilities: ChainVolatilities, spot: number | undefined): number | null {
@@ -185,7 +221,15 @@ export function calculateOptionsSummary(
   };
 }
 
-/** Greeks at the displayed spot, from the strike's solved volatility (0 when the market prices no time value). */
+/** The rate a chain's premiums are valued at: the venue's own when it states one (Deribit's zero), else the model rate. */
+function optionChainRate(chain: Pick<OptionsChain, "rate">): number {
+  return Number.isFinite(chain.rate) ? chain.rate! : DEFAULT_OPTION_CALC_DRAFT.rate;
+}
+
+/**
+ * Greeks at the displayed spot, from the strike's solved volatility (0 when the market prices no time value).
+ * A contract its venue marks (Deribit) has the venue's greeks, at the expiry's forward.
+ */
 export function calculateOptionGreeks(
   contract: OptionContract | undefined,
   side: OptionSide,
@@ -193,6 +237,10 @@ export function calculateOptionGreeks(
   dividendYield: number | undefined,
   volatilities: ChainVolatilities,
 ): OptionValuation | undefined {
+  if (contract?.mark) {
+    const { price, delta, gamma, theta, vega } = contract.mark;
+    return { price, delta, gamma, thetaPerDay: theta, vegaPerPoint: vega, rhoPerPoint: 0 };
+  }
   const volatility = contract ? volatilities.byStrike.get(contract.strike) : undefined;
   // A side nobody bids has no market to measure sensitivity against.
   if (!contract || optionMid(contract) == null || !positive(spot) || !positive(contract.strike) || volatility == null || !(volatility >= 0)) {

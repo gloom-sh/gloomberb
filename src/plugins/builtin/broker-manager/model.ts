@@ -1,3 +1,4 @@
+import { brokerProfileLogo, type BrokerPluginLogo } from "../../../brokers/logos";
 import type { BrokerAdapter, BrokerConnectionStatus } from "../../../types/broker";
 import type { AppConfig, BrokerInstanceConfig } from "../../../types/config";
 import type { BrokerAccount } from "../../../types/trading";
@@ -9,6 +10,8 @@ export type BrokerDisplayState =
   | "disabled"
   | "unavailable"
   | "configured"
+  /** An error only a new sign-in clears. */
+  | "sign-in"
   | BrokerConnectionStatus["state"];
 
 export interface BrokerProfileRow {
@@ -27,6 +30,8 @@ export interface BrokerProfileRow {
   accountIds: string[];
   /** When the broker ends this profile's sign-in, once Gloom says it is time to connect again. */
   signInEndsAt: number | null;
+  /** The broker's logo for the desktop and the web (brokers/logos.ts); null draws its initial. */
+  logo: string | null;
   instance: BrokerInstanceConfig;
   adapter: BrokerAdapter | null;
 }
@@ -75,7 +80,12 @@ function resolveState(
   status: BrokerConnectionStatus | null,
 ): { state: BrokerDisplayState; label: string; message: string; updatedAt: number } {
   if (instance.enabled === false) {
-    return { state: "disabled", label: t("Disabled"), message: t("Profile is disabled"), updatedAt: 0 };
+    return {
+      state: "disabled",
+      label: t("Disabled"),
+      message: t("Gloom does not connect or sync this profile while it is disabled."),
+      updatedAt: 0,
+    };
   }
   if (!adapter) {
     return { state: "unavailable", label: t("Unavailable"), message: t("Broker plugin is not available"), updatedAt: 0 };
@@ -92,6 +102,9 @@ function resolveState(
     return { state: "configured", label: t("Configured"), message: t("Ready to test or sync"), updatedAt: 0 };
   }
 
+  if (status.state === "error" && status.needsSignIn) {
+    return { state: "sign-in", label: t("Sign-in needed"), message: status.message || "", updatedAt: status.updatedAt };
+  }
   const labels: Record<BrokerConnectionStatus["state"], string> = {
     disconnected: t("Disconnected"),
     connecting: t("Connecting"),
@@ -111,6 +124,8 @@ export function buildBrokerProfileRows(
   adapters: ReadonlyMap<string, BrokerAdapter | null>,
   brokerAccounts: Record<string, BrokerAccount[]>,
   signInEnds: SignInEnds = new Map(),
+  pluginLogo: BrokerPluginLogo = () => null,
+  syncErrors: Readonly<Record<string, string>> = {},
 ): BrokerProfileRow[] {
   return config.brokerInstances.map((instance) => {
     const adapter = adapters.get(instance.brokerType) ?? null;
@@ -118,7 +133,11 @@ export function buildBrokerProfileRows(
     // An adapter that fronts several brokers names the broker and how it connects.
     const described = adapter?.describeInstance?.(instance) ?? null;
     const mode = described?.method ?? resolveMode(adapter, instance, status);
-    const state = resolveState(instance, adapter, mode, status);
+    const connection = resolveState(instance, adapter, mode, status);
+    const syncError = syncErrors[instance.id];
+    const state = syncError && !["disabled", "unavailable", "sign-in"].includes(connection.state)
+      ? { ...connection, state: "error" as const, label: t("Sync failed"), message: t(syncError) }
+      : connection;
     const accounts = brokerAccounts[instance.id] ?? [];
     const portfolioLastSyncedAt = Math.max(
       0,
@@ -144,9 +163,10 @@ export function buildBrokerProfileRows(
       accountSummary: summarizeBrokerAccounts(accounts),
       accountIds: accounts.map((account) => account.accountId),
       // Say nothing next to a failure or a profile that does not connect.
-      signInEndsAt: state.state === "error" || state.state === "disabled" || state.state === "unavailable"
+      signInEndsAt: state.state === "error" || state.state === "sign-in" || state.state === "disabled" || state.state === "unavailable"
         ? null
         : signInEnds.get(instance.id) ?? null,
+      logo: brokerProfileLogo(instance, adapter, pluginLogo),
       instance,
       adapter,
     };

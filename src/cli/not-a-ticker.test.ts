@@ -8,34 +8,34 @@ import { setCliColorEnabledOverride } from "../utils/cli-output";
 afterEach(() => setCliColorEnabledOverride(null));
 
 test("the search hint repeats the user's own spelling, one hint per symbol", () => {
-  expect(withSearchHints("Not a ticker: APPLE.", ["Apple"])).toBe("Not a ticker: APPLE. Try `gloomberb search Apple`.");
-  expect(withSearchHints("Not a ticker: ZZZZQ.", ["zzzzq", "--json"])).toBe("Not a ticker: ZZZZQ. Try `gloomberb search zzzzq`.");
+  expect(withSearchHints("Not a ticker: APPLE.", ["Apple"])).toBe("Not a ticker: APPLE. Try `gloom search Apple`.");
+  expect(withSearchHints("Not a ticker: ZZZZQ.", ["zzzzq", "--json"])).toBe("Not a ticker: ZZZZQ. Try `gloom search zzzzq`.");
   // A comma list, a $ prefix and a venue are all read from the argument that named the symbol.
   expect(withSearchHints("Not a ticker: FOO.\nNot a ticker: BAR:NYSE.", ["Foo,$Bar:NYSE"]))
-    .toBe("Not a ticker: FOO. Try `gloomberb search Foo`.\nNot a ticker: BAR:NYSE. Try `gloomberb search Bar`.");
-  expect(withSearchHints("Not a ticker: APPLE INC.", ["Apple Inc"])).toBe("Not a ticker: APPLE INC. Try `gloomberb search \"Apple Inc\"`.");
+    .toBe("Not a ticker: FOO. Try `gloom search Foo`.\nNot a ticker: BAR:NYSE. Try `gloom search Bar`.");
+  expect(withSearchHints("Not a ticker: APPLE INC.", ["Apple Inc"])).toBe("Not a ticker: APPLE INC. Try `gloom search \"Apple Inc\"`.");
   // A pasted list splits on spaces and lines as the commands split it, so each symbol names what was typed for it.
   expect(withSearchHints("Not a ticker: FOO.\nNot a ticker: BAR.\nNot a ticker: BAZ.", ["Foo\nbar", "$Baz zzz"]))
-    .toBe("Not a ticker: FOO. Try `gloomberb search Foo`.\nNot a ticker: BAR. Try `gloomberb search bar`.\nNot a ticker: BAZ. Try `gloomberb search Baz`.");
-  expect(withSearchHints("Not a ticker: APPLE.", ["AAPL Apple"])).toBe("Not a ticker: APPLE. Try `gloomberb search Apple`.");
+    .toBe("Not a ticker: FOO. Try `gloom search Foo`.\nNot a ticker: BAR. Try `gloom search bar`.\nNot a ticker: BAZ. Try `gloom search Baz`.");
+  expect(withSearchHints("Not a ticker: APPLE.", ["AAPL Apple"])).toBe("Not a ticker: APPLE. Try `gloom search Apple`.");
   // No argument names it (a function's own default): the symbol as the router wrote it. A dotted symbol keeps its dot.
-  expect(withSearchHints("apple-ohlcv: Not a ticker: BRK.B.", [])).toBe("apple-ohlcv: Not a ticker: BRK.B. Try `gloomberb search BRK.B`.");
+  expect(withSearchHints("apple-ohlcv: Not a ticker: BRK.B.", [])).toBe("apple-ohlcv: Not a ticker: BRK.B. Try `gloom search BRK.B`.");
   // Styled lines, and text that already carries the hint or none of this, come through intact.
   expect(withSearchHints("\u001b[33mErrors: Not a ticker: APPLE.\u001b[0m", ["Apple"]))
-    .toBe("\u001b[33mErrors: Not a ticker: APPLE. Try `gloomberb search Apple`.\u001b[0m");
-  const hinted = "Not a ticker: APPLE. Try `gloomberb search Apple`.";
+    .toBe("\u001b[33mErrors: Not a ticker: APPLE. Try `gloom search Apple`.\u001b[0m");
+  const hinted = "Not a ticker: APPLE. Try `gloom search Apple`.";
   expect(withSearchHints(hinted, ["Apple"])).toBe(hinted);
   expect(withSearchHints("No quote provider available for APPLE", ["Apple"])).toBe("No quote provider available for APPLE");
 });
 
 test("a FRED series the catalog charts points to the fred command, not a search that finds no ticker", () => {
   const isFred = (id: string) => id === "DFEDTARU";
-  expect(withSearchHints("Not a ticker: DFEDTARU.", ["HP", "dfedtaru"], isFred)).toBe("Not a ticker: DFEDTARU. Try `gloomberb fred DFEDTARU`.");
-  expect(withSearchHints("Not a ticker: DFEDTARU. Try `gloomberb fred DFEDTARU`.", ["DFEDTARU"], isFred))
-    .toBe("Not a ticker: DFEDTARU. Try `gloomberb fred DFEDTARU`.");
+  expect(withSearchHints("Not a ticker: DFEDTARU.", ["HP", "dfedtaru"], isFred)).toBe("Not a ticker: DFEDTARU. Try `gloom fred DFEDTARU`.");
+  expect(withSearchHints("Not a ticker: DFEDTARU. Try `gloom fred DFEDTARU`.", ["DFEDTARU"], isFred))
+    .toBe("Not a ticker: DFEDTARU. Try `gloom fred DFEDTARU`.");
   // A venue makes it a listing, which a search looks for.
   expect(withSearchHints("Not a ticker: DFEDTARU:NYSE.", ["DFEDTARU:NYSE"], isFred))
-    .toBe("Not a ticker: DFEDTARU:NYSE. Try `gloomberb search DFEDTARU`.");
+    .toBe("Not a ticker: DFEDTARU:NYSE. Try `gloom search DFEDTARU`.");
 });
 
 test("an error and a warning in text carry the hint, and JSON keeps the router's own words", () => {
@@ -48,9 +48,9 @@ test("an error and a warning in text carry the hint, and JSON keeps the router's
     printCliResult({ data: [], warnings: ["Not a ticker: APPLE."] }, DEFAULT_CLI_OPTIONS, {}, ["Apple"]);
     printCliResult({ data: [], warnings: ["Not a ticker: APPLE."] }, { ...DEFAULT_CLI_OPTIONS, format: "json" }, {}, ["Apple"]);
     const lines = spy.mock.calls.map((call) => String(call[0]));
-    expect(lines[0]).toBe("error: Not a ticker: APPLE. Try `gloomberb search Apple`.");
+    expect(lines[0]).toBe("error: Not a ticker: APPLE. Try `gloom search Apple`.");
     expect(JSON.parse(lines[1]!).error.message).toBe("Not a ticker: APPLE.");
-    expect(lines[2]).toBe("warning: Not a ticker: APPLE. Try `gloomberb search Apple`.");
+    expect(lines[2]).toBe("warning: Not a ticker: APPLE. Try `gloom search Apple`.");
     expect(lines).toHaveLength(3);
   } finally {
     spy.mockRestore();

@@ -1,6 +1,7 @@
 import { ApiRequestError } from "../../../../api-client/errors";
 import type { ChatAttachment, ChatMessage } from "../../../../api-client";
 import { chatPlainText } from "../markdown";
+import { isNetworkFailure } from "../../../../utils/network-failure";
 
 /** What the server takes: four images a message, each up to 5 MB, as PNG, JPEG, WebP or GIF. */
 export const MAX_CHAT_IMAGES = 4;
@@ -152,7 +153,8 @@ export function describeChatImageError(error: unknown, fallback = "The image cou
     if (error.status === 429) return UPLOAD_ERROR_SENTENCES.upload_rate_limited!;
     return fallback;
   }
-  if (error instanceof TypeError) return `${fallback.replace(/\.$/, "")}. Check your connection and try again.`;
+  // No answer at all: a browser's TypeError, or the Cloud client's own word for it.
+  if (error instanceof TypeError || isNetworkFailure(error)) return `${fallback.replace(/\.$/, "")}. Check your connection and try again.`;
   if (error instanceof Error && error.message.trim()) return error.message.trim();
   return fallback;
 }

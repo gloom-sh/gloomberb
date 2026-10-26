@@ -3,6 +3,7 @@ import { ApiRequestError } from "../../../api-client/errors";
 import type {
   CryptoMarketAsset,
   CryptoMarketsPayload,
+  DefiTvlPayload,
   StablecoinSupplyHistoryPayload,
   StablecoinSupplyPayload,
 } from "../../../api-client/crypto-markets";
@@ -84,7 +85,34 @@ function withValidStablecoinFields(asset: CryptoMarketAsset): CryptoMarketAsset 
   return { ...asset, ...(peg ? { peg: null } : {}), ...(range ? { range24h: null } : {}) };
 }
 
-export function validateCryptoMarkets(data: CryptoMarketsPayload): CryptoMarketsPayload {
+const DAY_MS = 86_400_000;
+/** How many UTC days old a coin's latest daily close may be for its previous close to stand, as Gloom Cloud judges a coin quote's. */
+const PREVIOUS_CLOSE_MAX_AGE_DAYS = 2;
+
+/**
+ * A coin of a board from before Gloom Cloud measured its moves since 00:00
+ * UTC (a server not yet updated, a copy cached from one), whose change runs
+ * over the screener's 24 hours: moved from its previous close instead, the
+ * close of its last UTC day while its daily closes reach the last two days.
+ * Otherwise that close may be weeks old (Toncoin on 18 Oct 2026), and the
+ * coin has no move.
+ */
+function onUtcDayBasis(asset: CryptoMarketAsset, now: number): CryptoMarketAsset {
+  const history = asset.history;
+  const last = history?.closes.findLastIndex((close) => close != null) ?? -1;
+  const lastDay = history && last >= 0 ? Date.parse(`${history.start}T00:00:00Z`) / DAY_MS + last : null;
+  const holds = lastDay != null && asset.previousClose != null && asset.previousClose > 0
+    && Math.floor(now / DAY_MS) - lastDay <= PREVIOUS_CLOSE_MAX_AGE_DAYS;
+  const change = holds ? asset.price - asset.previousClose! : null;
+  return {
+    ...asset,
+    previousClose: holds ? asset.previousClose : null,
+    change,
+    changePercent: change != null ? (change / asset.previousClose!) * 100 : null,
+  };
+}
+
+export function validateCryptoMarkets(data: CryptoMarketsPayload, now = Date.now()): CryptoMarketsPayload {
   if (
     !data
     || data.version !== 1
@@ -103,7 +131,11 @@ export function validateCryptoMarkets(data: CryptoMarketsPayload): CryptoMarkets
   ) {
     throw new Error("The server returned an invalid crypto board");
   }
-  const assets = data.assets.map(withValidStablecoinFields);
+  const legacy = data.dayChangeBasis !== "utc-day";
+  const assets = data.assets.map((asset) => {
+    const valid = withValidStablecoinFields(asset);
+    return legacy ? onUtcDayBasis(valid, now) : valid;
+  });
   return assets.every((asset, index) => asset === data.assets[index]) ? data : { ...data, assets };
 }
 
@@ -249,4 +281,89 @@ export function loadStablecoinSupplyHistory(symbol: string) {
       throw supplyError(error, `${key} supply history`);
     }
   }, { validate: validateStablecoinSupplyHistory });
+}
+
+// DeFi TVL ---------------------------------------------------------------------
+
+const defiTvlCache = createPluginCache<DefiTvlPayload>({
+  kind: "defi-tvl",
+  source: "gloom-cloud",
+  schemaVersion: 1,
+  // The server reads the source once a UTC day; a month-old copy still dates itself.
+  policy: { staleMs: 30 * 60_000, expireMs: 30 * 86_400_000 },
+});
+
+export const DEFI_TVL_CACHES = [defiTvlCache] as const;
+
+const MAX_TVL_DAYS = 20_000;
+const tvlValue = (value: unknown) => value === null || (isFiniteNumber(value) && value >= 0);
+const changes = (entry: { change7d: unknown; change7dPercent: unknown; change30d: unknown; change30dPercent: unknown }) =>
+  [entry.change7d, entry.change7dPercent, entry.change30d, entry.change30dPercent].every(nullableNumber);
+
+export function validateDefiTvl(data: DefiTvlPayload): DefiTvlPayload {
+  const history = data?.history;
+  if (
+    !data
+    || data.version !== 1
+    || !instant(data.generatedAt)
+    || !nullableInstant(data.fetchedAt)
+    || !(data.asOf === null || date(data.asOf))
+    || !supplyStatus(data.status)
+    || !data.source
+    || typeof data.source.name !== "string"
+    || typeof data.source.url !== "string"
+    || (data.total !== null && (!data.total || !isFiniteNumber(data.total.tvl) || !changes(data.total)))
+    || !Array.isArray(data.protocols)
+    || data.protocols.length > 500
+    || !data.protocols.every((protocol) => !!protocol
+      && typeof protocol.name === "string"
+      && protocol.name.length > 0
+      && nullableString(protocol.category)
+      && Number.isInteger(protocol.chains)
+      && isFiniteNumber(protocol.tvl)
+      && protocol.tvl >= 0
+      && nullableNumber(protocol.change1dPercent)
+      && changes(protocol))
+    || !nullableInstant(data.protocolsAsOf)
+    || !Array.isArray(data.chains)
+    || data.chains.length > 500
+    || !data.chains.every((chain) => !!chain
+      && typeof chain.name === "string"
+      && chain.name.length > 0
+      && nullableString(chain.tokenSymbol)
+      && isFiniteNumber(chain.tvl)
+      && chain.tvl >= 0
+      && nullableNumber(chain.share)
+      && changes(chain))
+    || (history !== null && (
+      !history
+      || !date(history.start)
+      || !Array.isArray(history.total)
+      || history.total.length > MAX_TVL_DAYS
+      || !history.total.every(tvlValue)
+    ))
+    || !Array.isArray(data.warnings)
+    || data.warnings.some((warning) => typeof warning !== "string")
+  ) {
+    throw new Error("The server returned invalid DeFi TVL");
+  }
+  return data;
+}
+
+export async function fetchDefiTvl(
+  client: Pick<typeof apiClient, "getCloudDefiTvl"> = apiClient,
+): Promise<DefiTvlPayload> {
+  try {
+    return validateDefiTvl(await client.getCloudDefiTvl());
+  } catch (error) {
+    throw supplyError(error, "DeFi TVL");
+  }
+}
+
+export function cachedDefiTvl() {
+  return cachedCloudResource(defiTvlCache, "all", validateDefiTvl);
+}
+
+export function loadDefiTvl(force = false) {
+  return loadCloudResource(defiTvlCache, "all", () => fetchDefiTvl(), { force, validate: validateDefiTvl });
 }

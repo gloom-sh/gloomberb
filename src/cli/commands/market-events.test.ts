@@ -30,18 +30,14 @@ const PLTR = [
   { date: "2025-05-05", dateType: "announcement", currency: "USD", epsEstimate: 0.08, epsActual: 0.04, difference: -0.04, epsBasis: null },
 ];
 
-test("events names every earnings row's basis and quarter as EE does, and rounds a pending estimate to the cent", async () => {
-  const { rows } = await eventRows(PLTR);
+test("events preserve earnings inputs in NDJSON while formatting known bases, periods and rounded estimates", async () => {
+  const { rows, result, options } = await eventRows(PLTR);
   expect(rows.map((row) => row.detail)).toEqual([
     "est $0.41, confirmed, 24 analysts (Sep 2026)",
     "eps $0.31, adj, +0.03 vs est (Jun 2026)",
     "eps $0.24, GAAP, +0.07 vs est (Dec 2025)",
-    "eps $0.04, basis unknown, -0.04 vs est",
+    "eps $0.04, -0.04 vs est",
   ]);
-});
-
-test("events rows only gain fields, so NDJSON consumers keep type, date and detail", async () => {
-  const { rows, result, options } = await eventRows(PLTR);
   expect(rows[0]).toMatchObject({ type: "earnings", date: "2026-11-02", epsEstimate: 0.41222, epsAnalysts: 24, dateStatus: "confirmed", fiscalPeriod: "2026-09" });
   // An upcoming estimate no basis was served for carries none.
   const lines = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "ndjson" }, options).split("\n").map((line) => JSON.parse(line));

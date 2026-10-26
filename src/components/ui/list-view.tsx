@@ -15,6 +15,7 @@ export interface ListViewItem {
   description?: string;
   detail?: string;
   category?: string;
+  /** `heading` draws a muted group label; pair it with `disabled: true`. */
   kind?: string;
   right?: string;
   checked?: boolean;
@@ -22,6 +23,12 @@ export interface ListViewItem {
   disabled?: boolean;
   /** Tints the label, e.g. a status in its tone; the words carry the meaning. */
   color?: string;
+  /**
+   * Artwork before the label on the desktop and the web, such as a broker's
+   * logo (`LogoMark`). It is decoration: the terminal does not draw it, and
+   * automation and screen readers read only `label`.
+   */
+  leading?: ReactNode;
 }
 
 export interface ListRowState {
@@ -39,6 +46,12 @@ export interface ListViewProps {
   renderRow?: (item: ListViewItem, state: ListRowState, index: number) => ReactNode;
   getRowBackgroundColor?: (item: ListViewItem, state: ListRowState, index: number) => string | undefined;
   showSelectedDescription?: boolean;
+  /**
+   * Desktop and web: every row sets its `description` on a second line under
+   * its label, and is two rows tall unless `rowHeight` says otherwise. The
+   * terminal keeps one line per row, with `detail` at its end.
+   */
+  rowDescriptions?: boolean;
   emptyMessage?: string;
   bgColor?: string;
   selectedBgColor?: string;
@@ -136,6 +149,7 @@ function DefaultRow({
   selected: boolean;
 }) {
   const colors = useThemeColors();
+  if (item.kind === "heading") return <Text fg={colors.textMuted}>{t(item.label)}</Text>;
   // The label gives way to the detail: a long label is cut with an ellipsis
   // instead of wrapping under the row or running into the right column.
   return (
@@ -173,6 +187,7 @@ export function ListView({
   renderRow,
   getRowBackgroundColor,
   showSelectedDescription = false,
+  rowDescriptions,
   emptyMessage = "Nothing to show.",
   bgColor,
   selectedBgColor,
@@ -243,6 +258,7 @@ export function ListView({
         renderRow={renderRow}
         getRowBackgroundColor={getRowBackgroundColor}
         showSelectedDescription={showSelectedDescription}
+        rowDescriptions={rowDescriptions}
         emptyMessage={emptyMessage}
         bgColor={bgColor}
         selectedBgColor={selectedBgColor}
@@ -275,6 +291,7 @@ export function ListView({
   const rowHoverBg = hoverBgColor ?? hoverBg(colors);
   const selectedItem = selectedIndex >= 0 ? items[selectedIndex] : undefined;
   const activeScrollIndex = scrollIndex ?? selectedIndex;
+  const headingAboveSelection = items[activeScrollIndex - 1]?.kind === "heading";
   const terminalRowHeight = rowHeight ?? 1;
   const terminalRowGap = rowGap ?? 0;
   const rowStride = terminalRowHeight + terminalRowGap;
@@ -285,13 +302,14 @@ export function ListView({
     if (!sb) return;
     const safeIndex = Math.min(activeScrollIndex, items.length - 1);
     const viewportH = Math.max(sb.viewport?.height ?? 1, 1);
-    const rowTop = safeIndex * rowStride;
+    const rowTop = Math.max(0, safeIndex - (headingAboveSelection ? 1 : 0)) * rowStride;
+    const rowBottom = safeIndex * rowStride + terminalRowHeight;
     if (rowTop < sb.scrollTop) {
       sb.scrollTo(rowTop);
-    } else if (rowTop + terminalRowHeight > sb.scrollTop + viewportH) {
-      sb.scrollTo(rowTop + terminalRowHeight - viewportH);
+    } else if (rowBottom > sb.scrollTop + viewportH) {
+      sb.scrollTo(rowBottom - viewportH);
     }
-  }, [activeScrollIndex, autoScrollToIndex, items.length, rowStride, scrollable, terminalRowHeight]);
+  }, [activeScrollIndex, autoScrollToIndex, headingAboveSelection, items.length, rowStride, scrollable, terminalRowHeight]);
   useEffect(revealActiveRow, [revealActiveRow]);
   // A list that opens on a row past the fold has nothing to scroll until its
   // first computed layout sizes the viewport and the rows.

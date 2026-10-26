@@ -6,7 +6,7 @@ import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../
 import { createOpenTuiTestHarness, settleFrame } from "../../../renderers/opentui/test-utils";
 import { AssetDataRouter } from "../../../sources/provider-router";
 import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
-import { createTestDataProvider } from "../../../test-support/data-provider";
+import { createTestDataProvider, createTestFinancials, createTestQuote } from "../../../test-support/data-provider";
 import { TestPaneProvider, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
 import { createStatefulTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import type { DataProvider, SecFilingItem } from "../../../types/data-provider";
@@ -37,6 +37,8 @@ let footer: CombinedPaneFooter;
 let selectCompany: (symbol: string) => void;
 let paneSettings: Record<string, unknown> | undefined;
 let firstSymbol = "ACME";
+/** The ticker's listing, where it is not the test default's (NASDAQ, USD). */
+let firstListing: { exchange: string; currency: string; assetCategory: string } | undefined;
 
 function Harness() {
   const [symbol, setSymbol] = useState(firstSymbol);
@@ -48,7 +50,7 @@ function Harness() {
     ...(paneSettings ? { settings: paneSettings } : {}),
   });
   const state = createInitialState(config);
-  state.tickers = new Map([[symbol, createTestTicker(symbol)]]);
+  state.tickers = new Map([[symbol, createTestTicker(symbol, symbol, firstListing)]]);
   state.focusedPaneId = PANE_ID;
   // The filters are pane state, so the harness keeps it.
   const [paneState, setPaneState] = useState<AppState["paneState"]>({});
@@ -90,6 +92,7 @@ afterEach(() => {
   fundFactsCache.reset();
   paneSettings = undefined;
   firstSymbol = "ACME";
+  firstListing = undefined;
   coordinator?.destroy();
   coordinator = null;
   setSharedMarketDataCoordinator(null);
@@ -410,6 +413,45 @@ test("a stale NAV marks the figures and says since when; month-end net assets re
     expect(shown).toContain("net 2026-04-28");
     expect(shown).toContain("VOO's newest NAV is from 2026-10-01; its sponsor has not published one since.");
     expect(JSON.stringify(footer)).toContain('{"text":"Vanguard","tone":"value"}');
+  } finally {
+    facts.mockRestore();
+  }
+});
+
+test("a fund listed abroad shows what fn ETF prints of it: its name, its issuer's page and where its description is from", async () => {
+  paneSettings = { forms: ETF_FORMS_SETTING };
+  firstSymbol = "3042.HK";
+  firstListing = { exchange: "HKEX", currency: "HKD", assetCategory: "ETF" };
+  const facts = spyOn(apiClient, "getFundFacts").mockImplementation(async () => IVV_FACTS);
+  const filings: string[] = [];
+  try {
+    await mount(createTestDataProvider({
+      getSecFilings: async (symbol) => { filings.push(symbol); return []; },
+      getTickerFinancials: async () => createTestFinancials({
+        quote: createTestQuote({ symbol: "3042.HK", name: "ChinaAMC Bitcoin ETF (HKD counter)", currency: "HKD", exchangeName: "HKEX" }),
+        profile: {
+          website: "https://www.chinaamc.com.hk/detail?fundId=HKVAXBT&lan=EN",
+          description: "The fund invests directly in bitcoin.",
+          descriptionSource: {
+            publisher: "ChinaAMC (Hong Kong), Product Key Facts on HKEXnews",
+            url: "https://www1.hkexnews.hk/listedco/listconews/sehk/2026/0430/2026043000396.pdf",
+          },
+        },
+      }),
+    }));
+    const shown = (await tui.waitForFrameToContain("Description from")).replace(/\s+/g, " ");
+    expect(shown).toContain("Fund facts (fee, NAV, premium) cover US-listed funds only.");
+    expect(shown).toContain("ChinaAMC Bitcoin ETF (HKD counter)");
+    expect(shown).toContain("Issuer page: chinaamc.com.hk");
+    expect(shown).toContain("Description from: ChinaAMC (Hong Kong), Product Key Facts on HKEXnews");
+    // No SEC request for a listing the SEC does not know. `o` opens the issuer page; the pane menu lists both links.
+    expect(filings).toEqual([]);
+    expect(facts).not.toHaveBeenCalled();
+    expect(footer.hints?.map((hint) => hint.id)).toContain("open");
+    expect(footer.menu?.map((item) => ("label" in item ? item.label : null))).toEqual([
+      "Open chinaamc.com.hk",
+      "Open ChinaAMC (Hong Kong), Product Key Facts on HKEXnews",
+    ]);
   } finally {
     facts.mockRestore();
   }

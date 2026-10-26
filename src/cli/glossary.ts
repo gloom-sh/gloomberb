@@ -2,7 +2,7 @@ import { cliStyles, cliTerminalWidth, renderDefinitions, renderSection, wrapText
 
 /**
  * Plain-words meanings of the rates, auction, credit and bond yield, energy, perpetual-futures, portfolio,
- * fund, bond fund (SEC yield, tax-equivalent yield, muni/Treasury ratio), short interest, quote-board, futures (basis, contango, roll yield), VIX curve (term structure, 3M/30D, VVIX), CFTC positioning (COT trader classes, net % of open interest) and economic-calendar terms the functions
+ * fund, bond fund (SEC yield, tax-equivalent yield, muni/Treasury ratio), short interest, quote-board, futures (basis, contango, roll yield), VIX curve (term structure, 3M/30D, VVIX), CFTC positioning (COT trader classes, net % of open interest), depositary receipt (ADR ratio, premium, implied FX, the peso's CCL and MEP rates) and economic-calendar terms the functions
  * show in their rows, headers and footers.
  * `catalog glossary` lists them, `catalog explain <term>` prints one, and
  * `fn <function> --explain` and `portfolio show --explain` follow a report with
@@ -430,6 +430,37 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     definition: "How loosely a fund follows its index: how much the gap between the fund's return and the index's swings, usually over a year. "
       + "Fees, cash and holdings that differ from the index widen it.",
   },
+  // A depositary receipt beside its home listing (ADR, DES), and the peso's market dollar rates `fx USD/ARS` lists.
+  {
+    term: "ADR ratio", aliases: ["adr", "adrs", "depositary receipt", "american depositary receipt", "depositary ratio", "ads ratio"],
+    functions: ["ADR", "DES"], shown: ["Ratio", "ADR Ratio", "ADR ratio"],
+    definition: "How many ordinary shares one depositary receipt holds: 1 ADR = 10 ordinary shares means one GGAL in New York is ten GGAL.BA shares in Buenos Aires. "
+      + "A receipt's price compares with its home price only once the home price is multiplied by the ratio.",
+  },
+  {
+    term: "ADR premium", aliases: ["adr discount", "adr vs home", "receipt premium", "adr premium/discount"],
+    functions: ["ADR"], shown: ["ADR vs home", "premium", "discount"],
+    definition: "How far a receipt trades above (a premium) or below (a discount) the home shares it holds, at the spot rate: spot / implied rate - 1. "
+      + "Arbitrage keeps it small where money moves freely; where it cannot (Argentina's controls, Taiwan's limits on foreign buying) it runs to several percent.",
+  },
+  {
+    term: "Implied FX", aliases: ["implied exchange rate", "implied dollar rate", "implied fx rate", "adr implied rate"],
+    functions: ["ADR"], shown: ["Implied"],
+    definition: "The exchange rate at which a receipt and its home shares cost the same: home price × ratio / ADR price. "
+      + "GGAL.BA at ARS 6,260, 10 shares a receipt and GGAL at $37.91 imply 6,260 × 10 / 37.91 = 1,651 pesos a dollar.",
+  },
+  {
+    term: "Contado con liquidación", short: "CCL", aliases: ["contado con liquidacion", "contado con liqui", "dolar ccl", "ccl rate", "blue chip swap"],
+    functions: ["ADR"],
+    definition: "The peso's dollar rate for moving money abroad through securities: buy shares in pesos in Buenos Aires, sell them (or their ADR) for dollars abroad. "
+      + "Read from an ADR pair (home × ratio / ADR) or a BYMA C line (peso price / C-line dollar price); it runs above the official wholesale rate.",
+  },
+  {
+    term: "Mercado electrónico de pagos", short: "MEP", aliases: ["mercado electronico de pagos", "dolar mep", "dolar bolsa", "mep rate"],
+    functions: ["ADR"],
+    definition: "The peso's dollar rate inside Argentina through securities: buy shares in pesos and sell their BYMA D line for dollars paid in Argentina. "
+      + "Read as the peso price over the D line's dollar price; it sits near the CCL rate, usually a little under it.",
+  },
   // Bond spreads and yields (CRD, the data catalog's ICE BofA yields, TRACE), a fund's SEC yield, which DVD's cash yield is not,
   // and the bond fund figures and tax-equivalent maths DVD and fundamentals give with --tax-rate.
   {
@@ -474,7 +505,7 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     functions: ["DVD"], shown: ["Tax-equivalent yield", "Tax-Equivalent Yield"],
     definition: "The yield a taxable bond needs to match a tax-exempt muni fund after tax: yield / (1 - (federal rate + state rate)), on the SEC yield, "
       + "else the distribution yield. At 40.8% (37% plus the 3.8% net investment income tax), MUB's 4.04% is 6.83%. A state rate counts only for a "
-      + "single-state fund of that state (CMF, VTEC for California). gloomberb fn DVD and fundamentals take --tax-rate, --state-rate and --state.",
+      + "single-state fund of that state (CMF, VTEC for California). gloom fn DVD and fundamentals take --tax-rate, --state-rate and --state.",
   },
   {
     term: "Muni/Treasury ratio", aliases: ["muni treasury ratio", "muni-to-treasury ratio", "muni/ust ratio", "muni ratio", "municipal treasury ratio"],
@@ -561,8 +592,9 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     term: "Float", aliases: ["free float", "public float", "float shares", "floating stock", "% float", "percent of float"],
     functions: ["SI", "SIW"], shown: ["Float"],
     definition: "The shares open to public trading: those outstanding less shares held by insiders and strategic holders, never more than the shares outstanding. "
-      + "% Float is shares short over today's float, so a settlement is measured against the float as it is now, not as it was then; "
-      + "SI gives it for the latest settlement only.",
+      + "The float is the source's own, held within the 10-K or 10-Q cover count and undated; a float held at that count is the count, dated by it. "
+      + "SIW's % Float is the latest settlement's shares short over today's float; SI reads each earlier settlement over the float when FINRA published it: "
+      + "the cover count known that day, at the share of today's count that floats.",
   },
   {
     // SIW's Setup column prints these two words.
@@ -622,7 +654,7 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
   {
     term: "Futures contract", aliases: ["futures", "future", "futures contracts", "contract", "contract month", "expiry", "expiration"],
     functions: ["FUT", "CTM"], shown: ["CONTRACT", "Contract"],
-    definition: "An agreement to buy or sell something, such as oil, gold or the S&P 500, at a set price on a set date. Each contract has a month (Dec 26) and expires, "
+    definition: "An agreement to buy or sell something, such as oil, gold or the S&P 500, at a set price on a set date. Each contract has a month (Dec 2026) and expires, "
       + "and most traders close out before then. A contract's own Settlement line says how it ends: in cash or by physical delivery.",
   },
   {
@@ -694,8 +726,16 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
   {
     term: "Annualised basis", aliases: ["annualized basis", "ann basis", "ann. basis", "basis annualised"], functions: ["CTM", "PERP"], shown: ["Ann Basis", "ANN BASIS"],
     definition: "The basis restated as a yearly rate, so contracts of different length compare with each other and with a perpetual's funding APR: "
-      + "(Last / spot - 1) × 365 / days to expiry, simple rather than compounded, on the latest trade against the spot quote. "
-      + "Inside 30 days a few basis points of spot noise move it by whole points: 10 bp is about ±2 points at 18 days to expiry.",
+      + "(Last / spot - 1) × 365 / days to expiry, simple rather than compounded. CTM reads each last trade against spot in the same minute "
+      + "and counts days to final settlement to the hour. Inside a week a few basis points of spot noise move it by whole points "
+      + "(10 bp is about ±5 points at 7 days), so CTM greys it there and Vs Spot is the figure to read.",
+  },
+  {
+    term: "Crypto composite price", aliases: ["CCC", "crypto composite", "composite price", "composite crypto price"], functions: ["CTM"],
+    shown: ["crypto composite price"],
+    definition: "A coin's dollar price blended from trading on several crypto exchanges rather than taken from one, quoted around the clock; "
+      + "quotes list it under the code CCC. CTM reads CME crypto futures against it, while the futures settle to CME's own reference rate, "
+      + "so a small gap at expiry is expected.",
   },
   {
     term: "Contango", aliases: ["contango curve", "upward curve"], functions: ["CTM", "FUT"], shown: ["contango", "Contango"],
@@ -738,6 +778,42 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     definition: "Cboe's index of the 30-day volatility that VIX options price: the VIX of the VIX. A high reading means traders are paying up "
       + "to protect against sudden jumps in VIX itself.",
   },
+  // Options positioning (OPX, GEX) and the volatility surface (OVDV).
+  {
+    term: "Max pain", aliases: ["max-pain", "maximum pain", "max pain strike", "pain strike"], functions: ["OPX", "GEX"],
+    definition: "The settlement price at which one expiry's options would pay their holders the least, summed over every call's and put's open interest: "
+      + "the strike where Payout $ is lowest. It says where option holders collect least at expiry, not where the price will go. "
+      + "Deribit's BTC and ETH options settle at 08:00 UTC on the day named, against its index averaged over the 30 minutes before.",
+  },
+  {
+    term: "Payout $", aliases: ["payout", "expiry payout", "option payout", "payout at expiry"], functions: ["OPX", "GEX"], shown: ["Payout $"],
+    definition: "What an expiry's options would pay their holders, in dollars, if the underlying settled at that strike: each call's open interest times "
+      + "how far the strike is above the call's, plus each put's times how far it is below, times the contract size (100 shares for a US listing, "
+      + "1 BTC or 1 ETH on Deribit). Max pain is the strike where it is lowest.",
+  },
+  {
+    term: "Call wall", aliases: ["put wall", "walls", "gamma wall", "gamma walls"], functions: ["OPX", "GEX"], shown: ["Call wall", "Put wall"],
+    definition: "The strike with the most dealer gamma from calls (call wall) or from puts (put wall), across every expiry or within one. "
+      + "Hedging flows are largest there, so it is often read as resistance above spot and support below it.",
+  },
+  {
+    term: "Risk reversal", short: "RR", aliases: ["25d risk reversal", "25-delta risk reversal", "25 delta risk reversal", "rr25", "risk reversals"],
+    functions: ["OVDV"], shown: ["RR"],
+    definition: "The 25-delta call's implied volatility minus the 25-delta put's, in vol points, for one expiry. Negative means puts cost more than calls "
+      + "as far from the forward (downside protection is bid), positive that upside calls are. OVDV, VCA and HIVG's rr25d all sign it call minus put.",
+  },
+  {
+    term: "Butterfly", short: "BF", aliases: ["25d butterfly", "25-delta butterfly", "25 delta butterfly", "bf25", "smile curvature", "fly"],
+    functions: ["OVDV"], shown: ["BF"],
+    definition: "The average of the 25-delta call and put implied volatilities minus the implied volatility at the forward, in vol points, for one expiry: "
+      + "how much the wings cost over the middle of the smile. A higher butterfly prices larger moves in either direction.",
+  },
+  {
+    term: "DVOL", aliases: ["deribit volatility index", "bitcoin volatility index", "ether volatility index", "btc dvol", "eth dvol", "crypto vix"],
+    functions: ["OVDV", "G"], shown: ["DVOL"],
+    definition: "Deribit's volatility index for BTC or ETH: the 30-day implied volatility its options price, in vol points, computed from the whole "
+      + "strip of strikes as VIX is. OVDV shows it beside the coin's surface; chart it as CAP:volatility:dvol-btc or CAP:volatility:dvol-eth.",
+  },
   // The economic calendar (ECO).
   {
     term: "Actual", aliases: ["actual release", "actual value"], functions: ["ECO"], shown: ["ACTUAL", "Actual"],
@@ -754,6 +830,19 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
   {
     term: "Impact", short: "IMP", aliases: ["importance", "event impact", "high impact"], functions: ["ECO"],
     definition: "How much a release usually moves markets: HIGH for the big ones (CPI, jobs, rate decisions), MED and LOW for speeches and smaller data.",
+  },
+  {
+    term: "Purchasing managers' index", short: "PMI", aliases: ["pmis", "purchasing managers", "purchasing managers index", "ism", "ism pmi",
+      "flash pmi", "caixin pmi", "ratingdog pmi"], functions: ["ECO"],
+    definition: "A monthly survey of companies' purchasing managers on orders, output, jobs and prices: 50 is no change from the month before, "
+      + "above it growth, below it contraction. A flash PMI is the month's early read, the final a week or so later. ECO lists each as a release: "
+      + "ISM for the US, S&P Global's elsewhere, NBS and RatingDog (formerly Caixin) for China, most at medium or low impact.",
+  },
+  // Economic statistics (ECST).
+  {
+    term: "Nowcast", aliases: ["nowcasts", "nowcasting", "gdpnow", "gdp nowcast"], functions: ["ECST", "ECO"], shown: ["GDPNow"],
+    definition: "An estimate of this quarter's GDP growth from the data already out, revised as each release lands until the official figure. "
+      + "ECST shows the Atlanta Fed's GDPNow, annualized, against its own history; ECO lists each update as a release.",
   },
 ];
 
@@ -776,8 +865,8 @@ export interface GlossaryLookup {
   /** The entries the query names: by the term, its abbreviation or an alias. */
   exact: GlossaryEntry[];
   /**
-   * The others whose names start a word with each word of the query: `stop-out` finds stop-out vs average.
-   * Those that hold the words whole come first.
+   * The others whose names hold each word of the query: `stop-out` finds stop-out vs average. Beside a term the
+   * query names they hold the words whole; otherwise a word start is enough, and the whole ones come first.
    */
   partial: GlossaryEntry[];
 }
@@ -785,22 +874,26 @@ export interface GlossaryLookup {
 // Shorter words (the `b` and `c` of `B/C`) would find half the glossary.
 const MIN_PARTIAL_WORD = 3;
 
+/** A name's word holds a query word whole, or as its plural: `assets` holds `asset`, `floating` does not hold `float`. */
+const wholeWord = (have: string, word: string) => have === word || have === `${word}s` || have === `${word}es`;
+
 export function lookupGlossary(query: string): GlossaryLookup {
   const key = lookupKey(query);
   if (!key) return { exact: [], partial: [] };
   const exact = GLOSSARY.filter((entry) => names(entry).some((name) => lookupKey(name) === key));
   const wanted = words(query).filter((word) => word.length >= MIN_PARTIAL_WORD);
-  const partial = wanted.length === 0 ? [] : GLOSSARY.filter((entry) => {
-    if (exact.includes(entry)) return false;
+  if (wanted.length === 0) return { exact, partial: [] };
+  const others = GLOSSARY.filter((entry) => !exact.includes(entry));
+  const holding = (match: (have: string, word: string) => boolean) => others.filter((entry) => {
     const have = names(entry).flatMap(words);
-    return wanted.every((word) => have.some((name) => name.startsWith(word)));
+    return wanted.every((word) => have.some((name) => match(name, word)));
   });
-  // The entries that hold the words whole come before those that only start with them: `float` is the float, not the floating rate note.
-  const whole = (entry: GlossaryEntry) => {
-    const have = names(entry).flatMap(words);
-    return wanted.every((word) => have.includes(word));
-  };
-  return { exact, partial: partial.sort((left, right) => Number(whole(right)) - Number(whole(left))) };
+  // Related to a term the query names are only the terms that hold its words whole: `float` is the float of a
+  // stock, and the floating rate note only starts with the same letters. A query that names no term is a search,
+  // where a word start (`vol` for volume) still finds a term, after those that hold it whole.
+  const whole = holding(wholeWord);
+  if (exact.length > 0) return { exact, partial: whole };
+  return { exact, partial: [...whole, ...holding((name, word) => name.startsWith(word)).filter((entry) => !whole.includes(entry))] };
 }
 
 function escapeRegExp(text: string): string {
@@ -839,7 +932,7 @@ export function renderGlossaryEntries(entries: readonly GlossaryEntry[]): string
 /** What `--explain` adds under a report: the terms it shows, or a note that it shows none. */
 export function renderReportGlossary(token: string, entries: readonly GlossaryEntry[]): string {
   if (entries.length === 0) {
-    return wrapText(`${token} shows no glossary terms. gloomberb catalog glossary lists every term.`, textWidth())
+    return wrapText(`${token} shows no glossary terms. gloom catalog glossary lists every term.`, textWidth())
       .map((line) => cliStyles.muted(line)).join("\n");
   }
   return [renderSection("Terms"), ...renderGlossaryEntries(entries)].join("\n");
@@ -876,7 +969,7 @@ export function renderGlossaryIndex(): string {
       index === 0 ? `  ${cliStyles.command(owner)}${" ".repeat(labelWidth - 2 - owner.length)}${line}` : `${" ".repeat(labelWidth)}${line}`
     ))),
     "",
-    ...wrapText("gloomberb catalog glossary <term> explains one; fn <function> --explain and portfolio show --explain add the terms a report shows.", width)
+    ...wrapText("gloom catalog glossary <term> explains one; fn <function> --explain and portfolio show --explain add the terms a report shows.", width)
       .map((line) => cliStyles.muted(line)),
   ].join("\n");
 }

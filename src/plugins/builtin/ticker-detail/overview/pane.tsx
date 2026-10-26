@@ -1,4 +1,6 @@
 import { PerpEquityRow } from "../../perps/equity-row";
+import { PerpMarketsSection } from "../../perps/markets-section";
+import { perpetualListing } from "../../../../tickers/perpetual-listing";
 import { useCallback } from "react";
 import type { TickerResearchTabProps } from "../../../../types/plugin";
 import {
@@ -46,7 +48,13 @@ export function OverviewResearchTab({ width, height, focused }: TickerResearchTa
       onOpenChart={paneId && !lockedToOneTab ? openChart : undefined}
       onOpenFunction={openFunction}
       dividend={dividend}
-      perpetuals={ticker ? <PerpEquityRow symbol={ticker.metadata.ticker} exchange={ticker.metadata.exchange} instrumentType={financials?.quote?.instrumentType ?? ticker.metadata.assetCategory} /> : undefined}
+      perpetuals={ticker ? (contentWidth: number) => {
+        const instrumentType = financials?.quote?.instrumentType ?? ticker.metadata.assetCategory;
+        // A contract's own DES shows its funding and premium; a stock or a coin lists its markets across venues.
+        return perpetualListing(ticker.metadata.ticker, ticker.metadata.exchange)
+          ? <PerpEquityRow symbol={ticker.metadata.ticker} exchange={ticker.metadata.exchange} instrumentType={instrumentType} />
+          : <PerpMarketsSection symbol={ticker.metadata.ticker} exchange={ticker.metadata.exchange} instrumentType={instrumentType} quote={financials?.quote} width={contentWidth} />;
+      } : undefined}
     />
   );
 }

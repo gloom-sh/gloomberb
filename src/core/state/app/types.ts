@@ -68,6 +68,8 @@ export interface AppState {
    */
   exchangeRates: Map<string, number>;
   brokerAccounts: Record<string, BrokerAccount[]>;
+  /** A failed position import stays visible until this profile syncs successfully. */
+  brokerSyncErrors: Record<string, string>;
   /**
    * @deprecated Never set. The app has no left or right panel state; read
    * `focusedPaneId` for the focused pane.
@@ -131,6 +133,7 @@ export type AppAction =
   | { type: "RECORD_COMMAND"; id: string; label: string; arg?: string }
   | { type: "SET_REFRESHING"; symbol: string; refreshing: boolean }
   | { type: "SET_BROKER_ACCOUNTS"; instanceId: string; accounts: BrokerAccount[] }
+  | { type: "SET_BROKER_SYNC_ERROR"; instanceId: string; error: string | null }
   | { type: "SET_INITIALIZED" }
   | { type: "TOGGLE_STATUS_BAR" }
   | { type: "SET_THEME"; theme: string }

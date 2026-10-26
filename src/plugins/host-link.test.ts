@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, mkdirSync, realpathSync, rmSync, writeFileSync } from "fs";
+import { existsSync, lstatSync, mkdtempSync, mkdirSync, realpathSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { dirname, join } from "path";
-import { linkHostPackages, missingPeerPlugins } from "./host-link";
+import { describePeerLink, findHostPackageRoot, linkHostPackages, missingPeerPlugins } from "./host-link";
 
 const scratch: string[] = [];
 
@@ -15,6 +15,18 @@ function scratchDir(prefix: string): string {
   scratch.push(dir);
   return dir;
 }
+
+// npm installs the host as gloomberb, and as @gloom-sh/terminal once releases
+// are published under that name too. Missing either one leaves every external
+// plugin without `gloomberb/*` imports.
+test("finds the host package under either published name", () => {
+  for (const name of ["@gloom-sh/terminal", "gloomberb"]) {
+    const hostRoot = join(scratchDir("gloom-host-root-"), "node_modules", ...name.split("/"));
+    mkdirSync(join(hostRoot, "src", "plugins"), { recursive: true });
+    writeFileSync(join(hostRoot, "package.json"), JSON.stringify({ name }));
+    expect(findHostPackageRoot(join(hostRoot, "src", "plugins"))).toBe(hostRoot);
+  }
+});
 
 /**
  * A plugin is installed into a directory named after its repository, but
@@ -95,6 +107,28 @@ describe("linkPeerPlugins", () => {
     expect(realpathSync(join(pluginDir, "node_modules", "react"))).toBe(realpathSync(react));
   });
 
+  // Startup links every plugin before importing any, and again as each one
+  // loads. Rewriting a link that is right leaves a moment in which it is
+  // missing, and an import resolving through it then fails for the rest of
+  // the process. Runs on Windows CI, where the link is a junction.
+  test("leaves a link that already points at its sibling alone, and says so", () => {
+    const { hostRoot, pluginsDir, pluginDir } = setup("gloom-ibkr", "gloom-ibkr");
+    const link = join(pluginDir, "node_modules", "gloom-ibkr");
+
+    linkHostPackages(pluginDir, hostRoot, pluginsDir);
+    const first = lstatSync(link, { bigint: true }).ino;
+    linkHostPackages(pluginDir, hostRoot, pluginsDir);
+
+    expect(lstatSync(link, { bigint: true }).ino).toBe(first);
+    expect(describePeerLink(pluginDir, "gloom-ibkr", pluginsDir)).toMatchObject({
+      directory: "gloom-ibkr",
+      link: process.platform === "win32" ? "junction" : "symlink",
+      target: "gloom-ibkr",
+      linked: true,
+      writes: 1,
+    });
+  });
+
   // Windows gets a junction here. Replacing one must remove the link itself:
   // a recursive delete through it would empty the host install.
   test("repoints a stale link without touching what it pointed at", () => {
@@ -113,7 +147,7 @@ describe("linkPeerPlugins", () => {
 });
 
 /**
- * The compiled terminal binary and the packaged desktop app have no Gloomberb
+ * The compiled terminal binary and the packaged desktop app have no Gloom
  * package on disk. Before the in-process resolver, this branch returned an
  * error, the install printed a warning, and every external plugin failed to
  * load with "Cannot find module 'gloomberb/utils'". The resolver itself is
@@ -161,7 +195,7 @@ describe("linkHostPackages without a package root", () => {
 
     const result = linkHostPackages(pluginDir, null, pluginsDir, { installResolver: () => false });
 
-    expect(result.error).toBe("Could not locate the Gloomberb install.");
+    expect(result.error).toBe("Could not locate the Gloom install.");
   });
 });
 

@@ -3,6 +3,7 @@ import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
 import { Box, ScrollBox, Text, type ScrollBoxRenderable } from "../../../ui";
 import { TextAttributes } from "../../../ui";
 import type { ListRowState, ListViewItem, ListViewProps } from "../../../components/ui/list-view";
+import { ListRowLines } from "../../../components/ui/list-row-lines";
 import { hoverBg, type ThemeColors } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import { WEB_CELL_HEIGHT } from "../../../theme/font-scale";
@@ -18,38 +19,66 @@ import {
 function DefaultDesktopRow({
   item,
   selected,
+  stacked,
 }: {
   item: ListViewItem;
   selected: boolean;
+  /** The description on a second line under the label (`rowDescriptions`). */
+  stacked: boolean;
 }) {
   const colors = useThemeColors();
+  if (item.kind === "heading") return <Text fg={colors.textMuted}>{item.label}</Text>;
   return (
     <Box
       flexDirection="row"
       justifyContent="space-between"
       width="100%"
+      // A two-line row is taller than its lines: they sit in its middle.
+      height={stacked ? "100%" : undefined}
       minWidth={0}
       alignItems="center"
       style={{ boxSizing: "border-box" }}
     >
-      <Box flexDirection="row" alignItems="center" minWidth={0} flexShrink={1} overflow="hidden">
-        <Text
-          fg={item.color ?? (selected ? colors.text : colors.textDim)}
-          attributes={selected ? TextAttributes.BOLD : 0}
-          style={{
-            // The base text style pins flexShrink to 0, which lets a long
-            // label run under the detail instead of shrinking to an ellipsis.
-            flexShrink: 1,
-            minWidth: 0,
-            maxWidth: "100%",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
+      {stacked ? (
+        <ListRowLines
+          label={item.label}
+          description={item.description}
+          leading={item.leading}
+          labelColor={item.color}
+          labelBold={selected}
+        />
+      ) : (
+        <Box
+          flexDirection="row"
+          alignItems="center"
+          minWidth={0}
+          flexShrink={1}
+          overflow="hidden"
+          style={item.leading !== undefined ? { gap: "var(--gloom-space-sm)" } : undefined}
         >
-          {item.label}
-        </Text>
-      </Box>
+          {item.leading !== undefined && (
+            <Box flexShrink={0} alignItems="center" aria-hidden="true" data-gloom-role="list-row-leading">
+              {item.leading}
+            </Box>
+          )}
+          <Text
+            fg={item.color ?? (selected ? colors.text : colors.textDim)}
+            attributes={selected ? TextAttributes.BOLD : 0}
+            style={{
+              // The base text style pins flexShrink to 0, which lets a long
+              // label run under the detail instead of shrinking to an ellipsis.
+              flexShrink: 1,
+              minWidth: 0,
+              maxWidth: "100%",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {item.label}
+          </Text>
+        </Box>
+      )}
       {item.detail && (
         <Text fg={colors.textMuted} style={{ flexShrink: 0, marginLeft: 12 }}>
           {item.detail}
@@ -58,6 +87,9 @@ function DefaultDesktopRow({
     </Box>
   );
 }
+
+/** A row with its description under its label: the two lines and a quarter row above and below them. */
+const STACKED_ROW_HEIGHT = 2.5;
 
 const FRAMED_LIST_PADDING_PX = 4;
 /** What a framed list adds above and below its rows: padding and a 1px border on each side. */
@@ -84,12 +116,13 @@ export function WebListView({
   renderRow,
   getRowBackgroundColor,
   showSelectedDescription = false,
+  rowDescriptions = false,
   emptyMessage = "Nothing to show.",
   bgColor,
   selectedBgColor,
   hoverBgColor,
   rowGap = 1,
-  rowHeight = 1,
+  rowHeight = rowDescriptions ? STACKED_ROW_HEIGHT : 1,
   surface,
   selection = "frame",
   height,
@@ -110,6 +143,7 @@ export function WebListView({
   const rowHoverBg = hoverBgColor ?? hoverBg(colors);
   const selectedItem = selectedIndex >= 0 ? items[selectedIndex] : undefined;
   const activeScrollIndex = scrollIndex ?? selectedIndex;
+  const headingAboveSelection = items[activeScrollIndex - 1]?.kind === "heading";
   const rowStride = rowHeight + rowGap;
   const tabStopIndex = selectedIndex >= 0 && items[selectedIndex] && !items[selectedIndex].disabled
     ? selectedIndex : items.findIndex((item) => !item.disabled);
@@ -144,14 +178,14 @@ export function WebListView({
     if (!scrollBox) return;
     const safeIndex = Math.min(activeScrollIndex, items.length - 1);
     const viewportHeight = Math.max(scrollBox.viewport?.height ?? 0, 1);
-    const rowTop = safeIndex * rowStride;
-    const rowBottom = rowTop + rowHeight;
+    const rowTop = Math.max(0, safeIndex - (headingAboveSelection ? 1 : 0)) * rowStride;
+    const rowBottom = safeIndex * rowStride + rowHeight;
     if (rowTop < scrollBox.scrollTop) {
       scrollBox.scrollTo(rowTop);
     } else if (rowBottom > scrollBox.scrollTop + viewportHeight) {
       scrollBox.scrollTo(rowBottom - viewportHeight);
     }
-  }, [activeScrollIndex, autoScrollToIndex, items.length, rowHeight, rowStride, scrolls]);
+  }, [activeScrollIndex, autoScrollToIndex, headingAboveSelection, items.length, rowHeight, rowStride, scrolls]);
 
   useEffect(() => {
     if (!scrolls) return;
@@ -170,7 +204,7 @@ export function WebListView({
     const list = document.getElementById(listDomId);
     const active = document.activeElement;
     if (!list || !active || !list.contains(active) || isEditableKeyboardTarget(active)) return;
-    const row = list.querySelectorAll<HTMLElement>('[role="option"]')[selectedIndex];
+    const row = list.querySelector<HTMLElement>(`[data-gloom-list-index="${selectedIndex}"]`);
     if (row && !row.contains(active)) row.focus({ preventScroll: scrolls });
   }, [listDomId, scrolls, selectedIndex]);
 
@@ -214,10 +248,11 @@ export function WebListView({
             onActivate?.(item, index);
           }}
           data-gloom-role="desktop-list-row"
-          role="option"
-          aria-selected={selected}
-          aria-disabled={disabled || undefined}
-          tabIndex={index === tabStopIndex ? 0 : -1}
+          data-gloom-list-index={index}
+          role={item.kind === "heading" ? "presentation" : "option"}
+          aria-selected={item.kind === "heading" ? undefined : selected}
+          aria-disabled={item.kind === "heading" ? undefined : disabled || undefined}
+          tabIndex={item.kind === "heading" ? undefined : index === tabStopIndex ? 0 : -1}
           onKeyDown={(event: React.KeyboardEvent<HTMLElement>) => {
             if (disabled) return;
             if (event.key === " " || (event.key === "Enter" && !checkboxRows)) {
@@ -235,14 +270,14 @@ export function WebListView({
             while (items[nextIndex]?.disabled) nextIndex += direction;
             if (!items[nextIndex]) return;
             onSelect?.(nextIndex);
-            const rows = event.currentTarget.parentElement?.querySelectorAll<HTMLElement>('[role="option"]');
-            rows?.[nextIndex]?.focus();
+            const row = event.currentTarget.parentElement?.querySelector<HTMLElement>(`[data-gloom-list-index="${nextIndex}"]`);
+            row?.focus();
           }}
           style={listRowStyle(selected, disabled, colors, selection === "frame")}
         >
           {renderRow
             ? renderRow(item, state, index)
-            : <DefaultDesktopRow item={item} selected={selected} />}
+            : <DefaultDesktopRow item={item} selected={selected} stacked={rowDescriptions} />}
         </Box>
       );
     });

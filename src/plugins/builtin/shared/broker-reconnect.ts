@@ -16,12 +16,79 @@ export interface OfflineBroker {
   syncedAt: number | null;
   /** Why it is offline, in the broker's words when it gave some. */
   reason: string;
-  /** False when no plugin connects it, so pressing a key could not help. */
+  /**
+   * False when no plugin connects it, so pressing a key could not help. For a
+   * disabled profile: whether enabling it can sync it too.
+   */
   reconnectable: boolean;
+  /**
+   * The profile is turned off. Nothing syncs or reconnects it while it is
+   * (`syncBrokerInstance` refuses it); its one key enables it.
+   */
+  disabled?: boolean;
 }
 
-/** The key onboarding gives "Connect a broker". */
-const RECONNECT_BROKER_KEY = "b";
+/** The key onboarding gives "Connect a broker": it reconnects an offline broker and enables a disabled one. */
+const BROKER_KEY = "b";
+
+/** `[b] enable`: one look for every pane that shows a disabled broker profile. */
+export function enableBrokerHint(brokerName: string, onPress: () => void, disabled = false): PaneHint {
+  return {
+    id: "enable-broker",
+    key: BROKER_KEY,
+    label: " enable",
+    title: tf("Enable {broker}", { broker: brokerName }),
+    onPress,
+    disabled,
+  };
+}
+
+/** Which step of enabling a profile failed, said in full: the enabling, or the sync after it. */
+export interface BrokerEnableFailure {
+  step: "enable" | "sync";
+  text: string;
+}
+
+function reasonOf(error: unknown): string | null {
+  return error instanceof Error && error.message.trim() ? error.message.trim() : null;
+}
+
+/**
+ * Turns a disabled broker profile back on, then syncs it when a plugin
+ * connects it, as the app syncs every enabled profile when it starts. Resolves
+ * to null when both worked, or to the step that failed and why: a sync that
+ * fails leaves the profile enabled, and says so.
+ */
+export async function enableBrokerProfile(
+  actions: Pick<ReturnType<typeof usePluginBrokerActions>, "updateBrokerInstance" | "syncBrokerInstance">,
+  instanceId: string,
+  { sync, label }: { sync: boolean; label: string },
+): Promise<BrokerEnableFailure | null> {
+  try {
+    await actions.updateBrokerInstance(instanceId, {}, { enabled: true });
+  } catch (error) {
+    const reason = reasonOf(error);
+    return {
+      step: "enable",
+      text: reason
+        ? tf("Could not enable {label}: {reason}", { label, reason })
+        : tf("Could not enable {label}.", { label }),
+    };
+  }
+  if (!sync) return null;
+  try {
+    await actions.syncBrokerInstance(instanceId);
+  } catch (error) {
+    const reason = reasonOf(error);
+    return {
+      step: "sync",
+      text: reason
+        ? tf("Enabled {label}, but it did not sync: {reason}", { label, reason })
+        : tf("Enabled {label}, but it did not sync.", { label }),
+    };
+  }
+  return null;
+}
 
 /** `as of 14:02` today, `as of Oct 17 14:02` before. */
 function formatBrokerSyncedAt(syncedAt: number, now = Date.now()): string {
@@ -36,7 +103,7 @@ function formatBrokerSyncedAt(syncedAt: number, now = Date.now()): string {
 export interface OfflineBrokerFooter {
   /** `as of …`, when the profile has synced. */
   asOf: PaneFooterSegment[];
-  /** Why the broker is offline, or that it is reconnecting. */
+  /** Why the broker is offline or disabled, or that it is reconnecting. */
   status: PaneFooterSegment[];
   hints: PaneHint[];
 }
@@ -49,21 +116,36 @@ const ONLINE: OfflineBrokerFooter = { asOf: [], status: [], hints: [] };
  * does what Connect does in Brokers (a signed-in broker asks for a new
  * sign-in, any other connects), then syncs the profile so the positions are
  * current again. Nothing changes on screen until that sync lands.
+ *
+ * A disabled profile is never reconnected or synced: the footer says it is
+ * disabled, and `[b] enable` turns it back on and syncs it.
  */
 export function useOfflineBrokerFooter(offline: OfflineBroker | null): OfflineBrokerFooter {
-  const { connectBrokerInstance, syncBrokerInstance } = usePluginBrokerActions();
+  const brokerActions = usePluginBrokerActions();
+  const { connectBrokerInstance, syncBrokerInstance } = brokerActions;
   const { notify } = usePluginAppActions();
-  const [reconnecting, setReconnecting] = useState(false);
+  const [working, setWorking] = useState(false);
   const runningRef = useRef(false);
   const offlineRef = useRef(offline);
   offlineRef.current = offline;
+  const brokerActionsRef = useRef(brokerActions);
+  brokerActionsRef.current = brokerActions;
 
   const reconnect = useCallback(async () => {
     const target = offlineRef.current;
-    if (!target?.reconnectable || runningRef.current) return;
+    if (!target || runningRef.current) return;
+    if (!target.disabled && !target.reconnectable) return;
     runningRef.current = true;
-    setReconnecting(true);
+    setWorking(true);
     try {
+      if (target.disabled) {
+        const failure = await enableBrokerProfile(brokerActionsRef.current, target.instance.id, {
+          sync: target.reconnectable,
+          label: target.brokerName,
+        });
+        if (failure) notify({ type: "error", body: failure.text });
+        return;
+      }
       if (isSignedInBrokerProfile(target.instance)) {
         if (!await requestBrokerSignIn(signedInBrokerForProfile(target.instance, target.brokerName))) return;
       } else {
@@ -77,7 +159,7 @@ export function useOfflineBrokerFooter(offline: OfflineBroker | null): OfflineBr
       });
     } finally {
       runningRef.current = false;
-      setReconnecting(false);
+      setWorking(false);
     }
   }, [connectBrokerInstance, notify, syncBrokerInstance]);
 
@@ -87,19 +169,22 @@ export function useOfflineBrokerFooter(offline: OfflineBroker | null): OfflineBr
     const asOf: PaneFooterSegment[] = offline.syncedAt != null
       ? [{ id: "broker-as-of", asOf: false, parts: [{ text: formatBrokerSyncedAt(offline.syncedAt), tone: "muted" }] }]
       : [];
-    const status: PaneFooterSegment[] = [reconnecting
-      ? { id: "broker-status", parts: [{ text: t("Reconnecting…"), tone: "muted" }] }
+    const status: PaneFooterSegment[] = [working
+      ? { id: "broker-status", parts: [{ text: offline.disabled ? t("Enabling…") : t("Reconnecting…"), tone: "muted" }] }
       : { id: "broker-status", parts: [{ text: offline.reason, tone: "warning" }] }];
-    const hints: PaneHint[] = offline.reconnectable
-      ? [{
-          id: "reconnect-broker",
-          key: RECONNECT_BROKER_KEY,
-          label: " reconnect",
-          title: tf("Reconnect {broker}", { broker: offline.brokerName }),
-          onPress: () => { void reconnect(); },
-          disabled: reconnecting,
-        }]
-      : [];
+    const press = () => { void reconnect(); };
+    const hints: PaneHint[] = offline.disabled
+      ? [enableBrokerHint(offline.brokerName, press, working)]
+      : offline.reconnectable
+        ? [{
+            id: "reconnect-broker",
+            key: BROKER_KEY,
+            label: " reconnect",
+            title: tf("Reconnect {broker}", { broker: offline.brokerName }),
+            onPress: press,
+            disabled: working,
+          }]
+        : [];
     return { asOf, status, hints };
-  }, [offline, reconnect, reconnecting]);
+  }, [offline, reconnect, working]);
 }

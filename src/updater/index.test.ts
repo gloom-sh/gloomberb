@@ -57,6 +57,13 @@ describe("getAssetBaseNameForRuntime", () => {
       arch: "x64",
     })).toBe("gloomberb-darwin-x64");
   });
+
+  // The glibc build cannot start on musl, so a musl binary must never update to it.
+  test("keeps a musl system on the musl asset", () => {
+    expect(getAssetBaseNameForRuntime({ platform: "linux", arch: "x64" }, "musl")).toBe("gloomberb-linux-x64-musl");
+    expect(getAssetBaseNameForRuntime({ platform: "linux", arch: "arm64" }, "musl")).toBe("gloomberb-linux-arm64-musl");
+    expect(getAssetBaseNameForRuntime({ platform: "linux", arch: "x64" }, "glibc")).toBe("gloomberb-linux-x64");
+  });
 });
 
 describe("detectUpdateAction", () => {
@@ -354,6 +361,7 @@ describe("checkForUpdateDetailed", () => {
       await expect(checkForUpdateDetailed("0.3.1")).resolves.toEqual({
         kind: "error",
         error: "GitHub returned 503",
+        failure: { phase: "check", code: "server_error" },
       });
     } finally {
       Object.defineProperty(process, "execPath", { value: originalExecPath, configurable: true });
@@ -384,6 +392,7 @@ describe("checkForUpdateDetailed", () => {
       await expect(checkForUpdateDetailed("0.3.1")).resolves.toEqual({
         kind: "error",
         error: expect.stringContaining("valid SHA-256 digest"),
+        failure: { phase: "check", code: "no_build" },
       });
     } finally {
       Object.defineProperty(process, "execPath", { value: originalExecPath, configurable: true });
@@ -462,7 +471,7 @@ describe("performUpdate", () => {
     expect(fetched).toBe(false);
     expect(progress).toEqual([{
       phase: "error",
-      error: "Update through the package manager that installed Gloomberb: the install is on a read-only file system.",
+      error: "Update through the package manager that installed Gloom: the install is on a read-only file system.",
     }]);
   });
 
@@ -492,7 +501,7 @@ describe("performUpdate", () => {
       expect(progress).toEqual([
         {
           phase: "error",
-          error: "Self-update is unavailable when running from source or via Bun/Node. Relaunch the packaged gloomberb binary to update.",
+          error: "Self-update is unavailable when running from source or via Bun/Node. Relaunch the packaged gloom binary to update.",
         },
       ]);
     } finally {
@@ -534,6 +543,7 @@ describe("performUpdate", () => {
       expect(progress.at(-1)).toEqual({
         phase: "error",
         error: "Self-update requires a valid SHA-256 checksum.",
+        failure: { phase: "verify", code: "no_build" },
       });
     } finally {
       Object.defineProperty(process, "execPath", { value: originalExecPath, configurable: true });
@@ -664,6 +674,7 @@ describe("performUpdate", () => {
       expect(progress.at(-1)).toEqual(expect.objectContaining({
         phase: "error",
         error: expect.stringContaining("Checksum mismatch"),
+        failure: { phase: "verify", code: "corrupt" },
       }));
     } finally {
       Object.defineProperty(process, "execPath", { value: originalExecPath, configurable: true });

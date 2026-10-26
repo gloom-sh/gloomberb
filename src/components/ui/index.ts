@@ -36,8 +36,10 @@ export { FieldGrid, GridFieldView, fieldGridColumns, fieldGridRows } from "./fie
 export type { FieldGridProps, GridField } from "./field-grid";
 export { StatGrid, statGridColumns, statGridRows } from "./stat-grid";
 export { ColumnGrid, ColumnGridPair } from "./column-grid";
-export type { ColumnGridCell, ColumnGridColumn, ColumnGridPairProps, ColumnGridProps } from "./column-grid";
+export type { ColumnGridCell, ColumnGridColumn, ColumnGridLink, ColumnGridPairProps, ColumnGridProps } from "./column-grid";
 export type { StatGridProps, StatItem } from "./stat-grid";
+export { COUNTRY_FLAG_CELLS, CountryFlag, CountryFlagLead, withCountryFlag, withFlagRoom } from "./country-flag";
+export type { CountryFlagProps } from "./country-flag";
 export { RatioBar } from "./ratio-bar";
 export type { RatioBarProps } from "./ratio-bar";
 export { RangeTrack } from "./range-track";

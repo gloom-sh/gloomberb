@@ -1,6 +1,6 @@
 import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
 import type { OptionContract, OptionsChain, Quote } from "../../../types/financials";
-import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors";
+import { buildQuoteKey, instrumentFromQuoteTarget, resolveEntryData } from "../../../market-data/selectors";
 import type { QueryEntry } from "../../../market-data/result-types";
 import type { OptionTableRow } from "./types";
 import { isFiniteNumber } from "../../../utils/guards";
@@ -75,9 +75,20 @@ function normalizeVisibleRange(
   return { start, end };
 }
 
+/**
+ * The broker profile a chain came from. Its contracts' quotes are asked of the
+ * same profile, so a broker that streams options (and no cloud stream) keeps
+ * the chain it served current, rather than leaving it to a slower source.
+ */
+export interface OptionQuoteBroker {
+  brokerId?: string;
+  brokerInstanceId?: string;
+}
+
 export function buildOptionQuoteTargets(
   rows: readonly OptionTableRow[],
   window: OptionQuoteTargetWindow,
+  broker?: OptionQuoteBroker,
 ): QuoteSubscriptionTarget[] {
   if (rows.length === 0) return [];
   const visibleRange = normalizeVisibleRange(rows.length, window);
@@ -101,6 +112,7 @@ export function buildOptionQuoteTargets(
       targets.set(symbol, {
         symbol,
         exchange: OPTIONS_QUOTE_EXCHANGE,
+        ...(broker ? { context: { brokerId: broker.brokerId, brokerInstanceId: broker.brokerInstanceId } } : {}),
         surface: "options",
         visible,
         selected,
@@ -119,10 +131,12 @@ export function buildOptionQuoteTargets(
   return [...targets.values()];
 }
 
-export function buildOptionQuoteKey(contractSymbol: string): string {
+export function buildOptionQuoteKey(contractSymbol: string, broker?: OptionQuoteBroker): string {
   return buildQuoteKey({
     symbol: contractSymbol,
     exchange: OPTIONS_QUOTE_EXCHANGE,
+    brokerId: broker?.brokerId,
+    brokerInstanceId: broker?.brokerInstanceId,
   });
 }
 
@@ -179,17 +193,20 @@ export interface LiveOptionsChain {
 }
 
 const EMPTY_STRIKES: ReadonlySet<number> = new Set();
-const contractKeyIndexes = new WeakMap<readonly OptionContract[], Map<string, number[]>>();
+const contractKeyIndexes = new WeakMap<readonly OptionContract[], Map<string, Map<string, number[]>>>();
 
-function contractKeyIndex(contracts: readonly OptionContract[]): Map<string, number[]> {
-  let index = contractKeyIndexes.get(contracts);
+function contractKeyIndex(contracts: readonly OptionContract[], broker?: OptionQuoteBroker): Map<string, number[]> {
+  const byBroker = contractKeyIndexes.get(contracts) ?? new Map<string, Map<string, number[]>>();
+  contractKeyIndexes.set(contracts, byBroker);
+  const brokerKey = `${broker?.brokerId ?? ""}|${broker?.brokerInstanceId ?? ""}`;
+  let index = byBroker.get(brokerKey);
   if (!index) {
     index = new Map();
     contracts.forEach((contract, position) => {
-      const key = buildOptionQuoteKey(contract.contractSymbol);
+      const key = buildOptionQuoteKey(contract.contractSymbol, broker);
       index!.set(key, [...(index!.get(key) ?? []), position]);
     });
-    contractKeyIndexes.set(contracts, index);
+    byBroker.set(brokerKey, index);
   }
   return index;
 }
@@ -204,12 +221,13 @@ export function overlayOptionChainQuotes(
   chain: OptionsChain,
   quoteEntries: ReadonlyMap<string, QueryEntry<Quote>>,
   freshness: OptionsQuoteFreshness,
+  broker?: OptionQuoteBroker,
 ): LiveOptionsChain {
   if (quoteEntries.size === 0) return { chain, streamedStrikes: EMPTY_STRIKES, quotedAt: null };
   const streamedStrikes = new Set<number>();
   let quotedAt: number | null = null;
   const overlay = (contracts: OptionContract[]): OptionContract[] => {
-    const index = contractKeyIndex(contracts);
+    const index = contractKeyIndex(contracts, broker);
     let next: OptionContract[] | null = null;
     for (const [key, entry] of quoteEntries) {
       const positions = index.get(key);
@@ -242,19 +260,16 @@ export function resolveOptionQuoteCoverage(
   quoteEntries: ReadonlyMap<string, QueryEntry<Quote>>,
   freshness: OptionsQuoteFreshness,
 ): OptionQuoteCoverage {
-  const visibleSymbols = new Set(
+  // Each target's own key: a chain's broker profile is part of it.
+  const visibleKeys = new Set(
     targets
-      .filter((target) => target.visible === true)
-      .map((target) => target.symbol.trim().toUpperCase())
-      .filter(Boolean),
+      .filter((target) => target.visible === true && target.symbol.trim())
+      .map((target) => buildQuoteKey(instrumentFromQuoteTarget(target))),
   );
   let liveCount = 0;
   let fallbackCount = 0;
-  for (const symbol of visibleSymbols) {
-    const quote = freshOptionQuote(
-      quoteEntries.get(buildOptionQuoteKey(symbol)),
-      freshness,
-    );
+  for (const key of visibleKeys) {
+    const quote = freshOptionQuote(quoteEntries.get(key), freshness);
     if (
       quote?.dataSource === "live"
       && quote.delivery === "stream"
@@ -266,7 +281,7 @@ export function resolveOptionQuoteCoverage(
     }
   }
 
-  const totalCount = visibleSymbols.size;
+  const totalCount = visibleKeys.size;
   const status: OptionQuoteCoverageStatus = totalCount > 0 && liveCount === totalCount
     ? "live"
     : liveCount > 0

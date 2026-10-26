@@ -28,6 +28,7 @@ function desktopStateKey(snapshot: DesktopSharedStateSnapshot): string {
     paneState: snapshot.paneState,
     focusedPaneId: snapshot.focusedPaneId,
     statusBarVisible: snapshot.statusBarVisible,
+    brokerSyncErrors: snapshot.brokerSyncErrors ?? {},
   });
 }
 

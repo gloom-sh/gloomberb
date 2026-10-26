@@ -8,6 +8,7 @@ import type { BrokerAdapter, BrokerPosition } from "../../types/broker";
 import type { TickerRecord } from "../../types/ticker";
 import { captureConfigSaves } from "../../test-support/config-store";
 import { createTestTicker } from "../../test-support/ticker";
+import { buildBrokerProfileRows } from "../../plugins/builtin/broker-manager/model";
 import { useBrokerImportRuntime } from "./broker-import";
 
 const tui = createOpenTuiTestHarness();
@@ -128,4 +129,64 @@ test("a pull landing while a broker sync writes keeps what both brought", async 
     mainPosition,
   ]);
   expect(disk.get("AAA")).toBe(stateRef.current.tickers.get("AAA")!);
+});
+
+
+test("a failed position sync retains holdings and a visible broker failure until a deliberate retry succeeds", async () => {
+  let fail = false;
+  let reads = 0;
+  const broker = demoBroker(async () => {
+    reads++;
+    if (fail) throw new Error("private upstream payload");
+    return [{ ticker: "AAA", exchange: "NASDAQ", shares: 3, avgCost: 10, currency: "USD", accountId: "ACC-1" }];
+  });
+  const disk = new Map<string, TickerRecord>();
+  const { runtime, stateRef } = await renderRuntime(broker, {
+    loadAllTickers: async () => [...disk.values()],
+    loadTicker: async (symbol: string) => disk.get(symbol) ?? null,
+    saveTicker: async (ticker: TickerRecord) => { disk.set(ticker.metadata.ticker, ticker); },
+  });
+  await runtime.importBrokerPositions(instance.id);
+  const holdings = stateRef.current.tickers;
+  const accounts = stateRef.current.brokerAccounts;
+  const lastSync = stateRef.current.config.brokerInstances[0]!.lastSyncedAt;
+  const rows = () => buildBrokerProfileRows(stateRef.current.config, new Map([["demo", broker]]), stateRef.current.brokerAccounts, undefined, undefined, stateRef.current.brokerSyncErrors);
+  fail = true;
+  await expect(runtime.importBrokerPositions(instance.id)).rejects.toThrow();
+  expect(stateRef.current.tickers).toBe(holdings);
+  expect(stateRef.current.brokerAccounts).toBe(accounts);
+  expect(stateRef.current.config.brokerInstances[0]!.lastSyncedAt).toBe(lastSync);
+  expect(rows()[0]).toMatchObject({ stateLabel: "Sync failed", message: "Positions could not be synced. Use Sync to retry." });
+  expect(JSON.stringify(stateRef.current.brokerSyncErrors)).not.toContain("private upstream");
+  await Bun.sleep(20);
+  expect(reads).toBe(2);
+  fail = false;
+  await runtime.importBrokerPositions(instance.id);
+  expect(reads).toBe(3);
+  expect(stateRef.current.brokerSyncErrors).toEqual({});
+  expect(rows()[0]?.stateLabel).not.toBe("Sync failed");
+});
+
+test("an older failed sync cannot overwrite a successful retry or resurrect a removed profile", async () => {
+  let reject!: (error: Error) => void;
+  let slow = true;
+  const broker = demoBroker(() => slow ? new Promise((_, no) => { reject = no; }) : Promise.resolve([]));
+  const { runtime, stateRef, dispatch } = await renderRuntime(broker, {
+    loadAllTickers: async () => [], loadTicker: async () => null, saveTicker: async () => {},
+  });
+  const older = runtime.importBrokerPositions(instance.id).catch(() => {});
+  while (!reject) await Promise.resolve();
+  slow = false;
+  await runtime.importBrokerPositions(instance.id);
+  reject(new Error("late failure"));
+  await older;
+  expect(stateRef.current.brokerSyncErrors).toEqual({});
+  slow = true;
+  reject = undefined as never;
+  const removed = runtime.importBrokerPositions(instance.id).catch(() => {});
+  while (!reject) await Promise.resolve();
+  dispatch({ type: "SET_CONFIG", config: { ...stateRef.current.config, brokerInstances: [] } });
+  reject(new Error("removed profile"));
+  await removed;
+  expect(stateRef.current.brokerSyncErrors).toEqual({});
 });

@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
-import type { HiringPayload } from "../../../api-client/hiring";
+import type { HiringBuildingBoard, HiringCompanyBuilding, HiringCompanyMoves, HiringCompanySignals, HiringMovesBoard, HiringPayload } from "../../../api-client/hiring";
+import { ApiRequestError } from "../../../api-client/errors";
 import type { AppAttentionPayload, AppRankPayload } from "../../../api-client/app-attention";
 import { setCloudApiFetchTransport } from "../../../api-client";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
@@ -9,9 +10,24 @@ import realApps from "./fixtures/apps.json";
 import { attentionCache, cachedAttention, fetchAppRank, fetchAttention, loadAttention, validateAttention } from "./client";
 import { appsModel, attentionSeries, hiringModel, sortAttentionRows } from "./model";
 import { attentionHeadless } from "./headless";
+import { companyMovesModel, moveFacts, movesBoardModel, movesPreviewNote } from "./moves-model";
 import realAppRank from "./fixtures/app-rank.json";
+import realMoves from "./fixtures/hiring-moves.json";
+import realMovesBoard from "./fixtures/hiring-moves-board.json";
+import realExpansion from "./fixtures/hiring-expansion-board.json";
+import realAnomalies from "./fixtures/hiring-anomalies-board.json";
+import realBuilding from "./fixtures/hiring-building-board.json";
 
 const fixture = () => structuredClone(realHiring) as HiringPayload;
+/** A company the signals job has not read yet. */
+const noSignals = async (symbol: string): Promise<HiringCompanySignals> => ({ generatedAt: "2026-10-19T08:00:00.000Z", proRequired: true, preview: false, symbol, name: null, week: null, watchedSince: null, held: null, skipped: [], signals: [], history: [], locked: { signals: 0, history: 0, expansion: 0, anomalies: 0 } });
+/** A company the building job has not read yet. */
+const noBuilding = async (symbol: string): Promise<HiringCompanyBuilding> => ({ generatedAt: "2026-10-19T08:00:00.000Z", proRequired: true, preview: false, symbol, name: null, week: null, held: null, skipped: [], window: null,
+  functions: [], themes: [], shifts: [], history: [], locked: { functions: 0, themes: 0, shifts: 0, history: 0 } });
+const building = async () => structuredClone(realBuilding) as HiringBuildingBoard;
+/** A company HIRE has no moves for yet. */
+const noMoves = async (symbol?: string): Promise<HiringCompanyMoves> => ({ generatedAt: "2026-10-19T08:00:00.000Z", proRequired: true, preview: false, symbol: symbol ?? "", name: null, latest: null, week: null, weeks: [], history: [],
+  evidence: { added: [], closed: [] }, evidenceTotals: { added: 0, closed: 0 }, locked: { history: 0, added: 0, closed: 0 } });
 afterEach(() => { attentionCache.reset(); setCloudApiFetchTransport(null); });
 
 test("a sparse real capture preserves unknown changes and does not fabricate a trend", () => {
@@ -56,7 +72,11 @@ test("real app captures preserve missing velocity, rating provenance and ordinal
   expect(attentionSeries(model, "#fff")).toEqual([]);
   expect(model.sections.table.rows.every((row) => row.values.change === null)).toBe(true);
   expect(new Set(model.sections.table.rows.map((row) => row.id)).size).toBe(model.sections.table.rows.length);
-  expect(model.sections.evidence.rows[0]!.details!.find((entry) => entry.label === "Revision")?.value).toBe(payload.evidence[0]!.revisionId);
+  // A detail reads in words: no revision, confidence, dash, raw timestamp or bare address.
+  const evidence = model.sections.evidence.rows[0]!;
+  expect(evidence.details!.map((entry) => entry.label)).not.toContain("Revision");
+  expect(evidence.details!.every((entry) => entry.value !== "--" && !/\d{4}-\d{2}-\d{2}T|^https?:/.test(entry.value))).toBe(true);
+  expect(evidence.links?.every((link) => /^https?:/.test(link.url))).toBe(true);
   payload.apps[0]!.rating = 8;
   expect(() => validateAttention("apps", payload)).toThrow("unreadable");
 });
@@ -97,11 +117,13 @@ test("the report prints shares as the pane does, and a remote share with the rol
 });
 
 test("a hiring report heads each view by what its rows are, and the board has only its table, as the pane's tabs do", async () => {
-  const company = await attentionHeadless("hiring").load(createTestHeadlessArgs({ symbols: ["ADYEN:AMS"] }), createTestHeadlessContext({ apiClient: { getCloudHiring: async () => fixture() } as never }));
-  expect(company.sections.map((section) => section.title)).toEqual(["Open roles", "Hiring trend", "Role family", "Peers", "Posting evidence"]);
+  const company = await attentionHeadless("hiring").load(createTestHeadlessArgs({ symbols: ["ADYEN:AMS"] }), createTestHeadlessContext({ apiClient: { getCloudHiring: async () => fixture(), getCloudHiringMoves: noMoves, getCloudHiringCompanySignals: noSignals, getCloudHiringCompanyBuilding: noBuilding } as never }));
+  expect(company.sections.map((section) => section.title)).toEqual(["Open roles", "Hiring trend", "Role family", "Peers", "Posting evidence", "Hiring moves", "Move drivers", "Postings first seen", "Expansion", "Anomalies",
+    "Building: role families", "Building: themes", "Building: shifts"]);
   const board = { generatedAt: "2026-10-15T00:00:00.000Z", proRequired: true, preview: false, total: 0, locked: 0, companies: [] };
-  const market = await attentionHeadless("hiring").load(createTestHeadlessArgs(), createTestHeadlessContext({ apiClient: { getCloudHiring: async () => board } as never }));
-  expect(market.sections.map((section) => section.title)).toEqual(["Companies hiring"]);
+  const market = await attentionHeadless("hiring").load(createTestHeadlessArgs(), createTestHeadlessContext({ apiClient: { getCloudHiring: async () => board, getCloudHiringMoves: async () => realMovesBoard,
+    getCloudHiringSignals: async (group: string) => group === "expansion" ? realExpansion : realAnomalies, getCloudHiringBuilding: building } as never }));
+  expect(market.sections.map((section) => section.title)).toEqual(["Companies hiring", "Hiring moves", "Expansion", "Anomalies", "Building"]);
 });
 
 test("headless pages expose continuation and never claim a truncated report is complete", async () => {
@@ -152,14 +174,14 @@ test("a free HIRE and APPS preview say what free shows, what Pro adds and where 
   hiring.locked = { history: 5, evidence: 57, peers: 17, signals: 0, mix: 21 };
   hiring.coverage.firstObservedAt = "2026-09-19T00:00:00.000Z";
   hiring.latest = { ...hiring.latest!, completeness: "partial" };
-  const hire = await attentionHeadless("hiring").load(createTestHeadlessArgs({ symbols: ["ADYEN:AMS"] }), createTestHeadlessContext({ apiClient: { getCloudHiring: async () => hiring } as never }));
+  const hire = await attentionHeadless("hiring").load(createTestHeadlessArgs({ symbols: ["ADYEN:AMS"] }), createTestHeadlessContext({ apiClient: { getCloudHiring: async () => hiring, getCloudHiringMoves: noMoves, getCloudHiringCompanySignals: noSignals, getCloudHiringCompanyBuilding: noBuilding } as never }));
   expect(hire.errors).toEqual([`Free shows ${hiring.evidence.length} of ${hiring.evidence.length + 57} open roles. Gloom Pro adds the other 57 roles, 5 weeks of history and 17 more peers, with history from 19 Sep 2026.`]);
   expect(hire.notes).toEqual(["The latest capture has incomplete or unknown coverage."]);
   expect(hire.sections.find((section) => section.title === "Hiring trend")).toMatchObject({ empty: "Weekly history is part of Gloom Pro." });
 
   // A preview that holds nothing back (a company with no captures) has nothing to unlock.
   hiring.locked = { history: 0, evidence: 0, peers: 0, signals: 0, mix: 0 };
-  expect((await attentionHeadless("hiring").load(createTestHeadlessArgs({ symbols: ["ADYEN:AMS"] }), createTestHeadlessContext({ apiClient: { getCloudHiring: async () => hiring } as never }))).errors).toBeUndefined();
+  expect((await attentionHeadless("hiring").load(createTestHeadlessArgs({ symbols: ["ADYEN:AMS"] }), createTestHeadlessContext({ apiClient: { getCloudHiring: async () => hiring, getCloudHiringMoves: noMoves, getCloudHiringCompanySignals: noSignals, getCloudHiringCompanyBuilding: noBuilding } as never }))).errors).toBeUndefined();
 
   const apps = structuredClone(realApps) as AppAttentionPayload;
   apps.access = "preview";
@@ -168,4 +190,47 @@ test("a free HIRE and APPS preview say what free shows, what Pro adds and where 
   const report = await attentionHeadless("apps").load(createTestHeadlessArgs({ symbols: [apps.symbol!] }), createTestHeadlessContext({ apiClient: { getCloudAppAttention: async () => apps } as never }));
   expect(report.errors).toEqual([`Free shows ${apps.apps.length} of ${apps.apps.length + 9} app ranks and the latest day of history. Gloom Pro adds the other 9 ranks and 9 earlier days of history, with history from 4 Oct 2026.`]);
   expect(report.notes).toEqual(apps.coverage.limitations);
+});
+
+test("HIRE's moves report each move with why, a company's weeks with why a week is not measured, and a server without moves keeps the rest", async () => {
+  const hiring = { ...fixture(), symbol: "RIVN" };
+  const company = await attentionHeadless("hiring").load(createTestHeadlessArgs({ symbols: ["RIVN"] }),
+    createTestHeadlessContext({ apiClient: { getCloudHiring: async () => hiring, getCloudHiringMoves: async () => structuredClone(realMoves) as HiringCompanyMoves, getCloudHiringCompanySignals: noSignals } as never }));
+  const weeks = company.sections.find((section) => section.title === "Hiring moves")!;
+  const weekRows = weeks.rows!;
+  expect(weekRows[0]).toMatchObject({ week: "2026-10-12", newRoles: 311, signal: "Accelerating" });
+  expect(weekRows.at(-1)).toMatchObject({ week: "2026-09-14", excluded: "First read" });
+  expect(weeks.columns!.find((column) => column.key === "pace")?.format?.(weekRows[0]!.pace, weekRows[0]!)).toBe("3.4x");
+  expect(company.notes).toContain(realMoves.latest.why);
+  expect(company.sections.find((section) => section.title === "Move drivers")!.rows![0]).toMatchObject({ label: "Operations", newRoles: 222 });
+
+  const board = { generatedAt: "2026-10-15T00:00:00.000Z", proRequired: true, preview: false, total: 0, locked: 0, companies: [] };
+  const free = { ...structuredClone(realMovesBoard), preview: true, moves: realMovesBoard.moves.slice(0, 3), locked: realMovesBoard.total - 3 } as HiringMovesBoard;
+  const market = await attentionHeadless("hiring").load(createTestHeadlessArgs(), createTestHeadlessContext({ apiClient: { getCloudHiring: async () => board, getCloudHiringMoves: async () => free, getCloudHiringSignals: async (group: string) => group === "expansion" ? realExpansion : realAnomalies } as never }));
+  expect(market.sections.find((section) => section.title === "Hiring moves")!.rows!.map((row) => [row.symbol, typeof row.why])).toEqual([["RIVN", "string"], ["GNRC", "string"], ["BBIO", "string"]]);
+  expect(market.errors).toEqual(["Free shows 3 of 18 moves. Gloom Pro adds the other 15."]);
+
+  const missing = await attentionHeadless("hiring").load(createTestHeadlessArgs(), createTestHeadlessContext({ apiClient: { getCloudHiring: async () => board,
+    getCloudHiringMoves: async () => { throw new ApiRequestError("Not found", 404); }, getCloudHiringSignals: async () => { throw new ApiRequestError("Not found", 404); },
+    getCloudHiringBuilding: async () => { throw new ApiRequestError("Not found", 404); } } as never }));
+  expect(missing.sections.map((section) => section.title)).toEqual(["Companies hiring"]);
+  expect(missing.notes).toEqual(["Hiring moves are not available yet.", "Hiring signals are not available yet.", "What companies are building is not available yet."]);
+});
+
+test("a flagged move is listed with what to check and never reads as alerted; a free read off the free board keeps the week, not the move", async () => {
+  const board = movesBoardModel(structuredClone(realMovesBoard) as HiringMovesBoard, "moves").sections.board!;
+  // CBRL's seasonal roles came in one day: on the board, after the unflagged moves.
+  const cbrl = board.rows.find((row) => row.symbol === "CBRL")!;
+  expect(cbrl.values.check).toBe("One-day batch");
+  expect(board.rows.findIndex((row) => row.values.check)).toBe(board.rows.length - 2);
+  expect(moveFacts(cbrl.move!)).toEqual(expect.arrayContaining([{ label: "Check", value: "1,318 of the 1,329 came on 2026-10-13" }, { label: "Alert", value: "Held: flagged for a second look" }]));
+  const unflagged = movesBoardModel({ ...structuredClone(realMovesBoard), moves: realMovesBoard.moves.slice(0, 3) } as HiringMovesBoard, "moves").sections.board!;
+  expect(unflagged.columns.some((column) => column.id === "check")).toBe(false);
+
+  const { latest: _latest, ...rivn } = structuredClone(realMoves) as HiringCompanyMoves;
+  const free: HiringCompanyMoves = { ...rivn, latest: null, preview: true, weeks: [], history: [], locked: { history: 5, added: 17, closed: 17, move: 1 } };
+  const model = companyMovesModel(free);
+  expect(model.figures.map((figure) => [figure.label, figure.value])).toEqual([["New roles", "311"], ["Closed", "191"], ["Open", "979"], ["Move", "Pro"]]);
+  expect(model.sections.drivers!.empty).toBe("This company's move is in Pro.");
+  expect(movesPreviewNote(free)).toBe("Free shows the latest week and three postings each way. Gloom Pro adds its move, 5 weeks of history and 34 more postings.");
 });

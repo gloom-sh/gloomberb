@@ -11,7 +11,9 @@ import {
 } from "../../../../tickers/search/asset-classes";
 import type { ResultItem } from "../../list/model";
 import { currencyPairCode } from "../../../../utils/currency-pair";
-import { canonicalExchange, exchangeCodeVenues, parsePublicTickerKey, publicExchange } from "../../../../utils/exchanges";
+import { canonicalExchange, exchangeCodeVenues, isUsListingExchange, parsePublicTickerKey, publicExchange } from "../../../../utils/exchanges";
+import { endsInLegalForm, readNearMissListing, readTerminalListingCode, unknownBloombergMarket } from "../../../../tickers/terminal-codes";
+import { listingSuffixExchange, tickerHasListingSuffix } from "../../../../sources/listing-symbols";
 import { answersToFutureName, answersToIndexCode, compactSearchText, getIssuerGroupKey, isExplicitMarketSymbol } from "../../../../tickers/search/ranking";
 import { isProviderBusy } from "../../../../sources/provider-errors";
 
@@ -165,12 +167,16 @@ export function mergePlainRootTickerResults(
   query: string,
   providerItems: ResultItem[],
   rootItems: ResultItem[],
+  /** What the typed text reads as when it is a terminal's code or a near miss (`readRootTickerQuery`). */
+  reading: RootTickerReading | null = null,
 ): ResultItem[] {
   const seenExactVenues = new Set<string>();
   const seenLooseSymbols = new Set<string>();
   const symbolsWithExact = new Set<string>();
   const candidates: ResultItem[] = [];
-  const isExact = (item: ResultItem) => item.category === "Exact Match" || isExactTickerResultMatch(item, query);
+  const isExact = reading
+    ? (item: ResultItem) => reading.names(item)
+    : (item: ResultItem) => item.category === "Exact Match" || isExactTickerResultMatch(item, query);
   for (const item of providerItems) {
     if (!isInstrumentItem(item)) continue;
     const label = item.label.trim().toUpperCase();
@@ -195,11 +201,74 @@ export function mergePlainRootTickerResults(
     return busy.length > 0 ? [...rootItems, ...busy] : rootItems;
   }
 
+  const exact = instruments.filter(isExact);
+  // `AAPL GY` names a listing search does not have, `700.HK` nearly names one: the row it was read from is offered.
+  const meant = reading && exact.length === 0 ? instruments.find(reading.meant) : undefined;
   return [
-    ...instruments.filter(isExact).map((item) => ({ ...item, category: "Exact Match" })),
+    ...exact.map((item) => ({ ...item, category: "Exact Match" })),
+    ...meant ? [{ ...meant, category: DID_YOU_MEAN_CATEGORY }] : [],
     ...rootItems,
-    ...instruments.filter((item) => !isExact(item)).map((item) => ({ ...item, category: ROOT_INSTRUMENTS_CATEGORY })),
+    ...instruments.filter((item) => !isExact(item) && item !== meant).map((item) => ({ ...item, category: ROOT_INSTRUMENTS_CATEGORY })),
   ];
+}
+
+/** The section of the row a near-miss or a terminal's code was read as, when it names no listing outright. */
+export const DID_YOU_MEAN_CATEGORY = "Did you mean";
+
+/** What a plain root query reads as when it is written the way a terminal or a broker writes a listing. */
+export interface RootTickerReading {
+  /** The symbol search is asked for: the code's ticker (VOD for `VOD LN`), or the working form of a near miss (0700.HK). */
+  search: string;
+  /** Rows on the listing the text names: VOD on LSE for `VOD LN`. They are the exact match. */
+  names: (item: ResultItem) => boolean;
+  /** Rows of the symbol it was read from, the first offered as what it meant when no row is named: AAPL for `AAPL GY`. */
+  meant: (item: ResultItem) => boolean;
+}
+
+/** The symbol and venue a ticker row stands for: SAP:XETR's or SAP on the XETRA row, in canonical codes. */
+function rowListing(item: ResultItem): { symbol: string; exchange: string } {
+  const label = parsePublicTickerKey(item.label.trim().toUpperCase());
+  return { symbol: label.symbol.replace(/[-/]/g, "."), exchange: canonicalExchange(label.exchange || item.right) };
+}
+
+/**
+ * A plain root query written as a Bloomberg code (`VOD LN`, `7203 JP Equity`,
+ * `SPX Index`), as one whose market code no venue answers to (`AAPL GP`), or
+ * nearly as a listing (`700.HK`, `6758.JP`, `BRK/B`), read by the one parser
+ * every command reads them with. A code names its listing; the others only
+ * name the symbol they were read from, offered as what was meant. Null for
+ * anything else, which the bar searches as typed, and for a name before a
+ * legal form (`SAP SE`, `SIEMENS AG`), which search finds as the company.
+ */
+export function readRootTickerQuery(query: string): RootTickerReading | null {
+  const trimmed = query.trim();
+  if (endsInLegalForm(trimmed)) return null;
+  const isInstrument = (item: ResultItem) => item.kind === "ticker" || item.kind === "search";
+  const ofSymbol = (symbol: string) => {
+    const wanted = symbol.toUpperCase().replace(/[-/]/g, ".");
+    return (item: ResultItem) => isInstrument(item) && rowListing(item).symbol === wanted;
+  };
+  const code = readTerminalListingCode(trimmed);
+  if (code?.terminal === "bloomberg") {
+    const listings = [code, ...code.alternatives ?? []];
+    const named = (item: ResultItem) => {
+      const row = rowListing(item);
+      return isInstrument(item) && listings.some((listing) => row.symbol === listing.symbol.replace(/[-/]/g, ".")
+        && (!code.market ? true : listing.exchange ? row.exchange === listing.exchange : isUsListingExchange(row.exchange)));
+    };
+    return { search: code.symbol, names: named, meant: ofSymbol(code.symbol) };
+  }
+  const unknown = unknownBloombergMarket(trimmed);
+  if (unknown) return { search: unknown.symbol, names: () => false, meant: ofSymbol(unknown.symbol) };
+  const nearMiss = readNearMissListing(trimmed);
+  if (!nearMiss) return null;
+  // 0700.HK is listed as 0700 on HKEX: the row of the symbol before its suffix.
+  const { symbol } = parsePublicTickerKey(nearMiss.symbol);
+  const root = tickerHasListingSuffix(symbol) ? symbol.slice(0, symbol.indexOf(".")) : symbol;
+  const suffixVenue = listingSuffixExchange(symbol);
+  const meant = (item: ResultItem) => (ofSymbol(root)(item) && (!suffixVenue || rowListing(item).exchange === suffixVenue))
+    || (isInstrument(item) && isExactTickerResultMatch(item, nearMiss.symbol));
+  return { search: nearMiss.symbol, names: () => false, meant };
 }
 
 function venueMatchesSuffix(item: ResultItem, suffix: string): boolean {

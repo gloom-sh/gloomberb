@@ -14,7 +14,7 @@ import {
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
-import { Box } from "../../../ui";
+import { Box, useUiCapabilities } from "../../../ui";
 import { publicTickerKey } from "../../../utils/exchanges";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import { usePluginPaneState, usePluginTickerActions } from "../../runtime";
@@ -208,6 +208,8 @@ function SessionMoversTable({ view, session, focused, width, summaryQuotes, live
   const handleHeaderClick = useCallback((columnId: string) => {
     setSortPreference(nextHeaderSort(sort, columnId as SessionMoverColumn["id"], { resetTo: DEFAULT_SORT }));
   }, [sort]);
+  const logos = useUiCapabilities().nativePaneChrome === true;
+  const renderCell = useCallback((row: SessionMoverRow, column: SessionMoverColumn) => renderSessionMoverCell(row, column, logos), [logos]);
   const handleKeyDown = useCallback((event: DataTableKeyEvent) => (
     handleRefreshKey(event, () => load({ forceRefresh: true }), { stopPropagation: true })
   ), [load]);
@@ -243,7 +245,7 @@ function SessionMoversTable({ view, session, focused, width, summaryQuotes, live
       onHeaderClick={handleHeaderClick}
       getItemKey={rowKey}
       onActivate={openRow}
-      renderCell={renderSessionMoverCell}
+      renderCell={renderCell}
       selectedTextOverridesCellColor
       emptyStateTitle={emptyTitle}
       emptyContent={loadError && !payload ? (

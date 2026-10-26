@@ -1,3 +1,4 @@
+import { unavailableText } from "../../../components/ui/status";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { delayedFooterSegment, FieldGrid, KeyValueRow, QueryBar, usePaneFooter, usePaneNoticeFooter, type GridField } from "../../../components";
 import { CompositeChart } from "../../../components/chart/composite/composite-chart";
@@ -194,7 +195,7 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
   const calculation = useMemo(() => {
     const unavailable = seedError ?? (american ? dividendInput.error : null)
       ?? (surfaceSource && !draft.symbol ? "Choose an underlying ticker for surface IV." : null)
-      ?? (surfaceSource && !surfaceResource.loading && surface?.volatility == null ? surface?.error ?? surfaceResource.error ?? "Surface IV unavailable." : null);
+      ?? (surfaceSource && !surfaceResource.loading && surface?.volatility == null ? surface?.error ?? surfaceResource.error ?? unavailableText("Surface IV") : null);
     if (unavailable || surfaceSource && surface?.volatility == null) {
       return { valuation: null, implied: { volatility: null, note: null }, problem: unavailable };
     }
@@ -400,7 +401,7 @@ function ContractPremiumChart({
   width: number;
   focused: boolean;
 }) {
-  const empty = unavailable ? "Premium history unavailable." : series.length < 1 ? "No premium history." : undefined;
+  const empty = unavailable ? unavailableText("Premium history") : series.length < 1 ? "No premium history." : undefined;
   return (
     <Box flexDirection="column" paddingX={1} height={PREMIUM_CHART_ROWS} flexShrink={0}>
       {empty && !loading ? (

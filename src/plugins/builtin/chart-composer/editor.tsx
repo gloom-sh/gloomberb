@@ -1,5 +1,5 @@
 import { Box, Text, useNativeRenderer, useUiCapabilities } from "../../../ui";
-import { DialogFrame, ListView, TextField } from "../../../components/ui";
+import { EmptyState, DialogFrame, ListView, TextField } from "../../../components/ui";
 import type { PromptContext } from "../../../ui/dialog";
 import { colors } from "../../../theme/colors";
 import type { ChartSpec } from "../../../time-series/types";
@@ -49,6 +49,8 @@ export function SeriesEditorDialog({ dialogId, resolve, initialSpec }: SeriesEdi
     quickAddActive,
     quickAddItems,
     quickAddLoading,
+    quickAddError,
+    retryQuickAdd,
     quickAddQuery,
     quickAddRef,
     quickAddSelection,
@@ -122,7 +124,7 @@ export function SeriesEditorDialog({ dialogId, resolve, initialSpec }: SeriesEdi
           onBlur={deactivateQuickAdd}
         />
 
-        {quickAddActive && quickAddQuery.trim() && (
+        {(quickAddActive || quickAddError) && quickAddQuery.trim() && (
           quickAddItems.length > 0 ? (
             <Box width={contentWidth} overflow="hidden">
               <ListView
@@ -137,11 +139,14 @@ export function SeriesEditorDialog({ dialogId, resolve, initialSpec }: SeriesEdi
                 onActivate={(_, index) => { beginQuickAdd(); addCatalogSuggestion(quickAddSuggestions[index]); }}
               />
             </Box>
-          ) : (
+          ) : !quickAddError ? (
             <Text fg={colors.textMuted}>
               {quickAddLoading ? "Searching instruments…" : "No matching security or metric."}
             </Text>
-          )
+          ) : null
+        )}
+        {quickAddQuery.trim() && quickAddError && (
+          <EmptyState title={quickAddError} status="error" retry={{ onRetry: () => { beginQuickAdd(); return retryQuickAdd(); } }} />
         )}
 
         {items.length > 0 ? (

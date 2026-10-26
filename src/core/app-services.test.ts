@@ -3,7 +3,13 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { newsProvider } from "../capabilities";
-import type { NewsArticle } from "../news/types";
+import type { NewsArticle, NewsPage, NewsQuery } from "../news/types";
+import { NewsService } from "../news/aggregator";
+import { createTestArticle } from "../test-support/news";
+import { createRpcLoopback } from "../test-support/rpc-loopback";
+import { DesktopCapabilityBridge } from "../renderers/electrobun/bun/desktop/capability-bridge";
+import { decodeRpcResponse, decodeRpcValue, encodeRpcResponse, encodeRpcValue } from "../renderers/electrobun/shared/rpc-codec";
+import { createDesktopNewsSource } from "../renderers/electrobun/view/news-source";
 import { createDefaultConfig } from "../types/config";
 import type { GloomPlugin } from "../types/plugin";
 import { createAppServices, type AppServices } from "./app-services";
@@ -63,4 +69,50 @@ test("the router does not re-enter the aggregate news facade", async () => {
 
   expect(fetchCount).toBe(1);
   expect(articles.map((item) => item.id)).toEqual([article.id]);
+});
+
+test.each([
+  { name: "failed feed", articles: [], error: "1 of 1 RSS feeds unavailable.", nextCursor: null },
+  { name: "partial feed", articles: [createTestArticle("kept-story")], error: "1 of 2 RSS feeds unavailable.", nextCursor: "older-stories" },
+  { name: "successful empty feed", articles: [], error: null, nextCursor: null },
+])("desktop fallback preserves $name through the aggregate news RPC", async (page) => {
+  dataDir = await mkdtemp(join(tmpdir(), "gloomberb-news-fallback-"));
+  services = createAppServices({
+    config: createDefaultConfig(dataDir),
+    plugins: [{
+      id: "fixture-news", name: "Fixture News", version: "1.0.0",
+      capabilities: [newsProvider({
+        id: "fixture-news", name: "Fixture News",
+        provider: { fetchNews: async () => page.articles, fetchNewsPage: async () => page },
+      })],
+    }],
+  });
+  await services.ready;
+
+  const bridge = new DesktopCapabilityBridge({ getRegistry: () => services!.pluginRegistry.capabilities, getWindowKey: () => "news" });
+  const send = createRpcLoopback((request) => encodeRpcResponse(() => bridge.handle(
+    { send: { "capability.event": () => {} } }, decodeRpcValue(request),
+  )));
+  const request = <T,>(operationId: string, query: NewsQuery): Promise<T> => send(encodeRpcValue({
+    method: "capability.invoke", payload: { capabilityId: "news.core", operationId, payload: { query } },
+  })).then(decodeRpcResponse<T>);
+  const desktop = new NewsService();
+  desktop.register(createDesktopNewsSource({
+    id: "desktop-backend", name: "Desktop Backend",
+    getNews: (query) => request<NewsArticle[]>("fetchNews", query),
+    getNewsPage: (query) => request<NewsPage>("fetchNewsPage", query),
+  }, {
+    getCloudNews: async () => { throw new Error("Direct news request unavailable"); },
+    getCloudNewsStory: async () => { throw new Error("Story request not used"); },
+  }));
+  try {
+    const state = await desktop.load({ feed: "latest" });
+    expect(state.error).toBe(page.error);
+    expect(state.articles.map((article) => article.id)).toEqual(page.articles.map((article) => article.id));
+    expect(state.nextCursor).toBe(page.nextCursor);
+    if (state.articles.length) expect(state.articles[0]!.publishedAt).toBeInstanceOf(Date);
+  } finally {
+    desktop.stop();
+    bridge.disposeAll();
+  }
 });

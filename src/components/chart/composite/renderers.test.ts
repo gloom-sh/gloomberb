@@ -8,6 +8,7 @@ import {
 } from "./rasterizer";
 import { buildCompositeColumnLayout } from "./column-layout";
 import { buildCompositeChartScene, projectCompositeValue } from "./scene";
+import { valueScaleSlot } from "./value-scale";
 import {
   renderCompositePanelText,
   resolveCompositeTextOhlcWidth,
@@ -49,6 +50,67 @@ function periodSeries(
 }
 
 describe("composite chart renderers", () => {
+  test("point marks at the plot edges keep the same complete disc as interior marks", () => {
+    const scene = buildCompositeChartScene(
+      [series("observations", "points", [12, 25, 22], "right")],
+      [{ id: "main" }], { width: 40, height: 12, rightOffsetRatio: 0 },
+    )!;
+    const panel = scene.panels[0]!;
+    const source = panel.series[0]!;
+    const counts = [[0, 0], [1, 0], [0, 1], [1, 1], [0.5, 0.5]].map(([xRatio, yRatio]) => {
+      const bitmap = renderCompositePanelBitmap({ ...panel, series: [{ ...source,
+        points: [{ ...source.points[0]!, xRatio: xRatio!, yRatio: yRatio! }],
+      }] }, { pixelWidth: 101, pixelHeight: 101,
+        colors: { background: "#000000", grid: "#000000", crosshair: "#000000",
+          text: "#000000", textDim: "#000000", negative: "#000000" },
+      });
+      let colored = 0;
+      for (let y = 0; y < bitmap.height; y++) for (let x = 0; x < bitmap.width; x++) {
+        const offset = (y * bitmap.width + x) * 4;
+        if (!bitmap.pixels[offset] && !bitmap.pixels[offset + 1] && !bitmap.pixels[offset + 2]) continue;
+        colored++;
+        expect(x > 0 && x < bitmap.width - 1 && y > 0 && y < bitmap.height - 1).toBe(true);
+      }
+      return colored;
+    });
+    expect(counts[4]).toBeGreaterThan(0);
+    expect(counts).toEqual(Array(5).fill(counts[4]));
+  });
+
+  test("zoomed point marks omit out-of-range centers and inset visible edge discs", () => {
+    // Just-outside centers would still paint a fringe without the visibility
+    // check; clamping them would falsely show a full, in-range observation.
+    const observations = series("observations", "points", [9.9, 10, 10.1, 15, 19.9, 20, 20.1], "right");
+    const options = { width: 40, height: 12, rightOffsetRatio: 0 };
+    const fitted = buildCompositeChartScene([observations], [{ id: "main" }], options)!;
+    const key = fitted.panels[0]!.axes.right!.scaleKey!;
+    const scene = buildCompositeChartScene([observations], [{ id: "main" }], {
+      ...options,
+      valueScales: { [valueScaleSlot("main", "right")]: { key, min: 10, max: 20 } },
+    })!;
+    const panel = scene.panels[0]!;
+    expect(panel.axes.right!.manual).toBe(true);
+    const source = panel.series[0]!;
+    const counts = source.points.map((point) => {
+      const bitmap = renderCompositePanelBitmap({ ...panel, series: [{ ...source,
+        points: [{ ...point, xRatio: 0.5 }],
+      }] }, { pixelWidth: 101, pixelHeight: 101,
+        colors: { background: "#000000", grid: "#000000", crosshair: "#000000",
+          text: "#000000", textDim: "#000000", negative: "#000000" },
+      });
+      let colored = 0;
+      for (let y = 0; y < bitmap.height; y++) for (let x = 0; x < bitmap.width; x++) {
+        const offset = (y * bitmap.width + x) * 4;
+        if (!bitmap.pixels[offset] && !bitmap.pixels[offset + 1] && !bitmap.pixels[offset + 2]) continue;
+        colored++;
+        expect(y > 0 && y < bitmap.height - 1).toBe(true);
+      }
+      return colored;
+    });
+    expect(counts[3]).toBeGreaterThan(0);
+    expect(counts).toEqual([0, counts[3], counts[3], counts[3], counts[3], counts[3], 0]);
+  });
+
   test("groups same-date columns into adjacent terminal cells", () => {
     const scene = buildCompositeChartScene(
       [

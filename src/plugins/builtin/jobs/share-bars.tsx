@@ -1,5 +1,6 @@
+import { COUNTRY_FLAG_CELLS, CountryFlagLead } from "../../../components/ui/country-flag";
 import { RatioBar } from "../../../components/ui/ratio-bar";
-import { Box, Text, TextAttributes } from "../../../ui";
+import { Box, Text, TextAttributes, useUiCapabilities } from "../../../ui";
 import { colors } from "../../../theme/colors";
 import { formatNumber, truncateToDisplayWidth } from "../../../utils/format";
 import type { ShareBarRow } from "./model";
@@ -16,6 +17,8 @@ export interface ShareBarsProps {
   color?: string;
   /** Show the 30d delta column when any row has one. */
   showDelta?: boolean;
+  /** Rows are countries: the desktop and the web lead each with its flag. */
+  flags?: boolean;
 }
 
 const COUNT_WIDTH = 6;
@@ -36,9 +39,11 @@ function deltaColor(delta: number | null): string {
   return delta > 0 ? colors.positive : colors.negative;
 }
 
-export function ShareBars({ rows, width, color = colors.borderFocused, showDelta = false }: ShareBarsProps) {
+export function ShareBars({ rows, width, color = colors.borderFocused, showDelta = false, flags = false }: ShareBarsProps) {
+  const desktop = useUiCapabilities().nativePaneChrome === true;
+  const flagged = flags && desktop;
   const hasDelta = showDelta && rows.some((row) => row.delta != null && row.delta !== 0);
-  const labelWidth = labelWidthFor(width);
+  const labelWidth = labelWidthFor(width) + (flagged ? COUNTRY_FLAG_CELLS : 0);
   const trailing = COUNT_WIDTH + SHARE_WIDTH + (hasDelta ? DELTA_WIDTH + 1 : 0) + 2;
   const barWidth = Math.max(4, width - labelWidth - trailing - 2);
 
@@ -46,9 +51,10 @@ export function ShareBars({ rows, width, color = colors.borderFocused, showDelta
     <Box flexDirection="column" width={width} data-gloom-ui="share-bars">
       {rows.map((row) => (
         <Box key={row.key} flexDirection="row" height={1} alignItems="center">
-          <Box width={labelWidth} flexShrink={0} overflow="hidden">
+          <Box width={labelWidth} flexShrink={0} overflow="hidden" flexDirection="row" alignItems="center">
+            {flagged ? <CountryFlagLead value={row.key === "rest" ? null : row.label} reserve /> : null}
             <Text fg={row.key === "rest" ? colors.textDim : colors.text}>
-              {truncateToDisplayWidth(row.label, labelWidth - 1)}
+              {truncateToDisplayWidth(row.label, labelWidth - 1 - (flagged ? COUNTRY_FLAG_CELLS : 0))}
             </Text>
           </Box>
           <RatioBar ratio={row.ratio} width={barWidth} color={color} track />

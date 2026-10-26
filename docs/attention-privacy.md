@@ -7,9 +7,9 @@ Attention Counts is an optional contribution to ATTN and Gloom Trending. It is a
 Run **Attention Counts** in the command bar. Enabling it opens a consent dialog describing the ticker data, authenticated contribution limit, publication threshold and how to stop. Cancelling leaves collection off. Disabling takes effect immediately and clears unsent counts. The command is shared by terminal, desktop and web. The equivalent explicit CLI setting is:
 
 ```sh
-gloomberb config get telemetry.attention
-gloomberb config set telemetry.attention true
-gloomberb config set telemetry.attention false
+gloom config get telemetry.attention
+gloom config set telemetry.attention true
+gloom config set telemetry.attention false
 ```
 
 The setting belongs to this installation or browser profile. It is absent from cloud sync's allowlisted configuration, and a remote configuration cannot enable it. An intentionally imported local configuration backup may contain the setting. `GLOOMBERB_NO_TELEMETRY=1`, `DO_NOT_TRACK=1`, browser Do Not Track and Global Privacy Control override it. Usage Counts being enabled does not imply consent. Turning Usage Counts off does not change an explicit Attention Counts choice.

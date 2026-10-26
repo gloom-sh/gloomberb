@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   applyActionBinding,
+  coreActionOnChord,
   describeKeybindingIssue,
   formatChordForHost,
   isTypingChord,
@@ -21,7 +22,9 @@ import {
   resolveKeybindings,
   serializeKeyChord,
   setCommandBinding,
+  shortActionLabel,
   subscribeKeybindingCapture,
+  takenChordMessage,
   takeKeybindingCaptureRequest,
   updateKeybindingsConfig,
   type KeyChord,
@@ -87,12 +90,6 @@ interface Feedback {
   text: string;
 }
 
-/** The first clause of a description, for messages that name an action mid-sentence. */
-function shortLabel(description: string): string {
-  const clause = description.split(/[,.](?:\s|$)/)[0] ?? description;
-  return clause.trim() || description.trim();
-}
-
 function pluginShortcutsFromRegistry(disabledPlugins: readonly string[]): KeyboardShortcut[] {
   const registry = getSharedRegistry();
   if (!registry?.shortcuts) return [];
@@ -154,7 +151,7 @@ export function KeybindingsEditor({
       return `"${command?.query ?? target.slice("command:".length)}"`;
     }
     const action = resolved.actionsById.get(target);
-    return shortLabel(action?.def ? t(action.def.description) : action?.pluginShortcut?.description ?? target);
+    return shortActionLabel(action?.def ? t(action.def.description) : action?.pluginShortcut?.description ?? target);
   }, [resolved]);
 
   const rows = useMemo<EditorRow[]>(() => {
@@ -236,17 +233,24 @@ export function KeybindingsEditor({
   }, [bindableRows, startCapture]);
 
   const captureLabel = capture
-    ? capture.kind === "row" ? shortLabel(capture.row.label) : `"${capture.query}"`
+    ? capture.kind === "row" ? shortActionLabel(capture.row.label) : `"${capture.query}"`
     : null;
 
   const commitChord = useCallback((chord: KeyChord) => {
     if (!capture) return;
     const config = stateRef.current.config.keybindings;
-    if (capture.kind === "new-command" || capture.row.kind === "command") {
-      if (isTypingChord(chord)) {
-        setFeedback({ tone: "warning", text: t("That key would fire while typing. Use Ctrl, Cmd, Alt or a function key.") });
-        return;
-      }
+    const isCommand = capture.kind === "new-command" || capture.row.kind === "command";
+    if (isCommand && isTypingChord(chord)) {
+      setFeedback({ tone: "warning", text: t("That key would fire while typing. Use Ctrl, Cmd, Alt or a function key.") });
+      return;
+    }
+    // A built-in action's key is refused, so a binding never leaves the command bar or close pane dead.
+    const core = coreActionOnChord(resolved, chord, capture.kind === "row" ? capture.row.action?.id : undefined);
+    if (core) {
+      setFeedback({ tone: "warning", text: takenChordMessage(formatChord(chord), core) });
+      return;
+    }
+    if (isCommand) {
       const query = capture.kind === "new-command" ? capture.query : capture.row.command!.query;
       let next = config;
       if (capture.kind === "row") next = removeCommandBinding(next, capture.row.command!.text);
@@ -266,7 +270,7 @@ export function KeybindingsEditor({
     setFeedback(taken
       ? { tone: "warning", text: tf("Also bound to {target}.", { target: describeTarget(taken.id) }) }
       : { tone: "info", text: tf("Bound to {chord}.", { chord: formatChord(chord) }) });
-  }, [capture, captureLabel, describeTarget, formatChord, resolved.actions, stateRef, writeKeybindings]);
+  }, [capture, describeTarget, formatChord, resolved, stateRef, writeKeybindings]);
 
   // Capture owns the keyboard: a fresh scope in the earliest phase gets first
   // refusal over every app shortcut, and preventDefault keeps the desktop

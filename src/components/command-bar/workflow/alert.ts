@@ -13,7 +13,7 @@ import type {
 const SET_ALERT_WORKFLOW_ID = "plugin-command:set-alert";
 
 function isSetAlertWorkflow(route: CommandBarWorkflowRoute): boolean {
-  return route.workflowId === SET_ALERT_WORKFLOW_ID;
+  return route.workflowId === SET_ALERT_WORKFLOW_ID && (!route.values.kind || route.values.kind === "price");
 }
 
 function normalizeAlertWorkflowSymbol(value: CommandBarFieldValue | undefined): string {

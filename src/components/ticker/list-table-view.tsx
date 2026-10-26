@@ -34,6 +34,8 @@ import { PaneStatusBody } from "../ui/status";
 
 export interface TickerTableCell {
   text: string;
+  /** Muted context after `text`, shown whole only when both fit on one line. */
+  note?: string;
   color?: string;
   /** The full-precision number behind a rounded `text`, which exports and rendered-view reports keep. */
   value?: number | null;
@@ -293,11 +295,12 @@ export function TickerListTableView({
       };
     }
 
-    const { text, color, onPress, value, backgroundColor } = resolveCellRef.current.resolve(column, ticker, financials);
+    const { text, note, color, onPress, value, backgroundColor } = resolveCellRef.current.resolve(column, ticker, financials);
     const shouldFlash = flashSymbolsRef.current.has(ticker.metadata.ticker)
       && flashesOnQuoteTick(column.id, financials?.quote);
     return {
       text,
+      ...(note ? { note } : {}),
       ...(value !== undefined ? { value } : {}),
       color: color || (rowState.selected ? colors.selectedText : undefined),
       attributes: shouldFlash ? TextAttributes.DIM : TextAttributes.NONE,

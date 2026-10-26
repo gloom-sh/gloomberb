@@ -1,6 +1,7 @@
 import { apiClient } from "../api-client";
 import type { BankFiguresPayload } from "../api-client/bank-figures";
 import type { FinancialStatement } from "../types/financials";
+import { fetchOfferingFilings, type OfferingFiling } from "../utils/cash-runway";
 import { logFailure } from "../utils/log-failure";
 import { nonUsSecListingVenue } from "../utils/sec";
 
@@ -42,6 +43,8 @@ export interface StatementReportSources {
   /** The company's 10-K, 10-Q, 8-K, 20-F and 40-F filings, newest first. */
   statementFilings(symbol: string): Promise<PeriodicFiling[]>;
   bankFigures(symbol: string): Promise<BankFiguresPayload>;
+  /** The company's latest offering prospectuses (424B5, 424B4), newest first. */
+  offeringFilings?(symbol: string): Promise<OfferingFiling[]>;
 }
 
 export const cloudStatementReportSources: StatementReportSources = {
@@ -62,7 +65,23 @@ export const cloudStatementReportSources: StatementReportSources = {
     });
   },
   bankFigures: (symbol) => apiClient.getCloudBankFigures(symbol),
+  offeringFilings: (symbol) => fetchOfferingFilings(apiClient, symbol),
 };
+
+/**
+ * A US listing's latest offering prospectuses, for the note that its cash
+ * predates one; nothing (and no request) for any other listing, or when
+ * `wanted` is false. A failed read leaves the note out.
+ */
+export async function loadOfferingFilings(
+  sources: StatementReportSources | undefined,
+  listing: { symbol: string; exchange?: string },
+  wanted: boolean,
+): Promise<OfferingFiling[]> {
+  if (!wanted || !sources?.offeringFilings || nonUsSecListingVenue(listing.symbol, listing.exchange)) return [];
+  return sources.offeringFilings(listing.symbol)
+    .catch(logFailure("cli.statement-filings", "Reading the offering filings failed", [] as OfferingFiling[]));
+}
 
 /** The filing a statement row's period was read from: its form when the filing list names it, and its filed date. */
 export interface StatementFiling {

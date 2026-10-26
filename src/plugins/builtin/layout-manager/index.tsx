@@ -111,6 +111,7 @@ export const layoutManagerModule: PluginModule = {
       name: "Layouts",
       icon: "L",
       component: LayoutMarketplacePane,
+      reportFreshness: { status: "not-a-feed", basis: "layout listings" },
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 118, height: 34 },

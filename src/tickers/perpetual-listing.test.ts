@@ -33,6 +33,9 @@ describe("perpetual listings", () => {
     expect(perpetualListing("ETH/USD", "BINANCE")).toBeNull();
     expect(perpetualListing("BTC-USD:BINANCE")).toBeNull();
     expect(perpetualListing("BTC-USD", "CCC")).toBeNull();
+    // dYdX has no spot market: its pairs are its perpetuals, and a market PERP opens is quoted as one.
+    expect(perpetualListing("BTC-USD", "DYDX")?.marketId).toBe("dydx:BTC-USD");
+    expect(perpetualListing(perpetualListingOfMarket("dydx:ETH-USD")!.key)?.marketId).toBe("dydx:ETH-USD");
     expect(perpetualListing("AAPL", "NASDAQ")).toBeNull();
     // Kraken and Coinbase are spot venues in search; their perpetual adapters are off.
     expect(perpetualListing("ETH", "KRAKEN")).toBeNull();

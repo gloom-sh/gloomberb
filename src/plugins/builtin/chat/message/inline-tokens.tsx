@@ -9,6 +9,9 @@ import type { ChatUserSummary } from "../../../../api-client";
 import { parseMarkdownLines, type MarkdownLine } from "../../../../utils/markdown";
 import { chatBadgeTextWidth, type ChatBodyLine } from "../layout";
 import { chatInlineTokens, type ChatInlineToken, type ChatTextStyle } from "../markdown";
+import { resolveChatCommand, useChatFunctions } from "../pane-links/commands";
+import type { ChatMessagePaneLink } from "../pane-links/model";
+import { DesktopChatPaneChip } from "./pane-chip";
 import type { ChatUserAnchor, ChatUserContextMenuEvent } from "./types";
 
 interface ChatUserHandlers {
@@ -25,6 +28,11 @@ interface ChatTextProps extends ChatUserHandlers {
   /** Code, list markers, a quote's bar and a link's host. */
   mutedColor: string;
   openTicker: (symbol: string) => void;
+  /**
+   * Desktop and web: opens a function written in backticks, which then draws
+   * as a chip. Without it, as in the terminal, the code stays text.
+   */
+  openPaneLink?: (link: ChatMessagePaneLink) => void;
 }
 
 /** Desktop and web: a run of text inside a line, which wraps with the line. */
@@ -111,6 +119,7 @@ function ChatTokens({
   hoveredSymbol,
   setHoveredSymbol,
   userByUsername,
+  openPaneLink,
   ...userHandlers
 }: ChatTextProps & {
   tokens: readonly ChatInlineToken[];
@@ -122,12 +131,26 @@ function ChatTokens({
   setHoveredSymbol: (update: (current: string | null) => string | null) => void;
 }) {
   const { nativeContextMenu } = useUiCapabilities();
+  const allFunctions = useChatFunctions();
+  const functions = inline && openPaneLink ? allFunctions : null;
   return (
     <>
       {tokens.map((token, index) => {
         const key = `${keyPrefix}:${index}`;
         if (token.kind === "text") {
           if (!token.value) return null;
+          const command = functions && token.style?.code ? resolveChatCommand(token.value, functions) : null;
+          if (command && openPaneLink) {
+            return (
+              <Box key={key} justifyContent="center" style={INLINE_CHIP_STYLE}>
+                <DesktopChatPaneChip
+                  link={{ kind: "command", query: command.query, name: command.fn.name }}
+                  dimmed={false}
+                  onOpen={openPaneLink}
+                />
+              </Box>
+            );
+          }
           const fg = styleColor(token.style, textColor, mutedColor);
           const attributes = styleAttributes(token.style) || undefined;
           return inline

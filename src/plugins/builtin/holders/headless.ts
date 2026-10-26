@@ -5,11 +5,12 @@ import type {
 } from "../../../types/plugin";
 import { loadHolderSnapshot } from "./client";
 import { holderValueCurrency } from "./format";
+import { logFailure } from "../../../utils/log-failure";
 import type { HolderData } from "../../../types/financials";
 import { SEC_FILINGS } from "../shared/report-freshness";
 import type { BeneficialOwnersPayload } from "../../../api-client/beneficial-owners";
 import { fetchBeneficialOwners, type BeneficialOwnersRequest } from "./beneficial-client";
-import { resolveHeadlessIssuerListing } from "../shared/headless-market-data";
+import { resolveHeadlessInstrument, resolveHeadlessIssuerListing } from "../shared/headless-market-data";
 import type { BeneficialColumnId } from "./beneficial-model";
 import {
   beneficialCoverageNotices,
@@ -32,6 +33,15 @@ import {
   holderReportUnits,
 } from "./report-rows";
 import { REPORT_ROWS } from "../shared/headless-options";
+import {
+  HOLDER_ROWS_MAX,
+  indexedHoldersPartialNote,
+  indexedHolderUnits,
+  indexHolderTicker,
+  loadIndexedHolders,
+  withIndexedHolders,
+  type IndexedHolderList,
+} from "./index-holders";
 
 /** The same sort keys order the 13D/13G rows; `value` and `held` are the percent of class. */
 const BENEFICIAL_SORT_COLUMNS: Record<string, BeneficialColumnId> = {
@@ -49,6 +59,9 @@ interface HolderSnapshot {
   marketCap?: number;
   /** Today's shares outstanding, which a 13D/13G percent of class is set against. */
   sharesOutstanding?: number | null;
+  sharesOutstandingAsOf?: string | null;
+  /** The latest price, which values the index's holders when the source's rows give none. */
+  price?: number;
 }
 
 export interface HoldersHeadlessDependencies {
@@ -62,6 +75,12 @@ export interface HoldersHeadlessDependencies {
     request: BeneficialOwnersRequest,
     ctx: HeadlessPaneContext,
   ): Promise<BeneficialOwnersPayload>;
+  /** A US listing's largest `limit` 13F holders from the SEC holder index, as `fn 13F` pages them. */
+  loadIndexedHolders(
+    ticker: string,
+    limit: number,
+    ctx: HeadlessPaneContext,
+  ): Promise<IndexedHolderList>;
 }
 
 const defaultDependencies: HoldersHeadlessDependencies = {
@@ -74,6 +93,7 @@ const defaultDependencies: HoldersHeadlessDependencies = {
     client: ctx.apiClient,
     signal: ctx.signal,
   }),
+  loadIndexedHolders: (ticker, limit, ctx) => loadIndexedHolders(ticker, limit, ctx.signal, ctx.apiClient),
 };
 
 export function createHoldersHeadless(
@@ -107,11 +127,11 @@ export function createHoldersHeadless(
         key: "limit",
         shot: REPORT_ROWS,
         aliases: ["count", "rows"],
-        description: "Maximum holder rows.",
+        description: "Maximum holder rows, largest first. A US listing's 13F holders are every filer fn 13F lists; a listing abroad has only the source's largest few.",
         type: "integer",
         defaultValue: 25,
         minimum: 1,
-        maximum: 200,
+        maximum: HOLDER_ROWS_MAX,
       },
       {
         key: "view",
@@ -157,7 +177,7 @@ export function createHoldersHeadless(
         const [payload, snapshot] = await Promise.all([
           dependencies.loadBeneficialOwners(symbol, { form: beneficialRouteForm(form), history }, ctx),
           // The 13F column is a join; the 13D/13G rows stand without it.
-          dependencies.loadSnapshot(symbol, args, ctx).catch(() => null),
+          dependencies.loadSnapshot(symbol, args, ctx).catch(logFailure("holders.headless", "Load holder snapshot for filing comparison failed", null)),
         ]);
         const sharesOutstanding = snapshot?.sharesOutstanding ?? null;
         const rows = buildBeneficialReportRows(payload, {
@@ -170,7 +190,7 @@ export function createHoldersHeadless(
           sharesOutstanding,
         });
         const limited = rows.slice(0, Number(args.options.limit));
-        const legend = beneficialReportLegend(limited, sharesOutstanding);
+        const legend = beneficialReportLegend(limited, sharesOutstanding, snapshot?.sharesOutstandingAsOf);
         return {
           columns: beneficialReportColumns(limited),
           rows: limited,
@@ -186,6 +206,7 @@ export function createHoldersHeadless(
             asOf: payload.asOf,
             coverage: payload.coverage,
             sharesOutstanding,
+            ...(snapshot?.sharesOutstandingAsOf ? { sharesOutstandingAsOf: snapshot.sharesOutstandingAsOf } : {}),
             notices: [
               [payload.companyName || symbol, ...beneficialListFacts(payload, form, rows.length, history)].join(" · "),
               ...(legend ? [legend] : []),
@@ -196,7 +217,25 @@ export function createHoldersHeadless(
           },
         };
       }
-      const { data, marketCap } = await dependencies.loadSnapshot(symbol, args, ctx);
+      const limit = Number(args.options.limit);
+      // Asked beside the source's list; a listing abroad (named in the key or saved with the ticker),
+      // or an index that cannot be read, keeps that list.
+      const exchange = (await resolveHeadlessInstrument(ctx, symbol)
+        .catch(logFailure("holders.headless", "Resolve the listing's venue for the 13F holder index failed", null)))?.exchange ?? "";
+      const indexTicker = indexHolderTicker(symbol, exchange);
+      const [snapshot, index] = await Promise.all([
+        dependencies.loadSnapshot(symbol, args, ctx),
+        indexTicker
+          ? dependencies.loadIndexedHolders(indexTicker, limit, ctx).catch(logFailure("holders.headless", "Load 13F holder index failed", null))
+          : null,
+      ]);
+      const { marketCap } = snapshot;
+      const indexed = !!index?.rows.length && indexHolderTicker(symbol, exchange, snapshot.data) != null;
+      const partialNote = indexed ? indexedHoldersPartialNote(index, limit) : null;
+      // Pages hold 25; another order ranks the largest `limit`, not whatever the last page held past them.
+      const data = indexed
+        ? withIndexedHolders(snapshot.data, indexTicker!, { ...index!, rows: index!.rows.slice(0, limit) }, indexedHolderUnits(snapshot.data, snapshot.price))
+        : snapshot.data;
       const currency = data.currency ?? "USD";
       // A London line's values can be dollars from the 13F filings; they are labelled and formatted as such.
       const valueCurrency = holderValueCurrency(data, currency)!;
@@ -205,15 +244,16 @@ export function createHoldersHeadless(
         direction: args.options.order === "asc" ? "asc" as const : "desc" as const,
       };
       const sorted = holderReportRows(data, { marketCap, sort });
-      const rows = sorted.slice(0, Number(args.options.limit));
+      const rows = sorted.slice(0, limit);
       const total = data.summary?.institutionsCount ?? null;
       const { notices, valueBasis, positionsBasis, changeReported } = holderReportNotices({
-        data, requested: symbol, shown: rows, reported: sorted.length, total, sort,
+        data, requested: symbol, shown: rows, reported: sorted.length, total, sort, indexed,
       });
       return {
         // A change column that is empty on every row says nothing; the notices explain it once.
         columns: holderReportColumns(rows, valueCurrency),
         rows,
+        ...(partialNote ? { complete: false, warnings: [partialNote] } : {}),
         metadata: {
           symbol: data.symbol || symbol,
           name: data.name ?? null,

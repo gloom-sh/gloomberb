@@ -9,35 +9,18 @@ import { getBrowserPlugins } from "../../plugins/catalog-browser";
 import { DomErrorBoundary, DomHostProviders } from "../dom/dom-host-providers";
 import { installFocusScopeRelease } from "../dom/host/focus-scope";
 import { installDomMarketDataFrames } from "../dom/data-frames";
+import { releaseBootFrameWhenDrawn, startBootFrameRecorder } from "../dom/boot-frame";
+import { BROWSER_STORAGE_KEYS } from "../../data/json-storage";
 import { createBrowserAppServices } from "./app-services";
 import {
   installBrowserFetchTransports,
   restoreBrowserCloudSession,
 } from "./cloud-transport";
 import { loadWebBundledPlugins } from "./bundled-plugins";
-import {
-  BROWSER_DATA_DIR,
-  createBrowserFirstScreenConfig,
-  hasSavedBrowserConfig,
-  installBrowserConfigStore,
-} from "./config-host";
+import { BROWSER_DATA_DIR, hasSavedBrowserConfig, installBrowserConfigStore } from "./config-host";
 import { browserRendererHost, browserUiHost } from "./ui-host";
 import { createBrowserDeepLinkBridge } from "./deeplink-bridge";
-import {
-  exposeFirstScreen,
-  FIRST_SCREEN_EXPERIMENT,
-  FIRST_SCREEN_PLACEMENT,
-  observeLandingLinks,
-  watchFirstScreenEngagement,
-} from "./first-screen";
-import {
-  exposeWebExperiment,
-  initializeBrowserResearchActivity,
-  recordResearchActivity,
-} from "../../api-client/research-activity";
-import { subscribeCommandBarQuery } from "../../components/command-bar/panel/prompt-binding";
-import { marketplaceLayoutIdFromSearch } from "../../layout-marketplace/api";
-import { paneShareIdFromSearch } from "../../shares/location";
+import { initializeBrowserResearchActivity, recordResearchActivity } from "../../api-client/research-activity";
 import { flushPendingPersistence } from "../../state/persist-scheduler";
 import { loadOfficialPluginIds } from "../../plugins/marketplace/feed";
 import { crashReportsEnabled, installCrashReporter, reportCrash } from "../../telemetry/crash-reports";
@@ -49,12 +32,7 @@ import {
 } from "../../telemetry/crash-reports-dom";
 import { currentTelemetryConfig } from "../../telemetry/live-config";
 import { attentionCountsEnabled, installAttentionCounter } from "../../telemetry/attention-counts";
-import {
-  installUsageCounter,
-  recordRestoredFunctions,
-  subscribeFunctionOpens,
-  usageCountsEnabled,
-} from "../../telemetry/usage-counts";
+import { installUsageCounter, recordRestoredFunctions, usageCountsEnabled } from "../../telemetry/usage-counts";
 import { installWindowUsageFlush } from "../../telemetry/usage-counts-dom";
 import type { AppConfig } from "../../types/config";
 
@@ -69,12 +47,15 @@ if (!rootElement) throw new Error("Missing root element");
 const appRootElement = rootElement;
 appRootElement.tabIndex = -1;
 const root = createRoot(appRootElement);
-root.render(<div className="gloom-loading">Starting Gloomberb...</div>);
+// The page drew the last session's layout, or the bare shell, before this
+// script loaded (dom/boot-frame.ts); it stays until the app has drawn its own.
+const releaseBootFrame = releaseBootFrameWhenDrawn(document, appRootElement);
+/** How long after the app mounts the launch frame stays at most. */
+const BOOT_FRAME_RELEASE_FALLBACK_MS = 4_000;
 
 async function boot(): Promise<void> {
-  // Read before anything can save a workspace or tidy the address.
+  // Read before anything can save a workspace.
   const savedLayout = hasSavedBrowserConfig();
-  const search = location.search;
   installBrowserConfigStore();
   let loadedConfig: AppConfig | null = null;
   installCrashReporter({
@@ -99,7 +80,7 @@ async function boot(): Promise<void> {
   });
   installBrowserFetchTransports();
   // Read the saved Usage switch before any research activity or attribution.
-  let config = await loadConfig(BROWSER_DATA_DIR);
+  const config = await loadConfig(BROWSER_DATA_DIR);
   loadedConfig = config;
   initializeBrowserResearchActivity();
   installFocusScopeRelease();
@@ -114,38 +95,13 @@ async function boot(): Promise<void> {
   recordResearchActivity("workspace_opened");
   // Nothing was restored on a first visit, only the starter workspace shown.
   if (!savedLayout) recordRestoredFunctions([]);
-  // A first visit's workspace is chosen before the dock paints, while the
-  // plugins download; see first-screen.ts.
-  const firstScreen = exposeFirstScreen({
-    savedLayout,
-    handoff: !!marketplaceLayoutIdFromSearch(search) || !!paneShareIdFromSearch(search),
-    expose: (signal) => exposeWebExperiment(FIRST_SCREEN_EXPERIMENT, { placement: FIRST_SCREEN_PLACEMENT, signal }),
-  });
-  const [externalPlugins, screen] = await Promise.all([bundledPlugins, firstScreen]);
-  if (screen === "calm") {
-    config = createBrowserFirstScreenConfig(BROWSER_DATA_DIR, "calm", {
-      search,
-      portrait: window.innerHeight > window.innerWidth,
-    });
-    loadedConfig = config;
-  }
   applyLanguageFromConfig(config);
-  try {
-    watchFirstScreenEngagement({
-      counted: screen !== null,
-      session: sessionStorage,
-      layout: config.layout,
-      record: () => recordResearchActivity("first_screen_engaged", undefined, undefined, { placement: FIRST_SCREEN_PLACEMENT }),
-      sources: { subscribeFunctionOpens, subscribeCommandBarQuery },
-    });
-  } catch {
-    /* Blocked storage: the first action is not measured. */
-  }
-  const deepLinkBridge = observeLandingLinks(createBrowserDeepLinkBridge());
+  const externalPlugins = await bundledPlugins;
+  const deepLinkBridge = createBrowserDeepLinkBridge();
   root.render(
     <DomErrorBoundary label="Browser renderer crashed" fallback={(error) => (
       <div className="gloom-fatal">
-        <h1>Gloomberb crashed</h1>
+        <h1>Gloom crashed</h1>
         <pre>{error instanceof Error ? error.message : String(error)}</pre>
         <button onClick={() => window.location.reload()}>Reload</button>
       </div>
@@ -163,10 +119,24 @@ async function boot(): Promise<void> {
     </DomErrorBoundary>,
   );
   appRootElement.focus({ preventScroll: true });
+  // A layout with neither panes nor a status bar has nothing to wait for.
+  window.setTimeout(releaseBootFrame, BOOT_FRAME_RELEASE_FALLBACK_MS);
+  startBootFrameRecorder({
+    doc: document,
+    root: appRootElement,
+    save: (frame) => {
+      try {
+        localStorage.setItem(BROWSER_STORAGE_KEYS.bootFrame, JSON.stringify(frame));
+      } catch {
+        // Intentional ignore: storage full or blocked; the next launch draws the bare shell.
+      }
+    },
+  });
 }
 
 void boot().catch((error) => {
   reportCrash(error, { kind: "uncaught" });
   const message = error instanceof Error ? error.message : String(error);
-  root.render(<div className="gloom-fatal"><h1>Gloomberb failed to start</h1><pre>{message}</pre></div>);
+  releaseBootFrame();
+  root.render(<div className="gloom-fatal"><h1>Gloom failed to start</h1><pre>{message}</pre></div>);
 });

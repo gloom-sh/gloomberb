@@ -11,6 +11,8 @@ export interface TickerHolderRow {
   type: string;
   value: number | null;
   shares: number | null;
+  /** Shares at the prior period end when the two reports compare: 0 for a new position, null when unknown. Absent from an older service. */
+  previousShares?: number | null;
   weight: number | null;
   previousWeight: number | null;
   weightChange: number | null;
@@ -55,7 +57,7 @@ export interface Crowding extends SignalsBase {
 }
 export async function loadTickerHoldings(ticker: string, offset = 0, signal?: AbortSignal): Promise<TickerHoldings> {
   signal?.throwIfAborted();
-  const result = await apiClient.getCloudSec13F("ticker-holdings", { tickers: ticker, offset, limit: 25 }) as TickerHoldings;
+  const result = await apiClient.getCloudSec13F("ticker-holdings", { tickers: ticker, offset, limit: 25 }, { signal }) as TickerHoldings;
   signal?.throwIfAborted();
   return result;
 }

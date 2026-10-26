@@ -1,6 +1,7 @@
 type QuoteMatchMode = "exact" | "whitespace" | "normalized"
 
-export const CATALYST_TYPES = ["regulatory", "clinical", "litigation", "antitrust", "recall", "sanctions", "export_control", "tariff", "rulemaking", "approval", "advisory", "pdufa"] as const
+/** Regulator events, then the ones a company or its exchange dates itself (results, meetings, deals). */
+export const CATALYST_TYPES = ["regulatory", "clinical", "litigation", "antitrust", "recall", "sanctions", "export_control", "tariff", "rulemaking", "approval", "advisory", "pdufa", "results", "shareholder_meeting", "merger_vote", "deal_closing", "investor_day"] as const
 export type CatalystType = (typeof CATALYST_TYPES)[number]
 type DatePrecision = "day" | "month" | "year"
 interface CatalystIdentifiers {

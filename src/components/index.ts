@@ -12,11 +12,11 @@ export { CompositeChart, pricePointsToResolvedSeries } from "./chart/composite";
 // Figures, then a chart, then a table: the header zone, its size rule at every
 // pane size, and the selection the chart and the table share.
 export {
-  ChartStrip, ChartTableHeader, chartTableChromeRows, chartTableLayout, formatBpAxis, formatPercentAxis,
-  spanAxisFormatter, spanDigits, useChartTableLayout, useChartTableSelection,
+  ChartRead, ChartStrip, ChartTableHeader, chartTableChromeRows, chartTableLayout, formatBpAxis, formatPercentAxis,
+  spanAxisFormatter, spanDigits, useChartReadRows, useChartTableLayout, useChartTableSelection,
 } from "./chart-table";
 export type {
-  ChartBandMode, ChartStripSpec, ChartTableChart, ChartTableHeaderProps, ChartTableLayout,
+  ChartBandMode, ChartReadProps, ChartStripSpec, ChartTableChart, ChartTableHeaderProps, ChartTableLayout,
   ChartTableSelection,
 } from "./chart-table";
 export { scalarPoint, stackedSeries, staticSeries, type StackedLayer } from "./chart/static/series";
@@ -67,6 +67,7 @@ export { usePagedRows } from "./paged-rows";
 export type { PageLoader, PageRequest, PagedRows, PagedRowsOptions, RowPage } from "./paged-rows";
 export { DataTableView } from "./data-table/view";
 export type {
+  DataTableBodyStatus,
   DataTableKeyEvent,
   DataTableRootKeyContext,
   DataTableSelectionChangeReason,
@@ -86,6 +87,11 @@ export { DataTableStackView } from "./data-table/stack-view";
 // table re-render on selection or scroll does not redo all of it.
 export { createRowValueCache } from "./ui/row-value-cache";
 export type { RowValueCache } from "./ui/row-value-cache";
+// What the last action on one row came to, kept for that row until the next
+// action on it or until its own status moves on (docs/pane-conventions.md,
+// "Row messages"): its status cell says it, never the footer or a toast.
+export { useRowNotes } from "./ui/row-notes";
+export type { RowNotes } from "./ui/row-notes";
 export { FeedDataTableStackView } from "./feed-data-table/stack-view";
 export type { FeedDataTableItem } from "./feed-data-table/stack-view";
 export { activeStackIndex, sortStackItems } from "./feed-stack-controller";
@@ -127,7 +133,8 @@ export { MarkdownText } from "./markdown-text";
 // this file is the public `gloomberb/components` surface: a kit component
 // reaches plugins only once it is added here.
 export {
-  ActionRow, Badge, BulletList, Button, ButtonActionScope, Card, Checkbox, ChoiceDialog, ColumnGrid, ColumnGridPair, ConfirmDialog, confirmDialog, DataTable,
+  ActionRow, Badge, BulletList, Button, ButtonActionScope, Card, Checkbox, ChoiceDialog, ColumnGrid, ColumnGridPair, ConfirmDialog, confirmDialog,
+  COUNTRY_FLAG_CELLS, CountryFlag, CountryFlagLead, DataTable,
   DetailScrollBody, DialogFrame, DisclosureMarker, Divider, EmptyState, ExternalLink, ExternalLinkText, FieldGrid, FieldLabel,
   fieldFrameStyle, fieldGridColumns, FRAMED_TEXTAREA_DESKTOP_STYLE, fieldGridRows, FigureList, getMessageComposerBlockHeight, GridFieldView, Icon, ICON_GLYPHS,
   IconButton, InlineQuickAddRow, KeyValueRow, ListView, loadingText, Menu, MenuPopover,
@@ -135,11 +142,11 @@ export {
   NumberPromptDialog, openUrl, PageStackView, PaneLinkMenu, PaneStatusBody, Popover, Prose,
   QueryBar, RangeTrack, RatioBar, READING_WIDTH, RemoteImage, Section, SectionHeading, SegmentedControl, SelectButton, ShortcutHint,
   Spinner, StatGrid, statGridColumns, statGridRows, Tabs, TextField, TextPromptDialog, unavailableText,
-  useFieldRing, usePaneLinkMenuEntry, useQueryBarSearch,
+  useFieldRing, usePaneLinkMenuEntry, useQueryBarSearch, withCountryFlag, withFlagRoom,
 } from "./ui";
 export type {
   ActionRowProps, BadgeProps, BulletListProps, ButtonProps, ButtonVariant, CardProps, CheckboxProps, ChoiceDialogChoice, ColumnGridCell,
-  ColumnGridColumn, ColumnGridPairProps, ColumnGridProps, ConfirmDialogOptions,
+  ColumnGridColumn, ColumnGridLink, ColumnGridPairProps, ColumnGridProps, ConfirmDialogOptions, CountryFlagProps,
   DataTableCell, DataTableColumn, DataTableProps, DataTableVisibleRange, DetailScrollBodyProps, DialogFrameProps,
   DisclosureMarkerProps, DividerProps, EmptyStateProps, FieldGridProps, FieldLabelProps, FieldRing, FieldRingOptions,
   FigureListItem, FigureListProps, GridField,

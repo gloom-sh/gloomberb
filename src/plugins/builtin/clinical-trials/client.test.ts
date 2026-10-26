@@ -20,6 +20,7 @@ function studyFixture(overrides: Record<string, unknown> = {}) {
         primaryCompletionDateStruct: { date: "2026-03", type: "ESTIMATED" },
         completionDateStruct: { date: "2026-06-30", type: "ESTIMATED" },
         studyFirstSubmitDate: "2023-10-01",
+        lastUpdatePostDateStruct: { date: "2026-09-29", type: "ACTUAL" },
       },
       sponsorCollaboratorsModule: {
         leadSponsor: { name: "Merck Sharp & Dohme LLC", class: "INDUSTRY" },
@@ -55,6 +56,7 @@ describe("clinical trials parsing", () => {
       url: "https://clinicaltrials.gov/study/NCT05123456",
     });
     expect(trial?.primaryCompletionDate?.toISOString().slice(0, 7)).toBe("2026-03");
+    expect(trial?.lastUpdatePostDate?.toISOString().slice(0, 10)).toBe("2026-09-29");
 
     const bare = parseClinicalTrial({ protocolSection: { identificationModule: { nctId: "NCT00000001" } } });
     expect(bare).toMatchObject({ title: "NCT00000001", status: "UNKNOWN", startDate: null, completionDate: null });
@@ -76,12 +78,12 @@ describe("clinical trials parsing", () => {
     const first = new URL(buildStudiesUrl({ term: "diabetes", sponsor: "Pfizer" }));
     expect(first.searchParams.get("query.term")).toBe("diabetes");
     expect(first.searchParams.get("query.spons")).toBe("Pfizer");
-    expect(first.searchParams.get("sort")).toBe("StudyFirstPostDate:desc");
+    expect(first.searchParams.get("sort")).toBe("LastUpdatePostDate:desc");
     expect(first.searchParams.has("pageToken")).toBe(false);
 
     const next = new URL(buildStudiesUrl({ term: "diabetes", pageToken: "abc" }));
     expect(next.searchParams.get("pageToken")).toBe("abc");
-    expect(next.searchParams.get("sort")).toBe("StudyFirstPostDate:desc");
+    expect(next.searchParams.get("sort")).toBe("LastUpdatePostDate:desc");
   });
 
   test("asks the registry for the filters, so every page it returns already matches them", () => {

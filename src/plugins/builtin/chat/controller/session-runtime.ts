@@ -121,7 +121,7 @@ export async function refreshChatControllerSession({
   stopVerificationPolling,
   syncVerificationPolling,
 }: RefreshChatControllerSessionOptions): Promise<void> {
-  session.sessionToken = apiClient.getSessionToken();
+  const cachedToken = session.sessionToken;
   const apiSession = await apiClient.getSession(isCurrent);
   if (!isCurrent()) return;
   if (!apiSession) {
@@ -133,7 +133,9 @@ export async function refreshChatControllerSession({
     // startup from signing the user out.
     if (persistedToken) {
       session.sessionToken = persistedToken;
-      session.user = session.user ?? normalizeSessionUser(apiClient.getCurrentUser());
+      // A failed sign-in can install another token before its user arrives.
+      // Only the credential stored with a cached user can restore that user.
+      session.user = (cachedToken === persistedToken ? session.user : null) ?? normalizeSessionUser(apiClient.getCurrentUser());
       // getSession() clears the API client's cached user when the endpoint
       // answers null. Keep both session views aligned while the protected
       // request validates the preserved native credential.

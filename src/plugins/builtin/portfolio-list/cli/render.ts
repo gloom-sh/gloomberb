@@ -12,6 +12,7 @@ import {
 import { formatCompact, formatPercentRaw } from "../../../../utils/format";
 import { currencyPriceMinDigits, formatMarketCostWithCurrency, formatMarketPrice, formatMarketPriceWithCurrency, formatMarketQuantity, quoteFormatOptions } from "../../../../market-data/market/format";
 import { resolvePriceBasis } from "../../../../market-data/market/price-basis";
+import { combinedChangeBasisLabel, quoteChangeBasis, type QuoteChangeBasis } from "../../../../market-data/market/change-basis";
 import { getPortfolioPositionMetrics, lotCostAtTodaysRate, lotCostFxRate, resolvePortfolioMarketValue, resolvePortfolioPositionPnl } from "../../../../portfolio/position-metrics";
 import {
   getPortfolioValuationDisplay,
@@ -29,6 +30,8 @@ import {
   type PortfolioFuturesTerms,
 } from "../../../../portfolio/futures-positions";
 import { dailyFuturesHistory, loadPortfolioFuturesTerms, type PortfolioFuturesSources } from "../../../../portfolio/futures-terms";
+import { loadPurchaseDateCostFx, withPurchaseDateCostFx, type CostFxHistoryClient, type PurchaseDateCostFx } from "../../../../portfolio/cost-fx";
+import { apiClient } from "../../../../api-client";
 import { formatUtcDayTime, parseReportTime } from "../../../../utils/utc-time";
 import { quoteFreshnessFields } from "../../shared/report-freshness";
 import { resolvePortfolioTotalsCurrency } from "../summary/totals";
@@ -84,7 +87,7 @@ import { importedFromText } from "../imported-from";
 import { findNamedCollection } from "../../../../portfolio/collection-name";
 import { isoDateToday } from "../../../../utils/calendar-date";
 import { lastTradeDate } from "../../../../tickers/listing-fate";
-import { DIVIDEND_READ_DEADLINE_MS, incomeGapNote, loadHoldingDividends, portfolioIncome, projectDrip, type DripYear, type HoldingDividend } from "../income";
+import { DIVIDEND_READ_DEADLINE_MS, incomeGapNote, loadHoldingDividends, portfolioIncome, projectDrip, showsIncomeColumns, type DripYear, type HoldingDividend } from "../income";
 
 /** Money prices pad to the currency's minor unit ($337.90, not $337.9), as the ticker view does. */
 function priceFormatOptions(quote: Parameters<typeof quoteFormatOptions>[0] & { currency?: string }, assetCategory?: string) {
@@ -201,6 +204,8 @@ export interface ShowCollectionOptions {
   dividendDeadlineMs?: number;
   /** Where futures' terms and settlements are read; Gloom Cloud's terms and the data provider's daily bars by default. */
   futuresSources?: PortfolioFuturesSources;
+  /** Where the FX closes of the lots' purchase dates are read; Gloom Cloud by default. */
+  costFxHistory?: CostFxHistoryClient;
 }
 
 export async function showCollection(name: string, ctx: CliCommandContext, options: ShowCollectionOptions = {}) {
@@ -238,6 +243,8 @@ export async function loadCollectionQuotes(
   tickers: readonly TickerRecord[],
   collection: Pick<CollectionMatch, "kind" | "id">,
   dataProvider: Pick<DataProvider, "getQuote">,
+  /** The report prints what the day's move is from (`Day's move ... vs Thu 22 Oct close`). */
+  { datesChangeBasis = false }: { datesChangeBasis?: boolean } = {},
 ): Promise<Map<string, CollectionQuote>> {
   const isPortfolio = collection.kind === "portfolio";
   const quotes = new Map<string, CollectionQuote>();
@@ -246,8 +253,9 @@ export async function loadCollectionQuotes(
       try {
         const instrument = isPortfolio ? instrumentFromTicker(ticker, ticker.metadata.ticker, { portfolioId: collection.id }) : null;
         if (isPortfolio && !instrument) return;
+        const context = instrument ? toMarketDataContext(instrument) : undefined;
         const quote = await dataProvider.getQuote(ticker.metadata.ticker, ticker.metadata.exchange,
-          instrument ? toMarketDataContext(instrument) : undefined);
+          datesChangeBasis ? { ...context, datesChangeBasis } : context);
         quotes.set(ticker.metadata.ticker, quote);
       } catch {
         // Ignore partial quote failures so the rest of the table still renders.
@@ -316,8 +324,14 @@ export interface PortfolioValuation {
   unknownContractSize: Set<string>;
   /** Futures valued at the close without a confirmed settlement to value them at. */
   unsettled: Set<string>;
-  /** Holdings in another currency whose cost converts at today's rate: no purchase date or cost FX rate was entered. */
+  /**
+   * Holdings in another currency whose cost converts at today's rate: no
+   * purchase date or cost FX rate was entered (`costFxUndated`), or the
+   * date's FX close could not be read (`costFxUnread`).
+   */
   costAtTodaysRate: Set<string>;
+  costFxUndated: Set<string>;
+  costFxUnread: Set<string>;
   /** Long and short market value of the priced lots, and their net and gross, in the portfolio's currency. */
   exposure: PortfolioExposure;
 }
@@ -345,10 +359,16 @@ function portfolioExposure(values: Iterable<number | null | undefined>): Portfol
 /**
  * What a book says of holdings in another currency whose cost converts at
  * today's rate, which leaves the currency's move since purchase out of their
- * P&L; `named` lists them as the table names its rows.
+ * P&L: those with no purchase date or rate, and those whose date's FX close
+ * could not be read. `named` lists them as the table names its rows.
  */
-export function costAtTodaysRateNote(named: string): string {
-  return `Cost converted at today's rate for ${named}; give portfolio position set a --date or --cost-fx to use the rate when bought.`;
+export function costAtTodaysRateNotes(valuation: Pick<PortfolioValuation, "costFxUndated" | "costFxUnread">,
+  named: (symbols: Iterable<string>) => string): string[] {
+  const undated = valuation.costFxUndated;
+  return [
+    ...undated.size ? [`Cost converted at today's rate for ${named(undated)}; give portfolio position set a --date or --cost-fx to use the rate when bought.`] : [],
+    ...valuation.costFxUnread.size ? [`Cost converted at today's rate for ${named(valuation.costFxUnread)}: the FX close of the purchase date could not be read.`] : [],
+  ];
 }
 
 /**
@@ -367,6 +387,7 @@ export async function valuePortfolioPositions({
   toBase,
   basis = "latest-print",
   futures,
+  purchaseDateFx,
 }: {
   tickers: readonly TickerRecord[];
   quotes: ReadonlyMap<string, CollectionQuote>;
@@ -377,6 +398,11 @@ export async function valuePortfolioPositions({
   basis?: PortfolioValuationBasis;
   /** Each future's contract size and settlement (loadPortfolioFuturesTerms), by symbol. */
   futures?: ReadonlyMap<string, PortfolioFuturesTerms>;
+  /**
+   * The FX closes of the lots' purchase dates in `currency` (loadPurchaseDateCostFx): a dated lot with no rate of
+   * its own into `currency` converts its cost at its date's close, and at today's rate when that could not be read.
+   */
+  purchaseDateFx?: PurchaseDateCostFx;
 }): Promise<PortfolioValuation> {
   const id = portfolioId;
   let totalPnl = 0;
@@ -387,11 +413,13 @@ export async function valuePortfolioPositions({
   const unknownContractSize = new Set<string>();
   const unsettled = new Set<string>();
   const costAtTodaysRate = new Set<string>();
+  const costFxUndated = new Set<string>();
+  const costFxUnread = new Set<string>();
   const values: PortfolioPositionValue[] = [];
   const holdings: AllocationHolding[] = [];
   const known = (value: number | null | undefined): number | null => value != null && Number.isFinite(value) ? value : null;
 
-  for (const ticker of tickers) {
+  for (const ticker of purchaseDateFx ? withPurchaseDateCostFx(tickers, purchaseDateFx, currency, id) : tickers) {
     const quote = quotes.get(ticker.metadata.ticker);
     const futuresTerms = isFuturesTicker(ticker) ? futures?.get(ticker.metadata.ticker) ?? { size: null, settlement: null } : null;
     // A lot entered without its contract size takes the one the terms state; the entries keep the saved record.
@@ -429,7 +457,7 @@ export async function valuePortfolioPositions({
       const atSettlement = valuesAtSettlement(metrics, basis);
       const positionCurrency = metrics.positionCurrency;
       const positionRate = positionCurrency ? await toBase(1, positionCurrency) : Number.NaN;
-      // The cost converts at the rate the lot was bought at when one was entered, else at today's, as its value does.
+      // The cost converts at the rate the lot was bought at, entered or its purchase date's close, else at today's, as its value does.
       const baseMetrics = getPortfolioPositionMetrics({ ...ticker, metadata: { ...ticker.metadata, positions: [position] } }, id, quoteCurrency,
         { currency, convert: value => value * positionRate }, quote);
       const boughtRate = positionCurrency ? lotCostFxRate(position, positionCurrency, currency) : null;
@@ -437,7 +465,10 @@ export async function valuePortfolioPositions({
         : boughtRate !== null ? baseMetrics.totalCost : await toBase(metrics.totalCost, positionCurrency);
       // Only a lot entered by hand can be given the rate it was bought at; a broker's lot reads as it always has.
       const atTodaysRate = position.broker === "manual" && !!positionCurrency && lotCostAtTodaysRate(position, positionCurrency, currency);
-      if (atTodaysRate && metrics.hasCostBasis) costAtTodaysRate.add(ticker.metadata.ticker);
+      if (atTodaysRate && metrics.hasCostBasis) {
+        costAtTodaysRate.add(ticker.metadata.ticker);
+        (purchaseDateFx && position.dateAcquired ? costFxUnread : costFxUndated).add(ticker.metadata.ticker);
+      }
       const costFx = boughtRate !== null ? { rate: boughtRate, currency } : atTodaysRate ? null : undefined;
       const currentValueBase = resolvePortfolioMarketValue(baseMetrics,
         valuationQuote ? await toBase(valuationQuote.price, quoteCurrency) : null)?.gross ?? null;
@@ -480,35 +511,52 @@ export async function valuePortfolioPositions({
 
   const exposure = portfolioExposure(values.map((entry) => entry.position ? entry.row.marketValue as number | null : null));
   return { basis, positions: values, holdings, totalPnl, unavailablePnl, unavailableCost, unavailableMarketValue, brokerPnlSymbols,
-    unknownContractSize, unsettled, costAtTodaysRate, exposure };
+    unknownContractSize, unsettled, costAtTodaysRate, costFxUndated, costFxUnread, exposure };
 }
 
 /**
  * The holdings' move over the day of the prices they are valued at, in the
  * portfolio's currency, and that move against their value at the close
- * before. Null when any priced holding's move is unknown, as the pane's Day is.
+ * before, with what it is measured from as the pane's Day says it ("vs Fri 16
+ * Oct close", "vs mixed closes"). Null when any priced holding's move is
+ * unknown, as the pane's Day is.
  */
-export function portfolioDayMove(valuation: Pick<PortfolioValuation, "positions">): { change: number; changePercent: number | null } | null {
+export function portfolioDayMove(
+  valuation: Pick<PortfolioValuation, "positions">,
+  now = Date.now(),
+): { change: number; changePercent: number | null; basis: string | null } | null {
   let change = 0;
   let previousValue = 0;
+  const bases: Array<QuoteChangeBasis | null> = [];
   for (const entry of valuation.positions) {
     if (!entry.position) continue;
     if (!entry.dayMove) return null;
     change += entry.dayMove.change;
     previousValue += entry.dayMove.previousValue;
+    bases.push(quoteChangeBasis(entry.quote, { terms: entry.futures }));
   }
-  return { change, changePercent: previousValue !== 0 ? (change / previousValue) * 100 : null };
+  return {
+    change,
+    changePercent: previousValue !== 0 ? (change / previousValue) * 100 : null,
+    basis: combinedChangeBasisLabel(bases, now),
+  };
 }
 
-/** `Day's move: +$1,165.49 (+0.51%)`, the line a book valued at the close carries; `color` tints the figures by sign. */
+/**
+ * `Day's move: +$1,165.49 (+0.51%) vs Fri 16 Oct close`, the line a book
+ * valued at the close carries; `color` tints the figures by sign, `muted` the
+ * basis.
+ */
 export function dayMoveLine(
   move: ReturnType<typeof portfolioDayMove>,
   currency: string,
   color: (text: string, value: number) => string = (text) => text,
+  muted: (text: string) => string = (text) => text,
 ): string {
   if (!move) return "Day's move: unavailable";
   const percent = move.changePercent != null ? ` (${formatPercentRaw(move.changePercent)})` : "";
-  return `Day's move: ${color(`${formatAllocationMoney(move.change, currency, { signed: true })}${percent}`, move.change)}`;
+  const basis = move.basis ? ` ${muted(move.basis)}` : "";
+  return `Day's move: ${color(`${formatAllocationMoney(move.change, currency, { signed: true })}${percent}`, move.change)}${basis}`;
 }
 
 /**
@@ -668,7 +716,7 @@ async function showCollectionWithMarketData(
   name: string,
   ctx: CliCommandContext,
   { config, store, dataProvider, persistence }: MarketContext,
-  { explain = false, basis = "latest-print", drip, dividendDeadlineMs = DIVIDEND_READ_DEADLINE_MS, futuresSources }: ShowCollectionOptions,
+  { explain = false, basis = "latest-print", drip, dividendDeadlineMs = DIVIDEND_READ_DEADLINE_MS, futuresSources, costFxHistory = apiClient }: ShowCollectionOptions,
 ) {
   const tickers = (await store.loadAllTickers()).sort((left, right) =>
     left.metadata.ticker.localeCompare(right.metadata.ticker)
@@ -684,10 +732,10 @@ async function showCollectionWithMarketData(
 
   const matchedPortfolio = collection.kind === "portfolio" ? collection.portfolio : undefined;
   if (!matchedPortfolio && basis === "regular-close") {
-    ctx.fail(`--close values a portfolio; "${collection.name}" is a watchlist.`, "Usage: gloomberb portfolio show <portfolio> --close");
+    ctx.fail(`--close values a portfolio; "${collection.name}" is a watchlist.`, "Usage: gloom portfolio show <portfolio> --close");
   }
   if (!matchedPortfolio && drip) {
-    ctx.fail(`--drip projects a portfolio's dividends; "${collection.name}" is a watchlist.`, "Usage: gloomberb portfolio show <portfolio> --drip");
+    ctx.fail(`--drip projects a portfolio's dividends; "${collection.name}" is a watchlist.`, "Usage: gloom portfolio show <portfolio> --drip");
   }
   const isPortfolio = !!matchedPortfolio;
   const id = collection.id;
@@ -713,12 +761,13 @@ async function showCollectionWithMarketData(
 
   const futuresHeld = filtered.filter((ticker) => isFuturesTicker(ticker)
     && ticker.metadata.positions.some((position) => position.portfolio === id && position.shares !== 0));
-  const [quotes, futures] = await Promise.all([
-    loadCollectionQuotes(filtered, collection, dataProvider),
+  const [quotes, futures, purchaseDateFx] = await Promise.all([
+    loadCollectionQuotes(filtered, collection, dataProvider, { datesChangeBasis: basis === "regular-close" }),
     isPortfolio ? loadPortfolioFuturesTerms(futuresHeld, {
       settlement: basis === "regular-close",
       sources: { history: dailyFuturesHistory(dataProvider), ...futuresSources },
     }) : undefined,
+    isPortfolio ? loadPurchaseDateCostFx(filtered, { into: currency, history: costFxHistory, portfolioId: id }) : undefined,
   ]);
   // Worst of across the holdings' quotes, as the PORT and watchlist reports state it.
   const broker = !!(matchedPortfolio?.brokerId || matchedPortfolio?.brokerInstanceId);
@@ -738,7 +787,7 @@ async function showCollectionWithMarketData(
   }
 
   if (matchedPortfolio) {
-    const valuation = await valuePortfolioPositions({ tickers: filtered, quotes, portfolioId: id, currency, baseCurrency: config.baseCurrency, toBase, basis, futures });
+    const valuation = await valuePortfolioPositions({ tickers: filtered, quotes, portfolioId: id, currency, baseCurrency: config.baseCurrency, toBase, basis, futures, purchaseDateFx });
     // Exports carry no header line, so their source line names the basis.
     freshness = portfolioValuationFreshness(valuation, source, { note: structured });
     const {
@@ -756,7 +805,8 @@ async function showCollectionWithMarketData(
     const { allocation, cash } = await valuePortfolioAllocation({ valuation, portfolio: matchedPortfolio, account, toBase });
     const allocationBySymbol = new Map(allocation.rows.map((row) => [row.symbol, row]));
     // What each holding pays a year: trailing dividends per share times its shares, in the portfolio's currency.
-    const held = filtered.filter((ticker) => valued.some((entry) => entry.ticker === ticker && entry.position));
+    // By symbol: a lot whose cost converts at its purchase date's FX close is valued on a copy of its record.
+    const held = filtered.filter((ticker) => valued.some((entry) => entry.ticker.metadata.ticker === ticker.metadata.ticker && entry.position));
     const { dividends } = await loadHoldingDividends(held, quotes, dataProvider, { deadlineMs: dividendDeadlineMs });
     // Lots without a position or shares are no lot of income; a row of their own keeps its place with none.
     const income = await portfolioIncome(valued.map((entry) => ({
@@ -835,7 +885,7 @@ async function showCollectionWithMarketData(
         const symbol = ticker.metadata.ticker;
         const dividend = dividends.get(symbol);
         if (!dividend) continue;
-        const shares = valued.filter((entry) => entry.ticker === ticker && entry.position && entry.metrics)
+        const shares = valued.filter((entry) => entry.ticker.metadata.ticker === symbol && entry.position && entry.metrics)
           .reduce((sum, entry) => sum + entry.metrics!.totalShares, 0);
         if (shares === 0) continue;
         // Income the table could not show is not projected either; the note under it says why.
@@ -899,7 +949,7 @@ async function showCollectionWithMarketData(
         total: allocation.total, cash: cashExport, targetSum: allocation.targetSum,
         // Only on a book that holds a short: its weights are shares of `weightBase`, its gross exposure, not of the total.
         ...(allocation.weightBasis === "gross" ? { weightBasis: allocation.weightBasis, weightBase: allocation.weightBase } : {}),
-        ...(basis === "regular-close" ? { dayChange: dayMove?.change ?? null, dayChangePercent: dayMove?.changePercent ?? null } : {}),
+        ...(basis === "regular-close" ? { dayChange: dayMove?.change ?? null, dayChangePercent: dayMove?.changePercent ?? null, dayChangeBasis: dayMove?.basis ?? null } : {}),
         unpricedCount: allocation.unpriced.length, unpricedSymbols: allocation.unpriced,
         totalUnrealizedPnl: totalPnlValue,
         annualIncome: totalIncome, knownAnnualIncome: income.knownIncome, portfolioYield,
@@ -912,7 +962,7 @@ async function showCollectionWithMarketData(
         exposure,
         ...(unknownContractSize.size > 0 ? { unknownContractSizeSymbols: [...unknownContractSize] } : {}),
         ...(unsettled.size > 0 ? { unsettledSymbols: [...unsettled] } : {}),
-        // Holdings in another currency with no purchase date or cost FX rate: their cost converts at today's rate.
+        // Holdings in another currency whose cost converts at today's rate: no purchase date or cost FX rate, or the date's close was not read.
         ...(costAtTodaysRate.size > 0 ? { costAtTodaysRateSymbols: [...costAtTodaysRate] } : {}),
         accountingBasis, ...(manualAccounting ? { manualAccounting } : {}),
         ...(matchedPortfolio.importedFrom ? { importedFrom: matchedPortfolio.importedFrom } : {}),
@@ -941,8 +991,8 @@ async function showCollectionWithMarketData(
       return [weight, target, drift, trade, tradeValue];
     };
 
-    // Income and its yield, once any share or fund has one; with none known, the note under the table says why.
-    const showIncome = income.knownHoldings > 0;
+    // Income and its yield, once any share or fund has one or only lacks a rate into the portfolio's currency; otherwise the note under the table says why.
+    const showIncome = showsIncomeColumns(income);
     const incomeCells = (income: number | null | undefined, yieldPercent: number | null | undefined): string[] =>
       showIncome ? [money(income), formatIncomeYield(yieldPercent)] : [];
     const extendedSessions = extendedSessionsOf(valued.map(({ extended }) => extended?.session));
@@ -1044,7 +1094,7 @@ async function showCollectionWithMarketData(
       rows,
     ));
     console.log("");
-    if (basis === "regular-close") console.log(dayMoveLine(dayMove, currency, colorBySign));
+    if (basis === "regular-close") console.log(dayMoveLine(dayMove, currency, colorBySign, cliStyles.muted));
     if (valued.some((entry) => entry.position)) console.log(exposureLine(exposure, currency));
     const notes: string[] = [];
     const weightNote = weightBasisLine(allocation, currency);
@@ -1068,7 +1118,7 @@ async function showCollectionWithMarketData(
     const targetNote = describeTargetSum(allocation.targetSum, allocation.weightBasis);
     if (targetNote) notes.push(cliStyles.muted(targetNote));
     if (brokerPnlSymbols.size > 0) notes.push(cliStyles.muted(`P&L for ${named(brokerPnlSymbols)} is the broker's last snapshot.`));
-    if (costAtTodaysRate.size > 0) notes.push(cliStyles.muted(costAtTodaysRateNote(named(costAtTodaysRate))));
+    notes.push(...costAtTodaysRateNotes(valuation, named).map((note) => cliStyles.muted(note)));
     if (unknownContractSize.size > 0) {
       notes.push(cliStyles.warning(`No contract size for ${named(unknownContractSize)}, so ${unknownContractSize.size === 1 ? "its" : "their"} value, cost and P&L are not shown.`));
     }

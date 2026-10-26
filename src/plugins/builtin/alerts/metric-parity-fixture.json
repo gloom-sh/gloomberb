@@ -1,0 +1,725 @@
+{
+  "modelSha256": "2364694ef384760911a9190f6ebb12bb66442e63c98defd30e16fd0bb731afd4",
+  "valuations": [
+    {
+      "name": "regular",
+      "data": {
+        "symbol": "AAPL",
+        "quote": {
+          "symbol": "AAPL",
+          "exchangeName": "NASDAQ",
+          "price": 240,
+          "previousClose": 230,
+          "low": 228,
+          "high": 242,
+          "currency": "USD",
+          "marketCap": 2400,
+          "marketState": "REGULAR",
+          "lastUpdated": 1792787400000
+        },
+        "fundamentals": {
+          "trailingPE": 24,
+          "eps": 10,
+          "sharesOutstanding": 10,
+          "revenue": 300,
+          "financialCurrency": "USD",
+          "marketCapCurrency": "USD"
+        },
+        "priceHistory": [],
+        "annualStatements": [],
+        "quarterlyStatements": []
+      },
+      "pe": 24,
+      "ps": 8
+    },
+    {
+      "name": "loss",
+      "data": {
+        "symbol": "AAPL",
+        "quote": {
+          "symbol": "AAPL",
+          "exchangeName": "NASDAQ",
+          "price": 240,
+          "previousClose": 230,
+          "low": 228,
+          "high": 242,
+          "currency": "USD",
+          "marketCap": 2400,
+          "marketState": "REGULAR",
+          "lastUpdated": 1792787400000
+        },
+        "fundamentals": {
+          "trailingPE": 24,
+          "eps": -10,
+          "sharesOutstanding": 10,
+          "revenue": 300,
+          "financialCurrency": "USD",
+          "marketCapCurrency": "USD"
+        },
+        "priceHistory": [],
+        "annualStatements": [],
+        "quarterlyStatements": []
+      },
+      "pe": null,
+      "ps": 8
+    },
+    {
+      "name": "zero EPS",
+      "data": {
+        "symbol": "AAPL",
+        "quote": {
+          "symbol": "AAPL",
+          "exchangeName": "NASDAQ",
+          "price": 240,
+          "previousClose": 230,
+          "low": 228,
+          "high": 242,
+          "currency": "USD",
+          "marketCap": 2400,
+          "marketState": "REGULAR",
+          "lastUpdated": 1792787400000
+        },
+        "fundamentals": {
+          "trailingPE": 24,
+          "eps": 0,
+          "sharesOutstanding": 10,
+          "revenue": 300,
+          "financialCurrency": "USD",
+          "marketCapCurrency": "USD"
+        },
+        "priceHistory": [],
+        "annualStatements": [],
+        "quarterlyStatements": []
+      },
+      "pe": null,
+      "ps": 8
+    },
+    {
+      "name": "missing EPS",
+      "data": {
+        "symbol": "AAPL",
+        "quote": {
+          "symbol": "AAPL",
+          "exchangeName": "NASDAQ",
+          "price": 240,
+          "previousClose": 230,
+          "low": 228,
+          "high": 242,
+          "currency": "USD",
+          "marketCap": 2400,
+          "marketState": "REGULAR",
+          "lastUpdated": 1792787400000
+        },
+        "fundamentals": {
+          "trailingPE": 24,
+          "eps": null,
+          "sharesOutstanding": 10,
+          "revenue": 300,
+          "financialCurrency": "USD",
+          "marketCapCurrency": "USD"
+        },
+        "priceHistory": [],
+        "annualStatements": [],
+        "quarterlyStatements": []
+      },
+      "pe": 24,
+      "ps": 8
+    },
+    {
+      "name": "missing PE",
+      "data": {
+        "symbol": "AAPL",
+        "quote": {
+          "symbol": "AAPL",
+          "exchangeName": "NASDAQ",
+          "price": 240,
+          "previousClose": 230,
+          "low": 228,
+          "high": 242,
+          "currency": "USD",
+          "marketCap": 2400,
+          "marketState": "REGULAR",
+          "lastUpdated": 1792787400000
+        },
+        "fundamentals": {
+          "trailingPE": null,
+          "eps": 10,
+          "sharesOutstanding": 10,
+          "revenue": 300,
+          "financialCurrency": "USD",
+          "marketCapCurrency": "USD"
+        },
+        "priceHistory": [],
+        "annualStatements": [],
+        "quarterlyStatements": []
+      },
+      "pe": null,
+      "ps": 8
+    },
+    {
+      "name": "stale quote",
+      "data": {
+        "symbol": "AAPL",
+        "quote": {
+          "symbol": "AAPL",
+          "exchangeName": "NASDAQ",
+          "price": 240,
+          "previousClose": 230,
+          "low": 228,
+          "high": 242,
+          "currency": "USD",
+          "marketCap": 2400,
+          "marketState": "REGULAR",
+          "lastUpdated": 1792787400000,
+          "stale": true
+        },
+        "fundamentals": {
+          "trailingPE": 24,
+          "eps": 10,
+          "sharesOutstanding": 10,
+          "revenue": 300,
+          "financialCurrency": "USD",
+          "marketCapCurrency": "USD"
+        },
+        "priceHistory": [],
+        "annualStatements": [],
+        "quarterlyStatements": []
+      },
+      "pe": null,
+      "ps": null
+    },
+    {
+      "name": "stale fundamentals",
+      "data": {
+        "symbol": "AAPL",
+        "quote": {
+          "symbol": "AAPL",
+          "exchangeName": "NASDAQ",
+          "price": 240,
+          "previousClose": 230,
+          "low": 228,
+          "high": 242,
+          "currency": "USD",
+          "marketCap": 2400,
+          "marketState": "REGULAR",
+          "lastUpdated": 1792787400000
+        },
+        "fundamentals": {
+          "trailingPE": 24,
+          "eps": 10,
+          "sharesOutstanding": 10,
+          "revenue": 300,
+          "financialCurrency": "USD",
+          "marketCapCurrency": "USD",
+          "stale": true
+        },
+        "priceHistory": [],
+        "annualStatements": [],
+        "quarterlyStatements": []
+      },
+      "pe": null,
+      "ps": null
+    },
+    {
+      "name": "zero price",
+      "data": {
+        "symbol": "AAPL",
+        "quote": {
+          "symbol": "AAPL",
+          "exchangeName": "NASDAQ",
+          "price": 0,
+          "previousClose": 230,
+          "low": 228,
+          "high": 242,
+          "currency": "USD",
+          "marketCap": 2400,
+          "marketState": "REGULAR",
+          "lastUpdated": 1792787400000
+        },
+        "fundamentals": {
+          "trailingPE": 24,
+          "eps": 10,
+          "sharesOutstanding": 10,
+          "revenue": 300,
+          "financialCurrency": "USD",
+          "marketCapCurrency": "USD"
+        },
+        "priceHistory": [],
+        "annualStatements": [],
+        "quarterlyStatements": []
+      },
+      "pe": null,
+      "ps": null
+    },
+    {
+      "name": "sales currency mismatch",
+      "data": {
+        "symbol": "AAPL",
+        "quote": {
+          "symbol": "AAPL",
+          "exchangeName": "NASDAQ",
+          "price": 240,
+          "previousClose": 230,
+          "low": 228,
+          "high": 242,
+          "currency": "USD",
+          "marketCap": 2400,
+          "marketState": "REGULAR",
+          "lastUpdated": 1792787400000
+        },
+        "fundamentals": {
+          "trailingPE": 24,
+          "eps": 10,
+          "sharesOutstanding": 10,
+          "revenue": 300,
+          "financialCurrency": "EUR",
+          "marketCapCurrency": "USD"
+        },
+        "priceHistory": [],
+        "annualStatements": [],
+        "quarterlyStatements": []
+      },
+      "pe": 24,
+      "ps": null
+    },
+    {
+      "name": "missing sales",
+      "data": {
+        "symbol": "AAPL",
+        "quote": {
+          "symbol": "AAPL",
+          "exchangeName": "NASDAQ",
+          "price": 240,
+          "previousClose": 230,
+          "low": 228,
+          "high": 242,
+          "currency": "USD",
+          "marketCap": 2400,
+          "marketState": "REGULAR",
+          "lastUpdated": 1792787400000
+        },
+        "fundamentals": {
+          "trailingPE": 24,
+          "eps": 10,
+          "sharesOutstanding": 10,
+          "revenue": null,
+          "financialCurrency": "USD",
+          "marketCapCurrency": "USD"
+        },
+        "priceHistory": [],
+        "annualStatements": [],
+        "quarterlyStatements": []
+      },
+      "pe": 24,
+      "ps": null
+    },
+    {
+      "name": "stored cap",
+      "data": {
+        "symbol": "AAPL",
+        "quote": {
+          "symbol": "AAPL",
+          "exchangeName": "NASDAQ",
+          "price": 240,
+          "previousClose": 230,
+          "low": 228,
+          "high": 242,
+          "currency": "USD",
+          "marketCap": null,
+          "marketState": "REGULAR",
+          "lastUpdated": 1792787400000
+        },
+        "fundamentals": {
+          "trailingPE": 24,
+          "eps": 10,
+          "sharesOutstanding": 10,
+          "revenue": 300,
+          "financialCurrency": "USD",
+          "marketCapCurrency": "USD"
+        },
+        "priceHistory": [],
+        "annualStatements": [],
+        "quarterlyStatements": []
+      },
+      "pe": 24,
+      "ps": null
+    },
+    {
+      "name": "converted EPS",
+      "data": {
+        "symbol": "AAPL",
+        "quote": {
+          "symbol": "AAPL",
+          "exchangeName": "NASDAQ",
+          "price": 240,
+          "previousClose": 230,
+          "low": 228,
+          "high": 242,
+          "currency": "USD",
+          "marketCap": 2400,
+          "marketState": "REGULAR",
+          "lastUpdated": 1792787400000
+        },
+        "fundamentals": {
+          "trailingPE": 24,
+          "eps": 5,
+          "sharesOutstanding": 10,
+          "revenue": 300,
+          "financialCurrency": "USD",
+          "marketCapCurrency": "USD",
+          "trailingPEConversion": {
+            "rate": 2
+          }
+        },
+        "priceHistory": [],
+        "annualStatements": [],
+        "quarterlyStatements": []
+      },
+      "pe": 24,
+      "ps": 8
+    },
+    {
+      "name": "EPS drift",
+      "data": {
+        "symbol": "AAPL",
+        "quote": {
+          "symbol": "AAPL",
+          "exchangeName": "NASDAQ",
+          "price": 240,
+          "previousClose": 230,
+          "low": 228,
+          "high": 242,
+          "currency": "USD",
+          "marketCap": 2400,
+          "marketState": "REGULAR",
+          "lastUpdated": 1792787400000
+        },
+        "fundamentals": {
+          "trailingPE": 24,
+          "eps": 1,
+          "sharesOutstanding": 10,
+          "revenue": 300,
+          "financialCurrency": "USD",
+          "marketCapCurrency": "USD"
+        },
+        "priceHistory": [],
+        "annualStatements": [],
+        "quarterlyStatements": []
+      },
+      "pe": 24,
+      "ps": 8
+    },
+    {
+      "name": "quote currency mismatch",
+      "data": {
+        "symbol": "AAPL",
+        "quote": {
+          "symbol": "AAPL",
+          "exchangeName": "NASDAQ",
+          "price": 240,
+          "previousClose": 230,
+          "low": 228,
+          "high": 242,
+          "currency": "EUR",
+          "marketCap": 2400,
+          "marketState": "REGULAR",
+          "lastUpdated": 1792787400000
+        },
+        "fundamentals": {
+          "trailingPE": 24,
+          "eps": 10,
+          "sharesOutstanding": 10,
+          "revenue": 300,
+          "financialCurrency": "USD",
+          "marketCapCurrency": "USD"
+        },
+        "priceHistory": [],
+        "annualStatements": [],
+        "quarterlyStatements": []
+      },
+      "pe": 24,
+      "ps": null
+    },
+    {
+      "name": "missing quote currency",
+      "data": {
+        "symbol": "AAPL",
+        "quote": {
+          "symbol": "AAPL",
+          "exchangeName": "NASDAQ",
+          "price": 240,
+          "previousClose": 230,
+          "low": 228,
+          "high": 242,
+          "currency": null,
+          "marketCap": 2400,
+          "marketState": "REGULAR",
+          "lastUpdated": 1792787400000
+        },
+        "fundamentals": {
+          "trailingPE": 24,
+          "eps": 10,
+          "sharesOutstanding": 10,
+          "revenue": 300,
+          "financialCurrency": "USD",
+          "marketCapCurrency": "USD"
+        },
+        "priceHistory": [],
+        "annualStatements": [],
+        "quarterlyStatements": []
+      },
+      "pe": 24,
+      "ps": null
+    },
+    {
+      "name": "PRE cap 2400",
+      "data": {
+        "symbol": "AAPL",
+        "quote": {
+          "symbol": "AAPL",
+          "exchangeName": "NASDAQ",
+          "price": 260,
+          "previousClose": 230,
+          "low": 228,
+          "high": 242,
+          "currency": "USD",
+          "marketCap": 2400,
+          "marketState": "PRE",
+          "lastUpdated": 1792787400000,
+          "regularClose": 240,
+          "regularCloseSessionDate": "2026-10-23",
+          "changeSessionDate": "2026-10-26",
+          "regularChange": 10
+        },
+        "fundamentals": {
+          "trailingPE": 26,
+          "eps": 5,
+          "sharesOutstanding": 10,
+          "revenue": 300,
+          "financialCurrency": "USD",
+          "marketCapCurrency": "USD",
+          "trailingPEConversion": {
+            "rate": 2
+          }
+        },
+        "priceHistory": [],
+        "annualStatements": [],
+        "quarterlyStatements": []
+      },
+      "pe": 24,
+      "ps": 8
+    },
+    {
+      "name": "PRE cap 2600",
+      "data": {
+        "symbol": "AAPL",
+        "quote": {
+          "symbol": "AAPL",
+          "exchangeName": "NASDAQ",
+          "price": 260,
+          "previousClose": 230,
+          "low": 228,
+          "high": 242,
+          "currency": "USD",
+          "marketCap": 2600,
+          "marketState": "PRE",
+          "lastUpdated": 1792787400000,
+          "regularClose": 240,
+          "regularCloseSessionDate": "2026-10-23",
+          "changeSessionDate": "2026-10-26",
+          "regularChange": 10
+        },
+        "fundamentals": {
+          "trailingPE": 26,
+          "eps": 5,
+          "sharesOutstanding": 10,
+          "revenue": 300,
+          "financialCurrency": "USD",
+          "marketCapCurrency": "USD",
+          "trailingPEConversion": {
+            "rate": 2
+          }
+        },
+        "priceHistory": [],
+        "annualStatements": [],
+        "quarterlyStatements": []
+      },
+      "pe": 24,
+      "ps": 8
+    },
+    {
+      "name": "POST cap 2400",
+      "data": {
+        "symbol": "AAPL",
+        "quote": {
+          "symbol": "AAPL",
+          "exchangeName": "NASDAQ",
+          "price": 260,
+          "previousClose": 230,
+          "low": 228,
+          "high": 242,
+          "currency": "USD",
+          "marketCap": 2400,
+          "marketState": "POST",
+          "lastUpdated": 1792787400000,
+          "regularClose": 240,
+          "regularCloseSessionDate": "2026-10-23",
+          "changeSessionDate": "2026-10-23",
+          "regularChange": 10
+        },
+        "fundamentals": {
+          "trailingPE": 26,
+          "eps": 5,
+          "sharesOutstanding": 10,
+          "revenue": 300,
+          "financialCurrency": "USD",
+          "marketCapCurrency": "USD",
+          "trailingPEConversion": {
+            "rate": 2
+          }
+        },
+        "priceHistory": [],
+        "annualStatements": [],
+        "quarterlyStatements": []
+      },
+      "pe": 24,
+      "ps": 8
+    },
+    {
+      "name": "POST cap 2600",
+      "data": {
+        "symbol": "AAPL",
+        "quote": {
+          "symbol": "AAPL",
+          "exchangeName": "NASDAQ",
+          "price": 260,
+          "previousClose": 230,
+          "low": 228,
+          "high": 242,
+          "currency": "USD",
+          "marketCap": 2600,
+          "marketState": "POST",
+          "lastUpdated": 1792787400000,
+          "regularClose": 240,
+          "regularCloseSessionDate": "2026-10-23",
+          "changeSessionDate": "2026-10-23",
+          "regularChange": 10
+        },
+        "fundamentals": {
+          "trailingPE": 26,
+          "eps": 5,
+          "sharesOutstanding": 10,
+          "revenue": 300,
+          "financialCurrency": "USD",
+          "marketCapCurrency": "USD",
+          "trailingPEConversion": {
+            "rate": 2
+          }
+        },
+        "priceHistory": [],
+        "annualStatements": [],
+        "quarterlyStatements": []
+      },
+      "pe": 24,
+      "ps": 8
+    },
+    {
+      "name": "CLOSED cap 2400",
+      "data": {
+        "symbol": "AAPL",
+        "quote": {
+          "symbol": "AAPL",
+          "exchangeName": "NASDAQ",
+          "price": 260,
+          "previousClose": 230,
+          "low": 228,
+          "high": 242,
+          "currency": "USD",
+          "marketCap": 2400,
+          "marketState": "CLOSED",
+          "lastUpdated": 1792787400000,
+          "regularClose": 240,
+          "regularCloseSessionDate": "2026-10-23",
+          "changeSessionDate": "2026-10-23",
+          "regularChange": 10
+        },
+        "fundamentals": {
+          "trailingPE": 26,
+          "eps": 5,
+          "sharesOutstanding": 10,
+          "revenue": 300,
+          "financialCurrency": "USD",
+          "marketCapCurrency": "USD",
+          "trailingPEConversion": {
+            "rate": 2
+          }
+        },
+        "priceHistory": [],
+        "annualStatements": [],
+        "quarterlyStatements": []
+      },
+      "pe": 24,
+      "ps": 8
+    },
+    {
+      "name": "CLOSED cap 2600",
+      "data": {
+        "symbol": "AAPL",
+        "quote": {
+          "symbol": "AAPL",
+          "exchangeName": "NASDAQ",
+          "price": 260,
+          "previousClose": 230,
+          "low": 228,
+          "high": 242,
+          "currency": "USD",
+          "marketCap": 2600,
+          "marketState": "CLOSED",
+          "lastUpdated": 1792787400000,
+          "regularClose": 240,
+          "regularCloseSessionDate": "2026-10-23",
+          "changeSessionDate": "2026-10-23",
+          "regularChange": 10
+        },
+        "fundamentals": {
+          "trailingPE": 26,
+          "eps": 5,
+          "sharesOutstanding": 10,
+          "revenue": 300,
+          "financialCurrency": "USD",
+          "marketCapCurrency": "USD",
+          "trailingPEConversion": {
+            "rate": 2
+          }
+        },
+        "priceHistory": [],
+        "annualStatements": [],
+        "quarterlyStatements": []
+      },
+      "pe": 24,
+      "ps": 8
+    }
+  ],
+  "barDays": [
+    {
+      "stamp": "2026-10-23",
+      "exchange": "NASDAQ",
+      "day": "2026-10-23"
+    },
+    {
+      "stamp": "2026-10-24T01:00:00Z",
+      "exchange": "NYSE",
+      "day": "2026-10-23"
+    },
+    {
+      "stamp": "2026-01-03T02:00:00Z",
+      "exchange": "NASDAQ",
+      "day": "2026-01-02"
+    },
+    {
+      "stamp": "2026-10-24T00:00:00Z",
+      "exchange": "NASDAQ",
+      "day": "2026-10-24"
+    }
+  ]
+}

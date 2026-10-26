@@ -112,16 +112,16 @@ describe("FxMatrixPane", () => {
   });
 
   test("publishes what the rates it draws are, for a report to date them", async () => {
-    // Saturday 18:45 UTC: most pairs last traded Friday, the Canadian dollar ticked on Saturday.
+    // Saturday 18:45 UTC: each pair's last print by Friday's 17:00 New York close.
     setSystemTime(new Date("2026-10-10T18:45:00Z"));
     const loaded = (rate: number, asOf: string): QueryEntry<number> => ({
       ...readyEntry(rate), source: "gloom", fetchedAt: Date.parse("2026-10-10T18:40:00Z"),
       asOf: Date.parse(asOf), staleAt: Date.parse("2026-10-11T22:00:00Z"),
     });
     const entries: Record<string, QueryEntry<number>> = {
-      EUR: loaded(1.12, "2026-10-09T21:29:00Z"), JPY: loaded(0.0063, "2026-10-09T20:59:00Z"),
-      CHF: loaded(1.2, "2026-10-10T04:21:11Z"), CAD: loaded(0.7, "2026-10-10T14:50:28Z"),
-      AUD: loaded(0.7, "2026-10-09T21:29:00Z"), NZD: loaded(0.56, "2026-10-09T21:29:00Z"),
+      EUR: loaded(1.12, "2026-10-09T20:59:00Z"), JPY: loaded(0.0063, "2026-10-09T20:59:00Z"),
+      CHF: loaded(1.2, "2026-10-09T20:58:11Z"), CAD: loaded(0.7, "2026-10-09T20:50:28Z"),
+      AUD: loaded(0.7, "2026-10-09T20:59:00Z"), NZD: loaded(0.56, "2026-10-09T20:59:00Z"),
       // GBP has no rate at all: drawn as a dash, so not an observation.
     };
     setSharedMarketDataCoordinator({
@@ -139,7 +139,7 @@ describe("FxMatrixPane", () => {
     const observed = renderedReportObservations(registry.snapshot());
     expect(observed.map((row) => row.currency)).toEqual(["EUR", "JPY", "CHF", "CAD", "AUD", "NZD"]);
     expect(observed[0]).toEqual({
-      currency: "EUR", quoteTime: "2026-10-09T21:29:00.000Z", dataSource: "delayed", stale: false,
+      currency: "EUR", quoteTime: "2026-10-09T20:59:00.000Z", dataSource: "delayed", stale: false,
       sessionExchange: "CCY", marketState: "CLOSED",
     });
     const freshness = deriveRenderedFreshness(undefined, { footerText: "", cellTimes: [], observed });

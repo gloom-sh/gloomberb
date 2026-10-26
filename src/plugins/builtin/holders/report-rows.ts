@@ -1,8 +1,9 @@
 import type { HeadlessPaneColumn } from "../../../types/plugin";
 import type { HolderData, ShareBasis } from "../../../types/financials";
-import { formatCompact, formatPercentRaw } from "../../../utils/format";
+import { formatCompact, MISSING_VALUE } from "../../../utils/format";
 import {
   displayDate,
+  formatChangePercent,
   formatMoneyCompact,
   formatPercentHeld,
   formatSignedCompact,
@@ -21,6 +22,7 @@ import {
   nonUsHolderCaveat,
   sharedReportDate,
 } from "./report-header";
+import { HOLDER_ROWS_MAX } from "./index-holders";
 import { buildRows, DEFAULT_SORT, sortRows } from "./table-model";
 import type { HolderColumnId, SortPreference } from "./types";
 
@@ -28,7 +30,8 @@ import type { HolderColumnId, SortPreference } from "./types";
  * A holder as `holders` and `fn HDS` report it; the keys are the JSON
  * contract. `value` is in `currency`, the values' own currency; the percents
  * are in percent (0.59 is 0.59% of the shares outstanding, 13.15 a 13.15%
- * change on the quarter). A figure the source did not give is null.
+ * change on the quarter, 108.6 a position that more than doubled), from the
+ * record's fractions. A figure the source did not give is null.
  */
 export interface HolderReportRow {
   name: string;
@@ -63,14 +66,14 @@ export const HOLDER_REPORT_COLUMNS: HeadlessPaneColumn[] = [
     key: "value",
     header: "Mkt value",
     align: "right",
-    format: (value) => num(value) == null ? "-" : formatCompact(num(value)!),
+    format: (value) => num(value) == null ? MISSING_VALUE : formatCompact(num(value)!),
     textFormat: (value, row) => formatMoneyCompact(num(value) ?? undefined, String(row.currency ?? "USD")),
   },
   {
     key: "shares",
     header: "Amount",
     align: "right",
-    format: (value) => num(value) == null ? "-" : formatCompact(num(value)!),
+    format: (value) => num(value) == null ? MISSING_VALUE : formatCompact(num(value)!),
   },
   {
     key: BASIS_COLUMN_KEY,
@@ -87,13 +90,13 @@ export const HOLDER_REPORT_COLUMNS: HeadlessPaneColumn[] = [
     key: "changePercent",
     header: "Chg%",
     align: "right",
-    format: (value) => num(value) == null ? "-" : formatPercentRaw(num(value)!),
+    format: (value) => formatChangePercent(num(value)),
   },
   {
     key: "percentHeld",
     header: "Held",
     align: "right",
-    format: (value) => num(value) == null ? "-" : `${num(value)!.toFixed(2)}%`,
+    format: (value) => num(value) == null ? MISSING_VALUE : `${num(value)!.toFixed(2)}%`,
     textFormat: (value) => formatPercentHeld(num(value)),
   },
   {
@@ -186,10 +189,13 @@ export function holderReportNotices({
   reported,
   total,
   sort = DEFAULT_SORT,
+  indexed = false,
 }: {
   data: HolderData;
   /** The symbol as asked for, which `fn 13F` takes. */
   requested: string;
+  /** The rows are the SEC 13F holder index's, largest first, not the source's short list. */
+  indexed?: boolean;
   shown: readonly HolderReportRow[];
   /** Holders on the list before a limit. */
   reported: number;
@@ -218,13 +224,35 @@ export function holderReportNotices({
     `Mkt value = ${valueBasis}.`,
     changeReported ? "" : `Change vs prior quarter: not reported by this source; see fn 13F ${requested}`,
   ].filter(Boolean).join(" ");
+  const cut = indexed
+    ? indexedListCut(requested, shown.length, total, sort)
+    // The source names only its largest holders, so a higher limit shows no more of them.
+    : shown.length > 0 && shown.length === reported && total != null && total > reported
+      ? `The source lists its ${reported} largest holders; fn 13F ${requested} lists all ${total.toLocaleString("en-US")}.`
+      : null;
   return {
-    notices: [header, basis, positionsBasis, holderShareBasisNote(data, shown), unvaluedHoldersNote(shown, sort)]
+    notices: [header, basis, cut, positionsBasis, holderShareBasisNote(data, shown), unvaluedHoldersNote(shown, sort)]
       .filter((line): line is string => !!line),
     valueBasis,
     positionsBasis,
     changeReported,
   };
+}
+
+/**
+ * What a cut index list leaves out: the rows are its largest holders, so
+ * another order ranks only those, and `--limit` or `fn 13F` shows the rest.
+ */
+function indexedListCut(requested: string, shown: number, total: number | null, sort: SortPreference): string | null {
+  if (shown === 0 || total == null || shown >= total) return null;
+  const within = sort.columnId === "value" || sort.columnId === "shares" ? "" : `Sorted among the ${shown} largest. `;
+  const all = total.toLocaleString("en-US");
+  const more = total <= HOLDER_ROWS_MAX
+    ? `--limit ${total} lists them all.`
+    : shown < HOLDER_ROWS_MAX
+      ? `--limit lists up to ${HOLDER_ROWS_MAX}; fn 13F ${requested} lists all ${all}.`
+      : `fn 13F ${requested} lists all ${all}.`;
+  return within + more;
 }
 
 /**

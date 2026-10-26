@@ -2,7 +2,7 @@ import { useCallback, useMemo } from "react";
 import { isAccessDenied } from "../../../api-client/errors";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import type { CreditDocumentsPayload, CreditHeadroom, CreditInstrument, CreditScreenPayload, CreditScreenRow } from "../../../api-client/credit-documents";
-import { ChartTableHeader, DataTableView, EmptyState, PageStackView, PaneStatusBody, QueryBar, useChartTableSelection, usePaneFooter, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type DataTableCell, type DataTableColumn, type PaneHint } from "../../../components";
+import { ChartTableHeader, DataTableView, EmptyState, PageStackView, QueryBar, useChartTableSelection, usePaneFooter, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type DataTableCell, type DataTableColumn, type PaneHint } from "../../../components";
 import { formatCompactAxis } from "../../../components/chart-table";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
@@ -19,7 +19,7 @@ import { cachedCredit, creditIssuerSymbol, CREDIT_UNAVAILABLE, fetchCreditScreen
 import { CreditInstrumentDetail } from "./detail";
 import { useCreditEvidence } from "./evidence";
 import { HeadroomGauge } from "./gauge";
-import { capitalCell, capitalColumns, capitalFigures, comparatorSymbol, covenantColumns, covenantUsage, CREDIT_TABS, creditAmount, covenantNumber, creditCurrencies, creditMaturityRows, creditPercent, creditTab, fieldLabel, headroomTone, instrumentOutstanding, isClosed, maturityAxis, maturityColumns, maturitySeries, maturityShares, NO_VALUE, screenColumns, screenRowId, sentence } from "./model";
+import { capitalCell, capitalColumns, capitalFigures, comparatorSymbol, covenantColumns, covenantFact, covenantUsage, CREDIT_TABS, creditAmount, covenantNumber, creditCurrencies, creditMaturityRows, creditPercent, creditTab, fieldLabel, headroomTone, instrumentOutstanding, isClosed, maturityAxis, maturityColumns, maturitySeries, maturityShares, NO_VALUE, screenColumns, screenRowId, screenSignal, sentence } from "./model";
 
 type Row = { numbers?: Record<string, number | null>; id: string; values: Record<string, string>; instrumentId?: string; covenant?: CreditHeadroom; screen?: CreditScreenRow; year?: number; locked?: boolean; closed?: boolean };
 const rowId = (row: Row) => row.id;
@@ -70,10 +70,10 @@ function CreditView({ symbol, width, height, focused, accessKey, needsVerificati
     : tab === "maturities" ? maturityColumns(width, preview) : screenColumns(width), [tab, data, width, preview]);
   const figures = useMemo(() => tab === "capital" && data ? capitalFigures(data) : [], [tab, data]);
   const unsortedRows = useMemo<Row[]>(() => {
-    if (tab === "screen") return (screenData?.rows ?? []).map((row) => ({ id: screenRowId(row), instrumentId: row.instrumentId, screen: row, numbers: {value:row.value}, values: { symbol: row.symbol, kind: row.kind === "springing_maturity" ? "Springing maturity" : row.value != null && row.value < 0 ? "Breach" : "Low headroom", value: creditPercent(row.value), date: row.date ?? NO_VALUE, instrument: row.instrumentName, reason: sentence(row.reason) } }));
+    if (tab === "screen") return (screenData?.rows ?? []).map((row) => ({ id: screenRowId(row), instrumentId: row.instrumentId, screen: row, numbers: {value:row.value}, values: { symbol: row.symbol, kind: screenSignal(row), value: creditPercent(row.value), date: row.date ?? NO_VALUE, instrument: row.instrumentName, reason: sentence(row.reason) } }));
     if (!data) return [];
     if (tab === "capital") return data.instruments.map((row) => ({ id: row.id, instrumentId: row.id, closed: isClosed(row), numbers: {principal:instrumentOutstanding(row)}, values: Object.fromEntries(["name", "facility", "coupon", "maturity", "principal", "currency", "ranking", "control"].map((id) => [id, capitalCell(row, id, data)])) }));
-    if (tab === "covenants") return data.covenants.map((row) => { const fact=data.instruments.find((item) => item.id === row.instrumentId)?.facts.find((item) => item.id === row.id); return ({ id: row.id, instrumentId: row.instrumentId, covenant: row, numbers: {headroom:row.headroomPercent,usage:covenantUsage(row),threshold:row.threshold,current:row.current}, values: { metric: sentence(row.metric), headroom: creditPercent(row.headroomPercent), usage: "", threshold: `${comparatorSymbol(row.comparator, row.inclusive)} ${covenantNumber(row.threshold,fact)}`, current: covenantNumber(row.current,fact), status: fieldLabel(row.status), date: row.asOf, instrument: row.instrumentName } }); });
+    if (tab === "covenants") return data.covenants.map((row) => { const fact=covenantFact(data, row); return ({ id: row.id, instrumentId: row.instrumentId, covenant: row, numbers: {headroom:row.headroomPercent,usage:covenantUsage(row),threshold:row.threshold,current:row.current}, values: { metric: sentence(row.metric), headroom: creditPercent(row.headroomPercent), usage: "", threshold: `${comparatorSymbol(row.comparator, row.inclusive)} ${covenantNumber(row.threshold,fact)}`, current: covenantNumber(row.current,fact), status: fieldLabel(row.status), date: row.asOf, instrument: row.instrumentName } }); });
     const shares = preview ? new Map() : maturityShares(maturityRows);
     return maturityRows.flatMap((row) => row.instruments.map((instrument) => { const id = `${row.year}:${instrument.id}`, share = shares.get(id); return { id, instrumentId: instrument.id, year: row.year, numbers: {year:row.year,principal:instrument.principal,share:share?.share ?? null,cumulative:share?.cumulative ?? null}, values: { year: String(row.year), principal: creditAmount(instrument.principal), share: creditPercent(share?.share), cumulative: creditPercent(share?.cumulative), instruments: instrument.name } }; }));
   }, [data, screenData, tab, maturityRows, preview]);
@@ -170,18 +170,19 @@ function CreditView({ symbol, width, height, focused, accessKey, needsVerificati
     return { text, value, color: column.id === columns[0]!.id ? colors.textBright : colors.text };
   };
   return <Box width={width} height={height} flexDirection="column">{strip}
-    <PaneStatusBody loading={!available && loading} error={!available && currentError !== CREDIT_UNAVAILABLE ? currentError : null}
-      empty={!available && currentError === CREDIT_UNAVAILABLE} emptyTitle={CREDIT_UNAVAILABLE} subject="credit documents">
-      {available ? <PageStackView focused={focused && !openFactId} detailOpen={!!openInstrument} onBack={() => setOpen(null)} detailTitle={openInstrument?.name}
+    <PageStackView focused={focused && !openFactId} detailOpen={!!openInstrument} onBack={() => setOpen(null)} detailTitle={openInstrument?.name}
         detailContent={openInstrument && activeSymbol ? <CreditInstrumentDetail key={`${activeSymbol}:${openInstrument.id}`} symbol={activeSymbol} instrument={openInstrument} width={width} height={bodyHeight - 1} focused={focused} accessKey={accessKey} view={view} setView={setView} covenant={activeCovenant} openId={openFactId} setOpen={setOpenFact} captured={instrumentSnapshot?.id === openInstrument.id ? instrumentSnapshot : null} pro={data?.access === "full"} onUpgrade={openUpgrade} /> : null}
-        rootContent={<DataTableView<Row> columns={columns} items={items} sortColumnId={sort.column} sortDirection={sort.direction} onHeaderClick={(column) => setSort((current) => ({column,direction:current.column === column && current.direction === "asc" ? "desc" : "asc"}))} focused={focused && !openInstrument} rootWidth={width} rootHeight={bodyHeight} rootBefore={rootBefore}
+        rootContent={<DataTableView<Row> columns={columns} items={available ? items : []}
+          // The Screen tab and its thresholds load under the query bar, which stays.
+          status={available ? undefined : { loading, error: currentError !== CREDIT_UNAVAILABLE ? currentError : null,
+            empty: currentError === CREDIT_UNAVAILABLE, emptyTitle: CREDIT_UNAVAILABLE, subject: "credit documents" }}
+          sortColumnId={sort.column} sortDirection={sort.direction} onHeaderClick={(column) => setSort((current) => ({column,direction:current.column === column && current.direction === "asc" ? "desc" : "asc"}))} focused={focused && !openInstrument} rootWidth={width} rootHeight={bodyHeight} rootBefore={rootBefore}
           getItemKey={rowId} selection={{ kind: "id", selectedId: selected?.id ?? null, getId: rowId, onChange: setSelected }}
           onActivate={(row) => row.locked ? openUpgrade() : setOpen(row.screen ? row.id : row.instrumentId ?? null)}
           renderCell={renderCell}
           emptyStateTitle={tab === "screen" ? "No supported credit signals match these thresholds." : tab === "covenants" ? "No financial maintenance covenants documented." : tab === "maturities" ? "No supported instrument maturity amounts." : CREDIT_UNAVAILABLE}
           emptyStateHint={tab === "screen" && (headroom < 100 || months < 36) ? "Raise either threshold to widen the screen." : undefined}
           selectedTextOverridesCellColor showHorizontalScrollbar freezeFirstColumn resetScrollKey={`${symbol}:${tab}:${selectedCurrency}`}
-          bodyAfter={locked > 0 && desktop ? <LockedOverlay rows={Math.min(3, locked)} text={lockedText} onPress={openUpgrade} /> : undefined} />} /> : null}
-    </PaneStatusBody>
+          bodyAfter={locked > 0 && desktop ? <LockedOverlay rows={Math.min(3, locked)} text={lockedText} onPress={openUpgrade} /> : undefined} />} />
   </Box>;
 }

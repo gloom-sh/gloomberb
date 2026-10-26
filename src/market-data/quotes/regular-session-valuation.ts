@@ -74,8 +74,8 @@ interface FigureMoves {
  * The served EV check at the moved figures, so its note reads the EV and the
  * market cap the rows show: the EV it describes is the moved one, and the
  * computed EV moves with the cap. A withdrawn EV, shown nowhere, moves with
- * the cap as the computed one does. The status stays the one Gloom Cloud
- * judged.
+ * the cap as the computed one does. A computed EV (an insurer's) is the
+ * moved EV itself. The status stays the one Gloom Cloud judged.
  */
 function movedEnterpriseValueCheck(
   check: EnterpriseValueCheck | undefined,
@@ -83,17 +83,22 @@ function movedEnterpriseValueCheck(
   enterpriseValue: number | undefined,
   movedCap: number | undefined,
 ): EnterpriseValueCheck | undefined {
-  if (!check || movedCap == null || !Number.isFinite(movedCap) || !Number.isFinite(check.marketCap)) return check;
+  if (!check || movedCap == null || !Number.isFinite(movedCap) || check.marketCap == null || !Number.isFinite(check.marketCap)) return check;
   const shift = movedCap - check.marketCap;
   if (shift === 0 && served === enterpriseValue) return check;
-  const source = check.status !== "withdrawn" && served === check.source && enterpriseValue != null
-    ? enterpriseValue
-    : check.source + shift;
+  const finiteComputed = check.computed != null && Number.isFinite(check.computed);
+  if (check.status === "computed" && finiteComputed && served === check.computed && enterpriseValue != null) {
+    return { ...check, marketCap: movedCap, computed: enterpriseValue,
+      ...(check.source != null ? { source: check.source + shift } : {}) };
+  }
+  const describesServed = check.status !== "withdrawn" && check.status !== "not-meaningful" && served === check.source;
+  const source = check.source == null ? undefined
+    : describesServed && enterpriseValue != null ? enterpriseValue : check.source + shift;
   return {
     ...check,
-    source,
+    ...(source != null ? { source } : {}),
     marketCap: movedCap,
-    ...(check.computed != null && Number.isFinite(check.computed) ? { computed: check.computed + shift } : {}),
+    ...(finiteComputed ? { computed: check.computed! + shift } : {}),
   };
 }
 

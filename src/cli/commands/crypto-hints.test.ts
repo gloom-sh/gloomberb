@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, test } from "bun:test";
 import { createDefaultConfig } from "../../types/config";
 import type { Quote } from "../../types/financials";
 import type { CliCommandContext } from "../../types/plugin";
@@ -7,12 +7,14 @@ import { coinElsewhereNote, quoteNotes } from "./crypto-hints";
 import { marketDataCliCommands } from "./market";
 import { serializeCliResult } from "../result";
 import { setCliColorEnabledOverride } from "../../utils/cli-output";
+import { resetBoardCoins } from "../board-coins";
 
+beforeEach(() => resetBoardCoins([]));
 // A quote that finds nothing sets the exit status; it must not become the test run's.
-afterEach(() => { process.exitCode = 0; });
+afterEach(() => { process.exitCode = 0; resetBoardCoins(); });
 
 const config = createDefaultConfig("/tmp/gloom-crypto-hints-test");
-const HINT = "Crypto prices may be briefly unavailable; the CRYP function (gloomberb fn CRYP) shows the crypto board.";
+const HINT = "Crypto prices may be briefly unavailable; the CRYP function (gloom fn CRYP) shows the crypto board.";
 
 function quote(symbol: string, name: string, instrumentType?: string): Quote {
   return { symbol, name, price: 36.11, change: 0, changePercent: 0, currency: "USD", lastUpdated: 1_789_200_000_000, instrumentType };
@@ -76,23 +78,35 @@ test("history keeps its error and adds the crypto board pointer only for crypto 
   expect(detailsOf(await history("BTC-USD", "json"))).toEqual(["No history provider available for BTC-USD", undefined]);
 });
 
-test("a bare coin ticker that resolves to a fund says it is not the coin", async () => {
+test("a bare coin ticker read as another listing says where the coin is, firmly when that listing cannot be it", async () => {
   const etf = quote("BTC", "Grayscale Bitcoin Mini Trust ETF", "ETF");
   expect((await runQuote(["BTC"], { BTC: etf })).warnings)
     .toEqual(["BTC is Grayscale Bitcoin Mini Trust ETF, not bitcoin. For bitcoin use BTC-USD."]);
   expect((await runQuote(["ETH"], { ETH: quote("ETH", "Grayscale Ethereum Mini Trust ETF", "ETF") })).warnings)
     .toEqual(["ETH is Grayscale Ethereum Mini Trust ETF, not ethereum. For ethereum use ETH-USD."]);
+  // A company whose name says nothing of the coin, but whose line is stale or delisted, is not what was meant either.
+  const staleSol = { ...quote("SOL", "Emeren Group Ltd", "Common Stock"), stale: true };
+  expect((await runQuote(["SOL"], { SOL: staleSol })).warnings).toEqual(["SOL is Emeren Group Ltd, not solana. For solana use SOL-USD."]);
+  const delisted = { ...quote("LINK", "Interlink Electronics, Inc.", "EQUITY"), delisting: { status: "delisted" as const, lastTradeDate: "2025-12-12", historyStart: "2016-01-04" } };
+  expect((await runQuote(["LINK"], { LINK: delisted })).warnings).toContain("LINK is Interlink Electronics, Inc., not chainlink. For chainlink use LINK-USD.");
 
-  // The real coin, a company that only shares the letters, and an unrelated ticker get no note.
+  // A live company that only shares the letters may be the one meant: it says the coin exists, and no more.
   const quiet = (symbol: string, result: Quote, cliOptions = {}) => runQuote([symbol], { [symbol]: result }, cliOptions);
+  expect((await quiet("LINK", quote("LINK", "Interlink Electronics, Inc.", "EQUITY"))).warnings)
+    .toEqual(["LINK is Interlink Electronics, Inc. Also a coin: LINK-USD."]);
+  expect((await quiet("ATOM", quote("ATOM", "Atomera Incorporated", "EQUITY"))).warnings)
+    .toEqual(["ATOM is Atomera Incorporated. Also a coin: ATOM-USD."]);
+
+  // The real coin and a symbol that is no top coin's get no note, and an explicit listing (--exchange) was asked for on purpose.
   expect((await quiet("BTC", quote("BTC", "Bitcoin USD", "CRYPTOCURRENCY"))).warnings).toBeUndefined();
-  expect((await quiet("LINK", quote("LINK", "Interlink Electronics, Inc.", "EQUITY"))).warnings).toBeUndefined();
   expect((await quiet("AAPL", quote("AAPL", "Apple Inc.", "EQUITY"))).warnings).toBeUndefined();
-  // JSON output is unchanged, and an explicit listing (--exchange) was asked for on purpose.
-  expect((await quiet("BTC", etf, { format: "json" })).warnings).toBeUndefined();
+  expect((await quiet("CAR", quote("CAR", "Avis Budget Group", "EQUITY"))).warnings).toBeUndefined();
   const named = createTestCliContext({ config, dataProvider: { getQuotesBatch: async () => [{ target: { symbol: "BTC", exchange: "NYSE" }, quote: etf }] } });
   await marketDataCliCommands.find((command) => command.name === "quote")!.execute(["BTC", "--exchange", "NYSE"], named.context);
   expect(named.printed[0]!.result.warnings).toBeUndefined();
+  // The line is a warning in JSON too, beside the rows it explains.
+  expect((await quiet("BTC", etf, { format: "json" })).warnings)
+    .toEqual(["BTC is Grayscale Bitcoin Mini Trust ETF, not bitcoin. For bitcoin use BTC-USD."]);
 });
 
 test("a bare coin ticker several companies list, none of them the coin, points at the pair", () => {
@@ -108,6 +122,8 @@ test("a bare coin ticker several companies list, none of them the coin, points a
 
 test("a symbol no listing carries reads as not a ticker in the table and the notes, an outage as unavailable", async () => {
   const cli = createTestCliContext({ config, dataProvider: {
+    // Search names no company Apple, so the word stays not a ticker.
+    search: async () => [],
     getQuotesBatch: async (targets: Array<{ symbol: string; exchange: string }>) => targets.map((target) => ({
       target,
       quote: null,
@@ -126,7 +142,7 @@ test("a symbol no listing carries reads as not a ticker in the table and the not
     setCliColorEnabledOverride(null);
   }
   // JSON keeps the error as thrown, per row.
-  const json = createTestCliContext({ config, dataProvider: { getQuotesBatch: async (targets: Array<{ symbol: string; exchange: string }>) => targets.map((target) => ({ target, quote: null, error: new Error("Not a ticker: APPLE.") })) } }, { format: "json" });
+  const json = createTestCliContext({ config, dataProvider: { search: async () => [], getQuotesBatch: async (targets: Array<{ symbol: string; exchange: string }>) => targets.map((target) => ({ target, quote: null, error: new Error("Not a ticker: APPLE.") })) } }, { format: "json" });
   await marketDataCliCommands.find((command) => command.name === "quote")!.execute(["Apple"], json.context);
   expect(json.printed[0]!.result.warnings).toBeUndefined();
   expect((json.printed[0]!.result.data as Array<{ error: string }>)[0]!.error).toBe("Not a ticker: APPLE.");

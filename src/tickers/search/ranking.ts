@@ -132,7 +132,8 @@ export function isCryptoInstrumentType(type?: string): boolean {
   return ["CRYPTO", "CRYPTOCURRENCY", "DIGITALCURRENCY"].includes((type ?? "").toUpperCase().replace(/[\s_-]/g, ""));
 }
 
-function isQualifiedTickerQuery(query: string): boolean {
+/** A query that names its venue or market: SYM:EXCH, a listing suffix (7203.T), a future or a pair. */
+export function isQualifiedTickerQuery(query: string): boolean {
   const symbol = normalizeTickerSymbol(query);
   return isExplicitMarketSymbol(symbol) || !!parsePublicTickerKey(symbol).exchange || tickerHasListingSuffix(symbol);
 }
@@ -193,6 +194,9 @@ export function rankTickerSearchItems<T extends Pick<TickerSearchRankableItem, "
   // A sector word ("defense") is answered by the funds that track it before the small companies whose names
   // contain it; the server's own order of those funds is the best signal of their size.
   const themeWord = themeQueryWord(items, query);
+  // The rows the server sent for the whole query as a kind of fund ("spot bitcoin ETF" is IBIT, FBTC, ...)
+  // carry it as a keyword: they answer it more than a fund whose name happens to hold the words.
+  const categoryKeyword = assetClass ? normalizeSearchText(rawQuery) : "";
 
   const ranked = (assetClass
     ? items.filter((item) => assetClassKeeps(assetClass.code, instrumentClassCode({
@@ -250,7 +254,16 @@ export function rankTickerSearchItems<T extends Pick<TickerSearchRankableItem, "
       const explicitIntentScore = scoreAssetPreference(intent, item.instrumentClass)
         + scoreExchangePreference(intent, item);
       const priorityScore = explicitIntentScore + scoreListingPriority(item);
-      const companyMatchRank = scoreCompanyNameMatch(intent, companyNameKey);
+      // A company the service found by a name it does not bear in this row (the one it had before it was renamed,
+      // a trade name) is that company by the name as much as its listing's own name says so. An index answers to
+      // its codes, never as a company.
+      const companyAliases = item.instrumentClass === "equity" && !(item.symbol || item.label).startsWith("^")
+        ? item.nameAliases ?? []
+        : [];
+      const companyMatchRank = Math.max(
+        scoreCompanyNameMatch(intent, companyNameKey),
+        ...companyAliases.map((alias) => scoreCompanyNameMatch(intent, normalizeCompanyName(alias))),
+      );
       return {
         item,
         index,
@@ -261,6 +274,7 @@ export function rankTickerSearchItems<T extends Pick<TickerSearchRankableItem, "
           ? getIssuerGroupKey(item.detail)
           : null,
         explicitIntentScore,
+        categoryFund: categoryKeyword && item.searchKeywords?.some((keyword) => normalizeSearchText(keyword) === categoryKeyword) ? 1 : 0,
         themeFund: themeWord != null && isThemeFund(item, themeWord) ? 1 : 0,
         themeCompany: themeWord != null && isThemeCompany(item, themeWord) ? 1 : 0,
         normalizedSymbol: normalizeSearchText(item.symbol || item.label),
@@ -271,6 +285,17 @@ export function rankTickerSearchItems<T extends Pick<TickerSearchRankableItem, "
         score: textScore + priorityScore + (textScore > 0 && saved ? SAVED_MATCH_BONUS : 0),
       };
     });
+
+  // A large company's name that is only a foreign line's ticker ("Visa" in Vienna, "Pfizer" for Pfizer Ltd. on
+  // NSE, "BofA" for a Canadian receipt) asks for the company, which the server marks with the name as typed: its
+  // US line leads, and those tickers rank by their names. A US line's ticker (SAP, GOLD) keeps every exact lead.
+  if (namesUsCompany(ranked, query)) {
+    for (const entry of ranked) {
+      if (entry.symbolMatchRank !== 3 && entry.symbolMatchRank !== 4) continue;
+      entry.symbolMatchRank = 0;
+      entry.nameOnly = entry.companyMatchRank > 0;
+    }
+  }
 
   // A company named exactly as the word is what was asked for ("tesla"), whatever else a theme tags.
   const namedCompany = ranked.some((entry) => entry.companyMatchRank === 3 && entry.item.instrumentClass === "equity");
@@ -392,13 +417,20 @@ export function rankTickerSearchItems<T extends Pick<TickerSearchRankableItem, "
   }
 
   filtered.sort((a, b) => {
-    // Precedence is exact symbol, explicit query hints, a sector word's funds
+    // Precedence is exact symbol, the funds of a kind named in full, explicit query hints, a sector word's funds
     // and then the companies sent with it, each in the server's order, whole-word company relevance, issuer relevance, provider order within that issuer, partial
     // symbol, saved relevance, then stable source order.
     const aExactSymbolRank = a.symbolMatchRank >= 2 ? a.symbolMatchRank : 0;
     const bExactSymbolRank = b.symbolMatchRank >= 2 ? b.symbolMatchRank : 0;
     if (bExactSymbolRank !== aExactSymbolRank) return bExactSymbolRank - aExactSymbolRank;
     if (aExactSymbolRank === BENCHMARK_FUTURE_RANK) {
+      const aProviderRank = a.item.providerRank ?? Number.POSITIVE_INFINITY;
+      const bProviderRank = b.item.providerRank ?? Number.POSITIVE_INFINITY;
+      if (aProviderRank !== bProviderRank) return aProviderRank - bProviderRank;
+    }
+    // The funds of a kind named in full lead in the server's order, ahead of any venue or asset hint.
+    if (b.categoryFund !== a.categoryFund) return b.categoryFund - a.categoryFund;
+    if (a.categoryFund) {
       const aProviderRank = a.item.providerRank ?? Number.POSITIVE_INFINITY;
       const bProviderRank = b.item.providerRank ?? Number.POSITIVE_INFINITY;
       if (aProviderRank !== bProviderRank) return aProviderRank - bProviderRank;
@@ -482,12 +514,13 @@ function foldSearchText(text: string): string {
   return text.normalize("NFKD").replace(/\p{M}/gu, "").trim().toUpperCase();
 }
 
+// Letters of every script are kept: a name typed in kana or kanji (任天堂) is no empty query that matches every row.
 export function normalizeSearchText(text: string): string {
-  return foldSearchText(text).replace(/[^A-Z0-9]+/g, " ").trim();
+  return foldSearchText(text).replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 }
 
 export function compactSearchText(text: string): string {
-  return foldSearchText(text).replace(/[^A-Z0-9]+/g, "");
+  return foldSearchText(text).replace(/[^\p{L}\p{N}]+/gu, "");
 }
 
 export function normalizeTickerSymbol(symbol: string): string {
@@ -813,6 +846,30 @@ function scoreExchangePreference(
   return matchesHint ? 2_000 : -800;
 }
 
+/** The venue a row lists on: a broker's SMART routing names none, its primary exchange does. */
+function listingVenue(item: Partial<TickerSearchRankableItem>): string {
+  return canonicalExchange(item.exchangeLabel === "SMART" ? item.primaryExchangeLabel : item.exchangeLabel || item.primaryExchangeLabel);
+}
+
+/**
+ * Whether the server answered a company's name with the company's US line,
+ * marked with the name as typed (`searchAliases`), while the rows whose ticker
+ * is the query all list abroad and none is saved. A ticker typed with its
+ * venue (VISA:VIE), or a US line that is the ticker, names that ticker instead.
+ */
+function namesUsCompany(
+  entries: ReadonlyArray<{ item: Partial<TickerSearchRankableItem>; symbolMatchRank: number }>,
+  query: string,
+): boolean {
+  if (isQualifiedTickerQuery(query) || !/\p{L}/u.test(query)) return false;
+  const exact = entries.filter((entry) => entry.symbolMatchRank === 3 || entry.symbolMatchRank === 4);
+  if (exact.length === 0 || exact.some(({ item }) => isUsListingExchange(listingVenue(item)) || item.saved || item.kind === "ticker")) return false;
+  const typed = compactSearchText(query);
+  return entries.some(({ item, symbolMatchRank }) => symbolMatchRank === 2 && item.kind === "search"
+    && item.instrumentClass === "equity" && isUsListingExchange(listingVenue(item))
+    && !!item.searchAliases?.some((alias) => compactSearchText(alias) === typed));
+}
+
 function isDepositaryReceiptType(type?: string): boolean {
   const normalized = normalizeSearchText(type || "");
   return normalized.includes("DEPOSITARY") || ["ADR", "ADS", "GDR", "CDR", "BDR"].includes(normalized);
@@ -885,6 +942,8 @@ export function getIssuerGroupKey(detail: string): string {
 
 function normalizeCompanyName(name: string): string {
   const tokens = normalizeSearchText(name).split(" ").filter(Boolean);
+  // "The TJX Companies, Inc." is TJX's name as much as Hanover's "TJX COMPANIES INC. R" is.
+  if (tokens.length > 1 && tokens[0] === "THE") tokens.shift();
   while (tokens.length > 1) {
     if (COMPANY_NAME_SUFFIXES.has(tokens.at(-1)!)) {
       tokens.pop();

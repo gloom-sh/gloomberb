@@ -112,6 +112,11 @@ export interface ScreenMetric {
   sourceUrl: string | null;
   /** Set by the client on a Pro field the server left out for a caller without Gloom Pro; never sent. */
   access?: "pro";
+  /**
+   * Set on a multiple that is not meaningful (a P/E over a loss, an EV/revenue or EV/EBITDA over an EV or EBITDA at
+   * or below zero): `value` is null, `reason` says why, and it shows as N/M.
+   */
+  notMeaningful?: true;
   percentile: {
     value: number | null;
     sampleCount: number;
@@ -154,6 +159,29 @@ export interface ScreenPayload {
   universe: ScreenCoverage & { matched: number };
   rows: ScreenRow[];
   nextCursor: string | null;
+  warnings: string[];
+}
+interface ScreenCriterionCheck {
+  criterion: ScreenCriterion;
+  /** The screen's currency restriction, which also controls membership. */
+  implicit: boolean;
+  value: number | string | null;
+  passes: boolean | null;
+  state: "available" | "partial" | "stale" | "unavailable" | "missing" | "not-covered";
+  unit: string;
+  asOf: string | null;
+  observedAt: string | null;
+  reason: string | null;
+}
+export interface ScreenCheckPayload {
+  version: 1;
+  status: "available" | "partial" | "not-covered";
+  symbol: string;
+  definition: ScreenDefinition;
+  snapshot: ScreenSnapshot;
+  matches: boolean | null;
+  row: Pick<ScreenRow, "symbol" | "exchange" | "name" | "currency" | "sector" | "industry"> | null;
+  criteria: ScreenCriterionCheck[];
   warnings: string[];
 }
 export interface SavedScreen {

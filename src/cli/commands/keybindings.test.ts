@@ -39,6 +39,22 @@ describe("config set keybindings", () => {
     expect(applyKeybindingCliSet(config, "keybindings.commands.a", "HN")).toMatchObject({ ok: false });
   });
 
+  test("refuses a chord a built-in action uses, naming it as the shortcuts editor does, and saves nothing", () => {
+    expect(applyKeybindingCliSet(config, "keybindings.actions.ticker-search", "Ctrl+P")).toEqual({
+      ok: false, message: "Ctrl+P is taken: Open the command bar. Press another key.",
+    });
+    expect(applyKeybindingCliSet(config, "keybindings.commands.Ctrl+W", "DES AAPL")).toEqual({
+      ok: false, message: "Ctrl+W is taken: Close the focused pane. Press another key.",
+    });
+    // Quit keeps Q though only the terminal has it.
+    expect(applyKeybindingCliSet(config, "keybindings.actions.help", "Q")).toMatchObject({ ok: false, message: expect.stringContaining("Q is taken") });
+    // An action keeps its own key, and one moved off a key frees it.
+    expect(applyKeybindingCliSet(config, "keybindings.actions.command-bar", "CmdOrCtrl+P F2")).toMatchObject({ ok: true });
+    const moved = applyKeybindingCliSet(config, "keybindings.actions.command-bar", "F2");
+    if (!moved.ok) throw new Error(moved.message);
+    expect(applyKeybindingCliSet(moved.config, "keybindings.actions.ticker-search", "Ctrl+P")).toMatchObject({ ok: true });
+  });
+
   test("rejects unknown actions, bad chords and bad sections with a usable message", () => {
     expect(applyKeybindingCliSet(config, "keybindings.actions.nope", "F1")).toMatchObject({ ok: false, message: expect.stringContaining("not a keybinding action") });
     expect(applyKeybindingCliSet(config, "keybindings.actions.quit", "Hyper+Q")).toMatchObject({ ok: false, message: expect.stringContaining("not a key chord") });

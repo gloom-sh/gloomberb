@@ -23,6 +23,7 @@ import type { SeriesCatalogInstrument, SeriesCatalogSuggestion } from "./series-
 import { useSeriesCatalogSuggestions } from "./use-series-catalog";
 import { clampIndex } from "../../../utils/math";
 
+const RETRY_SEARCH_ID = "\u0000retry-search";
 const MAX_VISIBLE_SUGGESTIONS = 4;
 const CHART_TOOLBAR_HEIGHT = 1;
 const MINIMUM_CHART_HEIGHT = 4;
@@ -116,7 +117,7 @@ export function ChartSeriesQuickAdd({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const defaultInstrument = useMemo(() => defaultCatalogInstrument(spec), [spec]);
-  const { suggestions, loading, error: searchError } = useSeriesCatalogSuggestions({
+  const { suggestions, loading, error: searchError, retry } = useSeriesCatalogSuggestions({
     query,
     defaultInstrument,
     enabled: active,
@@ -127,10 +128,7 @@ export function ChartSeriesQuickAdd({
   const drawerStatus = error
     ?? (loading && suggestions.length === 0
       ? "Searching instruments..."
-      // A failed lookup is not zero matches, so it keeps its own message.
-      : searchError && suggestions.length === 0
-        ? searchError
-        : active && query.trim().length > 0 && suggestions.length === 0
+      : active && !searchError && query.trim().length > 0 && suggestions.length === 0
           ? "No matching security or metric."
           : null);
   const maximumDrawerHeight = Math.max(
@@ -141,7 +139,7 @@ export function ChartSeriesQuickAdd({
     ),
   );
   const drawerHeight = active
-    ? Math.min(maximumDrawerHeight, drawerStatus ? 1 : suggestions.length)
+    ? Math.min(maximumDrawerHeight, drawerStatus ? 1 : suggestions.length + (searchError ? 1 : 0))
     : 0;
   const nativeSurfaceManager = nativeRenderer.nativeSurfaceManager;
   useAppInputCapture(inputFocused && focused);
@@ -203,9 +201,14 @@ export function ChartSeriesQuickAdd({
 
   // Plugin catalogs land after the securities: only pull a stranded cursor
   // back into range, so a row the user already moved to stays selected.
+  // -1 is the retry row when a lookup failed. Suggestions retain their indices
+  // when that row arrives, so an in-flight failure cannot change what Enter adds.
+  const clampSelection = useCallback((index: number) => suggestions.length
+    ? Math.min(suggestions.length - 1, Math.max(searchError ? -1 : 0, index))
+    : -1, [searchError, suggestions.length]);
   useEffect(() => {
-    setSelectedIndex((current) => clampIndex(current, suggestions.length, -1));
-  }, [suggestions.length]);
+    setSelectedIndex(clampSelection);
+  }, [clampSelection]);
 
   useEffect(() => {
     if (focused || !active) return;
@@ -287,9 +290,16 @@ export function ChartSeriesQuickAdd({
     queueMicrotask(() => inputRef.current?.blur?.());
   }, [cancelPendingBlur, clearInput, onActiveChange, setSpec, spec]);
 
+  const retrySearch = useCallback(() => {
+    cancelPendingBlur();
+    setInputFocused(true);
+    queueMicrotask(() => inputRef.current?.focus?.());
+    void retry();
+  }, [cancelPendingBlur, retry]);
   const submit = useCallback(() => {
-    commitSuggestion(suggestions[clampIndex(selectedIndex, suggestions.length, -1)]);
-  }, [commitSuggestion, selectedIndex, suggestions]);
+    if (selectedIndex < 0 && searchError) retrySearch();
+    else commitSuggestion(suggestions[clampIndex(selectedIndex, suggestions.length, -1)]);
+  }, [commitSuggestion, retrySearch, searchError, selectedIndex, suggestions]);
   const cancel = useCallback(() => {
     cancelPendingBlur();
     inputRef.current?.blur?.();
@@ -317,11 +327,11 @@ export function ChartSeriesQuickAdd({
     } else if (event.name === "up") {
       event.preventDefault?.();
       event.stopPropagation?.();
-      setSelectedIndex((current) => clampIndex(current - 1, suggestions.length, -1));
+      setSelectedIndex((current) => clampSelection(current - 1));
     } else if (event.name === "down") {
       event.preventDefault?.();
       event.stopPropagation?.();
-      setSelectedIndex((current) => clampIndex(current + 1, suggestions.length, -1));
+      setSelectedIndex((current) => clampSelection(current + 1));
     }
   }, {
     phase: "before",
@@ -377,12 +387,17 @@ export function ChartSeriesQuickAdd({
       />
   );
 
-  const items = useMemo<ListViewItem[]>(() => suggestions.map((suggestion) => ({
-    id: suggestion.id,
-    label: suggestion.label,
-    description: suggestion.description,
-    detail: suggestion.detail,
-  })), [suggestions]);
+  const items = useMemo<ListViewItem[]>(() => [
+    ...(searchError ? [{ id: RETRY_SEARCH_ID, label: searchError, detail: "Retry", color: colors.negative }] : []),
+    ...suggestions.map((suggestion) => ({
+      id: suggestion.id, label: suggestion.label, description: suggestion.description, detail: suggestion.detail,
+    })),
+  ], [searchError, suggestions]);
+  const selectedItemIndex = selectedIndex + (searchError ? 1 : 0);
+  const activateItem = (id: string) => {
+    if (id === RETRY_SEARCH_ID) retrySearch();
+    else commitSuggestion(suggestions.find((suggestion) => suggestion.id === id));
+  };
 
   return (
     <Box
@@ -408,17 +423,17 @@ export function ChartSeriesQuickAdd({
           label="Chart series suggestions"
           minWidth={controlWidth * 8}
           closeOnSelect={false}
-          highlightedId={suggestions[clampIndex(selectedIndex, suggestions.length, -1)]?.id ?? null}
-          onHighlight={(id) => setSelectedIndex(Math.max(0, suggestions.findIndex((suggestion) => suggestion.id === id)))}
+          highlightedId={items[selectedItemIndex]?.id ?? null}
+          onHighlight={(id) => setSelectedIndex(id === RETRY_SEARCH_ID ? -1 : Math.max(0, suggestions.findIndex((suggestion) => suggestion.id === id)))}
           items={drawerStatus
             ? [{ id: "\u0000status", kind: "heading", label: drawerStatus }]
-            : suggestions.map((suggestion) => ({
+            : items.map((suggestion) => ({
               id: suggestion.id,
               label: suggestion.label,
               description: suggestion.description,
               hint: suggestion.detail,
             }))}
-          onSelect={(id) => commitSuggestion(suggestions.find((suggestion) => suggestion.id === id))}
+          onSelect={activateItem}
         />
       ) : quickAddRow}
       {!desktop && drawerHeight > 0 ? (
@@ -454,15 +469,15 @@ export function ChartSeriesQuickAdd({
           ) : (
             <ListView
               items={items}
-              selectedIndex={clampIndex(selectedIndex, items.length, -1)}
+              selectedIndex={clampIndex(selectedItemIndex, items.length, -1)}
               height={drawerHeight}
               surface="plain"
               bgColor={colors.panel}
               scrollable={items.length > drawerHeight}
               rowGap={0}
               selectOnHover
-              onSelect={setSelectedIndex}
-              onActivate={(_, index) => commitSuggestion(suggestions[index])}
+              onSelect={(index) => setSelectedIndex(index - (searchError ? 1 : 0))}
+              onActivate={(item) => activateItem(item.id)}
               remoteLabel="Chart series suggestions"
             />
           )}

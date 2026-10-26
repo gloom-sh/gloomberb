@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, expect, setSystemTime, test } from "bun:test";
 import { act, useState } from "react";
-import { apiClient } from "../../../api-client";
+import { apiClient, type AccountProfile } from "../../../api-client";
+import { setCheckoutHandoffPollForTests } from "../../../account/checkout-handoff";
+import { accountSession, registerAccountSession } from "../../../account/session";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { useRendererHost } from "../../../ui";
 import { openCloudUpgradeUrl, resetCloudUpgradeGuardForTests, useCloudUpgradeAction } from "./cloud-upgrade";
@@ -10,6 +12,7 @@ const tui = createOpenTuiTestHarness();
 const originalCreateCloudCheckout = apiClient.createCloudCheckout;
 const originalCreateBrowserHandoff = apiClient.createBrowserHandoff;
 const originalRecordResearchActivity = apiClient.recordResearchActivity;
+const originalGetAccountProfile = apiClient.getAccountProfile;
 let checkouts = 0;
 let opened: string[] = [];
 
@@ -25,6 +28,7 @@ afterEach(() => {
   apiClient.createCloudCheckout = originalCreateCloudCheckout;
   apiClient.createBrowserHandoff = originalCreateBrowserHandoff;
   apiClient.recordResearchActivity = originalRecordResearchActivity;
+  apiClient.getAccountProfile = originalGetAccountProfile;
   apiClient.setSessionToken(null);
   apiClient.restoreCachedUser(null);
   setSystemTime();
@@ -125,6 +129,101 @@ test("a checkout that cannot be created falls back to the Cloud page once and le
   await upgrade({ sheet: false });
   expect(checkouts).toBe(3);
   expect(opened).toEqual(["https://gloom.sh/cloud?handoff=one-time", "https://checkout.example/session"]);
+});
+
+const LINK = "https://gloom.sh/checkout/guqc9mh8jhatg6";
+
+/** Mounts a prompt whose browser opens with `open`, and the checkout it creates. */
+async function renderHandoff(open: (url: string) => Promise<boolean | void>): Promise<(options?: unknown) => Promise<void>> {
+  apiClient.createCloudCheckout = (async () => {
+    checkouts += 1;
+    return { url: "https://checkout.example/session", link: LINK };
+  }) as typeof apiClient.createCloudCheckout;
+  let upgrade!: (options?: unknown) => Promise<void>;
+  function ProStep() {
+    upgrade = useCloudUpgradeAction("onboarding-pro");
+    useRendererHost().openExternal = async (url: string) => {
+      opened.push(url);
+      return open(url);
+    };
+    return null;
+  }
+  await tui.render(<ProStep />, { width: 100, height: 40 });
+  return upgrade;
+}
+
+test("checkout opens under the hand-off, which reopens the same checkout and closes once Pro arrives", async () => {
+  // A terminal over SSH: the opener takes its time, then nothing opened.
+  const firstOpen = Promise.withResolvers<boolean>();
+  const upgrade = await renderHandoff(async () => (opened.length === 1 ? firstOpen.promise : false));
+
+  await act(async () => {
+    void upgrade({ sheet: false });
+  });
+  // The way back shows as soon as the checkout exists, before the opener settles.
+  await tui.waitForFrameToContain(LINK);
+  expect(tui.frame()).toContain("Continue in browser");
+  expect(tui.frame()).toContain("Waiting for checkout...");
+
+  await act(async () => {
+    firstOpen.resolve(false);
+  });
+  await tui.waitForFrameToContain("No browser opens from here.");
+
+  // The browser button opens the same checkout again, not a second one.
+  await act(async () => {
+    await tui.emitKeypress({ name: "b", sequence: "b" });
+  });
+  expect(opened).toEqual(["https://checkout.example/session", "https://checkout.example/session"]);
+  expect(checkouts).toBe(1);
+
+  await act(async () => {
+    apiClient.restoreCachedUser({ id: "user-free", email: "free@example.com", emailVerified: true, plan: "pro" });
+  });
+  await tui.waitForFrameToContain("Pro is on.");
+  await tui.emitKeypress({ name: "return" });
+  await tui.waitForFrameToExclude("Finish checkout in your browser");
+});
+
+test("while checkout is open the account is read again, one read at a time, until Pro arrives", async () => {
+  const previousSession = accountSession;
+  const profile = Promise.withResolvers<AccountProfile>();
+  let reads = 0;
+  let refreshes = 0;
+  apiClient.getAccountProfile = (async () => {
+    reads += 1;
+    return profile.promise;
+  }) as typeof apiClient.getAccountProfile;
+  registerAccountSession({
+    adoptSession: () => {},
+    refreshSession: async () => {
+      refreshes += 1;
+      apiClient.restoreCachedUser({ id: "user-free", email: "free@example.com", emailVerified: true, plan: "pro" });
+    },
+  });
+  setCheckoutHandoffPollForTests(10);
+  try {
+    const upgrade = await renderHandoff(async () => true);
+    await act(async () => {
+      await upgrade({ sheet: false });
+    });
+    await tui.waitForFrameToContain("Waiting for checkout...");
+    // Several ticks pass while the first read is out: no second one starts.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 80));
+    });
+    expect(reads).toBe(1);
+    expect(refreshes).toBe(0);
+
+    await act(async () => {
+      profile.resolve({ id: "user-free", email: "free@example.com", emailVerified: true, plan: "pro" } as AccountProfile);
+    });
+    await tui.waitForFrameToContain("Pro is on.");
+    expect(refreshes).toBe(1);
+  } finally {
+    setCheckoutHandoffPollForTests();
+    registerAccountSession(previousSession);
+  }
 });
 
 test("the UPGRADE command still opens checkout after the newest prompt closes", async () => {

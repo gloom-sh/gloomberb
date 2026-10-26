@@ -203,6 +203,14 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         },
       };
 
+    case "SET_BROKER_SYNC_ERROR": {
+      if (!state.config.brokerInstances.some((instance) => instance.id === action.instanceId)) return state;
+      const brokerSyncErrors = { ...state.brokerSyncErrors };
+      if (action.error) brokerSyncErrors[action.instanceId] = action.error;
+      else delete brokerSyncErrors[action.instanceId];
+      return { ...state, brokerSyncErrors };
+    }
+
     case "SET_INITIALIZED":
       return { ...state, initialized: true };
 
@@ -371,6 +379,7 @@ export function createInitialState(config: AppConfig, sessionSnapshot: AppSessio
     financials: new Map(),
     exchangeRates: new Map([["USD", 1]]),
     brokerAccounts: {},
+    brokerSyncErrors: {},
     focusedPaneId,
     previousFocusedPaneId: null,
     paneState,

@@ -5,6 +5,7 @@ export type StatCategoryId =
   | "inflation"
   | "labor"
   | "growth"
+  | "nowcasts"
   | "consumer"
   | "housing"
   | "rates"
@@ -14,6 +15,7 @@ export const STAT_CATEGORIES: ReadonlyArray<{ id: StatCategoryId; label: string 
   { id: "inflation", label: "Inflation" },
   { id: "labor", label: "Labor" },
   { id: "growth", label: "Growth" },
+  { id: "nowcasts", label: "Nowcasts & conditions" },
   { id: "consumer", label: "Consumer" },
   { id: "housing", label: "Housing" },
   { id: "rates", label: "Rates & Money" },
@@ -56,6 +58,14 @@ export interface StatDef {
   staleAfterMs: number;
   /** Searchable description; the long-form reference lives in docs/economics-reference.md. */
   note: string;
+  /** Other words the catalog and the pane's filter find it by: `PMMS` for the mortgage rate. */
+  keywords?: readonly string[];
+  /**
+   * The names a reader gives the indicator, read as an argument ahead of any
+   * FRED series id: `PCE` is the price index release, not the series FRED files
+   * under that id (personal spending), and `gdp` is real GDP, not its nowcast.
+   */
+  aliases?: readonly string[];
   /** Concise measurement identity that must remain beside the values. */
   measurementBasis?: string;
   /**

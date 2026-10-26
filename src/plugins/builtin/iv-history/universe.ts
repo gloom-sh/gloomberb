@@ -1,3 +1,4 @@
+import { fxVolatilityNote } from "../../../market-data/options-alternatives";
 import type { InstrumentRef } from "../../../market-data/request-types";
 import type { TickerRecord } from "../../../types/ticker";
 import { canonicalExchange } from "../../../utils/exchanges";
@@ -33,7 +34,10 @@ export function vcaUniverse(scope: string, symbolsText: string, collectionId: st
     instruments = VCA_PRESETS[preset].map((symbol) => ({ symbol, exchange: "" }));
   }
   const valid = [...new Map(instruments.filter((instrument) => SYMBOL.test(instrument.symbol)).map((instrument) => [instrument.symbol, instrument])).values()];
-  const error = !valid.length ? scope === "collection" ? "Link a watchlist or portfolio with US-listed symbols in pane settings." : "Add symbols in pane settings."
+  // An FX pair or currency future typed in a list is left out with what stands in for it, not as a symbol that does not parse.
+  const fx = scope === "custom" ? instruments.flatMap((instrument) => fxVolatilityNote(instrument.symbol, instrument.exchange) ?? []) : [];
+  const error = !valid.length ? fx[0] ?? (scope === "collection" ? "Link a watchlist or portfolio with US-listed symbols in pane settings." : "Add symbols in pane settings.")
+    : fx.length ? fx[0]!
     : valid.length > VCA_LIMIT ? `Only the first ${VCA_LIMIT} symbols are screened.`
       : skipped ? `${skipped} non-US listing${skipped === 1 ? "" : "s"} left out: stored implied volatility covers US option underlyings.` : null;
   return { label, instruments: valid.slice(0, VCA_LIMIT), error };

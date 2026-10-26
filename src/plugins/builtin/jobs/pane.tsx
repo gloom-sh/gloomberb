@@ -32,6 +32,7 @@ import { useAsyncResource } from "../../../react/async-resource";
 import { useShortcut } from "../../../react/input";
 import { colors } from "../../../theme/colors";
 import { Box, Text, TextAttributes, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
+import { withCountryFlag } from "../../../components/ui/country-flag";
 import { formatNumber } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
 import { nextHeaderSort } from "../../../utils/sort-values";
@@ -85,7 +86,7 @@ function HiringProWall({ symbol, exchange, width, height }: { symbol: string | n
       placement="jobs-wall"
       symbol={symbol} exchange={exchange} width={width} height={height}
       title="Hiring data is part of Gloom Cloud Pro."
-      message={`Gloomberb reads every listed company's own careers system daily: open roles over time, hiring by function and location, new roles, and pay ranges.${symbol ? ` Open ${symbol}'s hiring picture with Pro.` : ""}`}
+      message={`Gloom reads every listed company's own careers system daily: open roles over time, hiring by function and location, new roles, and pay ranges.${symbol ? ` Open ${symbol}'s hiring picture with Pro.` : ""}`}
     />
   );
 }
@@ -486,7 +487,7 @@ function CompanyView({
           <Box flexDirection="column" paddingX={1} paddingTop={1}>
             {countryRows.length === 0
               ? <Text fg={colors.textDim}>No locations in the postings collected so far.</Text>
-              : <ShareBars rows={countryRows} width={Math.min(width - 2, 80)} color={colors.warning} showDelta />}
+              : <ShareBars rows={countryRows} width={Math.min(width - 2, 80)} color={colors.warning} showDelta flags />}
           </Box>
         ) : tab === "seniority" ? (
           <Box flexDirection="column" paddingX={1} paddingTop={1}>
@@ -575,7 +576,7 @@ function CompanyPanel({
       <PaneStatusBody
         empty
         emptyTitle={`No careers system found for ${symbol}.`}
-        emptyMessage="Gloomberb reads companies' own careers systems. This one either has none we can read or lists roles only on third-party job boards."
+        emptyMessage="Gloom reads companies' own careers systems. This one either has none we can read or lists roles only on third-party job boards."
         retry={{ onRetry: reload, pending: loading, label: "Look again", pendingLabel: "Looking again...", unchanged: "Still no careers system." }}
       />
     );
@@ -682,9 +683,10 @@ function HomeView({ width, height, focused, registrationId }: { width: number; h
       case "function":
         return { text: row.function, color: colors.textDim };
       case "country":
-        return { text: row.country, color: colors.textDim };
+        // The column has room for the flag beside the code and its share.
+        return withCountryFlag({ text: row.country, color: colors.textDim }, row.mover.topCountry?.code, nativePaneChrome === true);
     }
-  }, []);
+  }, [nativePaneChrome]);
 
   if (status === "loading" && !data) return <PaneStatusBody loading align="center" loadingLabel="Loading hiring data..." />;
   if (status === "error" && !data) return <PaneStatusBody error={error ?? "Could not load hiring data."} errorTitle="Could not load hiring data." retry={{ onRetry: reload }} />;

@@ -1,21 +1,49 @@
 import { listingSuffixExchange } from "../sources/listing-symbols";
+import { kindFromListingSyntax } from "../tickers/instrument-kind";
+import { macroReleaseTopic } from "../plugins/builtin/shared/macro-releases";
 import { parsePublicTickerKey } from "../utils/exchanges";
 import { listingAbroadVenue } from "../utils/sec";
 import { nimCommand } from "./bank-section";
 import { treasuryYieldLine, treasuryYieldTenor } from "./treasury-yields";
 
 /**
+ * What a listing is to a sub-minute ask: a US listing, which has a tape; one
+ * known to trade abroad, a future, or another class a symbol's own syntax names
+ * (an index, a currency pair, a coin), none of which has trades or quotes.
+ */
+type SubMinuteListing = "unknown" | "abroad" | "future" | "other";
+
+function subMinuteListing(symbol: string): SubMinuteListing {
+  if (listedAbroad(symbol)) return "abroad";
+  const kind = kindFromListingSyntax(symbol, parsePublicTickerKey(symbol).exchange);
+  return kind === "future" ? "future" : kind ? "other" : "unknown";
+}
+
+/**
  * Where data finer than a minute is: nowhere as bars. GIP draws 1-minute
  * bars; for a US listing TAS lists each trade (a window of the session with
  * `--from`/`--to`) and QR each quote. `history --interval`, GIP's
- * `--chartResolution 1s` and QR on a listing abroad all say this; a listing
- * known to trade abroad, which has no trades on the tape, is told only the bars.
+ * `--chart-resolution 1s` and QR on a listing abroad all say this. The tape
+ * covers US equities only, and TAS and QR answer anything else with an
+ * error or an empty table, so a listing without one is told only the bars
+ * that exist for it. A future's finest are G's 1-minute bars of its session
+ * (`fn G GC=F --range-preset 1D`) and `history`'s 5-minute bars of 1D, both
+ * checked on GC=F and SI=F on 2026-10-21. GIP is not named for one: its
+ * window is the UTC day, not the session, and it was reported with no points
+ * for a future.
  */
-export function subMinuteDataMessage(symbol = "<ticker>", listing: "abroad" | "unknown" = listedAbroad(symbol) ? "abroad" : "unknown"): string {
-  const bars = `No second or tick bars; 1-minute bars: fn GIP ${symbol}`;
-  return listing === "abroad"
-    ? `${bars}; trades exist for US listings only.`
-    : `${bars}; for a US listing, each trade: fn TAS ${symbol} (a window: --from 10:30 --to 10:35), each quote: fn QR ${symbol}.`;
+export function subMinuteDataMessage(symbol = "<ticker>", listing: SubMinuteListing = subMinuteListing(symbol)): string {
+  const none = "No second or tick bars";
+  switch (listing) {
+    case "abroad":
+      return `${none}; 1-minute bars: fn GIP ${symbol}; trades exist for US listings only.`;
+    case "future":
+      return `${none}; 1-minute bars: fn G ${symbol} --range-preset 1D (history ${symbol} --range 1D has 5-minute bars). Trades and quotes cover US equities only.`;
+    case "other":
+      return `${none}; 1-minute bars: fn GIP ${symbol}. Trades and quotes cover US equities only.`;
+    default:
+      return `${none}; 1-minute bars: fn GIP ${symbol}; for a US listing, each trade: fn TAS ${symbol} (a window: --from 10:30 --to 10:35), each quote: fn QR ${symbol}.`;
+  }
 }
 
 /**
@@ -42,8 +70,8 @@ export function isSubMinuteInterval(value: string): boolean {
  * (checked 2026-10-19).
  */
 export const MUNI_LINE = "Municipal bonds: no AAA muni curve (MMD and BVAL are licensed). Muni bond funds: MUB, VTEB, TFI (national), SUB (short-term), "
-  + "CMF, VTEC (California), NYF, MUNY (New York). SEC yield, distribution yield, yield to worst and duration: gloomberb fn DVD <fund> or "
-  + "gloomberb fundamentals <fund>; tax-equivalent yield and muni/Treasury ratio: add --tax-rate 40.8 (with --state-rate 13.3 --state CA for a "
+  + "CMF, VTEC (California), NYF, MUNY (New York). SEC yield, distribution yield, yield to worst and duration: gloom fn DVD <fund> or "
+  + "gloom fundamentals <fund>; tax-equivalent yield and muni/Treasury ratio: add --tax-rate 40.8 (with --state-rate 13.3 --state CA for a "
   + "single-state fund).";
 
 /**
@@ -51,7 +79,7 @@ export const MUNI_LINE = "Municipal bonds: no AAA muni curve (MMD and BVAL are l
  * or, while no source carries it, the nearest thing the app does have, with
  * the traded proxies either way. `search` and `catalog` answer a query that
  * names one with this line instead of pointing at each other. One entry per
- * subject; every proxy named is a listing `gloomberb quote` answers (checked
+ * subject; every proxy named is a listing `gloom quote` answers (checked
  * 2026-10-11: CO2:LSE is the physical EUA ETC, while a bare CO2 is a Brent
  * future; BDRY, SBLK, GNK and DSX on 2026-10-17), a function `fn` runs, or a
  * command that answers (`news "dry bulk"`).
@@ -102,11 +130,11 @@ const KNOWN_GAPS: ReadonlyArray<{ terms: readonly string[]; tickers?: readonly s
  */
 const BANK_FIGURES_TOPIC = {
   topic: "Bank deposits, uninsured share and CRE / capital",
-  availability: "in the Bank section of gloomberb fundamentals <ticker>",
+  availability: "in the Bank section of gloom fundamentals <ticker>",
   phrases: ["nim", "nims", "net interest margin", "net interest margins", "deposits", "deposit growth", "deposit flows",
     "deposit outflows", "deposit base", "uninsured", "cre", "commercial real estate"],
   closestLabel: "net interest margin",
-  closest: [["EQS", "NIM%, Pro: gloomberb fn EQS --metric kpiNimPercent"]],
+  closest: [["EQS", "NIM%, Pro: gloom fn EQS --metric kpiNimPercent"]],
 } as const;
 
 /**
@@ -114,7 +142,7 @@ const BANK_FIGURES_TOPIC = {
  * command or a function. One example, writing a file.
  */
 function exportLine(symbol = "LMT"): string {
-  return `Export: add --csv or --json to any command to print its result as CSV or JSON, e.g. gloomberb history ${symbol} --csv > ${
+  return `Export: add --csv or --json to any command to print its result as CSV or JSON, e.g. gloom history ${symbol} --csv > ${
     symbol.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.csv`;
 }
 
@@ -126,13 +154,26 @@ const EXPORT_POINTER = {
   leads: true,
 } as const;
 
+/**
+ * Bloomberg's spreadsheet formulas (BDP, BDH, BDS), Excel and Sheets: the Google Sheets functions take the same
+ * tickers and fields. Listed before the export line, so "excel" alone is this one and "export to excel" that one.
+ */
+const SHEETS_POINTER = {
+  names: ["bdh", "bdp", "bds", "excel", "sheets", "gsheets", "google sheets"],
+  words: ["formula", "formulas", "function", "functions", "add", "in", "addin", "plugin", "bloomberg", "google", "for", "with",
+    "data", "how", "to", "use", "can", "i", "a", "an", "the", "my", "spreadsheet", "spreadsheets", "workbook", "workbooks"],
+  line: "Spreadsheets: =GLOOM and =GLOOMH in Google Sheets take the tickers and fields of Bloomberg's BDP and BDH (Pro): "
+    + "gloom.sh/docs/google-sheets. For Excel, add --csv to any command.",
+  leads: true,
+} as const;
+
 /** "bank", "bank figures": beside the functions a bank's name finds (CBR), where its figures are. */
 const BANK_FIGURES_POINTER = {
   names: ["bank", "banks", "banking"],
   words: ["figures", "figure", "data", "metrics", "holding", "company", "companies", "section", "kpi", "kpis", "ratios",
     "fundamentals", "stats", "statistics", "balance", "sheet"],
-  line: "Bank figures (deposits, uninsured share, CRE / capital, lead bank): gloomberb fundamentals <ticker>, Bank section. "
-    + "Net interest margin (Pro): gloomberb fn EQS --metric kpiNimPercent",
+  line: "Bank figures (deposits, uninsured share, CRE / capital, lead bank): gloom fundamentals <ticker>, Bank section. "
+    + "Net interest margin (Pro): gloom fn EQS --metric kpiNimPercent",
 };
 
 /**
@@ -169,6 +210,27 @@ const TOPIC_POINTERS: ReadonlyArray<{
       "easy to borrow", "securities lending", "stock loan", "stock lending", "locate fee", "short locate"],
     whole: ["borrow", "borrowing", "utilization", "utilisation", "locate", "locates", "htb", "lendable shares"],
     closest: [["SI", "FINRA short interest and days to cover"], ["SIW", "crowded shorts across your names"], ["SIV", "daily short volume"]],
+  },
+  {
+    // FUT and CTM list COMEX metals (HG copper, ALI aluminium), never the London or Shanghai contracts: a query naming those
+    // venues is told so, not pointed at FUT. The IMF's monthly world prices stand in for LME's (`fred PCOPPUSDM`).
+    topic: "LME and Shanghai (SHFE) metals futures",
+    availability: "not covered (FUT and CTM list COMEX contracts only). Monthly world prices in USD/t: gloom fred PCOPPUSDM, gloom fred PALUMUSDM",
+    phrases: ["lme", "london metal exchange", "london metals exchange", "shfe", "shanghai futures exchange", "shanghai futures",
+      "shanghai copper", "shanghai aluminium", "shanghai aluminum", "shanghai zinc", "shanghai nickel", "shanghai tin", "shanghai lead",
+      "shanghai rebar", "shanghai steel", "shanghai metals"],
+    closestLabel: "COMEX curves",
+    closest: [["CTM", "gloom fn CTM HG for copper, gloom fn CTM ALI for aluminium"]],
+  },
+  {
+    // "exchange reserves" alone reads as crypto's; "foreign exchange reserves" is a central bank's, so only whole.
+    topic: "Crypto exchange reserves and exchange flows",
+    availability: "not covered (no source for coins held on exchanges)",
+    phrases: ["crypto exchange reserves", "bitcoin exchange reserves", "btc exchange reserves", "eth exchange reserves",
+      "ethereum exchange reserves", "exchange inflows", "exchange outflows", "exchange netflow", "exchange netflows", "exchange net flows",
+      "coins on exchanges", "bitcoin on exchanges", "btc on exchanges"],
+    whole: ["exchange reserves", "exchange reserve", "exchange balances", "exchange balance", "exchange flows"],
+    closest: [["CRYP", "DeFi TVL by protocol and chain: gloom fn CRYP --list defi; stablecoin supply: --list stablecoin"]],
   },
 ];
 
@@ -208,26 +270,50 @@ export function topicPointer(query: string): { message: string; codes: string[] 
  * and `catalog` print beside whatever else the query finds. A query asks for one when every word is a word of that
  * command and one of them names it: "light theme", "dark", "colour-blind", but not "ai theme" (THEM's basket) or
  * "dark pool"; "drip", "dividend income", but not "income statement" or "net income"; "tether", "depeg",
- * "usdc peg", but not "peg ratio".
+ * "usdc peg", but not "peg ratio". A command with `qualifiers` also needs one of them once the query says more than
+ * its name: "fx forward rate", but not "forward rate".
  */
-const COMMAND_POINTERS: ReadonlyArray<{ names: readonly string[]; words: readonly string[]; line: string; leads?: true }> = [
+const COMMAND_POINTERS: ReadonlyArray<{
+  names: readonly string[];
+  words: readonly string[];
+  qualifiers?: readonly string[];
+  line: string;
+  leads?: true;
+}> = [
   BANK_FIGURES_POINTER,
+  SHEETS_POINTER,
   EXPORT_POINTER,
   {
     names: ["theme", "themes", "light", "dark", "colorblind", "colourblind", "blind"],
     words: ["mode", "color", "colour", "colors", "colours", "high", "contrast", "change", "switch", "set", "setting", "settings"],
-    line: "Themes: gloomberb config themes",
+    line: "Themes: gloom config themes",
   },
   {
     names: ["drip", "drips", "reinvest", "reinvested", "reinvesting", "reinvestment", "income"],
     words: ["dividend", "dividends", "portfolio", "my", "annual", "yearly", "passive", "projection", "project", "projected",
       "plan", "planner", "calculator", "forecast", "yield", "growth"],
-    line: "Portfolio income, yield and DRIP projection: gloomberb portfolio show <name> --drip",
+    line: "Portfolio income, yield and DRIP projection: gloom portfolio show <name> --drip",
   },
   {
     names: ["tether", "usdt", "usdc", "depeg", "depegs", "depegged", "depegging", "peg", "pegs", "pegged", "stablecoin", "stablecoins"],
     words: ["stable", "coin", "coins", "off", "check", "monitor", "watch", "scare", "risk", "dollar", "usd", "status", "price", "prices", "low"],
-    line: "Stablecoins against their peg, off peg in bp, 24h low and high: gloomberb fn CRYP --list stablecoin",
+    line: "Stablecoins against their peg, off peg in bp, 24h low and high: gloom fn CRYP --list stablecoin",
+  },
+  {
+    // A currency forward, not a forward rate on a yield curve, forward guidance, a forward P/E or the forward
+    // inflation series: a query that says more than "forward" has to name FX.
+    names: ["forward", "forwards", "fwd", "fwds"],
+    words: ["rate", "rates", "implied", "hedge", "hedging", "cost", "costs", "premium", "interest", "1w", "2w", "30d", "1m", "3m",
+      "6m", "1y"],
+    qualifiers: ["fx", "currency", "currencies", "point", "points", "pips", "cip", "covered", "parity", "outright",
+      "usd", "mxn", "eur", "gbp", "usdmxn", "eurusd", "gbpusd", "eurmxn", "peso", "dollar", "euro", "sterling"],
+    line: "FX forwards implied by both currencies' short rates (covered interest parity), with forward points and the hedge cost: gloom fx USD/MXN --forward 30d",
+  },
+  {
+    names: ["defi", "tvl", "tvls", "total value locked", "on-chain", "onchain", "aave", "lido", "eigenlayer", "morpho"],
+    words: ["protocol", "protocols", "chain", "chains", "crypto", "data", "top", "by", "history",
+      "change", "ranking", "rankings", "dashboard", "lending", "staking"],
+    line: "DeFi TVL, top protocols and chains with 7D and 30D change: gloom fn CRYP --list defi (by chain: --by chain)",
   },
 ];
 
@@ -245,7 +331,7 @@ export function commandPointerLeads(query: string): boolean {
 }
 
 /**
- * The line for a command word typed as `gloomberb export LMT`: exporting is a flag every command takes, not a
+ * The line for a command word typed as `gloom export LMT`: exporting is a flag every command takes, not a
  * command, so the example runs on the symbol typed. Null for any other word.
  */
 export function exportCommandPointer(token: string, args: readonly string[]): string | null {
@@ -254,11 +340,19 @@ export function exportCommandPointer(token: string, args: readonly string[]): st
   return exportLine(symbol);
 }
 
+/** A name of several words ("on-chain") names the command when its words run together in the query. */
 function findCommandPointer(query: string): (typeof COMMAND_POINTERS)[number] | null {
   const asked = words(query);
   if (asked.length === 0) return null;
-  return COMMAND_POINTERS.find(({ names, words: other }) => asked.some((word) => names.includes(word))
-    && asked.every((word) => names.includes(word) || other.includes(word))) ?? null;
+  return COMMAND_POINTERS.find(({ names, words: other, qualifiers = [] }) => {
+    const named = new Set(names.flatMap((name) => {
+      const parts = words(name);
+      return containsWords(asked, parts) ? parts : [];
+    }));
+    return named.size > 0
+      && asked.every((word) => named.has(word) || other.includes(word) || qualifiers.includes(word))
+      && (qualifiers.length === 0 || asked.every((word) => named.has(word)) || asked.some((word) => qualifiers.includes(word)));
+  }) ?? null;
 }
 
 /**
@@ -272,8 +366,8 @@ export function bankFigurePointer(name: string, arg: string): { message: string;
   return {
     message: `${name} is not a function: a bank's figures are in the Bank section of fundamentals.`,
     details: [
-      `Deposits, uninsured share, CRE / capital and the lead bank: gloomberb fundamentals ${symbol || "<ticker>"}`,
-      `Net interest margin (Pro): ${symbol ? nimCommand(symbol) : "gloomberb fn EQS --metric kpiNimPercent"}`,
+      `Deposits, uninsured share, CRE / capital and the lead bank: gloom fundamentals ${symbol || "<ticker>"}`,
+      `Net interest margin (Pro): ${symbol ? nimCommand(symbol) : "gloom fn EQS --metric kpiNimPercent"}`,
     ].join("\n"),
   };
 }
@@ -294,7 +388,8 @@ export function knownGapForTicker(symbol: string): string | null {
 
 /**
  * The line for a query that names a known subject as a whole ("carbon allowances", "EUA"), a Treasury yield
- * typed as a ticker (US10Y), or a topic with no function ("defense budget"), else null.
+ * typed as a ticker (US10Y), a topic with no function ("defense budget"), or a macro release no series carries
+ * ("ISM manufacturing", "GDPNow"), else null.
  */
 export function knownGapMessage(query: string): string | null {
   const key = lookupKey(query);
@@ -302,5 +397,6 @@ export function knownGapMessage(query: string): string | null {
   const tenor = treasuryYieldTenor(query);
   return KNOWN_GAPS.find((gap) => gap.terms.some((term) => lookupKey(term) === key))?.message
     ?? (tenor ? treasuryYieldLine(tenor) : null)
-    ?? topicPointer(query)?.message ?? null;
+    ?? topicPointer(query)?.message
+    ?? macroReleaseTopic(query)?.line ?? null;
 }

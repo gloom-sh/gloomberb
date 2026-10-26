@@ -1,16 +1,16 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, test } from "bun:test";
 import { act, useReducer } from "react";
 import { CachedQuery } from "../../../data/cached-query";
 import type { DataProvider } from "../../../types/data-provider";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
-import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
+import { getSharedMarketDataCoordinator, MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { appReducer, createInitialState, type AppState } from "../../../state/app/context";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { TestPaneFrame, createTestTicker, createTestPaneConfig } from "../../../test-support/pane";
 import type { OptionContract, OptionsChain, TickerFinancials } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
-import { createOptionsControls } from "./test-fixture";
+import { createOptionsControls, installOptionsReferenceFixtures } from "./test-fixture";
 import { OptionsView } from "./view";
 import { optionsModule } from "./index";
 import { draftFromParams } from "../options-calculator/model";
@@ -22,10 +22,18 @@ const tui = createOpenTuiTestHarness();
 /** The body names a selected expiry the chain cannot serve, with the dates nearest it. */
 const UNAVAILABLE = /No (?:option contracts returned for )?expiry \d{4}-\d{2}-\d{2}/;
 const realNow = Date.now;
+let restoreReferenceData: (() => void) | undefined;
 
+beforeEach(() => {
+  setSharedMarketDataCoordinator(null);
+  restoreReferenceData = installOptionsReferenceFixtures();
+});
 afterEach(() => {
+  getSharedMarketDataCoordinator()?.destroy();
   setSharedMarketDataCoordinator(null);
   Date.now = realNow;
+  restoreReferenceData?.();
+  restoreReferenceData = undefined;
 });
 
 const { settle, key, capture: captureLaunch } = createOptionsControls(() => tui.setup());
@@ -140,6 +148,7 @@ async function fixture(width = 80, heldExpiry = 0, cached = false, delayedSeed?:
     async handoff(expiration: number) { await act(async () => seedExpiration(expiration)); await settle(); },
     async hydrateTicker() { await act(async () => switchTicker(initialTicker)); await settle(); },
     setFailure: (value: boolean) => { failure = value; },
+    setNow: (ms: number) => { now = ms; },
     async reread(expiration?: number) {
       await act(async () => { await coordinator.loadOptions(request(expiration)); }); await settle();
     },
@@ -198,6 +207,16 @@ test.each([48, 80, 120])("a removed selected expiry cannot seed another contract
   const recovered = await f.capture("selected-recovered");
   expect(recovered.launch?.marketReference?.expiration).toBe(EXPIRIES[1]);
   expect(recovered.frame).not.toMatch(UNAVAILABLE);
+});
+
+test("a date whose close has passed is never the default, even when the listing and a saved choice still name it", async () => {
+  const f = await fixture();
+  expect((await f.capture("front")).launch?.marketReference?.expiration).toBe(EXPIRIES[0]);
+  f.setNow(Date.UTC(2026, 8, 19, 12));
+  await f.refresh([...EXPIRIES], undefined, false);
+  const rolled = await f.capture("front-passed");
+  expect(rolled.launch?.marketReference?.expiration).toBe(EXPIRIES[1]);
+  expect(rolled.frame).not.toContain("Sep 18");
 });
 
 test("a new underlying initializes its held expiry after a researcher chose another date", async () => {

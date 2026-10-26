@@ -1,5 +1,15 @@
 import type { UpdateChannel } from "../types/config";
+import { reportUpdateFailure, type UpdateInstallKind } from "../telemetry/update-failures";
+import { detectLinuxLibc, type LinuxLibc } from "../utils/linux-libc";
 import { compareSemver, isPrereleaseVersion } from "../utils/semver";
+import { PACKAGE_NAME } from "../version";
+import {
+  classifyUpdateError,
+  httpStatusFailureCode,
+  type UpdateFailure,
+  type UpdateFailureCode,
+  type UpdateFailurePhase,
+} from "./failure";
 import {
   GITHUB_LATEST_RELEASE_API_URL,
   GITHUB_RELEASES_API_URL,
@@ -49,6 +59,8 @@ export interface UpdateProgress {
   message?: string;
   /** With `ready`: this host can apply the update and relaunch on request. */
   canRestart?: boolean;
+  /** With `error`: the step that failed and why, which the header says in a few words. */
+  failure?: UpdateFailure;
 }
 
 export type UpdateAction =
@@ -68,7 +80,7 @@ export type UpdateCheckResult =
   /** `notice`: why a newer-looking state is not an update, such as a nightly build waiting for a stable release. */
   | { kind: "current"; notice?: string }
   | { kind: "disabled" }
-  | { kind: "error"; error: string };
+  | { kind: "error"; error: string; failure?: UpdateFailure };
 
 /**
  * On the stable channel a nightly build is never replaced by an older stable
@@ -101,6 +113,7 @@ export function setUpdateHost(host: UpdateHost | null): void {
 
 export function getAssetBaseNameForRuntime(
   runtimeProcess: Pick<NodeJS.Process, "platform" | "arch"> | null = getRuntimeProcess(),
+  libc: LinuxLibc | null = detectLinuxLibc(),
 ): string {
   const os = runtimeProcess?.platform === "darwin"
     ? "darwin"
@@ -111,8 +124,10 @@ export function getAssetBaseNameForRuntime(
   // only publishes arm64 today, so an x64 macOS runtime resolves no asset and
   // reports that instead of overwriting itself with an unrunnable binary.
   const arch = runtimeProcess?.arch === "arm64" ? "arm64" : "x64";
+  // A musl system keeps the musl build: the glibc one cannot start there.
+  const variant = os === "linux" && libc === "musl" ? "-musl" : "";
   const extension = os === "windows" ? ".exe" : "";
-  return `gloomberb-${os}-${arch}${extension}`;
+  return `gloomberb-${os}-${arch}${variant}${extension}`;
 }
 
 function getAssetBaseName(): string {
@@ -269,7 +284,7 @@ export function detectUpdateAction(
     || entrypoint.includes("/.bun/install/")
     || entrypoint.includes("/install/global/")
   ) {
-    return { kind: "manual", command: "bun install -g gloomberb@latest" };
+    return { kind: "manual", command: `bun install -g ${PACKAGE_NAME}@latest` };
   }
 
   if (
@@ -292,7 +307,7 @@ export function detectUpdateAction(
     || entrypoint.includes("/lib/node_modules/")
     || entrypoint.includes("/node_modules/")
   ) {
-    return { kind: "manual", command: "npm install -g gloomberb@latest" };
+    return { kind: "manual", command: `npm install -g ${PACKAGE_NAME}@latest` };
   }
 
   return null;
@@ -300,6 +315,23 @@ export function detectUpdateAction(
 
 export function canSelfUpdate(release: Pick<ReleaseInfo, "updateAction"> | null | undefined): boolean {
   return release?.updateAction.kind === "self" || release?.updateAction.kind === "desktop";
+}
+
+/**
+ * Whether the install-update key has something to retry: a release this build
+ * can install itself whose last attempt failed. A fresh one downloads on its
+ * own, and a manual or managed one names its own command. (A downloaded
+ * desktop update has its own use of the key: restarting into it.)
+ */
+export function canRetryUpdate(state: {
+  updateAvailable: ReleaseInfo | null;
+  updateProgress: UpdateProgress | null;
+  updateCheckInProgress: boolean;
+}): boolean {
+  return !!state.updateAvailable
+    && state.updateProgress?.phase === "error"
+    && !state.updateCheckInProgress
+    && canSelfUpdate(state.updateAvailable);
 }
 
 /** A downloaded update this host can install and relaunch into when the user asks. */
@@ -344,6 +376,11 @@ export async function checkForUpdateDetailed(
     return { kind: "disabled" };
   }
   const nightly = channel === "nightly" && updateAction.kind === "self";
+  const failed = (error: string, code: UpdateFailureCode, targetVersion?: string): UpdateCheckResult => {
+    const failure: UpdateFailure = { phase: "check", code };
+    reportUpdateFailure(failure, { targetVersion, channel: nightly ? "nightly" : "stable" });
+    return { kind: "error", error, failure };
+  };
 
   let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -356,7 +393,7 @@ export async function checkForUpdateDetailed(
     });
 
     if (!res.ok) {
-      return { kind: "error", error: `GitHub returned ${res.status}` };
+      return failed(`GitHub returned ${res.status}`, httpStatusFailureCode(res.status));
     }
 
     const payload = await res.json();
@@ -379,16 +416,10 @@ export async function checkForUpdateDetailed(
 
     const asset = resolveReleaseAsset(data.assets);
     if (!asset) {
-      return {
-        kind: "error",
-        error: `No compatible release asset found for ${getAssetBaseName()}`,
-      };
+      return failed(`No compatible release asset found for ${getAssetBaseName()}`, "no_build", version);
     }
     if (!asset.checksum) {
-      return {
-        kind: "error",
-        error: `Release asset ${asset.name} is missing a valid SHA-256 digest`,
-      };
+      return failed(`Release asset ${asset.name} is missing a valid SHA-256 digest`, "no_build", version);
     }
 
     return {
@@ -406,12 +437,10 @@ export async function checkForUpdateDetailed(
     };
   } catch (error: unknown) {
     if (error instanceof Error && error.name === "AbortError") {
-      return { kind: "error", error: "Update check timed out" };
+      return failed("Update check timed out", "timeout");
     }
-    return {
-      kind: "error",
-      error: error instanceof Error ? error.message : "Update check failed",
-    };
+    const code = classifyUpdateError(error);
+    return failed(error instanceof Error ? error.message : "Update check failed", code === "unknown" && error instanceof SyntaxError ? "bad_response" : code);
   } finally {
     if (timeout) clearTimeout(timeout);
   }
@@ -483,7 +512,7 @@ export async function performUpdate(
       error: action.kind === "manual"
         ? `Run ${action.command}`
         : action.kind === "managed"
-          ? `Update through the package manager that installed Gloomberb: ${action.reason}.`
+          ? `Update through the package manager that installed Gloom: ${action.reason}.`
           : "This update type is unavailable in the current runtime.",
     });
     return;
@@ -501,20 +530,26 @@ export async function performUpdate(
   if (!execPath) {
     onProgress({
       phase: "error",
-      error: "Self-update is unavailable when running from source or via Bun/Node. Relaunch the packaged gloomberb binary to update.",
+      error: "Self-update is unavailable when running from source or via Bun/Node. Relaunch the packaged gloom binary to update.",
     });
     return;
   }
 
   const checksum = /^[a-f\d]{64}$/i.exec(release.checksum ?? "")?.[0].toLowerCase();
+  const fail = (failure: UpdateFailure, error: string) => {
+    reportUpdateFailure(failure, { targetVersion: release.version, channel: release.channel });
+    onProgress({ phase: "error", error, failure });
+  };
   if (!checksum) {
-    onProgress({ phase: "error", error: "Self-update requires a valid SHA-256 checksum." });
+    fail({ phase: "verify", code: "no_build" }, "Self-update requires a valid SHA-256 checksum.");
     return;
   }
 
   const updatePath = execPath + ".update";
   const oldPath = execPath + ".old";
   let unlinkUpdatePath: ((path: string) => void) | null = null;
+  /** The step under way, which a thrown error is reported against. */
+  let phase: UpdateFailurePhase = "download";
 
   try {
     // Not import(): Bun folds even a specifier held in a variable and bundles
@@ -531,7 +566,7 @@ export async function performUpdate(
 
     const res = await fetch(release.downloadUrl);
     if (!res.ok || !res.body) {
-      throw new Error(`Download failed: ${res.status}`);
+      throw new UpdateStepError({ phase: "download", code: httpStatusFailureCode(res.status) }, `Download failed: ${res.status}`);
     }
 
     const contentLength = Number(res.headers.get("content-length") || 0);
@@ -540,7 +575,18 @@ export async function performUpdate(
     let received = 0;
 
     while (true) {
-      const { done, value } = await reader.read();
+      let chunk: Awaited<ReturnType<typeof reader.read>>;
+      try {
+        chunk = await reader.read();
+      } catch (error) {
+        // The connection broke partway: whatever it says, the file is incomplete.
+        const code = classifyUpdateError(error);
+        throw new UpdateStepError(
+          { phase: "download", code: code === "timeout" ? code : "interrupted" },
+          error instanceof Error ? error.message : "Download interrupted",
+        );
+      }
+      const { done, value } = chunk;
       if (done) break;
       chunks.push(value);
       received += value.length;
@@ -551,7 +597,14 @@ export async function performUpdate(
         });
       }
     }
+    if (contentLength > 0 && received < contentLength) {
+      throw new UpdateStepError(
+        { phase: "download", code: "interrupted" },
+        `Download stopped at ${received} of ${contentLength} bytes`,
+      );
+    }
 
+    phase = "verify";
     const downloaded = new Uint8Array(received);
     let offset = 0;
     for (const chunk of chunks) {
@@ -560,11 +613,12 @@ export async function performUpdate(
     }
     const actual = createHash("sha256").update(downloaded).digest("hex");
     if (actual !== checksum) {
-      throw new Error(`Checksum mismatch: expected ${checksum}, got ${actual}`);
+      throw new UpdateStepError({ phase: "verify", code: "corrupt" }, `Checksum mismatch: expected ${checksum}, got ${actual}`);
     }
     const nextBinary = release.compressed
       ? new Uint8Array(gunzipSync(downloaded))
       : downloaded;
+    phase = "apply";
     await Bun.write(updatePath, nextBinary);
     chmodSync(updatePath, 0o755);
 
@@ -600,9 +654,24 @@ export async function performUpdate(
     try {
       unlinkUpdatePath?.(updatePath);
     } catch { /* Intentional ignore: Remove a partial update download while the original failure is reported through update progress. */ }
-    onProgress({
-      phase: "error",
-      error: err instanceof Error ? err.message : "Update failed",
-    });
+    const failure = err instanceof UpdateStepError ? err.failure : { phase, code: classifyUpdateError(err) };
+    fail(failure, err instanceof Error ? err.message : "Update failed");
   }
+}
+
+/** A failed step whose code is known where it is thrown. */
+class UpdateStepError extends Error {
+  constructor(readonly failure: UpdateFailure, message: string) {
+    super(message);
+    this.name = "UpdateStepError";
+  }
+}
+
+/** How the running terminal app was installed, as update failure reports name it. */
+export function terminalInstallKind(action: UpdateAction | null = detectUpdateAction()): UpdateInstallKind {
+  if (!action) return "terminal-source";
+  if (action.kind === "self") return "terminal-binary";
+  if (action.kind === "managed") return "terminal-managed";
+  if (action.kind === "manual") return "terminal-package-manager";
+  return "unknown";
 }

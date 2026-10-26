@@ -7,24 +7,28 @@ import { canonicalExchange } from "../utils/exchanges";
 import type { CliCommandDef } from "../types/plugin";
 import { currencyCodeNote } from "./currency-hints";
 import { describeSuggestion, suggestListing, suggestUsTicker, type ListingSuggestion } from "./listing-suggestion";
-import { indexRootAlsoLine, indexRootFor, indexRootTryLine } from "./index-roots";
+import { indexRootAlsoLine, indexRootTryLine } from "./index-roots";
+import { indexRootFor } from "../tickers/index-roots";
 import { treasuryYieldLine, treasuryYieldTenor } from "./treasury-yields";
 import { knownGapForTicker } from "./known-gaps";
 import {
   futuresTryLine,
   isNoProviderError,
   listingChoiceNotes,
-  listingReadNotes,
+  ListingArgError,
   loadBareVenues,
   notTradedMessage,
+  oneWordCompanyName,
   quoteBareListing,
   requireCliListing,
+  resolveCliListing,
   tradingBoardNote,
   type CliListing,
   type ListingDataRequest,
   type ListingVenue,
 } from "./listing-arg";
 import { withListingSuggestion } from "./not-a-ticker";
+import { isNetworkFailure } from "../utils/network-failure";
 import type { MarketContext } from "./types";
 
 /** The text of an error, or null for none. */
@@ -72,6 +76,8 @@ export async function answerQuote(
   request: ListingDataRequest,
   refresh: boolean,
   venues: Promise<ListingVenue[]> | null,
+  /** The row prints what its move is from: a quote asked for again is dated too. */
+  { datesChangeBasis = false }: { datesChangeBasis?: boolean } = {},
 ): Promise<QuoteAnswer> {
   const root = listing.exchange ? null : indexRootFor(listing.symbol);
   // A bare root that quoted something else, such as MOVE (Corvex), points at the index too.
@@ -79,16 +85,18 @@ export async function answerQuote(
     ? [indexRootAlsoLine(root, request.command)] : [];
   if (result.quote) {
     // "CAR = Avis Budget Group, NASDAQ (also XETRA, ASX)" names the venue too, so it replaces "SXR8 -> XETRA".
-    const choice = venues ? await listingChoiceNotes(listing, market, result.quote, venues) : listingReadNotes(listing);
+    const choice = await listingChoiceNotes(listing, market, result.quote, venues);
     const venue = choice.length > 0 ? null : bareListingNote(listing, result.quote);
     // A row saved as 247540:KRX is quoted from KOSDAQ, the board it trades on.
     const board = tradingBoardNote(listing, result.quote);
     return { result, listing, notes: [...choice, venue ?? [], board ?? [], also(result.quote), currencyCodeNote(listing, result.quote) ?? []].flat() };
   }
+  // No answer from the data service: no venue lookup or other listing would get one either.
+  if (isNetworkFailure(result.error)) return { result, listing, notes: [] };
   const notTraded = await notTradedMessage(listing, market);
   if (notTraded) return { result, listing, failure: { message: notTraded, oneLine: notTraded }, notes: [] };
   if (!isNoProviderError(result.error)) return { result, listing, notes: [] };
-  const other = await quoteBareListing(listing, market, request, { refresh });
+  const other = await quoteBareListing(listing, market, request, { refresh, datesChangeBasis });
   if (other?.kind === "quoted") {
     return {
       result: { target: other.listing.request, quote: other.quote },
@@ -105,7 +113,10 @@ export async function answerQuote(
     // BDI asks which exchange (Black Diamond Group) and says nowhere that the Baltic Dry Index is not here.
     listing.exchange ? null : knownGapForTicker(listing.symbol),
   ].filter((line): line is string => !!line);
-  if (!other && tryLines.length === 0) return { result: await withCurrencyPairHint(result, market), listing, notes: [] };
+  if (!other && tryLines.length === 0) {
+    return await answerCompanyName(result, listing, market, request, refresh, datesChangeBasis)
+      ?? { result: await withCurrencyPairHint(result, market), listing, notes: [] };
+  }
   const message = other?.message ?? `${listing.symbol} has no ${request.noun}.`;
   const details = [other?.details, ...tryLines].filter(Boolean).join("\n");
   const oneLine = [
@@ -114,6 +125,35 @@ export async function answerQuote(
     ...tryLines,
   ].filter(Boolean).join(" ");
   return { result, listing, failure: { message, details, oneLine }, notes: [] };
+}
+
+/**
+ * A company's name typed as one word (`Apple`) that the source says is not a
+ * ticker, answered as the listing search names for it with the line saying so
+ * ("Read "Apple" as AAPL:NASDAQ (Apple Inc.)."), as a name of several words
+ * is. Null when the word names no company, or that listing has no quote
+ * either: the word keeps its own "Not a ticker".
+ */
+async function answerCompanyName(
+  result: QuoteBatchResult,
+  listing: CliListing,
+  market: MarketContext,
+  request: ListingDataRequest,
+  refresh: boolean,
+  datesChangeBasis: boolean,
+): Promise<QuoteAnswer | null> {
+  if (!listing.typed || listing.exchange || !notATickerSymbol(errorMessage(result.error) ?? "")) return null;
+  const named = await oneWordCompanyName(listing.typed, market);
+  if (!named) return null;
+  // A listing on a venue the app cannot read is no answer: the word keeps its own "Not a ticker".
+  const resolved = await resolveCliListing(named.key, null, market).catch((error: unknown) => {
+    if (error instanceof ListingArgError) return null;
+    throw error;
+  });
+  if (!resolved) return null;
+  const found = { ...resolved, readAs: named.readAs, ...named.meant ? { meant: named.meant } : {} };
+  const [quoted] = await market.dataProvider.getQuotesBatch([found.request], { forceRefresh: refresh, revalidate: true, datesChangeBasis });
+  return quoted?.quote ? answerQuote(quoted, found, market, request, refresh, null, { datesChangeBasis }) : null;
 }
 
 /** A listing a command found a quote for, with what `quote` says beside it. */
@@ -164,7 +204,7 @@ export async function requireQuotedListing(
 
 /**
  * A symbol written like a currency pair that is not a ticker (USD_NGN, as some
- * FX feeds write a pair) names the listing `gloomberb search` finds nearest to
+ * FX feeds write a pair) names the listing `gloom search` finds nearest to
  * it, as `watchlist add` does: "Did you mean USDNGN=X (US Dollar/Nigerian
  * Naira)?". When search finds nothing near, the row keeps its own error and its
  * search hint.

@@ -23,15 +23,15 @@ export const econStatisticsModule: PluginModule = {
     paneId: ECON_STATISTICS_PANE_ID,
     label: "Economic Statistics",
     description: "Inflation, labour, growth, housing and rates against their own history.",
-    keywords: [
+    keywords: [...new Set([
       "economic",
       "statistics",
       "macro",
       "indicators",
       "data",
       ...STAT_CATEGORIES.map((entry) => entry.label.toLowerCase()),
-      ...STATS.map((entry) => entry.shortLabel.toLowerCase()),
-    ],
+      ...STATS.flatMap((entry) => [entry.shortLabel, ...entry.keywords ?? []].map((keyword) => keyword.toLowerCase())),
+    ])],
     shortcut: {
       prefix: "ECST",
       argPlaceholder: "statistic",

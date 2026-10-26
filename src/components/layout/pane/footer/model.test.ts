@@ -41,11 +41,35 @@ describe("footer hint row", () => {
     expect(narrow[0]!.title).toBe(full);
   });
 
+  test("a trailing status that cannot fit is cut behind an ellipsis, or left out, rather than cut against the hints", () => {
+    const contract: PaneFooterSegment = { id: "contract", parts: [{ text: "AAPL261026C00342500" }] };
+    const quote: PaneFooterSegment = { id: "quote", parts: [{ text: "quote" }, { text: "12h" }] };
+    const trade: PaneFooterSegment = { id: "trade", parts: [{ text: "trade" }, { text: "12h" }] };
+    expect(fitPaneFooterInfo([contract, quote, trade], 32).map((segment) => segment.id)).toEqual(["contract", "quote"]);
+    const line: PaneFooterSegment = { id: "line", parts: [{ text: "Fri 9 Oct close" }, { text: "· 15 min delayed", tone: "muted" }] };
+    const cut = fitPaneFooterInfo([contract, line], 46).at(-1)!;
+    expect(cut.parts).toEqual([{ text: "Fri 9 Oct close" }, { text: "· 15 min…", tone: "muted" }]);
+    expect(cut.title).toBe("Fri 9 Oct close · 15 min delayed");
+    const stale: PaneFooterSegment = { id: "stale", parts: [{ text: "stale", tone: "warning" }] };
+    expect(fitPaneFooterInfo([contract, stale], 20).map((segment) => segment.id)).toEqual(["contract", "stale"]);
+  });
+
   test("a failure keeps more of its sentence than a status word does", () => {
     const failure = "Cloud chart data is unavailable for AAPL";
     const row = layoutPaneFooterHintRow(footer([{ id: "error", parts: [{ text: failure, tone: "warning" }] }]), 64);
     expect(row.infoWidth).toBeGreaterThanOrEqual(24);
     expect(row.hintsWidth + row.infoWidth).toBeLessThanOrEqual(64);
+  });
+
+  test("a short status is kept whole: the hints that no longer fit go under More rather than cut it", () => {
+    const status = "Cloud sync disabled";
+    const row = layoutPaneFooterHintRow(footer([{ id: "sync", parts: [{ text: status, tone: "muted" }] }]), 46);
+    expect(row.infoWidth).toBeGreaterThanOrEqual(status.length);
+    expect(row.overflow.length).toBeGreaterThan(0);
+    expect(row.hintsWidth + row.infoWidth).toBeLessThanOrEqual(46);
+    // A longer status gives way to the hints, as before.
+    const long = layoutPaneFooterHintRow(footer([{ id: "line", parts: [{ text: "Binance 02:15 · Bybit 02:24 UTC · oldest 9 min" }] }]), 46);
+    expect(long.hintsWidth).toBeGreaterThan(row.hintsWidth);
   });
 
   test("keeps every hint on a wide row", () => {

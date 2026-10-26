@@ -1,4 +1,5 @@
-import Electrobun, { ApplicationMenu, Screen } from "electrobun/bun";
+import Electrobun, { ApplicationMenu, Screen, Utils } from "electrobun/bun";
+import { homedir } from "os";
 import { debugLog } from "../../../utils/debug-log";
 import { setConfigStoreHost } from "../../../data/config/store";
 import * as nodeConfigStoreHost from "../../../data/config/store/node";
@@ -6,6 +7,7 @@ import { ELECTROBUN_CONTEXT_MENU_ACTION } from "../shared/protocol";
 import { contextMenuSelectionMessage } from "./context-menu/click";
 import { applicationMenuCommand, createApplicationMenuGate } from "./application-menu/click";
 import { DesktopBackend } from "./desktop/backend";
+import { startDesktopBackend } from "./desktop/initialization";
 import {
   MAIN_WINDOW_MIN_SIZE,
   defaultMainWindowFrame,
@@ -13,6 +15,7 @@ import {
 } from "./window/frame";
 import { MAIN_WINDOW_RPC_KEY } from "./window/focus";
 import { createAppWindow } from "./window/create";
+import { desktopBootFramePath, desktopBootFramePreload, readDesktopBootFrame } from "./window/boot-frame";
 import { getWindowFrame } from "./window/events";
 import {
   fitWindowFrameToDisplays,
@@ -23,6 +26,8 @@ import {
 } from "./window/remembered-frame";
 import { reapStaleTerminalMedia } from "../../opentui/terminal-media";
 import { installProcessCrashListeners } from "../../../telemetry/crash-reports-node";
+import { renameLegacyMacApp } from "./desktop/app-name";
+import { scheduleDesktopRelaunch } from "./desktop/relaunch";
 
 console.log = (...args) => console.error(...args);
 console.info = (...args) => console.error(...args);
@@ -39,6 +44,27 @@ setConfigStoreHost(nodeConfigStoreHost);
 // ahead of it and spools the report for the next launch. Nothing is sent
 // before the config, and its off switch, has been read.
 installProcessCrashListeners();
+
+// An install from before the rename runs from Gloomberb.app, where its updater
+// put this build. It takes the new name and opens again from there before any
+// window shows. Anywhere else this returns without touching the disk.
+const appRename = await renameLegacyMacApp({
+  execPath: process.execPath,
+  platform: process.platform,
+  homeDir: homedir(),
+  pathEnv: process.env.PATH ?? "",
+}).catch((error: unknown) => {
+  console.error("[desktop] could not give the app its new name", error instanceof Error ? error.message : String(error));
+  return null;
+});
+if (appRename?.kind === "renamed") {
+  scheduleDesktopRelaunch(appRename.bundle);
+  Utils.quit();
+  // The process is exiting; nothing below may open a window meanwhile.
+  await new Promise<never>(() => {});
+} else if (appRename?.kind === "skipped") {
+  console.error(`[desktop] kept the app's old name: ${appRename.reason}`);
+}
 
 function readOpenUrlEvent(event: unknown): string | null {
   const data = event && typeof event === "object" ? (event as { data?: unknown }).data : null;
@@ -135,13 +161,21 @@ function scheduleRememberedWindow(): void {
 }
 
 const mainWindow = createAppWindow({
-  title: "Gloomberb",
+  title: "Gloom",
   frame: initialMainWindowFrame,
   rpc: mainRpc,
   minSize: MAIN_WINDOW_MIN_SIZE,
   onFrameChange: scheduleRememberedWindow,
+  // The layout the window last drew, which its page draws before its script
+  // has loaded (dom/boot-frame.ts).
+  preload: desktopBootFramePreload(readDesktopBootFrame(desktopBootFramePath())),
 });
 backend.mainWindow = mainWindow;
+// The window is loading its view; the services it will ask for start now
+// rather than when it asks. Its `init` reports a failure, and retries.
+startDesktopBackend(backend).catch((error) => {
+  console.error("[desktop] startup failed", error instanceof Error ? error.stack ?? error.message : String(error));
+});
 if (rememberedWindow?.fullscreen) {
   try { mainWindow.setFullScreen(true); } catch { /* the framed window is still the one they sized */ }
 } else if (rememberedWindow?.maximized) {

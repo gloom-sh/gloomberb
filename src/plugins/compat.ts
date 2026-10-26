@@ -68,6 +68,8 @@ export interface PluginManifest {
   id: string | null;
   /** The oldest Gloomberb the checkout says it runs on. */
   minGloomberb: string | null;
+  /** gloom.json `icon`: the plugin's logo, a path inside the checkout such as `icon.webp`. */
+  icon: string | null;
 }
 
 function readJson(path: string): Record<string, unknown> | null {
@@ -106,6 +108,7 @@ export function readPluginManifest(pluginDir: string): PluginManifest {
     minGloomberb: versionField(gloom?.minGloom)
       ?? versionField(gloom?.minGloomberb)
       ?? peerRangeMinimum(peers?.gloomberb),
+    icon: typeof gloom?.icon === "string" && gloom.icon.trim() ? gloom.icon.trim() : null,
   };
 }
 
@@ -125,7 +128,7 @@ export interface PluginIncompatibility {
 export function checkPluginCompatibility(pluginDir: string, hostVersion: string = VERSION): PluginIncompatibility | null {
   const manifest = readPluginManifest(pluginDir);
   const needs = requiredGloomberb(manifest.minGloomberb, hostVersion);
-  if (needs) return { error: `Needs Gloomberb ${needs}, this is ${hostVersion}.`, needsGloomberb: needs };
+  if (needs) return { error: `Needs Gloom ${needs}, this is ${hostVersion}.`, needsGloomberb: needs };
   const peer = missingPeerPlugins(pluginDir)[0];
   if (peer) return { error: `Needs the ${peer} plugin. Install it from the Plugins pane.`, needsPlugin: peer };
   const broken = manifest.id ? KNOWN_BROKEN_PLUGINS[manifest.id] : undefined;
@@ -188,8 +191,8 @@ export function explainPluginLoadError(message: string, hostVersion: string = VE
   if (!missing) return message;
   const { specifier, name } = missing;
   const removed = REMOVED_HOST_EXPORTS[specifier]?.[name];
-  if (removed) return `Uses ${name} from ${specifier}, removed in Gloomberb ${removed.removedIn}. Update the plugin.`;
-  return `Uses ${name} from ${specifier}, which Gloomberb ${hostVersion} does not have. Update the plugin, or Gloomberb if the plugin is newer.`;
+  if (removed) return `Uses ${name} from ${specifier}, removed in Gloom ${removed.removedIn}. Update the plugin.`;
+  return `Uses ${name} from ${specifier}, which Gloom ${hostVersion} does not have. Update the plugin, or Gloom if the plugin is newer.`;
 }
 
 /** The plugin's own source files, without tests, dependencies or build output. */

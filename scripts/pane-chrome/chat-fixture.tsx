@@ -37,6 +37,7 @@ import { ApiRequestError } from "../../src/api-client/errors";
 import { ChatContent } from "../../src/plugins/builtin/chat/content";
 import { ChatController } from "../../src/plugins/builtin/chat/controller";
 import { attachChatPaneLinkPanes } from "../../src/plugins/builtin/chat/pane-links/previews";
+import { attachChatCommands, chatFunctionsFrom } from "../../src/plugins/builtin/chat/pane-links/commands";
 import { PluginRenderProvider } from "../../src/plugins/runtime";
 import { registerShareOpener } from "../../src/shares/open";
 import { MemoryPluginPersistence } from "../../src/test-support/plugin-persistence";
@@ -62,7 +63,10 @@ export interface ChatFake {
   /** Holds history pages until `release()`, instead of `latency` ms. */
   holdHistory(): void;
   release(): void;
-  /** What a chip opened: `share:<id>` for a shared pane, `template:<id>[:<arg>]` for a pane template. */
+  /**
+   * What a chip opened: `share:<id>` for a shared pane, `template:<id>[:<arg>]`
+   * for a pane template, `command:<text>` for a function a message names.
+   */
   opened: string[];
   /** How many times the page asked the share service for a share. */
   shareReads: number;
@@ -291,6 +295,17 @@ attachChatPaneLinkPanes((paneId) => ({
   "econ-calendar": { name: "Economic Calendar", icon: "E" },
   "news-story": { name: "Story", icon: "A" },
 })[paneId]);
+// The functions a message can name: a few invented panes beside the app's own DES and HELP.
+const FUNCTIONS = chatFunctionsFrom({
+  paneTemplates: new Map([
+    { id: "topic-news", paneId: "news-industry", label: "Topic News", description: "", shortcut: { prefix: "NI", argKind: "text" as const, argOptional: true, argOptions: () => [{ value: "CRYPTO", label: "Crypto" }] } },
+    { id: "crypto-board", paneId: "crypto-board", label: "Crypto Board", description: "", shortcut: { prefix: "CRYP" } },
+    { id: "news-feed", paneId: "news-feed", label: "News Feed", description: "", shortcut: { prefix: "N", aliases: ["FH"] } },
+    { id: "price-chart", paneId: "chart", label: "Price Chart", description: "", shortcut: { prefix: "GP", argKind: "ticker" as const } },
+  ].map((template) => [template.id, template])),
+  commands: new Map(),
+});
+attachChatCommands({ functions: () => FUNCTIONS, run: (query) => { fake.opened.push(`command:${query}`); } });
 let held: PromiseWithResolvers<void> | null = null;
 let heldSend: PromiseWithResolvers<void> | null = null;
 const sockets = new Map<string, Set<(message: ChatMessage) => void>>();
@@ -465,6 +480,16 @@ function ChatListFixturePane({ focused, width, height }: PaneProps) {
 /** The chat pane beside a plain one, which the pointer can leave to, or floating over it (`float=1`). */
 export function chatLayout(): LayoutConfig {
   const instance = (instanceId: string) => ({ instanceId, paneId: instanceId.split(":")[0]!, binding: { kind: "none" as const } });
+  if (params.get("paneReturn") === "1") {
+    const ids = ["chat:a", "table:a", "reader:a"];
+    return {
+      dockRoot: null, instances: ids.map(instance),
+      // Each cover leaves the chat header exposed for a real click to raise it.
+      floating: ids.map((instanceId, index) => ({ instanceId, x: 4, y: 2 + index * 2,
+        width: 140, height: 42 - index * 8, zIndex: index ? 10 - index : 20 })),
+      detached: [],
+    };
+  }
   if (params.get("multiple") === "1") {
     return {
       dockRoot: { kind: "split", axis: "vertical", ratio: 0.5,

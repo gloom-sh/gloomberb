@@ -111,6 +111,7 @@ export function PortfolioTickerTable({
   onCursorChange,
   financialsMap,
   columnContext,
+  futuresFrontNotes,
   flashSymbols,
   sinceLastSeen,
   onRootKeyDown,
@@ -134,6 +135,7 @@ export function PortfolioTickerTable({
   onCursorChange?: (ticker: TickerRecord, index: number) => void;
   financialsMap: Map<string, TickerFinancials>;
   columnContext: ColumnContext;
+  futuresFrontNotes?: ReadonlyMap<string, string>;
   flashSymbols: Map<string, QuoteFlashDirection>;
   /** For a few seconds after coming back to the pane, LAST is tinted by each row's move since the user left. */
   sinceLastSeen?: SinceLastSeenRecap | null;
@@ -155,21 +157,26 @@ export function PortfolioTickerTable({
   openPerpetualRef.current = onOpenPerpetual;
   const sparklineVisible = columns.some((column) => column.id === PRICE_SPARKLINE_COLUMN_ID);
   const tableFinancialsMap = useLiveSparklineFinancials(financialsMap, sortedTickers, sparklineVisible);
+  const noteColumnId = columns.some((column) => column.id === "name") ? "name" : "ticker";
+  const hasFrontReference = useMemo(() => sortedTickers.some((ticker) => columnContext.futuresTerms?.get(ticker.metadata.ticker)?.front),
+    [columnContext.futuresTerms, sortedTickers]);
   const resolveCell = useCallback(
     (column: ColumnConfig, ticker: TickerRecord, financials: TickerFinancials | undefined) => {
       const key = `${ticker.metadata.ticker}:${column.id}`;
       const version = buildCellVersion(column, ticker, financials, columnContext);
-      const cell = cellCacheRef.current.get(key, version, () => {
+      const cached = cellCacheRef.current.get(key, version, () => {
         const cell = getColumnValue(column, ticker, financials, columnContext);
         const marketId = PERPETUAL_COLUMN_IDS.has(column.id) ? columnContext.perpetuals?.get(ticker.metadata.ticker)?.marketId : undefined;
         return marketId ? { ...cell, onPress: () => openPerpetualRef.current?.(marketId) } : cell;
       });
+      const note = column.id === noteColumnId ? futuresFrontNotes?.get(ticker.metadata.ticker) : undefined;
+      const cell = note ? { ...cached, note } : cached;
       // LAST keeps its price: a move since the user last looked only tints the cell.
       if (column.id !== "price" || !sinceLastSeen) return cell;
       const move = sinceLastSeen.moves.get(ticker.metadata.ticker);
       return move == null ? cell : { ...cell, backgroundColor: sinceLastSeenTint(move, sinceLastSeen.fading) };
     },
-    [columnContext, sinceLastSeen],
+    [columnContext, futuresFrontNotes, noteColumnId, sinceLastSeen],
   );
   const pnlColumn = columns.find((column) => column.id === "pnl" || column.id === "pnl_pct");
   // Reads the same cached P&L cells the rows show; only changed rows recompute.
@@ -202,7 +209,8 @@ export function PortfolioTickerTable({
     : pnlLabel !== "P&L" && (column.id === "pnl" || column.id === "pnl_pct") ? {
     ...column,
     label: column.id === "pnl_pct" ? pnlLabel.replace("P&L", "%") : pnlLabel,
-  } : column), [columns, grossWeights, hasNonShareQuantity, pnlLabel, sharesWidth, tickerWidth]);
+  } : column).map((column) => hasFrontReference && column.id === noteColumnId ? { ...column, flexGrow: 1 } : column),
+  [columns, grossWeights, hasFrontReference, hasNonShareQuantity, noteColumnId, pnlLabel, sharesWidth, tickerWidth]);
   // The table offers "Sort by…" while it has a sort column. A watchlist starts
   // unsorted and a third header click turns sorting off, so the unsorted state
   // needs its own entry until TickerListTableView takes `sortable`.

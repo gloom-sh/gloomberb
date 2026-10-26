@@ -1,6 +1,8 @@
 import type { HeadlessPaneDefinition, HeadlessPaneOptionDef } from "../../../types/headless";
 import { isSubMinuteInterval, subMinuteDataMessage } from "../../../cli/known-gaps";
+import { CHART_BAR_SIZE_PRESETS, parseChartBarSize } from "../../../time-series/resolution";
 import { FINANCIAL_PERIOD_OPTION, FINANCIAL_PERIOD_COUNT_OPTION, HISTORY_RANGE_VALUES, RETURN_RANGE_VALUES } from "../shared/headless-options";
+import { DATE_OPTION_EXAMPLES } from "../../../utils/calendar-date";
 
 type PaneSchema = Pick<HeadlessPaneDefinition, "argument" | "options" | "discovery">;
 
@@ -10,6 +12,25 @@ type PaneSchema = Pick<HeadlessPaneDefinition, "argument" | "options" | "discove
  * every `fn`, `shot` and agent read. Annual is `--period annual`.
  */
 const FUNDAMENTAL_PERIOD_OPTION: HeadlessPaneOptionDef = { ...FINANCIAL_PERIOD_OPTION, defaultValue: "quarterly" };
+
+const BAR_SIZES = CHART_BAR_SIZE_PRESETS.map((value) => ({ value }));
+
+const BAR_SIZE_DESCRIPTION = "Bar size: any count of minutes, hours, days, weeks or months; one the source does not serve is built from its shorter bars";
+
+/**
+ * A typed bar size as the chart stores it. A listed one matches in any case,
+ * so `1M` stays one minute; any other is read by `parseChartBarSize`.
+ */
+function normalizeBarSize(value: string, auto: boolean): string {
+  const listed = (auto ? ["auto"] : []).concat(BAR_SIZES.map((entry) => entry.value)).find((entry) => entry === value.trim().toLowerCase());
+  if (listed) return listed;
+  const parsed = parseChartBarSize(value);
+  if (parsed) return parsed;
+  const count = /^\s*(\d+)\s*M\s*$/.exec(value)?.[1];
+  throw new Error(count
+    ? `Invalid --chart-resolution value "${value}". Write ${count}m for ${count} minutes or ${count}mo for ${count} months.`
+    : `Invalid --chart-resolution value "${value}". Use ${auto ? "auto, or " : ""}a count and a unit: 10m, 4h, 2d, 1wk, 3mo (up to a day of minutes or hours, a year of days or weeks, 12 months).`);
+}
 
 export const paneSchemas = {
   "chart-composer-pane": {
@@ -24,21 +45,11 @@ export const paneSchemas = {
       },
       {
         key: "chartResolution",
-        description: "Market-price sampling resolution.",
+        description: BAR_SIZE_DESCRIPTION,
         type: "enum",
         aliases: ["resolution"],
-        values: [
-          { value: "auto" },
-          { value: "1m" },
-          { value: "5m" },
-          { value: "15m" },
-          { value: "30m" },
-          { value: "45m" },
-          { value: "1h" },
-          { value: "1d" },
-          { value: "1wk" },
-          { value: "1mo" },
-        ],
+        values: [{ value: "auto" }, ...BAR_SIZES],
+        normalize: (value) => normalizeBarSize(value, true),
       },
     ],
     discovery: {
@@ -95,7 +106,7 @@ export const paneSchemas = {
       },
       {
         key: "session",
-        description: "Specific exchange-local session in YYYY-MM-DD form. Overrides the session window.",
+        description: `Specific exchange-local session, as ${DATE_OPTION_EXAMPLES}. Overrides the session window.`,
         type: "string",
       },
     ],
@@ -128,28 +139,25 @@ export const paneSchemas = {
         defaultValue: "percent",
       },
       {
+        key: "totalReturn",
+        description: "Reinvest each cash distribution at its ex-date close, so the returns are total returns, not price returns.",
+        type: "boolean",
+        defaultValue: false,
+      },
+      {
         key: "chartResolution",
-        description: "Price sampling resolution.",
+        description: BAR_SIZE_DESCRIPTION,
         type: "enum",
         aliases: ["resolution"],
-        values: [
-          { value: "1m" },
-          { value: "5m" },
-          { value: "15m" },
-          { value: "30m" },
-          { value: "45m" },
-          { value: "1h" },
-          { value: "1d" },
-          { value: "1wk" },
-          { value: "1mo" },
-        ],
+        values: BAR_SIZES,
         defaultValue: "1d",
+        normalize: (value) => normalizeBarSize(value, false),
       },
     ],
     discovery: {
       id: "price-comparison",
       aliases: ["stock comparison", "price performance comparison", "returns comparison", "compare stock prices"],
-      limitations: ["Compares closing-price changes in each listing's currency over shared observation dates. Cash distributions and FX conversion are excluded; these are not reinvested total returns."],
+      limitations: ["Compares closing-price changes in each listing's currency over shared observation dates. Cash distributions and FX conversion are excluded unless totalReturn is set, which reinvests each distribution at its ex-date close; FX conversion is never applied."],
       screenshotReadiness: "ready",
     },
   },
@@ -202,6 +210,13 @@ export const paneSchemas = {
     argument: { kind: "tickers" },
     options: [
       {
+        key: "rangePreset",
+        description: "Chart history window.",
+        type: "enum",
+        aliases: ["range"],
+        values: HISTORY_RANGE_VALUES,
+      },
+      {
         key: "metric",
         description: "Valuation metric to compare.",
         type: "enum",
@@ -217,9 +232,13 @@ export const paneSchemas = {
         // The same metric the GE template opens with in the app.
         defaultValue: "trailingPE",
       },
-      // Annual, as the GE template opens in the app.
-      FINANCIAL_PERIOD_OPTION,
-      FINANCIAL_PERIOD_COUNT_OPTION,
+      {
+        ...FINANCIAL_PERIOD_OPTION,
+        description: "Daily multiples, or one observation per reporting period.",
+        values: [{ value: "daily", aliases: ["d"] }, ...FINANCIAL_PERIOD_OPTION.values!, { value: "ttm" }],
+        defaultValue: "daily",
+      },
+      { ...FINANCIAL_PERIOD_COUNT_OPTION, description: "Keep only the latest N observations per ticker." },
     ],
     discovery: {
       id: "valuation-series",

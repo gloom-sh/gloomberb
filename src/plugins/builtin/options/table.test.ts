@@ -3,7 +3,7 @@ import { applyTheme, colors } from "../../../theme/colors";
 import { contrastRatio } from "../../../theme/color-utils";
 import { DEFAULT_THEME, getThemeIds } from "../../../theme/themes";
 import type { OptionContract } from "../../../types/financials";
-import { createOptionColumns, optionColumnColor, renderOptionCell } from "./table";
+import { createOptionColumns, formatIv, optionColumnColor, renderOptionCell } from "./table";
 import type { OptionColumn, OptionTableRow } from "./types";
 
 // The band has to clear the neighbouring one by this much to read as a band at
@@ -115,4 +115,20 @@ test("a selected row drops the moneyness bands entirely", () => {
       }
     }
   }
+});
+
+test("a filled IV leads with ~, still fits the column at 100% and over, and an unsolved one stays a dash", () => {
+  expect(formatIv(0.095)).toBe("9.5%");
+  expect(formatIv(0.095, true)).toBe("~9.5%");
+  expect(formatIv(1.25, true)).toBe("~125%");
+  expect(formatIv(0.99996, true)).toBe("~100%");
+  expect(formatIv(0, true)).toBe("\u2014");
+  expect(formatIv(undefined, true)).toBe("\u2014");
+  // The IV column of a row reads its solved figure, marked by the row's flag.
+  const iv = (filled: boolean) => {
+    const row = { ...ROW, impliedVolatility: 0.095, impliedVolatilityFilled: filled } as OptionTableRow;
+    const column = COLUMNS.find((entry) => entry.id.toLowerCase().includes("iv") && entry.side === "call")!;
+    return renderOptionCell(row, column, 0, { selected: false }).text;
+  };
+  expect([iv(true), iv(false)]).toEqual(["~9.5%", "9.5%"]);
 });

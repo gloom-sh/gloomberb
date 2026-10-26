@@ -68,7 +68,7 @@ test("a stake under 5% stays a stake, only a report of zero is an exit, and a mi
   expect(formatPercentOfClass(fmr, { marker: true })).toBe("0.0% EXIT");
   const goldman = row("Goldman Sachs Group Inc");
   expect(goldman.stake).toBe("holder");
-  expect(formatPercentOfClass(goldman, { marker: true })).toBe("-");
+  expect(formatPercentOfClass(goldman, { marker: true })).toBe("—");
   expect(goldman.changePoints).toBeNull();
 
   // A route that still calls a 4.9% stake an exit is read by the figure; no figures at all is unknown.

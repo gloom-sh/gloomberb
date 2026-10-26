@@ -226,9 +226,7 @@ const FIELDS = [
     transforms: FUNDAMENTAL_TRANSFORMS,
   }),
   ...([
-    // Trailing twelve-month EPS over the regular session price (the live price in session, the close after it), as
-    // `valuation` measures it, never an extended print.
-    ["trailingPE", "Trailing P/E", "P/E", "P/E (TTM, regular session)"],
+    ["trailingPE", "Trailing P/E", "P/E"],
     ["forwardPE", "Forward P/E", "Forward P/E"],
     ["realizedNtmPE", "Realized NTM P/E", "Realized P/E"],
     ["pegRatio", "PEG Ratio", "PEG"],

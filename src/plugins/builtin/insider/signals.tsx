@@ -95,7 +95,7 @@ export function InsiderSignalsView({ width, height, focused, renderCompany }: In
   const colors = useThemeColors();
   const { nativePaneChrome } = useUiCapabilities();
   const session = useResearchCloudSession();
-  // Each part of the query is its own pane state, so `gloomberb shot INS --side sell` and the CLI's options set them one by one.
+  // Each part of the query is its own pane state, so `gloom shot INS --side sell` and the CLI's options set them one by one.
   const [storedSide, setSide] = usePluginPaneState<InsiderSignalSide>("insider:signals:side", "buy");
   const [storedWindow, setWindow] = usePluginPaneState<number>("insider:signals:window", DEFAULT_INSIDER_SIGNAL_WINDOW);
   const [storedRole, setRole] = usePluginPaneState<InsiderSignalRoleGroup>("insider:signals:role", "all");

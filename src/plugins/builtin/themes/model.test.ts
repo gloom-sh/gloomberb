@@ -70,6 +70,7 @@ test("the footer names the close outside the regular session; in a session and f
   for (const payload of [{ regularSessionDate: null, regularSessionClosedAt: null }, {}, { regularSessionDate: "Fri" }]) {
     expect(snapshotFooterText(payload, "3m ago")).toBe("15m delayed · snapshot 3m ago");
   }
+  expect(snapshotFooterText({ access: "realtime" }, "3m ago")).toBe("live · snapshot 3m ago");
 });
 
 test("command arguments resolve server names and keywords before fuzzy subsequences", () => {

@@ -11,16 +11,18 @@ import { EXTENDED_SESSION_LABELS, type ExtendedSession } from "../../../market-d
 import { buildQuoteKey } from "../../../market-data/selectors";
 import type { Quote } from "../../../types/financials";
 import { formatCurrency, formatPercentRaw } from "../../../utils/format";
-import { fetchScreen } from "./client";
+import { fetchSavedScreens, fetchScreen, fetchScreenCheck } from "./client";
+import { checkRows, screenCheckSummary, screenCheckTicker } from "./screen-check";
 import { overlayScreenQuotes, screenExtendedSessions, sortLiveScreenRows } from "./live";
 import {
   DEFAULT_SCREEN,
   EXAMPLE_SCREEN_DEFINITION,
-  formatScreenValue,
+  formatScreenMetric,
   metricDate,
   parseScreenDefinition,
   screenColumnLabel,
   screenDefinitionSyntax,
+  screenCurrencyEmpty,
   screenLabel,
   screenYtdBase,
   withheldMetricNote,
@@ -71,7 +73,7 @@ function extendedColumn(session: ExtendedSession): HeadlessPaneColumn {
 
 /** A typed `--definition`, checked; every error points at the worked example. */
 function readDefinition(text: string): ScreenDefinition {
-  const pointer = "The example in gloomberb catalog EQS is a valid definition to start from.";
+  const pointer = "The example in gloom catalog EQS is a valid definition to start from.";
   let value: unknown;
   try {
     value = JSON.parse(text);
@@ -90,6 +92,26 @@ export const equityScreenerHeadless: HeadlessPaneDefinition<"bundle"> = {
   freshness: { status: "not-a-feed", basis: "screener snapshot" },
   argument: { kind: "none" },
   options: [
+    {
+      key: "check",
+      type: "string",
+      placeholder: "ticker",
+      description: "Check one ticker against every criterion, including the screen's currency filter.",
+      example: "--check NVDA",
+      shot: { reportOnly: "checks a ticker against the screen; use Check ticker in the EQS pane" },
+      normalize: (value) => {
+        screenCheckTicker(value);
+        return value.trim();
+      },
+    },
+    {
+      key: "saved",
+      type: "string",
+      placeholder: "id-or-name",
+      description: "Use a saved screen by ID or exact name. Cannot be combined with --definition.",
+      shot: { reportOnly: "opens a saved screen for the report; open it from Saved in the EQS pane" },
+      replaces: ["definition"],
+    },
     {
       key: "definition",
       type: "string",
@@ -123,9 +145,50 @@ export const equityScreenerHeadless: HeadlessPaneDefinition<"bundle"> = {
     ],
   },
   async load(args, ctx) {
-    const definition = args.options.definition
+    if (args.options.saved && args.options.definition) throw new Error("Choose --saved or --definition, not both.");
+    let definition = args.options.definition
       ? readDefinition(String(args.options.definition))
       : DEFAULT_SCREEN;
+    let savedName: string | undefined;
+    if (args.options.saved) {
+      const screens = await fetchSavedScreens(ctx.signal, ctx.apiClient);
+      const wanted = String(args.options.saved).trim();
+      const byId = screens.find((screen) => screen.id === wanted);
+      const matches = byId ? [byId] : screens.filter((screen) => screen.name.toLowerCase() === wanted.toLowerCase());
+      if (matches.length !== 1) throw new Error(matches.length
+        ? `More than one saved screen is named ${JSON.stringify(wanted)}. Use its ID with --saved.`
+        : `Saved screen ${JSON.stringify(wanted)} was not found. Open Saved in EQS to see your screens.`);
+      definition = matches[0]!.definition;
+      savedName = matches[0]!.name;
+    }
+    if (args.options.check) {
+      const data = await fetchScreenCheck(definition, String(args.options.check), undefined, ctx.signal, ctx.apiClient);
+      return {
+        freshness: { asOf: data.snapshot.assembledAt },
+        complete: data.status === "available" && data.warnings.length === 0,
+        errors: data.warnings,
+        sections: data.criteria.length === 0 ? [{
+          title: data.row ? `${data.row.symbol}:${data.row.exchange}` : data.symbol,
+          entries: [{ label: "Result", value: screenCheckSummary(data) }],
+        }] : [{
+          title: `${data.row ? `${data.row.symbol}:${data.row.exchange}` : data.symbol} · ${screenCheckSummary(data)}`,
+          columns: [
+            { key: "criterion", header: "Criterion" },
+            { key: "value", header: "Value", align: "right" as const },
+            { key: "result", header: "Result" },
+            { key: "asOf", header: "As of" },
+            { key: "state", header: "State" },
+            { key: "reason", header: "Reason", underRow: true },
+          ],
+          rows: checkRows(data),
+        }],
+        metadata: {
+          definition: data.definition, snapshot: data.snapshot, symbol: data.symbol,
+          listing: data.row, matches: data.matches, status: data.status,
+          criteria: data.criteria, ...(savedName ? { savedScreen: savedName } : {}),
+        },
+      };
+    }
     const data = await fetchScreen(definition, null, ctx.signal, ctx.apiClient);
     const metric = (args.options.metric ?? "marketCap") as NumericField;
     // Last, Chg% and market cap are the regular session, as `quote` and the
@@ -141,6 +204,14 @@ export const equityScreenerHeadless: HeadlessPaneDefinition<"bundle"> = {
     const kpiGaps = !withheld && missing > 0 && (KPI_FIELDS as readonly string[]).includes(metric)
       ? [`${missing} of ${rows.length} ${rows.length === 1 ? "row has" : "rows have"} no ${screenLabel(metric)}. ${KPI_COVERAGE_NOTE}`]
       : [];
+    // A CAD screen of listings quoted in USD is empty for its currency, not for want of companies: say so, and give the screen in USD.
+    const currencyEmpty = rows.length === 0 ? screenCurrencyEmpty(data.definition, data.universe) : null;
+    const empty = currencyEmpty
+      ? [
+        `${currencyEmpty.title} ${currencyEmpty.detail}`,
+        `In the base currency, ${currencyEmpty.base.currency}: gloom fn EQS --definition '${spacedJson(currencyEmpty.base)}'${metric === "marketCap" ? "" : ` --metric ${metric}`}`,
+      ].join("\n")
+      : null;
     // Payload status also counts ordinary per-field sparsity; only generation
     // warnings are failures, and more pages are not an error.
     return {
@@ -151,6 +222,7 @@ export const equityScreenerHeadless: HeadlessPaneDefinition<"bundle"> = {
       sections: [
         {
           title: "Matching equities",
+          ...(empty ? { empty } : {}),
           columns: [
             { key: "symbol", header: "Symbol" },
             { key: "exchange", header: "Exchange" },
@@ -180,7 +252,7 @@ export const equityScreenerHeadless: HeadlessPaneDefinition<"bundle"> = {
               extendedPrice: row.extended?.price ?? null,
               extendedChangePercent: row.extended?.changePercent ?? null,
               ...(row.extended?.mark ? { extendedMark: true } : {}),
-              value: formatScreenValue(metric, observation.value),
+              value: formatScreenMetric(metric, observation),
               unit: observation.unit,
               percentile:
                 observation.percentile.value == null

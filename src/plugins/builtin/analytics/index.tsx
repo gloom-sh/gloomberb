@@ -1,6 +1,7 @@
 import { usePaneSettingValue } from "../../../public/react";
 import { PortfolioRiskPane } from "./risk-pane";
 import { portfolioRiskHeadless } from "./risk-headless";
+import { NO_HOLDINGS_HINT } from "./risk-model";
 import { portfolioRiskCache } from "./risk-client";
 import { Box, Text } from "../../../ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -66,7 +67,7 @@ import {
   type SectorTableColumn,
 } from "./sector-model";
 import { describePortfolioTab, resolvePortfolioId, resolveTemplatePortfolioId } from "./portfolio-selection";
-import { findNamedCollection } from "../../../portfolio/collection-name";
+import { findNamedCollection, unknownCollectionArgError } from "../../../portfolio/collection-name";
 import {
   analyticsFigures,
   riskFigureNotices,
@@ -398,7 +399,7 @@ function LegacyPortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
                 message={accountsError ?? undefined}
                 hint={accountsError
                   ? "Reconnect the broker in the Brokers pane (BR), then refresh."
-                  : "Add holdings from the Portfolio pane (PF), or connect a broker in BR to sync them."}
+                  : NO_HOLDINGS_HINT}
               />
             </Box>
           ) : historyOnly ? (
@@ -465,6 +466,8 @@ export const portfolioAnalyticsModule: PluginModule = {
         { key: "equityShift", label: "Index shift (%)", type: "text" },
         { key: "rateShift", label: "10Y shift (bp)", type: "text" },
         { key: "volShift", label: "VIX shift (points)", type: "text" },
+        { key: "fxShift", label: "FX shift vs USD (TRY -20)", type: "text" },
+        { key: "assetShift", label: "Asset shift (GLD 10)", type: "text" },
       ] }),
       defaultPosition: "right",
       defaultMode: "floating",
@@ -483,7 +486,11 @@ export const portfolioAnalyticsModule: PluginModule = {
       label: prefix === "PORT" ? "Portfolio Analytics" : "Portfolio Market Risk",
       description: "Benchmark-relative risk, factor betas, stress shifts and local account evidence.",
       keywords: ["risk", "analytics", "sharpe", "beta", "sector", "allocation", "portfolio", "style", "quality", "factor tilt"],
-      shortcut: { prefix, argKind: "text", argOptional: true, argPlaceholder: "portfolio-id" },
+      shortcut: {
+        prefix, argKind: "text", argOptional: true, argPlaceholder: "portfolio-id",
+        // `PORT Nope` names no portfolio: the bar says so, not the first portfolio's risk.
+        argError: (arg, context) => unknownCollectionArgError(arg, context.config.portfolios, "portfolio"),
+      },
       headless: portfolioRiskHeadless,
       canCreate: (context) => context.config.portfolios.length > 0,
       createInstance: (context, options) => {

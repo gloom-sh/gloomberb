@@ -1,17 +1,17 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, ScrollBox, Text, TextAttributes, useNativeRenderer } from "../../../../ui";
+import { Box, ScrollBox, Span, Text, TextAttributes, useNativeRenderer } from "../../../../ui";
 import { hoverBg } from "../../../../theme/colors";
 import { useThemeColors } from "../../../../theme/theme-context";
 import { usePaneInstance } from "../../../../state/app/context";
 import { useViewport } from "../../../../react/input";
 import { measurePerf } from "../../../../utils/perf-marks";
+import { displayWidth } from "../../../../utils/format";
 import { useDoubleClickActivation } from "../../../use-double-click-activation";
 import { useScrollBoxScrollActivity } from "../../../table-view-shared";
 import { EmptyState } from "../../status";
 import { observeScrollBoxContentSize, observeScrollBoxViewportSize } from "../../../../renderers/opentui/scrollbox-layout";
 import {
   expandTableColumns,
-  fitTableCellText,
   fitTableHeaderText,
   getTableWidth,
   hasMeaningfulTableHorizontalOverflow,
@@ -29,8 +29,10 @@ import { useFocusOwningPane, useVisibleRangeEmitter } from "../hooks";
 import { useStableColumns } from "../stable-columns";
 import {
   cutColumnText,
+  fitColumnCellText,
   resolveDataTableColumnClips,
   resolveDataTableVisibleWindow,
+  resolveMoreColumnsHint,
   reuseDataTableColumnClips,
   type DataTableColumnClip,
 } from "./model";
@@ -210,10 +212,8 @@ function OpenTuiDataTableRowInner<
         const shownWidth = clip ? clip.width : column.width - inset;
         // Cut text is fitted to what shows; a number the edge cuts stays blank in its own place,
         // and its cell keeps its background and its press.
-        const shownText = clip
-          ? cutColumnText(cell.text, column.align, column.width, clip, (text, width) => fitTableCellText(text, width, column.align))
-          : shownWidth > 0 ? fitTableCellText(cell.text, shownWidth, column.align) : "";
-        const contentCut = clip !== null && column.align === "right" && shownText.trim() === "";
+        const fitted = fitColumnCellText(cell.text, clip ? column.width : shownWidth, column.align, clip, cell.note);
+        const contentCut = clip !== null && column.align === "right" && fitted.text.trim() === "";
         return (
           <Box
             key={column.id}
@@ -253,7 +253,11 @@ function OpenTuiDataTableRowInner<
                   ? colors.selectedText
                   : cell.color ?? colors.text}
               >
-                {`${frozen ? " ".repeat(horizontalPadding) : ""}${" ".repeat(inset)}${shownText}${frozen ? " ".repeat(columnGap) : ""}`}
+                {fitted.note ? <>
+                  {`${frozen ? " ".repeat(horizontalPadding) : ""}${" ".repeat(inset)}${fitted.text}`}
+                  <Span fg={colors.textDim} attributes={TextAttributes.NONE}>{fitted.note}</Span>
+                  {`${fitted.padding ?? ""}${frozen ? " ".repeat(columnGap) : ""}`}
+                </> : `${frozen ? " ".repeat(horizontalPadding) : ""}${" ".repeat(inset)}${fitted.text}${frozen ? " ".repeat(columnGap) : ""}`}
               </Text>
             )}
           </Box>
@@ -378,6 +382,27 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
     () => tableColumnStarts(displayColumns, columnGap),
     [columnGap, displayColumns],
   );
+  // Columns out of view past the right edge: the header row ends in "more →" there, a press on it scrolls to
+  // them, and the rows leave its cells blank, so a narrow pane says it has more than it shows. The header's
+  // scroll box is as wide as the body's viewport (measuredViewportWidth), so the header row has a blank cell
+  // past it, over the body's vertical scrollbar; the hint is laid over the row, not inside the scroll box,
+  // and takes that cell first.
+  const besideHeader = Math.max(0, Math.min(1, (scrollRef.current?.width ?? 0) - measuredViewportWidth));
+  const moreColumns = horizontalScrollbarVisible ? resolveMoreColumnsHint({
+    columns: displayColumns.map((column) => ({
+      width: column.width,
+      align: column.align,
+      label: sortColumnId === column.id ? `${column.label}${column.label ? " " : ""}▲` : column.label,
+    })),
+    columnGap,
+    columnStarts,
+    frozenFirstColumn: freezeFirstColumn,
+    besideHeader,
+    horizontalPadding,
+    scrollLeft,
+    viewportWidth: measuredViewportWidth,
+  }) : null;
+  const moreColumnsReserve = moreColumns?.reserve ?? 0;
   // A scroll step that cuts the columns as the last one did keeps the same
   // array, so the memoized rows skip the render.
   const columnClipsRef = useRef<readonly (DataTableColumnClip | null)[] | null>(null);
@@ -387,12 +412,13 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
       columnStarts,
       frozenFirstColumn: freezeFirstColumn,
       horizontalPadding,
+      rightReserve: moreColumnsReserve,
       scrollLeft,
       // A table that cannot scroll sideways fits its own columns; one it cut could never be scrolled to.
       viewportWidth: showHorizontalScrollbar ? measuredViewportWidth : 0,
       widths: displayColumns.map((column) => column.width),
     })),
-    [columnGap, columnStarts, displayColumns, freezeFirstColumn, horizontalPadding, measuredViewportWidth, scrollLeft, showHorizontalScrollbar],
+    [columnGap, columnStarts, displayColumns, freezeFirstColumn, horizontalPadding, measuredViewportWidth, moreColumnsReserve, scrollLeft, showHorizontalScrollbar],
   );
   const reportVisibleRange = useVisibleRangeEmitter({
     itemCount: items.length,
@@ -454,6 +480,17 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
     scrollRef: headerScrollRef,
     onHorizontalScroll: syncBodyScroll,
   });
+  // "more →" steps right as Shift+Right does: half the viewport.
+  const scrollToMoreColumns = useCallback(() => {
+    const body = scrollRef.current;
+    const viewportWidth = body?.viewport?.width ?? 0;
+    if (!body || viewportWidth <= 0) return;
+    const maxLeft = Math.max(0, (body.scrollWidth ?? 0) - viewportWidth);
+    body.scrollLeft = Math.min(maxLeft, (body.scrollLeft ?? 0) + Math.max(1, Math.floor(viewportWidth / 2)));
+    syncHeaderScroll();
+    setScrollLeft(body.scrollLeft ?? 0);
+    nativeRenderer.requestRender();
+  }, [nativeRenderer, scrollRef, syncHeaderScroll]);
   const handleBodySizeChange = useCallback(() => {
     measureContentWidth();
     setScrollVersion((current) => current + 1);
@@ -616,7 +653,9 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
             const hasNextLabel = columnIndex < displayColumns.length - 1
               && tableColumnLeadGap(displayColumns, columnIndex + 1, columnGap) === 0;
             const label = column.label + indicator;
-            const labelText = " ".repeat(inset) + (clip
+            // A figure the right edge cuts is blank in every row (cutColumnText), so its label is too.
+            const figuresCut = clip !== null && column.align === "right" && clip.inset + clip.width < column.width;
+            const labelText = figuresCut ? " ".repeat(inset + Math.max(0, clip.width)) : " ".repeat(inset) + (clip
               // Cut on the right, the label's last cell is the edge.
               ? cutColumnText(label, column.align, column.width, clip, (text, width, cutRight) => (
                 fitTableHeaderText(text, width, column.align, hasNextLabel && !cutRight)
@@ -650,6 +689,28 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
           })}
         </Box>
       </ScrollBox>
+      {moreColumns ? (
+        <Box
+          position="absolute"
+          top={0}
+          left={moreColumns.left}
+          width={displayWidth(moreColumns.text)}
+          height={1}
+          zIndex={2}
+          backgroundColor={colors.panel}
+          hoverBackgroundColor={hoverBg(colors)}
+          cursor="pointer"
+          onMouseDown={(event: any) => {
+            event.preventDefault?.();
+            event.stopPropagation?.();
+            focusPane();
+            onTableMouseDown?.(event);
+            scrollToMoreColumns();
+          }}
+        >
+          <Text fg={colors.textDim}>{moreColumns.text}</Text>
+        </Box>
+      ) : null}
 
       <ScrollBox
         id={bodyScrollId}

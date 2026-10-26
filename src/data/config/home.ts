@@ -16,7 +16,7 @@ import { isAbsolute, join } from "path";
  * On Linux a new install follows the XDG Base Directory spec instead (#1267):
  * config.json in `$XDG_CONFIG_HOME/gloomberb`, the data directory, plugins
  * and the terminal media pid file in `$XDG_DATA_HOME/gloomberb`, the plugin
- * cache in `$XDG_CACHE_HOME/gloomberb`. An existing `~/.gloomberb` keeps
+ * and native caches in `$XDG_CACHE_HOME/gloomberb`. An existing `~/.gloomberb` keeps
  * winning, so no install moves. Once an XDG config.json exists it wins over
  * a `~/.gloomberb` created later (an older version, a stray `mkdir`), so the
  * choice cannot flip and leave the data behind.
@@ -41,6 +41,11 @@ export interface GloomberbDirs {
   plugins: string;
   /** Host-owned scratch space for plugins: bundles, update state. */
   pluginCache: string;
+  /**
+   * The standalone binary's render library, copied out of the binary when the
+   * temp folder cannot hold or run it (see renderers/opentui/render-lib).
+   */
+  nativeCache: string;
 }
 
 function getUserHome(env: NodeJS.ProcessEnv): string {
@@ -74,6 +79,7 @@ function singleFolder(kind: "override" | "home", home: string): GloomberbDirs {
     data: home,
     plugins: join(home, "plugins"),
     pluginCache: join(home, "plugin-cache"),
+    nativeCache: join(home, "native-cache"),
   };
 }
 
@@ -85,12 +91,14 @@ function xdgBase(env: NodeJS.ProcessEnv, variable: string, fallback: string): st
 
 function xdgFolders(env: NodeJS.ProcessEnv): GloomberbDirs {
   const data = join(xdgBase(env, "XDG_DATA_HOME", join(".local", "share")), XDG_FOLDER);
+  const cache = join(xdgBase(env, "XDG_CACHE_HOME", ".cache"), XDG_FOLDER);
   return {
     kind: "xdg",
     configFile: join(xdgBase(env, "XDG_CONFIG_HOME", ".config"), XDG_FOLDER, "config.json"),
     data,
     plugins: join(data, "plugins"),
-    pluginCache: join(xdgBase(env, "XDG_CACHE_HOME", ".cache"), XDG_FOLDER, "plugin-cache"),
+    pluginCache: join(cache, "plugin-cache"),
+    nativeCache: join(cache, "native-cache"),
   };
 }
 

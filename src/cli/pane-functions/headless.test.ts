@@ -78,7 +78,7 @@ describe("headless pane printer", () => {
     expect(report.text.split("\n").find((line) => line.startsWith("AAPL P/E"))?.trimEnd()).toMatch(/ 2$/);
   });
 
-  test("--width wraps the notes, errors and source line under a table, and a column marked whole is never cut", () => {
+  test("--width wraps the notes, errors and source line under a table, and never cuts a cell", () => {
     const definition: HeadlessPaneDefinition<"rows"> = {
       shape: "rows", argument: { kind: "none" }, options: [],
       freshness: { source: "SEC EDGAR", status: "not-a-feed", basis: "filed data" },
@@ -94,7 +94,9 @@ describe("headless pane printer", () => {
     try {
       const lines = renderHeadlessPaneText(definition, result, args, "Board").split("\n");
       expect(lines.every((line) => line.length <= 40)).toBe(true);
-      expect(lines.find((line) => line.startsWith("A long"))).toMatch(/…\s+2026-10-09 20:15 UTC$/);
+      // The name wraps in its cell rather than lose its end; the time beside it stays whole.
+      expect(lines.find((line) => line.startsWith("A long"))).toMatch(/^A long index name\s+2026-10-09 20:15 UTC$/);
+      expect(lines.join("\n")).not.toContain("…");
       expect(lines.filter((line) => line.startsWith("Notes:") || line.includes("terminal is only"))).toHaveLength(2);
     } finally {
       setCliWidthOverride(null);
@@ -249,8 +251,8 @@ test("every report shape ends with its source, as-of and status line, and JSON c
     [{ shape: "rows", argument: { kind: "none" }, options: [], load: () => ({ rows: [{ name: "AAPL", dataSource: "delayed", updatedAt: Date.parse("2026-10-08T19:59:00Z") }] }) }, "delayed"],
     [{ shape: "bundle", argument: { kind: "none" }, options: [], freshness: { source: "SEC EDGAR", status: "not-a-feed", basis: "filed data" },
       load: () => ({ sections: [{ title: "Filings", rows: [{ form: "10-K", asOf: "2026-09-30" }] }] }) }, "not a live feed (filed data)"],
-    [{ shape: "series", argument: { kind: "none" }, options: [], load: () => ({ series: [{ id: "x", label: "X", points: [{ date: "2026-10-08", value: 1 }] }] }) }, "status not reported"],
-    [{ shape: "snapshot", argument: { kind: "none" }, options: [], load: () => ({ asOf: "2026-10-08T19:59:00Z", items: [{ headline: "Open" }] }) }, "status not reported"],
+    [{ shape: "series", argument: { kind: "none" }, options: [], load: () => ({ series: [{ id: "x", label: "X", points: [{ date: "2026-10-08", value: 1 }] }] }) }, ""],
+    [{ shape: "snapshot", argument: { kind: "none" }, options: [], load: () => ({ asOf: "2026-10-08T19:59:00Z", items: [{ headline: "Open" }] }) }, ""],
   ];
   for (const [definition, status] of results) {
     const report = await buildHeadlessFunctionReport({
@@ -259,7 +261,8 @@ test("every report shape ends with its source, as-of and status line, and JSON c
     const last = report.text.split("\n").at(-1)!.replace(/\x1b\[[0-9;]*m/g, "");
     expect(last).toStartWith(`Source: ${definition.freshness?.source ?? "Gloom Cloud"} · `);
     expect(last).toMatch(/ · (?:Mon|Tue|Wed|Thu|Fri|Sat|Sun) \d{1,2} [A-Z][a-z]{2}\b/);
-    expect(last).toEndWith(` · ${status}`);
+    if (status) expect(last).toEndWith(` · ${status}`);
+    else expect(last).toMatch(/2026(?: 19:59 UTC)?$/);
     expect(report.data.freshness).toMatchObject({ source: definition.freshness?.source ?? "Gloom Cloud", asOf: expect.stringMatching(/^2026-/), retrievedAt: expect.any(String) });
   }
 });
@@ -281,7 +284,7 @@ describe("headless pane arguments and options", () => {
       symbols: ["AAPL", "MSFT"],
     });
     expect(() => buildHeadlessPaneLoadArgs(definition, "CMP", "AAPL", {}))
-      .toThrow("CMP requires at least 2 symbols");
+      .toThrow("CMP needs two or more tickers: fn CMP AAPL,SPY");
   });
 
   test("derives ready catalog capability and validates enum values", () => {
@@ -500,6 +503,46 @@ test("series text distinguishes explicit percent, basis-point, multiple and inde
   expect(renderHeadlessPaneText(definition, { series: [result.series.find(({ id }) => id === "missing")!] }, args, "Unknown")).not.toContain("Unit");
 });
 
+test("a rows report of several symbols names each row's symbol and unit only where it says which fields do", () => {
+  const columns = [
+    { key: "symbol", header: "Symbol" },
+    { key: "price", header: "Last", unitKey: "currency", textFormat: (value: unknown) => `${value}` },
+  ];
+  const rows = [{ symbol: "NESN:SWX", currency: "CHF", price: 83.24 }, { symbol: "AAPL", currency: "USD", price: 348.27 }];
+  const twoSymbols: HeadlessPaneLoadArgs = { rawArgument: "NESN:SWX AAPL", argument: "NESN:SWX AAPL", symbols: ["NESN:SWX", "AAPL"], options: {} };
+  const csvOf = (result: HeadlessRowsResult) => {
+    const definition: HeadlessPaneDefinition<"rows"> = { shape: "rows", argument: { kind: "none" }, options: [], load: () => result };
+    const freshness = deriveHeadlessFreshness(definition, result);
+    return renderReportCsv(headlessReportTables(definition, result, twoSymbols, "Peers", freshness, { complete: true, unavailableSymbols: [] }), freshness).split("\n");
+  };
+  // Reports that name their row fields (fn RV) write each row's own ticker and currency, the price bare under its header.
+  const named = csvOf({ symbols: ["NESN:SWX", "AAPL"], columns, rows, rowSymbolKey: "symbol", rowUnitKey: "currency" });
+  expect(named.slice(0, 3)).toEqual([
+    "Symbol,Last,status,symbol_or_series,currency_or_unit,interval,source,as_of",
+    "NESN:SWX,83.24,,NESN:SWX,CHF,,Gloom Cloud,",
+    "AAPL,348.27,,AAPL,USD,,Gloom Cloud,",
+  ]);
+  // One that does not keeps the rows as it wrote them: a field called `currency` is not claimed to be the unit of every figure.
+  const unnamed = csvOf({ symbols: ["NESN:SWX", "AAPL"], columns: [columns[0]!, { key: "price", header: "Last" }], rows });
+  expect(unnamed.slice(0, 3)).toEqual([
+    "Symbol,Last,symbol_or_series,currency_or_unit,interval,source,as_of",
+    "NESN:SWX,83.24,,,,Gloom Cloud,",
+    "AAPL,348.27,,,,Gloom Cloud,",
+  ]);
+});
+
+test("a series that asks for decimals prints them in text, while JSON and CSV keep every digit", () => {
+  const definition: HeadlessPaneDefinition<"series"> = { shape: "series", argument: { kind: "none" }, options: [], load: () => ({ series: [] }) };
+  const result: HeadlessSeriesResult = { series: [
+    { id: "correlation", label: "Rolling correlation (120)", textDecimals: 3, points: [{ date: "2026-10-21", value: 0.418953387895 }] },
+  ] };
+  expect(renderHeadlessPaneText(definition, result, args, "Relationship").split("\n").find((line) => line.includes("Rolling correlation"))).toMatch(/0\.419\s+1$/);
+  expect(jsonData(definition, result)).toMatchObject({ data: { series: [{ id: "correlation", points: [{ value: 0.418953387895 }] }] } });
+  expect(JSON.stringify(jsonData(definition, result))).not.toContain("textDecimals");
+  const freshness = deriveHeadlessFreshness(definition, result);
+  expect(renderReportCsv(headlessReportTables(definition, result, args, "Relationship", freshness, { complete: true, unavailableSymbols: [] }), freshness)).toContain("2026-10-21,0.418953387895,");
+});
+
 test("a series observed by the day is dated without a time in text and CSV, one read at a time of day keeps it, and ratios and scores print rounded", () => {
   const definition: HeadlessPaneDefinition<"series"> = { shape: "series", argument: { kind: "none" }, options: [], load: () => ({ series: [] }) };
   const result: HeadlessSeriesResult = { series: [
@@ -556,12 +599,12 @@ describe("fn --csv", () => {
     });
     expect(csvOf(report)).toEqual([
       "# section: Americas",
-      "Index,Last",
-      "SPX,7812.71",
+      "Index,Last,status",
+      "SPX,7812.71,",
       "",
       "# section: Asia-Pacific",
-      "Index,Last",
-      "KOSPI,",
+      "Index,Last,status",
+      "KOSPI,,",
       "",
       "# section: Summary",
       "Metric,Value",
@@ -584,7 +627,7 @@ describe("fn --csv", () => {
     ]);
     // --section writes that one table alone, with the closing lines.
     expect(csvOf(report, "summary").slice(0, 4)).toEqual(["Metric,Value", "Breadth (%),61.5", "Leaders,SPX; DAX", ""]);
-    expect(csvOf(report, "2").slice(0, 2)).toEqual(["Index,Last", "KOSPI,"]);
+    expect(csvOf(report, "2").slice(0, 2)).toEqual(["Index,Last,status", "KOSPI,,"]);
     expect(() => csvOf(report, "Europe")).toThrow("No section \"Europe\". Sections: Americas, Asia-Pacific, Summary, Rates, or a number from 1 to 4.");
   });
 
@@ -607,9 +650,9 @@ describe("fn --csv", () => {
       }),
     }, "HP SBK.JO XYZ");
     expect(csvOf(report)).toEqual([
-      "Symbol,Date,Volume",
-      "HP,2026-10-01,37614444",
-      "SBK.JO,2026-10-01,1838873",
+      "Symbol,Date,Volume,status",
+      "HP,2026-10-01,37614444,",
+      "SBK.JO,2026-10-01,1838873,",
       "",
       "# Source: SEC EDGAR · Thu 1 Oct 2026 00:00 UTC · not a live feed (filed data)",
       "# Publisher: U.S. Securities and Exchange Commission",

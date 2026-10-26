@@ -2,7 +2,8 @@ import { expect, test } from "bun:test";
 import { createTestCliContext } from "../test-support/cli-context";
 import { createTestDataProvider, createTestQuote } from "../test-support/data-provider";
 import { marketDataCliCommands } from "./commands/market";
-import { indexRootFor, indexRootTryLine } from "./index-roots";
+import { indexRootTryLine } from "./index-roots";
+import { indexRootFor } from "../tickers/index-roots";
 import {
   futuresTryLine, ListingArgError, listingChoiceNote, parseListingArg, quoteBareListing, quotedListingChoiceNotes, resolveCliListing, type ListingVenue,
 } from "./listing-arg";
@@ -33,9 +34,9 @@ const dataProvider = createTestDataProvider({
 });
 const deps = { store: { loadTicker: async () => null, loadAllTickers: async () => [] }, dataProvider };
 
-/** Each `gloomberb ...` command a hint suggests, as the words typed. */
+/** Each `gloom ...` command a hint suggests, as the words typed. */
 function suggestedCommands(text: string): string[][] {
-  return [...text.matchAll(/gloomberb ([^()`\n]+)/g)].map((match) => match[1]!.trim().replace(/\.$/, "").split(/\s+/));
+  return [...text.matchAll(/gloom ([^()`\n]+)/g)].map((match) => match[1]!.trim().replace(/\.$/, "").split(/\s+/));
 }
 
 /** The listing a suggested command names, as the command itself reads it. */
@@ -88,7 +89,7 @@ test("every command a hint suggests runs on the listing it names", async () => {
   expect((await resolveCliListing(forms[2]!, forms[3], deps)).key).toBe("SAN:LSE");
 });
 
-// Decided per command (GLO-549): `fn` reports are titled by function and symbol, so a bare
+// Decided per command: `fn` reports are titled by function and symbol, so a bare
 // symbol several companies list gets quote's line; `news` heads its table with the listing.
 test("a bare symbol several companies list is named once per report: fn by quote's line, news by its heading", async () => {
   const provider = createTestDataProvider({
@@ -108,4 +109,34 @@ test("a bare symbol several companies list is named once per report: fn by quote
   const printed = run.printed[0]!;
   expect(printed.result.warnings).toBeUndefined();
   expect(serializeCliResult(printed.result, DEFAULT_CLI_OPTIONS, printed.options).split("\n")[0]).toContain("Avis Budget Group, Inc.");
+});
+
+// `fn DES BTC`, `fn OPX BTC`: a bare coin ticker read as a fund gets quote's note naming the coin's pair.
+test("fn names the coin's pair when a bare coin ticker is a fund", async () => {
+  const provider = createTestDataProvider({
+    search: async () => [],
+    getQuote: async (symbol) => createTestQuote(symbol === "BTC"
+      ? { symbol, name: "Grayscale Bitcoin Mini Trust ETF", instrumentType: "ETF", currency: "USD", listingExchangeName: "ARCA" }
+      : { symbol, name: "Apple Inc.", instrumentType: "EQUITY", currency: "USD", listingExchangeName: "NASDAQ" }),
+  });
+  const market = { ...deps, dataProvider: provider };
+  expect(await quotedListingChoiceNotes(await resolveCliListing("BTC", undefined, market), market))
+    .toContain("BTC is Grayscale Bitcoin Mini Trust ETF, not bitcoin. For bitcoin use BTC-USD.");
+  expect(await quotedListingChoiceNotes(await resolveCliListing("AAPL", undefined, market), market)).toEqual([]);
+});
+
+// `news ETH`: the stories are filed under the fund, and the header says so; the line says where the coin is.
+test("news names the coin's pair when a bare coin ticker is a fund, and says nothing of a named listing", async () => {
+  const provider = createTestDataProvider({
+    search: async () => [],
+    getQuote: async (symbol) => createTestQuote({ symbol, name: "Grayscale Ethereum Mini Trust ETF", instrumentType: "ETF", currency: "USD", listingExchangeName: "ARCA" }),
+    getNews: async () => [createTestArticle("eth", { title: "Ether staking", tickers: ["ETH"] })],
+  });
+  const news = async (args: string[]) => {
+    const run = createTestCliContext({ dataProvider: provider });
+    await marketDataCliCommands.find((command) => command.name === "news")!.execute(args, run.context);
+    return run.printed[0]!.result.warnings;
+  };
+  expect(await news(["ETH"])).toEqual(["ETH is Grayscale Ethereum Mini Trust ETF, not ethereum. For ethereum use ETH-USD."]);
+  expect(await news(["ETH", "--exchange", "ARCA"])).toBeUndefined();
 });

@@ -6,7 +6,7 @@ import {
 } from "../../../time-series/types";
 import type { ChartResolution, TimeRange } from "../../../components/chart/core/types";
 import { MAX_CHART_COMPOSER_SERIES } from "./chart-spec";
-import { appendChartSeries, appendPlacedSeries, buildCustomSeries, buildSeriesSpec, panelsForSeries } from "./chart-spec-edit";
+import { appendChartSeries, appendPlacedSeries, buildCustomSeries, buildSeriesSpec, nextGeneratedPanelId, panelsForSeries } from "./chart-spec-edit";
 import { currencyPairSpelling } from "../../../utils/currency-pair";
 import { dashedCoinPair } from "../../../utils/crypto-pair";
 import {
@@ -82,21 +82,51 @@ function placeFormulaLeg(formula: ParsedFormula, index: number, series: ChartSer
   return mixed && series.panelId === "main" && !formula.legs[index]!.perBarrel ? { ...series, axis: "right" } : series;
 }
 
-/** The study that weighs a formula's legs, charted as the given series, in the Formula panel. */
+/**
+ * A series the formula is divided or multiplied by (an FX rate) counts
+ * something else again: it is drawn in a panel of its own, not on the legs' axes.
+ */
+function placeFormulaFactor(spec: Pick<ChartSpec, "panels" | "series" | "studies">, series: ChartSeriesSpec): ChartSeriesSpec {
+  return { ...series, panelId: nextGeneratedPanelId(spec), axis: "auto" };
+}
+
+/** A factor's panel is shorter than a series panel, so the legs and the formula keep their room. */
+const FACTOR_PANEL_HEIGHT = 0.2;
+
+/** The panels with each new factor's last and short: the formula reads right under its legs. */
+function withFactorPanels(panels: ChartSpec["panels"], factors: readonly ChartSeriesSpec[]): ChartSpec["panels"] {
+  const ids = new Set(factors.map((series) => series.panelId));
+  return [
+    ...panels.filter((panel) => !ids.has(panel.id)),
+    ...panels.filter((panel) => ids.has(panel.id)).map((panel) => ({ ...panel, height: FACTOR_PANEL_HEIGHT })),
+  ];
+}
+
+/** The study that weighs a formula's legs and scales the sum, charted as the given series, in the Formula panel. */
 function formulaStudy(formula: ParsedFormula, inputSeriesIds: string[]): ChartStudySpec {
   const parameters: ChartStudySpec["parameters"] = { divisor: formula.divisor };
   formula.legs.forEach((leg, index) => {
     parameters[`weight${index + 1}`] = leg.weight;
     if (leg.perBarrel) parameters[`perBarrel${index + 1}`] = 1;
+    if (leg.perTonne) parameters[`perTonne${index + 1}`] = leg.perTonne;
+  });
+  formula.factors.forEach((factor, index) => {
+    parameters[`power${formula.legs.length + index + 1}`] = factor.power;
   });
   return { id: FORMULA_STUDY_ID, kind: "formula", inputSeriesIds, parameters, panelId: "formula", axis: "auto" };
 }
 
-/** A formula's legs as series, with the study that sums them in the Formula panel. */
+/** A formula's legs and factors as series, with the study that sums them in the Formula panel. */
 function formulaChartPreset(formula: ParsedFormula): ChartSpec {
-  const series = buildCustomSeries(formula.legs.map((leg) => leg.series))
-    .map((entry, index) => placeFormulaLeg(formula, index, entry));
-  return chartSpec(series, { studies: [formulaStudy(formula, series.map((entry) => entry.id))] });
+  const legs = buildCustomSeries([...formula.legs, ...formula.factors].map((entry) => entry.series));
+  const series: ChartSeriesSpec[] = [];
+  legs.forEach((entry, index) => {
+    series.push(index < formula.legs.length
+      ? placeFormulaLeg(formula, index, entry)
+      : placeFormulaFactor({ panels: [], series, studies: [] }, entry));
+  });
+  const spec = chartSpec(series, { studies: [formulaStudy(formula, series.map((entry) => entry.id))] });
+  return { ...spec, panels: withFactorPanels(spec.panels, series.slice(formula.legs.length)) };
 }
 
 /**
@@ -107,17 +137,22 @@ function appendChartFormula(spec: ChartSpec, expression: string): { spec: ChartS
   const formula = parseFormulaExpression(expression);
   if (!formula) throw new Error(`"${expression}" is not a formula.`);
   const key = (series: ChartSeriesSpec) => formatSeriesExpression(series).toLowerCase();
-  const legs = formula.legs.map((leg) => key(buildSeriesSpec(leg.series, 0)));
+  const terms = [...formula.legs, ...formula.factors];
+  const legs = terms.map((leg) => key(buildSeriesSpec(leg.series, 0)));
   const missing = legs.filter((leg) => !spec.series.some((series) => key(series) === leg)).length;
   if (spec.series.length + missing > MAX_CHART_COMPOSER_SERIES) {
     throw new Error(`Charts support up to ${MAX_CHART_COMPOSER_SERIES} base series.`);
   }
   let next: ChartSpec = { ...spec, studies: spec.studies.filter((study) => study.id !== FORMULA_STUDY_ID) };
-  const inputs = formula.legs.map((leg, index) => {
+  const placedFactors: ChartSeriesSpec[] = [];
+  const inputs = terms.map((leg, index) => {
     const charted = next.series.find((series) => key(series) === legs[index]);
     if (charted) return charted;
     const appended = appendChartSeries(next, leg.series);
-    const placed = placeFormulaLeg(formula, index, appended.series);
+    const placed = index < formula.legs.length
+      ? placeFormulaLeg(formula, index, appended.series)
+      : placeFormulaFactor(next, appended.series);
+    if (index >= formula.legs.length) placedFactors.push(placed);
     next = { ...appended.spec, series: appended.spec.series.map((series) => series.id === placed.id ? placed : series) };
     return placed;
   });
@@ -127,7 +162,10 @@ function appendChartFormula(spec: ChartSpec, expression: string): { spec: ChartS
     spec: {
       ...next,
       studies,
-      panels: [...next.panels, ...panelsForSeries(next.series, studies).filter((panel) => !known.has(panel.id))],
+      panels: withFactorPanels(
+        [...next.panels, ...panelsForSeries(next.series, studies).filter((panel) => !known.has(panel.id))],
+        placedFactors,
+      ),
     },
     series: inputs.at(-1)!,
   };
@@ -222,11 +260,11 @@ function placedRegisteredSeries(expression: ParsedSeriesExpression) {
   };
 }
 
-export function buildPriceChartPreset(symbol: string): ChartSpec {
+export function buildPriceChartPreset(symbol: string, range?: TimeRange): ChartSpec {
   const normalized = normalizeInstrument(symbol, true);
   if (!normalized) return buildEmptyChartPreset();
   return setBuiltinStudies(
-    chartSpec([buildSeriesSpec({ kind: "security", ...normalized, fieldId: CHART_FIELD_IDS.price }, 0)]),
+    chartSpec([buildSeriesSpec({ kind: "security", ...normalized, fieldId: CHART_FIELD_IDS.price }, 0)], { range }),
     ["volume"],
   );
 }
@@ -275,11 +313,8 @@ export function buildValuationChartPreset(
     const series = buildSeriesSpec(
       { kind: "security", ...instrument, fieldId: resolvedField },
       index,
-      { style: normalized.length === 1 ? "line" : "columns", axis: "left" },
+      { style: "line", axis: "left" },
     );
-    // Fiscal years: most US filers report no Q4 EPS, which charts do not
-    // reconstruct, so a quarterly trailing multiple has only its latest few
-    // quarters. Quarterly is the series' Period control away.
-    return series.source.kind === "security" ? { ...series, source: { ...series.source, period: "annual" } } : series;
+    return series.source.kind === "security" ? { ...series, source: { ...series.source, period: "daily" } } : series;
   }));
 }

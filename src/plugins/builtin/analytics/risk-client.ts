@@ -58,7 +58,12 @@ interface RiskMarketHistory {
    * Set when the listing quotes in another currency and its closes were
    * restated in USD at same-date daily FX closes; quote and closeMark are then in USD.
    */
-  converted?: { currency: string; fxAsOf: string } | null;
+  converted?: {
+    currency: string;
+    fxAsOf: string;
+    /** US sessions converted at the FX close before them, the pair having none that day (bridgedFxClose). */
+    fxBridged?: string[];
+  } | null;
   error: string | null;
 }
 export interface RiskMarketSnapshot {
@@ -68,7 +73,7 @@ export interface RiskMarketSnapshot {
   fetchedAt: string;
   warnings: string[];
   brokerOptions?: import("./risk-options").PortfolioOptionBook;
-  /** USD per unit of the account currency and of each listing or position currency of the holdings, at load time. */
+  /** USD per unit of the account currency, of each listing or position currency of the holdings and of each currency of cash, at load time. */
   fxRates?: Record<string, number>;
   /** For an account not in USD: the daily closes its returns convert at, or why they cannot. */
   accountFx?: AccountFx;
@@ -162,6 +167,8 @@ export function validateRiskHistory(
   closeMark: { price: number; date: string; currency: string } | null;
   /** Latest completed close in the returns' currency, whatever marks the holding. */
   latestClose: { price: number; date: string };
+  /** With a conversion, the US sessions converted at the FX close before them (bridgedFxClose). */
+  fxBridged?: string[];
 } {
   if (
     response.status !== "success" ||
@@ -244,13 +251,14 @@ export function validateRiskHistory(
   if (local.integrity)
     throw new Error("Daily history has inconsistent OHLC observations");
   // A converted series is on the NYSE calendar the basket and SPY share.
-  const series = conversion
+  const usd = conversion
     ? convertClosesToUsd(
         points.map((point) => ({ date: new Date(point.date).toISOString().slice(0, 10), close: point.close })),
         conversion.fx,
         conversion.divisor,
       )
-    : prices;
+    : null;
+  const series = usd ? usd.points : prices;
   const returns = conversion ? resolveDatedReturns(series).returns : local.returns;
   const cadence = qualifySharpeCadence(returns, [
     { symbol: instrument.symbol, exchange: conversion ? "NYSE" : exchange, history: series },
@@ -264,6 +272,7 @@ export function validateRiskHistory(
   };
   return {
     returns,
+    ...(usd?.bridged.length ? { fxBridged: usd.bridged } : {}),
     asOf: latestClose.date,
     // A missing or stale quote is not a current mark; the latest dated close is.
     closeMark:
@@ -321,7 +330,8 @@ const largestFirst = (
  * USD. Holdings with no FX pair, positions the caller marks unsupported and
  * holdings past the limit get no history request; their entry says why. An
  * account in another currency than USD also loads that currency's current
- * rate and daily FX history, which the model converts every return with. The
+ * rate and daily FX history, which the model converts every return with, and
+ * each currency of the book's cash its current rate, which values it. The
  * signal stops the fetch: no request starts once it
  * aborts, the ones in flight are cancelled, and the call rejects instead of
  * returning a partial snapshot nobody is waiting for.
@@ -332,6 +342,7 @@ export async function fetchPortfolioRiskMarket(
   now = new Date(),
   signal?: AbortSignal,
   accountCurrency = "USD",
+  cashCurrencies: readonly string[] = [],
 ): Promise<RiskMarketSnapshot> {
   signal?.throwIfAborted();
   const normalized = (row: RiskInstrument): RiskInstrument => ({
@@ -434,6 +445,9 @@ export async function fetchPortfolioRiskMarket(
         const currency = resolveCurrencyUnit(
           listings.get(row.id)?.currency ?? (quotes.has(row.id) ? null : row.request.currency),
         ).currency;
+        return currency && currency !== "USD" ? [currency] : [];
+      }), ...cashCurrencies.flatMap((code) => {
+        const currency = resolveCurrencyUnit(code).currency;
         return currency && currency !== "USD" ? [currency] : [];
       })],
     ),
@@ -586,7 +600,7 @@ export async function fetchPortfolioRiskMarket(
             historyParams,
             signal ? { signal } : undefined,
           );
-          const { latestClose, ...resolved } = validateRiskHistory(
+          const { latestClose, fxBridged, ...resolved } = validateRiskHistory(
             response,
             instrument,
             quote,
@@ -605,7 +619,9 @@ export async function fetchPortfolioRiskMarket(
               quote: current,
               currency: "USD",
               closeMark: current ? null : { ...latestClose, currency: "USD" },
-              converted: { currency: conversion.listingCurrency, fxAsOf: fxCloses.asOf },
+              converted: {
+                currency: conversion.listingCurrency, fxAsOf: fxCloses.asOf, ...(fxBridged?.length ? { fxBridged } : {}),
+              },
               error: null,
             };
             continue;
@@ -663,23 +679,25 @@ export async function fetchPortfolioRiskMarket(
  * What changes the requests: identity, size, whether a holding can enter the
  * basket, and an account currency other than USD (whose daily FX the load adds).
  */
-const cacheKey = (holdings: readonly RiskHoldingRequest[], accountCurrency: string) =>
+const cacheKey = (holdings: readonly RiskHoldingRequest[], accountCurrency: string, cashCurrencies: readonly string[]) =>
   [
     ...new Set(
       holdings.map(
         (row) => `${riskInstrumentId(row)}|${row.quantity ?? ""}|${row.currency ?? ""}|${row.unsupported ? 1 : 0}`,
       ),
     ),
-  ].sort().join(",") + (accountCurrency === "USD" ? "" : `@${accountCurrency}`);
+  ].sort().join(",") + (accountCurrency === "USD" ? "" : `@${accountCurrency}`)
+  + (cashCurrencies.length ? `+${[...new Set(cashCurrencies)].sort().join(",")}` : "");
 export async function loadPortfolioRiskMarket(
   holdings: readonly RiskHoldingRequest[],
   force = false,
   accountCurrency = "USD",
+  cashCurrencies: readonly string[] = [],
 ) {
   const { payload, stale, refreshError } = await loadCloudResource(
     portfolioRiskCache,
-    cacheKey(holdings, accountCurrency),
-    () => fetchPortfolioRiskMarket(holdings, undefined, undefined, undefined, accountCurrency),
+    cacheKey(holdings, accountCurrency, cashCurrencies),
+    () => fetchPortfolioRiskMarket(holdings, undefined, undefined, undefined, accountCurrency, cashCurrencies),
     { force },
   );
   return {

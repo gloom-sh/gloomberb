@@ -63,6 +63,7 @@ export function seriesCatalogEntry(series: RegisteredSeries): SeriesCatalogEntry
     ...(definition.description ? { description: definition.description } : {}),
     ...(definition.publisher ? { publisher: definition.publisher } : {}),
     ...(definition.url ? { url: definition.url } : {}),
+    ...(definition.limitation ? { limitation: definition.limitation } : {}),
     ...(definition.input ? { input: definition.input } : {}),
     ...(definition.placement ? { placement: definition.placement } : {}),
     ...(definition.lines?.length ? {

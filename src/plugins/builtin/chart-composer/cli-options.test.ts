@@ -1,9 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import { applyChartComposerCapabilityOptions, yearToDateWindow } from "./cli-options";
 import { applySeriesTimestampMode } from "./chart-spec-edit";
-import { buildComparisonChartPreset, buildCustomChartPreset, buildPriceChartPreset } from "./presets";
+import { buildComparisonChartPreset, buildCustomChartPreset, buildPriceChartPreset, buildValuationChartPreset } from "./presets";
 
 describe("chart composer CLI options", () => {
+  test("a reporting-period override works independently of the metric and daily can be restored", () => {
+    const daily = buildValuationChartPreset(["AAPL", "MSFT"]);
+    const annual = applyChartComposerCapabilityOptions(daily, "valuation-series", { period: "annual" });
+    expect(annual.series.map((series) => series.source)).toEqual(daily.series.map((series) => ({ ...series.source, period: "annual" })));
+    const restored = applyChartComposerCapabilityOptions(annual, "valuation-series", { period: "daily", metric: "evSales" });
+    expect(restored.series.map((series) => series.source)).toEqual(daily.series.map((series) => ({ ...series.source, fieldId: "valuation.evSales" })));
+  });
   test("applies price and financial options to the persisted spec", () => {
     const candle = applyChartComposerCapabilityOptions(
       buildPriceChartPreset("AAPL"),
@@ -19,6 +26,12 @@ describe("chart composer CLI options", () => {
     );
     expect(comparison.viewport).toMatchObject({ range: "3M", resolution: "1h" });
     expect(comparison.series.every((series) => series.transform === "raw")).toBe(true);
+
+    // Total return survives the spec's own normalization, and only a comparison asks for it.
+    const total = applyChartComposerCapabilityOptions(buildComparisonChartPreset(["AAPL", "MSFT"]), "price-comparison", { totalReturn: true });
+    expect(total.viewport.totalReturn).toBe(true);
+    expect(applyChartComposerCapabilityOptions(buildComparisonChartPreset(["AAPL", "MSFT"]), "price-comparison", {}).viewport.totalReturn).toBeUndefined();
+    expect(applyChartComposerCapabilityOptions(buildPriceChartPreset("AAPL"), "price-chart", { totalReturn: true }).viewport.totalReturn).toBeUndefined();
 
     // YTD is a year of bars shown from the prior year's last close, the one YTD returns are measured from.
     const ytd = applyChartComposerCapabilityOptions(

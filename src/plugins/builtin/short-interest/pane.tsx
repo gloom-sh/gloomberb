@@ -12,7 +12,9 @@ import {
   usePaneFooter,
   type DataTableCell,
 } from "../../../components";
+import { createDataTableCsv } from "../../../components/data-table/export";
 import { loadingErrorFooterInfo, usePaneRefreshKey } from "../../../components/data-table/table-pane";
+import { dropColumnsToFit } from "../../../components/ui/table-layout";
 import { useAsyncResource } from "../../../react/async-resource";
 import { colors } from "../../../theme/colors";
 import { Box, TextAttributes } from "../../../ui";
@@ -32,11 +34,17 @@ import {
   type ShortInterestRow,
   type SortPreference,
 } from "./model";
+import { shortInterestPublicationSegments } from "./schedule";
 import type { ShortInterestRecord } from "./types";
 import { loadShortInterestWithFloat } from "./watch-client";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 
 const EMPTY_RECORDS: ShortInterestRecord[] = [];
+/**
+ * A narrow pane gives up the float's date before it scrolls: the figures above
+ * the chart date the newest settlement's float, and exports keep the column.
+ */
+const DROP_ORDER = ["floatAsOf"] as const;
 const rowKey = (row: ShortInterestRow) => row.key;
 const rowDate = (row: ShortInterestRow) => row.record.settlementDate;
 
@@ -62,7 +70,8 @@ function ShortInterestView({ width, height, focused }: { width: number; height: 
 
   const rows = useMemo(() => buildRows(records), [records]);
   const sortedRows = useMemo(() => sortRows(rows, sortPreference), [rows, sortPreference]);
-  const columns = useMemo(() => buildColumns(records), [records]);
+  const allColumns = useMemo(() => buildColumns(records), [records]);
+  const columns = useMemo(() => dropColumnsToFit(allColumns, width - 1, DROP_ORDER), [allColumns, width]);
   // The header row, plus the scrollbar row once the columns overflow the pane.
   const tableChromeRows = chartTableChromeRows(columns, width);
   const effectiveKey = sortedRows.some((row) => row.key === selectedKey) ? selectedKey : sortedRows[0]?.key ?? null;
@@ -91,6 +100,8 @@ function ShortInterestView({ width, height, focused }: { width: number; height: 
     switch (column.id) {
       case "settlementDate":
         return { text: row.settlementDate, color: colors.textDim };
+      case "publishedDate":
+        return { text: row.publishedDate, color: colors.textDim };
       case "sharesShort":
         return { text: row.sharesShort, color: colors.textBright, attributes: TextAttributes.BOLD };
       case "shortRatio":
@@ -99,12 +110,17 @@ function ShortInterestView({ width, height, focused }: { width: number; height: 
         return { text: row.averageDailyVolume, color: colors.textDim };
       case "shortPercentFloat":
         return { text: row.shortPercentFloat, color: colors.text };
+      case "floatAsOf":
+        return { text: row.floatAsOf, color: colors.textDim };
     }
   }, []);
 
+  // When the newest settlement shown was published and the next is due, as `fn SI` dates it.
+  const latestSettlement = useMemo(() => rows.map((row) => row.settlementDate).sort().at(-1) ?? null, [rows]);
   usePaneFooter("short-interest", () => ({
     info: [
       ...loadingErrorFooterInfo(status === "loading", status === "error" ? error?.slice(0, 60) : null),
+      ...shortInterestPublicationSegments(latestSettlement),
       ...(latestSettlements ? [{
         id: "source",
         parts: [{
@@ -113,7 +129,7 @@ function ShortInterestView({ width, height, focused }: { width: number; height: 
         }],
       }] : []),
     ],
-  }), [cloudSessionRequired, error, status, latestSettlements]);
+  }), [cloudSessionRequired, error, status, latestSettlements, latestSettlement]);
 
   if (!ticker || !symbol) {
     return <EmptyState title="No ticker selected." message="Select a ticker to view short interest." />;
@@ -150,6 +166,7 @@ function ShortInterestView({ width, height, focused }: { width: number; height: 
           onHeaderClick={handleHeaderClick}
           getItemKey={rowKey}
           renderCell={renderCell}
+          exportCsv={() => createDataTableCsv({ columns: allColumns, items: sortedRows, renderCell })}
           selectedTextOverridesCellColor
           emptyStateTitle="No data"
         />

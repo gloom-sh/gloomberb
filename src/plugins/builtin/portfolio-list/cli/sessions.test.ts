@@ -148,13 +148,13 @@ describe("what a portfolio is priced at and when each row's price is from", () =
     // ARCA closes at 16:00 New York time.
     expect(text.split("\n").find((line) => line.startsWith("XLK"))).toMatch(new RegExp(`\\$198\\.78 .*\\$198,780 .*${day("20:00").source}`));
     expect(text).toMatch(/TOTAL .*\$208,780/);
-    // XLK +1.00 a share, SAP +4.00, from 197.78 and 196.
-    expect(text).toContain("Day's move: +$1,200.00 (+0.58%)");
+    // XLK +1.00 a share, SAP +4.00, from 197.78 and 196: Thursday's ARCA close and a XETRA close nothing dates.
+    expect(text).toContain("Day's move: +$1,200.00 (+0.58%) vs mixed closes");
 
     const json = JSON.parse(await showExport(["show", "Main", "--close"], "json"));
     for (const row of json.data) expect(row.marketValue).toBe(row.quotePrice * row.shares);
     expect(json.data.map((row: { valuationAsOf: string }) => row.valuationAsOf)).toEqual(["2026-10-09T15:38:00.000Z", "2026-10-09T20:00:00.000Z"]);
-    expect(json.metadata).toMatchObject({ valuationBasis: "regular-close", total: 208_780, dayChange: 1200 });
+    expect(json.metadata).toMatchObject({ valuationBasis: "regular-close", total: 208_780, dayChange: 1200, dayChangeBasis: "vs mixed closes" });
     expect(json.metadata.dayChangePercent).toBeCloseTo(1200 / 207_580 * 100, 8);
     // Exports are dated by the close, name the basis, and cite the oldest price too.
     expect(json.source).toMatchObject({ observationDate: "2026-10-09T20:00:00.000Z", oldestObservationDate: "2026-10-09T15:38:00.000Z" });

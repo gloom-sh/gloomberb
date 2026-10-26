@@ -50,7 +50,8 @@ test("quote command preserves raw declarations and formats its actual output row
   const [{ result, options }] = cli.printed as [PrintedCliResult];
   const captured = result.data;
   const rows = options!.rows!(result.data) as Array<Record<string, unknown>>;
-  expect((captured as Array<{ quote: Quote }>).map(row => row.quote)).toEqual(quotes);
+  // The quote as sent, with the date of its previous close beside it.
+  expect((captured as Array<{ quote: Quote }>).map(row => row.quote)).toMatchObject(quotes);
   // An index level is in points, never dollars.
   // A yen-listed index pads its points like any other; yen prices keep no decimals.
   expect(rows.map(row => row.price)).toEqual(["87.00% par", "—", "$87.00", "87.00", "65,018.95", "¥2,710"]);

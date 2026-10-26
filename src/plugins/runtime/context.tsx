@@ -18,6 +18,11 @@ export interface PluginRuntimeAccess extends CapabilityInvoker, PluginRuntimeHos
   getBrokerAdapter(brokerType: string): BrokerAdapter | null;
   /** Every broker adapter installed now, read when called: plugins come and go. */
   listBrokerAdapters(): BrokerAdapter[];
+  /**
+   * The logo of the plugin that registered a broker adapter, as an image URL
+   * for the desktop and the web; null when it has none.
+   */
+  getBrokerLogo?(brokerType: string): string | null;
   subscribeResumeState(pluginId: string, key: string, listener: () => void): () => void;
   getResumeState<T = unknown>(pluginId: string, key: string, schemaVersion?: number): T | null;
   setResumeState(pluginId: string, key: string, value: unknown, schemaVersion?: number): void;

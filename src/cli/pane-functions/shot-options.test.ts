@@ -5,6 +5,7 @@ import { insiderHeadless } from "../../plugins/builtin/insider/headless";
 import { mnaHeadless } from "../../plugins/builtin/mna/headless";
 import { riskFactorsHeadless } from "../../plugins/builtin/risk-factors/headless";
 import { thirteenFHeadless } from "../../plugins/builtin/thirteenf/headless";
+import { historicalPricesHeadless } from "../../plugins/builtin/ticker-detail/headless";
 import type { HeadlessPaneDefinition } from "../../types/headless";
 import type { PaneFunctionCapability } from "./capabilities";
 import { shotOptionRefusal } from "./shot-options";
@@ -14,9 +15,9 @@ const thirteenF = { token: "13F", capability: { options: thirteenFHeadless.optio
 describe("shot options", () => {
   test("refuses an option only the report reads, naming the report that reads it, and a slip of an option's name", () => {
     expect(shotOptionRefusal(thirteenF, "0001067983", { limit: "5" })).toBe(
-      "13F's pane does not draw --limit: it sets how many rows the text report prints. Drop it from shot, or run the report: gloomberb fn 13F 0001067983 --limit 5",
+      "13F's pane does not draw --limit: it sets how many rows the text report prints. Drop it from shot, or run the report: gloom fn 13F 0001067983 --limit 5",
     );
-    expect(shotOptionRefusal(thirteenF, "Berkshire Hathaway", { count: "5" })).toContain("gloomberb fn 13F \"Berkshire Hathaway\" --limit 5");
+    expect(shotOptionRefusal(thirteenF, "Berkshire Hathaway", { count: "5" })).toContain("gloom fn 13F \"Berkshire Hathaway\" --limit 5");
     expect(shotOptionRefusal(thirteenF, "0001067983", { veiw: "overlap" })).toBe("13F has no --veiw. Did you mean --view?");
   });
 
@@ -28,12 +29,19 @@ describe("shot options", () => {
     );
     expect(shotOptionRefusal(chart, "AAPL", { limit: "5" })).toContain("HP has no --limit: it cuts a printed table to its first rows");
     expect(shotOptionRefusal(chart, "AAPL", {}, { explain: true })).toBe(
-      "shot saves no report text, and --explain follows a report's text with the terms it shows. Drop it from shot, or run the report: gloomberb fn HP AAPL --explain",
+      "shot saves no report text, and --explain follows a report's text with the terms it shows. Drop it from shot, or run the report: gloom fn HP AAPL --explain",
     );
-    expect(shotOptionRefusal(chart, "AAPL", { section: "2" })).toContain("run the report: gloomberb fn HP AAPL --csv --section 2");
+    expect(shotOptionRefusal(chart, "AAPL", { section: "2" })).toContain("run the report: gloom fn HP AAPL --csv --section 2");
     // A function's own option of that name is read as the option.
     const calls = { token: "CALLS", capability: { options: [{ key: "section", type: "string", shot: { reportOnly: "picks a transcript section for the text report" } }] } as unknown as PaneFunctionCapability };
     expect(shotOptionRefusal(calls, "NVDA", { section: "qa" })).toContain("CALLS's pane does not draw --section: it picks a transcript section");
+  });
+
+  test("refuses HP's dated window, which only its report reads", () => {
+    const hp = { token: "HP", capability: { options: historicalPricesHeadless.options } as PaneFunctionCapability };
+    expect(shotOptionRefusal(hp, "JPM", { from: "2007", to: "2009" })).toBe(
+      "HP's pane does not draw --from: it reads the report's bars for those dates. Drop it from shot, or run the report: gloom fn HP JPM --from 2007 --to 2009",
+    );
   });
 
   test("passes the options the pane draws and the pane settings a capture takes", () => {

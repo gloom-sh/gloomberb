@@ -1,9 +1,10 @@
 import { saveConfig } from "../../../../data/config/store";
-import { withConfigData, withMarketData } from "../../../../cli/scoped-context";
+import { withConfigData } from "../../../../cli/scoped-context";
+import { withCollectionConfigData, withCollectionMarketData } from "../../../../cli/suffixed-listing-rows";
 import { countCollectionTickers } from "../../../../cli/helpers";
 import { resolveCliTicker, resolveTickerForCli } from "../../../../cli/ticker-resolution";
 import { takeFlag, takeOption } from "../../../../cli/commands/command-utils";
-import { EXCHANGE_OPTION, listingKeys, loadSavedListing, parseListingArg, requireListingArg, savedListingName } from "../../../../cli/listing-arg";
+import { EXCHANGE_OPTION, listingKeys, loadSavedListing, parseListingArg, requireSavedListing, savedListingCandidates, savedListingName, type ListingArg } from "../../../../cli/listing-arg";
 import { cliStyles, renderStats, renderTable } from "../../../../utils/cli-output";
 import { CLI_COMMAND_GROUPS } from "../../../../cli/help";
 import { formatMarketCostWithCurrency, formatMarketQuantity } from "../../../../market-data/market/format";
@@ -29,6 +30,8 @@ import {
   removeTickerFromPortfolio,
   resolveManualPositionCurrency,
   setManualPortfolioPosition,
+  LotCostFxMergeError,
+  type SetManualPortfolioPositionInput,
   setPortfolioCash,
   setPortfolioTargetWeight,
 } from "../../../../portfolio/mutations";
@@ -47,14 +50,17 @@ import { importSource, notionalPositions, rankThirteenFLines, type ThirteenFImpo
 import { importedFromText } from "../imported-from";
 import { savedListingCoinNote } from "../../../../cli/commands/crypto-hints";
 import { findNamedCollection } from "../../../../portfolio/collection-name";
-import { wholeUnitQuantityProblem } from "../../../../portfolio/position-quantity";
-import { CostFxError, loadCostFxRate, type CostFxHistoryClient } from "../../../../portfolio/cost-fx";
+import { ambiguousQuantityProblem } from "../../../../portfolio/position-quantity";
+import {
+  CLI_COST_FX_WORDING, loadPurchaseDateCostFx, readCostFxRate, readPurchaseDate, resolvePositionCostFx, type CostFxHistoryClient,
+} from "../../../../portfolio/cost-fx";
 import { lotCostFxRate, sameCurrency } from "../../../../portfolio/position-metrics";
 import { formatFxRate } from "../../../../cli/fx-pair";
 import { createBaseConverter } from "../../../../cli/base-converter";
-import { currencyUnitLabel, heldCurrencyUnit } from "../../../../utils/currency-units";
-import { parseTypedNumber, readCurrencyAmount, readTypedNumber } from "../../../../utils/decimal-comma";
-import { DATE_OPTION_EXAMPLES, dateOptionError, readCalendarDate } from "../../../../utils/calendar-date";
+import { heldCurrencyUnit } from "../../../../utils/currency-units";
+import { isCurrencyCode } from "../../../../utils/currency-pair";
+import { parseTypedNumber, readCurrencyAmount } from "../../../../utils/decimal-comma";
+import { DATE_OPTION_EXAMPLES } from "../../../../utils/calendar-date";
 import {
   failPortfolioCommand,
   isCashArgument,
@@ -68,16 +74,17 @@ import {
   requirePortfolio,
   takeCollectionName,
 } from "./shared";
-import { addOneSymbol, addSymbols, FILE_OPTION, printSymbolRows, removeSymbols, requireSymbolList, retryNotice, SYMBOL_LIST_HELP } from "./bulk-symbols";
+import { addOneSymbol, addSymbols, FILE_OPTION, printSymbolRows, removeSymbols, requireSymbolList, retryNotice, shellWord, SYMBOL_LIST_HELP } from "./bulk-symbols";
 import { readNameEntries } from "../../../../cli/name-entries";
 import { DRIP_DEFAULT_YEARS, DRIP_MAX_YEARS, parseDripYears, parseWithholding } from "../income";
 
-const ADD_USAGE = "Usage: gloomberb portfolio add <portfolio> <symbols...> [--file <path>]";
-const POSITION_USAGE = "Usage: gloomberb portfolio position set <portfolio> <ticker> <shares|contracts> <avg-cost> [currency] [--date <purchase date> | --cost-fx <rate>]";
-const REMOVE_USAGE = "Usage: gloomberb portfolio remove <portfolio> <symbols...> [--file <path>]";
-const CASH_USAGE = "Usage: gloomberb portfolio cash set <portfolio> <amount> [currency] | portfolio cash clear <portfolio>";
-const TARGET_USAGE = "Usage: gloomberb portfolio target set <portfolio> <symbol|CASH> <weight%> | target clear <portfolio> [symbol] | target show <portfolio>";
-const IMPORT_USAGE = "Usage: gloomberb portfolio import --13f <CIK|fund name> [--top N] [--name <portfolio>] [--notional <amount>] [--replace]";
+const ADD_USAGE = "Usage: gloom portfolio add <portfolio> <symbols...> [--file <path>]";
+const CREATE_USAGE = "Usage: gloom portfolio create <name> [--currency <code>]";
+const POSITION_USAGE = "Usage: gloom portfolio position set <portfolio> <ticker> <shares|contracts> <avg-cost> [currency] [--date <purchase date> | --cost-fx <rate>]";
+const REMOVE_USAGE = "Usage: gloom portfolio remove <portfolio> <symbols...> [--file <path>]";
+const CASH_USAGE = "Usage: gloom portfolio cash set <portfolio> <amount> [currency] | portfolio cash clear <portfolio>";
+const TARGET_USAGE = "Usage: gloom portfolio target set <portfolio> <symbol|CASH> <weight%> | target clear <portfolio> [symbol] | target show <portfolio>";
+const IMPORT_USAGE = "Usage: gloom portfolio import --13f <CIK|fund name> [--top N] [--name <portfolio>] [--notional <amount>] [--replace]";
 const IMPORT_DEFAULT_TOP = 10;
 const IMPORT_MAX_TOP = 100;
 const IMPORT_DEFAULT_NOTIONAL = 100_000;
@@ -112,12 +119,53 @@ async function listCollections(ctx: CliCommandContext) {
   });
 }
 
-async function createPortfolioCommand(name: string, ctx: CliCommandContext) {
+/** What `portfolio create` makes: a name, and the currency it totals in when one was given. */
+interface PortfolioCreateArgs {
+  name: string;
+  currency?: string;
+  /** The currency was the name's last word as typed (`Baht2 THB`), not --currency. */
+  currencyFromName?: boolean;
+}
+
+/**
+ * `portfolio create` arguments: the name, and the currency `--currency`
+ * gives. Without --currency, an ISO code typed in capitals as the name's
+ * last word (`Baht2 THB`) is the currency, not part of the name; a name
+ * quoted as one argument (`"Baht2 THB"`), or given with --currency, keeps
+ * every word. A portfolio totals in a whole currency, so pence (GBp, GBX)
+ * and cents are refused. The error sentence otherwise.
+ */
+function parsePortfolioCreateArgs(words: readonly string[], currencyOption?: string): PortfolioCreateArgs | { error: string } {
+  if (currencyOption != null) {
+    const typed = currencyOption.trim();
+    const code = typed.toUpperCase();
+    if (!typed) return { error: "--currency takes the currency the portfolio totals in, such as --currency THB." };
+    const unit = heldCurrencyUnit(typed);
+    if (unit.divisor !== 1) {
+      return { error: `--currency ${typed} is a minor unit; a portfolio totals in ${unit.currency}, so give --currency ${unit.currency}.` };
+    }
+    if (!/^[A-Z]{3}$/.test(code) || !isCurrencyCode(code)) {
+      return { error: `--currency ${typed} is not a currency code; use three letters such as THB or EUR.` };
+    }
+    const name = words.join(" ").trim();
+    return name ? { name, currency: code } : { error: CREATE_USAGE };
+  }
+  const last = words.at(-1)?.trim() ?? "";
+  const named = words.length > 1 && /^[A-Z]{3}$/.test(last) && isCurrencyCode(last) ? words.slice(0, -1).join(" ").trim() : "";
+  if (named) return { name: named, currency: last, currencyFromName: true };
+  const name = words.join(" ").trim();
+  return name ? { name } : { error: CREATE_USAGE };
+}
+
+async function createPortfolioCommand(args: PortfolioCreateArgs, words: readonly string[], ctx: CliCommandContext) {
+  const { name, currency, currencyFromName } = args;
   await withConfigData(ctx, async ({ config }) => {
     try {
-      const result = createManualPortfolio(config, name, config.baseCurrency);
+      const result = createManualPortfolio(config, name, config.baseCurrency, currency ? { fixedCurrency: currency } : {});
       await saveConfig(result.config);
-      console.log(cliStyles.success(`Created portfolio "${result.portfolio.name}".`));
+      const typed = words.join(" ").trim();
+      const readAs = currencyFromName ? ` (read ${currency} as its currency; quote "${typed}" to keep it in the name)` : "";
+      console.log(cliStyles.success(`Created portfolio "${result.portfolio.name}"${currency ? ` in ${result.portfolio.currency}` : ""}${readAs}.`));
       console.log(renderStats([["ID", result.portfolio.id]]));
     } catch (error) {
       failPortfolioCommand(ctx, error, `Failed to create portfolio "${name}".`);
@@ -126,7 +174,7 @@ async function createPortfolioCommand(name: string, ctx: CliCommandContext) {
 }
 
 async function deletePortfolioCommand(name: string, ctx: CliCommandContext) {
-  await withConfigData(ctx, async ({ config, store }) => {
+  await withCollectionConfigData(ctx, async ({ config, store }) => {
     try {
       const portfolio = requireManualPortfolio(config, name);
       const result = deleteManualPortfolio(config, await store.loadAllTickers(), portfolio.id);
@@ -181,27 +229,30 @@ function cashRefusal(portfolio: Portfolio, exchange: string | undefined) {
   };
 }
 
-async function addTickerToPortfolioCommand(portfolio: Portfolio, symbol: string, exchange: string | undefined, ctx: CliCommandContext, market: MarketContext) {
+async function addTickerToPortfolioCommand(
+  portfolio: Portfolio, symbol: string, notes: readonly string[], exchange: string | undefined, ctx: CliCommandContext, market: MarketContext,
+) {
   // A bare symbol is stored on the listing `quote` reads it as, as `watchlist add` does; bare CASH is the cash line.
   await addOneSymbol(ctx, market, {
     symbol,
     exchange,
     collection: { kind: "portfolio", name: portfolio.name },
-    retry: (key) => `gloomberb portfolio add ${portfolio.name} ${key}`,
+    notes,
+    retry: (key) => `gloom portfolio add ${shellWord(portfolio.name)} ${key}`,
     reject: cashRefusal(portfolio, exchange),
     add: (ticker) => addTickerToPortfolio(ticker, portfolio.id),
   });
 }
 
 async function addToPortfolioCommand(args: string[], file: string | undefined, exchange: string | undefined, ctx: CliCommandContext) {
-  await withMarketData(ctx, async (market) => {
+  await withCollectionMarketData(ctx, async (market) => {
     const { portfolio, rest } = requirePortfolioArgs(market.config, args, file, "add", ADD_USAGE, ctx);
     const list = await requireSymbolList(ctx, rest, file, ADD_USAGE, (entries) => readNameEntries(entries, market.dataProvider));
     if (list.single) {
-      await addTickerToPortfolioCommand(portfolio, list.single, exchange, ctx, market);
+      await addTickerToPortfolioCommand(portfolio, list.single, list.notes, exchange, ctx, market);
       return;
     }
-    const retry = (key: string) => `gloomberb portfolio add ${/\s/.test(portfolio.name) ? `"${portfolio.name}"` : portfolio.name} ${key}`;
+    const retry = (key: string) => `gloom portfolio add ${shellWord(portfolio.name)} ${key}`;
     const dryRun = ctx.cliOptions.dryRun;
     const rows = await addSymbols({
       symbols: list.symbols,
@@ -225,11 +276,13 @@ function withoutTarget(config: AppConfig, portfolio: Portfolio, symbol: string):
   return removed.length > 0 ? next : null;
 }
 
-async function removeTickerFromPortfolioCommand(portfolio: Portfolio, symbol: string, exchange: string | undefined, ctx: CliCommandContext, { config, store }: ConfigContext) {
+async function removeTickerFromPortfolioCommand(
+  portfolio: Portfolio, symbol: string, notes: readonly string[], exchange: string | undefined, ctx: CliCommandContext, { config, store }: ConfigContext,
+) {
   // SAN:EPA and SAN --exchange EPA name the stored listing, which a bare SAN may hold under another venue.
-  const listing = await requireListingArg(symbol, exchange, ctx);
+  // GARAN.IS is the row of GARAN:BIST, else a row still saved under that key (a broker's).
+  const { listing, ticker } = await requireSavedListing(symbol, exchange, ctx, store, (row) => row.metadata.portfolios.includes(portfolio.id));
   try {
-    const ticker = await loadSavedListing(store, listing);
     if (!ticker) ctx.fail(`Ticker "${listing.key}" was not found in your local data.`);
     const saved = savedListingName(ticker);
     const result = removeTickerFromPortfolio(ticker, portfolio.id);
@@ -245,6 +298,7 @@ async function removeTickerFromPortfolioCommand(portfolio: Portfolio, symbol: st
         removedPositions: result.removedPositionCount,
         removedTarget: nextConfig != null,
       },
+      ...notes.length > 0 ? { warnings: [...notes] } : {},
     }, {
       text: () => [
         cliStyles.success(`Removed ${saved.label} from "${portfolio.name}".`),
@@ -260,11 +314,11 @@ async function removeTickerFromPortfolioCommand(portfolio: Portfolio, symbol: st
 }
 
 async function removeFromPortfolioCommand(args: string[], file: string | undefined, exchange: string | undefined, ctx: CliCommandContext) {
-  await withConfigData(ctx, async (context) => {
+  await withCollectionConfigData(ctx, async (context) => {
     const { portfolio, rest } = requirePortfolioArgs(context.config, args, file, "remove", REMOVE_USAGE, ctx);
     const list = await requireSymbolList(ctx, rest, file, REMOVE_USAGE);
     if (list.single) {
-      await removeTickerFromPortfolioCommand(portfolio, list.single, exchange, ctx, context);
+      await removeTickerFromPortfolioCommand(portfolio, list.single, list.notes, exchange, ctx, context);
       return;
     }
     // Targets go with their holdings, all in one config write.
@@ -274,6 +328,7 @@ async function removeFromPortfolioCommand(args: string[], file: string | undefin
       exchange,
       store: context.store,
       reject: cashRefusal(portfolio, exchange),
+      holds: (ticker) => ticker.metadata.portfolios.includes(portfolio.id),
       remove: (ticker) => {
         const result = removeTickerFromPortfolio(ticker, portfolio.id);
         const withoutTargets = result.changed ? withoutTarget(nextConfig, portfolio, ticker.metadata.ticker) : null;
@@ -298,7 +353,7 @@ async function setPositionCommand(
   cost: { date?: string; costFx?: number; history?: CostFxHistoryClient } = {},
   futuresTerms?: (symbol: string) => Promise<FuturesContractTermsPayload | null>,
 ) {
-  await withMarketData(ctx, async ({ config, store, dataProvider }) => {
+  await withCollectionMarketData(ctx, async ({ config, store, dataProvider }) => {
     try {
       const portfolio = requireManualPortfolio(config, portfolioName);
       rejectCashSymbol(symbol, exchange, portfolio.name);
@@ -308,8 +363,8 @@ async function setPositionCommand(
       const avgCost = parseAmountArg(avgCostValue, "Average cost");
       // The notes say which listing a bare symbol went to, and that a bare coin ticker is not the coin, as `portfolio add` does.
       const { ticker, notes } = await resolveCliTicker(symbol, store, dataProvider, exchange);
-      // `1.250` on a listing held in whole lots asks which was meant, as `1,250` did above.
-      const lots = wholeUnitQuantityProblem(sharesValue, ticker, { listing: savedListingName(ticker).key });
+      // `1.250` and `1.000` ask which was meant, as `1,250` did above: a dot before three digits is as often thousands.
+      const lots = ambiguousQuantityProblem(sharesValue, ticker, { listing: savedListingName(ticker).key });
       if (lots) throw new PortfolioCliError(lots);
       // A future is held in contracts of the size its terms give, as `quote` states it, and a cost typed as
       // corn is quoted counts cents.
@@ -324,20 +379,21 @@ async function setPositionCommand(
       const portfolioCurrency = resolvePortfolioTotalsCurrency(
         valued.portfolios.find((entry) => entry.id === portfolio.id) ?? portfolio, valued.baseCurrency);
       const toPortfolio = createBaseConverter(dataProvider, heldCurrencyUnit(portfolioCurrency).currency);
-      const costFx = await positionCostFx({
-        ...cost, currency, portfolioCurrency, listing: savedListingName(ticker).key,
+      const costFx = await resolvePositionCostFx({
+        date: cost.date, costFx: cost.costFx, history: cost.history ?? apiClient,
+        currency, portfolioCurrency, listing: savedListingName(ticker).key, wording: CLI_COST_FX_WORDING,
         // Today's rate, in the units the lot is held in: what a typed rate is checked against.
         todaysRate: async () => (await toPortfolio(1, heldCurrencyUnit(currency).currency))
           / heldCurrencyUnit(currency).divisor * heldCurrencyUnit(portfolioCurrency).divisor,
       });
-      const result = setManualPortfolioPosition(ticker, portfolio.id, {
+      const result = setPositionKeepingLotRates(ticker, portfolio.id, {
         shares,
         avgCost,
         currency,
         ...(size ? { multiplier: size.multiplier } : {}),
         ...(cost.date ? { dateAcquired: cost.date } : {}),
         ...(costFx ? { costFx: costFx.costFx } : {}),
-      });
+      }, `${portfolioCurrency} per ${currency}`);
       const lot = result.ticker.metadata.positions.find((position) => position.portfolio === portfolio.id);
       const multiplier = lot?.multiplier;
       if (future && !multiplier) {
@@ -347,9 +403,16 @@ async function setPositionCommand(
       if (adopted) await saveConfig(adopted);
       const saved = savedListingName(result.ticker);
       const quantity = formatMarketQuantity(shares, { assetCategory: result.ticker.metadata.assetCategory });
-      // A cost in another currency converts at the rate it was bought at when the lot has one, else at today's, and says so.
+      // A cost in another currency converts at the rate it was bought at when the lot has one, else at the close of the
+      // purchase date it kept, as portfolio show reads it, else at today's, and says so.
       const foreign = !sameCurrency(currency, portfolioCurrency);
-      const boughtRate = lot ? lotCostFxRate(lot, currency, portfolioCurrency) : null;
+      const storedRate = lot ? lotCostFxRate(lot, currency, portfolioCurrency) : null;
+      const dated = foreign && storedRate === null && lot?.dateAcquired
+        ? (await loadPurchaseDateCostFx([result.ticker], { into: portfolioCurrency, history: cost.history ?? apiClient, portfolioId: portfolio.id }))
+          .values().next().value ?? null
+        : null;
+      const boughtRate = storedRate ?? dated?.rate ?? null;
+      const rateDate = costFx?.date ?? dated?.date ?? null;
       // The purchase date shows where it was given or sets the rate; a lot in the portfolio's currency otherwise prints as it did.
       const purchaseDate = lot?.dateAcquired && (cost.date || foreign) ? lot.dateAcquired : null;
       ctx.printResult({
@@ -357,7 +420,7 @@ async function setPositionCommand(
           changed: true, ...listingFields(saved), portfolio: portfolio.name, shares, avgCost, currency,
           ...(future ? { contractMultiplier: multiplier ?? null, contractSize: size?.size ?? null } : {}),
           ...(purchaseDate ? { dateAcquired: purchaseDate } : {}),
-          ...(foreign ? { costFxRate: boughtRate, costFxCurrency: portfolioCurrency, costFxDate: costFx?.date ?? null } : {}),
+          ...(foreign ? { costFxRate: boughtRate, costFxCurrency: portfolioCurrency, costFxDate: rateDate } : {}),
         },
         warnings: notes.length > 0 ? notes : undefined,
       }, {
@@ -371,11 +434,13 @@ async function setPositionCommand(
             ["Currency", currency],
             ...(purchaseDate ? [["Purchase Date", purchaseDate] as [string, string]] : []),
             ...(boughtRate !== null
-              ? [["Cost FX", `${formatFxRate(boughtRate)} ${portfolioCurrency} per ${currency}${costFx?.date ? ` (${costFx.date} close)` : ""}`] as [string, string]]
+              ? [["Cost FX", `${formatFxRate(boughtRate)} ${portfolioCurrency} per ${currency}${rateDate ? ` (${rateDate} close)` : ""}`] as [string, string]]
               : []),
           ]),
           ...(foreign && boughtRate === null
-            ? [cliStyles.muted(`Cost converted at today's rate into ${portfolioCurrency}; add --date or --cost-fx to use the rate when bought.`)]
+            ? [cliStyles.muted(lot?.dateAcquired
+              ? `Cost converted at today's rate into ${portfolioCurrency}: the FX close of the purchase date could not be read.`
+              : `Cost converted at today's rate into ${portfolioCurrency}; add --date or --cost-fx to use the rate when bought.`)]
             : []),
         ].join("\n"),
       });
@@ -386,99 +451,36 @@ async function setPositionCommand(
 }
 
 /**
- * The rate a position's cost was bought at, from `--cost-fx` as typed or from
- * the FX closes of its `--date`, for a position held in another currency
- * than the portfolio's; undefined when neither was given or the position is
- * in the portfolio's currency (a date alone then only dates the lot).
- * `--cost-fx` on a position in the portfolio's own currency, a typed rate
- * that reads as a mistake against today's, and a date with no FX close fail
- * saying what to give instead.
+ * Sets the position, saying how to go on when the lots it replaces were
+ * bought at FX rates one position cannot keep: give the whole position's rate.
  */
-async function positionCostFx({ date, costFx, history, currency, portfolioCurrency, listing, todaysRate }: {
-  date?: string; costFx?: number; history?: CostFxHistoryClient; currency: string; portfolioCurrency: string; listing: string;
-  /** Today's rate, one unit of `currency` in `portfolioCurrency`; NaN when it cannot be read. */
-  todaysRate: () => Promise<number>;
-}): Promise<{ costFx: { rate: number; currency: string }; date: string | null } | undefined> {
-  const foreign = !sameCurrency(currency, portfolioCurrency);
-  const insteadHint = `Give the rate it was bought at instead: --cost-fx <${portfolioCurrency} per ${currency}>.`;
-  if (costFx != null) {
-    if (!foreign) {
-      const held = currency === portfolioCurrency ? currency : `${currency}, a unit of ${portfolioCurrency}`;
-      throw new PortfolioCliError(`--cost-fx converts a cost in another currency; ${listing} is held in ${held}, the portfolio's currency.`);
-    }
-    const problem = implausibleCostFx(costFx, await todaysRate().catch(() => Number.NaN), { currency, portfolioCurrency, listing });
-    if (problem) throw new PortfolioCliError(problem, "Or give the purchase --date, and its daily FX close is used.");
-    return { costFx: { rate: costFx, currency: portfolioCurrency }, date: null };
-  }
-  if (!date || !foreign) return undefined;
+function setPositionKeepingLotRates(ticker: TickerRecord, portfolioId: string, input: SetManualPortfolioPositionInput, pair: string) {
   try {
-    const reading = await loadCostFxRate(currency, portfolioCurrency, date, history ?? apiClient);
-    return { costFx: { rate: reading.rate, currency: portfolioCurrency }, date: reading.date };
+    return setManualPortfolioPosition(ticker, portfolioId, input);
   } catch (error) {
-    if (error instanceof CostFxError) {
-      throw new PortfolioCliError(`${error.message}, so the ${currency} cost cannot be converted at the rate of ${date}.`, insteadHint);
+    if (error instanceof LotCostFxMergeError) {
+      throw new PortfolioCliError(error.message, `Give the rate the whole position was bought at: --cost-fx <${pair}>, or its purchase --date.`);
     }
-    // Offline, signed out or a server error: say what was being read, and the way that needs no network.
-    const reason = error instanceof Error ? error.message : String(error);
-    throw new PortfolioCliError(`Could not read the ${currency} and ${portfolioCurrency} FX closes of ${date}: ${reason}.`, insteadHint);
+    throw error;
   }
-}
-
-/** How far from today's rate a typed one may be: a currency that lost 99% since purchase still fits. */
-const COST_FX_MAX_RATIO = 100;
-
-/**
- * Why a typed `--cost-fx` reads as a mistake against today's rate, else null:
- * a rate per pound for a lot held in pence, the inverse of the pair (0.0319
- * for 31.37 TRY per USD), or more than a hundred times off either way. A
- * rate is only called inverted when today's is far from 1 and the typed one
- * lies on the other side of it, so EUR per USD near parity is never refused.
- * Null when today's rate is not known.
- */
-function implausibleCostFx(
-  rate: number,
-  today: number,
-  { currency, portfolioCurrency, listing }: { currency: string; portfolioCurrency: string; listing: string },
-): string | null {
-  if (!Number.isFinite(today) || today <= 0) return null;
-  const pair = `${portfolioCurrency} per ${currency}`;
-  const typed = formatFxRate(rate);
-  const todays = `today's is ${formatFxRate(today)} ${pair}`;
-  const unit = heldCurrencyUnit(currency);
-  if (unit.divisor !== 1 && rate / today >= unit.divisor / 5 && rate / today <= unit.divisor * 5) {
-    const name = currency.toUpperCase() === "USX" ? "US cents" : currencyUnitLabel(currency).replace(/^\S+ \((.+)\)$/, "$1");
-    return `--cost-fx ${typed} looks like ${portfolioCurrency} per ${unit.currency}; ${listing} is held in ${currency} (${name}), `
-      + `so the rate is ${pair}, 1/${unit.divisor} of that: ${todays}.`;
-  }
-  if ((today >= 3 && rate < 1) || (today <= 1 / 3 && rate > 1)) {
-    return `--cost-fx ${typed} looks inverted: it is the ${portfolioCurrency} paid for one ${currency}, and ${todays}.`;
-  }
-  if (rate / today > COST_FX_MAX_RATIO || today / rate > COST_FX_MAX_RATIO) {
-    return `--cost-fx ${typed} is more than ${COST_FX_MAX_RATIO} times off today's rate (${formatFxRate(today)} ${pair}); check the rate.`;
-  }
-  return null;
 }
 
 /** `--date`: the day the position was bought, as an ISO day, no later than today (UTC). */
 function parsePurchaseDate(value: string, ctx: CliCommandContext): string {
-  const date = readCalendarDate(value);
-  if (!date) ctx.fail(dateOptionError(value, "--date", { subject: "the purchase date" }), POSITION_USAGE);
-  if (date > new Date().toISOString().slice(0, 10)) ctx.fail(`--date ${value.trim()} is after today; it is the day the position was bought.`, POSITION_USAGE);
-  return date;
+  try {
+    return readPurchaseDate(value, CLI_COST_FX_WORDING);
+  } catch (error) {
+    return ctx.fail(error instanceof Error ? error.message : String(error), POSITION_USAGE);
+  }
 }
 
 /** `--cost-fx`: one unit of the position's currency in the portfolio's when it was bought, a positive number (32,15 reads as 32.15). */
 function parseCostFx(value: string, ctx: CliCommandContext): number {
-  let rate = Number.NaN;
   try {
-    rate = readTypedNumber(value, "--cost-fx");
+    return readCostFxRate(value, CLI_COST_FX_WORDING);
   } catch (error) {
-    ctx.fail(error instanceof Error ? error.message : String(error), POSITION_USAGE);
+    return ctx.fail(error instanceof Error ? error.message : String(error), POSITION_USAGE);
   }
-  if (!Number.isFinite(rate) || rate <= 0) {
-    ctx.fail(`--cost-fx is the rate the cost was bought at, a positive number such as 32.15 (TRY per USD); got "${value.trim()}".`, POSITION_USAGE);
-  }
-  return rate;
 }
 
 const CURRENCY_CODE = /^[A-Za-z]{3}$/;
@@ -565,18 +567,25 @@ function targetSumNote(config: AppConfig, portfolioId: string, tickers: readonly
  * that key, else any row of the symbol.
  */
 async function findListedTicker(store: TickerRepository, portfolio: Portfolio, symbol: string, exchange?: string): Promise<TickerRecord | null> {
-  const listing = parseListingArg(symbol, exchange);
   const listed = (await store.loadAllTickers()).filter((ticker) => ticker.metadata.portfolios.includes(portfolio.id));
   const savedAs = (ticker: TickerRecord, key: string) => ticker.metadata.ticker.toUpperCase() === key;
-  if (!listing.exchange) {
-    const sameSymbol = listed.filter((ticker) => parsePublicTickerKey(ticker.metadata.ticker).symbol === listing.symbol);
-    return sameSymbol.find((ticker) => savedAs(ticker, listing.symbol)) ?? sameSymbol[0] ?? null;
+  const listedAs = (listing: ListingArg) => {
+    if (!listing.exchange) {
+      const sameSymbol = listed.filter((ticker) => parsePublicTickerKey(ticker.metadata.ticker).symbol === listing.symbol);
+      return sameSymbol.find((ticker) => savedAs(ticker, listing.symbol)) ?? sameSymbol[0] ?? null;
+    }
+    // 7203:TSE is the row on any venue TSE names.
+    const keys = listingKeys(listing);
+    const onVenue = listed.filter((ticker) => keys.includes(canonicalTickerKey(ticker.metadata.ticker, ticker.metadata.exchange)));
+    // The key as saved (VTI:XMEX), else the same listing under another spelling of its venue (VTI:BMV).
+    return onVenue.find((ticker) => keys.some((key) => savedAs(ticker, key))) ?? onVenue[0] ?? null;
+  };
+  // GARAN.IS is the row of GARAN:BIST, else a row the portfolio still holds under that key (a broker's).
+  for (const listing of [parseListingArg(symbol, exchange, { listingSuffix: true }), ...savedListingCandidates(symbol, exchange)]) {
+    const row = listedAs(listing);
+    if (row) return row;
   }
-  // 7203:TSE is the row on any venue TSE names.
-  const keys = listingKeys(listing);
-  const onVenue = listed.filter((ticker) => keys.includes(canonicalTickerKey(ticker.metadata.ticker, ticker.metadata.exchange)));
-  // The key as saved (VTI:XMEX), else the same listing under another spelling of its venue (VTI:BMV).
-  return onVenue.find((ticker) => keys.some((key) => savedAs(ticker, key))) ?? onVenue[0] ?? null;
+  return null;
 }
 
 /** What a target command reports for the cash line, in the fields a listing has. */
@@ -587,7 +596,7 @@ async function setTargetCommand(rest: string[], exchange: string | undefined, ct
   const symbol = rest.at(-2);
   const name = rest.slice(0, -2).join(" ");
   if (!name || !symbol || !rawWeight) ctx.fail(TARGET_USAGE);
-  await withMarketData(ctx, async ({ config, store, dataProvider }) => {
+  await withCollectionMarketData(ctx, async ({ config, store, dataProvider }) => {
     try {
       const portfolio = requirePortfolio(config, name);
       const weight = parseTargetWeight(rawWeight);
@@ -650,14 +659,14 @@ async function setTargetCommand(rest: string[], exchange: string | undefined, ct
 
 async function clearTargetCommand(rest: string[], exchange: string | undefined, ctx: CliCommandContext) {
   if (rest.length === 0) ctx.fail(TARGET_USAGE);
-  await withConfigData(ctx, async ({ config, store }) => {
+  await withCollectionConfigData(ctx, async ({ config, store }) => {
     try {
       // The whole argument naming a portfolio clears every target; otherwise the last word is the symbol.
       const whole = findNamedCollection(config.portfolios, rest.join(" ")) != null;
       const portfolio = requirePortfolio(config, whole ? rest.join(" ") : rest.slice(0, -1).join(" "));
       const rawSymbol = whole ? undefined : rest.at(-1);
       const cash = rawSymbol != null && isCashArgument(rawSymbol, exchange);
-      const listing = rawSymbol == null || cash ? null : parseListingArg(rawSymbol, exchange);
+      const listing = rawSymbol == null || cash ? null : parseListingArg(rawSymbol, exchange, { listingSuffix: true });
       // The row the listing is: the portfolio's own, else any saved one; a target is kept under that row's key.
       const ticker = listing ? await findListedTicker(store, portfolio, rawSymbol!, exchange) ?? await loadSavedListing(store, listing) : null;
       const saved = ticker ? savedListingName(ticker) : null;
@@ -707,7 +716,7 @@ async function showTargetsCommand(name: string, ctx: CliCommandContext) {
       }
       console.log(cliStyles.bold(`${portfolio.name} targets`));
       if (rows.length === 0) {
-        console.log(cliStyles.muted(`No targets. Set one with: gloomberb portfolio target set "${portfolio.name}" <symbol|CASH> <weight%>`));
+        console.log(cliStyles.muted(`No targets. Set one with: gloom portfolio target set "${portfolio.name}" <symbol|CASH> <weight%>`));
         return;
       }
       console.log("");
@@ -757,7 +766,7 @@ function parseImportOptions(args: string[], ctx: CliCommandContext): ThirteenFIm
   const path = args.find((arg) => /\.(csv|tsv|txt)$/i.test(arg));
   if (!query && path) {
     ctx.fail(
-      `portfolio import reads a manager's 13F filing. To add the symbols in ${path}, run: gloomberb portfolio add <portfolio> --file ${path}`,
+      `portfolio import reads a manager's 13F filing. To add the symbols in ${path}, run: gloom portfolio add <portfolio> --file ${path}`,
       IMPORT_USAGE,
     );
   }
@@ -787,8 +796,8 @@ function parseImportOptions(args: string[], ctx: CliCommandContext): ThirteenFIm
 async function importThirteenFCommand(options: ThirteenFImportOptions, ctx: CliCommandContext) {
   // The manager's holdings as `fn 13F <manager>` reports them, through the 13F function of the plugins that are on.
   const thirteenF = ctx.plugins.flatMap((plugin) => plugin.paneTemplates ?? []).find((template) => template.shortcut?.prefix === "13F")?.headless;
-  if (!thirteenF) ctx.fail("13F filings are not available: the Ownership & Insiders plugin is off.", "Turn it on with gloomberb plugin enable ownership.");
-  await withMarketData(ctx, async ({ config, store, dataProvider }) => {
+  if (!thirteenF) ctx.fail("13F filings are not available: the Ownership & Insiders plugin is off.", "Turn it on with gloom plugin enable ownership.");
+  await withCollectionMarketData(ctx, async ({ config, store, dataProvider }) => {
     try {
       const report = await thirteenF.load(
         { rawArgument: options.query, argument: options.query, symbols: [], options: { view: "holdings", limit: IMPORT_13F_ROWS } },
@@ -912,8 +921,9 @@ const POSITION_HELP = {
   title: "Positions",
   lines: [
     "position set replaces the portfolio's lots of the symbol with one: a negative size is a short, and 0 is refused (portfolio remove drops the symbol).",
+    "Several lots set as one keep their earliest purchase date and their cost FX rates weighted by cost; lots bought at rates one position cannot keep (some at today's rate) are refused until --cost-fx or --date gives the position's own.",
     "A future's size is in contracts, at a price per unit of its contract (GC=F: per troy ounce); the contract size is read from its terms, as quote shows them.",
-    "The cost is in the currency named after it, else the listing's. A holding in another currency than the portfolio's (a US stock in a TRY portfolio) can be entered at its cost in the portfolio's currency (position set Lira BRK-B 10 20310 TRY), so P&L is in what was paid.",
+    "The cost is in the currency named after it (GBp or GBX for pence, gbp for pounds), else the listing's. A holding in another currency than the portfolio's (a US stock in a TRY portfolio) can be entered at its cost in the portfolio's currency (position set Lira BRK-B 10 20310 TRY), so P&L is in what was paid.",
     "Entered at its cost in its own currency, its P&L converts the cost at today's rate unless --date gives the purchase date, whose daily FX close is used, or --cost-fx gives the rate paid (portfolio currency per unit of the holding's: 32.15 TRY per USD); then the P&L carries the currency's move since. portfolio show names the holdings whose cost converts at today's rate.",
   ],
 };
@@ -932,7 +942,7 @@ const AMOUNTS_HELP = {
   lines: [
     "Numbers take either decimal mark: 1.234,5, 1234,5 and 1,234.5 are 1234.5, and 18,50 is 18.5.",
     "Cash and --notional are amounts of a currency (cash in the portfolio's unless named, --notional in USD), so 500,000 and 1.234 are thousands, a third decimal being below a cent. In a currency with three decimals (KWD, BHD, OMR) they could be either, and the command asks which.",
-    "Shares, contracts and average cost read a lone dot as a decimal point (123.456) and ask which a lone comma before three digits meant (1,234). On a listing held in whole lots (shares listed outside the US, a future's contracts) a lone dot before three digits (1.250) asks too.",
+    "Average cost reads a lone dot as a decimal point (123.456). Shares and contracts ask which a lone dot or comma before three digits meant (1.000, 1,234), thousands or a decimal, and name both readings to type.",
   ],
 };
 
@@ -947,7 +957,7 @@ export const portfolioCliCommand: CliCommandDef = {
     usage: [
       "portfolio [list]",
       "portfolio show <name> [--close] [--explain] [--drip [--years 1-5] [--withholding <pct>]]",
-      "portfolio create <name>",
+      "portfolio create <name> [--currency <code>]",
       "portfolio delete <name>",
       "portfolio add <portfolio> <symbols...> [--file <path>]",
       "portfolio remove <portfolio> <symbols...> [--file <path>]",
@@ -971,12 +981,14 @@ export const portfolioCliCommand: CliCommandDef = {
       { flags: "--name <portfolio>", description: "portfolio import: the portfolio to create or fill (default: the manager's name and 13F)" },
       { flags: "--notional <amount>", description: "portfolio import: the USD total the shares add up to at the filing's prices (default 100,000)" },
       { flags: "--replace", description: "portfolio import: replace the positions of an existing portfolio of that name" },
+      { flags: "--currency <code>", description: "portfolio create: the currency the portfolio totals in, whatever the base currency (a name's last word in capitals, such as THB, is read as one too)" },
       { flags: "--date <purchase date>", description: `position set: the day it was bought, as ${DATE_OPTION_EXAMPLES}; a holding in another currency converts its cost at that day's FX close` },
       { flags: "--cost-fx <rate>", description: "position set: the rate a holding in another currency was bought at, in the portfolio's currency per unit of the holding's (32.15 TRY per USD)" },
-      { flags: "--explain", description: "portfolio show: follow the report with what its terms mean (Weight, Target, Drift, Trade); gloomberb catalog glossary lists every term" },
+      { flags: "--explain", description: "portfolio show: follow the report with what its terms mean (Weight, Target, Drift, Trade); gloom catalog glossary lists every term" },
     ],
     examples: [
       "portfolio show Research",
+      "portfolio create Baht --currency THB",
       "portfolio add Research ASML",
       "portfolio add Research ASML:AMS",
       "portfolio add Research --file holdings.csv",
@@ -1018,11 +1030,11 @@ export const portfolioCliCommand: CliCommandDef = {
     if (explain && !shows) {
       ctx.fail(
         `--explain is an option of portfolio show, not portfolio ${action ?? "list"}.`,
-        "Run gloomberb portfolio show <name> --explain, or gloomberb catalog glossary for every term.",
+        "Run gloom portfolio show <name> --explain, or gloom catalog glossary for every term.",
       );
     }
-    if (close && !shows) ctx.fail(`--close is an option of portfolio show, not portfolio ${action ?? "list"}.`, "Usage: gloomberb portfolio show <name> --close");
-    const dripUsage = "Usage: gloomberb portfolio show <name> --drip [--years 1-5] [--withholding <pct>]";
+    if (close && !shows) ctx.fail(`--close is an option of portfolio show, not portfolio ${action ?? "list"}.`, "Usage: gloom portfolio show <name> --close");
+    const dripUsage = "Usage: gloom portfolio show <name> --drip [--years 1-5] [--withholding <pct>]";
     if ((dripFlag || hasYears || hasWithholding) && !shows) {
       ctx.fail(`${dripFlag ? "--drip" : hasYears ? "--years" : "--withholding"} is an option of portfolio show, not portfolio ${action ?? "list"}.`, dripUsage);
     }
@@ -1042,6 +1054,11 @@ export const portfolioCliCommand: CliCommandDef = {
     if ((hasDate || hasCostFx) && action !== "position") {
       ctx.fail(`${hasDate ? "--date" : "--cost-fx"} is an option of portfolio position set, not portfolio ${action ?? "list"}.`, POSITION_USAGE);
     }
+    const hasCurrency = args.some((arg) => arg === "--currency" || arg.startsWith("--currency="));
+    const currencyText = hasCurrency ? takeOption(args, "--currency") ?? "" : undefined;
+    if (hasCurrency && action !== "create") {
+      ctx.fail(`--currency is an option of portfolio create, not portfolio ${action ?? "list"}.`, CREATE_USAGE);
+    }
     const purchaseDate = dateText != null ? parsePurchaseDate(dateText, ctx) : undefined;
     const costFx = costFxText != null ? parseCostFx(costFxText, ctx) : undefined;
     const hasFile = args.some((arg) => arg === "--file" || arg.startsWith("--file="));
@@ -1060,21 +1077,21 @@ export const portfolioCliCommand: CliCommandDef = {
 
     if (action === "show") {
       const name = args.slice(1).join(" ");
-      if (!name) ctx.fail("Usage: gloomberb portfolio show <name> [--close] [--explain] [--drip]");
+      if (!name) ctx.fail("Usage: gloom portfolio show <name> [--close] [--explain] [--drip]");
       await showCollection(name, ctx, { explain, basis, drip });
       return;
     }
 
     if (action === "create") {
-      const name = args.slice(1).join(" ");
-      if (!name) ctx.fail("Usage: gloomberb portfolio create <name>");
-      await createPortfolioCommand(name, ctx);
+      const created = parsePortfolioCreateArgs(args.slice(1), currencyText);
+      if ("error" in created) return ctx.fail(created.error, created.error === CREATE_USAGE ? undefined : CREATE_USAGE);
+      await createPortfolioCommand(created, args.slice(1), ctx);
       return;
     }
 
     if (action === "delete" || action === "rm") {
       const name = args.slice(1).join(" ");
-      if (!name) ctx.fail("Usage: gloomberb portfolio delete <name>");
+      if (!name) ctx.fail("Usage: gloom portfolio delete <name>");
       await deletePortfolioCommand(name, ctx);
       return;
     }

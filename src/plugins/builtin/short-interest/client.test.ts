@@ -45,8 +45,31 @@ test("the newest settlement reads its percent of float from the current float, a
   const stated = await loadShortInterestWithFloat("TEST", { client: client([point("2026-09-30", 42_670_000, 3.98, 7)]), loadSnapshots: async () => [snapshot(461_000_000)] });
   expect(stated.records[0]?.shortPercentFloat).toBe(7);
 });
+test("a settlement served with the share count known when it was published reads its percent of float on that day's float", async () => {
+  // Today's float is 461.24M of a 504.5M cover count (91.4% floats). The August settlement was published on the June count.
+  const counted = (settlementDate: string, sharesShort: number, sharesOutstanding?: number, sharesOutstandingAsOf?: string) =>
+    ({ ...point(settlementDate, sharesShort, 4), ...(sharesOutstanding ? { sharesOutstanding, sharesOutstandingAsOf } : {}) });
+  const points = [
+    counted("2026-07-31", 50_000_000),
+    counted("2026-08-14", 54_040_000, 448_691_257, "2026-06-05"),
+    counted("2026-09-30", 42_673_721, 504_500_990, "2026-09-03"),
+  ];
+  // The float is the source's, undated: only the earlier rows' counts carry a day.
+  const today = snapshot(461_240_030, { sharesOutstanding: 504_500_990 });
+  const { records } = await loadShortInterestWithFloat("TEST", { client: client(points, "finra"), loadSnapshots: async () => [today] });
+  const august = 54_040_000 / (448_691_257 * (461_240_030 / 504_500_990)) * 100;
+  expect(records.map((record) => record.shortPercentFloat)).toEqual([null, expect.closeTo(august, 6), expect.closeTo(9.252, 3)]);
+  expect(records.map((record) => record.floatAsOf ?? null)).toEqual([null, "2026-06-05", null]);
+  // Point in time (--as-of): the newest too is read on its own day's count, not on today's float with its statistics.
+  const statistics = { shortInterestDate: "2026-09-30", shortPercentOfFloat: 0.095 };
+  const cut = await loadShortInterestWithFloat("TEST", {
+    client: client(points, "finra"), pointInTime: true,
+    loadSnapshots: async () => [snapshot(461_240_030, { sharesOutstanding: 504_500_990, ...statistics })],
+  });
+  expect(cut.records.at(-1)?.shortPercentFloat).toBeCloseTo(9.252, 3);
+});
 test("the newest settlement takes the statistics' percent of float when they are of the same settlement, as SIW and the overview do", async () => {
-  // GLO-760, GME: 42.67M short; the statistics divide by the float served at the 449.1M shares outstanding.
+  // GME: 42.67M short; the statistics divide by the float served at the 449.1M shares outstanding.
   const points = [point("2026-09-15", 39_000_000, 4.3), point("2026-09-30", 42_673_721, 3.98)];
   const statistics = { shortInterestDate: "2026-09-30", shortPercentOfFloat: 42_673_721 / 449_100_000 };
   const same = await loadShortInterestWithFloat("TEST", { client: client(points, "finra"), loadSnapshots: async () => [snapshot(461_240_030, statistics)] });

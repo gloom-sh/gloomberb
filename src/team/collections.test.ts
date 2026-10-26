@@ -116,10 +116,9 @@ describe("membership", () => {
     expect(local.get("AAPL")?.quantity).toBe(10);
 
     const known = new Map([["AAPL", item("AAPL", 10)], ["NVDA", item("NVDA", 1)]]);
-    expect(diffMembership(local, known)).toEqual({
-      add: [{ symbol: "MSFT", quantity: 3 }],
-      remove: ["NVDA"],
-    });
+    const diff = diffMembership(local, known);
+    expect(diff.add).toMatchObject([{ symbol: "MSFT", quantity: 3 }]);
+    expect(diff.remove).toEqual(["NVDA"]);
     const knownStale = new Map([["AAPL", item("AAPL", 8)]]);
     expect(diffMembership(local, knownStale).add.map((entry) => entry.symbol)).toEqual(["AAPL", "MSFT"]);
   });
@@ -138,7 +137,7 @@ describe("membership of a ticker held in several lots", () => {
     const local = localMembership(new Map([["AAPL", twoLots]]), localId, "portfolio");
     expect(local.get("AAPL")?.quantity).toBe(15);
     expect(diffMembership(local, new Map([["AAPL", item("AAPL", 15)]]))).toEqual({ add: [], remove: [] });
-    expect(diffMembership(local, new Map([["AAPL", item("AAPL", 10)]])).add).toEqual([{ symbol: "AAPL", quantity: 15 }]);
+    expect(diffMembership(local, new Map([["AAPL", item("AAPL", 10)]])).add).toMatchObject([{ symbol: "AAPL", quantity: 15, terms: { dateAcquired: "2024-01-02" } }]);
   });
 
   test("an equal server quantity leaves the lots alone, and a different one collapses them to the weighted cost", () => {
@@ -147,7 +146,7 @@ describe("membership of a ticker held in several lots", () => {
     const collapsed = applyMembership(twoLots, localId, "portfolio", item("AAPL", 20), "USD")!;
     expect(collapsed.metadata.positions).toHaveLength(1);
     expect(collapsed.metadata.positions[0]).toEqual({
-      portfolio: localId, shares: 20, avgCost: 156.666666666667, currency: "USD", broker: "manual",
+      portfolio: localId, shares: 20, avgCost: 156.666666666667, currency: "USD", broker: "manual", dateAcquired: "2024-01-02",
     });
   });
 
@@ -173,7 +172,7 @@ describe("membership of a ticker held in several lots", () => {
     });
     const short = gold(-5);
     const local = localMembership(new Map([["GC=F", short]]), localId, "portfolio");
-    expect(diffMembership(local, new Map()).add).toEqual([{ symbol: "GC=F", quantity: -5 }]);
+    expect(diffMembership(local, new Map()).add).toMatchObject([{ symbol: "GC=F", quantity: -5 }]);
     // The server stores and returns the sign, so the pull that follows the push changes nothing.
     expect(applyMembership(short, localId, "portfolio", item("GC=F", -5), "USD")).toBeNull();
     // A teammate's new count keeps the cost, the date and the contract size.
@@ -197,5 +196,127 @@ describe("membership of a ticker held in several lots", () => {
     expect(applyMembership(single, localId, "portfolio", item("AAPL", 12), "USD")?.metadata.positions).toEqual([
       lot(12, 150, { dateAcquired: "2024-01-02" }),
     ]);
+  });
+});
+
+describe("a team portfolio holding's purchase date and cost FX rate", () => {
+  const localId = teamCollectionLocalId("org-1", "c1");
+  const lot = (shares: number, avgCost: number, extra: Partial<TickerPosition> = {}): TickerPosition =>
+    ({ portfolio: localId, shares, avgCost, currency: "USD", broker: "manual", ...extra });
+  const held = (...positions: TickerPosition[]): TickerRecord => ({
+    metadata: { ...blankTickerRecord("BRK.B", "NYSE", "USD").metadata, portfolios: [localId], positions },
+  });
+  /** The item a server that keeps terms answers with after a PUT of `sent`, as the platform stores it. */
+  const stored = (quantity: number | null, sent: Record<string, unknown> = {}, before: Partial<TeamCollectionItem> = {}): TeamCollectionItem =>
+    ({ ...item("BRK.B", quantity), dateAcquired: null, currency: null, costFxRate: null, costFxCurrency: null, ...before, ...sent });
+  const push = (ticker: TickerRecord, known: Map<string, TeamCollectionItem>) =>
+    diffMembership(localMembership(new Map([["BRK.B", ticker]]), localId, "portfolio"), known).add;
+
+  test("round trip: a teammate's lot carries the date and rate it was set with, and neither side sends it again", () => {
+    const alice = held(lot(10, 410, { dateAcquired: "2024-03-01", costFxRate: 31.3694, costFxCurrency: "TRY" }));
+    const [sent] = push(alice, new Map());
+    expect(sent).toEqual({ symbol: "BRK.B", quantity: 10,
+      terms: { dateAcquired: "2024-03-01", currency: "USD", costFxRate: 31.3694, costFxCurrency: "TRY" } });
+    const server = stored(10, sent!.terms);
+
+    // Bob had no BRK.B: his lot is in the holding's currency, with its date and rate (a TRY book would otherwise get a TRY lot).
+    const bob = applyMembership(blankTickerRecord("BRK.B", "NYSE", "USD"), localId, "portfolio", server, "TRY")!;
+    expect(bob.metadata.positions).toEqual([{ portfolio: localId, shares: 10, avgCost: 0, currency: "USD", broker: "manual",
+      dateAcquired: "2024-03-01", costFxRate: 31.3694, costFxCurrency: "TRY" }]);
+    for (const ticker of [alice, bob]) {
+      expect(push(ticker, new Map([["BRK.B", server]]))).toEqual([]);
+      expect(applyMembership(ticker, localId, "portfolio", server, "TRY")).toBeNull();
+    }
+
+    // Alice re-dates the lot: only the date goes up, and Bob's lot takes it with its count unchanged.
+    const redated = held(lot(10, 410, { dateAcquired: "2024-02-15", costFxRate: 31.3694, costFxCurrency: "TRY" }));
+    const [change] = push(redated, new Map([["BRK.B", server]]));
+    expect(change).toEqual({ symbol: "BRK.B", quantity: 10, terms: { dateAcquired: "2024-02-15" } });
+    expect(applyMembership(bob, localId, "portfolio", { ...server, ...change!.terms }, "TRY")?.metadata.positions[0])
+      .toMatchObject({ dateAcquired: "2024-02-15", costFxRate: 31.3694 });
+  });
+
+  test("a server that never had the date or rate does not clear a teammate's, and an older server is sent no terms on their own", () => {
+    const alice = held(lot(10, 410, { dateAcquired: "2024-03-01", costFxRate: 31.37, costFxCurrency: "TRY" }));
+    const blank = stored(10);
+    expect(applyMembership(alice, localId, "portfolio", blank, "TRY")).toBeNull();
+    expect(push(alice, new Map([["BRK.B", blank]]))).toEqual([{ symbol: "BRK.B", quantity: 10,
+      terms: { dateAcquired: "2024-03-01", currency: "USD", costFxRate: 31.37, costFxCurrency: "TRY" } }]);
+    expect(push(alice, new Map([["BRK.B", item("BRK.B", 10)]]))).toEqual([]);
+  });
+
+  test("a rate goes only to a lot in its currency, and teammates holding it in two currencies do not overwrite each other", () => {
+    const usdRate = stored(10, { currency: "USD", costFxRate: 31.37, costFxCurrency: "TRY" });
+    const liraLot = held(lot(10, 13_000, { currency: "TRY" }));
+    expect(applyMembership(liraLot, localId, "portfolio", usdRate, "TRY")).toBeNull();
+    const euroLot = held(lot(10, 380, { currency: "EUR", costFxRate: 35.1, costFxCurrency: "TRY" }));
+    expect(applyMembership(euroLot, localId, "portfolio", usdRate, "TRY")).toBeNull();
+    expect(push(euroLot, new Map([["BRK.B", usdRate]]))).toEqual([]);
+    // Pence and GBX are one unit: a rate per penny is the same rate.
+    const pence = held(lot(100, 7050, { currency: "GBp" }));
+    expect(applyMembership(pence, localId, "portfolio", stored(100, { currency: "GBX", costFxRate: 0.52, costFxCurrency: "TRY" }), "TRY")
+      ?.metadata.positions[0]).toMatchObject({ currency: "GBp", costFxRate: 0.52 });
+    // A GBp holder over a teammate's GBX item sends nothing back, and a new date goes up alone, so the two never take turns.
+    const gbx = stored(100, { dateAcquired: "2024-03-01", currency: "GBX", costFxRate: 0.52, costFxCurrency: "TRY" });
+    const penceLot = held(lot(100, 7050, { currency: "GBp", dateAcquired: "2024-03-01", costFxRate: 0.52, costFxCurrency: "TRY" }));
+    expect(applyMembership(penceLot, localId, "portfolio", gbx, "TRY")).toBeNull();
+    expect(push(penceLot, new Map([["BRK.B", gbx]]))).toEqual([]);
+    expect(push(held(lot(100, 7050, { currency: "GBp", dateAcquired: "2024-02-15", costFxRate: 0.52, costFxCurrency: "TRY" })), new Map([["BRK.B", gbx]])))
+      .toEqual([{ symbol: "BRK.B", quantity: 100, terms: { dateAcquired: "2024-02-15" } }]);
+  });
+
+  test("an emptied purchase date or rate reaches the server, and neither a refresh nor a teammate brings it back", () => {
+    const terms = { dateAcquired: "2024-03-01", costFxRate: 31.37, costFxCurrency: "TRY" };
+    let server = stored(10, { ...terms, currency: "USD" });
+    const known = () => new Map([["BRK.B", server]]);
+    let bob = held(lot(10, 0, terms));
+
+    // Alice empties Purchase Date: the clear goes up, her lot stays without one, and Bob's follows.
+    const undated = held(lot(10, 410, { costFxRate: 31.37, costFxCurrency: "TRY" }));
+    const [noDate] = push(undated, known());
+    expect(noDate).toEqual({ symbol: "BRK.B", quantity: 10, terms: { dateAcquired: null } });
+    server = stored(10, noDate!.terms, server);
+    expect(applyMembership(undated, localId, "portfolio", server, "TRY")).toBeNull();
+    expect(push(undated, known())).toEqual([]);
+    bob = applyMembership(bob, localId, "portfolio", server, "TRY")!;
+    expect(bob.metadata.positions).toEqual([lot(10, 0, { costFxRate: 31.37, costFxCurrency: "TRY" })]);
+    expect(push(bob, known())).toEqual([]);
+
+    // Then Cost FX: the holding's currency goes up with no rate.
+    const unrated = held(lot(10, 410));
+    const [noRate] = push(unrated, known());
+    expect(noRate).toEqual({ symbol: "BRK.B", quantity: 10, terms: { currency: "USD", costFxRate: null, costFxCurrency: null } });
+    server = stored(10, noRate!.terms, server);
+    expect(applyMembership(unrated, localId, "portfolio", server, "TRY")).toBeNull();
+    expect(push(unrated, known())).toEqual([]);
+    bob = applyMembership(bob, localId, "portfolio", server, "TRY")!;
+    expect(bob.metadata.positions).toEqual([lot(10, 0)]);
+    expect(push(bob, known())).toEqual([]);
+
+    // A new count carries the clears with it; several lots without a date or rate clear none of the holding's.
+    const dated = stored(10, { ...terms, currency: "USD" });
+    expect(push(held(lot(12, 410)), new Map([["BRK.B", dated]]))).toEqual([{ symbol: "BRK.B", quantity: 12,
+      terms: { dateAcquired: null, currency: "USD", costFxRate: null, costFxCurrency: null } }]);
+    expect(push(held(lot(5, 410), lot(7, 410)), new Map([["BRK.B", dated]]))).toEqual([{ symbol: "BRK.B", quantity: 12 }]);
+  });
+
+  test("a new count collapses lots keeping their earliest date and cost-weighted rate, and refuses lots whose rates cannot become one", () => {
+    const lots = held(
+      lot(10, 410, { dateAcquired: "2024-03-01", costFxRate: 31, costFxCurrency: "TRY" }),
+      lot(20, 395, { dateAcquired: "2023-11-15", costFxRate: 34, costFxCurrency: "TRY" }),
+    );
+    const [collapsed] = applyMembership(lots, localId, "portfolio", stored(40), "TRY")!.metadata.positions;
+    expect(collapsed).toMatchObject({ shares: 40, dateAcquired: "2023-11-15", costFxCurrency: "TRY" });
+    expect(collapsed!.costFxRate! * 12_000).toBeCloseTo(4_100 * 31 + 7_900 * 34, 6);
+
+    const mixed = held(lot(10, 410, { costFxRate: 31, costFxCurrency: "TRY" }), lot(20, 395));
+    expect(applyMembership(mixed, localId, "portfolio", stored(40), "TRY")).toBeNull();
+    // Kept lots send their count only for a holding the server does not have yet, never over the teammate's.
+    const local = localMembership(new Map([["BRK.B", mixed]]), localId, "portfolio");
+    expect(local.get("BRK.B")).toMatchObject({ quantity: 30, lotsKept: true });
+    expect(diffMembership(local, new Map([["BRK.B", stored(40)]])).add).toEqual([]);
+    // The teammate's own rate for the new count is the position's: they collapse into it.
+    expect(applyMembership(mixed, localId, "portfolio", stored(40, { currency: "USD", costFxRate: 32, costFxCurrency: "TRY" }), "TRY")
+      ?.metadata.positions).toEqual([lot(40, 400, { costFxRate: 32, costFxCurrency: "TRY" })]);
   });
 });

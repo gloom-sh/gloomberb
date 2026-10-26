@@ -12,6 +12,7 @@ import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, Text, TextAttributes, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
+import { withCountryFlag } from "../../../components/ui/country-flag";
 import { publicTickerKey } from "../../../utils/exchanges";
 import { truncateToDisplayWidth } from "../../../utils/format";
 import { SignInWall } from "../cloud/auth-actions";
@@ -23,7 +24,7 @@ import { AwardDetail } from "./detail";
 import { useAwardAlerts } from "./alerts";
 import { AWARDS_UNAVAILABLE, fetchAwards, loadAward, loadAwards, validateAwards } from "./client";
 import { useAwardsEvidence } from "./evidence";
-import { AWARD_TABS, aggregateId, awardHistorySeries, awardPercent, awardPeriod, awardScope, awardsPreviewNote, awardTab, awardTypeLabel, futureAwardDatesNote, money,
+import { AWARD_TABS, aggregateId, awardHistorySeries, awardPercent, awardPeriod, awardScope, awardsCoverageNotes, awardsPreviewNote, awardTab, awardTypeLabel, futureAwardDatesNote, money,
   rankedAggregates } from "./model";
 
 type Item = { kind: "award"; row: AwardRow } | { kind: "aggregate"; row: AwardAggregate } | { kind: "leader"; row: AwardCompanyLeader } | { kind: "locked"; id: string }
@@ -186,7 +187,8 @@ function AwardsView({ width, height, focused, symbol }: PaneProps & { symbol: st
     error: data && !denied ? failed?.message ?? null : null, stale: loaded?.stale,
     info: data?.asOf ? [{ id: "asof", parts: [{ text: `as of ${data.asOf.slice(0, 10)}`, tone: "muted" }] }] : [], hints });
   usePaneNoticeFooter({ registrationId: "awards:notices", focused, notices: [
-    ...(data?.status === "partial" ? ["Procurement coverage is incomplete for the selected scope."] : []),
+    // The same coverage notes `fn AWARDS` prints: what the awards shown may be missing.
+    ...(data ? awardsCoverageNotes(data) : []),
     ...(loaded?.refreshError ? [loaded.refreshError] : []),
     ...(data?.truncated && Object.values(data.truncated).some(Boolean) ? ["Some aggregate history exceeds this response's limit. Narrow the date range or scope."] : []),
     ...(tab === "company" && currencies.length > 1 && !currency ? [`Chart in ${chartCurrency}; select a currency to inspect other obligations.`] : []),
@@ -221,15 +223,16 @@ function AwardsView({ width, height, focused, symbol }: PaneProps & { symbol: st
   if (denied || !data && isCloudSessionRequired(failed?.message)) return <SignInWall placement="awards-signin" action="view government awards" needsVerification={session.needsVerification} />;
   return <Box width={width} height={height} flexDirection="column">
     {strip}
-    <PaneStatusBody loading={paged.loading && !data} error={!data && failed?.message !== AWARDS_UNAVAILABLE ? failed?.message : null}
-      empty={!data && failed?.message === AWARDS_UNAVAILABLE} emptyTitle={AWARDS_UNAVAILABLE} subject="government awards">
-      {data ? <PageStackView focused={focused} detailOpen={!!openId} onBack={() => setOpen(null)} detailTitle={openRow ? truncateToDisplayWidth(openRow.title, Math.max(20, width - 16)) : "Award evidence"}
+    <PageStackView focused={focused} detailOpen={!!openId} onBack={() => setOpen(null)} detailTitle={openRow ? truncateToDisplayWidth(openRow.title, Math.max(20, width - 16)) : "Award evidence"}
         detailContent={openRow ? <AwardDetail key={openRow.id} row={openRow} accessKey={accessKey} width={width} height={bodyHeight - 1} focused={focused} openAward={setOpen} openUpgrade={openUpgrade}
           openChildren={(type) => { setParentId(openRow.id); setTicker(""); setSource(""); setQuery(""); setAgency(""); setSector(""); setCurrency(""); setJurisdiction(""); setRange("all"); setType(type); setOpen(null); setTab("feed"); }} />
           : <PaneStatusBody loading={detail.loading} error={detail.error} empty={!detail.loading && !detail.error} emptyTitle="Award no longer available." subject="award evidence" />}
         rootContent={<DataTableView<Item> columns={columns} items={tab === "company" && !ticker ? [] : items} rootWidth={width} rootHeight={bodyHeight}
+          // A filter change loads under the query bar, which stays.
+          status={data ? undefined : { loading: paged.loading, error: failed?.message !== AWARDS_UNAVAILABLE ? failed?.message : null,
+            empty: failed?.message === AWARDS_UNAVAILABLE, emptyTitle: AWARDS_UNAVAILABLE, subject: "government awards" }}
           focused={focused && !openId && !search.active && !tickerSearch.active} scrollRef={tableScrollRef} onBodyScrollActivity={loadMore}
-          rootBefore={<ChartTableHeader width={width} height={bodyHeight} tableRows={items.length} tableColumns={columns} query={queryBar} chart={chart}
+          rootBefore={<ChartTableHeader width={width} height={bodyHeight} tableRows={items.length} tableColumns={columns} query={queryBar} chart={data ? chart : null}
             figures={tab === "company" && ticker && latest ? [{ id: "total", label: `Obligated ${chartCurrency}`, value: money(latest.cumulativeObligatedAmount) },
               { id: "period", label: "Latest cohort", value: latest.month.slice(0, 7), detail: awardScope(chartSource) }] : undefined} />}
           selection={{ kind: "id", selectedId: selected ? itemId(selected) : null, getId: itemId, onChange: setSelected }} getItemKey={itemId}
@@ -268,7 +271,8 @@ function AwardsView({ width, height, focused, symbol }: PaneProps & { symbol: st
             if (column.id === "recipient") return { text: award.recipient.name, color: colors.textBright };
             if (column.id === "ticker") return award.entity ? { text: award.entity.ticker, content: <Badge label={award.entity.ticker} /> } : missingCell(colors);
             if (column.id === "agency") return { text: award.agency.name, color: colors.text };
-            if (column.id === "country") return { text: award.jurisdiction, color: colors.textDim };
+            // The column has room for the flag beside a code.
+            if (column.id === "country") return withCountryFlag({ text: award.jurisdiction, color: colors.textDim }, award.jurisdiction, desktop);
             if (column.id === "period") return { text: awardPeriod(award), color: colors.textDim };
             if (column.id === "title") return { text: award.title, color: colors.text };
             if (column.id === "ratio") return { text: awardPercent(award), value: award.revenueComparison?.percent ?? null, color: colors.warning, attributes: TextAttributes.BOLD, keepColorWhenSelected: true };
@@ -277,7 +281,6 @@ function AwardsView({ width, height, focused, symbol }: PaneProps & { symbol: st
             return { text: award.revenueComparison?.periodEnd ?? "--", color: colors.textDim };
           }}
           emptyStateTitle={tab === "company" && !ticker ? "Enter a company ticker." : tab === "events" ? "No revenue-comparable awards in this scope." : "No awards match these filters."}
-          bodyAfter={data.locked && desktop ? <LockedOverlay rows={3} text="Upgrade for complete awards and history" onPress={openUpgrade} /> : undefined} />} /> : null}
-    </PaneStatusBody>
+          bodyAfter={data?.locked && desktop ? <LockedOverlay rows={3} text="Upgrade for complete awards and history" onPress={openUpgrade} /> : undefined} />} />
   </Box>;
 }

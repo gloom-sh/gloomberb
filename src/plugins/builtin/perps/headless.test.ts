@@ -1,8 +1,10 @@
 import { expect, test } from "bun:test";
-import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
+import { deriveHeadlessFreshness, formatFreshnessLine, paneStatusLine } from "../../../cli/pane-functions/freshness";
 import { renderHeadlessPaneText, serializeHeadlessPaneResult } from "../../../cli/pane-functions/headless";
 import type { PerpMarketPayload } from "../../../api-client/perps";
+import { normalizeCapabilityOptions, type PaneFunctionCapability } from "../../../cli/pane-functions/capabilities";
 import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
+import { perpFreshness } from "./freshness";
 import { perpsHeadless } from "./headless";
 import { longShort, longShortPoint, okxLongShort, perpBoard, perpHistory, perpRankings, perpRow, venueRow } from "./test-fixture";
 
@@ -250,6 +252,8 @@ test("a free account's locked tables are left out, and one Pro line says what fr
   const gate = "Pro: Free shows the latest funding, OI and premium (basis: fn CTM BTC). Gloom Pro adds Hyperliquid BTC history and every market on 3 venues · gloom.sh/cloud";
   expect(history.text).toContain(gate);
   expect(history.text.match(/Pro:/g)).toHaveLength(1);
+  // The title names the function over the free Latest market table; the Pro mark is the one line about the history Pro adds.
+  expect(history.text.split("\n")[0]).toBe("Perpetuals");
   expect(history.text).not.toMatch(/Locked|No data|Errors|Own observations|Paid funding/);
   // JSON keeps the sections, marked locked, and the lock stays in errors for readers that only look there.
   const json = serializeHeadlessPaneResult(perpsHeadless, history.result) as { sections: Array<{ title: string; rows: unknown[]; locked?: boolean }>; errors: string[] };
@@ -258,6 +262,7 @@ test("a free account's locked tables are left out, and one Pro line says what fr
   expect(json.sections[0]).not.toHaveProperty("locked");
   expect(json.errors).toEqual([gate.slice("Pro: ".length).replace(" · gloom.sh/cloud", ".")]);
   const evidence = await run("evidence");
+  expect(evidence.text.split("\n")[0]).toBe("Perpetual evidence");
   expect(evidence.text).not.toMatch(/Observation revisions|Locked/);
   expect(evidence.text).toContain("Pro: Free shows BTC's latest evidence and positioning. Gloom Pro adds its observation revisions · gloom.sh/cloud");
 });
@@ -281,8 +286,8 @@ test("a venue filter names no count it does not have, and a venue with no contra
   const bybit = await load(null, { tab: "board", venue: "bybit" });
   expect(bybit.text).toContain("Pro: Bybit markets beyond the free preview need Gloom Pro");
   expect(bybit.text).not.toContain("2,501");
-  const none = await load(null, { tab: "board", venue: "kraken" });
-  expect(none.text).toMatch(/Perpetual markets\n\nPro: Kraken markets beyond the free preview need Gloom Pro · gloom.sh\/cloud\n/);
+  const none = await load(null, { tab: "board", venue: "okx" });
+  expect(none.text).toMatch(/Perpetual markets\n\nPro: OKX markets beyond the free preview need Gloom Pro · gloom.sh\/cloud\n/);
   expect(none.text.match(/Pro:/g)).toHaveLength(1);
   expect(none.text).not.toContain("No data");
 
@@ -292,7 +297,37 @@ test("a venue filter names no count it does not have, and a venue with no contra
     expect(opened).toMatchObject({ marketId });
     expect(opened).not.toHaveProperty("notices");
   }
-  expect((await load("BTC", { venue: "kraken" })).result.metadata).toMatchObject({ marketId: "binance:BTCUSDT", notices: ["Kraken has no BTC contract in the free preview; showing Binance."] });
-  expect((await load("BTC", { venue: "kraken" }, "pro")).result.metadata).toMatchObject({ notices: ["Kraken has no BTC contract; showing Binance."] });
+  expect((await load("BTC", { venue: "okx" })).result.metadata).toMatchObject({ marketId: "binance:BTCUSDT", notices: ["OKX has no BTC contract in the free preview; showing Binance."] });
+  expect((await load("BTC", { venue: "okx" }, "pro")).result.metadata).toMatchObject({ notices: ["OKX has no BTC contract; showing Binance."] });
   expect((await load("hyperliquid:default:BTC", { venue: "bybit" })).result.metadata).toMatchObject({ notices: ["hyperliquid:default:BTC is a Hyperliquid market, so the Bybit filter does not apply."] });
+});
+
+test("fn PERP dates the board as the pane footer does: each venue's time and the oldest price, with no feed word", async () => {
+  const now = Date.parse("2026-10-03T23:30:00Z");
+  // Bybit has a market read at 23:20 and one at 23:11: the oldest price is 18 minutes old, though Bybit's newest is 10.
+  const rows = [venueRow("binance", { observedAt: "2026-10-03T23:20:09Z" }), venueRow("bybit", { observedAt: "2026-10-03T23:20:30Z" }),
+    venueRow("bybit", { symbol: "ETHUSDT", observedAt: "2026-10-03T23:11:40Z" })];
+  const args = createTestHeadlessArgs({ argument: null, rawArgument: "", options: { tab: "board", "asset-class": "all", venue: "all", sort: "oi" } });
+  const board = await perpsHeadless.load(args, createTestHeadlessContext({ apiClient: { getCloudPerpsBoard: async () => perpBoard({ rows, access: "preview", locked: 2555 }) } as never }));
+  const report = deriveHeadlessFreshness(perpsHeadless, board, now);
+  expect(formatFreshnessLine(report)).toStartWith("Sat 3 Oct 2026 · Binance 23:20 · Bybit 23:20 UTC · oldest 18 min · funding = current estimate");
+  expect(report).toMatchObject({ status: "unreported", ageOnly: true, oldestAgeMinutes: 18 });
+  // The pane's footer over the same rows, none of them streaming.
+  const pane = deriveHeadlessFreshness({ shape: "rows" }, { rows: [], freshness: perpFreshness(rows, { funding: rows, now }) }, now);
+  expect(paneStatusLine(pane)).toBe(paneStatusLine(report));
+  expect(paneStatusLine(report)).not.toMatch(/delayed|live/);
+  // A venue that stopped answering for a market still says so.
+  const stopped = deriveHeadlessFreshness({ shape: "rows" }, { rows: [], freshness: perpFreshness(rows.map((row) => ({ ...row, stale: true })), { now }) }, now);
+  expect(paneStatusLine(stopped)).toContain("stale");
+});
+
+test("--venue lists the venues Gloom collects, and one it does not says so instead of a free preview", () => {
+  const capability = { id: "perps", botSafe: true, options: perpsHeadless.options } as unknown as PaneFunctionCapability;
+  const normalize = (venue: string) => normalizeCapabilityOptions(capability, { venue }, { strict: true, code: "PERP" }).venue;
+  expect(perpsHeadless.options.find((option) => option.key === "venue")!.values!.map(({ value }) => value)).toEqual(["all", "hyperliquid", "binance", "bybit", "okx"]);
+  expect(normalize("OKX")).toBe("okx");
+  for (const [venue, name] of [["deribit", "Deribit"], ["kraken", "Kraken"], ["coinbase", "Coinbase International"], ["dydx", "dYdX"]] as const) {
+    expect(() => normalize(venue)).toThrow(`Invalid --venue value "${venue}". Gloom doesn't cover ${name} perps yet. Use one of: all, hyperliquid, binance, bybit, okx.`);
+  }
+  expect(() => normalize("nowhere")).toThrow('Invalid --venue value "nowhere". Use one of: all, hyperliquid, binance, bybit, okx.');
 });

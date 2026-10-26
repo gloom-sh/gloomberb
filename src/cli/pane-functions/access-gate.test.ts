@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { incompleteReportGateMessage, isProLock } from "./access-gate";
 import type { DesktopPaneShotPayload } from "../desktop-pane-shot";
 import type { ResolvedPaneFunction } from "./resolver";
-import { shotUnusableReasonFor, surfaceNotDrawnMismatches } from "./screenshot";
+import { shotUnusableReasonFor, surfaceNotDrawnMismatches } from "./screenshot-assessment";
 
 describe("a failed bot-safe report names the lock", () => {
   // The wording each Pro-gated loader already reports in its errors.

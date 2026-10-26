@@ -1,4 +1,4 @@
-import { afterEach, expect, spyOn, test } from "bun:test";
+import { afterEach, expect, mock, spyOn, test } from "bun:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { act, useMemo, useReducer } from "react";
@@ -110,6 +110,7 @@ async function mount(
 const asked: CloudInsiderSignalsParams[] = [];
 
 afterEach(() => {
+  mock.restore();
   insiderSignalsCache.reset();
   setSharedMarketDataCoordinator(null);
   seed = {};

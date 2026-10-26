@@ -50,7 +50,10 @@ describe("series validation", () => {
     const line = { id: "mid", name: "Middle" };
     expect(() => validateSeriesDefinition(loaded({ lines: [line, { ...line, name: "Again" }] } as never))).toThrow(/own id/);
     expect(() => validateSeriesDefinition(loaded({ lines: [{ id: "a~b", name: "Tilde" }] } as never))).toThrow(/own id/);
-    expect(() => validateSeriesDefinition(loaded({ lines: [] } as never))).toThrow(/1 to 8 lines/);
+    expect(() => validateSeriesDefinition(loaded({ lines: [] } as never))).toThrow(/1 to 16 lines/);
+    const lines = (count: number) => Array.from({ length: count }, (_, index) => ({ id: `line-${index}`, name: `Line ${index}` }));
+    expect(() => validateSeriesDefinition(loaded({ lines: lines(16) } as never))).not.toThrow();
+    expect(() => validateSeriesDefinition(loaded({ lines: lines(17) } as never))).toThrow(/1 to 16 lines/);
     expect(() => validateSeriesDefinition(loaded({ input: "ticker", placement: "price", lines: [line, { id: "up", name: "Upper", style: "step" }] } as never))).not.toThrow();
     expect(() => validateSeriesDefinition(loaded({ lines: [{ ...line, color: "blue" }] } as never))).toThrow(/#rrggbb/);
     expect(() => validateSeriesDefinition(loaded({ lines: [{ ...line, fill: "mid" }] } as never))).toThrow(/not another of its lines/);

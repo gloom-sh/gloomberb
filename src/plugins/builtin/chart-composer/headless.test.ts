@@ -1,11 +1,14 @@
 import { describe, expect, setSystemTime, test } from "bun:test";
 import { createTestDataProvider } from "../../../test-support/data-provider";
-import { chartHeadless, chartResolutionDrop, periodChartDates, type ChartPaneModel } from "./headless";
+import { bareFredSeries, chartHeadless, chartResolutionDrop, periodChartDates, type ChartPaneModel } from "./headless";
 import { setPairStudies } from "./studies";
 import { buildCustomChartPreset, buildIntradayPriceChartPreset } from "./presets";
 import { createTestHeadlessContext } from "../../../test-support/headless";
 import { resetFuturesPriceUnits } from "../../../market-data/futures-contract";
 import type { FuturesContractTermsPayload } from "../../../api-client/futures-curve";
+import { headlessReportTables } from "../../../cli/pane-functions/headless";
+import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
+import { renderReportCsv } from "../../../cli/report-tables";
 
 const history = ["2026-08-27", "2026-08-28", "2026-08-31", "2026-09-01", "2026-09-02", "2026-09-03"]
   .flatMap((date, day) => [0, 1].map((bar) => ({
@@ -13,7 +16,7 @@ const history = ["2026-08-27", "2026-08-28", "2026-08-31", "2026-09-01", "2026-0
     open: 100 + day, high: 102 + day, low: 99 + day, close: 101 + day, volume: 100,
   })));
 
-function fixture() {
+function fixture(bars = history) {
   const calls: Array<{ kind: string; start?: Date; end?: Date; range?: string; resolution?: string }> = [];
   const spec = buildIntradayPriceChartPreset("AAPL:NASDAQ");
   const context = createTestHeadlessContext({
@@ -22,11 +25,11 @@ function fixture() {
       getQuote: async () => ({ symbol: "AAPL", price: 106, change: 0, changePercent: 0, currency: "USD", lastUpdated: Date.now() }),
       getPriceHistoryForResolution: async (_symbol, _exchange, range, resolution) => {
         calls.push({ kind: "trailing", range, resolution });
-        return history;
+        return bars;
       },
       getDetailedPriceHistory: async (_symbol, _exchange, start, end, resolution) => {
         calls.push({ kind: "detailed", start, end, resolution });
-        return history.filter((point) => point.date >= start && point.date < end);
+        return bars.filter((point) => point.date >= start && point.date < end);
       },
     }),
     settings: { chartSpec: spec },
@@ -54,7 +57,7 @@ test("an unavailable currency spread reaches headless errors even with normalize
     const result = await chartHeadless("chart-composer-pane").load({
       argument: "TARGET:NASDAQ,ACQUIRER:NASDAQ", rawArgument: "TARGET:NASDAQ,ACQUIRER:NASDAQ", symbols: ["TARGET:NASDAQ", "ACQUIRER:NASDAQ"], options: {},
     }, { ...fixture().context, marketData: provider, settings: { chartSpec: spec } });
-    expect(result.errors).toEqual(["pair:spread: TARGET has no known unit and ACQUIRER has no known unit: a spread needs both in one known unit."]);
+    expect(result.errors).toEqual(["Spread: TARGET has no known unit and ACQUIRER has no known unit: a spread needs both in one known unit."]);
     expect(result.unavailableSymbols).toEqual([]);
     expect(result.series.map(({ id }) => id)).toEqual([...spec.series.map(({ id }) => id), "pair:ratio"]);
     expect(result.series.every(({ points }) => points.length > 0)).toBe(true);
@@ -181,6 +184,110 @@ test("a chart of weekly bars dates its latest close and the report by the week's
   }
 });
 
+test("a chart of daily bars is as of its newest point: the closed session's day, or the time a session still trading was quoted", async () => {
+  const { applyChartComposerCapabilityOptions } = await import("./cli-options");
+  const { renderHeadlessPaneText } = await import("../../../cli/pane-functions/headless");
+  const daily = ["2026-10-21", "2026-10-22", "2026-10-23"].map((date, index) => ({ date: new Date(`${date}T00:00:00Z`), open: 150, high: 152, low: 149, close: 150 + index }));
+  const quotedAt = Date.parse("2026-10-23T15:42:00Z");
+  const provider = createTestDataProvider({
+    getTickerFinancials: async () => ({ annualStatements: [], quarterlyStatements: [], priceHistory: [] }),
+    getQuote: async () => ({ symbol: "DHI", price: 152, change: 1, changePercent: 0.66, currency: "USD", lastUpdated: quotedAt }),
+    getChartResolutionSupport: () => [{ resolution: "1d", maxRange: "5Y" }],
+    getPriceHistoryForResolution: async () => daily,
+  });
+  const spec = applyChartComposerCapabilityOptions(buildCustomChartPreset("DHI:NYSE"), "chart-composer", { rangePreset: "1M", chartResolution: "1d" });
+  const definition = chartHeadless("chart-composer-pane");
+  const args = { argument: "DHI:NYSE", rawArgument: "DHI:NYSE", symbols: [], options: {} };
+  const load = async () => await definition.load(args, { ...fixture().context, marketData: provider, settings: { chartSpec: spec } });
+  try {
+    // Fri 23 Oct 2026, 15:45 UTC: the session is trading, last quoted at 15:42.
+    setSystemTime(new Date("2026-10-23T15:45:00Z"));
+    const trading = await load();
+    expect(trading.freshness).toMatchObject({ basis: "daily closes", asOf: "2026-10-23T15:42:00.000Z" });
+    expect(renderHeadlessPaneText(definition, trading, args, "Custom Chart")).toContain("Fri 23 Oct 2026 15:42 UTC");
+    // Once it has closed, the day the close is from, as `history` dates it; never 00:00 UTC.
+    setSystemTime(new Date("2026-10-23T22:50:00Z"));
+    const closed = await load();
+    expect(closed.freshness).toMatchObject({ basis: "daily closes", asOf: "2026-10-23" });
+    const text = renderHeadlessPaneText(definition, closed, args, "Custom Chart");
+    expect(text).toContain("Fri 23 Oct 2026 · not a live feed (daily closes)");
+    expect(text).not.toContain("00:00 UTC");
+  } finally {
+    setSystemTime();
+  }
+});
+
+test("a chart of daily bars beside a monthly FRED series draws the newest figure at its period and is as of the closed day, the series' period the oldest", async () => {
+  const { applyChartComposerCapabilityOptions } = await import("./cli-options");
+  const { renderHeadlessPaneText } = await import("../../../cli/pane-functions/headless");
+  const daily = ["2026-10-21", "2026-10-22", "2026-10-23"].map((date, index) => ({ date: new Date(`${date}T00:00:00Z`), open: 150, high: 152, low: 149, close: 150 + index }));
+  const months = ["2026-07-01", "2026-08-01", "2026-09-01"];
+  const spec = applyChartComposerCapabilityOptions(buildCustomChartPreset("DHI:NYSE, FRED:PERMIT"), "chart-composer", { rangePreset: "6M", chartResolution: "1d" });
+  const definition = chartHeadless("chart-composer-pane");
+  const args = { argument: "DHI:NYSE, FRED:PERMIT", rawArgument: "DHI:NYSE, FRED:PERMIT", symbols: [], options: {} };
+  const context = createTestHeadlessContext({
+    marketData: createTestDataProvider({
+      getTickerFinancials: async () => ({ annualStatements: [], quarterlyStatements: [], priceHistory: [] }),
+      getQuote: async () => ({ symbol: "DHI", price: 152, change: 1, changePercent: 0.66, currency: "USD", lastUpdated: Date.parse("2026-10-23T20:00:00Z") }),
+      getChartResolutionSupport: () => [{ resolution: "1d", maxRange: "5Y" }],
+      getPriceHistoryForResolution: async () => daily,
+    }),
+    // Gloom Cloud sets the newest observation's release day on it.
+    apiClient: { getCloudFredSeries: async () => ({
+      info: null,
+      observations: months.map((date, index) => ({ date, value: 1400 + index, ...(index === months.length - 1 ? { releasedOn: "2026-10-20" } : {}) })),
+    }) } as never,
+    settings: { chartSpec: spec },
+  });
+  try {
+    setSystemTime(new Date("2026-10-23T22:50:00Z"));
+    const result = await definition.load(args, context) as ChartPaneModel;
+    const fredId = spec.series.find((entry) => entry.source.kind === "economic")!.id;
+    const permit = result.series.find((entry) => entry.id === fredId)!;
+    // September's figure stays at September, as a market's time scale places it, with its release beside it.
+    expect(permit.points.map((point) => [new Date(point.date).toISOString().slice(0, 10), point.availableAt ?? null, point.releasedOn ?? null]))
+      .toEqual([["2026-07-01", null, null], ["2026-08-01", null, null], ["2026-09-01", null, "2026-10-20"]]);
+    expect(result.freshness).toMatchObject({ asOf: "2026-10-23", oldest: "2026-09-01", oldestPeriodicity: "monthly" });
+    const text = renderHeadlessPaneText(definition, result, args, "Custom Chart");
+    expect(text).toContain("Fri 23 Oct 2026 (oldest Sep 2026)");
+    expect(text).not.toContain("00:00 UTC");
+  } finally {
+    setSystemTime();
+  }
+});
+
+test("fn G on an ICE credit spread says the publisher's 3-year limit when the range asks for more, and says nothing inside it", async () => {
+  const { applyChartComposerCapabilityOptions } = await import("./cli-options");
+  const { renderHeadlessPaneText } = await import("../../../cli/pane-functions/headless");
+  const definition = chartHeadless("chart-composer-pane");
+  const args = { argument: "FRED:BAMLH0A0HYM2", rawArgument: "FRED:BAMLH0A0HYM2", symbols: [], options: {} };
+  const info = {
+    id: "BAMLH0A0HYM2", title: "ICE BofA US High Yield Index Option-Adjusted Spread", units: "Percent", frequency: "Daily, Close",
+    seasonalAdjustment: "Not Seasonally Adjusted", source: "", observationStart: "2023-10-24", observationEnd: "2026-10-22",
+    notes: "Starting in April 2026, this series will only include 3 years of observations.",
+  };
+  const observations = [{ date: "2023-10-24", value: 4.41 }, { date: "2025-10-22", value: 3.1 }, { date: "2026-10-22", value: 3.4 }];
+  const run = async (rangePreset: string) => {
+    const spec = applyChartComposerCapabilityOptions(buildCustomChartPreset("FRED:BAMLH0A0HYM2"), "chart-composer", { rangePreset });
+    const context = createTestHeadlessContext({
+      marketData: createTestDataProvider({}),
+      apiClient: { getCloudFredSeries: async () => ({ info, observations }) } as never,
+      settings: { chartSpec: spec },
+    });
+    const result = await definition.load(args, context) as ChartPaneModel;
+    return { result, text: renderHeadlessPaneText(definition, result, args, "Custom Chart") };
+  };
+  try {
+    setSystemTime(new Date("2026-10-26T12:00:00Z"));
+    const all = await run("ALL");
+    expect(all.text).toContain("FRED coverage: 2023-10-24 to 2026-10-22. Earlier dates are unavailable from this source. History limited to 3 years by the publisher.");
+    expect(all.result.metadata?.notices).toHaveLength(1);
+    expect((await run("1Y")).text).not.toContain("History limited");
+  } finally {
+    setSystemTime();
+  }
+});
+
 describe("GIP headless sessions", () => {
   test("selects the latest one/five sessions or a historical session, retaining its last bar without another history fetch", async () => {
     for (const [range, session, days] of [["1D", undefined, 1], ["1W", undefined, 5], ["1W", "2026-09-01", 1]] as const) {
@@ -209,6 +316,33 @@ describe("GIP headless sessions", () => {
     expect(missing.chart.series[0]?.points ?? []).toEqual([]);
     expect(missing.errors?.some((error) => error.includes("No intraday price history is available for AAPL for session 2020-01-02."))).toBe(true);
     expect(missing.unavailableSymbols).toEqual(["AAPL:XNAS"]);
+  });
+
+  test("a US listing's bars export as traded and say they are the regular session only, with no Value column repeating Close", async () => {
+    // The feed's floats: 85.1 arrives as 85.099998; 86.3775 is a sub-penny print, not noise.
+    const noisy = [
+      { date: new Date("2026-10-20T13:30:00Z"), open: 85.5, high: 85.900002, low: 85.099998, close: 85.675003, volume: 9120 },
+      { date: new Date("2026-10-20T19:59:00Z"), open: 86.019997, high: 86.377502, low: 86, close: 86.339996, volume: 79340 },
+    ];
+    const csv = async (bars: typeof noisy) => {
+      const { load } = fixture(bars);
+      const result = await load({ session: "2026-10-20" });
+      const args = { argument: "AAPL:NASDAQ", rawArgument: "AAPL:NASDAQ", symbols: ["AAPL:NASDAQ"], options: { session: "2026-10-20" } };
+      const definition = chartHeadless("graph-intraday-price-pane");
+      return { result, csv: renderReportCsv(headlessReportTables(definition, result, args, "GIP", deriveHeadlessFreshness(definition, result), { complete: true, unavailableSymbols: [] })) };
+    };
+    const { result, csv: regular } = await csv(noisy);
+    // JSON keeps the value, the close it repeats.
+    expect(result.series[0]!.points.map(({ value, open, high, low, close }) => ({ value, open, high, low, close }))).toEqual([
+      { value: 85.675, open: 85.5, high: 85.9, low: 85.1, close: 85.675 },
+      { value: 86.34, open: 86.02, high: 86.3775, low: 86, close: 86.34 },
+    ]);
+    expect(regular).toMatch(/^Time,Open,High,Low,Close,Volume\n2026-10-20T13:30:00Z,85\.5,85\.9,85\.1,85\.675,9120$/m);
+    expect(regular).toContain("\nAAPL:XNAS session low,85.1 at 2026-10-20 13:30 UTC\n");
+    expect(regular).toContain("\n# note: Regular session only, from the 09:30 New York open: pre-market and after-hours bars are not included.");
+    // Bars from 08:30 New York, when a housing release lands, are not the regular session.
+    const early = await csv([{ ...noisy[0]!, date: new Date("2026-10-20T12:30:00Z") }, ...noisy]);
+    expect(early.csv).not.toContain("Regular session only");
   });
 });
 
@@ -318,4 +452,91 @@ test("an economic chart is dated by its observations' day, and by their period w
   const catalog = (seriesId: string) => ({ source: { kind: "capability" as const, capabilityId: "c", seriesId } });
   expect(periodChartDates([{ id: "ratio", label: "VIX 3M / VIX", points: days }], { series: [catalog("ratio")] } as never)).toEqual({ asOf: "2026-10-09" });
   expect(periodChartDates([cpi], { series: [catalog("s"), { source: { kind: "security" } }] } as never)).toEqual({});
+  // The newest figure's release, which Gloom Cloud sets on it, dates the chart beside its period.
+  const permits = { id: "permit", label: "PERMIT", points: [...months(23, "2026-08-01"), { date: "2026-09-01T00:00:00.000Z", value: 1400, releasedOn: "2026-10-20" }] };
+  expect(periodChartDates([permits], fred("PERMIT"))).toEqual({ asOf: "2026-09-01", periodicity: "monthly", releasedOn: "2026-10-20" });
+  // Two series ending the same period with different releases name neither.
+  const other = { ...permits, id: "starts", points: [...permits.points.slice(0, -1), { ...permits.points.at(-1)!, releasedOn: "2026-10-21" }] };
+  expect(periodChartDates([permits, other], fred("PERMIT", "HOUST"))).toEqual({ asOf: "2026-09-01", periodicity: "monthly" });
+});
+
+test("fn G DFII10 charts the FRED series once no listing answers to it, and a ticker of the same letters still charts as the ticker", async () => {
+  const days = ["2026-10-19", "2026-10-20", "2026-10-21"];
+  const fredCalls: string[] = [];
+  const catalog = (expression: string) => ({ "FRED:DFII10": "10Y TIPS real yield", "FRED:IR": "Some FRED series" })[expression];
+  const notATicker = (symbol: string) => Promise.reject(new Error(`Not a ticker: ${symbol}.`));
+  const context = (getQuote: (symbol: string) => Promise<unknown>, chartSpec = buildCustomChartPreset("DFII10")) => {
+    chartSpec.viewport.dateWindow = { start: "2026-10-19", end: "2026-10-22" };
+    return createTestHeadlessContext({
+      marketData: createTestDataProvider({
+        getTickerFinancials: async () => { throw new Error("Not a ticker: DFII10."); },
+        getQuote: getQuote as never,
+      }),
+      apiClient: { getCloudFredSeries: async (id: string) => {
+        fredCalls.push(id);
+        return { info: null, observations: days.map((date, index) => ({ date, value: 2.8 - index / 100 })) };
+      } } as never,
+      settings: { chartSpec },
+      catalogSeriesName: catalog,
+      resolveListing: async () => null,
+    });
+  };
+  const result = await chartHeadless("chart-composer-pane").load(
+    { argument: "DFII10", rawArgument: "DFII10", symbols: [], options: {} }, context(notATicker)) as ChartPaneModel;
+  expect(fredCalls).toEqual(["DFII10"]);
+  expect(result.errors).toEqual([]);
+  expect(result.series[0]).toMatchObject({ label: "10Y TIPS real yield" });
+  expect(result.series[0]!.points.map(({ value }) => value)).toEqual([2.8, 2.79, 2.78]);
+
+  const dfii10 = buildCustomChartPreset("DFII10").series[0]!;
+  const ir = buildCustomChartPreset("IR").series[0]!;
+  const quoted = async (symbol: string) => ({ symbol, price: 79, change: 0, changePercent: 0, currency: "USD", lastUpdated: 0 });
+  const guard = (getQuote: (symbol: string) => Promise<unknown>) => ({ marketData: createTestDataProvider({ getQuote: getQuote as never }), catalogSeriesName: catalog });
+  // A listing read, a quote that answers, or a failure that is not "not a ticker" keep the ticker.
+  expect(await bareFredSeries(ir, async () => ({ symbol: "IR", exchange: "NYSE" }), guard(notATicker))).toBeNull();
+  expect(await bareFredSeries(ir, async () => null, guard(quoted))).toBeNull();
+  expect(await bareFredSeries(dfii10, async () => null, guard(() => Promise.reject(new Error("fetch failed"))))).toBeNull();
+  // A symbol the catalog does not list is never asked about.
+  let asked = 0;
+  expect(await bareFredSeries(buildCustomChartPreset("ZZQX").series[0]!, async () => { asked++; return null; }, guard(notATicker))).toBeNull();
+  expect(asked).toBe(0);
+  expect(await bareFredSeries(dfii10, async () => null, guard(notATicker))).toMatchObject({
+    id: dfii10.id, source: { kind: "economic", provider: "fred", seriesId: "DFII10" }, label: "10Y TIPS real yield",
+  });
+});
+
+test("fn CMP reads a leg's fund facts once through their cache, and never a leg a cached quote calls a stock", async () => {
+  const { buildComparisonChartPreset } = await import("./presets");
+  const { fundFactsCache } = await import("../sec/fund-facts");
+  fundFactsCache.reset();
+  const asked: string[] = [];
+  const facts = (ticker: string) => ({
+    ticker, covered: true, name: null, structure: "registered", expenseRatio: null, nav: null, closingPrice: null, premiumDiscount: null,
+    netAssets: null, sponsor: null, inception: null, index: null, stale: false, fetchedAt: null,
+    leverage: { value: 3, asOf: "2026-10-21", source: "ProShares", reset: "daily", benchmark: "Nasdaq-100 Index", proxy: { ticker: "QQQ", basis: "index-fund" } },
+  });
+  const provider = createTestDataProvider({
+    getTickerFinancials: async () => ({ annualStatements: [], quarterlyStatements: [], priceHistory: [] }),
+    getPriceHistoryForResolution: async () => [{ date: new Date("2026-08-03"), close: 100 }, { date: new Date("2026-08-04"), close: 110 }],
+    // AAPL's quote, cached from an earlier read, says it is a stock.
+    getCachedFinancialsForTargets: (targets) => new Map(targets.filter((target) => target.symbol === "AAPL").map((target) => [target.symbol, {
+      annualStatements: [], quarterlyStatements: [], priceHistory: [],
+      quote: { symbol: "AAPL", price: 1, change: 0, changePercent: 0, currency: "USD", lastUpdated: 0, instrumentType: "EQUITY" },
+    }])),
+  });
+  const apiClient = { getFundFacts: async (ticker: string) => { asked.push(ticker); return facts(ticker); } };
+  const context = { ...fixture().context, marketData: provider, apiClient: apiClient as never };
+  const symbols = ["AAPL:NASDAQ", "TQQQ:NASDAQ"];
+  const load = () => chartHeadless("comparison-chart-pane").load(
+    { argument: symbols, rawArgument: symbols.join(","), symbols, options: {} },
+    { ...context, settings: { chartSpec: buildComparisonChartPreset(symbols) } },
+  ) as Promise<ChartPaneModel>;
+  try {
+    const first = await load();
+    expect(first.spec.studies.map((study) => study.kind)).toEqual(["leverage", "leverage-decay"]);
+    await load();
+    expect(asked).toEqual(["TQQQ"]);
+  } finally {
+    fundFactsCache.reset();
+  }
 });

@@ -145,6 +145,24 @@ describe("confirm modal", () => {
     expect(openConfirmModal(confirmRequest({}).confirm)).toBe(true);
   });
 
+  test("a late failure goes where the caller says instead of a toast", async () => {
+    const notes: Array<{ body: string; type?: string }> = [];
+    const said: unknown[] = [];
+    let fail: (error: Error) => void = () => {};
+    await renderForm(() => {}, confirmRequest({
+      onConfirm: () => new Promise<void>((_resolve, reject) => { fail = reject; }),
+      onFailureAfterClose: (failure) => { said.push(failure); },
+    }), { notes });
+    await waitForForm("Reset Layout");
+
+    await press(ENTER, ESC);
+    const error = new Error("Layout is locked.");
+    await act(async () => { fail(error); });
+    await settle();
+    expect(said).toEqual([error]);
+    expect(notes).toEqual([]);
+  });
+
   // The plugin install offer runs the typed code again once the plugin is in,
   // which opens the bar: that has to wait for the confirm to be gone.
   test("onSuccess runs once the confirm has closed, so it can open the bar", async () => {

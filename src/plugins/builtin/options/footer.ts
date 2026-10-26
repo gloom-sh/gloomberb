@@ -15,7 +15,7 @@ import { formatOptionPrice, optionSpread, type OptionMarketReference } from "./m
  * options. Delayed quotes, all or some, are the footer's clock, its detail on
  * hover.
  */
-export function optionsCoverageSegment(status: OptionQuoteCoverageStatus, delayLabel: string): PaneFooterSegment | null {
+export function optionsCoverageSegment(status: OptionQuoteCoverageStatus, delayLabel?: string): PaneFooterSegment | null {
   const id = "options-access";
   if (status === "live") return { id, parts: [{ text: t("real-time options"), tone: "positive" }] };
   if (status === "mixed") return delayedFooterSegment({ id, detail: t("mixed real-time and delayed options") });
@@ -83,6 +83,7 @@ export function resolveOptionsDelayLabel(chain: OptionsChain | null | undefined)
 }
 
 export function useOptionsAccessFooter({
+  broker = false,
   chain,
   error,
   focused,
@@ -92,6 +93,8 @@ export function useOptionsAccessFooter({
   reference,
   spreadColumnVisible,
 }: {
+  /** The chain is a broker profile's, quoted by that broker: it has no Gloom Cloud delay to report or upgrade from. */
+  broker?: boolean;
   chain: OptionsChain | null | undefined;
   error?: string | null;
   focused: boolean;
@@ -106,18 +109,22 @@ export function useOptionsAccessFooter({
   const delayLabel = resolveOptionsDelayLabel(chain);
   const { access, hint: upgradeHint, segment } = useCloudAccessFooter({
     delayLabel,
+    degraded: !broker,
     focused,
     segmentId: "options-access",
     placement: "omon-footer",
     shortcutScope: "options:upgrade",
   });
-  // Trial accounts stream real-time too, but the countdown is the status worth the row.
-  const proCoverage = access.hasProAccess && !access.isTrialActive;
+  // Trial accounts stream real-time too, but the countdown is the status worth the row. A broker's
+  // chain streams from the broker whatever the plan, so its coverage is the status, and its delay
+  // is the chain's own, not Gloom Cloud's.
+  const proCoverage = broker || (access.hasProAccess && !access.isTrialActive);
+  const coverageDelay = broker && !(chain?.delayMinutes && chain.delayMinutes > 0) ? undefined : delayLabel;
   const accessInfo = useMemo<PaneFooterSegment[]>(() => {
-    const coverage = proCoverage ? optionsCoverageSegment(quoteCoverage.status, delayLabel) : null;
+    const coverage = proCoverage ? optionsCoverageSegment(quoteCoverage.status, coverageDelay) : null;
     if (coverage) return [coverage];
     return segment ? [segment] : [];
-  }, [delayLabel, proCoverage, quoteCoverage.status, segment]);
+  }, [coverageDelay, proCoverage, quoteCoverage.status, segment]);
 
   // Rebuilt every render so the quote and trade ages keep counting with the
   // stream; the registration compares by value, so only a changed label

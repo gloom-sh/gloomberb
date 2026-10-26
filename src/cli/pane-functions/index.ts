@@ -21,10 +21,12 @@ import {
   parsePaneFunctionArgs,
   type ParsedPaneFunctionArgs,
 } from "./options";
-import { applyListingArgument, findPaneFunction, resolvePaneFunction, UnknownPaneFunctionError, type ResolvedPaneFunction } from "./resolver";
+import { applyListingArgument, findPaneFunction, parsePaneFunctionArgsFor, resolvePaneFunction, UnknownPaneFunctionError, type ResolvedPaneFunction } from "./resolver";
 import { buildFunctionReport } from "./report";
 import { expandResolvedArgument } from "./headless";
-import { defaultScreenshotPath, renderDesktopShot, shotSizeWarnings, shotStatusIssues } from "./screenshot";
+import { defaultScreenshotPath, shotSizeWarnings } from "./screenshot-payload";
+import { renderDesktopShot } from "./screenshot-render";
+import { shotStatusIssues } from "./screenshot-assessment";
 import {
   buildPaneCatalogEntries,
 } from "./catalog";
@@ -34,11 +36,12 @@ import {
   ListingArgError, listingFateLoader, listingReadNotes, loadForListing, loadListingQuoteAnswer, quotedListingChoiceNotes, refuseMovedListing,
 } from "../listing-arg";
 import { isNotATickerMessage } from "../not-a-ticker";
-import { isCliFailure } from "../errors";
+import { isCliFailure, SERVICE_UNREACHABLE_CODE } from "../errors";
+import { DATA_SERVICE_UNREACHABLE_MESSAGE } from "../../utils/network-failure";
 import { isTickerLinkPeer } from "../../layout/ticker-navigation";
 import { knownGapMessage, commandPointer, commandPointerLeads, topicPointer } from "../known-gaps";
-import { selectReportTables } from "../report-tables";
-import { cliOutputWritten } from "../result";
+import { selectReportTables, type CliReportTables } from "../report-tables";
+import { cliOutputWritten, type CliErrorObject } from "../result";
 import type { CatalogCommandHit } from "../unknown-command";
 import { CLI_EXIT_CODES } from "../exit-codes";
 import { shotOptionRefusal } from "./shot-options";
@@ -67,7 +70,7 @@ async function withPaneRuntime<T>(
     const context: MarketContext = ctx.cliOptions.refresh ? { ...market, refresh: true } : market;
     const registry = await createPaneCatalog(context, ctx.plugins);
     try {
-      let parsed = await applyListingArgument(registry, context, parsePaneFunctionArgs(args, ctx.cliOptions), settings.command);
+      let parsed = await applyListingArgument(registry, context, parsePaneFunctionArgsFor(registry, args, ctx.cliOptions), settings.command);
       let resolved = await resolvePaneFunction(registry, context, parsed, settings);
       // A function that widens its argument (RV's --peers) runs, reports and captures the widened one.
       const expansion = await withPersistedCloudSession(context, () => expandResolvedArgument(resolved, context, parsed.arg));
@@ -100,8 +103,8 @@ function commandWord(argument: string): string {
 }
 
 /**
- * What to run when a command name is a function's code (`gloomberb OVDV KO`,
- * `gloomberb help OVDV`): `fn` with the reader's own arguments, or the
+ * What to run when a command name is a function's code (`gloom OVDV KO`,
+ * `gloom help OVDV`): `fn` with the reader's own arguments, or the
  * function's argument hint when they gave none. Null when the word is no
  * function code or the catalog cannot be read, and the command stays unknown.
  */
@@ -123,7 +126,7 @@ export async function functionCodeCommand(
     });
     if (!found) return null;
     const code = word.replace(/^\$/, "").toUpperCase();
-    return { code, command: ["gloomberb fn", code, args.length > 0 ? args.map(commandWord).join(" ") : found.argument].filter(Boolean).join(" ") };
+    return { code, command: ["gloom fn", code, args.length > 0 ? args.map(commandWord).join(" ") : found.argument].filter(Boolean).join(" ") };
   } catch (error) {
     logFailure("cli.pane-functions-index", "Resolve function code command failed")(error);
     return null;
@@ -131,7 +134,7 @@ export async function functionCodeCommand(
 }
 
 /**
- * The one function code a command name is a slip from (`gloomberb RCDF PLTR`
+ * The one function code a command name is a slip from (`gloom RCDF PLTR`
  * for RDCF), with the command that runs it on the reader's arguments, read
  * as a command word is (nearFunctionCodes), so a ticker is not taken for one.
  * Null when no code, or more than one, is that close, or the catalog cannot
@@ -155,7 +158,7 @@ export async function nearFunctionCodeCommand(
     });
     if (near.length !== 1) return null;
     const { code, label } = near[0]!;
-    return { code, label, command: ["gloomberb fn", code, ...args.map(commandWord)].join(" ") };
+    return { code, label, command: ["gloom fn", code, ...args.map(commandWord)].join(" ") };
   } catch (error) {
     logFailure("cli.pane-functions-index", "Find nearby function code command failed")(error);
     return null;
@@ -204,6 +207,69 @@ function foundNothing(data: { rowCount: number; unavailableSymbols: readonly str
   return data.rowCount === 0 || data.unavailableSymbols.length >= data.rowCount;
 }
 
+/** A listing key as asked or reported (`BHP:XASX`, `fred:DGS10`, `SPY`), in one case. */
+const listingKey = (symbol: string) => symbol.trim().toUpperCase();
+const bareKey = (key: string) => key.split(":")[0]!;
+
+/**
+ * The listings asked that a report has no data for. A report names one by its
+ * full key; one that names it by the bare symbol (`SAN` for `SAN:EPA`), or by
+ * the listing a bare symbol resolved to (`SXR8:XETRA` for `SXR8`), stands for
+ * the one listing asked that way, never for a listing asked by its own key:
+ * with `BHP:XASX` and `BHP` asked, `BHP:XASX` unavailable leaves `BHP`.
+ */
+function missingListings(asked: readonly string[], unavailable: readonly string[]): Set<string> {
+  const keys = asked.map(listingKey);
+  const exact = new Set(keys);
+  const missing = new Set<string>();
+  for (const entry of unavailable.map(listingKey)) {
+    if (exact.has(entry)) {
+      missing.add(entry);
+      continue;
+    }
+    const loose = keys.filter((key) => bareKey(key) === bareKey(entry) && key.includes(":") !== entry.includes(":"));
+    if (loose.length === 1) missing.add(loose[0]!);
+  }
+  return missing;
+}
+
+/** Whether a table holds a value past its first column (a row's label or date) and its reasons: a figure, a time, any text. */
+function tablesHoldValues(tables: CliReportTables): boolean {
+  return tables.tables.some((table) => {
+    const skipped = new Set(table.columns.flatMap((header, index) => index === 0 || header === "status" || header === "value_status" ? [index] : []));
+    return table.rows.some((row) => row.some((cell, index) => !skipped.has(index) && cell !== "" && cell != null));
+  });
+}
+
+/**
+ * Why `fn` fails a report it printed, or null when the report has data. It
+ * fails when it is empty (a pane behind a wall reads nothing), when it has no
+ * data for any listing asked and its tables hold no value either, or when it
+ * is a list (`failsWithoutData`) with no name that has any. A report with data
+ * for some of what was asked, warnings or errors beside it, is a result: a
+ * loss-maker's P/E band without a P/E, or IV history with only realized
+ * volatility, exits 0. Not one missing a part because the data service could
+ * not be reached: that is no answer rather than no data, and fails as
+ * retryable `service_unreachable`, whatever else it shows.
+ */
+export function reportFailure(
+  data: { empty: boolean; rowCount: number; symbols: readonly string[]; unavailableSymbols: readonly string[]; errors?: readonly string[]; reason?: unknown },
+  asked: string,
+  { failsWithoutData = false, tables }: { failsWithoutData?: boolean; tables?: CliReportTables } = {},
+): CliErrorObject | null {
+  const missing = missingListings(data.symbols, data.unavailableSymbols);
+  const noListing = data.symbols.length > 0 && data.symbols.every((symbol) => missing.has(listingKey(symbol)));
+  const noValues = tables ? !tablesHoldValues(tables) : false;
+  const reasons = [...data.errors ?? [], ...typeof data.reason === "string" ? [data.reason] : []];
+  const unreached = reasons.filter((reason) => reason.includes(DATA_SERVICE_UNREACHABLE_MESSAGE));
+  if (unreached.length > 0 && (data.empty || data.unavailableSymbols.length > 0)) {
+    return { code: SERVICE_UNREACHABLE_CODE, message: `${asked}: ${unreached.join("; ")}.`.replace(/\.\.$/, "."), retryable: true };
+  }
+  if (!data.empty && !(noListing && noValues) && !(failsWithoutData && foundNothing(data))) return null;
+  const unavailable = data.unavailableSymbols.length > 0 ? `no data for ${data.unavailableSymbols.join(", ")}` : "no data";
+  return { code: "no_data", message: `${asked}: ${reasons.length > 0 ? reasons.join("; ") : unavailable}.`.replace(/\.\.$/, ".") };
+}
+
 export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
   await runPaneCliCommand(ctx, async () => {
     await withPaneRuntime(ctx, args, async ({ parsed, context, registry, resolved }) => {
@@ -215,7 +281,7 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
       )) {
         throw new Error(
           `${resolved.token} is not a verified bot-safe report capability. `
-          + `Use "gloomberb catalog ${resolved.token}" to inspect readiness.`,
+          + `Use "gloom catalog ${resolved.token}" to inspect readiness.`,
         );
       }
       const tabular = ctx.cliOptions.format === "csv" || ctx.cliOptions.format === "ndjson";
@@ -237,7 +303,7 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
       const fate = listing && quoteAnswer && isTickerLinkPeer(resolved.instance, registry.panes)
         ? listingFateLoader(listing, context, quoteAnswer().then((answer) => answer.quote))
         : null;
-      const moved = { command: "fn", retry: (key: string) => `gloomberb fn ${resolved.token} ${key}` };
+      const moved = { command: "fn", retry: (key: string) => `gloom fn ${resolved.token} ${key}` };
       // A report that fails or comes back empty for an exchange the symbol is not listed on says so.
       const report = await refuseMovedListing(fate, moved, () => withPersistedCloudSession(
         context,
@@ -250,7 +316,7 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
         ),
       ));
       // A company's name typed where its ticker goes (`fn RDCF Palantir`) found nothing: the answer is `quote`'s,
-      // "Not a ticker: PALANTIR. Try `gloomberb search Palantir`.", not an empty report.
+      // "Not a ticker: PALANTIR. Try `gloom search Palantir`.", not an empty report.
       if (quoteAnswer && (report.data.empty || report.data.unavailableSymbols.length > 0)) {
         const { quote, error } = await quoteAnswer();
         const message = error instanceof Error ? error.message : null;
@@ -277,13 +343,15 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
         ? { ...report.data, glossary: glossary.map(({ term, short, definition }) => ({ term, ...(short ? { short } : {}), definition })) }
         : report.data;
       const warnings = [...parsed.listingNotes ?? [], ...await choice ?? [], ...report.data.warnings ?? []];
+      // A report with no data is printed as it is, and fails: exit 1, and `ok: false` in JSON with the reason.
+      const failure = reportFailure(report.data, ["fn", resolved.token, parsed.arg.trim()].filter(Boolean).join(" "), {
+        failsWithoutData: resolved.headless?.failsWithoutData, tables: report.tables });
       // The report states its own freshness in its data and text; JSON cites it as `source` too.
-      ctx.printResult({ data, exportFreshness: report.data.freshness, ...(warnings.length > 0 ? { warnings } : {}) }, {
+      ctx.printResult({ data, exportFreshness: report.data.freshness, ...(warnings.length > 0 ? { warnings } : {}), ...(failure ? { failure } : {}) }, {
         text: () => glossary ? `${report.text}\n\n${renderReportGlossary(resolved.token, glossary)}` : report.text,
         ...(tabular ? { tables: selectReportTables(report.tables, resolved.tableSection) } : {}),
       });
-      // The report is printed as it is; a list that found data for none of its names says so in the exit status too.
-      if (resolved.headless?.failsWithoutData && foundNothing(report.data)) process.exitCode = CLI_EXIT_CODES.error;
+      if (failure) process.exitCode = CLI_EXIT_CODES.error;
     }, { strictHeadlessOptions: true, tableSection: true });
   });
 }
@@ -308,8 +376,8 @@ export function emptySeriesExport(
     const ids = [...new Set(fred)];
     return {
       message: `${asked} has no data to export: ${ids.join(" and ")} ${ids.length === 1 ? "is a FRED series" : "are FRED series"}, not ${ids.length === 1 ? "a ticker" : "tickers"}.`,
-      details: `Chart it with the fred: prefix: gloomberb fn G ${ids.map((id) => `fred:${id}`).join(",")} ${formatFlag}`
-        + `${ids.length === 1 ? ` (or gloomberb fred ${ids[0]} ${formatFlag})` : ""}.`,
+      details: `Chart it with the fred: prefix: gloom fn G ${ids.map((id) => `fred:${id}`).join(",")} ${formatFlag}`
+        + `${ids.length === 1 ? ` (or gloom fred ${ids[0]} ${formatFlag})` : ""}.`,
     };
   }
   const missing = data.unavailableSymbols.length > 0 ? ` for ${data.unavailableSymbols.join(", ")}` : "";
@@ -318,7 +386,7 @@ export function emptySeriesExport(
     message: `${asked} has no data to export${missing}.`,
     details: [
       ...reasons,
-      `Check the symbol with gloomberb search, or run gloomberb ${asked} without ${formatFlag} to see the report.`,
+      `Check the symbol with gloom search, or run gloom ${asked} without ${formatFlag} to see the report.`,
     ].join("\n"),
   };
 }
@@ -346,7 +414,7 @@ async function capturePaneScreenshot(args: string[], ctx: CliCommandContext, onS
       )) {
         throw new Error(
           `${resolved.token} is not a verified bot-safe screenshot capability. `
-          + `Use "gloomberb catalog ${resolved.token}" to inspect readiness.`,
+          + `Use "gloom catalog ${resolved.token}" to inspect readiness.`,
         );
       }
       // An option the pane cannot draw fails here, before a capture of its default is saved as if it were the view asked for.
@@ -410,7 +478,7 @@ function runGlossary(term: string, ctx: CliCommandContext): void {
   const { exact, partial } = lookupGlossary(term);
   const entries = [...exact, ...partial];
   if (entries.length === 0) {
-    ctx.fail(`No glossary entry for "${term}".`, knownGapMessage(term) ?? "gloomberb catalog glossary lists every term.");
+    ctx.fail(`No glossary entry for "${term}".`, knownGapMessage(term) ?? "gloom catalog glossary lists every term.");
   }
   ctx.printResult({ data: entries.map(glossaryRecord) }, { text: () => renderGlossaryEntries(entries).join("\n") });
 }

@@ -2,6 +2,7 @@ import { historySpan, type HistorySpan } from "../shared/history-span";
 import { latestMoveRank, MOVE_HORIZONS, type MoveRank } from "../shared/move-rank";
 import { periodsPerYear, type StatPoint } from "../shared/stat-transform";
 import { sigmaVsTrend } from "../shared/trend";
+import { periodReleasedText, periodStartPeriodicity, releasedText } from "../../../utils/release-date";
 import type { StatBuild } from "./client";
 import type { StatDef } from "./defs";
 
@@ -23,8 +24,18 @@ export interface StatViewModel {
   period: string;
   /** What the latest print is a reading of, in full: "Aug 2026", "Q2 2026", "week ending 2026-10-03", "2026-10-09". */
   reading: string;
+  /** The day the latest print was released (`YYYY-MM-DD`), when FRED says; null for a daily rate. */
+  releasedOn: string | null;
+  /** `released Tue 20 Oct`, or null when the release is not known. */
+  released: string | null;
+  /** The reading and its release, as every macro pane says it: "Sep 2026, released Tue 20 Oct". */
+  readingReleased: string;
+  /** How often a print dated by its period's first day publishes; null for weekly and daily prints. */
+  periodicity: "monthly" | "quarterly" | "annual" | null;
   /** The print before this one, for the direction of the last move. */
   previous: StatPoint | null;
+  /** What that print is a reading of, as `reading` says the latest's: "Aug 2026"; null with no previous print. */
+  previousReading: string | null;
   yearAgo: StatPoint | null;
   changeOnPrevious: number | null;
   /** Where the current reading sits within the selected range. */
@@ -130,14 +141,21 @@ export function projectStat(
   // High, low, mean and percentile describe the selected window, like the chart.
   const visible = sliceByRange(points, range);
   const atOrBelow = visible.filter((point) => point.value <= latest.value).length;
+  const reading = formatStatReading(latest.date, perYear);
+  const releasedOn = build.releasedOn ?? null;
 
   return {
     stat,
     range,
     latest,
     period: formatStatPeriod(latest.date, perYear),
-    reading: formatStatReading(latest.date, perYear),
+    reading,
+    releasedOn,
+    released: releasedText(releasedOn, latest.date),
+    readingReleased: periodReleasedText(reading, releasedOn, latest.date),
+    periodicity: periodStartPeriodicity(latest.date, perYear),
     previous,
+    previousReading: previous ? formatStatReading(previous.date, perYear) : null,
     yearAgo,
     changeOnPrevious: previous ? latest.value - previous.value : null,
     percentile: visible.length === 0 ? 0 : (100 * atOrBelow) / visible.length,

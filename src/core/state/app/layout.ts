@@ -1,4 +1,4 @@
-import { getDockLeafLayouts, getDockedPaneIds } from "../../../layout/pane-manager";
+import { compactFloatingZ, getDockLeafLayouts, getDockedPaneIds } from "../../../layout/pane-manager";
 import { pinFollowingPane } from "../../../layout/pane-follow";
 import {
   cloneLayout,
@@ -509,7 +509,7 @@ export function moveHistoryIndex(
   return next;
 }
 
-/** If paneId is a floating pane, bump its zIndex to the top. */
+/** If paneId is a floating pane, bump its zIndex to the top, renumbering a stack that would climb past the shell's overlays. */
 export function bringFloatingToFront(layout: LayoutConfig, paneId: string): LayoutConfig {
   const entryIndex = layout.floating.findIndex((e) => e.instanceId === paneId);
   const entry = entryIndex >= 0 ? layout.floating[entryIndex] : undefined;
@@ -519,9 +519,9 @@ export function bringFloatingToFront(layout: LayoutConfig, paneId: string): Layo
   if ((entry.zIndex ?? 50) === maxZ && entryIndex === topEqualIndex) return layout; // already on top
   return {
     ...layout,
-    floating: layout.floating.map((e) =>
+    floating: compactFloatingZ(layout.floating.map((e) =>
       e.instanceId === paneId ? { ...e, zIndex: maxZ + 1 } : e,
-    ),
+    )),
   };
 }
 
@@ -594,6 +594,7 @@ export function withFocusedPane(
     config: syncedConfig,
     paneState: nextPaneState,
     brokerAccounts: reconcileBrokerAccounts(syncedConfig, state.brokerAccounts),
+    brokerSyncErrors: Object.fromEntries(Object.entries(state.brokerSyncErrors).filter(([id]) => syncedConfig.brokerInstances.some((instance) => instance.id === id))),
     focusedPaneId,
     previousFocusedPaneId: state.focusedPaneId && state.focusedPaneId !== focusedPaneId
       ? state.focusedPaneId
@@ -605,6 +606,7 @@ export function hydrateDesktopSnapshot(state: AppState, snapshot: DesktopSharedS
   return withFocusedPane({
     ...state,
     paneState: snapshot.paneState,
+    brokerSyncErrors: snapshot.brokerSyncErrors ?? {},
     focusedPaneId: snapshot.focusedPaneId,
     statusBarVisible: snapshot.statusBarVisible,
   }, snapshot.config);

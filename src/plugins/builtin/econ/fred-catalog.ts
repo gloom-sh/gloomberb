@@ -8,8 +8,9 @@ type FredRow = readonly [seriesId: string, name: string, unit: string, frequency
  * maturities (UST:2Y and so on, from the yield curve) and the credit spreads
  * and yields (from the credit plugin). Ids follow the server's allowlist: a
  * series added there is listed here to reach the catalog.
- * Türkiye's CPI is served the same way but is not on FRED; its rows name
- * TurkStat (`seriesNotOnFred`).
+ * Türkiye's CPI, Brazil's IPCA and NAHB's housing market index are served
+ * the same way but are not on FRED; their rows name TurkStat, IBGE and NAHB
+ * (`seriesNotOnFred`).
  */
 const GROUPS: ReadonlyArray<{ group: string; rows: readonly FredRow[] }> = [
   {
@@ -65,10 +66,15 @@ const GROUPS: ReadonlyArray<{ group: string; rows: readonly FredRow[] }> = [
       ["RSFSXMV", "Retail sales excluding autos", "million USD", "monthly", ["consumer", "spending"]],
       ["UMCSENT", "University of Michigan consumer sentiment", "index", "monthly", ["consumer", "sentiment"]],
       ["CSCICP03USM665S", "Consumer confidence (OECD)", "index", "monthly", ["consumer", "sentiment"]],
-      ["HOUST", "Housing starts", "thousand units", "monthly", ["housing"]],
-      ["PERMIT", "Building permits", "thousand units", "monthly", ["housing"]],
-      ["EXHOSLUSM495S", "Existing home sales", "units", "monthly", ["housing"]],
-      ["HSN1F", "New home sales", "thousand units", "monthly", ["housing"]],
+      ["HOUST", "Housing starts", "thousand units", "monthly", ["housing", "homebuilders"]],
+      ["PERMIT", "Building permits", "thousand units", "monthly", ["housing", "homebuilders"]],
+      ["EXHOSLUSM495S", "Existing home sales", "units", "monthly", ["housing", "homebuilders"]],
+      ["HSN1F", "New home sales", "thousand units", "monthly", ["housing", "homebuilders"]],
+      ["MORTGAGE30US", "30-year fixed mortgage rate (Freddie Mac PMMS)", "%", "weekly", ["housing", "mortgage rate", "PMMS", "Freddie Mac", "homebuilders"]],
+      ["MORTGAGE15US", "15-year fixed mortgage rate (Freddie Mac PMMS)", "%", "weekly", ["housing", "mortgage rate", "PMMS", "Freddie Mac", "homebuilders"]],
+      // Computed by Gloom Cloud: MORTGAGE30US less DGS10 on each PMMS date.
+      ["MORTGAGE30US10Y", "30-year mortgage rate minus 10Y Treasury, on the PMMS date", "%", "weekly", ["housing", "mortgage spread", "PMMS", "treasury", "homebuilders"]],
+      ["NAHBHMI", "NAHB housing market index (builder sentiment)", "index", "monthly", ["housing", "NAHB", "HMI", "homebuilders", "sentiment"]],
       ["DGORDER", "Durable goods orders", "million USD", "monthly", ["manufacturing", "orders"]],
       ["ADXTNO", "Durable goods orders excluding transportation", "million USD", "monthly", ["manufacturing", "orders"]],
       ["AMTMNO", "Manufacturing new orders", "million USD", "monthly", ["manufacturing", "factory orders"]],
@@ -127,6 +133,9 @@ const GROUPS: ReadonlyArray<{ group: string; rows: readonly FredRow[] }> = [
       ["T5YIFR", "5Y, 5Y forward inflation expectation", "%", "daily", ["breakeven", "expectations", "5y5y"]],
       ["TURCPIYOY", "Türkiye CPI, y/y", "%", "monthly", ["CPI", "headline", "Turkey", "TR", "inflation", "lira"]],
       ["TURCPIMOM", "Türkiye CPI, m/m", "%", "monthly", ["CPI", "headline", "Turkey", "TR", "inflation", "lira"]],
+      ["BRAIPCAMOM", "Brazil IPCA, m/m", "%", "monthly", ["IPCA", "CPI", "headline", "Brazil", "BR", "Brazil inflation", "inflation", "real"]],
+      ["BRAIPCA15MOM", "Brazil IPCA-15 mid-month, m/m", "%", "monthly",
+        ["IPCA-15", "IPCA", "CPI", "mid-month", "Brazil", "BR", "Brazil inflation", "inflation", "real"]],
     ],
   },
   {
@@ -171,6 +180,14 @@ const GROUPS: ReadonlyArray<{ group: string; rows: readonly FredRow[] }> = [
       ["DCOILBRENTEU", "Brent crude oil spot", "USD/barrel", "daily", ["oil", "crude"]],
       ["DHHNGSP", "Henry Hub natural gas spot", "USD/MMBtu", "daily", ["natural gas"]],
       ["NATURALGAS", "Natural gas consumption", "billion cubic feet", "monthly", ["natural gas"]],
+    ],
+  },
+  {
+    // The IMF's monthly world prices: the closest public series to LME copper and aluminium, which FUT does not list.
+    group: "Commodities",
+    rows: [
+      ["PCOPPUSDM", "Global price of copper", "USD/ton", "monthly", ["copper", "metals", "LME"]],
+      ["PALUMUSDM", "Global price of aluminum", "USD/ton", "monthly", ["aluminum", "aluminium", "metals", "LME"]],
     ],
   },
   {

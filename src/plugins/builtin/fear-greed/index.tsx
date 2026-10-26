@@ -63,7 +63,7 @@ export const fearGreedPlugin: GloomPlugin = {
     },
   ],
 
-  // `gloomberb fear-greed`, as before the plugin moved out of the host. Runs
+  // `gloom fear-greed`, as before the plugin moved out of the host. Runs
   // without the pane cache attached when invoked from the CLI, so it always
   // fetches, which is what a CLI call wants anyway.
   cliCommands: [

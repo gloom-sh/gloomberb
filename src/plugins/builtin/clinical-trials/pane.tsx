@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DataTableStackView,
   PaneLinkMenu,
@@ -22,6 +22,7 @@ import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { DetailReader, type DetailFact } from "../../../components/reader/detail-reader";
 import { tf } from "../../../i18n";
 import {
+  useAssetData,
   useDebouncedPluginPaneState,
   usePaneSettingValue,
   usePluginPaneState,
@@ -30,7 +31,6 @@ import { useThemeColors } from "../../../theme/theme-context";
 import type { ThemeColors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, Text, TextAttributes, type ScrollBoxRenderable } from "../../../ui";
-import { formatTimeAgo } from "../../../utils/datetime-format";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
 import { useOpenDescription } from "../shared/open-description";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
@@ -41,6 +41,7 @@ import {
   SPONSOR_FILTER_OPTIONS,
   STATUS_FILTER_OPTIONS,
   keepsToneWhenSelected,
+  looksLikeTicker,
   normalizeTrialFilters,
   sponsorClassLabel,
   trialFiltersNarrow,
@@ -56,6 +57,7 @@ import {
   type TrialFilters,
 } from "./model";
 import { useSponsorTickers, type SponsorTicker } from "./sponsor-tickers";
+import { tickerSponsorName } from "./ticker-sponsor";
 import { CLINICAL_TRIALS_PANE_ID } from "./types";
 
 const SEARCH_DEBOUNCE_MS = 250;
@@ -68,8 +70,8 @@ function formatDate(date: Date | null, precision: DatePrecision = "day", type?: 
   return type === "ESTIMATED" ? `${text} (est.)` : text;
 }
 
-/** When the study was posted: always past, so the list's time column can read it as an age. */
-function trialTimestamp(trial: ClinicalTrial): Date | null {
+/** When the study was posted. */
+function trialPosted(trial: ClinicalTrial): Date | null {
   return trial.firstPostDate ?? trial.firstSubmitDate;
 }
 
@@ -123,7 +125,8 @@ function trialFacts(trial: ClinicalTrial, ticker: SponsorTicker | undefined, col
     { label: "Enrollment", value: trial.enrollment != null ? trial.enrollment.toLocaleString("en-US") : "-" },
     { label: "Registry ID", value: trial.nctId },
     { label: "Start", value: formatDate(trial.startDate, trial.startDatePrecision, trial.startDateType) },
-    { label: "Posted", value: formatDate(trialTimestamp(trial)) },
+    { label: "Posted", value: formatDate(trialPosted(trial)) },
+    { label: "Updated", value: formatDate(trial.lastUpdatePostDate) },
     { label: "Primary completion", value: formatDate(trial.primaryCompletionDate, trial.primaryCompletionDatePrecision, trial.primaryCompletionDateType) },
     { label: "Completion", value: formatDate(trial.completionDate, trial.completionDatePrecision, trial.completionDateType) },
     { label: "Conditions", value: trial.conditions.length > 0 ? trial.conditions.join(", ") : "None listed" },
@@ -137,6 +140,7 @@ function filterOptions(options: readonly TrialFilterOption[], colors: ThemeColor
 export function TrialsPane({ width, height, focused }: PaneProps) {
   const colors = useThemeColors();
   const client = useMemo(() => new ClinicalTrialsClient(), []);
+  const dataProvider = useAssetData();
   const openDescription = useOpenDescription();
   const session = useResearchCloudSession();
 
@@ -156,7 +160,7 @@ export function TrialsPane({ width, height, focused }: PaneProps) {
 
   const [selectedId, setSelectedId] = useDebouncedPluginPaneState<string | null>("selectedId", null);
   // The open study is what the pane shows, so a reload or a shared layout opens it again.
-  // `open` (a share, `gloomberb shot TRIAL obesity --open NCT07868939`) opens one study first.
+  // `open` (a share, `gloom shot TRIAL obesity --open NCT07868939`) opens one study first.
   const [initialOpen] = usePaneSettingValue("open", "");
   const [openItemId, setOpenItemId] = usePluginPaneState<string | null>("openItemId", String(initialOpen ?? "").trim() || null);
   const { active: searchFocused, focus: focusSearch, searchProps } = useQueryBarSearch();
@@ -230,7 +234,24 @@ export function TrialsPane({ width, height, focused }: PaneProps) {
     studies.reload();
     sponsorTickers.retry();
   }, [sponsorTickers, studies]);
-  const loading = studies.loading && trials.length === 0;
+  // `TRIAL VKTX`: no study names a symbol, so one that finds nothing is
+  // searched as its company's name, quoted so the registry matches the whole
+  // name as a sponsor files it, and the search box then shows it. Each term
+  // is looked up once.
+  const [looked, setLooked] = useState<ReadonlySet<string>>(() => new Set());
+  const resolvingTicker = studies.status === "loaded" && trials.length === 0 && !studies.error
+    && looksLikeTicker(term) && !looked.has(term.toUpperCase());
+  useEffect(() => {
+    if (!resolvingTicker) return;
+    let live = true;
+    void tickerSponsorName(dataProvider, term).catch(() => null).then((name) => {
+      if (!live) return;
+      setLooked((current) => new Set([...current, term.toUpperCase()]));
+      if (name) updateQuery(`"${name}"`);
+    });
+    return () => { live = false; };
+  }, [dataProvider, resolvingTicker, term, updateQuery]);
+  const loading = (studies.loading && trials.length === 0) || resolvingTicker;
   usePaneRefreshKey(reload, { focused, enabled: !searchFocused && !openItemId });
 
   const detailTicker = detailTrial ? tickerOf(detailTrial) : undefined;
@@ -291,10 +312,9 @@ export function TrialsPane({ width, height, focused }: PaneProps) {
   const layout = useMemo(() => trialLayout(width), [width]);
   const renderCell = useCallback((trial: ClinicalTrial, column: TrialColumn, _index: number, rowState: { selected: boolean }): DataTableCell => {
     switch (column.id) {
-      case "time": {
-        const posted = trialTimestamp(trial);
-        // Exported as the ISO day, not an instant: when a study was posted does not date the search.
-        return { text: posted ? formatTimeAgo(posted) : "", value: posted ? posted.toISOString().slice(0, 10) : null, color: colors.textDim };
+      case "updated": {
+        const updated = formatDate(trial.lastUpdatePostDate);
+        return trial.lastUpdatePostDate ? { text: updated, value: updated, color: colors.textDim } : { text: "--", value: null, color: colors.textMuted };
       }
       case "phase": {
         const text = trialPhaseLabel(trial.phases, layout.compact);
@@ -404,7 +424,7 @@ export function TrialsPane({ width, height, focused }: PaneProps) {
       emptyStateTitle={term
         ? `No trials match ${term}${narrowed ? " with these filters" : ""}.`
         : narrowed ? "No trials match these filters." : "No trials loaded."}
-      emptyStateHint={narrowed ? "Clear a filter to see more…" : "Press / to search…"}
+      emptyStateHint={narrowed ? "Clear a filter to see more…" : term ? "Try the company or drug name…" : "Press / to search…"}
     />
   );
 }

@@ -217,10 +217,39 @@ test("quote gives the overnight session its own column and names it, saying when
     { rawPrice: 198.78, changePercent: 0.51, extendedSession: "OVERNIGHT", rawExtendedPrice: 198.95, extendedChangePercent: 0.09, extendedMark: false, session: "OVERNIGHT" },
     { rawPrice: 198.78, changePercent: 0.51, extendedSession: "OVERNIGHT", rawExtendedPrice: 198.95, extendedChangePercent: 0.09, extendedMark: true, session: "OVERNIGHT" },
   ]);
-  expect(text).toMatch(/Chg% +Overnight +Session/);
-  expect(text.split("\n").find((line) => line.startsWith("XLK"))).toMatch(/\$198\.78 +\+0\.51% +\$198\.95 \+0\.09% +OVERNIGHT/);
+  expect(text).toMatch(/Chg% +Chg Basis +Overnight +Session/);
+  // Friday's move, from Thursday's close; the overnight print moves from Friday's.
+  expect(text.split("\n").find((line) => line.startsWith("XLK"))).toMatch(/\$198\.78 +\+0\.51% +vs Thu 8 Oct close +\$198\.95 \+0\.09% +OVERNIGHT/);
   expect(text.split("\n").find((line) => line.startsWith("XLE"))).toMatch(/\$198\.95 mid \+0\.09% +OVERNIGHT/);
   expect(text).not.toMatch(/After Hours|Pre-Market/);
+});
+
+// The table sets what Chg% is from beside it; an export adds it after the columns it had.
+test("quote's change basis follows Chg% in the table, with the holiday under it, and comes last in CSV and NDJSON rows", async () => {
+  const hk: Quote = { symbol: "3042.HK", name: "ChinaAMC Bitcoin ETF", currency: "HKD", price: 9.88, change: -0.06, changePercent: -0.6,
+    previousClose: 9.94, changeSessionDate: "2026-10-20", marketState: "CLOSED", listingExchangeName: "HKEX", exchangeName: "HKEX",
+    lastUpdated: Date.parse("2026-10-20T08:08:00Z") };
+  setSystemTime(new Date("2026-10-21T00:30:00Z"));
+  try {
+    const cli = createTestCliContext({ config, dataProvider: {
+      getQuotesBatch: async () => [{ target: { symbol: hk.symbol, exchange: "" }, quote: hk }],
+    } });
+    await marketDataCliCommands.find((command) => command.name === "quote")!.execute([hk.symbol], cli.context);
+    const [{ result, options }] = cli.printed as [PrintedCliResult];
+    const text = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "text" }, options);
+    expect(text).toMatch(/Chg% +Chg Basis +Session/);
+    expect(text).toMatch(/-0\.60% +vs Fri 16 Oct close +CLOSED/);
+    expect(text).toContain("\nHKEX closed Mon 19 Oct, holiday");
+    const csv = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options).split("\n");
+    expect(csv[0]).toContain(",Chg%,Pre-Market,");
+    expect(csv[0]).toContain(",Updated,Chg Basis,Chg Basis Note,Pre-Market Chg%,After Hours Chg%,Overnight Chg%,status,symbol_or_series,");
+    expect(csv[1]).toContain(",vs Fri 16 Oct close,\"HKEX closed Mon 19 Oct, holiday\",,,,,3042.HK,");
+    const row = JSON.parse(serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "ndjson" }, options).split("\n")[0]!);
+    const keys = Object.keys(row);
+    expect(keys.slice(keys.indexOf("error"), keys.indexOf("error") + 3)).toEqual(["error", "changeBasis", "changeBasisNote"]);
+  } finally {
+    setSystemTime();
+  }
 });
 
 test("a pre-market nothing has traded in reads as the close it stands at in quote, QQ, the boards and the watchlist, and exports keep the state", async () => {
@@ -260,6 +289,91 @@ test("a pre-market nothing has traded in reads as the close it stands at in quot
     expect(boardHeadlineQuote(waiting)).toMatchObject({ price: 200.5, change: -0.47, lastUpdated: Date.parse(thursdayClose) });
     // A quote with a pre-market trade keeps its time.
     expect(boardHeadlineQuote(printed).lastUpdated).toBe(printed.lastUpdated);
+  } finally {
+    setSystemTime();
+  }
+});
+
+// A quote export is read by a script: numbers in number cells, a print's move in its own column,
+// and every empty row says why, on stderr as well as in the file.
+test("quote --csv writes plain numbers, an extended print and its move apart, and a status for every row it has no figure for", async () => {
+  const failed = { symbol: "ZZZZQQ", exchange: "" };
+  const unmeasured: Quote = { ...closed, symbol: "0QQQ.L", currency: "GBP", price: 12.5, change: Number.NaN, changePercent: Number.NaN,
+    previousClose: 0, listingExchangeName: "LSE" };
+  setSystemTime(new Date("2026-10-10T12:00:00Z"));
+  try {
+    const cli = createTestCliContext({ config, dataProvider: createTestDataProvider({
+      getQuotesBatch: async () => [
+        ...[afterHours, closed, unmeasured].map((quote) => ({ target: { symbol: quote.symbol, exchange: "" }, quote })),
+        { target: failed, quote: null, error: new Error("Not a ticker: ZZZZQQ.") },
+      ],
+    }) }, { format: "csv" });
+    await marketDataCliCommands.find((command) => command.name === "quote")!.execute(["AAPL", "7203.T", "0QQQ.L", "ZZZZQQ"], cli.context);
+    const [{ result, options }] = cli.printed as [PrintedCliResult];
+    const [header, ...lines] = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options).split("\n\n")[0]!.split("\n");
+    const columns = header!.split(",");
+    const rows = lines.map((line) => line.match(/("[^"]*"|[^,]*)(,|$)/g)!.map((cell) => cell.replace(/,$/, "").replace(/^"|"$/g, "")));
+    const cell = (symbol: string, column: string) => rows.find((row) => row[0] === symbol)![columns.indexOf(column)];
+    expect(columns.slice(-9)).toEqual(["Pre-Market Chg%", "After Hours Chg%", "Overnight Chg%", "status",
+      "symbol_or_series", "currency_or_unit", "interval", "source", "as_of"]);
+    expect([cell("AAPL", "Last"), cell("AAPL", "After Hours"), cell("AAPL", "After Hours Chg%"), cell("AAPL", "status")]).toEqual(["336.64", "336.08", "-0.17", ""]);
+    expect([cell("7203.T", "Last"), cell("7203.T", "Cur"), cell("7203.T", "currency_or_unit")]).toEqual(["2910.5", "JPY", "JPY"]);
+    expect([cell("0QQQ.L", "Last"), cell("0QQQ.L", "Chg%"), cell("0QQQ.L", "status")]).toEqual(["12.5", "", "Chg%: no previous close"]);
+    expect([cell("ZZZZQQ", "Last"), cell("ZZZZQQ", "status")]).toEqual(["", "Not a ticker: ZZZZQQ."]);
+    // The failure is on stderr too, where a script that pipes the rows to a file still sees it.
+    expect(result.warnings).toContain("Not a ticker: ZZZZQQ.");
+  } finally {
+    setSystemTime();
+  }
+});
+
+/** A command's `--csv` as its columns and one record per row. */
+async function exported(command: "quote" | "compare", quotes: Quote[], args = quotes.map((quote) => quote.symbol)) {
+  const cli = createTestCliContext({ config, dataProvider: createTestDataProvider({
+    getQuotesBatch: async () => quotes.map((quote) => ({ target: { symbol: quote.symbol, exchange: "" }, quote })),
+  }) }, { format: "csv" });
+  await marketDataCliCommands.find((entry) => entry.name === command)!.execute(args, cli.context);
+  const [{ result, options }] = cli.printed as [PrintedCliResult];
+  const [header, ...lines] = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options).split("\n\n")[0]!.split("\n");
+  const columns = header!.split(",");
+  return lines.map((line) => Object.fromEntries(line.match(/("[^"]*"|[^,]*)(,|$)/g)!.map((cell) => cell.replace(/,$/, "").replace(/^"|"$/g, "")).slice(0, columns.length)
+    .map((cell, index) => [columns[index]!, cell])));
+}
+
+test("a price in pence exports as the plain number in its own unit, in quote and in compare, whose day range is a number at each end", async () => {
+  const vodafone: Quote = {
+    symbol: "VOD.L", currency: "GBp", price: 1234.5, change: 14.5, changePercent: 1.1885, previousClose: 1220,
+    low: 1210.25, high: 1240, volume: 41_000_000, marketState: "CLOSED", listingExchangeName: "LSE", lastUpdated: Date.parse("2026-10-09T15:30:00Z"),
+  };
+  setSystemTime(new Date("2026-10-10T12:00:00Z"));
+  try {
+    const [quoted] = await exported("quote", [vodafone]);
+    expect(quoted).toMatchObject({ Symbol: "VOD.L", Last: "1234.5", "Chg%": "1.19", Cur: "GBp", currency_or_unit: "GBp", status: "" });
+    // The table keeps its own words for the price; the export has no sign, separator or suffix in the cell.
+    expect(quoted!.Last).toMatch(/^[\d.]+$/);
+    const [compared] = await exported("compare", [vodafone]);
+    expect(compared).toMatchObject({
+      Last: "1234.5", "Prev Close": "1220", "Day Range": "1210.25-1240", "Day Low": "1210.25", "Day High": "1240", Cur: "GBp", currency_or_unit: "GBp",
+    });
+  } finally {
+    setSystemTime();
+  }
+});
+
+test("compare writes a day's range as two numbers that are empty, with the range, for a quote without one", async () => {
+  setSystemTime(new Date("2026-10-10T12:00:00Z"));
+  try {
+    const rows = await exported("compare", [{ ...closed, low: 2880, high: 2925 }, { ...afterHours, low: undefined, high: undefined }]);
+    expect(rows.map((row) => [row.Symbol, row["Day Range"], row["Day Low"], row["Day High"]])).toEqual([
+      ["7203.T", "2880-2925", "2880", "2925"],
+      ["AAPL", "", "", ""],
+    ]);
+    // The day's low and high follow the columns compare's export already had, the extended moves before them.
+    const [first] = rows;
+    const columns = Object.keys(first!);
+    expect(columns.slice(columns.indexOf("Chg Basis Note"), columns.indexOf("status"))).toEqual([
+      "Chg Basis Note", "Pre-Market Chg%", "After Hours Chg%", "Overnight Chg%", "Day Low", "Day High",
+    ]);
   } finally {
     setSystemTime();
   }

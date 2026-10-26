@@ -11,7 +11,7 @@ import { resolveChartPalette } from "../../../components/chart/core/palette";
 import type { StaticChartXMarker } from "../../../components/chart/static";
 import { colors, priceColor } from "../../../theme/colors";
 import { Box } from "../../../ui";
-import { displayWidth, formatCurrency, formatNumber } from "../../../utils/format";
+import { displayWidth, formatCurrency, formatNumber, MISSING_VALUE } from "../../../utils/format";
 import type { KellySizingResult, SensitivityGrid } from "./types";
 import type { KellyHistoryInputs } from "./history";
 import { formatPct, formatSignedPct } from "./view";
@@ -32,10 +32,15 @@ export function buildKellyHistoryItems(inputs: KellyHistoryInputs): StatItem[] {
   ];
 }
 
+/** What the first money figure says while there is no bankroll to size in. */
+const BANKROLL_HINT = "Set a bankroll";
+
 /**
  * The sizing result as one band under the inputs, laid out in the FieldGrid's
  * columns: the Kelly fractions, then the move in money, then risk, then log
- * growth at full Kelly, at the current size and at the target.
+ * growth at full Kelly, at the current size and at the target. Money figures
+ * read a dash until there is a bankroll; the fractions and growth never wait
+ * for one.
  */
 export function buildKellyResultItems({
   result,
@@ -47,12 +52,13 @@ export function buildKellyResultItems({
 }: {
   result: KellySizingResult;
   baseCurrency: string;
-  currentGrowth: number;
+  /** Null when the holding is not a share of any bankroll. */
+  currentGrowth: number | null;
   targetGrowth: number;
   width: number;
   columns: number;
 }): StatItem[] {
-  const addTrim = formatCurrency(result.addTrimValue, baseCurrency);
+  const addTrim = result.addTrimValue == null ? MISSING_VALUE : formatCurrency(result.addTrimValue, baseCurrency);
   const units = result.estimatedUnits == null ? null : `${formatNumber(result.estimatedUnits, 1)} units`;
   // The units ride beside the amount when the column has room for label,
   // amount and units (plus the cell inset and gaps); otherwise they take a
@@ -68,14 +74,16 @@ export function buildKellyResultItems({
       value: formatPct(result.clippedFraction, 2),
       tone: result.clipReasons.length > 0 ? "positive" : undefined,
     },
-    { id: "current", label: "Current %", value: formatPct(result.currentFraction, 1) },
-    { id: "target", label: "Target val", value: formatCurrency(result.targetValue, baseCurrency) },
+    { id: "current", label: "Current %", value: result.currentFraction == null ? MISSING_VALUE : formatPct(result.currentFraction, 1) },
+    result.targetValue == null
+      ? { id: "target", label: "Target val", value: MISSING_VALUE, detail: BANKROLL_HINT }
+      : { id: "target", label: "Target val", value: formatCurrency(result.targetValue, baseCurrency) },
     {
       id: "addTrim",
       label: "Add / trim",
       value: addTrim,
       detail: unitsInline ? units ?? undefined : undefined,
-      color: priceColor(result.addTrimValue),
+      color: result.addTrimValue == null ? undefined : priceColor(result.addTrimValue),
     },
     ...(units != null && !unitsInline
       ? [{ id: "units", label: "Units", value: formatNumber(result.estimatedUnits!, 1) }]
@@ -83,9 +91,10 @@ export function buildKellyResultItems({
     {
       id: "risk",
       label: "Risk",
-      value: formatCurrency(result.riskValue, baseCurrency),
+      value: result.riskValue == null ? MISSING_VALUE : formatCurrency(result.riskValue, baseCurrency),
       detail: formatPct(result.riskFraction, 2),
-      tone: "negative",
+      // Nothing at risk is not a loss.
+      tone: result.riskValue != null && result.riskValue > 0 ? "negative" : undefined,
     },
     { id: "worstLoss", label: "Worst loss", value: formatPct(result.downsideLossFraction, 1) },
     {
@@ -95,7 +104,7 @@ export function buildKellyResultItems({
       color: priceColor(result.expectedReturn),
     },
     { id: "fullGrowth", label: "Full growth", value: formatSignedPct(result.expectedLogGrowth) },
-    { id: "growthNow", label: "Growth now", value: formatSignedPct(currentGrowth) },
+    { id: "growthNow", label: "Growth now", value: currentGrowth == null ? MISSING_VALUE : formatSignedPct(currentGrowth) },
     { id: "growthTarget", label: "Growth tgt", value: formatSignedPct(targetGrowth) },
   ];
 }

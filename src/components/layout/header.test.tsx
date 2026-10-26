@@ -5,7 +5,6 @@ import { createStaticAppStore } from "../../test-support/app-store";
 import { createDefaultConfig } from "../../types/config";
 import { act } from "react";
 import { Header } from "./header";
-import { resolveHeaderPromptGeometry } from "./shell/chrome";
 import { publishCommandBarPrompt } from "../command-bar/panel/prompt-binding";
 
 const tui = createOpenTuiTestHarness();
@@ -122,22 +121,26 @@ test("offers a clickable Restart for a downloaded desktop update, and only text 
 });
 
 /**
- * A failed update's message can be as long as whatever the updater threw. In the
- * terminal the header counts its columns, so the banner is cut to what the Help
- * pill and the market cluster leave it; it must never reach into either, at any
- * width, and the retry key stays while the message still has room.
+ * The terminal header at 80 to 160 columns left the update status under a
+ * dozen columns, so a failed update said nothing at all. The closed
+ * prompt now gives the status its empty room, down to its placeholder, and the
+ * banner says the reason in a few words. It must never reach into the prompt's
+ * placeholder, the Help pill or the market cluster, at any width.
  */
-test("cuts a failed update to the room the Help pill and the market summary leave it", async () => {
-  const error = "Desktop update did not finish downloading because the release server answered with an unexpected response while verifying the signature of the package";
+test("gives a failed update room at common terminal widths and keeps it clear of its neighbours", async () => {
   const release = { version: "9.9.9", tagName: "v9.9.9", downloadUrl: "", publishedAt: "", updateAction: { kind: "desktop" as const } };
   const state = {
     ...createInitialState(createDefaultConfig("/tmp/gloomberb-header-test")),
     updateAvailable: release,
-    updateProgress: { phase: "error" as const, error },
+    updateProgress: {
+      phase: "error" as const,
+      error: "Failed to download latest version from https://example.test/releases/latest/download/stable-macos-arm64-Gloomberb.app.tar.zst",
+      failure: { phase: "download" as const, code: "interrupted" as const },
+    },
   };
   const seen = new Map<number, string>();
   // 60 is the narrowest header that still shows the whole Help pill.
-  for (const width of [60, 70, 80, 100, 120, 160, 200, 240, 300]) {
+  for (const width of [60, 70, 80, 100, 120, 160, 200, 300]) {
     await tui.render(
       <AppContext value={createStaticAppStore(state)}>
         <Header onOpenHelp={() => {}} />
@@ -148,49 +151,123 @@ test("cuts a failed update to the room the Help pill and the market summary leav
     const frame = tui.frame().split("\n")[0]!;
     seen.set(width, frame);
 
-    const prompt = resolveHeaderPromptGeometry({ termWidth: width });
     const helpX = frame.indexOf("Help ?");
     expect(helpX).toBeGreaterThanOrEqual(0);
-    // Whatever sits between the prompt and the Help pill is the banner: it starts
-    // as the message, stops short of the pill, and its cut ends in an ellipsis.
-    const slot = frame.slice(prompt.left + prompt.width, helpX);
-    expect(slot.length).toBeGreaterThan(0);
+    // The placeholder stays whole; the banner sits between it and the pill, a cell clear of the pill.
+    const placeholderEnd = frame.indexOf("Search or run a command") + "Search or run a command".length;
+    expect(placeholderEnd).toBeGreaterThan(0);
+    const slot = frame.slice(placeholderEnd, helpX);
     expect(slot.endsWith(" ")).toBe(true);
-    const banner = slot.trim();
-    if (banner) {
-      expect(banner.startsWith("Update f")).toBe(true);
-      expect(banner).toContain("...");
-    }
-    // Nothing of it leaks into the prompt on its left or the cluster on its right.
-    expect(frame.slice(0, prompt.left + prompt.width)).not.toMatch(/Update|retry/);
+    // Only the prompt's key hint, when it still has room for it, comes before the banner.
+    expect(slot.trim()).toMatch(/^(?:\S+\s+)?Update failed/);
     expect(frame.slice(helpX)).not.toMatch(/Update|retry|\.\.\./);
     // The market summary is right of the pill, whole, and not pushed off the row.
-    if (width >= 80) expect(frame.slice(helpX)).toMatch(/Help \? +SPY — USD/);
+    if (width >= 80) expect(frame.slice(helpX)).toMatch(/Help \? +SPY — base USD/);
+    // The raw error, with its URL, stays out of the header.
+    expect(frame).not.toContain("example.test");
   }
 
-  // Narrow: the slot is a few columns, so the banner keeps the message and drops the key.
-  expect(seen.get(70)).toContain("Update fa...");
-  expect(seen.get(70)).not.toContain("retry");
-  // Wide: the message is cut and the retry key stays after it.
-  expect(seen.get(240)).toMatch(/Update failed: Desktop update[^.]*\.\.\.  \S+ retry/);
-  expect(seen.get(300)).toMatch(/Update failed: Desktop update[^.]*\.\.\.  \S+ retry/);
-  // The longer window shows more of the same message.
-  expect(seen.get(300)!.indexOf("...")).toBeGreaterThan(seen.get(240)!.indexOf("..."));
+  // 80 columns: no room for the reason, so the banner says it failed and how to retry.
+  expect(seen.get(80)).toMatch(/Update failed {2}\S+ retry/);
+  // A reason that does not fit gives way whole, keeping the failure and retry key.
+  for (const width of [60, 100]) expect(seen.get(width)).toMatch(/Update failed {2}\S+ retry/);
+  // 120: the reason whole; 160 and wider: with the retry key after it.
+  expect(seen.get(120)).toContain("Update failed: download interrupted");
+  for (const width of [160, 200, 300]) expect(seen.get(width)).toMatch(/Update failed: download interrupted {2}\S+ retry/);
 });
 
-test("shows a short failed update whole, on one line", async () => {
+/**
+ * The status yields whole parts before Help or the market summary loses a
+ * cell. An open command prompt leaves less room, but a download's percent
+ * and a Restart button still stay whole or disappear, never under Help.
+ */
+test.each([60, 70, 80, 100, 120, 160])("keeps update parts whole at %i columns with the prompt open or closed", async (width) => {
+  const release = { version: "9.9.9", tagName: "v9.9.9", downloadUrl: "", publishedAt: "", updateAction: { kind: "desktop" as const } };
+  const config = createDefaultConfig("/tmp/gloomberb-header-test");
+  for (const commandBarOpen of [false, true]) {
+    let helpClicks = 0;
+    let restarts = 0;
+    const render = async (extra: Partial<AppState>) => {
+      await tui.render(
+        <AppContext value={createStaticAppStore({ ...createInitialState(config), commandBarOpen, ...extra })}>
+          <Header onOpenHelp={() => { helpClicks += 1; }} onRestartForUpdate={() => { restarts += 1; }} />
+        </AppContext>,
+        { width, height: 1 },
+      );
+      await tui.setup().renderOnce();
+      return tui.frame().split("\n")[0]!;
+    };
+    const idle = await render({});
+    const neighbours = idle.slice(idle.indexOf("Help ?"));
+    for (const extra of [
+      { updateAvailable: release, updateProgress: { phase: "downloading" as const, percent: 42 } },
+      { updateAvailable: release, updateProgress: { phase: "ready" as const } },
+      { updateAvailable: release, updateProgress: { phase: "ready" as const, canRestart: true } },
+    ]) {
+      const frame = await render(extra);
+      const helpX = frame.indexOf("Help ?");
+      expect(helpX).toBeGreaterThan(0);
+      expect(frame[helpX - 1]).toBe(" ");
+      expect(frame.slice(helpX)).toBe(neighbours);
+      const status = frame.slice(0, helpX).replace(/^.*(?:Search or run a command|>)/, "").replace("Ctrl+P", "").trim();
+      if (extra.updateProgress.phase === "downloading") {
+        expect(status).toMatch(/^(?:[\u2800-\u28ff] (?:Downloading v9\.9\.9: )?42%)?$/);
+        if (!commandBarOpen) expect(status).toContain("42%");
+      } else if ("canRestart" in extra.updateProgress) {
+        expect(status).toMatch(/^(?:(?:Update ready )?Restart U)?$/);
+        if (status) {
+          await act(async () => { await tui.setup().mockMouse.click(frame.indexOf("Restart") + 2, 0); });
+          expect(restarts).toBe(1);
+        }
+      } else {
+        expect(status).toMatch(/^(?:Update ready(?:, restart to apply)?)?$/);
+        if (!commandBarOpen) expect(status).toContain("Update ready");
+      }
+      await act(async () => { await tui.setup().mockMouse.click(helpX + 2, 0); });
+    }
+    expect(helpClicks).toBe(3);
+  }
+});
+
+/** Passing notices keep their existing clipped text instead of overflowing into Help. */
+test("clips a transient update notice to its slot", async () => {
+  for (const width of [60, 80, 120]) {
+    await tui.render(
+      <AppContext value={createStaticAppStore({
+        ...createInitialState(createDefaultConfig("/tmp/gloomberb-header-test")),
+        updateNotice: "Update check failed: no connection, and some more words than fit",
+      })}>
+        <Header onOpenHelp={() => {}} />
+      </AppContext>,
+      { width, height: 1 },
+    );
+    await tui.setup().renderOnce();
+    const frame = tui.frame().split("\n")[0]!;
+    const helpX = frame.indexOf("Help ?");
+    expect(helpX).toBeGreaterThan(0);
+    expect(frame[helpX - 1]).toBe(" ");
+    expect(frame).toMatch(/Update check failed.*\.\.\. +Help \?/);
+  }
+});
+
+test("uses the classified failure instead of a raw error containing a user path", async () => {
   const state = {
     ...createInitialState(createDefaultConfig("/tmp/gloomberb-header-test")),
-    updateProgress: { phase: "error" as const, error: "Checksum\n  mismatch" },
+    updateProgress: {
+      phase: "error" as const,
+      error: "EACCES: permission denied, rename '/Users/someone/Gloomberb.app'",
+      failure: { phase: "apply" as const, code: "permission_denied" as const },
+    },
   };
   await tui.render(
     <AppContext value={createStaticAppStore(state)}>
       <Header onOpenHelp={() => {}} />
     </AppContext>,
-    { width: 200, height: 1 },
+    { width: 240, height: 1 },
   );
   await tui.setup().renderOnce();
-  expect(tui.frame()).toContain("Update failed: Checksum mismatch");
+  expect(tui.frame()).toContain("Update failed: no permission to replace the app");
+  expect(tui.frame()).not.toContain("someone");
 });
 
 /**

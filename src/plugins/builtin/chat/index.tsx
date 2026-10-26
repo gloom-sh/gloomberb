@@ -23,6 +23,8 @@ import { ChatStatusWidget } from "./status-widget";
 import { UnreadInboxPane } from "./unread-inbox-pane";
 import { installPaneChatSharing } from "./share/flow";
 import { attachChatPaneLinkPanes } from "./pane-links/previews";
+import { attachChatCommands, cachedChatFunctions, chatFunctionsChanged } from "./pane-links/commands";
+import { getSharedRegistry } from "../../registry";
 import { UNREAD_INBOX_PANE_ID, UNREAD_INBOX_TEMPLATE_ID } from "./unread-inbox";
 import { watchUnreadBadge } from "./unread-badge";
 import { getAppBadgeHost } from "../../../notifications/app-badge";
@@ -54,6 +56,7 @@ function isPrivateConversation(channelId: unknown): boolean {
 
 let disposePaneChatSharing: (() => void) | undefined;
 let detachPaneLinkPanes: (() => void) | undefined;
+let detachCommands: (() => void) | undefined;
 let disposeUnreadBadge: (() => void) | undefined;
 
 export const chatModule: PluginModule = {
@@ -154,6 +157,24 @@ export const chatModule: PluginModule = {
     // A chip names the pane it opens (any plugin's) and its letter.
     detachPaneLinkPanes?.();
     detachPaneLinkPanes = attachChatPaneLinkPanes((paneId) => ctx.getPaneDef(paneId));
+    // A function written in a message is a chip for the codes this app runs, and runs in its command bar.
+    detachCommands?.();
+    detachCommands = attachChatCommands({
+      functions: () => {
+        const registry = getSharedRegistry();
+        if (!registry) return cachedChatFunctions(null);
+        const disabledPlugins = ctx.getConfig().disabledPlugins ?? [];
+        return cachedChatFunctions({
+          paneTemplates: registry.paneTemplates,
+          commands: registry.commands,
+          disabledPlugins,
+          isTemplateOff: (templateId) => !!registry.getDisabledPaneTemplateOwner(templateId, disabledPlugins),
+        });
+      },
+      run: (query) => getSharedRegistry()?.runCommandBarQuery(query),
+    });
+    // Messages drawn before a plugin came in, or with one since switched off, draw its codes again.
+    for (const event of ["plugin:registered", "plugin:unregistered", "config:changed"] as const) ctx.on(event, chatFunctionsChanged);
     chatController.attachPersistence(ctx.persistence, ctx.resume);
     chatSidebarStore.attach(ctx.persistence);
     chatHandlePromptStore.attach(ctx.persistence);
@@ -198,6 +219,8 @@ export const chatModule: PluginModule = {
     disposePaneChatSharing = undefined;
     detachPaneLinkPanes?.();
     detachPaneLinkPanes = undefined;
+    detachCommands?.();
+    detachCommands = undefined;
     // Before the controller drops its listeners, so the badge is cleared with the plugin.
     disposeUnreadBadge?.();
     disposeUnreadBadge = undefined;

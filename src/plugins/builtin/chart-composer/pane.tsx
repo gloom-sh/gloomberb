@@ -1,3 +1,4 @@
+import { logFailure } from "../../../utils/log-failure";
 import { FINANCIAL_VINTAGE_NOTICE, SEC_EPS_BASIS_NOTICE } from "../../../utils/financial-statements";
 import { usePaneSharePreparation } from "../../../shares/prepare";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -26,10 +27,13 @@ import type { PaneProps, TickerResearchTabProps } from "../../../types/plugin";
 import type { ChartResolution, TimeRange } from "../../../components/chart/core/types";
 import type { ChartSpec, ResolvedSeries } from "../../../time-series/types";
 import {
-  getSupportedChartResolutionsForViewport,
+  getSupportedChartBarSizesForViewport,
   isIntradayResolution,
+  parseChartBarSize,
+  type ChartBarSize,
   type ManualChartResolution,
 } from "../../../time-series/resolution";
+import { futuresSessionOpenMinute } from "../../../market-data/market/trading-sessions";
 import { useResolvedChartSpec } from "../../../time-series/hooks";
 import { shortCompanyName } from "../../../tickers/company-name";
 import { useSeriesListings } from "./series-listings";
@@ -50,15 +54,20 @@ import {
 } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import { isUsListingExchange, parsePublicTickerKey, publicTickerKey } from "../../../utils/exchanges";
-import { isMarketFieldId } from "../../../time-series/field-catalog";
+import { getTimeSeriesField, isMarketFieldId } from "../../../time-series/field-catalog";
 import { isDatasetChart } from "../../../time-series/spec";
+import { priceComparisonSeriesIds } from "../../../time-series/price-comparison";
+import { seriesMessageName, studyMessageName } from "../../../time-series/series-name";
 import { CHART_COMPOSER_PANE_ID } from "../../../types/config";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { SeriesEditorDialog } from "./editor";
 import { chartComposerSemanticMetadata } from "./semantic";
+import { comparedFundTickers, LEVERAGE_FACTS_PANE_TIMEOUT_MS, loadDailyObjectives, withLeverageOverlay } from "./leverage-overlay";
+import { loadFundFacts } from "../sec/fund-facts";
 import {
   canToggleChartSeries,
   CHART_INTERACTION_VIEWPORT_SETTING_KEY,
+  CHART_LEVERAGE_PENDING_SETTING_KEY,
   CHART_PINNED_MOMENT_SETTING_KEY,
   CHART_SPEC_SETTING_KEY,
   parseChartInteractionViewport,
@@ -106,16 +115,19 @@ import { buildEmptyChartPreset, buildPriceChartPreset } from "./presets";
 import type { ChartInteractionViewport } from "./chart-spec";
 import {
   CHART_FORMULA_OPTIONS,
+  CHART_BAR_SIZE_PRESETS,
   CHART_RANGES as RANGES,
-  CHART_RESOLUTIONS as RESOLUTIONS,
+  CHART_RESOLUTIONS,
   chartStudyOptionsFor,
   chartStudyPeriodTitle,
   chartStudySettingLabel,
+  withChartBarSize,
 } from "./settings";
 import { resolveChartComposerShortcut } from "./shortcuts";
 import { describeChartResolution, formatChartDateWindow, formatChartResolution } from "./viewport-labels";
 import { intradaySessionTimeZone } from "./session-history";
 import { ChartSeriesQuickAdd } from "./quick-add";
+import { ResearchTradeActions, researchTradeMatches, useResearchTrading } from "../shared/research-trading";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { usePluginAppActions, usePluginConfigState } from "../../runtime";
 import { usePluginRenderContext } from "../../runtime/context";
@@ -123,6 +135,7 @@ import { activePriceAlertsFor, addLevelAlert, PRICE_ALERTS_STORE, type AlertTarg
 import { formatAlertDescription } from "../alerts/alert-engine";
 import { alertInstrument, syncAlertQuoteStream } from "../alerts/live";
 import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator";
+import { useOptionChartRange } from "./option-range";
 import { getActiveQuoteDisplay } from "../../../market-data/market/status";
 import { resolveEntryData } from "../../../market-data/selectors";
 import { editPriceLevels, parsePriceLevels, PRICE_LEVELS_KEY, priceLevelTickerKey } from "./price-levels";
@@ -132,6 +145,9 @@ import { CHART_FOLLOW_SERIES_SETTING_KEY, rebindFollowChartSpec, resolveFollowSe
 import type { InstrumentRef } from "../../../market-data/request-types";
 
 const RANGE_OPTIONS = RANGES.map((range, index) => ({ label: range, value: range, hint: String(index + 1) }));
+const SOURCE_BAR_SIZES = CHART_RESOLUTIONS.filter((value): value is ManualChartResolution => value !== "auto");
+/** The bar size dialog's last choice, which asks for a size to type. */
+const CUSTOM_BAR_SIZE_CHOICE = "custom";
 const AUTO_VIEWPORT_DEBOUNCE_MS = 350;
 /** A load for a moving view that has not answered in this long no longer holds the next one back. */
 const LOAD_AHEAD_TIMEOUT_MS = 4_000;
@@ -288,6 +304,7 @@ function ChartComposerSurface({
   onCapture,
   nameSeries = true,
 }: ChartComposerSurfaceProps) {
+  const trade = useResearchTrading();
   const dialog = useDialog();
   const dispatch = useAppDispatch();
   const { cellWidthPx = 8 } = useUiCapabilities();
@@ -376,28 +393,46 @@ function ChartComposerSurface({
   const hasMarketSeries = spec.series.some((entry) => (
     entry.source.kind === "security" && isMarketFieldId(entry.source.fieldId)
   ));
-  const availableResolutions = useMemo<ChartResolution[]>(() => {
+  // Bars built from a future's clock-aligned bars must not straddle its session's open.
+  const openMinute = useMemo(() => {
+    const listing = spec.series.find((entry) => entry.source.kind === "security" && isMarketFieldId(entry.source.fieldId));
+    return listing?.source.kind === "security" ? futuresSessionOpenMinute(listing.source.instrument.symbol, listing.source.instrument.exchange) : null;
+  }, [spec.series]);
+  // The sizes of `sizes` this chart can draw now, after Auto.
+  const availableOf = useCallback((sizes: readonly ChartBarSize[]): ChartResolution[] => {
     if (!resolution.resolutionSupport) {
       if (!hasMarketSeries) return ["auto"];
-      if (!resolution.loading) return RESOLUTIONS;
+      if (!resolution.loading) return ["auto", ...sizes];
       return spec.viewport.resolution === "auto"
         ? ["auto"]
         : ["auto", spec.viewport.resolution];
     }
-    const supported = new Set(getSupportedChartResolutionsForViewport(
+    return ["auto", ...getSupportedChartBarSizesForViewport(
       spec.viewport.range,
       resolution.resolutionSupport,
+      sizes,
       spec.viewport.dateWindow,
-    ));
-    return RESOLUTIONS.filter((value) => value === "auto" || supported.has(value));
+      openMinute,
+    )];
   }, [
     hasMarketSeries,
+    openMinute,
     resolution.loading,
     resolution.resolutionSupport,
     spec.viewport.dateWindow,
     spec.viewport.range,
     spec.viewport.resolution,
   ]);
+  // The bar lists the sizes sources serve, and a built one (4h) while the chart is set to it;
+  // the bar size dialog (b) lists the built ones too, and takes any other typed in.
+  const availableResolutions = useMemo(
+    () => availableOf(withChartBarSize(SOURCE_BAR_SIZES, spec.viewport.resolution)),
+    [availableOf, spec.viewport.resolution],
+  );
+  const dialogResolutions = useMemo(
+    () => availableOf(withChartBarSize(CHART_BAR_SIZE_PRESETS, spec.viewport.resolution)),
+    [availableOf, spec.viewport.resolution],
+  );
   // Auto names the bars it is on, which change as the view moves: a pan back
   // past where a source keeps 30-minute bars charts days instead.
   const autoBars = spec.viewport.resolution === "auto" ? resolution.resolution ?? null : null;
@@ -412,6 +447,14 @@ function ChartComposerSurface({
   const selectedPairStudies = getSelectedPairStudies(spec);
   const viewport = resolution.viewport;
   const baseSeriesIds = useMemo(() => new Set(spec.series.map((series) => series.id)), [spec.series]);
+  const rangeStatisticsSeriesId = spec.series.length === 1
+    && spec.series[0]!.source.kind === "security"
+    && spec.series[0]!.source.fieldId.startsWith("valuation.")
+    && spec.series[0]!.source.period === "daily"
+    && resolution.series.find(series => series.id === spec.series[0]!.id)?.nativeFrequency === "daily"
+    && spec.series[0]!.transform === "raw"
+    && spec.series[0]!.visible !== false
+    ? spec.series[0]!.id : undefined;
   // Hidden series are never loaded, so the resolver has nothing to report for
   // them. Without a placeholder they vanish from the legend entirely and the
   // only way back is the series dialog.
@@ -419,6 +462,12 @@ function ChartComposerSurface({
     // Each security series names its company once, beside its label: "AAPL Price · Apple".
     const named = new Set<string>();
     const resolved = (resolution.legendSeries ?? []).map((entry) => {
+      const authored = spec.series.find((series) => series.id === entry.id);
+      if (authored?.source.kind === "security" && authored.source.fieldId.startsWith("valuation.")) {
+        const field = getTimeSeriesField(authored.source.fieldId);
+        return { ...entry, label: authored.label?.trim()
+          || `${authored.source.instrument.symbol} ${field?.shortLabel ?? "Multiple"}` };
+      }
       const name = nameSeries ? listings.names.get(entry.id) : undefined;
       const company = name ? shortCompanyName(name) : "";
       if (!company || named.has(company)) return entry;
@@ -427,7 +476,7 @@ function ChartComposerSurface({
     });
     const resolvedIds = new Set(resolved.map((entry) => entry.id));
     const missing = spec.series.filter((entry) => !resolvedIds.has(entry.id));
-    if (missing.length === 0) return named.size > 0 ? resolved : resolution.legendSeries;
+    if (missing.length === 0) return resolved;
     const bySpecOrder = new Map(spec.series.map((entry, index) => [entry.id, index] as const));
     return [
       ...resolved,
@@ -471,7 +520,15 @@ function ChartComposerSurface({
     () => listingRef.current,
     [freshListing?.seriesId, freshListing?.key, freshListing?.target.symbol, freshListing?.target.exchange],
   );
+  // The ticket's levels (its draft and working orders) move through the ticket, which reviews any change.
+  const tradeRef = useRef(trade);
+  tradeRef.current = trade;
   const editLevels = useCallback((edit: CompositeLevelEdit) => {
+    const ticket = tradeRef.current;
+    if (ticket?.levels.some((level) => level.id === edit.id)) {
+      if (edit.kind === "move") ticket.moveLevel?.(edit.id, edit.value);
+      return;
+    }
     const key = listingRef.current?.key;
     if (!key) return;
     setLevelStore((current: unknown) => {
@@ -514,6 +571,7 @@ function ChartComposerSurface({
     return {
       seriesId: listing.seriesId,
       items: [
+        ...(trade && researchTradeMatches(trade, { ...listing.instrument, exchange: listing.target.exchange }) ? trade.levels : []),
         ...stored.map((level) => ({
           id: level.id,
           value: level.price,
@@ -532,7 +590,7 @@ function ChartComposerSurface({
       onEdit: editLevels,
       ...(alertsOn ? { action: { label: "alert", title: "Alert at Level", run: (level) => { void alertAtLevel(level.value); } } } : {}),
     };
-  }, [alertAtLevel, alertsJson, alertsOn, editLevels, levelStore, listing]);
+  }, [alertAtLevel, alertsJson, alertsOn, editLevels, levelStore, listing, trade?.levels, trade?.contract]);
   const [interactionCaptured, setInteractionCapturedState] = useState(false);
   // Typing in quick-add must not freeze the plot: it only takes the keyboard.
   const [modalCaptured, setModalCaptured] = useState(false);
@@ -574,7 +632,7 @@ function ChartComposerSurface({
           ]}
         />
       ),
-    }).catch(() => undefined);
+    }).catch(logFailure("chart-composer.pane", "Open VWAP anchor choices failed"));
     if (choice === "pick") {
       pickAnchorAfterDialogRef.current = true;
       return { close: true };
@@ -590,7 +648,7 @@ function ChartComposerSurface({
       content: (ctx: PromptContext<string>) => (
         <TextPromptDialog {...ctx} title="Anchor VWAP at" placeholder="2026-09-30 or 2026-09-30 10:00" confirmLabel="Anchor" width={44} />
       ),
-    }).catch(() => undefined);
+    }).catch(logFailure("chart-composer.pane", "Open VWAP date prompt failed"));
     if (!text) return;
     const anchor = parseVwapAnchor(text, anchorInputRef.current);
     if (anchor === null) {
@@ -657,6 +715,11 @@ function ChartComposerSurface({
     },
     onCancel: () => setPickingAnchor(false),
   } : null, [pickingAnchor, updateSpec]);
+  // The ticket beside the chart asks for a price: a press on the plot, or Enter at the cursor, sets it.
+  const tradeOnChart = !!trade && !!listing && researchTradeMatches(trade, { ...listing.instrument, exchange: listing.target.exchange });
+  const pricePick = useMemo(() => tradeOnChart && trade?.picking && trade.finishPick && trade.cancelPick ? {
+    label: `set ${trade.picking.label}`, onPick: trade.finishPick, onCancel: trade.cancelPick,
+  } : null, [tradeOnChart, trade?.picking, trade?.finishPick, trade?.cancelPick]);
   const formulasDialogRef = useRef<MultiSelectDialogButtonHandle | null>(null);
   const indicatorsDisabled = !isPriceStudyTarget(spec);
   const formulasDisabled = spec.series.filter((series) => series.visible !== false).length < 2;
@@ -826,7 +889,7 @@ function ChartComposerSurface({
         content: (context: PromptContext<ChartSpec | null>) => (
           <SeriesEditorDialog {...context} initialSpec={spec} />
         ),
-      }).catch(() => null);
+      }).catch(logFailure("chart-composer.pane", "Open chart series editor failed", null));
       if (next) setSpec(next);
     } finally {
       setInteractionCaptured("prompt", false);
@@ -867,23 +930,57 @@ function ChartComposerSurface({
         content: (context: PromptContext<string>) => (
           <ChoiceDialog
             {...context}
-            title="Chart Resolution"
+            title="Bar Size"
             selectedChoiceId={spec.viewport.resolution}
-            choices={availableResolutions.map((value) => ({
-              id: value,
-              label: formatChartResolution(value),
-              description: describeChartResolution(value),
-            }))}
+            choices={[
+              ...dialogResolutions.map((value) => ({
+                id: value,
+                label: formatChartResolution(value),
+                description: describeChartResolution(value),
+              })),
+              ...(hasMarketSeries ? [{ id: CUSTOM_BAR_SIZE_CHOICE, label: "Custom…", description: "Type any number of minutes, hours, days, weeks or months." }] : []),
+            ]}
           />
         ),
-      }).catch(() => "");
-      if (availableResolutions.includes(next as ChartResolution)) setResolution(next as ChartResolution);
+      }).catch(logFailure("chart-composer.pane", "Open chart bar size choices failed", ""));
+      if (next === CUSTOM_BAR_SIZE_CHOICE) {
+        // A row picked with the mouse closes on mousedown; the field opens after the
+        // click has placed the focus, or the desktop leaves it on the dialog.
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        const typed = await dialog.prompt<string>({
+          content: (ctx: PromptContext<string>) => (
+            <TextPromptDialog {...ctx} title="Custom Bar Size" placeholder="10m, 90m, 4h, 2D, 3W, 6mo" confirmLabel="Chart" width={44} />
+          ),
+        }).catch(logFailure("chart-composer.pane", "Open custom chart bar size prompt failed"));
+        if (!typed) return;
+        const size = parseChartBarSize(typed);
+        const count = /^\s*(\d+)\s*M\s*$/.exec(typed)?.[1];
+        if (!size) {
+          notify({
+            body: count
+              ? `Write ${count}m for ${count} minutes or ${count}mo for ${count} months.`
+              : `${typed} is not a bar size. Use a number and a unit: 10m, 4h, 2D, 3W, 6mo; up to a day of minutes or hours, a year of days or weeks, or 12 months.`,
+            type: "error",
+          });
+          return;
+        }
+        if (!availableOf(withChartBarSize([], size)).includes(size)) {
+          notify({ body: `${formatChartResolution(size)} bars are unavailable for this range.`, type: "error" });
+          return;
+        }
+        setResolution(size);
+        return;
+      }
+      if (dialogResolutions.includes(next as ChartResolution)) setResolution(next as ChartResolution);
     } finally {
       setInteractionCaptured("prompt", false);
     }
   }, [
-    availableResolutions,
+    availableOf,
     dialog,
+    dialogResolutions,
+    hasMarketSeries,
+    notify,
     setInteractionCaptured,
     setResolution,
     spec.viewport.resolution,
@@ -919,7 +1016,7 @@ function ChartComposerSurface({
         void openSeriesEditor();
         return;
       case "resolution":
-        if (availableResolutions.length > 1) void openResolutionPicker();
+        if (dialogResolutions.length > 1) void openResolutionPicker();
     }
   }, { enabled: focused && !dialogOpen });
 
@@ -932,13 +1029,13 @@ function ChartComposerSurface({
   const loading = resolution.loading || listings.pending;
   // A bare code several companies list asks which, as `quote` does, before anything else is said.
   const statusError = listings.errors[0] ?? resolution.errors[0];
-  // A spread or formula error names its legs and their units; the study's id adds nothing to it.
+  // A spread or formula error names its legs and their units; the study's name adds nothing to it.
   const formulaStudy = spec.studies.find((study) => (study.kind === "spread" || study.kind === "formula")
-    && statusError?.startsWith(`${study.id}: `));
-  const statusErrorNotice = formulaStudy ? statusError?.slice(`${formulaStudy.id}: `.length) : statusError;
-  // Failed series use their authored id in errors and their display label in warnings.
-  const errorSeries = spec.series.find((entry) => statusError?.startsWith(`${entry.label ?? entry.id}: `));
-  const errorMessage = errorSeries ? statusError?.slice(`${errorSeries.label ?? errorSeries.id}: `.length) : undefined;
+    && statusError?.startsWith(`${studyMessageName(study)}: `));
+  const statusErrorNotice = formulaStudy ? statusError?.slice(`${studyMessageName(formulaStudy)}: `.length) : statusError;
+  // Failed series name what was asked for in errors and their display label in warnings.
+  const errorSeries = spec.series.find((entry) => statusError?.startsWith(`${seriesMessageName(entry)}: `));
+  const errorMessage = errorSeries ? statusError?.slice(`${seriesMessageName(errorSeries)}: `.length) : undefined;
   // The label the resolver wrote its warnings with, before the legend named the company.
   const errorSeriesLabel = (resolution.legendSeries?.find((entry) => entry.id === errorSeries?.id)
     ?? legendSeries?.find((entry) => entry.id === errorSeries?.id))?.label;
@@ -961,9 +1058,9 @@ function ChartComposerSurface({
     && !FORWARD_VALUATION_BASIS_NOTICES.has(warning)
     && !duplicateErrorNotices.has(warning) && !comparisonEmptyNotices.has(warning)
     && !spec.studies.some((study) => (
-      (study.kind === "ratio" && warning.startsWith(`${study.id}: ratio inputs use different currencies (`)
+      (study.kind === "ratio" && warning.startsWith(`${studyMessageName(study)}: ratio inputs use different currencies (`)
         && warning.endsWith("); raw values are not FX-converted."))
-      || (study.kind === "correlation" && warning.startsWith(`${study.id}: correlation mixes `)
+      || (study.kind === "correlation" && warning.startsWith(`${studyMessageName(study)}: correlation mixes `)
         && warning.endsWith("; only matching observation times contribute."))
     ))
   ));
@@ -1020,13 +1117,15 @@ function ChartComposerSurface({
             : []),
     ],
     hints: [
+      // One key opens the ticket, which chooses Buy or Sell; [s]eries keeps its key with trading on.
+      ...(trade?.available ? [{ id: "trade", key: "t", label: "rade", title: "Open the trade panel", onPress: () => trade.open(), disabled: trade.busy }] : []),
       { id: "series", key: "s", label: "eries", onPress: footerSeries },
       { id: "indicators", key: "i", label: "ndicators", onPress: openIndicators, disabled: indicatorsDisabled },
       { id: "formulas", key: "f", label: "ormulas", onPress: openFormulas, disabled: formulasDisabled },
-      { id: "resolution", key: "t", label: "imeframe", onPress: footerResolution },
+      { id: "resolution", key: "b", label: "ars", title: "Bar Size", onPress: footerResolution },
       ...(anchorable ? [{ id: "vwap-anchor", key: "v", label: "wap anchor", title: "Anchor VWAP", onPress: footerAnchor }] : []),
     ],
-  }), [delistingKey, loading, pickingAnchor, newestBeyondView, footerSeries, openIndicators, indicatorsDisabled, openFormulas, formulasDisabled, footerResolution, anchorable, footerAnchor]);
+  }), [delistingKey, loading, pickingAnchor, newestBeyondView, footerSeries, openIndicators, indicatorsDisabled, openFormulas, formulasDisabled, footerResolution, anchorable, footerAnchor, trade]);
 
   // A fixed window (a GIP session) highlights no range, so the bar names it.
   const dateWindowLabel = useMemo(() => {
@@ -1092,6 +1191,22 @@ function ChartComposerSurface({
     }]
     : [];
 
+  // Returns of two or more prices compare as price returns; the toggle reinvests their cash distributions.
+  const totalReturnOn = spec.viewport.totalReturn === true;
+  const totalReturnFilters = totalReturnOn || priceComparisonSeriesIds(spec) !== null
+    ? [{
+      id: "total-return",
+      kind: "toggle" as const,
+      label: "Total return",
+      short: "Total ret",
+      value: totalReturnOn,
+      onChange: (value: boolean) => {
+        const { totalReturn: _previous, ...viewport } = specRef.current.viewport;
+        updateSpec({ ...specRef.current, viewport: value ? { ...viewport, totalReturn: true } : viewport });
+      },
+    }]
+    : [];
+
   // A company that reports no quarterly figures says so, and where its annual ones are.
   const unreported = resolution.legendSeries?.find((entry) => entry.unreportedPeriod && entry.points.length === 0);
   const emptyMessage = spec.series.length === 0
@@ -1107,6 +1222,8 @@ function ChartComposerSurface({
 
   return (
     <Box flexDirection="column" width={width} height={height}>
+      {/* Renders nothing: b and s open the trade panel. The query bar keeps the full row. */}
+      <ResearchTradeActions focused={shortcutActive} />
       <QueryBar
         width={width}
         filters={[
@@ -1116,6 +1233,7 @@ function ChartComposerSurface({
             onChange: (value: string) => setRange(value as TimeRange) },
           ...genericFilters,
           ...extendedHoursFilters,
+          ...totalReturnFilters,
         ]}
         view={resolutionOptions.length > 1 ? {
           value: spec.viewport.resolution,
@@ -1180,10 +1298,13 @@ function ChartComposerSurface({
           showLatestChangePercent={!spec.viewport.dateWindow && spec.viewport.range === "1D"}
           onViewportChange={handleChartViewportChange}
           onActivate={activatePane}
+          onPress={trade?.focusChart}
           onToggleSeries={toggleSeries}
           isSeriesToggleable={isSeriesToggleable}
           timePick={timePick}
+          pricePick={pricePick}
           levels={chartLevels}
+          rangeStatisticsSeriesId={rangeStatisticsSeriesId}
           emptyMessage={emptyMessage}
           emptyDetail={emptyDetail}
           legendAccessory={(
@@ -1278,6 +1399,26 @@ export function ChartComposerPane({ paneId, focused, width, height }: PaneProps)
       savedForTarget.current = targetKey;
     }
   }, [follows, ownedIds, savedIds, setSpec, spec, stored, target, unlinkedFrom, updateSettings]);
+  // A comparison CMP opened draws each leveraged or inverse fund's daily objective once its facts are read.
+  const leveragePending = instance?.settings?.[CHART_LEVERAGE_PENDING_SETTING_KEY] === true;
+  const storedRef = useRef(stored);
+  storedRef.current = stored;
+  useEffect(() => {
+    if (!leveragePending) return;
+    const mounted = new AbortController();
+    // The chart draws meanwhile, so it can wait longer for them than a report does.
+    void loadDailyObjectives(comparedFundTickers(storedRef.current),
+      async (ticker, signal) => (await loadFundFacts(ticker, false, { signal })).payload,
+      { timeoutMs: LEVERAGE_FACTS_PANE_TIMEOUT_MS, signal: mounted.signal })
+      .then((objectives) => {
+        if (mounted.signal.aborted) return;
+        updateSettings({
+          [CHART_SPEC_SETTING_KEY]: withLeverageOverlay(storedRef.current, objectives),
+          [CHART_LEVERAGE_PENDING_SETTING_KEY]: undefined,
+        });
+      });
+    return () => mounted.abort();
+  }, [leveragePending, updateSettings]);
   if (follows && !target && ownedIds.length > 0) {
     return <EmptyState title={error ?? "Select a ticker."} />;
   }
@@ -1296,7 +1437,9 @@ export function ChartComposerPane({ paneId, focused, width, height }: PaneProps)
 export function ChartComposerResearchTab({ focused, width, height, onCapture }: TickerResearchTabProps) {
   const { symbol: paneSymbol, ticker } = usePaneTicker();
   const symbol = paneSymbol ? publicTickerKey(paneSymbol, ticker?.metadata.exchange) : null;
-  const fallback = useMemo(() => symbol ? buildPriceChartPreset(symbol) : buildEmptyChartPreset(), [symbol]);
+  // An option contract opens on the range its own history fills; a chart the researcher set keeps its range.
+  const optionRange = useOptionChartRange(ticker);
+  const fallback = useMemo(() => symbol ? buildPriceChartPreset(symbol, optionRange ?? undefined) : buildEmptyChartPreset(), [optionRange, symbol]);
   const [storedSpec, setStoredSpec] = usePaneSettingValue<unknown>(CHART_SPEC_SETTING_KEY, fallback);
   const spec = useMemo(() => parseChartSpecOr(storedSpec, fallback), [fallback, storedSpec]);
   const previousSymbolRef = useRef(symbol);

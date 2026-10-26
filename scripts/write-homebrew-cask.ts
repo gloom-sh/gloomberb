@@ -55,8 +55,8 @@ function renderCask({ version, sha256 }: Pick<Options, "version" | "sha256">): s
 
   # No \`verified:\` here: Homebrew checks a GitHub release URL against the
   # homepage on its own now and warns that the parameter is deprecated (#916).
-  url "https://github.com/gloom-sh/gloomberb/releases/download/v#{version}/stable-macos-arm64-Gloomberb.app.zip"
-  name "Gloomberb"
+  url "https://github.com/gloom-sh/gloomberb/releases/download/v#{version}/stable-macos-arm64-Gloom.app.zip"
+  name "Gloom"
   desc "Open-source finance terminal"
   homepage "https://gloom.sh"
 
@@ -71,8 +71,12 @@ function renderCask({ version, sha256 }: Pick<Options, "version" | "sha256">): s
   # installs an app on Intel Macs that dies with "Bad CPU type in executable".
   depends_on arch: :arm64
 
-  app "Gloomberb.app"
-  binary "#{appdir}/Gloomberb.app/Contents/Resources/gloomberb", target: "gloomberb"
+  # Gloomberb.app before the rename. An upgrade from such a version removes
+  # it and installs this; the app leaves a Homebrew copy to Homebrew.
+  app "Gloom.app"
+  binary "#{appdir}/Gloom.app/Contents/Resources/gloom", target: "gloom"
+  # The command's name before 0.18.4, kept for scripts and habits.
+  binary "#{appdir}/Gloom.app/Contents/Resources/gloomberb", target: "gloomberb"
 
   uninstall quit: "com.vincelwt.gloomberb"
 

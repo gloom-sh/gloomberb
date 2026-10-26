@@ -1,17 +1,35 @@
-import { afterEach, expect, spyOn, test } from "bun:test";
+import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
+import { mkdtemp, rm } from "fs/promises";
+import { tmpdir } from "os";
+import { join } from "path";
+import { apiClient } from "../../api-client";
+import { resetFuturesPriceUnits } from "../../market-data/futures-contract";
 import type { DataProvider, QuoteBatchResult, QuoteSubscriptionTarget } from "../../types/data-provider";
 import type { TickerChanges } from "../../types/ticker-changes";
 import { createTestCliContext, type PrintedCliResult } from "../../test-support/cli-context";
 import { createTestDataProvider, createTestQuote } from "../../test-support/data-provider";
 import { captureConsole } from "../../test-support/console";
 import { createTestTicker } from "../../test-support/ticker";
+import { resetBoardCoins } from "../board-coins";
+import { withSearchHints } from "../not-a-ticker";
 import { buildSearchReport, search } from "./search";
 import { marketDataCliCommands } from "./market";
 
 const quoteCommand = marketDataCliCommands.find((command) => command.name === "quote")!;
 
+beforeEach(() => {
+  resetFuturesPriceUnits();
+  resetBoardCoins([]);
+  spyOn(apiClient, "getCloudFuturesContract").mockRejectedValue(new Error("Fixture has no contract terms"));
+});
+
 // A quote that finds nothing sets the exit status; it must not become the test run's.
-afterEach(() => { process.exitCode = 0; });
+afterEach(() => {
+  process.exitCode = 0;
+  resetFuturesPriceUnits();
+  resetBoardCoins();
+  mock.restore();
+});
 
 /**
  * A quote source that answers only the listing keys in `quoted`, and records what each batch asked for.
@@ -86,7 +104,7 @@ test("a bare symbol with no quote is asked on the venue it resolved to, then its
   // With no quote anywhere, one company's listings name the venue it resolved to and the others to try.
   const unquoted = await runQuote(["CSPX"], venueSource("CSPX", ["XETRA", "LSE"], {}));
   expect(unquoted.failure?.message).toBe("CSPX resolved to CSPX Fund (XETRA), which has no quote.");
-  expect(unquoted.failure?.details).toContain("CSPX:LSE CSPX Fund (try: gloomberb quote CSPX:LSE)");
+  expect(unquoted.failure?.details).toContain("CSPX:LSE CSPX Fund (try: gloom quote CSPX:LSE)");
 });
 
 test("a code several companies list is never quoted on one of them: it asks for an exchange, and only its row fails", async () => {
@@ -97,8 +115,8 @@ test("a code several companies list is never quoted on one of them: it asks for 
 
   const alone = await runQuote(["2222"], source);
   expect(alone.failure?.message).toBe("Choose an exchange for 2222.");
-  expect(alone.failure?.details).toContain("2222:JPX Kotobuki Spirits Co., Ltd. (try: gloomberb quote 2222:JPX)");
-  expect(alone.failure?.details).toContain("2222:TADAWUL Saudi Arabian Oil Co. (try: gloomberb quote 2222:TADAWUL)");
+  expect(alone.failure?.details).toContain("2222:JPX Kotobuki Spirits Co., Ltd. (try: gloom quote 2222:JPX)");
+  expect(alone.failure?.details).toContain("2222:TADAWUL Saudi Arabian Oil Co. (try: gloom quote 2222:TADAWUL)");
   // No listing was asked for its quote.
   expect(source.batches).toEqual([["2222"]]);
 
@@ -120,7 +138,7 @@ test("BDI asks for an exchange and says the Baltic Dry Index is not covered; on 
 
   const bare = await runQuote(["BDI"], source);
   expect(bare.failure?.message).toBe("Choose an exchange for BDI.");
-  expect(bare.failure?.details).toContain("BDI:TSX Black Diamond Group Limited (try: gloomberb quote BDI:TSX)");
+  expect(bare.failure?.details).toContain("BDI:TSX Black Diamond Group Limited (try: gloom quote BDI:TSX)");
   expect(bare.failure?.details).toContain("Baltic indices (BDI, Capesize, Panamax, Supramax) and freight forwards (FFA) are not covered.");
 
   const named = await runQuote(["BDI:TSX"], source);
@@ -196,9 +214,9 @@ test("a futures board code quotes its future where no security uses it, and name
   const names = { CSE: "Goldcana Resources Inc.", SET: "Global Connections Public Company Limited" };
   const gc = await runQuote(["GC"], venueSource("GC", ["CSE", "SET"], {}, names));
   expect(gc.failure?.message).toBe("Choose an exchange for GC.");
-  expect(gc.failure?.details).toContain("GC=F Gold future (try: gloomberb quote GC=F)");
+  expect(gc.failure?.details).toContain("GC=F Gold future (try: gloom quote GC=F)");
   // With no listing search knows, the future is still named.
-  expect((await runQuote(["ES"], venueSource("ES", [], {}))).failure?.details).toBe("ES=F E-Mini S&P 500 future (try: gloomberb quote ES=F)");
+  expect((await runQuote(["ES"], venueSource("ES", [], {}))).failure?.details).toBe("ES=F E-Mini S&P 500 future (try: gloom quote ES=F)");
   // A security that quotes keeps its code and says nothing of the future.
   const nova = await runQuote(["NG"], venueSource("NG", ["AMEX"], { NG: createTestQuote({ symbol: "NG", name: "NovaGold Resources Inc." }) }));
   expect([nova.rows.map((row) => row.target.symbol), nova.warnings]).toEqual([["NG"], []]);
@@ -206,7 +224,7 @@ test("a futures board code quotes its future where no security uses it, and name
 
 test("a bare index root points at its ^ index, whether it found nothing or another instrument", async () => {
   const none = await runQuote(["VIX"], venueSource("VIX", [], {}));
-  expect(none.failure?.details).toContain("gloomberb quote ^VIX");
+  expect(none.failure?.details).toContain("gloom quote ^VIX");
 
   const corvex = createTestQuote({ symbol: "MOVE", name: "Corvex, Inc.", instrumentType: "EQUITY" });
   const other = venueSource("MOVE", ["NASDAQ"], { MOVE: corvex, "MOVE:NASDAQ": corvex, "^MOVE": { ...corvex, instrumentType: "INDEX" } });
@@ -215,7 +233,7 @@ test("a bare index root points at its ^ index, whether it found nothing or anoth
   expect((await runQuote(["MOVE:NASDAQ"], other)).warnings).toEqual([]);
   expect((await runQuote(["^MOVE"], other)).warnings).toEqual([]);
 
-  expect(buildSearchReport({ query: "vix", candidates: [] })).toContain("gloomberb quote ^VIX");
+  expect(buildSearchReport({ query: "vix", candidates: [] })).toContain("gloom quote ^VIX");
   expect(buildSearchReport({ query: "AAPL", candidates: [] })).not.toContain("^");
 });
 
@@ -366,7 +384,7 @@ test("search lists a symbol it no longer finds as no longer trading with its las
   expect(fb.warnings).toEqual([`FB now lists ${fund}; Meta Platforms trades as META (changed 2022-06-09)`]);
   expect((fb.data as Array<{ category: string }>).map((row) => row.category)).not.toContain("No Longer Trading");
   // A symbol with no change and no quote says nothing more.
-  expect((await json("ZZZZ")).warnings).toEqual(['Search finds tickers and company names. Try: gloomberb catalog "ZZZZ"']);
+  expect((await json("ZZZZ")).warnings).toEqual(['Search finds tickers and company names. Try: gloom catalog "ZZZZ"']);
 });
 
 test("a pasted list is one row per symbol, in order, however it is separated, for quote and compare alike", async () => {
@@ -407,6 +425,92 @@ test("a company's name in a pasted list is quoted as its listing, never as its w
   expect((cli.printed[0] as PrintedCliResult).result.warnings).toContain('Read "Whirlpool Corporation" as WHR:NYSE (Whirlpool Corp).');
 });
 
+test("a company's name typed as one word no listing trades as is quoted as its listing, said in the user's spelling; a ticker wins", async () => {
+  const listed = (symbol: string, name: string, exchange: string) => ({ providerId: "test", symbol, name, exchange, type: "Common Stock", currency: "USD" });
+  const asked: string[][] = [];
+  const dataProvider = createTestDataProvider({
+    search: async (query) => /^apple$/i.test(query) ? [listed("AAPL", "Apple Inc.", "NASDAQ"), listed("APC", "Apple Inc.", "XETRA")]
+      : /^gold$/i.test(query) ? [listed("GLDG", "Gold Corp", "NYSE")]
+      : /^grp$/i.test(query) ? [listed("GCR", "Greencoat Group plc", "NYSE")]
+      : [],
+    getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => {
+      asked.push(targets.map((target) => target.symbol));
+      return targets.map((target) => ["APPLE", "GRP"].includes(target.symbol)
+        ? { target, quote: null, error: new Error(`Not a ticker: ${target.symbol}.`) }
+        : { target, quote: createTestQuote({ symbol: target.symbol }) });
+    },
+  });
+  const cli = createTestCliContext({ dataProvider });
+  await quoteCommand.execute(["Apple", "GOLD", "grp"], cli.context);
+  const { result } = cli.printed[0] as PrintedCliResult;
+  // GOLD trades, so it is GOLD, never the company search finds for the word; a short form (grp) names no company.
+  expect((result.data as Array<{ target: QuoteSubscriptionTarget }>).map((row) => row.target.symbol)).toEqual(["AAPL:NASDAQ", "GOLD", "GRP"]);
+  expect(asked).toEqual([["APPLE", "GOLD", "GRP"], ["AAPL:NASDAQ"]]);
+  const read = result.warnings!.find((warning) => warning.startsWith("Read "))!;
+  expect(read).toBe('Read "APPLE" as AAPL:NASDAQ (Apple Inc.).');
+  expect(withSearchHints(read, ["Apple", "GOLD", "grp"])).toBe('Read "Apple" as AAPL:NASDAQ (Apple Inc.).');
+  expect(result.warnings).toContain("Not a ticker: GRP.");
+});
+
+test("a word many names share is a name only as search's top result or an exact name; a coin's or a subject's name keeps its hint", async () => {
+  const row = (symbol: string, name: string, exchange: string, type = "Common Stock") => ({ providerId: "test", symbol, name, exchange, type, currency: "USD" });
+  const dataProvider = createTestDataProvider({
+    search: async (query) => {
+      switch (query.toLowerCase()) {
+        // Search puts a REIT first, but Apple Inc. is the name and nothing more.
+        case "apple": return [row("APLE", "Apple Hospitality REIT, Inc.", "NYSE"), row("AAPL", "Apple Inc.", "NASDAQ")];
+        // The top result is a future; the stocks only have the word in their names.
+        case "oil": return [row("CL=F", "WTI Crude Oil", "NYM", "FUTURE"), row("OILX", "Onyx Spot Return Crude Oil", "ARCA"), row("OINL", "Oil India Limited", "NSE")];
+        case "bitcoin": return [row("BCH-USD", "Bitcoin Cash", "CCC", "CRYPTOCURRENCY"), row("BSTY/BTC", " Bitcoin", "YOBIT", "Digital Currency"), row("BTCS", "Bitcoin Shop Inc.", "NASDAQ")];
+        case "hyperliquid": return [row("PURR", "Hyperliquid Strategies Inc", "NASDAQ")];
+        // A venue the app cannot read is no answer, never a failed command.
+        case "zorblax": return [row("ZBX", "Zorblax", "MOONX")];
+        default: return [row("CRBN", "Carbon Inc.", "NASDAQ")];
+      }
+    },
+    getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => targets.map((target) => target.exchange
+      ? { target, quote: createTestQuote({ symbol: target.symbol }) }
+      : { target, quote: null, error: new Error(`Not a ticker: ${target.symbol}.`) }),
+  });
+  // The crypto board lists Hyperliquid, which no list of major coins names.
+  resetBoardCoins([{ symbol: "BTC-USD", code: "BTC", name: "Bitcoin", marketCap: 2 }, { symbol: "HYPE-USD", code: "HYPE", name: "Hyperliquid", marketCap: 1 }]);
+  const words = ["Apple", "oil", "bitcoin", "hyperliquid", "carbon", "zorblax"];
+  const cli = createTestCliContext({ dataProvider });
+  await quoteCommand.execute(words, cli.context);
+  const { result } = cli.printed[0] as PrintedCliResult;
+  expect((result.data as Array<{ target: QuoteSubscriptionTarget }>).map((row) => row.target.symbol)).toEqual(["AAPL:NASDAQ", "OIL", "BITCOIN", "HYPERLIQUID", "CARBON", "ZORBLAX"]);
+  expect(result.warnings!.map((warning) => withSearchHints(warning, words))).toEqual([
+    'Read "Apple" as AAPL:NASDAQ (Apple Inc.).',
+    "Not a ticker: OIL. Try `gloom search oil`.",
+    "Not a ticker: BITCOIN. Did you mean BTC-USD (Bitcoin)?",
+    "Not a ticker: HYPERLIQUID. Did you mean HYPE-USD (Hyperliquid)?",
+    "Not a ticker: CARBON. Try `gloom search carbon`.",
+    "Not a ticker: ZORBLAX. Try `gloom search zorblax`.",
+  ]);
+});
+
+test("a company's name read as an index asks about the company's stock; marked by the service, it is that stock", async () => {
+  const row = (symbol: string, name: string, exchange: string, type: string, searchAliases?: string[]) =>
+    ({ providerId: "test", symbol, name, exchange, type, currency: "USD", ...searchAliases ? { searchAliases } : {} });
+  const index = row("^JTEK", "JP MORGAN ETF TRUS", "NASDAQ", "INDEX");
+  const warningsFor = async (answers: Record<string, ReturnType<typeof row>[]>) => {
+    const dataProvider = createTestDataProvider({
+      search: async (query) => answers[query] ?? [],
+      getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> =>
+        targets.map((target) => ({ target, quote: createTestQuote({ symbol: target.symbol }) })),
+    });
+    const cli = createTestCliContext({ dataProvider });
+    await quoteCommand.execute(["JP Morgan"], cli.context);
+    return (cli.printed[0] as PrintedCliResult).result.warnings;
+  };
+  // An older service: the index for "JP Morgan", the company for "JPMorgan".
+  expect(await warningsFor({ "JP Morgan": [index], JPMorgan: [row("JPM", "JPMorgan Chase & Co.", "NYSE", "EQUITY")] }))
+    .toContain('Read "JP Morgan" as ^JTEK:NASDAQ (JP MORGAN ETF TRUS). Did you mean JPM (JPMorgan Chase & Co.)?');
+  // The service marks the company the name means.
+  expect(await warningsFor({ "JP Morgan": [row("JPM", "JPMorgan Chase & Co.", "NYSE", "Common Stock", ["JPMorgan", "JPMorgan Chase"]), index] }))
+    .toContain('Read "JP Morgan" as JPM:NYSE (JPMorgan Chase & Co.).');
+});
+
 test("quote and compare exit 1 when none of the symbols has a quote, 0 when some do, and print the same table either way", async () => {
   const dataProvider = createTestDataProvider({
     getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => targets.map((target) => target.symbol === "AAPL"
@@ -428,5 +532,154 @@ test("quote and compare exit 1 when none of the symbols has a quote, 0 when some
     expect(mixed.exitCode).toBe(0);
     expect(mixed.rows.map((row) => row.target.symbol)).toEqual(["GMEE", "AAPL"]);
     expect((await run(name, "AAPL")).exitCode).toBe(0);
+  }
+});
+
+test("one symbol that names no listing, or nothing at all, never sinks the batch: the others are quoted and it gets one line", async () => {
+  const asked: string[][] = [];
+  const dataProvider = createTestDataProvider({
+    getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => {
+      asked.push(targets.map((target) => target.symbol));
+      return targets.map((target) => ({ target, quote: createTestQuote({ symbol: target.symbol }) }));
+    },
+  });
+  const run = async (args: string[]) => {
+    const cli = createTestCliContext({ dataProvider });
+    process.exitCode = 0;
+    asked.length = 0;
+    const { exitCode } = await captureConsole(() => quoteCommand.execute(args, cli.context));
+    const { result } = cli.printed[0]!;
+    return { exitCode: exitCode ?? 0, symbols: (result.data as Array<{ target: QuoteSubscriptionTarget }>).map((row) => row.target.symbol), warnings: result.warnings ?? [] };
+  };
+  // `Unknown exchange US for EQT:NYSE.` failed the command, with no quote for EQT or UNG. Quotes for some of what
+  // was asked are a result, as they are for `fn`: exit 0, the misses named in the warnings (and in --json).
+  const venue = await run(["EQT", "EQT:NYSE:US", "UNG"]);
+  expect(venue).toMatchObject({ exitCode: 0, symbols: ["EQT", "UNG"] });
+  expect(venue.warnings).toEqual(["Not quoted: EQT:NYSE:US (Unknown exchange US for EQT:NYSE)."]);
+
+  const junk = await run(["EQT", "$$$", "N/A", "UNG"]);
+  expect(junk).toMatchObject({ exitCode: 0, symbols: ["EQT", "UNG"], warnings: ["Not symbols, not quoted: $$$, N/A."] });
+  expect(asked).toEqual([["EQT", "UNG"]]);
+});
+
+test("a quoted phrase with a figure in it gets the phrase answer, never quotes for its words", async () => {
+  const asked: string[] = [];
+  const tickers = new Set(["YEAR", "YIELD", "FED", "FUNDS", "RATE"]);
+  const dataProvider = createTestDataProvider({
+    search: async () => [],
+    getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => {
+      asked.push(...targets.map((target) => target.symbol));
+      return targets.map((target) => tickers.has(target.symbol)
+        ? { target, quote: createTestQuote({ symbol: target.symbol }) }
+        : { target, quote: null, error: new Error(`Not a ticker: ${target.symbol}.`) });
+    },
+  });
+  const answer = async (phrase: string) => {
+    const cli = createTestCliContext({ dataProvider }, { format: "json" });
+    return quoteCommand.execute([phrase], cli.context).then(() => cli.printed, (error: Error) => error.message);
+  };
+  // A figure made the phrase a list, so YEAR and YIELD, or FED, FUNDS and RATE, were quoted.
+  for (const phrase of ["10 year yield", "10.5 year yield", "fed funds rate 5.25%"]) {
+    expect(await answer(phrase)).toBe(`"${phrase}" is not a ticker or a company's name.`);
+  }
+  // A number is never asked for as a ticker; a whole one (10) is a code and still is.
+  expect(asked.filter((symbol) => /\d/.test(symbol))).toEqual(["10"]);
+});
+
+test("quote --file of a European sheet asks only for its symbols and names its prices in one line", async () => {
+  const asked: string[][] = [];
+  const dataProvider = createTestDataProvider({
+    getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => {
+      asked.push(targets.map((target) => target.symbol));
+      return targets.map((target) => ({ target, quote: createTestQuote({ symbol: target.symbol }) }));
+    },
+  });
+  const dir = await mkdtemp(join(tmpdir(), "gloomberb-quote-file-"));
+  try {
+    const file = join(dir, "energy.csv");
+    await Bun.write(file, "ED 2.582,52\nCNX;1.899,21\nEQT\t3.594,10\n");
+    const cli = createTestCliContext({ dataProvider });
+    await quoteCommand.execute(["--file", file], cli.context);
+    // Each price was a "Not a ticker" warning of its own, asked for as 2.582, 1.899 and 3.594.
+    expect(asked).toEqual([["ED", "CNX", "EQT"]]);
+    expect(cli.printed[0]!.result.warnings).toEqual(["Read the first column as symbols; ignored the 3 number cells beside it: 2.582,52; 1.899,21; 3.594,10."]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("Bloomberg codes are each one listing: a file's lines, a quoted code, and a market code no venue answers to is refused, never split", async () => {
+  const asked: string[][] = [];
+  const dataProvider = createTestDataProvider({
+    search: async (query) => query === "AAPL"
+      ? [{ providerId: "test", symbol: "AAPL", name: "Apple Inc.", exchange: "NASDAQ", type: "Common Stock", currency: "USD" },
+        { providerId: "test", symbol: "AAPL", name: "Apple Inc.", exchange: "SWX", type: "Common Stock", currency: "CHF" }]
+      : [],
+    getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => {
+      asked.push(targets.map((target) => target.symbol));
+      return targets.map((target) => ({ target, quote: createTestQuote({ symbol: target.symbol }) }));
+    },
+  });
+  const dir = await mkdtemp(join(tmpdir(), "gloomberb-quote-bloomberg-"));
+  try {
+    const file = join(dir, "codes.txt");
+    await Bun.write(file, "MC FP\nAIR FP\nALV GY\nTSCO LN\nCSL AU\nAAPL GP\n");
+    const cli = createTestCliContext({ dataProvider });
+    await quoteCommand.execute(["--file", file], cli.context);
+    // Each line was two symbols: Moelis and FP, AAR, Autoliv, Tractor Supply and LN, Carlisle and AU, Apple and GP.
+    expect(asked).toEqual([["MC:EPA", "AIR:EPA", "ALV:XETRA", "TSCO:LSE", "CSL:ASX"]]);
+    expect(cli.printed[0]!.result.warnings).toContain("Not quoted: AAPL GP (GP is not a market code; did you mean AAPL US?).");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+
+  asked.length = 0;
+  const quoted = createTestCliContext({ dataProvider });
+  await quoteCommand.execute(["VOD LN"], quoted.context);
+  expect(asked).toEqual([["VOD:LSE"]]);
+  expect(quoted.printed[0]!.result.warnings).toContain('Read "VOD LN" as VOD:LSE.');
+
+  const refused = await runQuote(["AAPL GP"], { dataProvider, batches: [], searches: () => 0 });
+  expect(refused.failure).toEqual({
+    message: "GP is not a market code; did you mean AAPL US?",
+    details: "AAPL also trades as AAPL SW.\nFor two symbols, separate them with a comma: AAPL, GP.",
+  });
+});
+
+test("700.HK, 6758.JP and BRK/B are quoted in the form that works", async () => {
+  const source = venueSource("X", [], {
+    "0700.HK": createTestQuote({ symbol: "0700.HK" }),
+    "6758.T": createTestQuote({ symbol: "6758.T" }),
+    "BRK-B": createTestQuote({ symbol: "BRK-B" }),
+  });
+  for (const [typed, symbol] of [["700.HK", "0700.HK"], ["6758.JP", "6758.T"], ["BRK/B", "BRK-B"]]) {
+    const { failure, rows } = await runQuote([typed!], source);
+    expect(failure).toBeNull();
+    expect(rows.map((row) => row.target.symbol)).toEqual([symbol!]);
+  }
+});
+
+test("a file's line that is a company's name before its legal form is the company, beside codes on the lines around it", async () => {
+  const asked: string[][] = [];
+  const company = (symbol: string, name: string, exchange: string) => ({ providerId: "test", symbol, name, exchange, type: "Common Stock", currency: "EUR" });
+  const dataProvider = createTestDataProvider({
+    search: async (query) => /^siemens/i.test(query) ? [company("SIE", "Siemens AG", "XETRA")]
+      : /^sap/i.test(query) ? [company("SAP", "SAP SE", "XETRA")]
+      : query === "BRK-B" ? [company("BRK.B", "Berkshire Hathaway Inc.", "NYSE")]
+      : [],
+    getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => {
+      asked.push(targets.map((target) => target.symbol));
+      return targets.map((target) => ({ target, quote: createTestQuote({ symbol: target.symbol }) }));
+    },
+  });
+  const dir = await mkdtemp(join(tmpdir(), "gloomberb-quote-legal-form-"));
+  try {
+    const file = join(dir, "names.txt");
+    await Bun.write(file, "SIEMENS AG\nSAP SE\nVOD LN\nBRK/B US Equity\n");
+    const cli = createTestCliContext({ dataProvider });
+    await quoteCommand.execute(["--file", file], cli.context);
+    expect(asked).toEqual([["SIE:XETRA", "SAP:XETRA", "VOD:LSE", "BRK-B"]]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
   }
 });

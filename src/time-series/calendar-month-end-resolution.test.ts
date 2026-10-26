@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test";
 import { createTestDataProvider } from "../test-support/data-provider";
 import type { PricePoint } from "../types/financials";
-import { ChartResolveCache, resolveChartSpecData } from "./resolve";
+import { resolveChartSpecData } from "./resolve";
+import { ChartResolveCache } from "./resolve-context";
 import type { ChartResolutionSupport, ManualChartResolution } from "./resolution";
 import type { ChartSpec } from "./types";
 

@@ -91,6 +91,7 @@ import { PANE_HEADER_ASK_MIN_WIDTH } from "../../src/components/layout/pane/head
 import { ChatFixturePane, chatLayout } from "./chat-fixture";
 import { AxisFixturePane } from "./axis-fixture";
 import { chatLatencyLayouts, ChatLatencySync } from "./chat-latency-fixture";
+import { useAppGlobalShortcuts } from "../../src/app/global-shortcuts";
 import { HeaderFixture, installHeaderClock, installHeaderMarketData, installHeaderPlatform, type HeaderFixtureHandle } from "./header-fixture";
 import { browserUiHost } from "../../src/renderers/browser/ui-host";
 import { LAYOUT_PANES, installLayoutFetches, layoutLayout } from "./layout-fixture";
@@ -1419,6 +1420,14 @@ function config() {
 }
 
 const paneRegistry = registry();
+
+function ChatNavigationShortcuts() {
+  const state = useAppSelector((value) => value);
+  const dispatch = useAppDispatch();
+  useAppGlobalShortcuts({ state, dispatch, pluginRegistry: paneRegistry, isDetachedWindow: false,
+    focusedTickerSymbol: null, refreshTicker() {}, restartToApplyUpdate() {}, startUpdate() {} });
+  return null;
+}
 const detachedBridge: DesktopWindowBridge & { kind: "detached"; paneId: string } = {
   kind: "detached",
   paneId: scenario === "theme-detached" ? "chart:theme" : scenario === "chat" ? "chat:a" : "tabs:a",
@@ -1498,14 +1507,15 @@ createRoot(root).render(
         : scenario === "header" ? <HeaderFixture handle={window.__paneChrome.header} />
         : scenario === "kit" ? <KitPage family={params.get("family")} />
         : scenario === "tab-sweep" ? <TabSweepFixture />
-        : scenario === "theme" ? <Box flexDirection="column" width="100%" height="100%">
-          <Box data-theme-chrome="header"><Header /></Box>
+        : scenario === "theme" || params.get("layoutReturn") === "1" ? <Box flexDirection="column" width="100%" height="100%">
+          {scenario === "theme" && <Box data-theme-chrome="header"><Header /></Box>}
           <Shell pluginRegistry={paneRegistry} />
           <Box data-theme-chrome="status"><StatusBar /></Box>
         </Box> : <Shell pluginRegistry={paneRegistry} />}
       {(scenario.startsWith("theme") || scenario === "paint") && <ThemeControls />}
       {scenario === "paint" && <PaneAdder />}
       {scenario === "chat" && params.get("latencyCheck") === "1" && <ChatLatencySync />}
+      {scenario === "chat" && params.get("layoutReturn") === "1" && <ChatNavigationShortcuts />}
       <Ready />
     </AppProvider>
   </DomHostProviders>,

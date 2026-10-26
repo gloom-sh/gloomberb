@@ -108,7 +108,7 @@ export function LayoutShareView({
   return (
     <main className="layout-share wide">
       <header>
-        <p className="eyebrow">Shared via Gloomberb</p>
+        <p className="eyebrow">Shared via Gloom</p>
         <h1>{entry.name}</h1>
         <p className="layout-meta">{[author, date, `${entry.layout.instances.length} panes`].filter(Boolean).join(" · ")}</p>
       </header>
@@ -126,7 +126,7 @@ export function LayoutShareView({
 
       <div className="handoff">
         <a className="cta" href={openLiveUrl}>Use this layout</a>
-        <p className="descriptor">Opens in Gloomberb as an independent, editable copy.</p>
+        <p className="descriptor">Opens in Gloom as an independent, editable copy.</p>
       </div>
     </main>
   );

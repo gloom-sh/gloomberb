@@ -2,6 +2,7 @@ import { formatMarketPrice, formatMarketPriceWithCurrency, stablePriceFractionDi
 import { INDEX_POINTS_UNIT } from "../../../market-data/market/index-level";
 import type { ResolvedSeries, TimeSeriesPoint } from "../../../time-series/types";
 import type { CompositeAxisDomain, CompositePanelScene } from "./types";
+import { formatNumber, formatPercentRaw } from "../../../utils/format";
 import { timeZoneLabel, zonedWallClockMs } from "../../../utils/zoned-date-time";
 
 const CURRENCY_SYMBOLS: Record<string, string> = {
@@ -237,6 +238,28 @@ function compactResolution(value: number): number {
   return absolute > 0 ? 10 ** (Math.floor(Math.log10(absolute)) - 2) : 0;
 }
 
+/** A series of changes over a baseline: returns since the range began, year-on-year or quarter-on-quarter growth. */
+function isChangeSeries(series: ResolvedSeries): boolean {
+  return series.unit.trim() === "%" && (series.transform === "percent" || series.transform === "yoy" || series.transform === "qoq");
+}
+
+/**
+ * A value worked out from prices (a formula, a spread, a price over an FX
+ * rate) at its legs' decimals: bare beside a stated unit (92.6164 USD /
+ * barrel), with its derived unit, or with its currency's sign ($12.34).
+ */
+function formatDerivedValue(value: number, series: ResolvedSeries, decimals: number): string {
+  const number = formatNumber(Math.abs(value), decimals);
+  const sign = value < 0 && /[1-9]/.test(number) ? "-" : "";
+  if (series.statedUnit) return `${sign}${number}`;
+  const unit = series.unit.trim();
+  if (series.unitGroup.toLowerCase().startsWith("derived-unit:")) return `${sign}${number} ${unit}`;
+  const currency = unitCurrencyCode(unit);
+  if (!currency) return `${sign}${number}`;
+  const symbol = CURRENCY_SYMBOLS[currency];
+  return symbol ? `${sign}${symbol}${number}` : `${sign}${number} ${currency}`;
+}
+
 /** `referencePrice` defaults to the series' own; a study on a price axis
  * passes the axis's reference so it shares the price's decimals. */
 export function formatCompositeSeriesValue(
@@ -244,6 +267,10 @@ export function formatCompositeSeriesValue(
   series: ResolvedSeries,
   referencePrice = seriesPriceReference(series),
 ): string {
+  // A return reads as every other return in the app, signed with two decimals, so a legend of them lines up
+  // (+34.02%, +0.76%, +15.80%) instead of one precision per magnitude.
+  if (isChangeSeries(series)) return formatPercentRaw(value);
+  if (series.valueDecimals !== undefined) return formatDerivedValue(value, series, series.valueDecimals);
   if (series.statedUnit) {
     // The number alone: the legend prints the unit beside it, as FUT prints
     // a price beside its unit (4.6242 USD / gallon, not $4.6242).
@@ -298,6 +325,14 @@ export function formatChartLegendValue(
   return trimmed && trimmed.length <= 6 ? `${compact}${trimmed.startsWith("/") ? "" : " "}${trimmed}` : compact;
 }
 
+/** compactNumber's scale, with the decimals a tick gap needs at that scale. */
+function preciseCompactNumber(value: number, gap: number): string {
+  const absolute = Math.abs(value);
+  const [divisor, suffix] = ([[1e12, "T"], [1e9, "B"], [1e6, "M"], [1e3, "K"]] as const).find(([scale]) => absolute >= scale) ?? [1, ""];
+  const digits = Math.min(12, Math.max(0, Math.ceil(-Math.log10(gap / divisor) - 1e-9)));
+  return `${(value / divisor).toFixed(digits)}${suffix}`;
+}
+
 const COMPACT_LABEL = /^(-?\d+)(?:\.(\d+))?([KMBT]?)$/;
 
 function trimmedDecimals(label: string): number {
@@ -332,13 +367,17 @@ export function formatCompositeAxisValue(value: number, domain: CompositeAxisDom
   // Where that happens the axis spends the digits needed to tell them apart,
   // shared across every tick so the column reads as one scale.
   const gap = narrowestAxisTickGap(domain);
+  const prefix = currencyPrefix(domain.unit);
   if (gap !== null && gap < compactResolution(value)) {
     const resolved = formatAxisPriceValue(value, domain, {
       fixedFractionDigits: Math.max(0, Math.ceil(-Math.log10(gap))),
     });
     if (resolved) return resolved;
+    // No currency to format with, such as a price whose quote has not
+    // arrived: the same digits still keep the ticks apart.
+    const precise = preciseCompactNumber(value, gap);
+    return prefix && precise.startsWith("-") ? `-${prefix}${precise.slice(1)}` : `${prefix}${precise}`;
   }
-  const prefix = currencyPrefix(domain.unit);
   return prefix && compact.startsWith("-") ? `-${prefix}${compact.slice(1)}` : `${prefix}${compact}`;
 }
 

@@ -14,7 +14,7 @@ import {
   type BeneficialSortPreference,
 } from "./beneficial-model";
 import { buildRows } from "./table-model";
-import { formatCompact } from "../../../utils/format";
+import { formatCompact, MISSING_VALUE } from "../../../utils/format";
 
 /** What `holders --form` lists: the 13F table, or the 13D/13G beneficial owners. */
 export type HolderForm = "13f" | "13d" | "13g" | "all";
@@ -53,7 +53,7 @@ export const BENEFICIAL_REPORT_COLUMNS = [
     align: "right" as const,
     format: (value: unknown, row: Record<string, unknown>) => {
       const marker = stakeMarker(row.status === "below-threshold" || row.status === "exited" ? row.status : null);
-      if (typeof value !== "number") return marker || "-";
+      if (typeof value !== "number") return marker || MISSING_VALUE;
       return marker ? `${formatClassPercent(value)} ${marker}` : formatClassPercent(value);
     },
   },
@@ -76,9 +76,9 @@ export const BENEFICIAL_REPORT_COLUMNS = [
     align: "right" as const,
     format: (value: unknown) => formatOwnerShares(typeof value === "number" ? value : null),
   },
-  { key: "eventDate", header: "Event", format: (value: unknown) => typeof value === "string" ? value : "-" },
+  { key: "eventDate", header: "Event", format: (value: unknown) => typeof value === "string" ? value : MISSING_VALUE },
   { key: "filingDate", header: "Filed" },
-  { key: "thirteenF", header: "13F", align: "right" as const, format: (value: unknown) => typeof value === "string" ? value : "-" },
+  { key: "thirteenF", header: "13F", align: "right" as const, format: (value: unknown) => typeof value === "string" ? value : MISSING_VALUE },
 ];
 
 /** The 13D/13G columns these rows fill: `% Today` only when a report's base is no longer today's count. */
@@ -94,10 +94,11 @@ export function beneficialReportColumns(rows: readonly BeneficialReportRow[]): t
 export function beneficialReportLegend(
   rows: readonly BeneficialReportRow[],
   sharesOutstanding: number | null | undefined,
+  sharesOutstandingAsOf?: string | null,
 ): string | null {
   if (rows.length === 0) return null;
   const today = sharesOutstanding != null && rows.some((row) => row.percentToday != null)
-    ? `; % Today is the same shares over ${formatCompact(sharesOutstanding)} shares outstanding today`
+    ? `; % Today is the same shares over ${formatCompact(sharesOutstanding)} shares outstanding ${sharesOutstandingAsOf ? `as of ${sharesOutstandingAsOf}` : "today"}`
     : "";
   const others = rows.some((row) => row.otherPersons > 0) ? " +N after a name: other reporting persons on the same report." : "";
   return `% Class is as filed${today}.${others}`;

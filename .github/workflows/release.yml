@@ -44,6 +44,14 @@ jobs:
           fi
           printf 'Uploading %s release artifacts:\n' "${#files[@]}"
           printf '  %s\n' "${files[@]}"
+          # Installs from before the rename update from these names; a release
+          # without them strands every one of them on its version.
+          for platform in macos-arm64 win-x64; do
+            [ -f "dist/stable-$platform-update.json" ] || continue
+            legacy="dist/stable-$platform-Gloomberb.tar.zst"
+            [ "$platform" = macos-arm64 ] && legacy="dist/stable-$platform-Gloomberb.app.tar.zst"
+            test -f "$legacy" || { echo "Missing $legacy for installs from before the rename." >&2; exit 1; }
+          done
 
       - name: Upload assets to GitHub release
         uses: softprops/action-gh-release@v2
@@ -71,7 +79,7 @@ jobs:
           fi
 
           VERSION="${GITHUB_REF_NAME#v}"
-          ZIP_PATH="dist/stable-macos-arm64-Gloomberb.app.zip"
+          ZIP_PATH="dist/stable-macos-arm64-Gloom.app.zip"
           if [ ! -f "$ZIP_PATH" ]; then
             echo "macOS desktop zip is missing; skipping Homebrew tap update."
             exit 0
@@ -94,7 +102,7 @@ jobs:
             echo "Homebrew tap already up to date."
             exit 0
           fi
-          git commit -m "Update Gloomberb to $VERSION"
+          git commit -m "Update Gloom to $VERSION"
           git push
 
       - uses: actions/setup-node@v4
@@ -114,6 +122,28 @@ jobs:
             exit 1
           fi
           npm publish --access public --provenance
+
+      # The same build under a second name, @gloom-sh/terminal, once the
+      # repository variable PUBLISH_GLOOM_TERMINAL is "true". It installs the
+      # same gloom and gloomberb commands. A version already there is skipped,
+      # so a rerun of the release does not fail on it.
+      - name: Publish to npm as @gloom-sh/terminal
+        if: ${{ vars.PUBLISH_GLOOM_TERMINAL == 'true' }}
+        run: |
+          set -euo pipefail
+          PACKAGE_VERSION="$(node -p 'require("./package.json").version')"
+          if npm view "@gloom-sh/terminal@$PACKAGE_VERSION" version >/dev/null 2>&1; then
+            echo "@gloom-sh/terminal@$PACKAGE_VERSION is already on npm."
+            exit 0
+          fi
+          npm pkg set "name=@gloom-sh/terminal"
+          npm publish --access public --provenance
+          git checkout -- package.json
+
+      - name: Note the skipped @gloom-sh/terminal publish
+        if: ${{ vars.PUBLISH_GLOOM_TERMINAL != 'true' }}
+        run: |
+          echo "::notice title=npm::Published as gloomberb only. Set the repository variable PUBLISH_GLOOM_TERMINAL to true to publish releases as @gloom-sh/terminal too."
 
       # The website re-captures its function screenshots against this release
       # and opens a PR there when a pane's layout changed.

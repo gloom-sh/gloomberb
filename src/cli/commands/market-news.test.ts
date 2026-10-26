@@ -5,6 +5,7 @@ import { DEFAULT_CLI_OPTIONS } from "../options";
 import { serializeCliResult } from "../result";
 import { marketDataCliCommands } from "./market";
 import type { NewsArticle } from "../../news/types";
+import { mapCloudNewsArticle } from "../../sources/gloomberb-cloud/news";
 import { commonWordCandidate, newsSearchText, wordMeansMore } from "./news-search";
 
 const news = marketDataCliCommands.find((command) => command.name === "news")!;
@@ -130,9 +131,9 @@ test("a search no story matches says so, never a near miss, and offers the commo
   await news.execute(["sugar", "beet", "pulp"], cli.context);
   await news.execute(["european gas"], cli.context);
   await news.execute(["palm oil"], cli.context);
-  expect(render(cli.printed[0]!)).toContain('No stories match "sugar prices". For the Sugar #11 future, try: gloomberb news SB=F');
-  expect(cli.printed[0]!.result.metadata).toMatchObject({ futuresNews: "gloomberb news SB=F" });
-  expect(render(cli.printed[1]!)).toContain('No stories match "arabica". For the Coffee future, try: gloomberb news KC=F');
+  expect(render(cli.printed[0]!)).toContain('No stories match "sugar prices". For the Sugar #11 future, try: gloom news SB=F');
+  expect(cli.printed[0]!.result.metadata).toMatchObject({ futuresNews: "gloom news SB=F" });
+  expect(render(cli.printed[1]!)).toContain('No stories match "arabica". For the Coffee future, try: gloom news KC=F');
   expect(render(cli.printed[2]!)).toContain('No stories match "sugar beet pulp". For the Sugar #11 future');
   expect(render(cli.printed[3]!)).toContain('No stories match "european gas".');
   expect(render(cli.printed[3]!)).not.toContain("try:");
@@ -181,6 +182,52 @@ test("a word nothing answers to and no story mentions keeps the not-a-ticker ans
   expect(render(cli.printed[1]!)).toContain("No listing answers to ZZQXV. news takes a company ticker");
 });
 
+test("a metal's future, name or bare board code is the metal's market news (NI METALS); the ticker in capitals keeps its company news", async () => {
+  const requests = serveSearch(STORIES);
+  const tickerNews: string[] = [];
+  // GOLD is Gold.com Inc.; no listing answers to GC.
+  const cli = createTestCliContext({
+    dataProvider: {
+      getNews: async (query: { ticker?: string }) => { tickerNews.push(query.ticker ?? ""); return []; },
+      getQuote: async (symbol: string) => {
+        if (symbol === "GOLD") return { symbol: "GOLD", name: "Gold.com Inc.", exchangeName: "NYSE" };
+        throw new Error(`Not a ticker: ${symbol}.`);
+      },
+    },
+  });
+  for (const typed of ["GC=F", "SI=F", "hg=f", "PA=F", "gold", "Silver", "GC"]) await news.execute([typed], cli.context);
+
+  expect(requests.map((url) => [url.searchParams.get("query"), url.searchParams.get("topics")])).toEqual([
+    ["gold", "metals"], ["silver", "metals"], ["copper", "metals"], ["palladium", "metals"], ["gold", "metals"], ["silver", "metals"],
+    ["gold", "metals"],
+  ]);
+  const headings = cli.printed.map((printed) => render(printed).split("\n")[0]);
+  expect(headings).toEqual([
+    'Metals news matching "gold"  ·  the commodity GC=F trades',
+    'Metals news matching "silver"  ·  the commodity SI=F trades',
+    'Metals news matching "copper"  ·  the commodity HG=F trades',
+    'Metals news matching "palladium"  ·  the commodity PA=F trades',
+    'Metals news matching "gold"',
+    'Metals news matching "silver"',
+    'Metals news matching "gold"  ·  GC is the futures board\'s code for Gold',
+  ]);
+  expect(cli.printed[4]!.result.metadata).toMatchObject({ ticker: null, search: "gold", topics: ["metals"], companyNews: "gloom news GOLD" });
+  expect(render(cli.printed[4]!)).toContain("gold → gold's market news. For Gold.com Inc. (ticker GOLD), try: gloom news GOLD");
+  // No ticker is SILVER here, so none is offered.
+  expect(cli.printed[5]!.result.metadata).not.toHaveProperty("companyNews");
+
+  // GOLD in capitals is the ticker: its company news, no metals search.
+  await news.execute(["GOLD"], cli.context);
+  expect(requests).toHaveLength(7);
+  expect(tickerNews).toEqual(["GC", "GOLD"]);
+  expect(render(cli.printed[7]!).split("\n")[0]).toContain("Gold.com Inc.");
+
+  // No story tagged METALS: every story that names the metal is one search away.
+  serveSearch([]);
+  await news.execute(["PL=F"], cli.context);
+  expect(render(cli.printed[8]!)).toContain(`No metals stories match "platinum". For every story that mentions it, try: gloom news '"platinum"'`);
+});
+
 test("a real listing, with or without stories, never falls back to a text search", async () => {
   const requests = serveSearch(STORIES);
   const quiet = createTestCliContext({
@@ -194,6 +241,26 @@ test("a real listing, with or without stories, never falls back to a text search
   await news.execute(["TTF", "--exchange", "NYSE"], unknown.context);
   await news.execute(["TTF", "--feed", "top"], unknown.context);
   expect(requests).toHaveLength(0);
+});
+
+test("a coin pair whose stories came from searching the coin says so, with the name its quote gives to search", async () => {
+  const queries: Array<{ ticker?: string; listingName?: string }> = [];
+  const cli = createTestCliContext({
+    dataProvider: {
+      getNews: async (query) => {
+        queries.push({ ticker: query.ticker, listingName: query.listingName });
+        return [{ ...mapCloudNewsArticle(story("btc", "Bitcoin snaps back after a failed downside break", "2026-10-15T09:00:00.000Z")), searchedFor: "hyperliquid" }];
+      },
+      getQuote: async () => ({ symbol: "HYPE32196-USD", name: "Hyperliquid USD", exchangeName: "CCC", instrumentType: "CRYPTOCURRENCY" }),
+    },
+  });
+  await news.execute(["HYPE32196-USD"], cli.context);
+
+  expect(queries).toEqual([{ ticker: "HYPE32196-USD", listingName: "Hyperliquid USD" }]);
+  const text = render(cli.printed[0]!);
+  expect(text.split("\n")[0]).toBe('Stories matching "hyperliquid"  ·  no stories filed under HYPE32196-USD');
+  expect(text).toContain("Bitcoin snaps back");
+  expect(cli.printed[0]!.result.metadata).toMatchObject({ ticker: "HYPE32196-USD", search: "hyperliquid" });
 });
 
 test("text search refuses a symbol's options and text the service would reject", async () => {

@@ -5,7 +5,7 @@ import { formatRelativeAge } from "../../../utils/datetime-format";
 import { fetchThemeMembers, fetchThemes } from "./client";
 import {
   aggregateText, boardClose, boardYtdBase, DEFAULT_SORT, matchTheme, memberExtended, memberExtendedSessions, memberPrice, percent, periodLabel,
-  SNAPSHOT_STALE_MS, sortMembers, sortThemes,
+  isLiveBoard, SNAPSHOT_STALE_MS, sortMembers, sortThemes,
 } from "./model";
 
 /** The period columns; YTD names the close it is measured from, `YTD vs 31 Dec close`. */
@@ -50,13 +50,17 @@ function boardObservation(payload: ThemesPayload | ThemeMembersPayload, now = Da
     regularSessionDate: close?.date ?? null,
     regularSessionClosedAt: close?.closedAt ?? null,
   };
+  // A Pro account's board is priced from the server's live read while a session trades; outside it the figures are
+  // the session's close and the report claims no feed, as the pane's footer names the close instead of "live".
+  // Everyone else's, and an older server's, is fifteen minutes delayed.
+  const feed = !isLiveBoard(payload) ? { status: "delayed" as const, delayMinutes: 15 } : close ? {} : { status: "live" as const };
   if (close && now - assembledAt <= SNAPSHOT_STALE_MS) {
     return {
       metadata: { asOf: close.closedAt != null ? new Date(close.closedAt).toISOString() : close.date, sessionExchange: "NYSE", ...snapshot },
-      freshness: { tradingDayMarket: "US", note: `snapshot ${formatRelativeAge(assembledAt, now)}` },
+      freshness: { ...feed, tradingDayMarket: "US", note: `snapshot ${formatRelativeAge(assembledAt, now)}` },
     };
   }
-  return { metadata: { asOf: payload.asOf, ...snapshot }, freshness: { maxAgeMinutes: 30 } };
+  return { metadata: { asOf: payload.asOf, ...snapshot }, freshness: { ...feed, maxAgeMinutes: 30 } };
 }
 
 /**
@@ -74,14 +78,15 @@ function themeReportTitle(query: string | undefined, theme: Pick<ThemeSummary, "
 
 export const themesHeadless: HeadlessPaneDefinition<"rows"> = {
   shape: "rows",
-  // The pane's stored snapshot: 15-minute delayed prices, refreshed every 15 minutes. As in the pane,
+  // The pane's stored snapshot, refreshed every 15 minutes, priced in real time for a Pro account and
+  // fifteen minutes delayed otherwise (boardObservation says which, and declares the delay). As in the pane,
   // the payload's stale flags are historical; a snapshot over 30 minutes old is what reads stale
   // (boardObservation, which dates a board outside the regular session by its close).
-  freshness: { status: "delayed", delayMinutes: 15, ignoreStaleFlags: true },
+  freshness: { ignoreStaleFlags: true },
   argument: { kind: "free-text", optional: true, placeholder: "theme", description: "Theme name or keyword, such as nuclear; omit for all themes." },
   options: [],
   discovery: { aliases: ["THEM"], dataRequirements: ["Gloom Cloud stored equity snapshot"],
-    limitations: ["Updated every 15 minutes for Free and Pro.", "Equal-weight price returns; missing observations reduce coverage.", "Below half coverage a period is unavailable.",
+    limitations: ["Prices and 1D are real-time with Pro and fifteen minutes delayed otherwise; the longer returns start from a snapshot updated every 15 minutes.", "Equal-weight price returns; missing observations reduce coverage.", "Below half coverage a period is unavailable.",
       "Outside the regular session Price, 1D and the returns end at the last regular close; a pre-market or after-hours print is shown beside it and never enters them."] },
   describe: (args, result) => themeReportTitle(args.rawArgument, (result?.metadata as { theme?: ThemeSummary } | undefined)?.theme),
   async load(args, context) {

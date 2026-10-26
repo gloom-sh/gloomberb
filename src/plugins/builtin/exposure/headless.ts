@@ -1,11 +1,12 @@
 import type { HeadlessPaneColumn, HeadlessPaneDefinition, HeadlessPaneRow } from "../../../types/plugin";
-import type { ExposureExtensionObservation, ExposurePayload, ExposureRequest } from "../../../api-client/exposure";
+import type { ExposureExtensionObservation, ExposurePayload, ExposureRequest, ExposureScenario } from "../../../api-client/exposure";
 import { cliTerminalWidth } from "../../../utils/cli-output";
 import { clipToDisplayWidth, displayWidth } from "../../../utils/format";
 import { fiscalLabel } from "../company-kpis/model";
 import { humanLabel } from "../shared/research-cells";
+import { freePreviewNote } from "../shared/free-preview";
 import { fetchExposure, fetchScenarios } from "./client";
-import { DEFAULT_SCENARIO, exposureCellText, parseCustomScenario, parseHoldings, pathRows, portfolioRows, scenarioTitle, tableRows, TABS, type ExposureRow } from "./model";
+import { DEFAULT_SCENARIO, exposureCellText, LIBRARY_SCENARIO_IDS, parseCustomScenario, parseHoldings, pathRows, portfolioRows, scenarioTitle, tableRows, TABS, type ExposureRow } from "./model";
 import { portfolioHoldings, watchlistHoldings } from "./holdings";
 import { describeCollections, findNamedCollection } from "../../../portfolio/collection-name";
 import { driverAmount, driverRows, driverScope } from "./drivers";
@@ -183,6 +184,45 @@ function portfolioColumns(data: ExposurePayload, concentration: boolean, items: 
 
 const CONCENTRATION_VIEWS = ["country", "supplier", "customer"] as const;
 
+/** The server's own line about a preview ("Free preview covers the first holding at depth 1. ..."): what the view is, not what failed. */
+const PREVIEW_NOTE = /^Free preview\b/i;
+
+/**
+ * A free preview's Pro line in the words every report uses, and what the
+ * server says about the preview as a note: its first sentence is the Pro
+ * line's, the rest (how the totals are weighted) stays. The other unknowns
+ * are the report's errors.
+ */
+function previewLines(data: Pick<ExposurePayload, "access" | "lockedHoldings" | "unknowns">): { lock: string[]; notes: string[]; unknowns: string[] } {
+  const preview = data.access === "preview";
+  const notes = preview ? data.unknowns.filter(line => PREVIEW_NOTE.test(line))
+    .map(line => line.replace(/^Free preview[^.]*\.\s*/i, "").trim()).filter(Boolean) : [];
+  const others = preview ? data.unknowns.filter(line => !PREVIEW_NOTE.test(line)) : data.unknowns;
+  const lock = preview ? [freePreviewNote({ shows: "the first holding, one relationship hop deep",
+    adds: `${data.lockedHoldings === 1 ? "the other holding and " : data.lockedHoldings > 1 ? `the other ${data.lockedHoldings} holdings and ` : ""}paths up to four hops` })] : [];
+  return { lock, notes, unknowns: others };
+}
+
+/** Library ids as a list: `a, b or c`. */
+function scenarioIds(library: readonly ExposureScenario[]): string {
+  const ids = library.flatMap(s => s.id ? [s.id] : []);
+  return ids.length > 1 ? `${ids.slice(0, -1).join(", ")} or ${ids.at(-1)}` : ids[0] ?? "";
+}
+
+/** An id the library does not have: the ids it does, the one it was likely meant for (`rates` for rates-up), and --custom. */
+function unknownScenarioMessage(id: string, library: readonly ExposureScenario[]): string {
+  const typed = id.trim().toLowerCase();
+  const near = typed ? library.filter(s => s.id?.split("-").includes(typed) || s.id?.startsWith(typed)) : [];
+  return [`Unknown scenario: ${id}.`, ...(near.length === 1 ? [`Did you mean ${near[0]!.id}?`] : []),
+    ...(library.length ? [`Scenarios: ${scenarioIds(library)}.`] : []), "Or describe your own with --custom."].join(" ");
+}
+
+/** The note a report run on the default scenario carries: which one it is, and how to pick another. */
+function defaultScenarioNote(scenario: ExposureScenario, library: readonly ExposureScenario[]): string {
+  const others = library.filter(s => s.id !== scenario.id);
+  return `${scenario.label} (${scenario.id}) is the default scenario. Pick another with --scenario${others.length ? ` (${scenarioIds(others)})` : ""}, or describe your own with --custom.`;
+}
+
 export const exposureHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle",
   freshness: { status: "not-a-feed", basis: "company disclosures" },
@@ -190,7 +230,8 @@ export const exposureHeadless: HeadlessPaneDefinition<"bundle"> = {
   discovery: { aliases: ["EXPO"], dataRequirements: ["Gloom Cloud geographic revenue, disclosed supply chains, KPIs, guidance and credit disclosures", "Portfolio NAV for local PORT weights"],
     limitations: ["Pro: full holdings and up to four-hop paths; free: one holding, one hop.", "Operating exposure estimates, never predicted stock returns.", "Missing relationships and sensitivities remain unknown.", "Basis and reporting period are kept separate."] },
   options: [
-    { key: "scenario", type: "string", settingKey: "scenario", defaultValue: "taiwan-disruption", description: "Library scenario id, or use --custom." },
+    { key: "scenario", type: "string", settingKey: "scenario", defaultValue: DEFAULT_SCENARIO.id!, values: LIBRARY_SCENARIO_IDS.map(value => ({ value })),
+      description: "Library scenario id, or use --custom." },
     { key: "custom", type: "string", settingKey: "customScenario", description: "JSON scenario with label and shocks; supports multiple shocks and explicit transmission assumptions." },
     { key: "depth", type: "integer", settingKey: "depth", defaultValue: 2, minimum: 1, maximum: 4, description: "Maximum relationship hops." },
     { key: "nav", type: "string", settingKey: "nav", description: "Positive portfolio NAV in its configured currency; required for PORT." },
@@ -217,8 +258,9 @@ export const exposureHeadless: HeadlessPaneDefinition<"bundle"> = {
       holdings = watchlistHoldings(tickers, findNamedCollection(ctx.config.watchlists, source[2])?.id ?? source[2]!);
     } else holdings = parseHoldings(input);
     const id = String(args.options.scenario ?? DEFAULT_SCENARIO.id);
-    const scenario = args.options.custom ? parseCustomScenario(String(args.options.custom)) : (await fetchScenarios(ctx.apiClient)).find(s => s.id === id);
-    if (!scenario) throw new Error(`Unknown scenario: ${id}`);
+    const library = args.options.custom ? [] : await fetchScenarios(ctx.apiClient);
+    const scenario = args.options.custom ? parseCustomScenario(String(args.options.custom)) : library.find(s => s.id === id);
+    if (!scenario) throw new Error(unknownScenarioMessage(id, library));
     const cashWeight = args.options.cash === undefined ? undefined : Number(args.options.cash);
     if (cashWeight !== undefined && (!Number.isFinite(cashWeight) || Math.abs(cashWeight) > 10)) throw new Error("Cash must be a NAV fraction between -10 and 10.");
     if (ctx.signal.aborted) throw new Error("Exposure analysis cancelled.");
@@ -227,8 +269,11 @@ export const exposureHeadless: HeadlessPaneDefinition<"bundle"> = {
     const stress = withNotes(portfolioRows(data, "stress"), row => row.incomplete ? row.unknowns : []);
     const concentrations = CONCENTRATION_VIEWS.flatMap(kind => portfolioRows(data, kind).map(row => ({ ...row, kind })));
     const holdingRows = tableRows(data), paths = pathRows(data);
+    const preview = previewLines(data);
+    // The library's first scenario runs unless another is asked for: the report says so, and what else there is.
+    const notes = [...(!args.options.custom && scenario.id === DEFAULT_SCENARIO.id ? [defaultScenarioNote(scenario, library)] : []), ...preview.notes];
     return { complete: data.lockedHoldings === 0 && data.holdings.every(h => h.status === "quantified") && data.unknowns.length === 0,
-      errors: [...data.unknowns, ...(data.access === "preview" ? ["Free preview: one holding, depth one. Full analysis requires Pro."] : [])],
+      errors: [...preview.lock, ...preview.unknowns], ...(notes.length ? { notes } : {}),
       sections: [
         { title: "Holdings", rows: data.holdings.map(h => ({ symbol: h.symbol, weight: h.weight, status: h.status, measures: h.measures, coverage: h.coverage, unknowns: h.unknowns })),
           textColumns: fitted(holdingColumns(data), holdingRows), textRows: textRows(holdingRows) },

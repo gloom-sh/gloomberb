@@ -35,7 +35,7 @@ function createCloudDataModule(): PluginModule {
     setup(ctx) {
       ctx.registerSyncTransport({
         id: "gloomberb-cloud",
-        isAvailable: () => apiClient.isVerified(),
+        isAvailable: () => apiClient.getVerifiedSessionIdentity() !== null,
         pullSnapshot: () => apiClient.getSyncSnapshot(),
         pushSnapshot: (snapshot, options) => apiClient.putSyncSnapshot(snapshot, options),
       });

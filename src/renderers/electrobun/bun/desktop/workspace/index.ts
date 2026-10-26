@@ -151,6 +151,7 @@ export function createDesktopWorkspace(
     paneState: clonePaneStateMap(sharedState.paneState),
     focusedPaneId: sharedState.focusedPaneId,
     statusBarVisible: sharedState.statusBarVisible,
+    brokerSyncErrors: { ...sharedState.brokerSyncErrors },
     mainStateRevision: sharedState.mainStateRevision,
     layoutChanged: sharedState.layoutChanged,
   });
@@ -179,6 +180,7 @@ export function createDesktopWorkspace(
         paneState: filterPaneState(syncedConfig.layout, clonePaneStateMap(snapshot.paneState)),
         focusedPaneId: snapshot.focusedPaneId,
         statusBarVisible: snapshot.statusBarVisible,
+        brokerSyncErrors: { ...snapshot.brokerSyncErrors },
         mainStateRevision: snapshot.mainStateRevision ?? currentRevision,
         layoutChanged: snapshot.layoutChanged,
       };

@@ -1,7 +1,5 @@
 # Chat input workload
 
-Linear: GLO-789, GLO-790
-
 Run `bun scripts/pane-chrome/chat-latency.ts --check --label chat-latency`.
 `--quick` uses 500 messages; `--recent` dates them within the last day instead
 of exercising the older-date labels. Set `PANE_CHROME_CACHE` for the output.
@@ -237,7 +235,7 @@ application renderer, stylesheet, component or sync source changed, but that
 source-level fact is not a substitute for those acceptance checks when a
 product fix is made.
 
-## Viewport-bounded transcripts (Linear: GLO-790)
+## Viewport-bounded transcripts
 
 The DOM transcript now uses the shared `WindowedList`, backed by the same
 windowing engine as the data table. The table's row component itself does
@@ -363,7 +361,7 @@ GPU presentation, production uploads and long-session leak behavior were not
 measured. The desktop persistence bridge remains a fixture stub. Evidence
 and raw profiles are local artifacts, not public market-data attachments.
 
-## Review follow-up (Linear: GLO-790)
+## Review follow-up
 
 Compared `8bb2ac742` with runtime `7e562fb21`, using the existing fixtures and
 checks. No stylesheet, token, layout, new visible text or terminal branch
@@ -457,3 +455,85 @@ Native WebKit, GPU presentation, production services, protected account
 content and long-session behavior were not exercised. Browser-default copy
 still only copies the browser's surviving selection, not unmounted history.
 No release, merge, deployment or production mutation was performed.
+
+## Covered floating windows
+
+### Reproduction and cause
+
+Reproduced on `fb1dd6289` in Chromium 155 and Linux Playwright WebKit, using
+both the desktop capability profile and the browser profile. Bringing other
+floating panes forward with Tab, then cycling back, leaves the channel list
+and composer intact but the transcript empty. Backgrounding the OS window is
+not necessary. Clicking saved-layout tabs alone did not reproduce it.
+
+`resolveFloating` sorts panes by z-index. Mapping that order into React
+children moves existing window nodes with `appendChild` or `insertBefore`
+when focus changes. Both engines reset nested scrollports during that move,
+without a scroll event or size change. At 500 messages, the transcript moves
+from scrollTop 31,032 to zero while its 19 mounted rows still describe the
+tail. Visible message text pixels fall to zero. A virtualized table and an
+ordinary article reader also lose their reading positions. This is not the
+hidden chart measurement problem from PR #1908.
+
+The shared shell now keeps DOM siblings in saved insertion order. CSS z-index
+still determines the front window, including the existing insertion-order
+tie break. Hit testing and occlusion retain their sorted inputs. The terminal
+continues mapping the original back-to-front list. No scroll nudges, remounts,
+new text, styling changes or chat-specific recovery timers are added.
+
+### Before and after
+
+The final fixture alternates five Tab returns and five real header clicks,
+with a table and an expanded article reader covering chat. It includes an
+arrival while covered, a scrolled-back return with another arrival, and real
+wheel scrolling of both sibling panes. It extends the existing harness:
+
+```sh
+bun scripts/pane-chrome/chat-latency.ts --pane-return --check
+bun scripts/pane-chrome/chat-latency.ts --webkit --pane-return --check
+bun scripts/pane-chrome/chat-latency.ts --layout-return --quick --check
+bun scripts/pane-chrome/chat-latency.ts --webkit --layout-return --quick --check
+```
+
+The same final fixture was run with main's z-index-ordered mapping restored
+as a control, and with the fix, on base `51365f9dc`. Each engine covers both
+profiles at 40/200/500 messages:
+
+| Check, per engine | Main ordering | Stable DOM ordering |
+|---|---:|---:|
+| Blank chat returns, out of 60 | 60 | 0 |
+| Failed state checks, out of 180 | 174 | 0 |
+| 500-message return scrollTop | 0 | 31,032 |
+| Table and article return scrollTop | 0 | 500 |
+
+The six initial captures pass on both sides. A failed return is photographed
+before any recovery input; history checks cannot silently pass when the
+transcript is already blank. Saved-layout clicking at 500 messages passes
+all 20 round trips per engine. Both return modes run in CI.
+
+### Other verification and limits
+
+- 326/326 existing pointer checks pass, including chat behavior, selection and
+  per-frame resize geometry. The 40/200/500-message typing/upload workloads
+  pass the bounded mounting and zero unchanged-row-render gates from PR #1845.
+- Three-pane lifecycle checks, including loading, error, stale results and
+  arrival during mount: 58/58 states in each engine. The detached WebKit run
+  passed desktop's 27 states; the local command deadline interrupted its
+  browser-profile run, so that part is not claimed complete.
+- Five alternating resize pairs: median main-thread ms/frame 3.21 to 3.38
+  (first page), 3.00 to 3.00 (500 messages); commits 19 to 19 and 19 to 20.
+  Individual pairs include +2 commits. No release jump; glyph-track checks
+  pass, including narrowing. These are headless measurements, not GPU frames.
+- Desktop view build and dead-code check pass. Local typecheck and full unit
+  suite were deferred on the busy shared host; clean-install CI remains a gate.
+- A targeted Chromium dark/light comparison at 640/1280 px covers chat's
+  signed-out state, news and its detail, the position form/table, and the
+  registry news plugin's six views: 40 picture pairs, 0/10 views changed,
+  identical token measures. No loading-timing differences needed classifying.
+  The full all-pane baseline audit reached 170 measurements and 343 pictures
+  before its 25-minute limit. It is incomplete, not an all-pane visual pass;
+  the full UI benchmark and token workflows remain required.
+- Linux WebKit reproduced the bug and passes the fix. The native Mac app,
+  macOS window background/foreground transitions, GPU presentation and
+  protected production content were not tested. Terminal ordering is unchanged
+  by inspection; a new byte-for-byte terminal capture was not made.

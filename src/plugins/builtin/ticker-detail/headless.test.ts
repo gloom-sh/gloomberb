@@ -1,7 +1,8 @@
 import { resolveCanonicalQuote } from "../../../market-data/quotes/resolution";
 import { expect, setSystemTime, test } from "bun:test";
 import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/headless";
-import { createTestDataProvider } from "../../../test-support/data-provider";
+import { createTestFinancials, createTestDataProvider, createTestQuote } from "../../../test-support/data-provider";
+import { HistoryRetentionError } from "../../../sources/history-retention";
 import { createTestHeadlessContext } from "../../../test-support/headless";
 import type { QuoteContribution } from "../../../types/financials";
 import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
@@ -42,6 +43,76 @@ test("financial statements keep raw values, dated growth cells, and formatted co
   const shares = result.rows.find((row) => String(row.id) === "dilutedShares:1")!;
   expect(shares["2025-12-31"]).toBe(12);
   expect((shares.cells as Array<{ growth: number }>)[0]!.growth).toBeCloseTo(0.2);
+});
+
+// EVN:ASX's statements stopped at 2024-06-30 in October 2026, with a FY2025 column of EPS alone, and nothing said so.
+test("financial statements say how old a latest period over 15 months old is, past a newer column with only some figures", async () => {
+  setSystemTime(new Date("2026-10-22T02:00:00Z"));
+  try {
+    const ctx = {
+      marketData: createTestDataProvider({
+        async getTickerFinancials() {
+          return {
+            financialCurrency: "AUD",
+            annualStatements: [
+              { date: "2023-06-30", totalRevenue: 2.29e9, netIncome: 1.6e8, totalAssets: 6.75e9, eps: 0.09 },
+              { date: "2024-06-30", totalRevenue: 3.3e9, netIncome: 4.2e8, totalAssets: 8.82e9, eps: 0.22 },
+              { date: "2025-06-30", eps: 0.46 },
+            ],
+            quarterlyStatements: [], priceHistory: [],
+          };
+        },
+      }),
+    } as HeadlessPaneContext;
+    const load = (statement: string) => financialStatementsHeadless.load(args(["EVN:ASX"], { period: "annual", statement }), ctx);
+    expect((await load("income")).notes?.[0]).toBe("Latest period 2024-06-30 is 27 months old; 2025-06-30 has only some figures.");
+    expect((await load("balance")).notes?.[0]).toBe("Latest period 2024-06-30 is 27 months old.");
+  } finally {
+    setSystemTime();
+  }
+});
+
+// The same statements with FY2025 and FY2026 filled from ASX, whose revenue is defined otherwise than the source's.
+test("years filled from the exchange are named with their lines, and growth is not read across the two sources", async () => {
+  setSystemTime(new Date("2026-10-22T02:00:00Z"));
+  try {
+    const filledFrom = (fields: Array<"totalRevenue" | "netIncome" | "totalAssets" | "totalLiabilities">) => ({
+      source: "asx" as const, page: "https://www.asx.com.au/markets/company/EVN", retrievedAt: "2026-10-22T01:00:00.000Z", fields,
+    });
+    const ctx = {
+      marketData: createTestDataProvider({
+        async getTickerFinancials() {
+          return {
+            financialCurrency: "AUD",
+            annualStatements: [
+              { date: "2024-06-30", currency: "AUD", totalRevenue: 3.304e9, netIncome: 4.22e8, totalAssets: 8.82e9, eps: 0.2195 },
+              { date: "2025-06-30", currency: "AUD", eps: 0.4641, totalRevenue: 4.351e9, netIncome: 9.26e8, filledFrom: filledFrom(["totalRevenue", "netIncome"]) },
+              { date: "2026-06-30", currency: "AUD", totalRevenue: 5.559e9, netIncome: 1.475e9, totalAssets: 10.546e9, totalLiabilities: 4.717e9,
+                filledFrom: filledFrom(["totalRevenue", "netIncome", "totalAssets", "totalLiabilities"]) },
+            ],
+            quarterlyStatements: [], priceHistory: [],
+          };
+        },
+      }),
+    } as HeadlessPaneContext;
+    const load = (statement: string) => financialStatementsHeadless.load(args(["EVN:ASX"], { period: "annual", statement }), ctx);
+    const income = await load("income");
+    expect(income.notes?.[0]).toBe("From ASX key statistics (read 2026-10-22): 2026-06-30 revenue, net income; 2025-06-30 revenue, net income.");
+    const growth = (metric: string) => Object.fromEntries((income.rows.find((row) => row.id === metric)!.cells as Array<{ date: string; growth: number | null }>)
+      .map(({ date, growth }) => [date, growth]));
+    // ASX's FY2026 against its FY2025, never against the source's FY2024; the source's EPS keeps its growth.
+    expect(growth("income:revenue")["2026-06-30"]).toBeCloseTo(5.559 / 4.351 - 1, 6);
+    expect(growth("income:revenue")["2025-06-30"]).toBeNull();
+    expect(growth("eps:1")["2025-06-30"]).toBeCloseTo(0.4641 / 0.2195 - 1, 6);
+    // JSON names each filled year's source and read time.
+    expect((income.metadata?.columns as Array<{ date: string; filledFrom?: unknown }>).map(({ date, filledFrom }) => [date, filledFrom ?? null]))
+      .toEqual([["2026-06-30", filledFrom(["totalRevenue", "netIncome", "totalAssets", "totalLiabilities"])], ["2025-06-30", filledFrom(["totalRevenue", "netIncome"])], ["2024-06-30", null]]);
+    expect((await load("balance")).notes?.[0]).toBe("From ASX key statistics (read 2026-10-22): 2026-06-30 total assets, total liabilities.");
+    // The cash flow statement shows net income, and none of ASX's other lines.
+    expect((await load("cashflow")).notes?.[0]).toBe("From ASX key statistics (read 2026-10-22): 2026-06-30 net income; 2025-06-30 net income.");
+  } finally {
+    setSystemTime();
+  }
 });
 
 test("financial exports distinguish provider dates from SEC period evidence and derived TTM", async () => {
@@ -161,6 +232,32 @@ test("historical prices use remembered exchanges and clip and sort the full OHLC
   expect(requests).toEqual([["ABC", "LSE", "1M"]]);
   expect(result.rows.map((row) => row.close)).toEqual([18, 22]);
   expect(result.rows[1]).toEqual({ date: "2026-03-09T00:00:00.000Z", open: 20, high: 23, low: 19, close: 22, volume: 100 });
+});
+
+test("historical prices print the prices the source meant, at one decimal count, not the float32 it served", async () => {
+  // Gloom Cloud serves float32 prices: gold's 4013.4 arrives as 4013.39990234375, silver's 57.131 as 57.13000107.
+  const served = (rows: Array<[string, number, number, number, number]>) => createTestHeadlessContext({
+    marketData: createTestDataProvider({
+      getPriceHistory: async () => rows.map(([date, open, high, low, close]) => ({ date: new Date(date), open, high, low, close, volume: 100 })),
+    }),
+  });
+  const gold = served([
+    ["2026-07-21", 4013.39990234375, 4092.5, 4003.300048828125, 4076.39990234375],
+    ["2026-07-22", 4084.699951171875, 4171.39990234375, 4081, 4151.89990234375],
+  ]);
+  const goldArgs = args(["GC=F"]);
+  const goldResult = await historicalPricesHeadless.load(goldArgs, gold);
+  const goldText = renderHeadlessPaneText(historicalPricesHeadless, goldResult, goldArgs, "HP GC=F");
+  for (const price of ["4,013.40", "4,092.50", "4,003.30", "4,076.40", "4,171.40", "4,081.00"]) expect(goldText).toContain(price);
+  expect(goldText).not.toMatch(/\d,\d{3}\.\d{3,}/);
+  // The rows hold the decimal each price is, as `history` does.
+  expect(goldResult.rows[0]).toMatchObject({ open: 4013.4, low: 4003.3, close: 4076.4 });
+  // A price under a hundred keeps the digits its tick needs.
+  const silver = served([["2026-07-21", 56.33499908, 59.02500153, 56.33499908, 58.83499908]]);
+  const silverText = renderHeadlessPaneText(historicalPricesHeadless, await historicalPricesHeadless.load(args(["SI=F"]), silver), args(["SI=F"]), "HP SI=F");
+  expect(silverText).toContain("56.335");
+  expect(silverText).toContain("59.025");
+  expect(silverText).not.toContain("56.33499908");
 });
 
 test("historical prices mark a monthly bar whose month runs on and date it by the last session it covers", async () => {
@@ -321,6 +418,55 @@ test("returns mark a monthly bar whose month runs on, as historical prices do", 
   }
 });
 
+test("HP and RETURN read a past window's bars: HP's with no quote and its drawdown, RETURN's in daily bars where hourly ones are not kept", async () => {
+  // Thursday 22 Oct 2026 while New York trades.
+  setSystemTime(new Date("2026-10-22T15:00:00Z"));
+  try {
+    const asked: string[] = [];
+    let quoted = false;
+    const now = Date.now();
+    // Each session from Fri 27 Feb to Tue 31 Mar 2015: 61 on 2 Mar, 58 on 10 Mar, 60 otherwise.
+    const sessions = Array.from({ length: 33 }, (_, day) => new Date(Date.UTC(2015, 1, 27 + day)))
+      .filter((date) => date.getUTCDay() !== 0 && date.getUTCDay() !== 6);
+    const close: Record<string, number> = { "2015-03-02": 61, "2015-03-10": 58 };
+    const march = sessions.map((date) => ({ date, close: close[date.toISOString().slice(0, 10)] ?? 60 }));
+    const ctx = createTestHeadlessContext({
+      resolveInstrument: async () => ({ symbol: "JPM", exchange: "NYSE" }),
+      marketData: createTestDataProvider({
+        getQuote: async () => { quoted = true; return createTestQuote({ symbol: "JPM" }); },
+        getDetailedPriceHistoryWithMetadata: async (_symbol, _exchange, start, end, interval) => {
+          asked.push(interval);
+          // Gloom Cloud keeps two years of hourly bars, and says so.
+          if (interval === "1h") {
+            throw new HistoryRetentionError({ version: 1, source: "gloom", symbol: "JPM", exchange: "NYSE", interval: "1h",
+              requestedStart: Math.floor(start.getTime() / 1000) * 1000, requestedEnd: Math.floor(end.getTime() / 1000) * 1000,
+              observedAt: now, availableStart: now - 730 * 86_400_000 });
+          }
+          return { points: march, resolution: "1d" };
+        },
+      }),
+    });
+    // The pane functions fill in the default range, which the window replaces.
+    const hp = await historicalPricesHeadless.load(args(["JPM"], { range: "3M", from: "2015-03-01", to: "2015-03-31" }), ctx);
+    expect([hp.rows.length, String(hp.rows[0]!.date).slice(0, 10), String(hp.rows.at(-1)!.date).slice(0, 10)]).toEqual([22, "2015-03-02", "2015-03-31"]);
+    expect(hp.metadata).toMatchObject({ range: null, requestedWindow: { from: "2015-03-01", to: "2015-03-31" },
+      notices: ["Max drawdown -4.9% (daily closes): peak 61.00 on 2015-03-02, trough 58.00 on 2015-03-10, not back to the peak by 2015-03-31"] });
+    expect(hp.freshness).toMatchObject({ status: "not-a-feed", basis: "daily bars, 2015-03-01 to 2015-03-31" });
+    expect(quoted).toBe(false);
+
+    const input = args(["JPM"], { range: "5D", interval: "1h", from: "2015-03-01", to: "2015-03-31" });
+    const returns = await returnsHeadless.load(input, ctx);
+    expect(asked).toEqual(["1d", "1h", "1d"]);
+    // Measured from Friday 27 Feb's close, the session before the window.
+    expect([returns.rows.length, returns.rows[0]!.time, returns.rows.at(-1)!.time]).toEqual([22, "2015-03-02", "2015-03-31"]);
+    expect(returns.rows[0]!.totalReturnPct).toBeCloseTo(100 / 60, 9);
+    expect(returns.metadata).toMatchObject({ interval: "1d", requestedInterval: "1h", requestedWindow: { from: "2015-03-01", to: "2015-03-31" } });
+    expect(returns.metadata!.notices).toContain("1H bars do not cover 2015-03-01 to 2015-03-31; these are 1D bars.");
+  } finally {
+    setSystemTime();
+  }
+});
+
 test("historical price exports preserve tiny OHLC values without changing raw data", async () => {
   const point = { date: new Date("2026-09-10"), open: 0.00000531, high: 0.00000542, low: 0.00000501, close: 0.00000532, volume: 123456 };
   const ctx = { marketData: createTestDataProvider({ getPriceHistory: async () => [point] }) } as HeadlessPaneContext;
@@ -383,4 +529,33 @@ test("historical prices count a coin's bars without volume as history does, not 
   expect(signedIn.notes).toBeUndefined();
   const hole = await load([bar("2026-10-18T13:00:00Z", 61_200_000), bar("2026-10-18T14:00:00Z"), bar("2026-10-18T15:00:00Z", 24_100_000), latest]);
   expect(hole.notes).toEqual(["1 of 4 bars has no reported volume (\u2014)"]);
+});
+
+
+test("FA cash-only runway labels its actual input and caps only formatted values; financials omit runway", async () => {
+  const financials = createTestFinancials({
+    annualStatements: [], quarterlyStatements: [{ date: "2026-06-30", totalRevenue: 0, cashAndCashEquivalents: 32_000, operatingCashFlow: -1 }],
+  });
+  const ctx = createTestHeadlessContext({ marketData: createTestDataProvider({ getTickerFinancials: async () => financials }) });
+  const request = args(["TEST:XETRA"], { statement: "liquidity", period: "quarterly" });
+  const report = await financialStatementsHeadless.load(request, ctx);
+  expect(report.notes?.join(" ")).toContain("cash (no ST investments reported)");
+  expect(report.rows.find((row) => row.id === "runway-quarter:0")?.metric).toMatch(/^Cash \(.*\)$/);
+  expect(report.rows.find((row) => row.id === "runway-quarter")?.cells).toEqual([
+    expect.objectContaining({ value: 96_000, formatted: "> 120 mo" }),
+  ]);
+  expect(report.rows.find((row) => row.id === "runway-ttm")?.cells).toEqual([
+    expect.objectContaining({ gap: "< 4 quarters" }),
+  ]);
+  // A total outside the displayed quarterly columns still governs the input label and fallback.
+  financials.annualStatements = [{ date: "2025-12-31", cashCashEquivalentsAndShortTermInvestments: 50_000 }];
+  const sparse = await financialStatementsHeadless.load(request, ctx);
+  expect(sparse.rows.find((row) => row.id === "runway-quarter:0")?.metric).toContain("Cash + ST Inv");
+  expect(sparse.rows.find((row) => row.id === "runway-quarter")?.cells).toEqual([
+    expect.objectContaining({ gap: "not reported" }),
+  ]);
+  financials.profile = { sector: "Financial Services" };
+  const bank = await financialStatementsHeadless.load(request, ctx);
+  expect(bank.rows.some((row) => String(row.id).startsWith("runway-"))).toBe(false);
+  expect(bank.notes?.some((note) => note.startsWith("Runway:"))).toBe(false);
 });

@@ -1,26 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import type { RemoteUiNodeSnapshot } from "../../remote/types";
-import {
-  assessPaneScreenshot,
-  buildDesktopShotPayload,
-  chartSeriesEvidenceWithinRange,
-  chartEvidenceMismatchesFor,
-  createDesktopShotBridge,
-  filledKeyValueCount,
-  isPaneScreenshotUsable,
-  missingActiveTabSelections,
-  resolveDesktopShotApiProxy,
-  shotDataEvidenceFor,
-  shotExpectedText,
-  shotSemanticRowCount,
-  shotTableRows,
-  shotUnavailableSymbols,
-  shotFreshness,
-  shownReportTab,
-  stripDesktopShotCredentials,
-  type PaneScreenshotExpectedChartEvidence,
-  type PaneScreenshotExpectedSelection,
-} from "./screenshot";
+import { assessPaneScreenshot, filledKeyValueCount, isPaneScreenshotUsable, missingActiveTabSelections, shotTableRows } from "./screenshot-assessment";
+import { buildDesktopShotPayload } from "./screenshot-payload";
+import { chartSeriesEvidenceWithinRange, chartEvidenceMismatchesFor } from "./screenshot-chart-evidence";
+import { createDesktopShotBridge, resolveDesktopShotApiProxy, stripDesktopShotCredentials } from "./screenshot-bridge";
+import { shotDataEvidenceFor, shotExpectedText, shotSemanticRowCount, shotUnavailableSymbols } from "./screenshot-data-evidence";
+import { shotFreshness, shownReportTab } from "./screenshot-render";
+import type { PaneScreenshotExpectedChartEvidence, PaneScreenshotExpectedSelection } from "./screenshot-types";
 import { paneEvidenceMismatches } from "./screenshot-evidence";
 import { shotRowsText } from "./index";
 import { commoditiesEnergyModule } from "../../plugins/builtin/commodities-energy";
@@ -44,6 +30,14 @@ import { optionsCalculatorHeadless } from "../../plugins/builtin/options-calcula
 import { valueOption, solveImpliedVolatility } from "../../plugins/builtin/shared/volatility";
 import { loadSeasonalityHistory } from "../../plugins/builtin/seasonality/client";
 import { createTestDataProvider, createTestFinancials, createTestQuote } from "../../test-support/data-provider";
+import { accountManagementModule } from "../../plugins/builtin/account-management";
+import { brokerManagerModule } from "../../plugins/builtin/broker-manager";
+import { changelogModule } from "../../plugins/builtin/changelog";
+import { chartComposerModule } from "../../plugins/builtin/chart-composer";
+import { connectionsModule } from "../../plugins/builtin/connections";
+import { helpModule } from "../../plugins/builtin/help";
+import { layoutManagerModule } from "../../plugins/builtin/layout-manager";
+import { pluginMarketplaceModule } from "../../plugins/builtin/plugin-marketplace";
 import { debtMaturitiesModule } from "../../plugins/builtin/debt-maturities";
 import { debtMaturitiesHeadless } from "../../plugins/builtin/debt-maturities/headless";
 import { traceBondsModule } from "../../plugins/builtin/trace-bonds";
@@ -536,6 +530,13 @@ describe("pane screenshot rendered readiness", () => {
     expect(isPaneScreenshotUsable({ ...rendered, emptyStateDetected: true })).toBe(false);
   });
 
+  test("a surface to operate needs no rows or empty-state marker, only that it rendered", () => {
+    const layouts = { ...rendered, interactive: true, rowCount: 0, emptyStateDetected: true };
+    expect(isPaneScreenshotUsable(layouts)).toBe(true);
+    expect(isPaneScreenshotUsable({ ...layouts, loadingStateDetected: true })).toBe(false);
+    expect(isPaneScreenshotUsable({ ...layouts, errorStateDetected: true })).toBe(false);
+  });
+
   test("preserves mapped capability completeness and evidence checks", () => {
     expect(isPaneScreenshotUsable({ ...rendered, complete: false })).toBe(false);
     expect(isPaneScreenshotUsable({ ...rendered, semanticMismatch: true })).toBe(false);
@@ -593,7 +594,7 @@ describe("pane screenshot market bridge", () => {
   /**
    * The page can only reach the cloud API on its own, and the cloud carries no
    * per-rating price targets. Serving research requests from the router is what
-   * keeps a screenshot showing the same values as `gloomberb fn`.
+   * keeps a screenshot showing the same values as `gloom fn`.
    */
   test("answers research requests from the routed provider and refuses anything else", async () => {
     const calls: Array<[string, unknown[]]> = [];
@@ -1264,6 +1265,28 @@ test("an Issuer Debt or TRACE capture is dated by its own data, never by the iss
   }, NOW);
   const trace = shotFreshness({ pane, template: traceBondsModule.paneTemplates![0]! }, { ...payload, instrumentFinancials: [] }, render, [], sales, NOW);
   expect(trace.variants[0]).toBe("Source: FINRA · Mon 27 Jul 2026 · not a live feed (last sales)");
+});
+
+test("a pane with no market data is not dated by the quotes the page loaded for something else (CHG, BR, ACM, CAT)", () => {
+  const NOW = Date.parse("2026-10-24T00:23:00Z");
+  // A portfolio holding's quote, which the page loads whatever pane it shows.
+  const held = createTestQuote({ symbol: "AAPL", dataSource: "delayed", delayMinutes: 15, lastUpdated: NOW - 60_000, sessionExchange: "NASDAQ", marketState: "CLOSED" } as never);
+  const payload = { financials: [], instrumentFinancials: [] } as unknown as Pick<DesktopPaneShotPayload, "financials" | "instrumentFinancials">;
+  const render = { semanticUi: [], footerText: "", rows: [] };
+  const line = (resolved: Parameters<typeof shotFreshness>[0]) => shotFreshness(resolved, payload, render, [held], undefined, NOW);
+  // A pane that says nothing about its data is dated by the quote, which is what a quote board wants.
+  expect(line({ pane: { reportFreshness: undefined } as ResolvedPaneFunction["pane"] }).variants[0]).toContain("delayed");
+  const chartTemplate = chartComposerModule.paneTemplates!.find((template) => template.shortcut?.prefix === "CAT")!;
+  const statics = [
+    ...[changelogModule, brokerManagerModule, accountManagementModule, helpModule, pluginMarketplaceModule, connectionsModule, layoutManagerModule]
+      .map((module) => ({ pane: module.panes![0]! as ResolvedPaneFunction["pane"] })),
+    { pane: chartComposerModule.panes![0]! as ResolvedPaneFunction["pane"], template: chartTemplate },
+  ];
+  for (const resolved of statics) {
+    const lines = line(resolved).variants.join("\n");
+    expect(lines, resolved.pane.id).toContain("not a live feed");
+    expect(lines, resolved.pane.id).not.toMatch(/delayed|markets? closed/);
+  }
 });
 
 describe("a board that grows to show every row (FUT)", () => {

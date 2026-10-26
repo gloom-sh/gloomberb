@@ -13,7 +13,8 @@ import { useAsyncResource } from "../../../react/async-resource";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, TextAttributes } from "../../../ui";
+import { Box, TextAttributes, useUiCapabilities } from "../../../ui";
+import { withCountryFlag, withFlagRoom } from "../../../components/ui/country-flag";
 import { usePluginPaneState } from "../../runtime";
 import { fetchBalances } from "./client";
 import {
@@ -39,11 +40,16 @@ export function JodiPane({ focused, width, height }: PaneProps) {
   const balances = resource.data;
   const gas = balances?.gas ?? null;
   const [storedTab, setTab] = usePluginPaneState<string>("commodity", "oil");
-  const tab: BalanceCommodity = gas && storedTab === "gas" ? "gas" : "oil";
+  const tab: BalanceCommodity = storedTab === "gas" ? "gas" : "oil";
   const board = tab === "gas" ? gas : balances?.oil ?? null;
   const rows = board?.rows ?? EMPTY_ROWS;
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("selected", null);
-  const columns = useMemo(() => balanceColumns(tab), [tab]);
+  // The desktop and the web lead each country with its flag.
+  const flagged = useUiCapabilities().nativePaneChrome === true;
+  const columns = useMemo(
+    () => balanceColumns(tab).map((column) => (column.id === "country" ? withFlagRoom(column, flagged) : column)),
+    [flagged, tab],
+  );
   const refresh = useCallback(() => {
     resource.reload();
   }, [resource.reload]);
@@ -54,7 +60,7 @@ export function JodiPane({ focused, width, height }: PaneProps) {
   const selectTab = useCallback((value: string) => {
     setTab(value === "gas" ? "gas" : "oil");
   }, [setTab]);
-  const { strip: tabs, rows: tabRows } = usePaneTabs(gas ? {
+  const { strip: tabs, rows: tabRows } = usePaneTabs({
     tabs: TABS,
     activeValue: tab,
     onSelect: selectTab,
@@ -62,7 +68,7 @@ export function JodiPane({ focused, width, height }: PaneProps) {
     compact: true,
     variant: "underline",
     queryBarWidth: width,
-  } : null);
+  });
   const info = useMemo(
     () => (resource.error || !board ? [] : [{ id: "month", parts: [{ text: formatBalanceMonth(board.month) }] }]),
     [board, resource.error],
@@ -84,7 +90,7 @@ export function JodiPane({ focused, width, height }: PaneProps) {
     });
     switch (column.id) {
       case "country":
-        return { text: row.country, color: colors.textBright, attributes: TextAttributes.BOLD };
+        return withCountryFlag({ text: row.country, color: colors.textBright, attributes: TextAttributes.BOLD }, row.country, flagged);
       case "month":
         return { text: row.month ? formatBalanceMonth(row.month) : "—", value: row.month, color: colors.textMuted };
       case "production":
@@ -102,7 +108,7 @@ export function JodiPane({ focused, width, height }: PaneProps) {
       default:
         return { text: "" };
     }
-  }, [colors]);
+  }, [colors, flagged]);
 
   if (!balances) {
     return (
@@ -139,7 +145,7 @@ export function JodiPane({ focused, width, height }: PaneProps) {
         onRootKeyDown={onRootKeyDown}
         renderCell={renderCell}
         selectedTextOverridesCellColor
-        emptyStateTitle="No balances for this month."
+        emptyStateTitle={board ? "No balances for this month." : tab === "gas" ? "Gas balances unavailable." : "Oil balances unavailable."}
       />
     </Box>
   );

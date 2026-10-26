@@ -57,6 +57,21 @@ describe("AssetDataRouter chart history", () => {
     }
   });
 
+  test("an option contract's chart answers mid-session however long since its last trade", async () => {
+    // 13:00 New York; the put traded at the open and not since.
+    Date.now = () => Date.parse("2026-09-10T17:00:00Z");
+    const persistence = new AppPersistence(createTempDbPath("quiet-option-history"));
+    const opening = ["2026-09-10T13:30:00Z", "2026-09-10T13:31:00Z"].map((date) => ({ date: new Date(date), close: 2.45 }));
+    const router = new AssetDataRouter({ ...fallbackProvider, async getPriceHistory() { return opening; } }, [], persistence.resources);
+    try {
+      expect((await router.getPriceHistory("BRZE261120P00047500", "", "1D")).map((point) => point.close)).toEqual([2.45, 2.45]);
+      // The same bars for a share are a source behind the market.
+      await expect(router.getPriceHistory("BRZE", "NASDAQ", "1D")).rejects.toThrow("No history provider available for BRZE");
+    } finally {
+      persistence.close();
+    }
+  });
+
   test("does not log expected provider misses for missing chart data", async () => {
     const noisyProvider: DataProvider = {
       ...fallbackProvider,
@@ -248,7 +263,7 @@ describe("AssetDataRouter chart history", () => {
         namespace: "market",
         kind: "price-history",
         entityKey: "META",
-        variantKey: "exchange=NASDAQ;range=1M;resolution=5m;version=6",
+        variantKey: "exchange=NASDAQ;range=1M;resolution=5m;version=7",
         sourceKey: "provider:gloomberb-cloud",
       },
       [
@@ -283,8 +298,8 @@ describe("AssetDataRouter chart history", () => {
       .query("SELECT variant_key FROM resource_cache WHERE namespace = ? AND kind = ? AND entity_key = ? ORDER BY variant_key")
       .all("market", "price-history", "META") as Array<{ variant_key: string }>;
     expect(cachedRows.map((row) => row.variant_key)).toEqual([
-      "exchange=NASDAQ;range=1M;resolution=5m;version=6",
       "exchange=NASDAQ;range=1M;resolution=5m;version=7",
+      "exchange=NASDAQ;range=1M;resolution=5m;version=8",
     ]);
 
     persistence.close();
@@ -335,7 +350,7 @@ describe("AssetDataRouter chart history", () => {
       .all("market", "price-history", "FTC") as Array<{ variant_key: string }>;
     expect(cachedRows.map((row) => row.variant_key)).toEqual([
       "exchange=LSE;range=ALL;resolution=1wk",
-      "exchange=LSE;range=ALL;resolution=1wk;version=7;unit=GBP",
+      "exchange=LSE;range=ALL;resolution=1wk;version=8;unit=GBP",
     ]);
 
     persistence.close();

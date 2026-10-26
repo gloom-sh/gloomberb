@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { getListingSymbol, getListingSymbolsToTry, listingSuffixExchange } from "./listing-symbols";
+import { getListingSymbol, getListingSymbolsToTry, listingSuffixExchange, listingSuffixVenue } from "./listing-symbols";
 
 describe("Listing symbol aliases", () => {
   test("canonicalizes MIC aliases before applying exchange suffixes", () => {
@@ -32,5 +32,21 @@ describe("Listing symbol aliases", () => {
     expect(getListingSymbol("TTS:XTSX", "TSXV")).toBe("TTS.V");
     expect(getListingSymbolsToTry("FISH", "TSXV", { exactExchange: true })).toEqual(["FISH.V"]);
     expect(listingSuffixExchange("FISH.V")).toBe("TSXV");
+  });
+
+  test("a vendor's suffix reads as its venue when a venue agrees, or alone when it is two letters or more; a one-letter suffix may be a US class", () => {
+    expect(listingSuffixVenue("GARAN.IS")).toEqual({ symbol: "GARAN", exchange: "BIST" });
+    expect(listingSuffixVenue("7203.T", "JPX")).toEqual({ symbol: "7203", exchange: "JPX" });
+    // A broker's SMART routing names no venue; the suffix does.
+    expect(listingSuffixVenue("RY.TO", "SMART")).toEqual({ symbol: "RY", exchange: "TSX" });
+    // A venue code the table does not know is no answer: the suffix names the venue.
+    expect(listingSuffixVenue("GARAN.IS", "IST")).toEqual({ symbol: "GARAN", exchange: "BIST" });
+    expect(listingSuffixVenue("NPN.JO", "JNB")).toEqual({ symbol: "NPN", exchange: "JSE" });
+    expect(listingSuffixVenue("GARAN.IS", "NYSE")).toBeNull();
+    // McCormick's voting class on NYSE, not a TSX Venture listing; alone, a one-letter suffix waits for a venue.
+    expect(listingSuffixVenue("MKC.V", "NYSE")).toBeNull();
+    expect(listingSuffixVenue("MKC.V")).toBeNull();
+    expect(listingSuffixVenue("7203.T")).toBeNull();
+    expect(listingSuffixVenue("BRK.B")).toBeNull();
   });
 });

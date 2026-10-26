@@ -60,7 +60,14 @@ test("the Cloud boundary rejects unordered days, bad stances and non-X links", (
 
 test("a server without the endpoint reads as unavailable while sign-in errors pass through", async () => {
   await expect(fetchSocialMentions("NVDA", "1y", { getCloudSocialMentions: async () => { throw new ApiRequestError("missing", 404); } }))
-    .rejects.toThrow("not available");
+    .rejects.toThrow("social mentions unavailable.");
   const denied = new ApiRequestError("Unauthorized", 401);
   await expect(fetchSocialMentions("NVDA", "1y", { getCloudSocialMentions: async () => { throw denied; } })).rejects.toBe(denied);
+});
+
+
+test("social server failures keep the original error instead of becoming unavailable", async () => {
+  for (const failure of [new ApiRequestError("Upstream timed out", 503), new ApiRequestError("Invalid range", 400), new Error("Network connection lost")]) {
+    await expect(fetchSocialMentions("NVDA", "1y", { getCloudSocialMentions: async () => { throw failure; } })).rejects.toBe(failure);
+  }
 });

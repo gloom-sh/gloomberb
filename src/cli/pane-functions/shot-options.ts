@@ -1,5 +1,5 @@
 import { typoDistance } from "../../utils/typo-distance";
-import { findCapabilityOption } from "./capabilities";
+import { findCapabilityOption, optionFlag } from "./capabilities";
 import type { ResolvedPaneFunction } from "./resolver";
 
 /** An argument as a shell reads it back: bare when it is one word, in quotes when it is not. */
@@ -40,13 +40,18 @@ export function shotOptionRefusal(
   options: Record<string, string | true>,
   { explain = false }: { explain?: boolean } = {},
 ): string | null {
-  const report = (...flags: string[]) => ["gloomberb fn", resolved.token, rawArgument.trim() && shellWord(rawArgument.trim()), ...flags]
+  const report = (...flags: string[]) => ["gloom fn", resolved.token, rawArgument.trim() && shellWord(rawArgument.trim()), ...flags]
     .filter(Boolean).join(" ");
   const given: Array<[string, string | true]> = [...explain ? [["explain", true] as [string, true]] : [], ...Object.entries(options)];
+  // The report is run with every option only it reads, so HP's `--from 2007 --to 2009` keeps its end.
+  const reportFlags = given.flatMap(([key, value]) => {
+    const option = findCapabilityOption(resolved.capability, key);
+    return option?.shot ? [optionFlag(option.key), value === true ? "" : shellWord(value)] : [];
+  });
   for (const [key, value] of given) {
     const option = findCapabilityOption(resolved.capability, key);
     if (option?.shot) {
-      return `${resolved.token}'s pane does not draw --${option.key}: it ${option.shot.reportOnly}. Drop it from shot, or run the report: ${report(`--${option.key}`, value === true ? "" : shellWord(value))}`;
+      return `${resolved.token}'s pane does not draw --${option.key}: it ${option.shot.reportOnly}. Drop it from shot, or run the report: ${report(...reportFlags)}`;
     }
     if (option) continue;
     const row = GLOBAL_ROW_OPTIONS[key];

@@ -30,6 +30,7 @@ import { parseHistorySession } from "../../market-data/history-session";
 import { quoteMetadataFromQuote, quoteMetadataMatchesTarget } from "../../market-data/quotes/metadata";
 import type { InstrumentSearchResult } from "../../types/instrument";
 import type { TickerChanges } from "../../types/ticker-changes";
+import type { IssuerListings } from "../../types/issuer-listings";
 import {
   apiClient,
   type CloudAnalystResearchPayload,
@@ -44,7 +45,7 @@ import { resolveCurrencyUnit } from "../../utils/currency-units";
 import { isRoundTheClockCoin } from "../../utils/crypto-pair";
 import { canonicalExchange, canonicalTickerKey, parsePublicTickerKey } from "../../utils/exchanges";
 import { normalizePriceHistory, priceHistoryIntervalMs, reachesLatestSettledSession } from "../../utils/price-history";
-import { createProviderMiss, ProviderBusyError, providerMissReason } from "../provider-errors";
+import { createProviderMiss, ProviderBusyError, providerMissReason, StaleHistoryError } from "../provider-errors";
 import { parseListingDelisting } from "../../market-data/quotes/delisting";
 import { isRetryableApiError } from "../../api-client/errors";
 import { assertSecRegistrantMatches } from "../sec-registrant";
@@ -56,8 +57,9 @@ import { hongKongListingCode, tickerHasListingSuffix } from "../listing-symbols"
 import { parseSecAcceptanceTime } from "../sec-edgar/acceptance-time";
 import { hasMalformedIntradayHistory } from "../../time-series/history-quality";
 import {
-  cloudNewsParams,
+  cloudNewsReadArticles,
   mapCloudNewsArticle,
+  readCloudNews,
 } from "./news";
 import {
   GLOOMBERB_CLOUD_PROVIDER_ID,
@@ -76,6 +78,7 @@ import {
 import {
   getPerpetualHistory,
   getPerpetualQuote,
+  streamedPerpetualQuote,
   namesPerpetualMarket,
   perpetualTarget,
   searchPerpetualMarkets,
@@ -122,6 +125,7 @@ function mapCloudSecFiling(item: {
   filingUrl: string;
   primaryDocumentUrl?: string;
   fileNumber?: string;
+  fundSeries?: boolean;
 }): SecFilingItem {
   return {
     accessionNumber: item.accessionNumber,
@@ -138,6 +142,7 @@ function mapCloudSecFiling(item: {
     primaryDocumentUrl: item.primaryDocumentUrl,
     // Absent from an older server: no file number is not the same as an empty one.
     ...(typeof item.fileNumber === "string" ? { fileNumber: item.fileNumber } : {}),
+    ...(typeof item.fundSeries === "boolean" ? { fundSeries: item.fundSeries } : {}),
   };
 }
 
@@ -202,7 +207,7 @@ function mapCloudPriceHistory(
   // or a stale answer without bars, are a miss.
   const stale = isStaleCloudResponse(response);
   if (stale && response.status !== "success" && response.status !== "partial") {
-    throw createProviderMiss(`Cloud chart data is stale for ${ticker}`);
+    throw new StaleHistoryError(`Cloud chart data is stale for ${ticker}`);
   }
   if (response.status === "unsupported" && response.reasonCode === "HISTORY_RETENTION" && requestedEnd) {
     const retention = parseHistoryRetention(response.historyRetention);
@@ -227,7 +232,7 @@ function mapCloudPriceHistory(
     ).map((point) => mapPricePoint(point, divisor, exchange, coin)),
   );
   if (stale && !reachesLatestSettledSession(points, Date.now(), { symbol: ticker, exchange, intervalMs: priceHistoryIntervalMs(interval) })) {
-    throw createProviderMiss(`Cloud chart data is stale for ${ticker}`);
+    throw new StaleHistoryError(`Cloud chart data is stale for ${ticker}`);
   }
   const intraday = /^\d+(min|h)$/i.test(interval);
   // Daily bars answering an intraday range: the listing has no intraday bars.
@@ -718,6 +723,12 @@ export class GloomberbCloudProvider implements AssetDataProvider {
     return cloudTickerChangesBatch(symbols, options);
   }
 
+  async getIssuerListings(symbol: string, exchange = "", options: { signal?: AbortSignal } = {}): Promise<IssuerListings | null> {
+    const response = await apiClient.getCloudIssuerListings(symbol, exchange, options);
+    // "empty" is an answer: the service holds no company for the listing.
+    return response.status === "success" || response.status === "partial" ? response.data : null;
+  }
+
   async searchBatch(queries: string[], options: { limit?: number; signal?: AbortSignal } = {}): Promise<Map<string, InstrumentSearchResult[]> | null> {
     const answers = await cloudSearchBatch(queries, options);
     if (!answers) return null;
@@ -878,14 +889,23 @@ export class GloomberbCloudProvider implements AssetDataProvider {
     targets: QuoteSubscriptionTarget[],
     onQuote: (target: QuoteSubscriptionTarget, quote: Quote) => void,
   ): () => void {
-    // Perpetual markets are polled, a minute apart at the venue; the quote stream carries none.
-    const { valid } = cloudBatchTargets(splitPerpetualTargets(targets).others);
+    // A perpetual market streams as its listing on its venue (BTC:HYPERLIQUID): Gloom Cloud follows the venue's own
+    // socket for it, once the server says it can (the socket holds it back until then).
+    const { perpetuals, others } = splitPerpetualTargets(targets);
+    const valid: Array<{ target: QuoteSubscriptionTarget; request: { symbol: string; exchange?: string } }> = [
+      ...cloudBatchTargets(others).valid,
+      ...perpetuals.flatMap((target) => {
+        const listing = perpetualTarget(target.symbol, target.exchange);
+        return listing ? [{ target, request: { symbol: listing.symbol, exchange: listing.exchange } }] : [];
+      }),
+    ];
     if (!valid.length) return () => {};
     // No-op without a session credential; covers browser cookie sessions too.
     void apiClient.ensureVerifiedSession().catch(logFailure("sources.gloomberb-cloud.index", "Verifying the quote streaming session failed"));
     const targetMap = new Map<string, QuoteSubscriptionTarget[]>();
-    for (const { target } of valid) {
-      const key = quoteTargetKey(target.symbol, target.exchange);
+    for (const { target, request } of valid) {
+      // A perpetual comes back as its listing, whatever form it was asked for in.
+      const key = perpetuals.includes(target) ? quoteTargetKey(request.symbol, request.exchange) : quoteTargetKey(target.symbol, target.exchange);
       const matches = targetMap.get(key) ?? [];
       matches.push(target);
       targetMap.set(key, matches);
@@ -909,7 +929,10 @@ export class GloomberbCloudProvider implements AssetDataProvider {
         }
         const matchedKey = cloudResponseTargetKey(key, requested);
         const matches = matchedKey ? targetMap.get(matchedKey) ?? [] : [];
-        const mappedQuote = mapQuote(quote);
+        if (!matches.length) return;
+        const listing = perpetualTarget(target.symbol, target.exchange);
+        const mappedQuote = listing ? streamedPerpetualQuote(quote, listing) : mapQuote(quote);
+        if (!mappedQuote) return;
         for (const match of matches) {
           onQuote(match, retainRequestedQuoteSymbol(mappedQuote, match.symbol));
         }
@@ -934,21 +957,21 @@ export function createGloomberbCloudCapabilities(provider = createGloomberbCloud
           return normalizeNewsFeed(query) === "ticker" ? !!query.ticker && !predictionMarketListing(query.ticker, query.exchange) : true;
         },
         async fetchNewsPage(query: NewsQuery) {
-          const response = await withCloudFallback(
-            () => apiClient.getCloudNews(cloudNewsParams(query)),
+          const read = await withCloudFallback(
+            () => readCloudNews(apiClient, query),
             "Cloud news is unavailable",
           );
           return {
-            articles: response.items.map((item) => mapCloudNewsArticle(item, query.ticker)),
-            nextCursor: response.nextCursor ?? null,
+            articles: cloudNewsReadArticles(read, query.ticker),
+            nextCursor: read.nextCursor ?? null,
           };
         },
         async fetchNews(query: NewsQuery): Promise<NewsArticle[]> {
-          const response = await withCloudFallback(
-            () => apiClient.getCloudNews(cloudNewsParams(query)),
+          const read = await withCloudFallback(
+            () => readCloudNews(apiClient, query),
             "Cloud news is unavailable",
           );
-          return response.items.map((item) => mapCloudNewsArticle(item, query.ticker));
+          return cloudNewsReadArticles(read, query.ticker);
         },
         async fetchNewsStory(storyId: string): Promise<NewsArticle | null> {
           const story = await withCloudFallback(

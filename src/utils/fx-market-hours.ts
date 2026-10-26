@@ -1,5 +1,5 @@
 import { canonicalExchange, parsePublicTickerKey } from "./exchanges";
-import { zonedDateTimeParts, zonedWallClockToUtcMs } from "./zoned-date-time";
+import { zonedDateKey, zonedDateTimeParts, zonedWallClockToUtcMs } from "./zoned-date-time";
 
 const HOUR_MS = 60 * 60_000;
 const DAY_MS = 24 * HOUR_MS;
@@ -27,6 +27,38 @@ export function isFxMarketOpen(time: number): boolean {
   if (weekday === "Sun") return hour >= 17;
   if (weekday === "Fri") return hour < 17;
   return true;
+}
+
+/**
+ * The FX trading day a print made at `time` belongs to, as "YYYY-MM-DD": the
+ * day rolls at 17:00 New York time, so Wednesday 18:00 New York is
+ * Thursday's. A print stamped exactly 17:00:00 is that day's close, so it is
+ * still that day's.
+ */
+export function fxTradingDay(time: number): string {
+  // The roll is 17:00, seven hours before New York's midnight, daylight saving or not.
+  return zonedDateKey(time - 1 + 7 * HOUR_MS, NEW_YORK);
+}
+
+/**
+ * The FX trading day of a print made at `time` (fxTradingDay), or null for a
+ * print made while the market is shut: from just after Friday's 17:00 New
+ * York close, whose own print still counts, through Sunday's 17:00 open. A
+ * tick over the weekend belongs to no trading day.
+ */
+export function fxPrintTradingDay(time: number): string | null {
+  return Number.isFinite(time) && isFxMarketOpen(time - 1) ? fxTradingDay(time) : null;
+}
+
+/**
+ * The FX trading day the market is on at `time`: the day in progress while it
+ * trades, or the Friday that closed it while it is shut.
+ */
+export function fxTradingDayAt(time: number): string | null {
+  const day = fxPrintTradingDay(time);
+  if (day != null || !Number.isFinite(time)) return day;
+  const shut = currentFxClosureStart(time - 1);
+  return shut != null ? fxTradingDay(shut) : null;
 }
 
 /** The latest 17:00 New York on `weekday` (0 is Sunday) at or before `time`. */

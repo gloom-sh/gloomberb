@@ -1,3 +1,4 @@
+import { isSettlementStamp } from "../../../../utils/option-expiry";
 import { zonedWallClockToUtcMs } from "../../../../utils/zoned-date-time";
 
 const DAY_MS = 86_400_000;
@@ -133,6 +134,25 @@ export function valueOption(input: OptionPricingInput): OptionValuation {
   };
 }
 
+/**
+ * The chance the underlying closes above `strike` at expiry under the same
+ * Black-Scholes-Merton model: N(d2), the risk-neutral probability a call there
+ * finishes in the money. 1 or 0 when nothing is left uncertain (expiry, zero
+ * volatility), by where the discounted forward sits.
+ */
+export function probabilityAbove(input: Omit<OptionPricingInput, "side">): number {
+  const spot = Math.max(0, finite(input.spot));
+  const strike = Math.max(0, finite(input.strike));
+  const years = Math.max(0, finite(input.daysToExpiry)) / DAYS_PER_YEAR;
+  const rate = finite(input.rate);
+  const dividendYield = finite(input.dividendYield);
+  const volatility = Math.max(0, finite(input.volatility));
+  if (strike <= 0) return 1;
+  if (years <= 0 || volatility <= 0 || spot <= 0) return spot * Math.exp((rate - dividendYield) * years) > strike ? 1 : 0;
+  const d2 = (Math.log(spot / strike) + (rate - dividendYield - volatility * volatility / 2) * years) / (volatility * Math.sqrt(years));
+  return normalCdf(d2);
+}
+
 export interface ImpliedVolatilityResult {
   volatility: number | null;
   /** Why no volatility could be solved, phrased for the pane body. */
@@ -194,9 +214,14 @@ export function solveImpliedVolatility(
   return { volatility: (low + high) / 2, note: null };
 }
 
-/** Time to the option date's 16:00 ET close, preserving live 0DTE time value. */
+/**
+ * Time to the option date's 16:00 ET close, preserving live 0DTE time value.
+ * A settlement stamp is the settlement itself: Deribit's expiries settle at
+ * 08:00 UTC, the time their stamp carries (`isSettlementStamp`).
+ */
 export function daysToExpiryFrom(expirationSeconds: number, now: number): number {
   if (!Number.isFinite(expirationSeconds)) return 0;
+  if (isSettlementStamp(expirationSeconds)) return Math.max(0, (expirationSeconds * 1000 - now) / DAY_MS);
   const expirationDate = new Date(expirationSeconds * 1000);
   const close = zonedWallClockToUtcMs(
     OPTION_EXPIRY_TIME_ZONE,

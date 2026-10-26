@@ -37,3 +37,12 @@ test("OVME rejects cash schedules under the closed form and unavailable surface 
   expect(unavailable.unavailableSymbols).toEqual(["AAPL"]);
   expect(unavailable.errors?.length).toBeGreaterThan(0);
 });
+
+test("OVME echoes each input at the precision it was entered, volatility and rates in percent", async () => {
+  const result = await load({ spot: "73.150", strike: "70", days: "30", volatility: "60", rate: "4.25", dividendYield: "0" });
+  const inputs = result.sections[0]!;
+  const echo = Object.fromEntries((("entries" in inputs ? inputs.entries : undefined) ?? []).map((entry) => [entry.label, entry.formatted ?? entry.value]));
+  expect(echo).toMatchObject({ Spot: "73.150", Strike: "70", "Days to expiry": "30", Volatility: "60%", "Annual rate": "4.25%", "Annual dividend yield": "0%" });
+  // The model still reads decimals.
+  expect(result.metadata?.inputs).toMatchObject({ spot: 73.15, volatility: 0.6, rate: 0.0425 });
+});

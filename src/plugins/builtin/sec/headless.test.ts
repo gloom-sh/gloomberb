@@ -4,7 +4,7 @@ import type { HeadlessBundleSection, HeadlessPaneLoadArgs } from "../../../types
 import { ETF_FILING_FORMS, SEC_FILING_FETCH_LIMIT } from "./forms";
 import { createFundHeadless, createSecHeadless, fundFilingsEmpty } from "./headless";
 import type { FundFactsPayload } from "../../../api-client/fund-facts";
-import { FUND_FACTS_UNAVAILABLE } from "./fund-facts";
+import { fetchFundFacts, FUND_FACTS_UNAVAILABLE } from "./fund-facts";
 import { buildSecFilingRows, getFilingColumnText, secAcceptanceTimestamp } from "./model";
 import { createTestHeadlessContext } from "../../../test-support/headless";
 
@@ -144,6 +144,15 @@ test("ticker reuse preserves the actual filing issuer rather than the requested 
   expect(result.metadata?.issuers).toEqual([{ cik: "0001826011", companyName: "Banzai International, Inc." }]);
 });
 
+// `fn SEC NST.AX` ended on "not covered by SEC" with nowhere to read the company's announcements.
+test("a listing abroad with no SEC filings links its exchange's announcements page; a US one keeps the generic empty", async () => {
+  const headless = createSecHeadless({ loadFilings: async () => [] });
+  const load = (symbol: string) => headless.load({ ...args(5), argument: symbol, symbols: [symbol] }, createTestHeadlessContext());
+  expect((await load("NST:ASX")).empty).toBe("NST:ASX files no SEC reports. ASX announcements: https://www.asx.com.au/markets/trade-our-cash-market/announcements.nst");
+  expect((await load("SHOP:TSX")).empty).toBe("SHOP:TSX files no SEC reports. SEDAR+ filings: https://www.sedarplus.ca/landingpage/");
+  expect((await load("ZZZZ")).empty).toBeUndefined();
+});
+
 test("accepted timestamps survive persisted JSON rows and invalid cached values remain unknown", () => {
   const filing = { ...filings[0]!, acceptedAt: new Date("2025-03-20T20:10:11.000Z") };
   const restored = JSON.parse(JSON.stringify(filing)) as SecFilingItem;
@@ -226,6 +235,43 @@ test("ETF leads with the fund's facts, each figure dated and credited, then its 
   expect(result.complete).toBe(true);
 });
 
+test("a trust's filings keep the fund's own series, and the text table keeps Filed, Form and the filing below 100 columns", async () => {
+  const trust = (form: string, index: number, fundSeries?: boolean): SecFilingItem => ({
+    ...filings[1]!, form, accessionNumber: `0001174610-26-${String(index).padStart(6, "0")}`, companyName: "PROSHARES TRUST",
+    ...(fundSeries === undefined ? {} : { fundSeries }),
+  });
+  const load = (issuerFilings: SecFilingItem[]) => createFundHeadless({ loadFacts: async () => SPY_FACTS, loadFilings: async () => issuerFilings })
+    .load(fundArgs("TQQQ"), createTestHeadlessContext());
+  // ProShares Trust files for 166 funds: another fund's 497K and a 485BXT for a fund still to launch are not TQQQ's.
+  const marked = await load([trust("497K", 1, false), trust("485BXT", 2, false), trust("497K", 3, true), trust("N-CSR", 4, true), trust("NPORT-P", 5)]);
+  const section = marked.sections[1]!;
+  expect(section.rows!.map((row) => row.accessionNumber)).toEqual(["0001174610-26-000003", "0001174610-26-000004"]);
+  // One registrant on every row and no 8-K items: neither takes a column; exports keep both.
+  expect(section.textColumns!.map((column) => [column.key, column.minTableWidth])).toEqual([
+    ["filedAt", undefined], ["acceptanceReported", 100], ["form", undefined], ["filing", undefined], ["accessionNumber", undefined],
+  ]);
+  expect(section.columns!.map((column) => column.key)).toContain("items");
+  // An older server marks nothing, and a list with nothing marked as the fund's own says nothing about it: both stay whole.
+  expect((await load([trust("497K", 1), trust("485BXT", 2)])).sections[1]!.rows).toHaveLength(2);
+  expect((await load([trust("497K", 1, false), trust("485BXT", 2, false)])).sections[1]!.rows).toHaveLength(2);
+});
+
+test("an inverse fund's objective reads as its factor, reset and direction; a server before it sends none and still reads", async () => {
+  const sqqq: FundFactsPayload = {
+    ...SPY_FACTS, ticker: "SQQQ",
+    leverage: { value: -3, asOf: "2026-10-21", source: "ProShares", reset: "daily", benchmark: "Nasdaq-100 Index", proxy: { ticker: "QQQ", basis: "index-fund" } },
+    index: { value: "Nasdaq-100 Index", asOf: null, source: "ProShares" },
+  };
+  const result = await createFundHeadless({ loadFacts: async () => sqqq, loadFilings: async () => [] }).load(fundArgs("SQQQ"), createTestHeadlessContext());
+  const entries = result.sections[0]!.entries!;
+  expect(entries.find((entry) => entry.key === "leverageFactor")).toMatchObject({ label: "Objective", value: -3, formatted: "-3× daily, inverse · 2026-10-21 · ProShares" });
+  expect(entries.find((entry) => entry.key === "index")!.formatted).toBe("Nasdaq-100 Index · ProShares");
+
+  const client = (payload: unknown) => ({ getFundFacts: async () => payload as FundFactsPayload });
+  expect((await fetchFundFacts("SPY", client(SPY_FACTS))).leverage).toBeUndefined();
+  await expect(fetchFundFacts("SQQQ", client({ ...sqqq, leverage: { ...sqqq.leverage, reset: "weekly" } }))).rejects.toThrow();
+});
+
 test("a computed premium says it is the closing price against the NAV and who computed it", async () => {
   const computed: FundFactsPayload = { ...SPY_FACTS, premiumDiscount: { value: -0.0123, asOf: "2026-10-15", source: "Gloom Cloud", basis: "computed" } };
   const result = await createFundHeadless({ loadFacts: async () => computed, loadFilings: async () => [] }).load(fundArgs("SPY"), createTestHeadlessContext());
@@ -292,4 +338,41 @@ test("the filings-only view still says what a trust files", () => {
   expect(fundFilingsEmpty("IBIT", { count: 3, complete: true }))
     .toBe("IBIT files none of the fund forms ETF lists (prospectus, shareholder reports, N-CEN, N-PORT). Its other filings: fn SEC IBIT.");
   expect(fundFilingsEmpty("IBIT", { count: 0, complete: true })).toBe("No SEC filings found for IBIT.");
+});
+
+test("ETF for a fund listed abroad says what ticker says, with its issuer's page, and asks the SEC nothing", async () => {
+  let asked = 0;
+  const headless = createFundHeadless({
+    loadFacts: async () => { asked++; return SPY_FACTS; },
+    loadFilings: async () => { asked++; return []; },
+    loadAbroadProfile: async (key) => ({
+      name: `${key} fund`,
+      page: "https://www.chinaamc.com.hk/detail?fundId=HKVAXBT",
+      descriptionSource: { publisher: "ChinaAMC (Hong Kong), Product Key Facts on HKEXnews", url: "https://www1.hkexnews.hk/a.pdf" },
+    }),
+  });
+  for (const key of ["3042.HK", "3042:HKEX"]) {
+    const result = await headless.load(fundArgs(key), createTestHeadlessContext());
+    expect(result.sections[0]).toMatchObject({ title: "Fund facts", rows: [], empty: "Fund facts (fee, NAV, premium) cover US-listed funds only." });
+    expect(result.sections[1]!.entries!.map((entry) => [entry.label, entry.value])).toEqual([
+      ["Name", `${key} fund`],
+      ["Issuer page", "https://www.chinaamc.com.hk/detail?fundId=HKVAXBT"],
+      ["Description from", "ChinaAMC (Hong Kong), Product Key Facts on HKEXnews: https://www1.hkexnews.hk/a.pdf"],
+    ]);
+    expect(result.metadata).toMatchObject({ venue: "HKEX", usListedOnly: true });
+  }
+  expect(asked).toBe(0);
+  // Without a profile the sentence stands alone.
+  const bare = await createFundHeadless({ loadFacts: async () => SPY_FACTS, loadFilings: async () => [], loadAbroadProfile: async () => null })
+    .load(fundArgs("VUSA:LSE"), createTestHeadlessContext());
+  expect(bare.sections).toHaveLength(1);
+  expect(bare.complete).toBe(true);
+  const failed = await createFundHeadless({
+    loadFacts: async () => { throw new Error("Must not read US facts"); },
+    loadFilings: async () => { throw new Error("Must not read SEC filings"); },
+    loadAbroadProfile: async () => { throw new Error("Profile outage"); },
+  }).load(fundArgs("VUSA:LSE"), createTestHeadlessContext());
+  expect(failed.sections).toEqual(bare.sections);
+  expect(failed.complete).toBe(false);
+  expect(failed.errors).toEqual(["Fund profile unavailable: Profile outage"]);
 });

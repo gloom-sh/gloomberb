@@ -6,15 +6,19 @@ import type { DataProvider } from "../../../types/data-provider";
 import type { CorporateActionsData, OptionsChain, Quote, TickerFinancials } from "../../../types/financials";
 import { canonicalExchange, parsePublicTickerKey } from "../../../utils/exchanges";
 import { numberErrorMessage } from "../../../utils/decimal-comma";
-import { expiryIsoDate, findListedExpiry, missingExpiryText } from "../../../utils/option-expiry";
+import {
+  expiredExpiryText, expiryChoiceText, expiryDayLabel, expiryIsoDate, findListedExpiry, isLiveOptionExpiry, liveDefaultExpiry, liveOptionExpiries,
+  missingExpiryText, nextLiveExpiry,
+} from "../../../utils/option-expiry";
 import { surfaceTreasuryRate } from "../vol-surface/model";
-import { daysToExpiryFrom, extractImpliedForward, optionMid, solveImpliedVolatility } from "../shared/volatility";
+import { daysToExpiryFrom, extractImpliedForward, optionDelta, optionMid, solveImpliedVolatility, valueOption } from "../shared/volatility";
 import type { YieldPoint } from "../yield-curve/treasury-data";
 import { parseLegs, scenarioCurrency, validatePosition, type ScenarioControls, type ScenarioLeg, type ScenarioPosition } from "./model";
 import { loadModelDividendYield, type ModelDividendYield } from "../../../market-data/model-dividend-yield";
 import { abortable, abortError } from "../../../utils/async-deadline";
-import { extendedSession } from "../options/model-spot";
+import { extendedSession, modelSpotStamp, modelSpotStampVariants, type OptionModelSpot } from "../options/model-spot";
 import { errorMessage } from "../../../utils/errors";
+import { dateOptionError, dateOptionFormatsOr, readCalendarDate } from "../../../utils/calendar-date";
 
 export interface ScenarioMarketSnapshot {
   symbol: string;
@@ -86,10 +90,13 @@ export async function loadScenarioMarket(
   const symbol = request.instrument.symbol.trim().toUpperCase();
   const options = { forceRefresh: request.forceRefresh };
   const warnings: string[] = [];
+  const exchange = request.instrument.exchange;
+  // An expiry whose last session has closed has no chain: the default one lists the live expiries to name instead.
+  const expired = request.expiration != null && !isLiveOptionExpiry(request.expiration, now, exchange);
   const settled = await abortable(Promise.allSettled([
     dependencies.loadQuote(request.instrument, options),
     dependencies.loadSnapshot(request.instrument, options),
-    dependencies.loadOptions({ instrument: request.instrument, expirationDate: request.expiration }, options),
+    dependencies.loadOptions({ instrument: request.instrument, expirationDate: expired ? undefined : request.expiration }, options),
     dependencies.loadYieldCurve(),
   ]), request.signal, CANCELLED);
   if (request.signal?.aborted) throw abortError(CANCELLED);
@@ -125,31 +132,41 @@ export async function loadScenarioMarket(
   if (chain && !symbolMatches(chain.underlyingSymbol, symbol)) {
     warnings.push("Options chain does not match the requested ticker"); chain = null;
   }
-  const expirationDates = [...new Set((chain?.expirationDates ?? []).filter((expiration) =>
-    positive(expiration) && daysToExpiryFrom(expiration, now) > 0))].sort((a, b) => a - b);
+  const expirationDates = liveOptionExpiries(chain?.expirationDates ?? [], now, exchange);
   // A typed date is that day's UTC midnight; the chain's own stamp for the
   // expiry is matched by calendar date, as OMON matches it.
-  const listedExpiration = request.expiration == null ? undefined : findListedExpiry(request.expiration, expirationDates);
+  const listedExpiration = request.expiration == null || expired ? undefined : findListedExpiry(request.expiration, expirationDates);
   const onExpiry = (value: OptionsChain, expiration: number) => [...value.calls, ...value.puts]
     .every((contract) => expiryIsoDate(contract.expiration) === expiryIsoDate(expiration));
-  if (chain && listedExpiration != null && listedExpiration !== request.expiration && !chain.calls.length && !chain.puts.length) {
-    // A source that keys chains by its exact stamp answered the midnight request empty.
-    chainEntry = await abortable(dependencies.loadOptions({ instrument: request.instrument, expirationDate: listedExpiration }, options)
+  // A default chain on the expiry that lapsed at the last close gives way to the nearest live one.
+  const liveDefault = request.expiration == null && chain ? liveDefaultExpiry(chain, now, exchange) : undefined;
+  const reload = liveDefault ?? (chain && listedExpiration != null && listedExpiration !== request.expiration
+    && !chain.calls.length && !chain.puts.length ? listedExpiration : undefined);
+  if (reload != null) {
+    // Or a source that keys chains by its exact stamp answered the midnight request empty.
+    chainEntry = await abortable(dependencies.loadOptions({ instrument: request.instrument, expirationDate: reload }, options)
       .catch((error: unknown) => { warnings.push(`Options chain: ${errorMessage(error)}`); return null; }), request.signal, CANCELLED);
     if (request.signal?.aborted) throw abortError(CANCELLED);
     if (chainEntry?.error) warnings.push(`Options chain: ${chainEntry.error.message}`);
     chain = chainEntry ? resolveEntryValue(chainEntry) : null;
   }
   let missingExpiry: string | undefined;
-  if (chain && request.expiration != null && listedExpiration == null) {
+  if (expired) {
+    missingExpiry = sentence(`expiry ${expiryIsoDate(request.expiration!)} for ${symbol} `
+      + expiredExpiryText(request.expiration!, expirationDates, now, { exchange, flag: "expiration" }));
+    warnings.push(missingExpiry); chain = null;
+  } else if (chain && request.expiration != null && listedExpiration == null) {
     missingExpiry = sentence(missingExpiryText(request.expiration, expirationDates, symbol));
     warnings.push(missingExpiry); chain = null;
-  } else if (chain && listedExpiration != null && !onExpiry(chain, listedExpiration)) {
+  } else if (liveDefault === null) {
+    missingExpiry = `No live expiry listed for ${symbol}`;
+    warnings.push(missingExpiry); chain = null;
+  } else if (chain && (listedExpiration ?? liveDefault) != null && !onExpiry(chain, (listedExpiration ?? liveDefault)!)) {
     warnings.push("Selected expiration unavailable in the returned options chain"); chain = null;
   }
   if (!chain) warnings.push("Options chain unavailable");
   else if (chainEntry?.error || (chainEntry?.staleAt != null && chainEntry.staleAt <= now)) warnings.push("Options chain is stale");
-  const rateExpiration = request.rateExpiration ?? request.expiration ?? expirationDates[0];
+  const rateExpiration = request.rateExpiration ?? (expired ? undefined : request.expiration) ?? expirationDates[0];
   const curve = curveResult.status === "fulfilled" ? curveResult.value : [];
   if (curveResult.status === "rejected") warnings.push(`Treasury: ${errorMessage(curveResult.reason)}`);
   const rate = surfaceTreasuryRate(curve, rateExpiration == null ? NaN : daysToExpiryFrom(rateExpiration, now) / 365);
@@ -191,6 +208,24 @@ export function scenarioSpotBasis(
   return (market?.underlyingQuote ? extendedSession(market.underlyingQuote) : null) ?? "last price";
 }
 
+const EXTENDED_BASES: readonly string[] = ["pre-market", "after hours", "overnight"];
+
+/**
+ * A spot basis as the pane and report name it: an extended-session print with
+ * its time, stamped as every options pane stamps its spot (`modelSpotStamp`),
+ * `pre-market Wed 21 Oct 09:42 UTC`; any other basis as it is.
+ */
+export function scenarioSpotStamp(basis: string, observedAt: number): string {
+  if (!EXTENDED_BASES.includes(basis)) return basis;
+  return modelSpotStamp({ basis: "last", session: basis as OptionModelSpot["session"], observedAt }) ?? basis;
+}
+
+/** That stamp's shorter forms, longest first (`modelSpotStampVariants`): `pre-market 09:42 UTC`, `pre-market`. */
+export function scenarioSpotStampVariants(basis: string, observedAt: number): string[] {
+  if (!EXTENDED_BASES.includes(basis)) return [];
+  return modelSpotStampVariants({ basis: "last", session: basis as OptionModelSpot["session"], observedAt });
+}
+
 function supplied(value: unknown): boolean { return value != null && value !== ""; }
 
 /** A position typed whole: its legs and the spot, rate and dividend yield they are valued at, so no market data is read. */
@@ -207,13 +242,17 @@ function numericSetting(settings: Record<string, unknown>, key: string): number 
   return Number(value);
 }
 
-/** Dates are explicit UTC ISO timestamps or UTC calendar dates. Milliseconds are accepted in persisted state. */
+/** Dates are explicit UTC ISO timestamps or UTC calendar dates, written as a date option takes them. Milliseconds are accepted in persisted state. */
 function dateSetting(settings: Record<string, unknown>, key: string): number | undefined {
   const value = settings[key];
   if (!supplied(value)) return undefined;
   if (typeof value === "number" && positive(value) && Number.isFinite(new Date(value).getTime())) return value;
+  const day = typeof value === "string" ? readCalendarDate(value) : null;
+  if (day) return Date.parse(`${day}T00:00:00Z`);
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?Z)?$/.test(value)) {
-    throw new Error(`${key} must be YYYY-MM-DD or an ISO timestamp ending in Z`);
+    throw new Error(dateOptionError(String(value), key === "asOf" ? "--as-of" : `--${key}`, {
+      subject: key === "asOf" ? "a valuation date" : "a scenario date", formats: dateOptionFormatsOr("an ISO timestamp ending in Z"),
+    }));
   }
   const date = Date.parse(value);
   if (!positive(date) || new Date(date).toISOString().slice(0, 10) !== value.slice(0, 10)) throw new Error(`${key} is not a valid date`);
@@ -248,6 +287,8 @@ export function scenarioPositionFromSettings(
   const strike = numericSetting(settings, "strike");
   if (strike != null && !(strike > 0)) throw new Error("strike must be positive");
   if (strike != null && !supplied(settings.strategy)) throw new Error("strike picks the strike of --strategy; add --strategy put, csp, vertical or straddle");
+  const delta = putDeltaSetting(settings);
+  if (delta != null && strike != null) throw new Error("delta and strike each pick the put; give one of them");
   const collarStrikes = { put: numericSetting(settings, "putStrike"), call: numericSetting(settings, "callStrike") };
   if ((collarStrikes.put != null || collarStrikes.call != null) && settings.strategy !== "collar") {
     throw new Error("put-strike and call-strike pick a collar's strikes; add --strategy collar");
@@ -270,8 +311,10 @@ export function scenarioPositionFromSettings(
     }
     if (spot == null) throw new Error("A current underlying price or explicit --spot is required");
     // Leg IVs are solved at the market's own spot and time, never at a what-if override.
-    const pricing = market.spot != null && rate != null ? { spot: market.spot, asOf: market.asOf, rate } : null;
-    const seeded = scenarioStrategyLegs(market.chain, spot, settings.strategy, pricing, strike, collarStrikes);
+    const pricing = market.spot != null && rate != null ? { spot: market.spot, asOf: market.asOf, rate, dividendYield: dividendYield ?? 0 } : null;
+    if (delta != null && !pricing) throw new Error("Choosing the put by delta needs the Treasury rate; supply --rate, or pick it with --strike");
+    const seeded = scenarioStrategyLegs(market.chain, spot, settings.strategy, pricing, strike, collarStrikes, delta,
+      unusableChainText(market, exchange));
     legs = seeded.legs;
     shareEntry = market.spot;
     // Mids priced off the parity forward are worth their cost only at the spot
@@ -308,6 +351,19 @@ export function scenarioPositionFromSettings(
   return position;
 }
 
+/**
+ * `--delta`: the put a csp or put seed sells or buys, by the absolute delta it
+ * is nearest (0.30, or -0.30 as a put's own sign reads it); undefined when not set.
+ */
+function putDeltaSetting(settings: Record<string, unknown>): number | undefined {
+  const value = numericSetting(settings, "delta");
+  if (value == null) return undefined;
+  if (settings.strategy !== "csp" && settings.strategy !== "put") throw new Error("delta picks the put of --strategy csp or put");
+  const delta = Math.abs(value);
+  if (!(delta > 0 && delta < 1)) throw new Error(`delta must be a put's delta between 0 and 1, such as 0.30; got ${String(settings.delta)}`);
+  return delta;
+}
+
 /** `--shares`: a signed whole number of shares of the underlying, or undefined when not set. */
 function sharesSetting(settings: Record<string, unknown>): number | undefined {
   const value = settings.shares;
@@ -328,19 +384,60 @@ export const SCENARIO_STRATEGIES = ["vertical", "straddle", "put", "csp", "colla
 type ScenarioStrategy = typeof SCENARIO_STRATEGIES[number];
 const isScenarioStrategy = (value: unknown): value is ScenarioStrategy => SCENARIO_STRATEGIES.includes(value as ScenarioStrategy);
 
-interface StrategyPricing { spot: number; asOf: number; rate: number }
+export interface StrategyPricing { spot: number; asOf: number; rate: number; dividendYield: number }
 
 const usableVolatility = (value: unknown): value is number => positive(value) && value <= 5;
 
-interface StrategyParity { forward: number; daysToExpiry: number }
+export interface StrategyParity { forward: number; daysToExpiry: number }
+
+/**
+ * The contracts a strategy seed picks from: every two-sided quote with the IV
+ * its midpoint implies against its expiry's parity forward (or a usable
+ * provider IV), each side nearest `spot` first. `parityFor` is the forward an
+ * expiry's IVs were solved on, null without a rate to solve them by.
+ */
+export interface QuotedChain {
+  calls: QuotedContract[];
+  puts: QuotedContract[];
+  parityFor(expiration: number): StrategyParity | null;
+}
+
+/** The quoted chain every seed reads, as `scenarioStrategyLegs` describes it. */
+function quoteStrategyChain(chain: OptionsChain, spot: number, pricing: StrategyPricing | null): QuotedChain {
+  const parity = new Map<number, StrategyParity | null>();
+  const parityFor = (expiration: number) => {
+    if (!pricing) return null;
+    if (!parity.has(expiration)) {
+      const daysToExpiry = daysToExpiryFrom(expiration, pricing.asOf);
+      const { forward } = extractImpliedForward(chain.calls.filter((call) => call.expiration === expiration),
+        chain.puts.filter((put) => put.expiration === expiration), pricing.spot, daysToExpiry / 365, pricing.rate,
+        chain.underlyingSymbol);
+      parity.set(expiration, forward == null ? null : { forward, daysToExpiry });
+    }
+    return parity.get(expiration)!;
+  };
+  const quoted = (contracts: OptionsChain["calls"], side: ScenarioLeg["side"]) => contracts.flatMap((contract): QuotedContract[] => {
+    const mid = optionMid(contract);
+    if (!positive(contract.strike) || mid == null) return [];
+    const expiry = parityFor(contract.expiration);
+    // q=r turns the spot pricer into discounted forward pricing.
+    const volatility = expiry ? solveImpliedVolatility({ side, spot: expiry.forward, strike: contract.strike,
+      daysToExpiry: expiry.daysToExpiry, rate: pricing!.rate, dividendYield: pricing!.rate }, mid).volatility : null;
+    if (usableVolatility(volatility)) return [{ contract, side, mid, volatility, solved: true }];
+    return usableVolatility(contract.impliedVolatility) ? [{ contract, side, mid, volatility: contract.impliedVolatility, solved: false }] : [];
+  });
+  const nearest = (a: { contract: { strike: number } }, b: { contract: { strike: number } }) =>
+    Math.abs(a.contract.strike - spot) - Math.abs(b.contract.strike - spot);
+  return { calls: quoted(chain.calls, "call").sort(nearest), puts: quoted(chain.puts, "put").sort(nearest), parityFor };
+}
 
 /**
  * An explicit strategy request uses only two-sided quotes and enters each leg
  * at its quote midpoint, so each leg takes the IV that midpoint implies against
  * the expiry's put-call parity forward, with the time left at the market
  * timestamp OSA values at. This holds even when the chain carries a provider
- * IV measured at another time (a same-day IV solved when the chain was served,
- * hours after the after-hours print OSA values at). The forward comes from the
+ * IV measured at another time (a same-day IV solved at the close's quotes,
+ * hours before the after-hours print OSA values at). The forward comes from the
  * same quotes, so a spot that moved after they were taken (an after-hours or
  * pre-market print against the close's chain) does not skew the call against
  * the put. A leg whose midpoint cannot be solved (a spot too far from every
@@ -355,48 +452,26 @@ interface StrategyParity { forward: number; daysToExpiry: number }
  * to the next listed strike up, or a straddle at the anchor. A collar buys
  * the put at `collar.put` and sells the call at `collar.call` on the put's
  * expiry, each the quoted strike nearest 10% out of the money when omitted.
+ * A put or csp seed given a `delta` takes the put whose spot delta, valued at
+ * the IV its own midpoint implies, is nearest that delta's negative.
  */
 function scenarioStrategyLegs(
   chain: OptionsChain, spot: number, strategy: ScenarioStrategy, pricing: StrategyPricing | null, strike?: number,
-  collar: { put?: number; call?: number } = {},
+  collar: { put?: number; call?: number } = {}, delta?: number, unusable: UnusableChainText = defaultUnusableChainText,
 ): { legs: ScenarioLeg[]; parity: StrategyParity | null } {
-  const parity = new Map<number, StrategyParity | null>();
-  const parityFor = (expiration: number) => {
-    if (!pricing) return null;
-    if (!parity.has(expiration)) {
-      const daysToExpiry = daysToExpiryFrom(expiration, pricing.asOf);
-      const { forward } = extractImpliedForward(chain.calls.filter((call) => call.expiration === expiration),
-        chain.puts.filter((put) => put.expiration === expiration), pricing.spot, daysToExpiry / 365, pricing.rate,
-        chain.underlyingSymbol);
-      parity.set(expiration, forward == null ? null : { forward, daysToExpiry });
-    }
-    return parity.get(expiration)!;
-  };
-  const quoted = (contracts: OptionsChain["calls"], side: ScenarioLeg["side"]) => contracts.flatMap((contract) => {
-    const mid = optionMid(contract);
-    if (!positive(contract.strike) || mid == null) return [];
-    const expiry = parityFor(contract.expiration);
-    // q=r turns the spot pricer into discounted forward pricing.
-    const volatility = expiry ? solveImpliedVolatility({ side, spot: expiry.forward, strike: contract.strike,
-      daysToExpiry: expiry.daysToExpiry, rate: pricing!.rate, dividendYield: pricing!.rate }, mid).volatility : null;
-    if (usableVolatility(volatility)) return [{ contract, mid, volatility, solved: true }];
-    return usableVolatility(contract.impliedVolatility) ? [{ contract, mid, volatility: contract.impliedVolatility, solved: false }] : [];
-  });
-  const nearest = (a: { contract: { strike: number } }, b: { contract: { strike: number } }) =>
-    Math.abs(a.contract.strike - spot) - Math.abs(b.contract.strike - spot);
+  const { calls, puts, parityFor } = quoteStrategyChain(chain, spot, pricing);
   const anchored = ({ contract }: { contract: { strike: number } }) => strike == null || Math.abs(contract.strike - strike) < 1e-9;
-  const calls = quoted(chain.calls, "call").sort(nearest);
-  const puts = quoted(chain.puts, "put").sort(nearest);
   const missing = (candidates: { contract: { strike: number } }[], at = strike, what: string = strategy === "csp" ? "put to sell" : strategy) => {
-    if (at == null) return new Error("The selected chain has no complete quoted strategy with usable IV");
+    if (at == null) return new Error(unusable("strategy"));
     const listed = [...new Set(candidates.map(({ contract }) => contract.strike))]
       .sort((a, b) => Math.abs(a - at) - Math.abs(b - at)).slice(0, 4).sort((a, b) => a - b);
-    return new Error(`The selected chain has no complete quoted ${what} at strike ${at} with usable IV`
-      + (listed.length ? `; nearest quoted strikes: ${listed.join(", ")}` : ""));
+    // Another strike on this expiry is the nearer fix; with none quoted, the next expiry is.
+    return new Error(listed.length ? `${unusable(`${what} at strike ${at}`, false)}; nearest quoted strikes: ${listed.join(", ")}`
+      : unusable(`${what} at strike ${at}`));
   };
-  if (strategy === "collar") return collarLegs(calls, puts, spot, collar, missing, parityFor);
+  if (strategy === "collar") return collarLegs(calls, puts, spot, collar, missing, parityFor, unusable);
   if (strategy === "put" || strategy === "csp") {
-    const put = puts.find(anchored);
+    const put = delta == null ? puts.find(anchored) : nearestDeltaContract(puts, -delta, spot, pricing, parityFor);
     if (!put) throw missing(puts);
     return { legs: [{ id: put.contract.contractSymbol, side: "put", quantity: strategy === "csp" ? -1 : 1, strike: put.contract.strike,
       expiration: put.contract.expiration, price: put.mid, priceSource: "mid", volatility: put.volatility, multiplier: 100,
@@ -421,7 +496,114 @@ function scenarioStrategyLegs(
   return { legs, parity: first.solved || second.solved ? parityFor(first.contract.expiration) : null };
 }
 
-interface QuotedContract { contract: OptionsChain["calls"][number]; mid: number; volatility: number; solved: boolean }
+export interface QuotedContract { contract: OptionsChain["calls"][number]; side: ScenarioLeg["side"]; mid: number; volatility: number; solved: boolean }
+
+/** Why a chain seeds nothing: `what` it has no usable quote for, then the next live expiry to try unless `next` is false. */
+export type UnusableChainText = (what: string, next?: boolean) => string;
+const defaultUnusableChainText: UnusableChainText = (what) => `The selected chain has no complete quoted ${what} with usable IV`;
+
+/**
+ * The seed failure naming the expiry the chain is on and the next live one to
+ * ask for: `The 30 Oct chain has no complete quoted strategy with usable IV;
+ * try the next expiry, 6 Nov (--expiration 2026-11-06)`.
+ */
+function unusableChainText(market: ScenarioMarketSnapshot, exchange: string | undefined): UnusableChainText {
+  const contracts = market.chain ? [...market.chain.calls, ...market.chain.puts] : [];
+  const tried = contracts[0]?.expiration;
+  if (tried == null) return defaultUnusableChainText;
+  const now = market.asOf;
+  const next = nextLiveExpiry(tried, market.expirationDates, now, exchange ?? market.exchange);
+  return (what, withNext = true) => `The ${expiryDayLabel(tried, now)} chain has no complete quoted ${what} with usable IV`
+    + (withNext && next != null ? `; try the next expiry, ${expiryChoiceText(next, now, "expiration")}` : "");
+}
+
+/**
+ * An option's spot delta at the IV it trades at: against the parity forward
+ * its IV was solved on when it was (forward delta, carried to spot), else at
+ * the seed's spot. Null when it cannot be valued.
+ */
+function quotedDelta(quoted: QuotedContract, spot: number, pricing: StrategyPricing | null, parity: StrategyParity | null): number | null {
+  const { contract, side, volatility, solved } = quoted;
+  if (!pricing) return null;
+  if (solved && parity) {
+    // On the forward, with the dividend yield set to the rate so it carries no drift, as the IV was solved.
+    const forwardDelta = valueOption({ side, spot: parity.forward, strike: contract.strike, daysToExpiry: parity.daysToExpiry,
+      rate: pricing.rate, dividendYield: pricing.rate, volatility }).delta;
+    return Number.isFinite(forwardDelta) ? forwardDelta * Math.exp((pricing.rate - pricing.dividendYield) * parity.daysToExpiry / 365) : null;
+  }
+  const years = daysToExpiryFrom(contract.expiration, pricing.asOf) / 365;
+  return optionDelta({ spot, years, volatility, rate: pricing.rate, dividendYield: pricing.dividendYield }, contract.strike, side);
+}
+
+/**
+ * The contract whose delta is nearest `target` (negative for a put, as its
+ * delta reads), the one further out of the money on a tie (the lower strike
+ * of two puts, the higher of two calls); null when none can be valued.
+ */
+export function nearestDeltaContract(
+  candidates: readonly QuotedContract[], target: number, spot: number, pricing: StrategyPricing | null,
+  parityFor: (expiration: number) => StrategyParity | null,
+): QuotedContract | null {
+  let best: { quoted: QuotedContract; distance: number } | null = null;
+  for (const quoted of candidates) {
+    const delta = quotedDelta(quoted, spot, pricing, quoted.solved ? parityFor(quoted.contract.expiration) : null);
+    if (delta == null) continue;
+    const distance = Math.abs(delta - target);
+    const further = quoted.side === "put" ? quoted.contract.strike < (best?.quoted.contract.strike ?? Infinity)
+      : quoted.contract.strike > (best?.quoted.contract.strike ?? -Infinity);
+    if (!best || distance < best.distance - 1e-12 || (Math.abs(distance - best.distance) <= 1e-12 && further)) {
+      best = { quoted, distance };
+    }
+  }
+  return best?.quoted ?? null;
+}
+
+/** A seeded leg: `quantity` contracts of a quoted option, entered at its midpoint with the IV that midpoint implies, as every seed enters it. */
+export function seededLeg({ contract, side, mid, volatility, solved }: QuotedContract, quantity: number): ScenarioLeg {
+  return { id: contract.contractSymbol, side, quantity, strike: contract.strike, expiration: contract.expiration, price: mid,
+    priceSource: "mid", volatility, multiplier: 100, ...(solved ? { volatilitySource: "mid" as const } : {}) };
+}
+
+/** What a strategy screen picks from a quoted chain: its legs, and the shares it holds with them (a covered call's). */
+export interface ScreenSeed { legs: ScenarioLeg[]; shares?: number }
+
+/**
+ * A position a strategy screen seeds as OSA seeds `--strategy`: legs picked
+ * from the market's chain (or `merged`, a calendar's two expiries together) at
+ * their quote midpoints, valued at the market's rate and dividend yield from
+ * the spot the first expiry's parity forward implies when a leg's IV was solved
+ * against it. Shares are bought at that spot. `pick` reads the quoted chain
+ * with its pricing, so a leg can be chosen by delta.
+ */
+export function seedScreenPosition(
+  market: ScenarioMarketSnapshot,
+  pick: (quoted: QuotedChain, pricing: StrategyPricing, unusable: UnusableChainText) => ScreenSeed,
+  merged?: OptionsChain,
+): ScenarioPosition {
+  if (!market.chain || market.warnings.includes("Options chain is stale")) {
+    throw new Error(market.missingExpiry ?? "A current options chain is required to seed a strategy");
+  }
+  const chain = merged ?? market.chain;
+  if (market.spot == null) throw new Error("A current underlying price is required");
+  if (market.rate == null) throw new Error("Choosing legs by delta needs the Treasury rate");
+  if (market.dividendYield == null) throw new Error("Dividend yield unavailable");
+  const pricing = { spot: market.spot, asOf: market.asOf, rate: market.rate, dividendYield: market.dividendYield };
+  const quoted = quoteStrategyChain(chain, market.spot, pricing);
+  const { legs, shares } = pick(quoted, pricing, unusableChainText(market, market.exchange));
+  const first = Math.min(...legs.map((leg) => leg.expiration));
+  const parity = legs.some((leg) => leg.expiration === first && leg.volatilitySource === "mid") ? quoted.parityFor(first) : null;
+  const spot = parity ? parity.forward * Math.exp(-(pricing.rate - pricing.dividendYield) * parity.daysToExpiry / 365) : market.spot;
+  const position: ScenarioPosition = {
+    symbol: market.symbol, exchange: market.exchange, currency: scenarioCurrency(undefined, market.currency, market.exchange),
+    spot, rate: pricing.rate, dividendYield: pricing.dividendYield, asOf: market.asOf, legs,
+    ...(shares ? { underlying: { quantity: shares, price: spot } } : {}),
+  };
+  const error = validatePosition(position);
+  if (error) throw new Error(error);
+  const contracts = [...chain.calls, ...chain.puts].filter((contract) => legs.some((leg) => leg.id === contract.contractSymbol));
+  if (contracts.some((contract) => contract.currency && contract.currency !== position.currency)) throw new Error("Strategy currency differs from the underlying quote currency");
+  return position;
+}
 
 /** How far out of the money a collar's put and call sit when their strikes are not given. */
 const COLLAR_DEFAULT_DISTANCE = 0.1;
@@ -430,18 +612,18 @@ const COLLAR_DEFAULT_DISTANCE = 0.1;
 function collarLegs(
   calls: QuotedContract[], puts: QuotedContract[], spot: number, strikes: { put?: number; call?: number },
   missing: (candidates: QuotedContract[], at: number | undefined, what: string) => Error,
-  parityFor: (expiration: number) => StrategyParity | null,
+  parityFor: (expiration: number) => StrategyParity | null, unusable: UnusableChainText,
 ): { legs: ScenarioLeg[]; parity: StrategyParity | null } {
   const closest = (candidates: QuotedContract[], target: number) => candidates.toSorted((a, b) =>
     Math.abs(a.contract.strike - target) - Math.abs(b.contract.strike - target) || a.contract.strike - b.contract.strike);
   const at = (candidates: QuotedContract[], value: number) => candidates.filter(({ contract }) => Math.abs(contract.strike - value) < 1e-9);
   const put = strikes.put != null ? at(puts, strikes.put)[0]
     : closest(puts.filter(({ contract }) => strikes.call == null || contract.strike < strikes.call), spot * (1 - COLLAR_DEFAULT_DISTANCE))[0];
-  if (!put) throw strikes.put != null ? missing(puts, strikes.put, "put to buy") : new Error("The selected chain has no complete quoted put to buy with usable IV");
+  if (!put) throw strikes.put != null ? missing(puts, strikes.put, "put to buy") : new Error(unusable("put to buy"));
   const sameExpiry = calls.filter(({ contract }) => contract.expiration === put.contract.expiration);
   const call = strikes.call != null ? at(sameExpiry, strikes.call)[0]
     : closest(sameExpiry.filter(({ contract }) => contract.strike > put.contract.strike), spot * (1 + COLLAR_DEFAULT_DISTANCE))[0];
-  if (!call) throw strikes.call != null ? missing(sameExpiry, strikes.call, "call to sell") : new Error("The selected chain has no complete quoted call to sell above the put with usable IV");
+  if (!call) throw strikes.call != null ? missing(sameExpiry, strikes.call, "call to sell") : new Error(unusable("call to sell above the put"));
   if (call.contract.strike <= put.contract.strike) throw new Error("A collar's put strike must be below its call strike");
   if (put.contract.currency !== call.contract.currency) throw new Error("Strategy quote currencies differ");
   const legs = [[put, "put", 1], [call, "call", -1]] as const;

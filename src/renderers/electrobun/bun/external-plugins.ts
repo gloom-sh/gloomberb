@@ -14,6 +14,8 @@ import {
   loadExternalPlugin,
 } from "../../../plugins/loader";
 import { createNodePluginManager } from "../../../plugins/manager-node";
+import { deactivatePluginForRemoval } from "../../../plugins/marketplace/deactivation";
+import { readPluginIcon } from "../../../plugins/plugin-icon";
 import type { PluginRegistry } from "../../../plugins/registry";
 import { desktopRendererCapabilityManifests } from "./desktop/initialization";
 import { reportCrash } from "../../../telemetry/crash-reports";
@@ -70,6 +72,7 @@ async function bundlePluginDirectory(
 
   const { plugin } = loaded;
   const directory = basename(pluginDir);
+  const icon = readPluginIcon(pluginDir);
   const base = {
     id: plugin.id,
     name: plugin.name,
@@ -80,6 +83,7 @@ async function bundlePluginDirectory(
     ...(loaded.commit ? { commit: loaded.commit } : {}),
     ...(loaded.repo ? { repo: loaded.repo } : {}),
     ...(loaded.linked ? { linked: true } : {}),
+    ...(icon ? { icon } : {}),
     ...(plugin.targets ? { targets: plugin.targets } : {}),
   };
 
@@ -154,6 +158,33 @@ export async function collectExternalPluginBundles(): Promise<DesktopExternalPlu
   return bundles;
 }
 
+let prefetchedBundles: Promise<DesktopExternalPluginBundle[]> | null = null;
+
+/**
+ * Starts compiling every plugin for the view before it asks. The bundle cache
+ * above lives in memory, so the first window of a launch always compiles;
+ * started at launch, that runs while the view loads its own bundle.
+ */
+export function prefetchExternalPluginBundles(): void {
+  if (prefetchedBundles) return;
+  const bundles = collectExternalPluginBundles();
+  // The view's request reports a failure; this one only must not go unhandled.
+  bundles.catch(() => {
+    // Intentional ignore: the window that takes these bundles reports the failure.
+  });
+  prefetchedBundles = bundles;
+}
+
+/**
+ * The bundles for a window: the launch's prefetch once, then a new collection,
+ * which the mtime cache keeps cheap, so a later window sees plugins installed since.
+ */
+export function takeExternalPluginBundles(): Promise<DesktopExternalPluginBundle[]> {
+  const prefetched = prefetchedBundles;
+  prefetchedBundles = null;
+  return prefetched ?? collectExternalPluginBundles();
+}
+
 /** One plugin, compiled fresh, so the view can activate what was just installed or updated. */
 export function bundleExternalPluginDirectory(directory: string): Promise<DesktopExternalPluginBundle | null> {
   return bundlePluginDirectory(join(getPluginsDir(), directory), { fresh: true });
@@ -206,12 +237,6 @@ export function deactivateExternalPlugin(
   registry: PluginRegistry,
   pluginId: string,
 ): { capabilityManifests: ReturnType<typeof desktopRendererCapabilityManifests> } {
-  if (registry.allPlugins.has(pluginId)) {
-    try {
-      registry.unregister(pluginId);
-    } catch (error) {
-      log.error(`Deactivating ${pluginId} failed: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
+  deactivatePluginForRemoval(registry, pluginId);
   return { capabilityManifests: desktopRendererCapabilityManifests(registry.capabilities) };
 }

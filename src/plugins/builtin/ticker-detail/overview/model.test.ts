@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { Fundamentals, NextEarnings, Quote } from "../../../../types/financials";
 import type { TickerPosition, TickerRecord } from "../../../../types/ticker";
 import { buildOverviewStats, buildPositionRows, buildProfileFields } from "./model";
+import { cashRunway } from "../../../../utils/cash-runway";
 import type { FundBondFacts } from "../../../../api-client/fund-facts";
 import { createTestTicker } from "../../../../test-support/ticker";
 
@@ -37,6 +38,30 @@ test("summary money falls back to the statements' reporting currency, and a zero
   expect(overview({ ...figures, financialCurrency: "USD" }, "ZAR")).toMatchObject({ Revenue: "202.08B USD" });
   expect(overview(figures, " ")).toMatchObject({ EPS: "31.43 (ccy?)", Revenue: "202.08B (ccy?)" });
   expect(overview({ ...figures, enterpriseValue: 5e9 }, "ZAR")).toMatchObject({ EV: "5B HKD" });
+  // A listing quoted in another currency than the statements: an unlabelled block's currency is unknown.
+  const listed = (currency: string, fundamentals: Fundamentals) => Object.fromEntries(buildOverviewStats({
+    quote: { symbol: "YPFD", price: 8350, currency, change: 0, changePercent: 0, lastUpdated: 0 }, fundamentals, financialCurrency: "USD",
+    quoteCurrency: currency, baseCurrency: "USD", toBase: (value) => value,
+  }).map(({ label, value }) => [label, value]));
+  expect(listed("ARS", figures)).toMatchObject({ EPS: "31.43 (ccy?)", Revenue: "202.08B (ccy?)" });
+  expect(listed("ARS", { ...figures, financialCurrency: "ARS" })).toMatchObject({ EPS: "ARS\u00a031.43", Revenue: "202.08B ARS" });
+  expect(listed("USD", figures)).toMatchObject({ EPS: "$31.43", Revenue: "202.08B USD" });
+});
+
+test("an EV at or below zero reads N/M with why, and an insurer's says its investments stay in", () => {
+  const ev = (fundamentals: Fundamentals) => buildOverviewStats({
+    quote: undefined, fundamentals, quoteCurrency: "USD", baseCurrency: "USD", toBase: (value) => value,
+  }).find((stat) => stat.label === "EV");
+  const check = { currency: "USD", marketCap: 100e9, totalDebt: 1e9, balanceSheetDate: "2026-06-30" };
+  // ARVN on 2026-10-23, and a source's negative EV no check judged.
+  expect(ev({ marketCap: 100e9, unavailableFields: ["enterpriseValue"], enterpriseValueCheck: { ...check, status: "not-meaningful",
+    cash: 121e9, computed: -20e9, reason: "Cash and short-term investments exceed market cap + total debt (balance sheet 2026-06-30)" } }))
+    .toEqual({ label: "EV", value: "N/M", detail: ["cash > cap + debt", "cash > cap"] });
+  expect(ev({ marketCap: 100e9, enterpriseValue: -5e9 })?.value).toBe("N/M");
+  // BRK-B's: market cap + debt - cash and equivalents.
+  expect(ev({ marketCap: 100e9, enterpriseValue: 107.8e9, enterpriseValueCheck: { ...check, status: "computed", source: -20e9,
+    cash: 3.5e9, computed: 107.8e9, investmentsKept: true } }))
+    .toEqual({ label: "EV", value: "107.8B USD", detail: ["investments in", "inv. in"] });
 });
 
 test("holdings and short interest read as fractions; blank, zero and past figures are left out", () => {
@@ -204,4 +229,21 @@ test("a bond fund's yield is its distribution yield, not its SEC yield, which fo
   ]);
   // Anything else reads as before.
   expect(stats(null)).toEqual([{ label: "Fwd Div Yld", value: "3.27%", detail: undefined, link: undefined }]);
+});
+
+
+test("DES shows runway only for a burning TTM, never a seasonal outflow or short history", () => {
+  const quarters = ["2025-09-30", "2025-12-31", "2026-03-31", "2026-06-30"].map((date, index) => ({
+    date, currency: "USD", cashAndCashEquivalents: 1_000, operatingCashFlow: index === 3 ? -30 : 20,
+  }));
+  const stats = (quarterlyStatements: typeof quarters) => buildOverviewStats({
+    quote: undefined, fundamentals: {}, quoteCurrency: "USD", baseCurrency: "USD", toBase: (value) => value,
+    runway: cashRunway({ quarterlyStatements, annualStatements: [] }),
+  });
+  expect(stats(quarters).find((row) => row.label === "Runway")).toBeUndefined();
+  expect(stats(quarters.slice(1)).find((row) => row.label === "Runway")).toBeUndefined();
+  const burning = quarters.map((row) => ({ ...row, operatingCashFlow: -20 }));
+  expect(stats(burning).find((row) => row.label === "Runway")).toMatchObject({
+    value: "> 120 mo", detail: expect.arrayContaining(["qtr to 06-30 · TTM > 120 mo"]),
+  });
 });

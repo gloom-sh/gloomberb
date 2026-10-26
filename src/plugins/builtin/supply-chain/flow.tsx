@@ -12,7 +12,7 @@ import { blendHex } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import { useStaticChartBitmapSize } from "../../../components/chart/composite/bitmap";
 import { fillOpaque, fillRect, parseHex } from "../../../components/chart/native/raster/primitives";
-import { counterpartyKind, counterpartyLabel, disclosedValue, dollars, nativeValue, periodText, roleLabel, ROLE_COLORS, scopeWords, shareParts, type FlowBand } from "./model";
+import { counterpartyKind, counterpartyLabel, disclosedValue, dollars, nativeValue, periodText, roleLabel, ROLE_COLORS, scopeWords, shareParts, fitShareBasis, type FlowBand, type ShareParts } from "./model";
 import { entityTicker } from "./graph-model";
 import { flowChipLabel, flowGeometry, RELATED_LABEL_CELLS, ribbonY, type FlowRibbon, type PositionedNode } from "./flow-layout";
 import { evidenceDate, evidenceLabel, trustTier } from "./trust";
@@ -30,17 +30,44 @@ function ribbonPolygon(ribbon: FlowRibbon, width: number, height: number, thickn
   return [...upper, ...lower];
 }
 
-/** The disclosed figure a card shows under the name, in the reporting company's own terms. */
-function nodeMetric(node: PositionedNode, focusId?: string): string {
+/** A share and what it is a share of, the basis in the longest form that fits `cells`. */
+function shareText(share: ShareParts, cells: number): string {
+  return `${share.value} ${fitShareBasis(share, cells - displayWidth(share.value) - 1)}`;
+}
+
+/** The disclosed figure a card shows under the name, in the reporting company's own terms, in `cells` cells. */
+function nodeMetric(node: PositionedNode, focusId: string | undefined, cells: number): string {
   const row = node.row!;
   if (trustTier(row) !== 1) return `${evidenceLabel(row)} · ${evidenceDate(row)}`;
   if (node.weight !== null && node.weightBasis === "usd") return dollars(row);
   const share = shareParts(row, focusId);
-  if (share) return `${share.value} ${share.basis}`;
+  if (share) return shareText(share, cells);
   if (nativeValue(row) !== null || row.usd !== null) return disclosedValue(row);
   // With no figure, the card says where the relationship is disclosed.
   const reporter = focusId && row.reportingEntity.id !== focusId ? `${entityTicker(row.reportingEntity) ?? row.reportingEntity.name} ` : "";
   return `${evidenceLabel(row)} · ${reporter}${row.form ?? "filing"}${row.fiscalYear ? ` · FY${row.fiscalYear}` : ""}`;
+}
+
+const GROUP_SEPARATOR = "  ·  ";
+/**
+ * The cohort groups and their shares on one line of `cells`. A group shows
+ * whole or is left to the table behind "+N more", so no share stands cut off
+ * from what it is a share of: the first is always shown, cut to the line if it
+ * must be, the others keep a whole form of their basis.
+ */
+function groupsText(groups: readonly SupplyRow[], focusId: string | undefined, cells: number): string {
+  const entries: string[] = [];
+  for (const [index, row] of groups.entries()) {
+    const share = shareParts(row, focusId);
+    const label = counterpartyLabel(row);
+    const rest = groups.length - index - 1;
+    const room = cells - displayWidth(entries.join(GROUP_SEPARATOR)) - (entries.length ? displayWidth(GROUP_SEPARATOR) : 0) - (rest ? displayWidth(`${GROUP_SEPARATOR}+${rest} more`) : 0);
+    const basisRoom = room - displayWidth(label) - displayWidth(share?.value ?? "") - 2;
+    if (entries.length && (share ? !share.forms.some((form) => displayWidth(form) <= basisRoom) : displayWidth(label) > room)) break;
+    entries.push(share ? `${label} ${shareText(share, room - displayWidth(label) - 1)}` : label);
+  }
+  const more = groups.length - entries.length;
+  return `${entries.join(GROUP_SEPARATOR)}${more > 0 ? `${GROUP_SEPARATOR}+${more} more` : ""}`;
 }
 
 /**
@@ -206,10 +233,7 @@ export function SupplyFlow({ rows, symbol, focusName, focusId, width, height, fo
       onPress={() => selectNode(node)} onHover={(on) => setHovered(on ? node.id : null)} />)}
     {geometry.groupRow !== null ? <Box position="absolute" top={geometry.groupRow} left={1} width={width - 2} flexDirection="row" overflow="hidden">
       <Box width={RELATED_LABEL_CELLS} flexShrink={0}><Text fg={colors.textDim}>Groups</Text></Box>
-      <ClippedText fg={colors.textDim} text={geometry.groups.map((row) => {
-        const share = shareParts(row, focusId);
-        return `${counterpartyLabel(row)}${share ? ` ${share.value} ${share.basis}` : ""}`;
-      }).join("  ·  ")} width={width - RELATED_LABEL_CELLS - 3} />
+      <ClippedText fg={colors.textDim} text={groupsText(geometry.groups, focusId, width - RELATED_LABEL_CELLS - 3)} width={width - RELATED_LABEL_CELLS - 3} />
     </Box> : null}
     {legend ? <Box position="absolute" top={geometry.legendRow} left={1} width={width - 2} flexDirection="row" gap={2} overflow="hidden">
       {legend.map((entry) => <Box key={entry.id} flexDirection="row" gap={1} flexShrink={0}>
@@ -277,9 +301,9 @@ function FlowCard({ node, focusId, desktop, active, onPress, onHover }: {
   const accent = role ? ROLE_COLORS[role] : colors.textMuted;
   const company = node.row ? counterpartyKind(node.row) === "company" : false;
   const name = node.more ? `+${node.more} more` : node.row ? counterpartyLabel(node.row) : node.label;
-  const metric = node.row ? nodeMetric(node, focusId) : "";
   const ticker = node.row ? entityTicker(node.row.counterparty) : null;
   const inner = Math.max(4, node.width - (desktop ? 2 : 2));
+  const metric = node.row ? nodeMetric(node, focusId, inner - (desktop ? 0 : 1)) : "";
   const nameWidth = Math.max(4, inner - (ticker ? displayWidth(ticker) + 1 : 0));
   const titleColor = node.more ? colors.textDim : company ? colors.textBright : colors.text;
   return <Box position="absolute" left={node.x} top={node.y} width={node.width} height={node.more ? 1 : node.height} flexDirection="column"

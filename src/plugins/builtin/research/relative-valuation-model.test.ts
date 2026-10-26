@@ -68,3 +68,23 @@ test("values measured at a stale price or from stale fundamentals do not scale",
   expect(fromStaleQuote.marketCap).toBe(900);
   expect(fromStaleQuote.reportedMultiples.trailingPE).toBe(20);
 });
+
+test("a margin the source did not serve for the trailing year falls back to the latest fiscal year and names it", () => {
+  // CCL on 2026-10-25: the quarter ended 2026-08-31 was not in the statements yet, so no trailing margin was served.
+  const carnival: TickerFinancials = {
+    ...snapshot,
+    annualStatements: [
+      { date: "2024-11-30", totalRevenue: 25.02e9, operatingIncome: 3.57e9 },
+      { date: "2025-11-30", totalRevenue: 26.62e9, operatingIncome: 4.48e9 },
+    ],
+  };
+  const values = relativeValuationValues(carnival);
+  expect(values.operatingMargin).toBeCloseTo(4.48 / 26.62);
+  expect(values).toMatchObject({ operatingMarginPeriod: "FY25", operatingMarginPeriodEnd: "2025-11-30", gaps: {} });
+  // A trailing margin, when served, is the figure and names no year.
+  const trailing = relativeValuationValues({ ...carnival, fundamentals: { ...carnival.fundamentals, operatingMargin: 0.13 } });
+  expect(trailing).toMatchObject({ operatingMargin: 0.13, operatingMarginPeriod: null, operatingMarginPeriodEnd: null });
+  // The latest year without its operating income is a gap; an older year is not passed off for it.
+  const gap = relativeValuationValues({ ...carnival, annualStatements: [carnival.annualStatements[0]!, { date: "2025-11-30", totalRevenue: 26.62e9 }] });
+  expect(gap).toMatchObject({ operatingMargin: null, operatingMarginPeriod: null, gaps: { operatingMargin: "not reported" } });
+});

@@ -1,4 +1,6 @@
 import { futuresGenericCaption, futuresGenericListing } from "../../../utils/futures-generic";
+import { isIsoCurrencyCode } from "../../../utils/crypto-pair";
+import { readTerminalListingCode } from "../../../tickers/terminal-codes";
 import type { ChartSeriesSpec, SeriesStyle, SeriesTransform } from "../../../time-series/types";
 import {
   canonicalTimeSeriesFieldId,
@@ -164,21 +166,78 @@ export function parseSeriesExpression(value: string): ParsedSeriesExpression | n
 
 const SERIES_FORMS = "Use SYMBOL, SYMBOL:field, FUT:code, UST:maturity, FRED:series, GEO:series, or CAP:capability-id:series-id.";
 
+/** A word that reads as a series, not an operator or a number of a formula. */
+const LIST_WORD = /^[A-Za-z^][\w.^=:/~-]*$/;
+
+/** The words that close a Bloomberg security (`AAPL US Equity`, `EURUSD Curncy`), and its exchange code `US`. */
+const BLOOMBERG_WORDS = new Set(["EQUITY", "INDEX", "CURNCY", "COMDTY", "GOVT", "CORP", "MTGE", "MUNI", "PFD"]);
+
+/** Why words typed with spaces between them are no list of series, when they are not: what to say, if anything. */
+interface NotAList {
+  hint?: string;
+}
+
+/**
+ * Words with spaces between them that are one thing and not tickers side by
+ * side: a Bloomberg security, a currency pair, or a series whose field has
+ * spaces in it (`MSFT:net income`). Charting each word would draw series
+ * nobody asked for, so these are errors, with a hint where one helps.
+ */
+function notAList(words: readonly string[]): NotAList | null {
+  if (words.some((word, index) => BLOOMBERG_WORDS.has(word.toUpperCase()) || (index > 0 && word.toUpperCase() === "US"))) {
+    const code = readTerminalListingCode(words.join(" "));
+    return { hint: code ? ` That is a Bloomberg code: write it ${code.key}.` : " That is a Bloomberg security: write the ticker alone (AAPL), or with its exchange (AAPL:NASDAQ)." };
+  }
+  if (words.length === 2 && words.every((word) => /^[A-Za-z]{3}$/.test(word) && isIsoCurrencyCode(word.toUpperCase()))) {
+    const [base, quote] = words.map((word) => word.toUpperCase());
+    return { hint: ` ${base} ${quote} reads as a currency pair: write it ${base}/${quote}, or separate tickers with commas.` };
+  }
+  return words.some((word, index) => word.includes(":") && spacedField(words, index)) ? {} : null;
+}
+
+/** Whether the words from `start` on, joined, are one series whose field has spaces in it (`MSFT:net income`). */
+function spacedField(words: readonly string[], start: number): boolean {
+  for (let end = start + 2; end <= words.length; end += 1) {
+    if (parseSeriesExpression(words.slice(start, end).join(" "))) return true;
+  }
+  return false;
+}
+
+/**
+ * One leg of a list: a series, or series typed with spaces between them
+ * (`AAPL MSFT`, as `fn G AAPL MSFT` passes them), each word a series of its
+ * own. Null when it is neither.
+ */
+function parseLeg(leg: string): ParsedSeriesExpression[] | null {
+  const parsed = parseSeriesExpression(leg);
+  if (parsed) return [parsed];
+  const words = leg.trim().split(/\s+/);
+  if (words.length < 2 || notAList(words)) return null;
+  const series = words.map(parseSeriesExpression);
+  return series.every((entry): entry is ParsedSeriesExpression => entry != null) ? series : null;
+}
+
 export function parseChartExpression(value: string): ParsedSeriesExpression[] {
   if (!value.trim()) return [];
   // A list pasted with a stray separator (`BRK.B,SPY,`, `,SPY`, `A,,B`) has no series between them.
   const legs = value.split(/[;,\n]/).filter((leg) => leg.trim());
   // Separators alone name no series at all.
   if (legs.length === 0) throw new Error(`Invalid chart series "${value.trim()}": no series between its separators. ${SERIES_FORMS}`);
-  if (legs.length > MAX_CHART_COMPOSER_SERIES) {
+
+  const series = legs.flatMap((leg) => {
+    const parsed = parseLeg(leg);
+    if (parsed) return parsed;
+    // Words with spaces between them that are not all series: a list is written with commas.
+    const words = leg.trim().split(/\s+/);
+    const reason = words.length > 1 ? notAList(words) : null;
+    const listHint = reason ? reason.hint ?? ""
+      : words.length > 1 && words.every((word) => LIST_WORD.test(word)) ? ` Separate series with commas: ${words.join(",")}.` : "";
+    throw new Error(`Invalid chart series "${leg.trim()}".${listHint} ${SERIES_FORMS}`);
+  });
+  if (series.length > MAX_CHART_COMPOSER_SERIES) {
     throw new Error(`Charts support up to ${MAX_CHART_COMPOSER_SERIES} base series.`);
   }
-
-  return legs.map((leg) => {
-    const parsed = parseSeriesExpression(leg);
-    if (parsed) return parsed;
-    throw new Error(`Invalid chart series "${leg.trim()}". ${SERIES_FORMS}`);
-  });
+  return series;
 }
 
 export function formatSeriesExpression(series: ChartSeriesSpec): string {

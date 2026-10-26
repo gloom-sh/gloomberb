@@ -36,10 +36,12 @@ export interface FuturesSettlement {
   previous: number | null;
 }
 
-/** What a portfolio reads from a future's terms: its contract size and its settlement. */
+/** A future's contract size, settlement and front reference for collection rows. */
 export interface PortfolioFuturesTerms {
   size: FuturesContractSize | null;
   settlement: FuturesSettlement | null;
+  /** A different contract that is currently front, when the terms name one. */
+  front?: Pick<NonNullable<FuturesContractTermsPayload["front"]>, "contract" | "contractSymbol">;
 }
 
 /** A grain or a soft quotes in US cents, so a dollar point value is a hundred of its price units. */
@@ -167,7 +169,7 @@ export function previousFuturesSettlement(
 
 /** What a portfolio reads from a future's terms, with the settlement before the latest when the history has it. */
 export function portfolioFuturesTerms(
-  terms: Pick<FuturesContractTermsPayload, "spec" | "settlement"> | null | undefined,
+  terms: (Pick<FuturesContractTermsPayload, "spec" | "settlement"> & Partial<Pick<FuturesContractTermsPayload, "front" | "contract">>) | null | undefined,
   history?: readonly PricePoint[] | null,
 ): PortfolioFuturesTerms {
   const settlement = terms?.settlement && Number.isFinite(terms.settlement.price) && terms.settlement.price > 0
@@ -177,7 +179,8 @@ export function portfolioFuturesTerms(
       previous: previousFuturesSettlement(history, terms.settlement.date, terms.settlement.price),
     }
     : null;
-  return { size: futuresContractSize(terms?.spec), settlement };
+  const front = terms?.front && terms.front.contract !== terms.contract ? terms.front : undefined;
+  return { size: futuresContractSize(terms?.spec), settlement, ...(front ? { front } : {}) };
 }
 
 /**

@@ -131,19 +131,56 @@ function doeReleaseTime(iso: string): string {
   return `${parts.weekday} ${parts.month} ${parts.day} ${parts.hour}:${parts.minute} ET`;
 }
 
+/** The calendar's expectation for the next gas release, as the 1W change column reads it: "consensus +80 Bcf, prior +77 Bcf". */
+function doeExpected(report: DoeReportStatus): string | null {
+  if (report.id !== "gas") return null;
+  const parts = [
+    report.nextConsensus != null ? `consensus ${formatDoeChange("bcf", report.nextConsensus)} Bcf` : null,
+    report.nextPrior != null ? `prior ${formatDoeChange("bcf", report.nextPrior)} Bcf` : null,
+  ].filter((part): part is string => !!part);
+  return parts.length ? parts.join(", ") : null;
+}
+
 /**
  * The tab's report on one line: the data week, when it came out and when the
- * next one is due, with the holiday that moved it.
+ * next one is due, with the holiday that moved it and, for gas storage, the
+ * calendar's consensus and prior for it. Where the line runs longer than
+ * `width`, when the week came out gives way first, so the next release and
+ * what it is expected to show stay whole.
  */
-export function doeHeaderLine(report: DoeReportStatus | null, now = Date.now()): string | undefined {
+export function doeHeaderLine(report: DoeReportStatus | null, now = Date.now(), width = Number.POSITIVE_INFINITY): string | undefined {
   if (!report?.weekEnding) return undefined;
-  const parts = [`Week ending ${doeDay(report.weekEnding)}`];
-  if (report.releasedAt) parts.push(`released ${doeReleaseTime(report.releasedAt)}`);
+  const week = `Week ending ${doeDay(report.weekEnding)}`;
+  const released = report.releasedAt ? `released ${doeReleaseTime(report.releasedAt)}` : null;
+  let next: string | null = null;
   if (report.nextReleaseAt) {
     const due = Date.parse(report.nextReleaseAt) <= now ? "due" : "next";
-    parts.push(`${due} ${doeReleaseTime(report.nextReleaseAt)}${report.nextReleaseHoliday ? ` (${report.nextReleaseHoliday})` : ""}`);
+    const expected = doeExpected(report);
+    next = `${due} ${doeReleaseTime(report.nextReleaseAt)}${report.nextReleaseHoliday ? ` (${report.nextReleaseHoliday})` : ""}`
+      + (expected ? `, ${expected}` : "");
   }
-  return parts.join(" · ");
+  const line = [week, released, next].filter((part): part is string => !!part).join(" · ");
+  return line.length <= width || !released || !next ? line : [week, next].join(" · ");
+}
+
+const PUBLISHED_BASIS = "year-ago and 5-year average as EIA published";
+const COMPUTED_BASIS = "year-ago and 5-year average from EIA weekly history";
+
+/**
+ * What the year-ago and five-year columns are measured against, for the
+ * footer: the EIA's own published figures (gas storage) or the stored weekly
+ * history, and both where the rows mix them. Null from an older server,
+ * which does not say.
+ */
+export function doeComparisonBasis(rows: readonly DoeSeriesRow[]): string | null {
+  const shown = rows.filter((row) => row.yearAgo || row.fiveYear);
+  if (!shown.length || shown.some((row) => row.basis === undefined)) return null;
+  const published = shown.filter((row) => row.basis === "published");
+  if (published.length === shown.length) return PUBLISHED_BASIS;
+  if (!published.length) return COMPUTED_BASIS;
+  const tabs = (basis: string) => [...new Set(shown.filter((row) => row.basis === basis).map((row) => row.tab))]
+    .map((tab) => DOE_TABS.find((entry) => entry.value === tab)!.label.toLowerCase()).join(" and ");
+  return `${tabs("published")} ${PUBLISHED_BASIS}, ${tabs("computed")} from EIA weekly history`;
 }
 
 const DAY_MS = 86_400_000;

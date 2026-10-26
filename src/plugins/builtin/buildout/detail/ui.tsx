@@ -5,7 +5,7 @@ import { ExternalLinkText } from "../../../../components/ui/external-link";
 import { ClippedText } from "../../../../components/ui/display";
 import type { InlineTickerCatalogEntry } from "../../../../state/hooks/inline-tickers";
 import { colors } from "../../../../theme/colors";
-import { Box, Text } from "../../../../ui";
+import { Box, Text, TextAttributes } from "../../../../ui";
 import { truncateWithEllipsis } from "../../../../utils/text-wrap";
 import { sourceDetailEntries, text, textOrNull, tickerSymbol } from "../format";
 import type { BuildoutCompany, BuildoutRelatedCompany, BuildoutSource } from "../model/types";
@@ -182,18 +182,21 @@ export function MarkdownBlock({
 export function FavoriteCell({
   starred,
   busy,
+  failed = false,
   selected,
   onPress,
 }: {
   starred: boolean;
   busy: boolean;
+  /** The last star did not take: a `!` in the error tone, the reason in the row's detail. */
+  failed?: boolean;
   selected: boolean;
   onPress?: () => void;
 }) {
   return (
     <Button
-      label={starred ? "Remove favorite" : "Add favorite"}
-      displayLabel={busy ? "*" : starred ? "★" : "☆"}
+      label={failed ? starred ? "Unstarring failed. Remove favorite" : "Starring failed. Add favorite" : starred ? "Remove favorite" : "Add favorite"}
+      displayLabel={busy ? "*" : failed ? "!" : starred ? "★" : "☆"}
       width={2}
       compact
       variant="plain"
@@ -201,7 +204,7 @@ export function FavoriteCell({
       disabled={busy || !onPress}
       stopPropagation
       onPress={onPress}
-    />
+    >{failed && !busy ? <Text fg={colors.negative} attributes={TextAttributes.BOLD}>!</Text> : undefined}</Button>
   );
 }
 

@@ -133,7 +133,15 @@ export interface FuturesCurvePayload {
     historyStart: string | null
     historyEnd: string | null
     asOf: string | null
-    state: "contango" | "backwardation" | "flat" | "unavailable"
+    /**
+     * What the spread subtracts: two last trades made at the same time
+     * ("last"), or both contracts' settlements for the session in `asOf`
+     * ("settle"). Absent from a server that does not say.
+     */
+    basis?: "last" | "settle" | null
+    /** The leg that makes the spread thin (state "thin"): too few lots this session, or no trade in it. */
+    thinSymbol?: string | null
+    state: "contango" | "backwardation" | "flat" | "thin" | "unavailable"
   }
   gaps: string[]
   /** The session the contracts' settlements are for; null when none is confirmed. */

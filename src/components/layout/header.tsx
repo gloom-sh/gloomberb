@@ -26,7 +26,8 @@ import {
 } from "../command-bar/panel/prompt-binding";
 import { useAppDispatch, useAppSelector, type AppState } from "../../state/app/context";
 import { useViewport } from "../../react/input";
-import { canRetryUpdate } from "../../app/global-shortcuts";
+import { canRetryUpdate } from "../../updater";
+import { updateFailureReason } from "../../updater/failure";
 import { t, tf } from "../../i18n";
 import { displayWidth, truncateToDisplayWidth } from "../../utils/format";
 import { ClippedText, NATIVE_CLIP_STYLE } from "../ui/display";
@@ -37,14 +38,10 @@ import { WindowControls, WINDOWS_CONTROL_GROUP_WIDTH_PX } from "./window-control
 import { Button, terminalButtonColumns } from "../ui/button";
 
 const UPDATE_NOTICE_DURATION_MS = 5_000;
-/**
- * The failed-update message is cut to the room it has, but not below this many
- * columns ("Update fa..."): narrower says nothing, so the banner is left out.
- * The retry hint gives way before the message goes under it.
- */
-const UPDATE_ERROR_MIN_COLUMNS = 12;
-/** Kept clear after the failed-update banner, so its last character never touches the Help pill. */
-const UPDATE_ERROR_GAP_COLUMNS = 1;
+/** Kept clear after the terminal update status, so its last character never touches the Help pill. */
+const UPDATE_STATUS_GAP_COLUMNS = 1;
+/** A clipped terminal notice narrower than this is left out rather than shown as a stub. */
+const UPDATE_TEXT_MIN_COLUMNS = 8;
 /** Left padding of the update status's slot, in cells; the desktop's title-bar layout also pads its right. */
 const UPDATE_SLOT_PADDING_COLUMNS = 2;
 /** The Help pill's own props, shared by its button and the width the update status leaves it. */
@@ -311,9 +308,12 @@ function HeaderCommandPrompt({
  */
 type UpdateStatusView =
   | { kind: "busy"; text: string; parts: StatusPart[] }
-  | { kind: "text"; text: string }
+  | { kind: "text"; text: string; compact?: string; clip?: boolean }
   | { kind: "restart"; text: string; version: string }
   | { kind: "failed"; message: string; parts: StatusPart[]; retry: boolean };
+
+/** The failed banner's words without the reason, for a terminal slot too narrow to read one. */
+const UPDATE_FAILED_SHORT = "Update failed";
 
 /**
  * A line of the status in the pieces the desktop may treat apart: a `cut`
@@ -366,14 +366,19 @@ function resolveUpdateStatusView({
       if (updateProgress.canRestart && canRestart) {
         return { kind: "restart", text: t("Update ready"), version: updateAvailable?.version ?? "" };
       }
-      return { kind: "text", text: t("Update ready, restart to apply") };
+      return { kind: "text", text: t("Update ready, restart to apply"), compact: t("Update ready") };
     }
     if (updateProgress.phase === "done") {
       return { kind: "text", text: t(updateProgress.message ?? "Update ready, restart to apply") };
     }
     if (updateProgress.phase === "error") {
-      // One line: an error that carries a stack or a command's output must not grow the header.
-      const error = (updateProgress.error ?? "Unknown error").replace(/\s+/g, " ").trim();
+      // The reason in a few words; the whole error is in the command bar's Check
+      // for Updates and the log. An error without one (from an older desktop
+      // process) is shown on one line: a stack or a command's output must not
+      // grow the header.
+      const error = updateProgress.failure
+        ? t(updateFailureReason(updateProgress.failure))
+        : (updateProgress.error ?? "Unknown error").replace(/\s+/g, " ").trim();
       return {
         kind: "failed",
         message: tf("Update failed: {error}", { error }),
@@ -399,36 +404,28 @@ function resolveUpdateStatusView({
     if (updateAvailable.updateAction.kind === "managed") {
       return {
         kind: "text",
-        text: tf("v{version} available, update through the package manager that installed Gloomberb", {
+        text: tf("v{version} available, update through the package manager that installed Gloom", {
           version: updateAvailable.version,
         }),
       };
     }
     return { kind: "text", text: tf("v{version} available — starting download...", { version: updateAvailable.version }) };
   }
-  if (updateNotice) return { kind: "text", text: updateNotice };
+  if (updateNotice) return { kind: "text", text: updateNotice, clip: true };
   return null;
 }
 
 /**
- * What the header says about an update. The terminal cuts it to `columns`,
- * the room its slot is guaranteed; the desktop and the web let the browser fit
- * it to the room the bar leaves (NativeUpdateStatus). Either way it never runs
- * into the Help pill or the market cluster beside it.
+ * What the header says about an update, and the key that acts on it (Restart
+ * for a downloaded update, retry for a failed one). A passing notice goes
+ * after its time.
  */
-function UpdateStatus({ columns, onRestart, trailingGap = false }: {
-  columns: number;
-  onRestart?: () => void;
-  /** The desktop title bar keeps a gap after the status as well as before it. */
-  trailingGap?: boolean;
-}) {
-  const { nativePaneChrome = false } = useUiCapabilities();
+function useUpdateStatus(canRestart: boolean): { view: UpdateStatusView | null; updateKey: string } {
   const dispatch = useAppDispatch();
   const updateAvailable = useAppSelector((state) => state.updateAvailable);
   const updateProgress = useAppSelector((state) => state.updateProgress);
   const updateCheckInProgress = useAppSelector((state) => state.updateCheckInProgress);
   const updateNotice = useAppSelector((state) => state.updateNotice);
-  // One key: Restart for a downloaded update, retry for a failed one.
   const updateKey = useActionShortcut("install-update");
 
   useEffect(() => {
@@ -440,12 +437,65 @@ function UpdateStatus({ columns, onRestart, trailingGap = false }: {
   }, [dispatch, updateAvailable, updateCheckInProgress, updateNotice, updateProgress]);
 
   const view = resolveUpdateStatusView({
-    canRestart: !!onRestart,
+    canRestart,
     updateAvailable,
     updateCheckInProgress,
     updateNotice,
     updateProgress,
   });
+  return { view, updateKey };
+}
+
+/** The retry key after a failed update's message, when there is something to retry. */
+function retryHint(view: Extract<UpdateStatusView, { kind: "failed" }>, updateKey: string): string {
+  return updateKey && view.retry ? `  ${updateKey} ${t("retry")}` : "";
+}
+
+/**
+ * Columns the terminal status takes when everything fits: the header gives
+ * the slot that much from the closed prompt's empty room before dropping parts.
+ */
+function terminalUpdateStatusColumns(view: UpdateStatusView, updateKey: string): number {
+  return UPDATE_STATUS_GAP_COLUMNS + terminalUpdateStatusContentColumns(view, updateKey);
+}
+
+function terminalUpdateStatusContentColumns(view: UpdateStatusView, updateKey: string): number {
+  switch (view.kind) {
+    case "busy":
+      return 2 + displayWidth(view.text);
+    case "restart":
+      return displayWidth(view.text) + 1 + terminalButtonColumns({ label: "Restart", shortcut: updateKey || undefined, compact: true });
+    case "failed":
+      return displayWidth(view.message) + displayWidth(retryHint(view, updateKey));
+    case "text":
+      return displayWidth(view.text);
+  }
+}
+
+/**
+ * The narrowest the closed terminal prompt goes to make room for an update's
+ * status: its caret and the whole placeholder, which sells the command bar to
+ * a first-time user, without the key hint (resolveHeaderPromptContent).
+ */
+function terminalClosedPromptFloor(): number {
+  return 2 + PROMPT_CARET.length + t("Search or run a command").length;
+}
+
+/**
+ * What the header says about an update. The terminal fits it to `columns`,
+ * the room its slot is guaranteed; the desktop and the web let the browser fit
+ * it to the room the bar leaves (NativeUpdateStatus). Either way it never runs
+ * into the Help pill or the market cluster beside it.
+ */
+function UpdateStatus({ columns, onRestart, status, trailingGap = false }: {
+  columns: number;
+  onRestart?: () => void;
+  status: { view: UpdateStatusView | null; updateKey: string };
+  /** The desktop title bar keeps a gap after the status as well as before it. */
+  trailingGap?: boolean;
+}) {
+  const { nativePaneChrome = false } = useUiCapabilities();
+  const { view, updateKey } = status;
   if (!view) return null;
   return nativePaneChrome
     ? <NativeUpdateStatus view={view} onRestart={onRestart} trailingGap={trailingGap} updateKey={updateKey} />
@@ -458,39 +508,109 @@ function TerminalUpdateStatus({ columns, onRestart, updateKey, view }: {
   updateKey: string;
   view: UpdateStatusView;
 }) {
-  const colors = useThemeColors();
+  const content = terminalUpdateStatusContent({ room: columns - UPDATE_STATUS_GAP_COLUMNS, onRestart, updateKey, view });
+  if (!content) return null;
+  return (
+    <Box flexDirection="row" overflow="hidden" paddingRight={UPDATE_STATUS_GAP_COLUMNS}>
+      {content}
+    </Box>
+  );
+}
+
+/** Whole status parts in priority order; only transient notices may be clipped. */
+function terminalUpdateStatusContent({ onRestart, room, updateKey, view }: {
+  onRestart?: () => void;
+  room: number;
+  updateKey: string;
+  view: UpdateStatusView;
+}): ReactNode {
   if (view.kind === "busy") {
-    return (
-      <Box flexDirection="row" gap={1}>
-        <SpinnerMark name="dots" color={colors.headerText} />
-        <Text fg={colors.headerText}>{view.text}</Text>
-      </Box>
-    );
+    // The percent stays when the words give way; the spinner never stands alone.
+    const text = fitStatusParts(view.parts, room - 2);
+    return text ? <TerminalBusyStatus text={text} /> : null;
   }
   if (view.kind === "restart") {
-    return (
-      <Box flexDirection="row" gap={1} alignItems="center">
-        <Text fg={colors.headerText}>{view.text}</Text>
-        <Button compact label="Restart" shortcut={updateKey || undefined} onPress={onRestart} stopPropagation />
-      </Box>
-    );
+    // The button stays when the words do not fit beside it.
+    const buttonColumns = terminalButtonColumns({ label: "Restart", shortcut: updateKey || undefined, compact: true });
+    if (room < buttonColumns) return null;
+    const showText = displayWidth(view.text) + 1 + buttonColumns <= room;
+    return <TerminalRestartStatus text={showText ? view.text : null} onRestart={onRestart} updateKey={updateKey} />;
   }
   if (view.kind === "failed") {
-    const hint = updateKey && view.retry ? `  ${updateKey} ${t("retry")}` : "";
+    const hint = retryHint(view, updateKey);
     const hintColumns = displayWidth(hint);
-    // The message goes first, and keeps its room before the hint takes any.
-    const room = columns - UPDATE_ERROR_GAP_COLUMNS;
-    const showHint = hintColumns > 0 && room - hintColumns >= UPDATE_ERROR_MIN_COLUMNS;
-    const messageColumns = room - (showHint ? hintColumns : 0);
-    if (messageColumns < UPDATE_ERROR_MIN_COLUMNS) return null;
-    return (
-      <Box flexDirection="row" overflow="hidden" paddingRight={UPDATE_ERROR_GAP_COLUMNS}>
-        <ClippedText fg={colors.headerText} text={view.message} width={messageColumns} />
-        {showHint ? <Text fg={blendHex(colors.headerText, colors.header, 0.62)}>{hint}</Text> : null}
-      </Box>
-    );
+    const messageColumns = displayWidth(view.message);
+    const short = t(UPDATE_FAILED_SHORT);
+    // The reason and retry hint give way whole, leaving a compact failure signal.
+    let text: string;
+    let showHint = false;
+    if (messageColumns + hintColumns <= room) {
+      text = view.message;
+      showHint = hintColumns > 0;
+    } else if (messageColumns <= room) {
+      text = view.message;
+    } else if (displayWidth(short) + hintColumns <= room) {
+      text = short;
+      showHint = hintColumns > 0;
+    } else if (displayWidth(short) <= room) {
+      text = short;
+    } else {
+      return null;
+    }
+    return <TerminalFailedStatus text={text} hint={showHint ? hint : ""} />;
   }
-  return <Text fg={colors.headerText}>{view.text}</Text>;
+  if (view.clip) {
+    if (room < UPDATE_TEXT_MIN_COLUMNS) return null;
+    return <TerminalTextStatus text={view.text} width={room} />;
+  }
+  const text = displayWidth(view.text) <= room ? view.text : view.compact;
+  return text && displayWidth(text) <= room ? <TerminalTextStatus text={text} width={room} /> : null;
+}
+
+/**
+ * A status line in `width` columns: the parts the desktop may clip instead
+ * drop out whole in the terminal, keeping the download's percent readable.
+ */
+function fitStatusParts(parts: StatusPart[], width: number): string {
+  const full = parts.map((part) => part.text).join("");
+  if (displayWidth(full) <= width) return full;
+  const compact = parts.filter((part) => !part.cut).map((part) => part.text).join("").trim();
+  return displayWidth(compact) <= width ? compact : "";
+}
+
+function TerminalBusyStatus({ text }: { text: string }) {
+  const colors = useThemeColors();
+  return (
+    <Box flexDirection="row" gap={1}>
+      <SpinnerMark name="dots" color={colors.headerText} />
+      <Text fg={colors.headerText}>{text}</Text>
+    </Box>
+  );
+}
+
+function TerminalRestartStatus({ onRestart, text, updateKey }: { onRestart?: () => void; text: string | null; updateKey: string }) {
+  const colors = useThemeColors();
+  return (
+    <Box flexDirection="row" gap={1} alignItems="center">
+      {text ? <Text fg={colors.headerText}>{text}</Text> : null}
+      <Button compact label="Restart" shortcut={updateKey || undefined} onPress={onRestart} stopPropagation />
+    </Box>
+  );
+}
+
+function TerminalFailedStatus({ hint, text }: { hint: string; text: string }) {
+  const colors = useThemeColors();
+  return (
+    <>
+      <Text fg={colors.headerText}>{text}</Text>
+      {hint ? <Text fg={blendHex(colors.headerText, colors.header, 0.62)}>{hint}</Text> : null}
+    </>
+  );
+}
+
+function TerminalTextStatus({ text, width }: { text: string; width: number }) {
+  const colors = useThemeColors();
+  return <ClippedText fg={colors.headerText} text={text} width={width} />;
 }
 
 /**
@@ -510,6 +630,23 @@ function nativeCutTextStyle(alone: boolean) {
     maxWidth: "max-content",
   } as const;
 }
+/**
+ * A failed update's reason on the desktop: whole when the line has room for it,
+ * so the retry key after it moves to the hidden line first; never wider than
+ * what the words before it leave, so when even that is too little it stays on
+ * the line and ends in an ellipsis instead of leaving with the key.
+ */
+function nativeReasonStyle(leadColumns: number) {
+  return {
+    ...NATIVE_CLIP_STYLE,
+    flexGrow: 0,
+    flexShrink: 1,
+    flexBasis: "auto",
+    minWidth: `${NATIVE_STATUS_PIECE_MIN_CH}ch`,
+    maxWidth: `calc(100% - ${leadColumns}ch)`,
+  } as const;
+}
+
 /** One cell between the parts of the desktop status, as `gap={1}` puts it in the terminal. */
 const NATIVE_STATUS_GAP = "var(--cell-w)";
 
@@ -597,12 +734,16 @@ function NativeUpdateStatus({ onRestart, trailingGap, updateKey, view }: {
     );
   }
   if (view.kind === "failed") {
-    // The words that say it failed, then as much of the error as reads, then the retry key.
-    const hint = updateKey && view.retry ? `  ${updateKey} ${t("retry")}` : "";
-    const alone = view.parts.every((part) => part.cut);
+    // The words that say it failed, then the reason, then the retry key, which
+    // gives way first, as in the terminal: the reason is cut only once the key
+    // is gone and it still does not fit (nativeReasonStyle).
+    const hint = retryHint(view, updateKey);
+    const lead = view.parts.reduce((total, part) => total + (part.cut ? 0 : displayWidth(part.text)), 0);
     return (
       <NativeStatusRow trailingGap={trailingGap}>
-        {view.parts.map((part, index) => nativeStatusPiece(part, index, { alone, color, title: view.message }))}
+        {view.parts.map((part, index) => part.cut
+          ? <Text key={index} fg={color} title={view.message} style={nativeReasonStyle(lead)}>{part.text}</Text>
+          : nativeStatusPiece(part, index, { alone: false, color, title: view.message }))}
         {hint ? <Text fg={colors.textMuted}>{hint}</Text> : null}
       </NativeStatusRow>
     );
@@ -625,7 +766,7 @@ function HeaderMarketSummary({ nativePaneChrome, width }: { nativePaneChrome: bo
   const summary = useMarketSummary();
   const fit = resolveMarketSummaryFit({
     available: width,
-    baseCurrencyWidth: summary.baseCurrency.length + 1,
+    baseCurrencyWidth: displayWidth(summary.baseCurrencyLabel) + 1,
     countdownWidth: summary.marketLabel.length - summary.marketLabelShort.length,
     spyWidth: summary.spyText.length + 1,
     stateWidth: summary.marketLabelShort ? summary.marketLabelShort.length + 1 : 0,
@@ -635,20 +776,20 @@ function HeaderMarketSummary({ nativePaneChrome, width }: { nativePaneChrome: bo
   return (
     <>
       {fit.showState && marketLabel ? (
-        <Box paddingRight={1} flexShrink={0}>
+        <Box paddingRight={1} flexShrink={0} data-gloom-role="header-market">
           <Text fg={summary.marketColor} {...(nativePaneChrome ? { attributes: TextAttributes.BOLD } : {})}>
             {marketLabel}
           </Text>
         </Box>
       ) : null}
       {fit.showSpy ? (
-        <Box paddingRight={1} flexShrink={0}>
+        <Box paddingRight={1} flexShrink={0} data-gloom-role="header-market">
           <Text fg={summary.spyColor}>{summary.spyText}</Text>
         </Box>
       ) : null}
       {fit.showBaseCurrency ? (
         <Box paddingRight={1} flexShrink={0}>
-          <Text fg={nativePaneChrome ? colors.textDim : blendHex(colors.headerText, colors.header, 0.42)}>{summary.baseCurrency}</Text>
+          <Text fg={nativePaneChrome ? colors.textDim : blendHex(colors.headerText, colors.header, 0.42)}>{summary.baseCurrencyLabel}</Text>
         </Box>
       ) : null}
     </>
@@ -690,22 +831,41 @@ export function Header({
   const { nativePaneChrome = false, titleBarOverlay, nativeWindowChrome = titleBarOverlay, windowControls } = useUiCapabilities();
   const showWindowControls = nativeWindowChrome && windowControls === "windows";
   const windowFullscreen = useWindowFullscreen();
+  const updateStatus = useUpdateStatus(!!onRestartForUpdate);
   const prompt = resolveHeaderPromptGeometry({
     nativePaneChrome,
     nativeWindowChrome,
     termWidth,
     titleBarOverlay,
     windowFullscreen,
+    allowMarketExpansion: !updateStatus.view,
   });
   const shortcutLabel = useCommandBarShortcut();
   // The terminal lays the header out by cell counts, so it works out what is left
   // for the update status once the Help pill and the slot's padding are paid for.
-  const updateStatusColumns = Math.max(
+  let updateStatusColumns = Math.max(
     0,
     prompt.updateColumns
       - (onOpenHelp ? terminalButtonColumns(helpButtonProps()) + TERMINAL_HELP_PADDING_COLUMNS : 0)
       - UPDATE_SLOT_PADDING_COLUMNS * (titleBarOverlay ? 2 : 1),
   );
+  // Short of that, the closed prompt gives the status its empty room, down to
+  // its placeholder, as the desktop's does: at 80 to 160 columns the slot alone
+  // is too narrow to say anything. Open, the prompt is the command bar's input
+  // and keeps its width.
+  // The prompt's own right padding then stands for one of the slot's.
+  let promptWidth = prompt.width;
+  let terminalSlotPadding = UPDATE_SLOT_PADDING_COLUMNS;
+  if (!nativePaneChrome && !commandBarOpen && updateStatus.view) {
+    const need = terminalUpdateStatusColumns(updateStatus.view, updateStatus.updateKey);
+    if (need > updateStatusColumns) {
+      const spare = Math.max(0, prompt.width - terminalClosedPromptFloor());
+      const given = Math.min(need - updateStatusColumns - 1, spare);
+      promptWidth -= Math.max(0, given);
+      terminalSlotPadding -= 1;
+      updateStatusColumns += 1 + Math.max(0, given);
+    }
+  }
   // Desktop has its own window chrome to sit on; the terminal has none, so the
   // bar itself wears the prompt's fill and reads as a single strip.
   const headerBg = nativePaneChrome ? colors.header : headerSurface(colors);
@@ -727,7 +887,7 @@ export function Header({
       onOpen={openCommandBar}
       open={commandBarOpen}
       shortcutLabel={shortcutLabel}
-      width={prompt.width}
+      width={promptWidth}
     />
   );
   const marketSummary = prompt.marketColumns > 0
@@ -748,7 +908,7 @@ export function Header({
       data-gloom-role="header-update-status"
       style={{ alignSelf: "stretch" }}
     >
-      <UpdateStatus columns={updateStatusColumns} onRestart={onRestartForUpdate} trailingGap={!!titleBarOverlay} />
+      <UpdateStatus columns={updateStatusColumns} onRestart={onRestartForUpdate} status={updateStatus} trailingGap={!!titleBarOverlay} />
     </Box>
   ) : null;
 
@@ -771,8 +931,8 @@ export function Header({
         <Box width={prompt.left} />
         {commandPrompt}
         {nativeUpdateSlot ?? (
-          <Box flexGrow={1} paddingLeft={UPDATE_SLOT_PADDING_COLUMNS} paddingRight={UPDATE_SLOT_PADDING_COLUMNS} minWidth={0}>
-            <UpdateStatus columns={updateStatusColumns} onRestart={onRestartForUpdate} />
+          <Box flexGrow={1} paddingLeft={terminalSlotPadding} paddingRight={UPDATE_SLOT_PADDING_COLUMNS} minWidth={0}>
+            <UpdateStatus columns={updateStatusColumns} onRestart={onRestartForUpdate} status={updateStatus} />
           </Box>
         )}
         {onOpenHelp ? <HeaderHelpButton nativePaneChrome onPress={onOpenHelp} /> : null}
@@ -795,8 +955,8 @@ export function Header({
       <Box width={prompt.left} />
       {commandPrompt}
       {nativeUpdateSlot ?? (
-        <Box flexGrow={1} minWidth={0} paddingLeft={UPDATE_SLOT_PADDING_COLUMNS}>
-          <UpdateStatus columns={updateStatusColumns} onRestart={onRestartForUpdate} />
+        <Box flexGrow={1} minWidth={0} paddingLeft={terminalSlotPadding}>
+          <UpdateStatus columns={updateStatusColumns} onRestart={onRestartForUpdate} status={updateStatus} />
         </Box>
       )}
       {onOpenHelp ? <HeaderHelpButton nativePaneChrome={nativePaneChrome} onPress={onOpenHelp} /> : null}

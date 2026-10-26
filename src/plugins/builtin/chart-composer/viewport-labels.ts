@@ -1,6 +1,7 @@
 import type { ChartResolution } from "../../../components/chart/core/types";
+import { chartBarSizeParts, isManualChartResolution, type ManualChartResolution } from "../../../time-series/resolution";
 
-const RESOLUTION_LABELS: Record<ChartResolution, string> = {
+const RESOLUTION_LABELS: Record<ManualChartResolution | "auto", string> = {
   auto: "Auto",
   "1m": "1m",
   "5m": "5m",
@@ -13,7 +14,7 @@ const RESOLUTION_LABELS: Record<ChartResolution, string> = {
   "1mo": "M",
 };
 
-const RESOLUTION_NAMES: Record<Exclude<ChartResolution, "auto">, string> = {
+const RESOLUTION_NAMES: Record<ManualChartResolution, string> = {
   "1m": "1-minute",
   "5m": "5-minute",
   "15m": "15-minute",
@@ -25,19 +26,27 @@ const RESOLUTION_NAMES: Record<Exclude<ChartResolution, "auto">, string> = {
   "1mo": "monthly",
 };
 
+// Months take MO beyond one (3MO), as 3M and 6M are ranges in the same bar.
+const BUILT_UNIT_LABELS = { m: "m", h: "h", d: "D", wk: "W", mo: "MO" } as const;
+const BUILT_UNIT_NAMES = { m: "minute", h: "hour", d: "day", wk: "week", mo: "month" } as const;
+
 /**
  * The one way chart intervals are labelled. Intraday reads in lowercase units
- * (1m, 1h) and daily and longer as D W M, so an interval never collides with
- * a range such as 1M (one month) in the same bar.
+ * (1m, 1h, 4h) and daily and longer as D W M, with a count when there are
+ * several (2D, 2W), so an interval never collides with a range such as 1M
+ * (one month) in the same bar.
  */
 export function formatChartResolution(resolution: ChartResolution): string {
-  return RESOLUTION_LABELS[resolution] ?? resolution;
+  if (resolution === "auto" || isManualChartResolution(resolution)) return RESOLUTION_LABELS[resolution];
+  const parts = chartBarSizeParts(resolution);
+  return parts ? `${parts.count}${BUILT_UNIT_LABELS[parts.unit]}` : resolution;
 }
 
 export function describeChartResolution(resolution: ChartResolution): string {
-  return resolution === "auto"
-    ? "Choose an interval automatically for the active range."
-    : `Use ${RESOLUTION_NAMES[resolution] ?? resolution} observations.`;
+  if (resolution === "auto") return "Choose an interval automatically for the active range.";
+  if (isManualChartResolution(resolution)) return `Use ${RESOLUTION_NAMES[resolution]} observations.`;
+  const parts = chartBarSizeParts(resolution);
+  return parts ? `Use ${parts.count}-${BUILT_UNIT_NAMES[parts.unit]} observations.` : `Use ${resolution} observations.`;
 }
 
 function calendarParts(date: Date, timeZone: string): { key: string; year: number; label: string } {
@@ -72,6 +81,7 @@ export function formatChartDateWindow(
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: zone });
   } catch {
+    // Intentional ignore: unsupported exchange time zones use UTC so the date label remains readable.
     zone = "UTC";
   }
   const first = calendarParts(start, zone);

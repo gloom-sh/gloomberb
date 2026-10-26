@@ -17,7 +17,7 @@ function offer(overrides: Partial<UpgradeOffer>): UpgradeOffer {
 describe("upgrade sheet copy", () => {
   test("promises a free start only when the server confirmed the trial", () => {
     const trial = upgradeDialogCopy(offer({}), "month", now);
-    expect(trial.subtitle).toBe("$0 today, then $70/mo from Oct 6. Cancel before and you pay nothing.");
+    expect(trial.subtitle).toBe("$0 today, then $70/mo from Oct 6. Card required. Cancel before and you pay nothing.");
     expect(upgradeDialogCopy(offer({}), "year", now).subtitle).toContain("then $630/yr from Oct 6");
 
     // Trial used: checkout bills on the spot. Unknown: it might.

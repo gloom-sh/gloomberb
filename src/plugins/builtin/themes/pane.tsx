@@ -5,7 +5,7 @@ import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import type { ExtendedSession } from "../../../market-data/market/status";
 import { useAsyncResource, useAutoRefresh, usePluginPaneState, usePluginTickerActions, useUpdatedAgo } from "../../../public/react";
 import { usePaneInstance } from "../../../state/app/context";
-import { priceColor } from "../../../theme/colors";
+import { priceColor, shownPriceColor } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import { Box, Text } from "../../../ui";
 import { nextHeaderSort } from "../../../utils/sort-values";
@@ -13,10 +13,21 @@ import { useMembersMenu } from "../shared/members-menu";
 import { cachedMembers, cachedThemes, loadMembers, loadThemes } from "./client";
 import {
   aggregateText, boardYtdBase, coverageWidth, DEFAULT_SORT, extendedMove, matchTheme, memberColumns, memberExtendedSessions, memberPrice, percent,
-  SNAPSHOT_STALE_MS, snapshotFooterText, sortMembers, sortThemes, themeColumns, type ThemeSort,
+  isLiveBoard, LIVE_BOARD_REFRESH_MS, SNAPSHOT_STALE_MS, snapshotFooterText, sortMembers, sortThemes, themeColumns, type ThemeSort,
 } from "./model";
 
-type SnapshotPayload = { asOf: string; stale: boolean; regularSessionDate?: string | null; regularSessionClosedAt?: number | null };
+const LIVE_LEAD = "live · ";
+type SnapshotPayload = { asOf: string; stale: boolean; access?: "realtime" | "delayed"; regularSessionDate?: string | null; regularSessionClosedAt?: number | null };
+
+/**
+ * Refreshes a board on the user's interval, or every 15 seconds while it is
+ * live: a Pro account's prices are renewed that often on the server.
+ */
+function useBoardRefresh(resource: { updatedAt: number | null; load: (force?: boolean) => Promise<unknown>; data: { payload: SnapshotPayload } | null }) {
+  const live = isLiveBoard(resource.data?.payload);
+  const { load } = resource;
+  useAutoRefresh(resource.updatedAt, live ? () => void load(true) : () => void load(), { intervalMs: live ? LIVE_BOARD_REFRESH_MS : null });
+}
 
 function useSnapshotFooter(id: string, resource: { loading: boolean; error: string | null; data: { payload: SnapshotPayload; stale: boolean; refreshError: string | null } | null }, focused: boolean, enabled = true) {
   const data = resource.data;
@@ -24,7 +35,15 @@ function useSnapshotFooter(id: string, resource: { loading: boolean; error: stri
   const payload = data?.payload;
   // Outside the regular session the figures are a close, so the footer names it, not the snapshot's time.
   const text = age && payload ? snapshotFooterText(payload, age) : null;
-  const info = useMemo(() => text ? splitDelayedStatus({ id: "snapshot", parts: [{ text, tone: "muted" }] }) : [], [text]);
+  const info = useMemo(() => {
+    if (!text) return [];
+    // A live board says so as the other live panes do, before the snapshot's age.
+    if (text.startsWith(LIVE_LEAD)) {
+      return [{ id: "snapshot-live", parts: [{ text: "live", tone: "positive" as const }] },
+        { id: "snapshot", parts: [{ text: text.slice(LIVE_LEAD.length), tone: "muted" as const }] }];
+    }
+    return splitDelayedStatus({ id: "snapshot", parts: [{ text, tone: "muted" }] });
+  }, [text]);
   // The server flag includes retained historical returns; it does not mean the daily board is old.
   const snapshotStale = !!data && Date.now() - Date.parse(data.payload.asOf) > SNAPSHOT_STALE_MS;
   usePaneStatusFooter({ registrationId: id, enabled, loading: resource.loading && !!data,
@@ -49,7 +68,7 @@ function Members({ id, width, height, focused }: { id: string; width: number; he
   const ytdBase = data ? boardYtdBase(data) : null;
   const columns = useMemo(() => memberColumns(width, extendedSessionsKey ? extendedSessionsKey.split(",") as ExtendedSession[] : [], ytdBase),
     [extendedSessionsKey, width, ytdBase]);
-  useAutoRefresh(resource.updatedAt, resource.load);
+  useBoardRefresh(resource);
   usePaneRefreshKey(() => void resource.reload(), { focused });
   useSnapshotFooter("themes:members", resource, focused);
   const memberList = useMemo(() => data ? { title: data.theme.name, watchlistName: data.theme.name, members: rows } : null, [data, rows]);
@@ -61,10 +80,10 @@ function Members({ id, width, height, focused }: { id: string; width: number; he
     if (column.id === "preMarket" || column.id === "afterHours") {
       // The extended print's move from the close in Price.
       const move = extendedMove(row, column.id === "preMarket" ? "PRE" : "POST");
-      return { text: percent(move), value: move, color: move === null ? colors.textMuted : priceColor(move, colors) };
+      return { text: percent(move), value: move, color: move === null ? colors.textMuted : shownPriceColor(move, 2, colors) };
     }
     const value = row[column.id as ThemePeriod];
-    return { text: percent(value), value, color: value === null ? colors.textMuted : priceColor(value, colors) };
+    return { text: percent(value), value, color: value === null ? colors.textMuted : shownPriceColor(value, 2, colors) };
   }, [colors]);
   return <PaneStatusBody subject="theme members" loading={!data && resource.loading} error={!data ? resource.error : null}>
     {data ? <DataTableView<ThemeMember> columns={columns} items={rows} focused={focused} rootWidth={width} rootHeight={height}
@@ -107,7 +126,7 @@ export function ThemesBoard({ width, height, focused, tabStrip, tabRows = 0 }: T
   const rows = useMemo(() => sortThemes(data?.themes ?? [], sort), [data, sort]);
   const columns = useMemo(() => themeColumns(width, data?.themes ?? [], data ? boardYtdBase(data) : null), [width, data]);
   const theme = opened && data ? matchTheme(data.themes, opened) : null;
-  useAutoRefresh(resource.updatedAt, resource.load);
+  useBoardRefresh(resource);
   usePaneRefreshKey(() => void resource.reload(), { focused, enabled: !opened });
   useSnapshotFooter("themes:list", resource, focused, !opened || !data);
   const renderCell = useCallback((row: ThemeSummary, column: DataTableColumn): DataTableCell => {

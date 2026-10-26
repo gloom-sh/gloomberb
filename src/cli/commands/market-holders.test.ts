@@ -10,15 +10,21 @@ import { createHoldersHeadless } from "../../plugins/builtin/holders/headless";
 import { createTestHeadlessContext } from "../../test-support/headless";
 
 const holders = marketDataCliCommands.find((command) => command.name === "holders")!;
+const insider = marketDataCliCommands.find((command) => command.name === "insider")!;
 const HOLDER_DATA = { symbol: "CAR", holders: [{ ownerType: "institution", name: "Morgan Stanley", shares: 2_029_978, changeShares: 2_029_978 }] };
 
 afterEach(() => setHttpFetchTransport(null));
+
+const TICKER_HOLDINGS = "/cloud/sec/13f/ticker-holdings";
+/** The service's answer for a ticker no 13F filer reports. */
+const noIndex = () => Response.json({ error: "No 13F CUSIP found" }, { status: 404 });
 
 function harness() {
   const requests: URL[] = [];
   setHttpFetchTransport(async (url) => {
     const parsed = new URL(url);
     requests.push(parsed);
+    if (parsed.pathname === TICKER_HOLDINGS) return noIndex();
     const payload = carBeneficialOwnersPayload({ history: parsed.searchParams.get("history") === "1" });
     return new Response(JSON.stringify(payload), { headers: { "Content-Type": "application/json" } });
   });
@@ -52,7 +58,8 @@ test("holders --form lists the beneficial owners, --history every report, and th
   );
 
   await holders.execute(["CAR"], run.context);
-  expect(run.requests).toHaveLength(1);
+  // The default asks the 13F index, not the 13D/13G owners, and keeps the source's list without it.
+  expect(run.requests.slice(1).map((url) => url.pathname)).toEqual([TICKER_HOLDINGS]);
   expect((run.printed[1]!.result.data as Array<{ name: string }>).map((row) => row.name)).toEqual(["Morgan Stanley"]);
 });
 
@@ -99,6 +106,7 @@ test("holders writes HDS's rows: largest value first, percents in percent, and H
         value: 188_906_753, percentHeld: 0.00090000004, changeShares: 187_825, changePercent: 0.013595 },
     ],
   };
+  setHttpFetchTransport(async () => noIndex());
   const cli = createTestCliContext({ dataProvider: { getHolders: async () => data } });
   await holders.execute(["SAN"], cli.context);
   const { result, options } = cli.printed[0]!;
@@ -113,3 +121,82 @@ test("holders writes HDS's rows: largest value first, percents in percent, and H
     "Northern Trust Corporation,institution,174942026,12968275,-403588,-3.0182,0.09,2026-06-30,SAN,,,SEC EDGAR,2026-06-30",
   ]);
 });
+
+test("holders on a US line lists the 13F index's filers past the source's few, as many as --limit asks", async () => {
+  const offsets: string[] = [];
+  setHttpFetchTransport(async (url) => {
+    const parsed = new URL(url);
+    if (parsed.pathname !== TICKER_HOLDINGS) return noIndex();
+    const offset = Number(parsed.searchParams.get("offset"));
+    offsets.push(String(offset));
+    return Response.json({
+      ticker: "PBR", quarter: "2026Q2", period: "2026-06-30", previousPeriod: "2026-03-31", warnings: [], asOf: "2026-10-24T00:00:00Z",
+      holderCount: 567, newCount: 0, exitCount: 0, totalValue: null, valueScope: "loaded page", hasMore: true, nextOffset: offset + 25,
+      rows: Array.from({ length: 25 }, (_, index) => ({
+        id: `${offset + index}`, cik: String(offset + index + 1).padStart(10, "0"), fund: `Filer ${offset + index + 1}`,
+        ticker: "PBR", cusip: "71654V408", issuer: "Petroleo Brasileiro SA", type: "SH", value: null,
+        shares: (100 - offset - index) * 1_000_000, previousShares: (100 - offset - index) * 1_000_000 - 500_000,
+        weight: null, previousWeight: null, weightChange: null, action: "add",
+      })),
+    });
+  });
+  // The source's own row for the largest filer, in its own spelling: shares at $25.62, a stake of the common class.
+  const cli = createTestCliContext({
+    dataProvider: {
+      getHolders: async () => ({
+        symbol: "PBR", currency: "USD", exchange: "NYSE", asOf: "2026-06-30", valueCurrency: "USD", valueBasis: "latest_price",
+        summary: { institutionsCount: 567 },
+        holders: [{ ownerType: "institution", name: "Filer One LLC", reportDate: "2026-06-30", shares: 100_000_000, value: 2_562_000_000, percentHeld: 0.0269 }],
+      }),
+    },
+  }, { limit: 30 });
+  await holders.execute(["PBR"], cli.context);
+  expect(offsets).toEqual(["0", "25"]);
+  const { result } = cli.printed[0]!;
+  const rows = result.data as Array<Record<string, unknown>>;
+  expect(rows).toHaveLength(30);
+  expect(rows[0]).toMatchObject({ name: "Filer One LLC", value: 2_562_000_000, percentHeld: 2.69, changeShares: 500_000, changePercent: 0.5025 });
+  expect(rows[29]).toMatchObject({ name: "Filer 30", shares: 71_000_000, value: 1_819_020_000, changeShares: 500_000 });
+  expect(result.metadata).toMatchObject({ shown: 30, total: 567, truncated: true });
+
+  // --tail counts back from the rows loaded, and says it is not the smallest filers.
+  offsets.length = 0;
+  const tail = createTestCliContext({ dataProvider: { getHolders: async () => ({ symbol: "PBR", currency: "USD", exchange: "NYSE", holders: [] }) } }, { tail: 3 });
+  await holders.execute(["PBR"], tail.context);
+  expect(offsets).toEqual(["0"]);
+  const tailed = tail.printed[0]!.result;
+  expect(tailed.metadata).toMatchObject({ shown: 3, reported: 25, total: 567 });
+  expect(tailed.warnings).toEqual(["--tail 3 is the last 3 of the largest 25 loaded, not the smallest of all 567 holders."]);
+});
+
+test("insider leads with INS's Form 4 summary, not a 13F list that names no insider, and dates the report by the newest filing", async () => {
+  // `insider JNJ` read "none reported" from the 13F list while `fn INS JNJ` summed 42 Form 4 lines.
+  const day = (ago: number) => new Date(Date.now() - ago * 86_400_000).toISOString().slice(0, 10);
+  const form4 = (date: string, code: string, shares: number, price: number) => `<ownershipDocument><issuer><issuerCik>200406</issuerCik></issuer>`
+    + `<reportingOwner><reportingOwnerId><rptOwnerName>DOE JANE</rptOwnerName></reportingOwnerId></reportingOwner><nonDerivativeTable><nonDerivativeTransaction>`
+    + `<securityTitle><value>Common Stock</value></securityTitle><transactionDate><value>${date}</value></transactionDate>`
+    + `<transactionCoding><transactionCode>${code}</transactionCode></transactionCoding><transactionAmounts><transactionShares><value>${shares}</value></transactionShares>`
+    + `<transactionPricePerShare><value>${price}</value></transactionPricePerShare></transactionAmounts></nonDerivativeTransaction></nonDerivativeTable></ownershipDocument>`;
+  const filings = [[day(3), "S", 1_000, 150], [day(10), "S", 500, 140]] as const;
+  const cli = createTestCliContext({
+    dataProvider: {
+      getHolders: async () => ({ symbol: "JNJ", asOf: "2026-06-30", holders: [{ ownerType: "institution", name: "Vanguard Group Inc", shares: 1 }] }),
+      getSecFilings: async () => filings.map(([date], index) => ({
+        accessionNumber: `f${index}`, form: "4", filingDate: new Date(`${date}T00:00:00Z`), cik: "0000200406", filingUrl: `https://www.sec.gov/f${index}`,
+      })),
+      getSecFilingContent: async (filing: { accessionNumber: string }) => form4(...filings[Number(filing.accessionNumber.slice(1))]!),
+    },
+  });
+  await insider.execute(["JNJ"], cli.context);
+  const { result, options } = cli.printed[0]!;
+  const text = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "text" }, options).replace(/\u001b\[[0-9;]*m/g, "");
+  expect(text).not.toContain("none reported");
+  expect(text).toContain("Loaded filings, last 90 days: Common Stock: Sold 1.5k shares ($220,000.00)");
+  expect(text).toContain(`2 Form 4 lines in the latest 2 filings, newest filed ${day(3)}: gloom fn INS JNJ`);
+  expect(text).toContain("(Form 4 filings)");
+  expect(result.metadata).toMatchObject({
+    form4Insiders: "available",
+    form4: { lines: 2, filings: 2, newestFiled: day(3), notCovered: null },
+  });
+});
+

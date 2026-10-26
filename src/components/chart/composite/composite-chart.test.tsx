@@ -1165,6 +1165,36 @@ describe("CompositeChart", () => {
     expect(viewportInteractions.at(-1)).toBe("reset");
   });
 
+  test("range guides follow zoom, pan and reset instead of the loaded buffer, and disappear with their series", async () => {
+    let setHidden: (hidden: boolean) => void = () => {};
+    const valuation = { ...series("pe", "main", "left", "x", [900, 100, 30, 40, 50, 60, 70, 900, 900]), unitGroup: "ratio", style: "line" as const };
+    valuation.points = valuation.points.flatMap(point => Array.from({ length: 8 }, () => point));
+    function Chart() {
+      const [hidden, updateHidden] = useState(false);
+      setHidden = updateHidden;
+      return <CompositeChart width={70} height={24} focused series={[{ ...valuation, hidden }]} panels={[{ id: "main" }]}
+        rangeStatisticsSeriesId="pe" clipToViewport formatValue={(value) => `${value.toFixed(1)}x`}
+        viewport={{ start: new Date("2025-01-03"), end: new Date("2025-01-07") }} />;
+    }
+    await tui.render(<InputHostProvider host={chartInputHost}><Chart /></InputHostProvider>, { width: 72, height: 26 });
+    await tui.waitForFrameToContain("Avg 50.0x");
+    expect(tui.frame()).toContain("+1σ 64.1x");
+    expect(tui.frame()).toContain("−1σ 35.9x");
+    const zoomIn = keyEvent("=", true);
+    zoomIn.sequence = "+";
+    await act(async () => chartShortcut?.(zoomIn));
+    await tui.waitForFrameToContain("Avg 55.0x");
+    expect(tui.frame()).toContain("+1σ 66.2x");
+    await act(async () => chartShortcut?.(keyEvent("left", true)));
+    await tui.waitForFrameToContain("Avg 50.0x");
+    expect(tui.frame()).toContain("+1σ 58.2x");
+    await act(async () => chartShortcut?.(keyEvent("0")));
+    await tui.waitForFrameToContain("+1σ 64.1x");
+    await act(async () => setHidden(true));
+    await tui.waitForFrameToExclude("Avg ");
+    expect(tui.frame()).not.toContain("1σ");
+  });
+
   test("keeps ownership of the window when zoom returns to the authored range", async () => {
     const viewportChanges: Array<{ start: string; end: string } | null> = [];
     await tui.render(
@@ -1717,6 +1747,82 @@ describe("CompositeChart", () => {
     expect(edits).toHaveLength(4);
   });
 
+  test("an order's line drags with no tool in hand, even let go within one frame, and is never deleted here; a price pick takes a press or Enter", async () => {
+    const edits: CompositeLevelEdit[] = [];
+    const picks: Array<number | "cancel"> = [];
+    let picking!: (on: boolean) => void;
+    function LevelChart() {
+      const [pick, setPick] = useState(false); picking = setPick;
+      const levels = useMemo<CompositeChartLevels>(() => ({
+        seriesId: "price", onEdit: (edit) => { edits.push(edit); },
+        items: [{ id: "order", value: 106, color: "#00cc66", editable: true, draggable: true, actionable: false }],
+      }), []);
+      return <CompositeChart width={60} height={12} focused interactive levels={levels}
+        series={[series("price", "main", "left", "USD", [100, 101, 102, 103, 104, 105, 106, 107, 108])]} panels={[{ id: "main" }]}
+        pricePick={pick ? { label: "set limit", onPick: (value) => picks.push(value), onCancel: () => picks.push("cancel") } : null} />;
+    }
+    await tui.render(<InputHostProvider host={chartInputHost}><CaptureChartSurfaceProvider><LevelChart /></CaptureChartSurfaceProvider></InputHostProvider>, { width: 62, height: 14 });
+    await act(async () => tui.setup().renderOnce());
+    const row = tui.frame().split("\n").findIndex((line) => line.includes("106"));
+    await act(async () => {
+      capturedSurfaceProps!.onMouseDown(pointerEvent(30, row - 1));
+      capturedSurfaceProps!.onMouseDrag(pointerEvent(30, row + 3));
+      capturedSurfaceProps!.onMouseUp(pointerEvent(30, row + 3));
+    });
+    expect(edits).toHaveLength(1);
+    expect(edits[0]).toMatchObject({ kind: "move", id: "order" });
+    expect((edits[0] as Extract<CompositeLevelEdit, { kind: "move" }>).value).toBeLessThan(106);
+    await act(async () => chartShortcut?.(keyEvent("backspace")));
+    expect(edits).toHaveLength(1);
+
+    await act(async () => picking(true));
+    await act(async () => tui.setup().renderOnce());
+    await act(async () => capturedSurfaceProps!.onMouseDown(pointerEvent(10, 2)));
+    expect(picks).toHaveLength(1);
+    expect(picks[0]).toBeGreaterThan(106);
+    // Enter takes the close at the cursor, where the press left it.
+    await act(async () => chartShortcut?.(keyEvent("return")));
+    expect(picks[1]).toBe(105);
+    await act(async () => chartShortcut?.(keyEvent("escape")));
+    expect(picks[2]).toBe("cancel");
+    expect(edits).toHaveLength(1);
+  });
+
+  test("external level labels remain outside the bitmap surface and follow price updates", async () => {
+    let move!: (price: number) => void;
+    function Chart() {
+      const [value, setValue] = useState(104); move = setValue;
+      return <CaptureChartSurfaceProvider><CompositeChart width={60} height={12}
+        series={[series("price", "main", "left", "USD", [100, 101, 102, 103, 104, 105, 106, 107, 108])]}
+        panels={[{ id: "main" }]} levels={{ seriesId: "price", items: [{ id: "external", value, label: `Draft ${value}`, dashed: true, color: "#00cc66", editable: false, actionable: false }] }} /></CaptureChartSurfaceProvider>;
+    }
+    await tui.render(<Chart />, { width: 62, height: 14 });
+    await tui.waitForFrameToContain("Draft 104");
+    expect(tui.frame().split("\n").find((line) => line.includes("Draft 104"))!.indexOf("Draft")).toBeGreaterThan(40);
+    const plotWidth = capturedSurfaceProps?.width;
+    // Bitmap hosts may omit their children. Labels must be siblings of the surface.
+    expect(JSON.stringify(capturedSurfaceProps?.children?.map((child: any) => child.props.children))).not.toContain("Draft");
+    await act(async () => move(106));
+    await tui.waitForFrameToContain("Draft 106");
+    expect(tui.frame()).not.toContain("Draft 104");
+    expect(capturedSurfaceProps?.width).toBe(plotWidth);
+  });
+
+  test("exact level prices ignore coarse grid formatting and yield to grid labels", async () => {
+    await tui.render(<CompositeChart width={60} height={28}
+      formatAxisValue={(value) => value.toFixed(1)}
+      series={[series("price", "main", "left", "USD", [100, 101, 102, 103, 104, 105, 106, 107, 108])]}
+      panels={[{ id: "main" }]} levels={{ seriesId: "price", items: [
+        { id: "exact", value: 105.25, label: "Buy 10 working", axisLabel: "105.25", color: "#00cc66", editable: false, actionable: false },
+        { id: "on-grid", value: 104, label: "Average cost", axisLabel: "104.00", color: "#00cc66", editable: false, actionable: false },
+      ] }} />, { width: 62, height: 30 });
+    await tui.waitForFrameToContain("105.25");
+    expect(tui.frame()).toContain("104.0");
+    expect(tui.frame()).toContain("Average cost 104.00");
+    expect(tui.frame()).not.toContain("Buy 10 working 105.25");
+    expect(tui.frame().split("\n").find((line) => line.includes("Average cost"))!.slice(0, 6)).not.toContain("104.00");
+  });
+
   test("a price level on the last price's row leaves the last price on the axis", async () => {
     const price: ResolvedSeries = {
       ...series("price", "main", "left", "USD", [100, 101, 102, 103, 104, 105, 106, 107, 108]),
@@ -1951,6 +2057,68 @@ describe("CompositeChart", () => {
     await press("]");
     expect((await press("backspace")).defaultPrevented).toBe(true);
     expect(bitmap().equals(base)).toBe(true);
+  });
+
+  test("picks a drawing with a click when no tool is in hand, and Delete or Backspace removes it", async () => {
+    await tui.render(
+      <InputHostProvider host={chartInputHost}>
+        <CaptureChartSurfaceProvider>
+          <CompositeChart
+            width={60}
+            height={12}
+            focused
+            interactive
+            series={[series("price", "main", "left", "USD", [100, 101, 102, 103, 104, 105, 106, 107, 108])]}
+            panels={[{ id: "main" }]}
+          />
+        </CaptureChartSurfaceProvider>
+      </InputHostProvider>,
+      { width: 62, height: 14 },
+    );
+    await act(async () => tui.setup().renderOnce());
+    const bitmap = () => Buffer.from((capturedSurfaceProps!.bitmaps?.[0] as { pixels: Uint8Array }).pixels);
+    const press = async (name: string, shift = false) => {
+      const event = keyEvent(name, shift);
+      await act(async () => chartShortcut?.(event));
+      await act(async () => tui.setup().renderOnce());
+      return event;
+    };
+    const click = async (x: number, y: number) => {
+      await act(async () => {
+        capturedSurfaceProps!.onMouseDown(pointerEvent(x, y));
+        capturedSurfaceProps!.onMouseUp(pointerEvent(x, y));
+      });
+      await act(async () => tui.setup().renderOnce());
+    };
+    const base = bitmap();
+    const draw = async () => {
+      await press("d", true);
+      await act(async () => {
+        capturedSurfaceProps!.onMouseDown(pointerEvent(8, 6));
+        capturedSurfaceProps!.onMouseDrag(pointerEvent(30, 2));
+        capturedSurfaceProps!.onMouseUp(pointerEvent(30, 2));
+      });
+      await press("escape");
+      await act(async () => tui.setup().renderOnce());
+    };
+
+    // Delete is the same key as Backspace for a picked drawing, whether it was picked by a click or a tool.
+    for (const key of ["delete", "backspace"]) {
+      await draw();
+      const drawn = bitmap();
+      expect(drawn.equals(base)).toBe(false);
+      // Put down and unpicked: neither key has anything to remove.
+      expect((await press(key)).defaultPrevented).toBeFalsy();
+      expect(bitmap().equals(drawn)).toBe(true);
+      // A click on bare plot picks nothing.
+      await click(50, 10);
+      expect((await press(key)).defaultPrevented).toBeFalsy();
+      // A click on the line picks it, and the key removes it.
+      await click(8, 6);
+      expect(bitmap().equals(drawn)).toBe(false);
+      expect((await press(key)).defaultPrevented).toBe(true);
+      expect(bitmap().equals(base)).toBe(true);
+    }
   });
 
   test("steps the cursor of a focused chart that does not navigate", async () => {

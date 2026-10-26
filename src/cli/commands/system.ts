@@ -5,8 +5,10 @@ import { saveConfig } from "../../data/config/store";
 import { builtinPluginGroupMembers } from "../../plugins/ownership";
 import type { AppConfig, TelemetryConfig } from "../../types/config";
 import { canonicalTimeZone } from "../../utils/utc-time";
+import { readBaseCurrency } from "../../utils/base-currency";
 import { NIGHTLY_CHANNEL_SUMMARY, parseUpdateChannel, withUpdateChannel } from "../../updater/channel";
 import type { CliCommandDef } from "../../types/plugin";
+import type { BuiltinCliCommandDef } from "../command-options";
 import { resolveCliDataDir, withCliServices, withConfigData } from "../context";
 import { CLI_COMMAND_GROUPS } from "../help";
 import { dryRunNote, formatBytes, formatStatusCell } from "../helpers";
@@ -65,6 +67,32 @@ function parseTimezoneSetting(value: string): string | null {
   );
 }
 
+/**
+ * The code `config set baseCurrency` stores (`cad` is CAD); fails on a name
+ * or sign, naming the code it stands for, and on anything that is no code.
+ */
+function parseBaseCurrencySetting(value: string): string {
+  const reading = readBaseCurrency(value);
+  if ("code" in reading) return reading.code;
+  const [first] = reading.suggestions;
+  return fail(reading.error, first
+    ? `baseCurrency takes an ISO 4217 code: gloom config set baseCurrency ${first}`
+    : "baseCurrency takes an ISO 4217 code such as USD, EUR or CAD.");
+}
+
+/** A saved base currency that is no code (an older version stored names), with what to set instead; null for a code. */
+function baseCurrencyProblem(value: unknown): string | null {
+  const reading = readBaseCurrency(typeof value === "string" ? value : "");
+  if ("code" in reading) return null;
+  const [first] = reading.suggestions;
+  return `${reading.error} Set one: gloom config set baseCurrency ${first ?? "<code>"}`;
+}
+
+function describeBaseCurrency(value: unknown): string {
+  const problem = baseCurrencyProblem(value);
+  return problem ? `${String(value)} ${cliStyles.warning(`(${problem})`)}` : String(value);
+}
+
 function describeTimezone(value: unknown): string {
   return typeof value === "string" && value ? value : "not set, times print in UTC alone";
 }
@@ -88,7 +116,7 @@ function summarizeKeybindings(value: unknown): string {
     `${Object.keys(described.commands ?? {}).length} command bindings`,
     ...(described.issues?.length ? [cliStyles.warning(`${described.issues.length} issues`)] : []),
   ];
-  return `${parts.join(", ")} ${cliStyles.muted("(gloomberb config get keybindings)")}`;
+  return `${parts.join(", ")} ${cliStyles.muted("(gloom config get keybindings)")}`;
 }
 
 function renderKeybindings(value: unknown): string {
@@ -114,7 +142,7 @@ function renderKeybindings(value: unknown): string {
         [{ header: "Keys" }, { header: "Runs" }],
         Object.entries(described.commands).map(([chord, query]) => [chord, query]),
       )
-      : wrapText("None. Bind one with gloomberb config set keybindings.commands.<keys> <command>.", cliTerminalWidth() ?? 80)
+      : wrapText("None. Bind one with gloom config set keybindings.commands.<keys> <command>.", cliTerminalWidth() ?? 80)
         .map((line) => cliStyles.muted(line)).join("\n"),
   ];
   if (described.issues.length > 0) {
@@ -188,12 +216,20 @@ export function createSystemCliCommands(): CliCommandDef[] {
           });
           checks.push({ check: "database", status: "ok", detail: join(services.dataDir, ".gloomberb-cache.db") });
           checks.push({ check: "plugins", status: "ok", detail: String(services.services.pluginRegistry.allPlugins.size) });
+          // Official plugins a launch could not install, which the app otherwise just lacks.
+          const { officialPluginsCheck } = await import("../../plugins/extracted-plugins");
+          const { gitInstalled } = await import("../../plugins/installer");
+          const official = officialPluginsCheck(services.config, { gitMissing: () => !gitInstalled() });
+          if (official) checks.push(official);
           checks.push({ check: "capabilities", status: "ok", detail: String(services.services.pluginRegistry.capabilities.manifests().length) });
+          // Only a saved value no conversion can price is worth a line.
+          const baseCurrencyIssue = baseCurrencyProblem(services.config.baseCurrency);
+          if (baseCurrencyIssue) checks.push({ check: "baseCurrency", status: "warn", detail: baseCurrencyIssue });
           const theme = services.config.theme;
           checks.push({
             check: "theme",
             status: themeName(theme) ? "ok" : "warn",
-            detail: themeName(theme) ? describeThemeId(theme) : `${describeThemeId(theme)}. Pick one with gloomberb config set theme <id>.`,
+            detail: themeName(theme) ? describeThemeId(theme) : `${describeThemeId(theme)}. Pick one with gloom config set theme <id>.`,
           });
         });
       } catch (error) {
@@ -311,12 +347,13 @@ export function createSystemCliCommands(): CliCommandDef[] {
               ...(key === KEYBINDINGS_CONFIG_KEY ? { format: summarizeKeybindings } : {}),
               ...(key === "theme" ? { format: (value: unknown) => describeThemeId(String(value)) } : {}),
               ...(key === TIMEZONE_CONFIG_KEY ? { format: describeTimezone } : {}),
+              ...(key === "baseCurrency" ? { format: describeBaseCurrency } : {}),
             })),
           });
           return;
         }
         if (action === "get") {
-          const key = requireArg(args[1], "Usage: gloomberb config get <key>", ctx);
+          const key = requireArg(args[1], "Usage: gloom config get <key>", ctx);
           if (!Object.prototype.hasOwnProperty.call(safeConfig, key)) {
             ctx.fail(`Unknown config key "${key}".`, `Keys: ${Object.keys(safeConfig).join(", ")}`);
           }
@@ -329,13 +366,14 @@ export function createSystemCliCommands(): CliCommandDef[] {
           }
           ctx.printResult({ data: { key, value: safeConfig[key] } }, {
             text: (data) => key === KEYBINDINGS_CONFIG_KEY ? renderKeybindings(data.value)
-              : key === TIMEZONE_CONFIG_KEY ? describeTimezone(data.value) : describeConfigValue(data.value),
+              : key === TIMEZONE_CONFIG_KEY ? describeTimezone(data.value)
+                : key === "baseCurrency" ? describeBaseCurrency(data.value) : describeConfigValue(data.value),
           });
           return;
         }
         if (action === "set") {
-          const key = requireArg(args[1], "Usage: gloomberb config set <key> <value>", ctx);
-          const value = requireArg(args[2], "Usage: gloomberb config set <key> <value>", ctx);
+          const key = requireArg(args[1], "Usage: gloom config set <key> <value>", ctx);
+          const value = requireArg(args[2], "Usage: gloom config set <key> <value>", ctx);
           if (key.startsWith(`${KEYBINDINGS_CONFIG_KEY}.`)) {
             // The value may carry several chords or a multi-word command, so
             // everything after the key is the value.
@@ -359,14 +397,16 @@ export function createSystemCliCommands(): CliCommandDef[] {
             ctx.fail(`Config key "${key}" is not editable from the CLI.`, `Editable keys: ${EDITABLE_CONFIG_KEYS.join(", ")}, keybindings.*`);
           }
           if ((isTelemetryConfigKey(key) || key === STAR_PROMPT_CONFIG_KEY) && value !== "true" && value !== "false") {
-            ctx.fail(`Usage: gloomberb config set ${key} true|false`);
+            ctx.fail(`Usage: gloom config set ${key} true|false`);
           }
           if (key === UPDATE_CHANNEL_CONFIG_KEY && !parseUpdateChannel(value)) {
-            ctx.fail(`Usage: gloomberb config set ${key} stable|nightly`);
+            ctx.fail(`Usage: gloom config set ${key} stable|nightly`);
           }
           // A display name may come unquoted: config set theme White Phosphor.
           const parsedValue = key === "theme"
             ? requireThemeId(args.slice(2).join(" "))
+            : key === "baseCurrency"
+              ? parseBaseCurrencySetting(args.slice(2).join(" "))
             : key === TIMEZONE_CONFIG_KEY
               ? parseTimezoneSetting(value)
               : key === UPDATE_CHANNEL_CONFIG_KEY
@@ -401,7 +441,7 @@ export function createSystemCliCommands(): CliCommandDef[] {
           });
           return;
         }
-        ctx.fail("Usage: gloomberb config list|get|set|themes");
+        ctx.fail("Usage: gloom config list|get|set|themes");
       });
     },
   };
@@ -444,7 +484,7 @@ export function createSystemCliCommands(): CliCommandDef[] {
           });
           return;
         }
-        ctx.fail("Usage: gloomberb cache status|clear");
+        ctx.fail("Usage: gloom cache status|clear");
       });
     },
   };
@@ -473,7 +513,7 @@ export function createSystemCliCommands(): CliCommandDef[] {
           ],
           textColumns: [
             { key: "capability", header: "Capability", shrink: false },
-            { key: "id", header: "Source", maxWidth: 20 },
+            { key: "id", header: "Source" },
             { key: "kind", header: "Kind", shrink: false },
             { key: "enabled", header: "Enabled" },
             { key: "operations", header: "Operations", format: (value) => String(value).split(",").join(", ") },
@@ -483,9 +523,11 @@ export function createSystemCliCommands(): CliCommandDef[] {
     },
   };
 
-  const pluginCommand: CliCommandDef = {
+  const pluginCommand: BuiltinCliCommandDef = {
     name: "plugin",
     description: "Inspect, turn on or off, link, or check any plugin",
+    // `link` and `doctor` take a checkout's path.
+    keepsArgAsTyped: () => true,
     help: {
       group: CLI_COMMAND_GROUPS.plugins,
       usage: [
@@ -500,7 +542,7 @@ export function createSystemCliCommands(): CliCommandDef[] {
         title: "Developing a plugin",
         lines: [
           "link puts a symlink to a local checkout in the plugins folder, so edits are live on the next start.",
-          "doctor checks an installed or linked plugin the way the app and the desktop build will: entry, the Gloomberb it declares, removed or deprecated imports, export, id, targets, declared hosts, and the browser bundle. Run it before publishing.",
+          "doctor checks an installed or linked plugin the way the app and the desktop build will: entry, the Gloom it declares, removed or deprecated imports, export, id, targets, declared hosts, and the browser bundle. Run it before publishing.",
         ],
       }],
       examples: ["plugin list", "plugin info news", "plugin disable hackernews", "plugin link ../my-plugin", "plugin doctor ../my-plugin"],
@@ -530,7 +572,7 @@ export function createSystemCliCommands(): CliCommandDef[] {
         return;
       }
       if (action === "link") {
-        const path = requireArg(args[1], "Usage: gloomberb plugin link <path>", ctx);
+        const path = requireArg(args[1], "Usage: gloom plugin link <path>", ctx);
         const { linkPlugin } = await import("../../plugins/installer");
         const info = await linkPlugin(path, { quiet: ctx.cliOptions.format !== "text" });
         if (ctx.cliOptions.format !== "text") ctx.printResult({ data: info });
@@ -554,14 +596,14 @@ export function createSystemCliCommands(): CliCommandDef[] {
           return;
         }
         if (action === "info") {
-          const id = requireArg(args[1], "Usage: gloomberb plugin info <id>", ctx);
+          const id = requireArg(args[1], "Usage: gloom plugin info <id>", ctx);
           const row = pluginRows().find((plugin) => plugin.id === id);
           if (!row) ctx.fail(`Plugin "${id}" is not available.`);
           ctx.printResult({ data: row });
           return;
         }
         if (action === "enable" || action === "disable") {
-          const id = requireArg(args[1], `Usage: gloomberb plugin ${action} <id>`, ctx);
+          const id = requireArg(args[1], `Usage: gloom plugin ${action} <id>`, ctx);
           // A retired id that now names a group of built-ins switches all of them.
           const targetIds = builtinPluginGroupMembers(id) ?? [id];
           for (const targetId of targetIds) {
@@ -588,7 +630,7 @@ export function createSystemCliCommands(): CliCommandDef[] {
           });
           return;
         }
-        ctx.fail("Usage: gloomberb plugin list|info|enable|disable|doctor|link");
+        ctx.fail("Usage: gloom plugin list|info|enable|disable|doctor|link");
       });
     },
   };

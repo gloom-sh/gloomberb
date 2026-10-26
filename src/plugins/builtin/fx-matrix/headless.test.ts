@@ -1,6 +1,7 @@
-import { expect, test } from "bun:test";
+import { expect, setSystemTime, test } from "bun:test";
 import { deriveHeadlessFreshness, deriveRenderedFreshness, formatFreshnessLine } from "../../../cli/pane-functions/freshness";
-import { serializeHeadlessPaneResult } from "../../../cli/pane-functions/headless";
+import { renderHeadlessPaneText, serializeHeadlessPaneResult } from "../../../cli/pane-functions/headless";
+import { quoteChangeBasis } from "../../../market-data/market/change-basis";
 import type { QueryEntry } from "../../../market-data/result-types";
 import { createTestQuote } from "../../../test-support/data-provider";
 import type { DataProvider } from "../../../types/data-provider";
@@ -14,6 +15,7 @@ import { fxMatrixHeadless, projectFxCrosses } from "./headless";
 import { fxMatrixModule } from "./index";
 import { fxLegReferenceRate, fxLegs, liveFxLegEntry } from "./live-legs";
 import { FX_CURRENCIES, resolveCurrencies, type FxCurrency } from "./pairs";
+import { fxTradingDay } from "../../../utils/fx-market-hours";
 
 const at = (iso: string) => Date.parse(iso);
 
@@ -40,12 +42,13 @@ function quotedRate(currency: string, usdPerUnit: number, previousUsdPerUnit: nu
     symbol: leg.symbol, price, previousClose: leg.inverted ? 1 / previousUsdPerUnit : previousUsdPerUnit,
     instrumentType: "CURRENCY", listingExchangeName: "CCY", exchangeName: "CCY", marketState: "REGULAR",
     dataSource: "delayed", providerId: "gloomberb-cloud", stale: false, lastUpdated: at(lastUpdated), receivedAt: at(lastUpdated) + 1000,
+    changeSessionDate: fxTradingDay(at(lastUpdated)),
   });
   const quoteEntry: QueryEntry<Quote> = {
     phase: "ready", data: quote, lastGoodData: quote, source: "gloomberb-cloud", fetchedAt: quote.receivedAt!,
     staleAt: null, error: null, attempts: [],
   };
-  return { leg, entry: liveFxLegEntry(leg, quoteEntry, null), quote, reference: fxLegReferenceRate(leg, quoteEntry), error: null };
+  return { leg, entry: liveFxLegEntry(leg, quoteEntry, null), quote, reference: fxLegReferenceRate(leg, quoteEntry), changeBasis: quoteChangeBasis(quote), error: null };
 }
 
 function readings(...legs: FxLegReading[]): Map<string, FxLegReading> {
@@ -108,13 +111,18 @@ test("the report is dated by its legs as the pane's capture is, not by the cross
     return formatFreshnessLine(report);
   };
 
-  // Saturday: Friday's close, whatever quiet ticks some pairs printed since.
+  // Saturday: Friday's close, each leg's last print by 17:00 New York.
   expect(reportOf("2026-10-10T18:45:00Z", readings(
-    loadedRate("EUR", 1.12, "2026-10-09T21:29:00Z"),
+    loadedRate("EUR", 1.12, "2026-10-09T20:59:00Z"),
     loadedRate("JPY", 1 / 158, "2026-10-09T20:59:00Z"),
-    loadedRate("CAD", 0.7, "2026-10-10T04:21:11Z"),
-    loadedRate("GBP", 1.32, "2026-10-10T14:50:28Z"),
+    loadedRate("CAD", 0.7, "2026-10-09T20:41:11Z"),
+    loadedRate("GBP", 1.32, "2026-10-09T20:58:28Z"),
   ))).toBe("Source: Gloom Cloud · FX trading day Fri 9 Oct 2026 close · 15 min delayed · markets closed");
+  // A leg ticked on Saturday is no close, and the report dates it.
+  expect(reportOf("2026-10-10T18:45:00Z", readings(
+    loadedRate("EUR", 1.12, "2026-10-09T20:59:00Z"),
+    loadedRate("CAD", 0.7, "2026-10-10T13:51:26Z"),
+  ))).toBe("Source: Gloom Cloud · Sat 10 Oct 2026 13:51 UTC · 15 min delayed · markets closed");
 
   // One stale leg of four is one stale rate, though it sits in 8 of the 20 crosses.
   expect(reportOf("2026-10-14T14:00:00Z", readings(
@@ -125,34 +133,161 @@ test("the report is dated by its legs as the pane's capture is, not by the cross
   ))).toBe("Source: Gloom Cloud · Wed 14 Oct 2026 13:59 UTC · 15 min delayed, 1 of 4 stale · markets open");
 });
 
-test("a pair quote replaces a leg's loaded rate only when it is at least as new", async () => {
-  const now = Date.now();
-  const ago = (minutes: number) => new Date(now - minutes * 60_000).toISOString();
-  const pairQuote = (symbol: string, price: number, previousClose: number, minutesAgo: number) => createTestQuote({
-    symbol, price, previousClose, dataSource: "delayed", lastUpdated: now - minutesAgo * 60_000,
-  });
+test("a pair quote replaces a leg's loaded rate only when it is at least as new, and its close is the move's either way", async () => {
+  // Mid-session on a Wednesday, so every rate below is of the same FX trading day but the last.
+  const now = at("2026-10-14T14:00:00Z");
+  setSystemTime(now);
+  try {
+    const ago = (minutes: number) => new Date(now - minutes * 60_000).toISOString();
+    const pairQuote = (symbol: string, price: number, previousClose: number, minutesAgo: number) => createTestQuote({
+      symbol, price, previousClose, dataSource: "delayed", lastUpdated: now - minutesAgo * 60_000,
+    });
+    const provider = {
+      id: "test",
+      // EUR's loaded rate is older than its quote; JPY's and CHF's quotes are older than their loaded rates.
+      getExchangeRateSnapshot: async (currency: string): Promise<ExchangeRateSnapshot> => {
+        if (currency === "GBP") throw new Error("no rate");
+        return {
+          fromCurrency: currency, toCurrency: "USD", rate: currency === "EUR" ? 1.1 : currency === "CHF" ? 1.25 : 1 / 150,
+          source: "test", asOf: ago(currency === "EUR" ? 30 : 5), fetchedAt: ago(0), stale: false,
+        };
+      },
+      getQuotesBatch: async (targets: { symbol: string }[]) => targets.map((target) => ({
+        target,
+        quote: target.symbol === "EURUSD=X" ? pairQuote("EURUSD=X", 1.2, 1.18, 10)
+          : target.symbol === "JPY=X" ? pairQuote("JPY=X", 140, 141, 6)
+            // Last printed before Tuesday's 17:00 New York roll: its previous close is Monday's, not Tuesday's.
+            : target.symbol === "CHF=X" ? pairQuote("CHF=X", 0.8, 0.81, 22 * 60) : null,
+      })),
+    } as unknown as DataProvider;
+
+    const board = await loadFxBoard(["USD", "EUR", "JPY", "CHF", "GBP"], provider);
+
+    expect(board.get("EUR")).toMatchObject({ entry: { data: 1.2, asOf: now - 10 * 60_000 }, reference: 1.18 });
+    // The loaded rate a minute newer draws the cell, and moves from the quote's close instead of leaving Move blank.
+    expect(board.get("JPY")).toMatchObject({ entry: { data: 1 / 150 }, quote: null });
+    expect(board.get("JPY")?.reference).toBeCloseTo(1 / 141, 12);
+    expect(board.get("CHF")).toMatchObject({ entry: { data: 1.25 }, reference: null, changeBasis: null });
+    expect(board.get("GBP")).toMatchObject({ entry: null, error: expect.stringContaining("no rate") });
+  } finally {
+    setSystemTime();
+  }
+});
+
+/** The board `fn FXC` reads at `now` from these pair quotes (delayed unless they say), with no loaded rates. */
+async function boardAt(now: string, quotes: Record<string, Partial<Quote>>) {
+  setSystemTime(at(now));
   const provider = {
     id: "test",
-    // EUR's loaded rate is older than its quote; JPY's quote is older than its loaded rate.
     getExchangeRateSnapshot: async (currency: string): Promise<ExchangeRateSnapshot> => {
-      if (currency === "GBP") throw new Error("no rate");
-      return {
-        fromCurrency: currency, toCurrency: "USD", rate: currency === "EUR" ? 1.1 : 1 / 150,
-        source: "test", asOf: ago(currency === "EUR" ? 30 : 5), fetchedAt: ago(0), stale: false,
-      };
+      throw new Error(`no ${currency} rate`);
     },
     getQuotesBatch: async (targets: { symbol: string }[]) => targets.map((target) => ({
       target,
-      quote: target.symbol === "EURUSD=X" ? pairQuote("EURUSD=X", 1.2, 1.18, 10)
-        : target.symbol === "JPY=X" ? pairQuote("JPY=X", 140, 141, 60) : null,
+      quote: quotes[target.symbol] ? createTestQuote({
+        symbol: target.symbol, instrumentType: "CURRENCY", listingExchangeName: "CCY", exchangeName: "CCY",
+        dataSource: "delayed", stale: false, ...quotes[target.symbol],
+      }) : null,
     })),
   } as unknown as DataProvider;
+  const currencies: FxCurrency[] = ["USD", "EUR", "JPY", "CHF"];
+  const readings = await loadFxBoard(currencies, provider);
+  const result = projectFxCrosses(currencies, readings, { now: at(now) });
+  const move = (pair: string) => result.rows.find((row) => row.pair === pair)?.movePercent;
+  return { readings, result, move };
+}
 
-  const board = await loadFxBoard(["USD", "EUR", "JPY", "GBP"], provider);
+test("the board's close is read off the clock: a leg dated ahead of it or on a weekend loses only its own move", async () => {
+  try {
+    // Wednesday 10:00 New York, 15 minutes delayed: Wednesday's trading day, moved from Tuesday's close.
+    const board = await boardAt("2026-10-21T14:00:00Z", {
+      "EURUSD=X": { price: 1.1205, previousClose: 1.1194, lastUpdated: at("2026-10-21T13:44:00Z"), changeSessionDate: "2026-10-21" },
+      // A source that dates its quote a day ahead,
+      "JPY=X": { price: 158.2, previousClose: 158.4, lastUpdated: at("2026-10-21T13:43:00Z"), changeSessionDate: "2026-10-22" },
+      // and one that dates it by a Saturday.
+      "CHF=X": { price: 0.8249, previousClose: 0.8243, lastUpdated: at("2026-10-21T13:44:00Z"), changeSessionDate: "2026-10-24" },
+    });
+    expect(board.readings.get("EUR")?.reference).toBe(1.1194);
+    expect(board.readings.get("JPY")).toMatchObject({ reference: null, changeBasis: null });
+    expect(board.readings.get("CHF")).toMatchObject({ reference: null, changeBasis: null });
+    expect(board.result.metadata).toMatchObject({ changeBasis: "vs Tue 20 Oct close" });
+    expect(board.move("EUR/USD")).toBeCloseTo((1.1205 / 1.1194 - 1) * 100, 10);
+    expect(board.move("EUR/JPY")).toBeNull();
+    expect(board.move("USD/CHF")).toBeNull();
+  } finally {
+    setSystemTime();
+  }
+});
 
-  expect(board.get("EUR")).toMatchObject({ entry: { data: 1.2, asOf: now - 10 * 60_000 }, reference: 1.18 });
-  expect(board.get("JPY")).toMatchObject({ entry: { data: 1 / 150 }, quote: null, reference: null });
-  expect(board.get("GBP")).toMatchObject({ entry: null, error: expect.stringContaining("no rate") });
+test("at the 17:00 New York roll a thin leg that has not printed since keeps no move, and the others move from the close just made", async () => {
+  try {
+    const quotes = (dataSource: "live" | "delayed"): Record<string, Partial<Quote>> => ({
+      // The majors printed in Thursday's day, moved from Wednesday's close.
+      "EURUSD=X": { dataSource, price: 1.1207, previousClose: 1.1205, lastUpdated: at("2026-10-21T21:00:30Z"), changeSessionDate: "2026-10-22" },
+      "JPY=X": { dataSource, price: 158.3, previousClose: 158.2, lastUpdated: at("2026-10-21T21:00:40Z"), changeSessionDate: "2026-10-22" },
+      // USD/CHF last printed at 16:40, on Wednesday's day.
+      "CHF=X": { dataSource, price: 0.8249, previousClose: 0.8243, lastUpdated: at("2026-10-21T20:40:00Z"), changeSessionDate: "2026-10-21" },
+    });
+    const live = await boardAt("2026-10-21T21:01:00Z", quotes("live"));
+    expect(live.result.metadata).toMatchObject({ changeBasis: "vs Wed 21 Oct close" });
+    expect(live.readings.get("CHF")).toMatchObject({ reference: null, changeBasis: null });
+    expect(live.move("EUR/JPY")).toBeCloseTo(((1.1207 * 158.3) / (1.1205 * 158.2) - 1) * 100, 8);
+    expect(live.move("EUR/CHF")).toBeNull();
+
+    // Fifteen minutes delayed, the board is still on Wednesday: the thin leg's last print is of it.
+    const delayed = await boardAt("2026-10-21T21:01:00Z", {
+      ...quotes("delayed"),
+      "EURUSD=X": { price: 1.1205, previousClose: 1.1194, lastUpdated: at("2026-10-21T20:45:00Z"), changeSessionDate: "2026-10-21" },
+      "JPY=X": { price: 158.2, previousClose: 158.4, lastUpdated: at("2026-10-21T20:45:00Z"), changeSessionDate: "2026-10-21" },
+    });
+    expect(delayed.result.metadata).toMatchObject({ changeBasis: "vs Tue 20 Oct close" });
+    expect(delayed.readings.get("CHF")?.reference).toBeCloseTo(1 / 0.8243, 12);
+    expect(typeof delayed.move("EUR/CHF")).toBe("number");
+  } finally {
+    setSystemTime();
+  }
+});
+
+test("while FX is shut the board is Friday's, and a pair quote dated by a weekend tick has no move", async () => {
+  try {
+    // Friday 17:02 New York: Friday's day, and USD/JPY's quote still Thursday's.
+    const friday = await boardAt("2026-10-23T21:02:00Z", {
+      "EURUSD=X": { price: 1.1205, previousClose: 1.1204, lastUpdated: at("2026-10-23T20:59:00Z"), changeSessionDate: "2026-10-23" },
+      "JPY=X": { price: 158.2, previousClose: 158.4, lastUpdated: at("2026-10-22T20:58:00Z"), changeSessionDate: "2026-10-22" },
+      "CHF=X": { price: 0.8249, previousClose: 0.82071, lastUpdated: at("2026-10-23T20:59:00Z"), changeSessionDate: "2026-10-23" },
+    });
+    expect(friday.readings.get("EUR")?.reference).toBe(1.1204);
+    expect(friday.readings.get("JPY")).toMatchObject({ reference: null, changeBasis: null });
+    expect(friday.result.metadata).toMatchObject({ changeBasis: "vs Thu 22 Oct close" });
+    expect(typeof friday.move("EUR/CHF")).toBe("number");
+    expect(friday.move("EUR/JPY")).toBeNull();
+
+    // Sunday: an undated quote from a print made while the market was shut is of no trading day.
+    const sunday = await boardAt("2026-10-25T05:36:00Z", {
+      "EURUSD=X": { price: 1.12044, previousClose: 1.12168, lastUpdated: at("2026-10-23T20:59:00Z"), changeSessionDate: "2026-10-23" },
+      "CHF=X": { price: 0.8241, previousClose: 0.8198, lastUpdated: at("2026-10-25T05:21:14Z") },
+    });
+    expect(sunday.readings.get("CHF")).toMatchObject({ reference: null, changeBasis: null });
+    expect(sunday.result.metadata).toMatchObject({ changeBasis: "vs Thu 22 Oct close" });
+  } finally {
+    setSystemTime();
+  }
+});
+
+test("every cross moves from its legs' previous daily close, and the Move header names that close", () => {
+  const now = at("2026-10-22T04:45:00Z");
+  const eur = quotedRate("EUR", 1.1247, 1.1235, "2026-10-22T04:41:00Z");
+  const result = projectFxCrosses(["USD", "EUR", "CHF"], readings(
+    // A loaded rate a minute newer than its quote keeps the quote's close.
+    { ...eur, entry: { ...eur.entry!, data: 1.1248, asOf: at("2026-10-22T04:42:00Z") }, quote: null },
+    quotedRate("CHF", 1 / 0.8229, 1 / 0.8241, "2026-10-22T04:41:00Z"),
+  ), { now });
+  expect(result.rows.every((row) => typeof row.movePercent === "number")).toBe(true);
+  expect(result.metadata).toMatchObject({ changeBasis: "vs Wed 21 Oct close" });
+  const args = { rawArgument: "", argument: null, symbols: [], options: { currencies: "USD,EUR,CHF" } };
+  const text = renderHeadlessPaneText(fxMatrixHeadless, result, args, "FXC");
+  expect(text).toContain("Move vs Wed 21 Oct close");
+  expect(text).not.toContain("—");
 });
 
 test("Ask Gloom's FXC tool takes the currencies as one string and gets every cross of all 45 within its result limit", () => {

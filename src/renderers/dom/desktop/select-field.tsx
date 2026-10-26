@@ -5,6 +5,7 @@ import { WEB_CELL_HEIGHT } from "../../../theme/font-scale";
 import { Box } from "../../../ui";
 import { MenuPopover } from "../../../components/ui/menu";
 import type { SelectFieldHandle, SelectFieldProps } from "../../../components/ui/select-field";
+import { withChoiceGroupHeadings } from "../../../components/ui/choice-groups";
 import { WebIcon } from "./icons";
 import { isInsideDialogSurface } from "../host/focus-scope";
 
@@ -38,6 +39,7 @@ export function WebSelectField({
   const [open, setOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const inline = variant === "inline";
+  const well = variant === "well";
   const current = options.find((option) => option.value === value);
   const showUnset = includeUnsetOption && !current;
 
@@ -54,9 +56,9 @@ export function WebSelectField({
   setSelectRef.current = selectRef;
 
   const resolvedWidth = width ?? (inline ? "auto" : 184);
-  // A field is one row inside its border, as a text field is; inline it is the row.
+  // A field is one row inside its border, as a text field is; inline it is the row, and a well has no border.
   const row = WEB_CELL_HEIGHT;
-  const resolvedHeight = height ?? (inline ? row : row + 2);
+  const resolvedHeight = height ?? (inline || well ? row : row + 2);
   const style: CSSProperties = {
     width: resolvedWidth,
     height: resolvedHeight,
@@ -65,10 +67,11 @@ export function WebSelectField({
     justifyContent: "space-between",
     gap: "var(--gloom-space-xs)",
     color: disabled ? colors.textMuted : colors.text,
-    // The field look: sunk into the surface, the control border, the accent while open.
-    backgroundColor: inline ? "transparent" : "var(--gloom-surface-sunken)",
-    border: inline ? "none" : `1px solid ${open ? "var(--gloom-accent)" : "var(--gloom-control-border)"}`,
-    borderRadius: inline ? 0 : "var(--gloom-radius-md)",
+    // The field look: sunk into the surface, the control border, the accent while open. A well is the panel's
+    // fill with no border, for a dense form such as the order ticket.
+    backgroundColor: inline ? "transparent" : well ? "var(--gloom-panel)" : "var(--gloom-surface-sunken)",
+    border: inline || well ? "none" : `1px solid ${open ? "var(--gloom-accent)" : "var(--gloom-control-border)"}`,
+    borderRadius: inline ? 0 : well ? "var(--gloom-radius-sm)" : "var(--gloom-radius-md)",
     padding: inline ? 0 : "0 var(--gloom-space-sm)",
     cursor: disabled ? "default" : "pointer",
     font: "inherit",
@@ -134,13 +137,14 @@ export function WebSelectField({
         minWidth={typeof resolvedWidth === "number" ? Math.max(160, resolvedWidth) : 170}
         items={[
           ...(showUnset ? [{ id: UNSET_VALUE, label: "Unset", selected: true, disabled: true }] : []),
-          ...options.map((option) => ({
+          ...withChoiceGroupHeadings(options.map((option) => ({
             id: option.value,
             label: option.label,
+            group: option.group,
             description: option.description,
             disabled: option.disabled,
             selected: option.value === value,
-          })),
+          }))),
         ]}
         onSelect={(id) => {
           if (id !== UNSET_VALUE && id !== value) onChange(id);

@@ -2,7 +2,7 @@
 
 [User guide](usage.md) · [Research data conventions](research-data.md)
 
-`FA` has ratio tabs beside the Income, Cash Flow and Balance Sheet statements, behind the **Ratios** segment of the Statement bar: Profitability, Leverage, Liquidity, Efficiency and Valuation. Keys `1` to `8` open the statements and then each ratio tab in that order. `gloomberb fn FA <ticker> --statement valuation` prints the same table with every input.
+`FA` has ratio tabs beside the Income, Cash Flow and Balance Sheet statements, behind the **Ratios** segment of the Statement bar: Profitability, Leverage, Liquidity, Efficiency and Valuation. Keys `1` to `8` open the statements and then each ratio tab in that order. `gloom fn FA <ticker> --statement valuation` prints the same table with every input.
 
 Each ratio opens (Enter, a click, or `e` for all) onto the inputs behind it. The second input starts with the operator that joins it, so the rows read as the formula: `Net Income`, then `÷ Avg Equity`. Inputs show the values as reported for the period, or the trailing year where marked `TTM`; the ratio applies any annualization.
 
@@ -20,6 +20,7 @@ The ratio tabs use the Income statement's columns: the latest fiscal years, with
 
 - `not reported`: an input line is not in the statements for that period. Apple, for example, has not tagged interest expense since FY2023, so its interest coverage reads `not reported` from FY2024. A missing line is never read as zero; a reported zero stays a value.
 - `< 4 quarters`: a quarterly ratio on the trailing year has none to read, because fewer than four consecutive quarters are on file and no fiscal year ends with the quarter. A short history is never annualized.
+- `no burn`: a [cash runway](#cash-runway) whose operating cash flow over the period is zero or positive, so the operations used no cash to run out of.
 - `N/M`: the denominator is zero or negative, where the ratio means nothing: negative equity under ROE or P/B, a loss under P/E, negative EBITDA or enterprise value under EV/EBITDA, no interest expense under coverage. ROE is also `N/M` on [near-zero equity](#roe-on-near-zero-equity).
 - `no price`: there is no daily close in the week before the period end, or the quote currency differs from the reporting currency (the footer warning names both).
 
@@ -57,6 +58,8 @@ The cap is on the return, not on equity as a share of total assets. Insurers, br
 | Liquidity | Current ratio | Current assets ÷ current liabilities |
 | | Quick ratio | (Cash and short-term investments + receivables) ÷ current liabilities |
 | | Cash ratio | Cash and short-term investments ÷ current liabilities |
+| | Runway, quarter burn | Cash and short-term investments ÷ (the quarter's operating cash outflow ÷ 3), in months; quarterly view only |
+| | Runway, TTM burn | Cash and short-term investments ÷ (the trailing year's operating cash outflow ÷ 12), in months |
 | Efficiency | DSO | Average receivables ÷ revenue per day |
 | | DIO | Average inventory ÷ cost of revenue (COGS) per day |
 | | DPO | Average payables ÷ cost of revenue per day |
@@ -79,6 +82,16 @@ The cap is on the return, not on equity as a share of total assets. Insurers, br
 - **EBITDA** is the statements' line; in SEC-derived periods it is operating income plus depreciation and amortization.
 - **Enterprise value** is market cap + total debt − cash and short-term investments. Minority interest and preferred equity are not added.
 
+## Cash runway
+
+Liquidity's two runway rows say how many months the cash and short-term investments at a period end last at the rate the operations used cash. The burn is operating cash flow as the cash flow statement reports it: the quarter's over 3 months, and the trailing year's over 12 (the fiscal year when one ends with the quarter, otherwise the four quarters to it, as the other `TTM` inputs read it). The inputs show the monthly burn (`÷ Op Burn/Mo`), so the rows read as the formula.
+
+- **Both burns.** A company paid in lumps, such as a biotech with collaboration revenue, has quarters that swing: Arrowhead's operating cash flow ran +20.5M, +13.5M and +84.4M, then -177.5M in the quarter to June 2026, so its 1.60bn lasts 27.1 months at that quarter's burn and `> 120 mo` at the year's. Values over 120 months display as `> 120 mo` on every surface; the underlying calculation and exports are unchanged. Neither is a forecast; read them together.
+- **What it leaves out.** Capital expenditure, debt repayments and financing are not burn: an offering is cash in, and it is in the next balance sheet, not in a lower burn. Operating cash flow at or above zero reads `no burn`.
+- **Missing lines.** Cash and short-term investments falls back to cash alone when the filer reports no total in any period on file; the method note then says the runway is on cash alone and FA labels its input `Cash`. A period missing the total of a filer that reports it elsewhere reads `not reported`: Viking's March 2025 quarter carries only its 37.9M of cash, which would read 2.2 months, while the next quarter holds 807.7M with its investments. Without operating cash flow the runway reads `not reported` too.
+- **An offering since.** When the company has filed a 424B5 (a shelf takedown) or a 424B4 (an underwritten offering) prospectus on or after the latest balance-sheet date, the Balance Sheet and Liquidity views add a footer warning, and `fn FA` a note, with the last three distinct filing dates and the number of earlier dates omitted: the cash shown predates the offering.
+- **Elsewhere.** `ticker` prints the same months under Latest Quarter (`Cash Runway 12.0 months (quarter to 2026-06-30) · 14.4 months (TTM to 2026-06-30)`), with the method and any offering note under them, and `DES` adds a Runway figure for a company that burns cash over the TTM (`12.0 mo qtr to 06-30 · TTM 14.4 mo`; a narrow column drops the date, then the TTM), which opens Financials. All three read one computation. With fewer than four consecutive quarters and no matching fiscal year, `ticker` and FA say `< 4 quarters`; DES omits the Runway figure because no TTM burn is established and reports `Runway TTM: < 4 quarters` in its existing data-warning notice. Financial firms (banks, brokers and insurers, identified by sector or industry) have no runway on any surface: their operating cash flow is not operating burn.
+
 ## Valuation at the period end
 
 The Valuation tab prices each period at its own period end, not today:
@@ -91,4 +104,4 @@ The Valuation tab prices each period at its own period end, not today:
 
 Current multiples at today's price are in `DES` and `RV`; once the regular session is over they are measured at its close, never at an after-hours print.
 
-`gloomberb shot FA <ticker> --statement valuation` captures the same daily closes back to the oldest column. It stops with the reason when they are missing, fail to load or end more than a week before the latest period end. The shot's JSON reports `usable: false` while any column reads `no price`, and for any ratio tab when every ratio is `not reported` or `N/M`, or when the rendered cells differ from the table the captured data gives.
+`gloom shot FA <ticker> --statement valuation` captures the same daily closes back to the oldest column. It stops with the reason when they are missing, fail to load or end more than a week before the latest period end. The shot's JSON reports `usable: false` while any column reads `no price`, and for any ratio tab when every ratio is `not reported` or `N/M`, or when the rendered cells differ from the table the captured data gives.

@@ -32,7 +32,7 @@ function buildApplicationMenu(keybindings: ResolvedKeybindings): ApplicationMenu
   const accelerator = (actionId: string) => ({ accelerator: menuAcceleratorFor(keybindings, actionId) });
   return [
     {
-      label: "Gloomberb",
+      label: "Gloom",
       submenu: [
         { role: "about" },
         { type: "divider" },
@@ -43,7 +43,7 @@ function buildApplicationMenu(keybindings: ResolvedKeybindings): ApplicationMenu
         { role: "hideOthers" },
         { role: "showAll" },
         { type: "divider" },
-        commandItem("Quit Gloomberb", { type: "quit" }, { accelerator: "CmdOrCtrl+Q" }),
+        commandItem("Quit Gloom", { type: "quit" }, { accelerator: "CmdOrCtrl+Q" }),
       ],
     },
     {
@@ -122,7 +122,7 @@ function buildApplicationMenu(keybindings: ResolvedKeybindings): ApplicationMenu
     {
       label: "Help",
       submenu: [
-        openCommandBar("Gloomberb Help", "HELP"),
+        openCommandBar("Gloom Help", "HELP"),
         commandItem("Open Issue on GitHub", { type: "open-url", url: GITHUB_ISSUE_URL }),
       ],
     },

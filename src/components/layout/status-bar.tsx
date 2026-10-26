@@ -466,7 +466,7 @@ function NativeStatusBar({
       <Box flexGrow={1} minWidth={0} />
       <StatusBarSummary nativePaneChrome {...props} />
       {/* Widgets keep their width; the layout tabs give way instead. */}
-      <Box flexShrink={0} flexDirection="row" alignItems="center">
+      <Box flexShrink={0} flexDirection="row" alignItems="center" data-gloom-role="status-widgets">
         <PluginSlot name="status:widget" />
       </Box>
       <StatusBarFeedback nativePaneChrome {...props} />
@@ -592,7 +592,7 @@ function StatusBarSummary({
           onPress={() => { void rendererHost.openExternal(DESKTOP_DOWNLOAD_URL); }}
           role="link"
           setHoveredControl={setHoveredControl}
-          title={t("Get Gloomberb for Mac or Windows")}
+          title={t("Get Gloom for Mac or Windows")}
         />
       )}
     </>

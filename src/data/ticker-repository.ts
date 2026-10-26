@@ -2,6 +2,7 @@ import { logFailure } from "../utils/log-failure";
 import type { TickerRecord, TickerMetadata } from "../types/ticker";
 import type { TickerStore } from "./ticker-store";
 import { hydrateTickerMetadata } from "../tickers/metadata";
+import { runTickerWrite } from "./ticker-writes";
 
 function parseTickerMetadata(json: string): TickerMetadata {
   return hydrateTickerMetadata(JSON.parse(json) as Record<string, unknown>);
@@ -32,22 +33,28 @@ export class TickerRepository {
     }
   }
 
-  async saveTicker(ticker: TickerRecord): Promise<void> {
-    this.tickers.save(ticker.metadata.ticker, ticker.metadata);
+  saveTicker(ticker: TickerRecord): Promise<void> {
+    return runTickerWrite(this, ticker.metadata.ticker, () => {
+      this.tickers.save(ticker.metadata.ticker, ticker.metadata);
+    });
   }
 
   /** Saves several tickers in one write. */
-  async saveTickers(tickers: readonly TickerRecord[]): Promise<void> {
-    this.tickers.saveMany(tickers.map((ticker) => ({ symbol: ticker.metadata.ticker, metadata: ticker.metadata })));
+  saveTickers(tickers: readonly TickerRecord[]): Promise<void> {
+    return runTickerWrite(this, tickers.map((ticker) => ticker.metadata.ticker), () => {
+      this.tickers.saveMany(tickers.map((ticker) => ({ symbol: ticker.metadata.ticker, metadata: ticker.metadata })));
+    });
   }
 
-  async createTicker(metadata: TickerMetadata): Promise<TickerRecord> {
+  createTicker(metadata: TickerMetadata): Promise<TickerRecord> {
     const ticker: TickerRecord = { metadata };
-    await this.saveTicker(ticker);
-    return ticker;
+    return runTickerWrite(this, metadata.ticker, () => {
+      this.tickers.save(metadata.ticker, metadata);
+      return ticker;
+    });
   }
 
-  async deleteTicker(symbol: string): Promise<void> {
-    this.tickers.delete(symbol);
+  deleteTicker(symbol: string): Promise<void> {
+    return runTickerWrite(this, symbol, () => this.tickers.delete(symbol));
   }
 }

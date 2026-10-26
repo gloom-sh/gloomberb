@@ -9,6 +9,7 @@ import {
   clampFloatingRect,
   clampFloatingRectWithinBounds,
   defaultFloatingRect,
+  compactFloatingZ,
   maxFloatingZ,
   MIN_FLOAT_HEIGHT,
   MIN_FLOAT_WIDTH,
@@ -44,7 +45,7 @@ export function floatAtRect(layout: LayoutConfig, instanceId: string, rect: Floa
   const base = detachPane(layout, instanceId);
   return finalizeLayout({
     ...base,
-    floating: [
+    floating: compactFloatingZ([
       ...base.floating.filter((entry) => entry.instanceId !== instanceId),
       {
         instanceId,
@@ -54,7 +55,7 @@ export function floatAtRect(layout: LayoutConfig, instanceId: string, rect: Floa
         height: rect.height,
         zIndex: rect.zIndex ?? maxFloatingZ(layout) + 1,
       },
-    ],
+    ]),
   });
 }
 
@@ -140,7 +141,8 @@ export function addPaneFloating(
 }
 
 export function bringToFront(layout: LayoutConfig, instanceId: string): LayoutConfig {
-  return finalizeLayout(updateFloatingPane(layout, instanceId, { zIndex: maxFloatingZ(layout) + 1 }));
+  const raised = updateFloatingPane(layout, instanceId, { zIndex: maxFloatingZ(layout) + 1 });
+  return finalizeLayout({ ...raised, floating: compactFloatingZ(raised.floating) });
 }
 
 export function getRememberedFloatingRect(

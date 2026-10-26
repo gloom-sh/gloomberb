@@ -6,15 +6,17 @@ import { AssetDataRouter } from "../../../sources/provider-router";
 import { QUOTE_SCHEMA_VERSION } from "../../../sources/provider-router/cache";
 import { loadChartPaneModel } from "./headless";
 import { buildPriceChartPreset } from "./presets";
-import { ChartResolveCache, resolveChartSpecData } from "../../../time-series/resolve";
+import { resolveChartSpecData } from "../../../time-series/resolve";
+import { ChartResolveCache } from "../../../time-series/resolve-context";
 import { AppPersistence } from "../../../data/app-persistence";
 import { createTestHeadlessContext } from "../../../test-support/headless";
 
 test("historical quote metadata survives headless export and snapshot reload without a current price", async () => {
   for (const [symbol, exchange, currency, instrumentType, unit] of [
-    ["EURUSD=X", "", "USD", "CURRENCY", "USD"],
-    ["USDEUR=X", "CCY", "EUR", "CURRENCY", "EUR"],
-    ["JPY=X", "CCY", "JPY", "CURRENCY", "JPY"],
+    // A pair is priced in its quote currency per unit of its base.
+    ["EURUSD=X", "", "USD", "CURRENCY", "USD / EUR"],
+    ["USDEUR=X", "CCY", "EUR", "CURRENCY", "EUR / USD"],
+    ["JPY=X", "CCY", "JPY", "CURRENCY", "JPY / USD"],
     ["NESN", "SWX", "CHF", "EQUITY", "CHF/share"],
     ["BTC-USD", "CCC", "USD", "CRYPTOCURRENCY", "USD/unit"],
   ] as const) {
@@ -71,7 +73,7 @@ test("direct and captured metadata cannot cross identities or lose known fields 
   const known: QuoteMetadata = { symbol: "EURUSD=X", listingExchangeName: "CCY", currency: "USD", source: { providerId: "known", lastUpdated: 1234, stale: true } };
   const typeOnly: QuoteMetadata = { symbol: "EURUSD=X", listingExchangeName: "CCY", instrumentType: "CURRENCY", source: { providerId: "enrichment", lastUpdated: 2345, stale: true } };
   const wrong: QuoteMetadata = { ...known, symbol: "JPY=X", currency: "JPY", instrumentType: "CURRENCY" };
-  for (const [existing, loaded, expected] of [[undefined, wrong, "currency"], [wrong, null, "currency"], [known, null, "USD"], [known, typeOnly, "USD"]] as const) {
+  for (const [existing, loaded, expected] of [[undefined, wrong, "currency"], [wrong, null, "currency"], [known, null, "USD / EUR"], [known, typeOnly, "USD / EUR"]] as const) {
     const history = [{ date: new Date("2026-01-15"), close: 1.16 }];
     const provider = createTestDataProvider({ getTickerFinancials: async () => ({ quoteMetadata: existing, annualStatements: [], quarterlyStatements: [], priceHistory: history }),
       getQuoteMetadata: async () => loaded, getQuote: async () => { throw new Error("Stale"); },
@@ -98,7 +100,7 @@ test("direct and captured metadata cannot cross identities or lose known fields 
 test("legacy and optional metadata paths reject wrong or absent listing identity equally", async () => {
   for (const optional of [false, true]) {
     for (const [symbol, listingExchangeName, currency, expected] of [
-      ["EURUSD=X", "CCY", "USD", "USD"],
+      ["EURUSD=X", "CCY", "USD", "USD / EUR"],
       ["JPY=X", "CCY", "JPY", "currency"],
       ["EURUSD=X", "NASDAQ", "USD", "currency"],
       ["EURUSD=X", undefined, "USD", "currency"],
@@ -116,7 +118,7 @@ test("legacy and optional metadata paths reject wrong or absent listing identity
       expect(model.series[0]?.unit).toBe(expected);
       expect(model.series[0]?.points.map(point => point.value)).toEqual([1.16]);
       expect(model.snapshot.financials[0]?.[1].quote).toBeUndefined();
-      if (expected === "USD") expect(model.snapshot.financials[0]?.[1].quoteMetadata?.source.lastUpdated).toBe(quote.lastUpdated);
+      if (expected === "USD / EUR") expect(model.snapshot.financials[0]?.[1].quoteMetadata?.source.lastUpdated).toBe(quote.lastUpdated);
       else expect(model.snapshot.financials[0]?.[1].quoteMetadata).toBeUndefined();
     }
   }
@@ -150,7 +152,7 @@ test("a temporary null metadata result can recover within the same chart cache",
   expect((await resolveChartSpecData(spec, sources, cache)).series[0]?.unit).toBe("currency");
   metadata = { symbol: "EURUSD=X", listingExchangeName: "CCY", currency: "USD", instrumentType: "CURRENCY", source: { stale: true } };
   const recovered = await resolveChartSpecData(spec, sources, cache);
-  expect(recovered.series[0]?.unit).toBe("USD");
+  expect(recovered.series[0]?.unit).toBe("USD / EUR");
   expect(recovered.series[0]?.points.map(point => point.value)).toEqual([1.16]);
   await resolveChartSpecData(spec, sources, cache);
   expect(calls).toBe(2);

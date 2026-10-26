@@ -198,7 +198,7 @@ function countText(count: number | undefined): string {
 /** Words Gloom needs and the reader does not: field paths and pointers for the model. */
 const INTERNAL_CLAUSE = /\bmetadata\.[a-z_]+|\blists each with its reason\b|\bsee (?:the )?(?:result|payload|rows)\b/i;
 /** A service the app already worked around. Never a warning, only a detail. */
-const SERVICE_FAILURE = /internal server error|server error|bad gateway|service unavailable|gateway time-?out|\b(?:http|status)\s*\d{3}\b|\b50[0-9]\b|econn\w+|etimedout|fetch failed|network error|socket hang up|too many requests|rate.?limit|request failed|unexpected token|not valid json|cannot read propert|is not a function|undefined is not/i;
+const SERVICE_FAILURE = /internal server error|server error|bad gateway|service unavailable|gateway time-?out|\b(?:http|status)\s*\d{3}\b|\b50[0-9]\b|econn\w+|etimedout|fetch failed|network error|couldn't reach its data service|socket hang up|too many requests|rate.?limit|request failed|unexpected token|not valid json|cannot read propert|is not a function|undefined is not/i;
 /** What the client did to fit the result through the wire. Gloom's business. */
 const TRANSPORT_CLAUSE = /^(?:trimmed to fit|result exceeded the client payload limit|result was too large)/i;
 /** Text that is not for people: payloads, identifiers, URIs, stack frames. */

@@ -51,17 +51,20 @@ interface AppWindowOptions {
   minSize: WindowMinimumSize;
   /** Runs after each move or resize has been applied to the cached frame. */
   onFrameChange?: () => void;
+  /** Script run in the page before its own. */
+  preload?: string;
 }
 
 /**
  * Opens a window on the app view with this platform's chrome and icon, keeps
  * its cached frame current as it moves, and holds it to `minSize` on resize.
  */
-export function createAppWindow({ title, frame, rpc, minSize, onFrameChange }: AppWindowOptions): BrowserWindow {
+export function createAppWindow({ title, frame, rpc, minSize, onFrameChange, preload }: AppWindowOptions): BrowserWindow {
   const window = new BrowserWindow({
     title,
     frame,
     url: "views://mainview/index.html",
+    ...(preload ? { preload } : {}),
     renderer: desktopWindowRenderer(),
     rpc,
     styleMask: desktopWindowStyleMask(),

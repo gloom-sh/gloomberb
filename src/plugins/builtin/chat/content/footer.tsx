@@ -9,6 +9,7 @@ import { useOptionalDialog, type PromptContext } from "../../../../ui/dialog";
 import { chatAuthorName, isDiscordGhost } from "../ghost-user";
 import { chatMessageOpenTargets, type ChatOpenTarget } from "./open-targets";
 import { chatMessagePaneLinks, type ChatMessagePaneLink } from "../pane-links/model";
+import { useChatFunctions } from "../pane-links/commands";
 import { openChatImageViewer } from "../attachments/desktop";
 import { canReactToMessage } from "../reactions";
 
@@ -102,11 +103,13 @@ export function useChatFooter({
   const rendererHost = useRendererHost();
   const { links: paneLinks, content } = chatMessagePaneLinks(selectedMessage);
   const attachments = selectedMessage?.attachments;
-  const openTargets = useMemo(
-    () => chatMessageOpenTargets(content, catalog, attachments, paneLinks),
-    [attachments, catalog, content, paneLinks],
-  );
   const { nativePaneChrome } = useUiCapabilities();
+  const functions = useChatFunctions();
+  // The desktop and the web draw functions written in a message as chips, so Open offers them too.
+  const openTargets = useMemo(
+    () => chatMessageOpenTargets(content, catalog, attachments, paneLinks, nativePaneChrome ? functions : undefined),
+    [attachments, catalog, content, functions, nativePaneChrome, paneLinks],
+  );
 
   const openTarget = useCallback((target: ChatOpenTarget) => {
     if (target.kind === "pane") {

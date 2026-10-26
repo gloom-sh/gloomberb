@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { ExternalLinkText, type StatItem } from "../../../components/ui";
-import { fredSeriesUrl } from "../../../sources/gloomberb-cloud/fred-series";
+import { fredSeriesUrl, fredSourceLabel } from "../../../sources/gloomberb-cloud/fred-series";
 import { colors } from "../../../theme/colors";
 import { Box, Text } from "../../../ui";
 import { formatBasisPoints } from "../../../utils/basis-points";
@@ -74,7 +74,7 @@ export function StatDetail({
         <Box flexDirection="row" flexWrap="wrap" paddingX={1} flexShrink={0}>
           <ExternalLinkText
             url={fredSeriesUrl(stat.seriesId)}
-            label={`FRED ${stat.seriesId}`}
+            label={fredSourceLabel(stat.seriesId)}
             color={colors.text}
           />
           {stat.measurementBasis ? <Text fg={colors.textDim}>{` · ${stat.measurementBasis}`}</Text> : null}

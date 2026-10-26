@@ -25,7 +25,15 @@ export interface PaneTabs {
  * A pane's primary tab strip in one call. It registers the strip with the
  * chrome, which draws it in the desktop title bar, and otherwise returns the
  * row the body draws first, so the tabs are described once. Call it above any
- * early return, and pass null while the pane has no strip (a sign-in wall).
+ * early return, and draw `strip` above every body state, loading and error
+ * included.
+ *
+ * The strip is chrome: it is there from the first frame and stays while a tab,
+ * a filter or a refresh loads, fails or comes back empty, so switching never
+ * takes it away. Pass null only while there is nothing to choose between: a
+ * sign-in or plan wall, no ticker or portfolio yet, a detail that replaces the
+ * tabs by design. A conditional call is listed with its reason in
+ * `src/architecture/pane-tabs-allowlist.json`.
  */
 export function usePaneTabs(options: PaneTabsOptions | null): PaneTabs {
   const inHeader = usePaneHeaderTabs(options);

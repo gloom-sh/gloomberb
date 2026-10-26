@@ -1,8 +1,10 @@
+import { logFailure } from "../../../utils/log-failure";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Box } from "../../../ui";
 import {
   DataTableView,
   QueryBar,
+  usePaneNoticeFooter,
   usePaneTabs,
   useQueryBarSearch,
   type DataTableCell,
@@ -10,6 +12,7 @@ import {
   type DataTableKeyEvent,
   type DataTableRootKeyContext,
 } from "../../../components";
+import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import type { PaneProps } from "../../../types/plugin";
 import { colors } from "../../../theme/colors";
 import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
@@ -117,14 +120,15 @@ export function DataCatalogPane({ focused, width, height }: PaneProps) {
   const [sortPreference, setSortPreference] = useState<CatalogSortPreference>(DEFAULT_SORT);
   const { active: searchFocused, focus: focusSearch, searchProps } = useQueryBarSearch();
 
-  const entries = useRegisteredSeries();
+  const { entries, loading: catalogLoading, error: catalogError, retry } = useRegisteredSeries();
+  usePaneRefreshKey(() => { void retry(); }, { focused, enabled: !searchFocused });
   const catalogRows = useMemo(() => catalogRowsFromEntries(entries), [entries]);
   const filter = normalizeCatalogFilter(savedFilter, catalogRows);
   const tickerQuery = looksLikeCatalogTickerQuery(searchQuery);
   const { instruments, loading: universeLoading } = useCatalogUniverse(
     tickerQuery ? searchQuery : "",
   );
-  const loading = tickerQuery && universeLoading;
+  const loading = catalogLoading || (tickerQuery && universeLoading);
   const emptyCopy = catalogEmptyCopy(loading, searchQuery);
 
   const listedCrypto = useMemo(
@@ -194,7 +198,7 @@ export function DataCatalogPane({ focused, width, height }: PaneProps) {
             }}
           />
         ),
-      }).catch(() => undefined);
+      }).catch(logFailure("chart-composer.data-catalog-pane", "Open chart ticker prompt failed"));
       if (chartPlacedSeries(row, ticker)) return;
       const expression = catalogExpressionForRow(row, ticker);
       if (!expression) return;
@@ -239,6 +243,12 @@ export function DataCatalogPane({ focused, width, height }: PaneProps) {
     }
   }, []);
 
+  usePaneNoticeFooter({
+    registrationId: `${DATA_CATALOG_PANE_ID}:notices`,
+    focused,
+    notices: selectedRow?.limitation ? [`${selectedRow.label}: ${selectedRow.limitation}`] : [],
+  });
+
   usePaneStatusLinkFooter({
     registrationId: DATA_CATALOG_PANE_ID,
     focused,
@@ -246,6 +256,7 @@ export function DataCatalogPane({ focused, width, height }: PaneProps) {
     source: selectedUrl ? selectedRow?.publisher : null,
     label: "source",
     loading,
+    error: catalogError,
     hints: [
       { id: "graph", key: "g", label: "raph", onPress: () => chartSelected(selectedRow), disabled: !selectedRow },
       { id: "search", key: "/", label: "search", onPress: focusSearch },

@@ -1,17 +1,24 @@
 import type { Quote } from "../../../types/financials";
 import type { HeadlessBundleSection, HeadlessPaneDefinition, HeadlessPaneFreshness, HeadlessPaneLoadArgs, HeadlessPaneRow } from "../../../types/plugin";
 import {
-  expirationOptionSeconds, findListedExpiry, OPTION_EXPIRATION_FORMAT, OPTION_EXPIRATION_PLACEHOLDER, readOptionExpiration, unlistedExpiryText,
+  expirationOptionSeconds, expiredExpiryText, findListedExpiry, isLiveOptionExpiry, OPTION_EXPIRATION_FORMAT, OPTION_EXPIRATION_PLACEHOLDER,
+  optionExpiryVenue, readOptionExpiration, unlistedExpiryText,
 } from "../../../utils/option-expiry";
 import { DATE_OPTION_EXAMPLES } from "../../../utils/calendar-date";
-import { skewHeader } from "../iv-history/format";
-import { formatStrikeLabel } from "../options/table";
+import { IMPLIED_VOL_WORDS, skewHeader } from "../iv-history/format";
+import { formatStrikeLabel } from "../../../utils/options";
+import { formatModelSpotPrice } from "../options/model-spot";
 import { createSurfaceDependencies, loadVolatilitySurface } from "./client";
 import { buildSurfaceGrid, type SurfaceGridOptions, type SurfaceSettings, type SurfaceSnapshot } from "./model";
-import { formatCaptureTime, loadDatedSurface, storedSurfaceDate, type DatedSurfaceSnapshot } from "./stored";
+import { atCapturePrecision, formatCaptureTime, loadDatedSurface, storedSurfaceDate, type DatedSurfaceSnapshot } from "./stored";
+import { listingFateEmpty, loadListingFate } from "../../../tickers/listing-fate";
+import { coinOptionsAlias, coinWithoutOptionsRefusal, fxVolatilityRefusal } from "../../../market-data/options-alternatives";
+import { formatUtcTime } from "../../../utils/utc-time";
+import { dvolCurrency, dvolGap, dvolSeriesId, loadDvol, type DvolPayload } from "../volatility/dvol";
 import {
   expiryFeedFields, expiryLabel, formatIv, formatPrice, formatVolPoints, HIDDEN_SLOPE_TEXT, HIDDEN_YIELD_TEXT, selectSurfaceExpiry, surfaceForwardRow, surfaceSkewRow,
-  surfaceSmileRows, surfaceTermRows, TERM_SLOPE_MIN_DAYS, type SurfaceForwardRow, type SurfaceSkewRow,
+  surfaceSettlementTime, surfaceSmileRows, surfaceSpotBasisLabel, surfaceTermRows, surfaceThirtyDayAtm, TERM_SLOPE_MIN_DAYS,
+  type SurfaceForwardRow, type SurfaceSkewRow,
 } from "./tables";
 
 type SurfaceAxis = NonNullable<SurfaceGridOptions["axis"]>;
@@ -26,8 +33,8 @@ export function surfaceCoordinateLabel(axis: SurfaceAxis, coordinate: number, in
 
 /** The Skew view's sign conventions and units, one line each. */
 const SKEW_NOTES = [
-  "RR is 25D call IV minus 25D put IV, BF the average 25D wing IV minus ATM IV, 90/110 the IV at 90% of spot minus the IV at 110%; all in vol points.",
-  `Slope is the ATM IV change per year to the next listed expiry, in vol points; left out under ${TERM_SLOPE_MIN_DAYS} days to expiry, where it annualises a few hours of noise.`,
+  "RR is 25D call IV minus 25D put IV, BF the average 25D wing IV minus the IV at the forward, 90/110 the IV at 90% of the forward minus the IV at 110%; all in vol points.",
+  `Slope is the change per year in the IV at the forward to the next listed expiry, in vol points; left out under ${TERM_SLOPE_MIN_DAYS} days to expiry, where it annualises a few hours of noise.`,
 ];
 
 /**
@@ -37,13 +44,15 @@ const SKEW_NOTES = [
  */
 function storedNotes(snapshot: DatedSurfaceSnapshot, options: HeadlessPaneLoadArgs["options"]): string[] {
   const ignored = [options.ivSource !== "recomputed" && "--ivSource", options.priceSide !== "mid" && "--priceSide"].filter(Boolean);
-  return [`Stored close, spot ${formatPrice(snapshot.spot)}, captured ${formatCaptureTime(snapshot.stored!.capturedAt)} New York.`,
+  return [`Stored close, spot ${formatModelSpotPrice(snapshot.spot)}, captured ${formatCaptureTime(snapshot.stored!.capturedAt)} New York.`,
     ...ignored.length ? [`A stored close is fitted on mid quotes with recomputed IV; ${ignored.join(" and ")} do${ignored.length === 1 ? "es" : ""} not apply.`] : []];
 }
 
 const number = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value : null;
 const iv = (value: unknown) => formatIv(number(value));
 const price = (value: unknown) => formatPrice(number(value));
+// Spot and forwards are prices of the underlying, written as OMON writes spot.
+const level = (value: unknown) => { const at = number(value); return at == null ? "--" : formatModelSpotPrice(at); };
 const points = (value: unknown) => formatVolPoints(number(value));
 const days = (value: unknown) => typeof value === "number" ? value.toFixed(value < 10 ? 1 : 0) : "--";
 
@@ -58,7 +67,7 @@ function surfaceSections(snapshot: SurfaceSnapshot, axis: SurfaceAxis, tenors: "
     ], rows: grid.rows.map((row) => ({ tenor: `${row.label}${row.extrapolated ? " E" : row.interpolated ? " I" : ""}`,
       ...Object.fromEntries(row.cells.map((cell, index) => [String(index), cell.volatility])) })) },
     { title: "Expiries", columns: [
-      { key: "expiry", header: "Expiry" }, { key: "state", header: "State" }, { key: "forward", header: "Forward", format: price },
+      { key: "expiry", header: "Expiry" }, { key: "state", header: "State" }, { key: "forward", header: "Forward", format: level },
       { key: "rate", header: "Rate", format: (value) => typeof value === "number" ? `${(value * 100).toFixed(2)}%` : "--" }, { key: "fit", header: "Fit" }, { key: "asOf", header: "As of" },
     ], rows: snapshot.expiries.map((expiry) => ({ ...expiry, expiry: expiryLabel(expiry.expiration), fit: expiry.fit?.method ?? null })) },
   ];
@@ -80,7 +89,7 @@ function smileSections(snapshot: SurfaceSnapshot, requested: number | null): {
   return { errors: [], freshness, sections: [
     { title: `Smile ${expiryLabel(expiry.expiration)}`, entries: [
       { key: "days", label: "Days to expiry", value: expiry.years * 365, formatted: days(expiry.years * 365) },
-      { key: "forward", label: "Forward", value: expiry.forward, formatted: price(expiry.forward) },
+      { key: "forward", label: "Forward", value: expiry.forward, formatted: level(expiry.forward) },
       { key: "atm", label: "ATM IV (at spot)", value: expiry.atmIV, formatted: iv(expiry.atmIV) },
       { key: "fit", label: "Fit", value: expiry.fit.method, formatted: `${expiry.fit.method}, RMSE ${points(expiry.fit.residual)} vol pts` },
     ] },
@@ -109,7 +118,7 @@ function skewSection(snapshot: SurfaceSnapshot): HeadlessBundleSection {
   return { title: "Skew", columns: [
     { key: "expiry", header: "Expiry" }, { key: "days", header: "Days", format: days },
     { key: "put25", header: "25D put IV", format: iv }, { key: "call25", header: "25D call IV", format: iv },
-    // Each difference names its sign: the risk reversal is call minus put, unlike HIVG and VCA's put-minus-call skew.
+    // Each difference names its sign: the risk reversal is call minus put here and in VCA and HIVG's rr25d.
     { key: "riskReversal", header: skewHeader("RR", "call-put"), format: gap }, { key: "butterfly", header: skewHeader("BF", "wings-ATM"), format: gap },
     { key: "moneynessSkew", header: skewHeader("90/110", "90%-110%"), format: (value, row) => typeof value === "number" ? points(value)
       : (row as unknown as SurfaceSkewRow).moneynessGap ?? "--" },
@@ -118,10 +127,37 @@ function skewSection(snapshot: SurfaceSnapshot): HeadlessBundleSection {
   ], rows: snapshot.expiries.map((expiry) => ({ ...surfaceSkewRow(expiry), ...expiryFeedFields(expiry), expiry: expiryLabel(expiry.expiration) })) };
 }
 
+/**
+ * Deribit's DVOL beside the surface of a coin's options: the latest print,
+ * the change on the day before's close, the year's range and the surface's
+ * own 30-day IV at the forward, which DVOL is read against.
+ */
+export function dvolSection(dvol: DvolPayload, snapshot: SurfaceSnapshot | null): HeadlessBundleSection {
+  const rows = dvol.observations;
+  const latest = dvol.latest ?? (rows.at(-1) ? { value: rows.at(-1)!.value, at: `${rows.at(-1)!.date}T00:00:00.000Z` } : null);
+  const today = latest?.at.slice(0, 10);
+  const previous = rows.findLast((row) => row.date < (today ?? ""))?.value ?? null;
+  const yearAgo = today ? new Date(Date.parse(`${today}T00:00:00Z`) - 365 * 86_400_000).toISOString().slice(0, 10) : "";
+  const year = rows.filter((row) => row.date > yearAgo).map((row) => row.value);
+  const atm = snapshot ? surfaceThirtyDayAtm(snapshot) : null;
+  const atmPoints = atm == null ? null : Number((atm * 100).toFixed(2));
+  const change = latest && previous != null ? Number((latest.value - previous).toFixed(2)) : null;
+  const signed = (value: number | null) => value == null ? "--" : `${value > 0 ? "+" : ""}${value.toFixed(2)}`;
+  return { title: `DVOL · ${dvol.currency} · ${dvol.venue}`, entries: [
+    { key: "dvol", label: "DVOL", value: latest?.value ?? null, formatted: latest ? `${latest.value.toFixed(2)} at ${formatUtcTime(latest.at)}` : "--" },
+    { key: "dvolChange", label: "Change on the day", value: change, formatted: previous == null ? "--" : `${signed(change)} vol pts from ${previous.toFixed(2)}` },
+    ...(year.length ? [{ key: "dvolRange", label: "1Y range", value: { low: Math.min(...year), high: Math.max(...year) },
+      formatted: `${Math.min(...year).toFixed(2)} to ${Math.max(...year).toFixed(2)}` }] : []),
+    { key: "atm30", label: "30D IV at the forward", value: atm, formatted: atmPoints == null ? "--"
+      : `${atmPoints.toFixed(2)}, ${signed(dvolGap(latest?.value, atmPoints))} vs DVOL` },
+    { key: "series", label: "Chart", value: `CAP:${dvolSeriesId(dvol.currency)}`, formatted: `gloomberb fn G CAP:${dvolSeriesId(dvol.currency)}` },
+  ] };
+}
+
 function forwardsSection(snapshot: SurfaceSnapshot): HeadlessBundleSection {
   const percent = (value: unknown) => typeof value === "number" ? `${(value * 100).toFixed(2)}%` : "--";
   return { title: "Forwards", columns: [
-    { key: "expiry", header: "Expiry" }, { key: "forward", header: "Forward", format: price },
+    { key: "expiry", header: "Expiry" }, { key: "forward", header: "Forward", format: level },
     { key: "basis", header: "Basis", format: (value) => typeof value === "number" ? `${value > 0 ? "+" : ""}${formatPrice(value)}` : "--" },
     { key: "dividendYield", header: "Div yield", format: (value, row) => typeof value === "number" ? percent(value)
       : (row as unknown as SurfaceForwardRow).dividendYieldHidden ? HIDDEN_YIELD_TEXT : "--" }, { key: "rate", header: "Rate", format: percent },
@@ -132,6 +168,9 @@ function forwardsSection(snapshot: SurfaceSnapshot): HeadlessBundleSection {
 export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle", argument: { kind: "ticker", description: "Underlying ticker" },
   usListingsOnly: "Options data",
+  symbolAlias: coinOptionsAlias("OVDV"),
+  refuseSymbol: (key) => coinWithoutOptionsRefusal("OVDV")(key) ?? fxVolatilityRefusal("OVDV")(key),
+  discovery: { suggestFor: IMPLIED_VOL_WORDS },
   describe: (args) => `OVDV ${args.symbols[0] ?? ""}`,
   options: [
     { key: "tab", type: "enum", values: SURFACE_TABS.map((value) => ({ value })),
@@ -151,9 +190,14 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
   async load(args, ctx) {
     const symbol = args.symbols[0]!;
     const requested = readOptionExpiration(args.options.expiration);
+    // A coin's options (BTC-USD, ETH-USD) come with Deribit's volatility index, read beside the surface.
+    const coin = dvolCurrency(symbol);
+    const dvolLoad = coin && !args.options.date ? loadDvol(coin, { signal: ctx.signal }, ctx.apiClient).catch((error: unknown) =>
+      error instanceof Error ? error : new Error(String(error))) : null;
     const date = typeof args.options.date === "string" && args.options.date ? storedSurfaceDate(args.options.date) : null;
     let snapshot: DatedSurfaceSnapshot;
     let quote: Quote | null = null;
+    let instrument: { symbol: string; exchange?: string } = { symbol };
     if (date) {
       // A stored close needs no current price: it carries the spot it was fitted at.
       snapshot = await loadDatedSurface(symbol, date, { signal: ctx.signal, api: ctx.apiClient });
@@ -162,21 +206,44 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
         snapshot = { ...snapshot, failures: [...snapshot.failures, { expiration: requested, message: unlistedExpiryText(requested, snapshot.catalogue) }] };
       }
     } else {
-      const instrument = await ctx.resolveInstrument?.(symbol) ?? { symbol };
-      quote = await ctx.marketData.getQuote(symbol, instrument.exchange);
+      const resolved = await ctx.resolveInstrument?.(symbol) ?? { symbol };
+      instrument = resolved;
+      quote = await ctx.marketData.getQuote(symbol, resolved.exchange);
       if (!(quote.price > 0) || !Number.isFinite(quote.price) || quote.stale) {
-        return { sections: [], complete: false, unavailableSymbols: [symbol], errors: ["A current underlying price is required"] };
+        // A listing that stopped trading has no current price: what became of it is why (TWTR).
+        const fate = await loadListingFate(resolved, ctx.marketData, { quote });
+        return { sections: [], complete: false, unavailableSymbols: [symbol],
+          ...listingFateEmpty(fate, ["A current underlying price is required"]) };
       }
-      snapshot = await loadVolatilitySurface({ instrument, spot: quote.price, spotAsOf: quote.lastUpdated,
+      // At a stored close's precision, so the live report and a --date one export the same digits. A chain
+      // from a closed session is priced at that session's close, as OMON prices it.
+      snapshot = atCapturePrecision(await loadVolatilitySurface({ instrument, spot: quote.price, spotAsOf: quote.lastUpdated, quote,
         settings: { ivSource: args.options.ivSource as SurfaceSettings["ivSource"], priceSide: args.options.priceSide as SurfaceSettings["priceSide"] },
         limit: Number(args.options.limit), signal: ctx.signal,
         requiredExpiries: requested == null ? [] : [requested],
-      }, createSurfaceDependencies(ctx.marketData, ctx.apiClient));
+      }, createSurfaceDependencies(ctx.marketData, ctx.apiClient)));
+      // An expired --expiration names the flag that asks for the nearest live one.
+      const now = Date.now();
+      const expiryVenue = optionExpiryVenue(instrument.symbol, instrument.exchange);
+      if (requested != null && !isLiveOptionExpiry(requested, now, expiryVenue)) {
+        const message = expiredExpiryText(requested, snapshot.catalogue, now, { exchange: expiryVenue, flag: "expiration" });
+        snapshot = { ...snapshot, failures: snapshot.failures.map((failure) => failure.expiration === requested ? { ...failure, message } : failure) };
+      }
     }
+    const available = snapshot.expiries.some((expiry) => expiry.fit);
+    // An expiry that failed as the whole surface did (no connection) is not listed again under its own date.
+    const surfaceWide = new Set(snapshot.failures.filter((failure) => failure.expiration == null).map((failure) => failure.message));
+    const loadErrors = snapshot.failures.filter((failure) => failure.expiration == null || !surfaceWide.has(failure.message))
+      .map((failure) => failure.expiration == null ? failure.message : `${expiryLabel(failure.expiration)}: ${failure.message}`);
+    // A symbol with no option chain at all says what became of it when something did (FB is a fund now,
+    // Meta trades as META) in place of the chain's own error; a chain without clean quotes is the symbol's own.
+    const fate = !snapshot.stored && !available && snapshot.catalogue.length === 0
+      ? listingFateEmpty(await loadListingFate(instrument, ctx.marketData, { quote }), loadErrors) : null;
+    // The spot a chain from a closed session was priced at, and its session.
+    const spotBasis = available ? surfaceSpotBasisLabel(snapshot) : null;
     const stored = snapshot.stored ?? null;
     const axis = args.options.axis as SurfaceAxis;
     const tab = (SURFACE_TABS as readonly string[]).includes(String(args.options.tab)) ? args.options.tab as SurfaceTab : "surface";
-    const available = snapshot.expiries.some((expiry) => expiry.fit);
     const expiryWarnings = snapshot.expiries.flatMap((expiry) => expiry.warnings.map((warning) =>
       ({ expiry: expiryLabel(expiry.expiration), warning })));
     const perExpiry = new Set(expiryWarnings.map((row) => row.warning));
@@ -188,8 +255,11 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
     const view: HeadlessBundleSection[] = tab === "smile" ? smile!.sections : tab === "term" ? [termSection(snapshot)]
       : tab === "skew" ? [skewSection(snapshot)] : tab === "forwards" ? [forwardsSection(snapshot)]
       : surfaceSections(snapshot, axis, args.options.tenors as "listed" | "fixed");
+    const dvol = dvolLoad ? await dvolLoad : null;
+    const settles = surfaceSettlementTime(snapshot);
     return {
       sections: [
+        ...(dvol && !(dvol instanceof Error) ? [dvolSection(dvol, available ? snapshot : null)] : []),
         ...view,
         // The pane lists these (arbitrage, SVI fallback) beside the surface; here each names its expiry.
         ...(warnings.length ? [{ title: "Warnings", columns: [{ key: "expiry", header: "Expiry" }, { key: "warning", header: "Warning" }],
@@ -197,13 +267,20 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
       ],
       complete: available && snapshot.failures.length === 0 && snapshot.expiries.every((expiry) => expiry.state === "ready"),
       unavailableSymbols: available ? [] : [symbol],
-      errors: [...snapshot.failures.map((failure) => failure.expiration == null ? failure.message
-        : `${expiryLabel(failure.expiration)}: ${failure.message}`), ...smile?.errors ?? []],
-      ...(stored || tab === "skew" ? { notes: [...stored ? storedNotes(snapshot, args.options) : [], ...tab === "skew" ? SKEW_NOTES : []] } : {}),
+      errors: [...fate?.errors ?? loadErrors, ...smile?.errors ?? [], ...dvol instanceof Error ? [`DVOL: ${dvol.message}`] : []],
+      ...(fate?.empty ? { empty: fate.empty } : {}),
+      ...(stored || spotBasis || tab === "skew" || settles || dvol ? { notes: [
+        ...stored ? storedNotes(snapshot, args.options) : spotBasis ? [`Spot ${formatModelSpotPrice(snapshot.spot)}, ${spotBasis}.`] : [],
+        ...settles ? [`Expiries settle at ${settles}; days and IV run to that time.`] : [],
+        ...dvol && !(dvol instanceof Error) ? [`DVOL is ${dvol.venue}'s 30-day implied volatility index for ${dvol.currency}, in vol points; `
+          + "it weights every strike, so it sits above the IV at the forward when the wings are bid."] : [],
+        ...tab === "skew" ? SKEW_NOTES : []] } : {}),
       // A stored close is dated by its session, whichever view prints it.
       ...(stored ? { freshness: { status: "not-a-feed" as const, basis: "stored close capture", asOf: stored.sessionDate } }
         : smile?.freshness ? { freshness: smile.freshness } : {}),
-      metadata: { ...snapshot, ...quote ? { underlyingQuote: quote } : {}, unit: "decimal annualized IV", methodology: "docs/research-data.md#shared-volatility-calculations" },
+      metadata: { ...snapshot, ...quote ? { underlyingQuote: quote } : {}, unit: "decimal annualized IV", methodology: "docs/research-data.md#shared-volatility-calculations",
+        ...dvol && !(dvol instanceof Error) ? { dvol: { currency: dvol.currency, venue: dvol.venue, latest: dvol.latest, unit: "vol points",
+          series: `CAP:${dvolSeriesId(dvol.currency)}` } } : {} },
     };
   },
 };

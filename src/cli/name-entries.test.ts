@@ -21,11 +21,32 @@ test("an entry with spaces is a company's name when search finds one, else the s
   expect(await readNameEntries(splitSymbolArgs([`"AAPL" "MSFT", NVDA`]), { search })).toEqual(["AAPL", "MSFT", "NVDA"]);
 });
 
+test("a pasted line search finds no company for is its words only when they are written as symbols or each has a quote", async () => {
+  // A misspelt "phillip morris intl" added INTL, a fund, and its other words came back not found.
+  const quoted = new Set(["AAPL", "MSFT", "INTL"]);
+  const batches: string[][] = [];
+  const provider = {
+    search: async (): Promise<InstrumentSearchResult[]> => [],
+    getQuotesBatch: async (targets: QuoteSubscriptionTarget[]) => {
+      batches.push(targets.map(({ symbol }) => symbol));
+      return targets.map((target) => quoted.has(target.symbol)
+        ? { target, quote: createTestQuote({ symbol: target.symbol }) }
+        : { target, quote: null, error: new Error(`Not a ticker: ${target.symbol}.`) });
+    },
+  };
+  expect(await readNameEntries(["phillip morris intl", "aapl msft", "BRK.B bf-b", "2222 aapl"], provider))
+    .toEqual(["phillip morris intl", "aapl", "msft", "BRK.B", "bf-b", "2222", "aapl"]);
+  // Words written as symbols cost no quote.
+  expect(batches.flat().sort()).toEqual(["AAPL", "AAPL", "INTL", "MORRIS", "MSFT", "PHILLIP"]);
+});
+
 test("one quoted argument with spaces is a company, a line of tickers, or a phrase never quoted word by word", async () => {
   expect(quotedPhrase(["10 year yield"])).toBe("10 year yield");
   expect(quotedPhrase([` "AAPL  MSFT" `])).toBe("AAPL MSFT");
   // Several arguments, one word, or a list with commas split as they always did.
   expect([["AAPL", "MSFT"], ["AAPL"], ["AAPL,MSFT"], ["AAPL, Apple Inc"]].map(quotedPhrase)).toEqual([null, null, null, null]);
+  // A figure is part of a phrase; a pasted row of symbols, each with its prices, is a list.
+  expect([["10.5 year yield"], ["ED 2.582,52"], ["AAPL 150.00 MSFT 300.00"]].map(quotedPhrase)).toEqual(["10.5 year yield", null, null]);
 
   const batches: string[][] = [];
   const tickers = new Set(["AAPL", "MSFT", "YEAR", "YIELD", "BRK.B"]);
@@ -62,14 +83,14 @@ test("a Bloomberg code is one entry when search lists its root as a US ticker; w
     getQuotesBatch: async (targets: QuoteSubscriptionTarget[]) => targets.map((target) => ({ target, quote: null, error: new Error(`Not a ticker: ${target.symbol}.`) })),
   };
   expect(await readNameEntries(["JPM US Equity", "jpm us equity", "Putnam US Equity", "Global US Equity"], provider))
-    .toEqual(["JPM US Equity", "jpm us equity", "Putnam US Equity", "Global", "US", "Equity"]);
+    .toEqual(["JPM US Equity", "jpm us equity", "Putnam US Equity", "Global US Equity"]);
   expect(await readPhraseArgument("jpm us equity", provider)).toEqual({ kind: "symbols", symbols: ["jpm us equity"] });
   expect(await readPhraseArgument("Putnam US Equity", provider)).toEqual({ kind: "name", name: "Putnam US Equity" });
   expect(await readPhraseArgument("Global US Equity", provider)).toEqual({ kind: "phrase", phrase: "Global US Equity" });
 });
 
 test("a name search too busy to answer is no answer: its words are not other companies' symbols, unless each has a quote", async () => {
-  // Busy, "Eagle Bulk" was quoted as EAGLE, Eagle Filters in Helsinki, and BULK (GLO-994).
+  // Busy, "Eagle Bulk" was quoted as EAGLE, Eagle Filters in Helsinki, and BULK.
   const quoted = new Set(["EAGLE", "AAPL", "MSFT"]);
   const busy = {
     search: async (): Promise<InstrumentSearchResult[]> => { throw new ProviderBusyError(); },
@@ -79,6 +100,7 @@ test("a name search too busy to answer is no answer: its words are not other com
   };
   await expect(readPhraseArgument("Eagle Bulk", busy)).rejects.toBeInstanceOf(ProviderBusyError);
   expect(await readPhraseArgument("AAPL MSFT", busy)).toEqual({ kind: "symbols", symbols: ["AAPL", "MSFT"] });
-  // In a list it stays whole, for its own lookup to say search was busy.
-  expect(await readNameEntries(["AAPL", "Eagle Bulk"], busy)).toEqual(["AAPL", "Eagle Bulk"]);
+  // In a list it stays whole, for its own lookup to say search was busy, unless each word has a quote: a line of
+  // tickers typed whole (`fn SIW "GME AMC"`) still reads, but capitals alone (BANK OF AMERICA) are no proof.
+  expect(await readNameEntries(["AAPL", "Eagle Bulk", "aapl msft", "BANK OF AMERICA"], busy)).toEqual(["AAPL", "Eagle Bulk", "aapl", "msft", "BANK OF AMERICA"]);
 });

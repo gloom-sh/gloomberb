@@ -9,7 +9,7 @@ discussion for a vulnerability.
 
 A useful report includes:
 
-- the output of `gloomberb version`, or the version the desktop app shows, and
+- the output of `gloom version`, or the version the desktop app shows, and
   where you saw the problem (terminal, desktop app, or term.gloom.sh)
 - the steps to reproduce it, or a proof of concept
 - what an attacker gains, and what they need first
@@ -32,10 +32,10 @@ loaded. Issues with the Gloom Cloud service behind the app can be reported here
 too.
 
 Plugins run with the same permissions as the app, by design. A plugin you
-chose to install misbehaving is not a vulnerability in Gloomberb, but a way to
+chose to install misbehaving is not a vulnerability in Gloom, but a way to
 get plugin code installed or loaded without that choice is. A vulnerability in
 a plugin that lives in its own repository belongs to that repository.
 
-Gloomberb keeps broker connections and settings on your device, in
+Gloom keeps broker connections and settings on your device, in
 `~/.gloomberb` (or `GLOOMBERB_HOME`, or the XDG folders on Linux). Anything that exposes that data to another
 user of the machine, a web page, or the network is in scope.

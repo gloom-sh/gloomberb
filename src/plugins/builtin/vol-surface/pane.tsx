@@ -15,9 +15,10 @@ import type { PaneProps } from "../../../types/plugin";
 import { Box, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { FILL_REST } from "../../../components/ui/fill";
 import { chromeBarRows } from "../../../components/layout/pane/sizing";
-import { resolveOptionsTarget } from "../../../utils/options";
+import { formatStrikeLabel, resolveOptionsTarget } from "../../../utils/options";
 import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { buildOptionCalcParams, OPTIONS_CALCULATOR_TEMPLATE_ID } from "../options-calculator/model";
+import { formatModelSpotPrice } from "../options/model-spot";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { CLOUD_QUOTE_DELAY_MINUTES } from "../../../api-client/plan-access";
@@ -39,8 +40,36 @@ import { VolatilitySurface } from "./surface";
 import { SmileChart, TermChart } from "./charts";
 import { surfaceCoordinateLabel } from "./headless";
 import { expiryLabel, formatIv, formatPrice, formatVolPoints, HIDDEN_SLOPE_TEXT, HIDDEN_YIELD_TEXT, selectSurfaceExpiry, surfaceForwardRow,
-  surfaceSkewRow } from "./tables";
+  surfaceSkewRow, surfaceSpotBasisLabel } from "./tables";
 import { findListedExpiry, unlistedExpiryText } from "../../../utils/option-expiry";
+import { dvolCurrency, dvolGap, loadDvol, type DvolPayload } from "../volatility/dvol";
+import { COIN_OPTIONS_HINT, fxVolatilityNote, isCoinWithoutOptions, optionsUnavailableTitle } from "../../../market-data/options-alternatives";
+import { parsePublicTickerKey } from "../../../utils/exchanges";
+import { surfaceThirtyDayAtm } from "./tables";
+
+/** DVOL moves with the book; Gloom Cloud reads it once a minute. */
+const DVOL_REFRESH_MS = 5 * 60_000;
+
+/**
+ * The figures above a coin's surface: Deribit's DVOL now, its change on the
+ * day, and the surface's 30-day IV at the forward with its gap to DVOL.
+ */
+export function dvolStats(dvol: DvolPayload | null | undefined, atm: number | null): StatItem[] {
+  const latest = dvol?.latest;
+  if (!dvol || !latest) return [];
+  const previous = dvol.observations.findLast((row) => row.date < latest.at.slice(0, 10))?.value ?? null;
+  const change = previous == null ? null : latest.value - previous;
+  const atmPoints = atm == null ? null : atm * 100;
+  const gap = dvolGap(latest.value, atmPoints);
+  const signed = (value: number) => `${value > 0 ? "+" : ""}${value.toFixed(2)}`;
+  return [
+    { id: "dvol", label: "DVOL", value: latest.value.toFixed(2), detail: `${latest.at.slice(11, 16)} UTC`,
+      detailVariants: [`${latest.at.slice(11, 16)} UTC`, ""] },
+    { id: "dvol-change", label: "DVOL 1D", value: change == null ? "--" : signed(change), detail: "vol pts" },
+    { id: "atm30", label: "30D ATM", value: atmPoints == null ? "--" : atmPoints.toFixed(2),
+      ...(gap == null ? {} : { detail: `${signed(gap)} vs DVOL`, detailVariants: [`${signed(gap)} vs DVOL`, ""] }) },
+  ];
+}
 
 const TABS = [
   { value: "surface", label: "3D surface" }, { value: "table", label: "Table" },
@@ -95,17 +124,19 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   const spotAvailable = !!quote && quote.price > 0 && Number.isFinite(quote.price) && !quote.stale;
   const spotAsOfRef = useRef(quote?.lastUpdated ?? null);
   spotAsOfRef.current = quote?.lastUpdated ?? null;
-  const spotRef = useRef(quote?.price ?? 0);
-  spotRef.current = quote?.price ?? 0;
+  const quoteRef = useRef(quote ?? null);
+  quoteRef.current = quote ?? null;
   const requestKey = JSON.stringify([target?.cacheKey, symbol, axis, tenors, ivSource, priceSide, spread, age, limit, spotAvailable, requestedExpiration]);
   // Every load reads the spot at the moment it starts; a reload in session
   // therefore uses the current stream price, not the one from the first load.
+  // A chain from a closed session is priced at that session's close, which
+  // the quote carries, so a pre-market print does not move it.
   const surfaceRequest = useCallback((force: boolean, signal: AbortSignal): SurfaceLoadRequest => {
     const instrument = target?.instrument;
     return {
       instrument: { symbol: target?.effectiveTicker ?? symbol!, exchange: target?.effectiveExchange ?? "",
         brokerId: instrument?.brokerId, brokerInstanceId: instrument?.brokerInstanceId, instrument },
-      spot: spotRef.current, spotAsOf: spotAsOfRef.current, limit, forceRefresh: force, signal,
+      spot: quoteRef.current?.price ?? 0, spotAsOf: spotAsOfRef.current, quote: quoteRef.current, limit, forceRefresh: force, signal,
       requiredExpiries: expirationRef.current == null ? [] : [expirationRef.current],
       settings: { ...DEFAULT_SURFACE_SETTINGS, ivSource, priceSide, maxRelativeSpread: Number(spread), maxStaleSessions: Number(age) },
     };
@@ -153,7 +184,24 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   const underlying = (target?.effectiveTicker ?? symbol ?? "").toUpperCase();
   const datesLoader = useCallback(async () => (await loadSurfaceDates(underlying)).dates, [underlying]);
   const dates = useAsyncResource(underlying ? datesLoader : null);
+  // A symbol with no current price, or no option chain at all, says what became of it when something
+  // did, as `quote` says it: TWTR stopped trading, FB is a fund now and Meta trades as META.
+  const noChain = !historyDate && !!quote && (!spotAvailable
+    || (!!resource.data && !resource.loading && resource.data.catalogue.length === 0));
+  const fateExchange = target?.effectiveExchange ?? "";
+  const fateLoader = useCallback(async () => (await getSharedMarketDataCoordinator()
+    ?.loadListingFate({ symbol: underlying, exchange: fateExchange }))?.note ?? null, [underlying, fateExchange]);
+  // A coin nothing lists options on (SOL-USD) says which coins have them, and an FX pair which funds stand in.
+  const coinNote = underlying && isCoinWithoutOptions(underlying)
+    ? `${optionsUnavailableTitle(parsePublicTickerKey(underlying).symbol)} ${COIN_OPTIONS_HINT}`
+    : underlying ? fxVolatilityNote(underlying, target?.effectiveExchange) : null;
+  const fateNote = useAsyncResource(underlying && noChain && !coinNote ? fateLoader : null).data ?? coinNote;
   const ivRank = useIvRank(underlying || null);
+  // A coin's options (BTC-USD, ETH-USD) come with Deribit's volatility index.
+  const coin = dvolCurrency(underlying);
+  const dvolLoader = useCallback(async () => loadDvol(coin!), [coin]);
+  const dvol = useAsyncResource<DvolPayload>(coin ? dvolLoader : null);
+  useAutoRefresh(dvol.updatedAt, dvol.load, { intervalMs: coin ? DVOL_REFRESH_MS : null });
   useEffect(() => () => controller.current?.abort(), [request]);
   const incremental = partial?.key === requestKey ? partial.snapshot : null;
   const liveSnapshot = liveReload ?? (incremental && (incremental.loaded > 0 || !resource.data) ? incremental : resource.data);
@@ -191,7 +239,7 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
     { id: "iv30", label: "IV30", value: `${(ivRank.value * 100).toFixed(1)}%`, detail: `${ivRank.date.slice(5)} close` },
     { id: "ivr", label: "IV rank", value: wholeNumber(ivRank.rank) },
     { id: "ivp", label: "IV pctl", value: wholeNumber(ivRank.percentile) },
-  ] : [];
+  ] : coin && snapshot && !snapshot.stored ? dvolStats(dvol.data, surfaceThirtyDayAtm(snapshot)) : [];
   const tableHeight = Math.max(3, height - chromeBarRows(nativePaneChrome) - tabRows - statGridRows(ivStats, width));
   const bitmapAvailable = !!useStaticChartBitmapSize(width, tableHeight);
   // A typed date (`--expiration 2027-01-15`) is that day's UTC midnight; the
@@ -229,6 +277,11 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   const nearestRow = (years: number | undefined) => years == null || !denseGrid?.tenors.length ? -1
     : denseGrid.tenors.reduce((best, value, index) => Math.abs(value - years) < Math.abs(denseGrid.tenors[best]! - years) ? index : best, 0);
   const selectedExpiry = snapshot ? selectSurfaceExpiry(snapshot, expiration) : null;
+  // Another date loads under the query bar, which keeps the last surface's expiries until it answers.
+  const lastShown = useRef<{ underlying: string; snapshot: DatedSurfaceSnapshot } | null>(null);
+  if (snapshot) lastShown.current = { underlying, snapshot };
+  const barSnapshot = snapshot ?? (lastShown.current?.underlying === underlying ? lastShown.current.snapshot : null);
+  const barExpiry = barSnapshot ? selectSurfaceExpiry(barSnapshot, expiration) : null;
   const openChain = useCallback(() => {
     if (!snapshot) return;
     const selected = pinned ?? selectedExpiry?.expiration;
@@ -334,7 +387,7 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   for (const entry of snapshot?.expiries ?? []) {
     for (const warning of entry.warnings) expiryWarnings.set(warning, [...expiryWarnings.get(warning) ?? [], entry.expiration]);
   }
-  const notices = [...(snapshot?.warnings ?? []).filter((warning) => !expiryWarnings.has(warning)), ...failures,
+  const notices = fateNote ? [] : [...(snapshot?.warnings ?? []).filter((warning) => !expiryWarnings.has(warning)), ...failures,
     ...(activeTab === "surface" && sheet?.omitted.length ? [`3D sheet omits ${sheet.omitted.map((entry) => expiryLabel(entry.expiration)).join(", ")}: smile fit fell back to interpolation (shown in Table)`] : []),
     ...[...expiryWarnings].map(([warning, expirations]) => `${expirations.length > 1 && expirations.length === snapshot?.expiries.length
       ? "All expiries" : expirations.map(expiryLabel).join(", ")}: ${warning}`),
@@ -345,6 +398,7 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
       && !snapshot.failures.some((failure) => failure.expiration === pinned)
       ? [`${expiryLabel(pinned)}: ${unlistedExpiryText(pinned, snapshot.catalogue)}`] : []),
     ...(active.error ? [active.error] : [])];
+  const spotBasis = snapshot && !snapshot.stored ? surfaceSpotBasisLabel(snapshot) : null;
   // What the quotes are and when they were observed; a reload moves the time.
   const freshness = !snapshot ? null : snapshot.stored ? `stored close ${snapshot.stored.sessionDate}`
     : surfaceFreshnessLabel(snapshot, CLOUD_QUOTE_DELAY_MINUTES);
@@ -353,7 +407,7 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
     : selectedCell?.point
       ? `nearest ${selectedCell.point.contract.contractSymbol} · mid ${formatPrice(selectedCell.point.mid)} · spread ${formatPrice(selectedCell.point.spread)} · OI ${selectedCell.point.openInterest ?? "--"} · residual ${formatIv(selectedCell.fitResidual)}`
       : selectedCell?.volatility != null
-        ? `${selectedRow?.label} · K ${selectedCell.strike == null ? "--" : formatPrice(selectedCell.strike)} · fitted IV ${formatIv(selectedCell.volatility)}`
+        ? `${selectedRow?.label} · K ${selectedCell.strike == null ? "--" : formatStrikeLabel(selectedCell.strike)} · fitted IV ${formatIv(selectedCell.volatility)}`
         : "no clean quote at this cell";
   usePaneNoticeFooter({ registrationId: "ovdv-notices", notices: [...new Set(notices)], focused });
   usePaneFooter("ovdv", () => ({
@@ -447,24 +501,28 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   useEffect(() => setTableOnScreen(tableShown), [tableShown]);
   return <Box flexDirection="column" width={width} overflow="hidden" {...(nativePaneChrome ? FILL_REST : { height })}>
     {tabStrip}
-    {!symbol ? <EmptyState title="Choose an underlying ticker." /> : <PaneStatusBody loading={active.loading && !snapshot}
-      error={!snapshot ? active.error : null} empty={!snapshot && !active.loading} subject="volatility surface">
-      <QueryBar width={width}
+    {!symbol ? <EmptyState title="Choose an underlying ticker." /> : <>
+      {barSnapshot ? <QueryBar width={width}
         filters={[
-          { id: "expiry", label: "Expiry", value: String(pinned ?? selectedExpiry?.expiration ?? ""),
-            options: snapshot?.catalogue.map((value) => ({ value: String(value), label: expiryLabel(value) })) ?? [],
+          { id: "expiry", label: "Expiry", value: String(pinned ?? barExpiry?.expiration ?? ""),
+            options: barSnapshot.catalogue.map((value) => ({ value: String(value), label: expiryLabel(value) })),
             onChange: (value: string) => setExpiration(Number(value)) },
           ...(storedDates.length ? [{ id: "date", label: "Date", value: shownDate ?? "", defaultValue: "",
             options: [{ value: "", label: "Live" }, ...storedDates.map((date) => ({ value: date, label: date }))],
             onChange: (value: string) => setHistoryDate(value || null) }] : []),
         ]}
-        meta={snapshot?.stored
-          ? `Stored close · spot ${formatPrice(snapshot.spot)} · captured ${formatCaptureTime(snapshot.stored.capturedAt)} New York`
-          : [`Spot ${formatPrice(snapshot?.spot)}${quote?.currency ? ` ${quote.currency}` : ""}`, selectedExpiry?.asOf?.slice(0, 10)].filter(Boolean).join(" · ")} />
+        meta={!snapshot ? undefined : snapshot.stored
+          ? `Stored close · spot ${formatModelSpotPrice(snapshot.spot)} · captured ${formatCaptureTime(snapshot.stored.capturedAt)} New York`
+          : [`Spot ${formatModelSpotPrice(snapshot.spot)}${quote?.currency ? ` ${quote.currency}` : ""}`,
+            // The close a closed session's chain is priced at dates the chain too.
+            spotBasis, snapshot.spotBasis?.basis === "close" ? null : selectedExpiry?.asOf?.slice(0, 10)].filter(Boolean).join(" · ")} /> : null}
+      <PaneStatusBody loading={active.loading && !snapshot && !fateNote}
+      error={!snapshot && !fateNote ? active.error : null} empty={!!fateNote || !snapshot && !active.loading}
+      emptyTitle={fateNote ?? undefined} subject="volatility surface">
       <StatGrid items={ivStats} width={width} />
       {/* The terminal sizes the view in the rows under the bar and figures; the desktop fills what is left. */}
       {nativePaneChrome ? <Box flexDirection="column" overflow="hidden" {...FILL_REST}>{content}</Box> : content}
-    </PaneStatusBody>}
+    </PaneStatusBody></>}
   </Box>;
 }
 
@@ -519,5 +577,5 @@ function ExpiryTable({ snapshot, selected, onSelect, forwards, width, height, fo
     sortColumnId={sort.columnId} sortDirection={sort.direction} onHeaderClick={(id) => setSort((current) => nextHeaderSort(current, id))}
     renderCell={(entry, column) => { const raw = value(entry, column.id); return { text: column.id === "expiry" ? expiryLabel(entry.expiration)
       : raw == null ? missing(entry, column.id) : typeof raw === "string" ? raw : column.id === integerColumn ? String(raw)
-        : forwards ? (column.id === "1" && raw > 0 ? `+${formatPrice(raw)}` : formatPrice(raw)) : formatVolPoints(raw) }; }} emptyStateTitle="No expiry observations." />;
+        : forwards ? (column.id === "0" ? formatModelSpotPrice(raw) : column.id === "1" && raw > 0 ? `+${formatPrice(raw)}` : formatPrice(raw)) : formatVolPoints(raw) }; }} emptyStateTitle="No expiry observations." />;
 }

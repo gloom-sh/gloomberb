@@ -103,6 +103,38 @@ describe("scenario market loader", () => {
       .toThrow("No expiry 2026-12-19 for AAPL; available: 2026-12-18");
   });
 
+  test("after Friday's close the default is the nearest live expiry, a lapsed date is named, and an unusable chain names the next one", async () => {
+    const saturday = Date.parse("2026-10-24T05:24:00Z");
+    const day = (date: string) => Date.parse(`${date}T00:00:00Z`) / 1000;
+    const friday = day("2026-10-23"), next = day("2026-10-30"), later = day("2026-11-06");
+    // One-sided quotes: no strike solves an IV, as on a chain whose session has ended.
+    const contract = (expiry: number) => ({ contractSymbol: `COPX${expiry}`, strike: 100, bid: 0, ask: 0.25, currency: "USD", expiration: expiry,
+      impliedVolatility: 0, lastPrice: 1, change: 0, percentChange: 0, inTheMoney: false, lastTradeDate: 0 });
+    const requested: (number | undefined)[] = [];
+    const fresh = <T>(data: T) => ({ ...ready(data), fetchedAt: saturday, staleAt: saturday + 60_000 });
+    const deps = dependencies({ now: () => saturday, loadQuote: async () => fresh({ ...quote, symbol: "COPX", lastUpdated: saturday }),
+      loadOptions: async (request) => {
+        requested.push(request.expirationDate);
+        const expiry = request.expirationDate ?? friday;
+        return fresh({ ...chain, underlyingSymbol: "COPX", expirationDates: [friday, next, later], puts: [contract(expiry)] });
+      } });
+    const instrument = { symbol: "COPX", exchange: "ARCA" };
+    const market = await loadScenarioMarket({ instrument }, deps);
+    expect(requested).toEqual([undefined, next]);
+    expect(market.expirationDates).toEqual([next, later]);
+    expect(market.chain?.puts[0]?.expiration).toBe(next);
+    expect(() => scenarioPositionFromSettings({ symbol: "COPX", strategy: "put" }, market))
+      .toThrow("The 30 Oct chain has no complete quoted strategy with usable IV; try the next expiry, 6 Nov (--expiration 2026-11-06)");
+
+    requested.length = 0;
+    const lapsed = await loadScenarioMarket({ instrument, expiration: friday }, deps);
+    // The lapsed date is not asked for: the default chain lists the live ones.
+    expect(requested).toEqual([undefined]);
+    expect(lapsed.chain).toBeNull();
+    expect(() => scenarioPositionFromSettings({ symbol: "COPX", strategy: "put" }, lapsed))
+      .toThrow("Expiry 2026-10-23 for COPX expired on 23 Oct; nearest live: 30 Oct (--expiration 2026-10-30)");
+  });
+
   test("consumer cancellation does not wait for or cancel the shared chain request", async () => {
     const controller = new AbortController();
     let resolve!: (value: QueryEntry<OptionsChain>) => void;

@@ -8,7 +8,7 @@ import type { AppAction, AppState } from "../state/app/context";
 import type { TickerRecord } from "../types/ticker";
 import { findPaneInstance } from "../types/config";
 import type { ReleaseInfo } from "../updater";
-import { canRestartToApply, canSelfUpdate } from "../updater";
+import { canRestartToApply, canRetryUpdate } from "../updater";
 import { getVisiblePaneCycleOrder } from "../components/layout/pane/cycle-order";
 import { requestFunctionHelp, useFunctionHelpHost } from "../plugins/builtin/help/function-card";
 import { buildRegistryHelpIndex, helpFunctionForPane } from "../plugins/builtin/help/function-index";
@@ -36,21 +36,6 @@ import {
 
 /** Long enough to read a few conflicts and choose Review. */
 const KEYBINDING_NOTICE_DURATION_MS = 15_000;
-
-/**
- * Whether the install-update key has something to retry: a release this build
- * can install itself whose last attempt failed. A fresh one downloads on its
- * own, and a manual or managed one names its own command. (A downloaded
- * desktop update has its own use of the key: restarting into it.)
- */
-export function canRetryUpdate(
-  state: Pick<AppState, "updateAvailable" | "updateProgress" | "updateCheckInProgress">,
-): boolean {
-  return !!state.updateAvailable
-    && state.updateProgress?.phase === "error"
-    && !state.updateCheckInProgress
-    && canSelfUpdate(state.updateAvailable);
-}
 
 /**
  * Tells the user once per launch when `config.json` holds a binding that does

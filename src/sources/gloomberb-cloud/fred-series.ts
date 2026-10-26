@@ -68,19 +68,64 @@ const TURKISH_CPI: SeriesNotOnFred = {
   url: "https://www.tcmb.gov.tr/wps/wcm/connect/EN/TCMB+EN/Main+Menu/Statistics/Inflation+Data/Consumer+Prices",
 };
 
+/** IBGE's IPCA (433) and IPCA-15 (7478), as the central bank's SGS republishes them. */
+const brazilianCpi = (code: number): SeriesNotOnFred => ({
+  publisher: "IBGE",
+  via: "the Banco Central do Brasil's SGS",
+  url: `https://www3.bcb.gov.br/sgspub/consultarvalores/telaCvsSelecionarSeries.paint?codigoSerie=${code}`,
+});
+
 const NOT_ON_FRED: Readonly<Record<string, SeriesNotOnFred>> = {
   TURCPIYOY: TURKISH_CPI,
   TURCPIMOM: TURKISH_CPI,
+  BRAIPCAMOM: brazilianCpi(433),
+  BRAIPCA15MOM: brazilianCpi(7478),
+  // NAHB's builder sentiment index as first released, from the economic calendar's actuals.
+  NAHBHMI: {
+    publisher: "NAHB",
+    via: "the economic calendar",
+    url: "https://www.nahb.org/news-and-economics/housing-economics/indices/housing-market-index",
+  },
 };
+
+/** A series Gloom Cloud computes from two of FRED's, the first less the second, and how. */
+interface ComputedFromFred {
+  legs: readonly [string, string];
+  note: string;
+}
+
+const COMPUTED_FROM_FRED: Readonly<Record<string, ComputedFromFred>> = {
+  MORTGAGE30US10Y: {
+    legs: ["MORTGAGE30US", "DGS10"],
+    note: "MORTGAGE30US minus DGS10 on each Freddie Mac PMMS date; when the Treasury market is closed that day, the 10-year yield of the session before.",
+  },
+};
+
+/** How a series Gloom Cloud computes from FRED's is computed, for the note under its table; null for any other. */
+export function computedFredSeriesNote(seriesId: string): string | null {
+  return COMPUTED_FROM_FRED[seriesId.trim().toUpperCase()]?.note ?? null;
+}
 
 /** The publisher of a served series FRED does not carry; null for FRED's own. */
 export function seriesNotOnFred(seriesId: string): SeriesNotOnFred | null {
   return NOT_ON_FRED[seriesId.trim().toUpperCase()] ?? null;
 }
 
-/** The series' page on the FRED site, where its notes and release schedule live, or its publisher's page when FRED does not carry it. */
+/**
+ * The series' page on the FRED site, where its notes and release schedule
+ * live; FRED's graph of both legs for a series computed from two; its
+ * publisher's page when FRED does not carry it.
+ */
 export function fredSeriesUrl(seriesId: string): string {
+  const legs = COMPUTED_FROM_FRED[seriesId.trim().toUpperCase()]?.legs;
+  if (legs) return `https://fred.stlouisfed.org/graph/?id=${legs.join(",")}`;
   return seriesNotOnFred(seriesId)?.url ?? `https://fred.stlouisfed.org/series/${seriesId}`;
+}
+
+/** What a source line names a series by: `FRED DGS10`, or the FRED series a computed one comes from (`FRED MORTGAGE30US minus DGS10`). */
+export function fredSourceLabel(seriesId: string): string {
+  const legs = COMPUTED_FROM_FRED[seriesId.trim().toUpperCase()]?.legs;
+  return `FRED ${legs ? legs.join(" minus ") : seriesId}`;
 }
 
 function cacheKey(request: FredSeriesRequest): string {

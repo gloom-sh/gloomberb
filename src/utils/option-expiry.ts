@@ -4,7 +4,13 @@
  * convert both ways, and two stamps on the same UTC date are the same expiry.
  */
 
-import { readCalendarDate } from "./calendar-date";
+import type { OptionsChain } from "../types/financials";
+import { hasRegularCloseHour, latestRegularSessionClose, sessionCalendarTimeZone } from "../market-data/market/freshness";
+import { listedCoinOptions } from "../market-data/options-alternatives";
+import { dateOptionHint, readCalendarDate } from "./calendar-date";
+import { isRoundTheClockCoin } from "./crypto-pair";
+import { canonicalExchange, isUsListingExchange } from "./exchanges";
+import { zonedWallClockToUtcMs } from "./zoned-date-time";
 
 // 9999-12-31 in Unix seconds; a longer number is milliseconds or a typo.
 const MAX_UNIX_SECONDS = 253_402_300_799;
@@ -15,6 +21,23 @@ const DAY_MS = 86_400_000;
 export const OPTION_EXPIRATION_FORMAT = "YYYY-MM-DD (2028-01-21), DD.MM.YYYY, Jan 21 2028, 21 January 2028 or Unix seconds (1832025600)";
 /** The value's name in a catalog flag, `--expiration <date|unix>`. */
 export const OPTION_EXPIRATION_PLACEHOLDER = "date|unix";
+
+/** Seconds into its UTC day that Deribit stamps each expiry at: its 08:00 UTC settlement. */
+const UTC_SETTLEMENT_SECONDS = 8 * 3600;
+
+/**
+ * Whether an expiry stamp is the settlement instant itself, as Deribit stamps
+ * its BTC and ETH expiries (08:00 UTC), rather than a listed option's date. No
+ * US listing is stamped at that hour: they carry the date's midnight or its close.
+ */
+export function isSettlementStamp(seconds: number): boolean {
+  return Number.isFinite(seconds) && ((seconds % 86_400) + 86_400) % 86_400 === UTC_SETTLEMENT_SECONDS;
+}
+
+/** `08:00 UTC` for a settlement stamp (`isSettlementStamp`); null for a dated one. */
+export function settlementStampTime(seconds: number): string | null {
+  return isSettlementStamp(seconds) ? `${new Date(seconds * 1000).toISOString().slice(11, 16)} UTC` : null;
+}
 
 /** The expiry's calendar date, `2028-01-21`; empty for a stamp that is not a time. */
 export function expiryIsoDate(seconds: number): string {
@@ -41,12 +64,22 @@ export function parseOptionExpiration(raw: string): number | null {
 }
 
 /**
+ * The sentence that follows an unreadable expiry: the date to type for one
+ * written another way that plainly names it (`Type --expiration 2026-10-22 for
+ * 22/10/2026.`), led by a space, or nothing for anything else.
+ */
+export function expirationHint(value: string, flag = "expiration"): string {
+  const hint = dateOptionHint(value, `--${flag}`);
+  return hint ? ` ${hint[0]!.toUpperCase()}${hint.slice(1)}.` : "";
+}
+
+/**
  * A pane function's typed expiry flag as the Unix seconds `parseOptionExpiration`
  * reads; throws an Error naming both accepted forms.
  */
 export function expirationOptionSeconds(value: string, flag = "expiration"): number {
   const expiration = parseOptionExpiration(value);
-  if (expiration == null) throw new Error(`Invalid --${flag} "${value}". Use ${OPTION_EXPIRATION_FORMAT}.`);
+  if (expiration == null) throw new Error(`Invalid --${flag} "${value}". Use ${OPTION_EXPIRATION_FORMAT}.${expirationHint(value, flag)}`);
   return expiration;
 }
 
@@ -70,10 +103,156 @@ export function daysToExpiry(expiration: number, asOfMs: number): number {
   return Math.round((expiry - asOf) / DAY_MS);
 }
 
-/** `469d` to expiry from the as-of date; `expired` once it has passed. */
-export function formatDaysToExpiry(expiration: number, asOfMs: number): string {
-  const days = daysToExpiry(expiration, asOfMs);
-  return days < 0 ? "expired" : `${days}d`;
+/** `469d` to expiry from the as-of date; `expired` once its last session has closed (`isLiveOptionExpiry`). */
+export function formatDaysToExpiry(expiration: number, asOfMs: number, exchange?: string): string {
+  return isLiveOptionExpiry(expiration, asOfMs, exchange) ? `${Math.max(0, daysToExpiry(expiration, asOfMs))}d` : "expired";
+}
+
+/** The coin board's venue code, which a coin pair's listing carries. */
+const COIN_OPTIONS_VENUE = "CCC";
+
+/** Listed US options trade on the US equity calendar, NYSE's published one. */
+const US_OPTIONS_CALENDAR = "NYSE";
+const lastSessions = new Map<string, { date: string; close: number } | null>();
+
+/**
+ * The venue whose calendar an expiry's last session is read on: a listing's
+ * own venue abroad when its zone and close hour are known (XETRA, JPX), else
+ * the US one listed options trade on, which also stands for a chain read
+ * without a venue.
+ */
+function expiryCalendarVenue(exchange: string | undefined): string {
+  const venue = canonicalExchange(exchange);
+  return venue && !isUsListingExchange(venue) && hasRegularCloseHour(venue) && sessionCalendarTimeZone(venue)
+    ? venue : US_OPTIONS_CALENDAR;
+}
+
+/**
+ * The venue to read an expiry's close on for a listing: the coin board for a
+ * coin whose options are listed (BTC-USD, ETH-USD, even when it carries no
+ * venue), else the listing's own.
+ */
+export function optionExpiryVenue(symbol: string | undefined, exchange: string | undefined): string | undefined {
+  return symbol && listedCoinOptions(symbol) ? COIN_OPTIONS_VENUE : exchange;
+}
+
+/**
+ * When a settlement-priced expiry settles (Deribit's BTC and ETH options): its
+ * stamp when it carries the 08:00 UTC settlement, or 08:00 UTC on a typed
+ * date's day for a coin listing. Any day of the week, weekends included: the
+ * US calendar does not apply. Null for a listed US option, whatever its venue.
+ */
+function settlementCloseMs(expiration: number, exchange: string | undefined): number | null {
+  if (isSettlementStamp(expiration)) return expiration * 1000;
+  if (!isRoundTheClockCoin(undefined, exchange)) return null;
+  return Math.floor(expiration / 86_400) * 86_400_000 + UTC_SETTLEMENT_SECONDS * 1000;
+}
+
+/** The expiry's last trading session, on or before its date, on its venue's calendar: the date and when it closed. */
+function expiryLastSession(expiration: number, exchange: string | undefined): { date: string; close: number } | null {
+  const date = expiryIsoDate(expiration);
+  if (!date) return null;
+  const settles = settlementCloseMs(expiration, exchange);
+  if (settles != null) return { date, close: settles };
+  const venue = expiryCalendarVenue(exchange);
+  const key = `${venue}:${date}`;
+  const known = lastSessions.get(key);
+  if (known !== undefined) return known;
+  const timeZone = sessionCalendarTimeZone(venue)!;
+  // Midnight ending the expiry's date on the venue's clock: its session that day, else the latest before it.
+  const dayEnd = zonedWallClockToUtcMs(timeZone, Number(date.slice(0, 4)), Number(date.slice(5, 7)), Number(date.slice(8, 10)) + 1, 0, 0, 0);
+  const session = latestRegularSessionClose(venue, dayEnd);
+  const last = session ? { date: session.date, close: session.close } : null;
+  // The calendar is static, and every list and picker asks about the same few dates.
+  if (lastSessions.size < 4096) lastSessions.set(key, last);
+  return last;
+}
+
+/**
+ * When an expiry stops trading: the regular close of its last session, the
+ * listing venue's last trading day on or before the expiry's date, on that
+ * venue's clock and calendar. A US expiry closes at 16:00 New York, at 13:00
+ * on a published early close, and one dated on a holiday or a weekend closed
+ * with the session before it. A Deribit expiry (BTC-USD, ETH-USD) settles at
+ * 08:00 UTC on its own date, a Saturday or Sunday too. Null for a stamp that
+ * is not a date.
+ */
+export function optionExpiryCloseMs(expiration: number, exchange?: string): number | null {
+  return expiryLastSession(expiration, exchange)?.close ?? null;
+}
+
+/**
+ * The rule every expiry list, picker and default chain follows: an expiry is
+ * live until its last session has closed (`optionExpiryCloseMs`). After
+ * Friday's close Friday's expiry is gone, over the weekend and on Monday
+ * before the open too, while on its own day it stays until the close.
+ */
+export function isLiveOptionExpiry(expiration: number, now: number, exchange?: string): boolean {
+  if (!Number.isFinite(expiration) || expiration <= 0) return false;
+  const close = optionExpiryCloseMs(expiration, exchange);
+  return close != null && now < close;
+}
+
+/** The listed expiries still live (`isLiveOptionExpiry`), once each, in date order. */
+export function liveOptionExpiries(expirations: readonly number[], now: number, exchange?: string): number[] {
+  return [...new Set(expirations)].filter((expiration) => isLiveOptionExpiry(expiration, now, exchange)).sort((a, b) => a - b);
+}
+
+/** The chain with only its live expiries listed; the contracts are left as they are. */
+export function withLiveExpiryList<T extends Pick<OptionsChain, "expirationDates">>(chain: T, now: number, exchange?: string): T {
+  const live = liveOptionExpiries(chain.expirationDates, now, exchange);
+  return live.length === chain.expirationDates.length && live.every((expiration, index) => expiration === chain.expirationDates[index])
+    ? chain : { ...chain, expirationDates: live };
+}
+
+/**
+ * The expiry a chain asked for without a date shows instead of the one its
+ * source sent, by the same rule: undefined when the source's default is live
+ * or has no contracts, else the nearest live expiry it lists, to ask for by
+ * date, or null when none of them is live. A source can still answer with
+ * Friday's chain after Friday's close, all weekend.
+ */
+export function liveDefaultExpiry(
+  chain: Pick<OptionsChain, "calls" | "puts" | "expirationDates">, now: number, exchange?: string,
+): number | null | undefined {
+  const contracts = [...chain.calls, ...chain.puts];
+  if (contracts.length === 0 || contracts.some((contract) => isLiveOptionExpiry(contract.expiration, now, exchange))) return undefined;
+  return liveOptionExpiries(chain.expirationDates, now, exchange)[0] ?? null;
+}
+
+/** The first live listed expiry dated after `expiration`, for a chain that had nothing to offer. */
+export function nextLiveExpiry(expiration: number, expirations: readonly number[], now: number, exchange?: string): number | undefined {
+  const date = expiryIsoDate(expiration);
+  return liveOptionExpiries(expirations, now, exchange).find((listed) => expiryIsoDate(listed) > date);
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** An expiry's date as a sentence names it: `23 Oct`, with the year when it is not the current one (`21 Jan 2028`). */
+export function expiryDayLabel(expiration: number | string, now: number): string {
+  const date = typeof expiration === "string" ? expiration : expiryIsoDate(expiration);
+  if (!date) return "";
+  const label = `${Number(date.slice(8, 10))} ${MONTHS[Number(date.slice(5, 7)) - 1]}`;
+  return date.slice(0, 4) === new Date(now).toISOString().slice(0, 4) ? label : `${label} ${date.slice(0, 4)}`;
+}
+
+/** An expiry to pick, and with a flag how to ask for it: `30 Oct (--expiration 2026-10-30)`. */
+export function expiryChoiceText(expiration: number, now: number, flag?: string): string {
+  return `${expiryDayLabel(expiration, now)}${flag ? ` (--${flag} ${expiryIsoDate(expiration)})` : ""}`;
+}
+
+/**
+ * Why an expired date shows no chain, naming the day its last session closed
+ * and the nearest live expiry, with the flag that asks for it when given:
+ * `expired on 23 Oct; nearest live: 30 Oct (--expiration 2026-10-30)`.
+ */
+export function expiredExpiryText(
+  requested: number, expirations: readonly number[], now: number, { exchange, flag }: { exchange?: string; flag?: string } = {},
+): string {
+  const last = expiryLastSession(requested, exchange);
+  const nearest = liveOptionExpiries(expirations, now, exchange)[0];
+  return `expired on ${expiryDayLabel(last?.date ?? requested, now)}; `
+    + (nearest == null ? "the chain lists no live expiry" : `nearest live: ${expiryChoiceText(nearest, now, flag)}`);
 }
 
 const NEAREST_EXPIRIES = 4;
@@ -137,6 +316,6 @@ export function missingExpiryMessage(
 ): { message: string; details: string } {
   return {
     message: missingExpiryText(requested, expirations, symbol),
-    details: `Run gloomberb options ${symbol} to list every expiry (--json carries them too).`,
+    details: `Run gloom options ${symbol} to list every expiry (--json carries them too).`,
   };
 }

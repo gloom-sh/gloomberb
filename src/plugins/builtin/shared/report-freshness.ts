@@ -7,6 +7,7 @@ import { barSizeFromGap, medianBarGap } from "../../../time-series/bar-spacing";
 import { apiClient } from "../../../api-client";
 import { isPerpetualExchange } from "../../../tickers/perpetual-listing";
 import { CLOUD_NEWS_DELAY_HOURS, hasProAccess } from "../../../api-client/plan-rules";
+import { savedCopyMark } from "../../../data/saved-copies";
 
 /**
  * Freshness declarations shared by built-in reports. Each `fn` report ends
@@ -97,6 +98,8 @@ export function quoteFreshnessFields(
   // A print older than its venue's latest session says nothing of where that market stands now (no "markets open" beside it).
   const session = !isQuoteBeforeLatestSession(quote, now);
   return {
+    // A quote served from its saved copy, its refresh having failed, marks the row drawn from it.
+    ...savedCopyMark(quote),
     ...(quote.dataSource === "live" || quote.dataSource === "delayed" ? { dataSource: quote.dataSource } : {}),
     stale: isQuoteStaleForCurrentSession(quote, now),
     ...(delayed ? { delayMinutes: delayedFeedLagMs(exchange) / 60_000 } : {}),

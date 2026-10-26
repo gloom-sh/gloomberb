@@ -12,6 +12,9 @@ import { loadYieldCurveLookbacks, yieldCurveDate } from "./history";
 import { loadWorldRows, type WorldRow } from "./world";
 import { formatBasisPoints, toBasisPoints } from "../../../utils/basis-points";
 import { DATE_OPTION_EXAMPLES } from "../../../utils/calendar-date";
+import { SWAP_TENORS, type SwapCurvePayload, type SwapTenor } from "../../../api-client/swap-curve";
+import { fetchSwapCurve } from "./client";
+import { formatSwapBp, selectedSwapTenor } from "./swaps-model";
 
 const percent = (value: unknown) => value == null ? "-" : `${Number(value).toFixed(2)}%`;
 /** A move already in basis points: `+3bp`, `-1bp`, `0bp`. */
@@ -65,6 +68,14 @@ const WORLD_COLUMNS = [
   { key: "tenYearChangeBasisPoints", header: "10Y 1D bp", align: "right" as const, format: basisPoints },
   { key: "asOf", header: "As of" },
 ];
+const SWAP_COLUMNS = [
+  { key: "tenor", header: "Tenor" },
+  { key: "rate", header: "Rate %", align: "right" as const, format: percent },
+  { key: "changeBp", header: "1D bp", align: "right" as const, format: (value: unknown) => value == null ? "-" : formatSwapBp(Number(value)) },
+  { key: "spreadBp", header: "Spread bp", align: "right" as const, format: (value: unknown) => value == null ? "-" : formatSwapBp(Number(value)) },
+  { key: "tradeCount", header: "Trades", align: "right" as const,
+    format: (value: unknown, row: Record<string, unknown>) => `${value}${row.quality === "thin" ? " Thin" : ""}` },
+];
 
 export interface YieldCurveHeadlessDependencies {
   load(curve: CurveId, requestedDate: string, context: HeadlessPaneContext): Promise<CurveData>;
@@ -72,6 +83,7 @@ export interface YieldCurveHeadlessDependencies {
   /** The 1D, 1W and 1M curves of a session, for a curve loaded without them (the FRED fallback). */
   lookbacks?(session: string, context: HeadlessPaneContext): Promise<YieldLookbackCurves>;
   world?(context: HeadlessPaneContext): Promise<WorldRow[]>;
+  swaps?(tenor: SwapTenor, context: HeadlessPaneContext): Promise<SwapCurvePayload>;
 }
 
 const defaultDependencies: Required<YieldCurveHeadlessDependencies> = {
@@ -82,6 +94,7 @@ const defaultDependencies: Required<YieldCurveHeadlessDependencies> = {
       .map((lookback) => [lookback.id, lookback.points]),
   ),
   world: (context) => loadWorldRows(context.apiClient),
+  swaps: (tenor, context) => fetchSwapCurve(tenor, context.apiClient),
 };
 
 const bp = (value: number | null) => value == null ? null : Math.round(value * 100);
@@ -116,6 +129,7 @@ export function createYieldCurveHeadless(
   const loadCompare = dependencies.compare ?? defaultDependencies.compare;
   const loadLookbacks = dependencies.lookbacks ?? defaultDependencies.lookbacks;
   const loadWorld = dependencies.world ?? defaultDependencies.world;
+  const loadSwaps = dependencies.swaps ?? defaultDependencies.swaps;
   return {
     shape: "rows",
     argument: { kind: "free-text", optional: true, placeholder: "[curve] [date]",
@@ -129,14 +143,21 @@ export function createYieldCurveHeadless(
         pluginState: { pluginId: "macro", key: "yield-curve:view" } },
       { key: "forward", type: "boolean", description: "Overlay the one-year-forward curve on the chart.",
         pluginState: { pluginId: "macro", key: "yield-curve:forward" } },
-      { key: "tab", type: "enum", values: [{ value: "curve" }, { value: "world" }],
-        description: "curve (default), or world: each market's 2Y, 10Y, 30Y and 2s10s on its own latest session.",
+      { key: "tab", type: "enum", values: [{ value: "curve" }, { value: "world" }, { value: "swaps" }],
+        description: "curve (default), world (government yields), or swaps (USD SOFR rates and Treasury swap spreads). Spreads use native quotes: annual ACT/360 OIS versus semiannual bond-equivalent Treasury yields.",
         pluginState: { pluginId: "macro", key: "yield-curve:tab" } },
+      { key: "tenor", type: "enum", values: SWAP_TENORS.map((value) => ({ value })),
+        description: "Swaps history tenor (default 10Y); the curve table always includes every tenor.",
+        pluginState: { pluginId: "macro", key: "yield-curve:swap-tenor" } },
+      { key: "swap-view", type: "enum", values: [{ value: "curve" }, { value: "history" }],
+        description: "Swaps chart: current curve with 1W/1M comparisons, or the selected tenor's history.",
+        pluginState: { pluginId: "macro", key: "yield-curve:swap-view" } },
     ],
     columns: COLUMNS,
     // The title names the curve, as the pane's Curve select does.
     describe: (args) => {
       if (args.options.tab === "world") return "Yield Curves | World";
+      if (args.options.tab === "swaps") return "Yield Curves | USD SOFR Swaps";
       try {
         const curve = curveIdOf(args.options.curve) ?? parseCurveArgument(args.argument).curve ?? "us";
         return `Yield Curves | ${curveOption(curve).label}`;
@@ -145,6 +166,19 @@ export function createYieldCurveHeadless(
       }
     },
     async load(args, context) {
+      if (args.options.tab === "swaps") {
+        const data = await loadSwaps(selectedSwapTenor(args.options.tenor), context);
+        return {
+          freshness: { source: "DTCC public swap reports", status: "not-a-feed", basis: "daily trade estimates", cadence: "daily",
+            tradingDayMarket: "US" },
+          columns: SWAP_COLUMNS,
+          rows: (data.asOf ? data.points : []).map((point) => ({ ...point, asOf: data.asOf })),
+          metadata: { currency: data.currency, benchmark: data.benchmark, units: "Percent", changeUnit: "Basis points",
+            asOf: data.asOf, fetchedAt: data.fetchedAt, stale: data.stale, previousDate: data.previousDate,
+            treasuryDate: data.treasuryDate, comparisons: data.comparisons, history: data.history },
+          errors: !data.asOf ? ["No swap rates yet."] : data.stale ? ["The swap curve is stale."] : [],
+        };
+      }
       if (args.options.tab === "world") {
         const rows = await loadWorld(context);
         return {
@@ -161,8 +195,8 @@ export function createYieldCurveHeadless(
         throw new Error(`Unknown curve ${String(args.options.curve)}; use ${CURVE_OPTIONS.map((option) => option.aliases[0]).join(", ")}.`);
       }
       const curve = optionCurve ?? argument.curve ?? "us";
-      const requestedDate = args.options.date != null ? yieldCurveDate(args.options.date) : argument.date;
-      const compareInput = args.options.compare == null ? "" : parseCompareInput(String(args.options.compare));
+      const requestedDate = args.options.date != null ? yieldCurveDate(args.options.date, new Date(), "--date") : argument.date;
+      const compareInput = args.options.compare == null ? "" : parseCompareInput(String(args.options.compare), new Date(), "--compare");
       const data = await dependencies.load(curve, requestedDate, context);
       const points = data.points;
       const session = curveAsOf(points);

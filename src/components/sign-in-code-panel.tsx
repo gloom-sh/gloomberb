@@ -42,7 +42,14 @@ export function desktopQrModulePx(modules: number, availablePx: number, cellHeig
 }
 
 interface SignInCodePanelProps {
+  /** The page the browser button opens. */
   url: string | null;
+  /**
+   * The link shown and drawn as the QR code, when it differs from `url`: a
+   * short link that leads to the same page. Null shows neither, for a page
+   * whose own address is too long to read or scan. Defaults to `url`.
+   */
+  link?: string | null;
   /**
    * A code to show under the QR code: Gloom's own sign-in compares it with
    * the page it opens. A broker connect shows none.
@@ -62,10 +69,10 @@ interface SignInCodePanelProps {
 
 /**
  * A browser hand-off: button, QR code, an optional short code, the URL, and a
- * live status. Used to sign in to Gloom and to connect a broker. Degrades by
- * height: the QR needs its full module grid in the terminal, so short
- * terminals drop decoration first and finally fall back to the URL (and code),
- * which works over SSH too. The desktop draws the QR as an image in whole
+ * live status. Used to sign in to Gloom, to connect a broker and to finish a
+ * Pro checkout. Degrades by height: the QR needs its full module grid in the
+ * terminal, so short terminals drop decoration first and finally fall back to
+ * the URL (and code), which works over SSH too. The desktop draws the QR as an image in whole
  * pixel modules, smaller when the rows run out.
  */
 export function SignInCodePanel(props: SignInCodePanelProps) {
@@ -86,17 +93,18 @@ export function SignInCodePanel(props: SignInCodePanelProps) {
       }} />
     )
     : null;
+  const link = props.link === undefined ? url : props.link;
   return desktop
-    ? <DesktopPanel {...props} button={button} />
-    : <TerminalPanel {...props} button={button} />;
+    ? <DesktopPanel {...props} link={link} button={button} />
+    : <TerminalPanel {...props} link={link} button={button} />;
 }
 
-type PanelBodyProps = SignInCodePanelProps & { button: React.ReactNode };
+type PanelBodyProps = Omit<SignInCodePanelProps, "link"> & { link: string | null; button: React.ReactNode };
 
 /** Laid out by the browser: a QR image in whole-pixel modules, the code as a figure. */
-function DesktopPanel({ url, code, status, height, button }: PanelBodyProps) {
+function DesktopPanel({ link, code, status, height, button }: PanelBodyProps) {
   const { cellHeightPx = 18 } = useUiCapabilities();
-  const qr = useMemo(() => (url ? renderQrSvgDataUri(url) : null), [url]);
+  const qr = useMemo(() => (link ? renderQrSvgDataUri(link) : null), [link]);
   const besideQr = DESKTOP_ROWS_BESIDE_QR + (code ? DESKTOP_CODE_ROWS : 0);
   const modulePx = qr ? desktopQrModulePx(qr.modules, (height - besideQr) * cellHeightPx, cellHeightPx) : null;
   const qrPx = qr && modulePx ? modulePx * qr.modules : 0;
@@ -119,7 +127,7 @@ function DesktopPanel({ url, code, status, height, button }: PanelBodyProps) {
           }}
         />
       )}
-      {url && !qrPx && (
+      {link && !qrPx && (
         <Box marginTop={1}>
           <Text fg={colors.textDim}>{t("Not enough room to draw the QR code.")}</Text>
         </Box>
@@ -129,9 +137,9 @@ function DesktopPanel({ url, code, status, height, button }: PanelBodyProps) {
           <FigureText>{code}</FigureText>
         </Box>
       )}
-      {url && (
+      {link && (
         <Box marginTop={code ? 0 : 1} maxWidth="100%">
-          <Text fg={colors.textMuted} wrapText selectable style={{ textAlign: "center" }}>{url}</Text>
+          <Text fg={colors.textMuted} wrapText selectable style={{ textAlign: "center" }}>{link}</Text>
         </Box>
       )}
       <Box marginTop={1}>
@@ -142,16 +150,16 @@ function DesktopPanel({ url, code, status, height, button }: PanelBodyProps) {
 }
 
 /** Laid out in cells: half-block QR lines need their full grid, so short terminals drop rows first. */
-function TerminalPanel({ url, code, status, height, button }: PanelBodyProps) {
-  const qrLines = useMemo(() => (url ? renderQrLines(url) : []), [url]);
+function TerminalPanel({ link, code, status, height, button }: PanelBodyProps) {
+  const qrLines = useMemo(() => (link ? renderQrLines(link) : []), [link]);
   // Reserve the browser button before fitting the QR, code, and status.
-  const contentHeight = height - (url ? 2 : 0);
+  const contentHeight = height - (button ? 2 : 0);
   const codeRows = code ? 1 : 0;
   const showQr = qrLines.length > 0 && contentHeight >= qrLines.length + codeRows + 1;
   const qrRows = showQr ? qrLines.length : 0;
   // A blank row before the code, the link and the status when there is room.
-  const spacious = showQr && contentHeight >= qrRows + codeRows * 2 + (url ? 2 : 0) + 2;
-  const showUrl = !!url && (!showQr || spacious || contentHeight >= qrRows + codeRows + 2);
+  const spacious = showQr && contentHeight >= qrRows + codeRows * 2 + (link ? 2 : 0) + 2;
+  const showUrl = !!link && (!showQr || spacious || contentHeight >= qrRows + codeRows + 2);
 
   return (
     <Box flexDirection="column" alignItems="center">
@@ -165,7 +173,7 @@ function TerminalPanel({ url, code, status, height, button }: PanelBodyProps) {
           ))}
         </Box>
       )}
-      {!showQr && url && (
+      {!showQr && link && (
         <Box height={1}>
           <Text fg={colors.textDim}>{t("Not enough room to draw the QR code.")}</Text>
         </Box>
@@ -182,7 +190,7 @@ function TerminalPanel({ url, code, status, height, button }: PanelBodyProps) {
         <>
           {spacious && <Box height={1} />}
           <Box height={1}>
-            <Text fg={colors.textMuted}>{url}</Text>
+            <Text fg={colors.textMuted}>{link}</Text>
           </Box>
         </>
       )}

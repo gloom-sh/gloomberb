@@ -4,7 +4,8 @@ import { CloudDataApi } from "../../api-client/data";
 import { ApiRequestError } from "../../api-client/errors";
 import type { MarketDataRequestContext } from "../../types/data-provider";
 import type { TickerFinancials } from "../../types/financials";
-import { ChartResolveCache, resolveChartSpecData } from "../../time-series/resolve";
+import { resolveChartSpecData } from "../../time-series/resolve";
+import { ChartResolveCache } from "../../time-series/resolve-context";
 import type { ChartSpec } from "../../time-series/types";
 import { HistoryRetentionError, type HistoryRecoveryCandidate, type HistoryRetention } from "../history-retention";
 import { AssetDataRouter } from "../provider-router";
@@ -65,6 +66,8 @@ test("Cloud/API original evidence survives routing and only the public proof is 
 });
 
 test("Cloud validates exact original bounds and rejects malformed or non-retention envelopes", async () => {
+  // A second rollover can bring the future-clock case inside its tolerance.
+  setSystemTime(new Date("2026-09-22T12:00:00Z"));
   const data = proof(), provider = new GloomberbCloudProvider();
   const cases: Envelope[] = [
     ...[{ symbol: "ETH-USD" }, { exchange: "NASDAQ" }, { interval: "1h" }, { interval: "2min" },

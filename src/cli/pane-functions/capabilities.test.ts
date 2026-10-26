@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { apiClient } from "../../api-client";
 import { paneSchemas as chartSchemas } from "../../plugins/builtin/chart-composer/headless-schema";
 import { buildFundamentalChartPreset, buildValuationChartPreset } from "../../plugins/builtin/chart-composer/presets";
 import { paneSchemas as correlationSchemas } from "../../plugins/builtin/correlation/headless-schema";
@@ -38,6 +39,13 @@ import {
 import { createPaneCatalog } from "./discovery";
 import { findCatalogSeries } from "../series-search";
 import { parsePaneFunctionArgs } from "./options";
+
+beforeEach(() => {
+  // Catalog discovery starts chat and instantiates the map's chart templates.
+  spyOn(apiClient, "getChannels").mockResolvedValue([]);
+  spyOn(apiClient, "geo").mockResolvedValue({ series: [] });
+});
+afterEach(() => mock.restore());
 
 const dummyPane = {
   id: "test-pane",
@@ -89,10 +97,10 @@ describe("pane function capabilities", () => {
   });
 
   // A read applies its period over the template, so a default that differs changes what it shows.
-  test("GF and GE read the period their app templates open on, with the other one option away", () => {
+  test("GF and GE keep CLI and app periods aligned while accepting explicit overrides", () => {
     for (const [id, build, period, other] of [
       ["fundamental-graph-pane", buildFundamentalChartPreset, "quarterly", "annual"],
-      ["valuation-graph-pane", buildValuationChartPreset, "annual", "quarterly"],
+      ["valuation-graph-pane", buildValuationChartPreset, "daily", "annual"],
     ] as const) {
       const capability = capabilityFor(id);
       for (const symbols of [["AAPL"], ["AAPL", "MSFT"]]) {
@@ -186,7 +194,10 @@ describe("pane function capabilities", () => {
   test("an option a function does not take is refused by the code the user typed, not its pane or capability id", () => {
     const comparison = capabilityFor("comparison-chart-pane");
     expect(() => normalizeCapabilityOptions(comparison, { tab: "cashflow" }, { code: "COMP" }))
-      .toThrow("COMP does not support --tab. Supported options: --rangePreset, --axisMode, --chartResolution.");
+      .toThrow("COMP does not support --tab. Supported options: --range-preset, --axis-mode, --total-return, --chart-resolution.");
+    // A flag is named as it is typed, not as the parser keys it (`--as-of` reads as `asOf`).
+    expect(() => normalizeCapabilityOptions(comparison, { asOf: "2026-10-14" }, { code: "COMP" }))
+      .toThrow("COMP does not support --as-of.");
     // The intraday chart's capability id is not its template id, and neither is what anyone types.
     const intraday = capabilityFor("graph-intraday-price-pane");
     expect(intraday.id).toBe("intraday-price-chart");
@@ -197,13 +208,28 @@ describe("pane function capabilities", () => {
       .toThrow("CDX does not support --range. It has no options.");
   });
 
+  test("HP and RETURN take --from in place of --range: typed together they are refused, while the default range gives way", () => {
+    const returns = capabilityFor("returns-pane");
+    expect(normalizeCapabilityOptions(returns, { from: "2007", to: "2009" }, { code: "RETURN" })).toMatchObject({ range: "5D", from: "2007", to: "2009" });
+    expect(() => normalizeCapabilityOptions(returns, { window: "1M", from: "2007" }, { code: "RETURN" })).toThrow("--from replaces --window; give one of them.");
+    expect(() => normalizeCapabilityOptions(capabilityFor("historical-prices-pane"), { range: "5Y", from: "2007" }, { code: "HP" }))
+      .toThrow("--from replaces --range; give one of them.");
+  });
+
   test("a word after a function that takes none is answered with its options, and runs as the option whose value it is", () => {
     expect(noArgumentMessage(jodiHeadless.options, "JODI", "Gas"))
-      .toBe("JODI does not accept an argument. Options: --commodity <oil|gas>. Run: gloomberb fn JODI --commodity gas");
+      .toBe("JODI does not accept an argument. Options: --commodity <oil|gas>. Run: gloom fn JODI --commodity gas");
     // Anything else gets an example: a choice that is not the default, in the command that was run.
     expect(noArgumentMessage(jodiHeadless.options, "JODI", "europe", "shot"))
-      .toBe("JODI does not accept an argument. Options: --commodity <oil|gas>. Example: gloomberb shot JODI --commodity gas");
-    expect(noArgumentMessage([], "CDX", "IG")).toBe("CDX does not accept an argument. Run: gloomberb fn CDX");
+      .toBe("JODI does not accept an argument. Options: --commodity <oil|gas>. Example: gloom shot JODI --commodity gas");
+    expect(noArgumentMessage([], "CDX", "IG")).toBe("CDX does not accept an argument. Run: gloom fn CDX");
+    // A ticker after a function that takes its underlying as an option runs as that option.
+    const ovme = [{ key: "model", type: "enum" as const, values: [{ value: "european" }, { value: "american" }] },
+      { key: "symbol", type: "string" as const }];
+    expect(noArgumentMessage(ovme, "OVME", "NEM")).toBe(
+      "OVME does not accept an argument. Options: --model <european|american>, --symbol <string>. Run: gloom fn OVME --symbol NEM");
+    expect(noArgumentMessage(ovme, "OVME", "american")).toEndWith("Run: gloom fn OVME --model american");
+    expect(noArgumentMessage(ovme, "OVME", "two words")).toEndWith("Example: gloom fn OVME --model european");
   });
 });
 
@@ -243,7 +269,7 @@ describe("pane catalog search", () => {
     ], "price chart");
 
     expect(matches.map((entry) => entry.token)).toEqual(["GP"]);
-    expect(renderPaneCatalogReport(matches, { query: "price chart", limit: 10, botSafeOnly: false })).toContain("gloomberb shot GP <ticker>");
+    expect(renderPaneCatalogReport(matches, { query: "price chart", limit: 10, botSafeOnly: false })).toContain("gloom shot GP <ticker>");
   });
 
   test("finds the semantic financial comparison capability from natural wording", () => {
@@ -320,11 +346,11 @@ describe("pane catalog search", () => {
       for (const query of ["collar", "hedge", "hedging", "protective put", "put spread"]) {
         expect(filterPaneCatalogEntries(entries, query)[0]?.token, query).toBe("OSA");
       }
-      // Selling puts: OSA runs the trade, OMON picks the strike, VCA finds the rich premium.
+      // Selling puts: CSP ranks the names, OSA runs the trade, OMON picks the strike, VCA finds the rich premium.
       for (const query of ["cash secured put", "csp", "put selling", "sell put", "short put", "wheel"]) {
         const tokens = filterPaneCatalogEntries(entries, query).map(({ token }) => token);
-        expect(tokens[0], query).toBe("OSA");
-        expect(tokens.slice(0, 3).sort(), query).toEqual(["OMON", "OSA", "VCA"]);
+        expect(tokens.slice(0, 2), query).toEqual(["CSP", "OSA"]);
+        expect(tokens.slice(0, 4).sort(), query).toEqual(["CSP", "OMON", "OSA", "VCA"]);
       }
     } finally {
       registry.destroy();
@@ -347,6 +373,23 @@ describe("pane catalog search", () => {
     }
   });
 
+  test("an analyst's words for a comp table list RV first, and its words do not lift it over the functions other words name", async () => {
+    const context = { config: createDefaultConfig("/tmp/capabilities-test") } as MarketContext;
+    const registry = await createPaneCatalog(context, getLoadablePlugins());
+    try {
+      const entries = await buildPaneCatalogEntries(registry, context);
+      // "comp table" put RV 31st behind APPS, GUIDE and HIRE, and "competitor" matched nothing.
+      for (const query of ["comp table", "comps", "peers", "competitor", "competitors", "comparable companies", "peer comparison"]) {
+        expect(selectPaneCatalogMatches(filterPaneCatalogEntries(entries, query), query, 10).shown[0]?.token, query).toBe("RV");
+      }
+      for (const query of ["table", "companies", "comparable", "comparison", "company comparison", "price table"]) {
+        expect(filterPaneCatalogEntries(entries, query)[0]?.token, query).not.toBe("RV");
+      }
+    } finally {
+      registry.destroy();
+    }
+  });
+
   test("a function's code page names the other functions that list the same word, and AIS finds the map in any case", async () => {
     const context = { config: createDefaultConfig("/tmp/capabilities-test") } as MarketContext;
     const registry = await createPaneCatalog(context, getLoadablePlugins());
@@ -354,9 +397,26 @@ describe("pane catalog search", () => {
       const entries = await buildPaneCatalogEntries(registry, context);
       // `catalog port` is PORT's page; MAP lists ports and vessels, so it is named under it.
       const page = renderPaneCatalogReport(filterPaneCatalogEntries(entries, "port"), { query: "port", limit: 10, botSafeOnly: false });
-      expect(page).toContain("gloomberb fn PORT <portfolio-id>");
+      expect(page).toContain("gloom fn PORT <portfolio-id>");
       expect(page).toMatch(/Also matches "port"[\s\S]*\nMAP\s/);
       for (const query of ["ais", "AIS", "shipping"]) expect(filterPaneCatalogEntries(entries, query).map(({ token }) => token), query).toContain("MAP");
+    } finally {
+      registry.destroy();
+    }
+  });
+
+  test("a metals desk's plain words for the gold/silver ratio list GR first, and search lists it", async () => {
+    const context = { config: createDefaultConfig("/tmp/capabilities-test") } as MarketContext;
+    const registry = await createPaneCatalog(context, getLoadablePlugins());
+    try {
+      const entries = await buildPaneCatalogEntries(registry, context);
+      for (const query of ["ratio", "gold silver", "gold silver ratio", "gold/silver ratio"]) {
+        const ranked = filterPaneCatalogEntries(entries, query);
+        const { shown, loose } = selectPaneCatalogMatches(ranked, query, 10);
+        expect(shown[0]?.token, query).toBe("GR");
+        // `search` lists functions only from a match that is not loose.
+        expect(loose, query).toBe(false);
+      }
     } finally {
       registry.destroy();
     }
@@ -485,6 +545,59 @@ describe("pane catalog search", () => {
     // --all lists every match.
     expect(select(some, "price date", Number.POSITIVE_INFINITY)).toMatchObject({ hidden: 0, loose: false });
     expect(select(some, "price date", Number.POSITIVE_INFINITY).shown).toHaveLength(7);
+  });
+
+  test("with no function carrying every word, the ones a word names lead the few closest, ahead of mentions in keywords and flags", () => {
+    const entry = (token: string, label: string, description: string, keywords: string[] = [], options: PaneCatalogEntry["capability"]["options"] = []) => ({
+      token,
+      label,
+      description,
+      paneId: token.toLowerCase(),
+      paneName: label,
+      shortcut: token,
+      aliases: [],
+      keywords,
+      defaultSettings: {},
+      capability: { ...capabilityFor(`${token.toLowerCase()}-pane`), aliases: keywords, options },
+    });
+    const flag = (key: string, description: string) => ({ key, type: "string" as const, description });
+    // Alphabetical order puts the weak matches first: a mention of each word, one in a keyword and one in a flag, matches both words.
+    const entries = [
+      entry("AAA", "Receipts", "A receipt beside its home listing.", ["implied fx"], [flag("size", "Share volume")]),
+      entry("BBB", "Alerts", "Alerts on a move.", ["fx rate"], [flag("kind", "Volume spike")]),
+      entry("FXC", "FX Cross Rates", "Currency cross-rate matrix.", ["fx"]),
+      entry("SURF", "Volatility Surface", "Implied smiles and skew.", ["vol"]),
+      entry("VOLS", "Cross-asset Volatility", "Index closes."),
+    ];
+    const { shown, loose, hidden } = selectPaneCatalogMatches(filterPaneCatalogEntries(entries, "fx vol"), "fx vol", 25);
+    expect(loose).toBe(true);
+    // Each of the three is named by a word; the two mentions come after them, so none is lost to the limit.
+    expect(shown.slice(0, 3).map(({ token }) => token).sort()).toEqual(["FXC", "SURF", "VOLS"]);
+    expect(shown.slice(3).map(({ token }) => token).sort()).toEqual(["AAA", "BBB"]);
+    expect(hidden).toBe(0);
+  });
+
+  test("fx vol lists the functions named for fx or vol without --all, volatility before volume", async () => {
+    const context = { config: createDefaultConfig("/tmp/capabilities-test") } as MarketContext;
+    const registry = await createPaneCatalog(context, getLoadablePlugins());
+    try {
+      const entries = await buildPaneCatalogEntries(registry, context);
+      const { shown, loose } = selectPaneCatalogMatches(filterPaneCatalogEntries(entries, "fx vol"), "fx vol", 25);
+      const tokens = shown.map(({ token }) => token);
+      expect(loose).toBe(true);
+      // Not ADR (a fund's implied FX rate), ALRT (volume alerts) or ATS (OTC volume), which only mention a word.
+      expect(tokens).toEqual(expect.arrayContaining(["FXC", "OVDV", "VOLS", "HVT", "VCA"]));
+      expect(tokens).not.toEqual(expect.arrayContaining(["ADR"]));
+      expect(tokens).not.toContain("ALRT");
+      expect(tokens).not.toContain("ATS");
+      // One word: the volatility functions before the two about volume.
+      const vol = filterPaneCatalogEntries(entries, "vol").map(({ token }) => token);
+      for (const volatility of ["VOLS", "OVDV", "HVT", "VCA"]) {
+        expect(vol.indexOf(volatility), volatility).toBeLessThan(Math.min(vol.indexOf("ATS"), vol.indexOf("SIV"), vol.indexOf("ALRT")));
+      }
+    } finally {
+      registry.destroy();
+    }
   });
 
   test("an alias opens its function even when other functions contain the same letters", () => {

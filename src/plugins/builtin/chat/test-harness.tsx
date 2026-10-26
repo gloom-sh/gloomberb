@@ -6,6 +6,7 @@ import { AppContext, createInitialState } from "../../../state/app/context";
 import { createStaticAppStore } from "../../../test-support/app-store";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
+import { installTestWebSocket } from "../../../test-support/cloud-api";
 import { parseHex } from "../../../theme/color-utils";
 import { createDefaultConfig } from "../../../types/config";
 import { Box } from "../../../ui";
@@ -23,7 +24,10 @@ const TRANSCRIPT_SOURCE = "server";
 const TRANSCRIPT_SCHEMA_VERSION = 2;
 const originalConnectChannel = apiClient.connectChannel.bind(apiClient);
 const originalGetChannels = apiClient.getChannels.bind(apiClient);
+const originalGetMessages = apiClient.getMessages;
 const originalGetChatPresence = apiClient.getChatPresence.bind(apiClient);
+const originalGetAccountProfile = apiClient.getAccountProfile;
+let originalWebSocket: typeof WebSocket | undefined;
 const originalGetChatMentionCandidates = apiClient.getChatMentionCandidates;
 const originalUpdateChatChannelState = apiClient.updateChatChannelState.bind(apiClient);
 const originalEditMessage = apiClient.editMessage.bind(apiClient);
@@ -40,6 +44,11 @@ const TEST_CHAT_CHANNELS: ChatChannel[] = [
 ];
 
 export function installChatApiTestDefaults(): void {
+  originalWebSocket = globalThis.WebSocket;
+  installTestWebSocket(0);
+  apiClient.getAccountProfile = async () => makeAccountProfile();
+  apiClient.getChannels = async () => [];
+  apiClient.getMessages = async () => [];
   apiClient.getChatPresence = async () => ({ onlineCount: 0 });
   apiClient.getChatMentionCandidates = async () => { throw new Error("Fixture has no member endpoint"); };
   apiClient.updateChatChannelState = async (channelId, body) => ({
@@ -63,11 +72,15 @@ export function cleanupChatTest(): void {
   setSharedMarketDataForTests(undefined);
   apiClient.connectChannel = originalConnectChannel;
   apiClient.getChannels = originalGetChannels;
+  apiClient.getMessages = originalGetMessages;
   apiClient.getChatPresence = originalGetChatPresence;
+  apiClient.getAccountProfile = originalGetAccountProfile;
   apiClient.getChatMentionCandidates = originalGetChatMentionCandidates;
   apiClient.updateChatChannelState = originalUpdateChatChannelState;
   apiClient.editMessage = originalEditMessage;
   apiClient.setSessionToken(null);
+  if (originalWebSocket) globalThis.WebSocket = originalWebSocket;
+  originalWebSocket = undefined;
 }
 
 export function installServerChannels(controller: ChatController, channels = TEST_CHAT_CHANNELS): void {
@@ -150,7 +163,9 @@ export function createController(options: {
   }
   controller.attachPersistence(persistence);
   controller.refreshSession = async () => {};
+  controller.refreshChannels = async () => {};
   controller.refreshMessages = async () => {};
+  controller.refreshChannelMessages = async () => {};
   controller.refreshPresence = async () => {};
   controller.refreshChatState = async () => {};
   return controller;

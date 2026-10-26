@@ -1,12 +1,15 @@
-import { dispatchCli, failUnknownCliCommand } from "./index";
+import "./opentui-libc";
 import { inferCliErrorOptions, printCliError } from "./errors";
 import { isCliHelpFlag } from "./options";
+import { plainByDefault, setCliPlainOverride } from "../utils/cli-output";
 import { loadExternalPlugins } from "../plugins/loader";
 import { restoreExtractedPlugins } from "./restore-plugins";
 import { measurePerfAsync } from "../utils/perf-marks";
 import { flushCrashReports, reportCrash } from "../telemetry/crash-reports";
 import { CRASH_REPORT_EXIT_FLUSH_MS } from "../telemetry/crash-reports-node";
 import type { CliLaunchRequest } from "../types/plugin";
+import { detectUpdateAction } from "../updater";
+import { linkStandaloneCommand } from "../updater/command-names";
 import {
   OPEN_TUI_NATIVE_SMOKE_COMMAND,
   OPEN_TUI_RUNTIME_SMOKE_COMMAND,
@@ -19,6 +22,10 @@ import {
 } from "./native-smoke";
 
 async function launchOpenTuiApp(cliLaunchRequest: CliLaunchRequest | null = null): Promise<void> {
+  // Before anything in the app can reach for the render library, so a temp
+  // folder that cannot run it is worked around (or named) first.
+  const { loadRenderLib } = await import("../renderers/opentui/render-lib");
+  await measurePerfAsync("startup.opentui.render-lib", loadRenderLib);
   const { startOpenTuiApp } = await import("../renderers/opentui/start");
   // Before the catalog is read, so a plugin that moved out of this repository is
   // available in the same session rather than only after a restart.
@@ -58,11 +65,21 @@ export async function runCliEntrypoint(rawArgs = process.argv.slice(2)): Promise
     process.exit(0);
   }
 
+  // The standalone binary updates by replacing itself, so one installed as
+  // `gloomberb` before the rename gets `gloom` beside it here.
+  if (detectUpdateAction()?.kind === "self") linkStandaloneCommand(process.execPath);
+
   if (!command || ((command === "launch-ui" || command === "ui") && !rawArgs.some(isCliHelpFlag))) {
     await launchOpenTuiApp();
     return;
   }
 
+  // Loaded only for a command: a bare launch never reads the commands, and
+  // their modules are a noticeable part of what it would load before drawing.
+  const { dispatchCli, failUnknownCliCommand } = await import("./index");
+  // For a screen reader, a pipe or NO_COLOR: no rule lines, arrows in words, fixed table columns. Set
+  // for this process only; `--plain` / `--no-plain` decide it in dispatchCli, and commands run in-process keep theirs.
+  setCliPlainOverride(plainByDefault());
   const externalPlugins = await loadExternalPlugins();
   const dispatchResult = await dispatchCli(rawArgs, { externalPlugins });
   if (dispatchResult.kind === "handled") return;

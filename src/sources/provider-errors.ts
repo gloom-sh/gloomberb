@@ -1,4 +1,8 @@
-const PROVIDER_MISS_BRAND = Symbol("provider-miss");
+import { DataServiceUnreachableError, isNetworkFailure } from "../utils/network-failure";
+
+// Registered, so a miss raised by another copy of this module (a plugin that
+// resolved `gloomberb/market-data` from the source tree) is still recognized.
+const PROVIDER_MISS_BRAND = Symbol.for("gloomberb.provider-miss");
 const EXPECTED_PROVIDER_MISS = /No data found|symbol may be delisted|"code":"Not Found"|No history for /i;
 
 const MAX_REASON_LENGTH = 200;
@@ -40,6 +44,14 @@ export class ProviderMissError extends Error {
 
 export function createProviderMiss(message?: string, reason?: unknown, options?: { notFound?: boolean }): ProviderMissError {
   return new ProviderMissError(message, reason, options);
+}
+
+/** A source has the listing's bars but not up to the present: it answered, just behind. */
+export class StaleHistoryError extends ProviderMissError {
+  constructor(message: string) {
+    super(message);
+    this.name = "StaleHistoryError";
+  }
 }
 
 function isProviderMiss(error: unknown): error is ProviderMissError {
@@ -127,12 +139,16 @@ class NoProviderError extends Error {
 /**
  * The router's final error when no provider answered. A reason a provider gave
  * replaces the generic wording, and so does the service's answer that no
- * listing exists for `symbol` ("Not a ticker"); a timeout or any other failure
- * keeps the generic message.
+ * listing exists for `symbol` ("Not a ticker"), and a request that never
+ * reached the data service, which says that rather than that no source has the
+ * symbol; a timeout or any other failure keeps the generic message.
  */
 export function noProviderError(message: string, note: ProviderMissNote | undefined, symbol?: string): Error {
   if (note?.reason) return createProviderMiss(note.reason, note.reason);
   if (note?.notFound === true && symbol) return createProviderMiss(notATickerMessage(symbol), undefined, { notFound: true });
+  if (isNetworkFailure(note?.failure)) {
+    return note!.failure instanceof DataServiceUnreachableError ? note!.failure : new DataServiceUnreachableError(note!.failure);
+  }
   return new NoProviderError(message, note?.failure);
 }
 

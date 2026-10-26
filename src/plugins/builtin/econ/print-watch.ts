@@ -1,5 +1,6 @@
 import type { GloomPluginContext } from "../../../types/plugin";
 import {
+  eventCountry,
   getCalendarCache,
   landedHighImpactPrints,
   loadCalendar,
@@ -92,7 +93,7 @@ export function startHighImpactPrintWatch(
 
   const toast = (event: EconEvent) => {
     ctx.notify({
-      title: event.country,
+      title: eventCountry(event),
       body: printBody(event),
       type: "info",
       desktop: "always",

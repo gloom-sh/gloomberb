@@ -14,8 +14,9 @@ import { DESKTOP_DRAFT_STRIP_STYLE } from "../attachments/desktop";
 /**
  * A chip for something a message opens in the terminal: a shared pane (its
  * title and the pane it is, with the picture its sender posted when there is
- * one) or a Gloom Wire post's story or calendar. It always takes the same
- * room, before and after the share is read, so the transcript never moves.
+ * one), a Gloom Wire post's story or calendar, or a function written in
+ * backticks, drawn in its line of text. It always takes the same room, before
+ * and after the share is read, so the transcript never moves.
  */
 
 interface ChatPaneChipContent {
@@ -30,6 +31,7 @@ interface ChatPaneChipContent {
 function useChatPaneChipContent(link: ChatMessagePaneLink): ChatPaneChipContent {
   const shareId = link.kind === "share" ? link.id : "";
   const preview = useSharePreview(shareId);
+  if (link.kind === "command") return { title: link.query, detail: link.name, icon: "" };
   if (link.kind === "share") {
     if (preview.status !== "ready") return { title: link.url, detail: "", icon: "" };
     const pane = chatPaneLinkPane(preview.paneId);
@@ -87,6 +89,52 @@ export function DesktopChatPaneChip({
   const height = compact ? COMPACT_CHIP_HEIGHT : preview ? PICTURE_CHIP_HEIGHT : SHARE_CHIP_HEIGHT;
   const border = hovered ? themeColors.borderFocused : blendHex(themeColors.border, themeColors.bg, 0.35);
   const surface = blendHex(themeColors.panel, themeColors.bg, hovered ? 0.2 : 0.5);
+  const label = [content.title, content.detail].filter(Boolean).join(", ");
+  const pressable = {
+    "aria-label": label || undefined,
+    // A share's link, and what a function written in a message is called.
+    title: link.kind === "share" ? link.url : link.kind === "command" ? link.name : undefined,
+    onMouseEnter: () => setHovered(true),
+    onMouseLeave: () => setHovered(false),
+    // A press on the chip is not a press on the row behind it.
+    onMouseDown: (event: DomEventLike) => event.stopPropagation(),
+    onClick: (event: DomEventLike) => {
+      event.stopPropagation();
+      onOpen(link);
+    },
+  };
+  const buttonReset = { cursor: "pointer", font: "inherit", color: "inherit", textAlign: "left" };
+  const dataAttributes = {
+    "data-gloom-role": "chat-pane-chip",
+    "data-gloom-pane-link": link.kind === "share" ? `share:${link.id}` : link.kind === "command" ? `command:${link.query}` : link.link.kind,
+  };
+  if (link.kind === "command") {
+    // The same frame at the height of the line of text it is written in: the
+    // kit's chip, 16px in an 18px row, as the ticker chips beside it.
+    return createElement("button", {
+      type: "button",
+      ...dataAttributes,
+      ...pressable,
+      style: {
+        ...buttonReset,
+        boxSizing: "border-box",
+        display: "inline-flex",
+        alignItems: "center",
+        height: "calc(100% - 2px)",
+        maxWidth: "100%",
+        padding: "0 var(--gloom-space-sm)",
+        border: `1px solid ${border}`,
+        borderRadius: "var(--gloom-radius-sm)",
+        background: surface,
+        opacity: dimmed ? 0.6 : 1,
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "pre",
+        color: themeColors.textBright,
+        fontWeight: "var(--gloom-weight-bold)",
+      },
+    }, content.title);
+  }
   const showPicture = !!preview && failedUrl !== preview.url;
   const leadSize = compact ? 18 : ICON_SIZE;
   const lead = showPicture
@@ -144,7 +192,6 @@ export function DesktopChatPaneChip({
       fontSize: tone === "title" ? undefined : "0.92em",
     },
   }, text);
-  const label = [content.title, content.detail].filter(Boolean).join(", ");
   const text = compact
     ? createElement("span", {
       key: "text",
@@ -171,23 +218,6 @@ export function DesktopChatPaneChip({
     background: surface,
     opacity: dimmed ? 0.6 : 1,
     overflow: "hidden",
-  };
-  const pressable = {
-    "aria-label": label || undefined,
-    title: link.kind === "share" ? link.url : undefined,
-    onMouseEnter: () => setHovered(true),
-    onMouseLeave: () => setHovered(false),
-    // A press on the chip is not a press on the row behind it.
-    onMouseDown: (event: DomEventLike) => event.stopPropagation(),
-    onClick: (event: DomEventLike) => {
-      event.stopPropagation();
-      onOpen(link);
-    },
-  };
-  const buttonReset = { cursor: "pointer", font: "inherit", color: "inherit", textAlign: "left" };
-  const dataAttributes = {
-    "data-gloom-role": "chat-pane-chip",
-    "data-gloom-pane-link": link.kind === "share" ? `share:${link.id}` : link.link.kind,
   };
   if (!onRemove) {
     return createElement("button", { type: "button", ...dataAttributes, ...pressable, style: { ...frame, ...buttonReset } }, lead, text);

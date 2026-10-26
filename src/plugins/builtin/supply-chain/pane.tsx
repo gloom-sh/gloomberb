@@ -5,9 +5,10 @@ import { isAccessDenied } from "../../../api-client/errors";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import type { SupplyChainPayload, SupplyOptions, SupplyRole, SupplyRow, SupplyTierFilter } from "../../../api-client/supply-chain";
 import {
-  Badge, buildSectionedRows, DataTableView, EmptyState, isSectionedItemRow, PageStackView, renderSectionedRowHeader, PaneStatusBody, QueryBar, StatGrid, statGridRows, usePaneNoticeFooter,
-  usePaneStatusFooter, usePaneTabs, type DataTableCell, type DataTableColumn, type PaneHint, type SectionedRow, type StatItem,
+  Badge, buildSectionedRows, ChartTableHeader, DataTableView, EmptyState, formatPercentAxis, isSectionedItemRow, PageStackView, renderSectionedRowHeader, PaneStatusBody, QueryBar, StatGrid,
+  statGridRows, useChartTableSelection, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type DataTableCell, type DataTableColumn, type PaneHint, type SectionedRow, type StatItem,
 } from "../../../components";
+import { staticSeries } from "../../../components/chart/static/series";
 import { ClippedText } from "../../../components/ui/display";
 import { RatioBar } from "../../../components/ui/ratio-bar";
 import { getTableWidth } from "../../../components/ui/table-layout";
@@ -30,7 +31,7 @@ import { SupplyFlow } from "./flow";
 import { SupplyGraphPane } from "./graph-pane";
 import { entityTicker } from "./graph-model";
 import {
-  cellText, counterpartyKind, counterpartyKindLabel, counterpartyLabel, counterpartyName, disclosedValue, earlierRows, lockedDisclosures, nativeValue, percentage, ROLE_COLORS, roleLabel,
+  cellText, counterpartyKind, counterpartyKindLabel, counterpartyLabel, counterpartyName, disclosedValue, earlierRows, fitShareBasis, receivablesConcentration, lockedDisclosures, nativeValue, percentage, ROLE_COLORS, roleLabel,
   shareParts, sortRows, supplyPreviewNote, supplyRoleCounts, type SupplySort,
 } from "./model";
 import { RowEvidence } from "./row-evidence";
@@ -38,37 +39,58 @@ import { evidenceDate, evidenceLabel, isUnconfirmed, matchesSupplyOptions, suppl
 
 type Item = { kind: "edge"; row: SupplyRow } | { kind: "locked"; id: string };
 const itemId = (item: Item) => item.kind === "edge" ? item.row.id : item.id;
+const rowId = (row: SupplyRow) => row.id;
+const formatShare = (value: number) => `${Number(value.toFixed(2))}%`;
 const ROLE_PLURALS: Record<SupplyRole, string> = { customer: "Customers", supplier: "Suppliers", partner: "Partners", competitor: "Competitors", investee: "Investees" };
 /** A share figure is at most five cells (`99.9%`, `100%`), right-aligned so the bars line up. */
 const SHARE_FIGURE_CELLS = 5;
-/** Bar, gap and figure: below this a share cell shows the figure alone. */
+/** Bar, gap and figure: the least a share cell draws with its bar. */
 const SHARE_BAR_MIN_CELLS = 3 + 1 + SHARE_FIGURE_CELLS;
+/** Cells a column keeps for the bare basis of the longest row (`cost of sales`); a longer one is cut by an ellipsis. */
+const SHARE_BASIS_FLOOR_CELLS = 13;
+/** Cells of basis kept in the last resort: three letters and an ellipsis. */
+const SHARE_BASIS_LAST_CELLS = 4;
+
+/** Every row's basis as the cells of each form, whole wording first: what a share column is laid out by. */
+type BasisForms = readonly (readonly number[])[];
+
+/** Cells a row's basis keeps in `room`: its longest whole form that fits, else as much of its bare form as the floor allows. */
+const keptBasis = (forms: readonly number[], room: number) => forms.find((cells) => cells <= room) ?? Math.min(room, SHARE_BASIS_FLOOR_CELLS);
+/** The cells the narrowest column keeps for the longest bare basis. */
+const bareBasis = (bases: BasisForms) => Math.min(SHARE_BASIS_FLOOR_CELLS, Math.max(0, ...bases.map((forms) => forms[forms.length - 1]!)));
+
+/** Cells of a share column's bar and of its basis; no bar leaves the figure beside its basis. */
+interface ShareLayout { bar: number; basis: number }
 
 /**
- * Cells of a share column's bar: as long as the column allows after the figure
- * and the longest basis that fits, between 3 and 8 cells, and the same on every
- * row so the bars and figures line up. Zero leaves the figure alone.
+ * The bar and the basis of a share column, the same on every row so the bars
+ * and figures line up. A share keeps what it is a share of: the column gives
+ * up the bar, then the whole wording, before it gives up the basis. The bar
+ * takes what the longest basis leaves, between 3 and 8 cells.
  */
-function shareBarCells(width: number, bases: readonly number[]): number {
-  if (width < SHARE_BAR_MIN_CELLS) return 0;
-  // Room for the longest basis that can show at all; a longer one gives way, not every bar.
-  const basis = longestBasis(bases, width);
-  return Math.min(width >= 36 ? 8 : 5, Math.max(3, width - SHARE_FIGURE_CELLS - 2 - basis));
+function shareLayout(width: number, bases: BasisForms): ShareLayout {
+  const beside = width - SHARE_BAR_MIN_CELLS - 1;
+  if (beside >= bareBasis(bases)) {
+    const longest = Math.max(0, ...bases.map((forms) => keptBasis(forms, beside)));
+    const bar = Math.min(width >= 36 ? 8 : 5, Math.max(3, width - SHARE_FIGURE_CELLS - 2 - longest));
+    return { bar, basis: width - bar - SHARE_FIGURE_CELLS - 2 };
+  }
+  return { bar: 0, basis: Math.max(0, width - SHARE_FIGURE_CELLS - 1) };
 }
-const longestBasis = (bases: readonly number[], width: number) => Math.max(0, ...bases.filter((cells) => SHARE_BAR_MIN_CELLS + 1 + cells <= width));
 
 /** A period end date; its length, when the source states it, follows it in a wider column. */
 const PERIOD_DATE_CELLS = 10;
 /**
  * Columns that fit the pane, giving up the least first: the share bar shortens
  * to keep the whole basis, the name shortens to 18 cells, the ticker folds into
- * the name and the period is left to the evidence view; then the share drops
- * its basis and its bar, and the name shortens further. Only a pane narrower
- * than that scrolls sideways, so the pane edge never cuts a share in half.
+ * the name and the period is left to the evidence view; then the share gives
+ * its bar, then its whole wording for the bare basis, and the name shortens
+ * further. A share never loses its basis. Only a pane narrower than that
+ * scrolls sideways, so the pane edge never cuts a share in half.
  * Value shows only when some row discloses a value, retaining its original
  * currency and units.
  */
-function tableColumns(width: number, desktop: boolean, locked: boolean, valueWidth: number | null, bases: readonly number[], periodWidth = PERIOD_DATE_CELLS): DataTableColumn[] {
+function tableColumns(width: number, desktop: boolean, locked: boolean, valueWidth: number | null, bases: BasisForms, periodWidth = PERIOD_DATE_CELLS): DataTableColumn[] {
   const wide = width >= 150, medium = width >= 110;
   const name: DataTableColumn = { id: "name", label: "Counterparty", width: Math.max(locked && !desktop ? 34 : 0, wide ? 30 : medium ? 26 : 20), flexGrow: 1, align: "left" };
   const share: DataTableColumn = { id: "pct", label: "Share", width: wide ? 34 : medium ? 30 : 26, align: "left" };
@@ -89,8 +111,11 @@ function tableColumns(width: number, desktop: boolean, locked: boolean, valueWid
   const preferred = { share: share.width, name: name.width };
   // The table ignores its last trailing gutter when deciding whether it fits.
   const overflow = () => getTableWidth(columns) - width - 1;
-  // Native units keep their column before the share keeps its bar or basis.
-  const shareFloor = valueWidth !== null ? SHARE_BAR_MIN_CELLS + 1 : SHARE_BAR_MIN_CELLS + 1 + longestBasis(bases, preferred.share);
+  // Native units keep their column before the share keeps its bar or its whole wording.
+  const withBar = SHARE_BAR_MIN_CELLS + 1;
+  const plain = SHARE_FIGURE_CELLS + 1;
+  const bare = bareBasis(bases);
+  const shareFloor = withBar + (valueWidth !== null ? bare : Math.max(bare, ...bases.map((forms) => keptBasis(forms, preferred.share - withBar))));
   const fit = (shareMin: number, nameMin = 18) => {
     share.width = preferred.share; name.width = preferred.name;
     share.width = Math.max(shareMin, share.width - Math.max(0, overflow()));
@@ -103,9 +128,12 @@ function tableColumns(width: number, desktop: boolean, locked: boolean, valueWid
     columns = columns.filter((column) => column.id !== id);
     fit(shareFloor);
   }
-  // The narrowest panes keep the figure alone, then a shorter name, before anything scrolls.
-  if (overflow() > 0) fit(SHARE_BAR_MIN_CELLS);
-  if (overflow() > 0) fit(SHARE_FIGURE_CELLS + 2, 12);
+  // The narrowest panes keep the figure and the bare basis, then a shorter name and a cut basis, before anything scrolls.
+  const shares = bases.length > 0;
+  if (overflow() > 0) fit(withBar + bare);
+  if (overflow() > 0 && shares) fit(plain + bare);
+  if (overflow() > 0) fit(shares ? plain + bare : SHARE_FIGURE_CELLS + 2, 12);
+  if (overflow() > 0 && shares) fit(plain + SHARE_BASIS_LAST_CELLS, 12);
   return columns;
 }
 
@@ -123,20 +151,20 @@ function supplyFigures(data: SupplyChainPayload, views: readonly ("says" | "name
 
 /**
  * The share as a bar on a 0 to 100% scale, the figure, and what it is a share
- * of. The basis shows whole or not at all: a column too narrow for it keeps
- * the bar and figure, and the evidence view says the rest.
+ * of. The basis never goes: a column too narrow for the whole wording shows a
+ * shorter form of it, then drops the bar, then cuts it behind an ellipsis.
+ * The evidence view and the selected row's line say it whole.
  */
-function ShareCell({ row, focusId, width, bases, selected }: { row: SupplyRow; focusId?: string; width: number; bases: readonly number[]; selected: boolean }) {
+function ShareCell({ row, focusId, width, layout, selected }: { row: SupplyRow; focusId?: string; width: number; layout: ShareLayout; selected: boolean }) {
   const colors = useThemeColors();
   const share = shareParts(row, focusId);
   if (!share) return <Text fg={colors.textMuted}>{""}</Text>;
-  const bar = shareBarCells(width, bases);
-  if (!bar) return <Text fg={selected ? colors.selectedText : colors.textBright} attributes={TextAttributes.BOLD}>{share.value}</Text>;
-  const basis = bar + SHARE_FIGURE_CELLS + 2 + displayWidth(share.basis) <= width;
+  const ink = selected ? colors.selectedText : colors.textBright;
+  const basis = fitShareBasis(share, layout.basis);
   return <Box flexDirection="row" width={width} height={1} gap={1} overflow="hidden">
-    <RatioBar ratio={row.pctOfRevenue! / 100} width={bar} color={ROLE_COLORS[row.role]} track />
-    <Text fg={selected ? colors.selectedText : colors.textBright} attributes={TextAttributes.BOLD}>{share.value.padStart(SHARE_FIGURE_CELLS)}</Text>
-    {basis ? <Text fg={selected ? colors.selectedText : colors.textDim}>{share.basis}</Text> : null}
+    {layout.bar ? <RatioBar ratio={row.pctOfRevenue! / 100} width={layout.bar} color={ROLE_COLORS[row.role]} track /> : null}
+    <Text fg={ink} attributes={TextAttributes.BOLD}>{share.value.padStart(SHARE_FIGURE_CELLS)}</Text>
+    {basis ? <Text fg={selected ? colors.selectedText : colors.textDim}>{basis}</Text> : null}
   </Box>;
 }
 
@@ -225,9 +253,18 @@ function SupplyView({ symbol, width, height, focused }: Pick<PaneProps, "width" 
     ...(savedTab === "flow" && tooSmall ? ["Flow needs a wider pane. Showing the table."] : []),
   ] });
   const focusId = data?.entity?.id;
+  // Over the table, how much of the receivables one customer holds at each period end the company disclosed.
+  const concentration = useMemo(() => tab === "table" && view === "says" ? receivablesConcentration(tableRows, focusId) : [], [tab, view, tableRows, focusId]);
+  const concentrationDates = useMemo(() => new Map(concentration.map((point) => [point.rowId, point.date])), [concentration]);
+  const getConcentrationDate = useCallback((row: SupplyRow) => concentrationDates.get(row.id) ?? null, [concentrationDates]);
+  const chartSelection = useChartTableSelection({ rows: tableRows, getId: rowId, getDate: getConcentrationDate,
+    selectedId: selected?.id ?? null, onSelect: setSelected, focused: focused && !openRow, enabled: concentration.length > 0 });
+  const concentrationSeries = useMemo(() => [{ ...staticSeries(concentration.map((point) => ({ date: point.date, observedAt: point.date, value: point.pct })),
+    { id: "receivables-concentration", label: "Largest disclosed customer · receivables", color: ROLE_COLORS.customer, calendarSpaced: true, style: "points" }), unit: "%", unitGroup: "percent" }], [concentration]);
+  const concentrationChart = concentration.length ? { series: concentrationSeries, formatValue: formatShare, formatAxisValue: formatPercentAxis, strip: null, ...chartSelection } : null;
   const values = tableRows.filter((row) => nativeValue(row) !== null || row.usd !== null);
   const valueWidth = values.length ? Math.min(28, Math.max(...values.map((row) => displayWidth(disclosedValue(row).replace(/ (disclosed|derived)$/, ""))))) : null;
-  const bases = tableRows.flatMap((row) => { const share = shareParts(row, focusId); return share ? [displayWidth(share.basis)] : []; });
+  const bases: BasisForms = tableRows.flatMap((row) => { const share = shareParts(row, focusId); return share ? [share.forms.map(displayWidth)] : []; });
   // The period's length follows its end date when the source states it (2026-07-31 half) and costs
   // no column; laid out a cell narrower, the table also clears its own scrollbar. Otherwise the
   // evidence view says it.
@@ -235,6 +272,7 @@ function SupplyView({ symbol, width, height, focused }: Pick<PaneProps, "width" 
   const dated = tableColumns(width, desktop, locked > 0, valueWidth, bases);
   const lengths = periodWidth > PERIOD_DATE_CELLS ? tableColumns(width - 1, desktop, locked > 0, valueWidth, bases, periodWidth) : null;
   const columns = lengths?.some((column) => column.id === "fy") && lengths.map((column) => column.id).join() === dated.map((column) => column.id).join() ? lengths : dated;
+  const shareColumn = shareLayout(columns.find((column) => column.id === "pct")?.width ?? 0, bases);
   const renderCell = (entry: SectionedRow<Item>, column: DataTableColumn, _index: number, state: { selected: boolean }): DataTableCell => {
     if (!isSectionedItemRow(entry)) return { text: "" };
     const item = entry.item;
@@ -278,7 +316,7 @@ function SupplyView({ symbol, width, height, focused }: Pick<PaneProps, "width" 
         <Text fg={ink ?? ROLE_COLORS[row.role]}>{` ${roleLabel(row.role)}`}</Text>
       </Box> };
       case "pct": return { text: percentage(row) === "--" ? "" : `${shareParts(row, focusId)?.value ?? ""} ${shareParts(row, focusId)?.basis ?? ""}`.trim(), value: row.pctOfRevenue,
-        content: <ShareCell row={row} focusId={focusId} width={column.width} bases={bases} selected={state.selected} /> };
+        content: <ShareCell row={row} focusId={focusId} width={column.width} layout={shareColumn} selected={state.selected} /> };
       case "usd": return nativeValue(row) === null && row.usd === null ? { text: "", value: null }
         : { text: disclosedValue(row).replace(/ (disclosed|derived)$/, ""), value: row.nativeAmount != null ? row.nativeAmount * (row.nativeScale ?? 1) : row.usd, color: colors.text };
       case "fy": return { text: displayWidth(cellText(row, "fy")) <= column.width ? cellText(row, "fy") : row.period, color: colors.textDim };
@@ -291,12 +329,13 @@ function SupplyView({ symbol, width, height, focused }: Pick<PaneProps, "width" 
   const bodyHeight = Math.max(3, height - tabRows);
   const figures = data ? supplyFigures(data, tab === "flow" ? ["says", "names"] : [view], options) : [];
   const tierFilter = { id: "tiers", label: "Evidence", kind: "multi" as const, emptyLabel: "Primary", values: options.tiers, options: TIER_OPTIONS, onChange: (value: string[]) => { setTiers(supplyOptions(value).tiers); setSelected(null); setOpen(null); } };
-  const header = <Box flexDirection="column" flexShrink={0}>
-    <QueryBar width={width} filters={[{ id: "direction", label: "Direction", inline: true, value: view,
-      options: [{ value: "says", label: `${symbol} says` }, { value: "names", label: `Names ${symbol}` }], onChange: (value: string) => { setView(value); setSelected(null); setOpen(null); } }, tierFilter]}
-      meta={view === "names" ? "% of reporting company's basis" : undefined} />
-    <StatGrid items={figures} width={width} />
-  </Box>;
+  const query = <QueryBar width={width} filters={[{ id: "direction", label: "Direction", inline: true, value: view,
+    options: [{ value: "says", label: `${symbol} says` }, { value: "names", label: `Names ${symbol}` }], onChange: (value: string) => { setView(value); setSelected(null); setOpen(null); } }, tierFilter]}
+    meta={view === "names" ? "% of reporting company's basis" : undefined} />;
+  // Without a trend the figures keep every row they had; the chart layout shares the height with the table only when it draws.
+  const header = concentrationChart
+    ? <ChartTableHeader width={width} height={bodyHeight} tableRows={items.length} tableColumns={columns} figures={figures} chart={concentrationChart} query={query} />
+    : <Box flexDirection="column" flexShrink={0}>{query}<StatGrid items={figures} width={width} /></Box>;
   const flowFigureColumns = Math.min(Math.max(1, figures.length), Math.max(1, Math.floor(width / 24)));
   // A short flow keeps one row of figures, dropping the last roles, so the cards keep their room.
   const flowFigures = bodyHeight < 26 ? figures.slice(0, flowFigureColumns) : figures;

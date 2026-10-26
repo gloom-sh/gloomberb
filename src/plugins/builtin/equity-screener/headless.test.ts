@@ -46,7 +46,7 @@ test("the catalog's example definition passes the real validator, and a bad one 
   expect(definition.criteria.map((criterion) => criterion.op)).toEqual(["in", "gte", "between"]);
   expect(option.normalize!(json)).toBe(json);
   expect(() => option.normalize!(JSON.stringify({ ...definition, criteria: [{ field: "industry", op: "eq", value: "Gold" }] })))
-    .toThrow(/criteria\[0\] \(industry\): op "eq" is not supported: industry takes in, present, missing\. The example in gloomberb catalog EQS/);
+    .toThrow(/criteria\[0\] \(industry\): op "eq" is not supported: industry takes in, present, missing\. The example in gloom catalog EQS/);
   expect(() => option.normalize!('{"version":1}')).toThrow(/criteria is missing.*sort is missing.*currency is missing/);
 });
 
@@ -66,4 +66,25 @@ test("a KPI the server holds back from Free says why once, in KPIS's words; a Pr
   expect(pro.errors).toEqual([]);
   expect(pro.sections![0]!.rows![0]).toMatchObject({ state: "unavailable" });
   expect(pro.notes).toEqual(["1 of 1 row has no Backlog. Coverage follows available company disclosures; missing data is not zero."]);
+});
+
+test("a screen its currency emptied says the currency keeps only listings quoted in it, and gives the screen in USD", async () => {
+  // A CAD screen of tobacco companies said "No data." though the USD one lists seven.
+  const tobacco = { ...screenFixture(), rows: [] };
+  tobacco.definition = { ...tobacco.definition, currency: "CAD", criteria: [{ field: "industry", op: "in", value: ["Tobacco"] }] };
+  tobacco.universe = { ...tobacco.universe, covered: 4287, matched: 0, currencies: ["USD", "CAD"] };
+  const load = async (data: typeof tobacco) => {
+    const result = await equityScreenerHeadless.load({ argument: undefined, options: { definition: JSON.stringify(data.definition) } } as never,
+      { apiClient: { equityScreener: async () => structuredClone(data) } } as never);
+    return (result.sections![0] as { empty?: string }).empty;
+  };
+  const empty = (await load(tobacco))!.split("\n");
+  expect(empty[0]).toBe("No listing quoted in CAD matches. Currency CAD keeps only the listings quoted in CAD and converts nothing.");
+  const base = JSON.parse(/--definition '(.+)'$/.exec(empty[1]!)![1]!);
+  expect(empty[1]).toStartWith("In the base currency, USD: gloom fn EQS --definition '");
+  expect(base).toEqual({ ...tobacco.definition, currency: "USD" });
+  // A currency no covered listing is quoted in says so; an empty screen in USD keeps the plain empty line.
+  const usdOnly = { ...tobacco, universe: { ...tobacco.universe, currencies: ["USD"] } };
+  expect(await load(usdOnly)).toStartWith("None of the 4,287 covered listings is quoted in CAD. Currency CAD keeps only the listings quoted in CAD and converts nothing; the covered listings are quoted in USD.");
+  expect(await load({ ...tobacco, definition: { ...tobacco.definition, currency: "USD" } })).toBeUndefined();
 });

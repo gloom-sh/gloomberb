@@ -38,9 +38,16 @@ export interface CryptoMarketAsset {
   /** Market-cap rank within its kind. */
   rank: number;
   price: number;
+  /**
+   * The day's move as `quote` gives the coin: from the previous UTC day's
+   * close, the price at 00:00 UTC. A coin whose close Gloom Cloud cannot date
+   * to the last two days moves over 24 hours (`changeBasis` "24h") or not at
+   * all ("none"), its previousClose null.
+   */
   previousClose: number | null;
   change: number | null;
   changePercent: number | null;
+  changeBasis?: "24h" | "none";
   dayHigh: number | null;
   dayLow: number | null;
   volume24h: number | null;
@@ -62,6 +69,8 @@ export interface CryptoMarketAsset {
 export interface CryptoMarketsPayload {
   version: 1;
   generatedAt: string;
+  /** Each asset's change is since 00:00 UTC; a server before it sent the screener's 24-hour move. */
+  dayChangeBasis?: "utc-day";
   asOf: string | null;
   status: "available" | "partial" | "unavailable";
   source: {
@@ -132,5 +141,65 @@ export interface StablecoinSupplyHistoryPayload {
   name: string;
   pegType: string;
   history: { start: string; values: Array<number | null> } | null;
+  warnings: string[];
+}
+
+/** DeFi TVL's total, in USD, on the board's as-of day, with its 7D and 30D change. */
+interface DefiTvlTotal {
+  tvl: number;
+  change7d: number | null;
+  change7dPercent: number | null;
+  change30d: number | null;
+  change30dPercent: number | null;
+}
+
+/** A protocol, its versions counted together as the source ranks them (Aave: V3, V2, V4...). */
+export interface DefiTvlProtocol {
+  name: string;
+  /** The category of its largest version: Lending, Liquid Staking, Dexs. */
+  category: string | null;
+  /** How many chains it is deployed on. */
+  chains: number;
+  /** USD, read at the payload's `protocolsAsOf`. */
+  tvl: number;
+  change1dPercent: number | null;
+  change7d: number | null;
+  change7dPercent: number | null;
+  change30d: number | null;
+  change30dPercent: number | null;
+}
+
+export interface DefiTvlChain {
+  name: string;
+  tokenSymbol: string | null;
+  /** USD on the as-of day, from the chain's daily chart. */
+  tvl: number;
+  change7d: number | null;
+  change7dPercent: number | null;
+  change30d: number | null;
+  change30dPercent: number | null;
+  /** Percent of the total DeFi TVL the same day. */
+  share: number | null;
+}
+
+export interface DefiTvlPayload {
+  version: 1;
+  generatedAt: string;
+  /** When the source was last read. */
+  fetchedAt: string | null;
+  /** UTC date of the newest daily total. */
+  asOf: string | null;
+  status: "available" | "stale" | "unavailable";
+  /** Who measures the TVL: its definition of locked value is theirs. */
+  source: { name: string; url: string };
+  total: DefiTvlTotal | null;
+  /** The largest protocols by TVL, largest first. */
+  protocols: DefiTvlProtocol[];
+  /** When the protocols' figures were read: the source's latest, not a daily close. */
+  protocolsAsOf: string | null;
+  /** The largest chains by TVL, largest first. */
+  chains: DefiTvlChain[];
+  /** Total DeFi TVL in USD per UTC day since `start`, its first day with value locked. */
+  history: { start: string; total: Array<number | null> } | null;
   warnings: string[];
 }

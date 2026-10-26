@@ -28,6 +28,7 @@ export type SeriesInventoryEntry = SeriesInventoryStatus & {
 };
 
 export const SERIES_INVENTORY: readonly SeriesInventoryEntry[] = [
+  { module: "members", chart: "Index member A/D line and percentages above moving averages", notInCatalog: "not-yet", reason: "Daily fund breadth comes from the members endpoint; its series are not registered for the composer yet." },
   { module: "chart-composer", chart: "Any ticker field: price, volume, fundamentals, valuation multiples", series: ["field:*", "option:*"] },
   { module: "chart-composer", chart: "CSV files in the profile's series folder", series: ["user:*"], runtime: true },
   { module: "ticker-detail", chart: "Price history and the overview's sparklines", series: ["field:market.*"] },
@@ -61,6 +62,7 @@ export const SERIES_INVENTORY: readonly SeriesInventoryEntry[] = [
   { module: "futures-curve", chart: "Futures curve by contract month", notInCatalog: "not-a-time-series", reason: "Plotted by delivery month; each front month is in the catalog as FUT:code." },
   { module: "crypto-board", chart: "Price sparklines for the large coins", series: ["crypto:*"] },
   { module: "perps", chart: "Perpetual funding, open interest, premium and long/short account share", series: ["perps:*"] },
+  { module: "crypto-etf-flows", chart: "The running net flow of the US spot bitcoin or ether ETFs since launch", notInCatalog: "not-yet", reason: "Daily and dated: the running total and each fund's daily flow could be crypto ETF series, and none is registered for the composer yet." },
   { module: "perps", chart: "Perpetual mark price", notInCatalog: "not-yet", reason: "The pair's price is in the catalog; the perpetual's own mark price could be a crypto series." },
   { module: "primary-dealers", chart: "A primary dealer position's weekly net level, the sum of the release's series behind the row", notInCatalog: "not-yet", reason: "Weekly and dated, one series per row of the board; the pane reads each only when its row is selected, and none is registered for the composer yet." },
   { module: "short-interest", chart: "A ticker's short interest and days to cover", series: ["short-interest:*"] },
@@ -77,6 +79,7 @@ export const SERIES_INVENTORY: readonly SeriesInventoryEntry[] = [
   { module: "power", chart: "European gas storage by area: % full, TWh and net injection", series: ["gas-storage:*", "gas-storage-twh:*", "gas-injection:*"] },
   { module: "awards", chart: "A company's government award totals by period", series: ["awards:*"] },
   { module: "company-kpis", chart: "A company's reported operating metrics", notInCatalog: "per-item", reason: "Each company reports its own metrics, with no shared list to register." },
+  { module: "supply-chain", chart: "The largest customer's share of a company's receivables at each period end", notInCatalog: "not-yet", reason: "A dated per-company series from filings that could be registered; it needs three disclosed period ends, so most tickers have none." },
   { module: "estimate-revisions", chart: "Consensus estimate for one fiscal period over time", notInCatalog: "per-item", reason: "One fiscal period of one company." },
   { module: "earnings", chart: "Implied and actual moves around past earnings", notInCatalog: "per-item", reason: "One bar per earnings event." },
   { module: "dividend-yield", chart: "A ticker's trailing 12-month cash dividends", series: ["dividends:*"] },

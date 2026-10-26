@@ -9,6 +9,7 @@ import type { ValuationCurrencyContext } from "./valuation-currency";
 import { currentValuationPrice, valuationPriceAtOrBefore } from "./valuation-price";
 import type { TimeSeriesPoint } from "./types";
 import { isFiniteNumber } from "../utils/guards";
+import { dailyValuationHistory, type DailyValuationBasis } from "./daily-valuation";
 
 /**
  * Forward multiples over time. No source serves the consensus as it stood on
@@ -234,6 +235,37 @@ export function forwardPeHistory(
   const lastDate = points.at(-1)?.date.getTime() ?? -Infinity;
   if (current && current.date.getTime() > lastDate) points.push(current);
   return points;
+}
+
+/** Daily closes over consensus that was actually observed by that date. */
+export function dailyForwardPeHistory(
+  financials: TickerFinancials,
+  currencies: ValuationCurrencyContext,
+  exchange?: string,
+): TimeSeriesPoint[] {
+  const history = financials.epsEstimates;
+  if (!history) return [];
+  // Pre-report estimates from future quarters are final-vintage figures,
+  // not the forecasts investors had on an earlier day. Only dated snapshots
+  // establish a historical daily forward denominator.
+  const bases: DailyValuationBasis[] = [...snapshotsByDay(history.snapshots)].map(([day, periods]) => {
+    const current = periods.get("current year");
+    const next = periods.get("next year");
+    const eps = blendedNextTwelveMonthsEps(day,
+      current ? { periodEnd: current.periodEnd, eps: current.epsAverage } : undefined,
+      next ? { eps: next.epsAverage } : undefined);
+    const date = new Date(day);
+    return {
+      availableAt: day,
+      observedAt: date,
+      periodLabel: `Consensus observed ${day}`,
+      atPrice: (price: number) => {
+        const comparable = currencies.priceInStatementUnits({ date: day, currency: history.currency ?? financials.financialCurrency }, price);
+        return comparable !== null && eps !== null ? comparable / eps : null;
+      },
+    };
+  });
+  return dailyValuationHistory(financials.priceHistory, bases, financials.quote?.listingExchangeName || financials.quote?.exchangeName || exchange);
 }
 
 /** Price at each report date over the EPS reported in the following four quarters. */

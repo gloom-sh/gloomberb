@@ -1,5 +1,5 @@
 /** @jsxImportSource react */
-import Hls from "hls.js";
+import type Hls from "hls.js";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { MediaSurfaceHandle, MediaSurfaceProps } from "../../../ui/host";
 import { cleanDomProps, commonStyle } from "./style";
@@ -173,24 +173,30 @@ export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(f
       video.src = mediaSrc;
       video.load();
       startPlayback();
-    } else if (Hls.isSupported()) {
-      hls = new Hls({
-        backBufferLength: 30,
-        enableWorker: true,
-        lowLatencyMode: true,
-        // A pane is a fraction of the screen, so the top rendition would be
-        // decoded and then scaled away. Re-evaluated when the pane is resized.
-        capLevelToPlayerSize: true,
-      });
-      hls.on(Hls.Events.ERROR, (_event, data) => {
-        if (!data.fatal) return;
-        fail(data.details ? `Stream playback failed: ${data.details}` : "Stream playback failed.");
-      });
-      hls.on(Hls.Events.MANIFEST_PARSED, startPlayback);
-      hls.loadSource(mediaSrc);
-      hls.attachMedia(video);
     } else {
-      fail("HLS playback is unavailable in this desktop runtime.");
+      // Loaded with the first stream that needs it, not with the app.
+      void import("./hls.chunk.js").then(({ default: HlsPlayer }) => {
+        if (!active) return;
+        if (!HlsPlayer.isSupported()) {
+          fail("HLS playback is unavailable in this desktop runtime.");
+          return;
+        }
+        hls = new HlsPlayer({
+          backBufferLength: 30,
+          enableWorker: true,
+          lowLatencyMode: true,
+          // A pane is a fraction of the screen, so the top rendition would be
+          // decoded and then scaled away. Re-evaluated when the pane is resized.
+          capLevelToPlayerSize: true,
+        });
+        hls.on(HlsPlayer.Events.ERROR, (_event, data) => {
+          if (!data.fatal) return;
+          fail(data.details ? `Stream playback failed: ${data.details}` : "Stream playback failed.");
+        });
+        hls.on(HlsPlayer.Events.MANIFEST_PARSED, startPlayback);
+        hls.loadSource(mediaSrc);
+        hls.attachMedia(video);
+      }, () => fail("The stream player could not be loaded."));
     }
 
     return () => {

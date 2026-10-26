@@ -34,11 +34,15 @@ import {
 } from "./result";
 
 import { typedPerpetualListing } from "../perpetual-listing";
-import { readTerminalListingCode } from "../terminal-codes";
+import { endsInLegalForm, readNearMissListing, readTerminalListingCode } from "../terminal-codes";
 import { isProviderBusy, ProviderBusyError, SEARCH_BUSY_MESSAGE } from "../../sources/provider-errors";
 import { settleWithin } from "../../utils/async-deadline";
 import { companyNameExtraWords } from "../company-name";
+import { withHomeListingLead } from "./home-listing";
+import { savedAbroadForBareSymbol, savedUsListingOf } from "./bare-symbol";
 import { delistingLabel } from "../../market-data/quotes/delisting";
+import { hasNonLatinLetters } from "../../utils/typed-text";
+import { isNetworkFailure } from "../../utils/network-failure";
 export type {
   ResolvedTickerSearch,
   TickerSearchCandidate,
@@ -49,6 +53,7 @@ export {
   rankTickerSearchItems,
 } from "./ranking";
 export { upsertTickerFromSearchResult } from "./upsert";
+export { candidateExchange, listingDistance } from "./home-listing";
 
 const MAX_NAMED_LISTINGS = 6;
 
@@ -120,10 +125,15 @@ interface TickerSearchCandidateOptions {
 
 /**
  * The ticker typed, upper case; a perpetual's market id (`binance:BZUSDT`) as its listing (`BZUSDT:BINANCE`),
- * and a terminal's code for a US listing (`WFC.N`, `JPM US Equity`) as that listing (`WFC:NYSE`, `JPM`).
+ * a terminal's code (`WFC.N`, `VOD LN`, `JPM US Equity`) as that listing (`WFC:NYSE`, `VOD:LSE`, `JPM`), and a
+ * symbol written nearly as one is (`700.HK`, `6758.JP`, `BRK/B`) as its working form (`0700.HK`, `6758.T`, `BRK-B`). A name
+ * before a legal form (`SAP SE`) stays the name, though SE is also a market code.
  */
 export function normalizeTickerInput(activeTicker: string | null, arg?: string): string | null {
-  const explicitTicker = arg ? (typedPerpetualListing(arg)?.key ?? readTerminalListingCode(arg)?.key ?? arg).trim().toUpperCase() : "";
+  const explicitTicker = arg
+    ? (typedPerpetualListing(arg)?.key ?? (endsInLegalForm(arg) ? null : readTerminalListingCode(arg)?.key) ?? readNearMissListing(arg)?.symbol ?? arg)
+      .trim().toUpperCase()
+    : "";
   if (explicitTicker) return explicitTicker;
   return activeTicker;
 }
@@ -216,6 +226,7 @@ function createProviderTickerSearchCandidates(
       instrumentClass: classifyInstrumentKind(result.brokerContract?.secType || result.type),
       instrumentType: result.brokerContract?.secType || result.type,
       searchAliases: buildSearchResultAliases(result),
+      ...(searchResultNames(result) ? { nameAliases: searchResultNames(result) } : {}),
       ...(searchResultKeywords(result) ? { searchKeywords: searchResultKeywords(result) } : {}),
       result,
     }];
@@ -252,7 +263,7 @@ export async function searchTickerCandidates({
     // A search that hides contracts still shows them when asked: "AAPL OPT".
     includeOptionContracts: includeOptionContracts || parseAssetClassQuery(query)?.code === "OPT",
   });
-  const { results, busy } = await searchProviderResults(
+  const { results, busy, unreachable } = await searchProviderResults(
     dataProvider,
     query,
     searchContext,
@@ -260,7 +271,9 @@ export async function searchTickerCandidates({
     true,
   );
   const candidates = assemble(results);
-  // Saved tickers or another source's rows still answer. Nothing at all, because a source was busy, is no answer.
+  // Saved tickers or another source's rows still answer. Nothing at all, because the data service
+  // could not be reached or a source was busy, is no answer: not a name nothing lists.
+  if (unreachable && candidates.length === 0) throw unreachable;
   if (busy && candidates.length === 0) throw new ProviderBusyError(SEARCH_BUSY_MESSAGE);
   return candidates;
 }
@@ -294,7 +307,7 @@ export function buildTickerSearchCandidates({
     query,
   );
   const providerItems = createProviderTickerSearchCandidates(filteredProviderResults, tickers, candidateOptions);
-  const ranked = withSuccessorFirst(rankTickerSearchItems([...localItems, ...providerItems], query), query);
+  const ranked = withHomeListingLead(withSuccessorFirst(rankTickerSearchItems([...localItems, ...providerItems], query), query), query);
   return limitTickerSearchCandidates(assignTickerSearchCategories(ranked, query), totalLimit, localLimit);
 }
 
@@ -457,15 +470,27 @@ async function resolveTickerSymbol(
     if (contracts.size > 1) throw new AmbiguousContractError(symbol,
       [...contracts.values()].map((contract) => tickerInstrumentLabel(local.metadata.ticker, contract)));
   }
+  // A bare symbol is its US listing whenever it has one (`savedAbroadForBareSymbol`): a row abroad saved under it
+  // (SHEL on LSE, from SHEL.L) gives way to the US row saved beside it, else to search's US listing.
+  const abroad = !pickerQuery && !!local && savedAbroadForBareSymbol(symbol, local);
+  const savedUs = abroad ? savedUsListingOf(symbol, tickers.values()) : null;
+  if (savedUs) return { kind: "local", symbol: savedUs.metadata.ticker, ticker: savedUs };
   // A saved symbol keeps its company. The colon still offers the others.
-  const saved: ResolvedTickerSearch | null = local ? { kind: "local", symbol: local.metadata.ticker, ticker: local } : null;
-  if (saved && !pickerQuery) return saved;
+  let saved: ResolvedTickerSearch | null = local ? { kind: "local", symbol: local.metadata.ticker, ticker: local } : null;
+  if (saved && !pickerQuery && !abroad) return saved;
 
   const { results, busy } = await searchProviderResults(dataProvider, symbol, searchContext);
   const providerItems = createProviderTickerSearchCandidates(results, tickers);
   const literalMatches = providerItems.filter((item) => normalizeTickerSymbol(item.symbol) === symbol);
-  const matches = literalMatches.length ? literalMatches
+  let matches = literalMatches.length ? literalMatches
     : providerItems.filter((item) => findExactTickerSearchMatch([item], symbol));
+  if (abroad) {
+    const us = matches.filter((item) => isUsListingExchange(listingExchange(item.result!)));
+    // No US listing: the row abroad is the symbol's.
+    if (us.length === 0) return saved;
+    matches = us;
+    saved = null;
+  }
   let exactMatch = matches[0];
   if (!exactMatch?.result) {
     // Nothing matched while a source was too busy to answer: that is no answer, not a miss.
@@ -591,6 +616,8 @@ interface ProviderSearch {
   results: InstrumentSearchResult[];
   /** A spelling went unanswered because a source was busy, so an empty list may not mean nothing matches. */
   busy: boolean;
+  /** Why a spelling went unanswered when the data service could not be reached (offline, a hung connection). */
+  unreachable: unknown;
 }
 
 async function searchProviderResults(
@@ -603,38 +630,67 @@ async function searchProviderResults(
 ): Promise<ProviderSearch> {
   const assetClass = parseAssetClassQuery(rawQuery);
   const query = assetClass?.symbolQuery ?? rawQuery;
-  // A Map rather than a list plus a seen set, because a later source can send
-  // back a richer version of a symbol already recorded. Overwriting a key keeps
-  // its original position, so an upgrade does not reorder the list.
-  const byKey = new Map<string, InstrumentSearchResult>();
-  const add = (results: InstrumentSearchResult[], upgrade = false) => {
-    for (const result of results) {
-      const key = buildProviderSearchResultKey(result);
-      if (!upgrade && byKey.has(key)) continue;
-      byKey.set(key, result);
-    }
-  };
-
   // The variants are independent lookups of the same words, so they run
   // together. Awaited in turn they multiplied every per-source timeout by the
-  // number of spellings tried.
+  // number of spellings tried. Their rows list in the order the spellings
+  // are, not as they arrive. Only keyword-tagged whole-query matches lead
+  // the spelling answers; a loose name match must not displace an exact listing.
+  const searchQueries = providerSearchQueries(rawQuery);
+  const answers: InstrumentSearchResult[][] = searchQueries.map(() => []);
+  const wholeIndex = assetClass && (assetClass.code === "ETF" || assetClass.code === "FUND")
+    ? searchQueries.findIndex((asked) => sameSearchText(asked, rawQuery)) : -1;
+  const taggedWhole = (result: InstrumentSearchResult) =>
+    searchResultKeywords(result)?.some((keyword) => sameSearchText(keyword, rawQuery)) ?? false;
+  // A later source can send back a richer version of a row already recorded;
+  // it replaces the row in its place, so an upgrade does not reorder the list.
+  const upgrades = new Map<string, InstrumentSearchResult>();
+  // A sector word's funds, which lead, and a market symbol verified by its quote, which follows (both below).
+  let leading: InstrumentSearchResult[] = [];
+  let verified: InstrumentSearchResult[] = [];
+  const byKey = new Map<string, InstrumentSearchResult>();
+  const merge = () => {
+    const named = new Map<string, InstrumentSearchResult>();
+    const whole = answers[wholeIndex] ?? [];
+    const ordered = [
+      ...whole.filter(taggedWhole),
+      ...answers.flatMap((rows, index) => index === wholeIndex ? [] : rows),
+      ...whole.filter((result) => !taggedWhole(result)),
+      ...verified,
+    ];
+    for (const result of ordered) {
+      const key = buildProviderSearchResultKey(result);
+      if (!named.has(key)) named.set(key, upgrades.get(key) ?? result);
+    }
+    byKey.clear();
+    for (const result of leading) {
+      const key = buildProviderSearchResultKey(result);
+      if (!byKey.has(key)) byKey.set(key, result);
+    }
+    // A row both found keeps the funds' place and the name search's richer version of it (its theme).
+    for (const [key, result] of named) byKey.set(key, result);
+  };
   let busy = false;
-  await Promise.all(providerSearchQueries(rawQuery).map(async (searchQuery) => {
+  let unreachable: unknown = null;
+  await Promise.all(searchQueries.map(async (searchQuery, index) => {
     try {
       const results = await dataProvider.search(searchQuery, {
         ...searchContext,
         ...(onPartial
           ? {
             onPartial: (upgraded: InstrumentSearchResult[]) => {
-              add(upgraded, true);
+              answers[index] = upgraded;
+              for (const result of upgraded) upgrades.set(buildProviderSearchResultKey(result), result);
+              merge();
               onPartial([...byKey.values()]);
             },
           }
           : {}),
       });
-      add(results);
+      answers[index] = results;
+      merge();
     } catch (error) {
-      if (isProviderBusy(error)) busy = true;
+      if (isNetworkFailure(error)) unreachable ??= error;
+      else if (isProviderBusy(error)) busy = true;
       else logFailure("tickers-search", "Could not search ticker spelling")(error);
     }
   }));
@@ -663,14 +719,15 @@ async function searchProviderResults(
           && (!exchange || canonicalExchange(quote.listingExchangeName || quote.exchangeName) === exchange)
           && (possibleCryptoPair ? normalizeTickerSymbol(quote.symbol) === symbol
             : findExactTickerSearchMatch([{ label: quote.symbol }], symbol))) {
-          add([{
+          verified = [{
             providerId: quote.providerId || dataProvider.id,
             symbol,
             name: quote.name || symbol,
             exchange: exchange || quote.listingExchangeName || quote.exchangeName || "",
             currency: quote.currency,
             type,
-          }]);
+          }];
+          merge();
         }
       } catch (error) {
         logFailure("tickers-search", "Could not verify market symbol")(error);
@@ -687,19 +744,26 @@ async function searchProviderResults(
     && (themeQueryWord([...byKey.values()], query) || (fundsAsked && /\s/.test(query.trim())));
   if (theme) {
     try {
+      // "spot bitcoin ETF" was asked whole above, and its answer is these funds: not asked twice.
+      const themeQuery = `${query.trim()} ETF`;
+      const askedAt = searchQueries.findIndex((asked) => sameSearchText(asked, themeQuery));
       const { onPartial: _ignored, ...context } = searchContext ?? {};
-      const funds = await dataProvider.search(`${query.trim()} ETF`, context);
-      const named = [...byKey];
-      byKey.clear();
-      add(funds);
-      // A row both found keeps the funds' place and the name search's richer version of it (its theme).
-      for (const [key, result] of named) byKey.set(key, result);
+      leading = askedAt >= 0 ? answers[askedAt]! : await dataProvider.search(themeQuery, context);
+      merge();
     } catch (error) {
       logFailure("tickers-search", "Could not search theme funds")(error);
     }
   }
 
-  return { results: [...byKey.values()], busy };
+  // Listings are named in Latin letters, and a source can fail on a name typed in another script (任天堂)
+  // every time it is asked: nothing found for it is no answer to wait for and ask again.
+  return { results: [...byKey.values()], busy: busy && !hasNonLatinLetters(query), unreachable };
+}
+
+/** Two search texts the server answers alike: its search ignores case and runs of spaces. */
+function sameSearchText(left: string, right: string): boolean {
+  const key = (text: string) => text.trim().replace(/\s+/g, " ").toLowerCase();
+  return key(left) === key(right);
 }
 
 /**
@@ -715,6 +779,12 @@ export function providerSearchQueries(rawQuery: string): string[] {
   const marketSymbol = assetClass ? assetClassMarketSymbol(assetClass) : null;
   const searchQueries = buildProviderSearchQueries(query);
   if (marketSymbol && !searchQueries.includes(marketSymbol)) searchQueries.push(marketSymbol);
+  // Words before ETF or FUND name a kind of fund as well as a name ("bitcoin ETF", "spot ether ETF"), which
+  // the server answers whole with the funds of that kind. merge() promotes its keyword-tagged rows.
+  if (assetClass && (assetClass.code === "ETF" || assetClass.code === "FUND") && /\p{L}{2}/u.test(query)) {
+    const whole = rawQuery.trim().replace(/\s+/g, " ");
+    if (!searchQueries.includes(whole)) searchQueries.unshift(whole);
+  }
   // A futures board code also finds its future, which the catalogue files under
   // the continuous symbol only: NG finds NovaGold and NG=F.
   const boardFuture = assetClass ? null : futuresContractByCode(query)?.symbol;
@@ -795,6 +865,14 @@ function getProviderHintScore(result: InstrumentSearchResult, preferredExchange?
   const matchesPreferredExchange = !!canonicalPreferredExchange
     && resultVenues(result).includes(canonicalPreferredExchange);
   return getProviderHintRichness(result) + (matchesPreferredExchange ? 10_000 : 0);
+}
+
+/** The names the service sent the row for, without the symbol spellings; older servers send none. */
+function searchResultNames(result: InstrumentSearchResult): string[] | undefined {
+  const names = Array.isArray(result.searchAliases)
+    ? result.searchAliases.filter((alias): alias is string => typeof alias === "string" && !!alias.trim())
+    : [];
+  return names.length > 0 ? names : undefined;
 }
 
 /** Older servers send none; anything malformed is ignored. */

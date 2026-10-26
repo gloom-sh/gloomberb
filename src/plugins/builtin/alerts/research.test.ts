@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { eventAlertTarget, readEventAlerts } from "./events";
 import { alertKindLabel, ruleStateText, validateAlertHistory } from "./history";
-import { createResearchAlert, parseAmount } from "./research-builder";
+import { createResearchAlert, formatPremium, parseAmount } from "./research-builder";
 
 test("wizard values become a normalized synced rule that reads back with its description", () => {
   const rule = createResearchAlert("unusual_volume", {
@@ -22,6 +22,14 @@ test("filing rules take the SCHEDULE 13D/13G names and keep rules saved as SC 13
   expect(JSON.parse(rule.value)).toMatchObject({ symbol: "AAPL", form: "SCHEDULE 13G/A" });
   const saved = { ...rule, value: JSON.stringify({ version: 1, symbol: "AAPL", exchange: "US", form: "SC 13D" }) };
   expect(readEventAlerts(JSON.stringify([saved])).rules).toHaveLength(1);
+});
+
+test("hiring move rules take any HIRE listing with its venue, as Cloud stores them", () => {
+  // Every other symbol rule is US-only; HIRE covers world listings.
+  const rule = createResearchAlert("hiring_move", { "hiring_move:symbol": " adyen:ams " }, 1_000);
+  expect(JSON.parse(rule.value)).toEqual({ version: 1, symbol: "ADYEN:AMS", direction: "either" });
+  expect(eventAlertTarget(readEventAlerts(JSON.stringify([rule])).rules[0]!)).toBe("ADYEN:AMS · accelerating or slowing");
+  expect(() => createResearchAlert("hiring_move", { "hiring_move:symbol": "RIVN", "hiring_move:direction": "surge" })).toThrow("Check the symbol");
 });
 
 test("invalid contracts, exchanges and thresholds are refused before sync", () => {
@@ -88,4 +96,14 @@ test("perpetual wizard percentages normalize to fractions, preserve global ident
   expect(eventAlertTarget(rule)).toContain("-0.250%");
   expect(() => createResearchAlert("perps_threshold", { "perps_threshold:marketId": "TSLA", "perps_threshold:metric": "funding8h" })).toThrow();
   expect(() => createResearchAlert("perps_threshold", { "perps_threshold:marketId": "hyperliquid:xyz:TSLA", "perps_threshold:metric": "premium", "perps_threshold:threshold": "NaN" })).toThrow();
+});
+
+test("a premium reads in its own scale, never as $0K", () => {
+  expect([0, 500, 1_500, 250_000, 1_000_000, 1_500_000_000].map(formatPremium)).toEqual(["$0", "$500", "$1.5K", "$250K", "$1M", "$1.5B"]);
+});
+
+test("an IV level typed with the other measure's unit is refused in the dialog too", () => {
+  const values = (metric: string, threshold: string) => ({ "iv_level:symbol": "IBIT", "iv_level:exchange": "US", "iv_level:metric": metric, "iv_level:direction": "below", "iv_level:threshold": threshold });
+  expect(() => createResearchAlert("iv_level", values("rr", "-5%"))).toThrow("A risk reversal is in vol points, not %");
+  expect(JSON.parse(createResearchAlert("iv_level", values("rr", "-5.5 pts")).value)).toMatchObject({ metric: "rr", threshold: -5.5 });
 });

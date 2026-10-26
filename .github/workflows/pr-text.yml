@@ -1,0 +1,77 @@
+name: PR text
+
+# A pull request's title, description, branch name and commit messages are
+# public. This fails when the title or description matches the maintainers'
+# list of private references (the PR_TEXT_DENYLIST repository variable, an
+# extended regular expression), so they are rewritten before merging; edit the
+# pull request and the check runs again. A branch name or commit message that
+# matches is a warning: those cannot change without a force push. With no list
+# set, the check passes.
+#
+# The second job reads every tracked file, not only the change, and fails on a
+# private reference (scripts/check-private-references.sh), on pull requests and
+# on pushes to main.
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: pr-text-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pr-text:
+    name: PR text
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check the title, description, branch and commits
+        env:
+          DENYLIST: ${{ vars.PR_TEXT_DENYLIST }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          NUMBER: ${{ github.event.pull_request.number }}
+          TITLE: ${{ github.event.pull_request.title }}
+          BODY: ${{ github.event.pull_request.body }}
+          BRANCH: ${{ github.head_ref }}
+        run: |
+          if [ -z "$DENYLIST" ]; then
+            echo "No deny list is set, so there is nothing to check."
+            exit 0
+          fi
+          status=0
+          check() { # $1 = level, $2 = what; stdin = the text
+            local hits
+            if hits=$(grep -oiE -- "$DENYLIST" | sort -u | head -5 | paste -sd ' '); [ -n "$hits" ]; then
+              echo "::$1::$2 mentions a private reference ($hits). Describe the change for an outside reader instead."
+              [ "$1" = error ] && status=1
+            fi
+            return 0
+          }
+          check error "The title" <<<"$TITLE"
+          check error "The description" <<<"$BODY"
+          check warning "The branch name" <<<"$BRANCH"
+          commits=$(gh api --paginate "repos/$REPO/pulls/$NUMBER/commits" --jq '.[].commit.message')
+          check warning "A commit message" <<<"$commits"
+          [ "$status" = 0 ] && echo "No private references found."
+          exit "$status"
+
+  tracked-files:
+    name: Tracked files
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Look for private references in tracked files
+        run: ./scripts/check-private-references.sh

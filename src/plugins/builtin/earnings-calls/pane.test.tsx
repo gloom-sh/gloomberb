@@ -1,4 +1,4 @@
-import { afterEach, expect, spyOn, test } from "bun:test";
+import { afterEach, expect, setSystemTime, spyOn, test } from "bun:test";
 import { act, useState } from "react";
 import { apiClient, setCloudApiFetchTransport, type CloudEarningsCallPayload, type CloudEarningsTranscriptPayload } from "../../../api-client";
 import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
@@ -7,7 +7,7 @@ import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { Box } from "../../../ui";
-import { attachEarningsCallsPersistence, resetEarningsCallsPersistence } from "./data";
+import { attachEarningsCallsPersistence, resetEarningsCallsPersistence, UPCOMING_LIMIT } from "./data";
 import { EarningsCallsPane } from "./pane";
 import { TranscriptView, type ReaderTab } from "./transcript-view";
 
@@ -54,9 +54,12 @@ async function frames() {
 async function framesUntil(done: () => boolean, limit = 200) {
   for (let i = 0; i < limit && !done(); i++) await act(async () => { await Bun.sleep(5); await tui.setup().renderOnce(); });
 }
+/** CALLS alone on the shelf of transcripts, where the calendar is its default. */
+const SHELF: AppState["paneState"] = { "calls:test": { pluginState: { research: { view: "transcripts" } } } };
 async function mount(width = 80, initialSymbol: string | null = "FIRST", initialPaneState?: AppState["paneState"]) {
+  const paneState = initialPaneState ?? (initialSymbol === null ? SHELF : undefined);
   await act(async () => {
-    await tui.render(<Harness width={width} initialSymbol={initialSymbol} initialPaneState={initialPaneState} />, { width, height: 21 });
+    await tui.render(<Harness width={width} initialSymbol={initialSymbol} initialPaneState={paneState} />, { width, height: 21 });
   });
   await frames();
 }
@@ -65,6 +68,7 @@ async function press(key: string) {
   await frames();
 }
 afterEach(() => {
+  setSystemTime();
   for (const restore of restorers.splice(0)) restore();
   setCloudApiFetchTransport(null);
   apiClient.setSessionToken(null);
@@ -342,7 +346,7 @@ test("a restored call missing from the reloaded shelf closes the reader instead 
     ? Response.json(transcript("THIRD"))
     : Response.json({ calls: [call("OTHER"), { ...call("THIRD"), callAt: "2026-07-01T20:00:00Z" }] }));
   // Opened from a company lookup last session: the shelf alone does not list it.
-  await mount(80, null, { "calls:test": { pluginState: { research: { detailOpen: true, selectedId: "GONE-call" } } } });
+  await mount(80, null, { "calls:test": { pluginState: { research: { view: "transcripts", detailOpen: true, selectedId: "GONE-call" } } } });
   expect(tui.frame()).toContain("[/]search");
   await press("j");
   await act(async () => { await Bun.sleep(200); });
@@ -510,3 +514,86 @@ for (const status of [503, 403]) {
     expect(frame).toContain("Controlled lookup failure");
   });
 }
+
+// Wednesday Oct 21 2026, 14:00 in New York.
+const WEDNESDAY = new Date("2026-10-21T18:00:00Z");
+const upcoming = (ticker: string, callAt: string, extra: Partial<CloudEarningsCallPayload> = {}): CloudEarningsCallPayload => ({
+  ...call(ticker), id: `${ticker}-${callAt}`, fiscalQuarter: 3, callAt, status: "discovered",
+  durationSeconds: null, wordCount: null, hasTranscript: false, ...extra,
+});
+
+test("a company's next call is its own line above its calls, with how far away it is, and is never queued", async () => {
+  setSystemTime(WEDNESDAY);
+  signIn();
+  setCloudApiFetchTransport(async () => Response.json({ calls: [call("FIRST"), upcoming("FIRST", "2026-10-21T20:30:00Z")] }));
+  await mount(100);
+  await framesUntil(() => tui.frame().includes("Next call"));
+  const frame = tui.frame();
+  expect(frame).toContain("Next call");
+  expect(frame).toMatch(/16:30/);
+  expect(frame).toContain("in 2h 30m");
+  expect(frame).not.toContain("queued");
+  // The table keeps the calls already held, and the next one only on its line.
+  expect(frame).toContain("FQ2 26");
+  expect(frame).not.toContain("FQ3 26");
+});
+
+test("CALLS alone is the week's calendar by day; Enter opens the company's calls and Esc comes back", async () => {
+  setSystemTime(WEDNESDAY);
+  signIn();
+  const requests: string[] = [];
+  setCloudApiFetchTransport(async (url) => {
+    const params = new URL(String(url)).searchParams;
+    requests.push(params.toString());
+    if (params.get("upcoming") === "true") {
+      return Response.json({ calls: [
+        upcoming("TSLA", "2026-10-21T21:30:00Z"),
+        upcoming("KO", "2026-10-21T12:30:00Z", { status: "published", hasTranscript: true }),
+        upcoming("META", "2026-10-21T20:30:00Z"),
+        upcoming("IBM", "2026-10-22T00:00:00Z"),
+      ] });
+    }
+    const ticker = params.get("ticker");
+    return Response.json({ calls: ticker ? [call(ticker), upcoming(ticker, "2026-10-21T20:30:00Z")] : [call("SHELF")] });
+  });
+  await mount(100, null, {});
+  await framesUntil(() => tui.frame().includes("Tomorrow (1)"));
+  const calendar = tui.frame();
+  expect(requests[0]).toContain("upcoming=true");
+  expect(requests[0]).toContain("from=2026-10-21");
+  expect(requests[0]).toContain("to=2026-10-23");
+  expect(calendar).toContain("Today (3)");
+  expect(calendar).toContain("Tomorrow (1)");
+  // Start order, the call already over first and quieter.
+  expect(calendar.indexOf("KO")).toBeLessThan(calendar.indexOf("META"));
+  expect(calendar.indexOf("META")).toBeLessThan(calendar.indexOf("TSLA"));
+  expect(calendar).toContain("in 2h 30m");
+  expect(calendar).toContain("transcribed");
+  expect(calendar).not.toContain("SHELF");
+  expect(calendar).not.toContain("⚠");
+
+  // The cursor starts on the next call still to come.
+  await press("return");
+  await framesUntil(() => tui.frame().includes("Next call"));
+  const company = tui.frame();
+  expect(company).toContain("Back");
+  expect(company).toContain("META");
+  expect(company).toContain("Next call");
+  expect(requests.some((request) => request.includes("ticker=META"))).toBe(true);
+
+  await act(async () => { await tui.emitKeypress({ name: "escape", sequence: "\u001b" }); });
+  await framesUntil(() => tui.frame().includes("Today (3)"));
+  expect(tui.frame()).not.toContain("Next call");
+});
+
+test("a calendar cut at the server's limit says so in the footer", async () => {
+  setSystemTime(WEDNESDAY);
+  signIn();
+  // Every two minutes from 08:00 in New York on Wednesday, through Friday afternoon.
+  const full = Array.from({ length: UPCOMING_LIMIT }, (_, index) =>
+    upcoming(`C${index}`, new Date(Date.parse("2026-10-21T12:00:00Z") + index * 120_000).toISOString()));
+  setCloudApiFetchTransport(async () => Response.json({ calls: full }));
+  await mount(100, null, {});
+  await framesUntil(() => tui.frame().includes("Today ("));
+  expect(tui.frame()).toContain("⚠");
+});

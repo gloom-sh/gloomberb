@@ -10,6 +10,7 @@ import type { CapabilityManifest } from "../../../capabilities";
 import type { PluginOperationResult, PluginPin } from "../../../plugins/marketplace/store";
 import type { RemoteControlRequest, RemoteControlResponse } from "../../../remote/types";
 import type { HttpProxyRequestEnvelope, HttpProxyResponseEnvelope } from "../../../utils/http-proxy-response";
+import type { BootFrame } from "../../dom/boot-frame-page";
 
 export const ELECTROBUN_CONTEXT_MENU_ACTION = "gloom.context-menu.select";
 
@@ -27,6 +28,8 @@ export interface ElectrobunBackendInit {
   hostName?: string;
   windowKind: "main" | "detached";
   paneId?: string;
+  /** What the launch's plugin seed could not install, for the main window to say once. */
+  pluginSeedNotice?: { body: string; type: "error" | "info" };
   /** What the view needs to send crash reports and usage counts the same way the Bun process would. */
   telemetry: ElectrobunTelemetryInit;
 }
@@ -130,6 +133,8 @@ export interface DesktopExternalPluginBundle {
   /** `owner/repo` of the checkout's GitHub origin. */
   repo?: string;
   linked?: boolean;
+  /** The plugin's logo as a `data:` URL, read from the checkout by the Bun process. */
+  icon?: string;
   /** ES module source, absent when `error` or `unsupportedTarget` is set. */
   code?: string;
   targets?: readonly ("cli" | "tui" | "desktop" | "web")[];
@@ -201,7 +206,7 @@ interface DesktopBackendRequestMap {
   "host.exit": { request: null; response: null };
   "host.windowControl": { request: { action: DesktopWindowControlAction }; response: null };
   "host.windowFullscreen": { request: null; response: boolean };
-  "host.openExternal": { request: { url: string }; response: null };
+  "host.openExternal": { request: { url: string }; response: boolean };
   "host.copyText": { request: { text: string }; response: null };
   "host.focusWindow": { request: null; response: null };
   "host.copyPngImage": { request: { pngBase64: string }; response: null };
@@ -215,6 +220,8 @@ interface DesktopBackendRequestMap {
     response: null;
   };
   "host.showContextMenu": { request: { menu: DesktopContextMenuItem[] }; response: boolean };
+  /** The layout the main window draws at the next launch before its script loads (dom/boot-frame.ts). Only the main window's is kept. */
+  "host.saveBootFrame": { request: { frame: BootFrame }; response: null };
   /** The unread count for the Dock icon badge: `""` (none), `"1"` to `"99"` or `"99+"`. Only the main window's is applied. */
   "host.setAppBadge": { request: { label: string }; response: null };
   /** `channel` absent (an older view) means stable. */

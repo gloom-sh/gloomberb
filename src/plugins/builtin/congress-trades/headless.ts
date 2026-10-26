@@ -161,7 +161,7 @@ export function createCongressHeadless(
     // A ticker's pane lists its trades only. The filters are the pane's filter bar, kept apart for a ticker's pane.
     shotState: (args, _load, given) => {
       if (args.symbols.length && args.options.tab !== "trades") {
-        throw new Error(`The Congress pane for one ticker lists its trades only. Drop --tab ${args.options.tab} or ${args.symbols[0]} from shot, or run the report: gloomberb fn CG ${args.symbols[0]} --tab ${args.options.tab}`);
+        throw new Error(`The Congress pane for one ticker lists its trades only. Drop --tab ${args.options.tab} or ${args.symbols[0]} from shot, or run the report: gloom fn CG ${args.symbols[0]} --tab ${args.options.tab}`);
       }
       const filters = shotFilters(args.options, given);
       return filters ? { pluginState: { "gloomberb-cloud": { [`${args.symbols.length ? "congressTicker." : ""}filters`]: filters } } } : {};

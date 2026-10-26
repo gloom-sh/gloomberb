@@ -1,4 +1,4 @@
-import type { CryptoMarketAsset, CryptoMarketsPayload, StablecoinSupplyPayload } from "../../../api-client/crypto-markets";
+import type { CryptoMarketAsset, CryptoMarketsPayload, DefiTvlPayload, StablecoinSupplyPayload } from "../../../api-client/crypto-markets";
 
 /** 2026-09-23 12:00 UTC; closes run 2026-08-24 through 2026-09-22. */
 export const CRYPTO_FIXTURE_NOW = Date.parse("2026-09-23T12:00:00Z");
@@ -31,6 +31,7 @@ export function cryptoFixture(): CryptoMarketsPayload {
   return {
     version: 1,
     generatedAt: "2026-09-23T11:59:30.000Z",
+    dayChangeBasis: "utc-day",
     asOf: "2026-09-23T11:59:00.000Z",
     status: "available",
     source: {
@@ -116,6 +117,41 @@ export function stablecoinSupplyFixture(): StablecoinSupplyPayload {
         { symbol: "USDC", name: "USD Coin", values: [null, 70e9, 71e9, 72e9, 72e9] },
       ],
     },
+    warnings: [],
+  };
+}
+
+/**
+ * DeFi TVL as of 2026-09-23, a day after the protocols' snapshot: two
+ * protocols, two chains, and five days of the total from 2026-09-19 with one
+ * day the source skipped. Aave's week is the 18.46B to 17.88B the source
+ * reported over 2026-10-12..18.
+ */
+export function defiTvlFixture(): DefiTvlPayload {
+  return {
+    version: 1,
+    generatedAt: "2026-09-23T11:00:00.000Z",
+    fetchedAt: "2026-09-23T00:30:00.000Z",
+    asOf: "2026-09-23",
+    status: "available",
+    source: { name: "DefiLlama", url: "https://defillama.com" },
+    total: { tvl: 92.4e9, change7d: 2.01e9, change7dPercent: 2.22, change30d: -1.06e9, change30dPercent: -1.13 },
+    protocols: [
+      {
+        name: "Aave", category: "Lending", chains: 18, tvl: 17.88e9, change1dPercent: -0.4,
+        change7d: -0.58e9, change7dPercent: -3.14, change30d: null, change30dPercent: null,
+      },
+      {
+        name: "Lido", category: "Liquid Staking", chains: 2, tvl: 21.5e9, change1dPercent: 0.2,
+        change7d: 0.3e9, change7dPercent: 1.42, change30d: 1.2e9, change30dPercent: 5.91,
+      },
+    ],
+    protocolsAsOf: "2026-09-22T16:17:00.000Z",
+    chains: [
+      { name: "Ethereum", tokenSymbol: "ETH", tvl: 55.4e9, share: 59.96, change7d: 1.1e9, change7dPercent: 2.03, change30d: -0.4e9, change30dPercent: -0.72 },
+      { name: "Solana", tokenSymbol: "SOL", tvl: 9.1e9, share: 9.85, change7d: -0.2e9, change7dPercent: -2.15, change30d: 0.5e9, change30dPercent: 5.81 },
+    ],
+    history: { start: "2026-09-19", total: [90e9, 91e9, null, 92e9, 92.4e9] },
     warnings: [],
   };
 }

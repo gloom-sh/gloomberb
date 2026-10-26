@@ -1,4 +1,5 @@
 import { ApiRequestError } from "../api-client/errors";
+import { DataServiceUnreachableError } from "../utils/network-failure";
 import { parseSharePayload, type SharePayload } from "./payload";
 
 declare const __GLOOMBERB_API_URL__: string | undefined;
@@ -36,11 +37,13 @@ function validDate(value: unknown): value is string {
  * A request that never got an answer, in the words of whichever fetch made
  * it: a browser's ("Failed to fetch", Safari's "Load failed", Firefox's
  * "NetworkError ..."), Bun's ("Unable to connect ...", which the desktop
- * relays from its Bun process as a plain message), or a timeout.
+ * relays from its Bun process as a plain message), the Cloud client's
+ * `DataServiceUnreachableError` for any of them, or a timeout.
  */
 const NETWORK_FAILURE = /failed to fetch|load failed|networkerror|network connection was lost|appears to be offline|fetch failed|unable to connect|socket connection was closed|typo in the url or port|timed out/i;
 
 function isNetworkFailure(error: unknown): boolean {
+  if (error instanceof DataServiceUnreachableError) return true;
   if (!error || typeof error !== "object") return false;
   const { name, message } = error as { name?: unknown; message?: unknown };
   return name === "AbortError" || name === "TimeoutError" || (typeof message === "string" && NETWORK_FAILURE.test(message));

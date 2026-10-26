@@ -1,9 +1,10 @@
 import { expect, test } from "bun:test";
 import { PUBLISHED_APAC_CLOSURES } from "./published-apac-sessions";
+import { PUBLISHED_FUTURES_CLOSURES } from "./published-futures-sessions";
 import { hasPublishedSessionCalendar, isRegularSessionTime, isTradingWeekday, latestRegularSessionClose } from "./market/freshness";
 
 test("every published closure is a day of its venue's week, in date order", () => {
-  for (const [venue, years] of Object.entries(PUBLISHED_APAC_CLOSURES)) {
+  for (const [venue, years] of Object.entries({ ...PUBLISHED_APAC_CLOSURES, ...PUBLISHED_FUTURES_CLOSURES })) {
     for (const [year, dates] of Object.entries(years)) {
       expect([...dates].sort(), `${venue} ${year}`).toEqual([...dates]);
       for (const date of dates) {

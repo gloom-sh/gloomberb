@@ -141,8 +141,9 @@ export function SeriesListDetail<Row, Column extends DataTableColumn, R extends 
   isNavigable,
   renderSectionHeader,
   emptyStateTitle,
+  status,
   renderDetail,
-}: Pick<DataTableViewProps<Row, Column>, "renderCell" | "isNavigable" | "renderSectionHeader" | "emptyStateTitle"> & {
+}: Pick<DataTableViewProps<Row, Column>, "renderCell" | "isNavigable" | "renderSectionHeader" | "emptyStateTitle" | "status"> & {
   list: ReturnType<typeof useSeriesList<unknown, R>>;
   width: number;
   height: number;
@@ -206,6 +207,7 @@ export function SeriesListDetail<Row, Column extends DataTableColumn, R extends 
               renderCell={renderCell}
               renderSectionHeader={renderSectionHeader}
               emptyStateTitle={emptyStateTitle}
+              status={status}
             />
           </Box>
         </Box>

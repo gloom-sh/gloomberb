@@ -67,7 +67,7 @@ test("a bare symbol no quote settles goes to the listing `quote` reads, and ever
     },
   });
   const store = tickerStore();
-  const retry = (key: string) => `gloomberb watchlist add Growth ${key}`;
+  const retry = (key: string) => `gloom watchlist add Growth ${key}`;
 
   // One company: its first listing in search order with a quote, as `quote 123` reads it.
   const sassy = await resolveCliTicker("123", store, dataProvider, undefined, { retry });
@@ -78,7 +78,7 @@ test("a bare symbol no quote settles goes to the listing `quote` reads, and ever
   const choose = await failed(resolveCliTicker("2222", store, dataProvider, undefined, { retry }));
   expect(choose).toBeInstanceOf(ListingArgError);
   expect(choose?.message).toBe("Choose an exchange for 2222.");
-  const offered = [...(choose?.details ?? "").matchAll(/try: gloomberb watchlist add Growth (\S+)\)/g)].map((match) => match[1]!);
+  const offered = [...(choose?.details ?? "").matchAll(/try: gloom watchlist add Growth (\S+)\)/g)].map((match) => match[1]!);
   expect(offered).toEqual(["2222:JPX", "2222:TADAWUL"]);
   for (const key of offered) {
     expect(savedListingName((await resolveCliTicker(key, store, dataProvider)).ticker).key).toBe(key);
@@ -143,6 +143,40 @@ test("a symbol whose search the service refused is looked up again, never report
   expect(refusedThroughout.outcomes.every((outcome) => outcome?.startsWith("Could not look up"))).toBe(true);
 });
 
+test("what cannot be a symbol fails before any request, and never makes a list wait to look it up again", async () => {
+  // Before, `$$$` and `N/A` were searched, failed with the refused requests around them, and were looked up
+  // again after waits of 6, 15 and 30 s before being blamed on Gloom Cloud.
+  const nvda = { providerId: "test", symbol: "NVDA", name: "NVIDIA Corporation", exchange: "NASDAQ", currency: "USD", type: "Common Stock" };
+  const asked: string[] = [];
+  const dataProvider = createTestDataProvider({
+    search: async (query) => {
+      asked.push(query);
+      // Another request of the list was refused meanwhile, as when the service limits the rate.
+      connectionHealth.reportRequest(GLOOM_CLOUD_HTTP_CONNECTION_ID, {
+        operation: "GET /market/search", success: false, latencyMs: asked.length, error: new Error("Anonymous market rate limit exceeded"),
+      });
+      return query === "NVDA" ? [nvda] : [];
+    },
+    getQuote: async (symbol) => {
+      asked.push(symbol);
+      return createTestQuote({ symbol, listingExchangeName: "NASDAQ", exchangeName: "NASDAQ" });
+    },
+  });
+  const retries: number[] = [];
+  const junk = ["$$$", "N/A", "--", "-", "1.899", "2.582,52"];
+  const results = await resolveTickersForCli([...junk, "NVDA"], tickerStore(), dataProvider, undefined, {
+    retryWaitsMs: [60_000], onRetry: (count) => retries.push(count),
+  });
+  expect(retries).toEqual([]);
+  // Only NVDA, in the spellings its search tries, was asked for.
+  expect(asked.every((query) => query.replace(/[.-]/g, "") === "NVDA")).toBe(true);
+  expect(results.map((result) => result.ticker?.metadata.ticker ?? result.error?.message)).toEqual([
+    "$$$ is not a symbol.", "N/A is not a symbol.", "-- is not a symbol.", "- is not a symbol.",
+    "1.899 is a number, not a symbol.", "2.582,52 is a number, not a symbol.", "NVDA",
+  ]);
+  expect(results.slice(0, junk.length).map((result) => failedRow(result.input, result.error!).status)).toEqual(junk.map(() => "not_a_symbol"));
+});
+
 test("batched answers that leave a symbol out, answer it with nothing, or come back out of order still give each symbol of a list its own listing", async () => {
   const row = (symbol: string) => ({ providerId: "test", symbol, name: `${symbol} Corp`, exchange: "NYSE", currency: "USD", type: "Common Stock" });
   const quote = (symbol: string) => createTestQuote({ symbol, name: `${symbol} Corp`, listingExchangeName: "NYSE", exchangeName: "NYSE", lastUpdated: Date.now() });
@@ -202,7 +236,10 @@ test("a symbol whose company moved says where it trades now, as watchlist and po
   };
   const provider = (getTickerChanges: DataProvider["getTickerChanges"]) => createTestDataProvider({
     search: async (query) => query === "FB" ? [fund] : [],
-    getQuote: async (symbol) => createTestQuote({ symbol, name: fund.name, listingExchangeName: "BATS", lastUpdated: Date.now() }),
+    getQuote: async (symbol) => {
+      if (symbol !== "FB") throw new Error(`Not a ticker: ${symbol}.`);
+      return createTestQuote({ symbol, name: fund.name, listingExchangeName: "BATS", lastUpdated: Date.now() });
+    },
     getTickerChanges,
   });
   const online = provider(async (symbol) => changes[symbol] ?? null);
@@ -243,12 +280,12 @@ test("a symbol several companies list names their listings and, when its own com
       changes: [{ from: "NEP", to: "XIFR", date: "2025-02-03" }],
     } : null,
   });
-  const retry = (key: string) => `gloomberb watchlist add Growth ${key}`;
+  const retry = (key: string) => `gloom watchlist add Growth ${key}`;
 
   const alone = await failed(resolveCliTicker("NEP", tickerStore(), dataProvider, undefined, { retry }));
   expect(alone).toBeInstanceOf(ListingChoiceError);
   expect(alone?.message).toBe("Choose an exchange for NEP.");
-  expect(alone?.details?.split("\n").at(-1)).toBe("NEP became XIFR on 2025-02-03: `gloomberb watchlist add Growth XIFR`");
+  expect(alone?.details?.split("\n").at(-1)).toBe("NEP became XIFR on 2025-02-03: `gloom watchlist add Growth XIFR`");
 
   // A list's line says the same in one line, also past the length that skips change lookups for the rest.
   for (const symbols of [["NEP", "ZZ"], ["NEP", ...Array.from({ length: 10 }, (_, index) => `ZZ${index}`)]]) {

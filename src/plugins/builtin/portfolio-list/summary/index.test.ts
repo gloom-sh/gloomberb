@@ -324,8 +324,9 @@ describe("a margin account's header", () => {
     const { totals, text } = header(marginQuotes({ move: 10, option: true }), createMarginAccount());
     expect(totals.livePriced).toBe(true);
     expect(text.slice(0, 2)).toEqual(["Net Liq 1.04M", "Gross 1.64M"]);
-    // Without the broker's day, the quotes' day is a return on the equity, not on the positions.
-    expect(text).toContain("Day +40.0k (+4.00%)");
+    // Without the broker's day, the quotes' day is a return on the equity, not on the positions,
+    // from a NASDAQ, a XETRA and a CBOE close that need not be the same day's.
+    expect(text).toContain("Day +40.0k (+4.00%) vs mixed closes");
   });
 
   test("without its account, the equity and cash read as unknown beside the gross", () => {

@@ -13,6 +13,7 @@ import {
   type SyncSnapshot,
   type SyncTransport,
 } from "./types";
+import type { LocalMarketDataLookup } from "./local-only";
 
 type CloudSyncPhase = "idle" | "disabled" | "syncing" | "synced" | "error";
 
@@ -32,6 +33,12 @@ interface SyncRuntime {
   getContributors: () => RegisteredSyncContributor[];
   getTransport: () => RegisteredSyncTransport | null;
   baselineStore?: SyncBaselineStore;
+  /** Retires pending operations when the Cloud session changes; transports decide availability. */
+  getSessionIdentity?: () => object | null;
+  /** Confirmed Cloud account, used to keep persisted merge history scoped across restarts. */
+  getAccountId?: () => string | null;
+  /** Sources whose quotes and bars never leave this device (`BrokerAdapter.localMarketData`); none when absent. */
+  isLocalMarketData?: LocalMarketDataLookup;
 }
 
 const CLIENT_ID_STORAGE_KEY = "gloomberb.sync.clientId";
@@ -85,13 +92,15 @@ export class CloudSyncController {
   private memosLoaded = false;
   private inFlight: Promise<void> | null = null;
   private syncQueued = false;
+  private generation = 0;
   private clientId: string | null = null;
+  private accountId: string | null = null;
   private lastSignature: string | null = null;
   /**
    * The content signature of the cloud's copy, with the revision and the
    * write it belongs to. Each 15 s poll pulls the same copy again until a
    * device writes; working its signature out every time was a third of an
-   * idle sync on a large workspace (GLO-925).
+   * idle sync on a large workspace.
    */
   private cloudSignature: { transportId: string; revision: number; clientId: string; createdAt: string; signature: string } | null = null;
   private baseline: Record<string, unknown> | null = null;
@@ -143,6 +152,7 @@ export class CloudSyncController {
     if (this.runtime !== runtime) {
       this.resetOperations();
       this.runtime = runtime;
+      this.accountId = runtime.baselineStore?.loadAccountId?.() ?? null;
       this.updateAvailability();
     }
     return () => this.clearRuntime(runtime);
@@ -153,6 +163,31 @@ export class CloudSyncController {
     this.runtime = null;
     this.resetOperations();
     this.setStatus({ phase: "disabled", transportId: null, error: null });
+  }
+
+  /** Retires pending session work without losing unsynced edits for the same account. */
+  retireSession(): void {
+    this.generation += 1;
+    if (this.pushTimer) clearTimeout(this.pushTimer);
+    this.pushTimer = null;
+    this.inFlight = null;
+    this.syncQueued = false;
+    this.updateAvailability();
+  }
+
+  /** Account revisions, merge baselines and edit provenance never carry into another account. */
+  resetAccount(accountId?: string): void {
+    this.resetOperations();
+    this.accountId = accountId ?? null;
+    this.baseline = {};
+    this.baselineLoaded = true;
+    this.memos = {};
+    this.memosLoaded = true;
+    this.runtime?.baselineStore?.save({});
+    this.runtime?.baselineStore?.saveMemos?.({});
+    if (accountId) this.runtime?.baselineStore?.saveAccountId?.(accountId);
+    this.setStatus({ phase: "idle", transportId: null, lastSyncAt: null, lastPullAt: null, revision: null, error: null });
+    this.updateAvailability();
   }
 
   subscribe(listener: () => void): () => void {
@@ -203,6 +238,17 @@ export class CloudSyncController {
   private async syncOnce(options: { reason?: string; force?: boolean }): Promise<void> {
     const runtime = this.runtime;
     if (!runtime) return;
+    const accountId = runtime.getAccountId?.();
+    if (accountId && accountId !== this.accountId) {
+      if (this.accountId !== null) this.resetAccount(accountId);
+      else {
+        // Legacy stores have no owner; retain their offline edits on first validation.
+        this.accountId = accountId;
+        runtime.baselineStore?.saveAccountId?.(accountId);
+      }
+    }
+    const generation = this.generation;
+    const sessionIdentity = runtime.getSessionIdentity?.();
     this.observe(runtime);
     const registration = runtime.getTransport();
     if (!registration?.transport.isAvailable()) {
@@ -219,11 +265,11 @@ export class CloudSyncController {
       // Always pull before push. Another device (TUI, browser, phone) may have
       // written since this process last synced, and contributors already merge
       // so local-only edits survive the apply.
-      const pulled = await this.runPull(runtime, transport);
-      if (!pulled || !this.isCurrent(runtime, transport)) return;
+      const pulled = await this.runPull(runtime, transport, generation, sessionIdentity);
+      if (!pulled || !this.isCurrent(runtime, transport, generation, sessionIdentity)) return;
 
-      const snapshot = await this.assembleSnapshot(runtime);
-      if (!this.isCurrent(runtime, transport)) return;
+      const snapshot = await this.assembleSnapshot(runtime, generation, sessionIdentity);
+      if (!snapshot || !this.isCurrent(runtime, transport, generation, sessionIdentity)) return;
       const signature = snapshotContentSignature(snapshot);
       if (!options.force && signature === this.lastSignature) return;
       if (!options.force && signature === pulled.signature) {
@@ -239,7 +285,7 @@ export class CloudSyncController {
         // The revision this snapshot was merged with. The cloud refuses the
         // write if another device wrote since, instead of losing that write.
         const result = await transport.pushSnapshot(snapshot, { baseRevision: pulled.revision });
-        if (!this.isCurrent(runtime, transport)) return;
+        if (!this.isCurrent(runtime, transport, generation, sessionIdentity)) return;
         this.lastSignature = signature;
         this.appliedRevision = result.revision;
         this.saveBaseline(runtime, snapshot);
@@ -252,10 +298,10 @@ export class CloudSyncController {
         });
         return;
       } catch (error) {
-        if (!this.isCurrent(runtime, transport)) return;
+        if (!this.isCurrent(runtime, transport, generation, sessionIdentity)) return;
         if (error instanceof SyncRevisionConflictError && attempt < MAX_CONFLICT_RETRIES) {
           // Pull whatever the other device wrote, even an older revision than
-          // this process last saw (an account switch, a restored snapshot).
+          // this process last saw, such as a restored snapshot.
           this.appliedRevision = null;
           continue;
         }
@@ -269,18 +315,18 @@ export class CloudSyncController {
     }
   }
 
-  private async runPull(runtime: SyncRuntime, transport: SyncTransport): Promise<PullResult | null> {
+  private async runPull(runtime: SyncRuntime, transport: SyncTransport, generation: number, sessionIdentity: object | null | undefined): Promise<PullResult | null> {
     const baselineState = runtime.getState();
     this.setStatus({ phase: "syncing", transportId: transport.id, error: null });
     try {
       const response = await transport.pullSnapshot();
-      if (!this.isCurrent(runtime, transport)) return null;
+      if (!this.isCurrent(runtime, transport, generation, sessionIdentity)) return null;
 
       if (response.snapshot && this.shouldApplyPulledRevision(response.revision)) {
         this.assertSnapshotCompatible(response.snapshot, runtime.getContributors());
         this.pulledContributors = response.snapshot.contributors;
         for (const entry of runtime.getContributors()) {
-          if (!this.isCurrent(runtime, transport)) return null;
+          if (!this.isCurrent(runtime, transport, generation, sessionIdentity)) return null;
           const contributorPayload = response.snapshot.contributors[entry.contributor.id];
           if (!contributorPayload || !entry.contributor.apply) continue;
           await entry.contributor.apply(contributorPayload.payload, {
@@ -289,16 +335,17 @@ export class CloudSyncController {
             baselinePayload: this.loadBaseline(runtime)?.[entry.contributor.id] ?? null,
             state: runtime.getState(),
             getState: runtime.getState,
-            isCurrent: () => this.isCurrent(runtime, transport),
+            isCurrent: () => this.isCurrent(runtime, transport, generation, sessionIdentity),
             dispatch: runtime.dispatch,
             tickerRepository: runtime.tickerRepository,
             memo: this.memoFor(runtime, entry.contributor.id),
           });
+          if (!this.isCurrent(runtime, transport, generation, sessionIdentity)) return null;
         }
         if (response.revision != null) this.appliedRevision = response.revision;
       }
 
-      if (!this.isCurrent(runtime, transport)) return null;
+      if (!this.isCurrent(runtime, transport, generation, sessionIdentity)) return null;
       this.setStatus({
         phase: response.snapshot ? "synced" : "idle",
         transportId: transport.id,
@@ -312,7 +359,7 @@ export class CloudSyncController {
         signature: response.snapshot ? this.pulledSignature(transport, response.revision, response.snapshot) : null,
       };
     } catch (error) {
-      if (!this.isCurrent(runtime, transport)) return null;
+      if (!this.isCurrent(runtime, transport, generation, sessionIdentity)) return null;
       this.setStatus({
         phase: "error",
         transportId: transport.id,
@@ -345,7 +392,7 @@ export class CloudSyncController {
     }
   }
 
-  private async assembleSnapshot(runtime: SyncRuntime): Promise<SyncSnapshot> {
+  private async assembleSnapshot(runtime: SyncRuntime, generation: number, sessionIdentity: object | null | undefined): Promise<SyncSnapshot | null> {
     const contributors = runtime.getContributors();
     const createdAt = nowIso();
     // The snapshot replaces the stored one wholesale, so data owned by a
@@ -353,10 +400,12 @@ export class CloudSyncController {
     // carried over instead of being deleted for every other device.
     const payloads: SyncSnapshot["contributors"] = { ...this.pulledContributors };
     for (const entry of contributors) {
+      if (this.runtime !== runtime || this.generation !== generation || runtime.getSessionIdentity?.() !== sessionIdentity) return null;
       const payload = await entry.contributor.collect({
         state: runtime.getState(),
         baselinePayload: this.loadBaseline(runtime)?.[entry.contributor.id] ?? null,
         memo: this.memoFor(runtime, entry.contributor.id),
+        isLocalMarketData: runtime.isLocalMarketData,
       });
       payloads[entry.contributor.id] = {
         schemaVersion: entry.contributor.schemaVersion,
@@ -411,9 +460,12 @@ export class CloudSyncController {
   }
 
   private memoFor(runtime: SyncRuntime, contributorId: string) {
+    const generation = this.generation;
+    const sessionIdentity = runtime.getSessionIdentity?.();
     return {
       get: () => this.loadMemos(runtime)[contributorId] ?? null,
       set: (value: unknown) => {
+        if (this.runtime !== runtime || this.generation !== generation || runtime.getSessionIdentity?.() !== sessionIdentity) return;
         const memos = { ...this.loadMemos(runtime), [contributorId]: value };
         this.memos = memos;
         runtime.baselineStore?.saveMemos?.(memos);
@@ -438,8 +490,9 @@ export class CloudSyncController {
     runtime.baselineStore?.save(payloads);
   }
 
-  private isCurrent(runtime: SyncRuntime, transport: SyncTransport): boolean {
-    return this.runtime === runtime && runtime.getTransport()?.transport === transport;
+  private isCurrent(runtime: SyncRuntime, transport: SyncTransport, generation: number, sessionIdentity: object | null | undefined): boolean {
+    return this.generation === generation && this.runtime === runtime && runtime.getTransport()?.transport === transport
+      && runtime.getSessionIdentity?.() === sessionIdentity;
   }
 
   private pulledSignature(transport: SyncTransport, revision: number | null, snapshot: SyncSnapshot): string {
@@ -466,6 +519,7 @@ export class CloudSyncController {
   }
 
   private resetOperations(): void {
+    this.generation += 1;
     if (this.pushTimer) clearTimeout(this.pushTimer);
     this.pushTimer = null;
     if (this.observeTimer) clearTimeout(this.observeTimer);

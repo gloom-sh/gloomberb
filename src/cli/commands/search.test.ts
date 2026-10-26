@@ -3,14 +3,16 @@ import type { PrintedCliResult } from "../../test-support/cli-context";
 import { createTestDataProvider } from "../../test-support/data-provider";
 import { createTestTicker } from "../../test-support/ticker";
 import { ProviderBusyError } from "../../sources/provider-errors";
+import { DataServiceUnreachableError } from "../../utils/network-failure";
 import type { TickerRecord } from "../../types/ticker";
 import { search } from "./search";
 
 /**
  * A rate-limited catalogue printed "No matches found." and exited 0, which
- * reads as "this company does not exist" (Eagle Bulk, 2026-10-18).
+ * reads as "this company does not exist" (Eagle Bulk, 2026-10-18), and so did
+ * a search offline or through a proxy that never answered.
  */
-test("a search the data service was too busy to answer fails as retryable, unlike a search that found nothing", async () => {
+test("a search the data service was too busy for or never answered fails, unlike a search that found nothing", async () => {
   const run = async (answer: () => Promise<never[]>, tickers: TickerRecord[] = []) => {
     const dataProvider = createTestDataProvider({ search: answer });
     const initMarketData = async () => ({ store: { loadAllTickers: async () => tickers }, dataProvider, persistence: { close() {} } }) as never;
@@ -24,6 +26,11 @@ test("a search the data service was too busy to answer fails as retryable, unlik
   expect(unanswered.failure).toMatchObject({ code: "search_busy", retryable: true });
   expect(unanswered.printed).toEqual([]);
 
+  // No answer at all: the command fails as any command offline does, "couldn't reach", exit 1.
+  const offline = await run(async () => { throw new DataServiceUnreachableError(new TypeError("Failed to fetch")); });
+  expect(offline.failure).toBeInstanceOf(DataServiceUnreachableError);
+  expect(offline.printed).toEqual([]);
+
   // Nothing found is an answer: an empty list and the catalog hint, no failure.
   const empty = await run(async () => []);
   expect(empty.failure).toBeNull();
@@ -33,4 +40,53 @@ test("a search the data service was too busy to answer fails as retryable, unlik
   const partial = await run(busy, [createTestTicker("EGLE", "Eagle Bulk Shipping Inc.")]);
   expect(partial.failure).toBeNull();
   expect((partial.printed[0]!.data as Array<{ symbol: string }>).map((row) => row.symbol)).toEqual(["EGLE"]);
+});
+
+test("a name typed in kana or kanji is searched as typed, matches no saved ticker, and says what to type when nothing lists it", async () => {
+  const saved = ["AAPL", "AMC", "AMZN", "BRK.B", "BTC-USD"].map((symbol) => createTestTicker(symbol, symbol));
+  const run = async (query: string, answer: (query: string) => Promise<never[]>) => {
+    const asked: string[] = [];
+    const dataProvider = createTestDataProvider({ search: async (query: string) => { asked.push(query); return answer(query); } });
+    const initMarketData = async () => ({ store: { loadAllTickers: async () => saved }, dataProvider, persistence: { close() {} } }) as never;
+    const printed: PrintedCliResult["result"][] = [];
+    const failure = await search(query, { initMarketData, printResult: (result) => { printed.push(result); } }).then(() => null, (error: unknown) => error);
+    return { asked, failure, printed: printed[0] };
+  };
+  // The service fails on every name in another script; that is no busy search, and the saved list is no match.
+  for (const query of ["ゲームストップ", "任天堂"]) {
+    const { asked, failure, printed } = await run(query, async () => { throw new ProviderBusyError(); });
+    expect(asked).toContain(query);
+    expect(failure).toBeNull();
+    expect(printed!.data).toEqual([]);
+    expect(printed!.warnings).toEqual(["No matches. Try the ticker or the English name."]);
+  }
+  // A Latin name the service is too busy for is still busy.
+  expect((await run("gamestop", async () => { throw new ProviderBusyError(); })).failure).toMatchObject({ code: "search_busy" });
+});
+
+/**
+ * `search cassava` against production, 2026-10-25: the service answered with Filana Therapeutics' FLNA first,
+ * carrying the name it had, but the list put it last under Other Listings, behind the German lines that still
+ * list Cassava Sciences, and the name was nowhere on it.
+ */
+test("a company found by the name it had before it was renamed leads, and says what it was called", async () => {
+  const row = (symbol: string, name: string, exchange: string, extra: Record<string, unknown> = {}) =>
+    ({ providerId: "gloomberb-cloud", symbol, name, exchange, type: "EQUITY", primaryExchange: exchange, ...extra });
+  const answer = [
+    row("FLNA", "Filana Therapeutics, Inc.", "NASDAQ", { type: "Common Stock", currency: "USD", searchAliases: ["CASSAVA SCIENCES INC"], formerName: "Cassava Sciences Inc" }),
+    row("PX91.MU", "Cassava Sciences Inc", "MUNICH", { popularity: 20010 }),
+    row("PX91.DU", "Cassava Sciences Inc", "XDUS", { popularity: 20005 }),
+    row("0841", "Asia Cassava Resources Holdings Limited", "HKEX", { popularity: 20001 }),
+  ];
+  const dataProvider = createTestDataProvider({ search: async () => answer as never });
+  const initMarketData = async () => ({ store: { loadAllTickers: async () => [] }, dataProvider, persistence: { close() {} } }) as never;
+  const printed: PrintedCliResult["result"][] = [];
+  await search("cassava", { initMarketData, printResult: (result) => { printed.push(result); } });
+  const rows = printed[0]!.data as Array<{ category: string; symbol: string; formerName?: string }>;
+  expect(rows.map((item) => `${item.symbol}:${item.category}`)).toEqual([
+    "FLNA:Primary Listing", "PX91.MU:Other Listings", "PX91.DU:Other Listings", "0841:Other Listings",
+  ]);
+  expect(rows[0]!.formerName).toBe("Cassava Sciences Inc");
+  expect("formerName" in rows[1]!).toBe(false);
+  expect(printed[0]!.warnings).toEqual(["FLNA is Filana Therapeutics, Inc., formerly Cassava Sciences Inc"]);
 });

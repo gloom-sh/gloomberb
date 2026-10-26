@@ -5,6 +5,9 @@ import type { StatDef } from "./defs";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DAILY = 6 * DAY_MS;
 const WEEKLY = 21 * DAY_MS;
+// GDPNow is dated at quarter start but updated through the following month's
+// advance GDP release; allow that ~120-day span plus two weeks.
+const NOWCAST_QUARTERLY = 135 * DAY_MS;
 // FRED dates a print at the start of its period, so an on-time print is two
 // periods plus the release lag old just before the next one lands. Each limit
 // adds about two weeks to the slowest normal lag of its group.
@@ -16,11 +19,14 @@ const QUARTERLY = 235 * DAY_MS; // GDP, productivity: two quarters plus a lag up
 const pct = (value: number) => `${formatNumber(value, 1)}%`;
 const pct2 = (value: number) => `${formatNumber(value, 2)}%`;
 const plain = (value: number) => formatNumber(value, 1);
+const index2 = (value: number) => formatNumber(value, 2);
 /** FRED reports payrolls and claims in thousands already. */
 const thousands = (value: number) => `${formatNumber(value / 1000, value >= 10_000 ? 1 : 2)}M`;
 const signedThousands = (value: number) =>
   `${value > 0 ? "+" : ""}${formatNumber(value, 0)}k`;
 const billions = (value: number) => `${formatNumber(value, 0)}B`;
+/** A spread already scaled to basis points; the label says the unit. */
+const basisPoints = (value: number) => formatNumber(value, 0);
 
 function stat(def: StatDef): StatDef {
   return def;
@@ -62,6 +68,7 @@ export const STATS: readonly StatDef[] = [
   }),
   stat({
     id: "pce-yoy",
+    aliases: ["pce", "pce inflation", "pce price index"],
     label: "PCE Prices",
     shortLabel: "PCE y/y",
     category: "inflation",
@@ -173,6 +180,7 @@ export const STATS: readonly StatDef[] = [
   // ---- Growth ----------------------------------------------------------
   stat({
     id: "real-gdp",
+    aliases: ["gdp", "gdp growth"],
     measurementBasis: "q/q annualized",
     label: "Real GDP",
     shortLabel: "Real GDP q/q",
@@ -247,6 +255,69 @@ export const STATS: readonly StatDef[] = [
     staleAfterMs: MONTHLY_LAGGED,
     note: "New orders across manufacturing, durable and not.",
     limit: 500,
+  }),
+
+  // ---- Nowcasts & conditions --------------------------------------------
+  stat({
+    id: "gdpnow",
+    measurementBasis: "Estimate · q/q annualized",
+    label: "Atlanta Fed GDPNow",
+    shortLabel: "GDPNow",
+    category: "nowcasts",
+    seriesId: "GDPNOW",
+    transform: "level",
+    direction: "higher-is-good",
+    axisUnit: "%",
+    formatValue: pct,
+    reference: { value: 0, label: "flat" },
+    staleAfterMs: NOWCAST_QUARTERLY,
+    note: "Atlanta Fed model estimate of real GDP growth, updated within the quarter. Already an annualized percentage change, not a GDP level.",
+    keywords: ["nowcast", "GDP nowcast"],
+  }),
+  stat({
+    id: "nfci",
+    measurementBasis: "Weekly · index",
+    label: "Chicago Fed Financial Conditions",
+    shortLabel: "Chicago NFCI",
+    category: "nowcasts",
+    seriesId: "NFCI",
+    transform: "level",
+    direction: "higher-is-bad",
+    axisUnit: "",
+    formatValue: index2,
+    reference: { value: 0, label: "average" },
+    staleAfterMs: WEEKLY,
+    note: "Chicago Fed National Financial Conditions Index. Positive values mean tighter-than-average conditions; negative values mean looser conditions.",
+  }),
+  stat({
+    id: "financial-stress",
+    measurementBasis: "Weekly · index",
+    label: "St. Louis Fed Financial Stress",
+    shortLabel: "St. Louis FSI",
+    category: "nowcasts",
+    seriesId: "STLFSI4",
+    transform: "level",
+    direction: "higher-is-bad",
+    axisUnit: "",
+    formatValue: index2,
+    reference: { value: 0, label: "average" },
+    staleAfterMs: WEEKLY,
+    note: "St. Louis Fed Financial Stress Index, current fourth version. Positive values mean above-average stress; negative values mean below-average stress.",
+  }),
+  stat({
+    id: "median-cpi",
+    measurementBasis: "m/m annualized · seasonally adjusted",
+    label: "Cleveland Fed Median CPI",
+    shortLabel: "Median CPI",
+    category: "nowcasts",
+    seriesId: "MEDCPIM158SFRBCLE",
+    transform: "level",
+    direction: "higher-is-bad",
+    axisUnit: "%",
+    formatValue: pct,
+    reference: null,
+    staleAfterMs: MONTHLY_EARLY,
+    note: "Cleveland Fed weighted median consumer price change. Published as an annualized monthly percentage change, not a year-over-year inflation rate.",
   }),
 
   // ---- Consumer --------------------------------------------------------
@@ -377,6 +448,41 @@ export const STATS: readonly StatDef[] = [
     staleAfterMs: MONTHLY_LATE,
     note: "Newly built homes sold, at an annual rate.",
     limit: 900,
+  }),
+  stat({
+    id: "mortgage-30y",
+    measurementBasis: "Weekly · Freddie Mac PMMS",
+    label: "30-Year Mortgage Rate",
+    shortLabel: "30Y mortgage rate",
+    category: "housing",
+    seriesId: "MORTGAGE30US",
+    transform: "level",
+    direction: "neutral",
+    axisUnit: "%",
+    formatValue: pct2,
+    reference: null,
+    staleAfterMs: WEEKLY,
+    note: "Freddie Mac's weekly average 30-year fixed mortgage rate, what a home purchase is financed at.",
+    keywords: ["mortgage rates", "PMMS", "Freddie Mac", "homebuilders"],
+  }),
+  stat({
+    id: "mortgage-spread",
+    measurementBasis: "30Y mortgage minus 10Y Treasury on the PMMS date",
+    label: "Mortgage–10Y Spread (bp)",
+    shortLabel: "Mortgage–10Y (bp)",
+    category: "housing",
+    seriesId: "MORTGAGE30US10Y",
+    derivedFrom: ["mortgage-30y", "ten-year"],
+    transform: "level",
+    // Gloom Cloud serves it in percentage points, as FRED does its spreads.
+    scale: 100,
+    direction: "neutral",
+    axisUnit: "",
+    formatValue: basisPoints,
+    reference: null,
+    staleAfterMs: WEEKLY,
+    note: "The 30-year mortgage rate less the 10-year Treasury yield on each survey date, how much mortgages pay over Treasuries.",
+    keywords: ["mortgage spread", "PMMS", "homebuilders"],
   }),
   // ---- Rates & money ---------------------------------------------------
   stat({
@@ -533,15 +639,40 @@ export const STATS: readonly StatDef[] = [
 
 export const DEFAULT_STAT_ID = STATS[0]!.id;
 
-/** Resolves shortcut arguments like `ECST cpi` onto a statistic. */
-export function resolveStatArg(arg: string | null | undefined): StatDef | null {
+/** A statistic an argument names, and what to say when it had to be read. */
+interface StatArgRead {
+  stat: StatDef;
+  /** "Read "PCE" as PCE Prices (PCE y/y)." when the argument is a name or a prefix, not the statistic's id, label or FRED series; null when it spelled one. */
+  readAs: string | null;
+}
+
+/**
+ * Reads a shortcut argument like `ECST cpi` as a statistic. What it is called
+ * comes before what FRED files it under: a statistic's id, its label, one of
+ * its common names (`PCE`, `gdp`), then a FRED series id, then the start of an
+ * id or a label. A name or a start says what it read, and a name that is also
+ * another statistic's FRED series (`PCE` is personal spending there) points at it.
+ */
+export function readStatArg(arg: string | null | undefined): StatArgRead | null {
   const query = arg?.trim().toLowerCase();
   if (!query) return null;
-  return STATS.find((entry) => entry.id === query)
-    ?? STATS.find((entry) => entry.seriesId.toLowerCase() === query)
-    ?? STATS.find((entry) =>
-      entry.id.startsWith(query)
-      || entry.label.toLowerCase().startsWith(query)
-      || entry.shortLabel.toLowerCase().startsWith(query))
-    ?? null;
+  const exact = STATS.find((entry) => entry.id === query)
+    ?? STATS.find((entry) => entry.label.toLowerCase() === query || entry.shortLabel.toLowerCase() === query);
+  if (exact) return { stat: exact, readAs: null };
+  const named = STATS.find((entry) => entry.aliases?.some((alias) => alias.toLowerCase() === query));
+  const series = STATS.find((entry) => entry.seriesId.toLowerCase() === query);
+  if (!named && series) return { stat: series, readAs: null };
+  const stat = named ?? STATS.find((entry) =>
+    entry.id.startsWith(query)
+    || entry.label.toLowerCase().startsWith(query)
+    || entry.shortLabel.toLowerCase().startsWith(query));
+  if (!stat) return null;
+  const otherSeries = series && series !== stat
+    ? ` FRED's series ${series.seriesId} is ${series.label.toLowerCase()}: type ${series.id} for it.` : "";
+  return { stat, readAs: `Read "${arg!.trim()}" as ${stat.label} (${stat.shortLabel}).${otherSeries}` };
+}
+
+/** Resolves shortcut arguments like `ECST cpi` onto a statistic. */
+export function resolveStatArg(arg: string | null | undefined): StatDef | null {
+  return readStatArg(arg)?.stat ?? null;
 }

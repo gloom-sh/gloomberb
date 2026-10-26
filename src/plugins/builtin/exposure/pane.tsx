@@ -2,12 +2,13 @@ import { useCallback, useMemo, useRef } from "react";
 import { isAccessDenied } from "../../../api-client/errors";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import type { ExposureEvidence, ExposurePayload } from "../../../api-client/exposure";
-import { ActionRow, Button, ChartTableHeader, DataTableView, EmptyState, KeyValueRow, PageStackView, PaneStatusBody, QueryBar, SectionHeading, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type DataTableCell, type DataTableColumn, type PaneHint, type StatItem } from "../../../components";
+import { ActionRow, Button, ChartTableHeader, DataTableView, EmptyState, KeyValueRow, PageStackView, QueryBar, SectionHeading, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type DataTableCell, type DataTableColumn, type PaneHint, type StatItem } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAppSelector, useAsyncResource, useAutoRefresh, useMarketData, usePaneInstance, usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, ScrollBox, Text, useRendererHost, useUiCapabilities } from "../../../ui";
+import { withCountryFlag } from "../../../components/ui/country-flag";
 import { logFailure } from "../../../utils/log-failure";
 import { SignInWall } from "../cloud/auth-actions";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
@@ -19,7 +20,7 @@ import { ExposurePathDiagram, ExposureRanges } from "./charts";
 import { fetchExposure, fetchScenarios, validateExposure } from "./client";
 import { ExposureEditor, type ExposureInputs } from "./editor";
 import { portfolioHoldings, watchlistHoldings } from "./holdings";
-import { basisLabel, DEFAULT_SCENARIO, exposureCellText, fraction, parseCustomScenario, parseHoldings, pathRows, portfolioRows, rangeText, tableRows, TABS, type ExposureRow } from "./model";
+import { basisLabel, DEFAULT_SCENARIO, exposureCellText, fraction, hopsText, parseCustomScenario, parseHoldings, pathRows, periodText, portfolioRows, rangeText, tableRows, TABS, type ExposureRow } from "./model";
 import { useExposureEvidence } from "./evidence";
 import { driverRows, driverScope, driverUnits, driverValue } from "./drivers";
 
@@ -28,7 +29,7 @@ function EvidenceItem({ item }: { item: ExposureEvidence }) {
   const host = useRendererHost();
   return <Box flexDirection="column" paddingY={1}>
     <KeyValueRow labelWidth={20} label="Evidence" value={`${item.tier} · ${item.asOf ?? "undated"}`} detail={item.confidence === null ? undefined : `${Math.round(item.confidence * 100)}% confidence`} />
-    <KeyValueRow labelWidth={20} label="Period / units" value={`${item.period ?? "unknown"} · ${item.units}${item.currency ? ` ${item.currency}` : ""}`} />
+    <KeyValueRow labelWidth={20} label="Period / units" value={`${item.period ? periodText(item.period) : "unknown"} · ${item.units}${item.currency ? ` ${item.currency}` : ""}`} />
     {item.revision ? <KeyValueRow labelWidth={20} label="Revision" value={item.revision} /> : null}
     {item.quote ? <Text fg={colors.textBright}>{item.quote}</Text> : <Text fg={colors.textDim}>{item.tier === "user" ? "User-supplied assumption" : "Structured observation; no verbatim quote"}</Text>}
     {item.url ? <ActionRow label="Open primary evidence" onPress={() => void host.openExternal(item.url!)} /> : null}
@@ -48,7 +49,7 @@ function ExposureDetail({ row, data, width }: { row: ExposureRow | null; data: E
       {Object.entries(row.driver.dimensions ?? {}).map(([key, value]) => <KeyValueRow key={key} labelWidth={20} label={humanLabel(key)} value={value} />)}
       {row.driver.evidence.map(item => <EvidenceItem key={item.id} item={item} />)}
     </> : row ? <>
-      <KeyValueRow labelWidth={20} label="Basis / period" value={`${basisLabel(row.basis)} · ${row.period ?? "unknown"}`} />
+      <KeyValueRow labelWidth={20} label="Basis / period" value={`${basisLabel(row.basis)} · ${row.period ? periodText(row.period) : "unknown"}`} />
       <KeyValueRow labelWidth={20} label={row.concentration ? "Gross exposure" : "Exposure"} value={rangeText(row.exposure)} detail={`${row.classification}${row.incomplete ? " · incomplete bound" : ""}`} />
       <KeyValueRow labelWidth={20} label={row.concentration ? "Signed exposure" : "Operating stress"} value={rangeText(row.impact)} detail={row.concentration ? "NAV-weighted operating exposure; not a scenario change" : "Estimated change in the stated denominator"} />
       {row.components.map(component => <Box key={component.id} flexDirection="column" paddingY={1}>
@@ -212,7 +213,11 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
       case "value": return { text: row.driver ? driverValue(row.driver) : "--", value: row.driver?.value ?? null, color: colors.textBright };
       case "units": return { text: row.driver ? driverUnits(row.driver) : "", color: colors.textDim };
       case "scope": return { text: row.driver ? driverScope(row.driver) : "", color: colors.textDim };
-      case "label": return { text: exposureCellText(row, "label"), color: unknown ? colors.textDim : colors.text };
+      case "label": {
+        const cell = { text: exposureCellText(row, "label"), color: unknown ? colors.textDim : colors.text };
+        // Grouped by country, each target leads with its flag on the desktop and the web.
+        return concentration && view === "country" ? withCountryFlag(cell, row.label, desktop) : cell;
+      }
       case "basis": return row.basis ? { text: exposureCellText(row, "basis"), color: colors.textDim } : missingCell(colors);
       case "exposure": return row.exposure ? { text: exposureCellText(row, "exposure"), value: row.exposure.high, color: colors.textBright } : { text: exposureCellText(row, "exposure"), value: null, color: colors.textMuted };
       // Disclosed figures stand out; estimates read plainly, and the word says which is which.
@@ -244,27 +249,28 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
   const query = <QueryBar width={width} filters={[
     { id: "scenario", label: "Scenario", value: scenarioId, options: [...(library.data ?? [DEFAULT_SCENARIO]).map(s => ({ value: s.id ?? (snapshot ? "captured" : "custom"), label: s.label })), { value: "custom", label: "Custom" }].filter((s, i, all) => all.findIndex(v => v.value === s.value) === i), onChange: (value: string) => { if (value === "custom") setEditing(true); else setScenarioId(value); } },
     ...(tab === "portfolio" ? [{ id: "group", label: "View", value: view, options: [{ value: "stress", label: "Stress" }, { value: "country", label: "Country" }, { value: "supplier", label: "Supplier" }, { value: "customer", label: "Customer" }], onChange: setView }] : []),
-  ]} meta={tab === "drivers" ? "Company disclosures" : tab === "portfolio" ? "NAV-weighted operating exposure" : `${data?.depth ?? inputs.depth} hops`} />;
+  ]} meta={tab === "drivers" ? "Company disclosures" : tab === "portfolio" ? "NAV-weighted operating exposure" : hopsText(data?.depth ?? inputs.depth)} />;
   if (!data && isCloudSessionRequired(resource.error) && !editing) return <SignInWall placement="exposure-signin" action="analyze exposures" needsVerification={session.needsVerification} />;
   return <Box width={width} height={height} flexDirection="column">
     {strip}
     <PageStackView focused={focused && !editing} detailOpen={detailOpen} onBack={() => { setDetail(null); setEditing(false); }}
       detailTitle={editing ? "Scenario and holdings" : detail ? `${detail.symbol} · ${detail.label}` : "What we could not see"}
       detailContent={editing && !savedSnapshot.error ? <ExposureEditor initial={{ ...inputs, scenario: scenario ?? inputs.scenario }} initialCustom={savedScenario.error ? customSetting : undefined} sources={sources} focused={focused} width={width} onCancel={() => setEditing(false)} onSave={value => { if (repairingCustomSetting.current && customSetting) setCustomSetting(JSON.stringify(value.scenario)); setInputs(value); setScenarioId("custom"); setEditing(false); setDetail(null); }} /> : data ? <ExposureDetail row={detail} data={data} width={width} /> : null}
-      rootContent={<PaneStatusBody loading={!data && resource.loading} error={inputError ?? (!data ? resource.error : null)} subject="exposure analysis"
-        actions={savedSnapshot.error ? <Button label="Reset saved snapshot" onPress={() => { setSnapshotSetting(null); setEditing(false); setDetail(null); }} />
-          : savedScenario.error ? <><Button label="Edit scenario" onPress={() => setEditing(true)} /><Button label="Reset custom scenario" onPress={() => { setCustomSetting(""); setInputs({ ...inputs, scenario: DEFAULT_SCENARIO }); setScenarioId(DEFAULT_SCENARIO.id!); setEditing(false); setDetail(null); }} /></> : undefined}>
-        {data ? <DataTableView<ExposureRow> columns={columns} items={items} getItemKey={r => r.id} rootWidth={width} rootHeight={bodyHeight} focused={focused && !detailOpen}
+      rootContent={!data && !resource.loading && !resource.error && !inputError
+        ? <EmptyState title="Choose holdings and a scenario." actions={<ActionRow label="Configure exposure" onPress={() => setEditing(true)} />} />
+        // A scenario change reloads under the query bar, which stays.
+        : <DataTableView<ExposureRow> columns={columns} items={data ? items : []} getItemKey={r => r.id} rootWidth={width} rootHeight={bodyHeight} focused={focused && !detailOpen}
+          status={data && !inputError ? undefined : { loading: !inputError && resource.loading, error: inputError ?? resource.error, subject: "exposure analysis",
+            actions: savedSnapshot.error ? <Button label="Reset saved snapshot" onPress={() => { setSnapshotSetting(null); setEditing(false); setDetail(null); }} />
+              : savedScenario.error ? <><Button label="Edit scenario" onPress={() => setEditing(true)} /><Button label="Reset custom scenario" onPress={() => { setCustomSetting(""); setInputs({ ...inputs, scenario: DEFAULT_SCENARIO }); setScenarioId(DEFAULT_SCENARIO.id!); setEditing(false); setDetail(null); }} /></> : undefined }}
           selection={{ kind: "id", selectedId: selected?.id ?? null, getId: r => r.id, onChange: (id) => { if (!id.startsWith("locked:")) setSelected(id); } }}
           onActivate={row => row.id.startsWith("locked:") ? upgrade() : setDetail(row.id)} selectedTextOverridesCellColor showHorizontalScrollbar
           sortColumnId={sort.column} sortDirection={sort.direction} onHeaderClick={column => setSort(old => ({ column, direction: old.column === column && old.direction === "desc" ? "asc" : "desc" }))}
           rootBefore={<ChartTableHeader width={width} height={bodyHeight} tableRows={items.length} tableColumns={columns} query={query} figures={figures}
-            chart={tab === "paths" ? !selected?.components[0]?.path.length ? null : { render: size => <ExposurePathDiagram component={selected?.components[0] ?? null} {...size} />, minRows: 5, maxRows: 5, strip: null }
+            chart={!data ? null : tab === "paths" ? !selected?.components[0]?.path.length ? null : { render: size => <ExposurePathDiagram component={selected?.components[0] ?? null} {...size} />, minRows: 5, maxRows: 5, strip: null }
               : rows.some(r => r.exposure) ? { render: size => <ExposureRanges rows={rows} showTargets={tab === "portfolio" || data.scenario.shocks.length > 1} selectedId={selected?.id ?? null} onSelect={setSelected} onOpen={setDetail} {...size} />, minRows: 1, maxRows: Math.max(1, Math.min(7, rows.filter(r => r.exposure && r.shockId === selected?.shockId && r.basis === selected?.basis && r.period === selected?.period).length)), strip: null } : null} />}
           renderCell={renderCell}
           emptyStateTitle={tab === "drivers" ? "No supported company drivers are available for these holdings." : tab === "paths" ? "No supported exposure paths for this scenario." : "No quantified exposure in this view."}
-          bodyAfter={lockedRows && desktop ? <LockedOverlay rows={lockedRows} text="Pro: full holdings and deeper exposure paths" onPress={upgrade} role="exposure-upgrade" /> : undefined} />
-          : !resource.loading && !resource.error ? <EmptyState title="Choose holdings and a scenario." actions={<ActionRow label="Configure exposure" onPress={() => setEditing(true)} />} /> : null}
-      </PaneStatusBody>} />
+          bodyAfter={lockedRows && desktop ? <LockedOverlay rows={lockedRows} text="Pro: full holdings and deeper exposure paths" onPress={upgrade} role="exposure-upgrade" /> : undefined} />} />
   </Box>;
 }

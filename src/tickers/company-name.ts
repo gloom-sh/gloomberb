@@ -56,6 +56,49 @@ export function companyNameExtraWords(typed: string, name: string | null | undef
   return words.size - wanted.size;
 }
 
+/**
+ * Whether a typed word is a short form of a name's word, as a list writes
+ * one: its first letter and the rest in order, at least three letters
+ * (`intl` for international, `hldgs` for holdings, `grp` for group).
+ */
+function abbreviates(short: string, word: string): boolean {
+  if (short.length < 3 || short.length >= word.length || short[0] !== word[0] || !/^\p{L}+$/u.test(short)) return false;
+  let at = 0;
+  for (const char of word) {
+    if (char === short[at]) at += 1;
+    if (at === short.length) return true;
+  }
+  return false;
+}
+
+/**
+ * `companyNameExtraWords` for a name typed with short forms, as a list or a
+ * spreadsheet writes it ("philip morris intl" for Philip Morris
+ * International Inc.): each typed word is one of the name's, or a short form
+ * of another of its words (`abbreviates`). `extra` counts the name's words
+ * left unmatched, `abbreviated` the typed words read as short forms, so an
+ * exact name ranks before one only a short form reaches. Null when a typed
+ * word is in the name neither way, or nothing was typed.
+ */
+export function companyNameMatch(typed: string, name: string | null | undefined): { extra: number; abbreviated: number } | null {
+  const wanted = companyWords(typed);
+  const words = companyWords(name);
+  if (wanted.size === 0) return null;
+  const matched = new Set<string>();
+  let abbreviated = 0;
+  for (const word of wanted) {
+    if (words.has(word)) {
+      matched.add(word);
+      continue;
+    }
+    const long = [...words].find((candidate) => !matched.has(candidate) && !wanted.has(candidate) && abbreviates(word, candidate));
+    if (!long) return null;
+    matched.add(long);
+    abbreviated += 1;
+  }
+  return { extra: words.size - matched.size, abbreviated };
+}
+
 /** Items grouped by the company their names are, in the order each company first appears. Unnamed items are left out. */
 export function groupByCompany<T>(items: readonly T[], nameOf: (item: T) => string | null | undefined): T[][] {
   const groups: T[][] = [];
@@ -85,4 +128,63 @@ export function shortCompanyName(name: string): string {
 export function shortListingTitle(listing: { symbol: string; exchange: string; name: string | null }): string {
   const name = listing.name?.trim() ? shortCompanyName(listing.name) : listing.symbol;
   return listing.exchange ? `${name} (${listing.exchange})` : name;
+}
+
+/** Legal forms a list abbreviates, and short words that are words where short capitals would read as initials. */
+const NAME_WORDS: Readonly<Record<string, string>> = {
+  INC: "Inc", CORP: "Corp", CO: "Co", LTD: "Ltd", HLDG: "Hldg", HLDGS: "Hldgs", INTL: "Intl", GRP: "Grp", ST: "St",
+  OLD: "Old", NEW: "New", AIR: "Air", OIL: "Oil", GAS: "Gas", FOX: "Fox", ONE: "One", TWO: "Two", NON: "Non", NET: "Net",
+  PET: "Pet", BIO: "Bio", SUN: "Sun", SIX: "Six", RED: "Red", BOX: "Box", GAP: "Gap", ELI: "Eli", DOW: "Dow", LAB: "Lab",
+  MID: "Mid", SON: "Son", GEN: "Gen", HUB: "Hub", OWL: "Owl", REX: "Rex", LA: "La", LAM: "Lam", JOE: "Joe", CAL: "Cal",
+  MET: "Met", GRO: "Gro", BUY: "Buy", COM: "Com", SHS: "Shs",
+};
+/** Words a name keeps in lower case unless it opens with one. */
+const NAME_MINOR_WORDS = new Set(["AND", "OF", "THE", "FOR", "DE", "DEL"]);
+/** Spellings that title case gets wrong, for the largest names; any other name reads in plain title case. */
+const NAME_BRANDS: Readonly<Record<string, string>> = {
+  NVIDIA: "NVIDIA", JPMORGAN: "JPMorgan", UNITEDHEALTH: "UnitedHealth", ABBVIE: "AbbVie", EXXONMOBIL: "ExxonMobil",
+  PEPSICO: "PepsiCo", BLACKROCK: "BlackRock", SERVICENOW: "ServiceNow", CROWDSTRIKE: "CrowdStrike", FEDEX: "FedEx",
+  PAYPAL: "PayPal", EBAY: "eBay", DOORDASH: "DoorDash", DRAFTKINGS: "DraftKings", MONGODB: "MongoDB", HUBSPOT: "HubSpot",
+  GODADDY: "GoDaddy", CARMAX: "CarMax", MARKETAXESS: "MarketAxess", AUTOZONE: "AutoZone", AUTONATION: "AutoNation",
+  COSTAR: "CoStar", IDACORP: "IDACORP", AECOM: "AECOM", CBRE: "CBRE", MSCI: "MSCI",
+};
+/** Longer than three letters, yet still capitals: a legal form, a share structure or an index. */
+const NAME_INITIALISMS = new Set(["REIT", "USA", "ADR", "ADS", "VIII"]);
+const NAME_DOMAINS = new Set(["COM", "NET", "ORG", "IO", "AI"]);
+
+/** One run of letters in a name written in capitals. */
+function nameWord(word: string, opening: boolean, domain: boolean): string {
+  if (!/\p{L}/u.test(word)) return word;
+  if (domain && NAME_DOMAINS.has(word)) return word.toLowerCase();
+  const brand = NAME_BRANDS[word];
+  if (brand) return brand;
+  if (NAME_MINOR_WORDS.has(word)) return opening ? `${word.charAt(0)}${word.slice(1).toLowerCase()}` : word.toLowerCase();
+  const plain = NAME_WORDS[word];
+  if (plain) return plain;
+  // Initials and tickers read as capitals: up to three letters with no word of their own, or no vowel at all.
+  if (word.length <= 3 || NAME_INITIALISMS.has(word) || !/[AEIOUY]/.test(word)) return word;
+  if (/^MC[A-Z]{3}/.test(word)) return `Mc${word.charAt(2)}${word.slice(3).toLowerCase()}`;
+  return `${word.charAt(0)}${word.slice(1).toLowerCase()}`;
+}
+
+/**
+ * A company name a source writes in capitals (an ETF's holdings file: "APPLE INC", "MERCK & CO INC") as it is
+ * normally written: "Apple Inc", "Merck & Co Inc". Legal forms and short words take their usual case, initials
+ * inside a name stay capitals ("GE Aerospace", "AT&T", "L3Harris"). A name with any lower case letter is written
+ * the way its source means it and comes back as it is.
+ */
+export function companyNameCase(name: string): string {
+  if (!/\p{Lu}/u.test(name) || name !== name.toUpperCase()) return name;
+  let words = 0;
+  return name.replace(/\S+/g, (token) => {
+    const opening = words++ === 0;
+    // A separator inside a word (Coca-Cola, AT&T, Amazon.com, McDonald's) cuts it into words of its own.
+    return token.split(/([-/.&,'\u2019]+)/).map((part, index, parts) => {
+      if (index % 2 === 1) return part;
+      const before = parts[index - 1];
+      if (part === "S" && before && /['\u2019]$/.test(before)) return "s";
+      // Digits split a word too: Five9, L3Harris. A run of one or two letters beside a number is an initial.
+      return part.split(/(\d+)/).map((run, at) => at % 2 === 1 ? run : nameWord(run, opening && index === 0 && at === 0, before === ".")).join("");
+    }).join("");
+  });
 }

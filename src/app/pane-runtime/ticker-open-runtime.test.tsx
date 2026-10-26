@@ -57,7 +57,7 @@ test("a slow linked ticker applies its tab to the reused or new pane after hydra
     const rendered = await tui.render(<Harness />);
     await act(async () => { await rendered.renderOnce(); });
     const entry = researchEntryFromSearch("?ticker=VOD&exchange=LSE&tab=financials")!;
-    const opening = runtime.openPinnedTicker(entry.symbol, { tabId: entry.tab, floating: true });
+    const opening = runtime.openPinnedTicker(entry.symbol, { tabId: entry.tab, floating: true, tabState: { requestedView: "one-use-token", activeTabId: "ignored" } });
     // Focus may change while the provider is still resolving the linked listing.
     stateRef.current.focusedPaneId = "world-indices:main";
     // Explicit exact local matches may resolve without the deferred provider.
@@ -65,7 +65,7 @@ test("a slow linked ticker applies its tab to the reused or new pane after hydra
     releaseSearch();
     await act(async () => { await opening; });
     const paneId = reusePane ? BROWSER_RESEARCH_PANE_ID : "ticker-detail:linked";
-    expect(actions).toContainEqual({ type: "UPDATE_PANE_STATE", paneId, patch: { activeTabId: "financials" } });
+    expect(actions).toContainEqual({ type: "UPDATE_PANE_STATE", paneId, patch: { requestedView: "one-use-token", activeTabId: "financials" } });
     expect(actions.filter((action) => action.type === "UPDATE_PANE_STATE")).toHaveLength(1);
     expect(actions.find((action) => action.type === "UPDATE_TICKER")).toMatchObject({ ticker: { metadata: { ticker: "VOD:XLON", exchange: "LSE" } } });
     expect(stateRef.current.config.layout.instances.find((pane) => pane.instanceId === paneId)?.binding)
@@ -239,7 +239,7 @@ test("opening a ticker while its pane's plugin is off offers to turn it on inste
   expect(layouts.at(-1)).toContain("ticker-detail:opened");
 });
 
-// GLO-822: Zcash on the crypto board did not open while the signed-in quote for ZEC-USD:CCC failed,
+// Zcash on the crypto board did not open while the signed-in quote for ZEC-USD:CCC failed,
 // though search listed it. The open goes through the router the app uses, as a board row asks for it.
 test.each([
   ["fails", true], ["prices another venue", true], ["fails", false],
@@ -290,4 +290,47 @@ test.each([
     expect(created).toEqual([]);
     expect(pane).toBeUndefined();
   }
+});
+
+// Regression: opening an option from its chain searched for its OCC symbol,
+// which no provider lists, and failed instead of opening the contract.
+test("a chosen listing that is not saved yet opens as given, with its broker contract and tab", async () => {
+  const config = createDefaultConfig(":memory:");
+  const stateRef = { current: createInitialState(config) };
+  const actions: AppAction[] = [];
+  const created: TickerRecord["metadata"][] = [];
+  let searched = false;
+  let runtime!: ReturnType<typeof useAppTickerOpenRuntime>;
+  function Harness() {
+    runtime = useAppTickerOpenRuntime({
+      stateRef,
+      dataProvider: createTestDataProvider({ search: async () => { searched = true; return []; } }),
+      tickerRepository: {
+        loadTicker: async () => null,
+        createTicker: async (metadata: TickerRecord["metadata"]) => { created.push(metadata); return { metadata }; },
+      } as any,
+      dispatch: (action) => { actions.push(action); },
+      pluginRegistry: {
+        panes: new Map([[TICKER_RESEARCH_PANE_ID, { id: TICKER_RESEARCH_PANE_ID }]]),
+        events: { emit() {} }, notify() {}, getTermSize: () => ({ width: 120, height: 40 }), getDisabledPaneOwner: () => null,
+      } as any,
+      buildPaneInstance: (paneId, options) => createPaneInstance(paneId, { ...options, instanceId: "ticker-detail:option" }),
+      persistLayout: (layout) => { stateRef.current.config.layout = layout; },
+      activatePane() {}, focusVisiblePane() {},
+    });
+    return <text>Research</text>;
+  }
+  const rendered = await tui.render(<Harness />);
+  await act(async () => { await rendered.renderOnce(); });
+  const instrument = { brokerId: "aries", brokerInstanceId: "sim", symbol: "AAPL", localSymbol: "AAPL261026C00345000", secType: "OPT", currency: "USD",
+    lastTradeDateOrContractMonth: "20261026", right: "C" as const, strike: 345, multiplier: "100" };
+  await act(async () => {
+    await runtime.openPinnedTicker("AAPL261026C00345000", { instrument, listing: { name: "AAPL Oct 26 '26 $345 Call", exchange: "", currency: "USD", type: "OPT" }, tabId: "broker-trade", tabState: { brokerTradeIntent: "token" } });
+  });
+  expect(searched).toBe(false);
+  expect(created).toHaveLength(1);
+  expect(created[0]).toMatchObject({ ticker: "AAPL261026C00345000", assetCategory: "OPT", currency: "USD", broker_contracts: [instrument] });
+  expect(stateRef.current.config.layout.instances.find((pane) => pane.instanceId === "ticker-detail:option")?.binding)
+    .toMatchObject({ kind: "fixed", symbol: "AAPL261026C00345000", instrument });
+  expect(actions).toContainEqual({ type: "UPDATE_PANE_STATE", paneId: "ticker-detail:option", patch: { brokerTradeIntent: "token", activeTabId: "broker-trade" } });
 });

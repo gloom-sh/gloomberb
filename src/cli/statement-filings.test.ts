@@ -1,5 +1,6 @@
-import { afterEach, expect, spyOn, test } from "bun:test";
+import { afterEach, expect, mock, spyOn, test } from "bun:test";
 import { apiClient } from "../api-client";
+import { offeringNote } from "../utils/cash-runway";
 import { createDefaultConfig } from "../types/config";
 import type { TickerFinancials } from "../types/financials";
 import { createTestDataProvider } from "../test-support/data-provider";
@@ -7,6 +8,7 @@ import { buildTickerReport, ticker } from "./commands/ticker";
 import {
   cloudStatementReportSources,
   detectResultsRelease,
+  loadOfferingFilings,
   resultsReleaseText,
   statementFiling,
   type PeriodicFiling,
@@ -95,7 +97,7 @@ test("a statement's filing is its SEC accession, else the original 10-Q or 10-K 
 });
 
 afterEach(() => {
-  (apiClient.getCloudSecFilings as unknown as { mockRestore?: () => void }).mockRestore?.();
+  mock.restore();
 });
 
 test("a server that predates the form filter sends every form: only the periodic reports, annual reports and 8-Ks are kept", async () => {
@@ -160,4 +162,15 @@ test("ticker names each latest period's form and filed date, and the quarter rel
   const failed = await tickerReport(JPM, { ...sources, statementFilings: async () => { throw new Error("offline"); } });
   expect(failed.text).toContain("Latest Quarter (2026-06-30, filed 2026-08-06)");
   expect(failed.text).not.toContain("results released");
+});
+
+
+test("loadOfferingFilings skips non-US listings and leaves no note or error on a failed read", async () => {
+  const read = spyOn(cloudStatementReportSources, "offeringFilings").mockRejectedValue(new Error("offline"));
+  expect(await loadOfferingFilings(cloudStatementReportSources, { symbol: "SAP", exchange: "XETRA" }, true)).toEqual([]);
+  expect(read).not.toHaveBeenCalled();
+  const filings = await loadOfferingFilings(cloudStatementReportSources, { symbol: "VKTX", exchange: "NASDAQ" }, true);
+  expect(read).toHaveBeenCalledTimes(1);
+  expect(filings).toEqual([]);
+  expect(offeringNote(filings, "2026-06-30")).toBeNull();
 });

@@ -33,6 +33,8 @@ test("settlements are published seven business days later, and the next one is t
 test("the line says what could be read when, with the year only where it differs from the settlement's", () => {
   expect(shortInterestFreshness("2026-09-30")).toEqual({
     schedule: "published Fri 9 Oct, next settlement Thu 15 Oct, published Mon 26 Oct",
+    // A narrow footer shortens the line before it drops it.
+    scheduleVariants: ["published Fri 9 Oct, next Mon 26 Oct", "published Fri 9 Oct"],
     publishedAt: "2026-10-09",
   });
   expect(shortInterestScheduleText(shortInterestSchedule("2026-12-31")!))

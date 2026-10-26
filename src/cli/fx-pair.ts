@@ -1,9 +1,9 @@
 import { currencyMinorDigits } from "../market-data/market/format";
-import { parseTypedNumber, readCurrencyAmount } from "../utils/decimal-comma";
-import { currenciesNamed } from "./currency-names";
+import { parseTypedNumber, readConvertedAmount } from "../utils/decimal-comma";
+import { currenciesNamed } from "../utils/currency-names";
 
 /**
- * What `gloomberb fx` is asked for. A bare code is one unit of it in the base
+ * What `gloom fx` is asked for. A bare code is one unit of it in the base
  * currency (`NGN`: USD per 1 NGN). A pair is market convention, BASE/QUOTE:
  * `USD/NGN` is how many NGN one USD buys, and `ZAR/NGN` a cross of two codes
  * with neither in USD.
@@ -74,7 +74,7 @@ export function parseFxRequest(raw: string, baseCurrency: string): FxRequest | {
   return readAs.length > 0 ? { ...request, readAs } : request;
 }
 
-/** What `gloomberb fx` is asked for, with the amount to convert when one comes first. */
+/** What `gloom fx` is asked for, with the amount to convert when one comes first. */
 export interface FxArgs {
   request: FxRequest;
   /** The amount of `currency` to convert into `baseCurrency`; absent for a rate alone. */
@@ -84,7 +84,7 @@ export interface FxArgs {
 }
 
 /** Every form `fx` takes, for its usage line. */
-export const FX_USAGE = "fx <currency> | fx <base>/<quote> | fx <amount> <from>/<to> | fx <amount> <from> <to>";
+export const FX_USAGE = "fx <currency> | fx <base>/<quote> | fx <amount> <from>/<to> | fx <amount> <from> <to> [--date <day>]";
 
 /** A currency's name of several words (`hong kong dollar`, `100 swiss franc`) as the one argument it is. */
 function joinNameWords(args: readonly string[]): readonly string[] {
@@ -97,10 +97,11 @@ function joinNameWords(args: readonly string[]): readonly string[] {
  * `fx` arguments: a currency or a pair (`EUR`, `USD/NGN`), or an amount and
  * what to convert it from and to (`1234.5 EUR/USD`, `1234,5 EUR USD`). The
  * amount is an amount of the first currency and reads as cash does
- * (`readCurrencyAmount`): `1.234,5` and `1,234.5` are 1234.5, and `1,234` or
- * `1.234` are thousands unless that currency has three decimals, where they are
- * refused naming both readings. An amount and one currency converts to USD
- * (`toUsdByDefault`). The error sentence otherwise.
+ * (`readConvertedAmount`): `1.234,5` and `1,234.5` are 1234.5, and `1.234` is
+ * 1234 unless that currency has three decimals. A comma before exactly three
+ * digits (`1,234`) is refused naming both readings, as `alerts add` refuses it.
+ * An amount and one currency converts to USD (`toUsdByDefault`). The error
+ * sentence otherwise.
  */
 export function parseFxArgs(words: readonly string[], baseCurrency: string): FxArgs | { error: string } {
   const args = joinNameWords(words);
@@ -129,10 +130,10 @@ export function parseFxArgs(words: readonly string[], baseCurrency: string): FxA
   const toUsdByDefault = codes.length === 1 && !codes[0]!.includes("/");
   const request = parseFxRequest(codes.join("/"), "USD");
   if ("error" in request) return request;
-  // The amount is in the currency converted from, so its units say what 1,234 means.
+  // The amount is in the currency converted from, so its units say what 1.234 means; 1,234 could be either.
   let amount: number;
   try {
-    amount = readCurrencyAmount(first, "The amount", request.currency);
+    amount = readConvertedAmount(first, "The amount", request.currency);
   } catch (error) {
     return { error: error instanceof Error ? error.message : String(error) };
   }

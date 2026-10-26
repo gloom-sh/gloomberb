@@ -140,6 +140,36 @@ afterEach(() => {
 });
 
 describe("TickerListTableView", () => {
+  test("inline notes disappear whole on resize while ticker rows keep their labels", async () => {
+    const noteColumns = [{ id: "ticker", label: "Ticker", width: 6, flexGrow: 1, align: "left" as const }];
+    await tui.render(
+      <TickerTableTestProviders>
+        <TickerListTableView
+          columns={noteColumns}
+          tickers={[createTestTicker("NGF27"), createTestTicker("AAPL")]}
+          cursorSymbol="AAPL"
+          setCursorSymbol={() => {}}
+          resolveCell={(_column, ticker) => ({ text: ticker.metadata.ticker, note: ticker.metadata.ticker === "NGF27" ? "front NGX26 3.116" : undefined })}
+          financialsMap={financialsMap}
+        />
+      </TickerTableTestProviders>,
+      { width: 48, height: 6 },
+    );
+    const wide = await tui.waitForFrameToContain("NGF27 front NGX26 3.116");
+    expect(wide).toContain("AAPL");
+
+    await act(async () => { tui.setup().resize(20, 6); });
+    await tui.renderFrames();
+    const narrow = await tui.waitForFrameToContain("NGF27");
+    expect(narrow).not.toContain("front");
+    expect(narrow).toContain("NGF27");
+    expect(narrow).toContain("AAPL");
+
+    await act(async () => { tui.setup().resize(48, 6); });
+    await tui.renderFrames();
+    await tui.waitForFrameToContain("NGF27 front NGX26 3.116");
+  });
+
   test("renders a bounded window for large ticker lists", async () => {
     await tui.render(
       <LargeTickerListTableHarness />,

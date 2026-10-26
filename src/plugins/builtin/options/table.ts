@@ -4,6 +4,7 @@ import type { OptionContract, OptionsChain } from "../../../types/financials";
 import { blendHex, colors } from "../../../theme/colors";
 import { blendForContrast, blendForSeparation, contrastRatio } from "../../../theme/color-utils";
 import { formatCompact } from "../../../utils/format";
+import { formatStrikeLabel } from "../../../utils/options";
 import { formatOptionPrice, optionQuoteSide, optionSpread } from "./market-reference";
 import { formatCarryPercent, formatCostOfSpot } from "./carry";
 import type {
@@ -162,17 +163,13 @@ export function findNearestStrikeIndex(strikes: number[], targetStrike: number):
   return bestIndex;
 }
 
-export function formatStrikeLabel(strike: number): string {
-  // 15 significant digits keep every listed decimal but drop binary noise from
-  // computed strikes such as spot * 0.9.
-  return Number.isFinite(strike)
-    ? strike.toLocaleString("en-US", { maximumSignificantDigits: 15 }) : "—";
-}
-
-export function formatIv(value: number | undefined): string {
+export function formatIv(value: number | undefined, filled = false): string {
   // Providers send 0 for contracts with no implied volatility; "0.0%" would read
   // as a real quote of zero vol.
   if (value == null || !Number.isFinite(value) || value <= 0) return "\u2014";
+  // A filled figure leads with "~": it was read off the neighbouring strikes, not solved from a quote.
+  // Without the decimal it still fits the column at 100% and over.
+  if (filled) return value >= 0.9995 ? `~${Math.round(value * 100)}%` : `~${(value * 100).toFixed(1)}%`;
   return `${(value * 100).toFixed(1)}%`;
 }
 
@@ -311,7 +308,7 @@ function formatOptionContractCell(
     case "openInterest":
       return formatCompact(contract.openInterest, { fixedDecimals: true });
     case "iv":
-      return formatIv(row.impliedVolatility);
+      return formatIv(row.impliedVolatility, row.impliedVolatilityFilled);
     case "delta":
       return formatGreek(greeks?.delta);
     case "gamma":

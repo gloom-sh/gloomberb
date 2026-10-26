@@ -1,3 +1,4 @@
+import { logFailure } from "../../../utils/log-failure";
 import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   DataTableView,
@@ -8,6 +9,7 @@ import {
   type PaneFooterSegment,
 } from "../../../components";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
+import { savedCopyFooterSegment } from "../../../components/layout/pane/footer";
 import { CountryFlag } from "../../../components/ui/country-flag";
 import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { useFxRatesMap } from "../../../market-data/hooks";
@@ -24,7 +26,7 @@ import { fxRateObservations } from "../shared/fx-rate-freshness";
 import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
 import { useAutoRefresh, useUpdatedAgo } from "../../../react/auto-refresh";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
-import { fxLegQuoteKey, fxLegReferenceRate, fxLegTargets, fxLegs, fxLegsBehind, liveFxLegEntry } from "./live-legs";
+import { fxBoardMoveDay, fxLegMoveReference, fxLegQuoteKey, fxLegReferenceRate, fxLegSavedAt, fxLegTargets, fxLegs, fxLegsBehind, liveFxLegEntry } from "./live-legs";
 import { CURRENCY_FLAG_REGIONS, FX_CURRENCIES, formatRate, resolveCurrencies, type FxCurrency } from "./pairs";
 import { crossMovePercent, directionTint, nextTintLevel } from "./direction";
 import { fxMatrixSettings } from "./settings";
@@ -91,20 +93,23 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
     }
     return references;
   }, [legEntries, legs, rates]);
-  // A cell's direction is its cross against the pair's previous close. Only a
-  // leg whose rate is the live quote's and whose quote carries a previous close
-  // counts, USD (the base) as 1: the first rate this pane drew is no daily
-  // reference, and a snapshot rate or a stale quote has no previous close to
-  // read against.
+  // A cell's direction is its cross against the pairs' previous daily closes,
+  // USD (the base) as 1: each leg's pair quote's close, whether the rate drawn
+  // is that quote's or a snapshot rate of the same FX trading day
+  // (fxLegMoveReference). The first rate this pane drew is no daily reference,
+  // and a stale quote has no close to read against.
   const directionReferences = useMemo(() => {
+    const coordinator = getSharedMarketDataCoordinator();
     const references = new Map<string, number>([["USD", 1]]);
+    // One close for the board, read off the clock (fxBoardMoveDay): a leg on another day has no move.
+    const boardDay = fxBoardMoveDay(legs.map((leg) => legEntries.get(fxLegQuoteKey(leg))), Date.now());
     for (const leg of legs) {
-      if (!liveEntries.has(leg.currency)) continue;
-      const reference = fxLegReferenceRate(leg, legEntries.get(fxLegQuoteKey(leg)));
-      if (reference != null) references.set(leg.currency, reference);
+      const drawn = liveEntries.get(leg.currency) ?? coordinator?.getFxEntry(leg.currency);
+      const reference = fxLegMoveReference(leg, legEntries.get(fxLegQuoteKey(leg)), drawn, boardDay);
+      if (reference) references.set(leg.currency, reference.rate);
     }
     return references;
-  }, [legEntries, legs, liveEntries]);
+  }, [legEntries, legs, liveEntries, snapshotRates]);
   // The step each cell showed last, which a tick near a boundary keeps.
   const tintLevels = useRef(new Map<string, number>());
   // Export the provenance of this render's rates, even if a provider response
@@ -136,6 +141,14 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
   });
   const status = summarizeFxRates(currencies, rates, (currency) => rateEntries.get(currency));
   const statusText = fxStatusLabel(status);
+  // Offline, the rates drawn are the copies saved when they last refreshed: the footer says when, as other panes do.
+  const savedAt = legs.reduce<number | null>((oldest, leg) => {
+    const at = fxLegSavedAt(
+      liveEntries.has(leg.currency) ? resolveEntryData(legEntries.get(fxLegQuoteKey(leg))) : null,
+      rateEntries.get(leg.currency),
+    );
+    return at == null ? oldest : Math.min(oldest ?? at, at);
+  }, null);
   const snapshotFetchedAt = summarizeFxRates(currencies, snapshotRates, (currency) => (
     getSharedMarketDataCoordinator()?.getFxEntry(currency)
   )).latestFetchedAt;
@@ -156,7 +169,7 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
     if (!coordinator) return;
     for (const currency of codes) {
       if (currency === "USD") continue;
-      void coordinator.loadFxRate(currency, { forceRefresh: true }).catch(() => {});
+      void coordinator.loadFxRate(currency, { forceRefresh: true }).catch(logFailure("fx-matrix", "Refresh FX rate failed"));
     }
   }, []);
   const refresh = useCallback(() => reload(currencies), [currencies, reload]);
@@ -230,9 +243,10 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
     const info: PaneFooterSegment[] = [];
     if (status.loading > 0) info.push({ id: "loading", parts: [{ text: "loading", tone: "muted" }] });
     if (statusText) info.push({ id: "rates", parts: [{ text: statusText, tone: status.stale || status.unknownTime || status.unavailable ? "warning" : "muted" }] });
-    if (updatedAgo) info.push({ id: "updated", parts: [{ text: `fetched ${updatedAgo}`, tone: "muted" }] });
+    if (savedAt != null) info.push(savedCopyFooterSegment("updated", savedAt));
+    else if (updatedAgo) info.push({ id: "updated", parts: [{ text: `fetched ${updatedAgo}`, tone: "muted" }] });
     return { info };
-  }, [status.loading, statusText, updatedAgo]);
+  }, [savedAt, status.loading, statusText, updatedAgo]);
 
   return (
     <DataTableView<FxCurrency>

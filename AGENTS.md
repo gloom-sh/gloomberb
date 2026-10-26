@@ -4,6 +4,8 @@ Stack: Bun + OpenTUI
 
 Tests ([full policy](CONTRIBUTING.md#what-to-test)): be selective. Add or keep a test only when it protects behavior that is easy to break and hard to catch in review: parser/math/state complexity, async/cache/persistence behavior, integration boundaries, and regressions with a concrete failure mode that could plausibly return. Static metadata, default props, pass-through wiring, copied UI text and obvious behavior are weak targets. A bug-fix test is kept only when the bug came from non-obvious behavior or a boundary likely to regress, and a test is never kept just because it exists or adds coverage. When touching a test file, trim nearby low-value tests if the cleanup is clear and low-risk.
 
+Public text ([full rule](CONTRIBUTING.md#pull-requests)): pull request titles, descriptions, comments, commit messages and branch names are public. No internal tracker ids or links, no private repository names or links, no internal notes (deals, pricing plans, people, infrastructure); a change that needs a server change says "needs the matching server change".
+
 Use tmux to test terminal TUI changes (see the `tui-testing` skill). Always kill the tmux session when done.
 
 Shared machine: several agents often work on one host at the same time.
@@ -11,6 +13,7 @@ Shared machine: several agents often work on one host at the same time.
 - Never run bare `gloomberb`, `bun start` or `bun dev` from a non-interactive shell: the TUI never exits without a TTY, so the call hangs. Use a subcommand or `--help`, prefix risky commands with `timeout 60`, and run interactive checks only in tmux.
 - Throwaway profiles (`GLOOMBERB_HOME`) go on disk under `~/.cache/gloom-smoke/<task>`, never under `/tmp` (one profile is ~29k files and `/tmp` is a small tmpfs). Remove the profile and kill tmux when done.
 - Never message, stop, archive or kill other agents or their processes, and never ask them to wait. If the host is busy, retry later or report it.
+- Never use `git stash`: all worktrees of a repo share one stash list, so a pop or clear can take another agent's entries. Commit work in progress to your own branch instead.
 
 Pane footers/status bars show changing status such as loading, error, live/delayed, stale, or auth state. Preserve existing pane-specific action shortcuts there instead of duplicating them in body toolbars. Do not add fixed pane labels, row counts, or generic keyboard hints. Never show internal provider or source identifiers (`provider:*`, raw feed names) anywhere in a pane; say what the data is (real-time, 15m delayed, settlement, as of) instead. Gloom Cloud is the public market-data service. See `pane-conventions`.
 Recurring methodology, model assumptions, and usage explanations belong in docs, not always-visible pane text or new info buttons. Keep units, source dates, and active data failures in context. Use existing actions instead of adding duplicate toolbars.

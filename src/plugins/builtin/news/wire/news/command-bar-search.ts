@@ -7,6 +7,7 @@ import type {
   CommandBarSearchProvider,
   GloomPluginContext,
 } from "../../../../../types/plugin";
+import { abortable, settleWithin } from "../../../../../utils/async-deadline";
 import { formatFeedTime } from "../../../../../utils/datetime-format";
 import { logFailure } from "../../../../../utils/log-failure";
 import { openNewsStoryPane } from "./pop-out";
@@ -54,10 +55,19 @@ export function matchLoadedStories(
     .slice(0, limit);
 }
 
+/**
+ * How long a lookup waits for the feed to load before it answers with the
+ * stories the app already holds. The feed waits on its slowest source, so one
+ * feed that is down must not keep the command bar searching.
+ */
+const WARM_TIMEOUT_MS = 3_000;
+
 interface StorySearchDeps {
   getService(): NewsService | null;
   isSignedIn(): boolean;
   now(): number;
+  /** How long to wait for the feed to load. Default 3000. */
+  warmTimeoutMs?: number;
 }
 
 const defaultDeps: StorySearchDeps = {
@@ -66,22 +76,28 @@ const defaultDeps: StorySearchDeps = {
   now: Date.now,
 };
 
-let warming: Promise<unknown> | null = null;
+const warming = new WeakMap<NewsService, Promise<unknown>>();
 
 /**
  * Unless News Feed is open, the app may hold few stories or none, so a lookup
  * first loads the latest feed News Feed reads (the same request, delayed when
  * the account has no live news). The service keeps it for a while after, so
- * later lookups reuse it instead of asking again.
+ * later lookups reuse it instead of asking again. The wait ends when the
+ * feed has loaded, the lookup is abandoned, or `timeoutMs` passes; a load
+ * still running then carries on for the next lookup.
  */
-async function warmLatestStories(service: NewsService): Promise<void> {
+async function warmLatestStories(service: NewsService, signal: AbortSignal, timeoutMs: number): Promise<void> {
   if (service.getQueryState(NEWS_QUERY_PRESETS.feed).articles.length > 0) return;
-  warming ??= service.load(NEWS_QUERY_PRESETS.feed)
-    .catch(logFailure("news.command-bar-search", "Load news for command bar search failed", null))
-    .finally(() => {
-      warming = null;
-    });
-  await warming;
+  let loading = warming.get(service);
+  if (!loading) {
+    loading = service.load(NEWS_QUERY_PRESETS.feed)
+      .catch(logFailure("news.command-bar-search", "Load news for command bar search failed", null))
+      .finally(() => {
+        warming.delete(service);
+      });
+    warming.set(service, loading);
+  }
+  await settleWithin(abortable(loading, signal, "News lookup abandoned"), timeoutMs);
 }
 
 /**
@@ -104,7 +120,7 @@ export function createLoadedStorySearchProvider(
       if (deps.isSignedIn()) return [];
       const service = deps.getService();
       if (!service) return [];
-      await warmLatestStories(service);
+      await warmLatestStories(service, signal, deps.warmTimeoutMs ?? WARM_TIMEOUT_MS);
       if (signal.aborted) return [];
       const now = deps.now();
       return matchLoadedStories(service.listArticles(), query).map((article) => ({

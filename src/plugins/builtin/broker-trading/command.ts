@@ -1,0 +1,103 @@
+import type { BrokerAdapter } from "../../../types/broker";
+import type { BrokerInstanceConfig } from "../../../types/config";
+import type { BrokerContractRef } from "../../../types/instrument";
+import type { CommandDef, GloomPluginContext, PinTickerOptions } from "../../../types/plugin";
+import type { BrokerOrder } from "../../../types/trading";
+import { strategyContract, type StrategyIntentLeg } from "./strategy";
+
+export interface TradeIntent {
+  action: "BUY" | "SELL";
+  quantity?: number;
+  limitPrice?: number;
+  /** Load this working order into the ticket to change it, as its edit button does. */
+  modify?: BrokerOrder;
+  /**
+   * A strategy to trade as one spread on the ticker the ticket opens (its
+   * underlying); `quantity` then counts spreads.
+   */
+  legs?: StrategyIntentLeg[];
+}
+
+/** An enabled profile can place and preview orders for this instrument. */
+export function brokerCanTrade(
+  profiles: readonly BrokerInstanceConfig[],
+  getBrokerAdapter: (brokerType: string) => BrokerAdapter | undefined | null,
+  symbol: string,
+  secType = "STK",
+): boolean {
+  return profiles.some((profile) => {
+    if (profile.enabled === false) return false;
+    const adapter = getBrokerAdapter(profile.brokerType);
+    const contract: BrokerContractRef = { brokerId: adapter?.id ?? "", brokerInstanceId: profile.id, symbol, secType };
+    return !!adapter?.placeOrder && !!adapter.previewOrder && !!adapter.getTradingCapabilities?.(profile, contract).orderTypes.length;
+  });
+}
+
+/** An enabled profile takes a spread of this many legs on this underlying. */
+export function brokerCanTradeStrategy(
+  profiles: readonly BrokerInstanceConfig[],
+  getBrokerAdapter: (brokerType: string) => BrokerAdapter | undefined | null,
+  underlying: string,
+  legs: number,
+): boolean {
+  return profiles.some((profile) => {
+    if (profile.enabled === false) return false;
+    const adapter = getBrokerAdapter(profile.brokerType);
+    if (!adapter?.placeOrder || !adapter.previewOrder) return false;
+    const capabilities = adapter.getTradingCapabilities?.(profile, strategyContract({ brokerId: adapter.id, brokerInstanceId: profile.id, symbol: underlying, secType: "STK" }));
+    return !!capabilities?.orderTypes.length && legs >= 2 && legs <= (capabilities.maxLegs ?? 0);
+  });
+}
+
+const pendingIntents = new Map<string, TradeIntent>();
+
+/** Only the opaque token enters saved pane state; a draft cannot replay after restart. */
+export function createTradeIntent(value: TradeIntent): string {
+  while (pendingIntents.size >= 32) pendingIntents.delete(pendingIntents.keys().next().value!);
+  const id = crypto.randomUUID();
+  pendingIntents.set(id, structuredClone(value));
+  return id;
+}
+
+export function takeTradeIntent(id: string | null): TradeIntent | undefined {
+  if (!id) return;
+  const intent = pendingIntents.get(id);
+  pendingIntents.delete(id);
+  return intent;
+}
+
+function positiveDecimal(value: string | undefined, label: string): number {
+  if (!value || !/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(value) || !Number.isFinite(Number(value)) || Number(value) <= 0) {
+    throw new Error(`${label} must be a positive decimal number.`);
+  }
+  return Number(value);
+}
+
+export function parseTradeShortcut(arg: string): Record<string, string> {
+  const parts = arg.trim().split(/\s+/);
+  if (parts.length < 2 || parts.length > 3) throw new Error("Use BUY or SELL followed by ticker, quantity, and an optional limit price.");
+  const symbol = parts[0]!.toUpperCase();
+  if (!/^[A-Z0-9^][A-Z0-9.^:/=_-]*$/.test(symbol) || !/[A-Z]/.test(symbol)) throw new Error("Enter a ticker symbol before the quantity.");
+  const quantity = positiveDecimal(parts[1], "Quantity");
+  const limitPrice = parts[2] === undefined ? undefined : positiveDecimal(parts[2], "Limit price");
+  return { symbol, quantity: String(quantity), ...(limitPrice === undefined ? {} : { limitPrice: String(limitPrice) }) };
+}
+
+/** `selection`: a listing the caller chose, such as one contract of an options chain. */
+export function openTradeTicket(ctx: Pick<GloomPluginContext, "pinTicker">, symbol: string, intent: TradeIntent, selection?: Pick<PinTickerOptions, "instrument" | "listing">): void {
+  ctx.pinTicker(symbol, { ...selection, tabId: "broker-trade", tabState: { brokerTradeIntent: createTradeIntent(intent) } });
+}
+
+export function createTradeCommand(ctx: Pick<GloomPluginContext, "pinTicker">, action: "BUY" | "SELL", supported: (symbol: string) => boolean = () => true): CommandDef {
+  return {
+    id: `broker-${action.toLowerCase()}-ticket`, label: action === "BUY" ? "Buy" : "Sell",
+    description: "Open a broker order ticket for review", keywords: [action.toLowerCase(), "trade", "order", "broker"],
+    category: "portfolio", shortcut: action,
+    shortcutArg: { kind: "text", placeholder: "ticker quantity [limit price]", parse: parseTradeShortcut },
+    execute(values) {
+      const input = parseTradeShortcut([values?.symbol ?? "", values?.quantity ?? "", ...(values?.limitPrice === undefined ? [] : [values.limitPrice])].join(" "));
+      if (!supported(input.symbol!)) throw new Error(`Connect a broker that supports ${input.symbol} in Brokers.`);
+      openTradeTicket(ctx, input.symbol!, { action, quantity: Number(input.quantity), ...(input.limitPrice === undefined ? {} : { limitPrice: Number(input.limitPrice) }) });
+    },
+  };
+}

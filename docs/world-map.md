@@ -8,7 +8,7 @@
 | `MAP venues` | Trading venues alone, with open status, local time and the next session change |
 | `MAP ships` | Ships and shipping chokepoints |
 | `MAP ports` | Ports with weekly calls and trade |
-| `MAP energy` | Pipelines, oil and gas fields and LNG terminals, all in the United States (the terminals as of 31 Aug 2023); a search elsewhere says so |
+| `MAP energy` | Pipelines, oil and gas fields and LNG terminals, all in the United States (the footer dates the terminals' capacity list); a search elsewhere says so |
 | `MAP air` | Airports, and flights where they are switched on |
 
 ## Layers
@@ -21,13 +21,13 @@ Dense layers show counts until you zoom in. On the desktop and the web the map z
 
 ## Series in G
 
-`GEO:<name>` charts a map series beside anything else, for example `G XOM, GEO:HORMUZ`. `CHOKE` opens the main chokepoints' daily transits, `CHOKE SUEZ` one of them. Transits are published some days after the ships pass, so a chart of map series alone ends at its newest observation rather than today, and the legend leads with that date (`Oct 4`); a series whose last value is older carries its own date. Panned or zoomed back, the chart says how far its data goes in the footer (`newest Oct 11`). The chart editor's series search finds map series by name. `CORR FRO, STNG, GEO:HORMUZ` correlates a map series with tickers; see [research data](research-data.md#charts-comparisons-and-correlations) for how a count is paired with returns.
+`GEO:<name>` charts a map series beside anything else, for example `G XOM, GEO:HORMUZ`. `CHOKE` opens the main chokepoints' daily transits, `CHOKE SUEZ` one of them. A name or alias finds its strait (`CHOKE Hormuz`, `CHOKE Bab el-Mandeb`); text that names none, such as a ticker, says so and lists the main ones instead of opening an empty chart. The six together are named `Suez`, `Panama`, `Hormuz`, `Bab el-Mandeb`, `Malacca` and `Bosphorus` in the legend, so each shows whole. Transits are published some days after the ships pass, so a chart of map series alone ends at its newest observation rather than today, and the legend leads with that date (`Oct 4`); a series whose last value is older carries its own date. Panned or zoomed back, the chart says how far its data goes in the footer (`newest Oct 11`). The chart editor's series search finds map series by name. `CORR FRO, STNG, GEO:HORMUZ` correlates a map series with tickers; see [research data](research-data.md#charts-comparisons-and-correlations) for how a count is paired with returns.
 
 ## From the shell
 
-`gloomberb fn MAP --layer vessels --json` returns a layer's table with its linked tickers; `gloomberb shot MAP ships` saves a picture of the map.
+`gloom fn MAP --layer vessels --json` returns a layer's table with its linked tickers; `gloom shot MAP ships` saves a picture of the map. `--query` filters a table by any field; on ships, the name or ticker of a listed cruise or container line lists the ships of its brands (`--query "Royal Caribbean"` or `--query RCL`), the ticker matching only its fleet.
 
-The chokepoints' transits and the ports' calls and trade are published by IMF PortWatch, from ships' position reports (AIS). `fn CHOKE`, `fn MAP ports`, their screenshots and their exports cite it as the source and publisher (`Source: IMF PortWatch · observed Sun 11 Oct · lag 6d` under `shot CHOKE`, `# Publisher: IMF PortWatch` in CSV), and `gloomberb catalog transits` lists it in the Publisher column. Layers that do not name a publisher cite Gloom Cloud.
+The chokepoints' transits and the ports' calls and trade are published by IMF PortWatch, from ships' position reports (AIS). `fn CHOKE`, `fn MAP ports`, their screenshots and their exports cite it as the source and publisher (`Source: IMF PortWatch · observed Sun 11 Oct · lag 6d` under `shot CHOKE`, `# Publisher: IMF PortWatch` in CSV), and `gloom catalog transits` lists it in the Publisher column. Layers that do not name a publisher cite Gloom Cloud.
 
 ## Map data
 

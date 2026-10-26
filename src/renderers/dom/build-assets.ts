@@ -2,6 +2,10 @@ import { readFile, writeFile } from "fs/promises";
 import { dirname, join, relative, resolve } from "path";
 import type { BunPlugin } from "bun";
 import { TITLEBAR_OVERLAY_HEIGHT_PX } from "../../components/layout/titlebar-overlay";
+import { getThemeColors } from "../../theme/colors";
+import { themeCssVariables } from "../../theme/ui-tokens";
+import { DEFAULT_THEME } from "../../theme/themes";
+import { bootFrameBuildId, bootFrameScript } from "./boot-frame-page";
 
 /** Imports whose path ends with the first entry resolve to the second, relative to the view directory. */
 type AliasRule = readonly [string, string];
@@ -12,9 +16,18 @@ type PageOptions = {
   failureMessage: string;
   missingEntryMessage: string;
   title: string;
-  loadingText: string;
+  /** Text the page shows until its script draws, for a page with no launch frame. */
+  loadingText?: string;
   bootstrapScript: string;
+  /** Draw the launch frame (boot-frame.ts) from where this host keeps it. */
+  bootFrame?: PageBootFrame;
 };
+
+/** Where a page reads its launch frame from: JavaScript expressions run before its script loads. */
+export interface PageBootFrame {
+  source: string;
+  skip?: string;
+}
 
 interface ViewBundleOptions {
   entrypoint: string;
@@ -40,7 +53,7 @@ function minifyOption(keepNames: boolean | undefined) {
 }
 
 // From this file rather than the working directory, so a build started from
-// any folder (`gloomberb shot` run from a checkout or a package install) finds
+// any folder (`gloom shot` run from a checkout or a package install) finds
 // the sources.
 const ELECTROBUN_VIEW_DIR = join(import.meta.dir, "..", "electrobun", "view");
 
@@ -109,7 +122,7 @@ export async function buildViewBundle({
 }
 
 export async function writeElectrobunViewPage(options: PageOptions): Promise<string> {
-  const { script } = await buildViewBundle({
+  const { script, stylesheet: bundledStylesheet } = await buildViewBundle({
     entrypoint: options.entrypoint,
     outdir: options.outdir,
     aliasRules: options.aliasRules,
@@ -125,8 +138,23 @@ export async function writeElectrobunViewPage(options: PageOptions): Promise<str
   const stylesheet = await readViewStylesheet();
   const entrySrc = `./${relative(options.outdir, script).replaceAll("\\", "/")}`;
   const htmlPath = join(options.outdir, "index.html");
-  await writeFile(htmlPath, renderElectrobunViewHtml({ ...options, stylesheet, entrySrc }));
+  const bootFrame = options.bootFrame
+    ? { ...options.bootFrame, build: await pageBuildId(script, bundledStylesheet ?? null, stylesheet) }
+    : undefined;
+  await writeFile(htmlPath, renderElectrobunViewHtml({ ...options, stylesheet, entrySrc, bootFrame }));
   return htmlPath;
+}
+
+/** Names a page's build for its launch frame, from the files that draw it. */
+export async function pageBuildId(script: string, stylesheetPath: string | null, inlineStylesheet = ""): Promise<string> {
+  const css = (stylesheetPath ? await readFile(stylesheetPath, "utf8") : "") + inlineStylesheet;
+  return bootFrameBuildId(await readFile(script), css);
+}
+
+/** The launch frame's inline script, with the default theme's colours for the bare shell. */
+export function pageBootFrameScript(bootFrame: PageBootFrame & { build: string }): string {
+  const shellStyle = themeCssVariables(getThemeColors(DEFAULT_THEME)).map(([name, value]) => `${name}: ${value};`).join(" ");
+  return bootFrameScript({ ...bootFrame, shellStyle });
 }
 
 /** The DOM renderer's stylesheet, sized for the titlebar, which a view page inlines. */
@@ -134,14 +162,24 @@ export async function readViewStylesheet(): Promise<string> {
   return withTitlebarOverlayHeight(await readFile(join(DOM_RENDERER_DIR, "styles.css"), "utf8"));
 }
 
-/** A view page: the stylesheet inline, the bootstrap script, then the bundle at `entrySrc`. */
+/**
+ * A view page: the stylesheet inline, the bootstrap script, the launch frame
+ * when the page has one, then the bundle at `entrySrc`.
+ */
 export function renderElectrobunViewHtml({
   title,
   loadingText,
   stylesheet,
   bootstrapScript,
+  bootFrame,
   entrySrc,
-}: Pick<PageOptions, "title" | "loadingText" | "bootstrapScript"> & { stylesheet: string; entrySrc: string }): string {
+}: Pick<PageOptions, "title" | "loadingText" | "bootstrapScript"> & {
+  stylesheet: string;
+  entrySrc: string;
+  bootFrame?: PageBootFrame & { build: string };
+}): string {
+  const loading = loadingText ? `<div class="gloom-loading">${loadingText}</div>` : "";
+  const frameScript = bootFrame ? `\n    <script>\n${pageBootFrameScript(bootFrame)}\n    </script>` : "";
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -151,10 +189,10 @@ export function renderElectrobunViewHtml({
     <style>${stylesheet}</style>
   </head>
   <body style="margin:0;background:#000;">
-    <div id="root"><div class="gloom-loading">${loadingText}</div></div>
+    <div id="root">${loading}</div>
     <script>
 ${bootstrapScript}
-    </script>
+    </script>${frameScript}
     <script type="module" src="${entrySrc}"></script>
   </body>
 </html>

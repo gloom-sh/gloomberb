@@ -1,8 +1,9 @@
 import { Box, Text } from "../../../../ui";
 import { TextAttributes } from "../../../../ui";
-import { colors, priceColor } from "../../../../theme/colors";
+import { colors, priceColor, shownPriceColor } from "../../../../theme/colors";
 import type { AppState } from "../../../../state/app/context";
-import type { PaneFooterSegment } from "../../../../components/layout/pane/footer/model";
+import { savedCopyFooterSegment, type PaneFooterSegment } from "../../../../components/layout/pane/footer/model";
+import { oldestSavedCopyAt } from "../../../../data/saved-copies";
 import type { BrokerConnectionStatus } from "../../../../types/broker";
 import type { TickerFinancials } from "../../../../types/financials";
 import type { Portfolio, TickerRecord } from "../../../../types/ticker";
@@ -224,6 +225,15 @@ export function resolvePortfolioAccountState(
   };
 }
 
+/**
+ * What the day's move is measured from, after it, as every change line says
+ * it ("vs Fri 16 Oct close", "vs mixed closes"), so a narrow row never shows
+ * the move without it.
+ */
+function dayBasisPart(totals: Pick<PortfolioSummaryTotals, "dayChangeBasis">): PortfolioSummarySegment["parts"] {
+  return totals.dayChangeBasis ? [{ text: totals.dayChangeBasis, tone: "muted" }] : [];
+}
+
 /** Headline numbers in priority order, so the narrowest header row keeps the most important ones. */
 export function buildPortfolioSummarySegments({
   totals,
@@ -257,7 +267,8 @@ export function buildPortfolioSummarySegments({
     return totals.watchlistCount > 0
       ? [createSummarySegment("avg-day", [
         { text: "Avg Day", tone: "label" },
-        { text: formatPercentRaw(totals.avgWatchlistChange), tone: "value", color: priceColor(totals.avgWatchlistChange), bold: true },
+        { text: formatPercentRaw(totals.avgWatchlistChange), tone: "value", color: shownPriceColor(totals.avgWatchlistChange, 2), bold: true },
+        ...dayBasisPart(totals),
       ])]
       : [];
   }
@@ -331,7 +342,9 @@ export function buildPortfolioSummarySegments({
   candidates.push(createSummarySegment("day", [
     { text: "Day", tone: "label" },
     { text: money(accountMetrics.dailyPnl, true), tone: "value", color: priceColor(accountMetrics.dailyPnl), bold: true },
-    { text: `(${formatPercentRaw(accountMetrics.dailyPnlPct)})`, tone: "muted", color: priceColor(accountMetrics.dailyPnlPct) },
+    { text: `(${formatPercentRaw(accountMetrics.dailyPnlPct)})`, tone: "muted", color: shownPriceColor(accountMetrics.dailyPnlPct, 2) },
+    // The broker's own day is from its account's close, not the quotes': it names none.
+    ...(accountMetrics.brokerDay || !Number.isFinite(accountMetrics.dailyPnl) ? [] : dayBasisPart(totals)),
   ]));
   candidates.push(createSummarySegment("pnl", [
     { text: !Number.isFinite(account?.unrealizedPnl)
@@ -339,7 +352,7 @@ export function buildPortfolioSummarySegments({
       : !Number.isFinite(account?.unrealizedPnl)
         && totals.unrealizedPnlBasis === "mixed" ? "Mixed P&L" : "P&L", tone: "label" },
     { text: money(accountMetrics.unrealizedPnl, true), tone: "value", color: priceColor(accountMetrics.unrealizedPnl), bold: true },
-    { text: `(${formatPercentRaw(accountMetrics.unrealizedPnlPct)})`, tone: "muted", color: priceColor(accountMetrics.unrealizedPnlPct) },
+    { text: `(${formatPercentRaw(accountMetrics.unrealizedPnlPct)})`, tone: "muted", color: shownPriceColor(accountMetrics.unrealizedPnlPct, 2) },
   ]));
 
   // A book with shorts splits its gross into the two sides, after the headline numbers.
@@ -434,11 +447,13 @@ export function buildPortfolioFooterSegments({
     : [];
   // Cached account numbers stay on screen when a live refresh fails, so the failure sits beside their date.
   if (accountState) return [...source, ...accountStatus];
+  const quotes = sortedTickers.map((ticker) => financialsMap.get(ticker.metadata.ticker)?.quote);
+  // Offline, the quotes listed are copies saved when they last refreshed: the footer says when, in place of the quote time.
+  const savedAt = refreshingSize > 0 ? null : oldestSavedCopyAt(quotes);
+  if (savedAt != null) return [...accountStatus, savedCopyFooterSegment("refresh", savedAt)];
   if (isPortfolioTab ? !totals.hasPositions && !accountStatusText : totals.watchlistCount === 0) return [];
 
-  const lastRefreshTimestamp = getMostRecentQuoteUpdate(
-    sortedTickers.map((ticker) => financialsMap.get(ticker.metadata.ticker)?.quote),
-  );
+  const lastRefreshTimestamp = getMostRecentQuoteUpdate(quotes);
   const refreshText = refreshingSize > 0
     ? "Refreshing..."
     : lastRefreshTimestamp != null

@@ -2,6 +2,7 @@ import type { CryptoAssetKind, CryptoMarketAsset, CryptoPeg } from "../../../api
 import type { DataTableColumn } from "../../../components";
 import { getTableWidth } from "../../../components/ui/table-layout";
 import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors";
+import { delayedFeedLagMs } from "../../../market-data/market/freshness";
 import type { QueryEntry } from "../../../market-data/result-types";
 import type { PricePoint, Quote } from "../../../types/financials";
 import type { HeadlessPaneFreshness } from "../../../types/headless";
@@ -12,15 +13,24 @@ import { formatUtcWeekdayTime } from "../../../utils/utc-time";
 
 const DAY_MS = 86_400_000;
 
-/**
- * How the board's report, capture and footer date its prices: crypto trades around the clock, so a price an hour old
- * has stopped refreshing, and coins are quoted apart, so the line says how old the oldest is.
- */
-export const CRYPTO_BOARD_FRESHNESS: HeadlessPaneFreshness = { maxAgeMinutes: 60, oldestAge: true };
+/** The venue code every coin is quoted under (`cryptoQuoteKey`). */
+const CRYPTO_EXCHANGE = "CCC";
 
-export const CRYPTO_TABS: Array<{ value: CryptoAssetKind; label: string }> = [
+/**
+ * How the board's report, capture and footer date its prices. Coins are priced apart, and a coin that has not traded
+ * lately keeps its own time, so the line says when the newest price is from and how old the oldest is, and no more: a
+ * price read from the board is neither real-time nor held back, so it claims no feed (`ageOnly`). Crypto trades
+ * around the clock, so a newest price an hour old means the board has stopped refreshing.
+ */
+export const CRYPTO_BOARD_FRESHNESS: HeadlessPaneFreshness = { ageOnly: true, maxAgeMinutes: 60 };
+
+/** A tab of the board: a list of assets, or DeFi's value locked. */
+export type CryptoTab = CryptoAssetKind | "defi";
+
+export const CRYPTO_TABS: Array<{ value: CryptoTab; label: string }> = [
   { value: "coin", label: "Coins" },
   { value: "stablecoin", label: "Stablecoins" },
+  { value: "defi", label: "DeFi" },
 ];
 
 /** A stablecoin's supply as its row shows it; every field is null on the coin tab and for a coin the supply list lacks. */
@@ -57,6 +67,11 @@ export interface CryptoRow extends CryptoRowSupply {
   price: number;
   /** The price as the board prints it. */
   priceText: string;
+  /**
+   * The move since 00:00 UTC, from the previous UTC day's close, as `quote`
+   * measures a coin (CRYPTO_CHANGE_BASIS_LABEL); null when the coin has no
+   * such close to measure from.
+   */
   changePercent: number | null;
   return7d: number | null;
   return30d: number | null;
@@ -67,7 +82,10 @@ export interface CryptoRow extends CryptoRowSupply {
   history: PricePoint[];
   /** Epoch ms of the price shown. */
   updatedAt: number | null;
+  /** The price is a streamed quote, so it moves between board refreshes. */
   live: boolean;
+  /** The price is a quote from a delayed feed, held back from the market. A price read from the board is not. */
+  delayed: boolean;
   /** A stablecoin's peg; null for a coin, or a server that does not send it. */
   peg: CryptoPeg | null;
   /** `USD`, `EUR 1.1242` (the target in dollars), `USD yield`; empty without a peg. */
@@ -85,7 +103,7 @@ export interface CryptoRow extends CryptoRowSupply {
 }
 
 export const cryptoQuoteKey = (asset: Pick<CryptoMarketAsset, "symbol">) =>
-  buildQuoteKey({ symbol: asset.symbol, exchange: "CCC" });
+  buildQuoteKey({ symbol: asset.symbol, exchange: CRYPTO_EXCHANGE });
 
 const positive = (value: number | null | undefined): value is number => isFiniteNumber(value) && value > 0;
 
@@ -100,8 +118,27 @@ function closeDaysAgo(asset: CryptoMarketAsset, days: number, now: number): numb
   return isFiniteNumber(close) && close > 0 ? close : null;
 }
 
-const percentChange = (price: number, reference: number | null) =>
+const percentChange = (price: number, reference: number | null | undefined) =>
   reference != null && reference > 0 ? (price / reference - 1) * 100 : null;
+
+/** What the board's day change is measured from, as `quote` labels a coin's: its header says it (CHG% UTC). */
+export const CRYPTO_CHANGE_BASIS_LABEL = "since 00:00 UTC";
+
+/**
+ * A coin's move since 00:00 UTC, the basis `quote` gives a coin: its live
+ * quote's while that quote is measured from the previous close, otherwise the
+ * board's, which Gloom Cloud measures the same way (with a live price, from
+ * the board's previous close). A coin either says moves over 24 hours, or not
+ * at all, has none here, so the column never mixes the two.
+ */
+function utcDayChangePercent(asset: CryptoMarketAsset, quote: Quote | null, price: number): number | null {
+  if (quote && quote.changeBasis == null) {
+    if (isFiniteNumber(quote.changePercent)) return quote.changePercent;
+    if (positive(quote.previousClose)) return percentChange(price, quote.previousClose);
+  }
+  if (asset.changeBasis != null) return null;
+  return quote ? percentChange(price, asset.previousClose) : asset.changePercent;
+}
 
 /** A live quote replaces the board's snapshot once it is at least as new. */
 function liveQuote(
@@ -134,11 +171,7 @@ function buildCryptoRow(
   now = Date.now(),
 ): CryptoRow {
   const price = quote?.price ?? asset.price;
-  const changePercent = quote && isFiniteNumber(quote.changePercent)
-    ? quote.changePercent
-    : quote
-      ? percentChange(price, asset.previousClose)
-      : asset.changePercent;
+  const changePercent = utcDayChangePercent(asset, quote, price);
   // Supply moves slowly; the price is what makes market cap live. Scaling the
   // reported cap keeps the source's supply basis and the board's ranking.
   const marketCap = isFiniteNumber(asset.marketCap)
@@ -180,6 +213,7 @@ function buildCryptoRow(
     history,
     updatedAt: updated,
     live: !!quote && quote.delivery === "stream" && quote.stale !== true,
+    delayed: quote?.dataSource === "delayed",
     peg,
     pegText: formatPegTarget(peg),
     offPegBp: offPegBasisPoints(price, peg),
@@ -293,9 +327,27 @@ export function withCryptoSupply(rows: readonly CryptoRow[], supply: ReadonlyMap
   });
 }
 
-/** What a capture and the footer read of each row: when its price is from, and whether it is streaming live. */
-export function cryptoRowObservations(rows: readonly CryptoRow[]): Array<{ quoteTime: string; dataSource: "live" | "delayed" }> {
-  return rows.flatMap((row) => row.updatedAt == null ? [] : [{ quoteTime: new Date(row.updatedAt).toISOString(), dataSource: row.live ? "live" as const : "delayed" as const }]);
+/** One row's price as a capture and the footer date it: when it is from and, when it says so, how current it is. */
+type CryptoRowObservation = {
+  quoteTime: string;
+  dataSource?: "live" | "delayed";
+  delayMinutes?: number;
+};
+
+/**
+ * What a capture and the footer read of each row: when its price is from and, when it is a feed's, how current it
+ * is. A quote from a delayed feed is held back by the feed's lag. A price read from the board (a coin the live feed
+ * does not carry, every coin without real-time access) states no feed, and is dated by its own time. A streamed row
+ * says `live` only when the whole view is streamed: one price minutes old beside it, and the line would call
+ * minutes-old data live.
+ */
+export function cryptoRowObservations(rows: readonly CryptoRow[]): CryptoRowObservation[] {
+  const dated = rows.flatMap((row) => row.updatedAt == null ? [] : [{ row, quoteTime: new Date(row.updatedAt).toISOString() }]);
+  const allLive = dated.length > 0 && dated.every(({ row }) => row.live && !row.delayed);
+  return dated.map(({ row, quoteTime }): CryptoRowObservation => {
+    if (row.delayed) return { quoteTime, dataSource: "delayed", delayMinutes: delayedFeedLagMs(CRYPTO_EXCHANGE) / 60_000 };
+    return allLive ? { quoteTime, dataSource: "live" } : { quoteTime };
+  });
 }
 
 /**
@@ -389,7 +441,7 @@ const COLUMN_SPECS: CryptoColumnSpec[] = [
   { id: "code", label: "COIN", width: 7, align: "left" },
   { id: "name", label: "NAME", width: 10, align: "left", optional: 1 },
   { id: "price", label: "PRICE", width: 13, align: "right" },
-  { id: "changePercent", label: "CHG%", width: 8, align: "right" },
+  { id: "changePercent", label: "CHG% UTC", title: "Change since 00:00 UTC", width: 8, align: "right" },
   { id: "return7d", label: "7D%", width: 8, align: "right" },
   { id: "return30d", label: "30D%", width: 8, align: "right", optional: 3 },
   { id: "return1y", label: "1Y%", width: 10, align: "right", optional: 5 },
@@ -415,7 +467,7 @@ const STABLECOIN_COLUMN_SPECS: CryptoColumnSpec[] = [
   { id: "low24hAt", label: "LOW UTC", width: 9, align: "left" },
   { id: "high24h", label: "24H HIGH", width: 8, align: "right", optional: 1 },
   { id: "high24hAt", label: "HIGH UTC", width: 9, align: "left", optional: 2 },
-  { id: "changePercent", label: "CHG%", width: 8, align: "right", optional: 5 },
+  { id: "changePercent", label: "CHG% UTC", title: "Change since 00:00 UTC", width: 8, align: "right", optional: 5 },
   { id: "return7d", label: "7D%", width: 8, align: "right", optional: 6 },
   { id: "return30d", label: "30D%", width: 8, align: "right", optional: 8 },
   { id: "return1y", label: "1Y%", width: 10, align: "right", optional: 9 },

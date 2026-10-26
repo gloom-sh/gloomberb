@@ -141,6 +141,9 @@ export function listingAbroadVenue(key: string): string | null {
   return venue && zone && zone !== "UTC" && !US_TIME_ZONES.has(zone) ? venue : null;
 }
 
+/** What `ticker` and ETF say of a fund listed abroad: the facts Gloom collects are the US-listed funds'. */
+export const US_FUND_FACTS_ONLY = "Fund facts (fee, NAV, premium) cover US-listed funds only.";
+
 /**
  * The symbol data that covers US listings only reads a listing by: AAPL for
  * AAPL:NASDAQ, ^SPX as it is. A listing abroad throws, naming what covers US
@@ -161,6 +164,74 @@ export function usListingSymbol(key: string, what: string): string {
  */
 export function noSecReportsNotice(listing: { symbol: string; exchange: string; name: string | null }): string {
   return `${shortListingTitle(listing)} files no SEC reports.`;
+}
+
+/** The country of a venue abroad, ISO 3166 alpha-2, for the companies an SEC report may list there. */
+const VENUE_COUNTRY: Readonly<Record<string, string>> = {
+  TSX: "CA", TSXV: "CA", CSE: "CA", NEO: "CA",
+  LSE: "GB",
+  ASX: "AU", CXA: "AU", NZX: "NZ",
+  SWX: "CH",
+  XETRA: "DE", FWB2: "DE", EPA: "FR", AMS: "NL", BRU: "BE", LIS: "PT", BIT: "IT", MCE: "ES", ISE: "IE",
+  SFB: "SE", HEL: "FI", CPH: "DK", OSL: "NO", ICEX: "IS", WSE: "PL", PSE: "CZ", VIE: "AT", WBDM: "AT",
+  JPX: "JP", HKEX: "HK", KRX: "KR", KOSDAQ: "KR", TWSE: "TW", TPEX: "TW", SSE: "CN", SZSE: "CN",
+  NSE: "IN", BSE: "IN", SGX: "SG", SET: "TH",
+  BMV: "MX", B3: "BR", BYMA: "AR", JSE: "ZA", TASE: "IL", BIST: "TR", TADAWUL: "SA",
+};
+
+/** The European Economic Area, whose issuers report managers' dealings under the Market Abuse Regulation. */
+const EEA = new Set(["AT", "BE", "CZ", "DE", "DK", "ES", "FI", "FR", "IE", "IS", "IT", "NL", "NO", "PL", "PT", "SE"]);
+
+/** Insider reports outside the SEC by the name they go by, by the issuer's country. */
+const HOME_INSIDER_REPORTS: Readonly<Record<string, string>> = {
+  CA: "Canadian insider reports (SEDI)",
+  GB: "UK insider reports (PDMR notifications)",
+  AU: "Australian insider reports (Appendix 3Y)",
+};
+
+/** The country of a venue abroad that a company's insiders may report in (TSX is CA); null for a US venue or one not placed. */
+export function venueHomeCountry(exchange: string | null | undefined): string | null {
+  return VENUE_COUNTRY[canonicalExchange(exchange ?? "")] ?? null;
+}
+
+/** A country's English name ("Japan"), or null when the runtime has none. */
+function countryName(code: string): string | null {
+  try {
+    const name = new Intl.DisplayNames(["en"], { type: "region" }).of(code);
+    return name && name !== code ? name : null;
+  } catch {
+    // Intentional ignore: a runtime without region names leaves the home market unnamed.
+    return null;
+  }
+}
+
+/**
+ * What a company from abroad's insiders report at home, which Form 4 data
+ * does not cover: "Canadian insider reports (SEDI) not covered." Where home
+ * is comes from the company's country (Gloom Cloud's issuer listings: RY in
+ * New York is Royal Bank of Canada), else its listing's venue abroad (RY:TSX).
+ * A foreign private issuer placed by neither gets its home market unnamed.
+ * Null for a US company, and for a US listing of a company that files as a
+ * domestic one, whose insiders file Form 4.
+ */
+export function homeInsiderReportsNote({ country, exchange, foreignPrivateIssuer = false }: {
+  /** The company's country, ISO 3166 alpha-2, when known. */
+  country?: string | null;
+  /** The listing's venue. */
+  exchange?: string | null;
+  foreignPrivateIssuer?: boolean;
+}): string | null {
+  const venueHome = venueHomeCountry(exchange) ?? "";
+  if (!venueHome && !foreignPrivateIssuer) return null;
+  // ZZ is the service's own word for a country it does not know.
+  const given = normalize(country ?? "");
+  const home = (given !== "ZZ" ? given : "") || venueHome;
+  if (home === "US") return null;
+  if (!home) return foreignPrivateIssuer ? "Home-market insider reports not covered." : null;
+  const named = HOME_INSIDER_REPORTS[home] ?? (EEA.has(home) ? "European insider reports (MAR managers' transactions)" : null);
+  if (named) return `${named} not covered.`;
+  const place = countryName(home);
+  return place ? `Insider reports filed in ${place} not covered.` : "Home-market insider reports not covered.";
 }
 
 /**

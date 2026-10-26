@@ -1,0 +1,13 @@
+#!/usr/bin/env bun
+
+// The package installs this as both `gloom` and `gloomberb`.
+//
+// Bun applies patchedDependencies only to the root project, so a global
+// `bun install -g` runs react-reconciler without
+// patches/react-reconciler@0.33.0.patch. Its dev build then records a
+// performance.measure for every component render, which Bun keeps forever.
+// The reconciler reads console.timeStamp once at load to decide, so hide it
+// before React is imported.
+delete console.timeStamp;
+
+await import("../src/cli/entry.ts");

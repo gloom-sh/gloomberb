@@ -13,7 +13,7 @@ import { useAutoRefresh } from "../../../react/auto-refresh";
 import { compareSortValues, nextHeaderSort, type SortPreference } from "../../../utils/sort-values";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { cachedCotBoard, loadCotBoard, loadCotDetail } from "./client";
-import { COT_CLASSES, COT_MAJOR_CODES, COT_SCOPES, cotChartSeries, cotClass, cotInteger, cotLegendValue, cotMarketName, cotScope, type CotScope } from "./model";
+import { COT_CLASSES, COT_MAJOR_CODES, COT_SCOPES, cotChartSeries, cotClass, cotContractUnitText, cotInteger, cotLegendValue, cotMarketName, cotScope, type CotScope } from "./model";
 
 const FAMILIES = [{ value: "legacy", label: "Legacy" }, { value: "disaggregated", label: "Disaggregated" }];
 const BOARD_COLUMNS: DataTableColumn[] = [
@@ -82,8 +82,8 @@ function CotBoard({ width, height, focused, family, initialCode }: PaneProps & {
   }, [data, query, scope, sort]);
   useAutoRefresh(resource.updatedAt, resource.load);
   // The class, scope and search controls live in the board's query bar, so
-  // their keys only work once the board is on screen.
-  const boardShown = !!data && !open;
+  // their keys work while it is on screen: over the board and while a class loads.
+  const boardShown = !open;
   useShortcut((event) => {
     if (!focused || open || event.targetEditable || event.ctrl || event.meta || event.alt || event.super) return;
     if (event.name === "r") { event.preventDefault(); void resource.reload(); }
@@ -99,8 +99,9 @@ function CotBoard({ width, height, focused, family, initialCode }: PaneProps & {
   usePaneNoticeFooter({ registrationId: "cot:board-notices", focused, enabled: !open, notices: data?.gaps ?? [] });
   usePaneStatusFooter({ registrationId: "cot:board", enabled: !open, loading: resource.loading, error: resource.error,
     info: data ? [{ id: "as-of", parts: [{ text: `CFTC futures only · ${data.asOf ?? "--"} · contracts`, tone: "muted" }] }] : [] });
-  if (!data && !open) return <PaneStatusBody loading={resource.loading} error={resource.error} empty={!resource.loading && !resource.error} subject="COT history" />;
+  // A class change reloads under the query bar, which stays.
   return <DataTableStackView<CotBoardRow> columns={BOARD_COLUMNS} items={rows} focused={focused && !searching}
+    status={data ? undefined : { loading: resource.loading, error: resource.error, empty: !resource.loading && !resource.error, subject: "COT history" }}
     rootWidth={width} rootHeight={height} selection={{ kind: "id", selectedId: selected, getId: (row) => row.contractCode, onChange: setSelected }}
     getItemKey={(row) => row.contractCode} onActivate={(row) => setOpen(row.contractCode)} freezeFirstColumn
     sortable sortColumnId={sort.columnId} sortDirection={sort.direction} onHeaderClick={(id) => setSort((current) => nextHeaderSort(current, id, { firstDirection: "desc" }))}
@@ -176,7 +177,8 @@ function CotDetail({ width, height, focused, code, family, traderClass, onClassC
   });
   usePaneNoticeFooter({ registrationId: "cot:detail-notices", focused, notices: [...(payload?.gaps ?? []), ...(data?.priceWarning ? [data.priceWarning] : []), ...partialRanks] });
   usePaneStatusFooter({ registrationId: "cot:detail", loading: resource.loading, error: resource.error,
-    info: payload ? [{ id: "as-of", parts: [{ text: `CFTC ${payload.asOf ?? "--"} · contracts${data?.priceAsOf ? ` · ${data.priceSymbol} ${data.priceAsOf}` : ""}`, tone: "muted" }] }] : [] });
+    // The unit the net is counted in, as `fn COT` titles it: what one contract is, where the report says.
+    info: payload ? [{ id: "as-of", parts: [{ text: `CFTC ${payload.asOf ?? "--"} · ${cotContractUnitText(payload.contract?.contractUnits) ?? "contracts"}${data?.priceAsOf ? ` · ${data.priceSymbol} ${data.priceAsOf}` : ""}`, tone: "muted" }] }] : [] });
   return <PaneStatusBody loading={resource.loading && !data} error={!data ? resource.error : null} empty={!!payload && !payload.contract} subject="COT contract">
     {payload && data ? <DataTableView columns={POSITION_COLUMNS} items={payload.positions} focused={focused} rootWidth={width} rootHeight={height}
       rootBefore={<ChartTableHeader width={width} height={height} tableRows={payload.positions.length} chart={chart}

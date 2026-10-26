@@ -28,11 +28,11 @@ EQS exposes selected consolidated latest KPI values and revenue/EPS guide change
 ## CLI and point-in-time reads
 
 ```sh
-gloomberb fn KPIS CRM --json
-gloomberb fn KPIS CRM --metric arr --basis reported --asOf 2026-09-30 --json
-gloomberb fn GUIDE DAL --from 2025-01-01 --to 2026-12-31 --json
-gloomberb shot KPIS CRM --tab chart --width 1280 --height 540 --output kpis.png
-gloomberb shot GUIDE DAL --tab evidence --width 720 --height 360 --output guidance.png
+gloom fn KPIS CRM --json
+gloom fn KPIS CRM --metric arr --basis reported --as-of 2026-09-30 --json
+gloom fn GUIDE DAL --from 2025-01-01 --to 2026-12-31 --json
+gloom shot KPIS CRM --tab chart --width 1280 --height 540 --output kpis.png
+gloom shot GUIDE DAL --tab evidence --width 720 --height 360 --output guidance.png
 ```
 
-The text report prints the pane's columns: fiscal labels (`FY2024`), values compact with their unit (`12.48B USD`), the scope in words and each row's disclosure date; `--csv` keeps the whole number. JSON includes structured observations, the metric dictionary, complete evidence, revision identifiers, coverage and access metadata. `asOf` applies a publication cutoff so later corrections and actuals cannot leak into earlier research. Date, basis and metric REST filters require Pro; the Free preview remains fixed, so the report picks `--metric` out of the preview itself. A metric the preview has no rows for may be among the values it holds back, so the report gives the preview's counts instead of calling it missing ("Order backlog is not among the 3 free KPI values; Gloom Pro shows all 23"); only a company with nothing held back is said to have none, naming the metrics it has. An id the dictionary does not know fails naming those metrics. A note gives the preview's own as-of date when it is older than the company's newest disclosure, which the closing line dates, and says when `--basis`, `--from`, `--to` or `--asOf` were ignored. The app takes authenticated snapshots before screenshots and verifies that the rendered rows match those inputs.
+The text report prints the pane's columns: fiscal labels (`FY2024`), values compact with their unit (`12.48B USD`), the scope in words and each row's disclosure date; `--csv` keeps the whole number. JSON includes structured observations, the metric dictionary, complete evidence, revision identifiers, coverage and access metadata. `asOf` applies a publication cutoff so later corrections and actuals cannot leak into earlier research. Date, basis and metric REST filters require Pro; the Free preview remains fixed, so the report picks `--metric` out of the preview itself. A metric the preview has no rows for may be among the values it holds back, so the report gives the preview's counts instead of calling it missing ("Order backlog is not among the 3 free KPI values; Gloom Pro shows all 23"); only a company with nothing held back is said to have none, naming the metrics it has. An id the dictionary does not know fails naming those metrics. A note gives the preview's own as-of date when it is older than the company's newest disclosure, which the closing line dates, and says when `--basis`, `--from`, `--to` or `--as-of` were ignored. The app takes authenticated snapshots before screenshots and verifies that the rendered rows match those inputs.

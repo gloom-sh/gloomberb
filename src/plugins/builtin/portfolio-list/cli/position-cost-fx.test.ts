@@ -45,7 +45,7 @@ async function positionSet(config: AppConfig, record: TickerRecord, args: string
 const aapl = createTestTicker("AAPL", "Apple", { portfolios: ["lira"] });
 
 test("position set converts a cost into the currency portfolio show values the book in, which follows a base currency set later", async () => {
-  // GLO-1044 review: the book's own currency is USD, but with base TRY it is valued in TRY, so a USD lot is foreign.
+  // Review: the book's own currency is USD, but with base TRY it is valued in TRY, so a USD lot is foreign.
   const typed = await positionSet(liraConfig(), aapl, ["Lira", "AAPL", "10", "410", "USD", "--cost-fx", "32,15"]);
   expect(typed.lot).toMatchObject({ currency: "USD", costFxRate: 32.15, costFxCurrency: "TRY" });
   expect(typed.text).toMatch(/Cost FX\s+32\.15 TRY per USD/);
@@ -129,6 +129,51 @@ test("portfolio show names only lots entered by hand whose cost converts at toda
   expect(row("NVDA")).toMatchObject({ costFxRate: 32, costFxCurrency: "TRY", costBasis: 32_000 });
 });
 
+test("portfolio show converts a dated lot's cost at its purchase date's FX close in the currency the book is valued in now", async () => {
+  // Set with --date while the book was valued in USD, so only the date was kept; the base currency is TRY since.
+  const config = liraConfig();
+  const lot = (extra: Partial<TickerPosition> = {}): TickerPosition => ({ portfolio: "lira", shares: 10, avgCost: 100, currency: "USD", broker: "manual", ...extra });
+  const tickers = [
+    createTestTicker("AAPL", "Apple", { portfolios: ["lira"], positions: [lot({ dateAcquired: "2024-03-01" })] }),
+    // A rate entered into another currency than the book's is no rate for it: the date's close is.
+    createTestTicker("AMZN", "Amazon", { portfolios: ["lira"], positions: [lot({ dateAcquired: "2024-03-01", costFxRate: 0.92, costFxCurrency: "EUR" })] }),
+    createTestTicker("MSFT", "Microsoft", { portfolios: ["lira"], positions: [lot()] }),
+    // No TRY close in the week up to this date.
+    createTestTicker("NVDA", "NVIDIA", { portfolios: ["lira"], positions: [lot({ dateAcquired: "2020-01-01" })] }),
+  ];
+  const reads: string[] = [];
+  const history = { getCloudHistory: async (symbol: string, _exchange: string, params: { startDate?: string; endDate?: string }) => {
+    reads.push(`${symbol} ${params.endDate}`);
+    const inRange = params.startDate! <= "2024-03-01" && "2024-03-01" <= params.endDate!;
+    return { status: "success", data: symbol === "TRY=X" && inRange ? [{ date: "2024-03-01T00:00:00.000Z", close: 31.3694 }] : [] } as never;
+  } };
+  const show = (format?: "json") => createTestCliContext({ config, store: { loadAllTickers: async () => tickers },
+    dataProvider: createTestDataProvider({
+      getQuote: async (symbol) => ({ symbol, price: 110, currency: "USD", change: 0, changePercent: 0, lastUpdated: Date.now() }),
+      getExchangeRate: async (code: string) => USD_PER[code] ?? 1,
+    }),
+  }, format ? { format } : undefined);
+  const cli = show("json");
+  await showCollection("Lira", cli.context, { costFxHistory: history });
+  // One read per purchase date, however many lots share it.
+  expect(reads.sort()).toEqual(["TRY=X 2020-01-02", "TRY=X 2024-03-02"]);
+  const { data, metadata } = JSON.parse(serializeCliResult(cli.printed[0]!.result, { ...DEFAULT_CLI_OPTIONS, format: "json" }));
+  const row = (symbol: string) => data.find((entry: { symbol: string }) => entry.symbol === symbol);
+  expect(row("AAPL")).toMatchObject({ costFxRate: 31.3694, costFxCurrency: "TRY", dateAcquired: "2024-03-01" });
+  expect(row("AAPL").costBasis).toBeCloseTo(31_369.4, 6);
+  expect(row("AMZN")).toMatchObject({ costFxRate: 31.3694, costFxCurrency: "TRY" });
+  // Only an undated lot, or one whose date's close could not be read, converts at today's rate, and the note says which.
+  expect(metadata.costAtTodaysRateSymbols.sort()).toEqual(["MSFT", "NVDA"]);
+  const logged: string[] = [];
+  const log = spyOn(console, "log").mockImplementation((...parts: unknown[]) => { logged.push(parts.join(" ")); });
+  try { await showCollection("Lira", show().context, { costFxHistory: history }); } finally { log.mockRestore(); }
+  const notes = logged.join("\n").replace(/\x1b\[[0-9;]*m/g, "").split("\n").filter((line) => line.startsWith("Cost converted"));
+  expect(notes).toEqual([
+    "Cost converted at today's rate for MSFT:NASDAQ; give portfolio position set a --date or --cost-fx to use the rate when bought.",
+    "Cost converted at today's rate for NVDA:NASDAQ: the FX close of the purchase date could not be read.",
+  ]);
+});
+
 test("the ticker report's cost basis converts at the rate a lot was bought at, as its P&L does", async () => {
   const config = liraConfig();
   const record = createTestTicker("AAPL", "Apple", { portfolios: ["lira"],
@@ -139,4 +184,50 @@ test("the ticker report's cost basis converts at the rate a lot was bought at, a
     toBase: async (value, currency) => currency === "TRY" ? value : value * 50 });
   expect(report).toMatch(/Cost Basis[^\n]*128,617/);
   expect(report).toMatch(/P&L[^\n]*136,383/);
+});
+
+test("GBp round trip: a cost typed in pence is saved in pence, so portfolio show divides it by 100", async () => {
+  // GBp was upper-cased to GBP, and 1,000 VOD at 70p cost £70,000 instead of £700.
+  const config = createDefaultConfig("/unused-cost-fx");
+  config.baseCurrency = "GBP";
+  config.portfolios = [{ id: "uk", name: "UK", currency: "GBP" }];
+  const vod = createTestTicker("VOD", "Vodafone", { exchange: "LSE", currency: "GBp", portfolios: ["uk"] });
+  const typed = await positionSet(config, vod, ["UK", "VOD", "1000", "70", "GBp"]);
+  expect(typed.lot).toMatchObject({ currency: "GBp", avgCost: 70 });
+  expect(typed.data.currency).toBe("GBp");
+  // gbp is pounds, and so is a blank currency: the listing's GBp quote is shown converted, in pounds.
+  expect((await positionSet(config, vod, ["UK", "VOD", "1000", "0.70", "gbp"])).lot?.currency).toBe("GBP");
+  expect((await positionSet(config, vod, ["UK", "VOD", "1000", "0.70"])).lot?.currency).toBe("GBP");
+
+  const cli = createTestCliContext({ config, store: { loadAllTickers: async () => [{ ...vod, metadata: { ...vod.metadata, positions: [typed.lot!] } }] },
+    dataProvider: createTestDataProvider({
+      // Quotes arrive in pounds (the Cloud normalizer divides pence out).
+      getQuote: async (symbol) => ({ symbol, price: 0.725, currency: "GBP", change: 0, changePercent: 0, lastUpdated: Date.now() }),
+      getExchangeRate: async (code: string) => USD_PER[code] ?? 1,
+    }),
+  }, { format: "json" });
+  await showCollection("UK", cli.context);
+  const { data } = JSON.parse(serializeCliResult(cli.printed[0]!.result, { ...DEFAULT_CLI_OPTIONS, format: "json" }));
+  const row = data.find((entry: { symbol: string }) => entry.symbol === "VOD");
+  expect(row.costBasis).toBeCloseTo(700, 6);
+  expect(row.marketValue).toBeCloseTo(725, 6);
+  expect(row.unrealizedPnl).toBeCloseTo(25, 6);
+});
+
+test("position set over several lots keeps their earliest date and cost-weighted rate, or refuses rates one position cannot keep", async () => {
+  const lots = (...positions: TickerPosition[]) => createTestTicker("AAPL", "Apple", { portfolios: ["lira"], positions });
+  const lot = (shares: number, avgCost: number, extra: Partial<TickerPosition> = {}): TickerPosition =>
+    ({ portfolio: "lira", shares, avgCost, currency: "USD", broker: "manual", ...extra });
+  const merged = await positionSet(liraConfig(), lots(
+    lot(10, 410, { dateAcquired: "2024-03-01", costFxRate: 31, costFxCurrency: "TRY" }),
+    lot(20, 395, { dateAcquired: "2023-11-15", costFxRate: 34, costFxCurrency: "TRY" }),
+  ), ["Lira", "AAPL", "30", "400", "USD"]);
+  expect(merged.lot).toMatchObject({ dateAcquired: "2023-11-15", costFxCurrency: "TRY" });
+  expect(merged.lot!.costFxRate! * 12_000).toBeCloseTo(4_100 * 31 + 7_900 * 34, 6);
+  expect(merged.text).toMatch(/Purchase Date\s+2023-11-15/);
+
+  const mixed = lots(lot(10, 410, { costFxRate: 31, costFxCurrency: "TRY" }), lot(20, 395));
+  const refused = positionSet(liraConfig(), mixed, ["Lira", "AAPL", "30", "400", "USD"]);
+  await expect(refused).rejects.toThrow("Of the 2 lots, 1 converts its cost at the FX rate it was bought at and 1 at today's, so one position cannot keep their rates.");
+  expect((await positionSet(liraConfig(), mixed, ["Lira", "AAPL", "30", "400", "USD", "--cost-fx", "33"])).lot?.costFxRate).toBe(33);
 });

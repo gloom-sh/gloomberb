@@ -66,3 +66,27 @@ export function quoteErrorAlertFields(
     lastCheckError: error,
   };
 }
+
+/** How many times the last price a target may be, either way, before it reads as a typo or another instrument's price. */
+const MAX_TARGET_RATIO = 10;
+
+/** A price as typed or quoted, never in exponent form: 85,000, 37.35, 0.0000001234. */
+const priceText = (value: number) => value.toLocaleString("en-US", Math.abs(value) >= 1
+  ? { maximumFractionDigits: 2 }
+  : { maximumSignificantDigits: 4 });
+
+/**
+ * Why a price target is refused: more than ten times the last price, or under
+ * a tenth of it, which is a slip or another instrument's price (bitcoin's,
+ * typed on the BTC fund). `coinNote` is the note `quote` gives a bare coin
+ * ticker on a listing that is not the coin, which says what to use instead.
+ * Null when the target is near enough, or there is no positive last price to
+ * measure it against.
+ */
+export function farTargetMessage(symbol: string, target: number, last: number | null | undefined, coinNote: string | null): string | null {
+  if (last == null || !Number.isFinite(last) || last <= 0) return null;
+  const above = target > last * MAX_TARGET_RATIO;
+  if (!above && target >= last / MAX_TARGET_RATIO) return null;
+  const how = above ? `more than ${MAX_TARGET_RATIO} times` : `under 1/${MAX_TARGET_RATIO} of`;
+  return `A target of ${priceText(target)} is ${how} ${symbol}'s last price of ${priceText(last)}. ${coinNote ?? "Check the price and the symbol."}`;
+}

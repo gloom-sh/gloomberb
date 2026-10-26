@@ -6,7 +6,9 @@ The **Table** has two directions. **NVDA says** reads statements attributed to N
 
 A strip under the view switch names the company and counts its counterparties per role, each company once however many disclosures name it, without cohort groups or unconfirmed leads: the selected direction on the Table, both directions on Flow. A free preview adds how many disclosures it locks (`Customers 3 +8 locked`); some of them may name companies already shown.
 
-**Share** keeps the disclosed percentage and its denominator together, in words: `of revenue`, `of receivables`, `of cost of sales`, or a denominator established by filing prose (`of Compute & Networking revenue`). A reverse share names the reporting company (`of CRUS revenue`). The bar beside it draws the percentage on a 0 to 100% scale in the role's colour. Sorting by Share groups percentages by what they are a share of, revenue first, then cost of sales, purchases and receivables, before comparing them, because 30% of receivables is not a larger share than 21% of revenue; the order of the groups stays the same in either direction, and the Flow orders cards without a ribbon weight the same way. XBRL dimensions appear as tagged context (`revenue · context: TW`), because a tag can qualify either side of the ratio. They do not establish its complete denominator. The filing type alone does not establish a quarterly or annual duration. **Value** appears when a row discloses an amount, retaining its native currency and scale. **368,079 JPY million** means 368,079 million yen. Sorting values groups currencies before comparing amounts within each currency. USD values remain separately marked **disclosed** or **≈ derived**; evidence retains both when present. Evidence tier and period accompany each relationship; a wide pane also shows publisher, publication date and independent origins. A narrow pane folds the ticker into the name and leaves the source detail, then the period, to evidence; a share column too narrow for a whole basis shows the bar and figure alone. A missing number means it was not disclosed. Confidence describes extraction and entity resolution; it is not a probability of commercial success.
+**Share** keeps the disclosed percentage and its denominator together, in words: `of revenue`, `of receivables`, `of cost of sales`, or a denominator established by filing prose (`of Compute & Networking revenue`). A reverse share names the reporting company (`of CRUS revenue`). The bar beside it draws the percentage on a 0 to 100% scale in the role's colour. Sorting by Share groups percentages by what they are a share of, revenue first, then cost of sales, purchases and receivables, before comparing them, because 30% of receivables is not a larger share than 21% of revenue; the order of the groups stays the same in either direction, and the Flow orders cards without a ribbon weight the same way. XBRL dimensions appear as tagged context (`revenue · context: TW`), because a tag can qualify either side of the ratio. They do not establish its complete denominator. The filing type alone does not establish a quarterly or annual duration. **Value** appears when a row discloses an amount, retaining its native currency and scale. **368,079 JPY million** means 368,079 million yen. Sorting values groups currencies before comparing amounts within each currency. USD values remain separately marked **disclosed** or **≈ derived**; evidence retains both when present. Evidence tier and period accompany each relationship; a wide pane also shows publisher, publication date and independent origins. A narrow pane folds the ticker into the name and leaves the source detail, then the period, to evidence; a share column too narrow for the whole basis shows a shorter form of it (`of receivables`, then `receivables`; tagged context is dropped whole, never cut), then gives up the bar, then cuts the basis behind an ellipsis, so a percentage never stands without what it is a share of. Flow cards and the cohort groups line do the same, and the line above the selected Flow card and the evidence view keep the whole wording. A missing number means it was not disclosed. Confidence describes extraction and entity resolution; it is not a probability of commercial success.
+
+Above the **NVDA says** table, a chart appears when at least three dated period ends have eligible receivables disclosures, including earlier periods. Each mark shows the largest confirmed, tier-1 single customer's share of NVIDIA's total receivables at that date, excluding scoped shares and corporate groups. Marks retain their calendar spacing without a connecting line or inferred periods; click one to select its disclosure row.
 
 Customers the filer does not name are labelled **undisclosed customer** (or supplier), and geographic, channel and customer cohorts **customer group**, both in muted text so they never read as a company.
 
@@ -80,19 +82,19 @@ Verification can promote a lead when stronger evidence arrives. Conflicting valu
 ## CLI and REST
 
 ```sh
-gloomberb fn SPLC NVDA --json
-gloomberb fn SPLC 005930.KS --json
-gloomberb fn SPLC NVDA --tiers sec,company,call,reported --json
-gloomberb fn SPLC NVDA --tiers unconfirmed --json
-gloomberb fn SPLC NVDA --tab graph --depth 3 --direction upstream --json
-gloomberb fn SPLC NVDA --tab path --to MSFT --depth 4 --ranking shortest --json
-gloomberb fn SPLC AAPL --tab graph --roles supplier --sources filing_text,xbrl --tiers primary,structured --min-confidence 0.8 --min-pct 5 --limit 25 --as-of 2025-12-31 --json
-gloomberb shot SPLC NVDA --tab table --view names --width 1280 --height 540 --output supply-table.png
-gloomberb shot SPLC NVDA --tab flow --tiers sec,company,call,reported --width 720 --height 360 --output supply-flow.png
-gloomberb shot SPLC NVDA --evidence --width 1280 --height 540 --output supply-evidence.png
-gloomberb shot SPLC NVDA --tab graph --depth 3 --width 1280 --height 540 --output supply-graph.png
-gloomberb shot SPLC NVDA --tab path --to MSFT --depth 4 --width 720 --height 360 --output supply-path.png
-gloomberb shot SPLC NVDA --tab path --to MSFT --depth 4 --evidence --width 1280 --height 540 --output supply-path-evidence.png
+gloom fn SPLC NVDA --json
+gloom fn SPLC 005930.KS --json
+gloom fn SPLC NVDA --tiers sec,company,call,reported --json
+gloom fn SPLC NVDA --tiers unconfirmed --json
+gloom fn SPLC NVDA --tab graph --depth 3 --direction upstream --json
+gloom fn SPLC NVDA --tab path --to MSFT --depth 4 --ranking shortest --json
+gloom fn SPLC AAPL --tab graph --roles supplier --sources filing_text,xbrl --tiers primary,structured --min-confidence 0.8 --min-pct 5 --limit 25 --as-of 2025-12-31 --json
+gloom shot SPLC NVDA --tab table --view names --width 1280 --height 540 --output supply-table.png
+gloom shot SPLC NVDA --tab flow --tiers sec,company,call,reported --width 720 --height 360 --output supply-flow.png
+gloom shot SPLC NVDA --evidence --width 1280 --height 540 --output supply-evidence.png
+gloom shot SPLC NVDA --tab graph --depth 3 --width 1280 --height 540 --output supply-graph.png
+gloom shot SPLC NVDA --tab path --to MSFT --depth 4 --width 720 --height 360 --output supply-path.png
+gloom shot SPLC NVDA --tab path --to MSFT --depth 4 --evidence --width 1280 --height 540 --output supply-path-evidence.png
 ```
 
 `--tiers` is contextual: Table and Flow accept `sec,company,call,reported,unconfirmed` and default to `sec,company,call`; Graph and Path accept `structured,primary,secondary,imported` and default to all graph tiers. Values from one view are not aliases for the other view.

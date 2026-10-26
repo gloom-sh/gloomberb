@@ -122,7 +122,7 @@ function placed(container: HTMLElement, longitude: number, latitude: number): { 
   return { x: a! * longitude + bx!, y: by! - a! * mercatorY(latitude) };
 }
 
-// GLO-355: a pane that is docked, undocked or popped out mounts a new map.
+// A pane that is docked, undocked or popped out mounts a new map.
 // It reopened on the whole world while the ship's detail stayed open.
 test("a map mounted again for the same pane reopens where the last one rested", async () => {
   let saved: WorldMapViewport | null = null;

@@ -92,6 +92,7 @@ const newsWirePanes: PluginModule["panes"] = [
     {
       id: NEWS_STORY_PANE_ID,
       reportFreshness: NEWS_REPORT_FRESHNESS,
+      reportArgument: { kind: "free-text", placeholder: "story id", description: "The id of the story to open." },
       name: "Story",
       icon: "A",
       component: NewsStoryPane,
@@ -147,8 +148,8 @@ const newsWirePaneTemplates: PluginModule["paneTemplates"] = [
     id: "news-industry-pane",
     paneId: "news-industry",
     label: TOPIC_NEWS_TITLE,
-    description: "Market news by topic code (MNA, CB, ENERGY, REG, CRYPTO, EARN, IPO) or sector, and public fund letters (LTR)",
-    keywords: ["news", "industry", "sector", "topic", "ni", "mna", "central banks", "crypto", "ipo", "earnings", "regulation", "letters", "ltr", "fund letters", "investor letters"],
+    description: "Market news by topic code (MNA, CB, ENERGY, METALS, REG, CRYPTO, EARN, IPO) or sector, and public fund letters (LTR)",
+    keywords: ["news", "industry", "sector", "topic", "ni", "mna", "central banks", "metals", "precious metals", "crypto", "ipo", "earnings", "regulation", "letters", "ltr", "fund letters", "investor letters"],
     shortcut: {
       prefix: "NI",
       argPlaceholder: "code",

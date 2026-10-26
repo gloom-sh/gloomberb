@@ -1,0 +1,623 @@
+{
+ "generatedAt": "2026-10-19T08:12:40.000Z",
+ "proRequired": true,
+ "preview": false,
+ "symbol": "GM",
+ "name": "General Motors",
+ "week": "2026-10-12",
+ "held": null,
+ "skipped": [],
+ "window": {
+  "recent": [
+   {
+    "week": "2026-10-05",
+    "roles": 180,
+    "classified": 180
+   },
+   {
+    "week": "2026-10-12",
+    "roles": 185,
+    "classified": 185
+   }
+  ],
+  "before": [
+   {
+    "week": "2026-09-21",
+    "roles": 206,
+    "classified": 206
+   },
+   {
+    "week": "2026-09-28",
+    "roles": 171,
+    "classified": 171
+   }
+  ]
+ },
+ "functions": [
+  {
+   "dimension": "function",
+   "key": "engineering",
+   "label": "Engineering",
+   "recentRoles": 138,
+   "recentShare": 0.3780821917808219,
+   "beforeRoles": 163,
+   "beforeShare": 0.4323607427055703,
+   "change": -0.05427855092474837,
+   "read": true
+  },
+  {
+   "dimension": "function",
+   "key": "manufacturing",
+   "label": "Manufacturing",
+   "recentRoles": 59,
+   "recentShare": 0.16164383561643836,
+   "beforeRoles": 72,
+   "beforeShare": 0.1909814323607427,
+   "change": -0.029337596744304334,
+   "read": true
+  },
+  {
+   "dimension": "function",
+   "key": "data_ai",
+   "label": "Data & AI",
+   "recentRoles": 35,
+   "recentShare": 0.0958904109589041,
+   "beforeRoles": 18,
+   "beforeShare": 0.04774535809018567,
+   "change": 0.04814505286871843,
+   "read": true
+  },
+  {
+   "dimension": "function",
+   "key": "research",
+   "label": "Research",
+   "recentRoles": 24,
+   "recentShare": 0.06575342465753424,
+   "beforeRoles": 1,
+   "beforeShare": 0.002652519893899204,
+   "change": 0.06310090476363503,
+   "read": true
+  },
+  {
+   "dimension": "function",
+   "key": "operations",
+   "label": "Operations",
+   "recentRoles": 21,
+   "recentShare": 0.057534246575342465,
+   "beforeRoles": 21,
+   "beforeShare": 0.05570291777188329,
+   "change": 0.0018313288034591743,
+   "read": true
+  },
+  {
+   "dimension": "function",
+   "key": "supply_chain",
+   "label": "Supply chain",
+   "recentRoles": 20,
+   "recentShare": 0.0547945205479452,
+   "beforeRoles": 22,
+   "beforeShare": 0.058355437665782495,
+   "change": -0.0035609171178372923,
+   "read": true
+  },
+  {
+   "dimension": "function",
+   "key": "product",
+   "label": "Product",
+   "recentRoles": 16,
+   "recentShare": 0.043835616438356165,
+   "beforeRoles": 16,
+   "beforeShare": 0.042440318302387266,
+   "change": 0.001395298135968899,
+   "read": true
+  },
+  {
+   "dimension": "function",
+   "key": "sales",
+   "label": "Sales",
+   "recentRoles": 13,
+   "recentShare": 0.03561643835616438,
+   "beforeRoles": 11,
+   "beforeShare": 0.029177718832891247,
+   "change": 0.006438719523273136,
+   "read": true
+  },
+  {
+   "dimension": "function",
+   "key": "design",
+   "label": "Design",
+   "recentRoles": 13,
+   "recentShare": 0.03561643835616438,
+   "beforeRoles": 5,
+   "beforeShare": 0.013262599469496022,
+   "change": 0.02235383888666836,
+   "read": true
+  },
+  {
+   "dimension": "function",
+   "key": "people",
+   "label": "People",
+   "recentRoles": 6,
+   "recentShare": 0.01643835616438356,
+   "beforeRoles": 10,
+   "beforeShare": 0.026525198938992044,
+   "change": -0.010086842774608484,
+   "read": true
+  },
+  {
+   "dimension": "function",
+   "key": "finance",
+   "label": "Finance",
+   "recentRoles": 6,
+   "recentShare": 0.01643835616438356,
+   "beforeRoles": 8,
+   "beforeShare": 0.021220159151193633,
+   "change": -0.004781802986810073,
+   "read": true
+  },
+  {
+   "dimension": "function",
+   "key": "retail",
+   "label": "Retail & hospitality",
+   "recentRoles": 4,
+   "recentShare": 0.010958904109589041,
+   "beforeRoles": 0,
+   "beforeShare": 0,
+   "change": 0.010958904109589041,
+   "read": true
+  },
+  {
+   "dimension": "function",
+   "key": "corporate",
+   "label": "Corporate",
+   "recentRoles": 3,
+   "recentShare": 0.00821917808219178,
+   "beforeRoles": 5,
+   "beforeShare": 0.013262599469496022,
+   "change": -0.005043421387304242,
+   "read": true
+  },
+  {
+   "dimension": "function",
+   "key": "customer",
+   "label": "Customer",
+   "recentRoles": 3,
+   "recentShare": 0.00821917808219178,
+   "beforeRoles": 5,
+   "beforeShare": 0.013262599469496022,
+   "change": -0.005043421387304242,
+   "read": true
+  },
+  {
+   "dimension": "function",
+   "key": "clinical",
+   "label": "Clinical",
+   "recentRoles": 2,
+   "recentShare": 0.005479452054794521,
+   "beforeRoles": 6,
+   "beforeShare": 0.015915119363395226,
+   "change": -0.010435667308600705,
+   "read": true
+  },
+  {
+   "dimension": "function",
+   "key": "marketing",
+   "label": "Marketing",
+   "recentRoles": 1,
+   "recentShare": 0.0027397260273972603,
+   "beforeRoles": 12,
+   "beforeShare": 0.03183023872679045,
+   "change": -0.02909051269939319,
+   "read": true
+  },
+  {
+   "dimension": "function",
+   "key": "legal_compliance",
+   "label": "Legal & compliance",
+   "recentRoles": 1,
+   "recentShare": 0.0027397260273972603,
+   "beforeRoles": 2,
+   "beforeShare": 0.005305039787798408,
+   "change": -0.002565313760401148,
+   "read": true
+  }
+ ],
+ "themes": [
+  {
+   "dimension": "theme",
+   "key": "ai_ml",
+   "label": "AI & machine learning",
+   "recentRoles": 29,
+   "recentShare": 0.07945205479452055,
+   "beforeRoles": 11,
+   "beforeShare": 0.029177718832891247,
+   "change": 0.05027433596162931,
+   "read": true
+  },
+  {
+   "dimension": "theme",
+   "key": "autonomy",
+   "label": "Autonomy & drones",
+   "recentRoles": 12,
+   "recentShare": 0.03287671232876712,
+   "beforeRoles": 10,
+   "beforeShare": 0.026525198938992044,
+   "change": 0.006351513389775076,
+   "read": true
+  },
+  {
+   "dimension": "theme",
+   "key": "battery_ev",
+   "label": "Batteries & EVs",
+   "recentRoles": 11,
+   "recentShare": 0.030136986301369864,
+   "beforeRoles": 7,
+   "beforeShare": 0.01856763925729443,
+   "change": 0.011569347044075435,
+   "read": true
+  },
+  {
+   "dimension": "theme",
+   "key": "cybersecurity",
+   "label": "Cybersecurity",
+   "recentRoles": 11,
+   "recentShare": 0.030136986301369864,
+   "beforeRoles": 2,
+   "beforeShare": 0.005305039787798408,
+   "change": 0.024831946513571457,
+   "read": true
+  },
+  {
+   "dimension": "theme",
+   "key": "robotics",
+   "label": "Robotics",
+   "recentRoles": 6,
+   "recentShare": 0.01643835616438356,
+   "beforeRoles": 7,
+   "beforeShare": 0.01856763925729443,
+   "change": -0.002129283092910869,
+   "read": true
+  },
+  {
+   "dimension": "theme",
+   "key": "cloud",
+   "label": "Cloud",
+   "recentRoles": 1,
+   "recentShare": 0.0027397260273972603,
+   "beforeRoles": 3,
+   "beforeShare": 0.007957559681697613,
+   "change": -0.0052178336543003525,
+   "read": true
+  },
+  {
+   "dimension": "theme",
+   "key": "semiconductor",
+   "label": "Semiconductors",
+   "recentRoles": 1,
+   "recentShare": 0.0027397260273972603,
+   "beforeRoles": 2,
+   "beforeShare": 0.005305039787798408,
+   "change": -0.002565313760401148,
+   "read": true
+  },
+  {
+   "dimension": "theme",
+   "key": "defense",
+   "label": "Defense",
+   "recentRoles": 0,
+   "recentShare": 0,
+   "beforeRoles": 1,
+   "beforeShare": 0.002652519893899204,
+   "change": -0.002652519893899204,
+   "read": true
+  }
+ ],
+ "shifts": [
+  {
+   "symbol": "GM",
+   "name": "General Motors Co",
+   "sector": "Consumer Cyclical",
+   "industry": "Auto Manufacturers",
+   "sourceTickers": [
+    "GM"
+   ],
+   "week": "2026-10-12",
+   "dimension": "theme",
+   "key": "ai_ml",
+   "label": "AI & machine learning",
+   "recent": {
+    "weeks": 2,
+    "roles": 29,
+    "total": 365,
+    "share": 0.07945205479452055,
+    "values": [
+     {
+      "week": "2026-10-05",
+      "roles": 13,
+      "total": 180
+     },
+     {
+      "week": "2026-10-12",
+      "roles": 16,
+      "total": 185
+     }
+    ]
+   },
+   "before": {
+    "weeks": 2,
+    "roles": 11,
+    "total": 377,
+    "share": 0.029177718832891247,
+    "values": [
+     {
+      "week": "2026-09-21",
+      "roles": 2,
+      "total": 206
+     },
+     {
+      "week": "2026-09-28",
+      "roles": 9,
+      "total": 171
+     }
+    ]
+   },
+   "change": 0.05027433596162931,
+   "ratio": 2.723038605230386,
+   "zScore": 3.03156476858641,
+   "titles": 29,
+   "topTitles": [],
+   "postings": [
+    {
+     "id": "20195042",
+     "title": "Principal Engineer, AI Acceleration",
+     "url": "https://generalmotors.wd5.myworkdayjobs.com/Careers_GM/job/Warren-Michigan-United-States-of-America/Principal-Engineer--AI-Acceleration_JR-202621933",
+     "location": "Warren, Michigan, United States of America; Austin, Texas, United States of America",
+     "country": "US",
+     "jobFunction": "engineering",
+     "seniority": "lead",
+     "firstSeenAt": "2026-10-16T16:39:06.680Z",
+     "closedAt": null,
+     "sourceTicker": "GM"
+    },
+    {
+     "id": "20195028",
+     "title": "2027 Summer Intern, AI Research, Embodied AI (Masters)",
+     "url": "https://generalmotors.wd5.myworkdayjobs.com/Careers_GM/job/Sunnyvale-California-United-States-of-America/XMLNAME-2027-Summer-Intern--AI-Research--Embodied-AI--Masters-_JR-202622535",
+     "location": "Sunnyvale, California, United States of America",
+     "country": "US",
+     "jobFunction": "data_ai",
+     "seniority": "intern",
+     "firstSeenAt": "2026-10-16T16:39:06.680Z",
+     "closedAt": null,
+     "sourceTicker": "GM"
+    },
+    {
+     "id": "20195026",
+     "title": "2027 Summer Intern, SEAM, Embodied AI (Masters)",
+     "url": "https://generalmotors.wd5.myworkdayjobs.com/Careers_GM/job/Sunnyvale-California-United-States-of-America/XMLNAME-2027-Summer-Intern--SEAM--Embodied-AI--Masters-_JR-202622537",
+     "location": "Sunnyvale, California, United States of America",
+     "country": "US",
+     "jobFunction": "data_ai",
+     "seniority": "intern",
+     "firstSeenAt": "2026-10-16T16:39:06.680Z",
+     "closedAt": null,
+     "sourceTicker": "GM"
+    },
+    {
+     "id": "20195025",
+     "title": "2027 Summer Intern, AI/ML Engineer, Mapping (Masters)",
+     "url": "https://generalmotors.wd5.myworkdayjobs.com/Careers_GM/job/Warren-Michigan-United-States-of-America/XMLNAME-2027-Summer-Intern--AI-ML-Engineer--Mapping--Masters-_JR-202622539",
+     "location": "Warren, Michigan, United States of America",
+     "country": "US",
+     "jobFunction": "data_ai",
+     "seniority": "intern",
+     "firstSeenAt": "2026-10-16T16:39:06.680Z",
+     "closedAt": null,
+     "sourceTicker": "GM"
+    },
+    {
+     "id": "20195022",
+     "title": "2027 Summer Intern, Data Scaling, Embodied AI (Masters)",
+     "url": "https://generalmotors.wd5.myworkdayjobs.com/Careers_GM/job/Sunnyvale-California-United-States-of-America/XMLNAME-2027-Summer-Intern---Data-Scaling--Embodied-AI--Masters-_JR-202622540",
+     "location": "Sunnyvale, California, United States of America",
+     "country": "US",
+     "jobFunction": "data_ai",
+     "seniority": "intern",
+     "firstSeenAt": "2026-10-16T16:39:06.680Z",
+     "closedAt": null,
+     "sourceTicker": "GM"
+    },
+    {
+     "id": "20195021",
+     "title": "2027 Summer Intern, Onboard Autonomy, Embodied AI (Masters)",
+     "url": "https://generalmotors.wd5.myworkdayjobs.com/Careers_GM/job/Sunnyvale-California-United-States-of-America/XMLNAME-2027-Summer-Intern--Onboard-Autonomy--Embodied-AI--Masters-_JR-202622543",
+     "location": "Sunnyvale, California, United States of America",
+     "country": "US",
+     "jobFunction": "data_ai",
+     "seniority": "intern",
+     "firstSeenAt": "2026-10-16T16:39:06.680Z",
+     "closedAt": null,
+     "sourceTicker": "GM"
+    },
+    {
+     "id": "19429970",
+     "title": "2027 Intern - AI/ML Engineer, Autonomous Vehicle ML Infrastructure",
+     "url": "https://generalmotors.wd5.myworkdayjobs.com/Careers_GM/job/Sunnyvale-California-United-States-of-America/XMLNAME-2027-Intern---AI-ML-Engineer--Autonomous-Vehicle-ML-Infrastructure_JR-202622410",
+     "location": "Sunnyvale, California, United States of America",
+     "country": "US",
+     "jobFunction": "data_ai",
+     "seniority": "intern",
+     "firstSeenAt": "2026-10-15T16:33:58.426Z",
+     "closedAt": null,
+     "sourceTicker": "GM"
+    },
+    {
+     "id": "19429969",
+     "title": "2027 Intern - AI/ML Engineer - Capacity & Performance Engineering, Autonomous Vehicles",
+     "url": "https://generalmotors.wd5.myworkdayjobs.com/Careers_GM/job/Sunnyvale-California-United-States-of-America/XMLNAME-2027-Intern---AI-ML-Engineer---Capacity---Performance-Engineering--Autonomous-Vehicles_JR-202622406",
+     "location": "Sunnyvale, California, United States of America",
+     "country": "US",
+     "jobFunction": "data_ai",
+     "seniority": "intern",
+     "firstSeenAt": "2026-10-15T16:33:58.426Z",
+     "closedAt": null,
+     "sourceTicker": "GM"
+    },
+    {
+     "id": "19429921",
+     "title": "Robotics AI Strategy & Program Lead, Early Career",
+     "url": "https://generalmotors.wd5.myworkdayjobs.com/Careers_GM/job/Warren-Michigan-United-States-of-America/Robotics-AI-Strategy---Program-Lead--Early-Career_JR-202622340-1",
+     "location": "Warren, Michigan, United States of America",
+     "country": "US",
+     "jobFunction": "data_ai",
+     "seniority": "intern",
+     "firstSeenAt": "2026-10-15T16:33:58.426Z",
+     "closedAt": null,
+     "sourceTicker": "GM"
+    },
+    {
+     "id": "18713298",
+     "title": "R&D Researcher – AI and Machine Learning",
+     "url": "https://generalmotors.wd5.myworkdayjobs.com/Careers_GM/job/Warren-Michigan-United-States-of-America/R-D-Researcher---AI-and-Machine-Learning_JR-202621474",
+     "location": "Warren, Michigan, United States of America",
+     "country": "US",
+     "jobFunction": "data_ai",
+     "seniority": "mid",
+     "firstSeenAt": "2026-10-14T16:27:46.348Z",
+     "closedAt": null,
+     "sourceTicker": "GM"
+    },
+    {
+     "id": "18713291",
+     "title": "AI Researcher (AV) - Internship",
+     "url": "https://generalmotors.wd5.myworkdayjobs.com/Careers_GM/job/Herzliya-Tel-Aviv-District-Israel/AI-Research--AV----Summer-Internship_JR-202605668",
+     "location": "Herzliya, Tel Aviv District, Israel",
+     "country": "IL",
+     "jobFunction": "data_ai",
+     "seniority": "intern",
+     "firstSeenAt": "2026-10-14T16:27:46.348Z",
+     "closedAt": "2026-10-19T16:55:45.418Z",
+     "sourceTicker": "GM"
+    },
+    {
+     "id": "18713256",
+     "title": "Staff Software Engineer– AI Enablement",
+     "url": "https://generalmotors.wd5.myworkdayjobs.com/Careers_GM/job/Milford-Michigan-United-States-of-America/Staff-Software-Engineer--AI-Enablement_JR-202621998",
+     "location": "Milford, Michigan, United States of America; Remote - United States; Warren, Michigan, United States of America",
+     "country": "US",
+     "jobFunction": "data_ai",
+     "seniority": "lead",
+     "firstSeenAt": "2026-10-14T16:27:46.348Z",
+     "closedAt": "2026-10-22T17:21:35.929Z",
+     "sourceTicker": "GM"
+    },
+    {
+     "id": "17262531",
+     "title": "Entry-Level – AI/Machine Learning Researcher",
+     "url": "https://generalmotors.wd5.myworkdayjobs.com/Careers_GM/job/Mountain-View-California-United-States-of-America/Entry-Level---AI-Machine-Learning-Researcher_JR-202621753",
+     "location": "Mountain View, California, United States of America",
+     "country": "US",
+     "jobFunction": "data_ai",
+     "seniority": "entry",
+     "firstSeenAt": "2026-10-12T16:15:10.680Z",
+     "closedAt": null,
+     "sourceTicker": "GM"
+    },
+    {
+     "id": "17262527",
+     "title": "Entry-Level – AI and Machine Learning for Automation Researcher",
+     "url": "https://generalmotors.wd5.myworkdayjobs.com/Careers_GM/job/Warren-Michigan-United-States-of-America/Entry-Level---AI-and-Machine-Learning-for-Automation-Researcher_JR-202621769",
+     "location": "Warren, Michigan, United States of America",
+     "country": "US",
+     "jobFunction": "data_ai",
+     "seniority": "entry",
+     "firstSeenAt": "2026-10-12T16:15:10.680Z",
+     "closedAt": null,
+     "sourceTicker": "GM"
+    },
+    {
+     "id": "17262518",
+     "title": "2027 Summer Intern - Research and Development - AI/Machine Learning",
+     "url": "https://generalmotors.wd5.myworkdayjobs.com/Careers_GM/job/Mountain-View-California-United-States-of-America/XMLNAME-2027-Summer-Intern---Research-and-Development---AI-Machine-Learning_JR-202621620",
+     "location": "Mountain View, California, United States of America",
+     "country": "US",
+     "jobFunction": "data_ai",
+     "seniority": "intern",
+     "firstSeenAt": "2026-10-12T16:15:10.680Z",
+     "closedAt": null,
+     "sourceTicker": "GM"
+    },
+    {
+     "id": "17262514",
+     "title": "2027 Summer Intern - Research and Development - Machine Learning for Automation",
+     "url": "https://generalmotors.wd5.myworkdayjobs.com/Careers_GM/job/Warren-Michigan-United-States-of-America/XMLNAME-2027-Summer-Intern---Research-and-Development---Machine-Learning-for-Automation_JR-202621724",
+     "location": "Warren, Michigan, United States of America",
+     "country": "US",
+     "jobFunction": "data_ai",
+     "seniority": "intern",
+     "firstSeenAt": "2026-10-12T16:15:10.680Z",
+     "closedAt": null,
+     "sourceTicker": "GM"
+    },
+    {
+     "id": "16551743",
+     "title": "Gen AI Staff Researcher",
+     "url": "https://generalmotors.wd5.myworkdayjobs.com/Careers_GM/job/Herzliya-Tel-Aviv-District-Israel/Gen-AI-Staff-Researcher_JR-202621235-1",
+     "location": "Herzliya, Tel Aviv District, Israel",
+     "country": "IL",
+     "jobFunction": "data_ai",
+     "seniority": "lead",
+     "firstSeenAt": "2026-10-11T16:09:52.982Z",
+     "closedAt": null,
+     "sourceTicker": "GM"
+    },
+    {
+     "id": "15772620",
+     "title": "2027 Summer Intern, Onboard Autonomy, Embodied AI",
+     "url": "https://generalmotors.wd5.myworkdayjobs.com/Careers_GM/job/Sunnyvale-California-United-States-of-America/XMLNAME-2027-Summer-Intern--Onboard-Autonomy--Embodied-AI_JR-202622135",
+     "location": "Sunnyvale, California, United States of America",
+     "country": "US",
+     "jobFunction": "data_ai",
+     "seniority": "intern",
+     "firstSeenAt": "2026-10-10T16:04:20.217Z",
+     "closedAt": null,
+     "sourceTicker": "GM"
+    },
+    {
+     "id": "15772617",
+     "title": "2027 Summer Intern, SEAM, Embodied AI",
+     "url": "https://generalmotors.wd5.myworkdayjobs.com/Careers_GM/job/Sunnyvale-California-United-States-of-America/XMLNAME-2027-Summer-Intern--SEAM--Embodied-AI_JR-202622143",
+     "location": "Sunnyvale, California, United States of America",
+     "country": "US",
+     "jobFunction": "data_ai",
+     "seniority": "intern",
+     "firstSeenAt": "2026-10-10T16:04:20.217Z",
+     "closedAt": null,
+     "sourceTicker": "GM"
+    },
+    {
+     "id": "15772616",
+     "title": "2027 Summer Intern, AI Research, Embodied AI",
+     "url": "https://generalmotors.wd5.myworkdayjobs.com/Careers_GM/job/Sunnyvale-California-United-States-of-America/XMLNAME-2027-Summer-Intern--AI-Research--Embodied-AI_JR-202622146",
+     "location": "Sunnyvale, California, United States of America",
+     "country": "US",
+     "jobFunction": "data_ai",
+     "seniority": "intern",
+     "firstSeenAt": "2026-10-10T16:04:20.217Z",
+     "closedAt": null,
+     "sourceTicker": "GM"
+    }
+   ],
+   "why": "AI & machine learning: 7.9% of GM's new roles in the last 2 weeks (29 of 365), up from 2.9% in the 2 weeks before (11 of 377).",
+   "firstComputedAt": "2026-10-19T06:04:11.000Z",
+   "computedAt": "2026-10-19T06:04:11.000Z"
+  }
+ ],
+ "history": [],
+ "locked": {
+  "functions": 0,
+  "themes": 0,
+  "shifts": 0,
+  "history": 0
+ }
+}

@@ -70,6 +70,10 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
 [data-gloom-role="desktop-button"]:is([data-gloom-variant="plain"], [data-gloom-variant="ghost"], [data-gloom-variant="secondary"]):not(:disabled):not([aria-pressed="true"]):hover {
   background-color: var(--gloom-hover-fill);
 }
+/* Quiet quick actions take the same wash, over a chosen one's fill too. */
+[data-gloom-role="desktop-button"][data-gloom-variant="quiet"]:not(:disabled):hover {
+  background-color: var(--gloom-hover-fill) !important;
+}
 [data-gloom-hover-bg="true"]:hover {
   background-color: var(--gloom-box-hover-bg) !important;
 }
@@ -503,6 +507,45 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
 [data-gloom-role="tab-button"][data-active="true"]::after { opacity: 1; }
 [data-gloom-role="tab-button"]:disabled { color: var(--gloom-text-muted); cursor: default; }
 [data-gloom-role="tab-button"]:focus-visible { outline: none; }
+/* Title-bar tabs: the same text, sizes and colours, drawn as raised boxes
+   instead of underlines. The active tab is a box with rounded top corners,
+   open at the bottom: its top and sides in the header rule's colour (the
+   accent while the pane is focused), its fill the surface under it, laid over
+   the rule so it opens into the pane. An inactive tab takes the hover fill in
+   the same shape. The pane header sets the colours (pane/header.tsx). */
+[data-gloom-role="tab-list"][data-gloom-variant="header"] {
+  /* Header colour left above a box, and the box's line: the header rule's width. */
+  --pane-tab-top-gap: 2px;
+  --pane-tab-rule: 1px;
+}
+[data-gloom-role="tab-list"][data-gloom-variant="header"] > [data-gloom-role="tab-button"] {
+  height: calc(100% - var(--pane-tab-top-gap));
+  /* The sides take their line from the padding, so a label sits where it
+     would without the box. The gap and the top line push the label down; the
+     bottom padding lifts it back onto the header's centre line, halfway
+     between its top rule (a divider or a floating border, when there is one)
+     and its bottom rule, where the title sits. */
+  padding: 0 calc(var(--gloom-space-sm) - var(--pane-tab-rule)) calc(var(--pane-tab-top-gap) + 2 * var(--pane-tab-rule) - var(--pane-tab-top-inset, 0px));
+  border: var(--pane-tab-rule) solid transparent;
+  border-bottom: 0;
+  border-radius: var(--gloom-radius-md) var(--gloom-radius-md) 0 0;
+  /* The line lies on the bar, as the rule does, so a translucent hairline is
+     the same colour on both. */
+  background-clip: padding-box;
+}
+[data-gloom-role="tab-list"][data-gloom-variant="header"] > [data-gloom-role="tab-button"]::after { content: none; }
+[data-gloom-role="tab-list"][data-gloom-variant="header"] > [data-gloom-role="tab-button"][data-active="true"] {
+  background-color: var(--pane-tab-active-bg, var(--gloom-bg));
+  border-color: var(--pane-tab-border, var(--gloom-hairline));
+}
+[data-gloom-role="tab-list"][data-gloom-variant="header"] > [data-gloom-role="tab-button"]:not([data-active="true"]):not(:disabled):is(:hover, :focus-visible, [data-drag-target="true"]) {
+  background-color: var(--gloom-hover-fill);
+}
+/* A tab's close mark stays inside the box: in a 20px title bar the box is
+   shorter than the icon button, whose fill would cover the box's top line. */
+[data-gloom-role="tab-list"][data-gloom-variant="header"] [data-gloom-role="tab-close"] {
+  max-height: 100%;
+}
 /* A tab's close mark and a strip's plus are the icon button: 20 by 18, the control radius, the hover fill. */
 [data-gloom-role="tab-add"] {
   border: 0;
@@ -593,6 +636,30 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
   border-bottom: 1px solid currentColor;
   opacity: .7;
 }
+/* Controls a surface shows only while the pointer is over it or the keyboard
+   is in it (a chart legend's fold, its tool bar's), so at rest it draws as it
+   always has. */
+[data-gloom-reveal-scope]:not(:hover):not(:focus-within) [data-gloom-reveal="hover"] {
+  display: none !important;
+}
+/* The line between two chart panels: drawn while the pointer is on it or
+   drags it, in the accent a pane sidebar's divider takes. */
+[data-gloom-role="composite-chart-panel-divider"] {
+  cursor: row-resize;
+}
+[data-gloom-role="composite-chart-panel-divider"]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  background: var(--gloom-accent);
+  opacity: 0;
+}
+[data-gloom-role="composite-chart-panel-divider"]:is(:hover, [data-active="true"])::before {
+  opacity: 1;
+}
 [data-gloom-role="dock-divider"] {
   background: transparent !important;
 }
@@ -620,6 +687,58 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
   top: 50%;
   height: 1px;
 }
+/* The frame a launch draws before the app is up (boot-frame.ts): the last
+   layout's chrome with empty panes, or the bare header and status bar. It
+   covers the app until the app has drawn its own layout. The page sets the
+   theme's colours before drawing it, so it needs no fallbacks. */
+#gloom-boot-frame {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  overflow: hidden;
+  pointer-events: none;
+  background: var(--gloom-bg);
+}
+#gloom-boot-frame[data-gloom-boot-frame="layout"] > * { height: 100%; min-height: 100%; }
+#gloom-boot-frame [data-gloom-role="pane-body"] { position: relative; }
+/* Lines of text still to come, faint enough to read as the pane's shape:
+   one bar every line of text (lh), half a line thick. */
+#gloom-boot-frame [data-gloom-role="pane-body"]::before {
+  content: "";
+  position: absolute;
+  inset: var(--gloom-space-sm) var(--gloom-inset);
+  background: repeating-linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--gloom-text-muted) 10%, transparent) 0 0.5lh,
+    transparent 0.5lh 1lh
+  );
+  -webkit-mask-image: linear-gradient(to right, var(--gloom-bg) 40%, transparent 80%), linear-gradient(to bottom, var(--gloom-bg) 30%, transparent 90%);
+  -webkit-mask-composite: source-in;
+  mask-image: linear-gradient(to right, var(--gloom-bg) 40%, transparent 80%), linear-gradient(to bottom, var(--gloom-bg) 30%, transparent 90%);
+  mask-composite: intersect;
+}
+/* Where the app draws its own: the app's column runs a hairline taller than
+   the window and sits scrolled by it, so its header shows one pixel short and
+   its status bar ends a pixel above the bottom. The shell sits the same, and
+   nothing moves when the app takes over. */
+.gloom-boot-header, .gloom-boot-status {
+  position: absolute;
+  left: 0;
+  right: 0;
+}
+/* Every desktop and web window draws its header as the title bar. */
+.gloom-boot-header {
+  top: -1px;
+  height: __TITLEBAR_OVERLAY_HEIGHT_PX__px;
+  background: var(--gloom-header);
+}
+/* One line of text tall, as the status bar is, its hairline inside it. */
+.gloom-boot-status {
+  bottom: 1px;
+  box-shadow: inset 0 1px 0 var(--gloom-hairline);
+  background: var(--gloom-panel);
+}
+.gloom-boot-status::before { content: "\200b"; }
 .gloom-loading, .gloom-fatal {
   padding: 24px;
   color: var(--gloom-text, #f2f2f2);
@@ -941,12 +1060,14 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
 }
 .gloom-qb-inline .gloom-qb-view { margin-left: 0; box-shadow: none; align-self: stretch; }
 /* A long inline choice (an expiry strip) scrolls by itself, as the terminal's
-   does, so its label and the controls beside it stay in view. */
+   does, so its label and the controls beside it stay in view. It narrows with
+   its group and has no floor of its own: a floor wider than the room the bar
+   gives it drew its next choice under the control beside it. */
 .gloom-qb-filters[data-strip="true"],
 .gloom-qb-inline[data-strip="true"] { flex: 0 1 auto; min-width: 0; }
 .gloom-qb-inline[data-strip="true"] .gloom-qb-segments {
   flex: 0 1 auto;
-  min-width: 12ch;
+  min-width: 0;
   overflow-x: auto;
   scrollbar-width: none;
 }

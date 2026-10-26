@@ -62,6 +62,8 @@ export interface ClinicalTrial {
   firstSubmitDate: Date | null;
   /** When the registry first posted the study. */
   firstPostDate: Date | null;
+  /** When the registry last posted a change to the study; the list is newest first by it. */
+  lastUpdatePostDate: Date | null;
   /** Deep link to the study page for [o]pen. */
   url: string;
 }
@@ -173,6 +175,7 @@ export function parseClinicalTrial(raw: unknown): ClinicalTrial | null {
     completionDateType: completion.type,
     firstSubmitDate: asDate(statusModule.studyFirstSubmitDate),
     firstPostDate: asDate(moduleOf(statusModule, "studyFirstPostDateStruct").date),
+    lastUpdatePostDate: asDate(moduleOf(statusModule, "lastUpdatePostDateStruct").date),
     url: `${CLINICAL_TRIALS_STUDY_BASE_URL}/${nctId}`,
   };
 }
@@ -221,7 +224,7 @@ function areaClause(area: string, values: string[]): string | null {
 
 /**
  * Build the v2 studies URL. Pure: no network, no API key. The most recently
- * posted studies come first, the order the pane lists them in, so each page
+ * updated studies come first, the order the pane lists them in, so each page
  * continues the one before it. Filters go to the registry with the search, so
  * every page it returns already matches them.
  */
@@ -229,7 +232,7 @@ export function buildStudiesUrl(query: StudiesQuery = {}): string {
   const params = new URLSearchParams();
   params.set("format", "json");
   params.set("pageSize", String(query.pageSize ?? DEFAULT_PAGE_SIZE));
-  params.set("sort", "StudyFirstPostDate:desc");
+  params.set("sort", "LastUpdatePostDate:desc");
   params.set("fields", STUDY_FIELDS);
   const term = query.term?.trim();
   if (term) params.set("query.term", term);

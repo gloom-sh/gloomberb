@@ -372,7 +372,7 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
   const sensitivity = useMemo(() => buildSensitivityGrid(sizingMode, activeDraft), [activeDraft, sizingMode]);
   const curveMaxFraction = useMemo(
     () => getKellyCurveMaxFraction(sizingMode, activeDraft, [
-      result.currentFraction,
+      result.currentFraction ?? 0,
       result.clippedFraction,
       result.fullKellyFraction,
     ]),
@@ -384,7 +384,9 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
   );
   const curveXAxisLabels = useMemo(() => buildKellyCurveXAxisLabels(curveMaxFraction), [curveMaxFraction]);
   const currentGrowth = useMemo(
-    () => calculateExpectedLogGrowthAtFraction(sizingMode, activeDraft, result.currentFraction),
+    () => result.currentFraction == null
+      ? null
+      : calculateExpectedLogGrowthAtFraction(sizingMode, activeDraft, result.currentFraction),
     [activeDraft, sizingMode, result.currentFraction],
   );
   const targetGrowth = useMemo(
@@ -393,15 +395,16 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
   );
   const curveMarkers = useMemo<StaticChartXMarker[]>(() => {
     if (!Number.isFinite(curveMaxFraction) || curveMaxFraction <= 0) return [];
-    const targetLabel = result.clipReasons[0]?.replace(/^max /, "") ?? "target";
+    // Caps apply in turn, so with both binding the last one set the target.
+    const targetLabel = result.clipReasons.at(-1)?.replace(/^max /, "") ?? "target";
     const markers: StaticChartXMarker[] = [
-      {
+      ...(result.currentFraction == null ? [] : [{
         id: "current",
         xRatio: result.currentFraction / curveMaxFraction,
         label: "current",
         color: colors.textDim,
         lineChar: "┊",
-      },
+      }]),
       {
         id: "target",
         xRatio: result.clippedFraction / curveMaxFraction,
@@ -474,9 +477,6 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
   usePaneFooter(KELLY_PANE_ID, () => ({
     info: historyStatus
       ? [{ id: "history", parts: [historyStatus] }]
-      : bankroll <= 0 && ticker
-      // Every size reads 0% until there is a bankroll; say so where status lives.
-      ? [{ id: "bankroll", parts: [{ text: "no bankroll", tone: "warning" as const }] }]
       : result.warnings.length > 0
         ? [{ id: "warning", parts: [{ text: result.warnings[0]!, tone: "warning" as const }] }]
         : result.clipReasons.length > 0
@@ -488,7 +488,7 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
       { id: "search", key: "/", label: "search", onPress: focusTickerSearch },
       ...(viewInBar ? [] : [{ id: "sensitivity", key: "s", label: showSensitivity ? "ensitivity off" : "ensitivity", onPress: toggleSensitivity }]),
     ],
-  }), [activeInputId, bankroll, editSelectedField, focusTickerSearch, historyStatus?.text, historyStatus?.tone, result.clipReasons, result.warnings, selectedField?.id, selectedField?.label, showSensitivity, ticker, toggleSensitivity, viewInBar]);
+  }), [activeInputId, editSelectedField, focusTickerSearch, historyStatus?.text, historyStatus?.tone, result.clipReasons, result.warnings, selectedField?.id, selectedField?.label, showSensitivity, ticker, toggleSensitivity, viewInBar]);
 
   const portfolioTabs = useMemo(
     () => config.portfolios.map((portfolio) => ({ label: portfolio.name, value: portfolio.id })),

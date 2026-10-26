@@ -60,7 +60,7 @@ function insiderSignalsParams(query: InsiderSignalsQuery, limit: number): CloudI
 export const insiderSignalsCache = createPluginCache<InsiderSignalsPayload>({
   kind: "insider-signals",
   source: "gloom-cloud",
-  // 2: sides, filters and structured signals (Linear: GLO-921).
+  // 2: sides, filters and structured signals.
   schemaVersion: 2,
   // Filings arrive through the day; the ranking moves with them, not with the market.
   policy: { staleMs: 5 * 60_000, expireMs: 2 * 86_400_000 },
@@ -109,7 +109,7 @@ export async function loadInsiderSignals(
       if (isAccessDenied(error)) throw new Error(CLOUD_SESSION_REQUIRED, { cause: error });
       throw unavailableOnServer(error, INSIDER_SIGNALS_NOT_AVAILABLE);
     }),
-    { force, validate: validateInsiderSignals },
+    { force, validate: validateInsiderSignals, signal },
   );
 }
 
@@ -187,7 +187,7 @@ export async function loadInsiderCompany(
       if (isAccessDenied(error)) throw new Error(CLOUD_SESSION_REQUIRED, { cause: error });
       throw unavailableOnServer(error, INSIDERS_NOT_AVAILABLE);
     }),
-    { force, validate: companyValidator(query.ticker) },
+    { force, validate: companyValidator(query.ticker), signal },
   )));
   return bothSides(buy!, sell!);
 }

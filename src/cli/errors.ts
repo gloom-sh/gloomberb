@@ -5,17 +5,29 @@ import { serializeCliError, type CliErrorObject } from "./result";
 import { cliStyles, cliTerminalWidth, wrapText } from "../utils/cli-output";
 import { withSearchHints, type FredSeriesCheck } from "./not-a-ticker";
 import { isProviderBusy, SEARCH_BUSY_CODE, SEARCH_BUSY_MESSAGE } from "../sources/provider-errors";
+import { DATA_SERVICE_UNREACHABLE_MESSAGE, isNetworkFailure } from "../utils/network-failure";
 
 const USAGE_PREFIX = "Usage: ";
 /** The code of every error a command fails with: bad input, nothing found, an option it does not take. */
-const CLI_ERROR_CODE = "cli_error";
+export const CLI_ERROR_CODE = "cli_error";
+/** The code of a command whose requests never reached the data service. */
+export const SERVICE_UNREACHABLE_CODE = "service_unreachable";
+
+/** What to check when nothing answered: the connection, and the proxy when one is set. */
+function unreachableHint(): string {
+  const env = typeof process === "undefined" ? {} : process.env;
+  const proxy = ["HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"].find((name) => env[name]?.trim());
+  return proxy
+    ? `Check the internet connection and the proxy in ${proxy}, then try again.`
+    : "Check the internet connection, then try again.";
+}
 
 export interface CliErrorContext {
   /** The command that failed, used to point at its help. */
   command?: string;
   /** What the user typed after the command, so a hint can repeat their own spelling of a symbol. */
   args?: readonly string[];
-  /** Which symbols are FRED series the catalog charts, so their hint is `gloomberb fred`. */
+  /** Which symbols are FRED series the catalog charts, so their hint is `gloom fred`. */
   isFredSeries?: FredSeriesCheck;
 }
 
@@ -82,6 +94,10 @@ function cliErrorObject(error: unknown): CliErrorObject {
   if (isProviderBusy(error)) {
     return { code: SEARCH_BUSY_CODE, message: SEARCH_BUSY_MESSAGE, retryable: true };
   }
+  // No answer came back at all: in Gloom's words, whichever fetch failed (Bun's "Unable to connect", a refused proxy).
+  if (isNetworkFailure(error)) {
+    return { code: SERVICE_UNREACHABLE_CODE, message: DATA_SERVICE_UNREACHABLE_MESSAGE, details: unreachableHint(), retryable: true };
+  }
   // Gloom Cloud refused what was asked (an unknown series, a bad date): the input was wrong, not the program.
   if (error instanceof ApiRequestError && error.status === 400) {
     return { code: CLI_ERROR_CODE, message: error.message };
@@ -102,6 +118,8 @@ export function inferCliErrorOptions(rawArgs: string[]): CliGlobalOptions {
     if (arg === "--quiet" || arg === "-q") options.quiet = true;
     if (arg === "--no-color") options.color = false;
     if (arg === "--color") options.color = true;
+    if (arg === "--plain") options.plain = true;
+    if (arg === "--no-plain") options.plain = false;
   }
   return options;
 }
@@ -117,7 +135,7 @@ function formatCliErrorText(error: CliErrorObject, context: CliErrorContext): st
       ...details.map((line) => cliStyles.muted(line)),
     ];
     if (context.command) {
-      lines.push(cliStyles.muted(`Run gloomberb help ${context.command} for details.`));
+      lines.push(cliStyles.muted(`Run gloom help ${context.command} for details.`));
     }
     return lines.join("\n");
   }

@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, expect, setSystemTime, test } from "bun:test";
 import type { ResolvedPaneFunction } from "./resolver";
 import type { HeadlessPaneContext } from "../../types/headless";
-import { assessPaneScreenshot, type PaneScreenshotResult } from "./screenshot";
+import { assessPaneScreenshot, shotStatusIssues } from "./screenshot-assessment";
+import type { PaneScreenshotResult } from "./screenshot-types";
 import type { DesktopPaneShotPayload, DesktopPaneShotRenderResult } from "../desktop-pane-shot";
 import { appendDomReportFooter, buildDomPaneReportFromRender, domReportNote, domReportView } from "./dom";
 import { getPaneFunctionCapability } from "./capabilities";
@@ -9,6 +10,7 @@ import { researchModule } from "../../plugins/builtin/research";
 import { filingEventsModule } from "../../plugins/builtin/filing-events";
 import { renderReportCsv } from "../report-tables";
 import { formatFreshnessLine } from "./freshness";
+import { reportFailure } from ".";
 
 // The status line names the year only when it is not the current one.
 beforeAll(() => setSystemTime(new Date("2026-10-10T12:00:00Z")));
@@ -139,7 +141,7 @@ test("an OMON report reads every strike of its window past the viewport, and say
     rowCount: 5, complete: true, truncated: false, truncationReasons: [], everyRow: true,
     metadata: { strikes: { window: "2", shown: 5, total: 145 }, notices: [notice] },
   });
-  expect(domReportNote(1, domReportView(report.data))).toContain("every row of the pane's table");
+  expect(domReportNote(domReportView(report.data))).toContain("every row of the pane's table");
   expect((report.data.rows as Array<{ key: string }>).map((row) => row.key)).toEqual(["700", "710", "720", "730", "740"]);
   expect(report.text).toContain(notice);
 
@@ -147,7 +149,7 @@ test("an OMON report reads every strike of its window past the viewport, and say
   const viewportOnly = { ...render, reportRows: undefined, reportTruncationReasons: undefined };
   const clipped = await buildDomPaneReportFromRender(resolved, { symbols: ["META"], render: viewportOnly } as unknown as PaneScreenshotResult);
   expect(clipped.data).toMatchObject({ rowCount: 3, complete: false, truncationReasons: ["rows above and below the rendered viewport are cut"] });
-  expect(domReportNote(1, domReportView(clipped.data))).toContain("The rendered view is clipped.");
+  expect(domReportNote(domReportView(clipped.data))).toContain("The rendered view is clipped.");
 });
 
 test("an OMON shot names the rows its image cuts and how many strikes the window lists", () => {
@@ -157,6 +159,24 @@ test("an OMON shot names the rows its image cuts and how many strikes the window
   expect(shot.notices).toEqual([notice]);
   expect(shot.rowCount).toBe(3);
   expect(shot.render.truncationReasons).toEqual(["rows above and below the rendered viewport are cut"]);
+});
+
+test("a capture of the Layouts surface is not empty for having no rows, and reports no reason", () => {
+  const resolved = {
+    token: "LAY", label: "Layouts", options: {}, pane: { id: "layout-marketplace" },
+    capability: { id: "layout-marketplace", botSafe: false, outputKind: "pane", reportReadiness: "unsupported", screenshotReadiness: "live-dom" },
+  } as unknown as ResolvedPaneFunction;
+  const render = {
+    visibleText: "Layouts", rows: [], visibleKeyValues: [], semanticUi: [], emptyStateDetected: true, loadingStateDetected: false, errorStateDetected: false,
+    accessGate: null, surfaces: [], emptyStateMarkers: ["Log in to browse community layouts."],
+  };
+  const shot = assessPaneScreenshot(resolved, { financials: [] } as unknown as DesktopPaneShotPayload, render as unknown as DesktopPaneShotRenderResult, "", "/tmp/lay-shot-test.png");
+  expect(shot).toMatchObject({ rowCount: 0, empty: false, usable: true, unusableReason: null });
+  expect(shotStatusIssues(shot)).toEqual([]);
+  // The same capture of a pane that shows data is empty.
+  const data = assessPaneScreenshot({ ...resolved, pane: { id: "world-indices" } } as unknown as ResolvedPaneFunction, { financials: [] } as unknown as DesktopPaneShotPayload,
+    render as unknown as DesktopPaneShotRenderResult, "", "/tmp/lay-shot-test.png");
+  expect(data).toMatchObject({ empty: true, usable: false });
 });
 
 test("states the expiry a rendered OMON shows and dates the report by the chain behind it", async () => {
@@ -199,7 +219,7 @@ test("dates a rendered FXC by the observations behind its rates, in the report a
   const resolved = {
     token: "FXC", label: "FX Cross Rates", options: {}, capability: { id: "fx-matrix-pane" }, pane: { id: "fx-matrix" },
   } as unknown as ResolvedPaneFunction;
-  // Saturday 12:00 UTC (the clock above): Friday's close for the euro, a quiet tick on Saturday morning for the rand.
+  // Saturday 12:00 UTC (the clock above): Friday's close for the euro, the rand's last print of the day before it.
   const observation = (currency: string, quoteTime: string) => ({
     currency, quoteTime, dataSource: "delayed", stale: false, sessionExchange: "CCY", marketState: "CLOSED",
   });
@@ -208,11 +228,11 @@ test("dates a rendered FXC by the observations behind its rates, in the report a
     render: {
       visibleText: "",
       // The pane's own footer states its rates' ages, not their feed.
-      footerText: "oldest rate 2026-10-09 21:29 UTC · fetched 5m ago",
+      footerText: "oldest rate 2026-10-09 20:41 UTC · fetched 5m ago",
       rows: [{ tableIndex: 0, rowIndex: 0, selected: false, cells: [{ columnLabel: "EUR", text: "1.1206" }] }],
       semanticUi: [{
         id: "ui:1", role: "report-freshness", actions: [], metadata: {
-          observations: [observation("EUR", "2026-10-09T21:29:00.000Z"), observation("ZAR", "2026-10-10T04:21:11.000Z")],
+          observations: [observation("EUR", "2026-10-09T20:59:00.000Z"), observation("ZAR", "2026-10-09T20:41:11.000Z")],
         },
       }],
       truncated: false, truncationReasons: [], loadingStateDetected: false, errorStateDetected: false, errorStateMarkers: [],
@@ -222,12 +242,14 @@ test("dates a rendered FXC by the observations behind its rates, in the report a
 
   const report = await buildDomPaneReportFromRender(resolved, screenshot);
   expect(formatFreshnessLine(report.data.freshness!)).toBe("Source: Gloom Cloud · FX trading day Fri 9 Oct 2026 close · delayed · markets closed");
-  expect(report.data.freshness).toMatchObject({ status: "delayed", asOf: "2026-10-10T04:21:11.000Z", asOfClose: "2026-10-09", market: { state: "closed" } });
+  expect(report.data.freshness).toMatchObject({ status: "delayed", asOf: "2026-10-09T20:59:00.000Z", asOfClose: "2026-10-09", market: { state: "closed" } });
   expect(renderReportCsv(report.tables)).toContain("# Source: Gloom Cloud · FX trading day Fri 9 Oct 2026 close · delayed · markets closed");
 
-  // A pane that publishes nothing is still not reported.
+  // A pane that publishes nothing keeps the unknown status in data, without filler in its line.
   const bare = { ...screenshot, render: { ...screenshot.render, semanticUi: [] } } as unknown as PaneScreenshotResult;
-  expect(formatFreshnessLine((await buildDomPaneReportFromRender(resolved, bare)).data.freshness!)).toContain("status not reported");
+  const unknown = (await buildDomPaneReportFromRender(resolved, bare)).data.freshness!;
+  expect(unknown.status).toBe("unreported");
+  expect(formatFreshnessLine(unknown)).toMatch(/^Source: Gloom Cloud · retrieved .+ UTC$/);
 });
 
 test("a pane behind the sign-in wall reports what it needs instead of the wall's buttons, as its catalog entry does", async () => {
@@ -277,11 +299,11 @@ test("a pane walled whole cites no source, and one that says how to reach it say
   const signedOut = await walled("sign-in", "EK NEM Sign in to read 8-K filings. Log in \u21B5 Sign up free");
   expect(signedOut.data).toMatchObject({ locked: "sign-in", complete: false });
   expect(signedOut.data.freshness).toBeUndefined();
-  expect(signedOut.data.reason).toContain("Free, with no sign-in: gloomberb fn SEC NEM lists NEM's recent filings");
+  expect(signedOut.data.reason).toContain("Free, with no sign-in: gloom fn SEC NEM lists NEM's recent filings");
   expect(signedOut.text).not.toContain("Sign up free");
   expect(signedOut.tables.footer.some((line) => /^Source:|^Retrieval time/.test(line))).toBe(false);
-  const footer = appendDomReportFooter(signedOut.text, 10, domReportView(signedOut.data), signedOut.data.freshness);
-  expect(footer).toEndWith("Rendered view: the pane is locked, so no values were read. Render time: 10 ms.");
+  const footer = appendDomReportFooter(signedOut.text, domReportView(signedOut.data), signedOut.data.freshness);
+  expect(footer).toEndWith("Rendered view: the pane is locked, so no values were read.");
   // On a free account the Pro wall stands in the same way, with the route that is left.
   const free = await walled("pro", "EK NEM 8-K filings are part of Gloom Cloud Pro. Upgrade");
   expect(free.data.locked).toBe("pro");
@@ -316,7 +338,26 @@ test("a pane that is prose reads as the lines it draws, wrapped, without its own
     "• Ex-dividend dates", "Plan  Data and features", "Free  Delayed 15 minutes.",
   ].join("\n"));
   expect(domReportView(whole.data)).toBe("whole");
-  expect(domReportNote(5, "whole")).toBe("Rendered view: the pane grown to fit the whole page. Render time: 5 ms.");
+  expect(domReportNote("whole")).toBe("Rendered view: the pane grown to fit the whole page.");
   // A page still cut once the pane has grown is not whole.
   expect(domReportView((await report(true)).data)).toBe("clipped");
+});
+
+test("a rendered pane with rows beside an error marker has data for its symbol and exits 0; one with none fails", async () => {
+  const resolved = { token: "DES", label: "Description", pane: { id: "ticker-detail" }, capability: { id: "ticker-detail-pane" }, options: {} } as unknown as ResolvedPaneFunction;
+  const render = (rows: unknown[]) => ({
+    symbols: ["AAPL"],
+    render: {
+      visibleText: rows.length ? "Sector Technology Quote unavailable." : "Quote unavailable.", rows, truncated: false, truncationReasons: [],
+      loadingStateDetected: false, errorStateDetected: true, errorStateMarkers: ["Quote unavailable."], emptyStateDetected: false, emptyStateMarkers: [],
+    },
+  }) as unknown as PaneScreenshotResult;
+  const drawn = await buildDomPaneReportFromRender(resolved, render([{ tableIndex: 0, rowIndex: 0, selected: false,
+    cells: [{ columnLabel: "Field", text: "Sector" }, { columnLabel: "Value", text: "Technology" }] }]));
+  expect(drawn.data).toMatchObject({ unavailableSymbols: [], complete: false, reason: "The rendered pane reported: Quote unavailable." });
+  expect(reportFailure(drawn.data, "fn DES AAPL", { tables: drawn.tables })).toBeNull();
+
+  const bare = await buildDomPaneReportFromRender(resolved, render([]));
+  expect(bare.data.unavailableSymbols).toEqual(["AAPL"]);
+  expect(reportFailure(bare.data, "fn DES AAPL", { tables: bare.tables })?.code).toBe("no_data");
 });

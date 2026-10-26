@@ -3,10 +3,10 @@
 import { comparablePriceEarnings, formatPriceEarnings } from "../utils/price-earnings";
 import { convertMarketCapitalization, listedMarketCapitalization } from "../utils/market-capitalization";
 import type { ColumnConfig } from "../types/config";
-import type { AnalystResearchData, CorporateActionsData, MarketState, TickerFinancials } from "../types/financials";
+import type { AnalystResearchData, CorporateActionsData, MarketState, Quote, TickerFinancials } from "../types/financials";
 import type { EarningsEvent } from "../types/data-provider";
 import type { TickerRecord } from "../types/ticker";
-import { colors, priceColor } from "../theme/colors";
+import { colors, priceColor, shownPriceColor } from "../theme/colors";
 import { formatQuoteAgeWithSource, resolveQuoteAgeTimestamp } from "../market-data/quotes/time";
 import { delistingStateLabel } from "../market-data/quotes/delisting";
 import { formatFeedTime, formatShortDate, parseDisplayDate, type ShortDateOptions } from "../utils/datetime-format";
@@ -37,6 +37,7 @@ import { distributionHistory, forwardYieldMayHaveLapsed, lapsedDividend } from "
 import { classifyInstrumentType } from "../tickers/instrument-kind";
 import { isIndexLevel, reportedQuoteVolume } from "../market-data/market/index-level";
 import { perpetualDisplaySymbol, perpetualListing } from "../tickers/perpetual-listing";
+import { premiumToUnderlying, type PerpetualPremiumRow } from "../market-data/perpetual-premium";
 import { currentListingName } from "../tickers/listing-name";
 import { PRICE_SPARKLINE_COLUMN_ID } from "../components/price-sparkline/view";
 import { followLiveSparklinePrice, resolveSparklineHistory, sparklineValues } from "../components/price-sparkline/model";
@@ -117,10 +118,8 @@ export interface ColumnContext {
 }
 
 /** A row's stock perpetual as PERP% and FUND 8H read it; rates are fractions. */
-interface ListedPerpetual {
+interface ListedPerpetual extends PerpetualPremiumRow {
   marketId: string;
-  /** The mark over the stock's last price; null without a comparable reference. */
-  underlyingPremium: number | null;
   /** Funding per eight hours, whatever interval the venue pays on. */
   fundingRate8h: number | null;
   /** The venue's latest reading is old. */
@@ -136,9 +135,12 @@ export function formatPerpetualRate(value: number, decimals: number): string {
   return `${/[1-9]/.test(fixed) ? (value > 0 ? "+" : "-") : ""}${fixed}%`;
 }
 
-function perpetualValue(columnId: keyof typeof PERPETUAL_FIELDS, symbol: string, ctx: ColumnContext): { pending: boolean; data: ListedPerpetual | null; value: number | null } {
+/** PERP% is against the row's own stock quote while that is live (premiumToUnderlying). */
+function perpetualValue(columnId: keyof typeof PERPETUAL_FIELDS, symbol: string, ctx: ColumnContext, quote: Quote | undefined): { pending: boolean; data: ListedPerpetual | null; value: number | null } {
   const perp = mapData(ctx.perpetuals, symbol);
-  return { ...perp, value: perp.data?.[PERPETUAL_FIELDS[columnId]] ?? null };
+  const value = !perp.data ? null
+    : columnId === "perp_premium" ? premiumToUnderlying(perp.data, quote) : perp.data[PERPETUAL_FIELDS[columnId]];
+  return { ...perp, value: value ?? null };
 }
 
 /** Position and calendar dates as "Jan 5", read in UTC. */
@@ -530,7 +532,7 @@ export function getColumnValue(
     case "ext_hours": {
       const changePercent = getExtendedSessionDisplay(quote)?.changePercent;
       if (!isFiniteNumber(changePercent)) return { text: "—" };
-      return { text: formatPercentRaw(changePercent), color: priceColor(changePercent) };
+      return { text: formatPercentRaw(changePercent), color: shownPriceColor(changePercent, 2) };
     }
     case "side":
       return { text: positionSideLabel(ticker, ctx.activeTab) ?? "—" };
@@ -592,13 +594,13 @@ export function getColumnValue(
     }
     case "pnl_pct": {
       const percent = portfolioPnlPercent(positionPnl.value, baseMetrics.totalCost);
-      return percent === null ? { text: "—" } : { text: formatPercentRaw(percent), color: priceColor(percent) };
+      return percent === null ? { text: "—" } : { text: formatPercentRaw(percent), color: shownPriceColor(percent, 2) };
     }
     case "mark_delta":
       if (!liveQuote || brokerMarkPrice == null || liveQuote.price === 0 || positionMetrics.priceBasis !== (quote?.priceBasis ?? "per-unit") || positionCurrency !== quoteCurrency) return { text: "—" };
       {
         const percent = ((brokerMarkPrice - liveQuote.price) / Math.abs(liveQuote.price)) * 100;
-        return { text: formatPercentRaw(percent), color: priceColor(percent) };
+        return { text: formatPercentRaw(percent), color: shownPriceColor(percent, 2) };
       }
     case "acq_date": {
       return { text: formatShortDate(earliestDateAcquired(ticker, ctx.activeTab), MONTH_DAY) };
@@ -625,7 +627,7 @@ export function getColumnValue(
       const current = targetReferencePrice(analyst.data, quoteCurrency, displayQuote?.price);
       if (value == null || !current) return { text: "—" };
       const percent = ((value - current) / Math.abs(current)) * 100;
-      return { text: formatPercentRaw(percent), color: priceColor(percent) };
+      return { text: formatPercentRaw(percent), color: shownPriceColor(percent, 2) };
     }
     case "rating": {
       const analyst = mapData(ctx.analystResearch, ticker.metadata.ticker);
@@ -644,7 +646,7 @@ export function getColumnValue(
     }
     case "perp_premium":
     case "perp_funding": {
-      const perp = perpetualValue(col.id, ticker.metadata.ticker, ctx);
+      const perp = perpetualValue(col.id, ticker.metadata.ticker, ctx, quote);
       if (perp.pending) return { text: "…" };
       if (perp.value == null) return { text: "—" };
       // An old venue reading keeps its figure, dimmed, as PERP shows a stale market.
@@ -823,7 +825,7 @@ export function getSortValue(
     }
     case "perp_premium":
     case "perp_funding":
-      return perpetualValue(col.id, ticker.metadata.ticker, ctx).value;
+      return perpetualValue(col.id, ticker.metadata.ticker, ctx, quote).value;
     case "latency":
       return quote ? ctx.now - (resolveQuoteAgeTimestamp(quote, ctx.now) ?? ctx.now) : null;
     case "as_of":

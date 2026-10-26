@@ -6,9 +6,9 @@ $ErrorActionPreference = "Stop"
 
 $Root = Resolve-Path (Join-Path $PSScriptRoot "..")
 $PackageJson = Get-Content (Join-Path $Root "package.json") -Raw | ConvertFrom-Json
-$ArchivePath = Join-Path $Root "artifacts\stable-win-x64-Gloomberb.tar.zst"
-$ExtractRoot = Join-Path $Root "build\stable-win-x64\Gloomberb-inno-source"
-$SourceDir = Join-Path $ExtractRoot "Gloomberb"
+$ArchivePath = Join-Path $Root "artifacts\stable-win-x64-Gloom.tar.zst"
+$ExtractRoot = Join-Path $Root "build\stable-win-x64\Gloom-inno-source"
+$SourceDir = Join-Path $ExtractRoot "Gloom"
 $OutputDir = Join-Path $Root "artifacts"
 $InstallerScript = Join-Path $Root "scripts\windows-installer.iss"
 
@@ -28,7 +28,7 @@ if (-not (Test-Path $Zstd)) {
   throw "zig-zstd.exe was not found: $Zstd"
 }
 
-$TarPath = Join-Path $ExtractRoot "Gloomberb.tar"
+$TarPath = Join-Path $ExtractRoot "Gloom.tar"
 & $Zstd decompress -i $ArchivePath -o $TarPath
 if ($LASTEXITCODE -ne 0) {
   exit $LASTEXITCODE
@@ -79,11 +79,11 @@ if ($LASTEXITCODE -ne 0) {
   exit $LASTEXITCODE
 }
 
-$InstallerPath = Join-Path $OutputDir "GloomberbSetup.exe"
+$InstallerPath = Join-Path $OutputDir "GloomSetup.exe"
 if (-not (Test-Path $InstallerPath)) {
   throw "Expected installer was not created: $InstallerPath"
 }
 
-$PrefixedInstallerPath = Join-Path $OutputDir "stable-win-x64-GloomberbSetup.exe"
+$PrefixedInstallerPath = Join-Path $OutputDir "stable-win-x64-GloomSetup.exe"
 Copy-Item -Force $InstallerPath $PrefixedInstallerPath
 Write-Host "Created installer: $PrefixedInstallerPath"

@@ -79,6 +79,7 @@ export function useResolvedChartSpec(
   const sources = useMemo(() => ({
     dataProvider,
     loadFredSeries: loadFred,
+    loadEarningsHistory: (symbol: string) => apiClient.getCloudEarningsHistory(symbol, 100),
     resolveCapabilitySeries: createChartSeriesResolver(capabilityInvoker),
     capabilityRefreshMs: registeredSeriesRefreshMs,
     loadFuturesPriceUnit: (symbol: string) => loadFuturesPriceUnit(symbol),

@@ -9,6 +9,7 @@ import { HistoricalPricesPane } from "./data-panes/historical-prices";
 import { ReturnsPane } from "./data-panes/returns-pane";
 import { TickerResearchPane } from "./pane";
 import { futuresContractCache } from "./overview/futures-contract";
+import { offeringFilingsCache } from "./financials/offerings";
 import { TICKER_RESEARCH_BUILTIN_TABS } from "./research-tabs";
 import { QuoteMonitorPane } from "./quote-monitor";
 import { financialStatementsHeadless, historicalPricesHeadless, quoteComparisonHeadless, returnsHeadless } from "./headless";
@@ -19,6 +20,10 @@ import {
   getTickerResearchPaneSettings,
 } from "./settings";
 import { formatTickerListInput } from "../../../tickers/list";
+import { withCommandTab } from "../shared/command-tab";
+import { buildTickerSurfaceInstanceId } from "../shared/ticker-surface";
+import { adrPairHeadless, ADR_PAIR_KEYWORDS } from "./adr-pair/headless";
+import { ADR_PAIR_TAB_ID, ADR_PAIR_TEMPLATE_ID } from "./adr-pair/model";
 import {
   LIVE_STREAMING_QUICK_SETTING,
   withLiveStreamingSetting,
@@ -27,11 +32,15 @@ import {
 export const tickerDetailModule: PluginModule = {
   setup(ctx) {
     futuresContractCache.attach(ctx.persistence);
+    offeringFilingsCache.attach(ctx.persistence);
     for (const tab of TICKER_RESEARCH_BUILTIN_TABS) {
       ctx.registerTickerResearchTab(tab);
     }
   },
-  dispose() { futuresContractCache.reset(); },
+  dispose() {
+    futuresContractCache.reset();
+    offeringFilingsCache.reset();
+  },
 
   panes: [
     {
@@ -41,6 +50,8 @@ export const tickerDetailModule: PluginModule = {
       component: TickerResearchPane,
       defaultPosition: "right",
       tickerFollower: true,
+      // DES and ADR open this pane; ADR's window is named by its params (the tab it asked for), so settings never say whose a window is.
+      identitySettings: [],
       personalData: (context) => {
         const settings = getTickerResearchPaneSettings(context.settings);
         const tab = settings.hideTabs ? settings.lockedTabId : context.paneState.activeTabId;
@@ -114,7 +125,7 @@ export const tickerDetailModule: PluginModule = {
       paneId: TICKER_RESEARCH_PANE_ID,
       label: "Ticker Research",
       description: "Open another research pane for the selected ticker or current collection",
-      keywords: ["new", "ticker", "research", "detail", "pane", "inspector"],
+      keywords: ["new", "ticker", "research", "detail", "pane", "inspector", "runway", "cash runway", "burn", "cash burn", "months of cash"],
       shortcut: { prefix: "T", aliases: ["DES"], argPlaceholder: "ticker", argKind: "ticker" },
       canCreate: (context) => context.activeTicker !== null || context.activeCollectionId !== null,
       createInstance: (context) => (
@@ -133,6 +144,27 @@ export const tickerDetailModule: PluginModule = {
           ? { symbol: data.symbol.trim().toUpperCase(), instrument: null }
           : null,
       },
+    },
+    {
+      // DES on its ADR vs Home tab: no pane of its own.
+      ...withCommandTab({
+        id: ADR_PAIR_TEMPLATE_ID,
+        paneId: TICKER_RESEARCH_PANE_ID,
+        label: "ADR vs Home",
+        description: "A depositary receipt beside its home listing: the ratio, both prices, the dollar rate they imply (the CCL rate for an Argentine pair), spot, and the receipt's premium or discount.",
+        keywords: [...ADR_PAIR_KEYWORDS],
+        shortcut: { prefix: "ADR", argPlaceholder: "ticker", argKind: "ticker" },
+        canCreate: (context, options) => normalizeTickerInput(context.activeTicker, options?.arg) !== null,
+        // One window a listing: ADR again focuses it and brings its tab back.
+        createInstance: (context, options) => {
+          const symbol = options?.symbol?.trim().toUpperCase() || normalizeTickerInput(context.activeTicker, options?.arg);
+          return symbol ? {
+            instanceId: buildTickerSurfaceInstanceId(TICKER_RESEARCH_PANE_ID, symbol, "ADR"),
+            title: symbol, binding: { kind: "fixed", symbol }, placement: "floating",
+          } : null;
+        },
+      }, ADR_PAIR_TAB_ID),
+      headless: adrPairHeadless,
     },
     {
       id: "quote-monitor-pane",
@@ -180,7 +212,7 @@ export const tickerDetailModule: PluginModule = {
         paneId: "returns",
         label: "Returns",
         description: "Inspect interval and cumulative price returns over a selectable range and granularity.",
-        keywords: ["returns", "return", "performance", "change", "interval", "granularity"],
+        keywords: ["returns", "return", "performance", "change", "interval", "granularity", "drawdown", "max drawdown", "peak to trough"],
         shortcut: "RETURN",
         publicShare: true,
         titlePrefix: "RETURN",
@@ -193,7 +225,7 @@ export const tickerDetailModule: PluginModule = {
         paneId: "historical-prices",
         label: "Historical Prices",
         description: "Open a historical OHLCV table for a ticker.",
-        keywords: ["historical", "prices", "hp", "ohlc", "volume"],
+        keywords: ["historical", "prices", "hp", "ohlc", "volume", "drawdown", "max drawdown", "peak to trough"],
         shortcut: "HP",
         publicShare: true,
       }),
@@ -205,7 +237,7 @@ export const tickerDetailModule: PluginModule = {
         paneId: "financial-analysis",
         label: "Financial Analysis",
         description: "Open financial statements for a ticker.",
-        keywords: ["fa", "financial", "analysis", "statements"],
+        keywords: ["fa", "financial", "analysis", "statements", "runway", "cash runway", "burn", "cash burn", "months of cash"],
         shortcut: "FA",
         publicShare: true,
         titlePrefix: "FA",

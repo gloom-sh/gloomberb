@@ -4,7 +4,7 @@ import type { ConnectionHealthRegistry } from "../../../core/connection-health";
 import type { DividendMetrics, DividendPayment } from "./types";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import { calendarMonthsBefore } from "../../../utils/calendar-date";
-import { cashDistribution, dividendReferencePrice, dividendYieldAt, inferCadence, trailingCashAt, trailingDividendRate } from "../../../utils/trailing-dividend";
+import { cashDistribution, dividendReferencePrice, dividendYieldAt, inferCadence, trailingCashAt, trailingDividendRate, trailingPaymentShortfall } from "../../../utils/trailing-dividend";
 import { dividendQuotePriceMetadata } from "./reference-price";
 import { mapQuote } from "../../../sources/gloomberb-cloud/normalizers";
 import { regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
@@ -182,6 +182,11 @@ export function buildDividendMetrics(
   const forwardRate = lapse ? null : statedRate;
   const forwardRateAsOf = lapse ? null : statedAsOf;
 
+  // A payout over zero or negative earnings (ECC's 2000% beside an EPS of -1.30) is not a payout, whatever the source states.
+  const payoutNotMeaningful = typeof quoteFields?.trailingEps === "number" && Number.isFinite(quoteFields.trailingEps) && quoteFields.trailingEps <= 0;
+  // A trailing yield over a hole in a regular payer's history says how many payments it counts; a stopped dividend has said so.
+  const trailingPayments = options.historyAvailable !== false && !lapse ? trailingPaymentShortfall(eligible, now) : null;
+
   return repriceDividendMetrics({
     trailingYield: null,
     forwardYield: null,
@@ -189,7 +194,9 @@ export function buildDividendMetrics(
     forwardRate,
     forwardRateAsOf,
     lapse,
-    payoutRatio: quoteFields?.payoutRatio ?? null,
+    payoutRatio: payoutNotMeaningful ? null : quoteFields?.payoutRatio ?? null,
+    payoutNotMeaningful,
+    trailingPayments,
     growth1Y,
     growth3Y,
     paymentFrequency: options.historyAvailable !== false ? inferFrequency(eligible, now) : null,

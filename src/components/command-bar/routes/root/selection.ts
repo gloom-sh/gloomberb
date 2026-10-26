@@ -26,6 +26,7 @@ interface PaneTemplateItemOptions {
 
 interface RootSelectionCommandOptions {
   activeTickerSymbol: string | null;
+  promptTickerSymbol?: string | null;
   availableCommands: Command[];
   createPaneTemplateItem: (template: PaneTemplateDef, options?: PaneTemplateItemOptions) => ResultItem;
   createPluginCommandItem: (command: CommandDef, options?: { shortcutArg?: string }) => ResultItem;
@@ -40,7 +41,7 @@ interface RootSelectionCommandOptions {
   openPaneTemplateWorkflow: (template: PaneTemplateDef, options?: { arg?: string }) => void;
   pluginCommandResultItems: (command: CommandDef, shortcutArg: string) => ResultItem[];
   runDirectCommand: (command: Command, arg: string) => void;
-  runSecurityDescriptionShortcut: (query?: string) => void | Promise<void>;
+  runSecurityDescriptionShortcut: (query?: string, options?: { forceNewPane?: boolean }) => void | Promise<void>;
   setRootQuery: (query: string) => void;
   startThemePicker: (arg: string) => void;
 }
@@ -54,6 +55,7 @@ export function acceptRootShortcutTabAction(options: RootSelectionCommandOptions
     pluginCommands: options.getAvailablePluginCommands(),
     paneTemplates: options.getAvailablePaneShortcutTemplates(options.query),
     activeTicker: options.activeTickerSymbol,
+    promptTicker: options.promptTickerSymbol,
   });
   if (intent.kind === "none") return false;
   if (intent.kind === "inferred-complete" && intent.completionQuery) {
@@ -103,6 +105,7 @@ export function buildImmediateRootSelection(options: RootSelectionCommandOptions
     pluginCommands: options.getAvailablePluginCommands(),
     paneTemplates: options.getAvailablePaneShortcutTemplates(options.query),
     activeTicker: options.activeTickerSymbol,
+    promptTicker: options.promptTickerSymbol,
   });
   if (intent.kind !== "none" && intent.source === "pane-template") {
     return options.createPaneTemplateItem(intent.template, {
@@ -139,6 +142,7 @@ export function buildImmediateRootSelection(options: RootSelectionCommandOptions
           right: match.command.prefix,
           shortcutQuery: match.command.prefix,
           action: () => { void options.runSecurityDescriptionShortcut(inferredTicker); },
+          secondaryAction: () => { void options.runSecurityDescriptionShortcut(inferredTicker, { forceNewPane: true }); },
         };
       }
       return {
@@ -159,6 +163,7 @@ export function buildImmediateRootSelection(options: RootSelectionCommandOptions
       right: match.command.prefix,
       shortcutQuery: match.command.prefix,
       action: () => { void options.runSecurityDescriptionShortcut(match.arg); },
+      secondaryAction: () => { void options.runSecurityDescriptionShortcut(match.arg, { forceNewPane: true }); },
     };
   }
 

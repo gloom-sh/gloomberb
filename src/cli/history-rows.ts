@@ -1,6 +1,6 @@
 import { INDEX_POINTS_EXPORT_UNIT, INDEX_POINTS_LABEL, isIndexLevel } from "../market-data/market/index-level";
 import type { PricePoint } from "../types/financials";
-import { marketPriceFractionDigitCeiling, resolveAssetDisplayKind } from "../market-data/market/format";
+import { formatPriceObservation, marketPriceFractionDigitCeiling, resolveAssetDisplayKind } from "../market-data/market/format";
 import { TIME_RANGES, type TimeRange } from "../time-series/range";
 import { subtractTimeRange } from "../time-series/date-window";
 import {
@@ -19,6 +19,8 @@ import { formatUtcTime } from "../utils/utc-time";
 import { historyCoverageNotice } from "../sources/history-coverage";
 import { barLastSession, barPeriodToDate, type BarPeriodToDate } from "../market-data/market/bar-period";
 import { barSizeFromGap, medianBarGap } from "../time-series/bar-spacing";
+import { isRegularSessionTime, sessionCalendarTimeZone } from "../market-data/market/freshness";
+import { zonedDateKey } from "../utils/zoned-date-time";
 
 const PRICE_KEYS = ["open", "high", "low", "close"] as const;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -28,8 +30,6 @@ const INTRADAY_RESOLUTIONS = ["1m", "5m", "15m", "30m", "45m", "1h"] as const;
 /** A first bar later than this after the range's start is a late start, not a weekend or holiday. */
 const LATE_START_MIN_MS = 10 * DAY_MS;
 const LATE_START_MIN_BARS = 3;
-/** A bar with more than this many calendar periods (`barPeriod`) since the one before follows a gap in the series. */
-const BREAK_GAP_PERIODS = 3;
 /** A close more than this many times the close before it, or less than its hundredth, follows a jump. */
 const BREAK_JUMP_RATIO = 100;
 /** Flag codes for a break before a bar, whose prices stay as served; every other code blanks them. */
@@ -76,6 +76,9 @@ export interface HistoryRow {
   volumeUnit?: string;
   /** Why a coin's bar has no volume: `day in progress`, `rebuilt from hourly bars`, `latest trade` (not a bar), `not reported`. */
   volumeNote?: string;
+  /** A bar without the market's volume: the trades of one venue alone (`volumeVenue`), never its volume. */
+  venueVolume?: number;
+  volumeVenue?: string;
 }
 
 /** A coin's volume: traded value in its quote currency, per UTC day on daily bars. */
@@ -148,8 +151,43 @@ function barPeriod(time: number, interval: ManualChartResolution): number {
 }
 
 /**
- * The breaks before each bar: `gap` after more than three calendar periods
- * with no bar (`barPeriod`), `jump` when its close is over 100 times the last
+ * How many periods (`barPeriod`) in a row without a bar break the series: a
+ * single month in monthly bars, since no market closes for a calendar month
+ * (GF=F's monthly chart went from 2002-08 to 2002-10); three weeks for weekly
+ * and finer bars, which a market's own closures do not reach.
+ */
+function breakGapPeriods(interval: ManualChartResolution): number {
+  return interval === "1mo" ? 1 : 3;
+}
+
+/** A run of periods without a bar: the bars on either side of it, and how many periods it spans. */
+interface HistoryHole {
+  before: number;
+  after: number;
+  periods: number;
+}
+
+/**
+ * The runs of periods without a bar between consecutive bars, oldest first:
+ * every missing month of monthly bars and every missing week of weekly bars,
+ * a closed week included, and for daily and finer bars each break in the
+ * series (breakGapPeriods), since their sessions follow a calendar the bars
+ * do not carry. `times` oldest first.
+ */
+function historyHoles(times: readonly number[], interval: ManualChartResolution): HistoryHole[] {
+  const least = interval === "1mo" || interval === "1wk" ? 1 : breakGapPeriods(interval);
+  const finite = times.filter(Number.isFinite);
+  return finite.slice(1).flatMap((after, index) => {
+    const before = finite[index]!;
+    const periods = barPeriod(after, interval) - barPeriod(before, interval) - 1;
+    return periods >= least ? [{ before, after, periods }] : [];
+  });
+}
+
+/**
+ * The breaks before each bar: `gap` after a month with no bar in monthly
+ * bars, or more than three weeks in finer ones (breakGapPeriods), `jump`
+ * when its close is over 100 times the last
  * close before it, or under a hundredth of it. Closes that are blank, zero or
  * negative are skipped.
  */
@@ -163,7 +201,7 @@ function historyBreakFlags(
   return times.map((time, index) => {
     const flags: string[] = [];
     if (interval && Number.isFinite(time)) {
-      if (previousTime != null && barPeriod(time, interval) - barPeriod(previousTime, interval) > BREAK_GAP_PERIODS) flags.push("gap");
+      if (previousTime != null && barPeriod(time, interval) - barPeriod(previousTime, interval) > breakGapPeriods(interval)) flags.push("gap");
       previousTime = time;
     }
     const close = closes[index];
@@ -218,6 +256,9 @@ export function historyRows(
       ...(point.filled ? { filled: true as const } : {}),
       ...(point.unsettled ? { unsettled: true as const } : {}),
       ...(volume ? { volumeUnit: volume.unit } : {}),
+      ...(values.volume == null && point.venueVolume
+        ? { venueVolume: point.venueVolume.volume, volumeVenue: point.venueVolume.venue }
+        : {}),
       // A coin trades every day, so a bar without volume says why.
       ...(volume && values.volume == null
         ? {
@@ -293,18 +334,35 @@ function listDates(dates: readonly string[]): string {
   return items.length > 1 ? `${items.slice(0, -1).join(", ")} and ${items.at(-1)}` : items[0] ?? "";
 }
 
+/** The venue's day in session at `now`: null when it is not trading, undefined when its hours are not known. */
+export function venueTradingDay(venue: string | undefined, now: number): string | null | undefined {
+  const zone = venue ? sessionCalendarTimeZone(venue) : null;
+  const trading = zone ? isRegularSessionTime(venue, now) : null;
+  if (!zone || trading === null) return undefined;
+  return trading ? zonedDateKey(now, zone) : null;
+}
+
 /**
  * What the partial, filled and unsettled bars are: "2026-10-12 is still
- * forming (partial), with no volume until the day closes", the bars rebuilt
- * from hourly bars, a future's closed session that "closes on its last trade
- * until its settlement is confirmed (unsettled)", and the latest trade an
- * intraday history ends with when it has no volume (latestTradeIndex). Null
- * when no bar is any of them.
+ * forming (partial), with no volume until the day closes", a day whose
+ * session has closed that "closes on the session's last price until the
+ * day's bar is final (partial)", the bars rebuilt from hourly bars, a
+ * future's closed session that "closes on its last trade until its
+ * settlement is confirmed (unsettled)", and the latest trade an intraday
+ * history ends with when it has no volume (latestTradeIndex). Null when no
+ * bar is any of them. `tradingDay`: the venue's day in session now, null
+ * when none is; left out when the venue's hours are not known, every
+ * partial bar is then still forming.
  */
 export function historyBarStatusNote(
-  rows: readonly Pick<HistoryRow, "date" | "partial" | "filled" | "unsettled" | "volume">[],
+  rows: readonly Pick<HistoryRow, "date" | "partial" | "filled" | "unsettled" | "volume" | "interval">[],
+  options: { tradingDay?: string | null } = {},
 ): string | null {
-  const partial = rows.filter((row) => row.partial);
+  // A day's bar the data service still marks partial once its session has closed: its own daily bar is not in yet.
+  const closed = (row: (typeof rows)[number]) =>
+    options.tradingDay !== undefined && row.interval === "1d" && row.date.slice(0, 10) !== options.tradingDay;
+  const partial = rows.filter((row) => row.partial && !closed(row));
+  const settling = rows.filter((row) => row.partial && closed(row));
   const latest = rows[latestTradeIndex(rows.map((row) => Date.parse(row.date)))];
   const filled = rows.filter((row) => row.filled);
   const unsettled = rows.filter((row) => row.unsettled);
@@ -312,6 +370,10 @@ export function historyBarStatusNote(
     partial.length > 0
       ? `${listDates(partial.map((row) => row.date))} ${partial.length === 1 ? "is" : "are"} still forming (partial)`
         + (partial.every((row) => row.volume == null) ? ", with no volume until the day closes" : "")
+      : null,
+    settling.length > 0
+      ? `${listDates(settling.map((row) => row.date))} ${settling.length === 1 ? "closes" : "close"} on the session's last price`
+        + ` until the day's bar is final (partial)` + (settling.every((row) => row.volume == null) ? ", with no volume until then" : "")
       : null,
     filled.length > 0
       ? `${listDates(filled.map((row) => row.date))} ${filled.length === 1 ? "was" : "were"} rebuilt from hourly bars (filled)`
@@ -343,13 +405,26 @@ export function historyReportsVolume(rows: readonly Pick<HistoryRow, "volume">[]
  * are said by their own notes and not counted.
  */
 export function historyMissingVolumeNote(
-  rows: readonly Pick<HistoryRow, "date" | "volume" | "partial" | "filled" | "flag">[],
+  rows: readonly Pick<HistoryRow, "date" | "volume" | "venueVolume" | "partial" | "filled" | "flag">[],
 ): string | null {
   if (!historyReportsVolume(rows)) return null;
   const latestTrade = latestTradeIndex(rows.map((row) => Date.parse(row.date)));
-  const missing = rows.filter((row, index) => row.volume == null && !row.partial && !row.filled
+  const missing = rows.filter((row, index) => row.volume == null && row.venueVolume == null && !row.partial && !row.filled
     && !flagCodes(row).some((code) => !BREAK_FLAGS.has(code)) && index !== latestTrade).length;
   return missingVolumeNotice(missing, rows.length) ?? null;
+}
+
+/**
+ * "9 of 9 bars count IEX trades only, not the market's volume" when bars carry one venue's count in place of the
+ * market's (`venueVolume`), or null.
+ */
+export function historyVenueVolumeNote(rows: readonly Pick<HistoryRow, "venueVolume" | "volumeVenue">[]): string | null {
+  const counted = rows.filter((row) => row.venueVolume != null);
+  if (!counted.length) return null;
+  const venues = [...new Set(counted.map((row) => row.volumeVenue).filter(Boolean))].join(", ") || "one venue";
+  const one = counted.length === 1;
+  return `${counted.length} of ${rows.length} ${one && rows.length === 1 ? "bar" : "bars"} ${one ? "counts" : "count"} ${venues} trades only, `
+    + "not the market's volume";
 }
 
 function neededDecimals(value: number, cap: number): number {
@@ -381,6 +456,32 @@ export function historyPriceDecimals(rows: readonly Pick<HistoryRow, typeof PRIC
   const needed = values.map((value) => neededDecimals(value, cap)).sort((left, right) => left - right);
   const decimals = needed[Math.floor(0.9 * (needed.length - 1))]!;
   return largest >= 1 ? Math.max(2, decimals) : decimals;
+}
+
+/** A bar's prices as a table lists them; a bar without a close adds nothing to the decimals. */
+interface BarPrices {
+  open?: number | null;
+  high?: number | null;
+  low?: number | null;
+  close?: number | null;
+}
+
+/**
+ * The decimals one table of bars prints its prices with (`history`, HP's pane
+ * and `fn HP`): historyPriceDecimals over the float32-cleaned prices, so a
+ * feed's 4013.39990234 reads as the 4013.4 it is and the count follows the
+ * asset's display rules (two for gold, three for silver, cents for a US equity).
+ */
+export function barPriceDecimals(bars: readonly BarPrices[], assetCategory?: string): number {
+  const clean = (value: number | null | undefined) => value == null ? null : cleanFloat32Price(value);
+  return historyPriceDecimals(bars.flatMap((bar) => bar.close == null ? [] : [{
+    date: "", open: clean(bar.open), high: clean(bar.high), low: clean(bar.low), close: clean(bar.close)!, volume: null,
+  }]), assetCategory);
+}
+
+/** A price at the table's decimal count (barPriceDecimals), within `maxWidth` when the pane gives one. */
+export function formatBarPrice(value: number, decimals: number, maxWidth?: number): string {
+  return formatPriceObservation(Number(value.toFixed(Math.min(20, decimals))), { minimumFractionDigits: decimals, maxWidth });
 }
 
 /** How far back ALL reaches, in whole years, from the window a history request for it asks for. */
@@ -459,16 +560,48 @@ export function historyFacts(unit: HistoryUnit, rows: readonly Pick<HistoryRow, 
   ].filter(Boolean);
 }
 
+/** Whether a first bar dated `firstDate` lies well after the start of `range`: more than a few bars, weekends and holidays aside. */
+function startsLate(range: TimeRange, interval: ManualChartResolution | null, firstDate: string, now: number): boolean {
+  const first = Date.parse(firstDate);
+  const tolerance = Math.max(LATE_START_MIN_MS, LATE_START_MIN_BARS * CHART_RESOLUTION_STEP_MS[interval ?? RANGE_HISTORY_RESOLUTION[range]]);
+  return Number.isFinite(first) && first - subtractTimeRange(new Date(now), range).getTime() > tolerance;
+}
+
+/**
+ * Where an ALL history starts when that is its source's first bar, well
+ * after the window ALL reaches back to (historyAllRangeYears): BTC-USD's
+ * monthly bars start 2014-09, though it traded from 2010. A monthly bar's
+ * month, otherwise its day. Null for other ranges, and for a history the
+ * window cuts.
+ */
+export function historyAllStart(
+  range: TimeRange,
+  interval: ManualChartResolution | null,
+  firstDate: string | undefined,
+  now = Date.now(),
+): string | null {
+  if (range !== "ALL" || !firstDate || !startsLate(range, interval, firstDate, now)) return null;
+  return interval === "1mo" ? firstDate.slice(0, 7) : firstDate.slice(0, 10);
+}
+
+/** "ALL starts 2014-09; the source has no earlier bar", for the start historyAllStart finds. */
+export function historyAllStartNote(start: string): string {
+  return `ALL starts ${start}; the source has no earlier bar`;
+}
+
 /**
  * What an export should know that its rows do not show: bars coarser than the
- * range is served in, or a first bar well after the start asked for, as for a
- * listing younger than the range. Weekends and holidays are within tolerance.
+ * range is served in, a first bar well after the start asked for, as for a
+ * listing younger than the range, and where an ALL history starts when that
+ * is the source's first bar, unless a coverage line already says where the
+ * source starts (`coverageStated`). Weekends and holidays are within tolerance.
  */
 export function historyNotes(
   range: TimeRange,
   interval: ManualChartResolution | null,
   firstDate: string | undefined,
   now = Date.now(),
+  coverageStated = false,
 ): string[] {
   if (!firstDate) return [];
   const notes: string[] = [];
@@ -477,13 +610,11 @@ export function historyNotes(
     const from = interval === "1mo" ? firstDate.slice(0, 7) : firstDate.slice(0, 10);
     notes.push(`Asked ${range}, got ${BAR_INTERVAL_LABELS[interval]} bars from ${from}`);
   }
-  const first = Date.parse(firstDate);
-  if (range !== "ALL" && Number.isFinite(first)) {
-    const tolerance = Math.max(LATE_START_MIN_MS, LATE_START_MIN_BARS * CHART_RESOLUTION_STEP_MS[interval ?? expected]);
-    if (first - subtractTimeRange(new Date(now), range).getTime() > tolerance) {
-      notes.push(`Asked ${range}, data starts ${firstDate.slice(0, 10)} (first available bar)`);
-    }
+  if (range !== "ALL" && startsLate(range, interval, firstDate, now)) {
+    notes.push(`Asked ${range}, data starts ${firstDate.slice(0, 10)} (first available bar)`);
   }
+  const allStart = coverageStated ? null : historyAllStart(range, interval, firstDate, now);
+  if (allStart) notes.push(historyAllStartNote(allStart));
   return notes;
 }
 
@@ -511,36 +642,80 @@ function utcDay(time: number): string {
   return new Date(time).toISOString().slice(0, 10);
 }
 
-/** The bars flagged `code`, each with the bar before it. */
-function breaksFlagged<Row extends Pick<HistoryRow, "flag">>(rows: readonly Row[], code: string): Array<[Row, Row]> {
-  return rows.flatMap((row, index) => index > 0 && flagCodes(row).includes(code) ? [[rows[index - 1]!, row] as [Row, Row]] : []);
+function monthKey(year: number, month: number): string {
+  return utcDay(Date.UTC(year, month, 1)).slice(0, 7);
+}
+
+/** The first day of week `period` (`barPeriod`): its Monday. */
+function weekStart(period: number): number {
+  return FIRST_MONDAY_MS + period * 7 * DAY_MS;
+}
+
+/** "2026-02", "2026-02 to 2026-03 (2 months)", "the week of 2025-09-29", "2015-06-27 to 2015-08-02 (5 weeks)". */
+function holeText(hole: HistoryHole, interval: ManualChartResolution): string {
+  const { before, after, periods } = hole;
+  if (interval === "1mo") {
+    const period = barPeriod(before, interval) + 1;
+    const first = monthKey(Math.floor(period / 12), period % 12);
+    const last = monthKey(Math.floor((period + periods - 1) / 12), (period + periods - 1) % 12);
+    return periods === 1 ? first : `${first} to ${last} (${periods} months)`;
+  }
+  const length = `${periods} week${periods === 1 ? "" : "s"}`;
+  if (interval === "1wk") {
+    const first = barPeriod(before, interval) + 1;
+    return periods === 1 ? `the week of ${utcDay(weekStart(first))}`
+      : `${utcDay(weekStart(first))} to ${utcDay(weekStart(first + periods) - DAY_MS)} (${length})`;
+  }
+  return `${utcDay(before + DAY_MS)} to ${utcDay(after - DAY_MS)} (${length})`;
 }
 
 /**
- * "No bars for 1980-08 to 1992-11 (148 months)": the periods with no bar
- * before each bar flagged `gap`, the latest few by date and the rest counted.
+ * "No bar for 2026-02", "No bars for 2001-07, 2002-09 and 2026-02 to 2026-03
+ * (2 months)": every run of periods without a bar (historyHoles), oldest
+ * first, each named. `times` oldest first. Null when there is none.
+ */
+export function historyMissingPeriodsNote(times: readonly number[], interval: ManualChartResolution | null): string | null {
+  const holes = interval ? historyHoles(times, interval) : [];
+  if (!interval || holes.length === 0) return null;
+  const one = holes.length === 1 && holes[0]!.periods === 1 && (interval === "1mo" || interval === "1wk");
+  return `${one ? "No bar" : "No bars"} for ${listItems(holes.map((hole) => holeText(hole, interval)))}`;
+}
+
+/** A bar's date as a history table shows it: the month of a monthly bar, the day of a daily or weekly one, else the UTC time. */
+function holeBarDate(time: number, interval: ManualChartResolution): string {
+  const iso = new Date(time).toISOString();
+  return interval === "1mo" ? iso.slice(0, 7) : isIntradayResolution(interval) ? formatUtcTime(iso) : iso.slice(0, 10);
+}
+
+/**
+ * For each bar, oldest first, whether a run of periods without a bar
+ * (historyHoles) lies between it and the bar before: its change from that
+ * bar spans them. `times` oldest first.
+ */
+export function historyBarsAfterHole(times: readonly number[], interval: ManualChartResolution | null): boolean[] {
+  const after = new Set(interval ? historyHoles(times, interval).map((hole) => hole.after) : []);
+  return times.map((time) => after.has(time));
+}
+
+/**
+ * "CHG marked * spans the missing bars: 2026-04 is from 2026-01": the bar
+ * each change after a run of periods without a bar (historyBarsAfterHole) is
+ * measured from. `times` oldest first. Null when there is none.
+ */
+export function historyChangeBaseNote(times: readonly number[], interval: ManualChartResolution | null): string | null {
+  const holes = interval ? historyHoles(times, interval) : [];
+  if (!interval || holes.length === 0) return null;
+  const bases = holes.map(({ before, after }, index) =>
+    `${holeBarDate(after, interval)}${index === 0 ? " is" : ""} from ${holeBarDate(before, interval)}`);
+  return `CHG marked * spans the missing bars: ${listItems(bases)}`;
+}
+
+/**
+ * "No bars for 1980-08 to 1992-11 (148 months)": every run of periods with
+ * no bar between two bars (historyMissingPeriodsNote).
  */
 function historyBreakGapNote(rows: readonly Pick<HistoryRow, "date" | "interval" | "flag">[]): string | null {
-  const interval = rows[0]?.interval;
-  const gaps = interval ? breaksFlagged(rows, "gap") : [];
-  if (!interval || gaps.length === 0) return null;
-  const monthly = interval === "1mo";
-  const spans = gaps.map(([before, after]) => {
-    const [from, to] = [Date.parse(before.date), Date.parse(after.date)];
-    const periods = barPeriod(to, interval) - barPeriod(from, interval) - 1;
-    const length = `${periods} ${monthly ? "month" : "week"}${periods === 1 ? "" : "s"}`;
-    if (monthly) {
-      const month = (time: number, step: number) => {
-        const date = new Date(time);
-        return utcDay(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + step, 1)).slice(0, 7);
-      };
-      return `${month(from, 1)} to ${month(to, -1)} (${length})`;
-    }
-    return `${utcDay(from + (interval === "1wk" ? 7 : 1) * DAY_MS)} to ${utcDay(to - DAY_MS)} (${length})`;
-  });
-  const shown = spans.slice(-LISTED_GAPS);
-  const earlier = spans.length - shown.length;
-  return `No bars for ${listItems([...earlier > 0 ? [`${earlier} earlier ${earlier === 1 ? "gap" : "gaps"}`] : [], ...shown])}`;
+  return historyMissingPeriodsNote(rows.map((row) => Date.parse(row.date)), rows[0]?.interval ?? null);
 }
 
 const closeFormat = new Intl.NumberFormat("en-US", { maximumSignificantDigits: 7, useGrouping: false });
@@ -573,8 +748,9 @@ export function historyJumpNote(rows: readonly Pick<HistoryRow, "date" | "close"
  * "No bar for 2026-10-10": the days a coin, which trades every day, has no
  * daily bar for between its first and last bar. Days before the first bar are
  * before the listing. A market that closes skips weekends and holidays, so its
- * gaps say nothing on their own: for it, and for a coin's other bar sizes, the
- * note names the gaps flagged `gap`, "No bars for 1980-08 to 1992-11 (148 months)".
+ * daily gaps say nothing on their own: for it, and for a coin's other bar
+ * sizes, the note names every month or week without a bar and each break in
+ * daily or finer bars (historyMissingPeriodsNote), "No bar for 2026-02".
  */
 export function historyGapNote(
   rows: readonly Pick<HistoryRow, "date" | "interval" | "flag">[],

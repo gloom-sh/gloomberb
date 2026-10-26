@@ -26,6 +26,10 @@ export function createAppServices({ config, plugins, externalPlugins }: AppServi
           name: "News",
           provider: {
             fetchNews: async (query) => (await newsService.load(query)).articles,
+            fetchNewsPage: async (query) => {
+              const { articles, error, nextCursor } = await newsService.load(query);
+              return { articles, error, nextCursor };
+            },
             getCachedNews: (query) => newsService.getQueryState(query).articles,
           },
         }),

@@ -37,7 +37,7 @@ const TRANSCRIPT: CloudEarningsTranscriptPayload = {
 
 function Harness() {
   const [paneState, setPaneState] = useState<AppState["paneState"]>({
-    "calls:test": { pluginState: { research: { detailOpen: true, selectedId: CALL.id, readerTab: "transcript" } } },
+    "calls:test": { pluginState: { research: { view: "transcripts", detailOpen: true, selectedId: CALL.id, readerTab: "transcript" } } },
   });
   const config = createTestPaneConfig("/tmp/gloom-calls-desktop-test/unused", {
     instanceId: "calls:test", paneId: "earnings-calls", binding: { kind: "none" },

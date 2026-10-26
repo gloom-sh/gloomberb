@@ -686,98 +686,99 @@ describe("ChatContent channel sidebar", () => {
   });
 
   test("persists a pane channel selection without the last-visited write reverting it", async () => {
-    await gloomberbCloudPlugin.setup!({
-      persistence: new MemoryPersistence(),
-      resume: {
-        getState: () => null,
-        setState: () => {},
-        deleteState: () => {},
-      },
-      registerPane: () => {},
-      registerPaneTemplate: () => {},
-      registerTickerResearchTab: () => {},
-      registerSyncTransport: () => {},
-      registerShortcut: () => {},
-      registerCommand: () => {},
-      showPane: () => {},
-      hidePane: () => {},
-      notify: () => {},
-      log: { error: () => {} },
-    } as any);
-    const ChatPaneComponent = gloomberbCloudPlugin.panes?.find((pane) => pane.id === "chat")?.component;
-    expect(ChatPaneComponent).toBeDefined();
-    const ResolvedChatPaneComponent = ChatPaneComponent!;
-
     const originalRefreshChannels = chatController.refreshChannels;
     const originalRefreshSession = chatController.refreshSession;
     const originalRefreshChannelMessages = chatController.refreshChannelMessages;
-    installServerChannels(chatController);
-    chatController.refreshChannels = async () => {};
-    chatController.refreshSession = async () => {};
-    chatController.refreshChannelMessages = async () => {};
-
-    const paneInstanceId = "chat:test";
-    const chatInstance: PaneInstanceConfig = {
-      instanceId: paneInstanceId,
-      paneId: "chat",
-      settings: { channelId: "equities" },
-    };
-    const layout = {
-      dockRoot: { kind: "pane" as const, instanceId: paneInstanceId },
-      floating: [],
-      detached: [],
-      instances: [chatInstance],
-    };
-    const initialState = createInitialState(createDefaultConfig("/tmp/gloomberb-chat"));
-    initialState.focusedPaneId = paneInstanceId;
-    initialState.config = {
-      ...initialState.config,
-      layout,
-      layouts: [{ name: "Test", layout }],
-      pluginConfig: {
-        "gloomberb-cloud": {
-          lastChatChannelId: "equities",
-        },
-      },
-    };
-    let latestState = initialState;
-
-    function ChatPaneHarness() {
-      const [state, setState] = useState(initialState);
-      const stateRef = useRef(state);
-      stateRef.current = state;
-      latestState = state;
-      const dispatch = useCallback((action: any) => {
-        setState((current) => {
-          const next = appReducer(current, action);
-          latestState = next;
-          return next;
-        });
-      }, []);
-      const runtime = useMemo(() => createConfigBackedTestPluginRuntime({
-        getConfig: () => stateRef.current.config,
-        setConfig: (config) => dispatch({ type: "SET_CONFIG", config }),
-      }), [dispatch]);
-
-      return (
-        <AppContext value={createStaticAppStore(state, dispatch)}>
-          <PaneInstanceProvider paneId={paneInstanceId}>
-            <PluginRenderProvider pluginId="gloomberb-cloud" runtime={runtime}>
-              <ResolvedChatPaneComponent
-                paneId={paneInstanceId}
-                paneType="chat"
-                width={90}
-                height={12}
-                focused
-                close={() => {}}
-              />
-            </PluginRenderProvider>
-          </PaneInstanceProvider>
-        </AppContext>
-      );
-    }
 
     try {
+      await gloomberbCloudPlugin.setup!({
+        persistence: new MemoryPersistence(),
+        resume: {
+          getState: () => null,
+          setState: () => {},
+          deleteState: () => {},
+        },
+        registerPane: () => {},
+        registerPaneTemplate: () => {},
+        registerTickerResearchTab: () => {},
+        registerSyncTransport: () => {},
+        registerShortcut: () => {},
+        registerCommand: () => {},
+        showPane: () => {},
+        hidePane: () => {},
+        notify: () => {},
+        log: { error: () => {} },
+      } as any);
+      const ChatPaneComponent = gloomberbCloudPlugin.panes?.find((pane) => pane.id === "chat")?.component;
+      expect(ChatPaneComponent).toBeDefined();
+      const ResolvedChatPaneComponent = ChatPaneComponent!;
+
+      installServerChannels(chatController);
+      chatController.refreshChannels = async () => {};
+      chatController.refreshSession = async () => {};
+      chatController.refreshChannelMessages = async () => {};
+
+      const paneInstanceId = "chat:test";
+      const chatInstance: PaneInstanceConfig = {
+        instanceId: paneInstanceId,
+        paneId: "chat",
+        settings: { channelId: "equities" },
+      };
+      const layout = {
+        dockRoot: { kind: "pane" as const, instanceId: paneInstanceId },
+        floating: [],
+        detached: [],
+        instances: [chatInstance],
+      };
+      const initialState = createInitialState(createDefaultConfig("/tmp/gloomberb-chat"));
+      initialState.focusedPaneId = paneInstanceId;
+      initialState.config = {
+        ...initialState.config,
+        layout,
+        layouts: [{ name: "Test", layout }],
+        pluginConfig: {
+          "gloomberb-cloud": {
+            lastChatChannelId: "equities",
+          },
+        },
+      };
+      let latestState = initialState;
+
+      function ChatPaneHarness() {
+        const [state, setState] = useState(initialState);
+        const stateRef = useRef(state);
+        stateRef.current = state;
+        latestState = state;
+        const dispatch = useCallback((action: any) => {
+          setState((current) => {
+            const next = appReducer(current, action);
+            latestState = next;
+            return next;
+          });
+        }, []);
+        const runtime = useMemo(() => createConfigBackedTestPluginRuntime({
+          getConfig: () => stateRef.current.config,
+          setConfig: (config) => dispatch({ type: "SET_CONFIG", config }),
+        }), [dispatch]);
+
+        return (
+          <AppContext value={createStaticAppStore(state, dispatch)}>
+            <PaneInstanceProvider paneId={paneInstanceId}>
+              <PluginRenderProvider pluginId="gloomberb-cloud" runtime={runtime}>
+                <ResolvedChatPaneComponent
+                  paneId={paneInstanceId}
+                  paneType="chat"
+                  width={90}
+                  height={12}
+                  focused
+                  close={() => {}}
+                />
+              </PluginRenderProvider>
+            </PaneInstanceProvider>
+          </AppContext>
+        );
+      }
+
       await act(async () => {
         await tui.render(<ChatPaneHarness />, {
           width: 90,
@@ -805,11 +806,19 @@ describe("ChatContent channel sidebar", () => {
       expect(latestState.config.pluginConfig["gloomberb-cloud"]?.lastChatChannelId).toBe("options");
       expect(tui.frame()).toContain("#options");
     } finally {
-      chatController.refreshChannels = originalRefreshChannels;
-      chatController.refreshSession = originalRefreshSession;
-      chatController.refreshChannelMessages = originalRefreshChannelMessages;
-      installServerChannels(chatController, []);
-      chatController.dispose();
+      try {
+        try {
+          await tui.destroy();
+        } finally {
+          // Setup starts every cloud module, including their auth listeners.
+          gloomberbCloudPlugin.dispose?.();
+        }
+      } finally {
+        chatController.refreshChannels = originalRefreshChannels;
+        chatController.refreshSession = originalRefreshSession;
+        chatController.refreshChannelMessages = originalRefreshChannelMessages;
+        installServerChannels(chatController, []);
+      }
     }
   });
 });

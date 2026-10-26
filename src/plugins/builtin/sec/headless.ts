@@ -1,19 +1,25 @@
 import type {
+  HeadlessBundleResult,
   HeadlessPaneColumn,
   HeadlessPaneContext,
   HeadlessPaneDefinition,
   HeadlessPaneLoadArgs,
+  HeadlessPaneRow,
 } from "../../../types/plugin";
+import { parsePublicTickerKey } from "../../../utils/exchanges";
+import { US_FUND_FACTS_ONLY } from "../../../utils/sec";
 import type { SecFilingItem } from "../../../types/data-provider";
 import type { FundFactsPayload } from "../../../api-client/fund-facts";
 import { errorMessage } from "../../../utils/errors";
 import { loadSecFilings } from "./client";
-import { ETF_FILING_FORMS, filingFormMatches, filterFilingsByForms, SEC_FILING_FETCH_LIMIT } from "./forms";
+import { ETF_FILING_FORMS, filingFormMatches, filterFilingsByForms, fundSeriesFilings, SEC_FILING_FETCH_LIMIT } from "./forms";
 import { hiddenFilingsNote, loadLatestFilings } from "../../../utils/sec-filings";
 import { buildSecFilingRows, secFilingIssuers, SEC_ACCEPTANCE_NOTE } from "./model";
 import { SEC_FILINGS } from "../shared/report-freshness";
 import { fetchFundFacts, fundFactEntries, fundFactPublishers, fundFactsEmpty, fundFactsErrorText, fundFactsStaleNote, listNames } from "./fund-facts";
 import { REPORT_ROWS } from "../shared/headless-options";
+import { fundAbroadProfile, venueAbroad, type FundAbroadProfile } from "./fund-abroad";
+import { listingAnnouncementsPage } from "../../../utils/exchange-announcements";
 
 const SEC_COLUMNS: HeadlessPaneColumn[] = [
   {
@@ -28,6 +34,27 @@ const SEC_COLUMNS: HeadlessPaneColumn[] = [
   { key: "items", header: "Items" },
   { key: "accessionNumber", header: "Accession" },
 ];
+
+/** Some row has 8-K item codes; a column every row leaves `-` takes no room in the text table (exports keep it). */
+const hasItems = (rows: readonly HeadlessPaneRow[]) => rows.some((row) => typeof row.items === "string" && row.items !== "");
+
+function secTextColumns(rows: readonly HeadlessPaneRow[]): HeadlessPaneColumn[] {
+  return hasItems(rows) ? SEC_COLUMNS : SEC_COLUMNS.filter((column) => column.key !== "items");
+}
+
+/**
+ * A fund's filings as the text report prints them. Filed, Form and what the
+ * filing is stay in a narrow table: below 100 columns the acceptance time is
+ * left out. Every row is the fund's registrant's (its trust), so no Issuer
+ * column repeats it, as the pane's list names a filer only when there are
+ * several; exports keep it.
+ */
+function fundFilingTextColumns(rows: readonly HeadlessPaneRow[]): HeadlessPaneColumn[] {
+  const issuers = new Set(rows.map((row) => row.cik));
+  return secTextColumns(rows)
+    .filter((column) => column.key !== "companyName" || issuers.size > 1)
+    .map((column) => column.key === "acceptanceReported" ? { ...column, minTableWidth: 100 } : column);
+}
 
 export interface SecHeadlessDependencies {
   loadFilings(
@@ -107,10 +134,15 @@ export function createSecHeadless(dependencies: SecHeadlessDependencies = defaul
           ? { filings: (await load(limit)).slice(0, limit), hidden: null }
           : await loadLatestFilings(load, limit);
       const note = hidden && hiddenFilingsNote(hidden);
+      const rows = buildSecFilingRows(filings);
+      // A listing abroad whose company files nothing with the SEC says where its exchange publishes its announcements.
+      const page = !form && filings.length === 0 ? listingAnnouncementsPage(symbol) : null;
       return {
-        rows: buildSecFilingRows(filings),
+        rows,
+        textColumns: secTextColumns(rows),
         ...(note ? { notes: [note] } : {}),
-        ...(form ? { empty: `No ${form} filings found for ${symbol}.` } : {}),
+        ...(form ? { empty: `No ${form} filings found for ${symbol}.` }
+          : page ? { empty: `${symbol} files no SEC reports. ${page.name}: ${page.url}` } : {}),
         metadata: {
           acceptanceNote: SEC_ACCEPTANCE_NOTE,
           symbol,
@@ -128,12 +160,42 @@ export const secHeadless = createSecHeadless();
 
 export interface FundHeadlessDependencies extends SecHeadlessDependencies {
   loadFacts(symbol: string, ctx: HeadlessPaneContext): Promise<FundFactsPayload>;
+  loadAbroadProfile?(key: string, ctx: HeadlessPaneContext): Promise<FundAbroadProfile | null>;
 }
 
-const defaultFundDependencies: FundHeadlessDependencies = {
+const defaultFundDependencies = {
   ...defaultDependencies,
-  loadFacts: (symbol, ctx) => fetchFundFacts(symbol, ctx.apiClient),
+  loadFacts: (symbol: string, ctx: HeadlessPaneContext) => fetchFundFacts(symbol, ctx.apiClient),
+  async loadAbroadProfile(key: string, ctx: HeadlessPaneContext): Promise<FundAbroadProfile | null> {
+    const { symbol, exchange } = parsePublicTickerKey(key);
+    return fundAbroadProfile(await ctx.marketData.getTickerFinancials(symbol, exchange));
+  },
 };
+
+/**
+ * ETF for a fund listed abroad (3042:HKEX): what `ticker` says, that the
+ * facts cover US-listed funds only, and the fund's page at its issuer where
+ * the profile has one. No SEC request: the SEC knows no listing abroad, and
+ * its "Unknown ticker" said nothing of the fund.
+ */
+function fundAbroadResult(symbol: string, venue: string, profile: FundAbroadProfile | null): HeadlessBundleResult {
+  const entries = [
+    ...profile?.name ? [{ label: "Name", value: profile.name }] : [],
+    ...profile?.page ? [{ label: "Issuer page", value: profile.page }] : [],
+    ...profile?.descriptionSource
+      ? [{ label: "Description from", value: `${profile.descriptionSource.publisher}: ${profile.descriptionSource.url}` }]
+      : [],
+  ];
+  return {
+    sections: [
+      { title: "Fund facts", rows: [], empty: US_FUND_FACTS_ONLY },
+      ...entries.length ? [{ title: "Fund", entries }] : [],
+    ],
+    complete: true,
+    freshness: { source: profile?.page ? "Fund issuer" : "Gloom", status: "not-a-feed", basis: "published fund data" },
+    metadata: { symbol, venue, usListedOnly: true, issuerPage: profile?.page ?? null },
+  };
+}
 
 /**
  * ETF: a US-listed fund's facts (fee, NAV, premium or discount, net assets,
@@ -145,7 +207,7 @@ export function createFundHeadless(dependencies: FundHeadlessDependencies = defa
   return {
     shape: "bundle",
     freshness: { source: "Fund sponsors and SEC EDGAR", status: "not-a-feed", basis: "published fund data" },
-    argument: { kind: "ticker", placeholder: "ticker", description: "US-listed fund ticker." },
+    argument: { kind: "ticker", placeholder: "ticker", description: "US-listed fund ticker. A fund listed abroad gets its issuer's page." },
     options: [{
       key: "limit",
       shot: REPORT_ROWS,
@@ -160,6 +222,19 @@ export function createFundHeadless(dependencies: FundHeadlessDependencies = defa
     describe: (args) => `ETF | ${args.symbols[0]}`,
     async load(args, ctx) {
       const symbol = args.symbols[0]!;
+      const abroad = venueAbroad(symbol);
+      if (abroad) {
+        try {
+          const profile = await (dependencies.loadAbroadProfile ?? defaultFundDependencies.loadAbroadProfile)(symbol, ctx);
+          return fundAbroadResult(symbol, abroad, profile);
+        } catch (error) {
+          return {
+            ...fundAbroadResult(symbol, abroad, null),
+            complete: false,
+            errors: [`Fund profile unavailable: ${errorMessage(error)}`],
+          };
+        }
+      }
       const limit = Number(args.options.limit);
       const [factsResult, filingsResult] = await Promise.allSettled([
         dependencies.loadFacts(symbol, ctx),
@@ -168,7 +243,8 @@ export function createFundHeadless(dependencies: FundHeadlessDependencies = defa
       if (factsResult.status === "rejected" && filingsResult.status === "rejected") throw filingsResult.reason;
       const facts = factsResult.status === "fulfilled" ? factsResult.value : null;
       const issuerFilings = filingsResult.status === "fulfilled" ? filingsResult.value : [];
-      const filings = filterFilingsByForms(issuerFilings, ETF_FILING_FORMS).slice(0, limit);
+      // A trust's list holds every fund it runs; the fund's own series is the view.
+      const filings = filterFilingsByForms(fundSeriesFilings(issuerFilings), ETF_FILING_FORMS).slice(0, limit);
       const searchedAll = issuerFilings.length < SEC_FILING_FETCH_LIMIT;
       const filingsEmpty = filingsResult.status === "rejected"
         ? `Fund filings unavailable: ${errorMessage(filingsResult.reason)}`
@@ -181,17 +257,19 @@ export function createFundHeadless(dependencies: FundHeadlessDependencies = defa
           ? fundFactsErrorText(factsResult.reason)
           : fundFactsEmpty(symbol, facts, !filingsPointToSec) };
       const publishers = facts?.covered ? fundFactPublishers(facts) : [];
+      const filingRows = buildSecFilingRows(filings);
       return {
         sections: [
           factsSection,
-          { title: "Fund filings", columns: SEC_COLUMNS, rows: buildSecFilingRows(filings), ...(filings.length === 0 ? { empty: filingsEmpty } : {}) },
+          { title: "Fund filings", columns: SEC_COLUMNS, textColumns: fundFilingTextColumns(filingRows), rows: filingRows, ...(filings.length === 0 ? { empty: filingsEmpty } : {}) },
         ],
         complete: !!facts?.covered && filingsResult.status === "fulfilled" && searchedAll,
         errors: [
           ...(factsResult.status === "rejected" ? [fundFactsErrorText(factsResult.reason)] : []),
           ...(filingsResult.status === "rejected" ? [`Fund filings: ${errorMessage(filingsResult.reason)}`] : []),
         ],
-        notes: facts ? [fundFactsStaleNote(symbol, facts)].filter((note): note is string => !!note) : [],
+        // A stale NAV says since when; a covered fund without one says why, as the server words it.
+        notes: facts ? [fundFactsStaleNote(symbol, facts), facts.covered && !facts.nav ? facts.navReason : null].filter((note): note is string => !!note) : [],
         // The facts' publisher is the source, named the same way for every fund; without facts it is the SEC.
         freshness: {
           source: listNames(publishers) || "SEC EDGAR",

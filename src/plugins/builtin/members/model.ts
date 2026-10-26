@@ -2,13 +2,15 @@ import type { FundChange, FundMember, FundMembersPayload, MemberFundsPayload } f
 import type { DataTableColumn } from "../../../components";
 import { buildSectionedRows, type SectionedRow } from "../../../components/data-table/sections";
 import { getTableWidth } from "../../../components/ui/table-layout";
+import { isRegularSessionTime, latestRegularSessionClose } from "../../../market-data/market/freshness";
 import { compareSortValues, type SortPreference } from "../../../utils/sort-values";
-export type MembersTab = "members" | "movers" | "changes";
-export const TABS = [{ value: "members", label: "Members" }, { value: "movers", label: "Movers" }, { value: "changes", label: "Changes" }];
+import { closeLabel } from "../themes/model";
+export type MembersTab = "members" | "movers" | "changes" | "breadth";
+export const TABS = [{ value: "members", label: "Members" }, { value: "movers", label: "Movers" }, { value: "changes", label: "Changes" }, { value: "breadth", label: "Breadth" }];
 export const isTab = (value: unknown): value is MembersTab => TABS.some((tab) => tab.value === value);
 const COVERED = [{ ticker: "IVV", name: "S&P 500" }, { ticker: "IJH", name: "S&P 400" }, { ticker: "IJR", name: "S&P 600" }, { ticker: "IWM", name: "Russell 2000" }, { ticker: "IWB", name: "Russell 1000" }];
 /** Symbols the app reads as a covered fund before asking the server, which knows its own aliases too. */
-const LOCAL_ALIASES: Record<string, string> = { SPX: "IVV", SPY: "IVV", "^GSPC": "IVV" };
+const LOCAL_ALIASES: Record<string, string> = { SPX: "IVV", "^SPX": "IVV", SPY: "IVV", "^GSPC": "IVV", "^MID": "IJH", SP400: "IJH", "^SP400": "IJH", "^SML": "IJR", SP600: "IJR", "^SP600": "IJR", RUT: "IWM", "^RUT": "IWM", RUI: "IWB", "^RUI": "IWB" };
 const requestedSymbol = (input: string) => input.split(":")[0]!.trim().toUpperCase();
 export function canonicalFund(input: string) { const symbol = requestedSymbol(input); return LOCAL_ALIASES[symbol] ?? symbol; }
 /** The covered fund the user asked for, by ticker or by an alias such as SPX, or undefined when it is not covered. */
@@ -29,6 +31,17 @@ export function notCoveredMessage(input: string, funds: MemberFundsPayload["fund
 export function coverageText(aggregate: FundMembersPayload["aggregate"], short = false) {
   const partial = aggregate.fresh1D < aggregate.total;
   return `${partial && !short ? "Partial " : ""}1D ${aggregate.fresh1D}/${aggregate.total} · ${decimal(aggregate.coveredWeight * 100, 1)}% wt`;
+}
+/**
+ * What a fund's member quotes are, as read at `readAt`. A Pro account's are live while the regular US session
+ * trades; outside it the server prices the members from the last completed session, so they are that session's
+ * close (`Fri 23 Oct close`), as THEM names it, never live. Everyone else's are 15 minutes delayed, in or out of
+ * a session. Hours that cannot be told read as live.
+ */
+export function membersFeed(access: FundMembersPayload["access"], readAt: number): { kind: "live" | "delayed" } | { kind: "close"; date: string; closedAt: number; label: string } {
+  if (access !== "realtime") return { kind: "delayed" };
+  const close = isRegularSessionTime("NYSE", readAt) === false ? latestRegularSessionClose("NYSE", readAt) : null;
+  return close ? { kind: "close", date: close.date, closedAt: close.close, label: closeLabel(close.date) } : { kind: "live" };
 }
 /** "S&P 500, IVV holdings as of 2026-10-08 (for SPY)": the holdings file the members come from. */
 export function holdingsSourceText(input: string, data: Pick<FundMembersPayload, "fund" | "asOf">) {
@@ -52,7 +65,13 @@ export function membersTitle(input: string) {
     : requested ? `MEMB ${requested}` : "Index and ETF members";
 }
 export const DEFAULT_SORT: SortPreference<string> = { columnId: "weight", direction: "desc" };
-export const percent = (value: number | null, suffix = "%", digits = 2) => value == null || !Number.isFinite(value) ? "--" : `${value > 0 ? "+" : ""}${value.toFixed(digits)}${suffix}`;
+/** A signed figure; one that rounds to zero is unsigned (0.00, never +0.00 or -0.00). */
+export function percent(value: number | null, suffix = "%", digits = 2) {
+  if (value == null || !Number.isFinite(value)) return "--";
+  const fixed = value.toFixed(digits);
+  if (!/[1-9]/.test(fixed)) return `${fixed.replace("-", "")}${suffix}`;
+  return `${value > 0 ? "+" : ""}${fixed}${suffix}`;
+}
 export const decimal = (value: number | null, digits = 2) => value == null || !Number.isFinite(value) ? "--" : value.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
 export function sortMembers(rows: readonly FundMember[], sort: SortPreference<string>) {
   return [...rows].sort((a, b) => compareSortValues(a[sort.columnId as keyof FundMember] as number | string | null,

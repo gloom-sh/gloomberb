@@ -35,6 +35,51 @@ import { equitiesPayload, perpBoard, venueRow } from "../../perps/test-fixture";
 
 const TEST_PANE_ID = "portfolio-list:test";
 
+test.each([true, false])("deferred and continuous futures share a front reference without replacing their prices (streaming %s)", async (liveStreaming) => {
+  const symbols = ["NGF27", "NG2", "NGX26"];
+  const config = createManualCollectionConfig("watchlist");
+  config.layout.instances.find((pane) => pane.instanceId === TEST_PANE_ID)!.settings = { columnIds: ["ticker", "price", "change_pct"], liveStreaming };
+  const terms = spyOn(apiClient, "getCloudFuturesContract").mockImplementation(async (symbol) => ({
+    symbol, root: "NG", name: "Natural Gas", contract: symbol === "NG2" ? "NGZ26" : symbol,
+    contractSymbol: symbol, deliveryMonth: "2027-01", spec: null, settlement: null,
+    firstNotice: null, lastTrade: null, inDelivery: false,
+    front: symbol === "NGX26" ? null : { contract: "NGX26", contractSymbol: "NGX26", deliveryMonth: "2026-11", lastTrade: null },
+  }));
+  let frontPrice = 3.116;
+  const quoteFor = (symbol: string) => makeQuote({ symbol, name: "Natural Gas", instrumentType: "FUTURE",
+    price: symbol === "NGX26" ? frontPrice : symbol === "NG2" ? 3.482 : 4.221 });
+  const batches: string[][] = [];
+  const provider = createTestDataProvider({
+    async getQuote(symbol) { return quoteFor(symbol); },
+    async getQuotesBatch(targets) {
+      batches.push(targets.map((target) => `${target.symbol}@${target.exchange}`));
+      return targets.map((target) => ({ target, quote: quoteFor(target.symbol) }));
+    },
+    async getTickerFinancials(symbol) { return createTestFinancials({ quote: quoteFor(symbol) }); },
+  });
+  sharedCoordinator = new MarketDataCoordinator(provider);
+  setSharedMarketDataCoordinator(sharedCoordinator);
+  try {
+    await tui.render(<PortfolioHarness config={config} collectionId="watchlist" paneWidth={110} stateMutator={(state) => {
+      state.tickers = new Map(symbols.map((symbol) => [symbol, createTestTicker(symbol, "Natural Gas", {
+        assetCategory: "FUTURE", exchange: "NYMEX", watchlists: ["watchlist"], portfolios: [], positions: [],
+      })]));
+      state.financials = new Map(symbols.map((symbol) => [symbol, createTestFinancials({ quote: quoteFor(symbol) })]));
+    }} />, { width: 110, height: 12 });
+    const frame = await tui.waitForFrameToContain("front NGX26 3.116");
+    expect(frame.match(/front NGX26 3\.116/g)).toHaveLength(2);
+    expect(frame).toContain("4.221");
+    expect(frame).toContain("3.482");
+    expect(batches.flat().filter((target) => target === "NGX26@")).toHaveLength(1);
+    frontPrice = 3.127;
+    await act(async () => { await sharedCoordinator!.loadQuotesBatch([{ symbol: "NGX26", exchange: "" }], { forceRefresh: true }); });
+    await tui.waitForFrameToContain("front NGX26 3.127");
+    expect(tui.frame()).not.toContain("front NGX26 3.116");
+  } finally {
+    terms.mockRestore();
+  }
+});
+
 const tui = createOpenTuiTestHarness();
 let harnessDispatch: React.Dispatch<AppAction> | null = null;
 let sharedCoordinator: MarketDataCoordinator | null = null;
@@ -736,6 +781,60 @@ describe("PortfolioListPane cash and margin UI", () => {
     expect(connected).not.toContain("IBKR disconnected");
   });
 
+  test("a disabled broker is never synced: the pane says so, and b enables then syncs it, naming the step that failed", async () => {
+    const portfolioId = "broker:ibkr-live:DU12345";
+    const config = createPortfolioConfig(portfolioId, [{ ...createBrokerInstance("gateway", "ibkr-live"), enabled: false }]);
+    const syncedAt = new Date(2025, 9, 17, 14, 2).getTime();
+    config.portfolios = config.portfolios.map((portfolio) => portfolio.id === portfolioId ? { ...portfolio, lastSyncedAt: syncedAt } : portfolio);
+    const broker: BrokerAdapter = {
+      id: "ibkr",
+      name: "IBKR",
+      configSchema: [],
+      validate: async () => true,
+      importPositions: async () => [],
+      getStatus: () => ({ state: "connected", mode: "gateway", updatedAt: 0 }),
+    };
+    const calls: string[] = [];
+    const notifications: Array<{ type?: string; body: string }> = [];
+    const runtime = createTestPluginRuntime({
+      getBrokerAdapter: (brokerType) => brokerType === "ibkr" ? broker : null,
+      connectBrokerInstance: async (instanceId) => { calls.push(`connect ${instanceId}`); },
+      updateBrokerInstance: async (instanceId, _values, options) => {
+        calls.push(`update ${instanceId} enabled=${String(options?.enabled)}`);
+        const current = harnessState!.config;
+        harnessDispatch!({ type: "SET_CONFIG", config: { ...current, brokerInstances: current.brokerInstances.map((entry) => entry.id === instanceId ? { ...entry, enabled: options?.enabled ?? entry.enabled } : entry) } });
+      },
+      syncBrokerInstance: async (instanceId) => {
+        calls.push(`sync ${instanceId}`);
+        throw new Error("Gateway is not running.");
+      },
+      notify: (notification) => { notifications.push(notification); },
+    });
+    await tui.render(<PaneFooterProvider>{(footer) => <Box flexDirection="column">
+      <PortfolioHarness config={config} collectionId={portfolioId} runtime={runtime} paneHeight={11} />
+      <PaneFooterBar footer={footer} focused width={100} />
+      <PaneFooterKeys paneId={TEST_PANE_ID} footer={footer} focused />
+    </Box>}</PaneFooterProvider>, { width: 100, height: 24 });
+    await flushFrame();
+
+    const frame = await tui.waitForFrameToContain("[b] enable");
+    expect(frame).toContain("AAPL");
+    expect(frame).toContain("as of Oct 17 14:02");
+    expect(frame).toContain("IBKR disabled");
+    expect(calls).toEqual([]);
+
+    await act(async () => {
+      tui.setup().mockInput.pressKey("b");
+      await Promise.resolve();
+    });
+    await flushFrame();
+    expect(calls).toEqual(["update ibkr-live enabled=true", "sync ibkr-live"]);
+    // The enabling worked; the sync after it did not.
+    expect(notifications).toEqual([{ type: "error", body: "Enabled IBKR, but it did not sync: Gateway is not running." }]);
+    const enabled = await tui.waitForFrameToExclude("[b] enable");
+    expect(enabled).not.toContain("IBKR disabled");
+  });
+
   const teamConfig = createManualCollectionConfig("team:t1:w1");
   teamConfig.watchlists = [{ id: "team:t1:w1", name: "Desk", teamId: "t1" }];
   for (const [name, collectionId, config] of [
@@ -863,7 +962,7 @@ describe("PortfolioListPane cash and margin UI", () => {
     expect(tui.frame()).toMatch(/\+ MSFT\s+Ticker add failed/);
   });
 
-  test("quick-add shows the saved listing's venue, and a colon opens that symbol's venues in the command bar", async () => {
+  test("quick-add reads a bare symbol as its US listing beside one saved abroad, and a colon opens that symbol's venues in the command bar", async () => {
     const config = createManualCollectionConfig("watchlist");
     const nyse = { providerId: "quick-add-test", symbol: "NET", name: "Cloudflare", exchange: "NYSE", currency: "USD", type: "STK" };
     const lse = { providerId: "quick-add-test", symbol: "NET", name: "Netcall Plc", exchange: "LSE", currency: "GBP", type: "STK" };
@@ -905,9 +1004,10 @@ describe("PortfolioListPane cash and margin UI", () => {
     });
     await flushFrame();
 
+    // Netcall in London holds the bare key; NET is still Cloudflare in New York.
     const bare = tui.frame();
-    expect(bare).toContain("Netcall Plc");
-    expect(bare).toContain("LSE");
+    expect(bare).toContain("Cloudflare");
+    expect(bare).toContain("NYSE");
 
     await act(async () => {
       await tui.setup().mockInput.typeText(":");
@@ -1007,7 +1107,9 @@ describe("PortfolioListPane cash and margin UI", () => {
 
     // The EUR rate arrives from the market data coordinator a frame later.
     const frame = await tui.waitForFrameToContain("1.4k");
-    expect(frame).toMatch(/AAPL\s+125\.00\s+\+4\.17%/);
+    // A row in another currency than the totals puts CCY after LAST, so 125.00 reads as euros.
+    expect(frame).toMatch(/LAST\s+CCY\s+CHG%/);
+    expect(frame).toMatch(/AAPL\s+125\.00\s+EUR\s+\+4\.17%/);
     expect(frame).toContain("100");
     expect(frame).toContain("+275");
     expect(frame).not.toContain("€100.00");

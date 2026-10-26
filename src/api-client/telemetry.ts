@@ -16,6 +16,23 @@ export interface CrashReportError {
   stack?: string;
   plugin?: string;
   pane?: string;
+  /** A failed update step, field by field. Servers that do not know it drop it. */
+  update?: UpdateFailureReport;
+}
+
+/**
+ * A failed update step as error tracking gets it: fixed values and version
+ * numbers only, never a path, URL or the error's own text.
+ */
+export interface UpdateFailureReport {
+  phase: "check" | "download" | "verify" | "apply" | "relaunch";
+  code: string;
+  appVersion: string;
+  targetVersion?: string;
+  channel: "stable" | "nightly";
+  platform: "macos" | "windows" | "linux" | "other";
+  arch: "arm64" | "x64" | "other";
+  installKind: string;
 }
 
 /** Body of `POST /telemetry/errors`. The server forwards each error to error tracking. */

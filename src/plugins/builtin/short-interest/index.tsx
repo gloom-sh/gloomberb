@@ -13,6 +13,8 @@ import { SHORT_WATCH_SCOPE_OPTIONS, ShortWatchPane } from "./watch-pane";
 import { withCommandTab } from "../shared/command-tab";
 import { followsWithoutFinraOverride, shortVolumeSettings } from "../short-volume";
 import { shortVolumeHeadless } from "../short-volume/headless";
+import { publicationCache } from "./publications-client";
+import { publicationHeadless } from "./publications-headless";
 import { isKnownNonUsListing } from "../../../utils/sec";
 
 
@@ -21,6 +23,7 @@ let disposeConnection: (() => void) | null = null;
 export const shortInterestModule: PluginModule = {
   series: SHORT_INTEREST_SERIES,
   setup(ctx) {
+    publicationCache.attach(ctx.persistence);
     attachShortInterestHealth(ctx.connectionHealth);
     disposeConnection = ctx.connectionHealth.registerSource({
       id: SHORT_INTEREST_CONNECTION_ID,
@@ -42,6 +45,7 @@ export const shortInterestModule: PluginModule = {
   },
 
   dispose() {
+    publicationCache.reset();
     disposeConnection?.();
     disposeConnection = null;
     resetShortInterestHealth();
@@ -84,7 +88,7 @@ export const shortInterestModule: PluginModule = {
         paneId: "short-interest",
         label: "Short Interest",
         // The current snapshot only carries the current and prior settlement dates.
-        description: "Bi-monthly short interest settlements from FINRA with days to cover and average daily volume. Daily volume is the other tab.",
+        description: "Bi-monthly short interest settlements from FINRA with days to cover and average daily volume. Daily volume, fails to deliver and weekly ATS/OTC volume share the pane.",
         keywords: ["short", "interest", "si", "shorts", "days", "cover"],
         shortcut: "SI",
       }), "interest"),
@@ -102,6 +106,24 @@ export const shortInterestModule: PluginModule = {
         publicShare: true,
       }), "volume"),
       headless: shortVolumeHeadless,
+    },
+    {
+      ...withCommandTab(createTickerSurfacePaneTemplate({
+        id: "fails-to-deliver-pane", paneId: "short-interest", label: "Fails to Deliver",
+        description: "The short interest pane on Fails to deliver: outstanding fail shares by settlement date and CUSIP from SEC publications.",
+        keywords: ["fails to deliver", "fails-to-deliver", "ftd", "settlement", "failures", "sec"],
+        shortcut: "FTD", publicShare: true,
+      }), "ftd"),
+      headless: publicationHeadless("ftd"),
+    },
+    {
+      ...withCommandTab(createTickerSurfacePaneTemplate({
+        id: "otc-volume-pane", paneId: "short-interest", label: "Weekly ATS / OTC Volume",
+        description: "The short interest pane on Weekly ATS/OTC: FINRA weekly ATS and non-ATS shares and trades, including dark-pool volume.",
+        keywords: ["dark pool", "dark pools", "ats", "non-ats", "otc", "off-exchange", "weekly", "volume", "finra"],
+        shortcut: "ATS", publicShare: true,
+      }), "ats"),
+      headless: publicationHeadless("ats"),
     },
     {
       id: "short-watch-pane",

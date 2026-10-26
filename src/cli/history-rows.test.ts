@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
-  cleanFloat32Price, closedPeriodBarDay, formingPeriodBar, historyBarStatusNote, historyFlagNote, historyGapNote, historyJumpNote, historyMissingVolumeNote,
-  historyNotes, historyPriceDecimals,
-  historyRows, historyUnbrokenFrom, historyUnit,
+  cleanFloat32Price, closedPeriodBarDay, formingPeriodBar, historyBarsAfterHole, historyBarStatusNote, historyChangeBaseNote, historyFlagNote,
+  historyGapNote, historyJumpNote, historyMissingVolumeNote, historyNotes, historyPriceDecimals,
+  historyRows, historyUnbrokenFrom, historyUnit, historyVenueVolumeNote,
 } from "./history-rows";
 import { mapPricePoint } from "../sources/gloomberb-cloud/normalizers";
 import { latestTradeIndex, missingVolumeCount, pricePointValues } from "../utils/price-history-integrity";
@@ -94,6 +94,22 @@ describe("history rows", () => {
     expect(historyMissingVolumeNote([coin[1]!, { ...coin[0]!, partial: true }])).toBeNull();
   });
 
+  test("one venue's count in place of the market's volume is kept apart from volume, named with its venue", () => {
+    // KGC's five-minute bars as Gloom Cloud serves the session still trading when the consolidated tape is unavailable:
+    // the counts are IEX's alone, about a tenth of the market's.
+    const served = [{ date: "2026-10-21T13:30:00Z", open: 23.87, high: 23.87, low: 23.66, close: 23.67, venueVolume: { venue: "IEX", volume: 4_251 } },
+      { date: "2026-10-21T13:35:00Z", open: 23.66, high: 23.93, low: 23.66, close: 23.93, venueVolume: { venue: "IEX", volume: 19_387 } }];
+    const points = served.map((point) => mapPricePoint(point, 1, "NYSE"));
+    expect(points.map((point) => [point.volume, point.venueVolume])).toEqual([[undefined, { venue: "IEX", volume: 4_251 }],
+      [undefined, { venue: "IEX", volume: 19_387 }]]);
+    const rows = historyRows(points, "5m");
+    expect(rows.map(({ volume, venueVolume, volumeVenue }) => ({ volume, venueVolume, volumeVenue }))).toEqual([
+      { volume: null, venueVolume: 4_251, volumeVenue: "IEX" }, { volume: null, venueVolume: 19_387, volumeVenue: "IEX" }]);
+    expect(historyMissingVolumeNote(rows)).toBeNull();
+    expect(historyVenueVolumeNote(rows)).toBe("2 of 2 bars count IEX trades only, not the market's volume");
+    expect(historyVenueVolumeNote(historyRows([mapPricePoint({ ...served[0]!, volume: 600_000 }, 1, "NYSE")], "5m"))).toBeNull();
+  });
+
   test("the latest trade a coin's intraday history ends with is part of the bar before it, never a bar without volume", () => {
     // Hourly bars as Gloom Cloud serves a coin signed in: each bar's volume, then the latest trade at its own time.
     const bar = (date: string, volume?: number) => ({ date, open: 81_000, high: 81_100, low: 80_900, close: 81_050, volume });
@@ -129,8 +145,11 @@ describe("history rows", () => {
     expect(historyNotes("5Y", "1wk", "2023-09-11", now)).toEqual(["Asked 5Y, data starts 2023-09-11 (first available bar)"]);
     expect(historyNotes("1Y", "1d", "2025-10-13", now)).toEqual([]);
     expect(historyNotes("5Y", "1wk", "2021-10-25", now)).toEqual([]);
-    // ALL has no start to miss, and monthly is what it is served in.
+    // ALL reaches back to 1976-10: a history the window cuts has no start to note; one that starts years later
+    // says where its source's bars start (BTC-USD's in 2014-09), unless a coverage line already does.
     expect(historyNotes("ALL", "1mo", "1976-12-01", now)).toEqual([]);
+    expect(historyNotes("ALL", "1mo", "2014-09-01", now)).toEqual(["ALL starts 2014-09; the source has no earlier bar"]);
+    expect(historyNotes("ALL", "1mo", "2014-09-01", now, true)).toEqual([]);
     expect(historyNotes("1Y", "1mo", "2025-10-01", now)).toEqual(["Asked 1Y, got monthly bars from 2025-10"]);
     // Without a declared size, the bars' spacing says what they are.
     const weekly = historyRows([0, 7, 14].map((day) => ({ date: new Date(Date.UTC(2026, 0, 5 + day)), close: 1 })), null);
@@ -155,11 +174,11 @@ describe("history rows", () => {
       days("2026-08-01", "2026-10-11", ["2026-08-03", "2026-08-20", "2026-09-30", "2026-10-04", "2026-10-05", "2026-10-06", "2026-10-10"]),
       { listing: "BTC-EUR", instrumentType: "CRYPTOCURRENCY" },
     )).toBe("No bars for 2 earlier days, 2026-09-30, 2026-10-04 to 2026-10-06 and 2026-10-10");
-    // A stock's weekend, and a coin's weekly bars, are no gap.
+    // A stock's weekend is no gap; a coin's weekly bars name a week without a bar, as any weekly bars do.
     const weekdays = days("2026-09-28", "2026-10-09", ["2026-10-03", "2026-10-04"]);
     expect(historyGapNote(weekdays, { listing: "AAPL", exchange: "NASDAQ", instrumentType: "EQUITY" })).toBeNull();
     const weekly = historyRows([0, 7, 21].map((day) => ({ date: new Date(Date.UTC(2026, 8, 7 + day)), close: 1 })), "1wk");
-    expect(historyGapNote(weekly, btc)).toBeNull();
+    expect(historyGapNote(weekly, btc)).toBe("No bar for the week of 2026-09-21");
   });
 
   test("a gap or a 100x jump flags the bar after it and keeps its prices, which the blanked-bar count leaves out", () => {
@@ -185,8 +204,6 @@ describe("history rows", () => {
       // Lunar New Year shuts Shanghai for nine days; a thin listing goes two weeks without a trade.
       ["closures", series("2026-01-05", "2026-04-30", DAY, (date) => weekend(date) || between(date, "2026-02-14", "2026-02-23")
         || between(date, "2026-03-09", "2026-03-20")), "1d", { listing: "600519.SS" }],
-      ["weekly", series("2021-10-04", "2026-10-05", 7 * DAY, (date) => between(date, "2025-09-29", "2025-10-06")), "1wk", { listing: "600519.SS" }],
-      ["monthly", series("1990-01-01", "2026-10-01", 30.44 * DAY, (date) => between(date, "2001-09-01", "2001-10-31")), "1mo", { listing: "GC=F" }],
       // 5-minute bars of a Friday and Monday session, hourly bars across a week's nights.
       ["5-minute", series("2026-10-09T13:30:00Z", "2026-10-12T19:55:00Z", 5 * 60_000, (date) => weekend(date)
         || date.getUTCHours() < 13 || date.getUTCHours() >= 20), "5m", { listing: "AAPL" }],
@@ -201,6 +218,34 @@ describe("history rows", () => {
       expect([name, rows.filter((row) => row.flag).length, historyGapNote(rows, market), historyJumpNote(rows), historyUnbrokenFrom(rows)])
         .toEqual([name, 0, null, null, null]);
     }
+  });
+
+  test("every month or week without a bar is named; a missing month breaks the series, a closed week does not", () => {
+    // GF=F's monthly bars as served on 2026-10-21: July 2001, September 2002, February and March 2026 missing.
+    const missing = ["2001-07", "2002-09", "2026-02", "2026-03"];
+    const points = Array.from({ length: 300 }, (_, index) => ({ date: new Date(Date.UTC(2001, 5 + index, 1)), close: 90 + index / 10 }))
+      .filter((point) => !missing.includes(point.date.toISOString().slice(0, 7)));
+    const monthly = historyRows(points, "1mo");
+    expect(monthly.filter((row) => row.flag).map((row) => [row.date, row.flag]))
+      .toEqual([["2001-08-01", "gap"], ["2002-10-01", "gap"], ["2026-04-01", "gap"]]);
+    expect(historyGapNote(monthly, { listing: "GF=F" })).toBe("No bars for 2001-07, 2002-09 and 2026-02 to 2026-03 (2 months)");
+    expect(historyGapNote(monthly.slice(10, 20), { listing: "GF=F" })).toBe("No bar for 2002-09");
+    expect(historyUnbrokenFrom(monthly)).toBe("2026-04-01");
+    // HP's change after a gap is from the bar before it, and says so.
+    const times = monthly.map((row) => Date.parse(row.date));
+    expect(times.filter((_, index) => historyBarsAfterHole(times, "1mo")[index]).map((time) => new Date(time).toISOString().slice(0, 7)))
+      .toEqual(["2001-08", "2002-10", "2026-04"]);
+    expect(historyChangeBaseNote(times, "1mo"))
+      .toBe("CHG marked * spans the missing bars: 2001-08 is from 2001-06, 2002-10 from 2002-08 and 2026-04 from 2026-01");
+    // Golden Week closed Shanghai for two weeks: named, but no break in the series.
+    const weekly = historyRows(series("2025-09-08", "2025-10-27", 7 * DAY, (date) => between(date, "2025-09-29", "2025-10-06")), "1wk");
+    expect(weekly.filter((row) => row.flag)).toEqual([]);
+    expect(historyGapNote(weekly, { listing: "600519.SS" })).toBe("No bars for 2025-09-29 to 2025-10-12 (2 weeks)");
+    expect(historyGapNote(weekly.filter((row) => row.date !== "2025-10-13"), { listing: "600519.SS" }))
+      .toBe("No bars for 2025-09-29 to 2025-10-19 (3 weeks)");
+    expect(historyGapNote(weekly.filter((row) => row.date !== "2025-10-20"), { listing: "600519.SS" }))
+      .toBe("No bars for 2025-09-29 to 2025-10-12 (2 weeks) and the week of 2025-10-20");
+    expect(historyChangeBaseNote(weekly.map((row) => Date.parse(row.date)), "1wk")).toBe("CHG marked * spans the missing bars: 2025-10-13 is from 2025-09-22");
   });
 
   test("prices are in the quote's currency, an FX pair's counter currency, or index points, and never a guessed one", () => {

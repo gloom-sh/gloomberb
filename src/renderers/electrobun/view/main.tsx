@@ -26,6 +26,7 @@ import { installElectrobunUpdateHost } from "./update-host";
 import { installScreenshotWatermark } from "./screenshot-watermark";
 import { installElectrobunWindowFullscreenTracking } from "./window-fullscreen";
 import { installDomMarketDataFrames } from "../../dom/data-frames";
+import { releaseBootFrameWhenDrawn, startBootFrameRecorder } from "../../dom/boot-frame";
 import { DomErrorBoundary, DomHostProviders } from "../../dom/dom-host-providers";
 import { DesktopFatalScreen } from "./fatal-screen";
 import { resolveRendererWindowError } from "./renderer-window-error";
@@ -45,6 +46,7 @@ import { getMarketplaceHost, setPluginManager, type PluginManager } from "../../
 import { remoteNotesFilesIO, setNotesFilesIO } from "../../../plugins/builtin/notes/files";
 import { NOTES_FILES_CAPABILITY_ID } from "../../../capabilities";
 import { loadOfficialPluginIds } from "../../../plugins/marketplace/feed";
+import { setPluginSeedNotice } from "../../../plugins/seed-notice";
 import { crashReportsEnabled, installCrashReporter, reportCrash } from "../../../telemetry/crash-reports";
 import { browserDoNotTrack, installWindowCrashListeners } from "../../../telemetry/crash-reports-dom";
 import { currentTelemetryConfig } from "../../../telemetry/live-config";
@@ -72,9 +74,14 @@ const bootLog = debugLog.createLogger("electrobun-web-boot");
 let appMounted = false;
 
 appRootElement.tabIndex = -1;
-root.render(<div className="gloom-loading">Starting Gloomberb...</div>);
+// The page drew the layout this window last drew, or the bare shell, before
+// this script loaded (dom/boot-frame.ts); it stays until the app has drawn its own.
+const releaseBootFrame = releaseBootFrameWhenDrawn(document, appRootElement);
+/** How long after the app mounts the launch frame stays at most. */
+const BOOT_FRAME_RELEASE_FALLBACK_MS = 4_000;
 
-function renderFatalError(error: unknown, details?: string, title = "Gloomberb failed to start"): void {
+function renderFatalError(error: unknown, details?: string, title = "Gloom failed to start"): void {
+  releaseBootFrame();
   root.render(
     <DesktopFatalScreen
       title={title}
@@ -94,7 +101,7 @@ window.__gloomRenderFatalError = (error, details, source) => {
   }) === "ignore") {
     return;
   }
-  renderFatalError(error, details, "Gloomberb crashed");
+  renderFatalError(error, details, "Gloom crashed");
 };
 
 function focusWebSurface(): void {
@@ -113,9 +120,13 @@ function requestStartupFocus(): void {
 
 async function boot() {
   bootLog.info("boot started");
+  // Both asked for at once: the Bun process compiles the plugins while it
+  // answers `init`, rather than after this view asks a second time.
   const backendInitPromise = initElectrobunBackend();
+  const externalBundlesPromise = backendRequest("plugins.listExternal");
   // Avoid a premature global unhandled-rejection render while UI chunks load.
   void backendInitPromise.catch(() => {});
+  void externalBundlesPromise.catch(() => {});
 
   installElectrobunConfigStoreHost();
   installElectrobunBrokerRemoteClient();
@@ -156,6 +167,8 @@ async function boot() {
     : init.desktopSnapshot;
   const config = desktopSnapshot?.config ?? init.config;
   applyLanguageFromConfig(config);
+  // Said by the app once it is up, as the terminal says it.
+  setPluginSeedNotice(init.pluginSeedNotice ?? null);
   const desktopWindowBridge = createDesktopWindowBridge(init.windowKind, init.paneId);
   const desktopApplicationMenuBridge: DesktopApplicationMenuBridge = {
     subscribe: (listener) => onBackendMessage("application-menu.select", ({ command }) => listener(command)),
@@ -172,7 +185,11 @@ async function boot() {
     "startup.electrobun.load-external-plugins",
     async () => {
       try {
-        return await loadDesktopExternalPlugins(await backendRequest("plugins.listExternal"));
+        // Asked once more if the early request failed: it waits for the
+        // whole launch, which a first run's plugin downloads can stretch past
+        // the request's time limit.
+        const bundles = await externalBundlesPromise.catch(() => backendRequest("plugins.listExternal"));
+        return await loadDesktopExternalPlugins(bundles);
       } catch (error) {
         debugLog.createLogger("desktop-plugins").error(`External plugin load failed: ${error}`);
         return [];
@@ -245,6 +262,15 @@ async function boot() {
     );
     appMounted = true;
   });
+  // A layout with neither panes nor a status bar has nothing to wait for.
+  window.setTimeout(releaseBootFrame, BOOT_FRAME_RELEASE_FALLBACK_MS);
+  if (init.windowKind === "main") {
+    startBootFrameRecorder({
+      doc: document,
+      root: appRootElement,
+      save: (frame) => { void backendRequest("host.saveBootFrame", { frame }).catch(() => {}); },
+    });
+  }
   requestStartupFocus();
   bootLog.info("root render scheduled", {
     layoutPanes: config.layout.instances.length,

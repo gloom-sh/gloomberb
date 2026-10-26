@@ -4,12 +4,12 @@ import { useThemeColors } from "../../theme/theme-context";
 import { useAppVisible } from "../../state/app/activity";
 import { useAppSelector } from "../../state/app/context";
 import { getSharedMarketDataCoordinator } from "../../market-data/coordinator";
-import { t } from "../../i18n";
+import { t, tf } from "../../i18n";
 import { useQuoteEntry, useResolvedEntryValue } from "../../market-data/hooks";
 import { useQuoteStreaming } from "../../state/hooks/quote-streaming";
 import type { QuoteSubscriptionTarget } from "../../types/data-provider";
 import { formatPercentRaw } from "../../utils/format";
-import { formatMarketPrice, liveQuoteFormatOptions } from "../../market-data/market/format";
+import { formatMarketPriceWithCurrency, liveQuoteFormatOptions } from "../../market-data/market/format";
 import { getSessionMoveDisplay, marketStateColor, marketStateCountdown, marketStateLabel } from "../../market-data/market/status";
 import type { Quote } from "../../types/financials";
 
@@ -33,7 +33,8 @@ const SPY_STREAM_TARGETS: QuoteSubscriptionTarget[] = [{
 }];
 
 export interface MarketSummary {
-  baseCurrency: string;
+  /** The base currency under its own label (base THB), so it never reads as the unit of SPY's price beside it. */
+  baseCurrencyLabel: string;
   marketColor: string;
   /** Market state with its countdown, when the state has one. */
   marketLabel: string;
@@ -83,6 +84,8 @@ export function resolveMarketSummaryFit(options: {
  * it, as `ticker SPY` headlines them. While a pre-market or after-hours
  * session is open (PRE-MKT, AFTER-HRS) the slot is that session's print and
  * its move from the close, so the figure is the session the label names.
+ * The price carries its currency's sign ($), so the base currency label
+ * after it is never read as its unit.
  */
 export function spySummary(quote: Quote | null | undefined, colors: ThemeColors): Pick<MarketSummary, "spyColor" | "spyText"> {
   const display = getSessionMoveDisplay(quote);
@@ -91,7 +94,7 @@ export function spySummary(quote: Quote | null | undefined, colors: ThemeColors)
   return {
     spyColor: display?.change != null ? priceColor(display.change, colors) : colors.textDim,
     spyText: display
-      ? `SPY ${formatMarketPrice(display.price, liveQuoteFormatOptions(quote, quote?.currency, "ETF"))} ${formatPercentRaw(display.changePercent).padStart(6)}`
+      ? `SPY ${formatMarketPriceWithCurrency(display.price, quote?.currency || "USD", liveQuoteFormatOptions(quote, quote?.currency, "ETF"))} ${formatPercentRaw(display.changePercent).padStart(6)}`
       : "SPY —",
   };
 }
@@ -137,11 +140,11 @@ export function useMarketSummary(): MarketSummary {
   const mktCountdown = mktState ? marketStateCountdown(mktState, now) : null;
   const marketLabelShort = mktState ? t(marketStateLabel(mktState)) : "";
   const marketLabel = marketLabelShort && mktCountdown
-    ? `${marketLabelShort} · ${mktCountdown}`
+    ? `${marketLabelShort} · ${mktCountdown}${mktState === "PRE" ? ` ${t("to regular open")}` : ""}`
     : marketLabelShort;
 
   return {
-    baseCurrency,
+    baseCurrencyLabel: tf("base {currency}", { currency: baseCurrency }),
     marketColor: mktState ? marketStateColor(mktState, colors) : colors.textDim,
     marketLabel,
     marketLabelShort,

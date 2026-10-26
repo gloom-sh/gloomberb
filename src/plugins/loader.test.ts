@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "fs";
+import { existsSync, mkdtempSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 
@@ -73,7 +73,7 @@ describe("loadExternalPlugin", () => {
     const loaded = await loadExternalPlugin(dir);
 
     expect(loaded?.needsGloomberb).toBe("999.0.0");
-    expect(loaded?.error).toBe(`Needs Gloomberb 999.0.0, this is ${VERSION}.`);
+    expect(loaded?.error).toBe(`Needs Gloom 999.0.0, this is ${VERSION}.`);
   });
 
   test("names the host export a stale plugin imports, from Bun's own error", async () => {
@@ -84,7 +84,7 @@ describe("loadExternalPlugin", () => {
     const loaded = await loadExternalPlugin(dir);
 
     expect(loaded?.error).toBe(
-      `Uses RemovedLongAgo from gloomberb/theme, which Gloomberb ${VERSION} does not have. Update the plugin, or Gloomberb if the plugin is newer.`,
+      `Uses RemovedLongAgo from gloomberb/theme, which Gloom ${VERSION} does not have. Update the plugin, or Gloom if the plugin is newer.`,
     );
   });
 
@@ -164,9 +164,13 @@ describe("a plugin updated in a running session to files its cached modules cann
 
 /**
  * An import of IBKR Gateway that ran before Interactive Brokers was linked
- * fails, and Bun keeps that failure for the rest of the process. Loading the
- * gateway after the sibling arrives needs a restart, not a crash report. A
- * sibling that really lacks the module is still a failure.
+ * fails, and Bun keeps that failure for the rest of the process: its resolver
+ * remembers the folder without the link, and the failed module stays failed
+ * under its path. Desktop users on Windows saw the gateway fail on the first
+ * launch after an update and work after a restart. The loader links
+ * the sibling and imports the plugin again in a way that looks again, and the
+ * report carries the link state. A sibling that really lacks the module is
+ * still a failure.
  */
 describe("a plugin whose sibling plugin was linked after its import failed", () => {
   afterEach(() => resetCrashReporterForTests());
@@ -181,9 +185,13 @@ describe("a plugin whose sibling plugin was linked after its import failed", () 
     };
     const gateway = folder("gloom-fixture-gateway", {
       "package.json": JSON.stringify({ name: "gloom-fixture-gateway", main: "index.ts", peerDependencies: { "gloom-fixture-peer": ">=1.0.0" } }),
-      "index.ts": `import { label } from "./plugin";\nexport default { id: "fixture-gateway", name: label };\n`,
-      "plugin.ts": `import { bridge } from "gloom-fixture-peer/bridge";\nexport const label = bridge;\n`,
+      "index.ts": `import { label, slot } from "./plugin";\nexport default { id: "fixture-gateway", name: label, slot };\n`,
+      "plugin.ts": `import { bridge, slot } from "gloom-fixture-peer/bridge";\nimport { suffix } from './parts/suffix';\nexport const label = bridge + suffix;\nexport { slot };\n`,
     });
+    // A nested file that imports the sibling too, as the gateway's trading
+    // pane does: its folder is cached apart from the plugin's own.
+    mkdirSync(join(gateway, "parts"));
+    writeFileSync(join(gateway, "parts", "suffix.ts"), `import { bridge } from "gloom-fixture-peer/bridge";\nexport const suffix = bridge ? "" : "?";\n`);
     const addPeer = () => folder("gloom-fixture-peer", { "package.json": JSON.stringify({ name: "gloom-fixture-peer" }), ...peerFiles });
     const sent: CrashReportsPayload[] = [];
     resetCrashReporterForTests();
@@ -196,16 +204,29 @@ describe("a plugin whose sibling plugin was linked after its import failed", () 
     return { gateway, addPeer, sent };
   }
 
-  test("asks for a restart when the module is there now", async () => {
-    const { gateway, addPeer, sent } = setup({ "bridge.ts": `export const bridge = "Fixture Gateway";\n` });
+  test("loads in the same process once the module is there, and reports the link state it recovered from", async () => {
+    const { gateway, addPeer, sent } = setup({ "bridge.ts": `export const bridge = "Fixture Gateway";\nexport const slot = {};\n` });
     await import(join(gateway, "index.ts")).catch(() => {});
     addPeer();
 
     const loaded = await loadExternalPlugin(gateway, "cli", { fresh: true });
+    // The desktop reads every plugin a second time to compile it for the
+    // view; that read must get the modules that loaded, not run them twice.
+    const again = await loadExternalPlugin(gateway, "cli");
     await flushCrashReports({ timeoutMs: 500 });
 
-    expect({ needsRestart: loaded?.needsRestart, error: loaded?.error }).toEqual({ needsRestart: true, error: undefined });
-    expect(sent).toEqual([]);
+    expect({ name: loaded?.plugin.name, error: loaded?.error, needsRestart: loaded?.needsRestart })
+      .toEqual({ name: "Fixture Gateway", error: undefined, needsRestart: undefined });
+    expect(again?.plugin).toBe(loaded!.plugin);
+    // The sibling's own module, not a second copy: the gateway hands its
+    // bridge to Interactive Brokers through it.
+    const peerBridge = await import(realpathSync(join(gateway, "..", "gloom-fixture-peer", "bridge.ts")));
+    expect((loaded!.plugin as unknown as { slot: object }).slot).toBe(peerBridge.slot);
+    const messages = sent.flatMap((payload) => payload.errors.map((error) => error.message));
+    // The link was made right before the import that replayed the failure.
+    expect(messages).toEqual([expect.stringMatching(
+      /\[retry=loaded peer=gloom-fixture-peer dir=gloom-fixture-peer link=(?:symlink|junction)->gloom-fixture-peer relinked=no link-writes=1@\d+\.\ds installs=none loads=1 first-launch=unknown bun=/,
+    )]);
   });
 
   test("still fails and reports a module the sibling does not have", async () => {
@@ -219,9 +240,12 @@ describe("a plugin whose sibling plugin was linked after its import failed", () 
     const unresolved = /Cannot find (?:module 'gloom-fixture-peer\/bridge'|package 'gloom-fixture-peer')/;
     expect(loaded?.needsRestart).toBeUndefined();
     expect(loaded?.error).toMatch(unresolved);
-    expect(sent.flatMap((payload) => payload.errors.map((error) => error.message))).toEqual([
-      expect.stringMatching(unresolved),
+    const messages = sent.flatMap((payload) => payload.errors.map((error) => error.message));
+    expect(messages).toEqual([
+      expect.stringMatching(new RegExp(`${unresolved.source}.*\\[retry=failed peer=gloom-fixture-peer dir=gloom-fixture-peer link=`)),
     ]);
+    // The retry failed the same way, under its own module key: nothing to add.
+    expect(messages[0]).not.toContain("retry-error=");
   });
 
   test("checks the subpath when the message names only the package", () => {
@@ -241,7 +265,7 @@ describe("a plugin whose sibling plugin was linked after its import failed", () 
  * upgraded installs still have their external checkouts. Loaded beside the
  * built-in, one fails on the duplicate id and reports a crash on every launch,
  * so the loader skips it before linking or importing anything, and leaves the
- * folder as it is for an older Gloomberb that may share it.
+ * folder as it is for an older Gloom that may share it.
  */
 describe("leftover checkouts of plugins that are built in now", () => {
   const imported = `throw new Error("imported");\n`;

@@ -1,10 +1,12 @@
+import { logFailure } from "../../../utils/log-failure";
 import { apiClient } from "../../../api-client";
 import type { FuturesCurvePayload } from "../../../api-client/futures-curve";
 import { createPluginCache } from "../../../data/plugin-cache";
 import { isFuturesContractSpec } from "../../../market-data/futures-contract";
 import { loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
-import type { DataProvider } from "../../../types/data-provider";
-import { archivedFuturesCurve, curveLookbackDate, curveSpot, normalizeCurveRoot, unsupportedCurveRootMessage, withTradedExpirations, type CurveSpot } from "./model";
+import type { AssetDataProvider, DataProvider } from "../../../types/data-provider";
+import type { TimeRange } from "../../../time-series/range";
+import { archivedFuturesCurve, curveLookbackDate, curveSpot, normalizeCurveRoot, spotBarsFromHistory, unsupportedCurveRootMessage, withSettleChanges, withTradedExpirations, type CurveSpot, type SpotBar } from "./model";
 
 export const futuresCurveCache = createPluginCache<FuturesCurvePayload>({
   kind: "futures-curve", source: "gloom-cloud", schemaVersion: 1,
@@ -53,26 +55,31 @@ export function validateFuturesCurve(data: FuturesCurvePayload, root: string): F
   const slope = data.slope;
   if (![slope.value, slope.annualizedRollYield].every(finiteOrNull)
     || ![slope.percentile, slope.rollPercentile].every(rank) || !Number.isInteger(slope.samples) || slope.samples < 0
-    || slope.asOf !== null && !timestamp(slope.asOf)) throw new Error("The server returned an invalid futures spread");
+    || slope.asOf !== null && !timestamp(slope.asOf)
+    || slope.basis != null && slope.basis !== "last" && slope.basis !== "settle"
+    || slope.thinSymbol != null && typeof slope.thinSymbol !== "string") throw new Error("The server returned an invalid futures spread");
   return data;
 }
+
+/** A live curve as every reader takes it: expiring on last trading days, its changes against the settlement shown. */
+const liveCurve = (data: FuturesCurvePayload) => withSettleChanges(withTradedExpirations(data));
 
 export async function fetchFuturesCurve(root: string, client: Pick<typeof apiClient, "getCloudFuturesCurve"> = apiClient): Promise<FuturesCurvePayload> {
   const normalized = normalizeCurveRoot(root);
   if (!normalized) throw new Error(unsupportedCurveRootMessage(root));
-  try { return withTradedExpirations(validateFuturesCurve(await client.getCloudFuturesCurve(normalized), normalized)); }
+  try { return liveCurve(validateFuturesCurve(await client.getCloudFuturesCurve(normalized), normalized)); }
   catch (error) { throw unavailableOnServer(error, "Futures curves are not available yet."); }
 }
 
 export function getCachedFuturesCurve(root: string): FuturesCurvePayload | null {
   const cached = futuresCurveCache.get(root, { allowExpired: true });
   // The pane revalidates this copy on mount; only the source or a failed refresh makes it stale.
-  return cached?.data ? withTradedExpirations(cached.data) : null;
+  return cached?.data ? liveCurve(cached.data) : null;
 }
 
 export async function loadFuturesCurve(root: string, force = false): Promise<FuturesCurvePayload> {
   const { payload, stale, refreshError } = await loadCloudResource(futuresCurveCache, root, () => fetchFuturesCurve(root), { force });
-  return { ...withTradedExpirations(payload), stale: stale || payload.stale, gaps: [...payload.gaps, ...(refreshError ? [refreshError] : [])] };
+  return { ...liveCurve(payload), stale: stale || payload.stale, gaps: [...payload.gaps, ...(refreshError ? [refreshError] : [])] };
 }
 
 /** The archived curve on a past date with the curves a week and a month before it. */
@@ -83,8 +90,8 @@ export async function loadFuturesCurveAsOf(root: string, date: string,
   try {
     const [curve, week, month] = await Promise.all([
       client.getCloudFuturesCurveAsOf(normalized, date),
-      client.getCloudFuturesCurveAsOf(normalized, curveLookbackDate(date, 7)).catch(() => null),
-      client.getCloudFuturesCurveAsOf(normalized, curveLookbackDate(date, 30)).catch(() => null),
+      client.getCloudFuturesCurveAsOf(normalized, curveLookbackDate(date, 7)).catch(logFailure("futures-curve.client", "Load week comparison curve failed", null)),
+      client.getCloudFuturesCurveAsOf(normalized, curveLookbackDate(date, 30)).catch(logFailure("futures-curve.client", "Load month comparison curve failed", null)),
     ]);
     if (!curve || curve.root !== normalized || !Array.isArray(curve.contracts) || !Array.isArray(curve.gaps)
       || curve.contracts.some((row) => !row || typeof row.symbol !== "string" || !Number.isFinite(row.price)
@@ -101,5 +108,29 @@ export async function loadFuturesCurveAsOf(root: string, date: string,
  * A failed read is a missing spot, never a failed report: the curve stands without its basis.
  */
 export async function loadCurveSpot(symbol: string, provider: Pick<DataProvider, "getQuote">, now = Date.now()): Promise<CurveSpot> {
-  return curveSpot(symbol, await provider.getQuote(symbol, "").catch(() => null), now);
+  return curveSpot(symbol, await provider.getQuote(symbol, "").catch(logFailure("futures-curve.client", "Load curve spot quote failed", null)), now);
+}
+
+/** The last day of one-minute bars: the reach of a curve's trades a basis is read for, the far months' older ones aside. */
+const SPOT_BAR_RANGE: TimeRange = "1D";
+
+/**
+ * The spot pair's one-minute bars over the last day, read through the same
+ * history path the charts use, which the basis pairs each trade with by
+ * minute. Bars of any other size pair nothing, and a failed read has none:
+ * the curve stands without its basis, each blank saying why.
+ */
+export async function loadCurveSpotBars(symbol: string,
+  provider: Pick<AssetDataProvider, "getPriceHistoryForResolutionWithMetadata" | "getPriceHistoryForResolution">, force = false): Promise<SpotBar[]> {
+  const context = force ? { cacheMode: "refresh" as const } : undefined;
+  try {
+    if (provider.getPriceHistoryForResolutionWithMetadata) {
+      const history = await provider.getPriceHistoryForResolutionWithMetadata(symbol, "", SPOT_BAR_RANGE, "1m", context);
+      return history.resolution && history.resolution !== "1m" ? [] : spotBarsFromHistory(history.points);
+    }
+    return provider.getPriceHistoryForResolution
+      ? spotBarsFromHistory(await provider.getPriceHistoryForResolution(symbol, "", SPOT_BAR_RANGE, "1m", context)) : [];
+  } catch (error) {
+    return logFailure("futures-curve.client", "Load curve spot bars failed", [] as SpotBar[])(error);
+  }
 }

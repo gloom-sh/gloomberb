@@ -3,8 +3,9 @@ import {
   type ShortcutDisplayMode,
   type ShortcutPlatform,
 } from "../../utils/shortcut-labels";
+import { t, tf } from "../../i18n";
 import { formatKeyChord, serializeKeyChord, type KeyChord, type PrimaryModifier } from "./chord";
-import type { ResolvedKeybindings } from "./resolve";
+import type { ResolvedKeybindingAction, ResolvedKeybindings } from "./resolve";
 
 /** What `CmdOrCtrl` is on this host: Control in a terminal, Command on a Mac desktop. */
 export function primaryModifierFor(
@@ -84,4 +85,20 @@ export function formatAdvertisedChord(
 export function menuAcceleratorFor(resolved: ResolvedKeybindings, actionId: string): string | undefined {
   const chord = resolved.actionsById.get(actionId)?.chords.find((entry) => entry.primary || entry.cmd);
   return chord ? serializeKeyChord(chord) : undefined;
+}
+
+/** The first clause of a description, for messages that name an action mid-sentence. */
+export function shortActionLabel(description: string): string {
+  const clause = description.split(/[,.](?:\s|$)/)[0] ?? description;
+  return clause.trim() || description.trim();
+}
+
+/**
+ * Why a chord a built-in action uses (coreActionOnChord) is refused, the
+ * same in the shortcuts editor and `config set keybindings`: "Ctrl+P is
+ * taken: Open the command bar. Press another key."
+ */
+export function takenChordMessage(chord: string, action: ResolvedKeybindingAction): string {
+  const name = action.def ? t(action.def.description) : action.pluginShortcut?.description ?? action.id;
+  return tf("{chord} is taken: {target}. Press another key.", { chord, target: shortActionLabel(name) });
 }

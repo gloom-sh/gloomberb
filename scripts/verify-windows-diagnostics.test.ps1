@@ -217,6 +217,8 @@ function Test-MainLaunchDiagnostics {
     param($FilePath, $WorkingDirectory, $ArgumentList, $RedirectStandardOutput, $RedirectStandardError, [switch]$Wait, [switch]$PassThru)
     if ($Wait) {
       New-Item -ItemType Directory -Force (Join-Path $InstallDir "bin") | Out-Null
+      # The installer ships the command under both names.
+      "test CLI" | Set-Content (Join-Path $InstallDir "bin\gloom.cmd")
       "test CLI" | Set-Content (Join-Path $InstallDir "bin\gloomberb.cmd")
       return [pscustomobject]@{ ExitCode = 0 }
     }
@@ -228,7 +230,7 @@ function Test-MainLaunchDiagnostics {
   }
   function Wait-ForNewWindows {
     param($KnownHandles, $MinimumCount, $Label, $OnDiscovered)
-    Assert-Condition ($MinimumCount -eq 2 -and $Label -eq "Gloomberb main and detached windows") "Main verification weakened its window requirement"
+    Assert-Condition ($MinimumCount -eq 2 -and $Label -eq "Gloom main and detached windows") "Main verification weakened its window requirement"
     Assert-Condition $script:Launcher.EnableRaisingEvents "Launcher handle was not retained before waiting"
     if ($script:Mode -eq "main-launcher-exit") {
       $script:Launcher.HasExited = $true
@@ -236,7 +238,7 @@ function Test-MainLaunchDiagnostics {
       throw "Original main window timeout"
     }
     $Rows = @(
-      [pscustomobject]@{ Id = 102; ProcessName = "bun"; Handle = 10; MainWindowTitle = "Gloomberb" },
+      [pscustomobject]@{ Id = 102; ProcessName = "bun"; Handle = 10; MainWindowTitle = "Gloom" },
       [pscustomobject]@{ Id = 102; ProcessName = "bun"; Handle = 11; MainWindowTitle = "Detached Watchlist" }
     )
     & $OnDiscovered $Rows
@@ -259,7 +261,7 @@ function Test-MainLaunchDiagnostics {
     $script:Stopped = $true
     $script:Events.Add("cleanup")
   }
-  function Get-ChildItem { [CmdletBinding()] param($Path, $Filter, [switch]$File) return @() }
+  function Get-ChildItem { [CmdletBinding()] param($Path, $Filter, [switch]$File, [switch]$Recurse, $Depth) return @() }
   foreach ($Mode in @("main-launcher-exit", "main-partial-exit", "main-later-failure", "diagnostics-fail", "write-fail")) {
     $script:Mode = $Mode
     $script:Events = New-Object System.Collections.Generic.List[string]
@@ -309,7 +311,7 @@ function Test-MainLaunchDiagnostics {
   }
 }
 
-$TestDir = Join-Path ([Environment]::GetFolderPath("UserProfile")) ".cache\gloom-smoke\glo-645\diagnostics-$([Guid]::NewGuid())"
+$TestDir = Join-Path ([Environment]::GetFolderPath("UserProfile")) ".cache\gloom-smoke\desktop-verify\diagnostics-$([Guid]::NewGuid())"
 $SmokeRoot = $TestDir
 $InitialGloomberbHome = $env:GLOOMBERB_HOME
 $InitialHome = $env:HOME

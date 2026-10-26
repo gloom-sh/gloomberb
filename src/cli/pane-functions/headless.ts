@@ -42,10 +42,12 @@ import type { ResolvedPaneFunction } from "./resolver";
 import { isRecord } from "../../utils/guards";
 import { splitSymbolWords } from "../symbol-args";
 import { formatUtcTime, localTimeSuffix } from "../../utils/utc-time";
-import { deriveHeadlessFreshness, formatFreshnessLine, staleRowsText, type ReportFreshness } from "./freshness";
+import { deriveHeadlessFreshness, formatFreshnessLine, staleRowsText, withSavedCopy, type ReportFreshness } from "./freshness";
+import { DATA_SERVICE_UNREACHABLE_MESSAGE } from "../../utils/network-failure";
 import { accessGateStatus, errorsAccessGate, isProLock, reportGateText } from "./access-gate";
 import { noArgumentMessage } from "./capabilities";
 import { lockedHeadlessReport } from "./lock-note";
+import { resumeStateKey } from "../../plugins/registry/plugin-state";
 
 interface SerializableHeadlessColumn {
   key: string;
@@ -69,7 +71,7 @@ function argumentName(definition: HeadlessPaneDefinition): string {
 }
 
 function requiredArgumentError(definition: HeadlessPaneDefinition, token: string): Error {
-  return new Error(`Usage: gloomberb fn ${token} <${argumentName(definition)}>`);
+  return new Error(`Usage: gloom fn ${token} <${argumentName(definition)}>`);
 }
 
 function normalizeSymbol(value: string): string {
@@ -89,17 +91,36 @@ function normalizeSymbolList(value: string): string[] {
   return symbols;
 }
 
-function validateSymbolCount(
+const COUNT_WORDS = ["zero", "one", "two", "three", "four", "five"];
+const EXAMPLE_TICKERS = ["SPY", "QQQ", "IWM", "DIA", "TLT"];
+
+/**
+ * What a function that compares several tickers answers fewer: how many it
+ * needs and a command that runs, the reader's own tickers first (`CMP needs
+ * two or more tickers: fn CMP SPY,QQQ`).
+ */
+function tooFewTickersMessage(token: string, minimum: number, given: readonly string[], command: "fn" | "shot" = "fn"): string {
+  const example = [...given, ...EXAMPLE_TICKERS.filter((ticker) => !given.includes(ticker))].slice(0, Math.max(minimum, given.length + 1));
+  return `${token} needs ${COUNT_WORDS[minimum] ?? minimum} or more tickers: ${command} ${token} ${example.join(",")}`;
+}
+
+/** The tickers a function's argument lists, as its report reads them. */
+export function argumentSymbols(rawArgument: string): string[] {
+  return normalizeSymbolList(rawArgument);
+}
+
+export function validateSymbolCount(
   definition: HeadlessPaneDefinition,
   token: string,
   symbols: string[],
+  command: "fn" | "shot" = "fn",
 ): void {
   const minimum = definition.argument.minimum
     ?? (definition.argument.optional ? 0 : 1);
   const maximum = definition.argument.maximum;
   if (symbols.length < minimum) {
     if (minimum <= 1) throw requiredArgumentError(definition, token);
-    throw new Error(`${token} requires at least ${minimum} symbols.`);
+    throw new Error(tooFewTickersMessage(token, minimum, symbols, command));
   }
   if (maximum != null && symbols.length > maximum) {
     throw new Error(`${token} accepts at most ${maximum} symbols.`);
@@ -168,7 +189,7 @@ async function loadHeadlessPaneModel(
   return result;
 }
 
-type HeadlessMarketContext = Pick<MarketContext, "config" | "store" | "refresh"> & Partial<Pick<MarketContext, "persistence" | "seriesCapabilities">> & {
+type HeadlessMarketContext = Pick<MarketContext, "config" | "store" | "refresh" | "resolveBroker"> & Partial<Pick<MarketContext, "persistence" | "seriesCapabilities" | "findCatalogSeries">> & {
   dataProvider: HeadlessPaneContext["marketData"];
 };
 
@@ -186,6 +207,9 @@ export function createHeadlessPaneContext(
     ...(context.refresh ? { refresh: true } : {}),
     settings: resolved.instance.settings,
     capabilities: getSharedRegistry() ?? context.seriesCapabilities,
+    catalogSeriesName: (expression) => (getSharedRegistry()?.series.findByExpression(expression)?.definition
+      ?? context.findCatalogSeries?.(expression))?.name,
+    resolveBroker: context.resolveBroker,
     async resolvePortfolio(id) {
       const portfolio = findNamedCollection(context.config.portfolios, id);
       if (!portfolio) return null;
@@ -203,13 +227,20 @@ export function createHeadlessPaneContext(
         ?? (key !== parsed.symbol ? await context.store.loadTicker(parsed.symbol) : null);
       return { symbol: parsed.symbol, exchange: parsed.exchange ?? ticker?.metadata.exchange };
     },
+    readDeviceState: <T,>(pluginId: string, key: string) =>
+      context.persistence?.pluginState.get<T>(pluginId, resumeStateKey(key))?.value ?? null,
     async resolveListing(symbol, argumentWith) {
       const command = `fn ${resolved.token}`;
       const read = await readBareListing(symbol, context, {
-        command, noun: "a quote", retry: (key) => `gloomberb ${command} ${argumentWith(key)}`,
+        command, noun: "a quote", retry: (key) => `gloom ${command} ${argumentWith(key)}`,
       }, { refresh: !!context.refresh });
       if (!read) return null;
-      return { symbol: read.symbol, ...read.exchange ? { exchange: read.exchange } : {}, ...read.name ? { name: read.name } : {} };
+      return {
+        symbol: read.symbol,
+        ...read.exchange ? { exchange: read.exchange } : {},
+        ...read.name ? { name: read.name } : {},
+        ...read.coinNote ? { coinNote: read.coinNote } : {},
+      };
     },
   };
 }
@@ -343,7 +374,8 @@ export function serializeHeadlessPaneResult(
     }
     case "series": {
       const series = result as HeadlessSeriesResult;
-      return { ...common, series: series.series, ...(series.stats ? { stats: series.stats } : {}) };
+      // `textDecimals` only shapes the text report; JSON keeps every digit and does not carry it.
+      return { ...common, series: series.series.map(({ textDecimals: _text, ...kept }) => kept), ...(series.stats ? { stats: series.stats } : {}) };
     }
     case "snapshot": {
       const snapshot = result as HeadlessSnapshotResult;
@@ -464,7 +496,8 @@ function seriesPointExportDate(series: HeadlessSeries, date: SeriesPointDate, da
 }
 
 /**
- * A latest value as the series report prints it: percentages, multiples and
+ * A latest value as the series report prints it: percentages and percentage
+ * points, multiples and
  * ratios (P/E, EV/EBITDA, one series over another, VIX 3M / VIX) to two
  * decimals, which a ratio under 0.1 trades for three significant digits so it
  * is not flattened to 0.03, and a 0 to 100 score to a tenth of a point. The
@@ -474,8 +507,9 @@ function seriesPointExportDate(series: HeadlessSeries, date: SeriesPointDate, da
 function seriesValue(series: HeadlessSeries, value: number | null): string {
   if (value == null) return "-";
   if (!Number.isFinite(value)) return displayNumber(value);
+  if (series.textDecimals != null) return value.toFixed(series.textDecimals);
   const unit = series.unit?.trim().toLowerCase();
-  if (unit === "%") return value.toFixed(2);
+  if (unit === "%" || unit === "pp") return value.toFixed(2);
   if (unit === "x" || unit === "ratio") return value !== 0 && Math.abs(value) < 0.1 ? value.toPrecision(3) : value.toFixed(2);
   if (unit === "score") return value.toFixed(1);
   return displayNumber(value);
@@ -498,13 +532,14 @@ function renderRows(
   };
   return renderTable(
     columns.map((column) => ({
-      header: displayedHeader(column),
+      header: column.textHeader ?? displayedHeader(column),
       align: column.align,
       width: column.width,
       shrink: column.shrink,
       minWidth: column.minWidth,
       stackPriority: column.stackPriority,
       stackRows: column.stackRows,
+      minTableWidth: column.minTableWidth,
     })),
     rows.map((row) => columns.map((column) => cell(row, column))),
     {
@@ -592,7 +627,7 @@ const SERIES_FIELDS = ["value", "open", "high", "low", "close", "volume"] as con
  * column names beside the bare `Value`, `Open`... headers.
  */
 function seriesTable(series: HeadlessSeries): CliReportTable {
-  const fields = SERIES_FIELDS.filter((field) => series.points.some((point) => point[field] != null));
+  const fields = SERIES_FIELDS.filter((field) => !(field === "value" && series.valueIsClose) && series.points.some((point) => point[field] != null));
   const days = observesDays(series);
   const dates = series.points.map((point) => seriesPointExportDate(series, point.date, days));
   const header = (field: (typeof SERIES_FIELDS)[number]) => `${field[0]!.toUpperCase()}${field.slice(1)}`;
@@ -734,14 +769,14 @@ export function headlessReportTables(
       const rowsResult = result as HeadlessRowsResult;
       const columns = displayedColumns(columnsFor(rowsResult.rows, rowsResult.columns, definition.columns));
       const rowIdentities = rowIdentitiesOf(rowsResult.rows, rowsResult);
-      const own = exportRowsTable(title, columns, rowsResult.rows);
+      const own = exportRowsTable(title, columns, rowsResult.rows, { status: true, ...(rowsResult.rowUnitKey ? { rowUnitKey: rowsResult.rowUnitKey } : {}) });
       const interval = rowsResult.interval?.trim();
       tables = [{ ...own, ...(rowIdentities ? { rowIdentities } : {}), ...(interval ? { identity: { interval } } : {}) }, ...(rowsResult.exportTables ?? []).map((extra) => {
         const identity = {
           ...(extra.unit?.trim() ? { currencyOrUnit: extra.unit.trim() } : {}),
           ...(extra.interval?.trim() ? { interval: extra.interval.trim() } : {}),
         };
-        const table = exportRowsTable(extra.title, displayedColumns(extra.columns), extra.rows);
+        const table = exportRowsTable(extra.title, displayedColumns(extra.columns), extra.rows, { status: true });
         return Object.keys(identity).length > 0 ? { ...table, identity } : table;
       })];
       break;
@@ -751,13 +786,27 @@ export function headlessReportTables(
         // A section of one name or one date says so for every line it exports.
         const named = {
           ...(section.symbol?.trim() ? { symbolOrSeries: section.symbol.trim() } : {}),
-          ...(section.asOf?.trim() ? { asOf: section.asOf.trim() } : {}),
+          ...(section.asOf === null ? { asOf: null } : section.asOf?.trim() ? { asOf: section.asOf.trim() } : {}),
+          ...(section.period?.trim() ? { period: section.period.trim() } : {}),
+          ...(section.released?.trim() ? { released: section.released.trim() } : {}),
         };
         if (!("rows" in section && section.rows)) {
           const entries = exportEntriesTable(section.title, section.entries);
-          return Object.keys(named).length > 0 ? { ...entries, identity: named } : entries;
+          // A figure that declares its unit names it in the unit column of its own line too.
+          // A line of its own period or release (a previous reading) names them rather than the section's.
+          const own = (entry: HeadlessPaneEntry): ExportIdentity | undefined => {
+            const identity = {
+              ...(entry.unit?.trim() ? { currencyOrUnit: entry.unit.trim() } : {}),
+              ...(entry.period !== undefined ? { period: entry.period } : {}),
+              ...(entry.released !== undefined ? { released: entry.released } : {}),
+              ...(entry.asOf !== undefined ? { asOf: entry.asOf } : {}),
+            };
+            return Object.keys(identity).length > 0 ? identity : undefined;
+          };
+          const rowIdentities = section.entries.some((entry) => own(entry)) ? section.entries.map(own) : undefined;
+          return { ...entries, ...(Object.keys(named).length > 0 ? { identity: named } : {}), ...(rowIdentities ? { rowIdentities } : {}) };
         }
-        const table = exportRowsTable(section.title, displayedColumns(columnsFor(section.rows, section.columns, definition.columns)), section.rows);
+        const table = exportRowsTable(section.title, displayedColumns(columnsFor(section.rows, section.columns, definition.columns)), section.rows, { status: true });
         const identity = {
           ...named,
           ...(section.unit?.trim() ? { currencyOrUnit: section.unit.trim() } : {}),
@@ -775,7 +824,7 @@ export function headlessReportTables(
     }
     case "snapshot": {
       const snapshot = result as HeadlessSnapshotResult;
-      tables = [exportRowsTable(title, displayedColumns(columnsFor(snapshot.items, undefined, definition.columns)), snapshot.items)];
+      tables = [exportRowsTable(title, displayedColumns(columnsFor(snapshot.items, undefined, definition.columns)), snapshot.items, { status: true })];
       break;
     }
     default: {
@@ -787,6 +836,7 @@ export function headlessReportTables(
   const gate = reportGate(definition, result);
   return {
     tables,
+    ...(definition.exportDated ? { dated: true } : {}),
     identity: reportIdentity(definition, result, args),
     footer: reportFooterLines({
       freshness,
@@ -929,6 +979,22 @@ export function reportGaps(loaded: LoadedHeadlessPaneModel, freshness: ReportFre
     .filter(Boolean).join(", ") || null;
 }
 
+/**
+ * The freshness of a report that served nothing because the data service
+ * could not be reached (offline, a hung connection) and no saved copy
+ * answered: its line names no retrieval time, as nothing was retrieved.
+ */
+function withUnreached(
+  freshness: ReportFreshness,
+  result: HeadlessPaneResult,
+  { rowCount, unavailableSymbols, symbols }: { rowCount: number; unavailableSymbols: readonly string[]; symbols: readonly string[] },
+): ReportFreshness {
+  if (freshness.savedAt || freshness.asOf) return freshness;
+  const nothingServed = rowCount === 0 || (symbols.length > 0 && symbols.every((symbol) => unavailableSymbols.includes(symbol)));
+  const unreached = (result.errors ?? []).some((error) => error.includes(DATA_SERVICE_UNREACHABLE_MESSAGE));
+  return nothingServed && unreached ? { ...freshness, unreached: true } : freshness;
+}
+
 export async function buildHeadlessFunctionReport(
   resolved: ResolvedPaneFunction,
   context: MarketContext,
@@ -947,7 +1013,13 @@ export async function buildHeadlessFunctionReport(
   }
   const { complete, unavailableSymbols, rowCount, symbols } = reportCoverage(loaded);
   const serialized = serializeHeadlessPaneResult(loaded.definition, loaded.result);
-  const freshness = deriveHeadlessFreshness(loaded.definition, loaded.result);
+  // What the report shows from a saved copy, its refresh having failed, says so; one that could not
+  // reach the data service for anything names no time it was retrieved.
+  const freshness = withUnreached(
+    withSavedCopy(deriveHeadlessFreshness(loaded.definition, loaded.result), loaded.result),
+    loaded.result,
+    { rowCount, unavailableSymbols, symbols },
+  );
   return {
     data: {
       kind: loaded.definition.shape,

@@ -3,6 +3,7 @@ import type {
   PaneTemplateContext,
   PaneTemplateCreateOptions,
   PaneTemplateDef,
+  ShortcutArgError,
 } from "../../../types/plugin";
 import { fuzzyFilter } from "../../../utils/fuzzy-search";
 import { summarizeError } from "../helpers";
@@ -36,6 +37,16 @@ export function recentPaneTemplateArg(template: PaneTemplateDef, arg: string | u
   const argKind = getPaneTemplateArgKind(template);
   if (argKind !== "ticker" && argKind !== "ticker-list" && argKind !== "tickers") return undefined;
   return arg?.trim().toUpperCase() || undefined;
+}
+
+/** Why a typed argument opens nothing for the template (`PF Nope`), or null. */
+export function paneTemplateArgError(
+  template: PaneTemplateDef,
+  arg: string | undefined,
+  context: PaneTemplateContext,
+): ShortcutArgError | null {
+  const trimmed = arg?.trim();
+  return trimmed ? template.shortcut?.argError?.(trimmed, context) ?? null : null;
 }
 
 export function canPromptForPaneTemplateArg(template: PaneTemplateDef): boolean {
@@ -95,6 +106,22 @@ export function getAvailablePaneTemplatesForState(options: {
     });
 }
 
+/**
+ * "ETF flows" spells out ETFF (Crypto ETF Flows), not ETF for a ticker called
+ * FLOWS: a query that is word for word a keyword of a template whose own code
+ * extends the typed one is no ticker argument, and is left to the search,
+ * which ranks that template first. "JOBS DAY" stays Jobs for Dayforce, since
+ * the template that lists "jobs day" (MDAY) does not extend JOBS.
+ */
+function spellsOutLongerCode(query: string, code: string, templates: readonly PaneTemplateDef[]): boolean {
+  const phrase = query.toLowerCase().replace(/\s+/g, " ");
+  return templates.some((template) => {
+    const longer = template.shortcut?.prefix?.trim().toUpperCase() ?? "";
+    return longer.length > code.length && longer.startsWith(code)
+      && !!template.keywords?.some((keyword) => keyword.toLowerCase() === phrase);
+  });
+}
+
 export function getAvailablePaneShortcutTemplatesForQuery(options: {
   pluginRegistry: PluginRegistry;
   disabledPlugins: readonly string[];
@@ -105,9 +132,11 @@ export function getAvailablePaneShortcutTemplatesForQuery(options: {
   const trimmed = options.query.trim();
   const upper = trimmed.toUpperCase();
   const disabledPluginIds = new Set(options.disabledPlugins);
-  return [...options.pluginRegistry.paneTemplates.values()].filter((template) => {
+  const enabled = [...options.pluginRegistry.paneTemplates.values()].filter((template) => {
     const pluginId = options.pluginRegistry.getPaneTemplatePluginId(template.id);
-    if (pluginId && disabledPluginIds.has(pluginId)) return false;
+    return !pluginId || !disabledPluginIds.has(pluginId);
+  });
+  return enabled.filter((template) => {
     const argKind = getPaneTemplateArgKind(template);
     // The longest matching mnemonic wins, so an alias sharing a stem cannot shadow the typed one.
     const prefix = paneTemplateShortcutPrefixes(template).map((value) => value.toUpperCase())
@@ -115,14 +144,16 @@ export function getAvailablePaneShortcutTemplatesForQuery(options: {
       .sort((a, b) => b.length - a.length)[0];
     if (!prefix) return false;
     const arg = trimmed.slice(prefix.length).trim();
+    if (argKind === "ticker" && arg && spellsOutLongerCode(trimmed, prefix, enabled)) return false;
     if (!template.canCreate) return true;
     try {
       const canCreate = template.canCreate(options.context, arg ? { arg } : undefined);
       if (canCreate) return true;
-      if (!arg && !options.context.activeTicker && canPromptForPaneTemplateArg(template)) {
-        return true;
-      }
-      return false;
+      // A code typed with an argument it cannot open (`CMP AAPL` compares two
+      // or more) is still that function: its row opens the form or says why,
+      // where dropping it would leave the text to search and Ask AI.
+      if (arg) return canPromptForPaneTemplateArg(template);
+      return !options.context.activeTicker && canPromptForPaneTemplateArg(template);
     } catch (error) {
       options.logError?.("Pane shortcut canCreate failed", {
         templateId: template.id,
@@ -141,6 +172,8 @@ export function buildPaneTemplateItem(options: {
   createOptions?: PaneTemplateCreateOptions;
   showShortcut?: boolean;
   shortcutExecution?: boolean;
+  /** Why `createOptions.arg` opens nothing; the row then says so instead of opening the pane. */
+  argError?: ShortcutArgError | null;
   runPaneTemplateShortcut: (template: PaneTemplateDef, rawArg?: string) => void;
   shouldOpenTemplateConfig: (template: PaneTemplateDef, arg?: string) => boolean;
   openPaneTemplateWorkflow: (template: PaneTemplateDef, options?: { arg?: string }) => void;
@@ -168,6 +201,26 @@ export function buildPaneTemplateItem(options: {
     ...aliases,
     pluginName || "",
   ].filter(Boolean).join(" ");
+
+  if (options.argError) {
+    return {
+      id: `pane-template-arg-error:${options.template.id}:${arg || ""}`,
+      label: options.argError.message,
+      detail: options.argError.detail ?? "",
+      // Under the label, where the bar shows a row's second line: what to type instead.
+      ...(options.argError.detail ? { lines: [{ segments: [{ text: options.argError.detail }] }] } : {}),
+      category: options.category ?? (pluginName ? `${pluginName} Panes` : "Panes"),
+      // The function's own row, disabled: its code sits in the code column as on
+      // the row that opens it, where an info row would carry it on the right.
+      kind: "action",
+      right: options.showShortcut ? options.template.shortcut?.prefix : undefined,
+      shortcutQuery: options.template.shortcut?.prefix,
+      searchText,
+      defaultSelectable: false,
+      disabled: true,
+      action: () => {},
+    };
+  }
 
   const action = () => {
     if (

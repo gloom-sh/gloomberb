@@ -74,6 +74,8 @@ export type CloudEarningsCallsParams = IssuerListingParams & {
   offset?: number;
   /** Include calls still working through the transcription pipeline. */
   includePending?: boolean;
+  /** Every company's calls on these New York days (YYYY-MM-DD), earliest first, in place of a company or the shelf. */
+  upcoming?: { from: string; to: string };
 };
 
 export type CloudNewsParams = {
@@ -310,6 +312,14 @@ export function cloudJobsPostingsPath(ticker: string, params: CloudJobsPostingsP
   return appendQuery(`/cloud/jobs/${encodeURIComponent(normalizeIssuerResearchTicker(ticker))}/postings`, search);
 }
 
+/** One posting of a company, by the database id the jobs list carries or the careers system's own id HIRE's evidence carries. */
+export function cloudJobsPostingPath(ticker: string, posting: { id: number } | { externalId: string }): string {
+  const search = new URLSearchParams();
+  if ("id" in posting) search.set("id", String(posting.id));
+  else search.set("externalId", posting.externalId);
+  return appendQuery(`/cloud/jobs/${encodeURIComponent(normalizeIssuerResearchTicker(ticker))}/posting`, search);
+}
+
 export function cloudJobsMoversPath(limit?: number, offset?: number): string {
   const search = new URLSearchParams();
   if (limit != null) search.set("limit", String(limit));
@@ -356,6 +366,11 @@ export function cloudEarningsCallsPath(
   if (params.limit != null) search.set("limit", String(params.limit));
   if (params.offset != null) search.set("offset", String(params.offset));
   if (params.includePending) search.set("includePending", "true");
+  if (params.upcoming) {
+    search.set("upcoming", "true");
+    search.set("from", params.upcoming.from);
+    search.set("to", params.upcoming.to);
+  }
   return appendQuery("/cloud/transcripts", search);
 }
 
@@ -605,9 +620,11 @@ export function cloudNewsPath(params: CloudNewsParams = {}): string {
 }
 
 /** Stories whose headline, summary or publisher matches the text, best match first; the service takes at most 100. */
-export function cloudNewsSearchPath(query: string, limit?: number): string {
+/** `topics` are NI codes the stories must carry: `query=gold&topics=metals` is gold's market news. */
+export function cloudNewsSearchPath(query: string, limit?: number, topics?: readonly string[]): string {
   const search = new URLSearchParams({ query });
   if (limit != null) search.set("limit", String(limit));
+  if (topics?.length) search.set("topics", topics.join(","));
   return appendQuery("/news/search", search);
 }
 

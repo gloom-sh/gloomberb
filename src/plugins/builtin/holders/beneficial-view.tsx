@@ -14,6 +14,7 @@ import type { IssuerListingParams } from "../../../api-client/paths";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { colors, priceColor } from "../../../theme/colors";
+import { MISSING_VALUE } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import { usePluginAppActions, usePluginPaneState } from "../../runtime";
@@ -74,6 +75,7 @@ export function BeneficialOwnersView({
   holderRows,
   fundMatches,
   sharesOutstanding,
+  sharesOutstandingAsOf,
   onCycleView,
   onRefreshHolders,
   listing,
@@ -87,6 +89,8 @@ export function BeneficialOwnersView({
   fundMatches: ReadonlyMap<string, Holder13FMatch>;
   /** Today's shares outstanding, which a report's shares are set against when its own base is out of date. */
   sharesOutstanding?: number | null;
+  /** The day that count was taken, when it is dated. */
+  sharesOutstandingAsOf?: string | null;
   onCycleView: () => void;
   onRefreshHolders: () => void;
 }) {
@@ -161,7 +165,7 @@ export function BeneficialOwnersView({
   const renderTodayLine = useCallback((item: BeneficialItem) => (
     item.kind === "today" && item.row.today
       // Indented under its row's name; no-break spaces, which the desktop table does not collapse.
-      ? { text: `\u00a0\u00a0${formatStakeToday(item.row.today)}`, color: colors.textDim, attributes: TextAttributes.NONE }
+      ? { text: `\u00a0\u00a0${formatStakeToday(item.row.today, sharesOutstandingAsOf)}`, color: colors.textDim, attributes: TextAttributes.NONE }
       : null
   ), []);
 
@@ -204,12 +208,12 @@ export function BeneficialOwnersView({
       case "shares":
         return { text: formatOwnerShares(filing.shares), value: filing.shares, color: tone };
       case "eventDate":
-        return { text: filing.eventDate ?? "-", value: filing.eventDate, color: colors.textDim };
+        return { text: filing.eventDate ?? MISSING_VALUE, value: filing.eventDate, color: colors.textDim };
       case "filingDate":
         return { text: filing.filingDate, value: filing.filingDate, color: colors.textDim };
       case "thirteenF": {
         const action = row.thirteenF;
-        if (!action) return { text: "-", value: null, color: colors.textDim };
+        if (!action) return { text: MISSING_VALUE, value: null, color: colors.textDim };
         return { text: action.label, color: action.value === 0 ? colors.textDim : priceColor(action.value) };
       }
     }

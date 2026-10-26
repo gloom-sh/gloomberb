@@ -79,9 +79,11 @@ function boardColumns(width: number, options: { windows: GpuChangeKey[]; trend: 
   ];
 }
 
-export function GpuBoard({ rows, models, asOf, model, setModel, selectedId, select, emptyTitle, width, height, focused }: {
+export function GpuBoard({ rows, models, asOf, model, setModel, selectedId, select, emptyTitle, width, height, focused, pending = false }: {
   rows: GpuBoardRow[]; models: readonly string[]; asOf: string | null; model: string; setModel: (value: string) => void; selectedId: string; select: (row: GpuBoardRow, open?: boolean) => void;
   emptyTitle: string; width: number; height: number; focused: boolean;
+  /** The picked GPU's free preview is still loading. */
+  pending?: boolean;
 }) {
   const colors = useThemeColors();
   const sections = useMemo(() => gpuBoardSections(rows, model), [rows, model]);
@@ -153,6 +155,7 @@ export function GpuBoard({ rows, models, asOf, model, setModel, selectedId, sele
 
   const query = <GpuModelQuery models={models} model={model} setModel={setModel} width={width} />;
   return <DataTableView<BoardRow> columns={columns} items={items} rootWidth={width} rootHeight={height} focused={focused}
+    status={pending && !items.length ? { loading: true, subject: "GPU rental prices" } : undefined}
     rootBefore={ladder.length ? <ChartTableHeader width={width} height={height} tableRows={items.length} tableColumns={columns} query={query}
       chart={{ maxRows: ladder.length + 1, minRows: Math.min(3, ladder.length + 1), strip: null,
         render: (size) => <GpuPriceLadder rows={ladder} width={size.width} height={size.height}

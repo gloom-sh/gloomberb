@@ -1,4 +1,5 @@
 import type { DataTableCell } from "../../../components";
+import { withCompanyLogo } from "../../../components/company-logo";
 import { getTableWidth } from "../../../components/ui/table-layout";
 import { TextAttributes } from "../../../ui";
 import { colors, priceColor } from "../../../theme/colors";
@@ -65,9 +66,11 @@ export function buildMarketMoverColumns(width: number, extendedSessions: readonl
   return [...lead, { id: "name", label: "NAME", width: Math.max(6, nameRoom()), align: "left" }, ...quote, ...trailing];
 }
 
+/** `logos`: the desktop and the web lead each name with the company's logo; the terminal draws none. */
 export function renderMarketMoverCell(
   row: MarketMoverRow,
   column: MarketMoverColumn,
+  logos = false,
 ): DataTableCell {
   switch (column.id) {
     case "rank":
@@ -79,7 +82,7 @@ export function renderMarketMoverCell(
         attributes: TextAttributes.BOLD,
       };
     case "name":
-      return { text: row.name };
+      return withCompanyLogo({ text: row.name }, row, logos);
     case "price":
       return { text: formatMoverPrice(row.price, row.currency, moverReferencePrice(row)) };
     case "changePercent":

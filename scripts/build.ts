@@ -9,6 +9,7 @@ import {
   SHOT_VIEW_SMOKE_COMMAND,
 } from "../src/cli/native-smoke";
 import { buildShotView, packShotView } from "../src/cli/desktop-pane-shot-view";
+import { detectLinuxLibc, type LinuxLibc } from "../src/utils/linux-libc";
 
 const rootDir = join(import.meta.dir, "..");
 const RELEASE_API_URL = "https://api.gloom.sh";
@@ -19,6 +20,8 @@ const SHOT_VIEW_MODULE = ".gloomberb-shot-view.ts";
 interface BuildTarget {
   os: "darwin" | "linux" | "windows";
   arch: "arm64" | "x64";
+  /** Linux only: which C library the binary and its render library link against. */
+  libc?: LinuxLibc;
   bunOs: "darwin" | "linux" | "windows";
   extension: "" | ".exe";
   nativePackageName: string;
@@ -27,13 +30,33 @@ interface BuildTarget {
 const targets: BuildTarget[] = [
   { os: "darwin", arch: "arm64", bunOs: "darwin", extension: "", nativePackageName: "@opentui/core-darwin-arm64" },
   { os: "darwin", arch: "x64", bunOs: "darwin", extension: "", nativePackageName: "@opentui/core-darwin-x64" },
-  { os: "linux", arch: "x64", bunOs: "linux", extension: "", nativePackageName: "@opentui/core-linux-x64" },
-  { os: "linux", arch: "arm64", bunOs: "linux", extension: "", nativePackageName: "@opentui/core-linux-arm64" },
+  { os: "linux", arch: "x64", libc: "glibc", bunOs: "linux", extension: "", nativePackageName: "@opentui/core-linux-x64" },
+  { os: "linux", arch: "arm64", libc: "glibc", bunOs: "linux", extension: "", nativePackageName: "@opentui/core-linux-arm64" },
+  // Alpine and other musl systems. Named gloomberb-linux-<arch>-musl; the installer and the updater pick them there.
+  { os: "linux", arch: "x64", libc: "musl", bunOs: "linux", extension: "", nativePackageName: "@opentui/core-linux-x64-musl" },
+  { os: "linux", arch: "arm64", libc: "musl", bunOs: "linux", extension: "", nativePackageName: "@opentui/core-linux-arm64-musl" },
   { os: "windows", arch: "x64", bunOs: "windows", extension: ".exe", nativePackageName: "@opentui/core-win32-x64" },
 ];
 
+/** `linux-x64`, `linux-x64-musl`: the asset name without `gloomberb-` and the extension. */
+function targetName({ os, arch, libc }: BuildTarget): string {
+  return `${os}-${arch}${libc === "musl" ? "-musl" : ""}`;
+}
+
+/**
+ * The Alpine image a musl binary is smoke tested in when the build host runs
+ * glibc: plain Alpine plus libstdc++, which every musl Bun binary links.
+ */
+const MUSL_SMOKE_BASE_IMAGE = "alpine:3.22";
+const MUSL_SMOKE_IMAGE = "gloomberb-musl-smoke:alpine-3.22";
+
 const args = process.argv.slice(2);
 const buildAll = args.includes("--all");
+/** `--target linux-x64-musl` (repeatable) builds the named targets instead of the host's. */
+const requestedTargets = args.flatMap((arg, index) => {
+  if (arg === "--target") return args[index + 1] ? [args[index + 1]!] : [];
+  return arg.startsWith("--target=") ? [arg.slice("--target=".length)] : [];
+});
 
 async function runProcess(
   command: string[],
@@ -112,23 +135,105 @@ async function removeSmokeDir(smokeDir: string) {
   console.warn(`Could not remove smoke test directory ${smokeDir}:`, lastError);
 }
 
-async function smokeTestBinary(outfile: string, os: string, arch: string) {
-  if (!canRunTarget(os, arch)) {
-    console.log(`Skipping smoke test for ${os}-${arch} on ${process.platform}-${process.arch}`);
+/**
+ * What runs a target's binary on this host: nothing in front of it when the
+ * host can run it, an Alpine container for a musl binary built on glibc, and
+ * null when it cannot run here.
+ */
+async function smokeRunner(target: BuildTarget, smokeDir: string): Promise<string[] | null> {
+  if (!canRunTarget(target.os, target.arch)) return null;
+  if (target.os !== "linux" || target.libc === (detectLinuxLibc() ?? "glibc")) return [];
+  if (target.libc !== "musl") return null;
+  const container = Bun.which("docker") ?? Bun.which("podman");
+  if (!container) return null;
+  await runProcess(
+    [container, "build", "--quiet", "--tag", MUSL_SMOKE_IMAGE, "-"],
+    `Failed to build the ${MUSL_SMOKE_IMAGE} smoke test image`,
+    { stdin: new Blob([`FROM ${MUSL_SMOKE_BASE_IMAGE}\nRUN apk add --no-cache libstdc++\n`]), stdout: "ignore" },
+  );
+  // Read-only, so the container's root user leaves nothing in the smoke folder.
+  return [container, "run", "--rm", "--volume", `${smokeDir}:${smokeDir}:ro`, "--workdir", smokeDir, MUSL_SMOKE_IMAGE];
+}
+
+interface SmokeCheck {
+  /** The binary by default. */
+  command?: string;
+  args: string[];
+  /** Added to the environment for this check. */
+  env?: Record<string, string>;
+  /** Runs this check under another runner than the target's. */
+  runner?: string[];
+  failureMessage: string;
+}
+
+/**
+ * Runs a command in its own mount namespace with a noexec tmpfs over `dir`,
+ * or null where unprivileged user namespaces cannot mount one (Linux only,
+ * and some distributions restrict them).
+ */
+async function noexecTempRunner(dir: string): Promise<string[] | null> {
+  if (process.platform !== "linux" || !Bun.which("unshare")) return null;
+  mkdirSync(dir, { recursive: true });
+  const runner = [
+    "unshare", "--user", "--map-root-user", "--mount",
+    "sh", "-c", 'mount -t tmpfs -o noexec,size=64m tmpfs "$0" && exec "$@"', dir,
+  ];
+  const code = await runProcess([...runner, "true"], "", { stdout: "ignore", stderr: "ignore" }, true);
+  return code === 0 ? runner : null;
+}
+
+async function smokeTestBinary(outfile: string, target: BuildTarget) {
+  const { os } = target;
+  const smokeDir = mkdtempSync(join(tmpdir(), "gloomberb-smoke-"));
+  const runner = await smokeRunner(target, smokeDir);
+  if (!runner) {
+    rmSync(smokeDir, { recursive: true, force: true });
+    const reason = !canRunTarget(target.os, target.arch)
+      ? `on ${process.platform}-${process.arch}`
+      : target.libc === "musl"
+        ? "without docker or podman to run it in Alpine"
+        : `on a ${detectLinuxLibc()} host`;
+    console.log(`Skipping smoke test for ${targetName(target)} ${reason}`);
     return;
   }
 
-  console.log("Smoke testing packaged binary...");
-  const smokeDir = mkdtempSync(join(tmpdir(), "gloomberb-smoke-"));
+  console.log(runner.length > 0 ? `Smoke testing packaged binary in ${MUSL_SMOKE_IMAGE}...` : "Smoke testing packaged binary...");
+  // Named as installs from before the rename have it, so the run below also
+  // checks that the binary adds the gloom command beside itself.
   const smokeBinary = join(smokeDir, os === "windows" ? "gloomberb.exe" : "gloomberb");
   copyFileSync(outfile, smokeBinary);
   if (os !== "windows") chmodSync(smokeBinary, 0o755);
 
-  const checks = [
+  // Bun writes the render library to its temp folder before loading it. With
+  // a folder that cannot take the file, or one mounted noexec, the binary
+  // loads a copy from the Gloom folder instead.
+  const inContainer = runner.length > 0;
+  const missingTemp = join(smokeDir, "missing-temp");
+  const noexecTemp = join(smokeDir, "noexec-temp");
+  const noexec = inContainer ? null : await noexecTempRunner(noexecTemp);
+  if (!inContainer && !noexec) console.log("Skipping the noexec temp folder check: no unprivileged mount namespace here");
+
+  const checks: SmokeCheck[] = [
     {
       args: [OPEN_TUI_NATIVE_SMOKE_COMMAND],
       failureMessage: `Packaged binary failed to load OpenTUI native package: ${outfile}`,
     },
+    {
+      args: [OPEN_TUI_NATIVE_SMOKE_COMMAND],
+      env: {
+        BUN_TMPDIR: missingTemp,
+        TMPDIR: missingTemp,
+        // The container mounts the smoke folder read-only.
+        GLOOMBERB_HOME: inContainer ? "/tmp/gloomberb-smoke-home" : join(smokeDir, "home-missing-temp"),
+      },
+      failureMessage: `Packaged binary failed to load OpenTUI when its temp folder cannot take the library: ${outfile}`,
+    },
+    ...(noexec ? [{
+      runner: noexec,
+      args: [OPEN_TUI_NATIVE_SMOKE_COMMAND],
+      env: { BUN_TMPDIR: noexecTemp, TMPDIR: noexecTemp, GLOOMBERB_HOME: join(smokeDir, "home-noexec-temp") },
+      failureMessage: `Packaged binary failed to load OpenTUI with a noexec temp folder: ${outfile}`,
+    }] : []),
     {
       args: [OPEN_TUI_RUNTIME_SMOKE_COMMAND],
       failureMessage: `Packaged binary failed to load the OpenTUI runtime graph: ${outfile}`,
@@ -145,15 +250,27 @@ async function smokeTestBinary(outfile: string, os: string, arch: string) {
       args: ["help"],
       failureMessage: `Packaged binary failed to launch: ${outfile}`,
     },
+    // Symlinks need extra rights on Windows, where the desktop installer ships
+    // both commands instead, and the container run mounts the folder read-only.
+    ...(os === "windows" || runner.length > 0 ? [] : [{
+      command: join(smokeDir, "gloom"),
+      args: ["help"],
+      failureMessage: `Packaged binary did not add the gloom command beside gloomberb: ${outfile}`,
+    }]),
   ];
   let failureMessage: string | undefined;
 
   try {
     for (const check of checks) {
+      const checkRunner = check.runner ?? runner;
+      // A container does not see this process's environment, so it gets the check's through `env`.
+      const envInContainer = check.env && checkRunner === runner && inContainer
+        ? ["env", ...Object.entries(check.env).map(([name, value]) => `${name}=${value}`)]
+        : [];
       const code = await runProcess(
-        [smokeBinary, ...check.args],
+        [...checkRunner, ...envInContainer, check.command ?? smokeBinary, ...check.args],
         check.failureMessage,
-        { cwd: smokeDir, stdout: "ignore" },
+        { cwd: smokeDir, stdout: "ignore", ...(check.env && !envInContainer.length ? { env: { ...process.env, ...check.env } } : {}) },
         true,
       );
       if (code !== 0) {
@@ -171,12 +288,53 @@ async function smokeTestBinary(outfile: string, os: string, arch: string) {
   }
 }
 
-function buildCompileEntrySource(nativePackageName: string): string {
+function buildCompileEntrySource(renderLibModule: string): string {
   return [
-    `import ${JSON.stringify(nativePackageName)};`,
+    // Points @opentui/core at the musl library on musl before anything loads it.
+    `import "../src/cli/opentui-libc.ts";`,
+    `import "./${renderLibModule}";`,
     // Before the CLI, so the page is in place before any command runs.
     `import "./${SHOT_VIEW_MODULE}";`,
     `import "../src/cli/entry.ts";`,
+    "",
+  ].join("\n");
+}
+
+function isInstalled(packageName: string): boolean {
+  try {
+    Bun.resolveSync(packageName, rootDir);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Embeds the target's render library and tells the binary where it sits
+ * inside it, for the copy it loads from the Gloom folder when the temp folder
+ * cannot run it (src/renderers/opentui/render-lib.ts). @opentui/core picks the
+ * glibc or musl library at runtime, so a Linux binary names both when the
+ * build host has them.
+ */
+function buildRenderLibModuleSource({ os, arch, nativePackageName }: BuildTarget): string {
+  const register = `import { useEmbeddedRenderLib } from "../src/renderers/opentui/render-lib.ts";`;
+  if (os !== "linux") {
+    return [
+      `import renderLib from ${JSON.stringify(nativePackageName)};`,
+      register,
+      "useEmbeddedRenderLib({ path: renderLib });",
+      "",
+    ].join("\n");
+  }
+  const glibcPackage = `@opentui/core-linux-${arch}`;
+  const muslPackage = `${glibcPackage}-musl`;
+  const hasGlibc = glibcPackage === nativePackageName || isInstalled(glibcPackage);
+  const hasMusl = muslPackage === nativePackageName || isInstalled(muslPackage);
+  return [
+    ...(hasGlibc ? [`import glibcRenderLib from ${JSON.stringify(glibcPackage)};`] : []),
+    ...(hasMusl ? [`import muslRenderLib from ${JSON.stringify(muslPackage)};`] : []),
+    register,
+    `useEmbeddedRenderLib({ path: ${hasGlibc ? "glibcRenderLib" : "muslRenderLib"}${hasMusl ? ", musl: muslRenderLib" : ""} });`,
     "",
   ].join("\n");
 }
@@ -221,13 +379,16 @@ function compressGzip(path: string): string {
 }
 
 async function build(targetConfig: BuildTarget) {
-  const { os, arch, bunOs, extension, nativePackageName } = targetConfig;
+  const { os, arch, libc, bunOs, extension } = targetConfig;
   mkdirSync(join(rootDir, "dist"), { recursive: true });
-  const outfile = join(rootDir, `dist/gloomberb-${os}-${arch}${extension}`);
-  const compileEntry = join(rootDir, "dist", `.gloomberb-compile-entry-${os}-${arch}.ts`);
-  const target = `bun-${bunOs}-${arch}`;
+  const name = targetName(targetConfig);
+  const outfile = join(rootDir, `dist/gloomberb-${name}${extension}`);
+  const compileEntry = join(rootDir, "dist", `.gloomberb-compile-entry-${name}.ts`);
+  const renderLibModule = `.gloomberb-render-lib-${name}.ts`;
+  const target = `bun-${bunOs}-${arch}${libc === "musl" ? "-musl" : ""}`;
   console.log(`Building ${target}...`);
-  writeFileSync(compileEntry, buildCompileEntrySource(nativePackageName));
+  writeFileSync(join(rootDir, "dist", renderLibModule), buildRenderLibModuleSource(targetConfig));
+  writeFileSync(compileEntry, buildCompileEntrySource(renderLibModule));
   // `--production` is the only switch that flips both the JSX transform and
   // React itself to production builds. Setting NODE_ENV in the environment or
   // through --define leaves jsxDEV calls behind that resolve to nothing at
@@ -248,6 +409,7 @@ async function build(targetConfig: BuildTarget) {
     true,
   );
   rmSync(compileEntry, { force: true });
+  rmSync(join(rootDir, "dist", renderLibModule), { force: true });
   if (buildExitCode !== 0) {
     console.error(`Failed to build ${target}`);
     process.exit(1);
@@ -257,7 +419,7 @@ async function build(targetConfig: BuildTarget) {
     await signDarwinBinary(outfile);
   }
 
-  await smokeTestBinary(outfile, os, arch);
+  await smokeTestBinary(outfile, targetConfig);
 
   const compressedPath = compressGzip(outfile);
   console.log(`  -> ${compressedPath}`);
@@ -265,9 +427,20 @@ async function build(targetConfig: BuildTarget) {
 
 function selectedTargets(): BuildTarget[] {
   if (buildAll) return targets;
+  if (requestedTargets.length > 0) {
+    return requestedTargets.map((name) => {
+      const target = targets.find((candidate) => targetName(candidate) === name);
+      if (!target) {
+        console.error(`Unknown build target: ${name}. Known: ${targets.map(targetName).join(", ")}`);
+        process.exit(1);
+      }
+      return target;
+    });
+  }
   const os = process.platform === "darwin" ? "darwin" : process.platform === "win32" ? "windows" : "linux";
   const arch = process.arch === "arm64" ? "arm64" : "x64";
-  const target = targets.find((candidate) => candidate.os === os && candidate.arch === arch);
+  const libc = os === "linux" ? detectLinuxLibc() ?? "glibc" : undefined;
+  const target = targets.find((candidate) => candidate.os === os && candidate.arch === arch && candidate.libc === libc);
   if (!target) {
     console.error(`Unsupported build target: ${os}-${arch}`);
     process.exit(1);

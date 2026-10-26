@@ -1,5 +1,6 @@
-import { expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
 import { act, useEffect, useReducer } from "react";
+import { apiClient } from "../../../api-client";
 import { PaneFooterBar, PaneFooterKeys, PaneFooterProvider } from "../../../components/layout/pane/footer";
 import { createRemoteUiRegistry, RemoteUiRegistryProvider, type RemoteUiRegistry } from "../../../remote/semantic-tree";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
@@ -22,6 +23,9 @@ import { createTestQuote } from "../../../test-support/data-provider";
 import { renderedReportFreshness, renderedReportObservations } from "../../../cli/pane-functions/report-notices";
 import { createTestTicker } from "../../../test-support/ticker";
 import type { TickerRecord } from "../../../types/ticker";
+import type { BrokerAdapter } from "../../../types/broker";
+import type { PinTickerOptions } from "../../../types/plugin";
+import { takeTradeIntent } from "../broker-trading/command";
 
 const ID = "options-scenario:test";
 const PLUGIN = "ticker-research";
@@ -33,6 +37,15 @@ const POSITION: ScenarioPosition = { symbol: "AAPL", spot: 100, rate: 0.04, divi
   asOf: Date.UTC(2026, 8, 22), legs: parseLegs(SETTINGS.legs) };
 
 const tui = createOpenTuiTestHarness();
+let restoreYieldCurve: (() => void) | undefined;
+beforeEach(() => {
+  const curve = spyOn(apiClient, "getCloudYieldCurve").mockResolvedValue([]);
+  restoreYieldCurve = () => curve.mockRestore();
+});
+afterEach(() => {
+  restoreYieldCurve?.();
+  restoreYieldCurve = undefined;
+});
 let registry: RemoteUiRegistry;
 let latestState: ReturnType<typeof createInitialState>;
 let runtime: PluginRuntimeAccess;
@@ -290,3 +303,24 @@ test("a hedge budget shows the report's sizing under the scenario figures, and s
     expect(tui.frame()).toContain("budget of 1,000,000.00 USD NAV is 1.00 USD; one contract costs");
   } finally { WIDTH = 100; }
 });
+
+test("with a broker that takes spreads, t trades the position as one order on its underlying's Trade tab", async () => {
+  const pinned: Array<{ symbol: string; options?: PinTickerOptions }> = [];
+  const adapter = { id: "demo", placeOrder: async () => ({}), previewOrder: async () => ({}),
+    getTradingCapabilities: (_profile: unknown, contract: { secType?: string }) => contract.secType === "BAG" ? { orderTypes: ["LMT"], maxLegs: 4 } : { orderTypes: [] } } as unknown as BrokerAdapter;
+  const legs = "call,100,2026-12-18,2,5,25;call,110,2026-12-18,-2,2,25";
+  const withBroker = configFor({ legs });
+  withBroker.brokerInstances = [{ id: "sim", brokerType: "demo", label: "Demo", enabled: true, config: {} }];
+  // No broker: nothing to trade, nothing new in the footer.
+  await mount(configFor({ legs }), createStatefulTestPluginRuntime({ pinTicker: (symbol, options) => { pinned.push({ symbol, options }); }, getBrokerAdapter: () => adapter }));
+  await shortcut("t");
+  expect(pinned).toHaveLength(0);
+  await tui.destroy();
+  await mount(withBroker, createStatefulTestPluginRuntime({ pinTicker: (symbol, options) => { pinned.push({ symbol, options }); }, getBrokerAdapter: () => adapter }));
+  await shortcut("t");
+  expect(pinned).toMatchObject([{ symbol: "AAPL", options: { tabId: "broker-trade" } }]);
+  // Two of the 100/110 call vertical, paying a debit at the 5 and 2 entries.
+  expect(takeTradeIntent(pinned[0]!.options!.tabState!.brokerTradeIntent as string)).toEqual({ action: "BUY", quantity: 2, legs: [
+    { contractSymbol: "AAPL261218C00100000", action: "BUY", ratio: 1 }, { contractSymbol: "AAPL261218C00110000", action: "SELL", ratio: 1 }] });
+});
+

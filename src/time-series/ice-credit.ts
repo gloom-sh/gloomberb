@@ -17,6 +17,9 @@ export interface IceCreditSeries {
   tags: readonly string[];
 }
 
+/** What every surface that shows an ICE series says about how far back FRED carries it. */
+export const ICE_HISTORY_LIMIT_NOTICE = "History limited to 3 years by the publisher.";
+
 const HIGH_YIELD = ["high yield", "junk"];
 
 export const ICE_CREDIT_SERIES: readonly IceCreditSeries[] = [

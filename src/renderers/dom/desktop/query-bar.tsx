@@ -1,6 +1,7 @@
 /** @jsxImportSource react */
 import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { HostQueryBarItem, HostQueryBarProps } from "../../../ui/host";
+import { withChoiceGroupHeadings } from "../../../components/ui/choice-groups";
 import { WebPopover } from "./popover";
 import { WebMenu } from "./menu";
 import { useHorizontalOverflow } from "../host/overflow-fade";
@@ -75,15 +76,16 @@ function QueryMenu({ item, onClose }: { item: HostQueryBarItem; onClose: () => v
     <WebMenu
       label={item.label}
       selection={item.kind === "multi" ? "multi" : "single"}
-      items={item.options.map((option) => ({
+      items={withChoiceGroupHeadings(item.options.map((option) => ({
         id: option.value,
         label: option.label,
+        group: option.group,
         description: option.description,
         disabled: option.disabled,
         selected: item.kind === "select" ? option.selected : undefined,
         checked: item.kind === "multi" ? option.selected : undefined,
         color: option.color,
-      }))}
+      })))}
       onSelect={(value) => {
         item.onSelect(value);
         if (item.kind === "select") onClose();
@@ -290,6 +292,8 @@ export function WebQueryBar({ search, items, view, onClearAll, meta, leading, op
       ref={rootRef}
       className="gloom-qb"
       data-gloom-role="query-bar"
+      // The active title-bar tab above takes this band's colour (top-surface.ts).
+      data-gloom-top-surface=""
       // A search with nothing beside it may take the room the filters would.
       data-search-only={search && items.length === 0 && !view ? "true" : undefined}
     >

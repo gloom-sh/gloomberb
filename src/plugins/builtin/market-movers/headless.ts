@@ -9,7 +9,7 @@ import type {
   CloudSessionMoversPayload,
   CloudSessionMoversSide,
 } from "../../../api-client/market-movers";
-import { loadMarketMoverTab, loadSessionMovers, type MarketMoverTabResult } from "./client";
+import { loadMarketMoverTab, loadSessionMovers, marketMoverQuoteError, type MarketMoverTabResult } from "./client";
 import { createRows, fiftyTwoWeekPositionPercent, formatMoverPrice, MOVER_RANKING_LABELS, moverExtendedSessions, moverReferencePrice, type MarketMoverRow, type ScreenerTabId, type TabId } from "./model";
 import { EXTENDED_SESSION_LABELS, type ExtendedSession } from "../../../market-data/market/status";
 import type { HeadlessPaneColumn } from "../../../types/headless";
@@ -98,7 +98,7 @@ export function createMarketMoversHeadless(
 ): HeadlessPaneDefinition<"rows"> {
   return {
     shape: "rows",
-    // A screener snapshot, not a real-time feed; rows keep the time of their own last price.
+    // The delayed lists unless the list says it is real-time; rows keep the time of their own last price.
     freshness: { status: "delayed" },
     argument: { kind: "none" },
     options: [{
@@ -145,6 +145,8 @@ export function createMarketMoversHeadless(
             events: item.catalysts.map((catalyst) => CATALYST_LABEL[catalyst] ?? catalyst).join(" "),
           })),
           metadata: { list: tab, side, session: payload.session, phase: payload.phase, asOf: payload.asOf, stale: payload.stale === true },
+          // A Pro account's list is the live board; the free one says it is delayed.
+          ...(payload.access === "delayed" ? {} : { freshness: { status: "live" as const } }),
         };
       }
       const result = await dependencies.load(args, tab, ctx.marketData);
@@ -165,15 +167,19 @@ export function createMarketMoversHeadless(
       }));
       // Beside an extended column, say which move the order follows.
       const rankedBy = result.rankedBy ?? null;
+      const quoteError = marketMoverQuoteError(result);
       return {
         ...(extendedSessions.length > 0
           ? { columns: [...COLUMNS.slice(0, 5), ...extendedSessions.map(extendedColumn), ...COLUMNS.slice(5)] }
           : {}),
         rows,
+        ...(quoteError ? { complete: false, unavailableSymbols: result.unavailableSymbols, errors: [quoteError] } : {}),
         ...(rankedBy && rankedBy !== "volume" && extendedSessions.length > 0
           ? { notes: [`Ranked by ${MOVER_RANKING_LABELS[rankedBy]}.`] }
           : {}),
         metadata: { list: tab, source: result.source, stale: result.stale, rankedBy },
+        // A Pro account's Gainers, Losers and Most Active are the real-time lists.
+        ...(result.source === "cloud" ? { freshness: { status: "live" as const } } : {}),
       };
     },
   };

@@ -16,6 +16,7 @@ import { connectSignedInBrokerProfile } from "../../../brokers/signed-in/connect
 import {
   addTickerToPortfolio,
   adoptFirstPositionCurrency,
+  LotCostFxMergeError,
   createManualPortfolio as createManualPortfolioConfig,
   deleteManualPortfolio,
   deleteWatchlist as deleteWatchlistConfig,
@@ -27,7 +28,15 @@ import {
   validatePositionShares,
 } from "../../../portfolio/mutations";
 import { loadFuturesEntrySize } from "../../../portfolio/futures-terms";
-import { wholeUnitQuantityProblem } from "../../../portfolio/position-quantity";
+import {
+  FORM_COST_FX_WORDING, PositionCostFxError, readCostFxRate, readPurchaseDate, resolvePositionCostFx,
+} from "../../../portfolio/cost-fx";
+import { getManualPortfolioPositionPrefill } from "../../../portfolio/manual-lots";
+import { resolvePortfolioTotalsCurrency } from "../../../portfolio/totals-currency";
+import { createBaseConverter } from "../../../cli/base-converter";
+import { heldCurrencyUnit } from "../../../utils/currency-units";
+import { positionCostTermsPrefill } from "./portfolio-position";
+import { ambiguousQuantityProblem } from "../../../portfolio/position-quantity";
 import type { CommandBarFieldValue } from "./types";
 import type { WorkflowStringValues } from "./broker";
 import { coerceFieldString } from "../helpers";
@@ -126,6 +135,7 @@ export function createCommandBarCollectionWorkflowActions(options: {
       const connected = await connectSignedInBrokerProfile(broker, {
         getConfig: () => pluginRegistry.getConfig(),
         createBrokerInstance: (brokerType, label, values) => pluginRegistry.createBrokerInstance(brokerType, label, values),
+        enableBrokerInstance: (instanceId) => pluginRegistry.updateBrokerInstance(instanceId, {}, { enabled: true }),
         syncBrokerInstance: (instanceId) => pluginRegistry.syncBrokerInstance(instanceId),
         requestSignIn: requestBrokerSignIn,
       });
@@ -249,8 +259,8 @@ export function createCommandBarCollectionWorkflowActions(options: {
       // Negative for a short; zero is no position. A future counts contracts, and the messages say so.
       const quantityLabel = positionQuantityLabel(ticker);
       const shares = readTypedNumber(coerceFieldString(values.shares), quantityLabel);
-      // 1.250 on a listing held in whole lots could be 1,250 as well, and asks the same way.
-      const lots = wholeUnitQuantityProblem(coerceFieldString(values.shares).trim(), ticker, { label: quantityLabel });
+      // 1.250 could be 1,250 as well, and asks the same way.
+      const lots = ambiguousQuantityProblem(coerceFieldString(values.shares).trim(), ticker, { label: quantityLabel });
       if (lots) throw new Error(lots);
       const sharesError = validatePositionShares(shares, quantityLabel);
       if (sharesError) {
@@ -271,16 +281,45 @@ export function createCommandBarCollectionWorkflowActions(options: {
         currentState.config.baseCurrency,
         size?.currency,
       );
-      const result = setManualPortfolioPosition(ticker, portfolio.id, {
-        shares,
-        avgCost,
-        currency,
-        ...(size ? { multiplier: size.multiplier } : {}),
-      });
+      // Purchase Date and Cost FX behave as `position set --date/--cost-fx`. A field left as it opened keeps
+      // what the lots have; one emptied clears it; a new date reads that day's FX close unless a rate is typed.
       const firstPosition = !hasOpenPortfolioPositions(portfolio.id, getState().tickers.values());
+      const adopted = firstPosition ? adoptFirstPositionCurrency(getState().config, portfolio.id, currency) : null;
+      const valued = adopted ?? getState().config;
+      const portfolioCurrency = resolvePortfolioTotalsCurrency(
+        valued.portfolios.find((entry) => entry.id === portfolio.id) ?? portfolio, valued.baseCurrency);
+      const opened = positionCostTermsPrefill(getManualPortfolioPositionPrefill(ticker, portfolio.id).position, portfolioCurrency);
+      const dateText = coerceFieldString(values.dateAcquired).trim();
+      const rateText = coerceFieldString(values.costFx).trim();
+      const dateAcquired = dateText === opened.dateAcquired ? undefined : dateText ? readPurchaseDate(dateText, FORM_COST_FX_WORDING) : null;
+      const typedRate = rateText && rateText !== opened.costFx ? readCostFxRate(rateText, FORM_COST_FX_WORDING) : undefined;
+      const toPortfolio = createBaseConverter(dataProvider, heldCurrencyUnit(portfolioCurrency).currency);
+      let result: ReturnType<typeof setManualPortfolioPosition>;
+      try {
+        const bought = await resolvePositionCostFx({
+          date: dateAcquired ?? undefined, costFx: typedRate, history: apiClient,
+          currency, portfolioCurrency, listing: ticker.metadata.ticker, wording: FORM_COST_FX_WORDING,
+          // Today's rate, in the units the lot is held in: what a typed rate is checked against.
+          todaysRate: async () => (await toPortfolio(1, heldCurrencyUnit(currency).currency))
+            / heldCurrencyUnit(currency).divisor * heldCurrencyUnit(portfolioCurrency).divisor,
+        });
+        const costFx = bought ? bought.costFx : !rateText && opened.costFx ? null : undefined;
+        result = setManualPortfolioPosition(ticker, portfolio.id, {
+          shares,
+          avgCost,
+          currency,
+          ...(size ? { multiplier: size.multiplier } : {}),
+          ...(dateAcquired !== undefined ? { dateAcquired } : {}),
+          ...(costFx !== undefined ? { costFx } : {}),
+        });
+      } catch (error) {
+        // The form shows one message: what is wrong, then what to give instead.
+        if (error instanceof PositionCostFxError && error.details) throw new Error(`${error.message} ${error.details}`);
+        if (error instanceof LotCostFxMergeError) throw new Error(`${error.message} Give its Cost FX or Purchase Date.`);
+        throw error;
+      }
       await tickerRepository.saveTicker(result.ticker);
       dispatch({ type: "UPDATE_TICKER", ticker: result.ticker });
-      const adopted = firstPosition ? adoptFirstPositionCurrency(getState().config, portfolio.id, currency) : null;
       if (adopted) {
         dispatch({ type: "SET_CONFIG", config: adopted });
         persistConfig(adopted);

@@ -23,7 +23,7 @@ import {
 } from "../../../state/app/context";
 import type { BrokerAdapter } from "../../../types/broker";
 import type { PaneProps } from "../../../types/plugin";
-import { Box } from "../../../ui";
+import { Box, useUiCapabilities } from "../../../ui";
 import { getCurrentPluginTarget } from "../../current-target";
 import { usePluginBrokerActions, usePluginPaneState } from "../../runtime";
 import type { PluginModule } from "../plugin-module";
@@ -50,7 +50,9 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
   const config = usePaneAppConfig();
   const paneId = usePaneInstanceId();
   const brokerAccounts = useAppSelector((state) => state.brokerAccounts);
-  const { getBrokerAdapter } = usePluginBrokerActions();
+  const brokerSyncErrors = useAppSelector((state) => state.brokerSyncErrors);
+  const { getBrokerAdapter, getBrokerLogo } = usePluginBrokerActions();
+  const desktop = useUiCapabilities().nativePaneChrome === true;
   // The profile is remembered by id so a reload lands on the same row.
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("selectedId", null);
   const [detailOpen, setDetailOpen] = usePluginPaneState<boolean>("detailOpen", false);
@@ -81,8 +83,8 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
   const signedInBrokers = useSyncExternalStore(subscribeSignedInBrokers, getSignedInBrokers, getSignedInBrokers);
   const { ends: signInEnds, reload: reloadSignInEnds } = useSignInEnds(config.brokerInstances);
   const rows = useMemo(
-    () => buildBrokerProfileRows(config, adapters, brokerAccounts, signInEnds),
-    [adapters, brokerAccounts, config, language, signInEnds, signedInBrokers, statusVersion],
+    () => buildBrokerProfileRows(config, adapters, brokerAccounts, signInEnds, getBrokerLogo, brokerSyncErrors),
+    [adapters, brokerAccounts, brokerSyncErrors, config, getBrokerLogo, language, signInEnds, signedInBrokers, statusVersion],
   );
   const selectedIndex = Math.max(0, rows.findIndex((row) => row.id === selectedId));
   const selectedRow = rows[selectedIndex] ?? null;
@@ -91,11 +93,11 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
     ? getVisibleBrokerConfigFields(selectedRow.adapter, editDraft.values)
     : [];
   const editKeys = useMemo<BrokerEditKey[]>(
-    () => ["label", "enabled", ...editFields.map((field) => field.key)],
+    () => ["label", "enabled", ...editFields.map((field) => field.key), "localOnly"],
     [editFields],
   );
   const editSelectKeys = useMemo<ReadonlySet<BrokerEditKey>>(
-    () => new Set(["enabled", ...editFields.filter((field) => field.type === "select").map((field) => field.key)]),
+    () => new Set(["enabled", "localOnly", ...editFields.filter((field) => field.type === "select").map((field) => field.key)]),
     [editFields],
   );
   const editScope = `broker-edit:${paneId}`;
@@ -117,17 +119,24 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
 
   const {
     busy,
+    paneBusy,
     message,
+    editError,
+    rowActivity,
     setBusy,
     setMessage,
+    setRowNote,
     startEdit,
+    cancelEdit,
     saveEdit,
     connectSelected,
+    enableSelected,
     syncSelected,
     selectedProfileActions,
     openProfileAction,
     removeSelected,
   } = useBrokerManagerActions({
+    rows,
     selectedRow,
     editDraft,
     setEditDraft,
@@ -142,7 +151,7 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
     setEditDraft(null);
     setDetailOpen(false);
   }, [setDetailOpen, setSelectedId]);
-  const addFlow = useBrokerAddFlow({ setBusy, setMessage, onProfileAdded: selectAddedProfile });
+  const addFlow = useBrokerAddFlow({ setBusy, setMessage, setRowNote, onProfileAdded: selectAddedProfile });
   const adding = addFlow.flow !== null;
   const { start: startAddFlow } = addFlow;
   const startAdd = useCallback(() => {
@@ -179,13 +188,14 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
   const canUseSelectedBroker = selectedHasAdapter && !busy;
   const canOpenSelectedAction = selectedProfileActions.some((action) => !action.disabled && action.paneId);
   const canRemoveSelected = hasSelectedRow && !busy;
-  const cancelEdit = useCallback(() => setEditDraft(null), []);
 
   useBrokerManagerFooter({
     busy,
+    paneBusy,
     message,
     actions: {
       connectSelected,
+      enableSelected,
       openProfileAction,
       removeSelected,
       saveEdit,
@@ -196,12 +206,13 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
     canOpenSelectedAction,
     canRemoveSelected,
     canUseSelectedBroker,
+    disabledSelected: selectedRow?.instance.enabled === false ? selectedRow.brokerName : null,
     editing: !!editDraft || adding,
   });
 
   const cycleEditSelect = useCallback((key: BrokerEditKey, direction: -1 | 1) => {
-    if (key === "enabled") {
-      setEditDraft((current) => current ? { ...current, enabled: !current.enabled } : current);
+    if (key === "enabled" || key === "localOnly") {
+      setEditDraft((current) => current ? { ...current, [key]: !current[key] } : current);
       return;
     }
     const options = editFields.find((field) => field.key === key)?.options ?? [];
@@ -229,18 +240,21 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
   const tableWidth = Math.max(24, width);
   const columns = useMemo(() => buildBrokerColumns(tableWidth), [language, tableWidth]);
 
+  const renderCell = useCallback(
+    (row: BrokerProfileRow, column: BrokerColumn) => renderBrokerCell(row, column, desktop, rowActivity(row)),
+    [desktop, rowActivity],
+  );
+
   const openSelectedDetail = useCallback((_index: number, row: BrokerProfileRow) => {
     setSelectedId(row.id);
-    setEditDraft(null);
+    cancelEdit();
     setDetailOpen(true);
-  }, [setDetailOpen, setSelectedId]);
+  }, [cancelEdit, setDetailOpen, setSelectedId]);
 
   const selectBrokerRow = useCallback((_index: number, row: BrokerProfileRow) => {
     setSelectedId(row.id);
-    if (selectedRow?.id !== row.id) {
-      setEditDraft(null);
-    }
-  }, [selectedRow?.id, setSelectedId]);
+    if (selectedRow?.id !== row.id) cancelEdit();
+  }, [cancelEdit, selectedRow?.id, setSelectedId]);
 
   const updateDraftValue = useCallback((key: string, value: string) => {
     setEditDraft((current) => current
@@ -254,6 +268,10 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
 
   const updateDraftEnabled = useCallback((enabled: boolean) => {
     setEditDraft((current) => current ? { ...current, enabled } : current);
+  }, []);
+
+  const updateDraftLocalOnly = useCallback((localOnly: boolean) => {
+    setEditDraft((current) => current ? { ...current, localOnly } : current);
   }, []);
 
   const saveCurrentEdit = useCallback(() => {
@@ -281,13 +299,15 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
       activeEditKey={activeEditKey}
       editKeys={editKeys}
       busy={busy}
-      message={message}
+      activity={selectedRow ? rowActivity(selectedRow) : {}}
+      editError={editError}
       width={detailContentWidth}
       editScope={editScope}
       paneFocused={focused}
       onActiveEditKeyChange={setActiveEditKey}
       onDraftLabelChange={updateDraftLabel}
       onDraftEnabledChange={updateDraftEnabled}
+      onDraftLocalOnlyChange={updateDraftLocalOnly}
       onDraftValueChange={updateDraftValue}
       onSaveEdit={saveCurrentEdit}
       onCancelEdit={cancelEdit}
@@ -301,7 +321,7 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
           focused={focused}
           detailOpen={adding || (detailOpen && !!selectedRow)}
           onBack={adding ? addFlow.leave : () => {
-            setEditDraft(null);
+            cancelEdit();
             setDetailOpen(false);
           }}
           detailContent={detailContent}
@@ -319,7 +339,7 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
           sortColumnId={null}
           sortDirection="asc"
           getItemKey={(row) => row.id}
-          renderCell={renderBrokerCell}
+          renderCell={renderCell}
           // The footer's a adds one.
           emptyContent={(
             <Box width="100%" paddingX={1} paddingY={1}>
@@ -341,6 +361,7 @@ export const brokerManagerModule: PluginModule = {
       personalData: "account",
       icon: "B",
       component: BrokersPane,
+      reportFreshness: { status: "not-a-feed", basis: "broker connections" },
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 92, height: 24 },

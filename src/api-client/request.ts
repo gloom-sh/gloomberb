@@ -1,6 +1,6 @@
 import { logFailure } from "../utils/log-failure";
 import { httpFetch, isHttpFetchStreaming } from "../utils/http-transport";
-import { withDeadline } from "../utils/async-deadline";
+import { OperationTimeoutError } from "../utils/async-deadline";
 import {
   ApiRequestError,
   parseApiErrorCode,
@@ -16,16 +16,59 @@ import {
   type ConnectionHealthRegistry,
 } from "../core/connection-health";
 import { SESSION_COOKIE_NAMES } from "./session-cookie";
+import { asDataServiceFailure, DataServiceUnreachableError } from "../utils/network-failure";
 
 /** The public Gloom Cloud API, which the web app's same-origin `/api` path forwards to. */
 export const DEFAULT_API_URL = "https://api.gloom.sh";
+/**
+ * How long a request waits for the service to answer at all. Nothing back by
+ * then, and nothing else answered meanwhile, is a hung connection: the request
+ * fails as the data service being unreachable, as a refused one does.
+ */
 const DEFAULT_MARKET_REQUEST_TIMEOUT_MS = 10_000;
+/**
+ * A search, which a command and a keystroke wait on, gives up on a connection
+ * that sends nothing back sooner. A slow search on a service that answers
+ * (some take five seconds) still gets the full market deadline.
+ */
+const SEARCH_ANSWER_TIMEOUT_MS = 4_000;
+/**
+ * Once a request went unanswered, later ones wait this long for an answer,
+ * until any answer comes back: a hung connection is not waited out in full by
+ * every request a command or a pane makes after it.
+ */
+const UNREACHABLE_REQUEST_TIMEOUT_MS = 3_000;
+/**
+ * Right after a request hung with nothing back, the requests that follow it
+ * (a fallback, the next step of a command) fail at once rather than each
+ * waiting out a connection that just proved dead. Past this they try again.
+ */
+const HUNG_FAIL_FAST_MS = 5_000;
 const DEFAULT_RESEARCH_REQUEST_TIMEOUT_MS = 45_000;
+/** Requests outside market reads (saves, uploads, drafts) may take the server this long once it is known to answer. */
+const DEFAULT_SERVICE_REQUEST_LIMIT_MS = 120_000;
+const UPLOAD_REQUEST_LIMIT_MS = 300_000;
+/**
+ * How long the check that the service answers at all waits. It runs this long
+ * before a request's answer deadline, unless something answered meanwhile, so
+ * one slow request on a service that answers is waited for and a dead
+ * connection is not.
+ */
+const SERVICE_PROBE_TIMEOUT_MS = 3_000;
+const SERVICE_PROBE_PATH = "/health";
 // Research may fill missing sections after a primary read; quote/history reads remain latency bounded.
 const RESEARCH_MARKET_PATHS = new Set([
   "/market/dividends", "/market/short-interest", "/market/movers", "/market/trending",
   "/market/heatmap", "/market/earnings-calendar",
 ]);
+
+/** When a request gives up: without any answer from the service, and in all. */
+interface RequestDeadline {
+  answerMs: number;
+  limitMs: number;
+  /** When to check that the service answers at all, if nothing has by then; null when the deadline is too short for it. */
+  probeAtMs: number | null;
+}
 /** Local status for "this runtime cannot stream", never returned by the server. */
 export const STREAMING_UNSUPPORTED_STATUS = 0;
 
@@ -73,6 +116,8 @@ type CloudApiUploadTransport = (request: CloudApiUploadRequest) => Promise<Cloud
 let cloudApiFetchTransport: CloudApiFetchTransport = httpFetch;
 let cloudApiUploadTransport: CloudApiUploadTransport | null = null;
 let cloudApiTransportInstalled = false;
+/** Counts installed transports, so what a client learned of one connection is not applied to the next. */
+let cloudApiTransportGeneration = 0;
 let cloudApiFetchStreaming = true;
 let cloudApiStreamFetch: CloudApiStreamFetch | null = null;
 
@@ -82,6 +127,7 @@ export function setCloudApiFetchTransport(
 ): void {
   cloudApiFetchTransport = transport ?? httpFetch;
   cloudApiTransportInstalled = !!transport;
+  cloudApiTransportGeneration += 1;
   cloudApiFetchStreaming = transport ? (options.streaming ?? false) : true;
   cloudApiStreamFetch = transport ? options.streamFetch ?? null : null;
 }
@@ -171,6 +217,17 @@ export class CloudApiRequestTransport {
   private readonly marketRequestTimeoutMs: number;
   private readonly researchRequestTimeoutMs: number;
   private readonly connectionHealth: ConnectionHealthRegistry;
+  /** Answers received from the service, by any request: a request that sees this grow knows the connection works. */
+  private answers = 0;
+  /** The last request went unanswered (refused or hung) and nothing has answered since. */
+  private unreachable = false;
+  /** When a request last hung with nothing back, while nothing has answered since. */
+  private hungAt: number | null = null;
+  /** The installed transport the two above were learned on. */
+  private connectionGeneration = cloudApiTransportGeneration;
+  /** Requests waiting under a deadline: the check that the service answers runs only while one is. */
+  private pending = 0;
+  private probe: AbortController | null = null;
 
   readonly baseUrl = getCloudApiBaseUrl();
 
@@ -263,11 +320,11 @@ export class CloudApiRequestTransport {
       GLOOM_CLOUD_HTTP_CONNECTION_ID,
       operation,
       async () => {
-        const response = await streamFetch(`${this.baseUrl}${path}`, {
+        const response = await this.reachService(() => streamFetch(`${this.baseUrl}${path}`, {
           ...options,
           headers,
           credentials: "include",
-        });
+        }), options.signal);
         throwIfRequestAborted(options.signal);
         if (!response.ok) {
           const text = await response.text().catch(logFailure("cloud-request", "Error response body read failed", ""));
@@ -284,35 +341,176 @@ export class CloudApiRequestTransport {
   }
 
   async request<T>(path: string, options?: RequestInit, canApplySession: () => boolean = () => true): Promise<T> {
-    if (!path.startsWith("/market/")) {
-      return this.performRequest<T>(path, options, canApplySession);
-    }
+    return this.withDeadline(path, this.deadlineFor(path), options?.signal, (signal) => this.performRequest<T>(path, {
+      ...options,
+      signal,
+    }, canApplySession));
+  }
 
-    const timeoutMs = RESEARCH_MARKET_PATHS.has(path.split("?")[0]!)
-      ? this.researchRequestTimeoutMs : this.marketRequestTimeoutMs;
+  /**
+   * Every request's deadline. A market read or a search waits about ten
+   * seconds, research and requests outside market data longer. With nothing
+   * back from the service, a request gives up at ten seconds, a search at
+   * four, and any request at three after one went unanswered, until something
+   * answers again. Three seconds before that, a request still unanswered
+   * checks that the service answers at all, so one slow request on a working
+   * connection is waited for and a dead connection is not.
+   */
+  private deadlineFor(path: string, limitMs?: number): RequestDeadline {
+    this.forgetOtherTransport();
+    const pathname = path.split("?")[0]!;
+    const market = pathname.startsWith("/market/");
+    const limit = limitMs ?? (!market ? DEFAULT_SERVICE_REQUEST_LIMIT_MS
+      : RESEARCH_MARKET_PATHS.has(pathname) ? this.researchRequestTimeoutMs : this.marketRequestTimeoutMs);
+    let answerMs = pathname === "/market/search"
+      ? Math.min(this.marketRequestTimeoutMs, SEARCH_ANSWER_TIMEOUT_MS)
+      : this.marketRequestTimeoutMs;
+    if (this.unreachable) answerMs = Math.min(answerMs, UNREACHABLE_REQUEST_TIMEOUT_MS);
+    return {
+      answerMs,
+      limitMs: Math.max(limit, answerMs),
+      probeAtMs: answerMs >= SERVICE_PROBE_TIMEOUT_MS ? answerMs - SERVICE_PROBE_TIMEOUT_MS : null,
+    };
+  }
+
+  /**
+   * Runs one request under its deadline. Without an answer from the service by
+   * `answerMs` (from this request, any other, or the check that the service
+   * answers at all), the connection is taken as hung: the request is aborted
+   * and fails as the data service being unreachable, as a refused connection
+   * does. A service that answers but is slow gets until `limitMs`, then the
+   * request times out. A caller's abort stays an abort.
+   */
+  private async withDeadline<T>(
+    path: string,
+    deadline: RequestDeadline,
+    callerSignal: AbortSignal | null | undefined,
+    run: (signal: AbortSignal) => Promise<T>,
+  ): Promise<T> {
     const controller = new AbortController();
-    const callerSignal = options?.signal;
     const abortFromCaller = () => controller.abort(callerSignal?.reason);
     if (callerSignal?.aborted) {
       abortFromCaller();
     } else {
       callerSignal?.addEventListener("abort", abortFromCaller, { once: true });
     }
-
-    try {
-      const request = this.performRequest<T>(path, {
-        ...options,
-        signal: controller.signal,
-      }, canApplySession);
-      return await withDeadline(
-        request,
-        timeoutMs,
-        `Cloud market request timed out after ${timeoutMs}ms: ${path}`,
-        (error) => controller.abort(error),
-      );
-    } finally {
+    const answersAtStart = this.answers;
+    const answered = () => this.answers > answersAtStart;
+    const generation = cloudApiTransportGeneration;
+    const what = path.startsWith("/market/") ? "Cloud market request" : "Cloud request";
+    const timedOut = (ms: number) => new OperationTimeoutError(`${what} timed out after ${ms}ms: ${path.split("?")[0]}`);
+    const timers: Array<ReturnType<typeof setTimeout>> = [];
+    if (this.hungAt != null && Date.now() - this.hungAt < HUNG_FAIL_FAST_MS && !controller.signal.aborted) {
       callerSignal?.removeEventListener("abort", abortFromCaller);
+      throw new DataServiceUnreachableError(new OperationTimeoutError(`${what} not sent: the last one got no answer: ${path.split("?")[0]}`));
     }
+    this.pending += 1;
+    try {
+      const work = run(controller.signal);
+      return await new Promise<T>((resolve, reject) => {
+        const fail = (error: Error) => {
+          reject(error);
+          controller.abort(error);
+        };
+        work.then(resolve, reject);
+        if (deadline.probeAtMs != null) {
+          timers.push(setTimeout(() => {
+            if (!answered()) this.checkServiceAnswers();
+          }, deadline.probeAtMs));
+        }
+        timers.push(setTimeout(() => {
+          // The caller gave up first: its abort settles the request, and says nothing of the connection.
+          if (callerSignal?.aborted) return;
+          if (!answered()) {
+            this.recordNoAnswer(generation, true);
+            fail(new DataServiceUnreachableError(timedOut(deadline.answerMs)));
+          } else if (deadline.limitMs > deadline.answerMs) {
+            timers.push(setTimeout(() => fail(timedOut(deadline.limitMs)), deadline.limitMs - deadline.answerMs));
+          } else {
+            fail(timedOut(deadline.answerMs));
+          }
+        }, deadline.answerMs));
+      });
+    } finally {
+      for (const timer of timers) clearTimeout(timer);
+      callerSignal?.removeEventListener("abort", abortFromCaller);
+      this.pending -= 1;
+      // Nothing waits on the check any more: it must not hold a command's process open.
+      if (this.pending === 0) this.probe?.abort();
+    }
+  }
+
+  /**
+   * Sends one request, saying the same thing whichever fetch failed to connect
+   * (Bun's "Unable to connect", a browser's "Failed to fetch", a refused proxy):
+   * every command, pane and status line then reads "Gloom couldn't reach its
+   * data service", and code that falls back to a saved copy can tell it apart.
+   * A caller's abort stays an abort. An answer of any status says the
+   * connection works, for the deadlines of the requests beside it.
+   */
+  private async reachService<R>(fetch: () => Promise<R>, signal: AbortSignal | null | undefined): Promise<R> {
+    const generation = cloudApiTransportGeneration;
+    let response: R;
+    try {
+      response = await fetch();
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      const failure = asDataServiceFailure(error);
+      if (failure instanceof DataServiceUnreachableError) this.recordNoAnswer(generation, false);
+      throw failure;
+    }
+    this.recordAnswer();
+    return response;
+  }
+
+  /** A new transport installed is a new connection: what failed on the last one says nothing about it. */
+  private forgetOtherTransport(): void {
+    if (this.fetchTransport || this.connectionGeneration === cloudApiTransportGeneration) return;
+    this.connectionGeneration = cloudApiTransportGeneration;
+    this.unreachable = false;
+    this.hungAt = null;
+  }
+
+  /** Something came back from the service: the connection works. */
+  private recordAnswer(): void {
+    this.answers += 1;
+    this.unreachable = false;
+    this.hungAt = null;
+  }
+
+  /**
+   * A request sent on the transport installed as `generation` got no answer:
+   * refused, or `hung` with nothing back by its deadline. Once another
+   * transport is installed, what one sent on the last says nothing of it.
+   */
+  private recordNoAnswer(generation: number, hung: boolean): void {
+    if (!this.fetchTransport && generation !== cloudApiTransportGeneration) return;
+    this.unreachable = true;
+    if (hung) this.hungAt = Date.now();
+  }
+
+  /**
+   * Asks the service for anything at all, once at a time, so a request that
+   * is slow can tell a slow server (which answers this) from a dead
+   * connection (which does not). Any status counts as an answer. It stops
+   * when nothing waits on it any more.
+   */
+  private checkServiceAnswers(): void {
+    if (this.probe) return;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), SERVICE_PROBE_TIMEOUT_MS);
+    const done = () => {
+      clearTimeout(timer);
+      if (this.probe === controller) this.probe = null;
+    };
+    // Done once given up on, even through a transport that ignores the abort.
+    controller.signal.addEventListener("abort", done, { once: true });
+    this.probe = controller;
+    (this.fetchTransport ?? cloudApiFetchTransport)(`${this.baseUrl}${SERVICE_PROBE_PATH}`, { signal: controller.signal })
+      .then(() => this.recordAnswer(), () => {
+        // Intentional ignore: an unanswered check only leaves the request it guards to its own deadline.
+      })
+      .finally(done);
   }
 
   /**
@@ -338,17 +536,17 @@ export class CloudApiRequestTransport {
         url,
         body,
         headers: new Headers(init?.headers),
-        signal: options.signal,
+        signal: init?.signal ?? options.signal,
         onProgress: options.onProgress,
       })
       : undefined;
-    return this.performRequest<T>(path, {
+    return this.withDeadline(path, this.deadlineFor(path, UPLOAD_REQUEST_LIMIT_MS), options.signal, (signal) => this.performRequest<T>(path, {
       method: "POST",
       headers,
       // Typed arrays are valid fetch bodies; RequestInit's DOM typing lags behind.
       body: body as BodyInit,
-      signal: options.signal,
-    }, () => true, send);
+      signal,
+    }, () => true, send));
   }
 
   private async performRequest<T>(
@@ -372,14 +570,14 @@ export class CloudApiRequestTransport {
 
     const operation = `${options?.method ?? "GET"} ${path.split("?")[0]}`;
     const request = async () => {
-      const res = await (send ?? this.fetchTransport ?? cloudApiFetchTransport)(
+      const res = await this.reachService(() => (send ?? this.fetchTransport ?? cloudApiFetchTransport)(
         `${this.baseUrl}${path}`,
         {
           ...options,
           headers,
           credentials: "include",
         },
-      );
+      ), options?.signal);
       throwIfRequestAborted(options?.signal);
       const ownsCredential = canApplySession() && this.sessionToken === sessionTokenAtRequestStart;
       if (ownsCredential) this.extractSessionCookie(res);
@@ -413,9 +611,10 @@ export class CloudApiRequestTransport {
     // change lookup: a note beside a quote, never one of the refused market
     // requests a lookup of many symbols waits out and retries. Nor the
     // tickers beside a list of organization names, which say so in place,
-    // or a 13F filer's EDGAR filing list, whose report says it went unchecked.
-    // Nor the batched searches and ticker changes a list of symbols starts
-    // with: a service without them answers 404, and whatever they leave
+    // or a 13F filer's EDGAR filing list, whose report says it went unchecked,
+    // or a company's other listings, beside a list check that still answers
+    // for the listing itself. Nor the batched searches and ticker changes a
+    // list of symbols starts with: a service without them answers 404, and whatever they leave
     // unanswered is looked up one symbol at a time, which is tracked.
     if (
       path.startsWith("/telemetry/")
@@ -423,6 +622,7 @@ export class CloudApiRequestTransport {
       || path === "/cloud/geo/layers"
       || path.startsWith("/cloud/sec/13f/filer?")
       || path.startsWith("/market/ticker-changes?")
+      || path.startsWith("/market/issuer-listings?")
       || path === "/market/ticker-changes/batch"
       || path === "/market/search/batch"
       || path === "/market/organization-tickers"

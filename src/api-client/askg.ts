@@ -375,7 +375,7 @@ export function classifyASKGRequestError(error: unknown): ASKGTransportError {
     if (error.status === 426) {
       return new ASKGTransportError(
         "protocol",
-        `Ask Gloom no longer speaks protocol v${ASKG_PROTOCOL_VERSION}. Update Gloomberb.`,
+        `Ask Gloom no longer speaks protocol v${ASKG_PROTOCOL_VERSION}. Update Gloom.`,
         { status: error.status },
       );
     }
@@ -465,7 +465,7 @@ export class CloudASKGApi implements ASKGTransport {
       if (response?.protocolVersion !== ASKG_PROTOCOL_VERSION) {
         throw new ASKGTransportError(
           "protocol",
-          `Ask Gloom speaks protocol v${response?.protocolVersion ?? "?"}, this build speaks v${ASKG_PROTOCOL_VERSION}. Update Gloomberb.`,
+          `Ask Gloom speaks protocol v${response?.protocolVersion ?? "?"}, this build speaks v${ASKG_PROTOCOL_VERSION}. Update Gloom.`,
         );
       }
       return response;

@@ -26,9 +26,35 @@ export const LOOKBACK_OPTIONS = [
   { value: "max", label: "All history" },
 ];
 
-/** A preset's rules, or the typed ones for "custom". */
-export function resolveRules(preset: string, entry: string, exit: string): { entry: string; exit: string; label: string } {
-  const match = BACKTEST_PRESETS.find((candidate) => candidate.id === preset);
+export const CUSTOM_PRESET_ID = "custom";
+
+const typedRule = (entry: string, exit: string) => entry.trim() !== "" || exit.trim() !== "";
+
+/**
+ * The strategy a run tests: the preset chosen; with none chosen, the typed
+ * rules when there are any (`fn BT --entry ... --exit ...` means custom),
+ * else the default preset.
+ */
+export function strategyPreset(preset: string | null | undefined, entry: string, exit: string): string {
+  if (preset) return preset;
+  return typedRule(entry, exit) ? CUSTOM_PRESET_ID : DEFAULT_PRESET.id;
+}
+
+/** A preset's rules, or the typed ones for "custom" and for rules typed with no preset chosen. */
+export function resolveRules(preset: string | null | undefined, entry: string, exit: string): { entry: string; exit: string; label: string } {
+  const id = strategyPreset(preset, entry, exit);
+  const match = BACKTEST_PRESETS.find((candidate) => candidate.id === id);
   return match ? { entry: match.entry, exit: match.exit, label: match.label } : { entry, exit, label: "Custom rules" };
+}
+
+/**
+ * Why rules typed beside a preset cannot both be tested (`--preset
+ * golden-cross --entry ...`), naming both; null when they agree.
+ */
+export function presetRulesConflict(preset: string | null | undefined, entry: string, exit: string): string | null {
+  if (!preset || preset === CUSTOM_PRESET_ID || !typedRule(entry, exit)) return null;
+  const typed = [entry.trim() ? "--entry" : null, exit.trim() ? "--exit" : null].filter(Boolean).join(" and ");
+  return `${typed} ${entry.trim() && exit.trim() ? "are custom rules" : "is a custom rule"}, but --preset ${preset} tests its own. `
+    + `Leave out --preset to test the typed rules, or give --preset ${CUSTOM_PRESET_ID}.`;
 }
 export const lookbackYears = (value: unknown) => value === "max" ? null : value === "5" ? 5 : 10;

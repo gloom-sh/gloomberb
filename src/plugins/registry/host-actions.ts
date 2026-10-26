@@ -9,6 +9,7 @@ import type { NewsQuery, NewsQueryState } from "../../types/news-source";
 import type {
   AppNotificationDelivery,
   AppNotificationRequest,
+  BrokerInstanceCreateOptions,
   BrokerInstanceUpdateOptions,
   PaneSettingField,
   PaneTemplateCreateOptions,
@@ -27,7 +28,7 @@ export interface PluginHostActions {
   getTicker(symbol: string): TickerRecord | null;
   getData(symbol: string): TickerFinancials | null;
   getConfig(): AppConfig;
-  createBrokerInstance(brokerType: string, label: string, values: Record<string, unknown>): Promise<BrokerInstanceConfig>;
+  createBrokerInstance(brokerType: string, label: string, values: Record<string, unknown>, options?: BrokerInstanceCreateOptions): Promise<BrokerInstanceConfig>;
   connectBrokerInstance(instanceId: string): Promise<void>;
   updateBrokerInstance(instanceId: string, values: Record<string, unknown>, options?: BrokerInstanceUpdateOptions): Promise<void>;
   syncBrokerInstance(instanceId: string): Promise<void>;

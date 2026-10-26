@@ -24,26 +24,33 @@ import { UpgradeLabel } from "../shared/locked-rows";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { boardSearchText, cachedPerpSelection, cachedPerpsBoard, cachedPerpsCompare, cachedPerpsRankings, loadPerpSelection, loadPerpsBoard, loadPerpsCompare,
   loadPerpsHistoryForRange, loadPerpsRankings } from "./client";
-import { perpFreshness, perpObservation } from "./freshness";
+import { perpFreshness } from "./freshness";
+import { useLivePerpRows, useLivePerpTableRows } from "./live-rows";
 import { aprFormula, ASSET_FILTERS, BOARD_SORTS, boardColumns, collectedVenueCount, compact, compareColumns, dayChange, fundingInterval, fundingSpread, historyCaption, historyCell, historyChange, historyColumns,
   HISTORY_METRICS, historyRows, historySeries, historyValue, inPoints, isMarketTab, label, longShortReason, marketLabel, metricLabel, openingTab, perpCell, perpHistoryProText, PERP_TABS, percent,
   positioningFields, price, rankingColumns, rankingRows, RANKINGS, ratioText, share, sortLabel, time, underlyingTicker, venueLabel, venueName, venuesOf, type HistoryMetric,
   type PerpColumnId, type PerpTab, type RankingKey } from "./model";
 
 const NO_ROWS: readonly PerpBoardRow[] = [];
+const rowItself = (row: PerpBoardRow) => row;
+const replaced = (_: PerpBoardRow, row: PerpBoardRow) => row;
+const rankedRow = (entry: SectionedRow<Ranked>) => entry.kind === "item" ? entry.item.row : null;
+const withRankedRow = (entry: SectionedRow<Ranked>, row: PerpBoardRow): SectionedRow<Ranked> =>
+  entry.kind === "item" ? { ...entry, item: { ...entry.item, row } } : entry;
 
 /**
- * The footer line for the rows on screen: each venue's own observation time, how old the oldest is, the delay state
- * and what the funding figures are, the line `fn PERP` and `shot PERP` end with. It keeps ageing while the pane is
- * seen (`since` is when the rows loaded), and is published for a capture to date itself the same way.
+ * The footer line for the rows on screen: each venue's own observation time, how old the oldest price is, `live` while
+ * every one of them streams, and what the funding figures are, the line `fn PERP` and `shot PERP` end with. It keeps
+ * ageing while the pane is seen (`since` is when the rows loaded), and is published for a capture to date itself the
+ * same way.
  */
-function usePerpStatusLine(rows: readonly PerpBoardRow[], funding: readonly PerpBoardRow[], since: number | null): PaneFooterSegment[] {
+function usePerpStatusLine(rows: readonly PerpBoardRow[], funding: readonly PerpBoardRow[], since: number | null, live = false): PaneFooterSegment[] {
   const now = useAgeClock(since);
-  const declared = useMemo(() => rows.length ? perpFreshness(rows, { funding, now }) : null, [rows, funding, now]);
-  useRemoteUiNode(declared ? { role: "report-freshness", label: "Venue freshness", getMetadata: () => ({ ...declared, observations: rows.map(perpObservation) }) } : null);
+  const declared = useMemo(() => rows.length ? perpFreshness(rows, { funding, now, live }) : null, [rows, funding, now, live]);
+  useRemoteUiNode(declared ? { role: "report-freshness", label: "Venue freshness", getMetadata: () => ({ ...declared }) } : null);
   return useMemo(() => {
     if (!declared) return [];
-    const freshness = deriveHeadlessFreshness({ shape: "rows" }, { rows: rows.map(perpObservation), freshness: declared }, now);
+    const freshness = deriveHeadlessFreshness({ shape: "rows" }, { rows: [], freshness: declared }, now);
     const tone = freshness.status === "stale" ? "warning" as const : "muted" as const;
     // A footer too narrow beside its keys gives up the funding part before any venue's time.
     const [line, ...shorter] = paneStatusLineVariants(freshness).map((text) => [{ text, tone }]);
@@ -104,8 +111,8 @@ function MarketEvidence({ row, data, width, height }: { row: PerpBoardRow; data:
   </ScrollBox>;
 }
 
-function History({ market, venues, accessKey, width, height, focused, range, metric, refreshMarket }: {
-  market: PerpBoardRow; venues: number | null; accessKey: string; width: number; height: number; focused: boolean; range: string; metric: HistoryMetric; refreshMarket: () => void;
+function History({ market, live = false, venues, accessKey, width, height, focused, range, metric, refreshMarket }: {
+  market: PerpBoardRow; live?: boolean; venues: number | null; accessKey: string; width: number; height: number; focused: boolean; range: string; metric: HistoryMetric; refreshMarket: () => void;
 }) {
   const colors = useThemeColors();
   const loader = useCallback((force: boolean) => loadPerpsHistoryForRange(market.marketId, Number(range), accessKey, force), [market.marketId, range, accessKey]);
@@ -125,7 +132,7 @@ function History({ market, venues, accessKey, width, height, focused, range, met
   const lastTime = rows.at(-1)?.time;
   // The market row dates the figures beside the series. Its funding is the current estimate, unless the series is paid funding.
   const marketRows = useMemo(() => [market], [market]);
-  const line = usePerpStatusLine(marketRows, metric === "funding" && !data?.funding.length ? marketRows : NO_ROWS, resource.updatedAt);
+  const line = usePerpStatusLine(marketRows, metric === "funding" && !data?.funding.length ? marketRows : NO_ROWS, resource.updatedAt, live);
   usePaneStatusFooter({ registrationId: "perps:history", loading: resource.loading, error: resource.error, stale: resource.data?.stale,
     info: [...line, ...(lastTime ? [{ id: "history-asof", parts: [{ text: `${historyCaption(data, metric)} · ${time(lastTime)}`, tone: "muted" as const }] }] : [])] });
   usePaneNoticeFooter({ registrationId: "perps:history-notice", focused, notices: [resource.data?.refreshError,
@@ -221,14 +228,18 @@ function Board({ accessKey, width, height, focused, onPick, onOpen }: ListTabPro
   const resource = useAsyncResource(loader, { initialData: () => cachedPerpsBoard(query, accessKey), clearOnError: isAccessDenied, keepPreviousData: true });
   const data = resource.data?.payload;
   const venues = useMemo(() => venuesOf(data?.rows ?? []), [data]);
-  const rows = useMemo(() => venue === "all" ? data?.rows ?? [] : (data?.rows ?? []).filter((row) => row.venue === venue), [data, venue]);
+  const fetchedRows = useMemo(() => venue === "all" ? data?.rows ?? [] : (data?.rows ?? []).filter((row) => row.venue === venue), [data, venue]);
+  // The rows in view move with the quote stream.
+  const pinned = fetchedRows.find((row) => row.marketId === selectedId) ?? null;
+  const stream = useLivePerpTableRows(fetchedRows, rowItself, replaced, { pinned });
+  const rows = stream.items;
   const selected = rows.find((row) => row.marketId === selectedId) ?? rows[0] ?? null;
   useEffect(() => { onPick(selected); }, [selected, onPick]);
   const columns = useMemo(() => boardColumns(width), [width]);
   const locked = typeof data?.locked === "number" ? data.locked : 0;
   useAutoRefresh(resource.updatedAt, resource.load, { intervalMs: 60_000 });
   usePaneRefreshKey(() => { void resource.reload(); }, { focused: focused && !querySearch.active });
-  const line = usePerpStatusLine(rows, rows, resource.updatedAt);
+  const line = usePerpStatusLine(stream.shown, stream.shown, resource.updatedAt, stream.live);
   usePaneStatusFooter({ registrationId: "perps:board", loading: resource.loading, error: data ? resource.error : null, stale: resource.data?.stale, info: line });
   usePaneNoticeFooter({ registrationId: "perps:board-notice", focused, notices: resource.data?.refreshError ? [resource.data.refreshError] : [] });
   if (!data && isCloudSessionRequired(resource.error)) return <SignInWall placement="perps-signin" action="view perpetual markets" needsVerification={session.needsVerification} />;
@@ -244,7 +255,7 @@ function Board({ accessKey, width, height, focused, onPick, onOpen }: ListTabPro
     ]} />;
   return <PaneStatusBody loading={!data && resource.loading} error={!data ? resource.error : null} subject="perpetual markets">
     <DataTableView<PerpBoardRow> columns={columns} items={rows} focused={focused && !querySearch.active} rootWidth={width} rootHeight={height} rootBefore={queryBar}
-      getItemKey={(row) => row.marketId} sortColumnId={null} sortDirection="desc" resetScrollKey={`${JSON.stringify(query)}:${venue}`}
+      getItemKey={(row) => row.marketId} sortColumnId={null} sortDirection="desc" resetScrollKey={`${JSON.stringify(query)}:${venue}`} onVisibleRangeChange={stream.onVisibleRangeChange}
       selection={{ kind: "id", selectedId: selected?.marketId ?? null, getId: (row) => row.marketId, onChange: setSelected }} onActivate={(row) => onOpen(row)}
       renderCell={(row, column) => perpCell(row, column.id as PerpColumnId, colors)} selectedTextOverridesCellColor
       emptyStateTitle="No markets match these filters." emptyContent={lock && <Box paddingX={1} paddingY={1}><EmptyState title="No preview markets match." actions={<UpgradeLabel text={moreText(locked, "markets")} onPress={upgrade} role="perps-board-upgrade" />} /></Box>}
@@ -254,6 +265,8 @@ function Board({ accessKey, width, height, focused, onPick, onOpen }: ListTabPro
 }
 
 type Ranked = { list: RankingKey; row: PerpBoardRow };
+/** The rankings whose lists show funding. */
+const FUNDING_RANKINGS: ReadonlySet<RankingKey> = new Set(RANKINGS.filter((ranking) => ranking.field === "fundingRate8h").map((ranking) => ranking.key));
 const rankedKey = (item: Ranked) => `${item.list}:${item.row.marketId}`;
 
 function Rankings({ accessKey, width, height, focused, onPick, onOpen }: ListTabProps) {
@@ -264,18 +277,22 @@ function Rankings({ accessKey, width, height, focused, onPick, onOpen }: ListTab
   const loader = useCallback((force: boolean) => loadPerpsRankings(accessKey, force), [accessKey]);
   const resource = useAsyncResource(loader, { initialData: () => cachedPerpsRankings(accessKey), clearOnError: isAccessDenied });
   const data = resource.data?.payload;
-  const items = useMemo(() => buildSectionedRows(RANKINGS.map((ranking) => ({ label: ranking.label, emptyLabel: "None",
+  const fetchedItems = useMemo(() => buildSectionedRows(RANKINGS.map((ranking) => ({ label: ranking.label, emptyLabel: "None",
     items: rankingRows(data, ranking.key).map((row): Ranked => ({ list: ranking.key, row })) })), rankedKey), [data]);
+  // The ranked rows in view move with the quote stream; the lists keep the order they were ranked in.
+  const stream = useLivePerpTableRows(fetchedItems, rankedRow, withRankedRow);
+  const items = stream.items;
   const ranked = items.flatMap((item) => item.kind === "item" ? [item.item] : []);
   const selected = ranked.find((item) => rankedKey(item) === selectedId) ?? ranked[0] ?? null;
   useEffect(() => { onPick(selected?.row ?? null); }, [selected, onPick]);
   const columns = useMemo(() => rankingColumns(width), [width]);
   useAutoRefresh(resource.updatedAt, resource.load, { intervalMs: 60_000 });
   usePaneRefreshKey(() => { void resource.reload(); }, { focused });
-  // Every ranked row is dated; only the funding lists show funding.
-  const rankedRows = useMemo(() => RANKINGS.flatMap((ranking) => rankingRows(data, ranking.key)), [data]);
-  const fundingRows = useMemo(() => RANKINGS.filter((ranking) => ranking.field === "fundingRate8h").flatMap((ranking) => rankingRows(data, ranking.key)), [data]);
-  const line = usePerpStatusLine(rankedRows, fundingRows, resource.updatedAt);
+  // The ranked rows on screen are dated; only the funding lists show funding.
+  const shownRanked = useMemo(() => stream.shown.flatMap((entry) => entry.kind === "item" ? [entry.item] : []), [stream.shown]);
+  const rankedRows = useMemo(() => shownRanked.map((item) => item.row), [shownRanked]);
+  const fundingRows = useMemo(() => shownRanked.filter((item) => FUNDING_RANKINGS.has(item.list)).map((item) => item.row), [shownRanked]);
+  const line = usePerpStatusLine(rankedRows, fundingRows, resource.updatedAt, stream.live);
   usePaneStatusFooter({ registrationId: "perps:rankings", loading: resource.loading, error: data ? resource.error : null, stale: resource.data?.stale, info: line });
   usePaneNoticeFooter({ registrationId: "perps:rankings-notice", focused, notices: resource.data?.refreshError ? [resource.data.refreshError] : [] });
   if (!data && isCloudSessionRequired(resource.error)) return <SignInWall placement="perps-signin" action="view perpetual rankings" needsVerification={session.needsVerification} />;
@@ -290,7 +307,7 @@ function Rankings({ accessKey, width, height, focused, onPick, onOpen }: ListTab
   };
   return <PaneStatusBody loading={!data && resource.loading} error={!data ? resource.error : null} subject="perpetual rankings">
     <DataTableView<SectionedRow<Ranked>> columns={columns} items={items} focused={focused} rootWidth={width} rootHeight={height}
-      getItemKey={(entry) => entry.key} sortColumnId={null} sortDirection="desc" isNavigable={(entry) => entry.kind === "item"}
+      getItemKey={(entry) => entry.key} sortColumnId={null} sortDirection="desc" isNavigable={(entry) => entry.kind === "item"} onVisibleRangeChange={stream.onVisibleRangeChange}
       renderSectionHeader={(entry) => entry.kind === "section" ? { text: entry.label } : null}
       selection={{ kind: "id", selectedId: selected ? rankedKey(selected) : null, getId: (entry) => entry.key, onChange: (id) => { if (ranked.some((item) => rankedKey(item) === id)) setSelected(id); } }}
       onActivate={(entry) => { if (entry.kind === "item") onOpen(entry.item.row); }}
@@ -310,11 +327,13 @@ function Compare({ asset, onAssetChange, accessKey, width, height, focused, onPi
   const loader = useCallback((force: boolean) => loadPerpsCompare(base, accessKey, force), [base, accessKey]);
   const resource = useAsyncResource(loader, { initialData: () => cachedPerpsCompare(base, accessKey), clearOnError: isAccessDenied, keepPreviousData: true });
   const data = resource.data?.payload;
-  const rows = useMemo(() => data?.rows ?? [], [data]);
+  const fetchedRows = useMemo(() => data?.rows ?? [], [data]);
+  const stream = useLivePerpTableRows(fetchedRows, rowItself, replaced, { pinned: fetchedRows.find((row) => row.marketId === selectedId) ?? null });
+  const rows = stream.items;
   const selected = rows.find((row) => row.marketId === selectedId) ?? rows[0] ?? null;
   useEffect(() => { onPick(selected); }, [selected, onPick]);
   const columns = useMemo(() => compareColumns(width), [width]);
-  const line = usePerpStatusLine(rows, rows, resource.updatedAt);
+  const line = usePerpStatusLine(stream.shown, stream.shown, resource.updatedAt, stream.live);
   const spread = useMemo(() => fundingSpread(rows), [rows]);
   const locked = typeof data?.locked === "number" ? data.locked : 0;
   useAutoRefresh(resource.updatedAt, resource.load, { intervalMs: 60_000 });
@@ -330,7 +349,7 @@ function Compare({ asset, onAssetChange, accessKey, width, height, focused, onPi
   </>;
   return <PaneStatusBody loading={!data && resource.loading} error={!data ? resource.error : null} subject="perpetual contracts">
     <DataTableView<PerpBoardRow> columns={columns} items={rows} focused={focused && !querySearch.active} rootWidth={width} rootHeight={height} rootBefore={before}
-      getItemKey={(row) => row.marketId} sortColumnId={null} sortDirection="desc" resetScrollKey={base}
+      getItemKey={(row) => row.marketId} sortColumnId={null} sortDirection="desc" resetScrollKey={base} onVisibleRangeChange={stream.onVisibleRangeChange}
       selection={{ kind: "id", selectedId: selected?.marketId ?? null, getId: (row) => row.marketId, onChange: setSelected }} onActivate={(row) => onOpen(row)}
       renderCell={(row, column) => perpCell(row, column.id as PerpColumnId, colors)} selectedTextOverridesCellColor
       emptyStateTitle={`No perpetual contracts for ${base}.`} emptyContent={lock && <Box paddingX={1} paddingY={1}><EmptyState title={`No preview contracts for ${base}.`} actions={<UpgradeLabel text={moreText(locked, locked === 1 ? "contract" : "contracts")} onPress={upgrade} role="perps-compare-upgrade" />} /></Box>}
@@ -359,11 +378,12 @@ export function PerpsPane({ width, height, focused, marketAction }: Pick<PanePro
   const openDescription = useOpenDescription();
   const upgrade = useCloudUpgradeAction("perp");
   const [openingMarket] = usePaneSettingValue("market", "");
-  const [openingTabValue] = usePaneSettingValue("tab", openingTab(openingMarket));
+  const opening = openingTab(openingMarket, access.hasProAccess);
+  const [openingTabValue] = usePaneSettingValue("tab", opening);
   // A market asked for again (a stock's perpetual row, PERP) comes back to it on its opening tab, whatever this pane
   // shows by then.
   const [savedTab, setTab] = useCommandValue<string>("perps", "perps:tab", (params) => params.market ? openingTabValue : null, openingTabValue);
-  const tab = PERP_TABS.includes(savedTab as PerpTab) ? savedTab as PerpTab : openingTab(openingMarket);
+  const tab = PERP_TABS.includes(savedTab as PerpTab) ? savedTab as PerpTab : opening;
   const marketTab = isMarketTab(tab);
   const [search, setSearch] = useCommandValue("perps", "perps:search", (params) => params.market || null, openingMarket);
   const [compareAsset, setCompareAsset] = usePluginPaneState<string>("perps:compare", compareOpening(openingMarket));
@@ -380,7 +400,11 @@ export function PerpsPane({ width, height, focused, marketAction }: Pick<PanePro
   const loader = useCallback((force: boolean) => loadPerpSelection(search, accessKey, force), [search, accessKey]);
   const resource = useAsyncResource(marketTab ? loader : null, { initialData: () => cachedPerpSelection(search, accessKey), clearOnError: isAccessDenied });
   const data = marketTab ? resource.data?.payload : undefined;
-  const active = data?.rows[0] ?? null;
+  const fetchedActive = data?.rows[0] ?? null;
+  // The market on screen moves with the quote stream, as its listing's quote does everywhere else.
+  const activeRows = useMemo(() => fetchedActive ? [fetchedActive] : NO_ROWS, [fetchedActive]);
+  const activeStream = useLivePerpRows(activeRows, { surface: "detail", enabled: marketTab });
+  const active = activeStream.rows[0] ?? null;
   usePaneTitle(active ? `PERP ${marketLabel(active)} · ${venueLabel(active)}` : "PERP");
   const querySearch = useQueryBarSearch();
   // The market on screen goes with the user: History and Evidence open the row picked on a list, Compare its base asset.
@@ -392,7 +416,7 @@ export function PerpsPane({ width, height, focused, marketAction }: Pick<PanePro
     setListRow(null);
     setTab(next);
   }, [carried, marketTab, setSearch, setCompareAsset, setTab]);
-  const openMarket = useCallback((row: PerpBoardRow, next: PerpTab = "history") => { setSearch(row.marketId); setTab(next); }, [setSearch, setTab]);
+  const openMarket = useCallback((row: PerpBoardRow, next: PerpTab = openingTab(row.marketId, access.hasProAccess)) => { setSearch(row.marketId); setTab(next); }, [setSearch, setTab, access.hasProAccess]);
   const { strip, rows: tabRows } = usePaneTabs({ tabs: PERP_TABS.map((value) => ({ value, label: label(value) })), activeValue: tab, onSelect: selectTab, focused, dense: true });
   const refreshMarket = useCallback(() => { void resource.reload(); }, [resource.reload]);
   useAutoRefresh(resource.updatedAt, resource.load, { intervalMs: 60_000 });
@@ -416,7 +440,7 @@ export function PerpsPane({ width, height, focused, marketAction }: Pick<PanePro
   ];
   // History dates its own market beside its series; Evidence is dated here.
   const evidenceRows = useMemo(() => tab === "evidence" && active ? [active] : NO_ROWS, [tab, active]);
-  const evidenceLine = usePerpStatusLine(evidenceRows, evidenceRows, resource.updatedAt);
+  const evidenceLine = usePerpStatusLine(evidenceRows, evidenceRows, resource.updatedAt, activeStream.live);
   usePaneStatusFooter({ registrationId: "perps", loading: marketTab && resource.loading, error: data ? resource.error : null, stale: marketTab && resource.data?.stale,
     info: evidenceLine, hints });
   usePaneNoticeFooter({ registrationId: "perps:notices", focused, notices: marketTab ? [resource.data?.refreshError,
@@ -434,7 +458,7 @@ export function PerpsPane({ width, height, focused, marketAction }: Pick<PanePro
             { id: "range", label: "Range", value: range, options: ["1", "7", "30", "90", "365"].map((value) => ({ value, label: `${value}D` })), onChange: setRange },
           ] : []} />
         <PaneStatusBody loading={!data && resource.loading} error={!data ? resource.error : null} subject="perpetual market">
-          {active ? tab === "history" ? <History key={active.marketId} market={active} venues={collectedVenueCount(data?.sources)} accessKey={accessKey} width={width} height={listHeight - 1} focused={focused && !querySearch.active} range={range} metric={metric} refreshMarket={refreshMarket} />
+          {active ? tab === "history" ? <History key={active.marketId} market={active} live={activeStream.live} venues={collectedVenueCount(data?.sources)} accessKey={accessKey} width={width} height={listHeight - 1} focused={focused && !querySearch.active} range={range} metric={metric} refreshMarket={refreshMarket} />
             : <MarketEvidence row={active} data={data!} width={width} height={listHeight - 1} />
             : <EmptyState title="No market matches." message={data?.suggestions?.length ? `Try ${data.suggestions.join(", ")}.` : undefined} />}
         </PaneStatusBody>

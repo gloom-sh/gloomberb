@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { createTestDataProvider } from "../test-support/data-provider";
-import { resolveChartSpecData, seedChartResolutionResult } from "./resolve";
+import { resolveChartSpecData } from "./resolve";
+import { seedChartResolutionResult } from "./chart-seed";
 import { summarizeResolvedSeries } from "./reporting";
 import { chartQuoteOverrideKeyForSource } from "./live-quotes";
 import { CHART_SPEC_VERSION, type ChartSpec, type SeriesTransform } from "./types";
@@ -108,4 +109,32 @@ test("a future's price counts what its contract terms say, asked once per symbol
   expect(asked.sort()).toEqual(["HO=F", "TTF=F", "ZC=F"]);
   const seeded = seedChartResolutionResult(chart, new Map(chart.series.map((entry) => [chartQuoteOverrideKeyForSource(entry.source), history])));
   expect(seeded?.series.slice(0, 3).map(({ unit }) => unit)).toEqual(["USD / gallon", "USD / gallon", "US cents / bushel"]);
+});
+
+test("a currency pair counts its quote currency per unit of its base, and prices per different quantities take their own axes", async () => {
+  const units: Record<string, string> = { "HO=F": "USD / gallon", "BZ=F": "USD / barrel", "RB=F": "USD / gallon" };
+  const chart: ChartSpec = {
+    version: CHART_SPEC_VERSION, viewport: { range: "1M", resolution: "1d" }, panels: [{ id: "main" }], studies: [],
+    series: ["HO=F", "BZ=F", "RB=F", "EURUSD=X", "USDJPY=X"].map((symbol) => ({
+      id: symbol, source: { kind: "security", instrument: { symbol }, fieldId: "market.close" },
+      style: "line", transform: "raw", axis: "auto", panelId: symbol.endsWith("=X") ? "fx" : "main", interpolation: "none",
+    })),
+  };
+  const result = await resolveChartSpecData(chart, {
+    now: new Date("2026-09-11"),
+    loadFuturesPriceUnit: async (symbol) => units[symbol] ?? null,
+    dataProvider: createTestDataProvider({
+      getQuote: async (symbol) => ({ symbol, currency: symbol === "USDJPY=X" ? "JPY" : "USD", instrumentType: symbol.endsWith("=X") ? "CURRENCY" : "FUTURE",
+        price: 1, change: 0, changePercent: 0, lastUpdated: Date.parse("2026-09-11") }),
+      getPriceHistory: async () => history,
+      getPriceHistoryForResolution: async () => history,
+    }),
+  });
+  expect(result.series.map(({ id, unit, axis }) => [id, unit, axis])).toEqual([
+    // Heating oil and gasoline share the per-gallon axis; Brent per barrel reads on the other.
+    ["HO=F", "USD / gallon", "left"], ["BZ=F", "USD / barrel", "right"], ["RB=F", "USD / gallon", "left"],
+    // Two rates in their own panel: dollars per euro, yen per dollar.
+    ["EURUSD=X", "USD / EUR", "left"], ["USDJPY=X", "JPY / USD", "right"],
+  ]);
+  expect(result.warnings.filter((warning) => warning.includes("axis"))).toEqual([]);
 });

@@ -1,7 +1,9 @@
-import type { HeadlessPaneDefinition, HeadlessRowsResult } from "../../../types/plugin";
+import type { HeadlessPaneColumn, HeadlessPaneDefinition, HeadlessRowsResult } from "../../../types/plugin";
+import { combinedChangeBasisLabel } from "../../../market-data/market/change-basis";
 import { resolveEntryData } from "../../../market-data/selectors";
 import { formatPercentRaw } from "../../../utils/format";
 import { formatUtcTime } from "../../../utils/utc-time";
+import { servedFromSavedCopy } from "../../../data/saved-copies";
 import { fxPairObservation, fxRateObservations } from "../shared/fx-rate-freshness";
 import { loadFxBoard, type FxLegReading } from "./client";
 import { crossMovePercent } from "./direction";
@@ -9,6 +11,26 @@ import { formatRate, resolveCurrencies, type FxCurrency } from "./pairs";
 import { FX_MATRIX_REPORT_OPTIONS, fxMatrixReportNotices } from "./settings";
 
 const iso = (time: number | null | undefined) => time != null && Number.isFinite(time) ? new Date(time).toISOString() : null;
+
+const MOVE_COLUMN: HeadlessPaneColumn = { key: "movePercent", header: "Move", align: "right", format: (value) => typeof value === "number" ? formatPercentRaw(value) : "—" };
+const CROSS_COLUMNS: HeadlessPaneColumn[] = [
+  { key: "pair", header: "Pair" },
+  { key: "rate", header: "Rate", align: "right", format: (value) => typeof value === "number" ? formatRate(value) : "—" },
+  MOVE_COLUMN,
+  { key: "asOf", header: "As of", shrink: false, format: (value) => typeof value === "string" ? formatUtcTime(value) : "—" },
+  { key: "stale", header: "Status", format: (value, row) => (
+    row.rate == null ? "unavailable" : value ? "stale" : row.asOf == null ? "time unknown" : "current"
+  ) },
+];
+
+/**
+ * The columns with the move's header naming its close, as `quote` names a
+ * pair's (`Move vs Wed 21 Oct close`), in the text report; exports keep
+ * `Move`, so a column read by its name stays where it was.
+ */
+function crossColumns(basis: string | null): HeadlessPaneColumn[] {
+  return basis ? CROSS_COLUMNS.map((column) => column === MOVE_COLUMN ? { ...column, textHeader: `Move ${basis}` } : column) : CROSS_COLUMNS;
+}
 
 /** USD per unit, USD itself as 1; null for a leg with no usable rate. */
 function usdPerUnit(readings: ReadonlyMap<string, FxLegReading>, currency: string): number | null {
@@ -22,9 +44,10 @@ function usdPerUnit(readings: ReadonlyMap<string, FxLegReading>, currency: strin
  * reads: one unit of `base` buys `rate` of `quote`, through the USD legs. Each
  * leg is dated as the pane dates it for `fn` and `shot` (`fxRateObservations`),
  * a cross as `fx <PAIR>` dates one (`fxPairObservation`): as old as its older
- * leg, stale when either leg is. It moves only when both legs carry a previous
- * close, the pane's tint rule. The report itself is dated by the legs, so its
- * closing line is the one the pane's capture ends with.
+ * leg, stale when either leg is. It moves from both legs' previous daily
+ * closes, the pane's tint rule, and the Move header names that close. The
+ * report itself is dated by the legs, so its closing line is the one the
+ * pane's capture ends with.
  */
 export function projectFxCrosses(
   currencies: readonly FxCurrency[],
@@ -49,11 +72,13 @@ export function projectFxCrosses(
     const quoteRate = rates.get(quote);
     // A missing leg leaves the cross unavailable, never at parity.
     if (baseRate == null || quoteRate == null) return { pair, base, quote, rate: null, movePercent: null, asOf: null };
+    // A cross drawn from a leg's saved copy, its refresh having failed, is as old as that copy.
+    const saved = [base, quote].flatMap((currency) => readings.get(currency)?.savedAt ?? []);
     const legs = [base, quote].flatMap((currency) => observed.get(currency) ?? []);
     const observation = fxPairObservation(legs);
     const baseReference = reference(base);
     const quoteReference = reference(quote);
-    return {
+    return servedFromSavedCopy({
       pair,
       base,
       quote,
@@ -66,15 +91,18 @@ export function projectFxCrosses(
       stale: observation?.stale ?? false,
       ...(observation?.dataSource ? { dataSource: observation.dataSource } : {}),
       ...(observation?.delayMinutes ? { delayMinutes: observation.delayMinutes } : {}),
-    };
+    }, saved.length > 0 ? Math.min(...saved) : Number.NaN);
   }));
 
+  // The close the moves are read from: the board's one trading day (fxBoardMoveDay), never mixed closes.
+  const moveBasis = combinedChangeBasisLabel(currencies.map((currency) => readings.get(currency)?.changeBasis));
   const unavailable = currencies.filter((currency) => !rates.has(currency));
   const errors = unavailable.flatMap((currency) => {
     const error = readings.get(currency)?.error;
     return error ? [`${currency}: ${error}`] : [];
   });
   return {
+    columns: crossColumns(moveBasis),
     rows,
     ...(rows.length === 0 ? { empty: "One currency has no crosses. Add another, such as --currencies USD,EUR." } : {}),
     complete: unavailable.length === 0,
@@ -86,7 +114,8 @@ export function projectFxCrosses(
       currencies,
       unit: "quote currency per one unit of the base currency",
       method: "the base currency's USD rate divided by the quote currency's; the two legs' observation times can differ",
-      movePercent: "the cross against both legs' previous closes; empty where a leg has no current pair quote",
+      movePercent: "the cross against both legs' previous daily closes, from each pair's quote; empty where a leg has no current pair quote",
+      ...(moveBasis ? { changeBasis: moveBasis } : {}),
       legs: currencies.filter((currency) => currency !== "USD").map((currency) => {
         const reading = readings.get(currency);
         const observation = observed.get(currency);
@@ -119,15 +148,7 @@ export const fxMatrixHeadless: HeadlessPaneDefinition<"rows"> = {
     screenshotReadiness: "live-dom",
   },
   options: [...FX_MATRIX_REPORT_OPTIONS],
-  columns: [
-    { key: "pair", header: "Pair" },
-    { key: "rate", header: "Rate", align: "right", format: (value) => typeof value === "number" ? formatRate(value) : "—" },
-    { key: "movePercent", header: "Move", align: "right", format: (value) => typeof value === "number" ? formatPercentRaw(value) : "—" },
-    { key: "asOf", header: "As of", shrink: false, format: (value) => typeof value === "string" ? formatUtcTime(value) : "—" },
-    { key: "stale", header: "Status", format: (value, row) => (
-      row.rate == null ? "unavailable" : value ? "stale" : row.asOf == null ? "time unknown" : "current"
-    ) },
-  ],
+  columns: CROSS_COLUMNS,
   // Ask Gloom gets every cross of all 45 currencies inside its result limit:
   // the pair names both codes, and each leg's feed and delay are in metadata.
   compact: (result) => ({

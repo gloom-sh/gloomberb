@@ -28,16 +28,18 @@ Country and counterparty scenarios apply a proportional change to supported oper
 ## Custom scenarios and headless output
 
 ```sh
-gloomberb fn EXPO 'AAPL=60% NVDA=50% TSM=-10%' --scenario taiwan-disruption --depth 2 --json
-gloomberb fn EXPO 'PORT:portfolio-id' --nav 250000 --cash 0.1 --scenario oil-up --json
-gloomberb fn EXPO 'WATCH:watchlist-id' --scenario china-demand --json
-gloomberb shot EXPO 'AAPL NVDA' --tab paths --width 1280 --height 540 --output exposure-paths.png
+gloom fn EXPO 'AAPL=60% NVDA=50% TSM=-10%' --scenario taiwan-disruption --depth 2 --json
+gloom fn EXPO 'PORT:portfolio-id' --nav 250000 --cash 0.1 --scenario oil-up --json
+gloom fn EXPO 'WATCH:watchlist-id' --scenario china-demand --json
+gloom shot EXPO 'AAPL NVDA' --tab paths --width 1280 --height 540 --output exposure-paths.png
 ```
+
+`--scenario` takes a library id: `taiwan-disruption` (the default), `china-demand`, `europe-demand`, `china-semiconductor-ban`, `china-tariff`, `oil-up`, `rates-up`, `usd-up`, `tsmc-outage` or `microsoft-capex`; `gloom catalog EXPO` lists them. A report run without `--scenario` says in its notes that it used the default and names the others. An id the library does not have fails with the ids it has (`Unknown scenario: rates. Did you mean rates-up?`).
 
 An explicit transmission assumption is user evidence, never a filing disclosure. For example, this assumes 20–40% of the interest-expense denominator is rate-sensitive, with a factor between 0.5 and 1 per percentage-point rate change:
 
 ```sh
-gloomberb fn EXPO AAPL --custom '{"label":"Rate stress","shocks":[{"id":"rates","kind":"rate","target":"interest rates","changeBps":100,"transmission":{"basis":"interest_expense","exposurePct":{"low":20,"high":40},"factor":{"low":0.5,"high":1},"direction":1}}]}' --json
+gloom fn EXPO AAPL --custom '{"label":"Rate stress","shocks":[{"id":"rates","kind":"rate","target":"interest rates","changeBps":100,"transmission":{"basis":"interest_expense","exposurePct":{"low":20,"high":40},"factor":{"low":0.5,"high":1},"direction":1}}]}' --json
 ```
 
 The text report prints each section as its pane tab shows it, within 100 columns or a narrower terminal: the title names the scenario, ranges and weights read as percents, and a driver's value carries its unit (201.18B USD), its fiscal period as KPIS prints it (FY2024, with the date it ended when the table has room) and its scope in words. Names and scopes take the room the figures leave and are cut after a whole word only when they cannot fit. A stress line's unknown holding weight and a driver's conditions print under the row. JSON returns all holding measures, per-hop evidence and quotes, portfolio measures, concentration evidence, coverage and unknowns, and CSV keeps the same records. `complete: false` means the requested analysis is a preview or has unresolved coverage, even when useful rows are present. The same request contract is available through `POST /cloud/exposure/analyze`; the scenario library is `GET /cloud/exposure/scenarios` and dataset status is `GET /cloud/exposure/status`. Ask Gloom and the Cloud MCP exposure tools use these same sourced results.

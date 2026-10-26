@@ -125,8 +125,8 @@ function useShotStatusLine(enabled: boolean, hasAsOf: () => boolean): ShotStatus
 }
 
 /**
- * Static captures retain warnings and optional source status without action
- * shortcuts. With `statusLine` the footer also carries the capture's dated
+ * Static captures retain warnings, what a filter leaves out (`capture`) and
+ * optional source status without action shortcuts. With `statusLine` the footer also carries the capture's dated
  * status line (`Fri 9 Oct close · 15 min delayed · markets closed until Mon`),
  * inside the requested size: the body gives up the footer row for it. The
  * pane's own text that says the same goes, so the date is said once: its `as
@@ -149,7 +149,7 @@ export function PaneShotFrame({ paneId, title, width, height, preserveStatus = f
   const datesData = statusLine && dates === "data";
   return <PaneFooterProvider>{(registeredFooter) => {
     const status: PaneFooterSegment[] = statusLine ? [{ id: "shot-status", parts: [{ text: statusText, tone: "label" }] }] : [];
-    const info = registeredFooter.info.filter((segment) => (preserveStatus || segment.icon === "warning")
+    const info = registeredFooter.info.filter((segment) => (preserveStatus || segment.icon === "warning" || segment.capture)
       && !(datesPaneData(segment) && (datesData || crowded))
       && !(segment.quoteStatus && statusLine && dates !== null));
     shownAsOf.current = info.some(datesPaneData);

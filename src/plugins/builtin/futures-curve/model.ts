@@ -4,10 +4,12 @@ import { spanDigits } from "../../../components/chart-table";
 import { compositeAxisTicks } from "../../../components/chart/composite/format";
 import type { CompositeAxisDomain } from "../../../components/chart/composite/types";
 import { FUTURES_CONTRACTS, futuresBoardContractForTicker, futuresContractByCode, tickDecimals } from "../../../market-data/futures-board";
+import { contractMonthLabel } from "../../../utils/contract-month";
 import { formatPercentileRank } from "../../../utils/format";
 import { cryptoPairCoin, isFuturesSymbol } from "../shared/crypto-pair";
 import { parseReportTime } from "../../../utils/utc-time";
-import { DATE_OPTION_FORMATS, readCalendarDate } from "../../../utils/calendar-date";
+import { zonedWallClockToUtcMs } from "../../../utils/zoned-date-time";
+import { dateOptionError, dateOptionFormatsOr, readCalendarDate } from "../../../utils/calendar-date";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
 
 /**
@@ -147,6 +149,41 @@ export function curveSpreadLabel(slope: Pick<FuturesCurvePayload["slope"], "fron
   return slope.frontSymbol && slope.nextSymbol ? `${curveContractCode(slope.nextSymbol)}-${curveContractCode(slope.frontSymbol)}` : "M2-M1";
 }
 
+/** A leg that traded fewer lots than this in its session is too thin to call a curve's slope from. */
+const THIN_SPREAD_LOTS = 20;
+
+/**
+ * What the front spread subtracts, as its figure says it: "settle 10-22" for
+ * two settlements of a session (the Settle column's date), "last 20:59" for
+ * two last trades made together, dated when not the newest quote's day. Null
+ * when the server does not say.
+ */
+export function curveSpreadBasis(slope: Pick<FuturesCurvePayload["slope"], "basis" | "asOf">, newest: string | null): string | null {
+  if (!slope.basis || !slope.asOf) return null;
+  if (slope.basis === "settle" || !slope.asOf.includes("T")) return `${slope.basis} ${slope.asOf.slice(5, 10)}`;
+  const stamp = curveTimestamp(slope.asOf);
+  return `last ${newest?.includes("T") && curveTimestamp(newest).slice(0, 10) === stamp.slice(0, 10) ? stamp.slice(11) : stamp.slice(5)}`;
+}
+
+/**
+ * Why the front spread is thin, from its thin leg's row: "ALIX26 traded 4 lots"
+ * or "ALIX26 last traded 2026-10-22". Null when it is not thin.
+ */
+function thinSpreadReason(data: Pick<FuturesCurvePayload, "slope" | "contracts">): string | null {
+  if (data.slope.state !== "thin") return null;
+  const leg = data.contracts.find((row) => row.symbol === data.slope.thinSymbol);
+  if (!leg) return null;
+  const code = curveContractCode(leg.symbol);
+  if (leg.volume != null && leg.volume < THIN_SPREAD_LOTS) return `${code} traded ${leg.volume} lot${leg.volume === 1 ? "" : "s"}`;
+  return leg.asOf ? `${code} last traded ${leg.asOf.slice(0, 10)}` : `${code} has not traded`;
+}
+
+/** The warning a thin front spread carries: why, and that its sign is no slope call. */
+export function thinSpreadNotice(data: Pick<FuturesCurvePayload, "slope" | "contracts">): string | null {
+  const reason = thinSpreadReason(data);
+  return reason ? `${curveSpreadLabel(data.slope)} is thin (${reason}): no contango or backwardation call` : null;
+}
+
 /**
  * Axis gridlines sit on round values, so they need no tick precision: one
  * decimal count across the gutter, as many as the plotted range asks for and
@@ -166,17 +203,16 @@ export function curveAxisPrice(value: number, domain: CompositeAxisDomain, root:
 }
 
 const MONTH_CODES = "FGHJKMNQUVXZ";
-const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /**
- * The delivery month a trader names a contract by ("Nov 26" for CLX26), not
+ * The delivery month a trader names a contract by ("Nov 2026" for CLX26), not
  * its last trading day: crude's November contract expires in October, and a
  * "26-10-20" label also reads as a day-first date.
  */
 export function curveContractMonth(symbol: string, expiration: string): string {
   const coded = /^[A-Z0-9]+?([FGHJKMNQUVXZ])(\d{2})\.[A-Z]+$/.exec(symbol);
-  if (coded) return `${MONTH_NAMES[MONTH_CODES.indexOf(coded[1]!)]} ${coded[2]}`;
-  return `${MONTH_NAMES[Number(expiration.slice(5, 7)) - 1] ?? expiration.slice(5, 7)} ${expiration.slice(2, 4)}`;
+  if (coded) return contractMonthLabel(Number(coded[2]), MONTH_CODES.indexOf(coded[1]!));
+  return contractMonthLabel(Number(expiration.slice(0, 4)), Number(expiration.slice(5, 7)) - 1);
 }
 
 export function curveTimestamp(value: string | null): string {
@@ -288,7 +324,17 @@ const SPOT_STALE_MS = 10 * 60_000;
 /** A free account's quote is held back on purpose; that delay is not staleness, so it is allowed on top. */
 const DELAYED_SPOT_MS = 15 * 60_000;
 
-/** The spot a curve's basis uses, or why there is none. `asOf` is the quote's own time, never the fetch's. */
+/**
+ * The listing codes the quote path reports for a spot, in plain words: a
+ * reader is told what the price is, never handed a bare code.
+ */
+const SPOT_VENUE_LABELS: Readonly<Record<string, string>> = { CCC: "crypto composite price" };
+
+/**
+ * The latest spot quote, which the footer shows beside the curve, or why there
+ * is none. `asOf` is the quote's own time, never the fetch's. The basis does
+ * not read it: each contract is read against the spot in its own minute.
+ */
 export interface CurveSpot {
   symbol: string;
   price: number | null;
@@ -296,7 +342,7 @@ export interface CurveSpot {
   asOf: string | null;
   status: "ok" | "stale" | "missing";
   reason: string | null;
-  /** The listing the quote path reports for the pair (`CCC`), when it reports one. */
+  /** What the quote path reports the price is, in plain words (`crypto composite price`), when it reports it. */
   venue?: string;
   /** Whether the quote is real-time or held back, as the quote path reports it. */
   feed?: "real-time" | "delayed";
@@ -324,7 +370,8 @@ function quoteAge(ms: number): string {
 export function curveSpot(symbol: string, quote: SpotQuote | null | undefined, now: number): CurveSpot {
   if (!quote || !positive(quote.price)) return { symbol, price: null, asOf: null, status: "missing", reason: `no ${symbol} quote` };
   // What the quote path says about the quote itself, kept beside the price so the footer can name it.
-  const venue = (quote.listingExchangeName || quote.exchangeName)?.trim();
+  const code = (quote.listingExchangeName || quote.exchangeName)?.trim();
+  const venue = code ? SPOT_VENUE_LABELS[code.toUpperCase()] ?? code : undefined;
   const feed: CurveSpot["feed"] = quote.dataSource === "live" ? "real-time" : quote.dataSource === "delayed" ? "delayed" : undefined;
   const source = { ...venue ? { venue } : {}, ...feed ? { feed } : {} };
   const time = quote.lastUpdated;
@@ -339,54 +386,115 @@ export function curveSpot(symbol: string, quote: SpotQuote | null | undefined, n
   return { symbol, price: quote.price, asOf, status: "ok", reason: null, ...source };
 }
 
-/** How far the contract trades over (positive) or under spot, in percent. */
+const MINUTE_MS = 60_000;
+const minuteOf = (time: number) => Math.floor(time / MINUTE_MS) * MINUTE_MS;
+const isoMinute = (time: number) => new Date(time).toISOString().replace(":00.000Z", ":00Z");
+
+/** The spot in one UTC minute: the close of the spot pair's one-minute bar that opened then. */
+export interface SpotBar {
+  /** Epoch milliseconds of the minute's start. */
+  minute: number;
+  price: number;
+}
+
+/** One-minute bars as the spot by minute, oldest first; a bar with no usable time or close is left out. */
+export function spotBarsFromHistory(points: readonly { date: Date | string | number; close: number }[]): SpotBar[] {
+  const byMinute = new Map<number, number>();
+  for (const point of points) {
+    const time = new Date(point.date).getTime();
+    if (Number.isFinite(time) && positive(point.close)) byMinute.set(minuteOf(time), point.close);
+  }
+  return [...byMinute].sort((a, b) => a[0] - b[0]).map(([minute, price]) => ({ minute, price }));
+}
+
+/** The bar in `minute`, else the one nearest it; null when there are none. */
+function nearestSpotBar(bars: readonly SpotBar[], minute: number): SpotBar | null {
+  let low = 0;
+  let high = bars.length - 1;
+  while (low <= high) {
+    const middle = (low + high) >> 1;
+    const bar = bars[middle]!;
+    if (bar.minute === minute) return bar;
+    if (bar.minute < minute) low = middle + 1;
+    else high = middle - 1;
+  }
+  const before = bars[high];
+  const after = bars[low];
+  if (!before) return after ?? null;
+  if (!after) return before;
+  return minute - before.minute <= after.minute - minute ? before : after;
+}
+
+/** How far a contract trades over (positive) or under spot, in percent. */
 export function vsSpotPct(futures: number | null | undefined, spot: number | null | undefined): number | null {
   return positive(futures) && positive(spot) ? (futures / spot - 1) * 100 : null;
 }
 
-/** Calendar days from the UTC date of the spot's timestamp to the contract's expiration date. */
-export function daysToExpiry(spotTime: number, expiration: string): number | null {
-  const expiry = Date.parse(`${expiration}T00:00:00Z`);
-  if (!Number.isFinite(spotTime) || !Number.isFinite(expiry)) return null;
-  const spotDay = Date.parse(`${new Date(spotTime).toISOString().slice(0, 10)}T00:00:00Z`);
-  return Math.round((expiry - spotDay) / DAY_MS);
+/**
+ * CME's crypto futures stop trading at 4:00 p.m. London time on their last
+ * trading day and settle to the CME CF reference rate published then, so a
+ * contract's days to expiry run to that instant, not to a calendar date.
+ */
+const FINAL_SETTLEMENT = { timeZone: "Europe/London", hour: 16 } as const;
+
+/** The instant a crypto contract expiring on `expiration` (YYYY-MM-DD) settles, or null for a date that cannot be read. */
+function finalSettlementTime(expiration: string): number | null {
+  const date = /^(\d{4})-(\d{2})-(\d{2})$/.exec(expiration);
+  if (!date) return null;
+  const time = zonedWallClockToUtcMs(FINAL_SETTLEMENT.timeZone, Number(date[1]), Number(date[2]), Number(date[3]), FINAL_SETTLEMENT.hour, 0, 0);
+  return Number.isFinite(time) ? time : null;
 }
 
-/** The premium over spot as a yearly rate, on a 365-day year. Blank on or past expiry, where it has no meaning. */
+/** Days, fractional, from `from` to the contract's final settlement: 6.6 from Saturday 01:33 UTC to Friday 16:00 London. */
+export function daysToExpiry(from: number, expiration: string): number | null {
+  const settles = finalSettlementTime(expiration);
+  return settles == null || !Number.isFinite(from) ? null : (settles - from) / DAY_MS;
+}
+
+/** The premium over spot as a yearly rate, on a 365-day year. Blank at or past final settlement, where it has no meaning. */
 export function annualisedBasisPct(futures: number | null | undefined, spot: number | null | undefined, days: number | null): number | null {
   if (!positive(futures) || !positive(spot) || days == null || !Number.isFinite(days) || days <= 0) return null;
   return (futures / spot - 1) * 365 / days * 100;
 }
 
-/** A contract that printed longer than this before the spot quote is too old to read against it. */
-const CONTRACT_PRINT_MAX_AGE_MS = 60 * 60_000;
-
 export interface ContractBasis {
   vsSpotPct: number | null;
   annualisedBasisPct: number | null;
-  /** Priced and not flagged stale, but its last print is over an hour before spot: a thin month. */
-  thin: boolean;
+  /** The spot the last trade is read against: the close of the spot's bar in the trade's own minute. */
+  spot: number | null;
+  /** That bar's minute, as a UTC ISO instant. */
+  spotTime: string | null;
+  /** Fractional days from the last trade to the contract's final settlement. */
+  daysToExpiry: number | null;
+  /**
+   * Why a priced, current contract has no basis: its last trade has no time
+   * of day (`print` null), or no spot bar shares its minute, with the
+   * nearest bar's minute (null when there are no bars at all). Null when
+   * the contract has a basis or another rule blanks it.
+   */
+  unpaired: { print: number | null; spot: number | null } | null;
 }
 
-const NO_BASIS: ContractBasis = { vsSpotPct: null, annualisedBasisPct: null, thin: false };
+const NO_BASIS: ContractBasis = { vsSpotPct: null, annualisedBasisPct: null, spot: null, spotTime: null, daysToExpiry: null, unpaired: null };
 
 /**
- * One contract's basis. Blank without a usable spot, and for a contract whose
- * own price is missing or stale: an old future against a live spot misleads.
- * So does a print more than an hour older than the spot (`thin`): the server's
- * stale flag allows two sessions, which a quote that moves all day outruns. A
- * date-only `asOf` is UTC midnight of that date, one that cannot be read
- * counts as old, and a print newer than the spot is never old (the spot of a
- * delayed feed trails the futures).
+ * One contract's basis: its last trade against the spot in the same UTC
+ * minute, so the two prices are never minutes apart, whichever is the newer
+ * (a delayed spot trails the futures, a live one leads them). Blank while
+ * the bars are unknown (`bars` null), for a contract whose own price is
+ * missing or stale, for a trade with no time of day, and for one no spot bar
+ * shares a minute with.
  */
-export function contractBasis(row: Pick<FuturesContract, "price" | "stale" | "expiration" | "asOf">, spot: CurveSpot): ContractBasis {
-  if (spot.status !== "ok" || spot.asOf == null || row.stale) return NO_BASIS;
-  const vs = vsSpotPct(row.price, spot.price);
-  if (vs == null) return NO_BASIS;
-  const spotTime = Date.parse(spot.asOf);
-  const printed = parseReportTime(row.asOf)?.time ?? null;
-  if (printed == null || spotTime - printed > CONTRACT_PRINT_MAX_AGE_MS) return { ...NO_BASIS, thin: true };
-  return { vsSpotPct: vs, annualisedBasisPct: annualisedBasisPct(row.price, spot.price, daysToExpiry(spotTime, row.expiration)), thin: false };
+export function contractBasis(row: Pick<FuturesContract, "price" | "stale" | "expiration" | "asOf">, bars: readonly SpotBar[] | null): ContractBasis {
+  if (!bars || row.stale || !positive(row.price)) return NO_BASIS;
+  const printed = parseReportTime(row.asOf);
+  if (!printed || printed.dateOnly) return { ...NO_BASIS, unpaired: { print: null, spot: null } };
+  const minute = minuteOf(printed.time);
+  const bar = nearestSpotBar(bars, minute);
+  if (!bar || bar.minute !== minute) return { ...NO_BASIS, unpaired: { print: printed.time, spot: bar?.minute ?? null } };
+  const days = daysToExpiry(printed.time, row.expiration);
+  return { vsSpotPct: vsSpotPct(row.price, bar.price), annualisedBasisPct: annualisedBasisPct(row.price, bar.price, days),
+    spot: bar.price, spotTime: isoMinute(minute), daysToExpiry: days, unpaired: null };
 }
 
 /** A basis in percent, signed; one that rounds to zero stays unsigned. */
@@ -408,23 +516,18 @@ export function curveSpotLabel(spot: CurveSpot, root: string, now: number): stri
 /** The basis columns' sort values, which live beside the contract rather than on it. */
 export type CurveBasisRows = ReadonlyMap<string, ContractBasis>;
 
-export function curveBasisRows(rows: readonly FuturesContract[], spot: CurveSpot | null): CurveBasisRows {
-  return new Map(rows.map((row) => [row.symbol, spot ? contractBasis(row, spot) : NO_BASIS]));
+export function curveBasisRows(rows: readonly FuturesContract[], bars: readonly SpotBar[] | null): CurveBasisRows {
+  return new Map(rows.map((row) => [row.symbol, contractBasis(row, bars)]));
 }
 
-/** The contracts a good spot left blank for their old print. */
-export function thinContractCount(basis: Iterable<ContractBasis>): number {
+/** The contracts a known set of spot bars left blank for timing: no time of day, or no bar in their minute. */
+export function unpairedContractCount(basis: Iterable<ContractBasis>): number {
   let count = 0;
-  for (const row of basis) if (row.thin) count += 1;
+  for (const row of basis) if (row.unpaired) count += 1;
   return count;
 }
 
-/** The footer warning that thin contracts have no basis: the pane's `!` notice, which keeps the footer row for the quote times. */
-export function thinContractsNotice(count: number): string {
-  return `Basis blank on ${count} thin contract${count === 1 ? "" : "s"} (last print over 1h before spot)`;
-}
-
-/** What the quote path reports of the spot itself, as the footer names it: `CCC, real-time`. Null when it reports neither. */
+/** What the quote path reports of the spot itself, as the footer names it: `crypto composite price, real-time`. Null when it reports neither. */
 export function curveSpotSource(spot: Pick<CurveSpot, "venue" | "feed">): string | null {
   const parts = [spot.venue, spot.feed].filter((part): part is string => !!part);
   return parts.length ? parts.join(", ") : null;
@@ -433,19 +536,39 @@ export function curveSpotSource(spot: Pick<CurveSpot, "venue" | "feed">): string
 /** What Ann Basis is: Vs Spot is the same ratio before it is annualised. */
 export const BASIS_FORMULA = "(Last / spot - 1) × 365 / days to expiry";
 /** The two basis columns' convention in one line. */
-export const BASIS_CONVENTION = `Ann Basis = ${BASIS_FORMULA}: simple actual/365, the latest trade against the spot quote.`;
+export const BASIS_CONVENTION = `Ann Basis = ${BASIS_FORMULA}: simple actual/365, each last trade against spot in the same minute, `
+  + "with days counted to final settlement at 16:00 London on the last trading day.";
 
-/** Why one priced-or-not contract has no basis against a usable spot, in the order `contractBasis` decides it. */
+/** A gap in whole minutes as a reader counts it: `5 min`, `3 h`, `2 days`. */
+function gapText(minutes: number): string {
+  if (minutes < 120) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  return hours < 48 ? `${hours} h` : `${Math.floor(hours / 24)} days`;
+}
+
+/** The UTC minutes a blank names, the date only when the two fall on different days. */
+function pairTimes(print: number, spot: number): string {
+  const [printDate, printTime] = curveTimestamp(new Date(print).toISOString()).split(" ");
+  const [spotDate, spotTime] = curveTimestamp(new Date(spot).toISOString()).split(" ");
+  return printDate === spotDate ? `print ${printTime}, nearest spot ${spotTime} UTC` : `print ${printDate} ${printTime}, nearest spot ${spotDate} ${spotTime} UTC`;
+}
+
+/** Why one priced-or-not contract has no basis against known spot bars, in the order `contractBasis` decides it. */
 function blankReason(row: Pick<FuturesContract, "price" | "stale">, basis: ContractBasis): string | null {
   if (basis.vsSpotPct != null) return null;
   if (!positive(row.price)) return "no price";
   if (row.stale) return "price over two sessions old";
-  return basis.thin ? "last trade over 1h before the spot quote" : null;
+  const unpaired = basis.unpaired;
+  if (!unpaired) return null;
+  if (unpaired.print == null) return "last trade has no time of day";
+  if (unpaired.spot == null) return "no one-minute spot prices";
+  const minutes = Math.round(Math.abs(minuteOf(unpaired.print) - unpaired.spot) / MINUTE_MS);
+  return `spot and print ${gapText(minutes)} apart: ${pairTimes(unpaired.print, unpaired.spot)}`;
 }
 
 /**
- * The contracts whose basis cells are blank against a good spot, grouped by cause and named, so a blank is never
- * unexplained: the far months of a curve print rarely, and a print an hour before the spot is not read against it.
+ * The contracts whose basis cells are blank against known spot bars, grouped by cause and named, so a blank is
+ * never unexplained: the far months of a curve print rarely, and a trade no spot bar shares a minute with is not read.
  */
 export function blankBasisNote(rows: readonly Pick<FuturesContract, "symbol" | "price" | "stale">[], basis: CurveBasisRows): string | null {
   const groups = new Map<string, string[]>();
@@ -457,29 +580,37 @@ export function blankBasisNote(rows: readonly Pick<FuturesContract, "symbol" | "
   return groups.size ? `Basis blank for ${[...groups].map(([reason, codes]) => `${codes.join(", ")} (${reason})`).join("; ")}.` : null;
 }
 
-/** Under this many days to expiry a few basis points of spot move the annualised rate by whole points. */
-const SHORT_DATED_DAYS = 30;
-/** The noise the note sizes the swing against: ten basis points of spot, a quote's usual gap to the contract's print. */
+/** Under this many days to expiry a few basis points of spot move the annualised rate by whole points: Vs Spot leads and the rate is greyed. */
+const SHORT_DATED_DAYS = 7;
+/** The noise the note sizes the swing against: ten basis points of spot, a CME trade's usual gap to a composite price in the same minute. */
 const SPOT_NOISE_PCT = 0.1;
 
-/** The note for contracts showing an annualised basis inside `SHORT_DATED_DAYS`: what 10 bp of spot noise does to each. */
-export function shortDatedBasisNote(rows: readonly Pick<FuturesContract, "symbol" | "expiration">[], basis: CurveBasisRows, spot: CurveSpot | null): string | null {
-  if (!spot || spot.status !== "ok" || spot.asOf == null) return null;
-  const spotTime = Date.parse(spot.asOf);
-  const near = rows.flatMap((row) => {
-    if (basis.get(row.symbol)?.annualisedBasisPct == null) return [];
-    const days = daysToExpiry(spotTime, row.expiration);
-    return days != null && days > 0 && days < SHORT_DATED_DAYS ? [`${curveContractCode(row.symbol)} (${days}d) by ±${(SPOT_NOISE_PCT * 365 / days).toFixed(1)} points`] : [];
-  });
-  return near.length ? `Ann Basis is noisy under ${SHORT_DATED_DAYS} days to expiry: 10 bp of spot noise moves ${near.join(", ")}.` : null;
+/** A contract whose annualised basis is shown inside `SHORT_DATED_DAYS` of final settlement, where spot noise swamps it. */
+export function shortDatedBasis(basis: ContractBasis | null | undefined): boolean {
+  return basis?.annualisedBasisPct != null && basis.daysToExpiry != null && basis.daysToExpiry < SHORT_DATED_DAYS;
 }
 
-/** A past date for the as-of view: empty (or "latest") for the live curve, else YYYY-MM-DD no later than today. */
-export function curveAsOfDate(value: unknown, now = new Date()): string {
+/** The note for contracts showing an annualised basis inside `SHORT_DATED_DAYS`: what 10 bp of spot noise does to each. */
+export function shortDatedBasisNote(rows: readonly Pick<FuturesContract, "symbol">[], basis: CurveBasisRows): string | null {
+  const near = rows.flatMap((row) => {
+    const cell = basis.get(row.symbol);
+    if (!shortDatedBasis(cell)) return [];
+    const days = cell!.daysToExpiry!;
+    return [`${curveContractCode(row.symbol)} (${days.toFixed(1)} days) by ±${(SPOT_NOISE_PCT * 365 / days).toFixed(1)} points`];
+  });
+  return near.length ? `Ann Basis is noisy under ${SHORT_DATED_DAYS} days to expiry, so read Vs Spot there: 10 bp of spot noise moves ${near.join(", ")}.` : null;
+}
+
+/**
+ * A past date for the as-of view: empty (or "latest") for the live curve, else
+ * YYYY-MM-DD no later than today. `option` is how a command line types it
+ * (`--date`), empty for the pane's field.
+ */
+export function curveAsOfDate(value: unknown, now = new Date(), option = ""): string {
   const text = typeof value === "string" ? value.trim() : "";
   if (!text || text.toLowerCase() === "latest") return "";
   const date = readCalendarDate(text);
-  if (!date) throw new Error(`Use an as-of date as ${DATE_OPTION_FORMATS}, or latest.`);
+  if (!date) throw new Error(dateOptionError(text, option, { now, subject: "an as-of date", formats: dateOptionFormatsOr("latest") }));
   if (date > now.toISOString().slice(0, 10)) throw new Error("A futures curve cannot use a future date.");
   return date;
 }
@@ -532,6 +663,61 @@ export function withTradedExpirations(data: FuturesCurvePayload): FuturesCurvePa
 }
 
 /**
+ * The trading date a print belongs to, as the server dates sessions: CME's
+ * session for a date opens at 18:00 New York the evening before (22:00 or
+ * 23:00 UTC), so a two-hour shift puts those evening trades on the next date
+ * and leaves day-only venues as they are. A settlement's date is its session.
+ */
+function curveSessionDate(asOf: string): string {
+  return asOf.length === 10 ? asOf : new Date(Date.parse(asOf) + 2 * 3_600_000).toISOString().slice(0, 10);
+}
+
+/**
+ * The settlement session a live contract has not traded since: its Settle
+ * column shows that session's settlement and its latest price is from that
+ * session or before. Null when it has traded since, or shows no settlement. A
+ * Cboe price is the settlement itself, so it has no trade to wait for.
+ */
+export function curveNoTradeSince(row: Pick<FuturesContract, "price" | "settlement" | "asOf">,
+  data: Pick<FuturesCurvePayload, "source" | "settlementDate">): string | null {
+  const session = data.settlementDate;
+  if (data.source === "cboe" || !session || row.price == null || row.settlement == null || !row.asOf) return null;
+  return curveSessionDate(row.asOf) <= session ? session : null;
+}
+
+/**
+ * The live curve with every Change on the basis its table states: the last
+ * trade less the settlement in the Settle column. The source's session change
+ * is from the settlement before the contract's own last trade, so a back month
+ * that last traded on the settlement's session read against the session
+ * before it, beside front months read against the one shown. A contract with
+ * no trade since the settlement (curveNoTradeSince), or no settlement shown,
+ * has no change. A Cboe price is a settlement, and its change, from the
+ * settlement before, is kept.
+ */
+export function withSettleChanges(data: FuturesCurvePayload): FuturesCurvePayload {
+  if (data.source === "cboe") return data;
+  return { ...data, contracts: data.contracts.map((row) => {
+    const change = row.price != null && row.settlement != null && data.settlementDate && row.asOf && !curveNoTradeSince(row, data)
+      ? row.price - row.settlement : null;
+    return change === (row.change ?? null) ? row : { ...row, change };
+  }) };
+}
+
+/**
+ * The contracts whose Change is blank because they have not traded since the
+ * settlement shown, named, in the words the basis notes use; a pane with no
+ * room for the names counts them.
+ */
+export function noTradeChangeNote(rows: readonly Pick<FuturesContract, "symbol" | "price" | "settlement" | "asOf">[],
+  data: Pick<FuturesCurvePayload, "source" | "settlementDate">, options: { count?: boolean } = {}): string | null {
+  const untraded = rows.filter((row) => curveNoTradeSince(row, data) != null).map((row) => curveContractCode(row.symbol));
+  if (!untraded.length) return null;
+  const named = options.count ? `on ${untraded.length} contract${untraded.length === 1 ? "" : "s"}` : `for ${untraded.join(", ")}`;
+  return `Change blank ${named} (no trade since ${data.settlementDate})${options.count ? "" : "."}`;
+}
+
+/**
  * The archived curve on a past date in the live curve's shape, so the pane
  * draws it the same way. Its week- and month-back ghosts are the curves as
  * they stood then, contracts that have since expired included. A row is dated
@@ -566,6 +752,8 @@ export function archivedFuturesCurve(root: string, curve: FuturesCurveAsOfPayloa
   const settled = contracts.filter((row) => row.settlement != null);
   const [front, next] = settled.length >= 2 ? settled : settled.length ? [] : contracts.filter((row) => !row.stale);
   const value = front && next ? next.price! - front.price! : null;
+  // A leg that traded under THIN_SPREAD_LOTS lots that session gets no slope call, as on the live curve.
+  const thin = [front, next].find((row) => row?.volume != null && row.volume < THIN_SPREAD_LOTS)?.symbol ?? null;
   const days = front && next ? (Date.parse(next.expiration) - Date.parse(front.expiration)) / DAY_MS : 0;
   const roll = front && next && front.price! > 0 && next.price! > 0 && days > 0 ? (front.price! / next.price! - 1) * 365 / days * 100 : null;
   return {
@@ -574,7 +762,8 @@ export function archivedFuturesCurve(root: string, curve: FuturesCurveAsOfPayloa
     catalogue: { method: "provider", complete: true, horizonEnd: null }, contracts, ghosts,
     slope: { frontSymbol: front?.symbol ?? null, nextSymbol: next?.symbol ?? null, value, annualizedRollYield: roll, percentile: null,
       rollPercentile: null, samples: 0, historyStart: null, historyEnd: null, asOf: front && next ? curve.asOf : null,
-      state: value == null ? "unavailable" : Math.abs(value) < 1e-10 ? "flat" : value > 0 ? "contango" : "backwardation" },
+      basis: front && next ? settled.length >= 2 ? "settle" : "last" : null, thinSymbol: value == null ? null : thin,
+      state: value == null ? "unavailable" : thin ? "thin" : Math.abs(value) < 1e-10 ? "flat" : value > 0 ? "contango" : "backwardation" },
     gaps: curve.gaps, spec: curve.spec ?? null, settlementDate: settled.length ? curve.asOf : null,
   };
 }

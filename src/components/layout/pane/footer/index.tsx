@@ -26,6 +26,7 @@ export {
   DELAYED_SEGMENT,
   delayedFooterSegment,
   hasPaneFooterContent,
+  savedCopyFooterSegment,
   splitDelayedStatus,
   type CombinedPaneFooter,
   type PaneFooterPressEvent,
@@ -265,7 +266,7 @@ function FooterContent({
     : undefined;
   // A segment with shorter forms takes the longest that fits beside the hints, gaps and terminal keys included.
   const keysWidth = nativePaneChrome ? 0 : footer.info.reduce((total, segment) => total + terminalSegmentKey(segment, focused).length, 0);
-  const info = infoWidth != null ? fitPaneFooterInfo(footer.info, infoWidth - keysWidth) : footer.info;
+  const info = infoWidth != null ? fitPaneFooterInfo(footer.info, infoWidth - keysWidth, { besideHints: hasHints }) : footer.info;
 
   if (!hasInfo && !hasHints) {
     return <Box flexGrow={1} height={1} />;

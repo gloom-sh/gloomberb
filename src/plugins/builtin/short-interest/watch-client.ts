@@ -6,7 +6,7 @@ import type { DataProvider } from "../../../types/data-provider";
 import type { PricePoint, TickerFinancials } from "../../../types/financials";
 import { errorMessage } from "../../../utils/errors";
 import { loadShortInterest, type ShortInterestResult } from "./client";
-import { type SettlementFloatStatistics, withLatestPercentFloat } from "./model";
+import { type CurrentFloat, type SettlementFloatStatistics, withPercentFloat } from "./model";
 import { buildShortWatchRow, type ShortWatchRow } from "./watch-model";
 import type { ShortInterestRecord } from "./types";
 
@@ -31,9 +31,11 @@ export function createShortWatchDependencies(
   };
 }
 
-/** A symbol's current float and the statistics' short % of float with its settlement, from its snapshot. */
-interface FloatSnapshot {
+/** A symbol's current float, the count it floats out of, and the statistics' short % of float with its settlement, from its snapshot. */
+interface FloatSnapshot extends CurrentFloat {
   floatShares: number | null;
+  floatAsOf: string | null;
+  sharesOutstanding: number | null;
   statistics: SettlementFloatStatistics | null;
 }
 
@@ -51,6 +53,8 @@ async function loadFloats(
     const fundamentals = (entry ? resolveEntryValue(entry) : null)?.fundamentals;
     return {
       floatShares: fundamentals?.floatShares ?? null,
+      floatAsOf: fundamentals?.floatSharesAsOf ?? null,
+      sharesOutstanding: fundamentals?.sharesOutstanding ?? null,
       statistics: fundamentals?.shortInterestDate
         ? { settlementDate: fundamentals.shortInterestDate, shortPercentOfFloat: fundamentals.shortPercentOfFloat ?? null }
         : null,
@@ -59,20 +63,22 @@ async function loadFloats(
 }
 
 /**
- * A ticker's settlements with the newest one's percent of float, as SIW reads
- * it (settlementPercentFloat). A snapshot that fails leaves the settlements as
- * they are.
+ * A ticker's settlements, each with its percent of float (withPercentFloat):
+ * the newest on the current float, as SIW reads it, the rest on the float of
+ * their own day; with `pointInTime`, every one on its own day's. A snapshot
+ * that fails leaves the settlements as they are.
  */
 export async function loadShortInterestWithFloat(
   symbol: string,
-  { marketData, client = apiClient, loadSnapshots = createShortWatchDependencies(marketData, client).loadSnapshots }: {
+  { marketData, client = apiClient, loadSnapshots = createShortWatchDependencies(marketData, client).loadSnapshots, pointInTime = false }: {
     marketData?: DataProvider;
     client?: Pick<typeof apiClient, "getCloudShortInterest">;
     loadSnapshots?: ShortWatchDependencies["loadSnapshots"];
+    pointInTime?: boolean;
   } = {},
 ): Promise<ShortInterestResult> {
   const [result, [snapshot]] = await Promise.all([loadShortInterest(symbol, client), loadFloats([symbol], loadSnapshots)]);
-  return { ...result, records: withLatestPercentFloat(result.records, snapshot?.floatShares, snapshot?.statistics) };
+  return { ...result, records: snapshot ? withPercentFloat(result.records, snapshot, { pointInTime }) : result.records };
 }
 
 /**

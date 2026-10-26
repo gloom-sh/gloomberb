@@ -1,16 +1,15 @@
 import { useCompanyDisclosureLinks } from "../company-kpis/related";
 import { useCallback, useMemo } from "react";
-import { usePaneFooter } from "../../../components";
+import { PaneStatusBody, usePaneFooter } from "../../../components";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { usePaneInstance } from "../../../state/app/context";
-import { parseTickerListInput, formatTickerListInput } from "../../../tickers/list";
+import { formatTickerListInput } from "../../../tickers/list";
 import { usePluginAppActions, usePluginTickerActions } from "../../runtime";
 import { useUiCapabilities } from "../../../ui";
 import type {
   PaneSettingsContext,
   PaneSettingsDef,
-  PaneTemplateCreateOptions,
 } from "../../../types/plugin";
 import { attachEarningsCalendarPersistence, resetEarningsCalendarPersistence } from "./data/cache";
 import { attachEarningsCloudCaches, resetEarningsCloudCaches } from "./client";
@@ -41,34 +40,24 @@ function TickerEarnings({ symbol, focused, width, height }: { symbol: string; fo
 function EarningsPane({ focused, width, height }: PaneProps) {
   const pane = usePaneInstance();
   const { nativePaneChrome } = useUiCapabilities();
-  const symbols = useMemo(() => scopedSymbolsFromSettings(pane?.settings), [pane?.settings]);
+  const scope = useMemo(() => scopedSymbolsFromSettings(pane?.settings), [pane?.settings]);
   // EVTS is always the market board; its ticker only picks the row.
   const board = pane?.settings?.board === true;
   const highlight = typeof pane?.settings?.highlight === "string" ? pane.settings.highlight : null;
   const bodyHeight = Math.max(3, height - (nativePaneChrome ? 1 : 0));
+  if (!board && scope.error) return <PaneStatusBody error={scope.error} subject="Earnings scope" />;
+  const symbols = scope.symbols ?? [];
   return !board && symbols.length === 1
     ? <TickerEarnings symbol={symbols[0]!} focused={focused} width={width} height={bodyHeight} />
     : <EarningsBoard scopedSymbols={board ? [] : symbols} highlight={highlight} focused={focused} width={width} height={bodyHeight} />;
 }
 
-/** Tickers named on the command bar or the CLI. */
-function earningsScopeSymbols(options: PaneTemplateCreateOptions | undefined): string[] {
-  if (options?.symbols && options.symbols.length > 0) return options.symbols;
-  const raw = options?.arg?.trim() ?? "";
-  if (!raw) return [];
-  try {
-    return parseTickerListInput(raw);
-  } catch {
-    return [];
-  }
-}
-
 /** The pane's tickers live in its settings, so they are editable there too. */
 function earningsSettings(context: PaneSettingsContext): PaneSettingsDef {
-  const symbols = scopedSymbolsFromSettings(context.settings);
+  const scope = scopedSymbolsFromSettings(context.settings);
   return {
     title: "Earnings Scope",
-    values: { symbolsText: symbols.length > 0 ? formatTickerListInput(symbols) : "" },
+    values: { symbolsText: scope.text },
     fields: [
       {
         key: "symbolsText",
@@ -102,7 +91,8 @@ export const earningsModule: PluginModule = {
       // ERN and EVTS open this pane: EVTS sets `board`, a scoped ERN sets the tickers.
       identitySettings: ["board", "symbols", "symbolsText"],
       personalData: ({ settings, tickers }) => {
-        const symbols = settings.board === true ? [] : scopedSymbolsFromSettings(settings);
+        const symbols = settings.board === true ? [] : scopedSymbolsFromSettings(settings).symbols;
+        if (!symbols) return null;
         // Single-ticker report history is public. The board marks owned names.
         if (symbols.length === 1) return null;
         return [...tickers.values()].some(({ metadata }) => (
@@ -134,11 +124,14 @@ export const earningsModule: PluginModule = {
       canCreate: () => true,
       // Tickers named on the command bar scope the pane; without them it is the market board.
       createInstance: (_context, options) => {
-        const symbols = earningsScopeSymbols(options);
+        const scope = scopedSymbolsFromSettings(options?.symbols?.length
+          ? { symbols: options.symbols } : { symbolsText: options?.arg });
+        const symbols = scope.symbols;
         return {
-          title: symbols.length > 0 ? `ERN ${formatTickerListInput(symbols)}` : "Earnings Calendar",
+          title: symbols?.length ? `ERN ${formatTickerListInput(symbols)}` : "Earnings Calendar",
           placement: "floating",
-          settings: symbols.length > 0 ? { symbols, symbolsText: formatTickerListInput(symbols) } : undefined,
+          settings: scope.error ? { symbolsText: scope.text }
+            : symbols?.length ? { symbols, symbolsText: scope.text } : undefined,
         };
       },
     },

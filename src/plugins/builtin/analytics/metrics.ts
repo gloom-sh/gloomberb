@@ -149,7 +149,7 @@ interface AlignedSeries {
 /**
  * Lined-up holdings, kept with their series: weights move with every quote,
  * the series only with their bars, so a portfolio valued again (each Cloud
- * sync values every one, GLO-925) only weighs returns already lined up
+ * sync values every one) only weighs returns already lined up
  * instead of matching every interval of every holding again. A few lists per
  * first series, since one holding can open more than one portfolio.
  */

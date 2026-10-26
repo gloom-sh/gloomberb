@@ -20,7 +20,9 @@ export function policyHistory(row: CentralBankRow) {
 }
 export interface PolicyBoardRow extends MarketBoardRow { observation: CentralBankRow }
 export function policyBoardRow(row: CentralBankRow): PolicyBoardRow {
-  return { id: row.id, label: row.label, labelDetail: row.instrument, value: row.value, valueText: policyLevel(row),
+  // One country's bank leads with its flag; the euro area's with the EU's.
+  const country = row.countryCodes.length === 1 ? row.countryCodes[0]! : row.label;
+  return { id: row.id, label: row.label, labelDetail: row.instrument, country, value: row.value, valueText: policyLevel(row),
     change: row.changeBps, changeText: policyChange(row), changeAsOf: row.lastChangeDate,
     percentile: row.percentile.value, asOf: row.asOf, status: row.status, observation: row,
     history: policyHistory(row).flatMap((point) => point.value == null ? [] : [{ date: new Date(point.date), close: point.value }]) };
@@ -97,25 +99,48 @@ export function policyNextMeetingText(row: CentralBankRow): string {
 }
 
 /**
- * What an export says about one row, history aside: the board's figures and
- * a citation block, `central_bank` to `citation`, named as CSV heads them.
- * Notes keep the caveats on the latest rate; the BIS series definition goes
- * with the history (`--history`).
+ * `last decision 2026-09-18 · ` (or `last LPR fixing`) before the next
+ * meeting on a row's detail line; nothing when the server gives no date.
+ */
+export function policyLastDecisionText(row: CentralBankRow): string {
+  const decision = row.lastDecision;
+  if (!decision) return "";
+  return `last ${decision.kind === "fixing" ? "LPR fixing" : "decision"} ${decision.date} · `;
+}
+
+/**
+ * What an export says about one row, history aside: the board's figures, a
+ * target range's bounds as numbers (`rangeLower`, `rangeUpper`; the rate is
+ * its midpoint) and a citation block, `central_bank` to `citation`, named as
+ * CSV heads them. `last_decision` is the bank's latest kept decision on or
+ * before the observed change. Notes keep the caveats on the latest rate; the
+ * BIS series definition goes with the history (`--history`).
  */
 export function policyExportRow(row: CentralBankRow) {
   const board = policyBoardRow({ ...row, history: [] });
   const meeting = policyNextMeeting(row);
   return {
     id: row.id, label: row.label, instrument: row.instrument, central_bank: row.centralBank,
-    value: row.value, unit: row.unit, range: row.range, valueText: board.valueText,
-    changeBps: row.changeBps, changeText: board.changeText, lastChangeDate: row.lastChangeDate,
+    value: row.value, unit: row.unit, range: row.range, rangeLower: row.range?.lower ?? null, rangeUpper: row.range?.upper ?? null,
+    valueText: board.valueText, changeBps: row.changeBps, changeText: board.changeText, lastChangeDate: row.lastChangeDate,
     previousValue: row.previousValue, percentileValue: row.percentile.value,
     asOf: row.asOf, lagDays: row.lagDays, status: row.status, unavailableReason: row.unavailableReason,
     source: policySource(row), series_id: row.sourceSeriesIds.join(", ") || null, source_url: policySeriesUrls(row).join(" ") || null,
-    as_of: row.asOf, next_meeting: meeting.text, next_meeting_kind: meeting.kind,
+    as_of: row.asOf, last_decision: row.lastDecision?.date ?? null, next_meeting: meeting.text, next_meeting_kind: meeting.kind,
     next_meeting_source_url: meeting.sourceUrl, next_meeting_verified_at: meeting.verifiedAt,
     citation: policyCitation(row), notes: row.notes.filter((note) => !row.seriesNotes?.includes(note)),
   };
+}
+
+/**
+ * Why a member with no policy rate is left off the board and its exports:
+ * `Argentina is not listed: no adopted policy rate (BIS series D.AR, https://...).`
+ */
+export function policyUnlistedNote(row: CentralBankRow): string {
+  const source = policySource(row);
+  const urls = policySeriesUrls(row);
+  const series = source && row.sourceSeriesIds.length > 0 ? `${source} series ${row.sourceSeriesIds.join(" and ")}${urls.length ? `, ${urls.join(" ")}` : ""}` : null;
+  return `${row.label} is not listed: ${row.instrument.toLowerCase()}${series ? ` (${series})` : ""}.`;
 }
 
 /** Who a chart of the row's series cites: `FRED series ECBDFR`, published by the European Central Bank. */

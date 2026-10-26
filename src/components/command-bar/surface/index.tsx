@@ -22,7 +22,8 @@ import { createQuickLookTickerCandidates } from "../routes/ticker-search/results
 import { useCommandSearchReport } from "../routes/root/search-report";
 import { useAppStateRef } from "../../../state/app/context";
 import { listingChoiceQuery } from "../../../tickers/search";
-import { parseRootShortcutIntent } from "../routes/root/shortcuts";
+import { commandPromptTicker } from "../../../layout/selected-ticker";
+import { leadingShortcutCode, parseRootShortcutIntent } from "../routes/root/shortcuts";
 import { useRootPluginInstallItem } from "../routes/root/plugin-install";
 import { useRootPluginTurnOnItem } from "../routes/root/plugin-turn-on";
 import { useCommandBarThemePreview } from "../theme-preview";
@@ -227,13 +228,30 @@ export function CommandBar({
     [getAvailablePaneTemplates],
   );
 
+  const promptTickerSymbol = commandPromptTicker(state)?.symbol ?? null;
   const rootShortcutIntent = useMemo(() => parseRootShortcutIntent({
     query: rootQuery,
     commands: availableCommands,
     pluginCommands: getAvailablePluginCommands(),
     paneTemplates: getAvailablePaneShortcutTemplates(rootQuery),
     activeTicker: activeTickerSymbol,
-  }), [activeTickerSymbol, availableCommands, getAvailablePaneShortcutTemplates, getAvailablePluginCommands, rootQuery]);
+    promptTicker: promptTickerSymbol,
+  }), [activeTickerSymbol, availableCommands, getAvailablePaneShortcutTemplates, getAvailablePluginCommands, promptTickerSymbol, rootQuery]);
+  // Every code of an enabled plugin, whether or not it can open here, so text
+  // it leads is never answered with only the sign-up offer.
+  const leadingCode = useMemo(() => {
+    if (rootShortcutIntent.kind !== "none") return null;
+    const disabled = new Set(state.config.disabledPlugins ?? []);
+    return leadingShortcutCode({
+      query: rootQuery,
+      commands: availableCommands,
+      pluginCommands: getAvailablePluginCommands(),
+      paneTemplates: [...pluginRegistry.paneTemplates.values()].filter((template) => {
+        const pluginId = pluginRegistry.getPaneTemplatePluginId(template.id);
+        return !pluginId || !disabled.has(pluginId);
+      }),
+    });
+  }, [availableCommands, getAvailablePluginCommands, pluginRegistry, rootQuery, rootShortcutIntent.kind, state.config.disabledPlugins]);
   const listingChoice = !currentRoute && rootShortcutIntent.kind === "none"
     ? listingChoiceQuery(rootQuery)
     : null;
@@ -433,6 +451,7 @@ export function CommandBar({
     executeCollectionCommand,
     getAvailablePaneShortcutTemplates,
     getRecentPaneTemplate,
+    leadingShortcutCode: leadingCode,
     getTickers: getTickerSearchTickers,
     hasPaneSettings,
     localTickerSearchResultItems,
@@ -492,6 +511,7 @@ export function CommandBar({
     setActiveListQuery,
   } = useCommandBarSelectionRuntime({
     activeTickerSymbol,
+    promptTickerSymbol,
     availableCommands,
     clearThemePreview,
     closeAll: closeAfterRun,
@@ -512,6 +532,8 @@ export function CommandBar({
     rootModeKindRef,
     rootQuery,
     rootQueryRef,
+    rootSelectionNavigatedRef,
+    rootShortcutIntent,
     rootThemeBaseIdRef,
     runDirectCommand,
     runRootRow,

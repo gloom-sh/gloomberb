@@ -1,4 +1,4 @@
-import { useCallback, type Dispatch } from "react";
+import { useCallback, useRef, type Dispatch } from "react";
 import {
   rebaseBrokerSyncConfig,
   restoreBrokerPortfoliosFromTickerPositions,
@@ -53,6 +53,7 @@ export function useBrokerImportRuntime({
   stateRef: { current: AppState };
   tickerRepository: AppTickerRepositoryPort;
 }): AppBrokerImportRuntime {
+  const syncRequests = useRef(new Map<string, object>());
   /**
    * Commits a sync: carried onto the app as it is now (a pull or an edit while
    * the broker answered stays) and handed to the app before anything is
@@ -104,36 +105,52 @@ export function useBrokerImportRuntime({
     tickerMap?: Map<string, TickerRecord>,
     options?: BrokerImportOptions,
   ) => {
-    const baseConfig = options?.config ?? stateRef.current.config;
-    const result = await syncBrokerInstance({
-      config: baseConfig,
-      instanceId,
-      brokers: pluginRegistry.brokers,
-      tickerRepository,
-      existingTickers: tickerMap ?? new Map(stateRef.current.tickers),
-      resources: pluginRegistry.persistence.resources,
-      persistResolvedBrokerConfig: options?.persistResolvedBrokerConfig,
-      signal: options?.signal,
-      deferPersistence: true,
-    });
-
-    // A profile removed while its broker was answering stays removed, positions included.
-    if (!options?.config && !getBrokerInstance(stateRef.current.config.brokerInstances, instanceId)) return result;
-    let commitStarted = false;
+    const request = {};
+    syncRequests.current.set(instanceId, request);
+    const report = (error: string | null) => {
+      // A late read must not replace the outcome of a newer manual retry.
+      if (syncRequests.current.get(instanceId) === request && !options?.signal?.aborted) {
+        dispatch({ type: "SET_BROKER_SYNC_ERROR", instanceId, error });
+      }
+    };
     try {
-      throwIfBrokerImportCancelled(options?.signal);
-      options?.onCommitStart?.();
-      commitStarted = true;
-      await applyBrokerImportResult(instanceId, result, baseConfig, {
-        ...options,
-        callerOwnsConfig: options?.config !== undefined,
+      const baseConfig = options?.config ?? stateRef.current.config;
+      const result = await syncBrokerInstance({
+        config: baseConfig,
+        instanceId,
+        brokers: pluginRegistry.brokers,
+        tickerRepository,
+        existingTickers: tickerMap ?? new Map(stateRef.current.tickers),
+        resources: pluginRegistry.persistence.resources,
+        persistResolvedBrokerConfig: options?.persistResolvedBrokerConfig,
+        signal: options?.signal,
+        deferPersistence: true,
       });
 
-      return result;
+      // A profile removed while its broker was answering stays removed, positions included.
+      if (!options?.config && !getBrokerInstance(stateRef.current.config.brokerInstances, instanceId)) return result;
+      let commitStarted = false;
+      try {
+        throwIfBrokerImportCancelled(options?.signal);
+        options?.onCommitStart?.();
+        commitStarted = true;
+        await applyBrokerImportResult(instanceId, result, baseConfig, {
+          ...options,
+          callerOwnsConfig: options?.config !== undefined,
+        });
+
+        report(null);
+        return result;
+      } finally {
+        if (commitStarted) options?.onCommitEnd?.();
+      }
+    } catch (error) {
+      report("Positions could not be synced. Use Sync to retry.");
+      throw error;
     } finally {
-      if (commitStarted) options?.onCommitEnd?.();
+      if (syncRequests.current.get(instanceId) === request) syncRequests.current.delete(instanceId);
     }
-  }, [applyBrokerImportResult, pluginRegistry.brokers, pluginRegistry.persistence.resources, stateRef, tickerRepository]);
+  }, [applyBrokerImportResult, dispatch, pluginRegistry.brokers, pluginRegistry.persistence.resources, stateRef, tickerRepository]);
 
   const autoImportBrokerPositions = useCallback(async (tickerMap: Map<string, TickerRecord>) => {
     // Once per install, manual portfolios held in one other currency take it (see adoptHeldPortfolioCurrencies).

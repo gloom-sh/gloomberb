@@ -27,7 +27,7 @@ function fredSeriesIdOf(expression: string): string | null {
   return /^FRED:([A-Z0-9]+)$/i.exec(expression)?.[1]?.toUpperCase() ?? null;
 }
 
-/** The FRED series the plugins' catalog charts, as `gloomberb fred` takes them: DFEDTARU, ECBDFR. */
+/** The FRED series the plugins' catalog charts, as `gloom fred` takes them: DFEDTARU, ECBDFR. */
 export function catalogFredSeriesIds(plugins: readonly SeriesSource[]): Set<string> {
   return new Set(plugins.flatMap((plugin) => plugin.series ?? [])
     .flatMap((definition) => definition.expression ? [fredSeriesIdOf(definition.expression)] : [])
@@ -96,14 +96,14 @@ export function renderSeriesMatches(
   const shown = matches.slice(0, limit);
   const count = shown.length < matches.length ? `${shown.length} of ${matches.length}` : String(matches.length);
   const quoted = `"${query.replace(/"/g, "")}"`;
-  // A FRED series named by its id is also one `gloomberb fred` prints.
+  // A FRED series named by its id is also one `gloom fred` prints.
   const asked = query.trim().toUpperCase().replace(/^FRED:/, "");
   const fred = matches.find((match) => match.exact && fredSeriesIdOf(match.expression) === asked);
   const hint = fred
-    ? `Print it with gloomberb fred ${asked}; chart it with gloomberb fn G ${fred.expression}.`
+    ? `Print it with gloom fred ${asked}; chart it with gloom fn G ${fred.expression}.`
     : shown.length < matches.length
-    ? `Chart one with gloomberb fn G <chart>; gloomberb ${rest === "catalog" ? `catalog ${quoted}` : `shot CAT ${quoted}`} lists all ${matches.length}.`
-    : "Chart one with gloomberb fn G <chart>.";
+    ? `Chart one with gloom fn G <chart>; gloom ${rest === "catalog" ? `catalog ${quoted}` : `shot CAT ${quoted}`} lists all ${matches.length}.`
+    : "Chart one with gloom fn G <chart>.";
   return [
     `${renderSection(`Series for "${query}"`)} ${cliStyles.muted(`(${count})`)}`,
     renderTable(

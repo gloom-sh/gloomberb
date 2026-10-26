@@ -1,17 +1,20 @@
 import { describe, expect, test } from "bun:test";
 import { createDefaultConfig } from "../types/config";
-import type { TickerRecord } from "../types/ticker";
+import type { TickerPosition, TickerRecord } from "../types/ticker";
 import {
   adoptFirstPositionCurrency,
   createManualPortfolio,
   deleteManualPortfolio,
   deleteWatchlist,
   hasOpenPortfolioPositions,
+  LotCostFxMergeError,
   removeTickerFromPortfolio,
   resolveManualPositionCurrency,
   setManualPortfolioPosition,
+  type SetManualPortfolioPositionInput,
 } from "./mutations";
 import { createTestTicker } from "../test-support/ticker";
+import { resolvePortfolioTotalsCurrency } from "./totals-currency";
 
 const makeTicker = (overrides: Partial<TickerRecord["metadata"]> = {}) => createTestTicker("AAPL", "Apple Inc.", overrides);
 
@@ -191,8 +194,35 @@ describe("portfolio-list mutations", () => {
     expect(reconciled.shares * reconciled.avgCost!).toBe(position.shares * position.avgCost);
     expect(reconciled.marketValue).toBeUndefined();
     expect(reconciled.markPrice).toBeUndefined();
-    ticker.metadata.positions.push({ ...position, dateAcquired: "2024-03-01" });
-    expect(setManualPortfolioPosition(ticker, "main", input).ticker.metadata.positions[0]!.dateAcquired).toBeUndefined();
+  });
+
+  test("several lots set as one keep their earliest purchase date and their FX rates weighted by cost, or refuse rates one position cannot keep", () => {
+    const lot = (shares: number, avgCost: number, extra: Partial<TickerPosition> = {}): TickerPosition =>
+      ({ portfolio: "main", shares, avgCost, currency: "USD", broker: "manual", ...extra });
+    const set = (lots: TickerPosition[], input: Partial<SetManualPortfolioPositionInput> = {}) =>
+      setManualPortfolioPosition(makeTicker({ portfolios: ["main"], positions: lots }), "main", { shares: 30, avgCost: 400, currency: "USD", ...input })
+        .ticker.metadata.positions[0]!;
+    // 10 × 410 at 31 TRY and 20 × 395 at 34 TRY: (4,100 × 31 + 7,900 × 34) / 12,000 TRY per USD, so the cost converts as the lots' did.
+    const merged = set([
+      lot(10, 410, { dateAcquired: "2024-03-01", costFxRate: 31, costFxCurrency: "TRY" }),
+      lot(20, 395, { dateAcquired: "2023-11-15", costFxRate: 34, costFxCurrency: "TRY" }),
+    ]);
+    expect(merged).toMatchObject({ dateAcquired: "2023-11-15", costFxCurrency: "TRY" });
+    expect(merged.costFxRate! * 12_000).toBeCloseTo(4_100 * 31 + 7_900 * 34, 6);
+    // A lot without a date leaves the earliest known one; lots with no rate stay without one.
+    expect(set([lot(10, 410), lot(20, 395, { dateAcquired: "2024-03-01" })])).toMatchObject({ dateAcquired: "2024-03-01" });
+    expect(set([lot(10, 410), lot(20, 395)]).costFxRate).toBeUndefined();
+
+    // One lot at the rate it was bought at and one at today's have no one rate: refused, not guessed or dropped.
+    const mixed = [lot(10, 410, { costFxRate: 31, costFxCurrency: "TRY" }), lot(20, 395)];
+    expect(() => set(mixed)).toThrow(LotCostFxMergeError);
+    expect(() => set(mixed)).toThrow("Of the 2 lots, 1 converts its cost at the FX rate it was bought at and 1 at today's, so one position cannot keep their rates.");
+    expect(() => set([lot(10, 410, { costFxRate: 31, costFxCurrency: "TRY" }), lot(5, 1, { costFxRate: 0.9, costFxCurrency: "EUR" })]))
+      .toThrow("converted into different currencies");
+    // The position's own rate, a cleared one, or a cost in another currency set it.
+    expect(set(mixed, { costFx: { rate: 32, currency: "TRY" } }).costFxRate).toBe(32);
+    expect(set(mixed, { costFx: null }).costFxRate).toBeUndefined();
+    expect(set(mixed, { currency: "TRY", avgCost: 13_000 }).costFxRate).toBeUndefined();
   });
 
   test("the rate a cost was bought at stays with the lot while its currency does, and goes when the currency changes", () => {
@@ -246,5 +276,14 @@ describe("portfolio-list mutations", () => {
     expect(adoptFirstPositionCurrency(config, "broker:ibkr", "AUD")).toBeNull();
     // A base currency the user chose is what manual portfolios total in.
     expect(adoptFirstPositionCurrency({ ...config, baseCurrency: "EUR" }, "asx", "AUD")).toBeNull();
+  });
+
+  test("a portfolio created in a currency totals in it whatever the base currency, and its first holding does not change it", () => {
+    const { config, portfolio } = createManualPortfolio(createDefaultConfig("/tmp/gloomberb-mutations"), "Baht", "USD", { fixedCurrency: "thb" });
+    expect(portfolio).toEqual({ id: "baht", name: "Baht", currency: "THB", fixedCurrency: true });
+    expect(adoptFirstPositionCurrency(config, "baht", "USD")).toBeNull();
+    expect(resolvePortfolioTotalsCurrency(portfolio, "EUR")).toBe("THB");
+    // Without one, a manual portfolio still totals in the base currency the user chose.
+    expect(resolvePortfolioTotalsCurrency(createManualPortfolio(config, "Plain", "USD").portfolio, "EUR")).toBe("EUR");
   });
 });

@@ -3,7 +3,7 @@ import { act } from "react";
 import { takeKeybindingCaptureRequest } from "../../../app/keybindings";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { createTestDataProvider } from "../../../test-support/data-provider";
-import type { CommandDef, PaneTemplateCreateOptions, WizardStep } from "../../../types/plugin";
+import type { CommandBarResultDef, CommandBarSearchProvider, CommandDef, PaneTemplateCreateOptions, WizardStep } from "../../../types/plugin";
 import { CommandBarHarness, createCommandBarTestControls, expectSingleBackControl, makeDataProvider } from "./test-harness";
 import { createTestTicker } from "../../../test-support/ticker";
 import { cpiModule } from "../../../plugins/builtin/cpi";
@@ -12,7 +12,7 @@ import type { AppContextStoreValue } from "../../../state/app/context";
 
 const tui = createOpenTuiTestHarness();
 
-const { waitForFrameToContain, clickFrameText } = createCommandBarTestControls(() => tui.setup());
+const { waitForFrameToContain, waitForFrameToExclude, clickFrameText } = createCommandBarTestControls(() => tui.setup());
 
 type MutableCommandRegistry = {
   commands: ReadonlyMap<string, CommandDef>;
@@ -85,6 +85,33 @@ describe("CommandBar", () => {
     const row = tui.frame().split("\n").slice(1).find((line) => line.includes("Update ready, restart to apply"));
     expect(row).toBeDefined();
     expect(tui.frame()).not.toContain("Check for Updates");
+
+    await act(async () => {
+      tui.setup().mockInput.pressEnter();
+      await tui.setup().renderOnce();
+    });
+    expect(checks).toBe(1);
+  });
+
+  test("a failed update's row still answers to its name, says why in a few words, and retries when chosen", async () => {
+    let checks = 0;
+    await tui.render(<CommandBarHarness
+      query="check for updates"
+      onCheckForUpdates={() => { checks += 1; }}
+      configureState={(state) => ({
+        ...state,
+        updateProgress: {
+          phase: "error",
+          error: "Socket closed.",
+          failure: { phase: "download", code: "interrupted" },
+        },
+      })}
+    />, { width: 140, height: 24 });
+
+    // The reason on the row, the whole error under it.
+    await tui.waitForFrameToContain("Socket closed.");
+    const rows = tui.frame().split("\n").slice(1);
+    expect(rows.some((line) => line.includes("Update failed: download interrupted"))).toBe(true);
 
     await act(async () => {
       tui.setup().mockInput.pressEnter();
@@ -189,6 +216,27 @@ describe("CommandBar", () => {
     // pane the user had picked, not whatever now sits at its old index.
     await tui.emitKeypress({ name: "return", sequence: "\r" });
     expect(created).toEqual([{ templateId: "new-watchlist-pane", options: undefined }]);
+  });
+
+  test("stops searching for a provider that never answers, with a Japanese name nothing matches", async () => {
+    const stuck: CommandBarSearchProvider = {
+      id: "stuck:news",
+      category: "News",
+      debounceMs: 0,
+      timeoutMs: 150,
+      provide: () => new Promise<CommandBarResultDef[]>(() => {}),
+    };
+    await tui.render(<CommandBarHarness
+      query="任天堂"
+      configurePluginRegistry={(pluginRegistry) => {
+        (pluginRegistry.commandBarSearchProviders as Map<string, CommandBarSearchProvider>).set(stuck.id, stuck);
+      }}
+      dataProvider={makeDataProvider(async () => [])}
+    />, { width: 80, height: 24 });
+
+    await waitForFrameToContain("Searching");
+    const settled = await waitForFrameToExclude("Searching", 20);
+    expect(settled).toContain("Ask AI");
   });
 
   test("keeps symbol search out of a query a prefix claims", async () => {

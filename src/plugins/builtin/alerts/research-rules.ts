@@ -2,6 +2,7 @@
 const RESEARCH_ALERT_KINDS = [
   "earnings_date",
   "macro_event",
+  "calendar_event",
   "filing_type",
   "news_keyword",
   "analyst_change",
@@ -10,8 +11,10 @@ const RESEARCH_ALERT_KINDS = [
   "short_interest_change",
   "insider_trade",
   "iv_spike",
+  "iv_level",
   "options_flow",
   "perps_threshold",
+  "hiring_move",
 ] as const
 export type ResearchAlertKind = (typeof RESEARCH_ALERT_KINDS)[number]
 export interface ResearchAlertConfig {
@@ -26,10 +29,32 @@ export interface ResearchAlertConfig {
   contract?: string
   /** Options flow: which prints count (any, sweep or block). */
   marketId?: string
-  metric?: "funding8h" | "oiChange24h" | "premium" | "closedMarketPremium"
+  /** Perpetuals: the market figure. IV level: `atm`, the 30-day ATM IV, or `rr`, the 30-day 25-delta risk reversal. */
+  metric?: "funding8h" | "oiChange24h" | "premium" | "closedMarketPremium" | IvLevelMetric
   print?: string
-  /** Macro event: which scheduled release (`MACRO_ALERT_EVENTS`). */
+  /**
+   * Macro event: which scheduled release (`MACRO_ALERT_EVENTS`). Calendar
+   * event: the release's name as the economic calendar lists it.
+   */
   event?: string
+  /** Calendar event: the country the calendar lists the release for (CN, US, DE for a German release). */
+  country?: string
+  /** Calendar event: who publishes it, when the calendar names them, which tells apart releases of one name. */
+  publisher?: string
+  /**
+   * Earnings: `results` goes off when the report's actual EPS is out, rather
+   * than `leadDays` before the date. Such a rule keeps a lead of 0, so a
+   * server that reads only the lead alerts on the day instead.
+   */
+  when?: "results"
+}
+/** What an IV level rule follows on its symbol's surface: 30-day ATM IV (in %) or 30-day 25-delta risk reversal (in vol points). */
+const IV_LEVEL_METRICS = ["atm", "rr"] as const
+export type IvLevelMetric = (typeof IV_LEVEL_METRICS)[number]
+/** The levels an IV level rule takes: an ATM IV in percent, a risk reversal in vol points either side of zero. */
+export const IV_LEVEL_RANGES: Record<IvLevelMetric, { min: number; max: number }> = {
+  atm: { min: 1, max: 500 },
+  rr: { min: -50, max: 50 },
 }
 /** Days before a scheduled event (earnings, a macro release) an alert fires when none is given, and the most it takes. */
 export const DEFAULT_LEAD_DAYS = 1
@@ -39,6 +64,14 @@ export const MACRO_ALERT_EVENTS = ["cpi", "fomc"] as const
 export type MacroAlertEvent = (typeof MACRO_ALERT_EVENTS)[number]
 export const isMacroAlertEvent = (value: unknown): value is MacroAlertEvent =>
   MACRO_ALERT_EVENTS.includes(value as MacroAlertEvent)
+/** The longest calendar event name or publisher a rule keeps. */
+const MAX_CALENDAR_TEXT = 120
+/** A calendar event's name or publisher as a rule keeps it: trimmed, single-spaced, printable; empty when it is none. */
+const calendarText = (value: unknown): string => {
+  if (typeof value !== "string") return ""
+  const text = value.trim().replace(/\s+/g, " ")
+  return text.length <= MAX_CALENDAR_TEXT && !/[\u0000-\u001f]/.test(text) ? text : ""
+}
 export const RESEARCH_ALERT_FORMS = [
   "8-K",
   "10-K",
@@ -98,6 +131,14 @@ export function normalizeResearchRule(
       const event = typeof input.event === "string" ? input.event.trim().toLowerCase() : ""
       if (!isMacroAlertEvent(event)) return null
       result.event = event
+    } else if (kind === "calendar_event") {
+      const event = calendarText(input.event)
+      const country = typeof input.country === "string" ? input.country.trim().toUpperCase() : ""
+      if (!event || !/^[A-Z]{2}$/.test(country)) return null
+      result.event = event
+      result.country = country
+      const publisher = calendarText(input.publisher)
+      if (publisher) result.publisher = publisher
     } else if (kind === "perps_threshold") {
       const marketId = typeof input.marketId === "string" ? input.marketId.trim() : "";
       const metric = input.metric;
@@ -113,6 +154,14 @@ export function normalizeResearchRule(
       result.symbol = identity.symbol
       result.exchange = "US"
       result.contract = identity.contract
+    } else if (kind === "hiring_move") {
+      // A HIRE company: any listing, a world one with its venue (ADYEN:AMS).
+      const symbol =
+        typeof input.symbol === "string"
+          ? input.symbol.trim().toUpperCase()
+          : ""
+      if (!/^[A-Z0-9][A-Z0-9.:-]{0,31}$/.test(symbol)) return null
+      result.symbol = symbol
     } else if (
       (kind !== "news_keyword" && kind !== "options_flow") ||
       input.symbol
@@ -162,8 +211,17 @@ export function normalizeResearchRule(
         numeric("threshold", 0.001, -100, 100);
         direction(["above", "below"], "above");
         break;
-      case "earnings_date":
+      case "earnings_date": {
+        const when = input.when ?? "before"
+        if (when === "results") {
+          result.leadDays = 0
+          result.when = "results"
+        } else if (when === "before") numeric("leadDays", DEFAULT_LEAD_DAYS, 0, MAX_LEAD_DAYS, true)
+        else throw new Error()
+        break
+      }
       case "macro_event":
+      case "calendar_event":
         numeric("leadDays", DEFAULT_LEAD_DAYS, 0, MAX_LEAD_DAYS, true)
         break
       case "filing_type": {
@@ -211,9 +269,24 @@ export function normalizeResearchRule(
       case "insider_trade":
         direction(["buy", "sell", "either"], "either")
         break
+      case "hiring_move":
+        direction(["either", "accelerating", "slowing"], "either")
+        break
       case "iv_spike":
         numeric("threshold", 5, 0.1, 100)
         break
+      case "iv_level": {
+        const metric = input.metric ?? "atm"
+        if (typeof metric !== "string" || !IV_LEVEL_METRICS.includes(metric as IvLevelMetric))
+          throw new Error()
+        result.metric = metric as IvLevelMetric
+        direction(["above", "below"], "above")
+        const range = IV_LEVEL_RANGES[metric as IvLevelMetric]
+        // No default: a level is what the rule is about.
+        if (input.threshold == null) throw new Error()
+        numeric("threshold", 0, range.min, range.max)
+        break
+      }
       case "options_flow": {
         // Premium in dollars; Cloud records nothing under $50K.
         numeric("threshold", 1_000_000, 50_000, 1_000_000_000)
@@ -230,6 +303,7 @@ export function normalizeResearchRule(
     }
     return JSON.stringify(result)
   } catch {
+    // Intentional ignore: malformed research input is rejected with the null validation result.
     return null
   }
 }

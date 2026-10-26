@@ -1,10 +1,17 @@
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/plugin";
+import { CENTRAL_BANKS, centralBankNames } from "../../../utils/central-banks";
 import { fetchCentralBankRates } from "./client";
-import { hasNoPolicyRate, policyExportRow, policyNextMeetingText, policyNotices } from "./model";
+import {
+  hasNoPolicyRate, policyExportRow, policyLastDecisionText, policyNextMeetingText, policyNotices, policyRate, policyUnlistedNote,
+} from "./model";
 
-/** The citation block every export row carries, headed as a journalist's spreadsheet names it. */
+/**
+ * The citation block every export row carries, headed as a journalist's
+ * spreadsheet names it. `source` and `as_of` are the row's own, so the
+ * export's fixed columns of the same names are not added again.
+ */
 const CITATION_FIELDS = [
-  "central_bank", "source", "series_id", "source_url", "as_of",
+  "central_bank", "source", "series_id", "source_url", "as_of", "last_decision",
   "next_meeting", "next_meeting_kind", "next_meeting_source_url", "next_meeting_verified_at", "citation",
 ];
 
@@ -16,8 +23,22 @@ const BOARD_COLUMNS: HeadlessPaneColumn[] = [
   { key: "asOf", header: "As of", shrink: false }, { key: "status", header: "Status", stackPriority: 2 }, { key: "instrument", header: "Instrument", stackPriority: 3 },
 ];
 
+const percentCell = (value: unknown) => policyRate(typeof value === "number" ? value : null);
+
+/**
+ * The board's columns as CSV and NDJSON write them: the rate as a number (a
+ * target range's midpoint, which the board ranks and charts) with the range's
+ * bounds beside it, where the text draws "3.75-4.00%".
+ */
+const EXPORT_BOARD_COLUMNS: HeadlessPaneColumn[] = BOARD_COLUMNS.flatMap((column): HeadlessPaneColumn[] => column.key !== "valueText" ? [column] : [
+  { key: "value", header: "Rate", align: "right", format: percentCell },
+  { key: "rangeLower", header: "Range lower", align: "right", format: percentCell },
+  { key: "rangeUpper", header: "Range upper", align: "right", format: percentCell },
+]);
+
 export const centralBankRatesHeadless: HeadlessPaneDefinition<"bundle"> = {
-  discovery: { aliases: ["CBR", "CBRT"], dataRequirements: ["Gloom Cloud central-bank-rates endpoint"],
+  // A bank's name or short form typed as a function (`fn ECB`, `fn BOJ`) points here, unless a function owns the word (FOMC is WIRP).
+  discovery: { aliases: ["CBR", "CBRT"], suggestFor: CENTRAL_BANKS.flatMap(centralBankNames), dataRequirements: ["Gloom Cloud central-bank-rates endpoint"],
     limitations: ["Published policy observations with individual dates.", "Policy instruments differ.",
       "Next meetings come from each bank's published calendar; SAMA publishes none, and China's date is the monthly LPR fixing."] },
   shape: "bundle",
@@ -33,19 +54,24 @@ export const centralBankRatesHeadless: HeadlessPaneDefinition<"bundle"> = {
     // A row says "stale" in its status, not in a `stale` flag: hand the report its rows' staleness so its status line and a capture count them.
     const observations = data.rows.filter((row) => row.status !== "unavailable")
       .map((row) => ({ asOf: row.asOf, stale: row.status === "stale" }));
-    const exported = data.rows.map(policyExportRow);
+    // Members with no policy rate stay off the board, as the pane keeps them, so every output counts the same rows; a note says why.
+    const listed = data.rows.filter((row) => !hasNoPolicyRate(row));
+    const exported = listed.map(policyExportRow);
     // A caveat on most rows ("Change date is the first observed new level...") is said once for the report.
     const shared = [...new Set(exported.flatMap((row) => row.notes))]
       .filter((note) => exported.filter((row) => row.notes.includes(note)).length > 1);
     const rows = exported.map((row) => ({ ...row, notes: row.notes.filter((note) => !shared.includes(note)) }));
-    return { complete, freshness: { observations }, ...(shared.length ? { notes: shared } : {}), sections: [{ title: "Policy rates",
-      columns: [...BOARD_COLUMNS, ...CITATION_FIELDS.map((key): HeadlessPaneColumn => ({ key, header: key, literalHeader: true }))],
+    const notes = [...shared, ...data.rows.filter(hasNoPolicyRate).map(policyUnlistedNote)];
+    return { complete, freshness: { observations }, ...(notes.length ? { notes } : {}), sections: [{ title: "Policy rates",
+      columns: [...EXPORT_BOARD_COLUMNS, ...CITATION_FIELDS.map((key): HeadlessPaneColumn => ({ key, header: key, literalHeader: true })),
+        { key: "notes", header: "notes", literalHeader: true, format: (value) => Array.isArray(value) ? value.join(" ") : "" }],
       rows,
-      // The text keeps the board's table; each row's bank, next meeting and citation go under it.
+      // The text keeps the board's table; each row's bank, last and next decision, citation and own caveats go under it.
       textColumns: [...BOARD_COLUMNS, { key: "detail", header: "Detail", underRow: true }],
       textRows: rows.map((row, index) => {
-        const source = data.rows[index]!;
-        return { ...row, detail: `${row.central_bank ?? "No central bank"} · ${policyNextMeetingText(source)}\n${row.citation}` };
+        const source = listed[index]!;
+        const detail = [`${row.central_bank ?? "No central bank"} · ${policyLastDecisionText(source)}${policyNextMeetingText(source)}`, row.citation];
+        return { ...row, detail: [...detail, ...(row.notes.length ? [row.notes.join(" ")] : [])].join("\n") };
       }),
     }], errors, unavailableSymbols: data.rows.filter((row) => row.status === "unavailable" && !hasNoPolicyRate(row)).map((row) => row.id),
     // A year of daily history per row is most of the payload, so JSON carries it only on request.

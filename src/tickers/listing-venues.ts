@@ -12,6 +12,7 @@ import {
   typedExchangeCode,
 } from "../utils/exchanges";
 import { currencyPairSpelling } from "../utils/currency-pair";
+import { savedAbroadForBareSymbol } from "./search/bare-symbol";
 
 export interface ListingStore {
   loadTicker(symbol: string): Promise<TickerRecord | null>;
@@ -116,6 +117,28 @@ export async function readAmbiguousCurrencyPair(typed: string, { store, dataProv
   } catch (error) {
     logFailure("tickers-listing-venues", "Could not resolve currency pair listing")(error);
     return null;
+  }
+}
+
+/**
+ * The saved row a bare symbol stands for, read as the command bar reads it
+ * (`savedAbroadForBareSymbol`): a row abroad saved under the bare key (SHEL on
+ * LSE, saved from SHEL.L) gives way to the symbol's US listing, the row of it
+ * saved under another key, or null when that listing is not saved yet. The
+ * row abroad stands when the symbol lists on no US exchange, or search could
+ * not say.
+ */
+export async function savedRowOfBareSymbol(symbol: string, saved: TickerRecord | null, { store, dataProvider }: ListingDeps): Promise<TickerRecord | null> {
+  if (!saved || !savedAbroadForBareSymbol(symbol, saved)) return saved;
+  try {
+    const tickers = new Map((await store.loadAllTickers()).map((ticker) => [ticker.metadata.ticker.toUpperCase(), ticker] as const));
+    const resolved = await resolveTickerSearch({ query: symbol, activeTicker: null, tickers, dataProvider });
+    return resolved?.kind === "local" ? resolved.ticker : resolved ? null : saved;
+  } catch (error) {
+    // US listings no quote settles between: the lookup asks which, as with nothing saved.
+    if (error instanceof AmbiguousTickerError && !(error instanceof AmbiguousContractError)) return null;
+    logFailure("tickers-listing-venues", "Could not resolve bare symbol")(error);
+    return saved;
   }
 }
 

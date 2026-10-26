@@ -1,5 +1,5 @@
 /** @jsxImportSource react */
-import { afterEach, expect, spyOn, test } from "bun:test";
+import { afterEach, expect, mock, spyOn, test } from "bun:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { act, useMemo, useReducer } from "react";
@@ -29,6 +29,7 @@ const dom = createDomTestHarness({ withUi: false });
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 afterEach(() => {
+  mock.restore();
   setSharedMarketDataCoordinator(null);
   insiderSignalsCache.reset();
 });
@@ -56,7 +57,7 @@ function Pane() {
   );
 }
 
-// GLO-326: a pane opened on Form 4s whose content was already loaded (another
+// A pane opened on Form 4s whose content was already loaded (another
 // pane or an earlier visit read them) took them in one render each. On the web
 // each of those renders is a nested update, and React stops the pane past 50.
 test("opens on 60 already-read Form 4 filings without a render per filing", async () => {

@@ -10,6 +10,7 @@ import {
 } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
 import { MemoryPluginPersistence as MemoryPersistence } from "../../../test-support/plugin-persistence";
+import { installTestWebSocket } from "../../../test-support/cloud-api";
 import type { AppNotificationRequest } from "../../../types/plugin";
 import { ChatController } from "./controller";
 import { SESSION_RETRY_MS } from "./controller/state";
@@ -54,6 +55,7 @@ const originalSubscribeChatPresence = apiClient.subscribeChatPresence.bind(apiCl
 const originalSubscribeSocketConnection = apiClient.subscribeSocketConnection;
 const originalEditMessage = apiClient.editMessage.bind(apiClient);
 const originalSendMessage = apiClient.sendMessage.bind(apiClient);
+let originalWebSocket: typeof WebSocket;
 
 const SERVER_CHAT_CHANNELS: ChatChannel[] = [
   { id: "everyone", name: "everyone", created_at: "2026-03-26T12:10:05.684Z" },
@@ -68,8 +70,8 @@ async function flushMicrotasks() {
 }
 
 /**
- * A banner in the background waits a moment and asks the server first
- * (GLO-788); tests run that wait at zero and let it finish.
+ * A banner in the background waits a moment and asks the server first;
+ * tests run that wait at zero and let it finish.
  */
 function withoutBackgroundDelay(controller: ChatController): ChatController {
   (controller as any).alerts.backgroundDelayMs = 0;
@@ -117,6 +119,11 @@ class TrackingPersistence extends MemoryPersistence {
 }
 
 beforeEach(() => {
+  originalWebSocket = globalThis.WebSocket;
+  installTestWebSocket(0);
+  apiClient.getSession = async () => apiClient.getCurrentUser();
+  apiClient.getMessages = async () => [];
+  apiClient.getChannels = async () => SERVER_CHAT_CHANNELS;
   apiClient.getChatPresence = async () => ({ onlineCount: 0 });
   apiClient.getChatMentionCandidates = async () => { throw new Error("Fixture has no member endpoint"); };
   apiClient.getChatState = async () => ({
@@ -167,6 +174,7 @@ afterEach(() => {
   apiClient.subscribeSocketConnection = originalSubscribeSocketConnection;
   apiClient.editMessage = originalEditMessage;
   apiClient.sendMessage = originalSendMessage;
+  globalThis.WebSocket = originalWebSocket;
 });
 
 describe("ChatController", () => {

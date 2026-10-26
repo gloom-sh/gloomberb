@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { Quote, TickerFinancials } from "../../../../types/financials";
 import type { TickerRecord } from "../../../../types/ticker";
 import {
+  holdsOtherCurrencies,
   needsVisibleQuoteWarmup,
   needsVisibleQuoteWatchdogRefresh,
   selectQuoteWarmupRoute,
@@ -11,6 +12,7 @@ import {
 } from "./data";
 import { createTestFinancials } from "../../../../test-support/data-provider";
 import { createTestTicker } from "../../../../test-support/ticker";
+import { resolveVisibleColumns } from "../settings";
 
 function quote(overrides: Partial<Quote> = {}): Quote {
   return {
@@ -150,4 +152,30 @@ describe("visible quote refresh predicates", () => {
       60_000,
     )).toBe(false);
   });
+});
+
+// RY at 278.08 CAD and JNJ at 259.36 USD sat in one PF column with nothing to tell them apart.
+test("CCY shows after LAST once a row is priced in another currency than the totals, and only then", () => {
+  const row = (symbol: string, currency: string, overrides: Partial<Quote> = {}) => ({
+    ticker: createTestTicker(symbol, symbol, { currency }),
+    data: financials(quote({ symbol, currency, ...overrides })),
+  });
+  const holds = (rows: ReturnType<typeof row>[], totals: string) => holdsOtherCurrencies(
+    rows.map((entry) => entry.ticker), new Map(rows.map((entry) => [entry.ticker.metadata.ticker, entry.data])), totals);
+  const jnj = row("JNJ", "USD");
+  const ry = row("RY.TO", "CAD");
+  expect(holds([jnj, ry], "USD")).toBe(true);
+  // A US stock in a CAD portfolio is the other currency too.
+  expect(holds([jnj], "CAD")).toBe(true);
+  expect(holds([jnj, row("SPY", "USD")], "USD")).toBe(false);
+  // Pence are pounds, whose sign the price carries; an index level is in points.
+  expect(holds([row("VOD", "GBp")], "GBP")).toBe(false);
+  expect(holds([jnj, row("^N225", "JPY", { instrumentType: "INDEX" })], "USD")).toBe(false);
+
+  const ids = (columns: { id: string }[]) => columns.map((column) => column.id);
+  expect(ids(resolveVisibleColumns(["ticker", "price", "change_pct", "mkt_value"], true, { otherCurrencies: true })))
+    .toEqual(["ticker", "price", "currency", "change_pct", "mkt_value"]);
+  expect(ids(resolveVisibleColumns(["ticker", "price", "change_pct"], true))).toEqual(["ticker", "price", "change_pct"]);
+  // A pane that already places CCY keeps it where it is.
+  expect(ids(resolveVisibleColumns(["currency", "ticker", "price"], false, { otherCurrencies: true }))).toEqual(["currency", "ticker", "price"]);
 });

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { fitTableCellText, fitTableHeaderText, tableColumnStarts } from "../../table-layout";
-import { cutColumnText, resolveDataTableColumnClips, resolveDataTableVisibleWindow, reuseDataTableColumnClips } from "./model";
+import { cutColumnText, fitColumnCellText, resolveDataTableColumnClips, resolveMoreColumnsHint, resolveDataTableVisibleWindow, reuseDataTableColumnClips } from "./model";
 
 describe("OpenTUI data table model", () => {
   test("resolves the virtualized window with overscan around the scroll top", () => {
@@ -57,6 +57,43 @@ describe("OpenTUI data table model", () => {
     expect(clips(0, 0)).toBeNull();
   });
 
+  test("\"more →\" shows while a column past the right edge shows nothing, in the longest form that fits beside the columns shown", () => {
+    // NAME 10 (text), LAST 12 and CHG 10 (figures) with one-cell gaps and a one-cell inset: 1-10, 12-23, 25-34.
+    const figures = [
+      { width: 10, align: "left", label: "NAME" },
+      { width: 12, align: "right", label: "LAST" },
+      { width: 10, align: "right", label: "CHG" },
+    ];
+    const hint = (viewportWidth: number, { scrollLeft = 0, besideHeader = 0, columns = figures } = {}) => resolveMoreColumnsHint({
+      columns, columnGap: 1, columnStarts: tableColumnStarts(columns, 1), besideHeader, horizontalPadding: 1, scrollLeft, viewportWidth,
+    });
+    // CHG is cut, so blank: "more →" follows LAST after a blank, and the rows are blank from that blank on.
+    expect(hint(31)).toEqual({ text: " more →", left: 24, reserve: 7 });
+    // The blank can be LAST's own: a label shorter than its column keeps one at its end.
+    expect(hint(30)).toEqual({ text: " more →", left: 23, reserve: 6 });
+    // Narrower, the shorter forms keep LAST whole.
+    expect(hint(29)).toEqual({ text: " more", left: 24, reserve: 5 });
+    expect(hint(28)).toEqual({ text: " more", left: 23, reserve: 4 });
+    expect(hint(27)).toEqual({ text: " →", left: 25, reserve: 2 });
+    expect(hint(25)).toEqual({ text: " →", left: 23, reserve: 1 });
+    // The header's cell over the body's vertical scrollbar is room for it too.
+    expect(hint(27, { besideHeader: 1 })).toEqual({ text: " more", left: 23, reserve: 3 });
+    // LAST against the edge: the arrow takes its label's trailing blank and the rows keep every figure.
+    expect(hint(24)).toEqual({ text: "→", left: 23, reserve: 0 });
+    // A label that fills its column against the edge has no blank to give: no hint rather than a hidden column.
+    const full = [figures[0]!, { width: 4, align: "right", label: "LAST" }, figures[2]!];
+    expect(hint(16, { columns: full })).toBeNull();
+    expect(hint(22)).toEqual({ text: " more →", left: 15, reserve: 7 });
+    // Scrolled to the end, too narrow for a column beside the hint, or not measured: no hint.
+    expect(hint(31, { scrollLeft: 4 })).toBeNull();
+    expect(hint(13)).toBeNull();
+    expect(hint(0)).toBeNull();
+    // Text cut on the right counts as out of view only while it shows less than its label; then it ends in an ellipsis.
+    const text = [{ width: 10, align: "left", label: "NAME" }, { width: 16, align: "left", label: "STAGE" }];
+    expect(hint(16, { columns: text })?.text).toBe(" more");
+    expect(hint(17, { columns: text })).toBeNull();
+  });
+
   test("a cut number shows only while the cells in view hold all of it; cut text is fitted to them", () => {
     const cell = (text: string, align: string, width: number, clip: { inset: number; width: number }) => (
       cutColumnText(text, align, width, clip, (value, shown) => fitTableCellText(value, shown, align))
@@ -72,6 +109,27 @@ describe("OpenTUI data table model", () => {
     // Text starts at the visible edge, with an ellipsis when it is longer.
     expect(cell("Definitive agreement", "left", 22, { inset: 4, width: 12 })).toBe("Definitive\u2026 ");
     expect(cell("anything", "right", 12, { inset: 12, width: 0 })).toBe("");
+  });
+
+  test("a cell note fits whole beside its label, otherwise the label keeps its room and ellipsis", () => {
+    const note = "front NGX26 3.116";
+    expect(fitColumnCellText("NGF27", 24, "left", null, note)).toEqual({ text: "NGF27 ", note, padding: " " });
+    expect(fitColumnCellText("NGF27", 23, "left", null, note)).toEqual({ text: "NGF27 ", note, padding: "" });
+    expect(fitColumnCellText("NGF27", 22, "left", null, note)).toEqual({ text: "NGF27                 " });
+    expect(fitColumnCellText("NGF27", 4, "left", null, note)).toEqual({ text: "NGF…" });
+    expect(fitColumnCellText("NGF27", 23, "left", null)).toEqual({ text: fitTableCellText("NGF27", 23, "left") });
+    // Terminal cells, not UTF-16 length: the two ideographs occupy four cells.
+    expect(fitColumnCellText("天然", 22, "left", null, note)).toEqual({ text: "天然 ", note, padding: "" });
+    expect(fitColumnCellText("天然", 21, "left", null, note).note).toBeUndefined();
+  });
+
+  test("a note is hidden when the viewport cuts any of it, including an aligned cell's placement", () => {
+    const note = "front NGX26 3.116";
+    expect(fitColumnCellText("NGF27", 30, "left", { inset: 0, width: 23 }, note).note).toBe(note);
+    expect(fitColumnCellText("NGF27", 30, "left", { inset: 0, width: 22 }, note).note).toBeUndefined();
+    // The combined value fits 23 cells, but its right-aligned position ends outside them.
+    expect(fitColumnCellText("NGF27", 30, "right", { inset: 0, width: 23 }, note)).toEqual({ text: " ".repeat(23) });
+    expect(fitColumnCellText("NGF27", 30, "right", { inset: 7, width: 23 }, note)).toEqual({ text: "NGF27 ", note, padding: "" });
   });
 
   test("a cut header keeps its label's trailing blank unless the edge is that cell", () => {

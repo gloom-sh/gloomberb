@@ -2,6 +2,7 @@ import { listThirteenFForms, normalizeCik, searchThirteenFFunds } from "../thirt
 import { isoDateToday, isoDateYearsAgo } from "../../../utils/calendar-date";
 import { buildPeriodReports } from "../thirteenf/model";
 import type { HolderRow } from "./types";
+import { logFailure } from "../../../utils/log-failure";
 
 export interface Holder13FMatch {
   cik: string;
@@ -100,8 +101,9 @@ export async function loadHolder13FMatches(
           filedAsOfDate: form?.filedAsOfDate,
           tableValueTotal: report?.complete && forms.length < 100 ? report.tableValueTotal : null,
         });
-      } catch {
+      } catch (error) {
         // Matching 13F metadata is an enhancement; holder rows should remain usable.
+        if (!signal.aborted) logFailure("holders.thirteenf-match", "Match holder fund filings failed")(error);
       }
     }
   }

@@ -23,6 +23,8 @@ const QUOTES: Record<string, ReturnType<typeof createTestQuote>> = {
   "2222:JPX": createTestQuote({ symbol: "2222", name: "Kotobuki Spirits Co., Ltd.", currency: "JPY", instrumentType: "EQUITY", listingExchangeName: "JPX" }),
   "2222:TADAWUL": createTestQuote({ symbol: "2222", name: "Saudi Arabian Oil Co.", currency: "SAR", instrumentType: "EQUITY", listingExchangeName: "TADAWUL" }),
   AAPL: createTestQuote({ symbol: "AAPL", name: "Apple Inc.", currency: "USD", instrumentType: "EQUITY", listingExchangeName: "NASDAQ" }),
+  // The bare coin ticker is a fund, as the data service answers it.
+  ETH: createTestQuote({ symbol: "ETH", name: "Grayscale Ethereum Mini Trust ETF", currency: "USD", instrumentType: "ETF", listingExchangeName: "ARCA" }),
 };
 const VENUES: Record<string, Array<[string, string]>> = {
   "2222": [["JPX", "Kotobuki Spirits Co., Ltd."], ["TADAWUL", "Saudi Arabian Oil Co."]],
@@ -91,10 +93,16 @@ test("a chart reads a bare code several companies list as quote does: it asks wh
   expect(charted.printed).toBeUndefined();
   expect(charted.failure.message).toBe("Choose an exchange for 2222.");
   expect(charted.failure.message).toBe(quoted.failure.message!);
-  expect(charted.failure.details).toBe(quoted.failure.details!.replaceAll("gloomberb quote", "gloomberb fn G"));
-  expect(charted.failure.details).toContain("2222:TADAWUL Saudi Arabian Oil Co. (try: gloomberb fn G 2222:TADAWUL)");
+  expect(charted.failure.details).toBe(quoted.failure.details!.replaceAll("gloom quote", "gloom fn G"));
+  expect(charted.failure.details).toContain("2222:TADAWUL Saudi Arabian Oil Co. (try: gloom fn G 2222:TADAWUL)");
   // Each retry keeps the rest of the argument.
-  expect((await run(["G", "2222:volume, AAPL"], "fn")).failure.details).toContain("(try: gloomberb fn G 2222:JPX:volume, AAPL)");
+  expect((await run(["G", "2222:volume, AAPL"], "fn")).failure.details).toContain("(try: gloom fn G 2222:JPX:volume, AAPL)");
+});
+
+test("a chart of a bare coin ticker read as a fund says where the coin is, as quote does", async () => {
+  const { printed } = await run(["G", "ETH, AAPL"], "fn");
+  expect(printed!.result.warnings).toEqual(["ETH is Grayscale Ethereum Mini Trust ETF, not ethereum. For ethereum use ETH-USD."]);
+  expect((await run(["G", "AAPL"], "fn")).printed!.result.warnings ?? []).toEqual([]);
 });
 
 test("a charted listing names its company and its currency", async () => {

@@ -47,6 +47,13 @@ test("relationship supplies the default benchmark, ratio history, rolling correl
   expect(result.unavailableSymbols).toEqual([]);
 });
 
+test("relationship names which ticker's returns are regressed on which, and asks for three decimals in text", async () => {
+  const result = await relationshipHeadless.load(args(["ABC", "SPY"]), context());
+  expect(statEntries(result).filter(({ key }) => key === "beta" || key === "alpha").map(({ label }) => label)).toEqual(["ABC on SPY: beta", "ABC on SPY: alpha"]);
+  expect(result.metadata).toMatchObject({ regression: { dependent: "ABC", independent: "SPY" } });
+  expect(result.series[1]).toMatchObject({ textDecimals: 3 });
+});
+
 test("relationship notes mixed session closes only, and keeps a small ratio's digits in its figure", async () => {
   const ctx = {
     ...context(),

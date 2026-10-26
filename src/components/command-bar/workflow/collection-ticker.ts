@@ -1,7 +1,7 @@
 import type { TickerRecord } from "../../../types/ticker";
-import { canonicalExchange, parsePublicTickerKey } from "../../../utils/exchanges";
+import { canonicalExchange, parsePublicTickerKey, publicTickerKey } from "../../../utils/exchanges";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
-import { tickerHasListingSuffix, listingSuffixConflictsWithExchange, listingSuffixExchange } from "../../../sources/listing-symbols";
+import { tickerHasListingSuffix, listingSuffixConflictsWithExchange, listingSuffixExchange, listingSuffixVenue } from "../../../sources/listing-symbols";
 import { classifyInstrumentKind } from "../../../tickers/search/ranking";
 import { searchContractKey } from "../../../tickers/search/identity";
 import type { CollectionKind } from "./tickers";
@@ -42,6 +42,34 @@ function ownsCollection(ticker: TickerRecord, kind: CollectionKind, collectionId
     || (kind === "portfolio" && ticker.metadata.positions.some((position) => !collectionId || position.portfolio === collectionId));
 }
 
+/**
+ * The row a research alias under a vendor's suffixed key (GARAN.IS, opened
+ * from a link) joins a collection as: its listing's own row, saved under the
+ * key GARAN:BIST is saved under, or a new one there. Null for any other row.
+ */
+function listingRow(
+  ticker: TickerRecord,
+  equivalent: readonly TickerRecord[],
+  tickers: ReadonlyMap<string, TickerRecord>,
+): TickerRecord | null {
+  if ((ticker.metadata.broker_contracts ?? []).length > 0) return null;
+  const parsed = parsePublicTickerKey(ticker.metadata.ticker);
+  const venue = listingSuffixVenue(parsed.symbol, parsed.exchange ?? ticker.metadata.exchange);
+  if (!venue) return null;
+  const own = equivalent.find((candidate) => !tickerHasListingSuffix(parsePublicTickerKey(candidate.metadata.ticker).symbol));
+  if (own) return own;
+  const onVenue = (row: TickerRecord | undefined) => !!row && canonicalExchange(row.metadata.exchange) === venue.exchange;
+  const bare = tickers.get(venue.symbol);
+  const venueKey = publicTickerKey(venue.symbol, venue.exchange);
+  if (onVenue(bare)) return bare!;
+  if (onVenue(tickers.get(venueKey))) return tickers.get(venueKey)!;
+  // A new row takes the key adding GARAN:BIST takes: the bare symbol while it is free.
+  const key = bare ? venueKey : venue.symbol;
+  if (tickers.has(key)) return null;
+  const { mergedLots: _lots, ...metadata } = ticker.metadata;
+  return { metadata: { ...metadata, ticker: key, exchange: venue.exchange, portfolios: [], watchlists: [], positions: [], tags: [], custom: {} } };
+}
+
 /** Research aliases must not hide or duplicate the saved record that owns a holding. */
 export function resolveCollectionTicker(
   ticker: TickerRecord,
@@ -51,7 +79,7 @@ export function resolveCollectionTicker(
 ): TickerRecord {
   ticker = tickers.get(ticker.metadata.ticker) ?? ticker;
   const identity = listingIdentity(ticker);
-  if (!identity) return ticker;
+  if (!identity) return listingRow(ticker, [], tickers) ?? ticker;
   const equivalent = [...new Map([...tickers, [ticker.metadata.ticker, ticker]]).values()]
     .filter((candidate) => listingIdentity(candidate) === identity);
   const owners = equivalent.filter((candidate) => ownsCollection(candidate, kind, collectionId));
@@ -61,5 +89,5 @@ export function resolveCollectionTicker(
   // If existing records own different collections, the requested empty record
   // can join a new collection without changing either existing owner.
   const otherOwners = collectionId ? equivalent.filter((candidate) => ownsCollection(candidate, kind)) : [];
-  return otherOwners.length === 1 ? otherOwners[0]! : ticker;
+  return otherOwners.length === 1 ? otherOwners[0]! : listingRow(ticker, equivalent, tickers) ?? ticker;
 }

@@ -14,13 +14,13 @@ export const volatilityModule: PluginModule = {
   paneTemplates: [{
     id: "volatility-term-structure-pane", paneId: "volatility-term-structure",
     label: "VIX Curve", description: "Dated VIX tenor closes, the 3M/30D ratio history and the cross-asset volatility board.",
-    keywords: ["vix", "volatility", "curve", "contango", "backwardation", "vvix", "skew", "move"],
+    keywords: ["vix", "volatility", "vol", "curve", "contango", "backwardation", "vvix", "skew", "move"],
     shortcut: { prefix: "VIX" }, headless: volatilityHeadless,
     createInstance: () => ({ instanceId: "volatility:curve", title: "VIX", placement: "floating", settings: { initialTab: "curve" } }),
   }, {
     id: "volatility-board-pane", paneId: "volatility-term-structure",
     label: "Cross-asset Volatility", description: "Volatility index closes, daily changes and one-year percentiles.",
-    keywords: ["volatility", "cross asset", "vols", "vxn", "ovx", "gvz"],
+    keywords: ["volatility", "vol", "cross asset", "vols", "vxn", "ovx", "gvz"],
     shortcut: { prefix: "VOLS" }, headless: volatilityHeadless,
     createInstance: () => ({ instanceId: "volatility:board", title: "VOLS", placement: "floating", settings: { initialTab: "board" } }),
   }],

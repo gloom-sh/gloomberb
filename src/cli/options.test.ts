@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { parseCliGlobalArgs } from "./options";
+import { inferCliErrorOptions } from "./errors";
+import { cliPlainEnabled, plainByDefault, setCliColorEnabledOverride, setCliPlainOverride, setCliWidthOverride } from "../utils/cli-output";
 
 describe("parseCliGlobalArgs", () => {
   test("extracts global output and execution flags anywhere before --", () => {
@@ -24,6 +26,41 @@ describe("parseCliGlobalArgs", () => {
       yes: true,
       color: false,
     });
+  });
+
+  test("--plain and --no-plain decide plain output either way, the last one wins, and with neither NO_COLOR or a pipe does", async () => {
+    expect(parseCliGlobalArgs(["econ"]).options.plain).toBeNull();
+    expect(parseCliGlobalArgs(["econ", "--plain"]).options.plain).toBe(true);
+    expect(parseCliGlobalArgs(["--no-plain", "econ"]).options.plain).toBe(false);
+    expect(parseCliGlobalArgs(["econ", "--no-plain", "--plain"]).options.plain).toBe(true);
+    expect(parseCliGlobalArgs(["notes", "set", "AAPL", "--", "--plain"]).options.plain).toBeNull();
+    // An error printed before the arguments parse reads them the same way.
+    expect(inferCliErrorOptions(["econ", "--no-plain", "--limit", "x"]).plain).toBe(false);
+    expect(inferCliErrorOptions(["econ", "--plain"]).plain).toBe(true);
+
+    // NO_COLOR with a value turns it on; an empty one is the same as unset.
+    const terminal = { isTTY: true };
+    expect(plainByDefault({}, terminal)).toBe(false);
+    expect(plainByDefault({ NO_COLOR: "" }, terminal)).toBe(false);
+    expect(plainByDefault({ NO_COLOR: "1" }, terminal)).toBe(true);
+    expect(plainByDefault({ NO_COLOR: "true" }, terminal)).toBe(true);
+    expect(plainByDefault({}, { isTTY: false })).toBe(true);
+
+    // A pipe turns it on in the entry; --no-plain turns it back off, and no flag keeps the entry's choice.
+    const { dispatchCli } = await import("./index");
+    try {
+      setCliPlainOverride(plainByDefault({}, { isTTY: false }));
+      await dispatchCli([]);
+      expect(cliPlainEnabled()).toBe(true);
+      await dispatchCli(["--no-plain"]);
+      expect(cliPlainEnabled()).toBe(false);
+      await dispatchCli(["--plain"]);
+      expect(cliPlainEnabled()).toBe(true);
+    } finally {
+      setCliPlainOverride(null);
+      setCliColorEnabledOverride(null);
+      setCliWidthOverride(null);
+    }
   });
 
   test("takes help flags out of the arguments so a command never reads them as input", () => {

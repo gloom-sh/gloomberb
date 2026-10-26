@@ -1,6 +1,6 @@
 import { blendForContrast, blendForContrastOnSurfaces, blendHex, higherContrast } from "./color-utils";
 import { getTheme, DEFAULT_THEME, type Theme } from "./themes";
-import { roleColours } from "./ui-tokens";
+import { hoverColour, themeCssVariables } from "./ui-tokens";
 
 export type ThemeColors = Readonly<Omit<Theme, "name" | "description">>;
 
@@ -24,33 +24,10 @@ export const colors = new Proxy({ ...currentColors } as ThemeColors, {
   }),
 }) as ThemeColors;
 
-type ColorKey = keyof typeof colors;
-
 let currentThemeId = DEFAULT_THEME;
 let transientPreviewThemeId: string | null = null;
 let cssThemeId: string | null = null;
 let cssThemeDocument: unknown = null;
-
-const THEME_CSS_VARIABLES: Array<[ColorKey, string]> = [
-  ["bg", "--gloom-bg"],
-  ["panel", "--gloom-panel"],
-  ["border", "--gloom-border"],
-  ["borderFocused", "--gloom-border-focused"],
-  ["text", "--gloom-text"],
-  ["textDim", "--gloom-text-dim"],
-  ["textBright", "--gloom-text-bright"],
-  ["textMuted", "--gloom-text-muted"],
-  ["positive", "--gloom-positive"],
-  ["negative", "--gloom-negative"],
-  ["neutral", "--gloom-neutral"],
-  ["warning", "--gloom-warning"],
-  ["header", "--gloom-header"],
-  ["headerText", "--gloom-header-text"],
-  ["selected", "--gloom-selected"],
-  ["selectedText", "--gloom-selected-text"],
-  ["commandBg", "--gloom-command-bg"],
-  ["commandBorder", "--gloom-command-border"],
-];
 
 export function getCurrentThemeId(): string {
   return currentThemeId;
@@ -114,7 +91,7 @@ export function getChartIndicatorColor(index: number): string {
 
 /** Returns a hover background color derived from bg and selected */
 export function hoverBg(palette: ThemeColors = colors): string {
-  return blendHex(palette.bg, palette.selected, 0.5);
+  return hoverColour(palette);
 }
 
 /** Body-text contrast, which text on a hovered control keeps whatever the surface. */
@@ -145,11 +122,7 @@ function syncThemeCssVariables(): void {
   if (cssThemeId === currentThemeId && cssThemeDocument === documentLike) return;
   cssThemeId = currentThemeId;
   cssThemeDocument = documentLike;
-  for (const [key, name] of THEME_CSS_VARIABLES) {
-    style.setProperty(name, currentColors[key]);
-  }
-  style.setProperty("--gloom-hover-bg", hoverBg());
-  for (const [name, value] of roleColours(currentColors)) style.setProperty(name, value);
+  for (const [name, value] of themeCssVariables(currentColors)) style.setProperty(name, value);
 }
 
 export function commandBarBg(palette: ThemeColors = colors): string {
@@ -316,6 +289,14 @@ export function priceColor(value: number, palette: ThemeColors = colors): string
   if (value > 0) return palette.positive;
   if (value < 0) return palette.negative;
   return palette.neutral;
+}
+
+/**
+ * `priceColor` for a figure as it is printed, to `digits` decimals: a move that
+ * rounds to zero (0.00%, never -0.00%) is neutral, not red or green.
+ */
+export function shownPriceColor(value: number, digits: number, palette: ThemeColors = colors): string {
+  return priceColor(Number(value.toFixed(digits)), palette);
 }
 
 const TONE_TINT = 0.18;

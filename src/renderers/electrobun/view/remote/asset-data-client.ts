@@ -1,5 +1,5 @@
 import type { CapabilityManifest } from "../../../../capabilities";
-import type { NewsArticle, NewsQuery } from "../../../../news/types";
+import type { NewsArticle, NewsPage, NewsQuery } from "../../../../news/types";
 import type { DataProvider } from "../../../../types/data-provider";
 import type { TickerFinancials } from "../../../../types/financials";
 import { backendRequest, getElectrobunBackendInitSnapshot, subscribeBackendCapability } from "../backend-rpc";
@@ -14,6 +14,7 @@ const ASSET_DATA_REQUEST_TIMEOUT_MS = 115_000;
 
 export type RemoteAssetDataClient = DataProvider & {
   getNews(query: NewsQuery): Promise<NewsArticle[]>;
+  getNewsPage(query: NewsQuery): Promise<NewsPage>;
 };
 
 interface RemoteAssetDataClientBase {
@@ -21,6 +22,7 @@ interface RemoteAssetDataClientBase {
   name: string;
   getCachedFinancialsForTargets: NonNullable<DataProvider["getCachedFinancialsForTargets"]>;
   getNews(query: NewsQuery): Promise<NewsArticle[]>;
+  getNewsPage(query: NewsQuery): Promise<NewsPage>;
   subscribeQuotes: NonNullable<DataProvider["subscribeQuotes"]>;
 }
 
@@ -119,7 +121,7 @@ export function createRemoteAssetDataClient(): RemoteAssetDataClient {
 
   const base: RemoteAssetDataClientBase = {
     id: "desktop-backend",
-    name: "Gloomberb Backend",
+    name: "Gloom Backend",
     getCachedFinancialsForTargets: (targets, options) => (
       hasRendererOperation(assetDataOperations, "getCachedFinancialsForTargets")
         ? invoke<Map<string, TickerFinancials>>(ASSET_DATA_CAPABILITY_ID, "getCachedFinancialsForTargets", { targets, options })
@@ -129,6 +131,11 @@ export function createRemoteAssetDataClient(): RemoteAssetDataClient {
       hasRendererOperation(newsOperations, "fetchNews")
         ? invoke<NewsArticle[]>(NEWS_CAPABILITY_ID, "fetchNews", { query })
         : Promise.resolve([])
+    ),
+    getNewsPage: (query) => (
+      hasRendererOperation(newsOperations, "fetchNewsPage")
+        ? invoke<NewsPage>(NEWS_CAPABILITY_ID, "fetchNewsPage", { query })
+        : Promise.reject(new Error("News is unavailable."))
     ),
     subscribeQuotes: (targets, onQuote) => {
       if (!hasRendererOperation(assetDataOperations, "subscribeQuotes")) return () => {};

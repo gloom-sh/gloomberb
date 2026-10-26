@@ -32,6 +32,8 @@ export interface OptionTableRow {
   put?: OptionContract;
   /** Solved from quote midpoints; the call and put at a strike share it. */
   impliedVolatility?: number;
+  /** `impliedVolatility` was filled from neighbouring strikes, not solved from a quote (see `ChainVolatilities.filled`). */
+  impliedVolatilityFilled?: boolean;
   callGreeks?: OptionValuation;
   putGreeks?: OptionValuation;
   /** Time value as a share of spot per year (see `carry.ts`); null when it cannot be read. */

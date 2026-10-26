@@ -16,6 +16,7 @@ import {
   sortCachedRecords,
 } from "./cache";
 import { noProviderError, type ProviderMissNote } from "../provider-errors";
+import { quoteServedFromSavedCopy, servedFromSavedCopy } from "../../data/saved-copies";
 import { withBrokerTimeout } from "./brokers";
 import {
   hasMeaningfulProfile,
@@ -166,7 +167,8 @@ export class ProviderRouterFinancialRoutes {
 
     if (cached.value) {
       const brokerResult = await withBrokerTimeout(this.deps.primaryRoutes.fetchBrokerFinancials(ticker, exchange, context));
-      const providerResult = await this.deps.primaryRoutes.fetchProviderFinancials(ticker, exchange, context);
+      const refresh: ProviderMissNote = {};
+      const providerResult = await this.deps.primaryRoutes.fetchProviderFinancials(ticker, exchange, context, refresh);
       const merged = mergeFinancials(
         brokerResult?.value ?? cached.brokerRecord?.value ?? null,
         context?.statementHistory === "extended"
@@ -176,7 +178,14 @@ export class ProviderRouterFinancialRoutes {
       if (isOptionTicker && !merged?.quote) {
         return quoteOnlyFinancials(merged ?? cached.value);
       }
-      return merged ?? cached.value;
+      const answer = merged ?? cached.value;
+      // The refresh failed and the saved copy answers: marked with when its
+      // oldest part was saved, and its quote too unless a broker's live one
+      // replaced it, since the quote is what a report's closing line dates.
+      const saved = cached.providerRecords?.map((record) => record.fetchedAt) ?? [];
+      return !providerResult && refresh.failure !== undefined && cached.providerValue && saved.length > 0
+        ? savedFinancials(answer, Math.min(...saved), !brokerResult?.value?.quote)
+        : answer;
     }
 
     const brokerResult = await withBrokerTimeout(this.deps.primaryRoutes.fetchBrokerFinancials(ticker, exchange, context));
@@ -229,7 +238,10 @@ export class ProviderRouterFinancialRoutes {
     if (providerQuote) {
       return providerQuote.value;
     }
-    if (cached) return cached.value;
+    if (cached) {
+      // The refresh failed rather than finding nothing newer: the saved copy answers, and says so.
+      return misses.failure !== undefined ? quoteServedFromSavedCopy(cached.value, cached.fetchedAt) : cached.value;
+    }
     // No source has a current quote: the last price one answered with, flagged
     // stale and dated by its own time, rather than none.
     if (misses.lastKnownQuote) return misses.lastKnownQuote;
@@ -362,4 +374,10 @@ export class ProviderRouterFinancialRoutes {
   ): TickerFinancials | null {
     return this.readCachedMergedFinancialsSelection(ticker, exchange, context, allowExpired, options).value;
   }
+}
+
+/** Financials as served from their saved copy, with their quote when it is the saved one. */
+function savedFinancials(value: TickerFinancials, savedAt: number, savedQuote: boolean): TickerFinancials {
+  const served = servedFromSavedCopy(value, savedAt);
+  return savedQuote && served.quote ? { ...served, quote: quoteServedFromSavedCopy(served.quote, savedAt) } : served;
 }

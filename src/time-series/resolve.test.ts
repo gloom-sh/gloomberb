@@ -1,3 +1,4 @@
+import type { BrokerContractRef } from "../types/instrument";
 import { FINANCIAL_VINTAGE_NOTICE } from "../utils/financial-statements";
 import { describe, expect, setSystemTime, spyOn, test } from "bun:test";
 import { apiClient } from "../api-client";
@@ -8,12 +9,10 @@ import { buildCustomChartPreset } from "../plugins/builtin/chart-composer/preset
 import { createTestDataProvider, createTestFinancials } from "../test-support/data-provider";
 import type { TickerFinancials } from "../types/financials";
 import { chartQuoteOverrideKeyForSource } from "./live-quotes";
-import {
-  ChartResolveCache,
-  mergePriceHistoryWindows,
-  resolveChartSpecData,
-  seedChartResolutionResult,
-} from "./resolve";
+import { resolveChartSpecData } from "./resolve";
+import { ChartResolveCache } from "./resolve-context";
+import { seedChartResolutionResult } from "./chart-seed";
+import { mergePriceHistoryWindows, priceHistoryWindowsAgree } from "./history-acquisition";
 import { CHART_SPEC_VERSION, type ChartSeriesSpec, type ChartSpec } from "./types";
 
 function chartSeries(input: Pick<ChartSeriesSpec, "source"> & Partial<ChartSeriesSpec>): ChartSeriesSpec {
@@ -425,6 +424,25 @@ describe("resolveChartSpecData", () => {
     expect(resolved.series[0]?.points[0]?.value).toBe(42);
   });
 
+  test("a log scale that hides values names the series, never the panel's id", async () => {
+    const spec: ChartSpec = chartSpec({
+      viewport: { range: "1M", resolution: "auto" },
+      panels: [{ id: "main", scale: "log" }],
+      series: [chartSeries({ id: "plugin-series", source: { kind: "capability", capabilityId: "charts.test", seriesId: "one" } })],
+    });
+    const result = await resolveChartSpecData(spec, {
+      dataProvider: null,
+      loadFredSeries: async () => fredLoad(),
+      now: new Date("2026-02-01"),
+      resolveCapabilitySeries: async () => ({
+        id: "provider-id", label: "Provider Label", color: "#fff", unit: "value", unitGroup: "value", nativeFrequency: "daily",
+        dataShape: "scalar", style: "line", transform: "raw", axis: "left", panelId: "main", interpolation: "none",
+        points: [0, 5].map((value, day) => ({ date: new Date(Date.UTC(2026, 0, 10 + day)), observedAt: new Date(Date.UTC(2026, 0, 10 + day)), value })),
+      }),
+    });
+    expect(result.warnings).toContain("Provider Label: 1 non-positive observation is hidden on the logarithmic scale.");
+  });
+
   test("keeps a panned dataset loaded to its newest observation, so the view can go back to it", async () => {
     // A daily series published days late, served only for the dates asked, as the map's series route does.
     const newest = Date.parse("2026-02-26T00:00:00.000Z");
@@ -606,7 +624,7 @@ describe("resolveChartSpecData", () => {
     // series editor agree on what the user added.
     expect(result.series.map((entry) => [entry.id, entry.points.length])).toEqual([["price", 0]]);
     expect(result.errors).toEqual([
-      "price: Requested 5m price history is unavailable for TEST. Choose Auto or a supported interval.",
+      "TEST: Requested 5m price history is unavailable for TEST.",
     ]);
   });
 
@@ -649,6 +667,48 @@ describe("resolveChartSpecData", () => {
       { resolution: "15m", maxRange: "1M" },
       { resolution: "1h", maxRange: "3M" },
     ]);
+  });
+
+  test("a 4h chart asks its source for hourly bars and draws them four at a time from the open", async () => {
+    const requestedResolutions: string[] = [];
+    const session = (day: string) => Array.from({ length: 7 }, (_, index) => ({
+      date: new Date(Date.parse(`${day}T13:30:00Z`) + index * 3_600_000),
+      open: 100 + index, high: 101 + index, low: 99 + index, close: 100.5 + index, volume: 10,
+    }));
+    const provider = createTestDataProvider({
+      getTickerFinancials: async () => emptyFinancials(),
+      getChartResolutionSupport: () => [{ resolution: "1h", maxRange: "1Y" }, { resolution: "1d", maxRange: "5Y" }],
+      getPriceHistoryForResolution: async (_symbol, _exchange, _range, resolution) => {
+        requestedResolutions.push(resolution);
+        return [...session("2026-10-15"), ...session("2026-10-16")];
+      },
+    });
+    const spec = (resolution: ChartSpec["viewport"]["resolution"]): ChartSpec => chartSpec({
+      viewport: { range: "1W", resolution },
+      series: [chartSeries({ source: { kind: "security", instrument: { symbol: "AAPL", exchange: "NASDAQ" }, fieldId: "market.close" } })],
+    });
+    const sources = { dataProvider: provider, now: new Date("2026-10-16T21:00:00Z"), loadFredSeries: async () => fredLoad() };
+
+    const result = await resolveChartSpecData(spec("4h"), sources);
+    expect(requestedResolutions).toEqual(["1h"]);
+    expect(result.barSize).toBe("4h");
+    const [price] = result.series;
+    expect(price?.barSize).toBe("4h");
+    expect(price?.timeBasis?.cadenceMs).toBe(4 * 3_600_000);
+    expect(price?.points.map((point) => [point.date.toISOString(), point.value])).toEqual([
+      ["2026-10-15T13:30:00.000Z", 103.5], ["2026-10-15T17:30:00.000Z", 106.5],
+      ["2026-10-16T13:30:00.000Z", 103.5], ["2026-10-16T17:30:00.000Z", 106.5],
+    ]);
+
+    // A source without hourly bars cannot build them: the chart says so and draws Auto.
+    const daily = createTestDataProvider({
+      getTickerFinancials: async () => emptyFinancials(),
+      getChartResolutionSupport: () => [{ resolution: "1d", maxRange: "5Y" }],
+      getPriceHistoryForResolution: async () => session("2026-10-16").slice(0, 1),
+    });
+    const fallback = await resolveChartSpecData(spec("4h"), { ...sources, dataProvider: daily });
+    expect(fallback.barSize).toBeUndefined();
+    expect(fallback.warnings).toContain("4H data is unavailable for this range. Auto resolution was used instead.");
   });
 
   test("picks a supported interval when the range preset is unsupported", async () => {
@@ -811,7 +871,7 @@ describe("resolveChartSpecData", () => {
       cache,
     );
     expect(manual.errors).toEqual([
-      "price: Requested 1m price history is unavailable for TEST:XNAS. Choose Auto or a supported interval.",
+      "TEST:XNAS: Requested 1m price history is unavailable for TEST:XNAS.",
     ]);
 
     const auto = await resolveChartSpecData(
@@ -913,6 +973,45 @@ describe("resolveChartSpecData", () => {
     expect(result.resolution).toBe("1mo");
     expect(result.resolutionSupport).toContainEqual({ resolution: "1wk", maxRange: "5Y" });
     expect(result.warnings).toContain("1WK data is unavailable for this range. Auto resolution was used instead.");
+  });
+
+  test("a routing exchange such as SMART takes its session clock from the quote's listing", async () => {
+    const source = {
+      kind: "security" as const,
+      instrument: { symbol: "NVDA", exchange: "SMART" },
+      fieldId: "market.ohlcv",
+    };
+    const provider = createTestDataProvider({
+      getPriceHistoryForResolution: async () => [
+        { date: new Date("2026-10-15T19:45:00Z"), open: 215, high: 216, low: 214, close: 215 },
+        { date: new Date("2026-10-16T13:30:00Z"), open: 214, high: 215, low: 213, close: 214 },
+      ],
+    });
+    const spec: ChartSpec = chartSpec({
+      viewport: { range: "1W", resolution: "15m" },
+      series: [{ id: "price", source, style: "candles", transform: "raw", axis: "left", panelId: "main", interpolation: "none" }],
+    });
+    const result = await resolveChartSpecData(spec, {
+      dataProvider: provider,
+      now: new Date("2026-10-16T20:00:00Z"),
+      quoteOverrides: new Map([[chartQuoteOverrideKeyForSource(source), {
+        symbol: "NVDA", price: 214, currency: "USD", change: 1, changePercent: 0.5, lastUpdated: Date.parse("2026-10-16T19:55:00Z"), exchangeName: "NASDAQ",
+      }]]),
+      loadFredSeries: async () => fredLoad(),
+    });
+    expect(result.series[0]?.timeBasis).toMatchObject({ kind: "market", timeZone: "America/New_York", exchange: "NASDAQ" });
+    // Without a quote naming the venue, a SMART-routed dollar listing still trades on the US session.
+    const unquoted = await resolveChartSpecData(spec, { dataProvider: provider, now: new Date("2026-10-16T20:00:00Z"), loadFredSeries: async () => fredLoad() });
+    expect(unquoted.series[0]?.timeBasis).toMatchObject({ kind: "market", timeZone: "America/New_York" });
+    // Its sessions are the venue's too, so the day view and VWAP know when the day opened.
+    expect(result.series[0]?.listing).toEqual({ symbol: "NVDA", exchange: "NASDAQ" });
+    expect(unquoted.series[0]?.listing).toEqual({ symbol: "NVDA", exchange: "NYSE" });
+    // A dollar option names no venue; it trades on the US session too.
+    const optionSource = { kind: "security" as const, fieldId: "market.ohlcv", instrument: { symbol: "NVDA261218C00200000", exchange: "",
+      instrument: { brokerId: "aries", symbol: "NVDA", localSymbol: "NVDA261218C00200000", secType: "OPT", currency: "USD", right: "C" as const, strike: 200, lastTradeDateOrContractMonth: "20261218", multiplier: "100" } } };
+    const option = await resolveChartSpecData({ ...spec, series: [{ ...spec.series[0]!, source: optionSource }] }, { dataProvider: provider, now: new Date("2026-10-16T20:00:00Z"), loadFredSeries: async () => fredLoad() });
+    expect(option.series[0]?.timeBasis).toMatchObject({ kind: "market", timeZone: "America/New_York" });
+    expect(option.series[0]?.listing).toEqual({ symbol: "NVDA261218C00200000", exchange: "NYSE" });
   });
 
   test("keeps the snapshot exchange when a newer quote omits it", async () => {
@@ -2624,7 +2723,8 @@ describe("mergePriceHistoryWindows", () => {
     ];
     const incoming = [
       point("2026-07-27T22:00:00Z", 111),
-      point("2026-07-29T13:30:00Z", 999),
+      // A revision of the session, not a close on another split basis (priceHistoryWindowsAgree).
+      point("2026-07-29T13:30:00Z", 117),
       point("2026-07-29T22:00:00Z", 121),
     ];
 
@@ -2635,6 +2735,20 @@ describe("mergePriceHistoryWindows", () => {
         );
       }
     }
+  });
+
+  test("a window on another split basis is dropped, not merged into the new one", () => {
+    // NRDY around its 1-for-15 reverse split of 19 Aug 2026: a window acquired the evening
+    // before, and the next day's tail with the same session on the new basis.
+    const point = (date: string, close: number) => ({ date: new Date(date), close });
+    const before = [point("2026-08-14T00:00:00Z", 0.7071), point("2026-08-17T00:00:00Z", 0.6855), point("2026-08-18T00:00:00Z", 0.6539)];
+    const after = [point("2026-08-18T04:00:00Z", 9.809), point("2026-08-19T04:00:00Z", 10.1)];
+    expect(priceHistoryWindowsAgree(before, after, "1d")).toBe(false);
+    expect(mergePriceHistoryWindows(before, after, "1d").map((bar) => bar.close)).toEqual([9.809, 10.1]);
+    // A revised close, or windows that share no session, merge as before.
+    const revised = [point("2026-08-18T00:00:00Z", 0.66), point("2026-08-19T00:00:00Z", 0.67)];
+    expect(mergePriceHistoryWindows(before, revised, "1d").map((bar) => bar.close)).toEqual([0.7071, 0.6855, 0.66, 0.67]);
+    expect(priceHistoryWindowsAgree(before, [point("2026-08-20T00:00:00Z", 9.94)], "1d")).toBe(true);
   });
 });
 
@@ -2707,9 +2821,9 @@ describe("one-day charts show the latest session", () => {
   test("asks US listings for extended hours and falls back to the regular session when they are not served", async () => {
     const requests: Array<string | undefined> = [];
     const bars = [...hourlyBars("2026-10-01T13:30:00Z", "2026-10-01T19:30:00Z", 330), ...hourlyBars("2026-10-02T08:00:00Z", "2026-10-02T23:00:00Z", 333)];
-    const resolveExtended = (symbol: string, exchange: string, served: boolean) => resolveChartSpecData(chartSpec({
+    const resolveExtended = (symbol: string, exchange: string, served: boolean, contract?: BrokerContractRef) => resolveChartSpecData(chartSpec({
       viewport: { range: "1D", resolution: "1h", extendedHours: true },
-      series: [chartSeries({ style: "candles", source: { kind: "security", instrument: { symbol, exchange }, fieldId: "market.ohlcv" } })],
+      series: [chartSeries({ style: "candles", source: { kind: "security", instrument: { symbol, exchange, ...(contract ? { instrument: contract } : {}) }, fieldId: "market.ohlcv" } })],
     }), {
       dataProvider: createTestDataProvider({
         getPriceHistoryForResolutionWithMetadata: async (_symbol, _exchange, _range, resolution, context) => {
@@ -2731,6 +2845,12 @@ describe("one-day charts show the latest session", () => {
     expect(unserved.warnings).toContain("AAPL:XNAS: pre-market and after-hours bars are unavailable; the chart shows the regular session.");
     await resolveExtended("7203.T", "JPX", true);
     expect(requests).toEqual(["extended", "extended", undefined]);
+    // A broker's dollar contract routed through SMART asks too; its options do not.
+    requests.length = 0;
+    const routed = { brokerId: "aries", brokerInstanceId: "sim", symbol: "AAPL", secType: "STK", exchange: "SMART", currency: "USD" };
+    expect((await resolveExtended("AAPL", "SMART", true, routed)).viewport?.start).toEqual(new Date("2026-10-02T08:00:00Z"));
+    await resolveExtended("AAPL261218C00300000", "", true, { ...routed, localSymbol: "AAPL261218C00300000", secType: "OPT", right: "C", strike: 300, lastTradeDateOrContractMonth: "20261218", multiplier: "100" });
+    expect(requests).toEqual(["extended", undefined]);
   });
 
   test("keeps a rolling day for crypto", async () => {

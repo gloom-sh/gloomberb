@@ -9,7 +9,8 @@ import { lockNoteLines } from "./lock-note";
 import { createHeadlessPaneContext } from "./headless";
 import type { HeadlessPaneContext } from "../../types/headless";
 import { lockNoteReason } from "../../plugins/builtin/shared/pro-lock-note";
-import { renderDesktopShot, type PaneScreenshotResult } from "./screenshot";
+import { renderDesktopShot } from "./screenshot-render";
+import type { PaneScreenshotResult } from "./screenshot-types";
 import { deriveRenderedFreshness, formatFreshnessLine, type ReportFreshness } from "./freshness";
 import { exportTextTable, reportFooterLines, type CliReportTables } from "../report-tables";
 import { declaredReportFreshness, renderedReportFailure, renderedReportFreshness, renderedReportNotices, renderedReportObservations } from "./report-notices";
@@ -222,7 +223,8 @@ export async function buildDomPaneReportFromRender(
   const truncated = truncationReasons.length > 0
     || (result.render.reportTruncationReasons ? false : result.render.truncated);
   const failureReason = renderedFailureReason(result, rows);
-  const unavailableSymbols = failureReason && result.symbols.length > 0 ? result.symbols : [];
+  // A pane that drew rows beside an error or empty marker ("Quote unavailable.") has data: only one with none has no data for its symbols.
+  const unavailableSymbols = failureReason && rows.length === 0 && result.symbols.length > 0 ? result.symbols : [];
   // What the view leaves out and how to see more, such as OMON's strikes outside its window.
   const rendered = renderedReportNotices(result.render.semanticUi ?? []);
   const notices = [...(resolved.pane.reportNotices?.(resolved.instance.settings ?? {}) ?? []), ...rendered.notices];
@@ -300,14 +302,13 @@ export async function buildDomPaneReportFromRender(
 /** The report's closing lines; a locked view, which read nothing, cites no source. */
 export function appendDomReportFooter(
   text: string,
-  elapsedMs: number,
   view: DomReportView,
   freshness: ReportFreshness | undefined,
 ): string {
   return [
     text,
     "",
-    domReportNote(elapsedMs, view),
+    domReportNote(view),
     ...(freshness ? [cliStyles.muted(formatFreshnessLine(freshness))] : []),
   ].join("\n");
 }
@@ -320,16 +321,19 @@ export function domReportView(data: Readonly<Record<string, unknown>>): DomRepor
   return data.truncated === true ? "clipped" : data.everyRow === true ? "every-row" : data.wholePane === true ? "whole" : "visible";
 }
 
-/** What a rendered-view report says about where its values come from. */
-export function domReportNote(elapsedMs: number, view: DomReportView): string {
-  const source = view === "locked"
+/**
+ * What a rendered-view report says about where its values come from. How long
+ * the render took is no part of it: that is the machine's, not the data's
+ * (`elapsedMs` in JSON keeps it).
+ */
+export function domReportNote(view: DomReportView): string {
+  return view === "locked"
     ? "Rendered view: the pane is locked, so no values were read."
     : view === "every-row"
     ? "Rendered view: every row of the pane's table, including rows scrolled out of view."
     : view === "whole"
     ? "Rendered view: the pane grown to fit the whole page."
     : `Rendered view: values come from the visible pane. ${view === "clipped" ? "The rendered view is clipped." : "The rendered view may be clipped."}`;
-  return `${source} Render time: ${elapsedMs} ms.`;
 }
 
 function failedDomReport(

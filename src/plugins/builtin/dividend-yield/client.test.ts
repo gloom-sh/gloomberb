@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { buildDividendMetrics, fetchDividendData, repriceDividendMetrics, toDividendPayment } from "./client";
 import { dividendReferencePrice } from "../../../utils/trailing-dividend";
 import type { DividendPayment } from "./types";
+import type { DividendSummary } from "../../../api-client/market-discovery";
 import type { HeadlessPaneContext } from "../../../types/plugin";
 import { setHttpFetchTransport } from "../../../utils/http-transport";
 import { createDividendYieldHeadless, projectDividendYieldHeadless } from "./headless";
@@ -41,6 +42,38 @@ describe("cash distribution calculations", () => {
     });
     // An incomplete initial year must not turn missing observations into a cut.
     expect(buildDividendMetrics([payment("2023-08-01")], null, 100, { now: afterSuspension }).growth1Y).toBeNull();
+  });
+
+  test("a payout over zero or negative earnings is not meaningful, whatever the source states", () => {
+    const summary = (trailingEps: number | undefined, payoutRatio: number | null = 20): DividendSummary => ({
+      trailingAnnualDividendRate: null, trailingAnnualDividendYield: null, forwardAnnualDividendRate: null,
+      exDividendDate: null, dividendDate: null, currency: "USD", payoutRatio, ...(trailingEps === undefined ? {} : { trailingEps }),
+    });
+    const history = [payment("2026-08-01", 1)];
+    expect(buildDividendMetrics(history, summary(-1.3), 10, { now })).toMatchObject({ payoutRatio: null, payoutNotMeaningful: true });
+    expect(buildDividendMetrics(history, summary(0), 10, { now })).toMatchObject({ payoutRatio: null, payoutNotMeaningful: true });
+    // A loss makes it N/M even where the source states none; unknown earnings leave the figure as served.
+    expect(buildDividendMetrics(history, summary(-1.3, null), 10, { now }).payoutNotMeaningful).toBe(true);
+    expect(buildDividendMetrics(history, summary(2.5, 0.4), 10, { now })).toMatchObject({ payoutRatio: 0.4, payoutNotMeaningful: false });
+    expect(buildDividendMetrics(history, summary(undefined, 0.4), 10, { now })).toMatchObject({ payoutRatio: 0.4, payoutNotMeaningful: false });
+  });
+
+  test("a regular payer's yield says how many payments it counts when its history has a hole", () => {
+    const late = new Date("2026-10-26T12:00:00Z");
+    // Monthly ex-dates from November 2024 to October 2026, less the given months of 2026.
+    const monthly = (missing: number[] = []) => Array.from({ length: 24 }, (_, index) => ({ year: 2024 + Math.floor((index + 10) / 12), month: (index + 10) % 12 + 1 }))
+      .filter(({ year, month }) => !(year === 2026 && missing.includes(month)))
+      .map(({ year, month }) => payment(`${year}-${String(month).padStart(2, "0")}-10`, 0.1));
+    // ECC: monthly, with no July, August or September 2026 ex-dates in the source, so nine in the year.
+    expect(buildDividendMetrics(monthly([7, 8, 9]), null, 10, { now: late }).trailingPayments).toEqual({ counted: 9, expected: 12, cadence: "monthly" });
+    expect(buildDividendMetrics(monthly(), null, 10, { now: late }).trailingPayments).toBeNull();
+    // A quarterly payer is read against four; an irregular one, a stopped dividend and a history that failed have nothing to say.
+    const quarterly = ["2024-11-10", "2025-02-10", "2025-05-10", "2025-08-10", "2025-11-10", "2026-02-10", "2026-05-10", "2026-08-10"].map((date) => payment(date));
+    expect(buildDividendMetrics(quarterly, null, 10, { now: late }).trailingPayments).toBeNull();
+    expect(buildDividendMetrics(quarterly.filter((entry) => entry.exDate.toISOString() !== "2026-05-10T00:00:00.000Z"), null, 10, { now: late }).trailingPayments)
+      .toEqual({ counted: 3, expected: 4, cadence: "quarterly" });
+    expect(buildDividendMetrics([payment("2024-03-01"), payment("2026-09-01")], null, 10, { now: late }).trailingPayments).toBeNull();
+    expect(buildDividendMetrics(monthly([7, 8, 9]), null, 10, { now: late, historyAvailable: false }).trailingPayments).toBeNull();
   });
 
   test("sends the selected listing unchanged to the backend", async () => {

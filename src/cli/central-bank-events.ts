@@ -19,5 +19,5 @@ export function centralBankEventsMessage(typed: string): string | null {
   if (!bank || LISTED_SYMBOLS.has(typed.trim().replace(/^\$/, "").toUpperCase())) return null;
   const next = bank.id === "US" ? " and the next FOMC date" : bank.id === "CN" ? " and the next LPR fixing"
     : bank.id === "SA" ? "" : " and the next decision";
-  return `${bank.id === "US" ? "Fed" : bank.short} meetings are not listed; CBR shows the rate${next} (gloomberb fn CBR).`;
+  return `${bank.id === "US" ? "Fed" : bank.short} meetings are not listed; CBR shows the rate${next} (gloom fn CBR).`;
 }

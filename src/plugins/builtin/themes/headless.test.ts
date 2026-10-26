@@ -55,6 +55,34 @@ test("a snapshot over 30 minutes old, a trading session and an older server date
   setSystemTime(new Date("2026-10-12T15:47:00Z"));
   expect((await load({ session: "REGULAR", regularSessionDate: null, regularSessionClosedAt: null }, [member("LMT", 512)])).line)
     .toBe("Source: Gloom Cloud · Mon 12 Oct 2026 15:35 UTC · 15 min delayed");
+  // A Pro account's board is priced from the server's live read; a delayed one, or an older server's, is not.
+  const trading = { session: "REGULAR" as const, regularSessionDate: null, regularSessionClosedAt: null };
+  expect((await load({ ...trading, access: "realtime" }, [member("LMT", 512)])).line).toBe("Source: Gloom Cloud · Mon 12 Oct 2026 15:35 UTC · live");
+  expect((await load({ ...trading, access: "delayed" }, [member("LMT", 512)])).line).toBe("Source: Gloom Cloud · Mon 12 Oct 2026 15:35 UTC · 15 min delayed");
+});
+
+test("a Pro account's report is live only while a session trades: as of the close it names no feed, and a delayed account's stays delayed", async () => {
+  const friday = { session: "CLOSED" as const, regularSessionDate: "2026-10-23", regularSessionClosedAt: Date.UTC(2026, 9, 23, 20) };
+  const line = async (now: string, metadata: Partial<ThemesPayload>, argument = "defense") => {
+    setSystemTime(new Date(now));
+    return (await load({ ...metadata, asOf: new Date(Date.now() - 12 * 60_000).toISOString() }, [lmt], argument)).line;
+  };
+  // The evening after Friday's close and the Sunday after it, for one theme and for the board of themes.
+  const pro = { Fri: "Source: Gloom Cloud · Fri 23 Oct 2026 20:00 UTC · after hours · snapshot 12m ago",
+    Sun: "Source: Gloom Cloud · US trading day Fri 23 Oct 2026 close · markets closed until Mon · snapshot 12m ago" };
+  for (const [now, expected] of [["2026-10-23T21:30:00Z", pro.Fri], ["2026-10-25T14:00:00Z", pro.Sun]]) {
+    for (const argument of ["defense", ""]) {
+      expect(await line(now!, { ...friday, access: "realtime" }, argument)).toBe(expected!);
+      expect(await line(now!, { ...friday, access: "delayed" }, argument)).toContain("15 min delayed");
+    }
+  }
+  // While the session trades it is live for Pro, and delayed for everyone else.
+  const trading = { session: "REGULAR" as const, regularSessionDate: null, regularSessionClosedAt: null };
+  expect(await line("2026-10-23T15:47:00Z", { ...trading, access: "realtime" })).toBe("Source: Gloom Cloud · Fri 23 Oct 2026 15:35 UTC · live");
+  expect(await line("2026-10-23T15:47:00Z", { ...trading, access: "delayed" })).toContain("15 min delayed");
+  // A closed board whose snapshot is old reads stale, never live.
+  setSystemTime(new Date("2026-10-25T14:00:00Z"));
+  expect((await load({ ...friday, access: "realtime", asOf: "2026-10-25T13:05:00.000Z" }, [lmt])).line).toBe("Source: Gloom Cloud · Sun 25 Oct 2026 13:05 UTC · stale (55 min old)");
 });
 
 test("the title names the basket shown, and the word that matched it when that is not the basket's name", async () => {

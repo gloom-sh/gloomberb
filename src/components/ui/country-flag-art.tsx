@@ -142,6 +142,38 @@ const HK_PETALS = Array.from({ length: 5 }, (_, index) => (
 
 const MY_STRIPES = [1, 3, 5].map((index) => `M0,${(index * FLAG_HEIGHT) / 7}h${FLAG_WIDTH}v${FLAG_HEIGHT / 7}h-${FLAG_WIDTH}z`).join("");
 
+/** A serrated white hoist of `teeth` points, from `base` to `tip` across, as Bahrain's. */
+function serration(teeth: number, base: number, tip: number): string {
+  const step = FLAG_HEIGHT / teeth;
+  return `M0,0H${base}${Array.from({ length: teeth }, (_, index) => `L${tip},${(index * step + step / 2).toFixed(2)}L${base},${((index + 1) * step).toFixed(2)}`).join("")}H0Z`;
+}
+
+/** Quarters of a field, top left, top right, bottom left, bottom right. */
+function Quarters({ fills }: { fills: readonly [string, string, string, string] }) {
+  const w = FLAG_WIDTH / 2;
+  const h = FLAG_HEIGHT / 2;
+  return (
+    <>
+      {fills.map((fill, index) => (
+        <rect key={index} x={(index % 2) * w} y={Math.floor(index / 2) * h} width={w + 0.02} height={h + 0.02} fill={fill} />
+      ))}
+    </>
+  );
+}
+
+const GR_STRIPES = [1, 3, 5, 7].map((index) => `M0,${(index * FLAG_HEIGHT) / 9}h${FLAG_WIDTH}v${FLAG_HEIGHT / 9}h-${FLAG_WIDTH}z`).join("");
+const VE_STARS = Array.from({ length: 8 }, (_, index) => {
+  const angle = Math.PI * (0.18 + (index * 0.64) / 7);
+  return star(15 - 5.2 * Math.cos(angle), 12.4 - 5.2 * Math.sin(angle), 0.9);
+}).join("");
+const HN_STARS = [[15, 10], [10.6, 8.2], [10.6, 11.8], [19.4, 8.2], [19.4, 11.8]].map(([cx, cy]) => star(cx!, cy!, 1.25)).join("");
+/** Morocco's seal: a pentagram drawn as five interlaced lines, one point up. */
+const MA_PENTAGRAM = `M${[0, 2, 4, 1, 3].map((index) => {
+  const angle = (Math.PI * 2 * index) / 5 - Math.PI / 2;
+  return `${(15 + 4.4 * Math.cos(angle)).toFixed(2)},${(10.3 + 4.4 * Math.sin(angle)).toFixed(2)}`;
+}).join("L")}Z`;
+const UZ_STARS = [[9.6, 1.6], [11.6, 1.6], [13.6, 1.6], [11.6, 3.4], [13.6, 3.4], [13.6, 5.2]].map(([cx, cy]) => star(cx!, cy!, 0.62)).join("");
+
 /**
  * Hand-drawn at the size they are shown, the way a table shows them: a little
  * simpler than the real thing (7 stripes, a ring of dots) so each stays
@@ -446,4 +478,152 @@ export const FLAG_ART: Record<string, ReactNode> = {
       <path d={sunRays(15, 10, 2.6, 3.9, 16)} stroke="#f6b40e" strokeWidth=".7" />
     </>
   ),
+
+  // The euro area's members, for the calendars and boards that name them.
+  DE: <Bands colors={[BLACK, "#dd0000", "#ffce00"]} />,
+  FR: <Bands colors={["#002395", WHITE, "#ed2939"]} vertical />,
+  IT: <Bands colors={["#009246", WHITE, "#ce2b37"]} vertical />,
+  ES: <Bands colors={["#aa151b", "#f1bf00", "#aa151b"]} weights={[1, 2, 1]} />,
+  NL: <Bands colors={["#ae1c28", WHITE, "#21468b"]} />,
+  BE: <Bands colors={[BLACK, "#fdda24", "#ef3340"]} vertical />,
+  AT: <Bands colors={["#c8102e", WHITE, "#c8102e"]} />,
+  IE: <Bands colors={["#169b62", WHITE, "#ff883e"]} vertical />,
+  PT: (
+    <>
+      <Bands colors={["#006600", "#ff0000"]} weights={[2, 3]} vertical />
+      <circle cx="12" cy="10" r="3.6" fill="none" stroke={GOLD} strokeWidth="1.3" />
+      <path d="M10.6,8.2h2.8v2.6c0,1-.6,1.6-1.4,1.9c-.8-.3-1.4-.9-1.4-1.9z" fill={WHITE} stroke="#ff0000" strokeWidth=".5" />
+    </>
+  ),
+  FI: (
+    <>
+      <Field fill={WHITE} />
+      <NordicCross x={8.4} thickness={5} fill="#002f6c" />
+    </>
+  ),
+  GR: (
+    <>
+      <Field fill={WHITE} />
+      <path d={GR_STRIPES} fill="#0d5eaf" />
+      <rect width="11.1" height="11.1" fill="#0d5eaf" />
+      <path d="M4.44,0h2.22v11.1h-2.22zM0,4.44h11.1v2.22h-11.1z" fill={WHITE} />
+    </>
+  ),
+  LU: <Bands colors={["#ed2939", WHITE, "#00a1de"]} />,
+  EE: <Bands colors={["#0072ce", BLACK, WHITE]} />,
+  LV: <Bands colors={["#9e3039", WHITE, "#9e3039"]} weights={[2, 1, 2]} />,
+  LT: <Bands colors={["#fdb913", "#006a44", "#c1272d"]} />,
+
+  // The rest of Europe that boards and calendars show.
+  IS: (
+    <>
+      <Field fill="#02529c" />
+      <NordicCross x={8} thickness={4.6} fill={WHITE} />
+      <NordicCross x={9.1} thickness={2.4} fill="#dc1e35" />
+    </>
+  ),
+  BG: <Bands colors={[WHITE, "#00966e", "#d62612"]} />,
+  RU: <Bands colors={[WHITE, "#0039a6", "#d52b1e"]} />,
+
+  // Sovereign credit, oil and crop producers.
+  BH: (
+    <>
+      <Field fill="#ce1126" />
+      <path d={serration(5, 7.5, 11)} fill={WHITE} />
+    </>
+  ),
+  KW: (
+    <>
+      <Bands colors={["#007a3d", WHITE, "#ce1126"]} />
+      <path d="M0,0L7.5,6.67V13.33L0,20Z" fill={BLACK} />
+    </>
+  ),
+  IR: (
+    <>
+      <Bands colors={["#239f40", WHITE, "#da0000"]} />
+      <path d="M15,7.9V12.1M13.3,8.4C12.4,9.6 12.6,11.3 14,12M16.7,8.4C17.6,9.6 17.4,11.3 16,12" fill="none" stroke="#da0000" strokeWidth=".7" />
+    </>
+  ),
+  IQ: (
+    <>
+      <Bands colors={["#ce1126", WHITE, BLACK]} />
+      <path d="M11.2,8.6v2.6h1.8M14.1,8.6v2.6M15.6,11.2h1.4v-2.6M18.4,8.6v2.6" fill="none" stroke="#007a3d" strokeWidth=".75" />
+    </>
+  ),
+  CI: <Bands colors={["#f77f00", WHITE, "#009e60"]} vertical />,
+  DO: (
+    <>
+      <Quarters fills={["#002d62", "#ce1126", "#ce1126", "#002d62"]} />
+      <path d="M15,0V20M0,10H30" stroke={WHITE} strokeWidth="3.6" />
+    </>
+  ),
+  PA: (
+    <>
+      <Quarters fills={[WHITE, "#da121a", "#072357", WHITE]} />
+      <path d={star(7.5, 5, 2.3)} fill="#072357" />
+      <path d={star(22.5, 15, 2.3)} fill="#da121a" />
+    </>
+  ),
+  VE: (
+    <>
+      <Bands colors={["#ffcc00", "#00247d", "#cf142b"]} />
+      <path d={VE_STARS} fill={WHITE} />
+    </>
+  ),
+  BO: <Bands colors={["#d52b1e", "#f9e300", "#007934"]} />,
+  PY: (
+    <>
+      <Bands colors={["#d52b1e", WHITE, "#0038a8"]} />
+      <circle cx="15" cy="10" r="2.3" fill={WHITE} stroke="#0038a8" strokeWidth=".6" />
+      <path d={star(15, 10, 1.2)} fill="#f6b40e" />
+    </>
+  ),
+  HN: (
+    <>
+      <Bands colors={["#0073cf", WHITE, "#0073cf"]} />
+      <path d={HN_STARS} fill="#0073cf" />
+    </>
+  ),
+  BJ: (
+    <>
+      <Bands colors={["#fcd116", "#e8112d"]} />
+      <rect width="12" height={FLAG_HEIGHT} fill="#008751" />
+    </>
+  ),
+  ET: (
+    <>
+      <Bands colors={["#078930", "#fcdd09", "#da121a"]} />
+      <circle cx="15" cy="10" r="4.6" fill="#0f47af" />
+      <path d={star(15, 10, 3.4, 5, 1.3)} fill="none" stroke="#fcdd09" strokeWidth=".7" />
+    </>
+  ),
+  UG: (
+    <>
+      <Bands colors={[BLACK, "#fcdc04", "#d90000", BLACK, "#fcdc04", "#d90000"]} />
+      <circle cx="15" cy="10" r="3.8" fill={WHITE} />
+      <path d="M14.2,8.2c.9-.8 2.1-.4 2.2.7l-.6.6v2.8h-.8v-2.4c-.6.1-1.2-.2-1.4-.7z" fill={BLACK} />
+    </>
+  ),
+  UZ: (
+    <>
+      <Bands colors={["#0099b5", "#ce1126", WHITE, "#ce1126", "#1eb53a"]} weights={[6.4, 0.4, 6.4, 0.4, 6.4]} />
+      <Crescent cx={5} cy={3.3} r={2.3} bite={2} shift={0.9} fill={WHITE} back="#0099b5" />
+      <path d={UZ_STARS} fill={WHITE} />
+    </>
+  ),
+  TN: (
+    <>
+      <Field fill="#e70013" />
+      <circle cx="15" cy="10" r="5" fill={WHITE} />
+      <Crescent cx={14.4} cy={10} r={3.75} bite={3} shift={0.95} fill="#e70013" back={WHITE} />
+      <path d={star(16, 10, 1.9, 5, undefined, 90)} fill="#e70013" />
+    </>
+  ),
+  MA: (
+    <>
+      <Field fill="#c1272d" />
+      <path d={MA_PENTAGRAM} fill="none" stroke="#006233" strokeWidth=".75" strokeLinejoin="round" />
+    </>
+  ),
+  CR: <Bands colors={["#002b7f", WHITE, "#ce1126", WHITE, "#002b7f"]} weights={[1, 1, 2, 1, 1]} />,
 };

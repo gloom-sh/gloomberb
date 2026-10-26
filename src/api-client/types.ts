@@ -480,6 +480,11 @@ export interface CloudPricePointPayload {
   low?: number;
   close: number;
   volume?: number;
+  /**
+   * One venue's count for a bar whose market volume is unavailable (a US session still trading, counted on IEX
+   * alone), served in place of `volume`.
+   */
+  venueVolume?: { venue: string; volume: number };
   /** A daily bar still forming when served: a coin's UTC day, or the trade date a future is trading. */
   partial?: boolean;
   /** A coin's daily bar whose prices were rebuilt from hourly bars; a day the source left empty has no volume. */
@@ -500,6 +505,55 @@ export interface CloudEconEventPayload {
   forecast: string | null;
   prior: string | null;
   impact: CloudEconImpact;
+  /** Rows the calendar adds beside its feeds: a central bank's kept decision or a statistics office's listed release. */
+  kind?: "central-bank-decision" | "statistics-release";
+  /** The publisher's own clock time and its IANA zone; null when it states no time. */
+  localTime?: string | null;
+  timeZone?: string;
+  /** Why a row has no time, when its publisher states none. */
+  timeNote?: string | null;
+  priorAsOf?: string | null;
+  referencePeriod?: string | null;
+  /** Who publishes the release (Freddie Mac for the 30-year mortgage rate), and its page when one is named. */
+  source?: { name: string; url?: string };
+  /**
+   * The indicator this release is of, the same from one release to the next
+   * (`us-unemployment-rate` on every month's row), where `id` names the one
+   * row. Absent from a server that names none; exports leave the column empty.
+   */
+  indicatorId?: string | null;
+  /**
+   * Where the forecast (the consensus) was read from, `week-feed` or
+   * `release-calendar`, and when that feed was read. Absent on a row with no
+   * forecast and on one kept before the read was recorded.
+   */
+  consensus?: { source: string; readAt: string } | null;
+}
+
+/** One currency's short-term rate, as GET /cloud/econ/short-rates serves it. */
+export interface CloudShortRate {
+  currency: string;
+  /** "SOFR", "TIIE 28d". */
+  name: string;
+  /** "overnight" or the term the rate is for. */
+  tenor: string;
+  tenorDays: number;
+  /** Days in the year the rate is quoted over. */
+  dayCountBasis: 360 | 365;
+  publisher: string;
+  sourceUrl: string;
+  /** Percent a year; null when it could not be read. */
+  value: number | null;
+  /** The day the rate is for. */
+  asOf: string | null;
+  fetchedAt: string | null;
+  stale: boolean;
+  unavailableReason: string | null;
+}
+
+export interface CloudShortRatesPayload {
+  generatedAt: string;
+  rates: CloudShortRate[];
 }
 
 /** CPI, payrolls and FOMC statement days as published, as GET /cloud/econ/release-days serves them. */
@@ -509,8 +563,17 @@ export interface CloudMacroReleaseDaysPayload {
   /** The last New York day the lists are complete for. */
   coveredThrough: string;
   sources: string[];
-  /** New York dates, oldest first. */
-  releases: Record<"cpi" | "jobs" | "fomc", string[]>;
+  /** New York dates, oldest first. Brazil's IPCA days when the server can vouch for them. */
+  releases: Record<"cpi" | "jobs" | "fomc", string[]> & { ipca?: string[] };
+  /** Each kind's figures by New York release day, for the days they are known. */
+  figures?: Partial<Record<"cpi" | "jobs" | "fomc" | "ipca", Record<string, {
+    event: string;
+    actual: string | null;
+    forecast: string | null;
+    prior: string | null;
+    /** Above the consensus (hot), below it (cool), at it (in-line); null without both. */
+    surprise: "hot" | "cool" | "in-line" | null;
+  }>>>;
 }
 
 export interface CloudFredObservationPayload {
@@ -523,6 +586,12 @@ export interface CloudFredObservationPayload {
   publisher?: string;
   /** When that publisher's value was first read, ISO in UTC. */
   publishedAt?: string;
+  /**
+   * The day FRED's source released this value (`YYYY-MM-DD`), on the newest
+   * observation of a weekly to annual series: September's permits are dated
+   * 1 Sep and were released 20 Oct. Absent on daily series and older points.
+   */
+  releasedOn?: string;
 }
 
 export interface CloudFredSeriesInfoPayload {
@@ -681,6 +750,10 @@ export interface CloudCdsLevelsResponse {
 interface CloudShortInterestPointPayload {
   settlementDate: string;
   shortPercentFloat?: number | null;
+  /** The 10-K or 10-Q cover share count known when FINRA published the settlement. Absent on servers older than the field. */
+  sharesOutstanding?: number;
+  /** YYYY-MM-DD that count was taken. */
+  sharesOutstandingAsOf?: string;
   sharesShort: number;
   previousSharesShort: number | null;
   averageDailyVolume: number | null;
@@ -820,6 +893,11 @@ export interface CloudEarningsCallPayload {
   /** The replay or event page the transcript came from. */
   webcastUrl?: string | null;
   /**
+   * Whether `callAt` is the call's start or its day alone (00:00 UTC of that
+   * New York day). Absent from a server that predates it.
+   */
+  callTimeKnown?: boolean;
+  /**
    * "other" for an event that is not an earnings call (a deal call, a
    * conference, an investor day), named by eventLabel and with no fiscal
    * period; null when unclear. Older servers omit both.
@@ -869,6 +947,17 @@ export interface CloudJobsPosting {
   salaryCurrency: string | null;
   salaryPeriod: string | null;
   tags: string[];
+}
+
+/** One posting as its detail view reads it. */
+export interface CloudJobsPostingDetail extends CloudJobsPosting {
+  /** The careers system's own id. */
+  externalId: string;
+  /** As the careers system writes it ("Full time", "FULL_TIME", "CDI"). */
+  employmentType: string | null;
+  /** The start of the role's description, as read from its page. */
+  description: string | null;
+  closedAt: string | null;
 }
 
 export interface CloudJobsChange {
@@ -1349,6 +1438,8 @@ interface CloudSecFilingPayload {
   primaryDocumentUrl?: string;
   /** The filing's SEC file number for this company, empty when it has none. Absent from older servers. */
   fileNumber?: string;
+  /** In a fund's list from a trust that runs several funds: filed for the fund's own series. Absent from older servers. */
+  fundSeries?: boolean;
 }
 
 interface CloudSecDocumentPayload {
@@ -2214,6 +2305,15 @@ export interface TeamCollectionItem {
   exchange: string;
   quantity: number | null;
   note: string | null;
+  /**
+   * A portfolio holding's purchase date (YYYY-MM-DD), its currency, and the
+   * rate its cost was bought at (one unit of `currency` in `costFxCurrency`).
+   * Null when no one has sent one; missing from a server that keeps none.
+   */
+  dateAcquired?: string | null;
+  currency?: string | null;
+  costFxRate?: number | null;
+  costFxCurrency?: string | null;
   addedBy: string;
   addedAt: string;
   updatedAt: string;

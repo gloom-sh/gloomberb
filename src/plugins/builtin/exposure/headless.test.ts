@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
-import type { ExposureExtensionObservation, ExposurePayload, ExposureRequest } from "../../../api-client/exposure";
+import type { ExposureExtensionObservation, ExposurePayload, ExposureRequest, ExposureScenario } from "../../../api-client/exposure";
 import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
 import { headlessReportTables, renderHeadlessPaneText, serializeHeadlessPaneResult } from "../../../cli/pane-functions/headless";
 import { renderReportCsv } from "../../../cli/report-tables";
@@ -54,9 +54,21 @@ test("headless watchlists resolve local membership before remote analysis and un
 });
 test("an unknown library id or invalid cash cannot produce a default scenario under a different label", async () => {
   const requests: ExposureRequest[] = [], ctx = context(requests);
-  await expect(exposureHeadless.load(createTestHeadlessArgs({ rawArgument: "AAPL", options: { scenario: "not-a-scenario" } }), ctx)).rejects.toThrow("Unknown scenario");
+  const rates = { id: "rates-up", label: "Rates +100 bp", shocks: [{ id: "rates", kind: "rate", target: "interest rates", changeBps: 100 }] };
+  ctx.apiClient.getCloudExposureScenarios = async () => ({ scenarios: [DEFAULT_SCENARIO, rates] as ExposureScenario[] });
+  // The ids the library has, the one a word is short for, and --custom.
+  await expect(exposureHeadless.load(createTestHeadlessArgs({ rawArgument: "DHI=100%", options: { scenario: "rates" } }), ctx)).rejects.toThrow(
+    "Unknown scenario: rates. Did you mean rates-up? Scenarios: taiwan-disruption or rates-up. Or describe your own with --custom.");
+  await expect(exposureHeadless.load(createTestHeadlessArgs({ rawArgument: "AAPL", options: { scenario: "not-a-scenario" } }), ctx))
+    .rejects.toThrow("Unknown scenario: not-a-scenario. Scenarios: taiwan-disruption or rates-up.");
   await expect(exposureHeadless.load(createTestHeadlessArgs({ rawArgument: "AAPL", options: { cash: "unknown" } }), ctx)).rejects.toThrow("Cash");
   expect(requests).toHaveLength(0);
+  // A run on the default scenario names it and the others; one asked for by name, or a custom one, does not.
+  const notes = async (options: Record<string, string>) => (await exposureHeadless.load(createTestHeadlessArgs({ rawArgument: "DHI=100%", options }), ctx)).notes ?? [];
+  expect(await notes({ scenario: "taiwan-disruption" })).toContain(
+    "Taiwan disruption (taiwan-disruption) is the default scenario. Pick another with --scenario (rates-up), or describe your own with --custom.");
+  expect((await notes({ scenario: "rates-up" })).join()).not.toContain("default scenario");
+  expect((await notes({ custom: JSON.stringify(DEFAULT_SCENARIO) })).join()).not.toContain("default scenario");
 });
 
 test("the text report prints every section as the pane draws it within 100 columns, while JSON and CSV keep the raw records", async () => {
@@ -105,6 +117,7 @@ test("a one-holding preview prints the period's end date when it fits and leaves
   const payload = structuredClone(audited) as ExposurePayload;
   payload.access = "preview";
   payload.lockedHoldings = 4;
+  payload.unknowns = [...payload.unknowns, "Free preview covers the first holding at depth 1. Portfolio totals cover this displayed subset at its original NAV weight; remaining holdings are withheld."];
   payload.holdings = payload.holdings.filter(holding => holding.symbol === "AAPL");
   payload.holdings[0]!.extensions = drivers.AAPL as unknown as ExposureExtensionObservation[];
   payload.portfolio.measures = [];
@@ -120,5 +133,10 @@ test("a one-holding preview prints the period's end date when it fits and leaves
   expect(text).toMatch(/^Country +Greater China +Revenue +3\.9% +2025-09-27$/m);
   // An anonymous counterparty leads with its filing's name; the Kind column already says supplier.
   expect(text).toMatch(/^Supplier +Vendor two \(undisclosed\) +-- +Unknown +2026-06-30$/m);
-  expect(text).toContain("Pro: Free preview: one holding, depth one. Full analysis requires Pro · gloom.sh/cloud");
+  // The preview is the standard Pro line; what the server says about the subset's weights is a note, never an error.
+  const flat = text.replace(/\n(?! )/g, " ");
+  expect(flat).toContain("Pro: Free shows the first holding, one relationship hop deep. Gloom Pro adds the other 4 holdings and paths up to four hops · gloom.sh/cloud");
+  // After the note naming the default scenario.
+  expect(text).toMatch(/^Notes:\n {2}Taiwan disruption \(taiwan-disruption\) is the default scenario\.[^]*\n {2}Portfolio totals cover this displayed subset/m);
+  expect(text.slice(text.indexOf("Errors:"))).not.toContain("Free preview");
 });

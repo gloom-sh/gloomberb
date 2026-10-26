@@ -12,6 +12,7 @@ import type {
   DesktopCoreRequest,
 } from "../../shared/protocol";
 import { encodeRpcValue } from "../../shared/rpc-codec";
+import { desktopBootFramePath, removeDesktopBootFrame } from "../window/boot-frame";
 import { paneIdFromDetachedRpcKey } from "../window/focus";
 import type { DesktopBackend, DesktopRpc } from "./backend";
 import { createElectrobunDesktopUpdater } from "./update";
@@ -80,7 +81,9 @@ export async function handleDesktopBackendRequest(
     }
     case "config.resetAllData":
       closeDesktopSession(backend);
+      // No config, no session: a frame the closing window still sends is dropped.
       backend.config = null;
+      removeDesktopBootFrame(desktopBootFramePath());
       await resetAllData(request.payload.dataDir);
       return null;
     case "config.export":

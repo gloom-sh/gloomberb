@@ -1,6 +1,7 @@
-import { useRef } from "react";
+import { useEffect, useRef, type Ref } from "react";
 import { Box, ScrollBox, Text, TextAttributes, type BoxRenderable, type ScrollBoxRenderable } from "../../../ui";
 import { Button, FieldLabel, NumberField, SectionHeading, SegmentedControl, TextField, useFieldRing } from "../../../components";
+import { afterLayout, revealInScrollBox } from "../../../components/ui/reveal-in-scroll-box";
 import {
   PRESERVED_PASSWORD_HINT,
   type BrokerProfileDraft,
@@ -13,11 +14,11 @@ import { formatRelativeAge } from "../../../utils/datetime-format";
 import { formatCurrency, truncateToDisplayWidth } from "../../../utils/format";
 import { t, tf } from "../../../i18n";
 import type { BrokerProfileRow } from "./model";
-import type { BrokerManagerMessage } from "./pane-actions";
+import type { BrokerRowActivity } from "./pane-actions";
 import { signInEndNote } from "./sign-in-end";
-import { stateColor } from "./table";
+import { brokerRowStatus } from "./table";
 
-export type BrokerEditKey = "label" | "enabled" | string;
+export type BrokerEditKey = "label" | "enabled" | "localOnly" | string;
 
 type RowRef = (node: BoxRenderable | null) => void;
 
@@ -88,9 +89,10 @@ function BrokerConfigFieldEditor({
   );
 }
 
+/** An account by the name its broker gives it, as its portfolio is named; its id when it has none. */
 function accountDetail(account: BrokerAccount): string {
   const parts = [
-    account.accountId,
+    account.name?.trim() || account.accountId,
     account.netLiquidation != null ? tf("{value} net liq", { value: formatCurrency(account.netLiquidation, account.currency || "") }) : null,
     account.buyingPower != null ? tf("{value} buying power", { value: formatCurrency(account.buyingPower, account.currency || "") }) : null,
   ];
@@ -112,10 +114,13 @@ export function BrokerProfileForm({
   scope,
   paneFocused,
   submitLabel,
+  error,
+  actionsRef,
   rowRef,
   onActiveKeyChange,
   onLabelChange,
   onEnabledChange,
+  onLocalOnlyChange,
   onValueChange,
   onSubmit,
   onCancel,
@@ -133,12 +138,17 @@ export function BrokerProfileForm({
   /** The form's fields take keys only while the pane has the keyboard. */
   paneFocused: boolean;
   submitLabel: string;
+  /** What stopped the last submit, said beside the buttons. */
+  error?: string | null;
+  /** The error and the buttons, for the detail to scroll into view when the error shows. */
+  actionsRef?: Ref<BoxRenderable>;
   /** Each field's outer box, for the form's field ring to scroll into view. */
   rowRef: (key: BrokerEditKey) => RowRef;
   onActiveKeyChange: (key: BrokerEditKey) => void;
   onLabelChange: (label: string) => void;
   /** Editing only: a new profile starts enabled. */
   onEnabledChange?: (enabled: boolean) => void;
+  onLocalOnlyChange: (localOnly: boolean) => void;
   onValueChange: (key: string, value: string) => void;
   onSubmit: () => void;
   onCancel: () => void;
@@ -188,9 +198,31 @@ export function BrokerProfileForm({
           onSubmit={onSubmit}
         />
       ))}
-      <Box flexDirection="row" gap={1}>
-        <Button label={submitLabel} shortcut="Enter" variant="primary" onPress={onSubmit} disabled={!!busy} />
-        <Button label={t("Cancel")} shortcut="Esc" variant="secondary" onPress={onCancel} disabled={!!busy} />
+      <Box ref={rowRef("localOnly")} flexDirection="column" onMouseDown={() => onActiveKeyChange("localOnly")}>
+        <FieldLabel label={t("Account data")} active={activeKey === "localOnly"} />
+        <SegmentedControl
+          value={draft.localOnly ? "local" : "sync"}
+          focused={paneFocused && activeKey === "localOnly"}
+          options={[
+            { label: t("Sync with Gloom Cloud"), value: "sync" },
+            { label: t("Keep on this device"), value: "local" },
+          ]}
+          onChange={(value) => onLocalOnlyChange(value === "local")}
+          allowEditable
+          shortcutScope={scope}
+        />
+        {draft.localOnly ? (
+          <Text fg={colors.textMuted} wrapText>
+            {t("Daily roundups, the weekly brief, position alerts, the mobile app and Ask Gloom will go without this account.")}
+          </Text>
+        ) : null}
+      </Box>
+      <Box ref={actionsRef} flexDirection="column">
+        {error ? <Text fg={colors.negative} width={width} wrapText>{error}</Text> : null}
+        <Box flexDirection="row" gap={1}>
+          <Button label={submitLabel} shortcut="Enter" variant="primary" onPress={onSubmit} disabled={!!busy} />
+          <Button label={t("Cancel")} shortcut="Esc" variant="secondary" onPress={onCancel} disabled={!!busy} />
+        </Box>
       </Box>
     </>
   );
@@ -209,13 +241,15 @@ export function BrokerDetailContent({
   activeEditKey,
   editKeys,
   busy,
-  message,
+  activity,
+  editError,
   width,
   editScope,
   paneFocused,
   onActiveEditKeyChange,
   onDraftLabelChange,
   onDraftEnabledChange,
+  onDraftLocalOnlyChange,
   onDraftValueChange,
   onSaveEdit,
   onCancelEdit,
@@ -228,7 +262,10 @@ export function BrokerDetailContent({
   /** The edit form's fields in Tab order. */
   editKeys: readonly BrokerEditKey[];
   busy: string | null;
-  message: BrokerManagerMessage | null;
+  /** The pane's action running on this profile, and what the last one came to. */
+  activity: BrokerRowActivity;
+  /** What stops the edit form from saving. */
+  editError: string | null;
   width: number;
   /** The edit form's shortcut scope, shared with the pane's field ring. */
   editScope: string;
@@ -237,6 +274,7 @@ export function BrokerDetailContent({
   onActiveEditKeyChange: (key: BrokerEditKey) => void;
   onDraftLabelChange: (label: string) => void;
   onDraftEnabledChange: (enabled: boolean) => void;
+  onDraftLocalOnlyChange: (localOnly: boolean) => void;
   onDraftValueChange: (key: string, value: string) => void;
   onSaveEdit: () => void;
   onCancelEdit: () => void;
@@ -253,35 +291,47 @@ export function BrokerDetailContent({
     wrap: true,
     scrollRef,
   });
+  // Enter saves from any field, so what stopped the save can be below the
+  // fold; bring it and the buttons into view.
+  const actionsRef = useRef<BoxRenderable | null>(null);
+  useEffect(() => {
+    if (!editError) return;
+    return afterLayout(() => revealInScrollBox(scrollRef.current, actionsRef.current));
+  }, [editError]);
 
   if (!row) return <Box flexGrow={1} />;
 
-  // A failed action outranks the profile's own status until the next action.
-  const actionError = message?.tone === "error" ? message.text : null;
-  const detailStatusMessage = actionError ?? (row.message || t("No status message."));
+  // The row's STATUS, and in full what the last action on the profile came to,
+  // which outranks the profile's own status message until it is news no more.
+  // The sign-in's end has a line of its own below.
+  const status = brokerRowStatus({ ...row, signInEndsAt: null }, activity);
+  const note = activity.note ?? null;
+  const detailStatusMessage = note?.text ?? (row.message || t("No status message."));
+  const statusMessageColor = note
+    ? note.tone === "error" ? colors.negative : colors.textDim
+    : row.state === "error" ? colors.negative
+      : row.state === "sign-in" || row.state === "disabled" ? colors.warning
+        : colors.textDim;
   const editAdapter = row.adapter;
 
   return (
     <ScrollBox ref={scrollRef} flexGrow={1} scrollY>
       <Box flexDirection="column" paddingX={1}>
         {/* The stack title already names the profile; the body starts with its state. */}
-        <Text fg={stateColor(row.state)} attributes={TextAttributes.BOLD}>
-          {truncateToDisplayWidth(row.stateLabel, width)}
+        <Text fg={status.color} attributes={TextAttributes.BOLD}>
+          {truncateToDisplayWidth(status.text, width)}
         </Text>
         <Text fg={colors.textDim}>
           {truncateToDisplayWidth(`${row.brokerName} · ${row.mode} · ${row.id}`, width)}
         </Text>
-        <Text
-          fg={actionError || row.state === "error" ? colors.negative : colors.textDim}
-          width={width}
-          wrapText
-        >
+        <Text fg={statusMessageColor} width={width} wrapText>
           {detailStatusMessage}
         </Text>
         {row.signInEndsAt !== null && (
           <Text fg={colors.warning} width={width} wrapText>{signInEndNote(row.signInEndsAt)}</Text>
         )}
         <Text fg={colors.textMuted}>{tf("Last sync {time}", { time: formatRelativeAge(row.lastSyncedAt) })}</Text>
+        {row.instance.localOnly ? <Text fg={colors.textMuted}>{t("Account data stays on this device, out of Gloom Cloud")}</Text> : null}
         <Text fg={colors.textMuted}>{tf("Status updated {time}", { time: formatRelativeAge(row.updatedAt) })}</Text>
         <Box height={1} />
 
@@ -299,10 +349,13 @@ export function BrokerDetailContent({
               scope={editScope}
               paneFocused={paneFocused}
               submitLabel={t("Save")}
+              error={editError}
+              actionsRef={actionsRef}
               rowRef={rowRef}
               onActiveKeyChange={onActiveEditKeyChange}
               onLabelChange={onDraftLabelChange}
               onEnabledChange={onDraftEnabledChange}
+              onLocalOnlyChange={onDraftLocalOnlyChange}
               onValueChange={onDraftValueChange}
               onSubmit={onSaveEdit}
               onCancel={onCancelEdit}

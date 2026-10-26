@@ -9,6 +9,8 @@ import {
   type ZoneHit,
 } from "./defs";
 import { historySpan, type HistorySpan } from "../shared/history-span";
+import { periodsPerYear } from "../shared/stat-transform";
+import { periodStartPeriodicity } from "../../../utils/release-date";
 import { fitTrend, sigmaVsTrend, trendAt, type TrendFit } from "../shared/trend";
 
 const MS_PER_DAY = 86_400_000;
@@ -64,6 +66,8 @@ export interface IndicatorViewModel {
    */
   historyStart: string | null;
   asOf: string;
+  /** How often the indicator is read when `asOf` is the first day of its period (Shiller's monthly CAPE); null otherwise. */
+  periodicity: "monthly" | "quarterly" | "annual" | null;
   observationStale: boolean;
 }
 
@@ -137,6 +141,7 @@ export function projectView(
     span: points[0] ? historySpan(points[0].date, visible.filter(isUsableRatio), RANGE_WINDOWS_MS[range]) : null,
     historyStart: points[0]?.date ?? null,
     asOf: current.date,
+    periodicity: periodStartPeriodicity(current.date, periodsPerYear(history.slice(-24).map((point) => ({ date: point.date, value: point.ratio })))),
     observationStale: build.sourceStale === true || nowMs - parseDateMs(current.date) > indicator.staleAfterMs,
   };
 }

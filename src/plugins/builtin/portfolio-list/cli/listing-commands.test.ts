@@ -11,7 +11,13 @@ import { loadConfig, saveConfig } from "../../../../data/config/store";
 import { createDefaultConfig } from "../../../../types/config";
 import { setCliColorEnabledOverride } from "../../../../utils/cli-output";
 import type { CliCommandDef } from "../../../../types/plugin";
+import type { DataProvider } from "../../../../types/data-provider";
 import type { TickerChanges } from "../../../../types/ticker-changes";
+import { LookupUnansweredError } from "../../../../cli/ticker-resolution";
+import { connectionHealth, GLOOM_CLOUD_HTTP_CONNECTION_ID } from "../../../../core/connection-health";
+import { ProviderBusyError } from "../../../../sources/provider-errors";
+import { failedRow, listingRow } from "../../../../cli/symbol-rows";
+import { printSymbolRows, shellWord } from "./bulk-symbols";
 import { portfolioCliCommand } from "./portfolio-command";
 import { watchlistCliCommand } from "./watchlist-command";
 
@@ -213,23 +219,23 @@ test("one pasted list where the list name goes is a list of symbols, not a missi
     watchlists: [{ id: "growth", name: "Growth" }, { id: "watch-two", name: "Watch Two" }],
   };
   const run = (command: CliCommandDef, args: string[]) => caught(command.execute(args, hintedContext({ config, store }).context));
-  const watchlistUsage = "Usage: gloomberb watchlist add <watchlist> <symbols...> [--file <path>]";
+  const watchlistUsage = "Usage: gloom watchlist add <watchlist> <symbols...> [--file <path>]";
 
   const pasted = await run(watchlistCliCommand, ["add", "  usdngn=x , USDZAR=X;  usdsar=x\n"]);
   expect(pasted?.message).toBe(
-    '"usdngn=x , USDZAR=X; usdsar=x" reads as a list of symbols, not a watchlist name; did you mean `gloomberb watchlist add <name> <list>`; lists: Growth, Watch Two',
+    '"usdngn=x , USDZAR=X; usdsar=x" reads as a list of symbols, not a watchlist name; did you mean `gloom watchlist add <name> <list>`; lists: Growth, Watch Two',
   );
   expect(pasted?.details).toBe(watchlistUsage);
   // Whichever separator the paste has, and for remove and portfolios too.
   for (const text of ["NVDA,MSFT", "NVDA;MSFT", "NVDA MSFT", "NVDA\nMSFT", "NVDA, "]) {
     expect((await run(watchlistCliCommand, ["add", text]))?.message).toContain("reads as a list of symbols");
   }
-  expect((await run(watchlistCliCommand, ["remove", "NVDA MSFT"]))?.message).toContain("`gloomberb watchlist remove <name> <list>`");
+  expect((await run(watchlistCliCommand, ["remove", "NVDA MSFT"]))?.message).toContain("`gloom watchlist remove <name> <list>`");
   const portfolio = await run(portfolioCliCommand, ["add", "nvda, msft"]);
-  expect(portfolio?.message).toBe('"nvda, msft" reads as a list of symbols, not a portfolio name; did you mean `gloomberb portfolio add <name> <list>`; portfolios: Main');
-  expect(portfolio?.details).toBe("Usage: gloomberb portfolio add <portfolio> <symbols...> [--file <path>]");
+  expect(portfolio?.message).toBe('"nvda, msft" reads as a list of symbols, not a portfolio name; did you mean `gloom portfolio add <name> <list>`; portfolios: Main');
+  expect(portfolio?.details).toBe("Usage: gloom portfolio add <portfolio> <symbols...> [--file <path>]");
   expect((await caught(watchlistCliCommand.execute(["add", "NVDA,MSFT"], hintedContext({ config: { ...config, watchlists: [] }, store }).context)))?.message)
-    .toContain("no lists yet, create one with `gloomberb watchlist create <name>`");
+    .toContain("no lists yet, create one with `gloom watchlist create <name>`");
 
   // A name that exists keeps its behaviour, with spaces or without; one that does not, with no separators or with --file, is still not found.
   expect((await run(watchlistCliCommand, ["add", "Growth"]))?.message).toBe(watchlistUsage);
@@ -315,6 +321,139 @@ test("a list file with a separator left on a symbol adds the symbol and names th
   expect(searched.filter((query) => query.includes(";"))).toEqual([]);
 });
 
+test("a list pasted from a European sheet adds its symbols alone: prices are left out in one line, and what names nothing is never looked up", async () => {
+  const persistence = new AppPersistence(":memory:");
+  persistences.push(persistence);
+  const store = new TickerRepository(persistence.tickers);
+  const config = { ...createDefaultConfig("/unused"), watchlists: [{ id: "repro", name: "REPRO" }] };
+  const asked: string[] = [];
+  const names: Record<string, string> = { ED: "Consolidated Edison Inc.", CNX: "CNX Resources Corporation", EQT: "EQT Corporation" };
+  const dataProvider = createTestDataProvider({
+    search: async (query) => {
+      asked.push(query);
+      return names[query] ? [{ providerId: "test", symbol: query, name: names[query]!, exchange: "NYSE", type: "Common Stock", currency: "USD" }] : [];
+    },
+    getQuote: async (symbol) => {
+      asked.push(symbol);
+      if (!names[symbol]) throw new Error(`Not a ticker: ${symbol}.`);
+      return createTestQuote({ symbol, name: names[symbol], listingExchangeName: "NYSE", exchangeName: "NYSE" });
+    },
+  });
+  // Before, 2.582,52 was read as 2582:HKEX and 3.594,10 as 3594:TWSE, and $$$ and N/A were searched.
+  setCliColorEnabledOverride(false);
+  const dataDir = await mkdtemp(join(tmpdir(), "gloomberb-european-"));
+  dataDirs.push(dataDir);
+  const file = join(dataDir, "energy.txt");
+  await Bun.write(file, "ED 2.582,52\nCNX;1.899,21\nEQT\t3.594,10\n$$$\nN/A\n");
+  const cli = createTestCliContext({ config, store, dataProvider });
+  await watchlistCliCommand.execute(["add", "REPRO", "--file", file], cli.context);
+  const { result, options } = cli.printed[0]!;
+  expect((result.data as Array<Record<string, unknown>>).map((row) => [row.input, row.status, row.listing])).toEqual([
+    ["ED", "added", "ED:NYSE"], ["CNX", "added", "CNX:NYSE"], ["EQT", "added", "EQT:NYSE"], ["$$$", "not_a_symbol", null], ["N/A", "not_a_symbol", null],
+  ]);
+  expect(result.warnings).toEqual(["Read the first column as symbols; ignored the 3 number cells beside it: 2.582,52; 1.899,21; 3.594,10."]);
+  expect(result.metadata).toMatchObject({ added: 3, notASymbol: 2, summary: 'Watchlist "REPRO": 3 added; 2 not symbols: $$$, N/A.' });
+  expect(options?.text?.(result.data).split("\n").slice(3, 5)).toEqual(["Not a symbol: $$$", "Not a symbol: N/A"]);
+  expect(asked.filter((query) => !names[query.replace(/[.-]/g, "")])).toEqual([]);
+});
+
+test("one symbol typed with its price is added alone, and the price is named as a list's prices are", async () => {
+  const persistence = new AppPersistence(":memory:");
+  persistences.push(persistence);
+  const store = new TickerRepository(persistence.tickers);
+  const config = { ...createDefaultConfig("/unused"), watchlists: [{ id: "l", name: "L" }] };
+  const ed = { providerId: "test", symbol: "ED", name: "Consolidated Edison Inc.", exchange: "NYSE", type: "Common Stock", currency: "USD" };
+  const dataProvider = createTestDataProvider({
+    search: async (query) => query === "ED" ? [ed] : [],
+    getQuote: async (symbol) => {
+      if (symbol !== "ED") throw new Error(`Not a ticker: ${symbol}.`);
+      return createTestQuote({ symbol, name: ed.name, listingExchangeName: "NYSE", exchangeName: "NYSE" });
+    },
+  });
+  // The single add dropped the price without a word.
+  const cli = createTestCliContext({ config, store, dataProvider });
+  await watchlistCliCommand.execute(["add", "L", "ED 2.582,52"], cli.context);
+  const { result } = cli.printed[0]!;
+  expect(result.data).toMatchObject({ changed: true, watchlist: "L" });
+  expect(result.warnings?.[0]).toBe("Ignored 2.582,52, a number, not a symbol.");
+});
+
+test("an outage and junk in one list: the junk is refused at once, and what Gloom Cloud never answered is named once with one add for it", async () => {
+  const persistence = new AppPersistence(":memory:");
+  persistences.push(persistence);
+  const store = new TickerRepository(persistence.tickers);
+  const config = { ...createDefaultConfig("/unused"), watchlists: [{ id: "growth", name: "Growth" }] };
+  const asked: string[] = [];
+  const refused = (query: string, operation: string) => {
+    asked.push(query);
+    connectionHealth.reportRequest(GLOOM_CLOUD_HTTP_CONNECTION_ID, {
+      operation, success: false, latencyMs: asked.length, error: new Error("Anonymous market rate limit exceeded"),
+    });
+    return new ProviderBusyError();
+  };
+  const dataProvider = createTestDataProvider({
+    search: async (query) => { throw refused(query, "GET /market/search"); },
+    getQuote: async (symbol) => { throw refused(symbol, "GET /market/quote"); },
+  });
+  // The retry waits (6, 15 and 30 s) pass at once; every other timer keeps its delay.
+  const originalTimer = globalThis.setTimeout;
+  const timer = spyOn(globalThis, "setTimeout").mockImplementation(((handler: Parameters<typeof setTimeout>[0], delay?: number, ...args: unknown[]) =>
+    originalTimer(handler, delay === 6_000 || delay === 15_000 || delay === 30_000 ? 0 : delay, ...args)) as typeof setTimeout);
+  setCliColorEnabledOverride(false);
+  const dataDir = await mkdtemp(join(tmpdir(), "gloomberb-outage-"));
+  dataDirs.push(dataDir);
+  const file = join(dataDir, "list.txt");
+  await Bun.write(file, "NVDA\n$$$\nphilip morris intl\nN/A\n2.582,52\n--\nmsft\n");
+  const cli = createTestCliContext({ config, store, dataProvider }, { quiet: true });
+  try {
+    await watchlistCliCommand.execute(["add", "Growth", "--file", file], cli.context);
+  } finally {
+    timer.mockRestore();
+  }
+  const { result, options } = cli.printed[0]!;
+  expect((result.data as Array<Record<string, unknown>>).map((row) => [row.input, row.status])).toEqual([
+    ["NVDA", "not_looked_up"], ["$$$", "not_a_symbol"], ["philip morris intl", "not_looked_up"], ["N/A", "not_a_symbol"],
+    ["--", "not_a_symbol"], ["msft", "not_looked_up"],
+  ]);
+  // Junk and the price were never asked for, in the first look or the three after it.
+  expect(asked.filter((query) => /[$/]|^-+$|\d/.test(query))).toEqual([]);
+  const lines = options?.text?.(result.data).split("\n") ?? [];
+  expect(lines.filter((line) => /Gloom Cloud|Try again/.test(line))).toEqual([
+    "Gloom Cloud did not answer for 3 symbols, so they were not looked up: NVDA, philip morris intl, msft",
+    "Try again in a minute: gloom watchlist add Growth NVDA 'philip morris intl' msft",
+  ]);
+  expect(result.warnings).toEqual(["Ignored 2.582,52, a number, not a symbol."]);
+  expect(result.metadata).toMatchObject({ added: 0, notLookedUp: 3, notASymbol: 3 });
+});
+
+test("symbols Gloom Cloud did not answer for are listed apart as written, with one command a shell reads back entry by entry", () => {
+  setCliColorEnabledOverride(false);
+  const cli = createTestCliContext();
+  const unanswered = ["Altria Group", "philip morris intl", "NVDA", "$nvda", "AT&T", "Kellogg's"];
+  const rows = [
+    listingRow("AAPL", "added", createTestTicker("AAPL", "Apple Inc.", { exchange: "NASDAQ" })),
+    ...unanswered.map((input) => failedRow(input, new LookupUnansweredError(input))),
+  ];
+  printSymbolRows(cli.context, rows, {
+    verb: "add", collection: { kind: "watchlist", name: "My Growth" }, repeated: 0, notes: [], retry: (keys) => `gloom watchlist add ${shellWord("My Growth")} ${keys}`,
+  });
+  const { result, options } = cli.printed[0]!;
+  const lines = options?.text?.(result.data).split("\n") ?? [];
+  // The entries were joined in capitals and unquoted: `add Growth ALTRIA GROUP PHILIP MORRIS INTL NVDA` adds five words.
+  expect(lines).toEqual([
+    "Added AAPL:NASDAQ (Apple Inc.)",
+    "",
+    "Gloom Cloud did not answer for 6 symbols, so they were not looked up: Altria Group, philip morris intl, NVDA, $nvda, AT&T, Kellogg's",
+    "Try again in a minute: gloom watchlist add 'My Growth' 'Altria Group' 'philip morris intl' NVDA '$nvda' 'AT&T' 'Kellogg'\\''s'",
+    "",
+    'Watchlist "My Growth": 1 added; 6 not looked up: Altria Group, philip morris intl, NVDA, $nvda, AT&T, Kellogg\'s.',
+  ]);
+  const command = lines[3]!.replace("Try again in a minute: ", "");
+  const read = Bun.spawnSync(["sh", "-c", `printf '%s\\n' ${command.replace(/^gloom watchlist add /, "")}`]);
+  expect(read.stdout.toString().trim().split("\n")).toEqual(["My Growth", ...unanswered]);
+  expect(result.metadata).toMatchObject({ notLookedUp: 6 });
+});
+
 test("a list of more than ten symbols checks each one's history, and one symbol alone is decided the same: a match abroad, a dead listing or a symbol taken over lately needs a choice and saves nothing", async () => {
   const day = 24 * 60 * 60_000;
   const daysAgo = (days: number) => new Date(Date.now() - days * day).toISOString().slice(0, 10);
@@ -377,8 +516,8 @@ test("a list of more than ten symbols checks each one's history, and one symbol 
     expect(text).toContain("Needs a choice, not added (3):");
     expect(text).toContain("DFS was Discover Financial Services until 2025, now Capital One Financial: COF; DFS matched DFS:LSE (DFS Furniture plc), a listing abroad");
     expect(text).toContain(`BRKL was Brookline Bancorp until ${brooklineLeft.slice(0, 4)}, now Beacon Financial: BBT; BRKL matched BRKL:BATS (Corgi Brookline ETF), another company's listing`);
-    expect(text).toContain("Add what they trade as now: gloomberb watchlist add Banks COF FLG BBT");
-    expect(text).toContain("To keep a match instead, name its listing: gloomberb watchlist add Banks DFS:LSE NYCB:NYSE BRKL:BATS");
+    expect(text).toContain("Add what they trade as now: gloom watchlist add Banks COF FLG BBT");
+    expect(text).toContain("To keep a match instead, name its listing: gloom watchlist add Banks DFS:LSE NYCB:NYSE BRKL:BATS");
     // Five Star took FSBC years ago: added, saying who had it.
     expect(text).toContain("  FSBC was First Savings Bancorp until");
     expect(text).toContain('Watchlist "Banks": 12 added; 3 need a choice: DFS, NYCB, BRKL.');
@@ -391,8 +530,153 @@ test("a list of more than ten symbols checks each one's history, and one symbol 
   for (const [symbol, successor, match] of [["DFS", "COF", "DFS:LSE"], ["BRKL", "BBT", "BRKL:BATS"]] as const) {
     const { error, saved } = await add([symbol], false);
     expect(error?.message).toStartWith(`${symbol} was `);
-    expect(error?.details).toBe(`Add what it trades as now: gloomberb watchlist add Banks ${successor}\nTo keep the match instead, name its listing: gloomberb watchlist add Banks ${match}`);
+    expect(error?.details).toBe(`Add what it trades as now: gloom watchlist add Banks ${successor}\nTo keep the match instead, name its listing: gloom watchlist add Banks ${match}`);
     expect(saved).toEqual([]);
   }
   expect((await add(["FSBC"], false)).saved).toEqual(["FSBC"]);
+});
+
+/** The listings abroad the saver's quotes know, each its symbol's only one. */
+const ABROAD: Record<string, { name: string; exchange: string; currency: string }> = {
+  GARAN: { name: "Turkiye Garanti Bankasi A.S.", exchange: "BIST", currency: "TRY" },
+  AKBNK: { name: "Akbank T.A.S.", exchange: "BIST", currency: "TRY" },
+  APPL: { name: "Aptus Pharma Limited", exchange: "BSE", currency: "INR" },
+  MXN: { name: "MIXI, Inc.", exchange: "FWB2", currency: "EUR" },
+};
+
+/** A saver's profile with Istanbul's banks as Gloom Cloud quotes them: GARAN and AKBNK trade on BIST only. */
+async function bistSaver(search: DataProvider["search"], quote?: DataProvider["getQuote"]) {
+  const persistence = new AppPersistence(":memory:");
+  persistences.push(persistence);
+  const store = new TickerRepository(persistence.tickers);
+  const dataDir = await mkdtemp(join(tmpdir(), "gloomberb-bist-"));
+  dataDirs.push(dataDir);
+  await saveConfig({
+    ...createDefaultConfig(dataDir),
+    portfolios: [{ id: "savings", name: "Savings", currency: "TRY" }],
+    watchlists: [{ id: "banks", name: "Banks" }],
+  });
+  const dataProvider = createTestDataProvider({
+    search,
+    // Asked as GARAN, or by its key GARAN:BIST.
+    getQuote: quote ?? (async (asked, exchange) => {
+      const [symbol, venue = exchange] = asked.split(":");
+      const listing = ABROAD[symbol!];
+      if (!listing || (venue && venue !== listing.exchange)) throw new Error(`Not a ticker: ${asked}.`);
+      return createTestQuote({ symbol: symbol!, name: listing.name, currency: listing.currency, listingExchangeName: listing.exchange, exchangeName: listing.exchange, lastUpdated: Date.now() });
+    }),
+  });
+  const exec = async (options: { dryRun?: boolean }, command: CliCommandDef, ...args: string[]) => {
+    const cli = hintedContext({ config: await loadConfig(dataDir), store, dataProvider }, { color: false, ...options });
+    await command.execute(args, cli.context);
+    const { result, options: printed } = cli.printed[0] ?? { result: { data: null } };
+    return { data: result.data as Record<string, unknown> & Array<Record<string, unknown>>, warnings: result.warnings ?? [], text: printed?.text?.(result.data) ?? "" };
+  };
+  const run = (command: CliCommandDef, ...args: string[]) => exec({}, command, ...args);
+  return { store, dataDir, run, exec, keys: async () => (await store.loadAllTickers()).map((ticker) => ticker.metadata.ticker).sort() };
+}
+
+test("a BIST bank typed GARAN.IS, GARAN:BIST or GARAN is one GARAN:BIST row on every path, found from its quote while search is busy", async () => {
+  const saver = await bistSaver(async () => { throw new ProviderBusyError(); });
+  const abroad = "GARAN has no US listing; it trades on BIST, in TRY.";
+
+  expect((await saver.run(portfolioCliCommand, "add", "Savings", "GARAN.IS")).data).toMatchObject({ listing: "GARAN:BIST", changed: true });
+  const bare = await saver.run(portfolioCliCommand, "add", "Savings", "GARAN");
+  expect(bare.data).toMatchObject({ listing: "GARAN:BIST", changed: false });
+  expect(bare.warnings).toContain(abroad);
+  expect((await saver.run(portfolioCliCommand, "add", "Savings", "GARAN:BIST")).data).toMatchObject({ changed: false });
+
+  // A typed list and a pasted file read the suffix the same way.
+  const typed = await saver.run(watchlistCliCommand, "add", "Banks", "GARAN.IS, AKBNK");
+  expect(typed.data.map((row) => [row.status, row.listing, row.abroad ?? null])).toEqual([
+    ["added", "GARAN:BIST", null], ["added", "AKBNK:BIST", "AKBNK has no US listing; it trades on BIST, in TRY."],
+  ]);
+  const file = join(saver.dataDir, "banks.txt");
+  await Bun.write(file, "GARAN.IS\nAKBNK.IS\n");
+  expect((await saver.run(portfolioCliCommand, "add", "Savings", "--file", file)).data.map((row) => [row.status, row.listing]))
+    .toEqual([["already_listed", "GARAN:BIST"], ["added", "AKBNK:BIST"]]);
+
+  const position = await saver.run(portfolioCliCommand, "position", "set", "Savings", "GARAN.IS", "100", "120", "TRY");
+  expect(position.data).toMatchObject({ listing: "GARAN:BIST", shares: 100, avgCost: 120 });
+  expect(await saver.keys()).toEqual(["AKBNK", "GARAN"]);
+  expect((await saver.store.loadTicker("GARAN"))!.metadata).toMatchObject({ portfolios: ["savings"], watchlists: ["banks"], positions: [{ shares: 100 }] });
+
+  expect((await saver.run(watchlistCliCommand, "remove", "Banks", "AKBNK.IS")).data).toMatchObject({ changed: true, listing: "AKBNK:BIST" });
+  expect((await saver.store.loadTicker("AKBNK"))!.metadata.watchlists).toEqual([]);
+});
+
+test("a symbol listed only abroad is still refused when it is more likely a slip for a US ticker or a currency", async () => {
+  const saver = await bistSaver(async (query) => query === "AAPL"
+    ? [{ providerId: "test", symbol: "AAPL", name: "Apple Inc.", exchange: "NASDAQ", type: "Common Stock", currency: "USD" }]
+    : []);
+  const refusal = async (symbol: string) => (await caught(saver.run(watchlistCliCommand, "add", "Banks", symbol)))?.message;
+  expect(await refusal("APPL")).toBe("APPL matched APPL:BSE (Aptus Pharma Limited), a listing abroad; APPL is one slip from AAPL (Apple Inc.).");
+  expect(await refusal("MXN")).toBe("MXN matched MXN:FWB2 (MIXI, Inc.), a listing abroad; MXN is also a currency.");
+  expect(await saver.keys()).toEqual([]);
+});
+
+test("rows saved under a suffix merge when a list command is about to save, never on a dry run or a read, and an add finds the merged row", async () => {
+  const saver = await bistSaver(async () => { throw new ProviderBusyError(); });
+  const held = { portfolio: "savings", shares: 50, avgCost: 100, currency: "TRY", broker: "manual" };
+  await saver.store.saveTicker(createTestTicker("GARAN.IS:BIST", "Turkiye Garanti Bankasi A.S.", {
+    exchange: "BIST", currency: "TRY", portfolios: ["savings"], watchlists: ["banks"], positions: [held],
+  }));
+  const before = (await saver.store.loadAllTickers()).map((ticker) => ticker.metadata);
+
+  await saver.run(watchlistCliCommand, "list");
+  await saver.exec({ dryRun: true }, watchlistCliCommand, "add", "Banks", "AKBNK");
+  expect((await saver.store.loadAllTickers()).map((ticker) => ticker.metadata)).toEqual(before);
+
+  // The merge takes GARAN:BIST, leaving the bare key free; a bare GARAN then reads as that row.
+  expect((await saver.run(portfolioCliCommand, "add", "Savings", "GARAN")).data).toMatchObject({ listing: "GARAN:BIST", changed: false });
+  expect(await saver.keys()).toEqual(["GARAN.IS:BIST", "GARAN:BIST"]);
+  expect((await saver.store.loadTicker("GARAN:BIST"))!.metadata).toMatchObject({ watchlists: ["banks"], positions: [held] });
+  expect((await saver.store.loadTicker("GARAN.IS:BIST"))!.metadata).toMatchObject({ portfolios: [], watchlists: [], positions: [] });
+});
+
+test("a suffixed symbol removes its venue's row, else the row saved under the suffixed key: a broker's, or a US class the suffix only looks like", async () => {
+  const saver = await bistSaver(async () => []);
+  await saver.store.saveTickers([
+    createTestTicker("VOD:XLON", "Vodafone Group Plc", { exchange: "LSE", currency: "GBP", watchlists: ["banks"] }),
+    createTestTicker("7203.T:XTKS", "Toyota Motor Corporation", {
+      exchange: "JPX", currency: "JPY", watchlists: ["banks"], broker_contracts: [{ brokerId: "ibkr", brokerInstanceId: "ib", conId: 1, symbol: "7203" }],
+    }),
+    createTestTicker("MKC.V", "McCormick & Company", { exchange: "NYSE", watchlists: ["banks"] }),
+  ]);
+  // A one-letter suffix is read as its venue where a row is saved there, without a lookup.
+  expect((await saver.run(watchlistCliCommand, "add", "Banks", "VOD.L")).data).toMatchObject({ listing: "VOD:LSE", changed: false });
+  expect((await saver.run(watchlistCliCommand, "remove", "Banks", "7203.T")).data).toMatchObject({ changed: true });
+  const listed = await saver.run(watchlistCliCommand, "remove", "Banks", "MKC.V", "VOD.L");
+  expect(listed.data.map((row) => [row.status, row.listing])).toEqual([["removed", "MKC.V:NYSE"], ["removed", "VOD:LSE"]]);
+  expect((await saver.store.loadAllTickers()).filter((ticker) => ticker.metadata.watchlists.length > 0)).toEqual([]);
+  expect(await saver.keys()).toEqual(["7203.T:XTKS", "MKC.V", "VOD:XLON"]);
+});
+
+test("a bare symbol is its US listing in a fresh profile and in one that saved its listing abroad under the bare key", async () => {
+  const shell = (exchange: string, currency: string, name: string) => ({ providerId: "test", symbol: "SHEL", name, exchange, currency, type: "Common Stock" });
+  const search: DataProvider["search"] = async (query) => query.startsWith("SHEL")
+    ? [shell("LSE", "GBP", "Shell plc"), shell("NYSE", "USD", "Shell PLC ADR")]
+    : [];
+  // The bare symbol's own quote is New York's; SHEL:LSE's is London's.
+  const quote: DataProvider["getQuote"] = async (asked, exchange) => {
+    const london = asked === "SHEL:LSE" || exchange === "LSE";
+    return createTestQuote({
+      symbol: "SHEL", name: london ? "Shell plc" : "Shell PLC ADR", currency: london ? "GBP" : "USD",
+      listingExchangeName: london ? "LSE" : "NYSE", exchangeName: london ? "LSE" : "NYSE", lastUpdated: Date.now(),
+    });
+  };
+  const fresh = await bistSaver(search, quote);
+  expect((await fresh.run(watchlistCliCommand, "add", "Banks", "SHEL")).data).toMatchObject({ listing: "SHEL:NYSE", changed: true });
+
+  // SHEL.L added first took the bare key; SHEL still adds New York's line, as a row of its own.
+  const known = await bistSaver(search, quote);
+  await known.store.saveTicker(createTestTicker("SHEL", "Shell plc", { exchange: "LSE", currency: "GBP", watchlists: ["banks"] }));
+  expect((await known.run(watchlistCliCommand, "add", "Banks", "SHEL")).data).toMatchObject({ listing: "SHEL:NYSE", changed: true });
+  expect((await known.run(watchlistCliCommand, "add", "Banks", "SHEL")).data).toMatchObject({ listing: "SHEL:NYSE", changed: false });
+  expect(await known.keys()).toEqual(["SHEL", "SHEL:XNYS"]);
+  // A list reads it the same way, and removing the bare symbol takes the US row first.
+  const listed = await known.run(watchlistCliCommand, "add", "Banks", "SHEL, SHEL:LSE");
+  expect(listed.data.map((row) => [row.status, row.listing])).toEqual([["already_listed", "SHEL:NYSE"], ["already_listed", "SHEL:LSE"]]);
+  expect((await known.run(watchlistCliCommand, "remove", "Banks", "SHEL")).data).toMatchObject({ changed: true, listing: "SHEL:NYSE" });
+  expect((await known.store.loadTicker("SHEL"))!.metadata.watchlists).toEqual(["banks"]);
 });

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Quote } from "../../types/financials";
-import { isQuoteStaleForCurrentSession } from "./freshness";
+import { isQuoteStaleForCurrentSession, noPrintsTodayText } from "./freshness";
 import { createDailyNavQuote } from "../../test-support/daily-nav";
 
 function quote(overrides: Partial<Quote>): Quote {
@@ -299,6 +299,27 @@ describe("quote freshness", () => {
         Date.parse("2026-05-13T21:00:00Z"),
       ),
     ).toBe(false);
+  });
+
+  test("keeps Thursday's TWSE close current through the typhoon closure on Friday 23 Oct 2026 and Monday's holiday", () => {
+    const close = quote({ symbol: "2330", lastUpdated: Date.parse("2026-10-22T05:30:09Z") });
+    // 02:20 UTC is mid-session on a trading day; TWSE did not trade.
+    for (const time of ["2026-10-23T02:20:00Z", "2026-10-23T14:30:00Z", "2026-10-26T03:00:00Z"]) {
+      expect(isQuoteStaleForCurrentSession(close, Date.parse(time)), time).toBe(false);
+    }
+    expect(isQuoteStaleForCurrentSession({ ...close, marketState: "REGULAR" }, Date.parse("2026-10-27T03:00:00Z"))).toBe(true);
+  });
+
+  test("a stale quote in an open session with nothing printed in it says since when, in the ticket's age wording", () => {
+    // Thursday 8 Oct 2026, 11:00 in Taipei: Wednesday's close is all the feed has.
+    const quiet = quote({ symbol: "2330", marketState: "REGULAR", lastUpdated: Date.parse("2026-10-07T05:30:09Z") });
+    const now = Date.parse("2026-10-08T03:00:00Z");
+    expect(noPrintsTodayText(quiet, now)).toBe("no prints today since Wed 7 Oct 05:30 UTC (21h 29m old)");
+    // A feed that stopped mid-morning printed today: it is only stale.
+    expect(noPrintsTodayText({ ...quiet, lastUpdated: Date.parse("2026-10-08T02:00:00Z") }, now)).toBeNull();
+    // After the close, and on the typhoon day the calendar lists, the last close is the price.
+    expect(noPrintsTodayText(quiet, Date.parse("2026-10-08T07:00:00Z"))).toBeNull();
+    expect(noPrintsTodayText({ ...quiet, lastUpdated: Date.parse("2026-10-22T05:30:09Z") }, Date.parse("2026-10-23T02:20:00Z"))).toBeNull();
   });
 
   test("allows Friday closes before Monday reopen", () => {

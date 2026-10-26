@@ -1,12 +1,16 @@
-import type { CloudMarketResponse, CloudPricePointPayload } from "../api-client/types";
-import type { CloudHistoryParams } from "../api-client/paths";
-import { fxLegForCurrency } from "../market-data/coordinator/fx-legs";
-import { heldCurrencyUnit } from "../utils/currency-units";
+import type { FxLeg } from "../market-data/coordinator/fx-legs";
+import { dailyFxLeg, readFxCloseOnDate, type FxHistoryClient } from "../market-data/fx-closes";
+import { formatFxRate } from "../cli/fx-pair";
+import { dateOptionError, readCalendarDate } from "../utils/calendar-date";
+import { currencyUnitLabel, heldCurrencyUnit } from "../utils/currency-units";
+import { readTypedNumber } from "../utils/decimal-comma";
+import { logFailure } from "../utils/log-failure";
+import { mapWithConcurrency } from "../utils/concurrency";
+import type { TickerPosition, TickerRecord } from "../types/ticker";
+import { lotCostFxRate, sameCurrency } from "./position-metrics";
 
 /** Reads a pair's daily bars; `apiClient` in the app, a fake in tests. */
-export interface CostFxHistoryClient {
-  getCloudHistory(symbol: string, exchange: string, params: CloudHistoryParams): Promise<CloudMarketResponse<CloudPricePointPayload[]>>;
-}
+export type CostFxHistoryClient = FxHistoryClient;
 
 /** The rate a lot's cost was bought at: one unit of its currency in the portfolio's, at a dated daily close. */
 export interface CostFxReading {
@@ -23,44 +27,54 @@ export class CostFxError extends Error {
   }
 }
 
-const DAY_MS = 86_400_000;
-/** How far before the purchase date a close is looked for: a weekend and a holiday fit inside it, a gap in the data does not. */
-const LOOKBACK_DAYS = 7;
+/** A dated close, and whether the service keeps daily bars of any pair it was looked for in. */
+interface PairCloseRead {
+  reading: CostFxReading | null;
+  served: boolean;
+}
 
-const isoDay = (time: number) => new Date(time).toISOString().slice(0, 10);
+/** The daily pair BASE/QUOTE as `history` asks for it (USD/THB is USDTHB=X), read as QUOTE per BASE, or inverted. */
+const fxPair = (base: string, quote: string, invert: boolean): FxLeg =>
+  ({ currency: base, instrument: { symbol: `${base}${quote}=X`, exchange: "" }, invert });
+
+/**
+ * The close in the week up to `date` of the first of the pairs, tried in
+ * order, that the service keeps daily bars of; the next is asked only when
+ * one is not served at all, as a served pair with no close that week is a
+ * gap the same pair the other way round has too.
+ */
+async function firstPairClose(pairs: readonly FxLeg[], date: string, client: CostFxHistoryClient, now: Date): Promise<PairCloseRead> {
+  for (const pair of pairs) {
+    const read = await readFxCloseOnDate(pair, date, client, now);
+    if (read.reading || read.served) return read;
+  }
+  return { reading: null, served: false };
+}
 
 /**
  * USD per unit of an ISO currency at its last completed daily close on or
- * before `date`, looking back a week at most. Today's bar, still trading, is
- * never read. Null when the pair has no close in that week.
+ * before `date`, looking back a week at most, as `fx --date` reads it: its
+ * dollar pair as markets quote it (`dailyFxLeg`: EUR/USD, USD/THB), else the
+ * same pair the other way round, as `history` serves either.
  */
-async function usdPerUnitOn(code: string, date: string, client: CostFxHistoryClient, now: Date): Promise<CostFxReading | null> {
-  if (code === "USD") return { rate: 1, date };
-  const leg = fxLegForCurrency(code);
-  if (!leg) throw new CostFxError(`No daily FX history is served for ${code}`);
-  const day = Date.parse(`${date}T00:00:00Z`);
-  const response = await client.getCloudHistory(leg.instrument.symbol, leg.instrument.exchange ?? "", {
-    interval: "1day", startDate: isoDay(day - LOOKBACK_DAYS * DAY_MS), endDate: isoDay(day + DAY_MS), outputsize: LOOKBACK_DAYS + 4,
-  });
-  if (response.status !== "success" && response.status !== "partial") return null;
-  const today = isoDay(now.getTime());
-  let best: CostFxReading | null = null;
-  for (const row of Array.isArray(response.data) ? response.data : []) {
-    const at = typeof row?.date === "string" ? Date.parse(row.date) : Number.NaN;
-    if (!Number.isFinite(at) || !Number.isFinite(row.close) || row.close <= 0) continue;
-    const rowDay = isoDay(at);
-    if (rowDay > date || rowDay >= today || Date.parse(`${rowDay}T00:00:00Z`) < day - LOOKBACK_DAYS * DAY_MS) continue;
-    if (!best || rowDay > best.date) best = { rate: leg.invert ? 1 / row.close : row.close, date: rowDay };
-  }
-  return best;
+async function usdPerUnitOn(code: string, date: string, client: CostFxHistoryClient, now: Date): Promise<PairCloseRead> {
+  if (code === "USD") return { reading: { rate: 1, date }, served: true };
+  const quoted = dailyFxLeg(code);
+  if (!quoted) return { reading: null, served: false };
+  const other = quoted.invert ? fxPair(code, "USD", false) : fxPair("USD", code, true);
+  return firstPairClose([quoted, other], date, client, now);
 }
 
 /**
  * What one unit of `from` (a lot's currency, GBp counting pence and USX cents) cost in
  * `into` (the portfolio's) at the daily FX closes of `date`, each pair's last
- * close on or before it, crossed through USD as every converted value is.
- * Throws `CostFxError` when a pair is not served or has no close in the week
- * before the date.
+ * close on or before it: crossed through USD as every converted value is,
+ * each dollar pair read either way round, and for two currencies neither of
+ * which is the dollar, their own pair (either way round) when a dollar pair
+ * is not served. No currency is left out for not being on a list: any pair
+ * `history` serves is read. Throws `CostFxError` when none of them has a
+ * close in the week before the date, saying when a currency has no daily
+ * history served at all.
  */
 export async function loadCostFxRate(
   from: string,
@@ -71,14 +85,254 @@ export async function loadCostFxRate(
 ): Promise<CostFxReading> {
   const fromUnit = heldCurrencyUnit(from);
   const intoUnit = heldCurrencyUnit(into);
+  // A minor unit (GBp, USX) is that fraction of its major currency's rate.
+  const units = intoUnit.divisor / fromUnit.divisor;
+  if (fromUnit.currency === intoUnit.currency) return { rate: units, date };
   const [fromUsd, intoUsd] = await Promise.all([
     usdPerUnitOn(fromUnit.currency, date, client, now),
     usdPerUnitOn(intoUnit.currency, date, client, now),
   ]);
-  const missing = [fromUsd ? null : fromUnit.currency, intoUsd ? null : intoUnit.currency].filter(Boolean);
-  if (!fromUsd || !intoUsd) throw new CostFxError(`No ${missing.join(" or ")} FX close in the week up to ${date}`);
-  const rate = (fromUsd.rate / fromUnit.divisor) / (intoUsd.rate / intoUnit.divisor);
-  if (!Number.isFinite(rate) || rate <= 0) throw new CostFxError(`No usable ${fromUnit.currency}/${intoUnit.currency} rate for ${date}`);
-  // A pair that did not trade that day (its holiday) dates the cross by its own last close.
-  return { rate, date: fromUsd.date < intoUsd.date ? fromUsd.date : intoUsd.date };
+  let reading: CostFxReading | null = null;
+  let crossServed = false;
+  if (fromUsd.reading && intoUsd.reading) {
+    // A pair that did not trade that day (its holiday) dates the cross by its own last close.
+    reading = {
+      rate: (fromUsd.reading.rate / intoUsd.reading.rate) * units,
+      date: fromUsd.reading.date < intoUsd.reading.date ? fromUsd.reading.date : intoUsd.reading.date,
+    };
+  } else if (fromUnit.currency !== "USD" && intoUnit.currency !== "USD" && (!fromUsd.served || !intoUsd.served)) {
+    const direct = await firstPairClose([
+      fxPair(fromUnit.currency, intoUnit.currency, false),
+      fxPair(intoUnit.currency, fromUnit.currency, true),
+    ], date, client, now);
+    if (direct.reading) reading = { rate: direct.reading.rate * units, date: direct.reading.date };
+    crossServed = direct.served;
+  }
+  if (!reading) {
+    const missing = [[fromUnit.currency, fromUsd], [intoUnit.currency, intoUsd]] as const;
+    const unserved = missing.filter(([, read]) => !read.reading && !read.served).map(([code]) => code);
+    if (unserved.length > 0 && !crossServed) throw new CostFxError(`No daily FX history is served for ${unserved.join(" or ")}`);
+    const late = missing.filter(([, read]) => !read.reading).map(([code]) => code);
+    throw new CostFxError(`No ${late.join(" or ")} FX close in the week up to ${date}`);
+  }
+  if (!Number.isFinite(reading.rate) || reading.rate <= 0) {
+    throw new CostFxError(`No usable ${fromUnit.currency}/${intoUnit.currency} rate for ${date}`);
+  }
+  return reading;
+}
+
+/** A lot's currency as a portfolio values it: its own, else its listing's. */
+const lotCurrency = (ticker: TickerRecord, position: TickerPosition) => (position.currency || ticker.metadata.currency || "").trim();
+const purchaseDateKey = (currency: string, date: string) => `${currency}|${date}`;
+
+/**
+ * Whether a lot's cost converts at the FX close of its purchase date when it
+ * is valued in `into`: entered by hand, dated, held in another currency, and
+ * with no rate of its own into `into` (one given with --cost-fx, or read for
+ * its date when the portfolio was valued in `into` before). A broker's lot
+ * reads as it always has.
+ */
+function convertsAtPurchaseDate(position: TickerPosition, currency: string, into: string, portfolioId?: string): boolean {
+  return position.broker === "manual" && position.shares !== 0 && (!portfolioId || position.portfolio === portfolioId)
+    && !!currency && !sameCurrency(currency, into) && /^\d{4}-\d{2}-\d{2}$/.test(position.dateAcquired ?? "")
+    && lotCostFxRate(position, currency, into) === null;
+}
+
+/** One unit of a lot's currency in the valuation's at the close of its purchase date, by currency and date. */
+export type PurchaseDateCostFx = ReadonlyMap<string, CostFxReading>;
+
+/** Purchase dates whose FX closes are read at once. */
+const PURCHASE_DATE_READS = 4;
+
+/** The lot currencies and purchase dates whose FX closes a portfolio valued in `into` converts costs at, by key. */
+export function purchaseDatesToRead(tickers: readonly TickerRecord[], into: string, portfolioId?: string): Map<string, { currency: string; date: string }> {
+  const dates = new Map<string, { currency: string; date: string }>();
+  for (const ticker of tickers) {
+    for (const position of ticker.metadata.positions) {
+      const currency = lotCurrency(ticker, position);
+      if (!convertsAtPurchaseDate(position, currency, into, portfolioId)) continue;
+      dates.set(purchaseDateKey(currency, position.dateAcquired!), { currency, date: position.dateAcquired! });
+    }
+  }
+  return dates;
+}
+
+/**
+ * The FX closes of the purchase dates of a portfolio's lots that convert at
+ * them (convertsAtPurchaseDate) when valued in `into`, read as `position set
+ * --date` reads one: each pair's last close on or before the date, a week
+ * back at most. A date whose closes cannot be read is left out, so its lots'
+ * cost converts at today's rate.
+ */
+export async function loadPurchaseDateCostFx(
+  tickers: readonly TickerRecord[],
+  { into, history, portfolioId, now = new Date() }: { into: string; history: CostFxHistoryClient; portfolioId?: string; now?: Date },
+): Promise<Map<string, CostFxReading>> {
+  const dates = purchaseDatesToRead(tickers, into, portfolioId);
+  const readings = await mapWithConcurrency([...dates], PURCHASE_DATE_READS, async ([key, { currency, date }]) =>
+    [key, await loadCostFxRate(currency, into, date, history, now)
+      .catch(logFailure("portfolio.cost-fx", "Reading a purchase date's FX close failed", null))] as const);
+  return new Map(readings.filter((entry): entry is readonly [string, CostFxReading] => entry[1] != null));
+}
+
+/**
+ * The tickers with each lot that converts at its purchase date's FX close
+ * given that rate into `into`, so its cost and P&L carry the currency's move
+ * since it was bought. For valuing only, never saved: the same array and
+ * records where nothing changes.
+ */
+export function withPurchaseDateCostFx(tickers: readonly TickerRecord[], rates: PurchaseDateCostFx, into: string, portfolioId?: string): TickerRecord[] {
+  if (rates.size === 0) return tickers as TickerRecord[];
+  let changed = false;
+  const dated = tickers.map((ticker) => {
+    let touched = false;
+    const positions = ticker.metadata.positions.map((position) => {
+      const currency = lotCurrency(ticker, position);
+      const reading = convertsAtPurchaseDate(position, currency, into, portfolioId)
+        ? rates.get(purchaseDateKey(currency, position.dateAcquired!)) : undefined;
+      if (!reading) return position;
+      touched = true;
+      return { ...position, costFxRate: reading.rate, costFxCurrency: into.trim() };
+    });
+    if (!touched) return ticker;
+    changed = true;
+    return { ...ticker, metadata: { ...ticker.metadata, positions } };
+  });
+  return changed ? dated : tickers as TickerRecord[];
+}
+
+/** How the command line or the position form names the purchase date and the rate in what it says. */
+export interface CostFxWording {
+  /** The rate's option or field: `--cost-fx`, Cost FX. */
+  rate: string;
+  /** The date's option or field as a date error names it: `--date`, or empty for a form field. */
+  dateOption: string;
+  /** The date's option or field as a sentence names it: `--date`, Purchase Date. */
+  date: string;
+  /** Where to give the rate instead, for a pair such as `TRY per USD`. */
+  rateInstead(pair: string): string;
+  /** That the purchase date gives the rate too. */
+  dateInstead: string;
+}
+
+export const CLI_COST_FX_WORDING: CostFxWording = {
+  rate: "--cost-fx",
+  dateOption: "--date",
+  date: "--date",
+  rateInstead: (pair) => `Give the rate it was bought at instead: --cost-fx <${pair}>.`,
+  dateInstead: "Or give the purchase --date, and its daily FX close is used.",
+};
+
+export const FORM_COST_FX_WORDING: CostFxWording = {
+  rate: "Cost FX",
+  dateOption: "",
+  date: "Purchase Date",
+  rateInstead: (pair) => `Give the rate it was bought at in Cost FX instead, in ${pair}.`,
+  dateInstead: "Or give the Purchase Date, and its daily FX close is used.",
+};
+
+/** A purchase date or cost FX rate that cannot be used, and what to give instead. */
+export class PositionCostFxError extends Error {
+  constructor(message: string, readonly details?: string) {
+    super(message);
+    this.name = "PositionCostFxError";
+  }
+}
+
+/**
+ * A typed purchase date as an ISO day, no later than today (UTC); throws
+ * saying which formats it takes.
+ */
+export function readPurchaseDate(value: string, wording: CostFxWording, now = new Date()): string {
+  const date = readCalendarDate(value);
+  if (!date) throw new PositionCostFxError(dateOptionError(value, wording.dateOption, { subject: "the purchase date", now }));
+  if (date > now.toISOString().slice(0, 10)) {
+    throw new PositionCostFxError(`${wording.date} ${value.trim()} is after today; it is the day the position was bought.`);
+  }
+  return date;
+}
+
+/** A typed cost FX rate: a positive number, 32,15 read as 32.15; throws otherwise. */
+export function readCostFxRate(value: string, wording: CostFxWording): number {
+  const rate = readTypedNumber(value, wording.rate);
+  if (!Number.isFinite(rate) || rate <= 0) {
+    throw new PositionCostFxError(`${wording.rate} is the rate the cost was bought at, a positive number such as 32.15 (TRY per USD); got "${value.trim()}".`);
+  }
+  return rate;
+}
+
+/**
+ * The rate a position's cost was bought at, as typed or from the FX closes of
+ * its purchase date, for a position held in another currency than the
+ * portfolio's; undefined when neither was given or the position is in the
+ * portfolio's currency (a date alone then only dates the lot). A rate typed
+ * for a position in the portfolio's own currency, one that reads as a
+ * mistake against today's, and a date with no FX close throw
+ * PositionCostFxError saying what to give instead.
+ */
+export async function resolvePositionCostFx({ date, costFx, history, currency, portfolioCurrency, listing, todaysRate, wording }: {
+  date?: string; costFx?: number; history: CostFxHistoryClient; currency: string; portfolioCurrency: string; listing: string;
+  /** Today's rate, one unit of `currency` in `portfolioCurrency`; NaN when it cannot be read. */
+  todaysRate: () => Promise<number>;
+  wording: CostFxWording;
+}): Promise<{ costFx: { rate: number; currency: string }; date: string | null } | undefined> {
+  const foreign = !sameCurrency(currency, portfolioCurrency);
+  const insteadHint = wording.rateInstead(`${portfolioCurrency} per ${currency}`);
+  if (costFx != null) {
+    if (!foreign) {
+      const held = currency === portfolioCurrency ? currency : `${currency}, a unit of ${portfolioCurrency}`;
+      throw new PositionCostFxError(`${wording.rate} converts a cost in another currency; ${listing} is held in ${held}, the portfolio's currency.`);
+    }
+    const today = await todaysRate().catch(logFailure("portfolio.cost-fx", "Reading today's rate to check a typed cost FX rate failed", Number.NaN));
+    const problem = implausibleCostFx(costFx, today, { currency, portfolioCurrency, listing, wording });
+    if (problem) throw new PositionCostFxError(problem, wording.dateInstead);
+    return { costFx: { rate: costFx, currency: portfolioCurrency }, date: null };
+  }
+  if (!date || !foreign) return undefined;
+  try {
+    const reading = await loadCostFxRate(currency, portfolioCurrency, date, history);
+    return { costFx: { rate: reading.rate, currency: portfolioCurrency }, date: reading.date };
+  } catch (error) {
+    if (error instanceof CostFxError) {
+      throw new PositionCostFxError(`${error.message}, so the ${currency} cost cannot be converted at the rate of ${date}.`, insteadHint);
+    }
+    // Offline, signed out or a server error: say what was being read, and the way that needs no network.
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new PositionCostFxError(`Could not read the ${currency} and ${portfolioCurrency} FX closes of ${date}: ${reason}.`, insteadHint);
+  }
+}
+
+/** How far from today's rate a typed one may be: a currency that lost 99% since purchase still fits. */
+const COST_FX_MAX_RATIO = 100;
+
+/**
+ * Why a typed cost FX rate reads as a mistake against today's rate, else null:
+ * a rate per pound for a lot held in pence, the inverse of the pair (0.0319
+ * for 31.37 TRY per USD), or more than a hundred times off either way. A
+ * rate is only called inverted when today's is far from 1 and the typed one
+ * lies on the other side of it, so EUR per USD near parity is never refused.
+ * Null when today's rate is not known.
+ */
+function implausibleCostFx(
+  rate: number,
+  today: number,
+  { currency, portfolioCurrency, listing, wording }: { currency: string; portfolioCurrency: string; listing: string; wording: CostFxWording },
+): string | null {
+  if (!Number.isFinite(today) || today <= 0) return null;
+  const pair = `${portfolioCurrency} per ${currency}`;
+  const typed = formatFxRate(rate);
+  const todays = `today's is ${formatFxRate(today)} ${pair}`;
+  const unit = heldCurrencyUnit(currency);
+  if (unit.divisor !== 1 && rate / today >= unit.divisor / 5 && rate / today <= unit.divisor * 5) {
+    const name = currency.toUpperCase() === "USX" ? "US cents" : currencyUnitLabel(currency).replace(/^\S+ \((.+)\)$/, "$1");
+    return `${wording.rate} ${typed} looks like ${portfolioCurrency} per ${unit.currency}; ${listing} is held in ${currency} (${name}), `
+      + `so the rate is ${pair}, 1/${unit.divisor} of that: ${todays}.`;
+  }
+  if ((today >= 3 && rate < 1) || (today <= 1 / 3 && rate > 1)) {
+    return `${wording.rate} ${typed} looks inverted: it is the ${portfolioCurrency} paid for one ${currency}, and ${todays}.`;
+  }
+  if (rate / today > COST_FX_MAX_RATIO || today / rate > COST_FX_MAX_RATIO) {
+    return `${wording.rate} ${typed} is more than ${COST_FX_MAX_RATIO} times off today's rate (${formatFxRate(today)} ${pair}); check the rate.`;
+  }
+  return null;
 }

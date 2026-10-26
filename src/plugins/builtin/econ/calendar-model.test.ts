@@ -7,10 +7,19 @@ import {
   hasPendingHighImpactPrint,
   landedHighImpactPrints,
   loadCalendar,
+  lowerImpactHidden,
+  countriesWithoutEvents,
+  eventCountry,
   matchesCountry,
   matchesImpact,
+  noScheduledReleasesMessage,
+  parseCountryFilter,
+  pendingHighImpactPrints,
   resetEconCalendarPersistence,
+  actualColor,
+  valueColumnWidth,
 } from "./calendar-model";
+import { colors } from "../../../theme/colors";
 
 function makeEvent(id: string): EconEvent {
   return {
@@ -82,6 +91,21 @@ describe("econ calendar filters", () => {
     }
     expect(matchesCountry({ ...makeEvent("cn"), country: "CN" }, "G7")).toBe(false);
   });
+
+  // ECO opens on High, which hides most PMIs: it counts what it hides of the region shown, a member's national release in the euro area's.
+  test("High counts the region's lower-impact releases it hides; All, Medium and Low hide none to count", () => {
+    const row = (id: string, country: string, event: string, impact: EconEvent["impact"]): EconEvent => ({ ...makeEvent(id), country, event, impact });
+    const events = [
+      row("ecb", "EU", "Deposit Facility Rate", "high"),
+      row("pmi", "EU", "S&P Global Manufacturing PMI Flash", "medium"),
+      row("de", "EU", "German S&P Global Services PMI Final", "low"),
+      row("us", "US", "ISM Manufacturing Prices", "low"),
+    ];
+    expect(lowerImpactHidden(events, "high", "EU")).toBe(2);
+    expect(lowerImpactHidden(events, "high", "DE")).toBe(1);
+    expect(lowerImpactHidden(events, "high", "all")).toBe(3);
+    for (const impact of ["all", "medium", "low"] as const) expect(lowerImpactHidden(events, impact, "EU"), impact).toBe(0);
+  });
 });
 
 describe("high-impact prints", () => {
@@ -94,6 +118,25 @@ describe("high-impact prints", () => {
     expect(hasPendingHighImpactPrint([cpi], release + 21 * 60_000)).toBe(false);
     expect(hasPendingHighImpactPrint([{ ...cpi, impact: "low" }], release + 60_000)).toBe(false);
     expect(hasPendingHighImpactPrint([{ ...cpi, actual: "0.3%" }], release + 60_000)).toBe(false);
+  });
+
+  // They never get an actual: waiting on one would poll every client for 20 minutes after each,
+  // from midnight UTC for a bank's untimed decision.
+  test("a central bank decision or a statistics office's listed release is never a pending print", () => {
+    const midnight = new Date("2026-10-22T00:00:00.000Z").getTime();
+    const decision = {
+      ...makeEvent("cb-cbrt-2026-10-22"), date: new Date(midnight), time: "All Day", country: "TR",
+      event: "CBRT Interest Rate Decision", kind: "central-bank-decision" as const, timeNote: "The bank's calendar gives the day, not the time",
+    };
+    const release12 = { ...makeEvent("inegi-10506"), date: new Date(release), country: "MX", event: "Mid-Month CPI", kind: "statistics-release" as const };
+    expect(pendingHighImpactPrints([decision], midnight + 60_000)).toEqual([]);
+    expect(pendingHighImpactPrints([release12], release + 60_000)).toEqual([]);
+    // A feed's own row at the same time still is.
+    const feed = { ...makeEvent("cpi"), date: new Date(release) };
+    expect(pendingHighImpactPrints([decision, release12, feed], release + 60_000).map((event) => event.id)).toEqual(["cpi"]);
+    // Nor is a feed's all-day event (the US midterms), which prints nothing.
+    const election = { ...makeEvent("midterms"), date: new Date(midnight), time: "All Day", event: "Midterm Elections" };
+    expect(pendingHighImpactPrints([election], midnight + 60_000)).toEqual([]);
   });
 
   test("a print lands when a blank high-impact actual gets a number", () => {
@@ -123,5 +166,93 @@ describe("calendar rows", () => {
   test("puts NOW above the next day's header when nothing is left today", () => {
     const events = [at("mon-9", 28, 9), at("mon-16", 28, 16), at("tue-1", 29, 1)];
     expect(layout(events, utc(28, 20))).toEqual(["TODAY", "mon-9", "mon-16", "NOW", "TOMORROW", "tue-1"]);
+  });
+});
+
+describe("country filters", () => {
+  test("take regions and ISO country codes in any case, comma or space separated, once each", () => {
+    expect(parseCountryFilter("mx")).toEqual({ filter: "MX" });
+    expect(parseCountryFilter("MX,BR,ZA,IN,KR")).toEqual({ filter: "MX,BR,ZA,IN,KR" });
+    expect(parseCountryFilter(" mx, br  za,MX ")).toEqual({ filter: "MX,BR,ZA" });
+    expect(parseCountryFilter("g7,mx")).toEqual({ filter: "G7,MX" });
+    expect(parseCountryFilter("UK")).toEqual({ filter: "GB" });
+    expect(parseCountryFilter("eu")).toEqual({ filter: "EU" });
+    // All of anything is all.
+    expect(parseCountryFilter("MX,all")).toEqual({ filter: "all" });
+  });
+
+  test("refuse what is not a country: three letters, an unassigned code, CLDR's unknown region, nothing", () => {
+    expect(parseCountryFilter("TUR")).toEqual({ error: 'Unknown country "TUR".' });
+    expect(parseCountryFilter("MX,XQ")).toEqual({ error: 'Unknown country "XQ".' });
+    expect(parseCountryFilter("ZZ")).toEqual({ error: 'Unknown country "ZZ".' });
+    expect(parseCountryFilter(" , ")).toEqual({ error: "No country given." });
+  });
+
+  test("a list matches any of its parts, a region its members", () => {
+    const at = (country: string) => ({ country, event: "CPI" });
+    expect(matchesCountry(at("BR"), "MX,BR")).toBe(true);
+    expect(matchesCountry(at("US"), "MX,BR")).toBe(false);
+    expect(matchesCountry(at("JP"), "G7,MX")).toBe(true);
+    expect(matchesCountry(at("MX"), "G7,MX")).toBe(true);
+    expect(matchesCountry(at("TR"), "G7,MX")).toBe(false);
+    expect(matchesCountry(at("TR"), "all")).toBe(true);
+  });
+
+  test("countries named with nothing listed are said plainly; regions are never among them", () => {
+    const events = [{ country: "MX", event: "CPI" }, { country: "US", event: "CPI" }];
+    expect(countriesWithoutEvents("MX,BR,ZA", events)).toEqual(["BR", "ZA"]);
+    expect(countriesWithoutEvents("G7,IN", events)).toEqual(["IN"]);
+    expect(countriesWithoutEvents("US", events)).toEqual([]);
+    expect(noScheduledReleasesMessage(["MX"])).toBe("No scheduled releases for MX in this window.");
+    expect(noScheduledReleasesMessage(["ZA", "IN"])).toBe("No scheduled releases for ZA or IN in this window.");
+    expect(noScheduledReleasesMessage(["MX", "BR", "ZA", "IN", "KR"])).toBe("No scheduled releases for MX, BR, ZA, IN or KR in this window.");
+  });
+
+  test("a national euro-area release is its member's by the adjective its title starts with, and still the euro area's", () => {
+    // Titles as both feeds list them under EU.
+    const eu = (event: string) => ({ country: "EU", event });
+    const shown = (event: string) => eventCountry(eu(event));
+    expect(shown("German Ifo Business Climate")).toBe("DE");
+    expect(shown("German Bundesbank President Nagel Speech")).toBe("DE");
+    expect(shown("French GDP Growth Rate QoQ Prel")).toBe("FR");
+    expect(shown("Italian 2-Year BTP Short Term Auction")).toBe("IT");
+    expect(shown("Spanish Unemployment Rate")).toBe("ES");
+    expect(shown("Belgian NBB Business Climate")).toBe("BE");
+    // The euro area's own releases, and words that only look like a member's.
+    for (const event of ["ECB Interest Rate Decision", "ECB President Lagarde Speech", "Inflation Rate YoY Final", "EU-Bonds Auction",
+      "European Commission Forecasts", "Germany 10-Year Bund Yield", "german Ifo Business Climate", "GermanIfo"]) {
+      expect([event, shown(event)]).toEqual([event, "EU"]);
+    }
+    // Only an EU row is read: a German-named row of another country stays that country's.
+    expect(eventCountry({ country: "US", event: "German Ifo Business Climate" })).toBe("US");
+
+    const ifo = eu("German Ifo Business Climate");
+    expect(matchesCountry(ifo, "EU")).toBe(true);
+    expect(matchesCountry(ifo, "G7")).toBe(true);
+    expect(matchesCountry(ifo, "DE")).toBe(true);
+    expect(matchesCountry(ifo, "FR")).toBe(false);
+    expect(matchesCountry(eu("ECB Interest Rate Decision"), "DE")).toBe(false);
+    expect(countriesWithoutEvents("DE,FR,EU", [ifo])).toEqual(["FR"]);
+  });
+});
+
+describe("econ calendar energy units", () => {
+  const energy = (actual: string | null, forecast: string | null, prior: string | null): EconEvent => ({
+    ...makeEvent("eia"), event: "Crude Oil Inventories", actual, forecast, prior,
+  });
+
+  test("a value column widens to keep a unit whole, and keeps its usual width otherwise", () => {
+    expect(valueColumnWidth([makeEvent("pce")], "actual", 9)).toBe(9);
+    expect(valueColumnWidth([makeEvent("pce"), energy("-3.061M bbl", "-1.2M bbl", "0.034M b/d")], "actual", 9)).toBe(11);
+    expect(valueColumnWidth([energy(null, null, "0.034M b/d")], "prior", 9)).toBe(10);
+    expect(valueColumnWidth([energy("77 Bcf", "80 Bcf", "67 Bcf")], "forecast", 10)).toBe(10);
+    // A long text value does not take the table.
+    expect(valueColumnWidth([energy("not published this week", null, null)], "actual", 9)).toBe(12);
+  });
+
+  test("a figure with its unit still compares with its forecast", () => {
+    expect(actualColor("77 Bcf", "80 Bcf")).toBe(colors.negative);
+    expect(actualColor("-3.061M bbl", "-4.000M bbl")).toBe(colors.positive);
+    expect(actualColor("0.034M b/d", "0.034M b/d")).toBe(colors.text);
   });
 });

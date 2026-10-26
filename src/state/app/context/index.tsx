@@ -495,6 +495,7 @@ export function AppProvider({
     paneState: currentState.paneState,
     focusedPaneId: currentState.focusedPaneId,
     statusBarVisible: currentState.statusBarVisible,
+    brokerSyncErrors: currentState.brokerSyncErrors,
   }), []);
 
   const serializeDesktopSnapshot = useCallback((snapshot: DesktopSharedStateSnapshot): string => JSON.stringify({
@@ -502,6 +503,7 @@ export function AppProvider({
     paneState: snapshot.paneState,
     focusedPaneId: snapshot.focusedPaneId,
     statusBarVisible: snapshot.statusBarVisible,
+    brokerSyncErrors: snapshot.brokerSyncErrors ?? {},
   }), []);
 
   const serializePaneState = useCallback((paneState: PaneRuntimeState | undefined): string => JSON.stringify(paneState ?? {}), []);
@@ -594,6 +596,7 @@ export function AppProvider({
     state.focusedPaneId,
     state.paneState,
     state.statusBarVisible,
+    state.brokerSyncErrors,
   ]);
 
   useEffect(() => {

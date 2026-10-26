@@ -1,5 +1,7 @@
+import type { CloudHistoryParams } from "../api-client/paths";
 import type { CloudMarketResponse, CloudPricePointPayload } from "../api-client/types";
-import type { FxLeg } from "./coordinator/fx-legs";
+import { isCurrencyCode } from "../utils/currency-pair";
+import { fxLegForCurrency, type FxLeg } from "./coordinator/fx-legs";
 
 /** USD per unit of one currency at each completed daily FX close, by date. */
 export interface FxCloses {
@@ -69,4 +71,94 @@ export function fxCloseOnOrBefore(fx: FxCloses, date: string): { date: string; r
     if (rate != null) return { date: day, rate };
   }
   return null;
+}
+
+/** Reads a pair's daily bars: `apiClient` in the app, a fake in tests. */
+export interface FxHistoryClient {
+  getCloudHistory(symbol: string, exchange: string, params: CloudHistoryParams): Promise<CloudMarketResponse<CloudPricePointPayload[]>>;
+}
+
+/** One unit of a currency in USD at a dated daily close. */
+export interface FxCloseReading {
+  /** USD per unit. */
+  rate: number;
+  /** The UTC day of the close: the day asked for, or the last trading day before it. */
+  date: string;
+}
+
+/**
+ * The daily pair a currency's USD value is read from: the leg the app streams
+ * it on, or USD/XXX for any other ISO currency, which the service also keeps
+ * daily closes of. Null for a code that is no currency.
+ */
+export function dailyFxLeg(currency: string): FxLeg | null {
+  const code = currency.trim().toUpperCase();
+  const leg = fxLegForCurrency(code);
+  if (leg) return leg;
+  return isCurrencyCode(code) ? { currency: code, instrument: { symbol: `${code}=X`, exchange: "" }, invert: true } : null;
+}
+
+const isoDay = (time: number) => new Date(time).toISOString().slice(0, 10);
+
+/**
+ * USD per unit of the leg's currency at its last completed daily close on or
+ * before `date` (YYYY-MM-DD), looking back a week at most, so a weekend or a
+ * holiday finds the close before it but a gap in the data is not bridged.
+ * Today's bar, still trading, is never read. Null when the pair has no close
+ * in that week. A cost bought on a date and `fx --date` both read it.
+ */
+export async function fxCloseOnDate(leg: FxLeg, date: string, client: FxHistoryClient, now = new Date()): Promise<FxCloseReading | null> {
+  return (await readFxCloseOnDate(leg, date, client, now)).reading;
+}
+
+/**
+ * `fxCloseOnDate`'s reading, and whether the service answered with any daily
+ * bars of the pair at all: an `empty` or `unsupported` answer is a pair it
+ * keeps no daily closes of, not a week without one.
+ */
+export async function readFxCloseOnDate(
+  leg: FxLeg,
+  date: string,
+  client: FxHistoryClient,
+  now = new Date(),
+): Promise<{ reading: FxCloseReading | null; served: boolean }> {
+  const day = Date.parse(`${date}T00:00:00Z`);
+  const response = await client.getCloudHistory(leg.instrument.symbol, leg.instrument.exchange ?? "", {
+    interval: "1day", startDate: isoDay(day - FX_MAX_AGE_DAYS * DAY_MS), endDate: isoDay(day + DAY_MS), outputsize: FX_MAX_AGE_DAYS + 4,
+  });
+  const served = response.status !== "empty" && response.status !== "unsupported";
+  if (response.status !== "success" && response.status !== "partial") return { reading: null, served };
+  const today = isoDay(now.getTime());
+  let best: FxCloseReading | null = null;
+  for (const row of Array.isArray(response.data) ? response.data : []) {
+    const at = typeof row?.date === "string" ? Date.parse(row.date) : Number.NaN;
+    if (!Number.isFinite(at) || !Number.isFinite(row.close) || row.close <= 0) continue;
+    const rowDay = isoDay(at);
+    if (rowDay > date || rowDay >= today || Date.parse(`${rowDay}T00:00:00Z`) < day - FX_MAX_AGE_DAYS * DAY_MS) continue;
+    if (!best || rowDay > best.date) best = { rate: leg.invert ? 1 / row.close : row.close, date: rowDay };
+  }
+  return { reading: best, served };
+}
+
+/**
+ * The completed daily closes of a currency's USD pair (`dailyFxLeg`) from a
+ * week before `since` (YYYY-MM-DD) to today, read by `dailyFxCloses`, so the
+ * first day finds the close before it. Throws `FxHistoryError` when the pair
+ * has no usable history, and a plain error for a code that is no currency.
+ */
+export async function loadDailyFxCloses(
+  currency: string,
+  since: string,
+  client: FxHistoryClient,
+  now = new Date(),
+): Promise<FxCloses> {
+  const leg = dailyFxLeg(currency);
+  if (!leg) throw new Error(`${currency} is not a currency with daily FX closes`);
+  const start = Math.min(Date.parse(`${since}T00:00:00Z`), now.getTime()) - FX_MAX_AGE_DAYS * DAY_MS;
+  // A trading week has five closes; seven a week leaves room for a source that also dates weekends.
+  const rows = Math.ceil((now.getTime() - start) / DAY_MS) + 4;
+  const response = await client.getCloudHistory(leg.instrument.symbol, leg.instrument.exchange ?? "", {
+    interval: "1day", startDate: isoDay(start), endDate: isoDay(now.getTime()), outputsize: rows,
+  });
+  return dailyFxCloses(response, leg, now, Math.max(rows, 1500));
 }

@@ -1,6 +1,8 @@
 import { alignTimeSeries, effectiveTimeSeriesPointTime, scalarPointValue } from "./alignment";
 import { mergePriceHistoryIntegrity } from "../utils/price-history-integrity";
-import { resolveCurrencyUnit } from "../utils/currency-units";
+import { resolveCurrencyUnit, US_CENTS } from "../utils/currency-units";
+import { isCurrencyCode } from "../utils/currency-pair";
+import { stablePriceFractionDigits } from "../market-data/market/format";
 import { isRealizedVolatilityEstimator, realizedVolatilityCadenceIssue, rollingRealizedVolatility } from "../market-data/realized-volatility";
 import { latestTradingSessionOpen } from "../market-data/market/trading-sessions";
 import { CHART_RESOLUTION_STEP_MS, isIntradayResolution, type ManualChartResolution } from "./resolution";
@@ -17,7 +19,18 @@ import type {
   TimeSeriesPoint,
 } from "./types";
 import { isFiniteNumber } from "../utils/guards";
-import { GALLONS_PER_BARREL, isPerBarrelUnit, isPerGallonUnit, perBarrelUnit, quantityIdentity, unitCurrencyToken } from "./price-units";
+import { studyMessageName } from "./series-name";
+import { dailyLeverageGrowth, isLeverageFactor, leverageDecayPoints, leverageFactorLabel, leverageSymbol, sessionCloses, type StudyAnchor } from "./leverage";
+import {
+  GALLONS_PER_BARREL,
+  isBarrelsPerTonne,
+  isPerBarrelUnit,
+  isPerGallonUnit,
+  perBarrelUnit,
+  perTonneUnit,
+  quantityIdentity,
+  unitCurrencyToken,
+} from "./price-units";
 
 export interface StudyResolutionResult {
   series: ResolvedSeries[];
@@ -45,7 +58,10 @@ const KIND_COLORS: Partial<Record<ChartStudyKind, string>> = {
   "anchored-vwap": "#b197fc",
   "volume-profile": "#adb5bd",
   atr: "#63e6be",
+  leverage: "#e599f7",
 };
+/** The decay study's two lines: the fund against the daily line, the daily line against the period multiple. */
+const DECAY_COLORS = ["#ffa94d", "#66d9e8"] as const;
 /**
  * One per anchor, so eight lines never repeat a colour. None is red or pink
  * (falling candles take the theme's negative), orange (VWAP), yellow (the
@@ -99,6 +115,8 @@ function outputSeries(
     statedUnit?: string | null;
     /** The kind of price the output is, for its decimals; by default the input's, while the output keeps its unit. */
     priceAssetCategory?: string | null;
+    /** The decimals a value worked out from prices prints at. */
+    valueDecimals?: number;
   },
 ): ResolvedSeries {
   const historyResolution = options.historyResolution === undefined ? input.historyResolution : options.historyResolution;
@@ -111,12 +129,14 @@ function outputSeries(
     unit: options.unit ?? input.unit,
     unitGroup: options.unitGroup ?? input.unitGroup,
     ...(statedUnit ? { statedUnit } : {}),
+    ...(options.valueDecimals !== undefined ? { valueDecimals: options.valueDecimals } : {}),
     priceAssetCategory: options.priceAssetCategory === undefined
       ? sameUnit ? input.priceAssetCategory : undefined
       : options.priceAssetCategory ?? undefined,
     nativeFrequency: options.nativeFrequency ?? input.nativeFrequency,
     ...(historyResolution !== undefined ? { historyResolution } : {}),
     ...(input.historyStart && historyResolution === input.historyResolution ? { historyStart: input.historyStart } : {}),
+    ...(input.barSize && historyResolution === input.historyResolution ? { barSize: input.barSize } : {}),
     dataShape: "scalar",
     style: options.style ?? "line",
     transform: "raw",
@@ -710,11 +730,18 @@ function seriesCurrency(series: ResolvedSeries): string | null {
 function unitFactorIdentity(value: string): string {
   // "US cents", as futures terms word a grain's quote, is the USX the quote names.
   const token = unitCurrencyToken(value) ?? value.trim();
-  if (/^[A-Za-z]{3}$/.test(token)) {
+  // Three letters are a currency unless they spell a quantity: "bbl" is a barrel.
+  if (/^[A-Za-z]{3}$/.test(token) && quantityIdentity(token) === token.toLowerCase()) {
     const { currency, divisor } = resolveCurrencyUnit(token);
     return `${currency}:${divisor}`;
   }
   return quantityIdentity(token);
+}
+
+/** Whether a unit's factor is money (USD, GBp, US cents) rather than a quantity it buys. */
+function isCurrencyFactor(value: string): boolean {
+  const currency = /^([A-Z]{3}):\d+$/.exec(unitFactorIdentity(value))?.[1];
+  return !!currency && (currency === US_CENTS || isCurrencyCode(currency));
 }
 
 function knownUnitSignature(series: Pick<ResolvedSeries, "unit" | "unitGroup">): string | null {
@@ -788,28 +815,41 @@ function unitMismatchMessage(
 
 function unitFactors(unit: string): { numerator: string[]; denominator: string[] } {
   const [numerator = "", ...denominator] = unit.split("/");
-  const factor = (value: string) => {
-    const normalized = value.trim();
+  const factor = (value: string) => value.split("·").flatMap((part) => {
+    const normalized = part.trim();
     if (!normalized || normalized === "1") return [];
     return [normalized.toLowerCase() === "shares" ? "share" : normalized];
-  };
+  });
   return {
     numerator: factor(numerator),
     denominator: denominator.flatMap(factor),
   };
 }
 
-function ratioUnit(left: ResolvedSeries, right: ResolvedSeries): {
+interface SeriesUnit {
   unit: string;
   unitGroup: string;
-} {
-  if (!knownUnitSignature(left) || !knownUnitSignature(right)) {
-    return { unit: "unknown", unitGroup: "derived-unit:unknown" };
-  }
+}
+
+const UNKNOWN_UNIT: SeriesUnit = { unit: "unknown", unitGroup: "derived-unit:unknown" };
+
+function isPriceGroup(unitGroup: string): boolean {
+  return /^price(?::|$)/.test(unitGroup);
+}
+
+/**
+ * The unit of `left` times (`power` 1) or over (-1) `right`, the factors they
+ * share cancelling: USD / barrel over an FX rate's USD / EUR is EUR / barrel.
+ * Units are spaced as either side writes them ("USD / gallon"). A price over
+ * or times a price that leaves one currency per one quantity is a price in
+ * that currency; anything else is a derived unit, or a plain ratio.
+ */
+function combinedUnit(left: SeriesUnit, right: SeriesUnit, power: 1 | -1): SeriesUnit {
+  if (!knownUnitSignature(left) || !knownUnitSignature(right)) return UNKNOWN_UNIT;
   const leftFactors = unitFactors(left.unit);
   const rightFactors = unitFactors(right.unit);
-  const numerator = [...leftFactors.numerator, ...rightFactors.denominator];
-  const denominator = [...leftFactors.denominator, ...rightFactors.numerator];
+  const numerator = [...leftFactors.numerator, ...(power < 0 ? rightFactors.denominator : rightFactors.numerator)];
+  const denominator = [...leftFactors.denominator, ...(power < 0 ? rightFactors.numerator : rightFactors.denominator)];
   for (let index = numerator.length - 1; index >= 0; index -= 1) {
     const match = denominator.findIndex((factor) => (
       unitFactorIdentity(factor) === unitFactorIdentity(numerator[index]!)
@@ -818,9 +858,14 @@ function ratioUnit(left: ResolvedSeries, right: ResolvedSeries): {
     numerator.splice(index, 1);
     denominator.splice(match, 1);
   }
+  const slash = [left.unit, right.unit].some((unit) => /\s\/\s/.test(unit)) ? " / " : "/";
   const unit = denominator.length === 0
     ? numerator.join("·") || "x"
-    : `${numerator.join("·") || "1"}/${denominator.join("·")}`;
+    : `${numerator.join("·") || "1"}${slash}${denominator.join("·")}`;
+  if (isPriceGroup(left.unitGroup) && isPriceGroup(right.unitGroup) && numerator.length === 1 && isCurrencyFactor(numerator[0]!)
+    && (denominator.length === 0 || (denominator.length === 1 && !isCurrencyFactor(denominator[0]!)))) {
+    return { unit, unitGroup: `price:${unitCurrencyToken(numerator[0]!) ?? numerator[0]!}` };
+  }
   const groupFactor = (value: string) => {
     const identity = unitFactorIdentity(value);
     return (/^[A-Za-z]{3}$/.test(value.trim()) ? identity.replace(/:1$/, "") : identity).toLowerCase();
@@ -832,6 +877,78 @@ function ratioUnit(left: ResolvedSeries, right: ResolvedSeries): {
     unit,
     unitGroup: unit === "x" ? "ratio" : `derived-unit:${group}`,
   };
+}
+
+function ratioUnit(left: SeriesUnit, right: SeriesUnit): SeriesUnit {
+  return combinedUnit(left, right, -1);
+}
+
+/** An FX rate's unit: one currency per another, as USD / EUR. */
+function isRateUnit(unit: string): boolean {
+  const { numerator, denominator } = unitFactors(unit);
+  return numerator.length === 1 && denominator.length === 1 && isCurrencyFactor(numerator[0]!) && isCurrencyFactor(denominator[0]!);
+}
+
+/**
+ * Why a price times (`power` 1) or over (-1) an FX rate is no price, with how
+ * to convert it instead: a crack in USD / barrel over USDJPY=X (JPY / USD) is
+ * USD·USD / barrel·JPY, and times it JPY / barrel. A ratio, which cannot
+ * multiply, names the formula to write (`priceName` its numerator). Null when
+ * the rate converts the price, or either is not what this asks about.
+ */
+function fxConversionIssue(price: SeriesUnit, rate: ResolvedSeries, power: 1 | -1, result: SeriesUnit, priceName?: string): string | null {
+  if (!isPriceGroup(price.unitGroup) || !isPriceGroup(rate.unitGroup) || !isRateUnit(rate.unit) || isPriceGroup(result.unitGroup)) {
+    return null;
+  }
+  const name = legName(rate);
+  const done = `${power < 0 ? "Dividing" : "Multiplying"} by ${name} (${rate.unit}) leaves ${result.unit}`;
+  const other = combinedUnit(price, rate, power < 0 ? 1 : -1);
+  if (isPriceGroup(other.unitGroup)) {
+    const fix = priceName ? `write (${priceName})${power < 0 ? "*" : "/"}${name}` : `${power < 0 ? "multiply" : "divide"} by ${name}`;
+    return `${done}; ${fix} instead to get ${other.unit}.`;
+  }
+  const currency = price.unitGroup.slice("price:".length) || "its currency";
+  return `${done}; ${price.unit} converts only with a rate that has ${currency} on one side.`;
+}
+
+/** The distinct currencies a unit still counts, once its factors cancel. */
+function unitCurrencies(unit: string): Set<string> {
+  const { numerator, denominator } = unitFactors(unit);
+  return new Set([...numerator, ...denominator].filter(isCurrencyFactor).map((factor) => unitFactorIdentity(factor).split(":")[0]!));
+}
+
+/**
+ * The decimals a value worked out from prices prints at: the most its legs
+ * print, from two to four, and no more than a value of its own size needs:
+ * four under 10, two from 10. A crack of 4.9842 USD / gallon heating oil and
+ * 116.72 USD / barrel Brent reads 92.62; a gasoline-heating oil spread reads
+ * 1.7726. Undefined when a leg is not a price or the value has none yet.
+ */
+function derivedValueDecimals(inputs: readonly ResolvedSeries[], points: readonly TimeSeriesPoint[]): number | undefined {
+  let digits = 0;
+  for (const input of inputs) {
+    if (!isPriceGroup(input.unitGroup) || input.transform !== "raw") return undefined;
+    const reference = latestScalarValue(input.points);
+    if (reference === undefined) return undefined;
+    digits = Math.max(digits, stablePriceFractionDigits({
+      assetCategory: input.priceAssetCategory,
+      currency: unitCurrencyToken(input.unit.split("/")[0] ?? "") ?? undefined,
+      referencePrice: reference,
+      sessionPrices: [reference],
+    }));
+  }
+  const size = latestScalarValue(points);
+  if (size === undefined) return undefined;
+  return Math.min(size < 10 ? 4 : 2, Math.max(2, digits));
+}
+
+/** The size of a series' last nonzero value, which its decimals are read from. */
+function latestScalarValue(points: readonly TimeSeriesPoint[]): number | undefined {
+  for (let index = points.length - 1; index >= 0; index -= 1) {
+    const value = scalarPointValue(points[index]!);
+    if (value !== null && Number.isFinite(value) && value !== 0) return Math.abs(value);
+  }
+  return undefined;
 }
 
 function pairedSamples(left: ResolvedSeries, right: ResolvedSeries, carryForward: boolean): PairedSample[] {
@@ -891,7 +1008,13 @@ function resolvePairStudy(
     const outputUnit = ratioStudy
       ? ratioUnit(left, right)
       : { unit: left.unit, unitGroup: left.unitGroup };
+    // A price over an FX rate is a price in the other currency (EUR / barrel),
+    // stated as a future's unit is; a plain ratio keeps its own decimals.
+    const convertedPrice = ratioStudy && isPriceGroup(outputUnit.unitGroup);
+    const valueDecimals = !ratioStudy || convertedPrice ? derivedValueDecimals([left, right], points) : undefined;
     return [outputSeries(spec, left, {
+      ...(convertedPrice ? { statedUnit: outputUnit.unit, priceAssetCategory: null } : {}),
+      ...(valueDecimals !== undefined ? { valueDecimals } : {}),
       label: ratioStudy
         ? `${left.label} / ${right.label}`
         : `${left.label} - ${multiplier === 1 ? "" : `${multiplier}×`}${right.label}`,
@@ -955,57 +1078,91 @@ function resolvePairStudy(
 }
 
 /** Formulas of levels, which carry each input's latest value to the other inputs' dates. */
+/** The study's own colour, or the next after it no series or formula on the chart has taken. */
+function freeStudyColor(index: number, used: ReadonlySet<string>): string {
+  for (let offset = 0; offset < STUDY_COLORS.length; offset += 1) {
+    const color = STUDY_COLORS[(index + offset) % STUDY_COLORS.length]!;
+    if (!used.has(color.toLowerCase())) return color;
+  }
+  return STUDY_COLORS[index % STUDY_COLORS.length]!;
+}
+
 function isLevelFormula(kind: ChartStudyKind): boolean {
   return kind === "ratio" || kind === "spread" || kind === "formula";
 }
 
+interface FormulaLeg {
+  /** The input's place in the study's inputs. */
+  index: number;
+  /** Its multiplier, its sign included. */
+  weight: number;
+  /** The multiplier carries the 42 gallons that make a per-gallon price per barrel. */
+  perBarrel: boolean;
+  /** The barrels in a tonne the multiplier carries (7.45 for gasoil), making a per-barrel price per tonne. */
+  perTonne: number | null;
+}
+
 interface FormulaTerms {
-  /** Each input's multiplier, in input order. */
-  weights: number[];
-  /** Whether an input's multiplier carries the 42 gallons that make its per-gallon price per barrel. */
-  perBarrel: boolean[];
+  /** The inputs the formula adds up. */
+  legs: FormulaLeg[];
+  /** The inputs the whole sum is multiplied (1) or divided (-1) by: `/EURUSD=X`. */
+  factors: Array<{ index: number; power: 1 | -1 }>;
   divisor: number;
 }
 
 /**
- * A formula study's terms: `weight1`, `perBarrel1`, ... per input, and an
- * optional `divisor`. A saved or hand-edited spec can carry a multiplier or
- * divisor no formula was written with (a value that is not a number is
- * dropped when the spec loads, so it arrives missing); that is an error, not
- * a silent 1.
+ * A formula study's terms: `weight1`, `perBarrel1`, `perTonne1` ... per
+ * input it adds up, `power1` ... (1 or -1) per input it multiplies or divides
+ * the sum by, and an optional `divisor`. A saved or hand-edited spec can carry
+ * a multiplier or divisor no formula was written with (a value that is not a
+ * number is dropped when the spec loads, so it arrives missing); that is an
+ * error, not a silent 1.
  */
 function formulaTerms(spec: ChartStudySpec, inputs: readonly ResolvedSeries[]): FormulaTerms | { error: string } {
-  const weights: number[] = [];
+  const legs: FormulaLeg[] = [];
+  const factors: FormulaTerms["factors"] = [];
   for (const [index, input] of inputs.entries()) {
+    const power = spec.parameters[`power${index + 1}`];
+    if (power !== undefined) {
+      if (power !== 1 && power !== -1) return { error: `The formula neither multiplies nor divides by ${legName(input)}; write the formula again.` };
+      factors.push({ index, power });
+      continue;
+    }
     const weight = spec.parameters[`weight${index + 1}`];
     if (!isFiniteNumber(weight)) return { error: `The multiplier of ${legName(input)} is missing or not a number; write the formula again.` };
     if (weight === 0) return { error: `${legName(input)} has a multiplier of 0, which removes it; leave it out of the formula instead.` };
-    weights.push(weight);
+    const perTonne = spec.parameters[`perTonne${index + 1}`];
+    legs.push({
+      index,
+      weight,
+      perBarrel: spec.parameters[`perBarrel${index + 1}`] === 1,
+      perTonne: isFiniteNumber(perTonne) && isBarrelsPerTonne(perTonne) ? perTonne : null,
+    });
   }
+  if (legs.length === 0) return { error: "The formula has no series to add up, only series it divides by; write the formula again." };
   const divisor = spec.parameters.divisor ?? 1;
   if (!isFiniteNumber(divisor)) return { error: "The formula's divisor is not a number; write the formula again." };
   if (divisor === 0) return { error: "A formula cannot be divided by 0." };
-  return {
-    weights,
-    perBarrel: inputs.map((_, index) => spec.parameters[`perBarrel${index + 1}`] === 1),
-    divisor,
-  };
+  return { legs, factors, divisor };
 }
 
-/** Each input's unit once its multiplier is applied: 42 gallons of a per-gallon price are a barrel's worth. */
-function formulaLegUnits(terms: FormulaTerms, inputs: readonly ResolvedSeries[]): string[] {
-  return inputs.map((input, index) => terms.perBarrel[index] ? perBarrelUnit(input.unit) : input.unit);
+/**
+ * A leg's unit once its multiplier is applied: 42 gallons of a per-gallon
+ * price are a barrel's worth, and 7.45 barrels of gasoil a tonne's.
+ */
+function formulaLegUnit(leg: FormulaLeg, input: ResolvedSeries): string {
+  const unit = leg.perBarrel ? perBarrelUnit(input.unit) : input.unit;
+  return leg.perTonne ? perTonneUnit(unit) : unit;
 }
 
 /** Why a formula's legs cannot be summed, or null when every leg counts the same known unit. */
 function formulaUnitMismatch(terms: FormulaTerms, inputs: readonly ResolvedSeries[]): string | null {
-  if (inputs.length < 2) return null;
-  const units = formulaLegUnits(terms, inputs);
-  const signatures = inputs.map((input, index) => knownUnitSignature({ unit: units[index]!, unitGroup: input.unitGroup }));
+  if (terms.legs.length < 2) return null;
+  const legs = terms.legs.map((leg) => ({ series: inputs[leg.index]!, unit: formulaLegUnit(leg, inputs[leg.index]!) }));
+  const signatures = legs.map(({ series, unit }) => knownUnitSignature({ unit, unitGroup: series.unitGroup }));
   const other = signatures.findIndex((signature, index) => index > 0 && (signature === null || signature !== signatures[0]));
   if (signatures[0] !== null && other < 0) return null;
-  const right = Math.max(1, other);
-  return unitMismatchMessage("formula", { series: inputs[0]!, unit: units[0]! }, { series: inputs[right]!, unit: units[right]! });
+  return unitMismatchMessage("formula", legs[0]!, legs[Math.max(1, other)]!);
 }
 
 function formatFormulaNumber(value: number): string {
@@ -1014,20 +1171,25 @@ function formatFormulaNumber(value: number): string {
 
 /**
  * A formula as the legend names it, from the terms it was written with:
- * `42×HO=F - CL=F`, `(2×42×RB=F + 42×HO=F - 3×CL=F)/3`.
+ * `42×HO=F - CL=F`, `(2×42×RB=F + 42×HO=F - 3×CL=F)/3`, `(42×HO=F - BZ=F)/EURUSD=X`.
  */
 function formulaLabel(inputs: readonly ResolvedSeries[], terms: FormulaTerms): string {
-  const sum = inputs.map((input, index) => {
-    const weight = terms.weights[index]!;
-    const magnitude = Math.abs(weight);
-    const factors = terms.perBarrel[index]
-      ? [...(magnitude === GALLONS_PER_BARREL ? [] : [formatFormulaNumber(magnitude / GALLONS_PER_BARREL)]), String(GALLONS_PER_BARREL)]
-      : magnitude === 1 ? [] : [formatFormulaNumber(magnitude)];
-    const term = [...factors, legName(input)].join("×");
-    if (index === 0) return weight < 0 ? `-${term}` : term;
-    return `${weight < 0 ? "-" : "+"} ${term}`;
+  const sum = terms.legs.map((leg, position) => {
+    const magnitude = Math.abs(leg.weight);
+    // The conversions it carries are named as written: 7.45×42×HO=F.
+    const conversions = [...(leg.perTonne ? [leg.perTonne] : []), ...(leg.perBarrel ? [GALLONS_PER_BARREL] : [])];
+    const count = conversions.reduce((rest, factor) => rest / factor, magnitude);
+    const factors = [...(Math.abs(count - 1) < 1e-9 ? [] : [formatFormulaNumber(count)]), ...conversions.map(String)];
+    const term = [...factors, legName(inputs[leg.index]!)].join("×");
+    if (position === 0) return leg.weight < 0 ? `-${term}` : term;
+    return `${leg.weight < 0 ? "-" : "+"} ${term}`;
   }).join(" ");
-  return terms.divisor === 1 ? sum : `(${sum})/${formatFormulaNumber(terms.divisor)}`;
+  if (terms.divisor === 1 && terms.factors.length === 0) return sum;
+  return [
+    `(${sum})`,
+    ...(terms.divisor === 1 ? [] : [`/${formatFormulaNumber(terms.divisor)}`]),
+    ...terms.factors.map(({ index, power }) => `${power < 0 ? "/" : "×"}${legName(inputs[index]!)}`),
+  ].join("");
 }
 
 /** Every input's value on each date they share, each carried forward to the others' dates. */
@@ -1049,31 +1211,67 @@ function alignedSamples(inputs: readonly ResolvedSeries[]): Array<{ point: TimeS
   });
 }
 
-/** A weighted sum of the inputs over a divisor, in the unit the legs share once converted. */
+/**
+ * A weighted sum of the legs over a divisor, in the unit the legs share once
+ * converted, then times or over the series it is scaled by, in the unit
+ * that arithmetic leaves: a crack in USD / barrel over EURUSD=X is EUR / barrel.
+ */
+/**
+ * A formula's unit: its legs' once converted, then times or over each series
+ * it is scaled by. Legs that count different units, or an FX rate the wrong
+ * way up, are an error that says why: a crack over USDJPY=X is no price, and
+ * times it JPY / barrel.
+ */
+function formulaUnit(terms: FormulaTerms, inputs: readonly ResolvedSeries[]): SeriesUnit | { error: string } {
+  const mismatch = formulaUnitMismatch(terms, inputs);
+  if (mismatch) return { error: mismatch };
+  const first = inputs[terms.legs[0]!.index]!;
+  let unit: SeriesUnit = { unit: formulaLegUnit(terms.legs[0]!, first), unitGroup: first.unitGroup };
+  for (const factor of terms.factors) {
+    const series = inputs[factor.index]!;
+    const next = combinedUnit(unit, series, factor.power);
+    const issue = fxConversionIssue(unit, series, factor.power, next);
+    if (issue) return { error: issue };
+    unit = next;
+  }
+  return unit;
+}
+
 function resolveFormula(
   spec: ChartStudySpec,
   inputs: readonly ResolvedSeries[],
   terms: FormulaTerms,
+  unit: SeriesUnit,
   color: string,
 ): ResolvedSeries[] {
-  const first = inputs[0]!;
-  const unit = formulaLegUnits(terms, inputs)[0]!;
+  const first = inputs[terms.legs[0]!.index]!;
   // Rounded off the float's last digits: 42 × 4.6233 - 96.12 is 98.0586, not 98.05860000000001.
-  const points = alignedSamples(inputs).map(({ point, values }) => derivedPoint(
-    { point, value: 0 },
-    Number((values.reduce((sum, value, index) => sum + value * terms.weights[index]!, 0) / terms.divisor).toPrecision(12)),
-  ));
+  const points = alignedSamples(inputs).map(({ point, values }) => {
+    let value: number | null = terms.legs.reduce((sum, leg) => sum + values[leg.index]! * leg.weight, 0) / terms.divisor;
+    for (const factor of terms.factors) {
+      const scale = values[factor.index]!;
+      value = value === null || (factor.power < 0 && scale === 0) ? null : factor.power < 0 ? value / scale : value * scale;
+    }
+    return derivedPoint({ point, value: 0 }, value === null ? null : Number(value.toPrecision(12)));
+  });
   const frequencies = new Set(inputs.map((input) => input.nativeFrequency));
   const resolutions = new Set(inputs.map((input) => input.historyResolution));
+  const scaled = terms.factors.length > 0;
+  // A price per quantity reads with its unit beside it, as a future's does.
+  const statedUnit = scaled
+    ? isPriceGroup(unit.unitGroup) && unit.unit.includes("/") ? unit.unit : null
+    : inputs.some((input) => input.statedUnit) ? unit.unit : null;
+  const valueDecimals = !scaled || isPriceGroup(unit.unitGroup) ? derivedValueDecimals(inputs, points) : undefined;
   return [outputSeries(spec, first, {
     label: formulaLabel(inputs, terms),
     points,
     color,
-    unit,
-    unitGroup: first.unitGroup,
-    statedUnit: inputs.some((input) => input.statedUnit) ? unit : null,
-    // A weighted sum is no traded price: its decimals are a value's, not a contract's tick.
+    unit: unit.unit,
+    unitGroup: unit.unitGroup,
+    statedUnit,
+    // A weighted sum is no traded price: its decimals are its legs', not a contract's tick.
     priceAssetCategory: null,
+    ...(valueDecimals !== undefined ? { valueDecimals } : {}),
     // As the pair formulas: as-of levels, constant until an input changes.
     style: "step",
     interpolation: "step-after",
@@ -1084,7 +1282,70 @@ function resolveFormula(
 }
 
 function requiredInputs(kind: ChartStudyKind): number {
-  return kind === "ratio" || kind === "spread" || kind === "correlation" ? 2 : 1;
+  return kind === "ratio" || kind === "spread" || kind === "correlation" || kind === "leverage-decay" ? 2 : 1;
+}
+
+/** The objective's line and its decay compound session returns: they need daily bars, whatever the chart's range. */
+function dailyBarsIssue(spec: ChartStudySpec, input: ResolvedSeries, marketResolution: ManualChartResolution | undefined): string | null {
+  const resolution = input.historyResolution === undefined ? marketResolution : input.historyResolution;
+  if (input.nativeFrequency === "daily" && (resolution === undefined || resolution === "1d")) return null;
+  return `${studyMessageName(spec)}: ${leverageFactorLabel(Number(spec.parameters.factor))} daily needs daily bars. Choose D bars.`;
+}
+
+/**
+ * The line a leveraged or inverse fund's daily objective draws from its index
+ * fund, in percent from where the chart compares (3× daily QQQ beside TQQQ),
+ * on the percent axis the compared legs share.
+ */
+function resolveLeverageLine(spec: ChartStudySpec, index: ResolvedSeries, color: string, anchor: StudyAnchor | undefined): ResolvedSeries[] {
+  const factor = spec.parameters.factor as number;
+  const closes = sessionCloses(index, anchor);
+  const growth = dailyLeverageGrowth(closes.map((entry) => entry.close), factor);
+  return [outputSeries(spec, index, {
+    label: `${leverageFactorLabel(factor)} daily ${leverageSymbol(index)}`,
+    points: closes.map((entry, position) => derivedPoint({ point: entry.point, value: entry.close }, (growth[position]! - 1) * 100)),
+    color,
+    unit: "%",
+    unitGroup: "percent",
+    statedUnit: null,
+    priceAssetCategory: null,
+    axis: "left",
+  })];
+}
+
+/**
+ * How far the fund falls short of its daily objective, in percentage points
+ * from where the chart compares: the fund against the daily line (fees,
+ * financing, tracking), and the daily line against the factor times the index
+ * fund's return over the period (compounding, which daily resets cost in a
+ * market that swings).
+ */
+function resolveLeverageDecay(
+  spec: ChartStudySpec,
+  fund: ResolvedSeries,
+  index: ResolvedSeries,
+  anchors: ReadonlyMap<string, StudyAnchor> | undefined,
+): ResolvedSeries[] {
+  const factor = spec.parameters.factor as number;
+  const decay = leverageDecayPoints(sessionCloses(fund, anchors?.get(fund.id)), sessionCloses(index, anchors?.get(index.id)), factor);
+  const daily = `${leverageFactorLabel(factor)} daily`;
+  const line = (id: string, label: string, color: string, value: (point: (typeof decay)[number]) => number) => outputSeries(spec, fund, {
+    id: `${spec.id}:${id}`,
+    label,
+    points: decay.map((entry) => derivedPoint({ point: entry.point, value: entry.fund }, value(entry))),
+    color: spec.color ?? color,
+    unit: "pp",
+    // Not a percent group: a difference of returns reads in points (-0.96 pp), not as a return.
+    unitGroup: "pp",
+    statedUnit: null,
+    priceAssetCategory: null,
+    axis: "left",
+  });
+  return [
+    line("fund", `${leverageSymbol(fund)} decay vs ${daily} ${leverageSymbol(index)}`, DECAY_COLORS[0], (entry) => entry.fund - entry.daily),
+    // `3× QQQ`: three times QQQ's return over the period, the multiple a daily reset does not deliver.
+    line("compounding", `${daily} ${leverageSymbol(index)} decay vs ${leverageFactorLabel(factor)} ${leverageSymbol(index)}`, DECAY_COLORS[1], (entry) => entry.daily - entry.period),
+  ];
 }
 
 /**
@@ -1188,16 +1449,23 @@ export function activeStudyInputSeriesIds(
     .flatMap((spec) => spec.inputSeriesIds));
 }
 
+/**
+ * `anchors`: where each input series is measured from and to, for studies
+ * that read returns over the chart's period (a leveraged fund's daily line and
+ * its decay start where a comparison starts its legs). Without one, a series'
+ * own first and last observations.
+ */
 export function resolveStudies(
   baseSeries: readonly ResolvedSeries[],
   studySpecs: readonly ChartStudySpec[],
   marketResolution?: ManualChartResolution,
   historicalPriceSeries?: ReadonlyMap<string, ResolvedSeries>,
+  anchors?: ReadonlyMap<string, StudyAnchor>,
 ): StudyResolutionResult {
   // With one security on the chart its volume is just "Volume"; beside a
   // comparison the legend names whose volume it is.
   const nameVolumeInput = baseSeries.filter((series) => series.observationKind === "market").length > 1;
-  return resolveStudySpecs(baseSeries, studySpecs, nameVolumeInput, marketResolution, historicalPriceSeries);
+  return resolveStudySpecs(baseSeries, studySpecs, nameVolumeInput, marketResolution, historicalPriceSeries, anchors);
 }
 
 function resolveStudySpecs(
@@ -1206,8 +1474,11 @@ function resolveStudySpecs(
   nameVolumeInput: boolean,
   marketResolution?: ManualChartResolution,
   historicalPriceSeries?: ReadonlyMap<string, ResolvedSeries>,
+  anchors?: ReadonlyMap<string, StudyAnchor>,
 ): StudyResolutionResult {
   const byId = new Map(baseSeries.map((series) => [series.id, series]));
+  // A formula never takes a colour a series on the chart has: a crack in euros is not drawn in its EURUSD leg's yellow.
+  const usedColors = new Set(baseSeries.map((series) => series.color.toLowerCase()));
   const resolved: ResolvedSeries[] = [];
   const warnings: string[] = [];
   const errors: string[] = [];
@@ -1218,7 +1489,7 @@ function resolveStudySpecs(
     const inputs = spec.inputSeriesIds.map((id) => spec.kind === "realized-vol"
       ? historicalPriceSeries?.get(id) ?? byId.get(id) : byId.get(id));
     if (inputs.length !== required || inputs.some((input) => !input)) {
-      errors.push(`${spec.id}: ${spec.kind} requires ${required} valid input series.`);
+      errors.push(`${studyMessageName(spec)}: ${spec.kind} requires ${required} valid input series.`);
       return;
     }
     const input = inputs[0]!;
@@ -1226,26 +1497,48 @@ function resolveStudySpecs(
       const pairedInput = inputs[1]!;
       const inputUnit = knownUnitSignature(input);
       if (inputUnit === null || inputUnit !== knownUnitSignature(pairedInput)) {
-        errors.push(`${spec.id}: ${unitMismatchMessage("spread", { series: input, unit: input.unit }, { series: pairedInput, unit: pairedInput.unit })}`);
+        errors.push(`${studyMessageName(spec)}: ${unitMismatchMessage("spread", { series: input, unit: input.unit }, { series: pairedInput, unit: pairedInput.unit })}`);
         return;
       }
     }
-    let terms: FormulaTerms | null = null;
+    let formula: { terms: FormulaTerms; unit: SeriesUnit } | null = null;
     if (spec.kind === "formula") {
-      const read = formulaTerms(spec, inputs as ResolvedSeries[]);
-      const mismatch = "error" in read ? read.error : formulaUnitMismatch(read, inputs as ResolvedSeries[]);
-      if (mismatch) {
-        errors.push(`${spec.id}: ${mismatch}`);
+      const terms = formulaTerms(spec, inputs as ResolvedSeries[]);
+      const unit = "error" in terms ? terms : formulaUnit(terms, inputs as ResolvedSeries[]);
+      if ("error" in unit) {
+        errors.push(`${studyMessageName(spec)}: ${unit.error}`);
         return;
       }
-      terms = read as FormulaTerms;
+      formula = { terms: terms as FormulaTerms, unit };
     }
-    const color = spec.color ?? KIND_COLORS[spec.kind] ?? STUDY_COLORS[index % STUDY_COLORS.length]!;
+    const color = spec.color ?? KIND_COLORS[spec.kind]
+      ?? (isLevelFormula(spec.kind) ? freeStudyColor(index, usedColors) : STUDY_COLORS[index % STUDY_COLORS.length]!);
+    if (isLevelFormula(spec.kind)) usedColors.add(color.toLowerCase());
+    if (spec.kind === "leverage" || spec.kind === "leverage-decay") {
+      const index = inputs.at(-1)!;
+      if (!isLeverageFactor(spec.parameters.factor)) {
+        errors.push(`${studyMessageName(spec)}: choose a nonzero leverage factor of at most 5.`);
+        return;
+      }
+      const issue = inputs.map((entry) => dailyBarsIssue(spec, entry!, marketResolution)).find(Boolean);
+      if (issue) {
+        warnings.push(issue);
+        return;
+      }
+      const outputs = spec.kind === "leverage"
+        ? resolveLeverageLine(spec, index, color, anchors?.get(index.id))
+        : resolveLeverageDecay(spec, input, index, anchors);
+      if (outputs.every((output) => output.points.length < 2)) {
+        warnings.push(`${studyMessageName(spec)}: not enough shared daily closes to measure ${leverageFactorLabel(spec.parameters.factor as number)} daily ${leverageSymbol(index)}.`);
+      }
+      resolved.push(...outputs);
+      return;
+    }
     if (spec.kind === "realized-vol") {
       const window = spec.parameters.window ?? 30;
       if (typeof window !== "number" || !Number.isInteger(window) || window < 2
         || (spec.parameters.estimator !== undefined && !isRealizedVolatilityEstimator(spec.parameters.estimator))) {
-        errors.push(`${spec.id}: choose a supported volatility estimator and a whole window of at least two sessions.`);
+        errors.push(`${studyMessageName(spec)}: choose a supported volatility estimator and a whole window of at least two sessions.`);
         return;
       }
       const inputResolution = input.historyResolution === undefined ? marketResolution : input.historyResolution;
@@ -1253,17 +1546,17 @@ function resolveStudySpecs(
         || (inputResolution !== undefined && inputResolution !== "1d")
         || (input.timeBasis?.cadenceMs !== undefined && input.timeBasis.cadenceMs !== 86_400_000)
         || !(input.unitGroup === "price" || input.unitGroup.startsWith("price:"))) {
-        errors.push(`${spec.id}: realized volatility requires daily prices. Choose Auto or 1D resolution and a daily price source.`);
+        errors.push(`${studyMessageName(spec)}: realized volatility requires daily prices. Choose Auto or 1D resolution and a daily price source.`);
         return;
       }
       const cadenceIssue = realizedVolatilityCadenceIssue(input.points);
       if (cadenceIssue) {
-        errors.push(`${spec.id}: ${cadenceIssue}`);
+        errors.push(`${studyMessageName(spec)}: ${cadenceIssue}`);
         return;
       }
       const outputs = resolveRealizedVolatility(spec, input, color);
       if (outputs.every((output) => output.points.every((point) => point.value === null))) {
-        warnings.push(`${spec.id}: not enough valid daily history to calculate ${spec.parameters.estimator ?? "close-to-close"} realized volatility.`);
+        warnings.push(`${studyMessageName(spec)}: not enough valid daily history to calculate ${spec.parameters.estimator ?? "close-to-close"} realized volatility.`);
       }
       resolved.push(...outputs);
       return;
@@ -1291,7 +1584,7 @@ function resolveStudySpecs(
       resolved.push(...outputs);
       return;
     }
-    else if (spec.kind === "formula" && terms) outputs = resolveFormula(spec, inputs as ResolvedSeries[], terms, color);
+    else if (spec.kind === "formula" && formula) outputs = resolveFormula(spec, inputs as ResolvedSeries[], formula.terms, formula.unit, color);
     else if (spec.kind === "volume") {
       outputs = resolveVolume(spec, input, color, nameVolumeInput);
       if (!input.volumeUnit && outputs.some((output) => output.points.length > 0)) {
@@ -1305,13 +1598,15 @@ function resolveStudySpecs(
       const differentCurrencies = inputCurrency !== null
         && pairedCurrency !== null
         && inputCurrency !== pairedCurrency;
-      if (spec.kind === "ratio" && differentCurrencies) {
-        warnings.push(
-          `${spec.id}: ${spec.kind} inputs use different currencies (${inputCurrency} and ${pairedCurrency}); raw values are not FX-converted.`,
-        );
+      // Over an FX rate a price is converted, leaving one currency: EUR / barrel.
+      const ratio = spec.kind === "ratio" ? ratioUnit(input, pairedInput) : null;
+      if (ratio && differentCurrencies && unitCurrencies(ratio.unit).size !== 1) {
+        const issue = fxConversionIssue(input, pairedInput, -1, ratio, legName(input));
+        warnings.push(`${studyMessageName(spec)}: ${issue
+          ?? `${spec.kind} inputs use different currencies (${inputCurrency} and ${pairedCurrency}); raw values are not FX-converted.`}`);
       }
       if (spec.kind === "correlation" && input.nativeFrequency !== pairedInput.nativeFrequency) {
-        warnings.push(`${spec.id}: correlation mixes ${input.nativeFrequency} and ${pairedInput.nativeFrequency} observations; only matching observation times contribute.`);
+        warnings.push(`${studyMessageName(spec)}: correlation mixes ${input.nativeFrequency} and ${pairedInput.nativeFrequency} observations; only matching observation times contribute.`);
       }
       outputs = resolvePairStudy(spec, input, pairedInput, color);
     }
@@ -1319,7 +1614,7 @@ function resolveStudySpecs(
       spec.kind !== "volume"
       && (outputs.length === 0 || outputs.every((output) => output.points.length === 0))
     ) {
-      warnings.push(`${spec.id}: not enough valid history to calculate ${spec.kind}.`);
+      warnings.push(`${studyMessageName(spec)}: not enough valid history to calculate ${spec.kind}.`);
     }
     resolved.push(...outputs);
   });

@@ -26,6 +26,12 @@ export interface MnaTerms {
   /** The listing the exchange ratio pays in, usually the acquirer's. */
   ratioSymbol: string | null;
   currency: string | null;
+  /**
+   * Each holder chooses the cash or the shares (usually prorated to a fixed
+   * mix) instead of getting both. Older servers leave it out, and read every
+   * deal with both legs as paying them together.
+   */
+  election?: boolean;
   /** A contingent value right rides on top of the per-share terms. */
   cvr: boolean;
   /** The offer is for part of the shares, so the spread applies to a prorated slice. */

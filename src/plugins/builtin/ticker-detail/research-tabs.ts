@@ -2,6 +2,9 @@ import type { TickerFinancials } from "../../../types/financials";
 import type { TickerResearchTabDef } from "../../../types/plugin";
 import { FinancialsResearchTab } from "./financials/pane";
 import { OverviewResearchTab } from "./overview/pane";
+import { AdrPairResearchTab } from "./adr-pair/tab";
+import { ADR_PAIR_TAB_ID } from "./adr-pair/model";
+import { listingDepositaryPair } from "../../../market-data/depositary-pair";
 
 function hasStatementFinancials(financials: TickerFinancials | null | undefined): boolean {
   return (financials?.annualStatements.length ?? 0) > 0 || (financials?.quarterlyStatements.length ?? 0) > 0;
@@ -28,5 +31,13 @@ export const TICKER_RESEARCH_BUILTIN_TABS: TickerResearchTabDef[] = [
     order: 20,
     component: FinancialsResearchTab,
     isVisible: ({ financials }) => hasStatementFinancials(financials),
+  },
+  {
+    // Only a listing Gloom Cloud pairs with a receipt has it, so every other DES is unchanged.
+    id: ADR_PAIR_TAB_ID,
+    name: "ADR vs Home",
+    order: 21,
+    component: AdrPairResearchTab,
+    isVisible: ({ financials }) => !!listingDepositaryPair(financials),
   },
 ];

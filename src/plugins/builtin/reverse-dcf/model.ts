@@ -1,7 +1,8 @@
+import { unavailableText } from "../../../components/ui/status";
 import { atRegularSessionPrice } from "../../../market-data/quotes/regular-session-valuation";
 import type { Fundamentals, TickerFinancials } from "../../../types/financials";
-import { enterpriseValueCheck, enterpriseValueLabel, enterpriseValueReconciliationNote, enterpriseValueWithdrawn,
-  reportedEnterpriseValue } from "../../../utils/fundamentals";
+import { enterpriseValueCheck, enterpriseValueLabel, enterpriseValueNotMeaningful, enterpriseValueReconciliationNote,
+  enterpriseValueWithdrawn, reportedEnterpriseValue } from "../../../utils/fundamentals";
 
 /** Years of explicit growth before the terminal value. */
 export const FORECAST_YEARS = 10;
@@ -150,12 +151,16 @@ export function projectReverseDcf(
   if (currency && valueCurrency && currency !== valueCurrency) {
     return { ...empty, error: `Cash flows are in ${currency} and the market value in ${valueCurrency}.` };
   }
+  // An EV at or below zero is N/M here as in `valuation` and RV, with the same reason: no growth rate prices it.
+  if (enterpriseValueNotMeaningful(fundamentals)) {
+    return { ...empty, enterpriseValue: null, error: enterpriseValueReconciliationNote(fundamentals)! };
+  }
   // A withdrawn EV is unavailable here as in `valuation`, which says why.
   if (enterpriseValueWithdrawn(fundamentals)) {
-    return { ...empty, error: enterpriseValueReconciliationNote(fundamentals) ?? "Enterprise value unavailable." };
+    return { ...empty, error: enterpriseValueReconciliationNote(fundamentals) ?? unavailableText("Enterprise value") };
   }
-  if (enterpriseValue == null || !(enterpriseValue > 0)) return { ...empty, error: "Enterprise value unavailable." };
-  if (freeCashFlow == null) return { ...empty, error: "Free cash flow unavailable." };
+  if (enterpriseValue == null || !(enterpriseValue > 0)) return { ...empty, error: unavailableText("Enterprise value") };
+  if (freeCashFlow == null) return { ...empty, error: unavailableText("Free cash flow") };
   if (!(freeCashFlow > 0)) return { ...empty, error: "Free cash flow over the last twelve months is negative, so no growth rate prices it." };
   const implied = solveImpliedGrowth(enterpriseValue, freeCashFlow, options.discountRate, TERMINAL_GROWTH);
   return {

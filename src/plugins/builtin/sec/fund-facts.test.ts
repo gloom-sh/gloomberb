@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import type { FundFactsPayload } from "../../../api-client/fund-facts";
 import type { StatItem } from "../../../components/ui/stat-grid";
 import { setLanguage, t } from "../../../i18n";
-import { fundFactEntries, fundFactItems, fundFactOverviewFields, fundFactPublishers, fundFactsEmptyText, fundFactsErrorLine, fundFactsStaleText, FUND_FACTS_UNAVAILABLE } from "./fund-facts";
+import { fetchFundFacts, fundFactEntries, fundFactItems, fundFactOverviewFields, fundFactPublishers, fundFactsEmptyText, fundFactsErrorLine, fundFactsNavReasonText, fundFactsStaleText, FUND_FACTS_UNAVAILABLE } from "./fund-facts";
 
 const IVV: FundFactsPayload = {
   ticker: "IVV", covered: true, name: "iShares Core S&P 500 ETF", structure: "registered",
@@ -186,4 +186,131 @@ test("a bond fund's SEC yield, yield to worst and duration follow its net assets
   // A fund the server sends no bond facts for, or an older server, shows none; the IVV cells are unchanged.
   expect(fundFactItems(IVV).map((item) => item.id)).toEqual(["nav", "premium", "fee", "assets", "sponsor", "inception"]);
   expect(fundFactPublishers(MUB)).toEqual(["iShares"]);
+});
+
+test("a metal trust's ounces and tonnes in trust follow its net assets, with the day's change and the date, from its sponsor's daily holdings", async () => {
+  const gld: FundFactsPayload = {
+    ...IVV, ticker: "GLD", name: "SPDR Gold Trust", structure: "trust",
+    nav: { value: 378.04, asOf: "2026-10-20", source: "SPDR Gold Shares" },
+    expenseRatio: null, premiumDiscount: null, netAssets: null, sponsor: null, inception: null,
+    metalHoldings: {
+      metal: "gold", asOf: "2026-10-20", ounces: 34085936.5, tonnes: 1060.18,
+      change: { since: "2026-10-19", ounces: 54994.78, tonnes: 1.71 },
+      source: { publisher: "SPDR Gold Shares", page: "https://www.spdrgoldshares.com/usa/gld/" },
+      fetchedAt: "2026-10-21T23:00:00.000Z", stale: false,
+    },
+  };
+  // The server's answer reads, and one with a malformed holdings figure is refused.
+  expect((await fetchFundFacts("GLD", { getFundFacts: async () => gld })).metalHoldings?.ounces).toBe(34085936.5);
+  await expect(fetchFundFacts("GLD", { getFundFacts: async () => ({ ...gld, metalHoldings: { ...gld.metalHoldings!, ounces: "lots" } }) as never }))
+    .rejects.toThrow("Unreadable fund facts response");
+
+  expect(fundFactItems(gld).map((item) => [item.label, item.value, item.detail])).toEqual([
+    ["NAV", "$378.04", "2026-10-20"],
+    ["Gold in trust", "1,060.18 t", "34.09M oz · 2026-10-20"],
+    ["Day change", "+1.71 t", "+54,995 oz · since 2026-10-19"],
+  ]);
+  const entries = Object.fromEntries(fundFactEntries(gld).map((entry) => [entry.key, [entry.value, entry.formatted, entry.unit]]));
+  expect(entries).toMatchObject({
+    metalOunces: [34085936.5, "34,085,936.5 troy oz · 1,060.18 tonnes · 2026-10-20 · SPDR Gold Shares", "troy oz"],
+    metalChangeOunces: [54994.78, "+54,994.78 troy oz · +1.71 tonnes · since 2026-10-19", "troy oz"],
+  });
+
+  // SLV's first stored day has no change yet, says so, and its stale day is marked.
+  const slv: FundFactsPayload = { ...gld, ticker: "SLV", metalHoldings: { ...gld.metalHoldings!, metal: "silver", asOf: "2026-10-21",
+    ounces: 497876480.1, tonnes: 15485.69, change: null, stale: true, source: { ...gld.metalHoldings!.source, publisher: "iShares" } } };
+  expect(fundFactItems(slv).filter((item) => item.id?.startsWith("metal")).map((item) => [item.label, item.value, item.tone]))
+    .toEqual([["Silver in trust", "15,485.69 t", "warning"]]);
+  expect(fundFactEntries(slv).find((entry) => entry.key === "metalChangeOunces")).toMatchObject({ value: null, formatted: "-- · 2026-10-21 is the first day stored" });
+  expect(fundFactPublishers(slv)).toEqual(["SPDR Gold Shares", "iShares"]);
+});
+
+const ECC: FundFactsPayload = {
+  ticker: "ECC", covered: true, status: "covered", name: "Eagle Point Credit Company", structure: "closed-end",
+  expenseRatio: null,
+  nav: { value: 4.17, asOf: "2026-09-30", source: "Eagle Point", period: "month-end", estimate: { low: 4.12, high: 4.22 } },
+  closingPrice: { value: 3.9, asOf: "2026-09-30", source: "Gloom Cloud" },
+  premiumDiscount: { value: -6.4748, asOf: "2026-09-30", source: "Gloom Cloud", basis: "computed", estimate: true },
+  netAssets: { value: 599.48e6, asOf: "2026-06-30", source: "SEC EDGAR", scope: null, period: "month-end", document: "N-PORT" },
+  sponsor: { value: "Eagle Point Credit Management", asOf: null, source: "Eagle Point" },
+  inception: null, index: null, sharesOutstanding: null, flows: null, stale: false, fetchedAt: null,
+};
+
+test("a closed-end fund's NAV is a month end's, its sponsor's estimate range beside it, and neither it nor its premium reads as lagging", async () => {
+  const items = byId(ECC);
+  expect(items.nav).toMatchObject({ value: "$4.17", detail: "2026-09-30 month-end · est. $4.12 to $4.22" });
+  // Against the estimate's midpoint, the premium is an estimate too.
+  expect(items.premium).toMatchObject({ value: "-6.47%", detail: "2026-09-30 close · est." });
+  expect(items.structure).toMatchObject({ label: "Structure", value: "Closed-end fund" });
+  expect(Object.values(items).some((item) => item.tone)).toBe(false);
+  expect(fundFactOverviewFields(ECC).find((field) => field.label === "NAV")!.detail).toEqual(["2026-09-30 month-end", "09-30 month-end"]);
+  const entries = Object.fromEntries(fundFactEntries(ECC).map((entry) => [entry.key, entry.formatted]));
+  expect(entries).toMatchObject({
+    structure: "Closed-end fund",
+    nav: "$4.17 · 2026-09-30 month-end · estimate $4.12 to $4.22 · Eagle Point",
+    premiumDiscountPercent: "-6.47% · 2026-09-30 · closing price vs NAV estimate midpoint · Gloom Cloud",
+    netAssets: "$599.48M · 2026-06-30 month-end N-PORT · SEC EDGAR",
+  });
+  // A range upside down is refused; a server before ranges, shares and flows still reads.
+  await expect(fetchFundFacts("ECC", { getFundFacts: async () => ({ ...ECC, nav: { ...ECC.nav!, estimate: { low: 4.3, high: 4.2 } } }) }))
+    .rejects.toThrow("Unreadable fund facts response");
+  const { sharesOutstanding: _shares, flows: _flows, ...older } = ECC;
+  expect((await fetchFundFacts("ECC", { getFundFacts: async () => ({ ...older, nav: { value: 4.17, asOf: "2026-09-30", source: "Eagle Point" } }) })).nav!.value).toBe(4.17);
+  expect(fundFactsEmptyText("PDI", { ...ECC, covered: false, status: "not-published" }))
+    .toBe("No figures for PDI: it files with the SEC as a closed-end fund or BDC, but neither the filings Gloom reads nor its sponsor's site state any for it yet.");
+});
+
+test("a BDC and a closed-end fund each by its own structure, never as a registered fund; a weekend month end's premium is dated by its Friday close", () => {
+  // ARCC's filed NAV: one figure, of a quarter end on a Sunday (no estimate), priced at the Friday close.
+  const arcc: FundFactsPayload = {
+    ...ECC, ticker: "ARCC", name: "Ares Capital Corp", structure: "bdc",
+    nav: { value: 19.1, asOf: "2026-05-31", source: "SEC EDGAR", period: "month-end" },
+    closingPrice: { value: 20.5, asOf: "2026-05-29", source: "Gloom Cloud" },
+    premiumDiscount: { value: 7.3298, asOf: "2026-05-31", source: "Gloom Cloud", basis: "computed" },
+    sponsor: null, netAssets: null,
+  };
+  const items = byId(arcc);
+  expect(items.structure).toMatchObject({ label: "Structure", value: "BDC" });
+  expect(items.premium).toMatchObject({ value: "+7.33%", detail: "2026-05-29 close" });
+  const entries = Object.fromEntries(fundFactEntries(arcc).map((entry) => [entry.key, entry.formatted]));
+  expect(entries).toMatchObject({
+    structure: "Business development company (BDC)",
+    closingPrice: "$20.50 · 2026-05-29 · Gloom Cloud",
+    premiumDiscountPercent: "+7.33% · 2026-05-31 · closing price vs NAV · Gloom Cloud",
+  });
+  expect(fundFactsNavReasonText("ARCC", { ...arcc, nav: null, navReason: "No NAV for ARCC." }))
+    .toBe("No NAV for ARCC: its SEC filings state net assets but no NAV per share, and its sponsor's NAV is not one Gloom reads.");
+  expect(fundFactsEmptyText("MAIN", { ...arcc, covered: false, status: "not-published" })).toContain("as a closed-end fund or BDC");
+  // An ETF's sheet names no structure; a report names each its own.
+  expect(byId(IVV).structure).toBeUndefined();
+  expect(fundFactEntries(IVV).find((entry) => entry.key === "structure")?.formatted).toBe("Registered fund");
+  expect(fundFactEntries({ ...IVV, structure: "trust" }).find((entry) => entry.key === "structure")?.formatted)
+    .toBe("Trust or pool, not an open-end fund");
+});
+
+test("an ETF's shares outstanding and its month's flows follow net assets; a covered fund without a NAV says why", () => {
+  const jaaa: FundFactsPayload = {
+    ...IVV, ticker: "JAAA",
+    sharesOutstanding: { value: 642_350_000, asOf: "2026-10-23", source: "Janus Henderson" },
+    flows: { period: "1M", shares: 12_350_000, value: 625_247_000, from: "2026-09-21", asOf: "2026-10-23", source: "Janus Henderson" },
+  };
+  expect(fundFactItems(jaaa).filter((item) => item.id === "shares" || item.id === "flows").map((item) => [item.label, item.value, item.detail])).toEqual([
+    ["Shares outstanding", "642.35M", "2026-10-23"],
+    ["1M flows", "+$625.25M", "+12.35M shares · since 2026-09-21"],
+  ]);
+  // A day without a NAV leaves the dollars out: the shares are the figure.
+  expect(byId({ ...jaaa, flows: { ...jaaa.flows!, shares: -3_100_000, value: null } }).flows).toMatchObject({ value: "-3.1M shares", detail: "since 2026-09-21" });
+  expect(fundFactEntries(jaaa).find((entry) => entry.key === "flows1M")).toMatchObject({
+    value: 625_247_000, formatted: "+$625.25M · +12.35M shares · 2026-09-21 to 2026-10-23 · Janus Henderson", unit: "USD",
+  });
+  const noNav = { ...DFAC, navReason: "No NAV for DFAC: its sponsor's site is not one Gloom reads, and the SEC's prospectus and N-PORT data sets state no NAV." };
+  expect(fundFactsNavReasonText("DFAC", noNav)).toBe(noNav.navReason);
+  expect(fundFactsNavReasonText("DFAC", DFAC)).toBeNull();
+  expect(fundFactsNavReasonText("XYZ", { ...noNav, netAssets: { ...DFAC.netAssets!, source: "State Street" } }))
+    .toBe("No NAV for XYZ: State Street publishes figures for it, but no NAV.");
+  expect(fundFactsNavReasonText("OXSQ", { ...noNav, structure: "closed-end" }))
+    .toBe("No NAV for OXSQ: its SEC filings state net assets but no NAV per share, and its sponsor's NAV is not one Gloom reads.");
+  setLanguage("es");
+  expect(fundFactsNavReasonText("DFAC", noNav)).toStartWith("No hay valor liquidativo para DFAC");
+  expect(byId(ECC).nav!.detail).toBe("2026-09-30 fin de mes · est. $4.12 to $4.22");
 });

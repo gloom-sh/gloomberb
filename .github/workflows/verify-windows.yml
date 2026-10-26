@@ -22,7 +22,7 @@ jobs:
       - uses: ./.github/actions/setup-bun
 
       - name: Test
-        run: bun test src/updater/index.test.ts src/app/global-shortcuts.test.tsx src/plugins/host-link.test.ts
+        run: bun test src/updater/index.test.ts src/app/global-shortcuts.test.tsx src/plugins/host-link.test.ts src/plugins/loader.test.ts
 
       - name: Build standalone CLI
         run: bun run scripts/build.ts
@@ -55,6 +55,10 @@ jobs:
       - name: Build Windows installer
         shell: pwsh
         run: ./scripts/build-windows-installer.ps1
+
+      - name: Write the desktop files under the app's old name
+        shell: pwsh
+        run: bun scripts/write-legacy-desktop-files.ts artifacts
 
       - name: Verify Windows desktop artifacts
         shell: pwsh

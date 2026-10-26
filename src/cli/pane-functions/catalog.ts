@@ -13,6 +13,7 @@ import {
   MAX_INLINE_CHOICES,
   optionChoices,
   optionFlags,
+  paneFunctionArgument,
   type PaneFunctionCapability,
   type PaneFunctionOptionDef,
   type PaneFunctionReadiness,
@@ -76,6 +77,14 @@ export function buildTemplateContext(context: MarketContext, symbol: string | nu
 function builtInPanePrefixes(paneId: string): string[] {
   const command = builtInCommands.find((candidate) => candidate.id === paneId);
   return command ? getCommandPrefixes(command) : [];
+}
+
+/**
+ * What a user types for a function, as the catalog lists it and every error names it: a template's
+ * shortcut or id, a pane opened by a built-in command (LAY) by that command's mnemonic, else the pane's id.
+ */
+export function paneFunctionCode(template: PaneTemplateDef | undefined, pane: PaneDef): string {
+  return template?.shortcut?.prefix ?? template?.id ?? builtInPanePrefixes(pane.id)[0] ?? pane.id;
 }
 
 function registerResolverToken(
@@ -153,12 +162,8 @@ export function findFunctionCode(registry: PaneFunctionCatalog, token: string): 
     ...(headless?.discovery?.aliases ?? []),
   ];
   if (!codes.some((code) => code && normalizeLookupToken(code) === wanted)) return null;
-  return {
-    argument: argumentHint({
-      argKind: headless?.argument.kind ?? found.shortcut?.argKind,
-      argPlaceholder: headless?.argument.placeholder ?? found.shortcut?.argPlaceholder,
-    }),
-  };
+  const argument = pane ? paneFunctionArgument(found, pane) : { kind: found.shortcut?.argKind, placeholder: found.shortcut?.argPlaceholder };
+  return { argument: argumentHint({ argKind: argument.kind, argPlaceholder: argument.placeholder }) };
 }
 
 /** A function code a typed one is a slip away from: what to type, and the function's name. */
@@ -184,7 +189,7 @@ const NEAR_CODE_LIMIT = 3;
  * among the mnemonics the command bar takes, each named by the code it is
  * near (`DES` for Ticker Research, whose code is T). Empty when none is that
  * close, the name is too short to tell, or so many are that none stands out.
- * A word typed as a command (`commandWord`, `gloomberb RCDF PLTR`) is held to
+ * A word typed as a command (`commandWord`, `gloom RCDF PLTR`) is held to
  * MIN_COMMAND_WORD_TYPO_LENGTH and the code's first letter, so a ticker typed
  * there is not taken for a code.
  */
@@ -208,6 +213,21 @@ export function nearFunctionCodes(
   if (near.size > NEAR_CODE_LIMIT) return [];
   return [...near].map(([template, code]) => ({ code, label: template.label }))
     .sort((left, right) => left.code.localeCompare(right.code));
+}
+
+/**
+ * The functions a word that is no code asks for (`IVOL`, `IV`: HIVG and
+ * OVDV), as their `discovery.suggestFor` lists it, each by its code.
+ */
+export function suggestedFunctionCodes(registry: PaneFunctionCatalog, name: string): NearFunctionCode[] {
+  const wanted = normalizeLookupToken(name);
+  if (!wanted) return [];
+  return [...registry.paneTemplates.values()].flatMap((template) => {
+    const pane = registry.panes.get(template.paneId);
+    const words = pane ? getHeadlessPaneDefinition(template, pane)?.discovery?.suggestFor ?? [] : [];
+    const code = template.shortcut?.prefix;
+    return code && words.some((word) => normalizeLookupToken(word) === wanted) ? [{ code: code.toUpperCase(), label: template.label }] : [];
+  }).sort((left, right) => left.code.localeCompare(right.code));
 }
 
 function sampleArgForTemplate(template: PaneTemplateDef): string {
@@ -244,6 +264,7 @@ async function buildTemplateCatalogEntry(
   }
 
   const headless = getHeadlessPaneDefinition(template, pane);
+  const argument = paneFunctionArgument(template, pane);
   return {
     token: template.shortcut?.prefix ?? template.id,
     label: template.label,
@@ -253,8 +274,8 @@ async function buildTemplateCatalogEntry(
     templateId: template.id,
     shortcut: template.shortcut?.prefix,
     aliases: [...(template.shortcut?.aliases ?? [])],
-    argKind: headless?.argument.kind ?? template.shortcut?.argKind,
-    argPlaceholder: headless?.argument.placeholder ?? template.shortcut?.argPlaceholder,
+    argKind: argument.kind,
+    argPlaceholder: argument.placeholder,
     ...(headless?.argument.examples?.length ? { argExamples: headless.argument.examples } : {}),
     ...(headless?.argument.kind === "tickers" && template.shortcut?.argKind === "ticker"
       ? { shotArgument: argumentHint({ argKind: "ticker", argPlaceholder: template.shortcut.argPlaceholder }) } : {}),
@@ -281,16 +302,17 @@ export async function buildPaneCatalogEntries(
   for (const pane of registry.panes.values()) {
     if (templatedPaneIds.has(pane.id)) continue;
     const [shortcut, ...aliases] = builtInPanePrefixes(pane.id);
+    const argument = paneFunctionArgument(undefined, pane);
     entries.push({
-      token: shortcut ?? pane.id,
+      token: paneFunctionCode(undefined, pane),
       label: pane.name,
       description: `Open the ${pane.name} pane.`,
       paneId: pane.id,
       paneName: pane.name,
       shortcut,
       aliases,
-      argKind: pane.headless?.argument.kind,
-      argPlaceholder: pane.headless?.argument.placeholder,
+      argKind: argument.kind,
+      argPlaceholder: argument.placeholder,
       ...(pane.headless?.argument.examples?.length ? { argExamples: pane.headless.argument.examples } : {}),
       keywords: [],
       defaultSettings: {},
@@ -319,6 +341,14 @@ const ALL_WORDS_WITH_FLAGS_BAND = 1000;
 const PER_MATCHED_WORD = 100;
 /** Loose matches (no function carries every word) listed before the rest are left to a refined query. */
 const LOOSE_MATCH_LIMIT = 5;
+/** Loose matches a word of the query names (in the function's code, name or aliases) are all listed, up to this many. */
+const LOOSE_NAMED_LIMIT = 8;
+/** A query word found in what the function is called (its code, name or aliases) outweighs one found in its keywords or description. */
+const PER_WORD_IN_NAME = 3;
+/** A query word that begins a function's code (`vol` for VOLS, `fx` for FXC) is the start of typing it. */
+const PER_WORD_STARTING_CODE = 3;
+/** A query word that is one of the function's own keywords (`vol` for the volatility functions, which also say volume's) names it. */
+const PER_WORD_IS_KEYWORD = 3;
 
 function phraseBand(entry: PaneCatalogEntry, phrase: string): number {
   const lower = (values: Array<string | undefined>) => values
@@ -361,6 +391,12 @@ function nameAndDescription(entry: PaneCatalogEntry): string {
   return nameAndDescriptionFields(entry).join(" ");
 }
 
+/** What a function is called: its code, name and aliases, apart from the keywords and description that say what it covers. */
+function identityFields(entry: PaneCatalogEntry): string[] {
+  return [entry.token, entry.label, entry.paneName, entry.shortcut, ...entry.aliases]
+    .filter((value): value is string => !!value).map((value) => value.toLowerCase().replace(/\s+/g, " "));
+}
+
 function flagText(entry: PaneCatalogEntry): string {
   return [
     entry.argKind,
@@ -380,17 +416,20 @@ interface CatalogMatchScore {
   terms: number;
   /** Those found in the function's name, keywords or description. */
   named: number;
+  /** Those found in what the function is called: its code, name or aliases. */
+  called: number;
 }
 
 function scorePaneCatalogEntry(entry: PaneCatalogEntry, query: string): CatalogMatchScore {
   const terms = queryTerms(query);
-  if (terms.length === 0) return { score: 1, terms: 0, named: 0 };
-  const none = { score: 0, terms: terms.length, named: 0 };
+  if (terms.length === 0) return { score: 1, terms: 0, named: 0, called: 0 };
+  const none = { score: 0, terms: terms.length, named: 0, called: 0 };
 
   const exactTokens = [
     entry.token,
     entry.shortcut,
     ...entry.aliases,
+    ...entry.capability.suggestFor ?? [],
     entry.templateId,
     entry.paneId,
   ].filter((value): value is string => !!value).map((value) => normalizeLookupToken(value));
@@ -399,6 +438,8 @@ function scorePaneCatalogEntry(entry: PaneCatalogEntry, query: string): CatalogM
   const named = nameAndDescription(entry);
   const flags = flagText(entry);
   const wholeQuery = query.toLowerCase().trim().replace(/\s+/g, " ");
+  const called = identityFields(entry);
+  const codes = [entry.token, entry.shortcut, ...entry.aliases].filter((value): value is string => !!value).map((value) => normalizeLookupToken(value));
 
   let score = containsPhrase(`${named} ${flags}`, wholeQuery) ? 12 : 0;
   // A query that is one of the function's own keywords ("hedge" for OSA) beats one found inside a
@@ -408,9 +449,16 @@ function scorePaneCatalogEntry(entry: PaneCatalogEntry, query: string): CatalogM
   if (keywords.includes(wholeQuery)) score += 4;
   let matchedTerms = 0;
   let matchedNamed = 0;
+  let matchedCalled = 0;
   let matchedFlagKeys = 0;
   for (const term of terms) {
     const normalized = normalizeLookupToken(term);
+    if (called.some((field) => containsPhrase(field, term))) {
+      score += PER_WORD_IN_NAME;
+      matchedCalled += 1;
+    }
+    if (codes.some((code) => normalized.length >= 2 && code.startsWith(normalized))) score += PER_WORD_STARTING_CODE;
+    if (keywords.includes(term)) score += PER_WORD_IS_KEYWORD;
     // A term starts a word: "rate" is found in "rates" but not in "separate", nor "budget" in "budgetBps".
     if (exactTokens.includes(normalized)) {
       score += 8;
@@ -440,12 +488,13 @@ function scorePaneCatalogEntry(entry: PaneCatalogEntry, query: string): CatalogM
   score += Math.round((matchedTerms / terms.length) * 8);
   if (entry.capability.botSafe) score += 2;
   // One word has no phrase to prefer: it keeps the plain term scores.
-  if (terms.length === 1) return { score, terms: 1, named: matchedNamed };
+  if (terms.length === 1) return { score, terms: 1, named: matchedNamed, called: matchedCalled };
   const allWords = matchedNamed === terms.length ? ALL_WORDS_BAND : matchedTerms === terms.length ? ALL_WORDS_WITH_FLAGS_BAND : 0;
   return {
     score: score + matchedTerms * PER_MATCHED_WORD + (phraseBand(entry, wholeQuery) || allWords),
     terms: terms.length,
     named: matchedNamed,
+    called: matchedCalled,
   };
 }
 
@@ -520,8 +569,14 @@ export function selectPaneCatalogMatches(ranked: PaneCatalogEntry[], query: stri
     const shown = every(complete).slice(0, limit);
     return { shown, hidden: ranked.length - shown.length, loose: false };
   }
+  // No function carries every word: the ones a word names come first, the code or name of a function being what a
+  // reader types ("fx vol" is FXC, whose name has fx, and VOLS, whose name has vol), ahead of one that mentions a word
+  // in its keywords ("implied fx" in ADR) or its flags, and however many of the words a weaker match has.
   const named = scored.filter(({ named }) => named > 0);
-  const shown = every(named.length > 0 ? named : scored).slice(0, Math.min(limit, LOOSE_MATCH_LIMIT));
+  const pool = named.length > 0 ? named : scored;
+  const leading = pool.filter((item) => item.called > 0).slice(0, LOOSE_NAMED_LIMIT);
+  const rest = pool.filter((item) => !leading.includes(item)).slice(0, Math.max(0, LOOSE_MATCH_LIMIT - leading.length));
+  const shown = every([...leading, ...rest]).slice(0, limit);
   return { shown, hidden: ranked.length - shown.length, loose: true };
 }
 
@@ -560,7 +615,8 @@ function readinessCell(readiness: PaneFunctionReadiness): string {
 function optionDescription(option: PaneFunctionOptionDef): string {
   const choices = optionChoices(option);
   const parts = [option.description.replace(/\.$/, "")];
-  if (choices.join("|").length > MAX_INLINE_CHOICES) parts.push(`One of ${choices.join(", ")}`);
+  // An enum that also reads other values (a bar size of any length) lists its values as examples.
+  if (choices.join("|").length > MAX_INLINE_CHOICES) parts.push(`${option.normalize ? "Such as" : "One of"} ${choices.join(", ")}`);
   if (option.defaultValue !== undefined && option.defaultValue !== "") parts.push(`Default ${String(option.defaultValue)}`);
   return `${parts.join(". ")}.`;
 }
@@ -606,14 +662,14 @@ function renderCatalogEntry(entry: PaneCatalogEntry): string {
 
   lines.push("", renderSection("Examples"));
   if (capability.reportReadiness !== "unsupported") {
-    lines.push(...wrapCommandLine(`gloomberb fn ${invocation}`, width));
-    for (const example of entry.argExamples ?? []) lines.push(...wrapCommandLine(`gloomberb fn ${entry.token} ${example}`, width));
+    lines.push(...wrapCommandLine(`gloom fn ${invocation}`, width));
+    for (const example of entry.argExamples ?? []) lines.push(...wrapCommandLine(`gloom fn ${entry.token} ${example}`, width));
     for (const option of capability.options) {
-      if (option.example) lines.push(...wrapCommandLine(`gloomberb fn ${option.exampleWithoutArgument ? entry.token : invocation} ${option.example}`, width));
+      if (option.example) lines.push(...wrapCommandLine(`gloom fn ${option.exampleWithoutArgument ? entry.token : invocation} ${option.example}`, width));
     }
   }
   const shotInvocation = entry.shotArgument ? `${entry.token} ${entry.shotArgument}` : invocation;
-  lines.push(...wrapCommandLine(`gloomberb shot ${shotInvocation} --output ${entry.token.toLowerCase()}.png`, width));
+  lines.push(...wrapCommandLine(`gloom shot ${shotInvocation} --output ${entry.token.toLowerCase()}.png`, width));
   return lines.join("\n");
 }
 
@@ -622,10 +678,11 @@ function renderMatchesTable(shown: readonly PaneCatalogEntry[]): string {
   return renderTable(
     [
       { header: "Function", shrink: false },
-      { header: "Name", maxWidth: 20 },
-      { header: "Argument", maxWidth: 14 },
+      { header: "Name" },
+      { header: "Argument" },
       { header: "Report" },
-      { header: "Description" },
+      // A scan list: the description is cut where it does not fit, and `catalog <function>` prints it whole.
+      { header: "Description", shrink: true, minWidth: 20 },
     ],
     shown.map((entry) => [
       cliStyles.command(entry.token),
@@ -659,7 +716,7 @@ function renderAlsoMatches(exact: PaneCatalogEntry, entries: readonly PaneCatalo
  */
 export function renderFunctionHelp(entry: PaneCatalogEntry, command: string): string {
   const width = Math.min(cliTerminalWidth() ?? CATALOG_TEXT_WIDTH, CATALOG_TEXT_WIDTH);
-  const note = `The options every function takes, and the output formats, are in gloomberb help ${command}.`;
+  const note = `The options every function takes, and the output formats, are in gloom help ${command}.`;
   return [renderCatalogEntry(entry), "", ...wrapText(note, width).map((line) => cliStyles.muted(line))].join("\n");
 }
 
@@ -671,7 +728,7 @@ function renderCatalogGlossary(glossary: GlossaryLookup, width: number): string 
   const defined = glossary.exact.length > 0 ? [renderSection("Glossary"), ...renderGlossaryEntries(glossary.exact)] : [];
   const others = glossary.partial.map((entry) => entry.term).join(", ");
   const related = others
-    ? wrapText(`${defined.length > 0 ? "Related" : "Glossary"}: ${others}. gloomberb catalog glossary <term> explains one.`, width)
+    ? wrapText(`${defined.length > 0 ? "Related" : "Glossary"}: ${others}. gloom catalog glossary <term> explains one.`, width)
       .map((line) => cliStyles.muted(line))
     : [];
   return [...defined, ...related].join("\n");
@@ -720,7 +777,7 @@ export function renderPaneCatalogReport(
     if (charted) return withGap([charted, terms].filter(Boolean).join("\n\n"));
     if (glossary.exact.length > 0 || gap || setting) return withGap(terms);
     return withTerms(note(args.query
-      ? `No functions match "${args.query}". Run gloomberb catalog to browse them all.`
+      ? `No functions match "${args.query}". Run gloom catalog to browse them all.`
       : "No functions are available."));
   }
 
@@ -736,7 +793,7 @@ export function renderPaneCatalogReport(
     "",
     note([
       loose ? "No function carries every word of the query; these are the closest." : "",
-      "gloomberb catalog <function> shows its options and examples.",
+      "gloom catalog <function> shows its options and examples.",
       hidden > 0 ? more : "",
     ].filter(Boolean).join(" ")),
   ];

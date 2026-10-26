@@ -8,6 +8,7 @@ import { instrumentFromTicker, type InstrumentRef } from "../../market-data/requ
 import { useSavedLayoutWarmup } from "./layout-warmup";
 import { chatController } from "../../plugins/builtin/chat/controller";
 import { PLUGIN_MARKETPLACE_PANE_ID } from "../../plugins/marketplace/ids";
+import { takePluginSeedNotice } from "../../plugins/seed-notice";
 import type { LoadedExternalPlugin } from "../../plugins/loader";
 import type { PluginRegistry } from "../../plugins/registry";
 import type {
@@ -38,6 +39,8 @@ const appLog = debugLog.createLogger("app");
 
 /** How long the restored panes wait for plugins that register theirs during setup. */
 const RESTORED_FUNCTIONS_WAIT_MS = 15_000;
+/** Long enough to read what to install before it goes. */
+const PLUGIN_SEED_NOTICE_MS = 12_000;
 
 /**
  * One function per pane placed in the layout: docked, floating and popped
@@ -202,6 +205,16 @@ export function useAppStartupRuntime({
     // Once per process: `externalPlugins` is the startup list and never changes
     // identity, so this runs when initialization flips and not again.
   }, [externalPlugins, isDetachedWindow, pluginRegistry, state.initialized]);
+
+  // Official plugins the launch could not install (no git, offline) are
+  // otherwise simply missing. One notice, taken once, says which and why.
+  useEffect(() => {
+    if (!state.initialized || isDetachedWindow) return;
+    const notice = takePluginSeedNotice();
+    if (!notice) return;
+    appLog.warn("official plugins not installed at launch", { notice: notice.body });
+    pluginRegistry.notify({ ...notice, duration: PLUGIN_SEED_NOTICE_MS });
+  }, [isDetachedWindow, pluginRegistry, state.initialized]);
 
   // What people keep on screen: the functions open in the workspace restored
   // at launch, counted once per session. The layout is taken as restored,

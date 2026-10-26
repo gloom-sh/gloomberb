@@ -35,4 +35,27 @@ describe("map series in G", () => {
     expect(await chokepointSeriesFor(request, "strait of hormuz")).toBe("HORMUZ");
     expect(await chokepointSeriesFor(request, "suez")).toBe("SUEZ");
   });
+
+  test("a typed chokepoint is found by its alias, its name, or one part of it, and anything else is none", async () => {
+    const request = createGeoFixtureRequest();
+    expect(await chokepointSeriesFor(request, "Suez Canal")).toBe("SUEZ");
+    expect(await chokepointSeriesFor(request, "Bab el-Mandeb Strait")).toBe("BABELMANDEB");
+    expect(await chokepointSeriesFor(request, "mandeb")).toBe("BABELMANDEB");
+    expect(await chokepointSeriesFor(request, "suez.tanker")).toBe("SUEZ.TANKER");
+    // A ticker, a port, a word every strait shares, or nothing at all names no chokepoint.
+    expect(await chokepointSeriesFor(request, "NVDA")).toBeNull();
+    expect(await chokepointSeriesFor(request, "Singapore")).toBeNull();
+    expect(await chokepointSeriesFor(request, "strait")).toBeNull();
+    expect(await chokepointSeriesFor(request, "tanker")).toBeNull();
+    expect(await chokepointSeriesFor(request, " - ")).toBeNull();
+  });
+
+  test("without the series index, key straits still work and other lookups fail", async () => {
+    const request = createGeoFixtureRequest({ absent: true });
+    expect(await chokepointSeriesFor(request, "Strait of Hormuz")).toBe("HORMUZ");
+    expect(await chokepointSeriesFor(request, "bab el-mandeb")).toBe("BABELMANDEB");
+    expect(await chokepointSeriesFor(request, "bosphorus")).toBe("BOSPHORUS");
+    await expect(chokepointSeriesFor(request, "NVDA")).rejects.toThrow("Chokepoint search unavailable.");
+  });
+
 });

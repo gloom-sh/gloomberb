@@ -9,7 +9,7 @@ import {
   type ChainVolatilities,
 } from "./analytics";
 
-const NO_VOLS: ChainVolatilities = { valuationTime: 0, byStrike: new Map() };
+const NO_VOLS: ChainVolatilities = { valuationTime: 0, byStrike: new Map(), filled: new Set() };
 
 function contract(
   strike: number,
@@ -66,7 +66,7 @@ test("summarizes the selected expiration without presenting it as whole-chain vo
     calls: [contract(100, 0.2, 100, 200), contract(105, 0.3, 200, 400)],
     puts: [contract(100, 0.22, 150, 180), contract(105, 0.4, 300, 420)],
   };
-  const summary = calculateOptionsSummary(chain, 101, priceHistory(), { valuationTime: 0, byStrike: new Map([[100, 0.21], [105, 0.3]]) });
+  const summary = calculateOptionsSummary(chain, 101, priceHistory(), { valuationTime: 0, byStrike: new Map([[100, 0.21], [105, 0.3]]), filled: new Set() });
 
   expect(summary.atmImpliedVolatility).toBeCloseTo(0.21, 10);
   expect(summary.expirationVolume).toBe(750);
@@ -106,6 +106,8 @@ test("solves one calendar-time IV per strike from midpoints and ignores vendor I
   // not a zero volatility forced by the in-the-money spread.
   expect(volatilities.byStrike.get(760)).toBe(volatilities.byStrike.get(767));
   expect(volatilities.byStrike.get(785)).toBe(volatilities.byStrike.get(772));
+  // Those two are read off a neighbour, not solved from a quote, and the solved strikes are not marked.
+  expect([...volatilities.filled].sort()).toEqual([760, 785]);
   expect(calculateOptionsSummary(chain, spot, [], volatilities).atmImpliedVolatility).toBeCloseTo(0.14, 2);
 
   // Parity: equal gamma, and put delta = call delta - 1 at the same strike.
@@ -153,7 +155,7 @@ test("activity totals require each reported contract's input without discarding 
   };
   for (const invalid of [undefined, Number.NaN, Infinity, -1]) {
     const partial = { ...chain, calls: [{ ...chain.calls[0]!, openInterest: invalid }] };
-    const summary = calculateOptionsSummary(partial, 100, [], { valuationTime: 0, byStrike: new Map([[100, .25]]) });
+    const summary = calculateOptionsSummary(partial, 100, [], { valuationTime: 0, byStrike: new Map([[100, .25]]), filled: new Set() });
     expect(summary.expirationVolume).toBe(10);
     expect(summary.putCallVolumeRatio).toBe(0);
     expect(summary.putCallOpenInterestRatio).toBeNull();
@@ -176,7 +178,7 @@ test("rejects bad observations inside the selected HV window instead of bridging
   for (const bad of [{ high: 90, low: 110 }, { high: 99 }, { close: 0 }, { close: Number.NaN }]) {
     const points = extended.map((point, i) => i === 15 ? { ...point, ...bad } : point);
     expect(historicalVolatility30d(points)).toBeNull();
-    const summary = calculateOptionsSummary({ underlyingSymbol: "AAPL", expirationDates: [], calls: [contract(100, .2, 100, 200)], puts: [] }, 100, points, { valuationTime: 0, byStrike: new Map([[100, .2]]) });
+    const summary = calculateOptionsSummary({ underlyingSymbol: "AAPL", expirationDates: [], calls: [contract(100, .2, 100, 200)], puts: [] }, 100, points, { valuationTime: 0, byStrike: new Map([[100, .2]]), filled: new Set() });
     expect(summary.historicalVolatilityUnavailableReason).toBeTruthy();
     expect(summary.impliedHistoricalRatio).toBeNull();
     expect(summary.atmImpliedVolatility).toBe(.2);

@@ -4,7 +4,7 @@ import type { BrokerEditKey } from "./detail";
 
 /**
  * The edit form's keys beside its field ring (the detail's useFieldRing walks
- * the fields). The list and detail actions (a, e, c, s, o, d) are footer
+ * the fields). The list and detail actions (a, e, c, s, b, o, d) are footer
  * hints, which bind their own keys, and the table opens a row on Enter, so
  * only editing needs keys of its own.
  *

@@ -49,7 +49,7 @@ function starPromptCopy(widgetRoom: number, openKey: string, dismissKey: string)
     + 1 + (dismissKey ? 1 + displayWidth(dismissKey) : 0)
     // The chip padding after the line.
     + 1;
-  for (const lead of [t("Enjoying Gloomberb? Star it on GitHub"), t("Star on GitHub")]) {
+  for (const lead of [t("Enjoying Gloom? Star it on GitHub"), t("Star on GitHub")]) {
     const columns = displayWidth(STAR + lead) + keys;
     if (spare >= columns) return { lead, columns };
   }
@@ -163,7 +163,7 @@ function StarPromptLine({ delayMs = STAR_PROMPT_DELAY_MS, visibleMs = STAR_PROMP
   return (
     <Box flexDirection="row" flexShrink={0} paddingRight={1} data-gloom-role="star-prompt">
       <Button
-        label={t("Star Gloomberb on GitHub")}
+        label={t("Star Gloom on GitHub")}
         variant="plain"
         compact
         shortcut={openKey || undefined}

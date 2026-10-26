@@ -19,7 +19,7 @@ const launcher = await realpath(resolve(launcherArg));
 const evidence = resolve(evidenceArg);
 const resources = process.platform === "darwin" ? dirname(launcher) : resolve(dirname(launcher), "../Resources");
 assert(await Bun.file(join(resources, "gloomberb-tui", SHOT_VIEW_ARCHIVE)).exists(), "Desktop pane archive is missing");
-const cache = join(homedir(), ".cache/gloom-smoke/glo-645");
+const cache = join(homedir(), ".cache/gloom-smoke/desktop-verify");
 await mkdir(cache, { recursive: true });
 await mkdir(evidence, { recursive: true });
 // Chrome puts a Unix socket below TMPDIR; keep the path within its byte limit.
@@ -61,13 +61,14 @@ async function run(name: string, args: string[], expectedCode = 0, envOverrides:
 }
 
 try {
-  // Homebrew links to Resources/gloomberb. Exercise both an absolute symlink
-  // and a relative hop, including spaces, rather than only invoking the file.
+  // Homebrew links to Resources/gloom and Resources/gloomberb. Exercise both an
+  // absolute symlink and a relative hop, including spaces, rather than only
+  // invoking the file.
   if (process.platform !== "win32") {
     const links = join(work, "linked bin");
     await mkdir(links);
     await symlink(launcher, join(links, "desktop cli"));
-    command = join(links, "gloomberb");
+    command = join(links, "gloom");
     await symlink("desktop cli", command);
   }
   // Bun must start in the app's runtime folder, then the entry restores cwd.
@@ -105,7 +106,7 @@ try {
   assert.equal(await realpath(shot.data.outputPath), await realpath(join(caller, output)), "Relative --output escaped the caller directory");
   assert.equal(shot.data.render.loadingStateDetected, false);
   assert.equal(shot.data.render.errorStateDetected, false);
-  assert.match(shot.data.render.visibleText, /Install Gloomberb/);
+  assert.match(shot.data.render.visibleText, /Install Gloom/);
   const png = join(evidence, output);
   await copyFile(join(caller, output), png);
   const { bitmap } = await Jimp.read(png);
@@ -115,8 +116,9 @@ try {
   assert(colors.size > 32, "PNG is blank or has no readable content");
 
   for (const target of ["DOCS", "DIAG"]) {
-    const report = JSON.parse(await run(`fn-${target.toLowerCase()}`, ["fn", target, "--json"]));
-    assert.equal(report.ok, true);
+    // A report with no data exits 1 and says ok: false, with why, beside the data it printed.
+    const report = JSON.parse(await run(`fn-${target.toLowerCase()}`, ["fn", target, "--json"], target === "DIAG" ? 1 : 0));
+    assert.equal(report.ok, target === "DOCS");
     assert.equal(report.data.kind, "rendered-view");
     assert.equal(report.data.source, "dom");
     assert.equal(report.data.target, target);
@@ -124,12 +126,14 @@ try {
       assert.equal(report.data.empty, false);
       assert(report.data.rowCount > 0);
       assert.equal(report.data.reason, undefined);
-      assert.match(report.data.visibleText, /Install Gloomberb/);
+      assert.match(report.data.visibleText, /Install Gloom/);
     } else {
       // No ticker is intentional: DIAG's rendered empty state needs no quote,
       // filings or account. It still exercises the real browser and archive.
       assert.equal(report.data.empty, true);
       assert.equal(report.data.reason, "The rendered pane reported an empty state.");
+      assert.equal(report.error.code, "no_data");
+      assert.equal(report.error.message, "fn DIAG: The rendered pane reported an empty state.");
       assert.match(report.data.visibleText, /Equity Diagnostic.*Select a ticker/);
     }
   }

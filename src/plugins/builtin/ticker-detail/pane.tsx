@@ -39,6 +39,7 @@ import { ResearchTabKeysProvider, useResearchTabKeysHost } from "./research-tab-
 import { ResearchTabNavigationProvider } from "./research-tab-navigation";
 import { usePluginAppActions } from "../../../public/react";
 import { resolveTickerInstrumentKind } from "../../../tickers/instrument-kind";
+import { ResearchTradeWorkspace } from "../broker-trading/dock";
 
 const TICKER_RESEARCH_TAB_COMMIT_DELAY_MS = 120;
 /** A tab counts as viewed once it stays open this long, not when h/l passes over it. */
@@ -226,6 +227,17 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
   );
 
   const visibleTabIdKey = allTabs.map((tab) => tab.id).join("\0");
+  // A function that opens DES on one of its tabs (ADR) stamps the tab on the instance (command-tab.ts):
+  // it is shown once it is there to show, and once per stamp, so a later choice in the pane stands.
+  const requestedTabId = paneInstance?.params?.tab ?? null;
+  const requestedTabAt = paneInstance?.params?.tabAt ?? "";
+  const [consumedTabAt, setConsumedTabAt] = usePaneStateValue<string>("commandTabAt", "");
+  useEffect(() => {
+    if (!requestedTabId || !requestedTabAt || requestedTabAt === consumedTabAt) return;
+    if (!allTabs.some((tab) => tab.id === requestedTabId)) return;
+    setConsumedTabAt(requestedTabAt);
+    setActiveTabId(requestedTabId);
+  }, [consumedTabAt, requestedTabAt, requestedTabId, setActiveTabId, setConsumedTabAt, visibleTabIdKey]);
   // A quote tick re-renders this pane; the tab strip only has to re-render
   // when a tab appears, disappears, or is renamed.
   const tabItemsKey = allTabs.map((tab) => `${tab.id}:${tab.name}`).join("\0");
@@ -361,16 +373,14 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
     );
   }
 
-  return (
-    <Box flexDirection="column" flexGrow={1} flexBasis={0} overflow="hidden">
-      {tabStrip}
-
-      <Box height={contentHeight} flexGrow={1} flexBasis={0} overflow="hidden">
-        <ResearchTabKeysProvider value={showTabs ? researchTabKeys.value : null}>
+  const tradeAvailable = visibleTabIds.has("broker-trade");
+  // Trade shows Chart beside its ticket: the workspace names the tab it shows.
+  const renderTabs = (contentWidth: number, contentFocused: boolean, shownTabId = resolvedTabId) => (
+    <ResearchTabKeysProvider value={showTabs ? researchTabKeys.value : null}>
           {tickerResearchTabs.map((tab) => {
-            if (!renderedTabIds.has(tab.id) || !visibleTabIds.has(tab.id)) return null;
+            if (tradeAvailable && tab.id === "broker-trade" || !(renderedTabIds.has(tab.id) || tab.id === shownTabId) || !visibleTabIds.has(tab.id)) return null;
             const TickerResearchTab = tab.component;
-            const isActive = resolvedTabId === tab.id;
+            const isActive = shownTabId === tab.id;
             return (
               <Box
                 key={tab.id}
@@ -385,9 +395,9 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
                   <NestedPaneTabs>
                     <ResearchTabNavigationProvider value={showTabs ? openResearchTab : null}>
                       <TickerResearchTab
-                        width={width}
+                        width={contentWidth}
                         height={contentHeight}
-                        focused={focused && isActive}
+                        focused={contentFocused && isActive}
                         onCapture={isActive ? handlePluginCapture : ignorePluginCapture}
                       />
                     </ResearchTabNavigationProvider>
@@ -396,8 +406,14 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
               </Box>
             );
           })}
-        </ResearchTabKeysProvider>
-      </Box>
-    </Box>
+    </ResearchTabKeysProvider>
   );
+  return <Box flexDirection="column" flexGrow={1} flexBasis={0} overflow="hidden">
+    {tabStrip}
+    <Box height={contentHeight} flexGrow={1} flexBasis={0} overflow="hidden">
+      {tradeAvailable ? <ResearchTradeWorkspace width={width} height={contentHeight} focused={focused} symbol={ticker.metadata.ticker}
+        tabId={resolvedTabId} selectTab={selectResearchTab} onCapture={handlePluginCapture} locked={!!paneSettings.hideTabs}>{renderTabs}</ResearchTradeWorkspace>
+        : renderTabs(width, focused)}
+    </Box>
+  </Box>;
 }

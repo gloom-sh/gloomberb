@@ -123,12 +123,18 @@ export function canCompareFinancialRow(
 ): boolean {
   if (!previous) return false;
   const key = row.kind === "group" ? row.summaryKey : row.key;
+  // A line filled from the exchange is not compared with the statements source's: the two define revenue differently.
+  if (key && filledLine(current, key) !== filledLine(previous, key)) return false;
   const sameShareBasis = current.shareBasis === previous.shareBasis;
   if (key && SHARE_COUNT_FIELDS.has(key)) return sameShareBasis;
   if (key && PER_SHARE_EARNINGS_FIELDS.has(key) && !sameShareBasis) return false;
   const currentCurrency = (current.currency ?? financialCurrency)?.trim();
   const previousCurrency = (previous.currency ?? financialCurrency)?.trim();
   return !!currentCurrency && currentCurrency === previousCurrency;
+}
+
+function filledLine(statement: FinancialStatement, key: keyof FinancialStatement): boolean {
+  return statement.filledFrom?.fields.some((field) => field === key) === true;
 }
 
 export function semanticGrowthValue(
@@ -513,7 +519,7 @@ export function selectFinancialStatements(
     .filter((candidate) => !tabRows || tabRows.some((row) => hasFinancialRowValue(row, [candidate])))
     .slice(-limit)
     .reverse();
-  const trailing = period === "annual" && statement !== "balance" ? computeTTM(quarterlyStatements) : null;
+  const trailing = period === "annual" && statement !== "balance" ? computeTTM(quarterlyStatements, annualStatements) : null;
   // Right after a fiscal year closes, the last four quarters are that year:
   // the reported year is shown, not a second column of the same period.
   const ttm = trailing && !coversLatestYear(trailing, rawStatements[0]) ? trailing : null;
@@ -605,4 +611,33 @@ export function buildFinancialTableModel(
   });
 
   return { period, subTab, statements, rows, unit };
+}
+
+/**
+ * A statement table's columns for stalePeriodNote, each with whether the
+ * statement's lead line (its first: revenue, total assets, free cash flow)
+ * has a figure in it, so a newer column with only some figures (an EPS
+ * alone) is not read as the latest period.
+ */
+export function financialStatementPeriods(
+  statements: readonly FinancialTableStatement[],
+  subTab: Pick<FinancialSubTab, "rows">,
+): Array<{ date: string; lead: boolean }> {
+  const lead = subTab.rows[0];
+  return statements.map((statement) => ({ date: statement.date, lead: !!lead && hasFinancialRowValue(lead, [statement]) }));
+}
+
+/** The statement lines a table has a row for (filledPeriodsNote), group totals included. */
+export function financialSubTabFields(subTab: Pick<FinancialSubTab, "rows">): Set<string> {
+  const fields = new Set<string>();
+  const visit = (rows: readonly FinancialRowDef[]) => {
+    for (const row of rows) {
+      if (isFinancialGroup(row)) {
+        if (row.summaryKey) fields.add(row.summaryKey);
+        visit(row.children);
+      } else if (row.key) fields.add(row.key);
+    }
+  };
+  visit(subTab.rows);
+  return fields;
 }

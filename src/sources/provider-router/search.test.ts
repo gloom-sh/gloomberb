@@ -3,6 +3,7 @@ import type { DataProvider, SearchRequestContext } from "../../types/data-provid
 import type { InstrumentSearchResult } from "../../types/instrument";
 import { ProviderRouterSearchRoutes } from "./search";
 import { ProviderBusyError } from "../provider-errors";
+import { DataServiceUnreachableError } from "../../utils/network-failure";
 import { createTestDataProvider } from "../../test-support/data-provider";
 
 function result(symbol: string, extra: Partial<InstrumentSearchResult> = {}): InstrumentSearchResult {
@@ -150,25 +151,31 @@ describe("provider search racing", () => {
 
   /**
    * A rate-limited catalogue used to read as "no matches" and was cached as
-   * one, so a company that exists was reported as not existing.
+   * one, so a company that exists was reported as not existing; so did a
+   * search offline, or through a proxy that never answered.
    */
-  test("a search left unanswered by a busy provider rejects instead of reading as empty, and is asked again", async () => {
-    let calls = 0;
-    const routes = makeRoutes({
-      providers: [createTestDataProvider({
-        id: "cloud",
-        search: async () => {
-          calls += 1;
-          if (calls === 1) throw new ProviderBusyError();
-          return [];
-        },
-      }), provider("fallback", [])],
-    });
+  test("a search left unanswered by a busy or unreachable provider rejects instead of reading as empty, and is asked again", async () => {
+    for (const [unanswered, kind] of [
+      [new ProviderBusyError(), ProviderBusyError],
+      [new DataServiceUnreachableError(new TypeError("Failed to fetch")), DataServiceUnreachableError],
+    ] as const) {
+      let calls = 0;
+      const routes = makeRoutes({
+        providers: [createTestDataProvider({
+          id: "cloud",
+          search: async () => {
+            calls += 1;
+            if (calls === 1) throw unanswered;
+            return [];
+          },
+        }), provider("fallback", [])],
+      });
 
-    await expect(routes.search("eagle bulk")).rejects.toBeInstanceOf(ProviderBusyError);
-    // Nothing was cached: the next search asks again, and a real empty answer is an empty list.
-    expect(await routes.search("eagle bulk")).toEqual([]);
-    expect(calls).toBe(2);
+      await expect(routes.search("eagle bulk")).rejects.toBeInstanceOf(kind);
+      // Nothing was cached: the next search asks again, and a real empty answer is an empty list.
+      expect(await routes.search("eagle bulk")).toEqual([]);
+      expect(calls).toBe(2);
+    }
   });
 
   test("a failing broker leaves the provider result intact", async () => {

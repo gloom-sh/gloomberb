@@ -17,6 +17,7 @@ import {
 import { applyPluginToggles } from "../../plugins/ownership";
 import { setLayoutManagerDispatch } from "../../plugins/builtin/layout-manager";
 import { setMarketplaceHost } from "../../plugins/marketplace/store";
+import { deactivatePluginForRemoval } from "../../plugins/marketplace/deactivation";
 import type { InstalledPlugin } from "../../plugins/marketplace/model";
 import {
   listExternalPlugins,
@@ -235,7 +236,7 @@ export function bindAppPanePluginRegistry({
       const sharedPane = materialized.layout.instances[0];
       if (!sharedPane) throw new Error("This shared pane is invalid.");
       const paneDef = pluginRegistry.panes.get(sharedPane.paneId);
-      if (!paneDef) throw new Error("This shared pane is unavailable in this version of Gloomberb.");
+      if (!paneDef) throw new Error("This shared pane is unavailable in this version of Gloom.");
       const owner = pluginRegistry.getDisabledPaneOwner(sharedPane.paneId, stateRef.current.config.disabledPlugins);
       if (owner) throw new PluginOffError(owner, "this shared pane");
       const instance = buildPaneInstance(sharedPane.paneId, sharedPane);
@@ -479,9 +480,11 @@ export function bindAppPanePluginRegistry({
           throw error;
         }
       }
+      // Recorded before it registers: what redraws as its contributions land
+      // (a broker list and its logo) reads the entry this checkout now is.
+      upsertExternalPlugin(entry);
       try {
         await pluginRegistry.register(entry.plugin);
-        upsertExternalPlugin(entry);
       } catch (error) {
         upsertExternalPlugin({ ...entry, error: error instanceof Error ? error.message : String(error) });
         reportCrash(error, { kind: "plugin", plugin: pluginId });
@@ -500,7 +503,13 @@ export function bindAppPanePluginRegistry({
         for (const instanceId of orphaned) next = removePane(next, instanceId);
         persistLayout(next);
       }
-      if (pluginRegistry.allPlugins.has(pluginId)) pluginRegistry.unregister(pluginId);
+      try {
+        deactivatePluginForRemoval(pluginRegistry, pluginId);
+      } catch (error) {
+        const entry = listExternalPlugins().find((candidate) => candidate.plugin.id === pluginId);
+        if (entry) upsertExternalPlugin({ ...entry, needsRestart: true });
+        throw error;
+      }
       removeExternalPlugin(pluginId, directory);
     },
     contributions: (pluginId) => {

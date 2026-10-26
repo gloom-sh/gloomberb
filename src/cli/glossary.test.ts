@@ -10,7 +10,7 @@ test("a term is found by its name, abbreviation or another name, whatever its ca
   expect(terms(lookupGlossary("stop-out").partial)).toEqual(["Stop-out vs average"]);
   expect(lookupGlossary("b/c")).toEqual({ exact: [GLOSSARY.find((entry) => entry.short === "B/C")!], partial: [] });
   expect(terms(lookupGlossary("dealers").exact)).toEqual(["Dealer"]);
-  expect(terms(lookupGlossary("discount").partial)).toEqual(["High discount margin", "Premium/discount"]);
+  expect(terms(lookupGlossary("discount").partial)).toEqual(["High discount margin", "Premium/discount", "ADR premium"]);
   // Carry is no entry of its own, but the basis trade it names is: found as a related term.
   expect(terms(lookupGlossary("carry").exact)).toEqual([]);
   expect(terms(lookupGlossary("carry").partial)).toEqual(["Futures basis"]);
@@ -58,9 +58,9 @@ test("the rebalance table's and ETF's words are found by plain names, and premiu
   const exact = (query: string) => terms(lookupGlossary(query).exact);
   expect(["drift", "pp", "percentage points", "rebalance", "Trade Value", "target weights", "weight", "NAV", "tracking error", "discount to NAV"].map(exact))
     .toEqual([["Drift"], ["Percentage point"], ["Percentage point"], ["Trade"], ["Trade"], ["Target"], ["Weight"], ["NAV"], ["Tracking error"], ["Premium/discount"]]);
-  // A perpetual's premium is over its reference price, a fund's over its NAV: `catalog explain premium` prints both.
+  // A perpetual's premium is over its reference price, a fund's over its NAV, a receipt's over its home shares: `catalog explain premium` prints each.
   const premium = lookupGlossary("premium");
-  expect([...terms(premium.exact), ...terms(premium.partial)]).toEqual(["Premium", "Premium/discount"]);
+  expect([...terms(premium.exact), ...terms(premium.partial)]).toEqual(["Premium", "Premium/discount", "ADR premium"]);
 
   // portfolio show and fn PF head the columns so; drift prints in pp (+2.3pp), never the word.
   const rebalance = "Ticker  Last  Shares  Value  Weight  Target  Drift  Trade  Trade Value  P&L\nVTI  $300.00  10  $3,000  60.0%  50.0%  +10.0pp  -2  -$500";
@@ -70,13 +70,16 @@ test("the rebalance table's and ETF's words are found by plain names, and premiu
   expect(terms(reportGlossary("ETF", "Fund facts (fee, NAV, premium) are not available yet; try fn SEC IBIT."))).toEqual(["NAV", "Premium/discount"]);
 });
 
-test("a word that is a term whole is found before the terms that only start with it", () => {
-  // `float` is the float of a stock, not the floating rate note that starts with the same letters.
+test("a term's related terms hold its word whole; a word no term names still finds the terms it starts", () => {
+  // `float` is the float of a stock: the floating rate note only starts with the same letters, so it is not related.
   const float = lookupGlossary("float");
-  expect([...terms(float.exact), ...terms(float.partial)]).toEqual(["Float", "FRN"]);
-  // "Monthly-weighted" came first in the glossary, but it only starts with "weight"; Target and Drift hold it whole.
-  expect(terms(lookupGlossary("weight").partial)).toEqual(["Target", "Drift", "Monthly-weighted"]);
-  expect(terms(lookupGlossary("asset").partial)).toEqual(["NAV", "Fed assets"]);
+  expect([...terms(float.exact), ...terms(float.partial)]).toEqual(["Float"]);
+  // Target and Drift hold "weight" whole; WIRP's Monthly-weighted method only starts with it.
+  expect(terms(lookupGlossary("weight").partial)).toEqual(["Target", "Drift"]);
+  expect(terms(lookupGlossary("settle").partial)).toEqual([]);
+  // A plural holds its word whole; a search that names no term keeps the word starts after the whole words.
+  expect(terms(lookupGlossary("asset").partial)).toEqual(["Fed assets", "NAV"]);
+  expect(terms(lookupGlossary("vol").partial)).toEqual(["Average daily volume", "VVIX", "Short volume", "Term structure", "Contango/backwardation (VIX)", "DVOL"]);
   expect(["short interest", "shares short", "short ratio", "dtc", "settlement date", "crowded rising", "short squeeze", "% float"].map((query) => terms(lookupGlossary(query).exact)))
     .toEqual([["Short interest"], ["Short interest"], ["Days to cover"], ["Days to cover"], ["Settlement"], ["Crowded"], ["Squeeze"], ["Float"]]);
   // Borrow data is not offered, so it has no entry to define.
@@ -87,6 +90,21 @@ test("SIV's short volume is its own term, apart from short interest", () => {
   const volume = "Date  Short %  Short volume  Total volume  Exempt volume  Status\n2026-10-13  58.79%  3.57M  6.07M  16.3k  Reported";
   expect(terms(reportGlossary("SIV", volume))).toEqual(["Short volume"]);
   expect(reportGlossary("SI", volume).map((entry) => entry.term)).not.toContain("Short volume");
+});
+
+test("ADR's ratio, premium and implied rate and the peso's CCL and MEP are found by the words a trader types and explained from what ADR prints", () => {
+  const exact = (query: string) => terms(lookupGlossary(query).exact);
+  expect(["adr", "ccl", "mep", "dolar mep", "contado con liquidacion", "implied fx", "adr discount"].map(exact))
+    .toEqual([["ADR ratio"], ["Contado con liquidación"], ["Mercado electrónico de pagos"], ["Mercado electrónico de pagos"],
+      ["Contado con liquidación"], ["Implied FX"], ["ADR premium"]]);
+  const report = [
+    "GGAL vs GGAL.BA",
+    "Implied USD/ARS  1,651.28 (CCL)",
+    "Spot USD/ARS     1,529.00 (official wholesale)",
+    "ADR vs home      -7.4% discount (at spot)",
+    "Ratio            1 ADR = 10 ordinary shares",
+  ].join("\n");
+  expect(terms(reportGlossary("ADR", report))).toEqual(["ADR ratio", "ADR premium", "Implied FX", "Contado con liquidación"]);
 });
 
 test("a beginner's words for quotes, futures and the calendar are found by plain names, each as its own entry", () => {
@@ -101,7 +119,6 @@ test("a beginner's words for quotes, futures and the calendar are found by plain
   expect(exact("settlement")).toEqual(["Settlement"]);
   expect(exact("settlement date")).toEqual(["Settlement"]);
   expect(exact("settled")).toEqual(["Settlement"]);
-  expect(terms(lookupGlossary("settle").partial)).toEqual(["Settlement"]);
 });
 
 test("QQ, FUT and ECO explain the quote, futures and calendar words they print", () => {
@@ -141,6 +158,10 @@ test("the futures basis, curve shape and funding words are found by plain names 
   const curve = "Contract  Last  Vs Spot  Ann Basis\nBTCV26  81830.00  +0.25%  +4.3%\n\nFront spread\nLabel  State  Annualized Roll Yield\nBTCX26-BTCV26  contango  -5.71";
   expect(terms(reportGlossary("CTM", curve))).toEqual(["Futures contract", "Futures basis", "Annualised basis", "Contango", "Roll yield"]);
   expect(terms(reportGlossary("PERP", "Market  Funding %/int  Premium %  APR %\nBTC  -0.00056% /8h  -0.039%  -0.62%"))).toEqual(["Funding rate", "Premium"]);
+  // The listing code quotes give a coin's composite price answers, though CTM names it in plain words.
+  expect(terms(lookupGlossary("CCC").exact)).toEqual(["Crypto composite price"]);
+  expect(terms(reportGlossary("CTM", "Basis against BTC-USD spot in each last trade's own minute (crypto composite price, delayed)"))).toEqual(["Crypto composite price"]);
+  expect(lookupGlossary("CCC").exact[0]!.definition).not.toMatch(/CryptoCompare|Yahoo|Gloom/);
   // Another function's report shows none of them.
   expect(reportGlossary("HP", curve)).toEqual([]);
 });

@@ -11,7 +11,7 @@ import {
 import type { ScrollBoxRenderable } from "../../ui";
 import { useBeforeShortcut, useShortcut } from "../../react/input";
 import { isPlainKey, isPlainKeyboardEvent } from "../../utils/keyboard";
-import { DataTable, type DataTableColumn, type DataTableProps } from "../ui";
+import { DataTable, PaneStatusBody, type DataTableColumn, type DataTableProps, type PaneStatusBodyProps } from "../ui";
 import { useDataTableSortMenu } from "./sort-menu";
 import {
   TableViewFrame,
@@ -89,6 +89,19 @@ export type DataTableSelection<T> =
       ) => void;
     };
 
+/**
+ * What the table's body shows instead of rows while it has none to show: its
+ * first page loading after a tab or filter change, a failed load, a state
+ * with nothing to list. The same states `PaneStatusBody` draws, in the
+ * table's place under `rootBefore`, so the query bar and figures above stay
+ * on screen (and a search field keeps its focus) while the body waits.
+ */
+export type DataTableBodyStatus = Omit<PaneStatusBodyProps, "children" | "width" | "height" | "align">;
+
+function bodyStatusShown(status: DataTableBodyStatus | undefined): status is DataTableBodyStatus {
+  return !!status && (!!status.error || status.loading === true || status.empty === true);
+}
+
 interface SelectionCommitTarget {
   index: number;
   id?: string;
@@ -124,6 +137,12 @@ export interface DataTableViewProps<
   isNavigable?: (item: T, index: number) => boolean;
   rootBefore?: ReactNode;
   rootAfter?: ReactNode;
+  /**
+   * Replaces the table (header and rows) with a loading, error or empty
+   * state while `rootBefore` stays. Precedence is the caller's, as with
+   * `PaneStatusBody`: pass `loading` only while there is nothing to show.
+   */
+  status?: DataTableBodyStatus;
   rootWidth?: number;
   rootHeight?: number;
   rootBackgroundColor?: string;
@@ -165,6 +184,7 @@ export function DataTableView<
   isNavigable,
   rootBefore,
   rootAfter,
+  status,
   rootWidth,
   rootHeight,
   rootBackgroundColor,
@@ -728,7 +748,7 @@ export function DataTableView<
       before={rootBefore}
       after={rootAfter}
     >
-      <DataTable<T, C>
+      {bodyStatusShown(status) ? <PaneStatusBody {...status} /> : <DataTable<T, C>
         {...tableProps}
         headerScrollRef={effectiveHeaderScrollRef}
         scrollRef={effectiveScrollRef}
@@ -741,7 +761,7 @@ export function DataTableView<
         onActivate={handleTableActivate}
         onRowMouseDown={handleRowMouseDown}
         onRowContextMenu={handleRowContextMenu}
-      />
+      />}
     </TableViewFrame>
   );
 }

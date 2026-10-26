@@ -83,7 +83,7 @@ test("reloads accounts on connection changes and explicit refreshes, not on stat
   expect(loads).toBe(3);
 });
 
-test("only a broker that could be connected and is not counts as offline", () => {
+test("only a broker that could be connected and is not, or is turned off, counts as offline", () => {
   const portfolio = { id: "broker:rh:A1", name: "A1", currency: "USD", brokerInstanceId: "rh", lastSyncedAt: 5 };
   const broker: BrokerAdapter = { id: "robinhood", name: "Robinhood", configSchema: [], validate: async () => true, importPositions: async () => [] };
   const status = (state: BrokerConnectionStatus["state"], extra: Partial<BrokerConnectionStatus> = {}): BrokerConnectionStatus => ({ state, updatedAt: 0, ...extra });
@@ -95,5 +95,9 @@ test("only a broker that could be connected and is not counts as offline", () =>
   for (const quiet of [status("connected"), status("connecting"), status("disconnected", { mode: "flex" }), null]) {
     expect(resolveOfflineBroker(portfolio, instance, broker, quiet)).toBeNull();
   }
-  expect(resolveOfflineBroker(portfolio, { ...instance, enabled: false }, broker, status("disconnected"))).toBeNull();
+  // Turned off: dated, said so, and never reconnected; enabling it can sync it only when a plugin connects it.
+  expect(resolveOfflineBroker(portfolio, { ...instance, enabled: false }, broker, status("connected")))
+    .toMatchObject({ syncedAt: 5, reason: "Robinhood disabled", disabled: true, reconnectable: true });
+  expect(resolveOfflineBroker(portfolio, { ...instance, brokerType: "ibkr", enabled: false }, null, null))
+    .toMatchObject({ reason: "IBKR disabled", disabled: true, reconnectable: false });
 });

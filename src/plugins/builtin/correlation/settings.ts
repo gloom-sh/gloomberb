@@ -34,6 +34,7 @@ function coerceStoredSymbols(value: unknown): string[] {
   try {
     return parseCorrelationSymbolsInput(text, MAX_CORRELATION_TICKERS);
   } catch {
+    // Intentional ignore: malformed legacy symbols fall back to saved text or the default preset.
     return [];
   }
 }

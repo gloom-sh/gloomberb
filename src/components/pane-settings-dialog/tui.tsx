@@ -1,12 +1,12 @@
 import { Box, Text } from "../../ui";
 import { t } from "../../i18n";
 import { TextAttributes } from "../../ui";
-import type { PaneSettingField } from "../../types/plugin";
+import type { PaneSettingField, PaneSettingRowNote } from "../../types/plugin";
 import { colors } from "../../theme/colors";
 import { useViewport } from "../../react/input";
 import { DialogFrame, ListView } from "../ui";
 import type { ListViewProps } from "../ui/list-view";
-import { isPaneSettingDisabled, summarizePaneSettingValue } from "./value";
+import { isPaneSettingDisabled, noteColor, summarizePaneSettingValue } from "./value";
 
 /** Terminal rows a settings dialog spends around its list: edge, frame, title, description. */
 const TUI_DIALOG_LIST_CHROME_ROWS = 11;
@@ -21,7 +21,10 @@ export function useTuiDialogListRows(): number {
  * for it scrolls to the cursor instead of running under the dialog's edge,
  * and the highlighted row's description sits under it.
  */
-export function TuiDialogList(props: ListViewProps) {
+export function TuiDialogList({ descriptionColor, ...props }: ListViewProps & {
+  /** The highlighted row's description in a tone: what its action ran into. */
+  descriptionColor?: (index: number) => string | undefined;
+}) {
   const maxRows = useTuiDialogListRows();
   const scrollable = props.items.length > maxRows;
   const description = props.selectedIndex >= 0 ? props.items[props.selectedIndex]?.description : undefined;
@@ -37,7 +40,7 @@ export function TuiDialogList(props: ListViewProps) {
         <>
           <Box height={1} />
           <Box>
-            <Text fg={colors.textDim}>{"    "}{t(description)}</Text>
+            <Text fg={descriptionColor?.(props.selectedIndex) ?? colors.textDim}>{"    "}{t(description)}</Text>
           </Box>
         </>
       )}
@@ -58,6 +61,7 @@ export function TuiPaneSettingsDialogBody({
   fields,
   selectedIndex,
   settings,
+  noteFor,
   onSelect,
   onActivate,
 }: {
@@ -65,26 +69,30 @@ export function TuiPaneSettingsDialogBody({
   fields: PaneSettingField[];
   selectedIndex: number;
   settings: Record<string, unknown>;
+  /** What an action said on its own row: its state in place of the row's value, its reason in place of the description. */
+  noteFor?: (field: PaneSettingField) => PaneSettingRowNote | null;
   onSelect: (index: number) => void;
   onActivate: (field: PaneSettingField | undefined) => void;
 }) {
+  const notes = fields.map((field) => noteFor?.(field) ?? null);
   return (
     <DialogFrame title={t(title)}>
       <TuiDialogList
-        items={fields.map((field) => ({
+        items={fields.map((field, index) => ({
           id: field.key,
           label: t(field.label),
-          description: field.description ? t(field.description) : field.description,
-          detail: summarizePaneSettingValue(field, settings[field.key]),
+          description: notes[index]?.text ?? (field.description ? t(field.description) : field.description),
+          detail: notes[index]?.status ?? summarizePaneSettingValue(field, settings[field.key]),
           disabled: isPaneSettingDisabled(field),
         }))}
+        descriptionColor={(index) => (notes[index]?.text ? noteColor(notes[index]) : undefined)}
         selectedIndex={selectedIndex}
         bgColor={colors.commandBg}
         onSelect={onSelect}
         onActivate={(_, index) => {
           onActivate(fields[index]);
         }}
-        renderRow={(item, rowState) => (
+        renderRow={(item, rowState, index) => (
           <Box flexDirection="row" justifyContent="space-between" width="100%">
             <Box flexDirection="row">
               <Text fg={rowState.selected ? colors.selectedText : colors.textDim}>
@@ -97,7 +105,7 @@ export function TuiPaneSettingsDialogBody({
                 {item.label}
               </Text>
             </Box>
-            <Text fg={colors.textMuted}>
+            <Text fg={noteColor(notes[index]) ?? colors.textMuted}>
               {item.detail}
             </Text>
           </Box>

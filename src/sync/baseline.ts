@@ -4,16 +4,17 @@ import type { SyncBaselineStore } from "./types";
 const BASELINE_PLUGIN_ID = "core.sync";
 const BASELINE_KEY = "last-synced-payloads";
 const MEMOS_KEY = "contributor-memos";
+const ACCOUNT_KEY = "account";
 
 /**
  * Persists what this device last pushed so the next pull can tell "the cloud is
  * newer" from "local changed while the app was closed". Without it every launch
  * treats local state as pristine and the cloud overwrites CLI/offline edits.
  *
- * Storage failures are swallowed: a missing baseline only falls back to keeping
- * local state, never to discarding it.
+ * Storage failures do not stop sync, but missing merge history can prevent
+ * contributors from recognizing unsynced local edits.
  */
-export function createSyncBaselineStore(pluginState: AppPluginStateStorePort): SyncBaselineStore {
+export function createSyncBaselineStore(pluginState: Pick<AppPluginStateStorePort, "get" | "set">): SyncBaselineStore {
   const load = (key: string) => {
     try {
       return pluginState.get<Record<string, unknown>>(BASELINE_PLUGIN_ID, key)?.value ?? null;
@@ -25,10 +26,15 @@ export function createSyncBaselineStore(pluginState: AppPluginStateStorePort): S
     try {
       pluginState.set(BASELINE_PLUGIN_ID, key, value);
     } catch {
-      // Ignored: a stale baseline or memo only makes the next pull more conservative.
+      // Persistence is best effort; keep the in-memory merge history usable.
     }
   };
   return {
+    loadAccountId: () => {
+      const id = load(ACCOUNT_KEY)?.id;
+      return typeof id === "string" ? id : null;
+    },
+    saveAccountId: (id) => save(ACCOUNT_KEY, { id }),
     load: () => load(BASELINE_KEY),
     save: (payloads) => save(BASELINE_KEY, payloads),
     loadMemos: () => load(MEMOS_KEY),

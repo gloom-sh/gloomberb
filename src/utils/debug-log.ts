@@ -146,7 +146,7 @@ class DebugLog {
   exportAsText(filter?: { level?: LogLevel; source?: string }): string {
     const entries = this.getEntries(filter);
     const lines: string[] = [
-      `Gloomberb Debug Log — exported ${new Date().toISOString()}`,
+      `Gloom Debug Log — exported ${new Date().toISOString()}`,
       `Total entries: ${entries.length}`,
       "=".repeat(80),
       "",

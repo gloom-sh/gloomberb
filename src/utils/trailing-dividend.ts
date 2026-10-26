@@ -51,7 +51,9 @@ export function inferCadence(payments: readonly Pick<CashDistribution, "exDate">
 }
 
 /**
- * Trailing twelve-month cash as known at `asOf`, one payment per regular period.
+ * The payments trailing twelve-month cash is made of as known at `asOf`, one
+ * per regular period, and how many a year the issuer's cadence pays (null
+ * without a regular cadence).
  *
  * A fixed one-year ex-date window counts a fifth quarterly (or thirteenth
  * monthly) payment when this year's ex-date is a few days earlier than last
@@ -61,13 +63,13 @@ export function inferCadence(payments: readonly Pick<CashDistribution, "exDate">
  * the window holds fewer than one year of payments. Irregular cash uses the
  * plain window, so special distributions are neither dropped nor extended.
  */
-export function trailingCashAt<Payment extends CashDistribution>(payments: readonly Payment[], asOf: Date): number {
+function trailingPayments<Payment extends CashDistribution>(payments: readonly Payment[], asOf: Date): { counted: Payment[]; perYear: number | null; cadence: DistributionCadence | null } {
   const known = payments.filter((payment) => payment.exDate <= asOf && Number.isFinite(payment.amount) && payment.amount > 0)
     .sort((a, b) => a.exDate.getTime() - b.exDate.getTime());
   const cutoff = calendarMonthsBefore(asOf, 12);
   const cadence = inferCadence(known, asOf);
   const regular = cadence ? REGULAR_CADENCE[cadence] : undefined;
-  if (!regular) return known.filter((payment) => payment.exDate > cutoff).reduce((sum, payment) => sum + payment.amount, 0);
+  if (!regular) return { counted: known.filter((payment) => payment.exDate > cutoff), perYear: null, cadence };
 
   const halfPeriod = regular.halfPeriodDays * DAY;
   const graceCutoff = new Date(cutoff.getTime() - Math.min(regular.halfPeriodDays, MAX_LATE_GRACE_DAYS) * DAY);
@@ -94,7 +96,31 @@ export function trailingCashAt<Payment extends CashDistribution>(payments: reado
   const late = candidates.filter((payment) => payment.exDate <= cutoff && payment.exDate > graceCutoff && !superseded.has(payment))
     .reverse()
     .slice(0, Math.max(0, regular.perYear - counted.length));
-  return [...counted, ...late].reduce((sum, payment) => sum + payment.amount, 0);
+  return { counted: [...counted, ...late], perYear: regular.perYear, cadence };
+}
+
+/** Trailing twelve-month cash as known at `asOf` (trailingPayments). */
+export function trailingCashAt<Payment extends CashDistribution>(payments: readonly Payment[], asOf: Date): number {
+  return trailingPayments(payments, asOf).counted.reduce((sum, payment) => sum + payment.amount, 0);
+}
+
+/** How many payments trailing cash counts against how many a year the issuer's cadence pays. */
+export interface TrailingPayments {
+  counted: number;
+  expected: number;
+  cadence: DistributionCadence;
+}
+
+/**
+ * The payments a regular payer's trailing cash counts when it is fewer than
+ * its cadence pays in a year: a hole in the history (ECC's monthly July to
+ * September 2026 distributions), a missed or late payment, or a fund under a
+ * year old. Null for a full year, an irregular payer and an issuer with no
+ * cadence, whose trailing cash is the plain window.
+ */
+export function trailingPaymentShortfall(payments: readonly CashDistribution[], asOf: Date): TrailingPayments | null {
+  const { counted, perYear, cadence } = trailingPayments(payments, asOf);
+  return perYear != null && cadence && counted.length < perYear ? { counted: counted.length, expected: perYear, cadence } : null;
 }
 
 /** A history row as a paid distribution; null when its date is not a calendar day or its amount is no cash. */

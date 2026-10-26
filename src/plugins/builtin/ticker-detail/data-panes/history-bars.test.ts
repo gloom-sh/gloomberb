@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { RANGE_HISTORY_RESOLUTION } from "../../../../time-series/resolution";
-import { HISTORY_DEFAULT_RANGE, historyBarDate, historyBarSize, historyBarSizeText } from "./history-bars";
+import { closedHistoryBarDay, HISTORY_DEFAULT_RANGE, historyBarDate, historyBarSize, historyBarSizeText } from "./history-bars";
 
 const days = (dates: string[]) => dates.map((date) => Date.parse(date));
 
@@ -27,4 +27,16 @@ test("a month reads as the month, and a week or month still running as to date",
   expect(historyBarDate("2026-10-01", "1mo", true)).toBe("2026-10 MTD");
   expect(historyBarDate("2026-10-12", "1wk", true)).toBe("2026-10-12 WTD");
   expect(historyBarDate("2026-10-12", "1d")).toBe("2026-10-12");
+});
+
+test("a closed daily bar is dated by its day, never its midnight; the session still trading is not closed", () => {
+  // Fri 23 Oct 2026: NYSE trades 13:30-20:00 UTC.
+  const trading = Date.parse("2026-10-23T15:45:00Z");
+  const closed = Date.parse("2026-10-23T22:50:00Z");
+  expect(closedHistoryBarDay("1d", "2026-10-23T00:00:00.000Z", "NYSE", trading)).toBeNull();
+  expect(closedHistoryBarDay("1d", "2026-10-22T00:00:00.000Z", "NYSE", trading)).toBe("2026-10-22");
+  expect(closedHistoryBarDay("1d", "2026-10-23T00:00:00.000Z", "NYSE", closed)).toBe("2026-10-23");
+  // A week still running is no closed day; an intraday bar never is.
+  expect(closedHistoryBarDay("1wk", "2026-10-19", "NYSE", trading)).toBeNull();
+  expect(closedHistoryBarDay("intraday", "2026-10-23T14:30:00Z", "NYSE", closed)).toBeNull();
 });

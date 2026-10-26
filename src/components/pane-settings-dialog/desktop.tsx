@@ -1,13 +1,13 @@
 import { Box, Text } from "../../ui";
 import { useEffect, useId, type ReactNode } from "react";
-import type { PaneSettingField } from "../../types/plugin";
+import type { PaneSettingField, PaneSettingRowNote } from "../../types/plugin";
 import { colors } from "../../theme/colors";
 import { SelectField, type SelectFieldHandle } from "../ui/select-field";
 import { Checkbox } from "../ui/checkbox";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/display";
 import { DialogFrame } from "../ui/frame";
-import { isPaneSettingDisabled, summarizePaneSettingValue } from "./value";
+import { isPaneSettingDisabled, noteColor, summarizePaneSettingValue } from "./value";
 
 const DESKTOP_TEXT_STYLE = {
   letterSpacing: 0,
@@ -74,6 +74,7 @@ function DesktopSettingsRow({
   field,
   selected,
   currentValue,
+  note,
   onHover,
   onEdit,
   onSelectRef,
@@ -82,6 +83,8 @@ function DesktopSettingsRow({
   field: PaneSettingField;
   selected: boolean;
   currentValue: unknown;
+  /** What its action said on it: the state beside its button, the reason in place of its description. */
+  note: PaneSettingRowNote | null;
   onHover: () => void;
   onEdit: () => void;
   onSelectRef: (fieldKey: string, element: SelectFieldHandle | null) => void;
@@ -91,6 +94,7 @@ function DesktopSettingsRow({
   const disabled = isPaneSettingDisabled(field);
   const rowId = useFollowHighlight(selected);
   const summary = summarizePaneSettingValue(field, currentValue);
+  const description = note?.text ?? field.description;
   const control = field.type === "toggle" ? (
     <Checkbox label={field.label} displayLabel="" checked={currentValue === true} onChange={(checked) => onApply(field, checked)} />
   ) : field.type === "select" ? (
@@ -104,7 +108,10 @@ function DesktopSettingsRow({
     />
   ) : field.type === "action" ? (
     // The button says what pressing the row does, and presses it: the row's own press is not repeated.
-    <Button label={summary} variant="secondary" disabled={disabled} onPress={onEdit} stopPropagation />
+    <Box flexDirection="row" alignItems="center" gap={1}>
+      {note ? <Text fg={noteColor(note)} style={desktopText()}>{note.status}</Text> : null}
+      <Button label={summary} variant="secondary" disabled={disabled} onPress={onEdit} stopPropagation />
+    </Box>
   ) : (
     <Box flexDirection="row" alignItems="center" gap={1}>
       <Badge label={summary} />
@@ -116,7 +123,7 @@ function DesktopSettingsRow({
     <Box
       id={rowId}
       flexDirection="column"
-      minHeight={field.description ? undefined : 2}
+      minHeight={description ? undefined : 2}
       data-gloom-role="pane-setting-row"
       data-selected={selected ? "true" : "false"}
       backgroundColor={selected ? "var(--gloom-hover-fill)" : "transparent"}
@@ -143,9 +150,9 @@ function DesktopSettingsRow({
         </Box>
         {control}
       </Box>
-      {field.description && (
-        <Text fg={colors.textMuted} wrapText style={desktopText()}>
-          {field.description}
+      {description && (
+        <Text fg={note?.text ? noteColor(note) : colors.textMuted} wrapText style={desktopText()}>
+          {description}
         </Text>
       )}
     </Box>
@@ -156,6 +163,7 @@ function DesktopSettingsList({
   fields,
   selectedIndex,
   settings,
+  noteFor,
   onHover,
   onEdit,
   onSelectRef,
@@ -164,6 +172,7 @@ function DesktopSettingsList({
   fields: PaneSettingField[];
   selectedIndex: number;
   settings: Record<string, unknown>;
+  noteFor?: (field: PaneSettingField) => PaneSettingRowNote | null;
   onHover: (field: PaneSettingField, index: number) => void;
   onEdit: (field: PaneSettingField, index: number) => void;
   onSelectRef: (fieldKey: string, element: SelectFieldHandle | null) => void;
@@ -182,6 +191,7 @@ function DesktopSettingsList({
           field={field}
           selected={index === selectedIndex}
           currentValue={settings[field.key]}
+          note={noteFor?.(field) ?? null}
           onHover={() => onHover(field, index)}
           onEdit={() => onEdit(field, index)}
           onSelectRef={onSelectRef}
@@ -208,6 +218,7 @@ export function DesktopPaneSettingsDialogBody({
   fields,
   selectedIndex,
   settings,
+  noteFor,
   onHover,
   onEdit,
   onSelectRef,
@@ -218,6 +229,7 @@ export function DesktopPaneSettingsDialogBody({
   fields: PaneSettingField[];
   selectedIndex: number;
   settings: Record<string, unknown>;
+  noteFor?: (field: PaneSettingField) => PaneSettingRowNote | null;
   onHover: (field: PaneSettingField, index: number) => void;
   onEdit: (field: PaneSettingField, index: number) => void;
   onSelectRef: (fieldKey: string, element: SelectFieldHandle | null) => void;
@@ -237,6 +249,7 @@ export function DesktopPaneSettingsDialogBody({
           fields={fields}
           selectedIndex={selectedIndex}
           settings={settings}
+          noteFor={noteFor}
           onHover={onHover}
           onEdit={onEdit}
           onSelectRef={onSelectRef}

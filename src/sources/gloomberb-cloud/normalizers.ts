@@ -28,6 +28,7 @@ import { reconcileQuoteDayRange } from "../../market-data/quotes/day-range";
 import { redactUnavailableFundamentals } from "../../utils/fundamentals";
 import { readWithdrawnObservations } from "../../utils/statement-gaps";
 import { parseListingDelisting } from "../../market-data/quotes/delisting";
+import { readIntradayBar, readStaleReason } from "../../market-data/quotes/intraday-bar";
 
 export const GLOOMBERB_CLOUD_PROVIDER_ID = "gloomberb-cloud" as const;
 
@@ -96,6 +97,8 @@ export function mapQuote(
   return withoutUndefinedFields(reconcileQuoteDayRange({
     ...quote,
     delisting: parseListingDelisting(quote.delisting),
+    intradayBar: readIntradayBar(quote.intradayBar),
+    staleReason: readStaleReason(quote.staleReason),
     priceBasis,
     priceObservation,
     currency: currency || quote.currency,
@@ -132,6 +135,8 @@ export function mapQuote(
       divisor,
     ),
     extendedSessionPrint: typeof quote.extendedSessionPrint === "boolean" ? quote.extendedSessionPrint : undefined,
+    // A coin's move over 24 hours, or none, when its previous close is undatable.
+    changeBasis: quote.changeBasis === "24h" || quote.changeBasis === "none" ? quote.changeBasis : undefined,
     overnightPrice: normalizePriceValueByDivisor(quote.overnightPrice, divisor),
     overnightChange: normalizePriceValueByDivisor(quote.overnightChange, divisor),
     overnightPriceKind: quote.overnightPriceKind === "trade" || quote.overnightPriceKind === "mark"
@@ -220,6 +225,15 @@ function parseCloudPricePointDate(
     : new Date(value);
 }
 
+/** A served venue count, when it is one: a venue name and a count of zero or more. */
+function venueVolume(value: unknown): { venueVolume: { venue: string; volume: number } } | null {
+  if (!value || typeof value !== "object") return null;
+  const { venue, volume } = value as { venue?: unknown; volume?: unknown };
+  return typeof venue === "string" && venue.trim() && typeof volume === "number" && Number.isFinite(volume) && volume >= 0
+    ? { venueVolume: { venue: venue.trim(), volume } }
+    : null;
+}
+
 /**
  * One served bar. `coin`: the bars are a coin's, which trades every hour of every day. Its intraday volume is the
  * value traded in the bar on major spot venues, and a bar no venue reported has none rather than 0, so a 0 (from an
@@ -239,6 +253,7 @@ export function mapPricePoint(
     low: normalizePriceValueByDivisor(point.low, divisor),
     close: normalizePriceValueByDivisor(point.close, divisor) ?? point.close,
     volume: coin && point.volume === 0 ? undefined : point.volume,
+    ...(venueVolume(point.venueVolume) ?? {}),
     ...(point.partial === true ? { partial: true } : {}),
     ...(point.filled === true ? { filled: true } : {}),
     ...(point.unsettled === true ? { unsettled: true } : {}),
@@ -334,6 +349,8 @@ export function mapOptionsChain(
     asOf: chain.asOf,
     // Left absent when the server does not send it, so the date is then established against OPX.
     ...(chain.openInterestAsOf !== undefined ? { openInterestAsOf: chain.openInterestAsOf } : {}),
+    ...(Number.isFinite(chain.rate) ? { rate: chain.rate } : {}),
+    ...(chain.venue ? { venue: chain.venue } : {}),
   };
 }
 
@@ -435,7 +452,7 @@ const HISTORY_OUTPUT_SIZE: Record<TimeRange, number> = {
   "ALL": 600,
 };
 
-/** The bar size comes from the shared range table, which `gloomberb help history` also lists. */
+/** The bar size comes from the shared range table, which `gloom help history` also lists. */
 export function toHistoryRequest(range: TimeRange): {
   interval: string;
   outputsize: number;

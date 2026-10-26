@@ -192,10 +192,11 @@ export function expectedMove(
     sigmaPercent: sigma != null && Number.isFinite(sigma) ? sigma / spot * 100 : null, strike: atm?.strike ?? null };
 }
 
-/** 25-delta and 90/110 skew in decimal annualized IV; OVDV reads them on each expiry's fitted smile. */
+/** 25-delta and 90/110 skew in decimal annualized IV; OVDV reads them on each expiry's fitted smile, from its forward. */
 export interface SkewMetrics {
   put25: number | null;
   call25: number | null;
+  /** IV at the forward (ATMF): the butterfly and the term slope are measured from it. */
   atm: number | null;
   putCallSkew: number | null;
   riskReversal: number | null;

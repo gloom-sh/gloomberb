@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { applyActionBinding, removeCommandBinding, setCommandBinding, updateKeybindingsConfig } from "./config";
 import { parseKeyChord, serializeKeyChord } from "./chord";
-import { matchKeybinding, resolveKeybindings, resolvePluginShortcutChords } from "./resolve";
+import { coreActionOnChord, matchKeybinding, resolveKeybindings, resolvePluginShortcutChords } from "./resolve";
 import { createDefaultConfig } from "../../types/config";
 
 const base = { ctrl: false, shift: false, alt: false, meta: false, super: false };
@@ -76,6 +76,21 @@ describe("resolveKeybindings", () => {
     expect(matchKeybinding(custom, { ...base, name: "x", ctrl: true })).toBeNull();
     expect(matchKeybinding(custom, { ...base, name: "x", alt: true })).toMatchObject({ id: "plugin:hn-refresh", action: { custom: true } });
     expect(resolvePluginShortcutChords(config, shortcut).map(serializeKeyChord)).toEqual(["Alt+X"]);
+  });
+
+  test("names the built-in action a captured chord would take from, a layout digit and the host's own actions included", () => {
+    const chord = (text: string) => parseKeyChord(text)!;
+    const shortcut = { id: "hn-refresh", key: "x", ctrl: true, description: "Refresh", execute: () => {} };
+    const terminal = resolveKeybindings(undefined, { pluginShortcuts: [shortcut], host: "terminal" });
+    expect(coreActionOnChord(terminal, chord("CmdOrCtrl+P"))?.id).toBe("command-bar");
+    expect(coreActionOnChord(terminal, chord("CmdOrCtrl+3"))?.id).toBe("switch-layout");
+    expect(coreActionOnChord(terminal, chord("Q"))?.id).toBe("quit");
+    // Its own row, a plugin's key and a free chord are not taken.
+    expect(coreActionOnChord(terminal, chord("CmdOrCtrl+W"), "pane-close")).toBeNull();
+    expect(coreActionOnChord(terminal, chord("Ctrl+X"))).toBeNull();
+    expect(coreActionOnChord(terminal, chord("CmdOrCtrl+Shift+Y"))).toBeNull();
+    // The desktop app quits from its menu, so Q is free there.
+    expect(coreActionOnChord(resolveKeybindings(undefined, { host: "desktop" }), chord("Q"))).toBeNull();
   });
 });
 

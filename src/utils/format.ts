@@ -1,4 +1,7 @@
-import { fixedUsdRate, minorUnitSign } from "./currency-units";
+import { fixedUsdRate, heldCurrencyUnit, minorUnitSign } from "./currency-units";
+
+/** What a cell or figure reads when the source gave no value; an export writes it as an empty cell. */
+export const MISSING_VALUE = "—";
 
 const currencyFormatters = new Map<string, Intl.NumberFormat>();
 const numberFormatters = new Map<number, Intl.NumberFormat>();
@@ -72,13 +75,34 @@ export function formatCurrency(
   currency = "USD",
   maximumFractionDigits: number = currencyPriceDigits(currency),
 ): string {
-  if (value == null || !Number.isFinite(value)) return "—";
+  if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
   return formatMoney(value, currency, maximumFractionDigits);
+}
+
+/**
+ * An amount with its currency's code after it (259.36 USD, -5.57 CAD), for a
+ * report read by someone whose own currency shares the sign: $ alone is the
+ * US, Canadian and Australian dollar. The same decimals as `formatCurrency`;
+ * a minor unit keeps its sign (314.95¢, 412.50p).
+ */
+export function formatCurrencyCode(
+  value: number | undefined,
+  currency = "USD",
+  maximumFractionDigits: number = currencyPriceDigits(currency),
+): string {
+  if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
+  if (minorUnitSign(currency)) return formatMoney(value, currency, maximumFractionDigits);
+  const code = currency.trim().toUpperCase();
+  const body = new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: Math.min(currencyPriceDigits(code), maximumFractionDigits),
+    maximumFractionDigits,
+  }).format(Math.abs(value));
+  return `${value < 0 && /[1-9]/.test(body) ? "-" : ""}${body} ${code}`;
 }
 
 /** Preserve fractional per-share distributions, including split-adjusted history. */
 export function formatDistributionAmount(value: number | undefined, currency = "USD"): string {
-  if (value == null || !Number.isFinite(value)) return "—";
+  if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
   return formatMoney(value, currency, 6);
 }
 
@@ -91,20 +115,20 @@ function signedFixed(value: number, decimals: number): string {
 
 /** Format a number as percentage (e.g., +1.23%) */
 export function formatPercent(value: number | undefined): string {
-  if (value == null || !Number.isFinite(value)) return "—";
+  if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
   return `${signedFixed(value * 100, 2)}%`;
 }
 
 /** Format a level such as a yield or margin (0.0123 -> 1.23%). Levels are not changes, so they carry no sign. */
 export function formatLevelPercent(value: number | undefined): string {
-  if (value == null || !Number.isFinite(value)) return "—";
+  if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
   const fixed = (value * 100).toFixed(2);
   return `${/[1-9]/.test(fixed) ? fixed : fixed.replace("-", "")}%`;
 }
 
 /** Format a percentage that's already in percent form (e.g., 1.23 -> +1.23%) */
 export function formatPercentRaw(value: number | undefined): string {
-  if (value == null || !Number.isFinite(value)) return "—";
+  if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
   return `${signedFixed(value, 2)}%`;
 }
 
@@ -113,7 +137,7 @@ export function formatPercentRaw(value: number | undefined): string {
  * pass `fixedDecimals` so 1.70T lines up with 1.33T.
  */
 export function formatCompact(value: number | undefined, { fixedDecimals = false }: { fixedDecimals?: boolean } = {}): string {
-  if (value == null || !Number.isFinite(value)) return "—";
+  if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
   const { fixed, suffix } = compactParts(Math.abs(value));
   // Strip unnecessary trailing zeros after decimal point
   const trimmed = fixed.includes(".") && (!fixedDecimals || !suffix) ? fixed.replace(/\.?0+$/, "") : fixed;
@@ -149,7 +173,7 @@ function compactParts(abs: number): { fixed: string; suffix: string } {
  * carries + or -, except one that rounds to zero.
  */
 export function formatCompactAmount(value: number | undefined, { signed = false }: { signed?: boolean } = {}): string {
-  if (value == null || !Number.isFinite(value)) return "—";
+  if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
   const { fixed, suffix } = compactParts(Math.abs(value));
   if (!/[1-9]/.test(fixed)) return `${fixed}${suffix}`;
   const sign = value < 0 ? "-" : signed && value > 0 ? "+" : "";
@@ -162,13 +186,13 @@ export function formatCompactCurrency(
   currency = "USD",
   options: { fixedDecimals?: boolean } = {},
 ): string {
-  if (value == null || !Number.isFinite(value)) return "—";
+  if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
   return `${formatCompact(value, options)} ${currency}`;
 }
 
 /** Format a plain number with commas */
 export function formatNumber(value: number | undefined, decimals = 2): string {
-  if (value == null || !Number.isFinite(value)) return "—";
+  if (value == null || !Number.isFinite(value)) return MISSING_VALUE;
   return getNumberFormatter(decimals).format(value);
 }
 
@@ -214,7 +238,7 @@ export function pickUnit(values: (number | undefined)[]): { suffix: string; divi
 
 /** Format a number using a pre-determined divisor (no unit suffix) */
 export function formatWithDivisor(value: number | undefined, divisor: number): string {
-  if (value === undefined || value === null) return "—";
+  if (value === undefined || value === null) return MISSING_VALUE;
   const scaled = value / divisor;
   const abs = Math.abs(scaled);
   const decimals = abs >= 100 ? 1 : 2;
@@ -386,9 +410,25 @@ export function padTo(str: string, width: number, align: "left" | "right" | "cen
 }
 
 /**
+ * USD per unit of a currency from USD-per-unit rates: the dollar and US cents
+ * (a grain future's USX) at their fixed rates, any other the market's; a
+ * minor unit (GBp, GBX, ZAc) without a rate of its own as its major
+ * currency's over its divisor.
+ */
+function usdPerUnit(currency: string, exchangeRates: Map<string, number>): number | undefined {
+  const own = fixedUsdRate(currency) ?? exchangeRates.get(currency);
+  if (own != null) return own;
+  const unit = heldCurrencyUnit(currency);
+  if (unit.divisor === 1) return undefined;
+  const major = fixedUsdRate(unit.currency) ?? exchangeRates.get(unit.currency);
+  return major == null ? undefined : major / unit.divisor;
+}
+
+/**
  * Convert using USD-per-unit rates. Missing FX remains unavailable (NaN), so
  * totals cannot silently mix source currency with base currency. Numeric
- * formatters render this as a dash and JSON encodes it as null.
+ * formatters render this as a dash and JSON encodes it as null. Pence (GBp,
+ * GBX) count a hundredth of a pound.
  */
 export function convertCurrency(
   value: number,
@@ -398,9 +438,8 @@ export function convertCurrency(
 ): number {
   if (!Number.isFinite(value)) return Number.NaN;
   if (fromCurrency === baseCurrency || value === 0) return value;
-  // The dollar and US cents (a grain future's USX) have fixed rates; any other is the market's.
-  const fromRate = fixedUsdRate(fromCurrency) ?? exchangeRates.get(fromCurrency);
-  const baseRate = fixedUsdRate(baseCurrency) ?? exchangeRates.get(baseCurrency);
+  const fromRate = usdPerUnit(fromCurrency, exchangeRates);
+  const baseRate = usdPerUnit(baseCurrency, exchangeRates);
   if (fromRate == null || baseRate == null || !Number.isFinite(fromRate) || !Number.isFinite(baseRate)
     || fromRate <= 0 || baseRate <= 0) return Number.NaN;
   return (value * fromRate) / baseRate;

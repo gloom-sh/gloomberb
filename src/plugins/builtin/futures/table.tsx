@@ -1,5 +1,5 @@
 import type { DataTableCell, DataTableColumn } from "../../../components";
-import { colors, priceColor } from "../../../theme/colors";
+import { colors, shownPriceColor } from "../../../theme/colors";
 import type { Quote } from "../../../types/financials";
 import { TextAttributes } from "../../../ui";
 import { formatCompact, formatNumber, formatPercentRaw } from "../../../utils/format";
@@ -43,7 +43,7 @@ const DEFAULT_FUTURES_COLUMN_IDS = FUTURES_COLUMN_DEFS.map((column) => column.id
  * which the change in percent still gives. The previous close (the last price
  * less the change) goes first, then each row's quote time (the status line
  * dates the newest), which leaves a 1280-pixel shot room for "WTI Crude Oil
- * Dec 26, rolled (Nov expires 20 Oct)".
+ * Dec 2026, rolled (Nov expires 20 Oct)".
  */
 const COLUMN_MIN_PANE_WIDTH: Partial<Record<FuturesColumnId, number>> = {
   change: 100,
@@ -253,7 +253,7 @@ export function renderFuturesCell(
       if (isBoardRowLoading(state) || returns?.loading) return { text: "…", color: colors.textDim };
       const value = returns?.values[FUTURES_RETURN_COLUMNS[column.id]!];
       if (value == null || !Number.isFinite(value)) return { text: "—", color: colors.textDim };
-      return { text: formatPercentRaw(value), color: priceColor(value) };
+      return { text: formatPercentRaw(value), color: shownPriceColor(value, 2) };
     }
     case "prevClose":
       if (isBoardRowLoading(state)) return { text: "…", color: colors.textDim };

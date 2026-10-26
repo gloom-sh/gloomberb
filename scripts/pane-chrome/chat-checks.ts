@@ -1334,6 +1334,63 @@ export const chatSteps: ChatStep[] = [
     },
   },
   {
+    name: "chat functions: a backtick offers functions, the one picked is written with its closing tick, and the sent message draws it as a chip in its line that runs it by click and by o",
+    scenario: "chat",
+    async run(cdp) {
+      await ready(cdp);
+      const value = () => evaluate<string>(cdp, "document.querySelector('textarea').value");
+      const offered = () => evaluate<string[]>(cdp, `[...document.querySelectorAll('[data-gloom-pane-id="chat:a"] *')]
+        .filter((el) => el.tagName !== 'TEXTAREA' && el.childElementCount === 0 && /^[A-Z]{1,6}$/.test(el.textContent.trim()))
+        .filter((el) => !el.closest('[data-gloom-role=chat-message]')).map((el) => el.textContent.trim())`);
+      await click(cdp, await evaluate<Point>(cdp, "__chat.composer()"));
+      await cdp.send("Input.insertText", { text: "watch `cr" });
+      await frames(cdp, 4);
+      if (!(await offered()).includes("CRYP")) fail("a backtick and a code's first letters offered no function", await offered());
+      await pressKey(cdp, "Enter", "Enter", "\r");
+      if (await value() !== "watch `CRYP` ") fail("Enter did not write the function with its closing backtick", await value());
+      await cdp.send("Input.insertText", { text: "and `gp" });
+      await frames(cdp, 4);
+      await pressKey(cdp, "Tab", "Tab");
+      // A function that takes a ticker leaves the cursor inside the backticks for it.
+      await cdp.send("Input.insertText", { text: "NVDA" });
+      await frames(cdp, 2);
+      if (await value() !== "watch `CRYP` and `GP NVDA`") fail("Tab did not leave the cursor inside the backticks for the ticker", await value());
+      // Past the closing backtick, as a writer would with End.
+      await cdp.send("Input.dispatchKeyEvent", { type: "rawKeyDown", key: "End", code: "End", windowsVirtualKeyCode: 35 });
+      await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "End", code: "End", windowsVirtualKeyCode: 35 });
+      await cdp.send("Input.insertText", { text: ", not `nope`" });
+      await frames(cdp, 4);
+      if ((await offered()).length > 0) fail("a closed span still offered functions", await offered());
+      await pressKey(cdp, "Enter", "Enter", "\r");
+      if (!await waitFor(cdp, "window.__chatFake.sent.at(-1) === 'watch `CRYP` and `GP NVDA`, not `nope`'", 2_000)) {
+        fail("the message did not go as written", await evaluate(cdp, "window.__chatFake.sent"));
+      }
+      if (!await waitFor(cdp, "__chat.chips(__chat.rows().at(-1).getAttribute('data-gloom-chat-message-id')).length === 2", 2_000)) {
+        fail("the sent message does not draw its two functions as chips", await evaluate(cdp, "__chat.rows().at(-1).textContent"));
+      }
+      const sentId = await evaluate<string>(cdp, "__chat.rows().at(-1).getAttribute('data-gloom-chat-message-id')");
+      const [crypto, chart] = await chips(cdp, sentId);
+      if (crypto?.link !== "command:CRYP" || chart?.link !== "command:GP NVDA") fail("the chips are not the functions written", [crypto, chart]);
+      // In the line of text, at its height, and nothing else in the message is one.
+      const lineHeight = await evaluate<number>(cdp, "parseFloat(getComputedStyle(document.querySelector('[data-gloom-role=chat-message-body]')).lineHeight)");
+      if (chart.height > lineHeight) fail("a function's chip is taller than its line of text", { chip: chart.height, lineHeight });
+      if (!(await evaluate<string>(cdp, `__chat.rowText(${JSON.stringify(sentId)})`)).includes("not nope")) fail("code that names no function is not left as text");
+      await click(cdp, chart);
+      if (!await waitFor(cdp, "window.__chatFake.opened.includes('command:GP NVDA')", 2_000)) fail("a click on the chip did not run its function", await evaluate(cdp, "window.__chatFake.opened"));
+      if ((await selected(cdp)).length > 0) fail("a click on a function's chip selected its message", await selected(cdp));
+      await evaluate(cdp, "window.__chatFake.deliver('only `NI CRYPTO` here, and a block:\\n```\\nDES AAPL\\n```', { user: 'marlow' })");
+      await frames(cdp, 6);
+      const delivered = await evaluate<string>(cdp, "__chat.rows().at(-1).getAttribute('data-gloom-chat-message-id')");
+      if ((await chips(cdp, delivered)).map((chip) => chip.link).join() !== "command:NI CRYPTO") fail("a code block drew a chip, or the function in the text did not", await chips(cdp, delivered));
+      await click(cdp, await evaluate<Point>(cdp, "__chat.composer()"));
+      await pressKey(cdp, "Escape", "Escape");
+      await pressKey(cdp, "k", "KeyK", "k");
+      if ((await selected(cdp)).join() !== delivered) fail("k did not select the newest message", await selected(cdp));
+      await pressKey(cdp, "o", "KeyO", "o");
+      if (!await waitFor(cdp, "window.__chatFake.opened.includes('command:NI CRYPTO')", 2_000)) fail("o did not run the selected message's function", await evaluate(cdp, "window.__chatFake.opened"));
+    },
+  },
+  {
     name: "chat handle: the first-chat prompt keeps a refused handle in its field, gives the chat its keys back when the pointer leaves, and saves into the composer with the draft kept",
     scenario: "chat&handle=placeholder&latency=50",
     async run(cdp) {

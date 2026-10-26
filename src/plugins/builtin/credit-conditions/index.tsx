@@ -110,10 +110,14 @@ export function CreditConditionsPane({ paneId, focused, width, height }: PanePro
   const partial = rows.length > 0 && rows.length < series.length;
   // Each row carries its own date in the AS OF column; a spread between
   // indexes from different sessions is a limitation behind the warning.
+  const historyLimits = useMemo(() => [...new Set(rows.flatMap((row) => row.historyLimit ? [row.historyLimit] : []))], [rows]);
   usePaneNoticeFooter({
     registrationId: "credit-conditions:notices",
     focused,
-    notices: mixedDates ? ["The indexes carry different observation dates, so the spreads are not one session."] : [],
+    notices: [
+      ...mixedDates ? ["The indexes carry different observation dates, so the spreads are not one session."] : [],
+      ...historyLimits,
+    ],
   });
   const footerInfo = useMemo<PaneFooterSegment[]>(() => [
     ...(rows.length > 0 ? [DELAYED_SEGMENT] : []),

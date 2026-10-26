@@ -5,7 +5,7 @@ import { execFile as execFileCallback, execFileSync, spawn } from "child_process
 import { promisify } from "util";
 import { findAbsorbedPlugin, type AbsorbedPlugin } from "./absorbed";
 import type { PluginPin } from "./marketplace/store";
-import { bunCommand } from "./dependencies";
+import { bunCommand, recordDependencyInstall } from "./dependencies";
 import { linkHostPackages, missingPeerPlugins } from "./host-link";
 import {
   findAbsorbedCheckout,
@@ -16,6 +16,7 @@ import {
   resolvePluginEntry,
 } from "./loader";
 import { pluginDirectoryNames } from "./plugin-names";
+import { gitInstallAdvice } from "./extracted-plugins";
 import { pluginFromModule } from "./plugin-export";
 import type { GloomPlugin } from "../types/plugin";
 import { cliStyles } from "../utils/cli-output";
@@ -137,12 +138,35 @@ function run(
   });
 }
 
+/** Whether a `git` command is on the PATH; plugins from GitHub need one to install or update. */
+export function gitInstalled(): boolean {
+  if (typeof Bun !== "undefined") return Bun.which("git") !== null;
+  return gitSucceeds(["--version"], process.cwd());
+}
+
+/** What a plugin install says when there is no git to run: what to install, then to try again. */
+function gitMissingMessage(platform: string = process.platform): string {
+  const advice = gitInstallAdvice(platform, true);
+  return `Git is not installed. Plugins from GitHub need it: ${advice}, then try again.`;
+}
+
+/**
+ * Runs git with its output kept off the terminal: progress, "Cloning into" and
+ * the detached-HEAD advice a pinned checkout prints are chatter, and a failure
+ * says what went wrong in its error, from git's last line.
+ */
 async function git(args: string[], cwd: string, quiet: boolean, failure: string): Promise<string> {
   // Quiet means the app owns the screen, or there is no terminal at all: a
   // repository that wants credentials fails instead of prompting on it.
   const env = quiet ? { ...process.env, GIT_TERMINAL_PROMPT: "0" } : undefined;
-  const result = await run("git", args, cwd, { stdout: "pipe", stderr: quiet ? "pipe" : "inherit" }, env)
-    .catch((): RunResult => { /* Intentional ignore: git immediately throws GitError when the command cannot start. */ return { code: null, stdout: "", stderr: "" }; });
+  let result: RunResult;
+  try {
+    result = await run("git", ["-c", "advice.detachedHead=false", ...args], cwd, { stdout: "pipe", stderr: "pipe" }, env);
+  } catch (error) {
+    // git could not start: almost always because it is not installed.
+    const missing = (error as NodeJS.ErrnoException | null)?.code === "ENOENT";
+    throw new GitError(failure, missing ? gitMissingMessage() : String(error));
+  }
   if (result.code !== 0) throw new GitError(failure, result.stderr);
   return result.stdout.trim();
 }
@@ -252,14 +276,15 @@ async function installDependencies(targetDir: string, quiet: boolean): Promise<v
   const output = quiet ? "pipe" : "inherit";
   const bun = bunCommand();
   const result = bun
-    ? await run(bun.command, ["install", "--production"], targetDir, { stdout: output, stderr: output }, bun.env).catch(logFailure("plugin-installer", "Plugin dependency installation failed", null))
+    ? await recordDependencyInstall(targetDir, () => run(bun.command, ["install", "--production"], targetDir, { stdout: output, stderr: output }, bun.env)
+      .catch(logFailure("plugin-installer", "Plugin dependency installation failed", null)))
     : null;
   if (result?.code !== 0 && !quiet) console.error(cliStyles.warning("Warning: failed to install plugin dependencies."));
 
   // After `bun install`, which prunes links it does not know about.
   const link = linkHostPackages(targetDir);
   if (link.error && !quiet) {
-    console.error(cliStyles.warning(`Warning: could not link the Gloomberb runtime (${link.error}).`));
+    console.error(cliStyles.warning(`Warning: could not link the Gloom runtime (${link.error}).`));
     console.error(cliStyles.muted("The plugin's \"gloomberb/*\" imports will not resolve."));
   }
 }
@@ -284,7 +309,7 @@ async function readPluginExport(targetDir: string): Promise<Pick<GloomPlugin, "i
  * never runs.
  */
 function refuseAbsorbed(absorbed: AbsorbedPlugin | null): void {
-  if (absorbed) fail(`${absorbed.name} is built into Gloomberb now.`);
+  if (absorbed) fail(`${absorbed.name} is built into Gloom now.`);
 }
 
 function describe(targetDir: string, directory: string, plugin: PluginDirectoryInfo["plugin"]): PluginDirectoryInfo {
@@ -302,7 +327,7 @@ export async function installPlugin(ref: string, options: PluginInstallOptions =
   const targetDir = join(PLUGINS_DIR, name);
 
   if (existsSync(targetDir)) {
-    fail(`Plugin "${name}" already exists.`, `Use "gloomberb update ${name}" to refresh it.`);
+    fail(`Plugin "${name}" already exists.`, `Use "gloom update ${name}" to refresh it.`);
   }
 
   say(cliStyles.accent(`Installing ${name}`));
@@ -561,7 +586,7 @@ export async function installListedPlugin(
   const known = listings ?? await loadRegistryListings();
   const listing = known.get(repo);
   const required = requiredGloomberb(listing?.minGloomberb);
-  if (required) fail(`${ref} needs Gloomberb ${required}, this is ${VERSION}.`, "Update Gloomberb first.");
+  if (required) fail(`${ref} needs Gloom ${required}, this is ${VERSION}.`, "Update Gloom first.");
   const reviewed = pin ?? listing?.pin;
   const installed = await installPlugin(ref, { ...shared, ...(reviewed ? { pin: reviewed } : {}) });
   const missing = missingPeerPlugins(installed.path);
@@ -610,7 +635,7 @@ export async function linkPlugin(sourcePath: string, options: PluginInstallOptio
   const targetDir = join(PLUGINS_DIR, name);
   const existing = lstatSync(targetDir, { throwIfNoEntry: false });
   if (existing && !existing.isSymbolicLink()) {
-    fail(`Plugin "${name}" is already installed.`, `Remove it first with "gloomberb remove ${name}".`);
+    fail(`Plugin "${name}" is already installed.`, `Remove it first with "gloom remove ${name}".`);
   }
   if (existing) rmSync(targetDir, { force: true });
   symlinkSync(source, targetDir, "dir");
@@ -618,7 +643,7 @@ export async function linkPlugin(sourcePath: string, options: PluginInstallOptio
   const plugin = await readPluginExport(source).catch(logFailure("plugin-installer", "Linked plugin validation failed", null));
   if (!options.quiet) {
     console.log(cliStyles.success(`Linked ${plugin?.name ?? name} from ${source}`));
-    console.log(cliStyles.muted(`Check it with "gloomberb plugin doctor ${name}".`));
+    console.log(cliStyles.muted(`Check it with "gloom plugin doctor ${name}".`));
   }
   return describe(source, name, plugin);
 }

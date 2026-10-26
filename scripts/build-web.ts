@@ -1,6 +1,7 @@
 import { mkdir, readFile, rm, writeFile } from "fs/promises";
 import { join, relative, resolve } from "path";
-import { buildViewBundle } from "../src/renderers/dom/build-assets";
+import { buildViewBundle, pageBootFrameScript, pageBuildId, type PageBootFrame } from "../src/renderers/dom/build-assets";
+import { BROWSER_STORAGE_KEYS } from "../src/data/json-storage";
 import type { WebBundledPluginDescriptor } from "../src/plugins/web-bundled";
 import { isProxiedHost, PROXY_ALLOWED_HOSTS } from "../src/utils/plugin-proxy-hosts";
 import { takeOption } from "./tui-benchmark-harness";
@@ -25,19 +26,19 @@ await mkdir(outdir, { recursive: true });
 // Tabs get the plain mark, like gloom.sh; the app icon tile is too small to read at 16px.
 await writeFile(join(outdir, "favicon.svg"), await readFile(join(root, "src/assets/gloomberb-mark.svg")));
 await writeFile(join(outdir, "favicon.ico"), await readFile(join(root, "src/assets/gloomberb-mark.ico")));
-// A web app manifest makes the browser offer "Install Gloomberb": the terminal
+// A web app manifest makes the browser offer "Install Gloom": the terminal
 // then gets its own window and a Dock or taskbar icon. People who start in the
 // browser come back far less often than people with the app installed.
 await writeFile(join(outdir, "app-icon-256.png"), await readFile(join(root, "icon.iconset/icon_256x256.png")));
 await writeFile(join(outdir, "app-icon-512.png"), await readFile(join(root, "icon.iconset/icon_512x512.png")));
 await writeFile(join(outdir, "manifest.webmanifest"), `${JSON.stringify({
-  name: "Gloomberb",
-  short_name: "Gloomberb",
+  name: "Gloom",
+  short_name: "Gloom",
   description: "An open-source financial terminal.",
   start_url: "/",
   scope: "/",
   display: "standalone",
-  // The loading screen's colour; the window colours follow the chosen theme.
+  // The colour before the page draws; the window colours follow the chosen theme.
   background_color: "#272a34",
   icons: [
     { src: "/app-icon-256.png", sizes: "256x256", type: "image/png" },
@@ -45,11 +46,18 @@ await writeFile(join(outdir, "manifest.webmanifest"), `${JSON.stringify({
   ],
 }, null, 2)}\n`);
 
+interface PageText {
+  title: string;
+  /** Shown until the script draws, on a page with no launch frame. */
+  loadingText?: string;
+  /** Draw the launch frame (src/renderers/dom/boot-frame.ts) instead of loading text. */
+  bootFrame?: PageBootFrame;
+}
+
 async function buildPage(
   name: string,
   entrypoint: string,
-  title: string,
-  loadingText: string,
+  { title, loadingText, bootFrame }: PageText,
   htmlName: string,
   extraDefines: Record<string, string> = {},
 ) {
@@ -64,6 +72,17 @@ async function buildPage(
   });
   if (!stylesheet) throw new Error(`${name} build did not emit CSS`);
   const href = (path: string) => `/${relative(outdir, path).replaceAll("\\", "/")}`;
+  const loading = loadingText ? `<div class="gloom-loading">${loadingText}</div>` : "";
+  // A file of its own, not inline: the Worker's content security policy runs
+  // no inline script. Classic and synchronous, so the frame is drawn before
+  // the first paint; named for the build, so no cache serves another build's.
+  let frameScript = "";
+  if (bootFrame) {
+    const build = await pageBuildId(script, stylesheet);
+    const bootScript = join(outdir, "assets", name, `boot-frame-${build}.js`);
+    await writeFile(bootScript, `${pageBootFrameScript({ ...bootFrame, build })}\n`);
+    frameScript = `\n  <script src="${href(bootScript)}"></script>`;
+  }
   await writeFile(join(outdir, htmlName), `<!doctype html>
 <html lang="en">
 <head>
@@ -77,7 +96,7 @@ async function buildPage(
   <link rel="stylesheet" href="${href(stylesheet)}">
 </head>
 <body>
-  <div id="root"><div class="gloom-loading">${loadingText}</div></div>
+  <div id="root">${loading}</div>${frameScript}
   <script type="module" src="${href(script)}"></script>
 </body>
 </html>\n`);
@@ -123,9 +142,13 @@ console.log(`Bundled ${bundledPlugins.length} plugins: ${bundledPlugins.map((ent
 await buildPage(
   "app",
   join(root, "src/renderers/browser/main.tsx"),
-  "Gloomberb",
-  "Loading Gloomberb...",
+  {
+    title: "Gloom",
+    // The app keeps its last frame in localStorage, which the page draws
+    // while the script loads; a first visit gets the bare shell.
+    bootFrame: { source: `JSON.parse(localStorage.getItem(${JSON.stringify(BROWSER_STORAGE_KEYS.bootFrame)}) || "null")` },
+  },
   "index.html",
   { __GLOOM_WEB_PLUGINS__: JSON.stringify(bundledPlugins) },
 );
-await buildPage("share", join(root, "src/renderers/share/main.tsx"), "Gloomberb Share", "Loading shared view...", "share.html");
+await buildPage("share", join(root, "src/renderers/share/main.tsx"), { title: "Gloom Share", loadingText: "Loading shared view..." }, "share.html");

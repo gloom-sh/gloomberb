@@ -520,14 +520,13 @@ describe("CommandBar search report", () => {
     }]);
     await closeAndSettle();
 
-    // "DES MSFT" lists tickers; the one picked is a ticker row, not the text.
+    // Untouched Enter runs "DES MSFT" through the typed shortcut.
     reports.length = 0;
     await tui.render(<CommandBarHarness query="DES MSFT" />, { width: 100, height: 20 });
     await tui.setup().renderOnce();
     await tui.emitKeypress({ name: "return", sequence: "\r" });
     await waitForReports(reports);
-    expect(reports[0]?.choice).toMatchObject({ kind: "ticker", label: "MSFT", rank: 0 });
-    expect(reports[0]?.choice).not.toHaveProperty("input");
+    expect(reports[0]?.choice).toMatchObject({ kind: "shortcut", label: "DES MSFT", input: "DES MSFT", rank: 0 });
     // A prefix the parser claims is never sent to the AI.
     expect(requests).toEqual([]);
   });

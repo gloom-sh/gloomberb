@@ -29,10 +29,10 @@ function riskFactorsLockNote(lock: PaneLock): Promise<string> {
     does: "it groups a 10-K's risk factors by theme and shows what was added, dropped or reworded since the year before",
     shows: "it",
     free: [{
-      text: (ticker, company) => `gloomberb filings ${ticker} --form 10-K lists ${company}'s annual reports, each with its filing date and a link to the filing, whose Item 1A holds the risk factors as written.`,
+      text: (ticker, company) => `gloom filings ${ticker} --form 10-K lists ${company}'s annual reports, each with its filing date and a link to the filing, whose Item 1A holds the risk factors as written.`,
       answers: (symbol, context) => filesForm(symbol, "10-K", context),
     }, {
-      text: (ticker, company) => `gloomberb filings ${ticker} --form 20-F lists ${company}'s annual reports, each with its filing date and a link to the filing, whose Item 3.D holds the risk factors as written.`,
+      text: (ticker, company) => `gloom filings ${ticker} --form 20-F lists ${company}'s annual reports, each with its filing date and a link to the filing, whose Item 3.D holds the risk factors as written.`,
       answers: (symbol, context) => filesForm(symbol, "20-F", context),
     }],
   });

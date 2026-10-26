@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import type { OptionContract, OptionsChain } from "../../../types/financials";
 import { DEFAULT_OPTION_CALC_DRAFT } from "../options-calculator/model";
 import { daysToExpiryFrom, valueOption } from "../shared/volatility";
-import { buildSurfaceExpiry, buildSurfaceGrid, normalizeSurfaceSettings, type SurfaceSnapshot } from "./model";
+import { buildSurfaceExpiry, buildSurfaceGrid, normalizeSurfaceSettings, withSurfaceTermSlopes, type SurfaceSnapshot } from "./model";
 import { storedSurfaceMiss, storedSurfaceSnapshot } from "./stored";
 import { storedSurfacePayload } from "./test-fixture";
 
@@ -45,6 +45,21 @@ test("a stored close surface rebuilds the live grid", () => {
   }
   const residuals = stored.expiries[1]!.points.map((point) => point.fitResidual!);
   live[1]!.points.forEach((point, index) => expect(residuals[index]!).toBeCloseTo(point.fitResidual!, 4));
+});
+
+test("a capture that stored no 25-delta wings for a quoted expiry gets them from its fit, as the live surface reads them", () => {
+  // Captures searched the wings far past the quotes, where a fit pinned at rho = 1 explodes, and blanked
+  // the 2026-11-20 and 2026-12-18 monthlies; the fit and the quotes they kept are all the wings need.
+  const live = expiries.map((expiration, index) => buildSurfaceExpiry({ chain: chain(expiration, 0.25 + index * 0.03), expiration, spot: 100, curve, now }));
+  const blank = { put25: null, call25: null, atm: live[1]!.atmIV, putCallSkew: null, riskReversal: null, butterfly: null, moneynessSkew: null };
+  const stored = storedSurfaceSnapshot(storedSurfacePayload({ symbol: "AAPL", sessionDate: "2026-09-22", capturedAt: new Date(now).toISOString(),
+    spot: 100, expiries: live.map((expiry) => ({ ...expiry, skew: blank, termSlope: null })) }));
+  stored.expiries.forEach((expiry, index) => {
+    for (const key of ["put25", "call25", "atm", "riskReversal", "butterfly", "moneynessSkew"] as const) {
+      expect(expiry.skew[key]!).toBeCloseTo(live[index]!.skew[key]!, 5);
+    }
+  });
+  expect(stored.expiries[0]!.termSlope!).toBeCloseTo(withSurfaceTermSlopes(live)[0]!.termSlope!, 5);
 });
 
 test("an unknown stored format is rejected", () => {

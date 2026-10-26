@@ -162,6 +162,21 @@ describe("composite chart unit formatting", () => {
     })).toBe("0.500");
   });
 
+  test("a value worked out from prices prints at its own decimals, beside its stated unit or its currency's sign", () => {
+    const formula: ResolvedSeries = {
+      id: "formula", label: "(42×HO=F - BZ=F)/EURUSD=X", color: "#ffffff", unit: "EUR / barrel", unitGroup: "price:EUR",
+      statedUnit: "EUR / barrel", valueDecimals: 2, nativeFrequency: "daily", dataShape: "scalar", style: "step", transform: "raw",
+      axis: "left", panelId: "formula", interpolation: "step-after", observationKind: "market", points: [],
+    };
+    // A price-sized crack reads to the cent, beside its unit.
+    expect([1_689.99218, 82.6601].map((value) => formatCompositeSeriesValue(value, formula))).toEqual(["1,689.99", "82.66"]);
+    // A small spread keeps its legs' four, and rounds to zero unsigned.
+    const small = { ...formula, valueDecimals: 4 };
+    expect([0.49851, -0.00004].map((value) => formatCompositeSeriesValue(value, small))).toEqual(["0.4985", "0.0000"]);
+    const spread = { ...formula, unit: "USD/share", unitGroup: "price:USD", statedUnit: undefined, valueDecimals: 2 };
+    expect(formatCompositeSeriesValue(-0.5012, spread)).toBe("-$0.50");
+  });
+
   test("shows full price precision in the legend and cursor, not compact axis ticks", () => {
     const btc: ResolvedSeries = {
       id: "btc",
@@ -200,6 +215,20 @@ describe("composite chart unit formatting", () => {
     expect(formatCompositeCursorValue(-12_345_600_000, { ...domain, unit: "EUR", unitGroup: "currency-total" })).toBe("-€12.35B");
     expect(formatCompositeCursorValue(123_456_000, { ...domain, unit: "CAD", unitGroup: "currency-total:CAD" })).toBe("123.46M CAD");
   });
+});
+
+test("a legend of returns prints every value to two decimals, signed, whatever its size", () => {
+  const returns = (transform: ResolvedSeries["transform"]): ResolvedSeries => ({
+    id: "r", label: "AAPL", color: "#ffffff", unit: "%", unitGroup: "percent", nativeFrequency: "daily", dataShape: "scalar",
+    style: "line", transform, axis: "left", panelId: "main", interpolation: "none", points: [],
+  });
+  const percent = returns("percent");
+  expect([34.0211, 0.7594, 15.8, -12.3456, 123.456, 0.004, -0.004].map((value) => formatCompositeSeriesValue(value, percent)))
+    .toEqual(["+34.02%", "+0.76%", "+15.80%", "-12.35%", "+123.46%", "0.00%", "0.00%"]);
+  expect(formatCompositeSeriesValue(3.2, returns("yoy"))).toBe("+3.20%");
+  // A level that happens to be in percent (a yield, a margin) keeps the compact reading.
+  expect(formatCompositeSeriesValue(0.125, returns("raw"))).toBe("0.125%");
+  expect(formatCompositeSeriesValue(15.8, returns("raw"))).toBe("15.8%");
 });
 
 test("international price legends and cursors retain currency and price precision", () => {
@@ -243,6 +272,15 @@ test("zoomed price axes spend the digits their ticks need and stay compact when 
     const ticks = compositeAxisTicks(domain(min, max, crypto)).map((tick) => tick.label);
     expect(new Set(ticks).size).toBe(ticks.length);
   }
+});
+
+// Regression: an Aries chart whose quote had not arrived had no currency, and
+// zooming in printed 346, 345, 344 with a cursor of 345 between them.
+test("a zoomed axis with no currency still spends the digits its ticks need", () => {
+  const domain = { side: "left" as const, seriesIds: ["price"], min: 343.8, max: 346.2, scale: "linear" as const, unit: "currency", unitGroup: "price" };
+  expect(compositeAxisTicks(domain).map((tick) => tick.label)).toEqual(["346.0", "345.5", "345.0", "344.5", "344.0"]);
+  expect(formatCompositeCursorValue(345.03, domain)).toBe("345.0");
+  expect(compositeAxisTicks({ ...domain, min: 120_000, max: 120_900 }).map((tick) => tick.label)).toEqual(["120.8K", "120.6K", "120.4K", "120.2K", "120.0K"]);
 });
 
 // Regression: truncating before PriceAxisLabels bypassed its full-value guard.

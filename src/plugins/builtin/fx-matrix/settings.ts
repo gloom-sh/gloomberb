@@ -16,6 +16,7 @@ function currencyName(code: string): string | null {
     const name = currencyNames.of(code);
     return name && name !== code ? name : null;
   } catch {
+    // Intentional ignore: runtimes without currency display names keep the currency code as the picker label.
     currencyNames = null;
     return null;
   }
@@ -98,5 +99,5 @@ export const FX_MATRIX_REPORT_OPTIONS: readonly PaneReportOptionDef[] = [{
 /** A report of the default board says it is only the majors, and how to choose others. */
 export function fxMatrixReportNotices(settings: Readonly<Record<string, unknown>>): string[] {
   if (settings.currencies != null) return [];
-  return [`Showing the ${MAJOR_CURRENCIES.length} majors. Choose others with --currencies USD,ZAR,NGN; gloomberb catalog FXC lists all ${FX_CURRENCIES.length}.`];
+  return [`Showing the ${MAJOR_CURRENCIES.length} majors. Choose others with --currencies USD,ZAR,NGN; gloom catalog FXC lists all ${FX_CURRENCIES.length}.`];
 }

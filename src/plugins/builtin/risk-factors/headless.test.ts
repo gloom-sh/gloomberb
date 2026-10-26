@@ -127,7 +127,7 @@ test("a RISK read the server refuses behind a wall reports what is locked and th
     const locked = await run("latest", true);
     expect(locked.data).toMatchObject({ locked: gate, empty: true, complete: false, unavailableSymbols: ["ACME"] });
     expect(locked.data.freshness).toBeUndefined();
-    expect(String(locked.data.reason)).toContain(`${who} it shows none of it. Free, with no sign-in: gloomberb filings ACME --form 10-K lists ACME's annual reports`);
+    expect(String(locked.data.reason)).toContain(`${who} it shows none of it. Free, with no sign-in: gloom filings ACME --form 10-K lists ACME's annual reports`);
     expect(locked.text).toContain("RISK is part of Gloom Cloud Pro");
     expect(locked.text).toEndWith("The pane is locked, so no values were read.");
     expect(locked.text).not.toMatch(/Source:|Unauthorized|Pro plan required/);

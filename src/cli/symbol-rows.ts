@@ -1,12 +1,14 @@
 import type { DataProvider } from "../types/data-provider";
 import type { TickerRecord } from "../types/ticker";
-import { listingFields, savedListingName, type ListingChoice } from "./listing-arg";
+import { listingFields, listingVenues, savedListingName, type ListingChoice } from "./listing-arg";
 import { StagedTickerRepository, type TickerSource } from "./staged-tickers";
 import { symbolInputKey } from "./symbol-args";
-import { describeSuggestion, isPlainNoMatch, suggestListings } from "./listing-suggestion";
+import { describeSuggestion, isPlainNoMatch, suggestListings, suggestUsTicker } from "./listing-suggestion";
+import { NotASymbolError } from "./symbol-cells";
 import {
   CoinListingError,
   ListingChoiceError,
+  LookupUnansweredError,
   resolveCliTicker,
   resolveTickersForCli,
   TickerNotFoundError,
@@ -18,16 +20,21 @@ import { isUsSymbolVenue, LOOKUP_TIMEOUT_MS, tickerChangeLine, tickerChangeSymbo
 import { isVenueAbroad } from "../tickers/listing-fate";
 import { sameCompany } from "../tickers/company-name";
 import { tickerHasListingSuffix } from "../sources/listing-symbols";
-import { canonicalExchange, resolveExchangeTimeZone } from "../utils/exchanges";
+import { canonicalExchange, exchangeLabel, resolveExchangeTimeZone } from "../utils/exchanges";
 import { isCurrencyPairListing } from "../utils/fx-market-hours";
+import { isCurrencyCode } from "../utils/currency-pair";
+import { logFailure } from "../utils/log-failure";
 
 /**
  * What became of one symbol of an add or remove. `needs_choice`: a symbol of
  * an add whose company moved or merged away, whose listing stopped trading, or
  * that matched only a listing abroad; it is not added, and the row offers what
- * to add instead.
+ * to add instead. `not_a_symbol`: an entry refused before any lookup (`N/A`,
+ * `$$$`, a price). `not_looked_up`: Gloom Cloud kept refusing its lookup, so
+ * it is neither found nor missing, and is worth adding again.
  */
-export type SymbolStatus = "added" | "already_listed" | "removed" | "not_listed" | "not_found" | "needs_choice" | "failed";
+export type SymbolStatus =
+  | "added" | "already_listed" | "removed" | "not_listed" | "not_found" | "needs_choice" | "failed" | "not_a_symbol" | "not_looked_up";
 
 /** One symbol's line: the `--json` and `--csv` row, and a line of text. */
 export interface SymbolRow extends Record<string, unknown> {
@@ -65,6 +72,8 @@ export interface SymbolRow extends Record<string, unknown> {
   tradesAs?: string | null;
   /** An added row's line saying that company moved or merged away, so the listing stored is another's. */
   changeNote?: string;
+  /** A bare symbol added on its only listing, abroad: "GARAN has no US listing; it trades on BIST, in TRY." */
+  abroad?: string;
 }
 
 export type Verb = "add" | "remove";
@@ -91,7 +100,15 @@ export function listingRow(
     ...readAs ? { readAs } : {}, ...extra };
 }
 
-export function failedRow(input: string, error: Error, status: SymbolStatus = error instanceof TickerNotFoundError ? "not_found" : "failed"): SymbolRow {
+/** The status a failure gives its row: not found, not a symbol, not looked up, or failed for its own reason. */
+function failureStatus(error: Error): SymbolStatus {
+  if (error instanceof TickerNotFoundError) return "not_found";
+  if (error instanceof NotASymbolError) return "not_a_symbol";
+  if (error instanceof LookupUnansweredError) return "not_looked_up";
+  return "failed";
+}
+
+export function failedRow(input: string, error: Error, status: SymbolStatus = failureStatus(error)): SymbolRow {
   const hint = error instanceof CoinListingError ? error.hint : null;
   const choice = error instanceof ListingChoiceError
     ? { choices: error.choices, listingCount: error.listingCount, ...error.successor ? { successor: error.successor } : {} }
@@ -156,6 +173,77 @@ function isListedAbroad(ticker: TickerRecord): boolean {
   return !isUsSymbolVenue(venue) && !!currency && currency !== "USD";
 }
 
+/** A bare US-shaped symbol (JPM, BRK.B), not 7203 or RY.TO, which name a venue of their own. */
+function bareUsShapedSymbol(resolution: Pick<CliTicker, "bareSymbol">): string | null {
+  const symbol = resolution.bareSymbol;
+  return symbol && tickerChangeSymbol(symbol) && !tickerHasListingSuffix(symbol) ? symbol : null;
+}
+
+type SymbolDeps = { store: TickerSource; dataProvider: DataProvider };
+
+const NO_SAVED_ROWS = { loadTicker: async () => null, loadAllTickers: async () => [] };
+
+/**
+ * Whether a bare symbol also names a US listing: a US company had or has it
+ * (its change history: DFS was Discover Financial Services), or it lists on
+ * a US venue, by the venues the lookup saw or, when it asked none (a saved
+ * row, read with no search), by search now, else by the symbol's own quote,
+ * which names its US line first. When neither answers it counts as naming
+ * one, so the match stays a choice.
+ */
+async function namesUsListing(resolution: CliTicker, deps: SymbolDeps): Promise<boolean> {
+  if (resolution.change || resolution.formerIssuer) return true;
+  if (resolution.otherVenues) return resolution.otherVenues.some((venue) => isUsSymbolVenue(venue));
+  const symbol = resolution.bareSymbol!;
+  // Search's listings, not the saved row it would answer with; none found (or search failed) says nothing.
+  const venues = await listingVenues(symbol, { store: NO_SAVED_ROWS, dataProvider: deps.dataProvider })
+    .catch(logFailure("cli.symbol-rows", "Read listing venues failed", []));
+  if (venues.length > 0) return venues.some((venue) => isUsSymbolVenue(venue.exchange));
+  const quote = await deps.dataProvider.getQuote(symbol, "").catch(logFailure("cli.symbol-rows", "Quote bare symbol failed", null));
+  const venue = canonicalExchange(quote?.listingExchangeName || quote?.exchangeName);
+  return !venue || isUsSymbolVenue(venue);
+}
+
+/**
+ * Whether a bare symbol is stored on its listing abroad, still trading, and
+ * that is all it names (`namesUsListing`): GARAN is added on BIST, saying so.
+ */
+async function listedOnlyAbroad(resolution: CliTicker, deps: SymbolDeps): Promise<boolean> {
+  if (!bareUsShapedSymbol(resolution) || resolution.ended || !isListedAbroad(resolution.ticker)) return false;
+  return !await namesUsListing(resolution, deps);
+}
+
+/** "GARAN has no US listing; it trades on BIST, in TRY.": the line an add says beside a symbol `listedOnlyAbroad`. */
+function abroadOnlyNote(resolution: CliTicker): string {
+  const { exchange, currency } = resolution.ticker.metadata;
+  const unit = currency?.trim();
+  return `${resolution.bareSymbol} has no US listing; it trades on ${exchangeLabel(exchange)}${unit ? `, in ${unit}` : ""}.`;
+}
+
+/**
+ * What a bare symbol listed only abroad was more likely typed for: a
+ * currency (MXN, mixi Inc in Stuttgart) or a US ticker one slip away (APPL,
+ * Aptus Pharma in Mumbai, for AAPL). "APPL is one slip from AAPL (Apple
+ * Inc.)" or "MXN is also a currency"; null when the symbol is likely meant as typed.
+ */
+async function meantInstead(symbol: string, deps: SymbolDeps): Promise<string | null> {
+  if (symbol !== "USD" && /^[A-Z]{3}$/.test(symbol) && isCurrencyCode(symbol)) return `${symbol} is also a currency`;
+  const suggestion = await suggestUsTicker(symbol, deps).catch(logFailure("cli.symbol-rows", "Suggest a US ticker failed", null));
+  return suggestion ? `${symbol} is one slip from ${describeSuggestion(suggestion)}` : null;
+}
+
+/**
+ * How a bare symbol matched abroad is settled: `abroad` when it is added
+ * there, with its line, or `meant` when it is left for a choice as more
+ * likely typed for something else. Both null for anything else, which
+ * `choiceNeeded` decides.
+ */
+async function settleAbroad(resolution: CliTicker, deps: SymbolDeps): Promise<{ abroad: string | null; meant: string | null; onlyAbroad: boolean }> {
+  if (!await listedOnlyAbroad(resolution, deps)) return { abroad: null, meant: null, onlyAbroad: false };
+  const meant = await meantInstead(resolution.bareSymbol!, deps);
+  return { abroad: meant ? null : abroadOnlyNote(resolution), meant, onlyAbroad: true };
+}
+
 /** Whether a YYYY-MM-DD day is within `ms` before `now`. */
 function within(day: string | null, ms: number, now: number): boolean {
   const at = day ? Date.parse(day.slice(0, 10)) : Number.NaN;
@@ -164,27 +252,34 @@ function within(day: string | null, ms: number, now: number): boolean {
 
 /**
  * Why a symbol of an add that named no exchange is not stored as it matched:
- * the listing found stopped trading (NYCB:NYSE), it is a listing abroad (DFS
- * Furniture's DFS:LSE for DFS), or the company that had the symbol left it in
+ * the listing found stopped trading (NYCB:NYSE), it is a listing abroad while
+ * the symbol also names a US one (DFS Furniture's DFS:LSE for DFS, Discover's
+ * old symbol) or was likely typed for something else (`meantInstead`: APPL
+ * for AAPL), or the company that had the symbol left it in
  * the last two years (BRKL, Brookline Bancorp's until 2025, now a fund's). The message
  * leads with what became of the company that held the symbol, when the
  * symbol's history says ("DFS was Discover Financial Services until 2025, now
  * Capital One Financial: COF"), whose symbol now is the successor offered; the
  * match is offered too. Null for a match stored as it is: a trading US
  * listing whose symbol changed hands longer ago (its row says so) or never,
- * or one whose input named its exchange; coins, perpetual markets and
- * currency pairs, which trade in no one country, too.
+ * a listing abroad that is all the symbol names (GARAN:BIST for GARAN, said
+ * with `abroadOnlyNote`), or one whose input named its exchange; coins,
+ * perpetual markets and currency pairs, which trade in no one country, too.
  */
-function choiceNeeded(resolution: CliTicker, now = Date.now()): { message: string; successor: string | null } | null {
-  const symbol = resolution.bareSymbol;
-  // A US-shaped symbol (JPM, BRK.B), not 7203 or RY.TO, which name a venue of their own.
-  if (!symbol || !tickerChangeSymbol(symbol) || tickerHasListingSuffix(symbol)) return null;
+function choiceNeeded(
+  resolution: CliTicker,
+  { onlyAbroad, meant }: { onlyAbroad: boolean; meant: string | null },
+  now = Date.now(),
+): { message: string; successor: string | null } | null {
+  const symbol = bareUsShapedSymbol(resolution);
+  if (!symbol) return null;
   const history = successorOf(resolution);
   const label = savedListingName(resolution.ticker).label;
   // A company that left lately: the match is another's, or that company's own line, still quoted.
   const recent = !!history?.successor && within(history.left, RECENT_REUSE_MS, now);
   const found = resolution.ended
-    ?? (isListedAbroad(resolution.ticker) ? `${symbol} matched ${label}, a listing abroad`
+    ?? (isListedAbroad(resolution.ticker) && (!onlyAbroad || meant)
+      ? `${symbol} matched ${label}, a listing abroad${meant ? `; ${meant}` : ""}`
       : recent ? `${symbol} matched ${label}, ${sameCompany(resolution.ticker.metadata.name, history?.company) ? "that company's old line" : "another company's listing"}`
         : null);
   if (!found) return null;
@@ -201,7 +296,9 @@ export const NO_MATCH = /^No ticker match found for /;
  * went nowhere are named so the list can be fixed.
  */
 export function summarizeSymbolRows(rows: readonly SymbolRow[], verb: Verb, repeated: number): string {
-  const inputs = (status: SymbolStatus) => rows.filter((row) => row.status === status).map((row) => symbolInputKey(row.input));
+  // An entry that is no symbol, or was not looked up, is named as it was written: `$$$`, `philip morris intl`.
+  const inputs = (status: SymbolStatus) => rows.filter((row) => row.status === status)
+    .map((row) => status === "not_a_symbol" || status === "not_looked_up" ? row.input.trim() : symbolInputKey(row.input));
   const counts = SETTLED[verb]
     .map(([status, word], index) => ({ count: inputs(status).length, word, index }))
     .filter(({ count, index }) => index === 0 || count > 0)
@@ -213,6 +310,12 @@ export function summarizeSymbolRows(rows: readonly SymbolRow[], verb: Verb, repe
   if (choices.length > 0) groups.push(`${choices.length} need${choices.length === 1 ? "s" : ""} a choice: ${choices.join(", ")}`);
   const failed = inputs("failed");
   if (failed.length > 0) groups.push(`${failed.length} not ${verb === "add" ? "added" : "removed"}: ${failed.join(", ")}`);
+  const unanswered = inputs("not_looked_up");
+  if (unanswered.length > 0) groups.push(`${unanswered.length} not looked up: ${unanswered.join(", ")}`);
+  const junk = inputs("not_a_symbol");
+  if (junk.length > 0) {
+    groups.push(`${junk.length} not ${junk.length === 1 ? "a symbol" : "symbols"}: ${junk.join(junk.some((input) => input.includes(",")) ? "; " : ", ")}`);
+  }
   if (repeated > 0) groups.push(`${repeated} repeat${repeated === 1 ? "" : "s"} skipped`);
   return `${groups.join("; ")}.`;
 }
@@ -248,6 +351,7 @@ async function settleAdd(
   input: string,
   lookup: CliTickerResolution,
   staged: StagedTickerRepository,
+  dataProvider: DataProvider,
   add: AddTicker,
   added: Set<string>,
 ): Promise<AddOutcome> {
@@ -258,7 +362,8 @@ async function settleAdd(
       ? { row: { ...failedRow(input, error, "needs_choice"), tradesAs: error.successor }, error }
       : { row: failedRow(input, error), error };
   }
-  const choice = choiceNeeded(lookup);
+  const abroad = await settleAbroad(lookup, { store: staged, dataProvider });
+  const choice = choiceNeeded(lookup, abroad);
   if (choice) {
     // The lookup saved the listing it matched; one that is in no list of this run is not kept.
     if (!added.has(lookup.ticker.metadata.ticker)) staged.discard(lookup.ticker.metadata.ticker);
@@ -281,7 +386,7 @@ async function settleAdd(
   const history = successorOf(lookup);
   return { row: listingRow(input, result.changed ? "added" : "already_listed", result.ticker, {
     notes: lookup.notes, ended: lookup.ended, hint: lookup.coinNote, readAs: lookup.readAs,
-    extra: history ? { changeNote: history.note, tradesAs: history.successor } : {},
+    extra: { ...history ? { changeNote: history.note, tradesAs: history.successor } : {}, ...abroad.abroad ? { abroad: abroad.abroad } : {} },
   }), error: null };
 }
 
@@ -337,7 +442,7 @@ export async function addSymbols({
       rows.push(failedRow(input, refusal ?? new Error("Not looked up.")));
       continue;
     }
-    const { row } = await settleAdd(input, resolution, staged, add, added);
+    const { row } = await settleAdd(input, resolution, staged, dataProvider, add, added);
     rows.push(resolution.error && row.status !== "needs_choice" && failure ? failedRow(input, failure(resolution.error)) : row);
   }
   if (!dryRun) await staged.commit();
@@ -374,15 +479,16 @@ export async function addSymbol(
   } catch (caught) {
     lookup = { input, error: caught instanceof Error ? caught : new Error(String(caught)) };
   }
-  const outcome = await settleAdd(input, lookup, staged, add, new Set());
+  const outcome = await settleAdd(input, lookup, staged, dataProvider, add, new Set());
   if (!dryRun) await staged.commit();
   return { ...outcome, lookup: lookup.error ? null : lookup };
 }
 
 /**
- * Why a typed symbol the command bar adds on its own would not be stored as
- * it matched (`settleAdd`), as a pasted list would leave it: its needs-choice
- * row, else null, for the single add to go on as it does. Nothing is saved.
+ * How a typed symbol the command bar adds on its own is decided, as a symbol
+ * of a pasted list is (`settleAdd`): a needs-choice row when it would not be
+ * stored as it matched, else the row it would add, which says when it is
+ * listed only abroad; null when nothing was looked up. Nothing is saved.
  */
 export async function typedSymbolChoice(input: string, store: TickerSource, dataProvider: DataProvider): Promise<SymbolRow | null> {
   const symbol = input.trim().toUpperCase();
@@ -395,8 +501,8 @@ export async function typedSymbolChoice(input: string, store: TickerSource, data
   } catch (caught) {
     lookup = { input: symbol, error: caught instanceof Error ? caught : new Error(String(caught)) };
   }
-  const { row } = await settleAdd(symbol, lookup, staged, (ticker) => ({ changed: false, ticker }), new Set());
-  return row.status === "needs_choice" ? row : null;
+  const { row } = await settleAdd(symbol, lookup, staged, dataProvider, (ticker) => ({ changed: false, ticker }), new Set());
+  return row;
 }
 
 /** The rows, each symbol search found no listing for with the nearest listing it did find, when that is a near match. */

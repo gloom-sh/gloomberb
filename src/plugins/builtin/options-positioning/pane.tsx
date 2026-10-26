@@ -34,10 +34,12 @@ import type { ResolvedSeries } from "../../../time-series/types";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, Text } from "../../../ui";
 import { formatCompact } from "../../../utils/format";
+import { formatStrikeLabel } from "../../../utils/options";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { isPlainKey } from "../../../utils/keyboard";
 import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { useCloudAccessFooter } from "../shared/cloud-upgrade";
+import { COIN_OPTIONS_HINT, isCoinWithoutOptions, optionsUnavailableTitle } from "../../../market-data/options-alternatives";
 import {
   loadGamma,
   loadOpenInterest,
@@ -52,14 +54,18 @@ import {
   chartWindow,
   expiryAxis,
   expiryLabel,
-  formatCount,
+  expiryWithTimeLabel,
+  formatContracts,
+  isCoinContract,
+  settlementTime,
+  wallsByExpiry,
   formatCountChange,
   formatDistance,
   formatGamma,
   formatLevel,
+  positioningSpotDetail,
   formatPayout,
   formatRatio,
-  formatStrike,
   gammaWalls,
   netGammaByExpiry,
   openInterestTotal,
@@ -91,26 +97,30 @@ const expirySize = (row: { callOI: number; putOI: number }) => row.callOI + row.
 const reportedOpenInterest = (row: { callOI: number | null; putOI: number | null }) =>
   (row.callOI == null ? 0 : row.callOI) + (row.putOI == null ? 0 : row.putOI);
 
-function strikeColumns(changes: boolean): DataTableColumn[] {
+function strikeColumns(changes: boolean, unit = ""): DataTableColumn[] {
   return [
     { id: "strike", label: "Strike", width: 9, align: "left" },
-    { id: "callOI", label: "Call OI", width: 10, align: "right" },
+    { id: "callOI", label: `Call OI${unit}`, width: 10 + unit.length, align: "right" },
     ...(changes ? [{ id: "callChange", label: "Call chg", width: 9, align: "right" as const }] : []),
-    { id: "putOI", label: "Put OI", width: 10, align: "right" },
+    { id: "putOI", label: `Put OI${unit}`, width: 10 + unit.length, align: "right" },
     ...(changes ? [{ id: "putChange", label: "Put chg", width: 9, align: "right" as const }] : []),
     { id: "payout", label: "Payout $", width: 10, align: "right" },
   ];
 }
-function expiryColumns(changes: boolean, gamma: boolean): DataTableColumn[] {
+function expiryColumns(changes: boolean, gamma: boolean, options: { settles?: boolean; walls?: boolean; unit?: string } = {}): DataTableColumn[] {
+  const unit = options.unit ?? "";
   return [
-    { id: "date", label: "Expiry", width: 11, align: "left" },
+    // An expiry that settles at a stated time (Deribit's 08:00 UTC) names it.
+    { id: "date", label: "Expiry", width: options.settles ? 21 : 11, align: "left" },
     { id: "days", label: "Days", width: 5, align: "right" },
-    { id: "callOI", label: "Call OI", width: 11, align: "right" },
-    { id: "putOI", label: "Put OI", width: 11, align: "right" },
+    { id: "callOI", label: `Call OI${unit}`, width: 11 + unit.length, align: "right" },
+    { id: "putOI", label: `Put OI${unit}`, width: 11 + unit.length, align: "right" },
     { id: "putCallRatio", label: "P/C", width: 6, align: "right" },
     ...(changes ? [{ id: "change", label: "OI chg", width: 10, align: "right" as const }] : []),
     { id: "maxPain", label: "Max pain", width: 9, align: "right" },
     { id: "distance", label: "Vs spot", width: 8, align: "right" },
+    ...(options.walls ? [{ id: "callWall", label: "Call wall", width: 10, align: "right" as const },
+      { id: "putWall", label: "Put wall", width: 9, align: "right" as const }] : []),
     ...(gamma ? [{ id: "netGamma", label: "Net GEX $", width: 11, align: "right" as const }] : []),
   ];
 }
@@ -169,6 +179,8 @@ const UNDERLYING_STATE_KEY = /^opx:(expiry|gammaExpiry|strike|expiryRow|gammaStr
 
 export function OptionsPositioningPane(props: PaneProps) {
   const { symbol } = usePaneTickerIdentity();
+  // A coin nothing lists options on (SOL-USD) says which coins have them, before any request.
+  if (symbol && isCoinWithoutOptions(symbol)) return <EmptyState title={optionsUnavailableTitle(parsePublicTickerKey(symbol).symbol)} hint={COIN_OPTIONS_HINT} />;
   // A new underlying starts over rather than relabelling the last one's data.
   return symbol ? <OptionsPositioningView key={symbol} {...props} symbol={symbol} />
     : <EmptyState title="Choose an option underlying." />;
@@ -204,6 +216,12 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
   const openInterest = useAsyncResource<OpenInterestPayload>(openInterestLoader, { keepPreviousData: true });
   const data = openInterest.data;
   const spot = data?.spot ?? null;
+  const venue = data?.venue;
+  const spotStamp = useMemo(() => positioningSpotDetail(spot, data?.spotAsOf, venue), [spot, data?.spotAsOf, venue]);
+  // A coin's options (Deribit's) count open interest in coins, to tenths.
+  const coin = isCoinContract(data?.contract);
+  const unit = coin ? ` ${data!.contract!.unit}` : "";
+  const count = useCallback((value: number | null | undefined) => formatContracts(value, coin), [coin]);
   const expiries = data?.expiries ?? [];
   const shownExpiry = data?.expiry ?? requestedExpiry;
   const changes = data?.previousOiDate != null;
@@ -264,9 +282,7 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
       enabled: expiryIndex < expiryDates.length - 1, onSelect: () => stepExpiry(1) },
   ], [expiryDates.length, expiryIndex, stepExpiry, tab]);
 
-  const { strip: tabStrip, rows: tabRows } = usePaneTabs(data?.expiries.length
-    ? { tabs, activeValue: tab, onSelect: (value: string) => setTab(value), focused, dense: true }
-    : null);
+  const { strip: tabStrip, rows: tabRows } = usePaneTabs({ tabs, activeValue: tab, onSelect: (value: string) => setTab(value), focused, dense: true });
   const bodyHeight = Math.max(3, height - tabRows);
 
   // Footer: what the data is (delayed or real time, the OI session), and its gaps.
@@ -276,9 +292,12 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
   });
   const info = useMemo<PaneFooterSegment[]>(() => [
     ...(accessSegment ? [accessSegment] : []),
-    ...(data?.oiDate ? [{ id: "oi-date", parts: [{ text: `OI as of ${shortDate(data.oiDate)}`, tone: "muted" as const }] }] : []),
+    ...(venue ? [{ id: "venue", parts: [{ text: venue, tone: "muted" as const }] }] : []),
+    // A venue that publishes open interest live (Deribit) says when it was read.
+    ...(venue && data?.oiAsOf ? [{ id: "oi-date", parts: [{ text: `OI live ${data.oiAsOf.slice(11, 16)} UTC`, tone: "muted" as const }] }]
+      : data?.oiDate ? [{ id: "oi-date", parts: [{ text: `OI as of ${shortDate(data.oiDate)}`, tone: "muted" as const }] }] : []),
     ...(changes && tab !== "gex" ? [{ id: "oi-change", parts: [{ text: `chg since ${shortDate(data!.previousOiDate!)}`, tone: "muted" as const }] }] : []),
-  ], [accessSegment, changes, data?.oiDate, data?.previousOiDate, tab]);
+  ], [accessSegment, changes, data?.oiAsOf, data?.oiDate, data?.previousOiDate, tab, venue]);
   const activeResource = tab === "gex" ? gamma : openInterest;
   // Expiries' Net GEX column loads beside the open interest it sits with.
   const columnGamma = tab === "expiries" && gammaReady ? gamma : null;
@@ -305,7 +324,7 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
         : index === options.findIndex((entry) => entry.value === value) + 1 ? EXPIRY_NEXT_KEY : undefined,
     })),
   });
-  const expiryOptions = useMemo(() => expiries.map((row) => ({ value: row.date, label: expiryLabel(row.date) })), [expiries]);
+  const expiryOptions = useMemo(() => expiries.map((row) => ({ value: row.date, label: expiryWithTimeLabel(row) })), [expiries]);
 
   // ---- Strikes ----
   const strikes = data?.strikes ?? [];
@@ -333,15 +352,17 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
   ] : [], [colors.negative, colors.positive, strikeChart, strikeWindow]);
   const callTotal = expiries.find((row) => row.date === shownExpiry);
   const strikeFigures = useMemo<StatItem[]>(() => !callTotal ? [] : [
-    { id: "max-pain", label: "Max pain", value: maxPain == null ? "--" : formatStrike(maxPain), color: colors.warning,
+    { id: "max-pain", label: "Max pain", value: maxPain == null ? "--" : formatStrikeLabel(maxPain), color: colors.warning,
       detail: maxPain == null ? undefined : `${formatDistance(maxPain, spot)} vs spot` },
-    { id: "spot", label: "Spot", value: formatLevel(spot) },
+    { id: "spot", label: "Spot", value: formatLevel(spot), ...spotStamp },
     { id: "pc", label: "P/C OI", value: formatRatio(callTotal.putCallRatio) },
-    { id: "calls", label: "Call OI", value: formatCompact(callTotal.callOI), color: colors.positive,
+    { id: "calls", label: `Call OI${unit}`, value: formatCompact(callTotal.callOI), color: colors.positive,
       detail: callTotal.callChange == null ? undefined : formatCountChange(callTotal.callChange) },
-    { id: "puts", label: "Put OI", value: formatCompact(callTotal.putOI), color: colors.negative,
+    { id: "puts", label: `Put OI${unit}`, value: formatCompact(callTotal.putOI), color: colors.negative,
       detail: callTotal.putChange == null ? undefined : formatCountChange(callTotal.putChange) },
-  ], [callTotal, colors.negative, colors.positive, colors.warning, maxPain, spot]);
+    ...(settlementTime(callTotal.expiresAt) ? [{ id: "settles", label: "Settles", value: settlementTime(callTotal.expiresAt)!,
+      detail: expiryLabel(callTotal.date) }] : []),
+  ], [callTotal, colors.negative, colors.positive, colors.warning, maxPain, spot, spotStamp, unit]);
   const selectedStrikeRow = strikes.find((row) => strikeKey(row) === strikeSelectedId) ?? null;
   const strikeStrip = useMemo<ChartStripSpec | null>(() => strikeWindow.length < 3 ? null : {
     label: "Open interest by strike",
@@ -349,17 +370,17 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
       const value = openInterestTotal(row);
       return value == null ? [] : [value];
     }),
-    value: selectedStrikeRow ? `${formatStrike(selectedStrikeRow.strike)} ${formatCompact(openInterestTotal(selectedStrikeRow) ?? undefined)}` : "",
+    value: selectedStrikeRow ? `${formatStrikeLabel(selectedStrikeRow.strike)} ${formatCompact(openInterestTotal(selectedStrikeRow) ?? undefined)}` : "",
     color: colors.textMuted,
   }, [colors.textMuted, selectedStrikeRow, strikeWindow]);
   const renderStrike = useCallback((row: StrikeOpenInterest, column: DataTableColumn): DataTableCell => {
     switch (column.id) {
       case "strike": return {
-        text: formatStrike(row.strike), value: row.strike,
+        text: formatStrikeLabel(row.strike), value: row.strike,
         color: row.strike === maxPain ? colors.warning : colors.textBright,
       };
-      case "callOI": return { text: formatCount(row.callOI), value: row.callOI, color: colors.positive };
-      case "putOI": return { text: formatCount(row.putOI), value: row.putOI, color: colors.negative };
+      case "callOI": return { text: count(row.callOI), value: row.callOI, color: colors.positive };
+      case "putOI": return { text: count(row.putOI), value: row.putOI, color: colors.negative };
       case "callChange":
       case "putChange": {
         const change = row[column.id];
@@ -369,16 +390,18 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
       case "payout": return { text: formatPayout(row.payout), value: row.payout, color: colors.textMuted };
       default: return { text: "" };
     }
-  }, [colors, maxPain]);
+  }, [colors, count, maxPain]);
 
   // ---- Expiries ----
   // Older servers send no per-expiry gamma; the column then reads --.
   const netGammas = useMemo(() => netGammaByExpiry(gamma.data), [gamma.data]);
+  const expiryWalls = useMemo(() => wallsByExpiry(gamma.data), [gamma.data]);
   const expiryRows = useMemo(() => sortRows(expiries, expirySort, (row, id) =>
     id === "date" ? row.date : id === "distance" ? (row.maxPain == null || spot == null ? null : row.maxPain / spot)
       : id === "change" ? (row.callChange == null ? null : row.callChange + (row.putChange ?? 0))
         : id === "netGamma" ? netGammas?.get(row.date) ?? null
-          : (row[id as keyof ExpiryOpenInterest] as number | null)), [expiries, expirySort, netGammas, spot]);
+          : id === "callWall" || id === "putWall" ? expiryWalls?.get(row.date)?.[id] ?? null
+            : (row[id as keyof ExpiryOpenInterest] as number | null)), [expiries, expiryWalls, expirySort, netGammas, spot]);
   const expiryChart = useMemo(() => expiries.length >= 3 ? expiryAxis(expiryDates) : null, [expiries.length, expiryDates]);
   const expirySelectedId = expiryRows.some((row) => row.date === selectedExpiry) ? selectedExpiry!
     : shownExpiry && expiryRows.some((row) => row.date === shownExpiry) ? shownExpiry : expiryRows[0]?.date ?? null;
@@ -404,9 +427,9 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
         split: [{ id: "calls", value: calls, color: colors.positive }, { id: "puts", value: puts, color: colors.negative }] },
       { id: "pc", label: "P/C OI", value: formatRatio(calls > 0 ? puts / calls : null) },
       { id: "largest", label: "Largest expiry", value: expiryLabel(largest.date), detail: formatCompact(expirySize(largest)) },
-      { id: "spot", label: "Spot", value: formatLevel(spot) },
+      { id: "spot", label: "Spot", value: formatLevel(spot), ...spotStamp },
     ];
-  }, [changes, colors.negative, colors.positive, expiries, spot]);
+  }, [changes, colors.negative, colors.positive, expiries, spot, spotStamp]);
   const selectedExpiryRow = expiries.find((row) => row.date === expirySelectedId) ?? null;
   const expiryStrip = useMemo<ChartStripSpec | null>(() => expiries.length < 3 ? null : {
     label: "Open interest by expiry",
@@ -416,17 +439,22 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
   }, [colors.textMuted, expiries, selectedExpiryRow]);
   const renderExpiry = useCallback((row: ExpiryOpenInterest, column: DataTableColumn): DataTableCell => {
     switch (column.id) {
-      case "date": return { text: expiryLabel(row.date), value: row.date, color: colors.textBright };
+      case "date": return { text: expiryWithTimeLabel(row), value: row.date, color: colors.textBright };
       case "days": return { text: String(row.days), value: row.days, color: colors.textMuted };
-      case "callOI": return { text: formatCount(row.callOI), value: row.callOI, color: colors.positive };
-      case "putOI": return { text: formatCount(row.putOI), value: row.putOI, color: colors.negative };
+      case "callOI": return { text: count(row.callOI), value: row.callOI, color: colors.positive };
+      case "putOI": return { text: count(row.putOI), value: row.putOI, color: colors.negative };
+      case "callWall":
+      case "putWall": {
+        const strike = expiryWalls?.get(row.date)?.[column.id] ?? null;
+        return { text: strike == null ? "--" : formatStrikeLabel(strike), value: strike, color: colors.textMuted };
+      }
       case "putCallRatio": return { text: formatRatio(row.putCallRatio), value: row.putCallRatio };
       case "change": {
         const change = row.callChange == null ? null : row.callChange + (row.putChange ?? 0);
         return { text: formatCountChange(change), value: change,
           color: change == null || change === 0 ? colors.textMuted : change > 0 ? colors.positive : colors.negative };
       }
-      case "maxPain": return { text: row.maxPain == null ? "--" : formatStrike(row.maxPain), value: row.maxPain, color: colors.warning };
+      case "maxPain": return { text: row.maxPain == null ? "--" : formatStrikeLabel(row.maxPain), value: row.maxPain, color: colors.warning };
       case "distance": return {
         text: formatDistance(row.maxPain, spot),
         value: row.maxPain == null || spot == null ? null : Number(((row.maxPain / spot - 1) * 100).toFixed(4)),
@@ -439,7 +467,7 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
       }
       default: return { text: "" };
     }
-  }, [colors, netGammas, spot]);
+  }, [colors, count, expiryWalls, netGammas, spot]);
 
   // ---- GEX ----
   const gammaData = gamma.data;
@@ -474,12 +502,12 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
     { id: "flip", label: "Flip", value: formatLevel(gammaData.flip),
       detail: gammaData.flip == null ? "none within 15%" : `${formatDistance(gammaData.flip, gammaSpot)} vs spot` },
     ...([["call-wall", "Call wall", walls.callWall], ["put-wall", "Put wall", walls.putWall]] as const).map(([id, label, strike]) => ({
-      id, label, value: strike == null ? "--" : formatStrike(strike),
+      id, label, value: strike == null ? "--" : formatStrikeLabel(strike),
       detail: strike == null ? undefined : `${formatDistance(strike, gammaSpot)} vs spot`,
     })),
     ...(band ? [{ id: "band", label: "Dealer range", value: `${formatGamma(band.low)} to ${formatGamma(band.high)}`,
       detail: `${shares} with dealers${gammaData.boxes?.length ? ", boxes out" : ""}` }] : []),
-    { id: "spot", label: "Spot", value: formatLevel(gammaSpot) },
+    { id: "spot", label: "Spot", value: formatLevel(gammaSpot), ...positioningSpotDetail(gammaSpot, gammaData.spotAsOf, gammaData.venue) },
   ], [band, colors.negative, colors.positive, gammaData, gammaSpot, shares, walls]);
   // The assumption rides in the legend, where the numbers it changes are read; the
   // dealer range figure names its own share. It gives way before the series name does.
@@ -488,12 +516,12 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
   const gammaStrip = useMemo<ChartStripSpec | null>(() => gammaWindow.length < 3 ? null : {
     label: "Net GEX by strike",
     values: gammaWindow.map((row) => row.net),
-    value: selectedGammaRow ? `${formatStrike(selectedGammaRow.strike)} ${formatGamma(selectedGammaRow.net)}` : "",
+    value: selectedGammaRow ? `${formatStrikeLabel(selectedGammaRow.strike)} ${formatGamma(selectedGammaRow.net)}` : "",
     color: colors.textMuted,
   }, [colors.textMuted, gammaWindow, selectedGammaRow]);
   const renderGamma = useCallback((row: GammaStrike, column: DataTableColumn): DataTableCell => {
     switch (column.id) {
-      case "strike": return { text: formatStrike(row.strike), value: row.strike, color: colors.textBright };
+      case "strike": return { text: formatStrikeLabel(row.strike), value: row.strike, color: colors.textBright };
       case "calls": return { text: formatGamma(row.calls), value: row.calls, color: colors.positive };
       case "puts": return { text: formatGamma(-row.puts), value: -row.puts, color: colors.negative };
       case "net": return { text: formatGamma(row.net), value: row.net, color: row.net >= 0 ? colors.positive : colors.negative };
@@ -506,8 +534,10 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
     }
   }, [colors, gammaSpot]);
 
-  const strikeColumnList = useMemo(() => strikeColumns(changes), [changes]);
-  const expiryColumnList = useMemo(() => expiryColumns(changes, hasGamma), [changes, hasGamma]);
+  const strikeColumnList = useMemo(() => strikeColumns(changes, unit), [changes, unit]);
+  const settles = expiries.some((row) => settlementTime(row.expiresAt));
+  const expiryColumnList = useMemo(() => expiryColumns(changes, hasGamma, { settles, walls: !!expiryWalls, unit }),
+    [changes, expiryWalls, hasGamma, settles, unit]);
   const markerColor = colors.textBright;
 
   let content: ReactNode = null;
@@ -532,8 +562,8 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
               { id: "spot", ratio: spot == null ? null : strikeChart.ratio(spot), label: "spot", color: markerColor },
               { id: "max-pain", ratio: maxPain == null ? null : strikeChart.ratio(maxPain), label: "max pain", color: colors.warning },
             ]}
-            formatCursor={(ratio) => formatStrike(nearestStrike(strikeWindow, strikeChart.at(ratio)))}
-            formatValue={(value) => formatCount(Math.abs(value))}
+            formatCursor={(ratio) => formatStrikeLabel(nearestStrike(strikeWindow, strikeChart.at(ratio)))}
+            formatValue={(value) => count(Math.abs(value))}
             formatAxisValue={(value, domain) => formatCompactAxis(Math.abs(value), domain)}
             selection={strikeSelection} remoteKind="opx-strikes" />,
           minRows: CHART_MIN_ROWS,
@@ -560,7 +590,7 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
               const date = expiryChart.at(ratio);
               return date ? expiryLabel(date) : "";
             }}
-            formatValue={(value) => formatCount(Math.abs(value))}
+            formatValue={(value) => count(Math.abs(value))}
             formatAxisValue={(value, domain) => formatCompactAxis(Math.abs(value), domain)}
             selection={expirySelection} remoteKind="opx-expiries" />,
           minRows: CHART_MIN_ROWS - 1,
@@ -599,7 +629,7 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
                     { id: "spot", ratio: gammaSpot == null ? null : gammaChart.ratio(gammaSpot), label: "spot", color: markerColor },
                     { id: "flip", ratio: gammaData.flip == null ? null : gammaChart.ratio(gammaData.flip), label: "flip", color: colors.warning },
                   ]}
-                  formatCursor={(ratio) => formatStrike(nearestStrike(gammaWindow, gammaChart.at(ratio)))}
+                  formatCursor={(ratio) => formatStrikeLabel(nearestStrike(gammaWindow, gammaChart.at(ratio)))}
                   formatValue={formatGamma} formatAxisValue={formatCompactAxis}
                   legendAccessory={assumption ? <Text fg={colors.textMuted}>{assumption}</Text> : undefined}
                   legendAccessoryWidth={assumption?.length}
@@ -610,13 +640,11 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
   }
 
   return <Box width={width} height={height} flexDirection="column">
+    {tabStrip}
     <PaneStatusBody loading={openInterest.loading && !data} error={!data ? openInterest.error : null}
       empty={!!data && !data.expiries.length} subject="open interest"
       emptyTitle={`No listed options for ${parsePublicTickerKey(symbol).symbol.replace(/^\^/, "")}.`}>
-      {data?.expiries.length ? <>
-        {tabStrip}
-        {content}
-      </> : null}
+      {data?.expiries.length ? content : null}
     </PaneStatusBody>
   </Box>;
 }

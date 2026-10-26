@@ -16,6 +16,7 @@ import {
 import { colors, priceColor } from "../../../../theme/colors";
 import { fiscalYearEndMonth } from "../../../../utils/fiscal-period";
 import { padTo } from "../../../../utils/format";
+import { filledPeriodsNote, stalePeriodNote } from "../../../../utils/financial-statements";
 import {
   FINANCIAL_COL_W,
   FINANCIAL_LABEL_W,
@@ -29,6 +30,8 @@ import {
   formatFinancialCell,
   financialStatementCurrency,
   financialStatementLimitations,
+  financialStatementPeriods,
+  financialSubTabFields,
   formatFinancialValue,
   latestFinancialPeriodEnd,
   resolveFinancialPeriod,
@@ -51,9 +54,12 @@ import {
   ratioPeriodEnd,
   ratioPeriods,
   resolveFinancialSectionKey,
+  visibleRatios,
   type RatioAmount,
 } from "./ratios";
 import { PeriodEndHistoryLoader, RatioTable, ratioMetricColumn, type PeriodEndHistoryState, type RatioTableColumn } from "./ratio-table";
+import { latestBalanceSheetDate, useOfferingNote } from "./offerings";
+import { useBoundTicker } from "../../shared/ticker-request";
 import { createValuationCurrencyContext } from "../../../../time-series/valuation-currency";
 
 const RATIOS_SEGMENT = "ratios";
@@ -127,9 +133,11 @@ export function ResolvedFinancialsTab({
   const ratioTab = section.kind === "ratio" ? section.tab : null;
   // A ratio tab builds its own rows; the statement rows below idle on Income.
   const subTab = section.kind === "statement" ? section.tab : FINANCIAL_SUB_TABS[0]!;
+  // A ratio read over one quarter is not on the annual view, so its state does not count there.
+  const quarterlyView = resolveFinancialPeriod(period, hasAnnualStatements, hasQuarterlyStatements) === "quarterly";
   const currentGroupIds = useMemo(
-    () => ratioTab ? ratioTab.ratios.map((ratio) => ratio.id) : collectGroupIds(subTab.rows),
-    [ratioTab, subTab],
+    () => ratioTab ? visibleRatios(ratioTab, quarterlyView).map((ratio) => ratio.id) : collectGroupIds(subTab.rows),
+    [quarterlyView, ratioTab, subTab],
   );
   const hasCollapsedCurrentGroup = currentGroupIds.some((id) => collapsedGroups.has(id));
   const hasExpandedCurrentGroup = currentGroupIds.some((id) => !collapsedGroups.has(id));
@@ -426,20 +434,38 @@ export function ResolvedFinancialsTab({
       return (close === undefined ? null : currencies?.priceInStatementUnits(statement, close)) ?? "no-price";
     };
     const expanded = new Set(ratioTab.ratios.map((ratio) => ratio.id).filter((id) => !collapsedGroups.has(id)));
-    return buildRatioTableModel(ratioTab, ratioPeriods(displayStatements, openings, resolvedPeriod, price, { annual: annualStatements, quarterly: quarterlyStatements }), expanded);
+    return buildRatioTableModel(ratioTab, ratioPeriods(displayStatements, openings, resolvedPeriod, price, { annual: annualStatements, quarterly: quarterlyStatements }), expanded, financials?.profile);
   }, [
     annualStatements, collapsedGroups, currencies, displayStatements, history.data, history.error, history.loading,
-    isValuation, quarterlyStatements, ratioTab, resolvedPeriod,
+    isValuation, quarterlyStatements, ratioTab, resolvedPeriod, financials?.profile,
   ]);
   const ratioColumns = useMemo<RatioTableColumn[]>(() => [
     ratioMetricColumn(),
     ...columns.flatMap((column, index) => column.kind === "statement" ? [{ ...column, index: index - 1 }] : []),
   ], [columns]);
 
+  // The Balance Sheet and Liquidity show cash, which an offering filed since the latest balance sheet is not in yet.
+  const { symbol: boundSymbol, exchange: boundExchange } = useBoundTicker();
+  const offeringNote = useOfferingNote(boundSymbol, boundExchange, latestBalanceSheetDate(financials),
+    !!financials && (section.key === "balance" || section.key === "liquidity"));
+
+  // A latest period over 15 months old says how old it is, beside the data's other limits.
+  const stalePeriod = useMemo(
+    () => stalePeriodNote(financialStatementPeriods(displayStatements, subTab)),
+    [displayStatements, subTab],
+  );
+  // Years filled from the listing's exchange, with the lines this table shows.
+  const filledPeriods = useMemo(
+    () => filledPeriodsNote(displayStatements, ratioTab ? undefined : financialSubTabFields(subTab)),
+    [displayStatements, ratioTab, subTab],
+  );
   usePaneNoticeFooter({
     registrationId: "financials-notices",
     notices: [
+      ...(stalePeriod ? [stalePeriod] : []),
+      ...(filledPeriods ? [filledPeriods] : []),
       ...financialStatementLimitations(financials),
+      ...(offeringNote ? [offeringNote] : []),
       ...(isValuation && history.error && !history.data ? ["Period-end prices are unavailable, so valuation ratios are too."] : []),
       ...(isValuation ? [currencies?.warning(displayStatements) ?? ""] : []),
     ],

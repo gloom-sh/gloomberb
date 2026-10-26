@@ -126,7 +126,7 @@ test("a pair-like miss names the listing search finds nearest, and nothing when 
     expect(table.match(/not a ticker/g)).toHaveLength(2);
     expect(spy.mock.calls.map((call) => String(call[0]))).toEqual([
       "warning: Not a ticker: USD_NGN. Did you mean USDNGN=X (USD/NGN)?",
-      "warning: Not a ticker: USD/XYZ. Try `gloomberb search USD/XYZ`.",
+      "warning: Not a ticker: USD/XYZ. Try `gloom search USD/XYZ`.",
     ]);
   } finally {
     spy.mockRestore();

@@ -1,7 +1,7 @@
 {
  "format": 1,
  "site": "https://gloom.sh",
- "updatedAt": "2026-10-17",
+ "updatedAt": "2026-10-25",
  "categories": [
   {
    "id": "research",
@@ -287,11 +287,19 @@
    "code": "OSA",
    "name": "Options scenario",
    "description": "Multi-leg payoff and P&L",
-   "detail": "Build a multi-leg options position from the chain, from OMON, or by hand, and value it at any spot, date, and vol shift: payoff, P&L grid, breakevens, and Greeks. European pricing, so no early exercise.",
+   "detail": "Build a multi-leg options position from the chain, from OMON, or by hand, and value it at any spot, date, and vol shift: payoff, P&L grid, breakevens, and Greeks. It also sells a cash-secured put, with the yield on cash at the mid and at the bid, sizes a protective put to a hedge budget, and collars shares. European pricing, so no early exercise.",
    "category": "research",
    "arg": "AAPL",
    "shot": "https://gloom.sh/screenshots/fn/OSA.png",
    "lesson": "/academy/options-and-volatility/chain-and-strategies/strategy-analyzer"
+  },
+  {
+   "code": "CSP",
+   "name": "Cash-secured put screen",
+   "description": "Put-selling yield across a list",
+   "detail": "For each ticker, the put nearest a delta (0.30) on the expiry about 30 days out, ranked by annualised yield on cash at the bid, with distance out of the money, delta, IV rank, the bid/ask spread (wide ones flagged, never dropped), and whether earnings fall before expiry. Enter opens the put in OSA.",
+   "category": "research",
+   "arg": "JPM, GS, KO"
   },
   {
    "code": "OVDV",
@@ -407,7 +415,7 @@
    "code": "GUID",
    "name": "Company guidance",
    "description": "Outlook from the latest call",
-   "detail": "The outlook the company gave on its latest earnings call, pulled from the transcript, above consensus for the coming periods. US listings. The Guidance tab of EM.",
+   "detail": "The outlook the company gave on its latest earnings call, above consensus for the coming periods. US listings. The Guidance tab of EM.",
    "category": "research",
    "arg": "NVDA",
    "access": "cloud",
@@ -455,6 +463,22 @@
    "lesson": "/academy/compare-screen-follow-money/who-owns-it/short-interest"
   },
   {
+   "code": "FTD",
+   "name": "Fails to deliver",
+   "description": "Outstanding settlement fails",
+   "detail": "The Short Interest pane on Fails to deliver: SEC outstanding fail shares by settlement date and CUSIP, with reported prices. Each date is a separate snapshot; never add fails across dates. Published twice monthly with a delay. Missing records do not establish zero fails.",
+   "category": "research",
+   "arg": "AAPL"
+  },
+  {
+   "code": "ATS",
+   "name": "Weekly ATS / OTC volume",
+   "description": "Weekly off-exchange shares and trades",
+   "detail": "The Short Interest pane on Weekly ATS/OTC: FINRA ATS and non-ATS shares and trades, including dark-pool activity. ATS % divides ATS shares by published off-exchange shares, not total market volume or short volume. Missing categories stay blank. Published weekly with a two- or four-week delay depending on the security tier.",
+   "category": "research",
+   "arg": "AAPL"
+  },
+  {
    "code": "DIAG",
    "name": "Equity diagnostic",
    "description": "Red and green flags",
@@ -480,7 +504,7 @@
    "code": "EXEC",
    "name": "Executives",
    "description": "Officers and pay from the proxy",
-   "detail": "Named executive officers and their compensation, read from the proxy statement and checked against the filing.",
+   "detail": "Named executive officers and their compensation. Free shows each executive's total pay; Pro adds the breakdown and earlier years.",
    "category": "research",
    "arg": "NVDA",
    "access": "pro",
@@ -502,7 +526,7 @@
    "code": "CALLS",
    "name": "Earnings calls",
    "description": "Transcripts and guidance",
-   "detail": "Earnings call transcripts with speaker attribution, the analyst Q&A, and extracted guidance and notable quotes. Without a ticker it lists every transcribed call as they land.",
+   "detail": "Earnings call transcripts with speaker attribution, the analyst Q&A, and guidance and notable quotes. Without a ticker it lists new calls as they land.",
    "category": "research",
    "arg": "NVDA",
    "access": "pro",
@@ -618,7 +642,7 @@
    "code": "NI",
    "name": "Topic news",
    "description": "News by topic code or sector",
-   "detail": "Market news by topic code (MNA, CB, ENERGY, REG, CRYPTO, EARN, IPO) or by sector. LTR lists public fund and investor letters as links to the publisher's page.",
+   "detail": "Market news by topic code (MNA, CB, ENERGY, METALS, REG, CRYPTO, EARN, IPO) or by sector. LTR lists public fund and investor letters as links to the publisher's page.",
    "category": "news",
    "arg": "ENERGY",
    "shot": "https://gloom.sh/screenshots/fn/NI.png",
@@ -695,7 +719,7 @@
    "code": "MOST",
    "name": "Market movers",
    "description": "Gainers, losers, pre-market, gaps",
-   "detail": "Today's top gainers, losers, most active and trending tickers with price, change, volume against average and market cap. Pro adds pre-market and after-hours movers and the gaps at the open.",
+   "detail": "Today's top gainers, losers, most active and trending tickers with price, change, volume against average and market cap, and the pre-market and after-hours movers. Pro adds the gaps at the open.",
    "category": "markets",
    "shot": "https://gloom.sh/screenshots/fn/MOST.png",
    "lesson": "/academy/macro-markets-and-news/markets/movers-highs-halts"
@@ -763,6 +787,13 @@
    "category": "markets",
    "shot": "https://gloom.sh/screenshots/fn/CRYP.png",
    "lesson": "/academy/crypto-and-prediction-markets/crypto-from-zero"
+  },
+  {
+   "code": "ETFF",
+   "name": "Crypto ETF flows",
+   "description": "Daily spot bitcoin and ether ETF flows",
+   "detail": "Daily net flows of the US spot bitcoin and ether ETFs, fund by fund in US$ millions, as Farside Investors publishes them: the last 5 and 20 days, the running total since launch, and the funds the newest day still waits on.",
+   "category": "markets"
   },
   {
    "code": "PERP",
@@ -836,7 +867,7 @@
    "code": "GPU",
    "name": "GPU Rental Prices",
    "description": "GPU rental rates and asks",
-   "detail": "What it costs to rent a GPU by the hour: published prices, spot rates and marketplace asks in USD per GPU-hour, with history and related equities. Pro shows the full board; Free shows the three latest rows.",
+   "detail": "What it costs to rent a GPU by the hour: published prices, spot rates and marketplace asks in USD per GPU-hour, with history and related equities. Pro shows the full board; Free shows a three-row sample led by H100, B200 and H200.",
    "category": "markets",
    "arg": "H100",
    "access": "pro",
@@ -1000,6 +1031,13 @@
    "detail": "A live count of stocks printing new session highs and lows over 30-second, one-minute, and five-minute windows. Real-time on Pro, 15-minute delayed on Free.",
    "category": "markets",
    "lesson": "/academy/macro-markets-and-news/markets/movers-highs-halts"
+  },
+  {
+   "code": "SCAN",
+   "name": "Live scanner",
+   "description": "Your own intraday stock scan",
+   "detail": "Scan all US stocks, an index, a sector or a watchlist for your own conditions: a move over the last minutes, volume against its usual pace, a new session high or low, a VWAP cross or a gap, above price, market cap and volume floors. Matches refresh through the session and new ones can alert. Real-time on Pro, 15-minute delayed on Free.",
+   "category": "markets"
   },
   {
    "code": "FLOW",
@@ -1684,15 +1722,15 @@
  "pages": [
   {
    "slug": "getting-started",
-   "title": "Install Gloomberb: Mac, Windows, Linux, TUI",
-   "lead": "Install the Gloomberb desktop app on Mac or Windows, or run it in a terminal with one command. Then update it and confirm it runs.",
+   "title": "Install Gloom: Mac, Windows, Linux, TUI",
+   "lead": "Install the Gloom desktop app on Mac or Windows, or run it in a terminal with one command. Then update it and confirm it runs.",
    "category": "Start here",
    "tags": [
     "install",
     "desktop",
     "tui"
    ],
-   "updatedAt": "2026-10-15",
+   "updatedAt": "2026-10-25",
    "blocks": [
     {
      "type": "heading",
@@ -1701,7 +1739,7 @@
     },
     {
      "type": "paragraph",
-     "text": "Either command installs the desktop app and the `gloomberb` terminal command."
+     "text": "Either command installs the desktop app and the `gloom` terminal command."
     },
     {
      "type": "code",
@@ -1726,7 +1764,7 @@
     },
     {
      "type": "paragraph",
-     "text": "Terminal UI only; Ghostty, Kitty, or WezTerm render charts best. Installs `gloomberb` into `~/.local/bin`."
+     "text": "Terminal UI only; Ghostty, Kitty, or WezTerm render charts best. Installs `gloom` into `~/.local/bin`."
     },
     {
      "type": "code",
@@ -1739,7 +1777,7 @@
     },
     {
      "type": "paragraph",
-     "text": "The [desktop installer](/download/desktop), about 280 MB, installs the app and the `gloomberb` command for your user, with no admin rights. It is not code-signed yet, so SmartScreen may stop it:"
+     "text": "The [desktop installer](/download/desktop), about 280 MB, installs the app and the `gloom` command for your user, with no admin rights. It is not code-signed yet, so SmartScreen may stop it:"
     },
     {
      "type": "list",
@@ -1757,10 +1795,10 @@
     {
      "type": "list",
      "items": [
-      "**Terminal:** the installer adds `gloomberb` to your PATH, so open a new terminal window. PowerShell works.",
+      "**Terminal:** the installer adds `gloom` to your PATH, so open a new terminal window. PowerShell works.",
       "**Charts:** Windows Terminal has no Kitty graphics, so terminal charts draw as text. The desktop app draws them in full.",
-      "**Data:** `%USERPROFILE%\\.gloomberb`, printed by `gloomberb version`. `GLOOMBERB_HOME` moves it.",
-      "**Git and Bun:** Bun ships with the app. Git is needed only to install plugins.",
+      "**Data:** `%USERPROFILE%\\.gloomberb`, printed by `gloom version`. `GLOOMBERB_HOME` moves it.",
+      "**Git and Bun:** Bun ships with the app; Git does not. Some official plugins (TV, Substack, Interactive Brokers, IBKR Gateway, Public, Robinhood, SimpleFIN, Polls, Prediction Markets, BYOK AI) install from GitHub and need [Git for Windows](https://git-scm.com/download/win). Without it Gloom starts without them, says so, and `gloom doctor` names them.",
       "**Versions:** Windows 11 x64. Windows 10 and ARM PCs (x64 emulation) are untested."
      ]
     },
@@ -1792,11 +1830,11 @@
     },
     {
      "type": "code",
-     "code": "gloomberb\ngloomberb version\ngloomberb doctor"
+     "code": "gloom\ngloom version\ngloom doctor"
     },
     {
      "type": "paragraph",
-     "text": "`gloomberb` opens the terminal UI. `version` prints the data folder, and `doctor` checks that config, the cache database, plugins, and capabilities load."
+     "text": "`gloom` opens the terminal UI. `version` prints the data folder, and `doctor` checks that config, the cache database, plugins, and capabilities load."
     },
     {
      "type": "heading",
@@ -1829,17 +1867,21 @@
      ]
     },
     {
+     "type": "paragraph",
+     "text": "Installed before 0.18.4, when the command was `gloomberb`? Updating adds `gloom` beside it and `gloomberb` keeps working, with nothing to reinstall."
+    },
+    {
      "type": "heading",
      "level": 3,
      "text": "Release channels"
     },
     {
      "type": "paragraph",
-     "text": "The app updates from **stable** releases, the ones on the [changelog](/changelog). **Nightly** is a daily build of main that gets fixes first and can break. To switch, run **Release Channel** from the command bar (on the Mac, also **Gloomberb > Release Channel...**), or in a terminal:"
+     "text": "The app updates from **stable** releases, the ones on the [changelog](/changelog). **Nightly** is a daily build of main that gets fixes first and can break. To switch, run **Release Channel** from the command bar (on the Mac, also **Release Channel...** in the app menu), or in a terminal:"
     },
     {
      "type": "code",
-     "code": "gloomberb config set updates.channel nightly"
+     "code": "gloom config set updates.channel nightly"
     },
     {
      "type": "paragraph",
@@ -1853,7 +1895,7 @@
   },
   {
    "slug": "first-session",
-   "title": "Your first Gloomberb session",
+   "title": "Your first Gloom session",
    "lead": "Build a market workspace in the desktop app or terminal UI in ten minutes.",
    "category": "Start here",
    "tags": [
@@ -1894,7 +1936,7 @@
     {
      "type": "image",
      "src": "https://gloom.sh/screenshots/beginner-ticker-search.png",
-     "alt": "Ticker search showing Apple listings inside Gloomberb",
+     "alt": "Ticker search showing Apple listings inside Gloom",
      "caption": "Ticker search lists each match with its type and exchange."
     },
     {
@@ -1913,7 +1955,7 @@
     {
      "type": "image",
      "src": "https://gloom.sh/screenshots/beginner-command-bar.png",
-     "alt": "Gloomberb command bar showing the GP AAPL Graph Price command",
+     "alt": "Gloom command bar showing the GP AAPL Graph Price command",
      "caption": "The command bar accepts prefixes and searchable names."
     },
     {
@@ -1960,7 +2002,7 @@
     },
     {
      "type": "paragraph",
-     "text": "Run `gloomberb` and follow the same five steps. Commands open with `Ctrl+K` or `Ctrl+P`; `GL` arranges the panes. Chart not rendering? See [troubleshooting](/docs/troubleshooting#chart-or-terminal-graphics)."
+     "text": "Run `gloom` and follow the same five steps. Commands open with `Ctrl+K` or `Ctrl+P`; `GL` arranges the panes. Chart not rendering? See [troubleshooting](/docs/troubleshooting#chart-or-terminal-graphics)."
     },
     {
      "type": "heading",
@@ -1970,7 +2012,7 @@
     {
      "type": "image",
      "src": "https://gloom.sh/screenshots/beginner-workspace.png",
-     "alt": "Completed beginner Gloomberb workspace",
+     "alt": "Completed beginner Gloom workspace",
      "caption": "Company research, a price chart, and market movers."
     },
     {
@@ -2216,7 +2258,7 @@
     {
      "type": "image",
      "src": "https://gloom.sh/screenshots/MOST.png",
-     "alt": "Market movers pane in Gloomberb",
+     "alt": "Market movers pane in Gloom",
      "caption": "MOST groups gainers, losers, active names, and trending tickers."
     },
     {
@@ -2284,7 +2326,7 @@
     {
      "type": "image",
      "src": "https://gloom.sh/screenshots/RV.png",
-     "alt": "Relative valuation comparison in Gloomberb",
+     "alt": "Relative valuation comparison in Gloom",
      "caption": "RV compares valuation and operating metrics across a peer group."
     },
     {
@@ -2414,7 +2456,7 @@
     "reinvest",
     "DVD"
    ],
-   "updatedAt": "2026-10-17",
+   "updatedAt": "2026-10-25",
    "blocks": [
     {
      "type": "heading",
@@ -2427,7 +2469,7 @@
     },
     {
      "type": "code",
-     "code": "gloomberb portfolio create Core\ngloomberb portfolio position set Core VTI 40 280\ngloomberb portfolio position set Core BND 60 72\ngloomberb portfolio cash set Core 2000 USD"
+     "code": "gloom portfolio create Core\ngloom portfolio position set Core VTI 40 280\ngloom portfolio position set Core BND 60 72\ngloom portfolio cash set Core 2000 USD"
     },
     {
      "type": "heading",
@@ -2440,7 +2482,7 @@
     },
     {
      "type": "code",
-     "code": "gloomberb portfolio target set Core VTI 60\ngloomberb portfolio target set Core BND 35\ngloomberb portfolio target set Core CASH 5"
+     "code": "gloom portfolio target set Core VTI 60\ngloom portfolio target set Core BND 35\ngloom portfolio target set Core CASH 5"
     },
     {
      "type": "heading",
@@ -2449,7 +2491,7 @@
     },
     {
      "type": "paragraph",
-     "text": "`PF` and `gloomberb portfolio show Core` add four columns once targets are set:"
+     "text": "`PF` and `gloom portfolio show Core` add four columns once targets are set:"
     },
     {
      "type": "code",
@@ -2490,11 +2532,15 @@
      "text": "VTI is 11.1pp over its target, so the table says sell 6 shares. BND is 15.4pp under, so buy 47. Make both trades and every drift lands near 0pp."
     },
     {
+     "type": "paragraph",
+     "text": "To place them from Gloom, see [Trading](/docs/trading)."
+    },
+    {
      "type": "callout",
      "blocks": [
       {
        "type": "paragraph",
-       "text": "`gloomberb portfolio show Core --explain` prints these terms under the table. `gloomberb catalog glossary` lists every term the terminal uses."
+       "text": "`gloom portfolio show Core --explain` prints these terms under the table. `gloom catalog glossary` lists every term the terminal uses."
       }
      ]
     },
@@ -2505,7 +2551,7 @@
     },
     {
      "type": "paragraph",
-     "text": "`gloomberb portfolio show Core` also lists what each share or fund pays a year: its trailing twelve months of dividends per share times the shares you hold, in the portfolio's currency, and that as a yield on the holding's value. The TOTAL row gives the portfolio's income and its yield on the whole portfolio, cash included. A holding whose dividends could not be read shows `—`, and so does the total, never $0."
+     "text": "`gloom portfolio show Core` also lists what each share or fund pays a year: its trailing twelve months of dividends per share times the shares you hold, in the portfolio's currency, and that as a yield on the holding's value. The TOTAL row gives the portfolio's income and its yield on the whole portfolio, cash included. A holding whose dividends could not be read shows `—`, and so does the total, never $0."
     },
     {
      "type": "paragraph",
@@ -2513,7 +2559,7 @@
     },
     {
      "type": "code",
-     "code": "gloomberb portfolio show Core --drip --years 3 --withholding 15"
+     "code": "gloom portfolio show Core --drip --years 3 --withholding 15"
     },
     {
      "type": "paragraph",
@@ -2521,7 +2567,7 @@
     },
     {
      "type": "paragraph",
-     "text": "To compare payers before you buy, rank them by yield with payout and growth: `gloomberb fn DVD KO PEP JNJ`."
+     "text": "To compare payers before you buy, rank them by yield with payout and growth: `gloom fn DVD KO PEP JNJ`."
     },
     {
      "type": "details",
@@ -2542,6 +2588,226 @@
     {
      "type": "paragraph",
      "text": "Related: [PF](/docs/functions#pf), [CLI](/docs/cli-functions#portfolios-and-notes). Methodology: [dividend income and DRIP](https://github.com/gloom-sh/gloomberb/blob/main/docs/research-data.md#portfolio-income-and-drip)."
+    }
+   ]
+  },
+  {
+   "slug": "trading",
+   "title": "Trading",
+   "lead": "Place, change and cancel orders at your broker from one ticket beside the chart.",
+   "category": "Start here",
+   "tags": [
+    "trading",
+    "order ticket",
+    "broker",
+    "orders",
+    "ORD",
+    "BUY",
+    "SELL",
+    "Aries",
+    "Interactive Brokers",
+    "simulation",
+    "spreads",
+    "OSA",
+    "bracket",
+    "OCO",
+    "trailing stop"
+   ],
+   "updatedAt": "2026-10-25",
+   "blocks": [
+    {
+     "type": "image",
+     "src": "https://gloom.sh/screenshots/trading-ticket.png",
+     "alt": "Gloom's order ticket beside an AAPL chart, on a simulation account",
+     "caption": "A simulation account: draft limit, working stop and average cost on the chart."
+    },
+    {
+     "type": "heading",
+     "level": 2,
+     "text": "Brokers that trade"
+    },
+    {
+     "type": "table",
+     "headers": [
+      "Broker",
+      "Trades through"
+     ],
+     "rows": [
+      [
+       "[Aries](/plugins/aries)",
+       "This ticket, for stocks, ETFs, options and spreads"
+      ],
+      [
+       "[Interactive Brokers](/plugins/ibkr-gateway)",
+       "The IBKR Gateway plugin's own Trade tab, with Gateway or TWS running"
+      ]
+     ]
+    },
+    {
+     "type": "paragraph",
+     "text": "Both need the desktop app or the terminal. To connect Aries:"
+    },
+    {
+     "type": "list",
+     "items": [
+      "Install **Aries** from Plugins (`PL`).",
+      "Open Brokers (`BR`), add **Aries**, press **Connect** and sign in to Aries in the browser.",
+      "Leave **Include accounts** on **Simulation only** for your first orders."
+     ],
+     "ordered": true
+    },
+    {
+     "type": "heading",
+     "level": 2,
+     "text": "Open the ticket"
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Chart:** in a ticker's research pane, press `t` on the Chart tab, or open the Trade tab.",
+      "**Command bar:** `BUY AAPL 10`, or `SELL AAPL 10 350` with a limit price.",
+      "**Options:** `t` on a contract in `OMON`, or on a spread in `OSA` to trade it as one order."
+     ]
+    },
+    {
+     "type": "heading",
+     "level": 2,
+     "text": "Order types"
+    },
+    {
+     "type": "paragraph",
+     "text": "Aries takes market, limit, stop and stop limit (`1` to `4`), and spreads at a net debit or credit."
+    },
+    {
+     "type": "paragraph",
+     "text": "Take profit / stop loss, OCO pairs and trailing stops show only for a broker that runs them, which Aries does not."
+    },
+    {
+     "type": "heading",
+     "level": 2,
+     "text": "Trade from the chart"
+    },
+    {
+     "type": "list",
+     "items": [
+      "Press **Chart** beside a price (`c`), then click the chart to set it.",
+      "Drag a dashed draft line to move that price.",
+      "Drag a working order's line to load the change into the ticket."
+     ]
+    },
+    {
+     "type": "paragraph",
+     "text": "Nothing reaches the broker from the chart: every change goes through review."
+    },
+    {
+     "type": "heading",
+     "level": 2,
+     "text": "Safety"
+    },
+    {
+     "type": "list",
+     "items": [
+      "A profile trades only with **Enable trading** on, which asks first.",
+      "Every order gets a preview of its cost and fees from the broker first.",
+      "Accounts are marked **SIM** or **LIVE**. A live order waits until you type its symbol.",
+      "Simulation accounts can skip the review: untick **Confirm orders**."
+     ]
+    },
+    {
+     "type": "heading",
+     "level": 2,
+     "text": "Orders and fills"
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Under the ticket:** open orders, updated live, with edit and cancel.",
+      "**On the chart:** working orders and your average cost.",
+      "**`ORD`:** orders and fills for any trading account.",
+      "**Fills:** a notification, even with no ticket open, and positions sync to the portfolio."
+     ]
+    },
+    {
+     "type": "details",
+     "summary": "Keys in the ticket",
+     "blocks": [
+      {
+       "type": "table",
+       "headers": [
+        "Key",
+        "Does"
+       ],
+       "rows": [
+        [
+         "`b` / `s`",
+         "Buy or sell"
+        ],
+        [
+         "`1` to `4`",
+         "Market, limit, stop, stop limit"
+        ],
+        [
+         "`5` `6` `7`",
+         "25%, 50% or the most you can trade"
+        ],
+        [
+         "`8` `9` `0`",
+         "Bid, mid or ask as the price"
+        ],
+        [
+         "`p`",
+         "Last as the price"
+        ],
+        [
+         "`c`",
+         "Pick the price on the chart (`Esc` keeps the old one)"
+        ],
+        [
+         "`t` / `a`",
+         "Time in force, account"
+        ],
+        [
+         "`r` / `o`",
+         "Review, open orders"
+        ],
+        [
+         "`F6`",
+         "Move between chart and ticket"
+        ],
+        [
+         "`<` / `>`",
+         "Widen or narrow the ticket"
+        ],
+        [
+         "`Esc`",
+         "Close the ticket"
+        ]
+       ]
+      },
+      {
+       "type": "paragraph",
+       "text": "In `ORD`, `m` changes the selected order and `c` cancels it."
+      }
+     ]
+    },
+    {
+     "type": "details",
+     "summary": "Fine print",
+     "blocks": [
+      {
+       "type": "list",
+       "items": [
+        "Aries takes Day, Good til cancelled, Immediate or cancel, Fill or kill, At the opening and At the close for stocks, plus extended hours on live accounts. Options and spreads take Day or Good til cancelled.",
+        "Selling more than you hold is refused: Aries takes no short sales.",
+        "One-click simulation orders still get a preview, and a warning brings the review back.",
+        "Cancelling asks first, and the order can still fill before the broker confirms.",
+        "While the broker's stream is down, Gloom polls for quotes and orders instead.",
+        "Spreads take 2 to 4 legs and have no line to drag. A change keeps the legs: quantity or net price only.",
+        "In a pane under about 900 px wide (100 columns in the terminal), the ticket takes the whole pane.",
+        "Brokers turns trading off for a profile at any time."
+       ]
+      }
+     ]
     }
    ]
   },
@@ -2598,14 +2864,14 @@
       ],
       [
        "Headless",
-       "`gloomberb ai providers`, `gloomberb ai ask`",
+       "`gloom ai providers`, `gloom ai ask`",
        "Provider checks and one-off prompts. See [CLI](/docs/cli-functions)."
       ]
      ]
     },
     {
      "type": "paragraph",
-     "text": "The AI screener, Ask AI tab, `AGENT` and `gloomberb ai` need the [BYOK AI plugin](/plugins/byok-ai) (`gloomberb install gloom-sh/gloom-byok-ai`), terminal and desktop only."
+     "text": "The AI screener, Ask AI tab, `AGENT` and `gloom ai` need the [BYOK AI plugin](/plugins/byok-ai) (`gloom install gloom-sh/gloom-byok-ai`), terminal and desktop only."
     },
     {
      "type": "paragraph",
@@ -2680,11 +2946,11 @@
      "rows": [
       [
        "Will not launch",
-       "`gloomberb version`, then `gloomberb doctor`."
+       "`gloom version`, then `gloom doctor`."
       ],
       [
        "Command missing",
-       "`HELP`, then `gloomberb plugin list`."
+       "`HELP`, then `gloom plugin list`."
       ],
       [
        "Pane blank",
@@ -2715,7 +2981,7 @@
      "type": "list",
      "items": [
       "`Bad CPU type in executable` on macOS: an Intel Mac running the Apple Silicon app. Delete `/Applications/Gloomberb.app` and rerun `curl -fsSL gloom.sh/install | bash` for the Intel terminal build.",
-      "`gloomberb doctor` shows runtime errors.",
+      "`gloom doctor` shows runtime errors.",
       "Update with the same method you installed with. See [Install and update](/docs/getting-started)."
      ]
     },
@@ -2728,8 +2994,8 @@
      "type": "list",
      "items": [
       "Commands: `Cmd/Ctrl+K` or `Ctrl+P`. Backtick is tickers only.",
-      "Search the command name if you forgot the prefix, or `HELP` in the app and `gloomberb help` in a shell.",
-      "Plugin command: `gloomberb plugin list`. Plugin missing: `gloomberb plugin doctor <name-or-path>`, see [Plugins](/docs/plugins).",
+      "Search the command name if you forgot the prefix, or `HELP` in the app and `gloom help` in a shell.",
+      "Plugin command: `gloom plugin list`. Plugin missing: `gloom plugin doctor <name-or-path>`, see [Plugins](/docs/plugins).",
       "Some commands need a ticker: `GP AAPL`, not `GP`.",
       "Not sure what a pane shows? `F1` opens its help card."
      ]
@@ -2753,7 +3019,7 @@
      "items": [
       "Wait for loading to finish, then `r`.",
       "Read the status: delayed, stale, error, or auth.",
-      "`gloomberb provider status` lists enabled providers.",
+      "`gloom provider status` lists enabled providers.",
       "Check the pane supports the instrument. SEC filings cover supported US securities only.",
       "Hosted panes may need login, verification, or an entitlement."
      ]
@@ -3044,7 +3310,7 @@
     },
     {
      "type": "paragraph",
-     "text": "Turn reports off with `Crash Reports` or `Usage Counts` in the command bar, or `gloomberb config set telemetry.crashReports false` and `telemetry.usage false`. `DO_NOT_TRACK=1` turns both off."
+     "text": "Turn reports off with `Crash Reports` or `Usage Counts` in the command bar, or `gloom config set telemetry.crashReports false` and `telemetry.usage false`. `DO_NOT_TRACK=1` turns both off."
     }
    ]
   },
@@ -3256,7 +3522,7 @@
     },
     {
      "type": "paragraph",
-     "text": "CLI `gloomberb fn KPIS NVDA`. MCP `company.kpis`, `company.guidance`. A paid API serves both in [Gloom Datasets](/docs/datasets). Related: [`GUID`](/docs/functions#guid), [`EM`](/docs/functions#em)."
+     "text": "CLI `gloom fn KPIS NVDA`. MCP `company.kpis`, `company.guidance`. A paid API serves both in [Gloom Datasets](/docs/datasets). Related: [`GUID`](/docs/functions#guid), [`EM`](/docs/functions#em)."
     }
    ]
   },
@@ -3354,7 +3620,7 @@
     },
     {
      "type": "paragraph",
-     "text": "CLI `gloomberb fn CRDOC FICO`. MCP `credit.documents`, `credit.instrument`, `credit.screen`. Related: [`DDIS`](/docs/functions#ddis), [Catalysts](/docs/catalysts)."
+     "text": "CLI `gloom fn CRDOC FICO`. MCP `credit.documents`, `credit.instrument`, `credit.screen`. Related: [`DDIS`](/docs/functions#ddis), [Catalysts](/docs/catalysts)."
     }
    ]
   },
@@ -3449,7 +3715,7 @@
     },
     {
      "type": "paragraph",
-     "text": "CLI `gloomberb fn CATL PFE`. MCP `market.catalysts`, `company.litigation`, `catalysts.event`, `catalysts.changes`. Related: [Company KPIs](/docs/company-kpis)."
+     "text": "CLI `gloom fn CATL PFE`. MCP `market.catalysts`, `company.litigation`, `catalysts.event`, `catalysts.changes`. Related: [Company KPIs](/docs/company-kpis)."
     }
    ]
   },
@@ -3570,7 +3836,7 @@
     },
     {
      "type": "paragraph",
-     "text": "CLI `gloomberb fn AWARDS LMT`. MCP `company.awards`, `company.award_evidence`. Related: [Supply chain and exposure](/docs/exposure), [`SEG`](/docs/functions#seg)."
+     "text": "CLI `gloom fn AWARDS LMT`. MCP `company.awards`, `company.award_evidence`. Related: [Supply chain and exposure](/docs/exposure), [`SEG`](/docs/functions#seg)."
     }
    ]
   },
@@ -3677,7 +3943,7 @@
     },
     {
      "type": "paragraph",
-     "text": "CLI `gloomberb catalog EXPO` lists the options. MCP `portfolio.exposure` (`holdings`, `depth`, `cashWeight`, `scenario`) and `company.supply_chain_graph`, `company.supply_chain_paths`, `company.supply_chain_evidence`. Related: [Government awards](/docs/government-awards)."
+     "text": "CLI `gloom catalog EXPO` lists the options. MCP `portfolio.exposure` (`holdings`, `depth`, `cashWeight`, `scenario`) and `company.supply_chain_graph`, `company.supply_chain_paths`, `company.supply_chain_evidence`. Related: [Government awards](/docs/government-awards)."
     }
    ]
   },
@@ -3782,7 +4048,7 @@
     },
     {
      "type": "paragraph",
-     "text": "CLI `gloomberb fn JOBS NVDA`. MCP `company.hiring`, `market.hiring_movers`, `hiring.momentum`, `apps.attention`, `apps.rank_history`. Related: [Research attention](/docs/attention)."
+     "text": "CLI `gloom fn JOBS NVDA`. MCP `company.hiring`, `market.hiring_movers`, `hiring.momentum`, `apps.attention`, `apps.rank_history`. Related: [Research attention](/docs/attention)."
     }
    ]
   },
@@ -3890,7 +4156,7 @@
     },
     {
      "type": "paragraph",
-     "text": "Contributing is a separate opt-in setting, off by default. Toggle **Attention Counts** in Settings or with `gloomberb config set telemetry.attention true`. See the [Privacy Policy](/privacy). MCP `market.attention`."
+     "text": "Contributing is a separate opt-in setting, off by default. Toggle **Attention Counts** in Settings or with `gloom config set telemetry.attention true`. See the [Privacy Policy](/privacy). MCP `market.attention`."
     }
    ]
   },
@@ -3994,7 +4260,7 @@
     },
     {
      "type": "paragraph",
-     "text": "Source: U.S. Bureau of Labor Statistics. CLI `gloomberb fn CPI shelter`. Related: [Oil and gas inventories](/docs/energy-inventories), [`ECST`](/docs/functions#ecst)."
+     "text": "Source: U.S. Bureau of Labor Statistics. CLI `gloom fn CPI shelter`. Related: [Oil and gas inventories](/docs/energy-inventories), [`ECST`](/docs/functions#ecst)."
     }
    ]
   },
@@ -4013,7 +4279,7 @@
     "storage",
     "commodities"
    ],
-   "updatedAt": "2026-10-07",
+   "updatedAt": "2026-10-23",
    "blocks": [
     {
      "type": "heading",
@@ -4063,7 +4329,7 @@
       ],
       [
        "Vs 1Y",
-       "Change on the same week a year ago"
+       "Change against a year ago"
       ],
       [
        "Vs 5Y",
@@ -4086,7 +4352,7 @@
     },
     {
      "type": "paragraph",
-     "text": "Free on every plan, signed in or not. Petroleum updates Wednesdays and gas Thursdays at 10:30 a.m. Eastern, and the new week shows within minutes."
+     "text": "Free on every plan, signed in or not. Petroleum updates Wednesdays and gas Thursdays at 10:30 a.m. Eastern, and the new week shows within minutes. Before a gas release, the Gas Storage tab's header gives the economic calendar's consensus and the prior week's change."
     },
     {
      "type": "heading",
@@ -4096,12 +4362,14 @@
     {
      "type": "list",
      "items": [
-      "The five-year range uses the five years before the current one, read on the same calendar day. A series with less history says so."
+      "Gas storage's Vs 1Y and Vs 5Y are the figures the EIA prints in its weekly storage report: its year-ago level and its five-year average (2021-25 in 2026). They match the report to the tenth, and the footer says so. Until the EIA's figures for a new week are in, they are read from the weekly history instead.",
+      "Petroleum's year ago is the published week nearest the same date, and its five-year average uses the five years before the current one, read on the same calendar day.",
+      "The five-year range (low, high and where the level sits) is always read from the weekly history. A series with less history says so."
      ]
     },
     {
      "type": "paragraph",
-     "text": "Source: U.S. Energy Information Administration. CLI `gloomberb fn DOE --tab gas`. Related: [Consumer prices](/docs/consumer-prices), [`CTM`](/docs/functions#ctm)."
+     "text": "Source: U.S. Energy Information Administration. CLI `gloom fn DOE --tab gas`. Related: [Consumer prices](/docs/consumer-prices), [`CTM`](/docs/functions#ctm)."
     }
    ]
   },
@@ -4204,7 +4472,7 @@
     },
     {
      "type": "paragraph",
-     "text": "CLI `gloomberb fn PERP BTC`. MCP `perps.board`, `perps.history`, `perps.rankings`, `perps.compare`. Related: [`FUT`](/docs/functions#fut), [`CRYP`](/docs/functions#cryp)."
+     "text": "CLI `gloom fn PERP BTC`. MCP `perps.board`, `perps.history`, `perps.rankings`, `perps.compare`. Related: [`FUT`](/docs/functions#fut), [`CRYP`](/docs/functions#cryp)."
     }
    ]
   },
@@ -4316,7 +4584,7 @@
     },
     {
      "type": "paragraph",
-     "text": "Pro unlocks the full board, history and Changes. Free, signed in or not, shows the three latest rows. Asks and AWS spot update hourly, other rates every 6 to 24 hours."
+     "text": "Pro unlocks the full board, history and Changes. Free, signed in or not, shows a three-row sample led by H100, B200 and H200. Asks and AWS spot update hourly, other rates every 6 to 24 hours."
     },
     {
      "type": "paragraph",
@@ -4341,7 +4609,7 @@
     },
     {
      "type": "paragraph",
-     "text": "CLI `gloomberb fn GPU H100`. MCP `gpu.board`, `gpu.history`, `gpu.changes`. Related: [Power and grid](/docs/power)."
+     "text": "CLI `gloom fn GPU H100`. MCP `gpu.board`, `gpu.history`, `gpu.changes`. Related: [Power and grid](/docs/power)."
     }
    ]
   },
@@ -4468,7 +4736,7 @@
     "call wall",
     "put wall"
    ],
-   "updatedAt": "2026-10-16",
+   "updatedAt": "2026-10-23",
    "blocks": [
     {
      "type": "heading",
@@ -4493,12 +4761,16 @@
       [
        "`OPX SPX`",
        "The S&P 500 index with its SPX and SPXW options"
+      ],
+      [
+       "`OPX BTC-USD`",
+       "Deribit's BTC options (`ETH-USD` for ETH)"
       ]
      ]
     },
     {
      "type": "paragraph",
-     "text": "NDX and RUT options are not covered; QQQ and IWM follow the same indexes."
+     "text": "NDX and RUT options are not covered; QQQ and IWM follow the same indexes. Among coins only BTC and ETH have listed options; bitcoin-linked US funds such as IBIT list their own."
     },
     {
      "type": "heading",
@@ -4609,6 +4881,44 @@
     {
      "type": "heading",
      "level": 2,
+     "text": "BTC and ETH options"
+    },
+    {
+     "type": "paragraph",
+     "text": "`OPX BTC-USD`, `GEX ETH-USD` and `OVDV BTC-USD` read Deribit's options. In the command bar and in panes, a bare `BTC` or `ETH` is the US fund with that ticker, as everywhere else, so type `BTC-USD OPX` for the coin. Only the CLI's `gloomberb fn` and `gloomberb shot` read a bare `BTC` or `ETH` as the coin for OPX, GEX and OVDV, with a note; add `--exchange ARCA` for the fund."
+    },
+    {
+     "type": "table",
+     "headers": [
+      "Figure",
+      "On Deribit"
+     ],
+     "rows": [
+      [
+       "Open interest",
+       "Live, in coins: one contract is 1 BTC or 1 ETH"
+      ],
+      [
+       "Expiry",
+       "08:00 UTC on the date named, against the index averaged over the 30 minutes before"
+      ],
+      [
+       "Max pain and Payout $",
+       "As for US options, with a contract size of one coin; Payout $ is in dollars"
+      ],
+      [
+       "Gamma",
+       "Deribit's mark IVs, Black-76 at each expiry's forward to 08:00 UTC; the flip and walls are read against the index"
+      ],
+      [
+       "DVOL",
+       "Deribit's 30-day implied volatility index, shown in OVDV and charted as `CAP:volatility:dvol-btc`"
+      ]
+     ]
+    },
+    {
+     "type": "heading",
+     "level": 2,
      "text": "How fresh it is"
     },
     {
@@ -4643,7 +4953,7 @@
     },
     {
      "type": "paragraph",
-     "text": "`gloomberb fn GEX SPY --csv` opens with a summary: spot and quote times, the open interest session, the unit, net GEX, the dealer range, the flip and both walls. Puts export negative, so call and put GEX add up to net. `--json` has the same under `metadata.gamma`."
+     "text": "`gloom fn GEX SPY --csv` opens with a summary: spot and quote times, the open interest session, the unit, net GEX, the dealer range, the flip and both walls. Puts export negative, so call and put GEX add up to net. `--json` has the same under `metadata.gamma`."
     },
     {
      "type": "heading",
@@ -4682,7 +4992,7 @@
     },
     {
      "type": "paragraph",
-     "text": "**pro** needs Pro, **cloud** needs a Gloom Cloud account, and **plugin** installs with `PL` or `gloomberb install gloom-sh/<repo>`. [term.gloom.sh](https://term.gloom.sh) already has `POLL` and `PM`."
+     "text": "**pro** needs Pro, **cloud** needs a Gloom Cloud account, and **plugin** installs with `PL` or `gloom install gloom-sh/<repo>`. [term.gloom.sh](https://term.gloom.sh) already has `POLL` and `PM`."
     },
     {
      "type": "table",
@@ -4745,7 +5055,7 @@
    "blocks": [
     {
      "type": "paragraph",
-     "text": "`Cmd/Ctrl` is Cmd on a Mac outside the terminal, Ctrl everywhere else. Rebind keys in Help (`?`) or with `gloomberb config set keybindings.actions.<action> <keys>`."
+     "text": "`Cmd/Ctrl` is Cmd on a Mac outside the terminal, Ctrl everywhere else. Rebind keys in Help (`?`) or with `gloom config set keybindings.actions.<action> <keys>`."
     },
     {
      "type": "heading",
@@ -4988,7 +5298,7 @@
     },
     {
      "type": "paragraph",
-     "text": "`LANG` cycles languages. `LANG ja` (or `auto`, `en`, `es`, `zh-CN`, `zh-TW`, `ko`) sets one and saves it. `GLOOMBERB_LANG=ja gloomberb` sets it for one terminal launch."
+     "text": "`LANG` cycles languages. `LANG ja` (or `auto`, `en`, `es`, `zh-CN`, `zh-TW`, `ko`) sets one and saves it. `GLOOMBERB_LANG=ja gloom` sets it for one terminal launch."
     }
    ]
   },
@@ -5032,11 +5342,11 @@
       ],
       [
        "CLI",
-       "`gloomberb config set theme colorblind`. A name works too: `\"White Phosphor\"`."
+       "`gloom config set theme colorblind`. A name works too: `\"White Phosphor\"`."
       ],
       [
        "List them",
-       "`gloomberb config themes` (`--json` for scripts)"
+       "`gloom config themes` (`--json` for scripts)"
       ]
      ]
     },
@@ -5221,7 +5531,7 @@
   {
    "slug": "cli-functions",
    "title": "CLI and pane functions",
-   "lead": "Gloomberb from the shell: market data, local state, plugin capabilities, reports and screenshots of any function.",
+   "lead": "Gloom from the shell: market data, local state, plugin capabilities, reports and screenshots of any function.",
    "category": "Advanced",
    "tags": [
     "cli",
@@ -5233,11 +5543,11 @@
    "blocks": [
     {
      "type": "paragraph",
-     "text": "`gloomberb` alone, or `gloomberb launch-ui` from a script, opens the terminal UI. Every other command runs headless and prints a result."
+     "text": "`gloom` alone, or `gloom launch-ui` from a script, opens the terminal UI. Every other command runs headless and prints a result."
     },
     {
      "type": "paragraph",
-     "text": "`gloomberb help <command>` shows usage and examples. Plugins add commands of their own, such as `ai ask` from BYOK AI."
+     "text": "`gloom help <command>` shows usage and examples. Plugins add commands of their own, such as `ai ask` from BYOK AI."
     },
     {
      "type": "paragraph",
@@ -5348,7 +5658,7 @@
       ],
       [
        "`fred <series>`, `yield-curve`",
-       "FRED series (needs a Gloom Cloud sign-in), Treasury yields"
+       "FRED series, no sign-in (`fred --list` shows the set), Treasury yields"
       ],
       [
        "`provider-search <query>`",
@@ -5484,19 +5794,19 @@
     },
     {
      "type": "code",
-     "code": "gloomberb catalog chart\ngloomberb fn GP NVDA\ngloomberb fn 13F AAPL --view=ticker-holdings --json\ngloomberb shot QQ AAPL,MSFT,NVDA --output quotes.png\ngloomberb shot FA ASML --statement income --width 1400 --height 900"
+     "code": "gloom catalog chart\ngloom fn GP NVDA\ngloom fn 13F AAPL --view=ticker-holdings --json\ngloom shot QQ AAPL,MSFT,NVDA --output quotes.png\ngloom shot FA ASML --statement income --width 1400 --height 900"
     },
     {
      "type": "paragraph",
-     "text": "`gloomberb catalog <function>` lists a function's options. `shot` also takes `--tab <id>`. `shot` draws a function's options as its pane does: `gloomberb shot 13F 0001067983 --compare SPY` opens the fund's overlap with SPY. An option only the text report reads, such as `--limit`, fails `shot` with exit 1 and names the `fn` command that reads it, instead of saving the pane without it."
+     "text": "`gloom catalog <function>` lists a function's options. `shot` also takes `--tab <id>`. `shot` draws a function's options as its pane does: `gloom shot 13F 0001067983 --compare SPY` opens the fund's overlap with SPY. An option only the text report reads, such as `--limit`, fails `shot` with exit 1 and names the `fn` command that reads it, instead of saving the pane without it."
     },
     {
      "type": "paragraph",
-     "text": "A command exits 0 when it worked and 1 when it failed (bad input, no data found, a failed check); `gloomberb help` ends with the list. `shot` saves its PNG, prints the Reason line and still exits 0 when the pane drew an error, was empty, was still loading or was behind an access gate, so a script cannot tell that from a good capture. `shot --strict` exits 2 in those cases instead, with the PNG still saved and the Reason still printed."
+     "text": "A command exits 0 when it worked and 1 when it failed (bad input, no data found, a failed check); `gloom help` ends with the list. `shot` saves its PNG, prints the Reason line and still exits 0 when the pane drew an error, was empty, was still loading or was behind an access gate, so a script cannot tell that from a good capture. `shot --strict` exits 2 in those cases instead, with the PNG still saved and the Reason still printed."
     },
     {
      "type": "paragraph",
-     "text": "A function name nothing opens (`fn volsurf SPY`) fails with the functions closest to it by name, keyword and description, at most five, and `Search the catalog: gloomberb catalog volsurf`."
+     "text": "A function name nothing opens (`fn volsurf SPY`) fails with the functions closest to it by name, keyword and description, at most five, and `Search the catalog: gloom catalog volsurf`."
     },
     {
      "type": "paragraph",
@@ -5508,7 +5818,7 @@
     },
     {
      "type": "paragraph",
-     "text": "Times print in UTC. To see your own clock beside them, run `gloomberb config set timezone Asia/Tokyo` (any `Region/City` name; `none` turns it off): `Sat 10 Oct 2026 16:56 UTC (Sun 11 Oct 01:56 Asia/Tokyo)`. A trading day keeps its market's date in every zone, and `--json` and `--csv` keep the raw values."
+     "text": "Times print in UTC. To see your own clock beside them, run `gloom config set timezone Asia/Tokyo` (any `Region/City` name; `none` turns it off): `Sat 10 Oct 2026 16:56 UTC (Sun 11 Oct 01:56 Asia/Tokyo)`. A trading day keeps its market's date in every zone, and `--json` and `--csv` keep the raw values."
     },
     {
      "type": "heading",
@@ -5517,14 +5827,14 @@
     },
     {
      "type": "code",
-     "code": "gloomberb api list --json\ngloomberb api get <capability-id>\ngloomberb api invoke asset-data.gloomberb-cloud.getQuote '{\"ticker\":\"AAPL\",\"exchange\":\"NASDAQ\"}' --json\ngloomberb api subscribe <capability.operation> [json] --limit 10"
+     "code": "gloom api list --json\ngloom api get <capability-id>\ngloom api invoke asset-data.gloomberb-cloud.getQuote '{\"ticker\":\"AAPL\",\"exchange\":\"NASDAQ\"}' --json\ngloom api subscribe <capability.operation> [json] --limit 10"
     }
    ]
   },
   {
    "slug": "agents",
    "title": "Agents and remote control",
-   "lead": "Use the semantic remote API to inspect and control a running Gloomberb desktop or TUI session.",
+   "lead": "Use the semantic remote API to inspect and control a running Gloom desktop or TUI session.",
    "category": "Advanced",
    "tags": [
     "agents",
@@ -5541,7 +5851,7 @@
     },
     {
      "type": "paragraph",
-     "text": "The remote API drives a running Gloomberb app. Agents and scripts read semantic state, open panes, navigate tickers, arrange layouts, and call plugin capabilities, with no screen coordinates."
+     "text": "The remote API drives a running Gloom app. Agents and scripts read semantic state, open panes, navigate tickers, arrange layouts, and call plugin capabilities, with no screen coordinates."
     },
     {
      "type": "paragraph",
@@ -5619,31 +5929,31 @@
      ],
      "rows": [
       [
-       "`gloomberb remote help`",
+       "`gloom remote help`",
        "Agent-focused usage from the running app."
       ],
       [
-       "`gloomberb remote schema`",
+       "`gloom remote schema`",
        "Resource URIs, operations, request and response shapes."
       ],
       [
-       "`gloomberb remote get <resource>`",
+       "`gloom remote get <resource>`",
        "Read one resource."
       ],
       [
-       "`gloomberb remote call <operation> [json] [--dry-run]`",
+       "`gloom remote call <operation> [json] [--dry-run]`",
        "Invoke one operation."
       ],
       [
-       "`gloomberb remote patch <resource> <json-patch> [--expect-rev rev] [--dry-run]`",
+       "`gloom remote patch <resource> <json-patch> [--expect-rev rev] [--dry-run]`",
        "JSON Patch a mutable resource."
       ],
       [
-       "`gloomberb remote batch <json> [--dry-run]`",
+       "`gloom remote batch <json> [--dry-run]`",
        "Run a multi-step workflow."
       ],
       [
-       "`gloomberb remote watch <resource> [--interval ms] [--limit n]`",
+       "`gloom remote watch <resource> [--interval ms] [--limit n]`",
        "Poll for changes."
       ]
      ]
@@ -5663,7 +5973,7 @@
     },
     {
      "type": "code",
-     "code": "gloomberb remote get app://snapshot --app desktop --json\ngloomberb remote get app://pane-templates --app desktop --json\ngloomberb remote get ui://tree --app desktop --json"
+     "code": "gloom remote get app://snapshot --app desktop --json\ngloom remote get app://pane-templates --app desktop --json\ngloom remote get ui://tree --app desktop --json"
     },
     {
      "type": "paragraph",
@@ -5671,7 +5981,7 @@
     },
     {
      "type": "code",
-     "code": "gloomberb remote call pane.screenshot '{ \"paneId\": \"chart:main\" }' --app desktop --json"
+     "code": "gloom remote call pane.screenshot '{ \"paneId\": \"chart:main\" }' --app desktop --json"
     },
     {
      "type": "heading",
@@ -5684,7 +5994,7 @@
     },
     {
      "type": "code",
-     "code": "gloomberb remote call pane.createFromTemplate '{ \"templateId\": \"market-heatmap-pane\" }' --app desktop --json\ngloomberb remote call ticker.pin '{ \"symbol\": \"NVDA\", \"forceNewPane\": true }' --app desktop --json"
+     "code": "gloom remote call pane.createFromTemplate '{ \"templateId\": \"market-heatmap-pane\" }' --app desktop --json\ngloom remote call ticker.pin '{ \"symbol\": \"NVDA\", \"forceNewPane\": true }' --app desktop --json"
     },
     {
      "type": "paragraph",
@@ -5692,7 +6002,7 @@
     },
     {
      "type": "code",
-     "code": "gloomberb remote batch '{\n  \"type\": \"batch\",\n  \"include\": [\"panes\", \"commandBar\"],\n  \"requests\": [\n    { \"type\": \"call\", \"operation\": \"app.search\", \"input\": { \"mode\": \"ticker\", \"query\": \"NVDA\" } },\n    { \"type\": \"call\", \"operation\": \"commandBar.activateResult\", \"input\": { \"index\": 0 } }\n  ]\n}' --app desktop --json"
+     "code": "gloom remote batch '{\n  \"type\": \"batch\",\n  \"include\": [\"panes\", \"commandBar\"],\n  \"requests\": [\n    { \"type\": \"call\", \"operation\": \"app.search\", \"input\": { \"mode\": \"ticker\", \"query\": \"NVDA\" } },\n    { \"type\": \"call\", \"operation\": \"commandBar.activateResult\", \"input\": { \"index\": 0 } }\n  ]\n}' --app desktop --json"
     },
     {
      "type": "heading",
@@ -5701,7 +6011,7 @@
     },
     {
      "type": "code",
-     "code": "gloomberb remote call layout.setGrid '{ \"columns\": 2 }' --app desktop --json\ngloomberb remote call layout.focusRegion '{ \"region\": \"right\" }' --app desktop --json\ngloomberb remote call layout.closeFloating '{}' --app desktop --json"
+     "code": "gloom remote call layout.setGrid '{ \"columns\": 2 }' --app desktop --json\ngloom remote call layout.focusRegion '{ \"region\": \"right\" }' --app desktop --json\ngloom remote call layout.closeFloating '{}' --app desktop --json"
     },
     {
      "type": "paragraph",
@@ -5709,7 +6019,7 @@
     },
     {
      "type": "code",
-     "code": "gloomberb remote call app.switchPanel '{ \"panel\": \"right\" }' --app desktop --json"
+     "code": "gloom remote call app.switchPanel '{ \"panel\": \"right\" }' --app desktop --json"
     },
     {
      "type": "paragraph",
@@ -5726,7 +6036,7 @@
     },
     {
      "type": "code",
-     "code": "gloomberb remote get ui://tree --app desktop --json\ngloomberb remote call ui.invokeMatching '{ \"role\": \"button\", \"label\": \"Done\", \"action\": \"press\" }' --app desktop --json"
+     "code": "gloom remote get ui://tree --app desktop --json\ngloom remote call ui.invokeMatching '{ \"role\": \"button\", \"label\": \"Done\", \"action\": \"press\" }' --app desktop --json"
     },
     {
      "type": "paragraph",
@@ -6467,7 +6777,7 @@
   {
    "slug": "plugins",
    "title": "Plugins",
-   "lead": "Install, build, and publish Gloomberb plugins: panes, commands, CLI commands, data capabilities, and UI.",
+   "lead": "Install, build, and publish Gloom plugins: panes, commands, CLI commands, data capabilities, and UI.",
    "category": "Advanced",
    "tags": [
     "plugins",
@@ -6487,7 +6797,7 @@
     },
     {
      "type": "paragraph",
-     "text": "Import only from the `gloomberb/*` exports, never OpenTUI, Electrobun, DOM, or private Gloomberb source paths. Full API: [PLUGINS.md](https://github.com/gloom-sh/gloomberb/blob/main/PLUGINS.md)."
+     "text": "Import only from the `gloomberb/*` exports, never OpenTUI, Electrobun, DOM, or private Gloom source paths. Full API: [PLUGINS.md](https://github.com/gloom-sh/gloomberb/blob/main/PLUGINS.md)."
     },
     {
      "type": "heading",
@@ -6496,7 +6806,7 @@
     },
     {
      "type": "code",
-     "code": "gloomberb install user/repo\ngloomberb install https://github.com/user/repo\ngloomberb plugins\ngloomberb update\ngloomberb update my-plugin\ngloomberb remove my-plugin\ngloomberb plugin enable my-plugin\ngloomberb plugin disable my-plugin"
+     "code": "gloom install user/repo\ngloom install https://github.com/user/repo\ngloom plugins\ngloom update\ngloom update my-plugin\ngloom remove my-plugin\ngloom plugin enable my-plugin\ngloom plugin disable my-plugin"
     },
     {
      "type": "paragraph",
@@ -6508,12 +6818,12 @@
     },
     {
      "type": "paragraph",
-     "text": "Not loading? `gloomberb plugin doctor <name-or-path>` checks the entry, export, id, targets, hosts, and browser build, even for a plugin that failed to load."
+     "text": "Not loading? `gloom plugin doctor <name-or-path>` checks the entry, export, id, targets, hosts, and browser build, even for a plugin that failed to load."
     },
     {
      "type": "image",
      "src": "https://gloom.sh/screenshots/plugins-manager.png",
-     "alt": "Gloomberb plugin manager",
+     "alt": "Gloom plugin manager",
      "caption": "PL toggles first-party and installed plugins from the command bar."
     },
     {
@@ -6527,7 +6837,7 @@
     },
     {
      "type": "code",
-     "code": "const plugin = {\n  id: \"hello-gloom\",\n  name: \"Hello Gloom\",\n  version: \"0.1.0\",\n  description: \"A minimal Gloomberb plugin.\",\n  toggleable: true,\n\n  cliCommands: [\n    {\n      name: \"hello\",\n      description: \"Print a plugin-owned greeting\",\n      help: {\n        usage: [\"hello [name]\"],\n        examples: [\"hello Vince --json\"],\n      },\n      execute(args, ctx) {\n        ctx.printResult({ data: { greeting: `hello ${args[0] ?? \"gloom\"}` } });\n      },\n    },\n  ],\n\n  setup(ctx) {\n    ctx.registerCommand({\n      id: \"hello-gloom-command\",\n      label: \"Hello Gloom\",\n      description: \"Show a hello notification\",\n      keywords: [\"hello\", \"demo\"],\n      category: \"navigation\",\n      shortcut: \"HELLO\",\n      execute: () => {\n        ctx.notify({\n          body: \"Hello from your plugin.\",\n          type: \"success\",\n        });\n      },\n    });\n  },\n};\n\nexport default plugin;"
+     "code": "const plugin = {\n  id: \"hello-gloom\",\n  name: \"Hello Gloom\",\n  version: \"0.1.0\",\n  description: \"A minimal Gloom plugin.\",\n  toggleable: true,\n\n  cliCommands: [\n    {\n      name: \"hello\",\n      description: \"Print a plugin-owned greeting\",\n      help: {\n        usage: [\"hello [name]\"],\n        examples: [\"hello Vince --json\"],\n      },\n      execute(args, ctx) {\n        ctx.printResult({ data: { greeting: `hello ${args[0] ?? \"gloom\"}` } });\n      },\n    },\n  ],\n\n  setup(ctx) {\n    ctx.registerCommand({\n      id: \"hello-gloom-command\",\n      label: \"Hello Gloom\",\n      description: \"Show a hello notification\",\n      keywords: [\"hello\", \"demo\"],\n      category: \"navigation\",\n      shortcut: \"HELLO\",\n      execute: () => {\n        ctx.notify({\n          body: \"Hello from your plugin.\",\n          type: \"success\",\n        });\n      },\n    });\n  },\n};\n\nexport default plugin;"
     },
     {
      "type": "paragraph",
@@ -6535,11 +6845,11 @@
     },
     {
      "type": "code",
-     "code": "gloomberb plugin link ./hello-gloom\ngloomberb plugin doctor hello-gloom\ngloomberb hello Vince --json"
+     "code": "gloom plugin link ./hello-gloom\ngloom plugin doctor hello-gloom\ngloom hello Vince --json"
     },
     {
      "type": "paragraph",
-     "text": "Restart Gloomberb, then type `HELLO` in the command bar. For an interactive pane, copy [gloom-hackernews](https://github.com/gloom-sh/gloom-hackernews)."
+     "text": "Restart Gloom, then type `HELLO` in the command bar. For an interactive pane, copy [gloom-hackernews](https://github.com/gloom-sh/gloom-hackernews)."
     },
     {
      "type": "heading",
@@ -6596,7 +6906,7 @@
   {
    "slug": "news-api",
    "title": "News API",
-   "lead": "Use Gloomberb's standalone market-news API in your own financial product.",
+   "lead": "Use Gloom's standalone market-news API in your own financial product.",
    "category": "Advanced",
    "tags": [
     "news api",
@@ -6612,7 +6922,7 @@
     },
     {
      "type": "paragraph",
-     "text": "The News API is Gloomberb's market news for your own product, backend, model pipeline, or dashboard. It is not needed to use the app and is billed separately from [Gloom Cloud](/docs/cloud-and-data)."
+     "text": "The News API is Gloom's market news for your own product, backend, model pipeline, or dashboard. It is not needed to use the app and is billed separately from [Gloom Cloud](/docs/cloud-and-data)."
     },
     {
      "type": "paragraph",
@@ -6882,7 +7192,7 @@
     },
     {
      "type": "paragraph",
-     "text": "Gloom Datasets serves the data Gloom stores to your own systems over REST. It is a separate product with its own site at [datasets.gloom.sh](https://datasets.gloom.sh) and its own keys and plans, billed separately from [Gloom Cloud](/docs/cloud-and-data). The app does not need it."
+     "text": "Gloom Datasets serves the data Gloom stores to your own systems over REST. It is a separate product with its own [site](/datasets), keys and plans, billed separately from [Gloom Cloud](/docs/cloud-and-data). The app does not need it."
     },
     {
      "type": "paragraph",
@@ -6905,7 +7215,7 @@
     },
     {
      "type": "paragraph",
-     "text": "See the [full dataset reference](https://datasets.gloom.sh/docs) for routes, parameters, examples and credits."
+     "text": "See the [full dataset reference](/datasets/docs) for routes, parameters, examples and credits."
     },
     {
      "type": "paragraph",
@@ -6918,7 +7228,7 @@
     },
     {
      "type": "paragraph",
-     "text": "Gloom Datasets keys start with `gds_`. They come with a plan and are created in the [console](https://datasets.gloom.sh/console). Send one as `Authorization: Bearer gds_...` or `x-api-key`."
+     "text": "Gloom Datasets keys start with `gds_`. They come with a plan and are created in the [console](/datasets/console). Send one as `Authorization: Bearer gds_...` or `x-api-key`."
     },
     {
      "type": "paragraph",
@@ -6964,7 +7274,7 @@
     },
     {
      "type": "paragraph",
-     "text": "Credits, rate limits, usage rights and the founding offer (40% off Basic and Desk for 12 months, for the first 100 paid accounts until December 4, 2026) are on [Pricing](https://datasets.gloom.sh/pricing)."
+     "text": "Credits, rate limits, usage rights and the founding offer (40% off Basic and Desk for 12 months, for the first 100 paid accounts until December 4, 2026) are on [Pricing](/datasets/pricing)."
     },
     {
      "type": "heading",
@@ -6974,9 +7284,9 @@
     {
      "type": "list",
      "items": [
-      "[Quickstart](https://datasets.gloom.sh/docs/quickstart): a plan, a key, one call, then the same call from Python and TypeScript.",
-      "[API reference](https://datasets.gloom.sh/docs): datasets, routes, credits, errors and the OpenAPI document.",
-      "[Console](https://datasets.gloom.sh/console): account, billing, keys and usage."
+      "[Quickstart](/datasets/docs/quickstart): a plan, a key, one call, then the same call from Python and TypeScript.",
+      "[API reference](/datasets/docs): datasets, routes, credits, errors and the OpenAPI document.",
+      "[Console](/datasets/console): account, billing, keys and usage."
      ]
     }
    ]
@@ -7387,7 +7697,7 @@
    "title": "Mergers and acquisitions (MA)",
    "summary": "MA lists pending, rumored and closed takeover deals with their terms, their stage and, for listed targets, the arbitrage spread between the offer and the market price.",
    "chapter": "Fundamentals and earnings",
-   "minutes": 4
+   "minutes": 5
   },
   {
    "url": "/academy/compare-screen-follow-money/compare-and-screen/comparison-chart",

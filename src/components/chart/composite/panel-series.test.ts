@@ -39,6 +39,15 @@ describe("reuseResolvedSeriesIdentity", () => {
     expect(previous.points[1]).toBe(nextLast);
   });
 
+  test("a live tick that changes a formula's decimals is a new series, so the legend prints them", () => {
+    const start = new Date("2024-01-02T00:00:00.000Z");
+    const previous = { ...series("formula", "main"), valueDecimals: 4 };
+    previous.points = [{ date: start, observedAt: start, value: 9.9812 }];
+    const tick = new Date("2024-01-02T00:00:01.000Z");
+    const next: ResolvedSeries = { ...previous, valueDecimals: 2, points: [{ date: tick, observedAt: tick, value: 10.02 }] };
+    expect(reuseResolvedSeriesIdentity(previous, next)).toBe(next);
+  });
+
   test("reuses the list identity when every member is reused", () => {
     const a = series("a", "main");
     const first = [a];

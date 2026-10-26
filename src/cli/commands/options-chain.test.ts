@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import type { OptionContract, OptionsChain } from "../../types/financials";
 import { valueOption } from "../../plugins/builtin/shared/volatility";
 import {
+  chainHasFilledIv,
   chainWithModelFigures,
   formatExpiryList,
   formatOptionDeltaCell,
@@ -20,7 +21,7 @@ test("a missing expiry names the listed dates nearest the one asked for, in date
   const listed = ["2026-10-16", "2027-01-15", "2027-12-17", "2028-03-17", "2028-06-16", "2028-12-15", "2029-01-19"].map(at);
   const miss = missingExpiryMessage("AAPL", at("2028-01-21"), listed);
   expect(miss.message).toBe("no expiry 2028-01-21 for AAPL; available: 2027-12-17, 2028-03-17, 2028-06-16, 2028-12-15 (+3 more)");
-  expect(miss.details).toContain("gloomberb options AAPL");
+  expect(miss.details).toContain("gloom options AAPL");
 });
 
 test("a missing expiry says so when the chain lists none, and when the date is listed but empty", () => {
@@ -83,6 +84,33 @@ test("rows carry the pane's solved IV and signed delta, and nulls where none can
   for (const row of optionRows(chainWithModelFigures(expired, { spot: 100, now }))) expect([row.iv, row.delta]).toEqual([null, null]);
 });
 
+test("a strike with no two-sided quote to solve from has its IV marked filled, and the closing line says how IV was solved", () => {
+  const expiration = at("2027-01-15");
+  const now = Date.parse("2026-01-15T21:00:00Z");
+  const strikes = [90, 100, 110];
+  // Nobody bids the 90 put, the out-of-the-money side there: its volatility can only be read off the 100 strike.
+  const noBid = (put: OptionContract) => put.strike === 90 ? { ...put, bid: 0, ask: 0.05 } : put;
+  const chain: OptionsChain = {
+    underlyingSymbol: "XYZ", expirationDates: [expiration],
+    calls: strikes.map((strike) => contract("C", strike, expiration, 0.25)),
+    puts: strikes.map((strike) => noBid(contract("P", strike, expiration, 0.25))),
+  };
+  const valued = chainWithModelFigures(chain, { spot: 100, dividendYield: 0, now });
+  const rows = optionRows(valued);
+  const at90 = rows.filter((row) => row.strike === 90);
+  expect(at90.map((row) => row.ivSource)).toEqual(["filled", "filled"]);
+  expect(at90[0]!.iv).toBe(rows.find((row) => row.strike === 100)!.iv);
+  expect(rows.filter((row) => row.strike !== 90).map((row) => row.ivSource)).toEqual(["solved", "solved", "solved", "solved"]);
+  expect(formatOptionIvCell(0.0951, { ivSource: "filled" })).toBe("~9.5%");
+  expect(formatOptionIvCell(0.0951, { ivSource: "solved" })).toBe("9.5%");
+  expect(chainHasFilledIv(valued)).toBe(true);
+  expect(chainHasFilledIv(chainWithModelFigures({ ...chain, puts: chain.puts.map((put) => contract("P", put.strike, expiration, 0.25)) },
+    { spot: 100, dividendYield: 0, now }))).toBe(false);
+  expect(optionsBasisFootnote({ spot: null, dividendYield: 0, openInterest: null, ivFilled: true } as never)).not.toContain("IV solved");
+  const spot = { price: 100, basis: "close" as const, observedAt: now, valuationTime: now, session: undefined } as never;
+  expect(optionsBasisFootnote({ spot, dividendYield: 0, openInterest: null, ivFilled: true })).toContain("IV solved from quote mids, ~ filled from neighbouring strikes");
+});
+
 test("a chain from the close keeps the close's delta when the stock moves before the open, and says which spot it used", () => {
   // Quoted at Monday's close against a 100 close; Tuesday's pre-market print is 103.
   const closeAt = Date.parse("2026-10-12T19:59:59Z");
@@ -107,7 +135,7 @@ test("a chain from the close keeps the close's delta when the stock moves before
   expect(Math.abs(put.delta! - valueOption({ side: "put", spot: 103, strike: 95, daysToExpiry: days, rate: 0.04, volatility: put.iv!, dividendYield: 0 }).delta))
     .toBeGreaterThan(0.05);
   expect(optionsBasisFootnote({ spot, dividendYield: 0.0234, openInterest: { date: "2026-10-09", listedDate: "2026-10-09", compared: 4, matched: 4 } }))
-    .toBe("Greeks at spot 100.00 (close Mon 12 Oct 20:00 UTC), dividend yield 2.34%, rate 4% · OI as of Fri 9 Oct");
+    .toBe("Greeks at spot 100.00 (close Mon 12 Oct), dividend yield 2.34%, rate 4% · IV solved from quote mids · OI as of Fri 9 Oct");
   expect(optionsBasisFootnote({ spot: null, dividendYield: null, openInterest: { date: null, listedDate: "2026-10-09", compared: 35, matched: 17 } }))
     .toBe("OI date not published: the counts differ from OPX's 2026-10-09 counts on 18 of 35 contracts");
 });

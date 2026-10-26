@@ -14,6 +14,32 @@ History starts with retained observations; legacy daily counts are identified se
 
 Weekly additions, removals, net change and z-score appear as columns and figures once consecutive complete captures can give them; until then the tables show what the first capture observed. Signals read in tone: a surge green, a freeze red, a company still collecting quiet. Role-family shares in Mix draw as bars. APPS leaves out its seven-day columns and figures the same way until a week of captures exists, and a company's own apps do not repeat its ticker.
 
+### Moves
+
+Moves compares each covered company's new roles in the latest complete week (Monday to Sunday, UTC) with its own measured weeks before it, up to 13, and with its peers'. On the board, Show picks own moves (the default), one direction, or every measured company. Each row gives the week's new roles, the average before, the pace against it (`3.4x`) and its z-score, the peers' median pace and the role family that moved most (`Operations +209`). A company is **Accelerating** or **Slowing** when its pace stands out from its own weeks (z-score at least 3, at least 1.5 times or at most half its average, ten roles or more) and from its peers' (1.5 times their median pace either way); one whose industry moved with it reads **With peers**, and a measured week with no move **In line**. Peers are the company's industry, else its sector, else every covered company. A move of 50 roles or more is shown with a **Check** when one day carried three quarters of its new roles (**One-day batch**, such as a seasonal posting run) its boards were read too seldom that week to tell (**Few reads**), or it is more roles than the company's boards ever held open (**Over board size**); it ranks after the other moves and does not alert. The board ranks moves by z-score up to 10, then by roles off the average. **E** opens why: the sentence and every number behind it, with whether the move alerts. Enter opens the company on its Moves tab: its weeks, with why a week is not measured; the role families and titles behind the move; and the postings first seen or closed that week, each linking to the employer's posting. **N** opens an event alert on the company's next move; it fires once a later pass, 12 hours on, still reads the same move, so a week some boards have not finished reading on Monday never alerts alone.
+
+Free shows the first three own moves, whatever Show picks, and counts the rest. A free company read of one of those three has its move without the weeks behind its average; any other company shows its latest week's counts and leaves the move to Pro. Either way three postings each side, no weekly history.
+
+A week is measured only when nothing in the collection changed: a board's first read, a board added later, a truncated or collapsed read, a gap between reads, a rediscovered or restored board and a vendor-wide change each leave the week out, and the week's row says which. New roles are first seen postings, not hires.
+
+### Expansion and Anomalies
+
+Two more tabs read the same weeks. **Expansion** lists a company's first roles in a new country (**New country**) or in a new city of a country it already hires in (**New city**). **Anomalies** lists one place (**Place spike**) or one role family (**Family spike**) far above the company's own weeks, and a role family it never posted before (**New family**). Show picks one kind.
+
+"Never" goes back to the company's first read, so a first is the first seen since then, never the first ever, and every first says since when: the Since column and the **First seen since** figure (`Sep 17`). A first needs six weeks of reads before it, at least 100 earlier postings with 90% of them placed (or naming a city, or with a role family), and at least three new roles under two titles; until a company has six weeks of reads, its row says **Not looked for**. A first is dropped when most of its roles were dated more than a week before the company's first read, a week whose boards wrote their places anew gives no new city, and a new city named like one the company already hires in (`Pittsburg` beside `Pittsburgh`) is a spelling, not a city. A location's state code is never read as a country (`Denver, CO` is Colorado), and remote, regions and lists of places name no single city. A spike needs a z-score of at least 3, twice its average, ten roles or more over it, and a share of the company's roles at least twice its usual: so a company that doubled everywhere spikes nowhere. A city carrying most of its country's rise stands in for the country. A spike with most of its roles first seen on one day is a batch, not a rise, and is held. A spike in a week Moves flagged, or on a board read too seldom to tell, is shown with a **Check** and ranks last.
+
+A company's week gives no signal at all when it is not measured, when its boards were read for under three weeks before it, or when it posted far more roles than were new (re-listed roles); the board counts these under **Held**, and the company's tab says which. Role families are those of the Mix tab; no model is asked anything.
+
+**E** opens why: the sentence, every number behind it (the weeks before for a spike, the earlier postings for a first), where the roles are, their top titles and the first postings, each linking to the employer's page. Enter opens the company on the same tab: its signals this week and earlier, and under View, the postings behind this week's. Free shows each tab's first three and counts the rest; a free company read opens only those and counts the others, with no earlier weeks.
+
+### Building
+
+**Building** reads what each company is building from the mix of its new roles: a role family's or a theme's share of them in its recent weeks against its own weeks before. The recent weeks are the company's measured weeks among the latest four, and the weeks before its measured weeks among the nine before those; it needs three weeks before, and while it has fewer the oldest recent weeks move back, down to two recent weeks. A role family's share is of the roles that have one; a theme's (AI & machine learning, data centers, cloud, cybersecurity, semiconductors, robotics, autonomy & drones, batteries & EVs, nuclear, renewables & storage, digital assets, quantum, space & satellites, defense) is of all new roles. A theme is what a role's title says its work is on, as the decision model read it; a word in the title alone counts for nothing, and a theme whose titles are still being read gives no change yet (**Reading titles**).
+
+A **shift** is a share that at least doubled with a z-score of at least 4, at least 15 roles (10 for a theme) and ten points more (five for a theme); that held in every recent week, with no one week or day carrying most of its roles; and that is spread over at least three titles. The board lists each shift with its share now and before, the change in points (`+24 pts`), its roles, the weeks compared (`2 vs 2`, recent against before) and its top title; Show picks role families or themes. A company with too few roles (under 40 recent or 100 before), too few measured weeks, boards changed inside the weeks compared, re-listed roles or another covered company's board has no mix to compare, and the board counts these under **Held**. **E** opens why: the sentence, both windows week by week, the top titles and the first postings. Enter opens the company on its Building tab: under View, its whole mix by role family and by theme, now and before, with its shift marked; its shifts this week and earlier; and the postings behind this week's.
+
+Free shows the board's first three shifts, whatever Show picks, and counts the rest. A free company read has its three largest families and themes and only the shifts the free board shows, with no weeks behind them and no earlier shifts.
+
 ## App attention
 
 Table shows each app, country and chart basis separately. Chart follows company attention history; Markets compares countries and cross-country rank spreads; Peers compares listed parents; Evidence retains source and ownership links with capture revisions. The country, chart and history-window controls apply to the request together. Lower ranks are better; positive rank changes and velocity mean improvement.
@@ -31,11 +57,17 @@ Use the API coverage routes for current deployment coverage: `/cloud/hiring/cove
 ## CLI and REST
 
 ```sh
-gloomberb fn HIRE NET --json
-gloomberb fn APPS META --country US --chart free --days 90 --json
-gloomberb fn APPS --app-id 6446901002 --store app-store --country US --chart free --days 90 --json
-gloomberb shot HIRE NET --tab mix --width 1280 --height 540 --output hiring.png
-gloomberb shot APPS META --tab evidence --width 720 --height 360 --output apps.png
+gloom fn HIRE NET --json
+gloom fn APPS META --country US --chart free --days 90 --json
+gloom fn APPS --app-id 6446901002 --store app-store --country US --chart free --days 90 --json
+gloom shot HIRE NET --tab mix --width 1280 --height 540 --output hiring.png
+gloom shot HIRE --tab moves --moves slowing --width 1280 --height 540 --output moves.png
+gloom shot HIRE RIVN --tab moves --view drivers --width 720 --height 360 --output rivn.png
+gloom shot HIRE --tab expansion --kind new_country --width 1280 --height 540 --output expansion.png
+gloom shot HIRE STT --tab anomalies --signals-view postings --width 720 --height 360 --output stt.png
+gloom shot HIRE --tab building --dimension theme --width 1280 --height 540 --output building.png
+gloom shot HIRE GM --tab building --building-view themes --width 720 --height 360 --output gm.png
+gloom shot APPS META --tab evidence --width 720 --height 360 --output apps.png
 ```
 
-Headless bundles accept `--limit` and `--offset`; `metadata.nextOffset` identifies the continuation and `complete` stays false until the final page. They include the displayed tables and full authorized provenance, revisions, coverage, units, limitations and preview state. REST uses `/cloud/hiring`, `/cloud/hiring/:symbol`, `/cloud/app-attention/board` and `/cloud/app-attention/:symbol`. Individual app timelines use `/cloud/app-attention/app/:store/:appId?country=US&chart=free&days=90`, with explicit chart exits retained as null ranks. The deployment begins accumulating history from real captures; the UI never fabricates a chart to fill an empty history window.
+Headless bundles accept `--limit` and `--offset`; `metadata.nextOffset` identifies the continuation and `complete` stays false until the final page. They include the displayed tables and full authorized provenance, revisions, coverage, units, limitations and preview state. REST uses `/cloud/hiring`, `/cloud/hiring/:symbol`, `/cloud/hiring/moves?signal=moves`, `/cloud/hiring/moves/:symbol`, `/cloud/hiring/signals/expansion?kind=all`, `/cloud/hiring/signals/anomalies?kind=all`, `/cloud/hiring/signals/company/:symbol`, `/cloud/hiring/building?dimension=all`, `/cloud/hiring/building/:symbol`, `/cloud/app-attention/board` and `/cloud/app-attention/:symbol`. Individual app timelines use `/cloud/app-attention/app/:store/:appId?country=US&chart=free&days=90`, with explicit chart exits retained as null ranks. The deployment begins accumulating history from real captures; the UI never fabricates a chart to fill an empty history window.

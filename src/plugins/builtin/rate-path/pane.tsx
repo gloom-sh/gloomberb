@@ -4,7 +4,7 @@ import { curveStrip, curveSurfaceMinRows } from "../../../components/chart/curve
 import { isAccessDenied } from "../../../api-client/errors";
 import type { RateContract, RateMeeting } from "../../../api-client/rates";
 import { useAsyncResource, usePluginPaneState } from "../../../public/react";
-import { blendHex, colors, priceColor } from "../../../theme/colors";
+import { blendHex, colors, shownPriceColor } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import { Box } from "../../../ui";
 import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
@@ -54,7 +54,7 @@ function timestamp(value: string | null): string { return value?.replace("T", " 
 function percentile(value: number | null): string { return value == null ? "--" : value.toFixed(0); }
 /** Hikes up, cuts down, by the sign the text shows, so a move that rounds to zero stays neutral. */
 function signColor(value: number | null, digits: number): string {
-  return value == null || !Number.isFinite(value) ? colors.textDim : priceColor(Number(value.toFixed(digits)));
+  return value == null || !Number.isFinite(value) ? colors.textDim : shownPriceColor(value, digits);
 }
 function bpText(value: number | null): string { return value == null ? "--" : rateChangeText(value / 100); }
 /** Days to a meeting, counted in UTC dates like the schedule. */

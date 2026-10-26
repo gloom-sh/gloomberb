@@ -11,3 +11,8 @@ test("an option keeps its expiry, right and strike", () => {
   expect(tickerInstrumentLabel("AMD", { brokerId: "ibkr", brokerInstanceId: "ibkr-1", symbol: "AMD", localSymbol: "AMD 261016C00150000",
     secType: "OPT", lastTradeDateOrContractMonth: "20261016", right: "C", strike: 150 } as never)).toBe("AMD 261016C00150000 20261016 C 150");
 });
+
+test("a future's contract month reads as a month and year", () => {
+  expect(tickerInstrumentLabel("ES", { brokerId: "ibkr", symbol: "ES", localSymbol: "ESZ6", secType: "FUT",
+    lastTradeDateOrContractMonth: "202612", multiplier: "50" } as never)).toBe("ESZ6 Dec 2026");
+});

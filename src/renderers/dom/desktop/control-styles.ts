@@ -35,9 +35,14 @@ export function controlBorderColor(focused = false, active = false, palette: The
  * casts a shadow. The icon button is `.gloom-icon-button` in styles.css.
  */
 export function buttonPalette(
-  props: Pick<ButtonProps, "variant" | "active" | "disabled">,
+  props: Pick<ButtonProps, "variant" | "active" | "disabled" | "tone">,
   palette: ThemeColors = colors,
 ) {
+  if (props.variant === "quiet") return {
+    fg: props.disabled ? palette.textMuted : props.active ? palette.textBright : palette.textDim,
+    bg: props.active ? selectedPanelFill(palette) : "transparent",
+    border: "transparent",
+  };
   if (props.variant === "plain" || props.variant === "ghost") {
     return {
       fg: props.disabled ? palette.textMuted : props.active ? palette.textBright : palette.textDim,
@@ -52,6 +57,7 @@ export function buttonPalette(
       border: controlBorderColour(palette),
     };
   }
+  if (props.tone && props.variant === "primary") return { fg: palette.bg, bg: palette[props.tone], border: props.active ? palette.textBright : palette[props.tone] };
   if (props.active) {
     return {
       fg: palette.selectedText,

@@ -1,4 +1,5 @@
-import { isStablecoinCurrency } from "../../../../utils/currency-units";
+import { heldCurrencyUnit, isStablecoinCurrency } from "../../../../utils/currency-units";
+import { isIndexLevel } from "../../../../market-data/market/index-level";
 import { createRowValueCache } from "../../../../components/ui/row-value-cache";
 import { PRICE_SPARKLINE_COLUMN_ID } from "../../../../components/price-sparkline/view";
 import type { AppConfig, ColumnConfig } from "../../../../types/config";
@@ -194,6 +195,27 @@ export function buildTrackedCurrencies(
   // A stablecoin has no rate to ask for: its rows keep their own currency, and a holding in one says its value
   // is unavailable rather than the whole list reporting FX as down.
   return [...currencies].filter((currency) => !isStablecoinCurrency(currency));
+}
+
+/**
+ * Whether a row is priced in another currency than the collection's totals
+ * (RY in CAD beside JNJ in USD, or a US stock in a CAD portfolio), so its
+ * prices need their currency beside them. Pence and cents count as their
+ * currency, whose sign the price already carries; an index has none.
+ */
+export function holdsOtherCurrencies(
+  tickers: readonly TickerRecord[],
+  financialsMap: ReadonlyMap<string, TickerFinancials>,
+  totalsCurrency: string,
+): boolean {
+  const totals = heldCurrencyUnit(totalsCurrency).currency;
+  return tickers.some((ticker) => {
+    const quote = financialsMap.get(ticker.metadata.ticker)?.quote;
+    if (isIndexLevel(quote?.instrumentType || ticker.metadata.assetCategory)) return false;
+    const currency = heldCurrencyUnit(ticker.metadata.positions.find((position) => position.currency)?.currency
+      || quote?.currency || ticker.metadata.currency).currency;
+    return !!currency && currency !== totals;
+  });
 }
 
 export function getCollectionTypeFromConfig(config: AppConfig, collectionId: string | null): "portfolio" | "watchlist" | null {

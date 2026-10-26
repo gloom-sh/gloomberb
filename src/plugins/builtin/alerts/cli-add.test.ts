@@ -1,4 +1,5 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, setSystemTime, test } from "bun:test";
+import { setCloudApiFetchTransport } from "../../../api-client/request";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -9,12 +10,15 @@ import { createDefaultConfig } from "../../../types/config";
 import type { QuoteBatchResult, QuoteSubscriptionTarget } from "../../../types/data-provider";
 import type { Quote } from "../../../types/financials";
 import { currencyPairSpelling } from "../../../utils/currency-pair";
-import { alertsCliCommand } from "./cli";
+import { alertsCliCommand, parseAlertAddArgs } from "./cli";
+import { farTargetMessage } from "./quotes";
 import { readAlertStores } from "./storage";
 
 const dataDirs: string[] = [];
 
 afterEach(async () => {
+  setSystemTime();
+  setCloudApiFetchTransport(null);
   await Promise.all(dataDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
@@ -30,11 +34,21 @@ function cloud() {
   const quotes: Record<string, Quote> = {
     "USDMXN=X": pair,
     "USDNGN=X": { ...pair, symbol: "USDNGN=X", name: "USD/NGN", currency: "NGN", price: 1322 },
-    AAPL: createTestQuote({ symbol: "AAPL", name: "Apple Inc.", listingExchangeName: "NASDAQ", exchangeName: "NASDAQ" }),
+    // After hours: the alert is checked on the regular-session price, which the far-target check measures against.
+    AAPL: createTestQuote({ symbol: "AAPL", name: "Apple Inc.", price: 250, listingExchangeName: "NASDAQ", exchangeName: "NASDAQ",
+      marketState: "POST", postMarketPrice: 300 }),
+    // The bare coin ticker is the Grayscale fund, as the data service answers it.
+    BTC: createTestQuote({ symbol: "BTC", name: "Grayscale Bitcoin Mini Trust ETF", price: 37.35, listingExchangeName: "ARCA", exchangeName: "ARCA", instrumentType: "ETF" }),
+    // A stale company shares SOL's letters, and a live one LINK's.
+    SOL: createTestQuote({ symbol: "SOL", name: "Emeren Group Ltd", price: 1.94, listingExchangeName: "NYSE", exchangeName: "NYSE", instrumentType: "Common Stock", stale: true }),
+    LINK: createTestQuote({ symbol: "LINK", name: "Interlink Electronics, Inc.", price: 4.08, listingExchangeName: "NASDAQ", exchangeName: "NASDAQ", instrumentType: "EQUITY" }),
   };
   return createTestDataProvider({
     search: async (query: string) => {
       if (query.toUpperCase() === "AAPL") return [{ providerId: "test", symbol: "AAPL", name: "Apple Inc.", exchange: "NASDAQ", type: "EQUITY", currency: "USD" }];
+      if (query.toUpperCase() === "BTC") return [{ providerId: "test", symbol: "BTC", name: "Grayscale Bitcoin Mini Trust ETF", exchange: "ARCA", type: "ETF", currency: "USD" }];
+      if (query.toUpperCase() === "SOL") return [{ providerId: "test", symbol: "SOL", name: "Emeren Group Ltd", exchange: "NYSE", type: "Common Stock", currency: "USD" }];
+      if (query.toUpperCase() === "LINK") return [{ providerId: "test", symbol: "LINK", name: "Interlink Electronics, Inc.", exchange: "NASDAQ", type: "EQUITY", currency: "USD" }];
       const found = currencyPairSpelling(query.replace("_", "/").toUpperCase(), "CCY");
       const quote = found ? quotes[found.symbol] : undefined;
       return quote ? [{ providerId: "test", symbol: quote.symbol, name: quote.name!, exchange: "CCY", type: "CURRENCY", currency: quote.currency }] : [];
@@ -57,8 +71,9 @@ async function addAlert(args: string[]) {
   } catch (thrown) {
     error = (thrown as Error).message;
   }
-  const stored = readAlertStores(await loadConfig(dataDir)).alerts;
-  return { stored, error, printed: cli.printed[0] };
+  const saved = await loadConfig(dataDir);
+  const stores = readAlertStores(saved);
+  return { stored: stores.alerts, events: stores.events.rules, pluginState: saved.pluginConfig.alerts ?? {}, error, printed: cli.printed[0] };
 }
 
 test("a price alert is kept for the listing quote prints, so one pair is one target however it is typed", async () => {
@@ -92,4 +107,170 @@ test("a price alert says what delivers it, and the app is the one thing that alw
   expect(text).toContain("AAPL above 250 (the app alerts while it is running;");
   // Signed in, Cloud emails or pushes it only once the app has been closed for a while: never promised to everyone.
   expect(text).toContain("sign in with Cloud sync for email or phone alerts when it is closed");
+});
+
+test("a bare coin ticker on its fund gets quote's note, and a target ten times its price is refused with it", async () => {
+  const far = await addAlert(["btc", "above", "85000"]);
+  expect(far.error).toBe("A target of 85,000 is more than 10 times BTC's last price of 37.35. BTC is Grayscale Bitcoin Mini Trust ETF, not bitcoin. For bitcoin use BTC-USD.");
+  expect(far.stored).toEqual([]);
+  // Measured against the price the alert is checked on (250), not the after-hours print, and the same for crosses.
+  expect((await addAlert(["AAPL", "below", "24.99"])).error).toBe("A target of 24.99 is under 1/10 of AAPL's last price of 250. Check the price and the symbol.");
+  expect((await addAlert(["AAPL", "crosses", "2500.01"])).error).toMatch(/^A target of 2,500.01 is more than 10 times AAPL's last price of 250\./);
+  expect((await addAlert(["AAPL", "crosses", "2500"])).error).toBeNull();
+
+  const near = await addAlert(["btc", "above", "40"]);
+  expect(near.stored.map((alert) => [alert.symbol, alert.targetPrice])).toEqual([["BTC", 40]]);
+  expect(near.printed!.result.warnings).toContain("BTC is Grayscale Bitcoin Mini Trust ETF, not bitcoin. For bitcoin use BTC-USD.");
+});
+
+test("a coin ticker on a stale company says so firmly, and on a live one softly", async () => {
+  expect((await addAlert(["SOL", "below", "90"])).error)
+    .toBe("A target of 90 is more than 10 times SOL's last price of 1.94. SOL is Emeren Group Ltd, not solana. For solana use SOL-USD.");
+  expect((await addAlert(["LINK", "above", "500"])).error)
+    .toBe("A target of 500 is more than 10 times LINK's last price of 4.08. LINK is Interlink Electronics, Inc. Also a coin: LINK-USD.");
+  expect((await addAlert(["LINK", "above", "5"])).printed!.result.warnings).toContain("LINK is Interlink Electronics, Inc. Also a coin: LINK-USD.");
+});
+
+test("alerts add reads the dialog's news, flow and IV forms", () => {
+  expect(parseAlertAddArgs(["IBIT", "iv", "above", "50"], undefined)).toEqual({ kind: "iv_level", symbol: "IBIT", metric: "atm", direction: "above", level: 50 });
+  expect(parseAlertAddArgs(["SPY", "RR", "below", "-6"], undefined)).toEqual({ kind: "iv_level", symbol: "SPY", metric: "rr", direction: "below", level: -6 });
+  // A level takes its unit, joined or apart, and only the one its measure is in.
+  expect(parseAlertAddArgs(["IBIT", "iv", "above", "50%"], undefined)).toMatchObject({ metric: "atm", level: 50 });
+  expect(parseAlertAddArgs(["IBIT", "iv", "above", "50", "%"], undefined)).toMatchObject({ metric: "atm", level: 50 });
+  expect(parseAlertAddArgs(["SPY", "rr", "below", "-5.5", "pts"], undefined)).toMatchObject({ metric: "rr", level: -5.5 });
+  expect(parseAlertAddArgs(["SPY", "rr", "below", "-5.5pts"], undefined)).toMatchObject({ metric: "rr", level: -5.5 });
+  expect(() => parseAlertAddArgs(["SPY", "rr", "below", "-5%"], undefined)).toThrow("A risk reversal is in vol points, not %");
+  expect(() => parseAlertAddArgs(["IBIT", "iv", "above", "50", "pts"], undefined)).toThrow("An ATM IV level is in %, not vol points");
+  expect(parseAlertAddArgs(["AAPL271217C00300000", "iv", "spike", "5", "pts"], undefined)).toMatchObject({ kind: "iv_spike", points: 5 });
+  expect(parseAlertAddArgs(["AAPL271217C00300000", "iv", "spike", "5"], undefined)).toEqual({ kind: "iv_spike", contract: "AAPL271217C00300000", points: 5 });
+  expect(parseAlertAddArgs(["AAPL", "news", "share", "buyback"], undefined)).toEqual({ kind: "news", symbol: "AAPL", keyword: "share buyback" });
+  expect(parseAlertAddArgs(["news", "rate", "cut"], undefined)).toEqual({ kind: "news", symbol: null, keyword: "rate cut" });
+  expect(parseAlertAddArgs(["NVDA", "flow", "5m", "calls", "sweeps"], undefined)).toEqual({ kind: "flow", symbol: "NVDA", premium: 5_000_000, side: "calls", print: "sweep" });
+  expect(parseAlertAddArgs(["flow"], undefined)).toEqual({ kind: "flow", symbol: null, premium: 1_000_000, side: "any", print: "any" });
+  // A symbol that spells a form word is still a price alert.
+  expect(parseAlertAddArgs(["NEWS", "above", "10"], undefined)).toMatchObject({ kind: "price", symbol: "NEWS", price: 10 });
+
+  expect(() => parseAlertAddArgs(["IBIT", "iv", "50"], undefined)).toThrow("An iv alert takes above or below and a level");
+  expect(() => parseAlertAddArgs(["IBIT", "iv", "above", "900"], undefined)).toThrow("1 to 500");
+  expect(() => parseAlertAddArgs(["AAPL271217C00300000", "iv", "above", "5"], undefined)).toThrow("iv spike 5");
+  expect(() => parseAlertAddArgs(["NVDA", "flow", "10k"], undefined)).toThrow("$50,000");
+  expect(() => parseAlertAddArgs(["AAPL", "news", "buyback"], "3")).toThrow("--days is for earnings");
+});
+
+test("an IV level from the shell is the rule the dialog saves, on the listing quote reads, in the list released versions never read", async () => {
+  const { events, error, printed, pluginState } = await addAlert(["aapl", "iv", "above", "35%"]);
+  expect(error).toBeNull();
+  expect(events).toHaveLength(1);
+  expect(Object.keys(pluginState)).toEqual(["ivLevelAlerts"]);
+  expect(events[0]).toMatchObject({ kind: "iv_level", target: "rule", status: "active" });
+  expect(JSON.parse(events[0]!.value)).toEqual({ version: 1, symbol: "AAPL", exchange: "US", metric: "atm", direction: "above", threshold: 35 });
+  expect(printed!.options!.text!(printed!.result.data)).toContain("IV level AAPL · 30d ATM IV above 35% (the app checks it every 15 minutes while it is running");
+});
+
+test("the far-target refusal is exactly past ten times either way, and writes prices as typed, never in exponent form", () => {
+  expect(farTargetMessage("XYZ", 100, 10, null)).toBeNull();
+  expect(farTargetMessage("XYZ", 1, 10, null)).toBeNull();
+  expect(farTargetMessage("XYZ", 0.999, 10, null)).toBe("A target of 0.999 is under 1/10 of XYZ's last price of 10. Check the price and the symbol.");
+  expect(farTargetMessage("XYZ", 1, 0.0000001234, null)).toBe("A target of 1 is more than 10 times XYZ's last price of 0.0000001234. Check the price and the symbol.");
+  expect(farTargetMessage("XYZ", 0.00000001, 1, null)).toBe("A target of 0.00000001 is under 1/10 of XYZ's last price of 1. Check the price and the symbol.");
+  // No price to measure against: nothing is refused.
+  expect(farTargetMessage("XYZ", 85_000, 0, null)).toBeNull();
+});
+
+/**
+ * China's week as Gloom Cloud lists it on Sat 24 Oct 2026 (or at `now`), with a US PMI and the FOMC decision beside it, from
+ * the stored calendar, and the FOMC meeting the rate path lists. `printed` gives NBS Manufacturing PMI its figure; `offline`
+ * answers nothing.
+ */
+function serveCalendar({ now = "2026-10-24T06:00:00Z", printed = false, offline = false } = {}) {
+  const nbs = { name: "National Bureau of Statistics" };
+  const row = (date: string, country: string, impact: string, event: string, extra: Record<string, unknown> = {}) => ({
+    id: `${country}-${event}-${date}`, date, time: date.slice(11, 16), country, event, impact, actual: null, forecast: null, prior: null, ...extra,
+  });
+  const events = [
+    row("2026-10-26T00:00:00.000Z", "CN", "medium", "Communist Party Fifth Plenum", { time: "All Day" }),
+    row("2026-10-27T01:30:00.000Z", "CN", "low", "Industrial Profits (YTD) YoY", { prior: "15.7%", source: nbs }),
+    row("2026-10-31T01:30:00.000Z", "CN", "medium", "NBS Non Manufacturing PMI", { prior: "50.2", source: nbs }),
+    row("2026-10-31T01:30:00.000Z", "CN", "high", "NBS Manufacturing PMI", { prior: "50.1", source: nbs, ...printed ? { actual: "50.3" } : {} }),
+    row("2026-10-28T18:00:00.000Z", "US", "high", "Fed Interest Rate Decision", { prior: "4%", source: { name: "Federal Reserve" } }),
+    row("2026-11-02T14:00:00.000Z", "US", "high", "ISM Manufacturing PMI", { prior: "49.1" }),
+  ];
+  const ratePath = {
+    asOf: null, fetchedAt: now, stale: false, status: "available", gaps: [], fedFunds: [], sofr: [], ghosts: [],
+    current: { effr: {}, targetLower: {}, targetUpper: {} }, dotPlot: { points: [] }, schedule: {},
+    meetings: [{ date: "2026-10-28", impliedRate: null, percentile: null, samples: 0, probabilities: [] }],
+  };
+  setSystemTime(new Date(now));
+  setCloudApiFetchTransport(async (url) => {
+    if (offline) throw new TypeError("fetch failed");
+    const path = new URL(url).pathname;
+    return {
+      ok: true, status: 200, headers: new Headers(),
+      text: async () => JSON.stringify(path.endsWith("/rate-path") ? ratePath : path.endsWith("/calendar/history") ? { events, storedFrom: "2026-01-01" } : events),
+    } as Response;
+  });
+}
+
+test("an economic calendar event from the shell is matched by name, kept in its own list, and says what it was read as", async () => {
+  serveCalendar();
+  for (const args of [["NBS PMI"], ["CN", "PMI"], ["pmi", "--country", "cn"]]) {
+    const { events, error, printed, pluginState } = await addAlert(args);
+    expect(error).toBeNull();
+    // Released versions read eventAlerts whole, so a kind they do not know goes in a list of its own.
+    expect(Object.keys(pluginState)).toEqual(["calendarAlerts"]);
+    expect(events[0]).toMatchObject({ kind: "calendar_event", eventDate: "2026-10-31" });
+    expect(JSON.parse(events[0]!.value)).toEqual({ version: 1, event: "NBS Manufacturing PMI", country: "CN", publisher: "National Bureau of Statistics", leadDays: 1 });
+    expect(printed!.options!.text!(printed!.result.data)).toContain(
+      "NBS Manufacturing PMI (CN) on Sat 2026-10-31 01:30 UTC, 1 day before and when it prints (the app alerts on 2026-10-30, and with the actual, forecast and prior once out, only while it is running).");
+    expect(printed!.result.warnings).toContain("Also matching: NBS Non Manufacturing PMI (CN). To follow one of them instead: alerts add \"NBS Non Manufacturing PMI\" --country CN.");
+  }
+  const profits = await addAlert(["Industrial", "Profits", "--country", "CN", "--days", "2"]);
+  expect(profits.printed!.result.warnings).toEqual(['Read "Industrial Profits" as Industrial Profits (YTD) YoY (CN), low impact.']);
+  expect(JSON.parse(profits.events[0]!.value)).toMatchObject({ event: "Industrial Profits (YTD) YoY", leadDays: 2 });
+  // An all-day event prints no figures, so it alerts only before.
+  const plenum = await addAlert(["Fifth Plenum"]);
+  expect(plenum.printed!.options!.text!(plenum.printed!.result.data)).toContain(
+    "Communist Party Fifth Plenum (CN) on Mon 2026-10-26, all day, 1 day before (the app alerts on 2026-10-25, only while it is running).");
+});
+
+test("a calendar name that is ambiguous or matches nothing is refused with the way to name it, and nothing is stored", async () => {
+  serveCalendar();
+  const several = await addAlert(["PMI"]);
+  expect(several.error).toBe('"PMI" is listed for several countries: NBS Manufacturing PMI (CN), ISM Manufacturing PMI (US). Name the country: alerts add PMI --country CN.');
+  const slip = await addAlert(["NBP", "PMI"]);
+  expect(slip.error).toContain('No release in the economic calendar matches "NBP PMI". Did you mean NBS Manufacturing PMI (CN), NBS Non Manufacturing PMI (CN)?');
+  // Every refusal names the event form beside the others.
+  for (const { error } of [slip, await addAlert(["AAPL", "abve", "250"])]) {
+    expect(error).toContain('a release in the economic calendar by name (alerts add "NBS Manufacturing PMI" --country CN, alerts add CN PMI, alerts add CPI --days 1)');
+  }
+  // A bare word that only starts a name, or is its initials, is offered rather than added.
+  const bare = await addAlert(["MAN"]);
+  expect(bare.error).toContain('No release in the economic calendar matches "MAN". Did you mean NBS Manufacturing PMI (CN), ISM Manufacturing PMI (US)');
+  expect([several, slip, bare].map((attempt) => attempt.events)).toEqual([[], [], []]);
+  // With no calendar to look a bare word up in, it still says what each form takes.
+  serveCalendar({ offline: true });
+  const offline = await addAlert(["AAPL"]);
+  expect(offline.error).toStartWith('Unknown event "AAPL": the economic calendar could not be loaded to look it up');
+  expect(offline.error).toContain("price alerts take a condition and a price (alerts add AAPL above 250)");
+});
+
+test("the FOMC's calendar row by name is the FOMC alert, and a release already out today is followed to its next listing", async () => {
+  serveCalendar();
+  const fed = await addAlert(["Fed", "Interest", "Rate", "Decision"]);
+  expect(fed.error).toBeNull();
+  // The rule `alerts add FOMC` saves, so the one duplicate check refuses the other.
+  expect(fed.events).toMatchObject([{ kind: "macro_event", eventDate: "2026-10-28" }]);
+  expect(JSON.parse(fed.events[0]!.value)).toEqual({ version: 1, event: "fomc", leadDays: 1 });
+  expect(fed.printed!.result.warnings).toEqual(['Read "Fed Interest Rate Decision" as the FOMC decision alert, which follows Fed Interest Rate Decision (US).']);
+
+  // An hour after the decision: the alert says it is out, rather than promising an alert at the next check.
+  serveCalendar({ now: "2026-10-28T19:00:00Z" });
+  const late = await addAlert(["FOMC"]);
+  expect(late.printed!.options!.text!(late.printed!.result.data)).toContain(
+    "FOMC decision on 2026-10-28, 1 day before and when it prints (it came out today at 18:00 UTC, so the app alerts before the next one");
+  // A release that printed earlier today follows its next listing, none here yet.
+  serveCalendar({ now: "2026-10-31T03:00:00Z", printed: true });
+  const pmi = await addAlert(["NBS", "Manufacturing", "PMI"]);
+  expect(pmi.events[0]!.eventDate).toBeUndefined();
+  expect(pmi.printed!.options!.text!(pmi.printed!.result.data)).toContain("the app alerts once the calendar lists its next date");
 });

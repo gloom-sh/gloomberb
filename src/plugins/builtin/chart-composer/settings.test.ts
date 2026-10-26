@@ -166,6 +166,10 @@ describe("chart composer pane settings", () => {
     expect(getSelectedBuiltinStudies(spec)).toEqual(["sma20"]);
     expect(getSelectedPairStudies(spec)).toEqual(["ratio", "correlation"]);
     expect(spec.viewport.dateWindow).toEqual({ start: "2025-01-01", end: "2025-06-30" });
+    // Each end reads as a date option does; a date written day first says what to type.
+    const windowed = (value: string) => applyChartComposerPaneSetting(settings, field(CHART_SETTING_KEYS.dateWindow), value);
+    expect((windowed("1.2.2025 to Mar 3, 2025")[CHART_SPEC_SETTING_KEY] as typeof spec).viewport.dateWindow).toEqual({ start: "2025-02-01", end: "2025-03-03" });
+    expect(() => windowed("31/01/2025 to 2025-06-30")).toThrow("type 2025-01-31 for 31/01/2025");
     expect(spec.viewport.resolution).toBe("1wk");
     settings = applyChartComposerPaneSetting(
       settings,
@@ -190,7 +194,7 @@ describe("chart composer pane settings", () => {
       settings,
       field(CHART_SETTING_KEYS.dateWindow),
       "2025-02-30 to 2025-03-01",
-    )).toThrow("valid date");
+    )).toThrow("a date as YYYY-MM-DD");
     expect(() => applyChartComposerPaneSetting(
       settings,
       field(CHART_SETTING_KEYS.mode, "select"),

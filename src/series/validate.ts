@@ -14,8 +14,8 @@ const DRAW_STYLES: readonly SeriesDrawStyle[] = ["line", "area", "step", "column
 const PLACEMENTS: readonly SeriesPlacement[] = ["price", "panel"];
 const LINE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const COLOR_PATTERN = /^#[0-9A-Fa-f]{6}$/;
-/** A chart holds ten series: the ticker's price and the lines, with one to spare. */
-const MAX_SERIES_LINES = 8;
+/** A chart holds twenty series: the ticker's price and up to sixteen lines, with room for a few more. */
+const MAX_SERIES_LINES = 16;
 
 /** Units with no scale: a percentage of something, not a quantity of it. */
 const RATE_UNITS = ["%", "bp", "x", "ratio", "index", "score", "points"] as const;
@@ -136,6 +136,7 @@ export function validateSeriesDefinition(definition: SeriesDefinition, context: 
   checkLabel(id, "group", definition.group, 32, context);
   checkLabel(id, "description", definition.description, 300, context);
   checkLabel(id, "publisher", definition.publisher, 60, context);
+  checkLabel(id, "limitation", definition.limitation, 160, context);
   if (definition.tags !== undefined) {
     if (!Array.isArray(definition.tags) || definition.tags.length > 16) fail(id, "tags must be a list of at most 16 words.");
     for (const tag of definition.tags) checkLabel(id, "tag", tag, 40, context, false);

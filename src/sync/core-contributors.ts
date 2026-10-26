@@ -1,4 +1,7 @@
-import { scheduleConfigSave } from "../state/config-save-scheduler";
+import { saveConfigImmediately, scheduleConfigSave } from "../state/config-save-scheduler";
+import { persistTickerCleanup } from "../state/ticker-cleanup";
+import { hasPendingTickerWrites } from "../data/ticker-writes";
+import { normalizeStoredBaseCurrency } from "../utils/base-currency";
 import { debugLog } from "../utils/debug-log";
 import { fnv1aHex, stableStringify } from "../utils/hash";
 import type { AppConfig, BrokerInstanceConfig, SavedLayout } from "../types/config";
@@ -8,6 +11,7 @@ import type { BrokerAccount } from "../types/trading";
 import { hydrateTickerMetadata } from "../tickers/metadata";
 import type { SyncContributor } from "./types";
 import { convertCurrency } from "../utils/format";
+import { fxRateCurrencies } from "../utils/currency-units";
 import { getSharedMarketDataCoordinator, resolveEntryValue } from "../market-data/coordinator";
 import {
   computeDatedBeta,
@@ -33,12 +37,23 @@ import {
 import { isFiniteNumber, isRecord, recordOrNull } from "../utils/guards";
 import { getBrokerInstance } from "../utils/broker-instances";
 import { withoutMissingWatchlists } from "../portfolio/mutations";
+import { mergeSuffixedListings, moveTargetWeights } from "../portfolio/suffixed-listings";
 import { positionContractMultiplier } from "../portfolio/position-metrics";
 import {
   clearLeftoverBrokerHoldings,
   knownBrokerHoldings,
   type KnownBrokerHoldings,
 } from "../brokers/broker-portfolio-sync";
+import {
+  isLocalOnlyInstance,
+  isLocalOnlyPortfolio,
+  localOnlyScope,
+  publicConfig,
+  publicMarketData,
+  publicTickers,
+  withLocalOnlyEntries,
+  type LocalOnlyScope,
+} from "./local-only";
 
 /**
  * What a saved layout mirrors from the live session rather than from the
@@ -113,6 +128,7 @@ function sanitizePortfolio(portfolio: Portfolio): Portfolio {
     name: portfolio.name,
     description: portfolio.description,
     currency: portfolio.currency,
+    ...(portfolio.fixedCurrency ? { fixedCurrency: true } : {}),
     brokerId: portfolio.brokerId,
     lastSyncedAt: portfolio.lastSyncedAt,
     // Cash and targets are the user's own entries: a pulled portfolio without
@@ -368,6 +384,8 @@ function sanitizeTickerMetadata(metadata: TickerMetadata, financials?: TickerFin
     positions: metadata.positions.map(sanitizePosition),
     custom: (sanitizeUnknown(metadata.custom) as Record<string, unknown>) ?? {},
     tags: [...metadata.tags],
+    // What a listing's row took from a suffixed key's row, so a device that merges it later never counts a lot twice.
+    ...metadata.mergedLots ? { mergedLots: metadata.mergedLots } : {},
     quote: sanitizeQuote(financials),
   };
 }
@@ -457,8 +475,8 @@ function recentPriceHistory(history: PricePoint[], days: number): PricePoint[] {
  * Work derived from a bar history, kept with the history. Every sync values
  * every portfolio and quotes every filed ticker (each 15 s poll, and after
  * each workspace change), and redoing that work from each holding's bars
- * blocked the view for a quarter of a second on a few hundred holdings
- * (GLO-925). Bars change when a history loads again, which replaces the
+ * blocked the view for a quarter of a second on a few hundred holdings.
+ * Bars change when a history loads again, which replaces the
  * array; a last bar extended or revised in place, or one appended, is caught
  * by its length, time and close.
  */
@@ -586,18 +604,15 @@ async function loadHoldingExchangeRates(
   const rates = new Map([["USD", 1]]);
   const coordinator = getSharedMarketDataCoordinator();
   if (!coordinator) return rates;
-  const currencies = new Set<string>();
-  const track = (currency: string | undefined) => {
-    const normalized = currency?.trim().toUpperCase();
-    if (normalized && normalized !== "USD") currencies.add(normalized);
-  };
-  track(config.baseCurrency);
+  const held: Array<string | undefined> = [config.baseCurrency];
   for (const ticker of tickers.values()) {
     if (ticker.metadata.positions.length === 0) continue;
-    track(financials.get(ticker.metadata.ticker)?.quote?.currency);
-    for (const position of ticker.metadata.positions) track(position.currency);
+    held.push(financials.get(ticker.metadata.ticker)?.quote?.currency);
+    for (const position of ticker.metadata.positions) held.push(position.currency);
   }
-  await Promise.all([...currencies].map(async (currency) => {
+  // With a minor unit's major currency, as the panes load them (GBX and ILA have no rate of their own).
+  const currencies = fxRateCurrencies(held).filter((currency) => currency !== "USD");
+  await Promise.all(currencies.map(async (currency) => {
     // A failed FX load must not hold back the rest of the push.
     await coordinator.loadFxRate(currency).catch(() => {});
     const rate = resolveEntryValue(coordinator.getFxEntry(currency));
@@ -612,9 +627,11 @@ function collectCoreCollectionsPayload(
   financials: Map<string, TickerFinancials>,
   exchangeRates: Map<string, number>,
   brokerAccounts: Record<string, BrokerAccount[]>,
+  /** The financials whose quotes may be uploaded: without those a source that keeps its market data local supplied. */
+  quoted: Map<string, TickerFinancials> = financials,
 ) {
   const records = [...tickers.values()]
-    .map((ticker) => sanitizeTickerMetadata(ticker.metadata, financials.get(ticker.metadata.ticker)))
+    .map((ticker) => sanitizeTickerMetadata(ticker.metadata, quoted.get(ticker.metadata.ticker)))
     .filter(isSyncableTicker);
 
   // Only the USD anchor goes on the wire, as before: readers of the snapshot
@@ -873,14 +890,38 @@ interface LayoutMergeContext {
   pushedAt?: string;
 }
 
+/** A pulled config without profiles and portfolios that are local-only here (an older build may have pushed them). */
+function publicConfigPayload(payload: Record<string, unknown>, scope: LocalOnlyScope): Record<string, unknown> {
+  const without = (entries: unknown, isLocal: (entry: Record<string, unknown>) => boolean) => (
+    Array.isArray(entries) ? entries.filter((entry) => !isRecord(entry) || !isLocal(entry)) : entries
+  );
+  return {
+    ...payload,
+    ...("brokerInstances" in payload ? { brokerInstances: without(payload.brokerInstances, (entry) => isLocalOnlyInstance({ id: String(entry.id) }, scope)) } : {}),
+    ...("portfolios" in payload ? { portfolios: without(payload.portfolios, (entry) => isLocalOnlyPortfolio(entry as unknown as Portfolio, scope)) } : {}),
+  };
+}
+
 function mergeConfigPayload(
   config: AppConfig,
   payload: unknown,
   baselineConfig: AppConfig = config,
   lastSyncedPayload?: unknown,
   layoutContext: LayoutMergeContext = {},
+  scope: LocalOnlyScope | null = null,
 ): AppConfig | null {
   if (!isRecord(payload)) return null;
+  if (scope) {
+    // Merged as if the local-only profiles and portfolios were not here, then put back as they were.
+    const local = publicConfig(config, scope);
+    const merged = mergeConfigPayload(local, publicConfigPayload(payload, scope), baselineConfig === config ? local : publicConfig(baselineConfig, scope),
+      lastSyncedPayload, layoutContext);
+    return merged && {
+      ...merged,
+      brokerInstances: withLocalOnlyEntries(merged.brokerInstances, config.brokerInstances, (instance) => isLocalOnlyInstance(instance, scope)),
+      portfolios: withLocalOnlyEntries(merged.portfolios, config.portfolios, (portfolio) => isLocalOnlyPortfolio(portfolio, scope)),
+    };
+  }
   const next: AppConfig = { ...config };
   // Two guards, both needed. baselineConfig catches edits made while this pull
   // was in flight; lastSyncedPayload catches edits made while the app was not
@@ -900,6 +941,8 @@ function mergeConfigPayload(
   };
 
   assign("baseCurrency");
+  // A device on an older version may still send a name or sign (Canadian dollar, CA$): it applies as its code, as a saved one loads.
+  if (typeof next.baseCurrency === "string" && next.baseCurrency.trim()) next.baseCurrency = normalizeStoredBaseCurrency(next.baseCurrency);
   assign("refreshIntervalMinutes");
   if ("portfolios" in payload && canApply("portfolios")) {
     const syncedPortfolios = payload.portfolios;
@@ -1143,11 +1186,30 @@ function holdingIn(positions: readonly TickerPosition[], links: readonly unknown
   };
 }
 
+/** Without a shared baseline, keep both devices' manual lots, matching identical copies one for one. */
+function mergeUntrackedManualPositions(local: TickerPosition[], pulled: TickerPosition[]): TickerPosition[] {
+  const unmatched = new Map<string, number>();
+  for (const position of local) {
+    const key = JSON.stringify(sanitizePosition(position));
+    unmatched.set(key, (unmatched.get(key) ?? 0) + 1);
+  }
+  const merged = [...local];
+  for (const position of pulled) {
+    const key = JSON.stringify(sanitizePosition(position));
+    const count = unmatched.get(key) ?? 0;
+    if (count > 0) unmatched.set(key, count - 1);
+    else merged.push(position);
+  }
+  return merged;
+}
+
 interface PulledTickersMerge {
   lastSyncedTickers: Map<string, Record<string, unknown>> | null;
   /** This device's live broker portfolios, each with the side holding its latest broker sync. */
   brokerPortfolios: ReadonlyMap<string, "local" | "pulled">;
   known: KnownBrokerHoldings;
+  /** Connections kept on this device: their portfolios' holdings here outlast any pull. */
+  localOnly: LocalOnlyScope | null;
 }
 
 /**
@@ -1224,15 +1286,32 @@ function mergePulledTicker(
   const portfolios: string[] = [];
   for (const portfolioId of portfolioIds) {
     const brokerSide = merge.brokerPortfolios.get(portfolioId);
-    const takePulled = brokerSide
+    const takePulled = merge.localOnly?.portfolioIds.has(portfolioId) ? false : brokerSide
       ? brokerSide === "pulled"
       : !comparable || sameAsStored(
         holdingIn(localPositions, localLinks, portfolioId),
         holdingIn(baselinePositions, baselineLinks, portfolioId),
       );
     const [sidePositions, sideLinks] = takePulled ? [pulledPositions, pulledLinks] : [localPositions, localLinks];
-    positions.push(...sidePositions.filter((position) => position.portfolio === portfolioId));
-    if (sideLinks.includes(portfolioId)) portfolios.push(portfolioId);
+    if (brokerSide && !merge.localOnly?.portfolioIds.has(portfolioId)) {
+      // A broker's timestamp governs imported holdings, never hand-entered
+      // lots. Those use the same edit comparison as a manual portfolio.
+      const manualIn = (entries: readonly TickerPosition[]) => entries.filter((position) => (
+        position.portfolio === portfolioId && position.broker === "manual"
+      ));
+      const localManual = manualIn(localPositions);
+      const manualEdited = comparable && !sameAsStored(
+        localManual.map(sanitizePosition), manualIn(baselinePositions).map(sanitizePosition),
+      );
+      const pulledManual = manualIn(pulledPositions);
+      const manual = !comparable ? mergeUntrackedManualPositions(localManual, pulledManual)
+        : manualEdited ? localManual : pulledManual;
+      positions.push(...sidePositions.filter((position) => position.portfolio === portfolioId && position.broker !== "manual"), ...manual);
+      if (sideLinks.includes(portfolioId) || manual.length > 0) portfolios.push(portfolioId);
+    } else {
+      positions.push(...sidePositions.filter((position) => position.portfolio === portfolioId));
+      if (sideLinks.includes(portfolioId)) portfolios.push(portfolioId);
+    }
   }
 
   const record: TickerRecord = {
@@ -1254,8 +1333,9 @@ function mergePulledTicker(
 function withoutUnpulledHoldings(ticker: TickerRecord, merge: PulledTickersMerge): TickerRecord | null {
   const sold = (portfolioId: string) => merge.brokerPortfolios.get(portfolioId) === "pulled";
   const { metadata } = ticker;
-  const positions = metadata.positions.filter((position) => !sold(position.portfolio));
-  const portfolios = metadata.portfolios.filter((portfolioId) => !sold(portfolioId));
+  const positions = metadata.positions.filter((position) => position.broker === "manual" || !sold(position.portfolio));
+  const held = new Set(positions.map((position) => position.portfolio));
+  const portfolios = metadata.portfolios.filter((portfolioId) => held.has(portfolioId) || !sold(portfolioId));
   const kept = positions.length === metadata.positions.length && portfolios.length === metadata.portfolios.length
     ? ticker
     : { ...ticker, metadata: { ...metadata, positions, portfolios } };
@@ -1269,7 +1349,7 @@ export const coreConfigSyncContributor: SyncContributor = {
   id: CORE_CONFIG_CONTRIBUTOR_ID,
   schemaVersion: 1,
   collect: ({ state, baselinePayload, memo }) => withLayoutProvenance(
-    collectCoreConfigPayload(state.config) as Record<string, unknown>,
+    collectCoreConfigPayload(publicConfig(state.config, localOnlyScope(state.config))) as Record<string, unknown>,
     baselinePayload,
     memo?.get(),
   ),
@@ -1279,12 +1359,57 @@ export const coreConfigSyncContributor: SyncContributor = {
   },
   apply: async (payload, { snapshot, baselinePayload, baselineState, state, getState, isCurrent, dispatch, tickerRepository, memo }) => {
     const pushedAt = snapshot?.contributors[CORE_CONFIG_CONTRIBUTOR_ID]?.updatedAt;
-    const nextConfig = mergeConfigPayload(state.config, payload, baselineState.config, baselinePayload, {
+    const merge = (config: AppConfig) => mergeConfigPayload(config, payload, baselineState.config, baselinePayload, {
       memo: memo?.get(),
       pushedAt,
-    });
+    }, localOnlyScope(config));
+    let nextConfig = merge(state.config);
     if (!nextConfig) return;
-    const configChanged = !valuesEqual(nextConfig, state.config);
+    const removed = removedBrokerHoldings(state.config, nextConfig);
+    if (removed) {
+      // Keep the profile until row and config writes succeed, so a failed
+      // cleanup remains visible to the next attempt.
+      const cleanTickers = () => persistTickerCleanup({
+        tickerRepository,
+        getTickers: () => getState().tickers,
+        transform: (ticker) => withoutRemovedBrokerHoldings(ticker, removed),
+        publish: (symbol, ticker) => {
+          const tickers = new Map(getState().tickers);
+          if (ticker) tickers.set(symbol, ticker);
+          else tickers.delete(symbol);
+          dispatch({ type: "SET_TICKERS", tickers });
+        },
+        isCurrent,
+      });
+      let savedRemoval = false;
+      for (;;) {
+        const cleaned = await cleanTickers().catch(async (error: unknown) => {
+          // Restore the profile if a late row fails after config was saved,
+          // so retry can also recover after restarting the app.
+          if (savedRemoval) await saveConfigImmediately(getState().config);
+          throw error;
+        });
+        if (!cleaned || !isCurrent()) return;
+        if (hasPendingTickerWrites(tickerRepository) || getState().tickers !== cleaned) continue;
+        const source = getState().config;
+        const merged = merge(source);
+        if (!merged) return;
+        // Preserve unrelated edits while retaining the removal already applied
+        // to rows, including pulls from builds that merged whole profile lists.
+        nextConfig = {
+          ...merged,
+          brokerInstances: merged.brokerInstances.filter((instance) => !removed.instanceIds.has(instance.id)),
+          portfolios: merged.portfolios.filter((portfolio) => !removed.portfolioIds.has(portfolio.id)),
+        };
+        await saveConfigImmediately(nextConfig);
+        savedRemoval = true;
+        if (!isCurrent()) return;
+        if (getState().config !== source || getState().tickers !== cleaned
+          || hasPendingTickerWrites(tickerRepository)) continue;
+        break;
+      }
+    }
+    const configChanged = !valuesEqual(nextConfig, getState().config);
     if (configChanged) {
       // Adopting another device's workspace rearranges the screen under the
       // user, so it is worth a line in the log when a report says "my panes
@@ -1296,47 +1421,33 @@ export const coreConfigSyncContributor: SyncContributor = {
         });
       }
       dispatch({ type: "SET_CONFIG", config: nextConfig });
-      scheduleConfigSave(nextConfig);
+      if (!removed) scheduleConfigSave(nextConfig);
     }
     if (memo && isRecord(payload)) rememberCloudLayout(payload, pushedAt, getState().config, memo, nextConfig.layouts !== state.config.layouts);
-    if (!configChanged) return;
-
-    // A profile removed on another device takes its positions with it here
-    // too; kept, this device would push them back and recreate the tickers
-    // that removal deleted.
-    const removed = removedBrokerHoldings(state.config, nextConfig);
-    if (!removed) return;
-    const nextTickers = new Map(getState().tickers);
-    let changed = false;
-    for (const ticker of getState().tickers.values()) {
-      if (!isCurrent()) return;
-      const next = withoutRemovedBrokerHoldings(ticker, removed);
-      if (next === ticker) continue;
-      changed = true;
-      if (next) {
-        await tickerRepository.saveTicker(next);
-        nextTickers.set(next.metadata.ticker, next);
-      } else {
-        await tickerRepository.deleteTicker(ticker.metadata.ticker);
-        nextTickers.delete(ticker.metadata.ticker);
-      }
-    }
-    if (changed && isCurrent()) dispatch({ type: "SET_TICKERS", tickers: nextTickers });
   },
 };
 
 export const coreCollectionsSyncContributor: SyncContributor = {
   id: "core.collections",
   schemaVersion: 1,
-  collect: async ({ state }) => collectCoreCollectionsPayload(
-    state.config,
-    state.tickers,
-    state.financials,
-    await loadHoldingExchangeRates(state.config, state.tickers, state.financials),
-    state.brokerAccounts,
-  ),
+  collect: async ({ state, isLocalMarketData }) => {
+    // Connections the user keeps on this device stay here, with their portfolios, account values and
+    // positions; so do the quotes and bars of a source that keeps its market data local.
+    const scope = localOnlyScope(state.config);
+    const config = publicConfig(state.config, scope);
+    const tickers = publicTickers(state.tickers, scope);
+    return collectCoreCollectionsPayload(
+      config,
+      tickers,
+      state.financials,
+      await loadHoldingExchangeRates(config, tickers, state.financials),
+      state.brokerAccounts,
+      publicMarketData(state.financials, isLocalMarketData),
+    );
+  },
   apply: async (payload, { snapshot, baselinePayload, baselineState, getState, isCurrent, dispatch, tickerRepository }) => {
     if (!isRecord(payload)) return;
+    const scope = localOnlyScope(getState().config);
     hydrateProfileAnalytics(payload);
     if (!isCurrent()) return;
     // The config contributor applies first, so this is the config this pull left.
@@ -1356,6 +1467,7 @@ export const coreCollectionsSyncContributor: SyncContributor = {
         portfolios: [pulledPortfolios, pulledConfig?.portfolios].flatMap(idEntries),
         brokerInstances: idEntries(pulledConfig?.brokerInstances),
       }),
+      localOnly: scope,
     };
     // Tickers here and pulled ones drop the ids of any watchlist that is gone
     // (removed elsewhere, or deleted by an older build that left its id on the
@@ -1384,8 +1496,12 @@ export const coreCollectionsSyncContributor: SyncContributor = {
       nextTickers.set(next.metadata.ticker, next);
       changed.push(next);
     }
-    if (changed.length === 0) return;
-    dispatch({ type: "SET_TICKERS", tickers: nextTickers });
+    const suffixed = mergePulledSuffixedListings(nextTickers, changed, state.config);
+    if (changed.length === 0 && !suffixed.config) return;
+    if (suffixed.config) dispatch({ type: "SET_CONFIG", config: suffixed.config });
+    if (changed.length > 0) dispatch({ type: "SET_TICKERS", tickers: nextTickers });
+    // The moved targets first, so a stop before the rows strands none on an emptied key.
+    if (suffixed.config) await saveConfigImmediately(suffixed.config);
     // Written one at a time, so an edit or a broker sync can replace a row
     // before its turn. That copy is newer and its writer saves it; this one
     // written over it would come back at launch as an edit and be pushed.
@@ -1395,6 +1511,32 @@ export const coreCollectionsSyncContributor: SyncContributor = {
     }
   },
 };
+
+/**
+ * An older build still files lots under a vendor's suffixed key (GARAN.IS)
+ * and pushes them: pulled, they merge into the listing's row here as at
+ * launch (`mergeSuffixedListings`), each lot once, so they never count in
+ * both rows or go back out under the old key. The merged rows replace their
+ * entries in `tickers` and `changed`; the config comes back with targets
+ * moved, or null when none moved.
+ */
+function mergePulledSuffixedListings(
+  tickers: Map<string, TickerRecord>,
+  changed: TickerRecord[],
+  config: AppConfig,
+): { config: AppConfig | null } {
+  const merged = mergeSuffixedListings([...tickers.values()]);
+  if (!merged) return { config: null };
+  for (const row of merged.saves) {
+    tickers.set(row.metadata.ticker, row);
+    const at = changed.findIndex((record) => record.metadata.ticker === row.metadata.ticker);
+    if (at >= 0) changed[at] = row;
+    else changed.push(row);
+  }
+  for (const kept of merged.keptCustom) log.info("sync.suffixed-listing.custom-kept", kept);
+  const next = moveTargetWeights(config, merged.moved);
+  return { config: next === config ? null : next };
+}
 
 export function createCoreSyncContributors(): SyncContributor[] {
   return [coreConfigSyncContributor, coreCollectionsSyncContributor];

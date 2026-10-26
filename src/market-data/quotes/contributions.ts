@@ -20,7 +20,7 @@ const PRICE_DENOMINATED_DESCRIPTIVE_FIELDS: ReadonlySet<string> = new Set(["high
  * reconciled separately (reconcileQuoteDayRange).
  */
 const TRADING_DAY_FIELDS = [
-  "changeSessionDate", "previousClose", "open", "volume", "mark", "bid", "ask", "bidSize", "askSize",
+  "changeSessionDate", "previousClose", "previousCloseDate", "open", "volume", "mark", "bid", "ask", "bidSize", "askSize",
   "lastTradePrice", "lastTradeTime",
 ] as const;
 
@@ -34,6 +34,12 @@ function isOtherTradingDay(current: Quote, next: Quote): boolean {
   const currentDay = quoteTradingDay(current);
   const nextDay = quoteTradingDay(next);
   return currentDay !== null && nextDay !== null && nextDay !== currentDay;
+}
+
+/** Whether two observations are known to describe the same trading day. */
+function isSameTradingDay(current: Quote, next: Quote): boolean {
+  const currentDay = quoteTradingDay(current);
+  return currentDay !== null && currentDay === quoteTradingDay(next);
 }
 
 function inferQuoteProviderId(quote: Quote | QuoteContribution): string {
@@ -195,7 +201,7 @@ export function mergeQuoteContribution(
     // Close provenance belongs to this observation; never borrow an anchor
     // from another session, listing or currency when a new quote omits it.
     ...(!samePriceBasis ? {
-      previousClose: next.previousClose, bid: next.bid, ask: next.ask,
+      previousClose: next.previousClose, previousCloseDate: next.previousCloseDate, bid: next.bid, ask: next.ask,
       open: next.open, mark: next.mark, high52w: next.high52w, low52w: next.low52w,
       lastTradePrice: next.lastTradePrice, lastTradeTime: next.lastTradeTime,
       preMarketPrice: next.preMarketPrice, preMarketChange: next.preMarketChange,
@@ -214,11 +220,37 @@ export function mergeQuoteContribution(
     tradingExchangeName: next.tradingExchangeName,
     // Whether the listing no longer trades is said with each observation: a symbol that trades again drops it.
     delisting: next.delisting,
+    // So is a pair's price being its bar's close, and why a stale one stands; a bar's close is no trade.
+    intradayBar: next.intradayBar,
+    staleReason: next.staleReason,
+    ...(next.intradayBar ? { lastTradePrice: next.lastTradePrice, lastTradeTime: next.lastTradeTime } : {}),
     regularClose: next.regularClose,
     regularCloseSessionDate: next.regularClose != null ? next.regularCloseSessionDate : undefined,
     regularChange: next.regularClose != null ? next.regularChange : undefined,
     regularChangePercent: next.regularClose != null ? next.regularChangePercent : undefined,
   };
+
+  // What this observation's move is from, when not its previous close (a coin's
+  // 24 hours), is said with each one: a quote back on its
+  // previous close drops an earlier "24h", and one on 24 hours drops the
+  // earlier close its move no longer runs from.
+  if (next.changeBasis == null) {
+    delete merged.changeBasis;
+  } else if (next.previousClose === undefined) {
+    delete merged.previousClose;
+    delete merged.previousCloseDate;
+  }
+  // The day a previous close is from is said of that close and that session: a tick that names
+  // none keeps it while both are the same, and drops it otherwise. A close can repeat across
+  // sessions (a flat day), so the trading day decides, not the close alone.
+  if (next.previousCloseDate === undefined) {
+    const sameClose = next.previousClose === undefined || next.previousClose === current.previousClose;
+    if (samePriceBasis && sameClose && merged.previousClose === current.previousClose && current.previousCloseDate && isSameTradingDay(current, next)) {
+      merged.previousCloseDate = current.previousCloseDate;
+    } else {
+      delete merged.previousCloseDate;
+    }
+  }
 
   if (isOtherTradingDay(current, next)) {
     const record = merged as unknown as Record<string, unknown>;

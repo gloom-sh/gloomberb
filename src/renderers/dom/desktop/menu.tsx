@@ -1,5 +1,5 @@
 /** @jsxImportSource react */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { HostMenuItem, HostMenuProps } from "../../../ui/host";
 import { CheckboxBox } from "./controls";
 import { WebIcon } from "./icons";
@@ -10,9 +10,12 @@ function selectable(item: HostMenuItem): boolean {
   return item.kind !== "divider" && item.kind !== "heading" && !item.disabled;
 }
 
+const LEADING_STYLE: CSSProperties = { display: "inline-flex", flex: "none", alignItems: "center" };
+
 /** Desktop Menu: the one list every popover menu in the app renders. */
 export function WebMenu({ items, onSelect, selection = "none", title, label, onClose, highlightedId, onHighlight }: HostMenuProps) {
   const enabled = useMemo(() => items.filter(selectable), [items]);
+  const alignLeading = items.find((item) => item.leading !== undefined)?.leading;
   const controlled = highlightedId !== undefined;
   const [ownHighlighted, setOwnHighlighted] = useState<string | null>(
     () => items.find((item) => item.selected && selectable(item))?.id ?? enabled[0]?.id ?? null,
@@ -92,6 +95,12 @@ export function WebMenu({ items, onSelect, selection = "none", title, label, onC
             {(selection === "multi" || toggle) && (
               <CheckboxBox checked={!!item.checked} />
             )}
+            {item.leading !== undefined ? (
+              <span aria-hidden="true" style={LEADING_STYLE}>{item.leading}</span>
+            ) : alignLeading !== undefined ? (
+              // The room another item's artwork takes, so every label starts in one column.
+              <span aria-hidden="true" style={{ ...LEADING_STYLE, visibility: "hidden" }}>{alignLeading}</span>
+            ) : null}
             <span className="gloom-menu-label">
               <span className="gloom-menu-text" style={item.color ? { color: item.color } : undefined}>{item.label}</span>
               {item.description ? <span className="gloom-menu-description">{item.description}</span> : null}

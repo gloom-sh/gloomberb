@@ -12,6 +12,7 @@ import { WebIcon, WebIconButton } from "../desktop/icons";
 import { WebMenu } from "../desktop/menu";
 import { WebPopover } from "../desktop/popover";
 import { useHorizontalOverflow } from "./overflow-fade";
+import { useTopSurfaceColor } from "./top-surface";
 import { hideDragShield, showDragShield } from "./drag-shield";
 
 type CssVars = CSSProperties & Record<`--${string}`, string>;
@@ -44,9 +45,10 @@ export function WebTabs({
   // A tab bar occupies exactly the one row every caller reserves for it. Any
   // extra pixels here are pixels the pane's children are told they own and the
   // pane then clips, which is how a chart's time axis ends up behind a footer.
-  // Title-bar tabs fill the header to its bottom edge, so the active tab's
-  // underline lies on the header's bottom rule. Every variant draws the one tab
-  // look in styles.css: text, and the active tab on an accent underline.
+  // Title-bar tabs fill the header to its bottom edge, where the active tab's
+  // box covers the header's bottom rule and opens into the pane. Every variant
+  // draws the one tab look in styles.css: text, the active tab on an accent
+  // underline, and title-bar tabs as boxes instead of underlines.
   const listHeight = header ? "100%" : variant === "underline" || compact ? WEB_CELL_HEIGHT : "100%";
 
   useEffect(() => () => dragCleanupRef.current?.(), []);
@@ -67,6 +69,9 @@ export function WebTabs({
   useEffect(() => {
     if (!overflowing) setOverflowMenuOpen(false);
   }, [overflowing]);
+  // The active title-bar tab opens into the pane, so it takes the colour of
+  // whatever is directly under it.
+  useTopSurfaceColor(tabListRef, header, [activeValue, tabs]);
 
   const selectFromOverflowMenu = (value: string) => {
     setOverflowMenuOpen(false);
@@ -173,12 +178,14 @@ export function WebTabs({
     <div
       ref={tabListRef}
       data-gloom-role="tab-list"
+      data-gloom-variant={header ? "header" : undefined}
       role="tablist"
       onWheel={overflow.onWheel}
       style={{
         display: "flex",
         flexDirection: "row",
-        alignItems: "stretch",
+        // Title-bar tabs stand on the header's bottom edge, clear of its top.
+        alignItems: header ? "flex-end" : "stretch",
         gap: 0,
         width: "100%",
         height: listHeight,
@@ -217,7 +224,10 @@ export function WebTabs({
           transform: `translateX(${dragTranslateX}px)${sourceDragging ? " scale(1.03)" : ""}`,
           zIndex: dragSourceValue === tab.value ? 2 : undefined,
           willChange: dragSourceValue ? "transform" : undefined,
-          transition: `color 110ms ease, transform ${dragSourceValue && dragSourceValue !== tab.value ? "var(--tab-reorder-duration, 160ms)" : "0ms"} cubic-bezier(0.77, 0, 0.175, 1)`,
+          // An inactive title-bar tab fades its hover fill in. The active one's
+          // box changes with the bar's rule and the body under it, which do not
+          // fade, so it does not either.
+          transition: `color 110ms ease${header && !active ? ", background-color 110ms ease" : ""}, transform ${dragSourceValue && dragSourceValue !== tab.value ? "var(--tab-reorder-duration, 160ms)" : "0ms"} cubic-bezier(0.77, 0, 0.175, 1)`,
           cursor: disabled ? "default" : dragSourceValue ? "grabbing" : reorderable ? "grab" : "pointer",
           ...(dragTarget ? { color: "var(--gloom-text)" } : {}),
         } satisfies CssVars;
@@ -230,6 +240,7 @@ export function WebTabs({
             data-active={active ? "true" : undefined}
             data-dense={dense || compact ? "true" : undefined}
             data-reorderable={reorderable ? "true" : undefined}
+            data-drag-target={dragTarget ? "true" : undefined}
             data-tab-value={tab.value}
             type="button"
             role="tab"
@@ -258,6 +269,11 @@ export function WebTabs({
               tab.onContextMenu?.(tab.value, event);
             } : undefined}
           >
+            {tab.leading !== undefined && (
+              <span data-gloom-role="tab-leading" aria-hidden="true" style={{ display: "flex", flex: "none", alignItems: "center" }}>
+                {tab.leading}
+              </span>
+            )}
             <span
               data-gloom-role="tab-label"
               style={{
@@ -349,6 +365,7 @@ export function WebTabs({
               items={tabs.map((tab) => ({
                 id: tab.value,
                 label: tab.label,
+                leading: tab.leading,
                 disabled: tab.disabled,
                 selected: tab.value === activeValue,
               }))}

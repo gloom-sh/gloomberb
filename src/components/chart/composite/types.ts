@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { CompositeChartLevels } from "./levels";
 import type { SeriesLineCue } from "./series-cues";
+import type { CompositeValueScales } from "./value-scale";
 import type {
   ChartPanelSpec,
   PanelScale,
@@ -38,6 +39,10 @@ export interface CompositeAxisDomain {
   /** Rows the labels snap to, one per row, in the terminal. Unset where labels
    * sit at their exact heights. */
   tickRows?: number;
+  /** What the axis plots, which a range set by hand holds to (see `valueScaleKey`). */
+  scaleKey?: string;
+  /** The range was stretched or squeezed by hand instead of fitted to the data. */
+  manual?: boolean;
 }
 
 export interface CompositeProjectedPoint {
@@ -203,6 +208,10 @@ export interface BuildCompositeChartSceneOptions {
    * is not time, where the last observation belongs at the right edge.
    */
   rightOffsetRatio?: number;
+  /** Value axes stretched or squeezed by hand, in place of fitting them to the data. */
+  valueScales?: CompositeValueScales;
+  /** Reference guides participate in auto-scaling on the axis of this series. */
+  referenceLevels?: CompositeChartLevels | null;
 }
 
 export interface CompositeChartXMarker {
@@ -315,6 +324,12 @@ export interface CompositeChartProps {
     interaction: "pan" | "reset" | "zoom",
   ) => void;
   onActivate?: () => void;
+  /**
+   * A press on the chart itself (plot, legend or tool bar), not a wheel turn.
+   * The chart consumes the press, so an owner that shares the pane with a
+   * field that takes typed keys hears it here to hand the keyboard back.
+   */
+  onPress?: () => void;
   onToggleSeries?: (seriesId: string) => void;
   isSeriesToggleable?: (series: ResolvedSeries) => boolean;
   /**
@@ -324,8 +339,16 @@ export interface CompositeChartProps {
    */
   timePick?: { label: string; onPick: (date: Date) => void; onCancel: () => void } | null;
   /**
+   * Picks a price on the levels' series instead of panning: a press on its
+   * plot hands back the price under the pointer, Enter the price at the
+   * keyboard cursor; Esc cancels. `label` is the Enter hint, such as "set limit".
+   */
+  pricePick?: { label: string; onPick: (value: number) => void; onCancel: () => void } | null;
+  /**
    * Horizontal price levels on one series' panel. With `onEdit` the level
    * tool (Shift+H) adds, moves and deletes them by mouse and keyboard.
    */
   levels?: CompositeChartLevels | null;
+  /** Mean and population ±1σ of at least 20 finite observations in the active viewport. */
+  rangeStatisticsSeriesId?: string;
 }

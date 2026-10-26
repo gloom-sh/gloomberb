@@ -14,9 +14,11 @@ export interface BacktestBar {
 export type Operand =
   | { kind: "number"; value: number }
   | { kind: "field"; field: "close" | "open" | "high" | "low" }
+  | { kind: "calendar"; name: CalendarName }
   | { kind: "indicator"; name: IndicatorName; args: number[] };
 type IndicatorName = "sma" | "ema" | "rsi" | "macd" | "macd_signal" | "bb_upper" | "bb_lower" | "highest" | "lowest";
-type Comparator = ">" | "<" | ">=" | "<=" | "crosses above" | "crosses below";
+type CalendarName = "weekday" | "day_of_month";
+type Comparator = ">" | "<" | ">=" | "<=" | "==" | "!=" | "crosses above" | "crosses below";
 interface Condition { left: Operand; comparator: Comparator; right: Operand }
 /** Conditions are ANDed. */
 export type Rule = Condition[];
@@ -35,6 +37,11 @@ const INDICATORS: Record<IndicatorName, IndicatorSpec> = {
   lowest: { defaults: [20], bounds: [PERIOD], usage: "lowest(n)" },
 };
 const FIELDS = new Set(["close", "open", "high", "low"]);
+/** The session's UTC calendar date as a number, so a rule can trade a day of the week or of the month. */
+const CALENDAR: Record<CalendarName, { min: number; max: number; values: string; of: (date: Date) => number }> = {
+  weekday: { min: 1, max: 7, values: "1 Monday to 7 Sunday", of: (date) => (date.getUTCDay() + 6) % 7 + 1 },
+  day_of_month: { min: 1, max: 31, values: "1 to 31", of: (date) => date.getUTCDate() },
+};
 const COMPARATORS: Array<[RegExp, Comparator]> = [
   [/^crosses\s+above$/, "crosses above"],
   [/^crosses\s+below$/, "crosses below"],
@@ -42,16 +49,29 @@ const COMPARATORS: Array<[RegExp, Comparator]> = [
   [/^(<|below)$/, "<"],
   [/^>=$/, ">="],
   [/^<=$/, "<="],
+  [/^==?$/, "=="],
+  [/^!=$/, "!="],
 ];
+
+/** Every operand a rule takes, as an error and `--help` list them. */
+const RULE_OPERANDS = [
+  "close", "open", "high", "low", "a number",
+  ...Object.entries(CALENDAR).map(([name, entry]) => `${name} (${entry.values})`),
+  ...Object.values(INDICATORS).map((entry) => entry.usage),
+].join(", ");
+const RULE_COMPARISONS = ">, <, >=, <=, ==, !=, crosses above, crosses below";
+/** What a rule is written from, for a message that sends the reader back to the syntax. */
+export const RULE_SYNTAX = `Operands: ${RULE_OPERANDS}. Comparisons: ${RULE_COMPARISONS}. Join conditions with "and".`;
 
 function parseOperand(text: string): Operand {
   const value = text.trim().toLowerCase();
   if (/^[+-]?(\d+(\.\d*)?|\.\d+)$/.test(value)) return { kind: "number", value: Number(value) };
   if (FIELDS.has(value)) return { kind: "field", field: value as "close" };
+  if (Object.hasOwn(CALENDAR, value)) return { kind: "calendar", name: value as CalendarName };
   const match = /^([a-z_]+)\s*(?:\(([^)]*)\))?$/.exec(value);
   const name = match?.[1] as IndicatorName | undefined;
   const spec = name ? INDICATORS[name] : undefined;
-  if (!match || !name || !spec) throw new Error(`Unknown operand "${text.trim()}". Use close, open, high, low, a number or ${Object.values(INDICATORS).map((entry) => entry.usage).join(", ")}.`);
+  if (!match || !name || !spec) throw new Error(`Unknown operand "${text.trim()}". Use ${RULE_OPERANDS}.`);
   const given = match[2]?.trim() ? match[2].split(",").map((part) => part.trim()) : [];
   if (given.length > spec.defaults.length) throw new Error(`${spec.usage} takes at most ${spec.defaults.length} values.`);
   const args = spec.defaults.map((fallback, index) => {
@@ -72,12 +92,19 @@ export function parseRule(text: string): Rule {
   const source = text.trim();
   if (!source) throw new Error("Enter a rule, for example: sma(50) crosses above sma(200)");
   return source.split(/\s+and\s+/i).map((part) => {
-    const match = /^(.+?)\s+(crosses\s+above|crosses\s+below|>=|<=|>|<|above|below)\s+(.+)$/i.exec(part.trim());
-    if (!match) throw new Error(`Cannot read "${part.trim()}". Write <operand> <comparison> <operand>, for example close > sma(200).`);
+    const match = /^(.+?)\s+(crosses\s+above|crosses\s+below|>=|<=|==|!=|=|>|<|above|below)\s+(.+)$/i.exec(part.trim());
+    if (!match) throw new Error(`Cannot read "${part.trim()}". Write <operand> <comparison> <operand>, for example close > sma(200). ${RULE_SYNTAX}`);
     const comparator = COMPARATORS.find(([pattern]) => pattern.test(match[2]!.toLowerCase().replace(/\s+/g, " ")))![1];
     const left = parseOperand(match[1]!);
     const right = parseOperand(match[3]!);
-    if (left.kind === "number" && right.kind === "number") throw new Error("Compare at least one price or indicator.");
+    if (left.kind === "number" && right.kind === "number") throw new Error("Compare at least one price, date or indicator.");
+    for (const [calendar, other] of [[left, right], [right, left]] as const) {
+      if (calendar.kind !== "calendar" || other.kind !== "number") continue;
+      const { min, max, values } = CALENDAR[calendar.name];
+      if (!Number.isInteger(other.value) || other.value < min || other.value > max) {
+        throw new Error(`${calendar.name} is ${values}, not ${other.value}.`);
+      }
+    }
     return { left, comparator, right };
   });
 }
@@ -105,6 +132,13 @@ export function evaluateOperand(operand: Operand, bars: readonly BacktestBar[]):
   const length = bars.length;
   if (operand.kind === "number") return new Float64Array(length).fill(operand.value);
   if (operand.kind === "field") return Float64Array.from(bars, (bar) => bar[operand.field] ?? Number.NaN);
+  if (operand.kind === "calendar") {
+    // A session's date is its UTC calendar day; a bar without a readable one has no weekday.
+    return Float64Array.from(bars, (bar) => {
+      const time = Date.parse(`${bar.date.slice(0, 10)}T00:00:00Z`);
+      return Number.isFinite(time) ? CALENDAR[operand.name].of(new Date(time)) : Number.NaN;
+    });
+  }
   const closes = bars.map((bar) => bar.close);
   const [a = 0, b = 0, c = 0] = operand.args;
   switch (operand.name) {
@@ -161,6 +195,8 @@ export function evaluateRule(rule: Rule, bars: readonly BacktestBar[]): boolean[
       else if (condition.comparator === "<") met = l < r;
       else if (condition.comparator === ">=") met = l >= r;
       else if (condition.comparator === "<=") met = l <= r;
+      else if (condition.comparator === "==") met = l === r;
+      else if (condition.comparator === "!=") met = l !== r;
       else {
         const pl = left[index - 1], pr = right[index - 1];
         met = pl !== undefined && pr !== undefined && !Number.isNaN(pl) && !Number.isNaN(pr)

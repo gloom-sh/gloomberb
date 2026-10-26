@@ -60,7 +60,7 @@ export function rejectExtraArgs(
 ): void {
   if (args.length <= max) return;
   const command = usage.split(" ")[0];
-  ctx.fail(`${command} takes ${takes}; got ${args.join(" ")}.`, [advice, `Usage: gloomberb ${usage}`].filter(Boolean).join("\n"));
+  ctx.fail(`${command} takes ${takes}; got ${args.join(" ")}.`, [advice, `Usage: gloom ${usage}`].filter(Boolean).join("\n"));
 }
 
 /** The one argument a command takes, such as a symbol: missing fails with the usage line, extras are not dropped. */
@@ -70,7 +70,7 @@ export function requireOneArg(
   noun: string,
   ctx: CliCommandContext,
 ): string {
-  const value = requireArg(args[0], `Usage: gloomberb ${usage}`, ctx);
+  const value = requireArg(args[0], `Usage: gloom ${usage}`, ctx);
   rejectExtraArgs(args, 1, { usage, takes: `one ${noun}`, advice: `Run it once per ${noun}.` }, ctx);
   return value;
 }

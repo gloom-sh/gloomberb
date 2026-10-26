@@ -15,7 +15,10 @@ const nullableText = (v: unknown) => v === null || text(v);
 const nonnegative = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 0;
 const integer = (v: unknown) => nonnegative(v) && Number.isInteger(v);
 const instant = (v: unknown) => text(v) && Number.isFinite(Date.parse(v));
-const url = (v: unknown) => { try { return text(v) && new URL(v).protocol === "https:"; } catch { return false; } };
+const url = (v: unknown) => { try { return text(v) && new URL(v).protocol === "https:"; } catch {
+  // Intentional ignore: malformed URLs fail this HTTPS field validator.
+  return false;
+} };
 const access = (v: unknown) => v === "full" || v === "preview";
 const entities = (v: unknown) => Array.isArray(v) && v.every((e) => record(e) && text(e.name) && text(e.entityId)
   && ["utility", "developer"].includes(e.role) && nonnegative(e.confidence) && e.confidence <= 1
@@ -106,11 +109,11 @@ export async function fetchPowerTickerScopes(symbol: string, tab: PowerTab, cont
 }
 const key = (query: unknown, scope: string) => `${scope}:${JSON.stringify(query)}`;
 export const loadPowerBoard = (filter: PowerFilter, scope: string, force = false, signal?: AbortSignal) =>
-  loadCloudResource(powerBoardCache, key(filter, scope), () => fetchPowerBoard(filter, apiClient, signal), { force, validate: validatePowerBoard });
+  loadCloudResource(powerBoardCache, key(filter, scope), () => fetchPowerBoard(filter, apiClient, signal), { force, validate: validatePowerBoard, signal });
 export const loadPowerHistory = (filter: PowerFilter, scope: string, force = false) =>
   loadCloudResource(powerHistoryCache, key(filter, scope), () => fetchPowerHistory(filter), { force, validate: validatePowerHistory });
 export const loadPowerDetail = (id: string, scope: string, force = false, offset = 0, signal?: AbortSignal) => loadCloudResource(powerDetailCache, key({ id, offset }, scope),
   async () => { const value = validateDetail(await apiClient.getCloudPowerProject(id, { offset, limit: 100 }, signal));
     if (value.hasMore && value.nextOffset! <= offset) throw new Error("Project revision pagination did not advance.");
     if (value.project && value.project.id !== id || value.revisions.some((r) => r.id !== id)) throw new Error("Project evidence belongs to a different project.");
-    return value; }, { force, validate: validateDetail });
+    return value; }, { force, validate: validateDetail, signal });

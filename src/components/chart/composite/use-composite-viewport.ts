@@ -99,9 +99,13 @@ export function useCompositeViewport({
     );
   }, [onViewportChange, userViewportEnd, userViewportStart]);
 
+  // Counts authored views, so what belongs to one (values scaled by hand) can
+  // go with it; `authoredViewportChanged` covers the render before it counts.
+  const [authoredGeneration, setAuthoredGeneration] = useState(0);
   useEffect(() => {
     previousAuthoredViewportRef.current = viewport ?? null;
     previousViewportResetKeyRef.current = viewportResetKey;
+    if (authoredViewportChanged) setAuthoredGeneration((generation) => generation + 1);
     if (authoredViewportChanged && userViewport) {
       viewportInteractionRef.current = "reset";
       setUserViewport(null);
@@ -154,8 +158,13 @@ export function useCompositeViewport({
     if (!positions) return;
     panViewport(shiftRatio * Math.max(positions.end - positions.start, Number.EPSILON));
   }, [effectiveViewport, navigationFrame, panViewport]);
-  const zoomViewport = useCallback((zoomFactor: number, anchorRatio = 1) => {
-    navigate("zoom", (base, frame) => zoomCompositeViewport(frame, base, zoomFactor, anchorRatio));
+  /** A gesture (a drag on the time axis) zooms from the view and frame it started in, by its whole travel so far. */
+  const zoomViewport = useCallback((
+    zoomFactor: number,
+    anchorRatio = 1,
+    gesture?: { frame: CompositeNavigationFrame; from: CompositeViewportRange },
+  ) => {
+    navigate("zoom", (base, frame) => zoomCompositeViewport(frame, base, zoomFactor, anchorRatio), gesture);
   }, [navigate]);
   const setViewportRange = useCallback((range: CompositeViewportRange) => {
     navigate("zoom", (_base, frame) => fitCompositeViewport(frame, range));
@@ -165,7 +174,7 @@ export function useCompositeViewport({
     setUserViewport(null);
   }, []);
   return {
-    navigationFrame, activeUserViewport, effectiveViewport,
+    navigationFrame, activeUserViewport, effectiveViewport, authoredViewportChanged, authoredGeneration,
     panViewport, panViewportByRatio, zoomViewport, setViewportRange, resetViewport,
   };
 }
