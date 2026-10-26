@@ -26,11 +26,13 @@ import {
   flowHistorySearch,
   flowScopeSymbol,
   flowSessionSearch,
+  formatFlowPremium,
+  formatFlowVolOi,
   mergeFlowRows,
   type FlowFilters,
   type FlowScope,
 } from "./flow-model";
-import { flowStrikeRows, flowTideRows, formatSignedFlowPremium } from "./flow-session";
+import { flowStrikeRows, flowTideMoves, flowTideRows, formatSignedFlowPremium } from "./flow-session";
 import { signalWithTimeout } from "../../../utils/async-deadline";
 import { explainRefusal } from "../shared/cloud-denied";
 import { captureScannerEvent, SCANNER_SNAPSHOT_TIMEOUT_MS } from "../shared/scanner-capture";
@@ -202,6 +204,8 @@ const utcTime = (value: unknown) => {
   return Number.isFinite(time) ? `${new Date(time).toISOString().slice(0, 19).replace("T", " ")} UTC` : "-";
 };
 const signedPremium = (value: unknown) => typeof value === "number" ? formatSignedFlowPremium(value) : "";
+/** A side's premium in the text view: `$2.1M`, blank where none traded. */
+const premium = (value: unknown) => typeof value === "number" && value > 0 ? formatFlowPremium(value) : "";
 
 const PRINT_COLUMNS: HeadlessPaneColumn[] = [
   { key: "at", header: "Time", format: utcTime },
@@ -212,8 +216,8 @@ const PRINT_COLUMNS: HeadlessPaneColumn[] = [
   { key: "expiry", header: "Expiry" },
   { key: "side", header: "Side" },
   { key: "size", header: "Size", align: "right" },
-  { key: "premium", header: "Premium", align: "right" },
-  { key: "volOi", header: "Vol/OI", align: "right" },
+  { key: "premium", header: "Premium", align: "right", textFormat: premium },
+  { key: "volOi", header: "Vol/OI", align: "right", textFormat: (value) => formatFlowVolOi(typeof value === "number" ? value : null) },
 ];
 
 const TIDE_COLUMNS: HeadlessPaneColumn[] = [
@@ -232,12 +236,12 @@ const TIDE_TEXT_COLUMNS = TIDE_COLUMNS.filter((column) => !["callAsk", "callBid"
 const STRIKE_COLUMNS: HeadlessPaneColumn[] = [
   { key: "expiry", header: "Expiry" },
   { key: "strike", header: "Strike", align: "right" },
-  { key: "callPremium", header: "Calls", align: "right", description: "All call premium, mid prints included." },
-  { key: "callAsk", header: "Call ask", align: "right" },
-  { key: "callBid", header: "Call bid", align: "right" },
-  { key: "putPremium", header: "Puts", align: "right", description: "All put premium, mid prints included." },
-  { key: "putAsk", header: "Put ask", align: "right" },
-  { key: "putBid", header: "Put bid", align: "right" },
+  { key: "callPremium", header: "Calls", align: "right", textFormat: premium, description: "All call premium, mid prints included." },
+  { key: "callAsk", header: "Call ask", align: "right", textFormat: premium },
+  { key: "callBid", header: "Call bid", align: "right", textFormat: premium },
+  { key: "putPremium", header: "Puts", align: "right", textFormat: premium, description: "All put premium, mid prints included." },
+  { key: "putAsk", header: "Put ask", align: "right", textFormat: premium },
+  { key: "putBid", header: "Put bid", align: "right", textFormat: premium },
   { key: "net", header: "Net", align: "right", textFormat: signedPremium, description: "Net call premium less net put premium at the strike." },
   { key: "prints", header: "Prints", align: "right" },
 ];
@@ -250,9 +254,9 @@ interface FlowReportData {
   session: ScannerFlowSession | null;
 }
 
-/** Newest first, the bucket rows with the running totals through each. */
+/** Newest first, the buckets that moved the tide with the running totals through each, as the pane's table lists them. */
 function tideReportRows(session: ScannerFlowSession | null): Array<Record<string, unknown>> {
-  return flowTideRows(session).reverse().map((row) => ({ ...row }));
+  return flowTideMoves(flowTideRows(session)).reverse().map((row) => ({ ...row }));
 }
 
 function projectFlowReport(

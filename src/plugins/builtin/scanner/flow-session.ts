@@ -59,6 +59,11 @@ export function flowTideRows(session: ScannerFlowSession | null | undefined): Fl
   });
 }
 
+/** The buckets that moved the tide: one whose prints were all mid adds nothing to read. */
+export function flowTideMoves(rows: readonly FlowTideRow[]): FlowTideRow[] {
+  return rows.filter((row) => row.callAsk !== 0 || row.callBid !== 0 || row.putAsk !== 0 || row.putBid !== 0);
+}
+
 /**
  * The running totals at every bucket from the first to the last, so a line
  * holds flat through a quiet stretch instead of sloping across it.

@@ -61,6 +61,7 @@ import {
 import {
   FLOW_SESSION_LIVE_REFRESH_MS,
   flowStrikeRows,
+  flowTideMoves,
   flowTidePoints,
   flowTideRows,
   formatFlowSessionDate,
@@ -474,8 +475,8 @@ function sessionStatus(props: SessionViewProps, subject: string) {
 function FlowTideView(props: SessionViewProps) {
   const { focused, width, height, query, session } = props;
   const rows = useMemo(() => flowTideRows(session), [session]);
-  // Newest first, like the prints; buckets with no matching print carry nothing to read.
-  const tableRows = useMemo(() => [...rows].reverse(), [rows]);
+  // Newest first, like the prints; the chart keeps every bucket, the table the ones that moved it.
+  const tableRows = useMemo(() => flowTideMoves(rows).reverse(), [rows]);
   const bucketMs = session?.bucketMs ?? 300_000;
   const [selected, setSelected] = usePluginPaneState<string | null>("flow:tide-bucket", null);
   const selectedId = tableRows.some((row) => tideKey(row) === selected) ? selected : tableRows[0] ? tideKey(tableRows[0]) : null;
