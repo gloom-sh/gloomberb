@@ -600,7 +600,7 @@ A zero or negative price is kept for a futures instrument. For any other instrum
 | `FUT` | Futures quote aliases across index, equity sectors, rates, energy, metals, grains and softs, livestock, and FX |
 | `RRG` / `GRR` | Weekly relative rotation of sectors or a watchlist against a benchmark, with dated trails |
 | `BT <ticker>` / `BTST <ticker>` | Backtest a long-only indicator rule on daily history against buy-and-hold |
-| `EQS` | Equity screener over the stored Cloud universe: valuation, growth, margins, technicals, short interest, insider and 13F criteria, ready technical screens, saved screens and export |
+| `EQS` | Equity screener over the stored Cloud universe: valuation, growth, margins, technicals, option volatility, short interest, insider and 13F criteria, ready technical screens, saved screens and export |
 | `PERP [market]` | Perpetual funding, open interest and premiums: a board, rankings and one asset across venues (Pro history; free preview) |
 | `CRYP` | Top crypto assets by market cap with live prices, 7D, 30D and 1Y returns, 24h volume and market cap. Stablecoins have their own tab |
 | `ETFF` | Daily net flows of the US spot bitcoin and ether ETFs, fund by fund in US$ millions, with the last 5 and 20 days and the running total since launch |
@@ -2400,6 +2400,12 @@ Besides valuation, growth, margins, short interest, insider and 13F activity and
 - **EPS REV 30D%**: change in the current fiscal year's consensus EPS over 30 days, unavailable when the fiscal year rolled in between.
 - **UPSIDE%**: mean analyst price target over the price.
 - **IV RANK** and **IV/HV**, for optionable US names: 30-day implied volatility between its 52-week low (0) and high (100), and over the realized volatility of the last 21 daily closes. IV rank is a rank, not an IV percentile.
+- **Option volatility**, for screening premium to sell:
+  - **IV30%** (`iv30Percent`) and **IV PCTL** (`ivPercentile`), for optionable US names: the latest 30-day implied volatility at the options close, and the share of the past 52 weeks' sessions it closed below (90: nine sessions in ten were lower), as `HIVG` and `VCA` show it. A percentile counts days, so one spike in the year does not hold it down the way it holds down IV RANK.
+  - **IV30 CHG 1D** and **IV30 CHG 5D** (`iv30Change1d`, `iv30Change5d`): IV30 less its close one and five sessions before, in volatility points (25% to 27% is +2.0 vol pts). Unavailable when that session has no close.
+  - **HV20%** (`hv20Percent`) and **HV RANK** (`hvRank`), US listings: realized volatility of the last 20 daily closes, annualized, and where it sits between its 52-week low (0) and high (100).
+
+  An IV with no close in the last five days leaves the IV fields unavailable with its date, rather than screening an old premium. `ivPercentile gte 80` with `iv30Change5d gte 0` finds names whose volatility is high for them and still rising.
 - **FY PAYOUT%** (`payoutRatioPercent`): common dividends paid in the latest fiscal year over net income attributable to the parent, from SEC filings, so US filers only; unavailable when the income is zero or negative.
 - **DIV GR 1Y%** and **DIV CAGR 3Y%** (`dividendGrowth1YPercent`, `dividendGrowth3YPercent`): trailing twelve-month cash per share against one and three years before, the growth `DVD` shows, compounded yearly for 3Y. A payer that stopped reads -100%; a company with too short a history or none paid in the base year has none. Distribution history is stored for most large USD payers and fewer elsewhere.
 

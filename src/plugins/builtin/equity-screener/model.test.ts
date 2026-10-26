@@ -1,7 +1,7 @@
 import { screenFixture as payload } from "./test-fixture";
 import { expect, spyOn, test } from "bun:test";
 import { apiClient } from "../../../api-client";
-import { DIVIDEND_FIELDS, RESEARCH_FIELDS, SOCIAL_FIELDS, TECHNICAL_FIELDS, VOLATILITY_FIELDS, type ScreenSnapshot } from "../../../api-client/equity-screener";
+import { DIVIDEND_FIELDS, OPTION_VOLATILITY_FIELDS, RESEARCH_FIELDS, SOCIAL_FIELDS, TECHNICAL_FIELDS, VOLATILITY_FIELDS, type ScreenSnapshot } from "../../../api-client/equity-screener";
 import { fetchScreen, fetchScreenFields } from "./client";
 import {
   appendScreenPage,
@@ -153,11 +153,12 @@ test("social and research fields format by kind, and an older server's rows stil
     formatScreenValue("beta", 1.052), formatScreenValue("ivRank", 46.89)])
     .toEqual(["+32.5", "-2.0", "45.9x", "1.05", "47"]);
   const older = payload();
-  for (const row of older.rows) for (const field of [...SOCIAL_FIELDS, ...RESEARCH_FIELDS, ...VOLATILITY_FIELDS, ...DIVIDEND_FIELDS, ...TECHNICAL_FIELDS])
+  for (const row of older.rows) for (const field of [...SOCIAL_FIELDS, ...RESEARCH_FIELDS, ...VOLATILITY_FIELDS, ...DIVIDEND_FIELDS, ...TECHNICAL_FIELDS, ...OPTION_VOLATILITY_FIELDS])
     delete (row.metrics as Partial<typeof row.metrics>)[field];
   const loaded = validateScreenPayload(older);
   expect(loaded.rows[0]!.metrics.xPostsVsMedian).toMatchObject({ value: null, state: "unavailable" });
   expect(loaded.rows[0]!.metrics.atrPercent).toMatchObject({ value: null, state: "unavailable" });
+  expect(loaded.rows[0]!.metrics.ivPercentile).toMatchObject({ value: null, state: "unavailable" });
   expect(loaded.rows[0]!.metrics.roePercent).toMatchObject({ value: null, state: "unavailable" });
   expect(loaded.rows[0]!.metrics.payoutRatioPercent).toMatchObject({ value: null, state: "unavailable" });
   expect(loaded.rows[0]!.metrics.goldenCrossDays).toMatchObject({ value: null, state: "unavailable" });
@@ -227,4 +228,12 @@ test("technical fields: RSI and the width percentile without a sign, distances f
   expect([SIGN_COLORED.has("priceVsSma20Percent"), SIGN_COLORED.has("rsi14"), SIGN_COLORED.has("macdBullishCrossDays")]).toEqual([true, false, false]);
   for (const field of TECHNICAL_FIELDS) expect(SHORT_LABELS[field].length).toBeLessThanOrEqual(13);
   expect(screenLabel("goldenCrossDays")).toBe("Days since golden cross");
+});
+
+test("option volatility fields: IV30 and HV20 in percent, percentile and rank whole, IV changes signed vol points", () => {
+  expect([formatScreenValue("iv30Percent", 28.04), formatScreenValue("ivPercentile", 91.4), formatScreenValue("iv30Change1d", 2.26),
+    formatScreenValue("iv30Change5d", -0.81), formatScreenValue("hv20Percent", 19.97), formatScreenValue("hvRank", 33.3)])
+    .toEqual(["28.0", "91", "+2.3", "-0.8", "20.0", "33"]);
+  expect(SIGN_COLORED.has("iv30Change1d")).toBe(false);
+  for (const field of OPTION_VOLATILITY_FIELDS) expect(SHORT_LABELS[field].length).toBeLessThanOrEqual(13);
 });

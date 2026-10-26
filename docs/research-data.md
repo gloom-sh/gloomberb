@@ -1388,6 +1388,17 @@ an invalid bar or fewer than 15 sessions leaves it unavailable. IV rank is a ran
 not an IV percentile: 0 is the lowest 30-day implied volatility of the past 52 weeks
 and 100 the highest.
 
+The option volatility fields read the same stored trade-close implied volatility.
+IV30 is the latest close's 30-day implied volatility. IV percentile is the share of
+the prior 52 weeks' closes below it, a tie counting half, with at least 120 of them:
+the percentile `HIVG` and `VCA` report. IV30 change 1D and 5D subtract the close one
+and five published sessions before, in volatility points; with no close on that
+session the change is unavailable, never interpolated. A latest close more than five
+days old leaves all four unavailable with its date. HV20 is the annualized sample
+deviation of the last 20 daily log returns of the stored completed sessions (252 a
+year), US listings; HV rank places it between the lowest (0) and highest (100) HV20
+of the prior 52 weeks, each read at its own session, with at least 120 of them.
+
 The technical fields are read from the same stored daily bars, US listings only,
 over the latest run of consecutive completed sessions (at most 300), all at the last
 one. RSI 14 and the distance from the 20, 50 and 200-session simple averages are the

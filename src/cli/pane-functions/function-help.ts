@@ -235,7 +235,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
   },
   EQS: {
     summary: "Screen covered stocks on valuation, growth, margins, liquidity, volatility, technicals, short interest, insider activity and 13F holders, then rank the matches by any metric. "
-      + "ATR% is the 14-session average true range as a percent of the last close. IV rank is a rank, not an IV percentile: 0 is the lowest 30-day implied volatility of the past 52 weeks and 100 the highest. "
+      + "ATR% is the 14-session average true range as a percent of the last close. IV rank is a rank, not an IV percentile: 0 is the lowest 30-day implied volatility of the past 52 weeks and 100 the highest. IV percentile, IV30 change in vol points, HV20 and HV rank screen premium to sell. "
       + "Technical fields read the last completed session: RSI 14, price vs SMA 20, 50 and 200, trading days since a MACD or golden cross and since a new 20-day or 52-week high or low, and Bollinger width percentile (0 is a six-month squeeze). Ideas holds ready technical screens.",
     usage: ["EQS", "gloom fn EQS --preset golden-cross"],
     keys: [key("a", "dd criterion"), key("m", "etric"), key("t", "check ticker"), key("s", "ave screen"), key("o", "pen research")],

@@ -4,6 +4,7 @@ import {
   HIRING_APP_FIELDS,
   CATEGORY_FIELDS,
   NUMERIC_FIELDS,
+  OPTION_VOLATILITY_FIELDS,
   RESEARCH_FIELDS,
   KPI_FIELDS,
   SOCIAL_FIELDS,
@@ -112,6 +113,13 @@ export const SHORT_LABELS: Record<NumericField, string> = {
   analystUpsidePercent: "UPSIDE%",
   ivRank: "IV RANK",
   ivToHv: "IV/HV",
+  iv30Percent: "IV30%",
+  ivPercentile: "IV PCTL",
+  // Volatility points: IV30 25% to 27% is +2.
+  iv30Change1d: "IV30 CHG 1D",
+  iv30Change5d: "IV30 CHG 5D",
+  hv20Percent: "HV20%",
+  hvRank: "HV RANK",
   hiringOpenRoles: "OPEN ROLES",
   hiringNetAddsWeek: "NET ROLES/WK",
   hiringRemotePercent: "REMOTE%",
@@ -132,11 +140,12 @@ const SIGNED = new Set<NumericField>(["hiringNetAddsWeek", "hiringZScore", "appR
   "dividendGrowth1YPercent", "dividendGrowth3YPercent",
   ...RETURNS, "fromHigh52WPercent", "epsRevision30dPercent", "analystUpsidePercent",
   "priceVsSma20Percent", "priceVsSma50Percent", "priceVsSma200Percent",
+  "iv30Change1d", "iv30Change5d",
 ]);
 /** Moves whose sign is the news: they take the sign colour. */
 export const SIGN_COLORED = new Set<NumericField>(["changePercent", ...RETURNS, "epsRevision30dPercent", "analystUpsidePercent",
   "priceVsSma20Percent", "priceVsSma50Percent", "priceVsSma200Percent"]);
-const COUNTS = new Set<NumericField>(["appRatingCountGrowth7d", "hiringNetAddsWeek", "hiringOpenRoles", "attentionResearchUnits", "insiderPurchases90d", "insiderSales90d", "institutionalHolders", "institutionalNewHolders", "institutionalExits", "ivRank",
+const COUNTS = new Set<NumericField>(["appRatingCountGrowth7d", "hiringNetAddsWeek", "hiringOpenRoles", "attentionResearchUnits", "insiderPurchases90d", "insiderSales90d", "institutionalHolders", "institutionalNewHolders", "institutionalExits", "ivRank", "ivPercentile", "hvRank",
   "macdBullishCrossDays", "macdBearishCrossDays", "goldenCrossDays", "deathCrossDays",
   "newHigh20dDays", "newLow20dDays", "newHigh52wDays", "newLow52wDays", "bollingerWidthPercentile"]);
 const MONETARY = new Set<NumericField>(["price", "marketCap", "kpiArr", "kpiRpo", "kpiCrpo", "kpiGmv", "kpiBacklog"]);
@@ -327,6 +336,12 @@ export const screenLabel = (field: string) =>
     analystUpsidePercent: "Analyst upside %",
     ivRank: "IV rank",
     ivToHv: "IV / HV",
+    iv30Percent: "IV30 %",
+    ivPercentile: "IV percentile",
+    iv30Change1d: "IV30 change 1D, vol pts",
+    iv30Change5d: "IV30 change 5D, vol pts",
+    hv20Percent: "HV20 %",
+    hvRank: "HV rank",
     hiringOpenRoles: "Hiring open roles",
     hiringNetAddsWeek: "Net open roles per week",
     hiringRemotePercent: "Remote roles %",
@@ -625,9 +640,9 @@ export function validateScreenPayload(value: unknown): ScreenPayload {
       throw new Error("Invalid screener listing identity.");
     ids.add(screenRowId(row));
     for (const field of NUMERIC_FIELDS) {
-      // A server from before social, research, volatility, dividend or technical fields omits them; they read as unavailable.
-      // A Pro field it left out was held back from this caller.
-      if (!row.metrics[field] && ([...SOCIAL_FIELDS, ...RESEARCH_FIELDS, ...VOLATILITY_FIELDS, ...TECHNICAL_FIELDS, ...ATTENTION_FIELDS, ...HIRING_APP_FIELDS, ...KPI_FIELDS, ...DIVIDEND_FIELDS] as readonly string[]).includes(field))
+      // A server from before social, research, volatility, dividend, technical or option volatility fields omits them;
+      // they read as unavailable. A Pro field it left out was held back from this caller.
+      if (!row.metrics[field] && ([...SOCIAL_FIELDS, ...RESEARCH_FIELDS, ...VOLATILITY_FIELDS, ...TECHNICAL_FIELDS, ...OPTION_VOLATILITY_FIELDS, ...ATTENTION_FIELDS, ...HIRING_APP_FIELDS, ...KPI_FIELDS, ...DIVIDEND_FIELDS] as readonly string[]).includes(field))
         row.metrics[field] = PRO_FIELDS.has(field) ? withheldMetric() : unavailableMetric();
       const metric = row.metrics[field];
       if (

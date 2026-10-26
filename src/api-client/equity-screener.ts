@@ -13,6 +13,11 @@ export const TECHNICAL_FIELDS = [
   "newHigh20dDays", "newLow20dDays", "newHigh52wDays", "newLow52wDays",
   "bollingerWidthPercentile",
 ] as const;
+/**
+ * IV30, its 52-week percentile and its moves in volatility points, and 20-session realized volatility with its
+ * 52-week rank; listed only when asked (`include=option-volatility`), and omitted by a server from before them.
+ */
+export const OPTION_VOLATILITY_FIELDS = ["iv30Percent", "ivPercentile", "iv30Change1d", "iv30Change5d", "hv20Percent", "hvRank"] as const;
 export const NUMERIC_FIELDS = [
   ...KPI_FIELDS,
   "price",
@@ -61,6 +66,7 @@ export const NUMERIC_FIELDS = [
   "analystUpsidePercent",
   "ivRank",
   "ivToHv",
+  ...OPTION_VOLATILITY_FIELDS,
   "hiringOpenRoles", "hiringNetAddsWeek", "hiringRemotePercent", "hiringZScore",
   "appAttentionScore", "appRankVelocity7d", "appRatingDrift7d", "appRatingCountGrowth7d",
 ] as const;
