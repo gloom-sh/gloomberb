@@ -1608,7 +1608,7 @@
           {
             "code": "CMP",
             "name": "Comparison Chart",
-            "description": "Compare price returns over shared observation dates for two or more tickers. A leveraged or inverse fund gets its daily objective drawn from its index fund (3× daily QQQ beside TQQQ) and its decay against it."
+            "description": "Compare price returns over shared observation dates for two or more tickers, or total returns with distributions reinvested. A leveraged or inverse fund gets its daily objective drawn from its index fund (3× daily QQQ beside TQQQ) and its decay against it."
           },
           {
             "code": "GF",
