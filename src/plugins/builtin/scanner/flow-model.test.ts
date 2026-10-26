@@ -8,6 +8,7 @@ import {
   flowHistoryQuery,
   flowHistorySearch,
   flowRowsSpanDays,
+  flowSessionSearch,
   formatFlowTime,
   keepFlowPrints,
   mergeFlowRows,
@@ -42,7 +43,7 @@ function filters(overrides: Partial<FlowFilters> = {}): FlowFilters {
   return { ...DEFAULT_FLOW_FILTERS, ...overrides };
 }
 
-const watchlist = new Set(["NVDA"]);
+const scope = { watchlist: new Set(["NVDA"]) };
 
 describe("client-side flow filters", () => {
   test("composes every filter as an AND over the same shared feed", () => {
@@ -63,7 +64,7 @@ describe("client-side flow filters", () => {
       volOi: "1",
       expiry: "30",
       universe: "watchlist",
-    }), watchlist, NOW);
+    }), scope, NOW);
 
     expect(kept.map((entry) => entry.id)).toEqual(["keep"]);
   });
@@ -74,14 +75,14 @@ describe("client-side flow filters", () => {
       event({ id: "small", premium: 60_000 }),
       event({ id: "other-name", underlying: "SPY" }),
     ];
-    expect(filterFlowEvents(events, filters(), watchlist, NOW).map((entry) => entry.id))
+    expect(filterFlowEvents(events, filters(), scope, NOW).map((entry) => entry.id))
       .toEqual(["put-block-far", "other-name"]);
   });
 
   test("drops events with unknown vol/OI only when a floor is set", () => {
     const events = [event({ id: "unknown-oi", volOi: null })];
-    expect(filterFlowEvents(events, filters({ volOi: "off" }), watchlist, NOW)).toHaveLength(1);
-    expect(filterFlowEvents(events, filters({ volOi: "1" }), watchlist, NOW)).toHaveLength(0);
+    expect(filterFlowEvents(events, filters({ volOi: "off" }), scope, NOW)).toHaveLength(1);
+    expect(filterFlowEvents(events, filters({ volOi: "1" }), scope, NOW)).toHaveLength(0);
   });
 
   test("keeps today's expiry inside a 7 day window and rejects unparsable dates", () => {
@@ -91,7 +92,7 @@ describe("client-side flow filters", () => {
       event({ id: "in-8", expiry: "2026-03-10" }),
       event({ id: "bad", expiry: "not-a-date" }),
     ];
-    expect(filterFlowEvents(events, filters({ expiry: "7" }), watchlist, NOW).map((entry) => entry.id))
+    expect(filterFlowEvents(events, filters({ expiry: "7" }), scope, NOW).map((entry) => entry.id))
       .toEqual(["today", "in-7"]);
   });
 });
@@ -126,10 +127,10 @@ describe("paging below the live tape", () => {
   });
 
   test("the pane's filters become the recorded-print query", () => {
-    expect(flowHistoryQuery(DEFAULT_FLOW_FILTERS, watchlist)).toEqual({ limit: 100, minPremium: 250_000 });
+    expect(flowHistoryQuery(DEFAULT_FLOW_FILTERS, scope)).toEqual({ limit: 100, minPremium: 250_000 });
     expect(flowHistoryQuery(
       filters({ side: "puts", kind: "blocks", volOi: "5", expiry: "7", universe: "watchlist", minPremium: "1000000" }),
-      new Set(["nvda", "BRK.B"]),
+      { watchlist: new Set(["nvda", "BRK.B"]) },
       { at: NOW, id: "opt-1" },
       50,
     )).toEqual({
@@ -165,8 +166,25 @@ describe("paging below the live tape", () => {
       event({ id: "soxs", underlying: "SOXS1" }),
       event({ id: "amd", underlying: "AMD" }),
     ];
-    const visible = filterFlowEvents(events, filters({ universe: "watchlist" }), new Set(["BRK.B", "SOXS"]), NOW);
+    const visible = filterFlowEvents(events, filters({ universe: "watchlist" }), { watchlist: new Set(["BRK.B", "SOXS"]) }, NOW);
     expect(visible.map((entry) => entry.id)).toEqual(["brk", "soxs"]);
+  });
+
+  test("one name takes the place of the universe, in the pane and in both queries", () => {
+    const events = [
+      event({ id: "nvda", underlying: "NVDA" }),
+      event({ id: "adjusted", underlying: "SOXS1" }),
+      event({ id: "amd", underlying: "AMD" }),
+    ];
+    const mine = filters({ universe: "watchlist" });
+    expect(filterFlowEvents(events, mine, { symbol: "soxs", watchlist: new Set(["NVDA"]) }, NOW).map((entry) => entry.id))
+      .toEqual(["adjusted"]);
+    expect(flowHistoryQuery(mine, { symbol: "soxs", watchlist: new Set(["NVDA"]) }).symbols).toEqual(["SOXS"]);
+    // The session summary names the one name as `symbol`, which also asks for its strikes.
+    expect(flowSessionSearch(mine, { symbol: "soxs", watchlist: new Set(["NVDA"]) }))
+      .toBe("minPremium=250000&symbol=SOXS");
+    expect(flowSessionSearch(mine, { watchlist: new Set(["NVDA", "AMD"]) }))
+      .toBe("minPremium=250000&universe=symbols&symbols=AMD%2CNVDA");
   });
 
   test("prints from earlier days show their date", () => {

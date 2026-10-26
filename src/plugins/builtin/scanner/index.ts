@@ -1,6 +1,6 @@
 import type { PaneSettingsDef } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
-import { DEFAULT_FLOW_FILTERS, FLOW_FILTER_OPTIONS } from "./flow-model";
+import { DEFAULT_FLOW_FILTERS, FLOW_FILTER_OPTIONS, flowScopeSymbol } from "./flow-model";
 import FlowPane from "./flow-pane";
 import HiloPane from "./hilo-pane";
 import LiveScanPane from "./live-pane";
@@ -123,11 +123,22 @@ export const scannerModule: PluginModule = {
       id: "scanner-flow-pane",
       paneId: FLOW_PANE_ID,
       label: "Options Flow",
-      description: "Unusual options activity: sweeps, blocks, and large premium prints.",
-      keywords: ["flow", "options", "sweep", "block", "unusual", "premium", "scanner"],
-      shortcut: { prefix: "FLOW" },
+      description: "Unusual options activity: sweeps, blocks, and large premium prints, with the net-premium tide through the session. Add a ticker for its prints and its premium by strike and expiry.",
+      keywords: ["flow", "options", "sweep", "block", "unusual", "premium", "scanner", "tide", "net premium", "market tide"],
+      shortcut: { prefix: "FLOW", argKind: "ticker", argPlaceholder: "ticker", argOptional: true, openWithoutArg: true },
       headless: flowHeadless,
-      createInstance: () => ({ settings: { ...DEFAULT_FLOW_FILTERS } }),
+      // One window per name, and one for the whole market.
+      createInstance: (_context, options) => {
+        const symbol = flowScopeSymbol(options?.symbol ?? options?.arg);
+        return symbol
+          ? {
+            instanceId: `${FLOW_PANE_ID}:${symbol}`,
+            title: `FLOW ${symbol}`,
+            binding: { kind: "fixed" as const, symbol },
+            settings: { ...DEFAULT_FLOW_FILTERS, symbol },
+          }
+          : { settings: { ...DEFAULT_FLOW_FILTERS } };
+      },
     },
     {
       id: LIVE_SCAN_TEMPLATE_ID,

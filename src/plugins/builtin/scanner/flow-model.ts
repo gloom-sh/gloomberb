@@ -82,19 +82,36 @@ function printRoot(underlying: string): string {
 }
 
 /**
+ * Whose prints the pane shows: one name (`FLOW NVDA`), which takes the place
+ * of the universe filter, or the market, narrowed to the user's own tickers
+ * when the universe filter says so.
+ */
+export interface FlowScope {
+  symbol?: string | null;
+  watchlist: ReadonlySet<string>;
+}
+
+/** The listed symbol a `FLOW <ticker>` pane is about, as the pane setting or report argument names it. */
+export function flowScopeSymbol(value: unknown): string | null {
+  const symbol = typeof value === "string" ? value.trim().toUpperCase() : "";
+  return symbol || null;
+}
+
+/**
  * The shared feed is published once for everyone, so every user preference is a
  * local predicate over the same events. Never push these upstream.
  */
 export function filterFlowEvents(
   events: readonly ScannerFlowEvent[] | undefined,
   filters: FlowFilters,
-  watchlist: ReadonlySet<string>,
+  scope: FlowScope,
   now = Date.now(),
 ): ScannerFlowEvent[] {
   const minPremium = Number(filters.minPremium);
   const minVolOi = filters.volOi === "off" ? null : Number(filters.volOi);
   const maxExpiryDays = filters.expiry === "all" ? null : Number(filters.expiry);
-  const roots = filters.universe === "watchlist" ? new Set([...watchlist].map(flowOptionRoot)) : null;
+  const roots = scope.symbol ? new Set([flowOptionRoot(scope.symbol)])
+    : filters.universe === "watchlist" ? new Set([...scope.watchlist].map(flowOptionRoot)) : null;
 
   return (events ?? []).filter((event) => {
     if (!(event.premium >= minPremium)) return false;
@@ -121,7 +138,15 @@ export function flowEmptyState(
   received: number,
   visible: number,
   status: ScannerStatus | undefined,
+  symbol: string | null = null,
 ): { title: string; hint: string } {
+  // One name's prints are mostly recorded ones, and a quiet name has none at all.
+  if (symbol) {
+    return {
+      title: `No ${symbol} prints under these filters.`,
+      hint: "Flow is recorded for the most active names, the day's movers and names with a flow alert.",
+    };
+  }
   if (received > visible) {
     return {
       title: `${received - visible} ${received - visible === 1 ? "print" : "prints"} hidden by filters.`,
@@ -219,20 +244,41 @@ export function mergeFlowRows(
 /** The pane's filters as a query for recorded prints, so each page is rows it will show. */
 export function flowHistoryQuery(
   filters: FlowFilters,
-  watchlist: ReadonlySet<string>,
+  scope: FlowScope,
   before?: { at: number; id: string },
   limit = FLOW_HISTORY_PAGE,
 ): ScannerFlowHistoryQuery {
   return {
     ...(before ? { before } : {}),
     limit,
+    ...flowFilterQuery(filters),
+    ...(scope.symbol ? { symbols: [scope.symbol.toUpperCase()] }
+      : filters.universe === "watchlist" ? { symbols: [...scope.watchlist].map((symbol) => symbol.toUpperCase()).sort() } : {}),
+  };
+}
+
+function flowFilterQuery(filters: FlowFilters): Omit<ScannerFlowHistoryQuery, "before" | "limit" | "symbols"> {
+  return {
     minPremium: Number(filters.minPremium),
     ...(filters.side === "calls" ? { right: "C" as const } : filters.side === "puts" ? { right: "P" as const } : {}),
     ...(filters.kind === "sweeps" ? { kind: "sweep" as const } : filters.kind === "blocks" ? { kind: "block" as const } : {}),
     ...(filters.volOi === "off" ? {} : { minVolOi: Number(filters.volOi) }),
     ...(filters.expiry === "all" ? {} : { maxExpiryDays: Number(filters.expiry) }),
-    ...(filters.universe === "watchlist" ? { symbols: [...watchlist].map((symbol) => symbol.toUpperCase()).sort() } : {}),
   };
+}
+
+/**
+ * The session summary's query as the Cloud route reads it: the same filters as
+ * the recorded prints, with one name as `symbol`, which also asks for its strikes.
+ */
+export function flowSessionSearch(filters: FlowFilters, scope: FlowScope): string {
+  const params = new URLSearchParams(flowHistorySearch({
+    ...flowFilterQuery(filters),
+    ...(!scope.symbol && filters.universe === "watchlist"
+      ? { symbols: [...scope.watchlist].map((symbol) => symbol.toUpperCase()).sort() } : {}),
+  }));
+  if (scope.symbol) params.set("symbol", scope.symbol.toUpperCase());
+  return params.toString();
 }
 
 function localDay(at: number): string {

@@ -42,12 +42,15 @@ function readQuery(search: string): ScannerFlowHistoryQuery {
 
 const originalSubscribe = apiClient.subscribeScanner;
 const originalHistory = apiClient.getScannerFlowHistory;
+const originalSession = apiClient.getScannerFlowSession;
 let requests: ScannerFlowHistoryQuery[] = [];
+let sessionSearches: string[] = [];
 let pushFeed: ((events: ScannerFlowEvent[]) => void) | null = null;
 const tui = createOpenTuiTestHarness();
 
 beforeEach(() => {
   requests = [];
+  sessionSearches = [];
   apiClient.subscribeScanner = ((_scanner: string, listener: (event: ScannerFeedEvent) => void) => {
     pushFeed = (events) => listener({
       type: "data",
@@ -71,15 +74,16 @@ beforeEach(() => {
 afterEach(() => {
   apiClient.subscribeScanner = originalSubscribe;
   apiClient.getScannerFlowHistory = originalHistory;
+  apiClient.getScannerFlowSession = originalSession;
 });
 
 const PANE_INSTANCE_ID = "scanner-flow:test";
 const paneRuntime = createTestPluginRuntime();
 
-function Harness({ height }: { height: number }) {
+function Harness({ height, settings }: { height: number; settings?: Record<string, unknown> }) {
   const [paneState, setPaneState] = useState<AppState["paneState"]>({});
   const state = createInitialState(createTestPaneConfig("/tmp/gloomberb-flow-pane-test", {
-    paneId: "scanner-flow", instanceId: PANE_INSTANCE_ID,
+    paneId: "scanner-flow", instanceId: PANE_INSTANCE_ID, ...(settings ? { settings } : {}),
   }));
   state.paneState = paneState;
   const dispatch = (action: AppAction) => setPaneState(
@@ -151,4 +155,34 @@ test("a print that rolls off the shared tape stays in the pane", async () => {
   const frame = tui.frame();
   expect(frame).toContain("AMD");
   expect(frame.match(/TSLA/g)?.length ?? 0).toBeGreaterThanOrEqual(3);
+});
+
+test("one name's pane asks for its own prints and opens on its tide from the session summary", async () => {
+  apiClient.getScannerFlowSession = (async (search: string) => {
+    sessionSearches.push(search);
+    const open = NOW - 60 * MINUTE;
+    return {
+      session: "2026-10-26",
+      bucketMs: 5 * MINUTE,
+      buckets: [
+        { at: open, callAsk: 2_000_000, callBid: 500_000, putAsk: 0, putBid: 0 },
+        { at: open + 5 * MINUTE, callAsk: 0, callBid: 0, putAsk: 900_000, putBid: 0 },
+        { at: open + 10 * MINUTE, callAsk: 300_000, callBid: 0, putAsk: 0, putBid: 100_000 },
+      ],
+      strikes: [],
+    };
+  }) as typeof apiClient.getScannerFlowSession;
+  await tui.render(<Harness height={30} settings={{ symbol: "NVDA", tab: "tide" }} />, { width: 100, height: 30 });
+  await settle(6);
+
+  // The summary is one name's: its strikes come with it.
+  expect(sessionSearches[0]).toBe("minPremium=250000&symbol=NVDA");
+  const frame = tui.frame();
+  expect(frame).toContain("Strikes");
+  expect(frame).toContain("NET PREM");
+  // 1.5M of calls bought on balance, less 900K of puts, then +400K more.
+  expect(frame).toContain("+$1.0M");
+  expect(frame).toContain("-$900K");
+  // One name's pane has no universe to choose.
+  expect(frame).not.toContain("Univ");
 });

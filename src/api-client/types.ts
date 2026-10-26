@@ -1955,6 +1955,44 @@ export interface ScannerFlowHistoryPage {
   hasMore: boolean;
 }
 
+/**
+ * Premium of a slice of the session's recorded prints by where it traded: at
+ * or above the ask (bought) or at or below the bid (sold). Mid and unknown
+ * prints count as neither.
+ */
+interface ScannerFlowSidePremium {
+  callAsk: number;
+  callBid: number;
+  putAsk: number;
+  putBid: number;
+}
+
+/** The session's prints in one time bucket, which starts at `at`. */
+export interface ScannerFlowSessionBucket extends ScannerFlowSidePremium {
+  at: number;
+}
+
+/** What one name printed at one expiry and strike during the session. */
+export interface ScannerFlowSessionStrike extends ScannerFlowSidePremium {
+  expiry: string;
+  strike: number;
+  /** Every call print's premium, mid and unknown included. */
+  callPremium: number;
+  putPremium: number;
+  prints: number;
+}
+
+/** The latest session's recorded prints under the FLOW pane's filters, summed. */
+export interface ScannerFlowSession {
+  /** The New York date of the session; null before any print was recorded. */
+  session: string | null;
+  bucketMs: number;
+  /** Buckets with a matching print, oldest first. */
+  buckets: ScannerFlowSessionBucket[];
+  /** Only when one name was asked for: most premium first. */
+  strikes: ScannerFlowSessionStrike[] | null;
+}
+
 export type ScannerPayload = ScannerHiloPayload | ScannerFlowPayload;
 
 /** What a scanner subscriber receives: data, or the entitlement refusal. */

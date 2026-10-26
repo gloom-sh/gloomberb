@@ -905,9 +905,9 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: [],
   },
   FLOW: {
-    summary: "Sweeps, blocks and large premium prints as they hit the tape, with ticker, strike, expiry and premium.",
-    usage: ["FLOW"],
-    keys: [OPEN],
+    summary: "Sweeps, blocks and large premium prints as they hit the tape, with ticker, strike, expiry and premium, and the net premium tide through the session. With a ticker: that name's prints and its premium by expiry and strike, bought at the ask against sold at the bid.",
+    usage: ["FLOW", "FLOW NVDA"],
+    keys: [TABS, OPEN],
     data: pro(REAL_TIME),
     access: "pro",
     bloomberg: ["FLOW"],

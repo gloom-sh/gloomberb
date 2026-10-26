@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import type { ScannerHiloPayload } from "../../../api-client";
+import type { ScannerFlowEvent, ScannerFlowPayload, ScannerHiloPayload } from "../../../api-client";
 import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/plugin";
-import { createHiloHeadless, loadHiloSnapshot } from "./headless";
+import { createFlowHeadless, createHiloHeadless, FLOW_SIDE_RULE, loadHiloSnapshot } from "./headless";
 
 const payload: ScannerHiloPayload = {
   status: "live",
@@ -76,5 +76,63 @@ describe("highs and lows headless model", () => {
     expect((filtered.metadata?.windows as Array<Record<string, unknown>>)[0]).toMatchObject({
       key: "m5", highs: 3, lows: 3,
     });
+  });
+});
+
+describe("options flow report", () => {
+  const AT = Date.parse("2026-10-26T15:00:00Z");
+  const print = (id: string, underlying: string, at: number): ScannerFlowEvent => ({
+    id, at, underlying, contract: `${underlying}261030C00200000`, right: "C", strike: 200, expiry: "2026-10-30",
+    side: "ask", kind: "sweep", size: 500, price: 10, premium: 500_000, volume: 1_000, openInterest: 500, volOi: 2, iv: 0.5,
+  });
+  const feed: ScannerFlowPayload = {
+    status: "live", access: "realtime", delayMinutes: 0, asOf: AT, events: [print("live-nvda", "NVDA", AT), print("live-amd", "AMD", AT)],
+  };
+  const searches: string[] = [];
+  const headless = createFlowHeadless({
+    load: async () => feed,
+    recorded: async (search) => { searches.push(`history?${search}`); return { events: [print("old-nvda", "NVDA", AT - 3_600_000)], hasMore: true }; },
+    session: async (search) => {
+      searches.push(`session?${search}`);
+      return {
+        session: "2026-10-26", bucketMs: 300_000,
+        buckets: [
+          { at: AT - 600_000, callAsk: 1_000_000, callBid: 0, putAsk: 0, putBid: 0 },
+          { at: AT, callAsk: 0, callBid: 0, putAsk: 300_000, putBid: 0 },
+        ],
+        strikes: search.includes("symbol=") ? [{ expiry: "2026-10-30", strike: 200, callPremium: 1_000_000, putPremium: 300_000,
+          callAsk: 1_000_000, callBid: 0, putAsk: 0, putBid: 0, prints: 3 }] : null,
+      };
+    },
+  });
+  const args = (argument: string | null, options: Record<string, string> = {}) =>
+    ({ rawArgument: argument ?? "", argument, symbols: argument ? [argument] : [], options: { minPremium: "250000", ...options } });
+
+  test("one name: its live and recorded prints, its tide and its strikes, with the side rule once", async () => {
+    searches.length = 0;
+    const report = await headless.load(args("nvda"), {} as HeadlessPaneContext);
+    expect(searches).toEqual([
+      "history?limit=100&minPremium=250000&universe=symbols&symbols=NVDA",
+      "session?minPremium=250000&symbol=NVDA",
+    ]);
+    expect(report.sections.map((section) => section.title)).toEqual([
+      "NVDA prints", "Net premium through the 2026-10-26 session", "NVDA by expiry and strike, 2026-10-26",
+    ]);
+    const [prints, tide, strikes] = report.sections as Array<{ rows: Array<Record<string, unknown>> }>;
+    expect(prints!.rows.map((row) => row.id)).toEqual(["live-nvda", "old-nvda"]);
+    // Newest first, each bucket with the running net premium through it.
+    expect(tide!.rows.map((row) => [row.change, row.net])).toEqual([[-300_000, 700_000], [1_000_000, 1_000_000]]);
+    expect(strikes!.rows[0]).toMatchObject({ strike: 200, net: 1_000_000 });
+    expect(report.notes).toEqual([FLOW_SIDE_RULE]);
+  });
+
+  test("the market reads the live tape alone, a tab one section, and strikes need a ticker", async () => {
+    searches.length = 0;
+    const market = await headless.load(args(null, { tab: "prints" }), {} as HeadlessPaneContext);
+    expect(searches).toEqual([]);
+    expect(market.sections).toHaveLength(1);
+    expect(market.notes).toBeUndefined();
+    expect((market.sections[0] as { rows: unknown[] }).rows).toHaveLength(2);
+    await expect(headless.load(args(null, { tab: "strikes" }), {} as HeadlessPaneContext)).rejects.toThrow("needs a ticker");
   });
 });

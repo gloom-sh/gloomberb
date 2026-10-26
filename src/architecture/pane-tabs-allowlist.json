@@ -53,6 +53,9 @@
   "src/plugins/builtin/research-search/pane.tsx": {
     "signInRequired || verificationRequired": "Signed out or unverified, every mode is the same sign-in wall."
   },
+  "src/plugins/builtin/scanner/flow-pane.tsx": {
+    "!feed.denied": "Signed out or without Pro, every tab is the same sign-in or plan wall."
+  },
   "src/plugins/builtin/shared/filing-year-reader.tsx": {
     "years.length > 1": "The tabs are the filings on record, known once their list answers; a single filing has no other year to pick."
   },

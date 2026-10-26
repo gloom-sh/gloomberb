@@ -68,6 +68,7 @@ export const SERIES_INVENTORY: readonly SeriesInventoryEntry[] = [
   { module: "primary-dealers", chart: "A primary dealer position's weekly net level, the sum of the release's series behind the row", notInCatalog: "not-yet", reason: "Weekly and dated, one series per row of the board; the pane reads each only when its row is selected, and none is registered for the composer yet." },
   { module: "short-interest", chart: "A ticker's short interest and days to cover", series: ["short-interest:*"] },
   { module: "short-volume", chart: "A ticker's daily short volume ratio", series: ["short-volume:*"] },
+  { module: "scanner", chart: "Net options premium through the session, for the market or one ticker (FLOW's Tide)", notInCatalog: "per-item", reason: "One per ticker, filter set and session, summed on request from the recorded option prints." },
   { module: "social-mentions", chart: "A ticker's daily posts", series: ["social-mentions:*"] },
   { module: "jobs", chart: "A company's open job postings", series: ["jobs:*"] },
   { module: "attention", chart: "Research hours on a ticker, hour by hour", series: ["attention:*"] },

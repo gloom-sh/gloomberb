@@ -180,6 +180,7 @@ import type {
   CloudWorldVenueMapPayload,
   CloudYieldPointPayload,
   ScannerFlowHistoryPage,
+  ScannerFlowSession,
 } from "./types";
 import type { CloudApiRequest } from "./request";
 
@@ -916,6 +917,11 @@ export class CloudDataApi {
   /** Recorded FLOW prints older than the live tape (Pro); the plugin builds `search`. */
   getScannerFlowHistory(search: string, signal?: AbortSignal) {
     return this.request<ScannerFlowHistoryPage>(`/market/scanner/flow/history?${search}`, { signal });
+  }
+
+  /** The latest session's recorded FLOW prints summed by side, by time and by strike (Pro); the plugin builds `search`. */
+  getScannerFlowSession(search: string, signal?: AbortSignal) {
+    return this.request<ScannerFlowSession>(`/market/scanner/flow/session?${search}`, { signal });
   }
 
   getMobileAlertHistory<T>(offset = 0) {

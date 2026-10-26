@@ -1,12 +1,17 @@
 import { ApiRequestError } from "../../../api-client/errors";
 import type {
+  ScannerFlowEvent,
+  ScannerFlowHistoryPage,
   ScannerFlowPayload,
+  ScannerFlowSession,
   ScannerHiloPayload,
   ScannerKind,
   ScannerPayload,
 } from "../../../api-client";
 import type {
+  HeadlessBundleSection,
   HeadlessPaneApiClient,
+  HeadlessPaneColumn,
   HeadlessPaneDefinition,
   HeadlessPaneFreshness,
   HeadlessPaneLoadArgs,
@@ -17,8 +22,16 @@ import {
   DEFAULT_FLOW_FILTERS,
   FLOW_FILTER_OPTIONS,
   filterFlowEvents,
+  flowHistoryQuery,
+  flowHistorySearch,
+  flowScopeSymbol,
+  flowSessionSearch,
+  mergeFlowRows,
   type FlowFilters,
+  type FlowScope,
 } from "./flow-model";
+import { flowStrikeRows, flowTideRows, formatSignedFlowPremium } from "./flow-session";
+import { signalWithTimeout } from "../../../utils/async-deadline";
 import { explainRefusal } from "../shared/cloud-denied";
 import { captureScannerEvent, SCANNER_SNAPSHOT_TIMEOUT_MS } from "../shared/scanner-capture";
 import { flowLockNote } from "./lock-note";
@@ -175,15 +188,118 @@ function flowOption(key: FlowHeadlessFilterKey): HeadlessPaneOptionDef {
   };
 }
 
-function projectFlowSnapshot(
-  payload: ScannerFlowPayload,
+/** The pane's tabs, each a section of the report; left out, the report has every one. */
+type FlowReportTab = "prints" | "tide" | "strikes";
+
+/** Recorded prints of one name a report lists under the live ones. */
+const FLOW_REPORT_RECORDED = 100;
+
+/** The side rule, said once in every report that sums prints by side. */
+export const FLOW_SIDE_RULE = "Net premium counts a print at the ask as bought and one at the bid as sold; mid prints count as neither.";
+
+const utcTime = (value: unknown) => {
+  const time = Number(value);
+  return Number.isFinite(time) ? `${new Date(time).toISOString().slice(0, 19).replace("T", " ")} UTC` : "-";
+};
+const signedPremium = (value: unknown) => typeof value === "number" ? formatSignedFlowPremium(value) : "";
+
+const PRINT_COLUMNS: HeadlessPaneColumn[] = [
+  { key: "at", header: "Time", format: utcTime },
+  { key: "underlying", header: "Ticker" },
+  { key: "right", header: "Right" },
+  { key: "kind", header: "Kind" },
+  { key: "strike", header: "Strike", align: "right" },
+  { key: "expiry", header: "Expiry" },
+  { key: "side", header: "Side" },
+  { key: "size", header: "Size", align: "right" },
+  { key: "premium", header: "Premium", align: "right" },
+  { key: "volOi", header: "Vol/OI", align: "right" },
+];
+
+const TIDE_COLUMNS: HeadlessPaneColumn[] = [
+  { key: "at", header: "Time", format: utcTime },
+  { key: "callAsk", header: "Call ask", align: "right", description: "Call premium bought at the ask in the bucket." },
+  { key: "callBid", header: "Call bid", align: "right", description: "Call premium sold at the bid in the bucket." },
+  { key: "putAsk", header: "Put ask", align: "right", description: "Put premium bought at the ask in the bucket." },
+  { key: "putBid", header: "Put bid", align: "right", description: "Put premium sold at the bid in the bucket." },
+  { key: "netCalls", header: "Net calls", align: "right", textFormat: signedPremium, description: "Call ask less call bid premium through the bucket." },
+  { key: "netPuts", header: "Net puts", align: "right", textFormat: signedPremium, description: "Put ask less put bid premium through the bucket." },
+  { key: "net", header: "Net premium", align: "right", textFormat: signedPremium, description: "Net calls less net puts through the bucket: the tide." },
+  { key: "change", header: "Change", align: "right", textFormat: signedPremium, description: "What the bucket added to the net premium." },
+];
+const TIDE_TEXT_COLUMNS = TIDE_COLUMNS.filter((column) => !["callAsk", "callBid", "putAsk", "putBid"].includes(column.key));
+
+const STRIKE_COLUMNS: HeadlessPaneColumn[] = [
+  { key: "expiry", header: "Expiry" },
+  { key: "strike", header: "Strike", align: "right" },
+  { key: "callPremium", header: "Calls", align: "right", description: "All call premium, mid prints included." },
+  { key: "callAsk", header: "Call ask", align: "right" },
+  { key: "callBid", header: "Call bid", align: "right" },
+  { key: "putPremium", header: "Puts", align: "right", description: "All put premium, mid prints included." },
+  { key: "putAsk", header: "Put ask", align: "right" },
+  { key: "putBid", header: "Put bid", align: "right" },
+  { key: "net", header: "Net", align: "right", textFormat: signedPremium, description: "Net call premium less net put premium at the strike." },
+  { key: "prints", header: "Prints", align: "right" },
+];
+
+interface FlowReportData {
+  payload: ScannerFlowPayload;
+  /** One name's recorded prints below the live tape; null for the market. */
+  recorded: ScannerFlowHistoryPage | null;
+  /** The session's prints summed; null when the report leaves the tide and strikes out. */
+  session: ScannerFlowSession | null;
+}
+
+/** Newest first, the bucket rows with the running totals through each. */
+function tideReportRows(session: ScannerFlowSession | null): Array<Record<string, unknown>> {
+  return flowTideRows(session).reverse().map((row) => ({ ...row }));
+}
+
+function projectFlowReport(
+  data: FlowReportData,
   filters: FlowFilters,
+  scope: FlowScope,
+  tab: FlowReportTab | null,
   now = Date.now(),
-): HeadlessSnapshotResult {
-  const events = filterFlowEvents(payload.events, filters, new Set(), now);
+): { sections: HeadlessBundleSection[]; asOf: string; metadata: Record<string, unknown>; notes?: string[]; errors?: string[]; freshness: HeadlessPaneFreshness } {
+  const { payload, recorded, session } = data;
+  const symbol = scope.symbol ?? null;
+  const live = filterFlowEvents(payload.events, filters, scope, now);
+  const prints: ScannerFlowEvent[] = recorded ? mergeFlowRows(live, recorded.events) : live;
+  const shows = (section: FlowReportTab) => !tab || tab === section;
+  const sessionDate = session?.session ?? null;
+  const sections: HeadlessBundleSection[] = [];
+  if (shows("prints")) {
+    sections.push({
+      title: symbol ? `${symbol} prints` : "Prints",
+      columns: PRINT_COLUMNS,
+      rows: prints.map((event) => ({ ...event })),
+      empty: symbol ? `No ${symbol} prints under these filters.` : "No prints on the tape under these filters.",
+    });
+  }
+  if (shows("tide")) {
+    sections.push({
+      title: sessionDate ? `Net premium through the ${sessionDate} session` : "Net premium through the session",
+      columns: TIDE_COLUMNS,
+      textColumns: TIDE_TEXT_COLUMNS,
+      rows: tideReportRows(session),
+      unit: "USD",
+      empty: "No prints under these filters this session.",
+    });
+  }
+  if (symbol && shows("strikes")) {
+    sections.push({
+      title: sessionDate ? `${symbol} by expiry and strike, ${sessionDate}` : `${symbol} by expiry and strike`,
+      columns: STRIKE_COLUMNS,
+      rows: flowStrikeRows(session).map(({ id: _id, ...row }) => row),
+      empty: `No ${symbol} prints under these filters this session.`,
+    });
+  }
+  const sums = shows("tide") || (!!symbol && shows("strikes"));
   return {
+    sections,
     asOf: new Date(payload.asOf).toISOString(),
-    items: events.map((event) => ({ ...event })),
+    ...(sums ? { notes: [FLOW_SIDE_RULE] } : {}),
     ...(payload.status === "degraded" ? { errors: ["Scanner feed degraded"] } : {}),
     freshness: scannerFreshness(payload),
     metadata: {
@@ -192,6 +308,8 @@ function projectFlowSnapshot(
       delayMinutes: payload.delayMinutes,
       received: payload.events?.length ?? 0,
       filters,
+      ...(symbol ? { symbol } : {}),
+      ...(session ? { session: session.session, bucketMinutes: session.bucketMs / 60_000 } : {}),
     },
   };
 }
@@ -202,46 +320,74 @@ interface FlowHeadlessDependencies {
     client: Pick<HeadlessPaneApiClient, "subscribeScanner">,
     signal: AbortSignal,
   ): Promise<ScannerFlowPayload>;
+  recorded(search: string, client: Pick<HeadlessPaneApiClient, "getScannerFlowHistory">, signal: AbortSignal): Promise<ScannerFlowHistoryPage>;
+  session(search: string, client: Pick<HeadlessPaneApiClient, "getScannerFlowSession">, signal: AbortSignal): Promise<ScannerFlowSession>;
 }
 
-function createFlowHeadless(
-  dependencies: FlowHeadlessDependencies = {
-    load: (_args, client, signal) => loadScannerSnapshot<ScannerFlowPayload>(client, "flow", signal),
-  },
-): HeadlessPaneDefinition<"snapshot"> {
+const flowDependencies: FlowHeadlessDependencies = {
+  load: (_args, client, signal) => loadScannerSnapshot<ScannerFlowPayload>(client, "flow", signal),
+  recorded: (search, client, signal) => client.getScannerFlowHistory(search, signalWithTimeout(signal, 20_000)),
+  session: (search, client, signal) => client.getScannerFlowSession(search, signalWithTimeout(signal, 20_000)),
+};
+
+export function createFlowHeadless(
+  dependencies: FlowHeadlessDependencies = flowDependencies,
+): HeadlessPaneDefinition<"bundle"> {
   const keys: FlowHeadlessFilterKey[] = ["minPremium", "side", "kind", "volOi", "expiry"];
   return {
-    shape: "snapshot",
-    argument: { kind: "none" },
-    options: keys.map(flowOption),
-    columns: [
+    shape: "bundle",
+    argument: {
+      kind: "ticker",
+      optional: true,
+      placeholder: "ticker",
+      description: "Optional ticker: its prints and its premium by expiry and strike. Omit for the whole market.",
+    },
+    options: [
+      ...keys.map(flowOption),
       {
-        key: "at",
-        header: "Time",
-        format: (value: unknown) => {
-          const time = Number(value);
-          return Number.isFinite(time) ? `${new Date(time).toISOString().slice(0, 19).replace("T", " ")} UTC` : "-";
-        },
+        key: "tab",
+        settingKey: "tab",
+        description: "One section: the prints, the net-premium tide through the session, or a ticker's strikes. Every section when left out.",
+        type: "enum",
+        values: [{ value: "prints" }, { value: "tide" }, { value: "strikes" }],
       },
-      { key: "underlying", header: "Ticker" },
-      { key: "right", header: "Right" },
-      { key: "kind", header: "Kind" },
-      { key: "strike", header: "Strike", align: "right" },
-      { key: "expiry", header: "Expiry" },
-      { key: "side", header: "Side" },
-      { key: "size", header: "Size", align: "right" },
-      { key: "premium", header: "Premium", align: "right" },
-      { key: "volOi", header: "Vol/OI", align: "right" },
     ],
-    describe: "Options Flow",
+    describe: (args) => {
+      const symbol = flowScopeSymbol(Array.isArray(args.argument) ? args.argument[0] : args.argument);
+      return symbol ? `Options Flow: ${symbol}` : "Options Flow";
+    },
     async load(args, ctx) {
-      const payload = await dependencies.load(args, ctx.apiClient, ctx.signal)
-        .catch(async (error: unknown) => { throw await explainRefusal(error, flowLockNote, { symbol: null }); });
-      return projectFlowSnapshot(payload, {
+      const symbol = flowScopeSymbol(Array.isArray(args.argument) ? args.argument[0] : args.argument);
+      const tab = typeof args.options.tab === "string" && args.options.tab ? args.options.tab as FlowReportTab : null;
+      if (tab === "strikes" && !symbol) throw new Error("--tab strikes needs a ticker: gloom fn FLOW <ticker> --tab strikes.");
+      const filters: FlowFilters = {
         ...DEFAULT_FLOW_FILTERS,
         ...(args.options as Partial<FlowFilters>),
         universe: "active",
-      });
+      };
+      const scope: FlowScope = { symbol, watchlist: new Set() };
+      const refuse = async (error: unknown): Promise<never> => {
+        throw await explainRefusal(error, flowLockNote, { symbol, context: ctx });
+      };
+      // The live feed answers the entitlement first, as the pane's does.
+      const payload = await dependencies.load(args, ctx.apiClient, ctx.signal).catch(refuse);
+      const wantsPrints = !tab || tab === "prints";
+      const wantsSession = !tab || tab === "tide" || tab === "strikes";
+      const [recorded, session] = await Promise.all([
+        symbol && wantsPrints
+          ? dependencies.recorded(flowHistorySearch(flowHistoryQuery(filters, scope, undefined, FLOW_REPORT_RECORDED)), ctx.apiClient, ctx.signal).catch(refuse)
+          : null,
+        wantsSession ? dependencies.session(flowSessionSearch(filters, scope), ctx.apiClient, ctx.signal).catch(refuse) : null,
+      ]);
+      const report = projectFlowReport({ payload, recorded, session }, filters, scope, tab);
+      return {
+        sections: report.sections,
+        ...(report.notes ? { notes: report.notes } : {}),
+        ...(report.errors ? { errors: report.errors } : {}),
+        ...(symbol ? { symbols: [symbol] } : {}),
+        freshness: report.freshness,
+        metadata: { asOf: report.asOf, ...report.metadata },
+      };
     },
   };
 }
