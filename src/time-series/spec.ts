@@ -333,6 +333,7 @@ export function normalizeChartSpec(value: unknown, fallback: ChartSpec = DEFAULT
         ? Math.min(10_000, Math.floor(viewport.maxPoints))
         : undefined,
       ...(viewport?.extendedHours === true ? { extendedHours: true } : {}),
+      ...(viewport?.totalReturn === true ? { totalReturn: true } : {}),
     },
     panels,
     series,

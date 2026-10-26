@@ -1,11 +1,26 @@
 import type { TimeSeriesPoint } from "./types";
 import type { CloudFredSeriesInfoPayload, CloudFredSeriesPayload } from "../api-client";
-import { ICE_CREDIT_SERIES_IDS } from "./ice-credit";
+import { ICE_CREDIT_SERIES_IDS, ICE_HISTORY_LIMIT_NOTICE } from "./ice-credit";
 
 function sourceDate(value: string | undefined): number | null {
   if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
   const time = Date.parse(value);
   return Number.isFinite(time) && new Date(time).toISOString().slice(0, 10) === value ? time : null;
+}
+
+const THREE_YEAR_RETENTION = /Starting in April 2026, this series will only include 3 years of observations\./;
+
+/**
+ * The publisher's cap on how far back an ICE credit series goes, from the
+ * series' own notes, so it lapses if FRED lifts it. Null for any other series.
+ */
+export function fredHistoryLimitNotice(
+  seriesId: string,
+  info: Pick<CloudFredSeriesInfoPayload, "id" | "notes"> | null | undefined,
+): string | null {
+  const id = seriesId.trim().toUpperCase();
+  if (!ICE_CREDIT_SERIES_IDS.has(id) || info?.id.trim().toUpperCase() !== id) return null;
+  return THREE_YEAR_RETENTION.test(info.notes) ? ICE_HISTORY_LIMIT_NOTICE : null;
 }
 
 /** Source coverage is separate from query limits and calculation buffers. */
@@ -21,9 +36,8 @@ export function fredCreditCoverageNotice(
   const end = sourceDate(info.observationEnd);
   if (start === null || end === null || start > end) return null;
   if (visibleStart !== null && visibleStart >= start) return null;
-  const retention = /Starting in April 2026, this series will only include 3 years of observations\./.test(info.notes)
-    ? " FRED limits this ICE series to 3 years."
-    : "";
+  const limit = fredHistoryLimitNotice(id, info);
+  const retention = limit ? ` ${limit}` : "";
   // Series metadata and observations can refresh independently. An observation
   // outside the declared span disproves that span; the query's first/last row
   // cannot establish replacement source coverage either.

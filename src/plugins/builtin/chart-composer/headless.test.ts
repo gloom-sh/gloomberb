@@ -256,6 +256,38 @@ test("a chart of daily bars beside a monthly FRED series draws the newest figure
   }
 });
 
+test("fn G on an ICE credit spread says the publisher's 3-year limit when the range asks for more, and says nothing inside it", async () => {
+  const { applyChartComposerCapabilityOptions } = await import("./cli-options");
+  const { renderHeadlessPaneText } = await import("../../../cli/pane-functions/headless");
+  const definition = chartHeadless("chart-composer-pane");
+  const args = { argument: "FRED:BAMLH0A0HYM2", rawArgument: "FRED:BAMLH0A0HYM2", symbols: [], options: {} };
+  const info = {
+    id: "BAMLH0A0HYM2", title: "ICE BofA US High Yield Index Option-Adjusted Spread", units: "Percent", frequency: "Daily, Close",
+    seasonalAdjustment: "Not Seasonally Adjusted", source: "", observationStart: "2023-10-24", observationEnd: "2026-10-22",
+    notes: "Starting in April 2026, this series will only include 3 years of observations.",
+  };
+  const observations = [{ date: "2023-10-24", value: 4.41 }, { date: "2025-10-22", value: 3.1 }, { date: "2026-10-22", value: 3.4 }];
+  const run = async (rangePreset: string) => {
+    const spec = applyChartComposerCapabilityOptions(buildCustomChartPreset("FRED:BAMLH0A0HYM2"), "chart-composer", { rangePreset });
+    const context = createTestHeadlessContext({
+      marketData: createTestDataProvider({}),
+      apiClient: { getCloudFredSeries: async () => ({ info, observations }) } as never,
+      settings: { chartSpec: spec },
+    });
+    const result = await definition.load(args, context) as ChartPaneModel;
+    return { result, text: renderHeadlessPaneText(definition, result, args, "Custom Chart") };
+  };
+  try {
+    setSystemTime(new Date("2026-10-26T12:00:00Z"));
+    const all = await run("ALL");
+    expect(all.text).toContain("FRED coverage: 2023-10-24 to 2026-10-22. Earlier dates are unavailable from this source. History limited to 3 years by the publisher.");
+    expect(all.result.metadata?.notices).toHaveLength(1);
+    expect((await run("1Y")).text).not.toContain("History limited");
+  } finally {
+    setSystemTime();
+  }
+});
+
 describe("GIP headless sessions", () => {
   test("selects the latest one/five sessions or a historical session, retaining its last bar without another history fetch", async () => {
     for (const [range, session, days] of [["1D", undefined, 1], ["1W", undefined, 5], ["1W", "2026-09-01", 1]] as const) {

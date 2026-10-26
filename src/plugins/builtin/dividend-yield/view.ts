@@ -1,12 +1,21 @@
 import type { DividendPayment } from "./types";
 import type { ProjectedChartPoint } from "../../../components/chart/core/data";
 import { calendarMonthsBefore } from "../../../utils/calendar-date";
-import { LATE_GRACE_DAYS, trailingCashAt } from "../../../utils/trailing-dividend";
+import { NOT_MEANINGFUL, formatPriceEarnings } from "../../../utils/price-earnings";
+import { LATE_GRACE_DAYS, trailingCashAt, type TrailingPayments } from "../../../utils/trailing-dividend";
 
 const DAY = 24 * 60 * 60 * 1000;
 
 export function formatDividendYield(value: number | null): string {
   return value != null && Number.isFinite(value) ? `${(value * 100).toFixed(2)}%` : "—";
+}
+
+/** A payout over zero or negative earnings, written as a P/E over a loss is. */
+export const PAYOUT_NOT_MEANINGFUL = formatPriceEarnings(NOT_MEANINGFUL);
+
+/** How many payments a trailing yield counts, for a regular payer whose year holds fewer than its cadence pays: "9 of 12 payments". */
+export function trailingPaymentsText(payments: TrailingPayments | null | undefined, { cadence = false }: { cadence?: boolean } = {}): string | null {
+  return payments ? `${payments.counted} of ${payments.expected} ${cadence ? `${payments.cadence} ` : ""}payments` : null;
 }
 
 /** Cash history does not contain historical share prices, so cannot establish historical yields. */

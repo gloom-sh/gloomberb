@@ -82,6 +82,24 @@ describe("dividend yield headless", () => {
     });
   });
 
+  test("a payout over a loss and a yield over a gap in the history say so, in the text, the entries and the ranking", async () => {
+    const loss: DividendData = { ...fixture, currency: "USD", priceAsOf: "2026-10-16T20:00:00.000Z",
+      metrics: { ...fixture.metrics, payoutRatio: null, payoutNotMeaningful: true, trailingYield: 0.3574,
+        trailingPayments: { counted: 9, expected: 12, cadence: "monthly" } } };
+    const definition = createDividendYieldHeadless({ loadData: async () => loss });
+    const result = await definition.load(args({ type: "all", limit: 40 }), context);
+    expect(result.sections[0]).toMatchObject({ entries: expect.arrayContaining([
+      { label: "Earnings Payout", value: null, formatted: "N/M" },
+      { label: "Trailing yield", value: 0.3574, formatted: "35.74% (last 12 months of distributions; counts 9 of 12 monthly payments)" },
+    ]) });
+    expect(result.metadata).toMatchObject({ trailingPayments: { counted: 9, expected: 12, cadence: "monthly" } });
+    const request: HeadlessPaneLoadArgs = { rawArgument: "ECC, KO", argument: "ECC, KO", symbols: ["ECC", "KO"], options: {} };
+    const ranked = createDividendYieldHeadless({ loadData: async (symbol) => symbol === "ECC" ? loss : { ...fixture, currency: "USD" } });
+    const text = renderHeadlessPaneText(ranked, await ranked.load(request, context), request, "DVD");
+    expect(text).toMatch(/\nECC +35\.74% .* N\/M .*yield counts 9 of 12 monthly payments/);
+    expect(text).toMatch(/\nKO +0\.50% .* 14\.00% /);
+  });
+
   test("applies type and limit options", async () => {
     const definition = createDividendYieldHeadless({ loadData: async () => fixture });
 

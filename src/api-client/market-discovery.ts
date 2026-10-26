@@ -105,6 +105,8 @@ export interface DividendSummary {
   /** The ex-date of the distribution that rate annualizes, YYYY-MM-DD. */
   forwardRateAsOf?: string | null;
   payoutRatio: number | null;
+  /** The trailing EPS fundamentals serve for the listing; only its sign is read, since a payout over a loss is not meaningful. Absent from older servers. */
+  trailingEps?: number | null;
   exDividendDate: number | null;
   dividendDate: number | null;
   currency: string | null;

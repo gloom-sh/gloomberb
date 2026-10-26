@@ -1,5 +1,6 @@
 import type { CloudFredSeriesPayload } from "../../../api-client";
 import { historyStatistics } from "../../../components/chart/curve/model";
+import { fredHistoryLimitNotice } from "../../../time-series/economic";
 import { ICE_SPREAD_SERIES, type IceCreditSeries } from "../../../time-series/ice-credit";
 
 export type CreditSeriesDefinition = Pick<IceCreditSeries, "seriesId" | "label" | "region">;
@@ -30,6 +31,8 @@ export interface CreditConditionRow {
   dailyChangeBp: number | null;
   date: string;
   stale: boolean;
+  /** The publisher's cap on how far back the series goes, when FRED states one. */
+  historyLimit: string | null;
   /** Observations in the year to `date`, in basis points, oldest first. */
   history: Array<{ date: string; valueBp: number }>;
   /** Midrank of the latest spread within that year. */
@@ -85,6 +88,7 @@ export function normalizeCreditSeries(
     dailyChangeBp: previous ? roundTenth((latest.value - previous.value) * 100) : null,
     date: latest.date,
     stale,
+    historyLimit: fredHistoryLimitNotice(definition.seriesId, info),
     history,
     // One observation ranks nothing.
     percentile1Y: year.count >= 2 ? year.percentile : null,

@@ -1,6 +1,6 @@
 import { describe, expect, setSystemTime, test } from "bun:test";
 import { createTestDataProvider } from "../test-support/data-provider";
-import type { PricePoint, Quote } from "../types/financials";
+import type { CorporateActionsData, PricePoint, Quote } from "../types/financials";
 import { chartQuoteOverrideKeyForSource } from "./live-quotes";
 import { resolvePriceComparison } from "./price-comparison";
 import { resolveChartSpecData } from "./resolve";
@@ -58,6 +58,52 @@ describe("normalized market price comparison", () => {
       expect(seeded?.priceComparison?.start).toBe(result.priceComparison?.start);
     });
   }
+
+  test("total return reinvests each leg's cash at its ex-date close, names its basis, and leaves a leg without a history on price", async () => {
+    const chart = { ...spec(), viewport: { ...spec().viewport, totalReturn: true } };
+    const data = {
+      OLDER: rows([["2022-05-02", 100], ["2022-05-09", 100], ["2022-05-16", 95], ["2022-05-23", 95]]),
+      NEWER: rows([["2022-05-02", 50], ["2022-05-09", 50], ["2022-05-16", 50], ["2022-05-23", 55]]),
+    };
+    const actions = (symbol: string): CorporateActionsData => ({
+      symbol, currency: "USD", coverage: { dividends: "available" }, splits: [], earnings: [],
+      dividends: symbol === "OLDER" ? [{ exDate: "2022-05-16", amount: 5 }] : [],
+    });
+    const withActions = (getCorporateActions: (symbol: string) => Promise<CorporateActionsData>) => {
+      const base = sources(data);
+      // The price currency is the listing's, from its quote metadata.
+      const getQuoteMetadata = async (symbol: string) => ({ symbol, currency: "USD", instrumentType: "EQUITY", listingExchangeName: "NASDAQ", source: {} });
+      return { ...base, dataProvider: new Proxy(base.dataProvider, { get: (target, property, receiver) => (
+        property === "getCorporateActions" ? getCorporateActions
+          : property === "getQuoteMetadata" ? getQuoteMetadata : Reflect.get(target, property, receiver)
+      ) }) };
+    };
+
+    const result = await resolveChartSpecData(chart, withActions(async (symbol) => actions(symbol)));
+    // OLDER paid 5 on a 95 close: 95 + 5 over 100 is flat, so it holds at 0%; NEWER paid nothing and is its price.
+    expect(result.series.map((entry) => entry.points.at(-1)?.value)).toEqual([0, 10]);
+    expect(result.series.map((entry) => [entry.returnBasis, entry.label])).toEqual([
+      ["total", "OLDER:XNAS Total return"], ["total", "NEWER:XNAS Total return"]]);
+    expect(result.priceComparison?.notice).toStartWith("Total returns in each listing's currency; cash distributions reinvested at the ex-date close");
+    expect(result.warnings.join(" ")).not.toContain("distribution history unavailable");
+
+    // One listing whose history cannot be read stays a price return, says so, and the other still reinvests.
+    const partial = await resolveChartSpecData(chart, withActions(async (symbol) => {
+      if (symbol === "NEWER") throw new Error("no history");
+      return actions(symbol);
+    }));
+    expect(partial.series.map((entry) => entry.returnBasis)).toEqual(["total", "price"]);
+    expect(partial.series.map((entry) => entry.points.at(-1)?.value)).toEqual([0, 10]);
+    expect(partial.priceComparison?.notice).toContain("Price return for NEWER: distribution history unavailable.");
+    expect(partial.warnings).toContain("NEWER:XNAS: distribution history unavailable; showing the price return.");
+
+    // The default comparison stays a price return and asks no one for cash.
+    let asked = 0;
+    const price = await resolveChartSpecData(spec(), withActions(async (symbol) => { asked += 1; return actions(symbol); }));
+    expect(asked).toBe(0);
+    expect(price.series.every((entry) => entry.returnBasis === undefined)).toBe(true);
+    expect(price.priceComparison?.notice).toStartWith("Price returns in each listing's currency");
+  });
 
   test("a panned comparison keeps loaded bars past both edges of the view to pan into, and only shared dates inside it", async () => {
     const days = (from: string, count: number, skip: string[] = []) => Array.from({ length: count }, (_, index) => (

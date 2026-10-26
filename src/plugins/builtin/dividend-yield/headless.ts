@@ -7,7 +7,7 @@ import type {
 import { fetchDividendData, type DividendData } from "./client";
 import { dividendReferencePrice } from "../../../utils/trailing-dividend";
 import type { DividendPayment } from "./types";
-import { formatDividendYield, toDividendRows } from "./view";
+import { formatDividendYield, PAYOUT_NOT_MEANINGFUL, toDividendRows, trailingPaymentsText } from "./view";
 import { formatDistributionAmount, formatPercent } from "../../../utils/format";
 import { forwardDividendBasis, noCurrentDividend, TRAILING_DIVIDEND_BASIS } from "../../../utils/forward-dividend";
 import { currencyPriceMinDigits, formatMarketPriceWithCurrency } from "../../../market-data/market/format";
@@ -134,6 +134,8 @@ export function projectDividendYieldHeadless(
   const metrics = data.metrics;
   const currency = data.currency ?? data.payments[0]?.currency ?? "";
   const priceStatus = dividendPriceStatus(data.price, data.priceAsOf, data.priceStale);
+  // A regular payer's year with fewer payments than its cadence pays: the yield says how many it counts.
+  const shortfall = trailingPaymentsText(metrics.trailingPayments, { cadence: true });
   const errors = [data.historyError, data.summaryError, tax?.checkError].filter((error): error is string => !!error);
 
   return {
@@ -149,7 +151,7 @@ export function projectDividendYieldHeadless(
             : "Reference price time unavailable; cash yield may be out of date." }] : []),
           { label: bond ? `Trailing distribution yield (${NOT_SEC_YIELD})` : "Trailing yield", value: roundedRatio(metrics.trailingYield),
             formatted: metrics.trailingYield == null ? formatDividendYield(null)
-            : `${formatDividendYield(metrics.trailingYield)} (${TRAILING_DIVIDEND_BASIS})` },
+            : `${formatDividendYield(metrics.trailingYield)} (${TRAILING_DIVIDEND_BASIS}${shortfall ? `; counts ${shortfall}` : ""})` },
           { label: bond ? `Forward distribution yield (${NOT_SEC_YIELD})` : "Forward yield", value: roundedRatio(metrics.forwardYield),
             formatted: metrics.lapse ? noCurrentDividend(metrics.lapse)
             : metrics.forwardYield == null ? formatDividendYield(null)
@@ -162,7 +164,7 @@ export function projectDividendYieldHeadless(
           })) : []),
           { label: "Trailing rate", value: metrics.trailingRate, formatted: currency ? formatDistributionAmount(metrics.trailingRate ?? undefined, currency) : "—" },
           { label: "Forward rate", value: metrics.forwardRate, formatted: currency ? formatDistributionAmount(metrics.forwardRate ?? undefined, currency) : "—" },
-          { label: "Earnings Payout", value: roundedRatio(metrics.payoutRatio), formatted: formatDividendYield(metrics.payoutRatio) },
+          { label: "Earnings Payout", value: roundedRatio(metrics.payoutRatio), formatted: metrics.payoutNotMeaningful ? PAYOUT_NOT_MEANINGFUL : formatDividendYield(metrics.payoutRatio) },
           { label: "1Y Cash Growth", value: roundedRatio(metrics.growth1Y), formatted: formatPercent(metrics.growth1Y ?? undefined) },
           { label: "3Y Cash CAGR", value: roundedRatio(metrics.growth3Y), formatted: formatPercent(metrics.growth3Y ?? undefined) },
           { label: "Frequency", value: metrics.paymentFrequency },
@@ -201,10 +203,13 @@ export function projectDividendYieldHeadless(
       priceStale: data.priceStale ?? null,
       limitations: data.notes ?? [],
       yieldMethod: "Cash distributions with ex-dates in the preceding 12 months, one payment per period for a regular cadence, divided by the reference share price; excludes reinvestment and is not SEC yield or total return.",
+      // Set when a regular payer's year holds fewer payments than its cadence pays (a gap in its history): the yield counts only these.
+      trailingPayments: metrics.trailingPayments ?? null,
       forwardRateAsOf: metrics.forwardRateAsOf,
       // Declared and unpaid, apart from the paid history the table and every figure read.
       declaredDividends: data.declared ?? [],
       forwardRateMethod: "Indicated annual cash rate, the one fundamentals use: the latest regular distribution annualized, or once the next one is declared that one, dated by its ex-date (forwardRateAsOf; a date still ahead is the declared distribution's). Only when its currency units are comparable with the share price.",
+      payoutMethod: "Trailing twelve-month dividends over trailing twelve-month diluted EPS, as the source states it; N/M (not meaningful) when that EPS is zero or negative.",
       paymentFrequencyMethod: "Cadence inferred from ex-dates in the last two years, unavailable when no cash was reported in the last year; not an announced payment schedule.",
       // A bond fund's sponsor figures, each dated; its distribution yields above are not its SEC yield.
       ...(bond ? { bondFund: { ...bond, class: bondClassText(bond) } } : {}),

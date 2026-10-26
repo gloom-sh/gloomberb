@@ -110,6 +110,11 @@ export interface ChartViewportSpec {
   maxPoints?: number;
   /** Intraday market history includes pre-market and after-hours bars where the venue has them. */
   extendedHours?: boolean;
+  /**
+   * Security price series are drawn as total returns: each cash distribution
+   * is reinvested at the close of its ex-date bar. Price returns otherwise.
+   */
+  totalReturn?: boolean;
 }
 
 export interface ChartSpec {
@@ -183,6 +188,12 @@ export interface ResolvedSeries {
   unit: string;
   /** Unit of rawValue, retained when presentation transforms change unit. */
   rawUnit?: string;
+  /**
+   * What a price series' returns are, set when the chart asked for total
+   * returns: `total` once its distributions are reinvested, `price` when the
+   * source gave none to reinvest (`warning` says why).
+   */
+  returnBasis?: "total" | "price";
   unitGroup: string;
   /**
    * The unit the legend states beside each value, read bare as FUT prints its
@@ -311,6 +322,12 @@ export interface ChartResolutionResult {
   loading: boolean;
   errors: string[];
   warnings: string[];
+  /**
+   * Where a series' source starts after the range asked for, and why (a
+   * publisher's cap on history), as `warnings` also carries it, so a report
+   * says it where it would otherwise print a range that quietly starts later.
+   */
+  coverageNotices?: string[];
   /**
    * Each charted listing that no longer trades: its symbol and label
    * ("Delisted Oct 27, 2022"), which `warnings` carries as "TWTR: Delisted Oct 27, 2022".

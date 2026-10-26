@@ -1,5 +1,5 @@
 import type { DividendLapse } from "../../../utils/forward-dividend";
-import type { DistributionCadence } from "../../../utils/trailing-dividend";
+import type { DistributionCadence, TrailingPayments } from "../../../utils/trailing-dividend";
 
 export interface DividendPayment {
   exDate: Date;
@@ -21,6 +21,10 @@ export interface DividendMetrics {
   /** Set once the dividend has stopped (lapsedDividend), when there is no forward rate or yield. */
   lapse?: DividendLapse | null;
   payoutRatio: number | null;
+  /** Trailing EPS is zero or negative, so a payout ratio says nothing: shown "N/M", never a ratio. */
+  payoutNotMeaningful?: boolean;
+  /** A regular payer's trailing year holds fewer payments than its cadence: the yield counts only these. */
+  trailingPayments?: TrailingPayments | null;
   growth1Y: number | null;
   growth3Y: number | null;
   paymentFrequency: DistributionCadence | null;

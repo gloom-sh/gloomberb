@@ -81,6 +81,10 @@ export function applyChartComposerCapabilityOptions(
     next = { ...next, viewport: { ...next.viewport, extendedHours: true } };
   }
 
+  if (capabilityId === "price-comparison" && options.totalReturn === true) {
+    next = { ...next, viewport: { ...next.viewport, totalReturn: true } };
+  }
+
   if (PRICE_CAPABILITIES.has(capabilityId) && options.axisMode) {
     const transform = options.axisMode === "percent" ? "percent" : "raw";
     next = {

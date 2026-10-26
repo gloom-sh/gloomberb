@@ -10,6 +10,19 @@ import {
 } from "../market-data/market/period-return";
 
 const PRICE_COMPARISON_BASIS = "Price returns in each listing's currency; cash distributions and FX conversion excluded.";
+const TOTAL_COMPARISON_BASIS = "Total returns in each listing's currency; cash distributions reinvested at the ex-date close, FX conversion excluded.";
+
+/**
+ * What a comparison's returns are: price returns, or total returns when the
+ * chart asked for them, naming any leg whose distributions could not be read
+ * (it stays a price return, and the others do not wait for it).
+ */
+function comparisonBasis(spec: ChartSpec, legs: ReadonlyArray<{ label: string; entry: ResolvedSeries | undefined }>): string {
+  if (spec.viewport.totalReturn !== true) return PRICE_COMPARISON_BASIS;
+  const priceOnly = legs.filter(({ entry }) => entry?.returnBasis === "price").map(({ label }) => label);
+  if (priceOnly.length === legs.length && legs.length > 0) return PRICE_COMPARISON_BASIS;
+  return priceOnly.length ? `${TOTAL_COMPARISON_BASIS} Price return for ${priceOnly.join(", ")}: distribution history unavailable.` : TOTAL_COMPARISON_BASIS;
+}
 
 export interface PriceComparison {
   seriesIds: string[];
@@ -152,7 +165,8 @@ export function resolvePriceComparison(
     return source?.kind === "security" ? source.instrument.symbol : id;
   };
   // A leg not loaded yet (a seed from cached history) has not failed: nothing compares until it is.
-  const unavailable = `${PRICE_COMPARISON_BASIS} Comparison unavailable: need two shared dates and a nonzero baseline.`;
+  const basis = comparisonBasis(spec, seriesIds.map((id) => ({ label: symbolOf(id), entry: byId.get(id) })));
+  const unavailable = `${basis} Comparison unavailable: need two shared dates and a nonzero baseline.`;
   if (seriesIds.some((id) => !byId.has(id))) return { seriesIds, start: null, end: null, notice: unavailable };
   const dropped: NonNullable<PriceComparison["dropped"]> = [];
   const reported = new Set<string>();
@@ -259,7 +273,7 @@ export function resolvePriceComparison(
     sourceBounds,
     legs: legDays,
     ...(dropped.length ? { dropped } : {}),
-    notice: `${PRICE_COMPARISON_BASIS} ${span}${droppedText}`,
+    notice: `${basis} ${span}${droppedText}`,
   };
 }
 

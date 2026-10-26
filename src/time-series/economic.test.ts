@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { CloudFredSeriesInfoPayload } from "../api-client";
-import { extractFredSeries, fredCreditCoverageNotice } from "./economic";
+import { extractFredSeries, fredCreditCoverageNotice, fredHistoryLimitNotice } from "./economic";
 
 const info: CloudFredSeriesInfoPayload = {
   id: "BAMLC0A0CM", title: "ICE BofA US Corporate Index Option-Adjusted Spread",
@@ -19,6 +19,14 @@ test("credit coverage uses declared source dates and only warns before the visib
   expect(fredCreditCoverageNotice(info.id, { ...info, notes: "" }, null)).not.toContain("3 years");
   // A future source extension must move the boundary instead of enforcing a rolling date guess.
   expect(fredCreditCoverageNotice(info.id, { ...info, observationStart: "1996-12-31", notes: "" }, Date.parse("2020-01-01"))).toBeNull();
+});
+
+test("the publisher's history cap comes from the series' own notes, for the ICE series only", () => {
+  expect(fredHistoryLimitNotice("BAMLC0A0CM", info)).toBe("History limited to 3 years by the publisher.");
+  expect(fredHistoryLimitNotice("BAMLC0A0CM", { ...info, notes: "" })).toBeNull();
+  expect(fredHistoryLimitNotice("BAMLC0A0CM", { ...info, id: "BAMLH0A0HYM2" })).toBeNull();
+  expect(fredHistoryLimitNotice("CPIAUCSL", { ...info, id: "CPIAUCSL" })).toBeNull();
+  expect(fredHistoryLimitNotice("BAMLC0A0CM", null)).toBeNull();
 });
 
 test("missing or mismatched coverage cannot claim a retention boundary", () => {

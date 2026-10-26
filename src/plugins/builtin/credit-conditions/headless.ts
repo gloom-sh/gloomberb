@@ -7,7 +7,7 @@ import {
   type CreditConditionsLoadResult,
   type CreditSeriesLoader,
 } from "./client";
-import { creditRegion, creditSeriesIn } from "./model";
+import { creditRegion, creditSeriesIn, type CreditConditionRow } from "./model";
 
 const COLUMNS = [
   { key: "label", header: "Index" },
@@ -21,6 +21,11 @@ const COLUMNS = [
   },
   { key: "date", header: "As of" },
 ];
+
+/** What the publisher caps the indexes' history at, said once for the report. */
+function historyLimits(rows: readonly CreditConditionRow[]): string[] {
+  return [...new Set(rows.flatMap((row) => row.historyLimit ? [row.historyLimit] : []))];
+}
 
 interface CreditConditionsHeadlessDependencies {
   load(args: HeadlessPaneLoadArgs, loader: CreditSeriesLoader): Promise<CreditConditionsLoadResult>;
@@ -57,7 +62,8 @@ function createCreditConditionsHeadless(
       );
       return {
         // The year of history feeds the pane's chart and rank, not the report rows.
-        rows: result.rows.map(({ history: _history, ...row }) => row),
+        rows: result.rows.map(({ history: _history, historyLimit: _historyLimit, ...row }) => row),
+        notes: historyLimits(result.rows),
         errors: result.errors,
         metadata: { stale: result.stale },
       };

@@ -136,6 +136,7 @@ export function validateSeriesDefinition(definition: SeriesDefinition, context: 
   checkLabel(id, "group", definition.group, 32, context);
   checkLabel(id, "description", definition.description, 300, context);
   checkLabel(id, "publisher", definition.publisher, 60, context);
+  checkLabel(id, "limitation", definition.limitation, 160, context);
   if (definition.tags !== undefined) {
     if (!Array.isArray(definition.tags) || definition.tags.length > 16) fail(id, "tags must be a list of at most 16 words.");
     for (const tag of definition.tags) checkLabel(id, "tag", tag, 40, context, false);

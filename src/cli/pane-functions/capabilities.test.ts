@@ -194,7 +194,7 @@ describe("pane function capabilities", () => {
   test("an option a function does not take is refused by the code the user typed, not its pane or capability id", () => {
     const comparison = capabilityFor("comparison-chart-pane");
     expect(() => normalizeCapabilityOptions(comparison, { tab: "cashflow" }, { code: "COMP" }))
-      .toThrow("COMP does not support --tab. Supported options: --range-preset, --axis-mode, --chart-resolution.");
+      .toThrow("COMP does not support --tab. Supported options: --range-preset, --axis-mode, --total-return, --chart-resolution.");
     // A flag is named as it is typed, not as the parser keys it (`--as-of` reads as `asOf`).
     expect(() => normalizeCapabilityOptions(comparison, { asOf: "2026-10-14" }, { code: "COMP" }))
       .toThrow("COMP does not support --as-of.");

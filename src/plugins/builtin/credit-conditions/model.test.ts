@@ -36,6 +36,13 @@ describe("normalizeCreditSeries", () => {
     });
   });
 
+  test("carries the publisher's history cap only when the series' notes state it", () => {
+    const capped = "Starting in April 2026, this series will only include 3 years of observations.";
+    expect(normalizeCreditSeries(CREDIT_SERIES[0]!, payload({ notes: capped })).historyLimit)
+      .toBe("History limited to 3 years by the publisher.");
+    expect(normalizeCreditSeries(CREDIT_SERIES[0]!, payload()).historyLimit).toBeNull();
+  });
+
   test("ranks the latest spread within the year before it, not the whole fetched history", () => {
     const row = normalizeCreditSeries(CREDIT_SERIES[0]!, payload({}, [
       { date: "2025-08-01", value: 3 },

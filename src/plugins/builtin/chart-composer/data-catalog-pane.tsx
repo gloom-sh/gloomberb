@@ -4,6 +4,7 @@ import { Box } from "../../../ui";
 import {
   DataTableView,
   QueryBar,
+  usePaneNoticeFooter,
   usePaneTabs,
   useQueryBarSearch,
   type DataTableCell,
@@ -241,6 +242,12 @@ export function DataCatalogPane({ focused, width, height }: PaneProps) {
         return { text: row.expression, color: colors.text };
     }
   }, []);
+
+  usePaneNoticeFooter({
+    registrationId: `${DATA_CATALOG_PANE_ID}:notices`,
+    focused,
+    notices: selectedRow?.limitation ? [`${selectedRow.label}: ${selectedRow.limitation}`] : [],
+  });
 
   usePaneStatusLinkFooter({
     registrationId: DATA_CATALOG_PANE_ID,

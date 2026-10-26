@@ -27,6 +27,12 @@ describe("chart composer CLI options", () => {
     expect(comparison.viewport).toMatchObject({ range: "3M", resolution: "1h" });
     expect(comparison.series.every((series) => series.transform === "raw")).toBe(true);
 
+    // Total return survives the spec's own normalization, and only a comparison asks for it.
+    const total = applyChartComposerCapabilityOptions(buildComparisonChartPreset(["AAPL", "MSFT"]), "price-comparison", { totalReturn: true });
+    expect(total.viewport.totalReturn).toBe(true);
+    expect(applyChartComposerCapabilityOptions(buildComparisonChartPreset(["AAPL", "MSFT"]), "price-comparison", {}).viewport.totalReturn).toBeUndefined();
+    expect(applyChartComposerCapabilityOptions(buildPriceChartPreset("AAPL"), "price-chart", { totalReturn: true }).viewport.totalReturn).toBeUndefined();
+
     // YTD is a year of bars shown from the prior year's last close, the one YTD returns are measured from.
     const ytd = applyChartComposerCapabilityOptions(
       buildComparisonChartPreset(["LMT", "RTX"]),

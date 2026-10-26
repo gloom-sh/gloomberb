@@ -30,7 +30,7 @@ import { isCloudSessionRequired, useResearchCloudSession } from "../shared/resea
 import { fetchDividendData, repriceDividendMetrics, type DividendData } from "./client";
 import { dividendReferencePrice } from "../../../utils/trailing-dividend";
 import { useTickerQuoteStream } from "../../../state/hooks/live-ticker-financials";
-import { buildTrailingCashChartPoints, formatDividendYield, toDividendRows, type DividendRow } from "./view";
+import { buildTrailingCashChartPoints, formatDividendYield, PAYOUT_NOT_MEANINGFUL, toDividendRows, trailingPaymentsText, type DividendRow } from "./view";
 import {
   DEFAULT_SORT_PREFERENCE,
   buildDividendColumns,
@@ -90,7 +90,8 @@ function buildMetricItems(metrics: DividendMetrics, currency: string, hasHistory
   // "not SEC" in the grid: the SEC yield is the next cell, and the long form costs the header a column.
   const notSec = (note: string | null) => bond ? [note, "not SEC"].filter(Boolean).join(", ") : note;
   const forwardNote = notSec(dated);
-  const trailingNote = notSec(null);
+  // A regular payer's year with fewer payments than its cadence pays says how many the yield counts.
+  const trailingNote = notSec(trailingPaymentsText(metrics.trailingPayments));
   const ttmLabel = bond ? (short ? "TTM dist" : "TTM dist yld") : short ? "TTM yld" : "TTM yield";
   const fwdLabel = bond ? (short ? "Fwd dist" : "Fwd dist yld") : short ? "Fwd yld" : "Fwd yield";
   const sec = bond ? bondFigures(bond).find((figure) => figure.key === "secYield") : undefined;
@@ -109,7 +110,7 @@ function buildMetricItems(metrics: DividendMetrics, currency: string, hasHistory
     { id: "forward-rate", label: short ? "Fwd/sh" : "Fwd/share", value: formatRate(metrics.forwardRate, currency) },
     { id: "growth-1y", label: short ? "1Y chg" : "1Y growth", value: formatGrowth(metrics.growth1Y), color: priceColor(metrics.growth1Y ?? 0) },
     { id: "cagr-3y", label: "3Y CAGR", value: formatGrowth(metrics.growth3Y), color: priceColor(metrics.growth3Y ?? 0) },
-    { id: "payout", label: "Payout", value: metrics.payoutRatio != null ? `${(metrics.payoutRatio * 100).toFixed(1)}%` : "—" },
+    { id: "payout", label: "Payout", value: metrics.payoutNotMeaningful ? PAYOUT_NOT_MEANINGFUL : metrics.payoutRatio != null ? `${(metrics.payoutRatio * 100).toFixed(1)}%` : "—" },
     { id: "cadence", label: "Cadence", value: formatFrequency(metrics.paymentFrequency) },
     ...exDate,
     { id: "next-pay", label: "Next pay", value: formatDate(metrics.nextPayDate) },

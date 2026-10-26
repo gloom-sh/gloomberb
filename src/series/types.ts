@@ -133,6 +133,11 @@ interface SeriesDefinitionBase {
   publisher?: string;
   /** The publisher's page for the series. */
   url?: string;
+  /**
+   * A limit on the data the publisher sets, such as a cap on how far back its
+   * history goes. One sentence: the catalog lists it beside the series.
+   */
+  limitation?: string;
   /** Ask for a ticker, an option or a crypto pair before charting. */
   input?: SeriesInput;
   /**
@@ -203,6 +208,7 @@ export interface SeriesCatalogEntry {
   description?: string;
   publisher?: string;
   url?: string;
+  limitation?: string;
   input?: SeriesInput;
   placement?: SeriesPlacement;
   /** The lines of a series that draws several, each with the expression that charts it alone. */

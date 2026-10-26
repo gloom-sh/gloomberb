@@ -56,6 +56,7 @@ import { colors } from "../../../theme/colors";
 import { isUsListingExchange, parsePublicTickerKey, publicTickerKey } from "../../../utils/exchanges";
 import { getTimeSeriesField, isMarketFieldId } from "../../../time-series/field-catalog";
 import { isDatasetChart } from "../../../time-series/spec";
+import { priceComparisonSeriesIds } from "../../../time-series/price-comparison";
 import { seriesMessageName, studyMessageName } from "../../../time-series/series-name";
 import { CHART_COMPOSER_PANE_ID } from "../../../types/config";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
@@ -1190,6 +1191,22 @@ function ChartComposerSurface({
     }]
     : [];
 
+  // Returns of two or more prices compare as price returns; the toggle reinvests their cash distributions.
+  const totalReturnOn = spec.viewport.totalReturn === true;
+  const totalReturnFilters = totalReturnOn || priceComparisonSeriesIds(spec) !== null
+    ? [{
+      id: "total-return",
+      kind: "toggle" as const,
+      label: "Total return",
+      short: "Total ret",
+      value: totalReturnOn,
+      onChange: (value: boolean) => {
+        const { totalReturn: _previous, ...viewport } = specRef.current.viewport;
+        updateSpec({ ...specRef.current, viewport: value ? { ...viewport, totalReturn: true } : viewport });
+      },
+    }]
+    : [];
+
   // A company that reports no quarterly figures says so, and where its annual ones are.
   const unreported = resolution.legendSeries?.find((entry) => entry.unreportedPeriod && entry.points.length === 0);
   const emptyMessage = spec.series.length === 0
@@ -1216,6 +1233,7 @@ function ChartComposerSurface({
             onChange: (value: string) => setRange(value as TimeRange) },
           ...genericFilters,
           ...extendedHoursFilters,
+          ...totalReturnFilters,
         ]}
         view={resolutionOptions.length > 1 ? {
           value: spec.viewport.resolution,

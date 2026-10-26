@@ -1,7 +1,7 @@
 import type { HeadlessBundleResult, HeadlessPaneColumn } from "../../../types/headless";
 import { formatPercent } from "../../../utils/format";
 import type { DividendData } from "./client";
-import { formatDividendYield } from "./view";
+import { formatDividendYield, PAYOUT_NOT_MEANINGFUL, trailingPaymentsText } from "./view";
 import type { FundBondFacts } from "../../../api-client/fund-facts";
 import { NOT_SEC_YIELD } from "../../../market-data/bond-funds";
 
@@ -42,6 +42,12 @@ function incompleteNote(entry: DividendRankingEntry): string | null {
   if (historyError && summaryError) return "no cash history or summary";
   if (historyError) return "no cash history";
   return summaryError ? "no summary" : null;
+}
+
+/** What a row's note says: what its read is missing, or how few payments its trailing yield counts. */
+function rowNote(entry: DividendRankingEntry): string | null {
+  const counted = "data" in entry ? trailingPaymentsText(entry.data.metrics.trailingPayments, { cadence: true }) : null;
+  return incompleteNote(entry) ?? (counted ? `yield counts ${counted}` : null);
 }
 
 /** What a row is missing, in full, for the report's errors; null for a whole read. */
@@ -90,12 +96,13 @@ function rankDividendEntries(entries: readonly DividendRankingEntry[], now = new
         forwardYield: roundedRatio(metrics.forwardYield),
         ...bonds ? secYieldFields(entry) : {},
         payoutRatio: roundedRatio(metrics.payoutRatio),
+        payoutNotMeaningful: metrics.payoutNotMeaningful === true,
         growth1Y: roundedRatio(metrics.growth1Y),
         growth3Y: roundedRatio(metrics.growth3Y),
         lastExDate: isoDay(metrics.lastExDividendDate),
         payDate: declaredPayDate(data, now),
         frequency: metrics.paymentFrequency,
-        note: incompleteNote(entry),
+        note: rowNote(entry),
         error: incompleteReason(entry),
       },
     };
@@ -120,8 +127,8 @@ const RANKING_COLUMNS: HeadlessPaneColumn[] = [
     description: "Cash distributions with ex-dates in the past twelve months over the reference price." },
   { key: "forwardYield", header: "Fwd yield", align: "right", format: ratio, stackPriority: 1,
     description: "Indicated annual rate over the reference price; none once the dividend has stopped." },
-  { key: "payoutRatio", header: "Payout", align: "right", format: ratio,
-    description: "Trailing twelve-month dividends over trailing twelve-month diluted EPS." },
+  { key: "payoutRatio", header: "Payout", align: "right", format: (value, row) => row.payoutNotMeaningful === true ? PAYOUT_NOT_MEANINGFUL : ratio(value),
+    description: "Trailing twelve-month dividends over trailing twelve-month diluted EPS; N/M when that EPS is zero or negative." },
   { key: "growth1Y", header: "1Y growth", align: "right", format: growth,
     description: "Trailing twelve-month cash per share against a year earlier." },
   { key: "growth3Y", header: "3Y CAGR", align: "right", format: growth,
@@ -148,7 +155,7 @@ function rankingColumns(bonds: boolean): HeadlessPaneColumn[] {
 
 /** Shown once a row is incomplete, so a missing figure never reads as a non-payer's. */
 const NOTE_COLUMN: HeadlessPaneColumn = { key: "note", header: "Note", format: (value) => typeof value === "string" ? value : "",
-  description: "What the read of this ticker is missing: not read, no cash history (yields and growth), or no summary (forward yield, payout, pay date)." };
+  description: "What the read of this ticker is missing: not read, no cash history (yields and growth), or no summary (forward yield, payout, pay date); or, for a regular payer with a gap in its history, how many payments the yield counts." };
 
 /** `fn DVD A B C`: one table of every symbol, ranked by trailing yield. */
 export function projectDividendRanking(entries: readonly DividendRankingEntry[], now = new Date()): HeadlessBundleResult {
@@ -167,7 +174,7 @@ export function projectDividendRanking(entries: readonly DividendRankingEntry[],
     } : {}),
     sections: [{
       title: `Ranked by trailing yield; payout is over TTM diluted EPS${bonds ? `; a bond fund's yields are distribution yields, ${NOT_SEC_YIELD}` : ""}`,
-      columns: incomplete.length > 0 ? [...rankingColumns(bonds), NOTE_COLUMN] : rankingColumns(bonds),
+      columns: incomplete.length > 0 || rows.some((row) => row.note) ? [...rankingColumns(bonds), NOTE_COLUMN] : rankingColumns(bonds),
       rows,
       // Every figure is a percent; each exported row names its ticker and the time of the price its yields are over.
       unit: "pct",
@@ -178,7 +185,7 @@ export function projectDividendRanking(entries: readonly DividendRankingEntry[],
       rankedBy: "trailingYield",
       symbols: entries.map((entry) => entry.symbol),
       yieldMethod: "Cash distributions with ex-dates in the preceding 12 months, one payment per period for a regular cadence, divided by the reference share price, in the listing's own currency.",
-      payoutMethod: "Trailing twelve-month dividends over trailing twelve-month diluted EPS, as the source states it.",
+      payoutMethod: "Trailing twelve-month dividends over trailing twelve-month diluted EPS, as the source states it; N/M (not meaningful) when that EPS is zero or negative.",
       growthMethod: "Trailing twelve-month cash per share now against one and three years before; 3Y is a compound annual rate.",
       payDateMethod: "Pay date of the next declared distribution; past distributions carry ex-dates only.",
       ...bonds ? { secYieldMethod: `A bond fund's 30-day SEC yield as its sponsor publishes it, dated by secYieldAsOf, as a ratio like the other yields; its trailingYield and forwardYield are distribution yields, ${NOT_SEC_YIELD}.` } : {},

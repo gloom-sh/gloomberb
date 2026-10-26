@@ -139,6 +139,12 @@ export const paneSchemas = {
         defaultValue: "percent",
       },
       {
+        key: "totalReturn",
+        description: "Reinvest each cash distribution at its ex-date close, so the returns are total returns, not price returns.",
+        type: "boolean",
+        defaultValue: false,
+      },
+      {
         key: "chartResolution",
         description: BAR_SIZE_DESCRIPTION,
         type: "enum",
@@ -151,7 +157,7 @@ export const paneSchemas = {
     discovery: {
       id: "price-comparison",
       aliases: ["stock comparison", "price performance comparison", "returns comparison", "compare stock prices"],
-      limitations: ["Compares closing-price changes in each listing's currency over shared observation dates. Cash distributions and FX conversion are excluded; these are not reinvested total returns."],
+      limitations: ["Compares closing-price changes in each listing's currency over shared observation dates. Cash distributions and FX conversion are excluded unless totalReturn is set, which reinvests each distribution at its ex-date close; FX conversion is never applied."],
       screenshotReadiness: "ready",
     },
   },
