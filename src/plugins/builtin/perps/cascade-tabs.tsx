@@ -73,8 +73,10 @@ export function Liquidations({ asset, onAssetChange, accessKey, width, height, f
   const pro = data?.access === "pro";
   const since = data?.collectingSince ? Date.parse(data.collectingSince) : null;
   const asOf = data ? Date.parse(data.asOf) : Date.now();
-  // The chart starts where collection did, when that is inside the week: earlier hours are missing, not quiet.
-  const start = data ? Math.max(Date.parse(data.from), since === null ? -Infinity : Math.floor(since / HOUR) * HOUR - HOUR) : 0;
+  // The chart starts where collection did, when that is inside the week: earlier hours are missing, not quiet. A venue
+  // that sends its recent liquidations on connecting (OKX) can add earlier hours, which the chart then reaches back to.
+  const firstHour = data?.hourly[0] ? Date.parse(data.hourly[0].time) : Infinity;
+  const start = data ? Math.max(Date.parse(data.from), Math.min(firstHour, since === null ? -Infinity : Math.floor(since / HOUR) * HOUR - HOUR)) : 0;
   const quiet = data?.collectingSince && since! > Date.parse(data.from) ? `No liquidations since collection started ${stamp(data.collectingSince)}` : "No liquidations in the last 7 days";
   const chart = data && pro ? { series: data.hourly.length ? series : [], formatValue: magnitude, formatAxisValue: magnitude, remoteKind: "perpetual-liquidations",
     ...(view === "prints" ? link : {}), viewport: { start: new Date(start), end: new Date(Math.ceil(asOf / HOUR) * HOUR) },
