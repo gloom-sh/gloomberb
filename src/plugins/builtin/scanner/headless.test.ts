@@ -139,7 +139,7 @@ describe("options flow report", () => {
     expect(market.errors).toEqual(["Session totals unavailable: Not Found"]);
     expect(market.notes).toBeUndefined();
     const nvda = await failing.load(args("NVDA"), ctx);
-    expect((nvda.sections[0] as { rows: Array<{ id: string }> }).rows.map((row) => row.id)).toEqual(["live-nvda"]);
+    expect((nvda.sections[0] as { rows: Array<Record<string, unknown>> } | undefined)!.rows.map((row) => row.id)).toEqual(["live-nvda"]);
     expect(nvda.errors).toEqual(["Recorded prints unavailable: Request timed out", "Session totals unavailable: Not Found"]);
     // Asked for the sums alone, there is nothing left to report.
     await expect(failing.load(args(null, { tab: "tide" }), ctx)).rejects.toThrow("Session totals unavailable");
