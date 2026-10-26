@@ -50,6 +50,8 @@ export interface TtlCache<V> {
    * the next load lands.
    */
   peek(key: string, options?: { stale?: boolean }): V | undefined;
+  /** Whether the key's last load was rejected and `rejectionMs` still keeps that rejection. */
+  failed(key: string): boolean;
   /** Keeps a value that arrived by another road, for the TTL. */
   set(key: string, value: V): void;
   /**
@@ -134,6 +136,10 @@ export function createTtlCache<V>(options: TtlCacheOptions<V>): TtlCache<V> {
     peek(key, { stale = false } = {}) {
       const held = slots.get(key)?.held;
       return held && (stale || held.expiresAt > clock()) ? held.value : undefined;
+    },
+    failed(key) {
+      const failed = slots.get(key)?.failed;
+      return !!failed && failed.expiresAt > clock();
     },
     set(key, value) {
       if (!keep(value)) return;

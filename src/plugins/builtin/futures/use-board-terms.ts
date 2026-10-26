@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { ApiRequestError } from "../../../api-client/errors";
 import type { FuturesContractTermsPayload } from "../../../api-client/futures-curve";
 import type { FuturesContract } from "../../../market-data/futures-board";
 import { createTtlCache } from "../../../data/ttl-cache";
@@ -8,7 +9,7 @@ import { logFailure } from "../../../utils/log-failure";
 interface FuturesTermsState {
   /** The row's terms are still being asked for. */
   loading: boolean;
-  /** Null when the server has no terms for the symbol, or could not answer. */
+  /** Null while they are being asked for, when the server has none for the symbol, or when the read failed. */
   terms: FuturesContractTermsPayload | null;
 }
 
@@ -16,15 +17,35 @@ export type FuturesTermsMap = ReadonlyMap<string, FuturesTermsState>;
 
 /** The terms change with a roll, and a roll is decided once a day. */
 const TERMS_TTL_MS = 30 * 60_000;
+/**
+ * A read that failed is asked again after this: one blip leaves a row without
+ * its terms for a minute, not for the TTL, and a service that is down is asked
+ * once a minute, not once a tick.
+ */
+const TERMS_RETRY_MS = 60_000;
 /** Forty-odd rows open at once; a few requests at a time keep the board's quotes first. */
 const TERMS_CONCURRENCY = 4;
 
-/** Null when the server has no terms for the symbol, or could not answer; kept the same as any answer. */
-const termsCache = createTtlCache<FuturesContractTermsPayload | null>({ ttlMs: TERMS_TTL_MS });
+/**
+ * Null when the server has no terms for the symbol, which is an answer and is
+ * kept like any other. A read that fails is not kept as one: it rejects, and
+ * the cache holds the rejection for `TERMS_RETRY_MS`.
+ */
+const termsCache = createTtlCache<FuturesContractTermsPayload | null>({ ttlMs: TERMS_TTL_MS, rejectionMs: TERMS_RETRY_MS });
 
-function loadTerms(symbol: string): Promise<unknown> {
-  return termsCache.load(symbol, () => loadFuturesContractTerms(symbol)
-    .catch(logFailure("futures", "Read a futures row's contract terms failed", null)));
+async function readTerms(symbol: string): Promise<FuturesContractTermsPayload | null> {
+  try {
+    return await loadFuturesContractTerms(symbol);
+  } catch (error) {
+    if (error instanceof ApiRequestError && error.status === 404) return null;
+    throw error;
+  }
+}
+
+/** Whether the row has an answer; false when the read failed. */
+function loadTerms(symbol: string): Promise<boolean> {
+  return termsCache.load(symbol, () => readTerms(symbol))
+    .then(() => true, logFailure("futures", "Read a futures row's contract terms failed", false));
 }
 
 /**
@@ -36,32 +57,40 @@ function loadTerms(symbol: string): Promise<unknown> {
 export function useFuturesBoardTerms(contracts: readonly FuturesContract[], enabled: boolean): FuturesTermsMap {
   const symbolKey = contracts.map((contract) => contract.symbol).join(",");
   const [version, setVersion] = useState(0);
+  // Bumped once the retry delay has passed after a failed read, to ask again.
+  const [retry, setRetry] = useState(0);
 
   useEffect(() => {
     if (!enabled || !symbolKey) return;
     const queue = symbolKey.split(",").filter((symbol) => termsCache.peek(symbol) === undefined);
     if (queue.length === 0) return;
     let cancelled = false;
+    let failed = false;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
     const worker = async () => {
       for (let symbol = queue.shift(); symbol; symbol = queue.shift()) {
-        await loadTerms(symbol);
+        if (!await loadTerms(symbol)) failed = true;
         if (!cancelled) setVersion((current) => current + 1);
       }
     };
-    void Promise.all(Array.from({ length: Math.min(TERMS_CONCURRENCY, queue.length) }, worker));
+    void Promise.all(Array.from({ length: Math.min(TERMS_CONCURRENCY, queue.length) }, worker)).then(() => {
+      if (failed && !cancelled) retryTimer = setTimeout(() => setRetry((current) => current + 1), TERMS_RETRY_MS);
+    });
     return () => {
       cancelled = true;
       queue.length = 0;
+      clearTimeout(retryTimer);
     };
-  }, [enabled, symbolKey]);
+  }, [enabled, symbolKey, retry]);
 
   return useMemo(() => {
     const result = new Map<string, FuturesTermsState>();
     if (!enabled) return result;
     for (const symbol of symbolKey ? symbolKey.split(",") : []) {
-      // A row keeps the terms it had past their TTL until the next load lands.
+      // A row keeps the terms it had past their TTL until the next load lands, and
+      // one whose read failed draws without them rather than waiting on a retry.
       const terms = termsCache.peek(symbol, { stale: true });
-      result.set(symbol, { loading: terms === undefined, terms: terms ?? null });
+      result.set(symbol, { loading: terms === undefined && !termsCache.failed(symbol), terms: terms ?? null });
     }
     return result;
     // `version` re-reads the cache as loads land.

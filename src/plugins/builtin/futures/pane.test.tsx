@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, setSystemTime, spyOn, test } from "bun:test";
 import { act } from "react";
 import { apiClient } from "../../../api-client";
+import { ApiRequestError } from "../../../api-client/errors";
 import type { FuturesContractTermsPayload } from "../../../api-client/futures-curve";
 import { createOpenTuiTestHarness, type TestKeyEvent } from "../../../renderers/opentui/test-utils";
 import { createInitialState } from "../../../state/app/context";
@@ -12,6 +13,7 @@ import { futuresModule } from "./index";
 import { TestPaneFrame, TestPaneProvider } from "../../../test-support/pane";
 import type { Quote } from "../../../types/financials";
 import { resetFuturesBoardTerms } from "./use-board-terms";
+import { resetFrontContractReturns } from "./use-front-returns";
 
 const FuturesPane = futuresModule.panes![0]!.component as (props: {
   paneId: string;
@@ -38,7 +40,8 @@ let termsSpy: { mockRestore(): void } | null = null;
 beforeEach(() => {
   termsSpy = spyOn(apiClient, "getCloudFuturesContract").mockImplementation(async (symbol: string) => {
     const terms = contractTerms[symbol];
-    if (!terms) throw new Error("Not a futures symbol with known contract terms");
+    // As the server answers a root it has no terms for.
+    if (!terms) throw new ApiRequestError("Not a futures symbol with known contract terms", 404);
     return terms;
   });
 });
@@ -48,6 +51,7 @@ afterEach(() => {
   pinned.length = 0;
   termsSpy?.mockRestore();
   resetFuturesBoardTerms();
+  resetFrontContractReturns();
 });
 
 function makeRuntime(quoteError?: string, quoteOverrides: Partial<Quote> = {}): PluginRuntimeAccess {

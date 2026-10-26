@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createTtlCache } from "../../../data/ttl-cache";
 import type { DataProvider } from "../../../types/data-provider";
+import { isNoSourceAnswer } from "../../../sources/provider-errors";
 import type { PricePoint } from "../../../types/financials";
 import { logFailure } from "../../../utils/log-failure";
 import type { BoardQuoteMap } from "../shared/use-quote-board";
@@ -26,16 +27,33 @@ export type FrontReturnsMap = ReadonlyMap<string, FrontReturnsState>;
  * for half an hour; the live quote moves the returns in between.
  */
 const HISTORY_TTL_MS = 30 * 60_000;
+/**
+ * A read that failed is asked again after this: one blip leaves a row without
+ * returns for a minute, not for the TTL, and a service that is down is asked
+ * once a minute, not once a tick.
+ */
+const HISTORY_RETRY_MS = 60_000;
 /** Forty-odd contracts open at once; a few requests at a time keep the board's quotes first. */
 const HISTORY_CONCURRENCY = 4;
 
-/** Null when the contract has no history to read (delisted, unknown) or the read failed; kept the same as any answer. */
-const historyCache = createTtlCache<readonly PricePoint[] | null>({ ttlMs: HISTORY_TTL_MS });
+/**
+ * Null when the source has no history for the contract (delisted, unknown),
+ * which is an answer and is kept like any other. A read that fails is not kept
+ * as one: it rejects, and the cache holds the rejection for `HISTORY_RETRY_MS`.
+ */
+const historyCache = createTtlCache<readonly PricePoint[] | null>({ ttlMs: HISTORY_TTL_MS, rejectionMs: HISTORY_RETRY_MS });
 
-function loadHistory(provider: DataProvider, symbol: string): Promise<unknown> {
-  return historyCache.load(symbol, () => provider.getPriceHistory(symbol, "", "1Y")
-    .then((points) => points.length > 0 ? points : null)
-    .catch(logFailure("futures", "Read a futures contract's history failed", null)));
+function readHistory(provider: DataProvider, symbol: string): Promise<readonly PricePoint[] | null> {
+  return provider.getPriceHistory(symbol, "", "1Y").then((points) => points.length > 0 ? points : null, (error: unknown) => {
+    if (isNoSourceAnswer(error)) return null;
+    throw error;
+  });
+}
+
+/** Whether the contract has an answer; false when the read failed. */
+function loadHistory(provider: DataProvider, symbol: string): Promise<boolean> {
+  return historyCache.load(symbol, () => readHistory(provider, symbol))
+    .then(() => true, logFailure("futures", "Read a futures contract's history failed", false));
 }
 
 /**
@@ -59,6 +77,8 @@ export function useFrontContractReturns(
     return [symbol, list ? list.split(",") : []] as const;
   })), [candidateKey]);
   const [version, setVersion] = useState(0);
+  // Bumped once the retry delay has passed after a failed read, to ask again.
+  const [retry, setRetry] = useState(0);
   // A board left open overnight reloads once the day turns.
   const today = new Date().toISOString().slice(0, 10);
 
@@ -67,18 +87,23 @@ export function useFrontContractReturns(
     const queue = [...new Set([...candidates.values()].flat())].filter((symbol) => historyCache.peek(symbol) === undefined);
     if (queue.length === 0) return;
     let cancelled = false;
+    let failed = false;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
     const worker = async () => {
       for (let symbol = queue.shift(); symbol; symbol = queue.shift()) {
-        await loadHistory(provider, symbol);
+        if (!await loadHistory(provider, symbol)) failed = true;
         if (!cancelled) setVersion((current) => current + 1);
       }
     };
-    void Promise.all(Array.from({ length: Math.min(HISTORY_CONCURRENCY, queue.length) }, worker));
+    void Promise.all(Array.from({ length: Math.min(HISTORY_CONCURRENCY, queue.length) }, worker)).then(() => {
+      if (failed && !cancelled) retryTimer = setTimeout(() => setRetry((current) => current + 1), HISTORY_RETRY_MS);
+    });
     return () => {
       cancelled = true;
       queue.length = 0;
+      clearTimeout(retryTimer);
     };
-  }, [candidates, enabled, provider, today]);
+  }, [candidates, enabled, provider, today, retry]);
 
   return useMemo(() => {
     const result = new Map<string, FrontReturnsState>();
@@ -86,9 +111,10 @@ export function useFrontContractReturns(
     for (const contract of contracts) {
       const quote = quotes.get(contract.symbol)?.quote;
       const symbols = candidates.get(contract.symbol) ?? [];
-      // A contract keeps the history it had past its TTL until the next load lands.
-      const loaded = symbols.map((symbol) => ({ symbol, history: historyCache.peek(symbol, { stale: true }) }));
-      if (loaded.some((entry) => entry.history === undefined)) {
+      // A contract keeps the history it had past its TTL until the next load lands,
+      // and one whose read failed counts as having none rather than waiting on a retry.
+      const loaded = symbols.map((symbol) => ({ symbol, history: historyCache.peek(symbol, { stale: true }), failed: historyCache.failed(symbol) }));
+      if (loaded.some((entry) => entry.history === undefined && !entry.failed)) {
         result.set(contract.symbol, { loading: true, values: NO_FUTURES_RETURNS });
         continue;
       }
@@ -103,4 +129,9 @@ export function useFrontContractReturns(
     return result;
     // `version` re-reads the history cache as loads land.
   }, [candidates, contracts, enabled, quotes, version]);
+}
+
+/** Forgets every cached contract's history (tests). */
+export function resetFrontContractReturns(): void {
+  historyCache.clear();
 }

@@ -171,8 +171,10 @@ test("a rejection is kept for rejectionMs when asked, then the key loads again",
   let loads = 0;
   const failing = async (): Promise<number> => { loads += 1; throw new Error("no history"); };
 
+  expect(cache.failed("a")).toBe(false);
   await expect(cache.load("a", failing)).rejects.toThrow("no history");
   time.advance(299_999);
+  expect(cache.failed("a")).toBe(true);
   await expect(cache.load("a", failing)).rejects.toThrow("no history");
   expect(loads).toBe(1);
   expect(cache.peek("a")).toBeUndefined();
@@ -182,7 +184,27 @@ test("a rejection is kept for rejectionMs when asked, then the key loads again",
   const later = createTtlCache<number>({ ttlMs: 60_000, rejectionMs: 300_000, now: time.now });
   await expect(later.load("a", failing)).rejects.toThrow();
   time.advance(300_000);
+  expect(later.failed("a")).toBe(false);
   expect(await later.load("a", async () => 5)).toBe(5);
+  expect(later.failed("a")).toBe(false);
+});
+
+test("a failed reload leaves the stale copy to draw and is not asked again until rejectionMs has passed", async () => {
+  const time = clock();
+  const cache = createTtlCache<string>({ ttlMs: 1_000, rejectionMs: 60_000, now: time.now });
+  await cache.load("a", async () => "good");
+  time.advance(5_000);
+  let asked = 0;
+  const failing = async (): Promise<string> => { asked += 1; throw new Error("down"); };
+  await expect(cache.load("a", failing)).rejects.toThrow("down");
+  expect(cache.peek("a", { stale: true })).toBe("good");
+  expect(cache.failed("a")).toBe(true);
+  await expect(cache.load("a", failing)).rejects.toThrow("down");
+  expect(asked).toBe(1);
+  time.advance(60_000);
+  expect(cache.failed("a")).toBe(false);
+  expect(await cache.load("a", async () => "fresh")).toBe("fresh");
+  expect(cache.peek("a")).toBe("fresh");
 });
 
 test("a `keep` or TTL function that throws is a rejection for the callers, not an unhandled one", async () => {
