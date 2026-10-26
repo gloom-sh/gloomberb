@@ -96,8 +96,15 @@ describe("dividend yield headless", () => {
     const request: HeadlessPaneLoadArgs = { rawArgument: "ECC, KO", argument: "ECC, KO", symbols: ["ECC", "KO"], options: {} };
     const ranked = createDividendYieldHeadless({ loadData: async (symbol) => symbol === "ECC" ? loss : { ...fixture, currency: "USD" } });
     const text = renderHeadlessPaneText(ranked, await ranked.load(request, context), request, "DVD");
-    expect(text).toMatch(/\nECC +35\.74% .* N\/M .*yield counts 9 of 12 monthly payments/);
+    expect(text).toMatch(/\nECC +35\.74% .* N\/M .*counts 9 of 12 monthly payments/);
     expect(text).toMatch(/\nKO +0\.50% .* 14\.00% /);
+    // A count is not an incomplete read: its own field and column, and Note stays empty for a whole read.
+    const rows = (await ranked.load(request, context)).sections[0]!.rows!;
+    expect(rows.find((row) => row.symbol === "ECC")).toMatchObject({ note: null, yieldBasis: "counts 9 of 12 monthly payments", payoutRatio: null, payoutNotMeaningful: true });
+    expect(text).not.toContain("Note");
+    const csv = renderReportCsv(headlessReportTables(ranked, await ranked.load(request, context), request, "DVD", deriveHeadlessFreshness(ranked, await ranked.load(request, context)), { complete: true, unavailableSymbols: [] }));
+    expect(csv).toContain("Yield basis");
+    expect(csv).toMatch(/\nECC,35\.74,[^\n]*,n\/m,[^\n]*,counts 9 of 12 monthly payments/);
   });
 
   test("applies type and limit options", async () => {

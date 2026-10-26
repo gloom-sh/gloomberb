@@ -24,9 +24,12 @@ export interface TotalReturnOptions {
   /**
    * Bars longer than a session (weekly, monthly) are dated at their start, so a
    * distribution belongs to the bar that holds its ex-date, not the first one
-   * dated on or after it.
+   * dated on or after it. This is how many days a bar holds; the last bar holds
+   * that many from its own date, and a distribution after that precedes no bar.
    */
-  holdingBar?: boolean;
+  barDays?: number;
+  /** Today, `YYYY-MM-DD`: a distribution dated after it has not gone ex. */
+  asOf?: string;
 }
 
 export interface TotalReturnResult {
@@ -35,7 +38,13 @@ export interface TotalReturnResult {
   applied: number;
 }
 
-const FAR_FUTURE = "9999-12-31";
+/** The day a bar of `barDays` days dated `day` ends on; 30-day multiples are calendar months. */
+function barEnd(day: string, barDays: number): string {
+  const end = new Date(`${day}T00:00:00Z`);
+  if (barDays >= 28 && barDays % 30 === 0) end.setUTCMonth(end.getUTCMonth() + barDays / 30);
+  else end.setUTCDate(end.getUTCDate() + barDays);
+  return end.toISOString().slice(0, 10);
+}
 
 function scaled(value: number | null | undefined, factor: number): number | null | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value * factor : value;
@@ -52,11 +61,13 @@ function scaled(value: number | null | undefined, factor: number): number | null
 export function reinvestDistributions(
   points: readonly TimeSeriesPoint[],
   distributions: readonly CashDistribution[],
-  { dayOf, cashPrice, holdingBar = false }: TotalReturnOptions,
+  { dayOf, cashPrice, barDays, asOf }: TotalReturnOptions,
 ): TotalReturnResult {
   const ordered = [...points].sort((left, right) => left.date.getTime() - right.date.getTime());
+  const holdingBar = barDays !== undefined && barDays > 1;
   const cash = distributions
-    .filter((entry) => /^\d{4}-\d{2}-\d{2}$/.test(entry.exDate) && Number.isFinite(entry.amount) && entry.amount > 0)
+    .filter((entry) => /^\d{4}-\d{2}-\d{2}$/.test(entry.exDate) && Number.isFinite(entry.amount) && entry.amount > 0
+      && (asOf === undefined || entry.exDate <= asOf))
     .sort((left, right) => left.exDate.localeCompare(right.exDate));
   const days = ordered.map(dayOf);
   let factor = 1;
@@ -64,7 +75,7 @@ export function reinvestDistributions(
   let next = 0;
   const adjusted = ordered.map((point, index) => {
     const barDay = days[index]!;
-    const before = holdingBar ? days[index + 1] ?? FAR_FUTURE : null;
+    const before = holdingBar ? days[index + 1] ?? barEnd(barDay, barDays!) : null;
     while (next < cash.length) {
       const entry = cash[next]!;
       if (before !== null ? entry.exDate >= before : entry.exDate > barDay) break;
@@ -102,11 +113,11 @@ export interface TotalReturnOutcome {
 
 const DAY_MS = 86_400_000;
 
-/** Whether the bars are longer than a session, so a distribution belongs to the bar holding its ex-date. */
-function barsLongerThanSession(series: Pick<ResolvedSeries, "barSize" | "historyResolution">): boolean {
+/** How many days a bar holds when it is longer than a session (a month counts as 30), so a distribution belongs to the bar holding its ex-date. */
+function barDaysLongerThanSession(series: Pick<ResolvedSeries, "barSize" | "historyResolution">): number | undefined {
   const step = series.barSize ? chartBarSizeStepMs(series.barSize)
     : series.historyResolution ? CHART_RESOLUTION_STEP_MS[series.historyResolution] : null;
-  return step !== null && step > DAY_MS;
+  return step !== null && step > DAY_MS ? Math.round(step / DAY_MS) : undefined;
 }
 
 /**
@@ -120,6 +131,7 @@ export async function totalReturnSeries(
   series: ResolvedSeries,
   loadActions: () => Promise<CorporateActionsData | null>,
   priceCurrency: string | undefined,
+  asOf: Date,
 ): Promise<TotalReturnOutcome> {
   const priceOnly = (notice: string): TotalReturnOutcome => ({ series: { ...series, returnBasis: "price" }, notice });
   const actions = await loadActions().catch(logFailure("total-return", "Loading distribution history failed", null));
@@ -140,7 +152,8 @@ export async function totalReturnSeries(
   const { points } = reinvestDistributions(series.points, dividends, {
     dayOf: (point) => observationDate(point.date.getTime(), series),
     cashPrice: (price) => dividendReferencePrice(price, priceCurrency, currency),
-    holdingBar: barsLongerThanSession(series),
+    barDays: barDaysLongerThanSession(series),
+    asOf: asOf.toISOString().slice(0, 10),
   });
   // "ECC Close" is its price: a label the chart wrote from the field says what the series is now.
   return { series: { ...series, points, returnBasis: "total", label: series.label.replace(/ (?:Close|Price|Open|High|Low)$/, " Total return") } };

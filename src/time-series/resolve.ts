@@ -51,6 +51,7 @@ import {
   priceComparisonBoundsForSeries,
   priceComparisonSeriesIds,
   resolvePriceComparison,
+  totalReturnLevelsNotice,
 } from "./price-comparison";
 import { chartQuoteOverrideKeyForSource } from "./live-quotes";
 import { chartSeriesSourceKey } from "../capabilities/chart-series";
@@ -962,7 +963,7 @@ async function resolveChartSpecPass(
       let result = builtBars ? withBuiltBarSize(base, builtBars) : base;
       if (spec.viewport.totalReturn === true && totalReturnFieldId(source.fieldId)) {
         const outcome = await totalReturnSeries(result, () => loadDistributions(resolvedSource),
-          merged.quote?.currency || quoteMetadata?.currency);
+          merged.quote?.currency || quoteMetadata?.currency, referenceNow);
         result = outcome.series;
         if (outcome.notice) warnings.push(`${instrumentLabel(resolvedSource)}: ${outcome.notice}`);
       }
@@ -1111,6 +1112,9 @@ async function resolveChartSpecPass(
     bounds, comparisonResolution, requestBounds ? null : spec.viewport.dateWindow ?? null,
   );
   if (priceComparison) warnings.push(priceComparison.notice);
+  // A raw-price chart of total returns is no comparison, and its levels say what they are instead.
+  const returnBasisNotice = priceComparison ? null : totalReturnLevelsNotice(spec, rawSeries);
+  if (returnBasisNotice) warnings.push(returnBasisNotice);
   warnings.push(...chartPriceHistoryIntegrityNotices(priceHistoryIntegrity));
   warnings.push(...financialPeriodCoverageWarnings(financialPeriodCoverage(spec, resolved)));
   const resolvedById = new Map(resolved.map((entry) => [entry.id, entry] as const));
@@ -1169,6 +1173,7 @@ async function resolveChartSpecPass(
     errors,
     warnings: [...new Set([...priorityWarnings, ...warnings])],
     ...(coverageNotices.length ? { coverageNotices: [...new Set(coverageNotices)] } : {}),
+    ...(returnBasisNotice ? { returnBasisNotice } : {}),
     ...(delistings.size ? { delistings: [...delistings.values()] } : {}),
     viewport,
     resolution,

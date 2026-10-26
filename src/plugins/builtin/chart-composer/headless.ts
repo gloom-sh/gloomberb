@@ -251,7 +251,7 @@ export async function loadChartPaneModel(
       ...(chart.priceHistoryIntegrity?.length ? { priceHistoryIntegrity: chart.priceHistoryIntegrity } : {}),
       ...(valuationPriceIssues.length ? { valuationPriceIssues } : {}),
       ...(periodCoverage.length ? { periodCoverage } : {}),
-      notices: [...chart.coverageNotices ?? [], ...chart.warnings.filter((warning) => warning === FINANCIAL_VINTAGE_NOTICE || warning === SEC_EPS_BASIS_NOTICE || warning === chart.priceComparison?.notice
+      notices: [...chart.coverageNotices ?? [], ...chart.returnBasisNotice ? [chart.returnBasisNotice] : [], ...chart.warnings.filter((warning) => warning === FINANCIAL_VINTAGE_NOTICE || warning === SEC_EPS_BASIS_NOTICE || warning === chart.priceComparison?.notice
         || chart.delistings?.some((delisting) => delisting.notice === warning)), ...integrityNotices],
       priceComparison: chart.priceComparison ?? null,
       summaries: chart.series.filter((series) => !series.profile).map((series) => ({ id: series.id, ...summarizeResolvedSeries(series) })),

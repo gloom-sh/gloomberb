@@ -124,6 +124,20 @@ export function priceComparisonSeriesIds(spec: ChartSpec): string[] | null {
   return visible.map((entry) => entry.id);
 }
 
+/**
+ * What a total-return chart's price levels are when it is not a comparison (the
+ * raw price axis): prices with cash distributions reinvested, not what the
+ * listing quotes. Null for a price chart, and when no leg is a total return.
+ */
+export function totalReturnLevelsNotice(spec: ChartSpec, series: readonly ResolvedSeries[]): string | null {
+  if (spec.viewport.totalReturn !== true) return null;
+  const legs = series.filter((entry) => entry.returnBasis !== undefined);
+  if (!legs.some((entry) => entry.returnBasis === "total")) return null;
+  const priceOnly = legs.filter((entry) => entry.returnBasis === "price").map((entry) => entry.label);
+  return `Total return levels in each listing's currency: prices include cash distributions reinvested at the ex-date close, so they are not quoted prices; FX conversion excluded.${
+    priceOnly.length ? ` Price only for ${priceOnly.join(", ")}: distribution history unavailable.` : ""}`;
+}
+
 interface ComparedLeg {
   id: string;
   label: string;

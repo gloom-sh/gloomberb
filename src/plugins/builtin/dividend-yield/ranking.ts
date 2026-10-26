@@ -44,10 +44,10 @@ function incompleteNote(entry: DividendRankingEntry): string | null {
   return summaryError ? "no summary" : null;
 }
 
-/** What a row's note says: what its read is missing, or how few payments its trailing yield counts. */
-function rowNote(entry: DividendRankingEntry): string | null {
+/** How a row's trailing yield was counted, when its year holds fewer payments than its cadence pays; null otherwise. */
+function yieldBasis(entry: DividendRankingEntry): string | null {
   const counted = "data" in entry ? trailingPaymentsText(entry.data.metrics.trailingPayments, { cadence: true }) : null;
-  return incompleteNote(entry) ?? (counted ? `yield counts ${counted}` : null);
+  return counted ? `counts ${counted}` : null;
 }
 
 /** What a row is missing, in full, for the report's errors; null for a whole read. */
@@ -102,7 +102,8 @@ function rankDividendEntries(entries: readonly DividendRankingEntry[], now = new
         lastExDate: isoDay(metrics.lastExDividendDate),
         payDate: declaredPayDate(data, now),
         frequency: metrics.paymentFrequency,
-        note: rowNote(entry),
+        note: incompleteNote(entry),
+        yieldBasis: yieldBasis(entry),
         error: incompleteReason(entry),
       },
     };
@@ -127,7 +128,10 @@ const RANKING_COLUMNS: HeadlessPaneColumn[] = [
     description: "Cash distributions with ex-dates in the past twelve months over the reference price." },
   { key: "forwardYield", header: "Fwd yield", align: "right", format: ratio, stackPriority: 1,
     description: "Indicated annual rate over the reference price; none once the dividend has stopped." },
-  { key: "payoutRatio", header: "Payout", align: "right", format: (value, row) => row.payoutNotMeaningful === true ? PAYOUT_NOT_MEANINGFUL : ratio(value),
+  { key: "payoutRatio", header: "Payout", align: "right",
+    // CSV and NDJSON say `n/m` where JSON has null; the text report draws `N/M` as P/E does.
+    format: (value, row) => row.payoutNotMeaningful === true ? PAYOUT_NOT_MEANINGFUL.toLowerCase() : ratio(value),
+    textFormat: (value, row) => row.payoutNotMeaningful === true ? PAYOUT_NOT_MEANINGFUL : ratio(value),
     description: "Trailing twelve-month dividends over trailing twelve-month diluted EPS; N/M when that EPS is zero or negative." },
   { key: "growth1Y", header: "1Y growth", align: "right", format: growth,
     description: "Trailing twelve-month cash per share against a year earlier." },
@@ -155,7 +159,11 @@ function rankingColumns(bonds: boolean): HeadlessPaneColumn[] {
 
 /** Shown once a row is incomplete, so a missing figure never reads as a non-payer's. */
 const NOTE_COLUMN: HeadlessPaneColumn = { key: "note", header: "Note", format: (value) => typeof value === "string" ? value : "",
-  description: "What the read of this ticker is missing: not read, no cash history (yields and growth), or no summary (forward yield, payout, pay date); or, for a regular payer with a gap in its history, how many payments the yield counts." };
+  description: "What the read of this ticker is missing: not read, no cash history (yields and growth), or no summary (forward yield, payout, pay date)." };
+
+/** Shown once a regular payer's trailing year holds fewer payments than its cadence pays, which says nothing is missing from the read itself. */
+const YIELD_BASIS_COLUMN: HeadlessPaneColumn = { key: "yieldBasis", header: "Yield basis", format: (value) => typeof value === "string" ? value : "",
+  description: "How many payments the trailing yield counts when a regular payer's year holds fewer than its cadence pays (a gap in its ex-dates)." };
 
 /** `fn DVD A B C`: one table of every symbol, ranked by trailing yield. */
 export function projectDividendRanking(entries: readonly DividendRankingEntry[], now = new Date()): HeadlessBundleResult {
@@ -174,7 +182,7 @@ export function projectDividendRanking(entries: readonly DividendRankingEntry[],
     } : {}),
     sections: [{
       title: `Ranked by trailing yield; payout is over TTM diluted EPS${bonds ? `; a bond fund's yields are distribution yields, ${NOT_SEC_YIELD}` : ""}`,
-      columns: incomplete.length > 0 || rows.some((row) => row.note) ? [...rankingColumns(bonds), NOTE_COLUMN] : rankingColumns(bonds),
+      columns: [...rankingColumns(bonds), ...incomplete.length > 0 ? [NOTE_COLUMN] : [], ...rows.some((row) => row.yieldBasis) ? [YIELD_BASIS_COLUMN] : []],
       rows,
       // Every figure is a percent; each exported row names its ticker and the time of the price its yields are over.
       unit: "pct",

@@ -328,6 +328,8 @@ export interface ChartResolutionResult {
    * says it where it would otherwise print a range that quietly starts later.
    */
   coverageNotices?: string[];
+  /** What the price levels of a total-return chart without a comparison are (`warnings` also carries it). */
+  returnBasisNotice?: string;
   /**
    * Each charted listing that no longer trades: its symbol and label
    * ("Delisted Oct 27, 2022"), which `warnings` carries as "TWTR: Delisted Oct 27, 2022".

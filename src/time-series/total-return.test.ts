@@ -38,8 +38,25 @@ describe("reinvestDistributions", () => {
 
   test("weekly bars take a distribution into the bar that holds its ex-date", () => {
     const weeks = [bar("2026-01-05", 10), bar("2026-01-12", 10), bar("2026-01-19", 10)];
-    const { points } = reinvestDistributions(weeks, [{ exDate: "2026-01-14", amount: 1 }], { ...options, holdingBar: true });
+    const { points } = reinvestDistributions(weeks, [{ exDate: "2026-01-14", amount: 1 }], { ...options, barDays: 7 });
     expect(points.map((point) => point.close)).toEqual([10, 11, 11]);
+  });
+
+  test("a distribution after the last bar's period, or after today, is not reinvested into that bar", () => {
+    const weeks = [bar("2026-01-05", 10), bar("2026-01-12", 10), bar("2026-01-19", 10)];
+    // The last week runs to the 26th: 22 Jan is in it, 2 Feb is an announced date after it.
+    const inside = reinvestDistributions(weeks, [{ exDate: "2026-01-22", amount: 1 }], { ...options, barDays: 7, asOf: "2026-01-23" });
+    expect(inside.points.map((point) => point.close)).toEqual([10, 10, 11]);
+    const after = reinvestDistributions(weeks, [{ exDate: "2026-02-02", amount: 1 }], { ...options, barDays: 7, asOf: "2026-02-10" });
+    expect(after.applied).toBe(0);
+    expect(after.points).toEqual(weeks);
+    // Not gone ex yet, though inside the last bar's week.
+    const announced = reinvestDistributions(weeks, [{ exDate: "2026-01-23", amount: 1 }], { ...options, barDays: 7, asOf: "2026-01-20" });
+    expect(announced.applied).toBe(0);
+    // Monthly bars run to the next month's start.
+    const months = [bar("2026-01-02", 10), bar("2026-02-02", 10)];
+    const monthly = (exDate: string) => reinvestDistributions(months, [{ exDate, amount: 1 }], { ...options, barDays: 30, asOf: "2026-03-20" }).applied;
+    expect([monthly("2026-02-27"), monthly("2026-03-05")]).toEqual([1, 0]);
   });
 
   test("ignores bad cash and leaves the input alone", () => {

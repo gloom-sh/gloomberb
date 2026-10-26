@@ -97,12 +97,21 @@ describe("normalized market price comparison", () => {
     expect(partial.priceComparison?.notice).toContain("Price return for NEWER: distribution history unavailable.");
     expect(partial.warnings).toContain("NEWER:XNAS: distribution history unavailable; showing the price return.");
 
+    // On the raw price axis it is no comparison, and the levels still say they include reinvested cash.
+    const rawAxis = { ...chart, series: chart.series.map((entry) => ({ ...entry, transform: "raw" as const })) };
+    const levels = await resolveChartSpecData(rawAxis, withActions(async (symbol) => actions(symbol)));
+    expect(levels.priceComparison).toBeUndefined();
+    expect(levels.returnBasisNotice).toStartWith("Total return levels in each listing's currency: prices include cash distributions reinvested at the ex-date close");
+    expect(levels.warnings).toContain(levels.returnBasisNotice!);
+    expect(levels.series[0]!.points.at(-1)!.value).toBeCloseTo(100, 6);
+
     // The default comparison stays a price return and asks no one for cash.
     let asked = 0;
     const price = await resolveChartSpecData(spec(), withActions(async (symbol) => { asked += 1; return actions(symbol); }));
     expect(asked).toBe(0);
     expect(price.series.every((entry) => entry.returnBasis === undefined)).toBe(true);
     expect(price.priceComparison?.notice).toStartWith("Price returns in each listing's currency");
+    expect(price.returnBasisNotice).toBeUndefined();
   });
 
   test("a panned comparison keeps loaded bars past both edges of the view to pan into, and only shared dates inside it", async () => {
