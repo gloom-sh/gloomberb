@@ -8,6 +8,7 @@ import type {
   BuildoutTabId,
   SortComparable,
 } from "./model/types";
+import { dropColumnsToFit } from "../../../components/ui/table-layout";
 import type { SortDirection } from "../../../utils/sort-values";
 import { metricNumber, sourceDetailEntries, textOrNull, tickerSymbol } from "./format";
 
@@ -171,9 +172,29 @@ export function activeRows(
   return state.intel.items.map((item) => ({ kind: "intel", item }));
 }
 
-export function columnsForTab(activeTab: BuildoutTabId, selectedList: BuildoutList | null, canFavorite: boolean) {
+/**
+ * What the Companies tab gives up when the pane is too narrow for its figures,
+ * least needed first: the descriptions, then the columns that only add to a
+ * figure already shown, instead of the right edge cutting Market Cap or a
+ * median. The star and the names stay at every width.
+ */
+const LIST_DROP_ORDER: readonly BuildoutColumnId[] = ["listDescription", "avgMargin", "avgReturn1y", "avgSectorGrowth"];
+const COMPANY_DROP_ORDER: readonly BuildoutColumnId[] = [
+  "description", "employees", "dividendYield", "forwardPE", "netIncome", "margin", "sectorTech", "criticality",
+];
+
+/** The columns of a tab for a pane `width` cells wide; the table's scrollbar keeps its cell. */
+export function columnsForTab(
+  activeTab: BuildoutTabId,
+  selectedList: BuildoutList | null,
+  canFavorite: boolean,
+  width: number,
+): BuildoutColumn[] {
   if (activeTab === "companies") {
-    return selectedList && canFavorite ? [favoriteColumn, ...companyColumns] : selectedList ? companyColumns : listColumns;
+    const columns = selectedList
+      ? canFavorite ? [favoriteColumn, ...companyColumns] : companyColumns
+      : listColumns;
+    return dropColumnsToFit(columns, width - 1, selectedList ? COMPANY_DROP_ORDER : LIST_DROP_ORDER);
   }
   if (activeTab === "sites") return canFavorite ? [favoriteColumn, ...siteColumns] : siteColumns;
   return intelColumns;
