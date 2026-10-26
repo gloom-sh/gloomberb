@@ -17,7 +17,9 @@ import {
 import { isRoundTheClockCoin } from "../../../../utils/crypto-pair";
 import { currentFxClosureStart, isCurrencyPairListing } from "../../../../utils/fx-market-hours";
 import { pricePointValues } from "../../../../utils/price-history-integrity";
+import { timeZoneCity, zonedClock } from "../../../../utils/utc-time";
 import { zonedDateKey } from "../../../../utils/zoned-date-time";
+import { historyDateHeader } from "./history-bars";
 
 export type ReturnRange = "6H" | "1D" | "5D" | TimeRange;
 
@@ -345,6 +347,66 @@ export function returnBaseCloseDay(
   const day = barSessionDay(base.timestamp, venue);
   const period = resolution === "1wk" ? "week" : resolution === "1mo" ? "month" : null;
   return period ? barLastSession(day, period, venue, now) ?? barCloseDay(day, resolution, venue) : day;
+}
+
+/**
+ * The clock an intraday bar's time is shown on: its venue's own, where the app
+ * knows its sessions, so the open reads 09:30 and not 13:30; null for UTC, which
+ * is where a coin, a currency pair or a venue with no known zone keeps its bars.
+ */
+function returnClockZone(venue: string | undefined): string | null {
+  if (!venue || isAlwaysOpenExchange(venue)) return null;
+  return sessionCalendarTimeZone(venue);
+}
+
+/**
+ * A bar as the table dates it: an intraday bar's open on its venue's clock
+ * (`2026-10-23 09:30`), a daily or longer bar its session day.
+ */
+export function returnTimeText(timestamp: number, resolution: ManualChartResolution, venue: string | undefined): string {
+  if (!isIntradayResolution(resolution)) return barSessionDay(timestamp, venue);
+  const zone = returnClockZone(venue);
+  if (!zone) return new Date(timestamp).toISOString().slice(0, 16).replace("T", " ");
+  const clock = zonedClock(timestamp, zone);
+  return `${clock.date} ${clock.time}`;
+}
+
+/**
+ * What the time column is headed: the clock its times are on (`ET` for New York,
+ * as TAS heads it, the venue's city for another zone, else `UTC`), or what a
+ * daily or longer bar is dated by.
+ */
+export function returnTimeHeader(resolution: ManualChartResolution, venue: string | undefined): string {
+  if (!isIntradayResolution(resolution)) return historyDateHeader(resolution)?.toUpperCase() ?? "DATE";
+  const zone = returnClockZone(venue);
+  return `TIME ${!zone ? "UTC" : zone === "America/New_York" ? "ET" : timeZoneCity(zone).toUpperCase()}`;
+}
+
+/** The figures a window's rows add up to: its total, and the bars that moved most each way. */
+export interface ReturnSummary {
+  /** The newest row's total return, a fraction. Null when no bar has one. */
+  total: number | null;
+  best: ReturnRow | null;
+  worst: ReturnRow | null;
+}
+
+/**
+ * The window's total return (the newest priced row's, measured from the base
+ * close) with its best and worst interval. A single bar has no interval worth
+ * ranking, and a window whose every interval is the same move has no best or
+ * worst, so neither is named then.
+ */
+export function summarizeReturns(rows: readonly ReturnRow[]): ReturnSummary {
+  // Rows are newest first.
+  const total = rows.find((row) => row.cumulativePercent !== null)?.cumulativePercent ?? null;
+  const moves = rows.filter((row) => row.intervalPercent !== null);
+  let best: ReturnRow | null = null;
+  let worst: ReturnRow | null = null;
+  for (const row of moves) {
+    if (!best || row.intervalPercent! > best.intervalPercent!) best = row;
+    if (!worst || row.intervalPercent! < worst.intervalPercent!) worst = row;
+  }
+  return best && worst && best.intervalPercent !== worst.intervalPercent ? { total, best, worst } : { total, best: null, worst: null };
 }
 
 /** Whether the newest daily row is the session still trading at its venue, which its table marks. */

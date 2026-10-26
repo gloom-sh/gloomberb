@@ -17,14 +17,16 @@ export function boardYtdBase(payload: { asOf?: unknown; regularSessionDate?: unk
 }
 
 /**
- * A period's header. YTD names its base close, as long as `room` allows:
- * `YTD vs 31 Dec close`, `YTD vs 31 Dec`, then `YTD 31 Dec`.
+ * A period's header. YTD says what it is, a return against the close it is
+ * measured from, as long as `room` allows: `YTD vs 31 Dec close`, `YTD vs 31
+ * Dec`, then `YTD`.
  */
 export function periodLabel(period: ThemePeriod, ytdBase: string | null, room = Infinity): string {
   if (period !== "returnYtdPercent" || !ytdBase) return PERIOD_LABELS[period];
-  const labels = [`YTD vs ${ytdBase} close`, `YTD vs ${ytdBase}`, `YTD ${ytdBase}`];
+  const labels = [`YTD vs ${ytdBase} close`, `YTD vs ${ytdBase}`, "YTD"];
   return labels.find((label) => label.length <= room) ?? labels.at(-1)!;
 }
+
 export interface ThemeSort { columnId: string; direction: SortDirection }
 export const DEFAULT_SORT: ThemeSort = { columnId: "changePercent", direction: "desc" };
 export function percent(value: number | null): string {
@@ -32,12 +34,17 @@ export function percent(value: number | null): string {
   const rounded = Number(value.toFixed(2));
   return `${rounded > 0 ? "+" : ""}${rounded.toFixed(2)}%`;
 }
+/** How many of a theme's names a figure is drawn from, when not all of them: `7 of 8`. Empty when every name is in it. */
+export function coverageText(metric: ThemeAggregate): string {
+  return metric.covered < metric.total ? `${metric.covered} of ${metric.total}` : "";
+}
 export function aggregateText(metric: ThemeAggregate, breadth = false): string {
   const value = breadth && metric.value !== null ? `${Math.round(metric.value)}%` : percent(metric.value);
-  return `${value}${metric.covered < metric.total ? ` ${metric.covered}/${metric.total}` : ""}`;
+  const coverage = coverageText(metric);
+  return `${value}${coverage ? ` ${coverage}` : ""}`;
 }
 export const memberPrice = (value: number | null) => value === null ? "--" : value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-export const coverageWidth = (metrics: readonly ThemeAggregate[]) => Math.max(0, ...metrics.map((metric) => metric.covered < metric.total ? `${metric.covered}/${metric.total}`.length + 1 : 0));
+export const coverageWidth = (metrics: readonly ThemeAggregate[]) => Math.max(0, ...metrics.map((metric) => coverageText(metric) ? coverageText(metric).length + 1 : 0));
 export function sortThemes(rows: readonly ThemeSummary[], sort: ThemeSort): ThemeSummary[] {
   const value = (row: ThemeSummary) => {
     if (sort.columnId === "name") return row.name;
@@ -152,9 +159,11 @@ export function themeColumns(width: number, rows: readonly ThemeSummary[], ytdBa
   const metricWidth = (period: ThemePeriod) => Math.max(8, ...rows.map((row) => percent(row.returns[period].value).length)) + suffixWidth(period);
   // The same trailing space is reserved in every cell and its header. A note
   // occupies that space without moving the number away from its label.
-  const label = (period: ThemePeriod, room?: number) => periodLabel(period, ytdBase, room) + " ".repeat(suffixWidth(period));
+  const label = (period: ThemePeriod, room: number) => periodLabel(period, ytdBase, room) + " ".repeat(suffixWidth(period));
+  // The board always keeps room for `YTD vs 31 Dec`, so even a narrow one says what its YTD is measured against.
+  const leastRoom = ytdBase ? `YTD vs ${ytdBase}`.length : 0;
   const columns = [column("name", "Theme", 26, "left"), column("memberCount", "N", 3),
-    ...THEME_PERIODS.map((period) => column(period, label(period, 0), Math.max(metricWidth(period), label(period, 0).length + HEADER_ROOM))),
+    ...THEME_PERIODS.map((period) => column(period, label(period, leastRoom), Math.max(metricWidth(period), label(period, leastRoom).length + HEADER_ROOM))),
     column("breadth", "Breadth" + " ".repeat(coverageWidth(rows.map((row) => row.breadth))), 7 + coverageWidth(rows.map((row) => row.breadth))),
     column("best", "Best 1D", 15), column("worst", "Worst 1D", 15)];
   const fitted = fitColumns(columns, width, ["worst", "best", "return3MPercent", "returnYtdPercent", "return1MPercent", "return1WPercent", "memberCount"]);

@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { THEME_PERIODS, type ThemeMember, type ThemeSummary } from "../../../api-client/themes";
 import { fitTableCellText, tableColumnWidth } from "../../../components/ui/table-layout";
 import {
-  aggregateText, boardYtdBase, coverageWidth, DEFAULT_SORT, matchTheme, memberColumns, memberExtendedSessions, percent, snapshotFooterText, sortMembers, sortThemes, themeColumns,
+  aggregateText, boardYtdBase, coverageText, coverageWidth, DEFAULT_SORT, matchTheme, memberColumns, memberExtendedSessions, percent, snapshotFooterText, sortMembers, sortThemes, themeColumns,
 } from "./model";
 
 const theme = (id: string, day: number | null, covered = 10): ThemeSummary => ({
@@ -24,8 +24,9 @@ test("formatting distinguishes zero, missing and partial coverage without negati
   expect(percent(-0.001)).toBe("0.00%");
   expect(percent(-2.345)).toBe("-2.35%");
   expect(aggregateText({ value: 1.2, covered: 10, total: 10 })).toBe("+1.20%");
-  expect(aggregateText({ value: 1.2, covered: 9, total: 10 })).toBe("+1.20% 9/10");
-  expect(aggregateText({ value: null, covered: 4, total: 10 })).toBe("-- 4/10");
+  // Partial coverage is spelled `9 of 10`: `9/10` beside a return reads as a fraction of it.
+  expect(aggregateText({ value: 1.2, covered: 9, total: 10 })).toBe("+1.20% 9 of 10");
+  expect(aggregateText({ value: null, covered: 4, total: 10 })).toBe("-- 4 of 10");
   expect(aggregateText({ value: 0, covered: 10, total: 10 }, true)).toBe("0%");
 });
 
@@ -55,11 +56,13 @@ test("an after-hours print gets a column after 1D that outlasts the longer windo
   expect(sortMembers(rows, { columnId: "afterHours", direction: "desc" }).map((row) => row.symbol)).toEqual(["B", "A", "C", "D"]);
 });
 
-test("YTD names the close it is measured from, shorter as its column narrows", () => {
+test("YTD says it is a return against the close it is measured from, shorter as its column narrows", () => {
   const ytd = (columns: { id: string; label?: string }[]) => columns.find((column) => column.id === "returnYtdPercent")?.label?.trim();
   expect(ytd(memberColumns(178, [], "31 Dec"))).toBe("YTD vs 31 Dec close");
-  expect(ytd(memberColumns(90, [], "31 Dec"))).toBe("YTD 31 Dec");
+  expect(ytd(memberColumns(90, [], "31 Dec"))).toBe("YTD");
   expect(ytd(themeColumns(250, [theme("Full", 1.23, 9)], "31 Dec"))).toBe("YTD vs 31 Dec close");
+  // A 158-wide board with partial coverage in every column still says what its YTD is against, never a bare `YTD 31 Dec`.
+  expect(ytd(themeColumns(158, [theme("Partial", 1.23, 9)], "31 Dec"))).toBe("YTD vs 31 Dec");
   expect(boardYtdBase({ asOf: "2026-10-20T16:51:43.801Z" })).toBe("31 Dec");
   // Outside the session the board is the close it names: 3 Jan 2023's YTD runs from Fri 30 Dec 2022.
   expect(boardYtdBase({ asOf: "2023-01-04T01:00:00Z", regularSessionDate: "2023-01-03" })).toBe("30 Dec");
@@ -96,7 +99,7 @@ test("right-aligned headers end over numbers with and without a partial-coverage
         const headerEnd = header.trimEnd().length;
         for (const metric of metrics) {
           const value = column.id === "breadth" ? `${Math.round(metric.value!)}%` : percent(metric.value);
-          const note = metric.covered < metric.total ? `${metric.covered}/${metric.total}` : "";
+          const note = coverageText(metric);
           const cell = fitTableCellText(value + note.padStart(noteWidth), renderedWidth, "right");
           expect(cell.indexOf("%") + 1).toBe(headerEnd);
         }
