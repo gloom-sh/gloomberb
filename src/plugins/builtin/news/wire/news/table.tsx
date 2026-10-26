@@ -17,7 +17,7 @@ import { useLoadNewsStory } from "../../../../../news/hooks";
 import { formatFeedTime } from "../../../../../utils/datetime-format";
 import { logFailure } from "../../../../../utils/log-failure";
 import { nextHeaderSort } from "../../../../../utils/sort-values";
-import { formatNewsCategory } from "../categories";
+import { formatNewsCategoryForColumn } from "../categories";
 import { useOpenTickerChoice } from "../../../shared/ticker-choice";
 import { usePinnedMoment } from "../../../../../components/use-pinned-moment";
 
@@ -359,7 +359,7 @@ export function NewsArticleStackView({
       }
       case "categories":
         return {
-          text: formatNewsCategory(item.categories[0]) || "-",
+          text: formatNewsCategoryForColumn(item.categories[0]) || "-",
           color: tone(colors.textDim),
         };
       case "sentiment": {

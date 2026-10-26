@@ -103,6 +103,12 @@ describe("NewsArticleStackView", () => {
                 categories: ["macro_politics"],
                 importance: 87,
               }),
+              makeArticle({
+                id: "approval",
+                title: "Regulator clears the first gene therapy for sale",
+                categories: ["product_approval"],
+                importance: 60,
+              }),
             ]}
             focused
             width={94}
@@ -139,6 +145,9 @@ describe("NewsArticleStackView", () => {
     expect(lines[1]).not.toContain("macro_politics");
     // The headline takes every cell the fixed columns leave, clipped behind one mark.
     expect(lines[1]).toContain("Fed officials signal caution on further r\u2026");
+    // A label too long for the ten-cell column is shortened, not cut mid-word.
+    expect(lines[2]).toContain("Approval");
+    expect(lines[2]).not.toContain("Product ap");
   });
 
   test("narrowing gives up category, then ticker room, before the headline", () => {

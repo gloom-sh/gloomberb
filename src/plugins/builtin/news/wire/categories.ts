@@ -29,10 +29,13 @@ const CATEGORY_LABELS: Record<string, string> = {
   us: "US",
 };
 
+function categoryKey(value: string | null | undefined): string {
+  return value?.trim().toLowerCase().replace(/[\s-]+/g, "_") ?? "";
+}
+
 export function formatNewsCategory(value: string | null | undefined): string {
-  const raw = value?.trim();
-  if (!raw) return "";
-  const key = raw.toLowerCase().replace(/[\s-]+/g, "_");
+  const key = categoryKey(value);
+  if (!key) return "";
   const mapped = CATEGORY_LABELS[key];
   if (mapped) return mapped;
   const words = key.split("_").filter(Boolean);
@@ -44,6 +47,19 @@ export function formatNewsCategory(value: string | null | undefined): string {
         : word)
     ))
     .join(" ");
+}
+
+/**
+ * Labels for the news tables' category column, which is ten cells wide, for the
+ * ids whose label above would be cut in it. Anywhere with room (a story's
+ * detail) keeps the full label.
+ */
+const COLUMN_CATEGORY_LABELS: Record<string, string> = {
+  product_approval: "Approval",
+};
+
+export function formatNewsCategoryForColumn(value: string | null | undefined): string {
+  return COLUMN_CATEGORY_LABELS[categoryKey(value)] ?? formatNewsCategory(value);
 }
 
 const KNOWN_TICKERS = new Set([
