@@ -35,7 +35,7 @@ import { withPersistedCloudSession } from "./cloud-session";
 import {
   ListingArgError, listingFateLoader, listingReadNotes, loadForListing, loadListingQuoteAnswer, quotedListingChoiceNotes, refuseMovedListing,
 } from "../listing-arg";
-import { isNotATickerMessage } from "../not-a-ticker";
+import { notATickerStop } from "../company-name-hint";
 import { isCliFailure, SERVICE_UNREACHABLE_CODE } from "../errors";
 import { DATA_SERVICE_UNREACHABLE_MESSAGE } from "../../utils/network-failure";
 import { isTickerLinkPeer } from "../../layout/ticker-navigation";
@@ -316,11 +316,12 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
         ),
       ));
       // A company's name typed where its ticker goes (`fn RDCF Palantir`) found nothing: the answer is `quote`'s,
-      // "Not a ticker: PALANTIR. Try `gloom search Palantir`.", not an empty report.
-      if (quoteAnswer && (report.data.empty || report.data.unavailableSymbols.length > 0)) {
+      // "Not a ticker: PALANTIR. Did you mean PLTR (Palantir Technologies Inc.)?", not an empty report. A source that
+      // could not answer for the word (a timeout) says nothing of it, but when search finds the company it is that.
+      if (quoteAnswer && listing && (report.data.empty || report.data.unavailableSymbols.length > 0)) {
         const { quote, error } = await quoteAnswer();
-        const message = error instanceof Error ? error.message : null;
-        if (!quote && isNotATickerMessage(message)) ctx.fail(message!);
+        const stop = quote ? null : await notATickerStop(error, listing, context);
+        if (stop) ctx.fail(stop);
       }
       if (parsed.requireBotSafe && (report.data.empty || !report.data.complete)) {
         const unavailable = report.data.unavailableSymbols.length > 0
@@ -437,6 +438,11 @@ async function capturePaneScreenshot(args: string[], ctx: CliCommandContext, onS
         fitRows: parsed.heightGiven !== true,
         options: parsed.options,
         onStalledReport,
+      }).catch(async (error: unknown) => {
+        // A company's name typed where its ticker goes fails as `fn` words it, with the company search finds.
+        const { quote, error: quoteError } = parsed.listing ? await loadListingQuoteAnswer(context.dataProvider, parsed.listing) : { quote: null, error: undefined };
+        const stop = parsed.listing && !quote ? await notATickerStop(quoteError, parsed.listing, context) : null;
+        throw stop ? new Error(stop) : error;
       });
       if (parsed.requireBotSafe && !result.usable) {
         throw new Error(

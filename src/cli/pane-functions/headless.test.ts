@@ -543,6 +543,22 @@ test("a series that asks for decimals prints them in text, while JSON and CSV ke
   expect(renderReportCsv(headlessReportTables(definition, result, args, "Relationship", freshness, { complete: true, unavailableSymbols: [] }), freshness)).toContain("2026-10-21,0.418953387895,");
 });
 
+test("a series of a reported total prints compact in text, while JSON and CSV keep every digit and do not carry the flag", () => {
+  const definition: HeadlessPaneDefinition<"series"> = { shape: "series", argument: { kind: "none" }, options: [], load: () => ({ series: [] }) };
+  const result: HeadlessSeriesResult = { series: [
+    { id: "revenue", label: "CSCO Revenue", unit: "USD", textCompact: true, points: [{ date: "2026-07-25", value: 63_325_000_000 }] },
+    { id: "eps", label: "CSCO EPS", unit: "USD/share", textCompact: true, points: [{ date: "2026-07-25", value: 2.2 }] },
+  ] };
+  const lines = renderHeadlessPaneText(definition, result, args, "Fundamental Graph").split("\n");
+  expect(lines.find((line) => line.startsWith("CSCO Revenue"))).toMatch(/2026-07-25 +63\.33B +USD/);
+  // A figure under a thousand is not compacted into a different number.
+  expect(lines.find((line) => line.startsWith("CSCO EPS"))).toMatch(/2026-07-25 +2\.2 +USD\/share/);
+  expect(JSON.stringify(jsonData(definition, result))).not.toContain("textCompact");
+  expect(JSON.stringify(jsonData(definition, result))).toContain("63325000000");
+  const freshness = deriveHeadlessFreshness(definition, result);
+  expect(renderReportCsv(headlessReportTables(definition, result, args, "Fundamental Graph", freshness, { complete: true, unavailableSymbols: [] }), freshness)).toContain("2026-07-25,63325000000,");
+});
+
 test("a series observed by the day is dated without a time in text and CSV, one read at a time of day keeps it, and ratios and scores print rounded", () => {
   const definition: HeadlessPaneDefinition<"series"> = { shape: "series", argument: { kind: "none" }, options: [], load: () => ({ series: [] }) };
   const result: HeadlessSeriesResult = { series: [

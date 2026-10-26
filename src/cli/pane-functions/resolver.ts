@@ -19,6 +19,8 @@ import { splitSymbolArgs, stripStrayEdges } from "../symbol-args";
 import { readNameEntries } from "../name-entries";
 import { bankFigurePointer } from "../known-gaps";
 import { readTerminalCodeArg } from "../../tickers/company-name-listing";
+import { unknownBloombergMarket } from "../../tickers/terminal-codes";
+import { notATickerWords } from "../company-name-hint";
 import type { MarketContext } from "../types";
 import {
   buildPaneFunctionLookup,
@@ -169,10 +171,16 @@ export async function applyListingArgument(
   const takesOneTicker = kind === "ticker";
   const takesList = kind === "tickers" || kind === "symbol-list" || (!headless && kind === "ticker-list");
   // A function with an exchange option of its own (DIST) keeps it.
-  // A ticker with spaces is no listing, unless it is a terminal's code for one ("JPM US Equity").
-  if (!(takesOneTicker || takesList) || (takesOneTicker && /\s/.test(args.arg) && !await readTerminalCodeArg(context.dataProvider, args.arg))
-    || getPaneFunctionCapability(found.template, found.pane).options.some((option) => option.key === "exchange")) {
+  if (!(takesOneTicker || takesList) || getPaneFunctionCapability(found.template, found.pane).options.some((option) => option.key === "exchange")) {
     return args;
+  }
+  // A ticker with spaces is no listing, unless it is a terminal's code for one ("JPM US Equity"). A company's name
+  // typed there (`fn RDCF "Palantir Technologies"`) stops before a report of dashes is drawn, as `quote` words a
+  // name that is no ticker, with the company search finds for it.
+  if (takesOneTicker && /\s/.test(args.arg) && !await readTerminalCodeArg(context.dataProvider, args.arg)) {
+    // A line written as a code with a market no venue answers to ("AAPL GP") is refused as the resolver words it.
+    if (unknownBloombergMarket(args.arg)) await resolveCliListing(args.arg, undefined, context);
+    throw new ListingArgError(await notATickerWords(args.arg, context));
   }
   const exchange = typeof args.options.exchange === "string" ? args.options.exchange : undefined;
   const { exchange: _exchange, ...options } = args.options;

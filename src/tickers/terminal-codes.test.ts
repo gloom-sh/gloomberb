@@ -164,8 +164,8 @@ test("the shared resolver reads a code before a company name search, and fn take
   const resolve = async (arg: string) => (await applyListingArgument(registry, deps as unknown as MarketContext, parsePaneFunctionArgs(["SEC", arg]))).arg;
   expect(await resolve("JPM US Equity")).toBe("JPM");
   expect(await resolve("WFC.N")).toBe("WFC:NYSE");
-  // A ticker argument with spaces that is no code stays as typed, as before.
-  expect(await resolve("Global US Equity")).toBe("Global US Equity");
+  // A ticker argument with spaces that is no code is no ticker: it stops before any report, as `quote` words it.
+  await expect(resolve("Global US Equity")).rejects.toThrow("Not a ticker: GLOBAL US EQUITY.");
 });
 
 test("a code abroad in capitals costs no search, one naming several listings is the first search lists, one in lower case is a code only where search lists it", async () => {

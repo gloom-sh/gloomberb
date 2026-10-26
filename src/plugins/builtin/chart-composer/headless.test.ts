@@ -376,6 +376,26 @@ test("chart reports retain raw comparison endpoints and growth preceding a finan
   expect(financial.series[0]!.points[0]).toMatchObject({ value: 150, growth: 0.5 });
 });
 
+test("a company's reported total asks the text report for its compact form, a price does not, and the report prints 63.33B for GF's latest revenue", async () => {
+  const { buildFundamentalChartPreset } = await import("./presets");
+  const { applyChartComposerCapabilityOptions } = await import("./cli-options");
+  const { renderHeadlessPaneText } = await import("../../../cli/pane-functions/headless");
+  const provider = createTestDataProvider({
+    getTickerFinancials: async () => ({
+      annualStatements: [{ date: "2025-07-26", totalRevenue: 56_998_000_000 }, { date: "2026-07-25", totalRevenue: 63_325_000_000 }],
+      quarterlyStatements: [], priceHistory: [],
+    }),
+  });
+  const args = { argument: ["CSCO:XNAS"], rawArgument: "CSCO:XNAS", symbols: ["CSCO:XNAS"], options: {} };
+  const spec = applyChartComposerCapabilityOptions(buildFundamentalChartPreset(["CSCO:XNAS"]), "fundamental-series", { metric: "totalRevenue", period: "annual" });
+  const definition = chartHeadless("fundamental-graph-pane");
+  const revenue = await definition.load(args, { ...fixture().context, marketData: provider, settings: { chartSpec: spec } }) as ChartPaneModel;
+  expect(revenue.series[0]).toMatchObject({ textCompact: true, points: [{ value: 56_998_000_000 }, { value: 63_325_000_000 }] });
+  expect(renderHeadlessPaneText(definition, revenue, args, "Fundamental Graph")).toMatch(/2026-07-25 +63\.33B +\w+ +2/);
+  // The price chart's latest close is a price, printed as it is.
+  expect((await fixture().load()).series.some((series) => series.textCompact)).toBe(false);
+});
+
 test("a company that reports no quarterly figures says so, where it would otherwise read as not covered", async () => {
   const { buildFundamentalChartPreset } = await import("./presets");
   const { applyChartComposerCapabilityOptions } = await import("./cli-options");

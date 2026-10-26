@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { sessionQuotes } from "../../../test-support/test-fixture-session-quotes";
 import type { FinancialStatement, TickerFinancials } from "../../../types/financials";
-import { DEFAULT_FCF_MARGIN, dcfValue, describeFcfMargin, FORECAST_YEARS, projectReverseDcf, solveImpliedGrowth } from "./model";
+import { DEFAULT_FCF_MARGIN, dcfValue, describeFcfMargin, FORECAST_YEARS, pastGrowthBasis, projectReverseDcf, solveImpliedGrowth, ttmBaseNote } from "./model";
 
 const financials = (fundamentals: TickerFinancials["fundamentals"], annual: Partial<FinancialStatement>[] = []): TickerFinancials =>
   ({ fundamentals, annualStatements: annual as FinancialStatement[], quarterlyStatements: [], priceHistory: [] });
@@ -110,5 +110,36 @@ describe("the margin behind the implied year-10 revenue", () => {
 
     expect(model({ revenue: -500, freeCashFlow: 40 }).fcfMarginBasis.gap).toBe("TTM revenue not positive");
     expect(model({ revenue: 30, freeCashFlow: 40 })).toMatchObject({ fcfMargin: DEFAULT_FCF_MARGIN, fcfMarginBasis: { gap: "TTM FCF above revenue" } });
+  });
+});
+
+describe("the periods behind the past growth and the trailing base", () => {
+  const model = (freeCashFlow: number, annual: Partial<FinancialStatement>[]) => projectReverseDcf(
+    financials({ enterpriseValue: 2_000, freeCashFlow, financialCurrency: "USD", marketCapCurrency: "USD" }, annual), { symbol: "KO", discountRate: 0.09 });
+  const years = (...flows: number[]) => flows.map((freeCashFlow, index) => ({ date: `${2025 - (flows.length - 1 - index)}-12-31`, freeCashFlow }));
+
+  test("names the fiscal years the rate runs between, as a calendar's issuers do, and the dates where a year is off it", () => {
+    const ko = model(143, years(110, 90, 80, 60, 53));
+    expect(ko.pastGrowth).toMatchObject({ years: 4, period: "FY2021–FY2025" });
+    expect(pastGrowthBasis(ko.pastGrowth!)).toBe("a year, FY2021–FY2025");
+    // A fiscal year that ends in July is named by the year it ends in, as the statements name it.
+    const july = model(100, [{ date: "2022-07-30", freeCashFlow: 50 }, { date: "2026-07-25", freeCashFlow: 90 }]);
+    expect(july.pastGrowth?.period).toBe("FY2022–FY2026");
+    // A statement off the company's fiscal calendar (a transition period) puts both ends as dates.
+    const off = model(100, [{ date: "2021-03-31", freeCashFlow: 50 }, { date: "2022-12-31", freeCashFlow: 60 }, { date: "2023-12-31", freeCashFlow: 70 }, { date: "2024-12-31", freeCashFlow: 80 }, { date: "2025-12-31", freeCashFlow: 90 }]);
+    expect(off.pastGrowth?.period).toBe("2021-03-31 to 2025-12-31");
+  });
+
+  test("says the trailing base differs when it is more than 1.5 times the latest fiscal year's, and not at or under it", () => {
+    const flows = years(110, 90, 80, 60, 53);
+    expect(model(143, flows).fiscalYearFcf).toEqual({ value: 53, label: "FY2025" });
+    expect(ttmBaseNote(model(143, flows))).toBe("The TTM base differs from FY2025: TTM FCF is 2.7x that year's 53 USD.");
+    // 1.5 times is not more than 1.5 times.
+    expect(ttmBaseNote(model(79.5, flows))).toBeNull();
+    expect(ttmBaseNote(model(80, flows))).toBe("The TTM base differs from FY2025: TTM FCF is 1.5x that year's 53 USD.");
+    // A year with no positive cash flow is no base to compare, and a model with no growth to say has no note.
+    expect(ttmBaseNote(model(143, years(110, 90, 80, 60, -5)))).toBeNull();
+    expect(ttmBaseNote(model(143, []))).toBeNull();
+    expect(ttmBaseNote({ ...model(143, flows), error: "EV unavailable." })).toBeNull();
   });
 });

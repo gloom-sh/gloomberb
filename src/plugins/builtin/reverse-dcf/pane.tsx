@@ -10,8 +10,8 @@ import type { PaneProps } from "../../../types/plugin";
 import { Box } from "../../../ui";
 import { formatCompact, formatCompactCurrency } from "../../../utils/format";
 import { loadReverseDcfInputs } from "./client";
-import { describeFcfMargin, DISCOUNT_RATES, FORECAST_YEARS, formatFcfMargin, projectReverseDcf, TERMINAL_GROWTH, TERMINAL_GROWTHS,
-  type ImpliedGrowth, type ReverseDcfModel } from "./model";
+import { describeFcfMargin, DISCOUNT_RATES, FORECAST_YEARS, formatFcfMargin, pastGrowthBasis, projectReverseDcf, TERMINAL_GROWTH, TERMINAL_GROWTHS,
+  ttmBaseGap, type ImpliedGrowth, type ReverseDcfModel } from "./model";
 
 export const DISCOUNT_OPTIONS = DISCOUNT_RATES.map((rate) => ({ value: String(Math.round(rate * 100)), label: `${Math.round(rate * 100)}%` }));
 /** The margin setting that follows the company's own trailing margin, the pane's default. */
@@ -91,15 +91,18 @@ export function ReverseDcfPane({ width, height, focused }: PaneProps) {
     const currency = model.currency ?? undefined;
     const implied = model.implied?.kind === "rate" ? model.implied.value : null;
     const past = model.pastGrowth;
+    const gap = ttmBaseGap(model);
     return [
       { id: "implied", label: "Priced-in growth", value: impliedText(model.implied),
         tone: implied == null || !past ? undefined : implied > past.rate ? "negative" : "positive",
         detail: `a year for ${FORECAST_YEARS}y, then ${pct(TERMINAL_GROWTH, false)}` },
       { id: "revenue", label: `Revenue, yr ${FORECAST_YEARS}`, value: formatCompactCurrency(model.impliedRevenue ?? undefined, currency),
         detail: `at ${describeFcfMargin(model.fcfMargin, model.fcfMarginBasis)}` },
-      { id: "past", label: "Past FCF growth", value: past ? pct(past.rate) : "--", detail: past ? `per year over ${past.years}y` : undefined },
+      { id: "past", label: "Past FCF growth", value: past ? pct(past.rate) : "--", detail: past ? pastGrowthBasis(past) : undefined },
       { id: "yield", label: "FCF yield", value: pct(model.fcfYield, false) },
-      { id: "fcf", label: "FCF", value: formatCompactCurrency(model.freeCashFlow ?? undefined, currency) },
+      // A trailing figure far above the fiscal year the past growth ends at says so beside itself.
+      { id: "fcf", label: "FCF", value: formatCompactCurrency(model.freeCashFlow ?? undefined, currency),
+        detail: gap ? `TTM base, ${gap.multiple} ${gap.year}'s ${gap.fcf}` : undefined },
       { id: "ev", label: "EV", value: formatCompactCurrency(model.enterpriseValue ?? undefined, currency),
         // More than 5% from market cap + debt - cash: the provider's, with the computed figure where it fits.
         detail: model.computedEnterpriseValue != null ? `provider vs ${formatCompact(model.computedEnterpriseValue)}` : undefined },

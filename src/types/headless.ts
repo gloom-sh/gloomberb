@@ -604,6 +604,8 @@ export interface HeadlessSeries {
   interval?: string;
   /** Decimal places the text report prints the latest value to (a correlation to 3); JSON and CSV keep every digit. */
   textDecimals?: number;
+  /** The text report prints the latest value as the tables print an amount (63.33B), for a company's reported total; JSON and CSV keep every digit. */
+  textCompact?: boolean;
   /** Each point's `value` is its bar's close: `--csv` and `--ndjson` write Close alone, JSON keeps both. */
   valueIsClose?: boolean;
   points: HeadlessSeriesPoint[];

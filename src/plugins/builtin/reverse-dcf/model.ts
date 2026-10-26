@@ -1,6 +1,8 @@
 import { unavailableText } from "../../../components/ui/status";
 import { atRegularSessionPrice } from "../../../market-data/quotes/regular-session-valuation";
 import type { Fundamentals, TickerFinancials } from "../../../types/financials";
+import { fiscalPeriodLabel, fiscalYearEndMonth } from "../../../utils/fiscal-period";
+import { formatCompactCurrency } from "../../../utils/format";
 import { enterpriseValueCheck, enterpriseValueLabel, enterpriseValueNotMeaningful, enterpriseValueReconciliationNote,
   enterpriseValueWithdrawn, reportedEnterpriseValue } from "../../../utils/fundamentals";
 
@@ -50,8 +52,10 @@ export interface ReverseDcfModel {
   fcfMarginBasis: FcfMarginBasis;
   /** Year-ten revenue at `fcfMargin`: trailing free cash flow grown at the implied rate for ten years, over the margin. */
   impliedRevenue: number | null;
-  /** Annual FCF growth between the latest annual statement and one up to five years earlier, when both are positive. */
-  pastGrowth: { rate: number; years: number } | null;
+  /** Annual FCF growth between the latest annual statement and one up to five years earlier, when both are positive. `period` names the two years: FY2021–FY2025. */
+  pastGrowth: { rate: number; years: number; period: string } | null;
+  /** The latest annual statement's free cash flow, which the past growth ends at, and the year it is of (FY2025). */
+  fiscalYearFcf: { value: number; label: string } | null;
   /** Implied growth for each discount rate (rows) at each terminal growth (columns). */
   sensitivity: { discountRate: number; implied: (ImpliedGrowth | null)[] }[];
   error: string | null;
@@ -82,15 +86,65 @@ export function solveImpliedGrowth(enterpriseValue: number, fcf: number, discoun
   return { kind: "rate", value: (low + high) / 2 };
 }
 
-function pastFcfGrowth(financials: TickerFinancials): ReverseDcfModel["pastGrowth"] {
-  const annual = financials.annualStatements
+/** The latest annual statements with a free cash flow, oldest first, as many as the past growth looks back over. */
+function annualFreeCashFlows(financials: TickerFinancials) {
+  return financials.annualStatements
     .filter((row) => typeof row.freeCashFlow === "number" && Number.isFinite(row.freeCashFlow))
     .sort((a, b) => a.date.localeCompare(b.date))
     .slice(-6);
+}
+
+/** The two years a past growth spans, as issuers name them: `FY2021–FY2025`; period end dates where a year is off the fiscal calendar. */
+function fiscalSpan(financials: TickerFinancials, from: string, to: string): string {
+  const month = fiscalYearEndMonth(financials.annualStatements);
+  const [start, end] = [from, to].map((date) => fiscalPeriodLabel(date, "annual", month)) as [string, string];
+  return start.startsWith("FY") && end.startsWith("FY") ? `${start}–${end}` : `${from.slice(0, 10)} to ${to.slice(0, 10)}`;
+}
+
+function pastFcfGrowth(financials: TickerFinancials): ReverseDcfModel["pastGrowth"] {
+  const annual = annualFreeCashFlows(financials);
   const first = annual[0], last = annual.at(-1);
   if (!first || !last || first === last || !(first.freeCashFlow! > 0) || !(last.freeCashFlow! > 0)) return null;
   const years = Math.round((Date.parse(last.date) - Date.parse(first.date)) / (365.25 * 86_400_000));
-  return years > 0 ? { rate: (last.freeCashFlow! / first.freeCashFlow!) ** (1 / years) - 1, years } : null;
+  return years > 0
+    ? { rate: (last.freeCashFlow! / first.freeCashFlow!) ** (1 / years) - 1, years, period: fiscalSpan(financials, first.date, last.date) }
+    : null;
+}
+
+function latestFiscalYearFcf(financials: TickerFinancials): ReverseDcfModel["fiscalYearFcf"] {
+  const last = annualFreeCashFlows(financials).at(-1);
+  return last ? { value: last.freeCashFlow!, label: fiscalPeriodLabel(last.date, "annual", fiscalYearEndMonth(financials.annualStatements)) } : null;
+}
+
+/** How far above the latest fiscal year's free cash flow the trailing twelve months' must be to say the two bases differ. */
+const TTM_BASE_RATIO = 1.5;
+
+/**
+ * How a trailing free cash flow more than 1.5 times the latest fiscal year's
+ * differs from it (`2.7x` FY2025's `5.3B USD`): the growth priced in starts
+ * from the trailing figure, the past growth ends at the year's. Null when they
+ * are near each other, the year's is not positive, or the model has no growth
+ * to say.
+ */
+export function ttmBaseGap(model: Pick<ReverseDcfModel, "freeCashFlow" | "fiscalYearFcf" | "currency" | "error">): { multiple: string; year: string; fcf: string } | null {
+  const { freeCashFlow, fiscalYearFcf } = model;
+  if (model.error || freeCashFlow == null || !fiscalYearFcf || !(fiscalYearFcf.value > 0) || !(freeCashFlow > fiscalYearFcf.value * TTM_BASE_RATIO)) return null;
+  return {
+    multiple: `${(freeCashFlow / fiscalYearFcf.value).toFixed(1)}x`,
+    year: fiscalYearFcf.label,
+    fcf: formatCompactCurrency(fiscalYearFcf.value, model.currency ?? undefined),
+  };
+}
+
+/** "The TTM base differs from FY2025: TTM FCF is 2.7x that year's 5.3B USD.", the one line a report adds when `ttmBaseGap` finds a gap. */
+export function ttmBaseNote(model: Parameters<typeof ttmBaseGap>[0]): string | null {
+  const gap = ttmBaseGap(model);
+  return gap ? `The TTM base differs from ${gap.year}: TTM FCF is ${gap.multiple} that year's ${gap.fcf}.` : null;
+}
+
+/** What the past growth rate is over, after the rate: `a year, FY2021–FY2025`. */
+export function pastGrowthBasis(growth: NonNullable<ReverseDcfModel["pastGrowth"]>): string {
+  return `a year, ${growth.period}`;
 }
 
 /**
@@ -145,7 +199,8 @@ export function projectReverseDcf(
   const empty: ReverseDcfModel = { symbol: options.symbol, currency, discountRate: options.discountRate, terminalGrowth: TERMINAL_GROWTH,
     enterpriseValue, computedEnterpriseValue: check?.computed ?? null, enterpriseValueNote: check ? enterpriseValueReconciliationNote(fundamentals) ?? null : null,
     freeCashFlow, fcfYield: null, implied: null, fcfMargin, fcfMarginBasis, impliedRevenue: null,
-    pastGrowth: financials ? pastFcfGrowth(financials) : null, sensitivity: [], error: null };
+    pastGrowth: financials ? pastFcfGrowth(financials) : null, fiscalYearFcf: financials ? latestFiscalYearFcf(financials) : null,
+    sensitivity: [], error: null };
   const valueCurrency = fundamentals?.marketCapCurrency;
   // ADRs and cross-listings can report cash flows in one currency and trade in another.
   if (currency && valueCurrency && currency !== valueCurrency) {

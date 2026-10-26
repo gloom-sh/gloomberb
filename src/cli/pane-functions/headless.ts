@@ -42,6 +42,7 @@ import type { ResolvedPaneFunction } from "./resolver";
 import { isRecord } from "../../utils/guards";
 import { splitSymbolWords } from "../symbol-args";
 import { formatUtcTime, localTimeSuffix } from "../../utils/utc-time";
+import { formatCompact } from "../../utils/format";
 import { deriveHeadlessFreshness, formatFreshnessLine, staleRowsText, withSavedCopy, type ReportFreshness } from "./freshness";
 import { DATA_SERVICE_UNREACHABLE_MESSAGE } from "../../utils/network-failure";
 import { accessGateStatus, errorsAccessGate, isProLock, reportGateText } from "./access-gate";
@@ -374,8 +375,8 @@ export function serializeHeadlessPaneResult(
     }
     case "series": {
       const series = result as HeadlessSeriesResult;
-      // `textDecimals` only shapes the text report; JSON keeps every digit and does not carry it.
-      return { ...common, series: series.series.map(({ textDecimals: _text, ...kept }) => kept), ...(series.stats ? { stats: series.stats } : {}) };
+      // `textDecimals` and `textCompact` only shape the text report; JSON keeps every digit and does not carry them.
+      return { ...common, series: series.series.map(({ textDecimals: _decimals, textCompact: _compact, ...kept }) => kept), ...(series.stats ? { stats: series.stats } : {}) };
     }
     case "snapshot": {
       const snapshot = result as HeadlessSnapshotResult;
@@ -501,14 +502,16 @@ function seriesPointExportDate(series: HeadlessSeries, date: SeriesPointDate, da
  * points, multiples and
  * ratios (P/E, EV/EBITDA, one series over another, VIX 3M / VIX) to two
  * decimals, which a ratio under 0.1 trades for three significant digits so it
- * is not flattened to 0.03, and a 0 to 100 score to a tenth of a point. The
- * exports keep every digit. Any other unit prints as loaded, without float
- * noise.
+ * is not flattened to 0.03, and a 0 to 100 score to a tenth of a point. A
+ * company's reported total (`textCompact`) reads as the tables print one:
+ * 63.33B. The exports keep every digit. Any other unit prints as loaded,
+ * without float noise.
  */
 function seriesValue(series: HeadlessSeries, value: number | null): string {
   if (value == null) return "-";
   if (!Number.isFinite(value)) return displayNumber(value);
   if (series.textDecimals != null) return value.toFixed(series.textDecimals);
+  if (series.textCompact) return formatCompact(value);
   const unit = series.unit?.trim().toLowerCase();
   if (unit === "%" || unit === "pp") return value.toFixed(2);
   if (unit === "x" || unit === "ratio") return value !== 0 && Math.abs(value) < 0.1 ? value.toPrecision(3) : value.toFixed(2);

@@ -228,6 +228,8 @@ export async function loadChartPaneModel(
         ...reported,
         ...name ? { name } : {},
         ...valueDecimals !== undefined ? { textDecimals: valueDecimals } : {},
+        // A company's reported total (revenue, market cap) reads as 63.33B in the report, as in the legend and the tables.
+        ...series.unitGroup.split(":")[0] === "currency-total" ? { textCompact: true } : {},
         derived: !ids.has(series.id),
         points: series.points.map((point) => ({
           ...point,

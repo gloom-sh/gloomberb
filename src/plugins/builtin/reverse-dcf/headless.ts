@@ -4,7 +4,8 @@ import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { formatCompactCurrency } from "../../../utils/format";
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { loadReverseDcfInputs } from "./client";
-import { describeFcfMargin, DISCOUNT_RATES, projectReverseDcf, TERMINAL_GROWTH, TERMINAL_GROWTHS, type ImpliedGrowth } from "./model";
+import { describeFcfMargin, DISCOUNT_RATES, pastGrowthBasis, projectReverseDcf, TERMINAL_GROWTH, TERMINAL_GROWTHS, ttmBaseNote,
+  type ImpliedGrowth } from "./model";
 
 const percent = (value: unknown) => typeof value === "number" ? `${(value * 100).toFixed(1)}%` : "--";
 /** An assumption as it is set: 9%, 2.5%. */
@@ -35,6 +36,7 @@ export const reverseDcfHeadless: HeadlessPaneDefinition<"bundle"> = {
     const quote = inputs.financials?.quote;
     // The enterprise value is measured at the regular session price, so the report is dated by it: after the close, the close.
     const valuedAt = regularSessionValuationTime(quote);
+    const notes = [model.enterpriseValueNote, ttmBaseNote(model)].filter((note): note is string => !!note);
     return {
       sections: [
         { title: "Reverse DCF", columns: [{ key: "label", header: "" }, { key: "value", header: "Value" }], rows: [
@@ -42,7 +44,7 @@ export const reverseDcfHeadless: HeadlessPaneDefinition<"bundle"> = {
             : `${typeof growth === "number" ? percent(growth) : growth} at ${rate(discountRate)} discount, ${rate(TERMINAL_GROWTH)} terminal` },
           { label: "Implied revenue, year 10", value: model.impliedRevenue == null ? "--"
             : `${formatCompactCurrency(model.impliedRevenue, currency)} at ${describeFcfMargin(fcfMargin, fcfMarginBasis)}` },
-          { label: "Past FCF growth", value: model.pastGrowth ? `${percent(model.pastGrowth.rate)} over ${model.pastGrowth.years}y` : "--" },
+          { label: "Past FCF growth", value: model.pastGrowth ? `${percent(model.pastGrowth.rate)} ${pastGrowthBasis(model.pastGrowth)}` : "--" },
           { label: "FCF yield", value: percent(model.fcfYield) },
           { label: "Enterprise value", value: `${formatCompactCurrency(model.enterpriseValue ?? undefined, currency)}${model.enterpriseValueNote ? " (provider)" : ""}` },
           { label: "Free cash flow, TTM", value: formatCompactCurrency(model.freeCashFlow ?? undefined, currency) },
@@ -60,7 +62,7 @@ export const reverseDcfHeadless: HeadlessPaneDefinition<"bundle"> = {
       },
       unavailableSymbols: model.implied ? [] : [instrument.symbol],
       errors: [inputs.error, model.error].filter((value): value is string => !!value),
-      ...(model.enterpriseValueNote ? { notes: [model.enterpriseValueNote] } : {}),
+      ...notes.length > 0 ? { notes } : {},
       metadata: { currency: model.currency, discountRate, terminalGrowth: TERMINAL_GROWTH, discountRates: DISCOUNT_RATES, fcfMargin,
         fcfMarginSource: fcfMarginBasis.source, companyFcfMargin: fcfMarginBasis.company, fcfMarginGap: fcfMarginBasis.gap,
         impliedRevenue: model.impliedRevenue, stale: inputs.stale, fetchedAt: inputs.fetchedAt, methodology: "docs/research-data.md#reverse-dcf" },

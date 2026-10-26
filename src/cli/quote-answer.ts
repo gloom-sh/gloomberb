@@ -14,6 +14,7 @@ import { knownGapForTicker } from "./known-gaps";
 import {
   futuresTryLine,
   isNoProviderError,
+  isUnsettledNoProvider,
   listingChoiceNotes,
   ListingArgError,
   loadBareVenues,
@@ -28,6 +29,7 @@ import {
   type ListingVenue,
 } from "./listing-arg";
 import { withListingSuggestion } from "./not-a-ticker";
+import { notATickerWords } from "./company-name-hint";
 import { isNetworkFailure } from "../utils/network-failure";
 import type { MarketContext } from "./types";
 
@@ -131,8 +133,12 @@ export async function answerQuote(
  * A company's name typed as one word (`Apple`) that the source says is not a
  * ticker, answered as the listing search names for it with the line saying so
  * ("Read "Apple" as AAPL:NASDAQ (Apple Inc.)."), as a name of several words
- * is. Null when the word names no company, or that listing has no quote
- * either: the word keeps its own "Not a ticker".
+ * is. A source that could not answer for the word (a timeout, a rate limit)
+ * says nothing of it, but when search resolves it to a company, it is read the
+ * same way; when that listing has no quote either, the row says the word is not
+ * a ticker and names the company. Null when the word names no company, or that
+ * listing has no quote though the source did say "not a ticker": the word keeps
+ * its own answer.
  */
 async function answerCompanyName(
   result: QuoteBatchResult,
@@ -142,18 +148,24 @@ async function answerCompanyName(
   refresh: boolean,
   datesChangeBasis: boolean,
 ): Promise<QuoteAnswer | null> {
-  if (!listing.typed || listing.exchange || !notATickerSymbol(errorMessage(result.error) ?? "")) return null;
+  if (!listing.typed || listing.exchange) return null;
+  const notATicker = !!notATickerSymbol(errorMessage(result.error) ?? "");
+  const unsettled = !notATicker && isUnsettledNoProvider(result.error);
+  if (!notATicker && !unsettled) return null;
   const named = await oneWordCompanyName(listing.typed, market);
-  if (!named) return null;
+  // A real ticker a source failed to quote is not a company's name, even when the company carries the word.
+  if (!named || (unsettled && named.symbol.toUpperCase() === listing.symbol.toUpperCase())) return null;
   // A listing on a venue the app cannot read is no answer: the word keeps its own "Not a ticker".
   const resolved = await resolveCliListing(named.key, null, market).catch((error: unknown) => {
     if (error instanceof ListingArgError) return null;
     throw error;
   });
-  if (!resolved) return null;
-  const found = { ...resolved, readAs: named.readAs, ...named.meant ? { meant: named.meant } : {} };
-  const [quoted] = await market.dataProvider.getQuotesBatch([found.request], { forceRefresh: refresh, revalidate: true, datesChangeBasis });
-  return quoted?.quote ? answerQuote(quoted, found, market, request, refresh, null, { datesChangeBasis }) : null;
+  const found = resolved ? { ...resolved, readAs: named.readAs, ...named.meant ? { meant: named.meant } : {} } : null;
+  const [quoted] = found ? await market.dataProvider.getQuotesBatch([found.request], { forceRefresh: refresh, revalidate: true, datesChangeBasis }) : [];
+  if (found && quoted?.quote) return answerQuote(quoted, found, market, request, refresh, null, { datesChangeBasis });
+  if (!unsettled) return null;
+  const sentence = await notATickerWords(listing.typed, market);
+  return { result: { ...result, error: new Error(sentence) }, listing, notes: [] };
 }
 
 /** A listing a command found a quote for, with what `quote` says beside it. */

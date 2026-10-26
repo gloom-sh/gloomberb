@@ -15,7 +15,7 @@ import {
   type ListingVenue,
 } from "../tickers/listing-venues";
 import { findUsListingOfCompany, type UsListing } from "../tickers/us-listing";
-import { findListingOfCompanyName, isCompanyNameInput, readTerminalCodeArg } from "../tickers/company-name-listing";
+import { findListingOfCompanyName, isCompanyNameInput, readTerminalCodeArg, type CompanyNameListing } from "../tickers/company-name-listing";
 import { movedAwayChange, startTickerChangeLookup, type MovedTickerChange } from "../tickers/ticker-changes";
 import { loadListingFate, MovedSymbolError, type ListingFate } from "../tickers/listing-fate";
 import { quotedListingName } from "../tickers/listing-name";
@@ -35,7 +35,7 @@ import {
 import { withMarketData } from "./scoped-context";
 import { failWithFields } from "./errors";
 import { stripStrayEdges } from "./symbol-args";
-import { isNoProviderMessage, isProviderBusy } from "../sources/provider-errors";
+import { isNoProviderMessage, isNoSourceAnswer, isProviderBusy } from "../sources/provider-errors";
 import { dashedCoinPair, MAJOR_COIN_NAMES } from "../utils/crypto-pair";
 import { boardCoinFor, primeBoardCoins } from "./board-coins";
 import { knownGapMessage } from "./known-gaps";
@@ -336,6 +336,15 @@ export interface ListingDataRequest {
  */
 export function isNoProviderError(error: unknown): boolean {
   return isNoProviderMessage(error instanceof Error ? error.message : String(error ?? ""));
+}
+
+/**
+ * The router's answer that no source served a request because one failed (a
+ * timeout, a rate limit, a refused session) rather than missed: it says
+ * nothing about whether the symbol exists, unlike "Not a ticker".
+ */
+export function isUnsettledNoProvider(error: unknown): boolean {
+  return isNoProviderError(error) && !isNoSourceAnswer(error);
 }
 
 const MAX_OTHER_LISTINGS = 5;
@@ -1255,17 +1264,23 @@ const ONE_WORD_NAME = /^\p{L}[\p{L}\p{N}&'’.-]*$/u;
  * for anything else, and when search names no company or is too busy to say.
  */
 export async function oneWordCompanyName(typed: string, deps: Pick<ListingDeps, "dataProvider">): Promise<ListingArg | null> {
+  const found = await findOneWordCompany(typed, deps);
+  return found ? companyListingArg(typed, found) : null;
+}
+
+/** The company `oneWordCompanyName` reads a word as, before it is read as a listing. */
+async function findOneWordCompany(typed: string, deps: Pick<ListingDeps, "dataProvider">): Promise<CompanyNameListing | null> {
   const word = typed.trim();
   if (!ONE_WORD_NAME.test(word) || knownGapMessage(word) || isMajorCoinName(word)) return null;
-  const named = await readCompanyName(word, deps, { oneWord: true }).catch((error: unknown) => {
+  const found = await findCompanyName(word, deps, { oneWord: true }).catch((error: unknown) => {
     if (!isProviderBusy(error)) throw error;
     // Intentional ignore: a busy search says nothing about the name, so the word keeps its own "Not a ticker".
     return null;
   });
-  if (!named) return null;
+  if (!found) return null;
   // The board is read only for a word that names a company, and once for the run (`primeBoardCoins`).
   if (/^[A-Za-z0-9]+$/.test(word)) await primeBoardCoins([`Not a ticker: ${word.toUpperCase()}.`]);
-  return boardCoinFor(word) ? null : named;
+  return boardCoinFor(word) ? null : found;
 }
 
 function isMajorCoinName(word: string): boolean {
@@ -1273,14 +1288,50 @@ function isMajorCoinName(word: string): boolean {
   return [...MAJOR_COIN_NAMES.values()].some((name) => name.toLowerCase() === wanted);
 }
 
+function findCompanyName(typed: string, deps: Pick<ListingDeps, "dataProvider">, options: { oneWord?: boolean } = {}): Promise<CompanyNameListing | null> {
+  return findListingOfCompanyName(deps.dataProvider, typed, { meant: true, quoted: true, ...options });
+}
+
 async function readCompanyName(typed: string, deps: Pick<ListingDeps, "dataProvider">, options: { oneWord?: boolean } = {}): Promise<ListingArg | null> {
-  const found = await findListingOfCompanyName(deps.dataProvider, typed, { meant: true, quoted: true, ...options });
-  if (!found) return null;
+  const found = await findCompanyName(typed, deps, options);
+  return found ? companyListingArg(typed, found) : null;
+}
+
+function companyListingArg(typed: string, found: CompanyNameListing): ListingArg {
   const key = `${found.symbol}:${found.exchange}`;
   // A fund or an index carrying the name asks about the company's stock: "Did you mean JPM (JPMorgan Chase & Co.)?".
   const meant = found.meant ? { symbol: found.meant.symbol, name: found.meant.name } : null;
   const question = meant ? ` ${meantQuestion({ meant })}` : "";
   return { ...parseListingArg(key), readAs: `Read "${typed.trim()}" as ${key} (${found.name}).${question}`, ...meant ? { meant } : {} };
+}
+
+/**
+ * The listing search names for a company's name typed where a ticker goes,
+ * as a sentence offers it: `PLTR (Palantir Technologies Inc.)`, a listing
+ * abroad with its venue (`SIE:XETRA (Siemens AG)`), a fund or an index that
+ * carries the name as the company's stock it means. Null when the words name
+ * no company, search is busy, or the listing found is the word itself: a
+ * real ticker is never a company's name. Never throws.
+ */
+export async function companyNameSuggestion(typed: string, deps: Pick<ListingDeps, "dataProvider">): Promise<{ symbol: string; name: string } | null> {
+  const words = typed.trim().replace(/^\$/, "");
+  if (!words) return null;
+  try {
+    const found = isCompanyNameInput(words) ? await findCompanyName(words, deps).catch(busyAsMiss) : await findOneWordCompany(words, deps);
+    const listing = found?.meant ?? found;
+    if (!listing || listing.symbol.toUpperCase() === words.toUpperCase()) return null;
+    return { symbol: isUsListingExchange(listing.exchange) ? listing.symbol : `${listing.symbol}:${listing.exchange}`, name: listing.name };
+  } catch (error) {
+    logFailure("cli.listing-arg", "Search a company name for a suggestion failed")(error);
+    return null;
+  }
+}
+
+/** A search too busy to answer is no company, as a name that matches none. */
+function busyAsMiss(error: unknown): null {
+  if (!isProviderBusy(error)) throw error;
+  // Intentional ignore: a busy search says nothing about the name, so no company is suggested.
+  return null;
 }
 
 /** `resolveCliListing` for a command: a bad exchange fails the command with its message. */
