@@ -1,5 +1,5 @@
 import { apiClient } from "../../../api-client";
-import type { FundFactsPayload, FundLeverage, FundMetalHoldings } from "../../../api-client/fund-facts";
+import type { FundFactsPayload, FundLeverage, FundMetalHoldings, FundStructure } from "../../../api-client/fund-facts";
 import type { StatItem } from "../../../components/ui/stat-grid";
 import { leverageFactorLabel } from "../../../time-series/leverage";
 import { t, tf } from "../../../i18n";
@@ -70,6 +70,28 @@ const flowsValue = (value: number) => `${value < 0 ? "-" : value > 0 ? "+" : ""}
 
 /** A closed-end fund's NAV is a month end's (a sponsor's estimate, or the filing's period end): its normal cadence, not a lag. */
 const monthEndNav = (facts: FundFactsPayload) => facts.nav?.period === "month-end";
+
+/** The session of the close a premium was computed from, when it is before the NAV's date: a month end on a weekend. */
+const closeSession = (facts: FundFactsPayload) => {
+  const close = facts.closingPrice?.asOf;
+  const premium = facts.premiumDiscount?.asOf;
+  return close && premium && close < premium ? close : null;
+};
+
+/** A registered closed-end fund or a BDC: its NAV is a month end's or a filing's, and its price trades at its own premium to it. */
+const closedEnd = (structure: FundFactsPayload["structure"]) => structure === "closed-end" || structure === "bdc";
+
+/** Each structure by its own name in a report; one a newer server adds, by its own key rather than another's name. */
+const STRUCTURE_LABELS: Record<FundStructure, string> = {
+  registered: "Registered fund",
+  trust: "Trust or pool, not an open-end fund",
+  "closed-end": "Closed-end fund",
+  bdc: "Business development company (BDC)",
+};
+const structureLabel = (structure: FundStructure) => STRUCTURE_LABELS[structure] ?? String(structure);
+
+/** The pane's shorter names, for the funds whose figures read unlike an ETF's. */
+const PANE_STRUCTURE: Partial<Record<FundStructure, string>> = { "closed-end": "Closed-end fund", bdc: "BDC" };
 
 /** Ounces and tonnes as the sponsor publishes them, to its own decimals (34,085,936.5; 1,060.18). */
 const metalFigure = (value: number, signed = false) =>
@@ -154,7 +176,12 @@ function datedFigures(facts: FundFactsPayload): Record<"nav" | "premium" | "fee"
       marked: facts.stale,
     },
     premium: {
-      detail: premium?.asOf ? (premium.basis === "computed" ? tf("{date} close", { date: premium.asOf }) : premium.asOf) : undefined,
+      // A computed premium is dated by its close's session (a weekend month end's Friday), and says when it is an estimate's.
+      detail: premium?.asOf
+        ? premium.basis === "computed"
+          ? `${tf("{date} close", { date: closeSession(facts) ?? premium.asOf })}${premium.estimate ? ` · ${t("est.")}` : ""}`
+          : premium.asOf
+        : undefined,
       marked: facts.stale || (!!premium?.asOf && !!nav && premium.asOf !== nav),
     },
     fee: {
@@ -227,6 +254,9 @@ export function fundFactItems(facts: FundFactsPayload): StatItem[] {
         { detail: metal.change.tonnes == null ? tf("since {date}", { date: metal.change.since }) : `${change} · ${tf("since {date}", { date: metal.change.since })}`, marked: metal.stale }));
     }
   }
+  // A closed-end fund or BDC says which: its figures read unlike an ETF's.
+  const structure = facts.structure ? PANE_STRUCTURE[facts.structure] : undefined;
+  if (structure) items.push({ id: "structure", label: "Structure", value: t(structure) });
   if (facts.sponsor) items.push({ id: "sponsor", label: "Sponsor", value: facts.sponsor.value });
   if (facts.inception) items.push({ id: "inception", label: "Inception", value: facts.inception.value });
   // A leveraged or inverse fund's objective, dated by the sponsor page it was read from, beside its benchmark.
@@ -291,9 +321,7 @@ export function fundFactEntries(facts: FundFactsPayload): HeadlessPaneEntry[] {
   const add = (key: string, label: string, value: unknown, formatted: string, unit?: string) =>
     entries.push({ key, label, value, formatted, ...(unit ? { unit } : {}) });
   if (facts.name) add("name", "Name", facts.name, facts.name);
-  if (facts.structure) add("structure", "Structure", facts.structure,
-    facts.structure === "trust" ? "Trust or pool, not an open-end fund"
-      : facts.structure === "closed-end" ? "Closed-end fund or BDC" : "Registered fund");
+  if (facts.structure) add("structure", "Structure", facts.structure, structureLabel(facts.structure));
   if (facts.expenseRatio) {
     const kind = feeBasis(facts);
     const date = facts.expenseRatio.asOf && facts.expenseRatio.document === "prospectus" ? `${facts.expenseRatio.asOf} prospectus` : facts.expenseRatio.asOf;
@@ -308,7 +336,8 @@ export function fundFactEntries(facts: FundFactsPayload): HeadlessPaneEntry[] {
   if (facts.closingPrice) add("closingPrice", "Closing price", facts.closingPrice.value,
     provenance(formatNav(facts.closingPrice.value), facts.closingPrice.asOf, facts.closingPrice.source), "USD");
   if (facts.premiumDiscount) {
-    const basis = facts.premiumDiscount.basis === "computed" ? "closing price vs NAV" : null;
+    const basis = facts.premiumDiscount.basis !== "computed" ? null
+      : facts.premiumDiscount.estimate ? "closing price vs NAV estimate midpoint" : "closing price vs NAV";
     add("premiumDiscountPercent", "Premium/discount", facts.premiumDiscount.value,
       provenance(formatPremiumPercent(facts.premiumDiscount.value), facts.premiumDiscount.asOf, basis, facts.premiumDiscount.source), "%");
   }
@@ -393,7 +422,7 @@ export function fundFactsNavReasonText(symbol: string, facts: FundFactsPayload):
   // A sponsor that publishes the fund's other figures.
   const sponsor = fundFactPublishers(facts).find((publisher) => publisher !== "SEC EDGAR");
   if (sponsor) return tf("No NAV for {symbol}: {publisher} publishes figures for it, but no NAV.", { symbol, publisher: sponsor });
-  if (facts.structure === "closed-end") {
+  if (closedEnd(facts.structure)) {
     return tf("No NAV for {symbol}: its SEC filings state net assets but no NAV per share, and its sponsor's NAV is not one Gloom reads.", { symbol });
   }
   if (facts.structure === "trust") {
@@ -426,7 +455,7 @@ export function fundFactsEmptyText(symbol: string, facts: FundFactsPayload | nul
     if (facts.structure === "registered") {
       return tf("No figures for {symbol}: its sponsor's site is not one Gloom reads, and the SEC's prospectus and N-PORT data sets list none for it yet.", { symbol });
     }
-    if (facts.structure === "closed-end") {
+    if (closedEnd(facts.structure)) {
       return tf("No figures for {symbol}: it files with the SEC as a closed-end fund or BDC, but neither the filings Gloom reads nor its sponsor's site state any for it yet.", { symbol });
     }
     return tf("No figures for {symbol}: it lists as a fund, but the SEC's lists do not name it yet and its sponsor's site is not one Gloom reads.", { symbol });

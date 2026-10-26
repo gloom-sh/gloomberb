@@ -8,11 +8,13 @@ interface FundFact<T> {
 
 /**
  * `registered`: a 1940 Act fund (an ETF or UIT). `trust`: an exchange-traded
- * trust or pool outside the 1940 Act. `closed-end`: a closed-end fund or BDC
- * (ECC, PDI, ARCC), found filing N-CSR, N-PORT or N-2; its shares trade at
- * their own premium or discount to NAV. Servers before it say null.
+ * trust or pool outside the 1940 Act. `closed-end`: a registered closed-end
+ * fund (ECC, OXLC, PDI), found filing N-CEN, N-CSR, N-PORT or N-2. `bdc`: a
+ * business development company (ARCC, MAIN), found filing N-2 or its N-54A
+ * election beside its 10-Q and 10-K. Either's shares trade at their own
+ * premium or discount to NAV. Servers before them say null.
  */
-type FundStructure = "registered" | "trust" | "closed-end";
+export type FundStructure = "registered" | "trust" | "closed-end" | "bdc";
 type ExpenseRatioKind = "net" | "gross" | "sponsor-fee";
 /**
  * A bond fund as its sponsor classes it: `municipal` when its interest is
@@ -117,9 +119,14 @@ export interface FundFactsPayload {
   nav: (FundFact<number> & { period?: "day" | "month-end"; estimate?: { low: number; high: number } }) | null;
   /** Why a covered fund has no NAV, in one line. Absent when it has one, and from servers before it. */
   navReason?: string;
+  /** Dated by its own session: a month end on a weekend is priced at the Friday before it. */
   closingPrice: FundFact<number> | null;
-  /** `published` by the sponsor, or `computed` from the closing price against the NAV. */
-  premiumDiscount: (FundFact<number> & { basis: "published" | "computed" }) | null;
+  /**
+   * `published` by the sponsor, or `computed` from the closing price against
+   * the NAV, dated by the NAV. `estimate`: computed against the midpoint of a
+   * NAV estimate, so an estimate too; absent from servers before it.
+   */
+  premiumDiscount: (FundFact<number> & { basis: "published" | "computed"; estimate?: true }) | null;
   /**
    * `period`: a `day`'s figure, or the last `month-end`'s (Vanguard and ARK
    * ETFs, N-PORT), which is not today's. `document`: the fund's N-PORT report
