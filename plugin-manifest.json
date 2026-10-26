@@ -437,7 +437,7 @@
           {
             "code": "PERP",
             "name": "Perpetuals",
-            "description": "Perpetual funding, open interest and premiums by market and venue, with rankings, a venue comparison and Pro history.",
+            "description": "Perpetual funding, open interest and premiums by market and venue, with rankings, a venue comparison, liquidations, order book depth and Pro history.",
             "access": "preview"
           }
         ]

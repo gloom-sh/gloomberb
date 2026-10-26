@@ -148,7 +148,7 @@ export function liquidationFreshness(data: PerpLiquidationsPayload): HeadlessPan
 
 // ---- Depth ----
 
-export const DEPTH_BANDS = [{ key: "05", label: "0.5%", fraction: 0.005 }, { key: "1", label: "1%", fraction: 0.01 }, { key: "2", label: "2%", fraction: 0.02 }] as const;
+const DEPTH_BANDS = [{ key: "05", label: "0.5%", fraction: 0.005 }, { key: "1", label: "1%", fraction: 0.01 }, { key: "2", label: "2%", fraction: 0.02 }] as const;
 type BandKey = typeof DEPTH_BANDS[number]["key"];
 export type DepthColumnId = "venue" | "symbol" | "mid" | `bid${BandKey}` | `ask${BandKey}` | "reach" | "observedAt";
 const DEPTH_COLUMNS: Record<DepthColumnId, DataTableColumn> = {
@@ -170,10 +170,10 @@ export const depthColumnLabel = (id: DepthColumnId) => DEPTH_COLUMNS[id].label;
 
 /** A band wider than the book the venue returned holds at least what the book shows: `≥57.58M`. */
 const bandFraction = (id: string) => DEPTH_BANDS.find((band) => id.endsWith(band.key))!.fraction;
-export const isFloor = (row: Pick<PerpDepthSnapshot, "bidReach" | "askReach">, id: `${"bid" | "ask"}${BandKey}`) =>
+const isFloor = (row: Pick<PerpDepthSnapshot, "bidReach" | "askReach">, id: `${"bid" | "ask"}${BandKey}`) =>
   bandFraction(id) > (id.startsWith("bid") ? row.bidReach : row.askReach) + 1e-9;
 /** How far the shorter side of the returned book reaches from mid. */
-export const bookReach = (row: Pick<PerpDepthSnapshot, "bidReach" | "askReach">) => Math.min(row.bidReach, row.askReach);
+const bookReach = (row: Pick<PerpDepthSnapshot, "bidReach" | "askReach">) => Math.min(row.bidReach, row.askReach);
 export function depthCellText(row: PerpDepthRow, id: DepthColumnId): string {
   if (id === "venue") return venueName(row.venue);
   if (id === "symbol") return row.symbol;
