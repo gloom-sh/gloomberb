@@ -59,7 +59,7 @@ import {
 } from "../../market-data/options-alternatives";
 import {
   atReportTtmRate, cliFuturesContract, futuresContractMetrics, exportedDividendFundamentals, fundamentalsReportTables, loadDividendDistributions,
-  loadReportBondFacts, renderFundamentalsReport, writesCurrencyCodes,
+  loadReportFundFacts, renderFundamentalsReport, writesCurrencyCodes,
 } from "./ticker";
 import { createBaseConverter } from "../base-converter";
 import { loadStatementFilings } from "../statement-filings";
@@ -1769,8 +1769,8 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
     // declared distribution it annualizes (not in JSON), and one whose dividend stopped says so; read beside the listing notes.
     const distributions = view === "statements" ? null : loadDividendDistributions(
       market.dataProvider, listing.request, financials, { declared: ctx.cliOptions.format !== "json" });
-    // A bond fund's SEC yield, yield to worst and duration, beside its distribution yield.
-    const bondFund = view === "statements" ? null : loadReportBondFacts(listing.request.symbol,
+    // A fund's facts: its bond figures beside its distribution yield, and whether fn ETF has any to point to.
+    const fundFacts = view === "statements" ? null : loadReportFundFacts(listing.request.symbol,
       financials.quote?.tradingExchangeName || listing.request.exchange || financials.quote?.listingExchangeName || financials.quote?.exchangeName,
       financials, listing.saved);
     const treasury = rates ? loadTreasuryTenors() : null;
@@ -1799,13 +1799,14 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
           loadBankFigures(market.statementSources, listing.request, financials),
         ])
         : [null, { bank: null, note: null }];
-      const bond = await bondFund;
+      const facts = await fundFacts;
+      const bond = facts?.bond ?? null;
       // On the SEC yield when the sponsor publishes one, else the distribution yield the line above shows.
       const taxEquivalent = rates ? analyzeTaxEquivalent({
         symbol: identity.symbol || listing.key, bond, rates, treasury: await treasury,
         distribution: distributionBasis(priced.fundamentals?.dividendYield, priced.fundamentals?.dividendYieldBasis === "trailing" ? "trailing" : "forward"),
       }) : null;
-      const report = { ...data, distributions: await distributions, statementFilings, bank: bank.bank, bankNote: bank.note, bondFund: bond, taxEquivalent,
+      const report = { ...data, distributions: await distributions, statementFilings, bank: bank.bank, bankNote: bank.note, bondFund: bond, fundFacts: facts, taxEquivalent,
         // A base currency other than USD reads every amount with its code, as `ticker` does.
         currencyCodes: writesCurrencyCodes(market.config) };
       ctx.printResult({

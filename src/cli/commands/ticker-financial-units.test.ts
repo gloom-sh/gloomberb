@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test";
 import { createDefaultConfig } from "../../types/config";
 import type { TickerFinancials } from "../../types/financials";
-import { atReportTtmRate, buildTickerReport, fundamentalsReportTables, loadReportBondFacts, renderFundamentalsReport } from "./ticker";
+import { atReportTtmRate, buildTickerReport, fundamentalsReportTables, loadReportFundFacts, renderFundamentalsReport } from "./ticker";
 import { createBaseConverter } from "../base-converter";
-import type { FundBondFacts } from "../../api-client/fund-facts";
+import type { FundBondFacts, FundFactsPayload } from "../../api-client/fund-facts";
 import { analyzeTaxEquivalent } from "../../market-data/tax-equivalent";
 import { createTestTicker } from "../../test-support/ticker";
 
@@ -347,15 +347,32 @@ test("share counts say ADR equivalent where the service puts them on the receipt
   expect(older).toContain("Diluted Shares 2.54B\n");
 });
 
-test("a US fund's report points to its fund facts; a fund listed elsewhere says it has none; a stock's says nothing", async () => {
+test("a US fund's report points to the fund facts it has, and only when it has some; a fund listed elsewhere says it has none; a stock's says nothing", async () => {
   const plain = (text: string) => text.replace(/\u001b\[[0-9;]*m/g, "").replace(/ {2,}/g, " ");
   const note = "Fund facts (fee, NAV, premium, net assets): fn ETF IBIT.";
   const ibit: TickerFinancials = { quote: { ...quote, symbol: "IBIT", instrumentType: "ETF", exchangeName: "NASDAQ" },
     annualStatements: [], quarterlyStatements: [], priceHistory: [] };
-  expect(plain(renderFundamentalsReport({ ...ibit, symbol: "IBIT", exchange: "NASDAQ" }, "fundamentals")))
+  const fact = { value: 1, asOf: "2026-10-23", source: "iShares" };
+  const fundFacts: FundFactsPayload = {
+    ticker: "IBIT", covered: true, status: "covered", name: null, structure: "trust",
+    expenseRatio: { ...fact, kind: "sponsor-fee" }, nav: fact, closingPrice: null, premiumDiscount: { ...fact, basis: "published" },
+    netAssets: { ...fact, scope: "fund" }, sponsor: null, inception: null, index: null, stale: false, fetchedAt: null,
+  };
+  expect(plain(renderFundamentalsReport({ ...ibit, symbol: "IBIT", exchange: "NASDAQ", fundFacts }, "fundamentals")))
     .toContain(`No fundamentals reported for IBIT. ${note}`);
-  expect(plain(await buildTickerReport({ symbol: "IBIT", tickerFile: null, financials: ibit, config, toBase: async value => value })))
+  expect(plain(await buildTickerReport({ symbol: "IBIT", tickerFile: null, financials: ibit, config, toBase: async value => value, fundFacts })))
     .toContain(note);
+  // A closed-end fund with a NAV and net assets but no fee names what it has.
+  const ecc: TickerFinancials = { ...ibit, quote: { ...ibit.quote!, symbol: "ECC", instrumentType: "Closed-end Fund", exchangeName: "NYSE" } };
+  expect(plain(await buildTickerReport({ symbol: "ECC", tickerFile: null, financials: ecc, config, toBase: async value => value,
+    fundFacts: { ...fundFacts, ticker: "ECC", structure: "closed-end", expenseRatio: null } })))
+    .toContain("Fund facts (NAV, premium, net assets): fn ETF ECC.");
+  // No pointer to a pane that would only say why it has nothing: not covered, or not read.
+  for (const facts of [{ ...fundFacts, covered: false, status: "not-a-fund" as const }, null]) {
+    const text = plain(await buildTickerReport({ symbol: "ECC", tickerFile: null, financials: ecc, config, toBase: async value => value, fundFacts: facts }));
+    expect(text).not.toContain("fn ETF");
+    expect(plain(renderFundamentalsReport({ ...ecc, symbol: "ECC", exchange: "NYSE", fundFacts: facts }, "fundamentals"))).toEndWith("No fundamentals reported for ECC.");
+  }
   const london: TickerFinancials = { ...ibit, quote: { ...ibit.quote!, symbol: "VUSA", exchangeName: "LSE" } };
   expect(plain(renderFundamentalsReport({ ...london, symbol: "VUSA", exchange: "LSE" }, "fundamentals")))
     .toContain("No fundamentals reported for VUSA. Fund facts (fee, NAV, premium) cover US-listed funds only.");
@@ -408,16 +425,16 @@ test("a bond fund's yield is its distribution yield, not its SEC yield, which fo
   }
 });
 
-test("bond facts are read for a US-listed fund only, and a failed read leaves the yield as it was", async () => {
-  const facts = { bond: { kind: "taxable" as const, state: null, secYield: null, yieldToWorst: null, duration: null } };
+test("fund facts are read for a US-listed fund only, and a failed read leaves the yield as it was", async () => {
+  const facts = { bond: { kind: "taxable" as const, state: null, secYield: null, yieldToWorst: null, duration: null } } as FundFactsPayload;
   const reads: string[] = [];
-  const load = async (symbol: string) => { reads.push(symbol); return facts.bond; };
+  const load = async (symbol: string) => { reads.push(symbol); return facts; };
   const fund = { quote: { ...quote, instrumentType: "ETF" } };
-  expect(await loadReportBondFacts("AGG", "NYSEArca", fund, null, load)).toEqual(facts.bond);
-  expect(await loadReportBondFacts("NVDA", "NASDAQ", { quote: { ...quote, instrumentType: "EQUITY" } }, null, load)).toBeNull();
-  expect(await loadReportBondFacts("VUSA", "LSE", fund, null, load)).toBeNull();
+  expect(await loadReportFundFacts("AGG", "NYSEArca", fund, null, load)).toEqual(facts);
+  expect(await loadReportFundFacts("NVDA", "NASDAQ", { quote: { ...quote, instrumentType: "EQUITY" } }, null, load)).toBeNull();
+  expect(await loadReportFundFacts("VUSA", "LSE", fund, null, load)).toBeNull();
   expect(reads).toEqual(["AGG"]);
-  expect(await loadReportBondFacts("AGG", "NYSEArca", fund, null, async () => { throw new Error("offline"); })).toBeNull();
+  expect(await loadReportFundFacts("AGG", "NYSEArca", fund, null, async () => { throw new Error("offline"); })).toBeNull();
 });
 
 // With CAD as the base, ticker JNJ printed Market Cap "877.79B CAD" beside Revenue "99.33B USD" and Last "$259.43".

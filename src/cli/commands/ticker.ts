@@ -96,8 +96,9 @@ import { notTheCoinNote } from "./crypto-hints";
 import { loadOfferingFilings, loadStatementFilings, resultsReleaseText, statementPeriodText, type StatementFilingsReport } from "../statement-filings";
 import type { BankFiguresPayload } from "../../api-client/bank-figures";
 import { bankSection } from "../bank-section";
-import type { FundBondFacts } from "../../api-client/fund-facts";
-import { bondFigures, fetchFundBondFacts, NOT_SEC_YIELD } from "../../market-data/bond-funds";
+import type { FundBondFacts, FundFactsPayload } from "../../api-client/fund-facts";
+import { bondFigures, NOT_SEC_YIELD } from "../../market-data/bond-funds";
+import { fetchFundFacts } from "../../plugins/builtin/sec/fund-facts";
 import { taxEquivalentLines, type TaxEquivalentAnalysis } from "../../market-data/tax-equivalent";
 import { isRoundTheClockCoin } from "../../utils/crypto-pair";
 import { coinNewsFallbackNotice } from "../../sources/gloomberb-cloud/news";
@@ -667,21 +668,23 @@ function isYieldMetric(label: string): boolean {
 }
 
 /**
- * A US-listed fund's bond facts for the yield lines; null for any other
- * listing, and when they cannot be read, which leaves the yield as it was.
+ * A US-listed fund's facts for the report: the bond figures its yield lines
+ * read, and whether `fn ETF` has figures to point to. Null for any other
+ * listing, and when they cannot be read, which leaves the yield as it was
+ * and points nowhere.
  */
-export async function loadReportBondFacts(
+export async function loadReportFundFacts(
   symbol: string,
   exchange: string | undefined,
   financials: Pick<TickerFinancials, "quote" | "quoteMetadata">,
   tickerFile: TickerRecord | null = null,
-  load: (symbol: string) => Promise<FundBondFacts | null> = fetchFundBondFacts,
-): Promise<FundBondFacts | null> {
+  load: (symbol: string) => Promise<FundFactsPayload> = (ticker) => fetchFundFacts(ticker),
+): Promise<FundFactsPayload | null> {
   if (resolveTickerInstrumentKind(tickerFile, financials) !== "fund" || (exchange && !isUsListingExchange(exchange))) return null;
   try {
     return await load(symbol);
   } catch (error) {
-    logFailure("cli.commands-ticker", "Read bond fund facts failed")(error);
+    logFailure("cli.commands-ticker", "Read fund facts failed")(error);
     return null;
   }
 }
@@ -814,8 +817,10 @@ type FundamentalsReportData = TickerFinancials & {
   symbol: string;
   exchange?: string;
   distributions?: DividendDistributions | null;
-  /** A bond fund's SEC yield, yield to worst and duration (loadReportBondFacts). */
+  /** A bond fund's SEC yield, yield to worst and duration (loadReportFundFacts). */
   bondFund?: FundBondFacts | null;
+  /** A US-listed fund's facts (loadReportFundFacts): the note points to `fn ETF` only when they cover it. */
+  fundFacts?: FundFactsPayload | null;
   /** `fundamentals --tax-rate`: the tax-equivalent yield and muni/Treasury ratio. */
   taxEquivalent?: TaxEquivalentAnalysis | null;
   /** The filings behind the latest statements, and a newer quarter's results release. */
@@ -839,20 +844,25 @@ function statementFilingsNotes(report: StatementFilingsReport | null | undefined
 }
 
 /**
- * Where a fund's facts are: for a US listing, the ETF function (fee, NAV,
- * premium, net assets); a fund listed elsewhere has none yet. Only for a
- * fund: a stock's report says nothing of it.
+ * Where a fund's facts are: for a US listing, the ETF function, naming the
+ * figures it has (fee, NAV, premium, net assets), and only when it has some:
+ * a fund it has none for, or whose facts could not be read, gets no pointer
+ * to a pane that would only say why. A fund listed elsewhere has none yet.
+ * Only for a fund: a stock's report says nothing of it.
  */
 function fundFactsNote(
   symbol: string,
   exchange: string | undefined,
   financials: Pick<TickerFinancials, "quote" | "quoteMetadata">,
   tickerFile: TickerRecord | null = null,
+  facts: FundFactsPayload | null = null,
 ): string | null {
   if (resolveTickerInstrumentKind(tickerFile, financials) !== "fund") return null;
-  return !exchange || isUsListingExchange(exchange)
-    ? `Fund facts (fee, NAV, premium, net assets): fn ETF ${symbol}.`
-    : US_FUND_FACTS_ONLY;
+  if (exchange && !isUsListingExchange(exchange)) return US_FUND_FACTS_ONLY;
+  if (!facts?.covered) return null;
+  const figures = [facts.expenseRatio && "fee", facts.nav && "NAV", facts.premiumDiscount && "premium", facts.netAssets && "net assets"]
+    .filter((figure): figure is string => !!figure);
+  return `Fund facts${figures.length ? ` (${figures.join(", ")})` : ""}: fn ETF ${symbol}.`;
 }
 
 /**
@@ -947,7 +957,7 @@ export function renderFundamentalsReport(
   const before = lines.length;
   const metrics = fundamentalsReportMetrics(financials, view);
   appendMetricSection(lines, view === "valuation" ? "Valuation" : "Fundamentals", metricLines(metrics));
-  const fund = fundFactsNote(symbol, financials.exchange || quote?.exchangeName, financials);
+  const fund = fundFactsNote(symbol, financials.exchange || quote?.exchangeName, financials, null, financials.fundFacts);
   if (lines.length === before) lines.push("", cliStyles.muted([`No ${view} reported for ${financials.symbol}.`, fund].filter(Boolean).join(" ")));
   else if (fund) lines.push(cliStyles.muted(fund));
   for (const note of fundamentalsNotes(atRegularSessionPrice(financials), metrics, quote?.currency)) lines.push(cliStyles.muted(note));
@@ -987,7 +997,8 @@ export function fundamentalsReportTables(
   freshness: ReportFreshness,
 ): CliReportTables {
   const metrics = fundamentalsReportMetrics(financials, view);
-  const fund = fundFactsNote(financials.quote?.symbol ?? financials.symbol, financials.exchange || financials.quote?.exchangeName, financials);
+  const fund = fundFactsNote(financials.quote?.symbol ?? financials.symbol, financials.exchange || financials.quote?.exchangeName, financials, null,
+    financials.fundFacts);
   const tables = [exportEntriesTable(
     view === "valuation" ? "Valuation" : "Fundamentals",
     metrics.map((metric) => ({ label: metric.label, value: metric.value, formatted: metric.text, unit: metric.unit })),
@@ -1064,6 +1075,7 @@ export async function buildTickerReport({
   distributions = null,
   statementFilings = null,
   bondFund = null,
+  fundFacts = null,
   memberships,
   offerings = [],
 }: {
@@ -1074,8 +1086,10 @@ export async function buildTickerReport({
   statementFilings?: StatementFilingsReport | null;
   /** The company's latest offering prospectuses (424B5, 424B4); those after the latest balance sheet get a note. */
   offerings?: readonly OfferingFiling[];
-  /** A bond fund's SEC yield, yield to worst and duration (loadReportBondFacts). */
+  /** A bond fund's SEC yield, yield to worst and duration (loadReportFundFacts). */
   bondFund?: FundBondFacts | null;
+  /** A US-listed fund's facts (loadReportFundFacts): the report points to `fn ETF` only when they cover it. */
+  fundFacts?: FundFactsPayload | null;
   /** The distributions a dividend yield is read with (loadDividendDistributions). */
   distributions?: DividendDistributions | null;
   /** The exchange the command named, as a canonical code. */
@@ -1254,7 +1268,8 @@ export async function buildTickerReport({
   if (lines.length > beforeFundamentals) for (const note of conversionNotes(toBase, convertedCurrencies, rates)) lines.push(cliStyles.muted(note));
   // Where a fund's facts would go: under its fundamentals, or in their place.
   const fund = fundFactsNote(quote?.symbol ?? symbol,
-    quote?.tradingExchangeName || listingExchange || quote?.listingExchangeName || quote?.exchangeName || tickerFile?.metadata.exchange, financials, tickerFile);
+    quote?.tradingExchangeName || listingExchange || quote?.listingExchangeName || quote?.exchangeName || tickerFile?.metadata.exchange, financials, tickerFile,
+    fundFacts);
   if (fund) lines.push(...lines.length === beforeFundamentals ? [""] : [], cliStyles.muted(fund));
 
   if (capitalization?.provenance.kind === "fundamentals") {
@@ -1535,10 +1550,11 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
     // The yield's distributions, read beside the rest when a trailing yield, a forward basis or its lapse needs them; they never fail the report.
     const distributions = loadDividendDistributions(dataProvider, { symbol: requestSymbol, exchange }, resolvedFinancials,
       { declared: !dependencies.printResult });
-    // A bond fund's SEC yield, yield to worst and duration, beside its distribution yield.
-    const bondFund = loadReportBondFacts(requestSymbol,
+    // A fund's facts: its bond figures beside its distribution yield, and whether fn ETF has any to point to.
+    const fundFacts = loadReportFundFacts(requestSymbol,
       quote?.tradingExchangeName || exchange || quote?.listingExchangeName || quote?.exchangeName || tickerFile?.metadata.exchange,
       resolvedFinancials, tickerFile);
+    const bondFund = fundFacts.then((facts) => facts?.bond ?? null);
     const statementFilings = loadStatementFilings(statementSources, { symbol: requestSymbol, exchange }, {
       quarter: latestFinancialPeriod(resolvedFinancials.quarterlyStatements, (row) => row.date),
       annual: latestFinancialPeriod(resolvedFinancials.annualStatements, (row) => row.date),
@@ -1643,6 +1659,7 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
         distributions: await distributions,
         statementFilings: await statementFilings,
         bondFund: await bondFund,
+        fundFacts: await fundFacts,
         memberships,
         offerings: await offerings,
     }));

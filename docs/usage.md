@@ -1561,7 +1561,7 @@ A company's listings are the ones Gloom Cloud groups under one issuer (share cla
 
 `events ECB` (or another bank's name or acronym, with no exchange) answers `ECB meetings are not listed; CBR shows the rate and the next decision (gloom fn CBR).` The listing that shares the acronym is `events ECB:WSE`.
 
-**Funds.** A US-listed fund's facts (fee, NAV, premium, net assets) are in `fn ETF <symbol>`, which `ticker` and `fundamentals` point to for a fund. A fund listed elsewhere has none yet.
+**Funds.** A US-listed fund's facts (fee, NAV, premium, net assets) are in `fn ETF <symbol>`, which `ticker` and `fundamentals` point to for a fund that has some, naming the ones it has (`Fund facts (NAV, premium, net assets): fn ETF ECC.`). A fund `fn ETF` has no figures for gets no pointer. A fund listed elsewhere has none yet.
 
 - A fund's filings are its own: a trust that files for many funds (ProShares Trust, iShares Trust) lists only those filed under the fund's series, as EDGAR does, and `fn SEC <symbol>` keeps the trust's whole list.
 - `fn ETF` for a fund that files none of the fund forms it lists (a grantor trust such as `IBIT` or `GLD` files 10-Qs) says so and points at `fn SEC <symbol>`.

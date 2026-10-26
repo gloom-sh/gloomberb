@@ -6,7 +6,13 @@ interface FundFact<T> {
   url?: string;
 }
 
-type FundStructure = "registered" | "trust";
+/**
+ * `registered`: a 1940 Act fund (an ETF or UIT). `trust`: an exchange-traded
+ * trust or pool outside the 1940 Act. `closed-end`: a closed-end fund or BDC
+ * (ECC, PDI, ARCC), found filing N-CSR, N-PORT or N-2; its shares trade at
+ * their own premium or discount to NAV. Servers before it say null.
+ */
+type FundStructure = "registered" | "trust" | "closed-end";
 type ExpenseRatioKind = "net" | "gross" | "sponsor-fee";
 /**
  * A bond fund as its sponsor classes it: `municipal` when its interest is
@@ -68,6 +74,22 @@ export interface FundMetalHoldings {
 }
 
 /**
+ * The 1M change in an ETF's shares outstanding (creations less redemptions),
+ * from the sponsor's count on `from` to its count on `asOf`. `value` puts a
+ * dollar figure on it, each day's change at that day's NAV; null when a day
+ * in between had none.
+ */
+export interface FundFlows {
+  period: "1M";
+  shares: number;
+  value: number | null;
+  from: string;
+  asOf: string;
+  source: string;
+  url?: string;
+}
+
+/**
  * `not-collected-yet`: a source Gloom reads covers the fund, but it has no
  * figures yet. `not-published`: no source Gloom reads covers it. Servers
  * before statuses leave it out.
@@ -86,7 +108,15 @@ export interface FundFactsPayload {
   structure: FundStructure | null;
   /** `document`: read from the fund's prospectus filed with the SEC on `asOf`, not from its sponsor. */
   expenseRatio: (FundFact<number> & { kind: ExpenseRatioKind; document?: "prospectus" }) | null;
-  nav: FundFact<number> | null;
+  /**
+   * `period`: a `day`'s NAV, or a `month-end`'s (a closed-end fund's monthly
+   * estimate, or the NAV per share its filing states), which is its normal
+   * cadence rather than a lag. `estimate`: the range the sponsor published,
+   * whose midpoint `value` is. Servers before them leave both out.
+   */
+  nav: (FundFact<number> & { period?: "day" | "month-end"; estimate?: { low: number; high: number } }) | null;
+  /** Why a covered fund has no NAV, in one line. Absent when it has one, and from servers before it. */
+  navReason?: string;
   closingPrice: FundFact<number> | null;
   /** `published` by the sponsor, or `computed` from the closing price against the NAV. */
   premiumDiscount: (FundFact<number> & { basis: "published" | "computed" }) | null;
@@ -105,6 +135,10 @@ export interface FundFactsPayload {
   bond?: FundBondFacts | null;
   /** A metal trust's metal in trust; absent for any other fund, until its first read, and from servers before it. */
   metalHoldings?: FundMetalHoldings | null;
+  /** Shares outstanding as the sponsor's file states them, dated. Servers before it leave it out. */
+  sharesOutstanding?: FundFact<number> | null;
+  /** The 1M change in shares outstanding; null until a month of counts is kept. Servers before it leave it out. */
+  flows?: FundFlows | null;
   /** The newest NAV is older than a few US trading days: every figure is older than it looks. */
   stale: boolean;
   fetchedAt: string | null;

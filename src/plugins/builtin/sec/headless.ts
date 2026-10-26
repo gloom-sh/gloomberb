@@ -268,7 +268,8 @@ export function createFundHeadless(dependencies: FundHeadlessDependencies = defa
           ...(factsResult.status === "rejected" ? [fundFactsErrorText(factsResult.reason)] : []),
           ...(filingsResult.status === "rejected" ? [`Fund filings: ${errorMessage(filingsResult.reason)}`] : []),
         ],
-        notes: facts ? [fundFactsStaleNote(symbol, facts)].filter((note): note is string => !!note) : [],
+        // A stale NAV says since when; a covered fund without one says why, as the server words it.
+        notes: facts ? [fundFactsStaleNote(symbol, facts), facts.covered && !facts.nav ? facts.navReason : null].filter((note): note is string => !!note) : [],
         // The facts' publisher is the source, named the same way for every fund; without facts it is the SEC.
         freshness: {
           source: listNames(publishers) || "SEC EDGAR",

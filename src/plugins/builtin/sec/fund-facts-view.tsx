@@ -4,7 +4,7 @@ import { useAsyncResource } from "../../../react/async-resource";
 import { Box } from "../../../ui";
 import { t } from "../../../i18n";
 import type { FundFactsPayload } from "../../../api-client/fund-facts";
-import { cachedFundFacts, fundFactItems, fundFactsEmptyText, fundFactsErrorLine, fundFactsStaleText, loadFundFacts } from "./fund-facts";
+import { cachedFundFacts, fundFactItems, fundFactsEmptyText, fundFactsErrorLine, fundFactsNavReasonText, fundFactsStaleText, loadFundFacts } from "./fund-facts";
 import type { CloudResource } from "../shared/cloud-resource";
 
 /** A fund's facts, served from the cache first and refreshed behind it; null asks for nothing. */
@@ -18,7 +18,8 @@ export function useFundFacts(symbol: string | null | undefined) {
 /**
  * The fund's facts as the summary sheet over its filings, or one line saying
  * why there are none. Loading is one muted line, so the filings never wait.
- * A stale NAV adds the line saying since when, under the marked figures.
+ * A stale NAV adds the line saying since when, under the marked figures; a
+ * fund without a NAV, the line saying why.
  */
 export function FundFactsSummary({ symbol, width, facts, loading, error }: {
   symbol: string;
@@ -29,10 +30,12 @@ export function FundFactsSummary({ symbol, width, facts, loading, error }: {
 }) {
   if (facts?.covered) {
     const stale = fundFactsStaleText(symbol, facts);
+    const noNav = fundFactsNavReasonText(symbol, facts);
     return (
       <>
         <StatGrid width={width} items={fundFactItems(facts)} />
         {stale ? <FundViewNotice lines={[stale]} tone="warning" /> : null}
+        {noNav ? <FundViewNotice lines={[noNav]} /> : null}
       </>
     );
   }
