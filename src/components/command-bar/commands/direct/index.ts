@@ -245,19 +245,34 @@ export function runDirectCommandAction(options: {
     }
     case "import-config": {
       const importPath = getDefaultConfigBackupPath();
-      void importConfig(state.config.dataDir, importPath)
-        .then((imported) => {
-          cancelThemePreview();
-          clearTransientThemePreview();
-          dispatch({ type: "SET_CONFIG", config: imported });
-          applyTheme(imported.theme);
-          dispatch({ type: "SET_THEME", theme: imported.theme });
-          notify(`Imported config from ${importPath}.`, { type: "success" });
-          closeAll({ revertThemePreview: false });
-        })
-        .catch((error) => {
-          notify(error instanceof Error ? error.message : "Import failed.", { type: "error" });
-        });
+      // An import replaces every layout, portfolio and setting at once, so it
+      // is never one keystroke away.
+      openInlineConfirm({
+        confirmId: "import-config",
+        title: "Import Config",
+        body: [
+          `This replaces your layouts, portfolios, watchlists and settings with the ones saved in ${importPath}.`,
+          "What you have now is not kept unless you export it first.",
+        ],
+        confirmLabel: "Import",
+        cancelLabel: "Back",
+        tone: "danger",
+        // A stray Enter keeps what is there.
+        defaultAction: "cancel",
+        onConfirm: async () => {
+          try {
+            const imported = await importConfig(getState().config.dataDir, importPath);
+            cancelThemePreview();
+            clearTransientThemePreview();
+            dispatch({ type: "SET_CONFIG", config: imported });
+            applyTheme(imported.theme);
+            dispatch({ type: "SET_THEME", theme: imported.theme });
+            notify(`Imported config from ${importPath}.`, { type: "success" });
+          } catch (error) {
+            notify(error instanceof Error ? error.message : "Import failed.", { type: "error" });
+          }
+        },
+      });
       return;
     }
     case "cycle-chart-renderer": {
