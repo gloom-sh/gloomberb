@@ -1411,20 +1411,25 @@ The float and ownership fields cover US filers, and each is as of its own date.
 Shares outstanding is the latest 10-K or 10-Q cover count, as of the day it was
 counted, once the stored share count matches (within 1%) a cover filed in the last
 400 days, while the filer is current and no split separates the two: the count `DES`
-shows. Float is the statistics source's, as of the count it was stated beside and
-held within the shares outstanding; one more than 5% above them counts another class
-and is unavailable. Short % of float divides the shares short at the latest FINRA
-settlement by that float, as of the settlement, and is unavailable once the
-settlement is more than 45 days old. Institutional ownership sums the shares 13F
-filers reported in the ticker's CUSIPs for the latest quarter whose SEC data set is
-loaded, options excluded, over the cover count current when the reports were due 45
-days after the quarter, and is as of the quarter end. It is unavailable where the
-holdings and the count may not be the same shares: a split between them, a value per
-share far from the quarter-end close, more than twice the count, or a share far from
-the one the listing's statistics state, which a CUSIP change causes. Over 100% stands,
-since a lent share is reported by its lender and by the fund that bought it. Insider
-ownership is not offered: the stored Form 4 filings cover recent trades, not every
-insider's holdings.
+shows. Float needs a float measured on a stated day: the statistics source's float
+does not say when it was measured, and the cover its count matches dates only that
+count, so float is unavailable with that reason until a dated float is stored. A
+dated float is unavailable when it is more than 200 days old or above the shares
+outstanding by any margin, never held at the count. Short % of float divides the
+shares short at the latest FINRA settlement by that float, as of the settlement, and
+is unavailable without a dated float or once the settlement is more than 45 days
+old. Institutional ownership sums the shares 13F filers reported in the ticker's
+CUSIPs for the latest quarter whose SEC data set is loaded, options excluded and
+each filer once, over the balance-sheet share count at a fiscal quarter end within 7
+days of that quarter's end, and is as of the quarter end. It is unavailable where no
+balance sheet falls that close (a company whose quarter ends in late July), and where
+the holdings and the count may not be the same shares: a balance-sheet count far from
+the cover count, a split between them, a value per share far from the quarter-end
+close, more than twice the count, or a share far from the one the listing's
+statistics state, which a CUSIP change causes. Over 100% is shown as partial with its
+reason, since a lent share is reported by its lender and by the fund that bought it.
+Insider ownership is not offered: the stored Form 4 filings cover recent trades, not
+every insider's holdings.
 
 The technical fields are read from the same stored daily bars, US listings only,
 over the latest run of consecutive completed sessions (at most 300), all at the last

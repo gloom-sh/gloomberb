@@ -77,6 +77,32 @@ test("Gainers keep the rows at or above the minimum and Most Active reads more c
   expect(asked).toEqual([50, 50, 25, 50]);
 });
 
+test("without a minimum float every list is the list it was: the same rows, order and request, floats or not", async () => {
+  const asked: number[] = [];
+  // More rows than a list shows, some with a float, some without; losers fall.
+  const listFor = (sign: number) => Array.from({ length: 30 }, (_, index) => quote(`S${index}`, sign * (40 - index), index % 3 ? (index + 1) * 1e6 : undefined));
+  const bare = (quotes: ScreenerQuote[]) => quotes.map(({ floatShares: _, ...row }) => row as ScreenerQuote);
+  const dependencies = (quotes: ScreenerQuote[]) => ({
+    fetchPreferred: async (_category: string, count: number) => {
+      asked.push(count);
+      return { quotes, source: "gloom" as const, stale: false };
+    },
+    fetchTrending: async () => { throw new Error("unused"); },
+  });
+  for (const tab of ["gainers", "losers", "actives"] as const) {
+    const list = listFor(tab === "losers" ? -1 : 1);
+    const withFloats = await loadMarketMoverTab(tab, null, {}, dependencies(list));
+    const without = await loadMarketMoverTab(tab, null, { minFloat: null }, dependencies(bare(list)));
+    expect(withFloats.quotes).toHaveLength(25);
+    expect(withFloats.quotes.map((row) => row.symbol)).toEqual(without.quotes.map((row) => row.symbol));
+    expect(createRows(withFloats.quotes).map((row) => [row.symbol, row.rank])).toEqual(createRows(without.quotes).map((row) => [row.symbol, row.rank]));
+  }
+  // The counts the lists asked for before a minimum existed: 50 candidates for a price list, 25 for Most Active.
+  expect(asked).toEqual([50, 50, 50, 50, 25, 25]);
+  // No FLOAT column without a minimum.
+  expect(buildMarketMoverColumns(100, []).map((column) => column.id)).not.toContain("floatShares");
+});
+
 test("a session list keeps the rows at or above the minimum, ranked again from 1", () => {
   const item = (symbol: string, rank: number, floatShares: number | null) => ({ symbol, rank, floatShares }) as Pick<CloudSessionMoverItem, "symbol" | "rank" | "floatShares">;
   expect(withMinFloat([item("A", 1, 1e6), item("B", 2, null), item("C", 3, 20e6), item("D", 4, 10e6)], 10e6))
