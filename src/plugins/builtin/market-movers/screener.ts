@@ -220,10 +220,15 @@ function parseScreenerSessions(row: Record<string, unknown>): CloudMoverSessionF
   return sessions;
 }
 
-/** A positive float, or nothing: a row without one fails any minimum. */
-function floatOf(value: unknown): { floatShares?: number } {
-  const shares = screenerNumber(value);
-  return shares != null && shares > 0 ? { floatShares: shares } : {};
+/** A positive float with its state, or nothing: a row without one fails any minimum. */
+function floatOf(source: { floatShares?: unknown; floatSharesState?: unknown; floatSharesReason?: unknown } | null | undefined): Pick<ScreenerQuote, "floatShares" | "floatSharesState" | "floatSharesReason"> {
+  const shares = screenerNumber(source?.floatShares);
+  if (shares == null || !(shares > 0)) return {};
+  return {
+    floatShares: shares,
+    ...(source?.floatSharesState === "partial" ? { floatSharesState: "partial" as const } : {}),
+    ...(source?.floatSharesState === "partial" && typeof source.floatSharesReason === "string" ? { floatSharesReason: source.floatSharesReason } : {}),
+  };
 }
 
 /** Validate numeric fields at the API boundary so absent values stay unavailable. */
@@ -245,7 +250,7 @@ export function parseScreenerResponse(data: unknown): ScreenerQuote[] {
       previousClose: screenerNumber(q.previousClose) ?? undefined, exchange: typeof q.exchange === "string" ? q.exchange : "",
       lastUpdated: typeof q.lastUpdated === "number" && Number.isFinite(q.lastUpdated) && q.lastUpdated > 0 ? q.lastUpdated : undefined,
       sessions: parseScreenerSessions(q),
-      ...floatOf(q.floatShares),
+      ...floatOf(q),
     }];
   });
 }
@@ -332,7 +337,8 @@ function mergeCloudScreenerItem(
     lastUpdated: item.lastUpdated,
     previousClose: screenerNumber(item.previousClose) ?? undefined,
     sessions: parseScreenerSessions(item as unknown as Record<string, unknown>),
-    ...floatOf(item.floatShares ?? metadata?.floatShares),
+    // The live list's own float, the delayed list's when it sends none, each with its own state.
+    ...floatOf(item.floatShares != null ? item : metadata),
   };
 }
 

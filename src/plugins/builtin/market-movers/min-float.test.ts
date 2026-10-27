@@ -6,7 +6,7 @@ import type { CloudSessionMoverItem, CloudSessionMoversPayload } from "../../../
 import type { CloudMarketScreenerItem } from "../../../api-client/types";
 import { loadMarketMoverTab, withMinFloat } from "./client";
 import { createMarketMoversHeadless } from "./headless";
-import { meetsMinFloat, minFloatFilter, minFloatShares, normalizeMinFloat } from "./min-float";
+import { meetsMinFloat, minFloatFilter, minFloatShares, normalizeMinFloat, partialFloatFooter, PARTIAL_FLOAT_NOTE } from "./min-float";
 import { createRows } from "./model";
 import { fetchPreferredMarketMovers, parseScreenerResponse, type ScreenerQuote } from "./screener";
 import { buildSessionMoverColumns } from "./session-table";
@@ -40,10 +40,16 @@ test("the Min float menu offers the presets and keeps a minimum typed on the CLI
   expect(minFloatFilter("10M", () => {})).toMatchObject({ value: "10M", defaultValue: "any" });
 });
 
-test("the server's float is read from either list and kept off when it is not a positive count", async () => {
-  expect(parseScreenerResponse({ quotes: [
-    { symbol: "A", floatShares: 12_500_000 }, { symbol: "B", floatShares: 0 }, { symbol: "C", floatShares: "9" }, { symbol: "D" },
-  ] }).map((row) => row.floatShares)).toEqual([12_500_000, undefined, undefined, undefined]);
+const UNDATED = "The source does not say when it measured this float";
+
+test("the server's float is read from either list with its state, and kept off when it is not a positive count", async () => {
+  const parsed = parseScreenerResponse({ quotes: [
+    { symbol: "A", floatShares: 12_500_000, floatSharesState: "partial", floatSharesReason: UNDATED }, { symbol: "B", floatShares: 0, floatSharesState: "partial" },
+    { symbol: "C", floatShares: "9" }, { symbol: "D" }, { symbol: "E", floatShares: 8e6, floatSharesState: "made-up" },
+  ] });
+  expect(parsed.map((row) => row.floatShares)).toEqual([12_500_000, undefined, undefined, undefined, 8e6]);
+  expect(parsed.map((row) => row.floatSharesState)).toEqual(["partial", undefined, undefined, undefined, undefined]);
+  expect(parsed[0]!.floatSharesReason).toBe(UNDATED);
 
   const item = (symbol: string, floatShares?: number) => ({
     rank: 1, symbol, name: symbol, price: 10, change: 1, changePercent: 10, volume: 1, currency: "USD", exchange: "NASDAQ", lastUpdated: 1, dataSource: "live",
@@ -51,11 +57,11 @@ test("the server's float is read from either list and kept off when it is not a 
   }) as CloudMarketScreenerItem;
   const result = await fetchPreferredMarketMovers("day_gainers", 25, { metadataWaitMs: 50 }, {
     isCloudEligible: () => true,
-    fetchCloud: async () => ({ status: "success", data: { providerId: "gloomberb-cloud", category: "gainers", asOf: "", items: [item("LIVE", 30e6), item("META")] } }) as never,
-    fetchMarket: async () => ({ data: [quote("META", 5, 8e6)], stale: false }),
+    fetchCloud: async () => ({ status: "success", data: { providerId: "gloomberb-cloud", category: "gainers", asOf: "", items: [{ ...item("LIVE", 30e6), floatSharesState: "partial" }, item("META")] } }) as never,
+    fetchMarket: async () => ({ data: [{ ...quote("META", 5, 8e6), floatSharesState: "partial" as const }, quote("LIVE", 5, 9e6)], stale: false }),
   });
-  // The live list's own float first, the delayed list's when it sends none.
-  expect(result.quotes.map((row) => [row.symbol, row.floatShares])).toEqual([["LIVE", 30e6], ["META", 8e6]]);
+  // The live list's own float first, the delayed list's when it sends none, each with its own state.
+  expect(result.quotes.map((row) => [row.symbol, row.floatShares, row.floatSharesState])).toEqual([["LIVE", 30e6, "partial"], ["META", 8e6, "partial"]]);
 });
 
 test("Gainers keep the rows at or above the minimum and Most Active reads more candidates for it", async () => {
@@ -103,6 +109,15 @@ test("without a minimum float every list is the list it was: the same rows, orde
   expect(buildMarketMoverColumns(100, []).map((column) => column.id)).not.toContain("floatShares");
 });
 
+test("a FLOAT column of partial floats says so once in the footer, and only while it shows", () => {
+  const partial = { floatShares: 15e6, floatSharesState: "partial" };
+  expect(partialFloatFooter(true, [{ floatShares: null }, partial])).toEqual([
+    { id: "float-partial", parts: [{ text: "FLOAT", tone: "label" }, { text: "partial, undated", tone: "muted" }] },
+  ]);
+  expect(partialFloatFooter(false, [partial])).toEqual([]);
+  expect(partialFloatFooter(true, [{ floatShares: 15e6 }, { floatShares: null, floatSharesState: "partial" }])).toEqual([]);
+});
+
 test("a session list keeps the rows at or above the minimum, ranked again from 1", () => {
   const item = (symbol: string, rank: number, floatShares: number | null) => ({ symbol, rank, floatShares }) as Pick<CloudSessionMoverItem, "symbol" | "rank" | "floatShares">;
   expect(withMinFloat([item("A", 1, 1e6), item("B", 2, null), item("C", 3, 20e6), item("D", 4, 10e6)], 10e6))
@@ -126,11 +141,11 @@ test("FLOAT joins the lists while a minimum is set, and stays when a narrow pane
 
 test("fn MOST --min-float filters every list that carries a float and says Trending carries none", async () => {
   const minimums: Array<number | null> = [];
-  const sessionItem = (symbol: string, rank: number, floatShares: number | null) => ({ symbol, rank, floatShares, catalysts: [] }) as unknown as CloudSessionMoverItem;
+  const sessionItem = (symbol: string, rank: number, floatShares: number | null) => ({ symbol, rank, floatShares, ...(floatShares == null ? {} : { floatSharesState: "partial" }), catalysts: [] }) as unknown as CloudSessionMoverItem;
   const headless = createMarketMoversHeadless({
     load: async (_args, tab, _provider, minFloat) => {
       minimums.push(minFloat);
-      return { tab, quotes: tab === "trending" ? [quote("HOT", 5)] : [quote("MID", 20, 15e6)], source: "gloom", stale: false };
+      return { tab, quotes: tab === "trending" ? [quote("HOT", 5)] : [{ ...quote("MID", 20, 15e6), floatSharesState: "partial" as const }], source: "gloom", stale: false };
     },
     loadSession: async (_view, _side, minFloat) => {
       minimums.push(minFloat);
@@ -147,10 +162,13 @@ test("fn MOST --min-float filters every list that carries a float and says Trend
   const gainers = await headless.load(gainersArgs, context);
   expect(gainers.metadata).toMatchObject({ minFloat: 10e6 });
   expect(renderHeadlessPaneText(headless, gainers, gainersArgs, "MOST")).toMatch(/Float[\s\S]*MID[^\n]*15\.00M/);
+  expect(gainers.notes).toEqual([PARTIAL_FLOAT_NOTE]);
 
   const sessionArgs = { rawArgument: "", argument: null, symbols: [], options: { list: "premarket", side: "up", "min-float": "10M" } };
   const premarket = await headless.load(sessionArgs, context);
   expect(premarket.rows.map((row) => [row.symbol, row.rank])).toEqual([["OK", 1]]);
+  expect(premarket.notes).toEqual([PARTIAL_FLOAT_NOTE]);
+  expect(premarket.rows[0]).toMatchObject({ floatSharesState: "partial" });
 
   const trendingArgs = { rawArgument: "", argument: null, symbols: [], options: { list: "trending", "min-float": "10M" } };
   const trending = await headless.load(trendingArgs, context);

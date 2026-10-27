@@ -37,7 +37,14 @@ export interface CloudSessionMoverItem {
   /** Regular-session VWAP. */
   vwap: number | null;
   vwapPercent: number | null;
+  /** The equity screener's float, null where it serves none. */
   floatShares: number | null;
+  /** Set with a float the source states no measurement date for: `partial`. */
+  floatSharesState?: "partial";
+  /** Why the float is partial, as the server says it. */
+  floatSharesReason?: string;
+  /** When the statistics the float is read from were retrieved (ISO). */
+  floatSharesRetrievedAt?: string;
   catalysts: CloudSessionCatalyst[];
   lastUpdated: number;
 }

@@ -1411,14 +1411,13 @@ The float and ownership fields cover US filers, and each is as of its own date.
 Shares outstanding is the latest 10-K or 10-Q cover count, as of the day it was
 counted, once the stored share count matches (within 1%) a cover filed in the last
 400 days, while the filer is current and no split separates the two: the count `DES`
-shows. Float needs a float measured on a stated day: the statistics source's float
-does not say when it was measured, and the cover its count matches dates only that
-count, so float is unavailable with that reason until a dated float is stored. A
-dated float is unavailable when it is more than 200 days old or above the shares
-outstanding by any margin, never held at the count. Short % of float divides the
-shares short at the latest FINRA settlement by that float, as of the settlement, and
-is unavailable without a dated float or once the settlement is more than 45 days
-old. Institutional ownership sums the shares 13F filers reported in the ticker's
+shows. Float is the stored company statistics' float. The source does not say when
+it measured it, so it is partial, with when the statistics were retrieved; it needs
+statistics retrieved in the last 30 days and is unavailable when it is above the
+dated shares outstanding by any margin, never held at the count. The `MOST` lists
+use the same float. Short % of float divides the shares short at the latest FINRA
+settlement by that float, as of the settlement, partial like the float, and is
+unavailable without a float or once the settlement is more than 45 days old. Institutional ownership sums the shares 13F filers reported in the ticker's
 CUSIPs for the latest quarter whose SEC data set is loaded, options excluded and
 each filer once, over the balance-sheet share count at a fiscal quarter end within 7
 days of that quarter's end, and is as of the quarter end. It is unavailable where no

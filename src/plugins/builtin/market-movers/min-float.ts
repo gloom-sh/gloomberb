@@ -1,3 +1,4 @@
+import type { PaneFooterSegment } from "../../../components";
 import type { QueryBarSelectFilter } from "../../../components/ui/query-bar";
 import { formatCompact } from "../../../utils/format";
 
@@ -50,6 +51,21 @@ export function minFloatFilter(value: string, onChange: (value: string) => void)
     options,
     onChange,
   };
+}
+
+/** What a list says under its Float column while a shown float is partial. */
+export const PARTIAL_FLOAT_NOTE = "Float is partial: the source does not say when it measured it.";
+
+/** Whether any row's float is partial, which the list then says once. */
+export function hasPartialFloat(rows: readonly { floatShares?: number | null; floatSharesState?: string }[]): boolean {
+  return rows.some((row) => row.floatShares != null && row.floatSharesState === "partial");
+}
+
+/** The footer's word for a FLOAT column of partial floats, or none. */
+export function partialFloatFooter(shown: boolean, rows: readonly { floatShares?: number | null; floatSharesState?: string }[]): PaneFooterSegment[] {
+  return shown && hasPartialFloat(rows)
+    ? [{ id: "float-partial", parts: [{ text: "FLOAT", tone: "label" }, { text: "partial, undated", tone: "muted" }] }]
+    : [];
 }
 
 /** The empty list's title while a minimum hides every row. */

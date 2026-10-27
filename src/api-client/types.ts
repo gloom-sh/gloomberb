@@ -1761,8 +1761,14 @@ export interface CloudMarketScreenerItem extends CloudMoverSessionFields {
   exchange: string;
   lastUpdated: number;
   dataSource: "live";
-  /** The listing's stored float, never above its share count; absent where none is stored. */
+  /** The listing's float as the equity screener serves it; absent where it serves none. */
   floatShares?: number;
+  /** Set with a float the source states no measurement date for: `partial`. */
+  floatSharesState?: "partial";
+  /** Why the float is partial, as the server says it. */
+  floatSharesReason?: string;
+  /** When the statistics the float is read from were retrieved (ISO). */
+  floatSharesRetrievedAt?: string;
 }
 
 export interface CloudMarketScreenerPayload {

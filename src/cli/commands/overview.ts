@@ -23,7 +23,7 @@ import {
   type MoverRankBasis,
 } from "../../plugins/builtin/market-movers/model";
 import { MOVER_CANDIDATES } from "../../plugins/builtin/market-movers/client";
-import { meetsMinFloat, minFloatShares, normalizeMinFloat } from "../../plugins/builtin/market-movers/min-float";
+import { hasPartialFloat, meetsMinFloat, minFloatShares, normalizeMinFloat, PARTIAL_FLOAT_NOTE } from "../../plugins/builtin/market-movers/min-float";
 import { fetchEconCalendarFrom } from "../../plugins/builtin/econ/calendar-source";
 import { computedFredSeriesNote, seriesNotOnFred } from "../../sources/gloomberb-cloud/fred-series";
 import { EXTENDED_SESSION_LABELS, getQuoteSessionFields, type ExtendedSession } from "../../market-data/market/status";
@@ -262,6 +262,7 @@ async function runMoverCommand(rawArgs: string[], ctx: Parameters<CliCommandDef[
     freshness: rowsFreshness(rows, { status: movers.source === "cloud" ? "live" : "delayed" }, { stale: movers.stale }),
   }, {
     heading: `Ranked by ${MOVER_RANKING_LABELS[rankedBy]}`,
+    ...(minFloat != null && hasPartialFloat(rows) ? { footnote: PARTIAL_FLOAT_NOTE } : {}),
     columns: [
       ...MOVER_COLUMNS.slice(0, 4),
       ...EXTENDED_COLUMNS,
@@ -873,7 +874,7 @@ export const overviewCliCommands: CliCommandDef[] = [
         description: "Rank gainers and losers by the regular-session move (regular, the default) or by the pre-market or after-hours move from the close (extended)",
       }, {
         flags: "--min-float <shares>",
-        description: "Keep the gainers, losers or most active whose stored float is at least this many shares, such as 10M or 500k; a row with no stored float is left out",
+        description: "Keep the gainers, losers or most active whose float (the one EQS serves) is at least this many shares, such as 10M or 500k; a row with no float is left out",
       }],
       examples: ["movers", "movers losers --limit 10", "movers gainers --session extended", "movers gainers --min-float 10M", "movers trending"],
     },

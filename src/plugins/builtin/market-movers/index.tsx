@@ -41,7 +41,7 @@ import { loadMarketMoverTab, marketMoverQuoteError } from "./client";
 import { summaryFooterSegments } from "./footer";
 import { isSessionTab, resolveActiveTab, usSessionAt, type UsSession } from "./session";
 import { SessionMoversBody } from "./session-body";
-import { ANY_FLOAT, minFloatEmptyTitle, minFloatFilter, minFloatShares } from "./min-float";
+import { ANY_FLOAT, minFloatEmptyTitle, minFloatFilter, minFloatShares, partialFloatFooter } from "./min-float";
 import { marketMoversHeadless } from "./headless";
 import { buildMarketMoverColumns, renderMarketMoverCell } from "./table";
 import type { ExtendedSession } from "../../../market-data/market/status";
@@ -292,8 +292,10 @@ function ScreenerMoversBody({ activeTab, focused, width, summaryQuotes, liveStre
         id: "stale",
         parts: [{ text: "stale", tone: "muted" as const }],
       }] : []),
+      // The FLOAT column shows while a minimum is set; a float the source does not date says so once.
+      ...partialFloatFooter(columns.some((column) => column.id === "floatShares"), rows),
     ],
-  }), [feedStatus, listKey, loadedKey, loadError, loading, moversStale, summaryQuotes]);
+  }), [columns, feedStatus, listKey, loadedKey, loadError, loading, moversStale, rows, summaryQuotes]);
 
   return (
     <DataTableView<MarketMoverRow, MarketMoverColumn>

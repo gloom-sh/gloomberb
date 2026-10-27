@@ -21,8 +21,12 @@ export interface ScreenerQuote {
   previousClose?: number;
   /** The quote's sessions beside the live print the server ranked the row by, when the server sends them. */
   sessions?: CloudMoverSessionFields;
-  /** The listing's stored float, never above its share count; absent where the server stores none or predates it. */
+  /** The listing's float as the equity screener serves it; absent where the server serves none or predates it. */
   floatShares?: number;
+  /** Set with a float the source states no measurement date for: `partial`. */
+  floatSharesState?: "partial";
+  /** Why the float is partial, as the server says it. */
+  floatSharesReason?: string;
 }
 
 

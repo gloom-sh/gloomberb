@@ -20,7 +20,7 @@ import { nextHeaderSort } from "../../../utils/sort-values";
 import { usePluginPaneState, usePluginTickerActions } from "../../runtime";
 import { ProWall, SignInWall } from "../cloud/auth-actions";
 import { loadSessionMovers, SessionMoversAccessError } from "./client";
-import { ANY_FLOAT, minFloatEmptyTitle, minFloatFilter, minFloatShares } from "./min-float";
+import { ANY_FLOAT, minFloatEmptyTitle, minFloatFilter, minFloatShares, partialFloatFooter } from "./min-float";
 import { summaryFooterSegments } from "./footer";
 import type { MarketSummaryQuote } from "./screener";
 import {
@@ -202,8 +202,10 @@ function SessionMoversTable({ view, session, focused, width, summaryQuotes, live
         parts: [{ text: feedStatus, tone: feedStatus === "live" ? "value" as const : "muted" as const }],
       }] : []),
       ...(payload?.stale ? [{ id: "stale", parts: [{ text: "stale", tone: "muted" as const }] }] : []),
+      // A float the source does not date says so once, while the FLOAT column shows.
+      ...partialFloatFooter(columns.some((column) => column.id === "floatShares"), rows),
     ],
-  }), [asOfLabel, feedStatus, loadError, loading, payload?.stale, sessionLabel, summaryQuotes]);
+  }), [asOfLabel, columns, feedStatus, loadError, loading, payload?.stale, rows, sessionLabel, summaryQuotes]);
 
   const openRow = useCallback((row: SessionMoverRow) => {
     pinTicker(rowKey(row), { floating: true, paneType: TICKER_RESEARCH_PANE_ID, instrument: null });

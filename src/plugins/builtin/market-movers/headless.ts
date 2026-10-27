@@ -14,7 +14,7 @@ import { createRows, fiftyTwoWeekPositionPercent, formatMoverPrice, MOVER_RANKIN
 import { EXTENDED_SESSION_LABELS, type ExtendedSession } from "../../../market-data/market/status";
 import type { HeadlessPaneColumn } from "../../../types/headless";
 import { isSessionTab, resolveSide } from "./session";
-import { minFloatShares, normalizeMinFloat } from "./min-float";
+import { hasPartialFloat, minFloatShares, normalizeMinFloat, PARTIAL_FLOAT_NOTE } from "./min-float";
 
 const rowPrice = (value: unknown, row: Record<string, unknown>) => formatMoverPrice(typeof value === "number" ? value : null, typeof row.currency === "string" ? row.currency : "", moverReferencePrice(row as unknown as MarketMoverRow));
 
@@ -135,7 +135,7 @@ export function createMarketMoversHeadless(
       pluginState: { pluginId: "market-overview", key: "sessionSide" },
     }, {
       key: "min-float",
-      description: "Keep the rows whose stored float is at least this many shares, such as 10M or 500k; any lifts it. A row with no stored float is left out. Trending carries no float and ignores it.",
+      description: "Keep the rows whose float (the one EQS serves) is at least this many shares, such as 10M or 500k; any lifts it. A row with no float is left out. Trending carries no float and ignores it.",
       type: "string",
       placeholder: "shares",
       example: "--min-float 10M",
@@ -159,6 +159,7 @@ export function createMarketMoversHeadless(
             ...item,
             events: item.catalysts.map((catalyst) => CATALYST_LABEL[catalyst] ?? catalyst).join(" "),
           })),
+          ...(hasPartialFloat(payload.items) ? { notes: [PARTIAL_FLOAT_NOTE] } : {}),
           metadata: { list: tab, side, session: payload.session, phase: payload.phase, asOf: payload.asOf, stale: payload.stale === true, minFloat },
           // A Pro account's list is the live board; the free one says it is delayed.
           ...(payload.access === "delayed" ? {} : { freshness: { status: "live" as const } }),
@@ -189,6 +190,7 @@ export function createMarketMoversHeadless(
       const notes = [
         ...(rankedBy && rankedBy !== "volume" && extendedSessions.length > 0 ? [`Ranked by ${MOVER_RANKING_LABELS[rankedBy]}.`] : []),
         ...(minFloat != null && !floatFiltered ? ["Trending carries no float, so --min-float does not apply to it."] : []),
+        ...(floatFiltered && hasPartialFloat(rows) ? [PARTIAL_FLOAT_NOTE] : []),
       ];
       return {
         ...(columns.length !== COLUMNS.length ? { columns } : {}),
