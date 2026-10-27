@@ -4,7 +4,6 @@ import { readAlertPrice } from "./price";
 import type { AlertCondition } from "./types";
 import type { WizardStep } from "../../../types/plugin";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
-import { DEFAULT_ROTATION_BENCHMARK } from "../relative-rotation/model";
 
 export interface MetricAlertInput { symbol: string; condition: AlertCondition; price: number; metric: AlertMetric }
 const direction = (s: string) => /^(above|over|>)$/i.test(s) ? "above" as const : /^(below|under|<)$/i.test(s) ? "below" as const : null;
@@ -13,6 +12,8 @@ function checked(input: MetricAlertInput): MetricAlertInput {
   if (!validMetricRule({ ...input, targetPrice: input.price })) throw new Error("Use a positive multiple, RSI from 0 to 100, and whole MA/RSI periods from 2 to 200 (fast MA shorter than slow MA).");
   return input;
 }
+// RRG's own default benchmark (relative-rotation/model.ts), kept here so the CLI does not load the RRG pane's model.
+const DEFAULT_ROTATION_BENCHMARK = "SPY:NYSEARCA";
 const RELATIVE_USAGE = "Relative strength alerts take the ratio of two listings or an RRG quadrant: alerts add XLK/SPY above 0.25, or alerts add XLE rrg leading [--benchmark SPY].";
 const QUADRANT_USAGE = "An RRG alert names the quadrant it enters: leading, weakening, lagging or improving, such as alerts add XLE rrg leading [--benchmark SPY].";
 /** A benchmark typed as SPY or SPY:NYSEARCA; its listing is confirmed when the alert is added. */

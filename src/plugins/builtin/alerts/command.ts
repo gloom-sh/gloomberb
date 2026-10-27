@@ -1,5 +1,5 @@
 import { metricFormInput, metricShortcut, parseMetricAlert } from "./metric-command";
-import type { AlertMetric } from "./metric-model";
+import { isRelativeMetric, type AlertMetric } from "./metric-model";
 import type { AlertCondition } from "./types";
 import { readAlertPrice } from "./price";
 import { normalizeAlertSymbol } from "./quotes";
@@ -85,4 +85,28 @@ export function parseAlertCommandValues(
   const priceStr = values?.price?.trim();
   if (!symbol || !condition || !priceStr) return null;
   return { symbol, condition, price: readAlertPrice(priceStr.replace(/^\$/, "")) };
+}
+
+/**
+ * The edit dialog's text read against the alert it changes. An edit keeps the alert in its kind and its synced list:
+ * price stays price, a valuation or technical measure stays one, and a ratio or RRG alert keeps its listings.
+ */
+export function parseAlertEdit(
+  selected: { symbol: string; metric?: AlertMetric },
+  value: string,
+): AlertCommandInput {
+  const parsed = parseAlertCommandValues({ shortcut: value });
+  if (!parsed) throw new Error("Use SYMBOL above|below|crosses PRICE.");
+  if (!!parsed.metric !== !!selected.metric) throw new Error("Add a new alert to change between price and a valuation or technical measure.");
+  if (!parsed.metric || !selected.metric) return parsed;
+  if (isRelativeMetric(parsed.metric) !== isRelativeMetric(selected.metric)) {
+    throw new Error("Add a new alert to change between a relative strength alert and a valuation or technical measure.");
+  }
+  if (!isRelativeMetric(selected.metric)) return parsed;
+  // The benchmark listing was confirmed when the alert was added; a different pair is a new alert.
+  if (parsed.metric.kind !== selected.metric.kind || parsed.symbol !== selected.symbol || !isRelativeMetric(parsed.metric)
+    || parsed.metric.benchmark !== selected.metric.benchmark) {
+    throw new Error("Add a new alert to compare other listings.");
+  }
+  return { ...parsed, metric: { ...parsed.metric, benchmarkExchange: selected.metric.benchmarkExchange } };
 }

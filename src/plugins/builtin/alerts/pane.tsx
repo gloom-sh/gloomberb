@@ -1,4 +1,4 @@
-import { METRIC_ALERTS_KEY, RELATIVE_ALERTS_KEY, closeBasis, isRelativeMetric, metricName, metricReadingText } from "./metric-model";
+import { METRIC_ALERTS_KEY, RELATIVE_ALERTS_KEY, closeBasis, metricName, metricReadingText } from "./metric-model";
 import { metricAvailabilityError } from "./metric-data";
 import { relativeAlertText } from "./metric-command";
 import { levelAlertStoreKey, readLevelAlertStores } from "./storage";
@@ -31,7 +31,7 @@ import {
   readAlertsStoreError,
   serializeAlerts,
 } from "./alert-engine";
-import { parseAlertCommandValues } from "./command";
+import { parseAlertEdit } from "./command";
 import { ALERT_TABS, ALERTS_KEY } from "./constants";
 import {
   conditionLabel,
@@ -288,16 +288,7 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
           }}
           currentValue={relativeAlertText(selected) ?? (selected.metric ? formatAlertDescription(selected).replace(" (TTM)", "").replace(" · on daily close", "") : `${selected.symbol} ${selected.condition} ${selected.targetPrice}`)}
           onApply={async (value) => {
-            let parsed = parseAlertCommandValues({ shortcut: value });
-            if (!parsed) throw new Error("Use SYMBOL above|below|crosses PRICE.");
-            if (!!parsed.metric !== !!selected.metric) throw new Error("Add a new alert to change between price and a valuation or technical measure.");
-            if (selected.metric && isRelativeMetric(selected.metric)) {
-              // The benchmark listing was confirmed when the alert was added; a different pair is a new alert.
-              if (parsed.metric?.kind !== selected.metric.kind || parsed.symbol !== selected.symbol || parsed.metric.benchmark !== selected.metric.benchmark) {
-                throw new Error("Add a new alert to compare other listings.");
-              }
-              parsed = { ...parsed, metric: { ...parsed.metric, benchmarkExchange: selected.metric.benchmarkExchange } };
-            }
+            const parsed = parseAlertEdit(selected, value);
             const error = savePaneAlerts(selected.id, (current) => current.map((alert) => (
               alert.id === selected.id
                 ? { ...editAlert(alert, parsed.symbol, parsed.condition, parsed.price), ...(parsed.metric ? { metric: parsed.metric } : {}) }

@@ -13,7 +13,6 @@ test("daily reads share a settled window across polls, then refresh at the next 
   const provider = createTestDataProvider({
     getTickerFinancials: async () => { throw new Error("Daily rules must not load financials"); },
     getPriceHistory: async () => { throw new Error("Daily rules must not request a forming window"); },
-    // Gloom Cloud serves daily bars as "1d"; any other spelling was refused and left every rule waiting.
     getDetailedPriceHistory: async (_symbol, _exchange, _start, end, barSize) => { ends.push(`${end.toISOString().slice(0, 10)} ${barSize}`); return bars; },
   });
   const read = (time: string, r = rule) => metricReadings(provider, Date.parse(time))(r);

@@ -423,6 +423,50 @@ describe("alertsPlugin command", () => {
       alertsPlugin.dispose?.();
     }
   });
+
+  test("reads an unquoted pair as a ratio only when the service says it is no ticker, and never a listing written with a slash", async () => {
+    const commands: any[] = [];
+    const quoted: string[] = [];
+    let pairError = "Not a ticker: XLK/SPY.";
+    const ctx = {
+      registerCommand(command: any) { commands.push(command); },
+      registerPane() {},
+      registerPaneTemplate() {},
+      configState: { get: () => undefined, set() {} },
+      marketData: {
+        getQuote: async (symbol: string) => {
+          quoted.push(symbol);
+          if (symbol === "XLK/SPY") throw new Error(pairError);
+          if (symbol.includes("/")) throw new Error(`Not a ticker: ${symbol}.`);
+          // The ratio's first listing is as far as this needs to go.
+          throw new Error(`Quoted ${symbol} for a ratio.`);
+        },
+        search: async () => [],
+      },
+      tickerRepository: { loadTicker: async () => null, loadAllTickers: async () => [] },
+      notify() {},
+      log: { info() {}, warn() {}, error() {} },
+    };
+    try {
+      await alertsPlugin.setup?.(ctx as any);
+      const command = commands.find((entry) => entry.id === "set-alert");
+      await expect(command.execute({ shortcut: "XLK/SPY above 0.25" })).rejects.toThrow("Quoted XLK for a ratio.");
+      expect(quoted).toEqual(["XLK/SPY", "XLK"]);
+      // `alerts add` reads these as one listing each (BTC-USD, BRK-B): they keep their own answer.
+      for (const symbol of ["BTC/USD", "BRK/B"]) {
+        quoted.length = 0;
+        await expect(command.execute({ shortcut: `${symbol} above 500` })).rejects.toThrow(`Not a ticker: ${symbol}.`);
+        expect(quoted).toEqual([symbol]);
+      }
+      // A pair the service could not answer for is not known to be no ticker.
+      pairError = "The data service timed out.";
+      quoted.length = 0;
+      await expect(command.execute({ shortcut: "XLK/SPY above 0.25" })).rejects.toThrow("The data service timed out.");
+      expect(quoted).toEqual(["XLK/SPY"]);
+    } finally {
+      alertsPlugin.dispose?.();
+    }
+  });
 });
 
 test("disposing alerts ignores an in-flight quote and does not schedule another poll", async () => {

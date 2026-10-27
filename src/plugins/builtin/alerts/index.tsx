@@ -23,6 +23,8 @@ import { isResearchAlertKind, MAX_LEAD_DAYS } from "./research-rules";
 import { EVENT_ALERT_TEMPLATES, MAX_EVENT_ALERTS, createEventAlert, eventAlertStoreKey, readEventAlertStores, updateEventAlerts } from "./events";
 import { formatMarketPrice } from "../../../market-data/market/format";
 import { settleTypedListingKey } from "../../../tickers/listing-venues";
+import { parseListingArg } from "../../../cli/listing-arg";
+import { notATickerSymbol } from "../../../sources/provider-errors";
 import type { Quote } from "../../../types/financials";
 import type { GloomPlugin } from "../../../types/plugin";
 import {
@@ -65,6 +67,15 @@ let alertStream: AlertQuoteStream | null = null;
  * triggers or first gets a baseline.
  */
 const STREAM_PERSIST_MS = 60_000;
+
+/** BTC/USD, BRK/B and EUR/USD are one listing written with a slash, as `alerts add` reads them; XLK/SPY is not. */
+function slashSpellsListing(symbol: string): boolean {
+  try {
+    return parseListingArg(symbol).key !== symbol.toUpperCase();
+  } catch {
+    return true;
+  }
+}
 
 export const alertsPlugin: GloomPlugin = {
   id: "alerts",
@@ -198,8 +209,10 @@ export const alertsPlugin: GloomPlugin = {
         try {
           resolved = await quoteFor(input.symbol);
         } catch (error) {
-          // XLK/SPY is a listing first (BRK/B); one that quotes nothing is the ratio of the two, as `alerts add` reads it.
-          const pair = !input.metric && /^[^/\s]+\/[^/\s]+$/.test(input.symbol) ? parseMetricAlert(`${input.symbol} ratio ${input.condition} ${input.price}`) : null;
+          // XLK/SPY is a listing first; only one the service says is no ticker is the ratio of the two, as `alerts add` reads it.
+          // A timeout stays a timeout, and BTC/USD, BRK/B or EUR/USD, one listing written with a slash, keeps its own answer.
+          const pair = !input.metric && /^[^/\s]+\/[^/\s]+$/.test(input.symbol) && notATickerSymbol(error instanceof Error ? error.message : String(error))
+            && !slashSpellsListing(input.symbol) ? parseMetricAlert(`${input.symbol} ratio ${input.condition} ${input.price}`) : null;
           if (!pair) throw error;
           input = pair;
           resolved = await quoteFor(pair.symbol);

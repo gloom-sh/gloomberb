@@ -13,7 +13,7 @@ import type { CliCommandDef } from "../../../types/plugin";
 import type { Quote } from "../../../types/financials";
 import { getActiveQuoteDisplay } from "../../../market-data/market/status";
 import { cliStyles } from "../../../utils/cli-output";
-import { canonicalExchange, isUsListingExchange } from "../../../utils/exchanges";
+import { canonicalExchange, isUsListingExchange, parsePublicTickerKey } from "../../../utils/exchanges";
 import { notATickerSymbol } from "../../../sources/provider-errors";
 import { meantThousandsDot, parsePastedNumber, thousandsDotReadings, type ThousandsDotReadings } from "../../../utils/decimal-comma";
 import { newYorkToday } from "../earnings/board-model";
@@ -167,8 +167,16 @@ export function parseAlertAddArgs(
   if (!first) throw new Error(ADD_USAGE);
   const countryFilter = readCountryOption(country);
   if (benchmark === null) throw new Error(`${BENCHMARK_RULE} such as alerts add XLE rrg leading --benchmark QQQ.`);
-  const metric = parseMetricAlert(benchmark !== undefined && second?.toLowerCase() === "rrg" && !/^(vs\.?|versus|against)$/i.test(args[3] ?? "")
-    ? [...args, "vs", benchmark].join(" ") : args.join(" "));
+  const rrgFlag = benchmark !== undefined && second?.toLowerCase() === "rrg";
+  const typedVs = /^(vs\.?|versus|against)$/i.test(args[3] ?? "") ? args[4] : undefined;
+  if (rrgFlag && typedVs !== undefined) {
+    // `vs QQQ --benchmark SMH` names two benchmarks; the same one twice (SPY and SPY:NYSEARCA) is one.
+    const [typed, flag] = [typedVs, benchmark].map((text) => parsePublicTickerKey(text.toUpperCase()));
+    if (typed!.symbol !== flag!.symbol || (typed!.exchange && flag!.exchange && typed!.exchange !== flag!.exchange)) {
+      throw new Error(`An RRG alert names its benchmark once: vs ${typedVs.toUpperCase()} or --benchmark ${benchmark.toUpperCase()}, not both.`);
+    }
+  }
+  const metric = parseMetricAlert(rrgFlag && typedVs === undefined ? [...args, "vs", benchmark].join(" ") : args.join(" "));
   if (benchmark !== undefined && metric?.metric.kind !== "rrg") throw new Error(`${BENCHMARK_RULE} such as alerts add XLE rrg leading --benchmark QQQ; a ratio names both listings, as in alerts add XLK/SPY above 0.25.`);
   if (metric) {
     if (days !== undefined || country !== undefined) throw new Error(`${isRelativeMetric(metric.metric) ? "Relative strength" : "Valuation and daily technical"} alerts take neither --days nor --country.`);
@@ -426,9 +434,11 @@ function textRow(row: AlertListRow): Record<string, unknown> {
         : ""),
     eventDate: typeof row.leadDays === "number" ? row.eventDate ?? "not known" : "",
     status: row.status,
-    lastCheckedPrice: row.reading ?? row.lastCheckedPrice,
-    asOf: row.asOf,
+    // The number as stored, as before; an RRG quadrant has no one number, so it reads as words.
+    lastCheckedPrice: row.kind === "rrg" ? row.reading : row.lastCheckedPrice,
     triggeredAt: row.triggeredAt,
+    // Last, so the CSV columns before it keep their places.
+    asOf: row.asOf,
   };
 }
 
@@ -815,9 +825,9 @@ export const alertsCliCommand: CliCommandDef = {
           { key: "trigger", header: "Trigger" },
           { key: "eventDate", header: "Event Date" },
           { key: "status", header: "Status" },
-          { key: "lastCheckedPrice", header: "Last", align: "right", optional: true },
-          { key: "asOf", header: "As Of", optional: true },
+          { key: "lastCheckedPrice", header: "Last Price", align: "right", optional: true },
           { key: "triggeredAt", header: "Triggered", optional: true },
+          { key: "asOf", header: "As Of", optional: true },
         ],
         empty: "No alerts. Add one with gloom alerts add AAPL above 250, alerts add CRWV earnings --days 3, alerts add CPI --days 1, or alerts add CN PMI.",
       });

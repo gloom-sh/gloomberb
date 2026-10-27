@@ -1,14 +1,15 @@
 import { expect, test } from "bun:test";
 import { dailyMetricReading, metricTrigger, rotationQuadrant, rotationSeries, settledWeekCloses, ROTATION_ALERT_WEEKS, type AlertMetric, type MetricRule } from "./metric-model";
-import { buildRotation } from "../relative-rotation/model";
+import { buildRotation, DEFAULT_ROTATION_BENCHMARK } from "../relative-rotation/model";
 import { getPublishedUsEquitySession } from "../../../market-data/published-us-sessions";
 import { valuationAlertValue } from "./metric-data";
 import { parseAlertAddArgs } from "./cli";
-import { parseAlertCommandValues, parseAlertShortcutValues } from "./command";
+import { parseAlertCommandValues, parseAlertEdit, parseAlertShortcutValues } from "./command";
 import { rearmAlert, evaluateAlert } from "./alert-engine";
-import { readLevelAlertStores, writeLevelAlertStores } from "./storage";
+import { levelAlertStoreKey, readLevelAlertStores, writeLevelAlertStores } from "./storage";
 import type { AlertRule } from "./types";
 import type { TickerFinancials } from "../../../types/financials";
+import { parsePublicTickerKey } from "../../../utils/exchanges";
 
 const calendar = (day: string) => getPublishedUsEquitySession("NASDAQ", day);
 const sessionDays = (n: number) => {
@@ -118,8 +119,38 @@ test("CLI and form parse the trader examples identically and isolate their stora
     "XLK/XLK ratio above 1", "XLK/SPY ratio above -1", "XLE rrg sideways", "SPY rrg leading", "XLE/SPY rrg leading"]) {
     expect(() => parseAlertAddArgs(text.split(" "), undefined)).toThrow();
   }
+  // A benchmark named both after vs and with --benchmark must be the same listing.
+  const rrg = (benchmark: string) => parseAlertAddArgs("XLE rrg leading vs QQQ".split(" "), undefined, undefined, undefined, benchmark);
+  expect(() => rrg("SMH")).toThrow("An RRG alert names its benchmark once: vs QQQ or --benchmark SMH, not both.");
+  expect(rrg("qqq:nasdaq")).toMatchObject({ metric: { kind: "rrg", benchmark: "QQQ" } });
 });
 
+test("an edit never moves an alert to another synced list, and a relative alert keeps its confirmed listings", () => {
+  const ratio: { symbol: string; metric: AlertMetric } = { symbol: "XLK", metric: { kind: "rs_ratio", benchmark: "SPY", benchmarkExchange: "NYSEARCA" } };
+  const selected: { symbol: string; metric?: AlertMetric }[] = [{ symbol: "XLK" }, { symbol: "XLK", metric: { kind: "pe" } },
+    { symbol: "XLK", metric: { kind: "rsi", period: 14 } }, { symbol: "XLK", metric: { kind: "close_ma", period: 200 } }, ratio,
+    { symbol: "XLE", metric: { kind: "rrg", quadrant: "leading", benchmark: "SPY", benchmarkExchange: "NYSEARCA" } }];
+  const edits = ["XLK above 250", "XLK/SPY above 0.25", "XLK pe below 20", "XLK rsi(14) below 25", "XLK closes above ma(50)",
+    "XLK/SPY ratio below 0.2", "XLK/QQQ ratio below 0.2", "XLE rrg lagging", "XLE rrg lagging vs QQQ"];
+  let accepted = 0;
+  for (const alert of selected) for (const value of edits) {
+    let parsed: ReturnType<typeof parseAlertEdit>;
+    try { parsed = parseAlertEdit(alert, value); } catch { continue; }
+    accepted += 1;
+    // The pane saves into the selected alert's list; a rule that list does not hold would make it unreadable.
+    expect(levelAlertStoreKey({ metric: parsed.metric })).toBe(levelAlertStoreKey(alert));
+  }
+  expect(accepted).toBe(13);
+  for (const value of ["XLK/SPY ratio above 0.25", "XLE rrg leading"]) {
+    expect(() => parseAlertEdit(selected[2]!, value)).toThrow("Add a new alert to change between a relative strength alert and a valuation or technical measure.");
+  }
+  expect(() => parseAlertEdit(ratio, "XLK rsi(14) below 25")).toThrow("Add a new alert to change between a relative strength alert");
+  expect(() => parseAlertEdit(ratio, "XLK/QQQ ratio below 0.2")).toThrow("Add a new alert to compare other listings.");
+  expect(parseAlertEdit(ratio, "XLK/SPY ratio below 0.2")).toEqual({ symbol: "XLK", condition: "below", price: 0.2, metric: ratio.metric });
+  // An RRG alert with no benchmark named reads RRG's own default.
+  const { symbol: benchmark, exchange: benchmarkExchange } = parsePublicTickerKey(DEFAULT_ROTATION_BENCHMARK);
+  expect(parseAlertCommandValues({ shortcut: "XLE rrg leading" })?.metric).toEqual({ kind: "rrg", quadrant: "leading", benchmark, benchmarkExchange });
+});
 
 test("valuation alerts keep the regular close and converted EPS basis outside regular trading", () => {
   for (const marketState of ["PRE", "POST", "CLOSED"] as const) {
