@@ -629,7 +629,7 @@ function currencyMarks(currency: string, normalizedCurrency: string, code = fals
 }
 
 /** A London line: shown in pounds, served in the pence it trades in. */
-export function isPenceQuotedLine(quote: Pick<Quote, "currency" | "providerPriceDivisor"> | null | undefined): boolean {
+function isPenceQuotedLine(quote: Pick<Quote, "currency" | "providerPriceDivisor"> | null | undefined): boolean {
   return quote?.currency?.trim().toUpperCase() === "GBP" && quote.providerPriceDivisor === 100;
 }
 
