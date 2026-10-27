@@ -13,6 +13,8 @@ import { ALERT_TABS, ALERTS_PLUGIN_ID } from "./constants";
 import { ruleState } from "./event-rows";
 import { eventAlertTarget, type EventAlertRule } from "./events";
 import {
+  alertListing,
+  isoUtc,
   conditionLabel,
   formatAlertDistance,
   formatAlertTargetPrice,
@@ -60,9 +62,17 @@ const PRICE_COLUMNS: HeadlessPaneColumn[] = [
   { key: "quoteSource", header: "Quote source" },
   { key: "lastCheckedAt", header: "Checked", format: instant },
   { key: "triggeredAt", header: "Alerted", format: instant, textFormat: (value) => (typeof value === "number" ? relativeTime(value) : "-") },
+  // After the columns exports have always had: when the rule was made, and the currency of its listing.
+  { key: "createdAt", header: "Created", format: instant },
+  { key: "listing", header: "Listing" },
+  { key: "currency", header: "Currency" },
 ];
 /** The terminal table keeps the pane's columns: the Quote cell already says the quote's age and feed. */
-const PRICE_TEXT_COLUMNS = PRICE_COLUMNS.filter((column) => column.key !== "quoteSource" && column.key !== "lastCheckedAt");
+const PRICE_TEXT_COLUMNS: HeadlessPaneColumn[] = [
+  ...PRICE_COLUMNS.filter((column) => !["quoteSource", "lastCheckedAt", "createdAt", "listing", "currency"].includes(column.key)),
+  // The day it was made, as the Events table lists its rules.
+  { key: "createdAt", header: "Since", textFormat: (value) => (typeof value === "number" ? isoUtc(value).slice(0, 10) : "") },
+];
 
 const EVENT_COLUMNS: HeadlessPaneColumn[] = [
   { key: "event", header: "Event" },
@@ -105,6 +115,8 @@ function priceRow(alert: AlertRule): HeadlessPaneRow {
     awayPercent: away != null && Number.isFinite(away) ? Number(away.toFixed(2)) : null,
     quoteAt: quoted ? firedAlertTime(alert.lastQuoteUpdatedAt) : null,
     quoteSource: quoted ? alert.metric && isDailyMetric(alert.metric) ? "daily close" : quoteSourceWords(alert.lastQuoteSource) : null,
+    listing: alertListing(alert),
+    currency: alert.lastQuoteCurrency ?? null,
   };
 }
 
@@ -234,7 +246,7 @@ export const alertsHeadless: HeadlessPaneDefinition<"rows"> = {
   discovery: {
     screenshotReadiness: "live-dom",
     dataRequirements: ["Your saved alerts and this device's log of fired alerts; History adds Gloom Cloud's deliveries when signed in"],
-    limitations: ["Current price and quote time are what the app saved at its last check, blank until it has checked the alert."],
+    limitations: ["Current price and quote time are what the app or `gloom alerts add` saved at the last check; an alert neither has read says not checked yet."],
   },
   describe: (args) => `Alerts | ${String(args.options.tab ?? "prices")}`,
   async load(args, ctx) {

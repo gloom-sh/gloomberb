@@ -1,6 +1,15 @@
-import { metricDescription } from "./metric-model";
+import { isDailyMetric, metricDescription, metricName } from "./metric-model";
+import { logFailure } from "../../../utils/log-failure";
 import { parseMetricAlert, type MetricAlertInput } from "./metric-command";
-import { metricReadings } from "./metric-data";
+import { firstDailyCheck, metricAvailabilityError, metricReadings } from "./metric-data";
+import { ALERT_ADD_FORMS, ALERT_KINDS_TEXT, parseRuleAddArgs, RULE_US_DATA, ruleDelivery, type RuleAddRequest } from "./cli-forms";
+import { alertChangeEntry, appendAlertLog, type AlertLogAction } from "./fired-log";
+import { alertLogRule } from "./alert-log";
+import { alertListing, alertReadingAt, alertReadingText, isoUtc, listingWithCurrency, NOT_CHECKED_YET } from "./format";
+import { isQuoteStaleForCurrentSession } from "../../../market-data/quotes/freshness";
+import { quoteAlertFields } from "./quotes";
+import { createEventAlert } from "./events";
+import { isResearchAlertKind, readResearchRule } from "./research-rules";
 import { withConfigData, withMarketData } from "../../../cli/scoped-context";
 import { CLI_COMMAND_GROUPS } from "../../../cli/help";
 import { dryRunNote } from "../../../cli/helpers";
@@ -31,14 +40,15 @@ import {
   type CalendarEventChoice,
   type ReleaseRename,
 } from "./calendar-events";
-import { createAlert, rearmAlert } from "./alert-engine";
+import { createAlert, rearmAlert, sameLevelRule } from "./alert-engine";
 import { ALERTS_PLUGIN_ID } from "./constants";
 import { MAX_EVENT_ALERTS, eventAlertTarget, toggleEventAlert, writeEventAlertStores, type EventAlertRule } from "./events";
-import { alertKindLabel } from "./history";
-import { IV_LEVEL_CHECKS_KEY, readIvLevelChecks, rearmIvLevelAlert, type IvLevelCheck } from "./iv-level";
+import { alertKindLabel, fetchAlertHistory, ruleStateText, type AlertRuleState } from "./history";
+import { apiClient } from "../../../api-client";
+import { IV_LEVEL_CHECKS_KEY, ivLevelCheckText, readIvLevelChecks, rearmIvLevelAlert, type IvLevelCheck } from "./iv-level";
 import { parseAlertPrice, readAlertPrice } from "./price";
 import { farTargetMessage } from "./quotes";
-import { MACRO_EVENT_NAMES, createResearchAlert, formatPremium, ivLevelUnitError, parseAmount, parseIvLevel, researchAlertDescription } from "./research-builder";
+import { MACRO_EVENT_NAMES, createResearchAlert, formatPremium, ivLevelUnitError, parseAmount, parseIvLevel } from "./research-builder";
 import { IV_LEVEL_RANGES, MAX_LEAD_DAYS, type IvLevelMetric, type MacroAlertEvent } from "./research-rules";
 import {
   createScheduledAlert,
@@ -74,10 +84,10 @@ import type { AlertCondition, AlertRule } from "./types";
  */
 const PRICE_DELIVERY = "the app alerts while it is running; sign in with Cloud sync for email or phone alerts when it is closed";
 
-const ADD_USAGE = "Usage: gloom alerts add <symbol> <above|below|crosses> <price>, alerts add <symbol> earnings [--days <n> | results], alerts add <calendar event> [--country <code>] [--days <n>], alerts add [symbol] news <keyword>, alerts add [symbol] flow [premium] [calls|puts] [sweeps|blocks], alerts add <symbol> <iv|rr> <above|below> <level>, or alerts add <OCC contract> iv spike <points>";
+const ADD_USAGE = `Usage: gloom alerts add <symbol> <above|below|crosses> <price>, or another kind. ${ALERT_KINDS_TEXT}`;
 const DAYS_RULE = `--days takes a whole number of days from 1 to ${MAX_LEAD_DAYS}; without it the alert goes off 1 day before.`;
-/** The event form every refusal of `alerts add` names: any release in the economic calendar, CPI and FOMC among them. */
-const EVENT_FORM = `a release in the economic calendar by name (alerts add "NBS Manufacturing PMI" --country CN, alerts add CN PMI, alerts add CPI --days 1)`;
+/** How a release in the economic calendar is named, CPI and FOMC among them. */
+const CALENDAR_EXAMPLES = `alerts add "NBS Manufacturing PMI" --country CN, alerts add CN PMI, alerts add CPI --days 1`;
 const COUNTRY_RULE = "--country is for an alert on a calendar event, such as alerts add PMI --country CN.";
 
 /** What `alerts add` was asked for, before any listing or date is looked up. */
@@ -99,7 +109,9 @@ export type AlertAddRequest =
   /** The symbol's 30-day ATM IV (`atm`, in %) or 25-delta risk reversal (`rr`, in vol points) above or below a level, checked by the running app. */
   | { kind: "iv_level"; symbol: string; metric: IvLevelMetric; direction: "above" | "below"; level: number }
   /** One OCC contract's IV rising by `points`. */
-  | { kind: "iv_spike"; contract: string; points: number };
+  | { kind: "iv_spike"; contract: string; points: number }
+  /** The rest of what Add Event Alert offers: 52-week range, unusual volume, filings, insiders, short interest and more. */
+  | RuleAddRequest;
 
 /** The `alerts add` forms Gloom Cloud's research rules take: they follow US listings. */
 type ResearchAddRequest = Extract<AlertAddRequest, { kind: "news" | "flow" | "iv_level" | "iv_spike" }>;
@@ -161,9 +173,9 @@ export function parseAlertAddArgs(
     if (days !== undefined || country !== undefined) throw new Error("Valuation and daily technical alerts take neither --days nor --country.");
     return { kind: "metric", ...metric };
   }
-  const research = parseResearchAddArgs(args);
+  const research = parseResearchAddArgs(args) ?? parseRuleAddArgs(args);
   if (research) {
-    if (days !== undefined) throw new Error("--days is for earnings and calendar event alerts, not news, flow or IV alerts.");
+    if (days !== undefined) throw new Error("--days is for earnings and calendar event alerts, not this kind of alert.");
     if (country !== undefined) throw new Error(COUNTRY_RULE);
     return research;
   }
@@ -191,7 +203,7 @@ export function parseAlertAddArgs(
   if (!CONDITIONS.includes(condition)) {
     // Words with no price after them name a release (CN PMI, Industrial Profits); a price ends a mistyped price alert.
     if (parseAlertPrice(args.at(-1)!).kind === "invalid") return releaseRequest(args, countryFilter, leadDays());
-    throw new Error(`Unknown alert "${second}". Use above, below or crosses with a price, earnings with --days, news with a keyword, flow, iv or rr with above or below and a level, iv spike on an OCC contract, or ${EVENT_FORM}.`);
+    throw new Error(`Unknown alert "${second}". ${ALERT_KINDS_TEXT}`);
   }
   if (country !== undefined) throw new Error(COUNTRY_RULE);
   if (days !== undefined) throw new Error("--days is for earnings and calendar event alerts, not price alerts.");
@@ -311,6 +323,25 @@ function researchDelivery(kind: ResearchAddRequest["kind"]): string {
   return `Gloom Cloud checks it for a signed-in account with Cloud sync${plan} and sends it to your phone`;
 }
 
+/**
+ * The rule Add Event Alert saves for a form `alerts add` named by its words,
+ * on the listing `quote` read the symbol as: a US research rule keeps its
+ * symbol and venue, hiring and a catalyst's company their listing as typed
+ * (ADYEN:AMS).
+ */
+function createFormRule(request: RuleAddRequest, listing: { symbol: string; key: string; exchange: string } | null): EventAlertRule {
+  const { event } = request;
+  if (!isResearchAlertKind(event)) return createEventAlert(event, listing?.key ?? request.values.value ?? "");
+  const values = Object.fromEntries(Object.entries(request.values).map(([key, value]) => [`${event}:${key}`, value]));
+  if (listing && request.listing === "any") values[`${event}:symbol`] = listing.key;
+  else if (listing) {
+    const typed = listing.exchange ? canonicalExchange(listing.exchange) : "";
+    values[`${event}:symbol`] = listing.symbol;
+    values[`${event}:exchange`] = RESEARCH_EXCHANGES.has(typed) ? typed : "US";
+  }
+  return createResearchAlert(event, values);
+}
+
 const isResearchRequest = (request: AlertAddRequest): request is ResearchAddRequest =>
   request.kind === "news" || request.kind === "flow" || request.kind === "iv_level" || request.kind === "iv_spike";
 
@@ -348,6 +379,28 @@ export function thousandsDotMessage(
   return `${dot.text} could be ${dot.thousands} (thousands) or ${dot.decimal} (decimal point), and ${listing.toUpperCase()} last traded at ${Number(last!.toFixed(2))}; type ${retype(dot.thousands)} or ${retype(dot.decimal)}`;
 }
 
+/**
+ * What a valuation or daily technical alert read when it was added:
+ * "RSI(14) was 61.23 on the 2026-10-26 close", "50-day MA was 186.32 against
+ * the 200-day MA at 180.11 on the 2026-10-26 close", "P/E (TTM) is 24.10".
+ */
+function metricReadingNote(alert: AlertRule): string {
+  const metric = alert.metric!;
+  const value = (alert.lastCheckedPrice ?? Number.NaN).toFixed(2);
+  if (!isDailyMetric(metric)) return `${metricName(metric)} is ${value}`;
+  const against = metric.kind === "ma_cross" ? metric.slowPeriod : metric.kind === "close_ma" ? metric.period : null;
+  const target = against != null && alert.lastCheckedTarget != null ? ` against the ${against}-day MA at ${alert.lastCheckedTarget.toFixed(2)}` : "";
+  return `${metricName(metric)} was ${value}${target} on the ${alert.lastDailyClose} close`;
+}
+
+/** An event alert still waiting to go off, as `alerts list` says `active`: not paused, and not alerted for its coming event or level. */
+function eventRuleArmed(rule: EventAlertRule, now: number): boolean {
+  if (rule.status !== "active") return false;
+  const scheduled = readScheduledRule(rule);
+  if (!scheduled) return !rule.triggeredAt;
+  return scheduledAlertStatus(rule, scheduled.leadDays, scheduledToday(scheduled.target, now), scheduled.trigger) === "active";
+}
+
 /** One row of `alerts list`: a price alert as stored, or an event alert with its next date. */
 type AlertListRow = Record<string, unknown> & {
   id: string;
@@ -356,14 +409,32 @@ type AlertListRow = Record<string, unknown> & {
 };
 
 function priceRow(alert: AlertRule): AlertListRow {
-  return { ...alert, kind: alert.metric?.kind ?? "price", rule: alert.metric ? metricDescription(alert) : undefined, target: alert.exchange ? `${alert.symbol}:${alert.exchange}` : alert.symbol };
+  return {
+    ...alert, kind: alert.metric?.kind ?? "price", rule: alert.metric ? metricDescription(alert) : undefined,
+    target: alert.exchange ? `${alert.symbol}:${alert.exchange}` : alert.symbol,
+    // The listing it is checked on, in its currency, and its last reading in words with when it is from.
+    listing: alertListing(alert), currency: alert.lastQuoteCurrency ?? null,
+    lastReading: alertReadingText(alert), lastReadingAt: isoUtc(alertReadingAt(alert)) || null,
+  };
 }
 
-function eventRow(rule: EventAlertRule, now: number, eventDate: string | null | undefined, check?: IvLevelCheck): AlertListRow {
+function eventRow(
+  rule: EventAlertRule, now: number, eventDate: string | null | undefined, check?: IvLevelCheck, cloud?: CloudRuleStates,
+): AlertListRow {
   const scheduled = readScheduledRule(rule);
   if (!scheduled) {
     const status = rule.status === "active" && rule.triggeredAt ? "triggered" : rule.status;
+    // An IV level is read by this app, so its last reading is this device's; Gloom Cloud reads the rest.
+    const state = cloud?.states.get(rule.id);
+    const reading = rule.kind === "iv_level" ? {
+      lastReading: ivLevelCheckText(rule, check),
+      lastReadingAt: check?.value != null ? isoUtc(check.quoteAt ? Date.parse(check.quoteAt) : check.checkedAt) || null : null,
+    } : state ? {
+      lastReading: ruleStateText(state),
+      lastReadingAt: state.asOf ? isoUtc(Date.parse(state.asOf)) || null : null,
+    } : cloud?.failed ? {} : { lastReading: NOT_CHECKED_YET };
     return { id: rule.id, kind: rule.kind, target: eventAlertTarget(rule), status, createdAt: rule.createdAt,
+      listing: eventRuleListing(rule), ...reading,
       ...check ? { lastCheck: check } : {}, ...rule.triggeredAt ? { triggeredAt: rule.triggeredAt } : {} };
   }
   const date = eventDate ?? null;
@@ -379,11 +450,48 @@ function eventRow(rule: EventAlertRule, now: number, eventDate: string | null | 
     eventDate: date,
     status: scheduledAlertStatus({ ...rule, eventDate: date ?? undefined }, scheduled.leadDays, scheduledToday(scheduled.target, now), scheduled.trigger),
     createdAt: rule.createdAt,
+    listing: scheduled.target.kind === "earnings" ? scheduled.target.exchange ? `${scheduled.target.symbol}:${scheduled.target.exchange}` : scheduled.target.symbol : "",
   };
+}
+
+/** Gloom Cloud's last reading of each rule it checks, as ALRT's Events tab shows them; `failed` when it could not be asked. */
+interface CloudRuleStates {
+  states: Map<string, AlertRuleState>;
+  failed: boolean;
+  warning?: string;
+}
+
+/**
+ * Gloom Cloud checks the event rules this app does not, for a signed-in account. With no session nothing has
+ * read them, so they are not checked yet; with one, their readings are Cloud's.
+ */
+async function cloudRuleStates(rules: readonly EventAlertRule[]): Promise<CloudRuleStates> {
+  const empty = { states: new Map<string, AlertRuleState>(), failed: false };
+  if (!apiClient.getSessionToken() || !rules.some((rule) => rule.kind !== "iv_level" && !readScheduledRule(rule))) return empty;
+  try {
+    const history = await fetchAlertHistory(0);
+    return { states: new Map(history.states.map((state) => [state.ruleId, state])), failed: false };
+  } catch (error) {
+    return { ...empty, failed: true, warning: `Gloom Cloud's readings of event alerts could not be loaded: ${error instanceof Error ? error.message : String(error)}` };
+  }
+}
+
+/** The listing a research rule follows (AAPL, ADYEN:AMS for a hiring rule); empty for one on no symbol. */
+function eventRuleListing(rule: EventAlertRule): string {
+  if (rule.target === "ticker") return rule.value;
+  if (!isResearchAlertKind(rule.kind)) return "";
+  const config = readResearchRule(rule.kind, rule.value);
+  if (!config?.symbol) return "";
+  return config.symbol.includes(":") || !config.exchange || config.exchange === "US" ? config.symbol : `${config.symbol}:${config.exchange}`;
 }
 
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
 
+/**
+ * One row as text and CSV give it. CSV keeps the columns it has always had in
+ * their order, then Created (ISO UTC), the listing, its currency and the last
+ * reading, in words and dated.
+ */
 function textRow(row: AlertListRow): Record<string, unknown> {
   const price = row.kind === "price";
   return {
@@ -399,6 +507,11 @@ function textRow(row: AlertListRow): Record<string, unknown> {
     status: row.status,
     lastCheckedPrice: row.lastCheckedPrice,
     triggeredAt: row.triggeredAt,
+    createdAt: isoUtc(typeof row.createdAt === "number" ? row.createdAt : null),
+    listing: row.listing ?? "",
+    currency: row.currency ?? "",
+    lastReading: row.lastReading ?? "",
+    lastReadingAt: row.lastReadingAt ?? "",
   };
 }
 
@@ -484,8 +597,8 @@ function releaseReadNotes(
   return notes;
 }
 
-/** Every form `alerts add` takes but a price alert's details, as a refusal ends. */
-const ADD_FORMS = `Event alerts take ${EVENT_FORM} or a symbol with earnings (alerts add CRWV earnings --days 3); price alerts take a condition and a price (alerts add AAPL above 250).`;
+/** Every kind `alerts add` takes, as a refusal of words none of them reads ends. */
+const ADD_FORMS = ALERT_KINDS_TEXT;
 
 /**
  * Why a name could not be looked up. A single word (alerts add AAPL) may be
@@ -505,9 +618,14 @@ function noReleaseMessage(
   renamed?: ReleaseRename,
 ): string {
   const near = suggestions.length > 0 ? ` Did you mean ${choiceList(suggestions).join(", ")}?` : "";
-  return `No release in the economic calendar matches "${query}"${country ? ` in ${country.split(",").join(", ")}` : ""}.`
+  // Words with a country are a release named; anything else may as well be a kind of alert mistyped.
+  if (country) {
+    return `No release in the economic calendar matches "${query}" in ${country.split(",").join(", ")}.`
+      + `${renamed ? ` ${releaseRenameNote(renamed)}` : ""}${near} gloom econ --country <code> lists the calendar.`;
+  }
+  return `No kind of alert and no release in the economic calendar matches "${query}".`
     + `${renamed ? ` ${releaseRenameNote(renamed)}` : ""}${near} `
-    + `${ADD_FORMS} gloom econ --country <code> lists the calendar.`;
+    + `${ADD_FORMS} Calendar releases go by name (${CALENDAR_EXAMPLES}); gloom econ --country <code> lists the calendar.`;
 }
 
 /** The refusal of a name listed in several countries, with the best of each. */
@@ -533,21 +651,13 @@ async function requireEventDate(
 export const alertsCliCommand: CliCommandDef = {
   name: "alerts",
   aliases: ["alert"],
-  description: "List, add, and remove price, valuation and daily technical alerts, alerts before earnings and any economic calendar release (CPI, FOMC, NBS PMI), and news, options flow and IV alerts",
+  description: "List, add, re-arm and remove price, valuation and daily technical alerts, alerts before earnings and any economic calendar release (CPI, FOMC, NBS PMI), and every event alert ALRT offers: news, options flow, IV, 52-week range, unusual volume, filings, insiders, short interest, analysts, hiring, perpetuals, catalysts, Congress and 13F",
   help: {
     group: CLI_COMMAND_GROUPS.portfolios,
+    // Every form `alerts add` takes, as the refusal of an unknown phrase names them and the CLI docs page lists them.
     usage: [
       "alerts list",
-      "alerts add <symbol> <above|below|crosses> <price>",
-      "alerts add <symbol> <pe|ps|rsi(14)> <above|below> <level>",
-      "alerts add <symbol> ma(50) crosses <above|below> ma(200)",
-      "alerts add <symbol> closes <above|below> ma(200)",
-      "alerts add <symbol> earnings [--days <n> | results]",
-      "alerts add <calendar event> [--country <code>] [--days <n>]",
-      "alerts add [symbol] news <keyword>",
-      "alerts add [symbol] flow [premium] [calls|puts] [sweeps|blocks]",
-      "alerts add <symbol> <iv|rr> <above|below> <level>",
-      "alerts add <OCC contract> iv spike <points>",
+      ...ALERT_ADD_FORMS.map((form) => `alerts add ${form.usage}`),
       "alerts delete <id>",
       "alerts rearm <id>",
     ],
@@ -574,6 +684,17 @@ export const alertsCliCommand: CliCommandDef = {
       "alerts add NVDA flow 5m calls sweeps",
       "alerts add IBIT iv above 50",
       "alerts add SPY rr below -6",
+      "alerts add XLE 52-week high",
+      "alerts add NVDA unusual volume 3x",
+      "alerts add AAPL filing 8-K",
+      "alerts add TSLA insider sell",
+      "alerts add GME short interest increase 20%",
+      "alerts add AAPL analyst downgrade",
+      "alerts add RIVN hiring slowing",
+      "alerts add perps hyperliquid:default:BTC funding above 0.05%",
+      "alerts add catalyst type clinical",
+      "alerts add congress \"Nancy Pelosi\"",
+      "alerts add 13f 1067983",
     ],
   },
   execute: async (rawArgs, ctx) => {
@@ -598,18 +719,21 @@ export const alertsCliCommand: CliCommandDef = {
     };
     const request = action === "add" ? parseAdd() : null;
     const research = request && isResearchRequest(request) ? request : null;
+    const formRule = request?.kind === "rule" ? request : null;
     const listedSymbol = (request?.kind === "price" || request?.kind === "metric") ? request.symbol
-      : research && research.kind !== "iv_spike" ? research.symbol : null;
+      : research && research.kind !== "iv_spike" ? research.symbol : formRule?.symbol ?? null;
+    // Gloom Cloud's research rules follow US listings; hiring and a catalyst's company may list anywhere.
+    const usOnly = research ? research.kind === "news" ? "News alerting" : research.kind === "flow" ? "Options flow" : "Options data"
+      : formRule?.listing === "us" ? RULE_US_DATA[formRule.event] ?? "This alert" : null;
     // A price alert is kept for the listing `quote` prints for the symbol, and for no symbol that quotes nothing;
     // a news, flow or IV rule on a symbol follows that listing too, and only in the US, where their data is.
     const priced = listedSymbol
       ? await withMarketData(ctx, async (market) => {
         const quoted = await requireQuotedListing(listedSymbol, exchangeOption, market, ctx, "alerts add");
-        if (research) {
+        if (usOnly) {
           const venue = quoted.listing.exchange || canonicalExchange(quoted.quote.listingExchangeName || quoted.quote.exchangeName);
           if (!isUsListingExchange(venue)) {
-            const what = research.kind === "news" ? "News alerting" : research.kind === "flow" ? "Options flow" : "Options data";
-            const { message, details } = await usListingsOnlyMessage(what, quoted.listing, market,
+            const { message, details } = await usListingsOnlyMessage(usOnly, quoted.listing, market,
               (key) => `gloom alerts add ${key} ${args.slice(2).join(" ")}`);
             ctx.fail(message, details);
           }
@@ -621,11 +745,33 @@ export const alertsCliCommand: CliCommandDef = {
     // A bare coin ticker read as another listing (SOL, a stale company; BTC, the Grayscale trust) gets `quote`'s note
     // naming the coin's pair, before a metric alert names the venue it was read on.
     const coinNote = priced ? coinListingNotes(priced.listing, priced.quote)[0] ?? null : null;
+    // What the alert reads now, which it is saved with, so lists and ALRT show it before the app has run.
+    let reading: Partial<AlertRule> = {};
+    // A daily rule whose close could not be read yet: why, which the add says beside when it is first checked.
+    let unread: string | null = null;
     if (request?.kind === "metric" && priced) {
       const exchange = canonicalExchange(priced.listing.exchange || priced.quote.listingExchangeName || priced.quote.exchangeName);
       const preview = { ...createAlert(priced.listing.symbol, request.condition, request.price, exchange), metric: request.metric };
-      await withMarketData(ctx, market => metricReadings(market.dataProvider)(preview)).catch(error => ctx.fail(error instanceof Error ? error.message : String(error)));
+      // A listing without a published close calendar can never be checked; anything else is saved and checked as it can be.
+      const unavailable = metricAvailabilityError(preview);
+      if (unavailable) ctx.fail(unavailable);
+      try {
+        const value = await withMarketData(ctx, market => metricReadings(market.dataProvider, now)(preview));
+        reading = { lastCheckedPrice: value.value, lastCheckedTarget: value.target, lastQuoteUpdatedAt: value.at, lastCheckedAt: now,
+          ...value.day ? { lastDailyClose: value.day } : {} };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        // A valuation the inputs cannot give is refused; a daily close not yet final, or history not there yet, is read once it is.
+        if (!isDailyMetric(request.metric)) ctx.fail(message);
+        unread = message;
+      }
+      if (priced.quote.currency) reading.lastQuoteCurrency = priced.quote.currency;
       priced.listing.exchange = exchange;
+    }
+    if (request?.kind === "price" && priced && !isQuoteStaleForCurrentSession(priced.quote)) {
+      // The price it is added at is its first reading and the baseline a crossing is measured from, as Add Alert keeps it.
+      const price = lastPrice(priced.quote);
+      if (price != null) reading = quoteAlertFields({ ...priced.quote, price }, now);
     }
     if (request?.kind === "price" && request.thousandsDot && priced) {
       const question = thousandsDotMessage(request, priced.listing.key, lastPrice(priced.quote), exchangeOption);
@@ -649,6 +795,13 @@ export const alertsCliCommand: CliCommandDef = {
       );
       try {
         newResearchRule = createResearchAlert(kind, values);
+      } catch (error) {
+        ctx.fail(error instanceof Error ? error.message : String(error));
+      }
+    }
+    if (formRule) {
+      try {
+        newResearchRule = createFormRule(formRule, priceListing);
       } catch (error) {
         ctx.fail(error instanceof Error ? error.message : String(error));
       }
@@ -727,22 +880,25 @@ export const alertsCliCommand: CliCommandDef = {
       const lookup = (targets: ScheduledEventTarget[]) => targets.some((target) => target.kind === "earnings")
         ? withMarketData(ctx, (market) => lookupScheduledDates(targets, scheduledEventSources(market.dataProvider), today, now))
         : lookupScheduledDates(targets, scheduledEventSources(null), today, now);
-      const { dates, warnings } = await listEventDates(events.rules, now, lookup);
+      const [{ dates, warnings }, cloud] = await Promise.all([listEventDates(events.rules, now, lookup), cloudRuleStates(events.rules)]);
       const rows = [
         ...alerts.map(priceRow),
-        ...events.rules.map((rule) => eventRow(rule, now, dates.has(rule.id) ? dates.get(rule.id) : rule.eventDate, checks[rule.id])),
+        ...events.rules.map((rule) => eventRow(rule, now, dates.has(rule.id) ? dates.get(rule.id) : rule.eventDate, checks[rule.id], cloud)),
       ];
-      const allWarnings = [...(alertsError ? [alertsError] : []), ...(events.error ? [events.error] : []), ...warnings];
+      const allWarnings = [...(alertsError ? [alertsError] : []), ...(events.error ? [events.error] : []), ...warnings, ...cloud.warning ? [cloud.warning] : []];
       ctx.printResult({ data: rows, ...(allWarnings.length ? { warnings: allWarnings } : {}) }, {
         rows: (data) => data.map(textRow),
         textColumns: [
           { key: "id", header: "ID", shrink: false },
           { key: "kind", header: "Kind" },
-          { key: "target", header: "Target" },
+          // A price or technical alert names the listing it is checked on, in its currency.
+          { key: "target", header: "Target", format: (value, row) => row.currency ? listingWithCurrency(String(row.listing), String(row.currency)) : String(value ?? "") },
           { key: "trigger", header: "Trigger" },
           { key: "eventDate", header: "Event Date" },
           { key: "status", header: "Status" },
-          { key: "lastCheckedPrice", header: "Last Price", align: "right", optional: true },
+          { key: "lastReading", header: "Last Reading" },
+          // ISO 8601 in UTC, as CSV writes it.
+          { key: "createdAt", header: "Created", format: (value) => String(value ?? "") },
           { key: "triggeredAt", header: "Triggered", optional: true },
         ],
         empty: "No alerts. Add one with gloom alerts add AAPL above 250, alerts add CRWV earnings --days 3, alerts add CPI --days 1, or alerts add CN PMI.",
@@ -775,15 +931,43 @@ export const alertsCliCommand: CliCommandDef = {
         if (events.error) ctx.fail(events.error);
         return events.rules;
       };
+      // Each rule created, re-armed or deleted here goes in this device's alert log, beside the alerts that fired.
+      const record = (action: AlertLogAction, rule: AlertRule | EventAlertRule) => {
+        const state = config.persistence?.pluginState;
+        if (ctx.cliOptions.dryRun || !state) return;
+        try {
+          appendAlertLog({
+            get: (key) => state.get(ALERTS_PLUGIN_ID, resumeStateKey(key))?.value,
+            set: (key, value) => state.set(ALERTS_PLUGIN_ID, resumeStateKey(key), value),
+          }, [alertChangeEntry(action, alertLogRule(rule), Date.now())]);
+        } catch (error) {
+          logFailure("alerts.cli", "Record alert change failed")(error);
+        }
+      };
 
       if (request?.kind === "price" || request?.kind === "metric") {
         const { condition, price } = request;
         const symbol = requireArg(priceListing?.key, ADD_USAGE, ctx);
-        const alert = { ...createAlert(symbol, condition, price, priceListing?.exchange), ...(request.kind === "metric" ? { metric: request.metric } : {}) };
+        const alert: AlertRule = { ...createAlert(symbol, condition, price, priceListing?.exchange), ...(request.kind === "metric" ? { metric: request.metric } : {}), ...reading };
+        // The same rule on the same listing is one alert: a second add names it and adds nothing.
+        const existing = alerts.find((entry) => sameLevelRule(entry, alert));
+        if (existing) {
+          const rearm = existing.status === "triggered" ? `; it went off, so re-arm it with gloom alerts rearm ${existing.id}` : "";
+          ctx.fail(`${alertLogRule(alert).rule} already exists as alert ${existing.id}${rearm}. Nothing was added.`);
+        }
         await save({ alerts: [...alerts, alert] });
-        ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, alert }, ...(read.length > 0 ? { warnings: read } : {}) }, {
+        record("created", alert);
+        // A daily rule is first judged on the first close after it was set, once that close has settled.
+        const firstCheck = alert.metric && isDailyMetric(alert.metric) ? firstDailyCheck(alert.exchange, now) : null;
+        const notes = [
+          alert.metric ? unread ? `Not read yet: ${unread.replace(/\.$/, "")}.` : `${metricReadingNote(alert)}.` : null,
+          firstCheck ? `First checked on the ${firstCheck.day} close, from ${isoUtc(firstCheck.at).slice(11, 16)} UTC.` : null,
+        ].filter(Boolean).join(" ");
+        ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, alert,
+          ...firstCheck ? { firstCheck: { close: firstCheck.day, at: isoUtc(firstCheck.at) } } : {},
+          ...unread ? { unread } : {} }, ...(read.length > 0 ? { warnings: read } : {}) }, {
           // The delivery, as docs/usage.md states it, before any full stop, which after the price would read as part of it (below 81.).
-          text: (data) => `Added alert ${data.alert.id}: ${data.alert.metric ? metricDescription(data.alert) : `${symbol} ${condition} ${price}`} (${PRICE_DELIVERY}).${dryRunNote(data.dryRun)}`,
+          text: (data) => `Added alert ${data.alert.id}: ${data.alert.metric ? metricDescription(data.alert) : `${symbol} ${condition} ${price}`} (${PRICE_DELIVERY}).${notes ? ` ${notes}` : ""}${dryRunNote(data.dryRun)}`,
         });
         return;
       }
@@ -791,12 +975,13 @@ export const alertsCliCommand: CliCommandDef = {
         const rule = newResearchRule;
         const rules = requireEvents();
         const existing = rules.find((entry) => entry.kind === rule.kind && entry.target === rule.target && entry.value.toLowerCase() === rule.value.toLowerCase());
-        if (existing) ctx.fail(`This alert already exists (ID ${existing.id}).`);
+        if (existing) ctx.fail(`This alert already exists (ID ${existing.id}). Nothing was added.`);
         if (rules.length >= MAX_EVENT_ALERTS) ctx.fail(`Keep at most ${MAX_EVENT_ALERTS} event alerts. Delete one with gloom alerts delete <id>.`);
         await save({ events: [...rules, rule] });
-        const kind = research!.kind;
+        record("created", rule);
+        const delivery = research ? researchDelivery(research.kind) : ruleDelivery(formRule!.event);
         ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, alert: rule }, ...(read.length > 0 ? { warnings: read } : {}) }, {
-          text: (data) => `Added alert ${data.alert.id}: ${alertKindLabel(rule.kind)} ${researchAlertDescription(rule)} (${researchDelivery(kind)}).${dryRunNote(data.dryRun)}`,
+          text: (data) => `Added alert ${data.alert.id}: ${alertKindLabel(rule.kind)} ${eventAlertTarget(rule)} (${delivery}).${dryRunNote(data.dryRun)}`,
         });
         return;
       }
@@ -807,10 +992,11 @@ export const alertsCliCommand: CliCommandDef = {
         const name = scheduledEventName(scheduled.target);
         const existing = rules.find((entry) => entry.kind === rule.kind && entry.value.toLowerCase() === rule.value.toLowerCase());
         if (existing) ctx.fail(scheduled.trigger === "results"
-          ? `An alert for ${name} results already exists (ID ${existing.id}).`
-          : `An alert ${plural(scheduled.leadDays, "day")} before ${name} already exists (ID ${existing.id}).`);
+          ? `An alert for ${name} results already exists (ID ${existing.id}). Nothing was added.`
+          : `An alert ${plural(scheduled.leadDays, "day")} before ${name} already exists (ID ${existing.id}). Nothing was added.`);
         if (rules.length >= MAX_EVENT_ALERTS) ctx.fail(`Keep at most ${MAX_EVENT_ALERTS} event alerts. Delete one with gloom alerts delete <id>.`);
         await save({ events: [...rules, rule] });
+        record("created", rule);
         const eventDate = rule.eventDate ?? null;
         const due = !!eventDate && scheduledPhase(eventDate, scheduled.leadDays, undefined, scheduledToday(scheduled.target, now)) === "due";
         const release = followsRelease(scheduled.target);
@@ -835,12 +1021,14 @@ export const alertsCliCommand: CliCommandDef = {
       }
       if (action === "delete" || action === "rm") {
         const id = requireArg(args[1], "Usage: gloom alerts delete <id>", ctx);
-        const isPrice = alerts.some((alert) => alert.id === id);
-        const isEvent = !isPrice && events.rules.some((rule) => rule.id === id);
-        if (!isPrice && !isEvent && alertsError) ctx.fail(alertsError);
-        if (isPrice) await save({ alerts: alerts.filter((alert) => alert.id !== id) });
-        if (isEvent) await save({ events: requireEvents().filter((rule) => rule.id !== id) });
-        const changed = isPrice || isEvent;
+        const level = alerts.find((alert) => alert.id === id) ?? null;
+        const rule = level ? null : events.rules.find((entry) => entry.id === id) ?? null;
+        if (!level && !rule && alertsError) ctx.fail(alertsError);
+        if (level) await save({ alerts: alerts.filter((alert) => alert.id !== id) });
+        if (rule) await save({ events: requireEvents().filter((entry) => entry.id !== id) });
+        const gone = level ?? rule;
+        if (gone) record("deleted", gone);
+        const changed = !!gone;
         ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun && changed, dryRun: ctx.cliOptions.dryRun, id } }, {
           text: (data) => changed
             ? `Deleted alert ${id}.${dryRunNote(data.dryRun)}`
@@ -850,22 +1038,25 @@ export const alertsCliCommand: CliCommandDef = {
       }
       if (action === "rearm") {
         const id = requireArg(args[1], "Usage: gloom alerts rearm <id>", ctx);
-        const isPrice = alerts.some((alert) => alert.id === id);
-        const rule = isPrice ? null : events.rules.find((entry) => entry.id === id) ?? null;
-        if (!isPrice && !rule && alertsError) ctx.fail(alertsError);
-        if (isPrice) await save({ alerts: alerts.map((alert) => alert.id === id ? rearmAlert(alert) : alert) });
-        if (rule) {
+        const level = alerts.find((alert) => alert.id === id) ?? null;
+        const rule = level ? null : events.rules.find((entry) => entry.id === id) ?? null;
+        if (!level && !rule && alertsError) ctx.fail(alertsError);
+        // An alert still waiting to go off has nothing to re-arm, and is left as it is.
+        const active = level ? level.status === "active" : rule ? eventRuleArmed(rule, now) : false;
+        if (level && !active) await save({ alerts: alerts.map((alert) => alert.id === id ? rearmAlert(alert) : alert) });
+        if (rule && !active) {
           // A scheduled alert alerts again for its coming event; any other event alert resumes.
           const next = readScheduledRule(rule) ? rearmScheduledAlert(rule)
             : rule.kind === "iv_level" && rule.triggeredAt ? rearmIvLevelAlert(rule)
             : rule.status === "paused" ? toggleEventAlert(rule) : rule;
           await save({ events: requireEvents().map((entry) => entry.id === id ? next : entry) });
         }
-        const found = isPrice || !!rule;
-        ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun && found, dryRun: ctx.cliOptions.dryRun, id } }, {
-          text: (data) => found
-            ? `Re-armed alert ${id}.${dryRunNote(data.dryRun)}`
-            : cliStyles.muted(`No alert with ID ${id}.`),
+        const found = level ?? rule;
+        if (found && !active) record("rearmed", found);
+        ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun && !!found && !active, dryRun: ctx.cliOptions.dryRun, id, ...active ? { active: true } : {} } }, {
+          text: (data) => !found ? cliStyles.muted(`No alert with ID ${id}.`)
+            : active ? cliStyles.muted(`Alert ${id} is already active; nothing to re-arm.`)
+            : `Re-armed alert ${id}.${dryRunNote(data.dryRun)}`,
         });
         return;
       }

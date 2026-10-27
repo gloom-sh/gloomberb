@@ -5,7 +5,9 @@ import { ALERTS_PLUGIN_ID } from "./constants";
 /**
  * The alerts this device's app fired, kept on the device (plugin resume
  * state, never synced): `fn ALRT --tab history` and the History tab read it
- * signed out, and merge Gloom Cloud's deliveries in when signed in.
+ * signed out, and merge Gloom Cloud's deliveries in when signed in. Beside
+ * them it keeps when a rule was created, re-armed or deleted here, from the
+ * app or `gloom alerts` (`action`).
  */
 export const FIRED_LOG_KEY = "firedLog";
 /** The newest entries kept; older ones fall off as new ones are added. */
@@ -32,9 +34,29 @@ export interface FiredAlert {
   source: string | null;
   symbol?: string;
   exchange?: string;
+  /** A change to the rule rather than the alert going off: created, re-armed or deleted. */
+  action?: AlertLogAction;
 }
 
 export type FiredAlertInput = Omit<FiredAlert, "id" | "firedAt"> & { firedAt: number };
+
+const ALERT_LOG_ACTIONS = ["created", "rearmed", "deleted"] as const;
+export type AlertLogAction = (typeof ALERT_LOG_ACTIONS)[number];
+/** What History says of a change, in its Value column. */
+const ALERT_LOG_ACTION_TEXT: Record<AlertLogAction, string> = { created: "Created", rearmed: "Re-armed", deleted: "Deleted" };
+
+/** A change to a rule as the log keeps it: when, what was done, and the rule as it read. */
+export function alertChangeEntry(
+  action: AlertLogAction,
+  rule: { kind: string; ruleId: string; rule: string; symbol?: string; exchange?: string },
+  at = Date.now(),
+): FiredAlertInput {
+  return {
+    kind: rule.kind, ruleId: rule.ruleId, rule: rule.rule, firedAt: at, value: null, quoteAt: null, source: null, action,
+    detail: ALERT_LOG_ACTION_TEXT[action],
+    ...(rule.symbol ? { symbol: rule.symbol } : {}), ...(rule.exchange ? { exchange: rule.exchange } : {}),
+  };
+}
 
 /** How current a quote was, in the words reports use. */
 export function quoteSourceWords(source: QuoteDataSource | undefined): string | null {
@@ -57,7 +79,8 @@ export function readFiredAlerts(value: unknown): FiredAlert[] {
     && isText(entry.firedAt) && Number.isFinite(Date.parse(entry.firedAt))
     && (entry.value === null || Number.isFinite(entry.value))
     && (entry.quoteAt === null || isText(entry.quoteAt)) && (entry.source === null || isText(entry.source))
-    && optionalText(entry.unit) && optionalText(entry.detail) && optionalText(entry.symbol) && optionalText(entry.exchange));
+    && optionalText(entry.unit) && optionalText(entry.detail) && optionalText(entry.symbol) && optionalText(entry.exchange)
+    && (entry.action === undefined || ALERT_LOG_ACTIONS.includes(entry.action)));
 }
 
 function firedAlertEntry(input: FiredAlertInput, id: string = crypto.randomUUID()): FiredAlert {
@@ -105,6 +128,21 @@ export function recordFiredAlertFor(
   } catch (error) {
     onError(error);
   }
+}
+
+/**
+ * Adds entries to the device's log through the plugin's saved state as the
+ * shell reads and writes it (`gloom alerts`), where there is no running
+ * plugin to record them.
+ */
+export function appendAlertLog(
+  state: { get(key: string): unknown; set(key: string, value: unknown): void },
+  inputs: readonly FiredAlertInput[],
+): void {
+  if (!inputs.length) return;
+  let entries = readFiredAlerts(state.get(FIRED_LOG_KEY));
+  for (const input of inputs) entries = appendFiredAlert(entries, input);
+  state.set(FIRED_LOG_KEY, entries);
 }
 
 /** Records a fired alert in the device's log. A log that cannot be written never stops the alert itself. */

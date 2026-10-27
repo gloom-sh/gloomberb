@@ -1,5 +1,7 @@
 import { metricDescription, readAlertMetric, validMetricRule } from "./metric-model";
 import type { AlertCondition, AlertRule } from "./types";
+import { alertListing } from "./format";
+import { canonicalExchange } from "../../../utils/exchanges";
 import { logFailure } from "../../../utils/log-failure";
 
 export type { AlertRule };
@@ -33,10 +35,14 @@ export function editAlert(
   targetPrice: number,
 ): AlertRule {
   const nextSymbol = symbol.trim().toUpperCase();
+  const sameListing = nextSymbol === alert.symbol.trim().toUpperCase();
   return {
     id: alert.id,
     symbol: nextSymbol,
-    exchange: nextSymbol === alert.symbol.trim().toUpperCase() ? alert.exchange : undefined,
+    exchange: sameListing ? alert.exchange : undefined,
+    // The listing's currency and venue stay with it; a new symbol learns its own at its first check.
+    ...(sameListing && alert.lastQuoteCurrency ? { lastQuoteCurrency: alert.lastQuoteCurrency } : {}),
+    ...(sameListing && alert.lastQuoteExchange ? { lastQuoteExchange: alert.lastQuoteExchange } : {}),
     condition,
     targetPrice,
     createdAt: alert.createdAt,
@@ -49,6 +55,19 @@ export function editAlert(
 
 export function rearmAlert(alert: AlertRule): AlertRule {
   return editAlert(alert, alert.symbol, alert.condition, alert.targetPrice);
+}
+
+/**
+ * Whether two level alerts are one rule: the same measure, condition and
+ * target on the same listing, whether it was named with its exchange or read
+ * from the symbol alone. A second add of one names the first and adds nothing.
+ */
+export function sameLevelRule(a: AlertRule, b: AlertRule): boolean {
+  const venue = (alert: AlertRule) => canonicalExchange(alert.exchange ?? "");
+  return a.symbol.toUpperCase() === b.symbol.toUpperCase()
+    && (venue(a) === venue(b) || alertListing(a) === alertListing(b))
+    && a.condition === b.condition && a.targetPrice === b.targetPrice
+    && JSON.stringify(readAlertMetric(a.metric)) === JSON.stringify(readAlertMetric(b.metric));
 }
 
 export function evaluateAlert(alert: AlertRule, currentPrice: number): boolean {

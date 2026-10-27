@@ -1,9 +1,10 @@
 import { METRIC_CHOICES, metricWizardFields } from "./metric-command";
-import { metricReadings } from "./metric-data";
+import { firstDailyCheck, metricAvailabilityError, metricReadings } from "./metric-data";
+import { alertLogRule } from "./alert-log";
 import { metricTrigger, isDailyMetric, type MetricReading } from "./metric-model";
 import { startCatalystAlerts } from "./catalysts";
 import { notTheCoinNote } from "../../../cli/commands/crypto-hints";
-import { createFiredAlertRecorder, firedAlertTime, quoteSourceWords } from "./fired-log";
+import { alertChangeEntry, createFiredAlertRecorder, firedAlertTime, quoteSourceWords } from "./fired-log";
 import { checkIvLevelAlertsNow, startIvLevelAlerts } from "./iv-level";
 import { logFailure } from "../../../utils/log-failure";
 import { RESEARCH_FORM_KINDS, RESEARCH_LABELS, researchWizardFields, createResearchAlert } from "./research-builder";
@@ -28,6 +29,7 @@ import {
   createAlert,
   evaluateAlert,
   formatAlertDescription,
+  sameLevelRule,
 } from "./alert-engine";
 import {
   parseAlertCommandValues,
@@ -196,21 +198,40 @@ export const alertsPlugin: GloomPlugin = {
         const far = farTargetMessage(symbol, input.price, quote.price, symbol.includes(":") ? null : notTheCoinNote(symbol, quote));
         if (!input.metric && far) throw new Error(far);
 
-        const alert = {
+        const alert: AlertRule = {
           ...createAlert(quote.symbol || symbol, input.condition, input.price),
-          ...(!input.metric ? quoteAlertFields(quote) : { metric: input.metric, exchange: quote.listingExchangeName || quote.exchangeName }),
+          ...(!input.metric ? quoteAlertFields(quote) : {
+            metric: input.metric, exchange: quote.listingExchangeName || quote.exchangeName,
+            ...quote.currency ? { lastQuoteCurrency: quote.currency } : {},
+          }),
         };
+        // A daily close not yet final is read once it is: the rule is kept and says when it is first judged.
+        let firstCheck: string | null = null;
         if (input.metric) {
-          const reading = await metricReadings(ctx.marketData)(alert);
-          Object.assign(alert, { lastCheckedPrice: reading.value, lastCheckedTarget: reading.target, lastQuoteUpdatedAt: reading.at });
+          const now = Date.now();
+          if (isDailyMetric(input.metric)) {
+            const check = firstDailyCheck(alert.exchange, now);
+            if (check) firstCheck = `first checked on the ${check.day} close, from ${new Date(check.at).toISOString().slice(11, 16)} UTC`;
+          }
+          try {
+            const reading = await metricReadings(ctx.marketData, now)(alert);
+            Object.assign(alert, { lastCheckedPrice: reading.value, lastCheckedTarget: reading.target, lastQuoteUpdatedAt: reading.at,
+              lastCheckedAt: now, ...reading.day ? { lastDailyClose: reading.day } : {} });
+          } catch (error) {
+            if (!isDailyMetric(input.metric) || metricAvailabilityError(alert)) throw error;
+          }
         }
         const existing = loadAlerts(ctx);
+        // The same rule on the same listing is one alert: adding it again names it and adds nothing.
+        const duplicate = existing.find((entry) => sameLevelRule(entry, alert));
+        if (duplicate) throw new Error(`${formatAlertDescription(alert)} already exists (alert ${duplicate.id}). Nothing was added.`);
         existing.push(alert);
         await saveAlerts(ctx, existing, input.metric ? "metric" : "price");
+        recordFired(alertChangeEntry("created", alertLogRule(alert)));
         alertStream?.sync();
 
         ctx.notify({
-          body: `Alert set: ${formatAlertDescription(alert)}${input.metric ? "" : ` (current ${formatMarketPrice(quote.price, { minimumFractionDigits: 2 })})`}`,
+          body: `Alert set: ${formatAlertDescription(alert)}${input.metric ? firstCheck ? `, ${firstCheck}` : "" : ` (current ${formatMarketPrice(quote.price, { minimumFractionDigits: 2 })})`}`,
           type: "success",
         });
       },
@@ -281,6 +302,7 @@ export const alertsPlugin: GloomPlugin = {
         // An IV level goes in its own list, which released versions never read.
         const key = eventAlertStoreKey(rule);
         await ctx.configState.set(key, updateEventAlerts(ctx.configState.get<string>(key), (rules) => [...rules, rule]));
+        recordFired(alertChangeEntry("created", alertLogRule(rule)));
         ctx.notify({ body: "Event alert saved.", type: "success" });
         if (scheduled) checkScheduledEventAlertsNow();
         if (rule.kind === "iv_level") checkIvLevelAlertsNow();

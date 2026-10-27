@@ -13,6 +13,12 @@ import { currencyPairSpelling } from "../../../utils/currency-pair";
 import { alertsCliCommand, parseAlertAddArgs } from "./cli";
 import { farTargetMessage } from "./quotes";
 import { readAlertStores } from "./storage";
+import { serializeCliResult } from "../../../cli/result";
+import type { CliGlobalOptions } from "../../../cli/options";
+import { resumeStateKey } from "../../registry/plugin-state";
+import { createAlert } from "./alert-engine";
+import { ALERTS_PLUGIN_ID } from "./constants";
+import { FIRED_LOG_KEY, readFiredAlerts } from "./fired-log";
 
 const dataDirs: string[] = [];
 
@@ -238,20 +244,21 @@ test("a calendar name that is ambiguous or matches nothing is refused with the w
   const several = await addAlert(["PMI"]);
   expect(several.error).toBe('"PMI" is listed for several countries: NBS Manufacturing PMI (CN), ISM Manufacturing PMI (US). Name the country: alerts add PMI --country CN.');
   const slip = await addAlert(["NBP", "PMI"]);
-  expect(slip.error).toContain('No release in the economic calendar matches "NBP PMI". Did you mean NBS Manufacturing PMI (CN), NBS Non Manufacturing PMI (CN)?');
-  // Every refusal names the event form beside the others.
-  for (const { error } of [slip, await addAlert(["AAPL", "abve", "250"])]) {
-    expect(error).toContain('a release in the economic calendar by name (alerts add "NBS Manufacturing PMI" --country CN, alerts add CN PMI, alerts add CPI --days 1)');
+  expect(slip.error).toContain('No kind of alert and no release in the economic calendar matches "NBP PMI". Did you mean NBS Manufacturing PMI (CN), NBS Non Manufacturing PMI (CN)?');
+  // Every refusal of words no form reads names every kind there is, rather than the calendar alone.
+  for (const { error } of [slip, await addAlert(["AAPL", "abve", "250"]), await addAlert(["XLE", "dividend", "cut"])]) {
+    expect(error).toContain("52-week range, unusual volume, SEC filing, insider trade, short interest");
+    expect(error).toContain("gloom help alerts shows how to type each");
   }
   // A bare word that only starts a name, or is its initials, is offered rather than added.
   const bare = await addAlert(["MAN"]);
-  expect(bare.error).toContain('No release in the economic calendar matches "MAN". Did you mean NBS Manufacturing PMI (CN), ISM Manufacturing PMI (US)');
+  expect(bare.error).toContain('No kind of alert and no release in the economic calendar matches "MAN". Did you mean NBS Manufacturing PMI (CN), ISM Manufacturing PMI (US)');
   expect([several, slip, bare].map((attempt) => attempt.events)).toEqual([[], [], []]);
   // With no calendar to look a bare word up in, it still says what each form takes.
   serveCalendar({ offline: true });
   const offline = await addAlert(["AAPL"]);
   expect(offline.error).toStartWith('Unknown event "AAPL": the economic calendar could not be loaded to look it up');
-  expect(offline.error).toContain("price alerts take a condition and a price (alerts add AAPL above 250)");
+  expect(offline.error).toContain("gloom alerts add takes price, P/E, P/S or RSI");
 });
 
 test("the FOMC's calendar row by name is the FOMC alert, and a release already out today is followed to its next listing", async () => {
@@ -273,4 +280,141 @@ test("the FOMC's calendar row by name is the FOMC alert, and a release already o
   const pmi = await addAlert(["NBS", "Manufacturing", "PMI"]);
   expect(pmi.events[0]!.eventDate).toBeUndefined();
   expect(pmi.printed!.options!.text!(pmi.printed!.result.data)).toContain("the app alerts once the calendar lists its next date");
+});
+
+/** One profile across several `alerts` commands, with the device state the alert log lives in. */
+async function profile() {
+  const dataDir = await mkdtemp(join(tmpdir(), "gloomberb-alerts-desk-"));
+  dataDirs.push(dataDir);
+  await saveConfig(createDefaultConfig(dataDir));
+  const state = new Map<string, unknown>();
+  const persistence = {
+    close: () => {},
+    pluginState: {
+      get: (plugin: string, key: string) => state.has(`${plugin}:${key}`) ? { value: state.get(`${plugin}:${key}`) } : null,
+      set: (plugin: string, key: string, value: unknown) => { state.set(`${plugin}:${key}`, value); },
+    },
+  };
+  const run = async (args: string[], options: Partial<CliGlobalOptions> = {}) => {
+    const cli = createTestCliContext({ config: await loadConfig(dataDir), dataProvider: cloud(), persistence }, options);
+    try {
+      await alertsCliCommand.execute(args, cli.context);
+    } catch (thrown) {
+      return { error: (thrown as Error).message, printed: undefined, output: "" };
+    }
+    const printed = cli.printed[0]!;
+    return { error: null, printed, output: serializeCliResult(printed.result, cli.context.cliOptions, printed.options) };
+  };
+  const log = () => readFiredAlerts(state.get(`${ALERTS_PLUGIN_ID}:${resumeStateKey(FIRED_LOG_KEY)}`));
+  return { dataDir, run, log, stored: async () => readAlertStores(await loadConfig(dataDir)) };
+}
+
+test("a second add of one alert names it and adds nothing, re-arming an active one leaves it, and each change is logged", async () => {
+  const desk = await profile();
+  const added = await desk.run(["add", "AAPL", "above", "260"]);
+  const id = added.printed!.result.data.alert.id as string;
+  expect(await desk.run(["add", "aapl", "above", "260"])).toMatchObject({ error: `AAPL:NASDAQ above 260 already exists as alert ${id}. Nothing was added.` });
+  expect((await desk.stored()).alerts.map((alert) => alert.id)).toEqual([id]);
+  // Another level on the same listing is another alert.
+  const other = await desk.run(["add", "AAPL", "above", "270"]);
+  expect(other.error).toBeNull();
+
+  const active = await desk.run(["rearm", id]);
+  expect(active.printed!.result.data).toMatchObject({ changed: false, active: true });
+  expect(active.output).toContain(`Alert ${id} is already active; nothing to re-arm.`);
+  // Once it has gone off, re-arming arms it again, and a duplicate names it with the way back.
+  const config = await loadConfig(desk.dataDir);
+  const [first, ...rest] = (await desk.stored()).alerts;
+  config.pluginConfig.alerts = { ...config.pluginConfig.alerts, alerts: JSON.stringify([{ ...first, status: "triggered", triggeredAt: Date.now() }, ...rest]) };
+  await saveConfig(config);
+  expect((await desk.run(["add", "AAPL", "above", "260"])).error).toContain(`re-arm it with gloom alerts rearm ${id}`);
+  expect((await desk.run(["rearm", id])).printed!.result.data).toMatchObject({ changed: true });
+  expect((await desk.stored()).alerts.find((alert) => alert.id === id)?.status).toBe("active");
+  await desk.run(["delete", id]);
+  await desk.run(["add", "AAPL", "above", "280"], { dryRun: true });
+
+  // Beside the alerts that fired, the device's log keeps what was done to each rule here; a dry run changes nothing.
+  expect(desk.log().map((entry) => [entry.action, entry.ruleId === id, entry.rule])).toEqual([
+    ["created", true, "AAPL:NASDAQ above 260"],
+    ["created", false, "AAPL:NASDAQ above 270"],
+    ["rearmed", true, "AAPL:NASDAQ above 260"],
+    ["deleted", true, "AAPL:NASDAQ above 260"],
+  ]);
+});
+
+test("alerts list --csv keeps its columns in their order and adds when each alert was made, its listing, currency and last reading", async () => {
+  const desk = await profile();
+  await desk.run(["add", "AAPL", "above", "260"]);
+  // A rule saved before any check (an older version's, or one just re-armed) says it has not been read.
+  const config = await loadConfig(desk.dataDir);
+  const unchecked = { ...createAlert("LINK", "below", 4), createdAt: Date.parse("2026-10-20T09:30:00Z") };
+  config.pluginConfig.alerts = { ...config.pluginConfig.alerts, alerts: JSON.stringify([...JSON.parse(config.pluginConfig.alerts!.alerts as string), unchecked]) };
+  await saveConfig(config);
+
+  const csv = (await desk.run(["list"], { format: "csv" })).output.split("\n");
+  expect(csv[0]).toBe("id,kind,target,trigger,eventDate,status,lastCheckedPrice,triggeredAt,createdAt,listing,currency,lastReading,lastReadingAt");
+  const rows = csv.slice(1).map((line) => line.split(","));
+  // Its first reading is the price it was added at, as the app checks it (after hours, the after-hours price).
+  expect(rows[0]!.slice(1, 7)).toEqual(["Price", "AAPL", "above 260", "", "active", "300"]);
+  expect(rows[0]![8]).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
+  expect(rows[0]!.slice(9, 11)).toEqual(["AAPL:NASDAQ", "USD"]);
+  expect(rows[0]![11]).toMatch(/^300 USD as of \d{4}-\d{2}-\d{2}T\d{2}:\d{2}Z$/);
+  expect(rows[0]![12]).toMatch(/Z$/);
+  expect(rows[1]!.slice(8)).toEqual(["2026-10-20T09:30:00Z", "LINK", "", "not checked yet", ""]);
+  // Gloom Cloud checks a 52-week rule for a signed-in account; signed out, nothing has read it yet.
+  expect((await desk.run(["add", "AAPL", "52-week", "high"])).error).toBeNull();
+  const [, , , research] = (await desk.run(["list"], { format: "csv" })).output.split("\n");
+  expect(research!.split(",").slice(1, 3)).toEqual(["52-week range", "AAPL · 52w high"]);
+  expect(research!.split(",").slice(9)).toEqual(["AAPL", "", "not checked yet", ""]);
+
+  const text = (await desk.run(["list"])).output;
+  expect(text).toContain("AAPL:NASDAQ (USD)");
+  expect(text).toContain("not checked yet");
+  expect(text).toContain("2026-10-20T09:30:00Z");
+});
+
+test("alerts add takes every kind Add Event Alert offers, by the words a desk types", () => {
+  const rule = (words: string) => parseAlertAddArgs(words.split(" "), undefined);
+  expect(rule("XLE 52-week high")).toEqual({ kind: "rule", event: "fifty_two_week", symbol: "XLE", listing: "us", values: { direction: "high" } });
+  expect(rule("XLE 52w low")).toMatchObject({ event: "fifty_two_week", values: { direction: "low" } });
+  expect(rule("NVDA unusual volume 3x")).toMatchObject({ event: "unusual_volume", values: { threshold: "3" } });
+  expect(rule("NVDA unusual volume")).toMatchObject({ values: { threshold: "2" } });
+  expect(rule("AAPL filing 10q")).toMatchObject({ event: "filing_type", values: { form: "10-Q" } });
+  expect(rule("AAPL filings SC 13G/A")).toMatchObject({ values: { form: "SCHEDULE 13G/A" } });
+  expect(rule("TSLA insider sell")).toMatchObject({ event: "insider_trade", values: { direction: "sell" } });
+  expect(rule("GME short interest increase 20%")).toMatchObject({ event: "short_interest_change", values: { direction: "increase", threshold: "20" } });
+  expect(rule("AAPL analyst downgrade")).toMatchObject({ event: "analyst_change", values: { direction: "downgrade" } });
+  expect(rule("ADYEN:AMS hiring slowing")).toMatchObject({ event: "hiring_move", listing: "any", values: { direction: "slowing" } });
+  expect(rule("perps hyperliquid:default:BTC funding above 0.05%")).toMatchObject({
+    event: "perps_threshold", symbol: null, values: { marketId: "hyperliquid:default:btc", metric: "funding8h", direction: "above", threshold: "0.05" } });
+  expect(rule("PFE catalyst")).toMatchObject({ event: "catalyst-ticker", symbol: "PFE" });
+  expect(rule("catalyst type clinical")).toMatchObject({ event: "catalyst-type", symbol: null, values: { value: "clinical" } });
+  expect(rule("congress")).toMatchObject({ event: "congress-watched" });
+  expect(parseAlertAddArgs(["congress", "Nancy Pelosi"], undefined)).toMatchObject({ event: "congress-member", values: { value: "Nancy Pelosi" } });
+  expect(rule("13f 1067983")).toMatchObject({ event: "thirteenf-fund", values: { value: "1067983" } });
+  // A form mistyped names its own words; a symbol that spells a form word is still a price alert.
+  expect(() => rule("XLE 52-week")).toThrow("Name the side: gloom alerts add XLE 52-week high");
+  expect(() => rule("NVDA unusual volume 50x")).toThrow("1.1 to 20");
+  expect(() => rule("AAPL filing 8-Q")).toThrow("8-K, 10-K, 10-Q");
+  expect(() => rule("catalyst type weather")).toThrow("A catalyst type is one of");
+  expect(() => rule("13f berkshire")).toThrow("numeric SEC CIK");
+  expect(() => parseAlertAddArgs(["XLE", "52-week", "high"], "2")).toThrow("--days is for earnings");
+  expect(rule("PERPS above 10")).toMatchObject({ kind: "price", symbol: "PERPS" });
+  // `help alerts` lists every form, and an unknown phrase is refused with their names.
+  const help = alertsCliCommand.help!.usage!.join("\n");
+  for (const form of ["52-week <high|low>", "unusual volume", "filing [8-K", "insider [buy|sell]", "short interest", "analyst [upgrade|downgrade]", "hiring", "perps <market>", "<symbol> catalyst", "catalyst [type", "congress", "13f <fund CIK>"]) {
+    expect(help).toContain(form);
+  }
+});
+
+test("a daily technical alert is saved while its close cannot be read yet, and says when it is first checked", async () => {
+  const desk = await profile();
+  // This connection serves no daily history: the rule is kept, unread, rather than refused.
+  const added = await desk.run(["add", "AAPL", "rsi(14)", "above", "70"]);
+  expect(added.error).toBeNull();
+  expect(added.output).toMatch(/Not read yet: .+\. First checked on the \d{4}-\d{2}-\d{2} close, from \d{2}:\d{2} UTC\./);
+  expect(added.printed!.result.data).toMatchObject({ unread: expect.any(String), firstCheck: { close: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) } });
+  const [saved] = (await desk.stored()).alerts;
+  expect(saved).toMatchObject({ symbol: "AAPL", metric: { kind: "rsi", period: 14 }, status: "active", lastQuoteCurrency: "USD" });
+  expect(saved!.lastCheckedPrice).toBeUndefined();
 });

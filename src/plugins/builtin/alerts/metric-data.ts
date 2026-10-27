@@ -5,7 +5,8 @@ import { comparablePriceEarnings } from "../../../utils/price-earnings";
 import { canonicalExchange } from "../../../utils/exchanges";
 import { getPublishedUsEquitySession } from "../../../market-data/published-us-sessions";
 import { barSessionDay } from "../../../market-data/market/period-return";
-import { dailyMetricReading, latestSettledClose, DailyMetricCache, isDailyMetric, type MetricReading } from "./metric-model";
+import { finalDailyBars } from "../../../time-series/session-bar";
+import { DAILY_CLOSE_SETTLE_MS, dailyMetricReading, latestSettledClose, DailyMetricCache, isDailyMetric, type MetricReading } from "./metric-model";
 import type { AlertRule } from "./types";
 
 // Keep valuation fixtures in step with the delivery evaluator and the research panes.
@@ -26,6 +27,25 @@ export function metricAvailabilityError(rule: AlertRule): string | null {
   return getPublishedUsEquitySession(canonicalExchange(rule.exchange ?? ""), new Date().toISOString().slice(0, 10))
     ? null : "Daily technical alerts need a published US listing calendar; delivery is unavailable for this listing.";
 }
+
+/**
+ * The first close a daily technical rule set at `now` is judged on, and when:
+ * the next session to close after it, read once the close has settled
+ * (DAILY_CLOSE_SETTLE_MS). Null when the listing has no published calendar.
+ */
+export function firstDailyCheck(exchange: string | undefined, now = Date.now()): { day: string; at: number } | null {
+  const venue = canonicalExchange(exchange ?? "");
+  for (let offset = 0; offset < 15; offset++) {
+    const day = new Date(now + offset * 86_400_000).toISOString().slice(0, 10);
+    const session = getPublishedUsEquitySession(venue, day);
+    if (!session) return null;
+    if (session.kind === "session" && session.close > now) return { day, at: session.close + DAILY_CLOSE_SETTLE_MS };
+  }
+  return null;
+}
+
+/** The bar size the daily rules read, the one `history` and the charts ask for. */
+const DAILY_BARS = "1d";
 
 const dailyCaches = new WeakMap<AssetDataProvider, DailyMetricCache>();
 
@@ -56,14 +76,15 @@ export function metricReadings(provider: AssetDataProvider, now = Date.now()) {
         // An explicit end at the settled session avoids today's forming-bar quote read.
         const end = new Date(`${latest.day}T23:59:59Z`);
         const start = new Date(Date.parse(latest.day) - 366 * 86_400_000);
-        if (provider.getDetailedPriceHistoryWithMetadata) return (await provider.getDetailedPriceHistoryWithMetadata(rule.symbol, exchange, start, end, "1 day", { cacheMode: "current" })).points;
-        if (provider.getDetailedPriceHistory) return provider.getDetailedPriceHistory(rule.symbol, exchange, start, end, "1 day", { cacheMode: "current" });
+        if (provider.getDetailedPriceHistoryWithMetadata) return (await provider.getDetailedPriceHistoryWithMetadata(rule.symbol, exchange, start, end, DAILY_BARS, { cacheMode: "current" })).points;
+        if (provider.getDetailedPriceHistory) return provider.getDetailedPriceHistory(rule.symbol, exchange, start, end, DAILY_BARS, { cacheMode: "current" });
         throw new Error("Completed daily history is unavailable from this connection.");
       };
       const request = history.get(key) ?? load();
       history.set(key, request);
       const points = await request;
-      const bars = points.filter(point => !point.partial).map(point => ({ date: barSessionDay(point.date.getTime(), exchange), close: point.close }));
+      // Final as `history` shows it: a close it prints without `partial` is one the rule may judge.
+      const bars = finalDailyBars(points, { now, venue: exchange }).map(point => ({ date: barSessionDay(point.date.getTime(), exchange), close: point.close }));
       return dailyMetricReading(rule, bars, now, session);
     });
   };

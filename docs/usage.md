@@ -818,7 +818,7 @@ An **IV level** alert follows a symbol's 30-day at-the-money IV (in %) or 30-day
 - The running app checks it every 15 minutes, signed in or not, and notifies once when the level is passed. The rule then reads **Alerted** until you re-arm it (`m`, or `gloom alerts rearm <id>`). A rule added or re-armed while the reading is already past its level goes off at its first check.
 - Readings stay on the device and only a rule going off or changing is synced. Gloom Cloud does not check these, so they reach no phone.
 
-From the shell, `gloom alerts add` takes the same rules:
+From the shell, `gloom alerts add` takes every rule **Add Event Alert** offers:
 
 ```bash
 gloom alerts add IBIT iv above 50%         # 30-day ATM IV above 50%; the unit is optional
@@ -826,9 +826,20 @@ gloom alerts add SPY rr below -5.5 pts     # 30-day 25D risk reversal below -5.5
 gloom alerts add AAPL271217C00300000 iv spike 5
 gloom alerts add AAPL news buyback         # alerts add news "rate cut": any company
 gloom alerts add NVDA flow 5m calls sweeps # flow alone: your portfolios and watchlists, $1M and up
+gloom alerts add XLE 52-week high          # or 52-week low
+gloom alerts add NVDA unusual volume 3x    # times the prior 20-session average, 2x when left out
+gloom alerts add AAPL filing 10-Q          # 8-K when left out; 13D, 13G and their /A amendments too
+gloom alerts add TSLA insider sell         # insider alone: buys or sells
+gloom alerts add GME short interest increase 20%
+gloom alerts add AAPL analyst downgrade    # analyst alone: upgrades or downgrades
+gloom alerts add ADYEN:AMS hiring slowing  # any listing HIRE covers
+gloom alerts add perps hyperliquid:default:BTC funding above 0.05%   # funding, oi, premium or closed-premium
+gloom alerts add catalyst                  # your portfolio and watchlists; PFE catalyst, catalyst type clinical, catalyst agency FDA, catalyst country US
+gloom alerts add congress                  # your portfolio and watchlist; congress "Nancy Pelosi" follows a member
+gloom alerts add 13f 1067983               # a fund by its SEC CIK
 ```
 
-A symbol is read as `gloom quote` reads it and must be a US listing, as in the dialog.
+A symbol is read as `gloom quote` reads it and must be a US listing, as in the dialog; a hiring rule or a catalyst's company may list anywhere. `gloom help alerts` lists every form, and words none of them reads are refused with the kinds there are. Adding a rule that already exists names the existing alert's ID and adds nothing.
 
 `v` (view, also in the footer and the pane menu) opens what the selected row follows, on **Prices**, **Events** and **History**:
 
@@ -857,7 +868,10 @@ A symbol is read as `gloom quote` reads it and must be a US listing, as in the d
 - A target more than 10 times the last price, or under a tenth of it, is refused, in **Add Alert** too (`alerts add btc above 85000` is bitcoin's price typed on the fund).
 - A price reads the same in `alerts add`, the `SA` shortcut and the **Add Alert** form: `81000`, `81,000.50`, `1.350,5` and `81k` or `1.5m` (a thousand and a million). A comma before exactly three digits (`81,000`) could be thousands or a decimal comma, so it names both readings and adds nothing; text that is no number is refused with the format to type (`type 81000 or 81k`).
 - If saved price alerts cannot be read, the app and CLI leave the data unchanged and price checks pause until it is repaired. The pane and `gloom alerts list` show the read error, and event alerts stay usable.
-- On **Levels**, Enter opens an alert in full: its state, the price and how far it is from the level, and when its quote was checked. An alert that could not get a quote shows that in red on its row, and its detail says why. `m` re-arms an alert that went off.
+- On **Levels**, Enter opens an alert in full: its state, the listing it is checked on with its currency, the price and how far it is from the level, when its quote was checked, and when it was created (ISO, UTC). An alert that could not get a quote shows that in red on its row, and its detail says why. An alert no check has read yet says `not checked yet`. `m` re-arms an alert that went off.
+- `gloom alerts add` saves an alert with the price it read, so **Levels** and `alerts list` show it before the app has run. Adding the same rule on the same listing again names the existing alert and adds nothing; `gloom alerts rearm` on an alert that has not gone off says it is already active.
+- `gloom alerts list` shows each alert's listing with its currency, its last reading with when it is from (or `not checked yet`), and when it was created, in ISO 8601 UTC. `--csv` keeps the columns it has always had in their order (`id,kind,target,trigger,eventDate,status,lastCheckedPrice,triggeredAt`) and adds `createdAt,listing,currency,lastReading,lastReadingAt` after them. `gloom fn ALRT --csv` adds `createdAt`, `listing` and `currency` after its own.
+- Creating, re-arming and deleting an alert, from the app or `gloom alerts`, goes in this device's alert log beside the alerts that fired: **History** and `gloom fn ALRT --tab history` list each with `Created`, `Re-armed` or `Deleted`.
 
 ### Valuation and daily technical alerts
 
@@ -875,9 +889,9 @@ Quote parentheses in shells that interpret them. `rsi 14`, `50-day MA crosses ab
 
 P/E uses the research panes' trailing P/E and regular-session price basis. A zero or negative trailing EPS is not meaningful and never triggers. If EPS is missing, a meaningful served trailing P/E remains usable, as in the research panes; no multiple is invented from missing earnings. P/S divides capitalization on that same regular-session basis by trailing revenue, only when their currencies agree. Missing or stale valuation inputs leave the alert active with the reason in its detail.
 
-Daily technical alerts use the standard one-year daily history. RSI uses Wilder smoothing, seeded with the first period's average gains and losses; flat prices read 50. Moving averages are simple averages of completed daily closes. The published US equity calendar determines completed sessions, including holidays and early closes, with a 30-minute allowance after the close for the closing auction and late prints to settle. Other close calendars are currently unavailable for technical alerts. Missing sessions, insufficient history, and invalid or duplicate bars prevent evaluation. The row shows **Blocked** with **Bar gap** or **US only**, and its detail explains the reason. Settled calculations are reused until the next close; a failed history read retries after five minutes.
+Daily technical alerts read the same daily bars as `history`, and a close `history` shows as final (without `partial`) is final for them too. RSI uses Wilder smoothing, seeded with the first period's average gains and losses; flat prices read 50. Moving averages are simple averages of completed daily closes. The published US equity calendar determines completed sessions, including holidays and early closes, with a 30-minute allowance after the close for the closing auction and late prints to settle. Other close calendars are currently unavailable for technical alerts. Missing sessions, insufficient history, and invalid or duplicate bars prevent evaluation. The row shows **Blocked** with **Bar gap** or **US only**, and its detail explains the reason. Settled calculations are reused until the next close; a failed history read retries after five minutes.
 
-Technical rows say **on daily close**. Adding or re-arming a rule waits for the next completed close; intraday bars cannot fire it. A crossover compares the fast and slow averages on two consecutive sessions, firing only on the specified crossing. Like price alerts, each rule fires once until re-armed. Valuation alerts can fire on their first check if their threshold is already met.
+Technical rows say **on daily close**. Adding or re-arming a rule waits for the next completed close; intraday bars cannot fire it. A daily rule is always saved: `alerts add` says what it reads on the latest final close, or why it could not read it yet, and when it is first checked (`First checked on the 2026-10-27 close, from 20:30 UTC.`). A crossover compares the fast and slow averages on two consecutive sessions, firing only on the specified crossing. Like price alerts, each rule fires once until re-armed. Valuation alerts can fire on their first check if their threshold is already met.
 
 Delivery and access follow price alerts: the running app notifies locally; Cloud sync and a verified account enable existing email and registered-phone delivery, with the same cadence, settings and shared delivery limits. No separate technical-alert subscription is needed.
 

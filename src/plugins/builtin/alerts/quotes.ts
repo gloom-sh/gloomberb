@@ -2,6 +2,7 @@ import type { DataProvider } from "../../../types/data-provider";
 import type { Quote } from "../../../types/financials";
 import { getActiveQuoteDisplay } from "../../../market-data/market/status";
 import { isQuoteStaleForCurrentSession } from "../../../market-data/quotes/freshness";
+import { canonicalExchange } from "../../../utils/exchanges";
 import type { AlertRule } from "./types";
 
 export function normalizeAlertSymbol(value: string | null | undefined): string {
@@ -46,13 +47,18 @@ export function quoteAlertFields(
   | "lastQuoteUpdatedAt"
   | "lastQuoteSource"
   | "lastQuoteProviderId"
+  | "lastQuoteCurrency"
+  | "lastQuoteExchange"
 > & { lastCheckError?: undefined } {
+  const exchange = quote.listingExchangeName || quote.exchangeName;
   return {
     lastCheckedPrice: quote.price,
     lastCheckedAt: checkedAt,
     lastQuoteUpdatedAt: quote.lastUpdated,
     lastQuoteSource: quote.dataSource,
     lastQuoteProviderId: quote.providerId,
+    ...(quote.currency ? { lastQuoteCurrency: quote.currency } : {}),
+    ...(exchange ? { lastQuoteExchange: canonicalExchange(exchange) } : {}),
     lastCheckError: undefined,
   };
 }
